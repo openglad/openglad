@@ -471,6 +471,15 @@ og_add_shell_check_target(check_lua_error_sites
     check_lua_error_sites.sh
 )
 
+# The CHANGELOG! keyboard pictures and their key list hash to what
+# scripts/keyboard_map/keyboard_map.stamp says: a key change that was not
+# redrawn fails the build (og_unit_core, which pins the list against the key
+# tables, depends on it). See the script header.
+og_add_shell_check_target(check_keyboard_map
+    "Checking the CHANGELOG! keyboard pictures match their key list"
+    check_keyboard_map.sh
+)
+
 # Every old-game commit tests/parity/golden/DRIFT_LEDGER.md names (its pin line
 # and its `old-game commit` table cells) must be on origin/parity-companion, the
 # current scenario table must equal the pin's, and every old-game src/ commit

@@ -7,7 +7,14 @@ const {
   focusCanvas,
   startSeededSinglePlayerFromPicker,
   waitForGameLoad,
+  installChangelogSkip,
 } = require('./wasm_helpers');
+
+// Every boot in this file skips the once-only CHANGELOG! page
+// (tests/e2e/wasm-changelog.spec.js is the one that shows it).
+test.beforeEach(async ({ page }) => {
+  await installChangelogSkip(page);
+});
 
 const CAPTURE_DURATION_MS = 12_000;
 const PROFILE_ID = 'single-player-right-run';

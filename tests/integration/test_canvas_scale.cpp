@@ -28,8 +28,10 @@
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
+#include <cstdint>
 #include <limits>
 #include <memory>
 #include <string>
@@ -258,6 +260,97 @@ TEST(CanvasScale, native_world_plane_bypasses_the_fixed_ui_raster)
     EXPECT_EQ(CanvasTarget::UI, E_Screen->active_canvas());
     EXPECT_EQ(fixed_ui, E_Screen->render);
     EXPECT_FALSE(s->native_world_view_active());
+}
+
+// The CHANGELOG! keyboard picture's blit (docs/ability-select-design.md
+// F.4): a truecolour picture drawn into a native plane lands at the
+// display's own pixels, not doubled through the 320x200 menu canvas.
+TEST(CanvasScale, draw_rgba_scaled_into_a_native_plane_reads_back_at_physical_size)
+{
+    ASSERT_TRUE(E_Screen);
+    ClassicCanvasRestore restore;
+    screen* const s = test_screen();
+    ASSERT_NE(nullptr, s);
+
+    E_Screen->set_world_zoom(og::kZoomStepsMax,
+                             og::WorldScaleMode::Integer, 640, 400);
+    E_Screen->set_active_canvas(CanvasTarget::UI);
+    ASSERT_TRUE(SDL_FillSurfaceRect(E_Screen->render, nullptr, 0));
+
+    // Four colours in the four quadrants: red, green / blue, white.
+    og::io::RgbaImage image;
+    image.w = 2;
+    image.h = 2;
+    image.bytes = {255, 0, 0, 255,   0, 255, 0, 255,
+                   0, 0, 255, 255,   255, 255, 255, 255};
+
+    // A malformed picture (its bytes do not cover w x h) draws nothing.
+    og::io::RgbaImage short_image = image;
+    short_image.bytes.pop_back();
+    EXPECT_FALSE(s->draw_rgba_scaled(short_image, 0, 0, 8, 4));
+    EXPECT_FALSE(s->draw_rgba_scaled(image, 0, 0, 0, 4));
+
+    // A 4x2 menu-pixel band is 8x4 display pixels in the 640x400 output.
+    const std::array<NativeWorldViewDestination, 1> destinations = {{
+        {.canvas = CanvasTarget::UI, .x = 0, .y = 0, .w = 4, .h = 2}}};
+    const NativeWorldViewSource source = s->begin_native_world_view(destinations);
+    ASSERT_TRUE(source);
+    ASSERT_EQ(8, source.w);
+    ASSERT_EQ(4, source.h);
+    // First a black picture in the same bytes, then the four colours written
+    // over it IN PLACE (same heap block, same size) under a new serial: the
+    // kept scaled copy must not be the black one.
+    const std::vector<std::uint8_t> colours = image.bytes;
+    std::fill(image.bytes.begin(), image.bytes.end(), std::uint8_t{0});
+    for (std::size_t i = 3; i < image.bytes.size(); i += 4)
+        image.bytes[i] = 255;
+    image.serial = og::io::next_rgba_image_serial();
+    const std::uint8_t* const block = image.bytes.data();
+    EXPECT_TRUE(s->draw_rgba_scaled(image, 0, 0, source.w, source.h));
+    std::copy(colours.begin(), colours.end(), image.bytes.begin());
+    ASSERT_EQ(block, image.bytes.data());
+    image.serial = og::io::next_rgba_image_serial();
+    EXPECT_TRUE(s->draw_rgba_scaled(image, 0, 0, source.w, source.h));
+    // The same picture at the same size again: the kept scaled copy.
+    EXPECT_TRUE(s->draw_rgba_scaled(image, 0, 0, source.w, source.h));
+    ASSERT_TRUE(s->end_native_world_view());
+
+    s->buffer_to_screen(0, 0, s->canvas_w(), s->canvas_h());
+    SDL_Surface* const presented =
+        SDL_RenderReadPixels(E_Screen->renderer, nullptr);
+    ASSERT_NE(nullptr, presented);
+    ASSERT_GE(presented->w, 8);
+    ASSERT_GE(presented->h, 4);
+    const auto rgb_at = [presented](int x, int y) {
+        const auto* const row = reinterpret_cast<const Uint32*>(
+            static_cast<const Uint8*>(presented->pixels) +
+            static_cast<std::ptrdiff_t>(y) * presented->pitch);
+        std::array<Uint8, 3> c{};
+        SDL_GetRGB(row[x], SDL_GetPixelFormatDetails(presented->format),
+                   SDL_GetSurfacePalette(presented), &c[0], &c[1], &c[2]);
+        return c;
+    };
+    const std::array<Uint8, 3> top_left = rgb_at(0, 0);
+    const std::array<Uint8, 3> top_right = rgb_at(7, 0);
+    const std::array<Uint8, 3> bottom_left = rgb_at(0, 3);
+    const std::array<Uint8, 3> bottom_right = rgb_at(7, 3);
+    // Each display pixel of the band is its own sample: the four corners
+    // keep their quadrant's colour, and the two middle columns blend (a
+    // 2-wide picture doubled through the menu canvas could not).
+    const std::array<Uint8, 3> mid_left = rgb_at(3, 0);
+    const std::array<Uint8, 3> mid_right = rgb_at(4, 0);
+    SDL_DestroySurface(presented);
+    EXPECT_GT(top_left[0], 200);
+    EXPECT_LT(top_left[1], 60);
+    EXPECT_GT(top_right[1], 200);
+    EXPECT_LT(top_right[0], 60);
+    EXPECT_GT(bottom_left[2], 200);
+    EXPECT_LT(bottom_left[0], 60);
+    EXPECT_GT(bottom_right[0], 200);
+    EXPECT_GT(bottom_right[1], 200);
+    EXPECT_GT(bottom_right[2], 200);
+    EXPECT_NE(mid_left, mid_right)
+        << "neighbouring display pixels were one menu pixel doubled";
 }
 
 TEST(CanvasScale, native_world_plane_rejects_invalid_and_over_budget_transactions)

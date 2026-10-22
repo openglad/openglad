@@ -18,7 +18,14 @@ const {
   waitForPickerReady,
   waitForRenderedFrames,
   startSeededSinglePlayerFromPicker,
+  installChangelogSkip,
 } = require('./wasm_helpers');
+
+// Every boot in this file skips the once-only CHANGELOG! page
+// (tests/e2e/wasm-changelog.spec.js is the one that shows it).
+test.beforeEach(async ({ page }) => {
+  await installChangelogSkip(page);
+});
 
 // Abort-flow dialog buttons on the 320x200 UI reference grid
 // (src/interface/ui/picker_dialogs.cpp): YES center and the popup OK center.
@@ -443,6 +450,7 @@ test.describe('Touch overlay activation', () => {
     });
     try {
       const desktopPage = await desktop.newPage();
+      await installChangelogSkip(desktopPage);
       await desktopPage.goto('/play.html');
       await waitForGameLoad(desktopPage);
       // Give overlayTick a few cycles to (incorrectly) activate.
@@ -1096,6 +1104,50 @@ test.describe('Touch gameplay controls', () => {
         .toBe(false);
     });
   }
+
+  // With the setting off (Game Settings > UI FX > New Ability Select) the
+  // cluster is today's: SPC casts, SP+ changes the special, and there is no
+  // third button. Flipped back on, the 1 2 3 labels return. All taps.
+  test('turning New Ability Select off relabels SPC / SP+ and hides SPEC 3', async ({ page }) => {
+    test.setTimeout(180_000);
+
+    await seedGameplayInitScript(page);
+    await page.goto('/play.html');
+    await waitForGameLoad(page);
+    await waitForPickerReady(page);
+    await expect
+      .poll(async () => page.evaluate(() => window.__opengladAbilitySelect))
+      .toBe(true);
+    await expect(page.locator('#tc-special')).toHaveText('1');
+    await expect(page.locator('#tc-spec2')).toHaveText('2');
+    await expect(page.locator('#tc-spec3')).not.toHaveClass(/hidden/);
+
+    // Main menu GAME SETTINGS (80,128,140,15), then UI FX (130,102,90,15),
+    // then the New Ability Select row (100,104,120,15).
+    await tapCanvasGameCoord(page, 150, 135);
+    await page.waitForTimeout(1_500);
+    await tapCanvasGameCoord(page, 175, 109);
+    await page.waitForTimeout(1_500);
+    await tapCanvasGameCoord(page, 160, 111);
+    await expect
+      .poll(async () => page.evaluate(() => window.__opengladAbilitySelect), {
+        timeout: 15_000,
+      })
+      .toBe(false);
+    await expect(page.locator('#tc-special')).toHaveText('SPC');
+    await expect(page.locator('#tc-spec2')).toHaveText('SP+');
+    await expect(page.locator('#tc-spec3')).toHaveClass(/hidden/);
+
+    await tapCanvasGameCoord(page, 160, 111);
+    await expect
+      .poll(async () => page.evaluate(() => window.__opengladAbilitySelect), {
+        timeout: 15_000,
+      })
+      .toBe(true);
+    await expect(page.locator('#tc-special')).toHaveText('1');
+    await expect(page.locator('#tc-spec2')).toHaveText('2');
+    await expect(page.locator('#tc-spec3')).not.toHaveClass(/hidden/);
+  });
 
   test('BACK button opens the pause menu, QUIT aborts, and returns to the picker', async ({ page }) => {
     test.setTimeout(180_000);

@@ -18,6 +18,7 @@
 
 #include <openglad/interface/base.h>
 #include <openglad/interface/render/depth_fx.h>
+#include <openglad/resources/rgba_image.h>
 
 #include <utility>
 #include <array>
@@ -189,6 +190,17 @@ public:
     // plane. World renderers use this with active_canvas() to reject any
     // attempt to rasterize a live scene into UI or GameplayUI.
     virtual bool native_world_view_active() const { return false; }
+    // Draw a truecolour picture scaled (linear filtering) into the rectangle
+    // (x, y, w, h) of the active draw target, in that target's pixels. Meant
+    // for an open native plane, whose pixels are the display's own (the
+    // CHANGELOG! keyboard picture). False when the backend has no truecolour
+    // path or the draw failed; the headless video keeps this default.
+    virtual bool draw_rgba_scaled(const og::io::RgbaImage& /*image*/,
+                                  Sint32 /*x*/, Sint32 /*y*/, Sint32 /*w*/,
+                                  Sint32 /*h*/)
+    {
+        return false;
+    }
 
     // Off-screen floor-layer compositing for the multi-floor vertical parallax.
     // floor_layer_begin redirects subsequent tile/sprite blits (which target the

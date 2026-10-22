@@ -35,6 +35,7 @@ extern "C" void __gcov_dump(void);
 #include <openglad/interface/input.h>
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/screen.h>
+#include <openglad/interface/ui/changelog_screen.h>
 #include <openglad/interface/ui/menu_screen_spec.h>
 #include <openglad/interface/ui/results_screen.h>
 #include <openglad/interface/ui/picker_lobby_client.h>
@@ -156,6 +157,9 @@ void reset_integration_ui_state()
     cfg.apply_setting("effects", "new_ability_select", "on");
     if (og::runtime::current_session != nullptr)
         og::input::refresh_ability_select_cache();
+    // CHANGELOG!: trace-only unless a test forces the page (and puts the
+    // flag back; this is the backstop under --gtest_shuffle).
+    picker_testing_set_force_changelog(false);
     // [LOBBY-R1] The same treatment for the standalone picker lobby client.
     // It is created lazily by almost any picker seam and destroyed only here
     // or by an explicit picker_lobby_shutdown(); a survivor answers the next

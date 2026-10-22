@@ -9,7 +9,14 @@ const {
   navigateToNetworkingMenu,
   openNetworkingFromTeamBuild,
   waitForGameLoad,
+  installChangelogSkip,
 } = require('./wasm_helpers');
+
+// Every boot in this file skips the once-only CHANGELOG! page
+// (tests/e2e/wasm-changelog.spec.js is the one that shows it).
+test.beforeEach(async ({ page }) => {
+  await installChangelogSkip(page);
+});
 const { RelayStub } = require('./relay_stub');
 
 // Regression coverage for the browser HOST/JOIN freeze: the web build used to

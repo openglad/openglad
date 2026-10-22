@@ -651,6 +651,12 @@ void screen::cancel_native_world_view()
     video_impl_->cancel_native_world_view();
 }
 
+bool screen::draw_rgba_scaled(const og::io::RgbaImage& image, Sint32 x,
+                              Sint32 y, Sint32 w, Sint32 h)
+{
+    return video_impl_->draw_rgba_scaled(image, x, y, w, h);
+}
+
 bool screen::floor_layer_begin(Sint32 x, Sint32 y, Sint32 w, Sint32 h)
 {
     return video_impl_->floor_layer_begin(x, y, w, h);

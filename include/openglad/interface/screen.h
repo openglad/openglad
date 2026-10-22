@@ -141,6 +141,8 @@ public:
     {
         return video_impl_->native_world_view_active();
     }
+    bool draw_rgba_scaled(const og::io::RgbaImage& image, Sint32 x,
+                          Sint32 y, Sint32 w, Sint32 h) override;
     bool floor_layer_begin(Sint32 x, Sint32 y, Sint32 w, Sint32 h) override;
     void floor_layer_end(Sint32 x, Sint32 y, Sint32 w, Sint32 h,
                          float scale, Sint32 cx, Sint32 cy,

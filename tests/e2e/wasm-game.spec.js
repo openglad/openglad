@@ -12,7 +12,14 @@ const {
   waitForPickerReady,
   waitForGameplayRenderSamples,
   waitForRenderedFrames,
+  installChangelogSkip,
 } = require('./wasm_helpers');
+
+// Every boot in this file skips the once-only CHANGELOG! page
+// (tests/e2e/wasm-changelog.spec.js is the one that shows it).
+test.beforeEach(async ({ page }) => {
+  await installChangelogSkip(page);
+});
 
 // Empirically, blank/near-blank 320x200 PNG canvas captures are typically <1.5KB
 // in this suite, while real rendered frames are larger. Keep this conservative
@@ -578,6 +585,7 @@ test.describe('Game Loading', () => {
       deviceScaleFactor: 2,
     });
     const page = await context.newPage();
+    await installChangelogSkip(page);
     const errors = [];
     attachRuntimeErrorCollectors(page, errors);
 
