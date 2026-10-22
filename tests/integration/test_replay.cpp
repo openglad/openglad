@@ -3,6 +3,7 @@
 #include <openglad/core/constants.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/input_action.h>
+#include <openglad/gameplay/net_transport_inprocess.h>
 #include <openglad/gameplay/replay.h>
 #include <openglad/gameplay/sim_event_log.h>
 #include <openglad/interface/replay_runtime.h>
@@ -17,6 +18,7 @@
 #include <format>
 #include <memory>
 #include <optional>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -507,19 +509,35 @@ TEST(Replay, phase11_roundtrip_matches_final_state_for_four_players)
     run_replay_roundtrip(4);
 }
 
-TEST(Replay, format_version_23_rejects_v22)
+TEST(Replay, format_version_24_rejects_v23)
 {
-    static_assert(og::sim::kReplayFormatVersion == 23);
+    static_assert(og::sim::kReplayFormatVersion == 24);
     std::array<std::uint8_t, og::sim::kReplayHeaderSize> old_header{};
     old_header[0] = static_cast<std::uint8_t>('O');
     old_header[1] = static_cast<std::uint8_t>('G');
     old_header[2] = static_cast<std::uint8_t>('R');
     old_header[3] = static_cast<std::uint8_t>('P');
-    old_header[4] = 22;
+    old_header[4] = 23;
 
     og::sim::ReplayIoError error = og::sim::ReplayIoError::None;
     EXPECT_FALSE(og::sim::deserialize_replay(old_header, &error).has_value());
     EXPECT_EQ(og::sim::ReplayIoError::UnsupportedVersion, error);
+}
+
+// New Ability Select (protocol v22): the validating in-process transport
+// round-trips every input frame and compares it field by field; a belt byte
+// the codec dropped must fail that compare by name, not pass as an identical
+// frame. The codec itself is lossless, so the comparer is driven directly
+// (TESTING-only probe, the same seam as the other mismatch diagnostics).
+// Proof it can fail: removing the belt_cast compare returns an empty string.
+TEST(InProcessValidation, validator_reports_a_belt_byte_difference)
+{
+    const std::string diagnostic =
+        og::sim::inprocess_transport_belt_cast_diagnostic_for_testing();
+    EXPECT_NE(std::string::npos, diagnostic.find("players[2].belt_cast"))
+        << diagnostic;
+    EXPECT_NE(std::string::npos, diagnostic.find("expected 0"));
+    EXPECT_NE(std::string::npos, diagnostic.find("got 10"));
 }
 
 TEST(Replay, initialize_replay_screen_rejects_unsafe_campaign_ids)

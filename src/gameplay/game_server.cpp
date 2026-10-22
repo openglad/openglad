@@ -237,7 +237,8 @@ bool player_input_has_activity(const PlayerInput& input)
         if (input.held[key] || input.pressed[key])
             return true;
     }
-    return false;
+    // New Ability Select: a belt entry is activity too.
+    return input.belt_cast != 0;
 }
 
 const PlayerInput& select_player_input(const InputState& input,
@@ -481,6 +482,9 @@ std::string player_name_from_control(const walker* control,
     return std::format("Player {}", player_index + 1);
 }
 
+// Leaves belt_cast alone on purpose: a seat repeated while disconnected
+// (or carried as last_known_input) holding a belt key keeps casting the same
+// entry each tick, exactly as a held classic Special repeats.
 void clear_pressed(PlayerInput& input)
 {
     for (bool& pressed : input.pressed)
@@ -546,6 +550,7 @@ std::vector<og::sim::InitialSetupGuyData> collect_initial_setup_guys(
             data.scen_shots = source.scen_shots;
             data.scen_hits = source.scen_hits;
             data.level = source.level;
+            data.belt = source.belt;
             guys.push_back(std::move(data));
         }
     };
@@ -1579,6 +1584,9 @@ PlayerInput GameServer::select_effective_input(BoundPlayer& seat,
     PlayerInput effective = seat.last_known_input;
     clear_pressed(effective);
     std::array<bool, NUM_INPUT_KEYS> late_pressed = {};
+    // New Ability Select: the entry of a late Special press (a tap released
+    // between two server ticks keeps its entry beside its OR'd press bit).
+    std::uint8_t late_belt_cast = 0;
     bool has_exact_input = false;
 
     for (const std::uint32_t tick : pending_ticks)
@@ -1588,6 +1596,7 @@ PlayerInput GameServer::select_effective_input(BoundPlayer& seat,
         const PlayerInput& received = input_it->second;
         for (int key = 0; key < NUM_INPUT_KEYS; ++key)
             seat.last_known_input.held[key] = received.held[key];
+        seat.last_known_input.belt_cast = received.belt_cast;
 
         if (tick == expected_tick)
         {
@@ -1598,6 +1607,9 @@ PlayerInput GameServer::select_effective_input(BoundPlayer& seat,
         {
             for (int key = 0; key < NUM_INPUT_KEYS; ++key)
                 late_pressed[static_cast<std::size_t>(key)] = late_pressed[static_cast<std::size_t>(key)] || received.pressed[key];
+            if (received.belt_cast != 0 &&
+                received.was_pressed(InputAction::Special))
+                late_belt_cast = received.belt_cast;
         }
 
         seat.pending_inputs.erase(input_it);
@@ -1607,10 +1619,15 @@ PlayerInput GameServer::select_effective_input(BoundPlayer& seat,
     {
         for (int key = 0; key < NUM_INPUT_KEYS; ++key)
             effective.held[key] = seat.last_known_input.held[key];
+        effective.belt_cast = seat.last_known_input.belt_cast;
     }
 
     for (int key = 0; key < NUM_INPUT_KEYS; ++key)
         effective.pressed[key] = effective.pressed[key] || late_pressed[static_cast<std::size_t>(key)];
+    // An exact-tick input brings its own byte; a late press only fills an
+    // effective byte that is still 0 (classic), never overrides one.
+    if (effective.belt_cast == 0)
+        effective.belt_cast = late_belt_cast;
 
     return effective;
 }

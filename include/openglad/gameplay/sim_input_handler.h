@@ -100,6 +100,22 @@ walker* sim_find_next_control(GameWorld& level, short my_team);
 // setting hides (level.new_specials == 0) reads as NONE and is skipped.
 void sim_advance_current_special(const GameWorld& level, walker& control);
 
+// New Ability Select: arm the belt entry a seat sent (PlayerInput::belt_cast,
+// nonzero) for this tick's Special press or hold. The ONE server gate for a
+// belt cast: og::sim::belt::validate_cast against the walker's LIVE family,
+// level and the world's New Specials setting. A valid entry sets
+// current_special to its slot and shifter_down to its alternate bit and
+// returns true (the caller then casts exactly as a classic Special press or
+// hold would). A refused one casts nothing and returns false: kCastNothing
+// and every malformed byte voice "NO ABILITY THERE", a slot the hero's level
+// has not opened voices "LEVEL N NEEDED", each on a press edge only (a held
+// key stays quiet) and through the shared cue throttle. Precondition:
+// control.stats() != nullptr.
+bool sim_arm_belt_entry(const GameWorld& level, walker& control,
+                        std::uint8_t belt_cast, bool press_edge,
+                        SimInputDebounce& debounce, short player_num,
+                        og::sim::SimEventLog* sim_events);
+
 // The ONE home of the SwitchChar rule: sim_process_player_input (debounced,
 // Cheat-gated) and the parity harness (scenario_runtime.cpp) both call it.
 // Releases `control` when `player_num` holds it (restore_act_type, user -1),

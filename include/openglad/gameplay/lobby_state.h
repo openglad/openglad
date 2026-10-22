@@ -136,7 +136,9 @@ struct LobbyMessage;
 // must re-stamp them from somewhere else — `deployed` from LobbyCharacterSlot
 // below, `campaign_tag` from the private save record the rebuild overwrites
 // (see guy.h). Adding a guy field without deciding which of the two it is has
-// silently dropped data before.
+// silently dropped data before. The New Ability Select `belt` (protocol v22)
+// is a field that DOES travel: every builder copies it from the guy and every
+// rebuild copies it back, so nothing re-stamps it.
 struct LobbyCharacterData {
     std::int32_t guy_id = 0;
     std::string name;
@@ -167,6 +169,9 @@ struct LobbyCharacterData {
     std::int16_t scen_shots = 0;
     std::int16_t scen_hits = 0;
     std::int16_t level = 0;
+    // New Ability Select (protocol v22): the guy's six belt bytes, as is
+    // (guy::belt; og::sim::belt reads them). Serialized LAST.
+    std::array<std::uint8_t, 6> belt{};
 
     bool operator==(const LobbyCharacterData&) const = default;
 };

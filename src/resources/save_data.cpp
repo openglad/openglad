@@ -156,6 +156,7 @@ bool SaveData::load(const std::string& filename)
 	std::int64_t temp_last_played = 0;       // v.14+
 	std::uint8_t temp_deployed = 1;          // v.14+
 	std::uint8_t temp_campaign_tag = 0;      // v.16+
+	og::sim::belt::Bytes temp_belt{};        // v.21+
 
 	// Format of a team list file is:
 	// 3-byte header: 'GTL'
@@ -202,9 +203,15 @@ bool SaveData::load(const std::string& filename)
 	// 2*4 = 8 bytes RESERVED, reinterpreted by version 14+ as:
 	//   1-byte deployed flag (0 = held back), guy offset +50  // Version 14+
 	//   1-byte campaign tag (0 = unassigned), guy offset +51  // Version 16+
-	//   6-bytes RESERVED (zero-filled by v16+ writers)
+	//   6-bytes New Ability Select belt, guy offset +52..+57  // Version 21+
+	//     one byte per belt slot (SPEC 1/2/3, then SHIFTER + SPEC 1/2/3):
+	//     0 = the class default, 0xFF = empty, else slot | alternate << 3
+	//     (og::sim::belt). An untouched guy writes six zeros, the same bytes
+	//     the v16-v20 writers zero-filled here.
 	// (v14/v15 files carry filler at guy offset +51 — the tag is hard-gated
-	// on temp_version >= 16 and never sniffed from content)
+	// on temp_version >= 16 and never sniffed from content; v16-v20 files
+	// carry six zero/filler bytes at +52..+57, hard-gated on >= 21 the same
+	// way)
 	// List of 200 or 500 (max levels) 1-byte scenario-level status  // Versions 1-7
 	// 2-bytes Number of campaigns in list      // Version 8+
 	// List of n campaigns                      // Version 8+
@@ -232,6 +239,9 @@ bool SaveData::load(const std::string& filename)
 	//     N-bytes key ([a-z0-9_], no NUL, no padding)
 	//     4-bytes (Sint32) value
 	// 2-bytes Match time limit in sim ticks (0 = map) // Version 17+
+	// 4*2-bytes FILL code per team, then 4*2-bytes MAP UNITS per team  // Version 18+
+	// Arena FILL deal memo: 1-byte id length, the id bytes, 2-bytes
+	//   scenario  // Version 19+ (a v19 memo reads as never dealt; v20+ keep it)
 
     Log("Loading save: {}\n", filename);
 	std::string temp_filename = std::format("{}.gtl", filename); // gladiator team list
@@ -425,7 +435,15 @@ bool SaveData::load(const std::string& filename)
 		// the campaign tag (guy offset +51); older files hold filler.
 		temp_deployed = 1;
 		temp_campaign_tag = 0;
-		if (temp_version >= 16)
+		temp_belt = og::sim::belt::default_bytes();
+		if (temp_version >= 21)
+		{
+			// v21+: the six former reserved bytes are the belt (+52..+57).
+			READ_OR_FAIL(&temp_deployed, 1, 1);
+			READ_OR_FAIL(&temp_campaign_tag, 1, 1);
+			READ_OR_FAIL(temp_belt.data(), 6, 1);
+		}
+		else if (temp_version >= 16)
 		{
 			READ_OR_FAIL(&temp_deployed, 1, 1);
 			READ_OR_FAIL(&temp_campaign_tag, 1, 1);
@@ -494,6 +512,13 @@ bool SaveData::load(const std::string& filename)
 			    temp_guy_ptr->campaign_tag =
 			        (temp_version >= 16) ? temp_campaign_tag
 			                             : static_cast<std::uint8_t>(0);
+			    // v21+ carries the belt; older versions read as the class
+			    // default (six zeros). A junk byte reads as DEFAULT too;
+			    // EMPTY and explicit entries are kept, and resolve() checks
+			    // them against the class when they are used.
+			    for (std::size_t b = 0; b < temp_belt.size(); ++b)
+			        temp_guy_ptr->belt[b] =
+			            og::sim::belt::normalize_stored(temp_belt[b]);
             }
 		}
 
@@ -1071,7 +1096,7 @@ bool SaveData::save(const std::string& filename)
 	std::fill_n(temp_campaign.data(), temp_campaign.size(), '\0');
 
 	std::array<char, 10> temptext = {'G', 'T', 'L'};
-	std::uint8_t temp_version = 20;
+	std::uint8_t temp_version = 21;
 
 	std::uint32_t newcash = totalcash;
 	std::uint32_t newscore = totalscore;
@@ -1141,7 +1166,7 @@ bool SaveData::save(const std::string& filename)
 	// 2*4 = 8 bytes RESERVED, reinterpreted by version 14+ as:
 	//   1-byte deployed flag (0 = held back), guy offset +50  // Version 14+
 	//   1-byte campaign tag (0 = unassigned), guy offset +51  // Version 16+
-	//   6-bytes RESERVED (zero-filled)
+	//   6-bytes New Ability Select belt, guy offset +52..+57  // Version 21+
 	// List of 500 (max scenarios) 1-byte scenario-level status  // Versions 1-7
 	// 2-bytes Number of campaigns in list      // Version 8+
 	// List of n campaigns                      // Version 8+
@@ -1169,6 +1194,9 @@ bool SaveData::save(const std::string& filename)
 	//     N-bytes key ([a-z0-9_], no NUL, no padding)
 	//     4-bytes (Sint32) value
 	// 2-bytes Match time limit in sim ticks (0 = map) // Version 17+
+	// 4*2-bytes FILL code per team, then 4*2-bytes MAP UNITS per team  // Version 18+
+	// Arena FILL deal memo: 1-byte id length, the id bytes, 2-bytes
+	//   scenario  // Version 19+ (a v19 memo reads as never dealt; v20+ keep it)
 
 	//strcpy(temp_filename, scen_directory);
 	Log("Saving save: {}\n", filename);
@@ -1304,14 +1332,15 @@ bool SaveData::save(const std::string& filename)
         WRITE_OR_FAIL(&temp_teamnum, 2, 1);
         // And the filler: v14+ stores the mission-deploy flag in the first
         // byte of the former 8-byte guy filler (offset +50), v16+ the
-        // campaign tag in the second (offset +51), then zero-fills the
-        // other 6.
+        // campaign tag in the second (offset +51), and v21+ the six belt
+        // bytes in the other 6 (offset +52..+57; six zeros for an untouched
+        // guy, the bytes v16-v20 zero-filled).
         std::uint8_t temp_deployed = temp_guy->deployed ? 1 : 0;
         WRITE_OR_FAIL(&temp_deployed, 1, 1);
         std::uint8_t temp_campaign_tag = temp_guy->campaign_tag;
         WRITE_OR_FAIL(&temp_campaign_tag, 1, 1);
-        std::array<char, 6> reserved_guy{};
-        WRITE_OR_FAIL(reserved_guy.data(), 6, 1);
+        const og::sim::belt::Bytes temp_belt = temp_guy->belt;
+        WRITE_OR_FAIL(temp_belt.data(), 6, 1);
 	}
 
 	// Write the completed levels

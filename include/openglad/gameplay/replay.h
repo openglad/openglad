@@ -46,7 +46,12 @@ namespace og::sim {
 // v23 records protocol-v21 snapshots/input frames (snapshot v17: the world
 // state gains the u8 Gameplay Fixes setting after new_specials); v22 readers
 // must reject the new protocol byte and vice versa.
-inline constexpr std::uint8_t kReplayFormatVersion = 23;
+// v24 records protocol-v22 snapshots/input frames (New Ability Select: every
+// input frame gains one u8 belt_cast per local seat, so the fixed frame
+// stride grows by four; snapshot v18: every guy snapshot gains six u8 belt
+// bytes after owner_save_slot); v23 readers must reject the new protocol
+// byte and vice versa.
+inline constexpr std::uint8_t kReplayFormatVersion = 24;
 inline constexpr std::size_t kReplayHeaderSize = 32;
 
 // First replay format carrying the campaign-vars section (the reader's

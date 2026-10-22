@@ -16,14 +16,20 @@
 
 #include <gtest/gtest.h>
 
+#include "../test_game_world_fixture.h"
+
 #include <openglad/core/constants.h>
 #include <openglad/gameplay/families/belt.h>
 #include <openglad/gameplay/families/family_descriptor.h>
 #include <openglad/gameplay/families/family_registry.h>
+#include <openglad/gameplay/game_world.h>
+#include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/walker.h>
 
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -620,6 +626,27 @@ TEST(Belt, bytes_for_walker_without_guy_is_default)
     belt::Bytes mine = belt::default_bytes();
     mine[4] = belt::kEmptyByte;
     EXPECT_EQ(mine, belt::bytes_for(&mine));
+}
+
+// The walker overload: a hero with a guy answers with the guy's own bytes
+// (here a layout with a cleared slot and an explicit entry), a body without
+// one answers DEFAULT. Proof it can fail: reading default_bytes() for every
+// walker dropped the guy's layout and went red on the first EXPECT.
+TEST(Belt, bytes_for_walker_reads_the_guys_belt_or_the_default)
+{
+    TestGameWorld tw;
+    walker* hero = tw.world().add_ob(Order::Living, FAMILY_MAGE);
+    ASSERT_NE(nullptr, hero);
+    auto record = std::make_unique<guy>(FAMILY_MAGE);
+    record->belt = {0x01, 0x09, belt::kEmptyByte, 0x00, 0x0A, 0x05};
+    const belt::Bytes stored = record->belt;
+    hero->set_owned_myguy(std::move(record));
+    EXPECT_EQ(stored, belt::bytes_for(*hero));
+
+    walker* summoned = tw.world().add_ob(Order::Living, FAMILY_MAGE);
+    ASSERT_NE(nullptr, summoned);
+    ASSERT_EQ(nullptr, summoned->myguy);
+    EXPECT_EQ(belt::default_bytes(), belt::bytes_for(*summoned));
 }
 
 // A class pack may declare 5 specials + 5 alternates = 10 entries: the belt

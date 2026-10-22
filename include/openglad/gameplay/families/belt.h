@@ -35,6 +35,8 @@
 #include <optional>
 #include <vector>
 
+class walker;
+
 namespace og::sim::belt {
 
 inline constexpr int kSlots = 6;
@@ -122,6 +124,9 @@ using Layout = std::array<Resolved, kSlots>;
 // possessed host, a cross-controlled bot). The walker overload is a thin
 // call of this one.
 [[nodiscard]] Bytes bytes_for(const Bytes* stored) noexcept;
+// The walker's stored bytes: its guy's belt when it has a guy, DEFAULT bytes
+// otherwise.
+[[nodiscard]] Bytes bytes_for(const walker& w) noexcept;
 
 // The server's gate for every nonzero PlayerInput::belt_cast: the byte is
 // well-formed (slot 1..5 in bits 0-2, alternate in bit 3, bits 4-7 zero),
