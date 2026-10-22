@@ -857,10 +857,9 @@ TEST(PickerFuncs, player_control_summary_rejects_bad_slots_and_clips_long_key_na
 {
     EXPECT_EQ("--", player_control_key_display_name(-1, KEY_UP));
     EXPECT_EQ("--", player_control_key_display_name(0, NUM_KEYS));
-    EXPECT_EQ((std::array<std::string, 2>{"", ""}),
-              build_player_control_summary_lines(-1, false));
-    EXPECT_EQ((std::array<std::string, 2>{"", ""}),
-              build_player_control_summary_lines(4, true));
+    EXPECT_TRUE(build_player_control_summary_lines(-1, false).empty())
+        << "no player, no lines";
+    EXPECT_TRUE(build_player_control_summary_lines(4, true).empty());
 
     int& key = og::runtime::current_session->player_keys_[0][KEY_FIRE];
     const int saved_key = key;

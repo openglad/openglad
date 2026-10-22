@@ -25,6 +25,7 @@
 #include <openglad/interface/screen.h>
 #include <openglad/interface/session_state.h>
 #include <openglad/interface/ui/input_cycler.h>
+#include <openglad/interface/ui/picker_common.h>
 #include <openglad/resources/gparser.h>
 
 #include "picker_sdl_defs.h"
@@ -32,6 +33,7 @@
 #include <algorithm>
 #include <array>
 #include <format>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -774,15 +776,11 @@ void pause_player_draw_content(void* screen_state)
         {"LEFT", KEY_LEFT, false},
         {"UP-L", KEY_UP_LEFT, true},
     }};
-    static constexpr std::array<BindingLine, 7> actions{{
-        {"FIRE", KEY_FIRE, false},
-        {"SPECIAL", KEY_SPECIAL, false},
-        {"YELL", KEY_YELL, false},
-        {"SHIFTER", KEY_SHIFTER, false},
-        {"LOOK UP", KEY_LOOKUP, false},
-        {"CHAR SW", KEY_SWITCH, false},
-        {"SPEC SW", KEY_SPECIAL_SWITCH, false},
-    }};
+    // The ACTIONS rows follow New Ability Select: the classic seven with the
+    // setting off, one row per ability key (SPEC 1/2/3) with it on. One
+    // table for both binding panels (og::ui::binding_panel_action_rows).
+    const std::span<const og::ui::BindingPanelRow> actions =
+        og::ui::binding_panel_action_rows(og::input::ability_select_on());
     const bool eight_dir =
         get_player_control_mode(state->seat) ==
         static_cast<int>(ControlDirectionMode::EightDirection);
@@ -813,7 +811,7 @@ void pause_player_draw_content(void* screen_state)
     }
     for (std::size_t index = 0; index < actions.size(); ++index)
     {
-        const BindingLine& binding = actions[index];
+        const og::ui::BindingPanelRow& binding = actions[index];
         const std::string line = format_binding_panel_line(
             binding.label, binding_value(binding.key),
             kBindingPanelActionsChars);

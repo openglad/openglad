@@ -21,6 +21,7 @@
 #include <openglad/resources/save_data.h>
 #include "../../src/interface/ui/picker_sdl_defs.h"
 #include <openglad/interface/ui/pause_menu.h>
+#include "test_ability_select_scope.h"
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
 
@@ -4818,20 +4819,22 @@ TEST(MenuLayout, networking_session_copy_fits_within_panel_frame)
 namespace
 {
 // The summary the player screens draw, as one string. Production draws the
-// two lines separately (the joined one-liner retired with the global
-// CONTROLS screen); these format pins read either line the same way.
+// lines separately (the joined one-liner retired with the global CONTROLS
+// screen); these format pins read any line the same way.
 std::string joined_control_summary(int player_index)
 {
-    const std::array<std::string, 2> lines =
+    const std::vector<std::string> lines =
         build_player_control_summary_lines(player_index, false);
-    if (lines[0].empty() && lines[1].empty())
-        return {};
-    return lines[0] + " " + lines[1];
+    std::string joined;
+    for (const std::string& line : lines)
+        joined += (joined.empty() ? "" : " ") + line;
+    return joined;
 }
 } // namespace
 
 TEST(MenuLayout, controls_summary_switches_between_four_and_eight_direction_formats)
 {
+    ScopedAbilitySelect off;  // the classic summary
     PlayerControlSnapshotGuard guard(0);
 
     set_player_control_mode(0, static_cast<int>(ControlDirectionMode::FourDirection));
@@ -4842,7 +4845,7 @@ TEST(MenuLayout, controls_summary_switches_between_four_and_eight_direction_form
     set_player_key_binding(0, KEY_YELL, SDLK_Q);
     set_player_key_binding(0, KEY_FIRE, SDLK_1);
     set_player_key_binding(0, KEY_SPECIAL, SDLK_2);
-    set_player_key_binding(0, KEY_SPECIAL_SWITCH, SDLK_EQUALS);
+    set_player_key_binding(0, KEY_SPEC2, SDLK_EQUALS);
     set_player_key_binding(0, KEY_SWITCH, SDLK_GRAVE);
     set_player_key_binding(0, KEY_SHIFTER, SDLK_F8);
 
@@ -4870,6 +4873,7 @@ TEST(MenuLayout, controls_summary_switches_between_four_and_eight_direction_form
 
 TEST(MenuLayout, eight_direction_summary_clockwise_order)
 {
+    ScopedAbilitySelect off;  // the classic summary
     PlayerControlSnapshotGuard guard(0);
 
     set_player_control_mode(0, static_cast<int>(ControlDirectionMode::EightDirection));
@@ -4884,7 +4888,7 @@ TEST(MenuLayout, eight_direction_summary_clockwise_order)
     set_player_key_binding(0, KEY_YELL, SDLK_S);
     set_player_key_binding(0, KEY_FIRE, SDLK_1);
     set_player_key_binding(0, KEY_SPECIAL, SDLK_2);
-    set_player_key_binding(0, KEY_SPECIAL_SWITCH, SDLK_EQUALS);
+    set_player_key_binding(0, KEY_SPEC2, SDLK_EQUALS);
     set_player_key_binding(0, KEY_SWITCH, SDLK_3);
     set_player_key_binding(0, KEY_SHIFTER, SDLK_F8);
 
@@ -4901,6 +4905,7 @@ TEST(MenuLayout, eight_direction_summary_clockwise_order)
 
 TEST(MenuLayout, controls_summary_remap_mode_uses_two_lines)
 {
+    ScopedAbilitySelect off;  // the classic summary
     PlayerControlSnapshotGuard guard(0);
 
     set_player_control_mode(0, static_cast<int>(ControlDirectionMode::FourDirection));
@@ -4911,11 +4916,12 @@ TEST(MenuLayout, controls_summary_remap_mode_uses_two_lines)
     set_player_key_binding(0, KEY_YELL, SDLK_E);
     set_player_key_binding(0, KEY_FIRE, SDLK_LCTRL);
     set_player_key_binding(0, KEY_SPECIAL, SDLK_LALT);
-    set_player_key_binding(0, KEY_SPECIAL_SWITCH, SDLK_TAB);
+    set_player_key_binding(0, KEY_SPEC2, SDLK_TAB);
     set_player_key_binding(0, KEY_SWITCH, SDLK_GRAVE);
     set_player_key_binding(0, KEY_SHIFTER, SDLK_LSHIFT);
 
-    const std::array<std::string, 2> remap_summary = build_player_control_summary_lines(0, true);
+    const std::vector<std::string> remap_summary = build_player_control_summary_lines(0, true);
+    ASSERT_EQ(2u, remap_summary.size()) << "the classic summary is two lines";
     ASSERT_TRUE(remap_summary[0].find("Dir:W/A/S/D") != std::string::npos) << "remap summary first line should contain directional keys";
     ASSERT_TRUE(remap_summary[1].find("Y:E") != std::string::npos) << "remap summary second line should contain action keys";
     ASSERT_TRUE(remap_summary[1].find("SW:`") != std::string::npos) << "remap summary second line should display backtick character";
@@ -4924,6 +4930,7 @@ TEST(MenuLayout, controls_summary_remap_mode_uses_two_lines)
 
 TEST(MenuLayout, controls_summary_shows_look_up_binding)
 {
+    ScopedAbilitySelect off;  // the classic summary
     PlayerControlSnapshotGuard guard(0);
 
     set_player_control_mode(0, static_cast<int>(ControlDirectionMode::FourDirection));
@@ -4943,13 +4950,104 @@ TEST(MenuLayout, controls_summary_shows_look_up_binding)
     set_player_key_binding(0, KEY_YELL, SDLK_BACKSPACE);       // "Bk"
     set_player_key_binding(0, KEY_FIRE, SDLK_LCTRL);           // "LC"
     set_player_key_binding(0, KEY_SPECIAL, SDLK_LALT);         // "LA"
-    set_player_key_binding(0, KEY_SPECIAL_SWITCH, SDLK_TAB);   // "Tab"
+    set_player_key_binding(0, KEY_SPEC2, SDLK_TAB);   // "Tab"
     set_player_key_binding(0, KEY_SWITCH, SDLK_RETURN);        // "Return"
     set_player_key_binding(0, KEY_SHIFTER, SDLK_RSHIFT);       // "RS"
     set_player_key_binding(0, KEY_LOOKUP, SDLK_CAPSLOCK);      // "Cap"
     const auto lines = build_player_control_summary_lines(0, false);
     EXPECT_LE(lines[1].size(), 48u)
         << "action summary line must fit the controls row: " << lines[1];
+}
+
+// New Ability Select on: the REMAP summary is three lines, the directions,
+// then FIRE and the three SPEC keys, then YELL, SWITCH, SHIFTER and LOOK UP
+// (draw_remap_prompt puts them at y 145/155/165). Each stays inside the
+// 48-glyph row under the worst-case key names the classic pin uses.
+//
+// RED: the ON branch of build_player_control_summary_lines dropped (two
+// classic lines come back); S3 reading KEY_SPEC2.
+TEST(MenuLayout, controls_summary_with_ability_select_is_three_lines)
+{
+    ScopedAbilitySelect on(true);
+    PlayerControlSnapshotGuard guard(0);
+
+    set_player_control_mode(0, static_cast<int>(ControlDirectionMode::FourDirection));
+    set_player_key_binding(0, KEY_UP, SDLK_W);
+    set_player_key_binding(0, KEY_LEFT, SDLK_A);
+    set_player_key_binding(0, KEY_DOWN, SDLK_S);
+    set_player_key_binding(0, KEY_RIGHT, SDLK_D);
+    set_player_key_binding(0, KEY_FIRE, SDLK_LCTRL);
+    set_player_key_binding(0, KEY_SPECIAL, SDLK_1);
+    set_player_key_binding(0, KEY_SPEC2, SDLK_2);
+    set_player_key_binding(0, KEY_SPEC3, SDLK_3);
+    set_player_key_binding(0, KEY_YELL, SDLK_E);
+    set_player_key_binding(0, KEY_SWITCH, SDLK_GRAVE);
+    set_player_key_binding(0, KEY_SHIFTER, SDLK_LSHIFT);
+    set_player_key_binding(0, KEY_LOOKUP, SDLK_Q);
+
+    const std::vector<std::string> remap = build_player_control_summary_lines(0, true);
+    ASSERT_EQ(3u, remap.size());
+    EXPECT_EQ("Dir:W/A/S/D", remap[0]);
+    EXPECT_EQ("F:LC S1:1 S2:2 S3:3", remap[1]);
+    EXPECT_EQ("Y:E SW:` Sh:LS L:Q", remap[2]);
+    const std::vector<std::string> compact = build_player_control_summary_lines(0, false);
+    ASSERT_EQ(3u, compact.size());
+    EXPECT_EQ("D:WASD", compact[0]);
+    EXPECT_EQ(remap[1], compact[1]);
+
+    // The worst-case names (the classic pin's set, plus two more 6-glyph
+    // ones on the new keys) fit the 48-glyph row.
+    set_player_key_binding(0, KEY_YELL, SDLK_BACKSPACE);       // "Bk"
+    set_player_key_binding(0, KEY_FIRE, SDLK_PRINTSCREEN);     // "PrintScre"
+    set_player_key_binding(0, KEY_SPECIAL, SDLK_RETURN);       // "Return"
+    set_player_key_binding(0, KEY_SPEC2, SDLK_DELETE);         // "Delete"
+    set_player_key_binding(0, KEY_SPEC3, SDLK_PAGEDOWN);       // "PageDown"
+    set_player_key_binding(0, KEY_SWITCH, SDLK_RETURN);        // "Return"
+    set_player_key_binding(0, KEY_SHIFTER, SDLK_PRINTSCREEN);  // "PrintScre"
+    set_player_key_binding(0, KEY_LOOKUP, SDLK_CAPSLOCK);      // "Cap"
+    set_player_control_mode(0, static_cast<int>(ControlDirectionMode::EightDirection));
+    for (const bool remap_mode : {true, false})
+    {
+        const std::vector<std::string> lines =
+            build_player_control_summary_lines(0, remap_mode);
+        ASSERT_EQ(3u, lines.size());
+        for (std::size_t i = 1; i < lines.size(); ++i)
+            EXPECT_LE(lines[i].size(), 48u)
+                << "summary line " << i << " must fit the row: " << lines[i];
+    }
+}
+
+// Both settings' ACTIONS rows (og::ui::binding_panel_action_rows, the one
+// table the pause player screen and the seat panel draw) fit the panel: at
+// most eight rows (lines 93..156 inside the 78..161 panel), each cut to
+// kBindingPanelActionsChars, left of x=208; the SPEC rows ("SPEC 1: " + 9)
+// keep the widest 9-glyph key name whole.
+TEST(MenuLayout, binding_panel_action_rows_fit_for_both_settings)
+{
+    const std::string widest_value(9, 'W');
+    for (const bool ability_select : {false, true})
+    {
+        const auto rows = og::ui::binding_panel_action_rows(ability_select);
+        EXPECT_EQ(ability_select ? 8u : 7u, rows.size());
+        EXPECT_LE(93 + static_cast<int>(rows.size() - 1) * 8 + 7, 161)
+            << "the last row stays inside the panel";
+        for (const og::ui::BindingPanelRow& row : rows)
+        {
+            const std::string line = og::ui::format_binding_panel_line(
+                row.label, widest_value, og::ui::kBindingPanelActionsChars);
+            EXPECT_LE(static_cast<int>(line.size()),
+                      og::ui::kBindingPanelActionsChars);
+            if (ability_select && (row.key == KEY_SPECIAL ||
+                                   row.key == KEY_SPEC2 ||
+                                   row.key == KEY_SPEC3))
+            {
+                EXPECT_EQ(line, std::string(row.label) + ": " + widest_value)
+                    << "a SPEC row keeps the whole 9-glyph key name";
+            }
+            EXPECT_LE(104 + static_cast<int>(line.size()) * 6, 208)
+                << "actions '" << line << "'";
+        }
+    }
 }
 
 // The menus skill's layout-discipline rules, as executable relations: exact

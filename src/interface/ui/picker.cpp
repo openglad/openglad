@@ -69,6 +69,7 @@
 #include <string>
 #include <set>
 #include <stdexcept>
+#include <span>
 #include <vector>
 #include <algorithm>
 #include <cstdint>
@@ -2517,72 +2518,68 @@ std::string player_control_key_display_name(int player_index, int key_enum)
         : get_key_display_name_short(keycode);
 }
 
-std::array<std::string, 2> build_player_control_summary_lines(int player_index, bool remap_mode)
+std::vector<std::string> build_player_control_summary_lines(int player_index, bool remap_mode)
 {
     if (player_index < 0 || player_index >= 4)
-        return {"", ""};
+        return {};
 
     const bool eight_dir =
         get_player_control_mode(player_index) == static_cast<int>(ControlDirectionMode::EightDirection);
-    const std::string up_s = player_control_key_display_name(player_index, KEY_UP);
-    const std::string left_s = player_control_key_display_name(player_index, KEY_LEFT);
-    const std::string down_s = player_control_key_display_name(player_index, KEY_DOWN);
-    const std::string right_s = player_control_key_display_name(player_index, KEY_RIGHT);
-    const std::string yell_s = player_control_key_display_name(player_index, KEY_YELL);
-    const std::string fire_s = player_control_key_display_name(player_index, KEY_FIRE);
-    const std::string special_s = player_control_key_display_name(player_index, KEY_SPECIAL);
-    const std::string special_switch_s =
-        player_control_key_display_name(player_index, KEY_SPECIAL_SWITCH);
-    const std::string switch_s =
-        player_control_key_display_name(player_index, KEY_SWITCH);
-    const std::string shifter_s =
-        player_control_key_display_name(player_index, KEY_SHIFTER);
-    // Unbound look-up (the P4 8-direction default, or user-cleared) shows
-    // "--" instead of the empty string SDL names keycode 0 with.
-    const std::string lookup_s =
-        player_control_key_display_name(player_index, KEY_LOOKUP);
-    const std::string action_line = std::format("Y:{} F:{} S:{} SS:{} SW:{} Sh:{} L:{}",
-        yell_s, fire_s, special_s, special_switch_s, switch_s, shifter_s, lookup_s);
+    const auto name = [player_index](int key) {
+        return player_control_key_display_name(player_index, key);
+    };
+    const std::string up_s = name(KEY_UP);
+    const std::string left_s = name(KEY_LEFT);
+    const std::string down_s = name(KEY_DOWN);
+    const std::string right_s = name(KEY_RIGHT);
 
+    std::string direction_line;
     if (!eight_dir)
     {
-        if (remap_mode)
-        {
-            return {
-                std::format("Dir:{}/{}/{}/{}", up_s, left_s, down_s, right_s),
-                action_line
-            };
-        }
-        return {
-            std::format("D:{}{}{}{}", up_s, left_s, down_s, right_s),
-            action_line
-        };
+        direction_line = remap_mode
+            ? std::format("Dir:{}/{}/{}/{}", up_s, left_s, down_s, right_s)
+            : std::format("D:{}{}{}{}", up_s, left_s, down_s, right_s);
     }
-
-    const std::string up_right_s =
-        player_control_key_display_name(player_index, KEY_UP_RIGHT);
-    const std::string down_right_s =
-        player_control_key_display_name(player_index, KEY_DOWN_RIGHT);
-    const std::string down_left_s =
-        player_control_key_display_name(player_index, KEY_DOWN_LEFT);
-    const std::string up_left_s =
-        player_control_key_display_name(player_index, KEY_UP_LEFT);
-
-    if (remap_mode)
+    else
     {
-        return {
-            std::format("Dir:{}/{}/{}/{}/{}/{}/{}/{}",
-                up_s, up_right_s, right_s, down_right_s, down_s, down_left_s, left_s, up_left_s),
-            action_line
-        };
+        const std::string up_right_s = name(KEY_UP_RIGHT);
+        const std::string down_right_s = name(KEY_DOWN_RIGHT);
+        const std::string down_left_s = name(KEY_DOWN_LEFT);
+        const std::string up_left_s = name(KEY_UP_LEFT);
+        direction_line = remap_mode
+            ? std::format("Dir:{}/{}/{}/{}/{}/{}/{}/{}",
+                  up_s, up_right_s, right_s, down_right_s, down_s, down_left_s, left_s, up_left_s)
+            : std::format("D:{}{}{}{}{}{}{}{}",
+                  up_s, up_right_s, right_s, down_right_s, down_s, down_left_s, left_s, up_left_s);
     }
 
+    // Unbound look-up (the P4 8-direction default, or user-cleared) shows
+    // "--" instead of the empty string SDL names keycode 0 with.
+    if (og::input::ability_select_on())
+    {
+        // New Ability Select: one key per ability, so the actions take two
+        // lines (each at most 48 glyphs under the worst-case key names).
+        return {
+            direction_line,
+            std::format("F:{} S1:{} S2:{} S3:{}", name(KEY_FIRE),
+                        name(KEY_SPECIAL), name(KEY_SPEC2), name(KEY_SPEC3)),
+            std::format("Y:{} SW:{} Sh:{} L:{}", name(KEY_YELL),
+                        name(KEY_SWITCH), name(KEY_SHIFTER), name(KEY_LOOKUP)),
+        };
+    }
+    // The setting off: the classic line. SS (change special) is the SPEC 2
+    // key, which cycles with the setting off; slot 11 stays unbound.
     return {
-        std::format("D:{}{}{}{}{}{}{}{}",
-            up_s, up_right_s, right_s, down_right_s, down_s, down_left_s, left_s, up_left_s),
-        action_line
+        direction_line,
+        std::format("Y:{} F:{} S:{} SS:{} SW:{} Sh:{} L:{}",
+            name(KEY_YELL), name(KEY_FIRE), name(KEY_SPECIAL), name(KEY_SPEC2),
+            name(KEY_SWITCH), name(KEY_SHIFTER), name(KEY_LOOKUP)),
     };
 }
+
+// The REMAP wizard's control summary rows (draw_remap_prompt).
+constexpr int kRemapSummaryTwoLineY = 150;
+constexpr int kRemapSummaryThreeLineY = 145;
 
 static void draw_remap_prompt(const std::string& prompt, int player_index)
 {
@@ -2596,9 +2593,18 @@ static void draw_remap_prompt(const std::string& prompt, int player_index)
                            og::input::kWebBackKeyMode
                                ? "Press BACKSPACE to keep current key"
                                : "Press ESC to keep current key");
-    const auto summary_lines = build_player_control_summary_lines(player_index, true);
-    mytext.write_xy_center(160, 150, DARK_BLUE, "%s", summary_lines[0].c_str());
-    mytext.write_xy_center(160, 160, DARK_BLUE, "%s", summary_lines[1].c_str());
+    const std::vector<std::string> summary_lines =
+        build_player_control_summary_lines(player_index, true);
+    // Two lines at y 150/160 (the setting off, as ever); the three-line New
+    // Ability Select summary starts half a pitch higher (145/155/165) so the
+    // block stays centred on the same band.
+    const int first_y = summary_lines.size() > 2 ? kRemapSummaryThreeLineY
+                                                 : kRemapSummaryTwoLineY;
+    for (std::size_t line = 0; line < summary_lines.size(); ++line)
+    {
+        mytext.write_xy_center(160, first_y + static_cast<int>(line) * 10,
+                               DARK_BLUE, "%s", summary_lines[line].c_str());
+    }
     og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200);
 }
 
@@ -2613,52 +2619,107 @@ static bool poll_lobby_during_control_remap()
         !picker_lobby_has_game_start_config();
 }
 
+// The REMAP wizard's prompts, one per key, in asking order. With New
+// Ability Select off: today's classic list, whose SPECIAL SWITCH binds the
+// SPEC 2 key (slot 17: the key that cycles with the setting off; slot 11
+// is a reserved wire slot, never bound). With it on: one prompt per ability
+// key (SPEC 1/2/3) and no SPECIAL SWITCH.
+namespace {
+struct RemapPrompt { int key; const char* label; };
+constexpr RemapPrompt kRemapPromptsFourClassic[] = {
+    {KEY_UP, "UP"},
+    {KEY_RIGHT, "RIGHT"},
+    {KEY_DOWN, "DOWN"},
+    {KEY_LEFT, "LEFT"},
+    {KEY_FIRE, "FIRE"},
+    {KEY_SPECIAL, "SPECIAL"},
+    {KEY_SPEC2, "SPECIAL SWITCH"},
+    {KEY_YELL, "YELL"},
+    {KEY_SWITCH, "SWITCH CHARACTER"},
+    {KEY_SHIFTER, "SHIFTER"},
+    {KEY_LOOKUP, "LOOK UP (HOLD)"},
+};
+constexpr RemapPrompt kRemapPromptsEightClassic[] = {
+    {KEY_UP, "UP"},
+    {KEY_UP_RIGHT, "UP-RIGHT"},
+    {KEY_RIGHT, "RIGHT"},
+    {KEY_DOWN_RIGHT, "DOWN-RIGHT"},
+    {KEY_DOWN, "DOWN"},
+    {KEY_DOWN_LEFT, "DOWN-LEFT"},
+    {KEY_LEFT, "LEFT"},
+    {KEY_UP_LEFT, "UP-LEFT"},
+    {KEY_FIRE, "FIRE"},
+    {KEY_SPECIAL, "SPECIAL"},
+    {KEY_SPEC2, "SPECIAL SWITCH"},
+    {KEY_YELL, "YELL"},
+    {KEY_SWITCH, "SWITCH CHARACTER"},
+    {KEY_SHIFTER, "SHIFTER"},
+    {KEY_LOOKUP, "LOOK UP (HOLD)"},
+};
+constexpr RemapPrompt kRemapPromptsFourAbilities[] = {
+    {KEY_UP, "UP"},
+    {KEY_RIGHT, "RIGHT"},
+    {KEY_DOWN, "DOWN"},
+    {KEY_LEFT, "LEFT"},
+    {KEY_FIRE, "FIRE"},
+    {KEY_SPECIAL, "SPEC 1"},
+    {KEY_SPEC2, "SPEC 2"},
+    {KEY_SPEC3, "SPEC 3"},
+    {KEY_YELL, "YELL"},
+    {KEY_SWITCH, "SWITCH CHARACTER"},
+    {KEY_SHIFTER, "SHIFTER"},
+    {KEY_LOOKUP, "LOOK UP (HOLD)"},
+};
+constexpr RemapPrompt kRemapPromptsEightAbilities[] = {
+    {KEY_UP, "UP"},
+    {KEY_UP_RIGHT, "UP-RIGHT"},
+    {KEY_RIGHT, "RIGHT"},
+    {KEY_DOWN_RIGHT, "DOWN-RIGHT"},
+    {KEY_DOWN, "DOWN"},
+    {KEY_DOWN_LEFT, "DOWN-LEFT"},
+    {KEY_LEFT, "LEFT"},
+    {KEY_UP_LEFT, "UP-LEFT"},
+    {KEY_FIRE, "FIRE"},
+    {KEY_SPECIAL, "SPEC 1"},
+    {KEY_SPEC2, "SPEC 2"},
+    {KEY_SPEC3, "SPEC 3"},
+    {KEY_YELL, "YELL"},
+    {KEY_SWITCH, "SWITCH CHARACTER"},
+    {KEY_SHIFTER, "SHIFTER"},
+    {KEY_LOOKUP, "LOOK UP (HOLD)"},
+};
+
+std::span<const RemapPrompt> remap_prompts(bool eight_dir, bool ability_select)
+{
+    if (ability_select)
+    {
+        if (eight_dir)
+            return kRemapPromptsEightAbilities;
+        return kRemapPromptsFourAbilities;
+    }
+    if (eight_dir)
+        return kRemapPromptsEightClassic;
+    return kRemapPromptsFourClassic;
+}
+} // namespace
+
 static void remap_player_keys(int player_index,
                               KeyWaitPollCallback poll_callback)
 {
     if (player_index < 0 || player_index >= 4)
         return;
 
-    const bool eight_dir =
-        get_player_control_mode(player_index) == static_cast<int>(ControlDirectionMode::EightDirection);
-    struct KeyPrompt { int key; const char* label; };
-    constexpr KeyPrompt prompts_four[] = {
-        {KEY_UP, "UP"},
-        {KEY_RIGHT, "RIGHT"},
-        {KEY_DOWN, "DOWN"},
-        {KEY_LEFT, "LEFT"},
-        {KEY_FIRE, "FIRE"},
-        {KEY_SPECIAL, "SPECIAL"},
-        {KEY_SPECIAL_SWITCH, "SPECIAL SWITCH"},
-        {KEY_YELL, "YELL"},
-        {KEY_SWITCH, "SWITCH CHARACTER"},
-        {KEY_SHIFTER, "SHIFTER"},
-        {KEY_LOOKUP, "LOOK UP (HOLD)"},
-    };
-    constexpr KeyPrompt prompts_eight[] = {
-        {KEY_UP, "UP"},
-        {KEY_UP_RIGHT, "UP-RIGHT"},
-        {KEY_RIGHT, "RIGHT"},
-        {KEY_DOWN_RIGHT, "DOWN-RIGHT"},
-        {KEY_DOWN, "DOWN"},
-        {KEY_DOWN_LEFT, "DOWN-LEFT"},
-        {KEY_LEFT, "LEFT"},
-        {KEY_UP_LEFT, "UP-LEFT"},
-        {KEY_FIRE, "FIRE"},
-        {KEY_SPECIAL, "SPECIAL"},
-        {KEY_SPECIAL_SWITCH, "SPECIAL SWITCH"},
-        {KEY_YELL, "YELL"},
-        {KEY_SWITCH, "SWITCH CHARACTER"},
-        {KEY_SHIFTER, "SHIFTER"},
-        {KEY_LOOKUP, "LOOK UP (HOLD)"},
-    };
-
-    const KeyPrompt* prompts = eight_dir ? prompts_eight : prompts_four;
-    const size_t prompt_count = eight_dir ? array_size(prompts_eight) : array_size(prompts_four);
+    const std::span<const RemapPrompt> prompts = remap_prompts(
+        get_player_control_mode(player_index) ==
+            static_cast<int>(ControlDirectionMode::EightDirection),
+        og::input::ability_select_on());
+    const size_t prompt_count = prompts.size();
 
     for (size_t idx = 0; idx < prompt_count; ++idx)
     {
         const auto& prompt = prompts[idx];
+        TRACE("remap", "prompt %zu/%zu key=%d label=%s", idx + 1,
+              prompt_count, prompt.key, prompt.label);
         draw_remap_prompt(std::format("P{} {}", player_index + 1, prompt.label), player_index);
         if (!assignKeyFromWaitEventPolling(
                 player_index, prompt.key, poll_callback))
