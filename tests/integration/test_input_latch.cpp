@@ -990,7 +990,7 @@ TEST(InputLatchCancel, focus_loss_clears_cancel_and_event_state)
 // player's action drive another player's character.
 // ---------------------------------------------------------------------------
 
-TEST(InputKeybindDefaults, no_undocumented_cross_player_default_key_collisions)
+TEST(InputKeybindDefaults, no_cross_player_default_key_collisions)
 {
     FullControlSnapshotGuard controls;
     reset_default_player_controls();
@@ -1016,29 +1016,15 @@ TEST(InputKeybindDefaults, no_undocumented_cross_player_default_key_collisions)
                     bindings.push_back(Binding{p, mode, k, kc});
             }
 
-    // The single documented exemption: P1's look-up hold 'v' (present in
-    // both of P1's mode maps) overlaps P4's 8-direction DOWN-LEFT 'v' — a
-    // known pre-existing quirk (see the KEY_LOOKUP default comment in
-    // input_state.cpp). Everything else must be unique across players.
-    const auto is_documented_v_quirk = [](const Binding& a, const Binding& b) {
-        const auto matches = [](const Binding& p1, const Binding& p4) {
-            return p1.player == 0 && p1.key_enum == KEY_LOOKUP &&
-                   p1.keycode == KEYCODE_v &&
-                   p4.player == 3 && p4.key_enum == KEY_DOWN_LEFT &&
-                   p4.mode == static_cast<int>(ControlDirectionMode::EightDirection) &&
-                   p4.keycode == KEYCODE_v;
-        };
-        return matches(a, b) || matches(b, a);
-    };
-
+    // No exemptions: every bound key belongs to exactly one player. (The
+    // old tables grandfathered P1's look-up 'v' against P4's 8-direction
+    // DOWN-LEFT 'v'; P1's look-up left 'v' with New Ability Select.)
     for (std::size_t i = 0; i < bindings.size(); ++i)
         for (std::size_t j = i + 1; j < bindings.size(); ++j)
         {
             const Binding& a = bindings[i];
             const Binding& b = bindings[j];
             if (a.player == b.player || a.keycode != b.keycode)
-                continue;
-            if (is_documented_v_quirk(a, b))
                 continue;
             ADD_FAILURE()
                 << "cross-player default key collision: key '"

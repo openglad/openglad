@@ -241,8 +241,12 @@ inline constexpr int KEY_DOWN_LEFT           = 5;
 inline constexpr int KEY_LEFT                = 6;
 inline constexpr int KEY_UP_LEFT             = 7;
 inline constexpr int KEY_FIRE                = 8;
+// SPEC 1 with New Ability Select on; SPECIAL (cast the selected special) off.
 inline constexpr int KEY_SPECIAL             = 9;
 inline constexpr int KEY_SWITCH              = 10;
+// Reserved wire slot, like KEY_PREFS: the retired change-special key. Never
+// bound, never shown. With New Ability Select off, the SPEC 2 key
+// (KEY_SPEC2) sends InputAction::SwitchSpecial instead.
 inline constexpr int KEY_SPECIAL_SWITCH      = 11;
 inline constexpr int KEY_YELL                = 12;
 inline constexpr int KEY_SHIFTER             = 13;
@@ -258,7 +262,13 @@ inline constexpr int KEY_CHEAT               = 15;
 // InputAction and never enters InputState / the network wire (which stay at
 // 16 actions; see gameplay/input_action.h).
 inline constexpr int KEY_LOOKUP              = 16;
-inline constexpr int NUM_KEYS                = 17;
+// Belt keys 2 and 3 (New Ability Select). CLIENT-SIDE ONLY like KEY_LOOKUP:
+// the client folds SPEC 1/2/3 + SHIFTER into InputAction::Special plus
+// PlayerInput::belt_cast (og::sim::belt::fold_keys), so the wire stays at
+// 16 actions.
+inline constexpr int KEY_SPEC2               = 17;
+inline constexpr int KEY_SPEC3               = 18;
+inline constexpr int NUM_KEYS                = 19;
 
 enum class ControlDirectionMode : int
 {
@@ -282,9 +292,27 @@ void set_player_control_mode(int player_index, int mode);
 bool player_allows_diagonal_movement(int player_index);
 int get_player_key_binding_for_mode(int player_index, int mode, int key_enum);
 void set_player_key_binding(int player_index, int key_enum, int keycode);
+// Also runs the one-time move of saved keys to the current factory tables
+// (og::input::migrate_seat_keys, version marker controls/default_keys_version)
+// and caches the New Ability Select setting (og::input::ability_select_on).
 void load_player_control_settings_from_cfg(
     cfg_store& config, bool web_mode = og::input::kWebControlDefaults);
 void save_player_control_settings_to_cfg(cfg_store& config);
+
+namespace og::input
+{
+// New Ability Select (Game Settings > UI FX, cfg effects/new_ability_select,
+// default on, per machine, never on the wire). The per-sample key fold reads
+// this cached copy, never cfg. The cache is set by
+// load_player_control_settings_from_cfg, and by refresh_ability_select_cache
+// whenever cfg changes underneath it (the UI FX toggle, RESTORE SETTINGS).
+bool ability_select_on();
+// Re-reads effects/new_ability_select from the global cfg into the cache.
+void refresh_ability_select_cache();
+// The setting as a cfg holds it: only an explicit "off" turns it off, so a
+// cfg that never heard of the key reads the shipped default.
+bool ability_select_from_cfg(cfg_store& config);
+} // namespace og::input
 
 // --- §7.1 per-player HUD/zoom cfg persistence (SDL-free, input_state.cpp).
 // The live viewscreen's prefs[] stays the runtime carrier; these cfg keys
@@ -342,7 +370,7 @@ class JoyData
     // assignment). isPlayerHoldingKey reports such a key as NOT held until
     // one real release is observed — a permanently-resting input must never
     // read as held, or every release wait (menu nav) wedges forever.
-    // NUM_KEYS(17) < 31 bits.
+    // NUM_KEYS(19) < 31 bits.
     int held_at_assign_mask{};
 
     JoyData();
