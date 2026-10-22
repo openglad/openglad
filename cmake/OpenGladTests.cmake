@@ -217,6 +217,7 @@ set(ALL_INTEGRATION_TEST_SOURCES
     ${CMAKE_SOURCE_DIR}/tests/integration/test_seat_chip.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_fade_ownership.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_display_x11.cpp
+    ${CMAKE_SOURCE_DIR}/tests/integration/test_belt_persistence.cpp
 )
 
 # NO_DEFAULT_TEST builds the binary but registers no ctest entry for it: the
@@ -484,6 +485,7 @@ og_add_test_group(og_test_game_core FILES
     test_overpowered_team.cpp
     test_frame_pacing_jitter.cpp
     test_pause_menu.cpp
+    test_belt_persistence.cpp
 )
 
 # The New Specials and Gameplay Fixes scenes (tests/integration/

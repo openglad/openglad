@@ -27,11 +27,15 @@
 #include <filesystem>
 #include <fstream>
 #include <memory>
+#include <algorithm>
 #include <stdexcept>
 #include <string>
 #include <type_traits>
 #include <utility>
 #include <vector>
+
+#include <openglad/gameplay/families/belt.h>
+#include <openglad/gameplay/game_server.h>
 
 #include "test_game_world_fixture.h"
 #include "test_gameplay_context_scope.h"
@@ -1648,6 +1652,58 @@ TEST_F(HeadlessServerRuntimeTest, spawned_roster_walker_starts_uncharmed)
         EXPECT_EQ(0, fresh->charm_left()) << "and has no charm counting down";
         EXPECT_TRUE(fresh->stats()->commands.empty()) << "and no queued AI commands";
     });
+}
+
+// New Ability Select: the dedicated server builds its mission guys from the
+// lobby characters (make_guy_from_lobby_character) and answers every joiner's
+// InitialSetup from that world (collect_initial_setup_guys); the local game
+// start reaches it through build_local_save_equivalent. Each hop must carry
+// the six belt bytes, or every hero plays on the class default.
+TEST_F(HeadlessServerRuntimeTest,
+       dedicated_server_builds_guys_with_the_belt_and_initial_setup_carries_it)
+{
+    constexpr og::sim::belt::Bytes kBelt{0x03, 0x09, 0xFF, 0x00, 0x0A, 0x05};
+
+    SaveData company;
+    auto member = std::make_unique<guy>(FAMILY_SOLDIER);
+    member->id = 700;
+    member->name = "Belted";
+    member->belt = kBelt;
+    member->deployed = true;
+    company.team_list[0] = std::move(member);
+    company.team_size = 1;
+    company.current_campaign = "gladiator";
+    company.scen_num = 1;
+    company.numplayers = 1;
+    const og::sim::LobbySaveDataEquivalent equivalent =
+        og::server::build_local_save_equivalent(company);
+    ASSERT_EQ(1u, equivalent.team_list.size());
+    EXPECT_EQ(kBelt, equivalent.team_list[0].character.belt)
+        << "the local game start must hand the server the belt";
+
+    og::sim::LobbySaveDataEquivalent lobby_save;
+    lobby_save.current_campaign = "gladiator";
+    lobby_save.scen_num = 1;
+    lobby_save.numplayers = 1;
+    lobby_save.allied_mode = 0;
+    og::sim::LobbyCharacterSlot slot = make_slot(0u, 701, "Joined", FAMILY_SOLDIER, 0);
+    slot.character.belt = kBelt;
+    lobby_save.team_list = {slot};
+    initialize_from_lobby(lobby_save);
+
+    GameWorld& world = level_data_->world();
+    walker* const hero = find_team_member(world, 701);
+    ASSERT_NE(nullptr, hero) << "the lobby character spawns";
+    EXPECT_EQ(kBelt, hero->myguy->belt)
+        << "the server's mission guy must carry the lobby character's belt";
+
+    const std::vector<og::sim::InitialSetupGuyData> setup =
+        og::sim::collect_initial_setup_guys(world);
+    const auto joined = std::find_if(setup.begin(), setup.end(),
+        [](const og::sim::InitialSetupGuyData& data) { return data.guy_id == 701; });
+    ASSERT_NE(setup.end(), joined);
+    EXPECT_EQ(kBelt, joined->belt)
+        << "a joiner's InitialSetup must carry the belt";
 }
 
 } // namespace
