@@ -112,6 +112,25 @@
             margin: 0.1rem;
         }
 
+        .keys {
+            border-collapse: collapse;
+            margin: 0.75rem 0;
+            font-size: 0.95rem;
+            display: block;
+            overflow-x: auto;
+        }
+
+        .keys th, .keys td {
+            padding: 0.3rem 0.6rem;
+            text-align: left;
+            border-bottom: 1px solid rgba(255,255,255,0.15);
+            white-space: nowrap;
+        }
+
+        .keys td {
+            font-family: monospace;
+        }
+
         .note {
             background: rgba(255,255,255,0.1);
             border-left: 3px solid #9cb896;
@@ -160,12 +179,14 @@
 
         <h2>Ctrl+W Closes the Tab</h2>
 
-        <p>On Windows and Linux the browser owns <span class="shortcut">Ctrl + W</span> (close tab) in windowed play: Firefox closes the tab even when the page handles the key, and Chrome never delivers the key to the page at all. macOS browsers close tabs with <span class="shortcut">Cmd + W</span> instead, so Ctrl+W reaches the page there &mdash; but the browser defaults stay the same on every platform, binding player 1's attack to <span class="shortcut">Z</span> and special to <span class="shortcut">X</span> instead of the desktop Ctrl/Alt defaults. Only Ctrl is beyond reach: <span class="shortcut">Alt</span> stays bound to special because the game page suppresses Firefox's Alt menu-bar shortcut while still passing the key to the game.</p>
+        <p>On Windows and Linux the browser owns <span class="shortcut">Ctrl + W</span> (close tab) in windowed play: Firefox closes the tab even when the page handles the key, and Chrome never delivers the key to the page at all. macOS browsers close tabs with <span class="shortcut">Cmd + W</span> instead, so Ctrl+W reaches the page there &mdash; but the browser defaults stay the same on every platform, binding player 1's attack to <span class="shortcut">Z</span> instead of the desktop's <span class="shortcut">Left Ctrl</span>. Player 1's abilities stay on <span class="shortcut">1</span> <span class="shortcut">2</span> <span class="shortcut">3</span>, with <span class="shortcut">Left Shift</span> held for the second row. Only Ctrl is beyond reach: <span class="shortcut">Alt</span> can still be bound with REMAP, because the game page suppresses Firefox's Alt menu-bar shortcut while still passing the key to the game.</p>
 
-        <p>If player 1 switches to 8-direction movement, <span class="shortcut">Z</span> and <span class="shortcut">X</span> become diagonal movement keys, so attack moves to <span class="shortcut">S</span> in the middle of the movement keys, special stays on <span class="shortcut">Alt</span>, and yell moves to <span class="shortcut">V</span>. Look-up starts unbound there &mdash; assign it in Options &rarr; Controls if you want it.</p>
+        <p>If player 1 switches to 8-direction movement, <span class="shortcut">Z</span> becomes a diagonal movement key, so attack moves to <span class="shortcut">S</span> in the middle of the movement keys and yell moves to <span class="shortcut">Tab</span>. Look-up starts unbound there &mdash; assign it with REMAP on player 1's player screen (Base Camp, the P1 card) if you want it.</p>
+
+        <p>With two players on one keyboard, player 2's look-up is <span class="shortcut">Right Ctrl</span>. Holding it while player 1 presses <span class="shortcut">1</span>, <span class="shortcut">2</span> or <span class="shortcut">3</span> makes a Ctrl + digit chord, which some browsers use to switch tabs. The game page asks the browser not to, but if a browser switches tabs anyway, give player 2's look-up another key with REMAP.</p>
 
         <div class="note">
-            <strong>Warning:</strong> If you rebind attack to <span class="shortcut">Ctrl</span> in Options &rarr; Controls, attacking while walking up (<span class="shortcut">Ctrl + W</span>) will close the game tab. On Linux, <span class="shortcut">Ctrl + Q</span> can quit Firefox entirely. Your progress is saved automatically, but the game will still vanish mid-fight &mdash; keep attack off Ctrl in the browser.
+            <strong>Warning:</strong> If you rebind attack to <span class="shortcut">Ctrl</span> with REMAP, attacking while walking up (<span class="shortcut">Ctrl + W</span>) will close the game tab. On Linux, <span class="shortcut">Ctrl + Q</span> can quit Firefox entirely. Your progress is saved automatically, but the game will still vanish mid-fight &mdash; keep attack off Ctrl in the browser.
         </div>
 
         <h2>macOS: Arrow Keys Not Working?</h2>
@@ -205,7 +226,26 @@
         </div>
 
         <h2>Game Controls</h2>
-        <p>For detailed game controls and keybindings, press <strong>Help</strong> from the in-game main menu, or press <strong>F1</strong> during gameplay.</p>
+        <p>The default keys in the browser, for up to four players on one keyboard (4-direction movement):</p>
+
+        <table class="keys">
+            <thead>
+                <tr><th></th><th>Player 1</th><th>Player 2</th><th>Player 3</th><th>Player 4</th></tr>
+            </thead>
+            <tbody>
+                <tr><th>Move</th><td>W A S D</td><td>Arrows</td><td>I J K L</td><td>T F G H</td></tr>
+                <tr><th>Attack</th><td>Z</td><td>Right Shift</td><td>Space</td><td>V</td></tr>
+                <tr><th>Abilities</th><td>1 2 3</td><td>[ ] \</td><td>8 9 0</td><td>4 5 6</td></tr>
+                <tr><th>Shifter</th><td>Left Shift</td><td>/</td><td>M</td><td>B</td></tr>
+                <tr><th>Yell</th><td>E</td><td>Enter</td><td>O</td><td>Y</td></tr>
+                <tr><th>Look up (hold)</th><td>Q</td><td>Right Ctrl</td><td>U</td><td>R</td></tr>
+                <tr><th>Switch character</th><td>`</td><td>'</td><td>-</td><td>N</td></tr>
+            </tbody>
+        </table>
+
+        <p>Each ability key casts the ability on it; hold Shifter for a second row of three. <strong>TRAIN &rarr; ABILITIES</strong> in Base Camp chooses which ability sits on which key. To go back to the old way (one special key that casts, the next key changes the special, Shifter for the alternate), turn off <strong>Game Settings &rarr; UI FX &rarr; New Ability Select</strong>. Change any key with <strong>REMAP</strong> on a player's screen (Base Camp, the player's P# card). <span class="shortcut">Esc</span> (or <span class="shortcut">Backspace</span>) pauses and goes back.</p>
+
+        <p>For everything else, press <strong>Help</strong> from the in-game main menu, or press <strong>F1</strong> during gameplay.</p>
 
         <a href="index.html" class="back-link">&larr; Back to Game</a>
     </main>

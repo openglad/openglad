@@ -1,7 +1,16 @@
 #!/usr/bin/env python3
-"""Structurally verify the generated lua-classpacks showcase media
-(build/media/lua-classpacks by default; pass a directory to check a
-checkout of the openglad/openglad-screenshots repo instead).
+"""Structurally verify a set of generated media.
+
+Sets:
+  lua-classpacks  (the default) the showcase media
+                  scripts/media/capture_showcase.sh writes, in
+                  build/media/lua-classpacks by default
+  ability-select  the New Ability Select stills
+                  scripts/media/capture_ability_select.sh writes, in
+                  build/media/ability-select by default
+
+Pass a directory to check a checkout of the openglad/openglad-screenshots
+repo instead.
 
 Runs ffprobe (from the dev shell: `nix develop`) over every shipped file with
 frame counting on, which decodes each file end to end: a GIF whose frames all
@@ -9,12 +18,17 @@ decode, at the right size, count and total duration, is a GIF that plays. The
 PNGs and the raw BMP are additionally pinned to pal8 — the captures are
 indexed-colour and must stay that way through the pipeline.
 
-Run: python3 scripts/media/verify_media.py [dir]
+Run: python3 scripts/media/verify_media.py [--set NAME]
+         [--allow-missing GROUP]... [dir]
+--allow-missing lets one group of a set be absent (the capture script
+passes the steps it did not run); a file that IS there is still checked.
 Exits non-zero if a file is missing, malformed, or the wrong shape.
 """
 
 from __future__ import annotations
 
+import argparse
+import fnmatch
 import json
 import os
 import shutil
@@ -23,7 +37,7 @@ import sys
 
 # name -> (codec, width, height, frame count, duration seconds or None,
 #          pixel format or None). One frame means a still.
-EXPECTED = {
+LUA_CLASSPACKS = {
     "ninefold-court.gif": ("gif", 640, 400, 60, 8.04, None),
     "ninefold-court-judgment.gif": ("gif", 640, 400, 43, 4.00, None),
     "ninefold-court-pillars.png": ("png", 640, 400, 1, None, "pal8"),
@@ -33,6 +47,35 @@ EXPECTED = {
     # the 2x nearest-neighbour upscale that makes the 4x6 font legible).
     "ninefold-court-judgment.bmp": ("bmp", 320, 200, 1, None, "pal8"),
     "demo-grid.png": ("png", 640, 400, 1, None, "pal8"),
+}
+
+# The New Ability Select stills. Every canvas shot is the 320x200 game canvas
+# doubled; the pixel format is whatever the lossless PPM -> PNG conversion
+# picked, so it is not pinned.
+CANVAS_STILL = ("png", 640, 400, 1, None, None)
+ABILITY_SELECT = {
+    "hud": {f"hud-{scene}.png": CANVAS_STILL for scene in (
+        "1p-on", "1p-off", "2p-on", "2p-off", "4p-on", "4p-off",
+        "1p-on-shift", "4p-on-shift")},
+    "radar": {"hud-2p-radar-on.png": CANVAS_STILL},
+    "abilities": {f"abilities-{shot}.png": CANVAS_STILL for shot in (
+        "archmage", "archmage-selected", "archmage-placed", "mage",
+        "train-door-off")},
+    "ui-fx": {"ui-fx.png": CANVAS_STILL},
+}
+# Groups whose file names the capturing test chooses: at least one file
+# matching the pattern, each a PNG still at least this wide and tall (the
+# CHANGELOG! page is captured at the window's real size, never the canvas).
+ABILITY_SELECT_PATTERNS = {
+    "changelog": ("changelog-*.png", 640, 400),
+}
+
+# set name -> (default directory under build/media, {group: {name: spec}},
+#              {group: (glob, min width, min height)})
+SETS = {
+    "lua-classpacks": ("lua-classpacks", {"": LUA_CLASSPACKS}, {}),
+    "ability-select": ("ability-select", ABILITY_SELECT,
+                       ABILITY_SELECT_PATTERNS),
 }
 
 
@@ -75,40 +118,110 @@ def check(path: str, codec: str, want_w: int, want_h: int, want_frames: int,
     return f"still {want_w}x{want_h} {stream.get('pix_fmt')}"
 
 
+def check_pattern(path: str, min_w: int, min_h: int) -> str:
+    stream = probe(path)
+    if stream.get("codec_name") != "png":
+        raise AssertionError(f"{path}: codec {stream.get('codec_name')}, "
+                             "expected png")
+    width, height = stream.get("width", 0), stream.get("height", 0)
+    if width < min_w or height < min_h:
+        raise AssertionError(f"{path}: {width}x{height}, expected at least "
+                             f"{min_w}x{min_h}")
+    frames = int(stream.get("nb_read_frames", "0"))
+    if frames != 1:
+        raise AssertionError(f"{path}: {frames} frames, expected a still")
+    return f"still {width}x{height} {stream.get('pix_fmt')}"
+
+
 def main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(
+        description="Structurally verify a set of generated media.")
+    parser.add_argument("--set", dest="media_set", default="lua-classpacks",
+                        choices=sorted(SETS))
+    parser.add_argument("--allow-missing", action="append", default=[],
+                        metavar="GROUP",
+                        help="a group of the set that may be absent")
+    parser.add_argument("dir", nargs="?")
+    args = parser.parse_args(argv)
+
+    default_dir, groups, patterns = SETS[args.media_set]
+    unknown = [g for g in args.allow_missing
+               if g not in groups and g not in patterns]
+    if unknown:
+        print(f"no such group in {args.media_set}: {', '.join(unknown)}",
+              file=sys.stderr)
+        return 2
     if shutil.which("ffprobe") is None:
         print("ffprobe not found; enter the dev shell first: nix develop",
               file=sys.stderr)
         return 1
-    root = argv[0] if argv else os.path.join(
+    root = args.dir or os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "..", "..",
-        "build", "media", "lua-classpacks")
+        "build", "media", default_dir)
     root = os.path.abspath(root)
-    print(f"verifying media in {root}")
+    print(f"verifying {args.media_set} media in {root}")
+    if not os.path.isdir(root):
+        print(f"  FAIL: {root} is not a directory")
+        return 1
 
     failures = 0
+    checked = 0
+    expected_total = 0
     total = 0
-    for name, expectation in EXPECTED.items():
-        path = os.path.join(root, name)
-        try:
-            if not os.path.exists(path):
-                raise AssertionError(f"{path}: missing")
-            detail = check(path, *expectation)
-        except AssertionError as error:
-            print(f"  FAIL {name}: {error}")
-            failures += 1
-            continue
-        size = os.path.getsize(path)
-        total += size
-        print(f"  ok {name}: {detail}, {size} bytes")
+    known: set[str] = set()
+    present = sorted(os.listdir(root))
+    for group, expected in groups.items():
+        may_miss = group in args.allow_missing
+        for name, expectation in expected.items():
+            known.add(name)
+            path = os.path.join(root, name)
+            if not os.path.exists(path) and may_miss:
+                print(f"  skip {name}: group {group} allowed missing")
+                continue
+            expected_total += 1
+            try:
+                if not os.path.exists(path):
+                    raise AssertionError(f"{path}: missing")
+                detail = check(path, *expectation)
+            except AssertionError as error:
+                print(f"  FAIL {name}: {error}")
+                failures += 1
+                continue
+            size = os.path.getsize(path)
+            total += size
+            checked += 1
+            print(f"  ok {name}: {detail}, {size} bytes")
 
-    extra = sorted(f for f in os.listdir(root)
-                   if f not in EXPECTED and f != "README.md")
+    for group, (glob, min_w, min_h) in patterns.items():
+        names = [f for f in present if fnmatch.fnmatch(f, glob)]
+        known.update(names)
+        if not names:
+            if group in args.allow_missing:
+                print(f"  skip {glob}: group {group} allowed missing")
+            else:
+                expected_total += 1
+                print(f"  FAIL {glob}: no file matches")
+                failures += 1
+            continue
+        for name in names:
+            expected_total += 1
+            path = os.path.join(root, name)
+            try:
+                detail = check_pattern(path, min_w, min_h)
+            except AssertionError as error:
+                print(f"  FAIL {name}: {error}")
+                failures += 1
+                continue
+            size = os.path.getsize(path)
+            total += size
+            checked += 1
+            print(f"  ok {name}: {detail}, {size} bytes")
+
+    extra = [f for f in present if f not in known and f != "README.md"]
     if extra:
         print(f"  note: unlisted files present: {', '.join(extra)}")
 
-    print(f"{len(EXPECTED) - failures}/{len(EXPECTED)} files verified, "
-          f"{total} bytes total")
+    print(f"{checked}/{expected_total} files verified, {total} bytes total")
     return 1 if failures else 0
 
 

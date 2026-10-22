@@ -86,7 +86,34 @@ all the work that was saved.
 
 The manual at [openglad.org/manual](https://openglad.org/manual) covers the
 classes, controls, items, and scenarios. Pressing **F1** in a level opens the
-in-game help, which is also readable as [glad.hlp](docs/glad.hlp).
+in-game help, whose Controls page lists the current keys.
+[glad.hlp](docs/glad.hlp) is the original 2002 manual, kept as it was; its
+key list predates the keys below.
+
+### Controls
+
+Up to four players share one keyboard. The default keys (4-direction
+movement; the in-game help lists the 8-direction ones):
+
+| | Player 1 | Player 2 | Player 3 | Player 4 |
+|---|---|---|---|---|
+| Move | W A S D | arrows | I J K L | T F G H |
+| Attack | Left Ctrl (browser: Z) | Right Shift | Space | V |
+| Abilities | 1 2 3 | [ ] \ | 8 9 0 | 4 5 6 |
+| Shifter | Left Shift | / | M | B |
+| Yell | E | Enter | O | Y |
+| Look up (hold) | Q | Right Ctrl | U | R |
+| Switch character | `` ` `` | ' | - | N |
+
+Each ability key casts the ability on it, and holding Shifter gives a second
+row of three. **TRAIN > ABILITIES** in Base Camp chooses which ability sits
+on which key. Turning off **Game Settings > UI FX > New Ability Select**
+brings back the original rules on the same keys: the first ability key casts
+the selected special, the second changes it, and Shifter casts the
+alternate. **REMAP** on a player's screen (open the player's **P#** card in
+Base Camp, or the PAUSED menu) changes any key; gamepads work too. **Esc**
+pauses. The design is in
+[docs/ability-select-design.md](docs/ability-select-design.md).
 
 ### Multiplayer setup
 
