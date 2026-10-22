@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #include <algorithm>
 #include <openglad/core/text_wrap.h>
+#include <openglad/interface/input.h>
 #include <openglad/interface/ui/menu_binding.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/interface/ui/picker_lobby_client.h>
@@ -542,7 +543,7 @@ const FamilyDescriptor& core_family(int family_id)
 }  // namespace
 
 // Every core family's page fits the panel at every slot level under either
-// setting: nothing dropped, nothing cut, every row inside its column, no
+// setting (and either New Ability Select state): nothing dropped, nothing cut, every row inside its column, no
 // two lines on one row, and no " Shift: None" under a classic slot that
 // has no alternate. Proof it can fail: kDetailProseChars 23 -> 20 or
 // kDetailRows 12 -> 10 drops lines; dropping the "NONE" test on the Shift
@@ -561,12 +562,13 @@ TEST(PickerCommon, detail_pages_fit_the_panel_for_every_core_family)
         for (const short new_specials : {short{0}, short{1}})
         {
             for (const int level : {1, 4, 7, 10, 13})
+            for (const bool ability_select : {false, true})
             {
-                const og::ui::DetailPage page =
-                    og::ui::detail_page(fd, level, new_specials);
+                const og::ui::DetailPage page = og::ui::detail_page(
+                    fd, level, new_specials, ability_select);
                 const std::string where = std::format(
-                    "{} level {} new_specials {}", fd->name, level,
-                    new_specials);
+                    "{} level {} new_specials {} ability_select {}", fd->name,
+                    level, new_specials, ability_select);
                 EXPECT_EQ(0, page.dropped) << where;
                 EXPECT_EQ(0, page.cut) << where;
                 ASSERT_FALSE(page.lines.empty()) << where;
@@ -591,6 +593,7 @@ TEST(PickerCommon, detail_pages_fit_the_panel_for_every_core_family)
                     EXPECT_TRUE(taken.insert({line.right, line.row}).second)
                         << where << ": two lines on one row at " << line.text;
                     EXPECT_NE(" Shift: None", line.text) << where;
+                    EXPECT_NE(" Also: None", line.text) << where;
                 }
             }
         }
@@ -7507,4 +7510,407 @@ TEST(PickerCommon, progress_marks_shown_is_false_only_on_versus_campaigns)
     classic.current_campaign = "gladiator";
     EXPECT_FALSE(og::ui::is_versus_campaign(classic));
     EXPECT_TRUE(og::ui::progress_marks_shown(classic));
+}
+
+// --- New Ability Select: the ABILITIES page model and its edits ---
+
+namespace {
+
+namespace belt = og::sim::belt;
+
+std::array<std::string, belt::kSlots> belt_texts(const og::ui::AbilityPage& page)
+{
+    std::array<std::string, belt::kSlots> out;
+    for (std::size_t b = 0; b < out.size(); ++b)
+        out[b] = page.belt[b].text;
+    return out;
+}
+
+std::vector<std::string> bench_texts(const og::ui::AbilityPage& page)
+{
+    std::vector<std::string> out;
+    for (const og::ui::AbilityRow& row : page.bench)
+        out.push_back(row.text);
+    return out;
+}
+
+og::ui::AbilityPage page_for(int family_id, int level, short new_specials,
+                             const belt::Bytes& stored)
+{
+    return og::ui::ability_page("Merlin", &core_family(family_id), level,
+                                new_specials, stored);
+}
+
+}  // namespace
+
+// The page reads the class default as the player sees it: keys 1-3, then
+// SHIFTER + 1-3; a locked ability says the level it opens at; nothing is on
+// the bench. Proof it can fail: swap the "S" prefix onto slots 0-2, or drop
+// the locked suffix, and the literal rows below differ.
+TEST(PickerCommon, ability_page_reads_the_mage_default)
+{
+    init_family_registry();
+    const og::ui::AbilityPage page =
+        page_for(FAMILY_MAGE, 7, 1, belt::default_bytes());
+    EXPECT_EQ("ABILITIES: MERLIN", page.title);
+    EXPECT_EQ("Mage, level 7", page.subtitle);
+    EXPECT_EQ((std::array<std::string, belt::kSlots>{
+                  "1 TELEPORT", "2 WARP SPACE", "3 FREEZE TIME",
+                  "S1 TELEPORT MARKER", "S2 ENERGY WAVE L10",
+                  "S3 HEARTBURST L13"}),
+              belt_texts(page));
+    EXPECT_FALSE(page.belt[2].locked);
+    EXPECT_TRUE(page.belt[4].locked);
+    EXPECT_EQ("ENERGY WAVE", page.belt[4].name);
+    EXPECT_EQ(10, page.belt[4].opens_at);
+    ASSERT_TRUE(page.belt[3].entry.has_value());
+    EXPECT_EQ((belt::Entry{1, true}), *page.belt[3].entry);
+    EXPECT_TRUE(page.bench.empty());
+    EXPECT_EQ(0, page.cut);
+
+    // A cleared key reads "--" and its ability waits on the bench.
+    belt::Bytes stored = belt::default_bytes();
+    og::ui::ability_clear(stored, 2);
+    const og::ui::AbilityPage cleared = page_for(FAMILY_MAGE, 7, 1, stored);
+    EXPECT_EQ("3 --", cleared.belt[2].text);
+    EXPECT_TRUE(cleared.belt[2].empty);
+    EXPECT_FALSE(cleared.belt[2].entry.has_value());
+    EXPECT_EQ((std::vector<std::string>{"FREEZE TIME"}), bench_texts(cleared));
+
+    // No descriptor: a "Character" with six empty keys and an empty bench.
+    const og::ui::AbilityPage none =
+        og::ui::ability_page("x", nullptr, 3, 1, belt::default_bytes());
+    EXPECT_EQ("Character, level 3", none.subtitle);
+    EXPECT_EQ("S3 --", none.belt[5].text);
+    EXPECT_TRUE(none.bench.empty());
+}
+
+// Every core family's page fits the screen's 24-glyph faces at every level
+// under either New Specials value, with the whole catalog benched too (the
+// bench rows are the longest: a locked name with its level). Proof it can
+// fail: kAbilityRowChars 24 -> 22 cuts "S1 EXPLODING BOULDER L4".
+TEST(PickerCommon, ability_page_fits_24_glyphs_for_every_core_family)
+{
+    init_family_registry();
+    belt::Bytes emptied{};
+    emptied.fill(belt::kEmptyByte);
+    int families = 0;
+    for (int family_id = 0; family_id < 256; family_id++)
+    {
+        const FamilyDescriptor* fd = get_family_descriptor(family_id);
+        if (fd == nullptr)
+            continue;
+        families++;
+        for (const short new_specials : {short{0}, short{1}})
+        for (const int level : {1, 4, 7, 10, 13})
+        for (const belt::Bytes& stored : {belt::default_bytes(), emptied})
+        {
+            const og::ui::AbilityPage page = og::ui::ability_page(
+                "Bartholomew", fd, level, new_specials, stored);
+            const std::string where = std::format(
+                "{} level {} new_specials {}", fd->name, level, new_specials);
+            EXPECT_EQ(0, page.cut) << where;
+            EXPECT_LE(page.title.size(),
+                      static_cast<std::size_t>(og::ui::kAbilityTitleChars))
+                << where;
+            for (const og::ui::AbilityRow& row : page.belt)
+                EXPECT_LE(row.text.size(),
+                          static_cast<std::size_t>(og::ui::kAbilityRowChars))
+                    << where << ": " << row.text;
+            for (const og::ui::AbilityRow& row : page.bench)
+                EXPECT_LE(row.text.size(),
+                          static_cast<std::size_t>(og::ui::kAbilityRowChars))
+                    << where << ": " << row.text;
+        }
+    }
+    EXPECT_GE(families, 21) << "core class pack not installed";
+
+    // The worst core row, and the budget's own proof: a mod name past it is
+    // cut and counted.
+    const og::ui::AbilityPage barb = og::ui::ability_page(
+        "Conan", &core_family(FAMILY_BARBARIAN), 1, 0, belt::default_bytes());
+    EXPECT_EQ("2 EXPLODING BOULDER L4", barb.belt[1].text);
+    FamilyDescriptor long_named = core_family(FAMILY_SOLDIER);
+    long_named.special_names[1] = "AN EXTREMELY LONG SPECIAL NAME";
+    const og::ui::AbilityPage cut = og::ui::ability_page(
+        "A Name Of Twenty Chars", &long_named, 1, 0, belt::default_bytes());
+    EXPECT_EQ("1 AN EXTREMELY LONG SPEC", cut.belt[0].text);
+    EXPECT_EQ("ABILITIES: A NAME OF TWENT", cut.title);
+    EXPECT_EQ(2, cut.cut) << "the title and the long row";
+}
+
+// The Archmage's seventh spell waits on the bench; putting it on key 3
+// sends SUMMON IMAGE there instead, and only that one byte changes. Proof
+// it can fail: write the entry into every DEFAULT slot, or skip the
+// already-on-the-belt check, and the bytes or the bench below differ.
+TEST(PickerCommon, ability_place_benches_what_it_displaces)
+{
+    init_family_registry();
+    const FamilyDescriptor* fd = &core_family(FAMILY_ARCHMAGE);
+    belt::Bytes stored = belt::default_bytes();
+    const og::ui::AbilityPage before = page_for(FAMILY_ARCHMAGE, 13, 1, stored);
+    ASSERT_EQ((std::vector<std::string>{"MIND CONTROL"}), bench_texts(before));
+    ASSERT_TRUE(before.bench[0].entry.has_value());
+    const belt::Entry mind_control = *before.bench[0].entry;
+
+    og::ui::ability_place(stored, fd, 1, 2, mind_control);
+    EXPECT_EQ((belt::Bytes{0, 0, belt::encode(mind_control), 0, 0, 0}), stored);
+    const og::ui::AbilityPage after = page_for(FAMILY_ARCHMAGE, 13, 1, stored);
+    EXPECT_EQ("3 MIND CONTROL", after.belt[2].text);
+    EXPECT_EQ((std::vector<std::string>{"SUMMON IMAGE"}), bench_texts(after));
+
+    // Below level 10 it is still placed, and shows the level it opens at.
+    EXPECT_EQ("3 MIND CONTROL L10",
+              page_for(FAMILY_ARCHMAGE, 1, 1, stored).belt[2].text);
+    EXPECT_EQ("MIND CONTROL: opens at level 10",
+              og::ui::ability_status_line(
+                  page_for(FAMILY_ARCHMAGE, 1, 1, belt::default_bytes()), 6));
+}
+
+// One ability, one slot: placing an ability already on the belt swaps the
+// two slots, and a DEFAULT slot is written out as what it showed before it
+// moves. Proof it can fail: swap the raw bytes (a DEFAULT byte would re-read
+// the class default at its new position and TELEPORT would sit on two keys).
+TEST(PickerCommon, ability_place_of_a_belt_ability_swaps)
+{
+    init_family_registry();
+    const FamilyDescriptor* fd = &core_family(FAMILY_ARCHMAGE);
+    belt::Bytes stored = belt::default_bytes();
+    const og::ui::AbilityPage before = page_for(FAMILY_ARCHMAGE, 13, 1, stored);
+    ASSERT_TRUE(before.belt[0].entry.has_value());
+    ASSERT_TRUE(before.belt[2].entry.has_value());
+    const belt::Entry teleport = *before.belt[0].entry;
+    const belt::Entry image = *before.belt[2].entry;
+
+    og::ui::ability_place(stored, fd, 1, 2, teleport);
+    EXPECT_EQ((belt::Bytes{belt::encode(image), 0, belt::encode(teleport), 0,
+                           0, 0}),
+              stored);
+    const og::ui::AbilityPage after = page_for(FAMILY_ARCHMAGE, 13, 1, stored);
+    EXPECT_EQ("1 SUMMON IMAGE", after.belt[0].text);
+    EXPECT_EQ("3 TELEPORT", after.belt[2].text);
+    EXPECT_EQ((std::vector<std::string>{"MIND CONTROL"}), bench_texts(after));
+
+    // Placing it where it already is changes nothing.
+    const belt::Bytes settled = stored;
+    og::ui::ability_place(stored, fd, 1, 2, teleport);
+    EXPECT_EQ(settled, stored);
+
+    // A swap with a slot the class default leaves empty writes EMPTY there.
+    belt::Bytes soldier = belt::default_bytes();
+    og::ui::ability_swap(soldier, &core_family(FAMILY_SOLDIER), 0, 0, 4);
+    const og::ui::AbilityPage swapped =
+        page_for(FAMILY_SOLDIER, 13, 0, soldier);
+    EXPECT_EQ("1 --", swapped.belt[0].text);
+    EXPECT_EQ("S2 CHARGE", swapped.belt[4].text);
+    EXPECT_EQ(belt::kEmptyByte, soldier[0]);
+}
+
+// An ability the New Specials setting hides keeps its byte when its slot
+// moves, so it comes back when the setting does. Proof it can fail: write
+// the resolved (Empty) state instead of the stored byte and MINE is lost.
+TEST(PickerCommon, ability_swap_keeps_a_hidden_abilitys_byte)
+{
+    init_family_registry();
+    const FamilyDescriptor* fd = &core_family(FAMILY_THIEF);
+    const og::ui::AbilityPage with_kits =
+        page_for(FAMILY_THIEF, 13, 1, belt::default_bytes());
+    ASSERT_EQ("S1 MINE", with_kits.belt[3].text);
+    const belt::Entry mine = *with_kits.belt[3].entry;
+
+    belt::Bytes stored = belt::default_bytes();
+    stored[0] = belt::encode(mine);
+    ASSERT_EQ("1 --", page_for(FAMILY_THIEF, 13, 0, stored).belt[0].text)
+        << "hidden with New Specials off";
+    og::ui::ability_swap(stored, fd, 0, 0, 5);
+    EXPECT_EQ(belt::encode(mine), stored[5]);
+    EXPECT_EQ("1 CHARM OPPONENT", page_for(FAMILY_THIEF, 13, 0, stored).belt[0].text);
+}
+
+// Edits outside the belt or the catalog change nothing; clear writes EMPTY;
+// reset and the promotion reset write six DEFAULT bytes.
+TEST(PickerCommon, ability_edits_refuse_what_is_not_there)
+{
+    init_family_registry();
+    const FamilyDescriptor* fd = &core_family(FAMILY_SOLDIER);
+    const belt::Bytes start{0x01, 0x00, 0xFF, 0x00, 0x00, 0x00};
+    belt::Bytes stored = start;
+    og::ui::ability_place(stored, fd, 0, 6, belt::Entry{2, false});
+    og::ui::ability_place(stored, fd, 0, -1, belt::Entry{2, false});
+    // The soldier's slot 1 has no alternate, and there is no slot 6.
+    og::ui::ability_place(stored, fd, 0, 1, belt::Entry{1, true});
+    og::ui::ability_place(stored, fd, 0, 1, belt::Entry{6, false});
+    og::ui::ability_swap(stored, fd, 0, 0, 6);
+    og::ui::ability_swap(stored, fd, 0, -1, 0);
+    og::ui::ability_swap(stored, fd, 0, 2, 2);
+    og::ui::ability_clear(stored, 6);
+    og::ui::ability_clear(stored, -1);
+    EXPECT_EQ(start, stored);
+
+    og::ui::ability_clear(stored, 0);
+    EXPECT_EQ(belt::kEmptyByte, stored[0]);
+    og::ui::ability_reset(stored);
+    EXPECT_EQ(belt::default_bytes(), stored);
+
+    belt::Bytes promoted{0x01, 0x09, 0xFF, 0x00, 0x0A, 0x05};
+    og::ui::reset_belt_for_family_change(promoted);
+    EXPECT_EQ(belt::default_bytes(), promoted);
+}
+
+// The status line names the selected row in plain words and never runs past
+// the 48-glyph line. Proof it can fail: index the bench from 0 instead of 6
+// and the bench row reads as the belt's.
+TEST(PickerCommon, ability_status_line_names_the_selected_row)
+{
+    init_family_registry();
+    belt::Bytes stored = belt::default_bytes();
+    og::ui::ability_clear(stored, 1);
+    const og::ui::AbilityPage page = page_for(FAMILY_ARCHMAGE, 13, 1, stored);
+    EXPECT_EQ("Click a slot, then an ability.",
+              og::ui::ability_status_line(page, -1));
+    EXPECT_EQ("TELEPORT is on key 1.", og::ui::ability_status_line(page, 0));
+    EXPECT_EQ("Key 2 is empty. Pick an ability for it.",
+              og::ui::ability_status_line(page, 1));
+    EXPECT_EQ("CHAIN LIGHTNING is on key S2.",
+              og::ui::ability_status_line(page, 4));
+    ASSERT_EQ((std::vector<std::string>{"HEARTBURST", "MIND CONTROL"}),
+              bench_texts(page));
+    EXPECT_EQ("HEARTBURST is on the bench.",
+              og::ui::ability_status_line(page, 6));
+    EXPECT_EQ("MIND CONTROL is on the bench.",
+              og::ui::ability_status_line(page, 7));
+    EXPECT_EQ("Click a slot, then an ability.",
+              og::ui::ability_status_line(page, 8))
+        << "past the bench";
+    EXPECT_EQ("HEARTBURST: opens at level 13",
+              og::ui::ability_status_line(
+                  page_for(FAMILY_MAGE, 1, 1, belt::default_bytes()), 5));
+
+    og::ui::AbilityPage long_page = page;
+    long_page.belt[0].name = std::string(60, 'X');
+    const std::string cut = og::ui::ability_status_line(long_page, 0);
+    EXPECT_EQ(static_cast<std::size_t>(og::ui::kAbilityStatusChars), cut.size());
+    EXPECT_EQ(std::string(48, 'X'), cut);
+}
+
+TEST(PickerCommon, ability_key_labels)
+{
+    EXPECT_EQ("1", og::ui::ability_key_label(0));
+    EXPECT_EQ("3", og::ui::ability_key_label(2));
+    EXPECT_EQ("S1", og::ui::ability_key_label(3));
+    EXPECT_EQ("S3", og::ui::ability_key_label(5));
+    EXPECT_EQ("", og::ui::ability_key_label(6));
+    EXPECT_EQ("", og::ui::ability_key_label(-1));
+}
+
+// The binding panels' ACTIONS rows: with the setting off, today's seven in
+// today's order with SPEC SW on the SPEC 2 key (slot 17, the key that cycles
+// with the setting off; slot 11 is never bound); with it on, one row per
+// ability key, eight rows, the panel's height.
+TEST(PickerCommon, binding_panel_action_rows_for_both_settings)
+{
+    const auto rows_of = [](bool on) {
+        std::vector<std::pair<std::string, int>> out;
+        for (const og::ui::BindingPanelRow& row :
+             og::ui::binding_panel_action_rows(on))
+            out.emplace_back(row.label, row.key);
+        return out;
+    };
+    EXPECT_EQ((std::vector<std::pair<std::string, int>>{
+                  {"FIRE", KEY_FIRE},
+                  {"SPECIAL", KEY_SPECIAL},
+                  {"YELL", KEY_YELL},
+                  {"SHIFTER", KEY_SHIFTER},
+                  {"LOOK UP", KEY_LOOKUP},
+                  {"CHAR SW", KEY_SWITCH},
+                  {"SPEC SW", 17},
+              }),
+              rows_of(false));
+    EXPECT_EQ((std::vector<std::pair<std::string, int>>{
+                  {"FIRE", KEY_FIRE},
+                  {"SPEC 1", KEY_SPECIAL},
+                  {"SPEC 2", 17},
+                  {"SPEC 3", 18},
+                  {"SHIFTER", KEY_SHIFTER},
+                  {"YELL", KEY_YELL},
+                  {"LOOK UP", KEY_LOOKUP},
+                  {"CHAR SW", KEY_SWITCH},
+              }),
+              rows_of(true));
+    // No ON label is wider than today's widest ("SHIFTER", "LOOK UP"), so
+    // the panel's 17-glyph column clamps no ON line that it did not already.
+    for (const bool on : {false, true})
+        for (const og::ui::BindingPanelRow& row :
+             og::ui::binding_panel_action_rows(on))
+            EXPECT_LE(std::strlen(row.label), 7u) << row.label;
+}
+
+// One HUD belt row: the key label, the name cut to the room left, a locked
+// row's level, "--" for an empty key; the key label alone when fewer than
+// four name glyphs fit, nothing when not even the label does. Proof it can
+// fail: cut the name before reserving the " L7" and "3 FREEZE TI" loses
+// its level.
+TEST(PickerCommon, belt_hud_line_cuts_to_the_pane)
+{
+    init_family_registry();
+    const belt::Layout l1 = belt::resolve(&core_family(FAMILY_MAGE), 1, 1,
+                                          belt::default_bytes());
+    const belt::Resolved& teleport = l1[0];
+    const belt::Resolved& freeze = l1[2];   // opens at 7
+    const belt::Resolved& marker = l1[3];
+    belt::Resolved empty;
+    EXPECT_EQ("1 TELEPORT", og::ui::belt_hud_line(teleport, 1, false, 15));
+    EXPECT_EQ("S1 TELEPORT MARKER", og::ui::belt_hud_line(marker, 1, true, 24));
+    EXPECT_EQ("S1 TELEPORT MARK", og::ui::belt_hud_line(marker, 1, true, 16));
+    EXPECT_EQ("S1 TELEPORT", og::ui::belt_hud_line(marker, 1, true, 12))
+        << "the cut never leaves a trailing space";
+    EXPECT_EQ("3 FREEZE TIME L7", og::ui::belt_hud_line(freeze, 3, false, 24));
+    EXPECT_EQ("3 FREEZE L7", og::ui::belt_hud_line(freeze, 3, false, 11));
+    EXPECT_EQ("3", og::ui::belt_hud_line(freeze, 3, false, 8))
+        << "three name glyphs are not worth drawing";
+    EXPECT_EQ("2 --", og::ui::belt_hud_line(empty, 2, false, 4));
+    EXPECT_EQ("S2", og::ui::belt_hud_line(empty, 2, true, 4));
+    EXPECT_EQ("2", og::ui::belt_hud_line(empty, 2, false, 3));
+    EXPECT_EQ("", og::ui::belt_hud_line(teleport, 1, true, 1));
+    EXPECT_EQ("", og::ui::belt_hud_line(teleport, 0, false, 15));
+    EXPECT_EQ("", og::ui::belt_hud_line(teleport, 4, false, 15));
+    EXPECT_EQ("", og::ui::belt_hud_line(teleport, 1, false, 0));
+}
+
+// DETAILS with New Ability Select on: an alternate has a key of its own, so
+// its line says "Also" where it said "Shift", on the same row. Proof it can
+// fail: ignore the flag and the Shift line comes back.
+TEST(PickerCommon, detail_page_says_also_with_the_setting_on)
+{
+    init_family_registry();
+    const auto off = og::ui::detail_page(&core_family(FAMILY_MAGE), 13, 0, false);
+    const auto on = og::ui::detail_page(&core_family(FAMILY_MAGE), 13, 0, true);
+    const auto* shift = line_named(off, " Shift: Teleport Marker");
+    const auto* also = line_named(on, " Also: Teleport Marker");
+    ASSERT_NE(nullptr, shift);
+    ASSERT_NE(nullptr, also);
+    EXPECT_EQ(shift->row, also->row);
+    EXPECT_EQ(shift->right, also->right);
+    EXPECT_EQ(off.lines.size(), on.lines.size());
+    EXPECT_TRUE(shift_names(on).empty());
+    EXPECT_EQ(off.lines.size(), og::ui::detail_page(&core_family(FAMILY_MAGE),
+                                                    13, 0).lines.size())
+        << "the default is the classic page";
+    EXPECT_NE(nullptr, line_named(og::ui::detail_page(&core_family(FAMILY_MAGE),
+                                                      13, 0),
+                                  " Shift: Teleport Marker"));
+}
+
+// The terminals' Game Settings prompts read and write the UI FX row's cfg
+// key through this pair.
+TEST(PickerCommon, ability_select_pref_is_the_ui_fx_key)
+{
+    const std::string saved = cfg.get_setting("effects", "new_ability_select");
+    og::ui::set_ability_select_pref(cfg, false);
+    EXPECT_EQ("off", cfg.get_setting("effects", "new_ability_select"));
+    EXPECT_FALSE(og::ui::ability_select_pref(cfg));
+    og::ui::set_ability_select_pref(cfg, true);
+    EXPECT_EQ("on", cfg.get_setting("effects", "new_ability_select"));
+    EXPECT_TRUE(og::ui::ability_select_pref(cfg));
+    cfg.apply_setting("effects", "new_ability_select", saved);
 }
