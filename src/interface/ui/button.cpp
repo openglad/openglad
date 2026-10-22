@@ -461,6 +461,7 @@ namespace
 {
 // See allbuttons_generation() in button.h.
 unsigned int g_allbuttons_generation = 0;
+void clear_allbuttons_locked();
 } // namespace
 
 unsigned int allbuttons_generation()
@@ -477,7 +478,7 @@ vbutton * init_buttons(button * buttons, Sint32 numbuttons)
     AllButtonsLock lock(get_allbuttons_mutex());
 #endif
 
-    clear_allbuttons();
+    clear_allbuttons_locked();
 
     // allbuttons_/owned_buttons_ are fixed-capacity arrays. Every current caller
     // passes a small literal count, but clamp to the real capacity so a future
@@ -501,13 +502,28 @@ vbutton * init_buttons(button * buttons, Sint32 numbuttons)
     return og::runtime::current_session->allbuttons_[0];
 }
 
-void clear_allbuttons()
+namespace
+{
+// The caller holds the allbuttons mutex under TESTING (init_buttons does).
+void clear_allbuttons_locked()
 {
     for (size_t i = 0; i < owned_buttons().size(); i++)
     {
         owned_buttons()[i].reset();
         og::runtime::current_session->allbuttons_[i] = nullptr;
     }
+}
+} // namespace
+
+void clear_allbuttons()
+{
+    // Test injector threads read allbuttons[] under this mutex
+    // (tests/test_interact.h); emptying it unlocked raced their reads and
+    // freed a button one of them could be looking at.
+#ifdef TESTING
+    AllButtonsLock lock(get_allbuttons_mutex());
+#endif
+    clear_allbuttons_locked();
 }
 
 void draw_backdrop()
