@@ -218,6 +218,7 @@ set(ALL_INTEGRATION_TEST_SOURCES
     ${CMAKE_SOURCE_DIR}/tests/integration/test_fade_ownership.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_display_x11.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_belt_persistence.cpp
+    ${CMAKE_SOURCE_DIR}/tests/integration/test_abilities_flow.cpp
 )
 
 # NO_DEFAULT_TEST builds the binary but registers no ctest entry for it: the
@@ -796,6 +797,13 @@ og_add_test_group(og_test_matchup FILES
 # generous budget. Both carry the same lane properties below.
 og_add_test_group(og_test_lineup FILES
     test_lineup_ui.cpp
+)
+
+# New Ability Select (docs/ability-select-design.md G.5): the ABILITIES
+# screen's layout pins and its picker_main injector flows. A group of its
+# own from birth, never og_test_menu_ui (whose budget is not to grow).
+og_add_test_group(og_test_abilities FILES
+    test_abilities_flow.cpp
 )
 target_include_directories(og_test_parity PRIVATE
     ${CMAKE_SOURCE_DIR}/tests/parity
@@ -1478,6 +1486,12 @@ set_tests_properties(og_test_matchup PROPERTIES
     TIMEOUT 420
 )
 set_tests_properties(og_test_lineup PROPERTIES
+    RUN_SERIAL TRUE
+    TIMEOUT 420
+)
+# The ABILITIES flows write save0 and drive picker_main like the groups
+# above: serial, with the same heavy-flow budget in every lane.
+set_tests_properties(og_test_abilities PROPERTIES
     RUN_SERIAL TRUE
     TIMEOUT 420
 )

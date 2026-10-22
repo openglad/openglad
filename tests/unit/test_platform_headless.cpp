@@ -1,5 +1,6 @@
 #include <openglad/core/constants.h>
 #include <openglad/gameplay/game_world.h>
+#include <openglad/gameplay/families/belt.h>
 #include <openglad/gameplay/families/family_descriptor.h>
 #include <openglad/gameplay/families/family_registry.h>
 #include <openglad/gameplay/gameplay_context.h>
@@ -2406,6 +2407,143 @@ TEST(PlatformHeadless, text_picker_roster_train_row_opens_seeded_member)
     // company-listing tests stay order-independent.
     (void)remove_user_file("save/" + config.save_name + ".gtl");
     og::data::set_active_company_slot("save0");
+}
+
+// New Ability Select (docs/ability-select-design.md E.2): 'equip N' opens a
+// roster row's abilities page, printed from the shared model; set / swap /
+// clear / default edit a copy and a blank line commits it to the hero and
+// autosaves. Every refusal is in words and changes nothing.
+TEST(PlatformHeadless, text_picker_equip_sets_clears_and_defaults)
+{
+    restore_default_campaigns(); // order-independent: install the packages
+    const std::string saved_pref =
+        cfg.get_setting("effects", "new_ability_select");
+    struct RestorePref {
+        std::string value;
+        ~RestorePref()
+        {
+            cfg.apply_setting("effects", "new_ability_select", value);
+        }
+    } restore_pref{saved_pref};
+    cfg.apply_setting("effects", "new_ability_select", "on");
+
+    const std::string input =
+        "2\n"           // main: continue -> team build (base camp)
+        "1\n"           // base camp: roster
+        "equip 9\n"     //   roster: no such row
+        "equip 2\n"     //   roster: the mage's abilities page
+        "clear 1\n"     //     key 1 empty
+        "default\n"     //     ... and the class default back
+        "clear 3\n"     //     FREEZE TIME to the bench
+        "set s1 1\n"    //     bench 1 (FREEZE TIME) onto SHIFTER+1
+        "swap 1 2\n"    //     keys 1 and 2 trade places
+        "set x 1\n"     //     refused: no key x
+        "set 1 9\n"     //     refused: no bench item 9
+        "swap 1 q\n"    //     refused: no key q
+        "clear 7\n"     //     refused: no key 7
+        "bogus\n"       //     refused: not a command
+        "\n"            //     blank: commit and autosave
+        "\n"            //   roster: blank exits
+        "8\n"           // base camp: back -> main
+        "6\n";          // main: quit
+
+    StdinRedirect stdin_redirect(input);
+    CoutRedirect cout_redirect;
+    StdoutCapture stdout_capture;
+
+    og::ui::TextPickerConfig config;
+    config.team_families = {FAMILY_SOLDIER, FAMILY_MAGE};
+    og::ui::TextPickerError error;
+    og::ui::run_text_picker(config, &error);
+    const std::string out = stdout_capture.restore();
+    EXPECT_EQ(og::ui::TextPickerErrorCode::None, error.code);
+
+    EXPECT_NE(std::string::npos,
+              out.find("'deploy N' | 'train N' | 'equip N' | blank line exits"))
+        << "the roster names the command";
+    EXPECT_NE(std::string::npos, out.find("Invalid roster row.\n"));
+    const std::size_t page = out.find("--- ABILITIES: ");
+    ASSERT_NE(std::string::npos, page) << out;
+    EXPECT_NE(std::string::npos, out.find("(Mage, level ", page))
+        << "the page's subtitle names the class";
+    EXPECT_NE(std::string::npos, out.find(" 1 TELEPORT", page))
+        << "the belt rows are the model's own text";
+    EXPECT_NE(std::string::npos, out.find("S1 TELEPORT MARKER", page));
+    EXPECT_NE(std::string::npos, out.find("Bench: (none)", page));
+    EXPECT_NE(std::string::npos, out.find(" 1 --", page))
+        << "'clear 1' empties key 1";
+    EXPECT_NE(std::string::npos, out.find("Bench 1: FREEZE TIME", page))
+        << "'clear 3' benches key 3's ability";
+    EXPECT_NE(std::string::npos, out.find("Invalid belt slot.\n", page));
+    EXPECT_NE(std::string::npos, out.find("Invalid bench item.\n", page));
+    EXPECT_NE(std::string::npos, out.find("Unrecognized command.\n", page));
+    EXPECT_NE(std::string::npos, out.find("Abilities saved.\n", page));
+
+    // The committed layout, from the autosaved company file: the same edits
+    // through the model, on the class default.
+    const FamilyDescriptor* const fd = get_family_descriptor(FAMILY_MAGE);
+    og::sim::belt::Bytes expected = og::sim::belt::default_bytes();
+    og::ui::ability_clear(expected, 2);
+    const og::ui::AbilityPage cleared =
+        og::ui::ability_page("X", fd, 1, 1, expected);
+    ASSERT_EQ(1u, cleared.bench.size());
+    og::ui::ability_place(expected, fd, 1, 3, *cleared.bench[0].entry);
+    og::ui::ability_swap(expected, fd, 1, 0, 1);
+    SaveData reloaded;
+    ASSERT_TRUE(reloaded.load(config.save_name)) << config.save_name;
+    const guy* mage = nullptr;
+    for (const auto& member : reloaded.team_list)
+        if (member && member->family == FAMILY_MAGE)
+            mage = member.get();
+    ASSERT_NE(nullptr, mage);
+    EXPECT_EQ(expected, mage->belt) << "the commit reached the saved hero";
+    EXPECT_NE(og::sim::belt::default_bytes(), mage->belt);
+
+    (void)remove_user_file("save/" + config.save_name + ".gtl");
+    og::data::set_active_company_slot("save0");
+}
+
+// The page's two doors in words: New Ability Select off refuses, and a
+// blank line with nothing changed writes nothing.
+TEST(PlatformHeadless, text_picker_equip_refuses_with_the_setting_off)
+{
+    restore_default_campaigns();
+    const std::string saved_pref =
+        cfg.get_setting("effects", "new_ability_select");
+    struct RestorePref {
+        std::string value;
+        ~RestorePref()
+        {
+            cfg.apply_setting("effects", "new_ability_select", value);
+        }
+    } restore_pref{saved_pref};
+
+    const auto drive = [](const std::string& input) {
+        StdinRedirect stdin_redirect(input);
+        CoutRedirect cout_redirect;
+        StdoutCapture stdout_capture;
+        og::ui::TextPickerConfig config;
+        config.team_families = {FAMILY_SOLDIER, FAMILY_MAGE};
+        og::ui::TextPickerError error;
+        og::ui::run_text_picker(config, &error);
+        EXPECT_EQ(og::ui::TextPickerErrorCode::None, error.code);
+        (void)remove_user_file("save/" + config.save_name + ".gtl");
+        og::data::set_active_company_slot("save0");
+        return stdout_capture.restore();
+    };
+
+    cfg.apply_setting("effects", "new_ability_select", "off");
+    std::string out = drive("2\n1\nequip 2\n\n8\n6\n");
+    EXPECT_NE(std::string::npos,
+              out.find("Abilities need New Ability Select (Game Settings).\n"))
+        << out;
+    EXPECT_EQ(std::string::npos, out.find("--- ABILITIES: "));
+
+    cfg.apply_setting("effects", "new_ability_select", "on");
+    out = drive("2\n1\nequip 2\n\n\n8\n6\n");
+    EXPECT_NE(std::string::npos, out.find("--- ABILITIES: ")) << out;
+    EXPECT_EQ(std::string::npos, out.find("Abilities saved."))
+        << "nothing changed, nothing saved";
 }
 
 // #207: the SCENARIO submenu's Replay Level prompt on the text client —

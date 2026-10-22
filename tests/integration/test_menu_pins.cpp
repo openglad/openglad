@@ -359,7 +359,7 @@ TEST(MenuEnginePins, company_backups_exact_table)
 // ---------------------------------------------------------------------------
 // Train (k_trainmenu_buttons): the six +/- stat pairs beside the portrait,
 // PREV/NEXT cyclers, RENAME/DETAILS.. header row, team cycler, ACCEPT /
-// VIEW TEAM / BACK bottom row.
+// VIEW TEAM / BACK bottom row, and (New Ability Select) the ABILITIES door.
 // ---------------------------------------------------------------------------
 
 TEST(MenuEnginePins, trainmenu_exact_table)
@@ -412,7 +412,7 @@ TEST(MenuEnginePins, trainmenu_exact_table)
         // one; kTrainMenuChangeTeamIndex (17) anchors the live label write.
         {"accept", "ACCEPT", KEYSTATE_UNKNOWN, 80, 170, 80, 20,
          button_action_id(ButtonAction::EditGuy), -1,
-         MenuNav{.up = 13, .left = 18, .right = 19}},
+         MenuNav{.up = 13, .left = 18, .right = 20}},
         {"rename", "RENAME", KEYSTATE_UNKNOWN, 174, 8, 64, 22,
          button_action_id(ButtonAction::NameGuy), 1,
          MenuNav{.down = 17, .left = 1, .right = 16}},
@@ -427,10 +427,16 @@ TEST(MenuEnginePins, trainmenu_exact_table)
          MenuNav{.up = 12, .right = 14}},
         {"sell", "SELL", KEYSTATE_UNKNOWN, 240, 170, 64, 20,
          button_action_id(ButtonAction::MenuSpecRow), 19,
-         MenuNav{.up = 17, .left = 14}},
+         MenuNav{.up = 17, .left = 20}},
+        // New Ability Select: the ABILITIES door in the ACCEPT..SELL gap
+        // (kTrainMenuAbilitiesIndex 20), dimmed with the setting off.
+        {"abilities", "ABILITIES", KEYSTATE_UNKNOWN, 168, 170, 64, 20,
+         button_action_id(ButtonAction::MenuSpecRow), 20,
+         MenuNav{.up = 17, .left = 14, .right = 19}},
     };
-    static_assert(std::size(kExpected) == 20,
-                  "train table: change_team at kTrainMenuChangeTeamIndex");
+    static_assert(std::size(kExpected) == 21,
+                  "train table: change_team at kTrainMenuChangeTeamIndex, "
+                  "the ABILITIES door at kTrainMenuAbilitiesIndex");
     button* buttons = picker_trainmenu_buttons();
     const int count = picker_trainmenu_button_count();
     check_exact_table(buttons, count, kExpected,

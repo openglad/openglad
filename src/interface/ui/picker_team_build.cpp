@@ -38,6 +38,7 @@
 
 #include <openglad/interface/ui/campaign_picker.h>
 #include <openglad/interface/ui/level_picker.h>
+#include <openglad/interface/ui/abilities_screen.h>
 #include <openglad/interface/ui/picker_lobby_client.h>
 #include <openglad/gameplay/game_client.h>
 #include <openglad/gameplay/gameplay_context.h>
@@ -1932,6 +1933,20 @@ struct TrainEngineState
 
 Sint32 picker_train_menu_engine_on_spec_row(int row, void* /*screen_state*/)
 {
+    // ABILITIES (New Ability Select) opens on the hero TRAIN is showing and
+    // edits its saved belt directly: the belt is not one of the stats the
+    // working copy carries, so ACCEPT and BACK here never touch it.
+    if (row == kTrainMenuAbilitiesIndex)
+    {
+        if (!pks().train_session || pks().train_session->empty())
+            return MENU_OK;
+        const Sint32 result = og::ui::run_abilities_menu(
+            pks().train_session->current_slot());
+        // A host's GO while parked inside propagates; a local BACK redraws
+        // TRAIN around the child that ran.
+        return result == MENU_EXIT ? MENU_EXIT : MENU_REDRAW;
+    }
+
     if (row != kTrainMenuSellIndex || !pks().train_session ||
         pks().train_session->empty())
     {

@@ -9,6 +9,8 @@
 #include <openglad/core/irandom.h>
 #include <openglad/core/util.h>
 #include <openglad/resources/save_data.h>
+#include <openglad/gameplay/families/belt.h>
+#include <openglad/gameplay/families/family_registry.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/script/campaign_hooks.h>
 #include <openglad/resources/campaign_metadata.h>
@@ -35,6 +37,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <cstdio>
 #include <cstdlib>
 #include <format>
@@ -1423,8 +1426,8 @@ private:
 
     // §2.5 command roster (text shape): the deploy flags lead each row;
     // 'deploy N' toggles, 'train N' opens the train flow directly on that
-    // character, a blank line exits (so legacy "1 then Enter" drives still
-    // work).
+    // character, 'equip N' opens its abilities page (New Ability Select), a
+    // blank line exits (so legacy "1 then Enter" drives still work).
     void view_team_roster()
     {
         for (;;) {
@@ -1448,7 +1451,7 @@ private:
             }
             std::printf("DEP %d/%d\n", count_deployed_members(save_data_),
                 static_cast<int>(slots.size()));
-            std::printf("Roster: 'deploy N' | 'train N' | blank line exits: ");
+            std::printf("Roster: 'deploy N' | 'train N' | 'equip N' | blank line exits: ");
             std::fflush(stdout);
 
             std::string line;
@@ -1465,6 +1468,13 @@ private:
                     std::printf("Invalid roster row.\n");
                 else
                     train_team(slots[static_cast<std::size_t>(value - 1)]);
+                continue;
+            }
+            if (std::sscanf(line.c_str(), "equip %d", &value) == 1) {
+                if (value < 1 || static_cast<std::size_t>(value) > slots.size())
+                    std::printf("Invalid roster row.\n");
+                else
+                    equip_team(slots[static_cast<std::size_t>(value - 1)]);
                 continue;
             }
             std::printf("Unrecognized command.\n");
@@ -1520,6 +1530,108 @@ private:
     void autosave_company_after_mutation()
     {
         (void)company_autosave_after_mutation(save_data_, false);
+    }
+
+    // The belt slot a typed key names: "1".."3", "s1".."s3" (either case);
+    // -1 when it names none. The labels are the model's (ability_key_label).
+    static int parse_belt_key(std::string word)
+    {
+        for (char& c : word)
+            c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+        for (int b = 0; b < og::sim::belt::kSlots; ++b) {
+            if (ability_key_label(b) == word)
+                return b;
+        }
+        return -1;
+    }
+
+    // The ABILITIES page (New Ability Select, docs/ability-select-design.md
+    // E.2): the SDL screen's rows from the same model, edited by command on
+    // a copy that a blank line commits to the hero (and autosaves).
+    void equip_team(int slot)
+    {
+        // The SDL door sits on TRAIN, dimmed with the setting off: the same
+        // two answers here, in words.
+        if (const std::optional<std::string> refused = terminal_roster_refusal(
+                save_data_, TerminalRosterCommand::Train, slot)) {
+            std::printf("%s\n", refused->c_str());
+            return;
+        }
+        if (!ability_select_pref(cfg)) {
+            std::printf("Abilities need New Ability Select (Game Settings).\n");
+            return;
+        }
+        guy& hero = *save_data_.team_list[static_cast<std::size_t>(slot)];
+        const FamilyDescriptor* const fd = get_family_descriptor(hero.family);
+        const short ns = save_data_.new_specials;
+        og::sim::belt::Bytes working = hero.belt;
+
+        for (;;) {
+            const AbilityPage page =
+                ability_page(hero.name, fd, hero.level, ns, working);
+            std::printf("\n--- %s (%s) ---\n", page.title.c_str(),
+                page.subtitle.c_str());
+            for (int key = 0; key < 3; ++key) {
+                std::printf(" %-24s  %s\n",
+                    page.belt[static_cast<std::size_t>(key)].text.c_str(),
+                    page.belt[static_cast<std::size_t>(key + 3)].text.c_str());
+            }
+            if (page.bench.empty())
+                std::printf("Bench: (none)\n");
+            for (std::size_t i = 0; i < page.bench.size(); ++i)
+                std::printf("Bench %zu: %s\n", i + 1, page.bench[i].text.c_str());
+            std::printf("Equip: 'set <1|2|3|s1|s2|s3> <bench#>' | 'swap <a> <b>' | "
+                        "'clear <k>' | 'default' | blank commits: ");
+            std::fflush(stdout);
+
+            std::string line;
+            if (!read_line(line) || line.empty())
+                break;
+
+            char first[8] = {};
+            char second[8] = {};
+            int bench_number = 0;
+            if (std::sscanf(line.c_str(), "set %7s %d", first, &bench_number) == 2) {
+                const int belt_slot = parse_belt_key(first);
+                if (belt_slot < 0)
+                    std::printf("Invalid belt slot.\n");
+                else if (bench_number < 1 ||
+                         static_cast<std::size_t>(bench_number) > page.bench.size())
+                    std::printf("Invalid bench item.\n");
+                else
+                    ability_place(working, fd, ns, belt_slot,
+                        *page.bench[static_cast<std::size_t>(bench_number - 1)].entry);
+                continue;
+            }
+            if (std::sscanf(line.c_str(), "swap %7s %7s", first, second) == 2) {
+                const int a = parse_belt_key(first);
+                const int b = parse_belt_key(second);
+                if (a < 0 || b < 0)
+                    std::printf("Invalid belt slot.\n");
+                else
+                    ability_swap(working, fd, ns, a, b);
+                continue;
+            }
+            if (std::sscanf(line.c_str(), "clear %7s", first) == 1) {
+                const int belt_slot = parse_belt_key(first);
+                if (belt_slot < 0)
+                    std::printf("Invalid belt slot.\n");
+                else
+                    ability_clear(working, belt_slot);
+                continue;
+            }
+            if (line == "default") {
+                ability_reset(working);
+                continue;
+            }
+            std::printf("Unrecognized command.\n");
+        }
+
+        if (working == hero.belt)
+            return;
+        hero.belt = working;
+        std::printf("Abilities saved.\n");
+        autosave_company_after_mutation();
     }
 
     void train_team(int seed_slot = -1)
