@@ -1009,6 +1009,7 @@ og_add_unit_group(og_unit_kits FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_gameplay_fixes_bots.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_bot_gates_kits.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_timed_effects.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_belt.cpp
 )
 
 og_add_unit_group(og_unit_script FILES
