@@ -1,0 +1,675 @@
+# New Ability Select
+
+How the game puts each hero's abilities on keys: three SPEC keys, a second
+row of three under SHIFTER, an ABILITIES screen that chooses what sits
+where, a new default keyboard and a CHANGELOG! page that announces it.
+This document describes what shipped, for whoever maintains it next. The
+section letters (A.5, E.1 and so on) are the ones the code comments cite.
+
+The short version:
+
+- With **New Ability Select** on (the default), SPEC 1, SPEC 2 and SPEC 3
+  each cast one ability. Holding SHIFTER gives three more. Six slots, one
+  press each, no cycling.
+- **TRAIN > ABILITIES** puts any ability the hero has on any slot. Every
+  class has a default layout; the Archmage's seventh spell, MIND CONTROL,
+  starts on the bench (the abilities that are not on a key).
+- One new default keyboard for every player (section C.2). A returning
+  player's saved keys move to it once; a key the player chose stays.
+- A **CHANGELOG!** page shows once, the first time the game starts after
+  the update, with a picture of the new keyboard.
+- Turning the setting off (**Game Settings > UI FX > New Ability Select**)
+  brings back the old rules on the new keys: SPEC 1 casts the selected
+  special, SPEC 2 changes it, SHIFTER casts the alternate. The game the
+  server plays is then byte for byte the old one.
+
+The setting changes only what a key press means on this machine. The
+server never reads a layout or the setting, and bots never read either.
+
+---
+
+## A. The model
+
+### A.1 Words
+
+| Word | Meaning |
+|---|---|
+| ability | One castable thing of a class: a special slot's primary, or that slot's alternate. Players see "ability"; prose about mages may say "spell". |
+| entry | How an ability is named in code: `(special slot 1..5, alternate yes/no)`. |
+| catalog | The entries a class has this session, in slot order `(1,0) (1,1) (2,0) ... (5,1)`, keeping only named entries the New Specials setting leaves in play, and dropping an entry whose name repeats an earlier one. Entries the hero's level has not opened stay in the catalog. |
+| belt | Six slots: 0, 1, 2 are SPEC 1/2/3; 3, 4, 5 are SPEC 1/2/3 with SHIFTER held. Each holds one entry or nothing. |
+| bench | Every catalog entry not on the belt. Worked out each time, never stored. |
+| locked | An entry whose special slot the hero's level has not opened. Shown grey with the level it opens at. |
+| hidden | A New Specials entry while that setting is off. Not in the catalog. |
+
+The cleric's TURN UNDEAD is the alternate of both RAISE UNDEAD and RAISE
+GHOST (`packs/core/families/living-05-cleric.lua`; both call the one
+`do_turn_undead`). It is listed once, under RAISE UNDEAD, because the second
+copy would be the same ability with a different price.
+
+The model lives in `include/openglad/gameplay/families/belt.h` and
+`src/gameplay/belt.cpp` (SDL-free, no RNG, no side effects). Every fact
+about a class comes through `og::sim::specials_view`
+(`include/openglad/gameplay/families/specials_view.h`: `special_name`,
+`alternate_name`, `special_in_play`, `alternate_in_play`, `slot_open`,
+`slot_open_level`), so the belt sees what the HUD, the old cycle key and
+the bots see.
+
+### A.2 The byte at rest
+
+Each hero (`guy::belt`, `include/openglad/gameplay/guy.h`) stores six
+bytes, one per belt slot:
+
+| Value | Meaning |
+|---|---|
+| `0x00` | DEFAULT: whatever the class default puts in this slot. An untouched hero is six zeros. |
+| `0xFF` | EMPTY: the player cleared this slot. |
+| bits 0-2 = special slot 1..5, bit 3 = alternate, bits 4-6 zero | That entry. `0x09` is slot 1's alternate. |
+| bit 7 set (`0x80`) | Kept for item abilities (issue #177). Nothing writes it today; it reads as an empty slot. |
+| anything else | Junk (slot 0, 6 or 7 with other bits, or bits 4-6 set). Read as DEFAULT. |
+
+One function applies the table, `normalize_stored`. The save reader runs
+every byte through it, and `resolve` runs it again on whatever it is given,
+so a junk byte from a file and a junk byte from another machine both end up
+as the class default.
+
+### A.3 The byte on the input wire
+
+`PlayerInput::belt_cast` (`include/openglad/gameplay/input_state.h`), one
+byte per local seat:
+
+| Value | Meaning |
+|---|---|
+| `0` | The classic cast: the walker's current slot, with the physical Shift key choosing the alternate. A seat with the setting off always sends 0. |
+| `slot | alt << 3` | Cast this entry. Only means something while Special is pressed or held. |
+| `0x07` | Nothing on this key. The server says NO ABILITY THERE and casts nothing. |
+| any other nonzero value | Malformed. Refused exactly like `0x07`. |
+
+The rule is simple on purpose: 0 is classic, and every other value goes
+through the server's check (C.7).
+
+### A.4 Resolving a layout
+
+`og::sim::belt::resolve(family, level, new_specials, bytes)` turns six
+stored bytes into six slots a player sees. Per slot: normalise the byte;
+DEFAULT takes that slot of the class default (A.5); EMPTY and an item byte
+are empty; an explicit entry is that entry when it is in the catalog, and
+empty otherwise. Then a filled slot is **Locked** below the level its
+special slot opens at, else **Castable**.
+
+Two consequences worth knowing:
+
+- An explicit byte is never rewritten. A thief who put MINE on a key and
+  then turned New Specials off sees that key empty; turning New Specials
+  back on brings MINE back.
+- `resolve` asks the catalog, but the server's check (`validate_cast`)
+  does not. So the cleric's second TURN UNDEAD, `(3, alt)` = `0x0B`, reads
+  as an empty slot on every screen and is never sent by a client, but the
+  server would still cast it from a crafted byte, at RAISE GHOST's price.
+  That is harmless (the player owns that ability anyway) and is how
+  `belt.h` documents the two functions.
+
+A walker with no hero record behind it (a summoned ally or raised skeleton
+reached through Switch Character, a possessed host, a cross-controlled bot)
+uses the class default: `bytes_for(const walker&)` returns
+`w.myguy ? w.myguy->belt : default_bytes()`.
+
+### A.5 The default layout, every core class
+
+The rule is "pair-first", and it depends on the class and the New Specials
+setting only, never on level. Walking the catalog in slot order: a primary
+takes the lowest free key (1, 2, 3); its alternate takes SHIFTER + the same
+key when that is free, else the lowest free SHIFTER key; a primary with no
+plain key left takes the lowest free SHIFTER key; anything left over goes
+on the bench. This keeps the old habit, "Shift is the alternate", true for
+every class it can.
+
+With New Specials on (the default):
+
+| Class | 1 | 2 | 3 | SHIFTER+1 | SHIFTER+2 | SHIFTER+3 | Bench |
+|---|---|---|---|---|---|---|---|
+| Soldier | CHARGE | BOOMERANG | WHIRLWIND | DISARM | – | – | – |
+| Elf | ROCKS | BOUNCING ROCKS | LOTS OF ROCKS | MEGA ROCKS | – | – | – |
+| Archer | FIRE ARROWS | BARRAGE | EXPLODING BOLT | – | – | – | – |
+| Mage | TELEPORT | WARP SPACE | FREEZE TIME | TELEPORT MARKER | ENERGY WAVE | HEARTBURST | – |
+| Skeleton | TUNNEL | DIG IN | BONE WALL | REASSEMBLE | LEGION | BONE STORM | – |
+| Cleric | HEAL | RAISE UNDEAD | RAISE GHOST | MYSTIC MACE | TURN UNDEAD | RESURRECT | – |
+| Elemental | STARBURST | IMMOLATE | METEOR RAIN | REKINDLE | SUPERNOVA | – | – |
+| Faerie | BLINK | GLIMMER | HASTEN | SWAP | WISH | HASTE SELF | – |
+| Slime / Small Slime / Medium Slime | SPLIT / GROW / GROW | – | – | – | – | – | – |
+| Thief | DROP BOMB | CLOAK | TAUNT ENEMY | MINE | POISON CLOUD | CHARM OPPONENT | – |
+| Ghost | SCARE | SIPHON | POSSESS | WAIL | PHASE | – | – |
+| Druid | GROW TREE | SUMMON FAERIE | REVEAL | PROTECTION | – | – | – |
+| Orc | HOWL | EAT CORPSE | – | – | – | – | – |
+| Orc Captain | HOWL | EAT CORPSE | HOOK BLADE | WAR BANNER | WARBAND | KNIFE FAN | – |
+| Barbarian | HURL BOULDER | EXPLODING BOULDER | – | – | – | – | – |
+| Archmage | TELEPORT | HEARTBURST | SUMMON IMAGE | TELEPORT MARKER | CHAIN LIGHTNING | SUMMON ELEMENTAL | MIND CONTROL |
+| Golem, Giant Skeleton, Tower | – | – | – | – | – | – | – |
+
+Two walks spelled out. Mage: TELEPORT takes 1 and its alternate TELEPORT
+MARKER takes SHIFTER+1; WARP SPACE takes 2; FREEZE TIME takes 3; ENERGY
+WAVE finds no plain key left and takes SHIFTER+2; HEARTBURST takes
+SHIFTER+3. Cleric: HEAL 1 with MYSTIC MACE on SHIFTER+1, RAISE UNDEAD 2
+with TURN UNDEAD on SHIFTER+2, RAISE GHOST 3 (its copy of TURN UNDEAD is
+dropped, A.1), RESURRECT SHIFTER+3.
+
+Four alternates do not sit on SHIFTER + their primary's key. The
+skeleton's LEGION, the elemental's SUPERNOVA and the orc captain's WARBAND
+belong to a primary that itself landed on SHIFTER+1 (REASSEMBLE, REKINDLE,
+WAR BANNER), so they take the next free SHIFTER key, SHIFTER+2. The
+fourth is the cleric's dropped second TURN UNDEAD. The class help text
+(`cfg/help_classes.txt`) words its SHIFTER rule so it stays true for all
+four.
+
+With New Specials off the New Specials entries leave the catalog and the
+rule runs again: Skeleton 1 TUNNEL; Elemental 1 STARBURST; Faerie and Orc
+Captain nothing; Ghost 1 SCARE; Thief 1 DROP BOMB, 2 CLOAK, 3 TAUNT ENEMY,
+SHIFTER+1 POISON CLOUD, SHIFTER+3 CHARM OPPONENT (POISON CLOUD moves up
+because MINE is gone). Every other class is as above.
+
+Both tables are pinned for every class by `tests/unit/test_belt.cpp`
+(`default_layout_matches_the_table`, og_unit_kits).
+
+A locked ability still sits on its key. A level-1 mage's HUD already shows
+FREEZE TIME on key 3, greyed with "L7"; it lights up at level 7 with no
+edit. Only the Archmage benches anything by default.
+
+### A.6 Promotion, level-up, New Specials, class packs
+
+- **Promotion** (Mage to Archmage, Orc to Orc Captain) resets the layout to
+  six zeros, the new class's default: `og::ui::promote_guy` calls
+  `reset_belt_for_family_change` (`src/interface/ui/picker_common.cpp`).
+- **Level-up** moves nothing. The results screen
+  (`src/interface/ui/results_screen.cpp`) now announces slot 5 too (the
+  mage's HEARTBURST was never announced before), and adds
+  ` (ON THE BENCH)` when the ability that just opened is not on a key.
+- **New Specials toggled**: explicit bytes naming hidden entries read empty
+  and come back with the setting (A.4). DEFAULTS on the ABILITIES screen
+  writes six zeros.
+- **Class packs**: see `docs/modding/api-reference.md`, "Abilities on keys".
+  A pack may declare up to ten entries (five slots and their alternates);
+  six go on keys and the rest wait on the bench.
+
+### A.7 The accepted drift
+
+After a belt cast, a walker's `current_special` and `shifter_down` mean
+"the entry cast last" rather than "where the cycle key left it". If that
+hero is later handed to the AI, `statistics::hit_response`
+(`src/gameplay/stats.cpp`) answers a hit with that slot, exactly as it
+answers today with whatever the cycle key left. It depends on what the
+player did either way and no parity scenario can see it.
+
+### A.8 The place left for item abilities (#177)
+
+Not built. Every belt cast goes through one server function (C.7) that
+takes an entry. An item ability would add a kind to `Entry`, use the
+reserved `0x80` byte at rest and a reserved value on the wire, and call the
+item's hook instead of `set_current_special`. The HUD, the ABILITIES model
+and the resolver deal only in resolved slots and entries, so they would
+not change shape.
+
+---
+
+## B. The setting
+
+- **Where**: Game Settings > UI FX, fourth row, label `New Ability Select`
+  (`src/interface/ui/menu_screen_specs.cpp`, `kUiFxRows`). The UI FX
+  column was widened to x 100, w 120 so the 18-letter label fits.
+- **cfg**: `effects/new_ability_select`, default `on`
+  (`src/resources/gparser.cpp`, and the shipped `cfg/openglad.yaml`).
+- **Per machine, never on the wire.** It is a UI FX row, not a Gameplay FX
+  rule: every UI FX row is `toggle_effect("effects", key)` and stays on the
+  machine. The server needs no setting (C.6), so a host never flips a
+  joiner's keyboard. A host with it on and a joiner with it off play the
+  same match without trouble: each sends its own kind of input and draws its
+  own HUD.
+- **One accessor**: `og::input::ability_select_on()`
+  (`include/openglad/interface/input.h`), backed by a cached flag on
+  `InputHardwareState` that the controls loader, the UI FX toggle
+  (`ButtonAction::ToggleNewAbilitySelect`, `src/interface/ui/button.cpp`)
+  and RESTORE SETTINGS refresh. The per-frame resolver reads the cache,
+  never cfg.
+- **Off is the old game.** The client sends `belt_cast = 0` with today's
+  bits, the SPEC 2 key sends the old change-special action, and the server
+  takes its unchanged path. The HUD draws the old `SPC:` row, the binding
+  panels show the seven old rows, REMAP asks the old prompts, HELP shows the
+  old table, all on the new keys.
+- **Terminals**: the text client's and the curses client's settings pages
+  ask `New ability select: on/off`, stored in the same cfg key.
+- **Tests** run with the setting on (the shipped default):
+  `tests/integration/integration_main.cpp` sets it and re-sets it before
+  every test. A test that pins the old output takes `ScopedAbilitySelect`
+  (`tests/test_ability_select_scope.h`).
+
+---
+
+## C. Keys and the wire
+
+### C.1 Key slots
+
+`include/openglad/interface/input.h`:
+
+| Slot | Name | Meaning |
+|---|---|---|
+| 9 | `KEY_SPECIAL` | SPEC 1 (setting off: SPECIAL) |
+| 11 | `KEY_SPECIAL_SWITCH` | Reserved, like slot 14: the retired change-special key. Never bound, never shown. |
+| 13 | `KEY_SHIFTER` | SHIFTER: the belt's second row (setting off: the alternate) |
+| 17 | `KEY_SPEC2` | SPEC 2 (setting off: change special) |
+| 18 | `KEY_SPEC3` | SPEC 3 (setting off: unused) |
+
+`NUM_KEYS` is 19. Slots 16, 17 and 18 never travel: the client folds SPEC
+1/2/3 and SHIFTER into the one Special action plus `belt_cast`, so the
+input wire still carries 16 actions. One physical key, one slot, two
+meanings by setting.
+
+### C.2 The default keyboard
+
+One factory table for both settings: `kDefaultFourDirKeys` and
+`kDefaultEightDirKeys` in `src/interface/input/input_state.cpp` (the 2002
+row comments are kept on their rows). The tables from before this change
+stay beside them as `kLegacyFourDirKeys` / `kLegacyEightDirKeys`, used
+only by the migration (C.5) and its tests.
+
+4-direction (the approved picture, "Proposal 1"):
+
+| | P1 | P2 | P3 | P4 |
+|---|---|---|---|---|
+| Up Right Down Left | W D S A | arrows | I L K J | T H G F |
+| Fire | Left Ctrl (web: Z) | Right Shift | Space | V |
+| SPEC 1 / 2 / 3 | 1 2 3 | [ ] \ | 8 9 0 | 4 5 6 |
+| Shifter | Left Shift | / | M | B |
+| Yell | E | Enter | O | Y |
+| Look up (hold) | Q | Right Ctrl | U | R |
+| Switch character | `` ` `` | ' | - | N |
+| Cheat | F5 | F6 | F7 | F8 |
+
+Look up sits left of walk-up and Yell right of it for P1, P3 and P4 (Q W E,
+U I O, R T Y).
+
+8-direction keeps each player's diagonal ring and moves what it collides
+with. Rows that differ from 4-direction:
+
+| | P1 (W E D C X Z A Q) | P2 | P3 (I O L . , M J U) | P4 (T Y H N B V F R) |
+|---|---|---|---|---|
+| Fire | Left Ctrl (web: S) | Right Shift | Space | G |
+| Switch character | `` ` `` | ' | - | = |
+| Yell | S (web: Tab) | Enter | K | 7 |
+| Shifter | Left Shift | / | ; | Left Alt |
+| Look up (hold) | Tab (web: unbound) | Right Ctrl | P | unbound |
+
+No key is bound by two players in either mode, native or web. The sweeps
+in `tests/integration/test_input_keybinds.cpp` and
+`tests/integration/test_input_latch.cpp` check every player, both modes
+and every key, with no exemptions.
+
+**Web player 1** (`include/openglad/interface/web_control_defaults.h`):
+the browser owns Ctrl+W, so web P1's FIRE stays off Ctrl (Z, or S in
+8-direction), and in 8-direction YELL moves to Tab and LOOK UP starts
+unbound. `browser_safe_default_key` substitutes these at the read sites.
+
+**Modifier chords across seats.** With two players on one keyboard, P2's
+look-up (Right Ctrl) held while P1 presses 1/2/3 is Ctrl+1/2/3, a browser
+tab shortcut; P4's 8-direction SHIFTER on Left Alt makes its 4/5/6 Alt+digit.
+The page prevents the default on every key it hands to the game, but
+whether every browser honours that for its own shortcuts is not something
+a test here can prove. The same kind of chord existed before (P2's Right
+Ctrl + P1's old Tab was Ctrl+Tab). Moving web P2's look-up is question
+K.9.
+
+### C.3 Gamepads, touch, terminals
+
+- **Gamepads** (`src/interface/input/input.cpp`): button 0 is SPEC 1,
+  1 FIRE, **2 SPEC 2**, 3 YELL, 4 SHIFTER, 5 SWITCH, **6 SPEC 3** (on pads
+  with seven or more buttons). With the setting off button 2 changes the
+  special, as before.
+- **Touch overlay** (`web/shell.html`, `src/platform/emscripten/web_touch_bridge.cpp`):
+  three buttons, `1`, `2`, `3`, beside FIRE; with the setting off they read
+  `SPC` and `SP+` and the third hides. The ALT button latches SHIFTER, so
+  ALT then 1/2/3 casts the second row.
+- **Text client**: it has no in-game keys. Its belt is the ABILITIES page
+  (E.2).
+- **Curses client**: see `docs/ncurses-client.md`, "New Ability Select".
+
+### C.5 Moving saved keys to the new keyboard
+
+The game writes the whole controls block back to cfg on every start, so
+every returning player has the old factory keys saved. They move once.
+
+- **The marker**: `controls/default_keys_version` (integer;
+  `kDefaultKeysVersion = 1` in `include/openglad/interface/input_mappings.h`).
+  It is not in the shipped cfg and has no default, so a cfg without it is
+  migrated.
+- **The rule**, in one pure function, `og::input::migrate_seat_keys`
+  (`src/interface/input/input_mappings.cpp`), per seat and mode, against
+  the whole old table at once:
+  1. **Classify** every slot. A stored value equal to the old factory value
+     for that seat, mode and slot (or, on web for player 1, the old browser
+     value) is *factory*; anything else is *custom*. A custom old
+     change-special key (slot 11, read straight from cfg because slot 11 is
+     no longer loaded) becomes the seat's custom SPEC 2.
+  2. **Assign** together: every factory slot takes the new factory value;
+     every custom slot keeps its key.
+  3. **Collide**: a factory slot whose new key is already a custom key of
+     this seat, or of any other seat in either mode, is left unbound. The
+     player's choice wins; the binding panel shows `--` and REMAP binds it.
+  4. **Stamp** the marker and save. On web the save is followed by
+     `sync_filesystem()`, so the marker reaches browser storage; a lost
+     marker would move a later deliberate rebind back.
+- Doing it slot by slot does not work, because the old and new tables hand
+  keys around inside one seat (P2's Right Shift moves from SHIFTER to FIRE,
+  P4's B from LOOK UP to SHIFTER, P4's G from YELL to FIRE).
+- Results: a pristine four-player cfg reaches exactly the C.2 tables in
+  both modes. A player who had bound YELL to `2` keeps it and gets SPEC 2
+  unbound. A custom change-special key becomes SPEC 2.
+- **Saved mappings** (the named mapping library): each entry is migrated
+  by the same function. A factory-named entry (WASD, ARROWS, IJKL, TFGH)
+  gets the new defaults for slots it does not store; a CUSTOM entry takes
+  its old slot-11 key as SPEC 2 and leaves SPEC 3 unbound. Mapping names
+  still come from the four movement keys, which did not move.
+- The migration runs inside `load_player_control_settings_from_cfg`
+  (`src/interface/input/input_state.cpp`) before any REMAP or mapping save
+  can write a stale entry. The old web-only migration and its
+  `controls/web_default_keys_version` counter are retired; old cfgs keep
+  that key, unread.
+
+### C.6 How a press reaches the server: the client resolves, the wire carries the entry
+
+The client turns a key press into an entry; the server checks it and
+casts. The server never reads a layout.
+
+- **The resolver**: `og::sim::belt::fold_belt_keys`
+  (`include/openglad/gameplay/belt_input.h`, `src/gameplay/belt_input.cpp`),
+  shared by the SDL client, the curses client and the touch overlay. Rules:
+  1. The SPEC key that goes down becomes the active key. Its entry is read
+     once, at the press, from the belt slot for that key and the SHIFTER
+     state at that moment, and held. Letting go of or pressing SHIFTER
+     during the hold does not change the running ability.
+  2. Pressing another SPEC key during a hold is a fresh press, never a
+     continued hold, so one tap is still one cast (issue #228).
+  3. When the active key is let go while another SPEC key is still down,
+     that key becomes active as a fresh press.
+  4. An empty slot sends `0x07`; a locked slot sends its entry, and the
+     server says which level opens it. Every refusal message comes from one
+     place, the server.
+- **Where it runs** (`src/interface/sdl_context_services.cpp`): with the
+  setting on and the seat driving a hero, the belt is
+  `resolve(...)` over the seat's own hero in the display world
+  (`bytes_for`), and the fold writes Special and `belt_cast` and forces the
+  change-special action off. With the setting on and no hero (menus, a dead
+  seat), the classic fold with `belt_cast = 0`. With the setting off, the
+  old fold: slot 9 is Special, slot 17 is change special.
+- **Every place that merges inputs keeps the byte**: the render-frame latch
+  (`src/platform/sdl/game_loop.cpp`: a nonzero byte replaces the pending
+  one, so a tap released between two ticks keeps its entry), the server's
+  late and exact-tick inputs and the activity check
+  (`src/gameplay/game_server.cpp`), the in-process transport's
+  round-trip check (`src/gameplay/net_transport_inprocess.cpp`), replay
+  frames (`src/gameplay/replay.cpp`), and `InputState::clear()`.
+
+### C.7 The server's check
+
+`sim_arm_belt_entry` (`src/gameplay/sim_input_handler.cpp`), on every tick
+with Special pressed or held and a nonzero `belt_cast`, calls
+`og::sim::belt::validate_cast` with the hero's live class, level and the
+New Specials setting:
+
+- malformed, `0x07`, or an entry that is not named or not in play: says
+  **NO ABILITY THERE** (on the press only), casts nothing;
+- an entry the level has not opened: says **LEVEL N NEEDED**, casts
+  nothing;
+- otherwise: sets the walker's slot and alternate from the entry and casts
+  through the unchanged cast path. The physical Shift key means nothing to
+  a belt cast.
+
+`belt_cast = 0` runs the old code exactly, including the 2002 line that
+sets `shifter_down` from the Shift key. A refused entry never falls back to
+the stale `current_special`. Left untouched on purpose: the hidden-hero
+branch (a dug-in skeleton answers any SPEC key with its pinned slot), the
+cycle block, the frozen branch, `walker::special`, the costs, the bots and
+every pack. A client that lies about its layout can at most cast an ability
+its hero already has open.
+
+### C.10 Versions
+
+Protocol 21 to **22**, world snapshot 17 to **18**, replay 23 to **24**,
+save file (GTL) 20 to **21**, all in one commit. The input payload grows
+from 21 to 25 bytes (one `belt_cast` per local seat). See
+`docs/ARCHITECTURE.md`, the "Protocol v22" paragraph.
+
+### C.11 Parity
+
+The goldens did not move. The files the simulation reads for a cast
+(`walker_specials.cpp`, `specials_view.cpp`, `living.cpp`, `stats.cpp`,
+every pack) are unchanged, and the parity runner never calls
+`sim_process_player_input`, where the new code sits. One mutation pin in
+`tests/parity/scenario_table.h` (`kMut_snapshot_dirty`) moved by six lines
+because the guy-snapshot serializer above it grew; it was re-pointed and
+mirrored to the old game's table with no capture (the ledger entry is in
+`tests/parity/golden/DRIFT_LEDGER.md`).
+
+---
+
+## D. Persistence
+
+- **The hero**: `guy::belt`, six bytes (A.2). The copy constructor copies
+  it; `statscopy` deliberately does not, so TRAIN and renaming never touch a
+  layout.
+- **The save file** (`src/resources/save_data.cpp`, GTL 21): the six bytes
+  live at hero record offset +52..+57, the bytes that used to be reserved
+  zeros. An untouched hero is byte-identical on disk. A version-20 save
+  loads with the class default.
+- **The wire**: `LobbyCharacterData`, `InitialSetupGuyData` and
+  `GuySnapshot` each carry the six bytes, appended last. Because the belt
+  rides every session, none of the places that rebuild a hero from a wire
+  struct can drop it (the picker's lobby client, the network lobby client,
+  the curses client, the dedicated server, the mission roster, the Base
+  Camp display hero, and `collect_initial_setup_guys`).
+- An ABILITIES edit changes the hero's lobby data, so it clears this
+  machine's READY the way training does, and a joiner's edit reaches the
+  host's roster and comes back intact.
+- **Validation**: bytes mean nothing until `resolve` reads them, and the
+  server checks every cast on its own, so a crafted layout gains nothing.
+
+---
+
+## E. Screens
+
+Every label and every edit rule comes from one model in
+`og::ui` (`include/openglad/interface/ui/picker_common.h`:
+`ability_page`, `ability_place`, `ability_swap`, `ability_clear`,
+`ability_reset`, `ability_status_line`, `belt_hud_line`,
+`binding_panel_action_rows`). The SDL screen, the text page and the curses
+page draw from it. Placing an ability that is already on a key swaps the
+two instead (one ability, one slot). A locked ability can be placed.
+
+### E.1 ABILITIES (SDL)
+
+- **Door**: a 21st row on TRAIN, `ABILITIES`, in the gap between ACCEPT
+  and SELL. With the setting off it shows dimmed, so players can still find
+  it (question K.8).
+- **Screen**: `MenuScreenId::Abilities`, `src/interface/ui/abilities_screen.cpp`,
+  layout constants in `src/interface/ui/picker_sdl_defs.h`. Title and
+  "Class, level N" at the top; the six slots in two columns (1 | S1, 2 |
+  S2, 3 | S3); the bench below (eight rows; a ninth or more pages, which
+  only a class pack can reach); a status line; BACK and DEFAULTS.
+- **Use**: click a slot to select it, then click a bench ability to put it
+  there (the old one goes to the bench), or another slot to swap the two.
+  Click the selected slot again, or right-click any slot, to empty it.
+  DEFAULTS puts the class default back. Keyboard: arrows, Enter or FIRE,
+  Esc for BACK.
+- **Commit**: the screen edits a copy and BACK writes it to the hero once:
+  one roster push and one autosave a visit. A hero this machine does not own
+  opens read-only. A host's GO while the screen is open starts the match
+  and drops the edit.
+
+### E.2 Text client
+
+`equip N` on the roster (`src/platform/text/text_picker.cpp`) prints the
+page and takes `set <1|2|3|s1|s2|s3> <bench#>`, `swap <a> <b>`,
+`clear <slot>` and `default`; a blank line saves. It refuses in words when
+the setting is off or the hero cannot train.
+
+### E.3 Curses client
+
+`e` on a roster row (`src/platform/curses/curses_picker_client.cpp`) opens
+the page: pick a slot, then an ability or another slot; `c` empties the
+highlighted slot; Done or Esc saves.
+
+### E.4 The in-game HUD
+
+`src/interface/score_panel.cpp`. With the setting off the old `SPC:` row
+is drawn, unchanged. With it on, every pane shows three rows for the row of
+keys the seat's physical SHIFTER selects: `1 TELEPORT`, `2 WARP SPACE`,
+`3 FREEZE TIME L7`, or `S1 TELEPORT MARKER` and so on while SHIFTER is
+held.
+
+- Four seats (and players 2 and 3 of three) use the compact box: rows cut
+  to 15 characters (`S1 SUMMON ELEME`, question K.7).
+- One or two seats use the full box: rows above the score and XP lines, up
+  to 24 characters in a full-width pane. The frozen-time and seat-timer
+  cells move up to make room.
+- A row never covers the message feed or the radar: in a pane too small it
+  is cut, then shows only its key label (`1`, `S1`), then is left out.
+- Ink: grey when specials are disabled or the slot is locked or empty; red
+  when the hero cannot afford it; normal otherwise.
+
+The curses status line shows `1:TELEPORT 2:WARP SPACE 3:FREEZE TIME`
+(names cut to 10) and the `S1:` row while SHIFTER is held.
+
+### E.5 Binding panels, REMAP, help, DETAILS
+
+- **Binding panels** (the seat's player screen and the PAUSED menu): with
+  the setting on, eight rows (FIRE, SPEC 1, SPEC 2, SPEC 3, SHIFTER, YELL,
+  LOOK UP, CHAR SW); off, the old seven, with the change-special row reading
+  slot 17.
+- **REMAP** (`src/interface/ui/picker.cpp`, `remap_prompts`): on, 12
+  prompts in 4-direction (UP, RIGHT, DOWN, LEFT, FIRE, SPEC 1, SPEC 2,
+  SPEC 3, YELL, SWITCH CHARACTER, SHIFTER, LOOK UP) and 16 in 8-direction;
+  off, the old 11 and 15, with SPECIAL SWITCH binding slot 17.
+- **HELP > Controls** (`src/interface/ui/help.cpp`): a key table for each
+  setting.
+- **HELP > Classes** (`cfg/help_classes.txt`): a paragraph explaining
+  SHIFTER under the belt.
+- **DETAILS** (`og::ui::detail_page`): with the setting on the alternate's
+  line reads `Also: <name>` instead of `Shift: <name>`.
+
+---
+
+## F. The CHANGELOG! page and the keyboard picture
+
+### F.1 Shape
+
+`include/openglad/interface/ui/changelog_screen.h` holds a list of entries,
+each an id, a title, up to five lines of at most 48 characters, and an
+optional picture. Entry 1 is this change:
+
+```
+One key per ability: SPEC 1, 2, 3 cast at once.
+Hold SHIFTER for three more. No more cycling.
+TRAIN > ABILITIES puts any ability on any key.
+New default keys below; REMAP keeps yours.
+Old way: Settings > UI FX > New Ability Select.
+```
+
+with the keyboard picture under it. Later announcements add entries with
+higher ids.
+
+### F.2 When and where
+
+- **Marker**: cfg `ui/changelog_seen`, the highest entry id shown. Not in
+  the shipped cfg, so a new install sees the page once too (question K.3).
+  After the page, the marker is set, cfg is saved and, on web, flushed to
+  browser storage (`sync_filesystem()`), so a reload does not show it again.
+  It is never keyed on the version string, which changes every commit.
+- **Where**: `picker_show_pending_changelog()`, called right after
+  `picker_initialize_shared_menu_state()` in both `picker_main` and the web
+  `picker_init` (`src/interface/ui/picker.cpp`). The marker is the only
+  "already shown" state; there is no per-process flag.
+- **Screen**: `MenuScreenId::Changelog`, engine-hosted, with one OK button
+  (Return, Escape and Space close it too; Backspace on web).
+
+### F.3 Never in the way of a test or a headless run
+
+The demo and every non-interactive session skip it. Under `TESTING` it only
+writes a trace unless a test forces it on with its own flag. The web tests
+set `window.__opengladSkipChangelogForTests` before the page loads; one web
+test boots without it, clicks OK, reloads and checks the page stays away.
+`openglad_text`, `openglad_server` and `openglad_curses` never reach the
+SDL picker.
+
+### F.4 The keyboard picture
+
+- **Files**: `pix/changelog/keyboard_belt.png` (desktop) and
+  `pix/changelog/keyboard_belt_web.png` (web, P1 FIRE on Z): full-colour
+  pictures of the keyboard, drawn at the window's real resolution, not on
+  the 320x200 game canvas, so the key labels stay sharp.
+- **Made by**: `scripts/keyboard_map/make_keyboard_map.py --write` from
+  `scripts/keyboard_map/keyboard_map.txt`, which also writes
+  `keyboard_map.stamp` (SHA-256 of the text and both pictures).
+- **Kept true**: `tests/unit/test_keyboard_map_asset.cpp` builds the text
+  from the live key tables and compares it with `keyboard_map.txt`, and
+  `scripts/check_keyboard_map.sh` checks the text and both pictures against
+  the stamp. A key change without a new picture fails the build.
+- **Drawn by**: `og::io::read_rgba_png` (`src/resources/io/og_file.cpp`)
+  and `video::draw_rgba_scaled`, smooth-scaled into the band under the
+  text. If that drawing cannot happen (a tiny window) the band says
+  `Keyboard picture: see HELP > Controls`. At 640x400 the picture is soft
+  but readable (question K.4); the five lines carry the rule in words
+  either way.
+
+---
+
+## G. Tests
+
+The main ones, by area (each was shown to fail with the behaviour it pins
+broken, then restored):
+
+- Model: `tests/unit/test_belt.cpp` (og_unit_kits): the catalog, both
+  default tables for every class, every byte value, resolve, bench, the
+  server check.
+- Keys: `tests/unit/test_belt_input.cpp` (the fold rules),
+  `tests/integration/test_input_keybinds.cpp` (every cell of both tables,
+  the collision sweeps, the migration through the loader),
+  `tests/unit/test_input_mappings.cpp` (`migrate_seat_keys` against literal
+  tables), `tests/integration/test_input_joystick.cpp`.
+- Wire and server: `tests/unit/test_input_state_net.cpp`,
+  `tests/integration/test_sim_input_handler.cpp`, the game-server and in-process
+  transport tests, `og_test_parity`.
+- Persistence: `tests/integration/test_save_data_versions.cpp`,
+  `tests/integration/test_belt_persistence.cpp`, the lobby and server
+  tests.
+- Screens (G.5): `tests/integration/test_abilities_flow.cpp` (the
+  `og_test_abilities` group), `tests/integration/test_glad_hud.cpp`, the menu
+  layout and options tests, the text and curses client tests,
+  `tests/e2e/wasm-touch.spec.js`, and the CHANGELOG! flow and web test.
+
+## H. Pictures for review
+
+`scripts/media/capture_ability_select.sh` makes every still a reviewer
+needs (the HUD at 1, 2 and 4 seats on and off, a two-seat game with the
+radar, the ABILITIES screen, the UI FX row, the CHANGELOG! page) into
+`build/media/ability-select/`, and checks them at the end with
+`scripts/media/verify_media.py --set ability-select`. Pictures go to the
+openglad/openglad-screenshots repository, never this one.
+
+---
+
+## K. Questions for the maintainer, with the answers taken
+
+1. **Archmage bench**: MIND CONTROL, the last to open (level 10), starts on
+   the bench. The other choice was TELEPORT MARKER.
+2. **One default keyboard for both settings**: with the setting off the
+   old roles sit on the new keys. A second table that brings back Left Alt
+   and Tab when off would split RESET, the mapping library and the
+   migration in two.
+3. **New installs see CHANGELOG! once too.**
+4. **Small windows** show the keyboard picture softer rather than split in
+   halves.
+5. **8-direction odd keys** as in C.2 (P4: FIRE G, SWITCH =, YELL 7,
+   SHIFTER Left Alt, LOOK UP unbound; P1: LOOK UP Tab).
+6. **No ABILITIES from the PAUSED menu** mid-mission: an edit there would
+   need a new client-to-server message. Left for a follow-up.
+7. **The compact HUD cuts names** to 12 letters in four-seat panes rather
+   than adding short names to every pack.
+8. **The TRAIN door shows dimmed with the setting off**, not hidden.
+9. **Web P2's look-up stays on Right Ctrl** (C.2, chords across seats).
