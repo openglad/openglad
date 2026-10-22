@@ -272,7 +272,7 @@ converted to an SDL keycode (`CursesInput::keycode_for_key`) and then matched
 against the player's bound keys in `current_session->player_keys_[0]` — the same
 table the SDL client builds. The app populates it the same way the SDL client
 does, via `load_player_control_settings_from_cfg(cfg)` (which reads
-`controls.player1_mode{4,8}_key{0..15}` and `player1_mode`). Rebinding a key in the
+`controls.player1_mode{4,8}_key{0..18}` and `player1_mode`). Rebinding a key in the
 config — or in the SDL keybind screen — changes the curses controls too. Nothing
 here decides on its own that a given key moves, fires, or quits.
 
@@ -282,13 +282,54 @@ here decides on its own that a given key moves, fires, or quits.
   is down — and two cardinals held at once also move diagonally; in 4-direction
   mode only the four cardinals (`W A S D` by default) are bound. Real key-up/down
   is what makes both modes work — holding two keys is reliable now.
-- All other actions resolve through the same table, and **Ctrl/Alt now work**:
+- All other actions resolve through the same table, and **Ctrl/Shift/Alt work**:
   the protocol reports standalone modifier keys, so the default `Fire = LeftCtrl`
-  and `Special = LeftAlt` are delivered as their own press/release events (no need
-  to rebind them to printable keys).
+  and `Shifter = LeftShift` are delivered as their own press/release events (no
+  need to rebind them to printable keys). The default ability keys are `1`, `2`
+  and `3`; what they do depends on New Ability Select (below).
 - Meta keys are fixed and are *not* player bindings: `Esc`
   (`MetaAction::OpenGameMenu`) opens the in-game menu / withdraws on its **press**
   event. Everything else the level loop reads is fed straight through the bindings.
+
+#### New Ability Select
+
+The curses client follows the same setting as the SDL client (cfg
+`effects/new_ability_select`, on by default; its Options page asks
+`New ability select (on/off)`). See
+[ability-select-design.md](ability-select-design.md) for the design.
+
+- **On**: `1`, `2`, `3` cast the abilities on the followed hero's first row
+  of keys, and SHIFTER + `1`/`2`/`3` the second row. `CursesInput::sample`
+  takes the followed hero's resolved layout (`followed_belt` over the mirror
+  world, `curses_game_runtime.cpp`) and runs the same key fold as the SDL
+  client (`og::sim::belt::fold_belt_keys`), so the server receives the same
+  ability byte. While a spectating seat's camera follows another fighter
+  ("following NAME") there is no layout, and `1` is the classic Special
+  press with no ability byte, as in an SDL menu.
+- **Off**: `1` casts the selected special, `2` changes it, SHIFTER is the
+  alternate, as before.
+- **Status line**: with the setting on it shows `1:TELEPORT 2:WARP SPACE
+  3:FREEZE TIME` (names cut to 10 letters) instead of `Sp:`, and the `S1:`
+  row while SHIFTER is held.
+- **ABILITIES page**: `e` on a Base Camp roster row (E.3 in the design).
+
+Where the curses client differs from the SDL client, on purpose or because
+a terminal cannot do better:
+
+- **SHIFTER alone needs a terminal that reports modifier keys.** Most
+  terminals send nothing for a bare Shift press, so the HUD's second row and
+  a held SHIFTER only work where the kitty keyboard protocol reports it.
+  Shift + digit still arrives as a digit with the Shift flag on kitty, so
+  SHIFTER + `1`/`2`/`3` casts there.
+- **The key list sits after the score** on the status line, not in the old
+  `Sp:` place.
+- **A locked ability shows no level.** The SDL HUD adds ` L7` to an ability
+  the hero's level has not opened; curses shows only the name (the server
+  still refuses it and says which level opens it).
+- **The ABILITIES page refuses** when the setting is off or the hero
+  cannot train, in words, where the SDL door is dimmed.
+- **Esc on the ABILITIES page saves**, like the SDL BACK; the status line
+  shows only while a slot is picked.
 
 Menu navigation keys (in `CursesPickerClient`) are separate TUI navigation, not
 gameplay bindings: up/down or `j/k` to move, `enter`/`space` to select,
