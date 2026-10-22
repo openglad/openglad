@@ -16,6 +16,7 @@
 #include <openglad/core/constants.h>
 #include <openglad/core/order.h>
 #include <openglad/core/tower_constants.h>
+#include <openglad/gameplay/families/belt.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/input_state.h>
@@ -31,6 +32,7 @@
 #include <openglad/server/match_stage.h>
 
 #include "curses_mount_restore.h"
+#include "test_ability_select_scope.h"
 #include "test_match_seed.h"
 
 #include <filesystem>
@@ -1108,4 +1110,134 @@ TEST(CursesGameRuntimeVerdict, mission_verdict_line_appends_the_mounted_mode_sum
         << "the Gate is not a floor; the tower adds nothing there";
 
     EXPECT_TRUE(mount_restore.restore());
+}
+
+namespace {
+
+// Forwards to a real local session and keeps every InputState the level loop
+// sends, so a test can read what the loop's sampler produced.
+class RecordingSession : public CursesGameSession
+{
+public:
+    explicit RecordingSession(std::unique_ptr<CursesGameSession> inner)
+        : inner_(std::move(inner))
+    {
+    }
+    std::vector<InputState> sent;
+
+    void send_input(const InputState& input) override
+    {
+        sent.push_back(input);
+        inner_->send_input(input);
+    }
+    void advance() override { inner_->advance(); }
+    GameWorld& mirror_world() override { return inner_->mirror_world(); }
+    std::uint32_t followed_entity_id() const override
+    {
+        return inner_->followed_entity_id();
+    }
+    bool follow_engaged() const override { return inner_->follow_engaged(); }
+    std::uint32_t next_input_tick() const override
+    {
+        return inner_->next_input_tick();
+    }
+    bool ended() const override { return inner_->ended(); }
+    int ending() const override { return inner_->ending(); }
+    int next_level() const override { return inner_->next_level(); }
+    void request_abort() override { inner_->request_abort(); }
+    std::vector<std::string> drain_messages() override
+    {
+        return inner_->drain_messages();
+    }
+
+private:
+    std::unique_ptr<CursesGameSession> inner_;
+};
+
+// The curses player-1 belt keys: SPEC 1/2/3 on 1/2/3, SHIFTER on LeftShift.
+CursesInput belt_keys_input()
+{
+    int keys[NUM_KEYS] = {};
+    keys[KEY_SPECIAL] = KEYCODE_1;
+    keys[KEY_SPEC2] = KEYCODE_2;
+    keys[KEY_SPEC3] = KEYCODE_3;
+    keys[KEY_SHIFTER] = KEYCODE_LSHIFT;
+    return CursesInput(keys);
+}
+
+} // namespace
+
+// New Ability Select through the curses level loop: the loop samples the SPEC
+// keys against the followed walker's belt (followed_belt), so a SPEC 2 press
+// sends the guy's slot-2 entry as the belt byte. Without the belt the setting-on
+// fold treats SPEC 2 as inert and the byte stays 0.
+TEST(CursesGameRuntimeLocal, spec2_press_in_the_level_loop_sends_the_belt_entry)
+{
+    ScopedAbilitySelect on(true);
+    SaveData save;
+    init_test_save(save);
+    for (auto& member : save.team_list) {
+        if (member) {
+            member->upgrade_to_level(13);
+            member->belt = {0x00, og::sim::belt::encode({3, false}),
+                            og::sim::belt::kEmptyByte, 0x00, 0x0A, 0x05};
+        }
+    }
+    std::string err;
+    auto inner = make_local_session(save, 1, &err);
+    ASSERT_NE(inner, nullptr) << err;
+    RecordingSession session(std::move(inner));
+
+    HeadlessTerminal term(30, 80);
+    FakeClock clock;
+    CursesInput input = belt_keys_input();
+    CursesRenderer renderer;
+    LevelLoopOptions opt;
+    opt.max_frames = 3;
+    opt.no_pacing = true;
+    opt.render = false;
+    run_level_loop(session, term, clock, input, renderer, opt);
+    ASSERT_NE(0u, session.followed_entity_id()) << "the soldier is followed";
+
+    session.sent.clear();
+    term.push_char(U'2');
+    run_level_loop(session, term, clock, input, renderer, opt);
+    ASSERT_FALSE(session.sent.empty());
+    EXPECT_EQ(og::sim::belt::encode({3, false}), session.sent.front().players[0].belt_cast)
+        << "SPEC 2 must send the belt's slot-2 entry (WHIRLWIND, slot 3)";
+}
+
+// Holding SHIFTER in the level loop shows the SHIFTER row of the key list
+// (S1..S3) on the status line; released, the plain row (1..3).
+TEST(CursesGameRuntimeLocal, held_shifter_in_the_level_loop_shows_the_shift_row)
+{
+    ScopedAbilitySelect on(true);
+    SaveData save;
+    init_test_save(save);
+    std::string err;
+    auto session = make_local_session(save, 1, &err);
+    ASSERT_NE(session, nullptr) << err;
+
+    HeadlessTerminal term(30, 140);
+    FakeClock clock;
+    CursesInput input = belt_keys_input();
+    CursesRenderer renderer;
+    LevelLoopOptions opt;
+    opt.max_frames = 3;
+    opt.no_pacing = true;
+    opt.render = true;
+    run_level_loop(*session, term, clock, input, renderer, opt);
+    EXPECT_NE(term.text_row(1).find("1:CHARGE"), std::string::npos)
+        << "the plain row first; got: " << term.text_row(1);
+    EXPECT_EQ(term.text_row(1).find("S1:"), std::string::npos) << term.text_row(1);
+
+    term.push_special(KeyCode::LeftShift);
+    run_level_loop(*session, term, clock, input, renderer, opt);
+    EXPECT_NE(term.text_row(1).find("S1:"), std::string::npos)
+        << "SHIFTER held shows the S1..S3 row; got: " << term.text_row(1);
+
+    term.push_special_release(KeyCode::LeftShift);
+    run_level_loop(*session, term, clock, input, renderer, opt);
+    EXPECT_EQ(term.text_row(1).find("S1:"), std::string::npos)
+        << "released, the plain row again; got: " << term.text_row(1);
 }
