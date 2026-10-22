@@ -284,9 +284,9 @@ TEST(Belt, default_layout_matches_the_table)
     }
 }
 
-// Decision 9: the default never reads a level. Proof it can fail: making
-// default_layout skip entries resolve() would lock (via a level argument)
-// left a level-1 mage with TELEPORT alone.
+// Decision 9: the default never reads a level. Proof it can fail: letting
+// resolve() take a DEFAULT slot only when the level opens it left a level-1
+// mage with TELEPORT and TELEPORT MARKER alone.
 TEST(Belt, default_layout_ignores_level)
 {
     const FamilyDescriptor* mage = fd_of(FAMILY_MAGE);
@@ -528,9 +528,8 @@ TEST(Belt, bench_is_catalog_minus_belt)
     EXPECT_EQ((Entry{2, false}), after[1]);  // HEARTBURST
 }
 
-// The server's gate. Proof it can fail: checking slot_open before the name
-// turned an unnamed locked slot (the archer's slot 5) into "Locked, level
-// 13" instead of NothingThere.
+// The server's gate. Proof it can fail: dropping the name check let the
+// archer's unnamed slot 5 cast at level 99 (and read "Locked" at level 1).
 TEST(Belt, validate_cast_refuses_locked_unnamed_hidden_and_sentinel)
 {
     const FamilyDescriptor* mage = fd_of(FAMILY_MAGE);
