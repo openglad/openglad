@@ -1,6 +1,5 @@
-# EXPLODING BOLT (archer): one bolt flying right, drawn after farrow.png frame 2 (red fletching, wood shaft), its head bursting in boom1.png's order: yellow rim and spikes, orange core, dark red edge as on HEARTBURST
+# EXPLODING BOLT (archer): one bolt flying right, drawn after farrow.png frame 2 (a red feather above and below the tail, wood shaft), its head bursting in boom1.png's order: yellow rim and spikes, orange core, dark red edge as on HEARTBURST
 f = 42
-F = 45
 s = 138
 r = 46
 Y = 239
@@ -15,9 +14,9 @@ R = 233
 ........y..Y..y.
 .........rYyYr..
 ........rYyOyYr.
-ff.....rYyOqOyYr
+f......rYyOqOyYr
 .sssssrYyOqRqOyY
-FF.....rYyOqOyYr
+f......rYyOqOyYr
 ........rYyOyYr.
 .........rYyYr..
 ........y..Y..y.

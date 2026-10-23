@@ -11,19 +11,19 @@ x = 20
 p = 31
 q = 28
 
-..oo............
-.okao.......oWw.
-okabcop.....oWw.
-oabcdo..p...oxx.
-.ocdo.......oxw.
-..oo....oo..oxw.
-.......okao.oxx.
-......okabcooWw.
-......oabcdooWw.
-.......ocdo.oxx.
-..oo....oo..oxw.
-.okao.......oxw.
-okabco..q...oxx.
-oabcdoq.....oWw.
-.ocdo.......oWw.
-..oo............
+................
+...oo........oWw
+..okao.......oWw
+.okabcop.....oxx
+.oabcdo..p...oxw
+..ocdo...oo..oxw
+...oo...okao.oxx
+.......okabcooWw
+.......oabcdooWw
+...oo...ocdo.oxx
+..okao...oo..oxw
+.okabco..q...oxw
+.oabcdoq.....oxx
+..ocdo.......oWw
+...oo........oWw
+................
