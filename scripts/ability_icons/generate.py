@@ -510,7 +510,14 @@ def sheet_contact(grids):
     """Every icon at 4x on mid grey with its name and structure line."""
     per_col = 18
     cols = (len(grids) + per_col - 1) // per_col
-    col_w = 4 + 64 + 8 + 50 * 12
+    # Wide enough for the longest text row at 2x (12 px a glyph): a grid
+    # that touches all four edges says "(EDGE: OK)" and runs past 50.
+    longest = 50
+    for grid in grids:
+        parts = structure(grid.pixels, grid.edge_ok)[0].split("  ")
+        longest = max(longest, len(grid.name), len("  ".join(parts[:2])),
+                      len("  ".join(parts[2:])))
+    col_w = 4 + 64 + 8 + longest * 12 + 12
     row_h = 72
     img = RGB(cols * col_w + 4, min(per_col, len(grids)) * row_h + 8)
     for i, grid in enumerate(grids):
@@ -549,7 +556,14 @@ def sheet_cells(grids, grass):
         x = (i // per_col) * col_w
         y = 4 + (i % per_col) * row_h
         ready, grey = grid.pixels, locked(grid.pixels)
-        img.text(x + 2, y + 7, grid.name[:10], 16)
+        # A long name goes on two lines at its first underscore, so the two
+        # EXPLODING rows (and every other cut name) stay told apart.
+        head, _, tail = grid.name.partition("_")
+        if len(grid.name) <= 10 or not tail:
+            img.text(x + 2, y + 7, grid.name[:10], 16)
+        else:
+            img.text(x + 2, y + 2, head[:10], 16)
+            img.text(x + 2, y + 11, tail.replace("_", " ")[:10], 16)
         img.tile(x + 64, y - 2, x + 64 + 43, y + 21, grass)
         draw_slot(img, x + 66, y, ready)
         draw_slot(img, x + 66 + 20, y, grey)
