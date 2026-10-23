@@ -10915,12 +10915,15 @@ TEST(GameLoop, mirror_follows_a_possession)
     EXPECT_TRUE(mirror_ghost->hidden()) << "the ghost rides unseen";
     EXPECT_EQ(orc_id, mirror_ghost->possess_link());
 
-    // New Ability Select on (the shipped default): the belt row reads the
-    // body's own class default (a possessed host has no guy of its own).
+    // New Ability Select on (the shipped default): the hotbar's key 1 slot
+    // is the body's own class default (a possessed host has no guy of its
+    // own): the orc's HOWL, slot 1, with HOWL's own icon.
     trace_clear();
     new_score_panel(s, 1);
-    EXPECT_TRUE(trace_contains("hud", "belt_row key=1 shift=0 text=1 HOWL "))
-        << "the HUD names the body's own special on key 1";
+    EXPECT_TRUE(trace_contains(
+        "hud", "belt_cell key=1 shift=0 slot=1 alt=0 icon=icons/howl.png "
+               "state=castable"))
+        << "the HUD shows the body's own special on key 1";
     {
         ScopedAbilitySelect off;  // the classic SPC row
         trace_clear();
