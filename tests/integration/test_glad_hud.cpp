@@ -3727,6 +3727,11 @@ std::unique_ptr<walker> make_belt_hero(unsigned char family, short level,
     return w;
 }
 
+// score_panel.cpp's dim inks for a key that cannot cast: dark grey in the
+// box, light grey over a black shadow with no box.
+constexpr unsigned char kBeltDimInkBox = 17;
+constexpr unsigned char kBeltDimInkPlain = 27;
+
 std::string belt_row_trace(int key, bool shift, const std::string& text,
                            unsigned char ink)
 {
@@ -3944,12 +3949,13 @@ TEST_F(GladHud, belt_rows_compact_four_seats_three_rows_fifteen_glyphs)
         << "a compact panel's box keeps its classic top, so the cell does";
 }
 
-// Ink, today's three-state vocabulary: GREY for a key whose ability the
-// level has not opened (it shows " L<level>"), an empty key and a walker
-// whose specials are switched off; RED for one the MP cannot pay; the
-// panel's text colour for one it can.
+// Ink, today's three-state vocabulary: the dim ink (the boxed look's dark
+// grey, palette 17; kBelt* above) for a key whose ability the level has not
+// opened (it shows " L<level>"), an empty key and a walker whose specials
+// are switched off; RED for one the MP cannot pay; the panel's text colour
+// for one it can.
 //
-// RED: the Locked test dropped from the GREY arm (key 3 reads DARK_BLUE);
+// RED: the Locked test dropped from the dim arm (key 3 reads DARK_BLUE);
 // the cast_cost comparison flipped (castable rows read RED).
 TEST_F(GladHud, belt_rows_ink_grey_locked_red_short_normal_affordable)
 {
@@ -3961,10 +3967,10 @@ TEST_F(GladHud, belt_rows_ink_grey_locked_red_short_normal_affordable)
     EXPECT_TRUE(trace_contains(
         "hud", belt_row_trace(1, false, "1 TELEPORT", DARK_BLUE).c_str()));
     EXPECT_TRUE(trace_contains(
-        "hud", belt_row_trace(2, false, "2 WARP SPACE L4", GREY).c_str()))
-        << "a key whose ability opens later is grey with its level";
+        "hud", belt_row_trace(2, false, "2 WARP SPACE L4", kBeltDimInkBox).c_str()))
+        << "a key whose ability opens later is dim with its level";
     EXPECT_TRUE(trace_contains(
-        "hud", belt_row_trace(3, false, "3 FREEZE TIME L7", GREY).c_str()));
+        "hud", belt_row_trace(3, false, "3 FREEZE TIME L7", kBeltDimInkBox).c_str()));
 
     hero.stats()->set_magicpoints(0.0f);
     scene.draw();
@@ -3972,15 +3978,15 @@ TEST_F(GladHud, belt_rows_ink_grey_locked_red_short_normal_affordable)
         "hud", belt_row_trace(1, false, "1 TELEPORT", RED).c_str()))
         << "too little MP reads red";
     EXPECT_TRUE(trace_contains(
-        "hud", belt_row_trace(2, false, "2 WARP SPACE L4", GREY).c_str()))
-        << "locked stays grey, MP or not";
+        "hud", belt_row_trace(2, false, "2 WARP SPACE L4", kBeltDimInkBox).c_str()))
+        << "locked stays dim, MP or not";
 
     hero.stats()->set_magicpoints(1000.0f);
     hero.set_specials_disabled(true);
     scene.draw();
     EXPECT_TRUE(trace_contains(
-        "hud", belt_row_trace(1, false, "1 TELEPORT", GREY).c_str()))
-        << "a walker that never casts reads grey";
+        "hud", belt_row_trace(1, false, "1 TELEPORT", kBeltDimInkBox).c_str()))
+        << "a walker that never casts reads dim";
     hero.set_specials_disabled(false);
 
     // An empty key: a soldier has nothing on SHIFTER + 2.
@@ -3988,18 +3994,115 @@ TEST_F(GladHud, belt_rows_ink_grey_locked_red_short_normal_affordable)
     ShifterHeld shift(0);
     scene.draw();
     EXPECT_TRUE(trace_contains(
-        "hud", belt_row_trace(2, true, "S2 --", GREY).c_str()));
+        "hud", belt_row_trace(2, true, "S2 --", kBeltDimInkBox).c_str()));
 
     // A mirrored family byte with no descriptor (a junk snapshot value, the
     // classic test's sanitize case) names nothing: every key reads "--".
     hero.set_family(static_cast<char>(127));
     scene.draw();
     EXPECT_TRUE(trace_contains(
-        "hud", belt_row_trace(1, true, "S1 --", GREY).c_str()));
+        "hud", belt_row_trace(1, true, "S1 --", kBeltDimInkBox).c_str()));
     hero.set_family(static_cast<char>(-3));
     scene.draw();
     EXPECT_TRUE(trace_contains(
-        "hud", belt_row_trace(3, true, "S3 --", GREY).c_str()));
+        "hud", belt_row_trace(3, true, "S3 --", kBeltDimInkBox).c_str()));
+}
+
+namespace {
+
+// 8-bit luminance of a palette index (registers hold 0..63; the renderer
+// multiplies by 4).
+int palette_luma(unsigned char index)
+{
+    int r = 0, g = 0, b = 0;
+    query_palette_reg(index, &r, &g, &b);
+    return (299 * r * 4 + 587 * g * 4 + 114 * b * 4) / 1000;
+}
+
+// Pixels in [x0, x1) x [y0, y1) whose luminance is at least `step` away from
+// the `background` index's: the strokes a player can tell from what is
+// behind them.
+int contrast_pixels(const std::array<unsigned char, 64000>& frame,
+                    unsigned char background, int x0, int y0, int x1, int y1,
+                    int step = 48)
+{
+    const int bg = palette_luma(background);
+    int count = 0;
+    for (int y = std::max(0, y0); y < std::min(200, y1); ++y)
+        for (int x = std::max(0, x0); x < std::min(320, x1); ++x)
+            count += std::abs(palette_luma(frame[static_cast<std::size_t>(
+                                  y * 320 + x)]) - bg) >= step;
+    return count;
+}
+
+} // namespace
+
+// A key that cannot cast reads dim but LEGIBLE in both looks. The legacy GREY
+// ramp drew 132/156/180 strokes: on the OVERLAY box (164) and on a stone
+// floor (156) not one stroke was 48 luminance away, so "3 FREEZE TIME L7"
+// and an empty "S2 --" vanished. Boxed: a dark grey ink. No box (the shipped
+// look): a light grey ink over a 1-px black shadow, legible on grey
+// stone and on black ground alike; the ready row keeps its own ink, no
+// shadow.
+//
+// RED (both planted, both red): plan_belt_rows' dim ink back to GREY for
+// both looks (box 141 -> 0 strokes, stone 192 -> 113, under 100 / 140);
+// the no-box shadow dropped (stone 192 -> 79: the light ramp's 180 stroke
+// is only 24 from the floor's 156).
+TEST_F(GladHud, belt_rows_dim_ink_is_legible_on_the_box_and_on_stone)
+{
+    ScopedAbilitySelect on(true);
+    BeltHudScene scene(1, FAMILY_MAGE, 1);
+    screen* const s = scene.s;
+    const viewscreen& v = *s->viewob[0];
+    const int lm = v.xloc;
+    const int bm = v.endy;
+    const int row3 = bm - 24;  // full panel: rows at bm-40/-32/-24
+    const int text_right = lm + 2 + 16 * 6;  // "3 FREEZE TIME L7"
+
+    // Boxed: the row sits in the OVERLAY box.
+    auto frame = scene.draw();
+    EXPECT_TRUE(trace_contains(
+        "hud", belt_row_trace(3, false, "3 FREEZE TIME L7", kBeltDimInkBox)
+                   .c_str()));
+    EXPECT_TRUE(trace_contains("hud", "text=3 FREEZE TIME L7 ink=17 shadow=0"))
+        << "the box needs no shadow";
+    const unsigned char box_fill =
+        frame[static_cast<std::size_t>((row3 - 1) * 320 + lm + 4)];
+    ASSERT_NE(0, static_cast<int>(box_fill)) << "the box is drawn behind it";
+    EXPECT_GE(contrast_pixels(frame, box_fill, lm + 2, row3, text_right,
+                              row3 + 6),
+              100)
+        << "the locked row's strokes stand off the box's grey";
+
+    // No box, on a stone-grey floor (palette 25: 156) and on black.
+    s->viewob[0]->prefs[PREF_OVERLAY] = PREF_OVERLAY_OFF;
+    constexpr unsigned char kStone = 25;
+    const auto draw_on = [&](unsigned char floor) {
+        trace_clear();
+        s->clearbuffer();
+        s->draw_box(v.xloc, v.yloc, v.endx - 1, v.endy - 1, floor, 1, 1);
+        EXPECT_EQ(1, (int)new_score_panel(s, 1));
+        return capture_rendered_frame(*s);
+    };
+    frame = draw_on(kStone);
+    EXPECT_TRUE(trace_contains(
+        "hud", belt_row_trace(3, false, "3 FREEZE TIME L7", kBeltDimInkPlain)
+                   .c_str()));
+    EXPECT_TRUE(trace_contains("hud", "text=3 FREEZE TIME L7 ink=27 shadow=1"));
+    EXPECT_TRUE(trace_contains("hud", "text=1 TELEPORT ink=88 shadow=0"))
+        << "a ready row keeps its yellow, no shadow";
+    ASSERT_EQ(static_cast<int>(kStone),
+              static_cast<int>(frame[static_cast<std::size_t>(
+                  (row3 - 4) * 320 + lm + 200)]))
+        << "the floor is under the rows";
+    EXPECT_GE(contrast_pixels(frame, kStone, lm, row3, text_right, row3 + 8),
+              140)
+        << "the locked row reads on a stone floor";
+
+    frame = draw_on(0);
+    EXPECT_GE(contrast_pixels(frame, 0, lm, row3, text_right, row3 + 8), 40)
+        << "and on black ground";
 }
 
 // The layer is the seat's PHYSICAL SHIFTER, not the walker's mirrored

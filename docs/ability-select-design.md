@@ -541,7 +541,10 @@ held.
   pane narrower than 164 pixels, whether the radar is on or off, so turning
   the radar on never moves it.
 - Ink: grey when specials are disabled or the slot is locked or empty; red
-  when the hero cannot afford it; normal otherwise.
+  when the hero cannot afford it; normal otherwise. The grey must read on
+  grey: inside the box it is a dark grey; with no box (the default look) it
+  is a light grey with a 1-pixel black shadow, so a locked row stays legible
+  on stone floors.
 
 The curses status line shows `1:TELEPORT 2:WARP SPACE 3:FREEZE TIME`
 (names cut to 10) and the `S1:` row while SHIFTER is held.

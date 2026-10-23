@@ -755,7 +755,22 @@ struct BeltHudRow
     Sint32 y = 0;
     std::string text;     // "" when the row yields
     unsigned char ink = 0;
+    bool shadow = false;  // a 1-px black shadow under the glyphs (dim, no box)
 };
+
+// A key that cannot cast (locked, empty, specials switched off) reads dim,
+// apart from a ready key, yet stays legible on whatever is behind it. The
+// legacy GREY ramp (palette 23..30, 132..216) is the box's own grey (164)
+// and the stone floors' greys, so it vanished on both. In the box the dim
+// ink is a dark grey ramp (palette 17: 60/84/108 at the glyph's shades),
+// grey against the ready rows' blue; with no box (the shipped OVERLAY-off
+// look) it is a light grey ramp (palette 27: 180/204/228) over a 1-px
+// black silhouette down-left (write_xy_flat: one ink, no ramp), the
+// classic write_xy_shadow offset, so the row reads on stone, grass and
+// dark ground alike.
+inline constexpr unsigned char kBeltHudDimInkBox = 17;
+inline constexpr unsigned char kBeltHudDimInkPlain = 27;
+inline constexpr unsigned char kBeltHudShadowInk = PURE_BLACK;
 
 inline constexpr int kBeltHudChars = 15;
 inline constexpr int kBeltHudWideChars = 24;
@@ -773,7 +788,8 @@ static std::array<BeltHudRow, 3> plan_belt_rows(screen* s, walker& control,
                                                 int players, bool compact,
                                                 Sint32 lm, Sint32 tm,
                                                 Sint32 rm, Sint32 bm,
-                                                unsigned char text_color)
+                                                unsigned char text_color,
+                                                bool boxed)
 {
     namespace belt = og::sim::belt;
     const FamilyDescriptor* const fd = get_family_descriptor(
@@ -815,7 +831,10 @@ static std::array<BeltHudRow, 3> plan_belt_rows(screen* s, walker& control,
         }
         if (control.specials_disabled() ||
             slot.state != belt::SlotState::Castable || !slot.entry)
-            row.ink = static_cast<unsigned char>(GREY);
+        {
+            row.ink = boxed ? kBeltHudDimInkBox : kBeltHudDimInkPlain;
+            row.shadow = !boxed;
+        }
         else if (control.stats()->magicpoints() >=
                  og::sim::cast_cost(control, slot.entry->slot,
                                     slot.entry->alt))
@@ -1123,7 +1142,8 @@ short new_score_panel(screen* s, short /*do_it*/)
             if (belt_hud)
                 belt_rows = plan_belt_rows(s, *control, players,
                                            compact_score_panel, lm, tm, rm,
-                                           bm, static_cast<unsigned char>(text_color));
+                                           bm, static_cast<unsigned char>(text_color),
+                                           draw_button != 0);
             // The rows that drew, top and bottom (no rows: 0/0).
             Sint32 belt_top = 0;
             Sint32 belt_bottom = 0;
@@ -1227,10 +1247,14 @@ short new_score_panel(screen* s, short /*do_it*/)
                 {
                     if (row.text.empty())
                         continue;
+                    if (row.shadow)
+                        mytext.write_xy_flat(lm+1, row.y+1, row.text,
+                                             kBeltHudShadowInk);
                     mytext.write_xy(lm+2, row.y, row.text.c_str(), row.ink,
                                     static_cast<short>(1));
-                    TRACE("hud", "belt_row key=%d shift=%d text=%s ink=%d",
-                          row.key, row.shift ? 1 : 0, row.text.c_str(), static_cast<int>(row.ink));
+                    TRACE("hud", "belt_row key=%d shift=%d text=%s ink=%d shadow=%d",
+                          row.key, row.shift ? 1 : 0, row.text.c_str(), static_cast<int>(row.ink),
+                          row.shadow ? 1 : 0);
                 }
             }
             else
