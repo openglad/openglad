@@ -1,4 +1,4 @@
-# RAISE UNDEAD (cleric): the half-risen skeleton (pix/skeleton.png frame 24, the frame the game plays as a skeleton grows out of a stain, placed at 0,0), its black ground line replaced by the red blood stain (pix/stain.png frame 0, flattened; 46 merged into 45)
+# RAISE UNDEAD (cleric): the half-risen skeleton (pix/skeleton.png frame 24, the frame the game plays as a skeleton grows out of a stain) verbatim at 0,0 with its black ground, the red blood stain (pix/stain.png frame 0, flattened to a two-row pool, 46 merged into 45) under it
 # legend: one character = one palette index (pix/openglad.gpl)
 k = 31
 a = 30
@@ -26,10 +26,10 @@ Q = 47
 ..kbgbhdhigbk...
 .kbdgcdhijgdbk..
 .bdlmmfijmmldk..
-.edQemnnnmePekg.
-.ePgeQePmeQgePe.
-..eQ.PemeQPe.Q..
-....Q.e..P......
+.ldllmnnnml.lkl.
+..l..lllll...l..
+.ePengePemPene..
+..ePeQmegePen...
 ................
 ................
 ................

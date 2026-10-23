@@ -12,10 +12,10 @@ C = 141
 ................
 .........wwww...
 ........wllllw..
-.......wl....lw.
-....wwlm.....lw.
-..wwllmd.....lw.
-..wkwlkd.....lw.
+.......wl....wl.
+....wwlm.....wl.
+..wwllmd.....wl.
+..wkwlkd.....wl.
 ..lkllkd........
 .AAmlklmA..AAkkA
 ABBBAAAAC.ABBBBC
