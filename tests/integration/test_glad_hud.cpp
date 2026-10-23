@@ -40,6 +40,7 @@
 #include <mutex>
 #include <string>
 #include <vector>
+#include <utility>
 
 // myscreen is now a macro defined in base.h (via game_session.h)
 
@@ -3791,6 +3792,33 @@ int frame_ink(const std::array<unsigned char, 64000>& frame, int x0, int y0,
     return ink;
 }
 
+// A cell's key label on the box look, read back from the pixels: the
+// first and last scanline in [y0, y1) where a pixel under the cell's
+// columns differs from the box's ground on that same scanline, read at
+// `ground_x` (the one-column gap between keys 1 and 2, lm+20, which no
+// one-glyph label reaches). The font's lower rows are literal palette
+// indices, not the label's ink, so the read is "not the ground", not
+// "the ink". {-1, -1} when nothing is lettered there.
+std::pair<int, int> label_rows(const std::array<unsigned char, 64000>& frame,
+                               int cell_x, int ground_x, int y0, int y1)
+{
+    std::pair<int, int> rows{-1, -1};
+    for (int y = std::max(0, y0); y < std::min(200, y1); ++y)
+    {
+        const auto at = [&](int x)
+        { return frame[static_cast<std::size_t>(y * 320 + x)]; };
+        for (int x = cell_x; x < cell_x + kCellSize; ++x)
+            if (at(x) != at(ground_x))
+            {
+                if (rows.first < 0)
+                    rows.first = y;
+                rows.second = y;
+                break;
+            }
+    }
+    return rows;
+}
+
 // A cell's top-left (its frame's corner) for SPEC `key` in a view's pane.
 struct CellAt
 {
@@ -3926,7 +3954,9 @@ struct BeltHudScene
 // bm-54. No ability name is drawn: every slot is a belt_cell, no belt_row.
 //
 // RED (planted): kBeltFullCellTop 44 -> 40 (the cells' x/y traces and the
-// pixels move); kBeltHudFullBoxTop 46 -> 42 (the box top, the freeze row).
+// pixels move); kBeltHudFullBoxTop 46 -> 42 (the box top, the freeze row);
+// label_y + 4 (the labels read at bm-21); the label's write_xy skipped (no
+// row lettered: the box's grey alone no longer passes).
 TEST_F(GladHud, belt_strip_full_two_seats_box_bm_46_and_timer_cells_at_bm_54)
 {
     ScopedAbilitySelect on(true);
@@ -3960,9 +3990,10 @@ TEST_F(GladHud, belt_strip_full_two_seats_box_bm_46_and_timer_cells_at_bm_54)
                 << "seat " << i << " key " << k;
             EXPECT_EQ(0, ring_misses(frame, cell, kFrameInk))
                 << "seat " << i << " key " << k << ": a black frame";
-            EXPECT_GT(frame_ink(frame, cell.x, bm - 25, cell.x + kCellSize,
-                                bm - 20),
-                      0)
+            // Between the cell's frame (bm-27) and seat 1's bottom bevel
+            // (bm-19): the glyphs' rows 0-4 are bm-25..bm-21.
+            EXPECT_EQ(std::make_pair(bm - 25, bm - 21),
+                      label_rows(frame, cell.x, lm + 20, bm - 26, bm - 19))
                 << "seat " << i << ": key " << k << " is lettered at bm-25";
         }
         EXPECT_TRUE(trace_contains(
@@ -4018,7 +4049,8 @@ TEST_F(GladHud, belt_strip_full_two_seats_box_bm_46_and_timer_cells_at_bm_54)
 // ELEMENTAL, lettered S1 S2 S3.
 //
 // RED (planted): kBeltHudCompactBoxTop 28 -> 26 (the box top and the
-// freeze row move); kBeltCompactCellTop 26 -> 44 (the cells' y).
+// freeze row move); kBeltCompactCellTop 26 -> 44 (the cells' y); label_y
+// + 4 and the label's write_xy skipped (the bm-7 row, as in the full test).
 TEST_F(GladHud, belt_strip_compact_four_seats_at_bm_28)
 {
     ScopedAbilitySelect on(true);
@@ -4046,9 +4078,10 @@ TEST_F(GladHud, belt_strip_compact_four_seats_at_bm_28)
                 << "seat " << i << " key " << k;
             EXPECT_EQ(0, ring_misses(frame, cell, kFrameInk))
                 << "seat " << i << " key " << k;
-            EXPECT_GT(frame_ink(frame, cell.x, bm - 7, cell.x + kCellSize,
-                                bm - 2),
-                      0)
+            // Between the cell's frame (bm-9) and the box's bottom bevel
+            // (bm-2): the glyphs' rows bm-7..bm-3.
+            EXPECT_EQ(std::make_pair(bm - 7, bm - 3),
+                      label_rows(frame, cell.x, lm + 20, bm - 8, bm - 2))
                 << "seat " << i << ": key " << k << " is lettered at bm-7";
         }
         EXPECT_NE(0, frame[static_cast<std::size_t>((bm - 28) * 320 + lm + 30)])
@@ -4079,9 +4112,10 @@ TEST_F(GladHud, belt_strip_compact_four_seats_at_bm_28)
                    .c_str()));
     EXPECT_TRUE(trace_contains(
         "hud", belt_label_trace(3, "S3", DARK_BLUE, false).c_str()));
-    EXPECT_GT(frame_ink(frame, cell_at(v2, 3, true).x, v2.endy - 7,
-                        cell_at(v2, 3, true).x + kCellSize, v2.endy - 2),
-              0);
+    EXPECT_EQ(std::make_pair(v2.endy - 7, v2.endy - 3),
+              label_rows(frame, cell_at(v2, 3, true).x, v2.xloc + 20,
+                         v2.endy - 8, v2.endy - 2))
+        << "S3 is lettered at bm-7";
 
     s->world().enemy_freeze = 30;
     scene.draw();
@@ -4119,6 +4153,9 @@ TEST_F(GladHud, belt_cell_shows_the_icons_own_pixels_on_the_fill)
         EXPECT_TRUE(trace_contains(
             "hud", "belt_cell key=1 shift=0 slot=1 alt=0 icon=icons/teleport.png"));
         EXPECT_TRUE(trace_contains("hud", "drawn=icons/teleport.png"));
+        // Only while WARP SPACE's file is not in the tree: once its art
+        // lands this arm goes quiet. The generic tile stays pinned without
+        // a condition by belt_cell_draws_the_generic_tile_for_a_family_without_icons.
         if (!std::filesystem::exists("pix/icons/warp_space.png"))
         {
             EXPECT_EQ(expected_window(missing),
