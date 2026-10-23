@@ -1,32 +1,35 @@
-# POSSESS (ghost): the ghost (ghost.png frame 0, as cut, placed by --dump pix/ghost.png 0 --at 2,1: one column right of the dump's own 1,1) wearing the fighter's helmet where its face is: footman.png frame 0 rows 4-9, cols 5-11 (21 and 23 merged into 22 and 24, the team red taken to dark 46) stamped in front at rows 3-9, cols 5-11, opaque pixels only, with the visor opened to a two-row black slit (16) and the ghost's eyes glowing in it as two 2x2 blocks of 40; the ghost's dome corners, both arms and its tail show round the helmet; no host ring
+# POSSESS (ghost): the foe himself, the fighter facing the player (footman.png frame 0, as cut, at +1,0; one-step merges 21->22, 23->24, 141->140, 26->27 for the budget) with the ghost inside him: his helmet opened at rows 5-6, cols 8-10 to a black (16) visor and the ghost's red eyes (40, 1x2 each) glowing in it; no host ring
 # legend: one character = one palette index (pix/openglad.gpl)
-k = 24
-a = 31
-b = 30
-c = 29
-d = 28
+k = 31
+a = 30
+b = 29
+c = 40
+d = 16
 e = 27
-f = 46
-g = 26
-h = 40
-i = 16
+f = 241
+g = 243
+h = 242
+i = 17
 j = 25
-l = 17
-m = 22
+l = 28
+m = 24
+n = 22
+o = 139
+p = 140
 
 ................
 ................
-.......kkk......
-......kabck.....
-....kkabcdekk...
-...kcfbcdegfek..
-..kcefhhihhfeek.
-..kejfhhihhfeej.
-..kekfdklmkfkek.
-..kjkffklmffkjk.
-...k...kej...k..
-........kk......
 ................
 ................
-................
+........kab.....
+.......kcdce....
+....fgcacdcechg.
+...fggcbiiijchgg
+...fhhclminmchhh
+...fffccminccfff
+...fg.occccc..fg
+....fg.pp.pp.fg.
+....ko..n.n..fg.
+...ken..........
+...en...........
 ................

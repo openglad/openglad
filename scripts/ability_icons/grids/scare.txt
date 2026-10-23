@@ -1,25 +1,33 @@
-# SCARE (ghost): the ghost's head (ghost.png frame 0 rows 2-7, cols 3-11: the dome, the eye row with both 40 eyes and the mouth row; the arms dropped) moved down 3 rows, inside an expanding ring of blue specks (expand8.png's ring, the cycled water band moved to still blue 64): 16 single specks at radius 6.5 round the cell's centre, every speck two pixels from the next, one clear pixel at least between head and ring, nothing on row 0 or col 0
+# SCARE (ghost): the ghost's head (ghost.png frame 0 rows 2-8, cols 5-9 of the --dump: dome, both 40 eyes, mouth and chin; the arms dropped) at -5,2, so the head fills cols 0-4 rows 4-10 at the left, and a foe running from it: the fighter (footman.png frame 2, walking right, as cut at +4,0, with the sword, the sword arm and the handle dropped) with two speed lines (31 over 17, CHARGE's) at his back: foes flee
 # legend: one character = one palette index (pix/openglad.gpl)
-k = 64
-a = 24
-b = 29
-c = 27
-d = 25
-e = 40
+k = 40
+a = 31
+b = 30
+c = 29
+d = 24
+e = 28
+f = 27
+g = 17
+h = 25
+i = 26
+j = 241
+l = 242
+m = 243
+n = 21
 
 ................
-......k..k......
-....k......k....
 ................
-..k..........k..
-......aaa.......
-.k...abbca....k.
-...aaabcdaaa....
-...bcabcdabc....
-.k.caaedeacc..k.
-...dabaaadac....
-..k..........k..
 ................
-....k......k....
-......k..k......
+.........kabck..
+.ddd.....abcef..
+dccfd....bcegg..
+dcfhd.aaaiefig..
+dcfhd.gggkfihg..
+dkhkd....kkkkk..
+cdddh....jlmmm..
+dcfhh.aaakjlmm..
+......ggg.kkjlm.
+..........nnn...
+................
+................
 ................
