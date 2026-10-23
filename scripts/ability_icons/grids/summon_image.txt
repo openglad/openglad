@@ -1,0 +1,35 @@
+# SUMMON IMAGE (archmage): an illusion of a fighter appearing: footman.png frame 0 in its own colours (rows 4-12, sword dropped, moved down one row; team band fixed to the red ramp, its three leathers merged to 140), its lower half dithered away as it fades in, a blue sparkle beside it
+# legend: one character = one palette index (pix/openglad.gpl)
+a = 72
+b = 31
+c = 30
+d = 29
+e = 28
+f = 27
+g = 241
+h = 243
+i = 40
+j = 26
+k = 242
+l = 17
+n = 24
+o = 22
+p = 140
+q = 140
+
+................
+............a...
+...........aba..
+............a...
+................
+.......bcd......
+......bcdef.....
+...ghicdefjikh..
+..ghhidllljikhh.
+..gkkienlonikkk.
+..g.g.i.l.i.g.g.
+...h.p.i.i...g..
+....h.q...q.g...
+.......o.o...h..
+................
+................

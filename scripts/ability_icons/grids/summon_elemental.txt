@@ -1,0 +1,27 @@
+# SUMMON ELEMENTAL (archmage): the fire elemental, cut from firelem.png frame 0 (moved up one row; still fire 234-238, the cycled 232 moved up to 233), standing in a small blue summoning ring (74, the teleport ring's blue)
+# legend: one character = one palette index (pix/openglad.gpl)
+k = 233
+a = 234
+b = 238
+c = 236
+d = 40
+e = 43
+f = 47
+R = 74
+
+...k....k.......
+...k....k..k.k..
+...ka..kkk.k.k..
+..aka..kak.aaaa.
+.aaaabkaaakbbaba
+.aabbbkabakbbbba
+.abbbccbbbccbbbb
+.bbcccbbbbbcccbb
+.defa.cbbbc.adef
+.def...cbc...def
+.bcb..RRRRR..bcb
+.bc.RR.....RR.cb
+...R.........R..
+....RR.....RR...
+......RRRRR.....
+................

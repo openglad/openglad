@@ -1,0 +1,25 @@
+# FREEZE TIME (mage): an hourglass in the blues, its light sand stopped mid-fall, an icy bar clamped across its waist; drawn (the game shows no sprite, only every foe stopping dead)
+# legend: one character = one palette index (pix/openglad.gpl)
+k = 16
+A = 72
+a = 75
+g = 70
+S = 64
+I = 113
+
+................
+..kkkkkkkkkkkk..
+..kAAAAAAAAAAk..
+..kaaaaaaaaaak..
+...kg......gk...
+...kgSSSSSSgk...
+....kgSSSSgk....
+..kkkkkSSkkkkk..
+..kIIIIIIIIIIk..
+..kkkkkkkkkkkk..
+....kg.S..gk....
+...kg......gk...
+...kg..SS..gk...
+..kAAAAAAAAAAk..
+..kaaaaaaaaaak..
+..kkkkkkkkkkkk..

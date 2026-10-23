@@ -1,0 +1,31 @@
+# MIND CONTROL (archmage): an orc, cut from orc.png frame 0 (moved down two rows), its team harness and eyes turned to the mind's magenta, three magenta rays converging on its head from above
+# legend: one character = one palette index (pix/openglad.gpl)
+k = 17
+a = 138
+b = 140
+c = 137
+e = 139
+f = 141
+h = 30
+M = 105
+E = 104
+r = 96
+s = 98
+t = 100
+
+..tt....tt....tt
+...ss...ss...ss.
+....rr..rr..rr..
+.....EE.EE.EE...
+................
+........kk......
+.......akb......
+...ccMaaebfMbb..
+..ccaMabeffMebb.
+..caaMaEeEfMeeb.
+..caaMaeebfMeeb.
+..aaaMMeebMMeee.
+..ab..MMMMM..ef.
+...ab.bf.bf.ef..
+...ab..f.f..ef..
+....hh.....hh...
