@@ -396,9 +396,15 @@ TEST(AbilityIcons, no_icon_key_draws_the_generic_tile)
     ASSERT_NE(nullptr, generic);
     EXPECT_EQ(generic, icons.icon_at(og::ui::kMissingIconPath));
     EXPECT_EQ(generic, icons.icon(bare, Entry{2, true}));
-    // An entry outside slots 1..5 names nothing either.
-    EXPECT_EQ(nullptr, og::ui::declared_icon_path(bare, Entry{0, false}));
-    EXPECT_EQ(nullptr, og::ui::declared_icon_path(bare, Entry{6, false}));
+    // An entry outside slots 1..5 names nothing, even where the arrays hold
+    // a path: slot 0 is never a special, and slot 6 is past the end (the
+    // entry after special_icons[5] would be alternate_icons[0]).
+    FamilyDescriptor stray{};
+    stray.special_icons[0] = "icons/heal.png";
+    stray.alternate_icons[0] = "icons/heal.png";
+    EXPECT_EQ(nullptr, og::ui::declared_icon_path(stray, Entry{0, false}));
+    EXPECT_EQ(nullptr, og::ui::declared_icon_path(stray, Entry{0, true}));
+    EXPECT_EQ(nullptr, og::ui::declared_icon_path(stray, Entry{6, false}));
     EXPECT_EQ(generic, icons.icon(bare, Entry{6, true}));
     EXPECT_EQ(generic, icons.icon_at(""));
     EXPECT_EQ(generic, icons.icon_at(nullptr));
