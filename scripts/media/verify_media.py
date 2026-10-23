@@ -55,10 +55,12 @@ CANVAS_STILL = ("png", 640, 400, 1, None, None)
 ABILITY_SELECT = {
     "hud": {f"hud-{scene}.png": CANVAS_STILL for scene in (
         "1p-on", "1p-off", "2p-on", "2p-off", "4p-on", "4p-off",
-        "1p-on-shift", "4p-on-shift")},
+        "1p-on-shift", "4p-on-shift", "1p-on-plain", "1p-on-shift-plain",
+        "1p-off-plain")},
     "hud-radar": {f"hud-radar-{scene}.png": CANVAS_STILL for scene in (
         "2p-on", "2p-on-shift", "4p-on", "4p-on-shift")},
-    "radar": {"hud-2p-radar-on.png": CANVAS_STILL},
+    "radar": {"hud-2p-radar-on.png": CANVAS_STILL,
+              "hud-2p-radar-on-overlay.png": CANVAS_STILL},
     "abilities": {f"abilities-{shot}.png": CANVAS_STILL for shot in (
         "archmage", "archmage-selected", "archmage-placed", "mage",
         "train-door-on", "train-door-off")},

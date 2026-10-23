@@ -7357,6 +7357,14 @@ TEST(GameLoop, zz_capture_splitscreen_gameplay)
 
     gameplay_rec::all_effects_on();
     gameplay_rec::force_weather(WeatherKind::Clouds);
+    // OG_CAPTURE_OVERLAY=1 records the same game with the OVERLAY view pref
+    // on (off by default), so the HUD text sits in its boxes.
+    if (const char* overlay = getenv("OG_CAPTURE_OVERLAY");
+        overlay != nullptr && overlay[0] == '1')
+    {
+        game_screen->viewob[0]->prefs[PREF_OVERLAY] = PREF_OVERLAY_ON;
+        game_screen->viewob[1]->prefs[PREF_OVERLAY] = PREF_OVERLAY_ON;
+    }
 
     // Rebind the two local players' direction keys to keycodes no default
     // layout uses, then drive them via faked SDL keystates so the two claimed

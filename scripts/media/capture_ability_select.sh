@@ -13,7 +13,9 @@
 #
 # Steps (run in this order; --only picks some):
 #   hud        the in-game HUD: 1, 2 and 4 seats with the setting on and
-#              off, and 1 and 4 seats with SHIFTER held
+#              off, and 1 and 4 seats with SHIFTER held, all with the
+#              OVERLAY view pref on (boxed rows); plus one seat on the
+#              shipped OVERLAY-off look (*-plain: rows with no box)
 #              (scripts/media/capture_ability_select_hud.sh, which runs
 #              GladHud.zz_capture_belt_hud in og_test_view)
 #   hud-radar  the ON HUD over a real radar, 2 and 4 seats, SHIFTER up and
@@ -21,7 +23,9 @@
 #              (GladHud.zz_capture_belt_hud_with_radar in og_test_view)
 #   radar      a real two-player game with the radar on and the setting on
 #              (GameLoop.zz_capture_splitscreen_gameplay in og_test_game_core),
-#              frame RADAR_FRAME (a quiet frame: no banner across the panes)
+#              frame RADAR_FRAME (a quiet frame: no banner across the panes),
+#              once on the shipped OVERLAY-off look and once with it on
+#              (hud-2p-radar-on-overlay, OG_CAPTURE_OVERLAY=1)
 #   abilities  the ABILITIES screen: the Archmage (MIND CONTROL on the
 #              bench), the same with a slot selected and after a placement,
 #              a level-1 mage (locked rows grey), and the TRAIN door lit
@@ -232,7 +236,8 @@ if wanted hud; then
         KEEP_WORK=1
         die "the HUD capture failed; see $WORK_DIR/hud.log"
     }
-    for scene in 1p_on 1p_off 2p_on 2p_off 4p_on 4p_off 1p_on_shift 4p_on_shift; do
+    for scene in 1p_on 1p_off 2p_on 2p_off 4p_on 4p_off 1p_on_shift 4p_on_shift \
+        1p_on_plain 1p_on_shift_plain 1p_off_plain; do
         canvas_png "$WORK_DIR/hud/belt_hud_$scene/000.ppm" \
             "hud-$(printf '%s' "$scene" | tr '_' '-')"
     done
@@ -252,6 +257,10 @@ if wanted radar; then
         OG_FX_CAPTURE_DIR="$WORK_DIR/radar"
     canvas_png "$(printf '%s/radar/splitscreen_gameplay/%03d.ppm' "$WORK_DIR" "$RADAR_FRAME")" \
         hud-2p-radar-on
+    run_test radar-overlay 1 og_test_game_core 'GameLoop.zz_capture_splitscreen_gameplay' \
+        OG_FX_CAPTURE_DIR="$WORK_DIR/radar-overlay" OG_CAPTURE_OVERLAY=1
+    canvas_png "$(printf '%s/radar-overlay/splitscreen_gameplay/%03d.ppm' "$WORK_DIR" "$RADAR_FRAME")" \
+        hud-2p-radar-on-overlay
 fi
 
 if wanted abilities; then

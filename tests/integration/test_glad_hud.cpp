@@ -4501,6 +4501,21 @@ TEST_F(GladHud, zz_capture_belt_hud)
                                std::format("belt_hud_{}p_on_shift", seats)
                                    .c_str());
             }
+            if (seats == 1)
+            {
+                // The shipped look: the OVERLAY view pref is off by default,
+                // so the rows draw straight on the world with no box.
+                scene.s->viewob[0]->prefs[PREF_OVERLAY] = PREF_OVERLAY_OFF;
+                const char* const state = ability_select ? "on" : "off";
+                dump_frame_ppm(scene.draw(),
+                               std::format("belt_hud_1p_{}_plain", state)
+                                   .c_str());
+                if (ability_select)
+                {
+                    ShifterHeld shift(0);
+                    dump_frame_ppm(scene.draw(), "belt_hud_1p_on_shift_plain");
+                }
+            }
         }
     }
 }
