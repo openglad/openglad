@@ -1,4 +1,4 @@
-# WAIL (ghost): the ghost flying right (ghost.png frame 2, as cut, at -4,1; the last six pixels of its trailing tail fall off the left edge) with its homing puff (expand8.png frames 2-3 closed up to one dense ball, the cycled water band moved to still blue 64) leaving its mouth to the right: a 5x5 round ball with a two-pixel tail back toward the mouth and two loose specks
+# WAIL (ghost): the ghost flying right (ghost.png frame 2, as cut, at -4,1; the last six pixels of its trailing tail fall off the left edge) with its homing puff (expand8.png frames 2-3 closed up, the cycled water band moved to still blue 64) leaving its mouth to the right: a 5x5 round puff of specks with three holes in it, a two-pixel tail back toward the mouth and two loose specks
 # legend: one character = one palette index (pix/openglad.gpl)
 k = 64
 a = 24
@@ -13,9 +13,9 @@ f = 20
 ........k.......
 ..aaaa.....kkk..
 .abbbca..kkkkkk.
-.abccda..kkkkkk.
-.aceeeaf..kkkkk.
-..aaaafff..kkk..
+.abccda..kk.kkk.
+.aceeeaf..kkk.k.
+..aaaafff..k.k..
 .abbca..........
 abccccaaa..k....
 accccceeea......
