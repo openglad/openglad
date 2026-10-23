@@ -1,10 +1,10 @@
-# TELEPORT MARKER (mage, archmage): the gold ankh the mage plants, cut from marker.png frame 0 (its own still-fire golds 234-236, stem cut by four rows), standing on a small blue disc
+# TELEPORT MARKER (mage, archmage): the gold ankh the mage plants, cut from marker.png frame 0 (its own still-fire golds 234-236, stem cut by four rows), standing on a small blue disc (lit 66, middle 74 = the teleport ring's blue, shade 75)
 # legend: one character = one palette index (pix/openglad.gpl)
 k = 236
 a = 234
 b = 235
 e = 66
-E = 72
+E = 74
 d = 75
 
 ................
