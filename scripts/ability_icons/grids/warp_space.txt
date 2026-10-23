@@ -1,9 +1,9 @@
-# WARP SPACE (mage): eight of the mage's blue fireballs flying out from him in the eight directions, each a streak cut down from fire.png (water band moved to 64/72/74/76), bright head outward
+# WARP SPACE (mage): eight of the mage's blue fireballs flying out from him in the eight directions, each a streak cut down from fire.png (water band moved to the periwinkle 70/67/64, one dark 72 tail pixel), bright head outward
 # legend: one character = one palette index (pix/openglad.gpl)
-H = 64
-B = 72
-T = 74
-t = 76
+H = 70
+B = 67
+T = 64
+t = 72
 
 ................
 .HH....HH....HH.
