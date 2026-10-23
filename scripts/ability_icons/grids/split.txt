@@ -1,4 +1,4 @@
-# SPLIT (big slime): the big red blob pinching in two, the two lobes and the one-pixel neck of amoeba3.png frame 11, halved to 16 px and re-shaded on its own red ramp (lit rim 40, body 43, swirls 44-45, shade 45-46)
+# SPLIT (big slime): the big slime come apart, the two halves of amoeba3.png frame 12 (upper right and lower left) halved to 16 px, a clear diagonal gap between them, re-shaded on the slime's red ramp
 # legend: one character = one palette index (pix/openglad.gpl)
 a = 40
 h = 41
@@ -15,8 +15,8 @@ g = 46
 ....accfdddeddf.
 ....acddddeeddf.
 .....gdddeeddff.
-...aa.ggddddfg..
-..ahhacg..gg....
+.........dddfg..
+..ahhac...gg....
 .ahhccdf........
 .acchcddeddf....
 .acdffdddedef...
