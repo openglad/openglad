@@ -1,0 +1,34 @@
+# PROTECTION (druid): a fighter's head and shoulders (footman.png frame 0, band fixed to the red ramp) inside a double ring of moving air, cyan 114 outside, white 31 inside
+# legend: one character = one palette index (pix/openglad.gpl)
+C = 114
+I = 31
+o = 23
+k = 31
+a = 30
+b = 29
+c = 28
+d = 27
+g = 40
+h = 26
+j = 17
+l = 25
+m = 24
+n = 22
+p = 21
+
+................
+.....CCCCCC.....
+....CCIIIICC....
+...CII....IIC...
+..CI........IC..
+.CCI...kab..ICC.
+.CI...kabcd..IC.
+.CI..gabcdhg.IC.
+.CI..gbjjjlg.IC.
+.CI..gcmjnmg.IC.
+.CCI.ggojpggICC.
+..CI........IC..
+...CII....IIC...
+....CCIIIICC....
+.....CCCCCC.....
+................
