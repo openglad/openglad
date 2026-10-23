@@ -62,6 +62,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
 #include <system_error>
@@ -881,8 +882,60 @@ TEST(MenuCapture, zz_capture_menu_tour)
         << "brightness_minus must put the step back where it started";
 }
 
+namespace
+{
+// While filming, the effects pages show the SHIPPED defaults: the values a
+// fresh cfg_store loads (its built-in defaults, then cfg/openglad.yaml),
+// not whatever the integration harness left in cfg (most effects keys are
+// never set there, so every row read OFF). Puts the harness values back.
+class ScopedShippedEffectsDefaults
+{
+public:
+    ScopedShippedEffectsDefaults()
+    {
+        cfg_store shipped;
+        (void)shipped.load_settings();
+        for (std::size_t i = 0; i < kEffectsCfgKeys.size(); ++i) {
+            const auto& [category, setting] = kEffectsCfgKeys[i];
+            const auto group = cfg.data.find(category);
+            if (group != cfg.data.end()) {
+                const auto entry = group->second.find(setting);
+                if (entry != group->second.end())
+                    saved_[i] = entry->second;
+            }
+            cfg.apply_setting(category, setting,
+                              shipped.get_setting(category, setting));
+        }
+        og::input::refresh_ability_select_cache();
+    }
+
+    ~ScopedShippedEffectsDefaults()
+    {
+        for (std::size_t i = 0; i < kEffectsCfgKeys.size(); ++i) {
+            const auto& [category, setting] = kEffectsCfgKeys[i];
+            if (saved_[i].has_value())
+                cfg.apply_setting(category, setting, *saved_[i]);
+            else
+                cfg.data[category].erase(setting);
+        }
+        og::input::refresh_ability_select_cache();
+    }
+
+    ScopedShippedEffectsDefaults(const ScopedShippedEffectsDefaults&) = delete;
+    ScopedShippedEffectsDefaults& operator=(
+        const ScopedShippedEffectsDefaults&) = delete;
+
+private:
+    std::array<std::optional<std::string>, kEffectsCfgKeys.size()> saved_;
+};
+} // namespace
+
 TEST(MenuCapture, zz_capture_menu_effects)
 {
+    std::unique_ptr<ScopedShippedEffectsDefaults> shipped;
+    if (fx_capture_dir() != nullptr)
+        shipped = std::make_unique<ScopedShippedEffectsDefaults>();
+
     std::array<bool, kEffectsCfgKeys.size()> before{};
     for (std::size_t i = 0; i < kEffectsCfgKeys.size(); ++i)
         before[i] = cfg.is_on(kEffectsCfgKeys[i].first, kEffectsCfgKeys[i].second);

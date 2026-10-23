@@ -19,8 +19,8 @@
 // with this screen's door table bound. On tier 2 of
 // scripts/check_injector_settles.sh from birth: no flat settle, ever.
 //
-// Captures (Archmage with MIND CONTROL on the bench, a level-1 mage, the
-// TRAIN door dimmed) are frozen and checked for ink on every run, and
+// Captures (the TRAIN door lit, Archmage with MIND CONTROL on the bench, a
+// level-1 mage, the TRAIN door dimmed) are frozen and checked for ink on every run, and
 // written as PPMs when UXSHOTS_DIR names a directory.
 
 #include <gtest/gtest.h>
@@ -306,6 +306,8 @@ int full_flow_injector(void* data)
         return failed;
 
     state->door_enabled = has_enabled_interactable("abilities");
+    capture_presented_frame("abilities_train_door_on", uxshots_dir());
+    ++state->captures;
     state->screen_opened = click_until_edge("abilities", [](int ms) {
         return wait_for_interactable("belt_0", ms);
     });
@@ -905,7 +907,7 @@ TEST(AbilitiesFlow, train_door_opens_the_screen_and_the_edit_reaches_the_save)
     ASSERT_NE(nullptr, reloaded.team_list[1].get());
     EXPECT_EQ(belt::default_bytes(), reloaded.team_list[1]->belt)
         << "the other hero is untouched";
-    verify_captured_frames("abilities_full", 3);
+    verify_captured_frames("abilities_full", 4);
 }
 
 TEST(AbilitiesFlow, setting_off_dims_the_train_door)

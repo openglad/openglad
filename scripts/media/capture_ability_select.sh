@@ -21,14 +21,22 @@
 #              (GladHud.zz_capture_belt_hud_with_radar in og_test_view)
 #   radar      a real two-player game with the radar on and the setting on
 #              (GameLoop.zz_capture_splitscreen_gameplay in og_test_game_core),
-#              frame RADAR_FRAME
+#              frame RADAR_FRAME (a quiet frame: no banner across the panes)
 #   abilities  the ABILITIES screen: the Archmage (MIND CONTROL on the
 #              bench), the same with a slot selected and after a placement,
-#              a level-1 mage (locked rows grey), and the TRAIN door dimmed
-#              with the setting off (AbilitiesFlow.* in og_test_abilities,
-#              UXSHOTS_DIR)
-#   ui-fx      Game Settings > UI FX with the New Ability Select row
-#              (MenuCapture.zz_capture_menu_effects in og_test_menu_ui)
+#              a level-1 mage (locked rows grey), and the TRAIN door lit
+#              with the setting on and dimmed with it off (AbilitiesFlow.*
+#              in og_test_abilities, UXSHOTS_DIR)
+#   ui-fx      Game Settings > UI FX with the New Ability Select row, every
+#              row on its shipped default (MenuCapture.zz_capture_menu_effects
+#              in og_test_menu_ui)
+#   panels     the key panels with the setting on and off: Base Camp's seat
+#              panel (UxShots.b2/b3 in og_test_basecamp) and the PAUSED
+#              player screen, plus the REMAP prompt for "P1 SPEC 2"
+#              (PausePlayerDraw.menushots_* in og_test_game_core,
+#              MENUSHOTS_DIR), and the main menu's dimmed NO COMPANY YET
+#              (UxShots.a_mainmenu_no_company)
+#   keyboard   the committed keyboard pictures, pix/changelog/*.png, as-is
 #   changelog  the CHANGELOG! page with the keyboard picture at three window
 #              sizes, 640x400, 1280x800 and 1920x1080, kept at the window's
 #              real size (ChangelogFlow.page_at_three_window_sizes_keeps_the_
@@ -42,11 +50,11 @@
 #   scripts/media/capture_ability_select.sh [--only <step>]... [--list] [output-dir]
 #   OPENGLAD_BUILD_DIR=<dir>   build tree holding the test binaries
 #                              (default build/ci-test)
-#   RADAR_FRAME=<n>            the radar step's frame (default 150)
+#   RADAR_FRAME=<n>            the radar step's frame (default 20)
 #
 # Build first (ci-test preset):
 #   cmake --build --preset ci-test --target og_test_view og_test_game_core \
-#       og_test_abilities og_test_menu_ui
+#       og_test_abilities og_test_menu_ui og_test_basecamp
 # magick, ffprobe and python3 come from the dev shell (`nix develop`).
 
 set -euo pipefail
@@ -57,8 +65,8 @@ case "$BUILD_DIR" in
     /*) ;;
     *) BUILD_DIR="$REPO_ROOT/$BUILD_DIR" ;;
 esac
-RADAR_FRAME="${RADAR_FRAME:-150}"
-STEPS=(hud hud-radar radar abilities ui-fx changelog)
+RADAR_FRAME="${RADAR_FRAME:-20}"
+STEPS=(hud hud-radar radar abilities ui-fx panels keyboard changelog)
 
 usage() {
     sed -n '/^# Usage:/,/^# Build first/s/^# \{0,1\}//p' "${BASH_SOURCE[0]}"
@@ -133,7 +141,10 @@ need_bin() { # need_bin <name>
 if wanted hud || wanted hud-radar; then
     need_bin og_test_view
 fi
-wanted radar && need_bin og_test_game_core
+if wanted radar || wanted panels; then
+    need_bin og_test_game_core
+fi
+wanted panels && need_bin og_test_basecamp
 if wanted abilities || wanted changelog; then
     need_bin og_test_abilities
 fi
@@ -247,7 +258,8 @@ if wanted abilities; then
     run_test abilities 2 og_test_abilities \
         'AbilitiesFlow.train_door_opens_the_screen_and_the_edit_reaches_the_save:AbilitiesFlow.setting_off_dims_the_train_door:AbilitiesFlow.mage_page_greys_locked_rows_and_the_keyboard_walks_it' \
         UXSHOTS_DIR="$WORK_DIR/abilities"
-    for shot in archmage archmage_selected archmage_placed mage train_door_off; do
+    for shot in archmage archmage_selected archmage_placed mage train_door_on \
+        train_door_off; do
         canvas_png "$WORK_DIR/abilities/abilities_$shot.ppm" \
             "abilities-$(printf '%s' "$shot" | tr '_' '-')"
     done
@@ -257,6 +269,27 @@ if wanted ui-fx; then
     run_test ui-fx 2 og_test_menu_ui 'MenuCapture.zz_capture_menu_effects' \
         OG_FX_CAPTURE_DIR="$WORK_DIR/ui-fx"
     canvas_png "$WORK_DIR/ui-fx/menu_effects_stills/ui_fx.ppm" ui-fx
+fi
+
+if wanted panels; then
+    run_test panels-camp 2 og_test_basecamp \
+        'UxShots.a_mainmenu_no_company:UxShots.b2_seat_settings:UxShots.b3_seat_settings_ability_select_off' \
+        UXSHOTS_DIR="$WORK_DIR/panels"
+    run_test panels-pause 1 og_test_game_core 'PausePlayerDraw.menushots_*' \
+        MENUSHOTS_DIR="$WORK_DIR/panels"
+    canvas_png "$WORK_DIR/panels/seat_settings.ppm" basecamp-keys-on
+    canvas_png "$WORK_DIR/panels/seat_settings_off.ppm" basecamp-keys-off
+    canvas_png "$WORK_DIR/panels/pause_player_screen.ppm" pause-keys-on
+    canvas_png "$WORK_DIR/panels/pause_player_screen_off.ppm" pause-keys-off
+    canvas_png "$WORK_DIR/panels/remap_p1_spec2.ppm" remap-p1-spec2
+    canvas_png "$WORK_DIR/panels/mainmenu_no_company.ppm" dimmed-no-company
+fi
+
+if wanted keyboard; then
+    for name in keyboard_belt keyboard_belt_web; do
+        cp -- "$REPO_ROOT/pix/changelog/$name.png" "$OUT_DIR/$name.png"
+        printf 'wrote %s\n' "$OUT_DIR/$name.png"
+    done
 fi
 
 if wanted changelog; then

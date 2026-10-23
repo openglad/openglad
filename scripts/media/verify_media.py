@@ -61,7 +61,15 @@ ABILITY_SELECT = {
     "radar": {"hud-2p-radar-on.png": CANVAS_STILL},
     "abilities": {f"abilities-{shot}.png": CANVAS_STILL for shot in (
         "archmage", "archmage-selected", "archmage-placed", "mage",
-        "train-door-off")},
+        "train-door-on", "train-door-off")},
+    # The key panels (Base Camp seat, PAUSED player screen) on and off, the
+    # REMAP prompt, and a dimmed button elsewhere (the main menu's note).
+    "panels": {f"{shot}.png": CANVAS_STILL for shot in (
+        "basecamp-keys-on", "basecamp-keys-off", "pause-keys-on",
+        "pause-keys-off", "remap-p1-spec2", "dimmed-no-company")},
+    # The committed keyboard pictures, copied as they are.
+    "keyboard": {f"{name}.png": ("png", 1560, 550, 1, None, None)
+                 for name in ("keyboard_belt", "keyboard_belt_web")},
     "ui-fx": {"ui-fx.png": CANVAS_STILL},
     # The CHANGELOG! page at the window's real size, never the canvas.
     "changelog": {f"changelog-{w}x{h}.png": ("png", w, h, 1, None, None)

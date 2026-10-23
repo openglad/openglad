@@ -1252,13 +1252,65 @@ TEST(PausePlayerDraw, menushots_player_screen_keyboard_and_joystick)
         og::runtime::current_session->localbuttons_ = nullptr;
     };
 
-    compose_and_capture("pause_player_screen");
+    {
+        ScopedAbilitySelect on(true);
+        compose_and_capture("pause_player_screen");
+    }
+    {
+        // The same panel with New Ability Select off: the classic seven
+        // ACTIONS rows on the same default keys.
+        ScopedAbilitySelect off;
+        compose_and_capture("pause_player_screen_off");
+    }
 
     ASSERT_TRUE(assign_joystick_to_player(0, d));
     compose_and_capture("pause_player_joystick");
     clear_player_joystick(0);
 
     og::ui::install_pause_player_state_for_screen(nullptr);
+}
+
+namespace
+{
+// The REMAP prompt the menushot films: the wizard calls the poll once per
+// prompt, right after drawing it (TESTING answers each with a fake ESC), so
+// the Nth call sees prompt N on the canvas. Writing it and returning false
+// ends the wizard there.
+int g_remap_shot_polls = 0;
+int g_remap_shot_prompt = 0;
+bool g_remap_shot_written = false;
+
+bool remap_shot_poll()
+{
+    if (++g_remap_shot_polls < g_remap_shot_prompt)
+        return true;
+    g_remap_shot_written =
+        write_menushot(og::runtime::current_session->myscreen_,
+                       "remap_p1_spec2");
+    return false;
+}
+} // namespace
+
+// The REMAP prompt for "P1 SPEC 2" (prompt 7 of 12, 4-direction, New Ability
+// Select on) with its three summary lines, on the shipped default keys.
+TEST(PausePlayerDraw, menushots_remap_prompt_spec2)
+{
+    if (std::getenv("MENUSHOTS_DIR") == nullptr)
+        GTEST_SKIP() << "set MENUSHOTS_DIR to write the PR proof frames";
+
+    ControlStateGuard controls;
+    ScopedAbilitySelect on(true);
+    set_player_control_mode(
+        0, static_cast<int>(ControlDirectionMode::FourDirection));
+    trace_clear();
+    g_remap_shot_polls = 0;
+    g_remap_shot_prompt = 7;
+    g_remap_shot_written = false;
+    edit_player_keymap_with_poll(0, &remap_shot_poll);
+    EXPECT_TRUE(trace_contains("remap", "prompt 7/12 key=17 label=SPEC 2"));
+    EXPECT_FALSE(trace_contains("remap", "prompt 8/12"))
+        << "the wizard stops at the filmed prompt";
+    EXPECT_TRUE(g_remap_shot_written);
 }
 
 // A pause that cannot be established never shows a menu. The pause request
