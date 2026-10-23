@@ -20,8 +20,9 @@
 // scripts/check_injector_settles.sh from birth: no flat settle, ever.
 //
 // Captures (the TRAIN door lit, Archmage with MIND CONTROL on the bench, a
-// level-1 mage, the TRAIN door dimmed) are frozen and checked for ink on every run, and
-// written as PPMs when UXSHOTS_DIR names a directory.
+// level-1 mage, a level-1 barbarian, the TRAIN door dimmed) are frozen and
+// checked for ink on every run, and written as PPMs when UXSHOTS_DIR names
+// a directory.
 
 #include <gtest/gtest.h>
 
@@ -30,8 +31,11 @@
 #include <openglad/gameplay/families/family_registry.h>
 #include <openglad/gameplay/families/specials_view.h>
 #include <openglad/gameplay/guy.h>
+#include <openglad/interface/ability_icons.h>
 #include <openglad/interface/button.h>
 #include <openglad/interface/input.h>
+#include <openglad/interface/render/pal32.h>
+#include <openglad/interface/render/text.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/ui/abilities_screen.h>
 #include <openglad/interface/ui/menu_screen_spec.h>
@@ -200,9 +204,10 @@ bool main_thread_belt(int slot, belt::Bytes& out)
     return ran && ok;
 }
 
-// Palette indices inside one live face (its bevel excluded), read on the
-// main thread at frame top, when the buffer still holds the frame the
-// window last showed.
+// Palette indices in one live face's LABEL area (x + 22 .. x + 144, inside
+// the bevel; the icon slot left of it is not counted, so TELEPORT's blue
+// ring, index 74, cannot pass for label ink), read on the main thread at
+// frame top, when the buffer still holds the frame the window last showed.
 struct FaceInk {
     int dark_blue = 0;  // the normal label ink (DARK_BLUE's ramp, 72..76)
     int locked = 0;     // the locked ink's own shades (below the bevel ramp)
@@ -220,7 +225,8 @@ bool main_thread_face_ink(const std::string& id, FaceInk& ink)
         if (face == nullptr)
             return;
         for (int y = face->yloc + 1; y < face->yend - 1; ++y) {
-            for (int x = face->xloc + 1; x < face->xend - 1; ++x) {
+            for (int x = face->xloc + kAbilitiesLabelX;
+                 x <= face->xloc + kAbilitiesLabelEndX; ++x) {
                 int index = 0;
                 test_screen()->get_pixel(x, y, &index);
                 if (index >= DARK_BLUE && index <= DARK_BLUE + 4)
@@ -234,6 +240,125 @@ bool main_thread_face_ink(const std::string& id, FaceInk& ink)
         ok = true;
     });
     return ran && ok;
+}
+
+// get_pixel's index read-back returns the FIRST palette index matching the
+// pixel's RGB, so an index whose RGB repeats an earlier entry (black 16 is
+// black 0) reads back as that earlier one. Expectations are canonicalized
+// the same way (test_glad_hud.cpp does the same).
+int canonical_palette_index(int color)
+{
+    int r = 0, g = 0, b = 0;
+    query_palette_reg(static_cast<unsigned char>(color), &r, &g, &b);
+    for (int i = 0; i < 256; ++i) {
+        int tr = 0, tg = 0, tb = 0;
+        query_palette_reg(static_cast<unsigned char>(i), &tr, &tg, &tb);
+        if (r == tr && g == tg && b == tb)
+            return i;
+    }
+    return color;
+}
+
+// One face's icon slot as drawn: the 18x18 cell at (x + 2, y + 1), read on
+// the main thread at frame top.
+struct SlotPixels {
+    bool read = false;
+    std::array<int, kAbilitiesSlotSize * kAbilitiesSlotSize> index{};
+    int at(int x, int y) const
+    {
+        return index[static_cast<std::size_t>(y * kAbilitiesSlotSize + x)];
+    }
+};
+
+bool main_thread_slot(const std::string& id, SlotPixels& slot)
+{
+    const bool ran = run_on_main_thread([&id, &slot] {
+        for (vbutton* const live : og::runtime::current_session->allbuttons_) {
+            if (live == nullptr || live->id != id || live->hidden)
+                continue;
+            for (int y = 0; y < kAbilitiesSlotSize; ++y) {
+                for (int x = 0; x < kAbilitiesSlotSize; ++x) {
+                    int index = 0;
+                    test_screen()->get_pixel(live->xloc + kAbilitiesSlotX + x,
+                                             live->yloc + kAbilitiesSlotY + y,
+                                             &index);
+                    slot.index[static_cast<std::size_t>(
+                        y * kAbilitiesSlotSize + x)] = index;
+                }
+            }
+            slot.read = true;
+        }
+    });
+    return ran && slot.read;
+}
+
+// The dark-blue ink `label` leaves when written alone in the face font: what
+// a face's label area must hold, no more (an icon pixel in the window would
+// add to it). Drawn on the main thread over a corner the next frame repaints.
+bool main_thread_label_ink(const std::string& label, int& ink)
+{
+    return run_on_main_thread([&label, &ink] {
+        screen* const scr = test_screen();
+        scr->draw_box(0, 0, 159, 11, 0, 1, 1);
+        scr->text_normal.write_xy(2, 2, label, DARK_BLUE, static_cast<short>(1));
+        ink = 0;
+        for (int y = 0; y < 12; ++y) {
+            for (int x = 0; x < 160; ++x) {
+                int index = 0;
+                scr->get_pixel(x, y, &index);
+                if (index >= DARK_BLUE && index <= DARK_BLUE + 4)
+                    ++ink;
+            }
+        }
+    });
+}
+
+// The label in one face: the rows inside the bevel that carry anything but
+// the face grey in the label area, and the label ink (either ramp) that
+// spilled right of it (over the bevel, into the gutter and the next
+// column).
+struct LabelRows {
+    bool read = false;
+    int rows_with_ink = 0;
+    int spilled = 0;
+};
+
+bool main_thread_label_rows(const std::string& id, LabelRows& out)
+{
+    const auto is_ink = [](int index) {
+        return (index >= DARK_BLUE && index <= DARK_BLUE + 4) ||
+               (index >= BUTTON_FACING - 5 && index <= BUTTON_FACING - 3);
+    };
+    const int face_grey = canonical_palette_index(BUTTON_FACING);
+    const bool ran = run_on_main_thread([&id, &out, &is_ink, face_grey] {
+        for (vbutton* const live : og::runtime::current_session->allbuttons_) {
+            if (live == nullptr || live->id != id || live->hidden)
+                continue;
+            for (int y = live->yloc + 1; y < live->yend - 1; ++y) {
+                // A glyph's lower rows are shaded off the ink ramp, so a
+                // row "has ink" when anything but the face grey is on it.
+                bool row_ink = false;
+                for (int x = live->xloc + kAbilitiesLabelX;
+                     x <= live->xloc + kAbilitiesLabelEndX; ++x) {
+                    int index = 0;
+                    test_screen()->get_pixel(x, y, &index);
+                    row_ink = row_ink || index != face_grey;
+                }
+                out.rows_with_ink += row_ink ? 1 : 0;
+                // Past the label area: the right bevel, the gutter and the
+                // next column's bevel, up to its slot.
+                for (int x = live->xloc + kAbilitiesLabelEndX + 1;
+                     x < live->xend + kAbilitiesColGutter + kAbilitiesSlotX;
+                     ++x) {
+                    int index = 0;
+                    test_screen()->get_pixel(x, y, &index);
+                    out.spilled += is_ink(index) ? 1 : 0;
+                }
+            }
+            out.read = true;
+        }
+    });
+    return ran && out.read;
 }
 
 // What every picker_main flow records on the injector thread and asserts on
@@ -448,6 +573,14 @@ struct DirectState {
     FaceInk locked_ink;
     FaceInk open_ink;
     bool ink_read = false;
+    // The icon slots: key 1's ready icon and SHIFTER+3's locked one.
+    SlotPixels key1_slot;
+    SlotPixels s3_slot;
+    std::string key1_label;
+    int key1_label_ink = -1;
+    // The two-line label face (a long locked row) and its id.
+    std::string long_face_id;
+    LabelRows long_face;
     std::string landing_start;
     std::string landing_down;
     std::string landing_right;
@@ -517,6 +650,10 @@ int mage_page_injector(void* data)
     state->bench_0 = interactable_label("bench_0");
     state->ink_read = main_thread_face_ink("belt_2", state->locked_ink) &&
                       main_thread_face_ink("belt_0", state->open_ink);
+    (void)main_thread_slot("belt_0", state->key1_slot);
+    (void)main_thread_slot("belt_5", state->s3_slot);
+    state->key1_label = interactable_label("belt_0");
+    (void)main_thread_label_ink(state->key1_label, state->key1_label_ink);
     capture_presented_frame("abilities_mage", uxshots_dir());
     ++state->captures;
 
@@ -527,6 +664,25 @@ int mage_page_injector(void* data)
         state->landing_down = highlighted_id();
     if (press_menu_nav(KEY_RIGHT))
         state->landing_right = highlighted_id();
+    state->finished = true;
+    return escape(0, "");
+}
+
+int long_label_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* const state = static_cast<DirectState*>(data);
+    const auto escape = [state](int leg, const char* why) {
+        return escape_to_the_main_thread(state->test_finished, leg, why,
+                                         kDirectEscapeDoors);
+    };
+    state->opened = wait_for_interactable("belt_0", 10000);
+    if (!state->opened)
+        return escape(1, "the screen never came up");
+    (void)wait_for_menu_frames(2);
+    (void)main_thread_label_rows(state->long_face_id, state->long_face);
+    capture_presented_frame("abilities_barbarian", uxshots_dir());
+    ++state->captures;
     state->finished = true;
     return escape(0, "");
 }
@@ -600,6 +756,39 @@ struct DirectRunScope {
     }
 };
 
+// The slot as the HUD draws it: a black frame all round, and inside it the
+// picture over the 18 fill (the fill shows where the picture is clear).
+void expect_slot_holds(const SlotPixels& slot, const PixieData& picture,
+                       const char* what)
+{
+    ASSERT_TRUE(slot.read) << what;
+    ASSERT_TRUE(picture.valid()) << what;
+    int frame_misses = 0;
+    int picture_misses = 0;
+    for (int y = 0; y < kAbilitiesSlotSize; ++y) {
+        for (int x = 0; x < kAbilitiesSlotSize; ++x) {
+            const bool edge = x == 0 || y == 0 || x == kAbilitiesSlotSize - 1 ||
+                              y == kAbilitiesSlotSize - 1;
+            if (edge) {
+                frame_misses += slot.at(x, y) ==
+                                        canonical_palette_index(
+                                            kAbilitiesSlotFrame)
+                    ? 0
+                    : 1;
+                continue;
+            }
+            const int drawn = picture.data[static_cast<std::size_t>(
+                (y - 1) * og::ui::kAbilityIconSize + (x - 1))];
+            const int want =
+                canonical_palette_index(drawn != 0 ? drawn : kAbilitiesSlotFill);
+            picture_misses += slot.at(x, y) == want ? 0 : 1;
+        }
+    }
+    EXPECT_EQ(0, frame_misses) << what << ": the slot's black frame";
+    EXPECT_EQ(0, picture_misses)
+        << what << ": the 16x16 window is the icon over the slot fill";
+}
+
 } // namespace
 
 // ---------------------------------------------------------------------------
@@ -637,6 +826,8 @@ TEST(AbilitiesLayout, exact_table_and_grid_relations)
         EXPECT_EQ(kAbilitiesBeltTopY + (i / 2) * kAbilitiesBeltPitch, face.y)
             << face.id;
         EXPECT_FALSE(face.hidden) << face.id;
+        EXPECT_TRUE(face.no_draw)
+            << face.id << ": the screen draws the face, slot and label";
     }
     for (int i = 0; i < kAbilitiesBenchRows; ++i) {
         const button& face = row(kAbilitiesBenchBase + i);
@@ -649,6 +840,7 @@ TEST(AbilitiesLayout, exact_table_and_grid_relations)
         EXPECT_EQ(kAbilitiesBenchTopY + (i / 2) * kAbilitiesBenchPitch, face.y)
             << face.id;
         EXPECT_TRUE(face.hidden) << face.id << " starts hidden";
+        EXPECT_TRUE(face.no_draw) << face.id;
     }
 
     // The relations a crooked edit would break: one left edge, one right
@@ -687,6 +879,17 @@ TEST(AbilitiesLayout, exact_table_and_grid_relations)
     // The budgets: a 24-glyph row (the model's cut, '>' included) fits a
     // face; the status line fits the panel.
     EXPECT_LE(6 * og::ui::kAbilityRowChars, kAbilitiesColW);
+    // Beside the icon slot, in the face font itself, a row of the model's
+    // budget (its '>' never drawn) fits the label area on two lines, and
+    // the two lines fit the face's height inside the bevel.
+    const text& font = test_screen()->text_normal;
+    const int advance = static_cast<int>(font.letters->w) + 1;
+    const int per_line =
+        (kAbilitiesLabelEndX - kAbilitiesLabelX + 2) / advance;
+    EXPECT_LE(og::ui::kAbilityRowChars, 2 * per_line)
+        << "a row of the model's budget needs a third line";
+    EXPECT_LE(2 * static_cast<int>(font.letters->h) + 1, kAbilitiesBeltH - 2)
+        << "two label lines do not fit inside the face's bevel";
     EXPECT_LE(6 * og::ui::kAbilityStatusChars,
               kAbilitiesPanelX2 - kAbilitiesPanelX1 - 8);
     EXPECT_LE(6 * og::ui::kAbilityTitleChars,
@@ -872,6 +1075,28 @@ TEST(AbilitiesFlow, train_door_opens_the_screen_and_the_edit_reaches_the_save)
     EXPECT_EQ("", state.opened_bench_1) << "one ability on the bench";
     EXPECT_FALSE(state.bench_1_shown) << "an empty bench row is hidden";
 
+    // Every face wears its ability's icon, and the icon follows the
+    // ability: MIND CONTROL's moves to key 3 with it, an emptied slot has
+    // none.
+    EXPECT_TRUE(trace_contains("abilities_icon",
+                               "face=belt_0 icon=icons/teleport.png "
+                               "drawn=icons/teleport.png locked=0"));
+    EXPECT_TRUE(trace_contains("abilities_icon",
+                               "face=belt_1 icon=icons/heartburst.png "
+                               "drawn=icons/heartburst.png locked=0"));
+    EXPECT_TRUE(trace_contains("abilities_icon",
+                               "face=belt_3 icon=icons/teleport_marker.png "));
+    EXPECT_TRUE(trace_contains("abilities_icon",
+                               "face=belt_2 icon=icons/summon_image.png "));
+    EXPECT_TRUE(trace_contains("abilities_icon",
+                               "face=bench_0 icon=icons/mind_control.png "));
+    EXPECT_TRUE(trace_contains("abilities_icon",
+                               "face=belt_2 icon=icons/mind_control.png "))
+        << "the placed ability's icon moved onto key 3";
+    EXPECT_TRUE(trace_contains("abilities_icon",
+                               "face=belt_0 icon=(none) drawn=none"))
+        << "an emptied slot shows no picture";
+
     EXPECT_EQ("SUMMON IMAGE is on key 3.", state.selected_status);
     EXPECT_EQ("SUMMON IMAGE", state.bench_after_place)
         << "the displaced ability goes to the bench";
@@ -1025,6 +1250,53 @@ TEST(AbilitiesFlow, mage_page_greys_locked_rows_and_the_keyboard_walks_it)
     EXPECT_GT(state.locked_ink.locked, 0);
     EXPECT_GT(state.open_ink.dark_blue, 0)
         << "an open row keeps the normal ink";
+    // The label window holds the label and nothing else: key 1's TELEPORT
+    // (its ring is 74, inside the dark-blue ramp) sits in the slot, outside
+    // the window, and adds nothing to the count.
+    EXPECT_EQ(page.belt[0].text, state.key1_label);
+    EXPECT_EQ(state.key1_label_ink, state.open_ink.dark_blue)
+        << "the label window counted pixels that are not the label's";
+
+    // The icons: key 1 is TELEPORT as drawn; SHIFTER+3 is the locked
+    // HEARTBURST (it opens past level 1), the grey copy, never melting into
+    // the slot's fill.
+    ASSERT_EQ("TELEPORT", page.belt[0].name);
+    ASSERT_EQ("HEARTBURST", page.belt[5].name);
+    ASSERT_TRUE(page.belt[5].locked) << page.belt[5].text;
+    og::ui::AbilityIcons icons;
+    const FamilyDescriptor& mage_fd = *get_family_descriptor(FAMILY_MAGE);
+    const og::ui::AbilityIcon* const teleport =
+        icons.icon(mage_fd, *page.belt[0].entry);
+    const og::ui::AbilityIcon* const heartburst =
+        icons.icon(mage_fd, *page.belt[5].entry);
+    ASSERT_NE(nullptr, teleport);
+    ASSERT_NE(nullptr, heartburst);
+    expect_slot_holds(state.key1_slot, teleport->ready, "key 1 TELEPORT");
+    expect_slot_holds(state.s3_slot, heartburst->locked,
+                      "SHIFTER+3 HEARTBURST, locked");
+    int off_palette = 0;
+    int off_fill = 0;
+    for (int y = 1; y < kAbilitiesSlotSize - 1; ++y) {
+        for (int x = 1; x < kAbilitiesSlotSize - 1; ++x) {
+            const int index = state.s3_slot.at(x, y);
+            bool grey = index == canonical_palette_index(16) ||
+                        index == canonical_palette_index(kAbilitiesSlotFill);
+            for (int g = 21; g <= 31; ++g)
+                grey = grey || index == canonical_palette_index(g);
+            off_palette += grey ? 0 : 1;
+            off_fill +=
+                index != canonical_palette_index(kAbilitiesSlotFill) ? 1 : 0;
+        }
+    }
+    EXPECT_EQ(0, off_palette)
+        << "a locked icon is drawn in 16, the fill 18 and the greys 21..31";
+    EXPECT_GE(off_fill, 30) << "the locked icon melted into the slot fill";
+    EXPECT_TRUE(trace_contains("abilities_icon",
+                               "face=belt_0 icon=icons/teleport.png "
+                               "drawn=icons/teleport.png locked=0"));
+    EXPECT_TRUE(trace_contains("abilities_icon",
+                               "face=belt_5 icon=icons/heartburst.png "
+                               "drawn=icons/heartburst.png locked=1"));
 
     EXPECT_EQ("belt_0", state.landing_start);
     EXPECT_EQ("belt_1", state.landing_down) << "DOWN: key 1 -> key 2";
@@ -1116,6 +1388,56 @@ TEST(AbilitiesFlow, a_host_go_while_parked_starts_and_commits_nothing)
         << "an edit in flight when the match starts is not committed";
     EXPECT_FALSE(trace_contains("abilities", "commit slot="));
     EXPECT_TRUE(scope.lobby.ready_requests.empty());
+}
+
+// The longest core row, a level-1 Barbarian's locked "2 EXPLODING BOULDER
+// L4" (22 glyphs; 20 fit beside the slot), goes on two lines inside its
+// face, and no ink leaves the label area.
+TEST(AbilitiesFlow, the_longest_row_wraps_inside_its_face)
+{
+    // A flow that failed before its own verification leaves its frames in
+    // the ledger; each flow answers for its own captures only.
+    (void)take_captured_frames();
+    DirectRunScope scope;
+    write_ability_company();
+    auto barbarian = std::make_unique<guy>(FAMILY_BARBARIAN);
+    barbarian->name = "CONAN";
+    barbarian->level = 1;
+    barbarian->deployed = true;
+    test_screen()->save_data.team_list[2] = std::move(barbarian);
+
+    const og::ui::AbilityPage page =
+        og::ui::ability_page(*test_screen()->save_data.team_list[2], 1);
+    int long_slot = 0;
+    for (int b = 1; b < belt::kSlots; ++b) {
+        if (page.belt[static_cast<std::size_t>(b)].text.size() >
+            page.belt[static_cast<std::size_t>(long_slot)].text.size())
+            long_slot = b;
+    }
+    ASSERT_GE(page.belt[static_cast<std::size_t>(long_slot)].text.size(), 22u)
+        << "the Barbarian's longest row: "
+        << page.belt[static_cast<std::size_t>(long_slot)].text;
+
+    DirectState state;
+    state.long_face_id = "belt_" + std::to_string(long_slot);
+    int thread_result = 0;
+    const Sint32 result =
+        run_direct(2, long_label_injector, state, thread_result);
+    test_screen()->save_data.team_list[2].reset();
+    EXPECT_EQ(0, thread_result) << "the injector gave up at leg "
+                                << thread_result;
+    EXPECT_EQ(MENU_REDRAW, result);
+    ASSERT_TRUE(state.finished);
+    ASSERT_TRUE(state.long_face.read);
+    const int glyph_h =
+        static_cast<int>(test_screen()->text_normal.letters->h);
+    EXPECT_GT(state.long_face.rows_with_ink, glyph_h)
+        << page.belt[static_cast<std::size_t>(long_slot)].text
+        << " is on two lines";
+    EXPECT_EQ(0, state.long_face.spilled)
+        << page.belt[static_cast<std::size_t>(long_slot)].text
+        << " ran out of its face";
+    verify_captured_frames("abilities_barbarian", 1);
 }
 
 // The Base Camp seat panel's ACTIONS column is the shared row list

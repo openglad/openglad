@@ -13,11 +13,13 @@
 #include <openglad/gameplay/families/belt.h>
 #include <openglad/gameplay/families/family_registry.h>
 #include <openglad/gameplay/guy.h>
+#include <openglad/interface/ability_icons.h>
 #include <openglad/interface/base.h>
 #include <openglad/interface/button.h>
 #include <openglad/interface/input.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/session_state.h>
+#include <openglad/interface/render/text.h>
 #include <openglad/interface/ui/ability_pick.h>
 #include <openglad/interface/ui/campaign_picker_session.h>
 #include <openglad/interface/ui/picker_common.h>
@@ -30,7 +32,10 @@
 #include <array>
 #include <cstddef>
 #include <iterator>
+#include <span>
 #include <string>
+#include <string_view>
+#include <utility>
 #include <vector>
 
 namespace og::ui {
@@ -96,6 +101,9 @@ struct AbilitiesScreenState {
     // A belt slot 0..5, a bench row kSlots + bench index, or -1.
     int selected = -1;
     PageModel bench_window{};
+    // What each face's icon trace last said (belt faces, then bench rows),
+    // so the trace names a change once instead of every frame.
+    std::array<std::string, belt::kSlots + kAbilitiesBenchRows> icon_traced{};
 };
 
 AbilitiesScreenState* g_abilities = nullptr;
@@ -130,8 +138,8 @@ AbilityPage abilities_page(const guy& hero)
                         abilities_new_specials(), g_abilities->working);
 }
 
-// The bench window: eight rows when the bench fits, otherwise seven and the
-// MORE row on the eighth (only a class pack with more than eight abilities
+// The bench window: four rows when the bench fits, otherwise three and the
+// MORE row on the fourth (only a class pack with more than four abilities
 // off the belt reaches it).
 void sync_bench_window(int bench_count)
 {
@@ -141,7 +149,7 @@ void sync_bench_window(int bench_count)
     g_abilities->bench_window = fresh;
 }
 
-// Bench row `row` (0..7) -> index into AbilityPage::bench, or -1 for a row
+// Bench row `row` (0..3) -> index into AbilityPage::bench, or -1 for a row
 // with nothing on it; kMoreRow for the pager row.
 constexpr int kMoreRow = -2;
 
@@ -230,7 +238,10 @@ constexpr MenuButtonSpec belt_row(const char* id)
             .w = kAbilitiesColW, .h = kAbilitiesBeltH,
             .action = ButtonAction::MenuSpecRow,
             .arg = belt_ordinal(BeltSlot),
-            .label_binding = {.formatter = &belt_label<BeltSlot>}};
+            .label_binding = {.formatter = &belt_label<BeltSlot>},
+            // abilities_draw_content draws the whole face (slot, icon,
+            // label), so a click never flashes the bare centred label.
+            .no_draw = true};
 }
 
 template <int Row>
@@ -243,10 +254,11 @@ constexpr MenuButtonSpec bench_row(const char* id)
             .arg = kAbilitiesBenchBase + Row,
             .label_binding = {.formatter = &bench_label<Row>},
             .state_override = &bench_row_state<Row>,
+            .no_draw = true,
             .hidden = true};
 }
 
-// The static nav is the all-visible variant (eight bench rows): two column
+// The static nav is the all-visible variant (four bench rows): two column
 // chains, top to bottom and round again through the footer, with
 // left/right between the columns. abilities_rewire re-derives it every
 // frame around the hidden bench rows.
@@ -270,14 +282,10 @@ constexpr MenuButtonSpec kAbilitiesRows[] = {
     bench_row<1>("bench_1"),
     bench_row<2>("bench_2"),
     bench_row<3>("bench_3"),
-    bench_row<4>("bench_4"),
-    bench_row<5>("bench_5"),
-    bench_row<6>("bench_6"),
-    bench_row<7>("bench_7"),
 };
 
 static_assert(std::size(kAbilitiesRows) == kAbilitiesRowCount,
-              "ABILITIES ordinals: BACK, DEFAULTS, six belt, eight bench");
+              "ABILITIES ordinals: BACK, DEFAULTS, six belt, four bench");
 
 // One column's chain, top to bottom, then the footer button, linked round.
 void link_column(button* buttons, const std::vector<int>& chain)
@@ -333,7 +341,7 @@ constexpr unsigned char kLockedInk = static_cast<unsigned char>(BUTTON_FACING - 
 // (or meets) the yellow hover and keyboard rings drawn outside a face.
 constexpr unsigned char kSelectedRing = RED;
 
-// The live face of ordinal `ordinal` (what draw_buttons drew), or null.
+// The live face of ordinal `ordinal` (what the runner laid out), or null.
 const vbutton* live_face(int ordinal)
 {
     const vbutton* const live = og::runtime::current_session
@@ -341,20 +349,23 @@ const vbutton* live_face(int ordinal)
     return live != nullptr && !live->hidden ? live : nullptr;
 }
 
-// Re-letter a face in the locked ink: repaint its interior (inside the
-// bevel) and write the label where vbutton::vdisplay centres it.
-void draw_locked_face(const vbutton& face)
+// The icons this screen draws: loaded on first use (a game that never opens
+// the screen never reads one) and read again when the sprite sources change.
+AbilityIcons& abilities_icon_set()
 {
-    screen* const scr = og::runtime::current_session->myscreen_;
-    scr->draw_box(face.xloc + 1, face.yloc + 1, face.xend - 2, face.yend - 2,
-                  static_cast<unsigned char>(BUTTON_FACING), 1, 1);
-    // vbutton::vdisplay's own centring, so the ink lands on its glyphs.
-    text& ink = scr->text_normal;
-    const int glyph_w = static_cast<int>(ink.letters->w) + 1;
-    const int width = static_cast<int>(face.label.size()) * glyph_w - 1;
-    const int x = (face.xloc + face.xend) / 2 - width / 2;
-    const int y = face.yloc + (face.height - static_cast<int>(ink.letters->h)) / 2;
-    ink.write_xy(x, y, face.label, kLockedInk, static_cast<short>(1));
+    static AbilityIcons icons;
+    return icons;
+}
+
+// The face itself, through vbutton::vdisplay (the one bevel every button
+// has), carrying `label` centred as every button does; the belt and bench
+// rows pass "" and letter themselves.
+void draw_plain_face(const vbutton& live, const std::string& label)
+{
+    constexpr Sint32 kNoAction = 0;
+    vbutton face(live.xloc, live.yloc, live.width, live.height, kNoAction,
+                 kNoAction, label, KEYSTATE_UNKNOWN);
+    face.vdisplay();
 }
 
 void draw_selected_ring(const vbutton& face)
@@ -364,33 +375,158 @@ void draw_selected_ring(const vbutton& face)
         kSelectedRing, 0, 1);
 }
 
+// The 18x18 slot (the HUD's: fill 18, black frame) and its picture: the
+// icon as drawn, its grey copy when locked, nothing for an empty slot.
+void draw_icon_slot(const vbutton& face, const AbilityIcon* icon, bool locked)
+{
+    screen* const scr = og::runtime::current_session->myscreen_;
+    const int x = face.xloc + kAbilitiesSlotX;
+    const int y = face.yloc + kAbilitiesSlotY;
+    scr->draw_box(x, y, x + kAbilitiesSlotSize - 1, y + kAbilitiesSlotSize - 1,
+                  kAbilitiesSlotFill, 1, 1);
+    scr->draw_box(x, y, x + kAbilitiesSlotSize - 1, y + kAbilitiesSlotSize - 1,
+                  kAbilitiesSlotFrame, 0, 1);
+    if (icon == nullptr)
+        return;
+    const PixieData& picture = locked ? icon->locked : icon->ready;
+    scr->putdata(face.xloc + kAbilitiesIconX, face.yloc + kAbilitiesIconY,
+                 kAbilityIconSize, kAbilityIconSize,
+                 std::span<const unsigned char>(
+                     picture.data.get(),
+                     static_cast<std::size_t>(kAbilityIconSize) *
+                         kAbilityIconSize));
+}
+
+// The face's label as drawn: the formatter's text without the selection
+// mark (the red ring marks the selected face), in one line of at most
+// `per_line` glyphs, or two when it is longer: beside the slot a line holds
+// 20 glyphs, and a locked "2 EXPLODING BOULDER L4" is 22, so its level goes
+// to the second line. The break is the last space that fits; a word longer
+// than a line is cut.
+std::pair<std::string, std::string> face_label_lines(std::string_view label,
+                                                     std::size_t per_line)
+{
+    if (!label.empty() && label.front() == kSelectedMark)
+        label.remove_prefix(1);
+    if (label.size() <= per_line)
+        return {std::string(label), {}};
+    std::size_t split = label.rfind(' ', per_line);
+    std::size_t rest = split + 1;
+    if (split == std::string_view::npos || split == 0) {
+        split = per_line;
+        rest = per_line;
+    }
+    return {std::string(label.substr(0, split)),
+            std::string(label.substr(rest, per_line))};
+}
+
+// The label beside the slot, left-aligned, in the normal ink or the locked
+// one; one line centred on the face, or two centred as a pair.
+void draw_face_label(const vbutton& face, bool locked)
+{
+    text& ink = og::runtime::current_session->myscreen_->text_normal;
+    const int glyph_w = static_cast<int>(ink.letters->w) + 1;
+    const int glyph_h = static_cast<int>(ink.letters->h);
+    const std::size_t per_line = static_cast<std::size_t>(
+        (kAbilitiesLabelEndX - kAbilitiesLabelX + 2) / glyph_w);
+    const auto [first, second] = face_label_lines(face.label, per_line);
+    const unsigned char color = locked ? kLockedInk : DARK_BLUE;
+    const int x = face.xloc + kAbilitiesLabelX;
+    if (second.empty()) {
+        ink.write_xy(x, face.yloc + (face.height - glyph_h) / 2, first, color,
+                     static_cast<short>(1));
+        return;
+    }
+    const int top = face.yloc + (face.height - (2 * glyph_h + 1)) / 2;
+    ink.write_xy(x, top, first, color, static_cast<short>(1));
+    ink.write_xy(x, top + glyph_h + 1, second, color, static_cast<short>(1));
+}
+
+// Names the icon on a face once per change: what the family declares and
+// what was drawn (the declared file, the generic tile, or none).
+void trace_face_icon([[maybe_unused]] const char* face_kind,
+                     [[maybe_unused]] int index, std::string& last,
+                     const char* declared, const AbilityIcon* icon,
+                     bool locked)
+{
+    AbilityIcons& icons = abilities_icon_set();
+    const char* drawn = "none";
+    if (icon != nullptr)
+        drawn = icon == icons.icon_at(kMissingIconPath) ? kMissingIconPath
+                                                        : declared;
+    std::string now = std::string(declared != nullptr ? declared : "(none)") +
+                      " drawn=" + drawn + (locked ? " locked=1" : " locked=0");
+    if (now == last)
+        return;
+    last = std::move(now);
+    TRACE("abilities_icon", "face=%s_%d icon=%s", face_kind, index,
+          last.c_str());
+}
+
+// One belt or bench face: the face, the selection ring, the slot with its
+// icon, the label beside it, then the hover ring draw_buttons would have
+// drawn (these rows are no_draw: the runner draws none of it).
+void draw_ability_face(const vbutton& face, const FamilyDescriptor* fd,
+                       const AbilityRow& row, bool selected, const char* kind,
+                       int index, std::string& traced)
+{
+    draw_plain_face(face, std::string{});
+    if (selected)
+        draw_selected_ring(face);
+    const AbilityIcon* icon = nullptr;
+    const char* declared = nullptr;
+    if (row.entry.has_value() && fd != nullptr) {
+        declared = declared_icon_path(*fd, *row.entry);
+        icon = abilities_icon_set().icon(*fd, *row.entry);
+    }
+    draw_icon_slot(face, icon, row.locked);
+    draw_face_label(face, row.locked);
+    if (face.had_focus)
+        draw_button_hover(*og::runtime::current_session->myscreen_, face.xloc,
+                          face.yloc, face.width, face.height);
+    if (row.entry.has_value())
+        trace_face_icon(kind, index, traced, declared, icon, row.locked);
+    else
+        trace_face_icon(kind, index, traced, nullptr, nullptr, false);
+}
+
 void abilities_draw_content(void* /*screen_state*/)
 {
     const guy* const hero = abilities_hero();
     if (hero == nullptr)
         return;
     const AbilityPage page = abilities_page(*hero);
+    const FamilyDescriptor* const fd = abilities_family(*hero);
 
-    // Faces after draw_buttons: the locked rows' ink, then the ring.
     for (int b = 0; b < belt::kSlots; ++b) {
         const vbutton* const face = live_face(belt_ordinal(b));
         if (face == nullptr)
             continue;
-        if (page.belt[static_cast<std::size_t>(b)].locked)
-            draw_locked_face(*face);
-        if (g_abilities->selected == b)
-            draw_selected_ring(*face);
+        draw_ability_face(*face, fd, page.belt[static_cast<std::size_t>(b)],
+                          g_abilities->selected == b, "belt", b,
+                          g_abilities->icon_traced[static_cast<std::size_t>(b)]);
     }
     for (int r = 0; r < kAbilitiesBenchRows; ++r) {
         const int index =
             bench_row_index(static_cast<int>(page.bench.size()), r);
         const vbutton* const face = live_face(kAbilitiesBenchBase + r);
-        if (index < 0 || face == nullptr)
+        if (face == nullptr)
             continue;
-        if (page.bench[static_cast<std::size_t>(index)].locked)
-            draw_locked_face(*face);
-        if (g_abilities->selected == belt::kSlots + index)
-            draw_selected_ring(*face);
+        if (index == kMoreRow) {
+            // The pager: a plain face with its label, as every button.
+            draw_plain_face(*face, face->label);
+            if (face->had_focus)
+                draw_button_hover(*og::runtime::current_session->myscreen_,
+                                  face->xloc, face->yloc, face->width,
+                                  face->height);
+            continue;
+        }
+        if (index < 0)
+            continue;
+        draw_ability_face(
+            *face, fd, page.bench[static_cast<std::size_t>(index)],
+            g_abilities->selected == belt::kSlots + index, "bench", r,
+            g_abilities->icon_traced[static_cast<std::size_t>(belt::kSlots + r)]);
     }
 
     // Text last.
