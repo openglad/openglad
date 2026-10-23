@@ -1,4 +1,4 @@
-# TURN UNDEAD (cleric): a yellow rayed cross (88) at the top pressing down on a grey skull (pix/skeleton.png head) toppling over onto a red stain (pix/stain.png frame 0, flattened)
+# TURN UNDEAD (cleric): a yellow rayed cross (88) at the top pressing down on a grey skull (redrawn at 6 px from the pix/skeleton.png frame 0 skull, sockets black) toppling over onto a red stain (pix/stain.png frame 0, flattened)
 # legend: one character = one palette index (pix/openglad.gpl)
 y = 88
 z = 90

@@ -1,4 +1,4 @@
-# REASSEMBLE (skeleton): a pile of bones at the bottom (pix/bone1.png frames 1 and 3 crossed), the skull above it (pix/skeleton.png head), the blue cast flash (pix/telflash.png frame 3, moved to 64-66) between them
+# REASSEMBLE (skeleton): a pile of bones at the bottom (pix/bone1.png frames 1 and 3 crossed), the skull above it (redrawn at 6 px from the pix/skeleton.png frame 0 skull, sockets black), the blue cast flash (pix/telflash.png frame 3, moved to 64-66) between them
 # legend: one character = one palette index (pix/openglad.gpl)
 k = 16
 w = 31

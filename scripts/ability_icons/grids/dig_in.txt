@@ -1,4 +1,4 @@
-# DIG IN (skeleton): an earth mound (ground 136-141) with the skull's two red eyes peeking out of a dark slit and a bone tip (pix/bone1.png frame 0 head) sticking up: buried and waiting
+# DIG IN (skeleton): an earth mound (ground 136-142) with the skull's two red eyes peeking out of a dark slit and a bone tip (pix/bone1.png frame 0 head) sticking up: buried and waiting
 # legend: one character = one palette index (pix/openglad.gpl)
 k = 16
 r = 40
@@ -20,8 +20,8 @@ d = 22
 ...........ad...
 .....AAAAAABdA..
 ...AABBBBBBBBBC.
-..ABBkkkkkkBBBC.
-..ABkrkkrkkBBCC.
+..ABkkkkkkkBBBC.
+..ABkrrkrrkBBCC.
 .ABBBkkkkkBBBCCD
 .ABBBBBBBBBBBCCD
 .ABBBBBBBBBBCCDD
