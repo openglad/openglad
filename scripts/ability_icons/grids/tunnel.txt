@@ -1,4 +1,4 @@
-# TUNNEL (skeleton): the skull (redrawn at 6 px from the pix/skeleton.png frame 0 skull, sockets black) half sunk in a brown earth mound (ground 137-141), a solid bone-grey arc over the gap to a second mound with a hole in its top: down here, up there
+# TUNNEL (skeleton): the skull (redrawn at 6 px from the pix/skeleton.png frame 0 skull, sockets black) half sunk in a brown earth mound (ground 137-141), a solid bone-grey arc over the gap to a second mound with a hole in its top, the arc ends in a down arrowhead into the hole: down here, up there
 # legend: one character = one palette index (pix/openglad.gpl)
 k = 16
 w = 31
@@ -15,8 +15,8 @@ C = 141
 .......wl....wl.
 ....wwlm.....wl.
 ..wwllmd.....wl.
-..wkwlkd.....wl.
-..lkllkd........
+..wkwlkd...wwlll
+..lkllkd....wll.
 .AAmlklmA..AAkkA
 ABBBAAAAC.ABBBBC
 ABBBBBBBC.ABBBCC
