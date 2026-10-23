@@ -1,6 +1,8 @@
 #include <openglad/gameplay/guy.h>
 #include <openglad/interface/guy_create.h>
 #include <openglad/resources/gloader.h>
+#include <openglad/resources/og_file.h>
+#include <openglad/interface/ability_icons.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/families/classpack_data.h>
@@ -3679,32 +3681,43 @@ TEST_F(GladHud, hud_special_row_names_the_pack_familys_own_special)
 }
 
 // ---------------------------------------------------------------------------
-// New Ability Select's belt rows (score_panel.cpp plan_belt_rows): with the
-// setting on, the HUD names what each SPEC key casts, three rows for the
-// layer the seat's physical SHIFTER picks, "1 TELEPORT" / "S1 TELEPORT
-// MARKER", cut by og::ui::belt_hud_line. The "belt_row" trace carries each
-// drawn row's exact text and ink; "belt_row_suppressed" each row that
-// yields. The classic SPC row's pins above run with the setting off
-// (ScopedAbilitySelect); these run with it on.
+// New Ability Select's hotbar (score_panel.cpp plan_belt_strip): with the
+// setting on, the HUD shows the three SPEC keys of the layer the seat's
+// physical SHIFTER picks as three 18px slots, each the ability's 16x16 icon
+// on a dark fill (palette 18) in a 1px frame (16 black; 40 red while the MP
+// cannot pay; 31 white while the key is held), the key lettered under it
+// ("1", "S1", or "L7" for a locked slot). No ability name is drawn. The
+// "belt_cell" trace carries each slot's entry, declared icon, state and
+// place; "belt_label" each label's text and ink. Where the strip does not
+// fit (the 100px columns, an 80-scanline pane) the text rows take over and
+// keep their "belt_row" traces. The classic SPC row's pins above run with
+// the setting off (ScopedAbilitySelect); these run with it on.
+
+// From score_panel.cpp: the HUD's icon set (swapped by one test below).
+og::ui::AbilityIcons& hud_ability_icons();
 
 namespace {
 
 // SHIFTER held for `seat` through the touch seam isPlayerHoldingKey ORs in
-// (the web overlay's): no SDL key state needed.
-struct ShifterHeld
+// (the web overlay's): no SDL key state needed. KeyHeld holds any key.
+struct KeyHeld
 {
     int seat;
+    int key;
     bool saved;
-    explicit ShifterHeld(int s, bool held = true)
-        : seat(s),
-          saved(input_hardware_state().touch_keystate[s][KEY_SHIFTER])
+    KeyHeld(int s, int k, bool held = true)
+        : seat(s), key(k), saved(input_hardware_state().touch_keystate[s][k])
     {
-        input_hardware_state().touch_keystate[seat][KEY_SHIFTER] = held;
+        input_hardware_state().touch_keystate[seat][key] = held;
     }
-    ~ShifterHeld()
-    {
-        input_hardware_state().touch_keystate[seat][KEY_SHIFTER] = saved;
-    }
+    ~KeyHeld() { input_hardware_state().touch_keystate[seat][key] = saved; }
+    KeyHeld(const KeyHeld&) = delete;
+    KeyHeld& operator=(const KeyHeld&) = delete;
+};
+
+struct ShifterHeld : KeyHeld
+{
+    explicit ShifterHeld(int s, bool held = true) : KeyHeld(s, KEY_SHIFTER, held) {}
 };
 
 // A guy-owned hero of `family` at `level` with MP to spare, claimed by the
@@ -3732,11 +3745,39 @@ std::unique_ptr<walker> make_belt_hero(unsigned char family, short level,
 constexpr unsigned char kBeltDimInkBox = 17;
 constexpr unsigned char kBeltDimInkPlain = 27;
 
+// The hotbar's geometry and paint, the design's numbers (score_panel.cpp
+// kBelt*): cells 18px, 19px apart from lm+2; the full panel's cells at
+// bm-44, the compact panel's at bm-26; labels one blank row under them.
+constexpr int kCellSize = 18;
+constexpr int kCellPitch = 19;
+constexpr int kFullCellTop = 44;
+constexpr int kCompactCellTop = 26;
+constexpr unsigned char kCellFill = 18;
+constexpr unsigned char kFrameInk = 16;
+constexpr unsigned char kFrameShortInk = 40;
+constexpr unsigned char kFramePressedInk = 31;
+
 std::string belt_row_trace(int key, bool shift, const std::string& text,
                            unsigned char ink)
 {
     return std::format("belt_row key={} shift={} text={} ink={}", key,
                        shift ? 1 : 0, text, static_cast<int>(ink));
+}
+
+// The belt_cell trace up to the state: key, layer, entry, declared icon.
+std::string belt_cell_trace(int key, bool shift, int slot, bool alt,
+                            const char* icon, const char* state)
+{
+    return std::format("belt_cell key={} shift={} slot={} alt={} icon={} "
+                       "state={}",
+                       key, shift ? 1 : 0, slot, alt ? 1 : 0, icon, state);
+}
+
+std::string belt_label_trace(int key, const std::string& text,
+                             unsigned char ink, bool shadow)
+{
+    return std::format("belt_label key={} text={} ink={} shadow={}", key, text,
+                       static_cast<int>(ink), shadow ? 1 : 0);
 }
 
 // Non-black pixels of the frame in [x0, x1) x [y0, y1).
@@ -3748,6 +3789,78 @@ int frame_ink(const std::array<unsigned char, 64000>& frame, int x0, int y0,
         for (int x = std::max(0, x0); x < std::min(320, x1); ++x)
             ink += frame[static_cast<std::size_t>(y * 320 + x)] != 0;
     return ink;
+}
+
+// A cell's top-left (its frame's corner) for SPEC `key` in a view's pane.
+struct CellAt
+{
+    int x = 0;
+    int y = 0;
+};
+
+CellAt cell_at(const viewscreen& v, int key, bool compact = false)
+{
+    return {v.xloc + 2 + kCellPitch * (key - 1),
+            v.endy - (compact ? kCompactCellTop : kFullCellTop)};
+}
+
+using IconWindow = std::array<unsigned char, 256>;
+
+// The 16x16 inside a cell's frame, as the screen reads it back.
+IconWindow icon_window(const std::array<unsigned char, 64000>& frame,
+                       CellAt cell)
+{
+    IconWindow out{};
+    for (int y = 0; y < 16; ++y)
+        for (int x = 0; x < 16; ++x)
+            out[static_cast<std::size_t>(y * 16 + x)] =
+                frame[static_cast<std::size_t>((cell.y + 1 + y) * 320 +
+                                               cell.x + 1 + x)];
+    return out;
+}
+
+// What the window must read for a 16x16 picture drawn on the cell's fill:
+// the picture's index where it is opaque, the fill where it is 0, each
+// through the screen's read-back (canonical_palette_index). `lut` maps the
+// picture first (the locked copy).
+IconWindow expected_window(const PixieData& picture,
+                           const std::array<unsigned char, 256>* lut = nullptr)
+{
+    IconWindow out{};
+    for (std::size_t i = 0; i < out.size(); ++i)
+    {
+        unsigned char p = picture.data[i];
+        if (lut != nullptr)
+            p = (*lut)[p];
+        out[i] = canonical_palette_index(p != 0 ? p : kCellFill);
+    }
+    return out;
+}
+
+// The file itself, read the way the icon set reads it: the test's oracle
+// for a cell's pixels.
+PixieData icon_file(const char* path)
+{
+    PixieData file = read_pixie_file(path);
+    EXPECT_TRUE(file.valid() && file.w == 16 && file.h == 16) << path;
+    return file;
+}
+
+// Pixels of the cell's 1px frame ring that are not `ink` (68 pixels).
+int ring_misses(const std::array<unsigned char, 64000>& frame, CellAt cell,
+                unsigned char ink)
+{
+    const unsigned char want = canonical_palette_index(ink);
+    int misses = 0;
+    for (int y = 0; y < kCellSize; ++y)
+        for (int x = 0; x < kCellSize; ++x)
+        {
+            if (y != 0 && y != kCellSize - 1 && x != 0 && x != kCellSize - 1)
+                continue;
+            misses += frame[static_cast<std::size_t>((cell.y + y) * 320 +
+                                                     cell.x + x)] != want;
+        }
+    return misses;
 }
 
 // The scene the belt tests share: `seats` views (ready_for_battle), each
@@ -3806,15 +3919,15 @@ struct BeltHudScene
 
 } // namespace
 
-// Two seats: each pane is a full panel, so the three rows stack at
-// bm-40/-32/-24 above SC (bm-8) and XP (bm-16); the box grows to bm-42 (down
-// to bm-2 with the score shown, to the last row without it), and the
-// frozen-time and seat-timer cells move up from bm-34 to bm-50.
+// Two seats: each pane is a full panel, so the three slots sit at bm-44
+// (labels at bm-25) above XP (bm-16) and SC (bm-8); the box's top grows to
+// bm-46 (down to bm-2 with the score shown, to the bevel under the labels at
+// bm-19 without it), and the frozen-time and seat-timer cells move up to
+// bm-54. No ability name is drawn: every slot is a belt_cell, no belt_row.
 //
-// RED: plan_belt_rows' full-panel first row bm-40 -> bm-24 (the rows land on
-// SC/XP and the row traces' pixels move); the cells' box_top left at bm-26
-// (the freeze trace reads row=<bm-34>).
-TEST_F(GladHud, belt_rows_full_two_seats_box_bm_42_and_timer_cells_at_bm_50)
+// RED (planted): kBeltFullCellTop 44 -> 40 (the cells' x/y traces and the
+// pixels move); kBeltHudFullBoxTop 46 -> 42 (the box top, the freeze row).
+TEST_F(GladHud, belt_strip_full_two_seats_box_bm_46_and_timer_cells_at_bm_54)
 {
     ScopedAbilitySelect on(true);
     BeltHudScene scene(2, FAMILY_MAGE, 7);
@@ -3825,32 +3938,39 @@ TEST_F(GladHud, belt_rows_full_two_seats_box_bm_42_and_timer_cells_at_bm_50)
     const auto frame = scene.draw();
     EXPECT_FALSE(trace_contains("hud", "spc_row"))
         << "the classic SPC row is the setting-off HUD";
+    EXPECT_FALSE(trace_contains("hud", "belt_row"))
+        << "no ability name is written in play";
+    const char* const icons[3] = {"icons/teleport.png", "icons/warp_space.png",
+                                  "icons/freeze_time.png"};
     for (int i = 0; i < 2; ++i)
     {
         const viewscreen& v = *s->viewob[i];
         const int lm = v.xloc;
         const int bm = v.endy;
         ASSERT_GE(v.endy - v.yloc, 150) << "a two-seat pane is a tall one";
-        const char* const texts[3] = {"1 TELEPORT", "2 WARP SPACE",
-                                      "3 FREEZE TIME"};
         for (int k = 1; k <= 3; ++k)
         {
-            const std::string text = texts[k - 1];
+            const CellAt cell = cell_at(v, k);
+            EXPECT_EQ(lm + 2 + 19 * (k - 1), cell.x);
             EXPECT_TRUE(trace_contains(
-                "hud", belt_row_trace(k, false, text, DARK_BLUE).c_str()))
+                "hud", (belt_cell_trace(k, false, k, false, icons[k - 1],
+                                        "castable") +
+                        std::format(" x={} y={} view={}", cell.x, bm - 44, i))
+                           .c_str()))
                 << "seat " << i << " key " << k;
-            const int row = bm - 40 + 8 * (k - 1);
-            EXPECT_GT(frame_ink(frame, lm + 2, row,
-                                lm + 2 + 6 * static_cast<int>(text.size()),
-                                row + 6),
+            EXPECT_EQ(0, ring_misses(frame, cell, kFrameInk))
+                << "seat " << i << " key " << k << ": a black frame";
+            EXPECT_GT(frame_ink(frame, cell.x, bm - 25, cell.x + kCellSize,
+                                bm - 20),
                       0)
-                << "seat " << i << ": key " << k << " paints at bm-"
-                << bm - row;
+                << "seat " << i << ": key " << k << " is lettered at bm-25";
         }
-        // The box's top bevel is the bm-42 scanline, nothing above it.
-        EXPECT_NE(0, frame[static_cast<std::size_t>((bm - 42) * 320 + lm + 50)])
-            << "seat " << i << ": the box top is bm-42";
-        EXPECT_EQ(0, frame[static_cast<std::size_t>((bm - 43) * 320 + lm + 50)])
+        EXPECT_TRUE(trace_contains(
+            "hud", belt_label_trace(1, "1", DARK_BLUE, false).c_str()));
+        // The box's top bevel is the bm-46 scanline, nothing above it.
+        EXPECT_NE(0, frame[static_cast<std::size_t>((bm - 46) * 320 + lm + 70)])
+            << "seat " << i << ": the box top is bm-46";
+        EXPECT_EQ(0, frame[static_cast<std::size_t>((bm - 47) * 320 + lm + 70)])
             << "seat " << i << ": nothing above the box";
     }
     // Seat 0 shows its score: the box runs on down to bm-2 around SC/XP.
@@ -3863,42 +3983,43 @@ TEST_F(GladHud, belt_rows_full_two_seats_box_bm_42_and_timer_cells_at_bm_50)
                   0)
             << "SC keeps its bm-8 row";
     }
-    // Seat 1 hides it: the box ends under the last row (bm-18).
+    // Seat 1 hides it: the box ends at the bevel under the labels (bm-19).
     {
         const viewscreen& v = *s->viewob[1];
-        EXPECT_NE(0, frame[static_cast<std::size_t>((v.endy - 18) * 320 +
+        EXPECT_NE(0, frame[static_cast<std::size_t>((v.endy - 19) * 320 +
                                                     v.xloc + 50)]);
-        EXPECT_EQ(0, frame[static_cast<std::size_t>((v.endy - 10) * 320 +
+        EXPECT_EQ(0, frame[static_cast<std::size_t>((v.endy - 18) * 320 +
                                                     v.xloc + 50)]);
     }
 
-    // The cells: the freeze at bm-50, the seat's clock one row above it,
-    // and at bm-50 itself with no freeze running.
+    // The cells: the freeze at bm-54, the seat's clock one row above it,
+    // and at bm-54 itself with no freeze running.
     const int bm = s->viewob[0]->endy;
     s->world().enemy_freeze = 30;
     stage_possession(*scene.heroes[0], 300);
     scene.draw();
     EXPECT_TRUE(trace_contains(
         "hud", ("freeze_countdown left=30 secs=3 row=" +
-                std::to_string(bm - 50)).c_str()));
+                std::to_string(bm - 54)).c_str()));
     EXPECT_TRUE(trace_contains(
         "hud", ("seat_timer label=POSSESS ticks=300 secs=25 row=" +
-                std::to_string(bm - 56)).c_str()));
+                std::to_string(bm - 60)).c_str()));
     s->world().enemy_freeze = 0;
     scene.draw();
     EXPECT_TRUE(trace_contains(
         "hud", ("seat_timer label=POSSESS ticks=300 secs=25 row=" +
-                std::to_string(bm - 50)).c_str()));
+                std::to_string(bm - 54)).c_str()));
 }
 
-// Four seats: compact panels, the rows at bm-24/-16/-8 inside the box the
-// score mode draws (bm-26..bm-2, SC/XP hidden), 15 glyphs each: on the
-// SHIFTER row the Archmage's "S3 SUMMON ELEMENTAL" is cut to
-// "S3 SUMMON ELEME" (12 name glyphs). The frozen-time cell keeps bm-34.
+// Four seats: compact panels, the slots at bm-26 and the labels at bm-7
+// inside a box from bm-28 to bm-2 that ends at lm+59 (the strip plus its
+// bevel); the frozen-time cell rides 8 above it at bm-36. SHIFTER swaps the
+// Archmage's slots to TELEPORT MARKER, CHAIN LIGHTNING and SUMMON
+// ELEMENTAL, lettered S1 S2 S3.
 //
-// RED: kBeltHudChars 15 -> 14 (the cut texts change); the compact first row
-// bm-24 -> bm-40 (no pixels at bm-24, the box top moves).
-TEST_F(GladHud, belt_rows_compact_four_seats_three_rows_fifteen_glyphs)
+// RED (planted): kBeltHudCompactBoxTop 28 -> 26 (the box top and the
+// freeze row move); kBeltCompactCellTop 26 -> 44 (the cells' y).
+TEST_F(GladHud, belt_strip_compact_four_seats_at_bm_28)
 {
     ScopedAbilitySelect on(true);
     BeltHudScene scene(4, FAMILY_ARCHMAGE, 12);
@@ -3906,106 +4027,361 @@ TEST_F(GladHud, belt_rows_compact_four_seats_three_rows_fifteen_glyphs)
     ASSERT_EQ(4, static_cast<int>(s->numviews));
 
     auto frame = scene.draw();
-    const char* const plain[3] = {"1 TELEPORT", "2 HEARTBURST",
-                                  "3 SUMMON IMAGE"};
+    const char* const plain[3] = {"icons/teleport.png", "icons/heartburst.png",
+                                  "icons/summon_image.png"};
     for (int i = 0; i < 4; ++i)
     {
         const viewscreen& v = *s->viewob[i];
+        const int lm = v.xloc;
+        const int bm = v.endy;
+        ASSERT_LT(v.endy - v.yloc, 120) << "a quadrant";
         for (int k = 1; k <= 3; ++k)
         {
+            const CellAt cell = cell_at(v, k, true);
             EXPECT_TRUE(trace_contains(
-                "hud", belt_row_trace(k, false, plain[k - 1], DARK_BLUE)
+                "hud", (belt_cell_trace(k, false, k, false, plain[k - 1],
+                                        "castable") +
+                        std::format(" x={} y={} view={}", cell.x, bm - 26, i))
                            .c_str()))
                 << "seat " << i << " key " << k;
-            const int row = v.endy - 24 + 8 * (k - 1);
-            EXPECT_GT(frame_ink(frame, v.xloc + 2, row, v.xloc + 92, row + 6),
+            EXPECT_EQ(0, ring_misses(frame, cell, kFrameInk))
+                << "seat " << i << " key " << k;
+            EXPECT_GT(frame_ink(frame, cell.x, bm - 7, cell.x + kCellSize,
+                                bm - 2),
                       0)
-                << "seat " << i << ": key " << k << " paints at bm-"
-                << v.endy - row;
+                << "seat " << i << ": key " << k << " is lettered at bm-7";
         }
-        EXPECT_NE(0, frame[static_cast<std::size_t>((v.endy - 26) * 320 +
-                                                    v.xloc + 50)])
-            << "seat " << i << ": the box top stays bm-26";
-        EXPECT_EQ(0, frame[static_cast<std::size_t>((v.endy - 27) * 320 +
-                                                    v.xloc + 50)])
-            << "seat " << i;
+        EXPECT_NE(0, frame[static_cast<std::size_t>((bm - 28) * 320 + lm + 30)])
+            << "seat " << i << ": the box top is bm-28";
+        EXPECT_EQ(0, frame[static_cast<std::size_t>((bm - 29) * 320 + lm + 30)])
+            << "seat " << i << ": nothing above it";
+        EXPECT_NE(0, frame[static_cast<std::size_t>((bm - 12) * 320 + lm + 59)])
+            << "seat " << i << ": the box's right bevel is lm+59";
+        EXPECT_EQ(0, frame[static_cast<std::size_t>((bm - 12) * 320 + lm + 60)])
+            << "seat " << i << ": and nothing past it";
     }
+    EXPECT_FALSE(trace_contains("hud", "belt_row"));
 
     ShifterHeld shift(2);
     frame = scene.draw();
+    const viewscreen& v2 = *s->viewob[2];
     EXPECT_TRUE(trace_contains(
-        "hud", belt_row_trace(1, true, "S1 TELEPORT MAR", DARK_BLUE).c_str()));
+        "hud", belt_cell_trace(1, true, 1, true, "icons/teleport_marker.png",
+                               "castable")
+                   .c_str()));
     EXPECT_TRUE(trace_contains(
-        "hud", belt_row_trace(2, true, "S2 CHAIN LIGHTN", DARK_BLUE).c_str()));
+        "hud", belt_cell_trace(2, true, 2, true, "icons/chain_lightning.png",
+                               "castable")
+                   .c_str()));
     EXPECT_TRUE(trace_contains(
-        "hud", belt_row_trace(3, true, "S3 SUMMON ELEME", DARK_BLUE).c_str()))
-        << "K7: the compact HUD cuts a name to 12 glyphs";
+        "hud", belt_cell_trace(3, true, 3, true,
+                               "icons/summon_elemental.png", "castable")
+                   .c_str()));
+    EXPECT_TRUE(trace_contains(
+        "hud", belt_label_trace(3, "S3", DARK_BLUE, false).c_str()));
+    EXPECT_GT(frame_ink(frame, cell_at(v2, 3, true).x, v2.endy - 7,
+                        cell_at(v2, 3, true).x + kCellSize, v2.endy - 2),
+              0);
 
     s->world().enemy_freeze = 30;
     scene.draw();
     EXPECT_TRUE(trace_contains(
         "hud", ("freeze_countdown left=30 secs=3 row=" +
-                std::to_string(s->viewob[0]->endy - 34)).c_str()))
-        << "a compact panel's box keeps its classic top, so the cell does";
+                std::to_string(s->viewob[0]->endy - 36)).c_str()))
+        << "the compact strip's box top is bm-28, so the cell rides at bm-36";
 }
 
-// Ink, today's three-state vocabulary: the dim ink (the boxed look's dark
-// grey, palette 17; kBelt* above) for a key whose ability the level has not
-// opened (it shows " L<level>"), an empty key and a walker whose specials
-// are switched off; RED for one the MP cannot pay; the panel's text colour
-// for one it can.
+// The cell shows the icon's own pixels: the 16x16 inside the frame is the
+// file's indices where the icon is opaque and the fill (18) where it is not,
+// in both looks (the slot is filled 18 on the box too: one ground). A slot
+// whose ability names a file the tree does not ship yet draws the generic
+// tile, icons/_missing.png.
 //
-// RED: the Locked test dropped from the dim arm (key 3 reads DARK_BLUE);
-// the cast_cost comparison flipped (castable rows read RED).
-TEST_F(GladHud, belt_rows_ink_grey_locked_red_short_normal_affordable)
+// RED (planted): the putdata call dropped (the window is all fill); the
+// fill drawn only with no box (the boxed window reads the box's grey).
+TEST_F(GladHud, belt_cell_shows_the_icons_own_pixels_on_the_fill)
+{
+    ScopedAbilitySelect on(true);
+    BeltHudScene scene(1, FAMILY_MAGE, 13);
+    const viewscreen& v = *scene.s->viewob[0];
+    const PixieData teleport = icon_file("icons/teleport.png");
+    const PixieData missing = icon_file("icons/_missing.png");
+    ASSERT_TRUE(teleport.valid() && missing.valid());
+
+    for (const bool boxed : {true, false})
+    {
+        SCOPED_TRACE(boxed ? "box look" : "no-box look");
+        scene.s->viewob[0]->prefs[PREF_OVERLAY] =
+            boxed ? PREF_OVERLAY_ON : PREF_OVERLAY_OFF;
+        const auto frame = scene.draw();
+        EXPECT_EQ(expected_window(teleport), icon_window(frame, cell_at(v, 1)))
+            << "key 1 is TELEPORT's own pixels on the fill";
+        EXPECT_TRUE(trace_contains(
+            "hud", "belt_cell key=1 shift=0 slot=1 alt=0 icon=icons/teleport.png"));
+        EXPECT_TRUE(trace_contains("hud", "drawn=icons/teleport.png"));
+        if (!std::filesystem::exists("pix/icons/warp_space.png"))
+        {
+            EXPECT_EQ(expected_window(missing),
+                      icon_window(frame, cell_at(v, 2)))
+                << "an icon the tree does not ship yet draws the generic tile";
+            EXPECT_TRUE(trace_contains("hud", "drawn=icons/_missing.png"));
+        }
+        int fill = 0;
+        const unsigned char want = canonical_palette_index(kCellFill);
+        for (unsigned char p : icon_window(frame, cell_at(v, 1)))
+            fill += p == want;
+        EXPECT_GT(fill, 100) << "the icon sits on the dark fill";
+    }
+}
+
+// A locked slot shows the grey copy (og::ui::locked_icon_lut: outlines stay
+// black, every colour goes to 21..31) and is lettered with the level it
+// opens at, in the dim ink; it never melts into the fill: its window holds
+// no index outside {0, 16, 18, 21..31} and at least 30 pixels that are not
+// the fill. A locked slot never flashes, even with its key held.
+//
+// RED (planted): the locked arm draws icon->ready (TELEPORT's colours, 74
+// and the red band, are outside the grey set; HEARTBURST's window is not
+// the LUT copy); the "L<level>" label replaced by the key.
+TEST_F(GladHud, belt_cell_locked_is_the_grey_copy_lettered_with_its_level)
 {
     ScopedAbilitySelect on(true);
     BeltHudScene scene(1, FAMILY_MAGE, 1);
+    const viewscreen& v = *scene.s->viewob[0];
     walker& hero = *scene.heroes[0];
 
-    scene.draw();
+    std::array<bool, 256> grey{};
+    for (int i : {0, 16, 18})
+        grey[canonical_palette_index(static_cast<unsigned char>(i))] = true;
+    for (int i = 21; i <= 31; ++i)
+        grey[canonical_palette_index(static_cast<unsigned char>(i))] = true;
+    const auto check_grey = [&](const IconWindow& window, const char* what) {
+        int off_grey = 0;
+        int not_fill = 0;
+        for (unsigned char p : window)
+        {
+            off_grey += !grey[p];
+            not_fill += p != canonical_palette_index(kCellFill);
+        }
+        EXPECT_EQ(0, off_grey) << what << ": only greys and the outline";
+        EXPECT_GE(not_fill, 30) << what << ": the picture stands off the fill";
+    };
+
+    KeyHeld spec3(0, KEY_SPEC3);
+    auto frame = scene.draw();
     EXPECT_TRUE(trace_contains(
-        "hud", belt_row_trace(1, false, "1 TELEPORT", DARK_BLUE).c_str()));
+        "hud", belt_cell_trace(3, false, 3, false, "icons/freeze_time.png",
+                               "locked")
+                   .c_str()));
     EXPECT_TRUE(trace_contains(
-        "hud", belt_row_trace(2, false, "2 WARP SPACE L4", kBeltDimInkBox).c_str()))
-        << "a key whose ability opens later is dim with its level";
+        "hud", belt_label_trace(3, "L7", kBeltDimInkBox, false).c_str()))
+        << "FREEZE TIME opens at level 7";
     EXPECT_TRUE(trace_contains(
-        "hud", belt_row_trace(3, false, "3 FREEZE TIME L7", kBeltDimInkBox).c_str()));
+        "hud", belt_label_trace(2, "L4", kBeltDimInkBox, false).c_str()));
+    check_grey(icon_window(frame, cell_at(v, 3)), "key 3, locked");
+    EXPECT_EQ(0, ring_misses(frame, cell_at(v, 3), kFrameInk))
+        << "a locked slot never flashes, its key held or not";
+    EXPECT_TRUE(trace_contains(
+        "hud", (belt_cell_trace(3, false, 3, false, "icons/freeze_time.png",
+                                "locked") +
+                std::format(" x={} y={} view=0 pressed=0 frame=16",
+                            cell_at(v, 3).x, cell_at(v, 3).y))
+                   .c_str()))
+        << "the held key does not press a locked slot";
+
+    // A real picture, locked: the Mage's HEARTBURST on SHIFTER + 3 opens at
+    // 13. The window is the file through the LUT, on the fill.
+    hero.stats()->set_level(10);
+    ShifterHeld shift(0);
+    frame = scene.draw();
+    EXPECT_TRUE(trace_contains(
+        "hud", belt_cell_trace(3, true, 5, false, "icons/heartburst.png",
+                               "locked")
+                   .c_str()));
+    EXPECT_TRUE(trace_contains(
+        "hud", belt_label_trace(3, "L13", kBeltDimInkBox, false).c_str()));
+    const PixieData heartburst = icon_file("icons/heartburst.png");
+    ASSERT_TRUE(heartburst.valid());
+    EXPECT_EQ(expected_window(heartburst, &og::ui::locked_icon_lut()),
+              icon_window(frame, cell_at(v, 3)));
+    check_grey(icon_window(frame, cell_at(v, 3)), "S3, locked HEARTBURST");
+
+    // And TELEPORT (the blue ring, the red band) greyed by the level's
+    // switch: a disabled walker's slots wear the same grey copy.
+    hero.set_specials_disabled(true);
+    ShifterHeld up(0, false);
+    frame = scene.draw();
+    EXPECT_TRUE(trace_contains(
+        "hud", belt_cell_trace(1, false, 1, false, "icons/teleport.png",
+                               "disabled")
+                   .c_str()));
+    EXPECT_TRUE(trace_contains(
+        "hud", belt_label_trace(1, "1", kBeltDimInkBox, false).c_str()));
+    check_grey(icon_window(frame, cell_at(v, 1)), "key 1, disabled");
+    hero.set_specials_disabled(false);
+}
+
+// The frame says the state: red while the MP cannot pay (the label too),
+// white while the seat holds the slot's SPEC key; held AND short is white
+// with the red label (pressed wins over short); the white follows the
+// physical key, so with SHIFTER held key 1 lights the S1 slot.
+//
+// RED (planted): the pressed check reads KEY_SPECIAL for every slot (key 2
+// held lights slot 1); the short frame left black.
+TEST_F(GladHud, belt_cell_frame_red_when_short_white_while_held)
+{
+    ScopedAbilitySelect on(true);
+    BeltHudScene scene(1, FAMILY_MAGE, 13);
+    const viewscreen& v = *scene.s->viewob[0];
+    walker& hero = *scene.heroes[0];
 
     hero.stats()->set_magicpoints(0.0f);
-    scene.draw();
+    auto frame = scene.draw();
     EXPECT_TRUE(trace_contains(
-        "hud", belt_row_trace(1, false, "1 TELEPORT", RED).c_str()))
-        << "too little MP reads red";
+        "hud", belt_cell_trace(1, false, 1, false, "icons/teleport.png",
+                               "short")
+                   .c_str()));
+    EXPECT_EQ(0, ring_misses(frame, cell_at(v, 1), kFrameShortInk))
+        << "too little MP: a red frame";
     EXPECT_TRUE(trace_contains(
-        "hud", belt_row_trace(2, false, "2 WARP SPACE L4", kBeltDimInkBox).c_str()))
-        << "locked stays dim, MP or not";
+        "hud", belt_label_trace(1, "1", RED, false).c_str()))
+        << "and a red key";
+
+    {
+        KeyHeld spec1(0, KEY_SPECIAL);
+        frame = scene.draw();
+        EXPECT_EQ(0, ring_misses(frame, cell_at(v, 1), kFramePressedInk))
+            << "held and short: white wins";
+        EXPECT_TRUE(trace_contains(
+            "hud", belt_label_trace(1, "1", RED, false).c_str()))
+            << "the label keeps its red";
+        EXPECT_TRUE(trace_contains("hud", "pressed=1 frame=31"));
+    }
 
     hero.stats()->set_magicpoints(1000.0f);
-    hero.set_specials_disabled(true);
-    scene.draw();
-    EXPECT_TRUE(trace_contains(
-        "hud", belt_row_trace(1, false, "1 TELEPORT", kBeltDimInkBox).c_str()))
-        << "a walker that never casts reads dim";
-    hero.set_specials_disabled(false);
+    {
+        KeyHeld spec2(0, KEY_SPEC2);
+        frame = scene.draw();
+        EXPECT_EQ(0, ring_misses(frame, cell_at(v, 2), kFramePressedInk))
+            << "SPEC 2 held: slot 2 white";
+        EXPECT_EQ(0, ring_misses(frame, cell_at(v, 1), kFrameInk))
+            << "slot 1 stays black";
+        EXPECT_EQ(0, ring_misses(frame, cell_at(v, 3), kFrameInk));
+        EXPECT_TRUE(trace_contains(
+            "hud", belt_label_trace(2, "2", DARK_BLUE, false).c_str()));
+    }
+    {
+        ShifterHeld shift(0);
+        KeyHeld spec1(0, KEY_SPECIAL);
+        frame = scene.draw();
+        EXPECT_TRUE(trace_contains(
+            "hud", belt_cell_trace(1, true, 1, true,
+                                   "icons/teleport_marker.png", "castable")
+                       .c_str()));
+        EXPECT_TRUE(trace_contains("hud", "pressed=1"));
+        EXPECT_EQ(0, ring_misses(frame, cell_at(v, 1), kFramePressedInk))
+            << "SHIFTER + 1 lights the S1 slot";
+    }
+    frame = scene.draw();
+    for (int k = 1; k <= 3; ++k)
+        EXPECT_EQ(0, ring_misses(frame, cell_at(v, k), kFrameInk))
+            << "released: key " << k << " black again";
+    EXPECT_FALSE(trace_contains("hud", "pressed=1"));
+}
 
-    // An empty key: a soldier has nothing on SHIFTER + 2.
-    hero.set_family(FAMILY_SOLDIER);
+// An empty slot is the bare fill in a black frame, its key in the dim ink;
+// a family byte with no descriptor (a junk mirror value) shows three of
+// them.
+//
+// RED (planted): an empty cell given the generic tile (its window is not
+// all fill).
+TEST_F(GladHud, belt_cell_empty_is_the_bare_fill)
+{
+    ScopedAbilitySelect on(true);
+    BeltHudScene scene(1, FAMILY_SOLDIER, 13);
+    const viewscreen& v = *scene.s->viewob[0];
+    walker& hero = *scene.heroes[0];
+    IconWindow bare{};
+    bare.fill(canonical_palette_index(kCellFill));
+
     ShifterHeld shift(0);
-    scene.draw();
+    KeyHeld spec2(0, KEY_SPEC2);
+    auto frame = scene.draw();
     EXPECT_TRUE(trace_contains(
-        "hud", belt_row_trace(2, true, "S2 --", kBeltDimInkBox).c_str()));
+        "hud", belt_cell_trace(2, true, 0, false, "none", "empty").c_str()))
+        << "a soldier has nothing on SHIFTER + 2";
+    EXPECT_TRUE(trace_contains(
+        "hud", belt_label_trace(2, "S2", kBeltDimInkBox, false).c_str()));
+    EXPECT_EQ(bare, icon_window(frame, cell_at(v, 2)));
+    EXPECT_EQ(0, ring_misses(frame, cell_at(v, 2), kFrameInk))
+        << "an empty slot never flashes";
 
-    // A mirrored family byte with no descriptor (a junk snapshot value, the
-    // classic test's sanitize case) names nothing: every key reads "--".
     hero.set_family(static_cast<char>(127));
-    scene.draw();
-    EXPECT_TRUE(trace_contains(
-        "hud", belt_row_trace(1, true, "S1 --", kBeltDimInkBox).c_str()));
+    frame = scene.draw();
+    for (int k = 1; k <= 3; ++k)
+    {
+        EXPECT_TRUE(trace_contains(
+            "hud", belt_cell_trace(k, true, 0, false, "none", "empty").c_str()))
+            << "key " << k;
+        EXPECT_EQ(bare, icon_window(frame, cell_at(v, k))) << "key " << k;
+    }
     hero.set_family(static_cast<char>(-3));
     scene.draw();
     EXPECT_TRUE(trace_contains(
-        "hud", belt_row_trace(3, true, "S3 --", kBeltDimInkBox).c_str()));
+        "hud", belt_cell_trace(3, true, 0, false, "none", "empty").c_str()));
+}
+
+// The layer is the seat's PHYSICAL SHIFTER, not the walker's mirrored
+// shifter_down (which under the belt is the alternate bit of the last cast).
+// Held, the same three slots show the SHIFTER row's icons, lettered S1 S2
+// S3.
+//
+// RED (planted): plan_belt_strip reads control.shifter_down() for the layer
+// (the mirrored bit flips the slots with no key held).
+TEST_F(GladHud, shift_held_swaps_the_strip_to_the_shifter_row)
+{
+    ScopedAbilitySelect on(true);
+    BeltHudScene scene(1, FAMILY_MAGE, 13);
+    walker& hero = *scene.heroes[0];
+    const viewscreen& v = *scene.s->viewob[0];
+    const PixieData teleport = icon_file("icons/teleport.png");
+    const PixieData heartburst = icon_file("icons/heartburst.png");
+    ASSERT_TRUE(teleport.valid() && heartburst.valid());
+
+    hero.set_shifter_down(1);
+    auto frame = scene.draw();
+    EXPECT_TRUE(trace_contains(
+        "hud", belt_cell_trace(1, false, 1, false, "icons/teleport.png",
+                               "castable")
+                   .c_str()))
+        << "the mirrored shifter_down does not pick the layer";
+    EXPECT_EQ(expected_window(teleport), icon_window(frame, cell_at(v, 1)));
+    EXPECT_TRUE(trace_contains(
+        "hud", belt_label_trace(1, "1", DARK_BLUE, false).c_str()));
+
+    ShifterHeld shift(0);
+    hero.set_shifter_down(0);
+    frame = scene.draw();
+    EXPECT_TRUE(trace_contains(
+        "hud", belt_cell_trace(1, true, 1, true, "icons/teleport_marker.png",
+                               "castable")
+                   .c_str()));
+    EXPECT_TRUE(trace_contains(
+        "hud", belt_cell_trace(2, true, 4, false, "icons/energy_wave.png",
+                               "castable")
+                   .c_str()));
+    EXPECT_TRUE(trace_contains(
+        "hud", belt_cell_trace(3, true, 5, false, "icons/heartburst.png",
+                               "castable")
+                   .c_str()));
+    EXPECT_FALSE(trace_contains("hud", "belt_cell key=1 shift=0"));
+    for (int k = 1; k <= 3; ++k)
+        EXPECT_TRUE(trace_contains(
+            "hud", belt_label_trace(k, std::format("S{}", k), DARK_BLUE, false)
+                       .c_str()))
+            << "key " << k;
+    EXPECT_EQ(expected_window(heartburst), icon_window(frame, cell_at(v, 3)))
+        << "SHIFTER + 3 shows HEARTBURST";
 }
 
 namespace {
@@ -4037,45 +4413,36 @@ int contrast_pixels(const std::array<unsigned char, 64000>& frame,
 
 } // namespace
 
-// A key that cannot cast reads dim but LEGIBLE in both looks. The legacy GREY
-// ramp drew 132/156/180 strokes: on the OVERLAY box (164) and on a stone
-// floor (156) not one stroke was 48 luminance away, so "3 FREEZE TIME L7"
-// and an empty "S2 --" vanished. Boxed: a dark grey ink. No box (the shipped
-// look): a light grey ink over a 1-px black shadow, legible on grey
-// stone and on black ground alike; the ready row keeps its own ink, no
-// shadow.
+// The labels read in both looks. Boxed: the key in the panel's DARK_BLUE, a
+// locked "L7" in the dark grey 17, no shadow. No box (the shipped look):
+// every label over a 1-px black shadow down-left, the ready key in YELLOW,
+// the locked one in the light grey 27, legible on a grey stone floor and on
+// black ground; the slots keep their own dark fill on any floor.
 //
-// RED (both planted, both red): plan_belt_rows' dim ink back to GREY for
-// both looks (box 141 -> 0 strokes, stone 192 -> 113, under 100 / 140);
-// the no-box shadow dropped (stone 192 -> 79: the light ramp's 180 stroke
-// is only 24 from the floor's 156).
-TEST_F(GladHud, belt_rows_dim_ink_is_legible_on_the_box_and_on_stone)
+// RED (planted): the no-box shadow dropped (the stone count falls under the
+// bar: the light ramp's 180 stroke is only 24 from the floor's 156).
+TEST_F(GladHud, belt_labels_are_legible_on_the_box_and_on_stone)
 {
     ScopedAbilitySelect on(true);
     BeltHudScene scene(1, FAMILY_MAGE, 1);
     screen* const s = scene.s;
     const viewscreen& v = *s->viewob[0];
-    const int lm = v.xloc;
     const int bm = v.endy;
-    const int row3 = bm - 24;  // full panel: rows at bm-40/-32/-24
-    const int text_right = lm + 2 + 16 * 6;  // "3 FREEZE TIME L7"
+    const int label_y = bm - 25;
+    const CellAt c3 = cell_at(v, 3);
 
-    // Boxed: the row sits in the OVERLAY box.
     auto frame = scene.draw();
     EXPECT_TRUE(trace_contains(
-        "hud", belt_row_trace(3, false, "3 FREEZE TIME L7", kBeltDimInkBox)
-                   .c_str()));
-    EXPECT_TRUE(trace_contains("hud", "text=3 FREEZE TIME L7 ink=17 shadow=0"))
-        << "the box needs no shadow";
+        "hud", belt_label_trace(3, "L7", kBeltDimInkBox, false).c_str()));
+    EXPECT_TRUE(trace_contains(
+        "hud", belt_label_trace(1, "1", DARK_BLUE, false).c_str()));
     const unsigned char box_fill =
-        frame[static_cast<std::size_t>((row3 - 1) * 320 + lm + 4)];
-    ASSERT_NE(0, static_cast<int>(box_fill)) << "the box is drawn behind it";
-    EXPECT_GE(contrast_pixels(frame, box_fill, lm + 2, row3, text_right,
-                              row3 + 6),
-              100)
-        << "the locked row's strokes stand off the box's grey";
+        frame[static_cast<std::size_t>((label_y - 1) * 320 + c3.x)];
+    ASSERT_NE(0, static_cast<int>(box_fill)) << "the box is behind the labels";
+    const int boxed = contrast_pixels(frame, box_fill, c3.x, label_y,
+                                      c3.x + kCellSize, label_y + 6);
+    EXPECT_GE(boxed, 12) << "L7 stands off the box's grey (" << boxed << ")";
 
-    // No box, on a stone-grey floor (palette 25: 156) and on black.
     s->viewob[0]->prefs[PREF_OVERLAY] = PREF_OVERLAY_OFF;
     constexpr unsigned char kStone = 25;
     const auto draw_on = [&](unsigned char floor) {
@@ -4087,79 +4454,80 @@ TEST_F(GladHud, belt_rows_dim_ink_is_legible_on_the_box_and_on_stone)
     };
     frame = draw_on(kStone);
     EXPECT_TRUE(trace_contains(
-        "hud", belt_row_trace(3, false, "3 FREEZE TIME L7", kBeltDimInkPlain)
-                   .c_str()));
-    EXPECT_TRUE(trace_contains("hud", "text=3 FREEZE TIME L7 ink=27 shadow=1"));
-    EXPECT_TRUE(trace_contains("hud", "text=1 TELEPORT ink=88 shadow=0"))
-        << "a ready row keeps its yellow, no shadow";
+        "hud", belt_label_trace(3, "L7", kBeltDimInkPlain, true).c_str()));
+    EXPECT_TRUE(trace_contains(
+        "hud", belt_label_trace(1, "1", YELLOW, true).c_str()))
+        << "a ready key keeps its yellow, over a shadow";
     ASSERT_EQ(static_cast<int>(kStone),
               static_cast<int>(frame[static_cast<std::size_t>(
-                  (row3 - 4) * 320 + lm + 200)]))
-        << "the floor is under the rows";
-    EXPECT_GE(contrast_pixels(frame, kStone, lm, row3, text_right, row3 + 8),
-              140)
-        << "the locked row reads on a stone floor";
+                  (label_y - 4) * 320 + v.xloc + 200)]))
+        << "the floor is under the strip";
+    const int stone = contrast_pixels(frame, kStone, c3.x - 1, label_y,
+                                      c3.x + kCellSize, label_y + 7);
+    EXPECT_GE(stone, 18) << "L7 reads on a stone floor (" << stone << ")";
+    EXPECT_EQ(0, ring_misses(frame, c3, kFrameInk))
+        << "the slot keeps its frame on the floor";
 
     frame = draw_on(0);
-    EXPECT_GE(contrast_pixels(frame, 0, lm, row3, text_right, row3 + 8), 40)
+    EXPECT_GE(contrast_pixels(frame, 0, c3.x - 1, label_y, c3.x + kCellSize,
+                              label_y + 7),
+              6)
         << "and on black ground";
 }
 
-// The layer is the seat's PHYSICAL SHIFTER, not the walker's mirrored
-// shifter_down (which under the belt is the alternate bit of the last cast).
-// A full-width pane has room for 24 glyphs: "S1 TELEPORT MARKER" whole.
+// A family that declares no icons (a pack hero, harvested with no `icon`
+// key) draws the generic tile in every slot, and the slot still shows its
+// key and state. With not even the generic tile (a tree without pix/icons,
+// here a set whose generic path is missing) the cell is its frame, its fill
+// and its label: never a crash, never a blank HUD.
 //
-// RED: plan_belt_rows reads control.shifter_down() for the layer (the
-// mirrored bit flips the rows with no key held).
-TEST_F(GladHud, shift_held_shows_the_shift_layer)
+// RED (planted): the generic answer ignored (a null icon for a family with
+// no icon key: the window is all fill); drawn= left at the declared path.
+TEST_F(GladHud, belt_cell_draws_the_generic_tile_for_a_family_without_icons)
 {
     ScopedAbilitySelect on(true);
-    BeltHudScene scene(1, FAMILY_MAGE, 13);
-    walker& hero = *scene.heroes[0];
-    ASSERT_GE(scene.s->viewob[0]->endx - scene.s->viewob[0]->xloc, 300)
-        << "one seat is a full-width pane";
-
-    hero.set_shifter_down(1);
-    scene.draw();
-    EXPECT_TRUE(trace_contains(
-        "hud", belt_row_trace(1, false, "1 TELEPORT", DARK_BLUE).c_str()))
-        << "the mirrored shifter_down does not pick the layer";
-
-    ShifterHeld shift(0);
-    hero.set_shifter_down(0);
-    scene.draw();
-    EXPECT_TRUE(trace_contains(
-        "hud",
-        belt_row_trace(1, true, "S1 TELEPORT MARKER", DARK_BLUE).c_str()));
-    EXPECT_TRUE(trace_contains(
-        "hud", belt_row_trace(2, true, "S2 ENERGY WAVE", DARK_BLUE).c_str()));
-    EXPECT_TRUE(trace_contains(
-        "hud", belt_row_trace(3, true, "S3 HEARTBURST", DARK_BLUE).c_str()));
-    EXPECT_FALSE(trace_contains("hud", "belt_row key=1 shift=0"));
-
-    // A 320-px pane's box is lm+150 wide, room for the 24-glyph rows: its
-    // top bevel (bm-42) reaches past lm+98 and ends at lm+150 (the radar
-    // block starts at rm-64 = lm+256, so lm+152 is clear).
-    //
-    // RED: kBeltHudWideBoxRight 150 -> 98 (the 18-glyph row runs past the
-    // box's right bevel).
+    HudPackFamilyGuard pack_guard;
+    ASSERT_EQ(1, install_hexknight_pack());
+    BeltHudScene scene(1, FAMILY_SOLDIER, 13);
     const viewscreen& v = *scene.s->viewob[0];
-    const auto frame = scene.draw();
-    EXPECT_NE(0, frame[static_cast<std::size_t>((v.endy - 42) * 320 +
-                                                v.xloc + 140)])
-        << "the box reaches past the 24-glyph row";
-    EXPECT_EQ(0, frame[static_cast<std::size_t>((v.endy - 42) * 320 +
-                                                v.xloc + 152)])
-        << "and ends at lm+150";
+    walker& hero = *scene.heroes[0];
+    hero.set_family(static_cast<char>(NUM_FAMILIES));
+    const PixieData missing = icon_file("icons/_missing.png");
+    ASSERT_TRUE(missing.valid());
+
+    auto frame = scene.draw();
+    EXPECT_TRUE(trace_contains(
+        "hud", belt_cell_trace(1, false, 2, false, "none", "castable").c_str()))
+        << "HEXFIRE, slot 2, declares no icon";
+    EXPECT_TRUE(trace_contains("hud", "drawn=icons/_missing.png"));
+    EXPECT_EQ(expected_window(missing), icon_window(frame, cell_at(v, 1)));
+
+    // No generic tile at all: swap in a set whose generic path is missing.
+    og::ui::AbilityIcons saved = std::move(hud_ability_icons());
+    hud_ability_icons() = og::ui::AbilityIcons("icons/no_such_generic.png");
+    frame = scene.draw();
+    const auto bare_traced = trace_contains("hud", "drawn=none");
+    hud_ability_icons() = std::move(saved);
+    EXPECT_TRUE(bare_traced) << "the cell says it has no picture";
+    IconWindow bare{};
+    bare.fill(canonical_palette_index(kCellFill));
+    EXPECT_EQ(bare, icon_window(frame, cell_at(v, 1)));
+    EXPECT_EQ(0, ring_misses(frame, cell_at(v, 1), kFrameInk));
+    EXPECT_TRUE(trace_contains(
+        "hud", belt_label_trace(1, "1", DARK_BLUE, false).c_str()))
+        << "the key is still lettered";
 }
 
-// PREF_VIEW_3: a one-seat pane 80 scanlines tall, where every belt row
-// (bm-40 and below) would sit on the notification feed. Nothing is drawn;
-// each row says it yielded.
+// PREF_VIEW_3: a one-seat pane 80 scanlines tall (and 108 wide), where the
+// hotbar (bm-44) and every belt row (bm-40 and below) would sit on the
+// notification feed. The strip yields to the text rows, and each row says
+// it yielded too; nothing is drawn.
 //
 // RED: the banner test dropped from plan_belt_rows (rows draw on the feed
 // band and the suppression traces vanish); the box's no-row arm
 // (belt_top == 0 -> top = bm-26) dropped (the score box loses its top).
+// (The strip also fails the radar rule here, 108px wide; the feed alone is
+// pinned by belt_strip_in_a_wide_short_pane_yields_to_the_feed.)
 TEST_F(GladHud, belt_rows_in_an_80_scanline_pane_yield_to_the_feed)
 {
     ScopedAbilitySelect on(true);
@@ -4170,6 +4538,9 @@ TEST_F(GladHud, belt_rows_in_an_80_scanline_pane_yield_to_the_feed)
     ASSERT_EQ(80, v.endy - v.yloc);
 
     const auto frame = scene.draw();
+    EXPECT_TRUE(trace_contains("hud", "belt_strip_yields"))
+        << "the strip does not fit under the feed";
+    EXPECT_FALSE(trace_contains("hud", "belt_cell"));
     for (int k = 1; k <= 3; ++k)
         EXPECT_TRUE(trace_contains(
             "hud", std::format("belt_row_suppressed key={}", k).c_str()));
@@ -4196,11 +4567,47 @@ TEST_F(GladHud, belt_rows_in_an_80_scanline_pane_yield_to_the_feed)
     v.resize(static_cast<char>(PREF_VIEW_FULL));
 }
 
-// PREF_VIEW_PANELS with three seats: 100px columns. Left of the radar
-// block (rm-64) there are five glyphs, too few for a name, so each row is
-// its key label alone; no pixel lands in the radar block.
+// Two seats at PREF_VIEW_3: 152px wide (room for the strip left of the
+// radar reserve) but 72 scanlines tall, so the strip's top (bm-44 = tm+28)
+// would sit on the feed. The feed alone makes it yield.
+//
+// RED (planted): place_belt_strip's feed-floor test dropped (the strip draws
+// on the feed band; the yield trace vanishes).
+TEST_F(GladHud, belt_strip_in_a_wide_short_pane_yields_to_the_feed)
+{
+    ScopedAbilitySelect on(true);
+    BeltHudScene scene(2, FAMILY_MAGE, 13);
+    for (int i = 0; i < 2; ++i)
+    {
+        viewscreen& v = *scene.s->viewob[i];
+        v.prefs[PREF_VIEW] = PREF_VIEW_3;
+        v.resize(static_cast<char>(PREF_VIEW_3));
+        ASSERT_GE(v.endx - v.xloc, 124) << "wide enough for the strip";
+        ASSERT_LT(v.endy - v.yloc - 44, 60) << "too short under the feed";
+    }
+    const auto frame = scene.draw();
+    EXPECT_TRUE(trace_contains("hud", "belt_strip_yields"));
+    EXPECT_FALSE(trace_contains("hud", "belt_cell"));
+    for (int i = 0; i < 2; ++i)
+    {
+        viewscreen& v = *scene.s->viewob[i];
+        EXPECT_EQ(0, frame_ink(frame, v.xloc, v.yloc + 30, v.endx,
+                               v.yloc + 30 + MAX_MESSAGES * 6))
+            << "seat " << i << ": nothing on the feed band";
+        v.prefs[PREF_VIEW] = PREF_VIEW_FULL;
+        v.resize(static_cast<char>(PREF_VIEW_FULL));
+    }
+}
+
+// PREF_VIEW_PANELS with three seats: 100px columns, too narrow for the
+// hotbar (its last column lm+57 is not left of rm-66 = lm+34), so the text
+// rows stand in. Left of the radar block (rm-64) there are five glyphs, too
+// few for a name, so each row is its key label alone; no pixel lands in
+// the radar block.
 //
 // RED: the radar limit dropped (right_limit = rm): names reach the block.
+// RED (planted): place_belt_strip's radar test dropped (the strip draws in
+// the column; the row traces vanish).
 TEST_F(GladHud, belt_rows_in_a_100px_column_show_key_labels_clear_of_the_radar)
 {
     ScopedAbilitySelect on(true);
@@ -4216,6 +4623,8 @@ TEST_F(GladHud, belt_rows_in_a_100px_column_show_key_labels_clear_of_the_radar)
     }
 
     const auto frame = scene.draw();
+    EXPECT_FALSE(trace_contains("hud", "belt_cell"))
+        << "a 100px column takes the text rows";
     for (int k = 1; k <= 3; ++k)
         EXPECT_TRUE(trace_contains(
             "hud", belt_row_trace(k, false, std::to_string(k), YELLOW).c_str()))
@@ -4263,6 +4672,29 @@ BeltBoxRect belt_box_for_view(int view)
                                &box.x2, &box.y2) == 4;
     }
     return box;
+}
+
+// The hotbar cells one view drew, from its `belt_cell` traces: each cell's
+// top-left corner.
+std::vector<std::pair<int, int>> belt_cells_for_view(int view)
+{
+    std::vector<std::pair<int, int>> cells;
+    const std::string tag = std::format(" view={} ", view);
+    std::lock_guard<std::mutex> lock(g_trace_mutex);
+    for (const TraceEntry& entry : g_trace_buffer)
+    {
+        if (entry.category != "hud")
+            continue;
+        const std::string& line = entry.message;
+        const std::size_t xat = line.find(" x=");
+        if (line.rfind("belt_cell ", 0) != 0 || xat == std::string::npos ||
+            line.find(tag) == std::string::npos)
+            continue;
+        int x = 0, y = 0;
+        if (std::sscanf(line.c_str() + xat, " x=%d y=%d", &x, &y) == 2)
+            cells.emplace_back(x, y);
+    }
+    return cells;
 }
 
 // The bottom-left box's paint (screen::draw_button with a one-pixel border:
@@ -4351,9 +4783,15 @@ struct SeatRadars
 //
 // RED: box_right back to the old lm+98 / lm+150 edge (no rm-66 clamp): the
 // two- and four-seat panes and the 148/152/159-px insets overlap the block.
+//
+// The hotbar's cells (their `belt_cell` traces) keep the same blank column
+// before the block in every pane they draw in.
+// RED (planted): place_belt_strip's radar test dropped (the strip draws in
+// the 100px columns, its third cell inside the block).
 TEST_F(GladHud, belt_box_never_overlaps_the_radar_in_any_pane)
 {
     ScopedAbilitySelect on(true);
+    int strips_checked = 0;
     int boxes_checked = 0;
     int scored_boxes = 0;
     int radar_pixels_checked = 0;
@@ -4417,6 +4855,15 @@ TEST_F(GladHud, belt_box_never_overlaps_the_radar_in_any_pane)
                         const int ry1 = block.y;
                         const int rx2 = block.x + block.w;
                         const int ry2 = block.y + block.h;
+                        for (const auto& [cx, cy] : belt_cells_for_view(i))
+                        {
+                            ++strips_checked;
+                            EXPECT_LE(cx + 17, rx1 - 2)
+                                << where << ": the cell at x=" << cx
+                                << " leaves a blank column before the radar";
+                            EXPECT_GE(cx, v.xloc) << where;
+                            EXPECT_LE(cy + 17, v.endy - 1) << where;
+                        }
                         const BeltBoxRect box = belt_box_for_view(i);
                         if (box.drew)
                         {
@@ -4504,6 +4951,7 @@ TEST_F(GladHud, belt_box_never_overlaps_the_radar_in_any_pane)
     // box, plus the score-off panes whose rows drew: a vacuous sweep (no
     // trace, no radar) is a broken test.
     EXPECT_EQ(100, scored_boxes);
+    EXPECT_GT(strips_checked, 0) << "the sweep saw the hotbar";
     EXPECT_GT(boxes_checked, scored_boxes);
     EXPECT_GT(radar_pixels_checked, 0);
 }
@@ -4619,6 +5067,69 @@ TEST_F(GladHud, zz_capture_belt_hud)
                     dump_frame_ppm(scene.draw(), "belt_hud_1p_on_shift_plain");
                 }
             }
+        }
+    }
+}
+
+// Review stills of the hotbar's states (OG_FX_CAPTURE_DIR, as
+// zz_capture_belt_hud; a normal run writes nothing), two and four seats, in
+// the box look and the shipped no-box look:
+//   seat 0  a level-4 Mage with 40 MP holding SPEC 1: TELEPORT pressed
+//           (white), WARP SPACE short (red frame, red key), FREEZE TIME
+//           locked (grey, L7)
+//   seat 1  a level-13 Soldier holding SHIFTER: DISARM on S1, S2 and S3
+//           empty
+//   seat 2  a level-1 Cleric: HEAL ready, RAISE UNDEAD L4, RAISE GHOST L7
+//   seat 3  a level-12 Archmage with no MP holding SPEC 2: every slot
+//           short, HEARTBURST pressed (white over the red key)
+TEST_F(GladHud, zz_capture_belt_hud_states)
+{
+    ScopedAbilitySelect on(true);
+    for (const int seats : {2, 4})
+    {
+        BeltHudScene scene(seats, FAMILY_MAGE, 4);
+        screen* const s = scene.s;
+        const unsigned char families[4] = {FAMILY_MAGE, FAMILY_SOLDIER,
+                                           FAMILY_CLERIC, FAMILY_ARCHMAGE};
+        const short levels[4] = {4, 13, 1, 12};
+        for (int i = 0; i < s->numviews; ++i)
+        {
+            walker& hero = *scene.heroes[static_cast<std::size_t>(i)];
+            if (i > 0)
+            {
+                // A fresh hero of the seat's class, in place of the Mage.
+                auto other = make_belt_hero(families[i], levels[i],
+                                            static_cast<signed char>(i));
+                ASSERT_NE(nullptr, other);
+                hero.set_dead(1);
+                s->viewob[i]->control = other.get();
+                scene.heroes[static_cast<std::size_t>(i)] = other.get();
+                s->world().oblist.push_back(std::move(other));
+            }
+            viewscreen& v = *s->viewob[i];
+            v.prefs[PREF_LIFE] = PREF_LIFE_BOTH;
+            v.prefs[PREF_SCORE] = PREF_SCORE_ON;
+            v.prefs[PREF_FOES] = PREF_FOES_ON;
+        }
+        scene.heroes[0]->stats()->set_magicpoints(40.0f);
+        if (seats == 4)
+            scene.heroes[3]->stats()->set_magicpoints(0.0f);
+        KeyHeld spec1(0, KEY_SPECIAL);
+        ShifterHeld shift1(1);
+        KeyHeld spec2(3, KEY_SPEC2);
+        for (const bool boxed : {true, false})
+        {
+            for (int i = 0; i < s->numviews; ++i)
+                s->viewob[i]->prefs[PREF_OVERLAY] =
+                    boxed ? PREF_OVERLAY_ON : PREF_OVERLAY_OFF;
+            const auto frame = scene.draw();
+            EXPECT_TRUE(trace_contains("hud", "state=short"));
+            EXPECT_TRUE(trace_contains("hud", "state=locked"));
+            EXPECT_TRUE(trace_contains("hud", "state=empty"));
+            EXPECT_TRUE(trace_contains("hud", "pressed=1"));
+            dump_frame_ppm(frame, std::format("belt_hud_{}p_on_states{}", seats,
+                                              boxed ? "" : "_plain")
+                                      .c_str());
         }
     }
 }

@@ -12,6 +12,7 @@
  * Follow-up work should move HUD rendering into a proper module namespace.
  */
 
+#include <openglad/interface/ability_icons.h>
 #include <openglad/interface/base.h>
 #include <openglad/interface/fps_overlay.h>
 #include <openglad/interface/hud_counter_box.h>
@@ -44,6 +45,7 @@
 #include <cstdint>
 #include <format>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -260,9 +262,13 @@ static void draw_respawn_countdown(screen* s, walker* control,
 // it, so the cell shortens and then gives up. The block is reserved even for
 // a PREF_RADAR_OFF view, so a seat toggling its radar never moves the cell.
 //
-// New Ability Select's full layout grows the bottom-left box to three belt
-// rows above SC/XP (its top at bm-42, not bm-26), so `box_top` names the
-// box's top edge and the cell rides 8px above it: bm-34 classic, bm-50 then.
+// New Ability Select's hotbar grows the bottom-left box (`box_top` names the
+// box's top edge and the cell rides 8px above it): the full panel's strip
+// puts the top at bm-kBeltHudFullBoxTop (bm-46, cell at bm-54), the compact
+// panel's at bm-kBeltHudCompactBoxTop (bm-28, cell at bm-36); where the strip
+// does not fit, the text rows' top (bm-42, cell at bm-50) or the classic
+// bm-kHudBoxTop (bm-26, cell at bm-34) stands, as it does with the setting
+// off.
 //
 // Answers whether it drew, so the seat's own countdown below can step clear.
 static bool draw_freeze_countdown(screen* s, Sint32 lm, Sint32 tm, Sint32 rm,
@@ -729,16 +735,22 @@ static void draw_mode_beacons(screen* s, viewscreen* view,
     }
 }
 
-// New Ability Select's HUD (docs/ability-select-design.md): one row per SPEC
-// key for the layer the seat's PHYSICAL SHIFTER picks (held: SHIFTER + 1/2/3;
-// up: 1/2/3), each "<key> <NAME>" cut by og::ui::belt_hud_line. Not the
-// mirrored shifter_down: under the belt that is the alternate bit of the
-// last cast, not the key.
+// New Ability Select's HUD (docs/ability-select-design.md) shows the three
+// SPEC keys of the layer the seat's PHYSICAL SHIFTER picks (held: SHIFTER +
+// 1/2/3; up: 1/2/3). Not the mirrored shifter_down: under the belt that is
+// the alternate bit of the last cast, not the key. Two pictures of it:
 //
-// Rows. The compact panel (4 seats; P2/P3 of 3) puts them at bm-24/-16/-8
-// inside the box the score mode already draws (SC/XP are hidden there);
-// the full panel stacks them at bm-40/-32/-24 above SC (bm-8) and XP
-// (bm-16), growing the box's top to bm-42 (which moves the frozen-time and
+// The hotbar (plan_belt_strip, below): three 18px slots side by side, each
+// the ability's 16x16 icon (og::ui::AbilityIcons) on a dark fill in a 1px
+// frame, the key lettered under it. No ability name is drawn.
+//
+// The text rows (plan_belt_rows), the fallback for a pane too short or too
+// narrow for the strip (the 100px inset columns, the 80-scanline VIEW_3):
+// one row per key, "<key> <NAME>" cut by og::ui::belt_hud_line. The compact
+// panel (4 seats; P2/P3 of 3) puts them at bm-24/-16/-8 inside the box the
+// score mode already draws (SC/XP are hidden there); the full panel stacks
+// them at bm-40/-32/-24 above SC (bm-8) and XP (bm-16), growing the box's
+// top to bm-kBeltHudRowsBoxTop (bm-42, which moves the frozen-time and
 // seat-timer cells up to bm-50). Budget: 15 glyphs ("S1 " + 12), 24 in a
 // pane 300px or wider.
 //
@@ -780,9 +792,45 @@ inline constexpr Sint32 kBeltHudWideBoxRight = 150;
 // The box's right edge is at most rm-66: the radar block starts at rm-64,
 // and rm-65 stays a blank column between them.
 inline constexpr Sint32 kBeltHudRadarGap = 66;
-// The bottom-left box's top edge: classic (and compact belt) / full belt.
+// The bottom-left box's top edge, as bm minus: classic (and the compact
+// panel's text rows) / the full panel's text rows / the full panel's strip /
+// the compact panel's strip. kHudBoxTop is the setting-off HUD's too, so it
+// never moves.
 inline constexpr Sint32 kHudBoxTop = 26;
-inline constexpr Sint32 kBeltHudFullBoxTop = 42;
+inline constexpr Sint32 kBeltHudRowsBoxTop = 42;
+inline constexpr Sint32 kBeltHudFullBoxTop = 46;
+inline constexpr Sint32 kBeltHudCompactBoxTop = 28;
+
+// The hotbar. A slot (cell) is a kBeltIconSize icon inside a 1px frame,
+// cells kBeltCellPitch apart from lm+2: x = lm+2, lm+21, lm+40, the strip's
+// last column lm+57. The key label's top row sits kBeltLabelGap rows under
+// the cell's last row (one blank row; the 5x6 font inks rows 0-4), so the
+// strip is kBeltStripH tall from the cells' top to the label's last row.
+//   full panel     cells bm-44..bm-27, labels bm-25..bm-20 (XP at bm-16)
+//   compact panel  cells bm-26..bm-9,  labels bm-7..bm-2
+inline constexpr Sint32 kBeltIconSize = og::ui::kAbilityIconSize;  // 16
+inline constexpr Sint32 kBeltCellSize = kBeltIconSize + 2;          // 18
+inline constexpr Sint32 kBeltCellPitch = kBeltCellSize + 1;         // 19
+inline constexpr Sint32 kBeltStripLeft = 2;
+inline constexpr Sint32 kBeltStripW = 2 * kBeltCellPitch + kBeltCellSize;  // 56
+inline constexpr Sint32 kBeltLabelGap = 2;
+inline constexpr Sint32 kBeltLabelH = 6;
+inline constexpr Sint32 kBeltStripH =
+    kBeltCellSize - 1 + kBeltLabelGap + kBeltLabelH;  // 25
+inline constexpr Sint32 kBeltFullCellTop = 44;
+inline constexpr Sint32 kBeltCompactCellTop = 26;
+// The compact box's right edge: the strip (lm+57) plus its bevel.
+inline constexpr Sint32 kBeltHudCompactBoxRight = 59;
+// One ground for every icon (the locked LUT, the icon gates and the
+// ABILITIES face are all designed against it): dark grey 18 in a black 16
+// frame. The frame says the state: red while the MP cannot pay, white while
+// the seat holds the slot's SPEC key.
+inline constexpr unsigned char kBeltCellFill = 18;
+inline constexpr unsigned char kBeltFrameInk = 16;
+inline constexpr unsigned char kBeltFrameShortInk = 40;
+inline constexpr unsigned char kBeltFramePressedInk = 31;
+static_assert(kBeltStripW == 56 && kBeltStripH == 25,
+              "the strip the design's fit table was measured for");
 
 static std::array<BeltHudRow, 3> plan_belt_rows(screen* s, walker& control,
                                                 int players, bool compact,
@@ -843,6 +891,194 @@ static std::array<BeltHudRow, 3> plan_belt_rows(screen* s, walker& control,
             row.ink = static_cast<unsigned char>(RED);
     }
     return rows;
+}
+
+// The HUD's ability icons: one set for the process, loaded on first use (the
+// setting-off HUD never reaches it) and read again when the sprite sources
+// change (AbilityIcons drops its cache on a new sprite_source_generation).
+// The pointers it hands out are used within the frame that asked, never
+// kept. Non-static for the HUD tests, which swap in a set whose generic tile
+// is missing to reach the "no picture at all" cell.
+og::ui::AbilityIcons& hud_ability_icons()
+{
+    static og::ui::AbilityIcons icons;
+    return icons;
+}
+
+// One hotbar slot as it is drawn.
+struct BeltHudCell
+{
+    int key = 0;                        // 1..3
+    bool shift = false;                 // the SHIFTER layer
+    Sint32 x = 0;                       // the cell's top-left, frame included
+    Sint32 y = 0;
+    og::sim::belt::Entry entry{};       // slot 0: an empty cell
+    const char* declared = "none";      // the icon path the ability names
+    const char* drawn = "none";         // the path whose pixels the cell shows
+    const PixieData* picture = nullptr; // the ready or the locked copy
+    const char* state = "empty";        // castable, short, locked, disabled
+    bool pressed = false;               // the seat holds this SPEC key
+    unsigned char frame = kBeltFrameInk;
+    std::string label;                  // "1", "S1", or "L7" when locked
+    Sint32 label_x = 0;
+    Sint32 label_y = 0;
+    unsigned char ink = 0;
+    bool shadow = false;                // a 1-px black shadow (no box)
+};
+
+struct BeltHudStrip
+{
+    bool fits = false;
+    Sint32 top = 0;  // the cells' top row
+    std::array<BeltHudCell, 3> cells{};
+};
+
+// Where the strip goes and whether it fits, in this order (the text rows'
+// fit-or-yield rule): its top at or below the feed floor (tm+60), and its
+// last column left of rm-kBeltHudRadarGap, the radar reserve's edge, which
+// stays reserved with the radar off so the radar pref never moves the
+// strip. A pane narrower than 124px or shorter than the feed plus the strip
+// takes the text rows instead.
+static BeltHudStrip place_belt_strip(bool compact, Sint32 lm, Sint32 tm,
+                                     Sint32 rm, Sint32 bm)
+{
+    BeltHudStrip strip;
+    strip.top = bm - (compact ? kBeltCompactCellTop : kBeltFullCellTop);
+    const Sint32 banner_bottom = tm + 30 + MAX_MESSAGES * 6;
+    const Sint32 right = lm + kBeltStripLeft + kBeltStripW - 1;
+    strip.fits = strip.top >= banner_bottom && right < rm - kBeltHudRadarGap;
+    if (!strip.fits)
+        TRACE("hud", "belt_strip_yields top=%d feed=%d right=%d limit=%d",
+              static_cast<int>(strip.top), static_cast<int>(banner_bottom),
+              static_cast<int>(right),
+              static_cast<int>(rm - kBeltHudRadarGap));
+    return strip;
+}
+
+// The three slots of the layer the seat's SHIFTER picks. The frame says the
+// state, the picture the ability, the label the key:
+//   castable  the icon, black frame, the key in the panel's ink
+//   short     the icon, red frame, the key in RED (the MP cannot pay)
+//   pressed   the frame white while the seat holds the slot's SPEC key; it
+//             wins over short (the label keeps its red) and lights only a
+//             castable or short slot. It follows the physical key, so a
+//             latched SHIFTER cast released mid-hold lights the plain slot.
+//   locked    the grey copy, black frame, "L<level>" in the dim ink
+//   disabled  the grey copy, black frame, the key in the dim ink (a walker
+//             whose specials the level switched off)
+//   empty     the fill alone, black frame, the key in the dim ink
+// An ability with no icon, or one whose file does not load, shows the
+// generic tile; with not even that, the cell is its frame and its label.
+static void plan_belt_strip(BeltHudStrip& strip, screen* s, walker& control,
+                            int players, Sint32 lm,
+                            unsigned char text_color, bool boxed)
+{
+    namespace belt = og::sim::belt;
+    const FamilyDescriptor* const fd = get_family_descriptor(
+        static_cast<int>(control.family()));
+    const belt::Layout layout =
+        belt::resolve(fd, control.stats()->level(), s->world_.new_specials,
+                      belt::bytes_for(control));
+    const bool shift = isPlayerHoldingKey(players, KEY_SHIFTER);
+    static constexpr std::array<int, 3> kSpecKeys = {KEY_SPECIAL, KEY_SPEC2,
+                                                     KEY_SPEC3};
+    const unsigned char dim = boxed ? kBeltHudDimInkBox : kBeltHudDimInkPlain;
+    og::ui::AbilityIcons& icons = hud_ability_icons();
+
+    for (int i = 0; i < 3; ++i)
+    {
+        BeltHudCell& cell = strip.cells[static_cast<std::size_t>(i)];
+        cell.key = i + 1;
+        cell.shift = shift;
+        cell.x = lm + kBeltStripLeft + kBeltCellPitch * i;
+        cell.y = strip.top;
+        cell.shadow = !boxed;
+        const int index = belt::slot_index(cell.key, shift);
+        const belt::Resolved& slot = layout[static_cast<std::size_t>(index)];
+        cell.label = og::ui::ability_key_label(index);
+        cell.ink = dim;
+
+        if (fd != nullptr && slot.entry &&
+            slot.state != belt::SlotState::Empty)
+        {
+            cell.entry = *slot.entry;
+            if (const char* path = og::ui::declared_icon_path(*fd, cell.entry))
+                cell.declared = path;
+            const og::ui::AbilityIcon* const icon =
+                icons.icon(*fd, cell.entry);
+            if (icon != nullptr)
+                cell.drawn = icon == icons.icon_at(nullptr)
+                    ? og::ui::kMissingIconPath
+                    : cell.declared;
+
+            if (slot.state == belt::SlotState::Locked)
+            {
+                cell.state = "locked";
+                cell.label = std::format("L{}", slot.opens_at);
+                cell.picture = icon ? &icon->locked : nullptr;
+            }
+            else if (control.specials_disabled())
+            {
+                cell.state = "disabled";
+                cell.picture = icon ? &icon->locked : nullptr;
+            }
+            else
+            {
+                const bool paid = control.stats()->magicpoints() >=
+                    og::sim::cast_cost(control, cell.entry.slot,
+                                       cell.entry.alt);
+                cell.state = paid ? "castable" : "short";
+                cell.ink = paid ? text_color
+                                : static_cast<unsigned char>(RED);
+                cell.frame = paid ? kBeltFrameInk : kBeltFrameShortInk;
+                cell.picture = icon ? &icon->ready : nullptr;
+                cell.pressed = isPlayerHoldingKey(
+                    players, kSpecKeys[static_cast<std::size_t>(i)]);
+                if (cell.pressed)
+                    cell.frame = kBeltFramePressedInk;
+            }
+        }
+
+        // Centred under the cell: a glyph is 6px with a blank last column.
+        const Sint32 label_w = 6 * static_cast<Sint32>(cell.label.size()) - 1;
+        cell.label_x = cell.x + (kBeltCellSize - label_w) / 2;
+        cell.label_y = cell.y + kBeltCellSize - 1 + kBeltLabelGap;
+    }
+}
+
+static void draw_belt_strip(screen* s, text& mytext, int view,
+                            const BeltHudStrip& strip)
+{
+    for (const BeltHudCell& cell : strip.cells)
+    {
+        s->fastbox(cell.x, cell.y, kBeltCellSize, kBeltCellSize, cell.frame, 1);
+        s->fastbox(cell.x + 1, cell.y + 1, kBeltIconSize, kBeltIconSize,
+                   kBeltCellFill, 1);
+        if (cell.picture != nullptr)
+            s->putdata(cell.x + 1, cell.y + 1, kBeltIconSize, kBeltIconSize,
+                       std::span<const unsigned char>(
+                           cell.picture->data.get(),
+                           static_cast<std::size_t>(kBeltIconSize *
+                                                    kBeltIconSize)));
+        TRACE("hud",
+              "belt_cell key=%d shift=%d slot=%d alt=%d icon=%s state=%s "
+              "x=%d y=%d view=%d pressed=%d frame=%d drawn=%s",
+              cell.key, cell.shift ? 1 : 0, static_cast<int>(cell.entry.slot),
+              cell.entry.alt ? 1 : 0, cell.declared, cell.state,
+              static_cast<int>(cell.x), static_cast<int>(cell.y), view,
+              cell.pressed ? 1 : 0, static_cast<int>(cell.frame), cell.drawn);
+    }
+    for (const BeltHudCell& cell : strip.cells)
+    {
+        if (cell.shadow)
+            mytext.write_xy_flat(cell.label_x - 1, cell.label_y + 1,
+                                 cell.label, kBeltHudShadowInk);
+        mytext.write_xy(cell.label_x, cell.label_y, cell.label.c_str(),
+                        cell.ink, static_cast<short>(1));
+        TRACE("hud", "belt_label key=%d text=%s ink=%d shadow=%d", cell.key,
+              cell.label.c_str(), static_cast<int>(cell.ink),
+              cell.shadow ? 1 : 0);
+    }
 }
 
 short new_score_panel(screen* s, short /*do_it*/)
@@ -1035,12 +1271,20 @@ short new_score_panel(screen* s, short /*do_it*/)
             // constraint 7 (a docked camera must not densify seat HUDs).
             const bool compact_score_panel =
                 s->numviews > 2 && !(s->numviews == 3 && players == 0);
-            // New Ability Select draws the belt rows (plan_belt_rows); in
-            // the full panel they grow the bottom-left box up to bm-42.
+            // New Ability Select draws the hotbar where it fits
+            // (place_belt_strip) and the belt rows where it does not; both
+            // grow the bottom-left box (kBeltHud*BoxTop above).
             const bool belt_hud = og::input::ability_select_on();
-            const Sint32 box_top = (belt_hud && !compact_score_panel)
-                ? bm - kBeltHudFullBoxTop
-                : bm - kHudBoxTop;
+            BeltHudStrip belt_strip;
+            if (belt_hud)
+                belt_strip = place_belt_strip(compact_score_panel, lm, tm,
+                                              rm, bm);
+            Sint32 box_top = bm - kHudBoxTop;
+            if (belt_strip.fits)
+                box_top = bm - (compact_score_panel ? kBeltHudCompactBoxTop
+                                                    : kBeltHudFullBoxTop);
+            else if (belt_hud && !compact_score_panel)
+                box_top = bm - kBeltHudRowsBoxTop;
             const bool freeze_drew =
                 draw_freeze_countdown(s, lm, tm, rm, bm, box_top);
             draw_seat_timer(s, *control, lm, tm, rm, bm, box_top, freeze_drew);
@@ -1139,7 +1383,11 @@ short new_score_panel(screen* s, short /*do_it*/)
                 s->viewob[players]->prefs[PREF_SCORE] == PREF_SCORE_ON;
 
             std::array<BeltHudRow, 3> belt_rows{};
-            if (belt_hud)
+            if (belt_strip.fits)
+                plan_belt_strip(belt_strip, s, *control, players, lm,
+                                static_cast<unsigned char>(text_color),
+                                draw_button != 0);
+            else if (belt_hud)
                 belt_rows = plan_belt_rows(s, *control, players,
                                            compact_score_panel, lm, tm, rm,
                                            bm, static_cast<unsigned char>(text_color),
@@ -1157,7 +1405,30 @@ short new_score_panel(screen* s, short /*do_it*/)
             }
 
             // Draw box, if needed
-            if (draw_button && belt_hud)
+            if (draw_button && belt_strip.fits)
+            {
+                // The hotbar's box: from box_top down to the score box's
+                // bottom when SC/XP (or the compact panel) sit there, else
+                // to the bevel under the key labels. Its right edge is the
+                // text rows' in a full panel (they shared it), the strip's
+                // own plus its bevel in a compact one; never past rm-66.
+                const Sint32 strip_right = compact_score_panel
+                    ? lm + kBeltHudCompactBoxRight
+                    : lm + (rm - lm >= kBeltHudWidePane
+                                ? kBeltHudWideBoxRight
+                                : kBeltHudBoxRight);
+                const Sint32 box_right =
+                    std::min<Sint32>(strip_right, rm - kBeltHudRadarGap);
+                const Sint32 bottom = (show_score || compact_score_panel)
+                    ? score_bottom - 2
+                    : belt_strip.top + kBeltStripH;
+                s->draw_button(lm+1, box_top, box_right, bottom, 1, 1);
+                TRACE("hud", "belt_box view=%d x1=%d y1=%d x2=%d y2=%d",
+                      players, static_cast<int>(lm + 1),
+                      static_cast<int>(box_top), static_cast<int>(box_right),
+                      static_cast<int>(bottom));
+            }
+            else if (draw_button && belt_hud)
             {
                 // The belt box: the rows that drew, down to the score box's
                 // bottom when SC/XP (or the compact panel's rows) sit there.
@@ -1241,7 +1512,9 @@ short new_score_panel(screen* s, short /*do_it*/)
                 }
             }
 
-            if (belt_hud)
+            if (belt_strip.fits)
+                draw_belt_strip(s, mytext, players, belt_strip);
+            else if (belt_hud)
             {
                 for (const BeltHudRow& row : belt_rows)
                 {
