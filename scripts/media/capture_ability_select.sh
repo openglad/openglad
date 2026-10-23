@@ -14,8 +14,9 @@
 # Steps (run in this order; --only picks some):
 #   hud        the in-game HUD: 1, 2 and 4 seats with the setting on and
 #              off, and 1 and 4 seats with SHIFTER held, all with the
-#              OVERLAY view pref on (boxed rows); plus one seat on the
-#              shipped OVERLAY-off look (*-plain: rows with no box)
+#              OVERLAY view pref on (the icon strip on the grey box);
+#              plus one seat on the shipped OVERLAY-off look (*-plain: the
+#              strip straight on the floor)
 #              (scripts/media/capture_ability_select_hud.sh, which runs
 #              GladHud.zz_capture_belt_hud in og_test_view)
 #   hud-radar  the ON HUD over a real radar, 2 and 4 seats, SHIFTER up and
@@ -26,9 +27,11 @@
 #              frame RADAR_FRAME (a quiet frame: no banner across the panes),
 #              once on the shipped OVERLAY-off look and once with it on
 #              (hud-2p-radar-on-overlay, OG_CAPTURE_OVERLAY=1)
-#   abilities  the ABILITIES screen: the Archmage (MIND CONTROL on the
-#              bench), the same with a slot selected and after a placement,
-#              a level-1 mage (locked rows grey), and the TRAIN door lit
+#   abilities  the ABILITIES screen, every slot with its icon: the Archmage
+#              (MIND CONTROL on the bench), the same with a slot selected
+#              and after a placement, a level-1 mage (locked slots grey), a
+#              level-1 barbarian (the longest row, on two lines), and the
+#              TRAIN door lit
 #              with the setting on and dimmed with it off (AbilitiesFlow.*
 #              in og_test_abilities, UXSHOTS_DIR)
 #   ui-fx      Game Settings > UI FX with the New Ability Select row, every
@@ -45,6 +48,11 @@
 #              sizes, 640x400, 1280x800 and 1920x1080, kept at the window's
 #              real size (ChangelogFlow.page_at_three_window_sizes_keeps_the_
 #              picture_in_its_band in og_test_abilities, OG_CHANGELOG_SHOT_DIR)
+#   icons      the ability icons' acceptance sheets from the committed grids
+#              (scripts/ability_icons/generate.py --sheet): the contact sheet
+#              at 4x with each icon's numbers, the cell sheet at 2x (ready
+#              and locked on grass, on the box grey and on an ABILITIES
+#              face) and the floor sheet at 2x; no game binary needed
 #
 # Canvas pictures (everything but the CHANGELOG! page) are the game's
 # 320x200 canvas doubled to 640x400 with nearest-neighbour, which keeps the
@@ -70,7 +78,7 @@ case "$BUILD_DIR" in
     *) BUILD_DIR="$REPO_ROOT/$BUILD_DIR" ;;
 esac
 RADAR_FRAME="${RADAR_FRAME:-20}"
-STEPS=(hud hud-radar radar abilities ui-fx panels keyboard changelog)
+STEPS=(hud hud-radar radar abilities ui-fx panels keyboard changelog icons)
 
 usage() {
     sed -n '/^# Usage:/,/^# Build first/s/^# \{0,1\}//p' "${BASH_SOURCE[0]}"
@@ -265,10 +273,10 @@ fi
 
 if wanted abilities; then
     run_test abilities 2 og_test_abilities \
-        'AbilitiesFlow.train_door_opens_the_screen_and_the_edit_reaches_the_save:AbilitiesFlow.setting_off_dims_the_train_door:AbilitiesFlow.mage_page_greys_locked_rows_and_the_keyboard_walks_it' \
+        'AbilitiesFlow.train_door_opens_the_screen_and_the_edit_reaches_the_save:AbilitiesFlow.setting_off_dims_the_train_door:AbilitiesFlow.mage_page_greys_locked_rows_and_the_keyboard_walks_it:AbilitiesFlow.the_longest_row_wraps_inside_its_face' \
         UXSHOTS_DIR="$WORK_DIR/abilities"
-    for shot in archmage archmage_selected archmage_placed mage train_door_on \
-        train_door_off; do
+    for shot in archmage archmage_selected archmage_placed mage barbarian \
+        train_door_on train_door_off; do
         canvas_png "$WORK_DIR/abilities/abilities_$shot.ppm" \
             "abilities-$(printf '%s' "$shot" | tr '_' '-')"
     done
@@ -307,6 +315,18 @@ if wanted changelog; then
         OG_CHANGELOG_SHOT_DIR="$WORK_DIR/changelog"
     for size in 640x400 1280x800 1920x1080; do
         native_png "$WORK_DIR/changelog/changelog_$size.ppm" "changelog-$size"
+    done
+fi
+
+if wanted icons; then
+    python3 "$REPO_ROOT/scripts/ability_icons/generate.py" --sheet \
+        "$WORK_DIR/icons" > "$WORK_DIR/icons.log" 2>&1 || {
+        KEEP_WORK=1
+        die "the icon sheets failed; see $WORK_DIR/icons.log"
+    }
+    for sheet in icons-contact icons-cells icons-floors; do
+        cp -- "$WORK_DIR/icons/$sheet.png" "$OUT_DIR/$sheet.png"
+        printf 'wrote %s\n' "$OUT_DIR/$sheet.png"
     done
 fi
 
