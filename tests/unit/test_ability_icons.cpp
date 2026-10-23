@@ -415,6 +415,32 @@ TEST(AbilityIcons, no_icon_key_draws_the_generic_tile)
         ASSERT_EQ(tile.data[i], generic->ready.data[i]) << "pixel " << i;
 }
 
+// The generic tile is grey and white, so the locked LUT can only tell its
+// two copies apart through its shade: a dark grey the LUT lifts well off
+// it. A locked slot that falls back to the generic tile still reads locked
+// beside a ready one (and its L<n> label says so too).
+//
+// RED (planted): the grid's shade back at 27 (it locks to 29, 24 luma up:
+// the copies are one picture at 1x). The shade is 13 pixels.
+TEST(AbilityIcons, the_generic_tile_locked_reads_apart_from_ready)
+{
+    AbilityIcons icons;
+    const AbilityIcon* generic = icons.icon_at(og::ui::kMissingIconPath);
+    ASSERT_NE(nullptr, generic);
+    int lifted = 0;
+    for (std::size_t i = 0; i < kPixelCount; ++i) {
+        const int ready = generic->ready.data[i];
+        const int locked = generic->locked.data[i];
+        if (ready == 0 || ready == 16)
+            continue;
+        if (og::ui::icon_palette_luma(locked) -
+                og::ui::icon_palette_luma(ready) >= 40.0)
+            ++lifted;
+    }
+    EXPECT_GE(lifted, 12)
+        << "the shade must lock at least 40 luma lighter than it is drawn";
+}
+
 TEST(AbilityIcons, a_bad_path_draws_the_generic_tile_and_is_read_once)
 {
     FamilyDescriptor fd{};

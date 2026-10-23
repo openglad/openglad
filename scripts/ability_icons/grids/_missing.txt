@@ -1,9 +1,10 @@
-# _MISSING (generic): the fallback for an ability with no icon or a file that does not load: a white question mark outlined in black, in the shape of the textbig.png frame 63 glyph ('?', its ink 40 re-lettered 31) with every stroke drawn 2 px wide, shaded 27 on the right and bottom
+# _MISSING (generic): the fallback for an ability with no icon or a file that does not load: a white question mark outlined in black, in the shape of the textbig.png frame 63 glyph ('?', its ink 40 re-lettered 31) with every stroke drawn 2 px wide, shaded 21 on the right and bottom
+# the shade is a dark grey the locked copy lifts to 26 (luma 109 -> 170), so a locked generic tile reads flat beside a ready one; shaded 27 (locked 29) the two copies were one picture
 # the glyph cut verbatim at 1x (1 px strokes) was rendered beside it and rejected: too thin in the slot at 1x
 # legend: one character = one palette index (pix/openglad.gpl)
 k = 16
 a = 31
-b = 27
+b = 21
 
 ................
 ......kkkk......

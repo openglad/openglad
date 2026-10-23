@@ -934,22 +934,26 @@ struct BeltHudStrip
 };
 
 // Where the strip goes and whether it fits, in this order (the text rows'
-// fit-or-yield rule): its top at or below the feed floor (tm+60), and its
-// last column left of rm-kBeltHudRadarGap, the radar reserve's edge, which
-// stays reserved with the radar off so the radar pref never moves the
-// strip. A pane narrower than 124px or shorter than the feed plus the strip
-// takes the text rows instead.
+// fit-or-yield rule): its box's top bevel (two rows above the cells, so
+// the box look never lands on the feed) at or below the feed floor
+// (tm+60), and its last column left of rm-kBeltHudRadarGap, the radar
+// reserve's edge, which stays reserved with the radar off so the radar
+// pref never moves the strip. A pane narrower than 124px or shorter than
+// the feed plus the strip and its bevel (two seats at PREF_VIEW_2, 104
+// scanlines, the box at bm-46 = tm+58) takes the text rows instead.
 static BeltHudStrip place_belt_strip(bool compact, Sint32 lm, Sint32 tm,
                                      Sint32 rm, Sint32 bm)
 {
     BeltHudStrip strip;
     strip.top = bm - (compact ? kBeltCompactCellTop : kBeltFullCellTop);
+    const Sint32 box_top =
+        bm - (compact ? kBeltHudCompactBoxTop : kBeltHudFullBoxTop);
     const Sint32 banner_bottom = tm + 30 + MAX_MESSAGES * 6;
     const Sint32 right = lm + kBeltStripLeft + kBeltStripW - 1;
-    strip.fits = strip.top >= banner_bottom && right < rm - kBeltHudRadarGap;
+    strip.fits = box_top >= banner_bottom && right < rm - kBeltHudRadarGap;
     if (!strip.fits)
         TRACE("hud", "belt_strip_yields top=%d feed=%d right=%d limit=%d",
-              static_cast<int>(strip.top), static_cast<int>(banner_bottom),
+              static_cast<int>(box_top), static_cast<int>(banner_bottom),
               static_cast<int>(right),
               static_cast<int>(rm - kBeltHudRadarGap));
     return strip;
@@ -1046,7 +1050,8 @@ static void plan_belt_strip(BeltHudStrip& strip, screen* s, walker& control,
     }
 }
 
-static void draw_belt_strip(screen* s, text& mytext, int view,
+static void draw_belt_strip(screen* s, text& mytext,
+                            [[maybe_unused]] int view,
                             const BeltHudStrip& strip)
 {
     for (const BeltHudCell& cell : strip.cells)

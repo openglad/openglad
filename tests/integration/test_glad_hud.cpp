@@ -4636,6 +4636,50 @@ TEST_F(GladHud, belt_strip_in_a_wide_short_pane_yields_to_the_feed)
     }
 }
 
+// Two seats at PREF_VIEW_2: 152x104, so the cells' top (bm-44) is exactly
+// the feed floor (tm+60) but the box look's top bevel (bm-46 = tm+58) would
+// land on the feed's last two rows. The fit rule tests the box's top, so
+// the strip yields to the text rows, whose box (bm-42 = tm+62) clears it.
+//
+// RED (planted): place_belt_strip testing strip.top (the cells) instead of
+// the box's top against the feed (the strip fits, the box's bevel paints
+// tm+58..tm+59, the yield trace and the rows vanish).
+TEST_F(GladHud, belt_strip_box_bevel_never_lands_on_the_feed)
+{
+    ScopedAbilitySelect on(true);
+    BeltHudScene scene(2, FAMILY_MAGE, 13);
+    for (int i = 0; i < 2; ++i)
+    {
+        viewscreen& v = *scene.s->viewob[i];
+        v.prefs[PREF_VIEW] = PREF_VIEW_2;
+        v.resize(static_cast<char>(PREF_VIEW_2));
+        ASSERT_EQ(104, v.endy - v.yloc);
+        ASSERT_EQ(v.yloc + 30 + MAX_MESSAGES * 6, v.endy - 44)
+            << "the cells' top is the feed floor";
+        ASSERT_EQ(PREF_OVERLAY_ON, v.prefs[PREF_OVERLAY]) << "the box look";
+    }
+    const auto frame = scene.draw();
+    EXPECT_TRUE(trace_contains("hud", "belt_strip_yields"))
+        << "the box's top bevel would sit on the feed";
+    EXPECT_FALSE(trace_contains("hud", "belt_cell"));
+    for (int k = 1; k <= 3; ++k)
+        EXPECT_TRUE(trace_contains(
+            "hud", std::format("belt_row key={} ", k).c_str()))
+            << "key " << k << " takes a text row";
+    for (int i = 0; i < 2; ++i)
+    {
+        viewscreen& v = *scene.s->viewob[i];
+        EXPECT_EQ(0, frame_ink(frame, v.xloc, v.yloc + 30, v.endx,
+                               v.yloc + 30 + MAX_MESSAGES * 6))
+            << "seat " << i << ": nothing on the feed band";
+        EXPECT_NE(0, frame[static_cast<std::size_t>((v.endy - 42) * 320 +
+                                                    v.xloc + 20)])
+            << "seat " << i << ": the text rows' box top is bm-42";
+        v.prefs[PREF_VIEW] = PREF_VIEW_FULL;
+        v.resize(static_cast<char>(PREF_VIEW_FULL));
+    }
+}
+
 // PREF_VIEW_PANELS with three seats: 100px columns, too narrow for the
 // hotbar (its last column lm+57 is not left of rm-66 = lm+34), so the text
 // rows stand in. Left of the radar block (rm-64) there are five glyphs, too

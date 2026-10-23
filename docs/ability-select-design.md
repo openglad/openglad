@@ -781,7 +781,17 @@ An ability with no picture, or whose file will not load, shows the
 generic tile, a grey square with a question mark (`pix/icons/_missing.png`);
 the slot still shows its key and state, so the ability stays usable and
 its name is on the ABILITIES screen. If even the generic tile is missing,
-the slot is drawn empty. Never a crash, never a blank HUD.
+the slot is drawn empty. Never a crash, never a blank HUD. The tests read
+which one a slot drew from its trace (the HUD's `belt_cell`, the ABILITIES
+face's `abilities_icon`): `icon=` is always the path the ability names
+(`none` on the HUD and `(none)` on a face when it names none), and `drawn=`
+is the file whose pixels show, the declared one, `icons/_missing.png`, or
+`none` when nothing is drawn.
+
+The generic tile is grey and white, so its locked copy differs from the
+ready one only in its shade: a dark grey (21) that the grey copy lifts to a
+light one (26), so a locked tile reads flat beside a ready one; the key
+label's `L7` says the rest.
 
 Pictures are loaded the first time they are needed and kept; a campaign
 or a sprite sheet that replaces them makes the game read them again. With
