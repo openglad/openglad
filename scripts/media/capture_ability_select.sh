@@ -50,7 +50,7 @@
 #              picture_in_its_band in og_test_abilities, OG_CHANGELOG_SHOT_DIR)
 #   icons      the ability icons' acceptance sheets from the committed grids
 #              (scripts/ability_icons/generate.py --sheet): the contact sheet
-#              at 4x with each icon's numbers, the slot sheet at 2x (ready
+#              at 4x with each icon's numbers, the cell sheet at 2x (ready
 #              and locked on grass, on the box grey and on an ABILITIES
 #              face) and the floor sheet at 2x; no game binary needed
 #

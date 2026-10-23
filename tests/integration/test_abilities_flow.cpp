@@ -929,8 +929,8 @@ TEST(AbilitiesLayout, every_core_row_keeps_its_name_when_selected)
 }
 
 // The nav program over every bench shape the screen can show: no bench,
-// one to eight rows, and the paged window (seven rows and MORE on the
-// eighth, with the last page short). Every visible row is reachable from
+// one to four rows, and the paged window (three rows and MORE on the
+// fourth, with the last page short). Every visible row is reachable from
 // BACK, and no link lands on a hidden row.
 TEST(AbilitiesLayout, nav_reaches_every_visible_row_for_every_bench_shape)
 {

@@ -508,8 +508,9 @@ two instead (one ability, one slot). A locked ability can be placed.
   beside it (section I.5). A locked ability shows the grey copy of its
   picture and its name in the grey ink, with the level it opens at; an
   empty slot shows the bare slot and `--`. The selected face has a red
-  ring inside its edge. The longest row, `2 EXPLODING BOULDER L4`, fits on
-  one line beside the slot.
+  ring inside its edge. Twenty letters fit on a line beside the slot; a
+  longer row (a level-1 Barbarian's `2 EXPLODING BOULDER L4`) breaks at its
+  last space onto a second line inside the face.
 - **Use**: click a slot to select it, then click a bench ability to put it
   there (the old one goes to the bench), or another slot to swap the two.
   Click the selected slot again, or right-click any slot, to empty it.
@@ -792,8 +793,11 @@ Every slot and bench row is a face 20 pixels tall carrying the slot (the
 HUD's, as above) at its left and the name beside it. The page shows the
 whole belt at once (six faces) and four bench faces a page, so the screen
 reads as an inventory: pictures you can pick up and put on a key. A
-locked face has the grey copy and its name in the grey ink. A row is at
-most 24 letters (the model's budget), which fits beside the slot. The
+locked face has the grey copy and its name in the grey ink. Twenty
+letters fit on a line beside the slot. A longer row (a level-1
+Barbarian's `2 EXPLODING BOULDER L4`) breaks at its last space onto a
+second line inside the face; the model's budget of 24 letters always fits
+in two lines, and the layout test pins that. The
 labels the tests read (`3 SUMMON IMAGE`, `>3 SUMMON IMAGE` while selected)
 are unchanged; the `>` is not drawn, the red ring inside the face marks the
 selection.
