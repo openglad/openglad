@@ -1105,6 +1105,101 @@ test.describe('Touch gameplay controls', () => {
     });
   }
 
+  // The 1 / 2 / 3 buttons never cover the radar. The radar's block is the
+  // HUD's bottom-right 64x48 (radar_block_for_pane: at most 60x44, 4 in
+  // from the pane's edges) on the gameplay HUD canvas the engine publishes
+  // (__opengladCanvasDiagnostics.gameplay_ui_*), which is stretched over the
+  // whole #canvas. Checked at this project's phone size and at the iPad
+  // Pro 11 sizes, landscape and portrait (the PR stills' tablet). The FIRE,
+  // BACK and LOOK-row placements are older and tracked as issue #382.
+  test('1 / 2 / 3 buttons stay clear of the radar on phone and tablet', async ({ page }) => {
+    test.setTimeout(240_000);
+
+    await seedGameplayInitScript(page);
+    await startSeededGameplayWithOverlay(page);
+    await expect(page.locator('#tc-spec3')).toBeVisible();
+
+    const phone = page.viewportSize();
+    if (!phone) {
+      throw new Error('viewport size is unavailable');
+    }
+    const sizes = [
+      ['phone', phone],
+      ['iPad Pro 11 landscape', { width: 1194, height: 834 }],
+      ['iPad Pro 11 portrait', { width: 834, height: 1194 }],
+    ];
+    for (const [label, size] of sizes) {
+      await page.setViewportSize(size);
+      // The engine re-lays its HUD canvas to the new aspect: wait until the
+      // published HUD canvas has the canvas box's shape (16:10 or wider:
+      // 200 tall; narrower: 320 wide).
+      await expect
+        .poll(
+          async () =>
+            page.evaluate(() => {
+              const d = window.__opengladCanvasDiagnostics;
+              const c = document.getElementById('canvas');
+              if (!d || !c) {
+                return false;
+              }
+              const r = c.getBoundingClientRect();
+              const tall = r.width * 200 < r.height * 320;
+              const want = tall
+                ? Math.round((r.height * 320) / r.width)
+                : Math.round((r.width * 200) / r.height);
+              const got = tall ? d.gameplay_ui_height : d.gameplay_ui_width;
+              return (
+                Math.abs(r.width - window.innerWidth) <= 1 &&
+                Math.abs(r.height - window.innerHeight) <= 1 &&
+                (tall ? d.gameplay_ui_width === 320 : d.gameplay_ui_height === 200) &&
+                Math.abs(got - want) <= 1
+              );
+            }),
+          { message: `${label}: HUD canvas follows the viewport`, timeout: 20_000 },
+        )
+        .toBe(true);
+
+      const geometry = await page.evaluate(() => {
+        const d = window.__opengladCanvasDiagnostics;
+        const c = document.getElementById('canvas').getBoundingClientRect();
+        const sx = c.width / d.gameplay_ui_width;
+        const sy = c.height / d.gameplay_ui_height;
+        const radar = {
+          left: c.left + (d.gameplay_ui_width - 64) * sx,
+          top: c.top + (d.gameplay_ui_height - 48) * sy,
+          right: c.left + (d.gameplay_ui_width - 4) * sx,
+          bottom: c.top + (d.gameplay_ui_height - 4) * sy,
+        };
+        const rect = (id) => {
+          const r = document.getElementById(id).getBoundingClientRect();
+          return { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
+        };
+        return {
+          radar,
+          buttons: {
+            '1': rect('tc-special'),
+            '2': rect('tc-spec2'),
+            '3': rect('tc-spec3'),
+          },
+          viewport: { width: window.innerWidth, height: window.innerHeight },
+        };
+      });
+      const r = geometry.radar;
+      for (const [name, b] of Object.entries(geometry.buttons)) {
+        const overlaps =
+          b.left < r.right && b.right > r.left && b.top < r.bottom && b.bottom > r.top;
+        expect(
+          overlaps,
+          `${label}: button ${name} ${JSON.stringify(b)} covers the radar ${JSON.stringify(r)}`,
+        ).toBe(false);
+        expect(b.left, `${label}: button ${name} is on screen`).toBeGreaterThanOrEqual(0);
+        expect(b.right).toBeLessThanOrEqual(geometry.viewport.width);
+        expect(b.top).toBeGreaterThanOrEqual(0);
+        expect(b.bottom).toBeLessThanOrEqual(geometry.viewport.height);
+      }
+    }
+  });
+
   // With the setting off (Game Settings > UI FX > New Ability Select) the
   // cluster is today's: SPC casts, SP+ changes the special, and there is no
   // third button. Flipped back on, the 1 2 3 labels return. All taps.

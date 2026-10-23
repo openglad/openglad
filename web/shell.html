@@ -177,6 +177,16 @@
             -webkit-user-select: none;
             user-select: none;
             -webkit-touch-callout: none;
+            /* One HUD pixel in CSS px: the gameplay HUD canvas is 320x200
+               grown along one axis to the window's aspect
+               (compute_gameplay_ui_canvas_dims), stretched over the whole
+               viewport. The radar's block is the HUD's bottom-right
+               64x48 (radar_block_for_pane: 60x44 at most, 4 in from the
+               edges); the 1 / 2 / 3 buttons stay left of it. */
+            --tc-hud-px: min(calc(100vw / 320), calc(100vh / 200));
+            --tc-radar-clear: calc(var(--tc-hud-px) * 64 + 6px);
+            --tc-spec-right: max(calc(max(12px, env(safe-area-inset-right, 0px)) + 84px),
+                                 var(--tc-radar-clear));
         }
 
         #touch-controls.tc-active {
@@ -266,13 +276,15 @@
         #tc-special {
             width: 60px;
             height: 60px;
-            right: calc(max(12px, env(safe-area-inset-right, 0px)) + 84px);
+            right: var(--tc-spec-right);
             bottom: calc(max(12px, env(safe-area-inset-bottom, 0px)) + 44px);
         }
 
         /* New Ability Select: SPEC 2 and SPEC 3 sit in a row left of SPEC 1
-           (68 px apart). With the setting off SPEC 2 is the change-special
-           key (SP+) and SPEC 3 is hidden. */
+           (68 px apart), the row clear of the radar (--tc-spec-right: a
+           phone keeps the classic spot, a tablet's larger radar pushes the
+           row left). With the setting off SPEC 2 is the change-special key
+           (SP+) and SPEC 3 is hidden. */
         #tc-spec2,
         #tc-spec3 {
             width: 60px;
@@ -281,11 +293,11 @@
         }
 
         #tc-spec2 {
-            right: calc(max(12px, env(safe-area-inset-right, 0px)) + 152px);
+            right: calc(var(--tc-spec-right) + 68px);
         }
 
         #tc-spec3 {
-            right: calc(max(12px, env(safe-area-inset-right, 0px)) + 220px);
+            right: calc(var(--tc-spec-right) + 136px);
         }
 
         #tc-row {
@@ -363,14 +375,16 @@
             }
 
             #tc-special {
-                right: calc(max(12px, env(safe-area-inset-right, 0px)) + 82px);
+                right: max(calc(max(12px, env(safe-area-inset-right, 0px)) + 82px),
+                           var(--tc-radar-clear));
                 bottom: calc(max(12px, env(safe-area-inset-bottom, 0px)) + 30px);
             }
 
             /* Portrait: SPEC 2 and SPEC 3 stack above SPEC 1. */
             #tc-spec2,
             #tc-spec3 {
-                right: calc(max(12px, env(safe-area-inset-right, 0px)) + 82px);
+                right: max(calc(max(12px, env(safe-area-inset-right, 0px)) + 82px),
+                           var(--tc-radar-clear));
             }
 
             #tc-spec2 {
