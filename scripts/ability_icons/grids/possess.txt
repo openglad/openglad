@@ -1,35 +1,30 @@
-# POSSESS (ghost): a fighter (footman.png frame 0, sword dropped; 21, 23 and 141 merged into 22, 24 and 140 for the budget) with the ghost's red eyes in his visor, wearing the host ring: a 1 px outline twinkling white 31 and red 40
+# POSSESS (ghost): a fighter's head and shoulders (footman.png frame 0 rows 4-9, cols 5-11; 21 and 23 merged into 22 and 24, the team red taken to dark 46) with the ghost's red eyes 40 in a widened black visor, wearing the host ring: a 1 px outline one clear pixel off the silhouette, twinkling white 31 and red 40
 # legend: one character = one palette index (pix/openglad.gpl)
-k = 40
-a = 31
+k = 31
+a = 40
 b = 30
 c = 29
 d = 28
 e = 27
-f = 241
-g = 243
-h = 26
-i = 242
-j = 17
-l = 25
-m = 24
-n = 22
-o = 139
-p = 140
+f = 46
+g = 26
+h = 17
+i = 24
+j = 22
 
 ................
 ................
 ................
+.....kakakak....
+....a.......a...
+...k...kbc...k..
+...a..kbcde..a..
+...k.fbcdegf.k..
+...a.fhahahf.a..
+...k.fdihjif.k..
+...a.ffihjff.a..
+...k.........k..
+...akakakakaka..
 ................
-.......kak......
-......kabck.....
-...kakabcdekak..
-..kfgkbcdehkigk.
-.kfggkjkjkjkiggk
-.afiikdmjnmkiiia
-.kfffkkmjnkkfffk
-.afgkokkkkkakfga
-..afgkppappkfga.
-...ak.knknkafgk.
-.......k.k..ak..
+................
 ................
