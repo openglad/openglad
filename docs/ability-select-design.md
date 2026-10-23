@@ -14,6 +14,10 @@ The short version:
 - **TRAIN > ABILITIES** puts any ability the hero has on any slot. Every
   class has a default layout; the Archmage's seventh spell, MIND CONTROL,
   starts on the bench (the abilities that are not on a key).
+- Every ability has a **picture** (section I). In play the HUD shows the
+  three pictures on the keys, not their names; the ABILITIES screen shows
+  each picture with its name beside it, which is where a player learns
+  what each picture means.
 - One new default keyboard for every player (section C.2). A returning
   player's saved keys move to it once; a key the player chose stays.
 - A **CHANGELOG!** page shows once, the first time the game starts after
@@ -496,8 +500,16 @@ two instead (one ability, one slot). A locked ability can be placed.
 - **Screen**: `MenuScreenId::Abilities`, `src/interface/ui/abilities_screen.cpp`,
   layout constants in `src/interface/ui/picker_sdl_defs.h`. Title and
   "Class, level N" at the top; the six slots in two columns (1 | S1, 2 |
-  S2, 3 | S3); the bench below (eight rows; a ninth or more pages, which
-  only a class pack can reach); a status line; BACK and DEFAULTS.
+  S2, 3 | S3); the bench below (four abilities a page; a fifth or more
+  pages, which only a class pack can reach, since no core class benches
+  more than four); a status line; BACK and DEFAULTS.
+- **Faces**: every slot and bench row is a 20-pixel face carrying the
+  ability's picture in the same dark slot the HUD draws, with its name
+  beside it (section I.5). A locked ability shows the grey copy of its
+  picture and its name in the grey ink, with the level it opens at; an
+  empty slot shows the bare slot and `--`. The selected face has a red
+  ring inside its edge. The longest row, `2 EXPLODING BOULDER L4`, fits on
+  one line beside the slot.
 - **Use**: click a slot to select it, then click a bench ability to put it
   there (the old one goes to the bench), or another slot to swap the two.
   Click the selected slot again, or right-click any slot, to empty it.
@@ -524,30 +536,31 @@ highlighted slot; Done or Esc saves.
 ### E.4 The in-game HUD
 
 `src/interface/score_panel.cpp`. With the setting off the old `SPC:` row
-is drawn, unchanged. With it on, every pane shows three rows for the row of
-keys the seat's physical SHIFTER selects: `1 TELEPORT`, `2 WARP SPACE`,
-`3 FREEZE TIME L7`, or `S1 TELEPORT MARKER` and so on while SHIFTER is
-held.
+is drawn, unchanged, and no picture is ever loaded. With it on, every pane
+shows a row of three slots, one for each SPEC key, with the key's label
+under each slot (`1`, `2`, `3`). While SHIFTER is held the same three slots
+show the SHIFTER row and are labelled `S1`, `S2`, `S3`. No ability name is
+written in play.
 
-- Four seats (and players 2 and 3 of three) use the compact box: rows cut
-  to 15 characters (`S1 SUMMON ELEME`, question K.7).
-- One or two seats use the full box: rows above the score and XP lines, up
-  to 24 characters in a full-width pane. The frozen-time and seat-timer
-  cells move up to make room.
-- A row never covers the message feed or the radar: in a pane too small it
-  is cut, then shows only its key label (`1`, `S1`), then is left out.
-- The box's right edge stops one blank column short of the radar's block
-  (`kBeltHudRadarGap`, 66 pixels in from the pane's right margin) in every
-  pane narrower than 164 pixels, whether the radar is on or off, so turning
-  the radar on never moves it.
-- Ink: grey when specials are disabled or the slot is locked or empty; red
-  when the hero cannot afford it; normal otherwise. The grey must read on
-  grey: inside the box it is a dark grey; with no box (the default look) it
-  is a light grey with a 1-pixel black shadow, so a locked row stays legible
-  on stone floors.
+- The slot is the same everywhere: 18 pixels square, a dark grey fill with
+  a black frame, the 16-pixel picture inside. With the grey OVERLAY box on,
+  the slots sit on the box; with it off (the shipped look) they sit
+  straight on the floor. Either way the picture is on the same dark ground.
+- What a slot says (section I.4): ready, the picture as drawn; not enough
+  magic, a red frame and a red key label; the key held down, a white frame;
+  locked, the grey copy of the picture labelled with the level it opens at
+  (`L7`); empty, the bare slot; specials turned off by the level, the grey
+  copy.
+- The strip sits where the text rows were: above the score and XP lines in
+  one- and two-seat panes, at the bottom of four-seat panes. The frozen-time
+  and seat-timer cells sit above it.
+- It never covers the message feed or the radar. A pane too small for it
+  (the 100-pixel columns of a three-seat inset layout) falls back to the
+  old text rows, cut to their key labels when they must be.
 
 The curses status line shows `1:TELEPORT 2:WARP SPACE 3:FREEZE TIME`
-(names cut to 10) and the `S1:` row while SHIFTER is held.
+(names cut to 10) and the `S1:` row while SHIFTER is held; the text and
+curses clients have no pictures.
 
 ### E.5 Binding panels, REMAP, help, DETAILS
 
@@ -664,16 +677,155 @@ broken, then restored):
   `og_test_abilities` group), `tests/integration/test_glad_hud.cpp`, the menu
   layout and options tests, the text and curses client tests,
   `tests/e2e/wasm-touch.spec.js`, and the CHANGELOG! flow and web test.
+- Pictures: `tests/unit/test_ability_icons.cpp` (every core ability names a
+  picture that loads, the palette and the drawing rules, the grey copy,
+  the cache and the generic tile); `scripts/check_ability_icons.sh` (the
+  grids and the committed pictures agree, at build time); the ABILITIES
+  flow tests read the picture back off each face, pixel for pixel, ready
+  and locked.
 
 ## H. Pictures for review
 
 `scripts/media/capture_ability_select.sh` makes every still a reviewer
 needs (the HUD at 1, 2 and 4 seats on and off, the HUD over a real radar
 at 2 and 4 seats, a two-seat game with the radar, the ABILITIES screen, the
-UI FX row, the CHANGELOG! page at 640x400, 1280x800 and 1920x1080) into
+UI FX row, the CHANGELOG! page at 640x400, 1280x800 and 1920x1080, and the
+pictures' own sheets from section I.7) into
 `build/media/ability-select/`, and checks them at the end with
 `scripts/media/verify_media.py --set ability-select`. Pictures go to the
 openglad/openglad-screenshots repository, never this one.
+
+---
+
+## I. Icons
+
+Every ability has a small picture. With New Ability Select on, the HUD
+shows the pictures on the keys instead of the names, and the ABILITIES
+screen shows each picture next to its name. The technical details of the
+format live in `scripts/ability_icons/README.md`; this section says what
+was decided and why.
+
+### I.1 The picture
+
+- **16 by 16 pixels**, one frame, drawn in the game's own palette. That is
+  the size of a character in the game (a footman, a mage, an orc), so a
+  picture reads as "one thing" at the game's scale, and a row of three
+  fits every pane, including a four-player split screen.
+- **Colours**: only the steady colours of the palette. Never the bands
+  the game animates (the picture would flicker), never the team colours
+  (a picture shows the ability, not the player's team: a borrowed class
+  sprite is drawn in the red of team one, as the title screen shows it),
+  never the menu greys.
+- **Drawing rules**: light from the top left; the picture never paints
+  its own background or border (the slot gives both); one main shape and
+  at most one small mark beside it; no more than 16 colours.
+- **Show what the ability really does, from the sprite that does it**:
+  TELEPORT is the mage inside his tightening blue ring, cut from his own
+  sprite sheet; HEARTBURST is the game's own blast; a picture that has no
+  sprite of its own (HEAL, HOWL, FREEZE TIME) uses the class's sprite plus
+  one plain sign the player already knows (the green of heal numbers,
+  sound arcs, an hourglass).
+
+### I.2 How a picture is made and kept honest
+
+Each picture is a text grid, one character per pixel, in
+`scripts/ability_icons/grids/<name>.txt`, compiled by
+`scripts/ability_icons/generate.py` into `pix/icons/<name>.png`. A grid can
+be read and reviewed in a diff, and a picture cut from a sprite starts as
+that frame printed as a grid (`--dump`), so it cannot drift into an
+invented shape.
+
+The generator refuses a picture that breaks a rule, and the build runs it
+(`scripts/check_ability_icons.sh`): too many solid pixels (a filled tile
+is a button, not a picture), too much on its border, touching all four
+edges, more than 16 colours, a forbidden colour, a grey copy that would
+melt into the slot, or a committed PNG that is not its grid.
+
+### I.3 Where the pictures live, and class packs
+
+- The core pictures are `pix/icons/<name>.png`, named after the ability
+  (`teleport.png`, `chain_lightning.png`). Abilities with the same name
+  share a file. They install, preload on the web and can be re-skinned
+  like every other picture under `pix/`.
+- A specials row names its picture with one key, `icon = "..."`, and so
+  does its `alternate` table, read exactly like a family's `sprite`. A
+  class pack ships its own pictures in its `sprites/` folder and names
+  them by their full path (`packs/<pack>/sprites/<name>.png`); the
+  example pack `docs/modding/examples/emberwisp` does this. Multiplayer
+  already sends a pack's whole folder, pictures included.
+- The game never reads `icon` while playing: it changes nothing a server
+  decides, no replay, no save and no parity result.
+
+### I.4 What a slot shows
+
+A slot is 18 pixels square: a dark grey fill, a black frame, the picture
+inside. It is the same slot on the HUD and on the ABILITIES screen, so
+every picture is designed against one ground.
+
+| The ability is | The picture | The frame | The key label (HUD) |
+|---|---|---|---|
+| Ready | as drawn | black | the key |
+| Being pressed | as drawn | white | the key |
+| Short of magic | as drawn | red | the key, in red |
+| Locked | its grey copy | black | the level it opens at, `L7` |
+| An empty slot | none | black | the key, dim |
+| Turned off by the level | its grey copy | black | the key, dim |
+
+The grey copy is worked out once per picture: black stays black, every
+other colour becomes a grey of the same brightness, always light enough to
+stand out from the slot's fill. Pressed wins over short of magic; a
+locked, empty or turned-off slot never flashes.
+
+An ability with no picture, or whose file will not load, shows the
+generic tile, a grey square with a question mark (`pix/icons/_missing.png`);
+the slot still shows its key and state, so the ability stays usable and
+its name is on the ABILITIES screen. If even the generic tile is missing,
+the slot is drawn empty. Never a crash, never a blank HUD.
+
+Pictures are loaded the first time they are needed and kept; a campaign
+or a sprite sheet that replaces them makes the game read them again. With
+the setting off none is ever loaded.
+
+### I.5 The ABILITIES screen
+
+Every slot and bench row is a face 20 pixels tall carrying the slot (the
+HUD's, as above) at its left and the name beside it. The page shows the
+whole belt at once (six faces) and four bench faces a page, so the screen
+reads as an inventory: pictures you can pick up and put on a key. A
+locked face has the grey copy and its name in the grey ink. A row is at
+most 24 letters (the model's budget), which fits beside the slot. The
+labels the tests read (`3 SUMMON IMAGE`, `>3 SUMMON IMAGE` while selected)
+are unchanged; the `>` is not drawn, the red ring inside the face marks the
+selection.
+
+The screen draws each face itself (the rows are hit zones the menu does
+not draw), so a click never flashes the bare centred label over the
+picture.
+
+### I.6 Not changed
+
+- **The CHANGELOG! page**: none of its six lines mentions the text rows,
+  so each stays true; its picture band is smooth-scaled, so no pixel
+  picture goes there.
+- **DETAILS, the binding panels, REMAP, HELP**: they show keys or prose.
+- **The web's touch buttons** still read `1 2 3`. Showing the ability's
+  picture on them needs the page to know the seat's belt; it is left as a
+  follow-up.
+- **The text and curses clients** keep the names.
+
+### I.7 How a set of pictures is accepted
+
+1. `generate.py --check` passes: every rule above.
+2. The artist reads the sheets `generate.py --sheet` writes (each picture
+   in the slot, ready and locked, on grass, on the grey box and on an
+   ABILITIES face, at 1x, 2x and 4x, with its numbers under it) and notes
+   what each one shows and what was redrawn after reading.
+3. Someone else names every picture from a shuffled sheet with no names; a
+   picture they cannot name, or name as another ability, goes back.
+4. Every picture said to be cut from a sprite is compared with that frame.
+5. The pictures are read again in the real HUD and ABILITIES captures
+   (`scripts/media/capture_ability_select.sh`, whose `icons` step also
+   writes the sheets) before the stills are published.
 
 ---
 
@@ -693,6 +845,8 @@ openglad/openglad-screenshots repository, never this one.
 6. **No ABILITIES from the PAUSED menu** mid-mission: an edit there would
    need a new client-to-server message. Left for a follow-up.
 7. **The compact HUD cuts names** to 12 letters in four-seat panes rather
-   than adding short names to every pack.
+   than adding short names to every pack. Superseded: the HUD now shows
+   pictures, not names (section I); the cut is kept only for the panes too
+   small for the pictures, which fall back to the text rows.
 8. **The TRAIN door shows dimmed with the setting off**, not hidden.
 9. **Web P2's look-up stays on Right Ctrl** (C.2, chords across seats).
