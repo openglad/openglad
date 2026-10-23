@@ -873,7 +873,9 @@ static_assert(kAbilitiesBenchTopY +
 // The icon slot on every belt and bench face, the HUD's own slot: an 18x18
 // cell (fill 18, frame 16) one pixel right of the bevel's inner edge and
 // flush under the top bevel, the 16x16 icon inside its frame, and the label
-// left-aligned after it. Offsets are from the face's top-left corner.
+// left-aligned after it, four clear columns on (x + 20 .. x + 23), so a
+// name never reads as touching the slot. Offsets are from the face's
+// top-left corner.
 inline constexpr int kAbilitiesSlotX = 2;
 inline constexpr int kAbilitiesSlotY = 1;
 inline constexpr int kAbilitiesSlotSize = 18;
@@ -881,15 +883,17 @@ inline constexpr int kAbilitiesIconX = kAbilitiesSlotX + 1;
 inline constexpr int kAbilitiesIconY = kAbilitiesSlotY + 1;
 inline constexpr unsigned char kAbilitiesSlotFill = 18;
 inline constexpr unsigned char kAbilitiesSlotFrame = 16;
-// The label area: from just right of the slot to the last column inside
-// the right bevel (x + 22 .. x + 144 on a 146 px face): 20 glyphs a line.
-inline constexpr int kAbilitiesLabelX = 22;
+// The label area: from the gap after the slot to the last column inside
+// the right bevel (x + 24 .. x + 144 on a 146 px face): 20 glyphs a line.
+inline constexpr int kAbilitiesLabelGap = 4;
+inline constexpr int kAbilitiesLabelX =
+    kAbilitiesSlotX + kAbilitiesSlotSize + kAbilitiesLabelGap;
 inline constexpr int kAbilitiesLabelEndX = kAbilitiesColW - 2;
 static_assert(kAbilitiesSlotY + kAbilitiesSlotSize <= kAbilitiesBeltH - 1 &&
                   kAbilitiesSlotY + kAbilitiesSlotSize <= kAbilitiesBenchH - 1,
               "the slot sits inside the face's bevel");
-static_assert(kAbilitiesSlotX + kAbilitiesSlotSize < kAbilitiesLabelX,
-              "one clear column between the slot and its label");
+static_assert(kAbilitiesLabelGap >= 3 && kAbilitiesLabelGap <= 4,
+              "three or four clear columns between the slot and its label");
 
 namespace og::ui {
 // The full-canvas panel chrome of DIFFICULTY and the options subscreens

@@ -25,6 +25,7 @@
 */
 
 #include <openglad/interface/game_context.h>
+#include <openglad/interface/ability_icons.h>
 #include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/game_client.h>
 #include <openglad/gameplay/lobby_state.h>
@@ -1126,6 +1127,7 @@ screen::screen(GameWorld& world, std::unique_ptr<video> video_impl, short howman
     , level_runtime_data_(1, false, &sdl_level_data_hooks(), &level_visuals_)
     , damage_number_render_context_(
           std::make_unique<DamageNumberRenderContext>())
+    , ability_icons_(std::make_unique<og::ui::AbilityIcons>())
 {
     init_common(howmany, has_display);
 }
@@ -1146,6 +1148,11 @@ const DamageNumberRenderContext& screen::damage_number_render_context() const
     noexcept
 {
     return *damage_number_render_context_;
+}
+
+og::ui::AbilityIcons& screen::ability_icons() noexcept
+{
+    return *ability_icons_;
 }
 
 void screen::initialize_views()

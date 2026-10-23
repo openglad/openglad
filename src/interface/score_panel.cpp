@@ -893,18 +893,6 @@ static std::array<BeltHudRow, 3> plan_belt_rows(screen* s, walker& control,
     return rows;
 }
 
-// The HUD's ability icons: one set for the process, loaded on first use (the
-// setting-off HUD never reaches it) and read again when the sprite sources
-// change (AbilityIcons drops its cache on a new sprite_source_generation).
-// The pointers it hands out are used within the frame that asked, never
-// kept. Non-static for the HUD tests, which swap in a set whose generic tile
-// is missing to reach the "no picture at all" cell.
-og::ui::AbilityIcons& hud_ability_icons()
-{
-    static og::ui::AbilityIcons icons;
-    return icons;
-}
-
 // One hotbar slot as it is drawn.
 struct BeltHudCell
 {
@@ -987,7 +975,10 @@ static void plan_belt_strip(BeltHudStrip& strip, screen* s, walker& control,
     static constexpr std::array<int, 3> kSpecKeys = {KEY_SPECIAL, KEY_SPEC2,
                                                      KEY_SPEC3};
     const unsigned char dim = boxed ? kBeltHudDimInkBox : kBeltHudDimInkPlain;
-    og::ui::AbilityIcons& icons = hud_ability_icons();
+    // The session's icon set (screen::ability_icons), the one the ABILITIES
+    // screen draws from too. Its pointers are used within this frame, never
+    // kept.
+    og::ui::AbilityIcons& icons = s->ability_icons();
 
     for (int i = 0; i < 3; ++i)
     {
