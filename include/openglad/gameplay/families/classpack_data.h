@@ -190,6 +190,13 @@ struct ClasspackSpecialEntry {
     // Absent = the page shows the name alone.
     std::optional<std::string> detail;
     std::optional<std::string> alternate_detail;
+    // `icon = "..."` on the entry and inside its `alternate` table: the
+    // picture the HUD and the ABILITIES screen draw for the ability, a
+    // 16x16 indexed PNG resolved exactly like a family's `sprite` (a bare
+    // name lives under pix/, a pack passes packs/<id>/sprites/<name>.png).
+    // Empty = none declared: the picker draws the generic tile.
+    std::string icon;
+    std::string alternate_icon;
 };
 
 // One entry declared by og.family("living", ...). Keys per design doc §4;

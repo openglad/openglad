@@ -1158,6 +1158,55 @@ TEST_F(LuaFamilyDeclTest, a_special_entry_is_type_checked_field_by_field)
                     "expected a string, got number");
 }
 
+// `icon` names the ability's picture, on the row and inside its alternate,
+// harvested verbatim as the path read_pixie_file is handed (a bare name is
+// core art under pix/, a pack passes its own virtual path). Absent reads as
+// none (the HUD draws the generic tile). A misspelling is refused with the
+// hint, on the row and inside the alternate, so a pack never ships a silent
+// generic tile because of a typo.
+TEST_F(LuaFamilyDeclTest, a_special_and_its_alternate_name_their_icons)
+{
+    ClasspackData bare;
+    ASSERT_TRUE(declare("og.family('living', { id = 'v3:x', specials = "
+                        "{ { id = 'a', name = 'A', mp_cost = 7, "
+                        "alternate = { name = 'ALT' } } } })", bare).ok);
+    const auto& plain = (*bare.living[0].specials)[0];
+    EXPECT_TRUE(plain.icon.empty());
+    EXPECT_TRUE(plain.alternate_icon.empty());
+
+    ClasspackData drawn;
+    ASSERT_TRUE(declare("og.family('living', { id = 'v3:x', specials = "
+                        "{ { id = 'a', name = 'A', mp_cost = 7, "
+                        "icon = 'icons/a.png', "
+                        "alternate = { name = 'ALT', "
+                        "icon = 'packs/v3/sprites/alt.png' } } } })",
+                        drawn).ok);
+    const auto& pictured = (*drawn.living[0].specials)[0];
+    EXPECT_EQ("icons/a.png", pictured.icon);
+    EXPECT_EQ("packs/v3/sprites/alt.png", pictured.alternate_icon);
+
+    expect_rejected(declare("og.family('living', { id = 'v3:x', specials = "
+                            "{ { id = 'a', name = 'A', mp_cost = 1, "
+                            "icno = 'icons/a.png' } } })"),
+                    "og.family living 'v3:x'.specials[1] 'a': unknown key "
+                    "'icno' (did you mean 'icon'?)");
+    expect_rejected(declare("og.family('living', { id = 'v3:x', specials = "
+                            "{ { id = 'a', name = 'A', mp_cost = 1, "
+                            "alternate = { name = 'ALT', icno = 'x.png' } } } })"),
+                    "og.family living 'v3:x'.specials[1] 'a'.alternate: "
+                    "unknown key 'icno' (did you mean 'icon'?)");
+    expect_rejected(declare("og.family('living', { id = 'v3:x', specials = "
+                            "{ { id = 'a', name = 'A', mp_cost = 1, "
+                            "icon = 7 } } })"),
+                    "og.family living 'v3:x'.specials[1] 'a'.icon: expected "
+                    "a string, got number");
+    expect_rejected(declare("og.family('living', { id = 'v3:x', specials = "
+                            "{ { id = 'a', name = 'A', mp_cost = 1, "
+                            "alternate = { name = 'ALT', icon = true } } } })"),
+                    "og.family living 'v3:x'.specials[1] 'a'.alternate.icon: "
+                    "expected a string, got boolean");
+}
+
 // `specials` is an ARRAY of tables and slots come from position, so a table
 // that is not a list — or a list whose entry is not a table — cannot be
 // silently skipped: the slots after it would all shift.

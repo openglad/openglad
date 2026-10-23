@@ -397,10 +397,10 @@ og.family("living", {
              train = { strength = 15, dexterity = 15, constitution = 9,
                        intelligence = 6, armor = 50, level = 200 } },
   specials = {
-    { id = "heal",         name = "HEAL",         mp_cost = 2,   alternate = { name = "MYSTIC MACE", detail = "Orbiting mace, 50 Int." }, cast = heal_or_mace, detail = "Heal nearby friends with all your SP." },
-    { id = "raise_undead", name = "RAISE UNDEAD", mp_cost = 20,  alternate = { name = "TURN UNDEAD", detail = "Turning needs 60 Int." }, cast = raise_skeleton, detail = "Raise the gore of any victim to a skeleton." },
-    { id = "raise_ghost",  name = "RAISE GHOST",  mp_cost = 50,  alternate = { name = "TURN UNDEAD", detail = "Turning needs 60 Int." }, cast = raise_ghost, detail = "A more powerful raise, you can now get ghosts to fly and wail." },
-    { id = "resurrect",    name = "RESURRECT",    mp_cost = 150, detail = "Restores dead friends to life, or enemies to undead. Beware: this uses your own EXP to cast!" },
+    { id = "heal",         name = "HEAL",         mp_cost = 2,   alternate = { name = "MYSTIC MACE", detail = "Orbiting mace, 50 Int.", icon = "icons/mystic_mace.png" }, cast = heal_or_mace, detail = "Heal nearby friends with all your SP.", icon = "icons/heal.png" },
+    { id = "raise_undead", name = "RAISE UNDEAD", mp_cost = 20,  alternate = { name = "TURN UNDEAD", detail = "Turning needs 60 Int.", icon = "icons/turn_undead.png" }, cast = raise_skeleton, detail = "Raise the gore of any victim to a skeleton.", icon = "icons/raise_undead.png" },
+    { id = "raise_ghost",  name = "RAISE GHOST",  mp_cost = 50,  alternate = { name = "TURN UNDEAD", detail = "Turning needs 60 Int.", icon = "icons/turn_undead.png" }, cast = raise_ghost, detail = "A more powerful raise, you can now get ghosts to fly and wail.", icon = "icons/raise_ghost.png" },
+    { id = "resurrect",    name = "RESURRECT",    mp_cost = 150, detail = "Restores dead friends to life, or enemies to undead. Beware: this uses your own EXP to cast!", icon = "icons/resurrect.png" },
     default_cast = resurrect,  -- case 4 and every unmapped slot
   },
   default_weapon = "core:glow",
