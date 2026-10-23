@@ -1,4 +1,4 @@
-# SUMMON ELEMENTAL (archmage): the fire elemental, cut from firelem.png frame 0 (moved up one row; still fire 234-238, the cycled 232 moved up to 233, and the face (eyes, cheek streaks, jaw) from the body's 236 to the sprite's own darkest fire 233 so it shows at 1x), standing in a small blue summoning ring (74, the teleport ring's blue)
+# SUMMON ELEMENTAL (archmage): the fire elemental, cut from firelem.png frame 0 (moved up one row; still fire 234-238, the cycled 232 moved up to 233, the cheek streaks and the V jaw from the body's 236 to the sprite's own darkest fire 233, and the two 2 px eyes in black 16, the set's face colour (the mage's, the archmage's, the orc's), so the face shows at 1x), standing in a small blue summoning ring (74, the teleport ring's blue)
 # legend: one character = one palette index (pix/openglad.gpl)
 k = 233
 a = 234
@@ -7,6 +7,7 @@ d = 40
 e = 43
 f = 47
 R = 74
+E = 16
 
 ...k....k.......
 ...k....k..k.k..
@@ -14,7 +15,7 @@ R = 74
 ..aka..kak.aaaa.
 .aaaabkaaakbbaba
 .aabbbkabakbbbba
-.abbbkkbbbkkbbbb
+.abbbEEbbbEEbbbb
 .bbkkkbbbbbkkkbb
 .defa.kbbbk.adef
 .def...kbk...def
