@@ -349,12 +349,12 @@ const vbutton* live_face(int ordinal)
     return live != nullptr && !live->hidden ? live : nullptr;
 }
 
-// The icons this screen draws: loaded on first use (a game that never opens
-// the screen never reads one) and read again when the sprite sources change.
+// The icons this screen draws: the session's set (screen::ability_icons),
+// the one the HUD's hotbar draws from, so a picture either has read is not
+// read again. Loaded on first use, read again when the sprite sources change.
 AbilityIcons& abilities_icon_set()
 {
-    static AbilityIcons icons;
-    return icons;
+    return og::runtime::current_session->myscreen_->ability_icons();
 }
 
 // The face itself, through vbutton::vdisplay (the one bevel every button
@@ -463,16 +463,16 @@ void trace_face_icon([[maybe_unused]] const char* face_kind,
           last.c_str());
 }
 
-// One belt or bench face: the face, the selection ring, the slot with its
-// icon, the label beside it, then the hover ring draw_buttons would have
-// drawn (these rows are no_draw: the runner draws none of it).
+// One belt or bench face: the face, the slot with its icon, the label
+// beside it, the selection ring over them (the slot fills the face's inner
+// rows, so a ring drawn first would vanish under it), then the hover ring
+// draw_buttons would have drawn (these rows are no_draw: the runner draws
+// none of it).
 void draw_ability_face(const vbutton& face, const FamilyDescriptor* fd,
                        const AbilityRow& row, bool selected, const char* kind,
                        int index, std::string& traced)
 {
     draw_plain_face(face, std::string{});
-    if (selected)
-        draw_selected_ring(face);
     const AbilityIcon* icon = nullptr;
     const char* declared = nullptr;
     if (row.entry.has_value() && fd != nullptr) {
@@ -481,6 +481,8 @@ void draw_ability_face(const vbutton& face, const FamilyDescriptor* fd,
     }
     draw_icon_slot(face, icon, row.locked);
     draw_face_label(face, row.locked);
+    if (selected)
+        draw_selected_ring(face);
     if (face.had_focus)
         draw_button_hover(*og::runtime::current_session->myscreen_, face.xloc,
                           face.yloc, face.width, face.height);
@@ -510,6 +512,13 @@ void abilities_draw_content(void* /*screen_state*/)
         const int index =
             bench_row_index(static_cast<int>(page.bench.size()), r);
         const vbutton* const face = live_face(kAbilitiesBenchBase + r);
+        std::string& traced =
+            g_abilities->icon_traced[static_cast<std::size_t>(belt::kSlots + r)];
+        if (face == nullptr || index < 0 || index == kMoreRow) {
+            // No ability on this face now: forget what its trace last said,
+            // so the ability that comes back to it is named again.
+            traced.clear();
+        }
         if (face == nullptr)
             continue;
         if (index == kMoreRow) {
@@ -523,10 +532,9 @@ void abilities_draw_content(void* /*screen_state*/)
         }
         if (index < 0)
             continue;
-        draw_ability_face(
-            *face, fd, page.bench[static_cast<std::size_t>(index)],
-            g_abilities->selected == belt::kSlots + index, "bench", r,
-            g_abilities->icon_traced[static_cast<std::size_t>(belt::kSlots + r)]);
+        draw_ability_face(*face, fd, page.bench[static_cast<std::size_t>(index)],
+                          g_abilities->selected == belt::kSlots + index,
+                          "bench", r, traced);
     }
 
     // Text last.

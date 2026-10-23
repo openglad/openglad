@@ -31,6 +31,10 @@
 #include <openglad/gameplay/families/family_registry.h>
 #include <openglad/gameplay/families/specials_view.h>
 #include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/walker.h>
+#include <openglad/gameplay/statistics.h>
+#include <openglad/interface/guy_create.h>
+#include <openglad/interface/render/view.h>
 #include <openglad/interface/ability_icons.h>
 #include <openglad/interface/button.h>
 #include <openglad/interface/input.h>
@@ -38,6 +42,7 @@
 #include <openglad/interface/render/text.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/ui/abilities_screen.h>
+#include <openglad/interface/ui/campaign_picker_session.h>
 #include <openglad/interface/ui/menu_screen_spec.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/interface/ui/picker_lobby_client.h>
@@ -66,6 +71,7 @@
 #include <cstdlib>
 #include <deque>
 #include <functional>
+#include <list>
 #include <memory>
 #include <mutex>
 #include <set>
@@ -73,6 +79,7 @@
 #include <vector>
 
 void picker_main(Sint32 argc, char** argv);
+short new_score_panel(screen* scr, short do_it); // score_panel.cpp, the HUD
 extern int g_picker_mainmenu_calls;
 extern int g_picker_max_mainmenu_calls;
 
@@ -204,7 +211,7 @@ bool main_thread_belt(int slot, belt::Bytes& out)
     return ran && ok;
 }
 
-// Palette indices in one live face's LABEL area (x + 22 .. x + 144, inside
+// Palette indices in one live face's LABEL area (x + 24 .. x + 144, inside
 // the bevel; the icon slot left of it is not counted, so TELEPORT's blue
 // ring, index 74, cannot pass for label ink), read on the main thread at
 // frame top, when the buffer still holds the frame the window last showed.
@@ -361,6 +368,90 @@ bool main_thread_label_rows(const std::string& id, LabelRows& out)
     return ran && out.read;
 }
 
+// The clear columns between a face's slot and its label: from the column
+// after the slot's frame to the first column with anything but the face
+// grey on it, over the slot's rows. -1 when the face is not up.
+bool main_thread_label_gap(const std::string& id, int& gap)
+{
+    const int face_grey = canonical_palette_index(BUTTON_FACING);
+    gap = -1;
+    const bool ran = run_on_main_thread([&id, &gap, face_grey] {
+        for (vbutton* const live : og::runtime::current_session->allbuttons_) {
+            if (live == nullptr || live->id != id || live->hidden)
+                continue;
+            const int after_slot =
+                live->xloc + kAbilitiesSlotX + kAbilitiesSlotSize;
+            for (int x = after_slot; x <= live->xloc + kAbilitiesLabelEndX;
+                 ++x) {
+                bool ink = false;
+                for (int y = live->yloc + kAbilitiesSlotY;
+                     y < live->yloc + kAbilitiesSlotY + kAbilitiesSlotSize;
+                     ++y) {
+                    int index = 0;
+                    test_screen()->get_pixel(x, y, &index);
+                    ink = ink || index != face_grey;
+                }
+                if (ink) {
+                    gap = x - after_slot;
+                    return;
+                }
+            }
+        }
+    });
+    return ran && gap >= 0;
+}
+
+// The selection ring of one face: the pixels of the rectangle one inside
+// the face's bevel (x + 1 .. xend - 2, y + 1 .. yend - 2) that are not the
+// ring's red. 0 is a ring visible all the way round, over the slot too.
+bool main_thread_ring_misses(const std::string& id, int& misses)
+{
+    const int red = canonical_palette_index(RED);
+    misses = -1;
+    const bool ran = run_on_main_thread([&id, &misses, red] {
+        for (vbutton* const live : og::runtime::current_session->allbuttons_) {
+            if (live == nullptr || live->id != id || live->hidden)
+                continue;
+            const int x1 = live->xloc + 1;
+            const int y1 = live->yloc + 1;
+            const int x2 = live->xend - 2;
+            const int y2 = live->yend - 2;
+            int miss = 0;
+            const auto check = [&miss, red](int x, int y) {
+                int index = 0;
+                test_screen()->get_pixel(x, y, &index);
+                miss += index == red ? 0 : 1;
+            };
+            for (int x = x1; x <= x2; ++x) {
+                check(x, y1);
+                check(x, y2);
+            }
+            for (int y = y1 + 1; y < y2; ++y) {
+                check(x1, y);
+                check(x2, y);
+            }
+            misses = miss;
+        }
+    });
+    return ran && misses >= 0;
+}
+
+// The slot window of one face holds nothing of a slot: no frame black and
+// no slot fill (the MORE pager is a plain face). The count of pixels that
+// are either; -1 when the face is not up.
+bool main_thread_slot_ink(const std::string& id, int& slot_pixels)
+{
+    SlotPixels slot;
+    if (!main_thread_slot(id, slot))
+        return false;
+    const int frame = canonical_palette_index(kAbilitiesSlotFrame);
+    const int fill = canonical_palette_index(kAbilitiesSlotFill);
+    slot_pixels = 0;
+    for (const int index : slot.index)
+        slot_pixels += index == frame || index == fill ? 1 : 0;
+    return true;
+}
+
 // What every picker_main flow records on the injector thread and asserts on
 // the main thread.
 struct FlowState {
@@ -375,6 +466,7 @@ struct FlowState {
     bool bench_1_shown = true;
     bool selected_key3 = false;
     std::string selected_status;
+    int selected_ring_misses = -1;
     bool placed = false;
     std::string bench_after_place;
     std::string placed_status;
@@ -454,6 +546,7 @@ int full_flow_injector(void* data)
     if (!state->selected_key3)
         return escape(5, "picking key 3 never marked it");
     state->selected_status = main_thread_status_line();
+    (void)main_thread_ring_misses("belt_2", state->selected_ring_misses);
     capture_presented_frame("abilities_archmage_selected", uxshots_dir());
     ++state->captures;
 
@@ -584,6 +677,21 @@ struct DirectState {
     std::string landing_start;
     std::string landing_down;
     std::string landing_right;
+    // The slot-to-label gap on a key face and a bench face.
+    int key1_gap = -1;
+    int bench_gap = -1;
+    // The MORE pager (a hero with more than four abilities on the bench).
+    std::string more_label;
+    int more_slot_pixels = -1;
+    LabelRows more_rows;
+    std::string page2_want;
+    bool paged = false;
+    // A bench face that hides and comes back with the same ability.
+    std::string summon_row;
+    bool summon_benched = false;
+    bool summon_placed = false;
+    bool bench_1_hidden = false;
+    bool summon_benched_again = false;
     // The host-GO flow: arm the fake lobby's start once the edit has landed
     // and hold (press nothing) while the screen leaves by itself.
     FakeLobbyClient* lobby = nullptr;
@@ -683,6 +791,99 @@ int long_label_injector(void* data)
     (void)main_thread_label_rows(state->long_face_id, state->long_face);
     capture_presented_frame("abilities_barbarian", uxshots_dir());
     ++state->captures;
+    state->finished = true;
+    return escape(0, "");
+}
+
+// The level-1 mage's page, read and left: key 1's slot as drawn (no
+// picture taken; the mage test owns abilities_mage).
+int key1_slot_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* const state = static_cast<DirectState*>(data);
+    const auto escape = [state](int leg, const char* why) {
+        return escape_to_the_main_thread(state->test_finished, leg, why,
+                                         kDirectEscapeDoors);
+    };
+    state->opened = wait_for_interactable("belt_0", 10000);
+    if (!state->opened)
+        return escape(1, "the screen never came up");
+    (void)wait_for_menu_frames(2);
+    (void)main_thread_slot("belt_0", state->key1_slot);
+    state->finished = true;
+    return escape(0, "");
+}
+
+// The archmage with the default belt: the slot-to-label gap on key 1 and
+// on the bench's MIND CONTROL, then a bench face that hides and comes back
+// holding the same ability: key 3's SUMMON IMAGE emptied to the bench,
+// placed back (the second bench face hides), emptied again.
+int bench_return_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* const state = static_cast<DirectState*>(data);
+    const auto escape = [state](int leg, const char* why) {
+        return escape_to_the_main_thread(state->test_finished, leg, why,
+                                         kDirectEscapeDoors);
+    };
+    state->opened = wait_for_interactable("belt_0", 10000);
+    if (!state->opened)
+        return escape(1, "the screen never came up");
+    (void)wait_for_menu_frames(2);
+    (void)main_thread_label_gap("belt_0", state->key1_gap);
+    (void)main_thread_label_gap("bench_0", state->bench_gap);
+
+    state->summon_benched =
+        right_click_until_face("belt_2", "3 --", "clear slot=2") &&
+        wait_for_interactable("bench_1", 2500);
+    if (!state->summon_benched)
+        return escape(2, "emptying key 3 never benched SUMMON IMAGE");
+    (void)wait_for_menu_frames(2);
+    state->summon_row = interactable_label("bench_0") == "SUMMON IMAGE"
+        ? "bench_0"
+        : "bench_1";
+    state->summon_placed =
+        click_until_face(state->summon_row, state->summon_row,
+                         ">SUMMON IMAGE", "select") &&
+        click_until_face("belt_2", "belt_2", "3 SUMMON IMAGE",
+                         "place slot=2");
+    if (!state->summon_placed)
+        return escape(3, "SUMMON IMAGE never went back on key 3");
+    (void)wait_for_menu_frames(2);
+    state->bench_1_hidden = !has_interactable("bench_1");
+
+    (void)run_on_main_thread([] { trace_clear(); });
+    state->summon_benched_again =
+        right_click_until_face("belt_2", "3 --", "clear slot=2") &&
+        wait_for_interactable("bench_1", 2500);
+    (void)wait_for_menu_frames(2);
+    state->finished = true;
+    return escape(0, "");
+}
+
+// An archmage whose belt is all empty: seven abilities on the bench, so the
+// fourth bench face is the MORE pager. Its face is plain (no slot), its
+// label is drawn, and a click on it turns the page.
+int more_pager_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* const state = static_cast<DirectState*>(data);
+    const auto escape = [state](int leg, const char* why) {
+        return escape_to_the_main_thread(state->test_finished, leg, why,
+                                         kDirectEscapeDoors);
+    };
+    state->opened = wait_for_interactable("bench_3", 10000);
+    if (!state->opened)
+        return escape(1, "the screen never showed a fourth bench face");
+    (void)wait_for_menu_frames(2);
+    state->more_label = interactable_label("bench_3");
+    (void)main_thread_slot_ink("bench_3", state->more_slot_pixels);
+    (void)main_thread_label_rows("bench_3", state->more_rows);
+    state->paged = click_until_face("bench_3", "bench_0", state->page2_want,
+                                    "bench page");
+    if (!state->paged)
+        return escape(2, "MORE never turned the page");
+    (void)wait_for_menu_frames(2);
     state->finished = true;
     return escape(0, "");
 }
@@ -787,6 +988,62 @@ void expect_slot_holds(const SlotPixels& slot, const PixieData& picture,
     EXPECT_EQ(0, frame_misses) << what << ": the slot's black frame";
     EXPECT_EQ(0, picture_misses)
         << what << ": the 16x16 window is the icon over the slot fill";
+}
+
+// The HUD of one level-1 Mage, drawn once on this screen (the setting is on
+// in this harness): its hotbar asks for key 1's TELEPORT the way play does.
+// Every piece of shared state it touches is put back.
+void draw_level1_mage_hud()
+{
+    screen& s = *test_screen();
+    GameWorld& world = s.world();
+    auto saved_obs = std::make_unique<std::list<std::unique_ptr<walker>>>();
+    world.oblist.splice_into(*saved_obs);
+    const short saved_views = s.numviews;
+    const short saved_specials = world.new_specials;
+    const std::int32_t saved_freeze = world.enemy_freeze;
+    s.ready_for_battle(1);
+    world.new_specials = 1;
+    world.enemy_freeze = 0;
+
+    guy g(FAMILY_MAGE);
+    g.teamnum = 0;
+    g.upgrade_to_level(1, true);
+    std::unique_ptr<walker> hero = guy_create_walker_owned(g, &s);
+    ASSERT_NE(nullptr, hero);
+    hero->set_team_num(0);
+    hero->set_dead(0);
+    hero->set_user(0);
+    hero->setxy(100, 100);
+    hero->stats()->set_max_magicpoints(1000.0f);
+    hero->stats()->set_magicpoints(1000.0f);
+    viewscreen& view = *s.viewob[0];
+    walker* const saved_control = view.control;
+    signed char saved_prefs[10];
+    std::copy(std::begin(view.prefs), std::end(view.prefs), saved_prefs);
+    view.control = hero.get();
+    world.oblist.push_back(std::move(hero));
+    view.prefs[PREF_VIEW] = PREF_VIEW_FULL;
+    view.resize(static_cast<char>(PREF_VIEW_FULL));
+    view.prefs[PREF_OVERLAY] = PREF_OVERLAY_ON;
+    view.prefs[PREF_LIFE] = PREF_LIFE_OFF;
+    view.prefs[PREF_SCORE] = PREF_SCORE_OFF;
+    view.prefs[PREF_FOES] = PREF_FOES_OFF;
+
+    s.clearbuffer();
+    EXPECT_EQ(1, static_cast<int>(new_score_panel(&s, 1)));
+
+    view.control = saved_control;
+    std::copy(std::begin(saved_prefs), std::end(saved_prefs), view.prefs);
+    view.resize(static_cast<char>(view.prefs[PREF_VIEW]));
+    world.oblist.clear();
+    world.oblist.splice(world.oblist.end(), *saved_obs);
+    world.new_specials = saved_specials;
+    world.enemy_freeze = saved_freeze;
+    if (s.numviews != saved_views) {
+        s.ready_for_battle(saved_views);
+        s.relayout_views();
+    }
 }
 
 } // namespace
@@ -1098,6 +1355,9 @@ TEST(AbilitiesFlow, train_door_opens_the_screen_and_the_edit_reaches_the_save)
         << "an emptied slot shows no picture";
 
     EXPECT_EQ("SUMMON IMAGE is on key 3.", state.selected_status);
+    EXPECT_EQ(0, state.selected_ring_misses)
+        << "the selected face's red ring runs all the way round it, over "
+           "the slot's top and bottom rows too";
     EXPECT_EQ("SUMMON IMAGE", state.bench_after_place)
         << "the displaced ability goes to the bench";
     EXPECT_EQ("Click a slot, then an ability.", state.placed_status)
@@ -1438,6 +1698,135 @@ TEST(AbilitiesFlow, the_longest_row_wraps_inside_its_face)
         << page.belt[static_cast<std::size_t>(long_slot)].text
         << " ran out of its face";
     verify_captured_frames("abilities_barbarian", 1);
+}
+
+// One icon set for the session: the HUD's hotbar and the ABILITIES screen
+// borrow screen::ability_icons, so a picture one of them has read is the
+// other's too. The HUD reads TELEPORT into a fresh set; the screen then
+// draws key 1 from those very pixels and reads only what the HUD did not
+// show; a second HUD frame reads nothing.
+//
+// RED (planted): the screen's set back to a function-local static (the
+// screen reads nothing into the session's set); the HUD's back to one (the
+// first HUD frame reads nothing into it).
+TEST(AbilitiesFlow, the_hud_and_the_screen_share_one_icon_set)
+{
+    DirectRunScope scope;
+    write_ability_company();
+    test_screen()->ability_icons() = og::ui::AbilityIcons();
+    og::ui::AbilityIcons& icons = test_screen()->ability_icons();
+
+    draw_level1_mage_hud();
+    EXPECT_TRUE(trace_contains("hud", "drawn=icons/teleport.png"))
+        << "the HUD drew key 1's TELEPORT";
+    const unsigned hud_loads = icons.load_count();
+    EXPECT_GT(hud_loads, 0u) << "the HUD read its pictures into the session's set";
+    const og::ui::AbilityIcon* const teleport =
+        icons.icon_at("icons/teleport.png");
+    ASSERT_NE(nullptr, teleport);
+    EXPECT_EQ(hud_loads, icons.load_count()) << "TELEPORT was already held";
+
+    trace_clear();
+    DirectState state;
+    int thread_result = 0;
+    const Sint32 result =
+        run_direct(1, key1_slot_injector, state, thread_result);
+    EXPECT_EQ(0, thread_result) << "the injector gave up at leg "
+                                << thread_result;
+    EXPECT_EQ(MENU_REDRAW, result);
+    ASSERT_TRUE(state.finished);
+    EXPECT_TRUE(trace_contains("abilities_icon",
+                               "face=belt_0 icon=icons/teleport.png "
+                               "drawn=icons/teleport.png locked=0"));
+    const unsigned screen_loads = icons.load_count();
+    EXPECT_GT(screen_loads, hud_loads)
+        << "the screen read the SHIFTER row's pictures into the same set";
+    EXPECT_EQ(teleport, icons.icon_at("icons/teleport.png"))
+        << "TELEPORT is the one copy the HUD read";
+    expect_slot_holds(state.key1_slot, teleport->ready,
+                      "key 1 TELEPORT, from the HUD's copy");
+
+    draw_level1_mage_hud();
+    EXPECT_EQ(screen_loads, icons.load_count())
+        << "a second HUD frame reads nothing";
+}
+
+// The archmage with the default belt. The label starts four clear columns
+// after the slot on a key face and on a bench face. A bench face that
+// hides (SUMMON IMAGE emptied to the bench, then put back) and comes back
+// holding the same ability names its icon again.
+//
+// RED (planted): the label drawn two columns left (gap 2); the hidden
+// bench face's trace not cleared (no "face=bench_1" after the return).
+TEST(AbilitiesFlow, the_label_clears_the_slot_and_a_returning_bench_face_is_named)
+{
+    DirectRunScope scope;
+    write_ability_company();
+
+    DirectState state;
+    int thread_result = 0;
+    const Sint32 result =
+        run_direct(0, bench_return_injector, state, thread_result);
+    EXPECT_EQ(0, thread_result) << "the injector gave up at leg "
+                                << thread_result;
+    EXPECT_EQ(MENU_REDRAW, result);
+    ASSERT_TRUE(state.finished);
+
+    EXPECT_EQ(kAbilitiesLabelGap, state.bench_gap)
+        << "MIND CONTROL's M starts four columns after the slot";
+    EXPECT_GE(state.key1_gap, kAbilitiesLabelGap)
+        << "key 1's label starts no closer than the bench's";
+    EXPECT_LE(state.key1_gap, kAbilitiesLabelGap + 1)
+        << "the 1 glyph has at most one blank column of its own";
+
+    EXPECT_TRUE(state.summon_benched);
+    EXPECT_TRUE(state.summon_placed);
+    EXPECT_TRUE(state.bench_1_hidden)
+        << "with SUMMON IMAGE back on key 3 the second bench face hides";
+    EXPECT_TRUE(state.summon_benched_again);
+    EXPECT_TRUE(trace_contains("abilities_icon", "face=bench_1 icon=icons/"))
+        << "the bench face that came back names its icon again";
+}
+
+// The MORE pager: an archmage with an empty belt benches all seven
+// abilities, three a page and MORE on the fourth face. MORE is a plain face
+// (no slot, no icon trace) with its label drawn; a click turns the page.
+//
+// RED (planted): the MORE face drawn as an ability face (its slot appears).
+TEST(AbilitiesFlow, the_more_pager_is_a_plain_face_that_turns_the_page)
+{
+    DirectRunScope scope;
+    write_ability_company();
+    test_screen()->save_data.team_list[0]->belt.fill(belt::kEmptyByte);
+    const og::ui::AbilityPage page =
+        og::ui::ability_page(*test_screen()->save_data.team_list[0], 1);
+    ASSERT_GT(static_cast<int>(page.bench.size()), kAbilitiesBenchRows)
+        << "the bench must page";
+    og::ui::PageModel window = og::ui::make_row_window(
+        static_cast<int>(page.bench.size()), kAbilitiesBenchRows);
+    og::ui::step_row_window(window);
+
+    DirectState state;
+    state.page2_want =
+        page.bench[static_cast<std::size_t>(window.first_index())].text;
+    int thread_result = 0;
+    const Sint32 result =
+        run_direct(0, more_pager_injector, state, thread_result);
+    EXPECT_EQ(0, thread_result) << "the injector gave up at leg "
+                                << thread_result;
+    EXPECT_EQ(MENU_REDRAW, result);
+    ASSERT_TRUE(state.finished);
+
+    EXPECT_EQ(0u, state.more_label.rfind("MORE", 0))
+        << "the fourth bench face is the pager: " << state.more_label;
+    EXPECT_EQ(0, state.more_slot_pixels)
+        << "the pager draws no slot (no frame black, no slot fill)";
+    ASSERT_TRUE(state.more_rows.read);
+    EXPECT_GT(state.more_rows.rows_with_ink, 0) << "the pager's label is drawn";
+    EXPECT_FALSE(trace_contains("abilities_icon", "face=bench_3"))
+        << "the pager names no icon";
+    EXPECT_TRUE(state.paged);
+    EXPECT_TRUE(trace_contains("abilities", "bench page"));
 }
 
 // The Base Camp seat panel's ACTIONS column is the shared row list

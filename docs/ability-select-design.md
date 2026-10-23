@@ -508,9 +508,10 @@ two instead (one ability, one slot). A locked ability can be placed.
   beside it (section I.5). A locked ability shows the grey copy of its
   picture and its name in the grey ink, with the level it opens at; an
   empty slot shows the bare slot and `--`. The selected face has a red
-  ring inside its edge. Twenty letters fit on a line beside the slot; a
-  longer row (a level-1 Barbarian's `2 EXPLODING BOULDER L4`) breaks at its
-  last space onto a second line inside the face.
+  ring inside its edge, drawn over the slot so it shows all the way
+  round. The name starts four pixels after the slot; twenty letters fit on
+  a line beside it; a longer row (a level-1 Barbarian's `2 EXPLODING
+  BOULDER L4`) breaks at its last space onto a second line inside the face.
 - **Use**: click a slot to select it, then click a bench ability to put it
   there (the old one goes to the bench), or another slot to swap the two.
   Click the selected slot again, or right-click any slot, to empty it.
@@ -793,9 +794,11 @@ ready one only in its shade: a dark grey (21) that the grey copy lifts to a
 light one (26), so a locked tile reads flat beside a ready one; the key
 label's `L7` says the rest.
 
-Pictures are loaded the first time they are needed and kept; a campaign
-or a sprite sheet that replaces them makes the game read them again. With
-the setting off none is ever loaded.
+Pictures are loaded the first time they are needed and kept, in one set
+for the whole game that the HUD and the ABILITIES screen share, so a
+picture either has shown is never read a second time. A campaign or a
+sprite sheet that replaces them makes the game read them again; the set
+goes when the game closes. With the setting off none is ever loaded.
 
 ### I.5 The ABILITIES screen
 

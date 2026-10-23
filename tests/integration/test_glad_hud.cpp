@@ -3694,9 +3694,6 @@ TEST_F(GladHud, hud_special_row_names_the_pack_familys_own_special)
 // keep their "belt_row" traces. The classic SPC row's pins above run with
 // the setting off (ScopedAbilitySelect); these run with it on.
 
-// From score_panel.cpp: the HUD's icon set (swapped by one test below).
-og::ui::AbilityIcons& hud_ability_icons();
-
 namespace {
 
 // SHIFTER held for `seat` through the touch seam isPlayerHoldingKey ORs in
@@ -4540,11 +4537,13 @@ TEST_F(GladHud, belt_cell_draws_the_generic_tile_for_a_family_without_icons)
     EXPECT_EQ(expected_window(missing), icon_window(frame, cell_at(v, 1)));
 
     // No generic tile at all: swap in a set whose generic path is missing.
-    og::ui::AbilityIcons saved = std::move(hud_ability_icons());
-    hud_ability_icons() = og::ui::AbilityIcons("icons/no_such_generic.png");
+    // The set is the session's (screen::ability_icons), the one the
+    // ABILITIES screen shares.
+    og::ui::AbilityIcons saved = std::move(scene.s->ability_icons());
+    scene.s->ability_icons() = og::ui::AbilityIcons("icons/no_such_generic.png");
     frame = scene.draw();
     const auto bare_traced = trace_contains("hud", "drawn=none");
-    hud_ability_icons() = std::move(saved);
+    scene.s->ability_icons() = std::move(saved);
     EXPECT_TRUE(bare_traced) << "the cell says it has no picture";
     IconWindow bare{};
     bare.fill(canonical_palette_index(kCellFill));
