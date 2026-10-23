@@ -1,0 +1,34 @@
+# MYSTIC MACE (cleric): the dotted white-and-blue orb (pix/mshield.png frame 0, water band moved to 64-75) on a dotted orbit around the small cleric (pix/cleric.png frame 1: gold head on 235-239, grey shoulders, red robe)
+# legend: one character = one palette index (pix/openglad.gpl)
+k = 64
+a = 31
+b = 75
+c = 73
+d = 66
+o = 27
+h = 239
+g = 238
+i = 237
+j = 236
+l = 235
+e = 23
+f = 21
+r = 40
+s = 42
+
+..........kaa...
+.........baaca..
+.....o..aaaaaka.
+...o....aaacaaa.
+........acaaaca.
+.o......baadaac.
+.........aaaab..
+o.....hg..kac...
+.....hggi.......
+o....giij.......
+....eejlje......
+...eerrrsfe..o..
+.o...rrrs.....o.
+...o.......o....
+.....o.o.o......
+................

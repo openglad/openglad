@@ -1,0 +1,35 @@
+# RAISE UNDEAD (cleric): a red blood stain (pix/stain.png frame 0, flattened) with the skull and shoulders of pix/skeleton.png frame 0 (rows 1-7, band fixed to red) rising out of it
+# legend: one character = one palette index (pix/openglad.gpl)
+k = 31
+a = 28
+b = 40
+c = 29
+d = 27
+e = 41
+f = 17
+g = 26
+h = 42
+i = 25
+j = 43
+m = 22
+n = 21
+p = 45
+q = 47
+s = 46
+
+................
+................
+......kkk.......
+.....kkkka......
+...kbkckadek....
+..kcbkfafghck...
+.kcdbdgfgdhdcc..
+.kc.eedgijh.dc..
+.kc..ehhhj.mnc..
+..d.bq.ib.pb.c..
+..bkhbpebsbjbb..
+.bspebhqbpepsbe.
+..bq.pbsbhqb.q..
+....q.b..p......
+................
+................

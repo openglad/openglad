@@ -1,0 +1,24 @@
+# BONE STORM (skeleton): a snapped bone-wall post at the centre (pix/bonewall.png frame 0 post, broken off) with eight bones flying outward in a star (pix/bone1.png frames 0-3, cut down to 4x4, one per direction)
+# legend: one character = one palette index (pix/openglad.gpl)
+w = 31
+l = 29
+m = 27
+d = 24
+x = 21
+
+................
+.wl...wllm...lw.
+.lwm...lm...mwl.
+..mld..lm..dlm..
+...dd.wmmd.dd...
+................
+.w..m......w..m.
+.wllm..l.d.wllm.
+.lmmd..md..lmmd.
+.m..d.lmdx.m..d.
+................
+...ll.wllm.ll...
+..lmd..lm..dml..
+.lwd...lm...dwl.
+.wl...wmmd...lw.
+................
