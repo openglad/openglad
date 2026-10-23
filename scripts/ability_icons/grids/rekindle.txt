@@ -1,6 +1,7 @@
-# REKINDLE (elemental): the elemental (firelem.png frame 0, cut whole, moved down three rows and left one) with two green heal pluses (56, the heal numbers' green) rising beside it: magic burned into health
+# REKINDLE (elemental): the elemental (firelem.png frame 0, cut whole, moved down three rows and left one) with one bold green heal cross (56, the heal numbers' green, outlined 16 as HEAL draws it) landing on its top spikes: magic burned into health
 # legend: one character = one palette index (pix/openglad.gpl)
 g = 56
+K = 16
 k = 232
 a = 234
 b = 238
@@ -9,13 +10,13 @@ d = 40
 e = 43
 f = 47
 
-.........g......
-........ggg..g..
-.........g..ggg.
-.............g..
-..k....k........
-..k....k..k.k...
-..ka..kkk.k.k...
+..........KKK...
+..........KgK...
+........KKKgKKK.
+........KgggggK.
+..k....kKKKgKKK.
+..k....k..KgK...
+..ka..kkk.KKK...
 .aka..kak.aaaa..
 aaaabkaaakbbaba.
 aabbbkabakbbbba.
