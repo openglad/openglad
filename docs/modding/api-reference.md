@@ -373,7 +373,7 @@ left unhandled is that pack's error, and a slot the engine filled from C++
 (`install_classpack_data`) only warns.
 
 **Alternates.** A special may declare `alternate = { name = "...", mp_cost = N,
-new_kit = true, detail = "..." }`. Those four keys are the only ones accepted
+new_kit = true, detail = "...", icon = "..." }`. Those five keys are the only ones accepted
 (any other, `level` included, is a load error), and `name` is required. The name is shown while Shift is
 held. There is no separate engine dispatch: the slot's handler forks on
 `self:shifter_down()` (or `self:alternate_down()`, below). Without
@@ -423,6 +423,23 @@ alternates still fit a column. Without `detail` the page shows the name
 alone. The page and the HIRE screen's `Special:` line follow the New
 Specials setting: a hidden slot or alternate is not listed, and a slot above
 the character's level shows as `<Name>: lvl <N>`.
+
+**Icons (`icon`).** A `specials` entry, and its `alternate`, may carry
+`icon = "..."`: the ability's picture, which New Ability Select draws in its
+slot on the HUD and on the TRAIN > ABILITIES screen instead of the name. It
+is a 16x16 indexed PNG in the engine palette, one frame, no sidecar, and the
+string is resolved exactly like a family's `sprite`: core art passes a bare
+name under `pix/` (`icon = "icons/teleport.png"`), a pack passes its own
+file under its mount point (`icon = "packs/<pack_id>/sprites/<name>.png"`;
+the example pack `docs/modding/examples/emberwisp` ships one). Two abilities
+may name the same file; it is loaded once. A special with no `icon`, or one
+whose file does not load as a 16x16 picture, draws the generic question-mark
+tile, and the ability stays usable. Leave index 0 transparent and keep off
+the cycled (208-231), team (248-255) and UI (1-15) bands: the icon is drawn
+on a dark slot and greyed for a locked slot. Draw it as a text grid and
+compile it with `scripts/ability_icons/generate.py`, whose README has the
+format, the palette rules and the gates a grid must pass. The sim never
+reads the key.
 
 **New Specials (`new_kit`).** `new_kit = true` on a `specials` entry, or
 inside its `alternate`, puts that special behind the New Specials setting.
