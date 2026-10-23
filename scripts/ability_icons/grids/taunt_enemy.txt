@@ -1,0 +1,35 @@
+# TAUNT ENEMY (thief): the thief walking (thief.png frame 2, as cut, at -1,4) with his pink tongue out (144), a yellow shout balloon (88) with a black ! over his head
+# legend: one character = one palette index (pix/openglad.gpl)
+k = 88
+a = 16
+b = 40
+c = 132
+d = 243
+e = 241
+f = 144
+g = 43
+h = 45
+i = 22
+j = 26
+l = 246
+m = 30
+n = 140
+o = 141
+p = 21
+
+..........kkkkk.
+.........kkkakkk
+.........kkkakkk
+.........kkkkkkk
+.........kkkakkk
+....bbbbc.kkkkk.
+...bbbbcd.......
+...bbbbeeff.....
+....bggee.f.....
+....hhhh....ij..
+....dleh...ijm..
+....bdle..cjm...
+.....bbdleec....
+.....no.........
+.....ppp........
+................

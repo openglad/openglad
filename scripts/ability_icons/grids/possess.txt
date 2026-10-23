@@ -1,0 +1,35 @@
+# POSSESS (ghost): the foe himself, the fighter facing the player (footman.png frame 0, as cut, at +1,0; one-step merges 21->22, 23->24, 141->140, 26->27 for the budget) with the ghost inside him: his helmet opened at rows 5-6, cols 8-10 to a black (16) visor and the ghost's red eyes (40, 1x2 each) glowing in it; no host ring
+# legend: one character = one palette index (pix/openglad.gpl)
+k = 31
+a = 30
+b = 29
+c = 40
+d = 16
+e = 27
+f = 241
+g = 243
+h = 242
+i = 17
+j = 25
+l = 28
+m = 24
+n = 22
+o = 139
+p = 140
+
+................
+................
+................
+................
+........kab.....
+.......kcdce....
+....fgcacdcechg.
+...fggcbiiijchgg
+...fhhclminmchhh
+...fffccminccfff
+...fg.occccc..fg
+....fg.pp.pp.fg.
+....ko..n.n..fg.
+...ken..........
+...en...........
+................

@@ -1,0 +1,33 @@
+# WAR BANNER (orc captain): the banner's top 15 rows, banner.png frame 0 as cut at 2,1: the white skull on the wooden pole, the team cloth on the red ramp
+# legend: one character = one palette index (pix/openglad.gpl)
+k = 31
+a = 28
+b = 29
+c = 27
+d = 17
+e = 26
+f = 141
+g = 139
+h = 138
+i = 45
+j = 40
+l = 41
+m = 43
+n = 47
+
+................
+...kkk..........
+..kkkka.........
+..kbkac.........
+..kdade.........
+..cedec.........
+....ff..........
+...fgggggggggf..
+....hfijjlmmmi..
+....hfijjlmmmi..
+....hfijjlmmmi..
+....hfijjlmmmi..
+....hfijjmiiii..
+....hfijjmiiii..
+....hfijjiniii..
+....hfijj..nni..

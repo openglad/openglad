@@ -1,0 +1,29 @@
+# WARBAND (orc captain): three orcs in a wedge: the front one orc.png frame 0 as cut (cloth on the red ramp), two grunts behind it redrawn 8 px wide from the same frame a ramp step darker
+# legend: one character = one palette index (pix/openglad.gpl)
+k = 17
+a = 139
+b = 43
+c = 140
+d = 141
+e = 27
+f = 138
+g = 137
+h = 40
+i = 47
+
+................
+...kk......kk...
+.abccdbd.abccdbd
+acbcddbdacbcddbd
+acbbbbddacbbbbdd
+..bddb....bddb..
+........kk......
+.......fkc......
+...gghffacdhcc..
+..ggfhfcaddhacc.
+..gffhfiaidhaac.
+..gffhfaacdhaac.
+..fffhhaachhaaa.
+..fc..hhhhh..ad.
+...fc.cd.cd.ad..
+...fc..d.d..ad..

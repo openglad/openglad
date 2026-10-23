@@ -1,0 +1,26 @@
+# WAIL (ghost): the ghost flying right (ghost.png frame 2, as cut, at -4,1; the last six pixels of its trailing tail fall off the left edge) crying out: three sound arcs of still blue 64 (expand8's water band moved to 64, the ghost's one blue) leaving its mouth to the right in HOWL's geometry, bowing right, centred on rows 6-7; all three arcs one colour, no puff, no specks
+# legend: one character = one palette index (pix/openglad.gpl)
+k = 24
+a = 64
+b = 29
+c = 27
+d = 40
+e = 25
+f = 20
+
+................
+................
+................
+..kkkk.......a..
+.kbbbck....a..a.
+.kbccdk..a..a.a.
+.kceeekf..a.a.a.
+..kkkkfff.a.a.a.
+.kbbck...a..a.a.
+kbcccckkk..a..a.
+kccccceeek...a..
+bcceeekkk.......
+eeekkk..........
+kkk.............
+................
+................
