@@ -2582,13 +2582,21 @@ std::vector<std::string> build_player_control_summary_lines(int player_index, bo
 // The REMAP wizard's control summary rows (draw_remap_prompt).
 constexpr int kRemapSummaryTwoLineY = 150;
 constexpr int kRemapSummaryThreeLineY = 145;
+// The prompt's inset box, (x, y, w, h): x 10..309, y 30..179. Centred
+// across the 320-wide canvas so the centred text sits in it, and wide
+// enough for a 48-glyph summary line (288 px, x 16..303).
+constexpr int kRemapInsetX = 10;
+constexpr int kRemapInsetY = 30;
+constexpr int kRemapInsetW = 300;
+constexpr int kRemapInsetH = 150;
 
 static void draw_remap_prompt(const std::string& prompt, int player_index)
 {
     text& mytext = og::runtime::current_session->myscreen_->text_normal;
     og::runtime::current_session->myscreen_->clear_window();
     og::runtime::current_session->myscreen_->draw_button(0, 0, 320, 200, 0);
-    og::runtime::current_session->myscreen_->draw_button_inverted(20, 30, 300, 170);
+    og::runtime::current_session->myscreen_->draw_button_inverted(
+        kRemapInsetX, kRemapInsetY, kRemapInsetW, kRemapInsetH);
     mytext.write_xy_center(160, 45, RED, "REMAP CONTROLS");
     mytext.write_xy_center(160, 80, DARK_BLUE, "%s", prompt.c_str());
     mytext.write_xy_center(160, 105, DARK_BLUE,

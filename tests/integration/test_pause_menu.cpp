@@ -1313,6 +1313,122 @@ TEST(PausePlayerDraw, menushots_remap_prompt_spec2)
     EXPECT_TRUE(g_remap_shot_written);
 }
 
+namespace
+{
+// The REMAP canvas at prompt 1, read back as palette indices.
+std::array<int, 320 * 200> g_remap_frame{};
+bool g_remap_frame_taken = false;
+
+bool remap_frame_poll()
+{
+    screen* const scr = og::runtime::current_session->myscreen_;
+    for (int y = 0; y < 200; ++y)
+        for (int x = 0; x < 320; ++x)
+            scr->get_pixel(x, y, &g_remap_frame[static_cast<std::size_t>(
+                                     y * 320 + x)]);
+    g_remap_frame_taken = true;
+    return false;  // end the wizard at its first prompt
+}
+
+int remap_px(int x, int y)
+{
+    return g_remap_frame[static_cast<std::size_t>(y * 320 + x)];
+}
+} // namespace
+
+// The REMAP prompt's inset box sits inside the canvas, centred under its
+// centred text, and holds every line: even a 48-glyph summary under the
+// worst-case key names (the MenuLayout summary pins' set) never touches its
+// bevels, and nothing but the outer face is drawn outside it. Both settings
+// (two summary lines off, three on).
+//
+// RED (planted, both settings): draw_button_inverted back to
+// (20, 30, 300, 170), the old x2/y2 reading of an (x, y, w, h) call: the
+// box runs to x 319 / y 199 ("left 20, right 319"; "a margin below the
+// box: 199").
+TEST(PausePlayerDraw, remap_prompt_box_stays_on_canvas_and_holds_every_line)
+{
+    for (const bool ability_select : {false, true})
+    {
+        SCOPED_TRACE(ability_select ? "New Ability Select on" : "off");
+        ControlStateGuard controls;
+        ScopedAbilitySelect scope(ability_select);
+        set_player_control_mode(
+            0, static_cast<int>(ControlDirectionMode::EightDirection));
+        // Each setting's own worst-case names, as the MenuLayout summary
+        // pins set them (each line at most 48 glyphs).
+        set_player_key_binding(0, KEY_YELL, SDLK_BACKSPACE);
+        set_player_key_binding(0, KEY_LOOKUP, SDLK_CAPSLOCK);
+        set_player_key_binding(0, KEY_SWITCH, SDLK_RETURN);
+        if (ability_select)
+        {
+            set_player_key_binding(0, KEY_FIRE, SDLK_PRINTSCREEN);
+            set_player_key_binding(0, KEY_SPECIAL, SDLK_RETURN);
+            set_player_key_binding(0, KEY_SPEC2, SDLK_DELETE);
+            set_player_key_binding(0, KEY_SPEC3, SDLK_PAGEDOWN);
+            set_player_key_binding(0, KEY_SHIFTER, SDLK_PRINTSCREEN);
+        }
+        else
+        {
+            set_player_key_binding(0, KEY_FIRE, SDLK_LCTRL);
+            set_player_key_binding(0, KEY_SPECIAL, SDLK_LALT);
+            set_player_key_binding(0, KEY_SPEC2, SDLK_TAB);
+            set_player_key_binding(0, KEY_SHIFTER, SDLK_RSHIFT);
+        }
+        g_remap_frame_taken = false;
+        edit_player_keymap_with_poll(0, &remap_frame_poll);
+        ASSERT_TRUE(g_remap_frame_taken);
+
+        // The inset bevels (draw_text_bar: top 10, bottom 15, left 11,
+        // right 14), found along the middle row and column.
+        int left = -1, right = -1, top = -1, bottom = -1;
+        for (int x = 0; x < 320; ++x)
+        {
+            if (left < 0 && remap_px(x, 120) == 11)
+                left = x;
+            if (remap_px(x, 120) == 14)
+                right = x;
+        }
+        for (int y = 0; y < 200; ++y)
+            if (remap_px(160, y) == 15)
+                bottom = y;
+        for (int y = 0; y < 200; ++y)
+            if (remap_px(left + 1, y) == 10)
+            {
+                top = y;
+                break;
+            }
+        ASSERT_GE(left, 0) << "left bevel";
+        ASSERT_GT(right, left) << "right bevel";
+        ASSERT_GE(top, 0) << "top bevel";
+        ASSERT_GT(bottom, top) << "bottom bevel";
+        EXPECT_EQ(left, 319 - right)
+            << "the box is centred across the canvas: left " << left
+            << ", right " << right;
+        EXPECT_GE(199 - bottom, 8) << "a margin below the box: " << bottom;
+
+        // Outside the box: the outer face only. Inside: no ink on a bevel
+        // column or row but the bevel itself, i.e. the interior holds the
+        // text.
+        const int outer = remap_px(2, 2);
+        int outside_ink = 0;
+        for (int y = 0; y < 200; ++y)
+            for (int x = 0; x < 320; ++x)
+                if ((x < left || x > right || y < top || y > bottom) &&
+                    remap_px(x, y) != outer)
+                    ++outside_ink;
+        EXPECT_EQ(0, outside_ink) << "nothing is drawn outside the box";
+        int bevel_breaks = 0;
+        for (int y = top + 1; y < bottom; ++y)
+            bevel_breaks += remap_px(left, y) != 11;
+        for (int y = top + 1; y < bottom; ++y)
+            bevel_breaks += remap_px(right, y) != 14;
+        for (int x = left + 1; x < right; ++x)
+            bevel_breaks += remap_px(x, bottom) != 15;
+        EXPECT_EQ(0, bevel_breaks) << "no text runs over a bevel";
+    }
+}
+
 // A pause that cannot be established never shows a menu. The pause request
 // goes out first and is confirmed by a pump; if that pump says the session
 // is gone (#246: the host vanished between the Esc and the request landing),
