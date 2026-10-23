@@ -1,0 +1,27 @@
+# HURL BOULDER (barbarian): the grey boulder flying right with two motion lines behind it, cut from boulder1.png frame 0 placed at 3,1, black outline added (its shaded edge melts into the dark slot)
+o = 16
+k = 25
+a = 24
+b = 23
+c = 22
+d = 21
+e = 20
+m = 27
+n = 24
+
+................
+.......oo.oo....
+......okaokboo..
+.....okaabbccdo.
+....okaabbccedeo
+...okakacbccdeeo
+mmmokaabbcdcdeeo
+...oabbbcbcdceeo
+...oaabccedeeeo.
+nnnobbadcdeeoo..
+...obccbdeeo....
+....ocddeeo.....
+.....oeeoo......
+......oo........
+................
+................

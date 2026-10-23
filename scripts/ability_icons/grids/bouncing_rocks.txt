@@ -1,0 +1,29 @@
+# BOUNCING ROCKS (elf): three of the elf's rocks and a stone wall at the right, one rock's path drawn as a V of dots bouncing off it; rock.png frame 0 with a black outline added
+o = 16
+k = 130
+a = 131
+b = 132
+c = 133
+d = 134
+w = 24
+W = 27
+x = 20
+p = 31
+q = 28
+
+..oo............
+.okao.......oWw.
+okabcop.....oWw.
+oabcdo..p...oxx.
+.ocdo.......oxw.
+..oo....oo..oxw.
+.......okao.oxx.
+......okabcooWw.
+......oabcdooWw.
+.......ocdo.oxx.
+..oo....oo..oxw.
+.okao.......oxw.
+okabco..q...oxx.
+oabcdoq.....oWw.
+.ocdo.......oWw.
+..oo............

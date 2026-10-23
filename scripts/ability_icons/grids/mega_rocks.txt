@@ -1,0 +1,24 @@
+# MEGA ROCKS (elf): a big handful, five of the elf's rocks, the front one rock.png frame 0 redrawn about twice the size; black outline added
+o = 16
+k = 130
+a = 131
+b = 132
+c = 133
+d = 134
+
+................
+.......oooo.....
+..oo..okkaao....
+.okaookkaabbo...
+okabcokaabbcco..
+oabcdoaabbccdo..
+.ocdooabbccddo..
+..oo..obccddo...
+...oo..occdo....
+..okao..ooo.oo..
+.okabco.oo.okao.
+.oabcdookaokabco
+..ocdookaboabcdo
+...oo.oabcdocdo.
+.......ocdo.oo..
+........oo......
