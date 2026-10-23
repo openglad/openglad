@@ -1,0 +1,29 @@
+# EXPLODING BOULDER (barbarian): the boulder (boulder1.png frame 0 placed at 0,2) with a burst of yellow spikes breaking out of its right side, in boom1.png's colours (yellow rays, orange core at the crack); black outline added to the boulder
+o = 16
+k = 25
+a = 24
+b = 23
+c = 22
+d = 21
+e = 20
+Y = 239
+y = 238
+O = 236
+q = 235
+
+................
+................
+....oo.oo.......
+...okaokboo...Y.
+..okaabbccdo.y..
+.okaabbccedeOy..
+okakacbccdeqOyYy
+okaabbcdcdeqyYYY
+oabbbcbcdceqOyYy
+oaabccedeeeoOy..
+obbadcdeeoo..y..
+obccbdeeo.....Y.
+.ocddeeo........
+..oeeoo.........
+...oo...........
+................

@@ -1,0 +1,28 @@
+# EXPLODING BOLT (archer): one bolt flying right, drawn after farrow.png frame 2 (the red V fletching 40/41/42 at the tail, as on BARRAGE, wood shaft), its head bursting in boom1.png's order: yellow rim and spikes, orange core, dark red edge as on HEARTBURST
+k = 40
+v = 41
+f = 42
+s = 138
+r = 46
+Y = 239
+y = 238
+O = 236
+q = 235
+R = 233
+
+................
+...........r....
+...........Y....
+........y..Y..y.
+.........rYyYr..
+........rYyOyYr.
+k......rYyOqOyYr
+.vssssrYyOqRqOyY
+f......rYyOqOyYr
+........rYyOyYr.
+.........rYyYr..
+........y..Y..y.
+...........Y....
+...........r....
+................
+................
