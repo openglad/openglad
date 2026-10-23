@@ -34,8 +34,9 @@ import shutil
 import subprocess
 import sys
 
-# name -> (codec, width, height, frame count, duration seconds or None,
-#          pixel format or None). One frame means a still.
+# name -> (codec, width or None, height or None, frame count, duration
+#          seconds or None, pixel format or None). One frame means a still;
+#          a None size is not checked.
 LUA_CLASSPACKS = {
     "ninefold-court.gif": ("gif", 640, 400, 60, 8.04, None),
     "ninefold-court-judgment.gif": ("gif", 640, 400, 43, 4.00, None),
@@ -63,7 +64,7 @@ ABILITY_SELECT = {
               "hud-2p-radar-on-overlay.png": CANVAS_STILL},
     "abilities": {f"abilities-{shot}.png": CANVAS_STILL for shot in (
         "archmage", "archmage-selected", "archmage-placed", "mage",
-        "train-door-on", "train-door-off")},
+        "barbarian", "train-door-on", "train-door-off")},
     # The key panels (Base Camp seat, PAUSED player screen) on and off, the
     # REMAP prompt, and a dimmed button elsewhere (the main menu's note).
     "panels": {f"{shot}.png": CANVAS_STILL for shot in (
@@ -76,6 +77,10 @@ ABILITY_SELECT = {
     # The CHANGELOG! page at the window's real size, never the canvas.
     "changelog": {f"changelog-{w}x{h}.png": ("png", w, h, 1, None, None)
                   for w, h in ((640, 400), (1280, 800), (1920, 1080))},
+    # The ability icons' sheets: their size follows the number of icons, so
+    # it is not pinned (None).
+    "icons": {f"icons-{sheet}.png": ("png", None, None, 1, None, None)
+              for sheet in ("contact", "cells", "floors")},
 }
 # set name -> (default directory under build/media, {group: {name: spec}})
 SETS = {
@@ -104,6 +109,8 @@ def check(path: str, codec: str, want_w: int, want_h: int, want_frames: int,
         raise AssertionError(f"{path}: codec {stream.get('codec_name')}, "
                              f"expected {codec}")
     size = (stream.get("width"), stream.get("height"))
+    if want_w is None:
+        want_w, want_h = size
     if size != (want_w, want_h):
         raise AssertionError(f"{path}: {size[0]}x{size[1]}, "
                              f"expected {want_w}x{want_h}")
