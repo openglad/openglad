@@ -1,0 +1,24 @@
+# HEAL (cleric): the green cross of the heal numbers (index 56-59) with two risers
+# legend: one character = one palette index (pix/openglad.gpl)
+k = 16
+a = 56
+b = 48
+c = 57
+d = 59
+
+................
+.....kkkk....a..
+....kbbbbk..aaa.
+....kbccdk...a..
+....kbccdk....a.
+.kkkkbccdkkkkaaa
+kbbbbccccbbbbka.
+kbccccccccccdk..
+kbccccccccccdk..
+kbdddccccddddk..
+.kkkkbccdkkkk...
+....kbccdk......
+....kbccdk......
+....kbdddk......
+.....kkkk.......
+................
