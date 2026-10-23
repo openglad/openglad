@@ -480,6 +480,15 @@ og_add_shell_check_target(check_keyboard_map
     check_keyboard_map.sh
 )
 
+# The ability icons: every grid under scripts/ability_icons/ passes the
+# structural gates and every committed icon PNG is its grid re-encoded (a
+# picture edited by hand, or a grid changed without regenerating, fails the
+# build). See the script header and scripts/ability_icons/README.md.
+og_add_shell_check_target(check_ability_icons
+    "Checking the ability icons match their grids and pass the gates"
+    check_ability_icons.sh
+)
+
 # Every old-game commit tests/parity/golden/DRIFT_LEDGER.md names (its pin line
 # and its `old-game commit` table cells) must be on origin/parity-companion, the
 # current scenario table must equal the pin's, and every old-game src/ commit

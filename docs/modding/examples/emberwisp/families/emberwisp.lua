@@ -166,9 +166,12 @@ og.family("living", {
   -- is a pack error unless it says `cast = false` and means it. The engine
   -- refuses the cast below mp_cost and deducts it only after the handler
   -- answers true. All of this replaces a hand-written current_special()
-  -- ladder.
+  -- ladder. `icon` is the special's picture on the HUD and the ABILITIES
+  -- screen: a 16x16 PNG in the engine palette under this pack's sprites/,
+  -- compiled from a text grid (scripts/ability_icons/README.md).
   specials = {
-    { id = "flare_burst", name = "FLARE BURST", mp_cost = 5, cast = flare_burst },
+    { id = "flare_burst", name = "FLARE BURST", mp_cost = 5, cast = flare_burst,
+      icon = "packs/emberwisp/sprites/flare_burst.png" },
   },
   default_weapon = "core:fireball",
   flags = { "FLYING", "FORESTWALK" },

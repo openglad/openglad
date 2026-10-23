@@ -1107,7 +1107,11 @@ og_add_unit_group(og_unit_data FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_migrated_campaigns.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_gladiator_levels.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_special_art.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_ability_icons.cpp
 )
+# The icon PNGs test_ability_icons loads are their grids re-encoded, and every
+# grid passes the structural gates (scripts/ability_icons/generate.py --check).
+add_dependencies(og_unit_data check_ability_icons)
 
 # test_builtin_archives byte-compares every staged-archive member
 # against the committed campaign source trees (one root per
@@ -2092,4 +2096,32 @@ set_tests_properties(emscripten_build_test PROPERTIES
     LABELS "emscripten;build"
     TIMEOUT 300
     SKIP_RETURN_CODE 77
+)
+
+# The ability icon generator's gates and grid refusals, each on a grid built to
+# break it (an opaque block, an edge-hugging L, a cross on all four edges with
+# and without its waiver, seventeen colours, one index per forbidden band, the
+# first prototype's grey LUT that melted the teleport blue into the slot fill,
+# and every malformed grid), plus the LUT values the design pins. Guarded on
+# the interpreter like heritage_audit_selftest.
+if(Python3_Interpreter_FOUND)
+    add_test(NAME ability_icons_generator_selftest
+        COMMAND ${CMAKE_COMMAND} -E env
+            PYTHONDONTWRITEBYTECODE=1
+            ${Python3_EXECUTABLE}
+            ${CMAKE_SOURCE_DIR}/scripts/ability_icons/generate.py
+            --self-test
+    )
+else()
+    add_test(NAME ability_icons_generator_selftest
+        COMMAND ${CMAKE_COMMAND} -E echo
+            "ability_icons_generator_selftest: this self-test needs a Python 3 interpreter and none was found at configure time. Install Python 3 and reconfigure."
+    )
+    set_tests_properties(ability_icons_generator_selftest PROPERTIES
+        FAIL_REGULAR_EXPRESSION "needs a Python 3 interpreter"
+    )
+endif()
+set_tests_properties(ability_icons_generator_selftest PROPERTIES
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    TIMEOUT 60
 )

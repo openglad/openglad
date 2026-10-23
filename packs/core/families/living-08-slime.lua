@@ -173,7 +173,7 @@ og.family("living", {   -- SLIME
              train = { strength = 20, dexterity = 20, constitution = 8,
                        intelligence = 14, armor = 50, level = 200 } },
   specials = {
-    { id = "split", name = "SPLIT", mp_cost = 30, detail = "Divide into two smaller slimes." },
+    { id = "split", name = "SPLIT", mp_cost = 30, detail = "Divide into two smaller slimes.", icon = "icons/split.png" },
     default_cast = slime_do_special,
   },
   default_weapon = "core:blob",
@@ -221,7 +221,7 @@ og.family("living", {   -- SMALL_SLIME
              train = { strength = 20, dexterity = 20, constitution = 8,
                        intelligence = 14, armor = 50, level = 200 } },
   specials = {
-    { id = "grow", name = "GROW", mp_cost = 30, detail = "Grow into a bigger slime." },
+    { id = "grow", name = "GROW", mp_cost = 30, detail = "Grow into a bigger slime.", icon = "icons/grow.png" },
     default_cast = small_slime_do_special,
   },
   default_weapon = "core:blob",
@@ -265,7 +265,7 @@ og.family("living", {   -- MEDIUM_SLIME
              train = { strength = 20, dexterity = 20, constitution = 8,
                        intelligence = 14, armor = 50, level = 200 } },
   specials = {
-    { id = "grow", name = "GROW", mp_cost = 30, detail = "Grow into a bigger slime." },
+    { id = "grow", name = "GROW", mp_cost = 30, detail = "Grow into a bigger slime.", icon = "icons/grow.png" },
     default_cast = medium_slime_do_special,
   },
   default_weapon = "core:blob",

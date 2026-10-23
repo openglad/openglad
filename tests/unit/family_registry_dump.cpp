@@ -248,6 +248,13 @@ void dump_living(std::string& out)
             if (fd->alternate_details[s] != nullptr)
                 field(out, (prefix + "alternate_detail").c_str(),
                       quoted(fd->alternate_details[s]));
+            // The ability icons, likewise only when declared.
+            if (fd->special_icons[s] != nullptr)
+                field(out, (prefix + "icon").c_str(),
+                      quoted(fd->special_icons[s]));
+            if (fd->alternate_icons[s] != nullptr)
+                field(out, (prefix + "alternate_icon").c_str(),
+                      quoted(fd->alternate_icons[s]));
         }
         field(out, "default_weapon", number(fd->default_weapon));
         field(out, "init_bit_flags", number(fd->init_bit_flags));
