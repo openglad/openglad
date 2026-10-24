@@ -238,7 +238,8 @@
            with the key as a corner badge. A rounded square, not a circle:
            the 48 px picture's corners would cross a 60 px ring. Short is a
            red edge, a held key a white one (never on a locked, disabled or
-           empty slot); locked, disabled and empty slots are dimmed. With
+           empty slot); a locked or disabled slot shows the grey copy of its
+           picture, and an empty slot is dimmed. With
            the setting off the canvas hides and the badge reads SPC / SP+. */
         .tc-control .tc-icon-px {
             display: none;
@@ -268,8 +269,9 @@
             pointer-events: none;
         }
 
-        .tc-control.tc-icon.tc-locked,
-        .tc-control.tc-icon.tc-disabled,
+        /* Only an empty slot is dimmed further. A locked or disabled
+           slot already draws the grey copy of its picture; dimming that
+           too made it vanish on light stone floors. */
         .tc-control.tc-icon.tc-empty {
             opacity: 0.42;
         }

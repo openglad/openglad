@@ -1320,7 +1320,8 @@ test.describe('Touch gameplay controls', () => {
       ['tc-special', 'tc-spec2'].map((id) =>
         getComputedStyle(document.getElementById(id)).opacity),
     );
-    expect(opacity).toEqual(['0.6', '0.42']);
+    // The grey copy alone marks a locked slot; it is not dimmed again.
+    expect(opacity).toEqual(['0.6', '0.6']);
     // Pixel-sharp at 3x.
     const rendering = await page.evaluate(() =>
       getComputedStyle(document.querySelector('#tc-special canvas')).imageRendering);
@@ -1388,7 +1389,7 @@ test.describe('Touch gameplay controls', () => {
     expect(await borderOf('tc-spec2')).not.toBe('rgb(255, 255, 255)');
     expect(
       await page.evaluate(() => getComputedStyle(document.getElementById('tc-spec2')).opacity),
-    ).toBe('0.42');
+    ).toBe('0.6');
     await page.waitForTimeout(150);
     await dispatchPointer(page, '#tc-spec2', 'pointerup', spec2.x, spec2.y, 64);
     await dispatchPointer(page, '#tc-special', 'pointerup', spec1.x, spec1.y, 63);
