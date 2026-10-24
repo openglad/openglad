@@ -1160,7 +1160,7 @@ static void draw_belt_hotbar(screen* s, text& mytext, int view,
                              BeltHudStrip& strip, walker& control,
                              int players, bool compact, Sint32 lm, Sint32 bm,
                              unsigned char text_color, bool boxed,
-                             float scale)
+                             [[maybe_unused]] float scale)
 {
     TRACE("hud", "belt_strip half=%d dst_x=%d dst_y=%d scale=%.2f view=%d",
           strip.half ? 1 : 0, static_cast<int>(lm + 1),

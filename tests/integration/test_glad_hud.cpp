@@ -5744,6 +5744,26 @@ TEST_F(GladHud, belt_box_never_overlaps_the_radar_in_any_pane)
     EXPECT_GT(radar_pixels_checked, 0);
 }
 
+// The live canvas as RGB (capture_render_rgb), for stills whose see-through
+// slots blend to colours no palette index names. Written only under
+// OG_FX_CAPTURE_DIR, as dump_frame_ppm.
+static void dump_render_rgb_ppm(const char* scene)
+{
+    const char* base = getenv("OG_FX_CAPTURE_DIR");
+    if (base == nullptr)
+        return;
+    const RenderRgb rgb = capture_render_rgb();
+    const std::string dir = std::string(base) + "/" + scene;
+    std::error_code ec;
+    std::filesystem::create_directories(dir, ec);
+    FILE* fp = fopen((dir + "/000.ppm").c_str(), "wb");
+    if (fp == nullptr)
+        return;
+    fprintf(fp, "P6\n%d %d\n255\n", rgb.w, rgb.h);
+    fwrite(rgb.rgb.data(), 1, rgb.rgb.size(), fp);
+    fclose(fp);
+}
+
 // Review stills for the PR (scripts/media/capture_ability_select_hud.sh
 // sets OG_FX_CAPTURE_DIR; a normal run writes nothing): 1, 2 and 4 seats
 // with the setting off, one seat with it on, a freeze and a seat clock running so the moved
@@ -5766,21 +5786,28 @@ TEST_F(GladHud, zz_capture_belt_hud)
             }
             scene.s->world().enemy_freeze = 90;
             stage_possession(*scene.heroes[0], 300);
-            const auto frame = scene.draw();
+            // With the setting on the slots are see-through, blended colours
+            // no palette index names: those stills are the canvas's RGB.
+            const auto still = [&](const std::string& name) {
+                if (ability_select)
+                    dump_render_rgb_ppm(name.c_str());
+                else
+                    dump_frame_ppm(capture_rendered_frame(*scene.s),
+                                   name.c_str());
+            };
+            (void)scene.draw();
             // Split screen's half-size strip is composited at present time
             // and is not on this canvas: zz_capture_belt_hud_physical takes
             // those stills from the window.
             if (ability_select && seats > 1)
                 continue;
-            dump_frame_ppm(frame, std::format("belt_hud_{}p_{}", seats,
-                                              ability_select ? "on" : "off")
-                                      .c_str());
+            still(std::format("belt_hud_{}p_{}", seats,
+                              ability_select ? "on" : "off"));
             if (ability_select)
             {
                 ShifterHeld shift(0);
-                dump_frame_ppm(scene.draw(),
-                               std::format("belt_hud_{}p_on_shift", seats)
-                                   .c_str());
+                (void)scene.draw();
+                still(std::format("belt_hud_{}p_on_shift", seats));
             }
             if (seats == 1)
             {
@@ -5788,13 +5815,13 @@ TEST_F(GladHud, zz_capture_belt_hud)
                 // so the rows draw straight on the world with no box.
                 scene.s->viewob[0]->prefs[PREF_OVERLAY] = PREF_OVERLAY_OFF;
                 const char* const state = ability_select ? "on" : "off";
-                dump_frame_ppm(scene.draw(),
-                               std::format("belt_hud_1p_{}_plain", state)
-                                   .c_str());
+                (void)scene.draw();
+                still(std::format("belt_hud_1p_{}_plain", state));
                 if (ability_select)
                 {
                     ShifterHeld shift(0);
-                    dump_frame_ppm(scene.draw(), "belt_hud_1p_on_shift_plain");
+                    (void)scene.draw();
+                    still("belt_hud_1p_on_shift_plain");
                 }
             }
         }
