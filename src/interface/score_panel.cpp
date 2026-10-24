@@ -1072,11 +1072,12 @@ static void publish_seat_belt(screen* s, walker* control, bool live_hud,
     og::ui::BeltTouchState state;
     state.belt_hud = og::input::ability_select_on();
     state.hud_hidden = hud_hidden;
-    state.shift = isPlayerHoldingKey(0, KEY_SHIFTER);
     if (state.belt_hud && live_hud)
     {
         const std::array<BeltHudCell, 3> cells = resolve_belt_cells(
             s, *control, 0, static_cast<unsigned char>(YELLOW), false);
+        // The cells already read the SHIFTER key: one read, one answer.
+        state.shift = cells[0].shift;
         for (std::size_t i = 0; i < cells.size(); ++i)
         {
             const BeltHudCell& from = cells[i];
@@ -1093,6 +1094,8 @@ static void publish_seat_belt(screen* s, walker* control, bool live_hud,
     }
     else
     {
+        // No cells were resolved, so the key is read here for the labels.
+        state.shift = isPlayerHoldingKey(0, KEY_SHIFTER);
         for (std::size_t i = 0; i < state.cells.size(); ++i)
         {
             og::ui::BeltTouchCell& to = state.cells[i];

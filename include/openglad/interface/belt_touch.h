@@ -19,7 +19,7 @@
 #include <functional>
 #include <string>
 
-struct PixieData;
+class PixieData;
 
 namespace og::ui {
 

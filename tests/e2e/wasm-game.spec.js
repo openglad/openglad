@@ -1418,3 +1418,100 @@ test.describe('Modifier chords across seats', () => {
     assertNoRuntimeErrors(errors, 'modifier chords across seats');
   });
 });
+
+// Issue #384 (G10): on a desktop the touch overlay never comes up, and an
+// overlay that came up and went away changes nothing in the HUD. Seat 0's
+// hotbar corner with openglad_web_touch_enable never called looks the same
+// after the overlay was switched on and off again. The control: while the
+// overlay is up the same corner really changes (the hotbar is gone), so the
+// comparison can tell a hidden hotbar from a drawn one.
+test.describe('Touch overlay leaves the desktop HUD alone', () => {
+  // The pane's bottom-left, where the hotbar sits, in gameplay UI canvas
+  // units stretched over the whole #canvas: 62 wide, 20 rows from 48 above
+  // the bottom (the touch suite's clip of the same strip).
+  async function hotbarCorner(page) {
+    const clip = await page.evaluate(() => {
+      const d = window.__opengladCanvasDiagnostics;
+      const r = document.getElementById('canvas').getBoundingClientRect();
+      const sx = r.width / d.gameplay_ui_width;
+      const sy = r.height / d.gameplay_ui_height;
+      return {
+        x: r.left + 2 * sx,
+        y: r.top + r.height - 48 * sy,
+        width: 62 * sx,
+        height: 20 * sy,
+      };
+    });
+    return await page.screenshot({ clip });
+  }
+
+  // The fraction of pixels two captures disagree on. Weather and the
+  // palette's colour cycling touch a few scattered pixels; the hotbar covers
+  // most of the clip.
+  async function differs(page, one, two) {
+    return await page.evaluate(async ([x, y]) => {
+      const load = async (b64) => {
+        const img = new Image();
+        img.src = `data:image/png;base64,${b64}`;
+        await img.decode();
+        const c = document.createElement('canvas');
+        c.width = img.width;
+        c.height = img.height;
+        const ctx = c.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+        return ctx.getImageData(0, 0, c.width, c.height).data;
+      };
+      const a = await load(x);
+      const b = await load(y);
+      if (a.length !== b.length) {
+        return 1;
+      }
+      let off = 0;
+      for (let i = 0; i < a.length; i += 4) {
+        off += Math.abs(a[i] - b[i]) + Math.abs(a[i + 1] - b[i + 1]) +
+          Math.abs(a[i + 2] - b[i + 2]) > 48 ? 1 : 0;
+      }
+      return off / (a.length / 4);
+    }, [one.toString('base64'), two.toString('base64')]);
+  }
+
+  test('a touch overlay switched on and off leaves the desktop HUD as it was', async ({ page }) => {
+    test.setTimeout(180_000);
+    const errors = [];
+    attachRuntimeErrorCollectors(page, errors);
+    await page.addInitScript(() => {
+      window.__opengladSeedSinglePlayerTeam = true;
+      window.__opengladSkipIntroForTests = true;
+    });
+    await page.goto('/play.html');
+    await waitForGameLoad(page);
+    await startSeededSinglePlayerFromPicker(page);
+    await waitForGameplayRenderSamples(page, 5, 15_000);
+    await waitForRenderedFrames(page, 4);
+
+    // A desktop never enables the overlay: no belt state is pushed at all.
+    expect(await page.evaluate(() => window.__opengladBelt ?? null)).toBeNull();
+    const never = await hotbarCorner(page);
+
+    await page.evaluate(() => Module._openglad_web_touch_enable(1));
+    await page.waitForFunction(() => window.__opengladBelt?.hudHidden === true,
+      null, { timeout: 15_000 });
+    await expect
+      .poll(async () => differs(page, await hotbarCorner(page), never), {
+        message: 'overlay up: the hotbar leaves the corner',
+        timeout: 15_000,
+      })
+      .toBeGreaterThan(0.3);
+
+    await page.evaluate(() => Module._openglad_web_touch_enable(0));
+    await page.waitForFunction(() => window.__opengladBelt?.hudHidden === false,
+      null, { timeout: 15_000 });
+    await expect
+      .poll(async () => differs(page, await hotbarCorner(page), never), {
+        message: 'overlay gone: the corner is as it was before the overlay',
+        timeout: 15_000,
+      })
+      .toBeLessThan(0.02);
+    assertNoRuntimeErrors(errors, 'touch overlay on and off on a desktop');
+  });
+});
