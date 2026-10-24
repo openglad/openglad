@@ -1446,8 +1446,30 @@ test.describe('Touch gameplay controls', () => {
       });
       return await page.screenshot({ clip });
     };
-    // The strip's cells are opaque-framed squares; with the overlay on the
-    // rows above XP/SC hold none of them.
+    // The fraction of pixels two captures disagree on. Weather (rain) and
+    // the palette's colour cycling touch a few scattered pixels; the strip
+    // covers most of the clip.
+    const differs = async (one, two) => page.evaluate(async ([x, y]) => {
+      const load = async (b64) => {
+        const img = new Image();
+        img.src = `data:image/png;base64,${b64}`;
+        await img.decode();
+        const c = document.createElement('canvas');
+        c.width = img.width;
+        c.height = img.height;
+        const ctx = c.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+        return ctx.getImageData(0, 0, c.width, c.height).data;
+      };
+      const a = await load(x);
+      const b = await load(y);
+      let off = 0;
+      for (let i = 0; i < a.length; i += 4) {
+        off += Math.abs(a[i] - b[i]) + Math.abs(a[i + 1] - b[i + 1]) +
+          Math.abs(a[i + 2] - b[i + 2]) > 48 ? 1 : 0;
+      }
+      return off / (a.length / 4);
+    }, [one.toString('base64'), two.toString('base64')]);
     const hidden = await hudRegion();
 
     const toggle = page.locator('#tc-toggle');
@@ -1459,11 +1481,11 @@ test.describe('Touch gameplay controls', () => {
       })
       .toBe(false);
     await expect
-      .poll(async () => (await hudRegion()).equals(hidden), {
+      .poll(async () => differs(await hudRegion(), hidden), {
         message: 'the strip is back in the pane',
         timeout: 15_000,
       })
-      .toBe(false);
+      .toBeGreaterThan(0.3);
 
     await toggle.click();
     await expect(page.locator('#touch-controls')).toHaveClass(/tc-active/);
@@ -1473,11 +1495,11 @@ test.describe('Touch gameplay controls', () => {
       })
       .toBe(true);
     await expect
-      .poll(async () => (await hudRegion()).equals(hidden), {
+      .poll(async () => differs(await hudRegion(), hidden), {
         message: 'the pane looks as it did with the overlay up',
         timeout: 15_000,
       })
-      .toBe(true);
+      .toBeLessThan(0.1);
   });
 
   // With the setting off (Game Settings > UI FX > New Ability Select) the
