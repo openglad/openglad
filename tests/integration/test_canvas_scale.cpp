@@ -22,6 +22,7 @@
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/render/view_layout.h>
 #include <openglad/interface/input.h>
+#include <openglad/interface/render/pal32.h>
 #include <openglad/interface/ui/menu_screen_spec.h>
 #include <openglad/core/test_trace.h>
 #include <openglad/resources/gparser.h>
@@ -351,6 +352,114 @@ TEST(CanvasScale, draw_rgba_scaled_into_a_native_plane_reads_back_at_physical_si
     EXPECT_GT(bottom_right[2], 200);
     EXPECT_NE(mid_left, mid_right)
         << "neighbouring display pixels were one menu pixel doubled";
+}
+
+// A HUD sprite plane (the split-screen hotbar's): a caller-sized raster
+// that holds straight alpha and lands at the display's own pixels. At the
+// 640x400 window (2 screen pixels per canvas pixel) a 4x2 plane on a 2x1
+// canvas rectangle is 4x2 screen pixels, 1:1; a pointb(..., 112) into it
+// keeps (its colour, 112) in the plane, a solid one 255, and the present
+// blends them over what is under the rectangle. Canvas scopes entered
+// while it is open do not un-redirect it; a cancelled plane is never
+// presented.
+//
+// RED (planted): blend_pixel keyed on the old overlay gate (the plane's
+// pixels keep alpha 0); set_active_canvas without the plane re-apply (the
+// pointb after the UI scope lands on the UI canvas).
+TEST(CanvasScale, hud_sprite_plane_holds_straight_alpha_and_lands_one_to_one)
+{
+    ASSERT_TRUE(E_Screen);
+    ClassicCanvasRestore restore;
+    screen* const s = test_screen();
+    ASSERT_NE(nullptr, s);
+    E_Screen->set_world_zoom(og::kZoomStepsMax,
+                             og::WorldScaleMode::Integer, 640, 400);
+    s->set_active_canvas(CanvasTarget::World);
+    ASSERT_TRUE(SDL_FillSurfaceRect(E_Screen->render, nullptr, 0));
+    E_Screen->discard_hud_sprites_for_testing();
+    ASSERT_FLOAT_EQ(2.0f, s->hud_sprite_scale());
+    EXPECT_FALSE(E_Screen->render_target_is_straight_alpha())
+        << "the shared classic canvas keeps the RGB-only blend";
+
+    const auto ink = [](unsigned char index) {
+        int r = 0, g = 0, b = 0;
+        query_palette_reg(index, &r, &g, &b);
+        return std::array<Uint8, 3>{static_cast<Uint8>(r * 4),
+                                    static_cast<Uint8>(g * 4),
+                                    static_cast<Uint8>(b * 4)};
+    };
+    const NativeWorldViewDestination destination{CanvasTarget::GameplayUI,
+                                                 10, 20, 2, 1};
+    EXPECT_FALSE(s->begin_native_hud_sprite(destination, 0, 2))
+        << "an empty raster is refused";
+    SDL_Surface* const world = E_Screen->render;
+    ASSERT_TRUE(s->begin_native_hud_sprite(destination, 4, 2));
+    EXPECT_EQ(4, s->canvas_w());
+    EXPECT_EQ(2, s->canvas_h());
+    EXPECT_TRUE(E_Screen->render_target_is_straight_alpha());
+    EXPECT_FLOAT_EQ(0.0f, s->hud_sprite_scale()) << "one plane at a time";
+    EXPECT_FALSE(s->begin_native_hud_sprite(destination, 4, 2));
+    s->pointb(0, 0, static_cast<unsigned char>(40), static_cast<unsigned char>(112));
+    s->set_active_canvas(CanvasTarget::UI);
+    s->pointb(3, 1, static_cast<unsigned char>(31), static_cast<unsigned char>(255));
+    s->set_active_canvas(CanvasTarget::World);
+    ASSERT_TRUE(s->end_native_hud_sprite());
+    EXPECT_EQ(world, E_Screen->render) << "end restores the canvas";
+    EXPECT_FALSE(s->end_native_hud_sprite());
+    ASSERT_EQ(1u, E_Screen->hud_sprite_ready_count_for_testing());
+
+    SDL_Surface* const plane = E_Screen->hud_sprite_surface_for_testing(0);
+    ASSERT_NE(nullptr, plane);
+    const auto plane_at = [plane](int x, int y) {
+        const auto* const row = reinterpret_cast<const Uint32*>(
+            static_cast<const Uint8*>(plane->pixels) +
+            static_cast<std::ptrdiff_t>(y) * plane->pitch);
+        std::array<Uint8, 4> c{};
+        SDL_GetRGBA(row[x], SDL_GetPixelFormatDetails(plane->format), nullptr,
+                    &c[0], &c[1], &c[2], &c[3]);
+        return c;
+    };
+    const auto red = ink(40);
+    const auto white = ink(31);
+    EXPECT_EQ((std::array<Uint8, 4>{red[0], red[1], red[2], 112}), plane_at(0, 0));
+    EXPECT_EQ((std::array<Uint8, 4>{white[0], white[1], white[2], 255}),
+              plane_at(3, 1))
+        << "drawn after a UI canvas scope: still into the plane";
+    EXPECT_EQ((std::array<Uint8, 4>{0, 0, 0, 0}), plane_at(1, 0));
+
+    s->buffer_to_screen(0, 0, s->canvas_w(), s->canvas_h());
+    SDL_Surface* const presented =
+        SDL_RenderReadPixels(E_Screen->renderer, nullptr);
+    ASSERT_NE(nullptr, presented);
+    ASSERT_EQ(640, presented->w);
+    const auto shown = [presented](int x, int y) {
+        const auto* const row = reinterpret_cast<const Uint32*>(
+            static_cast<const Uint8*>(presented->pixels) +
+            static_cast<std::ptrdiff_t>(y) * presented->pitch);
+        std::array<Uint8, 3> c{};
+        SDL_GetRGB(row[x], SDL_GetPixelFormatDetails(presented->format),
+                   SDL_GetSurfacePalette(presented), &c[0], &c[1], &c[2]);
+        return c;
+    };
+    // The rectangle (10, 20, 2, 1) is screen (20, 40, 4, 2).
+    const auto red_over_black = shown(20, 40);
+    for (int c = 0; c < 3; ++c)
+        EXPECT_NEAR(red[static_cast<std::size_t>(c)] * 112 / 255,
+                    red_over_black[static_cast<std::size_t>(c)], 1);
+    EXPECT_EQ(white, shown(23, 41)) << "a solid pixel lands as itself";
+    EXPECT_EQ((std::array<Uint8, 3>{0, 0, 0}), shown(21, 40));
+    EXPECT_EQ((std::array<Uint8, 3>{0, 0, 0}), shown(24, 41))
+        << "the plane is 4x2 screen pixels, no more";
+    SDL_DestroySurface(presented);
+    EXPECT_EQ(0u, E_Screen->hud_sprite_ready_count_for_testing())
+        << "a present consumes the queued planes";
+
+    // A cancelled plane restores the canvas and is never queued.
+    ASSERT_TRUE(s->begin_native_hud_sprite(destination, 4, 2));
+    s->cancel_native_hud_sprite();
+    EXPECT_EQ(world, E_Screen->render);
+    EXPECT_EQ(0u, E_Screen->hud_sprite_ready_count_for_testing());
+    s->cancel_native_hud_sprite();
 }
 
 TEST(CanvasScale, native_world_plane_rejects_invalid_and_over_budget_transactions)

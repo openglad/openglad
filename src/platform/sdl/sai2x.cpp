@@ -1045,6 +1045,7 @@ Screen::~Screen()
 #endif
 	destroy_render2();
 	destroy_native_world_view_planes();
+	destroy_hud_sprite_planes();
 	destroy_gameplay_ui_overlay();
 	if (world_tex_ != ui_tex_)
 		SDL_DestroyTexture(world_tex_);
@@ -1059,6 +1060,8 @@ Screen::~Screen()
 
 int Screen::canvas_w() const
 {
+	if (SDL_Surface* const sprite = active_hud_sprite_surface())
+		return sprite->w;
 	if (native_world_view_active_index_ >= 0)
 	{
 		const std::size_t index = static_cast<std::size_t>(
@@ -1079,6 +1082,8 @@ int Screen::canvas_w() const
 
 int Screen::canvas_h() const
 {
+	if (SDL_Surface* const sprite = active_hud_sprite_surface())
+		return sprite->h;
 	if (native_world_view_active_index_ >= 0)
 	{
 		const std::size_t index = static_cast<std::size_t>(
@@ -1111,6 +1116,7 @@ void Screen::set_active_canvas(CanvasTarget target)
 	// World coordinates instead of repeatedly quantizing it through the much
 	// smaller fixed overlay. Real interactive UI transitions still remap.
 	const bool remap_pointer = native_world_view_active_index_ < 0 &&
+		hud_sprite_active_index_ < 0 &&
 		target != CanvasTarget::GameplayUI &&
 		active_ != CanvasTarget::GameplayUI &&
 		og::runtime::current_session != nullptr &&
@@ -1156,6 +1162,14 @@ void Screen::set_active_canvas(CanvasTarget target)
 			render_tex = native_world_view_planes_[index].texture;
 		}
 	}
+	// The same for an open HUD sprite plane: a canvas scope entered while
+	// the hotbar draws into its plane must not un-redirect it.
+	if (SDL_Surface* const sprite = active_hud_sprite_surface())
+	{
+		render = sprite;
+		render_tex = hud_sprite_planes_[static_cast<std::size_t>(
+			hud_sprite_active_index_)].texture;
+	}
 	if (remap_pointer)
 	{
 		const auto [x, y] = window_to_active_canvas(
@@ -1169,6 +1183,9 @@ void Screen::begin_gameplay_frame()
 {
 	gameplay_ui_frame_active_ = false;
 	gameplay_ui_capture_valid_ = false;
+	// A new gameplay frame supersedes any HUD sprite the last one queued or
+	// presented: its HUD draws them again.
+	discard_hud_sprites();
 	const bool smart_smoothing =
 		world_scale_.mode == og::WorldScaleMode::Sai ||
 		world_scale_.mode == og::WorldScaleMode::Eagle;
@@ -1198,6 +1215,7 @@ void Screen::discard_gameplay_ui_frame()
 {
 	gameplay_ui_frame_active_ = false;
 	gameplay_ui_capture_valid_ = false;
+	discard_hud_sprites();
 	set_active_canvas(active_);
 }
 
@@ -1812,12 +1830,193 @@ void Screen::destroy_native_world_view_planes()
 	native_world_view_planes_.clear();
 }
 
+SDL_Surface* Screen::active_hud_sprite_surface() const
+{
+	if (hud_sprite_active_index_ < 0)
+		return nullptr;
+	return hud_sprite_planes_[static_cast<std::size_t>(
+		hud_sprite_active_index_)].surface;
+}
+
+bool Screen::render_target_is_straight_alpha() const
+{
+	return (render == gameplay_ui_surf_ && gameplay_ui_frame_active_) ||
+	       hud_sprite_active_index_ >= 0;
+}
+
+float Screen::hud_sprite_scale() const
+{
+	if (renderer == nullptr || hud_sprite_active_index_ >= 0 ||
+	    native_world_view_active_index_ >= 0)
+		return 0.0f;
+	// The HUD canvas as GameplayUI draws see it this frame: the overlay when
+	// one is active, else the World surface it aliases. Only a UI-sized one
+	// (the shipped Legacy 320x200 shares World and qualifies) has the fixed
+	// coordinates a sprite destination is written in.
+	const bool overlay = gameplay_ui_frame_active_ &&
+		gameplay_ui_surf_ != nullptr && gameplay_ui_tex_ != nullptr;
+	const int hud_w = overlay ? gameplay_ui_w() : world_w_;
+	const int hud_h = overlay ? gameplay_ui_h() : world_h_;
+	if (hud_w != gameplay_ui_w() || hud_h != gameplay_ui_h() ||
+	    gameplay_ui_h() <= 0)
+		return 0.0f;
+	// Sized as begin_native_world_view sizes its raster: the fitted
+	// viewport's height over the canvas height, in physical pixels.
+	og::CanvasViewport viewport{0, 0, gameplay_ui_w(), gameplay_ui_h()};
+	if (og::runtime::current_session != nullptr)
+	{
+		const auto* const session = og::runtime::current_session;
+		viewport = og::fit_canvas_in_viewport(
+			gameplay_ui_w(), gameplay_ui_h(),
+			static_cast<int>(session->viewport_offset_x_),
+			static_cast<int>(session->viewport_offset_y_),
+			static_cast<int>(session->viewport_w_),
+			static_cast<int>(session->viewport_h_));
+	}
+	const SDL_FRect physical = renderer_output_rect(
+		renderer, 0.0f, 0.0f, static_cast<float>(viewport.w),
+		static_cast<float>(viewport.h));
+	if (!std::isfinite(physical.h) || physical.h <= 0.0f)
+		return 0.0f;
+	return physical.h / static_cast<float>(gameplay_ui_h());
+}
+
+bool Screen::ensure_hud_sprite_plane(std::size_t index, int source_w,
+                                     int source_h)
+{
+	const bool force_failure = fail_next_hud_sprite_allocation_;
+	fail_next_hud_sprite_allocation_ = false;
+	if (index >= hud_sprite_planes_.size())
+		hud_sprite_planes_.resize(index + 1);
+	HudSpritePlane& plane = hud_sprite_planes_[index];
+	if (!force_failure && plane.surface != nullptr &&
+	    plane.surface->w == source_w && plane.surface->h == source_h)
+		return true;
+
+	SDL_Surface* const next_surface = force_failure ? nullptr : SDL_CreateSurface(
+		source_w, source_h, SDL_PIXELFORMAT_ARGB8888);
+	SDL_Texture* const next_texture = next_surface != nullptr
+		? SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888,
+		                    SDL_TEXTUREACCESS_STREAMING, source_w, source_h)
+		: nullptr;
+	if (next_surface == nullptr || next_texture == nullptr)
+	{
+		LogError("HUD sprite allocation failed for {}x{}: {}\n", source_w,
+		         source_h, SDL_GetError());
+		SDL_DestroyTexture(next_texture);
+		SDL_DestroySurface(next_surface);
+		return false;
+	}
+	SDL_SetTextureBlendMode(next_texture, SDL_BLENDMODE_BLEND);
+	// Every source pixel stays a crisp block at any scale (nearest on the
+	// software renderer); NEAREST where the backend lacks pixel-art sampling.
+	if (!SDL_SetTextureScaleMode(next_texture, SDL_SCALEMODE_PIXELART))
+		SDL_SetTextureScaleMode(next_texture, SDL_SCALEMODE_NEAREST);
+	SDL_DestroyTexture(plane.texture);
+	SDL_DestroySurface(plane.surface);
+	plane.surface = next_surface;
+	plane.texture = next_texture;
+	return true;
+}
+
+bool Screen::begin_native_hud_sprite(const NativeWorldViewDestination& destination,
+                                     int source_w, int source_h)
+{
+	if (hud_sprite_scale() <= 0.0f || destination.w <= 0 ||
+	    destination.h <= 0 || source_w <= 0 || source_h <= 0 ||
+	    source_w > kUiCanvasW || source_h > kUiCanvasH)
+		return false;
+	// A new HUD frame supersedes the preceding capture.
+	hud_sprite_capture_count_ = 0;
+	const std::size_t index = hud_sprite_ready_count_;
+	if (!ensure_hud_sprite_plane(index, source_w, source_h))
+		return false;
+	HudSpritePlane& plane = hud_sprite_planes_[index];
+	SDL_FillSurfaceRect(plane.surface, nullptr, 0x00000000u);
+	plane.destination = destination;
+	hud_sprite_saved_render_ = render;
+	hud_sprite_saved_texture_ = render_tex;
+	hud_sprite_saved_canvas_ = active_;
+	hud_sprite_active_index_ = static_cast<int>(index);
+	render = plane.surface;
+	render_tex = plane.texture;
+	return true;
+}
+
+bool Screen::end_native_hud_sprite()
+{
+	if (hud_sprite_active_index_ < 0)
+		return false;
+	const std::size_t index = static_cast<std::size_t>(hud_sprite_active_index_);
+	cancel_native_hud_sprite();
+	hud_sprite_ready_count_ = index + 1;
+	return true;
+}
+
+void Screen::cancel_native_hud_sprite()
+{
+	if (hud_sprite_active_index_ < 0)
+		return;
+	render = hud_sprite_saved_render_;
+	render_tex = hud_sprite_saved_texture_;
+	active_ = hud_sprite_saved_canvas_;
+	hud_sprite_saved_render_ = nullptr;
+	hud_sprite_saved_texture_ = nullptr;
+	hud_sprite_active_index_ = -1;
+}
+
+void Screen::discard_hud_sprites()
+{
+	cancel_native_hud_sprite();
+	hud_sprite_ready_count_ = 0;
+	hud_sprite_capture_count_ = 0;
+}
+
+void Screen::destroy_hud_sprite_planes()
+{
+	discard_hud_sprites();
+	for (HudSpritePlane& plane : hud_sprite_planes_)
+	{
+		SDL_DestroyTexture(plane.texture);
+		SDL_DestroySurface(plane.surface);
+	}
+	hud_sprite_planes_.clear();
+}
+
+// The CPU mirror of swap()'s HUD sprite composite, onto a capture of the
+// World present (`composed`, a whole multiple of the GameplayUI canvas when
+// it is the scenery or the smart-scaled scratch): each queued or
+// just-presented plane blended onto its scaled destination, nearest.
+void Screen::composite_hud_sprites_for_capture(SDL_Surface* composed) const
+{
+	const std::size_t count = hud_sprite_ready_count_ > 0
+		? hud_sprite_ready_count_ : hud_sprite_capture_count_;
+	const int gw = gameplay_ui_w();
+	const int gh = gameplay_ui_h();
+	for (std::size_t i = 0; i < count && i < hud_sprite_planes_.size(); ++i)
+	{
+		const HudSpritePlane& plane = hud_sprite_planes_[i];
+		const NativeWorldViewDestination& d = plane.destination;
+		const int x0 = d.x * composed->w / gw;
+		const int y0 = d.y * composed->h / gh;
+		const int x1 = (d.x + d.w) * composed->w / gw;
+		const int y1 = (d.y + d.h) * composed->h / gh;
+		SDL_Rect dst{x0, y0, std::max(1, x1 - x0), std::max(1, y1 - y0)};
+		SDL_SetSurfaceBlendMode(plane.surface, SDL_BLENDMODE_BLEND);
+		if (!SDL_BlitSurfaceScaled(plane.surface, nullptr, composed, &dst,
+		                           SDL_SCALEMODE_NEAREST))
+			LogError("Failed to composite HUD sprite capture: {}\n",
+			         SDL_GetError());
+	}
+}
+
 bool Screen::recreate_render_backend()
 {
 	// Free every GPU-side object owned by this Screen. The render2 scratch
 	// and gameplay-UI overlay are lazy caches that self-recreate on demand.
 	destroy_render2();
 	destroy_native_world_view_planes();
+	destroy_hud_sprite_planes();
 	destroy_gameplay_ui_overlay();
 	if (world_tex_ != ui_tex_)
 		SDL_DestroyTexture(world_tex_);
@@ -2057,8 +2256,12 @@ SDL_Surface* Screen::compose_gameplay_ui_for_capture(SDL_Surface* scenery) const
 				native_world_available = true;
 		}
 	}
+	const bool hud_sprite_available =
+		(hud_sprite_ready_count_ > 0 ? hud_sprite_ready_count_
+		                             : hud_sprite_capture_count_) > 0;
 	if (scenery == nullptr ||
-	    (!overlay_available && !apply_slices && !native_world_available))
+	    (!overlay_available && !apply_slices && !native_world_available &&
+	     !hud_sprite_available))
 		return nullptr;
 	SDL_Surface* composed = SDL_CreateSurface(
 		scenery->w, scenery->h, SDL_PIXELFORMAT_XRGB8888);
@@ -2092,6 +2295,7 @@ SDL_Surface* Screen::compose_gameplay_ui_for_capture(SDL_Surface* scenery) const
 		SDL_DestroySurface(composed);
 		return nullptr;
 	}
+	composite_hud_sprites_for_capture(composed);
 	SDL_Surface* const with_native = compose_native_world_views_for_capture(
 		composed, CanvasTarget::World);
 	if (with_native != nullptr)
@@ -2218,6 +2422,7 @@ void Screen::swap(int x, int y, int w, int h)
 	if (suppress_present)
 	{
 		discard_native_world_views();
+		discard_hud_sprites();
 		return;
 	}
 
@@ -2400,6 +2605,38 @@ void Screen::swap(int x, int y, int w, int h)
 		}
     }
 
+	// HUD sprite planes (the split-screen hotbar): the HUD's own pixels at
+	// the display's resolution, over the overlay, under the camera insets.
+	// A GameplayUI destination draws only on a World present, so a pause
+	// modal on the UI canvas never shows a stray strip.
+	for (std::size_t i = 0; i < hud_sprite_ready_count_ &&
+	                         i < hud_sprite_planes_.size(); ++i)
+	{
+		HudSpritePlane& plane = hud_sprite_planes_[i];
+		if (active_ != CanvasTarget::World)
+			break;
+		if (!SDL_UpdateTexture(plane.texture, nullptr, plane.surface->pixels,
+		                       plane.surface->pitch))
+		{
+			LogError("Unable to upload HUD sprite: {}\n", SDL_GetError());
+			continue;
+		}
+		const og::CanvasViewport viewport = gameplay_ui_canvas_viewport();
+		const NativeWorldViewDestination& d = plane.destination;
+		const float gw = static_cast<float>(gameplay_ui_w());
+		const float gh = static_cast<float>(gameplay_ui_h());
+		const SDL_FRect physical = renderer_output_rect(
+			renderer,
+			static_cast<float>(viewport.x) +
+				static_cast<float>(d.x * viewport.w) / gw,
+			static_cast<float>(viewport.y) +
+				static_cast<float>(d.y * viewport.h) / gh,
+			static_cast<float>(d.w * viewport.w) / gw,
+			static_cast<float>(d.h * viewport.h) / gh);
+		if (!SDL_RenderTexture(renderer, plane.texture, nullptr, &physical))
+			LogError("Unable to composite HUD sprite: {}\n", SDL_GetError());
+	}
+
 	// Native world planes are the final content layer: their source rasters
 	// never entered UI/GameplayUI, and their logical rectangles are mapped
 	// straight to renderer output pixels here. This is shared by every inset
@@ -2455,6 +2692,8 @@ void Screen::swap(int x, int y, int w, int h)
     SDL_RenderPresent(renderer);
 	native_world_view_capture_count_ = native_world_view_ready_count_;
 	native_world_view_ready_count_ = 0;
+	hud_sprite_capture_count_ = hud_sprite_ready_count_;
+	hud_sprite_ready_count_ = 0;
 	// The single present site: whatever the window showed before, it now
 	// shows this canvas. Only a completed fadeblack(false) sets the flag back.
 	window_is_black_ = false;

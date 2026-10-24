@@ -144,6 +144,14 @@ public:
     }
     bool draw_rgba_scaled(const og::io::RgbaImage& image, Sint32 x,
                           Sint32 y, Sint32 w, Sint32 h) override;
+    float hud_sprite_scale() const override
+    {
+        return video_impl_->hud_sprite_scale();
+    }
+    bool begin_native_hud_sprite(const NativeWorldViewDestination& destination,
+                                 int src_w, int src_h) override;
+    bool end_native_hud_sprite() override;
+    void cancel_native_hud_sprite() override;
     bool floor_layer_begin(Sint32 x, Sint32 y, Sint32 w, Sint32 h) override;
     void floor_layer_end(Sint32 x, Sint32 y, Sint32 w, Sint32 h,
                          float scale, Sint32 cx, Sint32 cy,
