@@ -1014,3 +1014,10 @@ TEST(InputMappings, saved_entries_are_stamped_and_never_migrated_again)
     ASSERT_TRUE(erase_mapping(config, "WASD"));
     EXPECT_TRUE(config.data["mappings"].empty());
 }
+
+// The web touch overlay flag starts down: only openglad_web_touch_enable
+// raises it, so native, text and curses clients never hide seat 0's hotbar.
+TEST(InputHardwareState, touch_overlay_starts_down)
+{
+    EXPECT_FALSE(InputHardwareState{}.touch_overlay_active);
+}

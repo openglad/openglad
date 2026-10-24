@@ -32,8 +32,10 @@
 #include <openglad/resources/filesystem.h>
 #include <openglad/resources/gloader.h>
 #include <openglad/resources/og_file.h>
+#include <openglad/resources/our_palette.h>
 #include <openglad/resources/packs.h>
 
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstring>
@@ -510,4 +512,69 @@ TEST(AbilityIcons, a_pack_icon_resolves_through_the_pack_mount)
     ASSERT_TRUE(file.valid());
     for (std::size_t i = 0; i < kPixelCount; ++i)
         ASSERT_EQ(file.data[i], flare->ready.data[i]) << "pixel " << i;
+}
+
+// The touch buttons' copy of a picture (og::ui::icon_rgba): index 0 is
+// transparent, every other index is its palette entry widened v * 4 (what
+// pointb and putdata draw), alpha 255; the locked copy converts through the
+// same table; a picture that is not one 16x16 frame is all transparent.
+//
+// RED (planted): `v * 4` -> `v * 255 / 63` (the fill reads 73, not 72);
+// index 0 kept opaque (pixel 0's alpha reads 255).
+TEST(AbilityIcons, icon_rgba_is_the_drawn_picture_in_straight_alpha)
+{
+    std::array<unsigned char, 768> palette{};
+    for (int i = 0; i < 768; ++i)
+        palette[static_cast<std::size_t>(i)] = our_pal_lookup(i);
+    unsigned char raw[kPixelCount] = {};
+    raw[1] = 18;   // the slot's fill grey
+    raw[2] = 16;   // the outline black
+    raw[3] = 40;   // the red ramp
+    // PixieData owns the buffer it is handed.
+    auto* owned = new unsigned char[kPixelCount];
+    std::memcpy(owned, raw, kPixelCount);
+    const PixieData picture(1, kIcon, kIcon, owned);
+    const auto rgba = og::ui::icon_rgba(picture, palette);
+    // Index 0 (pixel 0): nothing at all.
+    for (std::size_t c = 0; c < 4; ++c)
+        EXPECT_EQ(0, rgba[c]) << "channel " << c;
+    // Index 18: (72, 72, 72, 255).
+    EXPECT_EQ(72, rgba[4]);
+    EXPECT_EQ(72, rgba[5]);
+    EXPECT_EQ(72, rgba[6]);
+    EXPECT_EQ(255, rgba[7]);
+    // Index 16: opaque black, not transparent.
+    EXPECT_EQ(0, rgba[8]);
+    EXPECT_EQ(255, rgba[11]);
+    // Index 40: its palette entry times four.
+    for (std::size_t c = 0; c < 3; ++c)
+        EXPECT_EQ(our_pal_lookup(40 * 3 + static_cast<int>(c)) * 4,
+                  rgba[12 + c]);
+    EXPECT_EQ(255, rgba[15]);
+
+    // A real icon and its locked copy: every pixel is the table's.
+    AbilityIcons icons;
+    const AbilityIcon* teleport = icons.icon_at("icons/teleport.png");
+    ASSERT_NE(nullptr, teleport);
+    const auto& lut = og::ui::locked_icon_lut();
+    const auto ready = og::ui::icon_rgba(teleport->ready, palette);
+    const auto locked = og::ui::icon_rgba(teleport->locked, palette);
+    for (std::size_t i = 0; i < kPixelCount; ++i) {
+        const std::size_t r = teleport->ready.data[i];
+        const std::size_t g = lut[r];
+        ASSERT_EQ(g, static_cast<std::size_t>(teleport->locked.data[i]));
+        ASSERT_EQ(r == 0 ? 0 : 255, ready[i * 4 + 3]) << "pixel " << i;
+        ASSERT_EQ(g == 0 ? 0 : 255, locked[i * 4 + 3]) << "pixel " << i;
+        if (g != 0) {
+            ASSERT_EQ(palette[g * 3] * 4, locked[i * 4]) << "pixel " << i;
+        }
+    }
+
+    // Not one 16x16 frame: transparent throughout.
+    auto* small = new unsigned char[64]();
+    small[0] = 18;
+    const PixieData wrong(1, 8, 8, small);
+    const auto none = og::ui::icon_rgba(wrong, palette);
+    for (const unsigned char byte : none)
+        ASSERT_EQ(0, byte);
 }

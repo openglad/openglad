@@ -8,15 +8,23 @@
 // Native touch input writes the same held-state seam from its SDL path.
 #ifdef __EMSCRIPTEN__
 
+#include <openglad/gameplay/pixie_data.h>
+#include <openglad/interface/ability_icons.h>
+#include <openglad/interface/belt_touch.h>
 #include <openglad/interface/input.h>
 #include <openglad/interface/native_input.h>
 #include <openglad/interface/session_state.h>
 #include <openglad/interface/web_back_key.h>
 
 #include <emscripten.h>
+#include <emscripten/val.h>
 
 #include <array>
+#include <cstdint>
 #include <cstring>
+#include <set>
+#include <span>
+#include <string>
 
 namespace
 {
@@ -56,6 +64,108 @@ EM_JS(void, og_touch_mirror_enable_js, (int on), {
 EM_JS(void, og_single_seat_mirror_js, (int on), {
     window.__opengladSingleSeat = !!on;
 });
+
+// New Ability Select on the touch buttons (issue #384): the HUD hands seat
+// 0's resolved slots over once per frame (og::ui::publish_belt_touch); this
+// pushes them to the page only when they change, as a CustomEvent
+// 'openglad-belt' plus the mirror window.__opengladBelt. Every field is the
+// engine's own (hudHidden is the HUD's hide decision, copied). A picture
+// crosses as its 16x16 RGBA bytes (og::ui::icon_rgba over the live palette,
+// the HUD's colours) the first time its pictureKey is sent; the page keeps
+// it by key. The key is the drawn path, the locked flag and a hash of those
+// bytes, so a brightness or palette change sends new pictures while the
+// colour cycling of the water and fire bands (which no icon uses) does not.
+struct BeltPush
+{
+    std::string last_signature;
+    std::set<std::string> sent_pictures;
+};
+
+BeltPush& belt_push()
+{
+    static BeltPush push;
+    return push;
+}
+
+using IconRgba = std::array<unsigned char, 16 * 16 * 4>;
+
+std::string picture_key(const og::ui::BeltTouchCell& cell,
+                        const IconRgba& rgba)
+{
+    if (cell.picture == nullptr)
+        return {};
+    std::uint32_t hash = 2166136261u; // FNV-1a
+    for (const unsigned char byte : rgba)
+        hash = (hash ^ byte) * 16777619u;
+    return std::string(cell.drawn) + "|" + (cell.locked_copy ? "1" : "0") +
+        "|" + std::to_string(hash);
+}
+
+void push_belt_state(const og::ui::BeltTouchState& state)
+{
+    using emscripten::val;
+    BeltPush& push = belt_push();
+    const std::span<const unsigned char, 768> palette(
+        og::runtime::current_session->curpal_);
+
+    std::array<IconRgba, 3> pixels{};
+    std::array<std::string, 3> keys;
+    std::string signature;
+    signature += state.belt_hud ? "B" : "b";
+    signature += state.hud_hidden ? "H" : "h";
+    signature += state.shift ? "S" : "s";
+    for (std::size_t i = 0; i < state.cells.size(); ++i)
+    {
+        const og::ui::BeltTouchCell& cell = state.cells[i];
+        if (cell.picture != nullptr)
+            pixels[i] = og::ui::icon_rgba(*cell.picture, palette);
+        keys[i] = picture_key(cell, pixels[i]);
+        signature += "|";
+        signature += keys[i];
+        signature += ";";
+        signature += cell.state;
+        signature += ";";
+        signature += cell.pressed ? "P" : "p";
+        signature += ";";
+        signature += cell.label;
+    }
+    if (signature == push.last_signature)
+        return;
+    push.last_signature = signature;
+
+    val detail = val::object();
+    detail.set("beltHud", state.belt_hud);
+    detail.set("hudHidden", state.hud_hidden);
+    detail.set("shift", state.shift);
+    val cells = val::array();
+    for (std::size_t i = 0; i < state.cells.size(); ++i)
+    {
+        const og::ui::BeltTouchCell& cell = state.cells[i];
+        val c = val::object();
+        c.set("key", cell.key);
+        c.set("label", cell.label);
+        c.set("state", std::string(cell.state));
+        c.set("pressed", cell.pressed);
+        c.set("drawn", std::string(cell.drawn));
+        c.set("locked", cell.locked_copy);
+        c.set("pictureKey", keys[i]);
+        if (!keys[i].empty() && push.sent_pictures.insert(keys[i]).second)
+            c.set("pixels",
+                  val::global("Uint8ClampedArray")
+                      .new_(val(emscripten::typed_memory_view(
+                          pixels[i].size(), pixels[i].data()))));
+        cells.call<void>("push", c);
+    }
+    detail.set("cells", cells);
+
+    val window = val::global("window");
+    window.set("__opengladBelt", detail);
+    val init = val::object();
+    init.set("detail", detail);
+    window.call<void>("dispatchEvent",
+                      val::global("CustomEvent").new_(val("openglad-belt"),
+                                                      init));
+}
 } // namespace
 
 extern "C"
@@ -90,6 +200,13 @@ EMSCRIPTEN_KEEPALIVE int openglad_web_touch_enable(int on)
     og_touch_mirror_enable_js(on != 0 ? 1 : 0);
     if (!session_ready())
         return 0;
+    // The HUD hides seat 0's hotbar while this is set (new_score_panel), and
+    // shows it again when the overlay goes away.
+    og::input::set_touch_overlay_active(on != 0);
+    // Registered on the first enable and kept: with the overlay off the page
+    // still hears the slots, and the HUD's hud_hidden going false.
+    if (on != 0 && !og::ui::belt_touch_observed())
+        og::ui::set_belt_touch_observer(&push_belt_state);
     // Touch diagonals are source-aware in input_state_from_sdl and therefore
     // do not mutate (or depend on) the player's keyboard control mode.
     if (on == 0)

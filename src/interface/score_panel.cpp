@@ -13,6 +13,7 @@
  */
 
 #include <openglad/interface/ability_icons.h>
+#include <openglad/interface/belt_touch.h>
 #include <openglad/interface/base.h>
 #include <openglad/interface/fps_overlay.h>
 #include <openglad/interface/hud_counter_box.h>
@@ -945,6 +946,7 @@ struct BeltHudCell
     const char* declared = "none";      // the icon path the ability names
     const char* drawn = "none";         // the path whose pixels the cell shows
     const PixieData* picture = nullptr; // the ready or the locked copy
+    bool locked_copy = false;           // `picture` is the grey locked copy
     const char* state = "empty";        // castable, short, locked, disabled
     bool pressed = false;               // the seat holds this SPEC key
     unsigned char frame = kBeltFrameInk;
@@ -1020,11 +1022,16 @@ static BeltHudStrip place_belt_strip(bool compact, bool half, Sint32 lm,
 //   empty     the fill alone, black frame, the key in the dim ink
 // An ability with no icon, or one whose file does not load, shows the
 // generic tile; with not even that, the cell is its frame and its label.
-static void plan_belt_strip(BeltHudStrip& strip, screen* s, walker& control,
-                            int players, Sint32 lm,
-                            unsigned char text_color, bool boxed)
+//
+// resolve_belt_cells is the only place a slot's state, picture and label are
+// decided; plan_belt_strip places what it resolved, and the touch buttons
+// (publish_seat_belt) show the same cells.
+static std::array<BeltHudCell, 3> resolve_belt_cells(
+    screen* s, walker& control, int players, unsigned char text_color,
+    bool boxed)
 {
     namespace belt = og::sim::belt;
+    std::array<BeltHudCell, 3> cells{};
     const FamilyDescriptor* const fd = get_family_descriptor(
         static_cast<int>(control.family()));
     const belt::Layout layout =
@@ -1041,11 +1048,9 @@ static void plan_belt_strip(BeltHudStrip& strip, screen* s, walker& control,
 
     for (int i = 0; i < 3; ++i)
     {
-        BeltHudCell& cell = strip.cells[static_cast<std::size_t>(i)];
+        BeltHudCell& cell = cells[static_cast<std::size_t>(i)];
         cell.key = i + 1;
         cell.shift = shift;
-        cell.x = lm + kBeltStripLeft + kBeltCellPitch * i;
-        cell.y = strip.top;
         cell.shadow = !boxed;
         const int index = belt::slot_index(cell.key, shift);
         const belt::Resolved& slot = layout[static_cast<std::size_t>(index)];
@@ -1070,11 +1075,13 @@ static void plan_belt_strip(BeltHudStrip& strip, screen* s, walker& control,
                 cell.state = "locked";
                 cell.label = std::format("L{}", slot.opens_at);
                 cell.picture = icon ? &icon->locked : nullptr;
+                cell.locked_copy = cell.picture != nullptr;
             }
             else if (control.specials_disabled())
             {
                 cell.state = "disabled";
                 cell.picture = icon ? &icon->locked : nullptr;
+                cell.locked_copy = cell.picture != nullptr;
             }
             else
             {
@@ -1092,12 +1099,75 @@ static void plan_belt_strip(BeltHudStrip& strip, screen* s, walker& control,
                     cell.frame = kBeltFramePressedInk;
             }
         }
+    }
+    return cells;
+}
 
+static void plan_belt_strip(BeltHudStrip& strip, screen* s, walker& control,
+                            int players, Sint32 lm,
+                            unsigned char text_color, bool boxed)
+{
+    strip.cells = resolve_belt_cells(s, control, players, text_color, boxed);
+    for (int i = 0; i < 3; ++i)
+    {
+        BeltHudCell& cell = strip.cells[static_cast<std::size_t>(i)];
+        cell.x = lm + kBeltStripLeft + kBeltCellPitch * i;
+        cell.y = strip.top;
         // Centred under the cell: a glyph is 6px with a blank last column.
         const Sint32 label_w = 6 * static_cast<Sint32>(cell.label.size()) - 1;
         cell.label_x = cell.x + (kBeltCellSize - label_w) / 2;
         cell.label_y = cell.y + kBeltCellSize - 1 + kBeltLabelGap;
     }
+}
+
+// The touch buttons' copy of seat 0's slots (og::ui::publish_belt_touch),
+// once per HUD frame while the web page listens, whether or not the pane
+// draws them. A seat with no live hero (dead, respawning, no control)
+// publishes three empty slots, the bare keys, as its hotbar shows nothing;
+// with the setting off it publishes belt_hud = false.
+static void publish_seat_belt(screen* s, walker* control, bool live_hud,
+                              bool hud_hidden)
+{
+    og::ui::BeltTouchState state;
+    state.belt_hud = og::input::ability_select_on();
+    state.hud_hidden = hud_hidden;
+    if (state.belt_hud && live_hud)
+    {
+        const std::array<BeltHudCell, 3> cells = resolve_belt_cells(
+            s, *control, 0, static_cast<unsigned char>(YELLOW), false);
+        // The cells already read the SHIFTER key: one read, one answer.
+        state.shift = cells[0].shift;
+        for (std::size_t i = 0; i < cells.size(); ++i)
+        {
+            const BeltHudCell& from = cells[i];
+            og::ui::BeltTouchCell& to = state.cells[i];
+            to.key = from.key;
+            to.shift = from.shift;
+            to.drawn = from.drawn;
+            to.locked_copy = from.locked_copy;
+            to.state = from.state;
+            to.pressed = from.pressed;
+            to.label = from.label;
+            to.picture = from.picture;
+        }
+    }
+    else
+    {
+        // No cells were resolved, so the key is read here for the labels.
+        state.shift = isPlayerHoldingKey(0, KEY_SHIFTER);
+        for (std::size_t i = 0; i < state.cells.size(); ++i)
+        {
+            og::ui::BeltTouchCell& to = state.cells[i];
+            to.key = static_cast<int>(i) + 1;
+            to.shift = state.shift;
+            to.label = og::ui::ability_key_label(
+                og::sim::belt::slot_index(to.key, state.shift));
+        }
+    }
+    TRACE("hud", "belt_touch belt_hud=%d hidden=%d shift=%d live=%d",
+          state.belt_hud ? 1 : 0, state.hud_hidden ? 1 : 0,
+          state.shift ? 1 : 0, live_hud ? 1 : 0);
+    og::ui::publish_belt_touch(state);
 }
 
 // Each cell pixel is written once, at its element's alpha (BeltAlpha): the
@@ -1368,7 +1438,16 @@ short new_score_panel(screen* s, short /*do_it*/)
         // client the single local viewport (players == 0) shows a walker whose
         // user() is the *server-global* player slot assigned by bind_player, so
         // a == players check would hide the HUD for every non-host client.
-        if (control && !control->dead() && control->user() != -1)
+        const bool live_hud =
+            control && !control->dead() && control->user() != -1;
+        // The web touch overlay drives seat 0 (shell.html tcSetKey) and its
+        // 1 / 2 / 3 buttons carry seat 0's slots, so that pane draws no
+        // hotbar, no belt rows and no SPC line: its box is the setting-off
+        // box. Decided here, once; the touch state carries it to the page.
+        const bool hud_hidden = players == 0 &&
+            og::input::ability_select_on() &&
+            og::input::touch_overlay_active();
+        if (live_hud)
         {
             // The frozen-time cell is part of the classic HUD block: it rides
             // the same left column, so a view that draws no HUD (a spectator
@@ -1381,7 +1460,10 @@ short new_score_panel(screen* s, short /*do_it*/)
             // New Ability Select draws the hotbar where it fits
             // (place_belt_strip) and the belt rows where it does not; both
             // grow the bottom-left box (kBeltHud*BoxTop above).
-            const bool belt_hud = og::input::ability_select_on();
+            // Seat 0 with the touch overlay on draws no hotbar: its slots are
+            // the touch buttons, so the pane keeps the setting-off box.
+            const bool belt_hud =
+                og::input::ability_select_on() && !hud_hidden;
             // Split screen (two or more local seats; a network client has
             // one) draws the hotbar at half size when the display has at
             // least two pixels per canvas pixel for it.
@@ -1589,7 +1671,7 @@ short new_score_panel(screen* s, short /*do_it*/)
                     s->draw_button(lm+1, score_bottom-26, lm+98,
                                    score_bottom-2, 1, 1);
                 }
-                else
+                else if (!hud_hidden)
                 {
                     Sint32 special_box_bottom = special_y + 6;
                     s->draw_button(lm+1, special_y-2, lm+98,
@@ -1655,7 +1737,7 @@ short new_score_panel(screen* s, short /*do_it*/)
                           row.shadow ? 1 : 0);
                 }
             }
-            else
+            else if (!hud_hidden)
             {
                 // Currently-select special
                 // Alternate special name (if not "NONE")
@@ -1739,6 +1821,10 @@ short new_score_panel(screen* s, short /*do_it*/)
                 }
             }
         }
+        // Outside the live-hero block: a dead or unowned seat 0 must clear
+        // the buttons, not leave the last pictures on them.
+        if (players == 0 && og::ui::belt_touch_observed())
+            publish_seat_belt(s, control, live_hud, hud_hidden);
     }
 
     if (og::runtime::current_session != nullptr &&
