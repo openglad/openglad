@@ -7409,10 +7409,10 @@ TEST(GameLoop, zz_capture_splitscreen_gameplay)
         game_screen->redraw();
         score_panel(game_screen);
         game_screen->refresh();
-        game_screen->swap();
-        gameplay_rec::dump_screen(game_screen, "splitscreen_gameplay", frame);
-        // The split-screen hotbar is a HUD sprite plane the present
-        // composites, not on the canvas above: the window's own pixels.
+        // The split-screen hotbar is a HUD sprite plane that refresh()'s
+        // present composites (the real loop presents once, there), not on
+        // the canvas: read the window's own pixels before the extra swap()
+        // below presents again without it.
         if (const char* dir = getenv("OG_FX_CAPTURE_DIR"))
         {
             PhysicalFrame shot;
@@ -7423,6 +7423,8 @@ TEST(GameLoop, zz_capture_splitscreen_gameplay)
                     (std::string(dir) + "/splitscreen_gameplay_physical")
                         .c_str());
         }
+        game_screen->swap();
+        gameplay_rec::dump_screen(game_screen, "splitscreen_gameplay", frame);
         if (::testing::Test::HasFatalFailure())
             break;
     }
