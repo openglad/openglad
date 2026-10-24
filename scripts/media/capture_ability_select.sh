@@ -26,12 +26,16 @@
 #              100px PANELS columns) and 4 seats at 1280x800, SHIFTER held
 #              at 3 and 4, the box look at 2; the split layouts at 1920x1080
 #              and 640x400; two seats at 480x300, where the strip stays full
-#              size (GladHud.zz_capture_belt_hud_physical in og_test_view)
+#              size; at 640x400 also SHIFTER held, the box look, and the
+#              slot states (red short, white held, grey locked) for 2 and 4
+#              seats (GladHud.zz_capture_belt_hud_physical and
+#              GladHud.zz_capture_belt_hud_states in og_test_view)
 #   radar      a real two-player game with the radar on and the setting on
 #              (GameLoop.zz_capture_splitscreen_gameplay in og_test_game_core),
 #              frame RADAR_FRAME (a quiet frame: no banner across the panes),
 #              once on the shipped OVERLAY-off look and once with it on
-#              (hud-2p-radar-on-overlay, OG_CAPTURE_OVERLAY=1)
+#              (hud-2p-radar-on-overlay, OG_CAPTURE_OVERLAY=1), read back
+#              from the 640x400 window
 #   abilities  the ABILITIES screen, every slot with its icon: the Archmage
 #              (MIND CONTROL on the bench), the same with a slot selected
 #              and after a placement, a level-1 mage (locked slots grey), a
@@ -59,9 +63,10 @@
 #              and locked on grass, on the box grey and on an ABILITIES
 #              face) and the floor sheet at 2x; no game binary needed
 #
-# Canvas pictures (everything but the CHANGELOG! page) are the game's
-# 320x200 canvas doubled to 640x400 with nearest-neighbour, which keeps the
-# small font legible. PPM to PNG is lossless.
+# Canvas pictures (everything but the CHANGELOG! page, the hud-radar step
+# and the radar step) are the game's 320x200 canvas doubled to 640x400 with
+# nearest-neighbour, which keeps the small font legible. The others are the
+# window read back at its own size. PPM to PNG is lossless.
 #
 # Usage:
 #   scripts/media/capture_ability_select.sh [--only <step>]... [--list] [output-dir]
@@ -259,13 +264,17 @@ if wanted hud; then
 fi
 
 if wanted hud-radar; then
-    run_test hud-radar 1 og_test_view 'GladHud.zz_capture_belt_hud_physical' \
+    run_test hud-radar 1 og_test_view \
+        'GladHud.zz_capture_belt_hud_physical:GladHud.zz_capture_belt_hud_states' \
         OG_FX_CAPTURE_DIR="$WORK_DIR/hud-radar"
     for shot in 1p-on-1280x800 2p-on-1280x800 2p-on-box-1280x800 \
         3p-on-1280x800 3p-on-shift-1280x800 3p-panels-on-1280x800 \
         4p-on-1280x800 4p-on-shift-1280x800 2p-on-1920x1080 \
-        3p-on-1920x1080 4p-on-1920x1080 2p-on-640x400 4p-on-640x400 \
-        2p-on-480x300; do
+        3p-on-1920x1080 4p-on-1920x1080 2p-on-640x400 2p-on-shift-640x400 \
+        2p-on-box-640x400 4p-on-640x400 4p-on-shift-640x400 \
+        4p-on-box-640x400 4p-on-shift-box-640x400 2p-on-states-640x400 \
+        2p-on-states-plain-640x400 4p-on-states-640x400 \
+        4p-on-states-plain-640x400 2p-on-480x300; do
         native_png "$WORK_DIR/hud-radar/belt_hud_physical/hud-$shot.ppm" \
             "hud-$shot"
     done
@@ -274,11 +283,11 @@ fi
 if wanted radar; then
     run_test radar 1 og_test_game_core 'GameLoop.zz_capture_splitscreen_gameplay' \
         OG_FX_CAPTURE_DIR="$WORK_DIR/radar"
-    canvas_png "$(printf '%s/radar/splitscreen_gameplay/%03d.ppm' "$WORK_DIR" "$RADAR_FRAME")" \
+    native_png "$(printf '%s/radar/splitscreen_gameplay_physical/%03d.ppm' "$WORK_DIR" "$RADAR_FRAME")" \
         hud-2p-radar-on
     run_test radar-overlay 1 og_test_game_core 'GameLoop.zz_capture_splitscreen_gameplay' \
         OG_FX_CAPTURE_DIR="$WORK_DIR/radar-overlay" OG_CAPTURE_OVERLAY=1
-    canvas_png "$(printf '%s/radar-overlay/splitscreen_gameplay/%03d.ppm' "$WORK_DIR" "$RADAR_FRAME")" \
+    native_png "$(printf '%s/radar-overlay/splitscreen_gameplay_physical/%03d.ppm' "$WORK_DIR" "$RADAR_FRAME")" \
         hud-2p-radar-on-overlay
 fi
 

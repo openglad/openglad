@@ -4,6 +4,7 @@
 #include <chrono>
 #include <cmath>
 #include <filesystem>
+#include <format>
 #include <fstream>
 #include <memory>
 #include <set>
@@ -53,6 +54,7 @@
 #include <openglad/core/util.h>
 #include "test_save_state_guard.h"
 #include "test_live_game.h"
+#include "test_physical_frame.h"
 
 // myscreen is now a macro defined in base.h (via game_session.h)
 
@@ -7409,6 +7411,18 @@ TEST(GameLoop, zz_capture_splitscreen_gameplay)
         game_screen->refresh();
         game_screen->swap();
         gameplay_rec::dump_screen(game_screen, "splitscreen_gameplay", frame);
+        // The split-screen hotbar is a HUD sprite plane the present
+        // composites, not on the canvas above: the window's own pixels.
+        if (const char* dir = getenv("OG_FX_CAPTURE_DIR"))
+        {
+            PhysicalFrame shot;
+            shot.name = std::format("{:03d}", frame);
+            if (read_physical_frame_here(shot))
+                write_physical_frame(
+                    shot,
+                    (std::string(dir) + "/splitscreen_gameplay_physical")
+                        .c_str());
+        }
         if (::testing::Test::HasFatalFailure())
             break;
     }

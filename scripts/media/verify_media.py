@@ -68,9 +68,18 @@ ABILITY_SELECT = {
                       ("4p-on", 1280, 800), ("4p-on-shift", 1280, 800),
                       ("2p-on", 1920, 1080), ("3p-on", 1920, 1080),
                       ("4p-on", 1920, 1080), ("2p-on", 640, 400),
-                      ("4p-on", 640, 400), ("2p-on", 480, 300))},
-    "radar": {"hud-2p-radar-on.png": CANVAS_STILL,
-              "hud-2p-radar-on-overlay.png": CANVAS_STILL},
+                      ("2p-on-shift", 640, 400), ("2p-on-box", 640, 400),
+                      ("4p-on", 640, 400), ("4p-on-shift", 640, 400),
+                      ("4p-on-box", 640, 400), ("4p-on-shift-box", 640, 400),
+                      ("2p-on-states", 640, 400),
+                      ("2p-on-states-plain", 640, 400),
+                      ("4p-on-states", 640, 400),
+                      ("4p-on-states-plain", 640, 400),
+                      ("2p-on", 480, 300))},
+    # A real two-player game, read back from the 640x400 test window (the
+    # half-size strip is not on the canvas).
+    "radar": {"hud-2p-radar-on.png": ("png", 640, 400, 1, None, None),
+              "hud-2p-radar-on-overlay.png": ("png", 640, 400, 1, None, None)},
     "abilities": {f"abilities-{shot}.png": CANVAS_STILL for shot in (
         "archmage", "archmage-selected", "archmage-placed", "mage",
         "barbarian", "train-door-on", "train-door-off")},

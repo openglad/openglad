@@ -6044,7 +6044,8 @@ TEST_F(GladHud, zz_capture_belt_hud)
 // look (no OVERLAY box) unless named "-box"; 1, 2, 3 (FULL and the 100px
 // PANELS columns) and 4 seats at 1280x800, the split layouts at 1920x1080
 // (the classic canvas pillarboxed) and 640x400 (one screen pixel per plane
-// pixel), and two seats at 480x300, where the strip stays full size.
+// pixel; two and four seats, SHIFTER held and the box look too), and two
+// seats at 480x300, where the strip stays full size.
 TEST_F(GladHud, zz_capture_belt_hud_physical)
 {
     const char* const base = getenv("OG_FX_CAPTURE_DIR");
@@ -6081,7 +6082,12 @@ TEST_F(GladHud, zz_capture_belt_hud_physical)
         {3, PREF_VIEW_FULL, false, false, 1920, 1080},
         {4, PREF_VIEW_FULL, false, false, 1920, 1080},
         {2, PREF_VIEW_FULL, false, false, 640, 400},
+        {2, PREF_VIEW_FULL, false, true, 640, 400},
+        {2, PREF_VIEW_FULL, true, false, 640, 400},
         {4, PREF_VIEW_FULL, false, false, 640, 400},
+        {4, PREF_VIEW_FULL, false, true, 640, 400},
+        {4, PREF_VIEW_FULL, true, false, 640, 400},
+        {4, PREF_VIEW_FULL, true, true, 640, 400},
         {2, PREF_VIEW_FULL, false, false, 480, 300},
     };
     for (const Shot& shot : shots)
