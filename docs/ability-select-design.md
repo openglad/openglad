@@ -548,17 +548,43 @@ written in play.
   a black frame, the 16-pixel picture inside. With the grey OVERLAY box on,
   the slots sit on the box; with it off (the shipped look) they sit
   straight on the floor. Either way the picture is on the same dark ground.
+- The slots are see-through, so the game shows under them: the dark fill
+  at 44 % (only where the picture is empty, never under it), the picture
+  and the black frame at 75 %. The red and white frames and the key labels
+  stay solid, because a half-strength red over grass is brown and
+  half-strength labels cannot be read. On average a slot is a little over
+  half see-through. This is the same for every number of players. (With
+  the grey OVERLAY box on, the box is solid, so the slots show the box
+  through them.)
+- **Split screen draws the strip at half size.** With two, three or four
+  players on one screen, in every pane of every layout, the strip is drawn
+  half as wide and half as tall, with the same pictures pixel for pixel:
+  the strip's pixels become the screen's own, smaller than the game's. At
+  the default 640x400 window one picture pixel is one screen pixel, at
+  1280x800 two. The key letters shrink with it (five screen pixels tall at
+  640x400). One player keeps the full-size strip, and so does every player
+  of a network game, who each have their own screen. A window smaller than
+  640x400 would have fewer screen pixels than the pictures have, so there
+  the strip stays full size too.
 - What a slot says (section I.4): ready, the picture as drawn; not enough
   magic, a red frame and a red key label; the key held down, a white frame;
   locked, the grey copy of the picture labelled with the level it opens at
   (`L7`); empty, the bare slot; specials turned off by the level, the grey
   copy.
 - The strip sits where the text rows were: above the score and XP lines in
-  one- and two-seat panes, at the bottom of four-seat panes. The frozen-time
-  and seat-timer cells sit above it.
-- It never covers the message feed or the radar. A pane too small for it
-  (the 100-pixel columns of a three-seat inset layout) falls back to the
-  old text rows, cut to their key labels when they must be.
+  one- and two-seat panes (and the tall first pane of three), at the bottom
+  of four-seat panes (and the other two of three). The frozen-time and
+  seat-timer cells sit above it. At half size it takes 29 by 13 canvas
+  pixels, so the 100-pixel columns of a three-seat inset layout and the
+  104-line two-seat inset carry it too.
+- It never covers the message feed or the radar. A pane too small even for
+  the half strip (the 72- and 80-line insets) falls back to the old text
+  rows, cut to their key labels when they must be.
+- On a phone or tablet with the touch buttons on, the 1, 2 and 3 buttons
+  are the slot pictures themselves (the key in a corner, the state on the
+  button's edge), so the first player's pane draws no strip. Turning the
+  touch buttons off brings the strip back. Other players on the same
+  screen (with gamepads) keep theirs.
 
 The curses status line shows `1:TELEPORT 2:WARP SPACE 3:FREEZE TIME`
 (names cut to 10) and the `S1:` row while SHIFTER is held; the text and
@@ -689,8 +715,11 @@ broken, then restored):
 ## H. Pictures for review
 
 `scripts/media/capture_ability_select.sh` makes every still a reviewer
-needs (the HUD at 1, 2 and 4 seats on and off, the HUD over a real radar
-at 2 and 4 seats, a two-seat game with the radar, the ABILITIES screen, the
+needs (the HUD at 1, 2 and 4 seats on and off, the HUD as the window
+shows it, over grass with the radar, at 1, 2, 3 and 4 seats and at
+640x400, 1280x800, 1920x1080 and 480x300, read back from the screen
+because the half-size strip is drawn there and not on the 320x200 canvas,
+a two-seat game with the radar, the ABILITIES screen, the
 UI FX row, the CHANGELOG! page at 640x400, 1280x800 and 1920x1080, and the
 pictures' own sheets from section I.7) into
 `build/media/ability-select/`, and checks them at the end with
@@ -825,9 +854,10 @@ picture.
   so each stays true; its picture band is smooth-scaled, so no pixel
   picture goes there.
 - **DETAILS, the binding panels, REMAP, HELP**: they show keys or prose.
-- **The web's touch buttons** still read `1 2 3`. Showing the ability's
-  picture on them needs the page to know the seat's belt; it is left as a
-  follow-up.
+- **The web's touch buttons** now carry the pictures (section E.4): the
+  game hands the page the exact pixels it would draw for the first
+  player's three slots, and that pane draws no strip while the buttons are
+  on.
 - **The text and curses clients** keep the names.
 
 ### I.7 How a set of pictures is accepted
@@ -864,6 +894,6 @@ picture.
 7. **The compact HUD cuts names** to 12 letters in four-seat panes rather
    than adding short names to every pack. Superseded: the HUD now shows
    pictures, not names (section I); the cut is kept only for the panes too
-   small for the pictures, which fall back to the text rows.
+   small even for the half-size pictures, which fall back to the text rows.
 8. **The TRAIN door shows dimmed with the setting off**, not hidden.
 9. **Web P2's look-up stays on Right Ctrl** (C.2, chords across seats).

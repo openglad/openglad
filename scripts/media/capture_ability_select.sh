@@ -19,9 +19,14 @@
 #              strip straight on the floor)
 #              (scripts/media/capture_ability_select_hud.sh, which runs
 #              GladHud.zz_capture_belt_hud in og_test_view)
-#   hud-radar  the ON HUD over a real radar, 2 and 4 seats, SHIFTER up and
-#              held: the belt box stops one blank column short of the radar
-#              (GladHud.zz_capture_belt_hud_with_radar in og_test_view)
+#   hud-radar  the HUD as the window shows it (read back from the
+#              renderer at the window's size, since the split-screen strip
+#              is drawn at half size into a plane the 320x200 canvas never
+#              holds), over grass with a real radar: 1, 2, 3 (FULL and the
+#              100px PANELS columns) and 4 seats at 1280x800, SHIFTER held
+#              at 3 and 4, the box look at 2; the split layouts at 1920x1080
+#              and 640x400; two seats at 480x300, where the strip stays full
+#              size (GladHud.zz_capture_belt_hud_physical in og_test_view)
 #   radar      a real two-player game with the radar on and the setting on
 #              (GameLoop.zz_capture_splitscreen_gameplay in og_test_game_core),
 #              frame RADAR_FRAME (a quiet frame: no banner across the panes),
@@ -244,7 +249,9 @@ if wanted hud; then
         KEEP_WORK=1
         die "the HUD capture failed; see $WORK_DIR/hud.log"
     }
-    for scene in 1p_on 1p_off 2p_on 2p_off 4p_on 4p_off 1p_on_shift 4p_on_shift \
+    # Split screen's half-size strip is not on the canvas: its stills are
+    # the hud-radar step's window captures.
+    for scene in 1p_on 1p_off 2p_off 4p_off 1p_on_shift \
         1p_on_plain 1p_on_shift_plain 1p_off_plain; do
         canvas_png "$WORK_DIR/hud/belt_hud_$scene/000.ppm" \
             "hud-$(printf '%s' "$scene" | tr '_' '-')"
@@ -252,11 +259,15 @@ if wanted hud; then
 fi
 
 if wanted hud-radar; then
-    run_test hud-radar 1 og_test_view 'GladHud.zz_capture_belt_hud_with_radar' \
+    run_test hud-radar 1 og_test_view 'GladHud.zz_capture_belt_hud_physical' \
         OG_FX_CAPTURE_DIR="$WORK_DIR/hud-radar"
-    for scene in 2p_on 2p_on_shift 4p_on 4p_on_shift; do
-        canvas_png "$WORK_DIR/hud-radar/belt_hud_radar_$scene/000.ppm" \
-            "hud-radar-$(printf '%s' "$scene" | tr '_' '-')"
+    for shot in 1p-on-1280x800 2p-on-1280x800 2p-on-box-1280x800 \
+        3p-on-1280x800 3p-on-shift-1280x800 3p-panels-on-1280x800 \
+        4p-on-1280x800 4p-on-shift-1280x800 2p-on-1920x1080 \
+        3p-on-1920x1080 4p-on-1920x1080 2p-on-640x400 4p-on-640x400 \
+        2p-on-480x300; do
+        native_png "$WORK_DIR/hud-radar/belt_hud_physical/hud-$shot.ppm" \
+            "hud-$shot"
     done
 fi
 

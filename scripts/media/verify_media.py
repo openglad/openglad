@@ -55,11 +55,20 @@ LUA_CLASSPACKS = {
 CANVAS_STILL = ("png", 640, 400, 1, None, None)
 ABILITY_SELECT = {
     "hud": {f"hud-{scene}.png": CANVAS_STILL for scene in (
-        "1p-on", "1p-off", "2p-on", "2p-off", "4p-on", "4p-off",
-        "1p-on-shift", "4p-on-shift", "1p-on-plain", "1p-on-shift-plain",
+        "1p-on", "1p-off", "2p-off", "4p-off",
+        "1p-on-shift", "1p-on-plain", "1p-on-shift-plain",
         "1p-off-plain")},
-    "hud-radar": {f"hud-radar-{scene}.png": CANVAS_STILL for scene in (
-        "2p-on", "2p-on-shift", "4p-on", "4p-on-shift")},
+    # The window as it shows the HUD, at its real size: the split-screen
+    # strip is drawn at half size at present time, never on the canvas.
+    "hud-radar": {f"hud-{shot}-{w}x{h}.png": ("png", w, h, 1, None, None)
+                  for shot, w, h in (
+                      ("1p-on", 1280, 800), ("2p-on", 1280, 800),
+                      ("2p-on-box", 1280, 800), ("3p-on", 1280, 800),
+                      ("3p-on-shift", 1280, 800), ("3p-panels-on", 1280, 800),
+                      ("4p-on", 1280, 800), ("4p-on-shift", 1280, 800),
+                      ("2p-on", 1920, 1080), ("3p-on", 1920, 1080),
+                      ("4p-on", 1920, 1080), ("2p-on", 640, 400),
+                      ("4p-on", 640, 400), ("2p-on", 480, 300))},
     "radar": {"hud-2p-radar-on.png": CANVAS_STILL,
               "hud-2p-radar-on-overlay.png": CANVAS_STILL},
     "abilities": {f"abilities-{shot}.png": CANVAS_STILL for shot in (
