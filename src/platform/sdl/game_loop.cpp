@@ -141,6 +141,12 @@ void latch_polled_input(GameLoopFrameState& st, const InputState& sampled_input)
                 st.pending_input.players[player].pressed[key] ||
                 sampled_input.players[player].pressed[key];
         }
+        // New Ability Select: a nonzero belt byte replaces the pending one; a
+        // zero keeps it, so a SPEC tap released before the tick still names
+        // its entry beside its OR'd Special press.
+        if (sampled_input.players[player].belt_cast != 0)
+            st.pending_input.players[player].belt_cast =
+                sampled_input.players[player].belt_cast;
     }
 }
 

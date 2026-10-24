@@ -41,6 +41,7 @@
 #include <chrono>
 #include <ctime>
 #include <openglad/resources/gparser.h>
+#include <openglad/resources/filesystem_sync.h>
 #include <string>
 #include <cstring>
 #include <format>
@@ -229,6 +230,10 @@ void bootstrap_runtime(int argc, char* argv[])
     }
     og::runtime::current_session->show_fps_ = cfg.is_on("graphics", "show_fps");
     cfg.save_settings();
+    // The controls loader above may have stamped controls/default_keys_version
+    // (the one-time key migration); on web the save alone never reaches
+    // IndexedDB, and a lost marker would move a later rebind again.
+    sync_filesystem();
 #if defined(__EMSCRIPTEN__) && !defined(TESTING)
     if (og::platform::web::should_skip_intro_for_tests())
     {

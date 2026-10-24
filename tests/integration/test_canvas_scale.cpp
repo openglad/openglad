@@ -22,14 +22,17 @@
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/render/view_layout.h>
 #include <openglad/interface/input.h>
+#include <openglad/interface/render/pal32.h>
 #include <openglad/interface/ui/menu_screen_spec.h>
 #include <openglad/core/test_trace.h>
 #include <openglad/resources/gparser.h>
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
+#include <cstdint>
 #include <limits>
 #include <memory>
 #include <string>
@@ -258,6 +261,205 @@ TEST(CanvasScale, native_world_plane_bypasses_the_fixed_ui_raster)
     EXPECT_EQ(CanvasTarget::UI, E_Screen->active_canvas());
     EXPECT_EQ(fixed_ui, E_Screen->render);
     EXPECT_FALSE(s->native_world_view_active());
+}
+
+// The CHANGELOG! keyboard picture's blit (docs/ability-select-design.md
+// F.4): a truecolour picture drawn into a native plane lands at the
+// display's own pixels, not doubled through the 320x200 menu canvas.
+TEST(CanvasScale, draw_rgba_scaled_into_a_native_plane_reads_back_at_physical_size)
+{
+    ASSERT_TRUE(E_Screen);
+    ClassicCanvasRestore restore;
+    screen* const s = test_screen();
+    ASSERT_NE(nullptr, s);
+
+    E_Screen->set_world_zoom(og::kZoomStepsMax,
+                             og::WorldScaleMode::Integer, 640, 400);
+    E_Screen->set_active_canvas(CanvasTarget::UI);
+    ASSERT_TRUE(SDL_FillSurfaceRect(E_Screen->render, nullptr, 0));
+
+    // Four colours in the four quadrants: red, green / blue, white.
+    og::io::RgbaImage image;
+    image.w = 2;
+    image.h = 2;
+    image.bytes = {255, 0, 0, 255,   0, 255, 0, 255,
+                   0, 0, 255, 255,   255, 255, 255, 255};
+
+    // A malformed picture (its bytes do not cover w x h) draws nothing.
+    og::io::RgbaImage short_image = image;
+    short_image.bytes.pop_back();
+    EXPECT_FALSE(s->draw_rgba_scaled(short_image, 0, 0, 8, 4));
+    EXPECT_FALSE(s->draw_rgba_scaled(image, 0, 0, 0, 4));
+
+    // A 4x2 menu-pixel band is 8x4 display pixels in the 640x400 output.
+    const std::array<NativeWorldViewDestination, 1> destinations = {{
+        {.canvas = CanvasTarget::UI, .x = 0, .y = 0, .w = 4, .h = 2}}};
+    const NativeWorldViewSource source = s->begin_native_world_view(destinations);
+    ASSERT_TRUE(source);
+    ASSERT_EQ(8, source.w);
+    ASSERT_EQ(4, source.h);
+    // First a black picture in the same bytes, then the four colours written
+    // over it IN PLACE (same heap block, same size) under a new serial: the
+    // kept scaled copy must not be the black one.
+    const std::vector<std::uint8_t> colours = image.bytes;
+    std::fill(image.bytes.begin(), image.bytes.end(), std::uint8_t{0});
+    for (std::size_t i = 3; i < image.bytes.size(); i += 4)
+        image.bytes[i] = 255;
+    image.serial = og::io::next_rgba_image_serial();
+    const std::uint8_t* const block = image.bytes.data();
+    EXPECT_TRUE(s->draw_rgba_scaled(image, 0, 0, source.w, source.h));
+    std::copy(colours.begin(), colours.end(), image.bytes.begin());
+    ASSERT_EQ(block, image.bytes.data());
+    image.serial = og::io::next_rgba_image_serial();
+    EXPECT_TRUE(s->draw_rgba_scaled(image, 0, 0, source.w, source.h));
+    // The same picture at the same size again: the kept scaled copy.
+    EXPECT_TRUE(s->draw_rgba_scaled(image, 0, 0, source.w, source.h));
+    ASSERT_TRUE(s->end_native_world_view());
+
+    s->buffer_to_screen(0, 0, s->canvas_w(), s->canvas_h());
+    SDL_Surface* const presented =
+        SDL_RenderReadPixels(E_Screen->renderer, nullptr);
+    ASSERT_NE(nullptr, presented);
+    ASSERT_GE(presented->w, 8);
+    ASSERT_GE(presented->h, 4);
+    const auto rgb_at = [presented](int x, int y) {
+        const auto* const row = reinterpret_cast<const Uint32*>(
+            static_cast<const Uint8*>(presented->pixels) +
+            static_cast<std::ptrdiff_t>(y) * presented->pitch);
+        std::array<Uint8, 3> c{};
+        SDL_GetRGB(row[x], SDL_GetPixelFormatDetails(presented->format),
+                   SDL_GetSurfacePalette(presented), &c[0], &c[1], &c[2]);
+        return c;
+    };
+    const std::array<Uint8, 3> top_left = rgb_at(0, 0);
+    const std::array<Uint8, 3> top_right = rgb_at(7, 0);
+    const std::array<Uint8, 3> bottom_left = rgb_at(0, 3);
+    const std::array<Uint8, 3> bottom_right = rgb_at(7, 3);
+    // Each display pixel of the band is its own sample: the four corners
+    // keep their quadrant's colour, and the two middle columns blend (a
+    // 2-wide picture doubled through the menu canvas could not).
+    const std::array<Uint8, 3> mid_left = rgb_at(3, 0);
+    const std::array<Uint8, 3> mid_right = rgb_at(4, 0);
+    SDL_DestroySurface(presented);
+    EXPECT_GT(top_left[0], 200);
+    EXPECT_LT(top_left[1], 60);
+    EXPECT_GT(top_right[1], 200);
+    EXPECT_LT(top_right[0], 60);
+    EXPECT_GT(bottom_left[2], 200);
+    EXPECT_LT(bottom_left[0], 60);
+    EXPECT_GT(bottom_right[0], 200);
+    EXPECT_GT(bottom_right[1], 200);
+    EXPECT_GT(bottom_right[2], 200);
+    EXPECT_NE(mid_left, mid_right)
+        << "neighbouring display pixels were one menu pixel doubled";
+}
+
+// A HUD sprite plane (the split-screen hotbar's): a caller-sized raster
+// that holds straight alpha and lands at the display's own pixels. At the
+// 640x400 window (2 screen pixels per canvas pixel) a 4x2 plane on a 2x1
+// canvas rectangle is 4x2 screen pixels, 1:1; a pointb(..., 112) into it
+// keeps (its colour, 112) in the plane, a solid one 255, and the present
+// blends them over what is under the rectangle. Canvas scopes entered
+// while it is open do not un-redirect it; a cancelled plane is never
+// presented.
+//
+// RED (planted): blend_pixel keyed on the old overlay gate (the plane's
+// pixels keep alpha 0); set_active_canvas without the plane re-apply (the
+// pointb after the UI scope lands on the UI canvas).
+TEST(CanvasScale, hud_sprite_plane_holds_straight_alpha_and_lands_one_to_one)
+{
+    ASSERT_TRUE(E_Screen);
+    ClassicCanvasRestore restore;
+    screen* const s = test_screen();
+    ASSERT_NE(nullptr, s);
+    E_Screen->set_world_zoom(og::kZoomStepsMax,
+                             og::WorldScaleMode::Integer, 640, 400);
+    s->set_active_canvas(CanvasTarget::World);
+    ASSERT_TRUE(SDL_FillSurfaceRect(E_Screen->render, nullptr, 0));
+    E_Screen->discard_hud_sprites_for_testing();
+    ASSERT_FLOAT_EQ(2.0f, s->hud_sprite_scale());
+    EXPECT_FALSE(E_Screen->render_target_is_straight_alpha())
+        << "the shared classic canvas keeps the RGB-only blend";
+
+    const auto ink = [](unsigned char index) {
+        int r = 0, g = 0, b = 0;
+        query_palette_reg(index, &r, &g, &b);
+        return std::array<Uint8, 3>{static_cast<Uint8>(r * 4),
+                                    static_cast<Uint8>(g * 4),
+                                    static_cast<Uint8>(b * 4)};
+    };
+    const NativeWorldViewDestination destination{CanvasTarget::GameplayUI,
+                                                 10, 20, 2, 1};
+    EXPECT_FALSE(s->begin_native_hud_sprite(destination, 0, 2))
+        << "an empty raster is refused";
+    SDL_Surface* const world = E_Screen->render;
+    ASSERT_TRUE(s->begin_native_hud_sprite(destination, 4, 2));
+    EXPECT_EQ(4, s->canvas_w());
+    EXPECT_EQ(2, s->canvas_h());
+    EXPECT_TRUE(E_Screen->render_target_is_straight_alpha());
+    EXPECT_FLOAT_EQ(0.0f, s->hud_sprite_scale()) << "one plane at a time";
+    EXPECT_FALSE(s->begin_native_hud_sprite(destination, 4, 2));
+    s->pointb(0, 0, static_cast<unsigned char>(40), static_cast<unsigned char>(112));
+    s->set_active_canvas(CanvasTarget::UI);
+    s->pointb(3, 1, static_cast<unsigned char>(31), static_cast<unsigned char>(255));
+    s->set_active_canvas(CanvasTarget::World);
+    ASSERT_TRUE(s->end_native_hud_sprite());
+    EXPECT_EQ(world, E_Screen->render) << "end restores the canvas";
+    EXPECT_FALSE(s->end_native_hud_sprite());
+    ASSERT_EQ(1u, E_Screen->hud_sprite_ready_count_for_testing());
+
+    SDL_Surface* const plane = E_Screen->hud_sprite_surface_for_testing(0);
+    ASSERT_NE(nullptr, plane);
+    const auto plane_at = [plane](int x, int y) {
+        const auto* const row = reinterpret_cast<const Uint32*>(
+            static_cast<const Uint8*>(plane->pixels) +
+            static_cast<std::ptrdiff_t>(y) * plane->pitch);
+        std::array<Uint8, 4> c{};
+        SDL_GetRGBA(row[x], SDL_GetPixelFormatDetails(plane->format), nullptr,
+                    &c[0], &c[1], &c[2], &c[3]);
+        return c;
+    };
+    const auto red = ink(40);
+    const auto white = ink(31);
+    EXPECT_EQ((std::array<Uint8, 4>{red[0], red[1], red[2], 112}), plane_at(0, 0));
+    EXPECT_EQ((std::array<Uint8, 4>{white[0], white[1], white[2], 255}),
+              plane_at(3, 1))
+        << "drawn after a UI canvas scope: still into the plane";
+    EXPECT_EQ((std::array<Uint8, 4>{0, 0, 0, 0}), plane_at(1, 0));
+
+    s->buffer_to_screen(0, 0, s->canvas_w(), s->canvas_h());
+    SDL_Surface* const presented =
+        SDL_RenderReadPixels(E_Screen->renderer, nullptr);
+    ASSERT_NE(nullptr, presented);
+    ASSERT_EQ(640, presented->w);
+    const auto shown = [presented](int x, int y) {
+        const auto* const row = reinterpret_cast<const Uint32*>(
+            static_cast<const Uint8*>(presented->pixels) +
+            static_cast<std::ptrdiff_t>(y) * presented->pitch);
+        std::array<Uint8, 3> c{};
+        SDL_GetRGB(row[x], SDL_GetPixelFormatDetails(presented->format),
+                   SDL_GetSurfacePalette(presented), &c[0], &c[1], &c[2]);
+        return c;
+    };
+    // The rectangle (10, 20, 2, 1) is screen (20, 40, 4, 2).
+    const auto red_over_black = shown(20, 40);
+    for (int c = 0; c < 3; ++c)
+        EXPECT_NEAR(red[static_cast<std::size_t>(c)] * 112 / 255,
+                    red_over_black[static_cast<std::size_t>(c)], 1);
+    EXPECT_EQ(white, shown(23, 41)) << "a solid pixel lands as itself";
+    EXPECT_EQ((std::array<Uint8, 3>{0, 0, 0}), shown(21, 40));
+    EXPECT_EQ((std::array<Uint8, 3>{0, 0, 0}), shown(24, 41))
+        << "the plane is 4x2 screen pixels, no more";
+    SDL_DestroySurface(presented);
+    EXPECT_EQ(0u, E_Screen->hud_sprite_ready_count_for_testing())
+        << "a present consumes the queued planes";
+
+    // A cancelled plane restores the canvas and is never queued.
+    ASSERT_TRUE(s->begin_native_hud_sprite(destination, 4, 2));
+    s->cancel_native_hud_sprite();
+    EXPECT_EQ(world, E_Screen->render);
+    EXPECT_EQ(0u, E_Screen->hud_sprite_ready_count_for_testing());
+    s->cancel_native_hud_sprite();
 }
 
 TEST(CanvasScale, native_world_plane_rejects_invalid_and_over_budget_transactions)

@@ -206,7 +206,11 @@ constexpr std::uint8_t net_message_type_value(NetMessageType message_type) noexc
 // controlled-ids block stays the message tail. Snapshot format moves to v17:
 // the world state gains a u8 gameplay_fixes after new_specials, still the
 // tail of the world state. Replay format moves to v23.
-inline constexpr std::uint8_t kNetworkProtocolVersion = 21;
+// v22: New Ability Select. The input message gains one u8 belt_cast per local
+// seat after the four player bitfields (payload 21 -> 25).
+// LobbyCharacterData, InitialSetupGuyData and GuySnapshot gain six u8 belt
+// bytes appended LAST; snapshot v18; replay v24.
+inline constexpr std::uint8_t kNetworkProtocolVersion = 22;
 
 // Global networked player-index cap (seats across ALL peers). Distinct from
 // MAX_PLAYERS, which stays 4 and caps the seats of ONE machine (input slots,
@@ -318,6 +322,9 @@ struct InitialSetupGuyData {
     std::int16_t scen_shots = 0;
     std::int16_t scen_hits = 0;
     std::int16_t level = 0;
+    // New Ability Select (protocol v22): the guy's six belt bytes, as is
+    // (guy::belt). Serialized LAST.
+    std::array<std::uint8_t, 6> belt{};
 
     bool operator==(const InitialSetupGuyData&) const = default;
 };

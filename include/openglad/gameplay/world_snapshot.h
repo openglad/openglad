@@ -32,7 +32,7 @@ namespace og::sim {
 inline constexpr std::size_t kEntitySnapshotDirtyMaskWords = 2;
 inline constexpr std::int32_t kNoGuyId = -1;
 inline constexpr std::uint8_t kNoPausePlayerIndex = 0xff;
-inline constexpr std::uint8_t kSnapshotFormatVersion = 17;
+inline constexpr std::uint8_t kSnapshotFormatVersion = 18;
 inline constexpr std::uint8_t kSnapshotProtocolVersion = kNetworkProtocolVersion;
 inline constexpr std::uint8_t kDeltaPayloadUncompressedFlag = 0x01;
 inline constexpr std::size_t kDeltaPayloadHeaderSize = 1;
@@ -196,6 +196,10 @@ struct GuySnapshot {
     std::uint8_t owner_player_index = 0xff;
     // The owning player's save0 team slot this character came from.
     std::uint8_t owner_save_slot = 0xff;
+    // New Ability Select (snapshot v18): the guy's six belt bytes, as is
+    // (guy::belt), after owner_save_slot. A joiner's mirror guy carries them
+    // so its own key presses resolve against its own layout.
+    std::array<std::uint8_t, 6> belt{};
 };
 
 struct GridTileSnapshot {

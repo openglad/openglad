@@ -676,6 +676,8 @@ void serialize_guy_snapshot(std::vector<std::uint8_t>& buffer,
     append_i16(buffer, snapshot.level);
     append_u8(buffer, snapshot.owner_player_index);
     append_u8(buffer, snapshot.owner_save_slot);
+    for (const std::uint8_t byte : snapshot.belt)
+        append_u8(buffer, byte);
 }
 
 og::sim::GuySnapshot deserialize_guy_snapshot(ByteReader& reader)
@@ -705,6 +707,8 @@ og::sim::GuySnapshot deserialize_guy_snapshot(ByteReader& reader)
     snapshot.level = reader.read_i16("guy.level");
     snapshot.owner_player_index = reader.read_u8("guy.owner_player_index");
     snapshot.owner_save_slot = reader.read_u8("guy.owner_save_slot");
+    for (std::uint8_t& byte : snapshot.belt)
+        byte = reader.read_u8("guy.belt");
     return snapshot;
 }
 
@@ -1764,6 +1768,7 @@ og::sim::GuySnapshot capture_guy_snapshot(const guy& source)
     snapshot.level = source.level;
     snapshot.owner_player_index = source.owner_player_index;
     snapshot.owner_save_slot = source.owner_save_slot;
+    snapshot.belt = source.belt;
     return snapshot;
 }
 
@@ -1793,6 +1798,7 @@ void apply_guy_snapshot(guy& target, const og::sim::GuySnapshot& snapshot)
     target.level = snapshot.level;
     target.owner_player_index = snapshot.owner_player_index;
     target.owner_save_slot = snapshot.owner_save_slot;
+    target.belt = snapshot.belt;
 }
 
 void build_entity_snapshot_lookup(

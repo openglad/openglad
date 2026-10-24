@@ -25,6 +25,7 @@
 #include <openglad/platform/curses/clock.h>
 
 #include <openglad/core/constants.h>
+#include <openglad/gameplay/families/belt.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/lobby_server.h>
@@ -46,6 +47,7 @@
 #include "curses_mount_restore.h"
 #include "transcript_capture.h"
 #include "test_match_seed.h"
+#include "test_ability_select_scope.h"
 
 #include <algorithm>
 #include <cerrno>
@@ -4337,4 +4339,78 @@ TEST(CursesNetwork, run_curses_lobby_plays_the_negotiated_level)
     EXPECT_FALSE(lobby->cancelled()) << "the lobby started instead of backing out";
     EXPECT_EQ(nullptr, lobby->take_session())
         << "the session was taken by run_curses_lobby itself";
+}
+
+// New Ability Select through the curses client: the joiner's belt rides its
+// lobby character to the server (make_lobby_character_data), the server's
+// mission guy and both mirrors carry it, followed_belt resolves it off the
+// joiner's own mirror, and a SPEC 2 key press sampled against that belt casts
+// the guy's slot-2 entry on the server.
+TEST(CursesNetwork, joiners_belt_reaches_the_server_and_spec2_casts_its_entry)
+{
+    ScopedAbilitySelect on(true);
+    SaveData host_save;
+    SaveData join_save;
+    init_team_save(host_save, 0, FAMILY_SOLDIER, "Host");
+    init_team_save(join_save, 1, FAMILY_SOLDIER, "Joiner");
+    for (auto& member : join_save.team_list) {
+        if (member) {
+            member->upgrade_to_level(13);
+            member->belt = {0x00, og::sim::belt::encode({3, false}),
+                            og::sim::belt::kEmptyByte, 0x00, 0x0A, 0x05};
+        }
+    }
+
+    StartedGame game = negotiate_and_start(host_save, join_save);
+    ASSERT_NE(game.host_session, nullptr);
+    ASSERT_NE(game.join_session, nullptr);
+    advance_all(*game.host_session, *game.join_session, 10);
+
+    const std::uint32_t avatar = game.join_session->followed_entity_id();
+    ASSERT_NE(avatar, 0u);
+    GameWorld* const server_world =
+        curses_network_testing_server_world(*game.host_session);
+    ASSERT_NE(nullptr, server_world);
+    const og::sim::belt::Bytes expected{0x00, 0x03, 0xFF, 0x00, 0x0A, 0x05};
+    for (GameWorld* world : {server_world, &game.join_session->mirror_world(),
+                             &game.host_session->mirror_world()}) {
+        const walker* hero = world->find_by_id(avatar);
+        ASSERT_NE(nullptr, hero);
+        ASSERT_NE(nullptr, hero->myguy) << "the joiner's hero has no guy";
+        EXPECT_EQ(expected, hero->myguy->belt)
+            << "every copy of the joiner's guy must carry its belt";
+    }
+
+    const std::optional<og::sim::belt::Layout> belt =
+        followed_belt(game.join_session->mirror_world(), avatar);
+    ASSERT_TRUE(belt.has_value());
+    ASSERT_TRUE((*belt)[1].entry.has_value());
+    EXPECT_EQ((og::sim::belt::Entry{3, false}), *(*belt)[1].entry);
+
+    int keys[NUM_KEYS] = {};
+    keys[KEY_SPECIAL] = KEYCODE_1;
+    keys[KEY_SPEC2] = KEYCODE_2;
+    keys[KEY_SPEC3] = KEYCODE_3;
+    keys[KEY_SHIFTER] = KEYCODE_LSHIFT;
+    CursesInput input(keys);
+    input.feed(Key::character(U'2'));
+    const InputState pressed = input.sample(&*belt);
+    ASSERT_EQ(0x03, pressed.players[0].belt_cast);
+    input.feed(Key::character(U'2', KeyEvent::Release));
+
+    walker* const server_hero = server_world->find_by_id(avatar);
+    ASSERT_NE(nullptr, server_hero);
+    ASSERT_EQ(1, server_hero->current_special());
+    bool cast = false;
+    for (int frame = 0; frame < 10 && !cast; ++frame) {
+        InputState idle;
+        game.host_session->send_input(idle);
+        game.join_session->send_input(
+            frame == 0 ? pressed : input.sample(&*belt));
+        game.host_session->advance();
+        game.join_session->advance();
+        cast = server_hero->current_special() == 3;
+    }
+    EXPECT_TRUE(cast)
+        << "the server must arm the joiner's slot-2 entry (WHIRLWIND, slot 3)";
 }

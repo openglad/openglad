@@ -4,6 +4,7 @@
 // normal test runs perform the visual smoke assertions without writing files.
 
 #include "test_campaign_picker_drive.h"
+#include "test_ability_select_scope.h"
 #include "test_input_helpers.h"
 #include "test_interact.h"
 #include <SDL3/SDL.h>
@@ -330,6 +331,9 @@ struct ShotState {
   // #237 derivation pin, for the flows that drive a real door: the fades a
   // door added, or -1 when the injector never reached the read.
   int fades_added_by_nested_door = -1;
+  // The seat-settings flow's frame name (b2 films the shipped setting, b3
+  // the same panel with New Ability Select off).
+  const char *seat_shot_name = "seat_settings";
 
   // --- row-shape observations -----------------------------------------------
   // Read from the live button table on the injector thread in the same
@@ -564,7 +568,7 @@ int seat_settings_injector(void *data) {
         state->fades_added_by_nested_door =
             count_fade_between_traces() - fades_before_door;
       }
-      state->captures += capture_frame("seat_settings");
+      state->captures += capture_frame(state->seat_shot_name);
       interact("seat_settings_back");
     }
     if (wait_for_team_menu()) {
@@ -599,6 +603,29 @@ TEST(UxShots, b2_seat_settings) {
   EXPECT_EQ(0, state.fades_added_by_nested_door)
       << "#237: a door opened from the open Base Camp is a nested entry — it "
          "must add no fade";
+}
+
+// The same Base Camp seat panel with New Ability Select off: the classic
+// seven ACTIONS rows (SPECIAL, SPEC SW) on the same default keys.
+TEST(UxShots, b3_seat_settings_ability_select_off) {
+  trace_clear();
+  ScopedAbilitySelect off;
+  ASSERT_TRUE(seed_company_with_roster("save0", "IRON KETTLE BAND", 1700259200,
+                                       playtest_roster()));
+  ASSERT_TRUE(og::data::set_active_company_slot("save0"));
+  ShotState state;
+  state.seat_shot_name = "seat_settings_off";
+  SDL_Thread *thread =
+      SDL_CreateThread(seat_settings_injector, "ux_seat_off", &state);
+  ASSERT_TRUE(thread != nullptr);
+  g_picker_mainmenu_calls = 0;
+  g_picker_max_mainmenu_calls = 1;
+  picker_main(0, nullptr);
+  SDL_WaitThread(thread, nullptr);
+  cleanup_picker_state();
+  g_picker_max_mainmenu_calls = 0;
+  ASSERT_TRUE(state.finished);
+  ASSERT_EQ(1, state.captures);
 }
 
 // --- 3. name entry ----------------------------------------------------------

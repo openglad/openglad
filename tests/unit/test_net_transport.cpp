@@ -172,6 +172,7 @@ og::sim::LobbyPlayer make_lobby_player_for_test()
     character.scen_shots = 7;
     character.scen_hits = 8;
     character.level = 9;
+    character.belt = {0x01, 0x09, 0xFF, 0x00, 0x0A, 0x05};
 
     og::sim::LobbyPlayer player;
     player.player_index = 1u;
@@ -216,6 +217,7 @@ og::sim::InitialSetupGuyData make_initial_setup_guy_for_test()
     guy.scen_shots = 18;
     guy.scen_hits = 19;
     guy.level = 20;
+    guy.belt = {0x03, 0x00, 0x0B, 0xFF, 0x80, 0x02};
     return guy;
 }
 
@@ -273,7 +275,7 @@ TEST(NetTransport, header_helpers_roundtrip_envelope)
     std::vector<std::uint8_t> bytes;
     og::sim::append_transport_header(bytes, og::sim::kHelloMessageType, 0x2211u);
 
-    const std::vector<std::uint8_t> expected = {0x15, 0x01, 0x11, 0x22};
+    const std::vector<std::uint8_t> expected = {0x16, 0x01, 0x11, 0x22};
     EXPECT_EQ(expected, bytes);
 
     og::sim::TransportEnvelope envelope;
@@ -718,6 +720,60 @@ TEST(NetTransport, guy_family_byte_stays_unsigned_through_the_wire)
     ASSERT_TRUE(setup_decoded.has_value());
     ASSERT_EQ(1u, setup_decoded->guys.size());
     EXPECT_EQ(200, setup_decoded->guys.front().family);
+}
+
+// New Ability Select (protocol v22): the six belt bytes ride both guy wire
+// structs as is (no normalising: an item byte 0x80 and a junk byte 0x7F come
+// back unchanged) and sit LAST in the serialized guy, right after the level
+// i16. Proof it can fail: dropping the belt loop from read_serialized_guy
+// zeroes the bytes, and appending them before `level` moves the level.
+TEST(NetTransport, serialized_guy_round_trips_the_belt)
+{
+    const std::array<std::uint8_t, 6> belt = {0x01, 0x09, 0xFF, 0x80, 0x7F, 0x05};
+
+    og::sim::LobbyPlayer player;
+    player.player_index = 0u;
+    og::sim::LobbyCharacterSlot slot;
+    slot.character.name = "Belted";
+    slot.character.level = 0x0102;
+    slot.character.belt = belt;
+    player.character_slots.push_back(slot);
+    og::sim::LobbyMessage message;
+    message.payload = og::sim::LobbyJoinMessage{.player = player};
+    const auto bytes = og::sim::serialize_lobby_message(message);
+    const auto decoded = og::sim::deserialize_lobby_message(bytes);
+    ASSERT_TRUE(decoded.has_value());
+    const auto& read_player =
+        std::get<og::sim::LobbyJoinMessage>(decoded->payload).player;
+    ASSERT_EQ(1u, read_player.character_slots.size());
+    EXPECT_EQ(belt, read_player.character_slots.front().character.belt);
+    EXPECT_EQ(0x0102, read_player.character_slots.front().character.level);
+
+    og::sim::InitialSetupMessage setup;
+    og::sim::InitialSetupGuyData guy;
+    guy.guy_id = 4;
+    guy.name = "Belted";
+    guy.level = 0x0102;
+    guy.belt = belt;
+    setup.guys.push_back(guy);
+    const auto setup_bytes = og::sim::serialize_initial_setup_message(setup);
+    const auto setup_decoded =
+        og::sim::deserialize_initial_setup_message(setup_bytes);
+    ASSERT_TRUE(setup_decoded.has_value());
+    ASSERT_EQ(1u, setup_decoded->guys.size());
+    EXPECT_EQ(guy, setup_decoded->guys.front());
+
+    // Wire position: level (0x02 0x01, little-endian) then the six bytes.
+    const std::array<std::uint8_t, 8> tail = {0x02, 0x01, 0x01, 0x09,
+                                              0xFF, 0x80, 0x7F, 0x05};
+    const auto hit = std::search(setup_bytes.begin(), setup_bytes.end(),
+                                 tail.begin(), tail.end());
+    EXPECT_NE(setup_bytes.end(), hit)
+        << "the belt follows the level i16 in the serialized guy";
+    const auto lobby_hit = std::search(bytes.begin(), bytes.end(),
+                                       tail.begin(), tail.end());
+    EXPECT_NE(bytes.end(), lobby_hit)
+        << "the belt follows the level i16 in the lobby character";
 }
 
 // --- Staged-lobby wire messages (protocol v13, #218) ------------------------
@@ -1412,8 +1468,8 @@ TEST(NetTransport, serialize_hello_emits_expected_wire_format)
 
     constexpr std::array<std::uint8_t, og::sim::kSerializedHelloMessageSize>
         expected = {
-            0x15, 0x01, 0x17, 0x00,
-            0x15, 0x15, 0x03,
+            0x16, 0x01, 0x17, 0x00,
+            0x16, 0x16, 0x03,
             0x00, 0x01, 0x02, 0x03,
             0x04, 0x05, 0x06, 0x07,
             0x08, 0x09, 0x0a, 0x0b,

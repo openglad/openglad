@@ -220,6 +220,10 @@ void vbutton::vdisplay()
             dimmed ? BUTTON_RIGHT - 1 : BUTTON_RIGHT);
         const unsigned char shadow_bottom = static_cast<unsigned char>(
             dimmed ? BUTTON_BOTTOM - 1 : BUTTON_BOTTOM);
+        // ...and its label fades to a pale grey: the darker face alone is
+        // one palette step from a live one and reads as just another door.
+        const unsigned char label_ink =
+            dimmed ? BUTTON_DIMMED_LABEL : static_cast<unsigned char>(DARK_BLUE);
         og::runtime::current_session->myscreen_->draw_box(xloc,yloc,xend-1,yend-1,color,1,1); // front
         og::runtime::current_session->myscreen_->draw_box(xloc,yloc,xend-2,yloc,BUTTON_TOP,1,1); // top edge
         og::runtime::current_session->myscreen_->draw_box(xloc,yloc+1,xloc,yend-2,BUTTON_LEFT,1,1); // left
@@ -227,7 +231,7 @@ void vbutton::vdisplay()
         og::runtime::current_session->myscreen_->draw_box(xloc+1,yend-1,xend-1,yend-1,shadow_bottom,1,1); // bottom
         if (label.size())
             mytext.write_xy( static_cast<short>( static_cast<size_t>((xloc+xend)/2) - ((label.size()* (mytext.letters->w+1) - 1)/2)) ,
-                              static_cast<short>(yloc + (height-(mytext.letters->h))/2), label.c_str(), static_cast<unsigned char>(DARK_BLUE), 1);
+                              static_cast<short>(yloc + (height-(mytext.letters->h))/2), label.c_str(), label_ink, 1);
     }
 }
 
@@ -457,6 +461,7 @@ namespace
 {
 // See allbuttons_generation() in button.h.
 unsigned int g_allbuttons_generation = 0;
+void clear_allbuttons_locked();
 } // namespace
 
 unsigned int allbuttons_generation()
@@ -473,7 +478,7 @@ vbutton * init_buttons(button * buttons, Sint32 numbuttons)
     AllButtonsLock lock(get_allbuttons_mutex());
 #endif
 
-    clear_allbuttons();
+    clear_allbuttons_locked();
 
     // allbuttons_/owned_buttons_ are fixed-capacity arrays. Every current caller
     // passes a small literal count, but clamp to the real capacity so a future
@@ -497,13 +502,28 @@ vbutton * init_buttons(button * buttons, Sint32 numbuttons)
     return og::runtime::current_session->allbuttons_[0];
 }
 
-void clear_allbuttons()
+namespace
+{
+// The caller holds the allbuttons mutex under TESTING (init_buttons does).
+void clear_allbuttons_locked()
 {
     for (size_t i = 0; i < owned_buttons().size(); i++)
     {
         owned_buttons()[i].reset();
         og::runtime::current_session->allbuttons_[i] = nullptr;
     }
+}
+} // namespace
+
+void clear_allbuttons()
+{
+    // Test injector threads read allbuttons[] under this mutex
+    // (tests/test_interact.h); emptying it unlocked raced their reads and
+    // freed a button one of them could be looking at.
+#ifdef TESTING
+    AllButtonsLock lock(get_allbuttons_mutex());
+#endif
+    clear_allbuttons_locked();
 }
 
 void draw_backdrop()
@@ -870,6 +890,10 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
     case ButtonAction::ToggleHealNumbers:
         toggle_effect("effects", "heal_numbers");
         return REDRAW;
+    case ButtonAction::ToggleNewAbilitySelect:
+        toggle_effect("effects", "new_ability_select");
+        og::input::refresh_ability_select_cache();
+        return REDRAW;
     case ButtonAction::ToggleGore:
         toggle_effect("effects", "gore");
         apply_gore_setting_now();
@@ -918,6 +942,7 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
     case ButtonAction::RestoreDefaultSettings:
         restore_default_settings();
         cfg.load_settings();
+        og::input::refresh_ability_select_cache();
         // GAME SETTINGS owns presentation/effects settings, not player
         // controls. Put the live modes and both keymaps back into the freshly
         // restored config before it reaches disk.

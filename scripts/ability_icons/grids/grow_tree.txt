@@ -1,0 +1,39 @@
+# GROW TREE (druid): the druid's tree (tree.png frame 0, cut whole, moved up one row and left one column) with a sprout (tree.png frame 3) coming up at its foot
+# legend: one character = one palette index (pix/openglad.gpl)
+k = 160
+a = 161
+b = 162
+c = 165
+d = 42
+e = 44
+f = 46
+g = 166
+h = 43
+i = 163
+j = 47
+l = 45
+m = 164
+n = 141
+o = 142
+p = 143
+K = 160
+A = 161
+B = 162
+q = 143
+
+................
+................
+....kkaabc......
+..kdkaabbcc.....
+.kkaaaebfbcg....
+.haaabbiiijg....
+..aalbiiimcg....
+...bbiimmmc.....
+....iimmmc......
+.....noo.....KA.
+.....njo.....AB.
+....njjjp....jq.
+...nnojppp...pq.
+................
+................
+................

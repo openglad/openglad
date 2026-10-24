@@ -7,9 +7,12 @@
  */
 #pragma once
 
+#include <openglad/resources/rgba_image.h>
+
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 
 // SDL-free file I/O abstraction.
 // Backed by PhysFS (for mounted archives) or stdio FILE* (for filesystem).
@@ -80,6 +83,13 @@ inline bool og_write_exact(OgFile& f, const void* src, std::size_t size, std::si
 {
     return f.write(src, size, count) == count;
 }
+
+// Read a truecolour PNG (any colour type lodepng decodes, converted to
+// 8-bit RGBA) for drawing at the display's resolution. Opens `path` the way
+// every asset opens (PhysFS mounts first, then the working, user and asset
+// directories). Empty on a missing, empty, oversized (over 16 MiB on disk or
+// over 4096 pixels a side) or undecodable file; the reason goes to the log.
+std::optional<RgbaImage> read_rgba_png(const char* path);
 
 } // namespace og::io
 

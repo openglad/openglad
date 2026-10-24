@@ -463,7 +463,9 @@ Three changes in this work apply whatever the setting:
   slot priced 5000 (an undeclared slot, or one New Specials hides) before it
   compares the price with the walker's magic, as `NO SPECIAL AVAILABLE`
   (`SpecialFailure::Unavailable`). Nothing in play reaches it: the player's
-  special cycling and the bots' slot pick both skip such slots. The old
+  special cycling and the bots' slot pick both skip such slots, and a New
+  Ability Select key naming one is refused by the server first, as NO
+  ABILITY THERE ([ability-select-design.md](ability-select-design.md), C.7). The old
   game has the same hole and no row reaches it, so it is not ported.
 - **O. METEOR RAIN holds its fire over an ally** (New Specials only). A bot
   fire elemental's METEOR RAIN gate refuses when an ally stands in the

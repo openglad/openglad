@@ -327,6 +327,18 @@ void set_single_seat_device(bool single_seat)
         input_hardware_state().single_seat_device = single_seat;
 }
 
+bool touch_overlay_active()
+{
+    return og::runtime::current_session != nullptr &&
+        input_hardware_state().touch_overlay_active;
+}
+
+void set_touch_overlay_active(bool on)
+{
+    if (og::runtime::current_session != nullptr)
+        input_hardware_state().touch_overlay_active = on;
+}
+
 int local_seat_cap()
 {
     // Menus poll this per frame; only a single-seat device needs the
@@ -977,6 +989,9 @@ JoyData::JoyData(int joy_index)
     // gamepad default, reversed from the keyboard-era order at the player's
     // request). Consequence on a one-button device: FIRE stays unbound and
     // keeps coming from the seat's keyboard map.
+    // New Ability Select: button 0 is SPEC 1, button 2 SPEC 2 (with the
+    // setting off: change special, as before) and button 6 SPEC 3; the
+    // retired change-special slot (KEY_SPECIAL_SWITCH) stays unbound.
     if(numButtons > 0)
     {
         key_type[KEY_SPECIAL] = BUTTON;
@@ -989,8 +1004,8 @@ JoyData::JoyData(int joy_index)
     }
     if(numButtons > 2)
     {
-        key_type[KEY_SPECIAL_SWITCH] = BUTTON;
-        key_index[KEY_SPECIAL_SWITCH] = 2;
+        key_type[KEY_SPEC2] = BUTTON;
+        key_index[KEY_SPEC2] = 2;
     }
     if(numButtons > 3)
     {
@@ -1006,6 +1021,11 @@ JoyData::JoyData(int joy_index)
     {
         key_type[KEY_SWITCH] = BUTTON;
         key_index[KEY_SWITCH] = 5;
+    }
+    if(numButtons > 6)
+    {
+        key_type[KEY_SPEC3] = BUTTON;
+        key_index[KEY_SPEC3] = 6;
     }
 
     // Baseline snapshot: any binding that reads ACTIVE right now (a resting

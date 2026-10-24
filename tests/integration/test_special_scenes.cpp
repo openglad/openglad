@@ -58,6 +58,7 @@
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/save_data.h>
 
+#include "test_ability_select_scope.h"
 #include "test_live_game.h"
 #include "test_save_state_guard.h"
 
@@ -456,6 +457,11 @@ void play(const Scene& sc, Result& out)
     for (const auto& [key, value] : kShippedEffects)
         cfg.apply_setting("effects", key, value);
     cfg.apply_setting("effects", "mini_hp_bar", "on");
+    // A scene arms its special with set_current_special and casts it with the
+    // SPECIAL key (SHIFTER for the alternate): the key model of New Ability
+    // Select OFF. With the setting on, SPECIAL is SPEC 1 and casts whatever
+    // the hero's belt holds in slot 1, not the special the scene armed.
+    ScopedAbilitySelect classic_keys;
     live_game::force_weather(WeatherKind::None);
 
     Run run;

@@ -1,0 +1,35 @@
+# CHARGE (soldier): the fighter rushing right with speed lines, from footman.png frame 2; tunic fixed to the red ramp
+# legend: one character = one palette index (pix/openglad.gpl)
+k = 16
+a = 40
+b = 31
+c = 30
+d = 29
+e = 28
+f = 27
+g = 241
+h = 242
+i = 17
+j = 26
+l = 25
+m = 243
+n = 22
+o = 139
+p = 21
+
+................
+................
+................
+......kkkkk.....
+.....kabcdakkk..
+.bbb.kbcdefkghk.
+.iii.kcdeiighhk.
+.....kjefjikkk..
+bbbb.kafjlik..kk
+iiii.kaaaaak.kbf
+.....kghmmmkkbfn
+.bbb.kaghmmkofnk
+.iii..kaaghmmok.
+......kpppkokk..
+.......kkk.k....
+................

@@ -1,0 +1,29 @@
+# BONE WALL (skeleton): the bone wall itself, three posts and two bars, cut verbatim from pix/bonewall.png frame 0 and moved down one row
+# legend: one character = one palette index (pix/openglad.gpl)
+k = 31
+a = 24
+b = 30
+c = 23
+d = 22
+e = 29
+f = 28
+g = 21
+h = 20
+i = 19
+
+................
+................
+.kabc.kabc.kabc.
+..bd...bd...bd..
+..bdeefbdeefbd..
+..eggghegggheg..
+..eg...eg...eg..
+..fh...fh...fh..
+.kabc.kabc.kabc.
+..bd...bd...bd..
+..bdeefbdeefbd..
+..eggghegggheg..
+..eg...eg...eg..
+..fh...fh...fh..
+.ecei.ecei.ecei.
+................

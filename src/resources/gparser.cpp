@@ -232,6 +232,10 @@ bool cfg_store::load_settings()
     apply_setting("effects", "hit_anim", "on");
     apply_setting("effects", "damage_numbers", "off");
     apply_setting("effects", "heal_numbers", "on");
+    // New Ability Select (Game Settings -> UI FX): one key per ability. A
+    // per-machine input setting, never on the wire. On by default, and
+    // RESTORE SETTINGS keeps that.
+    apply_setting("effects", "new_ability_select", "on");
     apply_setting("effects", "shadows", "on");
     apply_setting("effects", "reflections", "on");
     apply_setting("effects", "weather", "on");
@@ -252,7 +256,7 @@ bool cfg_store::load_settings()
 
     // Per-player HUD/zoom (pause-menu design §7.1): defaults registered so
     // RESTORE SETTINGS keeps the keys defined. The playerN_hud_migrated
-    // marker is deliberately NOT defaulted (web_default_keys_version
+    // marker is deliberately NOT defaulted (controls/default_keys_version
     // precedent): its absence triggers the one-shot keyprefs.dat prefs seed.
     for (int player = 1; player <= 4; ++player)
     {

@@ -57,8 +57,9 @@ struct SessionState {
     bool input_continue_ = false;
     const bool* keystates_ = nullptr;  // SDL3 SDL_GetKeyboardState buffer
     // == NUM_KEYS from input.h (16 wire-visible actions + the client-side
-    // KEY_LOOKUP hold; enforced by input_player_keys()'s reference return).
-    static constexpr int kNumKeys = 17;
+    // KEY_LOOKUP hold and SPEC 2/3 belt keys; enforced by
+    // input_player_keys()'s reference return).
+    static constexpr int kNumKeys = 19;
     int player_keys_[4][kNumKeys] = {};
 
     // Viewport state (Batch 4) — moved from input.cpp globals.

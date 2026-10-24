@@ -6,10 +6,13 @@
 #include <openglad/interface/session_state.h>
 #include <openglad/core/util.h>
 
+#include <openglad/resources/gparser.h>
+
 #include <array>
 #include <format>
 #include <optional>
 #include <string>
+#include <vector>
 
 int PlayerInput::move_x() const
 {
@@ -46,6 +49,7 @@ void InputState::clear()
             p.held[i] = false;
             p.pressed[i] = false;
         }
+        p.belt_cast = 0;
     }
     quit_requested = false;
     timer_wait_request = kNoTimerWaitRequest;
@@ -85,6 +89,124 @@ inline auto& hw() { return input_hardware_state(); }
 constexpr int kModeFourIndex = 0;
 constexpr int kModeEightIndex = 1;
 
+// The factory keys (New Ability Select's "Proposal 1"). All four players
+// share one physical keyboard and control modes are per-player, so no key is
+// bound by two players in any combination of modes; a player's own two maps
+// are never co-active, so a key may repeat across them (P3's 4-dir DOWN 'k'
+// is its 8-dir YELL; P4's 4-dir DOWN 'g' is its 8-dir FIRE).
+//
+// SPEC 1 / SPEC 2 / SPEC 3 sit on three keys in a row (1 2 3, [ ] \, 8 9 0,
+// 4 5 6) and SHIFTER is the belt's second row. Look up sits LEFT of walk-up
+// and Yell RIGHT of walk-up for P1/P3/P4 (Q W E, U I O, R T Y). With New
+// Ability Select off the same keys keep the classic roles: SPEC 1 casts the
+// selected special, SPEC 2 changes it, SHIFTER is the alternate.
+//
+// 8-direction: each player's diagonal cluster stays; an action key the
+// cluster takes moves to the classic 8-direction key when that is free, else
+// to a key this table freed; look-up is the slot that yields (P4's 8-dir
+// look-up starts unbound and can be bound with REMAP on the player screen).
+// Slot 11 (the retired change-special key) and slot 14 are reserved wire
+// slots and stay unbound.
+constexpr int kDefaultFourDirKeys[4][NUM_KEYS] = {
+    {
+        KEYCODE_w, KEYCODE_UNKNOWN, KEYCODE_d, KEYCODE_UNKNOWN,  // movements
+        KEYCODE_s, KEYCODE_UNKNOWN, KEYCODE_a, KEYCODE_UNKNOWN,
+        KEYCODE_LCTRL, KEYCODE_1,                     // fire & special
+        KEYCODE_BACKQUOTE,                         // switch guys
+        KEYCODE_UNKNOWN,                           // change special
+        KEYCODE_e,                                 // Yell
+        KEYCODE_LSHIFT,                            // Shifter
+        KEYCODE_UNKNOWN,                           // (reserved slot 14)
+        KEYCODE_F5,                                // Cheat key
+        KEYCODE_q,                                 // Look up (hold)
+        KEYCODE_2, KEYCODE_3,                         // SPEC 2, SPEC 3
+    },
+    {
+        KEYCODE_UP, KEYCODE_UNKNOWN, KEYCODE_RIGHT, KEYCODE_UNKNOWN,  // movements
+        KEYCODE_DOWN, KEYCODE_UNKNOWN, KEYCODE_LEFT, KEYCODE_UNKNOWN,
+        KEYCODE_RSHIFT, KEYCODE_LEFTBRACKET,          // fire & special
+        KEYCODE_QUOTE,                             // switch guys
+        KEYCODE_UNKNOWN,                           // change special
+        KEYCODE_RETURN,                            // Yell
+        KEYCODE_SLASH,                             // Shifter
+        KEYCODE_UNKNOWN,                           // (reserved slot 14)
+        KEYCODE_F6,                                // Cheat key
+        KEYCODE_RCTRL,                             // Look up (hold)
+        KEYCODE_RIGHTBRACKET, KEYCODE_BACKSLASH,      // SPEC 2, SPEC 3
+    },
+    {
+        KEYCODE_i, KEYCODE_UNKNOWN, KEYCODE_l, KEYCODE_UNKNOWN,  // movements
+        KEYCODE_k, KEYCODE_UNKNOWN, KEYCODE_j, KEYCODE_UNKNOWN,
+        KEYCODE_SPACE, KEYCODE_8,                     // fire & special
+        KEYCODE_MINUS,                             // switch guys
+        KEYCODE_UNKNOWN,                           // change special
+        KEYCODE_o,                                 // Yell
+        KEYCODE_m,                                 // Shifter
+        KEYCODE_UNKNOWN,                           // (reserved slot 14)
+        KEYCODE_F7,                                // Cheat key
+        KEYCODE_u,                                 // Look up (hold)
+        KEYCODE_9, KEYCODE_0,                         // SPEC 2, SPEC 3
+    },
+    {
+        KEYCODE_t, KEYCODE_UNKNOWN, KEYCODE_h, KEYCODE_UNKNOWN,  // movements
+        KEYCODE_g, KEYCODE_UNKNOWN, KEYCODE_f, KEYCODE_UNKNOWN,
+        KEYCODE_v, KEYCODE_4,                         // fire & special
+        KEYCODE_n,                                 // switch guys
+        KEYCODE_UNKNOWN,                           // change special
+        KEYCODE_y,                                 // Yell
+        KEYCODE_b,                                 // Shifter
+        KEYCODE_UNKNOWN,                           // (reserved slot 14)
+        KEYCODE_F8,                                // Cheat key
+        KEYCODE_r,                                 // Look up (hold)
+        KEYCODE_5, KEYCODE_6,                         // SPEC 2, SPEC 3
+    }
+};
+constexpr int kDefaultEightDirKeys[4][NUM_KEYS] = {
+    {   // P1: clockwise W/E/D/C/X/Z/A/Q, Yell=S, look-up on Tab
+        KEYCODE_w, KEYCODE_e, KEYCODE_d, KEYCODE_c,
+        KEYCODE_x, KEYCODE_z, KEYCODE_a, KEYCODE_q,
+        KEYCODE_LCTRL, KEYCODE_1,
+        KEYCODE_BACKQUOTE, KEYCODE_UNKNOWN,
+        KEYCODE_s, KEYCODE_LSHIFT, KEYCODE_UNKNOWN, KEYCODE_F5,
+        KEYCODE_TAB,                               // Look up (hold)
+        KEYCODE_2, KEYCODE_3,                         // SPEC 2, SPEC 3
+    },
+    {   // P2: arrows, no diagonal keys
+        KEYCODE_UP, KEYCODE_UNKNOWN, KEYCODE_RIGHT, KEYCODE_UNKNOWN,
+        KEYCODE_DOWN, KEYCODE_UNKNOWN, KEYCODE_LEFT, KEYCODE_UNKNOWN,
+        KEYCODE_RSHIFT, KEYCODE_LEFTBRACKET,
+        KEYCODE_QUOTE, KEYCODE_UNKNOWN,
+        KEYCODE_RETURN, KEYCODE_SLASH, KEYCODE_UNKNOWN, KEYCODE_F6,
+        KEYCODE_RCTRL,                             // Look up (hold)
+        KEYCODE_RIGHTBRACKET, KEYCODE_BACKSLASH,      // SPEC 2, SPEC 3
+    },
+    {   // P3: clockwise I/O/L/./,/M/J/U, Yell=K, Shifter=';' (M is a
+        // diagonal here). '.' is DOWN-RIGHT again: P2's FIRE left it.
+        KEYCODE_i, KEYCODE_o, KEYCODE_l, KEYCODE_PERIOD,
+        KEYCODE_COMMA, KEYCODE_m, KEYCODE_j, KEYCODE_u,
+        KEYCODE_SPACE, KEYCODE_8,
+        KEYCODE_MINUS, KEYCODE_UNKNOWN,
+        KEYCODE_k, KEYCODE_SEMICOLON, KEYCODE_UNKNOWN, KEYCODE_F7,
+        KEYCODE_p,                                 // Look up (hold)
+        KEYCODE_9, KEYCODE_0,                         // SPEC 2, SPEC 3
+    },
+    {   // P4: clockwise T/Y/H/N/B/V/F/R, Fire=G (the diamond's center),
+        // Switch='=', Yell=7, Shifter=Left Alt (the thumb key below V/B)
+        KEYCODE_t, KEYCODE_y, KEYCODE_h, KEYCODE_n,
+        KEYCODE_b, KEYCODE_v, KEYCODE_f, KEYCODE_r,
+        KEYCODE_g, KEYCODE_4,
+        KEYCODE_EQUALS, KEYCODE_UNKNOWN,
+        KEYCODE_7, KEYCODE_LALT, KEYCODE_UNKNOWN, KEYCODE_F8,
+        KEYCODE_UNKNOWN,                           // Look up (unbound: t/y/h/n/b/v/f/r consume the cluster)
+        KEYCODE_5, KEYCODE_6,                         // SPEC 2, SPEC 3
+    }
+};
+
+// The factory tables as they shipped before New Ability Select (d758bcb1),
+// kept word for word for the one-time migration of saved keys
+// (og::input::migrate_seat_keys) and its tests: a stored value equal to one
+// of these is a key the player never chose. Slots 17 and 18 did not exist.
+constexpr int kLegacyNumKeys = 17;
 // KEY_LOOKUP (the render-time look-up hold) defaults: all four players share
 // one physical keyboard, so each default must not collide with ANY player's
 // bindings in EITHER control mode (modes are per-player, so any combination
@@ -96,7 +218,7 @@ constexpr int kModeEightIndex = 1;
 // active while the 4-dir map is) — P4's 8-direction cluster consumes every
 // key around T/F/G/H (t y h n b v f r), so its 8-dir look-up starts unbound
 // and can be bound with REMAP on the seat's player screen.
-constexpr int kDefaultFourDirKeys[4][NUM_KEYS] = {
+constexpr int kLegacyFourDirKeys[4][kLegacyNumKeys] = {
     {
         KEYCODE_w, KEYCODE_UNKNOWN, KEYCODE_d, KEYCODE_UNKNOWN,  // movements
         KEYCODE_s, KEYCODE_UNKNOWN, KEYCODE_a, KEYCODE_UNKNOWN,
@@ -146,7 +268,7 @@ constexpr int kDefaultFourDirKeys[4][NUM_KEYS] = {
         KEYCODE_b,                                 // Look up (hold; 4-dir only)
     }
 };
-constexpr int kDefaultEightDirKeys[4][NUM_KEYS] = {
+constexpr int kLegacyEightDirKeys[4][kLegacyNumKeys] = {
     {   // P1: clockwise W/E/D/C/X/Z/A/Q, Yell=S
         KEYCODE_w, KEYCODE_e, KEYCODE_d, KEYCODE_c,
         KEYCODE_x, KEYCODE_z, KEYCODE_a, KEYCODE_q,
@@ -210,6 +332,22 @@ static_assert([] {
     }
     return true;
 }(), "KEY_PREFS is a reserved wire slot and must stay unbound");
+// KEY_SPECIAL_SWITCH (slot 11) is reserved the same way since New Ability
+// Select: the change-special role moved to the SPEC 2 key (slot 17) with the
+// setting off. The loader, the saver and the mapping library drop it exactly
+// as they drop slot 14.
+static_assert([] {
+    for (int p = 0; p < 4; ++p)
+    {
+        if (kDefaultFourDirKeys[p][KEY_SPECIAL_SWITCH] != KEYCODE_UNKNOWN)
+            return false;
+        if (kDefaultEightDirKeys[p][KEY_SPECIAL_SWITCH] != KEYCODE_UNKNOWN)
+            return false;
+    }
+    return true;
+}(), "KEY_SPECIAL_SWITCH is a reserved wire slot and must stay unbound");
+static_assert(kLegacyNumKeys == KEY_LOOKUP + 1 && KEY_SPEC2 == kLegacyNumKeys,
+              "the legacy tables end at KEY_LOOKUP; SPEC 2/3 are new slots");
 
 // web_control_defaults.h duplicates these values to stay self-contained;
 // pin them against the real constants here.
@@ -220,29 +358,22 @@ static_assert(og::input::kWebKeySlotLookup == KEY_LOOKUP);
 static_assert(og::input::kWebModeFourIndex == kModeFourIndex);
 static_assert(og::input::kWebModeEightIndex == kModeEightIndex);
 static_assert(og::input::kWebFourDirFireKey == KEYCODE_z);
-static_assert(og::input::kWebFourDirSpecialKey == KEYCODE_x);
 static_assert(og::input::kWebEightDirFireKey == KEYCODE_s);
-static_assert(og::input::kWebEightDirYellKey == KEYCODE_v);
+static_assert(og::input::kWebEightDirYellKey == KEYCODE_TAB);
 static_assert(og::input::kWebEightDirLookupKey == KEYCODE_UNKNOWN);
-static_assert(og::input::kWebLegacyFireKey == KEYCODE_LCTRL);
-static_assert(og::input::kWebLegacySpecialKey == KEYCODE_LALT);
-static_assert(og::input::kWebLegacyEightDirYellKey == KEYCODE_s);
-static_assert(og::input::kWebLegacyEightDirLookupKey == KEYCODE_v);
+static_assert(og::input::kLegacyWebFourDirSpecialKey == KEYCODE_x);
+static_assert(og::input::kLegacyWebEightDirYellKey == KEYCODE_v);
 
-// The migration only ever rewrites a value still equal to the native factory
-// default, so pin those against the tables above: editing profile 0's native
-// keymap without revisiting the migration would silently leave it chasing a
-// value nobody has stored.
-static_assert(kDefaultFourDirKeys[0][KEY_FIRE] == og::input::kWebLegacyFireKey);
-static_assert(kDefaultFourDirKeys[0][KEY_SPECIAL] == og::input::kWebLegacySpecialKey);
-static_assert(kDefaultEightDirKeys[0][KEY_FIRE] == og::input::kWebLegacyFireKey);
-static_assert(kDefaultEightDirKeys[0][KEY_SPECIAL] == og::input::kWebLegacySpecialKey);
-static_assert(kDefaultEightDirKeys[0][KEY_YELL] ==
-              og::input::kWebLegacyEightDirYellKey);
-static_assert(kDefaultEightDirKeys[0][KEY_LOOKUP] ==
-              og::input::kWebLegacyEightDirLookupKey);
-// That S is free of every OTHER player's bindings — the substitution's whole
-// justification — is swept at runtime by the web collision-matrix test.
+// The legacy constants name values of profile 0's OLD native tables (the web
+// scheme displaced those), so pin them there.
+static_assert(kLegacyFourDirKeys[0][KEY_FIRE] == og::input::kLegacyNativeFireKey);
+static_assert(kLegacyFourDirKeys[0][KEY_SPECIAL] == og::input::kLegacyNativeSpecialKey);
+static_assert(kLegacyEightDirKeys[0][KEY_FIRE] == og::input::kLegacyNativeFireKey);
+static_assert(kLegacyEightDirKeys[0][KEY_SPECIAL] == og::input::kLegacyNativeSpecialKey);
+// The web substitution moves profile 0's 8-direction YELL off the new FIRE
+// key and onto the native 8-direction look-up, which then goes unbound.
+static_assert(kDefaultEightDirKeys[0][KEY_YELL] == og::input::kWebEightDirFireKey);
+static_assert(kDefaultEightDirKeys[0][KEY_LOOKUP] == og::input::kWebEightDirYellKey);
 
 int normalize_control_mode(int mode)
 {
@@ -457,18 +588,20 @@ void set_player_key_binding(int player_index, int key_enum, int keycode)
 void load_player_control_settings_from_cfg(cfg_store& config, bool web_mode)
 {
     reset_default_player_controls();
+    hw().ability_select = og::input::ability_select_from_cfg(config);
 
-    // One-shot web-defaults migration (issue #144): a persisted binding still
-    // equal to profile 0's native factory value predates the browser-safe
-    // defaults, and on web the whole controls block is written back on every
-    // boot — so without this rewrite the new defaults would never reach a
-    // returning player. Version-keyed: once controls/web_default_keys_version
-    // is current, a deliberate LCtrl rebind is left alone forever.
-    const bool migrate_web_defaults =
-        web_mode &&
-        parse_int_strict(
-            config.get_setting("controls", "web_default_keys_version"))
-                .value_or(0) < og::input::kWebControlDefaultsVersion;
+    // One-time move of saved keys to the current factory tables (New Ability
+    // Select): the boot path writes the whole controls block back on every
+    // start, so every returning player has the OLD factory keys frozen in
+    // cfg, and without this the new tables would never reach them. The rule
+    // is og::input::migrate_seat_keys (input_mappings.h); it runs once per
+    // cfg, keyed on controls/default_keys_version, so a later deliberate
+    // rebind to an old factory key is left alone forever.
+    const bool migrate_keys =
+        parse_int_strict(config.get_setting(
+            "controls", og::input::kDefaultKeysVersionSetting))
+                .value_or(0) < og::input::kDefaultKeysVersion;
+    std::vector<og::input::SeatKeysToMigrate> seats(4);
 
     // A profile's factory-layout identity is a permutation of 1..4. It
     // follows compacted profiles so per-seat RESET remains collision-free
@@ -510,87 +643,82 @@ void load_player_control_settings_from_cfg(cfg_store& config, bool web_mode)
         reset_default_player_controls_for_player(p, web_mode);
     }
 
+    // A stored key: kKeyNotStored when the cfg never mentions it (or holds
+    // something that is not a number), which reads as the factory key.
+    const auto stored_key = [&config](int player, int k, int& four, int& eight) {
+        const auto read = [&config](const std::string& name, int& out) {
+            const std::string value = config.get_setting("controls", name);
+            if (!value.empty())
+                out = parse_int_strict(value).value_or(og::input::kKeyNotStored);
+        };
+        four = og::input::kKeyNotStored;
+        read(std::format("player{}_key{}", player + 1, k), four);
+        eight = four;
+        read(std::format("player{}_mode4_key{}", player + 1, k), four);
+        read(std::format("player{}_mode8_key{}", player + 1, k), eight);
+    };
+
+    for (int p = 0; p < 4; ++p)
+    {
+        const int default_profile =
+            hw().player_control_default_profiles[p];
+        og::input::SeatKeysToMigrate& seat = seats[static_cast<std::size_t>(p)];
+        seat.profile = default_profile;
+        for (int k = 0; k < NUM_KEYS; ++k)
+        {
+            int four = og::input::kKeyNotStored;
+            int eight = og::input::kKeyNotStored;
+            stored_key(p, k, four, eight);
+            // KEY_PREFS and KEY_SPECIAL_SWITCH are reserved wire slots with
+            // no action behind them. Existing configs still carry the old
+            // 1/2/3/4 in slot 14 and the old change-special key in slot 11;
+            // ignoring the persisted value leaves the slot at its
+            // KEYCODE_UNKNOWN default, so returning players get those keys
+            // back for free. The migration still reads slot 11: a key the
+            // player chose there becomes their SPEC 2 key.
+            if (k == KEY_SPECIAL_SWITCH)
+            {
+                seat.change_special = {four, eight};
+                continue;
+            }
+            if (k == KEY_PREFS)
+                continue;
+
+            seat.keys[kModeFourIndex][static_cast<std::size_t>(k)] = four;
+            seat.keys[kModeEightIndex][static_cast<std::size_t>(k)] = eight;
+            if (four != og::input::kKeyNotStored)
+                hw().player_mode_keys[p][kModeFourIndex][k] = four;
+            if (eight != og::input::kKeyNotStored)
+                hw().player_mode_keys[p][kModeEightIndex][k] = eight;
+        }
+    }
+
+    // Before the mode activation below, so before any REMAP or mapping-cycle
+    // path can snapshot a stale layout into the mapping library.
+    if (migrate_keys)
+    {
+        og::input::migrate_seat_keys(seats, web_mode);
+        for (int p = 0; p < 4; ++p)
+        {
+            for (int mode = kModeFourIndex; mode <= kModeEightIndex; ++mode)
+            {
+                for (int k = 0; k < NUM_KEYS; ++k)
+                {
+                    hw().player_mode_keys[p][mode][k] =
+                        seats[static_cast<std::size_t>(p)]
+                            .keys[static_cast<std::size_t>(mode)]
+                                 [static_cast<std::size_t>(k)];
+                }
+            }
+        }
+    }
+
     for (int p = 0; p < 4; ++p)
     {
         const int default_profile =
             hw().player_control_default_profiles[p];
         const std::string mode_key = std::format("player{}_mode", p + 1);
         const std::string mode_str = config.get_setting("controls", mode_key);
-        for (int k = 0; k < NUM_KEYS; ++k)
-        {
-            // KEY_PREFS is a reserved wire slot with no action behind it.
-            // Existing configs still carry the old 1/2/3/4 there; ignoring
-            // the persisted value leaves the slot at its KEYCODE_UNKNOWN
-            // default, so returning players get those keys back for free.
-            if (k == KEY_PREFS)
-                continue;
-
-            const int four_fallback = og::input::browser_safe_default_key(
-                default_profile, kModeFourIndex, k,
-                kDefaultFourDirKeys[default_profile][k], web_mode);
-            const int eight_fallback = og::input::browser_safe_default_key(
-                default_profile, kModeEightIndex, k,
-                kDefaultEightDirKeys[default_profile][k], web_mode);
-
-            const std::string legacy_key_name = std::format("player{}_key{}", p + 1, k);
-            const std::string legacy_key_value = config.get_setting("controls", legacy_key_name);
-            if (!legacy_key_value.empty())
-            {
-                hw().player_mode_keys[p][kModeFourIndex][k] = parse_int_strict(legacy_key_value).value_or(four_fallback);
-                hw().player_mode_keys[p][kModeEightIndex][k] = parse_int_strict(legacy_key_value).value_or(eight_fallback);
-            }
-
-            const std::string mode4_key_name = std::format("player{}_mode4_key{}", p + 1, k);
-            const std::string mode4_key_value = config.get_setting("controls", mode4_key_name);
-            if (!mode4_key_value.empty())
-            {
-                hw().player_mode_keys[p][kModeFourIndex][k] =
-                    parse_int_strict(mode4_key_value).value_or(four_fallback);
-            }
-
-            const std::string mode8_key_name = std::format("player{}_mode8_key{}", p + 1, k);
-            const std::string mode8_key_value = config.get_setting("controls", mode8_key_name);
-            if (!mode8_key_value.empty())
-            {
-                hw().player_mode_keys[p][kModeEightIndex][k] =
-                    parse_int_strict(mode8_key_value).value_or(eight_fallback);
-            }
-        }
-
-        if (default_profile == 0)
-        {
-            // Only the profile-0 seat carries the factory layout the web
-            // defaults move; rewrite a stored value only while it still
-            // equals that old default (never a user's own choice).
-            hw().player_mode_keys[p][kModeFourIndex][KEY_FIRE] =
-                og::input::migrate_persisted_control_key(
-                    hw().player_mode_keys[p][kModeFourIndex][KEY_FIRE],
-                    KEYCODE_LCTRL, og::input::kWebFourDirFireKey,
-                    migrate_web_defaults);
-            hw().player_mode_keys[p][kModeFourIndex][KEY_SPECIAL] =
-                og::input::migrate_persisted_control_key(
-                    hw().player_mode_keys[p][kModeFourIndex][KEY_SPECIAL],
-                    KEYCODE_LALT, og::input::kWebFourDirSpecialKey,
-                    migrate_web_defaults);
-            // 8-direction: FIRE takes S, so YELL moves to V and look-up (V
-            // natively) goes unbound. SPECIAL is deliberately absent — Left
-            // Alt is browser-safe and stays put.
-            hw().player_mode_keys[p][kModeEightIndex][KEY_FIRE] =
-                og::input::migrate_persisted_control_key(
-                    hw().player_mode_keys[p][kModeEightIndex][KEY_FIRE],
-                    KEYCODE_LCTRL, og::input::kWebEightDirFireKey,
-                    migrate_web_defaults);
-            hw().player_mode_keys[p][kModeEightIndex][KEY_YELL] =
-                og::input::migrate_persisted_control_key(
-                    hw().player_mode_keys[p][kModeEightIndex][KEY_YELL],
-                    og::input::kWebLegacyEightDirYellKey,
-                    og::input::kWebEightDirYellKey, migrate_web_defaults);
-            hw().player_mode_keys[p][kModeEightIndex][KEY_LOOKUP] =
-                og::input::migrate_persisted_control_key(
-                    hw().player_mode_keys[p][kModeEightIndex][KEY_LOOKUP],
-                    og::input::kWebLegacyEightDirLookupKey,
-                    og::input::kWebEightDirLookupKey, migrate_web_defaults);
-        }
 
         hw().player_control_modes[p] = mode_str.empty()
             ? kDefaultControlModes[static_cast<std::size_t>(
@@ -615,14 +743,11 @@ void load_player_control_settings_from_cfg(cfg_store& config, bool web_mode)
     if (g_joystick_guid_reattach_hook != nullptr)
         g_joystick_guid_reattach_hook();
 
-    if (web_mode)
-    {
-        // Stamp the version even when nothing migrated, so the next load
-        // (and any later deliberate LCtrl/LAlt rebind) is left alone. The
-        // boot path saves this cfg right after loading controls.
-        config.apply_setting("controls", "web_default_keys_version",
-            std::to_string(og::input::kWebControlDefaultsVersion));
-    }
+    // Stamp the version even when nothing moved, so the next load (and any
+    // later deliberate rebind to an old factory key) is left alone. The boot
+    // path saves this cfg right after loading controls.
+    config.apply_setting("controls", og::input::kDefaultKeysVersionSetting,
+        std::to_string(og::input::kDefaultKeysVersion));
 }
 
 void save_player_control_settings_to_cfg(cfg_store& config)
@@ -645,8 +770,10 @@ void save_player_control_settings_to_cfg(cfg_store& config)
             const int mode_index = current_player_mode_keymap_index(p);
             // The reserved KEY_PREFS slot always writes back unbound, so a
             // config that predates the options-menu retirement stops
-            // claiming 1/2/3/4 the first time settings are saved.
-            const bool reserved = (k == KEY_PREFS);
+            // claiming 1/2/3/4 the first time settings are saved. The
+            // retired change-special slot (KEY_SPECIAL_SWITCH) likewise.
+            const bool reserved =
+                (k == KEY_PREFS || k == KEY_SPECIAL_SWITCH);
             const int active_value = reserved
                 ? KEYCODE_UNKNOWN
                 : hw().player_mode_keys[p][mode_index][k];
@@ -933,6 +1060,30 @@ int factory_default_mode(int profile)
     return kDefaultControlModes[static_cast<std::size_t>(profile)];
 }
 
+int legacy_factory_key(int profile, int mode_index, int key_enum)
+{
+    if (profile < 0 || profile >= 4 || key_enum < 0 || key_enum >= kLegacyNumKeys)
+        return KEYCODE_UNKNOWN;
+    return (mode_index == kModeEightIndex)
+        ? kLegacyEightDirKeys[profile][key_enum]
+        : kLegacyFourDirKeys[profile][key_enum];
+}
+
+bool ability_select_from_cfg(cfg_store& config)
+{
+    return config.get_setting("effects", "new_ability_select") != "off";
+}
+
+bool ability_select_on()
+{
+    return hw().ability_select;
+}
+
+void refresh_ability_select_cache()
+{
+    hw().ability_select = ability_select_from_cfg(cfg);
+}
+
 } // namespace og::input
 
 // ---------------------------------------------------------------------------
@@ -983,7 +1134,7 @@ bool load_player_hud_settings_from_cfg(cfg_store& config, int player_index,
                 "controls", hud_setting_name(player_index, "view_zoom")))
             .value_or(0));
     // The migration marker is deliberately NOT defaulted in
-    // cfg_store::load_settings (web_default_keys_version precedent): its
+    // cfg_store::load_settings (controls/default_keys_version precedent): its
     // absence means this player's keys were never written and the caller
     // must run the one-shot keyprefs.dat seed.
     return !config

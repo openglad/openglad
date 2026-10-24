@@ -62,6 +62,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
 #include <system_error>
@@ -453,12 +454,14 @@ const std::vector<FxScreenPlan>& fx_screen_plans()
           "toggle_new_specials", "toggle_gameplay_fixes"}},
         {"ui_fx",
          "ui_fx_back",
-         {"toggle_mini_hp_bar", "toggle_damage_numbers", "toggle_heal_numbers"},
+         {"toggle_mini_hp_bar", "toggle_damage_numbers", "toggle_heal_numbers",
+          "toggle_new_ability_select"},
          {{"toggle_mini_hp_bar", "effects", "mini_hp_bar"},
           {"toggle_damage_numbers", "effects", "damage_numbers"},
-          {"toggle_heal_numbers", "effects", "heal_numbers"}},
+          {"toggle_heal_numbers", "effects", "heal_numbers"},
+          {"toggle_new_ability_select", "effects", "new_ability_select"}},
          {"ui_fx_back", "toggle_mini_hp_bar", "toggle_damage_numbers",
-          "toggle_heal_numbers"}},
+          "toggle_heal_numbers", "toggle_new_ability_select"}},
         {"graphics_fx",
          "graphics_fx_back",
          {"toggle_hit_flash", "toggle_shadows", "toggle_dust",
@@ -478,7 +481,7 @@ const std::vector<FxScreenPlan>& fx_screen_plans()
 
 // The cfg keys menu_effects flips on film; the flip-twice discipline must
 // leave every one of them exactly as it found it.
-constexpr std::array<std::pair<const char*, const char*>, 11> kEffectsCfgKeys = {{
+constexpr std::array<std::pair<const char*, const char*>, 12> kEffectsCfgKeys = {{
     {"effects", "hit_recoil"},
     {"effects", "attack_lunge"},
     {"gameplay", "new_specials"},
@@ -486,6 +489,7 @@ constexpr std::array<std::pair<const char*, const char*>, 11> kEffectsCfgKeys = 
     {"effects", "mini_hp_bar"},
     {"effects", "damage_numbers"},
     {"effects", "heal_numbers"},
+    {"effects", "new_ability_select"},
     {"effects", "weather"},
     {"effects", "shadows"},
     {"effects", "fire_glow"},
@@ -878,8 +882,60 @@ TEST(MenuCapture, zz_capture_menu_tour)
         << "brightness_minus must put the step back where it started";
 }
 
+namespace
+{
+// While filming, the effects pages show the SHIPPED defaults: the values a
+// fresh cfg_store loads (its built-in defaults, then cfg/openglad.yaml),
+// not whatever the integration harness left in cfg (most effects keys are
+// never set there, so every row read OFF). Puts the harness values back.
+class ScopedShippedEffectsDefaults
+{
+public:
+    ScopedShippedEffectsDefaults()
+    {
+        cfg_store shipped;
+        (void)shipped.load_settings();
+        for (std::size_t i = 0; i < kEffectsCfgKeys.size(); ++i) {
+            const auto& [category, setting] = kEffectsCfgKeys[i];
+            const auto group = cfg.data.find(category);
+            if (group != cfg.data.end()) {
+                const auto entry = group->second.find(setting);
+                if (entry != group->second.end())
+                    saved_[i] = entry->second;
+            }
+            cfg.apply_setting(category, setting,
+                              shipped.get_setting(category, setting));
+        }
+        og::input::refresh_ability_select_cache();
+    }
+
+    ~ScopedShippedEffectsDefaults()
+    {
+        for (std::size_t i = 0; i < kEffectsCfgKeys.size(); ++i) {
+            const auto& [category, setting] = kEffectsCfgKeys[i];
+            if (saved_[i].has_value())
+                cfg.apply_setting(category, setting, *saved_[i]);
+            else
+                cfg.data[category].erase(setting);
+        }
+        og::input::refresh_ability_select_cache();
+    }
+
+    ScopedShippedEffectsDefaults(const ScopedShippedEffectsDefaults&) = delete;
+    ScopedShippedEffectsDefaults& operator=(
+        const ScopedShippedEffectsDefaults&) = delete;
+
+private:
+    std::array<std::optional<std::string>, kEffectsCfgKeys.size()> saved_;
+};
+} // namespace
+
 TEST(MenuCapture, zz_capture_menu_effects)
 {
+    std::unique_ptr<ScopedShippedEffectsDefaults> shipped;
+    if (fx_capture_dir() != nullptr)
+        shipped = std::make_unique<ScopedShippedEffectsDefaults>();
+
     std::array<bool, kEffectsCfgKeys.size()> before{};
     for (std::size_t i = 0; i < kEffectsCfgKeys.size(); ++i)
         before[i] = cfg.is_on(kEffectsCfgKeys[i].first, kEffectsCfgKeys[i].second);
@@ -890,8 +946,8 @@ TEST(MenuCapture, zz_capture_menu_effects)
                                              menu_effects_injector, state,
                                              injector_result));
 
-    // 4 + 3 + 5 nav steps down the three screens' left columns.
-    expect_scene_completed(state, injector_result, 12, 3);
+    // 4 + 4 + 5 nav steps down the three screens' left columns.
+    expect_scene_completed(state, injector_result, 13, 3);
     verify_captured_frames("menu_effects", 3);
     const std::vector<FxScreenPlan>& plans = fx_screen_plans();
     for (std::size_t i = 0; i < plans.size(); ++i)

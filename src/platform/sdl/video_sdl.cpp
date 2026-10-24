@@ -373,6 +373,7 @@ sdl_video::~sdl_video()
 	// display) before any SDL_Quit below.
 	if (floor_layer_) { SDL_DestroySurface(floor_layer_); floor_layer_ = nullptr; }
 	if (floor_layer_scaled_) { SDL_DestroySurface(floor_layer_scaled_); floor_layer_scaled_ = nullptr; }
+	if (rgba_scaled_) { SDL_DestroySurface(rgba_scaled_); rgba_scaled_ = nullptr; }
 
 	// Only the display-owning video instance tears down SDL.
 	// IMPORTANT: All non-owning video instances (sub-sessions with
@@ -889,13 +890,14 @@ void blend_pixel(SDL_Surface* surface, int x, int y, Uint32 color, Uint8 alpha)
             pixel = static_cast<Uint32*>(surface->pixels) + y*surface->pitch/4 + x;
             Uint32 dc = *pixel;
 
-			// The smart-smoothing gameplay overlay starts fully transparent and
-			// is composited over the filtered world later. Preserve the caller's
-			// coverage as real straight alpha here; the legacy canvases and floor
-			// layers keep their historical RGB-only blend below.
+			// The smart-smoothing gameplay overlay and the HUD sprite planes
+			// start fully transparent and are composited over the world later.
+			// Preserve the caller's coverage as real straight alpha here; the
+			// legacy canvases and floor layers keep their historical RGB-only
+			// blend below. The target decides
+			// (Screen::render_target_is_straight_alpha).
 			if (Amask && E_Screen != nullptr &&
-			    E_Screen->active_canvas() == CanvasTarget::GameplayUI &&
-			    E_Screen->gameplay_ui_overlay_active())
+			    E_Screen->render_target_is_straight_alpha())
 			{
 				const auto channel = [](Uint32 value, Uint32 mask, Uint8 shift) {
 					return static_cast<Uint32>((value & mask) >> shift);
@@ -1509,6 +1511,78 @@ void sdl_video::cancel_native_world_view()
 bool sdl_video::native_world_view_active() const
 {
     return E_Screen != nullptr && E_Screen->native_world_view_active();
+}
+
+// The CHANGELOG! keyboard picture: a truecolour image scaled into the active
+// draw target (an open native plane, whose pixels are the display's). The
+// scale is linear and done once per size: the result is kept and re-blitted
+// while the same picture is drawn at the same size, so a menu that redraws
+// every frame pays for one plain copy a frame.
+float sdl_video::hud_sprite_scale() const
+{
+    return E_Screen != nullptr ? E_Screen->hud_sprite_scale() : 0.0f;
+}
+
+bool sdl_video::begin_native_hud_sprite(
+    const NativeWorldViewDestination& destination, int src_w, int src_h)
+{
+    return E_Screen != nullptr &&
+           E_Screen->begin_native_hud_sprite(destination, src_w, src_h);
+}
+
+bool sdl_video::end_native_hud_sprite()
+{
+    return E_Screen != nullptr && E_Screen->end_native_hud_sprite();
+}
+
+void sdl_video::cancel_native_hud_sprite()
+{
+    if (E_Screen != nullptr)
+        E_Screen->cancel_native_hud_sprite();
+}
+
+bool sdl_video::draw_rgba_scaled(const og::io::RgbaImage& image, Sint32 x,
+                                 Sint32 y, Sint32 w, Sint32 h)
+{
+    if (E_Screen == nullptr || E_Screen->render == nullptr || w <= 0 ||
+        h <= 0 || image.w <= 0 || image.h <= 0 ||
+        image.bytes.size() != static_cast<std::size_t>(image.w) *
+                                  static_cast<std::size_t>(image.h) * 4u)
+        return false;
+    // A picture with no serial is scaled afresh every time.
+    const bool cached = rgba_scaled_ != nullptr && image.serial != 0 &&
+        rgba_scaled_serial_ == image.serial &&
+        rgba_scaled_->w == w && rgba_scaled_->h == h;
+    if (!cached)
+    {
+        SDL_DestroySurface(rgba_scaled_);
+        rgba_scaled_ = nullptr;
+        rgba_scaled_serial_ = 0;
+        // RGBA32 is R, G, B, A in memory on every byte order: the loader's
+        // layout, wrapped without a copy.
+        SDL_Surface* const source = SDL_CreateSurfaceFrom(
+            image.w, image.h, SDL_PIXELFORMAT_RGBA32,
+            const_cast<std::uint8_t*>(image.bytes.data()), image.w * 4);
+        SDL_Surface* const scaled = source != nullptr
+            ? SDL_CreateSurface(w, h, E_Screen->render->format)
+            : nullptr;
+        const bool ok = scaled != nullptr &&
+            SDL_SetSurfaceBlendMode(source, SDL_BLENDMODE_NONE) &&
+            SDL_BlitSurfaceScaled(source, nullptr, scaled, nullptr,
+                                  SDL_SCALEMODE_LINEAR);
+        SDL_DestroySurface(source);
+        if (!ok)
+        {
+            LogError("draw_rgba_scaled: {}x{} -> {}x{} failed: {}\n",
+                     image.w, image.h, w, h, SDL_GetError());
+            SDL_DestroySurface(scaled);
+            return false;
+        }
+        rgba_scaled_ = scaled;
+        rgba_scaled_serial_ = image.serial;
+    }
+    SDL_Rect dst{x, y, w, h};
+    return SDL_BlitSurface(rgba_scaled_, nullptr, E_Screen->render, &dst);
 }
 
 // ---- Multi-floor vertical-parallax off-screen layer compositing ----

@@ -9,8 +9,14 @@ emberwisp/
 ├── families/emberwisp.lua    one living family: data, hooks, its special
 └── sprites/
     ├── emberwisp.png         16x16, 8 frames, indexed to the engine palette
-    └── emberwisp.json        Aseprite "Hash" sidecar describing the frames
+    ├── emberwisp.json        Aseprite "Hash" sidecar describing the frames
+    └── flare_burst.png       16x16 icon of FLARE BURST (the special's `icon`)
 ```
+
+`flare_burst.png` is compiled from the text grid
+`scripts/ability_icons/pack_grids/emberwisp/flare_burst.txt` by
+`scripts/ability_icons/generate.py`, the same way the core icons are (see
+`scripts/ability_icons/README.md`).
 
 ## Trying it
 

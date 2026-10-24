@@ -373,7 +373,7 @@ left unhandled is that pack's error, and a slot the engine filled from C++
 (`install_classpack_data`) only warns.
 
 **Alternates.** A special may declare `alternate = { name = "...", mp_cost = N,
-new_kit = true, detail = "..." }`. Those four keys are the only ones accepted
+new_kit = true, detail = "...", icon = "..." }`. Those five keys are the only ones accepted
 (any other, `level` included, is a load error), and `name` is required. The name is shown while Shift is
 held. There is no separate engine dispatch: the slot's handler forks on
 `self:shifter_down()` (or `self:alternate_down()`, below). Without
@@ -383,6 +383,35 @@ alternate does. With `mp_cost` it has its own price: while Shift is held
 charges it, turns the HUD cost red below it, and a bot that rolled Shift but
 cannot pay it drops the Shift before choosing. The same 5000-and-up and
 negative refusals apply as for a slot's `mp_cost`.
+
+**Abilities on keys (New Ability Select).** With the New Ability Select
+setting on (the default), a player does not cycle through a class's
+specials: each slot's primary and each alternate is an ability of its own,
+and six of them sit on keys (SPEC 1/2/3, and SPEC 1/2/3 with SHIFTER held).
+The rest wait on the bench, and TRAIN > ABILITIES moves them. What that
+means for a pack ([ability-select-design.md](../ability-select-design.md)
+has the whole design):
+
+- A pack may declare up to ten abilities: five `specials` entries, each
+  with an `alternate`. Six go on keys; the rest start on the bench. The
+  class default fills the keys in slot order (a primary on the next free
+  key, its alternate on SHIFTER + the same key when that is free), and an
+  alternate whose `name` repeats an earlier ability's is listed only once.
+- A saved layout names abilities by slot number and alternate flag, not by
+  `id`. Reordering or renumbering a family's `specials` therefore changes
+  what every saved hero's layout names: a player who put slot 3 on key 1
+  finds whatever is slot 3 now on that key. Heroes still on the class
+  default just follow the new default.
+- On a key press the engine sets the walker's slot and alternate flag from
+  the ability before it calls the slot's handler, so `self:shifter_down()`
+  and `self:alternate_down()` fork exactly as they do for a Shift-held
+  cast; the physical Shift key is not read. After the cast they keep the
+  values of the ability cast last.
+- An `alternate` under a primary named `"NONE"` is an ability of its own:
+  it can go on a key and the server accepts it. But without an `mp_cost`
+  of its own it costs its slot's price, and a `"NONE"` slot's price is the
+  5000 "not available" price, so every cast is refused. Give such an
+  alternate its own `mp_cost`.
 
 **Details (`detail`).** A `specials` entry, and its `alternate`, may carry
 `detail = "..."`: the prose the TRAIN -> DETAILS page shows under the
@@ -394,6 +423,23 @@ alternates still fit a column. Without `detail` the page shows the name
 alone. The page and the HIRE screen's `Special:` line follow the New
 Specials setting: a hidden slot or alternate is not listed, and a slot above
 the character's level shows as `<Name>: lvl <N>`.
+
+**Icons (`icon`).** A `specials` entry, and its `alternate`, may carry
+`icon = "..."`: the ability's picture, which New Ability Select draws in its
+slot on the HUD and on the TRAIN > ABILITIES screen instead of the name. It
+is a 16x16 indexed PNG in the engine palette, one frame, no sidecar, and the
+string is resolved exactly like a family's `sprite`: core art passes a bare
+name under `pix/` (`icon = "icons/teleport.png"`), a pack passes its own
+file under its mount point (`icon = "packs/<pack_id>/sprites/<name>.png"`;
+the example pack `docs/modding/examples/emberwisp` ships one). Two abilities
+may name the same file; it is loaded once. A special with no `icon`, or one
+whose file does not load as a 16x16 picture, draws the generic question-mark
+tile, and the ability stays usable. Leave index 0 transparent and keep off
+the cycled (208-231), team (248-255) and UI (1-15) bands: the icon is drawn
+on a dark slot and greyed for a locked slot. Draw it as a text grid and
+compile it with `scripts/ability_icons/generate.py`, whose README has the
+format, the palette rules and the gates a grid must pass. The sim never
+reads the key.
 
 **New Specials (`new_kit`).** `new_kit = true` on a `specials` entry, or
 inside its `alternate`, puts that special behind the New Specials setting.
@@ -622,6 +668,9 @@ is in play this session. A slot cast whose alternate is `new_kit` forks on
 this instead of `shifter_down()`, so the classic special still runs with
 the setting off. It also answers `true` on a shifted classic slot that
 declares no alternate at all (it means "not hidden by the setting").
+"Shift is held" here is the walker's `shifter_down()`: on a cast from a
+New Ability Select key that is the ability's alternate flag, not the
+physical Shift key (see "Abilities on keys" above).
 
 ### Kit state (New Specials)
 

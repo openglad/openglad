@@ -14,6 +14,7 @@
 #include <openglad/interface/sound.h>
 #include <openglad/interface/render/text.h>
 #include <openglad/gameplay/walker.h>
+#include <openglad/gameplay/families/belt.h>
 #include <openglad/gameplay/families/family_descriptor.h>
 #include <openglad/gameplay/families/family_registry.h>
 #include <openglad/gameplay/families/specials_view.h>
@@ -21,6 +22,7 @@
 #include <openglad/gameplay/statistics.h>
 #include <openglad/resources/campaign_metadata.h>
 #include <openglad/resources/game_mode.h>
+#include <openglad/interface/input.h>
 #include <openglad/interface/native_input.h>
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/render/walker_draw.h>
@@ -319,13 +321,37 @@ std::vector<std::string> TroopResult::get_gained_specials() const
     const short new_specials = og::sim::session_new_specials();
     // A slot opens at og::sim::slot_open_level: 3*slot - 2 unless its row
     // says `level = N`, so one level may open none, one or two slots.
-    for (Sint32 test1 = 1; test1 <= 4; ++test1) // raise this when we have more than 4 specials
+    //
+    // New Ability Select: a special that opens while it is not on the
+    // hero's belt (the Archmage's MIND CONTROL at level 10, by default) is
+    // named with " (ON THE BENCH)", so the player knows to put it on a key.
+    const bool ability_select = og::input::ability_select_on();
+    const og::sim::belt::Layout belt_layout = og::sim::belt::resolve(
+        fd, get_level(), new_specials,
+        og::sim::belt::bytes_for(after != nullptr ? &after->myguy->belt
+                                 : before != nullptr ? &before->belt
+                                                     : nullptr));
+    const auto on_belt = [&belt_layout](Sint32 slot) {
+        return std::any_of(belt_layout.begin(), belt_layout.end(),
+                           [slot](const og::sim::belt::Resolved& r) {
+                               return r.entry && r.entry->slot == slot &&
+                                      !r.entry->alt;
+                           });
+    };
+    // (2026: every descriptor slot, 1..5 — the mage's level-13 HEARTBURST
+    // is slot 5 and was never announced.)
+    for (Sint32 test1 = 1; test1 < FD_NUM_SPECIALS; ++test1) // raise this when we have more than 4 specials
     {
         if (og::sim::slot_open_level(fd, test1) == get_level()) // we're on a special-gaining level
         {
             const char* name = og::sim::special_name(fd, test1, new_specials);
             if (std::strcmp(name, kSpecialNameNone) != 0)
-                result.push_back(name); // this is the special #
+            {
+                if (ability_select && !on_belt(test1))
+                    result.push_back(std::string(name) + " (ON THE BENCH)");
+                else
+                    result.push_back(name); // this is the special #
+            }
         }
     }
     

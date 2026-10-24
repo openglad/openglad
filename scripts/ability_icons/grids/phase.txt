@@ -1,0 +1,25 @@
+# PHASE (ghost): the ghost (ghost.png frame 0 at 3,1) gone spectral: every other pixel in a checker (the red eyes kept), a solid light outline (28) and two speed lines (29): untouchable and twice as fast
+# legend: one character = one palette index (pix/openglad.gpl)
+k = 28
+a = 24
+b = 29
+c = 25
+d = 27
+e = 40
+
+................
+........kkk.....
+.......ka.ak....
+.....kka.b.akk..
+....k.a.b.c.a.k.
+bbbk.b.a.d.a.d.k
+..k.b.a.e.e.d.d.
+..ka.c.b.a.c.d.c
+..k.d.k.b.c.k.d.
+bbka.akk.d.aka.a
+...kak.ka.ck.kak
+....k...ka.k..k.
+.........kk.....
+................
+................
+................

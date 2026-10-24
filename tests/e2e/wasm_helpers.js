@@ -67,6 +67,17 @@ async function waitForGameLoad(page) {
   );
 }
 
+// The CHANGELOG! page (src/interface/ui/changelog_screen.cpp) shows once,
+// in front of the main menu, on a profile that has never seen it -- which is
+// every fresh Playwright context. Every spec boots without it (a beforeEach
+// per spec file); only wasm-changelog.spec.js boots with it. The engine also
+// skips it whenever __opengladSkipIntroForTests is set.
+async function installChangelogSkip(page) {
+  await page.addInitScript(() => {
+    /** @type {any} */ (window).__opengladSkipChangelogForTests = true;
+  });
+}
+
 async function focusCanvas(page) {
   await page.locator('#canvas').click();
   await page.waitForFunction(
@@ -300,6 +311,27 @@ async function startSeededSinglePlayerFromPicker(page, options = {}) {
   return appliedProfile;
 }
 
+// New Ability Select touch buttons (web/shell.html): the 16x16 RGBA bytes
+// painted into a SPEC button's picture canvas, with the picture key the
+// page painted and the engine's bytes for that key
+// (window.__opengladBeltPictures, filled from the 'openglad-belt' push).
+async function readButtonPixels(page, selector) {
+  return await page.evaluate((sel) => {
+    const canvas = document.querySelector(`${sel} canvas.tc-icon-px`);
+    if (!canvas) {
+      return null;
+    }
+    const key = canvas.dataset.pictureKey || '';
+    const painted = Array.from(
+      canvas.getContext('2d').getImageData(0, 0, 16, 16).data,
+    );
+    const sent = key && window.__opengladBeltPictures
+      ? window.__opengladBeltPictures[key]
+      : null;
+    return { key, painted, sent: sent ? Array.from(sent) : null };
+  }, selector);
+}
+
 module.exports = {
   clickCanvasGameCoord,
   continueToTeamBuildMenu,
@@ -307,8 +339,10 @@ module.exports = {
   focusCanvas,
   getCanvasGameRegionScreenshot,
   getCanvasUiBox,
+  installChangelogSkip,
   navigateToNetworkingMenu,
   openNetworkingFromTeamBuild,
+  readButtonPixels,
   startSeededSinglePlayerFromPicker,
   waitForGameLoad,
   waitForGameplayProgress,

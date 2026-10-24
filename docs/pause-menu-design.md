@@ -204,6 +204,17 @@ Building on the gap analysis (everything below `JoyData` works today):
   non-negative, and a device that opens with nothing bindable is refused
   outright (the enumerated-but-unopenable udev case surfaces a
   "COULD NOT OPEN JOYn" popup instead of a silent no-op).
+
+  **Update (2026-10-22, New Ability Select):** the change-special key slot
+  is retired (slot 11 is reserved and never bound), so button 2 now binds
+  SPEC 2 (`KEY_SPEC2`) and a pad with seven or more buttons gets SPEC 3
+  (`KEY_SPEC3`) on button 6. With the setting off button 2 still changes
+  the special, so the old pad behaviour is unchanged. REMAP follows the
+  setting too: on, it asks UP, RIGHT, DOWN, LEFT (and the four diagonals in
+  8-direction), FIRE, SPEC 1, SPEC 2, SPEC 3, YELL, SWITCH CHARACTER,
+  SHIFTER, LOOK UP (12 and 16 prompts); off, the old 11 and 15 with SPECIAL
+  SWITCH binding the SPEC 2 key. See
+  [ability-select-design.md](ability-select-design.md), C.3 and E.5.
 - **Hotplug**: `SDL_EVENT_JOYSTICK_ADDED/REMOVED` enter the native_input seam
   (`EventType::JoyDeviceAdded/Removed`); on removal the affected seat falls
   back to its keyboard mapping with a display notification; on add the

@@ -130,9 +130,9 @@ og.family("living", {
              train = { strength = 15, dexterity = 6, constitution = 9,
                        intelligence = 10, armor = 50, level = 200 } },
   specials = {
-    { id = "fire_arrows",    name = "FIRE ARROWS",    mp_cost = 20, cast = fire_arrows, detail = "An archer can spin in a circle, firing off a ring of flaming bolts." },
-    { id = "barrage",        name = "BARRAGE",        mp_cost = 60, cast = flurry, detail = "Rather than a single bolt, the archer sends 3 deadly bolts ahead." },
-    { id = "exploding_bolt", name = "EXPLODING BOLT", mp_cost = 70, detail = "This fatal bolt will explode on contact, dealing death to all." },
+    { id = "fire_arrows",    name = "FIRE ARROWS",    mp_cost = 20, cast = fire_arrows, detail = "An archer can spin in a circle, firing off a ring of flaming bolts.", icon = "icons/fire_arrows.png" },
+    { id = "barrage",        name = "BARRAGE",        mp_cost = 60, cast = flurry, detail = "Rather than a single bolt, the archer sends 3 deadly bolts ahead.", icon = "icons/barrage.png" },
+    { id = "exploding_bolt", name = "EXPLODING BOLT", mp_cost = 70, detail = "This fatal bolt will explode on contact, dealing death to all.", icon = "icons/exploding_bolt.png" },
     default_cast = exploding_shot,  -- slot 3 and every unmapped slot (slot 4 is undeclared)
   },
   default_weapon = "core:arrow",

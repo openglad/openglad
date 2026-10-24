@@ -21,6 +21,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <vector>
 #include <openglad/interface/input.h>
 
 class pixieN;
@@ -43,6 +44,11 @@ inline constexpr char BUTTON_TOP    = 15; //14
 inline constexpr char BUTTON_BOTTOM = 11; //10
 inline constexpr char BUTTON_LEFT   = 14; //13
 inline constexpr char BUTTON_RIGHT  = 12; //11
+// The label ink of a dimmed (inert) face: a pale grey instead of
+// DARK_BLUE, so an unavailable door reads as unavailable at a glance and
+// not just as a slightly darker card (the GREY face alone is one palette
+// step from the live face).
+inline constexpr unsigned char BUTTON_DIMMED_LABEL = 14;
 
 // myscreen is now a macro defined in base.h (via game_session.h).
 // button.h includes input.h but not base.h, so pull it in here.
@@ -121,7 +127,8 @@ class vbutton
 		// dimmed button's right and bottom bevels dissolve into its face and
 		// it reads as a half-drawn card with a flat right edge. When this is
 		// set, vdisplay steps those two edges one shade darker so all four
-		// bevels survive at the dim shade.
+		// bevels survive at the dim shade, and writes the label in
+		// BUTTON_DIMMED_LABEL instead of DARK_BLUE.
 		bool dimmed = false;
 		bool hidden;
         bool no_draw;  // Does not draw but still accepts clicks
@@ -257,9 +264,13 @@ Sint32 edit_player_keymap(Sint32 arg);
 // menu pumps the paused transport there; false cancels the prompt sequence).
 Sint32 edit_player_keymap_with_poll(Sint32 arg,
                                     KeyWaitPollCallback poll_callback);
-// Two lines: directions, then actions. (The joined one-line form went with
-// the global CONTROLS screen — the only thing that drew it.)
-std::array<std::string, 2> build_player_control_summary_lines(int player_index, bool remap_mode);
+// The REMAP wizard's control summary, one string per drawn line: the
+// directions first, then the actions. With New Ability Select off that is
+// two lines (the classic actions line); with it on, three (FIRE and the
+// SPEC 1/2/3 keys, then YELL, SWITCH, SHIFTER and LOOK UP). An out-of-range
+// player gives no lines. (The joined one-line form went with the global
+// CONTROLS screen — the only thing that drew it.)
+std::vector<std::string> build_player_control_summary_lines(int player_index, bool remap_mode);
 std::string player_control_key_display_name(int player_index, int key_enum);
 Sint32 overscan_adjust(Sint32 arg);
 Sint32 show_general_help();
@@ -474,6 +485,10 @@ enum class ButtonAction : Sint32
     ToggleNewSpecials = 126,
     // GAMEPLAY FX "Gameplay Fixes" row: the same contract as New Specials.
     ToggleGameplayFixes = 127,
+    // UI FX "New Ability Select" row: one key per ability (SPEC 1/2/3 and
+    // SHIFTER + SPEC 1/2/3). A per-machine preference like every UI FX row;
+    // it never reaches the session or the wire.
+    ToggleNewAbilitySelect = 128,
 };
 
 inline constexpr Sint32 button_action_id(ButtonAction action)

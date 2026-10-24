@@ -796,6 +796,71 @@ static std::optional<FrameInfo> load_aseprite_sidecar(const char* filename,
 }
 
 // ---------------------------------------------------------------------------
+// read_rgba_png — a truecolour picture for the display's own resolution
+// ---------------------------------------------------------------------------
+// The CHANGELOG! keyboard picture is about 1560 x 550: far past the pixie
+// limits above and drawn through the native plane, never the 320 x 200 menu
+// canvas. Same file cap as a sprite; a side cap keeps a crafted header from
+// asking lodepng for gigabytes.
+namespace og::io {
+
+constexpr unsigned kMaxRgbaPngDimension = 4096u;
+
+std::optional<RgbaImage> read_rgba_png(const char* path)
+{
+    auto infile = og_open_read(path);
+    if (!infile) {
+        LogError("Cannot open picture: {}\n", path);
+        return std::nullopt;
+    }
+    infile->seek(0, 2); // SEEK_END
+    const auto file_size = infile->tell();
+    infile->seek(0, 0); // SEEK_SET
+    if (file_size <= 0 || file_size > kMaxSpritePngBytes) {
+        LogError("Picture is empty or too large: {} ({} bytes)\n", path,
+                 static_cast<long long>(file_size));
+        return std::nullopt;
+    }
+    const auto png_size = static_cast<std::size_t>(file_size);
+    std::vector<unsigned char> file_data(png_size);
+    if (infile->read(file_data.data(), 1, png_size) != png_size) {
+        LogError("Failed to read picture: {}\n", path);
+        return std::nullopt;
+    }
+
+    lodepng::State state;
+    unsigned png_w = 0;
+    unsigned png_h = 0;
+    const unsigned inspect_err =
+        lodepng_inspect(&png_w, &png_h, &state, file_data.data(), png_size);
+    if (inspect_err != 0 || png_w == 0 || png_h == 0 ||
+        png_w > kMaxRgbaPngDimension || png_h > kMaxRgbaPngDimension) {
+        LogError("Picture is not a PNG we can draw: {} ({}x{}: {})\n", path,
+                 png_w, png_h,
+                 inspect_err != 0 ? lodepng_error_text(inspect_err)
+                                  : "bad size");
+        return std::nullopt;
+    }
+
+    RgbaImage image;
+    unsigned w = 0;
+    unsigned h = 0;
+    const unsigned decode_err = lodepng::decode(
+        image.bytes, w, h, file_data.data(), png_size, LCT_RGBA, 8);
+    if (decode_err != 0) {
+        LogError("Failed to decode picture: {}: {}\n", path,
+                 lodepng_error_text(decode_err));
+        return std::nullopt;
+    }
+    image.w = static_cast<int>(w);
+    image.h = static_cast<int>(h);
+    image.serial = next_rgba_image_serial();
+    return image;
+}
+
+}  // namespace og::io
+
+// ---------------------------------------------------------------------------
 // read_pixie_file — SDL-free indexed PNG implementation
 // ---------------------------------------------------------------------------
 // Reads a PNG sprite file via lodepng. Each pixel value is a palette index.

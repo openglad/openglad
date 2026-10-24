@@ -115,6 +115,8 @@ og::sim::LobbyCharacterData make_lobby_character_data(const guy& source)
     character.scen_shots = source.scen_shots;
     character.scen_hits = source.scen_hits;
     character.level = source.level;
+    // New Ability Select: the belt rides the lobby (protocol v22).
+    character.belt = source.belt;
     return character;
 }
 

@@ -111,6 +111,10 @@ CONVERTED_FILES=(
     # them is a ladder or an edge, and every give-up goes through the
     # escape tail with the wizard's own door table.
     tests/integration/test_match_setup_ui.cpp
+    # The ABILITIES flows (New Ability Select) are tier 2 from birth too.
+    tests/integration/test_abilities_flow.cpp
+    # The CHANGELOG! flows, the same.
+    tests/integration/test_changelog_flow.cpp
 )
 
 status=0

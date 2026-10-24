@@ -1,0 +1,24 @@
+# MEGA ROCKS (elf): a big handful: the front rock is rock.png frame 0 drawn at twice the size (8 px, shaded 130 top-left to 134 bottom-right in diagonal bands), four of the elf's small rocks tucked behind it; black outline added
+o = 16
+k = 130
+a = 131
+b = 132
+c = 133
+d = 134
+
+................
+....oo..........
+...okao.........
+..okabcooooo....
+..oabcdokkaao...
+...ocdokkaabbo..
+...oookkaabbcco.
+..okaokaabbccdo.
+.okaboaabbccddo.
+.oabcoabbccdddo.
+..ocokobccdddo..
+...okabocdddoco.
+...oabcdoooocdo.
+....ocdo..ocdo..
+.....oo....oo...
+................

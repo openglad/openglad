@@ -1063,6 +1063,9 @@ TEST(ModeUi, mode_row_and_announcement_banner_never_share_a_scanline)
 
     const int tm = v->yloc;
     const ModeRowWindow win = mode_row_window(v);
+    // Both channels live in the pane's top half; the bottom half holds the
+    // New Ability Select key box (score_panel), which is neither of them.
+    const int top_half = v->yloc + (v->endy - v->yloc) / 2;
 
     // Pass 1: the mode row alone.
     v->clear_text();
@@ -1070,7 +1073,7 @@ TEST(ModeUi, mode_row_and_announcement_banner_never_share_a_scanline)
     ASSERT_EQ(1, static_cast<int>(new_score_panel(s, 1)));
     const auto row_only = capture_rendered_frame(*s);
     const auto row_span =
-        lit_row_span(row_only, win.left, win.right, v->yloc, v->endy);
+        lit_row_span(row_only, win.left, win.right, v->yloc, top_half);
     ASSERT_LE(row_span.first, row_span.second) << "the mode row must paint";
 
     // Pass 2: the banner alone, over the same columns. A long announcement
@@ -1081,7 +1084,7 @@ TEST(ModeUi, mode_row_and_announcement_banner_never_share_a_scanline)
     v->display_text();
     const auto banner_only = capture_rendered_frame(*s);
     const auto banner_span =
-        lit_row_span(banner_only, win.left, win.right, v->yloc, v->endy);
+        lit_row_span(banner_only, win.left, win.right, v->yloc, top_half);
     ASSERT_LE(banner_span.first, banner_span.second)
         << "the banner must paint over the mode row's columns";
 

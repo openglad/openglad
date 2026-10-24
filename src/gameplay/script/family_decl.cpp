@@ -635,14 +635,17 @@ bool harvest_special(Harvest& h, int tbl, const std::string& where,
         std::optional<std::int32_t> alt_cost;
         std::optional<bool> alt_new_kit;
         std::optional<std::string> alt_detail;
+        std::optional<std::string> alt_icon;
         // New Specials: an alternate may carry its own price and may exist
         // only while the setting is on. Same refusals as the primary's cost.
         bool ok = opt_string(h, alt, awhere, "name", alt_name) &&
                   opt_int(h, alt, awhere, "mp_cost", alt_cost) &&
                   opt_bool(h, alt, awhere, "new_kit", alt_new_kit) &&
                   opt_string(h, alt, awhere, "detail", alt_detail) &&
+                  opt_string(h, alt, awhere, "icon", alt_icon) &&
                   check_keys(h, alt, awhere,
-                             {"name", "mp_cost", "new_kit", "detail"});
+                             {"name", "mp_cost", "new_kit", "detail",
+                              "icon"});
         lua_pop(L, 1);
         if (!ok)
             return false;
@@ -661,6 +664,7 @@ bool harvest_special(Harvest& h, int tbl, const std::string& where,
         out.alternate_cost = alt_cost.value_or(0);
         out.alternate_new_kit = alt_new_kit.value_or(false);
         out.alternate_detail = std::move(alt_detail);
+        out.alternate_icon = alt_icon.value_or(std::string{});
     }
     // New Specials: `new_kit = true` puts the slot behind the setting.
     std::optional<bool> new_kit;
@@ -670,6 +674,11 @@ bool harvest_special(Harvest& h, int tbl, const std::string& where,
     // The DETAILS page prose under the special's name (optional).
     if (!opt_string(h, tbl, named, "detail", out.detail))
         return false;
+    // The ability's picture (optional; absent = the generic tile).
+    std::optional<std::string> icon;
+    if (!opt_string(h, tbl, named, "icon", icon))
+        return false;
+    out.icon = icon.value_or(std::string{});
     for (const char* key : {"cast", "ai"}) {
         if (!has_field(L, tbl, key))
             continue;
@@ -691,7 +700,7 @@ bool harvest_special(Harvest& h, int tbl, const std::string& where,
     }
     return check_keys(h, tbl, named,
                       {"id", "name", "mp_cost", "slot", "level", "cast",
-                       "ai", "alternate", "new_kit", "detail"});
+                       "ai", "alternate", "new_kit", "detail", "icon"});
 }
 
 // `specials` — an ARRAY, position giving slots 1..5, with `slot = N` to

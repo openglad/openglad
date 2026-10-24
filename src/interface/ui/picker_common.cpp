@@ -35,6 +35,7 @@
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/core/irandom.h>
+#include <openglad/interface/input.h>
 
 #include <algorithm>
 #include <bit>
@@ -2220,6 +2221,9 @@ std::unique_ptr<guy> make_base_camp_display_guy(
     result->exp = character.exp;
     result->level = character.level;
     result->teamnum = character.teamnum;
+    // New Ability Select: the TRAIN screen's ABILITIES door reads the belt
+    // off this display guy.
+    result->belt = character.belt;
     return result;
 }
 
@@ -5251,7 +5255,7 @@ void append_detail_prose(std::vector<DetailText>& block, const char* detail)
 }  // namespace
 
 DetailPage detail_page(const FamilyDescriptor* fd, int level,
-                       short new_specials)
+                       short new_specials, bool ability_select)
 {
     DetailPage page;
     const std::string family =
@@ -5292,8 +5296,11 @@ DetailPage detail_page(const FamilyDescriptor* fd, int level,
         const char* alternate = og::sim::alternate_name(fd, slot, new_specials);
         if (og::sim::alternate_in_play(fd, slot, new_specials) &&
             names_a_special(alternate)) {
+            // With New Ability Select on the alternate has a key of its
+            // own, so it is "also" an ability, not "Shift" on this one.
             block.push_back(
-                {DetailInk::Name, " Shift: " + special_title(alternate)});
+                {DetailInk::Name, (ability_select ? " Also: " : " Shift: ") +
+                                      special_title(alternate)});
             append_detail_prose(block, fd->alternate_details[slot]);
         }
         blocks[column].push_back(std::move(block));
@@ -5368,6 +5375,301 @@ std::string hire_description(const FamilyDescriptor* fd, short new_specials)
         return {};
     return std::string(fd->description) + "\n\n" +
            specials_summary(fd, new_specials);
+}
+
+// --- New Ability Select ---
+
+bool ability_select_pref(cfg_store& config)
+{
+    return config.is_on("effects", "new_ability_select");
+}
+
+void set_ability_select_pref(cfg_store& config, bool on)
+{
+    config.apply_setting("effects", "new_ability_select", on ? "on" : "off");
+}
+
+namespace {
+
+namespace belt = og::sim::belt;
+
+// Any level: the edits never ask whether a slot is open, only what is on it.
+inline constexpr int kEditLevel = 0;
+
+bool belt_slot_in_range(int b)
+{
+    return b >= 0 && b < belt::kSlots;
+}
+
+std::uint8_t& stored_at(belt::Bytes& stored, int b)
+{
+    return stored[static_cast<std::size_t>(b)];
+}
+
+// Shorten `text` to `budget` glyphs, counting the cut.
+void cut_to(std::string& text, int budget, int& cut)
+{
+    if (text.size() <= static_cast<std::size_t>(budget))
+        return;
+    text.resize(static_cast<std::size_t>(budget));
+    ++cut;
+}
+
+std::string locked_suffix(int opens_at)
+{
+    return std::format(" L{}", opens_at);
+}
+
+AbilityRow belt_row(const belt::Resolved& slot, int b, int& cut)
+{
+    AbilityRow row;
+    const std::string key = ability_key_label(b);
+    if (slot.state == belt::SlotState::Empty || !slot.entry) {
+        row.text = key + " --";
+        row.empty = true;
+        return row;
+    }
+    row.entry = slot.entry;
+    row.name = slot.name;
+    row.opens_at = slot.opens_at;
+    row.locked = slot.state == belt::SlotState::Locked;
+    row.text = key + " " + row.name;
+    if (row.locked)
+        row.text += locked_suffix(row.opens_at);
+    cut_to(row.text, kAbilityRowChars, cut);
+    return row;
+}
+
+const char* entry_name(const FamilyDescriptor* fd, const belt::Entry& entry,
+                       short new_specials)
+{
+    return entry.alt ? og::sim::alternate_name(fd, entry.slot, new_specials)
+                     : og::sim::special_name(fd, entry.slot, new_specials);
+}
+
+// The byte that keeps what slot b shows when it moves: a DEFAULT byte is
+// written out as the class default's ability there (or EMPTY); every other
+// byte (an explicit ability, EMPTY, an item byte) is kept as stored.
+std::uint8_t movable_byte(const belt::Bytes& stored, const FamilyDescriptor* fd,
+                          short new_specials, int b)
+{
+    const std::uint8_t byte =
+        belt::normalize_stored(stored[static_cast<std::size_t>(b)]);
+    if (byte != belt::kDefaultByte)
+        return byte;
+    const belt::Layout defaults = belt::default_layout(fd, new_specials);
+    const belt::Resolved& shown = defaults[static_cast<std::size_t>(b)];
+    return shown.entry ? belt::encode(*shown.entry) : belt::kEmptyByte;
+}
+
+}  // namespace
+
+std::string ability_key_label(int belt_slot)
+{
+    if (!belt_slot_in_range(belt_slot))
+        return {};
+    const int key = belt_slot % 3 + 1;
+    return (belt_slot >= 3 ? "S" : "") + std::to_string(key);
+}
+
+AbilityPage ability_page(std::string_view hero_name, const FamilyDescriptor* fd,
+                         int level, short new_specials,
+                         const og::sim::belt::Bytes& stored)
+{
+    AbilityPage page;
+    std::string name(hero_name);
+    for (char& c : name)
+        c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+    page.title = "ABILITIES: " + name;
+    cut_to(page.title, kAbilityTitleChars, page.cut);
+    const std::string family =
+        (fd != nullptr && fd->name != nullptr) ? special_title(fd->name)
+                                               : std::string("Character");
+    page.subtitle = std::format("{}, level {}", family, level);
+    cut_to(page.subtitle, kAbilityTitleChars, page.cut);
+
+    const belt::Layout layout = belt::resolve(fd, level, new_specials, stored);
+    for (int b = 0; b < belt::kSlots; ++b)
+        page.belt[static_cast<std::size_t>(b)] =
+            belt_row(layout[static_cast<std::size_t>(b)], b, page.cut);
+
+    for (const belt::Entry& entry : belt::bench(fd, new_specials, layout)) {
+        AbilityRow row;
+        row.entry = entry;
+        row.name = entry_name(fd, entry, new_specials);
+        row.opens_at = og::sim::slot_open_level(fd, entry.slot);
+        row.locked = !og::sim::slot_open(fd, entry.slot, level);
+        row.text = row.name;
+        if (row.locked)
+            row.text += locked_suffix(row.opens_at);
+        cut_to(row.text, kAbilityRowChars, page.cut);
+        page.bench.push_back(std::move(row));
+    }
+    return page;
+}
+
+AbilityPage ability_page(const guy& g, short new_specials)
+{
+    return ability_page(g.name, get_family_descriptor(g.family), g.level,
+                        new_specials, g.belt);
+}
+
+void ability_place(og::sim::belt::Bytes& stored, const FamilyDescriptor* fd,
+                   short new_specials, int belt_slot,
+                   og::sim::belt::Entry entry)
+{
+    if (!belt_slot_in_range(belt_slot))
+        return;
+    const std::vector<belt::Entry> known = belt::catalog(fd, new_specials);
+    if (std::find(known.begin(), known.end(), entry) == known.end())
+        return;
+    const belt::Layout layout =
+        belt::resolve(fd, kEditLevel, new_specials, stored);
+    for (int b = 0; b < belt::kSlots; ++b) {
+        const belt::Resolved& shown = layout[static_cast<std::size_t>(b)];
+        if (!shown.entry || *shown.entry != entry)
+            continue;
+        // One ability, one slot: it is already on the belt, so the two
+        // slots trade places (nothing when it is already right here).
+        ability_swap(stored, fd, new_specials, b, belt_slot);
+        return;
+    }
+    stored_at(stored, belt_slot) = belt::encode(entry);
+}
+
+void ability_swap(og::sim::belt::Bytes& stored, const FamilyDescriptor* fd,
+                  short new_specials, int a, int b)
+{
+    if (!belt_slot_in_range(a) || !belt_slot_in_range(b) || a == b)
+        return;
+    const std::uint8_t at_a = movable_byte(stored, fd, new_specials, a);
+    const std::uint8_t at_b = movable_byte(stored, fd, new_specials, b);
+    stored_at(stored, a) = at_b;
+    stored_at(stored, b) = at_a;
+}
+
+void ability_clear(og::sim::belt::Bytes& stored, int belt_slot)
+{
+    if (!belt_slot_in_range(belt_slot))
+        return;
+    stored_at(stored, belt_slot) = belt::kEmptyByte;
+}
+
+void ability_reset(og::sim::belt::Bytes& stored)
+{
+    stored = belt::default_bytes();
+}
+
+std::string ability_status_line(const AbilityPage& page, int selected)
+{
+    const AbilityRow* row = nullptr;
+    bool on_belt = false;
+    if (belt_slot_in_range(selected)) {
+        row = &page.belt[static_cast<std::size_t>(selected)];
+        on_belt = true;
+    } else if (selected >= belt::kSlots &&
+               static_cast<std::size_t>(selected - belt::kSlots) <
+                   page.bench.size()) {
+        row = &page.bench[static_cast<std::size_t>(selected - belt::kSlots)];
+    }
+
+    std::string line;
+    if (row == nullptr)
+        line = "Click a slot, then an ability.";
+    else if (row->empty)
+        line = std::format("Key {} is empty. Pick an ability for it.",
+                           ability_key_label(selected));
+    else if (row->locked)
+        line = std::format("{}: opens at level {}", row->name, row->opens_at);
+    else if (on_belt)
+        line = std::format("{} is on key {}.", row->name,
+                           ability_key_label(selected));
+    else
+        line = std::format("{} is on the bench.", row->name);
+    int cut = 0;
+    cut_to(line, kAbilityStatusChars, cut);
+    return line;
+}
+
+void reset_belt_for_family_change(og::sim::belt::Bytes& stored)
+{
+    ability_reset(stored);
+}
+
+void promote_guy(guy& g, const FamilyDescriptor& fd)
+{
+    const short new_level =
+        fd.promotion_new_level ? fd.promotion_new_level(g.level) : 1;
+    g.upgrade_to_level(new_level);
+    g.family = static_cast<char>(static_cast<unsigned char>(fd.promotes_to));
+    reset_belt_for_family_change(g.belt);
+}
+
+namespace {
+
+// Setting off: today's rows, today's order; SPEC SW shows the SPEC 2 key,
+// the key that cycles the special with the setting off.
+constexpr BindingPanelRow kClassicActionRows[] = {
+    {"FIRE", KEY_FIRE},
+    {"SPECIAL", KEY_SPECIAL},
+    {"YELL", KEY_YELL},
+    {"SHIFTER", KEY_SHIFTER},
+    {"LOOK UP", KEY_LOOKUP},
+    {"CHAR SW", KEY_SWITCH},
+    {"SPEC SW", KEY_SPEC2},
+};
+
+// Setting on: one row per ability key.
+constexpr BindingPanelRow kAbilitySelectActionRows[] = {
+    {"FIRE", KEY_FIRE},
+    {"SPEC 1", KEY_SPECIAL},
+    {"SPEC 2", KEY_SPEC2},
+    {"SPEC 3", KEY_SPEC3},
+    {"SHIFTER", KEY_SHIFTER},
+    {"YELL", KEY_YELL},
+    {"LOOK UP", KEY_LOOKUP},
+    {"CHAR SW", KEY_SWITCH},
+};
+
+}  // namespace
+
+std::span<const BindingPanelRow> binding_panel_action_rows(bool ability_select)
+{
+    if (ability_select)
+        return kAbilitySelectActionRows;
+    return kClassicActionRows;
+}
+
+std::string belt_hud_line(const og::sim::belt::Resolved& slot, int key,
+                          bool shift_layer, int width_chars)
+{
+    if (key < 1 || key > 3 || width_chars <= 0)
+        return {};
+    const std::string label = ability_key_label(key - 1 + (shift_layer ? 3 : 0));
+    const int label_chars = static_cast<int>(label.size());
+    if (label_chars > width_chars)
+        return {};
+    // The smallest name worth drawing; with less room the key label alone
+    // still tells the player the key exists.
+    constexpr int kMinNameChars = 4;
+    const bool empty = slot.state == belt::SlotState::Empty || !slot.entry;
+    const std::string suffix =
+        !empty && slot.state == belt::SlotState::Locked
+            ? locked_suffix(slot.opens_at)
+            : std::string();
+    std::string name = empty ? std::string("--") : std::string(slot.name);
+    const int room = width_chars - label_chars - 1 -
+                     static_cast<int>(suffix.size());
+    if (empty && room >= static_cast<int>(name.size()))
+        return label + " " + name;
+    if (empty || room < kMinNameChars)
+        return label;
+    if (static_cast<int>(name.size()) > room) {
+        name.resize(static_cast<std::size_t>(room));
+        while (!name.empty() && name.back() == ' ')
+            name.pop_back();
+    }
+    return label + " " + name + suffix;
 }
 
 } // namespace og::ui

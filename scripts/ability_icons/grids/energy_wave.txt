@@ -1,0 +1,21 @@
+# ENERGY WAVE (mage): three ripples opening to the right, small to large, in pale cyan and white; drawn, since in play the wave is a heat-haze (wave.png, wave2.png, wave3.png)
+# legend: one character = one palette index (pix/openglad.gpl)
+W = 31
+a = 112
+
+................
+..........Wa....
+...........Wa...
+......Wa....Wa..
+.......Wa...Wa..
+..Wa....Wa...Wa.
+...Wa...Wa...Wa.
+...Wa...Wa...Wa.
+...Wa...Wa...Wa.
+...Wa...Wa...Wa.
+..Wa....Wa...Wa.
+.......Wa...Wa..
+......Wa....Wa..
+...........Wa...
+..........Wa....
+................

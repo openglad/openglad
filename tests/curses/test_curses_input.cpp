@@ -17,6 +17,10 @@
 #include <openglad/interface/input.h>          // KEYCODE_*, KEY_*, control-mode API
 #include <openglad/interface/session_state.h>  // current_session->player_keys_
 #include <openglad/resources/gparser.h>        // cfg_store, cfg
+#include <openglad/gameplay/families/belt.h>
+#include <openglad/gameplay/game_world.h>
+
+#include "test_ability_select_scope.h"
 
 using namespace og::curses;
 
@@ -24,11 +28,12 @@ namespace {
 
 int act(InputAction a) { return static_cast<int>(a); }
 
-// A keycode table indexed by InputAction (== KEY_*). Mirrors the player-1
-// 8-direction default cluster (W/E/D/C/X/Z/A/Q, Fire=LeftCtrl, Special=LeftAlt) so
-// hermetic tests exercise a realistic, fully-populated binding set.
+// A keycode table indexed by key slot (KEY_*, NUM_KEYS of them). Mirrors the
+// classic player-1 8-direction cluster (W/E/D/C/X/Z/A/Q, Fire=LeftCtrl,
+// SPEC 1=LeftAlt) with the belt keys SPEC 2/3 on 2 and 3, so hermetic tests
+// exercise a realistic, fully-populated binding set.
 struct Bindings {
-    int k[kInputActionCount] = {};
+    int k[NUM_KEYS] = {};
     Bindings()
     {
         k[KEY_UP] = KEYCODE_w;        k[KEY_UP_RIGHT] = KEYCODE_e;
@@ -37,13 +42,32 @@ struct Bindings {
         k[KEY_LEFT] = KEYCODE_a;      k[KEY_UP_LEFT] = KEYCODE_q;
         k[KEY_FIRE] = KEYCODE_LCTRL;  k[KEY_SPECIAL] = KEYCODE_LALT;
         k[KEY_SWITCH] = KEYCODE_BACKQUOTE;
-        k[KEY_SPECIAL_SWITCH] = KEYCODE_TAB;
+        // Slot 11 is the retired change-special slot: reserved, never bound.
+        k[KEY_SPECIAL_SWITCH] = KEYCODE_UNKNOWN;
         k[KEY_YELL] = KEYCODE_s;      k[KEY_SHIFTER] = KEYCODE_LSHIFT;
         // KEY_PREFS is a reserved wire slot with no action behind it; the
         // shipped defaults leave it unbound, so the fixture does too.
         k[KEY_PREFS] = KEYCODE_UNKNOWN; k[KEY_CHEAT] = KEYCODE_F5;
+        k[KEY_LOOKUP] = KEYCODE_v;
+        k[KEY_SPEC2] = KEYCODE_2;     k[KEY_SPEC3] = KEYCODE_3;
     }
 };
+
+// A belt whose six slots are told apart by their bytes: SPEC 2 holds
+// WHIRLWIND (slot 3), SHIFTER + SPEC 1 holds DISARM (slot 1 alternate),
+// SHIFTER + SPEC 2 is empty; the rest are slot 1..2 plain.
+og::sim::belt::Layout test_belt()
+{
+    using og::sim::belt::Entry;
+    using og::sim::belt::Resolved;
+    using og::sim::belt::SlotState;
+    og::sim::belt::Layout belt{};
+    belt[0] = Resolved{Entry{1, false}, SlotState::Castable, "CHARGE", 1};
+    belt[1] = Resolved{Entry{3, false}, SlotState::Castable, "WHIRLWIND", 7};
+    belt[2] = Resolved{Entry{2, false}, SlotState::Castable, "BOOMERANG", 4};
+    belt[3] = Resolved{Entry{1, true}, SlotState::Castable, "DISARM", 1};
+    return belt;
+}
 
 // Restores the global control settings (bindings + mode) to the suite baseline
 // when it leaves scope, so a test that rebinds or switches mode cannot leak into a
@@ -381,4 +405,104 @@ TEST(CursesInputConfig, honors_eight_direction_mode_from_config)
     const InputState s = input.sample();
     EXPECT_EQ(s.players[0].move_x(), -1) << "'q' is up-left in 8-direction mode";
     EXPECT_EQ(s.players[0].move_y(), -1);
+}
+
+// === NEW ABILITY SELECT: the belt keys ===
+
+// The span reaches the belt slots: '2' resolves to slot 17 (SPEC 2) and, with
+// the setting on and a belt, sends the Special press with that slot's byte.
+TEST(CursesInput, spec2_slot_17_is_translated)
+{
+    ScopedAbilitySelect on(true);
+    const Bindings b;
+    const og::sim::belt::Layout belt = test_belt();
+    CursesInput input(b.k);
+    input.feed(press(U'2'));
+    InputState s = input.sample(&belt);
+    EXPECT_TRUE(s.players[0].pressed[act(InputAction::Special)]);
+    EXPECT_TRUE(s.players[0].held[act(InputAction::Special)]);
+    EXPECT_FALSE(s.players[0].held[act(InputAction::SwitchSpecial)])
+        << "nothing cycles under the belt";
+    EXPECT_EQ(0x03, s.players[0].belt_cast) << "SPEC 2 = WHIRLWIND, slot 3";
+
+    s = input.sample(&belt);
+    EXPECT_FALSE(s.players[0].pressed[act(InputAction::Special)]) << "a hold";
+    EXPECT_EQ(0x03, s.players[0].belt_cast);
+
+    input.feed(release(U'2'));
+    s = input.sample(&belt);
+    EXPECT_FALSE(s.players[0].held[act(InputAction::Special)]);
+    EXPECT_EQ(0, s.players[0].belt_cast);
+
+    input.feed(press(U'3'));
+    EXPECT_EQ(0x02, input.sample(&belt).players[0].belt_cast)
+        << "'3' resolves to slot 18 (SPEC 3)";
+}
+
+// Kitty delivers Shift+1 as '1' with the shift modifier and LeftShift as its own
+// key press, so SHIFTER on LeftShift selects the second row.
+TEST(CursesInput, shift_plus_digit_resolves_the_shift_layer)
+{
+    ScopedAbilitySelect on(true);
+    Bindings b;
+    b.k[KEY_SPECIAL] = KEYCODE_1;  // the new factory SPEC 1
+    const og::sim::belt::Layout belt = test_belt();
+    CursesInput input(b.k);
+
+    KeyMods shift;
+    shift.shift = true;
+    input.feed(Key::special(KeyCode::LeftShift));
+    input.feed(Key::character(U'1', KeyEvent::Press, shift));
+    InputState s = input.sample(&belt);
+    EXPECT_TRUE(s.players[0].pressed[act(InputAction::Special)]);
+    EXPECT_TRUE(s.players[0].held[act(InputAction::Shift)])
+        << "SHIFTER itself still goes out (SHIFTER + YELL summons)";
+    EXPECT_EQ(og::sim::belt::encode({1, true}), s.players[0].belt_cast)
+        << "SHIFTER + SPEC 1 = DISARM";
+
+    input.feed(Key::character(U'1', KeyEvent::Release, shift));
+    (void)input.sample(&belt);
+    input.feed(Key::character(U'2', KeyEvent::Press, shift));
+    EXPECT_EQ(og::sim::belt::kCastNothing, input.sample(&belt).players[0].belt_cast)
+        << "an empty slot sends 'nothing there'";
+
+    input.reset();
+    input.feed(press(U'1'));
+    EXPECT_EQ(0x01, input.sample(&belt).players[0].belt_cast)
+        << "reset dropped SHIFTER and the latch: plain SPEC 1";
+}
+
+// With the setting off the curses client plays the classic game on the new keys:
+// SPEC 1 casts the selected special, SPEC 2 cycles it, SPEC 3 sends nothing, and
+// the byte stays 0 even with a belt handed in.
+TEST(CursesInput, off_spec2_cycles_and_the_byte_stays_zero)
+{
+    ScopedAbilitySelect off;
+    const Bindings b;
+    const og::sim::belt::Layout belt = test_belt();
+    CursesInput input(b.k);
+    input.feed(press(U'2'));
+    InputState s = input.sample(&belt);
+    EXPECT_TRUE(s.players[0].pressed[act(InputAction::SwitchSpecial)]);
+    EXPECT_FALSE(s.players[0].held[act(InputAction::Special)]);
+    EXPECT_EQ(0, s.players[0].belt_cast);
+
+    input.feed(release(U'2'));
+    input.feed(press(U'3'));
+    s = input.sample(&belt);
+    EXPECT_FALSE(s.players[0].held[act(InputAction::SwitchSpecial)]);
+    EXPECT_FALSE(s.players[0].held[act(InputAction::Special)]);
+
+    input.feed(Key::special(KeyCode::LeftAlt));
+    s = input.sample(&belt);
+    EXPECT_TRUE(s.players[0].pressed[act(InputAction::Special)]);
+    EXPECT_EQ(0, s.players[0].belt_cast);
+}
+
+TEST(CursesInput, followed_belt_is_empty_without_a_followed_walker)
+{
+    GameWorld world;
+    EXPECT_FALSE(followed_belt(world, 0).has_value());
+    EXPECT_FALSE(followed_belt(world, 4242).has_value())
+        << "an id with no walker behind it";
 }

@@ -21,6 +21,8 @@
 #include <memory>
 #include <string>
 
+#include <openglad/gameplay/families/belt.h>
+
 class walker;
 
 // Holds attributes for characters.
@@ -119,4 +121,14 @@ class guy
         // and the lobby round-trip re-stamps from the pre-reset roster slot.
         // Any new wire-fed roster rebuild must do the same.
         std::uint8_t campaign_tag = 0;
+        // New Ability Select belt (GTL v21): what each of the six belt slots (SPEC 1/2/3, then
+        // SHIFTER + SPEC 1/2/3) casts, one byte per slot (og::sim::belt: 0 = the class default,
+        // 0xFF = empty). Persisted at guy record offset +52..+57 (the former reserved bytes), so an
+        // untouched record is byte-identical on disk. Menu/save/client state ONLY — the sim never reads
+        // it (the client resolves the key press and the server receives the entry in
+        // PlayerInput::belt_cast). Unlike campaign_tag it RIDES every session: LobbyCharacterData,
+        // InitialSetupGuyData and GuySnapshot carry it, so none of the five wire-fed roster rebuilds
+        // can drop it and no re-stamp exists. statscopy must not copy it (train/rename must not clobber
+        // a layout); the defaulted copy constructor does.
+        og::sim::belt::Bytes belt{};
 };

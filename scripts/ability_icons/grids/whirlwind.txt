@@ -1,0 +1,34 @@
+# WHIRLWIND (soldier): the fighter seen from above, white helmet on red shoulders (the greys of footman.png frame 1, his tunic in the red ramp the team band is fixed to) with four white motion arcs spinning round him and two red hit sparks (hit.png frame 0, trimmed, white relettered to 31) on the ring
+o = 16
+W = 31
+X = 31
+V = 30
+T = 28
+S = 27
+Q = 25
+q = 22
+r = 24
+s = 25
+t = 27
+u = 29
+h = 40
+a = 42
+b = 44
+c = 46
+
+................
+.....rstuX..h...
+....q...uX.hXh..
+............h...
+.....oooooo..q..
+...ooaaWVaaoo.r.
+.XoaaaWVVTaaaos.
+.uobbWVVTSSbbot.
+.tobbVVTSSQbbou.
+.socccTSSQcccoX.
+.r.ooccSQccoo...
+..q..oooooo.....
+...h............
+..hXh.Xu...q....
+...h..Xutsr.....
+................

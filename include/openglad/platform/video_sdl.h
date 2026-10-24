@@ -182,6 +182,13 @@ public:
     bool end_native_world_view() override;
     void cancel_native_world_view() override;
     bool native_world_view_active() const override;
+    bool draw_rgba_scaled(const og::io::RgbaImage& image, Sint32 x,
+                          Sint32 y, Sint32 w, Sint32 h) override;
+    float hud_sprite_scale() const override;
+    bool begin_native_hud_sprite(const NativeWorldViewDestination& destination,
+                                 int src_w, int src_h) override;
+    bool end_native_hud_sprite() override;
+    void cancel_native_hud_sprite() override;
     bool floor_layer_begin(Sint32 x, Sint32 y, Sint32 w, Sint32 h) override;
     void floor_layer_end(Sint32 x, Sint32 y, Sint32 w, Sint32 h,
                          float scale, Sint32 cx, Sint32 cy,
@@ -370,6 +377,11 @@ private:
     // below in the scaled composite.
     SDL_Surface* floor_layer_ = nullptr;         // transparent 1:1 draw target
     SDL_Surface* floor_layer_scaled_ = nullptr;  // bilinear-stretched scratch
+    // draw_rgba_scaled's last scaled picture, kept while the same picture
+    // (by its serial, never its address) is drawn at the same size: a menu
+    // redraws it every frame.
+    SDL_Surface* rgba_scaled_ = nullptr;
+    std::uint64_t rgba_scaled_serial_ = 0;
     SDL_Surface* floor_layer_saved_render_ = nullptr; // E_Screen->render while redirected
     int floor_layer_reported_fallback_w_ = 0;
     int floor_layer_reported_fallback_h_ = 0;

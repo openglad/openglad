@@ -96,6 +96,8 @@ set(OG_GAMEPLAY_ENTITY_SOURCES
     ${SRC_DIR}/gameplay/fearless.cpp
     ${SRC_DIR}/gameplay/timed_effects.cpp
     ${SRC_DIR}/gameplay/placement.cpp
+    ${SRC_DIR}/gameplay/belt.cpp
+    ${SRC_DIR}/gameplay/belt_input.cpp
 )
 
 # gameplay: GameWorld and the per-tick services around it.
@@ -192,9 +194,11 @@ set(OG_INTERFACE_COMPONENT_SOURCES
     ${SRC_DIR}/interface/score_panel.cpp
     ${SRC_DIR}/interface/sdl_context_services.cpp
     ${SRC_DIR}/interface/session_state.cpp
+    ${SRC_DIR}/interface/ui/abilities_screen.cpp
     ${SRC_DIR}/interface/ui/button.cpp
     ${SRC_DIR}/interface/ui/campaign_picker.cpp
     ${SRC_DIR}/interface/ui/campaign_picker_session.cpp
+    ${SRC_DIR}/interface/ui/changelog_screen.cpp
     ${SRC_DIR}/interface/ui/cloud_save_client.cpp
     ${SRC_DIR}/interface/ui/help.cpp
     ${SRC_DIR}/interface/ui/intro.cpp
@@ -224,6 +228,8 @@ set(OG_INTERFACE_COMPONENT_SOURCES
     ${SRC_DIR}/interface/ui/scroll_view_layout.cpp
     ${SRC_DIR}/interface/ui/terminal_menu_model.cpp
     ${SRC_DIR}/interface/walker_render_bridge.cpp
+    ${SRC_DIR}/interface/ability_icons.cpp
+    ${SRC_DIR}/interface/belt_touch.cpp
 )
 
 set(OG_PLATFORM_SDL_COMPONENT_SOURCES
