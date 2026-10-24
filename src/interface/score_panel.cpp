@@ -265,7 +265,9 @@ static void draw_respawn_countdown(screen* s, walker* control,
 // New Ability Select's hotbar grows the bottom-left box (`box_top` names the
 // box's top edge and the cell rides 8px above it): the full panel's strip
 // puts the top at bm-kBeltHudFullBoxTop (bm-46, cell at bm-54), the compact
-// panel's at bm-kBeltHudCompactBoxTop (bm-28, cell at bm-36); where the strip
+// panel's at bm-kBeltHudCompactBoxTop (bm-28, cell at bm-36); split screen's
+// half-size strip at bm-kBeltHudHalfFullBoxTop (bm-34, cell at bm-42) or
+// bm-kBeltHudHalfCompactBoxTop (bm-18, cell at bm-26); where the strip
 // does not fit, the text rows' top (bm-42, cell at bm-50) or the classic
 // bm-kHudBoxTop (bm-26, cell at bm-34) stands, as it does with the setting
 // off.
@@ -832,6 +834,45 @@ inline constexpr unsigned char kBeltFramePressedInk = 31;
 static_assert(kBeltStripW == 56 && kBeltStripH == 25,
               "the strip the design's fit table was measured for");
 
+// Split screen (two or more local seats, every pane) draws the strip at half
+// its size with every pixel kept: the cells, frames and key labels go into a
+// HUD sprite plane of kBeltHalfPlaneW x kBeltHalfPlaneH, the strip plus a
+// one-pixel margin left (the first label's shadow lands at x-1) and below
+// (the shadow's row), composited onto a canvas rectangle half that size at
+// (lm+1, bm-kBeltHalf*CellTop). Its pixels are the display's own: one screen
+// pixel each at a 640x400 window, two at 1280x800. A window under 2 screen
+// pixels per canvas pixel would have fewer screen pixels than the icon has,
+// so it keeps the full-size strip. Inside the plane the cells sit at x 1,
+// 20, 39, rows 0-17, the labels' top at row 19.
+//   full panel     plane bm-32..bm-20, box top bm-34 (XP at bm-16)
+//   compact panel  plane bm-16..bm-4,  box bm-18..bm-2, right lm+31
+inline constexpr Sint32 kBeltHalfPlaneW = kBeltStripW + 2;  // 58
+inline constexpr Sint32 kBeltHalfPlaneH = kBeltStripH + 1;  // 26
+inline constexpr Sint32 kBeltHalfFullCellTop = 32;
+inline constexpr Sint32 kBeltHalfCompactCellTop = 16;
+inline constexpr Sint32 kBeltHudHalfFullBoxTop = 34;
+inline constexpr Sint32 kBeltHudHalfCompactBoxTop = 18;
+inline constexpr Sint32 kBeltHudHalfCompactBoxRight = 31;
+inline constexpr float kBeltHalfMinScale = 2.0f;
+static_assert(kBeltHalfPlaneW % 2 == 0 && kBeltHalfPlaneH % 2 == 0,
+              "the plane lands on whole canvas pixels at half size");
+
+// See-through slots, each cell pixel written once (no fill under the
+// picture): the dark fill where the picture is transparent at 44 %, the
+// picture and the black frame at 75 % (at 50 % the grey pictures turn green
+// on grass), the red and white state frames and the key labels solid (at
+// 50 % a red frame over grass is brown and the half-size labels vanish).
+// Every seat count, one player included.
+struct BeltAlpha
+{
+    unsigned char fill = 255;
+    unsigned char icon = 255;
+    unsigned char frame = 255;  // the red and white state frames
+};
+inline constexpr unsigned char kBeltFillAlpha = 112;
+inline constexpr unsigned char kBeltIconAlpha = 192;
+inline constexpr BeltAlpha kBeltAlpha{kBeltFillAlpha, kBeltIconAlpha, 255};
+
 static std::array<BeltHudRow, 3> plan_belt_rows(screen* s, walker& control,
                                                 int players, bool compact,
                                                 Sint32 lm, Sint32 tm,
@@ -917,7 +958,10 @@ struct BeltHudCell
 struct BeltHudStrip
 {
     bool fits = false;
-    Sint32 top = 0;  // the cells' top row
+    bool half = false;   // drawn into a HUD sprite plane at half size
+    Sint32 top = 0;      // the cells' top row (the plane's, when half)
+    Sint32 dst_y = 0;    // the strip's top on the canvas
+    Sint32 box_top = 0;  // the bottom-left box's top edge
     std::array<BeltHudCell, 3> cells{};
 };
 
@@ -929,15 +973,30 @@ struct BeltHudStrip
 // pref never moves the strip. A pane narrower than 124px or shorter than
 // the feed plus the strip and its bevel (two seats at PREF_VIEW_2, 104
 // scanlines, the box at bm-46 = tm+58) takes the text rows instead.
-static BeltHudStrip place_belt_strip(bool compact, Sint32 lm, Sint32 tm,
-                                     Sint32 rm, Sint32 bm)
+//
+// At half size (split screen) the same rule with the half constants: the
+// box's top at bm-34 (full) or bm-18 (compact), the strip's last column
+// lm+29, so the 100px columns and the 104-scanline two-seat pane take it.
+static BeltHudStrip place_belt_strip(bool compact, bool half, Sint32 lm,
+                                     Sint32 tm, Sint32 rm, Sint32 bm)
 {
     BeltHudStrip strip;
-    strip.top = bm - (compact ? kBeltCompactCellTop : kBeltFullCellTop);
-    const Sint32 box_top =
+    strip.half = half;
+    if (half)
+        strip.top = bm - (compact ? kBeltHalfCompactCellTop
+                                  : kBeltHalfFullCellTop);
+    else
+        strip.top = bm - (compact ? kBeltCompactCellTop : kBeltFullCellTop);
+    strip.dst_y = strip.top;
+    Sint32 box_top =
         bm - (compact ? kBeltHudCompactBoxTop : kBeltHudFullBoxTop);
+    if (half)
+        box_top = bm - (compact ? kBeltHudHalfCompactBoxTop
+                                : kBeltHudHalfFullBoxTop);
+    strip.box_top = box_top;
     const Sint32 banner_bottom = tm + 30 + MAX_MESSAGES * 6;
-    const Sint32 right = lm + kBeltStripLeft + kBeltStripW - 1;
+    const Sint32 right = half ? lm + kBeltHalfPlaneW / 2
+                              : lm + kBeltStripLeft + kBeltStripW - 1;
     strip.fits = box_top >= banner_bottom && right < rm - kBeltHudRadarGap;
     if (!strip.fits)
         TRACE("hud", "belt_strip_yields top=%d feed=%d right=%d limit=%d",
@@ -1041,21 +1100,36 @@ static void plan_belt_strip(BeltHudStrip& strip, screen* s, walker& control,
     }
 }
 
+// Each cell pixel is written once, at its element's alpha (BeltAlpha): the
+// 18x18 ring (the black frame at the picture's alpha, a state frame at
+// `frame`), then the 16x16 inside in one pass, the fill only where the
+// picture is transparent. The labels are solid.
 static void draw_belt_strip(screen* s, text& mytext,
                             [[maybe_unused]] int view,
-                            const BeltHudStrip& strip)
+                            const BeltHudStrip& strip, BeltAlpha alpha)
 {
     for (const BeltHudCell& cell : strip.cells)
     {
-        s->fastbox(cell.x, cell.y, kBeltCellSize, kBeltCellSize, cell.frame, 1);
-        s->fastbox(cell.x + 1, cell.y + 1, kBeltIconSize, kBeltIconSize,
-                   kBeltCellFill, 1);
-        if (cell.picture != nullptr)
-            s->putdata(cell.x + 1, cell.y + 1, kBeltIconSize, kBeltIconSize,
-                       std::span<const unsigned char>(
-                           cell.picture->data.get(),
-                           static_cast<std::size_t>(kBeltIconSize *
-                                                    kBeltIconSize)));
+        const unsigned char ring_alpha =
+            cell.frame == kBeltFrameInk ? alpha.icon : alpha.frame;
+        for (Sint32 y = 0; y < kBeltCellSize; ++y)
+            for (Sint32 x = 0; x < kBeltCellSize; ++x)
+                if (y == 0 || y == kBeltCellSize - 1 || x == 0 ||
+                    x == kBeltCellSize - 1)
+                    s->pointb(cell.x + x, cell.y + y, cell.frame, ring_alpha);
+        for (Sint32 y = 0; y < kBeltIconSize; ++y)
+            for (Sint32 x = 0; x < kBeltIconSize; ++x)
+            {
+                const unsigned char p = cell.picture != nullptr
+                    ? cell.picture->data[static_cast<std::size_t>(
+                          y * kBeltIconSize + x)]
+                    : 0;
+                if (p == 0)
+                    s->pointb(cell.x + 1 + x, cell.y + 1 + y, kBeltCellFill,
+                              alpha.fill);
+                else
+                    s->pointb(cell.x + 1 + x, cell.y + 1 + y, p, alpha.icon);
+            }
         TRACE("hud",
               "belt_cell key=%d shift=%d slot=%d alt=%d icon=%s state=%s "
               "x=%d y=%d view=%d pressed=%d frame=%d drawn=%s",
@@ -1075,6 +1149,43 @@ static void draw_belt_strip(screen* s, text& mytext,
               cell.label.c_str(), static_cast<int>(cell.ink),
               cell.shadow ? 1 : 0);
     }
+}
+
+// The hotbar of one pane: on the canvas at full size, or (split screen)
+// into its HUD sprite plane at (lm+1, dst_y), 29x13 canvas pixels holding
+// the 58x26 strip. A plane that does not open (a bug, not a mode: the
+// decision already asked hud_sprite_scale) draws the strip full size at
+// today's place instead, never a blank HUD.
+static void draw_belt_hotbar(screen* s, text& mytext, int view,
+                             BeltHudStrip& strip, walker& control,
+                             int players, bool compact, Sint32 lm, Sint32 bm,
+                             unsigned char text_color, bool boxed,
+                             [[maybe_unused]] float scale)
+{
+    TRACE("hud", "belt_strip half=%d dst_x=%d dst_y=%d scale=%.2f view=%d",
+          strip.half ? 1 : 0, static_cast<int>(lm + 1),
+          static_cast<int>(strip.dst_y), static_cast<double>(scale), view);
+    if (!strip.half)
+    {
+        draw_belt_strip(s, mytext, view, strip, kBeltAlpha);
+        return;
+    }
+    const NativeWorldViewDestination destination{
+        CanvasTarget::GameplayUI, static_cast<int>(lm + 1),
+        static_cast<int>(strip.dst_y), kBeltHalfPlaneW / 2,
+        kBeltHalfPlaneH / 2};
+    if (s->begin_native_hud_sprite(destination, kBeltHalfPlaneW,
+                                   kBeltHalfPlaneH))
+    {
+        draw_belt_strip(s, mytext, view, strip, kBeltAlpha);
+        s->end_native_hud_sprite();
+        return;
+    }
+    TRACE("hud", "belt_half_fallback reason=no_plane view=%d", view);
+    strip.half = false;
+    strip.top = bm - (compact ? kBeltCompactCellTop : kBeltFullCellTop);
+    plan_belt_strip(strip, s, control, players, lm, text_color, boxed);
+    draw_belt_strip(s, mytext, view, strip, kBeltAlpha);
 }
 
 short new_score_panel(screen* s, short /*do_it*/)
@@ -1271,14 +1382,19 @@ short new_score_panel(screen* s, short /*do_it*/)
             // (place_belt_strip) and the belt rows where it does not; both
             // grow the bottom-left box (kBeltHud*BoxTop above).
             const bool belt_hud = og::input::ability_select_on();
+            // Split screen (two or more local seats; a network client has
+            // one) draws the hotbar at half size when the display has at
+            // least two pixels per canvas pixel for it.
+            const float belt_scale = belt_hud ? s->hud_sprite_scale() : 0.0f;
+            const bool belt_half =
+                s->numviews >= 2 && belt_scale >= kBeltHalfMinScale;
             BeltHudStrip belt_strip;
             if (belt_hud)
-                belt_strip = place_belt_strip(compact_score_panel, lm, tm,
-                                              rm, bm);
+                belt_strip = place_belt_strip(compact_score_panel, belt_half,
+                                              lm, tm, rm, bm);
             Sint32 box_top = bm - kHudBoxTop;
             if (belt_strip.fits)
-                box_top = bm - (compact_score_panel ? kBeltHudCompactBoxTop
-                                                    : kBeltHudFullBoxTop);
+                box_top = belt_strip.box_top;
             else if (belt_hud && !compact_score_panel)
                 box_top = bm - kBeltHudRowsBoxTop;
             const bool freeze_drew =
@@ -1380,9 +1496,16 @@ short new_score_panel(screen* s, short /*do_it*/)
 
             std::array<BeltHudRow, 3> belt_rows{};
             if (belt_strip.fits)
-                plan_belt_strip(belt_strip, s, *control, players, lm,
+            {
+                // At half size the strip is planned in its plane: cell 0's
+                // frame at x 1, the cells' top at row 0.
+                if (belt_strip.half)
+                    belt_strip.top = 0;
+                plan_belt_strip(belt_strip, s, *control, players,
+                                belt_strip.half ? -1 : lm,
                                 static_cast<unsigned char>(text_color),
                                 draw_button != 0);
+            }
             else if (belt_hud)
                 belt_rows = plan_belt_rows(s, *control, players,
                                            compact_score_panel, lm, tm, rm,
@@ -1409,7 +1532,8 @@ short new_score_panel(screen* s, short /*do_it*/)
                 // text rows' in a full panel (they shared it), the strip's
                 // own plus its bevel in a compact one; never past rm-66.
                 const Sint32 strip_right = compact_score_panel
-                    ? lm + kBeltHudCompactBoxRight
+                    ? lm + (belt_strip.half ? kBeltHudHalfCompactBoxRight
+                                            : kBeltHudCompactBoxRight)
                     : lm + (rm - lm >= kBeltHudWidePane
                                 ? kBeltHudWideBoxRight
                                 : kBeltHudBoxRight);
@@ -1417,7 +1541,9 @@ short new_score_panel(screen* s, short /*do_it*/)
                     std::min<Sint32>(strip_right, rm - kBeltHudRadarGap);
                 const Sint32 bottom = (show_score || compact_score_panel)
                     ? score_bottom - 2
-                    : belt_strip.top + kBeltStripH;
+                    : belt_strip.dst_y + (belt_strip.half
+                                              ? kBeltHalfPlaneH / 2
+                                              : kBeltStripH);
                 s->draw_button(lm+1, box_top, box_right, bottom, 1, 1);
                 TRACE("hud", "belt_box view=%d x1=%d y1=%d x2=%d y2=%d",
                       players, static_cast<int>(lm + 1),
@@ -1509,7 +1635,10 @@ short new_score_panel(screen* s, short /*do_it*/)
             }
 
             if (belt_strip.fits)
-                draw_belt_strip(s, mytext, players, belt_strip);
+                draw_belt_hotbar(s, mytext, players, belt_strip, *control,
+                                 players, compact_score_panel, lm, bm,
+                                 static_cast<unsigned char>(text_color),
+                                 draw_button != 0, belt_scale);
             else if (belt_hud)
             {
                 for (const BeltHudRow& row : belt_rows)

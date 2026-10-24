@@ -658,6 +658,22 @@ bool screen::draw_rgba_scaled(const og::io::RgbaImage& image, Sint32 x,
     return video_impl_->draw_rgba_scaled(image, x, y, w, h);
 }
 
+bool screen::begin_native_hud_sprite(
+    const NativeWorldViewDestination& destination, int src_w, int src_h)
+{
+    return video_impl_->begin_native_hud_sprite(destination, src_w, src_h);
+}
+
+bool screen::end_native_hud_sprite()
+{
+    return video_impl_->end_native_hud_sprite();
+}
+
+void screen::cancel_native_hud_sprite()
+{
+    video_impl_->cancel_native_hud_sprite();
+}
+
 bool screen::floor_layer_begin(Sint32 x, Sint32 y, Sint32 w, Sint32 h)
 {
     return video_impl_->floor_layer_begin(x, y, w, h);

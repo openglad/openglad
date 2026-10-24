@@ -270,6 +270,51 @@ class Screen
 		}
 #endif
 
+		// HUD sprite planes: a caller-sized straight-alpha raster (ARGB, cleared
+		// to transparent) that every ordinary draw primitive writes into while
+		// it is open, composited onto a GameplayUI rectangle at the next World
+		// present (BLEND, pixel-art sampling), after the gameplay overlay and
+		// before the native world planes. The split-screen hotbar draws its
+		// 58x26 strip into one, onto a 29x13 rectangle: the same pixels at half
+		// the canvas size. hud_sprite_scale() is the physical pixels per
+		// GameplayUI canvas pixel when a plane can open now, else 0 (no
+		// renderer, a plane already open, a native world view open, or the HUD
+		// canvas not UI-sized: the overlay-allocation fallback).
+		float hud_sprite_scale() const;
+		bool begin_native_hud_sprite(const NativeWorldViewDestination& destination,
+		                             int source_w, int source_h);
+		bool end_native_hud_sprite();
+		void cancel_native_hud_sprite();
+		// True while the live draw target holds straight alpha that the present
+		// composites with BLEND: the gameplay overlay inside an active frame,
+		// or an open HUD sprite plane. The classic shared canvases, the native
+		// world planes and the floor layers answer false and keep the RGB-only
+		// blend (blend_pixel).
+		bool render_target_is_straight_alpha() const;
+#ifdef TESTING
+		std::size_t hud_sprite_ready_count_for_testing() const
+		{
+			return hud_sprite_ready_count_;
+		}
+		SDL_Surface* hud_sprite_surface_for_testing(std::size_t index) const
+		{
+			return index < hud_sprite_planes_.size()
+				? hud_sprite_planes_[index].surface : nullptr;
+		}
+		NativeWorldViewDestination hud_sprite_destination_for_testing(
+			std::size_t index) const
+		{
+			return index < hud_sprite_planes_.size()
+				? hud_sprite_planes_[index].destination
+				: NativeWorldViewDestination{};
+		}
+		void discard_hud_sprites_for_testing() { discard_hud_sprites(); }
+		void fail_next_hud_sprite_allocation_for_testing()
+		{
+			fail_next_hud_sprite_allocation_ = true;
+		}
+#endif
+
 		// Screen owns SDL handles (window/renderer/surfaces/textures) freed in
 		// the destructor; a shallow copy or move would double-free. It is owned
 		// via std::unique_ptr<Screen>, so make non-copyable/non-movable explicit.
@@ -357,6 +402,19 @@ class Screen
 		void destroy_native_world_view_planes();
 		void discard_native_world_views();
 
+		struct HudSpritePlane
+		{
+			SDL_Surface* surface = nullptr;
+			SDL_Texture* texture = nullptr;
+			NativeWorldViewDestination destination{};
+		};
+		bool ensure_hud_sprite_plane(std::size_t index, int source_w,
+		                             int source_h);
+		void destroy_hud_sprite_planes();
+		void discard_hud_sprites();
+		SDL_Surface* active_hud_sprite_surface() const;
+		void composite_hud_sprites_for_capture(SDL_Surface* composed) const;
+
 		CanvasTarget active_ = CanvasTarget::UI;
 		CanvasTarget last_presented_ = CanvasTarget::UI;
 		bool window_is_black_ = true;
@@ -396,6 +454,14 @@ class Screen
 		CanvasTarget native_world_view_saved_canvas_ = CanvasTarget::UI;
 		SDL_Surface* native_world_view_saved_render_ = nullptr;
 		SDL_Texture* native_world_view_saved_texture_ = nullptr;
+		std::vector<HudSpritePlane> hud_sprite_planes_;
+		std::size_t hud_sprite_ready_count_ = 0;
+		std::size_t hud_sprite_capture_count_ = 0;
+		int hud_sprite_active_index_ = -1;
+		CanvasTarget hud_sprite_saved_canvas_ = CanvasTarget::UI;
+		SDL_Surface* hud_sprite_saved_render_ = nullptr;
+		SDL_Texture* hud_sprite_saved_texture_ = nullptr;
+		bool fail_next_hud_sprite_allocation_ = false;
 		// A failed SDL allocation is not retried every frame for the same
 		// target dimensions. A canvas/config change clears the latch.
 		int render2_failed_w_ = 0;

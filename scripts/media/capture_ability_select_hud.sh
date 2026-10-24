@@ -2,10 +2,14 @@
 # New Ability Select HUD stills: 1, 2 and 4 seats, the setting on and off
 # (plus one seat with SHIFTER held), a time freeze and a seat clock running
 # so the moved cells show; the hotbar's states (pressed, short MP, locked,
-# empty) in two and four seats, box and no box; and the ON HUD over a real
-# radar (belt_hud_radar_*). The test always runs its oracles;
-# OG_FX_CAPTURE_DIR only asks it to write PPM frames, which this script
-# turns into PNGs scaled 3x (nearest neighbour) for review.
+# empty) in two and four seats, box and no box; and the window itself
+# (belt_hud_physical/hud-*.ppm): the split-screen hotbar is drawn at half
+# size into a plane only the present composites, so the 320x200 canvas
+# frames cannot show it and these are read back from the renderer at the
+# window's size, over grass with the radar on. The test always runs its
+# oracles; OG_FX_CAPTURE_DIR only asks it to write PPM frames, which this
+# script turns into PNGs (canvas frames scaled 3x, nearest neighbour; the
+# window frames at their own size) for review.
 #
 # Usage:
 #   nix develop --command bash scripts/media/capture_ability_select_hud.sh
@@ -35,10 +39,13 @@ command -v magick > /dev/null || {
 mkdir -p "$MEDIA_DIR"
 SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy SDL_RENDER_DRIVER=software \
     OG_FX_CAPTURE_DIR="$MEDIA_DIR" \
-    "$TEST_BIN" --gtest_filter='GladHud.zz_capture_belt_hud:GladHud.zz_capture_belt_hud_states:GladHud.zz_capture_belt_hud_with_radar'
+    "$TEST_BIN" --gtest_filter='GladHud.zz_capture_belt_hud:GladHud.zz_capture_belt_hud_states:GladHud.zz_capture_belt_hud_physical'
 
 for ppm in "$MEDIA_DIR"/belt_hud_*/000.ppm; do
     scene="$(basename "$(dirname "$ppm")")"
     magick "$ppm" -filter point -resize 300% "$MEDIA_DIR/$scene.png"
+done
+for ppm in "$MEDIA_DIR"/belt_hud_physical/*.ppm; do
+    magick "$ppm" "$MEDIA_DIR/$(basename "$ppm" .ppm).png"
 done
 printf 'wrote New Ability Select HUD stills to %s/\n' "$MEDIA_DIR"

@@ -190,6 +190,25 @@ public:
     // plane. World renderers use this with active_canvas() to reject any
     // attempt to rasterize a live scene into UI or GameplayUI.
     virtual bool native_world_view_active() const { return false; }
+    // HUD sprite planes. hud_sprite_scale() is the number of physical pixels
+    // per GameplayUI canvas pixel when a plane can open now, else 0 (no
+    // renderer, a plane already open, the HUD canvas not UI-sized after an
+    // overlay-allocation failure). begin opens a caller-sized raster
+    // (src_w x src_h, straight alpha, cleared) that every ordinary draw
+    // primitive then writes into; end queues it for the next World present,
+    // composited onto `destination` (a GameplayUI rectangle in canvas units)
+    // with BLEND and pixel-art sampling. The split-screen hotbar draws its
+    // strip this way at half its canvas size with every pixel kept. The
+    // headless video keeps these defaults.
+    virtual float hud_sprite_scale() const { return 0.0f; }
+    virtual bool begin_native_hud_sprite(
+        const NativeWorldViewDestination& /*destination*/, int /*src_w*/,
+        int /*src_h*/)
+    {
+        return false;
+    }
+    virtual bool end_native_hud_sprite() { return false; }
+    virtual void cancel_native_hud_sprite() {}
     // Draw a truecolour picture scaled (linear filtering) into the rectangle
     // (x, y, w, h) of the active draw target, in that target's pixels. Meant
     // for an open native plane, whose pixels are the display's own (the
