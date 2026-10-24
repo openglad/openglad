@@ -330,9 +330,25 @@ K.9.
   with seven or more buttons). With the setting off button 2 changes the
   special, as before.
 - **Touch overlay** (`web/shell.html`, `src/platform/emscripten/web_touch_bridge.cpp`):
-  three buttons, `1`, `2`, `3`, beside FIRE; with the setting off they read
-  `SPC` and `SP+` and the third hides. The ALT button latches SHIFTER, so
-  ALT then 1/2/3 casts the second row.
+  three buttons beside FIRE. With the setting on, each button is the
+  first player's slot picture itself, a rounded square with the slot's
+  label (`1`, `S1`, `L7`) as a small badge in its corner: a red edge when
+  the magic is short, a white edge while the key is held, dimmed when the
+  slot is locked, turned off by the level, or empty (an empty slot shows
+  only its label). The ALT button latches SHIFTER, so ALT then 1/2/3 casts
+  the second row, and the buttons switch to the second row's pictures at
+  once. While the buttons are on, the first player's pane draws no strip;
+  turning them off brings it back. With the setting off they read `SPC` and
+  `SP+` and the third hides, as before.
+  The game hands the page what to show: once per HUD frame it reads the
+  first player's three slots with the same code the strip uses
+  (`resolve_belt_cells` in `src/interface/score_panel.cpp`) and passes
+  them, with the exact picture pixels, through
+  `og::ui::publish_belt_touch` (`include/openglad/interface/belt_touch.h`)
+  to the bridge, which sends the page an `openglad-belt` event only when
+  something changed, and each picture's pixels only once. The page never
+  works out a slot's state itself. Native builds have no listener, so they
+  do none of this.
 - **Text client**: it has no in-game keys. Its belt is the ABILITIES page
   (E.2).
 - **Curses client**: see `docs/ncurses-client.md`, "New Ability Select".
@@ -704,7 +720,11 @@ broken, then restored):
 - Screens (G.5): `tests/integration/test_abilities_flow.cpp` (the
   `og_test_abilities` group), `tests/integration/test_glad_hud.cpp`, the menu
   layout and options tests, the text and curses client tests,
-  `tests/e2e/wasm-touch.spec.js`, and the CHANGELOG! flow and web test.
+  `tests/e2e/wasm-touch.spec.js` (the touch buttons' pictures, ALT, the
+  red/white/dim looks, the first player's strip gone while they are on),
+  `tests/e2e/wasm-game.spec.js` (a desktop that never turns the buttons on
+  keeps its strip, and it comes back when they are turned off), and the
+  CHANGELOG! flow and web test.
 - Pictures: `tests/unit/test_ability_icons.cpp` (every core ability names a
   picture that loads, the palette and the drawing rules, the grey copy,
   the cache and the generic tile); `scripts/check_ability_icons.sh` (the
@@ -854,7 +874,7 @@ picture.
   so each stays true; its picture band is smooth-scaled, so no pixel
   picture goes there.
 - **DETAILS, the binding panels, REMAP, HELP**: they show keys or prose.
-- **The web's touch buttons** now carry the pictures (section E.4): the
+- **The web's touch buttons** now carry the pictures (sections C.3 and E.4): the
   game hands the page the exact pixels it would draw for the first
   player's three slots, and that pane draws no strip while the buttons are
   on.
