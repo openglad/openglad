@@ -3,6 +3,7 @@
 #include <openglad/resources/gloader.h>
 #include <openglad/resources/og_file.h>
 #include <openglad/interface/ability_icons.h>
+#include <openglad/interface/belt_touch.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/families/classpack_data.h>
@@ -5061,6 +5062,213 @@ static void dump_screen_rgb_ppm(screen& scr, const char* scene)
             fputc(b, fp);
         }
     fclose(fp);
+}
+
+// ---------------------------------------------------------------------------
+// The web touch overlay (issue #384): while it is up its 1 / 2 / 3 buttons
+// carry seat 0's slots, so seat 0's pane draws no hotbar (no strip, no belt
+// rows, no SPC line; the setting-off box, so the frozen-time cell sits at
+// bm-34), and new_score_panel hands seat 0's resolved slots to the touch
+// observer once per HUD frame (og::ui::publish_belt_touch), empty slots
+// when the hero is dead. Other seats (a tablet with pads) keep theirs.
+
+namespace {
+
+// Pins InputHardwareState::touch_overlay_active, restoring it after.
+struct TouchOverlayOn
+{
+    bool saved;
+    explicit TouchOverlayOn(bool on = true)
+        : saved(og::input::touch_overlay_active())
+    {
+        og::input::set_touch_overlay_active(on);
+    }
+    ~TouchOverlayOn() { og::input::set_touch_overlay_active(saved); }
+    TouchOverlayOn(const TouchOverlayOn&) = delete;
+    TouchOverlayOn& operator=(const TouchOverlayOn&) = delete;
+};
+
+// Records every published touch state, the picture pointers included (they
+// are valid for the frame), and unregisters itself.
+struct BeltTouchRecorder
+{
+    struct Seen
+    {
+        og::ui::BeltTouchState state;
+    };
+    std::vector<Seen> seen;
+    BeltTouchRecorder()
+    {
+        og::ui::set_belt_touch_observer(
+            [this](const og::ui::BeltTouchState& state) {
+                seen.push_back({state});
+            });
+    }
+    ~BeltTouchRecorder() { og::ui::set_belt_touch_observer({}); }
+    BeltTouchRecorder(const BeltTouchRecorder&) = delete;
+    BeltTouchRecorder& operator=(const BeltTouchRecorder&) = delete;
+};
+
+} // namespace
+
+// Presence only: seat 1's strip is drawn (a belt_cell trace for view 1), seat
+// 0's is not (no belt_cell for view 0, no belt_row, no spc_row), and seat
+// 0's frozen-time cell sits 8 above the setting-off box (bm-34). No x/y of
+// seat 1's strip is pinned here: its geometry is the half-size hotbar's.
+//
+// RED (planted): hud_hidden always false (a view=0 belt_cell appears and
+// the freeze row moves off bm-34); set_touch_overlay_active a no-op (the
+// same).
+TEST_F(GladHud, touch_overlay_hides_seat_zero_hotbar_and_keeps_the_others)
+{
+    EXPECT_FALSE(InputHardwareState{}.touch_overlay_active)
+        << "native builds never have the overlay up";
+    EXPECT_FALSE(og::input::touch_overlay_active());
+    ScopedAbilitySelect on(true);
+    BeltHudScene scene(2, FAMILY_MAGE, 7);
+    screen* const s = scene.s;
+    ASSERT_EQ(2, static_cast<int>(s->numviews));
+    const int bm0 = s->viewob[0]->endy;
+
+    // The control: overlay down, both seats draw their strips.
+    scene.draw();
+    ASSERT_TRUE(trace_contains("hud", " view=0 pressed="))
+        << "seat 0 draws its hotbar with the overlay down";
+    ASSERT_TRUE(trace_contains("hud", " view=1 pressed="));
+
+    TouchOverlayOn overlay;
+    EXPECT_TRUE(og::input::touch_overlay_active());
+    s->world().enemy_freeze = 30;
+    scene.draw();
+    s->world().enemy_freeze = 0;
+    EXPECT_FALSE(trace_contains("hud", " view=0 pressed="))
+        << "seat 0's slots are on the touch buttons, not in its pane";
+    EXPECT_TRUE(trace_contains("hud", " view=1 pressed="))
+        << "seat 1 (a pad on a tablet) keeps its hotbar";
+    EXPECT_FALSE(trace_contains("hud", "belt_row"));
+    EXPECT_FALSE(trace_contains("hud", "spc_row"))
+        << "no classic SPC line either";
+    EXPECT_TRUE(trace_contains(
+        "hud", ("freeze_countdown left=30 secs=3 row=" +
+                std::to_string(bm0 - 34)).c_str()))
+        << "seat 0's box is the setting-off box (bm-26)";
+}
+
+// The observer gets seat 0's slots as the hotbar resolves them: the drawn
+// paths, the ready and the grey locked pictures, the SHIFTER row, the
+// hidden flag (false with the overlay down, so the page hears the hotbar
+// come back); belt_hud = false with the setting off; three empty slots (the
+// bare keys) while the hero is dead; nothing at all with no observer (every
+// native build).
+//
+// RED (planted): the publish call dropped (nothing recorded); the publish
+// call moved inside the live-hero block (no state while dead, so the
+// buttons would keep the last pictures).
+TEST_F(GladHud, touch_publisher_hands_over_the_resolved_cells)
+{
+    ScopedAbilitySelect on(true);
+    BeltHudScene scene(1, FAMILY_MAGE, 1);
+    screen* const s = scene.s;
+    EXPECT_FALSE(og::ui::belt_touch_observed());
+    {
+        TouchOverlayOn overlay;
+        scene.draw();
+        EXPECT_FALSE(trace_contains("hud", "belt_touch"))
+            << "no observer: nothing is resolved for the page";
+    }
+    BeltTouchRecorder recorder;
+    EXPECT_TRUE(og::ui::belt_touch_observed());
+
+    scene.draw();
+    ASSERT_EQ(1u, recorder.seen.size()) << "once per HUD frame";
+    EXPECT_TRUE(recorder.seen.back().state.belt_hud);
+    EXPECT_FALSE(recorder.seen.back().state.hud_hidden)
+        << "the overlay is down: the pane draws its hotbar";
+    EXPECT_STREQ("castable", recorder.seen.back().state.cells[0].state);
+
+    TouchOverlayOn overlay;
+    scene.draw();
+    ASSERT_EQ(2u, recorder.seen.size()) << "once per HUD frame";
+    {
+        const og::ui::BeltTouchState& st = recorder.seen.back().state;
+        EXPECT_TRUE(st.belt_hud);
+        EXPECT_TRUE(st.hud_hidden) << "the engine's own hide decision";
+        EXPECT_FALSE(st.shift);
+        og::ui::AbilityIcons& icons = s->ability_icons();
+        const og::ui::AbilityIcon* teleport =
+            icons.icon_at("icons/teleport.png");
+        const og::ui::AbilityIcon* warp = icons.icon_at("icons/warp_space.png");
+        const og::ui::AbilityIcon* freeze =
+            icons.icon_at("icons/freeze_time.png");
+        ASSERT_NE(nullptr, teleport);
+        ASSERT_NE(nullptr, warp);
+        ASSERT_NE(nullptr, freeze);
+        const auto& c = st.cells;
+        EXPECT_EQ(1, c[0].key);
+        EXPECT_STREQ("icons/teleport.png", c[0].drawn);
+        EXPECT_STREQ("castable", c[0].state);
+        EXPECT_EQ("1", c[0].label);
+        EXPECT_FALSE(c[0].locked_copy);
+        EXPECT_EQ(&teleport->ready, c[0].picture);
+        EXPECT_STREQ("icons/warp_space.png", c[1].drawn);
+        EXPECT_STREQ("locked", c[1].state);
+        EXPECT_EQ("L4", c[1].label);
+        EXPECT_TRUE(c[1].locked_copy);
+        EXPECT_EQ(&warp->locked, c[1].picture);
+        EXPECT_STREQ("locked", c[2].state);
+        EXPECT_EQ("L7", c[2].label);
+        EXPECT_EQ(&freeze->locked, c[2].picture);
+        EXPECT_FALSE(c[0].pressed);
+    }
+
+    {
+        KeyHeld spec1(0, KEY_SPECIAL);
+        scene.draw();
+        EXPECT_TRUE(recorder.seen.back().state.cells[0].pressed)
+            << "the held SPEC key is in the state";
+    }
+    {
+        ShifterHeld shifter(0);
+        scene.draw();
+        const og::ui::BeltTouchState& st = recorder.seen.back().state;
+        EXPECT_TRUE(st.shift) << "ALT latched: the SHIFTER row";
+        EXPECT_TRUE(st.cells[0].shift);
+        EXPECT_STREQ("icons/teleport_marker.png", st.cells[0].drawn);
+    }
+
+    {
+        ScopedAbilitySelect off(false);
+        scene.draw();
+        const og::ui::BeltTouchState& st = recorder.seen.back().state;
+        EXPECT_FALSE(st.belt_hud) << "the page keeps SPC / SP+";
+        EXPECT_FALSE(st.hud_hidden) << "the setting-off HUD is drawn";
+        EXPECT_TRUE(trace_contains("hud", "spc_row"));
+        for (const og::ui::BeltTouchCell& cell : st.cells)
+            EXPECT_EQ(nullptr, cell.picture);
+    }
+
+    // Dead: the state still arrives, with three empty slots.
+    const std::size_t before = recorder.seen.size();
+    scene.heroes[0]->set_dead(1);
+    scene.draw();
+    scene.heroes[0]->set_dead(0);
+    ASSERT_EQ(before + 1, recorder.seen.size())
+        << "a dead seat 0 still clears the buttons";
+    {
+        const og::ui::BeltTouchState& st = recorder.seen.back().state;
+        EXPECT_TRUE(st.belt_hud);
+        EXPECT_TRUE(st.hud_hidden);
+        for (int i = 0; i < 3; ++i)
+        {
+            const og::ui::BeltTouchCell& cell =
+                st.cells[static_cast<std::size_t>(i)];
+            EXPECT_EQ(i + 1, cell.key);
+            EXPECT_STREQ("empty", cell.state);
+            EXPECT_STREQ("none", cell.drawn);
+            EXPECT_EQ(nullptr, cell.picture);
+            EXPECT_EQ(std::to_string(i + 1), cell.label);
+        }
+    }
 }
 
 // Review stills (OG_FX_CAPTURE_DIR, as zz_capture_belt_hud): the ON HUD over

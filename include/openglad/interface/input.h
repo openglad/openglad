@@ -436,6 +436,12 @@ bool is_single_seat_device();
 // the session's hardware block.
 void set_single_seat_device(bool single_seat);
 int local_seat_cap();
+// The web touch overlay is up (InputHardwareState::touch_overlay_active):
+// set by openglad_web_touch_enable, never by native code. Reads false when
+// no session exists; the setter is a no-op then (the shell retries until
+// the session is up).
+bool touch_overlay_active();
+void set_touch_overlay_active(bool on);
 } // namespace og::input
 
 struct MouseState

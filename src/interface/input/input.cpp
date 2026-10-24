@@ -327,6 +327,18 @@ void set_single_seat_device(bool single_seat)
         input_hardware_state().single_seat_device = single_seat;
 }
 
+bool touch_overlay_active()
+{
+    return og::runtime::current_session != nullptr &&
+        input_hardware_state().touch_overlay_active;
+}
+
+void set_touch_overlay_active(bool on)
+{
+    if (og::runtime::current_session != nullptr)
+        input_hardware_state().touch_overlay_active = on;
+}
+
 int local_seat_cap()
 {
     // Menus poll this per frame; only a single-seat device needs the

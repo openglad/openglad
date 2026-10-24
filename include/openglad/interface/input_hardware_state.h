@@ -46,6 +46,11 @@ struct InputHardwareState {
     // every native build, so the seat cap is MAX_PLAYERS there. A plain bool
     // (not a build constant) so native tests can exercise the phone rule.
     bool single_seat_device = false;
+    // True while the web page's touch overlay is up (openglad_web_touch_enable):
+    // its 1 / 2 / 3 buttons then carry seat 0's ability pictures, so seat 0's
+    // pane draws no hotbar (new_score_panel). False on every native build,
+    // the single_seat_device contract; a plain bool so native tests can set it.
+    bool touch_overlay_active = false;
     std::int32_t mouse_buttons{0};
     bool picker_was_left_down{false};
     bool picker_was_right_down{false};

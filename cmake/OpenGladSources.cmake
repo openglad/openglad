@@ -229,6 +229,7 @@ set(OG_INTERFACE_COMPONENT_SOURCES
     ${SRC_DIR}/interface/ui/terminal_menu_model.cpp
     ${SRC_DIR}/interface/walker_render_bridge.cpp
     ${SRC_DIR}/interface/ability_icons.cpp
+    ${SRC_DIR}/interface/belt_touch.cpp
 )
 
 set(OG_PLATFORM_SDL_COMPONENT_SOURCES

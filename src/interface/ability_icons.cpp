@@ -67,6 +67,25 @@ const std::array<unsigned char, 256>& locked_icon_lut()
     return lut;
 }
 
+std::array<unsigned char, 16 * 16 * 4> icon_rgba(
+    const PixieData& picture, std::span<const unsigned char, 768> palette)
+{
+    std::array<unsigned char, 16 * 16 * 4> rgba{};
+    if (!picture.valid() || picture.w != kAbilityIconSize ||
+        picture.h != kAbilityIconSize)
+        return rgba;
+    for (std::size_t i = 0; i < kIconPixels; ++i) {
+        const std::size_t index = picture.data[i];
+        if (index == 0)
+            continue;
+        for (std::size_t c = 0; c < 3; ++c)
+            rgba[i * 4 + c] =
+                static_cast<unsigned char>(palette[index * 3 + c] * 4);
+        rgba[i * 4 + 3] = 255;
+    }
+    return rgba;
+}
+
 const char* declared_icon_path(const FamilyDescriptor& fd,
                                og::sim::belt::Entry entry)
 {

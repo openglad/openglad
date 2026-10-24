@@ -30,6 +30,7 @@
 
 #include <array>
 #include <map>
+#include <span>
 #include <string>
 
 struct FamilyDescriptor;
@@ -57,6 +58,15 @@ struct AbilityIcon {
 // The luma (0.299 R + 0.587 G + 0.114 B, 0..230) of an engine palette entry
 // in 8-bit channels: the measure the locked LUT and the icon gates use.
 [[nodiscard]] double icon_palette_luma(int index);
+
+// One icon's pixels as the HUD draws them, in straight RGBA (16x16x4,
+// row-major): index 0 is transparent (0,0,0,0), every other index is its
+// `palette` entry (6-bit channels, the session's curpal_) widened as the
+// draw primitives widen it (v * 4), alpha 255. The web touch buttons show
+// these bytes, so a button's picture is the HUD's picture. A picture that
+// is not one 16x16 frame converts to all-transparent.
+[[nodiscard]] std::array<unsigned char, 16 * 16 * 4> icon_rgba(
+    const PixieData& picture, std::span<const unsigned char, 768> palette);
 
 // The declared icon path of one belt entry, or nullptr when the family
 // declares none for it (or the entry's slot is outside 1..5).
