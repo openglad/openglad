@@ -17,6 +17,7 @@
 
 #include <openglad/platform/sai2x.h>
 #include <openglad/platform/video_sdl.h>
+#include "test_physical_frame.h"
 #include <openglad/platform/game_session.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/render/view.h>
@@ -2925,4 +2926,170 @@ TEST(CanvasScale, reapply_world_scale_measures_the_window_when_metrics_are_unpub
     EXPECT_EQ(published_w, E_Screen->world_w())
         << "an unpublished window must be measured, not treated as 0x0";
     EXPECT_EQ(published_h, E_Screen->world_h());
+}
+
+// ---- Native planes ride a fade to or from black (the CHANGELOG! picture) ----
+//
+// The keyboard picture on the CHANGELOG! page is a native plane over the
+// 320x200 menu canvas. FadeBetween blends only the canvas, and a swap used to
+// present a plane once and drop it: the fade-in's first frame showed the
+// picture at full brightness over a black page, the rest of the fade had no
+// picture, and it popped in after; a fade-out lost it on its first frame. Now
+// a fade presents the faded frame's planes on every swap, dimmed with the
+// canvas. Test builds skip the animation, so g_fade_midpoint_hook has
+// FadeBetween present one half-way frame and read it back here.
+//
+// RED (planted): FadeBetween without begin/set/end_native_world_view_fade
+// (the midpoint picture is full brightness on the way in and missing on the
+// way out, and the fade-in's last frame has no picture).
+namespace
+{
+PhysicalFrame g_fade_midpoint_frame;
+
+void read_fade_midpoint()
+{
+    g_fade_midpoint_frame = PhysicalFrame{};
+    (void)read_physical_frame_here(g_fade_midpoint_frame);
+}
+
+struct FadeMidpointProbe
+{
+    FadeMidpointProbe()
+    {
+        g_fade_midpoint_frame = PhysicalFrame{};
+        og::video_testing::g_fade_midpoint_hook = &read_fade_midpoint;
+    }
+    ~FadeMidpointProbe() { og::video_testing::g_fade_midpoint_hook = nullptr; }
+    FadeMidpointProbe(const FadeMidpointProbe&) = delete;
+    FadeMidpointProbe& operator=(const FadeMidpointProbe&) = delete;
+};
+
+// A grey page with a green 40x20 picture at (100, 50) on `canvas`, in the
+// fixture's 640x400 output (2 display pixels per canvas pixel).
+constexpr int kFadePlaneX = 100;
+constexpr int kFadePlaneY = 50;
+constexpr Uint8 kFadeGrey = 200;
+constexpr Uint8 kFadeGreen = 200;
+
+void draw_page_with_plane(screen* s, CanvasTarget canvas)
+{
+    ASSERT_TRUE(SDL_FillSurfaceRect(
+        E_Screen->render, nullptr,
+        SDL_MapSurfaceRGB(E_Screen->render, kFadeGrey, kFadeGrey, kFadeGrey)));
+    const std::array<NativeWorldViewDestination, 1> destinations = {{
+        {.canvas = canvas, .x = kFadePlaneX, .y = kFadePlaneY, .w = 40,
+         .h = 20}}};
+    const NativeWorldViewSource source = s->begin_native_world_view(destinations);
+    ASSERT_TRUE(source);
+    ASSERT_EQ(80, source.w);
+    ASSERT_EQ(40, source.h);
+    ASSERT_TRUE(SDL_FillSurfaceRect(
+        E_Screen->render, nullptr,
+        SDL_MapSurfaceRGB(E_Screen->render, 0, kFadeGreen, 0)));
+    ASSERT_TRUE(s->end_native_world_view());
+}
+
+// Display pixels: one inside the picture, one on the bare page.
+std::array<Uint8, 3> picture_pixel(const PhysicalFrame& f)
+{
+    return f.at(kFadePlaneX * 2 + 40, kFadePlaneY * 2 + 20);
+}
+std::array<Uint8, 3> page_pixel(const PhysicalFrame& f)
+{
+    return f.at(20, 300);
+}
+} // namespace
+
+TEST(CanvasScale, native_plane_fades_in_with_the_canvas)
+{
+    ASSERT_TRUE(E_Screen);
+    ClassicCanvasRestore restore;
+    screen* const s = test_screen();
+    ASSERT_NE(nullptr, s);
+    E_Screen->set_world_zoom(og::kZoomStepsMax,
+                             og::WorldScaleMode::Integer, 640, 400);
+    E_Screen->set_active_canvas(CanvasTarget::UI);
+    // The window shows black, as after the previous screen's fade-out.
+    ASSERT_TRUE(SDL_FillSurfaceRect(E_Screen->render, nullptr, 0));
+    s->buffer_to_screen(0, 0, s->canvas_w(), s->canvas_h());
+    E_Screen->set_window_black(true);
+
+    draw_page_with_plane(s, CanvasTarget::UI);
+    FadeMidpointProbe probe;
+    EXPECT_EQ(1, s->fadeblack(true));
+
+    ASSERT_TRUE(g_fade_midpoint_frame.captured);
+    const auto mid_page = page_pixel(g_fade_midpoint_frame);
+    const auto mid_picture = picture_pixel(g_fade_midpoint_frame);
+    EXPECT_NEAR(kFadeGrey / 2, mid_page[1], 6) << "the page is half faded in";
+    EXPECT_LT(mid_picture[0], 30) << "the picture is on screen mid-fade";
+    EXPECT_NEAR(kFadeGreen / 2, mid_picture[1], 6)
+        << "the picture is dimmed with the page, not at full brightness";
+
+    PhysicalFrame after;
+    ASSERT_TRUE(read_physical_frame_here(after));
+    const auto end_picture = picture_pixel(after);
+    EXPECT_LT(end_picture[0], 30)
+        << "the fade's last frame shows the picture (it must not pop in later)";
+    EXPECT_GE(end_picture[1], kFadeGreen - 4);
+    EXPECT_GE(page_pixel(after)[0], kFadeGrey - 4);
+}
+
+TEST(CanvasScale, native_plane_fades_out_with_the_canvas)
+{
+    ASSERT_TRUE(E_Screen);
+    ClassicCanvasRestore restore;
+    screen* const s = test_screen();
+    ASSERT_NE(nullptr, s);
+    E_Screen->set_world_zoom(og::kZoomStepsMax,
+                             og::WorldScaleMode::Integer, 640, 400);
+    E_Screen->set_active_canvas(CanvasTarget::UI);
+    draw_page_with_plane(s, CanvasTarget::UI);
+    s->buffer_to_screen(0, 0, s->canvas_w(), s->canvas_h());
+
+    FadeMidpointProbe probe;
+    EXPECT_EQ(1, s->fadeblack(false));
+
+    ASSERT_TRUE(g_fade_midpoint_frame.captured);
+    const auto mid_picture = picture_pixel(g_fade_midpoint_frame);
+    EXPECT_NEAR(kFadeGrey / 2, page_pixel(g_fade_midpoint_frame)[1], 6);
+    EXPECT_LT(mid_picture[0], 30)
+        << "the picture is still on screen mid-fade, not dropped at once";
+    EXPECT_NEAR(kFadeGreen / 2, mid_picture[1], 6)
+        << "the picture fades out with the page";
+
+    PhysicalFrame after;
+    ASSERT_TRUE(read_physical_frame_here(after));
+    EXPECT_EQ((std::array<Uint8, 3>{0, 0, 0}), picture_pixel(after))
+        << "a finished fade-out is black, picture included";
+    EXPECT_TRUE(E_Screen->window_is_black());
+}
+
+// Gameplay fades are unchanged: they drop the gameplay overlays
+// (discard_gameplay_ui_frame), and a camera inset on the GameplayUI canvas
+// stays out of the fade too.
+TEST(CanvasScale, gameplay_fade_still_drops_gameplay_ui_planes)
+{
+    ASSERT_TRUE(E_Screen);
+    ClassicCanvasRestore restore;
+    screen* const s = test_screen();
+    ASSERT_NE(nullptr, s);
+    E_Screen->set_world_zoom(og::kZoomStepsMax,
+                             og::WorldScaleMode::Integer, 640, 400);
+    E_Screen->set_active_canvas(CanvasTarget::World);
+    draw_page_with_plane(s, CanvasTarget::GameplayUI);
+    s->buffer_to_screen(0, 0, s->canvas_w(), s->canvas_h());
+    PhysicalFrame before;
+    ASSERT_TRUE(read_physical_frame_here(before));
+    ASSERT_LT(picture_pixel(before)[0], 30)
+        << "the camera inset is on the presented gameplay frame";
+
+    FadeMidpointProbe probe;
+    EXPECT_EQ(1, s->fadeblack(false));
+    ASSERT_TRUE(g_fade_midpoint_frame.captured);
+    const auto mid_picture = picture_pixel(g_fade_midpoint_frame);
+    EXPECT_EQ(mid_picture[0], mid_picture[1])
+        << "the inset must not ride a gameplay fade (grey page only)";
+    EXPECT_NEAR(kFadeGrey / 2, mid_picture[0], 6);
+    E_Screen->set_active_canvas(CanvasTarget::UI);
 }
