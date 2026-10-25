@@ -2579,8 +2579,8 @@ short walker::special()
 					stats->add_command(COMMAND_RESET_WEAPON, 1, 0, 0);
 					break;
 				case 2:  // flurry of arrows
-					if (busy)
-						return 0;
+					if (myscreen->gameplay_fixes ? busy > 0 : busy != 0)
+						return 0; // port of the current game's 5c5777f8: a busy below zero is not busy (a hero's fractional fire delay leaves it there for good)
 					stats->magicpoints += (3*stats->weapon_cost);
 					fire();
 					fire();
@@ -2590,8 +2590,8 @@ short walker::special()
 				case 3: // exploding arrows
 				case 4:
 				default:
-					if (busy)
-						return 0;
+					if (myscreen->gameplay_fixes ? busy > 0 : busy != 0)
+						return 0; // port of the current game's 5c5777f8: a busy below zero is not busy (a hero's fractional fire delay leaves it there for good)
 					generic = current_weapon;
 					current_weapon = FAMILY_FIRE_ARROW;
 					newob = fire();
@@ -2629,7 +2629,7 @@ short walker::special()
 					newob->damage += stats->level*4;
 					break;
 				case 3: // whirlwind attack
-					if (busy)
+					if (myscreen->gameplay_fixes ? busy > 0 : busy != 0)
 						return 0; // can't do while attacking, etc.
 					{
 					// port of the current game's e6475850: the foes are found before anything is written (the search draws nothing)
@@ -2674,8 +2674,8 @@ short walker::special()
 					}
 					break; // end of whirlwind attack
 				case 4:  // Disarm opponent
-					if (busy)
-						return 0;
+					if (myscreen->gameplay_fixes ? busy > 0 : busy != 0)
+						return 0; // port of the current game's 5c5777f8: a busy below zero is not busy (a hero's fractional fire delay leaves it there for good)
 					if (!stats->forward_blocked())
 						return 0; // can't do this if no frontal enemy
                     
