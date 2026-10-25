@@ -88,6 +88,7 @@ set(ALL_INTEGRATION_TEST_SOURCES
     ${CMAKE_SOURCE_DIR}/tests/integration/test_gameplay_fixes_ghost_orc.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_gameplay_fixes_cleric.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_gameplay_fixes_thief.cpp
+    ${CMAKE_SOURCE_DIR}/tests/integration/test_gameplay_fixes_special_busy.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_stats_commands.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_stats_right_walk_direct_walk.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_stats_hit_response_more.cpp
@@ -425,6 +426,7 @@ og_add_test_group(og_test_walker_core FILES
     test_gameplay_fixes_ghost_orc.cpp
     test_gameplay_fixes_cleric.cpp
     test_gameplay_fixes_thief.cpp
+    test_gameplay_fixes_special_busy.cpp
     test_walker_core_more.cpp
     test_walker_extended.cpp
     test_walker_more.cpp

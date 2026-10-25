@@ -3677,7 +3677,7 @@ inline constexpr FactPredicate kFacts_special_archer_2_scen99[] = {
 
 inline constexpr Mutation kMut_special_archer_2_scen99 = {
     "packs/core/families/living-02-archer.lua", 29,
-    "if self:busy() ~= 0 then",
+    "if gf.special_busy(self) then",
     "if true then",
     "Closes FLURRY's busy gate permanently, so archer slot 2 returns false before its three fire() releases and before the fire_frequency*2 busy charge. WalkerHpRangeAtFinalTick(FAMILY_ARCHER, 3500, 3500) flips.",
     "  self:s_add_command(C.COMMAND_RESET_WEAPON, 1, 0, 0)"
