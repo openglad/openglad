@@ -44,11 +44,6 @@ inline constexpr char BUTTON_TOP    = 15; //14
 inline constexpr char BUTTON_BOTTOM = 11; //10
 inline constexpr char BUTTON_LEFT   = 14; //13
 inline constexpr char BUTTON_RIGHT  = 12; //11
-// The label ink of a dimmed (inert) face: a pale grey instead of
-// DARK_BLUE, so an unavailable door reads as unavailable at a glance and
-// not just as a slightly darker card (the GREY face alone is one palette
-// step from the live face).
-inline constexpr unsigned char BUTTON_DIMMED_LABEL = 14;
 
 // myscreen is now a macro defined in base.h (via game_session.h).
 // button.h includes input.h but not base.h, so pull it in here.
@@ -127,8 +122,7 @@ class vbutton
 		// dimmed button's right and bottom bevels dissolve into its face and
 		// it reads as a half-drawn card with a flat right edge. When this is
 		// set, vdisplay steps those two edges one shade darker so all four
-		// bevels survive at the dim shade, and writes the label in
-		// BUTTON_DIMMED_LABEL instead of DARK_BLUE.
+		// bevels survive at the dim shade.
 		bool dimmed = false;
 		bool hidden;
         bool no_draw;  // Does not draw but still accepts clicks

@@ -509,10 +509,8 @@ two instead (one ability, one slot). A locked ability can be placed.
 
 - **Door**: a 21st row on TRAIN, `ABILITIES`, in the gap between ACCEPT
   and SELL. With the setting off it shows dimmed, so players can still find
-  it (question K.8). Dimmed is the menu's one rule for an inert row: a
-  darker face and a pale grey label instead of the blue one
-  (`vbutton::vdisplay`, `BUTTON_DIMMED_LABEL`), the same on every dimmed
-  door.
+  it (question K.8). Dimmed is the menu's one rule for an inert row: the
+  darker face every dimmed door uses (`vbutton::vdisplay`).
 - **Screen**: `MenuScreenId::Abilities`, `src/interface/ui/abilities_screen.cpp`,
   layout constants in `src/interface/ui/picker_sdl_defs.h`. Title and
   "Class, level N" at the top; the six slots in two columns (1 | S1, 2 |

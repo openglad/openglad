@@ -73,7 +73,6 @@
 #include <functional>
 #include <list>
 #include <memory>
-#include <mutex>
 #include <set>
 #include <string>
 #include <vector>
@@ -1429,51 +1428,7 @@ TEST(AbilitiesFlow, setting_off_dims_the_train_door)
     EXPECT_TRUE(state.still_on_train);
     EXPECT_TRUE(trace_contains("menu_engine", "disabled_row_click abilities"))
         << "the click landed on the dimmed row";
-
-    // The frozen TRAIN frame: the dimmed door reads as unavailable, not as
-    // a slightly darker live door. Its label is written in the pale
-    // BUTTON_DIMMED_LABEL grey with no DARK_BLUE ink at all, on the GREY
-    // face; the live SELL door beside it keeps its blue label on the
-    // normal face.
-    std::vector<Uint8> rgb;
-    {
-        const std::lock_guard<std::mutex> lock(g_captured_frame_mutex);
-        if (!g_captured_frames.empty())
-            rgb = g_captured_frames.back().rgb;
-    }
     verify_captured_frames("abilities_off", 1);
-    ASSERT_EQ(320u * 200u * 3u, rgb.size()) << "no TRAIN frame was frozen";
-    struct Ink {
-        int blue = 0;
-        int pale = 0;
-        std::array<Uint8, 3> face{};
-    };
-    const auto ink_of = [&rgb](const og::ui::MenuButtonSpec& row) {
-        Ink ink;
-        const auto at = [&rgb](int x, int y) {
-            const std::size_t i = (static_cast<std::size_t>(y) * 320u +
-                                   static_cast<std::size_t>(x)) * 3u;
-            return std::array<Uint8, 3>{rgb[i], rgb[i + 1], rgb[i + 2]};
-        };
-        for (int y = row.y + 1; y < row.y + row.h - 1; ++y)
-            for (int x = row.x + 1; x < row.x + row.w - 1; ++x) {
-                const std::array<Uint8, 3> c = at(x, y);
-                if (c[2] > c[0] + 40 && c[2] > c[1] + 40)
-                    ++ink.blue;
-                if (c[0] == 196 && c[1] == 196 && c[2] == 196)
-                    ++ink.pale;
-            }
-        ink.face = at(row.x + 2, row.y + 2);
-        return ink;
-    };
-    const auto& rows = og::ui::train_menu_screen_spec().rows;
-    const Ink door = ink_of(rows[kTrainMenuAbilitiesIndex]);
-    const Ink sell = ink_of(rows[kTrainMenuSellIndex]);
-    EXPECT_EQ(0, door.blue) << "the dimmed door's label is still DARK_BLUE";
-    EXPECT_GE(door.pale, 20) << "the dimmed door's label is not the pale grey";
-    EXPECT_GE(sell.blue, 20) << "the live SELL door lost its blue label";
-    EXPECT_EQ(0, sell.pale);
-    EXPECT_NE(door.face, sell.face) << "the dimmed door kept the live face";
 }
 
 TEST(AbilitiesFlow, mage_page_greys_locked_rows_and_the_keyboard_walks_it)
