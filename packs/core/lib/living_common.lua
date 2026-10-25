@@ -5,9 +5,12 @@ local C = og.C
 
 local M = {}
 
--- Busy gate: the shared special prelude `if busy > 0 then bail`. Sites
--- that compare `busy() ~= 0` keep their literal spelling — only the `> 0`
--- gate is this predicate.
+-- Busy gate: the shared special prelude `if busy > 0 then bail`. The
+-- soldier's WHIRLWIND and DISARM and the archer's BARRAGE and EXPLODING
+-- BOLT gate on `busy() ~= 0` in the classic game, which a hero's busy
+-- (resting a fraction below zero after a shot) never clears; they ask
+-- gameplay_fixes.special_busy instead, which reads `> 0`, like this
+-- predicate, when Gameplay Fixes is on (docs/gameplay-fixes.md, fix S).
 function M.is_busy(self)
   return self:busy() > 0
 end

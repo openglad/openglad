@@ -40,7 +40,7 @@ end
 
 local function whirlwind(self)
   -- can't do while attacking, etc.
-  if self:busy() ~= 0 then
+  if gf.special_busy(self) then
     return false, "SPECIAL BUSY"
   end
   local t = og.tuning(self)
@@ -76,7 +76,7 @@ local function whirlwind(self)
 end
 
 local function disarm(self)
-  if self:busy() ~= 0 then
+  if gf.special_busy(self) then
     return false, "SPECIAL BUSY"
   end
   -- can't do this if no frontal enemy

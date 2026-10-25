@@ -3,7 +3,7 @@
 
 local C = og.C
 local ai = og.use("ai")
-local G = og.use("gates")
+local G, gf = og.use("gates"), og.use("gameplay_fixes")
 local WEAPON_FIRE_ARROW = assert(og.family_id("weapon", "core:fire_arrow"))
 
 local function fire_arrows(self)
@@ -26,7 +26,7 @@ local function fire_arrows(self)
 end
 
 local function flurry(self)
-  if self:busy() ~= 0 then
+  if gf.special_busy(self) then
     return false, "SPECIAL BUSY"
   end
   -- magicpoints is a C++ float: per-op rounding
@@ -40,7 +40,7 @@ local function flurry(self)
 end
 
 local function exploding_shot(self)
-  if self:busy() ~= 0 then
+  if gf.special_busy(self) then
     return false, "SPECIAL BUSY"
   end
   local t = og.tuning(self)
