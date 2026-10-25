@@ -52,6 +52,13 @@ std::vector<std::string> fade_violation_messages();
 void reset_fade_violations();
 void report_fade_violation(const char* what);
 
+// Test builds skip the fade animation (FadeBetween blits the new frame). Set,
+// this makes FadeBetween present ONE frame half way through the fade first
+// and call the hook right after that present, so a test can read the
+// physical frame a player sees mid-fade (the CHANGELOG! picture dimmed with
+// the page). Null (the default) keeps the plain blit.
+extern void (*g_fade_midpoint_hook)();
+
 // Fault injection for the startup renderer fallback (issue #248). The probe
 // override substitutes the environment the boot path reads (the live video
 // driver, whether the user pinned one, and the driver to fall back to) so the

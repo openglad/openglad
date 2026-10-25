@@ -244,6 +244,20 @@ class Screen
 		{
 			return native_world_view_active_index_ >= 0;
 		}
+		// A fade to or from black (FadeBetween) fades the native planes with
+		// the canvas: between begin and end, every swap presents the planes
+		// of the frame being faded, dimmed to the fade level (0 = black, 255 =
+		// full). Fade-in: the planes drawn with the frame the fade brings up
+		// (ready for the next present). Fade-out: the planes the window shows
+		// now (the last present's). Only UI-canvas planes ride a fade; a
+		// gameplay fade drops its overlays (discard_gameplay_ui_frame), so
+		// its camera insets stay out of it too.
+		void begin_native_world_view_fade(bool fade_in);
+		void set_native_world_view_fade_level(Uint8 level)
+		{
+			native_world_view_fade_level_ = level;
+		}
+		void end_native_world_view_fade();
 #ifdef TESTING
 		std::size_t native_world_view_ready_count_for_testing() const
 		{
@@ -450,6 +464,10 @@ class Screen
 		std::vector<NativeWorldViewPlane> native_world_view_planes_;
 		std::size_t native_world_view_ready_count_ = 0;
 		std::size_t native_world_view_capture_count_ = 0;
+		// The fade in progress (begin_native_world_view_fade).
+		bool native_world_view_fade_active_ = false;
+		std::size_t native_world_view_fade_count_ = 0;
+		Uint8 native_world_view_fade_level_ = 255;
 		int native_world_view_active_index_ = -1;
 		CanvasTarget native_world_view_saved_canvas_ = CanvasTarget::UI;
 		SDL_Surface* native_world_view_saved_render_ = nullptr;

@@ -1801,6 +1801,21 @@ void Screen::cancel_native_world_view()
 	native_world_view_active_index_ = -1;
 }
 
+void Screen::begin_native_world_view_fade(bool fade_in)
+{
+	native_world_view_fade_count_ = fade_in
+		? native_world_view_ready_count_ : native_world_view_capture_count_;
+	native_world_view_fade_active_ = true;
+	native_world_view_fade_level_ = fade_in ? 0 : 255;
+}
+
+void Screen::end_native_world_view_fade()
+{
+	native_world_view_fade_active_ = false;
+	native_world_view_fade_count_ = 0;
+	native_world_view_fade_level_ = 255;
+}
+
 #ifdef TESTING
 SDL_Surface* Screen::native_world_view_surface_for_testing(
 	std::size_t index) const
@@ -2643,7 +2658,14 @@ void Screen::swap(int x, int y, int w, int h)
 	// camera and every menu world preview; no mode-specific presentation path
 	// exists. UI chrome was already composited, so a plane may cover the inside
 	// of a framed panel without being filtered or enlarged with the DOS canvas.
-	for (std::size_t i = 0; i < native_world_view_ready_count_ &&
+	// Inside a fade (begin_native_world_view_fade) every swap presents the
+	// faded frame's planes, dimmed to the fade level with the canvas; at
+	// level 0 they are black like the canvas and are not drawn at all.
+	const bool fading = native_world_view_fade_active_;
+	const std::size_t plane_count = !fading
+		? native_world_view_ready_count_
+		: (native_world_view_fade_level_ > 0 ? native_world_view_fade_count_ : 0);
+	for (std::size_t i = 0; i < plane_count &&
 	                         i < native_world_view_planes_.size(); ++i)
 	{
 		NativeWorldViewPlane& plane = native_world_view_planes_[i];
@@ -2659,7 +2681,8 @@ void Screen::swap(int x, int y, int w, int h)
 			const bool matches_present = destination.canvas == CanvasTarget::UI
 				? active_ == CanvasTarget::UI
 				: active_ == CanvasTarget::World;
-			if (!matches_present)
+			if (!matches_present ||
+			    (fading && destination.canvas != CanvasTarget::UI))
 				continue;
 			const og::CanvasViewport viewport =
 				destination.canvas == CanvasTarget::GameplayUI
@@ -2684,13 +2707,16 @@ void Screen::swap(int x, int y, int w, int h)
 					static_cast<float>(coordinate_h)};
 			const SDL_FRect physical = renderer_output_rect(
 				renderer, logical.x, logical.y, logical.w, logical.h);
+			const Uint8 level = fading ? native_world_view_fade_level_ : 255;
+			SDL_SetTextureColorMod(plane.texture, level, level, level);
 			if (!SDL_RenderTexture(renderer, plane.texture, nullptr, &physical))
 				LogError("Unable to composite native world view: {}\n",
 				         SDL_GetError());
+			SDL_SetTextureColorMod(plane.texture, 255, 255, 255);
 		}
 	}
     SDL_RenderPresent(renderer);
-	native_world_view_capture_count_ = native_world_view_ready_count_;
+	native_world_view_capture_count_ = plane_count;
 	native_world_view_ready_count_ = 0;
 	hud_sprite_capture_count_ = hud_sprite_ready_count_;
 	hud_sprite_ready_count_ = 0;

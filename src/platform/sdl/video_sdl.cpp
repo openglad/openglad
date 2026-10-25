@@ -3853,8 +3853,32 @@ int sdl_video::FadeBetween(
 	const unsigned press_serial_at_start = query_key_press_serial();
 	(void)press_serial_at_start;  // the TESTING branch runs no animation
 
+	// A fade to or from black fades the native planes (the CHANGELOG!
+	// keyboard picture) with the canvas: every swap below presents them,
+	// dimmed to the canvas's own blend. Without this the first swap showed
+	// them at full brightness over a black canvas and consumed them, so the
+	// rest of the fade had none and they popped in after it (and a fade-out
+	// lost them on its first frame).
+	const bool fade_planes = bOldNull != bNewNull;
+	if (fade_planes)
+		E_Screen->begin_native_world_view_fade(bOldNull);
+	const auto plane_level = [&](int amount) {
+		const int clamped = std::clamp(amount, 0, fadeDuration);
+		const int lit = clamped * 255 / fadeDuration;  // the new frame's share
+		return static_cast<Uint8>(bOldNull ? lit : 255 - lit);
+	};
+
 	//Fade from old to new surface.  Effect takes constant time.
 #ifdef TESTING
+	if (og::video_testing::g_fade_midpoint_hook != nullptr)
+	{
+		const int half = fadeDuration / 2;
+		FadeBetween24(DestSurface, colorsf.data(), colorst.data(), half);
+		if (fade_planes)
+			E_Screen->set_native_world_view_fade_level(plane_level(half));
+		E_Screen->swap(0,0,active_canvas_w(),active_canvas_h());
+		og::video_testing::g_fade_midpoint_hook();
+	}
 	// In test mode, just do a direct blit instead of animated fade
 	if(pNewSurface)
 		SDL_BlitSurface(pNewSurface, nullptr, DestSurface, nullptr);
@@ -3864,8 +3888,10 @@ int sdl_video::FadeBetween(
 		dwFirstPaint = SDL_GetTicks(),
 		dwNow = dwFirstPaint;
 	do {
-		FadeBetween24(DestSurface,colorsf.data(),colorst.data(),
-				static_cast<int>(dwNow - dwFirstPaint) + 50);	//allow first frame to show some change
+		const int amount = static_cast<int>(dwNow - dwFirstPaint) + 50;	//allow first frame to show some change
+		FadeBetween24(DestSurface,colorsf.data(),colorst.data(), amount);
+		if (fade_planes)
+			E_Screen->set_native_world_view_fade_level(plane_level(amount));
 		E_Screen->swap(0,0,active_canvas_w(),active_canvas_h());
 		dwNow = SDL_GetTicks();
 
@@ -3892,7 +3918,11 @@ int sdl_video::FadeBetween(
 	if (pOldSurface != DestSurface)
 		SDL_BlitSurface(pNewSurface, nullptr, pOldSurface, nullptr);
 	// Screen::Swap() does the work
+	if (fade_planes)
+		E_Screen->set_native_world_view_fade_level(bOldNull ? 255 : 0);
 	E_Screen->swap(0,0,active_canvas_w(),active_canvas_h());
+	if (fade_planes)
+		E_Screen->end_native_world_view_fade();
 	
 	//Clean up.
 	if (bOldNull)
@@ -3921,6 +3951,7 @@ int sdl_video::fade_between(void* old_surface, void* new_surface,
 namespace og::video_testing
 {
 std::atomic<int> g_fade_violations{0};
+void (*g_fade_midpoint_hook)() = nullptr;
 
 namespace
 {
