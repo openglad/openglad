@@ -33,6 +33,13 @@ struct PlayerInput {
     // Pressed this frame: true only on the frame the key transitions down.
     bool pressed[NUM_INPUT_KEYS] = {};
 
+    // New Ability Select: the belt entry a Special press/hold means, resolved by the sender
+    // (og::sim::belt; docs/ability-select-design.md). 0 = classic (cast the walker's current slot;
+    // physical Shift = the alternate). Otherwise slot 1..5 | alternate << 3, or kCastNothing (0x07)
+    // for a key with nothing on it. Meaningful only alongside held/pressed[Special]; the server
+    // validates it (sim_arm_belt_entry) and never trusts it.
+    std::uint8_t belt_cast = 0;
+
     bool is_held(InputAction action) const {
         return held[static_cast<int>(action)];
     }

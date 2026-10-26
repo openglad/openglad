@@ -18,7 +18,15 @@ const {
   waitForPickerReady,
   waitForRenderedFrames,
   startSeededSinglePlayerFromPicker,
+  installChangelogSkip,
+  readButtonPixels,
 } = require('./wasm_helpers');
+
+// Every boot in this file skips the once-only CHANGELOG! page
+// (tests/e2e/wasm-changelog.spec.js is the one that shows it).
+test.beforeEach(async ({ page }) => {
+  await installChangelogSkip(page);
+});
 
 // Abort-flow dialog buttons on the 320x200 UI reference grid
 // (src/interface/ui/picker_dialogs.cpp): YES center and the popup OK center.
@@ -443,6 +451,7 @@ test.describe('Touch overlay activation', () => {
     });
     try {
       const desktopPage = await desktop.newPage();
+      await installChangelogSkip(desktopPage);
       await desktopPage.goto('/play.html');
       await waitForGameLoad(desktopPage);
       // Give overlayTick a few cycles to (incorrectly) activate.
@@ -1060,6 +1069,493 @@ test.describe('Touch gameplay controls', () => {
         page.evaluate(() => Boolean(window.__opengladTouchKeys?.fire)),
       )
       .toBe(false);
+  });
+
+  // New Ability Select (on by default): the SPEC cluster reads 1 2 3, and
+  // SPEC 2 / SPEC 3 reach the engine's touch seam as key slots 17 and 18
+  // (the C++ mirror names them spec2 / spec3 after its bounds check).
+  for (const [selector, name] of [['#tc-spec2', 'spec2'], ['#tc-spec3', 'spec3']]) {
+    test(`${name} button delivers its belt key slot`, async ({ page }) => {
+      test.setTimeout(180_000);
+
+      await seedGameplayInitScript(page);
+      await startSeededGameplayWithOverlay(page);
+
+      await expect
+        .poll(async () => page.evaluate(() => window.__opengladAbilitySelect))
+        .toBe(true);
+      // The badges read the seeded soldier's slots: CHARGE ready, the
+      // other two locked until level 4 and 7 (issue #384).
+      await expect(page.locator('#tc-special')).toHaveText('1');
+      await expect(page.locator('#tc-spec2')).toHaveText('L4');
+      await expect(page.locator('#tc-spec3')).toHaveText('L7');
+      await expect(page.locator('#tc-spec3')).toBeVisible();
+
+      const center = await elementCenter(page, selector);
+      await dispatchPointer(page, selector, 'pointerdown', center.x, center.y, 57);
+      await expect
+        .poll(async () =>
+          page.evaluate((key) => Boolean(window.__opengladTouchKeys?.[key]), name),
+        )
+        .toBe(true);
+      await page.waitForTimeout(200);
+      await dispatchPointer(page, selector, 'pointerup', center.x, center.y, 57);
+      await expect
+        .poll(async () =>
+          page.evaluate((key) => Boolean(window.__opengladTouchKeys?.[key]), name),
+        )
+        .toBe(false);
+    });
+  }
+
+  // The 1 / 2 / 3 buttons never cover the radar. The radar's block is the
+  // HUD's bottom-right 64x48 (radar_block_for_pane: at most 60x44, 4 in
+  // from the pane's edges) on the gameplay HUD canvas the engine publishes
+  // (__opengladCanvasDiagnostics.gameplay_ui_*), which is stretched over the
+  // whole #canvas. Checked at this project's phone size and at the iPad
+  // Pro 11 sizes, landscape and portrait (the PR stills' tablet). The FIRE,
+  // BACK and LOOK-row placements are older and tracked as issue #382.
+  test('1 / 2 / 3 buttons stay clear of the radar on phone and tablet', async ({ page }) => {
+    test.setTimeout(240_000);
+
+    await seedGameplayInitScript(page);
+    await startSeededGameplayWithOverlay(page);
+    await expect(page.locator('#tc-spec3')).toBeVisible();
+
+    const phone = page.viewportSize();
+    if (!phone) {
+      throw new Error('viewport size is unavailable');
+    }
+    const sizes = [
+      ['phone', phone],
+      ['iPad Pro 11 landscape', { width: 1194, height: 834 }],
+      ['iPad Pro 11 portrait', { width: 834, height: 1194 }],
+    ];
+    for (const [label, size] of sizes) {
+      await page.setViewportSize(size);
+      // The engine re-lays its HUD canvas to the new aspect: wait until the
+      // published HUD canvas has the canvas box's shape (16:10 or wider:
+      // 200 tall; narrower: 320 wide).
+      await expect
+        .poll(
+          async () =>
+            page.evaluate(() => {
+              const d = window.__opengladCanvasDiagnostics;
+              const c = document.getElementById('canvas');
+              if (!d || !c) {
+                return false;
+              }
+              const r = c.getBoundingClientRect();
+              const tall = r.width * 200 < r.height * 320;
+              const want = tall
+                ? Math.round((r.height * 320) / r.width)
+                : Math.round((r.width * 200) / r.height);
+              const got = tall ? d.gameplay_ui_height : d.gameplay_ui_width;
+              return (
+                Math.abs(r.width - window.innerWidth) <= 1 &&
+                Math.abs(r.height - window.innerHeight) <= 1 &&
+                (tall ? d.gameplay_ui_width === 320 : d.gameplay_ui_height === 200) &&
+                Math.abs(got - want) <= 1
+              );
+            }),
+          { message: `${label}: HUD canvas follows the viewport`, timeout: 20_000 },
+        )
+        .toBe(true);
+
+      const geometry = await page.evaluate(() => {
+        const d = window.__opengladCanvasDiagnostics;
+        const c = document.getElementById('canvas').getBoundingClientRect();
+        const sx = c.width / d.gameplay_ui_width;
+        const sy = c.height / d.gameplay_ui_height;
+        const radar = {
+          left: c.left + (d.gameplay_ui_width - 64) * sx,
+          top: c.top + (d.gameplay_ui_height - 48) * sy,
+          right: c.left + (d.gameplay_ui_width - 4) * sx,
+          bottom: c.top + (d.gameplay_ui_height - 4) * sy,
+        };
+        const rect = (id) => {
+          const r = document.getElementById(id).getBoundingClientRect();
+          return { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
+        };
+        return {
+          radar,
+          buttons: {
+            '1': rect('tc-special'),
+            '2': rect('tc-spec2'),
+            '3': rect('tc-spec3'),
+          },
+          viewport: { width: window.innerWidth, height: window.innerHeight },
+        };
+      });
+      const r = geometry.radar;
+      for (const [name, b] of Object.entries(geometry.buttons)) {
+        const overlaps =
+          b.left < r.right && b.right > r.left && b.top < r.bottom && b.bottom > r.top;
+        expect(
+          overlaps,
+          `${label}: button ${name} ${JSON.stringify(b)} covers the radar ${JSON.stringify(r)}`,
+        ).toBe(false);
+        expect(b.left, `${label}: button ${name} is on screen`).toBeGreaterThanOrEqual(0);
+        expect(b.right).toBeLessThanOrEqual(geometry.viewport.width);
+        expect(b.top).toBeGreaterThanOrEqual(0);
+        expect(b.bottom).toBeLessThanOrEqual(geometry.viewport.height);
+      }
+    }
+  });
+
+  // Issue #384: the 1 / 2 / 3 buttons are seat 0's hotbar slots. The engine
+  // pushes each slot's state and picture ('openglad-belt', mirrored on
+  // window.__opengladBelt; web_touch_bridge.cpp); the page paints the bytes
+  // it was sent into the button's 16x16 canvas. The seeded soldier shows
+  // CHARGE ready, BOOMERANG locked until level 4 and WHIRLWIND until 7.
+  const SPEC_SELECTORS = ['#tc-special', '#tc-spec2', '#tc-spec3'];
+
+  async function waitForBeltOnButtons(page) {
+    await expect
+      .poll(
+        async () =>
+          page.evaluate(() => {
+            const b = window.__opengladBelt;
+            return Boolean(b && b.beltHud && b.cells && b.cells.length === 3);
+          }),
+        { message: 'the engine pushed seat 0 slots', timeout: 20_000 },
+      )
+      .toBe(true);
+  }
+
+  async function beltMirror(page) {
+    return await page.evaluate(() => {
+      const b = window.__opengladBelt;
+      return {
+        beltHud: b.beltHud,
+        hudHidden: b.hudHidden,
+        shift: b.shift,
+        cells: b.cells.map((c) => ({
+          key: c.key,
+          label: c.label,
+          state: c.state,
+          pressed: c.pressed,
+          drawn: c.drawn,
+          locked: c.locked,
+          pictureKey: c.pictureKey,
+        })),
+      };
+    });
+  }
+
+  // Every button shows exactly the bytes the engine sent for its slot, and
+  // they are a real picture (opaque pixels, transparent corners); an empty
+  // slot is its key alone.
+  async function expectButtonsShowTheirSlots(page) {
+    const mirror = await beltMirror(page);
+    for (let i = 0; i < 3; i++) {
+      const selector = SPEC_SELECTORS[i];
+      const cell = mirror.cells[i];
+      await expect(page.locator(selector)).toHaveClass(/tc-icon/);
+      await expect(page.locator(`${selector} .tc-key`)).toHaveText(cell.label);
+      if (cell.state === 'empty') {
+        expect(cell.pictureKey).toBe('');
+        await expect(page.locator(selector)).toHaveClass(/tc-empty/);
+        await expect(page.locator(`${selector} canvas.tc-icon-px`)).toBeHidden();
+        continue;
+      }
+      await expect
+        .poll(async () => (await readButtonPixels(page, selector)).key, {
+          message: `${selector} painted its slot's picture`,
+        })
+        .toBe(cell.pictureKey);
+      const px = await readButtonPixels(page, selector);
+      expect(px.sent, `${selector}: the engine sent ${cell.pictureKey}`).not.toBeNull();
+      expect(px.painted).toEqual(px.sent);
+      let opaque = 0;
+      for (let p = 3; p < px.painted.length; p += 4) {
+        opaque += px.painted[p] === 255 ? 1 : 0;
+      }
+      expect(opaque, `${selector}: a picture, not an empty square`).toBeGreaterThan(30);
+      expect(px.painted[3], `${selector}: the corner stays clear`).toBe(0);
+    }
+    return mirror;
+  }
+
+  test('spec buttons show the seat\'s belt pictures', async ({ page }) => {
+    test.setTimeout(180_000);
+
+    await seedGameplayInitScript(page);
+    await startSeededGameplayWithOverlay(page);
+    await waitForBeltOnButtons(page);
+
+    const mirror = await expectButtonsShowTheirSlots(page);
+    expect(mirror.shift).toBe(false);
+    expect(mirror.cells.map((c) => c.label)).toEqual(['1', 'L4', 'L7']);
+    expect(mirror.cells.map((c) => c.state)).toEqual(['castable', 'locked', 'locked']);
+    expect(mirror.cells[0].drawn).toBe('icons/charge.png');
+    expect(mirror.cells[1].drawn).toBe('icons/boomerang.png');
+    expect(mirror.cells[2].drawn).toBe('icons/whirlwind.png');
+    expect(mirror.cells.map((c) => c.locked)).toEqual([false, true, true]);
+    // The button text is the badge alone (the canvas holds no text).
+    await expect(page.locator('#tc-special')).toHaveText('1');
+
+    // A locked slot is the engine's grey copy (no CSS filter): every opaque
+    // pixel is a grey, and the button is dimmed.
+    const locked = await readButtonPixels(page, '#tc-spec2');
+    for (let p = 0; p < locked.painted.length; p += 4) {
+      if (locked.painted[p + 3] === 0) {
+        continue;
+      }
+      expect(locked.painted[p], `pixel ${p / 4} is grey`).toBe(locked.painted[p + 1]);
+      expect(locked.painted[p + 1]).toBe(locked.painted[p + 2]);
+    }
+    const ready = await readButtonPixels(page, '#tc-special');
+    let coloured = 0;
+    for (let p = 0; p < ready.painted.length; p += 4) {
+      coloured += ready.painted[p + 3] === 255 &&
+        (ready.painted[p] !== ready.painted[p + 1] ||
+          ready.painted[p + 1] !== ready.painted[p + 2]) ? 1 : 0;
+    }
+    expect(coloured, 'CHARGE keeps its colours').toBeGreaterThan(10);
+    await expect(page.locator('#tc-spec2')).toHaveClass(/tc-locked/);
+    await expect(page.locator('#tc-spec3')).toHaveClass(/tc-locked/);
+    await expect(page.locator('#tc-special')).not.toHaveClass(/tc-locked/);
+    const opacity = await page.evaluate(() =>
+      ['tc-special', 'tc-spec2'].map((id) =>
+        getComputedStyle(document.getElementById(id)).opacity),
+    );
+    // The grey copy alone marks a locked slot; it is not dimmed again.
+    expect(opacity).toEqual(['0.6', '0.6']);
+    // Pixel-sharp at 3x.
+    const rendering = await page.evaluate(() =>
+      getComputedStyle(document.querySelector('#tc-special canvas')).imageRendering);
+    expect(rendering).toBe('pixelated');
+  });
+
+  test('ALT swaps the buttons to the SHIFTER row and back', async ({ page }) => {
+    test.setTimeout(180_000);
+
+    await seedGameplayInitScript(page);
+    await startSeededGameplayWithOverlay(page);
+    await waitForBeltOnButtons(page);
+    const plain = await expectButtonsShowTheirSlots(page);
+    expect(plain.shift).toBe(false);
+    const plainKeys = plain.cells.map((c) => c.pictureKey);
+
+    const alt = await elementCenter(page, '#tc-alt');
+    await dispatchPointer(page, '#tc-alt', 'pointerdown', alt.x, alt.y, 61);
+    await dispatchPointer(page, '#tc-alt', 'pointerup', alt.x, alt.y, 61);
+    await expect(page.locator('#tc-alt')).toHaveClass(/tc-latched/);
+    await expect
+      .poll(async () => page.evaluate(() => window.__opengladBelt.shift), {
+        message: 'the engine resolved the SHIFTER row',
+      })
+      .toBe(true);
+    const shifted = await expectButtonsShowTheirSlots(page);
+    expect(shifted.cells[0].pictureKey).not.toBe(plainKeys[0]);
+    for (const cell of shifted.cells) {
+      expect(cell.label, 'the second row is lettered S<n> or L<n>').toMatch(/^(S[123]|L\d+)$/);
+    }
+
+    await dispatchPointer(page, '#tc-alt', 'pointerdown', alt.x, alt.y, 62);
+    await dispatchPointer(page, '#tc-alt', 'pointerup', alt.x, alt.y, 62);
+    await expect
+      .poll(async () => page.evaluate(() => window.__opengladBelt.shift))
+      .toBe(false);
+    const back = await expectButtonsShowTheirSlots(page);
+    expect(back.cells.map((c) => c.pictureKey)).toEqual(plainKeys);
+  });
+
+  test('spec buttons show the held key white, a short slot red, a locked one dim', async ({ page }) => {
+    test.setTimeout(180_000);
+
+    await seedGameplayInitScript(page);
+    await startSeededGameplayWithOverlay(page);
+    await waitForBeltOnButtons(page);
+    await expectButtonsShowTheirSlots(page);
+
+    const borderOf = (id) =>
+      page.evaluate((i) => getComputedStyle(document.getElementById(i)).borderTopColor, id);
+
+    // Held: the page's own tc-pressed (bindHeldButton), a white edge; the
+    // engine echoes the held key in its state a frame later.
+    const spec1 = await elementCenter(page, '#tc-special');
+    await dispatchPointer(page, '#tc-special', 'pointerdown', spec1.x, spec1.y, 63);
+    await expect(page.locator('#tc-special')).toHaveClass(/tc-pressed/);
+    expect(await borderOf('tc-special')).toBe('rgb(255, 255, 255)');
+    await expect
+      .poll(async () => page.evaluate(() => window.__opengladBelt.cells[0].pressed))
+      .toBe(true);
+    // A locked slot never lights.
+    const spec2 = await elementCenter(page, '#tc-spec2');
+    await dispatchPointer(page, '#tc-spec2', 'pointerdown', spec2.x, spec2.y, 64);
+    await expect(page.locator('#tc-spec2')).toHaveClass(/tc-pressed/);
+    expect(await borderOf('tc-spec2')).not.toBe('rgb(255, 255, 255)');
+    expect(
+      await page.evaluate(() => getComputedStyle(document.getElementById('tc-spec2')).opacity),
+    ).toBe('0.6');
+    await page.waitForTimeout(150);
+    await dispatchPointer(page, '#tc-spec2', 'pointerup', spec2.x, spec2.y, 64);
+    await dispatchPointer(page, '#tc-special', 'pointerup', spec1.x, spec1.y, 63);
+    await expect(page.locator('#tc-special')).not.toHaveClass(/tc-pressed/);
+
+    // Short: the engine's 'short' (resolve_belt_cells, the HUD's own rule,
+    // pinned by the native HUD tests) turns the button's edge red. The
+    // seeded soldier's MP comes back faster than a test can spend it, so
+    // the page is handed the engine's last push with slot 1 short, then the
+    // real push again.
+    // Read in the same task as the dispatch, so a real push (the engine
+    // echoing the key release) cannot land in between.
+    const look = await page.evaluate(() => {
+      const real = window.__opengladBelt;
+      const short = { ...real, cells: real.cells.map((c, i) =>
+        (i === 0 ? { ...c, state: 'short', pressed: false } : c)) };
+      window.dispatchEvent(new CustomEvent('openglad-belt', { detail: short }));
+      const one = document.getElementById('tc-special');
+      const two = document.getElementById('tc-spec2');
+      const result = {
+        short: one.classList.contains('tc-short'),
+        border: getComputedStyle(one).borderTopColor,
+        otherBorder: getComputedStyle(two).borderTopColor,
+      };
+      window.dispatchEvent(new CustomEvent('openglad-belt', { detail: real }));
+      return result;
+    });
+    expect(look.short).toBe(true);
+    expect(look.border).toBe('rgb(255, 64, 64)');
+    expect(look.otherBorder).not.toBe('rgb(255, 64, 64)');
+    await expect(page.locator('#tc-special')).not.toHaveClass(/tc-short/);
+  });
+
+  // While the overlay is up seat 0's pane draws no hotbar: hudHidden is the
+  // engine's own decision (new_score_panel), copied to the page. Turning the
+  // overlay off (the gamepad toggle) brings the strip back to the pane's
+  // bottom-left; turning it on again takes it away.
+  test('the seat-0 hotbar is not drawn while the overlay is on', async ({ page }) => {
+    test.setTimeout(180_000);
+
+    await seedGameplayInitScript(page);
+    await startSeededGameplayWithOverlay(page);
+    await waitForBeltOnButtons(page);
+    expect((await beltMirror(page)).hudHidden).toBe(true);
+
+    // The pane's bottom-left, where the strip sits (HUD canvas units,
+    // stretched over the whole #canvas): 64 wide, the bottom 48 rows.
+    const hudRegion = async () => {
+      const clip = await page.evaluate(() => {
+        const d = window.__opengladCanvasDiagnostics;
+        const r = document.getElementById('canvas').getBoundingClientRect();
+        const sx = r.width / d.gameplay_ui_width;
+        const sy = r.height / d.gameplay_ui_height;
+        return { x: r.left + 2 * sx, y: r.top + r.height - 48 * sy, width: 62 * sx, height: 20 * sy };
+      });
+      return await page.screenshot({ clip });
+    };
+    // The fraction of pixels two captures disagree on. Weather (rain) and
+    // the palette's colour cycling touch a few scattered pixels; the strip
+    // covers most of the clip.
+    const differs = async (one, two) => page.evaluate(async ([x, y]) => {
+      const load = async (b64) => {
+        const img = new Image();
+        img.src = `data:image/png;base64,${b64}`;
+        await img.decode();
+        const c = document.createElement('canvas');
+        c.width = img.width;
+        c.height = img.height;
+        const ctx = c.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+        return ctx.getImageData(0, 0, c.width, c.height).data;
+      };
+      const a = await load(x);
+      const b = await load(y);
+      let off = 0;
+      for (let i = 0; i < a.length; i += 4) {
+        off += Math.abs(a[i] - b[i]) + Math.abs(a[i + 1] - b[i + 1]) +
+          Math.abs(a[i + 2] - b[i + 2]) > 48 ? 1 : 0;
+      }
+      return off / (a.length / 4);
+    }, [one.toString('base64'), two.toString('base64')]);
+    const hidden = await hudRegion();
+
+    const toggle = page.locator('#tc-toggle');
+    await toggle.click();
+    await expect(page.locator('#touch-controls')).not.toHaveClass(/tc-active/);
+    await expect
+      .poll(async () => page.evaluate(() => window.__opengladBelt.hudHidden), {
+        message: 'overlay off: the engine draws the hotbar again',
+      })
+      .toBe(false);
+    await expect
+      .poll(async () => differs(await hudRegion(), hidden), {
+        message: 'the strip is back in the pane',
+        timeout: 15_000,
+      })
+      .toBeGreaterThan(0.3);
+
+    await toggle.click();
+    await expect(page.locator('#touch-controls')).toHaveClass(/tc-active/);
+    await expect
+      .poll(async () => page.evaluate(() => window.__opengladBelt.hudHidden), {
+        message: 'overlay on again: the pane hides the hotbar',
+      })
+      .toBe(true);
+    await expect
+      .poll(async () => differs(await hudRegion(), hidden), {
+        message: 'the pane looks as it did with the overlay up',
+        timeout: 15_000,
+      })
+      .toBeLessThan(0.1);
+  });
+
+  // With the setting off (Game Settings > UI FX > New Ability Select) the
+  // cluster is today's: SPC casts, SP+ changes the special, and there is no
+  // third button. Flipped back on, the 1 2 3 labels return. All taps.
+  test('turning New Ability Select off relabels SPC / SP+ and hides SPEC 3', async ({ page }) => {
+    test.setTimeout(180_000);
+
+    await seedGameplayInitScript(page);
+    await page.goto('/play.html');
+    await waitForGameLoad(page);
+    await waitForPickerReady(page);
+    await expect
+      .poll(async () => page.evaluate(() => window.__opengladAbilitySelect))
+      .toBe(true);
+    await expect(page.locator('#tc-special')).toHaveText('1');
+    await expect(page.locator('#tc-spec2')).toHaveText('2');
+    await expect(page.locator('#tc-spec3')).not.toHaveClass(/hidden/);
+
+    // Main menu GAME SETTINGS (80,128,140,15), then UI FX (130,102,90,15),
+    // then the New Ability Select row (100,104,120,15).
+    await tapCanvasGameCoord(page, 150, 135);
+    await page.waitForTimeout(1_500);
+    await tapCanvasGameCoord(page, 175, 109);
+    await page.waitForTimeout(1_500);
+    await tapCanvasGameCoord(page, 160, 111);
+    await expect
+      .poll(async () => page.evaluate(() => window.__opengladAbilitySelect), {
+        timeout: 15_000,
+      })
+      .toBe(false);
+    await expect(page.locator('#tc-special')).toHaveText('SPC');
+    await expect(page.locator('#tc-spec2')).toHaveText('SP+');
+    await expect(page.locator('#tc-spec3')).toHaveClass(/hidden/);
+    // The relabel goes through the badge: the picture canvases survive it,
+    // hidden while the buttons are plain.
+    for (const selector of ['#tc-special', '#tc-spec2', '#tc-spec3']) {
+      await expect(page.locator(selector)).not.toHaveClass(/tc-icon/);
+      await expect(page.locator(`${selector} canvas.tc-icon-px`)).toHaveCount(1);
+      await expect(page.locator(`${selector} .tc-key`)).toHaveCount(1);
+    }
+    await expect(page.locator('#tc-special canvas.tc-icon-px')).toBeHidden();
+
+    await tapCanvasGameCoord(page, 160, 111);
+    await expect
+      .poll(async () => page.evaluate(() => window.__opengladAbilitySelect), {
+        timeout: 15_000,
+      })
+      .toBe(true);
+    await expect(page.locator('#tc-special')).toHaveText('1');
+    await expect(page.locator('#tc-spec2')).toHaveText('2');
+    await expect(page.locator('#tc-spec3')).not.toHaveClass(/hidden/);
+    for (const selector of ['#tc-special', '#tc-spec2', '#tc-spec3']) {
+      await expect(page.locator(`${selector} canvas.tc-icon-px`)).toHaveCount(1);
+    }
   });
 
   test('BACK button opens the pause menu, QUIT aborts, and returns to the picker', async ({ page }) => {

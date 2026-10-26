@@ -1,0 +1,29 @@
+# CHARM OPPONENT (thief): an orc (orc.png frame 0, cloth on the red ramp) with a pink heart over its head: a foe switches sides
+# legend: one character = one palette index (pix/openglad.gpl)
+k = 145
+a = 144
+b = 17
+c = 138
+d = 140
+e = 137
+f = 40
+g = 139
+h = 141
+i = 47
+
+......kk.kk.....
+.....kakkkkk....
+.....kkkkkkk....
+......kkkkk.....
+.......kkk......
+........k.......
+........bb......
+.......cbd......
+...eefccgdhfdd..
+..eecfcdghhfgdd.
+..eccfcigihfggd.
+..eccfcggdhfggd.
+..cccffggdffggg.
+..cd..fffff..gh.
+...cd.dh.dh.gh..
+...cd..h.h..gh..

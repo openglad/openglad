@@ -71,4 +71,18 @@ function M.nearest_charmable(self, foes, max_level)
   return best
 end
 
+-- The soldier's WHIRLWIND and DISARM and the archer's BARRAGE and EXPLODING
+-- BOLT refuse as SPECIAL BUSY while busy is not zero. A hero fires on a
+-- fractional delay (the class's delay less dexterity / 47) and busy only
+-- counts down while it is above zero, so after one shot it rests a fraction
+-- below zero for good, and the classic gate refuses forever. With the
+-- setting on, busy at or below zero is not busy, as for every other
+-- special. Draws nothing.
+function M.special_busy(self)
+  if M.on() then
+    return self:busy() > 0
+  end
+  return self:busy() ~= 0
+end
+
 return M

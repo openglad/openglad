@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <string>
 
+#include <openglad/gameplay/belt_input.h>
 #include <openglad/interface/input_direction_grace.h>
 
 struct InputHardwareState {
@@ -23,7 +24,7 @@ struct InputHardwareState {
     // Factory keymap identity follows a profile when seats compact. This lets
     // per-seat RESET restore that profile's own layout after remove/add.
     int player_control_default_profiles[4]{0, 1, 2, 3};
-    int player_mode_keys[4][2][17]{};  // [player][mode][key] — key dim == NUM_KEYS
+    int player_mode_keys[4][2][NUM_KEYS]{};  // [player][mode][key]
     // Diagonal release retention (input_state_from_sdl); per player.
     DirectionGraceState direction_grace[4]{};
     // Opposite-direction re-assert over stale holds (input_state_from_sdl);
@@ -45,6 +46,11 @@ struct InputHardwareState {
     // every native build, so the seat cap is MAX_PLAYERS there. A plain bool
     // (not a build constant) so native tests can exercise the phone rule.
     bool single_seat_device = false;
+    // True while the web page's touch overlay is up (openglad_web_touch_enable):
+    // its 1 / 2 / 3 buttons then carry seat 0's ability pictures, so seat 0's
+    // pane draws no hotbar (new_score_panel). False on every native build,
+    // the single_seat_device contract; a plain bool so native tests can set it.
+    bool touch_overlay_active = false;
     std::int32_t mouse_buttons{0};
     bool picker_was_left_down{false};
     bool picker_was_right_down{false};
@@ -52,5 +58,13 @@ struct InputHardwareState {
     // Runtime touch-control seam: held-key state from the web DOM overlay
     // (web_touch_bridge.cpp), OR-ed into isPlayerHoldingKey. key dim ==
     // NUM_KEYS.
-    bool touch_keystate[4][17]{};
+    bool touch_keystate[4][NUM_KEYS]{};
+
+    // New Ability Select (og::input::ability_select_on): the cached cfg
+    // effects/new_ability_select. On is the shipped default.
+    bool ability_select = true;
+    // Per seat: which SPEC key is running and the belt entry it latched at
+    // its press edge (og::sim::belt::fold_keys). Transient, like the grace
+    // state above.
+    og::sim::belt::Latch belt_latch[4]{};
 };

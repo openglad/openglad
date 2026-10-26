@@ -161,6 +161,14 @@ bool compare_guy_snapshot(const GuySnapshot& expected,
     OG_REPLAY_COMPARE(level);
 
 #undef OG_REPLAY_COMPARE
+    // New Ability Select (snapshot v18): one named field per belt byte, so a
+    // layout difference never masquerades as a snapshot-hash divergence.
+    for (std::size_t i = 0; i < expected.belt.size(); ++i)
+    {
+        if (!compare_value(std::format("{}belt[{}]", prefix, i),
+                           expected.belt[i], actual.belt[i], failure))
+            return false;
+    }
     return true;
 }
 

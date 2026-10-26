@@ -45,6 +45,7 @@ struct InputState;
 class soundob;
 class DamageNumberRenderContext;
 namespace og::sim { class GameClient; }
+namespace og::ui { class AbilityIcons; }
 
 // Maximum number of split-screen viewscreens (one per local player).
 inline constexpr int MAX_VIEWS = 5;
@@ -141,6 +142,16 @@ public:
     {
         return video_impl_->native_world_view_active();
     }
+    bool draw_rgba_scaled(const og::io::RgbaImage& image, Sint32 x,
+                          Sint32 y, Sint32 w, Sint32 h) override;
+    float hud_sprite_scale() const override
+    {
+        return video_impl_->hud_sprite_scale();
+    }
+    bool begin_native_hud_sprite(const NativeWorldViewDestination& destination,
+                                 int src_w, int src_h) override;
+    bool end_native_hud_sprite() override;
+    void cancel_native_hud_sprite() override;
     bool floor_layer_begin(Sint32 x, Sint32 y, Sint32 w, Sint32 h) override;
     void floor_layer_end(Sint32 x, Sint32 y, Sint32 w, Sint32 h,
                          float scale, Sint32 cx, Sint32 cy,
@@ -397,6 +408,12 @@ public:
     DamageNumberRenderContext& damage_number_render_context() noexcept;
     const DamageNumberRenderContext& damage_number_render_context() const
         noexcept;
+    // The ability icons (New Ability Select): one set for the session, which
+    // the HUD's hotbar and the ABILITIES screen both borrow, so a picture is
+    // read once for both. It reads nothing until first asked (the setting-off
+    // game never asks), reads again when the sprite sources change, and goes
+    // with the screen.
+    og::ui::AbilityIcons& ability_icons() noexcept;
 
     // Delegated render data (preserves legacy field-style access).
     std::array<unsigned char, 768>& ourpalette;
@@ -478,6 +495,7 @@ public:
     const og::sim::GameClient* render_interpolation_client_ = nullptr;
     float render_interpolation_speed_factor_ = 1.0f;
     std::unique_ptr<DamageNumberRenderContext> damage_number_render_context_;
+    std::unique_ptr<og::ui::AbilityIcons> ability_icons_;
 
     // One-shot "the way is clear" announcement latch (bug B4). Render-only
     // state fed by redraw() from the world's level_done (which the sim

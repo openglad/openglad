@@ -30,6 +30,8 @@
 #include <openglad/core/tower_constants.h>
 #include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/game_world.h>
+#include <openglad/gameplay/families/belt.h>
+#include <openglad/gameplay/families/family_registry.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/mapgen/builders.h>
 #include <openglad/gameplay/lobby_state.h>
@@ -630,6 +632,150 @@ TEST(CursesPickerClient, roster_keys_wrap_toggle_deploy_and_show_ready_notice)
            "roster (Esc) - an 'r' that fell through to Train draws 6";
     EXPECT_EQ(strength_before, f.save().team_list[0]->strength)
         << "'r' shows the networked-lobby notice; it must not open training";
+    EXPECT_TRUE(f.t().input_exhausted());
+}
+
+// New Ability Select (docs/ability-select-design.md E.3): 'e' on a roster
+// row opens its abilities page. The same pick rule as the SDL screen: a
+// slot, then a bench ability; 'c' empties the highlighted slot; Done
+// commits the copy to the hero.
+namespace {
+struct AbilityPrefScope {
+    std::string saved = cfg.get_setting("effects", "new_ability_select");
+    explicit AbilityPrefScope(bool on)
+    {
+        cfg.apply_setting("effects", "new_ability_select", on ? "on" : "off");
+    }
+    ~AbilityPrefScope()
+    {
+        cfg.apply_setting("effects", "new_ability_select", saved);
+    }
+};
+
+void seat_an_archmage(SaveData& save)
+{
+    save.team_list[0] = std::make_unique<guy>(FAMILY_ARCHMAGE);
+    save.team_list[0]->name = "MERLIN";
+    save.team_list[0]->level = 12;
+    save.team_list[0]->deployed = true;
+    save.new_specials = 1;
+}
+} // namespace
+
+TEST(CursesPickerClient, roster_e_opens_abilities_and_edits_a_slot)
+{
+    PickerFixture f;
+    AbilityPrefScope pref(true);
+    seat_an_archmage(f.save());
+    const auto* item = og::ui::find_picker_menu_item(
+        PickerMenuId::TeamBuild, PickerMenuCommand::ViewTeam);
+    ASSERT_NE(item, nullptr);
+
+    // The page: rows 1, 2, 3, S1, S2, S3 (selectable 0..5), the Bench
+    // header, MIND CONTROL (selectable 6), Reset (7), Done (8).
+    f.t().push_char(U'e');                // roster row 0: abilities
+    f.t().push_char(U'3');                // key 3 (SUMMON IMAGE) ...
+    f.t().push_special(KeyCode::Enter);   // ... picked
+    f.t().push_char(U'7');                // the bench's MIND CONTROL ...
+    f.t().push_special(KeyCode::Enter);   // ... onto key 3
+    f.t().push_char(U'9');                // Done ...
+    f.t().push_special(KeyCode::Enter);   // ... commits
+    f.t().push_special(KeyCode::Escape);  // leave the roster
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, *item);
+
+    const FamilyDescriptor* const fd = get_family_descriptor(FAMILY_ARCHMAGE);
+    og::sim::belt::Bytes expected = og::sim::belt::default_bytes();
+    const og::ui::AbilityPage page =
+        og::ui::ability_page("MERLIN", fd, 12, 1, expected);
+    ASSERT_EQ(1u, page.bench.size());
+    EXPECT_EQ("MIND CONTROL", page.bench[0].name);
+    og::ui::ability_place(expected, fd, 1, 2, *page.bench[0].entry);
+    EXPECT_EQ(expected, f.save().team_list[0]->belt);
+
+    SaveData reloaded;
+    ASSERT_TRUE(reloaded.load(og::data::active_company_slot()))
+        << "Done autosaves the active company";
+    ASSERT_TRUE(reloaded.team_list[0]);
+    EXPECT_EQ(expected, reloaded.team_list[0]->belt);
+    EXPECT_NE(f.t().dump().find("e abilities"), std::string::npos)
+        << "the roster hint names the key:\n" << f.t().dump();
+    EXPECT_TRUE(f.t().input_exhausted());
+}
+
+TEST(CursesPickerClient, abilities_page_pick_rule_and_reset)
+{
+    PickerFixture f;
+    AbilityPrefScope pref(true);
+    seat_an_archmage(f.save());
+    const auto* item = og::ui::find_picker_menu_item(
+        PickerMenuId::TeamBuild, PickerMenuCommand::ViewTeam);
+    ASSERT_NE(item, nullptr);
+
+    f.t().push_char(U'e');
+    f.t().push_char(U'7');                // MIND CONTROL picked first ...
+    f.t().push_special(KeyCode::Enter);
+    f.t().push_char(U'7');                // ... and let go again
+    f.t().push_special(KeyCode::Enter);
+    f.t().push_char(U'7');                // picked once more ...
+    f.t().push_special(KeyCode::Enter);
+    f.t().push_char(U'1');                // ... and key 1 takes it
+    f.t().push_special(KeyCode::Enter);
+    f.t().push_char(U'2');                // key 2 picked ...
+    f.t().push_special(KeyCode::Enter);
+    f.t().push_char(U'5');                // ... swaps with SHIFTER+2
+    f.t().push_special(KeyCode::Enter);
+    f.t().push_char(U'6');                // SHIFTER+3 picked ...
+    f.t().push_special(KeyCode::Enter);
+    f.t().push_char(U'6');                // ... twice: emptied
+    f.t().push_special(KeyCode::Enter);
+    f.t().push_char(U'7');                // 'c' on a bench row: nothing
+    f.t().push_char(U'c');
+    f.t().push_char(U'4');                // 'c' on SHIFTER+1: emptied
+    f.t().push_char(U'c');
+    f.t().push_special(KeyCode::Escape);  // Esc commits, like the SDL BACK
+    f.t().push_special(KeyCode::Escape);  // leave the roster
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, *item);
+
+    const FamilyDescriptor* const fd = get_family_descriptor(FAMILY_ARCHMAGE);
+    og::sim::belt::Bytes expected = og::sim::belt::default_bytes();
+    const og::ui::AbilityPage page =
+        og::ui::ability_page("MERLIN", fd, 12, 1, expected);
+    og::ui::ability_place(expected, fd, 1, 0, *page.bench[0].entry);
+    og::ui::ability_swap(expected, fd, 1, 1, 4);
+    og::ui::ability_clear(expected, 5);
+    og::ui::ability_clear(expected, 3);
+    EXPECT_EQ(expected, f.save().team_list[0]->belt);
+
+    // Reset to default: the row above Done (Up from the top wraps to Done).
+    f.t().push_char(U'e');
+    f.t().push_special(KeyCode::Up);      // Done
+    f.t().push_special(KeyCode::Up);      // Reset to default
+    f.t().push_special(KeyCode::Enter);
+    f.t().push_special(KeyCode::Escape);  // commit
+    f.t().push_special(KeyCode::Escape);  // leave the roster
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, *item);
+    EXPECT_EQ(og::sim::belt::default_bytes(), f.save().team_list[0]->belt);
+    EXPECT_TRUE(f.t().input_exhausted());
+}
+
+TEST(CursesPickerClient, abilities_page_refuses_with_the_setting_off)
+{
+    PickerFixture f;
+    AbilityPrefScope pref(false);
+    seat_an_archmage(f.save());
+    const og::sim::belt::Bytes before = f.save().team_list[0]->belt;
+    const auto* item = og::ui::find_picker_menu_item(
+        PickerMenuId::TeamBuild, PickerMenuCommand::ViewTeam);
+    ASSERT_NE(item, nullptr);
+
+    f.t().push_char(U'e');                // refused in words ...
+    dismiss(f.t());                       // ... dismissed
+    f.t().push_special(KeyCode::Escape);  // leave the roster
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, *item);
+    EXPECT_EQ(before, f.save().team_list[0]->belt);
+    EXPECT_EQ(3, f.t().present_count())
+        << "roster, the refusal notice, roster again (an 'e' that opened "
+           "the page would draw it instead)";
     EXPECT_TRUE(f.t().input_exhausted());
 }
 
@@ -2344,7 +2490,7 @@ TEST(CursesPickerClient, show_options_new_specials_prompt)
     }
 }
 
-// The Gameplay Fixes prompt, the fourth and last: the same contract as the
+// The Gameplay Fixes prompt, the fourth: the same contract as the
 // New Specials prompt above, its own preference and session field.
 TEST(CursesPickerClient, show_options_gameplay_fixes_prompt)
 {
@@ -2363,25 +2509,31 @@ TEST(CursesPickerClient, show_options_gameplay_fixes_prompt)
     cfg.apply_setting("gameplay", "new_specials", "on");
     cfg.apply_setting("gameplay", "gameplay_fixes", "on");
     {   // The constructor seeds the session from the preference; "off"
-        // turns both off.
-        PickerFixture f;
-        ASSERT_EQ(1, f.save().gameplay_fixes) << "the cfg seed";
-        f.t().push_special(KeyCode::Enter);  // keep slot
-        f.t().push_special(KeyCode::Enter);  // keep seed
-        f.t().push_special(KeyCode::Enter);  // keep New Specials
+        // turns both off. The New Ability Select prompt follows this one,
+        // so every frame is kept and searched, not just the last.
+        HeadlessTerminal inner{40, 100};
+        FrameLogTerminal term{inner};
+        FakeClock clock;
+        TextPickerConfig config;
+        CursesPickerOptions options;
+        CursesPickerClient client{term, clock, config, options};
+        ASSERT_EQ(1, client.save_data().gameplay_fixes) << "the cfg seed";
+        inner.push_special(KeyCode::Enter);  // keep slot
+        inner.push_special(KeyCode::Enter);  // keep seed
+        inner.push_special(KeyCode::Enter);  // keep New Specials
         for (int i = 0; i < 2; ++i)          // erase the prefilled "on"
-            f.t().push_special(KeyCode::Backspace);
-        f.t().push_string("off");
-        f.t().push_special(KeyCode::Enter);
-        f.client.show_options();
-        EXPECT_EQ(0, f.save().gameplay_fixes) << "the session follows";
+            inner.push_special(KeyCode::Backspace);
+        inner.push_string("off");
+        inner.push_special(KeyCode::Enter);
+        client.show_options();
+        EXPECT_EQ(0, client.save_data().gameplay_fixes) << "the session follows";
         EXPECT_EQ("off", cfg.get_setting("gameplay", "gameplay_fixes"))
             << "the preference follows";
-        EXPECT_EQ(1, f.save().new_specials) << "New Specials is untouched";
+        EXPECT_EQ(1, client.save_data().new_specials) << "New Specials is untouched";
         EXPECT_EQ("on", cfg.get_setting("gameplay", "new_specials"));
-        EXPECT_NE(std::string::npos, f.t().dump().find("Gameplay fixes (on/off)"))
-            << f.t().dump();
-        EXPECT_TRUE(f.t().input_exhausted());
+        EXPECT_NE(std::string::npos, term.frames().find("Gameplay fixes (on/off)"))
+            << inner.dump();
+        EXPECT_TRUE(inner.input_exhausted());
     }
     {   // The preference now seeds OFF; "on" turns both back on.
         PickerFixture f;
@@ -2398,20 +2550,26 @@ TEST(CursesPickerClient, show_options_gameplay_fixes_prompt)
         EXPECT_EQ("on", cfg.get_setting("gameplay", "gameplay_fixes"));
     }
     {   // Anything but on/off is refused and changes nothing.
-        PickerFixture f;
-        f.t().push_special(KeyCode::Enter);
-        f.t().push_special(KeyCode::Enter);
-        f.t().push_special(KeyCode::Enter);
+        HeadlessTerminal inner{40, 100};
+        FrameLogTerminal term{inner};
+        FakeClock clock;
+        TextPickerConfig config;
+        CursesPickerOptions options;
+        CursesPickerClient client{term, clock, config, options};
+        inner.push_special(KeyCode::Enter);
+        inner.push_special(KeyCode::Enter);
+        inner.push_special(KeyCode::Enter);
         for (int i = 0; i < 2; ++i)
-            f.t().push_special(KeyCode::Backspace);
-        f.t().push_string("maybe");
-        f.t().push_special(KeyCode::Enter);
-        dismiss(f.t());
-        f.client.show_options();
-        EXPECT_EQ(1, f.save().gameplay_fixes);
+            inner.push_special(KeyCode::Backspace);
+        inner.push_string("maybe");
+        inner.push_special(KeyCode::Enter);
+        dismiss(inner);
+        client.show_options();
+        EXPECT_EQ(1, client.save_data().gameplay_fixes);
         EXPECT_EQ("on", cfg.get_setting("gameplay", "gameplay_fixes"));
-        EXPECT_NE(std::string::npos, f.t().dump().find("Invalid value; on or off."))
-            << f.t().dump();
+        EXPECT_NE(std::string::npos,
+                  term.frames().find("Invalid value; on or off."))
+            << inner.dump();
     }
     {   // A gameplay_fixes 0 in the config overrides the seed for the run,
         // and accepting the prefilled "off" leaves the preference alone.
@@ -2430,6 +2588,75 @@ TEST(CursesPickerClient, show_options_gameplay_fixes_prompt)
         EXPECT_EQ(0, client.save_data().gameplay_fixes);
         EXPECT_EQ("on", cfg.get_setting("gameplay", "gameplay_fixes"))
             << "accepting the prefilled value writes nothing";
+    }
+}
+
+// The New Ability Select prompt, the fifth and last: the terminal twin of
+// the UI FX row. The setting is per machine and never on the wire, so the
+// prompt reads and writes the cfg preference alone; the session's settings
+// stay as they were.
+TEST(CursesPickerClient, show_options_ability_select_prompt)
+{
+    const std::string saved_pref =
+        cfg.get_setting("effects", "new_ability_select");
+    struct RestorePref {
+        std::string value;
+        ~RestorePref()
+        {
+            cfg.apply_setting("effects", "new_ability_select", value);
+        }
+    } restore{saved_pref};
+
+    cfg.apply_setting("effects", "new_ability_select", "on");
+    {   // Prefilled "on"; "off" writes the preference and nothing else.
+        HeadlessTerminal inner{40, 100};
+        FrameLogTerminal term{inner};
+        FakeClock clock;
+        TextPickerConfig config;
+        CursesPickerOptions options;
+        CursesPickerClient client{term, clock, config, options};
+        const short specials_before = client.save_data().new_specials;
+        const short fixes_before = client.save_data().gameplay_fixes;
+        for (int i = 0; i < 4; ++i)          // keep slot, seed, specials, fixes
+            inner.push_special(KeyCode::Enter);
+        for (int i = 0; i < 2; ++i)          // erase the prefilled "on"
+            inner.push_special(KeyCode::Backspace);
+        inner.push_string("off");
+        inner.push_special(KeyCode::Enter);
+        client.show_options();
+        EXPECT_EQ("off", cfg.get_setting("effects", "new_ability_select"));
+        EXPECT_EQ(specials_before, client.save_data().new_specials);
+        EXPECT_EQ(fixes_before, client.save_data().gameplay_fixes);
+        EXPECT_NE(std::string::npos,
+                  term.frames().find("New ability select (on/off)"))
+            << inner.dump();
+        EXPECT_TRUE(inner.input_exhausted());
+    }
+    {   // Prefilled "off" now; "on" turns it back on.
+        PickerFixture f;
+        for (int i = 0; i < 4; ++i)
+            f.t().push_special(KeyCode::Enter);
+        for (int i = 0; i < 3; ++i)          // erase the prefilled "off"
+            f.t().push_special(KeyCode::Backspace);
+        f.t().push_string("on");
+        f.t().push_special(KeyCode::Enter);
+        f.client.show_options();
+        EXPECT_EQ("on", cfg.get_setting("effects", "new_ability_select"));
+        EXPECT_TRUE(f.t().input_exhausted());
+    }
+    {   // Anything but on/off is refused and changes nothing.
+        PickerFixture f;
+        for (int i = 0; i < 4; ++i)
+            f.t().push_special(KeyCode::Enter);
+        for (int i = 0; i < 2; ++i)
+            f.t().push_special(KeyCode::Backspace);
+        f.t().push_string("maybe");
+        f.t().push_special(KeyCode::Enter);
+        dismiss(f.t());
+        f.client.show_options();
+        EXPECT_EQ("on", cfg.get_setting("effects", "new_ability_select"));
+        EXPECT_NE(std::string::npos, f.t().dump().find("Invalid value; on or off."))
+            << f.t().dump();
     }
 }
 

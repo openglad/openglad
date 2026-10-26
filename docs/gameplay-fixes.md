@@ -78,6 +78,7 @@ usual pause.
 | M | Charm and seats | An enemy thief or archmage can charm a hero a player is driving. A seat can be handed a walker that is only on its team because it is charmed. | A driven hero resists (the rule POSSESS already has). A seat never claims a charmed walker (see [Charm and seats](#charm-and-seats)). |
 | Q | Bot payoff gates | Elf, archer, druid, barbarian, soldier, thief, ghost, orc and cleric bots cast specials at nobody, at foes out of reach or with allies in the blast: an elf throws rocks with no foe in sight, a thief drops its bomb at a foe 130 px or more away, a cleric throws its mace with nobody near. | Every special a bot can roll has the rule under which it pays off (see [Bots](#bots)); a Shift arm is its own special for a bot, with its own rule. |
 | R | The struck archmage's order | A struck archmage bot with a foe within 200 px casts its 500-magic summon first and then casts slot 2 twice. | It answers with one HEARTBURST or CHAIN LIGHTNING chosen by the slot-2 rule: no summon, no second cast. Below its flee threshold it still teleports. |
+| S | WHIRLWIND, DISARM, BARRAGE and EXPLODING BOLT after a shot | A hero (any walker with a character record: a player's, and every hero of a crew a bot drives) that has fired once can never cast these four again: each refuses as `SPECIAL BUSY`, for good. A hero fires on a fractional delay, the class's delay less a 47th of its dexterity (a soldier with 20 dexterity waits 5.57 ticks); busy counts down by one a tick only while it is above zero, so after a shot it rests a fraction below zero, and these four refuse while busy is not zero. | Busy at or below zero is not busy, as it already is for every other special. The firing delay and the countdown are unchanged, so nothing fires sooner. |
 
 TELEPORT, REVEAL, CLOAK, ENERGY WAVE and CHARGE are unchanged as casts
 (their bot rules are in [Bots](#bots)): each does something whenever it is
@@ -346,8 +347,10 @@ The parity goldens are captures from the old game (branch
   ghost's ported gate the current game's 250 px cap on the scare radius.
   After the campaign calibration: `238b5322` (the soldier bot's CHARGE
   wants a living foe in the path its rush runs) and its table mirror
-  `5d4ddd77`; no golden moved. `5d4ddd77` is the commit the goldens are
-  captured from: 321 of 321 goldens `cmp` equal to a full capture there.
+  `5d4ddd77`; no golden moved. Fix S was ported as `4440414c`, with the
+  table mirror `813d5f31`; no golden moved. `813d5f31` is the commit the
+  goldens are captured from: 321 of 321 goldens `cmp` equal to a full
+  capture there.
   `tests/parity/golden/DRIFT_LEDGER.md` records each one.
 
 The rows with the setting on, by fix:
@@ -422,6 +425,12 @@ Rows deliberately not added:
   byte-identical; a current-game test pins it.
 - Fixes N, O and M's seat half (#354): no parity row can reach them (see
   [Not gated](#not-gated) and [Charm and seats](#charm-and-seats)).
+- Fix S: no parity row can reach it. A parity spawn has no character
+  record, so its fire delay is a whole number and busy always counts down
+  to exactly zero; the old game's port (`4440414c`) moves no golden. The
+  current game's tests reach it with a hero instead (see [The scene
+  tests](#the-scene-tests) and `GameplayFixesSpecialBusy` in
+  `tests/integration/test_gameplay_fixes_special_busy.cpp`).
 - MIND CONTROL against a higher-level foe: the old game drew a garbage
   charm duration there (a negative bound cast to unsigned, stored in a
   short); the current game draws nothing and gives 25 ticks. The old game
@@ -463,7 +472,9 @@ Three changes in this work apply whatever the setting:
   slot priced 5000 (an undeclared slot, or one New Specials hides) before it
   compares the price with the walker's magic, as `NO SPECIAL AVAILABLE`
   (`SpecialFailure::Unavailable`). Nothing in play reaches it: the player's
-  special cycling and the bots' slot pick both skip such slots. The old
+  special cycling and the bots' slot pick both skip such slots, and a New
+  Ability Select key naming one is refused by the server first, as NO
+  ABILITY THERE ([ability-select-design.md](ability-select-design.md), C.7). The old
   game has the same hole and no row reaches it, so it is not ported.
 - **O. METEOR RAIN holds its fire over an ally** (New Specials only). A bot
   fire elemental's METEOR RAIN gate refuses when an ally stands in the
@@ -484,7 +495,8 @@ ceiling; every seed on the Tower) play the shipped default, Gameplay Fixes
 on and New Specials on, and all of them pass. No floor or ceiling was
 moved. The tables are measured with the bot payoff gates (fixes Q and R)
 in, after the calibration that followed them (the soldier's CHARGE rule
-and The Old Count's Vault, below).
+and The Old Count's Vault, below), and with fix S in (see "After fix S"
+below for what it moved).
 
 With the setting off and New Specials off, every line equals the line
 measured before the bot payoff gates, and the line measured before the
@@ -540,20 +552,20 @@ What moves with the setting on, and why:
 | 8 | 5 | 0 1 4 | 0 0 6 | 1 1 2 | 0 3 6 |
 | 9 | 6 | 2 0 0 | 0 2 2 | 1 1 2 | 0 2 1 |
 | 10 | 5 | 0 0 0 | 0 0 0 | 1 0 0 | 1 0 0 |
-| 11 | 6 | 7 6 6 | 5 6 6 | 6 5 5 | 5 5 4 |
+| 11 | 6 | 7 6 6 | 5 6 7 | 6 5 5 | 5 5 4 |
 | 12 | 6 | 0 0 0 | 0 0 0 | 0 0 0 | 0 0 0 |
-| 13 | 6 | 2 0 0 | 0 0 0 | 0 0 1 | 2 0 0 |
+| 13 | 6 | 2 0 0 | 0 0 0 | 0 0 1 | 1 0 0 |
 | 14 | 7 | 0 0 0 | 0 0 0 | 0 0 0 | 0 0 0 |
-| 15 | 7 | 3 3 3 | 4 0 1 | 4 2 3 | 2 1 1 |
+| 15 | 7 | 3 3 3 | 2 3 0 | 4 2 3 | 2 1 1 |
 | 16 | 8 | 2 5 3 | 6 3 4 | 5 2 3 | 3 3 2 |
-| 17 | 8 | 5 6 4 | 2 6 7 | 5 8 8 | 5 6 6 |
+| 17 | 8 | 5 6 4 | 6 6 7 | 5 8 8 | 3 6 6 |
 | 19 | 6 | 6 7 5 | 5 5 6 | 5 6 5 | 5 7 5 |
 | 20 | 7 | 0 0 0 | 0 0 6 | 0 0 0 | 0 0 0 |
-| 21 | 7 | 8 7 8 | 8 8 7 | 8 8 7 | 8 8 8 |
-| 22 | 8 | 0 2 0 | 2 0 0 | 0 1 0 | 0 2 0 |
-| 23 | 8 | 5 6 6 | 5 4 4 | 4 5 4 | 7 5 7 |
-| 24 | 8 | 1 4 7 | 5 2 3 | 5 5 1 | 3 5 4 |
-| 25 | 9 | 8 8 8 | 8 7 7 | 4 6 5 | 8 4 5 |
+| 21 | 7 | 8 7 8 | 8 8 8 | 8 8 7 | 8 7 8 |
+| 22 | 8 | 0 2 0 | 4 0 0 | 0 1 0 | 0 2 0 |
+| 23 | 8 | 5 6 6 | 5 4 4 | 4 5 4 | 8 6 5 |
+| 24 | 8 | 1 4 7 | 5 4 3 | 5 5 1 | 3 5 5 |
+| 25 | 9 | 8 8 8 | 5 6 7 | 4 6 5 | 8 4 5 |
 | 26 | 9 | 8 8 8 | 8 8 8 | 8 8 8 | 8 8 8 |
 
 **Long Season**
@@ -570,12 +582,12 @@ What moves with the setting on, and why:
 | 8 | 4 | 3 7 8 | 7 7 6 | 3 7 7 | 6 7 7 |
 | 9 | 5 | 7 8 7 | 8 8 8 | 8 8 7 | 8 8 8 |
 | 10 | 5 | 6 7 7 | 5 6 7 | 3 6 5 | 4 6 7 |
-| 11 | 5 | 7 7 8 | 6 8 7 | 7 7 8 | 6 8 7 |
+| 11 | 5 | 7 7 8 | 6 7 8 | 7 7 8 | 6 7 7 |
 | 12 | 6 | 8 5 7 | 6 6 7 | 8 5 7 | 6 6 7 |
 | 13 | 6 | 5 6 4 | 5 8 4 | 4 4 2 | 5 7 4 |
 | 14 | 7 | 7 7 8 | 7 7 8 | 7 7 8 | 7 7 8 |
 | 15 | 7 | 8 8 8 | 8 8 8 | 8 8 8 | 8 8 8 |
-| 16 | 7 | 6 8 6 | 6 7 7 | 6 8 6 | 6 7 7 |
+| 16 | 7 | 6 8 6 | 7 5 7 | 6 8 6 | 7 5 7 |
 | 17 | 8 | 0 0 0 | 0 0 0 | 0 0 0 | 0 0 0 |
 | 18 | 8 | 0 0 1 | 0 0 0 | 0 0 0 | 0 0 0 |
 | 19 | 8 | 8 8 8 | 8 8 8 | 8 8 8 | 8 8 8 |
@@ -709,6 +721,28 @@ setting on Westlands 8 reads `0 0 6` and Westlands 20 `0 0 6` against
 ceilings of 2 and 5. The ceilings are asserted on seed 42 alone, where
 both read 0.
 
+**After fix S.** The crews are heroes with character records, so a crew
+soldier or archer that has thrown once could not cast WHIRLWIND, DISARM,
+BARRAGE or EXPLODING BOLT again before fix S; now it can. With the setting
+off no line moved (both setting-off columns read as before). With it on,
+eleven lines moved on a seed: on the shipped default Westlands 13 (`2 0 0`
+to `1 0 0`), 17 (`5 6 6` to `3 6 6`), 21 (`8 8 8` to `8 7 8`), 23 (`7 5 7`
+to `8 6 5`) and 24 (`3 5 4` to `3 5 5`) and Long Season 11 (`6 8 7` to
+`6 7 7`) and 16 (`6 7 7` to `7 5 7`); with New Specials off, Westlands
+11, 15, 17, 21, 22, 24 and 25 and Long Season 11 and 16. The Tower,
+Imaginations and the level-play test did not move. Every asserted run
+passes and no floor or ceiling moved. Every moved line stays inside its
+band on all three seeds but one: with New Specials off and the setting
+on, a pair nobody asserts, Westlands 22 reads `4 0 0` against its ceiling of 3 (it read
+`2 0 0`); the ceiling is asserted on seed 42 of the shipped default
+alone, where the level reads 0. Over twenty seeds (42, 1337, 2025 and 1 to
+17) on the shipped default, no line's mean moved by more than 0.40
+survivors, about one standard error: the largest moves are Westlands 15
+(2.35 to 2.75), Long Season 8 (5.40 to 5.10), Long Season 10 (5.50 to
+5.25) and Westlands 21 (7.80 to 7.65), and the sums go from 105.85 to
+106.25 (Westlands) and from 111.00 to 110.55 (Long Season). The
+twenty-seed table above is measured before fix S.
+
 **The other change outside the setting that moves a calibration line.**
 Besides the four eased Long Season levels, and the kits' bot rules
 above, one more line moved with the setting off before the bot gates.
@@ -729,8 +763,10 @@ every Shift is the classic one. The test asserts what the player sees on
 each side and what must never show (the classic bug with the setting off,
 the fix with it on), and hashes the seat's viewport after every frame to
 prove the two runs identical until the frame the fix parts them.
-Twenty-one scenes: A has three (resisted, nobody to disarm, the stagger), E
-two, H two, K four, M two, and the rest one each. They run on every lane
+Twenty-two scenes: A has three (resisted, nobody to disarm, the stagger), E
+two, H two, K four, M two, and the rest one each (S: a soldier hero throws
+once, then spins at a foe beside him; with the setting off the spin says
+`SPECIAL BUSY`). They run on every lane
 like any other test, one gtest each.
 
 `scripts/media/capture_gameplay_fixes.sh` records them: it runs the suite

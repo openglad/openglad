@@ -6,6 +6,7 @@
 #pragma once
 
 #include <openglad/core/constants.h>
+#include <openglad/gameplay/families/belt.h>
 #include <openglad/gameplay/input_state.h>
 #include <openglad/gameplay/lobby_state.h>
 #include <openglad/resources/company.h>
@@ -2077,8 +2078,14 @@ struct DetailPage {
 // alternate_name only, never the world or the session. A null descriptor
 // gives the title and "No special abilities.". Every line, the title too,
 // is cut to kDetailLineChars and counted in cut.
+//
+// With New Ability Select on (`ability_select`), every ability has a key of
+// its own, so an alternate is no longer "the special with Shift held": its
+// line reads " Also: <name>" in place of " Shift: <name>" (same line count,
+// so the page fits exactly as it does with the setting off).
 [[nodiscard]] DetailPage detail_page(const FamilyDescriptor* fd, int level,
-                                     short new_specials);
+                                     short new_specials,
+                                     bool ability_select = false);
 
 // "Special: Howl, Eat Corpse, Hook Blade, War Banner": the slot names in
 // play (special_name not "NONE"), title-cased, in slot order, alternates
@@ -2092,6 +2099,116 @@ struct DetailPage {
 // carries a Special line of its own).
 [[nodiscard]] std::string hire_description(const FamilyDescriptor* fd,
                                            short new_specials);
+
+// --- New Ability Select (docs/ability-select-design.md) ---
+//
+// One pure model for the ABILITIES page in all three clients (the SDL
+// screen, the text page, the curses page), the binding panels' ACTIONS
+// rows and the HUD's belt rows. Words: an "ability" is a special or its
+// alternate; the "belt" is six slots (0,1,2 = keys 1,2,3; 3,4,5 = SHIFTER +
+// keys 1,2,3); the "bench" is every ability not on the belt
+// (og::sim::belt).
+
+// The per-machine preference: cfg effects/new_ability_select, the UI FX
+// row's key. The terminals' Game Settings prompts read and write it here.
+[[nodiscard]] bool ability_select_pref(cfg_store& config);
+void set_ability_select_pref(cfg_store& config, bool on);
+
+// The page's text budgets: a belt or bench row is at most 24 glyphs (144 px
+// faces; the worst core row, "S1 EXPLODING BOULDER L4", is 23), the status
+// line at most 48 (288 px centred in the 4..316 bevel).
+inline constexpr int kAbilityRowChars = 24;
+inline constexpr int kAbilityStatusChars = 48;
+inline constexpr int kAbilityTitleChars = 26;
+
+struct AbilityRow {
+    std::string text;      // "1 TELEPORT", "S1 TELEPORT MARKER", "2 WARP SPACE L4", "3 --"
+    bool locked = false;   // the hero's level has not opened it (drawn grey)
+    bool empty = false;    // a belt slot with nothing on it
+    std::optional<og::sim::belt::Entry> entry;  // what the row names (none when empty)
+    std::string name;      // the ability's name alone ("" when empty)
+    int opens_at = 0;      // the level its special slot opens at (0 when empty)
+};
+
+struct AbilityPage {
+    std::string title;     // "ABILITIES: MERLIN"
+    std::string subtitle;  // "Mage, level 7"
+    std::array<AbilityRow, og::sim::belt::kSlots> belt;  // by belt slot
+    std::vector<AbilityRow> bench;                       // catalog order
+    int cut = 0;           // rows shortened to their budget (0 for every core family)
+};
+
+// The page for a hero named `hero_name` of this family and level, whose
+// stored belt is `stored`, under this New Specials value. Belt rows are
+// "<key> <NAME>", a locked one adds " L<level>", an empty one reads
+// "<key> --"; bench rows are "<NAME>" (+ " L<level>"). The key of slot b is
+// "1".."3" for b 0..2 and "S1".."S3" for b 3..5.
+[[nodiscard]] AbilityPage ability_page(std::string_view hero_name,
+                                       const FamilyDescriptor* fd, int level,
+                                       short new_specials,
+                                       const og::sim::belt::Bytes& stored);
+// The same page for a guy: its name, family, level and stored belt.
+[[nodiscard]] AbilityPage ability_page(const guy& g, short new_specials);
+
+// The key label of belt slot b: "1".."3", "S1".."S3"; "" out of range.
+[[nodiscard]] std::string ability_key_label(int belt_slot);
+
+// The edits, all pure, on a copy of the stored bytes (the screen commits
+// the copy when it closes). One ability, one slot: placing an ability that
+// is already on the belt swaps the two slots instead. A slot that holds the
+// class default is written out as the ability (or EMPTY) it showed before
+// it moves, so a swap never re-reads a default from its new position, and
+// an ability the New Specials setting hides keeps its byte when it moves.
+// Out-of-range slots and abilities outside the catalog change nothing.
+//
+// `entry` goes onto `belt_slot`; the ability it displaces goes to the bench.
+void ability_place(og::sim::belt::Bytes& stored, const FamilyDescriptor* fd,
+                   short new_specials, int belt_slot,
+                   og::sim::belt::Entry entry);
+// The two belt slots trade places.
+void ability_swap(og::sim::belt::Bytes& stored, const FamilyDescriptor* fd,
+                  short new_specials, int a, int b);
+// The slot is emptied (kEmptyByte); its ability goes to the bench.
+void ability_clear(og::sim::belt::Bytes& stored, int belt_slot);
+// Back to the class default: six DEFAULT bytes.
+void ability_reset(og::sim::belt::Bytes& stored);
+
+// The page's status line for the selected row, at most kAbilityStatusChars:
+// `selected` is a belt slot 0..5, a bench row 6.. (6 + bench index), or -1
+// for nothing selected ("Click a slot, then an ability.").
+[[nodiscard]] std::string ability_status_line(const AbilityPage& page,
+                                              int selected);
+
+// A new family means a new class default: the stored belt goes back to six
+// DEFAULT bytes (promotion: Mage -> Archmage, Orc -> Orc Captain).
+void reset_belt_for_family_change(og::sim::belt::Bytes& stored);
+
+// The DETAILS page's PROMOTE on `g`, whose class is `fd`: the guy takes the
+// promotion level, becomes fd.promotes_to and starts on that class's default
+// belt. The caller has checked fd.promotes_to >= 0 and the level needed.
+void promote_guy(guy& g, const FamilyDescriptor& fd);
+
+// One ACTIONS row of the binding panels (the Base Camp seat panel and the
+// pause player screen): the label and the key slot (input.h KEY_*) it shows.
+struct BindingPanelRow {
+    const char* label;
+    int key;
+};
+// Setting off: today's seven rows in today's order, with SPEC SW reading
+// the SPEC 2 key (slot 17), which is the key that cycles with the setting
+// off. Setting on: FIRE, SPEC 1, SPEC 2, SPEC 3, SHIFTER, YELL, LOOK UP,
+// CHAR SW (eight rows, the panel's height).
+[[nodiscard]] std::span<const BindingPanelRow> binding_panel_action_rows(
+    bool ability_select);
+
+// One HUD belt row: "<key> <NAME>" ("S1 TELEPORT MARKER"), a locked one
+// adds " L<level>", an empty one reads "<key> --"; the name is cut so the
+// row fits `width_chars`. With fewer than 4 glyphs left for the name the
+// row is the key label alone ("1", "S1"), and "" when not even that fits.
+// `key` is 1..3; `shift_layer` picks the "S" labels.
+[[nodiscard]] std::string belt_hud_line(const og::sim::belt::Resolved& slot,
+                                        int key, bool shift_layer,
+                                        int width_chars);
 
 // --- Template implementations ---
 

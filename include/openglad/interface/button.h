@@ -21,6 +21,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <vector>
 #include <openglad/interface/input.h>
 
 class pixieN;
@@ -257,9 +258,13 @@ Sint32 edit_player_keymap(Sint32 arg);
 // menu pumps the paused transport there; false cancels the prompt sequence).
 Sint32 edit_player_keymap_with_poll(Sint32 arg,
                                     KeyWaitPollCallback poll_callback);
-// Two lines: directions, then actions. (The joined one-line form went with
-// the global CONTROLS screen — the only thing that drew it.)
-std::array<std::string, 2> build_player_control_summary_lines(int player_index, bool remap_mode);
+// The REMAP wizard's control summary, one string per drawn line: the
+// directions first, then the actions. With New Ability Select off that is
+// two lines (the classic actions line); with it on, three (FIRE and the
+// SPEC 1/2/3 keys, then YELL, SWITCH, SHIFTER and LOOK UP). An out-of-range
+// player gives no lines. (The joined one-line form went with the global
+// CONTROLS screen — the only thing that drew it.)
+std::vector<std::string> build_player_control_summary_lines(int player_index, bool remap_mode);
 std::string player_control_key_display_name(int player_index, int key_enum);
 Sint32 overscan_adjust(Sint32 arg);
 Sint32 show_general_help();
@@ -474,6 +479,10 @@ enum class ButtonAction : Sint32
     ToggleNewSpecials = 126,
     // GAMEPLAY FX "Gameplay Fixes" row: the same contract as New Specials.
     ToggleGameplayFixes = 127,
+    // UI FX "New Ability Select" row: one key per ability (SPEC 1/2/3 and
+    // SHIFTER + SPEC 1/2/3). A per-machine preference like every UI FX row;
+    // it never reaches the session or the wire.
+    ToggleNewAbilitySelect = 128,
 };
 
 inline constexpr Sint32 button_action_id(ButtonAction action)

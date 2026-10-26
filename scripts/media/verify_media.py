@@ -1,7 +1,16 @@
 #!/usr/bin/env python3
-"""Structurally verify the generated lua-classpacks showcase media
-(build/media/lua-classpacks by default; pass a directory to check a
-checkout of the openglad/openglad-screenshots repo instead).
+"""Structurally verify a set of generated media.
+
+Sets:
+  lua-classpacks  (the default) the showcase media
+                  scripts/media/capture_showcase.sh writes, in
+                  build/media/lua-classpacks by default
+  ability-select  the New Ability Select stills
+                  scripts/media/capture_ability_select.sh writes, in
+                  build/media/ability-select by default
+
+Pass a directory to check a checkout of the openglad/openglad-screenshots
+repo instead.
 
 Runs ffprobe (from the dev shell: `nix develop`) over every shipped file with
 frame counting on, which decodes each file end to end: a GIF whose frames all
@@ -9,21 +18,26 @@ decode, at the right size, count and total duration, is a GIF that plays. The
 PNGs and the raw BMP are additionally pinned to pal8 — the captures are
 indexed-colour and must stay that way through the pipeline.
 
-Run: python3 scripts/media/verify_media.py [dir]
+Run: python3 scripts/media/verify_media.py [--set NAME]
+         [--allow-missing GROUP]... [dir]
+--allow-missing lets one group of a set be absent (the capture script
+passes the steps it did not run); a file that IS there is still checked.
 Exits non-zero if a file is missing, malformed, or the wrong shape.
 """
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import shutil
 import subprocess
 import sys
 
-# name -> (codec, width, height, frame count, duration seconds or None,
-#          pixel format or None). One frame means a still.
-EXPECTED = {
+# name -> (codec, width or None, height or None, frame count, duration
+#          seconds or None, pixel format or None). One frame means a still;
+#          a None size is not checked.
+LUA_CLASSPACKS = {
     "ninefold-court.gif": ("gif", 640, 400, 60, 8.04, None),
     "ninefold-court-judgment.gif": ("gif", 640, 400, 43, 4.00, None),
     "ninefold-court-pillars.png": ("png", 640, 400, 1, None, "pal8"),
@@ -33,6 +47,63 @@ EXPECTED = {
     # the 2x nearest-neighbour upscale that makes the 4x6 font legible).
     "ninefold-court-judgment.bmp": ("bmp", 320, 200, 1, None, "pal8"),
     "demo-grid.png": ("png", 640, 400, 1, None, "pal8"),
+}
+
+# The New Ability Select stills. Every canvas shot is the 320x200 game canvas
+# doubled; the pixel format is whatever the lossless PPM -> PNG conversion
+# picked, so it is not pinned.
+CANVAS_STILL = ("png", 640, 400, 1, None, None)
+ABILITY_SELECT = {
+    "hud": {f"hud-{scene}.png": CANVAS_STILL for scene in (
+        "1p-on", "1p-off", "2p-off", "4p-off",
+        "1p-on-shift", "1p-on-plain", "1p-on-shift-plain",
+        "1p-off-plain")},
+    # The window as it shows the HUD, at its real size: the split-screen
+    # strip is drawn at half size at present time, never on the canvas.
+    "hud-radar": {f"hud-{shot}-{w}x{h}.png": ("png", w, h, 1, None, None)
+                  for shot, w, h in (
+                      ("1p-on", 1280, 800), ("2p-on", 1280, 800),
+                      ("2p-on-box", 1280, 800), ("3p-on", 1280, 800),
+                      ("3p-on-shift", 1280, 800), ("3p-panels-on", 1280, 800),
+                      ("4p-on", 1280, 800), ("4p-on-shift", 1280, 800),
+                      ("2p-on", 1920, 1080), ("3p-on", 1920, 1080),
+                      ("4p-on", 1920, 1080), ("2p-on", 640, 400),
+                      ("2p-on-shift", 640, 400), ("2p-on-box", 640, 400),
+                      ("4p-on", 640, 400), ("4p-on-shift", 640, 400),
+                      ("4p-on-box", 640, 400), ("4p-on-shift-box", 640, 400),
+                      ("2p-on-states", 640, 400),
+                      ("2p-on-states-plain", 640, 400),
+                      ("4p-on-states", 640, 400),
+                      ("4p-on-states-plain", 640, 400),
+                      ("2p-on", 480, 300))},
+    # A real two-player game, read back from the 640x400 test window (the
+    # half-size strip is not on the canvas).
+    "radar": {"hud-2p-radar-on.png": ("png", 640, 400, 1, None, None),
+              "hud-2p-radar-on-overlay.png": ("png", 640, 400, 1, None, None)},
+    "abilities": {f"abilities-{shot}.png": CANVAS_STILL for shot in (
+        "archmage", "archmage-selected", "archmage-placed", "mage",
+        "barbarian", "train-door-on", "train-door-off")},
+    # The key panels (Base Camp seat, PAUSED player screen) on and off, the
+    # REMAP prompt, and a dimmed button elsewhere (the main menu's note).
+    "panels": {f"{shot}.png": CANVAS_STILL for shot in (
+        "basecamp-keys-on", "basecamp-keys-off", "pause-keys-on",
+        "pause-keys-off", "remap-p1-spec2", "dimmed-no-company")},
+    # The committed keyboard pictures, copied as they are.
+    "keyboard": {f"{name}.png": ("png", 1560, 550, 1, None, None)
+                 for name in ("keyboard_belt", "keyboard_belt_web")},
+    "ui-fx": {"ui-fx.png": CANVAS_STILL},
+    # The CHANGELOG! page at the window's real size, never the canvas.
+    "changelog": {f"changelog-{w}x{h}.png": ("png", w, h, 1, None, None)
+                  for w, h in ((640, 400), (1280, 800), (1920, 1080))},
+    # The ability icons' sheets: their size follows the number of icons, so
+    # it is not pinned (None).
+    "icons": {f"icons-{sheet}.png": ("png", None, None, 1, None, None)
+              for sheet in ("contact", "cells", "floors")},
+}
+# set name -> (default directory under build/media, {group: {name: spec}})
+SETS = {
+    "lua-classpacks": ("lua-classpacks", {"": LUA_CLASSPACKS}),
+    "ability-select": ("ability-select", ABILITY_SELECT),
 }
 
 
@@ -56,6 +127,8 @@ def check(path: str, codec: str, want_w: int, want_h: int, want_frames: int,
         raise AssertionError(f"{path}: codec {stream.get('codec_name')}, "
                              f"expected {codec}")
     size = (stream.get("width"), stream.get("height"))
+    if want_w is None:
+        want_w, want_h = size
     if size != (want_w, want_h):
         raise AssertionError(f"{path}: {size[0]}x{size[1]}, "
                              f"expected {want_w}x{want_h}")
@@ -76,39 +149,68 @@ def check(path: str, codec: str, want_w: int, want_h: int, want_frames: int,
 
 
 def main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(
+        description="Structurally verify a set of generated media.")
+    parser.add_argument("--set", dest="media_set", default="lua-classpacks",
+                        choices=sorted(SETS))
+    parser.add_argument("--allow-missing", action="append", default=[],
+                        metavar="GROUP",
+                        help="a group of the set that may be absent")
+    parser.add_argument("dir", nargs="?")
+    args = parser.parse_args(argv)
+
+    default_dir, groups = SETS[args.media_set]
+    unknown = [g for g in args.allow_missing if g not in groups]
+    if unknown:
+        print(f"no such group in {args.media_set}: {', '.join(unknown)}",
+              file=sys.stderr)
+        return 2
     if shutil.which("ffprobe") is None:
         print("ffprobe not found; enter the dev shell first: nix develop",
               file=sys.stderr)
         return 1
-    root = argv[0] if argv else os.path.join(
+    root = args.dir or os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "..", "..",
-        "build", "media", "lua-classpacks")
+        "build", "media", default_dir)
     root = os.path.abspath(root)
-    print(f"verifying media in {root}")
+    print(f"verifying {args.media_set} media in {root}")
+    if not os.path.isdir(root):
+        print(f"  FAIL: {root} is not a directory")
+        return 1
 
     failures = 0
+    checked = 0
+    expected_total = 0
     total = 0
-    for name, expectation in EXPECTED.items():
-        path = os.path.join(root, name)
-        try:
-            if not os.path.exists(path):
-                raise AssertionError(f"{path}: missing")
-            detail = check(path, *expectation)
-        except AssertionError as error:
-            print(f"  FAIL {name}: {error}")
-            failures += 1
-            continue
-        size = os.path.getsize(path)
-        total += size
-        print(f"  ok {name}: {detail}, {size} bytes")
+    known: set[str] = set()
+    present = sorted(os.listdir(root))
+    for group, expected in groups.items():
+        may_miss = group in args.allow_missing
+        for name, expectation in expected.items():
+            known.add(name)
+            path = os.path.join(root, name)
+            if not os.path.exists(path) and may_miss:
+                print(f"  skip {name}: group {group} allowed missing")
+                continue
+            expected_total += 1
+            try:
+                if not os.path.exists(path):
+                    raise AssertionError(f"{path}: missing")
+                detail = check(path, *expectation)
+            except AssertionError as error:
+                print(f"  FAIL {name}: {error}")
+                failures += 1
+                continue
+            size = os.path.getsize(path)
+            total += size
+            checked += 1
+            print(f"  ok {name}: {detail}, {size} bytes")
 
-    extra = sorted(f for f in os.listdir(root)
-                   if f not in EXPECTED and f != "README.md")
+    extra = [f for f in present if f not in known and f != "README.md"]
     if extra:
         print(f"  note: unlisted files present: {', '.join(extra)}")
 
-    print(f"{len(EXPECTED) - failures}/{len(EXPECTED)} files verified, "
-          f"{total} bytes total")
+    print(f"{checked}/{expected_total} files verified, {total} bytes total")
     return 1 if failures else 0
 
 

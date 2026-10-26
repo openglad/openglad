@@ -88,6 +88,7 @@ set(ALL_INTEGRATION_TEST_SOURCES
     ${CMAKE_SOURCE_DIR}/tests/integration/test_gameplay_fixes_ghost_orc.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_gameplay_fixes_cleric.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_gameplay_fixes_thief.cpp
+    ${CMAKE_SOURCE_DIR}/tests/integration/test_gameplay_fixes_special_busy.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_stats_commands.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_stats_right_walk_direct_walk.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_stats_hit_response_more.cpp
@@ -217,6 +218,10 @@ set(ALL_INTEGRATION_TEST_SOURCES
     ${CMAKE_SOURCE_DIR}/tests/integration/test_seat_chip.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_fade_ownership.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_display_x11.cpp
+    ${CMAKE_SOURCE_DIR}/tests/integration/test_belt_persistence.cpp
+    ${CMAKE_SOURCE_DIR}/tests/integration/test_abilities_flow.cpp
+    ${CMAKE_SOURCE_DIR}/tests/integration/test_changelog_flow.cpp
+    ${CMAKE_SOURCE_DIR}/tests/integration/test_rgba_png.cpp
 )
 
 # NO_DEFAULT_TEST builds the binary but registers no ctest entry for it: the
@@ -421,6 +426,7 @@ og_add_test_group(og_test_walker_core FILES
     test_gameplay_fixes_ghost_orc.cpp
     test_gameplay_fixes_cleric.cpp
     test_gameplay_fixes_thief.cpp
+    test_gameplay_fixes_special_busy.cpp
     test_walker_core_more.cpp
     test_walker_extended.cpp
     test_walker_more.cpp
@@ -484,6 +490,7 @@ og_add_test_group(og_test_game_core FILES
     test_overpowered_team.cpp
     test_frame_pacing_jitter.cpp
     test_pause_menu.cpp
+    test_belt_persistence.cpp
 )
 
 # The New Specials and Gameplay Fixes scenes (tests/integration/
@@ -721,6 +728,7 @@ og_add_test_group(og_test_io FILES
     test_load_levels.cpp
     test_io_coverage.cpp
     test_io_platform_coverage.cpp
+    test_rgba_png.cpp
 )
 
 og_add_test_group(og_test_snapshot_benchmark FILES
@@ -794,6 +802,14 @@ og_add_test_group(og_test_matchup FILES
 # generous budget. Both carry the same lane properties below.
 og_add_test_group(og_test_lineup FILES
     test_lineup_ui.cpp
+)
+
+# New Ability Select (docs/ability-select-design.md G.5): the ABILITIES
+# screen's layout pins and its picker_main injector flows. A group of its
+# own from birth, never og_test_menu_ui (whose budget is not to grow).
+og_add_test_group(og_test_abilities FILES
+    test_abilities_flow.cpp
+    test_changelog_flow.cpp
 )
 target_include_directories(og_test_parity PRIVATE
     ${CMAKE_SOURCE_DIR}/tests/parity
@@ -907,7 +923,14 @@ og_add_unit_group(og_unit_core FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_device_seats.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_input_mappings.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_player_hud_settings.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_belt_input.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_keyboard_map_asset.cpp
 )
+# The keyboard map's second and third links (the text and the pictures
+# against the stamp) run wherever its first link, the test above, is built,
+# and on every integration build beside check_injector_settles.
+add_dependencies(og_unit_core check_keyboard_map)
+add_dependencies(og_game_test check_keyboard_map)
 
 og_add_unit_group(og_unit_sim FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_session_raii.cpp
@@ -1009,6 +1032,7 @@ og_add_unit_group(og_unit_kits FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_gameplay_fixes_bots.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_bot_gates_kits.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_timed_effects.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_belt.cpp
 )
 
 og_add_unit_group(og_unit_script FILES
@@ -1085,7 +1109,11 @@ og_add_unit_group(og_unit_data FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_migrated_campaigns.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_gladiator_levels.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_special_art.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_ability_icons.cpp
 )
+# The icon PNGs test_ability_icons loads are their grids re-encoded, and every
+# grid passes the structural gates (scripts/ability_icons/generate.py --check).
+add_dependencies(og_unit_data check_ability_icons)
 
 # test_builtin_archives byte-compares every staged-archive member
 # against the committed campaign source trees (one root per
@@ -1474,6 +1502,12 @@ set_tests_properties(og_test_matchup PROPERTIES
     TIMEOUT 420
 )
 set_tests_properties(og_test_lineup PROPERTIES
+    RUN_SERIAL TRUE
+    TIMEOUT 420
+)
+# The ABILITIES flows write save0 and drive picker_main like the groups
+# above: serial, with the same heavy-flow budget in every lane.
+set_tests_properties(og_test_abilities PROPERTIES
     RUN_SERIAL TRUE
     TIMEOUT 420
 )
@@ -2064,4 +2098,32 @@ set_tests_properties(emscripten_build_test PROPERTIES
     LABELS "emscripten;build"
     TIMEOUT 300
     SKIP_RETURN_CODE 77
+)
+
+# The ability icon generator's gates and grid refusals, each on a grid built to
+# break it (an opaque block, an edge-hugging L, a cross on all four edges with
+# and without its waiver, seventeen colours, one index per forbidden band, the
+# first prototype's grey LUT that melted the teleport blue into the slot fill,
+# and every malformed grid), plus the LUT values the design pins. Guarded on
+# the interpreter like heritage_audit_selftest.
+if(Python3_Interpreter_FOUND)
+    add_test(NAME ability_icons_generator_selftest
+        COMMAND ${CMAKE_COMMAND} -E env
+            PYTHONDONTWRITEBYTECODE=1
+            ${Python3_EXECUTABLE}
+            ${CMAKE_SOURCE_DIR}/scripts/ability_icons/generate.py
+            --self-test
+    )
+else()
+    add_test(NAME ability_icons_generator_selftest
+        COMMAND ${CMAKE_COMMAND} -E echo
+            "ability_icons_generator_selftest: this self-test needs a Python 3 interpreter and none was found at configure time. Install Python 3 and reconfigure."
+    )
+    set_tests_properties(ability_icons_generator_selftest PROPERTIES
+        FAIL_REGULAR_EXPRESSION "needs a Python 3 interpreter"
+    )
+endif()
+set_tests_properties(ability_icons_generator_selftest PROPERTIES
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    TIMEOUT 60
 )

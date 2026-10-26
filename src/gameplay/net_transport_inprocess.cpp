@@ -107,6 +107,17 @@ std::optional<TransportValidationFailure> find_first_input_difference(
                 return failure;
             }
         }
+
+        // New Ability Select (protocol v22): a dropped belt byte must fail
+        // the validator, not pass as an identical frame.
+        if (!compare_transport_value(
+                std::format("players[{}].belt_cast", player),
+                expected.players[player].belt_cast,
+                actual.players[player].belt_cast,
+                failure))
+        {
+            return failure;
+        }
     }
 
     return std::nullopt;

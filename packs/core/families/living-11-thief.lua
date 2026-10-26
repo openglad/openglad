@@ -282,10 +282,10 @@ og.family("living", {
              train = { strength = 15, dexterity = 6, constitution = 9,
                        intelligence = 10, armor = 50, level = 200 } },
   specials = {
-    { id = "drop_bomb",    name = "DROP BOMB",    mp_cost = 35,  alternate = { name = "MINE", mp_cost = 70, new_kit = true, detail = "Waits unseen for a foe." }, cast = kt.bomb_or_mine(drop_bomb), detail = "Leave a burning bomb to explode and hurt the unwary, friend or foe!" },
-    { id = "cloak",        name = "CLOAK",        mp_cost = 125, cast = cloak, detail = "Cloak yourself in the shadows, slipping past your enemies." },
-    { id = "taunt_enemy",  name = "TAUNT ENEMY",  mp_cost = 100, alternate = { name = "CHARM OPPONENT", detail = "One foe fights for you." }, cast = taunt_or_charm, detail = "Beckon your enemies to you with jeers, and confuse their attack." },
-    { id = "poison_cloud", name = "POISON CLOUD", mp_cost = 150, detail = "Release a cloud of poisonous gas to roam at will and sicken your foes." },
+    { id = "drop_bomb",    name = "DROP BOMB",    mp_cost = 35,  alternate = { name = "MINE", mp_cost = 70, new_kit = true, detail = "Waits unseen for a foe.", icon = "icons/mine.png" }, cast = kt.bomb_or_mine(drop_bomb), detail = "Leave a burning bomb to explode and hurt the unwary, friend or foe!", icon = "icons/drop_bomb.png" },
+    { id = "cloak",        name = "CLOAK",        mp_cost = 125, cast = cloak, detail = "Cloak yourself in the shadows, slipping past your enemies.", icon = "icons/cloak.png" },
+    { id = "taunt_enemy",  name = "TAUNT ENEMY",  mp_cost = 100, alternate = { name = "CHARM OPPONENT", detail = "One foe fights for you.", icon = "icons/charm_opponent.png" }, cast = taunt_or_charm, detail = "Beckon your enemies to you with jeers, and confuse their attack.", icon = "icons/taunt_enemy.png" },
+    { id = "poison_cloud", name = "POISON CLOUD", mp_cost = 150, detail = "Release a cloud of poisonous gas to roam at will and sicken your foes.", icon = "icons/poison_cloud.png" },
     default_cast = poison_cloud,  -- case 4 and every unmapped slot
   },
   default_weapon = "core:knife",

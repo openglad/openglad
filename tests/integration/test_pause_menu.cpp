@@ -43,6 +43,7 @@
 #include <openglad/resources/save_data.h>
 
 #include "../../src/interface/ui/picker_sdl_defs.h"
+#include "test_ability_select_scope.h"
 #include "test_click_ladder.h"
 #include "test_escape_tail.h"
 #include "test_input_helpers.h"
@@ -932,6 +933,9 @@ TEST(PausePlayerDraw, binding_grid_shows_joystick_names_for_assigned_seat)
 {
     screen* const scr = og::runtime::current_session->myscreen_;
     ASSERT_NE(nullptr, scr);
+    // The classic ACTIONS rows ("SPECIAL: B0" on row 1); the New Ability
+    // Select twin is binding_grid_rows_follow_ability_select below.
+    ScopedAbilitySelect off;
     ControlStateGuard controls;
     JoystickSubsystemGuard subsystem_guard;
     VirtualJoystick pad(2, 6, 0, "OpenGlad pause grid pad");
@@ -989,6 +993,113 @@ TEST(PausePlayerDraw, binding_grid_shows_joystick_names_for_assigned_seat)
     EXPECT_EQ("B0", joy_binding_display_name(
                         player_joy[0].key_type[KEY_SPECIAL],
                         player_joy[0].key_index[KEY_SPECIAL]));
+
+    og::ui::install_pause_player_state_for_screen(nullptr);
+}
+
+// The ACTIONS column draws og::ui::binding_panel_action_rows for the
+// setting in force: off, row 1 is "SPECIAL: 1" and row 6 "SPEC SW: 2" (the
+// SPEC 2 key, which cycles with the setting off, never the unbound slot 11
+// that read "--"); on, rows 1..3 are "SPEC 1/2/3" with keys 1, 2, 3 and the
+// list runs to eight rows (CHAR SW on row 7).
+//
+// RED: the pause panel's actions back on its own seven-row table with
+// KEY_SPECIAL_SWITCH ("SPEC SW: --", and no SPEC 3 row with the setting on).
+TEST(PausePlayerDraw, binding_grid_rows_follow_ability_select)
+{
+    screen* const scr = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, scr);
+    ControlStateGuard controls;
+    for (int p = 0; p < 4; ++p)
+        clear_player_joystick(p);
+    set_player_control_mode(0, static_cast<int>(ControlDirectionMode::FourDirection));
+    set_player_key_binding(0, KEY_SPECIAL, SDLK_1);
+    set_player_key_binding(0, KEY_SPEC2, SDLK_2);
+    set_player_key_binding(0, KEY_SPEC3, SDLK_3);
+    set_player_key_binding(0, KEY_SWITCH, SDLK_N);
+
+    g_stub = StubHostState{};
+    PauseMenuHost host = make_stub_host(false, true);
+    og::ui::PausePlayerScreenState state;
+    state.host = &host;
+    state.seat = 0;
+    state.player_number = 1;
+    og::ui::install_pause_player_state_for_screen(&state);
+    const og::ui::MenuScreenSpec& spec =
+        og::ui::pause_player_menu_screen_spec();
+    const int pitch = scr->text_normal.sizex + 1;
+    const auto row_y = [](int row) { return 93 + 8 * row; };
+
+    {
+        ScopedAbilitySelect off;
+        spec.draw_background(&state);
+        spec.draw_content(&state);
+        expect_glyph_at(scr, '1', 104 + 9 * pitch, row_y(1), DARK_BLUE);  // "SPECIAL: 1"
+        expect_glyph_at(scr, '2', 104 + 9 * pitch, row_y(6), DARK_BLUE);  // "SPEC SW: 2"
+    }
+    {
+        ScopedAbilitySelect on(true);
+        spec.draw_background(&state);
+        spec.draw_content(&state);
+        expect_glyph_at(scr, '1', 104 + 8 * pitch, row_y(1), DARK_BLUE);  // "SPEC 1: 1"
+        expect_glyph_at(scr, '2', 104 + 8 * pitch, row_y(2), DARK_BLUE);  // "SPEC 2: 2"
+        expect_glyph_at(scr, '3', 104 + 8 * pitch, row_y(3), DARK_BLUE);  // "SPEC 3: 3"
+        expect_glyph_at(scr, 'N', 104 + 9 * pitch, row_y(7), DARK_BLUE);  // "CHAR SW: N"
+    }
+
+    og::ui::install_pause_player_state_for_screen(nullptr);
+}
+
+// The REMAP wizard asks for one key per prompt, in order, and the list
+// follows the setting: off, the classic 11 (4-direction) / 15 (8-direction)
+// with SPECIAL SWITCH binding the SPEC 2 key (slot 17); on, 12 / 16 with
+// SPEC 1, SPEC 2 and SPEC 3 and no SPECIAL SWITCH. The "remap" trace names
+// each prompt as it is drawn; under TESTING every prompt is answered with
+// a fake ESC (keep the current key).
+//
+// RED: the ON tables replaced by the classic ones (11 prompts, no SPEC 3);
+// the classic SPECIAL SWITCH back on KEY_SPECIAL_SWITCH (key=11).
+TEST(PausePlayerHandlers, remap_prompts_follow_ability_select)
+{
+    ControlStateGuard controls;
+    NumplayersGuard numplayers(1);
+    const og::ui::MenuScreenSpec& spec =
+        og::ui::pause_player_menu_screen_spec();
+    g_stub = StubHostState{};
+    PauseMenuHost host = make_stub_host(false, true);
+    og::ui::PausePlayerScreenState state;
+    state.host = &host;
+    state.seat = 0;
+    state.player_number = 1;
+    og::ui::install_pause_player_state_for_screen(&state);
+
+    const auto run = [&](bool ability_select, bool eight_dir) {
+        ScopedAbilitySelect setting(ability_select);
+        set_player_control_mode(
+            0, static_cast<int>(eight_dir ? ControlDirectionMode::EightDirection
+                                          : ControlDirectionMode::FourDirection));
+        trace_clear();
+        EXPECT_EQ(MENU_OK,
+                  spec.on_spec_row(og::ui::kPausePlayerRemapIndex, &state));
+    };
+
+    run(false, false);
+    EXPECT_TRUE(trace_contains("remap", "prompt 11/11 key=16 label=LOOK UP (HOLD)"));
+    EXPECT_TRUE(trace_contains("remap", "prompt 7/11 key=17 label=SPECIAL SWITCH"))
+        << "the classic change-special prompt binds the SPEC 2 key";
+    EXPECT_FALSE(trace_contains("remap", "key=11 "));
+    run(false, true);
+    EXPECT_TRUE(trace_contains("remap", "prompt 15/15 key=16"));
+
+    run(true, false);
+    EXPECT_TRUE(trace_contains("remap", "prompt 6/12 key=9 label=SPEC 1"));
+    EXPECT_TRUE(trace_contains("remap", "prompt 7/12 key=17 label=SPEC 2"));
+    EXPECT_TRUE(trace_contains("remap", "prompt 8/12 key=18 label=SPEC 3"));
+    EXPECT_TRUE(trace_contains("remap", "prompt 12/12 key=16 label=LOOK UP (HOLD)"));
+    EXPECT_FALSE(trace_contains("remap", "SPECIAL SWITCH"));
+    run(true, true);
+    EXPECT_TRUE(trace_contains("remap", "prompt 12/16 key=18 label=SPEC 3"));
+    EXPECT_TRUE(trace_contains("remap", "prompt 16/16 key=16"));
 
     og::ui::install_pause_player_state_for_screen(nullptr);
 }
@@ -1141,13 +1252,181 @@ TEST(PausePlayerDraw, menushots_player_screen_keyboard_and_joystick)
         og::runtime::current_session->localbuttons_ = nullptr;
     };
 
-    compose_and_capture("pause_player_screen");
+    {
+        ScopedAbilitySelect on(true);
+        compose_and_capture("pause_player_screen");
+    }
+    {
+        // The same panel with New Ability Select off: the classic seven
+        // ACTIONS rows on the same default keys.
+        ScopedAbilitySelect off;
+        compose_and_capture("pause_player_screen_off");
+    }
 
     ASSERT_TRUE(assign_joystick_to_player(0, d));
     compose_and_capture("pause_player_joystick");
     clear_player_joystick(0);
 
     og::ui::install_pause_player_state_for_screen(nullptr);
+}
+
+namespace
+{
+// The REMAP prompt the menushot films: the wizard calls the poll once per
+// prompt, right after drawing it (TESTING answers each with a fake ESC), so
+// the Nth call sees prompt N on the canvas. Writing it and returning false
+// ends the wizard there.
+int g_remap_shot_polls = 0;
+int g_remap_shot_prompt = 0;
+bool g_remap_shot_written = false;
+
+bool remap_shot_poll()
+{
+    if (++g_remap_shot_polls < g_remap_shot_prompt)
+        return true;
+    g_remap_shot_written =
+        write_menushot(og::runtime::current_session->myscreen_,
+                       "remap_p1_spec2");
+    return false;
+}
+} // namespace
+
+// The REMAP prompt for "P1 SPEC 2" (prompt 7 of 12, 4-direction, New Ability
+// Select on) with its three summary lines, on the shipped default keys.
+TEST(PausePlayerDraw, menushots_remap_prompt_spec2)
+{
+    if (std::getenv("MENUSHOTS_DIR") == nullptr)
+        GTEST_SKIP() << "set MENUSHOTS_DIR to write the PR proof frames";
+
+    ControlStateGuard controls;
+    ScopedAbilitySelect on(true);
+    set_player_control_mode(
+        0, static_cast<int>(ControlDirectionMode::FourDirection));
+    trace_clear();
+    g_remap_shot_polls = 0;
+    g_remap_shot_prompt = 7;
+    g_remap_shot_written = false;
+    edit_player_keymap_with_poll(0, &remap_shot_poll);
+    EXPECT_TRUE(trace_contains("remap", "prompt 7/12 key=17 label=SPEC 2"));
+    EXPECT_FALSE(trace_contains("remap", "prompt 8/12"))
+        << "the wizard stops at the filmed prompt";
+    EXPECT_TRUE(g_remap_shot_written);
+}
+
+namespace
+{
+// The REMAP canvas at prompt 1, read back as palette indices.
+std::array<int, 320 * 200> g_remap_frame{};
+bool g_remap_frame_taken = false;
+
+bool remap_frame_poll()
+{
+    screen* const scr = og::runtime::current_session->myscreen_;
+    for (int y = 0; y < 200; ++y)
+        for (int x = 0; x < 320; ++x)
+            scr->get_pixel(x, y, &g_remap_frame[static_cast<std::size_t>(
+                                     y * 320 + x)]);
+    g_remap_frame_taken = true;
+    return false;  // end the wizard at its first prompt
+}
+
+int remap_px(int x, int y)
+{
+    return g_remap_frame[static_cast<std::size_t>(y * 320 + x)];
+}
+} // namespace
+
+// The REMAP prompt's inset box sits inside the canvas, centred under its
+// centred text, and holds every line: even a 48-glyph summary under the
+// worst-case key names (the MenuLayout summary pins' set) never touches its
+// bevels, and nothing but the outer face is drawn outside it. Both settings
+// (two summary lines off, three on).
+//
+// RED (planted, both settings): draw_button_inverted back to
+// (20, 30, 300, 170), the old x2/y2 reading of an (x, y, w, h) call: the
+// box runs to x 319 / y 199 ("left 20, right 319"; "a margin below the
+// box: 199").
+TEST(PausePlayerDraw, remap_prompt_box_stays_on_canvas_and_holds_every_line)
+{
+    for (const bool ability_select : {false, true})
+    {
+        SCOPED_TRACE(ability_select ? "New Ability Select on" : "off");
+        ControlStateGuard controls;
+        ScopedAbilitySelect scope(ability_select);
+        set_player_control_mode(
+            0, static_cast<int>(ControlDirectionMode::EightDirection));
+        // Each setting's own worst-case names, as the MenuLayout summary
+        // pins set them (each line at most 48 glyphs).
+        set_player_key_binding(0, KEY_YELL, SDLK_BACKSPACE);
+        set_player_key_binding(0, KEY_LOOKUP, SDLK_CAPSLOCK);
+        set_player_key_binding(0, KEY_SWITCH, SDLK_RETURN);
+        if (ability_select)
+        {
+            set_player_key_binding(0, KEY_FIRE, SDLK_PRINTSCREEN);
+            set_player_key_binding(0, KEY_SPECIAL, SDLK_RETURN);
+            set_player_key_binding(0, KEY_SPEC2, SDLK_DELETE);
+            set_player_key_binding(0, KEY_SPEC3, SDLK_PAGEDOWN);
+            set_player_key_binding(0, KEY_SHIFTER, SDLK_PRINTSCREEN);
+        }
+        else
+        {
+            set_player_key_binding(0, KEY_FIRE, SDLK_LCTRL);
+            set_player_key_binding(0, KEY_SPECIAL, SDLK_LALT);
+            set_player_key_binding(0, KEY_SPEC2, SDLK_TAB);
+            set_player_key_binding(0, KEY_SHIFTER, SDLK_RSHIFT);
+        }
+        g_remap_frame_taken = false;
+        edit_player_keymap_with_poll(0, &remap_frame_poll);
+        ASSERT_TRUE(g_remap_frame_taken);
+
+        // The inset bevels (draw_text_bar: top 10, bottom 15, left 11,
+        // right 14), found along the middle row and column.
+        int left = -1, right = -1, top = -1, bottom = -1;
+        for (int x = 0; x < 320; ++x)
+        {
+            if (left < 0 && remap_px(x, 120) == 11)
+                left = x;
+            if (remap_px(x, 120) == 14)
+                right = x;
+        }
+        for (int y = 0; y < 200; ++y)
+            if (remap_px(160, y) == 15)
+                bottom = y;
+        for (int y = 0; y < 200; ++y)
+            if (remap_px(left + 1, y) == 10)
+            {
+                top = y;
+                break;
+            }
+        ASSERT_GE(left, 0) << "left bevel";
+        ASSERT_GT(right, left) << "right bevel";
+        ASSERT_GE(top, 0) << "top bevel";
+        ASSERT_GT(bottom, top) << "bottom bevel";
+        EXPECT_EQ(left, 319 - right)
+            << "the box is centred across the canvas: left " << left
+            << ", right " << right;
+        EXPECT_GE(199 - bottom, 8) << "a margin below the box: " << bottom;
+
+        // Outside the box: the outer face only. Inside: no ink on a bevel
+        // column or row but the bevel itself, i.e. the interior holds the
+        // text.
+        const int outer = remap_px(2, 2);
+        int outside_ink = 0;
+        for (int y = 0; y < 200; ++y)
+            for (int x = 0; x < 320; ++x)
+                if ((x < left || x > right || y < top || y > bottom) &&
+                    remap_px(x, y) != outer)
+                    ++outside_ink;
+        EXPECT_EQ(0, outside_ink) << "nothing is drawn outside the box";
+        int bevel_breaks = 0;
+        for (int y = top + 1; y < bottom; ++y)
+            bevel_breaks += remap_px(left, y) != 11;
+        for (int y = top + 1; y < bottom; ++y)
+            bevel_breaks += remap_px(right, y) != 14;
+        for (int x = left + 1; x < right; ++x)
+            bevel_breaks += remap_px(x, bottom) != 15;
+        EXPECT_EQ(0, bevel_breaks) << "no text runs over a bevel";
+    }
 }
 
 // A pause that cannot be established never shows a menu. The pause request

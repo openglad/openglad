@@ -21,6 +21,7 @@
 #include <openglad/resources/save_data.h>
 #include "../../src/interface/ui/picker_sdl_defs.h"
 #include <openglad/interface/ui/pause_menu.h>
+#include "test_ability_select_scope.h"
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
 
@@ -4044,19 +4045,89 @@ TEST(MenuLayout, gameplay_fx_options_layout_and_nav)
     EXPECT_EQ(0, buttons[4].nav.down) << "Gameplay Fixes closes the cycle at BACK";
 }
 
-// UI FX subscreen: unique BACK id + the three overlay toggles in a centered
-// column.
+// UI FX subscreen: unique BACK id + the three overlay toggles and the New
+// Ability Select row in one centred column. "New Ability Select" is 18
+// glyphs (108 px), so the column is 120 px wide at x 100 (centre 160).
 TEST(MenuLayout, ui_fx_options_layout_and_nav)
 {
     static const ExpectedFxButton kExpected[] = {
         {"ui_fx_back", "BACK", 10, 10},
-        {"toggle_mini_hp_bar", "Mini HP bar", 115, 35},
-        {"toggle_damage_numbers", "Damage numbers", 115, 58},
-        {"toggle_heal_numbers", "Healing numbers", 115, 81},
+        {"toggle_mini_hp_bar", "Mini HP bar", 100, 35},
+        {"toggle_damage_numbers", "Damage numbers", 100, 58},
+        {"toggle_heal_numbers", "Healing numbers", 100, 81},
+        {"toggle_new_ability_select", "New Ability Select", 100, 104},
     };
     button* buttons = picker_ui_fx_options_buttons();
     const int count = picker_ui_fx_options_button_count();
-    check_fx_options_screen(buttons, count, kExpected, 4, "ui_fx_options");
+    check_fx_options_screen(buttons, count, kExpected, 5, "ui_fx_options");
+    if (count != 5)
+        return;
+
+    // One column: one x, one width, the effects-grid 23 px pitch, centred
+    // on the 320 px canvas.
+    for (int i = 1; i < count; ++i)
+    {
+        EXPECT_EQ(100, buttons[i].x) << buttons[i].id;
+        EXPECT_EQ(120, buttons[i].sizex) << buttons[i].id;
+        EXPECT_EQ(160, buttons[i].x + buttons[i].sizex / 2) << buttons[i].id;
+        if (i > 1)
+        {
+            EXPECT_EQ(buttons[i - 1].y + 23, buttons[i].y) << buttons[i].id;
+        }
+    }
+    EXPECT_EQ(button_action_id(ButtonAction::ToggleNewAbilitySelect),
+              buttons[4].myfun);
+    EXPECT_EQ(128, button_action_id(ButtonAction::ToggleNewAbilitySelect));
+    // The widest label is drawn centred with no clipping: 18 glyphs, 108 px.
+    EXPECT_EQ(18u, buttons[4].label.size());
+    EXPECT_LE(6 * static_cast<int>(buttons[4].label.size()), buttons[4].sizex);
+
+    // The vertical cycle runs BACK -> each toggle -> BACK, both ways.
+    EXPECT_EQ(1, buttons[0].nav.down);
+    EXPECT_EQ(4, buttons[0].nav.up) << "BACK links up to New Ability Select";
+    EXPECT_EQ(4, buttons[3].nav.down)
+        << "Healing numbers links down to New Ability Select";
+    EXPECT_EQ(3, buttons[4].nav.up);
+    EXPECT_EQ(0, buttons[4].nav.down)
+        << "New Ability Select closes the cycle at BACK";
+}
+
+// The New Ability Select row's face is green or red from its own cfg key,
+// effects/new_ability_select, through the production content pass. Proof it
+// can fail: point the row's draw-table entry at another key (heal_numbers)
+// and flipping the setting no longer changes the face, while flipping that
+// other key does.
+TEST(MenuLayout, ui_fx_new_ability_select_face_follows_its_key)
+{
+    screen* const game = og::runtime::current_session->myscreen_;
+    button* buttons = picker_ui_fx_options_buttons();
+    ASSERT_EQ(5, picker_ui_fx_options_button_count());
+    const button& row = buttons[4];
+    ASSERT_EQ("toggle_new_ability_select", std::string(row.id));
+    const og::ui::MenuScreenSpec& spec =
+        *og::ui::menu_screen_host(og::ui::MenuScreenId::UiFx).spec;
+    ASSERT_NE(nullptr, spec.draw_content);
+
+    const std::string saved_select =
+        cfg.get_setting("effects", "new_ability_select");
+    const std::string saved_heal = cfg.get_setting("effects", "heal_numbers");
+    const auto face = [&](const char* select, const char* heal) {
+        cfg.apply_setting("effects", "new_ability_select", select);
+        cfg.apply_setting("effects", "heal_numbers", heal);
+        game->clearbuffer();
+        spec.draw_content(nullptr);
+        return snapshot_canvas_rect(row.x, row.y, row.x + row.sizex,
+                                    row.y + row.sizey);
+    };
+    const std::vector<int> on = face("on", "on");
+    const std::vector<int> off = face("off", "on");
+    const std::vector<int> off_heal_off = face("off", "off");
+    cfg.apply_setting("effects", "new_ability_select", saved_select);
+    cfg.apply_setting("effects", "heal_numbers", saved_heal);
+
+    EXPECT_NE(on, off) << "the face must follow effects/new_ability_select";
+    EXPECT_EQ(off, off_heal_off)
+        << "the face must not follow another row's key";
 }
 
 // GRAPHICS FX subscreen: unique BACK id + 14 effects/* visual toggles on the
@@ -4748,20 +4819,22 @@ TEST(MenuLayout, networking_session_copy_fits_within_panel_frame)
 namespace
 {
 // The summary the player screens draw, as one string. Production draws the
-// two lines separately (the joined one-liner retired with the global
-// CONTROLS screen); these format pins read either line the same way.
+// lines separately (the joined one-liner retired with the global CONTROLS
+// screen); these format pins read any line the same way.
 std::string joined_control_summary(int player_index)
 {
-    const std::array<std::string, 2> lines =
+    const std::vector<std::string> lines =
         build_player_control_summary_lines(player_index, false);
-    if (lines[0].empty() && lines[1].empty())
-        return {};
-    return lines[0] + " " + lines[1];
+    std::string joined;
+    for (const std::string& line : lines)
+        joined += (joined.empty() ? "" : " ") + line;
+    return joined;
 }
 } // namespace
 
 TEST(MenuLayout, controls_summary_switches_between_four_and_eight_direction_formats)
 {
+    ScopedAbilitySelect off;  // the classic summary
     PlayerControlSnapshotGuard guard(0);
 
     set_player_control_mode(0, static_cast<int>(ControlDirectionMode::FourDirection));
@@ -4772,7 +4845,7 @@ TEST(MenuLayout, controls_summary_switches_between_four_and_eight_direction_form
     set_player_key_binding(0, KEY_YELL, SDLK_Q);
     set_player_key_binding(0, KEY_FIRE, SDLK_1);
     set_player_key_binding(0, KEY_SPECIAL, SDLK_2);
-    set_player_key_binding(0, KEY_SPECIAL_SWITCH, SDLK_EQUALS);
+    set_player_key_binding(0, KEY_SPEC2, SDLK_EQUALS);
     set_player_key_binding(0, KEY_SWITCH, SDLK_GRAVE);
     set_player_key_binding(0, KEY_SHIFTER, SDLK_F8);
 
@@ -4800,6 +4873,7 @@ TEST(MenuLayout, controls_summary_switches_between_four_and_eight_direction_form
 
 TEST(MenuLayout, eight_direction_summary_clockwise_order)
 {
+    ScopedAbilitySelect off;  // the classic summary
     PlayerControlSnapshotGuard guard(0);
 
     set_player_control_mode(0, static_cast<int>(ControlDirectionMode::EightDirection));
@@ -4814,7 +4888,7 @@ TEST(MenuLayout, eight_direction_summary_clockwise_order)
     set_player_key_binding(0, KEY_YELL, SDLK_S);
     set_player_key_binding(0, KEY_FIRE, SDLK_1);
     set_player_key_binding(0, KEY_SPECIAL, SDLK_2);
-    set_player_key_binding(0, KEY_SPECIAL_SWITCH, SDLK_EQUALS);
+    set_player_key_binding(0, KEY_SPEC2, SDLK_EQUALS);
     set_player_key_binding(0, KEY_SWITCH, SDLK_3);
     set_player_key_binding(0, KEY_SHIFTER, SDLK_F8);
 
@@ -4831,6 +4905,7 @@ TEST(MenuLayout, eight_direction_summary_clockwise_order)
 
 TEST(MenuLayout, controls_summary_remap_mode_uses_two_lines)
 {
+    ScopedAbilitySelect off;  // the classic summary
     PlayerControlSnapshotGuard guard(0);
 
     set_player_control_mode(0, static_cast<int>(ControlDirectionMode::FourDirection));
@@ -4841,11 +4916,12 @@ TEST(MenuLayout, controls_summary_remap_mode_uses_two_lines)
     set_player_key_binding(0, KEY_YELL, SDLK_E);
     set_player_key_binding(0, KEY_FIRE, SDLK_LCTRL);
     set_player_key_binding(0, KEY_SPECIAL, SDLK_LALT);
-    set_player_key_binding(0, KEY_SPECIAL_SWITCH, SDLK_TAB);
+    set_player_key_binding(0, KEY_SPEC2, SDLK_TAB);
     set_player_key_binding(0, KEY_SWITCH, SDLK_GRAVE);
     set_player_key_binding(0, KEY_SHIFTER, SDLK_LSHIFT);
 
-    const std::array<std::string, 2> remap_summary = build_player_control_summary_lines(0, true);
+    const std::vector<std::string> remap_summary = build_player_control_summary_lines(0, true);
+    ASSERT_EQ(2u, remap_summary.size()) << "the classic summary is two lines";
     ASSERT_TRUE(remap_summary[0].find("Dir:W/A/S/D") != std::string::npos) << "remap summary first line should contain directional keys";
     ASSERT_TRUE(remap_summary[1].find("Y:E") != std::string::npos) << "remap summary second line should contain action keys";
     ASSERT_TRUE(remap_summary[1].find("SW:`") != std::string::npos) << "remap summary second line should display backtick character";
@@ -4854,6 +4930,7 @@ TEST(MenuLayout, controls_summary_remap_mode_uses_two_lines)
 
 TEST(MenuLayout, controls_summary_shows_look_up_binding)
 {
+    ScopedAbilitySelect off;  // the classic summary
     PlayerControlSnapshotGuard guard(0);
 
     set_player_control_mode(0, static_cast<int>(ControlDirectionMode::FourDirection));
@@ -4873,13 +4950,104 @@ TEST(MenuLayout, controls_summary_shows_look_up_binding)
     set_player_key_binding(0, KEY_YELL, SDLK_BACKSPACE);       // "Bk"
     set_player_key_binding(0, KEY_FIRE, SDLK_LCTRL);           // "LC"
     set_player_key_binding(0, KEY_SPECIAL, SDLK_LALT);         // "LA"
-    set_player_key_binding(0, KEY_SPECIAL_SWITCH, SDLK_TAB);   // "Tab"
+    set_player_key_binding(0, KEY_SPEC2, SDLK_TAB);   // "Tab"
     set_player_key_binding(0, KEY_SWITCH, SDLK_RETURN);        // "Return"
     set_player_key_binding(0, KEY_SHIFTER, SDLK_RSHIFT);       // "RS"
     set_player_key_binding(0, KEY_LOOKUP, SDLK_CAPSLOCK);      // "Cap"
     const auto lines = build_player_control_summary_lines(0, false);
     EXPECT_LE(lines[1].size(), 48u)
         << "action summary line must fit the controls row: " << lines[1];
+}
+
+// New Ability Select on: the REMAP summary is three lines, the directions,
+// then FIRE and the three SPEC keys, then YELL, SWITCH, SHIFTER and LOOK UP
+// (draw_remap_prompt puts them at y 145/155/165). Each stays inside the
+// 48-glyph row under the worst-case key names the classic pin uses.
+//
+// RED: the ON branch of build_player_control_summary_lines dropped (two
+// classic lines come back); S3 reading KEY_SPEC2.
+TEST(MenuLayout, controls_summary_with_ability_select_is_three_lines)
+{
+    ScopedAbilitySelect on(true);
+    PlayerControlSnapshotGuard guard(0);
+
+    set_player_control_mode(0, static_cast<int>(ControlDirectionMode::FourDirection));
+    set_player_key_binding(0, KEY_UP, SDLK_W);
+    set_player_key_binding(0, KEY_LEFT, SDLK_A);
+    set_player_key_binding(0, KEY_DOWN, SDLK_S);
+    set_player_key_binding(0, KEY_RIGHT, SDLK_D);
+    set_player_key_binding(0, KEY_FIRE, SDLK_LCTRL);
+    set_player_key_binding(0, KEY_SPECIAL, SDLK_1);
+    set_player_key_binding(0, KEY_SPEC2, SDLK_2);
+    set_player_key_binding(0, KEY_SPEC3, SDLK_3);
+    set_player_key_binding(0, KEY_YELL, SDLK_E);
+    set_player_key_binding(0, KEY_SWITCH, SDLK_GRAVE);
+    set_player_key_binding(0, KEY_SHIFTER, SDLK_LSHIFT);
+    set_player_key_binding(0, KEY_LOOKUP, SDLK_Q);
+
+    const std::vector<std::string> remap = build_player_control_summary_lines(0, true);
+    ASSERT_EQ(3u, remap.size());
+    EXPECT_EQ("Dir:W/A/S/D", remap[0]);
+    EXPECT_EQ("F:LC S1:1 S2:2 S3:3", remap[1]);
+    EXPECT_EQ("Y:E SW:` Sh:LS L:Q", remap[2]);
+    const std::vector<std::string> compact = build_player_control_summary_lines(0, false);
+    ASSERT_EQ(3u, compact.size());
+    EXPECT_EQ("D:WASD", compact[0]);
+    EXPECT_EQ(remap[1], compact[1]);
+
+    // The worst-case names (the classic pin's set, plus two more 6-glyph
+    // ones on the new keys) fit the 48-glyph row.
+    set_player_key_binding(0, KEY_YELL, SDLK_BACKSPACE);       // "Bk"
+    set_player_key_binding(0, KEY_FIRE, SDLK_PRINTSCREEN);     // "PrintScre"
+    set_player_key_binding(0, KEY_SPECIAL, SDLK_RETURN);       // "Return"
+    set_player_key_binding(0, KEY_SPEC2, SDLK_DELETE);         // "Delete"
+    set_player_key_binding(0, KEY_SPEC3, SDLK_PAGEDOWN);       // "PageDown"
+    set_player_key_binding(0, KEY_SWITCH, SDLK_RETURN);        // "Return"
+    set_player_key_binding(0, KEY_SHIFTER, SDLK_PRINTSCREEN);  // "PrintScre"
+    set_player_key_binding(0, KEY_LOOKUP, SDLK_CAPSLOCK);      // "Cap"
+    set_player_control_mode(0, static_cast<int>(ControlDirectionMode::EightDirection));
+    for (const bool remap_mode : {true, false})
+    {
+        const std::vector<std::string> lines =
+            build_player_control_summary_lines(0, remap_mode);
+        ASSERT_EQ(3u, lines.size());
+        for (std::size_t i = 1; i < lines.size(); ++i)
+            EXPECT_LE(lines[i].size(), 48u)
+                << "summary line " << i << " must fit the row: " << lines[i];
+    }
+}
+
+// Both settings' ACTIONS rows (og::ui::binding_panel_action_rows, the one
+// table the pause player screen and the seat panel draw) fit the panel: at
+// most eight rows (lines 93..156 inside the 78..161 panel), each cut to
+// kBindingPanelActionsChars, left of x=208; the SPEC rows ("SPEC 1: " + 9)
+// keep the widest 9-glyph key name whole.
+TEST(MenuLayout, binding_panel_action_rows_fit_for_both_settings)
+{
+    const std::string widest_value(9, 'W');
+    for (const bool ability_select : {false, true})
+    {
+        const auto rows = og::ui::binding_panel_action_rows(ability_select);
+        EXPECT_EQ(ability_select ? 8u : 7u, rows.size());
+        EXPECT_LE(93 + static_cast<int>(rows.size() - 1) * 8 + 7, 161)
+            << "the last row stays inside the panel";
+        for (const og::ui::BindingPanelRow& row : rows)
+        {
+            const std::string line = og::ui::format_binding_panel_line(
+                row.label, widest_value, og::ui::kBindingPanelActionsChars);
+            EXPECT_LE(static_cast<int>(line.size()),
+                      og::ui::kBindingPanelActionsChars);
+            if (ability_select && (row.key == KEY_SPECIAL ||
+                                   row.key == KEY_SPEC2 ||
+                                   row.key == KEY_SPEC3))
+            {
+                EXPECT_EQ(line, std::string(row.label) + ": " + widest_value)
+                    << "a SPEC row keeps the whole 9-glyph key name";
+            }
+            EXPECT_LE(104 + static_cast<int>(line.size()) * 6, 208)
+                << "actions '" << line << "'";
+        }
+    }
 }
 
 // The menus skill's layout-discipline rules, as executable relations: exact

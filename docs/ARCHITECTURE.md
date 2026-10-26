@@ -570,8 +570,8 @@ contribute up to 4 local seats, with up to 16 seats lobby-wide. The same
 machinery also runs single-player and local split-screen — see [Local Transport
 Shadow](#local-transport-shadow).
 
-The current network compatibility line is lobby/gameplay protocol **v21**, world
-snapshot format **v17**, and replay format **v23** (Gameplay Fixes, below).
+The current network compatibility line is lobby/gameplay protocol **v22**, world
+snapshot format **v18**, and replay format **v24** (New Ability Select, below).
 Protocol v13 added the
 staged-lobby channel: `StagedMatchSetup`/`StagedMatchKeyframe` wrap a
 complete InitialSetup / keyframe snapshot of the host's staged world so every
@@ -613,6 +613,23 @@ world state gains a `gameplay_fixes` byte after `new_specials`. No entity
 field changes. `GameWorld::gameplay_fixes` defaults to 0 (the classic game);
 the shipped default, on, comes from the cfg preference, the lobby default and
 the session entry points.
+
+Protocol v22 (snapshot v18, replay v24, save GTL v21) carries New Ability
+Select (see [ability-select-design.md](ability-select-design.md)). The input
+message gains one u8 `belt_cast` per local seat after the four player
+bitfields (payload 21 to 25 bytes): the belt entry a Special press or hold
+means, resolved by the sending client from its own hero's layout, `slot |
+alternate << 3`, `0x07` for an empty key, and 0 for the classic cast. The
+server never reads a layout or the setting: `sim_arm_belt_entry`
+(`src/gameplay/sim_input_handler.cpp`) validates every nonzero byte against
+the hero's live family, level and the New Specials setting, arms the slot and
+the shift, or refuses with a cue (NO ABILITY THERE, LEVEL N NEEDED). The
+guy's six belt bytes (`guy::belt`) ride `LobbyCharacterData`,
+`InitialSetupGuyData` and `GuySnapshot`, appended last, and the GTL record's
+six former reserved bytes at guy offset +52..+57; six zeros are the class
+default, so an untouched guy is byte-identical on disk. A seat with the
+setting off sends 0 and today's bits, so its frame differs from v21's only
+in the header and four zero bytes.
 
 ### Core components (`og_gameplay`, SDL-free)
 

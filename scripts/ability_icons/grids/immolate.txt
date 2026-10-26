@@ -1,0 +1,26 @@
+# IMMOLATE (elemental): the burning footprints it leaves: a large ember in front and a smaller one behind, each ember.png frame 0's flame (twin tips, the right one wider, bands 236 to 232 from the tips down) on its charred spot (17 edge, 16 middle); fire band on the still ramp
+# legend: one character = one palette index (pix/openglad.gpl)
+O = 236
+P = 235
+o = 234
+r = 233
+R = 232
+e = 17
+k = 16
+
+................
+...........O....
+...O............
+.O.OO.....OO....
+.POOP..O..OOO...
+.oPPo..O..OOP...
+eroore.OP.OOP...
+eeRkee.POOOOPP..
+......POOOOOOP..
+......PPPOOPPPo.
+.....oPPPPPPPPo.
+.....rooooooooo.
+.....RrrrrrrrrR.
+....eeRRRRRkRee.
+....eekkkkkkkee.
+................

@@ -718,6 +718,8 @@ void install_specials(const std::vector<og::data::ClasspackSpecialEntry>& list,
         d.special_level[i] = 0;
         d.special_details[i] = nullptr;
         d.alternate_details[i] = nullptr;
+        d.special_icons[i] = nullptr;
+        d.alternate_icons[i] = nullptr;
     }
     for (const og::data::ClasspackSpecialEntry& s : list) {
         // The parser guarantees 1..kMaxSpecialSlot, strictly increasing.
@@ -738,6 +740,10 @@ void install_specials(const std::vector<og::data::ClasspackSpecialEntry>& list,
         d.special_details[s.slot] = s.detail ? s.detail->c_str() : nullptr;
         d.alternate_details[s.slot] =
             s.alternate_detail ? s.alternate_detail->c_str() : nullptr;
+        // The ability icons (the picker's only; nullptr = the generic tile).
+        d.special_icons[s.slot] = s.icon.empty() ? nullptr : s.icon.c_str();
+        d.alternate_icons[s.slot] =
+            s.alternate_icon.empty() ? nullptr : s.alternate_icon.c_str();
     }
 }
 

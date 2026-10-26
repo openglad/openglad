@@ -24,6 +24,7 @@
 #include <openglad/interface/web_control_defaults.h>
 
 #include <array>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -54,6 +55,10 @@ inline constexpr const char* kCustomMappingName = "CUSTOM";
 // and key slots read back KEYCODE_UNKNOWN / FourDirection.
 int factory_default_key(int profile, int mode_index, int key_enum);
 int factory_default_mode(int profile);
+// The factory tables as they shipped before New Ability Select (slots 0..16;
+// KEYCODE_UNKNOWN past them and for out-of-range indices). Only the one-time
+// migration below reads them.
+int legacy_factory_key(int profile, int mode_index, int key_enum);
 
 // "WASD" / "ARROWS" / "IJKL" / "TFGH"; empty for an out-of-range profile.
 std::string factory_mapping_name(int profile);
@@ -94,15 +99,20 @@ struct MappingDefinition
 MappingDefinition factory_mapping(int profile, bool web_mode = og::input::kWebControlDefaults);
 
 // Saved entries only, in slot order. Factory layouts are implicit and absent
-// until somebody customizes one.
-std::vector<MappingDefinition> load_mapping_library(cfg_store& config);
+// until somebody customizes one. An entry saved before New Ability Select (no
+// mapping{K}_default_keys_version) is moved to the current tables on load by
+// migrate_seat_keys, as a seat of its own: a factory-named entry by that
+// profile, a CUSTOM one keeping every key (SPEC 2 from its change-special
+// key, SPEC 3 unbound).
+std::vector<MappingDefinition> load_mapping_library(
+    cfg_store& config, bool web_mode = og::input::kWebControlDefaults);
 // Library entry when one exists under this name, else the factory layout the
 // name denotes. An unknown, non-factory name resolves to the WASD factory
 // layout rather than an unplayable seat.
 MappingDefinition resolve_mapping(cfg_store& config, const std::string& name,
                                   bool web_mode = og::input::kWebControlDefaults);
-// Writes mapping{K}_name/_mode/_mode4_key{0..16}/_mode8_key{0..16}, reusing K
-// when an entry of the same name exists. False for an unnamed mapping or a
+// Writes mapping{K}_name/_mode/_default_keys_version/_mode4_key{0..18}/
+// _mode8_key{0..18}, reusing K when an entry of the same name exists. False for an unnamed mapping or a
 // full library.
 bool save_mapping(cfg_store& config, const MappingDefinition& mapping);
 // Drops a named entry's keys from the config; false when no such entry.
@@ -130,5 +140,58 @@ std::string current_mapping_name(int player_index, bool has_joystick = false,
 // entries are appended by the UI layer, which owns device enumeration.
 std::vector<std::string> available_mapping_names(cfg_store& config, int for_player,
                                                  int active_player_count);
+
+// --- One-time migration of saved keys (New Ability Select) -----------------
+// The factory tables changed (input_state.cpp: kDefault*DirKeys, with the
+// pre-change kLegacy*DirKeys kept beside them), and every returning player
+// has the old factory keys frozen in cfg. This is the ONE rule that moves
+// them, for the controls block (load_player_control_settings_from_cfg, all
+// four seats at once) and for each mapping-library entry (a seat of its own).
+//
+// Per seat and direction mode, against the WHOLE old table (the old and new
+// tables hand keys around inside a seat, so slot-by-slot would refuse a slot
+// because a later slot still holds the key it wants):
+//   1. Classify. A slot is FACTORY when its stored value is any old factory
+//      value for (profile, mode, slot): the native legacy table, and for web
+//      profile 0 also the browser scheme's value; or when it was never
+//      stored. Otherwise it is CUSTOM. SPEC 2/3 (slots 17/18) are factory
+//      unless they hold a stored key other than today's factory key. A bound
+//      change-special key (slot 11) other than the old factory one is the
+//      player's own SPEC 2 key: slot 17 becomes custom with that value.
+//   2. Assign, all together: every factory slot takes the current factory
+//      key (through browser_safe_default_key); every custom slot keeps its
+//      value.
+//   3. Collide. A factory slot whose new key is a custom key of this seat in
+//      this mode, or of any other seat in either mode, goes UNBOUND: the
+//      player's choice beats the factory's (the binding panel shows "--" and
+//      REMAP binds it). Custom-against-custom collisions are left as found.
+// Slots 11 and 14 come out unbound. A seat with profile -1 (a CUSTOM library
+// entry) has no factory slots: every stored key is kept, a never-stored
+// slot is unbound, slot 17 takes the change-special key when bound.
+inline constexpr int kDefaultKeysVersion = 1;
+// cfg controls/<this>; also mappings/mapping{K}_default_keys_version per entry.
+inline constexpr const char* kDefaultKeysVersionSetting = "default_keys_version";
+// A slot the saved keys never mention (or hold something that is not a key).
+inline constexpr int kKeyNotStored = std::numeric_limits<int>::min();
+
+struct SeatKeysToMigrate
+{
+    // Factory profile 0..3, or -1 when nothing in the seat is factory.
+    int profile = 0;
+    // Stored keys per mode index (kWebModeFourIndex / kWebModeEightIndex);
+    // kKeyNotStored where nothing was stored. Slots 11 and 14 are ignored.
+    std::array<KeyMap, 2> keys = [] {
+        std::array<KeyMap, 2> unset{};
+        for (KeyMap& map : unset)
+            map.fill(kKeyNotStored);
+        return unset;
+    }();
+    // The stored change-special key (slot 11) per mode index.
+    std::array<int, 2> change_special{kKeyNotStored, kKeyNotStored};
+};
+
+// Rewrites every seat's `keys` in place to the migrated maps (no
+// kKeyNotStored left). Pure: reads only the factory tables.
+void migrate_seat_keys(std::vector<SeatKeysToMigrate>& seats, bool web_mode);
 
 } // namespace og::input

@@ -15,10 +15,13 @@
 
 #include <algorithm>
 #include <array>
+#include <format>
 #include <string>
 #include <vector>
 
 #include <gtest/gtest.h>
+
+#include "test_key_tables.h"
 
 using og::input::assign_mapping_to_player;
 using og::input::available_mapping_names;
@@ -269,9 +272,9 @@ TEST(InputMappings, factory_mapping_applies_the_web_substitution_to_wasd_only)
 
     const MappingDefinition web = factory_mapping(0, /*web_mode=*/true);
     ASSERT_EQ(KEYCODE_z, web.mode4_keys[static_cast<std::size_t>(KEY_FIRE)]);
-    ASSERT_EQ(KEYCODE_x, web.mode4_keys[static_cast<std::size_t>(KEY_SPECIAL)]);
+    ASSERT_EQ(KEYCODE_1, web.mode4_keys[static_cast<std::size_t>(KEY_SPECIAL)]);
     ASSERT_EQ(KEYCODE_s, web.mode8_keys[static_cast<std::size_t>(KEY_FIRE)]);
-    ASSERT_EQ(KEYCODE_v, web.mode8_keys[static_cast<std::size_t>(KEY_YELL)]);
+    ASSERT_EQ(KEYCODE_TAB, web.mode8_keys[static_cast<std::size_t>(KEY_YELL)]);
     ASSERT_EQ(KEYCODE_UNKNOWN, web.mode8_keys[static_cast<std::size_t>(KEY_LOOKUP)]);
     // Movement is untouched, so the name survives the substitution.
     ASSERT_EQ("WASD", derive_mapping_name(web.mode4_keys));
@@ -507,7 +510,7 @@ TEST(InputMappings, factory_identical_seats_are_not_written_to_the_library)
     ASSERT_EQ("ARROWS", library[0].name);
     ASSERT_EQ(KEYCODE_9, library[0].mode4_keys[static_cast<std::size_t>(KEY_FIRE)]);
     // Only the active mode's map moved; the other one is still factory.
-    ASSERT_EQ(KEYCODE_PERIOD, library[0].mode8_keys[static_cast<std::size_t>(KEY_FIRE)]);
+    ASSERT_EQ(KEYCODE_RSHIFT, library[0].mode8_keys[static_cast<std::size_t>(KEY_FIRE)]);
 
     // RESET undoes the customization — and drops the stale entry, so cycling
     // back to ARROWS does not resurrect it.
@@ -642,4 +645,379 @@ TEST(InputMappings, cycler_keeps_your_own_name_even_when_a_seat_mate_shares_it)
     const std::vector<std::string> options = available_mapping_names(config, 0, 2);
     ASSERT_TRUE(has_name(options, "WASD"));
     ASSERT_EQ((std::vector<std::string>{"WASD", "ARROWS", "IJKL", "TFGH"}), options);
+}
+
+// --- One-time migration of saved keys (migrate_seat_keys) -----------------
+// Pure: every input is a literal old table (tests/test_key_tables.h) and
+// every expectation a literal new one.
+
+namespace
+{
+
+using og::input::kKeyNotStored;
+using og::input::migrate_seat_keys;
+using og::input::SeatKeysToMigrate;
+namespace tk = og::test_keys;
+
+constexpr std::size_t sz(int k)
+{
+    return static_cast<std::size_t>(k);
+}
+
+// The keys a seat of `profile` had in cfg after any boot of the old game:
+// every old factory value (the browser scheme's for web profile 0), the
+// change-special key in slot 11 read straight from cfg, nothing in 17/18.
+SeatKeysToMigrate pristine_old_seat(int profile, bool web)
+{
+    SeatKeysToMigrate seat;
+    seat.profile = profile;
+    for (int m = 0; m < 2; ++m)
+    {
+        const bool eight = (m == kEight);
+        for (int k = 0; k < 17; ++k)
+        {
+            const int old = (web && profile == 0)
+                ? tk::old_web_key(eight, k)
+                : (eight ? tk::kOldEightDir[profile][k] : tk::kOldFourDir[profile][k]);
+            if (k == KEY_SPECIAL_SWITCH)
+                seat.change_special[sz(m)] = old;
+            else if (k != KEY_PREFS)
+                seat.keys[sz(m)][sz(k)] = old;
+        }
+    }
+    return seat;
+}
+
+std::vector<SeatKeysToMigrate> pristine_old_cfg(bool web)
+{
+    std::vector<SeatKeysToMigrate> seats;
+    for (int p = 0; p < 4; ++p)
+        seats.push_back(pristine_old_seat(p, web));
+    return seats;
+}
+
+int key_of(const std::vector<SeatKeysToMigrate>& seats, int p, int m, int k)
+{
+    return seats[sz(p)].keys[sz(m)][sz(k)];
+}
+
+void expect_new_tables(const std::vector<SeatKeysToMigrate>& seats, bool web)
+{
+    for (int p = 0; p < 4; ++p)
+        for (int m = 0; m < 2; ++m)
+            for (int k = 0; k < NUM_KEYS; ++k)
+                EXPECT_EQ(tk::new_factory_key(p, m == kEight, k, web), key_of(seats, p, m, k))
+                    << "P" << (p + 1) << (m == kEight ? " 8-dir" : " 4-dir") << " slot " << k
+                    << (web ? " (web)" : " (native)");
+}
+
+} // namespace
+
+TEST(MigrateSeatKeys, pristine_four_player_cfg_reaches_the_new_tables_in_both_modes)
+{
+    for (const bool web : {false, true})
+    {
+        std::vector<SeatKeysToMigrate> seats = pristine_old_cfg(web);
+        migrate_seat_keys(seats, web);
+        expect_new_tables(seats, web);
+    }
+}
+
+TEST(MigrateSeatKeys, factory_slots_move_together_when_the_tables_hand_keys_around)
+{
+    // The old and new tables hand keys around inside one seat: P2's RSHIFT
+    // goes SHIFTER -> FIRE, P4's 'b' LOOK-UP -> SHIFTER, P4's 'g' 8-dir YELL
+    // -> 8-dir FIRE. A slot-by-slot rule refuses the move because the later
+    // slot still holds the key; the whole-table rule must not.
+    std::vector<SeatKeysToMigrate> seats = pristine_old_cfg(false);
+    ASSERT_EQ(KEYCODE_RSHIFT, key_of(seats, 1, kFour, KEY_SHIFTER));
+    ASSERT_EQ(KEYCODE_b, key_of(seats, 3, kFour, KEY_LOOKUP));
+    ASSERT_EQ(KEYCODE_g, key_of(seats, 3, kEight, KEY_YELL));
+    migrate_seat_keys(seats, false);
+    EXPECT_EQ(KEYCODE_RSHIFT, key_of(seats, 1, kFour, KEY_FIRE));
+    EXPECT_EQ(KEYCODE_SLASH, key_of(seats, 1, kFour, KEY_SHIFTER));
+    EXPECT_EQ(KEYCODE_b, key_of(seats, 3, kFour, KEY_SHIFTER));
+    EXPECT_EQ(KEYCODE_r, key_of(seats, 3, kFour, KEY_LOOKUP));
+    EXPECT_EQ(KEYCODE_g, key_of(seats, 3, kEight, KEY_FIRE));
+    EXPECT_EQ(KEYCODE_7, key_of(seats, 3, kEight, KEY_YELL));
+
+    // And no seat's result depends on the others when nobody chose a key.
+    for (int p = 0; p < 4; ++p)
+    {
+        std::vector<SeatKeysToMigrate> alone{pristine_old_seat(p, false)};
+        migrate_seat_keys(alone, false);
+        EXPECT_EQ(seats[sz(p)].keys, alone[0].keys) << "P" << (p + 1);
+    }
+}
+
+TEST(MigrateSeatKeys, never_stored_slots_are_factory_and_reserved_slots_come_out_unbound)
+{
+    // A brand-new cfg: nothing stored at all.
+    std::vector<SeatKeysToMigrate> seats(4);
+    for (int p = 0; p < 4; ++p)
+        seats[sz(p)].profile = p;
+    // A stale value in a reserved slot is dropped, whatever it was.
+    seats[0].keys[sz(kFour)][sz(KEY_PREFS)] = KEYCODE_1;
+    seats[0].keys[sz(kFour)][sz(KEY_SPECIAL_SWITCH)] = KEYCODE_TAB;
+    migrate_seat_keys(seats, false);
+    expect_new_tables(seats, false);
+}
+
+TEST(MigrateSeatKeys, a_custom_key_beats_the_factory_key_it_collides_with_same_seat)
+{
+    // P1 bound YELL to '2' itself: it keeps it, and SPEC 2 (factory '2')
+    // goes unbound in that map instead of taking the player's key.
+    std::vector<SeatKeysToMigrate> seats = pristine_old_cfg(false);
+    seats[0].keys[sz(kFour)][sz(KEY_YELL)] = KEYCODE_2;
+    migrate_seat_keys(seats, false);
+    EXPECT_EQ(KEYCODE_2, key_of(seats, 0, kFour, KEY_YELL));
+    EXPECT_EQ(KEYCODE_UNKNOWN, key_of(seats, 0, kFour, KEY_SPEC2));
+    // The 8-direction map is never active with the 4-direction one: its
+    // SPEC 2 keeps the factory '2'.
+    EXPECT_EQ(KEYCODE_2, key_of(seats, 0, kEight, KEY_SPEC2));
+    // Everything else still reached the new table.
+    EXPECT_EQ(KEYCODE_1, key_of(seats, 0, kFour, KEY_SPECIAL));
+    EXPECT_EQ(KEYCODE_3, key_of(seats, 0, kFour, KEY_SPEC3));
+    EXPECT_EQ(KEYCODE_q, key_of(seats, 0, kFour, KEY_LOOKUP));
+}
+
+TEST(MigrateSeatKeys, a_custom_key_beats_a_factory_key_across_seats_in_either_mode)
+{
+    // P2 chose '8' for FIRE in its 8-direction map only: P3's SPEC 1 is '8'
+    // in BOTH of P3's maps, and both go unbound (any pair of modes can be
+    // live on a shared keyboard). P2 keeps its key.
+    std::vector<SeatKeysToMigrate> seats = pristine_old_cfg(false);
+    seats[1].keys[sz(kEight)][sz(KEY_FIRE)] = KEYCODE_8;
+    migrate_seat_keys(seats, false);
+    EXPECT_EQ(KEYCODE_8, key_of(seats, 1, kEight, KEY_FIRE));
+    EXPECT_EQ(KEYCODE_RSHIFT, key_of(seats, 1, kFour, KEY_FIRE));
+    EXPECT_EQ(KEYCODE_UNKNOWN, key_of(seats, 2, kFour, KEY_SPECIAL));
+    EXPECT_EQ(KEYCODE_UNKNOWN, key_of(seats, 2, kEight, KEY_SPECIAL));
+    EXPECT_EQ(KEYCODE_9, key_of(seats, 2, kFour, KEY_SPEC2));
+}
+
+TEST(MigrateSeatKeys, custom_against_custom_is_left_as_found)
+{
+    // Two players who chose the same key before the migration keep it; the
+    // migration only ever yields FACTORY slots.
+    std::vector<SeatKeysToMigrate> seats = pristine_old_cfg(false);
+    seats[0].keys[sz(kFour)][sz(KEY_CHEAT)] = KEYCODE_F12;
+    seats[1].keys[sz(kFour)][sz(KEY_CHEAT)] = KEYCODE_F12;
+    migrate_seat_keys(seats, false);
+    EXPECT_EQ(KEYCODE_F12, key_of(seats, 0, kFour, KEY_CHEAT));
+    EXPECT_EQ(KEYCODE_F12, key_of(seats, 1, kFour, KEY_CHEAT));
+}
+
+TEST(MigrateSeatKeys, custom_change_special_read_from_cfg_becomes_spec2)
+{
+    std::vector<SeatKeysToMigrate> seats = pristine_old_cfg(false);
+    // P1 had moved change special to F9 in the 4-direction map; its
+    // 8-direction map kept the factory Tab.
+    seats[0].change_special[sz(kFour)] = KEYCODE_F9;
+    // P3 had cleared change special: no custom key, so SPEC 2 is factory.
+    seats[2].change_special = {KEYCODE_UNKNOWN, KEYCODE_UNKNOWN};
+    migrate_seat_keys(seats, false);
+    EXPECT_EQ(KEYCODE_F9, key_of(seats, 0, kFour, KEY_SPEC2));
+    EXPECT_EQ(KEYCODE_2, key_of(seats, 0, kEight, KEY_SPEC2));
+    EXPECT_EQ(KEYCODE_UNKNOWN, key_of(seats, 0, kFour, KEY_SPECIAL_SWITCH));
+    EXPECT_EQ(KEYCODE_9, key_of(seats, 2, kFour, KEY_SPEC2));
+
+    // A custom change-special key is a custom key like any other: P2's
+    // factory SPEC 1 '[' yields to P1's change-special '['.
+    seats = pristine_old_cfg(false);
+    seats[0].change_special[sz(kFour)] = KEYCODE_LEFTBRACKET;
+    migrate_seat_keys(seats, false);
+    EXPECT_EQ(KEYCODE_LEFTBRACKET, key_of(seats, 0, kFour, KEY_SPEC2));
+    EXPECT_EQ(KEYCODE_UNKNOWN, key_of(seats, 1, kFour, KEY_SPECIAL));
+    EXPECT_EQ(KEYCODE_UNKNOWN, key_of(seats, 1, kEight, KEY_SPECIAL));
+}
+
+TEST(MigrateSeatKeys, a_spec_key_already_stored_is_kept)
+{
+    // A cfg that already carries SPEC 2/3 (the marker was lost after a
+    // migrated boot): the player's own SPEC key stays, and beats the old
+    // change-special key; the factory value is simply factory.
+    std::vector<SeatKeysToMigrate> seats = pristine_old_cfg(false);
+    seats[0].keys[sz(kFour)][sz(KEY_SPEC2)] = KEYCODE_F10;
+    seats[0].change_special[sz(kFour)] = KEYCODE_F9;
+    seats[0].keys[sz(kFour)][sz(KEY_SPEC3)] = KEYCODE_3;
+    migrate_seat_keys(seats, false);
+    EXPECT_EQ(KEYCODE_F10, key_of(seats, 0, kFour, KEY_SPEC2));
+    EXPECT_EQ(KEYCODE_3, key_of(seats, 0, kFour, KEY_SPEC3));
+}
+
+TEST(MigrateSeatKeys, web_pre_v1_and_v1_values_are_both_factory)
+{
+    // Profile 0 on web: the native values (before the browser scheme, the
+    // "pre-v1" cfg) and the browser scheme's values (v1) both move.
+    for (const bool v1 : {false, true})
+    {
+        std::vector<SeatKeysToMigrate> seats{pristine_old_seat(0, /*web=*/v1)};
+        migrate_seat_keys(seats, /*web_mode=*/true);
+        for (int m = 0; m < 2; ++m)
+            for (int k = 0; k < NUM_KEYS; ++k)
+                EXPECT_EQ(tk::new_factory_key(0, m == kEight, k, true), key_of(seats, 0, m, k))
+                    << (v1 ? "v1" : "pre-v1") << " mode " << m << " slot " << k;
+    }
+
+    // Natively the browser scheme's x is nobody's factory key: kept.
+    std::vector<SeatKeysToMigrate> seats{pristine_old_seat(0, false)};
+    seats[0].keys[sz(kFour)][sz(KEY_SPECIAL)] = KEYCODE_x;
+    migrate_seat_keys(seats, false);
+    EXPECT_EQ(KEYCODE_x, key_of(seats, 0, kFour, KEY_SPECIAL));
+    // And on web the browser values are factory only for profile 0.
+    seats = {pristine_old_seat(1, false)};
+    seats[0].keys[sz(kFour)][sz(KEY_FIRE)] = KEYCODE_z;
+    migrate_seat_keys(seats, true);
+    EXPECT_EQ(KEYCODE_z, key_of(seats, 0, kFour, KEY_FIRE));
+}
+
+TEST(MigrateSeatKeys, custom_entry_loads_17_from_11_and_18_unbound)
+{
+    // profile -1: a CUSTOM library entry, nothing in it is factory.
+    SeatKeysToMigrate entry;
+    entry.profile = -1;
+    entry.keys[sz(kFour)][sz(KEY_UP)] = KEYCODE_w;
+    entry.keys[sz(kFour)][sz(KEY_SPECIAL)] = KEYCODE_LALT;
+    entry.change_special = {KEYCODE_TAB, KEYCODE_UNKNOWN};
+    std::vector<SeatKeysToMigrate> seats{entry};
+    migrate_seat_keys(seats, false);
+    EXPECT_EQ(KEYCODE_w, key_of(seats, 0, kFour, KEY_UP));
+    EXPECT_EQ(KEYCODE_LALT, key_of(seats, 0, kFour, KEY_SPECIAL))
+        << "an old factory value is still the entry's own choice";
+    EXPECT_EQ(KEYCODE_TAB, key_of(seats, 0, kFour, KEY_SPEC2));
+    EXPECT_EQ(KEYCODE_UNKNOWN, key_of(seats, 0, kFour, KEY_SPEC3));
+    EXPECT_EQ(KEYCODE_UNKNOWN, key_of(seats, 0, kEight, KEY_SPEC2));
+    EXPECT_EQ(KEYCODE_UNKNOWN, key_of(seats, 0, kFour, KEY_FIRE)) << "never stored: unbound";
+    EXPECT_EQ(KEYCODE_UNKNOWN, key_of(seats, 0, kFour, KEY_SPECIAL_SWITCH));
+}
+
+TEST(MigrateSeatKeys, legacy_reader_is_the_d758bcb1_table)
+{
+    for (int p = 0; p < 4; ++p)
+        for (int k = 0; k < 17; ++k)
+        {
+            EXPECT_EQ(tk::kOldFourDir[p][k], og::input::legacy_factory_key(p, kFour, k));
+            EXPECT_EQ(tk::kOldEightDir[p][k], og::input::legacy_factory_key(p, kEight, k));
+        }
+    EXPECT_EQ(KEYCODE_UNKNOWN, og::input::legacy_factory_key(0, kFour, KEY_SPEC2));
+    EXPECT_EQ(KEYCODE_UNKNOWN, og::input::legacy_factory_key(-1, kFour, KEY_UP));
+    EXPECT_EQ(KEYCODE_UNKNOWN, og::input::legacy_factory_key(4, kFour, KEY_UP));
+    EXPECT_EQ(KEYCODE_UNKNOWN, og::input::legacy_factory_key(0, kFour, -1));
+}
+
+// --- The library migrates its pre-New Ability Select entries --------------
+
+namespace
+{
+
+// A library entry as the old game wrote it: slots 0..16 and no version.
+void write_old_entry(cfg_store& config, int slot, const std::string& name,
+                     const int (&four)[17], const int (&eight)[17])
+{
+    config.apply_setting("mappings", std::format("mapping{}_name", slot), name);
+    config.apply_setting("mappings", std::format("mapping{}_mode", slot), "4");
+    for (int k = 0; k < 17; ++k)
+    {
+        config.apply_setting("mappings", std::format("mapping{}_mode4_key{}", slot, k),
+                             std::to_string(four[k]));
+        config.apply_setting("mappings", std::format("mapping{}_mode8_key{}", slot, k),
+                             std::to_string(eight[k]));
+    }
+}
+
+} // namespace
+
+TEST(InputMappings, library_entry_from_before_loads_spec2_3_at_factory)
+{
+    // A customized WASD (FIRE on F9) saved by the old game: the custom key
+    // stays, every factory key moves, SPEC 2/3 arrive at their factory keys.
+    int four[17];
+    int eight[17];
+    for (int k = 0; k < 17; ++k)
+    {
+        four[k] = tk::kOldFourDir[0][k];
+        eight[k] = tk::kOldEightDir[0][k];
+    }
+    four[KEY_FIRE] = KEYCODE_F9;
+    cfg_store config;
+    write_old_entry(config, 0, "WASD", four, eight);
+
+    const std::vector<MappingDefinition> library = load_mapping_library(config, false);
+    ASSERT_EQ(1u, library.size());
+    for (int k = 0; k < NUM_KEYS; ++k)
+    {
+        const int expected4 = (k == KEY_FIRE) ? KEYCODE_F9 : tk::kNewFourDir[0][k];
+        EXPECT_EQ(expected4, library[0].mode4_keys[sz(k)]) << "4-dir slot " << k;
+        EXPECT_EQ(tk::kNewEightDir[0][k], library[0].mode8_keys[sz(k)]) << "8-dir slot " << k;
+    }
+    // The web flavour of the same entry reaches the web table.
+    const std::vector<MappingDefinition> web = load_mapping_library(config, true);
+    EXPECT_EQ(KEYCODE_TAB, web[0].mode8_keys[sz(KEY_YELL)]);
+    EXPECT_EQ(KEYCODE_F9, web[0].mode4_keys[sz(KEY_FIRE)]);
+}
+
+TEST(InputMappings, library_entries_migrate_by_factory_name)
+{
+    // The profile is the entry's NAME: an "IJKL" entry migrates against
+    // P3's old table, and a CUSTOM entry keeps every key it has, with SPEC 2
+    // from its change-special key and SPEC 3 unbound.
+    int four[17];
+    int eight[17];
+    for (int k = 0; k < 17; ++k)
+    {
+        four[k] = tk::kOldFourDir[2][k];
+        eight[k] = tk::kOldEightDir[2][k];
+    }
+    cfg_store config;
+    write_old_entry(config, 0, "IJKL", four, eight);
+    write_old_entry(config, 1, "ZXCV", four, eight);
+
+    const std::vector<MappingDefinition> library = load_mapping_library(config, false);
+    ASSERT_EQ(2u, library.size());
+    for (int k = 0; k < NUM_KEYS; ++k)
+    {
+        EXPECT_EQ(tk::kNewFourDir[2][k], library[0].mode4_keys[sz(k)]) << "IJKL 4-dir slot " << k;
+        EXPECT_EQ(tk::kNewEightDir[2][k], library[0].mode8_keys[sz(k)]) << "IJKL 8-dir slot " << k;
+    }
+    for (int k = 0; k < 17; ++k)
+    {
+        if (k == KEY_SPECIAL_SWITCH || k == KEY_PREFS)
+            continue;
+        EXPECT_EQ(tk::kOldFourDir[2][k], library[1].mode4_keys[sz(k)]) << "custom slot " << k;
+    }
+    EXPECT_EQ(KEYCODE_9, library[1].mode4_keys[sz(KEY_SPEC2)]);
+    EXPECT_EQ(KEYCODE_UNKNOWN, library[1].mode4_keys[sz(KEY_SPEC3)]);
+    EXPECT_EQ(KEYCODE_UNKNOWN, library[1].mode4_keys[sz(KEY_SPECIAL_SWITCH)]);
+}
+
+TEST(InputMappings, saved_entries_are_stamped_and_never_migrated_again)
+{
+    // An entry saved now carries mapping{K}_keys_version, so a deliberate old
+    // factory key in it (LAlt on SPEC 1) survives every later load, and the
+    // change-special slot is dropped on load like slot 14.
+    cfg_store config;
+    MappingDefinition mapping = factory_mapping(0, false);
+    mapping.mode4_keys[sz(KEY_SPECIAL)] = KEYCODE_LALT;
+    mapping.mode4_keys[sz(KEY_SPECIAL_SWITCH)] = KEYCODE_TAB;
+    ASSERT_TRUE(save_mapping(config, mapping));
+    EXPECT_EQ(std::to_string(og::input::kDefaultKeysVersion),
+              config.get_setting("mappings", "mapping0_default_keys_version"));
+
+    const std::vector<MappingDefinition> library = load_mapping_library(config, false);
+    ASSERT_EQ(1u, library.size());
+    EXPECT_EQ(KEYCODE_LALT, library[0].mode4_keys[sz(KEY_SPECIAL)]);
+    EXPECT_EQ(KEYCODE_UNKNOWN, library[0].mode4_keys[sz(KEY_SPECIAL_SWITCH)]);
+    EXPECT_EQ(KEYCODE_2, library[0].mode4_keys[sz(KEY_SPEC2)]);
+
+    // Erasing drops the stamp with the rest of the entry.
+    ASSERT_TRUE(erase_mapping(config, "WASD"));
+    EXPECT_TRUE(config.data["mappings"].empty());
+}
+
+// The web touch overlay flag starts down: only openglad_web_touch_enable
+// raises it, so native, text and curses clients never hide seat 0's hotbar.
+TEST(InputHardwareState, touch_overlay_starts_down)
+{
+    EXPECT_FALSE(InputHardwareState{}.touch_overlay_active);
 }

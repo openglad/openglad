@@ -58,6 +58,7 @@
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/save_data.h>
 
+#include "test_ability_select_scope.h"
 #include "test_live_game.h"
 #include "test_save_state_guard.h"
 
@@ -456,6 +457,11 @@ void play(const Scene& sc, Result& out)
     for (const auto& [key, value] : kShippedEffects)
         cfg.apply_setting("effects", key, value);
     cfg.apply_setting("effects", "mini_hp_bar", "on");
+    // A scene arms its special with set_current_special and casts it with the
+    // SPECIAL key (SHIFTER for the alternate): the key model of New Ability
+    // Select OFF. With the setting on, SPECIAL is SPEC 1 and casts whatever
+    // the hero's belt holds in slot 1, not the special the scene armed.
+    ScopedAbilitySelect classic_keys;
     live_game::force_weather(WeatherKind::None);
 
     Run run;
@@ -3175,7 +3181,7 @@ void play_pair(const Pair& pair, PairResult& out)
 
 // ---- the scenes ------------------------------------------------------------
 
-// The 21 scenes, each with both sides' tells, in the order the tests play
+// The 22 scenes, each with both sides' tells, in the order the tests play
 // them.
 std::vector<Pair> pairs()
 {
@@ -4369,6 +4375,42 @@ std::vector<Pair> pairs()
         all.push_back(c);
     }
 
+    // S. The hero throws once and then spins at a foe beside him. A hero's
+    // fire delay is fractional (dexterity / 47 off the class's delay), so
+    // the throw leaves busy a fraction below zero for good; the classic
+    // WHIRLWIND refuses SPECIAL BUSY while busy is not zero.
+    {
+        Pair c;
+        c.name = "s_busy_after_a_throw";
+        c.scene.family = FAMILY_SOLDIER;
+        c.scene.slot = 3;
+        c.scene.level = 7;
+        c.scene.frames = 100;
+        c.scene.stage = [](Run& run) {
+            stop_mp_regen(run.hero());
+            add_posted(run, "foe", FAMILY_SOLDIER, 1, 30, 0, 1);
+        };
+        c.scene.before_tick = [](Run& run, int) { hold_fire(run.actor("foe")); };
+        c.scene.keys = [](Run&, int f) {
+            Keys k = press_at(f, 50);
+            k.left = tap(f, 10);   // a step gives the throw its heading
+            k.fire = tap(f, 20);
+            return k;
+        };
+        const Tell rests_below_zero = {"the throw leaves busy a fraction below zero", [](Run& f) {
+            walker* h = f.hero();
+            return f.frame == 49 && h != nullptr && h->busy() < 0.0f && h->busy() > -1.0f; }};
+        const Tell spins = {"the spin shoves the foe away", [](Run& f) {
+            return f.frame >= 50 && forced_walk(f.actor("foe")); }};
+        c.off_shows = {rests_below_zero, says("SPECIAL BUSY")};
+        c.off_never = {spins};
+        c.on_shows = {rests_below_zero, spins};
+        c.on_never = {says("SPECIAL BUSY")};
+        c.fork = 50;
+        c.still_frame = 56;
+        all.push_back(c);
+    }
+
     return all;
 }
 
@@ -4418,6 +4460,7 @@ GAMEPLAY_FIXES_SCENE(howl_at_nobody_is_refused_and_starts_no_rest, "k4_howl_nobo
 GAMEPLAY_FIXES_SCENE(a_mage_bot_slot_roll_of_five_casts_heartburst, "l_slot_roll")
 GAMEPLAY_FIXES_SCENE(a_driven_hero_resists_a_bot_charm, "m1_hero_resists_charm")
 GAMEPLAY_FIXES_SCENE(a_seat_never_lands_on_a_charmed_walker, "m2_seat_skips_charmed")
+GAMEPLAY_FIXES_SCENE(a_hero_that_threw_can_still_whirlwind, "s_busy_after_a_throw")
 
 TEST_F(GameplayFixes, the_tests_name_every_scene_in_order)
 {

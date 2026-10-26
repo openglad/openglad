@@ -177,6 +177,16 @@
             -webkit-user-select: none;
             user-select: none;
             -webkit-touch-callout: none;
+            /* One HUD pixel in CSS px: the gameplay HUD canvas is 320x200
+               grown along one axis to the window's aspect
+               (compute_gameplay_ui_canvas_dims), stretched over the whole
+               viewport. The radar's block is the HUD's bottom-right
+               64x48 (radar_block_for_pane: 60x44 at most, 4 in from the
+               edges); the 1 / 2 / 3 buttons stay left of it. */
+            --tc-hud-px: min(calc(100vw / 320), calc(100vh / 200));
+            --tc-radar-clear: calc(var(--tc-hud-px) * 64 + 6px);
+            --tc-spec-right: max(calc(max(12px, env(safe-area-inset-right, 0px)) + 84px),
+                                 var(--tc-radar-clear));
         }
 
         #touch-controls.tc-active {
@@ -219,6 +229,72 @@
         .tc-control.tc-latched {
             border-color: #ff0;
             color: #ff0;
+        }
+
+        /* New Ability Select (issue #384): the 1 / 2 / 3 buttons are seat
+           0's hotbar slots. The engine hands over each slot's picture (the
+           HUD's own pixels, the grey copy when locked) and its state; the
+           page draws the 16x16 picture at 3x, pixel-sharp, on a dark slot
+           with the key as a corner badge. A rounded square, not a circle:
+           the 48 px picture's corners would cross a 60 px ring. Short is a
+           red edge, a held key a white one (never on a locked, disabled or
+           empty slot); a locked or disabled slot shows the grey copy of its
+           picture, and an empty slot is dimmed. With
+           the setting off the canvas hides and the badge reads SPC / SP+. */
+        .tc-control .tc-icon-px {
+            display: none;
+            pointer-events: none;
+        }
+
+        .tc-control.tc-icon {
+            border-radius: 12px;
+            opacity: 0.6;
+            background: rgba(40, 40, 40, 0.75);
+        }
+
+        .tc-control.tc-icon .tc-icon-px {
+            display: block;
+            width: 48px;
+            height: 48px;
+            image-rendering: crisp-edges;
+            image-rendering: pixelated;
+        }
+
+        .tc-control.tc-icon .tc-key {
+            position: absolute;
+            top: 3px;
+            left: 5px;
+            font: bold 11px Arial, sans-serif;
+            text-shadow: 1px 1px 0 #000;
+            pointer-events: none;
+        }
+
+        /* Only an empty slot is dimmed further. A locked or disabled
+           slot already draws the grey copy of its picture; dimming that
+           too made it vanish on light stone floors. */
+        .tc-control.tc-icon.tc-empty {
+            opacity: 0.42;
+        }
+
+        .tc-control.tc-icon.tc-short {
+            border-color: #ff4040;
+            box-shadow: 0 0 0 1px #ff4040;
+        }
+
+        .tc-control.tc-icon.tc-pressed:not(.tc-locked):not(.tc-disabled):not(.tc-empty) {
+            opacity: 0.8;
+            border-color: #fff;
+            box-shadow: 0 0 0 1px #fff;
+        }
+
+        .tc-control.tc-icon.tc-empty .tc-icon-px {
+            display: none;
+        }
+
+        /* An empty slot's key sits centred, in the same face as the badge
+           on a filled slot, so the three read as one control. */
+        .tc-control.tc-icon.tc-empty .tc-key {
+            position: static;
         }
 
         #tc-stick-zone {
@@ -266,8 +342,28 @@
         #tc-special {
             width: 60px;
             height: 60px;
-            right: calc(max(12px, env(safe-area-inset-right, 0px)) + 84px);
+            right: var(--tc-spec-right);
             bottom: calc(max(12px, env(safe-area-inset-bottom, 0px)) + 44px);
+        }
+
+        /* New Ability Select: SPEC 2 and SPEC 3 sit in a row left of SPEC 1
+           (68 px apart), the row clear of the radar (--tc-spec-right: a
+           phone keeps the classic spot, a tablet's larger radar pushes the
+           row left). With the setting off SPEC 2 is the change-special key
+           (SP+) and SPEC 3 is hidden. */
+        #tc-spec2,
+        #tc-spec3 {
+            width: 60px;
+            height: 60px;
+            bottom: calc(max(12px, env(safe-area-inset-bottom, 0px)) + 44px);
+        }
+
+        #tc-spec2 {
+            right: calc(var(--tc-spec-right) + 68px);
+        }
+
+        #tc-spec3 {
+            right: calc(var(--tc-spec-right) + 136px);
         }
 
         #tc-row {
@@ -345,8 +441,24 @@
             }
 
             #tc-special {
-                right: calc(max(12px, env(safe-area-inset-right, 0px)) + 82px);
+                right: max(calc(max(12px, env(safe-area-inset-right, 0px)) + 82px),
+                           var(--tc-radar-clear));
                 bottom: calc(max(12px, env(safe-area-inset-bottom, 0px)) + 30px);
+            }
+
+            /* Portrait: SPEC 2 and SPEC 3 stack above SPEC 1. */
+            #tc-spec2,
+            #tc-spec3 {
+                right: max(calc(max(12px, env(safe-area-inset-right, 0px)) + 82px),
+                           var(--tc-radar-clear));
+            }
+
+            #tc-spec2 {
+                bottom: calc(max(12px, env(safe-area-inset-bottom, 0px)) + 98px);
+            }
+
+            #tc-spec3 {
+                bottom: calc(max(12px, env(safe-area-inset-bottom, 0px)) + 166px);
             }
 
             #tc-row {
@@ -442,14 +554,15 @@
                     <div id="tc-stick-thumb"></div>
                 </div>
             </div>
-            <div id="tc-special" class="tc-control">SPC</div>
+            <div id="tc-special" class="tc-control"><canvas class="tc-icon-px" width="16" height="16"></canvas><span class="tc-key">1</span></div>
+            <div id="tc-spec2" class="tc-control"><canvas class="tc-icon-px" width="16" height="16"></canvas><span class="tc-key">2</span></div>
+            <div id="tc-spec3" class="tc-control"><canvas class="tc-icon-px" width="16" height="16"></canvas><span class="tc-key">3</span></div>
             <div id="tc-fire" class="tc-control">FIRE</div>
             <div id="tc-row">
                 <div id="tc-look" class="tc-control">LOOK</div>
                 <div id="tc-switch" class="tc-control">CHAR</div>
                 <div id="tc-yell" class="tc-control">YELL</div>
                 <div id="tc-alt" class="tc-control">ALT</div>
-                <div id="tc-cycle" class="tc-control">SP+</div>
             </div>
         </div>
         <div id="tc-back" class="tc-control hidden">BACK</div>
@@ -475,8 +588,8 @@
              warning; give them the one-sentence version while loading. -->
         <div id="firefox-ctrl-note" hidden>
             Firefox reserves Ctrl+W (closes this tab), so the browser
-            defaults use Z to attack and X for specials &mdash; avoid
-            rebinding attack to Ctrl.
+            defaults use Z to attack and 1 2 3 for your abilities &mdash;
+            avoid rebinding attack to Ctrl with the player screen's REMAP.
         </div>
     </div>
 
@@ -974,8 +1087,8 @@
             var KEY = {
                 UP: 0, UP_RIGHT: 1, RIGHT: 2, DOWN_RIGHT: 3, DOWN: 4,
                 DOWN_LEFT: 5, LEFT: 6, UP_LEFT: 7, FIRE: 8, SPECIAL: 9,
-                SWITCH: 10, SPECIAL_SWITCH: 11, YELL: 12, SHIFTER: 13,
-                LOOKUP: 16
+                SWITCH: 10, YELL: 12, SHIFTER: 13,
+                LOOKUP: 16, SPEC2: 17, SPEC3: 18
             };
             var SDLK_RETURN = 13;
             var SDLK_BACKSPACE = 8;
@@ -988,6 +1101,18 @@
             var stickZone = document.getElementById('tc-stick-zone');
             var stickBase = document.getElementById('tc-stick-base');
             var stickThumb = document.getElementById('tc-stick-thumb');
+            var spec1Button = document.getElementById('tc-special');
+            var spec2Button = document.getElementById('tc-spec2');
+            var spec3Button = document.getElementById('tc-spec3');
+            var abilitySelectShown = null;
+            var specButtons = [spec1Button, spec2Button, spec3Button];
+            // The engine's last 'openglad-belt' state (web_touch_bridge.cpp)
+            // and the pictures it has sent, by pictureKey (each crosses
+            // once). Mirrored for the e2e specs.
+            var beltState = null;
+            var beltPictures = {};
+            window.__opengladBeltPictures = beltPictures;
+            var BELT_STATES = ['short', 'locked', 'disabled', 'empty'];
 
             var active = false;
             var enableAcked = false;
@@ -1461,6 +1586,61 @@
                 });
             })();
 
+            // --- SPEC buttons: labels, pictures, states -------------------
+            // One rule for the three buttons, from the two engine inputs:
+            // the setting (abilitySelectShown, polled) and seat 0's slots
+            // (beltState, pushed). textContent is never assigned on a button:
+            // the .tc-key span is the label, so the picture canvas survives
+            // every relabel. tc-pressed is bindHeldButton's alone.
+            function renderSpecButtons() {
+                var settingOff = abilitySelectShown === false;
+                var iconMode = !settingOff && !!(beltState && beltState.beltHud);
+                for (var i = 0; i < specButtons.length; i++) {
+                    var btn = specButtons[i];
+                    var span = btn.querySelector('.tc-key');
+                    var canvas = btn.querySelector('.tc-icon-px');
+                    var cell = iconMode ? beltState.cells[i] : null;
+                    btn.classList.toggle('tc-icon', iconMode);
+                    for (var k = 0; k < BELT_STATES.length; k++) {
+                        btn.classList.toggle('tc-' + BELT_STATES[k],
+                            !!cell && cell.state === BELT_STATES[k]);
+                    }
+                    var label = settingOff ? ['SPC', 'SP+', '3'][i]
+                        : (cell ? cell.label : String(i + 1));
+                    if (span && span.textContent !== label) {
+                        span.textContent = label;
+                    }
+                    var key = (cell && cell.pictureKey) || '';
+                    if (canvas && canvas.dataset.pictureKey !== key) {
+                        var ctx = canvas.getContext('2d');
+                        ctx.clearRect(0, 0, 16, 16);
+                        var px = key ? beltPictures[key] : null;
+                        if (px) {
+                            ctx.putImageData(new ImageData(
+                                new Uint8ClampedArray(px), 16, 16), 0, 0);
+                        }
+                        canvas.dataset.pictureKey = key;
+                    }
+                }
+                spec3Button.classList.toggle('hidden', settingOff);
+            }
+
+            // Pushed by the engine when seat 0's slots change (an ALT latch
+            // swaps them on the next frame), not polled.
+            window.addEventListener('openglad-belt', function(e) {
+                var d = e.detail;
+                if (!d || !d.cells) {
+                    return;
+                }
+                for (var i = 0; i < d.cells.length; i++) {
+                    if (d.cells[i].pixels) {
+                        beltPictures[d.cells[i].pictureKey] = d.cells[i].pixels;
+                    }
+                }
+                beltState = d;
+                renderSpecButtons();
+            });
+
             // --- Buttons ------------------------------------------------------
             // Held keys keep a minimum 90ms down-time so the ~12Hz input
             // sampler always observes the press edge, even on fast taps.
@@ -1551,7 +1731,11 @@
             // Touch buttons
             bindHeldButton(document.getElementById('tc-fire'), keySetter(KEY.FIRE));
             bindHeldButton(document.getElementById('tc-special'), keySetter(KEY.SPECIAL));
-            bindHeldButton(document.getElementById('tc-cycle'), keySetter(KEY.SPECIAL_SWITCH));
+            // New Ability Select: SPEC 1/2/3 (slots 9, 17, 18). The engine
+            // folds them with SHIFTER (the ALT latch: latch ALT, tap 1/2/3
+            // for the second row); with the setting off SPEC 2 cycles.
+            bindHeldButton(document.getElementById('tc-spec2'), keySetter(KEY.SPEC2));
+            bindHeldButton(document.getElementById('tc-spec3'), keySetter(KEY.SPEC3));
             bindHeldButton(document.getElementById('tc-yell'), keySetter(KEY.YELL));
             bindHeldButton(document.getElementById('tc-switch'), keySetter(KEY.SWITCH));
             bindHeldButton(document.getElementById('tc-look'), keySetter(KEY.LOOKUP));
@@ -1599,6 +1783,19 @@
                     if (singleSeat !== singleSeatSent) {
                         seatFn(singleSeat);
                         singleSeatSent = singleSeat;
+                    }
+                }
+
+                // New Ability Select is a per-machine setting the player can
+                // flip mid-session (Game Settings > UI FX): poll it and
+                // relabel. A build without the export keeps the "on" labels.
+                var abilityFn = bridge('openglad_web_ability_select');
+                if (abilityFn) {
+                    var abilitySelect = abilityFn() === 1;
+                    if (abilitySelect !== abilitySelectShown) {
+                        abilitySelectShown = abilitySelect;
+                        renderSpecButtons();
+                        window.__opengladAbilitySelect = abilitySelect;
                     }
                 }
 

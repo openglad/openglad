@@ -19,22 +19,26 @@
 
 #include <openglad/interface/input.h>          // KEYCODE_* values
 #include <openglad/interface/session_state.h>  // current_session->player_keys_
+#include <openglad/gameplay/families/family_registry.h>
+#include <openglad/gameplay/game_world.h>
+#include <openglad/gameplay/statistics.h>
+#include <openglad/gameplay/walker.h>
 
 namespace og::curses {
 
-// player_keys_[0] holds NUM_KEYS (17) entries, but only the first
-// kInputActionCount (16) are InputActions — the tail (KEY_LOOKUP) is a
-// render-time hold for the SDL client's upper-floor ghost overlay. The curses
-// client renders only the followed walker's floor (it has no ghost view), so
-// KEY_LOOKUP is deliberately not translated here.
+// player_keys_[0] holds NUM_KEYS entries: the first kInputActionCount (16) are
+// InputActions; then KEY_LOOKUP, a render-time hold for the SDL client's
+// upper-floor ghost overlay (the curses client renders only the followed
+// walker's floor, so it sends nothing), and the belt keys SPEC 2 / SPEC 3,
+// which sample() folds into the Special bit and the belt byte.
 CursesInput::CursesInput()
-    : keybindings_(std::span<const int, kInputActionCount>(
+    : keybindings_(std::span<const int, NUM_KEYS>(
           og::runtime::current_session->player_keys_[0],
-          static_cast<std::size_t>(kInputActionCount)))
+          static_cast<std::size_t>(NUM_KEYS)))
 {
 }
 
-CursesInput::CursesInput(std::span<const int, kInputActionCount> keybindings) : keybindings_(keybindings) {}
+CursesInput::CursesInput(std::span<const int, NUM_KEYS> keybindings) : keybindings_(keybindings) {}
 
 int CursesInput::keycode_for_key(const Key& k)
 {
@@ -114,8 +118,8 @@ void CursesInput::feed(const Key& k)
     if (keycode == KEYCODE_UNKNOWN)
         return;
 
-    // Resolve the key to the action(s) it is bound to for player 0.
-    for (int a = 0; a < kInputActionCount; ++a) {
+    // Resolve the key to the slot(s) it is bound to for player 0.
+    for (int a = 0; a < NUM_KEYS; ++a) {
         const auto idx = static_cast<std::size_t>(a);
         if (keybindings_[idx] != keycode)
             continue;
@@ -134,7 +138,7 @@ void CursesInput::feed(const Key& k)
     }
 }
 
-InputState CursesInput::sample()
+InputState CursesInput::sample(const og::sim::belt::Layout* belt)
 {
     InputState state;
     PlayerInput& p = state.players[0];
@@ -142,8 +146,28 @@ InputState CursesInput::sample()
         const auto idx = static_cast<std::size_t>(a);
         p.held[idx] = held_[idx];
         p.pressed[idx] = pressed_edge_[idx];
-        pressed_edge_[idx] = false;
     }
+
+    // New Ability Select: the SDL sampler's fold. Kitty reports Shift+1 as
+    // '1' with a shift modifier and LeftShift as its own key, so SHIFTER on
+    // LeftShift plus a SPEC key reaches the SHIFTER row with no extra rule.
+    static constexpr int kSpecKeys[3] = {KEY_SPECIAL, KEY_SPEC2, KEY_SPEC3};
+    og::sim::belt::Keys keys;
+    for (int i = 0; i < 3; ++i) {
+        const auto idx = static_cast<std::size_t>(kSpecKeys[i]);
+        keys.held[i] = held_[idx];
+        keys.pressed[i] = pressed_edge_[idx];
+    }
+    keys.shift_held = held_[static_cast<std::size_t>(KEY_SHIFTER)];
+    const og::sim::belt::Fold fold = og::sim::belt::fold_keys(
+        keys, og::input::ability_select_on(), belt, belt_latch_);
+    p.held[static_cast<int>(InputAction::Special)] = fold.special_held;
+    p.pressed[static_cast<int>(InputAction::Special)] = fold.special_pressed;
+    p.held[static_cast<int>(InputAction::SwitchSpecial)] = fold.switch_held;
+    p.pressed[static_cast<int>(InputAction::SwitchSpecial)] = fold.switch_pressed;
+    p.belt_cast = fold.belt_cast;
+
+    pressed_edge_.fill(false);
     return state;
 }
 
@@ -151,6 +175,22 @@ void CursesInput::reset()
 {
     held_.fill(false);
     pressed_edge_.fill(false);
+    belt_latch_ = og::sim::belt::Latch{};
+}
+
+std::optional<og::sim::belt::Layout>
+followed_belt(const GameWorld& world, std::uint32_t followed_id)
+{
+    if (followed_id == 0)
+        return std::nullopt;
+    const walker* const hero = world.find_by_id(followed_id);
+    if (hero == nullptr || hero->dead() || hero->stats() == nullptr)
+        return std::nullopt;
+    const FamilyDescriptor* const descriptor = get_family_descriptor(
+        static_cast<int>(static_cast<unsigned char>(hero->family())));
+    return og::sim::belt::resolve(descriptor, hero->stats()->level(),
+                                  world.new_specials,
+                                  og::sim::belt::bytes_for(*hero));
 }
 
 } // namespace og::curses

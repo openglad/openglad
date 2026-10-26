@@ -4,6 +4,7 @@
 #include <chrono>
 #include <cmath>
 #include <filesystem>
+#include <format>
 #include <fstream>
 #include <memory>
 #include <set>
@@ -47,11 +48,13 @@
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/render/walker_draw.h>
 #include <openglad/interface/screen.h>
+#include "test_ability_select_scope.h"
 #include <gtest/gtest.h>
 #include <cstdlib>
 #include <openglad/core/util.h>
 #include "test_save_state_guard.h"
 #include "test_live_game.h"
+#include "test_physical_frame.h"
 
 // myscreen is now a macro defined in base.h (via game_session.h)
 
@@ -7356,6 +7359,14 @@ TEST(GameLoop, zz_capture_splitscreen_gameplay)
 
     gameplay_rec::all_effects_on();
     gameplay_rec::force_weather(WeatherKind::Clouds);
+    // OG_CAPTURE_OVERLAY=1 records the same game with the OVERLAY view pref
+    // on (off by default), so the HUD text sits in its boxes.
+    if (const char* overlay = getenv("OG_CAPTURE_OVERLAY");
+        overlay != nullptr && overlay[0] == '1')
+    {
+        game_screen->viewob[0]->prefs[PREF_OVERLAY] = PREF_OVERLAY_ON;
+        game_screen->viewob[1]->prefs[PREF_OVERLAY] = PREF_OVERLAY_ON;
+    }
 
     // Rebind the two local players' direction keys to keycodes no default
     // layout uses, then drive them via faked SDL keystates so the two claimed
@@ -7398,6 +7409,20 @@ TEST(GameLoop, zz_capture_splitscreen_gameplay)
         game_screen->redraw();
         score_panel(game_screen);
         game_screen->refresh();
+        // The split-screen hotbar is a HUD sprite plane that refresh()'s
+        // present composites (the real loop presents once, there), not on
+        // the canvas: read the window's own pixels before the extra swap()
+        // below presents again without it.
+        if (const char* dir = getenv("OG_FX_CAPTURE_DIR"))
+        {
+            PhysicalFrame shot;
+            shot.name = std::format("{:03d}", frame);
+            if (read_physical_frame_here(shot))
+                write_physical_frame(
+                    shot,
+                    (std::string(dir) + "/splitscreen_gameplay_physical")
+                        .c_str());
+        }
         game_screen->swap();
         gameplay_rec::dump_screen(game_screen, "splitscreen_gameplay", frame);
         if (::testing::Test::HasFatalFailure())
@@ -10906,12 +10931,24 @@ TEST(GameLoop, mirror_follows_a_possession)
     EXPECT_TRUE(mirror_ghost->hidden()) << "the ghost rides unseen";
     EXPECT_EQ(orc_id, mirror_ghost->possess_link());
 
+    // New Ability Select on (the shipped default): the hotbar's key 1 slot
+    // is the body's own class default (a possessed host has no guy of its
+    // own): the orc's HOWL, slot 1, with HOWL's own icon.
     trace_clear();
     new_score_panel(s, 1);
-    const std::string orc_row =
-        "spc_row fam=" + std::to_string(FAMILY_ORC) + " text=SPC: HOWL";
-    EXPECT_TRUE(trace_contains("hud", orc_row.c_str()))
-        << "the HUD names the body's own special";
+    EXPECT_TRUE(trace_contains(
+        "hud", "belt_cell key=1 shift=0 slot=1 alt=0 icon=icons/howl.png "
+               "state=castable"))
+        << "the HUD shows the body's own special on key 1";
+    {
+        ScopedAbilitySelect off;  // the classic SPC row
+        trace_clear();
+        new_score_panel(s, 1);
+        const std::string orc_row =
+            "spc_row fam=" + std::to_string(FAMILY_ORC) + " text=SPC: HOWL";
+        EXPECT_TRUE(trace_contains("hud", orc_row.c_str()))
+            << "the HUD names the body's own special";
+    }
 
     drive_tick(make_switch_char_input(0u));
     for (int t = 0; t < 3 && s->viewob[0]->control != nullptr &&

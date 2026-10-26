@@ -33,7 +33,9 @@
 #include <openglad/interface/session_state.h>
 #include <openglad/interface/sound.h>
 #include <openglad/interface/platform_bridge.h>
+#include <openglad/interface/ui/abilities_screen.h>
 #include <openglad/interface/ui/campaign_picker_session.h>
+#include <openglad/interface/ui/changelog_screen.h>
 #include <openglad/interface/ui/cloud_save_client.h>
 #include <openglad/interface/ui/input_cycler.h>
 #include <openglad/interface/ui/picker_common.h>
@@ -265,9 +267,13 @@ constexpr MenuButtonSpec kDifficultyRows[] = {
      .gate = kNetworkedOnlyGate},
 };
 
+} // namespace
+
 // The options-family panel chrome, shared by DIFFICULTY and every options
 // subscreen: full-canvas clear (the overscan may have been adjusted), the
-// black frame, the inverted bevel.
+// black frame, the inverted bevel. Outside the anonymous namespace:
+// picker_sdl_defs.h shares it with the full-canvas screens that live in
+// their own files (ABILITIES).
 void options_panel_draw_background(void* /*screen_state*/)
 {
     screen* scr = og::runtime::current_session->myscreen_;
@@ -275,6 +281,8 @@ void options_panel_draw_background(void* /*screen_state*/)
     scr->draw_button(0, 0, 320, 200, 0);
     scr->draw_button_inverted(4, 4, 312, 192);
 }
+
+namespace {
 
 void difficulty_draw_content(void* /*screen_state*/)
 {
@@ -382,30 +390,44 @@ void gameplay_fx_draw_content(void* /*screen_state*/)
                             pks().gameplay_fx_options_buttons);
 }
 
-// UI FX: informational overlays. Same single-column idiom as GAMEPLAY FX.
+// UI FX: interface settings and overlays. Same single-column idiom as
+// GAMEPLAY FX, on a column of its own: "New Ability Select" is 18 glyphs
+// (108 px), past the 90 px faces, so the whole column is 120 px wide at
+// x 100 (one x, one width; the column's centre stays 160).
+inline constexpr Sint32 kUiFxColX = 100;
+inline constexpr Sint32 kUiFxColW = 120;
+
 constexpr MenuButtonSpec kUiFxRows[] = {
     {.id = "ui_fx_back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
      .x = 10, .y = 10, .w = 50, .h = 15,
      .action = ButtonAction::ReturnMenu, .arg = MENU_EXIT,
-     .nav = {.up = 3, .down = 1}},
+     .nav = {.up = 4, .down = 1}},
     {.id = "toggle_mini_hp_bar", .label = "Mini HP bar",
-     .x = 115, .y = fx_row_y(0), .w = 90, .h = 15,
+     .x = kUiFxColX, .y = fx_row_y(0), .w = kUiFxColW, .h = 15,
      .action = ButtonAction::ToggleMiniHpBar, .arg = -1,
      .nav = {.up = 0, .down = 2}},
     {.id = "toggle_damage_numbers", .label = "Damage numbers",
-     .x = 115, .y = fx_row_y(1), .w = 90, .h = 15,
+     .x = kUiFxColX, .y = fx_row_y(1), .w = kUiFxColW, .h = 15,
      .action = ButtonAction::ToggleDamageNumbers, .arg = -1,
      .nav = {.up = 1, .down = 3}},
     {.id = "toggle_heal_numbers", .label = "Healing numbers",
-     .x = 115, .y = fx_row_y(2), .w = 90, .h = 15,
+     .x = kUiFxColX, .y = fx_row_y(2), .w = kUiFxColW, .h = 15,
      .action = ButtonAction::ToggleHealNumbers, .arg = -1,
-     .nav = {.up = 2, .down = 0}},
+     .nav = {.up = 2, .down = 4}},
+    // New Ability Select (docs/ability-select-design.md): one key per
+    // ability. A per-machine preference like the rows above, never on the
+    // wire, so it lives here and not under GAMEPLAY FX.
+    {.id = "toggle_new_ability_select", .label = "New Ability Select",
+     .x = kUiFxColX, .y = fx_row_y(3), .w = kUiFxColW, .h = 15,
+     .action = ButtonAction::ToggleNewAbilitySelect, .arg = -1,
+     .nav = {.up = 3, .down = 0}},
 };
 
 constexpr FxToggleDraw kUiFxToggleDraws[] = {
     {1, "effects", "mini_hp_bar"},
     {2, "effects", "damage_numbers"},
     {3, "effects", "heal_numbers"},
+    {4, "effects", "new_ability_select"},
 };
 
 void ui_fx_draw_content(void* /*screen_state*/)
@@ -2056,6 +2078,15 @@ RowState train_change_team_row_state(const MenuLabelContext& context)
     return RowState::Visible;
 }
 
+// The ABILITIES door is dimmed, not hidden, with New Ability Select off
+// (docs/ability-select-design.md K8): the screen stays discoverable, and
+// the setting that brings it back is one UI FX row away.
+RowState train_abilities_row_state(const MenuLabelContext& /*context*/)
+{
+    return og::input::ability_select_on() ? RowState::Visible
+                                          : RowState::Disabled;
+}
+
 constexpr MenuButtonSpec kTrainMenuRows[] = {
     {.id = "prev", .label = "PREV",
      .x = 10, .y = 40, .w = 40, .h = 20,
@@ -2132,7 +2163,7 @@ constexpr MenuButtonSpec kTrainMenuRows[] = {
     {.id = "accept", .label = "ACCEPT",
      .x = 80, .y = 170, .w = 80, .h = 20,
      .action = ButtonAction::EditGuy, .arg = -1,
-     .nav = {.up = 13, .left = 18, .right = kTrainMenuSellIndex}},
+     .nav = {.up = 13, .left = 18, .right = kTrainMenuAbilitiesIndex}},
     {.id = "rename", .label = "RENAME",
      .x = 174, .y = 8, .w = 64, .h = 22,
      .action = ButtonAction::NameGuy, .arg = 1,
@@ -2156,12 +2187,22 @@ constexpr MenuButtonSpec kTrainMenuRows[] = {
     {.id = "sell", .label = "SELL",
      .x = 240, .y = 170, .w = 64, .h = 20,
      .action = ButtonAction::MenuSpecRow, .arg = kTrainMenuSellIndex,
-     .nav = {.up = kTrainMenuChangeTeamIndex, .left = 14}},
+     .nav = {.up = kTrainMenuChangeTeamIndex,
+             .left = kTrainMenuAbilitiesIndex}},
+    // New Ability Select: which ability sits on which SPEC key
+    // (abilities_screen.cpp), between ACCEPT and SELL.
+    {.id = "abilities", .label = "ABILITIES",
+     .x = 168, .y = 170, .w = 64, .h = 20,
+     .action = ButtonAction::MenuSpecRow, .arg = kTrainMenuAbilitiesIndex,
+     .nav = {.up = kTrainMenuChangeTeamIndex, .left = 14,
+             .right = kTrainMenuSellIndex},
+     .state_override = &train_abilities_row_state},
 };
 
-static_assert(std::size(kTrainMenuRows) == 20,
+static_assert(std::size(kTrainMenuRows) == 21,
               "train table anchor: change_team sits at "
-              "kTrainMenuChangeTeamIndex");
+              "kTrainMenuChangeTeamIndex, the ABILITIES door at "
+              "kTrainMenuAbilitiesIndex");
 
 // ---------------------------------------------------------------------------
 // PROGRESS (§1.8 step 6): the campaign-progress report (cleared levels,
@@ -3443,15 +3484,11 @@ void seat_settings_draw_content(void* screen_state)
         {"LEFT", KEY_LEFT, false},
         {"UP-L", KEY_UP_LEFT, true},
     }};
-    static constexpr std::array<BindingLine, 7> actions{{
-        {"FIRE", KEY_FIRE, false},
-        {"SPECIAL", KEY_SPECIAL, false},
-        {"YELL", KEY_YELL, false},
-        {"SHIFTER", KEY_SHIFTER, false},
-        {"LOOK UP", KEY_LOOKUP, false},
-        {"CHAR SW", KEY_SWITCH, false},
-        {"SPEC SW", KEY_SPECIAL_SWITCH, false},
-    }};
+    // The ACTIONS rows are the shared list both binding panels draw (this
+    // seat panel and the pause player screen): seven classic rows with the
+    // setting off, the eight belt rows with it on.
+    const std::span<const og::ui::BindingPanelRow> actions =
+        og::ui::binding_panel_action_rows(og::input::ability_select_on());
     const bool eight_dir =
         get_player_control_mode(state->local_slot) ==
         static_cast<int>(ControlDirectionMode::EightDirection);
@@ -3480,7 +3517,7 @@ void seat_settings_draw_content(void* screen_state)
             active ? DARK_BLUE : GREY, "%s", line.c_str());
     }
     for (std::size_t index = 0; index < actions.size(); ++index) {
-        const BindingLine& binding = actions[index];
+        const og::ui::BindingPanelRow& binding = actions[index];
         const std::string line = format_binding_panel_line(
             binding.label, binding_value(binding.key),
             kBindingPanelActionsChars);
@@ -8678,6 +8715,15 @@ const MenuScreenHost& menu_screen_host(MenuScreenId id)
             set(MenuScreenId::MatchSetup,
                 {.kind = Kind::Engine,
                  .spec = &match_setup_menu_screen_spec()});
+            // ABILITIES (New Ability Select): opened from TRAIN, engine
+            // hosted from birth like SETUP and LINEUP.
+            set(MenuScreenId::Abilities,
+                {.kind = Kind::Engine,
+                 .spec = &abilities_menu_screen_spec()});
+            // CHANGELOG!: the once-only page at the picker's shared start.
+            set(MenuScreenId::Changelog,
+                {.kind = Kind::Engine,
+                 .spec = &changelog_menu_screen_spec()});
             return table;
         }();
     return hosts[static_cast<std::size_t>(id)];

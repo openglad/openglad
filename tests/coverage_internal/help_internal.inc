@@ -33,15 +33,18 @@ bool help_testing_query_scroll_chrome()
 // #168: the full-screen help flows the Controls table to the frame's
 // full-width budget (help_char_budget(kHelpTextBoxWidth) = 50 chars). Every
 // authored line already fits that budget, so the flow must not wrap anything
-// (-1 if it did); report the widest flowed line for the budget pin.
-Sint32 help_testing_controls_flowed_max_width()
+// (-1 if it did); report the widest flowed line for the budget pin. The
+// table is the one New Ability Select on (`ability_select`) or off shows.
+Sint32 help_testing_controls_flowed_max_width(bool ability_select)
 {
+	const std::span<const char* const> lines =
+		controls_help_lines(ability_select);
 	std::list<std::string> source;
-	for (int i = 0; i < NUM_CONTROLS_LINES; i++)
-		source.push_back(controls_help_lines[i]);
+	for (const char* const line : lines)
+		source.push_back(line);
 	const std::vector<std::string> flowed =
 		og::core::wrap_lines(source, help_char_budget(kHelpTextBoxWidth));
-	if (flowed.size() != static_cast<std::size_t>(NUM_CONTROLS_LINES))
+	if (flowed.size() != lines.size())
 		return -1;
 	std::size_t max_len = 0;
 	for (const std::string& line : flowed)
@@ -50,6 +53,20 @@ Sint32 help_testing_controls_flowed_max_width()
 			max_len = line.size();
 	}
 	return static_cast<Sint32>(max_len);
+}
+
+// The Controls tab's text as the HELP screen shows it now (the setting in
+// force), one line per row.
+std::string help_testing_controls_text()
+{
+	const TabContent content = get_tab_content(HelpTab::Controls);
+	std::string text;
+	for (int i = 0; i < content.num_lines; i++)
+	{
+		text += get_content_line(content, i);
+		text += '\n';
+	}
+	return text;
 }
 
 // The CLASSES tab's text, read fresh from cfg/help_classes.txt: the cache is
@@ -255,12 +272,14 @@ Sint32 help_testing_exercise_internal_paths()
 	const TabContent editor = get_tab_content(HelpTab::Editor);
 	const TabContent fallback =
 		get_tab_content(static_cast<HelpTab>(99));
-	check(!controls.is_dynamic && controls.num_lines == NUM_CONTROLS_LINES);
+	const int num_controls_lines = static_cast<int>(
+		controls_help_lines(og::input::ability_select_on()).size());
+	check(!controls.is_dynamic && controls.num_lines == num_controls_lines);
 	check(classes.is_dynamic && classes.num_lines == 2);
 	check(editor.is_dynamic && editor.num_lines == 1);
-	check(!fallback.is_dynamic && fallback.num_lines == NUM_CONTROLS_LINES);
+	check(!fallback.is_dynamic && fallback.num_lines == num_controls_lines);
 	check(std::strcmp(get_content_line(controls, 0),
-	                  controls_help_lines[0]) == 0);
+	                  controls_help_lines(false)[0]) == 0);
 	check(std::strcmp(get_content_line(classes, 1), "Class line 2") == 0);
 	check(std::strcmp(get_content_line(editor, 0), "Editor line 1") == 0);
 	check(std::strcmp(get_content_line(editor, 3), "") == 0);

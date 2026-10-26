@@ -11,8 +11,12 @@
 #include <openglad/interface/screen.h>
 #include <openglad/interface/game_context.h>
 #include <openglad/legacy/base.h>
+#include <openglad/core/test_trace.h>
 #include <gtest/gtest.h>
+#include <cstdint>
+#include <format>
 #include <memory>
+#include <string>
 
 // myscreen is now a macro defined in base.h (via game_session.h)
 
@@ -1412,5 +1416,249 @@ TEST(SimInputHandler, sim_input_republishes_held_shift_as_shifter_down)
     ASSERT_EQ(1, static_cast<int>(control->shifter_down()))
         << "shifter_down tracks the held key on every tick";
 
+    teardown();
+}
+
+// ---------------------------------------------------------------------------
+// New Ability Select: the server rule for PlayerInput::belt_cast
+// (sim_arm_belt_entry). A mage: TELEPORT (1), TELEPORT MARKER (1, alt), WARP
+// SPACE (2, opens at L4), HEARTBURST (5, opens at L13).
+// ---------------------------------------------------------------------------
+
+namespace {
+
+struct BeltMage
+{
+    ScopedArena arena;
+    walker* control = nullptr;
+    SimInputDebounce debounce = {};
+    og::sim::SimEventLog log;
+
+    explicit BeltMage(short level)
+    {
+        loader* l = og::runtime::current_session->myscreen_->myloader;
+        auto w = l != nullptr ? l->create_walker_owned(Order::Living, FAMILY_MAGE)
+                              : nullptr;
+        if (!w)
+            return;
+        w->set_team_num(0);
+        w->set_real_team_num(255);
+        w->set_dead(0);
+        w->set_user(0);
+        w->setxy(160, 160);
+        w->set_act_type(ACT_CONTROL);
+        w->stats()->set_level(level);
+        w->stats()->set_max_magicpoints(500);
+        w->stats()->set_magicpoints(500);
+        w->stats()->commands.clear();
+        control = w.get();
+        world().oblist.push_back(std::move(w));
+    }
+
+    SimInputResult tick(const PlayerInput& pi)
+    {
+        return sim_process_player_input(pi, control, world(), 0, 0, debounce, &log);
+    }
+
+    [[nodiscard]] int notifications(const char* text) const
+    {
+        int count = 0;
+        for (const auto& event : log.events())
+            if (event.kind == og::sim::EventKind::Notification && event.text == text)
+                ++count;
+        return count;
+    }
+
+    [[nodiscard]] bool cast_traced(int slot, int shift) const
+    {
+        const std::string line = std::format(
+            "cast id={} family={} slot={} shift={}",
+            static_cast<unsigned>(control->entity_id()),
+            static_cast<int>(control->family()), slot, shift);
+        return trace_contains("special", line.c_str());
+    }
+};
+
+PlayerInput belt_press(std::uint8_t belt_cast, bool pressed = true)
+{
+    PlayerInput pi;
+    pi.held[static_cast<int>(InputAction::Special)] = true;
+    pi.pressed[static_cast<int>(InputAction::Special)] = pressed;
+    pi.belt_cast = belt_cast;
+    return pi;
+}
+
+} // namespace
+
+// Byte 0x09 = (1, alt): the entry sets the slot and the shift and the cast
+// runs as a classic Special press would. Proof it can fail: skipping
+// set_shifter_down in sim_arm_belt_entry casts TELEPORT (shift=0).
+TEST(SimInputHandler, belt_cast_sets_slot_and_alt_and_casts)
+{
+    trace_clear();
+    BeltMage mage(1);
+    ASSERT_NE(nullptr, mage.control);
+    mage.control->set_current_special(1);
+    mage.control->set_shifter_down(0);
+
+    mage.tick(belt_press(0x09));
+
+    EXPECT_EQ(1, mage.control->current_special());
+    EXPECT_EQ(1, mage.control->shifter_down());
+    EXPECT_TRUE(mage.cast_traced(1, 1)) << "TELEPORT MARKER was cast";
+    EXPECT_LT(mage.control->stats()->magicpoints(), 500.0f) << "the cast was paid";
+    teardown();
+}
+
+// A slot the hero's level has not opened: "LEVEL 13 NEEDED", no cast, MP,
+// slot and shift untouched. Proof it can fail: casting on Locked spends MP.
+TEST(SimInputHandler, locked_slot_is_refused_with_a_cue_and_no_cast)
+{
+    trace_clear();
+    BeltMage mage(1);
+    ASSERT_NE(nullptr, mage.control);
+    mage.control->set_current_special(1);
+    mage.control->set_shifter_down(1);
+
+    mage.tick(belt_press(0x05));
+
+    EXPECT_EQ(1, mage.notifications("LEVEL 13 NEEDED"));
+    EXPECT_FLOAT_EQ(500.0f, mage.control->stats()->magicpoints());
+    EXPECT_EQ(1, mage.control->current_special()) << "never armed slot 5";
+    EXPECT_EQ(1, mage.control->shifter_down()) << "a refused byte writes no shift";
+    EXPECT_FALSE(trace_contains("special", "cast id=")) << "nothing cast";
+    EXPECT_FALSE(trace_contains("special", "refused id="))
+        << "the stale current_special was not tried either";
+
+    // Held on the next tick: still refused, and silent (press edge only).
+    mage.log.clear();
+    mage.debounce.cue_delay = 0;
+    mage.tick(belt_press(0x05, false));
+    EXPECT_EQ(0u, mage.log.size()) << "a held refused key stays quiet";
+    EXPECT_FALSE(trace_contains("special", "cast id="));
+    teardown();
+}
+
+// kCastNothing (an empty key): "NO ABILITY THERE", nothing cast.
+TEST(SimInputHandler, cast_nothing_voices_no_ability_there)
+{
+    trace_clear();
+    BeltMage mage(20);
+    ASSERT_NE(nullptr, mage.control);
+    mage.tick(belt_press(0x07));
+    EXPECT_EQ(1, mage.notifications("NO ABILITY THERE"));
+    EXPECT_FLOAT_EQ(500.0f, mage.control->stats()->magicpoints());
+    EXPECT_FALSE(trace_contains("special", "cast id="));
+    teardown();
+}
+
+// Malformed bytes (bits 4-7 set; slot 0 with the alternate bit) refuse
+// exactly like kCastNothing: the cue, no cast, shifter_down untouched.
+// Proof it can fail: masking the byte to its low nibble casts 0x10 as the
+// classic slot and 0x08 as (0, alt).
+TEST(SimInputHandler, malformed_byte_is_refused_like_cast_nothing)
+{
+    for (const std::uint8_t byte : {std::uint8_t{0x10}, std::uint8_t{0x08},
+                                    std::uint8_t{0x0E}, std::uint8_t{0x81}})
+    {
+        SCOPED_TRACE(static_cast<int>(byte));
+        trace_clear();
+        BeltMage mage(20);
+        ASSERT_NE(nullptr, mage.control);
+        mage.control->set_shifter_down(1);
+        mage.tick(belt_press(byte));
+        EXPECT_EQ(1, mage.notifications("NO ABILITY THERE"));
+        EXPECT_FLOAT_EQ(500.0f, mage.control->stats()->magicpoints());
+        EXPECT_EQ(1, mage.control->shifter_down());
+        EXPECT_FALSE(trace_contains("special", "cast id="));
+        teardown();
+    }
+}
+
+// belt_cast 0 is the classic seat: the physical Shift key drives
+// shifter_down, and the Special press casts the walker's current slot.
+TEST(SimInputHandler, belt_cast_zero_runs_todays_shift_rule)
+{
+    trace_clear();
+    BeltMage mage(1);
+    ASSERT_NE(nullptr, mage.control);
+    mage.control->set_current_special(1);
+    PlayerInput pi = belt_press(0);
+    pi.held[static_cast<int>(InputAction::Shift)] = true;
+    mage.tick(pi);
+    EXPECT_EQ(1, mage.control->shifter_down());
+    EXPECT_TRUE(mage.cast_traced(1, 1)) << "classic Shift = the alternate";
+    teardown();
+}
+
+// A belt hold (Special held, not pressed) arms the entry every tick and
+// ignores the physical Shift key, which is only the belt's second row.
+// Proof it can fail: keeping the 2002 Shift line on belt ticks casts
+// shift=1.
+TEST(SimInputHandler, belt_hold_does_not_read_the_physical_shift)
+{
+    trace_clear();
+    BeltMage mage(10);
+    ASSERT_NE(nullptr, mage.control);
+    mage.control->set_current_special(1);
+    PlayerInput pi = belt_press(0x02, false);
+    pi.held[static_cast<int>(InputAction::Shift)] = true;
+    mage.tick(pi);
+    EXPECT_EQ(2, mage.control->current_special());
+    EXPECT_EQ(0, mage.control->shifter_down());
+    EXPECT_TRUE(mage.cast_traced(2, 0)) << "WARP SPACE from the held key";
+    teardown();
+}
+
+// A hidden hero (dug in, riding a body) answers any Special press by casting
+// its pinned slot: the byte is never read there. Proof it can fail: arming
+// the belt above the hidden branch moves current_special to 1.
+TEST(SimInputHandler, hidden_hero_ignores_the_byte)
+{
+    trace_clear();
+    BeltMage mage(10);
+    ASSERT_NE(nullptr, mage.control);
+    mage.control->set_current_special(2);
+    mage.control->set_shifter_down(0);
+    mage.control->set_hidden(true);
+    mage.tick(belt_press(0x09));
+    EXPECT_EQ(2, mage.control->current_special());
+    EXPECT_EQ(0, mage.control->shifter_down());
+    EXPECT_FALSE(trace_contains("special", "slot=1 shift=1"));
+    mage.control->set_hidden(false);
+    teardown();
+}
+
+// A frozen hero hears "FROZEN!" for a belt press as for a classic one, and
+// never the belt's own cues.
+TEST(SimInputHandler, frozen_hero_still_hears_frozen)
+{
+    trace_clear();
+    BeltMage mage(1);
+    ASSERT_NE(nullptr, mage.control);
+    mage.control->stats()->set_frozen_delay(3);
+    mage.tick(belt_press(0x05));
+    EXPECT_EQ(1, mage.notifications("FROZEN!"));
+    EXPECT_EQ(0, mage.notifications("LEVEL 13 NEEDED"));
+    EXPECT_FALSE(trace_contains("special", "cast id="));
+    mage.control->stats()->set_frozen_delay(0);
+    teardown();
+}
+
+// SHIFTER + YELL still summons on a tick that also carries a belt press: the
+// yell rules read the physical Shift key, the cast reads the entry.
+TEST(SimInputHandler, shift_yell_still_summons_on_a_belt_tick)
+{
+    trace_clear();
+    BeltMage mage(10);
+    ASSERT_NE(nullptr, mage.control);
+    mage.control->set_action(0);
+    PlayerInput pi = belt_press(0x02);
+    pi.held[static_cast<int>(InputAction::Shift)] = true;
+    pi.pressed[static_cast<int>(InputAction::Yell)] = true;
+    mage.tick(pi);
+    EXPECT_EQ(1, mage.notifications("SUMMONING DEFENSE!"));
+    EXPECT_EQ(0, mage.control->shifter_down()) << "the cast still read the entry";
+    EXPECT_TRUE(mage.cast_traced(2, 0));
     teardown();
 }

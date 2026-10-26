@@ -18,12 +18,18 @@
 
 #include <openglad/interface/screen.h>
 #include <openglad/platform/game_session.h>
+#include <openglad/platform/sai2x.h>  // E_Screen (the physical readback)
+
+#include "test_interact.h"
+#include "test_physical_frame.h"
 
 #include <SDL3/SDL.h>
 
+#include <array>
 #include <atomic>
 #include <cstdio>
 #include <cstddef>
+#include <cstring>
 #include <filesystem>
 #include <mutex>
 #include <string>
@@ -172,6 +178,24 @@ inline void verify_captured_frames(const char* flow, std::size_t expected)
             << flow << ": " << frame.name << " produced no file at "
             << frame.path;
     }
+}
+
+// The physical frame of a menu-hosted flow (test_physical_frame.h). Runs the
+// readback on the MENU thread through the frame-top task pump (renderer
+// calls belong to the thread that renders), so it reads the frame the
+// previous iteration presented, before this one draws. Callable from an
+// injector thread while an engine-hosted screen is up; output_dir as above.
+inline PhysicalFrame capture_physical_frame(const char* name,
+                                            const char* output_dir)
+{
+    PhysicalFrame frame;
+    frame.name = name;
+    const bool ran =
+        run_on_main_thread([&frame] { (void)read_physical_frame_here(frame); });
+    if (!ran || !frame.captured)
+        return frame;
+    write_physical_frame(frame, output_dir);
+    return frame;
 }
 
 #endif  // _TEST_FRAME_CAPTURE_H__

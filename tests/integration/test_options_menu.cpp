@@ -12,6 +12,7 @@
 #include <openglad/platform/video_sdl.h>
 #include <openglad/resources/gloader.h>
 #include <openglad/resources/gparser.h>
+#include "test_ability_select_scope.h"
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
 #include <algorithm>
@@ -114,6 +115,7 @@ static const FxToggleSpec kUiFxToggles[] = {
     {"toggle_mini_hp_bar", "effects", "mini_hp_bar"},
     {"toggle_damage_numbers", "effects", "damage_numbers"},
     {"toggle_heal_numbers", "effects", "heal_numbers"},
+    {"toggle_new_ability_select", "effects", "new_ability_select"},
 };
 
 static const FxToggleSpec kGraphicsFxToggles[] = {
@@ -140,7 +142,7 @@ inline constexpr int kFxMaxToggles = 14;
 
 static const FxScreenSpec kFxScreens[kFxScreenCount] = {
     {"gameplay_fx", "gameplay_fx_back", kGameplayFxToggles, 4},
-    {"ui_fx", "ui_fx_back", kUiFxToggles, 3},
+    {"ui_fx", "ui_fx_back", kUiFxToggles, 4},
     {"graphics_fx", "graphics_fx_back", kGraphicsFxToggles, 14},
 };
 
@@ -1525,6 +1527,9 @@ static int count_fake_esc_traces()
 // all for a player index outside [0, 4).
 TEST(OptionsMenu, edit_player_keymap_walks_eleven_then_fifteen_prompts)
 {
+    // The classic prompt lists; with New Ability Select on they are 12 and
+    // 16 (PausePlayerHandlers.remap_prompts_follow_ability_select).
+    ScopedAbilitySelect off;
     constexpr Sint32 kMenuRedraw = 2;
     reset_default_player_controls();
     const int original_fire = og::runtime::current_session->player_keys_[0][KEY_FIRE];

@@ -13,6 +13,17 @@
 #include <openglad/resources/gloader.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/level_data_hooks.h>
+#include <openglad/gameplay/families/belt.h>
+#include <openglad/gameplay/guy.h>
+#include <openglad/interface/input.h>
+#include <openglad/interface/input_hardware_state.h>
+#include <openglad/interface/native_input.h>
+#include <openglad/interface/render/view.h>
+#include <openglad/platform/game_loop.h>
+#include <openglad/platform/game_session.h>
+#include <openglad/platform/local_transport_shadow.h>
+#include <openglad/interface/ui/picker_lobby_client.h>
+#include "test_ability_select_scope.h"
 #include <gtest/gtest.h>
 
 #include <SDL3/SDL.h>
@@ -27,6 +38,7 @@
 #include <filesystem>
 #include <fstream>
 #include <map>
+#include <optional>
 #include <set>
 #include <string>
 #include <string_view>
@@ -40,6 +52,8 @@ void install_sdl_context_services();
 void popup_dialog(const char* title, const char* message);
 bool yes_or_no_prompt(const char* title, const char* message, bool default_value);
 bool no_or_yes_prompt(const char* title, const char* message, bool default_value);
+void glad_init(bool preserve_frame_timing,
+               const og::ui::PickerLobbyGameStartConfig* lobby_config);
 void picker_testing_yes_or_no_queue_clear();
 void picker_testing_yes_or_no_queue_push(bool value);
 int picker_testing_yes_or_no_queue_remaining();
@@ -797,4 +811,363 @@ TEST(NonInteractiveSession, results_screen_skips_the_panel_and_returns_no_retry)
         << "control: the escape thread ends the live panel";
     EXPECT_TRUE(control.mvp_traced) << "control: the real panel picks an MVP";
     EXPECT_FALSE(control.retry) << "control: a panel ended by world().end asks no retry";
+}
+
+
+// ---------------------------------------------------------------------------
+// New Ability Select: the SDL sampler's SPEC fold, the render-frame latch, and
+// one real key press through the in-process server.
+// ---------------------------------------------------------------------------
+
+namespace
+{
+
+// The session's keyboard pointed at a test-owned array (the HeldEditorKeys
+// idiom), so a key is "down" exactly as SDL_GetKeyboardState would say it.
+class FakeKeyboard
+{
+public:
+    FakeKeyboard() : saved_(og::runtime::current_session->keystates_)
+    {
+        keys_.fill(false);
+        og::runtime::current_session->keystates_ = keys_.data();
+    }
+    ~FakeKeyboard() { og::runtime::current_session->keystates_ = saved_; }
+    FakeKeyboard(const FakeKeyboard&) = delete;
+    FakeKeyboard& operator=(const FakeKeyboard&) = delete;
+
+    // Holds or lets go of the key player `player` has bound to `slot`.
+    // False when the slot has no key (nothing to press).
+    bool set(int player, int slot, bool down)
+    {
+        const int keycode = og::runtime::current_session->player_keys_[player][slot];
+        if (keycode == 0)
+            return false;
+        const int scancode = og::input_native::scancode_from_key(keycode);
+        if (scancode <= 0 || scancode >= SDL_SCANCODE_COUNT)
+            return false;
+        keys_[static_cast<std::size_t>(scancode)] = down;
+        return true;
+    }
+
+private:
+    const bool* saved_;
+    std::array<bool, SDL_SCANCODE_COUNT> keys_{};
+};
+
+// Seat 0's view control, put back on exit (a sampler test parks a walker
+// under the seat or takes it away).
+class SeatControl
+{
+public:
+    explicit SeatControl(walker* control)
+        : view_(og::runtime::current_session->myscreen_->viewob[0].get()),
+          saved_(view_ != nullptr ? view_->control : nullptr)
+    {
+        if (view_ != nullptr)
+            view_->control = control;
+    }
+    ~SeatControl()
+    {
+        if (view_ != nullptr)
+            view_->control = saved_;
+    }
+    SeatControl(const SeatControl&) = delete;
+    SeatControl& operator=(const SeatControl&) = delete;
+
+private:
+    viewscreen* view_;
+    walker* saved_;
+};
+
+constexpr int kSpecial = static_cast<int>(InputAction::Special);
+constexpr int kSpecialSwitch = static_cast<int>(InputAction::SwitchSpecial);
+
+} // namespace
+
+TEST(BeltSampler, off_spec2_is_the_change_special_key_and_the_byte_stays_zero)
+{
+    ScopedAbilitySelect off;
+    FakeKeyboard keyboard;
+    InputState state;
+    input_state_from_sdl(state);  // settle: nothing held
+
+    ASSERT_TRUE(keyboard.set(0, KEY_SPEC2, true)) << "player 1 has no SPEC 2 key";
+    input_state_from_sdl(state);
+    EXPECT_TRUE(state.players[0].pressed[kSpecialSwitch])
+        << "with the setting off the SPEC 2 key is the old change-special key";
+    EXPECT_TRUE(state.players[0].held[kSpecialSwitch]);
+    EXPECT_FALSE(state.players[0].held[kSpecial]);
+    EXPECT_EQ(0, state.players[0].belt_cast);
+
+    input_state_from_sdl(state);
+    EXPECT_FALSE(state.players[0].pressed[kSpecialSwitch])
+        << "a held key is a press once";
+    EXPECT_TRUE(state.players[0].held[kSpecialSwitch]);
+
+    keyboard.set(0, KEY_SPEC2, false);
+    ASSERT_TRUE(keyboard.set(0, KEY_SPEC3, true)) << "player 1 has no SPEC 3 key";
+    input_state_from_sdl(state);
+    EXPECT_FALSE(state.players[0].held[kSpecialSwitch]);
+    EXPECT_FALSE(state.players[0].held[kSpecial])
+        << "with the setting off SPEC 3 sends nothing";
+    EXPECT_EQ(0, state.players[0].belt_cast);
+
+    keyboard.set(0, KEY_SPEC3, false);
+    ASSERT_TRUE(keyboard.set(0, KEY_SPECIAL, true));
+    input_state_from_sdl(state);
+    EXPECT_TRUE(state.players[0].pressed[kSpecial])
+        << "with the setting off SPEC 1 is the old SPECIAL key";
+    EXPECT_EQ(0, state.players[0].belt_cast);
+}
+
+TEST(BeltSampler, on_without_a_walker_spec1_is_special_and_spec2_is_nothing)
+{
+    ScopedAbilitySelect on(true);
+    SeatControl no_walker(nullptr);
+    FakeKeyboard keyboard;
+    InputState state;
+    input_state_from_sdl(state);
+
+    ASSERT_TRUE(keyboard.set(0, KEY_SPEC2, true));
+    input_state_from_sdl(state);
+    EXPECT_FALSE(state.players[0].held[kSpecial]);
+    EXPECT_FALSE(state.players[0].held[kSpecialSwitch])
+        << "with the setting on nothing ever cycles";
+    EXPECT_EQ(0, state.players[0].belt_cast);
+
+    keyboard.set(0, KEY_SPEC2, false);
+    ASSERT_TRUE(keyboard.set(0, KEY_SPECIAL, true));
+    input_state_from_sdl(state);
+    EXPECT_TRUE(state.players[0].pressed[kSpecial])
+        << "a menu reads SPEC 1 as the Special (select) key";
+    EXPECT_EQ(0, state.players[0].belt_cast);
+}
+
+TEST(BeltSampler, on_with_a_walker_sends_the_guys_entry_and_a_fresh_state_sees_the_press)
+{
+    ScopedAbilitySelect on(true);
+    GameWorld& world = og::runtime::current_session->myscreen_->world();
+    walker* const hero = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, hero);
+    auto hero_guy = std::make_unique<guy>(FAMILY_SOLDIER);
+    hero_guy->upgrade_to_level(13);
+    hero_guy->belt[1] = og::sim::belt::encode({3, false});  // SPEC 2 = WHIRLWIND
+    hero_guy->belt[4] = og::sim::belt::kEmptyByte;           // SHIFTER + SPEC 2 = nothing
+    hero->set_owned_myguy(std::move(hero_guy));
+    hero->stats()->set_level(13);
+    SeatControl seat(hero);
+    FakeKeyboard keyboard;
+
+    InputState state;
+    input_state_from_sdl(state);
+    ASSERT_TRUE(keyboard.set(0, KEY_SPEC2, true));
+    input_state_from_sdl(state);
+    EXPECT_TRUE(state.players[0].pressed[kSpecial]);
+    EXPECT_TRUE(state.players[0].held[kSpecial]);
+    EXPECT_FALSE(state.players[0].held[kSpecialSwitch]);
+    EXPECT_EQ(0x03, state.players[0].belt_cast)
+        << "SPEC 2 sends the guy's own slot-2 entry, not the class default";
+
+    // SHIFTER pressed mid-hold does not change the running entry.
+    ASSERT_TRUE(keyboard.set(0, KEY_SHIFTER, true));
+    input_state_from_sdl(state);
+    EXPECT_FALSE(state.players[0].pressed[kSpecial]);
+    EXPECT_EQ(0x03, state.players[0].belt_cast);
+
+    // A fresh InputState (a test context swap, a new sampler state) with
+    // the key still down: the press edge comes from the bits handed in, so
+    // it is a press again, now on the SHIFTER row (cleared: nothing there).
+    InputState fresh;
+    input_state_from_sdl(fresh);
+    EXPECT_TRUE(fresh.players[0].pressed[kSpecial])
+        << "a stale SPEC history must not swallow the press of a fresh state";
+    EXPECT_EQ(og::sim::belt::kCastNothing, fresh.players[0].belt_cast);
+
+    keyboard.set(0, KEY_SPEC2, false);
+    keyboard.set(0, KEY_SHIFTER, false);
+    input_state_from_sdl(fresh);
+    EXPECT_FALSE(fresh.players[0].held[kSpecial]);
+    EXPECT_EQ(0, fresh.players[0].belt_cast);
+
+    world.delete_objects();
+}
+
+namespace
+{
+
+// One soldier hero (level 13, every slot open) whose SPEC 2 belt slot holds
+// WHIRLWIND (slot 3) instead of the class default BOOMERANG (slot 2), started
+// the way Base Camp's GO starts a mission: the local lobby builds the start
+// config from the save (make_lobby_character_data), glad_init rebuilds the
+// mission roster from it (make_guy_from_lobby_character) and installs the
+// local transport, so the display world is the in-process server's mirror.
+walker* start_belt_mission(screen& game_screen)
+{
+    game_screen.save_data.reset();
+    game_screen.save_data.current_campaign = "gladiator";
+    game_screen.save_data.current_levels["gladiator"] = 1;
+    game_screen.save_data.scen_num = 1;
+    game_screen.save_data.numplayers = 1;
+    auto hero = std::make_unique<guy>(FAMILY_SOLDIER);
+    hero->name = "Belt";
+    hero->teamnum = 0;
+    hero->upgrade_to_level(13);
+    hero->belt[1] = og::sim::belt::encode({3, false});
+    game_screen.save_data.team_list[0] = std::move(hero);
+    game_screen.save_data.team_size = 1;
+    if (!game_screen.save_data.save("save0"))
+        return nullptr;
+    std::optional<og::ui::PickerLobbyGameStartConfig> config;
+    {
+        auto client = og::ui::create_local_picker_lobby_client();
+        client->initialize_from_save();
+        config = client->build_game_start_config();
+        client->shutdown();
+    }
+    if (!config.has_value())
+        return nullptr;
+    glad_init(false, &*config);
+    if (og::runtime::current_game_session == nullptr ||
+        !og::runtime::local_transport_active(*og::runtime::current_session))
+        return nullptr;
+    // The display world is the snapshot mirror: give the first snapshots a
+    // few ticks to put the hero under seat 1.
+    GameLoopDeps deps;
+    deps.enable_render = false;
+    deps.enable_event_poll = false;
+    deps.enable_frame_timing = false;
+    for (int frame = 0; frame < 10 && game_screen.viewob[0]->control == nullptr;
+         ++frame)
+        game_frame_with_result(game_screen,
+                               og::runtime::current_session->frame_state_, deps);
+    return game_screen.viewob[0]->control;
+}
+
+void end_belt_mission(screen& game_screen)
+{
+    og::runtime::clear_local_transport_shadow(*og::runtime::current_game_session);
+    for (auto& view : game_screen.viewob)
+    {
+        if (view)
+            view->control = nullptr;
+    }
+    game_screen.world().delete_objects();
+    game_screen.world().end = 0;
+    game_screen.world().retry = false;
+}
+
+GameLoopDeps one_tick_per_frame()
+{
+    GameLoopDeps deps;
+    deps.enable_render = false;
+    deps.enable_event_poll = false;
+    deps.enable_frame_timing = false;
+    return deps;
+}
+
+// Presses player 1's SPEC 2 key for one frame, lets go, and runs ticks until
+// the mirror hero's current special moves (or a bounded number of frames).
+int press_spec2_and_read_the_slot(screen& game_screen)
+{
+    FakeKeyboard keyboard;
+    GameLoopFrameState& st = og::runtime::current_session->frame_state_;
+    const GameLoopDeps deps = one_tick_per_frame();
+    game_frame_with_result(game_screen, st, deps);  // settle, nothing held
+    if (game_screen.viewob[0]->control == nullptr)
+        return -1;
+    const int before = game_screen.viewob[0]->control->current_special();
+    if (!keyboard.set(0, KEY_SPEC2, true))
+        return -1;
+    game_frame_with_result(game_screen, st, deps);
+    keyboard.set(0, KEY_SPEC2, false);
+    for (int frame = 0; frame < 8; ++frame)
+    {
+        walker* const control = game_screen.viewob[0]->control;
+        if (control != nullptr && control->current_special() != before)
+            return control->current_special();
+        game_frame_with_result(game_screen, st, deps);
+    }
+    walker* const control = game_screen.viewob[0]->control;
+    return control != nullptr ? control->current_special() : -1;
+}
+
+} // namespace
+
+TEST(BeltPlay, a_spec2_press_with_the_setting_on_casts_the_guys_slot_2_entry)
+{
+    ScopedAbilitySelect on(true);
+    screen& game_screen = *og::runtime::current_session->myscreen_;
+    walker* const hero = start_belt_mission(game_screen);
+    ASSERT_NE(nullptr, hero) << "the mission never put a hero under seat 1";
+    ASSERT_NE(nullptr, hero->myguy) << "the mirror hero has no guy";
+    EXPECT_EQ(og::sim::belt::encode({3, false}), hero->myguy->belt[1])
+        << "the mirror guy must carry the belt the save gave the hero";
+    ASSERT_EQ(1, hero->current_special());
+
+    trace_clear();
+    const int slot = press_spec2_and_read_the_slot(game_screen);
+    EXPECT_EQ(3, slot)
+        << "SPEC 2 must cast the guy's slot-2 entry (WHIRLWIND, slot 3), not "
+           "the default BOOMERANG (2) or a cycle";
+    EXPECT_TRUE(trace_contains("belt", "seat 0 sends belt_cast=0x03"));
+    EXPECT_TRUE(trace_contains("special", "slot=3 shift=0"))
+        << "the server must reach the cast (or its MP refusal) for slot 3";
+    end_belt_mission(game_screen);
+}
+
+TEST(BeltPlay, a_spec2_press_with_the_setting_off_cycles_the_special)
+{
+    ScopedAbilitySelect off;
+    screen& game_screen = *og::runtime::current_session->myscreen_;
+    walker* const hero = start_belt_mission(game_screen);
+    ASSERT_NE(nullptr, hero) << "the mission never put a hero under seat 1";
+    ASSERT_EQ(1, hero->current_special());
+
+    trace_clear();
+    const int slot = press_spec2_and_read_the_slot(game_screen);
+    EXPECT_EQ(2, slot) << "with the setting off SPEC 2 cycles 1 -> 2";
+    EXPECT_FALSE(trace_contains("special", "cast id="))
+        << "the change-special key never casts";
+    end_belt_mission(game_screen);
+}
+
+// The render-frame latch: a SPEC tap sampled on a frame with no sim tick,
+// released before the next frame, still reaches the tick with its entry.
+TEST(BeltPlay, latch_keeps_the_pressed_frames_byte_across_a_render_frame)
+{
+    ScopedAbilitySelect on(true);
+    screen& game_screen = *og::runtime::current_session->myscreen_;
+    walker* const hero = start_belt_mission(game_screen);
+    ASSERT_NE(nullptr, hero);
+
+    GameLoopFrameState& st = og::runtime::current_session->frame_state_;
+    GameLoopDeps no_tick = one_tick_per_frame();
+    no_tick.enable_tick = false;
+    {
+        FakeKeyboard keyboard;
+        game_frame_with_result(game_screen, st, one_tick_per_frame());
+        // An idle render frame first: the pending input then holds a zero
+        // byte, so the press frame's byte must REPLACE it, and the release
+        // frame's zero must KEEP it.
+        game_frame_with_result(game_screen, st, no_tick);
+        ASSERT_TRUE(st.has_pending_input);
+        ASSERT_EQ(0, st.pending_input.players[0].belt_cast);
+        ASSERT_TRUE(keyboard.set(0, KEY_SPEC2, true));
+        game_frame_with_result(game_screen, st, no_tick);
+        keyboard.set(0, KEY_SPEC2, false);
+        game_frame_with_result(game_screen, st, no_tick);
+    }
+    ASSERT_TRUE(st.has_pending_input);
+    EXPECT_TRUE(st.pending_input.players[0].pressed[kSpecial])
+        << "the tap's press is OR'd across render frames";
+    EXPECT_FALSE(st.pending_input.players[0].held[kSpecial]);
+    EXPECT_EQ(og::sim::belt::encode({3, false}),
+              st.pending_input.players[0].belt_cast)
+        << "a zero byte on the release frame must keep the tap's entry";
+
+    // The tick consumes it: the pending state (byte included) is cleared.
+    game_frame_with_result(game_screen, st, one_tick_per_frame());
+    EXPECT_EQ(0, st.pending_input.players[0].belt_cast);
+    end_belt_mission(game_screen);
 }

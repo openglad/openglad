@@ -818,6 +818,89 @@ void sync_scenario_menu_host_control_visibility(button* buttons,
 // (the G8 sweep of the raw allbuttons_[18] writes when VIEW TEAM retired).
 inline constexpr int kTrainMenuChangeTeamIndex = 17;
 inline constexpr int kTrainMenuSellIndex = 19;
+// The ABILITIES door (New Ability Select), appended in the free x 160..240
+// gap of the y=170 band between ACCEPT and SELL. Dimmed while the setting is
+// off, so the screen stays discoverable.
+inline constexpr int kTrainMenuAbilitiesIndex = 20;
+
+// --- ABILITIES screen layout contract (docs/ability-select-design.md E.1) ---
+// Ordinals: BACK, DEFAULTS, the six belt slots row-major (key 1 | SHIFTER+1,
+// key 2 | SHIFTER+2, key 3 | SHIFTER+3), then the four bench rows row-major
+// (bench_0 | bench_1, bench_2 | bench_3). A belt row's id names its belt slot
+// (belt_0..2 = keys 1..3, belt_3..5 = SHIFTER + keys 1..3), not its ordinal.
+inline constexpr int kAbilitiesBackIndex = 0;
+inline constexpr int kAbilitiesDefaultsIndex = 1;
+inline constexpr int kAbilitiesBeltBase = 2;
+inline constexpr int kAbilitiesBenchBase = 8;
+// Four bench faces a page (two columns, two lines): no core class benches
+// more than four abilities, so only a class pack ever pages.
+inline constexpr int kAbilitiesBenchRows = 4;
+inline constexpr int kAbilitiesRowCount =
+    kAbilitiesBenchBase + kAbilitiesBenchRows;
+// The grid: two columns of 146 px faces (24 glyphs) with a 4 px gutter,
+// inside the 4..316 panel bevel. Every rect derives from these.
+// The panel is options_panel_draw_background's inverted bevel.
+inline constexpr int kAbilitiesPanelX1 = 4;
+inline constexpr int kAbilitiesPanelY1 = 4;
+inline constexpr int kAbilitiesPanelX2 = 316;
+inline constexpr int kAbilitiesPanelY2 = 196;
+inline constexpr int kAbilitiesLeftColX = 12;
+inline constexpr int kAbilitiesColW = 146;
+inline constexpr int kAbilitiesColGutter = 4;
+inline constexpr int kAbilitiesRightColX =
+    kAbilitiesLeftColX + kAbilitiesColW + kAbilitiesColGutter;
+inline constexpr int kAbilitiesTitleY = 13;
+inline constexpr int kAbilitiesSubtitleY = 24;
+// Every belt and bench face is 20 px tall: the 18 px icon slot sits inside
+// the 1 px bevel with nothing to spare (docs/ability-select-design.md, Icons).
+inline constexpr int kAbilitiesBeltTopY = 34;
+inline constexpr int kAbilitiesBeltPitch = 22;
+inline constexpr int kAbilitiesBeltH = 20;
+inline constexpr int kAbilitiesBenchHeaderY = 101;
+inline constexpr int kAbilitiesBenchTopY = 109;
+inline constexpr int kAbilitiesBenchPitch = 22;
+inline constexpr int kAbilitiesBenchH = 20;
+inline constexpr int kAbilitiesStatusY = 158;
+inline constexpr int kAbilitiesFooterY = 176;
+inline constexpr int kAbilitiesFooterH = 16;
+inline constexpr int kAbilitiesBackW = 50;
+static_assert(kAbilitiesRightColX + kAbilitiesColW <= kAbilitiesPanelX2 - 4,
+              "the right column ends inside the panel bevel");
+static_assert(kAbilitiesBenchTopY +
+                      (kAbilitiesBenchRows / 2 - 1) * kAbilitiesBenchPitch +
+                      kAbilitiesBenchH < kAbilitiesStatusY,
+              "the last bench row ends above the status line");
+// The icon slot on every belt and bench face, the HUD's own slot: an 18x18
+// cell (fill 18, frame 16) one pixel right of the bevel's inner edge and
+// flush under the top bevel, the 16x16 icon inside its frame, and the label
+// left-aligned after it, four clear columns on (x + 20 .. x + 23), so a
+// name never reads as touching the slot. Offsets are from the face's
+// top-left corner.
+inline constexpr int kAbilitiesSlotX = 2;
+inline constexpr int kAbilitiesSlotY = 1;
+inline constexpr int kAbilitiesSlotSize = 18;
+inline constexpr int kAbilitiesIconX = kAbilitiesSlotX + 1;
+inline constexpr int kAbilitiesIconY = kAbilitiesSlotY + 1;
+inline constexpr unsigned char kAbilitiesSlotFill = 18;
+inline constexpr unsigned char kAbilitiesSlotFrame = 16;
+// The label area: from the gap after the slot to the last column inside
+// the right bevel (x + 24 .. x + 144 on a 146 px face): 20 glyphs a line.
+inline constexpr int kAbilitiesLabelGap = 4;
+inline constexpr int kAbilitiesLabelX =
+    kAbilitiesSlotX + kAbilitiesSlotSize + kAbilitiesLabelGap;
+inline constexpr int kAbilitiesLabelEndX = kAbilitiesColW - 2;
+static_assert(kAbilitiesSlotY + kAbilitiesSlotSize <= kAbilitiesBeltH - 1 &&
+                  kAbilitiesSlotY + kAbilitiesSlotSize <= kAbilitiesBenchH - 1,
+              "the slot sits inside the face's bevel");
+static_assert(kAbilitiesLabelGap >= 3 && kAbilitiesLabelGap <= 4,
+              "three or four clear columns between the slot and its label");
+
+namespace og::ui {
+// The full-canvas panel chrome of DIFFICULTY and the options subscreens
+// (clear, black frame, the inverted bevel over 4..316 x 4..196). One
+// implementation (menu_screen_specs.cpp); ABILITIES draws the same panel.
+void options_panel_draw_background(void* screen_state);
+} // namespace og::ui
 
 // --- VIEW LEVEL (scenario viewer) layout contract --------------------------
 inline constexpr int kViewScenarioBackIndex = 0;

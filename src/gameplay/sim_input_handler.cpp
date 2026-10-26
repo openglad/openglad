@@ -11,6 +11,7 @@
 
 #include <openglad/gameplay/sim_input_handler.h>
 #include <openglad/core/constants.h>
+#include <openglad/gameplay/families/belt.h>
 #include <openglad/gameplay/families/family_descriptor.h>
 #include <openglad/gameplay/families/family_registry.h>
 #include <openglad/gameplay/families/specials_view.h>
@@ -25,6 +26,8 @@
 #include <openglad/core/test_trace.h>
 
 #include <algorithm>
+#include <format>
+#include <string>
 #include <string_view>
 
 namespace {
@@ -89,6 +92,39 @@ bool player_cast_special(walker* control, SimInputDebounce& debounce,
 }
 
 } // namespace
+
+bool sim_arm_belt_entry(const GameWorld& level, walker& control,
+                        std::uint8_t belt_cast, bool press_edge,
+                        SimInputDebounce& debounce, short player_num,
+                        og::sim::SimEventLog* sim_events)
+{
+    const FamilyDescriptor* const descriptor = get_family_descriptor(
+        static_cast<int>(static_cast<unsigned char>(control.family())));
+    og::sim::belt::Entry entry;
+    int opens_at = 0;
+    const og::sim::belt::Refusal refusal = og::sim::belt::validate_cast(
+        descriptor, control.stats()->level(), level.new_specials, belt_cast,
+        &entry, &opens_at);
+    switch (refusal)
+    {
+        case og::sim::belt::Refusal::None:
+            control.set_current_special(static_cast<char>(entry.slot));
+            control.set_shifter_down(entry.alt ? 1 : 0);
+            return true;
+        case og::sim::belt::Refusal::Locked:
+            if (press_edge)
+            {
+                const std::string cue = std::format("LEVEL {} NEEDED", opens_at);
+                emit_throttled_cue(debounce, player_num, sim_events, cue.c_str());
+            }
+            return false;
+        case og::sim::belt::Refusal::NothingThere:
+            break;
+    }
+    if (press_edge)
+        emit_throttled_cue(debounce, player_num, sim_events, "NO ABILITY THERE");
+    return false;
+}
 
 walker* sim_find_next_control(GameWorld& level, short my_team)
 {
@@ -532,9 +568,22 @@ SimInputResult sim_process_player_input(
     // Make sure we're not performing some queued action ..
     if (control->stats()->commands.empty())
     {
-        control->set_shifter_down(pi.is_held(InputAction::Shift) ? 1 : 0);
+        // New Ability Select: a seat with the belt on says which entry it means (PlayerInput::belt_cast).
+        // 0 is a classic seat (or no belt key held): the Shift key drives shifter_down exactly as it always
+        // has. A belt tick sets the slot and the shift from the ENTRY — the physical Shift key is the belt's
+        // second row here and means nothing to the cast — and a refused entry voices why and casts nothing
+        // (never the stale current_special). 0 is the only classic value: every other byte, well-formed
+        // or not, goes through validate_cast (og::sim::belt).
+        bool belt_refused = false;
+        if (pi.belt_cast != 0 &&
+            (pi.was_pressed(InputAction::Special) || pi.is_held(InputAction::Special)))
+            belt_refused = !sim_arm_belt_entry(level, *control, pi.belt_cast,
+                                               pi.was_pressed(InputAction::Special),
+                                               debounce, player_num, sim_events);
+        else
+            control->set_shifter_down(pi.is_held(InputAction::Shift) ? 1 : 0);
 
-        if (pi.was_pressed(InputAction::Special))
+        if (pi.was_pressed(InputAction::Special) && !belt_refused)
         {
             const bool cast = player_cast_special(control, debounce, player_num,
                                                   sim_events, true);
@@ -574,7 +623,7 @@ SimInputResult sim_process_player_input(
         // the held key alone, once per cycle; one tap is one cast, and holding
         // fires once per tick from the next tick on.
         if (pi.is_held(InputAction::Special) &&
-            !pi.was_pressed(InputAction::Special))
+            !pi.was_pressed(InputAction::Special) && !belt_refused)
             player_cast_special(control, debounce, player_num, sim_events,
                                 false);
         // The held key can land a cast that hides its caster too (a held

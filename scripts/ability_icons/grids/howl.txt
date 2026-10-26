@@ -1,0 +1,30 @@
+# HOWL (orc, orc captain): the orc facing right (orc.png frame 2, as cut, at -3,3, cloth on the red ramp) roaring, three sound arcs (31/29/27) from its mouth
+# legend: one character = one palette index (pix/openglad.gpl)
+k = 27
+a = 29
+b = 31
+c = 17
+d = 138
+e = 139
+f = 40
+g = 140
+h = 30
+i = 47
+j = 141
+
+................
+................
+................
+.............k..
+...........a..k.
+.........b..a.k.
+..ccdef...b.a.k.
+.cdddeg.ehb.a.k.
+c.ddeeijeb..a.k.
+c.deeggj...a..k.
+..feggjj.....k..
+..fffff.........
+..dddeg.........
+..eeeeg.gg......
+...fggggghh.....
+...jjj..........

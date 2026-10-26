@@ -7,9 +7,11 @@
 #include <array>
 #include <cstdint>
 #include <filesystem>
+#include <format>
 #include <initializer_list>
 #include <optional>
 #include <span>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -34,6 +36,7 @@ void expect_player_input_eq(const PlayerInput& expected, const PlayerInput& actu
         EXPECT_EQ(expected.held[key], actual.held[key]) << "held mismatch at key " << key;
         EXPECT_EQ(expected.pressed[key], actual.pressed[key]) << "pressed mismatch at key " << key;
     }
+    EXPECT_EQ(expected.belt_cast, actual.belt_cast) << "belt_cast mismatch";
 }
 
 void expect_input_state_eq(const InputState& expected, const InputState& actual)
@@ -51,6 +54,9 @@ InputState make_sparse_input()
     set_flags(input.players[0].pressed, {InputAction::Fire});
     set_flags(input.players[1].held, {InputAction::MoveDownRight, InputAction::Special});
     set_flags(input.players[1].pressed, {InputAction::SwitchSpecial});
+    // A replay frame (v24) carries each seat's belt byte.
+    input.players[1].belt_cast = 0x0B;
+    input.players[3].belt_cast = 0x07;
     return input;
 }
 
@@ -115,6 +121,9 @@ og::sim::WorldSnapshot make_initial_snapshot()
         .scen_shots = 8,
         .scen_hits = 6,
         .level = 8,
+        .owner_player_index = 0xff,
+        .owner_save_slot = 0xff,
+        .belt = {0x01, 0x09, 0xFF, 0x00, 0x0A, 0x05},
     });
 
     og::sim::EntitySnapshot entity;
@@ -1177,6 +1186,47 @@ TEST(Replay, snapshot_difference_names_the_respawn_mode_and_band_fields)
 // New Specials (replay v21): the world setting and the three entity fields
 // each name themselves when they diverge, so a desync in them is reported as
 // itself and not as an unexplained snapshot_hash mismatch.
+// New Ability Select (snapshot v18): a guy's belt differs -> the replay
+// verifier names the exact byte, never a bare snapshot-hash divergence.
+// compare_guy_snapshot is the one comparer; find_first_snapshot_difference
+// reaches it through guy_snapshots[i]. Proof it can fail: removing the belt
+// loop from compare_guy_snapshot reports no difference at all.
+TEST(Replay, compare_guy_snapshot_reports_a_belt_difference)
+{
+    for (std::size_t slot = 0; slot < 6; ++slot)
+    {
+        og::sim::WorldSnapshot expected;
+        expected.guy_snapshots.push_back({.name = "Same"});
+        expected.guy_snapshots.front().belt = {0x01, 0x02, 0x03, 0x09, 0x0A, 0x0B};
+        og::sim::WorldSnapshot actual = expected;
+        actual.guy_snapshots.front().belt[slot] = 0xFF;
+        const std::optional<og::sim::ReplayVerificationFailure> diff =
+            og::sim::find_first_snapshot_difference(12u, expected, actual);
+        ASSERT_TRUE(diff.has_value()) << "slot " << slot;
+        EXPECT_EQ(12u, diff->tick);
+        EXPECT_EQ(std::format("guy_snapshots[0].belt[{}]", slot), diff->field);
+        EXPECT_EQ(std::to_string(expected.guy_snapshots.front().belt[slot]),
+                  diff->expected_value);
+        EXPECT_EQ("255", diff->actual_value);
+    }
+}
+
+TEST(Replay, find_first_snapshot_difference_names_belt)
+{
+    og::sim::WorldSnapshot expected;
+    expected.guy_snapshots.resize(2);
+    og::sim::WorldSnapshot actual = expected;
+    actual.guy_snapshots[1].belt[4] = 0x0A;
+    const std::optional<og::sim::ReplayVerificationFailure> diff =
+        og::sim::find_first_snapshot_difference(3u, expected, actual);
+    ASSERT_TRUE(diff.has_value());
+    EXPECT_EQ("guy_snapshots[1].belt[4]", diff->field);
+    EXPECT_EQ("0", diff->expected_value);
+    EXPECT_EQ("10", diff->actual_value);
+    EXPECT_FALSE(og::sim::find_first_snapshot_difference(3u, expected, expected)
+                     .has_value());
+}
+
 TEST(Replay, find_first_snapshot_difference_names_new_specials_and_kit_fields)
 {
     const auto expect_named_diff =

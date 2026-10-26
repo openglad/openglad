@@ -1,6 +1,7 @@
 #include <openglad/gameplay/families/family_descriptor.h>
 #include <openglad/gameplay/game_client.h>
 #include <openglad/gameplay/game_server.h>
+#include <openglad/gameplay/families/belt.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/lobby_server.h>
 #include <openglad/gameplay/link_loss_window.h>
@@ -14233,4 +14234,130 @@ TEST(PickerNetworkClient, joiner_adopts_host_gameplay_fixes)
         join_client->poll_and_apply();
         return join_session.myscreen_->save_data.gameplay_fixes == 1;
     })) << "a later change by the host reaches the joiner too";
+}
+
+// New Ability Select: a joiner's ABILITIES edit rides its lobby character
+// (protocol v22) to the host, and the host's echo of that roster, applied by
+// the joiner's per-frame poll, gives the joiner its own belt back intact.
+TEST(PickerNetworkClient, joiners_belt_edit_reaches_the_host_roster_and_echoes_back_intact)
+{
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    PickerSaveStateGuard save_guard(save);
+    PickerRuntimeGuard runtime_guard;
+    prepare_single_member_network_save(save, 1, "Joiner");
+    g_start_game_requested = false;
+    constexpr og::sim::belt::Bytes kEdited{0x03, 0x09, 0xFF, 0x00, 0x0A, 0x05};
+
+    const int port = ix::getFreePort();
+    auto server_transport =
+        std::make_shared<og::sim::WebSocketServerTransport>(port);
+    server_transport->accept_connections();
+
+    og::ui::PickerJoinGameOptions options;
+    options.mode = og::ui::PickerJoinMode::Direct;
+    options.direct_endpoint = std::format("127.0.0.1:{}", port);
+    auto join_client = og::ui::create_join_picker_lobby_client(options);
+    join_client->initialize_from_save();
+
+    og::sim::PeerId join_peer_id = 0;
+    og::sim::LobbyMessage join_message;
+    ASSERT_TRUE(wait_until([&] {
+        join_client->poll_and_apply();
+        for (auto& [peer_id, message] : poll_lobby_messages(*server_transport))
+        {
+            if (message.kind() != og::sim::LobbyMessageKind::Join)
+                continue;
+            join_peer_id = peer_id;
+            join_message = std::move(message);
+            return true;
+        }
+        return false;
+    })) << "direct join client should connect and send its join message";
+
+    og::sim::LobbyPlayer join_player =
+        std::get<og::sim::LobbyJoinMessage>(join_message.payload).player;
+    join_player.player_index = 1u;
+    join_player.seat_id = 102u;
+    join_player.machine_id = 2u;
+    join_player.team = 1;
+    join_player.is_host = false;
+    og::sim::LobbyState state;
+    state.settings.campaign_id = "gladiator";
+    state.settings.scenario_id = 1;
+    state.players.push_back(og::sim::LobbyPlayer{
+        .player_index = 0u,
+        .seat_id = 101u,
+        .machine_id = 1u,
+        .name = "Remote Host",
+        .company = "Remote Host Company",
+        .team = 0,
+        .character_slots = {make_lobby_slot(0u, "Remote Host", 0)},
+        .ready = false,
+        .is_host = true,
+    });
+    state.players.push_back(join_player);
+    state.local_seat_ids = {join_player.seat_id};
+    state.last_join_request_id =
+        std::get<og::sim::LobbyJoinMessage>(join_message.payload).request_id;
+    server_transport->send_lobby_state(
+        join_peer_id, std::make_shared<og::sim::LobbyState>(state));
+    ASSERT_TRUE(wait_until([&] {
+        join_client->poll_and_apply();
+        return status_lines_contain_exact(join_client->status_lines(),
+                                          "Lobby: 2 players");
+    })) << "direct join client should receive the lobby state";
+
+    std::size_t local_slot = save.team_list.size();
+    for (std::size_t slot = 0; slot < save.team_list.size(); ++slot)
+    {
+        if (save.team_list[slot] != nullptr &&
+            save.team_list[slot]->name == "Joiner" &&
+            join_client->is_save_slot_editable(slot))
+        {
+            local_slot = slot;
+            break;
+        }
+    }
+    ASSERT_LT(local_slot, save.team_list.size());
+
+    // The ABILITIES edit, then the roster-mutation tail's sync.
+    save.team_list[local_slot]->belt = kEdited;
+    join_client->sync_from_save();
+    og::sim::LobbyMessage sync_message;
+    ASSERT_TRUE(wait_until([&] {
+        join_client->poll_and_apply();
+        for (auto& [peer_id, message] : poll_lobby_messages(*server_transport))
+        {
+            if (peer_id == join_peer_id &&
+                message.kind() == og::sim::LobbyMessageKind::Join)
+            {
+                sync_message = std::move(message);
+                return true;
+            }
+        }
+        return false;
+    })) << "the edit must go out as a roster sync";
+    const og::sim::LobbyJoinMessage& synced =
+        std::get<og::sim::LobbyJoinMessage>(sync_message.payload);
+    ASSERT_EQ(1u, synced.player.character_slots.size());
+    EXPECT_EQ(kEdited, synced.player.character_slots.front().character.belt)
+        << "the host's roster must receive the joiner's belt";
+
+    // The host echoes the roster it now holds; the joiner applies it on every
+    // menu frame. Ten frames, the belt intact on each.
+    join_player.character_slots = synced.player.character_slots;
+    state.players[1] = join_player;
+    state.last_join_request_id = synced.request_id;
+    server_transport->send_lobby_state(
+        join_peer_id, std::make_shared<og::sim::LobbyState>(state));
+    for (int frame = 0; frame < 10; ++frame)
+    {
+        join_client->poll_and_apply();
+        ASSERT_NE(nullptr, save.team_list[local_slot]);
+        ASSERT_EQ(kEdited, save.team_list[local_slot]->belt)
+            << "the echo rebuilt the joiner's hero without its belt (frame "
+            << frame << ")";
+    }
+
+    join_client->shutdown();
 }

@@ -536,16 +536,25 @@ GameRunResult run_level_loop(CursesGameSession& session, ITerminal& term, IClock
             result.withdrew = true;
         }
 
-        const InputState st = input.sample();
+        // New Ability Select: the SPEC keys fold against the followed walker's
+        // belt; a watched (follow-camera) target is not ours to cast with.
+        const std::optional<og::sim::belt::Layout> belt =
+            session.follow_engaged()
+                ? std::nullopt
+                : followed_belt(session.mirror_world(), session.followed_entity_id());
+        const InputState st = input.sample(belt ? &*belt : nullptr);
         session.send_input(st);
         session.advance();
 
         for (std::string& msg : session.drain_messages())
             renderer.log_message(std::move(msg));
 
-        if (opt.render)
+        if (opt.render) {
+            // New Ability Select: holding SHIFTER shows the S1..S3 row.
+            renderer.set_shift_layer(st.players[0].is_held(InputAction::Shift));
             renderer.draw(term, session.mirror_world(), session.followed_entity_id(),
                           session.follow_engaged());
+        }
 
         ++frames;
 

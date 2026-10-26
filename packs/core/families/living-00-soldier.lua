@@ -40,7 +40,7 @@ end
 
 local function whirlwind(self)
   -- can't do while attacking, etc.
-  if self:busy() ~= 0 then
+  if gf.special_busy(self) then
     return false, "SPECIAL BUSY"
   end
   local t = og.tuning(self)
@@ -76,7 +76,7 @@ local function whirlwind(self)
 end
 
 local function disarm(self)
-  if self:busy() ~= 0 then
+  if gf.special_busy(self) then
     return false, "SPECIAL BUSY"
   end
   -- can't do this if no frontal enemy
@@ -208,10 +208,10 @@ og.family("living", {
              train = { strength = 6, dexterity = 10, constitution = 6,
                        intelligence = 25, armor = 50, level = 200 } },
   specials = {
-    { id = "charge",    name = "CHARGE",    mp_cost = 25,  cast = charge, detail = "Charge causes you to run forward, damaging anything in your way." },
-    { id = "boomerang", name = "BOOMERANG", mp_cost = 100, cast = throw_boomerang, detail = "The boomerang flies out in a spiral, hurting nearby foes." },
-    { id = "whirlwind", name = "WHIRLWIND", mp_cost = 120, cast = whirlwind, detail = "The fighter whirls in a spiral, hurting or stunning melee foes." },
-    { id = "disarm",    name = "DISARM",    mp_cost = 150, cast = disarm, detail = "Stagger the foe you face so it waits before its next swing. A stronger foe resists." },
+    { id = "charge",    name = "CHARGE",    mp_cost = 25,  cast = charge, detail = "Charge causes you to run forward, damaging anything in your way.", icon = "icons/charge.png" },
+    { id = "boomerang", name = "BOOMERANG", mp_cost = 100, cast = throw_boomerang, detail = "The boomerang flies out in a spiral, hurting nearby foes.", icon = "icons/boomerang.png" },
+    { id = "whirlwind", name = "WHIRLWIND", mp_cost = 120, cast = whirlwind, detail = "The fighter whirls in a spiral, hurting or stunning melee foes.", icon = "icons/whirlwind.png" },
+    { id = "disarm",    name = "DISARM",    mp_cost = 150, cast = disarm, detail = "Stagger the foe you face so it waits before its next swing. A stronger foe resists.", icon = "icons/disarm.png" },
   },
   default_weapon = "core:knife",
   flags = {},

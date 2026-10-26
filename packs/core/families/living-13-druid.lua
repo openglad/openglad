@@ -203,10 +203,10 @@ og.family("living", {
              train = { strength = 15, dexterity = 15, constitution = 7,
                        intelligence = 6, armor = 50, level = 200 } },
   specials = {
-    { id = "grow_tree",     name = "GROW TREE",     mp_cost = 15,  cast = plant_tree, detail = "These magical trees will resist the enemy, while allowing friends to pass." },
-    { id = "summon_faerie", name = "SUMMON FAERIE", mp_cost = 80,  cast = summon_faerie, detail = "This spell brings to you a small flying faerie to stun foes." },
-    { id = "reveal",        name = "REVEAL",        mp_cost = 150, cast = reveal_items, detail = "Gives you a magical view to see treasure, potions, outposts, and invisible enemies." },
-    { id = "protection",    name = "PROTECTION",    mp_cost = 200, detail = "Calls the winds to aid your nearby friends by circling them with a shield of moving air." },
+    { id = "grow_tree",     name = "GROW TREE",     mp_cost = 15,  cast = plant_tree, detail = "These magical trees will resist the enemy, while allowing friends to pass.", icon = "icons/grow_tree.png" },
+    { id = "summon_faerie", name = "SUMMON FAERIE", mp_cost = 80,  cast = summon_faerie, detail = "This spell brings to you a small flying faerie to stun foes.", icon = "icons/summon_faerie.png" },
+    { id = "reveal",        name = "REVEAL",        mp_cost = 150, cast = reveal_items, detail = "Gives you a magical view to see treasure, potions, outposts, and invisible enemies.", icon = "icons/reveal.png" },
+    { id = "protection",    name = "PROTECTION",    mp_cost = 200, detail = "Calls the winds to aid your nearby friends by circling them with a shield of moving air.", icon = "icons/protection.png" },
     default_cast = protection_circle,  -- case 4 and every unmapped slot
   },
   default_weapon = "core:lightning",

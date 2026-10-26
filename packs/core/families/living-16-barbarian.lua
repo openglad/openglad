@@ -145,8 +145,8 @@ og.family("living", {
              train = { strength = 5, dexterity = 35, constitution = 5,
                        intelligence = 35, armor = 50, level = 200 } },
   specials = {
-    { id = "hurl_boulder",      name = "HURL BOULDER",      mp_cost = 20, detail = "Throw a massive stone boulder at your enemies." },
-    { id = "exploding_boulder", name = "EXPLODING BOULDER", mp_cost = 30, detail = "Hurl a boulder so hard that it explodes and hits foes all around." },
+    { id = "hurl_boulder",      name = "HURL BOULDER",      mp_cost = 20, detail = "Throw a massive stone boulder at your enemies.", icon = "icons/hurl_boulder.png" },
+    { id = "exploding_boulder", name = "EXPLODING BOULDER", mp_cost = 30, detail = "Hurl a boulder so hard that it explodes and hits foes all around.", icon = "icons/exploding_boulder.png" },
     default_cast = do_special,
   },
   default_weapon = "core:hammer",
