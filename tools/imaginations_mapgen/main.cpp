@@ -593,6 +593,14 @@ void build_castle_of_gold()
     og::mapgen::paint_rect(g, 55, 14, 55, 18, PIX_WATER1);
     og::mapgen::paint_rect(g, 61, 14, 61, 18, PIX_WATER1);
     og::mapgen::paint_rect(g, 59, 14, 60, 14, PIX_WATER1);
+    // The Ghost Tent is a blue circle: a water ring around its dark disc,
+    // open on the west (x 49, y 33..34) so the crew walks in to the
+    // channel-1 pad. Ghosts and faeries fly over the rim.
+    og::mapgen::paint_ring(g, 52.5, 33.5, 2.6, 4.4, PIX_WATER1);
+    for (int y = 33; y <= 34; ++y)
+        for (int x = 47; x <= 50; ++x)
+            if (g.data[static_cast<std::size_t>(x + y * g.w)] == PIX_WATER1)
+                og::mapgen::paint(g, x, y, PIX_GRASS1);
 
     og::mapgen::smooth_world(w);
 
@@ -724,9 +732,9 @@ void build_castle_of_gold()
     treasure(FAMILY_MAGIC_POTION, 14, 48, 0);
     treasure(FAMILY_SILVER_BAR, 5, 19, 0);
     treasure(FAMILY_DRUMSTICK, 7, 22, 0);
-    for (const auto& r : {std::pair{31, 8}, {31, 54}, {8, 31}, {55, 31}})
+    for (const auto& r : {std::pair{31, 8}, {31, 54}, {8, 31}, {57, 31}})
         treasure(FAMILY_DRUMSTICK, r.first, r.second, 0);
-    treasure(FAMILY_FLIGHT_POTION, 50, 36, 0);
+    treasure(FAMILY_FLIGHT_POTION, 48, 36, 0);
     // The throne on the hall dais is the way out.
     og::mapgen::place_exit(w, 0, 31, 28, kCastleOfGoldExit);
 
@@ -747,9 +755,10 @@ void build_castle_of_gold()
     for (const auto& t : {std::pair{20, 20}, {27, 20}, {36, 20}, {43, 20},
                           {20, 37}, {27, 37}, {36, 37}, {43, 37}})
         og::mapgen::paint_decor(w, 0, t.first, t.second, DECOR_TORCH1);
-    // Braziers: the dais corners, the gate mouth, the camp, the tent.
+    // Braziers: the dais corners, the gate mouth, the camp, the tent's
+    // west mouth.
     for (const auto& b : {std::pair{29, 26}, {33, 26}, {29, 30}, {33, 30},
-                          {29, 44}, {33, 44}, {11, 48}, {16, 48}, {52, 30}})
+                          {29, 44}, {33, 44}, {11, 48}, {16, 48}, {48, 32}})
         og::mapgen::paint_decor(w, 0, b.first, b.second, DECOR_BRAZIER);
     // Two columns flank the causeway, off its funnel.
     og::mapgen::paint_decor(w, 0, 28, 46, DECOR_COLUMN_BOTTOM);
@@ -777,6 +786,16 @@ void build_castle_of_gold()
     og::mapgen::scatter_boulders(w, kScatterSeed, 0, 17, 8, 52, 12, 47);
     og::mapgen::scatter_boulders(w, kScatterSeed, 0, 17, 45, 27, 55, 47);
     og::mapgen::scatter_boulders(w, kScatterSeed, 0, 35, 45, 46, 55, 47);
+    // The Ghost Tent's water ring and its west mouth stay bare, so the blue
+    // circle reads whole and the way in is clear.
+    for (int y = 29; y <= 38; ++y)
+        for (int x = 47; x <= 57; ++x)
+        {
+            const double dx = x - 52.5;
+            const double dy = y - 33.5;
+            if (dx * dx + dy * dy >= 2.6 * 2.6 && dx * dx + dy * dy < 4.4 * 4.4)
+                og::mapgen::paint_decor(w, 0, x, y, DECOR_NONE);
+        }
 
     save_level_files(w, 2, "The Castle of Gold",
                      {
@@ -838,8 +857,6 @@ void build_asteroid_castle()
     // --- Floor 0 genre paint: the rock rim and its grass.
     og::mapgen::paint_rect(g0, 3, 4, 60, 59, PIX_DIRT_1);
     og::mapgen::paint_rect(g0, 5, 6, 58, 57, PIX_GRASS1);
-    og::mapgen::paint_rect(g0, 28, 26, 33, 34, PIX_GRASS_DARK_1);
-    og::mapgen::paint_rect(g0, 36, 16, 40, 19, PIX_GRASS_DARK_1);
     og::mapgen::paint_rect(g0, 46, 45, 53, 52, PIX_GRASS_DARK_1);
     // The castle: walls 2 thick, the court, the east gate (3 wide, on the
     // court's centre row), the big-door row and the vestibule behind it.

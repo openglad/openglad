@@ -8200,7 +8200,7 @@ TEST(GameLoop, zz_capture_imaginations_moments)
                 // set down at one hit point against the north spike band
                 // by the castle. The next spike bite kills him inside the
                 // sim tick, so the level script sees the last bad guy fall
-                // and lands its rainbow arc over the castle.
+                // and lands its rainbow arc over the big door.
                 walker* last = nullptr;
                 for (auto& up : w.oblist)
                     if (walker* a = up.get(); a != nullptr && !a->dead() &&

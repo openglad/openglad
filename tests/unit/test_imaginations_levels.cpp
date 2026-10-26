@@ -694,6 +694,20 @@ TEST_F(ImaginationsCampaignTest, castle_gate_safety_net_drops_on_the_beat)
     world.tick();
     std::vector<walker*> faeries = live_faeries(world, true);
     ASSERT_FALSE(faeries.empty());
+    // Lift the shore keys off the map: any faerie touching one runs the
+    // count on the spot (castle_gate_falls_to_twelve_faerie_keys), and
+    // this test is about the tick net alone.
+    int lifted = 0;
+    for (const auto& uptr : world.fxlist)
+        if (walker* ob = uptr.get(); ob != nullptr &&
+            ob->query_order() == Order::Treasure && !ob->dead() &&
+            ob->family() == FAMILY_KEY &&
+            ((kShoreKeys >> ob->stats()->level()) & 1u) != 0)
+        {
+            ob->set_dead(1);
+            ++lifted;
+        }
+    ASSERT_EQ(12, lifted);
     faeries[0]->set_keys(kShoreKeys);
     while (world.level_tick_count() < 99)
         world.tick();

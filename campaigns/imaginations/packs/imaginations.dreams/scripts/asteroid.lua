@@ -59,14 +59,14 @@ local STAIR_DAMAGE = 40
 local STAIR_STEP = 6
 
 -- Flashes from the deck edge toward the gate when he falls, and the
--- rainbow arc over the castle when the last bad guy dies.
+-- rainbow arc over the big door when the last bad guy dies.
 local FALL_ARC = {
   { 44, 15 }, { 41, 17 }, { 38, 19 }, { 35, 21 }, { 32, 22 }, { 29, 23 },
   { 26, 24 },
 }
 local WIN_ARC = {
-  { 8, 12 }, { 10, 10 }, { 12, 9 }, { 14, 8 }, { 16, 8 }, { 18, 9 },
-  { 20, 10 }, { 22, 12 },
+  { 9, 51 }, { 10, 49 }, { 12, 47 }, { 14, 46 }, { 16, 46 }, { 18, 47 },
+  { 20, 49 }, { 21, 51 },
 }
 
 -- The centre tile of an entity.
