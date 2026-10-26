@@ -8069,6 +8069,28 @@ walker* by_the_spikes(GameWorld& w)
     return nullptr;
 }
 
+// The awake hostile on floor 0 nearest tile (tx, ty), within `reach`
+// tiles; nullptr when none is that close.
+walker* nearest_hostile(GameWorld& w, int tx, int ty, int reach)
+{
+    walker* best = nullptr;
+    long best_d = static_cast<long>(reach) * reach * GRID_SIZE * GRID_SIZE;
+    for (auto& up : w.oblist)
+        if (walker* a = up.get(); a != nullptr && !a->dead() &&
+            !a->dormant() && a->query_order() == Order::Living &&
+            a->team_num() != 0 && a->floor() == 0)
+        {
+            const long dx = static_cast<long>(a->xpos()) - tx * GRID_SIZE;
+            const long dy = static_cast<long>(a->ypos()) - ty * GRID_SIZE;
+            if (dx * dx + dy * dy <= best_d)
+            {
+                best_d = dx * dx + dy * dy;
+                best = a;
+            }
+        }
+    return best;
+}
+
 } // namespace moments_rec
 
 TEST(GameLoop, zz_capture_imaginations_moments)
@@ -8122,6 +8144,28 @@ TEST(GameLoop, zz_capture_imaginations_moments)
             if (f == 420)
                 if (walker* k = lead_of(w); k != nullptr)
                     k->set_keys(k->keys() | (1u << 13));
+            // The waves at the gate: the camera finds the faerie nearest
+            // the gate apron (31,44) while the war comes to the wall.
+            if (in(f, 900, 1400))
+                return follow(nearest_hostile(w, 31, 44, 14), cx, cy, floor);
+            // The Fae Knights' wave (awake at 1500 on the shores) is set
+            // down on the gate apron, flanking the causeway, where the
+            // camera holds on the gate.
+            if (f == 1503)
+            {
+                const int spots[6][2] = {{27, 45}, {35, 45}, {28, 47},
+                                         {34, 47}, {26, 48}, {36, 48}};
+                int placed = 0;
+                for (auto& up : w.oblist)
+                    if (walker* a = up.get(); a != nullptr && placed < 6 &&
+                        !a->dead() && !a->dormant() &&
+                        a->query_order() == Order::Living &&
+                        a->team_num() != 0 && a->stats()->name == "Fae Knight")
+                    {
+                        place_at(a, spots[placed][0], spots[placed][1], 0);
+                        ++placed;
+                    }
+            }
             // The Queen's wave wakes on the south shore (spawn_delay 2200)
             // under "The Fae Queen is coming." (tick 2150): the keyframe
             // holds the camera on her post until 2260, then it rides her.
@@ -8143,11 +8187,13 @@ TEST(GameLoop, zz_capture_imaginations_moments)
         {
             return f % 3 == 0 &&
                 (in(f, 0, 120) || in(f, 140, 230) || in(f, 290, 420) ||
-                 in(f, 900, 1400) || in(f, 2190, 2700));
+                 in(f, 900, 1400) || in(f, 1500, 1900) ||
+                 in(f, 2190, 2700));
         };
         epic_rec::record("imag_moments_2", 2, WeatherKind::None, crew,
             {{0, 504, 600, 0, true}, {140, 376, 592, 0, true},
              {290, 832, 528, 0, true}, {900, 504, 680, 0, true},
+             {1500, 504, 704, 0, true},
              {2190, 504, 984, 0, true}, {2700, 504, 680, 0, true}},
             "imaginations", d);
     }
@@ -8245,7 +8291,7 @@ TEST(GameLoop, zz_capture_imaginations_moments)
         epic_rec::record("imag_moments_3", 3, WeatherKind::Snow, crew,
             {{0, 416, 440, 0, true}, {60, 860, 150, 0, true},
              {120, 784, 168, 1, true}, {330, 360, 480, 0, true},
-             {1390, 904, 736, 0, true}, {1550, 248, 760, 0, true},
+             {1390, 904, 736, 0, true}, {1550, 240, 736, 0, true},
              {1630, 248, 700, 0, true}, {1780, 248, 700, 0, true}},
             "imaginations", d);
     }
