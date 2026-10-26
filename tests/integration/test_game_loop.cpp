@@ -8113,7 +8113,19 @@ TEST(GameLoop, zz_capture_imaginations_moments)
                 place_at(lead_of(w), 22, 38, 0);
             if (f == 300)
                 place_at(lead_of(w), 38, 38, 0);
-            if (f < 2190)
+            // Once the tent shot is done, the keeper is handed the castle
+            // key (13), as if he had stepped over it by the gate: the
+            // strongroom doors open for him and he walks back out to the
+            // war instead of bumping a locked door for the rest of the
+            // film. (Handed over earlier, he would leave the first room and
+            // empty the second before his drop onto its bar.)
+            if (f == 420)
+                if (walker* k = lead_of(w); k != nullptr)
+                    k->set_keys(k->keys() | (1u << 13));
+            // The Queen's wave wakes on the south shore (spawn_delay 2200)
+            // under "The Fae Queen is coming." (tick 2150): the keyframe
+            // holds the camera on her post until 2260, then it rides her.
+            if (f < 2260)
                 return false;
             if (follow(named(w, "Fae Queen"), cx, cy, floor))
             {
@@ -8136,7 +8148,7 @@ TEST(GameLoop, zz_capture_imaginations_moments)
         epic_rec::record("imag_moments_2", 2, WeatherKind::None, crew,
             {{0, 504, 600, 0, true}, {140, 376, 592, 0, true},
              {290, 832, 528, 0, true}, {900, 504, 680, 0, true},
-             {2700, 504, 680, 0, true}},
+             {2190, 504, 984, 0, true}, {2700, 504, 680, 0, true}},
             "imaginations", d);
     }
     // 3 The Asteroid Castle: the Purple Man at the east gate, space past
@@ -8181,9 +8193,50 @@ TEST(GameLoop, zz_capture_imaginations_moments)
                         ++placed;
                     }
             }
+            if (f == 1560)
+            {
+                // The war's end, staged: every bad guy left (dormant ones
+                // too) is struck off quietly but one awake raider, who is
+                // set down at one hit point against the north spike band
+                // by the castle. The next spike bite kills him inside the
+                // sim tick, so the level script sees the last bad guy fall
+                // and lands its rainbow arc over the castle.
+                walker* last = nullptr;
+                for (auto& up : w.oblist)
+                    if (walker* a = up.get(); a != nullptr && !a->dead() &&
+                        a->query_order() == Order::Living &&
+                        a->team_num() != 0)
+                    {
+                        if (last == nullptr && !a->dormant() &&
+                            a->floor() == 0 && a->family() != FAMILY_GOLEM)
+                        {
+                            last = a;
+                            continue;
+                        }
+                        a->set_dead(1);
+                    }
+                if (last != nullptr)
+                {
+                    place_at(last, 18, 12, 0);
+                    last->stats()->set_hitpoints(1.0f);
+                }
+            }
+            // The key-bearer at the big door: the lead, with key 3, walks
+            // south into each of the three doors in turn (court side), and
+            // stops short of the exit pad behind them.
+            const int door_x[3] = {14, 16, 15};
+            for (int i = 0; i < 3; ++i)
+                if (f == 1640 + 40 * i)
+                    if (walker* k = lead_of(w); k != nullptr)
+                    {
+                        k->set_keys(k->keys() | (1u << 3));
+                        k->set_act_type(ACT_GUARD);
+                        place_at(k, door_x[i], 41, 0);
+                        k->stats()->set_command(COMMAND_WALK, 6, 0, 1);
+                    }
             if (in(f, 150, 330))
                 return follow(named(w, nullptr, FAMILY_GOLEM), cx, cy, floor);
-            if (f >= 330)
+            if (in(f, 330, 1390))
                 return follow(by_the_spikes(w), cx, cy, floor);
             return false;
         };
@@ -8191,7 +8244,8 @@ TEST(GameLoop, zz_capture_imaginations_moments)
         epic_rec::record("imag_moments_3", 3, WeatherKind::Snow, crew,
             {{0, 416, 440, 0, true}, {60, 860, 150, 0, true},
              {120, 784, 168, 1, true}, {330, 360, 480, 0, true},
-             {1500, 360, 480, 0, true}},
+             {1390, 904, 736, 0, true}, {1550, 248, 150, 0, true},
+             {1630, 248, 700, 0, true}, {1780, 248, 700, 0, true}},
             "imaginations", d);
     }
 }
