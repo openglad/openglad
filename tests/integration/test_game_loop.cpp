@@ -5,6 +5,7 @@
 #include <cmath>
 #include <filesystem>
 #include <format>
+#include <functional>
 #include <fstream>
 #include <memory>
 #include <set>
@@ -7500,10 +7501,23 @@ bool action_center(GameWorld& w, int floor, float& out_x, float& out_y)
     return true;
 }
 
+// Optional per-frame hooks for staged scenes. `stage` runs on the
+// AUTHORITATIVE server world before each sim tick (place a walker, poke a
+// scripted beat) and may take the camera: return true with a target centre
+// and floor to snap there for this frame. `keep` picks which frames are
+// written (every frame when empty), so long films can dump a few windows.
+struct Director
+{
+    std::function<bool(int frame, GameWorld& server, float& cx, float& cy,
+                       int& floor)> stage;
+    std::function<bool(int frame)> keep;
+};
+
 void record(const char* scene, int scen, WeatherKind kind,
             const std::vector<int>& roster,
             const std::vector<Key>& keys,
-            const char* campaign = "westlands")
+            const char* campaign = "westlands",
+            const Director& director = {})
 {
     screen* const s = og::runtime::current_session->myscreen_;
     // The crew deploys at the level's team-0 start position markers.
@@ -7558,13 +7572,18 @@ void record(const char* scene, int scen, WeatherKind kind,
             seg++;
         const Key& a = keys[seg];
         float tx = static_cast<float>(a.cx), ty = static_cast<float>(a.cy);
+        int floor = a.floor;
+        bool snap = a.forced;
         if (!a.forced)
             action_center(s->world(), a.floor, tx, ty);
-        if (a.floor != last_floor || a.forced)
+        if (director.stage &&
+            director.stage(f, server->world(), tx, ty, floor))
+            snap = true;
+        if (floor != last_floor || snap)
         {
             cam_x = tx; // snap on a floor cut or scripted anchor
             cam_y = ty;
-            last_floor = a.floor;
+            last_floor = floor;
         }
         cam_x += (tx - cam_x) * 0.05f; // eased drift toward the action
         cam_y += (ty - cam_y) * 0.05f;
@@ -7578,11 +7597,13 @@ void record(const char* scene, int scen, WeatherKind kind,
         // The transport shadow re-assigns viewport control every tick; the
         // manual camera only holds while control is null, so clear it both
         // before the sim tick and before the redraw.
-        vs->editor_floor_override_ = static_cast<Sint32>(a.floor);
+        vs->editor_floor_override_ = static_cast<Sint32>(floor);
         vs->control = nullptr;
         s->set_level_draw_pos(topx, topy);
         if (game_frame_with_result(*s, st, deps) != GameFrameResult::Continue)
             break;
+        if (director.keep && !director.keep(f))
+            continue;
         vs->control = nullptr;
         s->set_level_draw_pos(topx, topy);
         s->redraw();
@@ -7975,6 +7996,308 @@ TEST(GameLoop, zz_capture_imaginations)
              {520, 736, 192, 0, false}, {1420, 896, 736, 0, true},
              {1700, 784, 784, 0, false}},
             "imaginations");
+}
+
+// ---------------------------------------------------------------------------
+// Staged moments for the two castle levels (proof stills): the epic_rec film
+// with a Director that sets up each beat on the server world — the crew in
+// the court, the lead dropped onto a strongroom's gold bar (the gold beat
+// is a keeper's pickup), the lead dropped within the Big One's wake range —
+// and a camera that follows the named walker the beat is about.
+// ---------------------------------------------------------------------------
+namespace moments_rec {
+
+walker* lead_of(GameWorld& w)
+{
+    for (auto& up : w.oblist)
+        if (walker* a = up.get(); a != nullptr && !a->dead() &&
+            a->query_order() == Order::Living && a->user() != -1)
+            return a;
+    return nullptr;
+}
+
+walker* named(GameWorld& w, const char* name, int family = -1)
+{
+    for (auto& up : w.oblist)
+        if (walker* a = up.get(); a != nullptr && !a->dead() &&
+            a->query_order() == Order::Living && !a->dormant() &&
+            (family < 0 || a->family() == family) &&
+            (name == nullptr || a->stats()->name == name))
+            return a;
+    return nullptr;
+}
+
+// Moves a walker to tile (tx, ty) on `floor`, floor first (obmap buckets
+// follow every position change).
+void place_at(walker* w, int tx, int ty, int floor)
+{
+    if (w == nullptr)
+        return;
+    w->set_floor(static_cast<unsigned char>(floor));
+    w->setxy(tx * GRID_SIZE, ty * GRID_SIZE);
+}
+
+bool follow(walker* w, float& cx, float& cy, int& floor)
+{
+    if (w == nullptr)
+        return false;
+    cx = static_cast<float>(w->xpos());
+    cy = static_cast<float>(w->ypos());
+    floor = static_cast<int>(w->floor());
+    return true;
+}
+
+bool in(int f, int a, int b) { return f >= a && f < b; }
+
+// An awake hostile on the asteroid with its tile up against the spike band
+// around scen 3's castle (the band is tiles 6..25 x 13..48 around the
+// castle block 8..23 x 15..46; a hostile within one tile of it gets bitten).
+walker* by_the_spikes(GameWorld& w)
+{
+    for (auto& up : w.oblist)
+        if (walker* a = up.get(); a != nullptr && !a->dead() &&
+            !a->dormant() && a->query_order() == Order::Living &&
+            a->team_num() != 0 && a->floor() == 0)
+        {
+            const int tx = static_cast<int>(a->xpos()) / GRID_SIZE;
+            const int ty = static_cast<int>(a->ypos()) / GRID_SIZE;
+            const bool near_band = tx >= 5 && tx <= 26 && ty >= 12 && ty <= 49;
+            const bool in_castle = tx >= 9 && tx <= 22 && ty >= 16 && ty <= 45;
+            if (near_band && !in_castle)
+                return a;
+        }
+    return nullptr;
+}
+
+} // namespace moments_rec
+
+TEST(GameLoop, zz_capture_imaginations_moments)
+{
+    if (!getenv("OG_FX_CAPTURE_DIR"))
+        GTEST_SKIP() << "set OG_FX_CAPTURE_DIR to record";
+    using epic_rec::Key;
+    using namespace moments_rec;
+    const char* only = getenv("OG_FX_CAPTURE_ONLY");
+    const auto want = [&](const char* n) {
+        return only == nullptr || strcmp(only, n) == 0;
+    };
+    const std::vector<int> crew = {
+        FAMILY_SOLDIER, FAMILY_SOLDIER, FAMILY_SOLDIER, FAMILY_ELF,
+        FAMILY_ELF, FAMILY_ARCHER, FAMILY_CLERIC, FAMILY_BARBARIAN};
+    // 2 The Castle of Gold: the crew in the court (three of the field crew
+    // brought in beside the keeper), the keeper's first bar in the
+    // southwest strongroom, the next (southeast room) filmed from the Ghost
+    // Tent, the waves at the gate, then the camera rides the Fae Queen in.
+    if (want("imag_moments_2"))
+    {
+        epic_rec::Director d;
+        // The camera holds where the Queen last flew once she pops.
+        d.stage = [qx = -1.0f, qy = -1.0f](int f, GameWorld& w, float& cx,
+                                          float& cy, int& floor) mutable
+        {
+            if (f == 2)
+            {
+                int placed = 0;
+                const int spots[3][2] = {{29, 39}, {33, 39}, {31, 34}};
+                for (auto& up : w.oblist)
+                    if (walker* a = up.get(); a != nullptr && placed < 3 &&
+                        a->query_order() == Order::Living &&
+                        a->team_num() == 0 && a->user() == -1 &&
+                        a->myguy != nullptr)
+                    {
+                        place_at(a, spots[placed][0], spots[placed][1], 0);
+                        ++placed;
+                    }
+            }
+            if (f == 150)
+                place_at(lead_of(w), 22, 38, 0);
+            if (f == 300)
+                place_at(lead_of(w), 38, 38, 0);
+            if (f < 2190)
+                return false;
+            if (follow(named(w, "Fae Queen"), cx, cy, floor))
+            {
+                qx = cx;
+                qy = cy;
+                return true;
+            }
+            if (qx < 0.0f)
+                return false;
+            cx = qx;
+            cy = qy;
+            return true;
+        };
+        d.keep = [](int f)
+        {
+            return f % 3 == 0 &&
+                (in(f, 0, 120) || in(f, 140, 230) || in(f, 290, 420) ||
+                 in(f, 900, 1400) || in(f, 2190, 2700));
+        };
+        epic_rec::record("imag_moments_2", 2, WeatherKind::None, crew,
+            {{0, 504, 600, 0, true}, {140, 376, 592, 0, true},
+             {290, 832, 528, 0, true}, {900, 504, 680, 0, true},
+             {2700, 504, 680, 0, true}},
+            "imaginations", d);
+    }
+    // 3 The Asteroid Castle: the Purple Man at the east gate, space past
+    // the Balloon pit, the Big One on the rock with the key (floor 1). The
+    // crew but the lead are posted in the court ("we sit in the castle");
+    // the lead
+    // is dropped within the Big One's wake range and the camera rides him
+    // off the rock and down. Then the first gust is set down in sight of
+    // the gate and the camera finds any bad guy up against the spikes.
+    if (want("imag_moments_3"))
+    {
+        epic_rec::Director d;
+        d.stage = [](int f, GameWorld& w, float& cx, float& cy, int& floor)
+        {
+            if (f == 2)
+                for (auto& up : w.oblist)
+                    if (walker* a = up.get(); a != nullptr &&
+                        a->query_order() == Order::Living &&
+                        a->team_num() == 0 && a->user() == -1 &&
+                        a->myguy != nullptr)
+                        a->set_act_type(ACT_GUARD);
+            if (f == 150)
+                place_at(lead_of(w), 42, 15, 0);
+            if (f == 330)
+            {
+                // The first gust's four (awake, on the east rim) set down
+                // along the east band, north and south of the gate, in
+                // sight of the crew on the gate apron.
+                const int spots[4][2] = {{26, 20}, {26, 40}, {27, 23},
+                                         {27, 37}};
+                int placed = 0;
+                for (auto& up : w.oblist)
+                    if (walker* a = up.get(); a != nullptr && placed < 4 &&
+                        !a->dead() && !a->dormant() &&
+                        a->query_order() == Order::Living &&
+                        a->team_num() != 0 &&
+                        a->xpos() >= 50 * GRID_SIZE &&
+                        (a->family() == FAMILY_ORC ||
+                         a->family() == FAMILY_FAERIE))
+                    {
+                        place_at(a, spots[placed][0], spots[placed][1], 0);
+                        ++placed;
+                    }
+            }
+            if (in(f, 150, 330))
+                return follow(named(w, nullptr, FAMILY_GOLEM), cx, cy, floor);
+            if (f >= 330)
+                return follow(by_the_spikes(w), cx, cy, floor);
+            return false;
+        };
+        d.keep = [](int f) { return f % 3 == 0; };
+        epic_rec::record("imag_moments_3", 3, WeatherKind::Snow, crew,
+            {{0, 416, 440, 0, true}, {60, 860, 150, 0, true},
+             {120, 784, 168, 1, true}, {330, 360, 480, 0, true},
+             {1500, 360, 480, 0, true}},
+            "imaginations", d);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Whole-level overviews: every floor of a level rendered at native tile scale
+// with its placed units, as a grid of 320x200 camera tiles for stitching.
+// Same setup as epic_rec::record (save, glad_init, free spectator camera);
+// one sim tick deploys the crew, then nothing moves while the camera steps
+// across the map. The editor floor override draws the dormant waves too,
+// and the notification lines are cleared off every tile.
+// Tiles land in $OG_FX_CAPTURE_DIR/<scene>/f<floor>_x<topx>_y<topy>.ppm.
+// ---------------------------------------------------------------------------
+namespace overview_rec {
+
+void dump_tile(screen* s, const char* scene, int floor, int topx, int topy)
+{
+    char dir[512];
+    gameplay_rec::dump_dir_for(scene, dir, sizeof(dir));
+    char path[600];
+    snprintf(path, sizeof(path), "%s/f%d_x%04d_y%04d.ppm", dir, floor, topx,
+             topy);
+    FILE* fp = fopen(path, "wb");
+    ASSERT_NE(nullptr, fp);
+    fprintf(fp, "P6\n320 200\n255\n");
+    for (int j = 0; j < 200; j++)
+        for (int i = 0; i < 320; i++)
+        {
+            Uint8 r, g, b;
+            s->get_pixel(i, j, &r, &g, &b);
+            fputc(r, fp);
+            fputc(g, fp);
+            fputc(b, fp);
+        }
+    fclose(fp);
+}
+
+// The tile origins along one axis: steps of `step`, the last clamped so the
+// final tile ends flush with the map edge.
+std::vector<int> origins(int extent, int step)
+{
+    std::vector<int> out;
+    for (int o = 0; o < extent; o += step)
+        out.push_back(o + step > extent ? extent - step : o);
+    return out;
+}
+
+void record(const char* scene, int scen, const char* campaign)
+{
+    screen* const s = og::runtime::current_session->myscreen_;
+    gameplay_rec::build_save(s, campaign, scen, 1,
+        {FAMILY_SOLDIER, FAMILY_SOLDIER, FAMILY_SOLDIER, FAMILY_ELF,
+         FAMILY_ELF, FAMILY_ARCHER, FAMILY_CLERIC, FAMILY_BARBARIAN}, 7);
+    glad_init();
+    gameplay_rec::force_weather(WeatherKind::None);
+    viewscreen* vs = s->viewob[0].get();
+    ASSERT_NE(nullptr, vs);
+
+    GameLoopFrameState st;
+    GameLoopDeps deps;
+    deps.enable_render = false;
+    deps.enable_event_poll = false;
+    deps.enable_frame_timing = false;
+    vs->control = nullptr;
+    ASSERT_EQ(GameFrameResult::Continue,
+              game_frame_with_result(*s, st, deps));
+    gameplay_rec::force_weather(WeatherKind::None);
+
+    const int world_w = static_cast<int>(s->world().grid.w) * GRID_SIZE;
+    const int world_h = static_cast<int>(s->world().grid.h) * GRID_SIZE;
+    const int floors = static_cast<int>(s->world().floor_count());
+    for (int floor = 0; floor < floors; ++floor)
+        for (int topy : origins(world_h, 200))
+            for (int topx : origins(world_w, 320))
+            {
+                vs->editor_floor_override_ = static_cast<Sint32>(floor);
+                vs->control = nullptr;
+                vs->clear_text(); // no notification lines over the map
+                s->set_level_draw_pos(topx, topy);
+                s->redraw();
+                s->swap();
+                dump_tile(s, scene, floor, topx, topy);
+                if (::testing::Test::HasFatalFailure())
+                    return;
+            }
+    vs->editor_floor_override_ = -1;
+    s->world().end = 0;
+    s->world().delete_objects();
+}
+
+} // namespace overview_rec
+
+TEST(GameLoop, zz_capture_imaginations_overview)
+{
+    if (!getenv("OG_FX_CAPTURE_DIR"))
+        GTEST_SKIP() << "set OG_FX_CAPTURE_DIR to record";
+    const char* only = getenv("OG_FX_CAPTURE_ONLY");
+    const auto want = [&](const char* n) {
+        return only == nullptr || strcmp(only, n) == 0;
+    };
+    // Scen 2 The Castle of Gold (one floor), scen 3 The Asteroid Castle
+    // (the asteroid and the Balloon Rock's sky floor).
+    if (want("imag_overview_2"))
+        overview_rec::record("imag_overview_2", 2, "imaginations");
+    if (want("imag_overview_3"))
+        overview_rec::record("imag_overview_3", 3, "imaginations");
 }
 
 // ---------------------------------------------------------------------------
@@ -10187,6 +10510,7 @@ TEST(GameLoop, long_pause_menu_visit_then_resume_keeps_local_peers_connected)
 // differently and neither costs a snapshot-hash strike.
 // ---------------------------------------------------------------------------
 #include <format>
+#include <functional>
 #include <openglad/gameplay/lobby_state.h>
 #include <openglad/gameplay/mode/mode_state.h>
 
