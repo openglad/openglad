@@ -29,10 +29,37 @@ generator's `write_campaign_yaml`).
 | scen | title | submitted idea (condensed) |
 |------|-------|----------------------------|
 | 1 | The Raspberry Isle | "We start at the edges of the island, at every corner. The sea is all around us. The enemies start in the middle, in a castle, near the water. We must run at them right away." (64x64; double-walled castle — bailey + keep — 19 posted foes, 3 college generators, two timed reinforcement waves, reef atolls, landing piers, bramble groves. Rebalanced 2026-08-11 down from the statue-era 25 when the hold-post wake bug was fixed and the garrison started genuinely fighting.) |
+| 2 | The Castle of Gold | Our own yellow castle in a faerie war. Four strongrooms of gold inside, each behind a row of doors; one of us keeps the castle and every gold bar taken wakes six ghosts for our side at the Ghost Tent, the last bar seven. Enemies are faeries only, pouring in from the map's edges; they must carry twelve keys between them to open the gate, and nobody teleports into the castle. (64x64; 3-thick castle ring with a 3-door gate, four 8x8 strongrooms with 3-door rows, two rivers with five bridges each, a grove, a field camp, a counting house, two teleporter pairs; 27 faeries — 4 awake, waves at ticks 400/900/1500, the Fae Queen and four knights at 2200; exit on the hall dais.) |
 
-Growth rule: new ideas append new scens (2, 3, …). The newest level's
-walk-out exit loops home to 1; when its successor lands, the generator
-retargets that exit to the new scen. `first_level` stays 1.
+Growth rule: new ideas append new scens (2, 3, …). Each level's exit
+leads to the next; the newest level's walk-out exit loops home to 1, and
+when its successor lands the generator retargets that exit to the new
+scen. `first_level` stays 1. Today: 1 → 2 → 1.
+
+The Castle of Gold's beats live in
+`packs/imaginations.dreams/scripts/gold_castle.lua`:
+- Gold: the script overrides `core:gold_bar` on_eat for the whole
+  campaign. Off scen 2, and for the counting-house bar on it, the body is
+  the classic one (team 0 or a roster character banks). A castle bar
+  banks only for a keeper (a saved character or a player-driven walker),
+  so allied ghosts floating through the strongrooms leave the gold alone,
+  and wakes six allied ghosts at the tent (seven for the last bar). New
+  ghosts stop at 110 livings.
+- Keys: the gate's three doors are team 0 (the crew and its ghosts walk
+  through their own gate) at key level 30, which no key opens. The script
+  (a `core:key` on_eat override plus a check every 100 ticks) drops them
+  when the living faeries carry shore keys 1..12 between them; a bearer's
+  death takes its keys out of the count. The strongroom doors are neutral
+  (team 4) at key 13, the castle key by the keeper's start.
+- No teleporting in: while the gate stands, any hostile inside the
+  castle, and any of ours landing a teleport there, is thrown out onto
+  the causeway.
+- Stand-down: faeries fly the rivers but not walls, so a hunting faerie
+  within two tiles of the castle ring or the counting house is posted
+  every 50 ticks; the engine's sight test re-wakes it. Out in the field
+  the waves keep hunting. `og.register_hooks` on `core:gold_bar` and
+  `core:key` may come from ONE chunk only; a later level that needs
+  either shares that dispatcher.
 
 Engine rule for moat/water-ring layouts (learned in playtest): place NO
 roaming (ACT_RANDOM) foes whose straight line to the crew crosses
@@ -114,6 +141,7 @@ save's level-1 crew (crew power 1 in the longseason README's terms).
 | level | crew power entering | calibration floor (8-mixed, tick 600, min over seeds 42/1337/2025) |
 |-------|---------------------|--------------------------------------------------------------------|
 | 1 | 1 | 7 (measured 8/7/8 on 2026-08-11; pinned in tests/unit/test_imaginations_calibration.cpp) |
+| 2 | 1 | 8 (measured 8/8/8 on 2026-10-26; only the four tick-0 faeries are awake by tick 600) |
 
 Gate (kill-all): 8-mixed at crew 1 reaches `level_done == 1` within 6000
 ticks on 3/3 seeds. Measured with `scripts/imaginations_playtest.sh` on
@@ -131,3 +159,13 @@ runs — three-wide gates fixed it; and when the hold-post wake bug fell,
 the statue-era balance had to fall with it: 25 foes, six wave units and
 a level-4 boss all beat a fresh crew that now had to FIGHT for the
 castle — trimmed to 19/3/level-2, measured back to a fresh-team win.)
+
+The Castle of Gold, measured with `scripts/imaginations_playtest.sh
+--levels 2` on 2026-10-26 under the shipped defaults: PASS. The 8-mixed
+gate roster reached `level_done == 1` on 3/3 seeds at crew 1 (ticks
+2522/2810/2987, 7 of 8 alive) and on 3/3 at crew 2 (2573/2832/2937, 6-8
+alive). The war runs as long as its waves: the Fae Queen's wave wakes at
+2200, so no run can clear before then. The 4-soldier stand-in (not the
+gate) cleared 1/3 seeds at crew 1 and 1/3 at crew 2: soldiers are melee
+only against a flying, freezing enemy, and the stand-in AI only rarely takes
+the castle gold that wakes the ghosts.

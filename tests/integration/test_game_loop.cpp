@@ -7949,6 +7949,18 @@ TEST(GameLoop, zz_capture_imaginations)
              {660, 240, 704, 0, true}, {780, 504, 504, 0, true},
              {950, 504, 504, 0, false}},
             "imaginations");
+    // 2 The Castle of Gold — the faerie war around our own castle. Open on
+    // the keeper inside by the gate, follow the first faeries over the
+    // rivers, look in on the Ghost Tent east of the walls, then hold on
+    // the gate and the court while the waves press it.
+    if (want("imag_2"))
+        epic_rec::record("imag_2", 2, WeatherKind::None,
+            {FAMILY_SOLDIER, FAMILY_SOLDIER, FAMILY_SOLDIER, FAMILY_ELF,
+             FAMILY_ELF, FAMILY_ARCHER, FAMILY_CLERIC, FAMILY_BARBARIAN},
+            {{0, 504, 600, 0, true}, {120, 504, 720, 0, false},
+             {300, 832, 528, 0, true}, {450, 504, 720, 0, true},
+             {700, 504, 480, 0, false}, {1000, 504, 480, 0, false}},
+            "imaginations");
 }
 
 // ---------------------------------------------------------------------------

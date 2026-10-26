@@ -2,15 +2,17 @@
  *
  * Produces campaigns/imaginations/ (the source tree the build composes
  * into builtin/imaginations.glad): the dream-log campaign — levels kids
- * imagine, sent in and made real, one scenario per idea. Ships ONE level
- * today, scen 1 "The Raspberry Isle": an island ringed by open sea, the
- * crew landing on the shores all around, and a moated castle in the
- * middle whose garrison must be cleared. The layout is a faithful build
- * of the first submitted idea (spoken aloud, briefing-voice preserved in
- * the level text): "we start at the edges of the island, the sea is all
- * around us, and the enemies are in the middle." New ideas append new
- * scens; the walk-out exit of the newest level loops home to 1 until its
- * successor exists.
+ * imagine, sent in and made real, one scenario per idea:
+ *   scen 1 "The Raspberry Isle": an island ringed by open sea, the crew
+ *     landing on the shores all around, and a moated castle in the
+ *     middle whose garrison must be cleared ("we start at the edges of
+ *     the island, the sea is all around us, and the enemies are in the
+ *     middle"). Exits to 2.
+ *   scen 2 "The Castle of Gold": our own castle in a faerie war; gold
+ *     taken from its strongrooms wakes ghosts for our side, and the gate
+ *     opens for no faerie until the faeries carry all twelve keys.
+ * New ideas append new scens; the walk-out exit of the newest level
+ * loops home to 1 until its successor exists.
  *
  * Built on the og::mapgen builder library (the authoritative authoring
  * API; the older tools keep private helper copies to protect committed
@@ -439,9 +441,8 @@ void build_raspberry_isle()
     og::mapgen::place(w, Order::Treasure, FAMILY_GOLD_BAR, 0, 0, 28, 28);
     og::mapgen::place(w, Order::Treasure, FAMILY_GOLD_BAR, 0, 0, 35, 35);
     // The walk-out exit on the south landing beach, beside the lead
-    // marker: clear the isle, then sail home. Destination 1 = itself —
-    // the loop-home rule for the newest level of a growing campaign.
-    og::mapgen::place_exit(w, 0, 34, 57, 1);
+    // marker: clear the isle, then sail on to the next dream (scen 2).
+    og::mapgen::place_exit(w, 0, 34, 57, 2);
 
     // --- Set dressing (after every entity, so scatters keep clearance). -----
     // Torches on both wall rings: corners and gate flanks.
@@ -492,6 +493,276 @@ void build_raspberry_isle()
                          "take the throne.",
                      },
                      2, 8000);
+}
+
+// --- Scen 2: THE CASTLE OF GOLD. ---------------------------------------------
+// A yellow castle that is OURS, four strongrooms of gold inside it, and a
+// faerie war raging all around. The faeries pour in from the map's edges
+// and want in: the gate opens for no faerie until the faeries between them
+// carry all twelve keys scattered on the shores. Inside, one of us keeps
+// the castle: every gold bar taken from the strongrooms wakes six ghosts
+// for our side at the Ghost Tent (the blue circle east of the walls), the
+// last bar seven. Nobody teleports into the castle. Two rivers cut the
+// faerie shores off the battlefield. Kill-all, then the throne on the hall
+// dais is the way out.
+//
+// Geometry on a 64x64 grid (tiles, inclusive):
+//   x0-4 / x59-63 / y0-4 / y59-63   the light-grass faerie shores
+//   y5-6 and y57-58                  two rivers, five paved bridges each
+//   17..46 x 14..43                  the castle ring, 3 walls thick (a
+//                                    faerie blink of 24+2L px cannot hop
+//                                    48 px of wall up to level 11)
+//   20..43 x 17..40                  the cobbled court; four 8x8
+//                                    strongrooms in its corners, each with
+//                                    a 3-door row facing the court
+//   30..32 x 41..43                  the gate tunnel, 3 doors at y43
+//   29..33 x 44..60                  the causeway south over the bridge
+// The gold and key beats live in the dream script
+// (packs/imaginations.dreams/scripts/gold_castle.lua): the gate doors are
+// TEAM 0 (the crew and its ghosts pass their own gate without opening it)
+// at key level 30, which no key on the map opens, so only the script drops
+// them; the strongroom doors are neutral (team 4) at key 13, the castle key
+// lying one step north of the keeper's start.
+//
+// Exit destination: scen 3 does not ship yet, so the dais exit loops home
+// to 1 (the newest-level rule) until it does.
+constexpr int kCastleOfGoldExit = 1;
+
+void build_castle_of_gold()
+{
+    LevelRuntimeData level(2, true, &headless_level_data_hooks());
+    GameWorld& w = level.world();
+    og::mapgen::init_world(w, 1, 64, 64);
+    PixieData& g = w.grid;
+
+    // Terrain (genre tiles only; the autotiler shapes every face).
+    // The faerie shores, light meadow on every edge.
+    og::mapgen::paint_rect(g, 0, 0, 63, 4, PIX_GRASS_LIGHT_1);
+    og::mapgen::paint_rect(g, 0, 59, 63, 63, PIX_GRASS_LIGHT_1);
+    og::mapgen::paint_rect(g, 0, 7, 4, 56, PIX_GRASS_LIGHT_1);
+    og::mapgen::paint_rect(g, 59, 7, 63, 56, PIX_GRASS_LIGHT_1);
+    // The two rivers between the shores and the battlefield.
+    og::mapgen::paint_rect(g, 0, 5, 63, 6, PIX_WATER1);
+    og::mapgen::paint_rect(g, 0, 57, 63, 58, PIX_WATER1);
+    // The grove (west) and the Ghost Tent's dark ring (east).
+    og::mapgen::paint_rect(g, 3, 18, 8, 23, PIX_GRASS_DARK_1);
+    og::mapgen::paint_ring(g, 52.5, 33.5, 0.0, 2.6, PIX_GRASS_DARK_1);
+    // The castle: a 3-thick ring and its court.
+    og::mapgen::paint_rect(g, 17, 14, 46, 43, PIX_WALL2);
+    og::mapgen::paint_rect(g, 20, 17, 43, 40, PIX_COBBLE_1);
+    // Four strongrooms in the court corners, yellow sand floors.
+    for (const auto& room : {std::pair{20, 17}, {36, 17}, {20, 33}, {36, 33}})
+    {
+        og::mapgen::paint_rect(g, room.first, room.second, room.first + 7,
+                               room.second + 7, PIX_WALL2);
+        og::mapgen::paint_rect(g, room.first + 1, room.second + 1,
+                               room.first + 6, room.second + 6, PIX_DIRT_1);
+    }
+    // Door mouths, 3 wide, through each strongroom's court-facing wall:
+    // the top rooms open down, the bottom rooms open up.
+    og::mapgen::paint_rect(g, 22, 24, 24, 24, PIX_COBBLE_1);
+    og::mapgen::paint_rect(g, 39, 24, 41, 24, PIX_COBBLE_1);
+    og::mapgen::paint_rect(g, 22, 33, 24, 33, PIX_COBBLE_1);
+    og::mapgen::paint_rect(g, 39, 33, 41, 33, PIX_COBBLE_1);
+    // The hall dais, where the throne (the exit) stands.
+    og::mapgen::paint_rect(g, 29, 26, 33, 30, PIX_CARPET_M);
+    // The gate tunnel (3 wide through the 3-thick wall) and the causeway.
+    og::mapgen::paint_rect(g, 30, 41, 32, 43, PIX_COBBLE_1);
+    og::mapgen::paint_rect(g, 29, 44, 33, 60, PIX_COBBLE_1);
+    // The counting house (the yellow box northeast), open to the south.
+    og::mapgen::paint_rect(g, 54, 8, 60, 13, PIX_WALL2);
+    og::mapgen::paint_rect(g, 55, 9, 59, 12, PIX_DIRT_1);
+    og::mapgen::paint_rect(g, 56, 13, 58, 13, PIX_COBBLE_1);
+
+    og::mapgen::smooth_world(w);
+
+    // Post-smooth inert pavement: five bridges over each river, every one
+    // >= 4 wide and no river cell more than 10 tiles from one (the beeline
+    // AI slides into a crossing), the pad square northeast and the field
+    // camp southwest.
+    for (int x0 : {6, 20, 29, 40, 54})
+    {
+        const int x1 = (x0 == 29) ? 33 : x0 + 3;
+        paint_pavement(g, x0, 4, x1, 7);
+        paint_pavement(g, x0, 56, x1, 59);
+    }
+    paint_pavement(g, 56, 15, 60, 18);
+    paint_pavement(g, 11, 48, 16, 53);
+
+    // --- The faerie war (team 1). Faeries only; every one a roamer that
+    // comes to the war — flyers cross the rivers, the castle walls stop
+    // them, and the dream script stands a faerie grinding at a wall back
+    // down onto a post (the engine's own sight test re-wakes it). Four
+    // wake at once; four waves follow from the same shores (WAVE HUD).
+    auto faerie = [&](int tx, int ty, int lvl, int delay, const char* name)
+    {
+        walker* f = og::mapgen::place_living(
+            w, FAMILY_FAERIE, 1, 0, tx, ty, lvl, /*guard=*/false,
+            /*hold_post=*/false, /*specials_disabled=*/false, delay);
+        if (f != nullptr && name != nullptr)
+            f->stats()->name = name; // <= 11 chars
+    };
+    const std::pair<int, int> wave1_spots[] = {
+        {12, 2}, {50, 2}, {12, 61}, {50, 61}, {2, 20}, {61, 42}};
+    const std::pair<int, int> wave2_spots[] = {
+        {18, 2}, {44, 2}, {18, 61}, {44, 61}, {2, 42}, {61, 20}};
+    for (const auto& s : {std::pair{31, 2}, {31, 61}, {2, 31}, {61, 31}})
+        faerie(s.first, s.second, 1, 0, nullptr);
+    for (const auto& s : wave1_spots)
+        faerie(s.first, s.second, 1, 400, nullptr);
+    for (const auto& s : wave2_spots)
+        faerie(s.first, s.second, 1, 900, nullptr);
+    for (const auto& s : wave1_spots) // wave 3 crosses the same keys
+        faerie(s.first, s.second, 2, 1500, "Fae Knight");
+    // The finale: the Fae Queen and her four knights on the south shore.
+    faerie(31, 62, 3, 2200, "Fae Queen");
+    for (const auto& s : {std::pair{27, 61}, {35, 61}, {23, 60}, {39, 60}})
+        faerie(s.first, s.second, 2, 2200, "Fae Knight");
+
+    // --- The crew (team 0): twelve markers, the keeper FIRST, inside by
+    // the gate; the rest on the battlefield around the castle.
+    og::mapgen::place_start(w, 0, 31, 38); // lead: the castle-keeper
+    og::mapgen::place_start(w, 0, 31, 47); // the causeway foot
+    og::mapgen::place_start(w, 0, 27, 47);
+    og::mapgen::place_start(w, 0, 35, 47);
+    og::mapgen::place_start(w, 0, 12, 30); // west field
+    og::mapgen::place_start(w, 0, 50, 28); // east field
+    og::mapgen::place_start(w, 0, 31, 10); // north
+    og::mapgen::place_start(w, 0, 31, 53); // south
+    og::mapgen::place_start(w, 0, 12, 12); // the corners
+    og::mapgen::place_start(w, 0, 50, 12);
+    og::mapgen::place_start(w, 0, 12, 44);
+    og::mapgen::place_start(w, 0, 50, 44);
+
+    // --- Doors. The gate: team 0 at key 30 (no such key exists, so only
+    // the script opens it). The strongrooms: neutral team 4 at key 13.
+    auto door = [&](int tx, int ty, int team, int key)
+    {
+        walker* d = og::mapgen::place(w, Order::Weapon, FAMILY_DOOR, team, 0,
+                                      tx, ty);
+        if (d != nullptr)
+            d->stats()->set_level(static_cast<short>(key));
+    };
+    for (int x = 30; x <= 32; ++x)
+        door(x, 43, 0, 30);
+    for (int x : {22, 23, 24, 39, 40, 41})
+    {
+        door(x, 24, 4, 13);
+        door(x, 33, 4, 13);
+    }
+
+    // --- Keys. The castle key (13) one step north of the keeper; the
+    // twelve shore keys (1..12), each two tiles inward of a wave spawn on
+    // its line to the castle.
+    auto treasure = [&](int family, int tx, int ty, int lvl)
+    {
+        walker* t = og::mapgen::place(w, Order::Treasure, family, 0, 0, tx, ty);
+        if (t != nullptr && lvl > 0)
+            t->stats()->set_level(static_cast<short>(lvl));
+    };
+    treasure(FAMILY_KEY, 31, 36, 13);
+    {
+        const std::pair<int, int> shore_keys[] = {
+            {12, 4}, {50, 4}, {12, 59}, {50, 59}, {4, 20}, {59, 42},
+            {18, 4}, {44, 4}, {18, 59}, {44, 59}, {4, 42}, {59, 20}};
+        int key = 1;
+        for (const auto& k : shore_keys)
+            treasure(FAMILY_KEY, k.first, k.second, key++);
+    }
+    // --- Teleporters (pairs in fxlist order): channel 1 joins the pad
+    // square to the Ghost Tent, channel 2 the field camp to the grove.
+    // None inside the castle.
+    treasure(FAMILY_TELEPORTER, 58, 16, 1);
+    treasure(FAMILY_TELEPORTER, 52, 33, 1);
+    treasure(FAMILY_TELEPORTER, 13, 50, 2);
+    treasure(FAMILY_TELEPORTER, 6, 21, 2);
+
+    // --- The castle gold: two bars per strongroom, the ghost engine.
+    for (const auto& bar : {std::pair{22, 19}, {25, 22}, {38, 19}, {41, 22},
+                            {22, 38}, {25, 35}, {38, 38}, {41, 35}})
+        treasure(FAMILY_GOLD_BAR, bar.first, bar.second, 0);
+    treasure(FAMILY_MAGIC_POTION, 39, 21, 0);
+    treasure(FAMILY_INVULNERABLE_POTION, 23, 36, 0);
+    treasure(FAMILY_SPEED_POTION, 40, 37, 0);
+    treasure(FAMILY_DRUMSTICK, 28, 32, 0);
+    treasure(FAMILY_DRUMSTICK, 35, 32, 0);
+    // The counting house banks the classic way (outside the castle).
+    treasure(FAMILY_GOLD_BAR, 57, 10, 0);
+    treasure(FAMILY_SILVER_BAR, 55, 10, 0);
+    treasure(FAMILY_SILVER_BAR, 59, 12, 0);
+    treasure(FAMILY_SPEED_POTION, 56, 11, 0);
+    // The camp, the grove, the shores, and wings by the tent.
+    treasure(FAMILY_DRUMSTICK, 12, 49, 0);
+    treasure(FAMILY_DRUMSTICK, 15, 52, 0);
+    treasure(FAMILY_MAGIC_POTION, 14, 48, 0);
+    treasure(FAMILY_SILVER_BAR, 5, 19, 0);
+    treasure(FAMILY_DRUMSTICK, 7, 22, 0);
+    for (const auto& r : {std::pair{31, 8}, {31, 54}, {8, 31}, {55, 31}})
+        treasure(FAMILY_DRUMSTICK, r.first, r.second, 0);
+    treasure(FAMILY_FLIGHT_POTION, 50, 36, 0);
+    // The throne on the hall dais is the way out.
+    og::mapgen::place_exit(w, 0, 31, 28, kCastleOfGoldExit);
+
+    // --- Set dressing (after every entity, so scatters keep clearance). -----
+    // Torches on the ring's wall faces and the strongroom walls (wall
+    // tiles only: a torch blocks ground).
+    for (int x = 19; x <= 44; x += 4)
+    {
+        og::mapgen::paint_decor(w, 0, x, 14, DECOR_TORCH1);
+        if (x < 29 || x > 33)
+            og::mapgen::paint_decor(w, 0, x, 43, DECOR_TORCH1);
+    }
+    for (int y = 18; y <= 40; y += 4)
+    {
+        og::mapgen::paint_decor(w, 0, 17, y, DECOR_TORCH1);
+        og::mapgen::paint_decor(w, 0, 46, y, DECOR_TORCH1);
+    }
+    for (const auto& t : {std::pair{20, 20}, {27, 20}, {36, 20}, {43, 20},
+                          {20, 37}, {27, 37}, {36, 37}, {43, 37}})
+        og::mapgen::paint_decor(w, 0, t.first, t.second, DECOR_TORCH1);
+    // Braziers: the dais corners, the gate mouth, the camp, the tent.
+    for (const auto& b : {std::pair{29, 26}, {33, 26}, {29, 30}, {33, 30},
+                          {29, 44}, {33, 44}, {11, 48}, {16, 48}, {52, 30}})
+        og::mapgen::paint_decor(w, 0, b.first, b.second, DECOR_BRAZIER);
+    // Two columns flank the causeway, off its funnel.
+    og::mapgen::paint_decor(w, 0, 28, 46, DECOR_COLUMN_BOTTOM);
+    og::mapgen::paint_decor(w, 0, 34, 46, DECOR_COLUMN_BOTTOM);
+    // The Ghost Tent is ringed with bones around its pad.
+    for (int dy = -1; dy <= 1; ++dy)
+        for (int dx = -1; dx <= 1; ++dx)
+            if (dx != 0 || dy != 0)
+                og::mapgen::paint_decor(w, 0, 52 + dx, 33 + dy, DECOR_BONES);
+    og::mapgen::scatter_decor(w, kScatterSeed, 0, 3, 18, 8, 23, 2, DECOR_SHRUB,
+                              {og::mapgen::ScatterGround::DarkGrass});
+    og::mapgen::scatter_decor(w, kScatterSeed, 0, 50, 31, 55, 36, 3,
+                              DECOR_SHRUB,
+                              {og::mapgen::ScatterGround::DarkGrass});
+    og::mapgen::scatter_decor(w, kScatterSeed, 0, 6, 8, 57, 55, 23,
+                              DECOR_SHRUB,
+                              {og::mapgen::ScatterGround::Grass});
+    og::mapgen::scatter_decor(w, kScatterSeed, 0, 0, 0, 63, 63, 11,
+                              DECOR_PEBBLES,
+                              {og::mapgen::ScatterGround::LightGrass});
+    // Boulders on the open battlefield only — never in the court, on the
+    // causeway or on a bridge.
+    og::mapgen::scatter_boulders(w, kScatterSeed, 0, 6, 8, 15, 55, 47);
+    og::mapgen::scatter_boulders(w, kScatterSeed, 0, 48, 19, 57, 55, 47);
+    og::mapgen::scatter_boulders(w, kScatterSeed, 0, 17, 8, 52, 12, 47);
+    og::mapgen::scatter_boulders(w, kScatterSeed, 0, 17, 45, 27, 55, 47);
+    og::mapgen::scatter_boulders(w, kScatterSeed, 0, 35, 45, 46, 55, 47);
+
+    save_level_files(w, 2, "The Castle of Gold",
+                     {
+                         "From the dream-log of a young",
+                         "commander: a castle of gold,",
+                         "and it is OURS. The faeries",
+                         "want in: they must find all",
+                         "twelve keys first. One of us",
+                         "keeps the castle: every gold",
+                         "bar wakes six ghosts for our",
+                         "side. Beat the faerie war!",
+                     },
+                     3, 9000);
 }
 
 void write_campaign_yaml(const std::string& path)
@@ -750,6 +1021,80 @@ void self_check_isle_script()
     current_game = prev;
 }
 
+// The castle's dream script must dispatch too: one tick of scen 2 runs
+// gold_castle.lua's on_load (the gate notification), and a crew member
+// taking a castle gold bar wakes exactly six allied "Gold Ghost"s — the
+// declared core:gold_bar override, proven live on the packaged level.
+void self_check_castle_script()
+{
+    LevelRuntimeData level(2, true, &headless_level_data_hooks());
+    SaveData save;
+    og::sim::SimEventLog events;
+    level.set_sim_context(&save, &events, &cfg);
+    GameplayContext script_ctx;
+    script_ctx.world = &level.world();
+    script_ctx.save = &save;
+    script_ctx.sim_events = &events;
+    script_ctx.config = &cfg;
+    GameplayContext* prev = current_game;
+    current_game = &script_ctx;
+
+    if (!level.load())
+    {
+        fail("self-check: scen2 failed to load for the script check");
+        current_game = prev;
+        return;
+    }
+    GameWorld& world = level.world();
+    world.tick();
+
+    bool gate_announced = false;
+    for (const og::sim::Event& ev : events.drain())
+        if (ev.kind == og::sim::EventKind::Notification &&
+            ev.text.find("The gate knows us") != std::string::npos)
+            gate_announced = true;
+    if (!gate_announced)
+        fail("self-check: castle on_load did not announce the gate");
+
+    walker* bar = nullptr;
+    for (const auto& uptr : world.fxlist)
+    {
+        walker* ob = uptr.get();
+        if (ob != nullptr && ob->query_order() == Order::Treasure &&
+            ob->family() == FAMILY_GOLD_BAR && ob->xpos() == 22 * GRID_SIZE &&
+            ob->ypos() == 19 * GRID_SIZE)
+            bar = ob;
+    }
+    walker* keeper = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    if (bar == nullptr || keeper == nullptr)
+    {
+        fail("self-check: scen2 castle bar or keeper missing");
+        current_game = prev;
+        return;
+    }
+    keeper->set_team_num(0);
+    keeper->set_real_team_num(0);
+    keeper->set_act_type(ACT_CONTROL);
+    bar->eat_me(keeper);
+    int ghosts = 0;
+    for (const auto& uptr : world.oblist)
+    {
+        walker* ob = uptr.get();
+        if (ob != nullptr && ob->query_order() == Order::Living &&
+            ob->family() == FAMILY_GHOST && ob->team_num() == 0 &&
+            ob->stats()->name == "Gold Ghost")
+            ++ghosts;
+    }
+    if (!bar->dead() || ghosts != 6)
+        fail(std::format("self-check: a castle bar woke {} ghosts (bar dead "
+                         "{}), expected 6", ghosts, bar->dead() ? 1 : 0));
+
+    for (const og::script::ScriptError& err : world.scripts().host().errors())
+        fail(std::format("self-check: script error at {}: {}", err.where,
+                         err.message));
+    current_game = prev;
+}
+
 } // namespace
 } // namespace imaggen
 
@@ -810,6 +1155,7 @@ int main(int argc, char* argv[])
         fail("failed to stage the embedded dreams pack");
 
     build_raspberry_isle();
+    build_castle_of_gold();
 
     const std::string glad_path = user + "campaigns/imaginations.glad";
     std::remove(glad_path.c_str());
@@ -826,15 +1172,18 @@ int main(int argc, char* argv[])
         }
         else
         {
-            const std::set<int> registered = {1};
+            const std::set<int> registered = {1, 2};
             const ExpectedLevel expectations[] = {
                 // {id, floors, title, starts, t0 liv/gen, t1 liv/gen,
                 //  delayed, specials-disabled, exit destinations}
-                {1, 1, "The Raspberry Isle", 16, 0, 0, 19, 3, 3, 1, {1}},
+                {1, 1, "The Raspberry Isle", 16, 0, 0, 19, 3, 3, 1, {2}},
+                {2, 1, "The Castle of Gold", 12, 0, 0, 27, 0, 23, 0,
+                 {kCastleOfGoldExit}},
             };
             for (const ExpectedLevel& e : expectations)
                 self_check_level(e, registered);
             self_check_isle_script();
+            self_check_castle_script();
             (void)unmount_campaign_package_with_error("imaginations");
         }
     }

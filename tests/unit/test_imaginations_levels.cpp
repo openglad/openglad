@@ -1,9 +1,10 @@
 /* Structural pins for the shipped Imaginations campaign
  * (campaigns/imaginations/, composed into builtin/imaginations.glad; the
- * generator is tools/imaginations_mapgen). The dream-log campaign ships
- * ONE level today — scen 1 "The Raspberry Isle", the first kid-submitted
- * design: an island in open sea, the crew landing spread around the
- * shore, a moated castle in the middle. These pins hold the packaged
+ * generator is tools/imaginations_mapgen): scen 1 "The Raspberry Isle"
+ * (an island in open sea, the crew landing spread around the shore, a
+ * moated castle in the middle) and scen 2 "The Castle of Gold" (our own
+ * castle in a faerie war, gold that wakes allied ghosts, a gate only
+ * twelve faerie-held keys can drop). These pins hold the packaged
  * bytes to the authored structure (floor/grid identity, army counts,
  * text budgets, the loop-home exit) and re-run the og::mapgen ground
  * audits on the SHIPPED package, so a regeneration that breaks footing
@@ -40,6 +41,10 @@
 #include "test_gameplay_context_scope.h"
 
 #include <algorithm>
+#include <cstdint>
+#include <cstdlib>
+#include <iterator>
+#include <utility>
 #include <string>
 #include <vector>
 
@@ -156,7 +161,9 @@ struct ShippedLevel
 };
 
 constexpr ShippedLevel kLevels[] = {
-    {1, "The Raspberry Isle", 1, 64, 64, 16, 19, 3, 1, 1},
+    {1, "The Raspberry Isle", 1, 64, 64, 16, 19, 3, 1, 2},
+    // Exit loops home to 1 until scen 3 ships (the newest-level rule).
+    {2, "The Castle of Gold", 1, 64, 64, 12, 27, 0, 1, 1},
 };
 
 // SCENARIO INFORMATION dialog budget (33 glyphs per briefing line).
@@ -212,7 +219,8 @@ TEST_F(ImaginationsCampaignTest, levels_round_trip_the_authored_structure)
             {
                 ++exits;
                 EXPECT_EQ(expected.exit_destination, ob->stats()->level())
-                    << "the newest level's exit loops home to 1";
+                    << "each dream exits to the next; the newest loops "
+                       "home to 1";
             }
         }
         EXPECT_EQ(expected.exits, exits);
@@ -371,6 +379,384 @@ TEST_F(ImaginationsCampaignTest, shipped_package_passes_the_ground_audits)
              og::mapgen::audit_generator_spawn_exits(world))
             ADD_FAILURE() << err;
     }
+}
+
+// ---------------------------------------------------------------------------
+// Scen 2, The Castle of Gold: the dream script's beats (gold_castle.lua).
+// ---------------------------------------------------------------------------
+constexpr int kCastleLevel = 2;
+constexpr int kGateRow = 43;           // the three gate doors, x 30..32
+constexpr std::uint32_t kShoreKeys = 0x1FFEu; // key bits 1..12
+
+walker* find_treasure(GameWorld& world, int family, int tx, int ty)
+{
+    for (const auto& uptr : world.fxlist)
+    {
+        walker* ob = uptr.get();
+        if (ob != nullptr && ob->query_order() == Order::Treasure &&
+            !ob->dead() && ob->family() == family &&
+            ob->xpos() == tx * GRID_SIZE && ob->ypos() == ty * GRID_SIZE)
+            return ob;
+    }
+    return nullptr;
+}
+
+int live_gate_doors(GameWorld& world)
+{
+    int doors = 0;
+    for (const auto& uptr : world.weaplist)
+    {
+        walker* ob = uptr.get();
+        if (ob != nullptr && ob->family() == FAMILY_DOOR && !ob->dead() &&
+            ob->ypos() == kGateRow * GRID_SIZE)
+            ++doors;
+    }
+    return doors;
+}
+
+int named_allies(GameWorld& world, const char* name)
+{
+    int count = 0;
+    for (const auto& uptr : world.oblist)
+    {
+        walker* ob = uptr.get();
+        if (ob != nullptr && ob->query_order() == Order::Living &&
+            !ob->dead() && ob->family() == FAMILY_GHOST &&
+            ob->team_num() == 0 && ob->stats()->name == name)
+            ++count;
+    }
+    return count;
+}
+
+std::vector<walker*> live_faeries(GameWorld& world, bool awake_only)
+{
+    std::vector<walker*> out;
+    for (const auto& uptr : world.oblist)
+    {
+        walker* ob = uptr.get();
+        if (ob != nullptr && ob->query_order() == Order::Living &&
+            !ob->dead() && ob->family() == FAMILY_FAERIE &&
+            ob->team_num() == 1 && (!awake_only || !ob->dormant()))
+            out.push_back(ob);
+    }
+    return out;
+}
+
+// A crew member driving the keeper's role: player-controlled (the beat
+// keys on control or a saved character, never on a plain team-0 ally).
+walker* spawn_keeper(GameWorld& world)
+{
+    walker* k = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    if (k == nullptr)
+        return nullptr;
+    k->set_team_num(0);
+    k->set_real_team_num(0);
+    k->set_act_type(ACT_CONTROL);
+    return k;
+}
+
+bool saw_notification(og::sim::SimEventLog& events, const char* needle)
+{
+    bool seen = false;
+    for (const og::sim::Event& ev : events.drain())
+        if (ev.kind == og::sim::EventKind::Notification &&
+            ev.text.find(needle) != std::string::npos)
+            seen = true;
+    return seen;
+}
+
+void expect_no_script_errors(GameWorld& world)
+{
+    for (const auto& err : world.scripts().host().errors())
+        ADD_FAILURE() << err.where << ": " << err.message;
+}
+
+constexpr std::pair<int, int> kCastleBars[] = {
+    {22, 19}, {25, 22}, {38, 19}, {41, 22},
+    {22, 38}, {25, 35}, {38, 38}, {41, 35}};
+
+TEST_F(ImaginationsCampaignTest, castle_gold_wakes_six_ghosts_then_seven)
+{
+    LoadedImaginationsLevel fx(kCastleLevel);
+    ASSERT_TRUE(fx.loaded);
+    GameWorld& world = fx.world();
+    world.tick(); // on_load
+    (void)fx.events.drain();
+    walker* keeper = spawn_keeper(world);
+    ASSERT_NE(nullptr, keeper);
+
+    // An allied ghost (team 0, no saved character, not driven) floats over
+    // a castle bar and leaves it: ghosts never wake more ghosts.
+    walker* drifter = world.add_ob(Order::Living, FAMILY_GHOST);
+    ASSERT_NE(nullptr, drifter);
+    drifter->set_team_num(0);
+    drifter->set_real_team_num(0);
+    walker* first = find_treasure(world, FAMILY_GOLD_BAR, 22, 19);
+    ASSERT_NE(nullptr, first);
+    first->eat_me(drifter);
+    EXPECT_FALSE(first->dead()) << "an allied ghost must not take castle gold";
+    EXPECT_EQ(0, named_allies(world, "Gold Ghost"));
+
+    const std::uint32_t score0 = world.m_score[0];
+    first->eat_me(keeper);
+    EXPECT_TRUE(first->dead()) << "the keeper takes the bar";
+    EXPECT_GT(world.m_score[0], score0) << "castle gold still banks";
+    EXPECT_EQ(6, named_allies(world, "Gold Ghost"));
+    EXPECT_TRUE(saw_notification(fx.events, "7 gold left"));
+
+    // The ghosts are born at the Ghost Tent (pad at tile 52,33), on our side.
+    for (const auto& uptr : world.oblist)
+    {
+        walker* ob = uptr.get();
+        if (ob == nullptr || ob->family() != FAMILY_GHOST || ob->dead() ||
+            ob == drifter)
+            continue;
+        EXPECT_EQ(0, ob->team_num());
+        EXPECT_LE(std::abs(ob->xpos() / GRID_SIZE - 52), 2);
+        EXPECT_LE(std::abs(ob->ypos() / GRID_SIZE - 33), 2);
+    }
+
+    for (std::size_t i = 1; i + 1 < std::size(kCastleBars); ++i)
+    {
+        walker* bar = find_treasure(world, FAMILY_GOLD_BAR,
+                                    kCastleBars[i].first,
+                                    kCastleBars[i].second);
+        ASSERT_NE(nullptr, bar) << "castle bar " << i;
+        bar->eat_me(keeper);
+    }
+    EXPECT_EQ(6 * 7, named_allies(world, "Gold Ghost"));
+    EXPECT_EQ(0, named_allies(world, "Crown Ghost"));
+    walker* last = find_treasure(world, FAMILY_GOLD_BAR, kCastleBars[7].first,
+                                 kCastleBars[7].second);
+    ASSERT_NE(nullptr, last);
+    (void)fx.events.drain();
+    last->eat_me(keeper);
+    EXPECT_EQ(7, named_allies(world, "Crown Ghost")) << "the last bar: seven";
+    EXPECT_TRUE(saw_notification(fx.events, "SEVEN ghosts"));
+
+    // The counting house bar (outside the castle) banks the classic way.
+    walker* house = find_treasure(world, FAMILY_GOLD_BAR, 57, 10);
+    ASSERT_NE(nullptr, house);
+    house->eat_me(keeper);
+    EXPECT_TRUE(house->dead());
+    EXPECT_EQ(7, named_allies(world, "Crown Ghost"));
+    EXPECT_EQ(42, named_allies(world, "Gold Ghost"));
+    expect_no_script_errors(world);
+}
+
+TEST_F(ImaginationsCampaignTest, castle_ghosts_respect_the_living_cap)
+{
+    LoadedImaginationsLevel fx(kCastleLevel);
+    ASSERT_TRUE(fx.loaded);
+    GameWorld& world = fx.world();
+    world.tick();
+    walker* keeper = spawn_keeper(world);
+    ASSERT_NE(nullptr, keeper);
+    walker* bar = find_treasure(world, FAMILY_GOLD_BAR, 22, 19);
+    ASSERT_NE(nullptr, bar);
+    // Three below the script's 110-living ceiling: three ghosts, not six.
+    world.living_count = 107;
+    bar->eat_me(keeper);
+    EXPECT_TRUE(bar->dead());
+    EXPECT_EQ(3, named_allies(world, "Gold Ghost"));
+    expect_no_script_errors(world);
+}
+
+TEST_F(ImaginationsCampaignTest, castle_gate_falls_to_twelve_faerie_keys)
+{
+    LoadedImaginationsLevel fx(kCastleLevel);
+    ASSERT_TRUE(fx.loaded);
+    GameWorld& world = fx.world();
+    world.tick();
+    ASSERT_EQ(3, live_gate_doors(world));
+    std::vector<walker*> faeries = live_faeries(world, /*awake_only=*/true);
+    ASSERT_GE(faeries.size(), 2u);
+
+    // Eleven keys between the faeries: the tick safety net leaves the gate.
+    faeries[0]->set_keys(kShoreKeys & ~(1u << 12));
+    while (world.level_tick_count() < 201)
+        world.tick();
+    EXPECT_EQ(3, live_gate_doors(world)) << "eleven keys open nothing";
+
+    // The twelfth on a second bearer, then that bearer falls before the
+    // next beat: its keys leave the count and the gate holds.
+    faeries[1]->set_keys(1u << 12);
+    faeries[1]->stats()->set_hitpoints(0);
+    faeries[1]->set_dead(1);
+    faeries[1]->death();
+    while (world.level_tick_count() < 301)
+        world.tick();
+    EXPECT_EQ(3, live_gate_doors(world)) << "a dead bearer's key is lost";
+
+    // A living faerie picks up key 12 on the shore (the core:key override):
+    // all twelve are carried and the gate falls on the spot.
+    walker* key12 = find_treasure(world, FAMILY_KEY, 59, 20);
+    ASSERT_NE(nullptr, key12);
+    ASSERT_EQ(12, key12->stats()->level());
+    (void)fx.events.drain();
+    key12->eat_me(faeries[0]);
+    EXPECT_EQ(kShoreKeys, faeries[0]->keys() & kShoreKeys);
+    EXPECT_EQ(0, live_gate_doors(world)) << "twelve keys drop the gate";
+    EXPECT_TRUE(saw_notification(fx.events, "The gate falls"));
+    expect_no_script_errors(world);
+}
+
+TEST_F(ImaginationsCampaignTest, castle_gate_safety_net_drops_on_the_beat)
+{
+    LoadedImaginationsLevel fx(kCastleLevel);
+    ASSERT_TRUE(fx.loaded);
+    GameWorld& world = fx.world();
+    world.tick();
+    std::vector<walker*> faeries = live_faeries(world, true);
+    ASSERT_FALSE(faeries.empty());
+    faeries[0]->set_keys(kShoreKeys);
+    while (world.level_tick_count() < 99)
+        world.tick();
+    EXPECT_EQ(3, live_gate_doors(world)) << "the net runs on the 100 beat";
+    while (world.level_tick_count() < 102)
+        world.tick();
+    EXPECT_EQ(0, live_gate_doors(world));
+    // The 600-tick status line reads the war: the gate is down and
+    // faeries remain, so the ghosts are holding the hall.
+    (void)fx.events.drain();
+    while (world.level_tick_count() < 602)
+        world.tick();
+    EXPECT_TRUE(saw_notification(fx.events, "The gate is down!"));
+    expect_no_script_errors(world);
+}
+
+TEST_F(ImaginationsCampaignTest, castle_deaths_narrate_bearers_and_the_queen)
+{
+    LoadedImaginationsLevel fx(kCastleLevel);
+    ASSERT_TRUE(fx.loaded);
+    GameWorld& world = fx.world();
+    world.tick();
+    (void)fx.events.drain();
+    auto fell = [&](walker* ob) {
+        ob->stats()->set_hitpoints(0);
+        ob->set_dead(1);
+        ob->death();
+        world.tick();
+    };
+
+    // A plain faerie dies quietly; a key-bearer's keys are lost aloud.
+    std::vector<walker*> faeries = live_faeries(world, true);
+    ASSERT_GE(faeries.size(), 2u);
+    fell(faeries[0]);
+    EXPECT_FALSE(saw_notification(fx.events, "key-bearer"));
+    faeries[1]->set_keys(1u << 5);
+    fell(faeries[1]);
+    EXPECT_TRUE(saw_notification(fx.events, "A key-bearer falls!"));
+
+    walker* queen = nullptr;
+    for (walker* f : live_faeries(world, false))
+        if (f->stats()->name == "Fae Queen")
+            queen = f;
+    ASSERT_NE(nullptr, queen) << "the finale wave carries the Fae Queen";
+    fell(queen);
+    EXPECT_TRUE(saw_notification(fx.events, "Dream won."));
+    expect_no_script_errors(world);
+}
+
+TEST_F(ImaginationsCampaignTest, nobody_teleports_into_the_castle)
+{
+    LoadedImaginationsLevel fx(kCastleLevel);
+    ASSERT_TRUE(fx.loaded);
+    GameWorld& world = fx.world();
+    world.tick();
+    auto inside = [](const walker* ob) {
+        const int tx = ob->xpos() / GRID_SIZE;
+        const int ty = ob->ypos() / GRID_SIZE;
+        return tx >= 20 && tx <= 43 && ty >= 17 && ty <= 42;
+    };
+
+    // A faerie that blinks into the court is thrown out onto the causeway.
+    std::vector<walker*> faeries = live_faeries(world, true);
+    ASSERT_FALSE(faeries.empty());
+    walker* blinker = faeries[0];
+    blinker->setxy(static_cast<short>(31 * GRID_SIZE),
+                   static_cast<short>(32 * GRID_SIZE));
+    ASSERT_TRUE(inside(blinker));
+    world.tick();
+    EXPECT_FALSE(inside(blinker)) << "the castle throws a faerie out";
+    EXPECT_GE(blinker->ypos() / GRID_SIZE, 44) << "onto the causeway";
+
+    // Ours: walking in is fine; landing a teleport inside is not.
+    walker* walker_in = spawn_keeper(world);
+    ASSERT_NE(nullptr, walker_in);
+    walker_in->set_act_type(ACT_SIT);
+    walker_in->setxy(static_cast<short>(26 * GRID_SIZE),
+                     static_cast<short>(29 * GRID_SIZE));
+    walker* mage = world.add_ob(Order::Living, FAMILY_MAGE);
+    ASSERT_NE(nullptr, mage);
+    mage->set_team_num(0);
+    mage->set_real_team_num(0);
+    mage->set_act_type(ACT_SIT);
+    mage->setxy(static_cast<short>(36 * GRID_SIZE),
+                static_cast<short>(29 * GRID_SIZE));
+    mage->set_ani_type(static_cast<char>(ANI_TELE_IN));
+    world.tick();
+    EXPECT_TRUE(inside(walker_in)) << "the crew walks its own castle";
+    EXPECT_FALSE(inside(mage)) << "no spell-doors into the castle";
+
+    // Once the gate has fallen, the castle stops throwing anyone out.
+    faeries = live_faeries(world, true);
+    ASSERT_FALSE(faeries.empty());
+    faeries[0]->set_keys(kShoreKeys);
+    while (live_gate_doors(world) > 0 && world.level_tick_count() < 400)
+        world.tick();
+    ASSERT_EQ(0, live_gate_doors(world));
+    faeries[0]->setxy(static_cast<short>(31 * GRID_SIZE),
+                      static_cast<short>(32 * GRID_SIZE));
+    world.tick();
+    EXPECT_TRUE(inside(faeries[0])) << "the gate is down: the ghosts hold";
+    expect_no_script_errors(world);
+}
+
+// The gold_bar override is campaign-wide while the pack is mounted: on the
+// isle, gold banks exactly the classic way and wakes nothing.
+TEST_F(ImaginationsCampaignTest, isle_gold_still_banks_the_classic_way)
+{
+    LoadedImaginationsLevel fx(1);
+    ASSERT_TRUE(fx.loaded);
+    GameWorld& world = fx.world();
+    world.tick();
+    walker* keeper = spawn_keeper(world);
+    ASSERT_NE(nullptr, keeper);
+    walker* bar = find_treasure(world, FAMILY_GOLD_BAR, 28, 28);
+    ASSERT_NE(nullptr, bar);
+    const std::uint32_t score0 = world.m_score[0];
+    bar->eat_me(keeper);
+    EXPECT_TRUE(bar->dead());
+    EXPECT_EQ(score0 + 200u * static_cast<std::uint32_t>(bar->stats()->level()),
+              world.m_score[0]);
+    EXPECT_EQ(0, named_allies(world, "Gold Ghost"));
+    // A hostile walker never banks.
+    walker* other = find_treasure(world, FAMILY_GOLD_BAR, 35, 35);
+    ASSERT_NE(nullptr, other);
+    walker* foe = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, foe);
+    foe->set_team_num(1);
+    foe->set_real_team_num(1);
+    other->eat_me(foe);
+    EXPECT_FALSE(other->dead());
+    expect_no_script_errors(world);
+}
+
+TEST_F(ImaginationsCampaignTest, castle_on_load_survives_the_level_start_seed)
+{
+    LoadedImaginationsLevel fx(kCastleLevel);
+    ASSERT_TRUE(fx.loaded);
+    GameWorld& world = fx.world();
+    const og::sim::WorldSnapshot seed =
+        og::sim::capture_keyframe_snapshot(world);
+    ASSERT_EQ(0u, seed.level_tick_count);
+    world.reset_level_progress();
+    ASSERT_TRUE(og::sim::apply_snapshot(world, seed));
+    world.tick();
+    EXPECT_TRUE(saw_notification(fx.events, "The gate knows us"))
+        << "a level-start seed must leave on_load armed";
+    expect_no_script_errors(world);
 }
 
 } // namespace

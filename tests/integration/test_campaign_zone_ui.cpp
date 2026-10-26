@@ -3704,9 +3704,10 @@ TEST(CampaignZoneUi, zz_capture_default_zone_across_campaigns)
         // The open ledger composes its camp: the week's job, the STORES
         // door, and TAKE AN ADVANCE on a fresh spring save.
         {"longseason", "zone_camp_longseason", 1, 3, nullptr, {}},
-        // The dream log composes its camp: one dream on a fresh save, and
-        // its label pins the composition (not just the count).
-        {"imaginations", "zone_default_imaginations", 1, 1,
+        // The dream log composes its camp: one row per dream on a fresh
+        // save, and the first row's label pins the composition (not just
+        // the count).
+        {"imaginations", "zone_default_imaginations", 1, 2,
          "The Raspberry Isle - tonight?  [CURRENT]", {}},
     };
     for (DefaultTourState& tour : tours)
