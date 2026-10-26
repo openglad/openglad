@@ -24,6 +24,11 @@ const OK_CENTRE = { x: 135 + 25, y: 178 + 8 };
 // The main menu's BEGIN NEW GAME row (80,55,140,20), present with or
 // without a company.
 const BEGIN_CENTRE = { x: 80 + 70, y: 55 + 10 };
+// The band's key-cap share with the keyboard up is well over 0.2. The main
+// menu's marble and the company-name screen's shield put a few percent of
+// saturated pixels in the same rectangle (0.02 to 0.03 measured), so "no
+// picture" is anything under 0.1.
+const NO_PICTURE = 0.1;
 
 // The share of the band's pixels that are key-cap colours: the saturated
 // player colours, each with red and green at least 40 apart (the page's
@@ -62,6 +67,18 @@ async function changelogState(page) {
   return await page.evaluate(() => window.__opengladChangelogState ?? null);
 }
 
+// The main menu, settled, after the intro has ended: the picker starts the
+// moment the intro does (src/platform/sdl/glad.cpp), so a page shown at
+// boot would be up (and say 'open' or 'none') by the time this returns.
+async function reachMainMenu(page) {
+  await page.waitForFunction(
+    () => window.__opengladIntroActive === false,
+    null,
+    { timeout: 90_000 },
+  );
+  await waitForPickerReady(page);
+}
+
 // Press BEGIN NEW GAME until the engine says what the page did. Emscripten
 // forwards input only after a real click, so the first press may only wake
 // it; a repeat lands on the page's text or the name screen, both inert there.
@@ -94,9 +111,9 @@ test.describe('CHANGELOG! page (web)', () => {
     await waitForGameLoad(page);
     // The intro auto-advances into the main menu, and nothing else: the
     // page waits for the player to start a game.
-    await waitForPickerReady(page);
+    await reachMainMenu(page);
     expect(await changelogState(page)).toBeNull();
-    expect(await keyCapShare(page)).toBeLessThan(0.02);
+    expect(await keyCapShare(page)).toBeLessThan(NO_PICTURE);
 
     await beginNewGame(page, 'open');
     // The page fades in; wait until the picture is in its band.
@@ -114,18 +131,18 @@ test.describe('CHANGELOG! page (web)', () => {
     // the keyboard.
     await expect
       .poll(() => keyCapShare(page), { timeout: 30_000, intervals: [500] })
-      .toBeLessThan(0.02);
+      .toBeLessThan(NO_PICTURE);
 
     // Reload: the marker came back from IndexedDB, so the main menu boots
     // with no page and BEGIN NEW GAME finds nothing pending.
     await page.reload();
     await waitForGameLoad(page);
-    await waitForPickerReady(page);
+    await reachMainMenu(page);
     expect(await changelogState(page)).toBeNull();
     await beginNewGame(page, 'none');
     await waitForRenderedFrames(page, 8);
     expect(await changelogState(page)).toBe('none');
-    expect(await keyCapShare(page)).toBeLessThan(0.02);
+    expect(await keyCapShare(page)).toBeLessThan(NO_PICTURE);
     expect(errors).toEqual([]);
   });
 });
