@@ -629,3 +629,151 @@ TEST_F(ImaginationsTwitchers, no_faerie_jams_against_the_castle_walls)
         << "the wall net observed only " << checked
         << " far-from-foe hostile windows";
 }
+
+// The Asteroid Castle (scen 3) puts a 2-thick castle wall ringed by a
+// 2-wide band of jagged spikes (impassable to walkers and flyers) between
+// the raiders and a crew that "sits in the castle", and black space all
+// around the rock. A raider hunting someone behind the wall piles up
+// against the spikes and is bitten to death there, or finds the east
+// gate; anything else left hunting with nobody to reach must be stood
+// down by the dream script (asteroid.lua, via lib/dream_posts.lua). Park the
+// crew in the court for the first half (the waves at 300 and 800 come to
+// it), then on the north yard for the second half (the captain's band at
+// 1400 and every woken post must re-engage or settle), and fail on any
+// awake hostile hunter left stationary with no enemy in contact. A
+// subject up against the band is exempt from the motion rule only while
+// it is BLEEDING (its hitpoints strictly lower than at the previous
+// sample): the spikes are its stand-down. The Big One is exempt while on the rock (the
+// script drives him there; he has no foe within reach by design).
+TEST_F(ImaginationsTwitchers, no_raider_jams_against_the_asteroid_castle)
+{
+#if defined(__SANITIZE_THREAD__) || defined(__SANITIZE_ADDRESS__)
+    GTEST_SKIP() << "sim-shape pin enforced on the ci-test/coverage lanes";
+#elif defined(__has_feature)
+#if __has_feature(thread_sanitizer) || __has_feature(address_sanitizer)
+    GTEST_SKIP() << "sim-shape pin enforced on the ci-test/coverage lanes";
+#endif
+#endif
+    LoadedWestlandsLevel fx(3, 42u);
+    ASSERT_TRUE(fx.loaded);
+    GameWorld& world = fx.world();
+    std::vector<walker*> crew = deploy_crew(
+        fx.level, world, {FAMILY_SOLDIER, FAMILY_SOLDIER, FAMILY_SOLDIER,
+                          FAMILY_SOLDIER, FAMILY_ELF, FAMILY_ARCHER,
+                          FAMILY_CLERIC, FAMILY_BARBARIAN}, 1);
+    ASSERT_EQ(8u, crew.size());
+    auto park = [&](int y, int x0)
+    {
+        for (std::size_t m = 0; m < crew.size(); ++m)
+        {
+            walker* member = crew[m];
+            if (member == nullptr || member->dead())
+                continue;
+            member->set_floor(0);
+            member->setxy(static_cast<short>((x0 + static_cast<int>(m)) * 16),
+                          static_cast<short>(y * 16));
+            member->set_act_type(ACT_GUARD);
+            member->set_guard_hold_post(true);
+            member->stats()->set_max_hitpoints(30000.0f);
+            member->stats()->set_hitpoints(30000.0f);
+        }
+    };
+    park(30, 11); // in the court, behind the wall
+
+    // Aggro every placed post the way a real assault does.
+    constexpr int kAsteroidWokenHostiles = 10; // 7 yard + 3 pen posts
+    int woken = 0;
+    for (const auto& uptr : world.oblist)
+    {
+        walker* ob = uptr.get();
+        if (ob != nullptr && ob->query_order() == Order::Living &&
+            !ob->dead() && ob->team_num() == 1 && ob->spawn_delay() == 0 &&
+            ob->floor() == 0 && ob->stepsize() >= 1.0f)
+        {
+            ob->set_act_type(ACT_RANDOM);
+            ++woken;
+        }
+    }
+    ASSERT_EQ(kAsteroidWokenHostiles, woken);
+
+    // Up against the spikes: a band cell on or beside the centre tile.
+    auto on_band = [](const walker* ob) {
+        const int cx = (ob->xpos() + ob->sizex() / 2) / 16;
+        const int cy = (ob->ypos() + ob->sizey() / 2) / 16;
+        for (int ty = cy - 1; ty <= cy + 1; ++ty)
+            for (int tx = cx - 1; tx <= cx + 1; ++tx)
+            {
+                const bool band = tx >= 6 && tx <= 25 && ty >= 13 && ty <= 48;
+                const bool castle = tx >= 8 && tx <= 23 && ty >= 15 && ty <= 46;
+                const bool apron = tx >= 24 && tx <= 25 && ty >= 29 && ty <= 31;
+                if (band && !castle && !apron)
+                    return true;
+            }
+        return false;
+    };
+
+    for (int t = 0; t < kSamplePhaseTicks; ++t)
+        world.tick();
+    int checked = 0;
+    std::map<walker*, std::pair<float, float>> last_pos;
+    std::map<walker*, float> last_hp;
+    for (int sample = 0; sample < kSamples; ++sample)
+    {
+        if (sample == kSamples / 2)
+        {
+            park(9, 36); // the north yard, by the Balloon Rock's ledge
+            last_pos.clear();
+        }
+        for (int t = 0; t < kSampleTicks; ++t)
+            world.tick();
+        for (const auto& uptr : world.oblist)
+        {
+            walker* ob = uptr.get();
+            if (ob == nullptr || ob->query_order() != Order::Living ||
+                ob->dead() || ob->dormant() || ob->team_num() == 0 ||
+                ob->stepsize() < 1.0f)
+                continue;
+            if (ob->family() == FAMILY_GOLEM && ob->floor() == 1)
+                continue;
+            const bool posted = ob->act_type() == ACT_GUARD;
+            const float x = static_cast<float>(ob->xpos());
+            const float y = static_cast<float>(ob->ypos());
+            const float hp = ob->stats()->hitpoints();
+            float nearest = 1e9f;
+            for (const auto& fptr : world.oblist)
+            {
+                walker* foe = fptr.get();
+                if (foe == nullptr || foe->query_order() != Order::Living ||
+                    foe->dead() || foe->team_num() == ob->team_num())
+                    continue;
+                const float dx = static_cast<float>(foe->xpos()) - x;
+                const float dy = static_cast<float>(foe->ypos()) - y;
+                nearest = std::min(nearest, std::sqrt(dx * dx + dy * dy));
+            }
+            const auto it = last_pos.find(ob);
+            if (it != last_pos.end() && nearest > kWallEngageRange)
+            {
+                ++checked;
+                const float mdx = x - it->second.first;
+                const float mdy = y - it->second.second;
+                const float moved = std::sqrt(mdx * mdx + mdy * mdy);
+                const bool bleeding =
+                    on_band(ob) && last_hp.count(ob) != 0 && hp < last_hp[ob];
+                EXPECT_TRUE(posted || bleeding || moved >= kMoveEpsilon)
+                    << "twitcher: family " << static_cast<int>(ob->family())
+                    << " at tile (" << ob->xpos() / 16 << ", "
+                    << ob->ypos() / 16 << ") floor " << ob->floor()
+                    << " tick "
+                    << kSamplePhaseTicks + (sample + 1) * kSampleTicks
+                    << " hunting (ACT_RANDOM), moved " << moved
+                    << " px with no enemy in contact: a raider at the "
+                       "castle wall must be stood down or bitten";
+            }
+            last_pos[ob] = {x, y};
+            last_hp[ob] = hp;
+        }
+    }
+    ASSERT_GE(checked, kMinCensusWindows)
+        << "the asteroid net observed only " << checked
+        << " far-from-foe hostile windows";
+}

@@ -51,8 +51,8 @@ using og::ui::CampaignZoneSession;
 // campaign ships today, in book order. New ideas append new scens (2, 3,
 // ...) and this pin grows with them — ledger_pin_is_current below goes red
 // until it does, so the book can never quietly drop a dream.
-constexpr int kDreamIds[] = {1, 2};
-constexpr int kFirstUnwrittenDream = 3;
+constexpr int kDreamIds[] = {1, 2, 3};
+constexpr int kFirstUnwrittenDream = 4;
 constexpr const char* kFirstDreamTitle = "The Raspberry Isle";
 
 // The three notes the script writes, pinned verbatim: the log's own words

@@ -65,9 +65,13 @@ struct CurvePin
 // shipped default, 8 8 8. Only the four tick-0 faeries are awake by 600
 // (the waves wake at 400/900/1500/2200), so this floor pins the opening;
 // the war itself is the playtest gate's business.
+// The Asteroid Castle at the same anchor: measured 2026-10-26 on the
+// shipped default, 8 8 6. By 600 the first gust (tick 300) has met the
+// spikes and the gate, and the crew has walked out into the yard posts.
 constexpr CurvePin kCurve[] = {
     {1, 1, 5},
     {2, 1, 8},
+    {3, 1, 6},
 };
 
 constexpr int kCalibrationTicks = 600;

@@ -11,6 +11,11 @@
  *   scen 2 "The Castle of Gold": our own castle in a faerie war; gold
  *     taken from its strongrooms wakes ghosts for our side, and the gate
  *     opens for no faerie until the faeries carry all twelve keys.
+ *     Exits to 3.
+ *   scen 3 "The Asteroid Castle": our castle on an asteroid in black
+ *     space, ringed by spikes that catch the raiders; the Big One sits
+ *     on the Balloon Rock (a second floor) until he is lured off it and
+ *     falls, and the key to the big door hangs under the rock.
  * New ideas append new scens; the walk-out exit of the newest level
  * loops home to 1 until its successor exists.
  *
@@ -167,6 +172,13 @@ void save_level_files(GameWorld& world, int id, const char* title,
     const std::string base = user + "temp/pix/" + metadata.grid_file;
     if (!write_pixie_png((base + ".png").c_str(), world.grid))
         fail(std::format("failed to write {}.png", base));
+    // Extra floors by derived name "{grid}_f{N}".
+    for (int f = 1; f < world.floor_count(); ++f)
+    {
+        const std::string p = std::format("{}_f{}.png", base, f);
+        if (!write_pixie_png(p.c_str(), world.grid_for_floor(f)))
+            fail(std::format("failed to write {}", p));
+    }
     // Decor planes by derived name "{grid}_d{N}" for exactly the floors the
     // .fss payload flags as present (valid plane with a nonzero byte).
     for (int f = 0; f < world.floor_count(); ++f)
@@ -524,9 +536,8 @@ void build_raspberry_isle()
 // them; the strongroom doors are neutral (team 4) at key 13, the castle key
 // lying one step north of the keeper's start.
 //
-// Exit destination: scen 3 does not ship yet, so the dais exit loops home
-// to 1 (the newest-level rule) until it does.
-constexpr int kCastleOfGoldExit = 1;
+// Exit destination: the throne leads on to scen 3.
+constexpr int kCastleOfGoldExit = 3;
 
 void build_castle_of_gold()
 {
@@ -761,6 +772,280 @@ void build_castle_of_gold()
                          "keeps the castle: every gold",
                          "bar wakes six ghosts for our",
                          "side. Beat the faerie war!",
+                     },
+                     3, 9000);
+}
+
+// --- Scen 3: THE ASTEROID CASTLE. --------------------------------------------
+// Our castle stands on an asteroid in black space, spikes all around its
+// walls. Bad guys ride the space wind (stardust drifts force the snow
+// weather) and think the castle is theirs; the spike band catches them.
+// The Big One, a golem, sits on the Balloon Rock: a striped deck floating
+// on floor 1 over a pit of black space, reached by a 3-wide Z-stair on
+// the north ledge. The key to the big door hangs under the rock's mast.
+//
+// Floor 0, 64x64: the rounded asteroid (rock rim, grass) on PIX_VOID1
+// space. West side: the tall castle (x 8..23, y 15..46, walls 2 thick)
+// with a 3-wide east gate (y 29..31), the crown V of pavement in the
+// north hall, and the big door (three team-4 doors at key 3, row 43)
+// sealing the striped vestibule that holds the exit pad. A 2-wide
+// jagged spike band hugs the outer wall, broken only by the gate apron:
+// jagged ground is too sharp for anyone to walk or fly over, so raiders
+// pile up against it and the script's spikes bite them there.
+// Yard posts east of the castle, the pen (an ash square with boulder
+// faces) in the southeast, craters, three stardust drifts, and the
+// Balloon pit (void under the whole deck except the three up-stairs).
+// Floor 1: all AIR but the striped 7x7 deck (x 46..52, y 7..13).
+//
+// The dream script (packs/imaginations.dreams/scripts/asteroid.lua)
+// carries the beats: the spikes bite every hostile against the band, the Big
+// One never fires while on the rock and wakes when the crew comes within
+// nine tiles, then walks off the deck and falls (hurt and slow), and the
+// raider waves are narrated as they wake. Exit: the newest level loops
+// home to 1.
+constexpr int kAsteroidCastleExit = 1;
+
+// Floor-0 cells inside the castle block (walls and court).
+bool in_asteroid_castle(int x, int y)
+{
+    return x >= 8 && x <= 23 && y >= 15 && y <= 46;
+}
+
+void build_asteroid_castle()
+{
+    LevelRuntimeData level(3, true, &headless_level_data_hooks());
+    GameWorld& w = level.world();
+    og::mapgen::init_world(w, 2, 64, 64);
+    PixieData& g0 = w.grid_for_floor(0);
+    PixieData& g1 = w.grid_for_floor(1);
+
+    // --- Floor 0 genre paint: the rock rim and its grass.
+    og::mapgen::paint_rect(g0, 3, 4, 60, 59, PIX_DIRT_1);
+    og::mapgen::paint_rect(g0, 5, 6, 58, 57, PIX_GRASS1);
+    og::mapgen::paint_rect(g0, 28, 26, 33, 34, PIX_GRASS_DARK_1);
+    og::mapgen::paint_rect(g0, 36, 16, 40, 19, PIX_GRASS_DARK_1);
+    og::mapgen::paint_rect(g0, 46, 45, 53, 52, PIX_GRASS_DARK_1);
+    // The castle: walls 2 thick, the court, the east gate (3 wide, on the
+    // court's centre row), the big-door row and the vestibule behind it.
+    og::mapgen::paint_rect(g0, 8, 15, 23, 46, PIX_WALL2);
+    og::mapgen::paint_rect(g0, 10, 17, 21, 42, PIX_COBBLE_1);
+    og::mapgen::paint_rect(g0, 22, 29, 23, 31, PIX_COBBLE_1);
+    og::mapgen::paint_rect(g0, 14, 43, 16, 43, PIX_COBBLE_1);
+    og::mapgen::paint_rect(g0, 14, 44, 16, 45, PIX_COBBLE_1);
+    // --- Floor 1 genre paint: the deck.
+    og::mapgen::paint_rect(g1, 46, 7, 52, 13, PIX_COBBLE_1);
+
+    og::mapgen::smooth_world(w);
+
+    // --- Floor 0, inert tiles (after smoothing).
+    // The spike band: two tiles of jagged ground all around the walls
+    // (impassable to walkers and flyers alike).
+    for (int y = 13; y <= 48; ++y)
+        for (int x = 6; x <= 25; ++x)
+            if (!in_asteroid_castle(x, y))
+                og::mapgen::paint(
+                    g0, x, y,
+                    static_cast<unsigned char>(PIX_JAGGED_GROUND_1 +
+                                               (x + y) % 4));
+    // The gate apron: the band's one spike-free mouth.
+    og::mapgen::paint_rect(g0, 24, 29, 25, 31, PIX_PAVEMENT1);
+    // The crown V in the north hall.
+    for (const auto& v : {std::pair{11, 17}, {20, 17}, {12, 18}, {19, 18},
+                          {13, 19}, {18, 19}, {14, 20}, {17, 20}, {15, 21},
+                          {16, 21}})
+        og::mapgen::paint(g0, v.first, v.second, PIX_PAVEMENT3);
+    // The striped vestibule.
+    og::mapgen::paint_rect(g0, 14, 44, 16, 44, PIX_PAVEMENT1);
+    og::mapgen::paint_rect(g0, 14, 45, 16, 45, PIX_PAVEMENT2);
+    // Stardust drifts, the space wind (snow weather past 40 tiles).
+    for (const auto& d : {std::pair{28.0, 8.0}, {12.0, 52.0}, {56.0, 52.0}})
+        og::mapgen::paint_ring(g0, d.first, d.second, 0.0, 3.2, PIX_SNOW1);
+    for (int y = 0; y < 64; ++y)
+        for (int x = 0; x < 64; ++x)
+            if (g0.data[static_cast<std::size_t>(x + y * 64)] == PIX_SNOW1 &&
+                (x + y) % 3 == 0)
+                og::mapgen::paint(g0, x, y, PIX_SNOW2);
+    // Craters (ash: jagged means spikes on this map).
+    for (const auto& c : {std::pair{33.0, 10.0}, {36.0, 50.0}, {30.0, 44.0}})
+        og::mapgen::paint_ring(g0, c.first, c.second, 0.0, 2.2, PIX_ASH1);
+    // The rainbow apron south of the big door.
+    {
+        static constexpr unsigned char kStripes[3] = {
+            PIX_PAVEMENT1, PIX_PAVEMENT2, PIX_PAVEMENT3};
+        for (int y = 49; y <= 52; ++y)
+            og::mapgen::paint_rect(g0, 13, y, 17, y, kStripes[(y - 49) % 3]);
+    }
+    // The pen: an ash checker outlined in pavement, no walls.
+    for (int y = 45; y <= 52; ++y)
+        for (int x = 46; x <= 53; ++x)
+            og::mapgen::paint(g0, x, y, ((x + y) % 2) ? PIX_ASH2 : PIX_ASH1);
+    for (int x = 45; x <= 54; ++x)
+    {
+        og::mapgen::paint(g0, x, 44, PIX_PAVEMENT2);
+        og::mapgen::paint(g0, x, 53, PIX_PAVEMENT2);
+    }
+    for (int y = 44; y <= 53; ++y)
+    {
+        og::mapgen::paint(g0, 45, y, PIX_PAVEMENT2);
+        og::mapgen::paint(g0, 54, y, PIX_PAVEMENT2);
+    }
+    // Space: the void all around, with rounded corners.
+    og::mapgen::paint_rect(g0, 0, 0, 63, 3, PIX_VOID1);
+    og::mapgen::paint_rect(g0, 0, 60, 63, 63, PIX_VOID1);
+    og::mapgen::paint_rect(g0, 0, 4, 2, 59, PIX_VOID1);
+    og::mapgen::paint_rect(g0, 61, 4, 63, 59, PIX_VOID1);
+    for (const auto& c : {std::pair{3.0, 4.0}, {60.0, 4.0}, {3.0, 59.0},
+                          {60.0, 59.0}})
+        og::mapgen::paint_ring(g0, c.first, c.second, 0.0, 6.0, PIX_VOID1);
+    // The Balloon pit: space under the whole deck but the up-stairs, so
+    // nothing ever stands under the Big One.
+    og::mapgen::paint_rect(g0, 46, 7, 52, 13, PIX_VOID1);
+
+    // --- Floor 1, inert: sky everywhere, the striped deck.
+    og::mapgen::paint_rect(g1, 0, 0, 63, 63, PIX_AIR);
+    for (int y = 7; y <= 13; ++y)
+        og::mapgen::paint_rect(
+            g1, 46, y, 52, y,
+            static_cast<unsigned char>((y - 7) % 3 == 0   ? PIX_PAVEMENT1
+                                       : (y - 7) % 3 == 1 ? PIX_PAVEMENT2
+                                                          : PIX_PAVEMENT3));
+    // The 3-wide Z-stair on the north ledge: up on floor 0, down on 1.
+    for (int x = 48; x <= 50; ++x)
+        og::mapgen::stair_pair(w, 0, x, 7);
+
+    // The space wind needs its drifts: 40+ snow tiles force snow weather.
+    {
+        int snow = 0;
+        for (std::size_t c = 0; c < 64u * 64u; ++c)
+            if (g0.data[c] == PIX_SNOW1 || g0.data[c] == PIX_SNOW2)
+                ++snow;
+        if (snow < 40)
+            fail(std::format("scen3: only {} stardust tiles; the snow "
+                             "weather needs 40", snow));
+    }
+
+    // --- The bad guys (team 1). Yard posts and the pen are POSTED guards
+    // (they wake at true sight); the waves roam from the rim and come to
+    // the castle, piling up against the spikes or finding the gate.
+    auto post = [&](int family, int tx, int ty)
+    {
+        og::mapgen::place_living(w, family, 1, 0, tx, ty, 1, /*guard=*/true);
+    };
+    post(FAMILY_SKELETON, 30, 30); // the gate watcher
+    post(FAMILY_ORC, 34, 24);
+    post(FAMILY_ORC, 34, 36);
+    post(FAMILY_ELF, 40, 30);
+    post(FAMILY_ARCHER, 40, 20);
+    post(FAMILY_SKELETON, 40, 40);
+    post(FAMILY_ELF, 44, 16); // the Balloon Rock approach
+    post(FAMILY_SKELETON, 49, 48); // the pen
+    post(FAMILY_SMALL_SLIME, 47, 51);
+    post(FAMILY_SMALL_SLIME, 52, 51);
+    // The Big One on the Balloon Rock (floor 1), awake and visible.
+    {
+        walker* golem = og::mapgen::place_living(w, FAMILY_GOLEM, 1, 1, 47,
+                                                 10, 1, /*guard=*/true);
+        if (golem != nullptr)
+            golem->stats()->name = "Big One";
+    }
+    auto raider = [&](int family, int tx, int ty, int lvl, int delay)
+    {
+        return og::mapgen::place_living(w, family, 1, 0, tx, ty, lvl,
+                                        /*guard=*/false, /*hold_post=*/false,
+                                        /*specials_disabled=*/false, delay);
+    };
+    // Wave 1, the first gust (east rim).
+    raider(FAMILY_ORC, 57, 26, 1, 300);
+    raider(FAMILY_ORC, 57, 34, 1, 300);
+    raider(FAMILY_FAERIE, 56, 22, 1, 300);
+    raider(FAMILY_FAERIE, 56, 38, 1, 300);
+    // Wave 2, falling stars (south rim).
+    raider(FAMILY_SKELETON, 20, 56, 1, 800);
+    raider(FAMILY_SKELETON, 30, 57, 1, 800);
+    raider(FAMILY_ELF, 40, 56, 1, 800);
+    // Wave 3, the captain's band (southeast rim).
+    if (walker* captain = raider(FAMILY_BIG_ORC, 57, 46, 2, 1400))
+        captain->stats()->name = "Black Dash";
+    raider(FAMILY_ORC, 56, 50, 1, 1400);
+    raider(FAMILY_ORC, 58, 42, 1, 1400);
+    raider(FAMILY_FAERIE, 54, 56, 1, 1400);
+
+    // --- Team 0: the Purple Man holds the ground beside the east gate.
+    if (walker* ally = og::mapgen::place_living(
+            w, FAMILY_BARBARIAN, 0, 0, 26, 27, 2, /*guard=*/true,
+            /*hold_post=*/true))
+        ally->stats()->name = "Purple Man";
+
+    // --- The crew: sixteen markers in the court, the lead first.
+    for (const auto& s : {std::pair{15, 30}, {12, 30}, {18, 30}, {15, 27},
+                          {15, 33}, {12, 27}, {18, 27}, {12, 33}, {18, 33},
+                          {15, 36}, {12, 36}, {18, 36}, {15, 24}, {12, 24},
+                          {18, 24}, {15, 39}})
+        og::mapgen::place_start(w, 0, s.first, s.second);
+
+    // --- The big door: three neutral doors at key 3.
+    for (int x = 14; x <= 16; ++x)
+        if (walker* d = og::mapgen::place(w, Order::Weapon, FAMILY_DOOR, 4, 0,
+                                          x, 43))
+            d->stats()->set_level(3);
+
+    // --- Treasure.
+    auto treasure = [&](int family, int floor, int tx, int ty, int lvl)
+    {
+        walker* t =
+            og::mapgen::place(w, Order::Treasure, family, 0, floor, tx, ty);
+        if (t != nullptr && lvl > 0)
+            t->stats()->set_level(static_cast<short>(lvl));
+    };
+    treasure(FAMILY_KEY, 1, 51, 10, 3); // under the mast
+    for (const auto& b : {std::pair{11, 20}, {20, 20}, {10, 25}, {21, 25},
+                          {10, 35}, {21, 35}, {11, 41}, {20, 41}, {49, 46},
+                          {46, 49}, {53, 49}})
+        treasure(FAMILY_GOLD_BAR, 0, b.first, b.second, 0);
+    treasure(FAMILY_INVULNERABLE_POTION, 0, 15, 18, 0); // the crown's heart
+    treasure(FAMILY_MAGIC_POTION, 0, 30, 24, 0);
+    for (const auto& d : {std::pair{11, 30}, {20, 30}, {30, 36}, {44, 6}})
+        treasure(FAMILY_DRUMSTICK, 0, d.first, d.second, 0);
+    treasure(FAMILY_SPEED_POTION, 1, 46, 13, 0);
+    og::mapgen::place_exit(w, 0, 15, 45, kAsteroidCastleExit);
+
+    // --- Set dressing (last).
+    for (const auto& t : {std::pair{8, 15}, {23, 15}, {8, 46}, {23, 46},
+                          {22, 28}, {22, 32}, {13, 43}, {17, 43}, {12, 16},
+                          {15, 16}, {19, 16}})
+        og::mapgen::paint_decor(w, 0, t.first, t.second, DECOR_TORCH1);
+    og::mapgen::paint_decor(w, 0, 13, 42, DECOR_BRAZIER);
+    og::mapgen::paint_decor(w, 0, 17, 42, DECOR_BRAZIER);
+    for (const auto& b : {std::pair{24, 20}, {25, 38}, {15, 13}, {6, 30},
+                          {16, 48}})
+        og::mapgen::paint_decor(w, 0, b.first, b.second, DECOR_BONES);
+    og::mapgen::paint_decor(w, 0, 46, 46, DECOR_BOULDER_1);
+    og::mapgen::paint_decor(w, 0, 53, 46, DECOR_BOULDER_2);
+    og::mapgen::paint_decor(w, 0, 46, 52, DECOR_BOULDER_3);
+    og::mapgen::paint_decor(w, 0, 53, 52, DECOR_BOULDER_4);
+    // The mast on the Balloon Rock.
+    og::mapgen::paint_decor(w, 1, 52, 8, DECOR_COLUMN_TOP);
+    og::mapgen::paint_decor(w, 1, 52, 9, DECOR_COLUMN_BOTTOM);
+    // Boulders on the open yard, never in the landing ring around the
+    // pit (44..54, 5..15), the pen or the gate apron.
+    og::mapgen::scatter_boulders(w, kScatterSeed, 0, 27, 16, 43, 58, 37);
+    og::mapgen::scatter_boulders(w, kScatterSeed, 0, 44, 16, 58, 42, 37);
+    og::mapgen::scatter_boulders(w, kScatterSeed, 0, 55, 5, 58, 15, 37);
+    og::mapgen::scatter_boulders(w, kScatterSeed, 0, 27, 6, 43, 15, 37);
+    og::mapgen::scatter_decor(w, kScatterSeed, 0, 0, 0, 63, 63, 9,
+                              DECOR_PEBBLES,
+                              {og::mapgen::ScatterGround::Dirt});
+
+    save_level_files(w, 3, "The Asteroid Castle",
+                     {
+                         "From the dream-log of a young",
+                         "commander: our castle stands on",
+                         "an asteroid, spikes all around.",
+                         "Bad guys ride the space wind and",
+                         "think it is their castle. The",
+                         "spikes catch them. The Big One",
+                         "sits on the Balloon Rock. Make",
+                         "him fall, take the key, go home.",
                      },
                      3, 9000);
 }
@@ -1095,6 +1380,160 @@ void self_check_castle_script()
     current_game = prev;
 }
 
+// The asteroid's dream script, end to end on the packaged level: one tick
+// runs asteroid.lua's on_load (every hostile under the seven-tile sight
+// cap, the Big One on the rock at sight 0 and still posted); a hostile on
+// the spike band loses hitpoints; a crew member three tiles from the deck
+// wakes the Big One, who walks off the rock, falls and lands crippled;
+// and the stairs branch (a golem arriving on floor 0 over the deck)
+// names him the Stomper.
+namespace asteroid_check {
+walker* find_golem(GameWorld& world)
+{
+    for (const auto& uptr : world.oblist)
+    {
+        walker* ob = uptr.get();
+        if (ob != nullptr && ob->query_order() == Order::Living &&
+            !ob->dead() && ob->family() == FAMILY_GOLEM && ob->team_num() == 1)
+            return ob;
+    }
+    return nullptr;
+}
+} // namespace asteroid_check
+
+void self_check_asteroid_script()
+{
+    using asteroid_check::find_golem;
+    for (int pass = 0; pass < 2; ++pass)
+    {
+        LevelRuntimeData level(3, true, &headless_level_data_hooks());
+        SaveData save;
+        og::sim::SimEventLog events;
+        level.set_sim_context(&save, &events, &cfg);
+        GameplayContext script_ctx;
+        script_ctx.world = &level.world();
+        script_ctx.save = &save;
+        script_ctx.sim_events = &events;
+        script_ctx.config = &cfg;
+        GameplayContext* prev = current_game;
+        current_game = &script_ctx;
+        if (!level.load())
+        {
+            fail("self-check: scen3 failed to load for the script check");
+            current_game = prev;
+            return;
+        }
+        GameWorld& world = level.world();
+        world.tick();
+        walker* golem = find_golem(world);
+        if (golem == nullptr)
+        {
+            fail("self-check: scen3 has no Big One");
+            current_game = prev;
+            return;
+        }
+        if (pass == 0)
+        {
+            for (const auto& uptr : world.oblist)
+            {
+                walker* ob = uptr.get();
+                if (ob != nullptr && ob->query_order() == Order::Living &&
+                    ob->team_num() == 1 && ob->lineofsight() > 7)
+                    fail("self-check: a scen3 hostile escaped the sight cap");
+            }
+            if (golem->lineofsight() != 0 || golem->act_type() != ACT_GUARD ||
+                golem->floor() != 1)
+                fail(std::format("self-check: the Big One on the rock has "
+                                 "sight {} act {} floor {}, expected 0/guard/1",
+                                 golem->lineofsight(),
+                                 static_cast<int>(golem->act_type()),
+                                 golem->floor()));
+            // The spikes: the gate watcher set down against the band.
+            walker* watcher = nullptr;
+            for (const auto& uptr : world.oblist)
+            {
+                walker* ob = uptr.get();
+                if (ob != nullptr && ob->query_order() == Order::Living &&
+                    ob->family() == FAMILY_SKELETON &&
+                    ob->xpos() == 30 * GRID_SIZE && ob->ypos() == 30 * GRID_SIZE)
+                    watcher = ob;
+            }
+            if (watcher == nullptr)
+            {
+                fail("self-check: scen3 gate watcher missing");
+                current_game = prev;
+                return;
+            }
+            const float hp0 = watcher->stats()->hitpoints();
+            for (int t = 0; t < 30; ++t)
+            {
+                watcher->setxy(static_cast<short>(5 * GRID_SIZE),
+                               static_cast<short>(25 * GRID_SIZE));
+                world.tick();
+            }
+            if (!(watcher->stats()->hitpoints() < hp0))
+                fail("self-check: the spike band did not bite a raider "
+                     "up against it");
+            // The fall: a crew member at the pit's west edge wakes him.
+            walker* lure = world.add_ob(Order::Living, FAMILY_SOLDIER);
+            if (lure == nullptr)
+            {
+                fail("self-check: scen3 lure refused");
+                current_game = prev;
+                return;
+            }
+            lure->set_team_num(0);
+            lure->set_real_team_num(0);
+            lure->set_act_type(ACT_SIT);
+            lure->set_floor(0);
+            lure->setxy(static_cast<short>(44 * GRID_SIZE),
+                        static_cast<short>(12 * GRID_SIZE));
+            lure->stats()->set_max_hitpoints(30000.0f);
+            lure->stats()->set_hitpoints(30000.0f);
+            world.tick();
+            if (golem->act_type() != ACT_RANDOM)
+                fail("self-check: the Big One did not wake for a lure "
+                     "three tiles from the deck");
+            // Up to five seconds to walk off the deck and land.
+            for (int t = 0; t < 60 && golem->stats()->name == "Big One"; ++t)
+                world.tick();
+            // Landed this tick: hp cut to 90 (one regen tick may follow).
+            if (golem->floor() != 0 || golem->stats()->name != "Fallen One" ||
+                golem->stats()->hitpoints() > 92.0f ||
+                golem->stats()->hitpoints() < 89.0f ||
+                golem->stepsize() != 4.0f || golem->lineofsight() != 7)
+                fail(std::format("self-check: the Big One did not fall "
+                                 "crippled (floor {}, name '{}', hp {}, "
+                                 "step {}, sight {})", golem->floor(),
+                                 golem->stats()->name,
+                                 golem->stats()->hitpoints(),
+                                 golem->stepsize(), golem->lineofsight()));
+        }
+        else
+        {
+            // The stairs branch: arriving on floor 0 with the deck above.
+            golem->change_floor(0);
+            golem->setxy(static_cast<short>(48 * GRID_SIZE),
+                         static_cast<short>(7 * GRID_SIZE));
+            world.tick();
+            if (golem->stats()->name != "Stomper" ||
+                golem->stats()->hitpoints() > 182.0f ||
+                golem->stats()->hitpoints() < 179.0f ||
+                golem->stepsize() != 6.0f || golem->lineofsight() != 7)
+                fail(std::format("self-check: the stairs branch left name "
+                                 "'{}', hp {}, step {}, sight {}",
+                                 golem->stats()->name,
+                                 golem->stats()->hitpoints(),
+                                 golem->stepsize(), golem->lineofsight()));
+        }
+        for (const og::script::ScriptError& err :
+             world.scripts().host().errors())
+            fail(std::format("self-check: scen3 script error at {}: {}",
+                             err.where, err.message));
+        current_game = prev;
+    }
+}
+
 } // namespace
 } // namespace imaggen
 
@@ -1156,6 +1595,7 @@ int main(int argc, char* argv[])
 
     build_raspberry_isle();
     build_castle_of_gold();
+    build_asteroid_castle();
 
     const std::string glad_path = user + "campaigns/imaginations.glad";
     std::remove(glad_path.c_str());
@@ -1172,18 +1612,21 @@ int main(int argc, char* argv[])
         }
         else
         {
-            const std::set<int> registered = {1, 2};
+            const std::set<int> registered = {1, 2, 3};
             const ExpectedLevel expectations[] = {
                 // {id, floors, title, starts, t0 liv/gen, t1 liv/gen,
                 //  delayed, specials-disabled, exit destinations}
                 {1, 1, "The Raspberry Isle", 16, 0, 0, 19, 3, 3, 1, {2}},
                 {2, 1, "The Castle of Gold", 12, 0, 0, 27, 0, 23, 0,
                  {kCastleOfGoldExit}},
+                {3, 2, "The Asteroid Castle", 16, 1, 0, 22, 0, 11, 0,
+                 {kAsteroidCastleExit}},
             };
             for (const ExpectedLevel& e : expectations)
                 self_check_level(e, registered);
             self_check_isle_script();
             self_check_castle_script();
+            self_check_asteroid_script();
             (void)unmount_campaign_package_with_error("imaginations");
         }
     }

@@ -4,7 +4,9 @@
  * (an island in open sea, the crew landing spread around the shore, a
  * moated castle in the middle) and scen 2 "The Castle of Gold" (our own
  * castle in a faerie war, gold that wakes allied ghosts, a gate only
- * twelve faerie-held keys can drop). These pins hold the packaged
+ * twelve faerie-held keys can drop) and scen 3 "The Asteroid Castle"
+ * (our castle on an asteroid in space, a spike band that bites raiders,
+ * the Big One lured off the floating Balloon Rock). These pins hold the packaged
  * bytes to the authored structure (floor/grid identity, army counts,
  * text budgets, the loop-home exit) and re-run the og::mapgen ground
  * audits on the SHIPPED package, so a regeneration that breaks footing
@@ -154,6 +156,7 @@ struct ShippedLevel
     int grid_w;
     int grid_h;
     int start_markers;
+    int team0_livings; // placed allies (the crew's own markers excluded)
     int team1_livings;
     int team1_generators;
     int exits;
@@ -161,9 +164,10 @@ struct ShippedLevel
 };
 
 constexpr ShippedLevel kLevels[] = {
-    {1, "The Raspberry Isle", 1, 64, 64, 16, 19, 3, 1, 2},
-    // Exit loops home to 1 until scen 3 ships (the newest-level rule).
-    {2, "The Castle of Gold", 1, 64, 64, 12, 27, 0, 1, 1},
+    {1, "The Raspberry Isle", 1, 64, 64, 16, 0, 19, 3, 1, 2},
+    {2, "The Castle of Gold", 1, 64, 64, 12, 0, 27, 0, 1, 3},
+    // The newest level's exit loops home to 1 until scen 4 ships.
+    {3, "The Asteroid Castle", 2, 64, 64, 16, 1, 22, 0, 1, 1},
 };
 
 // SCENARIO INFORMATION dialog budget (33 glyphs per briefing line).
@@ -206,7 +210,8 @@ TEST_F(ImaginationsCampaignTest, levels_round_trip_the_authored_structure)
                 ++starts;
         }
         EXPECT_EQ(expected.start_markers, starts);
-        EXPECT_EQ(0, livings[0]) << "the crew has no placed allies yet";
+        EXPECT_EQ(expected.team0_livings, livings[0])
+            << "placed allies (the asteroid's Purple Man)";
         EXPECT_EQ(expected.team1_livings, livings[1]);
         EXPECT_EQ(expected.team1_generators, generators[1]);
 
@@ -374,6 +379,10 @@ TEST_F(ImaginationsCampaignTest, shipped_package_passes_the_ground_audits)
         for (const std::string& err : og::mapgen::audit_footing(world))
             ADD_FAILURE() << err;
         for (const std::string& err : og::mapgen::audit_reachability(world))
+            ADD_FAILURE() << err;
+        for (const std::string& err : og::mapgen::audit_stairs(world))
+            ADD_FAILURE() << err;
+        for (const std::string& err : og::mapgen::audit_fall_lines(world))
             ADD_FAILURE() << err;
         for (const std::string& err :
              og::mapgen::audit_generator_spawn_exits(world))
@@ -756,6 +765,433 @@ TEST_F(ImaginationsCampaignTest, castle_on_load_survives_the_level_start_seed)
     world.tick();
     EXPECT_TRUE(saw_notification(fx.events, "The gate knows us"))
         << "a level-start seed must leave on_load armed";
+    expect_no_script_errors(world);
+}
+
+
+// ---------------------------------------------------------------------------
+// Scen 3, The Asteroid Castle: the asteroid's shape and the dream script's
+// beats (asteroid.lua).
+// ---------------------------------------------------------------------------
+constexpr int kAsteroidLevel = 3;
+
+walker* find_big_one(GameWorld& world)
+{
+    for (const auto& uptr : world.oblist)
+    {
+        walker* ob = uptr.get();
+        if (ob != nullptr && ob->query_order() == Order::Living &&
+            !ob->dead() && ob->family() == FAMILY_GOLEM &&
+            ob->team_num() == 1)
+            return ob;
+    }
+    return nullptr;
+}
+
+// A passive, non-regenerating living parked at a tile on floor 0.
+walker* park_living(GameWorld& world, int team, int tx, int ty, float hp)
+{
+    walker* w = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    if (w == nullptr)
+        return nullptr;
+    w->set_team_num(static_cast<unsigned char>(team));
+    w->set_real_team_num(static_cast<unsigned char>(team));
+    w->set_act_type(ACT_SIT);
+    w->set_floor(0);
+    w->setxy(static_cast<short>(tx * GRID_SIZE),
+             static_cast<short>(ty * GRID_SIZE));
+    w->stats()->set_max_hitpoints(hp);
+    w->stats()->set_hitpoints(hp);
+    w->stats()->set_heal_per_round(0.0f);
+    return w;
+}
+
+TEST_F(ImaginationsCampaignTest, asteroid_floats_in_space_with_a_spiked_castle)
+{
+    LoadedImaginationsLevel fx(kAsteroidLevel);
+    ASSERT_TRUE(fx.loaded);
+    GameWorld& world = fx.world();
+    const PixieData& g0 = world.grid_for_floor(0);
+    const PixieData& g1 = world.grid_for_floor(1);
+    auto at = [](const PixieData& g, int x, int y) {
+        return g.data[static_cast<std::size_t>(x + y * g.w)];
+    };
+    auto jagged = [](unsigned char t) {
+        return t >= PIX_JAGGED_GROUND_1 && t <= PIX_JAGGED_GROUND_4;
+    };
+
+    // Black space all around the rock.
+    for (const auto& c : {std::pair{0, 0}, {63, 0}, {0, 63}, {63, 63},
+                          {31, 1}, {1, 31}, {62, 31}, {31, 62}})
+        EXPECT_EQ(PIX_VOID1, at(g0, c.first, c.second))
+            << c.first << "," << c.second;
+    // The spike band hugs the outer wall on every side, broken only by
+    // the gate apron.
+    for (const auto& c : {std::pair{6, 30}, {7, 20}, {24, 20}, {25, 40},
+                          {15, 13}, {20, 14}, {15, 47}, {10, 48}})
+        EXPECT_TRUE(jagged(at(g0, c.first, c.second)))
+            << c.first << "," << c.second;
+    for (int y = 29; y <= 31; ++y)
+        EXPECT_EQ(PIX_PAVEMENT1, at(g0, 24, y)) << "the apron row " << y;
+    // The Balloon pit: void under the whole deck but the three up-stairs.
+    for (int y = 7; y <= 13; ++y)
+        for (int x = 46; x <= 52; ++x)
+        {
+            const bool stair = y == 7 && x >= 48 && x <= 50;
+            EXPECT_EQ(stair ? PIX_ZSTAIR_UP : PIX_VOID1, at(g0, x, y))
+                << x << "," << y;
+            EXPECT_EQ(stair ? PIX_ZSTAIR_DOWN
+                            : (y - 7) % 3 == 0 ? PIX_PAVEMENT1
+                            : (y - 7) % 3 == 1 ? PIX_PAVEMENT2
+                                               : PIX_PAVEMENT3,
+                      at(g1, x, y))
+                << "the striped deck at " << x << "," << y;
+        }
+    // The rest of floor 1 is sky.
+    int sky = 0;
+    for (std::size_t c = 0; c < static_cast<std::size_t>(g1.w * g1.h); ++c)
+        if (g1.data[c] == PIX_AIR)
+            ++sky;
+    EXPECT_EQ(64 * 64 - 7 * 7, sky);
+    // The space wind: enough stardust to force the snow weather (40+).
+    int snow = 0;
+    for (std::size_t c = 0; c < static_cast<std::size_t>(g0.w * g0.h); ++c)
+        if (g0.data[c] == PIX_SNOW1 || g0.data[c] == PIX_SNOW2)
+            ++snow;
+    EXPECT_GE(snow, 40) << "the stardust drifts force snow";
+
+    // The cast: the Big One on the rock, the Purple Man holding the gate
+    // ground, the key under the mast, the big door locked at key 3.
+    walker* golem = find_big_one(world);
+    ASSERT_NE(nullptr, golem);
+    EXPECT_EQ(1, golem->floor());
+    EXPECT_EQ("Big One", golem->stats()->name);
+    walker* ally = nullptr;
+    for (const auto& uptr : world.oblist)
+        if (uptr && uptr->query_order() == Order::Living &&
+            uptr->team_num() == 0)
+            ally = uptr.get();
+    ASSERT_NE(nullptr, ally);
+    EXPECT_EQ("Purple Man", ally->stats()->name);
+    EXPECT_EQ(FAMILY_BARBARIAN, ally->family());
+    EXPECT_TRUE(ally->guard_hold_post());
+    walker* key = nullptr;
+    for (const auto& uptr : world.fxlist)
+        if (uptr && uptr->family() == FAMILY_KEY)
+            key = uptr.get();
+    ASSERT_NE(nullptr, key);
+    EXPECT_EQ(1, key->floor());
+    EXPECT_EQ(3, key->stats()->level());
+    int doors = 0;
+    for (const auto& uptr : world.weaplist)
+        if (uptr && uptr->family() == FAMILY_DOOR &&
+            uptr->ypos() == 43 * GRID_SIZE)
+        {
+            ++doors;
+            EXPECT_EQ(3, uptr->stats()->level());
+        }
+    EXPECT_EQ(3, doors) << "the big door is three wide";
+}
+
+// The jagged band is too sharp to cross (jagged ground blocks walkers and
+// flyers), so raiders pile up against it; the spikes bite any hostile
+// whose centre tile is on or beside a spike, never one of ours.
+TEST_F(ImaginationsCampaignTest, asteroid_spikes_bite_bad_guys_only)
+{
+    LoadedImaginationsLevel fx(kAsteroidLevel);
+    ASSERT_TRUE(fx.loaded);
+    GameWorld& world = fx.world();
+    world.tick();
+    walker* probe = park_living(world, 1, 31, 50, 500.0f);
+    ASSERT_NE(nullptr, probe);
+    for (const auto& c : {std::pair{6, 25}, {25, 20}, {15, 13}, {15, 48}})
+        EXPECT_FALSE(world.query_grid_passable(
+            static_cast<float>(c.first * GRID_SIZE),
+            static_cast<float>(c.second * GRID_SIZE), probe))
+            << "the band at " << c.first << "," << c.second
+            << " is too sharp to cross";
+    probe->set_dead(1);
+
+    walker* raider = park_living(world, 1, 5, 25, 500.0f);  // against it
+    walker* crewman = park_living(world, 0, 5, 36, 500.0f); // against it
+    walker* inside = park_living(world, 1, 12, 20, 500.0f); // in the court
+    walker* back = park_living(world, 1, 4, 30, 500.0f);    // a step back
+    walker* dying = park_living(world, 1, 5, 40, 5.0f);     // against it
+    ASSERT_NE(nullptr, raider);
+    ASSERT_NE(nullptr, crewman);
+    ASSERT_NE(nullptr, inside);
+    ASSERT_NE(nullptr, back);
+    ASSERT_NE(nullptr, dying);
+    // Any ten consecutive ticks hold exactly one bite.
+    for (int t = 0; t < 10; ++t)
+        world.tick();
+    // Exactly one bite of twelve (a soldier's slow regen can win back a
+    // point or two between bites; a second bite could never hide in it).
+    auto expect_bites = [&](int bites) {
+        const float hp = raider->stats()->hitpoints();
+        EXPECT_LE(hp, 500.0f - 12.0f * static_cast<float>(bites) + 2.0f)
+            << bites << " bite(s) of twelve, one per ten ticks";
+        EXPECT_GT(hp, 500.0f - 12.0f * static_cast<float>(bites + 1))
+            << "no more than " << bites << " bite(s)";
+    };
+    expect_bites(1);
+    EXPECT_FLOAT_EQ(500.0f, crewman->stats()->hitpoints())
+        << "the spikes know their own";
+    EXPECT_FLOAT_EQ(500.0f, inside->stats()->hitpoints())
+        << "no spikes inside the walls";
+    EXPECT_FLOAT_EQ(500.0f, back->stats()->hitpoints())
+        << "two tiles off the band is out of reach";
+    EXPECT_TRUE(dying->dead()) << "the spikes kill";
+    for (int t = 0; t < 30; ++t)
+        world.tick();
+    expect_bites(4);
+    expect_no_script_errors(world);
+}
+
+TEST_F(ImaginationsCampaignTest, asteroid_big_one_holds_fire_until_the_crew_comes)
+{
+    LoadedImaginationsLevel fx(kAsteroidLevel);
+    ASSERT_TRUE(fx.loaded);
+    GameWorld& world = fx.world();
+    world.tick();
+    walker* golem = find_big_one(world);
+    ASSERT_NE(nullptr, golem);
+    EXPECT_EQ(0, golem->lineofsight()) << "he never throws from the rock";
+    EXPECT_EQ(ACT_GUARD, golem->act_type());
+    for (const auto& uptr : world.oblist)
+    {
+        if (uptr && uptr->query_order() == Order::Living &&
+            uptr->team_num() == 1)
+        {
+            EXPECT_LE(uptr->lineofsight(), 7) << "the mist caps sight at 7";
+        }
+    }
+
+    // Ten tiles off (his centre tile is 48,11): he sleeps on.
+    walker* lure = park_living(world, 0, 38, 11, 30000.0f);
+    ASSERT_NE(nullptr, lure);
+    (void)fx.events.drain();
+    for (int t = 0; t < 30; ++t)
+        world.tick();
+    EXPECT_EQ(ACT_GUARD, golem->act_type()) << "ten tiles is too far";
+    EXPECT_EQ(1, golem->floor());
+    // Nine tiles: he wakes.
+    lure->setxy(static_cast<short>(39 * GRID_SIZE),
+                static_cast<short>(11 * GRID_SIZE));
+    world.tick();
+    EXPECT_EQ(ACT_RANDOM, golem->act_type());
+    EXPECT_EQ(0, golem->lineofsight()) << "awake on the rock, still no throw";
+    EXPECT_TRUE(saw_notification(fx.events, "The Big One wakes up!"));
+    expect_no_script_errors(world);
+}
+
+TEST_F(ImaginationsCampaignTest, asteroid_big_one_walks_off_the_rock_and_falls)
+{
+    LoadedImaginationsLevel fx(kAsteroidLevel);
+    ASSERT_TRUE(fx.loaded);
+    GameWorld& world = fx.world();
+    world.tick();
+    walker* golem = find_big_one(world);
+    ASSERT_NE(nullptr, golem);
+    const float max_hp = golem->stats()->max_hitpoints();
+    // A crew member at the pit's west edge, three tiles from the deck.
+    ASSERT_NE(nullptr, park_living(world, 0, 44, 12, 30000.0f));
+    (void)fx.events.drain();
+    int ticks = 0;
+    while (golem->stats()->name == "Big One" && ticks < 60)
+    {
+        world.tick();
+        ++ticks;
+        if (golem->floor() == 1)
+        {
+            EXPECT_FALSE(golem->stats()->has_commands() &&
+                         golem->stats()->commands.front().commandtype !=
+                             COMMAND_WALK)
+                << "on the rock he only walks straight";
+        }
+    }
+    ASSERT_EQ("Fallen One", golem->stats()->name)
+        << "he walks off the deck and falls within " << ticks << " ticks";
+    EXPECT_EQ(0, golem->floor());
+    EXPECT_GE(golem->stats()->hitpoints(), 89.0f);
+    EXPECT_LE(golem->stats()->hitpoints(), 92.0f) << "hurt: 90 of " << max_hp;
+    EXPECT_FLOAT_EQ(24.0f, golem->damage());
+    EXPECT_EQ(7, golem->lineofsight()) << "down here he throws again";
+    EXPECT_TRUE(saw_notification(fx.events, "The Big One falls off the rock!"));
+    // He stays slow on the asteroid.
+    for (int t = 0; t < 120; ++t)
+    {
+        world.tick();
+        if (golem->dead())
+            break;
+        EXPECT_FLOAT_EQ(4.0f, golem->stepsize()) << "slow at tick " << t;
+    }
+    expect_no_script_errors(world);
+}
+
+TEST_F(ImaginationsCampaignTest, asteroid_big_one_down_the_stairs_is_the_stomper)
+{
+    LoadedImaginationsLevel fx(kAsteroidLevel);
+    ASSERT_TRUE(fx.loaded);
+    GameWorld& world = fx.world();
+    world.tick();
+    walker* golem = find_big_one(world);
+    ASSERT_NE(nullptr, golem);
+    // Arriving on floor 0 with the deck (not sky) above him.
+    golem->change_floor(0);
+    golem->setxy(static_cast<short>(48 * GRID_SIZE),
+                 static_cast<short>(7 * GRID_SIZE));
+    (void)fx.events.drain();
+    world.tick();
+    EXPECT_EQ("Stomper", golem->stats()->name);
+    EXPECT_GE(golem->stats()->hitpoints(), 179.0f);
+    EXPECT_LE(golem->stats()->hitpoints(), 182.0f);
+    EXPECT_FLOAT_EQ(40.0f, golem->damage());
+    EXPECT_FLOAT_EQ(6.0f, golem->stepsize());
+    EXPECT_EQ(7, golem->lineofsight());
+    EXPECT_TRUE(saw_notification(fx.events, "The Big One stomps down!"));
+    expect_no_script_errors(world);
+}
+
+// The stand-down beat posts every hostile hunter but the Big One on the
+// rock (posted up there with sight 0, nothing could ever re-wake him).
+TEST_F(ImaginationsCampaignTest, asteroid_stand_down_spares_the_big_one_on_the_rock)
+{
+    LoadedImaginationsLevel fx(kAsteroidLevel);
+    ASSERT_TRUE(fx.loaded);
+    GameWorld& world = fx.world();
+    while (world.level_tick_count() < 48)
+        world.tick();
+    walker* golem = find_big_one(world);
+    ASSERT_NE(nullptr, golem);
+    walker* orc = nullptr;
+    for (const auto& uptr : world.oblist)
+        if (uptr && uptr->query_order() == Order::Living &&
+            uptr->family() == FAMILY_ORC && !uptr->dormant())
+            orc = uptr.get();
+    ASSERT_NE(nullptr, orc);
+    golem->set_act_type(ACT_RANDOM);
+    orc->set_act_type(ACT_RANDOM);
+    while (world.level_tick_count() < 52)
+        world.tick();
+    EXPECT_EQ(1, golem->floor());
+    EXPECT_EQ(ACT_RANDOM, golem->act_type()) << "the rock is the script's";
+    EXPECT_EQ(ACT_GUARD, orc->act_type()) << "a yard hunter stands down";
+    expect_no_script_errors(world);
+}
+
+TEST_F(ImaginationsCampaignTest, asteroid_raider_waves_wake_on_schedule)
+{
+    LoadedImaginationsLevel fx(kAsteroidLevel);
+    ASSERT_TRUE(fx.loaded);
+    GameWorld& world = fx.world();
+    struct Wave
+    {
+        int delay;
+        int size;
+        const char* line;
+    };
+    constexpr Wave kWaves[] = {
+        {300, 4, "Raiders ride the space wind!"},
+        {800, 3, "Falling stars from the south!"},
+        {1400, 4, "Black Dash brings his band!"},
+    };
+    std::vector<std::vector<walker*>> members(std::size(kWaves));
+    int delayed = 0;
+    for (const auto& uptr : world.oblist)
+    {
+        walker* ob = uptr.get();
+        if (ob == nullptr || ob->query_order() != Order::Living ||
+            ob->spawn_delay() == 0)
+            continue;
+        ++delayed;
+        for (std::size_t i = 0; i < std::size(kWaves); ++i)
+            if (ob->spawn_delay() == kWaves[i].delay)
+                members[i].push_back(ob);
+    }
+    EXPECT_EQ(11, delayed);
+    walker* captain = nullptr;
+    for (walker* ob : members[2])
+        if (ob->family() == FAMILY_BIG_ORC)
+            captain = ob;
+    ASSERT_NE(nullptr, captain);
+    EXPECT_EQ("Black Dash", captain->stats()->name);
+
+    for (std::size_t i = 0; i < std::size(kWaves); ++i)
+    {
+        SCOPED_TRACE(kWaves[i].line);
+        ASSERT_EQ(static_cast<std::size_t>(kWaves[i].size), members[i].size());
+        while (world.level_tick_count() <
+               static_cast<std::uint32_t>(kWaves[i].delay))
+            world.tick();
+        for (walker* ob : members[i])
+            EXPECT_TRUE(ob->dormant()) << "asleep until the gust";
+        (void)fx.events.drain();
+        while (world.level_tick_count() <
+               static_cast<std::uint32_t>(kWaves[i].delay + 2))
+            world.tick();
+        for (walker* ob : members[i])
+            EXPECT_FALSE(ob->dormant()) << "awake one tick past the delay";
+        EXPECT_TRUE(saw_notification(fx.events, kWaves[i].line));
+    }
+    expect_no_script_errors(world);
+}
+
+TEST_F(ImaginationsCampaignTest, asteroid_last_bad_guy_lands_the_rainbow)
+{
+    LoadedImaginationsLevel fx(kAsteroidLevel);
+    ASSERT_TRUE(fx.loaded);
+    GameWorld& world = fx.world();
+    world.tick();
+    (void)fx.events.drain();
+    std::vector<walker*> hostiles;
+    walker* golem = find_big_one(world);
+    ASSERT_NE(nullptr, golem);
+    for (const auto& uptr : world.oblist)
+        if (uptr && uptr->query_order() == Order::Living &&
+            uptr->team_num() == 1 && uptr.get() != golem)
+            hostiles.push_back(uptr.get());
+    ASSERT_EQ(21u, hostiles.size());
+    auto fell = [&](walker* ob) {
+        ob->stats()->set_hitpoints(0);
+        ob->set_dead(1);
+        ob->death();
+    };
+    fell(golem);
+    EXPECT_TRUE(saw_notification(fx.events, "The Big One is beaten!"));
+    for (std::size_t i = 0; i + 1 < hostiles.size(); ++i)
+        fell(hostiles[i]);
+    EXPECT_FALSE(saw_notification(fx.events, "Dream won!"))
+        << "one bad guy is left (a dormant raider counts)";
+    fell(hostiles.back());
+    EXPECT_TRUE(saw_notification(fx.events, "Dream won!"));
+    expect_no_script_errors(world);
+}
+
+TEST_F(ImaginationsCampaignTest, asteroid_on_load_survives_the_level_start_seed)
+{
+    LoadedImaginationsLevel fx(kAsteroidLevel);
+    ASSERT_TRUE(fx.loaded);
+    GameWorld& world = fx.world();
+    const og::sim::WorldSnapshot seed =
+        og::sim::capture_keyframe_snapshot(world);
+    ASSERT_EQ(0u, seed.level_tick_count);
+    world.reset_level_progress();
+    ASSERT_TRUE(og::sim::apply_snapshot(world, seed));
+    world.tick();
+    EXPECT_TRUE(saw_notification(fx.events, "The spikes know their own."))
+        << "a level-start seed must leave on_load armed";
+    for (const auto& uptr : world.oblist)
+    {
+        if (uptr && uptr->query_order() == Order::Living &&
+            uptr->team_num() == 1)
+        {
+            EXPECT_LE(uptr->lineofsight(), 7);
+        }
+    }
+    walker* golem = find_big_one(world);
+    ASSERT_NE(nullptr, golem);
+    EXPECT_EQ(0, golem->lineofsight());
     expect_no_script_errors(world);
 }
 

@@ -7961,6 +7961,20 @@ TEST(GameLoop, zz_capture_imaginations)
              {300, 832, 528, 0, true}, {450, 504, 720, 0, true},
              {700, 504, 480, 0, false}, {1000, 504, 480, 0, false}},
             "imaginations");
+    // 3 The Asteroid Castle — the spiked castle on its rock in space. Open
+    // on the crew in the court, swing to the east gate as the first gust
+    // bites on the spike band, look up at the Big One on the Balloon Rock
+    // (floor 1) and follow the fight to the rock's edge, then watch the
+    // captain's band wake on the southeast rim.
+    if (want("imag_3"))
+        epic_rec::record("imag_3", 3, WeatherKind::Snow,
+            {FAMILY_SOLDIER, FAMILY_SOLDIER, FAMILY_SOLDIER, FAMILY_ELF,
+             FAMILY_ELF, FAMILY_ARCHER, FAMILY_CLERIC, FAMILY_BARBARIAN},
+            {{0, 248, 488, 0, true}, {200, 400, 480, 0, false},
+             {340, 400, 480, 0, true}, {420, 784, 168, 1, true},
+             {520, 736, 192, 0, false}, {1420, 896, 736, 0, true},
+             {1700, 784, 784, 0, false}},
+            "imaginations");
 }
 
 // ---------------------------------------------------------------------------

@@ -3707,7 +3707,7 @@ TEST(CampaignZoneUi, zz_capture_default_zone_across_campaigns)
         // The dream log composes its camp: one row per dream on a fresh
         // save, and the first row's label pins the composition (not just
         // the count).
-        {"imaginations", "zone_default_imaginations", 1, 2,
+        {"imaginations", "zone_default_imaginations", 1, 3,
          "The Raspberry Isle - tonight?  [CURRENT]", {}},
     };
     for (DefaultTourState& tour : tours)

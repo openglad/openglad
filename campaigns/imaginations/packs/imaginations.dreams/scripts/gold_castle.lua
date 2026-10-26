@@ -23,6 +23,7 @@
 -- world on each dispatch. No randomness is drawn.
 
 local C = og.C
+local posts = og.use("dream_posts")
 
 local LEVEL = 2
 
@@ -351,19 +352,11 @@ end
 -- hostile hunter stands down onto a post; act_guard re-wakes it at the
 -- next clear sighting, so a faerie in a real fight loses nothing. Saved
 -- characters (has_guy) are never posted.
-local function stand_down_at_walls()
-  local obs = og.oblist()
-  for i = 1, #obs do
-    local ob = obs[i]
-    if ob:order() == C.ORDER_LIVING
-        and ob:dead() == 0
-        and ob:team_num() ~= 0
-        and ob:act_type() == C.ACT_RANDOM
-        and not ob:has_guy()
-        and by_a_wall(ob) then
-      ob:set_act_type(C.ACT_GUARD)
-    end
+local function walls_jam(ob)
+  if ob:team_num() == 0 then
+    return false
   end
+  return by_a_wall(ob)
 end
 
 local function hostiles_left()
@@ -425,7 +418,7 @@ local function on_tick(level, tick)
     guard_the_castle()
   end
   if og.mod(tick, 50) == 0 then
-    stand_down_at_walls()
+    posts.stand_down(walls_jam)
   end
 end
 
