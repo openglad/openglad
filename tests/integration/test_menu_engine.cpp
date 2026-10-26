@@ -172,8 +172,10 @@ static bool remote_start_none_is_legacy_faithful(const std::string& name)
         // either — a joiner parked in HELP launches when the main menu
         // re-enters, exactly as before the migration.
         "help",
-        // CHANGELOG! is shown before any lobby exists (the picker's shared
-        // start), so there is no host GO for it to follow.
+        // CHANGELOG! sits between the main menu's BEGIN NEW GAME or
+        // CONTINUE and the screen that button opens: a host GO that lands
+        // while it is up launches from base camp once OK leads there, as
+        // it does for HELP.
         "changelog",
     };
     return kLegacyNoRemoteStart.count(name) > 0;

@@ -14,10 +14,12 @@
 const path = require('node:path');
 const { test, expect, devices } = require('@playwright/test');
 const {
+  clickCanvasGameCoord,
   installChangelogSkip,
   startSeededSinglePlayerFromPicker,
   waitForGameLoad,
   waitForGameplayRenderSamples,
+  waitForPickerReady,
   waitForRenderedFrames,
 } = require('./wasm_helpers');
 
@@ -105,11 +107,24 @@ test.describe('CHANGELOG! page still (web)', () => {
     test.setTimeout(180_000);
     await page.goto('/play.html');
     await waitForGameLoad(page);
-    await page.waitForFunction(
-      () => window.__opengladChangelogState === 'open',
-      null,
-      { timeout: 90_000 },
-    );
+    // The page follows BEGIN NEW GAME (80,55,140,20), not the boot. The
+    // first click may only wake Emscripten's input, so press until it opens.
+    await waitForPickerReady(page);
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      await clickCanvasGameCoord(page, 150, 65);
+      try {
+        await page.waitForFunction(
+          () => window.__opengladChangelogState === 'open',
+          null,
+          { timeout: 6_000 },
+        );
+        break;
+      } catch {
+        // not yet: press again
+      }
+    }
+    expect(await page.evaluate(() => window.__opengladChangelogState))
+      .toBe('open');
     // Past the page's fade-in.
     await waitForRenderedFrames(page, 60);
     await page.screenshot({ path: shotPath('changelog-web') });

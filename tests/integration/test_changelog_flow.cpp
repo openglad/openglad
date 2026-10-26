@@ -6,12 +6,14 @@
  * (at your option) any later version.
  */
 
-// The CHANGELOG! page (docs/ability-select-design.md F) in real SDL: shown
-// from picker_main while cfg ui/changelog_seen is behind the newest entry,
-// closed by OK (or Escape) into the main menu, and never again once the
-// marker is stamped -- because of the MARKER, not a process latch (clear it
-// and the page is back). A demo session never shows it, and a test that
-// does not force it gets a trace and nothing else.
+// The CHANGELOG! page (docs/ability-select-design.md F) in real SDL: never
+// at startup; shown when the player picks BEGIN NEW GAME or CONTINUE on the
+// main menu while cfg ui/changelog_seen is behind the newest entry, between
+// that click and the screen the button opens; closed by OK (or Escape) into
+// that screen, and never again once the marker is stamped -- because of the
+// MARKER, not a process latch (clear it and the page is back). A demo
+// session never shows it, and a test that does not force it gets a trace
+// and nothing else.
 //
 // The page's picture is drawn through a native plane at the display's own
 // resolution, so the 320x200 capture cannot see it: the flows read the
@@ -47,10 +49,12 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <mutex>
 #include <optional>
 #include <string>
 
@@ -85,12 +89,46 @@ const char* shot_dir()
     return std::getenv("OG_CHANGELOG_SHOT_DIR");
 }
 
-// The page's own door first, then the main menu's way out (QUIT returns
-// picker_main under TESTING).
+// The page's own door first, then the ways back from the two screens the
+// page leads into (name entry and base camp: each BACK re-presents the main
+// menu, which the iteration cap answers with QUIT), then the main menu's
+// way out (QUIT returns picker_main under TESTING).
 constexpr EscapeDoor kChangelogEscapeDoors[] = {
     {"changelog_ok", "changelog_ok"},
+    {"company_name_reroll", "back"},
+    {"go", "back"},
+    {"company_row_0", "back"},
     {"quit", "quit"},
 };
+
+// The main-menu doors the page follows, and the screen each one opens.
+constexpr const char* kBeginDoor = "begin_new_game";
+constexpr const char* kNameEntry = "company_name_reroll";
+constexpr const char* kContinueDoor = "continue_game";
+constexpr const char* kBaseCamp = "go";
+// A main-menu door the page does NOT follow, and its screen.
+constexpr const char* kLoadDoor = "load_company";
+constexpr const char* kCompanyList = "company_row_0";
+
+// Under TESTING every fadeblack takes FadeBetween's test-mode branch, which
+// traces one "video" line per fade (the count test_new_game.cpp pins for
+// the BEGIN NEW GAME door).
+int count_fades()
+{
+    std::lock_guard<std::mutex> lock(g_trace_mutex);
+    int fades = 0;
+    for (const TraceEntry& entry : g_trace_buffer)
+        if (entry.category == "video" &&
+            entry.message.find("FadeBetween") != std::string::npos)
+            ++fades;
+    return fades;
+}
+
+// CONTINUE is shown only while a company exists on disk.
+void seed_company()
+{
+    og::runtime::current_session->myscreen_->save_data.save("save0");
+}
 
 std::string yaml_path()
 {
@@ -145,11 +183,20 @@ struct Flow
     int (*body)(Flow&) = nullptr;
     // The physical capture's file name under OG_CHANGELOG_SHOT_DIR.
     const char* shot_name = "changelog";
+    // The main-menu row clicked, and the screen it opens.
+    const char* door = kBeginDoor;
+    const char* next_screen = kNameEntry;
     // What the injector saw.
-    bool page_seen = false;
     bool main_menu_seen = false;
+    // The main menu came up with no page in front of it and no CHANGELOG!
+    // trace yet: the page is not a startup screen.
+    bool startup_clear = false;
+    bool page_seen = false;
+    bool next_screen_seen = false;
     bool page_seen_on_return = false;
-    bool main_menu_stayed = false;
+    bool next_screen_stayed = false;
+    // FadeBetween traces from the click to the settled next screen.
+    int fades_across_door = -1;
     int marker_on_menu_thread = -1;
     CapturedFrame menu_frame;
     PhysicalFrame physical;
@@ -184,15 +231,51 @@ int leave(Flow& flow, int leg, const char* why)
                                      kChangelogEscapeDoors);
 }
 
-// The page: frozen at 320x200 and read back at the display's resolution,
-// then OK, then the main menu reads the marker and QUIT.
+// The main menu settles with no page in front of it, then the door's click.
+// Returns the leg that failed, or 0.
+int click_door(Flow& flow, int& fades_before)
+{
+    if (!wait_for_interactable(flow.door, 15000)) {
+        fprintf(stderr, "  [test] '%s' never came up on the main menu\n",
+                flow.door);
+        return 1;
+    }
+    flow.main_menu_seen = true;
+    if (!wait_for_menu_frames(2))
+        return 2;
+    flow.startup_clear = !has_interactable("changelog_ok") &&
+                         !trace_contains("changelog", "CHANGELOG!");
+    fades_before = count_fades();
+    if (!interact(flow.door))
+        return 3;
+    return 0;
+}
+
+// The screen the door opens, settled; the fades counted across the door.
+int settle_next_screen(Flow& flow, int fades_before, int leg)
+{
+    if (!wait_for_interactable(flow.next_screen, 15000))
+        return leg;
+    flow.next_screen_seen = true;
+    if (!wait_for_menu_frames(2))
+        return leg + 1;
+    flow.fades_across_door = count_fades() - fades_before;
+    flow.page_seen_on_return = has_interactable("changelog_ok");
+    return 0;
+}
+
+// The click, the page (frozen at 320x200 and read back at the display's
+// resolution), OK, then the screen the door opens reads the marker.
 int page_then_ok(Flow& flow)
 {
+    int fades_before = 0;
+    if (const int leg = click_door(flow, fades_before))
+        return leave(flow, leg, "the main menu never took the door's click");
     if (!wait_for_interactable("changelog_ok", 15000))
-        return leave(flow, 1, "the CHANGELOG! page never came up");
+        return leave(flow, 4, "the CHANGELOG! page did not follow the click");
     flow.page_seen = true;
     if (!wait_for_menu_frames(2))
-        return leave(flow, 2, "the page completed no frames");
+        return leave(flow, 5, "the page completed no frames");
     capture_presented_frame("changelog_menu", nullptr);
     {
         std::vector<CapturedFrame> frames = take_captured_frames();
@@ -201,55 +284,57 @@ int page_then_ok(Flow& flow)
     }
     flow.physical = capture_physical_frame(flow.shot_name, shot_dir());
     if (!interact("changelog_ok"))
-        return leave(flow, 3, "OK was not on the page");
-    if (!wait_for_interactable("quit", 15000))
-        return leave(flow, 4, "OK did not lead to the main menu");
-    flow.main_menu_seen = true;
-    if (!wait_for_menu_frames(2))
-        return leave(flow, 5, "the main menu completed no frames");
+        return leave(flow, 6, "OK was not on the page");
+    if (const int leg = settle_next_screen(flow, fades_before, 7))
+        return leave(flow, leg, "OK did not lead into the door's screen");
     (void)run_on_main_thread([&flow] {
         flow.marker_on_menu_thread = og::ui::changelog_seen_marker();
     });
     return leave(flow, 0, "");
 }
 
-// The main menu with no page in front of it: two settled frames and no OK.
-int main_menu_only(Flow& flow)
+// The click goes straight into the door's screen: no page.
+int straight_through(Flow& flow)
 {
-    if (!wait_for_interactable("quit", 15000))
-        return leave(flow, 1, "the main menu never came up");
-    flow.main_menu_seen = true;
-    if (!wait_for_menu_frames(2))
-        return leave(flow, 2, "the main menu completed no frames");
-    flow.page_seen_on_return = has_interactable("changelog_ok");
+    int fades_before = 0;
+    if (const int leg = click_door(flow, fades_before))
+        return leave(flow, leg, "the main menu never took the door's click");
+    if (const int leg = settle_next_screen(flow, fades_before, 4))
+        return leave(flow, leg, "the click did not open the door's screen");
+    flow.page_seen_on_return =
+        flow.page_seen_on_return ||
+        trace_contains("changelog", "CHANGELOG!: showing");
     return leave(flow, 0, "");
 }
 
 // The page closed by Escape, as a key-press EVENT (a pushed key never moves
 // SDL's keystate, test_input_helpers.h; the page honours the event as well
-// as the held key); the main menu must not take the same press as its own
-// QUIT.
+// as the held key); the screen after it (base camp, whose BACK is Escape)
+// must not take the same press.
 int page_then_escape(Flow& flow)
 {
+    int fades_before = 0;
+    if (const int leg = click_door(flow, fades_before))
+        return leave(flow, leg, "the main menu never took the door's click");
     if (!wait_for_interactable("changelog_ok", 15000))
-        return leave(flow, 1, "the CHANGELOG! page never came up");
+        return leave(flow, 4, "the CHANGELOG! page did not follow the click");
     flow.page_seen = true;
     if (!wait_for_menu_frames(2))
-        return leave(flow, 2, "the page completed no frames");
+        return leave(flow, 5, "the page completed no frames");
     inject_key_press(SDLK_ESCAPE);
-    if (!wait_for_interactable("quit", 15000))
-        return leave(flow, 3, "Escape did not close the page");
-    flow.main_menu_seen = true;
+    if (!wait_for_interactable(flow.next_screen, 15000))
+        return leave(flow, 6, "Escape did not close the page");
+    flow.next_screen_seen = true;
     if (!wait_for_menu_frames(3))
-        return leave(flow, 4, "the main menu completed no frames");
-    flow.main_menu_stayed =
-        has_interactable("quit") && !has_interactable("changelog_ok");
+        return leave(flow, 7, "the next screen completed no frames");
+    flow.next_screen_stayed = has_interactable(flow.next_screen) &&
+                              !has_interactable("changelog_ok");
     return leave(flow, 0, "");
 }
 
 // Return, Escape and Space held down from before the page opened (the
-// intro's skip key, mashed or held): the page must stay up until they have
-// been seen up, and only a press after that closes it.
+// Return that picked the main-menu row, mashed or held): the page must stay
+// up until they have been seen up, and only a press after that closes it.
 struct HeldKeys
 {
     std::array<bool, SDL_SCANCODE_COUNT> keys{};
@@ -305,9 +390,6 @@ int page_with_held_keys(Flow& flow)
         return give_up(4, "the menu thread never ran the Space release");
     if (!held.closed_by_a_new_press)
         return give_up(4, "a fresh Space did not close the page");
-    if (!wait_for_interactable("quit", 15000))
-        return give_up(5, "the page did not lead to the main menu");
-    flow.main_menu_seen = true;
     return leave(flow, 0, "");
 }
 
@@ -480,7 +562,7 @@ struct OutputSize
 
 } // namespace
 
-TEST(ChangelogFlow, forced_page_shows_once_and_the_marker_holds_it)
+TEST(ChangelogFlow, forced_page_follows_begin_new_game_once_and_the_marker_holds_it)
 {
     trace_clear();
     (void)take_captured_frames();
@@ -493,9 +575,20 @@ TEST(ChangelogFlow, forced_page_shows_once_and_the_marker_holds_it)
     const int first_result = run_picker_flow(first);
     EXPECT_EQ(0, first_result) << "the injector gave up at leg "
                                << first_result;
-    ASSERT_TRUE(first.page_seen);
     ASSERT_TRUE(first.main_menu_seen);
+    EXPECT_TRUE(first.startup_clear)
+        << "the page (or its trace) came before the main menu: it is not a "
+           "startup screen any more";
+    ASSERT_TRUE(first.page_seen) << "BEGIN NEW GAME did not bring the page";
+    ASSERT_TRUE(first.next_screen_seen)
+        << "OK did not continue into the name entry";
+    EXPECT_FALSE(first.page_seen_on_return);
     EXPECT_TRUE(trace_contains("changelog", "CHANGELOG!: showing id=1 picture=1"));
+    // #237: the main menu fades out, the page fades in and out, the name
+    // entry fades in -- one fade per edge, nothing doubled (the door alone
+    // is two, NewGame.begin_new_game).
+    EXPECT_EQ(4, first.fades_across_door)
+        << "the fades across BEGIN NEW GAME -> page -> name entry";
 
     // The 320x200 frame: the title in the big font at y 8, the six lines
     // below it, and bare panel under the last one.
@@ -546,52 +639,145 @@ TEST(ChangelogFlow, forced_page_shows_once_and_the_marker_holds_it)
     EXPECT_NE(std::string::npos, read_text(yaml_path()).find("changelog_seen"))
         << "the marker was not saved to " << yaml_path();
 
-    // A second picker_main in the same process: no page, only the trace.
+    // The second BEGIN NEW GAME in the same process goes straight through:
+    // no page, only the trace, and the door's own two fades.
     trace_clear();
     Flow second;
-    second.body = main_menu_only;
+    second.body = straight_through;
     const int second_result = run_picker_flow(second);
     EXPECT_EQ(0, second_result) << "the injector gave up at leg "
                                 << second_result;
-    ASSERT_TRUE(second.main_menu_seen);
+    ASSERT_TRUE(second.next_screen_seen);
     EXPECT_FALSE(second.page_seen_on_return)
         << "the page came back with the marker stamped";
     EXPECT_TRUE(trace_contains("changelog", "CHANGELOG!: pending=0 seen=1"));
     EXPECT_FALSE(trace_contains("changelog", "CHANGELOG!: showing"));
+    EXPECT_EQ(2, second.fades_across_door);
+}
+
+TEST(ChangelogFlow, forced_page_follows_continue_into_base_camp_once)
+{
+    trace_clear();
+    MarkerRestore restore;
+    picker_testing_set_force_changelog(true);
+    seed_company();
+
+    Flow first;
+    first.body = page_then_ok;
+    first.door = kContinueDoor;
+    first.next_screen = kBaseCamp;
+    first.shot_name = "changelog_continue";
+    const int first_result = run_picker_flow(first);
+    EXPECT_EQ(0, first_result) << "the injector gave up at leg "
+                               << first_result;
+    ASSERT_TRUE(first.main_menu_seen) << "CONTINUE never came up";
+    EXPECT_TRUE(first.startup_clear)
+        << "the page (or its trace) came before the main menu";
+    ASSERT_TRUE(first.page_seen) << "CONTINUE did not bring the page";
+    ASSERT_TRUE(first.next_screen_seen) << "OK did not continue into base camp";
+    EXPECT_EQ(og::ui::kChangelogLatestId, first.marker_on_menu_thread);
+
+    trace_clear();
+    Flow second;
+    second.body = straight_through;
+    second.door = kContinueDoor;
+    second.next_screen = kBaseCamp;
+    const int second_result = run_picker_flow(second);
+    EXPECT_EQ(0, second_result) << "the injector gave up at leg "
+                                << second_result;
+    ASSERT_TRUE(second.next_screen_seen);
+    EXPECT_FALSE(second.page_seen_on_return)
+        << "the page came back with the marker stamped";
+    // The page adds its own fade in and fade out to the door, no more.
+    ASSERT_GE(second.fades_across_door, 0);
+    EXPECT_EQ(second.fades_across_door + 2, first.fades_across_door)
+        << "the fades across CONTINUE with the page vs without it";
+}
+
+TEST(ChangelogFlow, other_main_menu_doors_do_not_bring_it)
+{
+    // LOAD also leads to base camp, but only BEGIN NEW GAME and CONTINUE
+    // stop for the page: LOAD opens the company list with nothing pending
+    // considered at all.
+    trace_clear();
+    MarkerRestore restore;
+    picker_testing_set_force_changelog(true);
+    seed_company();
+    Flow flow;
+    flow.body = straight_through;
+    flow.door = kLoadDoor;
+    flow.next_screen = kCompanyList;
+    const int result = run_picker_flow(flow);
+    EXPECT_EQ(0, result) << "the injector gave up at leg " << result;
+    ASSERT_TRUE(flow.next_screen_seen) << "LOAD did not open the company list";
+    EXPECT_FALSE(flow.page_seen_on_return);
+    EXPECT_FALSE(trace_contains("changelog", "CHANGELOG!"))
+        << "LOAD reached the page's entry";
+    EXPECT_EQ(0, og::ui::changelog_seen_marker());
+}
+
+TEST(ChangelogFlow, unforced_click_only_traces)
+{
+    // Under TESTING without the force flag the click reaches the page's
+    // entry (the trace says so) and nothing shows; the marker stays put.
+    trace_clear();
+    MarkerRestore restore;
+    ASSERT_FALSE(picker_testing_changelog_forced());
+    Flow flow;
+    flow.body = straight_through;
+    const int result = run_picker_flow(flow);
+    EXPECT_EQ(0, result) << "the injector gave up at leg " << result;
+    EXPECT_TRUE(flow.startup_clear)
+        << "the page was considered at startup, before any click";
+    ASSERT_TRUE(flow.next_screen_seen);
+    EXPECT_FALSE(flow.page_seen_on_return);
+    EXPECT_TRUE(trace_contains("changelog",
+                               "CHANGELOG!: pending=1 seen=0 forced=0"))
+        << "BEGIN NEW GAME did not reach the page's entry";
+    EXPECT_EQ(0, og::ui::changelog_seen_marker());
 }
 
 TEST(ChangelogFlow, marker_cleared_shows_it_again)
 {
     // The marker is the only latch: a process that already showed the page
     // shows it again once the marker is gone. Escape closes it this time,
-    // and the main menu (whose QUIT is Escape) must not take that press.
+    // and base camp (whose BACK is Escape) must not take that press.
     trace_clear();
     MarkerRestore restore;
     picker_testing_set_force_changelog(true);
+    seed_company();
     cfg.apply_setting("ui", "changelog_seen", "1");
 
     Flow stamped;
-    stamped.body = main_menu_only;
+    stamped.body = straight_through;
+    stamped.door = kContinueDoor;
+    stamped.next_screen = kBaseCamp;
     EXPECT_EQ(0, run_picker_flow(stamped));
+    EXPECT_TRUE(stamped.next_screen_seen);
     EXPECT_FALSE(stamped.page_seen_on_return);
 
     erase_marker();
     trace_clear();
     Flow cleared;
     cleared.body = page_then_escape;
+    cleared.door = kContinueDoor;
+    cleared.next_screen = kBaseCamp;
     const int result = run_picker_flow(cleared);
     EXPECT_EQ(0, result) << "the injector gave up at leg " << result;
     EXPECT_TRUE(cleared.page_seen) << "a cleared marker shows the page again";
-    EXPECT_TRUE(cleared.main_menu_stayed)
-        << "the Escape that closed the page reached the main menu";
+    EXPECT_TRUE(cleared.next_screen_stayed)
+        << "the Escape that closed the page reached base camp";
     EXPECT_EQ(og::ui::kChangelogLatestId, og::ui::changelog_seen_marker());
 }
 
-TEST(ChangelogFlow, keys_held_from_the_intro_do_not_close_the_page)
+TEST(ChangelogFlow, keys_held_from_the_click_do_not_close_the_page)
 {
+    // The page itself, entered the way the main menu's exit leaves it (a
+    // faded-out window) with Return, Escape and Space already down.
     trace_clear();
     MarkerRestore restore;
     picker_testing_set_force_changelog(true);
+    og::runtime::current_session->myscreen_->fadeblack(0);
     HeldKeys held;
     held.keys[static_cast<std::size_t>(KEYSTATE_RETURN)] = true;
     held.keys[static_cast<std::size_t>(KEYSTATE_ESCAPE)] = true;
@@ -602,7 +788,13 @@ TEST(ChangelogFlow, keys_held_from_the_intro_do_not_close_the_page)
 
     Flow flow;
     flow.body = page_with_held_keys;
-    const int result = run_picker_flow(flow);
+    SDL_Thread* thread = SDL_CreateThread(run_flow_body, "changelog", &flow);
+    ASSERT_NE(nullptr, thread);
+    picker_show_pending_changelog();
+    flow.test_finished.store(true);
+    int result = 0;
+    SDL_WaitThread(thread, &result);
+    escape_tail_join_hygiene();
     og::runtime::current_session->keystates_ = held.saved;
     g_held = nullptr;
     EXPECT_EQ(0, result) << "the injector gave up at leg " << result;
@@ -610,7 +802,6 @@ TEST(ChangelogFlow, keys_held_from_the_intro_do_not_close_the_page)
     EXPECT_TRUE(held.stayed_up_while_held)
         << "keys held since before the page opened closed it unseen";
     EXPECT_TRUE(held.closed_by_a_new_press);
-    EXPECT_TRUE(flow.main_menu_seen);
     EXPECT_EQ(og::ui::kChangelogLatestId, og::ui::changelog_seen_marker());
 }
 

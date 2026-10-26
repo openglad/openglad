@@ -81,8 +81,9 @@ struct ChangelogScreenState {
     const ChangelogEntry* entry = nullptr;
     std::optional<og::io::RgbaImage> picture;
     // Set once Return, Escape and Space have all been seen up: until then a
-    // closing key is the one that skipped the intro, still held (or its
-    // autorepeat), and must not close a page nobody has seen yet.
+    // closing key is the Return that picked BEGIN NEW GAME or CONTINUE,
+    // still held (or its autorepeat), and must not close a page nobody has
+    // seen yet.
     bool keys_seen_up = false;
 };
 
@@ -176,7 +177,8 @@ bool closing_key_pressed()
 
 // OK, Return, Escape (Backspace on the web build) and Space close the page.
 // The pause menu's rule (pause_menu.cpp, esc_seen_up): a key that was down
-// when the page opened -- the intro's skip key, mashed or held -- must be
+// when the page opened -- the Return that picked the main-menu row, mashed
+// or held -- must be
 // seen up first. Until then the frame's key events are dropped too, so an
 // autorepeat of the held key cannot close the page either. After that, the
 // key held down or its press event closes it.
@@ -191,8 +193,8 @@ bool changelog_frame_tick(void* screen_state, int /*frame*/)
     return !closing_key_held() && !closing_key_pressed();
 }
 
-// The key that closed the page must not reach the main menu, whose QUIT
-// row carries Escape.
+// The key that closed the page must not reach the screen after it (base
+// camp's BACK carries Escape).
 void drain_closing_keys()
 {
     while (closing_key_held()) {
@@ -264,8 +266,10 @@ const MenuScreenSpec& changelog_menu_screen_spec()
         .row_count = static_cast<int>(std::size(kChangelogRows)),
         .buttons_accessor = &picker_changelog_buttons,
         .count_accessor = &picker_changelog_button_count,
-        // No lobby exists yet when the page shows, so there is no remote
-        // start to follow (the engine test's allowlist names it).
+        // The page sits between the main menu and the screen BEGIN NEW
+        // GAME or CONTINUE opens; a host GO that lands while it is up is
+        // launched by base camp once OK leads there, as for HELP (the
+        // engine test's allowlist names it).
         .remote_start = RemoteStartScope::None,
         .draw_background = &changelog_draw_background,
         .draw_content = &changelog_draw_content,
@@ -315,8 +319,8 @@ void picker_show_pending_changelog()
     if (og::ui::should_skip_changelog_js())
         return;
 #endif
-    // Whatever key skipped the intro is still down or queued; the page must
-    // not take it as OK.
+    // The key that picked BEGIN NEW GAME or CONTINUE is still down or
+    // queued; the page must not take it as OK.
     clear_keyboard();
     clear_key_press_event();
     for (const og::ui::ChangelogEntry& entry : og::ui::kChangelog)

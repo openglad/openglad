@@ -8,9 +8,10 @@
 #pragma once
 
 // The CHANGELOG! page (docs/ability-select-design.md F): shown once, the
-// first time the game starts after an update, from the picker's shared
-// start (picker_main, and the web build's picker_init), before any lobby
-// exists.
+// first time after an update that the player picks BEGIN NEW GAME or
+// CONTINUE on the main menu -- after the main menu has faded out and before
+// the screen that button opens (SdlPickerClient::present_menu in picker.cpp,
+// the same path on the desktop and web builds).
 //
 // The page lists every entry newer than the cfg marker ui/changelog_seen,
 // oldest first, then stamps the marker with the newest id, saves cfg and
@@ -129,7 +130,7 @@ const char* changelog_entry_image(const ChangelogEntry& entry, bool web);
 }  // namespace og::ui
 
 // Show every entry newer than the marker, then stamp, save and sync cfg.
-// Called right after the picker's shared menu state is loaded.
+// Called when the main menu exits on a BEGIN NEW GAME or CONTINUE click.
 void picker_show_pending_changelog();
 
 #ifdef TESTING

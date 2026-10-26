@@ -20,8 +20,9 @@ The short version:
   what each picture means.
 - One new default keyboard for every player (section C.2). A returning
   player's saved keys move to it once; a key the player chose stays.
-- A **CHANGELOG!** page shows once, the first time the game starts after
-  the update, with a picture of the new keyboard.
+- A **CHANGELOG!** page shows once, the first time the player presses
+  BEGIN NEW GAME or CONTINUE after the update, with a picture of the new
+  keyboard.
 - Turning the setting off (**Game Settings > UI FX > New Ability Select**)
   brings back the old rules on the new keys: SPEC 1 casts the selected
   special, SPEC 2 changes it, SHIFTER casts the alternate. The game the
@@ -649,14 +650,25 @@ higher ids.
   After the page, the marker is set, cfg is saved and, on web, flushed to
   browser storage (`sync_filesystem()`), so a reload does not show it again.
   It is never keyed on the version string, which changes every commit.
-- **Where**: `picker_show_pending_changelog()`, called right after
-  `picker_initialize_shared_menu_state()` in both `picker_main` and the web
-  `picker_init` (`src/interface/ui/picker.cpp`). The marker is the only
-  "already shown" state; there is no per-process flag.
+- **When**: not at startup. The game starts on the main menu as it always
+  did. The first time the player presses **BEGIN NEW GAME** or
+  **CONTINUE**, the main menu fades out, the page fades in, and OK fades it
+  out into the screen that button opens (the company name for BEGIN NEW
+  GAME, base camp for CONTINUE), exactly as if the page had not been
+  there. Each edge fades once: no double fade, no extra black. Only those
+  two main-menu buttons show it; other ways into base camp (LOAD, a
+  host's GO, coming back from a level) do not.
+- **Where**: `SdlPickerClient::present_menu` (`src/interface/ui/picker.cpp`)
+  calls `picker_show_pending_changelog()` after the main menu exits on one
+  of those two clicks. The web build runs the same picker, so the page
+  shows at the same point there. The marker is the only "already shown"
+  state; there is no per-process flag.
 - **Screen**: `MenuScreenId::Changelog`, engine-hosted, with one OK button
-  (Return, Escape and Space close it too; Backspace on web). A key still
-  held from the intro does not close it: the page waits until Return,
-  Escape and Space have all been seen up before any of them counts.
+  (Return, Escape and Space close it too; Backspace on web). The Return
+  that pressed the main-menu button, if still held, does not close it: the
+  page waits until Return, Escape and Space have all been seen up before
+  any of them counts, and the key that closes it does not reach the next
+  screen.
 
 ### F.3 Never in the way of a test or a headless run
 
@@ -664,9 +676,10 @@ The demo and every non-interactive session skip it. Under `TESTING` it only
 writes a trace unless a test forces it on with its own flag. The web tests
 set `window.__opengladSkipChangelogForTests` before the page loads (the
 older `window.__opengladSkipIntroForTests` skips it too); one web test,
-`tests/e2e/wasm-changelog.spec.js`, boots without it, clicks OK, reloads and
-checks the page stays away, reading `window.__opengladChangelogState`
-(`none`, `open` or `seen`).
+`tests/e2e/wasm-changelog.spec.js`, boots without it, checks the page is not
+up on the main menu, clicks CONTINUE, clicks OK, reloads and checks the
+page stays away, reading `window.__opengladChangelogState` (`none`, `open`
+or `seen`).
 `openglad_text`, `openglad_server` and `openglad_curses` never reach the
 SDL picker.
 

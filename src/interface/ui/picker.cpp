@@ -74,6 +74,7 @@
 #include <vector>
 #include <algorithm>
 #include <cstdint>
+#include <utility>
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
 #endif
@@ -305,12 +306,23 @@ static void picker_load_default_save_if_present()
             og::data::active_company_slot());
 }
 
+// CHANGELOG! (docs/ability-select-design.md F.2): set when the player picks
+// BEGIN NEW GAME or CONTINUE on the main menu, read by present_menu once the
+// main menu has exited (faded out), so the page shows between that click and
+// the screen the button opens. Only a real pick of those two rows sets it: a
+// host's remote start also leaves the main menu as CONTINUE, but never
+// through this intercept.
+static bool g_changelog_due_after_main_menu = false;
+
 bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32& retvalue)
 {
     (void)call_arg;
     const ButtonAction action = static_cast<ButtonAction>(whatfunc);
     if (get_intercept_scope() == PickerInterceptScope::MainMenu) {
         const og::ui::PickerMenuItem* menu_item = nullptr;
+        if (action == ButtonAction::BeginMenu ||
+            action == ButtonAction::CreateTeamMenu)
+            g_changelog_due_after_main_menu = true;
         switch (action) {
         case ButtonAction::BeginMenu:
             menu_item = og::ui::find_picker_menu_item(
@@ -885,12 +897,19 @@ public:
 #endif
         pks().selected_menu_item = nullptr;
         if (menu_id == og::ui::PickerMenuId::Main) {
+            g_changelog_due_after_main_menu = false;
             set_intercept_scope(PickerInterceptScope::MainMenu);
             mainmenu(1);
             set_intercept_scope(PickerInterceptScope::None);
 #ifdef TESTING
             g_picker_mainmenu_calls++;
 #endif
+            // The main menu has faded itself out; the page fades in over
+            // black and out again, and the screen BEGIN NEW GAME or
+            // CONTINUE opens fades in after it, as it would have.
+            if (std::exchange(g_changelog_due_after_main_menu, false) &&
+                pks().selected_menu_item != nullptr)
+                picker_show_pending_changelog();
             if (pks().selected_menu_item)
                 return pks().selected_menu_item;
             return og::ui::find_picker_menu_item(
@@ -1944,7 +1963,6 @@ void picker_main(Sint32 argc, char  **argv)
 	// Get main dir ..
 	//strcpy(main_dir, "");
     picker_initialize_shared_menu_state();
-    picker_show_pending_changelog();
     // Load the current saved game, if it exists .. (save0.gtl)
     picker_load_default_save_if_present();
     SdlPickerClient client;
@@ -4076,7 +4094,6 @@ void picker_init()
     Log("picker_init: Initializing picker\n");
 
     picker_initialize_shared_menu_state();
-    picker_show_pending_changelog();
     // Load the current saved game, if it exists
     picker_load_default_save_if_present();
 

@@ -68,8 +68,8 @@ async function waitForGameLoad(page) {
 }
 
 // The CHANGELOG! page (src/interface/ui/changelog_screen.cpp) shows once,
-// in front of the main menu, on a profile that has never seen it -- which is
-// every fresh Playwright context. Every spec boots without it (a beforeEach
+// after the first BEGIN NEW GAME or CONTINUE, on a profile that has never
+// seen it -- which is every fresh Playwright context. Every spec boots without it (a beforeEach
 // per spec file); only wasm-changelog.spec.js boots with it. The engine also
 // skips it whenever __opengladSkipIntroForTests is set.
 async function installChangelogSkip(page) {
