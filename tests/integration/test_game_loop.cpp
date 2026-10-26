@@ -8150,11 +8150,12 @@ TEST(GameLoop, zz_capture_imaginations_moments)
                 return follow(nearest_hostile(w, 31, 44, 14), cx, cy, floor);
             // The Fae Knights' wave (awake at 1500 on the shores) is set
             // down on the gate apron, flanking the causeway, where the
-            // camera holds on the gate.
+            // camera holds on the gate; the front pair stands two rows
+            // below the wall so no knight overlaps the wall face.
             if (f == 1503)
             {
-                const int spots[6][2] = {{27, 45}, {35, 45}, {28, 47},
-                                         {34, 47}, {26, 48}, {36, 48}};
+                const int spots[6][2] = {{27, 46}, {35, 46}, {28, 48},
+                                         {34, 48}, {26, 49}, {36, 49}};
                 int placed = 0;
                 for (auto& up : w.oblist)
                     if (walker* a = up.get(); a != nullptr && placed < 6 &&
@@ -8291,7 +8292,7 @@ TEST(GameLoop, zz_capture_imaginations_moments)
         epic_rec::record("imag_moments_3", 3, WeatherKind::Snow, crew,
             {{0, 416, 440, 0, true}, {60, 860, 150, 0, true},
              {120, 784, 168, 1, true}, {330, 360, 480, 0, true},
-             {1390, 904, 736, 0, true}, {1550, 240, 736, 0, true},
+             {1390, 904, 736, 0, true}, {1550, 240, 700, 0, true},
              {1630, 248, 700, 0, true}, {1780, 248, 700, 0, true}},
             "imaginations", d);
     }

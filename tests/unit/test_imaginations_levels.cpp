@@ -629,6 +629,49 @@ TEST_F(ImaginationsCampaignTest, castle_gold_wakes_six_ghosts_then_seven)
     expect_no_script_errors(world);
 }
 
+// The strongrooms read full of treasure: four silver bars heaped round
+// each room's gold. Silver banks the classic way and wakes no ghosts.
+TEST_F(ImaginationsCampaignTest, castle_strongroom_silver_banks_without_ghosts)
+{
+    LoadedImaginationsLevel fx(kCastleLevel);
+    ASSERT_TRUE(fx.loaded);
+    GameWorld& world = fx.world();
+    world.tick(); // on_load
+    (void)fx.events.drain();
+    // Strongroom interiors (6x6) by their top-left interior tile.
+    constexpr std::pair<int, int> kRooms[] = {
+        {21, 18}, {37, 18}, {21, 34}, {37, 34}};
+    for (const auto& room : kRooms)
+    {
+        int silver = 0;
+        for (const auto& uptr : world.fxlist)
+        {
+            walker* ob = uptr.get();
+            if (ob == nullptr || ob->family() != FAMILY_SILVER_BAR ||
+                ob->query_order() != Order::Treasure)
+                continue;
+            const int tx = ob->xpos() / GRID_SIZE;
+            const int ty = ob->ypos() / GRID_SIZE;
+            if (tx >= room.first && tx <= room.first + 5 &&
+                ty >= room.second && ty <= room.second + 5)
+                ++silver;
+        }
+        EXPECT_EQ(4, silver) << "strongroom at " << room.first << ","
+                             << room.second;
+    }
+    walker* keeper = spawn_keeper(world);
+    ASSERT_NE(nullptr, keeper);
+    walker* silver = find_treasure(world, FAMILY_SILVER_BAR, 24, 18);
+    ASSERT_NE(nullptr, silver);
+    const std::uint32_t score0 = world.m_score[0];
+    silver->eat_me(keeper);
+    EXPECT_TRUE(silver->dead()) << "the keeper takes the silver";
+    EXPECT_GT(world.m_score[0], score0) << "silver banks";
+    EXPECT_EQ(0, named_allies(world, "Gold Ghost"));
+    EXPECT_EQ(0, named_allies(world, "Crown Ghost"));
+    expect_no_script_errors(world);
+}
+
 TEST_F(ImaginationsCampaignTest, castle_ghosts_respect_the_living_cap)
 {
     LoadedImaginationsLevel fx(kCastleLevel);
@@ -922,7 +965,30 @@ TEST_F(ImaginationsCampaignTest, asteroid_floats_in_space_with_a_spiked_castle)
         EXPECT_TRUE(jagged(at(g0, c.first, c.second)))
             << c.first << "," << c.second;
     for (int y = 29; y <= 31; ++y)
-        EXPECT_EQ(PIX_PAVEMENT1, at(g0, 24, y)) << "the apron row " << y;
+        EXPECT_EQ(PIX_COBBLE_1, at(g0, 24, y)) << "the apron row " << y;
+    // An asteroid, not a meadow: no grass anywhere on the rock.
+    for (int y = 0; y < 64; ++y)
+        for (int x = 0; x < 64; ++x)
+        {
+            const unsigned char t = at(g0, x, y);
+            const bool grass =
+                t == PIX_GRASS1 || t == PIX_GRASS2 || t == PIX_GRASS3 ||
+                t == PIX_GRASS4 ||
+                (t >= PIX_GRASS_DARK_1 && t <= PIX_GRASS_DARK_4) ||
+                (t >= PIX_GRASS_DARK_B1 && t <= PIX_GRASS_DARK_R2) ||
+                (t >= PIX_GRASS_LIGHT_1 && t <= PIX_GRASS_LIGHT_LEFT_TOP);
+            EXPECT_FALSE(grass) << x << "," << y;
+        }
+    // The rainbow's stripes run unbroken: no stardust touches its apron
+    // (x 12..18, y 48..53) but its own white stripe (row 51).
+    for (int y = 48; y <= 53; ++y)
+        for (int x = 12; x <= 18; ++x)
+        {
+            const unsigned char t = at(g0, x, y);
+            if (y == 51 && x >= 13 && x <= 17)
+                continue;
+            EXPECT_TRUE(t != PIX_SNOW1 && t != PIX_SNOW2) << x << "," << y;
+        }
     // The Balloon pit: void under the whole deck but the three up-stairs.
     for (int y = 7; y <= 13; ++y)
         for (int x = 46; x <= 52; ++x)

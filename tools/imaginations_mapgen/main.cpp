@@ -716,6 +716,15 @@ void build_castle_of_gold()
     for (const auto& bar : {std::pair{22, 19}, {25, 22}, {38, 19}, {41, 22},
                             {22, 38}, {25, 35}, {38, 38}, {41, 35}})
         treasure(FAMILY_GOLD_BAR, bar.first, bar.second, 0);
+    // Silver heaped round the gold, four bars a room, off the door mouths
+    // (the two rows inside each mouth stay clear). Silver banks the classic
+    // way: only gold wakes ghosts.
+    for (const auto& bar :
+         {std::pair{21, 21}, {24, 18}, {26, 20}, {23, 20},   // northwest
+          {40, 18}, {42, 19}, {37, 21}, {37, 23},            // northeast
+          {21, 36}, {24, 39}, {26, 37}, {26, 39},            // southwest
+          {37, 36}, {42, 37}, {40, 39}, {42, 39}})           // southeast
+        treasure(FAMILY_SILVER_BAR, bar.first, bar.second, 0);
     treasure(FAMILY_MAGIC_POTION, 39, 21, 0);
     treasure(FAMILY_INVULNERABLE_POTION, 23, 36, 0);
     treasure(FAMILY_SPEED_POTION, 40, 37, 0);
@@ -819,8 +828,9 @@ void build_castle_of_gold()
 // on floor 1 over a pit of black space, reached by a 3-wide Z-stair on
 // the north ledge. The key to the big door hangs under the rock's mast.
 //
-// Floor 0, 64x64: the rounded asteroid (rock rim, grass) on PIX_VOID1
-// space. West side: the tall castle (x 8..23, y 15..46, walls 2 thick)
+// Floor 0, 64x64: a ragged grey-rock asteroid (cobble, rust-brown dust,
+// dark-rimmed craters with rubble, stardust) on PIX_VOID1 space. West
+// side: the tall castle (x 8..23, y 15..46, walls 2 thick, flagstone court)
 // with a 3-wide east gate (y 29..31), the purple crown V in the
 // north hall, and the big door (three team-4 doors at key 3, row 43)
 // sealing the striped vestibule that holds the exit pad. A 2-wide
@@ -828,7 +838,7 @@ void build_castle_of_gold()
 // jagged ground is too sharp for anyone to walk or fly over, so raiders
 // pile up against it and the script's spikes bite them there.
 // Yard posts east of the castle, the pen (an ash square with boulder
-// faces) in the southeast, craters, three stardust drifts, and the
+// faces) in the southeast, four craters, three stardust drifts, and the
 // Balloon pit (void under the whole deck except the three up-stairs).
 // Floor 1: all AIR but the striped 7x7 deck (x 46..52, y 7..13).
 //
@@ -854,10 +864,9 @@ void build_asteroid_castle()
     PixieData& g0 = w.grid_for_floor(0);
     PixieData& g1 = w.grid_for_floor(1);
 
-    // --- Floor 0 genre paint: the rock rim and its grass.
-    og::mapgen::paint_rect(g0, 3, 4, 60, 59, PIX_DIRT_1);
-    og::mapgen::paint_rect(g0, 5, 6, 58, 57, PIX_GRASS1);
-    og::mapgen::paint_rect(g0, 46, 45, 53, 52, PIX_GRASS_DARK_1);
+    // --- Floor 0 genre paint: bare grey rock (the autotiler mixes the four
+    // cobble faces), cut to the asteroid's ragged outline after smoothing.
+    og::mapgen::paint_rect(g0, 3, 4, 60, 59, PIX_COBBLE_1);
     // The castle: walls 2 thick, the court, the east gate (3 wide, on the
     // court's centre row), the big-door row and the vestibule behind it.
     og::mapgen::paint_rect(g0, 8, 15, 23, 46, PIX_WALL2);
@@ -880,28 +889,134 @@ void build_asteroid_castle()
                     g0, x, y,
                     static_cast<unsigned char>(PIX_JAGGED_GROUND_1 +
                                                (x + y) % 4));
-    // The gate apron: the band's one spike-free mouth.
-    og::mapgen::paint_rect(g0, 24, 29, 25, 31, PIX_PAVEMENT1);
+    // The gate apron: the band's one spike-free mouth, cobbled like the
+    // gate passage it continues.
+    og::mapgen::paint_rect(g0, 24, 29, 25, 31, PIX_COBBLE_1);
     // The crown V in the north hall.
     for (const auto& v : {std::pair{11, 17}, {20, 17}, {12, 18}, {19, 18},
                           {13, 19}, {18, 19}, {14, 20}, {17, 20}, {15, 21},
                           {16, 21}})
         og::mapgen::paint(g0, v.first, v.second, PIX_CARPET_M);
-    // Stardust drifts, the space wind (snow weather past 40 tiles).
-    for (const auto& d : {std::pair{28.0, 8.0}, {12.0, 52.0}, {56.0, 52.0}})
-        og::mapgen::paint_ring(g0, d.first, d.second, 0.0, 3.2, PIX_SNOW1);
+
+    // The open rock outside the castle, as painted: grey cobble faces. Only
+    // those cells take dust, stardust and craters below, never the court,
+    // the spike band, the rainbow's frame or the pen.
+    auto tile_at = [&](int x, int y) {
+        return g0.data[static_cast<std::size_t>(x + y * 64)];
+    };
+    auto is_rock = [&](int x, int y) {
+        const unsigned char t = tile_at(x, y);
+        return t == PIX_COBBLE_1 || t == PIX_COBBLE_2 || t == PIX_COBBLE_3 ||
+               t == PIX_COBBLE_4;
+    };
+    // The court is laid in cool grey flagstones, so the castle floor
+    // reads apart from the bare rock outside (the crown V stays purple).
+    for (int y = 17; y <= 42; ++y)
+        for (int x = 10; x <= 21; ++x)
+            if (is_rock(x, y))
+                og::mapgen::paint(
+                    g0, x, y,
+                    static_cast<unsigned char>(
+                        (x * 7 + y * 3) % 5 == 0
+                            ? PIX_PAVEMENT2
+                            : ((x + y) % 7 == 0 ? PIX_PAVEMENT3
+                                                : PIX_PAVEMENT1)));
+    auto open_rock = [&](int x, int y) {
+        if (x < 0 || y < 0 || x > 63 || y > 63)
+            return false;
+        if (in_asteroid_castle(x, y))
+            return false;
+        if (x >= 11 && x <= 19 && y >= 47 && y <= 54)
+            return false; // the rainbow's plain rock frame
+        if (x >= 43 && x <= 56 && y >= 42 && y <= 55)
+            return false; // the pen and its margin
+        if (x >= 23 && x <= 26 && y >= 28 && y <= 32)
+            return false; // the gate apron
+        return is_rock(x, y);
+    };
+    auto hash = [](int x, int y, std::uint32_t salt) {
+        return og::mapgen::position_hash(kScatterSeed, x, y, salt);
+    };
+    // Regolith: ragged drifts of rust-brown dust over the grey rock.
+    {
+        struct Patch
+        {
+            double cx, cy, rx, ry;
+        };
+        static constexpr Patch kDust[] = {
+            {40.0, 17.0, 6.0, 3.5}, {52.0, 22.0, 4.0, 5.0},
+            {33.0, 33.0, 4.5, 3.0}, {45.0, 38.0, 5.0, 3.0},
+            {37.0, 56.0, 6.0, 2.5}, {57.0, 10.0, 2.5, 4.0},
+            {9.0, 9.0, 4.0, 3.0},   {8.0, 54.0, 3.0, 3.0},
+            {30.0, 21.0, 3.0, 4.0}, {52.0, 57.0, 3.0, 2.0}};
+        for (const Patch& p : kDust)
+            for (int y = 0; y < 64; ++y)
+                for (int x = 0; x < 64; ++x)
+                {
+                    const double dx = (x - p.cx) / p.rx;
+                    const double dy = (y - p.cy) / p.ry;
+                    const double d = dx * dx + dy * dy;
+                    const bool edge = d >= 0.6 && d < 1.3;
+                    if (d >= 1.3 || !open_rock(x, y))
+                        continue;
+                    if (edge && hash(x, y, 31u) % 2u != 0u)
+                        continue;
+                    og::mapgen::paint(g0, x, y,
+                                      (hash(x, y, 32u) % 3u) ? PIX_ASH1
+                                                             : PIX_ASH2);
+                }
+    }
+    // Craters: a dust bowl in a dark rim (rubble boulders land on the rim
+    // with the set dressing below).
+    struct Crater
+    {
+        double cx, cy, r;
+    };
+    static constexpr Crater kCraters[] = {
+        {33.0, 10.0, 2.8}, {36.0, 50.0, 3.0}, {29.0, 44.0, 2.4},
+        {48.0, 28.0, 2.6}};
+    for (const Crater& c : kCraters)
+        for (int y = 0; y < 64; ++y)
+            for (int x = 0; x < 64; ++x)
+            {
+                const double dx = x - c.cx;
+                const double dy = y - c.cy;
+                const double d2 = dx * dx + dy * dy;
+                if (!open_rock(x, y) && tile_at(x, y) != PIX_ASH1 &&
+                    tile_at(x, y) != PIX_ASH2)
+                    continue;
+                if (in_asteroid_castle(x, y))
+                    continue;
+                if (d2 < (c.r - 1.0) * (c.r - 1.0))
+                    og::mapgen::paint(g0, x, y,
+                                      (x + y) % 2 ? PIX_ASH2 : PIX_ASH1);
+                else if (d2 < (c.r + 0.6) * (c.r + 0.6))
+                    og::mapgen::paint(g0, x, y, PIX_DIRT_DARK_1);
+            }
+    // Stardust drifts, the space wind (snow weather past 40 tiles), with
+    // ragged edges, and loose glitter on the open rock. The southwest drift
+    // keeps clear of the rainbow (x 12..18, y 48..53).
+    for (const auto& d : {std::pair{26.0, 9.0}, {25.0, 55.0}, {56.0, 52.0}})
+        for (int y = 0; y < 64; ++y)
+            for (int x = 0; x < 64; ++x)
+            {
+                const double dx = x - d.first;
+                const double dy = y - d.second;
+                const double d2 = dx * dx + dy * dy;
+                if (d2 >= 3.6 * 3.6 || !open_rock(x, y))
+                    continue;
+                if (d2 >= 2.4 * 2.4 && hash(x, y, 33u) % 2u != 0u)
+                    continue;
+                og::mapgen::paint(g0, x, y,
+                                  (x + y) % 3 == 0 ? PIX_SNOW2 : PIX_SNOW1);
+            }
     for (int y = 0; y < 64; ++y)
         for (int x = 0; x < 64; ++x)
-            if (g0.data[static_cast<std::size_t>(x + y * 64)] == PIX_SNOW1 &&
-                (x + y) % 3 == 0)
+            if (open_rock(x, y) && hash(x, y, 34u) % 41u == 0u)
                 og::mapgen::paint(g0, x, y, PIX_SNOW2);
-    // Craters (ash: jagged means spikes on this map).
-    for (const auto& c : {std::pair{33.0, 10.0}, {36.0, 50.0}, {30.0, 44.0}})
-        og::mapgen::paint_ring(g0, c.first, c.second, 0.0, 2.2, PIX_ASH1);
     // The striped vestibule behind the big door and the rainbow apron south
     // of it: purple, pink, white and red-brown walkable rows (the palette's
-    // only visibly different floors), painted after the drifts so the
-    // stardust speckle never touches the white stripe.
+    // only visibly different floors).
     {
         static constexpr unsigned char kStripes[4] = {
             PIX_CARPET_M, PIX_ASH1, PIX_SNOW1, PIX_FLOOR1};
@@ -924,14 +1039,48 @@ void build_asteroid_castle()
         og::mapgen::paint(g0, 45, y, PIX_PAVEMENT2);
         og::mapgen::paint(g0, 54, y, PIX_PAVEMENT2);
     }
-    // Space: the void all around, with rounded corners.
-    og::mapgen::paint_rect(g0, 0, 0, 63, 3, PIX_VOID1);
-    og::mapgen::paint_rect(g0, 0, 60, 63, 63, PIX_VOID1);
-    og::mapgen::paint_rect(g0, 0, 4, 2, 59, PIX_VOID1);
-    og::mapgen::paint_rect(g0, 61, 4, 63, 59, PIX_VOID1);
-    for (const auto& c : {std::pair{3.0, 4.0}, {60.0, 4.0}, {3.0, 59.0},
-                          {60.0, 59.0}})
-        og::mapgen::paint_ring(g0, c.first, c.second, 0.0, 6.0, PIX_VOID1);
+    // Space: the void all around a ragged rim. Each edge bites in by 0..3
+    // tiles (a smoothed hash walk), held shallow wherever a wave spawns or
+    // the Balloon Rock's north landing stands, and the corners are rounded
+    // at four different radii.
+    {
+        auto inset = [&](int edge, int i, int cap) {
+            const std::uint32_t salt = 40u + static_cast<std::uint32_t>(edge);
+            const int a = static_cast<int>(hash(i - 1, edge, salt) % 4u);
+            const int b = static_cast<int>(hash(i, edge, salt) % 4u);
+            const int c = static_cast<int>(hash(i + 1, edge, salt) % 4u);
+            return std::min(cap, (a + 2 * b + c + 1) / 4);
+        };
+        for (int i = 0; i < 64; ++i)
+        {
+            const bool landing = i >= 42 && i <= 54;
+            const bool south_spawn = (i >= 17 && i <= 23) ||
+                                     (i >= 27 && i <= 33) ||
+                                     (i >= 37 && i <= 43) ||
+                                     (i >= 51 && i <= 57);
+            const int top = inset(0, i, landing ? 0 : 3);
+            const int bottom = inset(1, i, south_spawn ? 1 : 3);
+            const int left = inset(2, i, (i >= 11 && i <= 50) ? 1 : 3);
+            const int right = inset(3, i, (i >= 18 && i <= 54) ? 1 : 3);
+            for (int k = 0; k < 4 + top; ++k)
+                og::mapgen::paint(g0, i, k, PIX_VOID1);
+            for (int k = 60 - bottom; k < 64; ++k)
+                og::mapgen::paint(g0, i, k, PIX_VOID1);
+            for (int k = 0; k < 3 + left; ++k)
+                og::mapgen::paint(g0, k, i, PIX_VOID1);
+            for (int k = 61 - right; k < 64; ++k)
+                og::mapgen::paint(g0, k, i, PIX_VOID1);
+        }
+        struct Corner
+        {
+            double cx, cy, r;
+        };
+        static constexpr Corner kCorners[] = {
+            {3.0, 4.0, 7.0}, {60.0, 4.0, 5.5}, {3.0, 59.0, 6.5},
+            {60.0, 59.0, 6.0}};
+        for (const Corner& c : kCorners)
+            og::mapgen::paint_ring(g0, c.cx, c.cy, 0.0, c.r, PIX_VOID1);
+    }
     // The Balloon pit: space under the whole deck but the up-stairs, so
     // nothing ever stands under the Big One.
     og::mapgen::paint_rect(g0, 46, 7, 52, 13, PIX_VOID1);
@@ -1064,9 +1213,33 @@ void build_asteroid_castle()
     og::mapgen::scatter_boulders(w, kScatterSeed, 0, 44, 16, 58, 42, 37);
     og::mapgen::scatter_boulders(w, kScatterSeed, 0, 55, 5, 58, 15, 37);
     og::mapgen::scatter_boulders(w, kScatterSeed, 0, 27, 6, 43, 15, 37);
+    // Rubble on the crater rims (never beside a unit or a pad).
+    for (const Crater& c : kCraters)
+        for (int y = 0; y < 64; ++y)
+            for (int x = 0; x < 64; ++x)
+            {
+                const double dx = x - c.cx;
+                const double dy = y - c.cy;
+                const double d2 = dx * dx + dy * dy;
+                if (d2 < (c.r - 1.0) * (c.r - 1.0) ||
+                    d2 >= (c.r + 0.6) * (c.r + 0.6))
+                    continue;
+                if (tile_at(x, y) != PIX_DIRT_DARK_1)
+                    continue;
+                if (hash(x, y, 35u) % 3u != 0u)
+                    continue;
+                if (og::mapgen::cell_near_entity(w, 0, x, y, 1))
+                    continue;
+                og::mapgen::paint_decor(
+                    w, 0, x, y,
+                    static_cast<unsigned char>(DECOR_BOULDER_1 +
+                                               hash(x, y, 36u) % 4u));
+            }
+    // Gravel over the bare rock and the dust.
     og::mapgen::scatter_decor(w, kScatterSeed, 0, 0, 0, 63, 63, 9,
                               DECOR_PEBBLES,
-                              {og::mapgen::ScatterGround::Dirt});
+                              {og::mapgen::ScatterGround::Cobble,
+                               og::mapgen::ScatterGround::Ash});
 
     save_level_files(w, 3, "The Asteroid Castle",
                      {
