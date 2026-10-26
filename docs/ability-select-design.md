@@ -632,12 +632,11 @@ each an id, a title, up to six lines of at most 48 characters, and an
 optional picture. Entry 1 is this change:
 
 ```
-One key per ability: SPEC 1, SPEC 2, SPEC 3.
-Hold SHIFTER for three more. No more cycling.
-TRAIN > ABILITIES puts any ability on any key.
-New default keys below; REMAP keeps yours.
-Old way: turn off New Ability Select in
-GAME SETTINGS > UI FX.
+The controls have changed! Up to three specials
+can now be invoked directly, and up to 3 more
+via the Shifter key. The mappings below are the
+default mappings. You can restore the old
+controls in Game Settings -> UI FX.
 ```
 
 with the keyboard picture under it. Later announcements add entries with

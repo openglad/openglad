@@ -76,12 +76,11 @@ static_assert(kChangelogBandH * 1560 / 550 <= kChangelogBandW &&
 // keyboard (scripts/keyboard_map/make_keyboard_map.py draws it from the key
 // tables).
 inline constexpr const char* kAbilitySelectLines[] = {
-    "One key per ability: SPEC 1, SPEC 2, SPEC 3.",
-    "Hold SHIFTER for three more. No more cycling.",
-    "TRAIN > ABILITIES puts any ability on any key.",
-    "New default keys below; REMAP keeps yours.",
-    "Old way: turn off New Ability Select in",
-    "GAME SETTINGS > UI FX.",
+    "The controls have changed! Up to three specials",
+    "can now be invoked directly, and up to 3 more",
+    "via the Shifter key. The mappings below are the",
+    "default mappings. You can restore the old",
+    "controls in Game Settings -> UI FX.",
 };
 
 inline constexpr ChangelogEntry kChangelog[] = {
