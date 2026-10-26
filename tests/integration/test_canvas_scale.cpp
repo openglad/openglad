@@ -3065,6 +3065,56 @@ TEST(CanvasScale, native_plane_fades_out_with_the_canvas)
     EXPECT_TRUE(E_Screen->window_is_black());
 }
 
+// A click on the CHANGELOG! page's OK presents the pressed and released
+// button faces as partial presents (vbutton::vdisplay) before the page's
+// exit fade. A partial present changes only its rect: the picture the last
+// full present showed stays on screen through it, and the exit fade fades
+// it out with the page.
+//
+// RED (planted): Screen::swap presenting only the planes drawn since the
+// last present (the picture blinks out at the click, and the fade-out
+// fades a page with no picture).
+TEST(CanvasScale, partial_present_keeps_the_native_plane_into_the_fade_out)
+{
+    ASSERT_TRUE(E_Screen);
+    ClassicCanvasRestore restore;
+    screen* const s = test_screen();
+    ASSERT_NE(nullptr, s);
+    E_Screen->set_world_zoom(og::kZoomStepsMax,
+                             og::WorldScaleMode::Integer, 640, 400);
+    E_Screen->set_active_canvas(CanvasTarget::UI);
+    draw_page_with_plane(s, CanvasTarget::UI);
+    s->buffer_to_screen(0, 0, s->canvas_w(), s->canvas_h());
+
+    // The button face: a small rect clear of the picture.
+    s->buffer_to_screen(135, 178, 50, 16);
+    PhysicalFrame pressed;
+    ASSERT_TRUE(read_physical_frame_here(pressed));
+    EXPECT_LT(picture_pixel(pressed)[0], 30);
+    EXPECT_GE(picture_pixel(pressed)[1], kFadeGreen - 4)
+        << "a partial present dropped the picture the window showed";
+
+    FadeMidpointProbe probe;
+    EXPECT_EQ(1, s->fadeblack(false));
+    ASSERT_TRUE(g_fade_midpoint_frame.captured);
+    EXPECT_NEAR(kFadeGreen / 2, picture_pixel(g_fade_midpoint_frame)[1], 6)
+        << "the exit fade after the click faded a page with no picture";
+    PhysicalFrame after;
+    ASSERT_TRUE(read_physical_frame_here(after));
+    EXPECT_EQ((std::array<Uint8, 3>{0, 0, 0}), picture_pixel(after));
+
+    // A full present with no plane drawn shows none (the next screen).
+    ASSERT_TRUE(SDL_FillSurfaceRect(
+        E_Screen->render, nullptr,
+        SDL_MapSurfaceRGB(E_Screen->render, kFadeGrey, kFadeGrey, kFadeGrey)));
+    s->buffer_to_screen(0, 0, s->canvas_w(), s->canvas_h());
+    s->buffer_to_screen(135, 178, 50, 16);
+    PhysicalFrame next;
+    ASSERT_TRUE(read_physical_frame_here(next));
+    EXPECT_GE(picture_pixel(next)[0], kFadeGrey - 4)
+        << "an old picture came back on a later screen's partial present";
+}
+
 // Gameplay fades are unchanged: they drop the gameplay overlays
 // (discard_gameplay_ui_frame), and a camera inset on the GameplayUI canvas
 // stays out of the fade too.

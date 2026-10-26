@@ -2661,10 +2661,20 @@ void Screen::swap(int x, int y, int w, int h)
 	// Inside a fade (begin_native_world_view_fade) every swap presents the
 	// faded frame's planes, dimmed to the fade level with the canvas; at
 	// level 0 they are black like the canvas and are not drawn at all.
+	// A partial UI present (a pressed button face) with no planes of its
+	// own changes only its rect: the rest of the window, the planes the last
+	// present showed included, stays as it was. Without this a click on the
+	// CHANGELOG! page's OK blinked the keyboard picture out, and the page's
+	// exit fade (which fades the planes the last present showed) faded a
+	// page with no picture.
 	const bool fading = native_world_view_fade_active_;
-	const std::size_t plane_count = !fading
-		? native_world_view_ready_count_
-		: (native_world_view_fade_level_ > 0 ? native_world_view_fade_count_ : 0);
+	const bool partial_ui_present = active_ == CanvasTarget::UI &&
+		(x > 0 || y > 0 || w < render->w || h < render->h);
+	const std::size_t plane_count = fading
+		? (native_world_view_fade_level_ > 0 ? native_world_view_fade_count_ : 0)
+		: (native_world_view_ready_count_ == 0 && partial_ui_present
+			? native_world_view_capture_count_
+			: native_world_view_ready_count_);
 	for (std::size_t i = 0; i < plane_count &&
 	                         i < native_world_view_planes_.size(); ++i)
 	{
