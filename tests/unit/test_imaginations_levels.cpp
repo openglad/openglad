@@ -484,6 +484,82 @@ constexpr std::pair<int, int> kCastleBars[] = {
     {22, 19}, {25, 22}, {38, 19}, {41, 22},
     {22, 38}, {25, 35}, {38, 38}, {41, 35}};
 
+TEST_F(ImaginationsCampaignTest, castle_rooms_lie_on_inert_floors)
+{
+    LoadedImaginationsLevel fx(kCastleLevel);
+    ASSERT_TRUE(fx.loaded);
+    const PixieData& g = fx.world().grid;
+    auto at = [&](int x, int y) {
+        return g.data[static_cast<std::size_t>(x + y * g.w)];
+    };
+    // Every strongroom and the counting house floored wall to wall in
+    // purple carpet: no autotiled grass fringe inside a room.
+    for (const auto& room : {std::pair{20, 17}, {36, 17}, {20, 33}, {36, 33}})
+        for (int y = room.second + 1; y <= room.second + 6; ++y)
+            for (int x = room.first + 1; x <= room.first + 6; ++x)
+                EXPECT_EQ(PIX_CARPET_M, at(x, y))
+                    << "strongroom floor at " << x << "," << y;
+    for (int y = 9; y <= 12; ++y)
+        for (int x = 55; x <= 59; ++x)
+            EXPECT_EQ(PIX_CARPET_M, at(x, y))
+                << "counting house floor at " << x << "," << y;
+    // The field camp (southwest) in red-brown brick.
+    for (int y = 48; y <= 53; ++y)
+        for (int x = 11; x <= 16; ++x)
+            EXPECT_EQ(PIX_FLOOR1, at(x, y))
+                << "field camp floor at " << x << "," << y;
+    // The pad square's pool rim: water (not standable) west, east and north
+    // but under the counting house's mouth; the south side open ground.
+    auto stand = [&](int x, int y) {
+        return og::mapgen::ground_cell_standable(at(x, y));
+    };
+    for (int y = 14; y <= 18; ++y)
+    {
+        EXPECT_FALSE(stand(55, y)) << "west rim at y " << y;
+        EXPECT_FALSE(stand(61, y)) << "east rim at y " << y;
+    }
+    for (int x : {59, 60})
+        EXPECT_FALSE(stand(x, 14)) << "north rim at x " << x;
+    for (int x = 56; x <= 58; ++x)
+        EXPECT_TRUE(stand(x, 14)) << "the house mouth at x " << x;
+    for (int x = 56; x <= 60; ++x)
+    {
+        EXPECT_TRUE(stand(x, 15)) << "the pad square at x " << x;
+        EXPECT_TRUE(stand(x, 19)) << "the open south at x " << x;
+    }
+}
+
+TEST_F(ImaginationsCampaignTest, castle_keys_announce_the_crew_not_ghosts)
+{
+    LoadedImaginationsLevel fx(kCastleLevel);
+    ASSERT_TRUE(fx.loaded);
+    GameWorld& world = fx.world();
+    world.tick();
+    (void)fx.events.drain();
+    // An allied ghost sweeping the shore takes the key quietly but still
+    // holds it, so no faerie can carry that key to the gate.
+    walker* ghost = world.add_ob(Order::Living, FAMILY_GHOST);
+    ASSERT_NE(nullptr, ghost);
+    ghost->set_team_num(0);
+    ghost->set_real_team_num(0);
+    walker* key1 = find_treasure(world, FAMILY_KEY, 12, 4);
+    ASSERT_NE(nullptr, key1);
+    ASSERT_EQ(1, key1->stats()->level());
+    key1->eat_me(ghost);
+    EXPECT_EQ(1u << 1, ghost->keys() & kShoreKeys);
+    EXPECT_FALSE(saw_notification(fx.events, "picks up key"))
+        << "no key broadcast for an allied ghost";
+    // One of the crew picking up a key is still announced.
+    walker* keeper = spawn_keeper(world);
+    ASSERT_NE(nullptr, keeper);
+    walker* key2 = find_treasure(world, FAMILY_KEY, 50, 4);
+    ASSERT_NE(nullptr, key2);
+    key2->eat_me(keeper);
+    EXPECT_EQ(1u << 2, keeper->keys() & kShoreKeys);
+    EXPECT_TRUE(saw_notification(fx.events, "picks up key 2"));
+    expect_no_script_errors(world);
+}
+
 TEST_F(ImaginationsCampaignTest, castle_gold_wakes_six_ghosts_then_seven)
 {
     LoadedImaginationsLevel fx(kCastleLevel);
@@ -841,12 +917,29 @@ TEST_F(ImaginationsCampaignTest, asteroid_floats_in_space_with_a_spiked_castle)
             EXPECT_EQ(stair ? PIX_ZSTAIR_UP : PIX_VOID1, at(g0, x, y))
                 << x << "," << y;
             EXPECT_EQ(stair ? PIX_ZSTAIR_DOWN
-                            : (y - 7) % 3 == 0 ? PIX_PAVEMENT1
-                            : (y - 7) % 3 == 1 ? PIX_PAVEMENT2
-                                               : PIX_PAVEMENT3,
+                            : (y - 7) % 2 == 0 ? PIX_CARPET_M
+                                               : PIX_PAVEMENT1,
                       at(g1, x, y))
-                << "the striped deck at " << x << "," << y;
+                << "the purple-striped deck at " << x << "," << y;
         }
+    // The purple crown V in the north hall, on the grey cobble court.
+    for (const auto& v : {std::pair{11, 17}, {20, 17}, {12, 18}, {19, 18},
+                          {13, 19}, {18, 19}, {14, 20}, {17, 20}, {15, 21},
+                          {16, 21}})
+        EXPECT_EQ(PIX_CARPET_M, at(g0, v.first, v.second))
+            << "the crown V at " << v.first << "," << v.second;
+    // The striped vestibule (purple, pink) and the rainbow apron (purple,
+    // pink, white, red-brown): every stripe a different visible floor.
+    const unsigned char kStripes[4] = {PIX_CARPET_M, PIX_ASH1, PIX_SNOW1,
+                                       PIX_FLOOR1};
+    for (int y = 44; y <= 45; ++y)
+        for (int x = 14; x <= 16; ++x)
+            EXPECT_EQ(kStripes[y - 44], at(g0, x, y))
+                << "the vestibule at " << x << "," << y;
+    for (int y = 49; y <= 52; ++y)
+        for (int x = 13; x <= 17; ++x)
+            EXPECT_EQ(kStripes[y - 49], at(g0, x, y))
+                << "the rainbow apron at " << x << "," << y;
     // The rest of floor 1 is sky.
     int sky = 0;
     for (std::size_t c = 0; c < static_cast<std::size_t>(g1.w * g1.h); ++c)

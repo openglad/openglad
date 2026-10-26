@@ -284,8 +284,9 @@ local function drop_gate_if_twelve(held)
 end
 
 -- core:key on_eat, campaign-wide while this pack is mounted: the classic
--- body verbatim (one key bit in the eater's own mask, the team-0
--- broadcast), then scen 2's count of the keys the faeries carry.
+-- body (one key bit in the eater's own mask, the team-0 broadcast, here
+-- for the crew's own characters only), then scen 2's count of the keys the
+-- faeries carry.
 local function key_on_eat(self, eater)
   local level = self.level
   local shift = og.clamp(level, 0, 30)
@@ -300,7 +301,14 @@ local function key_on_eat(self, eater)
   else
     who = eater:s_name()
   end
+  -- The classic pickup line is for the crew's own characters: an allied
+  -- ghost sweeping the shore holds the key (so no faerie can carry it)
+  -- without a broadcast.
+  local announce = false
   if eater.team == 0 then
+    announce = is_keeper(eater)
+  end
+  if announce then
     og.emit_notification(string.format("%s picks up key %d", who, level))
     og.emit_sound(C.SOUND_MONEY)
   end

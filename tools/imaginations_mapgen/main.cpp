@@ -561,7 +561,8 @@ void build_castle_of_gold()
     // The castle: a 3-thick ring and its court.
     og::mapgen::paint_rect(g, 17, 14, 46, 43, PIX_WALL2);
     og::mapgen::paint_rect(g, 20, 17, 43, 40, PIX_COBBLE_1);
-    // Four strongrooms in the court corners, yellow sand floors.
+    // Four strongrooms in the court corners (their floors are laid after
+    // smoothing, below).
     for (const auto& room : {std::pair{20, 17}, {36, 17}, {20, 33}, {36, 33}})
     {
         og::mapgen::paint_rect(g, room.first, room.second, room.first + 7,
@@ -584,13 +585,20 @@ void build_castle_of_gold()
     og::mapgen::paint_rect(g, 54, 8, 60, 13, PIX_WALL2);
     og::mapgen::paint_rect(g, 55, 9, 59, 12, PIX_DIRT_1);
     og::mapgen::paint_rect(g, 56, 13, 58, 13, PIX_COBBLE_1);
+    // The pad square (the blue box northeast, x 56..60, y 15..18) sits in a
+    // one-tile pool rim on its west, north and east sides. The south side
+    // stays open for the crew, and so does the north row under the
+    // counting house's mouth (x 56..58), so the house still walks out onto
+    // the square. Faeries and ghosts fly over the rim.
+    og::mapgen::paint_rect(g, 55, 14, 55, 18, PIX_WATER1);
+    og::mapgen::paint_rect(g, 61, 14, 61, 18, PIX_WATER1);
+    og::mapgen::paint_rect(g, 59, 14, 60, 14, PIX_WATER1);
 
     og::mapgen::smooth_world(w);
 
     // Post-smooth inert pavement: five bridges over each river, every one
     // >= 4 wide and no river cell more than 10 tiles from one (the beeline
-    // AI slides into a crossing), the pad square northeast and the field
-    // camp southwest.
+    // AI slides into a crossing), and the pad square northeast.
     for (int x0 : {6, 20, 29, 40, 54})
     {
         const int x1 = (x0 == 29) ? 33 : x0 + 3;
@@ -598,7 +606,15 @@ void build_castle_of_gold()
         paint_pavement(g, x0, 56, x1, 59);
     }
     paint_pavement(g, 56, 15, 60, 18);
-    paint_pavement(g, 11, 48, 16, 53);
+    // Post-smooth floors, inert to the autotiler so no grass fringe rims a
+    // room against its own walls: the four strongrooms and the counting
+    // house in purple carpet (the gold bars stand out on it), the field
+    // camp in red-brown dungeon brick.
+    for (const auto& room : {std::pair{20, 17}, {36, 17}, {20, 33}, {36, 33}})
+        og::mapgen::paint_rect(g, room.first + 1, room.second + 1,
+                               room.first + 6, room.second + 6, PIX_CARPET_M);
+    og::mapgen::paint_rect(g, 55, 9, 59, 12, PIX_CARPET_M);
+    og::mapgen::paint_rect(g, 11, 48, 16, 53, PIX_FLOOR1);
 
     // --- The faerie war (team 1). Faeries only; every one a roamer that
     // comes to the war — flyers cross the rivers, the castle walls stop
@@ -786,7 +802,7 @@ void build_castle_of_gold()
 //
 // Floor 0, 64x64: the rounded asteroid (rock rim, grass) on PIX_VOID1
 // space. West side: the tall castle (x 8..23, y 15..46, walls 2 thick)
-// with a 3-wide east gate (y 29..31), the crown V of pavement in the
+// with a 3-wide east gate (y 29..31), the purple crown V in the
 // north hall, and the big door (three team-4 doors at key 3, row 43)
 // sealing the striped vestibule that holds the exit pad. A 2-wide
 // jagged spike band hugs the outer wall, broken only by the gate apron:
@@ -853,10 +869,7 @@ void build_asteroid_castle()
     for (const auto& v : {std::pair{11, 17}, {20, 17}, {12, 18}, {19, 18},
                           {13, 19}, {18, 19}, {14, 20}, {17, 20}, {15, 21},
                           {16, 21}})
-        og::mapgen::paint(g0, v.first, v.second, PIX_PAVEMENT3);
-    // The striped vestibule.
-    og::mapgen::paint_rect(g0, 14, 44, 16, 44, PIX_PAVEMENT1);
-    og::mapgen::paint_rect(g0, 14, 45, 16, 45, PIX_PAVEMENT2);
+        og::mapgen::paint(g0, v.first, v.second, PIX_CARPET_M);
     // Stardust drifts, the space wind (snow weather past 40 tiles).
     for (const auto& d : {std::pair{28.0, 8.0}, {12.0, 52.0}, {56.0, 52.0}})
         og::mapgen::paint_ring(g0, d.first, d.second, 0.0, 3.2, PIX_SNOW1);
@@ -868,12 +881,17 @@ void build_asteroid_castle()
     // Craters (ash: jagged means spikes on this map).
     for (const auto& c : {std::pair{33.0, 10.0}, {36.0, 50.0}, {30.0, 44.0}})
         og::mapgen::paint_ring(g0, c.first, c.second, 0.0, 2.2, PIX_ASH1);
-    // The rainbow apron south of the big door.
+    // The striped vestibule behind the big door and the rainbow apron south
+    // of it: purple, pink, white and red-brown walkable rows (the palette's
+    // only visibly different floors), painted after the drifts so the
+    // stardust speckle never touches the white stripe.
     {
-        static constexpr unsigned char kStripes[3] = {
-            PIX_PAVEMENT1, PIX_PAVEMENT2, PIX_PAVEMENT3};
+        static constexpr unsigned char kStripes[4] = {
+            PIX_CARPET_M, PIX_ASH1, PIX_SNOW1, PIX_FLOOR1};
+        for (int y = 44; y <= 45; ++y)
+            og::mapgen::paint_rect(g0, 14, y, 16, y, kStripes[(y - 44) % 4]);
         for (int y = 49; y <= 52; ++y)
-            og::mapgen::paint_rect(g0, 13, y, 17, y, kStripes[(y - 49) % 3]);
+            og::mapgen::paint_rect(g0, 13, y, 17, y, kStripes[(y - 49) % 4]);
     }
     // The pen: an ash checker outlined in pavement, no walls.
     for (int y = 45; y <= 52; ++y)
@@ -901,14 +919,11 @@ void build_asteroid_castle()
     // nothing ever stands under the Big One.
     og::mapgen::paint_rect(g0, 46, 7, 52, 13, PIX_VOID1);
 
-    // --- Floor 1, inert: sky everywhere, the striped deck.
+    // --- Floor 1, inert: sky everywhere, the deck striped purple and grey.
     og::mapgen::paint_rect(g1, 0, 0, 63, 63, PIX_AIR);
     for (int y = 7; y <= 13; ++y)
-        og::mapgen::paint_rect(
-            g1, 46, y, 52, y,
-            static_cast<unsigned char>((y - 7) % 3 == 0   ? PIX_PAVEMENT1
-                                       : (y - 7) % 3 == 1 ? PIX_PAVEMENT2
-                                                          : PIX_PAVEMENT3));
+        og::mapgen::paint_rect(g1, 46, y, 52, y,
+                               (y - 7) % 2 == 0 ? PIX_CARPET_M : PIX_PAVEMENT1);
     // The 3-wide Z-stair on the north ledge: up on floor 0, down on 1.
     for (int x = 48; x <= 50; ++x)
         og::mapgen::stair_pair(w, 0, x, 7);
