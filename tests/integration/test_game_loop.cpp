@@ -8197,10 +8197,11 @@ TEST(GameLoop, zz_capture_imaginations_moments)
             {
                 // The war's end, staged: every bad guy left (dormant ones
                 // too) is struck off quietly but one awake raider, who is
-                // set down at one hit point against the north spike band
-                // by the castle. The next spike bite kills him inside the
-                // sim tick, so the level script sees the last bad guy fall
-                // and lands its rainbow arc over the big door.
+                // set down at one hit point against the south spike band
+                // beside the big door's apron. The next spike bite kills
+                // him inside the sim tick, so the level script sees the
+                // last bad guy fall and lands its rainbow arc over the big
+                // door.
                 walker* last = nullptr;
                 for (auto& up : w.oblist)
                     if (walker* a = up.get(); a != nullptr && !a->dead() &&
@@ -8217,7 +8218,7 @@ TEST(GameLoop, zz_capture_imaginations_moments)
                     }
                 if (last != nullptr)
                 {
-                    place_at(last, 18, 12, 0);
+                    place_at(last, 18, 49, 0);
                     last->stats()->set_hitpoints(1.0f);
                 }
             }
@@ -8244,7 +8245,7 @@ TEST(GameLoop, zz_capture_imaginations_moments)
         epic_rec::record("imag_moments_3", 3, WeatherKind::Snow, crew,
             {{0, 416, 440, 0, true}, {60, 860, 150, 0, true},
              {120, 784, 168, 1, true}, {330, 360, 480, 0, true},
-             {1390, 904, 736, 0, true}, {1550, 248, 150, 0, true},
+             {1390, 904, 736, 0, true}, {1550, 248, 760, 0, true},
              {1630, 248, 700, 0, true}, {1780, 248, 700, 0, true}},
             "imaginations", d);
     }
