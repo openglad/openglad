@@ -16,12 +16,12 @@
 #include <openglad/interface/native_input.h>
 #include <openglad/interface/render/video.h>
 #include <openglad/interface/screen.h>
+#include <openglad/interface/ui/keyboard_picture.h>
 #include <openglad/interface/ui/picker_lobby_client.h>
 #include <openglad/interface/session_state.h>
 #include <openglad/interface/web_control_defaults.h>
 #include <openglad/resources/filesystem_sync.h>
 #include <openglad/resources/gparser.h>
-#include <openglad/resources/og_file.h>
 
 #include "picker_sdl_defs.h"
 
@@ -108,14 +108,15 @@ FitRect fit_picture(int w, int h, int box_w, int box_h)
     return {(box_w - fit_w) / 2, 0, fit_w, box_h};
 }
 
-// The picture through a native plane: its pixels are the display's own, so
-// the keyboard's labels stay sharp at any window size the band reaches.
-bool draw_picture(const og::io::RgbaImage& picture)
+}  // namespace
+
+bool draw_picture_in_band(const og::io::RgbaImage& picture, int band_x,
+                          int band_y, int band_w, int band_h)
 {
     screen* const scr = page_screen();
     const std::array<NativeWorldViewDestination, 1> destinations = {
-        NativeWorldViewDestination{CanvasTarget::UI, kBandX, kBandY, kBandW,
-                                   kBandH}};
+        NativeWorldViewDestination{CanvasTarget::UI, band_x, band_y, band_w,
+                                   band_h}};
     const NativeWorldViewSource source =
         scr->begin_native_world_view(destinations);
     if (!source)
@@ -128,11 +129,14 @@ bool draw_picture(const og::io::RgbaImage& picture)
     return scr->end_native_world_view();
 }
 
+namespace {
+
 void changelog_draw_background(void* screen_state)
 {
     options_panel_draw_background(nullptr);
     const auto* const state = static_cast<ChangelogScreenState*>(screen_state);
-    if (state != nullptr && state->picture && draw_picture(*state->picture))
+    if (state != nullptr && state->picture &&
+        draw_picture_in_band(*state->picture, kBandX, kBandY, kBandW, kBandH))
         return;
     // A missing picture, or no plane (a tiny window, a lost device): the
     // band says where the keys are instead.
@@ -245,9 +249,11 @@ void show_entry(const ChangelogEntry& entry)
 {
     ChangelogScreenState state;
     state.entry = &entry;
-    if (const char* image =
-            changelog_entry_image(entry, og::input::kWebControlDefaults))
-        state.picture = og::io::read_rgba_png(image);
+    if (entry.keyboard_picture)
+        state.picture =
+            keyboard_picture::render(
+                keyboard_picture::factory_input(og::input::kWebControlDefaults))
+                .picture;
     TRACE("changelog", "CHANGELOG!: showing id=%d picture=%d", entry.id,
           state.picture ? 1 : 0);
     publish_changelog_state("open");
@@ -288,11 +294,6 @@ int changelog_seen_marker()
     if (error != std::errc{} || end != text.data() + text.size())
         return 0;
     return seen;
-}
-
-const char* changelog_entry_image(const ChangelogEntry& entry, bool web)
-{
-    return web && entry.web_image != nullptr ? entry.web_image : entry.image;
 }
 
 }  // namespace og::ui

@@ -206,6 +206,15 @@ inline constexpr int KEYCODE_LALT = 1073742050;
 inline constexpr int KEYCODE_RCTRL = 1073742052;
 inline constexpr int KEYCODE_RSHIFT = 1073742053;
 inline constexpr int KEYCODE_RALT = 1073742054;
+// The keys the keyboard picture draws a cap for and no table binds by
+// default (og::ui::keyboard_picture): Caps Lock, Insert, the two Windows
+// keys and Menu (SDLK_CAPSLOCK, SDLK_INSERT, SDLK_LGUI, SDLK_RGUI,
+// SDLK_APPLICATION).
+inline constexpr int KEYCODE_CAPSLOCK = 1073741881;
+inline constexpr int KEYCODE_INSERT = 1073741897;
+inline constexpr int KEYCODE_LGUI = 1073742051;
+inline constexpr int KEYCODE_RGUI = 1073742055;
+inline constexpr int KEYCODE_APPLICATION = 1073741925;
 inline constexpr int KEYMOD_CTRL = 0x00C0;
 
 template <typename EventT>

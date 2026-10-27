@@ -424,6 +424,10 @@ enum class MenuScreenId : std::uint8_t {
     // any lobby exists (so its remote-start scope is None, on the engine
     // test's allowlist).
     Changelog,
+    // KEYMAP (#388): the keyboard picture of this machine's seats, opened
+    // from the Base Camp seat screen; TeamBuildScope like ABILITIES. (The
+    // pause player screen's copy is an overlay outside the registry.)
+    Keymap,
     Count,
 };
 

@@ -236,7 +236,10 @@
             ncurses
             physfs
             pkg-config
-            python3
+            # Pillow: scripts/keyboard_picture/generate_glyphs.py rasterizes
+            # the DejaVu labels of the keyboard picture (KEYMAP, CHANGELOG!)
+            # into the committed glyph atlas with it.
+            (python3.withPackages (ps: [ ps.pillow ]))
             # Local coverage runs use the same gcovr report input as CI.
             gcovr
             zlib

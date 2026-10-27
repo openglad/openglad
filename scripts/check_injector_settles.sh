@@ -113,8 +113,9 @@ CONVERTED_FILES=(
     tests/integration/test_match_setup_ui.cpp
     # The ABILITIES flows (New Ability Select) are tier 2 from birth too.
     tests/integration/test_abilities_flow.cpp
-    # The CHANGELOG! flows, the same.
+    # The CHANGELOG! and KEYMAP flows, the same.
     tests/integration/test_changelog_flow.cpp
+    tests/integration/test_keymap_screen.cpp
 )
 
 status=0

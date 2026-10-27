@@ -8,10 +8,12 @@
 #pragma once
 
 // A truecolour picture as the game keeps it in memory: w x h pixels, four
-// bytes each (R, G, B, A), row-major with no padding. The CHANGELOG! page's
-// keyboard picture is the one user (pix/changelog/keyboard_belt*.png, read by
-// og::io::read_rgba_png). Every sprite stays an indexed pixie; this is for
-// pictures that are drawn at the display's own resolution instead.
+// bytes each (R, G, B, A), row-major with no padding. The keyboard picture
+// (og::ui::keyboard_picture, on KEYMAP and the CHANGELOG! page) is the one
+// user: it is rendered into one at run time from the glyph atlas
+// pix/keyboard/glyphs.png (read by og::io::read_rgba_png). Every sprite stays
+// an indexed pixie; this is for pictures that are drawn at the display's own
+// resolution instead.
 
 #include <atomic>
 #include <cstdint>

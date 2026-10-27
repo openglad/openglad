@@ -36,6 +36,7 @@
 #include <openglad/interface/ui/abilities_screen.h>
 #include <openglad/interface/ui/campaign_picker_session.h>
 #include <openglad/interface/ui/changelog_screen.h>
+#include <openglad/interface/ui/keymap_screen.h>
 #include <openglad/interface/ui/cloud_save_client.h>
 #include <openglad/interface/ui/input_cycler.h>
 #include <openglad/interface/ui/picker_common.h>
@@ -8724,6 +8725,8 @@ const MenuScreenHost& menu_screen_host(MenuScreenId id)
             set(MenuScreenId::Changelog,
                 {.kind = Kind::Engine,
                  .spec = &changelog_menu_screen_spec()});
+            set(MenuScreenId::Keymap,
+                {.kind = Kind::Engine, .spec = &keymap_menu_screen_spec()});
             return table;
         }();
     return hosts[static_cast<std::size_t>(id)];
