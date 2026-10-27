@@ -66,6 +66,9 @@ public:
     void send_control_change(
         PeerId peer_id,
         std::shared_ptr<ControlChangeMessage> message) override;
+    void send_belt_change(
+        PeerId peer_id,
+        std::shared_ptr<BeltChangeMessage> message) override;
     void send_snapshot_hash_check(
         PeerId peer_id,
         std::shared_ptr<SnapshotHashCheckMessage> message) override;

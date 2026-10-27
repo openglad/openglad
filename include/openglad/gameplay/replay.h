@@ -51,7 +51,12 @@ namespace og::sim {
 // stride grows by four; snapshot v18: every guy snapshot gains six u8 belt
 // bytes after owner_save_slot); v23 readers must reject the new protocol
 // byte and vice versa.
-inline constexpr std::uint8_t kReplayFormatVersion = 24;
+// v25 records protocol-v23 frames (ABILITIES from the PAUSED menu: a new
+// client -> server BeltChange message; no snapshot or input-frame byte
+// changes, snapshot stays v18); v24 readers must reject the new protocol
+// byte and vice versa. A mid-mission layout edit is not recorded (replays
+// record inputs only), so a played-back HUD shows the layout as it was.
+inline constexpr std::uint8_t kReplayFormatVersion = 25;
 inline constexpr std::size_t kReplayHeaderSize = 32;
 
 // First replay format carrying the campaign-vars section (the reader's

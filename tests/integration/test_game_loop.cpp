@@ -1713,6 +1713,123 @@ TEST(GameLoop, local_two_player_ally_mode_claims_two_team_one_heroes)
     game_screen->world().delete_objects();
 }
 
+// ABILITIES from the PAUSED menu (protocol v23), local split screen: every
+// seat is its own in-process peer, so local_transport_shadow_set_belt must
+// route through the client that carries the seat. The display mirror shows
+// the new layout at once (optimistic), the server's guy takes it on the next
+// pump while the game stays paused, and an edit the server refuses (seat 0
+// naming seat 1's hero) is reverted on the mirror by the next snapshot.
+TEST(GameLoop, local_transport_shadow_set_belt_reaches_the_server_guy_while_paused)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, game_screen);
+    if (og::runtime::current_game_session != nullptr)
+        og::runtime::clear_local_transport_shadow(
+            *og::runtime::current_game_session);
+    game_screen->world().delete_objects();
+
+    SaveData& save = game_screen->save_data;
+    save.reset();
+    save.save_name = "Belt Seats";
+    save.current_campaign = "gladiator";
+    save.current_levels[save.current_campaign] = 1;
+    save.scen_num = 1;
+    save.numplayers = 2;
+    save.allied_mode = 1;
+    save.my_team = 0;
+    save.team_list[0] = make_named_soldier("Seat One", 0);
+    save.team_list[1] = make_named_soldier("Seat Two", 0);
+    save.team_size = 2;
+
+    picker_lobby_shutdown();
+    picker_lobby_initialize_from_save();
+    ASSERT_TRUE(picker_lobby_request_start());
+    std::optional<og::ui::PickerLobbyGameStartConfig> config =
+        picker_lobby_consume_game_start_config();
+    ASSERT_TRUE(config.has_value());
+    picker_lobby_shutdown();
+
+    ready_screen_for_game_start(*game_screen, &*config);
+    glad_init(false, &*config);
+    ASSERT_NE(nullptr, og::runtime::current_game_session);
+    og::runtime::GameSession& session = *og::runtime::current_game_session;
+    ASSERT_EQ(2u, og::runtime::local_transport_client_count(session));
+    screen* const server_screen =
+        og::runtime::local_transport_shadow_testing_server_screen(session);
+    ASSERT_NE(nullptr, server_screen);
+
+    std::uint32_t tick = 0;
+    for (int frame = 0; frame < 8; ++frame)
+    {
+        og::runtime::local_transport_shadow_send_input(session, InputState{}, tick++);
+        og::runtime::local_transport_shadow_finish_tick(session);
+    }
+    og::runtime::local_transport_shadow_request_pause_keepalive(session);
+    ASSERT_TRUE(og::runtime::local_transport_shadow_pump_paused(session));
+    ASSERT_TRUE(og::runtime::local_transport_shadow_pump_paused(session));
+    ASSERT_TRUE(og::runtime::local_transport_shadow_is_paused(session));
+    const std::uint32_t frozen = server_screen->world().tick_count_;
+
+    ASSERT_NE(nullptr, game_screen->viewob[1]);
+    walker* const mirror = game_screen->viewob[1]->control;
+    ASSERT_NE(nullptr, mirror);
+    ASSERT_NE(nullptr, mirror->myguy);
+    ASSERT_EQ("Seat Two", mirror->myguy->name);
+    const std::uint32_t hero_id = mirror->entity_id();
+    walker* const authoritative = server_screen->world().find_by_id(hero_id);
+    ASSERT_NE(nullptr, authoritative);
+    ASSERT_NE(nullptr, authoritative->myguy);
+    const std::array<std::uint8_t, 6> stored = authoritative->myguy->belt;
+    constexpr std::array<std::uint8_t, 6> edited = {0x09u, 0x0Au, 0x00u,
+                                                    0x00u, 0x01u, 0x02u};
+    ASSERT_NE(edited, stored);
+
+    EXPECT_FALSE(og::runtime::local_transport_shadow_set_belt(
+        session, MAX_PLAYERS, hero_id, edited))
+        << "no client carries a seat past the local seat count";
+    EXPECT_FALSE(og::runtime::local_transport_shadow_set_belt(
+        session, -1, hero_id, edited));
+
+    ASSERT_TRUE(og::runtime::local_transport_shadow_set_belt(
+        session, 1, hero_id, edited));
+    walker* const mirror_now = game_screen->world().find_by_id(hero_id);
+    ASSERT_NE(nullptr, mirror_now);
+    ASSERT_NE(nullptr, mirror_now->myguy);
+    EXPECT_EQ(edited, mirror_now->myguy->belt)
+        << "the display mirror shows the new layout before any snapshot";
+    EXPECT_EQ(stored, server_screen->world().find_by_id(hero_id)->myguy->belt)
+        << "the server has not polled yet";
+
+    ASSERT_TRUE(og::runtime::local_transport_shadow_pump_paused(session));
+    EXPECT_EQ(frozen, server_screen->world().tick_count_) << "still paused";
+    walker* const server_after = server_screen->world().find_by_id(hero_id);
+    ASSERT_NE(nullptr, server_after);
+    ASSERT_NE(nullptr, server_after->myguy);
+    EXPECT_EQ(edited, server_after->myguy->belt)
+        << "the seat-1 client carried the edit to the server's guy";
+    walker* const mirror_after = game_screen->world().find_by_id(hero_id);
+    ASSERT_NE(nullptr, mirror_after);
+    ASSERT_NE(nullptr, mirror_after->myguy);
+    EXPECT_EQ(edited, mirror_after->myguy->belt)
+        << "the next snapshot confirms the layout on the mirror";
+
+    // Seat 0 naming seat 1's hero is a stale id on the server: refused, and
+    // the next snapshot takes back the optimistic mirror write.
+    constexpr std::array<std::uint8_t, 6> refused = {0x0Au, 0x09u, 0x01u,
+                                                     0x00u, 0x00u, 0x00u};
+    ASSERT_TRUE(og::runtime::local_transport_shadow_set_belt(
+        session, 0, hero_id, refused));
+    EXPECT_EQ(refused, game_screen->world().find_by_id(hero_id)->myguy->belt);
+    ASSERT_TRUE(og::runtime::local_transport_shadow_pump_paused(session));
+    EXPECT_EQ(edited, server_screen->world().find_by_id(hero_id)->myguy->belt);
+    EXPECT_EQ(edited, game_screen->world().find_by_id(hero_id)->myguy->belt)
+        << "a refused edit is reverted on the mirror by the next snapshot";
+
+    og::runtime::local_transport_shadow_toggle_pause(session);
+    og::runtime::clear_local_transport_shadow(session);
+    game_screen->world().delete_objects();
+}
+
 // The local picker lobby's slot builder must pre-clamp guy names to the
 // 11-char wire width: the wire readers truncate anyway, and an unclamped
 // writer makes every roster message fail the VALIDATE_SERIALIZATION

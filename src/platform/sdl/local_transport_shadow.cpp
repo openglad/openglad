@@ -3196,6 +3196,48 @@ void local_transport_shadow_send_input(GameSession& session,
     }
 }
 
+bool local_transport_shadow_set_belt(GameSession& session,
+                                     int seat,
+                                     std::uint32_t entity_id,
+                                     const std::array<std::uint8_t, 6>& belt)
+{
+    const auto runtime = session.local_transport_runtime_;
+    if (runtime == nullptr || seat < 0 || seat >= MAX_PLAYERS)
+        return false;
+
+    // The same routing as local_transport_shadow_send_input: the client whose
+    // input_slots holds the seat is the peer the server bound it on, with
+    // local_slot == seat.
+    const std::size_t slot = static_cast<std::size_t>(seat);
+    LocalTransportClient* carrier = nullptr;
+    for (LocalTransportClient& client : runtime->clients)
+    {
+        if (client.game_client != nullptr &&
+            std::find(client.input_slots.begin(),
+                      client.input_slots.end(),
+                      slot) != client.input_slots.end())
+        {
+            carrier = &client;
+            break;
+        }
+    }
+    if (carrier == nullptr)
+        return false;
+
+    carrier->game_client->send_belt_change(
+        static_cast<std::uint8_t>(slot), entity_id, belt);
+
+    // Optimistic mirror write: the HUD reads the display world's guy.
+    if (session.myscreen_ != nullptr)
+    {
+        walker* const body = resolve_control_from_entity_id(
+            session.myscreen_->world(), entity_id);
+        if (body != nullptr && body->myguy != nullptr)
+            body->myguy->belt = belt;
+    }
+    return true;
+}
+
 namespace {
 
 // Shared body of finish_tick and pump_paused: one authoritative server step

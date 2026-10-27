@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -125,6 +126,11 @@ private:
                                                   const InputState& input,
                                                   std::uint32_t tick);
     friend void local_transport_shadow_finish_tick(GameSession& session);
+    friend bool local_transport_shadow_set_belt(
+        GameSession& session,
+        int seat,
+        std::uint32_t entity_id,
+        const std::array<std::uint8_t, 6>& belt);
     friend bool local_transport_shadow_pump_paused(GameSession& session);
     friend void local_transport_shadow_request_pause_keepalive(
         GameSession& session);

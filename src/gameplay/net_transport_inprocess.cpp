@@ -790,6 +790,27 @@ void InProcessTransport::send_control_change(
     peer->enqueue_typed(std::move(typed_message));
 }
 
+void InProcessTransport::send_belt_change(
+    PeerId peer_id,
+    std::shared_ptr<BeltChangeMessage> message)
+{
+    if (!message)
+        return;
+
+    const std::shared_ptr<InProcessTransport> peer = resolve_peer(peer_id);
+    TypedReceivedMessage typed_message;
+    typed_message.peer_id = peer_id;
+    typed_message.kind = TypedReceivedMessageKind::BeltChange;
+    typed_message.belt_change = validate_serialization_
+        ? validate_message_roundtrip(
+              message,
+              serialize_belt_change_message,
+              deserialize_belt_change_message,
+              "belt change")
+        : std::move(message);
+    peer->enqueue_typed(std::move(typed_message));
+}
+
 void InProcessTransport::send_snapshot_hash_check(
     PeerId peer_id,
     std::shared_ptr<SnapshotHashCheckMessage> message)
