@@ -8117,7 +8117,17 @@ TEST(GameLoop, zz_capture_imaginations_moments)
         d.stage = [qx = -1.0f, qy = -1.0f](int f, GameWorld& w, float& cx,
                                           float& cy, int& floor) mutable
         {
-            if (f == 2)
+            // The court twice: at the deploy, and again at 57 so the crew
+            // and the keeper stand there under the dream-log's opening
+            // lines (tick 60), the keeper walking north onto the castle
+            // key (31,36).
+            if (f == 57)
+                if (walker* k = lead_of(w); k != nullptr)
+                {
+                    place_at(k, 31, 39, 0);
+                    k->stats()->set_command(COMMAND_WALK, 6, 0, -1);
+                }
+            if (f == 2 || f == 57)
             {
                 int placed = 0;
                 const int spots[3][2] = {{29, 39}, {33, 39}, {31, 34}};
@@ -8289,11 +8299,14 @@ TEST(GameLoop, zz_capture_imaginations_moments)
             return false;
         };
         d.keep = [](int f) { return f % 3 == 0; };
+        // From 1550 the camera frames the big door with the whole rainbow
+        // arc below it (rows 49..54), so the win flashes land in view; from
+        // 1680 it rises a little to take in the key-bearer at the doors.
         epic_rec::record("imag_moments_3", 3, WeatherKind::Snow, crew,
             {{0, 416, 440, 0, true}, {60, 860, 150, 0, true},
              {120, 784, 168, 1, true}, {330, 360, 480, 0, true},
-             {1390, 904, 736, 0, true}, {1550, 240, 700, 0, true},
-             {1630, 248, 700, 0, true}, {1780, 248, 700, 0, true}},
+             {1390, 904, 736, 0, true}, {1550, 240, 780, 0, true},
+             {1680, 248, 752, 0, true}, {1780, 248, 752, 0, true}},
             "imaginations", d);
     }
 }
