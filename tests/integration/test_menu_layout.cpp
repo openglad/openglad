@@ -5107,7 +5107,10 @@ TEST(MenuLayout, controls_summary_lines_always_fit_the_row)
         reset_default_player_controls_for_player(0);
         set_player_control_mode(
             0, static_cast<int>(ControlDirectionMode::EightDirection));
-        for (const auto& [slot, key] : summary_worst_cases()[2].keys)
+        // Held by name: a range-for does not keep the vector alive
+        // through operator[] (C++20), and clang's -Wdangling-gsl says so.
+        const std::vector<SummaryKeySet> sets = summary_worst_cases();
+        for (const auto& [slot, key] : sets[2].keys)
             set_player_key_binding(0, slot, key);
         const std::vector<std::string> lines =
             build_player_control_summary_lines(0, true);
