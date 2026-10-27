@@ -160,9 +160,16 @@ void draw_menu_highlight(const MenuScreenSpec& spec,
         materialized_spec_rows(spec);
     if (highlighted_button >= 0 &&
         static_cast<std::size_t>(highlighted_button) < rows.size() &&
-        rows[static_cast<std::size_t>(highlighted_button)]->interior_highlight)
+        rows[static_cast<std::size_t>(highlighted_button)]->cell_highlight)
     {
-        draw_highlight_interior(buttons[highlighted_button]);
+        // A steady ring on the row's own edge pixels: a pulsing one (either
+        // way) would cross the text of an 8 px line or its neighbours.
+        if (pks().menu_nav_enabled)
+        {
+            const button& b = buttons[highlighted_button];
+            og::runtime::current_session->myscreen_->draw_box(
+                b.x, b.y, b.x + b.sizex - 1, b.y + b.sizey - 1, YELLOW, 0);
+        }
         return;
     }
     draw_highlight(buttons[highlighted_button]);

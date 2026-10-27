@@ -550,7 +550,7 @@ TEST(PauseMenuPins, pause_player_exact_table)
         {"pause_direction", "4-DIRECTION", KEYSTATE_UNKNOWN, 12, 30, 98, 18,
          button_action_id(ButtonAction::MenuSpecRow), 2,
          MenuNav{.up = 0, .down = 1, .right = 3}},
-        {"pause_remap", "REMAP", KEYSTATE_UNKNOWN, 116, 30, 92, 18,
+        {"pause_remap", "REMAP ALL", KEYSTATE_UNKNOWN, 116, 30, 92, 18,
          button_action_id(ButtonAction::MenuSpecRow), 3,
          MenuNav{.up = 0, .down = 6, .left = 2, .right = 4}},
         {"pause_reset", "RESET", KEYSTATE_UNKNOWN, 214, 30, 90, 18,
@@ -623,8 +623,9 @@ TEST(PauseMenuPins, pause_player_exact_table)
     const int count = spec.count_accessor();
     check_exact_table(buttons, count, expected.data(),
                       static_cast<int>(expected.size()), "pause_player");
-    // The cells are invisible hit areas with an inside focus ring (an
-    // outward one would cover the neighbouring lines at the 8 px pitch).
+    // The cells are invisible hit areas with a steady focus ring on their
+    // own edge (a pulsing one would cross the line's text or its neighbours
+    // at the 8 px pitch).
     const std::vector<const og::ui::MenuButtonSpec*> rows =
         og::ui::materialized_spec_rows(spec);
     for (int i = 0; i < count; ++i)
@@ -632,7 +633,7 @@ TEST(PauseMenuPins, pause_player_exact_table)
         const bool cell = i >= 11 && i < 27;
         EXPECT_EQ(cell, rows[static_cast<std::size_t>(i)]->no_draw)
             << rows[static_cast<std::size_t>(i)]->id;
-        EXPECT_EQ(cell, rows[static_cast<std::size_t>(i)]->interior_highlight)
+        EXPECT_EQ(cell, rows[static_cast<std::size_t>(i)]->cell_highlight)
             << rows[static_cast<std::size_t>(i)]->id;
     }
 
@@ -4706,11 +4707,12 @@ TEST(PauseMenuNav, pause_player_key_cells_route_around_hidden_cells)
     og::ui::install_pause_player_state_for_screen(nullptr);
 }
 
-// The focus ring on a key cell stays inside the cell: the default ring
-// pulses 3 px outward and would paint over the neighbouring lines (8 px
-// pitch).
+// The focus ring on a key cell is a steady box on the cell's own edge: the
+// default ring pulses 3 px outward and would paint over the neighbouring
+// lines (8 px pitch), and an inward pulse would strike through the line's
+// own text.
 //
-// RED (planted): the cells lose interior_highlight (the outward ring).
+// RED (planted): the cells lose cell_highlight (the outward ring).
 TEST(PausePlayerDraw, key_cell_focus_ring_stays_inside_the_cell)
 {
     ControlStateGuard controls;
@@ -4747,6 +4749,7 @@ TEST(PausePlayerDraw, key_cell_focus_ring_stays_inside_the_cell)
     const button& cell = buttons[static_cast<std::size_t>(kFireCell)];
     int changed = 0;
     int outside = 0;
+    int over_text = 0;
     for (int sample = 0; sample < 60; ++sample)
     {
         render();
@@ -4764,12 +4767,16 @@ TEST(PausePlayerDraw, key_cell_focus_ring_stays_inside_the_cell)
                 if (x < cell.x || x >= cell.x + cell.sizex || y < cell.y ||
                     y >= cell.y + cell.sizey)
                     ++outside;
+                else if (x != cell.x && x != cell.x + cell.sizex - 1 &&
+                         y != cell.y && y != cell.y + cell.sizey - 1)
+                    ++over_text;
             }
         SDL_Delay(5);
     }
     key_cell_pks().menu_nav_enabled = nav_was;
     EXPECT_GT(changed, 0) << "the focus ring is drawn";
     EXPECT_EQ(0, outside) << "the ring never leaves the 8 px cell";
+    EXPECT_EQ(0, over_text) << "the ring never crosses the line's text";
     og::ui::install_pause_player_state_for_screen(nullptr);
 }
 
@@ -4804,8 +4811,6 @@ TEST(PausePlayerDraw, menushots_key_cell_and_wrapped_prompts)
         spec.draw_content(&state);
         const bool nav_was = key_cell_pks().menu_nav_enabled;
         key_cell_pks().menu_nav_enabled = true;
-        // Freeze the pulse at its widest inset-free phase is not possible
-        // (it reads the clock); any phase shows the box inside the cell.
         og::ui::picker_testing_draw_menu_highlight(spec, buttons.data(),
                                                    kFireCell);
         key_cell_pks().menu_nav_enabled = nav_was;

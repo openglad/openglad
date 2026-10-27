@@ -457,6 +457,12 @@ inline constexpr int kPlayerScreenPanelBottomY = 161; // == HUD stack bottom
 inline constexpr int kPlayerScreenHudTopY = 78;
 inline constexpr int kPlayerScreenHudPitch = 22;
 inline constexpr int kPlayerScreenBottomBandY = 169;  // TEAM / REMOVE
+// The bottom band's left half splits into two 66 px doors (the PAUSED
+// menu's half width) with a 6 px gutter: TEAM | KEYMAP on the Base Camp seat
+// screen, ABILITIES | KEYMAP on the pause player screen; REMOVE keeps x 166.
+inline constexpr int kPlayerScreenBottomHalfW = 66;
+inline constexpr int kPlayerScreenBottomMidX =
+    kPlayerScreenColAX + kPlayerScreenBottomHalfW + 6;  // 84, ends 150
 // Binding-panel interior: headers at panel+4, first line at panel+15,
 // 8px line pitch (columns kBindingPanel*Chars below).
 inline constexpr int kPlayerScreenPanelHeaderY = kPlayerScreenPanelTopY + 4;
@@ -584,7 +590,7 @@ void rewire_binding_panel_cells(button* buttons, int count,
              .down = (i) < 7 ? (first) + (i) + 1 : (bottom_left),               \
              .right = (first) + 8 + (i)},                                       \
      .state_override = &state<(i)>,                                             \
-     .no_draw = true, .interior_highlight = true}
+     .no_draw = true, .cell_highlight = true}
 #define OG_BINDING_ACTION_CELL(prefix, first, j, state, zoom, hud_first,       \
                                bottom_right)                                    \
     {.id = prefix "_key_action_" #j, .label = "",                               \
@@ -596,7 +602,7 @@ void rewire_binding_panel_cells(button* buttons, int count,
              .left = (first) + (j),                                             \
              .right = (hud_first) + binding_cell_hud_offset(j)},                \
      .state_override = &state<8 + (j)>,                                         \
-     .no_draw = true, .interior_highlight = true}
+     .no_draw = true, .cell_highlight = true}
 #define OG_BINDING_PANEL_CELLS(prefix, first, state, input, zoom, hud_first,   \
                                bottom_left, bottom_right)                       \
     OG_BINDING_MOVE_CELL(prefix, first, 0, state, input, bottom_left),          \

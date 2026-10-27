@@ -3781,7 +3781,7 @@ TEST(MenuEngine, seat_settings_registry_and_player_control_ownership)
         }
     }
     expect_geometry(seat.rows[kSeatSettingsTeamIndex],
-                    12, 169, 138, 18);
+                    12, 169, 66, 18);  // TEAM | KEYMAP halves (#388)
     expect_geometry(seat.rows[kSeatSettingsRemoveIndex],
                     166, 169, 138, 18);
     EXPECT_EQ(kSeatSettingsRemoveIndex,
