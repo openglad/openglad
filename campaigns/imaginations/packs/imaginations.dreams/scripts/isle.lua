@@ -23,6 +23,7 @@ local C = og.C
 local posts = og.use("dream_posts")
 
 local ISLE_LEVEL = 1
+local GOLD_LEVEL = 2
 
 -- Family bytes resolved once at chunk load. core:#20 is the immobile
 -- arrow turret (tower1) — the wizard's watchtowers.
@@ -178,13 +179,21 @@ local function on_entity_death(ent)
   end
 end
 
--- Generator customize_spawn, gated on the isle's level id so future
--- dream-log levels with colleges stay untouched. In a dream, some
--- enemies were friends all along: a stable fifth of every college's
+-- Generator customize_spawn: the campaign's one generator dispatcher (a
+-- second chunk registering the same family hook would be a duplicate).
+-- On the Castle of Gold our own Ghost Tent's spawns are stillborn, since
+-- there ghosts are bought with gold (gold_castle.lua). Past that it is
+-- gated on the isle's level id, so future dream-log levels with colleges
+-- stay untouched. On the isle, in a dream, some enemies were friends all
+-- along: a stable fifth of every college's
 -- spawns defect to the dreamer's team at birth. "Every 5th" is derived,
 -- not counted (R6): the spawn's sim entity id is assigned identically on
 -- every peer, so og.mod picks the same stable share everywhere.
 local function customize_spawn(generator, spawn)
+  if og.level_id() == GOLD_LEVEL and generator:team_num() == 0 then
+    spawn:set_dead(1)
+    return
+  end
   if og.level_id() ~= ISLE_LEVEL then
     return
   end
@@ -209,8 +218,9 @@ og.register_level_hooks(ISLE_LEVEL, {
 })
 
 -- The three colleges of the isle: the mage tower, the bone tent, the elf
--- treehouse. One registration per generator family; core registers no
--- generator hooks, so nothing is shadowed.
+-- treehouse (and the Castle of Gold's Ghost Tent). One registration per
+-- generator family; core registers no generator hooks, so nothing is
+-- shadowed.
 local COLLEGE_FAMILIES = {
   "core:tent", "core:tower", "core:treehouse",
 }

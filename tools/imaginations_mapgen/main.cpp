@@ -513,9 +513,9 @@ void build_raspberry_isle()
 // and want in: the gate opens for no faerie until the faeries between them
 // carry all twelve keys scattered on the shores. Inside, one of us keeps
 // the castle: every gold bar taken from the strongrooms wakes six ghosts
-// for our side at the Ghost Tent (the blue circle east of the walls), the
-// last bar seven. Nobody teleports into the castle. Two rivers cut the
-// faerie shores off the battlefield. Kill-all, then the throne on the hall
+// for our side at the Ghost Tent (a tent of ours on an island in a blue
+// circle east of the walls), the last bar seven. Nobody teleports into
+// the castle. Two rivers cut the faerie shores off the battlefield. Kill-all, then the throne on the hall
 // dais is the way out.
 //
 // Geometry on a 64x64 grid (tiles, inclusive):
@@ -711,6 +711,11 @@ void build_castle_of_gold()
     treasure(FAMILY_TELEPORTER, 52, 33, 1);
     treasure(FAMILY_TELEPORTER, 13, 50, 2);
     treasure(FAMILY_TELEPORTER, 6, 21, 2);
+    // The Ghost Tent itself: our tent (the classic tent generator, 2x2
+    // tiles) on the island, one row north of its pad. Its own spawns are
+    // stillborn here: ghosts are bought with gold (isle.lua's generator
+    // dispatcher, gated on level 2 and team 0).
+    og::mapgen::place_generator(w, FAMILY_TENT, 0, 0, 52, 31, 1);
 
     // --- The castle gold: two bars per strongroom, the ghost engine.
     for (const auto& bar : {std::pair{22, 19}, {25, 22}, {38, 19}, {41, 22},
@@ -772,10 +777,11 @@ void build_castle_of_gold()
     // Two columns flank the causeway, off its funnel.
     og::mapgen::paint_decor(w, 0, 28, 46, DECOR_COLUMN_BOTTOM);
     og::mapgen::paint_decor(w, 0, 34, 46, DECOR_COLUMN_BOTTOM);
-    // The Ghost Tent is ringed with bones around its pad.
+    // The Ghost Tent's pad is ringed with bones, but for the two under
+    // the tent.
     for (int dy = -1; dy <= 1; ++dy)
         for (int dx = -1; dx <= 1; ++dx)
-            if (dx != 0 || dy != 0)
+            if ((dx != 0 || dy != 0) && !(dy == -1 && dx >= 0))
                 og::mapgen::paint_decor(w, 0, 52 + dx, 33 + dy, DECOR_BONES);
     og::mapgen::scatter_decor(w, kScatterSeed, 0, 3, 18, 8, 23, 2, DECOR_SHRUB,
                               {og::mapgen::ScatterGround::DarkGrass});
@@ -831,10 +837,12 @@ void build_castle_of_gold()
 // Floor 0, 64x64: a ragged grey-rock asteroid (cobble, rust-brown dust,
 // dark-rimmed craters with rubble, stardust) on PIX_VOID1 space. West
 // side: the tall castle (x 8..23, y 15..46, walls 2 thick, flagstone court)
-// with a 3-wide east gate (y 29..31), the purple crown V in the
-// north hall, and the big door (three team-4 doors at key 3, row 43)
-// sealing the striped vestibule that holds the exit pad. A 2-wide
-// jagged spike band hugs the outer wall, broken only by the gate apron:
+// with a 3-wide east gate (y 29..31), the crown of spikes (a jagged V)
+// in the north hall, and the big door (three team-4 doors at key 3, row
+// 43) sealing the striped vestibule that holds the exit pad. South of the
+// spike band the rainbow lies in an arc round the big door: five
+// one-tile half-rings, red-brown, orange, white, green and purple. A
+// 2-wide jagged spike band hugs the outer wall, broken only by the gate apron:
 // jagged ground is too sharp for anyone to walk or fly over, so raiders
 // pile up against it and the script's spikes bite them there.
 // Yard posts east of the castle, the pen (an ash square with boulder
@@ -854,6 +862,24 @@ constexpr int kAsteroidCastleExit = 1;
 bool in_asteroid_castle(int x, int y)
 {
     return x >= 8 && x <= 23 && y >= 15 && y <= 46;
+}
+
+// The rainbow's five bands, outer (ring 7) to inner (ring 3).
+constexpr unsigned char kAsteroidRainbow[5] = {
+    PIX_FLOOR1, PIX_DIRT_1, PIX_SNOW1, PIX_GRASS1, PIX_CARPET_M};
+
+// The rainbow ring (3..7) a floor-0 cell lies on, or 0: rings centre on
+// the big door's middle (tile 15, row 46) and lie only on rows 49 and down.
+int asteroid_rainbow_ring(int x, int y)
+{
+    if (y < 49)
+        return 0;
+    const int d2x4 = 4 * ((x - 15) * (x - 15) + (y - 46) * (y - 46));
+    for (int r = 3; r <= 7; ++r)
+        if ((2 * r - 1) * (2 * r - 1) <= d2x4 &&
+            d2x4 < (2 * r + 1) * (2 * r + 1))
+            return r;
+    return 0;
 }
 
 void build_asteroid_castle()
@@ -892,11 +918,15 @@ void build_asteroid_castle()
     // The gate apron: the band's one spike-free mouth, cobbled like the
     // gate passage it continues.
     og::mapgen::paint_rect(g0, 24, 29, 25, 31, PIX_COBBLE_1);
-    // The crown V in the north hall.
+    // The crown of spikes in the north hall: a jagged V against the north
+    // wall, the same spikes as the band (the script bites there too).
     for (const auto& v : {std::pair{11, 17}, {20, 17}, {12, 18}, {19, 18},
                           {13, 19}, {18, 19}, {14, 20}, {17, 20}, {15, 21},
                           {16, 21}})
-        og::mapgen::paint(g0, v.first, v.second, PIX_CARPET_M);
+        og::mapgen::paint(
+            g0, v.first, v.second,
+            static_cast<unsigned char>(PIX_JAGGED_GROUND_1 +
+                                       (v.first + v.second) % 4));
 
     // The open rock outside the castle, as painted: grey cobble faces. Only
     // those cells take dust, stardust and craters below, never the court,
@@ -910,7 +940,7 @@ void build_asteroid_castle()
                t == PIX_COBBLE_4;
     };
     // The court is laid in cool grey flagstones, so the castle floor
-    // reads apart from the bare rock outside (the crown V stays purple).
+    // reads apart from the bare rock outside (the crown keeps its spikes).
     for (int y = 17; y <= 42; ++y)
         for (int x = 10; x <= 21; ++x)
             if (is_rock(x, y))
@@ -926,7 +956,7 @@ void build_asteroid_castle()
             return false;
         if (in_asteroid_castle(x, y))
             return false;
-        if (x >= 11 && x <= 19 && y >= 47 && y <= 54)
+        if (x >= 7 && x <= 23 && y >= 47 && y <= 55)
             return false; // the rainbow's plain rock frame
         if (x >= 43 && x <= 56 && y >= 42 && y <= 55)
             return false; // the pen and its margin
@@ -995,7 +1025,7 @@ void build_asteroid_castle()
             }
     // Stardust drifts, the space wind (snow weather past 40 tiles), with
     // ragged edges, and loose glitter on the open rock. The southwest drift
-    // keeps clear of the rainbow (x 12..18, y 48..53).
+    // keeps clear of the rainbow's frame (x 7..23, y 47..55).
     for (const auto& d : {std::pair{26.0, 9.0}, {25.0, 55.0}, {56.0, 52.0}})
         for (int y = 0; y < 64; ++y)
             for (int x = 0; x < 64; ++x)
@@ -1014,17 +1044,22 @@ void build_asteroid_castle()
         for (int x = 0; x < 64; ++x)
             if (open_rock(x, y) && hash(x, y, 34u) % 41u == 0u)
                 og::mapgen::paint(g0, x, y, PIX_SNOW2);
-    // The striped vestibule behind the big door and the rainbow apron south
-    // of it: purple, pink, white and red-brown walkable rows (the palette's
-    // only visibly different floors).
-    {
-        static constexpr unsigned char kStripes[4] = {
-            PIX_CARPET_M, PIX_ASH1, PIX_SNOW1, PIX_FLOOR1};
-        for (int y = 44; y <= 45; ++y)
-            og::mapgen::paint_rect(g0, 14, y, 16, y, kStripes[(y - 44) % 4]);
-        for (int y = 49; y <= 52; ++y)
-            og::mapgen::paint_rect(g0, 13, y, 17, y, kStripes[(y - 49) % 4]);
-    }
+    // The striped vestibule behind the big door: a purple row and an ash
+    // row, both walkable.
+    og::mapgen::paint_rect(g0, 14, 44, 16, 44, PIX_CARPET_M);
+    og::mapgen::paint_rect(g0, 14, 45, 16, 45, PIX_ASH1);
+    // The rainbow: concentric one-tile half-rings round the big door's
+    // middle (tile 15, row 46), radii 3..7, south of the spike band (rows
+    // 49 and down) and only on the bare rock. A cell is on ring r when its
+    // distance rounds to r: (2r-1)^2 <= 4 d^2 < (2r+1)^2. All five floors
+    // are walkable and painted after smoothing, so they stay inert.
+    for (int y = 49; y <= 55; ++y)
+        for (int x = 7; x <= 23; ++x)
+        {
+            const int r = asteroid_rainbow_ring(x, y);
+            if (r != 0 && is_rock(x, y))
+                og::mapgen::paint(g0, x, y, kAsteroidRainbow[7 - r]);
+        }
     // The pen: an ash checker outlined in pavement, no walls.
     for (int y = 45; y <= 52; ++y)
         for (int x = 46; x <= 53; ++x)
@@ -1183,7 +1218,9 @@ void build_asteroid_castle()
                           {10, 35}, {21, 35}, {11, 41}, {20, 41}, {49, 46},
                           {46, 49}, {53, 49}})
         treasure(FAMILY_GOLD_BAR, 0, b.first, b.second, 0);
-    treasure(FAMILY_INVULNERABLE_POTION, 0, 15, 18, 0); // the crown's heart
+    // Just under the crown's point: the V and the north wall seal off the
+    // court cells between its arms, so no prize lies in there.
+    treasure(FAMILY_INVULNERABLE_POTION, 0, 15, 22, 0);
     treasure(FAMILY_MAGIC_POTION, 0, 30, 24, 0);
     for (const auto& d : {std::pair{11, 30}, {20, 30}, {30, 36}, {44, 6}})
         treasure(FAMILY_DRUMSTICK, 0, d.first, d.second, 0);
@@ -1822,7 +1859,7 @@ int main(int argc, char* argv[])
                 // {id, floors, title, starts, t0 liv/gen, t1 liv/gen,
                 //  delayed, specials-disabled, exit destinations}
                 {1, 1, "The Raspberry Isle", 16, 0, 0, 19, 3, 3, 1, {2}},
-                {2, 1, "The Castle of Gold", 12, 0, 0, 27, 0, 23, 0,
+                {2, 1, "The Castle of Gold", 12, 0, 1, 27, 0, 23, 0,
                  {kCastleOfGoldExit}},
                 {3, 2, "The Asteroid Castle", 16, 1, 0, 22, 0, 11, 0,
                  {kAsteroidCastleExit}},

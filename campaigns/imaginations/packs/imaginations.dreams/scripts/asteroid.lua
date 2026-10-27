@@ -7,7 +7,8 @@
 --   * the spikes know their own: the jagged band around the walls is too
 --     sharp to walk or fly over, and every hostile that comes up against
 --     it (its centre within a tile of a spike) is hurt every ten ticks,
---     with a flash and a clang; the crew is never touched,
+--     with a flash and a clang; the crew is never touched. The crown of
+--     spikes in the court bites the same way,
 --   * the Big One on the Balloon Rock never throws while he stands on the
 --     rock (his sight is held at 0, so the hunt AI only walks), and wakes
 --     when the crew comes within nine tiles of him,
@@ -15,7 +16,7 @@
 --     falls one floor onto the asteroid: hurt and slow, the Fallen One
 --     (coming down the stairs instead makes him the Stomper),
 --   * the raider waves and the key are narrated as they come, and the last
---     bad guy's death lands a rainbow arc over the castle.
+--     bad guy's death flashes along the rainbow by the big door.
 --
 -- Determinism cookbook (docs/lua-classpacks-design.md §3): no mutable sim
 -- state in locals or upvalues (R6) — every answer re-derives from the
@@ -42,6 +43,12 @@ local SPIKE_DMG = 12
 local BAND = { x0 = 6, y0 = 13, x1 = 25, y1 = 48 }
 local CASTLE = { x0 = 8, y0 = 15, x1 = 23, y1 = 46 }
 local APRON = { x0 = 24, y0 = 29, x1 = 25, y1 = 31 }
+-- The crown of spikes in the court: a jagged V from (11,17) and (20,17)
+-- down to (15,21) and (16,21), one cell per arm per row.
+local CROWN_Y0 = 17
+local CROWN_Y1 = 21
+local CROWN_LEFT = 11
+local CROWN_RIGHT = 20
 
 -- The Big One wakes when any of the crew comes this close (tiles).
 local WAKE_TILES = 9
@@ -58,15 +65,16 @@ local STAIR_HP = 180
 local STAIR_DAMAGE = 40
 local STAIR_STEP = 6
 
--- Flashes from the deck edge toward the gate when he falls, and the
--- rainbow arc over the big door when the last bad guy dies.
+-- Flashes from the deck edge toward the gate when he falls, and along
+-- the rainbow's white band (ring 5 round the big door's middle, tile 15
+-- row 46) when the last bad guy dies.
 local FALL_ARC = {
   { 44, 15 }, { 41, 17 }, { 38, 19 }, { 35, 21 }, { 32, 22 }, { 29, 23 },
   { 26, 24 },
 }
 local WIN_ARC = {
-  { 9, 51 }, { 10, 49 }, { 12, 47 }, { 14, 46 }, { 16, 46 }, { 18, 47 },
-  { 20, 49 }, { 21, 51 },
+  { 11, 49 }, { 12, 50 }, { 13, 51 }, { 15, 51 }, { 17, 51 }, { 18, 50 },
+  { 19, 49 },
 }
 
 -- The centre tile of an entity.
@@ -83,7 +91,21 @@ local function in_rect(r, tx, ty)
   return ty >= r.y0 and ty <= r.y1
 end
 
+local function is_crown(tx, ty)
+  if ty < CROWN_Y0 or ty > CROWN_Y1 then
+    return false
+  end
+  local k = ty - CROWN_Y0
+  if tx == CROWN_LEFT + k then
+    return true
+  end
+  return tx == CROWN_RIGHT - k
+end
+
 local function is_spike(tx, ty)
+  if is_crown(tx, ty) then
+    return true
+  end
   if not in_rect(BAND, tx, ty) then
     return false
   end

@@ -55,7 +55,8 @@ local GATE_Y = 43 * C.GRID_SIZE
 local GATE_X0 = 30 * C.GRID_SIZE
 local GATE_X1 = 32 * C.GRID_SIZE
 
--- The Ghost Tent's pad, where the ghosts are born.
+-- The Ghost Tent's pad, where the ghosts are born (the tent itself stands
+-- one row north; its own spawns are stillborn, see isle.lua).
 local TENT_X = 52 * C.GRID_SIZE
 local TENT_Y = 33 * C.GRID_SIZE
 

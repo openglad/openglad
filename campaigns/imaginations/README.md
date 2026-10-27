@@ -29,8 +29,8 @@ generator's `write_campaign_yaml`).
 | scen | title | submitted idea (condensed) |
 |------|-------|----------------------------|
 | 1 | The Raspberry Isle | "We start at the edges of the island, at every corner. The sea is all around us. The enemies start in the middle, in a castle, near the water. We must run at them right away." (64x64; double-walled castle — bailey + keep — 19 posted foes, 3 college generators, two timed reinforcement waves, reef atolls, landing piers, bramble groves. Rebalanced 2026-08-11 down from the statue-era 25 when the hold-post wake bug was fixed and the garrison started genuinely fighting.) |
-| 2 | The Castle of Gold | Our own yellow castle in a faerie war. Four strongrooms of gold inside, each behind a row of doors; one of us keeps the castle and every gold bar taken wakes six ghosts for our side at the Ghost Tent, the last bar seven. Enemies are faeries only, pouring in from the map's edges; they must carry twelve keys between them to open the gate, and nobody teleports into the castle. (64x64; 3-thick castle ring with a 3-door gate, four 8x8 strongrooms with 3-door rows, each heaped with two gold and four silver bars (silver banks the classic way), two rivers with five bridges each, a grove, a brick field camp, a counting house, a pad square in a pool rim, the Ghost Tent ringed in water and open on the west, two teleporter pairs; 27 faeries — 4 awake, waves at ticks 400/900/1500, the Fae Queen and four knights at 2200; exit on the hall dais.) |
-| 3 | The Asteroid Castle | Our tall castle on an asteroid in space, with spikes all around its walls; bad guys think it is their castle, come close and get caught. The Big One sits on a floating rock and must be made to fall; the key is up there on the other floor, and the big door is the way out. A hero called the Purple Man is on our side. (64x64, 2 floors. Floor 0: a ragged grey-rock asteroid on black space (cobble, rust-brown dust, dark-rimmed craters with rubble, glittering stardust), the castle on the west rim with walls 2 thick, a flagstone court and a 3-wide east gate, a 2-wide band of jagged spikes around the walls, the crown V, the big door (three doors at key 3) sealing the exit; yard posts, the pen in the southeast, craters, stardust drifts that bring the snow. Floor 1: sky, and the striped Balloon Rock over a pit of space, reached by a 3-wide stair. 22 foes: 10 posted, the Big One on the rock, and 11 raiders in three waves at ticks 300/800/1400, the last led by Black Dash. The Purple Man holds the ground by the gate.) |
+| 2 | The Castle of Gold | Our own yellow castle in a faerie war. Four strongrooms of gold inside, each behind a row of doors; one of us keeps the castle and every gold bar taken wakes six ghosts for our side at the Ghost Tent, the last bar seven. Enemies are faeries only, pouring in from the map's edges; they must carry twelve keys between them to open the gate, and nobody teleports into the castle. (64x64; 3-thick castle ring with a 3-door gate, four 8x8 strongrooms with 3-door rows, each heaped with two gold and four silver bars (silver banks the classic way), two rivers with five bridges each, a grove, a brick field camp, a counting house, a pad square in a pool rim, the Ghost Tent (a tent of ours whose own spawns are stillborn) on an island ringed in water and open on the west, two teleporter pairs; 27 faeries — 4 awake, waves at ticks 400/900/1500, the Fae Queen and four knights at 2200; exit on the hall dais.) |
+| 3 | The Asteroid Castle | Our tall castle on an asteroid in space, with spikes all around its walls; bad guys think it is their castle, come close and get caught. The Big One sits on a floating rock and must be made to fall; the key is up there on the other floor, and the big door is the way out. A hero called the Purple Man is on our side. (64x64, 2 floors. Floor 0: a ragged grey-rock asteroid on black space (cobble, rust-brown dust, dark-rimmed craters with rubble, glittering stardust), the castle on the west rim with walls 2 thick, a flagstone court and a 3-wide east gate, a 2-wide band of jagged spikes around the walls, the crown of spikes, the big door (three doors at key 3) sealing the exit, and the rainbow in five one-tile half-rings round the big door; yard posts, the pen in the southeast, craters, stardust drifts that bring the snow. Floor 1: sky, and the striped Balloon Rock over a pit of space, reached by a 3-wide stair. 22 foes: 10 posted, the Big One on the rock, and 11 raiders in three waves at ticks 300/800/1400, the last led by Black Dash. The Purple Man holds the ground by the gate.) |
 
 Growth rule: new ideas append new scens (2, 3, …). Each level's exit
 leads to the next; the newest level's walk-out exit loops home to 1, and
@@ -45,7 +45,10 @@ The Castle of Gold's beats live in
   banks only for a keeper (a saved character or a player-driven walker),
   so allied ghosts floating through the strongrooms leave the gold alone,
   and wakes six allied ghosts at the tent (seven for the last bar). New
-  ghosts stop at 110 livings.
+  ghosts stop at 110 livings. The tent is our own generator on the
+  island; its own spawns are stillborn (the campaign's one generator
+  dispatcher in `isle.lua`, gated on scen 2 and team 0), so only gold
+  wakes ghosts.
 - Keys: the gate's three doors are team 0 (the crew and its ghosts walk
   through their own gate) at key level 30, which no key opens. The script
   (a `core:key` on_eat override plus a check every 100 ticks) drops them
@@ -69,8 +72,9 @@ The Asteroid Castle's beats live in
 - Spikes: jagged ground is impassable to walkers AND flyers, so the band
   around the walls is a barrier the raiders pile up against. Every ten
   ticks the script bites (12 hp, a flash and a clang) every awake hostile
-  on floor 0 whose centre tile is on or beside a spike. The crew is never
-  bitten. The gate apron is spike-free.
+  on floor 0 whose centre tile is on or beside a spike, the crown of
+  spikes in the court included. The crew is never bitten. The gate apron
+  is spike-free.
 - The Big One: on the rock (floor 1) his sight is held at 0, so he never
   throws. He wakes when any of the crew comes within nine tiles (any
   floor). Awake on the rock, his orders are replaced every tick by one
@@ -86,8 +90,8 @@ The Asteroid Castle's beats live in
 - Stand-down: the shared loop posts every hostile hunter every 50 ticks,
   except the Big One while he is on the rock.
 - Narration at ticks 80, 260, 301 (first gust), 801 (falling stars), 1401
-  (Black Dash's band) and 1500 (the key); the last bad guy's death lands a
-  rainbow arc of flashes over the big door.
+  (Black Dash's band) and 1500 (the key); the last bad guy's death runs
+  flashes along the rainbow's white band by the big door.
 - The key (key 3, under the rock's mast on floor 1) and the big door are
   native: one walker holding key 3 opens the door for everyone.
 

@@ -157,6 +157,7 @@ struct ShippedLevel
     int grid_h;
     int start_markers;
     int team0_livings; // placed allies (the crew's own markers excluded)
+    int team0_generators; // the Castle of Gold's Ghost Tent
     int team1_livings;
     int team1_generators;
     int exits;
@@ -164,10 +165,10 @@ struct ShippedLevel
 };
 
 constexpr ShippedLevel kLevels[] = {
-    {1, "The Raspberry Isle", 1, 64, 64, 16, 0, 19, 3, 1, 2},
-    {2, "The Castle of Gold", 1, 64, 64, 12, 0, 27, 0, 1, 3},
+    {1, "The Raspberry Isle", 1, 64, 64, 16, 0, 0, 19, 3, 1, 2},
+    {2, "The Castle of Gold", 1, 64, 64, 12, 0, 1, 27, 0, 1, 3},
     // The newest level's exit loops home to 1 until scen 4 ships.
-    {3, "The Asteroid Castle", 2, 64, 64, 16, 1, 22, 0, 1, 1},
+    {3, "The Asteroid Castle", 2, 64, 64, 16, 1, 0, 22, 0, 1, 1},
 };
 
 // SCENARIO INFORMATION dialog budget (33 glyphs per briefing line).
@@ -212,6 +213,7 @@ TEST_F(ImaginationsCampaignTest, levels_round_trip_the_authored_structure)
         EXPECT_EQ(expected.start_markers, starts);
         EXPECT_EQ(expected.team0_livings, livings[0])
             << "placed allies (the asteroid's Purple Man)";
+        EXPECT_EQ(expected.team0_generators, generators[0]);
         EXPECT_EQ(expected.team1_livings, livings[1]);
         EXPECT_EQ(expected.team1_generators, generators[1]);
 
@@ -885,6 +887,91 @@ TEST_F(ImaginationsCampaignTest, isle_gold_still_banks_the_classic_way)
     expect_no_script_errors(world);
 }
 
+// The Ghost Tent is a real tent of ours on the island, one row north of
+// its pad. Generators always fire, but on this level the campaign's
+// generator dispatcher makes our tent's own spawns stillborn: ghosts are
+// bought with gold. A stillborn spawn never goes through death() (no
+// corpse, no death sound, no death hooks) and is gone a tick later. The
+// same tent turned to the faeries' side spawns its skeletons, so the quiet
+// is the rule, not a tent that never fires.
+TEST_F(ImaginationsCampaignTest, castle_ghost_tent_spawns_are_stillborn)
+{
+    auto find_tent = [](GameWorld& world) -> walker* {
+        for (const auto& uptr : world.oblist)
+            if (uptr && uptr->query_order() == Order::Generator &&
+                uptr->family() == FAMILY_TENT)
+                return uptr.get();
+        return nullptr;
+    };
+    auto live_skeletons = [](GameWorld& world) {
+        int n = 0;
+        for (const auto& uptr : world.oblist)
+            if (uptr && uptr->query_order() == Order::Living &&
+                uptr->family() == FAMILY_SKELETON && !uptr->dead())
+                ++n;
+        return n;
+    };
+    auto spawns_over = [&](int team, int ticks) {
+        LoadedImaginationsLevel fx(kCastleLevel);
+        EXPECT_TRUE(fx.loaded);
+        if (!fx.loaded)
+            return -1;
+        GameWorld& world = fx.world();
+        walker* tent = find_tent(world);
+        EXPECT_NE(nullptr, tent);
+        if (tent == nullptr)
+            return -1;
+        tent->set_team_num(static_cast<unsigned char>(team));
+        tent->set_real_team_num(static_cast<unsigned char>(team));
+        tent->stats()->set_max_hitpoints(1.0e6f); // it outlives the span
+        tent->stats()->set_hitpoints(1.0e6f);
+        int seen = 0;
+        for (int t = 0; t < ticks; ++t)
+        {
+            world.tick();
+            seen += live_skeletons(world);
+        }
+        expect_no_script_errors(world);
+        return seen;
+    };
+
+    {
+        LoadedImaginationsLevel fx(kCastleLevel);
+        ASSERT_TRUE(fx.loaded);
+        GameWorld& world = fx.world();
+        world.tick(); // on_load
+        walker* tent = find_tent(world);
+        ASSERT_NE(nullptr, tent);
+        EXPECT_EQ(0, tent->team_num()) << "the Ghost Tent is ours";
+        EXPECT_EQ(52, tent->xpos() / GRID_SIZE);
+        EXPECT_EQ(31, tent->ypos() / GRID_SIZE);
+        auto death_fx = [&]() {
+            int n = 0;
+            for (const auto& uptr : world.fxlist)
+                if (uptr && uptr->family() == FAMILY_EXPLOSION)
+                    ++n;
+            return n;
+        };
+        const int fx0 = death_fx();
+        tent->set_lastx(0.0f); // down, onto the island by the pad
+        tent->set_lasty(1.0f);
+        walker* spawn = tent->fire();
+        ASSERT_NE(nullptr, spawn) << "the tent fires";
+        EXPECT_EQ(FAMILY_SKELETON, spawn->family());
+        EXPECT_TRUE(spawn->dead()) << "stillborn";
+        EXPECT_FALSE(spawn->death_called()) << "no death, so no corpse";
+        const std::uint32_t id = spawn->entity_id();
+        world.tick();
+        EXPECT_EQ(nullptr, world.find_by_id(id)) << "gone a tick later";
+        EXPECT_EQ(fx0, death_fx()) << "no death FX at the tent";
+        EXPECT_EQ(0, live_skeletons(world));
+        expect_no_script_errors(world);
+    }
+    EXPECT_EQ(0, spawns_over(0, 3000)) << "our tent's own spawns never live";
+    EXPECT_GT(spawns_over(1, 3000), 0)
+        << "a tent of theirs spawns in the same span";
+}
+
 TEST_F(ImaginationsCampaignTest, castle_on_load_survives_the_level_start_seed)
 {
     LoadedImaginationsLevel fx(kCastleLevel);
@@ -966,10 +1053,59 @@ TEST_F(ImaginationsCampaignTest, asteroid_floats_in_space_with_a_spiked_castle)
             << c.first << "," << c.second;
     for (int y = 29; y <= 31; ++y)
         EXPECT_EQ(PIX_COBBLE_1, at(g0, 24, y)) << "the apron row " << y;
-    // An asteroid, not a meadow: no grass anywhere on the rock.
+    // The rainbow round the big door's middle (tile 15, row 46): rings 3..7
+    // by rounded distance, rows 49 and down, outer red-brown to inner
+    // purple.
+    auto ring_of = [](int x, int y) {
+        if (y < 49)
+            return 0;
+        const int d2x4 = 4 * ((x - 15) * (x - 15) + (y - 46) * (y - 46));
+        for (int r = 3; r <= 7; ++r)
+            if ((2 * r - 1) * (2 * r - 1) <= d2x4 &&
+                d2x4 < (2 * r + 1) * (2 * r + 1))
+                return r;
+        return 0;
+    };
+    const unsigned char kBands[8] = {0, 0, 0, PIX_CARPET_M, PIX_GRASS1,
+                                     PIX_SNOW1, PIX_DIRT_1, PIX_FLOOR1};
+    int rainbow_cells[8] = {};
+    for (int y = 47; y <= 55; ++y)
+        for (int x = 7; x <= 23; ++x)
+        {
+            const int r = ring_of(x, y);
+            const unsigned char t = at(g0, x, y);
+            if (r != 0)
+            {
+                EXPECT_EQ(kBands[r], t) << "rainbow ring " << r << " at " << x
+                                        << "," << y;
+                ++rainbow_cells[r];
+                continue;
+            }
+            // Its frame stays plain rock (or the rim's space): no stardust,
+            // glitter or dust between or round the bands.
+            if (y >= 49)
+            {
+                EXPECT_TRUE(t == PIX_COBBLE_1 || t == PIX_COBBLE_2 ||
+                            t == PIX_COBBLE_3 || t == PIX_COBBLE_4 ||
+                            t == PIX_VOID1)
+                    << "the rainbow's rock frame at " << x << "," << y;
+            }
+        }
+    for (int r = 3; r <= 7; ++r)
+        EXPECT_GE(rainbow_cells[r], 3) << "ring " << r << " is an arc";
+    // The arc's legs and its foot: the outer ring reaches row 49 at both
+    // ends and row 53 under the door.
+    EXPECT_EQ(PIX_FLOOR1, at(g0, 9, 49));
+    EXPECT_EQ(PIX_FLOOR1, at(g0, 21, 49));
+    EXPECT_EQ(PIX_FLOOR1, at(g0, 15, 53));
+    EXPECT_EQ(PIX_CARPET_M, at(g0, 15, 49));
+    // An asteroid, not a meadow: no grass anywhere on the rock but the
+    // rainbow's green band.
     for (int y = 0; y < 64; ++y)
         for (int x = 0; x < 64; ++x)
         {
+            if (ring_of(x, y) == 4 && x >= 7 && x <= 23)
+                continue;
             const unsigned char t = at(g0, x, y);
             const bool grass =
                 t == PIX_GRASS1 || t == PIX_GRASS2 || t == PIX_GRASS3 ||
@@ -978,16 +1114,6 @@ TEST_F(ImaginationsCampaignTest, asteroid_floats_in_space_with_a_spiked_castle)
                 (t >= PIX_GRASS_DARK_B1 && t <= PIX_GRASS_DARK_R2) ||
                 (t >= PIX_GRASS_LIGHT_1 && t <= PIX_GRASS_LIGHT_LEFT_TOP);
             EXPECT_FALSE(grass) << x << "," << y;
-        }
-    // The rainbow's stripes run unbroken: no stardust touches its apron
-    // (x 12..18, y 48..53) but its own white stripe (row 51).
-    for (int y = 48; y <= 53; ++y)
-        for (int x = 12; x <= 18; ++x)
-        {
-            const unsigned char t = at(g0, x, y);
-            if (y == 51 && x >= 13 && x <= 17)
-                continue;
-            EXPECT_TRUE(t != PIX_SNOW1 && t != PIX_SNOW2) << x << "," << y;
         }
     // The Balloon pit: void under the whole deck but the three up-stairs.
     for (int y = 7; y <= 13; ++y)
@@ -1002,24 +1128,18 @@ TEST_F(ImaginationsCampaignTest, asteroid_floats_in_space_with_a_spiked_castle)
                       at(g1, x, y))
                 << "the purple-striped deck at " << x << "," << y;
         }
-    // The purple crown V in the north hall, on the grey cobble court.
+    // The crown of spikes in the north hall: a jagged V on the court.
     for (const auto& v : {std::pair{11, 17}, {20, 17}, {12, 18}, {19, 18},
                           {13, 19}, {18, 19}, {14, 20}, {17, 20}, {15, 21},
                           {16, 21}})
-        EXPECT_EQ(PIX_CARPET_M, at(g0, v.first, v.second))
-            << "the crown V at " << v.first << "," << v.second;
-    // The striped vestibule (purple, pink) and the rainbow apron (purple,
-    // pink, white, red-brown): every stripe a different visible floor.
-    const unsigned char kStripes[4] = {PIX_CARPET_M, PIX_ASH1, PIX_SNOW1,
-                                       PIX_FLOOR1};
-    for (int y = 44; y <= 45; ++y)
-        for (int x = 14; x <= 16; ++x)
-            EXPECT_EQ(kStripes[y - 44], at(g0, x, y))
-                << "the vestibule at " << x << "," << y;
-    for (int y = 49; y <= 52; ++y)
-        for (int x = 13; x <= 17; ++x)
-            EXPECT_EQ(kStripes[y - 49], at(g0, x, y))
-                << "the rainbow apron at " << x << "," << y;
+        EXPECT_TRUE(jagged(at(g0, v.first, v.second)))
+            << "the crown of spikes at " << v.first << "," << v.second;
+    // The striped vestibule: a purple row and an ash row.
+    for (int x = 14; x <= 16; ++x)
+    {
+        EXPECT_EQ(PIX_CARPET_M, at(g0, x, 44)) << "the vestibule at " << x;
+        EXPECT_EQ(PIX_ASH1, at(g0, x, 45)) << "the vestibule at " << x;
+    }
     // The rest of floor 1 is sky.
     int sky = 0;
     for (std::size_t c = 0; c < static_cast<std::size_t>(g1.w * g1.h); ++c)
@@ -1087,12 +1207,14 @@ TEST_F(ImaginationsCampaignTest, asteroid_spikes_bite_bad_guys_only)
 
     walker* raider = park_living(world, 1, 5, 25, 500.0f);  // against it
     walker* crewman = park_living(world, 0, 5, 36, 500.0f); // against it
-    walker* inside = park_living(world, 1, 12, 20, 500.0f); // in the court
+    walker* inside = park_living(world, 1, 13, 32, 500.0f); // in the court
+    walker* crowned = park_living(world, 1, 15, 22, 500.0f); // at the crown
     walker* back = park_living(world, 1, 4, 30, 500.0f);    // a step back
     walker* dying = park_living(world, 1, 5, 40, 5.0f);     // against it
     ASSERT_NE(nullptr, raider);
     ASSERT_NE(nullptr, crewman);
     ASSERT_NE(nullptr, inside);
+    ASSERT_NE(nullptr, crowned);
     ASSERT_NE(nullptr, back);
     ASSERT_NE(nullptr, dying);
     // Any ten consecutive ticks hold exactly one bite.
@@ -1111,7 +1233,9 @@ TEST_F(ImaginationsCampaignTest, asteroid_spikes_bite_bad_guys_only)
     EXPECT_FLOAT_EQ(500.0f, crewman->stats()->hitpoints())
         << "the spikes know their own";
     EXPECT_FLOAT_EQ(500.0f, inside->stats()->hitpoints())
-        << "no spikes inside the walls";
+        << "no spikes in the open court";
+    EXPECT_LE(crowned->stats()->hitpoints(), 500.0f - 12.0f + 2.0f)
+        << "the crown of spikes bites a raider that runs up to it";
     EXPECT_FLOAT_EQ(500.0f, back->stats()->hitpoints())
         << "two tiles off the band is out of reach";
     EXPECT_TRUE(dying->dead()) << "the spikes kill";
