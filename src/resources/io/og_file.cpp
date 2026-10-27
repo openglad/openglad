@@ -798,8 +798,8 @@ static std::optional<FrameInfo> load_aseprite_sidecar(const char* filename,
 // ---------------------------------------------------------------------------
 // read_rgba_png — a truecolour picture for the display's own resolution
 // ---------------------------------------------------------------------------
-// The CHANGELOG! keyboard picture is about 1560 x 550: far past the pixie
-// limits above and drawn through the native plane, never the 320 x 200 menu
+// The keyboard picture's glyph atlas is 1024 pixels wide: far past the
+// pixie limits above and drawn through the native plane, never the 320 x 200 menu
 // canvas. Same file cap as a sprite; a side cap keeps a crafted header from
 // asking lodepng for gigabytes.
 namespace og::io {

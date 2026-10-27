@@ -471,13 +471,14 @@ og_add_shell_check_target(check_lua_error_sites
     check_lua_error_sites.sh
 )
 
-# The CHANGELOG! keyboard pictures and their key list hash to what
-# scripts/keyboard_map/keyboard_map.stamp says: a key change that was not
-# redrawn fails the build (og_unit_core, which pins the list against the key
-# tables, depends on it). See the script header.
-og_add_shell_check_target(check_keyboard_map
-    "Checking the CHANGELOG! keyboard pictures match their key list"
-    check_keyboard_map.sh
+# The keyboard picture's glyph atlas (pix/keyboard/glyphs.png) and its table
+# (src/interface/ui/keyboard_glyphs.inc) are the output of
+# scripts/keyboard_picture/generate_glyphs.py: an atlas edited by hand, or the
+# generator edited without regenerating, fails the build (og_unit_core, which
+# tests the renderer, depends on it). See the script header.
+og_add_shell_check_target(check_keyboard_glyphs
+    "Checking the keyboard picture's glyph atlas is the generator's output"
+    check_keyboard_glyphs.sh
 )
 
 # The ability icons: every grid under scripts/ability_icons/ passes the

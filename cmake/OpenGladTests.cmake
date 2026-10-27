@@ -222,6 +222,7 @@ set(ALL_INTEGRATION_TEST_SOURCES
     ${CMAKE_SOURCE_DIR}/tests/integration/test_abilities_flow.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_changelog_flow.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_rgba_png.cpp
+    ${CMAKE_SOURCE_DIR}/tests/integration/test_keymap_screen.cpp
 )
 
 # NO_DEFAULT_TEST builds the binary but registers no ctest entry for it: the
@@ -810,6 +811,7 @@ og_add_test_group(og_test_lineup FILES
 og_add_test_group(og_test_abilities FILES
     test_abilities_flow.cpp
     test_changelog_flow.cpp
+    test_keymap_screen.cpp
 )
 target_include_directories(og_test_parity PRIVATE
     ${CMAKE_SOURCE_DIR}/tests/parity
@@ -926,11 +928,11 @@ og_add_unit_group(og_unit_core FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_belt_input.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_keyboard_map_asset.cpp
 )
-# The keyboard map's second and third links (the text and the pictures
-# against the stamp) run wherever its first link, the test above, is built,
-# and on every integration build beside check_injector_settles.
-add_dependencies(og_unit_core check_keyboard_map)
-add_dependencies(og_game_test check_keyboard_map)
+# The keyboard picture's glyph atlas against its generator, wherever the
+# renderer's test above is built, and on every integration build beside
+# check_injector_settles.
+add_dependencies(og_unit_core check_keyboard_glyphs)
+add_dependencies(og_game_test check_keyboard_glyphs)
 
 og_add_unit_group(og_unit_sim FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_session_raii.cpp
