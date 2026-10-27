@@ -38,6 +38,8 @@
 #include "test_match_seed.h"
 
 #include <filesystem>
+#include <functional>
+#include <optional>
 #include <tuple>
 #include <memory>
 #include <string>
@@ -502,9 +504,10 @@ TEST(CursesGameRuntimeLocal, non_meta_key_does_not_withdraw)
     EXPECT_FALSE(result.ended) << "the frame cap stopped us, not a level end";
 }
 
-// Esc is the one meta key the loop intercepts: it opens the in-game menu, which
-// the level loop treats as a quit-to-menu / withdraw.
-TEST(CursesGameRuntimeLocal, escape_key_withdraws_from_the_mission)
+// Esc is the one meta key the loop intercepts: it opens the in-game PAUSED
+// menu, and Q there withdraws from the mission (the old one-key withdraw is
+// now Esc, Q).
+TEST(CursesGameRuntimeLocal, escape_then_q_withdraws_from_the_mission)
 {
     SaveData save;
     init_test_save(save);
@@ -517,7 +520,8 @@ TEST(CursesGameRuntimeLocal, escape_key_withdraws_from_the_mission)
     CursesInput input;
     CursesRenderer renderer;
 
-    term.push_special(KeyCode::Escape); // open in-game menu -> withdraw
+    term.push_special(KeyCode::Escape); // open the PAUSED menu
+    term.push_char(U'q');               // quit mission
 
     LevelLoopOptions opt;
     opt.max_frames = 50;
@@ -525,7 +529,7 @@ TEST(CursesGameRuntimeLocal, escape_key_withdraws_from_the_mission)
     opt.render = false;
 
     GameRunResult result = run_level_loop(*session, term, clock, input, renderer, opt);
-    EXPECT_TRUE(result.withdrew) << "pressing Esc should withdraw from the mission";
+    EXPECT_TRUE(result.withdrew) << "Esc then Q should withdraw from the mission";
 }
 
 // The exit is NEVER auto-accepted: the loop asks the player, and 'n' declines so
@@ -1132,11 +1136,23 @@ public:
         sent.push_back(input);
         inner_->send_input(input);
     }
-    void advance() override { inner_->advance(); }
+    // Every advance() is counted and can be watched (on_advance runs first).
+    int advances = 0;
+    std::function<void()> on_advance;
+    void advance() override
+    {
+        ++advances;
+        if (on_advance)
+            on_advance();
+        inner_->advance();
+    }
     GameWorld& mirror_world() override { return inner_->mirror_world(); }
+    // Set: the loop sees control move to another body (a teammate after a
+    // death) while the real session goes on as before.
+    std::optional<std::uint32_t> followed_override;
     std::uint32_t followed_entity_id() const override
     {
-        return inner_->followed_entity_id();
+        return followed_override.value_or(inner_->followed_entity_id());
     }
     bool follow_engaged() const override { return inner_->follow_engaged(); }
     std::uint32_t next_input_tick() const override
@@ -1146,11 +1162,37 @@ public:
     bool ended() const override { return inner_->ended(); }
     int ending() const override { return inner_->ending(); }
     int next_level() const override { return inner_->next_level(); }
-    void request_abort() override { inner_->request_abort(); }
+    void request_abort() override
+    {
+        ++aborts;
+        inner_->request_abort();
+    }
     std::vector<std::string> drain_messages() override
     {
         return inner_->drain_messages();
     }
+    // The PAUSED menu's calls, in order ('P' request, 'R' response, 'B' a
+    // belt change), forwarded to the real session.
+    std::string pause_calls;
+    int aborts = 0;
+    std::vector<og::sim::belt::Bytes> belts_sent;
+    void request_pause() override
+    {
+        pause_calls += 'P';
+        inner_->request_pause();
+    }
+    void send_pause_response() override
+    {
+        pause_calls += 'R';
+        inner_->send_pause_response();
+    }
+    void set_belt(const og::sim::belt::Bytes& belt) override
+    {
+        pause_calls += 'B';
+        belts_sent.push_back(belt);
+        inner_->set_belt(belt);
+    }
+    CursesGameSession& inner() { return *inner_; }
 
 private:
     std::unique_ptr<CursesGameSession> inner_;
@@ -1248,4 +1290,277 @@ TEST(CursesGameRuntimeLocal, held_shifter_in_the_level_loop_shows_the_shift_row)
     run_level_loop(*session, term, clock, input, renderer, opt);
     EXPECT_EQ(term.text_row(1).find("S1:"), std::string::npos)
         << "released, the plain row again; got: " << term.text_row(1);
+}
+
+// --- The in-game PAUSED menu (Esc; #376 ABILITIES, #388 KEYS) --------------
+
+namespace {
+
+// Runs a few frames with no keys so the mirror follows the soldier, then
+// returns the opt the menu tests use.
+LevelLoopOptions settle(CursesGameSession& session, HeadlessTerminal& term,
+                        FakeClock& clock, CursesInput& input,
+                        CursesRenderer& renderer)
+{
+    LevelLoopOptions opt;
+    opt.max_frames = 3;
+    opt.no_pacing = true;
+    opt.render = false;
+    run_level_loop(session, term, clock, input, renderer, opt);
+    return opt;
+}
+
+} // namespace
+
+// Esc, then R: the menu asks for the pause once and answers it on the way
+// out; the mission goes on.
+TEST(CursesGameRuntimeLocal, escape_then_r_resumes_the_mission)
+{
+    SaveData save;
+    init_test_save(save);
+    std::string err;
+    auto inner = make_local_session(save, 1, &err);
+    ASSERT_NE(inner, nullptr) << err;
+    RecordingSession session(std::move(inner));
+
+    HeadlessTerminal term(30, 80);
+    FakeClock clock;
+    CursesInput input;
+    CursesRenderer renderer;
+    LevelLoopOptions opt = settle(session, term, clock, input, renderer);
+
+    term.push_special(KeyCode::Escape);
+    term.push_char(U'r');
+    opt.max_frames = 10;
+    const GameRunResult result =
+        run_level_loop(session, term, clock, input, renderer, opt);
+    EXPECT_FALSE(result.withdrew) << "R resumes; it does not withdraw";
+    EXPECT_FALSE(result.ended);
+    EXPECT_EQ(0, session.aborts);
+    EXPECT_EQ("PR", session.pause_calls)
+        << "one pause request when the menu opens, one response when it closes";
+    EXPECT_FALSE(session.mirror_world().paused)
+        << "the world runs again after the menu";
+
+    // Esc, then Q: the same pair, then the withdraw.
+    session.pause_calls.clear();
+    term.push_special(KeyCode::Escape);
+    term.push_char(U'Q');
+    const GameRunResult quit =
+        run_level_loop(session, term, clock, input, renderer, opt);
+    EXPECT_TRUE(quit.withdrew);
+    EXPECT_EQ(1, session.aborts);
+    EXPECT_EQ("PR", session.pause_calls);
+}
+
+// Esc, A: the ABILITIES page over the soldier the player drives; 'c' empties
+// key 1, Esc leaves the page with the edit, R resumes. The in-process
+// SERVER's guy takes the layout.
+//
+// RED (planted): the menu forgets to send the edited layout.
+TEST(CursesGameRuntimeLocal, escape_then_a_edits_the_driven_heros_layout_on_the_server)
+{
+    ScopedAbilitySelect on(true);
+    SaveData save;
+    init_test_save(save);
+    for (auto& member : save.team_list)
+        if (member)
+            member->upgrade_to_level(13);
+    std::string err;
+    auto inner = make_local_session(save, 1, &err);
+    ASSERT_NE(inner, nullptr) << err;
+    RecordingSession session(std::move(inner));
+
+    HeadlessTerminal term(30, 100);
+    FakeClock clock;
+    CursesInput input;
+    CursesRenderer renderer;
+    LevelLoopOptions opt = settle(session, term, clock, input, renderer);
+    const std::uint32_t followed = session.followed_entity_id();
+    ASSERT_NE(0u, followed) << "the soldier is followed";
+    const walker* const mirror_body =
+        session.mirror_world().find_by_id(followed);
+    ASSERT_NE(nullptr, mirror_body);
+    ASSERT_NE(nullptr, mirror_body->myguy) << "the soldier has a guy";
+    const GameWorld* const server =
+        curses_game_runtime_testing_local_server_world(session.inner());
+    ASSERT_NE(nullptr, server);
+    const walker* const body = server->find_by_id(followed);
+    ASSERT_NE(nullptr, body);
+    ASSERT_NE(nullptr, body->myguy);
+    const og::sim::belt::Bytes before = body->myguy->belt;
+    ASSERT_NE(og::sim::belt::kEmptyByte, before[0]);
+
+    term.push_special(KeyCode::Escape);
+    term.push_char(U'a');
+    term.push_char(U'c');                // empty key 1 (the cursor's row)
+    term.push_special(KeyCode::Escape);  // done: back to the menu
+    term.push_char(U'r');
+    opt.max_frames = 3;
+    const GameRunResult result =
+        run_level_loop(session, term, clock, input, renderer, opt);
+    EXPECT_FALSE(result.withdrew);
+    EXPECT_EQ("PBR", session.pause_calls);
+    ASSERT_EQ(1u, session.belts_sent.size());
+    EXPECT_EQ(og::sim::belt::kEmptyByte, session.belts_sent.front()[0]);
+
+    const walker* const after = server->find_by_id(followed);
+    ASSERT_NE(nullptr, after);
+    ASSERT_NE(nullptr, after->myguy);
+    EXPECT_EQ(og::sim::belt::kEmptyByte, after->myguy->belt[0])
+        << "the server's guy takes the layout";
+    for (std::size_t slot = 1; slot < before.size(); ++slot)
+        EXPECT_EQ(before[slot], after->myguy->belt[slot]) << "slot " << slot;
+}
+
+// The ABILITIES and KEYS pages are opened over a running mission: while
+// either waits for a key the session keeps advancing (a networked host keeps
+// serving its joiners, a joiner keeps its link) and the pause is asked for
+// again every 20 s. The clock jumps 25 s inside the ABILITIES page: the
+// keep-alive goes out from there.
+//
+// RED (planted): the pages wait on a blocking poll with no idle tick.
+TEST(CursesGameRuntimeLocal, escape_pages_keep_the_session_advancing_and_the_pause_alive)
+{
+    ScopedAbilitySelect on(true);
+    SaveData save;
+    init_test_save(save);
+    for (auto& member : save.team_list)
+        if (member)
+            member->upgrade_to_level(13);
+    std::string err;
+    auto inner = make_local_session(save, 1, &err);
+    ASSERT_NE(inner, nullptr) << err;
+    RecordingSession session(std::move(inner));
+
+    HeadlessTerminal term(30, 100);
+    FakeClock clock;
+    CursesInput input;
+    CursesRenderer renderer;
+    LevelLoopOptions opt = settle(session, term, clock, input, renderer);
+    ASSERT_NE(0u, session.followed_entity_id());
+
+    // Seven keys. The menu line reads 'a' (6 left before it), 'k' (3) and
+    // 'r' (1); the ABILITIES page reads 'c' (5) and its Esc (4); the KEYS
+    // page reads 'x' (2).
+    term.push_special(KeyCode::Escape);
+    term.push_char(U'a');
+    term.push_char(U'c');
+    term.push_special(KeyCode::Escape);
+    term.push_char(U'k');
+    term.push_char(U'x');
+    term.push_char(U'r');
+    int abilities_page_advances = 0;
+    int keys_page_advances = 0;
+    bool jumped = false;
+    session.on_advance = [&] {
+        const std::size_t left = term.keys_left();
+        if (left == 5 || left == 4)
+            ++abilities_page_advances;
+        if (left == 2)
+            ++keys_page_advances;
+        if (left == 5 && !jumped) {
+            clock.advance(25'000);
+            jumped = true;
+        }
+    };
+    opt.max_frames = 1;
+    run_level_loop(session, term, clock, input, renderer, opt);
+    session.on_advance = nullptr;
+    EXPECT_TRUE(term.input_exhausted());
+    EXPECT_GT(abilities_page_advances, 0)
+        << "the ABILITIES page advances the session while it waits";
+    EXPECT_GT(keys_page_advances, 0)
+        << "the KEYS page advances the session while it waits";
+    EXPECT_EQ("PPBR", session.pause_calls)
+        << "the pause, its keep-alive from inside the page 25 s on, the "
+           "edit, the response";
+}
+
+// Esc, A: while the page is open control moves to another body (the
+// session advanced; a teammate took over after a death). The layout was
+// edited for the first body, so nothing is sent.
+//
+// RED (planted): the page's result is sent without asking whether the body
+// it was edited for is still the one driven.
+TEST(CursesGameRuntimeLocal, escape_then_a_sends_nothing_when_control_moves_to_another_body)
+{
+    ScopedAbilitySelect on(true);
+    SaveData save;
+    init_test_save(save);
+    for (auto& member : save.team_list)
+        if (member)
+            member->upgrade_to_level(13);
+    std::string err;
+    auto inner = make_local_session(save, 1, &err);
+    ASSERT_NE(inner, nullptr) << err;
+    RecordingSession session(std::move(inner));
+
+    HeadlessTerminal term(30, 100);
+    FakeClock clock;
+    CursesInput input;
+    CursesRenderer renderer;
+    LevelLoopOptions opt = settle(session, term, clock, input, renderer);
+    const std::uint32_t followed = session.followed_entity_id();
+    ASSERT_NE(0u, followed);
+
+    term.push_special(KeyCode::Escape);
+    term.push_char(U'a');
+    term.push_char(U'c');                // empty key 1
+    term.push_special(KeyCode::Escape);  // done
+    term.push_char(U'r');
+    session.on_advance = [&] {
+        if (term.keys_left() == 2)  // inside the page, after the edit
+            session.followed_override = followed + 1;
+    };
+    opt.max_frames = 1;
+    run_level_loop(session, term, clock, input, renderer, opt);
+    session.on_advance = nullptr;
+    ASSERT_TRUE(session.followed_override.has_value())
+        << "control moved while the page was open";
+    EXPECT_TRUE(session.belts_sent.empty())
+        << "the edit was for a body the player no longer drives";
+    EXPECT_EQ("PR", session.pause_calls);
+}
+
+// Esc, A with the setting off: no page, a line in the message log; Esc, K:
+// the KEYS page; any key leaves it.
+TEST(CursesGameRuntimeLocal, escape_then_k_shows_the_keys_and_a_needs_the_setting)
+{
+    SaveData save;
+    init_test_save(save);
+    std::string err;
+    auto inner = make_local_session(save, 1, &err);
+    ASSERT_NE(inner, nullptr) << err;
+    RecordingSession session(std::move(inner));
+
+    HeadlessTerminal term(30, 100);
+    FakeClock clock;
+    CursesInput input = belt_keys_input();
+    CursesRenderer renderer;
+    LevelLoopOptions opt = settle(session, term, clock, input, renderer);
+
+    {
+        ScopedAbilitySelect off(false);
+        term.push_special(KeyCode::Escape);
+        term.push_char(U'a');
+        term.push_char(U'r');
+        run_level_loop(session, term, clock, input, renderer, opt);
+        EXPECT_EQ("PR", session.pause_calls) << "no page, nothing sent";
+    }
+
+    ScopedAbilitySelect on(true);
+    session.pause_calls.clear();
+    term.push_special(KeyCode::Escape);
+    term.push_char(U'k');
+    term.push_char(U'x');  // leaves the KEYS page
+    // The page is the last thing drawn before the key that leaves it: stop
+    // there by letting the menu run out of input (no_pacing resumes).
+    run_level_loop(session, term, clock, input, renderer, opt);
+    EXPECT_EQ("PR", session.pause_calls);
+    bool saw_spec1 = false;
+    for (int row = 0; row < term.rows(); ++row)
+        if (term.text_row(row).find("SPEC 1: 1") != std::string::npos)
+            saw_spec1 = true;
+    EXPECT_TRUE(saw_spec1) << "the KEYS page lists SPEC 1 on the 1 key";
 }

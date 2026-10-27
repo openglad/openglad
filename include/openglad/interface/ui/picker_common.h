@@ -25,6 +25,7 @@
 #include <vector>
 
 class guy;
+class walker;
 class GameWorld;
 struct FamilyDescriptor;
 struct LevelDataHooks;
@@ -2231,6 +2232,32 @@ struct BindingPanelRow {
 // CHAR SW (eight rows, the panel's height).
 [[nodiscard]] std::span<const BindingPanelRow> binding_panel_action_rows(
     bool ability_select);
+// The MOVEMENT column of the same panels: UP, UP-R, RIGHT, DN-R, DOWN, DN-L,
+// LEFT, UP-L (the four diagonals are used in 8-direction mode only). The
+// curses KEYS page lists the same rows in the same order.
+struct BindingPanelMovementRow {
+    const char* label;
+    int key;
+    bool diagonal;
+};
+[[nodiscard]] std::span<const BindingPanelMovementRow>
+binding_panel_movement_rows();
+
+// The hero a body stands for on the ABILITIES page (the PAUSED menu's copy,
+// SDL and curses): its guy's name, family and saved layout, the body's own
+// level. A body with no guy (a summon, a raised dead, a possessed host) is
+// named for its class, shows its class default and has no record to edit.
+struct AbilityBodyHero {
+    std::string name;
+    int family = 0;
+    int level = 1;
+    og::sim::belt::Bytes stored{};
+    bool has_record = false;
+};
+[[nodiscard]] AbilityBodyHero ability_hero_of_body(const walker& body);
+// What the page says for such a body (<= kAbilityStatusChars).
+inline constexpr const char* kNoSavedLayoutNotice =
+    "THIS BODY HAS NO SAVED LAYOUT.";
 
 // One HUD belt row: "<key> <NAME>" ("S1 TELEPORT MARKER"), a locked one
 // adds " L<level>", an empty one reads "<key> --"; the name is cut so the

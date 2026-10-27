@@ -3288,10 +3288,14 @@ RowState seat_binding_cell_state(const MenuLabelContext& /*context*/)
         Cell);
 }
 
-// The KEYMAP door (#388) holds its ordinal until its row is filled in.
-RowState seat_settings_reserved_row_state(const MenuLabelContext& /*context*/)
+// The KEYMAP door (#388): every seat but a phone's touch seat.
+RowState seat_settings_keymap_row_state(const MenuLabelContext& /*context*/)
 {
-    return RowState::Hidden;
+    if (g_seat_settings_state == nullptr)
+        return RowState::Visible;
+    return keymap_door_shown(g_seat_settings_state->local_slot)
+        ? RowState::Visible
+        : RowState::Hidden;
 }
 
 // §7.1 unified player screen (the kPlayerScreen* grid in picker_sdl_defs.h):
@@ -3311,7 +3315,7 @@ constexpr MenuButtonSpec kSeatSettingsRows[] = {
      .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsTeamIndex,
      .nav = {.up = kSeatSettingsCellFirstRow + 7,
              .down = kSeatSettingsBackIndex,
-             .right = kSeatSettingsRemoveIndex}},
+             .right = kSeatSettingsKeymapRow}},
     {.id = "seat_direction", .label = "4-DIRECTION",
      .x = kPlayerScreenColAX, .y = kPlayerScreenBand1Y,
      .w = kPlayerScreenColAW, .h = kPlayerScreenBandH,
@@ -3339,7 +3343,7 @@ constexpr MenuButtonSpec kSeatSettingsRows[] = {
      .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsRemoveIndex,
      .nav = {.up = kSeatSettingsHudScoreRow,
              .down = kSeatSettingsBackIndex,
-             .left = kSeatSettingsTeamIndex},
+             .left = kSeatSettingsKeymapRow},
      .state_override = &seat_settings_remove_row_state},
     {.id = "seat_input", .label = "INPUT: WASD",
      .x = kPlayerScreenColAX, .y = kPlayerScreenBand2Y,
@@ -3398,15 +3402,17 @@ constexpr MenuButtonSpec kSeatSettingsRows[] = {
                            seat_binding_cell_state, kSeatSettingsInputRow,
                            kSeatSettingsZoomRow, kSeatSettingsHudRadarRow,
                            kSeatSettingsTeamIndex, kSeatSettingsRemoveIndex),
-    // Reserved: the KEYMAP door on the bottom band (#388).
+    // The KEYMAP door on the bottom band (#388), between TEAM and REMOVE.
     {.id = "seat_keymap", .label = "KEYMAP",
      .x = kPlayerScreenBottomMidX, .y = kPlayerScreenBottomBandY,
      .w = kPlayerScreenBottomHalfW,
      .h = kPlayerScreenBandH,
      .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsKeymapRow,
-     .nav = {.up = kSeatSettingsBackIndex, .down = kSeatSettingsBackIndex},
-     .state_override = &seat_settings_reserved_row_state,
-     .hidden = true},
+     .nav = {.up = kSeatSettingsCellFirstRow + 15,
+             .down = kSeatSettingsBackIndex,
+             .left = kSeatSettingsTeamIndex,
+             .right = kSeatSettingsRemoveIndex},
+     .state_override = &seat_settings_keymap_row_state},
 };
 
 static_assert(static_cast<int>(std::size(kSeatSettingsRows))
@@ -3481,6 +3487,13 @@ void seat_settings_rewire(button* buttons, int count,
          .hud_first = kSeatSettingsHudRadarRow,
          .bottom_left = kSeatSettingsTeamIndex,
          .bottom_right = kSeatSettingsRemoveIndex,
+         .back = kSeatSettingsBackIndex});
+    rewire_player_screen_bottom_band(
+        buttons, count,
+        {.first_cell = kSeatSettingsCellFirstRow,
+         .left = kSeatSettingsTeamIndex,
+         .keymap = kSeatSettingsKeymapRow,
+         .remove = kSeatSettingsRemoveIndex,
          .back = kSeatSettingsBackIndex});
 
     ensure_highlighted_button_visible(buttons, count, highlighted_button);
@@ -3623,6 +3636,26 @@ Sint32 seat_settings_on_spec_row(int row, void* screen_state)
                          std::format("COULD NOT OPEN {}", unavailable).c_str());
         }
         return MENU_OK;
+    }
+    if (row == kSeatSettingsKeymapRow) {
+        // #388: the keyboard picture of this machine's seats, this one
+        // first. A host's GO while it is open starts the match (MENU_EXIT).
+        if (!keymap_door_shown(state->local_slot))
+            return MENU_OK;
+        KeymapScreenHost keymap_host;
+        const std::vector<og::sim::LobbyPlayer> players =
+            picker_lobby_players();
+        const std::vector<std::uint8_t> local_indices =
+            seat_settings_local_indices(players);
+        const std::size_t seats = std::min(local_indices.size(),
+                                           picker_lobby_local_seat_count());
+        for (std::size_t slot = 0; slot < seats; ++slot)
+            keymap_host.seats.push_back(KeymapSeat{
+                .seat = static_cast<int>(slot),
+                .player_number = static_cast<int>(local_indices[slot]) + 1});
+        TRACE("basecamp", "seat_keymap slot=%d", state->local_slot + 1);
+        const Sint32 result = run_keymap_screen(state->local_slot, keymap_host);
+        return result == MENU_EXIT ? MENU_EXIT : MENU_OK;
     }
     if (row == kSeatSettingsResetIndex) {
         if (reset_default_player_controls_for_player(state->local_slot)) {

@@ -21,16 +21,20 @@
 
 #include <openglad/core/test_trace.h>
 #include <openglad/interface/input.h>
+#include <openglad/interface/input_hardware_state.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/session_state.h>
 #include <openglad/interface/ui/keyboard_picture.h>
 #include <openglad/interface/ui/keymap_screen.h>
 #include <openglad/interface/ui/menu_screen_spec.h>
+#include <openglad/interface/ui/pause_menu.h>
+#include <openglad/interface/ui/picker_lobby_client.h>
 #include <openglad/platform/game_session.h>
 #include <openglad/platform/sai2x.h>
 
 #include "../../src/interface/ui/picker_sdl_defs.h"
 #include "test_escape_tail.h"
+#include "test_fake_lobby_client.h"
 #include "test_frame_capture.h"
 #include "test_input_helpers.h"
 #include "test_interact.h"
@@ -380,4 +384,161 @@ TEST(KeymapScreen, title_and_legend_words)
     EXPECT_EQ("AND 2 MORE ON THE KEY LIST", cut.back());
     for (const std::string& line : cut)
         EXPECT_LE(line.size(), og::ui::kKeymapMaxGlyphs) << line;
+}
+
+namespace og::ui {
+// The production gate pass (menu_screen_runner.cpp, TESTING).
+void picker_testing_apply_row_states(const MenuScreenSpec& spec,
+                                     button* buttons, int num_buttons);
+} // namespace og::ui
+
+// ---------------------------------------------------------------------------
+// The two doors (#388): KEYMAP on the pause player screen and on the Base
+// Camp seat screen, each opening the picture of every local seat with the
+// opening seat first; hidden for a phone's touch seat.
+
+namespace
+{
+
+bool pause_pump_alive()
+{
+    return true;
+}
+
+// A phone (single-seat device) for the guard's lifetime.
+struct SingleSeatDevice
+{
+    bool saved = input_hardware_state().single_seat_device;
+    explicit SingleSeatDevice(bool on)
+    {
+        input_hardware_state().single_seat_device = on;
+    }
+    ~SingleSeatDevice() { input_hardware_state().single_seat_device = saved; }
+    SingleSeatDevice(const SingleSeatDevice&) = delete;
+    SingleSeatDevice& operator=(const SingleSeatDevice&) = delete;
+};
+
+// Runs a door's row handler (which blocks in KEYMAP) with the read-and-close
+// injector.
+Sint32 press_door(Seen& seen, const og::ui::MenuScreenSpec& spec, int row,
+                  void* state)
+{
+    trace_clear();
+    SDL_Thread* thread = SDL_CreateThread(read_and_close, "keymap_door", &seen);
+    EXPECT_NE(nullptr, thread);
+    const Sint32 result = spec.on_spec_row(row, state);
+    seen.finished.store(true);
+    int thread_result = 0;
+    SDL_WaitThread(thread, &thread_result);
+    escape_tail_join_hygiene();
+    clear_allbuttons();
+    EXPECT_EQ(0, thread_result) << "the injector gave up at leg "
+                                << thread_result;
+    return result;
+}
+
+bool row_hidden(const og::ui::MenuScreenSpec& spec, int row)
+{
+    button* const buttons = spec.buttons_accessor();
+    const int count = spec.count_accessor();
+    og::ui::picker_testing_apply_row_states(spec, buttons, count);
+    return buttons[row].hidden;
+}
+
+} // namespace
+
+// RED (planted): the pause handler hands KEYMAP the opening seat alone (the
+// title loses P1).
+TEST(KeymapScreen, pause_player_door_shows_every_local_seat_this_one_first)
+{
+    ASSERT_TRUE(E_Screen);
+    ControlsRestore restore;
+    screen& game_screen = *og::runtime::current_session->myscreen_;
+    const unsigned char saved_numplayers = game_screen.save_data.numplayers;
+    game_screen.save_data.numplayers = 2;
+
+    og::ui::PauseMenuHost host;
+    host.pump_paused = &pause_pump_alive;
+    og::ui::PausePlayerScreenState state;
+    state.host = &host;
+    state.seat = 1;
+    state.player_number = 2;
+    og::ui::install_pause_player_state_for_screen(&state);
+    const og::ui::MenuScreenSpec& spec =
+        og::ui::pause_player_menu_screen_spec();
+
+    {
+        SingleSeatDevice desktop(false);
+        EXPECT_FALSE(row_hidden(spec, og::ui::kPausePlayerKeymapIndex));
+        Seen seen;
+        EXPECT_EQ(MENU_OK, press_door(seen, spec,
+                                      og::ui::kPausePlayerKeymapIndex, &state));
+        ASSERT_TRUE(seen.up);
+        EXPECT_TRUE(trace_contains("pause_menu", "keymap seat=1"));
+        EXPECT_EQ(0u, seen.title.rfind("KEYS: P2 ", 0)) << seen.title;
+        EXPECT_NE(std::string::npos, seen.title.find("  P1 ")) << seen.title;
+        EXPECT_FALSE(state.session_ended);
+    }
+    {
+        // A phone's touch seat has no keys to picture: no door.
+        SingleSeatDevice phone(true);
+        state.seat = 0;
+        state.player_number = 1;
+        EXPECT_TRUE(row_hidden(spec, og::ui::kPausePlayerKeymapIndex));
+        trace_clear();
+        EXPECT_EQ(MENU_OK,
+                  spec.on_spec_row(og::ui::kPausePlayerKeymapIndex, &state));
+        EXPECT_FALSE(trace_contains("keymap", "KEYMAP: open"));
+    }
+    og::ui::install_pause_player_state_for_screen(nullptr);
+    game_screen.save_data.numplayers = saved_numplayers;
+}
+
+// RED (planted): the seat handler hands KEYMAP the opening seat alone.
+TEST(KeymapScreen, seat_screen_door_shows_every_local_seat_this_one_first)
+{
+    ASSERT_TRUE(E_Screen);
+    ControlsRestore restore;
+    FakeLobbyClient lobby;
+    for (std::uint8_t index = 0; index < 2; ++index)
+    {
+        og::sim::LobbyPlayer player;
+        player.player_index = index;
+        player.seat_id = static_cast<og::sim::LobbySeatId>(1000u + index);
+        player.name = "Player " + std::to_string(index + 1);
+        lobby.players.push_back(player);
+    }
+    lobby.local_indices = {0, 1};
+    lobby.local_seats = 2;
+    og::ui::install_active_picker_lobby_client(&lobby);
+    og::ui::SeatSettingsScreenState state{
+        .seat_id = lobby.players[1].seat_id,
+        .player_index = lobby.players[1].player_index,
+        .local_slot = 1,
+    };
+    og::ui::install_seat_settings_state_for_screen(&state);
+    const og::ui::MenuScreenSpec& spec =
+        og::ui::seat_settings_menu_screen_spec();
+
+    {
+        SingleSeatDevice desktop(false);
+        EXPECT_FALSE(row_hidden(spec, kSeatSettingsKeymapRow));
+        Seen seen;
+        EXPECT_EQ(MENU_OK,
+                  press_door(seen, spec, kSeatSettingsKeymapRow, &state))
+            << "BACK returns to the seat screen";
+        ASSERT_TRUE(seen.up);
+        EXPECT_TRUE(trace_contains("basecamp", "seat_keymap slot=2"));
+        EXPECT_EQ(0u, seen.title.rfind("KEYS: P2 ", 0)) << seen.title;
+        EXPECT_NE(std::string::npos, seen.title.find("  P1 ")) << seen.title;
+    }
+    {
+        SingleSeatDevice phone(true);
+        state.local_slot = 0;
+        state.seat_id = lobby.players[0].seat_id;
+        state.player_index = lobby.players[0].player_index;
+        EXPECT_TRUE(row_hidden(spec, kSeatSettingsKeymapRow));
+    }
+    og::ui::install_seat_settings_state_for_screen(nullptr);
+    og::ui::install_active_picker_lobby_client(nullptr);
 }

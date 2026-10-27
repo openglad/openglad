@@ -565,6 +565,20 @@ struct BindingCellNavAnchors {
 };
 void rewire_binding_panel_cells(button* buttons, int count,
                                 const BindingCellNavAnchors& anchors);
+// The y=169 command band both player screens end on, left to right: the
+// left door (ABILITIES on the pause screen, TEAM in Base Camp), KEYMAP and
+// REMOVE PLAYER. The visible faces chain left/right in that order and each
+// goes down to BACK; KEYMAP's up is the ACTIONS column's last visible line.
+// Run after rewire_binding_panel_cells (which sets the left door's up).
+struct PlayerScreenBottomBand {
+    int first_cell;
+    int left;
+    int keymap;
+    int remove;
+    int back;
+};
+void rewire_player_screen_bottom_band(button* buttons, int count,
+                                      const PlayerScreenBottomBand& band);
 } // namespace og::ui
 
 // The sixteen no_draw click cells, one shared shape for both player screens

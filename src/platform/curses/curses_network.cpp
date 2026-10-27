@@ -74,6 +74,7 @@
 #include <chrono>
 #include <exception>
 #include <format>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <span>
@@ -492,7 +493,7 @@ void persist_curses_networked_win(SaveData& session_save, const GameWorld& world
 // co-located mirror GameClient connected over a loopback client transport. Almost
 // identical to LocalCursesSession, but the transport, save and player bindings
 // come from the lobby instead of being built locally.
-class HostCursesSession final : public CursesGameSession
+class HostCursesSession final : public CursesClientSession
 {
 public:
     // `host_company_save` (V5 Option A, host history): the host machine's
@@ -705,6 +706,9 @@ public:
         return slain;
     }
 #endif
+
+protected:
+    og::sim::GameClient& session_client() const override { return *client_; }
 
 private:
     HostCursesSession() = default;
@@ -969,7 +973,7 @@ std::unique_ptr<HostCursesSession> HostCursesSession::create(
 // JOIN: only the client half. A GameClient over the remote transport bound to a
 // mirror world loaded from the negotiated save (for grid/smoother). No server;
 // advance() polls the client, send_input forwards to it.
-class JoinCursesSession final : public CursesGameSession
+class JoinCursesSession final : public CursesClientSession
 {
 public:
     static std::unique_ptr<JoinCursesSession> create(
@@ -1052,6 +1056,9 @@ public:
     // production surface.
     const SaveData& testing_client_save() const { return client_save_; }
 #endif
+
+protected:
+    og::sim::GameClient& session_client() const override { return *client_; }
 
 private:
     JoinCursesSession() = default;
@@ -2563,6 +2570,18 @@ GameWorld* curses_network_testing_server_world(CursesGameSession& session)
 {
     auto* const host = dynamic_cast<HostCursesSession*>(&session);
     return host != nullptr ? &host->server_world_ref() : nullptr;
+}
+
+// Swap the host server's wall clock (steady_clock by default) so a test can
+// move the pause and starvation timers without waiting.
+bool curses_network_testing_set_server_clock(
+    CursesGameSession& session, std::function<std::uint64_t()> source)
+{
+    auto* const host = dynamic_cast<HostCursesSession*>(&session);
+    if (host == nullptr)
+        return false;
+    host->server().set_wall_clock_ms_source(std::move(source));
+    return true;
 }
 
 const SaveData* curses_network_testing_host_server_save(

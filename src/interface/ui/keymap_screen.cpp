@@ -148,6 +148,13 @@ bool keymap_pause_frame_tick(void* screen_state, int /*frame*/)
 
 }  // namespace
 
+bool keymap_door_shown(int seat)
+{
+    return !og::input::seat_owner_is_screen(
+        og::input::is_single_seat_device(),
+        current_input_selection(seat).is_joystick, seat);
+}
+
 std::string keymap_title(const std::vector<KeymapSeatView>& seats)
 {
     std::string title = "KEYS:";

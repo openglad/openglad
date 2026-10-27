@@ -27,6 +27,9 @@
 #include <openglad/platform/local_transport_shadow.h>
 #include <openglad/resources/progression.h>
 
+#include <array>
+#include <cstdint>
+
 #ifdef TESTING
 void picker_testing_mark_frame_advance();
 #endif
@@ -289,6 +292,18 @@ bool pause_menu_host_remove_player(int seat)
                                                                 seat);
 }
 
+// ABILITIES from the PAUSED menu (#376): one BeltChange through the client
+// that carries the seat; the shadow also writes the display mirror's guy so
+// the HUD shows the new layout at once.
+bool pause_menu_host_set_belt(int seat, std::uint32_t entity_id,
+                              const std::array<std::uint8_t, 6>& belt)
+{
+    og::runtime::GameSession* const session = og::runtime::current_game_session;
+    return session != nullptr &&
+        og::runtime::local_transport_shadow_set_belt(*session, seat, entity_id,
+                                                     belt);
+}
+
 og::ui::PauseMenuResult run_gameplay_pause_menu(
     og::runtime::GameSession& session)
 {
@@ -302,6 +317,7 @@ og::ui::PauseMenuResult run_gameplay_pause_menu(
     host.add_player = &pause_menu_host_add_player;
     host.can_remove_player = &pause_menu_host_can_remove_player;
     host.remove_player = &pause_menu_host_remove_player;
+    host.set_belt = &pause_menu_host_set_belt;
     host.networked = session.networked_session_;
     // RESTART is hidden for networked sessions (design §2.1) and for modes
     // whose progression suppresses retry (the tower's results RETRY gate) —
