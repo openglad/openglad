@@ -108,9 +108,9 @@ public:
     // The in-game PAUSED menu (Esc). The level loop asks for the pause once
     // when the menu opens and keeps calling advance() without input while it
     // is open, the ABILITIES and KEYS pages included (re-asking as the
-    // keep-alive); closing the menu sends the pause response. Every real session implements these once, through
-    // CursesClientSession below; only test doubles keep the do-nothing
-    // defaults.
+    // keep-alive); closing the menu sends the pause response. Every real
+    // session implements these once, through CursesClientSession below; only
+    // test doubles keep the do-nothing defaults.
     virtual void request_pause() {}
     virtual void send_pause_response() {}
     // ABILITIES from that menu: send the layout of the walker the player
@@ -131,9 +131,10 @@ public:
     virtual void commit_result_to_save() {}
 };
 
-// The PAUSED menu's three calls, written once over the session's GameClient. The local session, the networked host and the
-// networked joiner each hold one GameClient and one mirror, so all three
-// derive from this instead of repeating the calls.
+// The PAUSED menu's three calls, written once over the session's GameClient.
+// The local session, the networked host and the networked joiner each hold
+// one GameClient and one mirror, so all three derive from this instead of
+// repeating the calls.
 class CursesClientSession : public CursesGameSession
 {
 public:
