@@ -24,7 +24,9 @@
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/session_state.h>
+#include <openglad/interface/ui/abilities_screen.h>
 #include <openglad/interface/ui/input_cycler.h>
+#include <openglad/interface/ui/keymap_screen.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/resources/gparser.h>
 
@@ -608,11 +610,27 @@ RowState pause_binding_cell_state(const MenuLabelContext& /*context*/)
         Cell);
 }
 
-// The ABILITIES (#376) and KEYMAP (#388) doors hold their ordinals until
-// their rows are filled in.
-RowState pause_player_reserved_row_state(const MenuLabelContext& /*context*/)
+// ABILITIES (#376): the character this seat drives. Dimmed with New Ability
+// Select off (there is no layout to edit, design E.1) and while the seat
+// drives no living body. No installed state = the bare spec shape.
+RowState pause_player_abilities_row_state(const MenuLabelContext& /*context*/)
 {
-    return RowState::Hidden;
+    if (!og::input::ability_select_on())
+        return RowState::Disabled;
+    if (g_pause_player_state == nullptr)
+        return RowState::Visible;
+    return seat_driven_walker(g_pause_player_state->seat) != nullptr
+        ? RowState::Visible
+        : RowState::Disabled;
+}
+
+// KEYMAP (#388): every seat but a phone's touch seat.
+RowState pause_player_keymap_row_state(const MenuLabelContext& /*context*/)
+{
+    if (g_pause_player_state == nullptr)
+        return RowState::Visible;
+    return keymap_door_shown(g_pause_player_state->seat) ? RowState::Visible
+                                                          : RowState::Hidden;
 }
 
 constexpr MenuButtonSpec kPausePlayerRows[] = {
@@ -705,25 +723,28 @@ constexpr MenuButtonSpec kPausePlayerRows[] = {
     OG_BINDING_PANEL_CELLS("pause", kPausePlayerCellFirstIndex,
                            pause_binding_cell_state, kPausePlayerInputIndex,
                            kPausePlayerZoomIndex, kPausePlayerHudRadarIndex,
-                           kPausePlayerRemoveIndex, kPausePlayerRemoveIndex),
-    // Reserved: the bottom-left band's two doors, ABILITIES (#376) and
-    // KEYMAP (#388).
+                           kPausePlayerAbilitiesIndex, kPausePlayerRemoveIndex),
+    // The bottom-left band's two doors, ABILITIES (#376) and KEYMAP (#388):
+    // left to right ABILITIES, KEYMAP, REMOVE PLAYER, each down to BACK.
     {.id = "pause_abilities", .label = "ABILITIES",
      .x = kPlayerScreenColAX, .y = kPlayerScreenBottomBandY,
      .w = kPlayerScreenBottomHalfW,
      .h = kPlayerScreenBandH,
      .action = ButtonAction::MenuSpecRow, .arg = kPausePlayerAbilitiesIndex,
-     .nav = {.up = kPausePlayerBackIndex, .down = kPausePlayerBackIndex},
-     .state_override = &pause_player_reserved_row_state,
-     .hidden = true},
+     .nav = {.up = kPausePlayerCellFirstIndex + 7,
+             .down = kPausePlayerBackIndex,
+             .right = kPausePlayerKeymapIndex},
+     .state_override = &pause_player_abilities_row_state},
     {.id = "pause_keymap", .label = "KEYMAP",
      .x = kPlayerScreenBottomMidX, .y = kPlayerScreenBottomBandY,
      .w = kPlayerScreenBottomHalfW,
      .h = kPlayerScreenBandH,
      .action = ButtonAction::MenuSpecRow, .arg = kPausePlayerKeymapIndex,
-     .nav = {.up = kPausePlayerBackIndex, .down = kPausePlayerBackIndex},
-     .state_override = &pause_player_reserved_row_state,
-     .hidden = true},
+     .nav = {.up = kPausePlayerCellFirstIndex + 15,
+             .down = kPausePlayerBackIndex,
+             .left = kPausePlayerAbilitiesIndex,
+             .right = kPausePlayerRemoveIndex},
+     .state_override = &pause_player_keymap_row_state},
 };
 static_assert(static_cast<int>(std::size(kPausePlayerRows)) ==
               kPausePlayerButtonCount);
@@ -769,8 +790,17 @@ void pause_player_rewire(button* buttons, int count, int& highlighted_button)
          .input = kPausePlayerInputIndex,
          .zoom = kPausePlayerZoomIndex,
          .hud_first = kPausePlayerHudRadarIndex,
-         .bottom_left = -1,
-         .bottom_right = kPausePlayerRemoveIndex,
+         .bottom_left = kPausePlayerAbilitiesIndex,
+         // Under the ACTIONS column: REMOVE, or KEYMAP when REMOVE is gone.
+         .bottom_right = remove_visible ? kPausePlayerRemoveIndex
+                                        : kPausePlayerKeymapIndex,
+         .back = kPausePlayerBackIndex});
+    rewire_player_screen_bottom_band(
+        buttons, count,
+        {.first_cell = kPausePlayerCellFirstIndex,
+         .left = kPausePlayerAbilitiesIndex,
+         .keymap = kPausePlayerKeymapIndex,
+         .remove = kPausePlayerRemoveIndex,
          .back = kPausePlayerBackIndex});
     buttons[kPausePlayerBackIndex].nav.up =
         remove_visible ? kPausePlayerRemoveIndex : kPausePlayerHudScoreIndex;
@@ -811,7 +841,7 @@ void pause_player_draw_content(void* screen_state)
 bool pause_player_frame_tick(void* screen_state, int /*frame*/)
 {
     auto* const state = static_cast<PausePlayerScreenState*>(screen_state);
-    if (state == nullptr || state->removed)
+    if (state == nullptr || state->removed || state->session_ended)
         return false;
     if (state->host != nullptr)
     {
@@ -841,6 +871,23 @@ void persist_pause_player_controls()
 bool pause_remap_poll()
 {
     PausePlayerScreenState* const state = g_pause_player_state;
+    if (state == nullptr || state->host == nullptr)
+        return true;
+    if (state->host->pump_paused != nullptr && !state->host->pump_paused())
+    {
+        state->session_ended = true;
+        return false;
+    }
+    maintain_pause_keepalive(*state->host, state->last_keepalive_ms);
+    return true;
+}
+
+// The pump a door on this screen hands its own screen (KEYMAP, ABILITIES):
+// the paused transport plus the menu's keep-alive, once per frame of the
+// child; false when the session died underneath it.
+bool pause_player_child_pump(void* context)
+{
+    auto* const state = static_cast<PausePlayerScreenState*>(context);
     if (state == nullptr || state->host == nullptr)
         return true;
     if (state->host->pump_paused != nullptr && !state->host->pump_paused())
@@ -902,6 +949,46 @@ Sint32 pause_player_on_spec_row(int row, void* screen_state)
         TRACE("pause_menu", "rebind seat=%d key=%d", state->seat, key);
         (void)rebind_player_key_with_poll(state->seat, key, &pause_remap_poll);
         save_player_keys_after_remap(state->seat);
+        return MENU_OK;
+    }
+    if (row == kPausePlayerAbilitiesIndex)
+    {
+        // #376: the character this seat drives, edited in place; BACK sends
+        // a changed layout to the server.
+        if (!og::input::ability_select_on() ||
+            seat_driven_walker(state->seat) == nullptr)
+        {
+            return MENU_OK;
+        }
+        const PauseAbilitiesHost abilities_host{
+            .seat = state->seat,
+            .pump = &pause_player_child_pump,
+            .pump_context = state,
+            .set_belt = state->host != nullptr ? state->host->set_belt
+                                               : nullptr,
+        };
+        [[maybe_unused]] const PauseAbilitiesResult result =
+            run_pause_abilities_screen(abilities_host);
+        TRACE("pause_menu", "abilities seat=%d committed=%d changed=%d",
+              state->seat, result.committed ? 1 : 0,
+              result.control_changed ? 1 : 0);
+        return MENU_OK;
+    }
+    if (row == kPausePlayerKeymapIndex)
+    {
+        // #388: the keyboard picture of this machine's seats, this seat
+        // first.
+        if (!keymap_door_shown(state->seat))
+            return MENU_OK;
+        KeymapScreenHost keymap_host;
+        for (const PauseSeatInfo& seat : collect_pause_seats(networked))
+            keymap_host.seats.push_back(
+                KeymapSeat{.seat = seat.seat,
+                           .player_number = seat.player_number});
+        keymap_host.pump = &pause_player_child_pump;
+        keymap_host.pump_context = state;
+        TRACE("pause_menu", "keymap seat=%d", state->seat);
+        (void)run_keymap_screen(state->seat, keymap_host);
         return MENU_OK;
     }
     if (row == kPausePlayerResetIndex)
@@ -1220,25 +1307,6 @@ std::string format_binding_panel_line(const char* label,
 // --- The one binding panel (#358 folded the two screens' copies) ---------
 
 namespace {
-// The MOVEMENT column's eight lines, in panel order (UP, UP-R, RIGHT, ...).
-// Compact diagonal labels: the column has 14 chars before ACTIONS at x=104.
-struct BindingPanelMovementRow {
-    const char* label;
-    int key;
-    bool diagonal;
-};
-constexpr std::array<BindingPanelMovementRow, 8> kBindingPanelMovementRows{{
-    {"UP", KEY_UP, false},
-    {"UP-R", KEY_UP_RIGHT, true},
-    {"RIGHT", KEY_RIGHT, false},
-    {"DN-R", KEY_DOWN_RIGHT, true},
-    {"DOWN", KEY_DOWN, false},
-    {"DN-L", KEY_DOWN_LEFT, true},
-    {"LEFT", KEY_LEFT, false},
-    {"UP-L", KEY_UP_LEFT, true},
-}};
-static_assert(kBindingPanelMovementRows.size() ==
-              static_cast<std::size_t>(kBindingPanelLinesPerColumn));
 
 bool seat_in_range(int seat)
 {
@@ -1276,11 +1344,11 @@ void draw_binding_panel(int seat, bool ability_select)
             : player_control_key_display_name(seat, key);
     };
 
-    for (std::size_t index = 0; index < kBindingPanelMovementRows.size();
-         ++index)
+    const std::span<const BindingPanelMovementRow> movement =
+        binding_panel_movement_rows();
+    for (std::size_t index = 0; index < movement.size(); ++index)
     {
-        const BindingPanelMovementRow& binding =
-            kBindingPanelMovementRows[index];
+        const BindingPanelMovementRow& binding = movement[index];
         const bool active = !binding.diagonal || eight_dir;
         const std::string value =
             active ? binding_value(binding.key) : std::string("--");
@@ -1311,7 +1379,7 @@ int binding_panel_cell_key(int cell, bool ability_select)
     if (cell < 0 || cell >= kBindingPanelCellCount)
         return -1;
     if (cell < kBindingPanelLinesPerColumn)
-        return kBindingPanelMovementRows[static_cast<std::size_t>(cell)].key;
+        return binding_panel_movement_rows()[static_cast<std::size_t>(cell)].key;
     const std::span<const BindingPanelRow> actions =
         binding_panel_action_rows(ability_select);
     const auto line =
@@ -1324,7 +1392,7 @@ RowState binding_panel_cell_state(int seat, int cell)
     if (binding_panel_cell_key(cell, og::input::ability_select_on()) < 0)
         return RowState::Hidden;
     if (cell < kBindingPanelLinesPerColumn && seat_in_range(seat) &&
-        kBindingPanelMovementRows[static_cast<std::size_t>(cell)].diagonal)
+        binding_panel_movement_rows()[static_cast<std::size_t>(cell)].diagonal)
     {
         // The panel draws an unused diagonal grey "--": nothing to click.
         // Pads never bind diagonals (JoyData::setKeyFromEvent forces NONE).
@@ -1427,6 +1495,42 @@ void rewire_binding_panel_cells(button* buttons, int count,
     }
     if (visible(anchors.bottom_left) && !movement.empty())
         buttons[anchors.bottom_left].nav.up = movement.back();
+}
+
+void rewire_player_screen_bottom_band(button* buttons, int count,
+                                      const PlayerScreenBottomBand& band)
+{
+    if (buttons == nullptr ||
+        band.first_cell + kBindingPanelCellCount > count)
+    {
+        return;
+    }
+    const auto visible = [buttons, count](int index) {
+        return index >= 0 && index < count && !buttons[index].hidden;
+    };
+    std::vector<int> faces;
+    for (const int face : {band.left, band.keymap, band.remove})
+        if (visible(face))
+            faces.push_back(face);
+    for (std::size_t k = 0; k < faces.size(); ++k)
+    {
+        MenuNav& nav = buttons[faces[k]].nav;
+        nav.left = k > 0 ? faces[k - 1] : -1;
+        nav.right = k + 1 < faces.size() ? faces[k + 1] : -1;
+        nav.down = band.back;
+    }
+    if (!visible(band.keymap))
+        return;
+    // KEYMAP sits under the ACTIONS column's left half: up is its last line.
+    for (int line = kBindingPanelLinesPerColumn - 1; line >= 0; --line)
+    {
+        const int cell = band.first_cell + kBindingPanelLinesPerColumn + line;
+        if (visible(cell))
+        {
+            buttons[band.keymap].nav.up = cell;
+            return;
+        }
+    }
 }
 
 const MenuScreenSpec& pause_menu_screen_spec()

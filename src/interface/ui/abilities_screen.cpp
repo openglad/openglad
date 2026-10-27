@@ -13,10 +13,14 @@
 #include <openglad/gameplay/families/belt.h>
 #include <openglad/gameplay/families/family_registry.h>
 #include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/statistics.h>
+#include <openglad/gameplay/walker.h>
 #include <openglad/interface/ability_icons.h>
 #include <openglad/interface/base.h>
 #include <openglad/interface/button.h>
 #include <openglad/interface/input.h>
+#include <openglad/interface/input_hardware_state.h>
+#include <openglad/interface/render/view.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/session_state.h>
 #include <openglad/interface/render/text.h>
@@ -32,6 +36,7 @@
 #include <array>
 #include <cstddef>
 #include <iterator>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -95,7 +100,14 @@ constexpr const char* kReadOnlyNotice = "Read only: this hero is not yours.";
 constexpr char kSelectedMark = '>';
 
 struct AbilitiesScreenState {
+    // Base Camp: the save team_list slot. The PAUSED menu's copy: -1, and
+    // `pause` names the seat whose body the screen shows.
     int team_slot = -1;
+    const PauseAbilitiesHost* pause = nullptr;
+    std::uint32_t entity_id = 0;  // the body the pause copy opened on
+    bool body_has_record = true;  // false: a pause body with no guy
+    bool session_ended = false;
+    bool control_changed = false;
     bool editable = true;
     belt::Bytes working{};
     // A belt slot 0..5, a bench row kSlots + bench index, or -1.
@@ -108,34 +120,77 @@ struct AbilitiesScreenState {
 
 AbilitiesScreenState* g_abilities = nullptr;
 
-// The hero in the screen's slot NOW: a lobby poll rebuilds team_list at new
-// addresses every frame, so the screen keys on the slot, never a pointer.
-const guy* abilities_hero()
+// What the screen needs to know about the hero it shows, from wherever the
+// hero lives: a save record (Base Camp) or the body a seat drives (PAUSED).
+struct AbilitiesHero {
+    std::string name;
+    int family = 0;
+    int level = 1;
+    short new_specials = 0;
+    belt::Bytes stored{};  // the layout as it is now
+};
+
+// The body the pause copy opened on, if the seat still drives it. The one
+// "same body" rule: the frame tick and the commit both ask it.
+const walker* pause_body(const AbilitiesScreenState& state)
 {
-    if (g_abilities == nullptr || g_abilities->team_slot < 0 ||
-        g_abilities->team_slot >= MAX_TEAM_SIZE)
-        return nullptr;
-    return og::runtime::current_session->myscreen_->save_data
-        .team_list[static_cast<std::size_t>(g_abilities->team_slot)]
-        .get();
+    const walker* const body = seat_driven_walker(state.pause->seat);
+    return body != nullptr && body->entity_id() == state.entity_id ? body
+                                                                   : nullptr;
 }
 
-short abilities_new_specials()
+// A body's hero (ability_hero_of_body, shared with the curses page) with
+// New Specials as this world plays it, never the save's.
+AbilitiesHero hero_of_body(const walker& body)
 {
-    return og::runtime::current_session->myscreen_->save_data.new_specials;
+    AbilityBodyHero shown = ability_hero_of_body(body);
+    return AbilitiesHero{
+        .name = std::move(shown.name),
+        .family = shown.family,
+        .level = shown.level,
+        .new_specials =
+            og::runtime::current_session->myscreen_->world().new_specials,
+        .stored = shown.stored};
 }
 
-const FamilyDescriptor* abilities_family(const guy& hero)
+// The hero the screen shows NOW: a lobby poll rebuilds team_list at new
+// addresses every frame, so the Base Camp screen keys on the slot, never a
+// pointer; the pause copy re-finds its body through the seat every time.
+std::optional<AbilitiesHero> abilities_hero()
+{
+    if (g_abilities == nullptr)
+        return std::nullopt;
+    if (g_abilities->pause != nullptr) {
+        const walker* const body = pause_body(*g_abilities);
+        if (body == nullptr)
+            return std::nullopt;
+        return hero_of_body(*body);
+    }
+    if (g_abilities->team_slot < 0 || g_abilities->team_slot >= MAX_TEAM_SIZE)
+        return std::nullopt;
+    const SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    const guy* const record =
+        save.team_list[static_cast<std::size_t>(g_abilities->team_slot)].get();
+    if (record == nullptr)
+        return std::nullopt;
+    return AbilitiesHero{.name = record->name,
+                         .family = record->family,
+                         .level = record->level,
+                         .new_specials = save.new_specials,
+                         .stored = record->belt};
+}
+
+const FamilyDescriptor* abilities_family(const AbilitiesHero& hero)
 {
     return get_family_descriptor(hero.family);
 }
 
 // The page the screen shows: the hero's name, family and level over the
 // WORKING copy of the belt.
-AbilityPage abilities_page(const guy& hero)
+AbilityPage abilities_page(const AbilitiesHero& hero)
 {
     return ability_page(hero.name, abilities_family(hero), hero.level,
-                        abilities_new_specials(), g_abilities->working);
+                        hero.new_specials, g_abilities->working);
 }
 
 // The bench window: four rows when the bench fits, otherwise three and the
@@ -177,8 +232,8 @@ std::string with_selection_mark(std::string text)
 template <int BeltSlot>
 std::string belt_label(const MenuLabelContext& /*context*/)
 {
-    const guy* const hero = abilities_hero();
-    if (hero == nullptr)
+    const std::optional<AbilitiesHero> hero = abilities_hero();
+    if (!hero)
         return ability_key_label(BeltSlot) + " --";
     const AbilityPage page = abilities_page(*hero);
     const std::string& text =
@@ -190,8 +245,8 @@ std::string belt_label(const MenuLabelContext& /*context*/)
 template <int Row>
 std::string bench_label(const MenuLabelContext& /*context*/)
 {
-    const guy* const hero = abilities_hero();
-    if (hero == nullptr)
+    const std::optional<AbilitiesHero> hero = abilities_hero();
+    if (!hero)
         return {};
     const AbilityPage page = abilities_page(*hero);
     sync_bench_window(static_cast<int>(page.bench.size()));
@@ -211,8 +266,8 @@ std::string bench_label(const MenuLabelContext& /*context*/)
 template <int Row>
 RowState bench_row_state(const MenuLabelContext& /*context*/)
 {
-    const guy* const hero = abilities_hero();
-    if (hero == nullptr)
+    const std::optional<AbilitiesHero> hero = abilities_hero();
+    if (!hero)
         return RowState::Hidden;
     const AbilityPage page = abilities_page(*hero);
     sync_bench_window(static_cast<int>(page.bench.size()));
@@ -494,8 +549,8 @@ void draw_ability_face(const vbutton& face, const FamilyDescriptor* fd,
 
 void abilities_draw_content(void* /*screen_state*/)
 {
-    const guy* const hero = abilities_hero();
-    if (hero == nullptr)
+    const std::optional<AbilitiesHero> hero = abilities_hero();
+    if (!hero)
         return;
     const AbilityPage page = abilities_page(*hero);
     const FamilyDescriptor* const fd = abilities_family(*hero);
@@ -571,17 +626,17 @@ void trace_pick(const AbilityPick& pick, [[maybe_unused]] int target)
     }
 }
 
-void abilities_click_belt(const guy& hero, int belt_slot)
+void abilities_click_belt(const AbilitiesHero& hero, int belt_slot)
 {
     AbilitiesScreenState& state = *g_abilities;
     const AbilityPick pick = ability_pick_belt(
-        state.working, abilities_family(hero), abilities_new_specials(),
+        state.working, abilities_family(hero), hero.new_specials,
         abilities_page(hero), state.selected, belt_slot);
     state.selected = pick.selected;
     trace_pick(pick, belt_slot);
 }
 
-void abilities_click_bench(const guy& hero, int row)
+void abilities_click_bench(const AbilitiesHero& hero, int row)
 {
     AbilitiesScreenState& state = *g_abilities;
     const AbilityPage page = abilities_page(hero);
@@ -597,7 +652,7 @@ void abilities_click_bench(const guy& hero, int row)
     const int target = state.selected;
     const AbilityPick pick =
         ability_pick_bench(state.working, abilities_family(hero),
-                           abilities_new_specials(), page, state.selected,
+                           hero.new_specials, page, state.selected,
                            index);
     state.selected = pick.selected;
     trace_pick(pick, target);
@@ -605,8 +660,8 @@ void abilities_click_bench(const guy& hero, int row)
 
 Sint32 abilities_on_spec_row(int row, void* /*screen_state*/)
 {
-    const guy* const hero = abilities_hero();
-    if (hero == nullptr)
+    const std::optional<AbilitiesHero> hero = abilities_hero();
+    if (!hero)
         return MENU_OK;
     if (row == kAbilitiesDefaultsIndex) {
         if (g_abilities->editable) {
@@ -641,7 +696,7 @@ Sint32 abilities_consume_click(Sint32 retvalue, void* /*screen_state*/)
 {
     if (retvalue != MENU_OK || pks().menu_spec_clicked_row >= 0 ||
         g_abilities == nullptr || !g_abilities->editable ||
-        abilities_hero() == nullptr)
+        !abilities_hero())
         return retvalue;
     for (int b = 0; b < belt::kSlots; ++b) {
         vbutton* const live = og::runtime::current_session
@@ -659,7 +714,30 @@ Sint32 abilities_consume_click(Sint32 retvalue, void* /*screen_state*/)
 // The hero left the slot (sold, or the lobby dropped it): nothing to show.
 bool abilities_frame_tick(void* /*screen_state*/, int /*frame*/)
 {
-    return abilities_hero() != nullptr;
+    return abilities_hero().has_value();
+}
+
+// The PAUSED copy's frame: one paused-session pump (the menu's own keep-alive
+// rides it), then the seat must still drive the body the screen opened on. A
+// session end or a new body closes the screen; BACK's commit never runs.
+bool abilities_pause_frame_tick(void* screen_state, int /*frame*/)
+{
+    auto* const state = static_cast<AbilitiesScreenState*>(screen_state);
+    if (state == nullptr || state->pause == nullptr)
+        return false;
+    if (state->pause->pump != nullptr &&
+        !state->pause->pump(state->pause->pump_context)) {
+        state->session_ended = true;
+        TRACE("abilities", "pause closed: session ended");
+        return false;
+    }
+    if (pause_body(*state) == nullptr) {
+        state->control_changed = true;
+        TRACE("abilities", "pause closed: control changed seat=%d",
+              state->pause->seat);
+        return false;
+    }
+    return true;
 }
 
 std::vector<button>& abilities_buttons()
@@ -701,11 +779,12 @@ const MenuScreenSpec& abilities_menu_screen_spec()
 
 std::string abilities_screen_status_line()
 {
-    const guy* const hero = abilities_hero();
-    if (hero == nullptr)
+    const std::optional<AbilitiesHero> hero = abilities_hero();
+    if (!hero)
         return {};
     if (!g_abilities->editable)
-        return kReadOnlyNotice;
+        return g_abilities->body_has_record ? kReadOnlyNotice
+                                            : kNoSavedLayoutNotice;
     return ability_status_line(abilities_page(*hero), g_abilities->selected);
 }
 
@@ -737,6 +816,98 @@ Sint32 run_abilities_menu(int team_slot)
         picker_base_camp_after_roster_mutation();
     }
     return MENU_REDRAW;
+}
+
+walker* seat_driven_walker(int seat)
+{
+    og::runtime::SessionState* const session = og::runtime::current_session;
+    if (session == nullptr || session->myscreen_ == nullptr)
+        return nullptr;
+    screen& view_screen = *session->myscreen_;
+    if (seat < 0 || seat >= view_screen.numviews || seat >= MAX_VIEWS ||
+        !view_screen.viewob[static_cast<std::size_t>(seat)])
+        return nullptr;
+    walker* const control =
+        view_screen.viewob[static_cast<std::size_t>(seat)]->control;
+    if (control == nullptr || control->dead() || control->stats() == nullptr)
+        return nullptr;
+    return control;
+}
+
+const MenuScreenSpec& abilities_pause_menu_screen_spec()
+{
+    static const MenuScreenSpec spec{
+        .name = "abilities_pause",
+        .rows = kAbilitiesRows,
+        .row_count = static_cast<int>(std::size(kAbilitiesRows)),
+        .buttons_accessor = &picker_abilities_buttons,
+        .count_accessor = &picker_abilities_button_count,
+        .nav = {.kind = NavProgramKind::Rewire, .rewire = &abilities_rewire},
+        .remote_start = RemoteStartScope::None,
+        // Pause family: a mid-mission modal card, never faded (#237).
+        .kind = MenuScreenKind::Overlay,
+        .default_highlight = belt_ordinal(0),
+        .right_click_enabled = true,
+        .polls_lobby = false,
+        .draw_background = &options_panel_draw_background,
+        .draw_content = &abilities_draw_content,
+        .frame_tick = &abilities_pause_frame_tick,
+        .consume_click = &abilities_consume_click,
+        .on_spec_row = &abilities_on_spec_row,
+        .exit_value = MENU_REDRAW,
+    };
+    return spec;
+}
+
+PauseAbilitiesResult run_pause_abilities_screen(const PauseAbilitiesHost& host)
+{
+    PauseAbilitiesResult result;
+    const walker* const body = seat_driven_walker(host.seat);
+    if (body == nullptr)
+        return result;  // the door is dimmed; nothing to show
+
+    const AbilitiesHero opened = hero_of_body(*body);
+    AbilitiesScreenState state{
+        .pause = &host,
+        .entity_id = body->entity_id(),
+        .body_has_record = body->myguy != nullptr,
+        .editable = body->myguy != nullptr,
+        .working = opened.stored,
+    };
+    result.opened = true;
+    AbilitiesScreenState* const previous = g_abilities;
+    g_abilities = &state;
+    TRACE("abilities", "pause open seat=%d entity=%u editable=%d", host.seat,
+          static_cast<unsigned>(state.entity_id), state.editable ? 1 : 0);
+    (void)run_menu_screen(abilities_pause_menu_screen_spec(), &state);
+    g_abilities = previous;
+
+    result.session_ended = state.session_ended;
+    result.control_changed = state.control_changed;
+    if (state.session_ended || state.control_changed || !state.editable ||
+        state.working == opened.stored)
+        return result;
+    // BACK: the same body still under the seat, or nothing is sent (a
+    // Switch or a possession between the last frame and the click).
+    if (pause_body(state) == nullptr) {
+        result.control_changed = true;
+        TRACE("abilities", "pause closed: control changed seat=%d", host.seat);
+        return result;
+    }
+    if (host.set_belt == nullptr ||
+        !host.set_belt(host.seat, state.entity_id, state.working))
+    {
+        TRACE("abilities", "pause commit refused seat=%d", host.seat);
+        return result;
+    }
+    // A SPEC key held through the pause latched its entry from the OLD
+    // layout; drop it so that key cannot cast the old entry after RESUME.
+    if (host.seat >= 0 && host.seat < 4)
+        input_hardware_state().belt_latch[host.seat] = og::sim::belt::Latch{};
+    result.committed = true;
+    TRACE("abilities", "pause commit seat=%d entity=%u", host.seat,
+          static_cast<unsigned>(state.entity_id));
+    return result;
 }
 
 }  // namespace og::ui

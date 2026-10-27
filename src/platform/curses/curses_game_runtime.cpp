@@ -16,6 +16,7 @@
 
 #include <openglad/platform/curses/clock.h>
 #include <openglad/platform/curses/curses_input.h>
+#include <openglad/platform/curses/curses_picker_client.h>
 #include <openglad/platform/curses/curses_renderer.h>
 #include <openglad/platform/curses/terminal.h>
 
@@ -28,8 +29,10 @@
 #include <openglad/gameplay/net_transport_inprocess.h>
 #include <openglad/gameplay/sim_event_log.h>
 #include <openglad/gameplay/walker.h>
+#include <openglad/interface/input.h>
 #include <openglad/interface/level_runtime_data.h>
 #include <openglad/interface/session_state.h>
+#include <openglad/interface/ui/picker_common.h>
 #include <openglad/resources/gparser.h> // cfg
 #include <openglad/resources/level_data_hooks.h>
 #include <openglad/resources/progression.h>
@@ -123,6 +126,30 @@ public:
     }
 
     void request_abort() override { client_->request_level_abort(); }
+
+    void request_pause() override { client_->send_pause_request(); }
+    void send_pause_response() override
+    {
+        // Only a pause this session holds is answered: a response with the
+        // world running would ask the server to pause it again.
+        const auto& baseline = client_->baseline();
+        if (baseline.has_value() && baseline->paused)
+            client_->send_pause_response();
+    }
+    void set_belt(const og::sim::belt::Bytes& belt) override
+    {
+        const std::uint32_t followed = followed_entity_id();
+        if (followed != 0)
+            client_->send_belt_change(0, followed, belt);
+    }
+    const guy* followed_guy() const override
+    {
+        const std::uint32_t followed = followed_entity_id();
+        const walker* const body =
+            followed != 0 ? client_level_->world().find_by_id(followed)
+                          : nullptr;
+        return body != nullptr && !body->dead() ? body->myguy : nullptr;
+    }
 
     std::vector<std::string> drain_messages() override
     {
@@ -488,6 +515,115 @@ bool ask_exit_prompt(ITerminal& term, CursesRenderer& renderer,
     }
 }
 
+// --- The in-game PAUSED menu (Esc) -------------------------------------------
+
+enum class PausedMenuChoice { Resume, QuitMission };
+
+inline constexpr std::string_view kPausedMenuLine =
+    " PAUSED   [r]esume  [a]bilities  [k]eys  [q]uit mission ";
+// The server lets a pause go after 60 s; ask again well inside that.
+inline constexpr std::uint64_t kPausedKeepaliveMs = 20'000;
+inline constexpr std::uint32_t kPausedMenuPollMs = 30;
+
+void draw_paused_menu(ITerminal& term, CursesRenderer& renderer,
+                      CursesGameSession& session, const LevelLoopOptions& opt)
+{
+    if (!opt.render)
+        return;
+    renderer.draw(term, session.mirror_world(), session.followed_entity_id(),
+                  session.follow_engaged());
+    term.put_str(term.rows() / 2, 0, kPausedMenuLine, Color::Yellow,
+                 Color::Blue, true);
+    term.present();
+}
+
+// 'a': the ABILITIES page over the walker the player drives. A changed
+// layout goes to the server (one BeltChange); a body with no saved layout
+// opens read-only.
+void paused_menu_abilities(CursesGameSession& session, ITerminal& term,
+                           IClock& clock, CursesRenderer& renderer)
+{
+    if (!og::input::ability_select_on()) {
+        renderer.log_message(
+            "Abilities need New Ability Select (Game Settings).");
+        return;
+    }
+    const std::uint32_t followed = session.followed_entity_id();
+    const walker* const body =
+        followed != 0 && !session.follow_engaged()
+            ? session.mirror_world().find_by_id(followed)
+            : nullptr;
+    if (body == nullptr || body->dead() || body->stats() == nullptr) {
+        renderer.log_message("No character to show abilities for.");
+        return;
+    }
+    const og::ui::AbilityBodyHero shown = og::ui::ability_hero_of_body(*body);
+    const bool editable = session.followed_guy() != nullptr;
+    const og::sim::belt::Bytes edited = run_abilities_page(
+        term, clock,
+        AbilitiesPageHero{.name = shown.name,
+                          .family = shown.family,
+                          .level = shown.level,
+                          .new_specials = session.mirror_world().new_specials,
+                          .stored = shown.stored,
+                          .editable = editable});
+    if (editable && edited != shown.stored)
+        session.set_belt(edited);
+}
+
+// Esc opens it over the frozen world: [r]esume (or Esc, or any other key),
+// [a]bilities, [k]eys, [q]uit mission. The pause is asked for once; while
+// the menu waits for a key the session keeps advancing (no input) so the
+// in-process server answers the pause and the keep-alive. Closing it either
+// way sends the pause response.
+PausedMenuChoice run_paused_menu(CursesGameSession& session, ITerminal& term,
+                                 IClock& clock, CursesInput& input,
+                                 CursesRenderer& renderer,
+                                 const LevelLoopOptions& opt)
+{
+    session.request_pause();
+    std::uint64_t last_request = clock.now_ms();
+    PausedMenuChoice choice = PausedMenuChoice::Resume;
+    for (;;) {
+        session.advance();
+        draw_paused_menu(term, renderer, session, opt);
+        const Key key = term.poll_key(false);
+        if (key.is_none()) {
+            // Tests and headless runs (no_pacing) have nothing more to wait
+            // for: their scripted input ran out, so the menu resumes, the way
+            // ask_exit_prompt declines.
+            if (opt.no_pacing)
+                break;
+            if (clock.now_ms() - last_request >= kPausedKeepaliveMs) {
+                session.request_pause();
+                last_request = clock.now_ms();
+            }
+            clock.sleep_ms(kPausedMenuPollMs);
+            continue;
+        }
+        if (!key.is_press())
+            continue;  // releases of keys held when Esc opened the menu
+        if (key.is_char(U'q') || key.is_char(U'Q')) {
+            choice = PausedMenuChoice::QuitMission;
+            break;
+        }
+        if (key.is_char(U'a') || key.is_char(U'A')) {
+            paused_menu_abilities(session, term, clock, renderer);
+            continue;
+        }
+        if (key.is_char(U'k') || key.is_char(U'K')) {
+            show_keys_page(term, clock, input.keybindings(),
+                           get_player_control_mode(0) ==
+                               static_cast<int>(
+                                   ControlDirectionMode::EightDirection));
+            continue;
+        }
+        break;  // [r]esume, Esc, anything else
+    }
+    session.send_pause_response();
+    return choice;
+}
+
 } // namespace
 
 GameRunResult run_level_loop(CursesGameSession& session, ITerminal& term, IClock& clock,
@@ -512,24 +648,36 @@ GameRunResult run_level_loop(CursesGameSession& session, ITerminal& term, IClock
         }
 
         // --- input ---
-        // Esc is the only key the loop intercepts (open in-game menu / withdraw).
-        // Every other key is fed to CursesInput, which resolves it through the
-        // player's real keybindings — nothing about which key does what is decided
-        // here.
-        bool quit_to_menu = false;
+        // Esc is the only key the loop intercepts (the PAUSED menu). Every
+        // other key is fed to CursesInput, which resolves it through the
+        // player's real keybindings — nothing about which key does what is
+        // decided here.
+        bool open_menu = false;
         for (;;) {
             const Key key = term.poll_key(false);
             if (key.is_none())
                 break;
             if (CursesInput::meta_for_key(key) == MetaAction::OpenGameMenu) {
-                // Esc opens the menu / withdraws — act on the press only (a
-                // release event must not re-trigger it), and swallow it either way
-                // since it is not a player binding.
-                if (key.is_press())
-                    quit_to_menu = true;
+                // Act on the press only (a release event must not re-open
+                // it), and swallow it either way since it is not a player
+                // binding. The keys after it belong to the menu.
+                if (key.is_press()) {
+                    open_menu = true;
+                    break;
+                }
             } else {
                 input.feed(key);
             }
+        }
+        bool quit_to_menu = false;
+        if (open_menu) {
+            quit_to_menu = run_paused_menu(session, term, clock, input,
+                                           renderer, opt) ==
+                           PausedMenuChoice::QuitMission;
+            // Keys held when the menu opened were let go inside it, and a
+            // SPEC key's latch must not cast an entry of a layout the menu
+            // may have changed: start the next frame clean.
+            input.reset();
         }
         if (quit_to_menu) {
             session.request_abort();

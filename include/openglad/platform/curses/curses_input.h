@@ -19,13 +19,14 @@ class GameWorld;
 #include <cstdint>
 #include <optional>
 #include <span>
+#include <string>
 
 namespace og::curses {
 
 // Meta keys handled outside the per-frame InputState (the runtime acts on them).
 enum class MetaAction {
     None,
-    OpenGameMenu, // Esc: open the in-game menu / return to team build
+    OpenGameMenu, // Esc: open the in-game PAUSED menu (R/A/K/Q)
 };
 
 // Translates terminal key events into the engine's per-frame InputState for the
@@ -67,6 +68,9 @@ public:
     // Clear all held/pressed state (e.g. when leaving a level).
     void reset();
 
+    // The key table this input resolves (the KEYS page shows it).
+    std::span<const int, NUM_KEYS> keybindings() const { return keybindings_; }
+
     // --- pure mappers (static; unit-tested directly) ---
 
     // SDL keycode (KEYCODE_*) for a terminal key, or KEYCODE_UNKNOWN (0) if the
@@ -76,6 +80,12 @@ public:
     // Meta action for a key (Esc -> menu), or MetaAction::None. Meta keys are
     // fixed (not part of the game's player bindings).
     static MetaAction meta_for_key(const Key& k);
+
+    // The terminal key a bound keycode is typed with, for the KEYS page:
+    // "W", "Space", "Left Ctrl", "F5"; "--" for an unbound slot; a keycode no
+    // terminal key produces (keypad, PgUp, the Windows key) says so. The
+    // inverse of keycode_for_key: every name is checked against it.
+    static std::string key_label(int keycode);
 
 private:
     // The NUM_KEYS SDL keycodes of player_keys_[0], indexed by key slot. The

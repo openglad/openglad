@@ -25,18 +25,26 @@
 #include <vector>
 
 #include <openglad/core/test_trace.h>
+#include <openglad/gameplay/families/belt.h>
+#include <openglad/gameplay/families/family_registry.h>
+#include <openglad/gameplay/families/specials_view.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/input_state.h>
+#include <openglad/gameplay/walker.h>
 #include <openglad/interface/button.h>
+#include <openglad/interface/game_context.h>
 #include <openglad/interface/input.h>
+#include <openglad/interface/input_hardware_state.h>
 #include <openglad/interface/input_mappings.h>
 #include <openglad/interface/native_input.h>
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/session_state.h>
+#include <openglad/interface/ui/abilities_screen.h>
 #include <openglad/interface/ui/input_cycler.h>
 #include <openglad/interface/ui/menu_screen_spec.h>
 #include <openglad/interface/ui/pause_menu.h>
+#include <openglad/interface/ui/picker_lobby_client.h>
 #include <openglad/interface/ui/picker_ui_state.h>
 #include <openglad/platform/game_loop.h>
 #include <openglad/platform/game_session.h>
@@ -48,6 +56,7 @@
 #include "test_ability_select_scope.h"
 #include "test_click_ladder.h"
 #include "test_escape_tail.h"
+#include "test_fake_keyboard.h"
 #include "test_input_helpers.h"
 #include "test_save_state_guard.h"
 #include "test_interact.h"
@@ -55,6 +64,9 @@
 #include <atomic>
 
 void glad_init(bool preserve_frame_timing = false);
+void glad_init(bool preserve_frame_timing,
+               const og::ui::PickerLobbyGameStartConfig* lobby_config);
+short new_score_panel(screen* scr, short do_it);  // score_panel.cpp, the HUD
 void picker_testing_yes_or_no_queue_clear();
 void picker_testing_yes_or_no_queue_push(bool value);
 // TESTING seams: help.cpp's real-scroll-view switch and view.cpp's one-shot
@@ -537,9 +549,10 @@ TEST(PauseMenuPins, pause_player_exact_table)
     // 6px gutters (widths 98/92/90, shared right edge 304), bands y=30 and
     // y=54, the binding panel + HUD stack sharing y=78..161, REMOVE on the
     // y=169 command band. Identical to Base Camp seat settings (minus TEAM).
-    // #358 appends the sixteen key cells over the panel lines (11..26) and
-    // the final table reserves ABILITIES (27) and KEYMAP (28), hidden until
-    // their rows are filled in.
+    // #358 appends the sixteen key cells over the panel lines (11..26), then
+    // the bottom-left band's two doors, ABILITIES (27, #376) and KEYMAP
+    // (28, #388): half-width 66 px faces at x 12 and x 84 on the y=169
+    // band, left of REMOVE.
     std::vector<ExpectedButton> expected = {
         {"pause_player_back", "BACK", KEYSTATE_ESCAPE, 10, 8, 50, 15,
          button_action_id(ButtonAction::ReturnMenu), MENU_REDRAW,
@@ -577,8 +590,9 @@ TEST(PauseMenuPins, pause_player_exact_table)
     };
     // The key cells: one 8 px row per panel line from y 92, the MOVEMENT
     // column x 14..101, the ACTIONS column x 102..205. Up/down walk a
-    // column (INPUT and ZOOM above, REMOVE below), left/right cross to the
-    // twin line, and an action line's right is the HUD row beside it.
+    // column (INPUT and ZOOM above; ABILITIES under MOVEMENT, REMOVE under
+    // ACTIONS), left/right cross to the twin line, and an action line's
+    // right is the HUD row beside it.
     static const int kHudBeside[8] = {7, 8, 8, 8, 9, 9, 10, 10};
     std::vector<std::string> ids;
     ids.reserve(16);
@@ -592,7 +606,7 @@ TEST(PauseMenuPins, pause_player_exact_table)
              14, 92 + 8 * i, 88, 8,
              button_action_id(ButtonAction::MenuSpecRow), 11 + i,
              MenuNav{.up = i > 0 ? 10 + i : 1,
-                     .down = i < 7 ? 12 + i : 5,
+                     .down = i < 7 ? 12 + i : 27,
                      .right = 19 + i}});
     for (int j = 0; j < 8; ++j)
         expected.push_back(
@@ -603,13 +617,17 @@ TEST(PauseMenuPins, pause_player_exact_table)
                      .down = j < 7 ? 20 + j : 5,
                      .left = 11 + j,
                      .right = kHudBeside[j]}});
+    // The band: ABILITIES (up from the MOVEMENT column's last line), KEYMAP
+    // (up from the ACTIONS column's), REMOVE; left/right along it, down to
+    // BACK.
     expected.push_back({"pause_abilities", "ABILITIES", KEYSTATE_UNKNOWN, 12,
                         169, 66, 18,
                         button_action_id(ButtonAction::MenuSpecRow), 27,
-                        MenuNav{.up = 0, .down = 0}, true});
+                        MenuNav{.up = 18, .down = 0, .right = 28}});
     expected.push_back({"pause_keymap", "KEYMAP", KEYSTATE_UNKNOWN, 84, 169,
                         66, 18, button_action_id(ButtonAction::MenuSpecRow),
-                        28, MenuNav{.up = 0, .down = 0}, true});
+                        28, MenuNav{.up = 26, .down = 0, .left = 27,
+                                    .right = 5}});
     ASSERT_EQ(29u, expected.size());
     EXPECT_EQ(11, og::ui::kPausePlayerCellFirstIndex);
     EXPECT_EQ(27, og::ui::kPausePlayerAbilitiesIndex);
@@ -4505,11 +4523,10 @@ TEST(PausePlayerHandlers, key_cell_binds_that_key_alone_and_saves_it)
         << "no prompt ran, so nothing read the queue";
     og::input::testing_clear_key_wait_events();
 
-    // The reserved doors are inert.
+    // ABILITIES with the seat driving nothing opens nothing (the door is
+    // dimmed): the handler returns at once.
     EXPECT_EQ(MENU_OK,
               spec.on_spec_row(og::ui::kPausePlayerAbilitiesIndex, &state));
-    EXPECT_EQ(MENU_OK,
-              spec.on_spec_row(og::ui::kPausePlayerKeymapIndex, &state));
     og::ui::install_pause_player_state_for_screen(nullptr);
 }
 
@@ -4672,16 +4689,24 @@ TEST(PauseMenuNav, pause_player_key_cells_route_around_hidden_cells)
                              .hidden)
                         actions.push_back(first + 8 + line);
                 }
-                EXPECT_TRUE(buttons[og::ui::kPausePlayerAbilitiesIndex].hidden);
-                EXPECT_TRUE(buttons[og::ui::kPausePlayerKeymapIndex].hidden);
+                // #376/#388: both doors are on the band (ABILITIES dimmed,
+                // still focusable: no body under the seat here).
+                EXPECT_FALSE(buttons[og::ui::kPausePlayerAbilitiesIndex].hidden);
+                EXPECT_FALSE(buttons[og::ui::kPausePlayerKeymapIndex].hidden);
                 const auto& b = buttons;
                 EXPECT_EQ(movement.front(), b[og::ui::kPausePlayerInputIndex].nav.down);
                 EXPECT_EQ(actions.front(), b[og::ui::kPausePlayerZoomIndex].nav.down);
-                const int exit = can_remove ? og::ui::kPausePlayerRemoveIndex
-                                            : og::ui::kPausePlayerBackIndex;
+                // Down out of MOVEMENT is ABILITIES; out of ACTIONS it is
+                // REMOVE, or KEYMAP when REMOVE is gone.
+                const int movement_exit = og::ui::kPausePlayerAbilitiesIndex;
+                const int actions_exit = can_remove
+                    ? og::ui::kPausePlayerRemoveIndex
+                    : og::ui::kPausePlayerKeymapIndex;
                 for (const std::vector<int>* column : {&movement, &actions})
                     for (std::size_t k = 0; k < column->size(); ++k)
                     {
+                        const int exit =
+                            column == &movement ? movement_exit : actions_exit;
                         const button& cell = b[static_cast<std::size_t>((*column)[k])];
                         EXPECT_EQ(k + 1 < column->size() ? (*column)[k + 1] : exit,
                                   cell.nav.down)
@@ -4691,6 +4716,25 @@ TEST(PauseMenuNav, pause_player_key_cells_route_around_hidden_cells)
                             EXPECT_EQ((*column)[k - 1], cell.nav.up) << cell.id;
                         }
                     }
+                // The band, left to right, each face down to BACK; up from
+                // ABILITIES is the MOVEMENT column, from KEYMAP the ACTIONS.
+                const MenuNav& abilities =
+                    b[og::ui::kPausePlayerAbilitiesIndex].nav;
+                const MenuNav& keymap = b[og::ui::kPausePlayerKeymapIndex].nav;
+                EXPECT_EQ(movement.back(), abilities.up);
+                EXPECT_EQ(actions.back(), keymap.up);
+                EXPECT_EQ(-1, abilities.left);
+                EXPECT_EQ(og::ui::kPausePlayerKeymapIndex, abilities.right);
+                EXPECT_EQ(og::ui::kPausePlayerAbilitiesIndex, keymap.left);
+                EXPECT_EQ(can_remove ? og::ui::kPausePlayerRemoveIndex : -1,
+                          keymap.right);
+                EXPECT_EQ(og::ui::kPausePlayerBackIndex, abilities.down);
+                EXPECT_EQ(og::ui::kPausePlayerBackIndex, keymap.down);
+                if (can_remove)
+                {
+                    EXPECT_EQ(og::ui::kPausePlayerKeymapIndex,
+                              b[og::ui::kPausePlayerRemoveIndex].nav.left);
+                }
                 // Out right from an action line is its HUD row; the HUD rows
                 // come back into the column.
                 EXPECT_EQ(og::ui::kPausePlayerHudRadarIndex,
@@ -5022,4 +5066,640 @@ TEST(PauseMenuFlow, one_click_on_the_fire_line_rebinds_fire)
     game_screen->world().delete_objects();
     game_screen->world().end = 0;
     game_screen->world().retry = false;
+}
+
+// ---------------------------------------------------------------------------
+// #376: ABILITIES from the PAUSED menu. The pause player screen's ABILITIES
+// door opens the screen over the character the seat drives; BACK sends a
+// changed layout to the server (one BeltChange), whose next snapshot carries
+// it back to the mirror and so to the HUD.
+
+namespace
+{
+
+namespace belt = og::sim::belt;
+
+// The entry the family names `name` (a primary or an alternate).
+belt::Entry entry_named(int family, const std::string& name)
+{
+    const FamilyDescriptor* const fd = get_family_descriptor(family);
+    for (const belt::Entry& entry : belt::catalog(fd, 1))
+    {
+        const char* const named =
+            entry.alt ? og::sim::alternate_name(fd, entry.slot, 1)
+                      : og::sim::special_name(fd, entry.slot, 1);
+        if (named != nullptr && name == named)
+            return entry;
+    }
+    ADD_FAILURE() << "no ability named " << name;
+    return {};
+}
+
+// An Archmage (level 12: MIND CONTROL waits on the bench) under seat 1 and a
+// Soldier teammate, started the way Base Camp's GO starts a mission (the
+// local lobby's start config), so the display world is the in-process
+// server's mirror and both heroes carry their guys. Returns the mirror hero.
+walker* start_abilities_mission(screen& game_screen)
+{
+    SaveData& save = game_screen.save_data;
+    save.reset();
+    save.current_campaign = "gladiator";
+    save.current_levels["gladiator"] = 1;
+    save.scen_num = 1;
+    save.numplayers = 1;
+    save.new_specials = 1;
+    auto archmage = std::make_unique<guy>(FAMILY_ARCHMAGE);
+    archmage->name = "MERLIN";
+    archmage->teamnum = 0;
+    archmage->upgrade_to_level(12);
+    archmage->deployed = true;
+    auto soldier = std::make_unique<guy>(FAMILY_SOLDIER);
+    soldier->name = "BRAVO";
+    soldier->teamnum = 0;
+    soldier->deployed = true;
+    save.team_list[0] = std::move(archmage);
+    save.team_list[1] = std::move(soldier);
+    save.team_size = 2;
+    if (!save.save("save0"))
+        return nullptr;
+    std::optional<og::ui::PickerLobbyGameStartConfig> config;
+    {
+        auto client = og::ui::create_local_picker_lobby_client();
+        client->initialize_from_save();
+        config = client->build_game_start_config();
+        client->shutdown();
+    }
+    if (!config.has_value())
+        return nullptr;
+    glad_init(false, &*config);
+    if (og::runtime::current_game_session == nullptr ||
+        !og::runtime::local_transport_active(*og::runtime::current_session))
+        return nullptr;
+    GameLoopDeps deps;
+    deps.enable_render = false;
+    deps.enable_event_poll = false;
+    deps.enable_frame_timing = false;
+    for (int frame = 0;
+         frame < 10 && game_screen.viewob[0]->control == nullptr; ++frame)
+        game_frame_with_result(game_screen,
+                               og::runtime::current_session->frame_state_,
+                               deps);
+    walker* const hero = game_screen.viewob[0]->control;
+    return hero != nullptr && hero->myguy != nullptr &&
+                   hero->myguy->name == "MERLIN"
+        ? hero
+        : nullptr;
+}
+
+void end_abilities_mission(screen& game_screen)
+{
+    og::runtime::clear_local_transport_shadow(
+        *og::runtime::current_game_session);
+    for (auto& view : game_screen.viewob)
+    {
+        if (view)
+            view->control = nullptr;
+    }
+    game_screen.world().delete_objects();
+    game_screen.world().end = 0;
+    game_screen.world().retry = false;
+}
+
+// The mirror walker whose guy is named `name`, or nullptr.
+walker* mirror_hero_named(screen& game_screen, const std::string& name)
+{
+    for (const auto& ob : game_screen.world().oblist)
+    {
+        if (ob && !ob->dead() && ob->myguy != nullptr &&
+            ob->myguy->name == name)
+            return ob.get();
+    }
+    return nullptr;
+}
+
+// The SERVER's guy behind `entity_id` (its belt), read on the main thread.
+std::optional<belt::Bytes> server_belt(std::uint32_t entity_id)
+{
+    screen* const server = og::runtime::local_transport_shadow_testing_server_screen(
+        *og::runtime::current_game_session);
+    if (server == nullptr)
+        return std::nullopt;
+    const walker* const body = server->world().find_by_id(entity_id);
+    if (body == nullptr || body->myguy == nullptr)
+        return std::nullopt;
+    return body->myguy->belt;
+}
+
+// Doors, in precedence order: ABILITIES' BACK, then the pause menu's.
+constexpr EscapeDoor kPauseAbilitiesDoors[] = {
+    {"abilities_back", "abilities_back"},
+    {"pause_resume", "pause_resume"},
+    {"pause_player_back", "pause_player_back"},
+};
+
+bool label_selected(const std::string& id, int ms)
+{
+    return wait_for_interactable_label_matching(
+        id, [](const std::string& label) {
+            return !label.empty() && label.front() == '>';
+        },
+        ms);
+}
+
+bool label_has(const std::string& id, const std::string& want, int ms)
+{
+    return wait_for_interactable_label_matching(
+        id, [&want](const std::string& label) {
+            return label.find(want) != std::string::npos;
+        },
+        ms);
+}
+
+// On the open ABILITIES screen: select belt face `belt_id`, then put the
+// benched MIND CONTROL there. False when a step never landed.
+bool place_mind_control(const std::string& belt_id, int slot)
+{
+    if (!wait_for_interactable(belt_id, 10'000) || !wait_for_menu_frames(2))
+        return false;
+    const std::string select = "select " + std::to_string(slot);
+    if (!click_until_edge(
+            belt_id, [&belt_id](int ms) { return label_selected(belt_id, ms); },
+            select.c_str(), 3, 2500, "abilities"))
+        return false;
+    if (interactable_label("bench_0").find("MIND CONTROL") == std::string::npos)
+    {
+        fprintf(stderr, "  [abilities] bench_0 reads '%s'\n",
+                interactable_label("bench_0").c_str());
+        return false;
+    }
+    const std::string place = "place slot=" + std::to_string(slot);
+    return click_until_edge(
+        "bench_0",
+        [&belt_id](int ms) { return label_has(belt_id, "MIND CONTROL", ms); },
+        place.c_str(), 3, 2500, "abilities");
+}
+
+struct PauseAbilitiesFlow
+{
+    std::atomic<bool> test_finished{false};
+    std::string belt_id = "belt_5";  // S3
+    int slot = 5;
+    std::uint32_t hero_id = 0;
+    belt::Bytes before{};
+    // What the injector read on the main thread after BACK.
+    std::optional<belt::Bytes> server_after;
+    bool door_lit = false;
+    bool shots = false;  // MENUSHOTS_DIR stills of the door and the screen
+};
+
+// PAUSED -> P1 -> ABILITIES -> MIND CONTROL on the flow's slot -> BACK
+// (wait for the SERVER's guy to take it, while still paused) -> BACK ->
+// RESUME.
+int pause_abilities_injector(void* data)
+{
+    auto* const flow = static_cast<PauseAbilitiesFlow*>(data);
+    og::runtime::ensure_thread_session();
+    const auto leave = [flow](int leg, const char* why) {
+        return escape_to_the_main_thread(flow->test_finished, leg, why,
+                                         kPauseAbilitiesDoors);
+    };
+
+    if (!wait_for_pause_interactable("pause_player_0", 10'000) ||
+        !wait_for_completed_pause_menu_frames(2, 10'000))
+        return leave(1, "the PAUSED screen never showed P1");
+    if (!click_until_edge("pause_player_0", [](int ms) {
+            return wait_for_interactable("pause_abilities", ms);
+        }))
+        return leave(2, "P1's player screen never opened");
+    if (!wait_for_completed_pause_menu_frames(2, 10'000))
+        return leave(2, "the player screen never composed");
+    flow->door_lit = has_enabled_interactable("pause_abilities");
+    if (flow->shots)
+        (void)run_on_main_thread([] {
+            (void)write_menushot(og::runtime::current_session->myscreen_,
+                                 "pause_player_doors");
+        });
+    if (!click_until_edge("pause_abilities", [](int ms) {
+            return wait_for_interactable("abilities_back", ms);
+        }))
+        return leave(3, "ABILITIES never opened");
+    if (!place_mind_control(flow->belt_id, flow->slot))
+        return leave(4, "MIND CONTROL never reached the slot");
+    if (flow->shots && wait_for_menu_frames(2))
+        (void)run_on_main_thread([] {
+            (void)write_menushot(og::runtime::current_session->myscreen_,
+                                 "pause_abilities_mind_control_s3");
+        });
+    if (!click_until_edge("abilities_back", [](int ms) {
+            return wait_for_interactable("pause_abilities", ms);
+        }))
+        return leave(5, "BACK never brought the player screen back");
+
+    // The player screen pumps the paused session every frame: the server's
+    // guy takes the layout within a few frames.
+    const Uint64 started = SDL_GetTicks();
+    for (;;)
+    {
+        std::optional<belt::Bytes> now;
+        (void)run_on_main_thread(
+            [flow, &now] { now = server_belt(flow->hero_id); });
+        if (now.has_value() && *now != flow->before)
+        {
+            flow->server_after = now;
+            break;
+        }
+        if (SDL_GetTicks() - started >= 10'000)
+        {
+            flow->server_after = now;
+            break;  // the main thread's assertions name the miss
+        }
+        SDL_Delay(50);
+    }
+
+    if (!click_until_edge("pause_player_back", [](int ms) {
+            return wait_for_interactable("pause_resume", ms);
+        }))
+        return leave(6, "BACK never brought PAUSED back");
+    if (!wait_for_completed_pause_menu_frames(2, 10'000))
+        return leave(6, "PAUSED never composed after BACK");
+    interact("pause_resume");
+    return 0;
+}
+
+// One Esc frame through the real game loop (the real PauseMenuHost, so the
+// real set_belt wiring), blocking until the injector clicks RESUME.
+GameFrameResult run_escape_frame_with(screen& game_screen,
+                                      PauseAbilitiesFlow& flow)
+{
+    SDL_Thread* const injector = SDL_CreateThread(
+        pause_abilities_injector, "pause_abilities_injector", &flow);
+    EXPECT_TRUE(injector != nullptr);
+    EventScriptLocal script;
+    SDL_Event e{};
+    e.type = SDL_EVENT_KEY_DOWN;
+    e.key.key = SDLK_ESCAPE;
+    e.key.repeat = false;
+    script.events.push_back(e);
+    g_pause_script = &script;
+    GameLoopDeps deps;
+    deps.enable_render = false;
+    deps.enable_event_poll = true;
+    deps.enable_frame_timing = false;
+    deps.poll_event = pause_scripted_poll;
+    const GameFrameResult result = game_frame_with_result(
+        game_screen, og::runtime::current_session->frame_state_, deps);
+    g_pause_script = nullptr;
+    flow.test_finished.store(true);
+    int injector_result = -1;
+    SDL_WaitThread(injector, &injector_result);
+    escape_tail_join_hygiene();
+    EXPECT_EQ(0, injector_result) << "injector leg " << injector_result
+                                  << " gave up";
+    return result;
+}
+
+} // namespace
+
+// #376 end to end: P1 opens ABILITIES from the PAUSED menu, puts MIND
+// CONTROL on S3 and goes BACK; the SERVER's guy takes the layout while the
+// game is still paused; after RESUME the mirror hero carries it and the HUD's
+// SHIFTER row draws MIND CONTROL on key 3.
+//
+// RED (planted): the screen's BACK skips host.set_belt (the server's guy
+// keeps the old layout).
+TEST(PauseMenuFlow, abilities_from_the_paused_menu_reach_the_server_guy_and_the_hud)
+{
+    ScopedAbilitySelect on(true);
+    KeyCellGuard guard;
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(game_screen != nullptr);
+    walker* const hero = start_abilities_mission(*game_screen);
+    ASSERT_NE(nullptr, hero) << "the mission never put MERLIN under seat 1";
+    og::ui::pause_menu_testing_set_force_real(true);
+    const float old_speed = og::runtime::current_session->g_game_speed_factor_;
+    set_game_speed(0.0f);
+
+    PauseAbilitiesFlow flow;
+    flow.hero_id = hero->entity_id();
+    flow.before = hero->myguy->belt;
+    flow.shots = std::getenv("MENUSHOTS_DIR") != nullptr;
+    const std::optional<belt::Bytes> server_before = server_belt(flow.hero_id);
+    ASSERT_TRUE(server_before.has_value());
+    belt::Bytes want = *server_before;
+    want[5] = belt::encode(entry_named(FAMILY_ARCHMAGE, "MIND CONTROL"));
+    ASSERT_NE(want, *server_before) << "S3 must not hold MIND CONTROL yet";
+
+    trace_clear();
+    EXPECT_EQ(GameFrameResult::Continue,
+              run_escape_frame_with(*game_screen, flow));
+    EXPECT_TRUE(flow.door_lit) << "ABILITIES must be lit for a living hero";
+    EXPECT_TRUE(trace_contains("abilities", "pause open seat=0"));
+    EXPECT_TRUE(trace_contains("abilities", "pause commit seat=0"));
+    ASSERT_TRUE(flow.server_after.has_value());
+    EXPECT_EQ(want, *flow.server_after)
+        << "the server's guy takes the layout while the game is paused";
+    EXPECT_FALSE(game_screen->world().paused) << "RESUME released the pause";
+
+    // The next frames' snapshots carry it to the mirror.
+    GameLoopDeps deps;
+    deps.enable_render = false;
+    deps.enable_event_poll = false;
+    deps.enable_frame_timing = false;
+    for (int frame = 0; frame < 3; ++frame)
+        game_frame_with_result(*game_screen,
+                               og::runtime::current_session->frame_state_,
+                               deps);
+    walker* const mirror = game_screen->world().find_by_id(flow.hero_id);
+    ASSERT_NE(nullptr, mirror);
+    ASSERT_NE(nullptr, mirror->myguy);
+    EXPECT_EQ(want, mirror->myguy->belt);
+
+    // The HUD: with SHIFTER held, key 3's cell is MIND CONTROL.
+    {
+        FakeKeyboard keyboard;
+        ASSERT_TRUE(keyboard.set(0, KEY_SHIFTER, true));
+        trace_clear();
+        game_screen->clearbuffer();
+        (void)new_score_panel(game_screen, 1);
+    }
+    const belt::Entry mind = entry_named(FAMILY_ARCHMAGE, "MIND CONTROL");
+    EXPECT_TRUE(trace_contains(
+        "hud", std::format("belt_cell key=3 shift=1 slot={} alt=0 "
+                           "icon=icons/mind_control.png",
+                           static_cast<int>(mind.slot))
+                   .c_str()))
+        << "the HUD's S3 cell must show MIND CONTROL";
+
+    og::ui::pause_menu_testing_set_force_real(false);
+    set_game_speed(old_speed);
+    end_abilities_mission(*game_screen);
+}
+
+// A SPEC key held through the pause latched its entry from the OLD layout.
+// The layout changes under it (MIND CONTROL onto key 1); on the first frame
+// after RESUME the key, still down, must not cast the old entry.
+//
+// RED (planted): the commit leaves input_hardware_state().belt_latch alone.
+TEST(PauseMenuFlow, a_spec_key_held_through_the_pause_cannot_cast_the_old_entry)
+{
+    ScopedAbilitySelect on(true);
+    KeyCellGuard guard;
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(game_screen != nullptr);
+    walker* const hero = start_abilities_mission(*game_screen);
+    ASSERT_NE(nullptr, hero);
+    og::ui::pause_menu_testing_set_force_real(true);
+    const float old_speed = og::runtime::current_session->g_game_speed_factor_;
+    set_game_speed(0.0f);
+
+    FakeKeyboard keyboard;
+    ASSERT_TRUE(keyboard.set(0, KEY_SPECIAL, true));
+    GameLoopDeps press;
+    press.enable_render = false;
+    press.enable_event_poll = false;
+    press.enable_frame_timing = false;
+    press.enable_tick = false;
+    game_frame_with_result(*game_screen,
+                           og::runtime::current_session->frame_state_, press);
+    const std::uint8_t old_cast = ctx().input.players[0].belt_cast;
+    ASSERT_NE(0, old_cast) << "SPEC 1 down latches key 1's entry";
+    ASSERT_EQ(1, input_hardware_state().belt_latch[0].active_key);
+
+    PauseAbilitiesFlow flow;
+    flow.belt_id = "belt_0";
+    flow.slot = 0;
+    flow.hero_id = hero->entity_id();
+    flow.before = hero->myguy->belt;
+    trace_clear();
+    EXPECT_EQ(GameFrameResult::Continue,
+              run_escape_frame_with(*game_screen, flow));
+    ASSERT_TRUE(trace_contains("abilities", "pause commit seat=0"));
+
+    // The Esc frame sampled the keys after the menu closed, SPEC 1 still
+    // down: no press edge, so nothing casts until the key goes up and down.
+    const PlayerInput& sent = ctx().input.players[0];
+    EXPECT_NE(old_cast, sent.belt_cast)
+        << "the old layout's key-1 entry was cast after RESUME";
+    EXPECT_EQ(0, sent.belt_cast);
+    EXPECT_FALSE(sent.held[static_cast<int>(InputAction::Special)]);
+
+    og::ui::pause_menu_testing_set_force_real(false);
+    set_game_speed(old_speed);
+    end_abilities_mission(*game_screen);
+}
+
+namespace
+{
+
+int g_stub_set_belt_calls = 0;
+bool stub_set_belt(int /*seat*/, std::uint32_t /*entity_id*/,
+                   const belt::Bytes& /*belt*/)
+{
+    ++g_stub_set_belt_calls;
+    return true;
+}
+
+bool stub_abilities_pump(void* /*context*/)
+{
+    return true;
+}
+
+struct StaleBodyFlow
+{
+    std::atomic<bool> test_finished{false};
+    std::uint32_t other_id = 0;
+    bool closed_by_itself = false;
+};
+
+// MIND CONTROL onto S3, then the seat starts driving the teammate (a
+// Switch): the screen must close by itself, sending nothing. Only if it
+// stays up does the tail press BACK, which is what would send the edit.
+int stale_body_injector(void* data)
+{
+    auto* const flow = static_cast<StaleBodyFlow*>(data);
+    og::runtime::ensure_thread_session();
+    constexpr EscapeDoor kDoors[] = {{"abilities_back", "abilities_back"}};
+    const auto leave = [flow, &kDoors](int leg, const char* why) {
+        return escape_to_the_main_thread(flow->test_finished, leg, why, kDoors);
+    };
+    if (!place_mind_control("belt_5", 5))
+        return leave(1, "MIND CONTROL never reached S3");
+    (void)run_on_main_thread([flow] {
+        screen& s = *og::runtime::current_session->myscreen_;
+        s.viewob[0]->control = s.world().find_by_id(flow->other_id);
+    });
+    // The closed screen's buttons stay registered until the main thread
+    // tears them down, so the screen's own trace is the witness.
+    if (!wait_for_trace("abilities", "pause closed: control changed", 10'000))
+        return leave(2, "ABILITIES stayed up after the body changed");
+    flow->closed_by_itself = true;
+    return 0;
+}
+
+} // namespace
+
+// The stale-body rule on the screen's side: the edit names the body the
+// seat drove when the screen opened; a Switch (or a possession) between
+// opening and BACK closes the screen and sends nothing.
+//
+// RED (planted): the "same body" check always passes (the screen stays up,
+// the tail's BACK sends the edit for a body the seat no longer drives).
+TEST(PausePlayerHandlers, abilities_close_without_sending_when_the_seat_changes_body)
+{
+    ScopedAbilitySelect on(true);
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(game_screen != nullptr);
+    walker* const hero = start_abilities_mission(*game_screen);
+    ASSERT_NE(nullptr, hero);
+    walker* const teammate = mirror_hero_named(*game_screen, "BRAVO");
+    ASSERT_NE(nullptr, teammate) << "the Soldier teammate is not on the mirror";
+
+    g_stub_set_belt_calls = 0;
+    og::ui::PauseAbilitiesHost host;
+    host.seat = 0;
+    host.pump = &stub_abilities_pump;
+    host.set_belt = &stub_set_belt;
+    StaleBodyFlow flow;
+    flow.other_id = teammate->entity_id();
+    trace_clear();
+    SDL_Thread* const injector =
+        SDL_CreateThread(stale_body_injector, "stale_body", &flow);
+    ASSERT_TRUE(injector != nullptr);
+    const og::ui::PauseAbilitiesResult result =
+        og::ui::run_pause_abilities_screen(host);
+    flow.test_finished.store(true);
+    int injector_result = -1;
+    SDL_WaitThread(injector, &injector_result);
+    escape_tail_join_hygiene();
+    clear_allbuttons();
+
+    EXPECT_EQ(0, injector_result) << "injector leg " << injector_result;
+    EXPECT_TRUE(flow.closed_by_itself);
+    EXPECT_TRUE(result.opened);
+    EXPECT_TRUE(result.control_changed);
+    EXPECT_FALSE(result.committed);
+    EXPECT_EQ(0, g_stub_set_belt_calls)
+        << "an edit for a body the seat no longer drives must not be sent";
+    EXPECT_TRUE(trace_contains("abilities", "pause closed: control changed seat=0"));
+
+    game_screen->viewob[0]->control = hero;
+    end_abilities_mission(*game_screen);
+}
+
+namespace
+{
+
+struct ReadOnlyFlow
+{
+    std::atomic<bool> test_finished{false};
+    std::string status;
+    std::string title_face;
+};
+
+int read_only_injector(void* data)
+{
+    auto* const flow = static_cast<ReadOnlyFlow*>(data);
+    og::runtime::ensure_thread_session();
+    constexpr EscapeDoor kDoors[] = {{"abilities_back", "abilities_back"}};
+    if (!wait_for_interactable("belt_0", 10'000) || !wait_for_menu_frames(2))
+        return escape_to_the_main_thread(flow->test_finished, 1,
+                                         "ABILITIES never opened", kDoors);
+    (void)run_on_main_thread([flow] {
+        flow->status = og::ui::abilities_screen_status_line();
+    });
+    // A click on a slot is refused, not an edit.
+    if (!click_and_acknowledge_trace("belt_0", "abilities", "read_only slot=0",
+                                     /*waits_for_autosave=*/false))
+        return escape_to_the_main_thread(flow->test_finished, 2,
+                                         "the read-only click never landed",
+                                         kDoors);
+    return escape_to_the_main_thread(flow->test_finished, 0, "", kDoors);
+}
+
+} // namespace
+
+// A body with no guy record (a summon, a raised dead, a possessed host)
+// opens read-only with its class default and sends nothing.
+TEST(PausePlayerHandlers, abilities_on_a_body_with_no_saved_layout_open_read_only)
+{
+    ScopedAbilitySelect on(true);
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(game_screen != nullptr);
+    walker* const hero = start_abilities_mission(*game_screen);
+    ASSERT_NE(nullptr, hero);
+    // The hero's body with its record taken away for the test: what a
+    // summon or a possessed host looks like to the screen.
+    guy* const record = hero->myguy;
+    hero->myguy = nullptr;
+
+    g_stub_set_belt_calls = 0;
+    og::ui::PauseAbilitiesHost host;
+    host.seat = 0;
+    host.pump = &stub_abilities_pump;
+    host.set_belt = &stub_set_belt;
+    ReadOnlyFlow flow;
+    trace_clear();
+    SDL_Thread* const injector =
+        SDL_CreateThread(read_only_injector, "read_only", &flow);
+    ASSERT_TRUE(injector != nullptr);
+    const og::ui::PauseAbilitiesResult result =
+        og::ui::run_pause_abilities_screen(host);
+    flow.test_finished.store(true);
+    int injector_result = -1;
+    SDL_WaitThread(injector, &injector_result);
+    escape_tail_join_hygiene();
+    clear_allbuttons();
+    hero->myguy = record;
+
+    EXPECT_EQ(0, injector_result) << "injector leg " << injector_result;
+    EXPECT_TRUE(result.opened);
+    EXPECT_FALSE(result.committed);
+    EXPECT_EQ(0, g_stub_set_belt_calls);
+    EXPECT_EQ(og::ui::kNoSavedLayoutNotice, flow.status);
+    EXPECT_TRUE(trace_contains("abilities", "editable=0"));
+    end_abilities_mission(*game_screen);
+}
+
+// The door's state: dimmed with New Ability Select off, dimmed with no
+// living body under the seat, lit otherwise.
+TEST(PausePlayerHandlers, abilities_door_follows_the_setting_and_the_body)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(game_screen != nullptr);
+    ScopedAbilitySelect on(true);
+    walker* const hero = start_abilities_mission(*game_screen);
+    ASSERT_NE(nullptr, hero);
+    g_stub = StubHostState{};
+    PauseMenuHost host = make_stub_host(false, true);
+    og::ui::PausePlayerScreenState state;
+    state.host = &host;
+    state.seat = 0;
+    og::ui::install_pause_player_state_for_screen(&state);
+    const og::ui::MenuScreenSpec& spec =
+        og::ui::pause_player_menu_screen_spec();
+    const std::vector<const og::ui::MenuButtonSpec*> rows =
+        og::ui::materialized_spec_rows(spec);
+    const og::ui::MenuButtonSpec& door =
+        *rows[static_cast<std::size_t>(og::ui::kPausePlayerAbilitiesIndex)];
+    ASSERT_NE(nullptr, door.state_override);
+    const og::ui::MenuLabelContext context{};
+
+    EXPECT_EQ(og::ui::RowState::Visible, door.state_override(context));
+    {
+        ScopedAbilitySelect off(false);
+        EXPECT_EQ(og::ui::RowState::Disabled, door.state_override(context));
+        trace_clear();
+        EXPECT_EQ(MENU_OK, spec.on_spec_row(og::ui::kPausePlayerAbilitiesIndex,
+                                            &state));
+        EXPECT_FALSE(trace_contains("abilities", "pause open"));
+    }
+    game_screen->viewob[0]->control = nullptr;
+    EXPECT_EQ(og::ui::RowState::Disabled, door.state_override(context));
+    game_screen->viewob[0]->control = hero;
+    hero->set_dead(1);
+    EXPECT_EQ(og::ui::RowState::Disabled, door.state_override(context));
+    hero->set_dead(0);
+
+    og::ui::install_pause_player_state_for_screen(nullptr);
+    end_abilities_mission(*game_screen);
 }

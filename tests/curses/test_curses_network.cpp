@@ -4299,6 +4299,11 @@ public:
             sent_escape_ = true;
             return Key::special(KeyCode::Escape);
         }
+        // Esc opens the PAUSED menu; Q there withdraws.
+        if (sent_escape_ && !sent_quit_) {
+            sent_quit_ = true;
+            return Key::character(U'q');
+        }
         return Key::none();
     }
     void set_cursor_visible(bool) override {}
@@ -4309,13 +4314,14 @@ private:
     int frames_ = 0;
     bool sent_go_ = false;
     bool sent_escape_ = false;
+    bool sent_quit_ = false;
 };
 
 } // namespace
 
 // run_curses_lobby is the whole networked door: once a start is negotiated
 // it takes the session and hands it to the level loop, returning the LEVEL's
-// verdict — here the player's Esc withdraw, which only the level loop can
+// verdict — here the player's Esc, Q withdraw, which only the level loop can
 // report (a lobby that backed out answers a default result with
 // withdrew == false). Control: the lobby really did hand its session over.
 TEST(CursesNetwork, run_curses_lobby_plays_the_negotiated_level)

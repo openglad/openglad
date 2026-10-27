@@ -7,6 +7,7 @@
  */
 #pragma once
 
+#include <openglad/gameplay/families/belt.h>
 #include <openglad/gameplay/input_state.h>
 
 #include <cstdint>
@@ -17,6 +18,7 @@
 
 class GameWorld;
 class SaveData;
+class guy;
 
 namespace og::curses {
 
@@ -91,6 +93,21 @@ public:
     virtual void request_abort() = 0;
     // Drain human-readable notifications accumulated from sim/game-flow events.
     virtual std::vector<std::string> drain_messages() = 0;
+
+    // The in-game PAUSED menu (Esc). The level loop asks for the pause once
+    // when the menu opens and keeps calling advance() without input while it
+    // is open (the in-process server answers its own pause and keep-alive);
+    // closing the menu sends the pause response. Sessions with no pause to
+    // ask for keep these do-nothing defaults.
+    virtual void request_pause() {}
+    virtual void send_pause_response() {}
+    // ABILITIES from that menu: send the layout of the walker the player
+    // drives (one BeltChange naming followed_entity_id()).
+    virtual void set_belt(const og::sim::belt::Bytes& /*belt*/) {}
+    // The saved record of the walker the player drives on the mirror, or
+    // nullptr when it has none (a summon, a raised dead, a possessed host;
+    // the page opens read-only) or the player drives nothing.
+    virtual const guy* followed_guy() const { return nullptr; }
 
     // Exit prompt: when a player steps on the level exit, the server asks for
     // confirmation before leaving. While one is pending, the level loop shows a

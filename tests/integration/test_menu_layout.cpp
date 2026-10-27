@@ -5267,6 +5267,27 @@ TEST(MenuLayout, player_screen_grid_relations_and_cross_screen_identity)
         EXPECT_LT(move.y + move.sizey, kPlayerScreenPanelBottomY);
     }
 
+    // The y=169 command band (#376/#388): ABILITIES | KEYMAP | REMOVE on
+    // one row of 18 px faces, two 66 px halves with the PAUSED menu's 6 px
+    // gap between them, REMOVE 16 px on and ending on the shared right edge.
+    const button& abilities = p[og::ui::kPausePlayerAbilitiesIndex];
+    const button& keymap = p[og::ui::kPausePlayerKeymapIndex];
+    const button& remove = p[og::ui::kPausePlayerRemoveIndex];
+    for (const button* b : {&abilities, &keymap, &remove})
+    {
+        EXPECT_EQ(kPlayerScreenBottomBandY, b->y) << b->id;
+        EXPECT_EQ(kPlayerScreenBandH, b->sizey) << b->id;
+    }
+    EXPECT_EQ(kPlayerScreenColAX, abilities.x);
+    EXPECT_EQ(abilities.sizex, keymap.sizex);
+    EXPECT_EQ(6, keymap.x - (abilities.x + abilities.sizex));
+    EXPECT_EQ(16, remove.x - (keymap.x + keymap.sizex));
+    EXPECT_EQ(kPlayerScreenColCX + kPlayerScreenColCW,
+              remove.x + remove.sizex);
+    // Each label fits its face with the font's 6 px advance.
+    EXPECT_LE(6 * static_cast<int>(abilities.label.size()), abilities.sizex - 8);
+    EXPECT_LE(6 * static_cast<int>(keymap.label.size()), keymap.sizex - 8);
+
     // §7.1 identity: every row shared by both screens has IDENTICAL geometry.
     std::vector<std::pair<int, int>> shared = {
         {og::ui::kPausePlayerBackIndex, kSeatSettingsBackIndex},
@@ -5280,8 +5301,9 @@ TEST(MenuLayout, player_screen_grid_relations_and_cross_screen_identity)
         {og::ui::kPausePlayerHudFoesIndex, kSeatSettingsHudFoesRow},
         {og::ui::kPausePlayerHudScoreIndex, kSeatSettingsHudScoreRow},
         {og::ui::kPausePlayerRemoveIndex, kSeatSettingsRemoveIndex},
-        // The reserved KEYMAP door (#388); ABILITIES has no seat twin (that
-        // door is TRAIN in Base Camp).
+        // The KEYMAP door (#388); ABILITIES has no seat twin (that door is
+        // TRAIN in Base Camp), but it sits exactly where the seat's TEAM does.
+        {og::ui::kPausePlayerAbilitiesIndex, kSeatSettingsTeamIndex},
         {og::ui::kPausePlayerKeymapIndex, kSeatSettingsKeymapRow},
     };
     for (int cell = 0; cell < kBindingPanelCellCount; ++cell)

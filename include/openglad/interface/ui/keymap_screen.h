@@ -65,6 +65,10 @@ struct KeymapScreenHost {
     void* pump_context = nullptr;
 };
 
+// The KEYMAP door on both player screens: shown for every seat but a
+// phone's touch seat (the screen is its controller: no keys to picture).
+bool keymap_door_shown(int seat);
+
 const MenuScreenSpec& keymap_menu_screen_spec();
 const MenuScreenSpec& keymap_pause_menu_screen_spec();
 

@@ -41,6 +41,7 @@
 #include <openglad/interface/ui/terminal_menu_model.h>
 #include <openglad/platform/curses/curses_game_runtime.h>
 #include <openglad/platform/curses/curses_input.h>
+#include <openglad/interface/input_mappings.h>
 #include <openglad/platform/curses/curses_network.h>
 #include <openglad/platform/curses/curses_renderer.h>
 #include <openglad/resources/campaign_metadata.h>
@@ -518,27 +519,27 @@ void train_team(Menu& menu, SaveData& save, int seed_slot = -1);
 // The ABILITIES page (New Ability Select, docs/ability-select-design.md
 // E.3): the SDL screen's rows from the same model and the same pick rule
 // (ability_pick.h). Pick a slot, then an ability or another slot; 'c'
-// empties the highlighted slot. Done (or Esc, like the SDL BACK) commits the
-// edited copy to the hero and autosaves.
-void equip_team(Menu& menu, SaveData& save, int slot)
+// empties the highlighted slot. Done (or Esc, like the SDL BACK) returns the
+// edited copy; the caller commits it (Base Camp to the hero and the
+// company file, the PAUSED menu to the server). A hero that is not editable
+// (a body with no saved layout) is shown, not edited.
+og::sim::belt::Bytes edit_abilities(Menu& menu, const AbilitiesPageHero& hero)
 {
-    // The SDL door sits on TRAIN, dimmed with the setting off: the same two
-    // answers here, in words.
-    if (const std::optional<std::string> refused =
-            og::ui::terminal_roster_refusal(
-                save, og::ui::TerminalRosterCommand::Train, slot)) {
-        menu.show_text("Abilities", {*refused});
-        return;
-    }
-    if (!og::ui::ability_select_pref(cfg)) {
-        menu.show_text("Abilities",
-            {"Abilities need New Ability Select (Game Settings)."});
-        return;
-    }
-    guy& hero = *save.team_list[static_cast<std::size_t>(slot)];
     const FamilyDescriptor* const fd = get_family_descriptor(hero.family);
-    const short ns = save.new_specials;
-    og::sim::belt::Bytes working = hero.belt;
+    const short ns = hero.new_specials;
+    og::sim::belt::Bytes working = hero.stored;
+    if (!hero.editable) {
+        const og::ui::AbilityPage page =
+            og::ui::ability_page(hero.name, fd, hero.level, ns, working);
+        std::vector<std::string> lines;
+        for (const og::ui::AbilityRow& row : page.belt)
+            lines.push_back(row.text);
+        lines.push_back("");
+        lines.push_back(og::ui::kNoSavedLayoutNotice);
+        menu.show_text(std::format("{} ({})", page.title, page.subtitle),
+                       lines);
+        return working;
+    }
     int selected = -1;
     int cursor = 0;
 
@@ -600,7 +601,34 @@ void equip_team(Menu& menu, SaveData& save, int slot)
                            .selected;
         }
     }
+    return working;
+}
 
+// Base Camp's door (the roster's 'e', TRAIN's ABILITIES): the page over the
+// saved hero in `slot`; a changed layout goes to the hero and the company
+// file.
+void equip_team(Menu& menu, SaveData& save, int slot)
+{
+    // The SDL door sits on TRAIN, dimmed with the setting off: the same two
+    // answers here, in words.
+    if (const std::optional<std::string> refused =
+            og::ui::terminal_roster_refusal(
+                save, og::ui::TerminalRosterCommand::Train, slot)) {
+        menu.show_text("Abilities", {*refused});
+        return;
+    }
+    if (!og::ui::ability_select_pref(cfg)) {
+        menu.show_text("Abilities",
+            {"Abilities need New Ability Select (Game Settings)."});
+        return;
+    }
+    guy& hero = *save.team_list[static_cast<std::size_t>(slot)];
+    const og::sim::belt::Bytes working = edit_abilities(
+        menu, AbilitiesPageHero{.name = hero.name,
+                                .family = hero.family,
+                                .level = hero.level,
+                                .new_specials = save.new_specials,
+                                .stored = hero.belt});
     if (working == hero.belt)
         return;
     hero.belt = working;
@@ -1383,6 +1411,45 @@ void show_load_failed(Menu& menu, const std::string& slot, SaveDataIoError io)
 }
 
 } // namespace
+
+og::sim::belt::Bytes run_abilities_page(ITerminal& term, IClock& clock,
+                                        const AbilitiesPageHero& hero)
+{
+    Menu menu(term, clock);
+    return edit_abilities(menu, hero);
+}
+
+std::vector<std::string> keys_page_lines(std::span<const int, NUM_KEYS> keys,
+                                         bool eight_direction,
+                                         bool ability_select)
+{
+    const auto line = [&keys](const char* label, int slot) {
+        return std::format("  {}: {}", label,
+                           CursesInput::key_label(
+                               keys[static_cast<std::size_t>(slot)]));
+    };
+    std::vector<std::string> lines{"MOVEMENT"};
+    for (const og::ui::BindingPanelMovementRow& row :
+         og::ui::binding_panel_movement_rows())
+        if (!row.diagonal || eight_direction)
+            lines.push_back(line(row.label, row.key));
+    lines.push_back("ACTIONS");
+    for (const og::ui::BindingPanelRow& row :
+         og::ui::binding_panel_action_rows(ability_select))
+        lines.push_back(line(row.label, row.key));
+    return lines;
+}
+
+void show_keys_page(ITerminal& term, IClock& clock,
+                    std::span<const int, NUM_KEYS> keys, bool eight_direction)
+{
+    Menu menu(term, clock);
+    menu.show_text(
+        "Keys: " + og::input::mapping_display_name(
+                       og::input::derive_mapping_name(keys.data())),
+        keys_page_lines(keys, eight_direction,
+                        og::input::ability_select_on()));
+}
 
 // --- construction --------------------------------------------------------
 

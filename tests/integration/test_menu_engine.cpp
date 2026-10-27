@@ -3686,8 +3686,8 @@ TEST(MenuEngine, seat_settings_registry_and_player_control_ownership)
 
     const og::ui::MenuScreenSpec& seat =
         og::ui::seat_settings_menu_screen_spec();
-    // Twelve rows, the sixteen #358 key cells (12..27) and the reserved
-    // KEYMAP door (28): the final table the pause player screen shares.
+    // Twelve rows, the sixteen #358 key cells (12..27) and the KEYMAP door
+    // (28): the final table the pause player screen shares.
     EXPECT_EQ(29, kSeatSettingsButtonCount);
     EXPECT_EQ(12, kSeatSettingsCellFirstRow);
     EXPECT_EQ(28, kSeatSettingsKeymapRow);
@@ -3784,10 +3784,22 @@ TEST(MenuEngine, seat_settings_registry_and_player_control_ownership)
                     12, 169, 66, 18);  // TEAM | KEYMAP halves (#388)
     expect_geometry(seat.rows[kSeatSettingsRemoveIndex],
                     166, 169, 138, 18);
-    EXPECT_EQ(kSeatSettingsRemoveIndex,
+    expect_geometry(seat.rows[kSeatSettingsKeymapRow],
+                    84, 169, 66, 18);
+    EXPECT_STREQ("seat_keymap", seat.rows[kSeatSettingsKeymapRow].id);
+    EXPECT_STREQ("KEYMAP", seat.rows[kSeatSettingsKeymapRow].label);
+    EXPECT_FALSE(seat.rows[kSeatSettingsKeymapRow].hidden);
+    // TEAM | KEYMAP | REMOVE, left to right.
+    EXPECT_EQ(kSeatSettingsKeymapRow,
               seat.rows[kSeatSettingsTeamIndex].nav.right);
     EXPECT_EQ(kSeatSettingsTeamIndex,
+              seat.rows[kSeatSettingsKeymapRow].nav.left);
+    EXPECT_EQ(kSeatSettingsRemoveIndex,
+              seat.rows[kSeatSettingsKeymapRow].nav.right);
+    EXPECT_EQ(kSeatSettingsKeymapRow,
               seat.rows[kSeatSettingsRemoveIndex].nav.left);
+    EXPECT_EQ(kSeatSettingsBackIndex,
+              seat.rows[kSeatSettingsKeymapRow].nav.down);
     EXPECT_EQ(kSeatSettingsHudScoreRow,
               seat.rows[kSeatSettingsRemoveIndex].nav.up);
 
@@ -3816,7 +3828,7 @@ TEST(MenuEngine, seat_settings_registry_and_player_control_ownership)
         }
         for (int row = 0; row < spec->row_count; ++row) {
             if (spec->rows[row].hidden)
-                continue;  // the reserved KEYMAP door
+                continue;  // a row its gate has not shown yet
             EXPECT_TRUE(seen[static_cast<std::size_t>(row)])
                 << "unreachable seat-settings row " << spec->rows[row].id;
         }
@@ -5323,10 +5335,23 @@ TEST(MenuEngine, seat_settings_key_cells_nav_and_one_key_rebind)
                 if (!buttons[first + line].hidden)
                     last_movement = first + line;
             }
-            EXPECT_TRUE(buttons[kSeatSettingsKeymapRow].hidden);
+            // #388: KEYMAP between TEAM and REMOVE on the bottom band.
+            EXPECT_FALSE(buttons[kSeatSettingsKeymapRow].hidden);
             EXPECT_EQ(first, buttons[kSeatSettingsInputRow].nav.down);
             EXPECT_EQ(first + 8, buttons[kSeatSettingsZoomRow].nav.down);
             EXPECT_EQ(last_movement, buttons[kSeatSettingsTeamIndex].nav.up);
+            const int last_action = first + 8 + (ability_select ? 7 : 6);
+            EXPECT_EQ(last_action, buttons[kSeatSettingsKeymapRow].nav.up);
+            EXPECT_EQ(kSeatSettingsKeymapRow,
+                      buttons[kSeatSettingsTeamIndex].nav.right);
+            EXPECT_EQ(kSeatSettingsTeamIndex,
+                      buttons[kSeatSettingsKeymapRow].nav.left);
+            EXPECT_EQ(kSeatSettingsRemoveIndex,
+                      buttons[kSeatSettingsKeymapRow].nav.right);
+            EXPECT_EQ(kSeatSettingsKeymapRow,
+                      buttons[kSeatSettingsRemoveIndex].nav.left);
+            EXPECT_EQ(kSeatSettingsBackIndex,
+                      buttons[kSeatSettingsKeymapRow].nav.down);
 
             std::vector<bool> seen(static_cast<std::size_t>(count), false);
             std::vector<int> queue{kSeatSettingsModeIndex};
@@ -5380,8 +5405,6 @@ TEST(MenuEngine, seat_settings_key_cells_nav_and_one_key_rebind)
                                               ? 8
                                               : 4,
                                           KEY_FIRE)));
-    EXPECT_EQ(MENU_OK, spec.on_spec_row(kSeatSettingsKeymapRow, &state))
-        << "the reserved door is inert";
     og::input::testing_clear_key_wait_events();
     og::ui::install_seat_settings_state_for_screen(nullptr);
 }

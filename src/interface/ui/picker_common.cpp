@@ -5792,6 +5792,21 @@ constexpr BindingPanelRow kAbilitySelectActionRows[] = {
     {"CHAR SW", KEY_SWITCH},
 };
 
+// The MOVEMENT column, in panel order. Compact diagonal labels: the SDL
+// column has 14 chars before ACTIONS at x=104.
+constexpr BindingPanelMovementRow kMovementRows[] = {
+    {"UP", KEY_UP, false},
+    {"UP-R", KEY_UP_RIGHT, true},
+    {"RIGHT", KEY_RIGHT, false},
+    {"DN-R", KEY_DOWN_RIGHT, true},
+    {"DOWN", KEY_DOWN, false},
+    {"DN-L", KEY_DOWN_LEFT, true},
+    {"LEFT", KEY_LEFT, false},
+    {"UP-L", KEY_UP_LEFT, true},
+};
+static_assert(std::size(kMovementRows) == 8,
+              "the panel has eight lines per column");
+
 }  // namespace
 
 std::span<const BindingPanelRow> binding_panel_action_rows(bool ability_select)
@@ -5799,6 +5814,26 @@ std::span<const BindingPanelRow> binding_panel_action_rows(bool ability_select)
     if (ability_select)
         return kAbilitySelectActionRows;
     return kClassicActionRows;
+}
+
+std::span<const BindingPanelMovementRow> binding_panel_movement_rows()
+{
+    return kMovementRows;
+}
+
+AbilityBodyHero ability_hero_of_body(const walker& body)
+{
+    AbilityBodyHero hero;
+    hero.has_record = body.myguy != nullptr;
+    hero.family = hero.has_record
+        ? static_cast<int>(body.myguy->family)
+        : static_cast<int>(static_cast<unsigned char>(body.family()));
+    hero.name = hero.has_record
+        ? body.myguy->name
+        : std::string(get_family_display_name(hero.family));
+    hero.level = body.stats() != nullptr ? body.stats()->level() : 1;
+    hero.stored = og::sim::belt::bytes_for(body);
+    return hero;
 }
 
 std::string belt_hud_line(const og::sim::belt::Resolved& slot, int key,

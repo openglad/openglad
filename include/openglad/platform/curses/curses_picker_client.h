@@ -8,6 +8,8 @@
 #pragma once
 
 #include <openglad/core/irandom.h>
+#include <openglad/gameplay/families/belt.h>
+#include <openglad/interface/input.h>
 #include <openglad/interface/ui/picker.h>
 #include <openglad/interface/ui/picker_state.h>
 #include <openglad/platform/curses/clock.h>
@@ -15,7 +17,10 @@
 #include <openglad/resources/save_data.h>
 
 #include <memory>
+#include <span>
 #include <string>
+#include <string_view>
+#include <vector>
 
 namespace og::data {
 struct CompanyInfo;
@@ -112,6 +117,34 @@ private:
     // level and hand the result to finish_network_round.
     void run_network_lobby(std::unique_ptr<CursesLobby> lobby);
 };
+
+// The hero an ABILITIES page shows: a saved hero (Base Camp) or the body the
+// player drives (the in-game PAUSED menu).
+struct AbilitiesPageHero {
+    std::string name;
+    int family = 0;
+    int level = 1;
+    short new_specials = 0;
+    og::sim::belt::Bytes stored{};
+    bool editable = true;  // false: shown with the no-saved-layout line
+};
+
+// The ABILITIES page on its own (the in-game PAUSED menu's 'a'): returns the
+// layout as the player left it (== hero.stored when nothing changed or the
+// page is read-only). The caller commits it.
+og::sim::belt::Bytes run_abilities_page(ITerminal& term, IClock& clock,
+                                        const AbilitiesPageHero& hero);
+
+// The KEYS page's lines (the in-game PAUSED menu's 'k'): MOVEMENT then
+// ACTIONS, in the binding panels' row order, one "  LABEL: key" line each;
+// the diagonals only in 8-direction mode. A key the terminal cannot send is
+// named so.
+std::vector<std::string> keys_page_lines(std::span<const int, NUM_KEYS> keys,
+                                         bool eight_direction,
+                                         bool ability_select);
+// Shows them under "Keys: <mapping name>" until a key is pressed.
+void show_keys_page(ITerminal& term, IClock& clock,
+                    std::span<const int, NUM_KEYS> keys, bool eight_direction);
 
 // Convenience entry point: construct a CursesPickerClient and run the shared
 // picker state machine until the user quits.

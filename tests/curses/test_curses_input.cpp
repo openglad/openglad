@@ -506,3 +506,29 @@ TEST(CursesInput, followed_belt_is_empty_without_a_followed_walker)
     EXPECT_FALSE(followed_belt(world, 4242).has_value())
         << "an id with no walker behind it";
 }
+
+// The KEYS page names a bound keycode by the terminal key that types it, and
+// every name agrees with keycode_for_key (it is that mapping read backwards).
+TEST(CursesInput, key_label_names_the_terminal_key_for_a_keycode)
+{
+    EXPECT_EQ("--", CursesInput::key_label(KEYCODE_UNKNOWN));
+    EXPECT_EQ("W", CursesInput::key_label(KEYCODE_w));
+    EXPECT_EQ("1", CursesInput::key_label(KEYCODE_1));
+    EXPECT_EQ("Space", CursesInput::key_label(KEYCODE_SPACE));
+    EXPECT_EQ("Left Ctrl", CursesInput::key_label(KEYCODE_LCTRL));
+    EXPECT_EQ("Up", CursesInput::key_label(KEYCODE_UP));
+    EXPECT_EQ("F5", CursesInput::key_label(KEYCODE_F5));
+    EXPECT_EQ("Delete", CursesInput::key_label(KEYCODE_DELETE));
+    // A key no terminal sends (the keypad) is named as such, never as a
+    // terminal key that would not work.
+    EXPECT_NE(std::string::npos,
+              CursesInput::key_label(KEYCODE_KP_5).find("not on a terminal"));
+    for (const KeyCode code : {KeyCode::Up, KeyCode::Enter, KeyCode::LeftAlt,
+                               KeyCode::RightShift, KeyCode::F12})
+    {
+        const int keycode = CursesInput::keycode_for_key(Key::special(code));
+        EXPECT_EQ(std::string::npos,
+                  CursesInput::key_label(keycode).find("not on a terminal"))
+            << keycode;
+    }
+}
