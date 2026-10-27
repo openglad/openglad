@@ -683,7 +683,7 @@ og.family("living", {
     { id = "teleport",     name = "TELEPORT",     mp_cost = 10,  alternate = { name = "TELEPORT MARKER", detail = "A return point, 75 Int.", icon = "icons/teleport_marker.png" }, cast = teleport, ai = ai_teleport, detail = "Any mage can teleport randomly away easily.", icon = "icons/teleport.png" },
     { id = "heartburst",   name = "HEARTBURST",   mp_cost = 80,  alternate = { name = "CHAIN LIGHTNING", detail = "Hops from foe to foe.", icon = "icons/chain_lightning.png" }, cast = burst_or_chain, ai = ai_burst_or_chain, detail = "Burst your enemies into flame around you.", icon = "icons/heartburst.png" },
     { id = "summon_image", name = "SUMMON IMAGE", mp_cost = 500, alternate = { name = "SUMMON ELEMENTAL", detail = "A daemon fed with SP.", icon = "icons/summon_elemental.png" }, cast = summon_image, ai = ai_summon, detail = "Summon an illusionary ally to fight for you.", icon = "icons/summon_image.png" },
-    { id = "mind_control", name = "MIND CONTROL", mp_cost = 150, cast = lc.with_rest(mind_control, 4, "charm_rest", "MIND CONTROL"), ai = lc.gate_with_rest(ai_mind_control, 4), detail = "Convert nearby foes to your team, for a time.", icon = "icons/mind_control.png" },
+    { id = "mind_control", name = "MIND CONTROL", mp_cost = 150, cast = lc.with_rest(mind_control, 4, "charm_rest", "MIND CONTROL"), ai = lc.gate_with_rest(ai_mind_control, 4), detail = "Convert nearby foes to your team, for a time. Rests 20 s.", icon = "icons/mind_control.png" },
   },
   default_weapon = "core:fireball",
   flags = {},

@@ -353,7 +353,7 @@ og.family("living", {
   specials = {
     { id = "teleport",    name = "TELEPORT",    mp_cost = 15,  alternate = { name = "TELEPORT MARKER", detail = "A return point, 75 Int.", icon = "icons/teleport_marker.png" }, cast = teleport, detail = "Any mage can teleport randomly away easily.", icon = "icons/teleport.png" },
     { id = "warp_space",  name = "WARP SPACE",  mp_cost = 60,  cast = starburst, detail = "Twist the fabric of space around you to deal death to enemies.", icon = "icons/warp_space.png" },
-    { id = "freeze_time", name = "FREEZE TIME", mp_cost = 500, cast = lc.with_rest(freeze_time, 3, "freeze_rest", "FREEZE TIME"), detail = "Freeze time for all but your team and kill enemies with ease.", icon = "icons/freeze_time.png" },
+    { id = "freeze_time", name = "FREEZE TIME", mp_cost = 500, cast = lc.with_rest(freeze_time, 3, "freeze_rest", "FREEZE TIME"), detail = "Freeze all but your team and kill with ease. Rests 30 s.", icon = "icons/freeze_time.png" },
     { id = "energy_wave", name = "ENERGY WAVE", mp_cost = 70,  cast = energy_wave, detail = "Send a growing ripple of energy through walls and foes.", icon = "icons/energy_wave.png" },
     { id = "heartburst",  name = "HEARTBURST",  mp_cost = 100, detail = "Burst your enemies into flame. More magic means a bigger effect.", icon = "icons/heartburst.png" },
     default_cast = heartburst,  -- case 5 and every unmapped slot

@@ -51,7 +51,7 @@ og.family("living", {
              train = { strength = 6, dexterity = 15, constitution = 5,
                        intelligence = 40, armor = 50, level = 200 } },
   specials = {
-    { id = "howl",       name = "HOWL",       mp_cost = 25, cast = orc.howl, detail = "Howl in rage, stunning nearby enemies in their tracks.", icon = "icons/howl.png" },
+    { id = "howl",       name = "HOWL",       mp_cost = 25, cast = orc.howl, detail = "Howl in rage, stunning nearby enemies in their tracks. Rests 10 s.", icon = "icons/howl.png" },
     { id = "eat_corpse", name = "EAT CORPSE", mp_cost = 20, detail = "Regain health by devouring the corpses of your foes.", icon = "icons/eat_corpse.png" },
     default_cast = orc.eat_corpse,
   },

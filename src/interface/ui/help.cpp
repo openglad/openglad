@@ -19,8 +19,11 @@
 #include <list>
 #include <vector>
 #include <string>
+#include <string_view>
 #include <format>
 #include <span>
+#include <optional>
+#include <utility>
 #ifdef TESTING
 #include <atomic>
 #endif
@@ -39,6 +42,9 @@
 #include <openglad/core/test_trace.h>
 #include <openglad/interface/game_context.h>
 #include <openglad/interface/ui/menu_screen_spec.h>
+#include <openglad/interface/ui/picker_common.h>
+#include <openglad/gameplay/families/family_descriptor.h>
+#include <openglad/gameplay/families/family_registry.h>
 #include "picker_sdl_defs.h"
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
@@ -515,6 +521,15 @@ static const char* const controls_help_head[] = {
 // because the browser keeps Ctrl+W.
 static constexpr const char* kHelpFireLine =
 	"Fire:    LCtrl   RShift  Space   V        (web: Z)";
+static_assert(std::string_view(kHelpFireLine).size() == 50);
+
+// Look up: on the web P2 looks up with Delete (the browser keeps Right
+// Ctrl's chords); 34 glyphs + 6 spaces + "(web: Del)" = the 50-glyph frame.
+static constexpr const char* kHelpLookUpLineClassic =
+	"Look up: Q       RCtrl   U       R      (web: Del)";
+static constexpr const char* kHelpLookUpLineAbilities = kHelpLookUpLineClassic;
+static_assert(std::string_view(kHelpLookUpLineClassic).size() == 50);
+static_assert(std::string_view(kHelpLookUpLineAbilities).size() == 50);
 
 static const char* const controls_help_actions_classic[] = {
 	"ACTION KEYS",
@@ -525,7 +540,7 @@ static const char* const controls_help_actions_classic[] = {
 	"Next sp: 2       ]       9       5",
 	"Shifter: LShift  /       M       B",
 	"Yell:    E       Enter   O       Y",
-	"Look up: Q       RCtrl   U       R",
+	kHelpLookUpLineClassic,
 	"Switch:  `       '       -       N",
 	"",
 };
@@ -540,7 +555,7 @@ static const char* const controls_help_actions_abilities[] = {
 	"Spec 3:  3       \\       0       6",
 	"Shifter: LShift  /       M       B",
 	"Yell:    E       Enter   O       Y",
-	"Look up: Q       RCtrl   U       R",
+	kHelpLookUpLineAbilities,
 	"Switch:  `       '       -       N",
 	"",
 	"SHIFTER + SPEC 1/2/3: the second row.",
@@ -600,8 +615,13 @@ static std::span<const char* const> controls_help_lines(bool ability_select)
 	                      : std::span<const char* const>(classic);
 }
 
-// Dynamic help content loaded from files
+// Dynamic help content loaded from files. cfg/help_classes.txt is the
+// CLASSES tab's source (classes_help_source): its prose, with an
+// "@class NAME" line opening each class's block; classes_help_lines is the
+// tab composed from it for the settings in classes_help_key.
+static std::vector<std::string> classes_help_source;
 static std::vector<std::string> classes_help_lines;
+static std::optional<std::pair<short, bool>> classes_help_key;
 static std::vector<std::string> editor_help_lines;
 static bool help_files_loaded = false;
 
@@ -653,13 +673,115 @@ static bool load_help_file(const char* filename, std::vector<std::string>& lines
 	return true;
 }
 
+// The line that opens a class's block in cfg/help_classes.txt.
+inline constexpr std::string_view kClassDirective = "@class ";
+// The rule under each class heading, as the file always drew it.
+inline constexpr const char* kClassHeadingRule = "========================";
+
+// The family an "@class NAME" line names: NAME is the name the game shows
+// (FamilyDescriptor::name, the HUD and HIRE spelling). The hire list is
+// asked first, then what it promotes to, then the whole registry, so the
+// small slime (hireable) wins over the two bigger slimes of the same name.
+// -1 when no family has the name.
+static int classes_help_family(std::string_view name)
+{
+	const auto named = [name](int id) {
+		const FamilyDescriptor* fd = get_family_descriptor(id);
+		return fd != nullptr && fd->name != nullptr && name == fd->name;
+	};
+	for (const int id : og::ui::kAllowableGuys)
+	{
+		if (named(id))
+			return id;
+	}
+	for (const int id : og::ui::kAllowableGuys)
+	{
+		const FamilyDescriptor* fd = get_family_descriptor(id);
+		if (fd != nullptr && fd->promotes_to >= 0 && named(fd->promotes_to))
+			return fd->promotes_to;
+	}
+	for (int id = 0; id < 256; id++)
+	{
+		if (named(id))
+			return id;
+	}
+	return -1;
+}
+
+// The CLASSES tab from its source: the lines before the first "@class"
+// as they are; then per class its heading, the rule, the blurb lines the
+// file gives it (trailing blank lines dropped), the ability lines
+// og::ui::class_help_lines generates for these settings, and a blank line.
+static std::vector<std::string> compose_classes_help(
+	const std::vector<std::string>& source, short new_specials,
+	bool ability_select)
+{
+	std::vector<std::string> out;
+	std::size_t i = 0;
+	while (i < source.size() &&
+	       !std::string_view(source[i]).starts_with(kClassDirective))
+		out.push_back(source[i++]);
+	while (i < source.size())
+	{
+		const std::string name =
+			source[i++].substr(kClassDirective.size());
+		std::vector<std::string> blurb;
+		while (i < source.size() &&
+		       !std::string_view(source[i]).starts_with(kClassDirective))
+			blurb.push_back(source[i++]);
+		while (!blurb.empty() && blurb.back().empty())
+			blurb.pop_back();
+
+		out.push_back(name);
+		out.emplace_back(kClassHeadingRule);
+		out.insert(out.end(), blurb.begin(), blurb.end());
+		const int family = classes_help_family(name);
+		if (family < 0)
+			Log("help_classes.txt: no class is named {}", name);
+		const std::vector<std::string> abilities = og::ui::class_help_lines(
+			family < 0 ? nullptr : get_family_descriptor(family),
+			new_specials, ability_select);
+		out.insert(out.end(), abilities.begin(), abilities.end());
+		out.emplace_back();
+	}
+	while (!out.empty() && out.back().empty())
+		out.pop_back();
+	return out;
+}
+
+// The CLASSES tab for these settings: composed again only when they
+// differ from the last composition (the file is read once).
+static const std::vector<std::string>& classes_help_for(short new_specials,
+                                                        bool ability_select)
+{
+	const std::pair<short, bool> key{new_specials, ability_select};
+	if (classes_help_key != key)
+	{
+		classes_help_lines =
+			compose_classes_help(classes_help_source, new_specials,
+			                     ability_select);
+		classes_help_key = key;
+	}
+	return classes_help_lines;
+}
+
+// The settings the CLASSES tab follows: this game's New Specials value (as
+// HIRE reads it) and New Ability Select (as the Controls tab reads it).
+static const std::vector<std::string>& classes_help_now()
+{
+	return classes_help_for(
+		og::runtime::current_session->myscreen_->save_data.new_specials,
+		og::input::ability_select_on());
+}
+
 // Load all help files (called once)
 static void load_help_files()
 {
 	if (help_files_loaded)
 		return;
 
-	load_help_file("cfg/help_classes.txt", classes_help_lines);
+	load_help_file("cfg/help_classes.txt", classes_help_source);
+	classes_help_key.reset();
 	load_help_file("cfg/help_editor.txt", editor_help_lines);
 
 	help_files_loaded = true;
@@ -701,10 +823,13 @@ static TabContent get_tab_content(HelpTab tab)
 		break;
 	}
 	case HelpTab::Classes:
-		content.dynamic_lines = &classes_help_lines;
-		content.num_lines = static_cast<int>(classes_help_lines.size());
+	{
+		const std::vector<std::string>& classes = classes_help_now();
+		content.dynamic_lines = &classes;
+		content.num_lines = static_cast<int>(classes.size());
 		content.is_dynamic = true;
 		break;
+	}
 	case HelpTab::Editor:
 		content.dynamic_lines = &editor_help_lines;
 		content.num_lines = static_cast<int>(editor_help_lines.size());

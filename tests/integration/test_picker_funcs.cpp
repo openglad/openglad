@@ -675,8 +675,9 @@ TEST(PickerFuncs, get_class_description_mage)
     EXPECT_NE(std::string::npos, desc.find("fireballs"))
         << "the mage blurb names its ranged attack, got: " << desc;
     EXPECT_NE(std::string::npos,
-              desc.find("Special: Teleport, Warp Space, Freeze Time, Energy Wave, Heartburst"))
-        << "the mage blurb names all five mage specials, got: " << desc;
+              desc.find("Special: Teleport, Teleport Marker, Warp Space, "
+                        "Freeze Time, Energy Wave, Heartburst"))
+        << "the mage blurb names all six mage abilities, got: " << desc;
     EXPECT_NE(desc, get_class_description(FAMILY_SOLDIER, 1))
         << "the mage must not be handed the soldier's blurb";
 }
