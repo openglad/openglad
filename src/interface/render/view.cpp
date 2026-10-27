@@ -831,8 +831,15 @@ bool viewscreen::redraw(LevelRuntimeData* data, bool draw_radar)
 		// ADDS the floors above as faint ghosts for this frame (recomputed
 		// every redraw; floor_render_alpha reads current_floor_ only — the
 		// hold gates nothing but the floor_top extension below).
+		const bool held_before = ghost_hold_override_;
 		ghost_hold_override_ = look_up_key_held(*this);
 		const bool ghosts_on = ghost_hold_override_;
+		// Edge-only runtime trace (a no-op unless capture is on): lets the
+		// browser tests see which seat's LOOK UP the game resolved a key to
+		// (#391), which a single-floor mission does not show on screen.
+		if (ghosts_on != held_before)
+			og::runtime::emit_runtime_trace(og::runtime::make_runtime_trace_record(
+			    "input", std::format("look_up_hold P{} {}", mynum + 1, ghosts_on ? "on" : "off")));
 		// Depth effect (cfg effects/depth_fx): floors below the camera
 		// composite through the selected treatment (tint/haze/mist/fog,
 		// deeper = stronger); the camera floor and the ghosts above always

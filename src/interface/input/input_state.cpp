@@ -363,6 +363,21 @@ static_assert(og::input::kWebEightDirYellKey == KEYCODE_TAB);
 static_assert(og::input::kWebEightDirLookupKey == KEYCODE_UNKNOWN);
 static_assert(og::input::kLegacyWebFourDirSpecialKey == KEYCODE_x);
 static_assert(og::input::kLegacyWebEightDirYellKey == KEYCODE_v);
+static_assert(og::input::kWebP2LookupKey == KEYCODE_DELETE);
+static_assert(og::input::kV1WebP2LookupKey == KEYCODE_RCTRL);
+// Version 1's web P2 LOOK UP is the native one, which did not move.
+static_assert(kDefaultFourDirKeys[1][KEY_LOOKUP] == og::input::kV1WebP2LookupKey);
+static_assert(kDefaultEightDirKeys[1][KEY_LOOKUP] == og::input::kV1WebP2LookupKey);
+// Delete is nobody else's factory key in either map, so the web move takes
+// no key from another seat.
+static_assert([] {
+    for (int p = 0; p < 4; ++p)
+        for (int k = 0; k < NUM_KEYS; ++k)
+            if (kDefaultFourDirKeys[p][k] == KEYCODE_DELETE ||
+                kDefaultEightDirKeys[p][k] == KEYCODE_DELETE)
+                return false;
+    return true;
+}(), "web P2 LOOK UP's Delete must be free in every factory map");
 
 // The legacy constants name values of profile 0's OLD native tables (the web
 // scheme displaced those), so pin them there.
@@ -597,10 +612,11 @@ void load_player_control_settings_from_cfg(cfg_store& config, bool web_mode)
     // is og::input::migrate_seat_keys (input_mappings.h); it runs once per
     // cfg, keyed on controls/default_keys_version, so a later deliberate
     // rebind to an old factory key is left alone forever.
-    const bool migrate_keys =
+    const int keys_version =
         parse_int_strict(config.get_setting(
             "controls", og::input::kDefaultKeysVersionSetting))
-                .value_or(0) < og::input::kDefaultKeysVersion;
+                .value_or(0);
+    const bool migrate_keys = keys_version < og::input::kDefaultKeysVersion;
     std::vector<og::input::SeatKeysToMigrate> seats(4);
 
     // A profile's factory-layout identity is a permutation of 1..4. It
@@ -697,7 +713,7 @@ void load_player_control_settings_from_cfg(cfg_store& config, bool web_mode)
     // path can snapshot a stale layout into the mapping library.
     if (migrate_keys)
     {
-        og::input::migrate_seat_keys(seats, web_mode);
+        og::input::migrate_seat_keys(seats, web_mode, keys_version);
         for (int p = 0; p < 4; ++p)
         {
             for (int mode = kModeFourIndex; mode <= kModeEightIndex; ++mode)

@@ -1,5 +1,6 @@
 #include <openglad/interface/native_input.h>
 #include <openglad/interface/web_back_key.h>
+#include <openglad/core/test_trace.h>
 
 #include <SDL3/SDL.h>
 
@@ -666,7 +667,50 @@ SDL_Window* text_input_window()
     SDL_free(windows);
     return w;
 }
+// The grab the game last asked for (#391); see set_mission_keyboard_grab.
+bool s_keyboard_grab_wanted = false;
+#ifdef TESTING
+std::atomic<bool> g_testing_keyboard_grab_requested{false};
+#endif
 } // namespace
+
+void set_mission_keyboard_grab(bool grab)
+{
+#ifdef TESTING
+    g_testing_keyboard_grab_requested.store(grab, std::memory_order_release);
+#endif
+    const bool changed = grab != s_keyboard_grab_wanted;
+    s_keyboard_grab_wanted = grab;
+    if (changed)
+        TRACE("input", "keyboard grab %s", grab ? "on" : "off");
+#ifdef __EMSCRIPTEN__
+    // No keyboard grab on the web (no keyboardLock, PR #256): the web
+    // defaults keep Ctrl off every seat instead (web_control_defaults.h).
+    (void)changed;
+#else
+    if (changed)
+    {
+        // Fullscreen + grab: SDL minimises the window on Alt+Tab unless told
+        // not to. Escape -> PAUSED releases the grab, which is the way out.
+        if (grab)
+            SDL_SetHint(SDL_HINT_ALLOW_ALT_TAB_WHILE_GRABBED, "0");
+        else
+            SDL_ResetHint(SDL_HINT_ALLOW_ALT_TAB_WHILE_GRABBED);
+    }
+    // Every call, not only on a change: the window can be re-created under
+    // a held grab (display mode changes), and SDL returns at once when the
+    // state is already the one asked for.
+    if (SDL_Window* const window = text_input_window())
+        SDL_SetWindowKeyboardGrab(window, grab);
+#endif
+}
+
+#ifdef TESTING
+bool testing_keyboard_grab_requested()
+{
+    return g_testing_keyboard_grab_requested.load(std::memory_order_acquire);
+}
+#endif
 
 void start_text_input(const char* initial_value, int max_bytes,
                       const char* prompt, bool multiline)

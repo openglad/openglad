@@ -607,6 +607,10 @@ void materialize_menu_buttons(const MenuScreenSpec& spec,
 
 Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state)
 {
+    // Backstop for the mission keyboard grab (#391): no menu ever holds it,
+    // whichever path opened the menu. The game loop releases it before
+    // PAUSED itself; this catches any other way into a menu.
+    og::input_native::set_mission_keyboard_grab(false);
     // #237 depth rule: a Screen fades exactly when this entry crosses the
     // main-menu boundary — nothing else on the menu stack (depth 1). Every
     // main-menu door fades symmetrically, the way in and the way back;

@@ -132,6 +132,31 @@ const bool* keyboard_state();
 int scancode_from_key(int keycode);
 const char* key_name(int keycode);
 
+// Native keyboard grab (#391). On a shared keyboard one player holding a
+// modifier while another presses a key makes a chord the desktop may take
+// (Alt+Tab, Alt+Space, the Windows layout switch...), throwing every player
+// out of the game. While a mission runs with two or more seats on the
+// keyboard, the game asks SDL for the keyboard grab, which keeps those
+// chords in the window (except Ctrl+Alt+Del), and turns off SDL's
+// minimise-on-Alt+Tab in fullscreen. One keyboard seat never grabs, so a solo
+// player's Alt+Tab keeps working; Escape opens PAUSED, which releases it.
+// The rule, pure for the unit tests:
+constexpr bool want_keyboard_grab(bool in_mission, int keyboard_seats)
+{
+    return in_mission && keyboard_seats >= 2;
+}
+// Holds or releases the grab on the game window. Cheap to call every frame
+// (does nothing when the state is unchanged); TRACE("input", "keyboard grab
+// on|off") at each change. A no-op on web (no keyboardLock, PR #256) and
+// without a window. SDL itself drops and re-takes the OS grab on focus change.
+void set_mission_keyboard_grab(bool grab);
+#ifdef TESTING
+// The last value handed to set_mission_keyboard_grab: under the dummy video
+// driver the OS grab is a no-op and SDL_GetWindowKeyboardGrab answers false,
+// so this is the test oracle.
+bool testing_keyboard_grab_requested();
+#endif
+
 // Clears SDL's keyboard held-state (SDL synthesizes key-up events for every
 // key it believes is down). Used on focus/visibility loss: a release that
 // happened while another window/app had the keys — or that the browser

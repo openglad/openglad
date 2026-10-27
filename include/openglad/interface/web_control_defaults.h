@@ -13,6 +13,17 @@
 // Ctrl is the whole problem, so web P1 keeps FIRE off Ctrl, and everything
 // else that moves is a knock-on from the key FIRE lands on.
 //
+// Cross-seat chords (#391): the keyboard is shared, so one player holding a
+// modifier while another presses a letter makes the same chord. Native P2
+// looks up on Right Ctrl, and on web that made Ctrl+W (P1 walking up), Ctrl+T
+// and Ctrl+N (P4), Ctrl+Tab and the Ctrl+Shift family out of two players'
+// ordinary keys. So web P2 LOOK UP moves to Delete in both maps, and after
+// that no web default binds Ctrl at all. Delete is a dedicated key on nearly
+// every PC keyboard, no page shortcut, and bound by no other seat. A Mac
+// laptop has no forward-Delete cap (its "delete" is Backspace, the web PAUSE
+// key): there P2 presses fn + delete. Macs have no Right Ctrl either, so a
+// Mac P2 had no LOOK UP at all before.
+//
 //   4-direction map: FIRE = Z (free next to WASD; Z is only P1's own
 //     8-direction DOWN-LEFT, and a player's two maps are never co-active).
 //
@@ -65,6 +76,8 @@ inline constexpr int kWebFourDirFireKey = 122;      // KEYCODE_z
 inline constexpr int kWebEightDirFireKey = 115;     // KEYCODE_s
 inline constexpr int kWebEightDirYellKey = 9;       // KEYCODE_TAB
 inline constexpr int kWebEightDirLookupKey = 0;     // KEYCODE_UNKNOWN
+// Profile 1 (P2, the arrows) LOOK UP in both maps, off Right Ctrl (#391).
+inline constexpr int kWebP2LookupKey = 127;         // KEYCODE_DELETE
 
 // Stored values the one-time migration (migrate_seat_keys) may rewrite, on
 // top of the native legacy tables: the native P1 FIRE/SPECIAL the browser
@@ -75,6 +88,10 @@ inline constexpr int kLegacyNativeFireKey = 1073742048;     // KEYCODE_LCTRL
 inline constexpr int kLegacyNativeSpecialKey = 1073742050;  // KEYCODE_LALT
 inline constexpr int kLegacyWebFourDirSpecialKey = 120;     // KEYCODE_x
 inline constexpr int kLegacyWebEightDirYellKey = 118;       // KEYCODE_v
+// The one slot whose factory key changed between default-keys version 1
+// (New Ability Select) and 2 (#391): web P2 LOOK UP was Right Ctrl, as it
+// still is natively. Every other v1 factory key is today's.
+inline constexpr int kV1WebP2LookupKey = 1073742052;        // KEYCODE_RCTRL
 
 // True when this build ships the browser-safe defaults.
 inline constexpr bool kWebControlDefaults =
@@ -84,14 +101,18 @@ inline constexpr bool kWebControlDefaults =
     false;
 #endif
 
-// Substitute a browser-safe key for profile 0's defaults in web mode;
-// everything else (native mode, profiles 1-3, every unlisted key slot)
-// passes the native default through untouched.
+// Substitute a browser-safe key for profile 0's defaults and profile 1's
+// LOOK UP in web mode; everything else (native mode, profiles 2-3, every
+// unlisted key slot) passes the native default through untouched.
 constexpr int browser_safe_default_key(int profile, int mode_index,
                                        int key_enum, int native_default,
                                        bool web_mode)
 {
-    if (!web_mode || profile != 0)
+    if (!web_mode)
+        return native_default;
+    if (profile == 1)
+        return key_enum == kWebKeySlotLookup ? kWebP2LookupKey : native_default;
+    if (profile != 0)
         return native_default;
     const bool eight_dir = (mode_index == kWebModeEightIndex);
     if (key_enum == kWebKeySlotFire)

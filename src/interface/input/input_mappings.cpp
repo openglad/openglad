@@ -244,11 +244,12 @@ std::vector<MappingDefinition> load_mapping_library(cfg_store& config, bool web_
                                   static_cast<int>(ControlDirectionMode::FourDirection))
                             : static_cast<int>(ControlDirectionMode::FourDirection));
 
-        // Saved before New Ability Select: move it to the current tables.
+        // Saved under older factory tables (before New Ability Select, or
+        // before #391 moved web P2 LOOK UP): move it to the current ones.
         const std::string* version = find_setting(config, slot_key(slot, kDefaultKeysVersionSetting));
-        const bool migrate =
-            version == nullptr ||
-            parse_int_strict(*version).value_or(0) < kDefaultKeysVersion;
+        const int from_version =
+            version == nullptr ? 0 : parse_int_strict(*version).value_or(0);
+        const bool migrate = from_version < kDefaultKeysVersion;
         const int stored_fallback = migrate ? kKeyNotStored : KEYCODE_UNKNOWN;
         std::vector<SeatKeysToMigrate> entry(1);
         entry[0].profile = factory_profile_for_name(mapping.name);
@@ -278,7 +279,7 @@ std::vector<MappingDefinition> load_mapping_library(cfg_store& config, bool web_
         if (migrate)
         {
             entry[0].keys = {mapping.mode4_keys, mapping.mode8_keys};
-            migrate_seat_keys(entry, web_mode);
+            migrate_seat_keys(entry, web_mode, from_version);
             mapping.mode4_keys = entry[0].keys[kModeFour];
             mapping.mode8_keys = entry[0].keys[kModeEight];
         }
@@ -487,11 +488,24 @@ bool is_reserved_slot(int k)
     return k == KEY_SPECIAL_SWITCH || k == KEY_PREFS;
 }
 
+// The factory key a version-1 build (New Ability Select) wrote for this
+// slot: today's, except web P2 LOOK UP, which was still Right Ctrl.
+int v1_factory_key(int profile, int mode, int k, bool web_mode)
+{
+    if (web_mode && profile == 1 && k == KEY_LOOKUP)
+        return kV1WebP2LookupKey;
+    return browser_safe_default_key(profile, mode, k, factory_default_key(profile, mode, k),
+                                    web_mode);
+}
+
 // Step 1 for one stored key of a factory profile.
-bool stored_key_is_factory(int profile, int mode, int k, int stored, bool web_mode)
+bool stored_key_is_factory(int profile, int mode, int k, int stored, bool web_mode,
+                           int from_version)
 {
     if (stored == kKeyNotStored)
         return true;
+    if (from_version >= 1)
+        return stored == v1_factory_key(profile, mode, k, web_mode);
     if (k == KEY_SPEC2 || k == KEY_SPEC3)
         return stored == browser_safe_default_key(
             profile, mode, k, factory_default_key(profile, mode, k), web_mode);
@@ -503,9 +517,23 @@ bool stored_key_is_factory(int profile, int mode, int k, int stored, bool web_mo
 
 } // namespace
 
-void migrate_seat_keys(std::vector<SeatKeysToMigrate>& seats, bool web_mode)
+void migrate_seat_keys(std::vector<SeatKeysToMigrate>& seats, bool web_mode, int from_version)
 {
     const std::size_t count = seats.size();
+    if (from_version >= kDefaultKeysVersion)
+    {
+        // Already current: only fill what was never stored. (The loaders
+        // never call this for a current cfg; the contract is still total.)
+        for (SeatKeysToMigrate& seat : seats)
+            for (int m = 0; m < kModes; ++m)
+                for (int k = 0; k < NUM_KEYS; ++k)
+                {
+                    int& key = seat.keys[static_cast<std::size_t>(m)][key_slot(k)];
+                    if (key == kKeyNotStored || is_reserved_slot(k))
+                        key = KEYCODE_UNKNOWN;
+                }
+        return;
+    }
     // Step 1: classify every slot of every seat before anything moves.
     std::vector<std::array<std::array<bool, NUM_KEYS>, kModes>> factory(count);
     std::vector<std::array<KeyMap, kModes>> result(count);
@@ -526,14 +554,18 @@ void migrate_seat_keys(std::vector<SeatKeysToMigrate>& seats, bool web_mode)
                         value == kKeyNotStored ? KEYCODE_UNKNOWN : value;
                 else
                 {
-                    is_factory = stored_key_is_factory(seat.profile, m, k, value, web_mode);
+                    is_factory = stored_key_is_factory(seat.profile, m, k, value, web_mode,
+                                                       from_version);
                     result[s][static_cast<std::size_t>(m)][key_slot(k)] = value;
                 }
                 factory[s][static_cast<std::size_t>(m)][key_slot(k)] = is_factory;
             }
 
             // The player's own change-special key becomes their SPEC 2 key.
-            const int change = seat.change_special[static_cast<std::size_t>(m)];
+            // (Version 0 only: from version 1 on, slot 11 is saved unbound.)
+            const int change = from_version < 1
+                ? seat.change_special[static_cast<std::size_t>(m)]
+                : kKeyNotStored;
             const bool spec2_custom =
                 seat.profile >= 0 && !factory[s][static_cast<std::size_t>(m)][key_slot(KEY_SPEC2)];
             if (bound(change) && !spec2_custom &&
@@ -581,9 +613,14 @@ void migrate_seat_keys(std::vector<SeatKeysToMigrate>& seats, bool web_mode)
                 // Step 2: the current factory key ...
                 const int fresh = browser_safe_default_key(
                     seats[s].profile, m, k, factory_default_key(seats[s].profile, m, k), web_mode);
-                // ... step 3: unless a player chose it.
+                // ... step 3: unless a player chose it. From version 1 on,
+                // only a slot whose key actually moves is refereed: a slot
+                // already on its factory key keeps it (a v1 cfg was already
+                // collision-checked against the same keys).
+                const int stored = result[s][static_cast<std::size_t>(m)][key_slot(k)];
+                const bool moves = from_version < 1 || stored != fresh;
                 const bool collides =
-                    std::find(taken.begin(), taken.end(), fresh) != taken.end();
+                    moves && std::find(taken.begin(), taken.end(), fresh) != taken.end();
                 seats[s].keys[static_cast<std::size_t>(m)][key_slot(k)] =
                     collides ? KEYCODE_UNKNOWN : fresh;
             }
