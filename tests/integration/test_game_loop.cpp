@@ -45,6 +45,8 @@
 #include <openglad/server/match_stage.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/interface/input.h>
+#include <openglad/interface/input_hardware_state.h>
+#include <openglad/interface/native_input.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/render/walker_draw.h>
@@ -5748,6 +5750,116 @@ TEST(GameLoop, game_frame_escape_opens_pause_menu_and_resume_releases_pause)
     og::ui::pause_menu_testing_clear_queue();
     og::runtime::clear_local_transport_shadow(*og::runtime::current_game_session);
     game_screen->world().delete_objects();
+}
+
+// #391: while two or more players share the keyboard in a mission, the game
+// holds the native keyboard grab so one player's modifier plus another's key
+// cannot become a desktop shortcut. Esc -> PAUSED releases it (that is the
+// way out), RESUME takes it again, the end of the mission releases it, and a
+// single keyboard seat (alone, or beside a pad) never takes it. Under the
+// dummy video driver the OS grab is a no-op, so the oracle is the "input"
+// trace plus the last value the game asked for.
+TEST(GameLoop, keyboard_grab_holds_for_two_keyboard_seats_and_drops_around_paused)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(game_screen != nullptr);
+    // player_joy is input.h's macro for the hardware state's pad table.
+    const std::array<int, 4> saved_joy = {player_joy[0].index, player_joy[1].index,
+                                          player_joy[2].index, player_joy[3].index};
+    for (int p = 0; p < 4; ++p)
+        player_joy[p].index = -1;
+    og::input_native::set_mission_keyboard_grab(false);
+
+    const auto start_mission = [&](unsigned char numplayers) {
+        game_screen->save_data.reset();
+        game_screen->save_data.current_campaign = "gladiator";
+        game_screen->save_data.current_levels[game_screen->save_data.current_campaign] = 1;
+        game_screen->save_data.scen_num = 1;
+        game_screen->save_data.numplayers = numplayers;
+        ASSERT_TRUE(game_screen->save_data.save("save0"));
+        glad_init();
+        ASSERT_TRUE(og::runtime::current_game_session != nullptr);
+        ASSERT_TRUE(og::runtime::local_transport_active(*og::runtime::current_session));
+    };
+    GameSpeedGuard speed_guard(0.0f);
+    const auto run_frame = [&](bool escape) {
+        EventScript script;
+        if (escape)
+        {
+            SDL_Event e{};
+            e.type = SDL_EVENT_KEY_DOWN;
+            e.key.key = SDLK_ESCAPE;
+            script.events.push_back(e);
+        }
+        g_script = &script;
+        GameLoopFrameState st;
+        GameLoopDeps deps;
+        deps.enable_render = false;
+        deps.enable_event_poll = true;
+        deps.enable_frame_timing = false;
+        deps.poll_event = scripted_poll_adapter;
+        const GameFrameResult result = game_frame_with_result(*game_screen, st, deps);
+        g_script = nullptr;
+        return result;
+    };
+
+    // Two keyboard seats: the first mission frame takes the grab.
+    start_mission(2);
+    trace_clear();
+    ASSERT_EQ(GameFrameResult::Continue, run_frame(false));
+    EXPECT_TRUE(og::input_native::testing_keyboard_grab_requested());
+    EXPECT_TRUE(trace_contains("input", "keyboard grab on"));
+
+    // Esc: released before the menu opens, and still released when the
+    // frame returns from it.
+    trace_clear();
+    og::ui::pause_menu_testing_clear_queue();
+    og::ui::pause_menu_testing_queue_outcome(og::ui::PauseMenuResult::Resumed,
+                                             /*release_pause=*/true);
+    ASSERT_EQ(GameFrameResult::Continue, run_frame(true));
+    EXPECT_TRUE(trace_contains("pause_menu", "open"));
+    EXPECT_TRUE(trace_contains("input", "keyboard grab off"));
+    EXPECT_FALSE(og::input_native::testing_keyboard_grab_requested())
+        << "PAUSED must release the keyboard grab";
+
+    // RESUME: the next mission frame takes it again.
+    trace_clear();
+    ASSERT_EQ(GameFrameResult::Continue, run_frame(false));
+    EXPECT_TRUE(og::input_native::testing_keyboard_grab_requested());
+    EXPECT_TRUE(trace_contains("input", "keyboard grab on"));
+
+    // P2 takes a pad: one keyboard seat left, no grab.
+    trace_clear();
+    player_joy[1].index = 0;
+    ASSERT_EQ(GameFrameResult::Continue, run_frame(false));
+    EXPECT_FALSE(og::input_native::testing_keyboard_grab_requested());
+    EXPECT_TRUE(trace_contains("input", "keyboard grab off"));
+    player_joy[1].index = -1;
+    ASSERT_EQ(GameFrameResult::Continue, run_frame(false));
+    ASSERT_TRUE(og::input_native::testing_keyboard_grab_requested());
+
+    // The mission ends: released.
+    game_screen->world().end = 1;
+    EXPECT_EQ(GameFrameResult::Done, run_frame(false));
+    EXPECT_FALSE(og::input_native::testing_keyboard_grab_requested());
+    og::runtime::clear_local_transport_shadow(*og::runtime::current_game_session);
+    game_screen->world().end = 0;
+    game_screen->world().delete_objects();
+
+    // One player alone never grabs, in any frame.
+    start_mission(1);
+    trace_clear();
+    for (int frame = 0; frame < 3; ++frame)
+        ASSERT_EQ(GameFrameResult::Continue, run_frame(false));
+    EXPECT_FALSE(og::input_native::testing_keyboard_grab_requested());
+    EXPECT_FALSE(trace_contains("input", "keyboard grab on"));
+
+    og::ui::pause_menu_testing_clear_queue();
+    og::runtime::clear_local_transport_shadow(*og::runtime::current_game_session);
+    game_screen->world().delete_objects();
+    for (std::size_t p = 0; p < saved_joy.size(); ++p)
+        player_joy[p].index = saved_joy[p];
+    og::input_native::set_mission_keyboard_grab(false);
 }
 
 // A QUIT outcome from the menu keeps the old abort semantics verbatim:

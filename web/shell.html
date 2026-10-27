@@ -149,7 +149,7 @@
             transition: width 0.2s;
         }
 
-        #firefox-ctrl-note {
+        #ctrl-note {
             max-width: 320px;
             margin-top: 14px;
             font-size: 12px;
@@ -584,12 +584,12 @@
             <div id="loading-bar"></div>
         </div>
         <!-- Installed-PWA and bookmarked players start here (manifest
-             start_url is play.html) and never see the landing-page browser
+             start_url is play.html) and never see the landing-page
              warning; give them the one-sentence version while loading. -->
-        <div id="firefox-ctrl-note" hidden>
-            Firefox reserves Ctrl+W (closes this tab), so the browser
-            defaults use Z to attack and 1 2 3 for your abilities &mdash;
-            avoid rebinding attack to Ctrl with the player screen's REMAP.
+        <div id="ctrl-note">
+            The browser keeps Ctrl+W (closes this tab), so no browser key is
+            a Ctrl key &mdash; avoid binding Ctrl with the player screen's
+            REMAP.
         </div>
     </div>
 
@@ -602,14 +602,6 @@
         var fullscreenStatus = document.getElementById('fullscreen-status');
         var fullscreenTarget = document.documentElement;
         var fullscreenControlReady = false;
-
-        // Same predicate as the landing page's isCtrlReservedBrowser():
-        // Firefox delivers the windowed Ctrl+W keydown to the page and closes
-        // the tab anyway, so consuming it would take the fullscreen keyboard
-        // lock this game deliberately does not use.
-        if (/(?:Firefox|FxiOS)\//.test(navigator.userAgent)) {
-            document.getElementById('firefox-ctrl-note').hidden = false;
-        }
 
         function currentFullscreenElement() {
             return document.fullscreenElement ||
@@ -940,8 +932,9 @@
         // ------------------------------------------------------------------
         // Alt containment.
         //
-        // Left Alt is the default SPECIAL binding, and Firefox activates its
-        // menu bar on an Alt keyup the page has not consumed. SDL prevents
+        // Left Alt is a default binding (player 4's 8-direction SHIFTER),
+        // and Firefox activates its menu bar on an Alt keyup the page has
+        // not consumed. SDL prevents
         // Alt's default only when it actually queues the event, so it stops
         // doing so while text input is active (non-nav keydowns), when an SDL
         // event filter swallows the event, and for any keyup whose keydown SDL
@@ -950,8 +943,8 @@
         //
         // preventDefault is the ONLY thing this may do. SDL's listeners are
         // bubble-phase on window and never read defaultPrevented, so the key
-        // still reaches the engine; stopPropagation here would starve SPECIAL
-        // and make Alt unbindable in REMAP. The DOM text-entry field is exempt
+        // still reaches the engine; stopPropagation here would starve the
+        // SHIFTER and make Alt unbindable in REMAP. The DOM text-entry field is exempt
         // because the browser owns the keys typed into it.
         //
         // The containment is page-wide and lifetime-long on purpose: it also

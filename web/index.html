@@ -110,13 +110,13 @@
 <body>
     <main>
         <h1>Openglad</h1>
-        <div id="browser-warning" class="warning" hidden role="note">
-            <strong>Heads up, Firefox players</strong> &mdash; Firefox reserves
-            Ctrl+W (close tab), and this game cannot intercept it in a
-            browser tab. Openglad's browser defaults therefore use Z to attack
-            and 1 2 3 for your abilities, so you never hold Ctrl while
-            moving. If you rebind attack to Ctrl with REMAP on the player
-            screen, walking up will close this tab.
+        <div id="browser-warning" class="warning" role="note">
+            <strong>Heads up</strong> &mdash; the browser keeps Ctrl+W
+            (close tab) for itself, and this game cannot intercept it in a
+            browser tab. So none of Openglad's browser keys is a Ctrl key,
+            for any player. If you bind a key to Ctrl with REMAP on the
+            player screen, holding it while anyone walks up on W will close
+            this tab.
         </div>
         <a href="play.html" class="play-button">Play</a>
     </main>
@@ -127,18 +127,5 @@
         <a href="help.html">Help</a> &middot;
         <a href="versions/">Versions</a>
     </footer>
-    <script>
-        // Firefox delivers a windowed Ctrl+W keydown and closes the tab
-        // anyway; capturing it needs the fullscreen keyboard lock the game
-        // deliberately does not use (web_control_defaults.h has the story).
-        // UA-based on purpose (Playwright drives it with a UA override);
-        // extend the regex if another engine needs the warning.
-        function isCtrlReservedBrowser() {
-            return /(?:Firefox|FxiOS)\//.test(navigator.userAgent);
-        }
-        if (isCtrlReservedBrowser()) {
-            document.getElementById('browser-warning').hidden = false;
-        }
-    </script>
 </body>
 </html>
