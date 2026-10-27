@@ -12,8 +12,9 @@ CONCLUDED. Block on `gh pr checks <n> --watch` (or poll `gh run list
 --commit <sha>`); report the final counts. "CI is running" is not a
 completion report.
 
-- Expected wall-clock: ASan+UBSan ~35 min, Coverage ~21–34 min, Campaign
-  Regeneration Drift ~2 min. Slower than that is "slow", not "stuck" —
+- Expected wall-clock: ASan+UBSan runs as three shards, "ASan+UBSan (1/3)"
+  to "(3/3)", about 20 min each with a warm cache and 40-45 min cold;
+  Coverage ~21–34 min, Campaign Regeneration Drift ~2 min. Slower than that is "slow", not "stuck" —
   keep waiting.
 - Every push to a PR branch produces DUPLICATE push-triggered and
   pull_request-triggered runs on the same SHA; concurrency rules cancel
