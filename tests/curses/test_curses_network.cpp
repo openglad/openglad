@@ -55,7 +55,9 @@
 #include <csignal>
 #include <cstdint>
 #include <cstdlib>
+#include <deque>
 #include <filesystem>
+#include <functional>
 #include <format>
 #include <map>
 #include <memory>
@@ -4419,4 +4421,170 @@ TEST(CursesNetwork, joiners_belt_reaches_the_server_and_spec2_casts_its_entry)
     }
     EXPECT_TRUE(cast)
         << "the server must arm the joiner's slot-2 entry (WHIRLWIND, slot 3)";
+}
+
+// --- The PAUSED menu in a networked mission (#376) -------------------------
+
+namespace {
+
+// Scripted keys, with a hook that sees each key just before the level loop
+// gets it, so a test can look at the server while the menu waits.
+class PauseProbeTerminal final : public ITerminal
+{
+public:
+    std::deque<Key> keys;
+    std::function<void(const Key&)> before_key;
+
+    int rows() const override { return 30; }
+    int cols() const override { return 100; }
+    bool supports_unicode() const override { return false; }
+    bool supports_color() const override { return false; }
+    void clear() override {}
+    void put(int, int, char32_t, Color, Color, bool) override {}
+    void put_str(int, int, std::string_view, Color, Color, bool) override {}
+    void present() override {}
+    Key poll_key(bool) override
+    {
+        if (keys.empty())
+            return Key::none();
+        const Key key = keys.front();
+        keys.pop_front();
+        if (before_key)
+            before_key(key);
+        return key;
+    }
+    void set_cursor_visible(bool) override {}
+    void beep() override {}
+};
+
+void level_up_team(SaveData& save)
+{
+    for (auto& member : save.team_list)
+        if (member)
+            member->upgrade_to_level(13);
+}
+
+} // namespace
+
+// The networked HOST's Esc: the server world (which every player shares)
+// stays paused while the menu is open; Esc, A, c, Esc, R empties key 1 on the
+// server's guy; after the menu the world runs again. Then a quick open and
+// close (the response sent before any reply to the pause came back) still
+// leaves the world running.
+//
+// RED (planted): the host session keeps the do-nothing pause calls; the
+// response is skipped while the mirror has not seen the pause yet.
+TEST(CursesNetwork, host_paused_menu_pauses_the_server_and_edits_the_hero)
+{
+    ScopedAbilitySelect on(true);
+    SaveData host_save;
+    SaveData join_save;
+    init_team_save(host_save, 0, FAMILY_SOLDIER, "Host");
+    init_team_save(join_save, 1, FAMILY_SOLDIER, "Joiner");
+    level_up_team(host_save);
+
+    StartedGame game = negotiate_and_start(host_save, join_save);
+    ASSERT_NE(game.host_session, nullptr);
+    ASSERT_NE(game.join_session, nullptr);
+    advance_all(*game.host_session, *game.join_session, 10);
+
+    CursesGameSession& host = *game.host_session;
+    const std::uint32_t avatar = host.followed_entity_id();
+    ASSERT_NE(0u, avatar);
+    ASSERT_FALSE(host.follow_engaged());
+    GameWorld* const server = curses_network_testing_server_world(host);
+    ASSERT_NE(nullptr, server);
+    const walker* const body = server->find_by_id(avatar);
+    ASSERT_NE(nullptr, body);
+    ASSERT_NE(nullptr, body->myguy);
+    const og::sim::belt::Bytes before = body->myguy->belt;
+    ASSERT_NE(og::sim::belt::kEmptyByte, before[0]);
+    ASSERT_FALSE(server->paused);
+
+    PauseProbeTerminal term;
+    term.keys = {Key::special(KeyCode::Escape), Key::character(U'a'),
+                 Key::character(U'c'), Key::special(KeyCode::Escape),
+                 Key::character(U'r')};
+    std::string paused_seen;  // one letter per key polled inside the menu
+    term.before_key = [&](const Key& key) {
+        if (key.is_char(U'a') || key.is_char(U'r'))
+            paused_seen += server->paused ? 'P' : '-';
+    };
+    FakeClock clock;
+    CursesInput input;
+    CursesRenderer renderer;
+    LevelLoopOptions opt;
+    opt.max_frames = 3;
+    opt.no_pacing = true;
+    opt.render = false;
+    const GameRunResult result =
+        run_level_loop(host, term, clock, input, renderer, opt);
+    EXPECT_FALSE(result.withdrew);
+    EXPECT_TRUE(term.keys.empty()) << "every scripted key was read";
+    EXPECT_EQ("PP", paused_seen)
+        << "the shared world is paused while the menu waits ('a', then 'r')";
+    EXPECT_FALSE(server->paused) << "closing the menu resumes the world";
+
+    const walker* const after = server->find_by_id(avatar);
+    ASSERT_NE(nullptr, after);
+    ASSERT_NE(nullptr, after->myguy);
+    EXPECT_EQ(og::sim::belt::kEmptyByte, after->myguy->belt[0])
+        << "the server's guy takes the layout";
+    for (std::size_t slot = 1; slot < before.size(); ++slot)
+        EXPECT_EQ(before[slot], after->myguy->belt[slot]) << "slot " << slot;
+
+    // A quick Esc, R: the response goes out before the mirror ever saw the
+    // pause, and must still be sent.
+    host.request_pause();
+    host.send_pause_response();
+    advance_all(host, *game.join_session, 2);
+    EXPECT_FALSE(server->paused)
+        << "the response answers the pause even when it lands first";
+}
+
+// The networked JOINER: its pause request pauses the host's server, its
+// layout change reaches the server's guy while paused, its response resumes.
+TEST(CursesNetwork, joiner_pause_and_layout_change_reach_the_host_server)
+{
+    SaveData host_save;
+    SaveData join_save;
+    init_team_save(host_save, 0, FAMILY_SOLDIER, "Host");
+    init_team_save(join_save, 1, FAMILY_SOLDIER, "Joiner");
+    level_up_team(join_save);
+
+    StartedGame game = negotiate_and_start(host_save, join_save);
+    ASSERT_NE(game.host_session, nullptr);
+    ASSERT_NE(game.join_session, nullptr);
+    advance_all(*game.host_session, *game.join_session, 10);
+
+    CursesGameSession& join = *game.join_session;
+    const std::uint32_t avatar = join.followed_entity_id();
+    ASSERT_NE(0u, avatar);
+    ASSERT_FALSE(join.follow_engaged());
+    GameWorld* const server =
+        curses_network_testing_server_world(*game.host_session);
+    ASSERT_NE(nullptr, server);
+    const walker* const body = server->find_by_id(avatar);
+    ASSERT_NE(nullptr, body);
+    ASSERT_NE(nullptr, body->myguy);
+    og::sim::belt::Bytes edited = body->myguy->belt;
+    ASSERT_NE(og::sim::belt::kEmptyByte, edited[0]);
+    edited[0] = og::sim::belt::kEmptyByte;
+
+    join.request_pause();
+    advance_all(*game.host_session, join, 2);
+    EXPECT_TRUE(server->paused) << "the joiner's Esc pauses the shared world";
+    EXPECT_TRUE(join.mirror_world().paused);
+
+    join.set_belt(edited);
+    advance_all(*game.host_session, join, 2);
+    const walker* const after = server->find_by_id(avatar);
+    ASSERT_NE(nullptr, after);
+    ASSERT_NE(nullptr, after->myguy);
+    EXPECT_EQ(edited, after->myguy->belt) << "the server's guy takes the layout";
+    EXPECT_TRUE(server->paused) << "the edit does not resume the world";
+
+    join.send_pause_response();
+    advance_all(*game.host_session, join, 2);
+    EXPECT_FALSE(server->paused) << "the joiner's response resumes the world";
 }

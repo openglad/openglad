@@ -20,6 +20,10 @@ class GameWorld;
 class SaveData;
 class guy;
 
+namespace og::sim {
+class GameClient;
+}
+
 namespace og::curses {
 
 class ITerminal;
@@ -96,18 +100,15 @@ public:
 
     // The in-game PAUSED menu (Esc). The level loop asks for the pause once
     // when the menu opens and keeps calling advance() without input while it
-    // is open (the in-process server answers its own pause and keep-alive);
-    // closing the menu sends the pause response. Sessions with no pause to
-    // ask for keep these do-nothing defaults.
+    // is open (re-asking as the keep-alive); closing the menu sends the pause
+    // response. Every real session implements these once, through
+    // CursesClientSession below; only test doubles keep the do-nothing
+    // defaults.
     virtual void request_pause() {}
     virtual void send_pause_response() {}
     // ABILITIES from that menu: send the layout of the walker the player
     // drives (one BeltChange naming followed_entity_id()).
     virtual void set_belt(const og::sim::belt::Bytes& /*belt*/) {}
-    // The saved record of the walker the player drives on the mirror, or
-    // nullptr when it has none (a summon, a raised dead, a possessed host;
-    // the page opens read-only) or the player drives nothing.
-    virtual const guy* followed_guy() const { return nullptr; }
 
     // Exit prompt: when a player steps on the level exit, the server asks for
     // confirmation before leaving. While one is pending, the level loop shows a
@@ -121,6 +122,28 @@ public:
     // updated character stats) back into the SaveData the session was created
     // from. No-op by default (networked sessions persist via their own path).
     virtual void commit_result_to_save() {}
+};
+
+// The PAUSED menu's three calls, written once over the session's GameClient
+// and its mirror world. The local session, the networked host and the
+// networked joiner each hold one GameClient and one mirror, so all three
+// derive from this instead of repeating the calls.
+class CursesClientSession : public CursesGameSession
+{
+public:
+    void request_pause() override;
+    // Sent whether or not the mirror has seen the pause land yet: the server
+    // treats a response as "clear any pause", which is harmless with none
+    // pending, and over a real network a quick Esc, R closes the menu before
+    // the pause reaches the mirror (skipping the response then would leave
+    // the world paused for everyone until the server's auto-resume).
+    void send_pause_response() override;
+    // Sends nothing while the camera follows a watched walker (follow
+    // engaged): the followed id is then someone else's body.
+    void set_belt(const og::sim::belt::Bytes& belt) override;
+
+protected:
+    virtual og::sim::GameClient& session_client() const = 0;
 };
 
 // Build a local single-player session: an in-process GameServer + GameClient,

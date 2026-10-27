@@ -49,6 +49,24 @@
 
 namespace og::curses {
 
+void CursesClientSession::request_pause()
+{
+    session_client().send_pause_request();
+}
+
+void CursesClientSession::send_pause_response()
+{
+    session_client().send_pause_response();
+}
+
+void CursesClientSession::set_belt(const og::sim::belt::Bytes& belt)
+{
+    const std::uint32_t followed = followed_entity_id();
+    // Local slot 0: a curses machine plays one seat.
+    if (followed != 0 && !follow_engaged())
+        session_client().send_belt_change(0, followed, belt);
+}
+
 namespace {
 
 // Mirror update_primary_team_totals() from headless_server_runtime.cpp.
@@ -62,7 +80,7 @@ void update_primary_team_totals(SaveData& save)
 
 // A complete in-process single-player session: authoritative server + co-located
 // mirror client, both headless.
-class LocalCursesSession final : public CursesGameSession
+class LocalCursesSession final : public CursesClientSession
 {
 public:
     static std::unique_ptr<LocalCursesSession> create(
@@ -127,30 +145,6 @@ public:
 
     void request_abort() override { client_->request_level_abort(); }
 
-    void request_pause() override { client_->send_pause_request(); }
-    void send_pause_response() override
-    {
-        // Only a pause this session holds is answered: a response with the
-        // world running would ask the server to pause it again.
-        const auto& baseline = client_->baseline();
-        if (baseline.has_value() && baseline->paused)
-            client_->send_pause_response();
-    }
-    void set_belt(const og::sim::belt::Bytes& belt) override
-    {
-        const std::uint32_t followed = followed_entity_id();
-        if (followed != 0)
-            client_->send_belt_change(0, followed, belt);
-    }
-    const guy* followed_guy() const override
-    {
-        const std::uint32_t followed = followed_entity_id();
-        const walker* const body =
-            followed != 0 ? client_level_->world().find_by_id(followed)
-                          : nullptr;
-        return body != nullptr && !body->dead() ? body->myguy : nullptr;
-    }
-
     std::vector<std::string> drain_messages() override
     {
         return std::exchange(messages_, {});
@@ -210,6 +204,9 @@ public:
                                         std::uint32_t synchronized_score);
     const GameWorld& server_world_for_testing() const;
 #endif
+
+protected:
+    og::sim::GameClient& session_client() const override { return *client_; }
 
 private:
     LocalCursesSession(SaveData& save) : save_ref_(save) {}
@@ -558,7 +555,7 @@ void paused_menu_abilities(CursesGameSession& session, ITerminal& term,
         return;
     }
     const og::ui::AbilityBodyHero shown = og::ui::ability_hero_of_body(*body);
-    const bool editable = session.followed_guy() != nullptr;
+    const bool editable = shown.has_record;
     const og::sim::belt::Bytes edited = run_abilities_page(
         term, clock,
         AbilitiesPageHero{.name = shown.name,

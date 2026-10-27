@@ -492,7 +492,7 @@ void persist_curses_networked_win(SaveData& session_save, const GameWorld& world
 // co-located mirror GameClient connected over a loopback client transport. Almost
 // identical to LocalCursesSession, but the transport, save and player bindings
 // come from the lobby instead of being built locally.
-class HostCursesSession final : public CursesGameSession
+class HostCursesSession final : public CursesClientSession
 {
 public:
     // `host_company_save` (V5 Option A, host history): the host machine's
@@ -705,6 +705,9 @@ public:
         return slain;
     }
 #endif
+
+protected:
+    og::sim::GameClient& session_client() const override { return *client_; }
 
 private:
     HostCursesSession() = default;
@@ -969,7 +972,7 @@ std::unique_ptr<HostCursesSession> HostCursesSession::create(
 // JOIN: only the client half. A GameClient over the remote transport bound to a
 // mirror world loaded from the negotiated save (for grid/smoother). No server;
 // advance() polls the client, send_input forwards to it.
-class JoinCursesSession final : public CursesGameSession
+class JoinCursesSession final : public CursesClientSession
 {
 public:
     static std::unique_ptr<JoinCursesSession> create(
@@ -1052,6 +1055,9 @@ public:
     // production surface.
     const SaveData& testing_client_save() const { return client_save_; }
 #endif
+
+protected:
+    og::sim::GameClient& session_client() const override { return *client_; }
 
 private:
     JoinCursesSession() = default;

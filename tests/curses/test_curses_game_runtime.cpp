@@ -1178,7 +1178,6 @@ public:
         belts_sent.push_back(belt);
         inner_->set_belt(belt);
     }
-    const guy* followed_guy() const override { return inner_->followed_guy(); }
     CursesGameSession& inner() { return *inner_; }
 
 private:
@@ -1365,7 +1364,10 @@ TEST(CursesGameRuntimeLocal, escape_then_a_edits_the_driven_heros_layout_on_the_
     LevelLoopOptions opt = settle(session, term, clock, input, renderer);
     const std::uint32_t followed = session.followed_entity_id();
     ASSERT_NE(0u, followed) << "the soldier is followed";
-    ASSERT_NE(nullptr, session.followed_guy()) << "the soldier has a guy";
+    const walker* const mirror_body =
+        session.mirror_world().find_by_id(followed);
+    ASSERT_NE(nullptr, mirror_body);
+    ASSERT_NE(nullptr, mirror_body->myguy) << "the soldier has a guy";
     const GameWorld* const server =
         curses_game_runtime_testing_local_server_world(session.inner());
     ASSERT_NE(nullptr, server);

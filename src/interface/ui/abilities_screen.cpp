@@ -902,8 +902,10 @@ PauseAbilitiesResult run_pause_abilities_screen(const PauseAbilitiesHost& host)
     }
     // A SPEC key held through the pause latched its entry from the OLD
     // layout; drop it so that key cannot cast the old entry after RESUME.
-    if (host.seat >= 0 && host.seat < 4)
-        input_hardware_state().belt_latch[host.seat] = og::sim::belt::Latch{};
+    auto& latches = input_hardware_state().belt_latch;
+    if (host.seat >= 0 &&
+        static_cast<std::size_t>(host.seat) < std::size(latches))
+        latches[host.seat] = og::sim::belt::Latch{};
     result.committed = true;
     TRACE("abilities", "pause commit seat=%d entity=%u", host.seat,
           static_cast<unsigned>(state.entity_id));
