@@ -6,13 +6,18 @@
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/gameplay/families/family_descriptor.h>
 #include <openglad/gameplay/families/family_registry.h>
+#include <openglad/gameplay/families/belt.h>
 #include <openglad/interface/ui/scroll_view_layout.h>
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
 #include "test_input_helpers.h"
 #include "test_interact.h"
 
+#include <algorithm>
 #include <atomic>
+#include <map>
+#include <set>
+#include <vector>
 #include <functional>
 #include <list>
 #include <string>
@@ -35,8 +40,11 @@ void help_testing_set_force_scroll_text(bool enabled);
 void help_testing_set_page_state(bool page_up, bool page_down);
 Sint32 help_testing_controls_flowed_max_width(bool ability_select);
 std::string help_testing_controls_text();
-Sint32 help_testing_classes_flowed_max_width();
-std::string help_testing_classes_text();
+Sint32 help_testing_classes_flowed_max_width(short new_specials,
+                                             bool ability_select);
+std::string help_testing_classes_text(short new_specials, bool ability_select);
+std::string help_testing_classes_text_now();
+std::vector<int> help_testing_classes_directive_families();
 void help_testing_set_line_key_state(bool line_up, bool line_down);
 void help_testing_set_jump_key_state(bool home_down, bool end_down);
 Sint32 help_testing_query_linesdown();
@@ -453,8 +461,8 @@ TEST(HelpSmoke, help_internal_paths_cover_loading_tabs_and_scroll)
     // index on failure), so pinning the count catches a helper that bailed
     // out early as well as one that failed a check. The literal moves only
     // when a check is deliberately added or removed.
-    EXPECT_EQ(21, help_testing_exercise_internal_paths())
-        << "all 21 loader/tab/bounds checks must run and pass";
+    EXPECT_EQ(35, help_testing_exercise_internal_paths())
+        << "all 35 loader/composer/tab/bounds checks must run and pass";
 }
 
 // #168: the engine-hook exerciser — the null-state (bare-sweep) shape, tab
@@ -516,74 +524,197 @@ TEST(HelpSmoke, controls_help_follows_ability_select)
     }
 }
 
-// The CLASSES tab (cfg/help_classes.txt) is written to fit the same 50-char
-// frame budget: nothing wraps. A file that failed to load is replaced by a
-// one-line error message that would also fit, so the test checks that the
-// real file's first line is there as well.
-// RED: append a 51-character line to cfg/help_classes.txt -> -1.
-TEST(HelpSmoke, classes_help_lines_flow_within_frame_budget)
+namespace {
+
+// The four settings pairs the CLASSES tab is composed for: New Specials
+// off/on x New Ability Select off/on.
+struct ClassesSettings
 {
-    const Sint32 max_width = help_testing_classes_flowed_max_width();
-    ASSERT_NE(-1, max_width)
-        << "a line of cfg/help_classes.txt wrapped against the full-width "
-           "budget";
-    EXPECT_LE(max_width, 50);
-    EXPECT_NE(std::string::npos,
-              help_testing_classes_text().find("*** CHARACTER CLASSES ***"))
-        << "cfg/help_classes.txt did not load";
+    short new_specials;
+    bool ability_select;
+};
+inline constexpr ClassesSettings kClassesSettings[] = {
+    {0, false}, {0, true}, {1, false}, {1, true}};
+
+std::string classes_settings_name(const ClassesSettings& s)
+{
+    return std::string("New Specials ") + (s.new_specials ? "on" : "off") +
+           ", New Ability Select " + (s.ability_select ? "on" : "off");
 }
 
-// The CLASSES tab names every special the New Specials setting adds, and
-// says once that they need the setting. The list comes from the specials
-// table the game loads, so a special added to a class pack without a line
-// in the help file fails here. An alternate counts as new when its own row
-// is new or when it sits on a new slot (a hidden slot hides its alternate).
-// REDs: delete the GHOST entry (Siphon, Possess, Phase are missing); delete
-// the text "Haste Self"; delete the note's two lines.
-TEST(HelpSmoke, classes_help_names_every_new_special)
+std::vector<std::string> split_lines(const std::string& text)
 {
-    const std::string text = help_testing_classes_text();
-    int checked = 0;
-    const auto expect_named = [&](const char* hud_name, int family_id) {
-        const std::string title = og::ui::special_title(hud_name);
-        ++checked;
-        EXPECT_NE(std::string::npos, text.find(title))
-            << "family " << family_id << ": the HELP tab's CLASSES page "
-            << "does not name \"" << title << "\"";
-    };
-    for (int family_id = 0; family_id < 256; family_id++)
+    std::vector<std::string> lines;
+    std::size_t from = 0;
+    while (true)
     {
-        const FamilyDescriptor* fd = get_family_descriptor(family_id);
-        if (fd == nullptr)
-            continue;
-        for (int slot = 1; slot < FD_NUM_SPECIALS; slot++)
+        const std::size_t end = text.find('\n', from);
+        lines.push_back(text.substr(
+            from, end == std::string::npos ? std::string::npos : end - from));
+        if (end == std::string::npos)
+            break;
+        from = end + 1;
+    }
+    return lines;
+}
+
+// The CLASSES tab cut into class blocks: heading -> the block's lines (the
+// heading, its "====" rule, and everything up to the next heading). A
+// heading is any line with the rule under it.
+std::map<std::string, std::string> classes_blocks(const std::string& text)
+{
+    const std::vector<std::string> lines = split_lines(text);
+    std::map<std::string, std::string> blocks;
+    std::string current;
+    for (std::size_t i = 0; i < lines.size(); ++i)
+    {
+        if (i + 1 < lines.size() && lines[i + 1] == "========================")
+            current = lines[i];
+        if (!current.empty())
+            blocks[current] += lines[i] + "\n";
+    }
+    return blocks;
+}
+
+// Every family the CLASSES tab must describe: the hire list and what it
+// promotes to.
+std::vector<int> classes_required_families()
+{
+    std::vector<int> families(og::ui::kAllowableGuys.begin(),
+                              og::ui::kAllowableGuys.end());
+    for (const int id : og::ui::kAllowableGuys)
+    {
+        const FamilyDescriptor* fd = get_family_descriptor(id);
+        if (fd != nullptr && fd->promotes_to >= 0)
+            families.push_back(fd->promotes_to);
+    }
+    return families;
+}
+
+} // namespace
+
+// The CLASSES tab fits the 50-glyph frame with nothing wrapped, under every
+// settings pair, and the lines the game writes keep to the width the
+// file's own prose is written to (kHelpClassesProseChars = 43), so the tab
+// reads as one column. A file that failed to load is replaced by a
+// one-line error message that would also fit, so the test checks that the
+// real file's first line is there as well.
+// RED: append a 51-character line to cfg/help_classes.txt -> -1; make
+// class_help_lines wrap at 50 -> over 43.
+TEST(HelpSmoke, classes_help_lines_flow_within_frame_budget)
+{
+    for (const ClassesSettings& s : kClassesSettings)
+    {
+        const Sint32 max_width = help_testing_classes_flowed_max_width(
+            s.new_specials, s.ability_select);
+        ASSERT_NE(-1, max_width)
+            << classes_settings_name(s)
+            << ": a CLASSES line wrapped against the full-width budget";
+        EXPECT_LE(max_width, 50) << classes_settings_name(s);
+        EXPECT_LE(max_width, og::ui::kHelpClassesProseChars)
+            << classes_settings_name(s)
+            << ": a CLASSES line is wider than the tab's prose";
+        EXPECT_NE(std::string::npos,
+                  help_testing_classes_text(s.new_specials, s.ability_select)
+                      .find("*** CHARACTER CLASSES ***"))
+            << "cfg/help_classes.txt did not load";
+    }
+}
+
+// The CLASSES tab names every ability of every class it must describe,
+// inside that class's own block, under every settings pair: each belt
+// catalog entry (og::sim::belt::catalog, the list HIRE and the ABILITIES
+// screen use) by its title. The stars match the New Specials abilities in
+// play exactly, and the note saying what the star means is there once.
+// REDs: make class_help_lines skip slot 3 (Whirlwind, Freeze Time, ... are
+// missing); drop the star.
+TEST(HelpSmoke, classes_help_names_every_ability)
+{
+    int checked = 0;
+    for (const ClassesSettings& s : kClassesSettings)
+    {
+        const std::string text =
+            help_testing_classes_text(s.new_specials, s.ability_select);
+        const std::map<std::string, std::string> blocks = classes_blocks(text);
+        int stars_expected = 0;
+        int stars_found = 0;
+        for (const int family_id : classes_required_families())
         {
-            if (fd->special_new_kit[slot])
-                expect_named(fd->special_names[slot], family_id);
-            const bool new_alternate =
-                fd->special_new_kit[slot] || fd->alternate_new_kit[slot];
-            if (new_alternate &&
-                std::string_view(fd->alternate_names[slot]) != "NONE")
-                expect_named(fd->alternate_names[slot], family_id);
+            const FamilyDescriptor* fd = get_family_descriptor(family_id);
+            ASSERT_NE(nullptr, fd) << "family " << family_id;
+            const auto block = blocks.find(fd->name);
+            ASSERT_NE(blocks.end(), block)
+                << classes_settings_name(s) << ": no block for " << fd->name;
+            for (const og::sim::belt::Entry& e :
+                 og::sim::belt::catalog(fd, s.new_specials))
+            {
+                const char* name =
+                    e.alt ? fd->alternate_names[e.slot] : fd->special_names[e.slot];
+                const bool new_kit =
+                    fd->special_new_kit[e.slot] ||
+                    (e.alt && fd->alternate_new_kit[e.slot]);
+                const std::string title =
+                    og::ui::special_title(name) + (new_kit ? "*" : "");
+                ++checked;
+                if (new_kit)
+                    ++stars_expected;
+                EXPECT_NE(std::string::npos, block->second.find(title))
+                    << classes_settings_name(s) << ": the " << fd->name
+                    << " block does not name \"" << title << "\":\n"
+                    << block->second;
+            }
+            for (const char c : block->second)
+                stars_found += c == '*' ? 1 : 0;
+        }
+        EXPECT_EQ(stars_expected, stars_found)
+            << classes_settings_name(s)
+            << ": a star marks exactly the New Specials abilities";
+        if (s.new_specials == 0)
+        {
+            EXPECT_EQ(0, stars_found) << "no New Specials ability with it off";
         }
     }
-    // 25 starred names in the file plus Haste Self. This moves only when a
-    // new special is added or removed; it also proves the family table was
-    // loaded, so the loop above cannot pass by checking nothing.
-    EXPECT_EQ(26, checked);
+    // The catalogs of the 16 classes in all four settings pairs. It moves
+    // only when an ability is added or removed; it also proves the family
+    // table was loaded, so the loop cannot pass by checking nothing.
+    EXPECT_EQ(240, checked);
     EXPECT_NE(std::string::npos,
-              text.find("* needs Game Settings -> Gameplay FX\n"
+              help_testing_classes_text(1, true)
+                  .find("* needs Game Settings -> Gameplay FX\n"
                         "  -> New Specials (on by default)."))
         << "the note naming the New Specials setting is missing";
 }
 
+// cfg/help_classes.txt opens a block for every class the hire list offers
+// and every class one of them promotes to, and names no class the game
+// does not have (the composer's own lookup decides both).
+// RED: delete the "@class ORC" block from the file.
+TEST(HelpSmoke, classes_help_has_a_block_for_every_hireable_class)
+{
+    const std::vector<int> named = help_testing_classes_directive_families();
+    for (std::size_t i = 0; i < named.size(); ++i)
+        EXPECT_NE(-1, named[i])
+            << "@class line " << i << " names a class the game does not have";
+    for (const int family_id : classes_required_families())
+    {
+        EXPECT_NE(named.end(), std::find(named.begin(), named.end(), family_id))
+            << "cfg/help_classes.txt has no @class block for "
+            << get_family_descriptor(family_id)->name;
+    }
+    std::set<int> distinct(named.begin(), named.end());
+    EXPECT_EQ(distinct.size(), named.size()) << "a class has two blocks";
+}
+
 // The CLASSES tab says what SHIFTER means with New Ability Select on (the
-// default layout keeps a second form on SHIFTER + its own key when free,
-// so every "SHIFTER:" line stays true), and names the cleric's shared Turn
-// Undead once: the ABILITIES screen lists it once.
+// default layout keeps a second form on SHIFTER + its own key when free),
+// words each second form as the DETAILS page does ("SHIFTER:" off, "Also:"
+// on), and names the cleric's shared Turn Undead once: the ABILITIES
+// screen lists it once, and with the setting off Raise Ghost's SHIFTER
+// says it is the same ability. With the setting on, the archmage's Mind
+// Control is said to start on the bench, as its default layout leaves it.
 TEST(HelpSmoke, classes_help_explains_shifter_under_ability_select)
 {
-    const std::string text = help_testing_classes_text();
+    const std::string text = help_testing_classes_text(1, true);
     EXPECT_NE(std::string::npos,
               text.find("SHIFTER: marks an ability's second\n"
                         "form. With New Ability Select (UI FX,\n"))
@@ -596,8 +727,60 @@ TEST(HelpSmoke, classes_help_explains_shifter_under_ability_select)
         << "a wrapped line must not start with '+'";
     EXPECT_NE(std::string::npos,
               text.find("TRAIN > ABILITIES shows and changes\n"));
+
+    const std::map<std::string, std::string> on = classes_blocks(text);
+    const std::map<std::string, std::string> off =
+        classes_blocks(help_testing_classes_text(1, false));
+    ASSERT_TRUE(on.contains("CLERIC") && off.contains("CLERIC"));
     EXPECT_NE(std::string::npos,
-              text.find("   SHIFTER: Turn Undead, as Raise Undead's.\n"));
+              off.at("CLERIC").find(
+                  "\n  SHIFTER: Turn Undead, as Raise Undead's.\n"))
+        << off.at("CLERIC");
+    EXPECT_NE(std::string::npos, on.at("CLERIC").find("\n  Also: Turn Undead"))
+        << on.at("CLERIC");
+    EXPECT_EQ(on.at("CLERIC").find("Turn Undead"),
+              on.at("CLERIC").rfind("Turn Undead"))
+        << "Turn Undead is named once with the setting on:\n" << on.at("CLERIC");
+    EXPECT_NE(std::string::npos, on.at("MAGE").find("\n  Also: Teleport Marker"));
+    EXPECT_NE(std::string::npos,
+              off.at("MAGE").find("\n  SHIFTER: Teleport Marker"));
+    EXPECT_EQ(std::string::npos, off.at("MAGE").find("Also:"));
+    ASSERT_TRUE(on.contains("ARCHMAGE") && off.contains("ARCHMAGE"));
+    const std::string mind = on.at("ARCHMAGE").substr(
+        on.at("ARCHMAGE").find("Mind Control"));
+    EXPECT_NE(std::string::npos, mind.find("Starts on the bench"))
+        << on.at("ARCHMAGE");
+    EXPECT_EQ(std::string::npos, off.at("ARCHMAGE").find("bench"))
+        << "the bench is a New Ability Select word";
+    EXPECT_NE(std::string::npos,
+              on.at("MAGE").find("Promotes to Archmage at level 6."));
+    EXPECT_NE(std::string::npos,
+              on.at("ARCHMAGE").find("Promoted from Mage (level 6)."));
+}
+
+// The four wrong lines issue #387 found in the hand-written tab are gone:
+// the orc is a class of its own with both its abilities, the old names
+// (Whirl, Time Stop, Plant Bomb, Fire Elemental, ...) are not on the page.
+TEST(HelpSmoke, classes_help_drops_the_hand_written_names)
+{
+    for (const ClassesSettings& s : kClassesSettings)
+    {
+        const std::string text =
+            help_testing_classes_text(s.new_specials, s.ability_select);
+        for (const char* gone :
+             {"Whirl:", "Time Stop", "Fire Elemental", "Plant Bomb",
+              "Taunt:", "Charm enemies", "Summon:", "Reveal Items",
+              "1-4. Rocks", "FIRE ELEMENTAL", "OTHER CLASSES", "HeartBurst"})
+            EXPECT_EQ(std::string::npos, text.find(gone))
+                << classes_settings_name(s) << ": \"" << gone << "\"";
+        const std::map<std::string, std::string> blocks = classes_blocks(text);
+        ASSERT_TRUE(blocks.contains("ORC")) << classes_settings_name(s);
+        EXPECT_NE(std::string::npos, blocks.at("ORC").find("Howl: "));
+        EXPECT_NE(std::string::npos,
+                  blocks.at("ORC").find("Eat Corpse (level 4): "));
+        EXPECT_NE(std::string::npos,
+                  blocks.at("ORC").find("Promotes to Orc Captain at level 5."));
+    }
 }
 
 static int overlong_scenario_injector_thread(void* data)
@@ -958,23 +1141,30 @@ TEST(HelpSmoke, help_read_scenario_flows_overlong_lines)
 
 // ---- Stills for the pull request: the CLASSES tab --------------------------
 //
-// Freezes the HELP screen on its CLASSES tab twice: page 1, with the note
-// that the starred specials need the New Specials setting, and the page that
-// holds the GHOST entry. With OG_FX_CAPTURE_DIR set the two frames are
-// written there (help_stills/help_classes_p1.ppm, help_classes_ghost.ppm);
-// without it they are only checked.
+// Freezes the HELP screen on its CLASSES tab: page 1, with the note that the
+// starred specials need the New Specials setting, then the pages that hold
+// the THIEF, GHOST and ORC blocks. With OG_FX_CAPTURE_DIR set the frames are
+// written there (help_stills/help_classes_p1.ppm, help_classes_thief.ppm,
+// help_classes_ghost.ppm, help_classes_orc.ppm); without it they are only
+// checked.
 #include "test_frame_capture.h"
 #include "../../src/interface/ui/picker_sdl_defs.h"
 
 namespace {
 
+struct ClassesStillTarget
+{
+    std::string still;   // capture name
+    int page = -1;       // the page the block's heading is on
+    std::atomic<int> page_seen{-1};
+};
+
 struct ClassesStillArgs
 {
     const char* dir = nullptr;
-    int ghost_page = -1;
+    std::vector<std::unique_ptr<ClassesStillTarget>> targets;  // page order
     std::atomic<int> tab{-1};
     std::atomic<int> page_at_first{-1};
-    std::atomic<int> page_at_ghost{-1};
 };
 
 // Parks the pointer on the text, off every button, so the last click's
@@ -1003,25 +1193,29 @@ int classes_still_injector(void* data)
         // One NEXT per page, each proven by the page the screen reports and
         // pressed again (on a settled frame) only while the page has not
         // moved.
-        for (int page = 1; page <= a->ghost_page; ++page)
+        for (const auto& target : a->targets)
         {
-            for (int attempt = 0; attempt < 5; ++attempt)
+            for (int page = help_testing_query_help_page() + 1;
+                 page <= target->page; ++page)
             {
-                wait_for_menu_frames(2);
-                if (help_testing_query_help_page() >= page)
-                    break;
-                interact("help_page_next");
-                if (settle_help_page(page, 1000) == page)
+                for (int attempt = 0; attempt < 5; ++attempt)
+                {
+                    wait_for_menu_frames(2);
+                    if (help_testing_query_help_page() >= page)
+                        break;
+                    interact("help_page_next");
+                    if (settle_help_page(page, 1000) == page)
+                        break;
+                }
+                if (help_testing_query_help_page() != page)
                     break;
             }
-            if (help_testing_query_help_page() != page)
-                break;
+            park_pointer_on_text();
+            wait_for_menu_frames(2);
+            target->page_seen.store(help_testing_query_help_page(),
+                                    std::memory_order_release);
+            capture_presented_frame(target->still.c_str(), a->dir);
         }
-        park_pointer_on_text();
-        wait_for_menu_frames(2);
-        a->page_at_ghost.store(help_testing_query_help_page(),
-                               std::memory_order_release);
-        capture_presented_frame("help_classes_ghost", a->dir);
     }
     interact("help_back");
     return 0;
@@ -1067,38 +1261,35 @@ TEST(HelpSmoke, zz_capture_help_classes_stills)
     HelpTestingInputGuard input_guard;
     take_captured_frames(); // answer only for this test's stills
 
-    // The GHOST entry's page, from the lines the screen loads (they do not
-    // wrap: classes_help_lines_flow_within_frame_budget).
-    const std::string text = help_testing_classes_text();
-    int ghost_line = -1;
-    int index = 0;
-    std::size_t from = 0;
-    while (from <= text.size())
+    // Each block's page, from the lines the screen composes for the
+    // settings in force (they do not wrap:
+    // classes_help_lines_flow_within_frame_budget).
+    const std::vector<std::string> lines =
+        split_lines(help_testing_classes_text_now());
+    ClassesStillArgs args;
+    for (const char* heading : {"THIEF", "GHOST", "ORC"})
     {
-        const std::size_t end = text.find('\n', from);
-        const std::string line =
-            text.substr(from, end == std::string::npos ? std::string::npos
-                                                        : end - from);
-        if (line == "GHOST")
+        const auto at = std::find(lines.begin(), lines.end(), heading);
+        ASSERT_NE(lines.end(), at) << "the CLASSES page has a " << heading
+                                   << " entry";
+        auto target = std::make_unique<ClassesStillTarget>();
+        target->still = std::string("help_classes_") + heading;
+        for (char& c : target->still)
+            c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        target->page = static_cast<int>(at - lines.begin()) / kHelpLinesPerPage;
+        ASSERT_GT(target->page, 0) << heading << " is past page 1";
+        if (!args.targets.empty())
         {
-            ghost_line = index;
-            break;
+            ASSERT_GE(target->page, args.targets.back()->page)
+                << heading << " comes after the block before it";
         }
-        if (end == std::string::npos)
-            break;
-        from = end + 1;
-        ++index;
+        args.targets.push_back(std::move(target));
     }
-    ASSERT_GE(ghost_line, 0) << "the CLASSES page has a GHOST entry";
-    const int ghost_page = ghost_line / kHelpLinesPerPage;
-    ASSERT_GT(ghost_page, 0) << "the GHOST entry is past page 1";
 
     const char* base = getenv("OG_FX_CAPTURE_DIR");
     const std::string dir =
         base != nullptr && base[0] != '\0' ? std::string(base) + "/help_stills" : "";
-    ClassesStillArgs args;
     args.dir = dir.empty() ? nullptr : dir.c_str();
-    args.ghost_page = ghost_page;
     SdlThreadJoinGuard thread(
         SDL_CreateThread(classes_still_injector, "help_classes_still", &args));
     ASSERT_NE(nullptr, thread.get()) << "failed to create injector thread";
@@ -1107,11 +1298,12 @@ TEST(HelpSmoke, zz_capture_help_classes_stills)
 
     EXPECT_EQ(1, args.tab.load()) << "the CLASSES tab opened";
     EXPECT_EQ(0, args.page_at_first.load()) << "the first still is page 1";
-    EXPECT_EQ(ghost_page, args.page_at_ghost.load())
-        << "the second still is the page holding GHOST (line " << ghost_line
-        << ")";
+    for (const auto& target : args.targets)
+        EXPECT_EQ(target->page, target->page_seen.load())
+            << target->still << " is the page holding its block";
     const std::vector<CapturedFrame> frames = take_captured_frames();
-    ASSERT_EQ(2u, frames.size()) << "both stills reached their capture";
+    ASSERT_EQ(1u + args.targets.size(), frames.size())
+        << "every still reached its capture";
     for (const CapturedFrame& f : frames)
     {
         ASSERT_TRUE(f.captured) << f.name << " froze a presented frame";

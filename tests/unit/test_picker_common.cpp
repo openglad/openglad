@@ -830,22 +830,39 @@ TEST(PickerCommon, special_title_title_cases_hud_names)
     EXPECT_EQ("", og::ui::special_title(""));
 }
 
-// The HIRE box's line: every slot in play, slot order, no alternates.
-TEST(PickerCommon, specials_summary_lists_the_slots_in_play)
+// The HIRE box's line: every ability the class has this session, in the
+// belt catalog's order (each special, then its second form), a repeated
+// name listed once, in both New Ability Select settings (with it off a
+// second form is still the class's ability, reached with SHIFTER).
+// RED: list the primaries only (the mage loses Teleport Marker).
+TEST(PickerCommon, specials_summary_lists_the_catalog)
 {
     init_family_registry();
     for (const short new_specials : {short{0}, short{1}})
         EXPECT_EQ("Special: Charge, Boomerang, Whirlwind, Disarm",
                   og::ui::specials_summary(&core_family(FAMILY_SOLDIER),
                                            new_specials));
-    EXPECT_EQ("Special: Teleport, Warp Space, Freeze Time, Energy Wave, "
-              "Heartburst",
+    EXPECT_EQ("Special: Teleport, Teleport Marker, Warp Space, Freeze Time, "
+              "Energy Wave, Heartburst",
               og::ui::specials_summary(&core_family(FAMILY_MAGE), 1));
-    EXPECT_EQ("Special: Scare, Siphon, Possess, Phase",
+    // Turn Undead is the second form of Raise Undead and of Raise Ghost:
+    // named once.
+    EXPECT_EQ("Special: Heal, Mystic Mace, Raise Undead, Turn Undead, "
+              "Raise Ghost, Resurrect",
+              og::ui::specials_summary(&core_family(FAMILY_CLERIC), 0));
+    EXPECT_EQ("Special: Drop Bomb, Mine, Cloak, Taunt Enemy, Charm Opponent, "
+              "Poison Cloud",
+              og::ui::specials_summary(&core_family(FAMILY_THIEF), 1));
+    // New Specials off hides the new second form with the new specials.
+    EXPECT_EQ("Special: Drop Bomb, Cloak, Taunt Enemy, Charm Opponent, "
+              "Poison Cloud",
+              og::ui::specials_summary(&core_family(FAMILY_THIEF), 0));
+    EXPECT_EQ("Special: Scare, Wail, Siphon, Possess, Phase",
               og::ui::specials_summary(&core_family(FAMILY_GHOST), 1));
     EXPECT_EQ("Special: Scare",
               og::ui::specials_summary(&core_family(FAMILY_GHOST), 0));
-    EXPECT_EQ("Special: Howl, Eat Corpse, Hook Blade, War Banner",
+    EXPECT_EQ("Special: Howl, Eat Corpse, Hook Blade, Knife Fan, War Banner, "
+              "Warband",
               og::ui::specials_summary(&core_family(FAMILY_BIG_ORC), 1));
     EXPECT_EQ("Special: none",
               og::ui::specials_summary(&core_family(FAMILY_BIG_ORC), 0));
@@ -863,6 +880,160 @@ TEST(PickerCommon, specials_summary_lists_the_slots_in_play)
     FamilyDescriptor silent = orc;
     silent.description = nullptr;
     EXPECT_EQ("", og::ui::hire_description(&silent, 1));
+}
+
+// --- class_help_lines (HELP > CLASSES) ---
+
+namespace {
+
+std::string joined(const std::vector<std::string>& lines)
+{
+    std::string out;
+    for (const std::string& line : lines)
+        out += line + "\n";
+    return out;
+}
+
+}  // namespace
+
+// The soldier's lines as the CLASSES tab shows them: one entry per special,
+// its level when above 1, the Lua detail prose wrapped at the tab's width
+// with continuation lines two spaces in.
+TEST(PickerCommon, class_help_lines_soldier)
+{
+    init_family_registry();
+    const std::string want =
+        "Charge: Charge causes you to run forward,\n"
+        "  damaging anything in your way.\n"
+        "Boomerang (level 4): The boomerang flies\n"
+        "  out in a spiral, hurting nearby foes.\n"
+        "Whirlwind (level 7): The fighter whirls in\n"
+        "  a spiral, hurting or stunning melee foes.\n"
+        "Disarm (level 10): Stagger the foe you face\n"
+        "  so it waits before its next swing. A\n"
+        "  stronger foe resists.\n";
+    for (const short new_specials : {short{0}, short{1}})
+        for (const bool ability_select : {false, true})
+            EXPECT_EQ(want, joined(og::ui::class_help_lines(
+                                &core_family(FAMILY_SOLDIER), new_specials,
+                                ability_select)));
+}
+
+// The mage: the promotion line, the second form worded by New Ability
+// Select ("SHIFTER:" off, "Also:" on, as on the DETAILS page), and the
+// rest the Lua detail now states.
+TEST(PickerCommon, class_help_lines_mage_follows_the_setting)
+{
+    init_family_registry();
+    EXPECT_EQ("Promotes to Archmage at level 6.\n"
+              "Teleport: Any mage can teleport randomly\n"
+              "  away easily.\n"
+              "  SHIFTER: Teleport Marker: A return point,\n"
+              "    75 Int.\n"
+              "Warp Space (level 4): Twist the fabric of\n"
+              "  space around you to deal death to\n"
+              "  enemies.\n"
+              "Freeze Time (level 7): Freeze all but your\n"
+              "  team and kill with ease. Rests 30 s.\n"
+              "Energy Wave (level 10): Send a growing\n"
+              "  ripple of energy through walls and foes.\n"
+              "Heartburst (level 13): Burst your enemies\n"
+              "  into flame. More magic means a bigger\n"
+              "  effect.\n",
+              joined(og::ui::class_help_lines(
+                            &core_family(FAMILY_MAGE), 1, false)));
+    EXPECT_EQ("Promotes to Archmage at level 6.\n"
+              "Teleport: Any mage can teleport randomly\n"
+              "  away easily.\n"
+              "  Also: Teleport Marker: A return point,\n"
+              "    75 Int.\n"
+              "Warp Space (level 4): Twist the fabric of\n"
+              "  space around you to deal death to\n"
+              "  enemies.\n"
+              "Freeze Time (level 7): Freeze all but your\n"
+              "  team and kill with ease. Rests 30 s.\n"
+              "Energy Wave (level 10): Send a growing\n"
+              "  ripple of energy through walls and foes.\n"
+              "Heartburst (level 13): Burst your enemies\n"
+              "  into flame. More magic means a bigger\n"
+              "  effect.\n",
+              joined(og::ui::class_help_lines(
+                           &core_family(FAMILY_MAGE), 1, true)));
+}
+
+// The cleric's Turn Undead is one ability with two doors: named once, and
+// with the setting off Raise Ghost's SHIFTER says it is the same one.
+TEST(PickerCommon, class_help_lines_name_a_shared_second_form_once)
+{
+    init_family_registry();
+    const std::string off = joined(
+        og::ui::class_help_lines(&core_family(FAMILY_CLERIC), 1, false));
+    const std::string on = joined(
+        og::ui::class_help_lines(&core_family(FAMILY_CLERIC), 1, true));
+    EXPECT_NE(std::string::npos,
+              off.find("\n  SHIFTER: Turn Undead, as Raise Undead's.\n"))
+        << off;
+    EXPECT_EQ(on.find("Turn Undead"), on.rfind("Turn Undead")) << on;
+    EXPECT_NE(std::string::npos, on.find("  Also: Turn Undead: ")) << on;
+}
+
+// New Ability Select on: an ability the class default leaves off the keys
+// says so (the archmage's Mind Control); the stars and "No special
+// abilities." follow New Specials; a null descriptor gives nothing; a
+// promoted class names where it comes from.
+TEST(PickerCommon, class_help_lines_bench_stars_and_empty_kits)
+{
+    init_family_registry();
+    const std::string archmage_on = joined(
+        og::ui::class_help_lines(&core_family(FAMILY_ARCHMAGE), 1, true));
+    const std::string archmage_off = joined(
+        og::ui::class_help_lines(&core_family(FAMILY_ARCHMAGE), 1, false));
+    EXPECT_EQ(0u, archmage_on.find("Promoted from Mage (level 6).\n"))
+        << archmage_on;
+    const std::size_t mind = archmage_on.find("Mind Control (level 10): ");
+    ASSERT_NE(std::string::npos, mind) << archmage_on;
+    EXPECT_NE(std::string::npos,
+              archmage_on.find("20 s.\n  Starts on the bench (TRAIN >",
+                               mind))
+        << archmage_on;
+    EXPECT_EQ(std::string::npos, archmage_off.find("bench")) << archmage_off;
+
+    const std::string captain_on = joined(
+        og::ui::class_help_lines(&core_family(FAMILY_BIG_ORC), 1, true));
+    EXPECT_NE(std::string::npos, captain_on.find("\nHowl*: ")) << captain_on;
+    EXPECT_NE(std::string::npos, captain_on.find("\n  Also: Knife Fan*: "))
+        << captain_on;
+    EXPECT_EQ("Promoted from Orc (level 5).\nNo special abilities.\n",
+              joined(og::ui::class_help_lines(&core_family(FAMILY_BIG_ORC), 0,
+                                              true)));
+    EXPECT_EQ("No special abilities.\n",
+              joined(og::ui::class_help_lines(&core_family(FAMILY_FAERIE), 0,
+                                              false)));
+    EXPECT_TRUE(og::ui::class_help_lines(nullptr, 1, true).empty());
+}
+
+// Every line of every family, in every settings pair, fits the CLASSES
+// tab's prose width.
+TEST(PickerCommon, class_help_lines_fit_the_tab_width)
+{
+    init_family_registry();
+    int families = 0;
+    for (int family_id = 0; family_id < 256; family_id++)
+    {
+        const FamilyDescriptor* fd = get_family_descriptor(family_id);
+        if (fd == nullptr || fd->description == nullptr)
+            continue;
+        ++families;
+        for (const short new_specials : {short{0}, short{1}})
+            for (const bool ability_select : {false, true})
+                for (const std::string& line : og::ui::class_help_lines(
+                         fd, new_specials, ability_select))
+                    EXPECT_LE(line.size(),
+                              static_cast<std::size_t>(
+                                  og::ui::kHelpClassesProseChars))
+                        << "family " << family_id << ": " << line;
+    }
+    EXPECT_GE(families, 16) << "core class pack not installed";
 }
 
 // --- family_display_name ---

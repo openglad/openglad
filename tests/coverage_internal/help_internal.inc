@@ -69,25 +69,51 @@ std::string help_testing_controls_text()
 	return text;
 }
 
-// The CLASSES tab's text, read fresh from cfg/help_classes.txt: the cache is
-// dropped first so the real file is read whatever an earlier test left in it.
+// The CLASSES tab's source, read fresh from cfg/help_classes.txt: the
+// file and the composed tab are both dropped first, so the real file is
+// read whatever an earlier test left in either.
 static void help_testing_reload_help_files()
 {
 	help_files_loaded = false;
+	classes_help_key.reset();
+	classes_help_lines.clear();
 	load_help_files();
 }
 
-// The CLASSES twin of the Controls measure above: flow the loaded file the
-// way the help screen does (help_flow_tab_lines) and report the widest line,
-// or -1 if any authored line had to wrap.
-Sint32 help_testing_classes_flowed_max_width()
+// Lines joined by newlines (none after the last).
+static std::string help_testing_join_lines(const std::vector<std::string>& lines)
+{
+	std::string text;
+	for (const std::string& line : lines)
+	{
+		if (&line != &lines.front())
+			text += '\n';
+		text += line;
+	}
+	return text;
+}
+
+// The CLASSES tab as the help screen composes it under these settings
+// (New Specials value, New Ability Select on/off), fresh from the file.
+static const std::vector<std::string>& help_testing_classes_lines(
+	short new_specials, bool ability_select)
 {
 	help_testing_reload_help_files();
-	std::list<std::string> source(classes_help_lines.begin(),
-	                              classes_help_lines.end());
+	return classes_help_for(new_specials, ability_select);
+}
+
+// The CLASSES twin of the Controls measure above: flow the composed tab
+// the way the help screen does (help_flow_tab_lines) and report the widest
+// line, or -1 if any line had to wrap.
+Sint32 help_testing_classes_flowed_max_width(short new_specials,
+                                             bool ability_select)
+{
+	const std::vector<std::string>& lines =
+		help_testing_classes_lines(new_specials, ability_select);
+	std::list<std::string> source(lines.begin(), lines.end());
 	const std::vector<std::string> flowed =
 		og::core::wrap_lines(source, help_char_budget(kHelpTextBoxWidth));
-	if (flowed.size() != classes_help_lines.size())
+	if (flowed.size() != lines.size())
 		return -1;
 	std::size_t max_len = 0;
 	for (const std::string& line : flowed)
@@ -98,18 +124,35 @@ Sint32 help_testing_classes_flowed_max_width()
 	return static_cast<Sint32>(max_len);
 }
 
-// The CLASSES tab's lines as loaded, joined by newlines.
-std::string help_testing_classes_text()
+// The CLASSES tab's lines as composed under these settings, joined by
+// newlines.
+std::string help_testing_classes_text(short new_specials, bool ability_select)
+{
+	return help_testing_join_lines(
+		help_testing_classes_lines(new_specials, ability_select));
+}
+
+// The CLASSES tab as the help screen shows it now (this game's New
+// Specials value and the New Ability Select setting in force).
+std::string help_testing_classes_text_now()
 {
 	help_testing_reload_help_files();
-	std::string text;
-	for (const std::string& line : classes_help_lines)
+	return help_testing_join_lines(classes_help_now());
+}
+
+// The family each "@class" line of cfg/help_classes.txt names, in file
+// order, by the composer's own lookup (-1: no family has that name).
+std::vector<int> help_testing_classes_directive_families()
+{
+	help_testing_reload_help_files();
+	std::vector<int> families;
+	for (const std::string& line : classes_help_source)
 	{
-		if (&line != &classes_help_lines.front())
-			text += '\n';
-		text += line;
+		if (std::string_view(line).starts_with(kClassDirective))
+			families.push_back(
+				classes_help_family(line.substr(kClassDirective.size())));
 	}
-	return text;
+	return families;
 }
 
 // #168: injector probes for the full-screen help screen — the active tab and
@@ -210,13 +253,17 @@ Sint32 help_testing_exercise_internal_paths()
 	struct HelpCacheGuard
 	{
 		bool files_loaded = help_files_loaded;
+		std::vector<std::string> classes_source = classes_help_source;
 		std::vector<std::string> classes = classes_help_lines;
+		std::optional<std::pair<short, bool>> classes_key = classes_help_key;
 		std::vector<std::string> editor = editor_help_lines;
 
 		~HelpCacheGuard()
 		{
 			help_files_loaded = files_loaded;
+			classes_help_source = std::move(classes_source);
 			classes_help_lines = std::move(classes);
+			classes_help_key = classes_key;
 			editor_help_lines = std::move(editor);
 		}
 	} cache_guard;
@@ -265,7 +312,9 @@ Sint32 help_testing_exercise_internal_paths()
 	check(help_files_loaded);
 	load_help_files();
 
-	classes_help_lines = {"Class line 1", "Class line 2"};
+	// A source with no "@class" line composes to itself.
+	classes_help_source = {"Class line 1", "Class line 2"};
+	classes_help_key.reset();
 	editor_help_lines = {"Editor line 1"};
 	const TabContent controls = get_tab_content(HelpTab::Controls);
 	const TabContent classes = get_tab_content(HelpTab::Classes);
@@ -284,6 +333,34 @@ Sint32 help_testing_exercise_internal_paths()
 	check(std::strcmp(get_content_line(editor, 0), "Editor line 1") == 0);
 	check(std::strcmp(get_content_line(editor, 3), "") == 0);
 	check(std::strcmp(get_content_line(editor, -1), "") == 0);
+
+	// The composer: an unknown "@class" keeps its heading and blurb and
+	// gets no ability lines; a known one gets the generated lines; blank
+	// lines closing a blurb and closing the tab are dropped.
+	{
+		const std::vector<std::string> composed = compose_classes_help(
+			{"Intro", "@class NO SUCH CLASS", "Blurb.", "", "@class ORC", ""},
+			0, false);
+		const std::vector<std::string> orc_lines = og::ui::class_help_lines(
+			get_family_descriptor(FAMILY_ORC), 0, false);
+		check(classes_help_family("NO SUCH CLASS") == -1);
+		check(classes_help_family("SLIME") == FAMILY_SMALL_SLIME);
+		check(classes_help_family("ARCHMAGE") == FAMILY_ARCHMAGE);
+		check(classes_help_family("GOLEM") == FAMILY_GOLEM);
+		check(!orc_lines.empty());
+		check(composed.size() == 7 + orc_lines.size());
+		if (composed.size() == 7 + orc_lines.size())
+		{
+			check(composed[0] == "Intro");
+			check(composed[1] == "NO SUCH CLASS");
+			check(composed[2] == kClassHeadingRule);
+			check(composed[3] == "Blurb.");
+			check(composed[4].empty());
+			check(composed[5] == "ORC");
+			check(composed[6] == kClassHeadingRule);
+			check(composed.back() == orc_lines.back());
+		}
+	}
 
 	screen* const scr = og::runtime::current_session->myscreen_;
 	const std::string saved_campaign = scr->save_data.current_campaign;

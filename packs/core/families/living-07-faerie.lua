@@ -19,7 +19,7 @@ og.family("living", {
                        intelligence = 8, armor = 50, level = 200 } },
   specials = {
     { id = "blink",   name = "BLINK",   mp_cost = 20,  new_kit = true, alternate = { name = "SWAP", mp_cost = 24, detail = "Swap spots with anyone.", icon = "icons/swap.png" }, cast = kf.blink_or_swap, ai = kf.ai_blink, detail = "A short hop in a random direction.", icon = "icons/blink.png" },
-    { id = "glimmer", name = "GLIMMER", mp_cost = 40,  new_kit = true, cast = kf.glimmer, ai = kf.ai_glimmer, detail = "A freezing sprinkle in all eight directions, a quarter as long as the normal freeze.", icon = "icons/glimmer.png" },
+    { id = "glimmer", name = "GLIMMER", mp_cost = 40,  new_kit = true, cast = kf.glimmer, ai = kf.ai_glimmer, detail = "A quarter-length freeze in all eight directions. Rests 15 s.", icon = "icons/glimmer.png" },
     { id = "hasten",  name = "HASTEN",  mp_cost = 30,  new_kit = true, alternate = { name = "HASTE SELF", detail = "Speed yourself up.", icon = "icons/haste_self.png" }, cast = kf.hasten, ai = kf.ai_hasten, detail = "Touch an ally to speed it up for a while.", icon = "icons/hasten.png" },
     { id = "wish",    name = "WISH",    mp_cost = 100, new_kit = true, cast = kf.wish, ai = kf.ai_wish, detail = "The faerie dies and a fallen ally rises at full health; every ally nearby is healed.", icon = "icons/wish.png" },
   },
@@ -38,7 +38,7 @@ og.family("living", {
   sprite = "faerie.png",
   animation = "standard",
   ai_line_of_sight = 8,
-  description = "Faeries are small, flying above friends and enemies alike unnoticed. Delicate and easily destroyed, they sprinkle a magic powder which freezes their enemies.",
+  description = "Faeries are small, flying above friends and foes alike unnoticed. Delicate and easily destroyed, they sprinkle a magic powder that freezes their enemies.",
   names = { "Tink", "Gem", "Glitter", "Jewel", "Blossom", "Ruby", "Muffin",
             "Flutter", "Sparkle", "Sprint", "Sprite", "Eve", "Twinkle",
             "Violet", "Daisy", "Lily" },

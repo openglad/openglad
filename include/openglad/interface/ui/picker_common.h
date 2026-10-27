@@ -2087,12 +2087,43 @@ struct DetailPage {
                                      short new_specials,
                                      bool ability_select = false);
 
-// "Special: Howl, Eat Corpse, Hook Blade, War Banner": the slot names in
-// play (special_name not "NONE"), title-cased, in slot order, alternates
-// not listed (the DETAILS page has them); "Special: none" when no slot is
-// in play.
+// "Special: Teleport, Teleport Marker, Warp Space, ...": every ability the
+// class has this session, title-cased, in the belt catalog's order
+// (og::sim::belt::catalog: each slot's special, then its second form, a
+// name that repeats an earlier one listed once). Names only; the levels
+// they open at are on the DETAILS page. "Special: none" when the catalog
+// is empty.
 [[nodiscard]] std::string specials_summary(const FamilyDescriptor* fd,
                                            short new_specials);
+
+// The width the HELP screen's CLASSES tab is written to: the widest line
+// the authored prose in cfg/help_classes.txt uses. The frame itself takes
+// 50 glyphs (help.cpp, help_char_budget(kHelpTextBoxWidth)); the generated
+// lines stay at the authored width so the tab reads as one column.
+inline constexpr int kHelpClassesProseChars = 43;
+
+// The CLASSES help tab's ability lines for one family, every line at most
+// kHelpClassesProseChars. Everything comes from the descriptor, through
+// the same owners as HIRE, DETAILS and the ABILITIES screen, so the help
+// can never disagree with them:
+//   - a promotion line ("Promotes to Archmage at level 6." /
+//     "Promoted from Mage (level 6).");
+//   - per special, in slot order: "Name* (level N): <detail>", the star on
+//     a New Specials ability, the level when it is above 1; continuation
+//     lines indented two spaces;
+//   - its second form under it, "  SHIFTER: Name: <detail>" with New
+//     Ability Select off and "  Also: Name: <detail>" with it on (the
+//     DETAILS page's wording). A second form whose name repeats an earlier
+//     one (the cleric's TURN UNDEAD) is listed once, by the belt catalog's
+//     rule; with the setting off the later slot says
+//     "  SHIFTER: Turn Undead, as Raise Undead's.", because there it is
+//     reached with SHIFTER on that special;
+//   - with New Ability Select on, a note under every ability the class's
+//     default layout leaves off the keys (the archmage's MIND CONTROL);
+//   - "No special abilities." when the class has none this session.
+// A null descriptor gives no lines.
+[[nodiscard]] std::vector<std::string> class_help_lines(
+    const FamilyDescriptor* fd, short new_specials, bool ability_select);
 
 // fd->description + "\n\n" + specials_summary(fd, new_specials); "" when fd
 // or its description is null (the HIRE box's text; the pack prose no longer

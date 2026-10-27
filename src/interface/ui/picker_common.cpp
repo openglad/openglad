@@ -5355,18 +5355,186 @@ DetailPage detail_page(const FamilyDescriptor* fd, int level,
     return page;
 }
 
+namespace {
+
+// The HUD name of one catalog entry (also the ABILITIES model's, below).
+const char* entry_name(const FamilyDescriptor* fd,
+                       const og::sim::belt::Entry& entry, short new_specials)
+{
+    return entry.alt ? og::sim::alternate_name(fd, entry.slot, new_specials)
+                     : og::sim::special_name(fd, entry.slot, new_specials);
+}
+
+}  // namespace
+
 std::string specials_summary(const FamilyDescriptor* fd, short new_specials)
 {
     std::string names;
-    for (int slot = 1; fd != nullptr && slot < FD_NUM_SPECIALS; ++slot) {
-        const char* name = og::sim::special_name(fd, slot, new_specials);
-        if (!names_a_special(name))
-            continue;
-        if (!names.empty())
-            names += ", ";
-        names += special_title(name);
+    if (fd != nullptr) {
+        for (const og::sim::belt::Entry& e :
+             og::sim::belt::catalog(fd, new_specials)) {
+            if (!names.empty())
+                names += ", ";
+            names += special_title(entry_name(fd, e, new_specials));
+        }
     }
     return "Special: " + (names.empty() ? std::string("none") : names);
+}
+
+namespace {
+
+// `text` wrapped so that no line, indent included, passes
+// kHelpClassesProseChars: the first line starts `first` spaces in, the
+// rest `rest` spaces in (wrap_text has no hanging indent, so the first
+// line is wrapped at its own width and the remainder again at theirs). A
+// number keeps the word after it: "Rests 20 s." never breaks before the
+// "s.", nor "75 Int." before "Int.".
+constexpr char kGlue = '\x1f';  // a space wrap_text must not break at
+void append_help_wrapped(std::vector<std::string>& out, std::string text,
+                         int first, int rest)
+{
+    for (std::size_t i = 1; i + 1 < text.size(); ++i) {
+        if (text[i] == ' ' &&
+            std::isdigit(static_cast<unsigned char>(text[i - 1])) != 0)
+            text[i] = kGlue;
+    }
+    const auto unglue = [](std::string line) {
+        std::replace(line.begin(), line.end(), kGlue, ' ');
+        return line;
+    };
+    std::vector<std::string> lines = og::core::wrap_text(
+        text, kHelpClassesProseChars - first, og::core::WrapMode::Paragraphs);
+    if (lines.empty())
+        return;
+    out.push_back(std::string(static_cast<std::size_t>(first), ' ') +
+                  unglue(lines.front()));
+    std::string remainder;
+    for (std::size_t i = 1; i < lines.size(); ++i)
+        remainder += (remainder.empty() ? "" : " ") + lines[i];
+    if (remainder.empty())
+        return;
+    for (const std::string& line : og::core::wrap_text(
+             remainder, kHelpClassesProseChars - rest,
+             og::core::WrapMode::Paragraphs))
+        out.push_back(std::string(static_cast<std::size_t>(rest), ' ') +
+                      unglue(line));
+}
+
+// "Name*: detail" / "Name* (level 4): detail" / "Name*" (no detail).
+std::string help_ability_text(const char* name, bool star, int opens_at,
+                              const char* detail)
+{
+    std::string text = special_title(name);
+    if (star)
+        text += '*';
+    if (opens_at > 1)
+        text += std::format(" (level {})", opens_at);
+    if (detail != nullptr && detail[0] != '\0')
+        text += std::string(": ") + detail;
+    return text;
+}
+
+}  // namespace
+
+std::vector<std::string> class_help_lines(const FamilyDescriptor* fd,
+                                          short new_specials,
+                                          bool ability_select)
+{
+    namespace belt = og::sim::belt;
+    std::vector<std::string> out;
+    if (fd == nullptr)
+        return out;
+
+    // Promotion, both ways, from the descriptor's promotes_to fields.
+    if (fd->promotes_to >= 0) {
+        const FamilyDescriptor* to = get_family_descriptor(fd->promotes_to);
+        if (to != nullptr && to->name != nullptr)
+            append_help_wrapped(out,
+                                std::format("Promotes to {} at level {}.",
+                                            special_title(to->name),
+                                            fd->promotion_level_req),
+                                0, 2);
+    }
+    for (int id = 0; id < 256; ++id) {
+        const FamilyDescriptor* from = get_family_descriptor(id);
+        if (from == nullptr || from == fd || from->name == nullptr ||
+            from->promotes_to != fd->family_id)
+            continue;
+        append_help_wrapped(out,
+                            std::format("Promoted from {} (level {}).",
+                                        special_title(from->name),
+                                        from->promotion_level_req),
+                            0, 2);
+    }
+
+    const std::vector<belt::Entry> catalog = belt::catalog(fd, new_specials);
+    if (catalog.empty()) {
+        out.emplace_back("No special abilities.");
+        return out;
+    }
+    const auto listed = [&catalog](const belt::Entry& e) {
+        return std::find(catalog.begin(), catalog.end(), e) != catalog.end();
+    };
+    // With New Ability Select on, the abilities the class default leaves
+    // off every key (og::sim::belt::default_layout, the "pair-first" rule).
+    std::vector<belt::Entry> benched;
+    if (ability_select)
+        benched = belt::bench(fd, new_specials,
+                              belt::default_layout(fd, new_specials));
+    const auto bench_note = [&](const belt::Entry& e, int indent) {
+        if (std::find(benched.begin(), benched.end(), e) != benched.end())
+            append_help_wrapped(
+                out, "Starts on the bench (TRAIN > ABILITIES puts it on a key).",
+                indent, indent + 2);
+    };
+
+    for (int slot = 1; slot < FD_NUM_SPECIALS; ++slot) {
+        const belt::Entry primary{static_cast<std::uint8_t>(slot), false};
+        if (!listed(primary))
+            continue;
+        append_help_wrapped(
+            out,
+            help_ability_text(og::sim::special_name(fd, slot, new_specials),
+                              fd->special_new_kit[slot],
+                              og::sim::slot_open_level(fd, slot),
+                              fd->special_details[slot]),
+            0, 2);
+        bench_note(primary, 2);
+
+        const char* alternate = og::sim::alternate_name(fd, slot, new_specials);
+        if (!og::sim::alternate_in_play(fd, slot, new_specials) ||
+            !names_a_special(alternate))
+            continue;
+        const belt::Entry second{static_cast<std::uint8_t>(slot), true};
+        const std::string prefix = ability_select ? "Also: " : "SHIFTER: ";
+        if (listed(second)) {
+            append_help_wrapped(
+                out,
+                prefix + help_ability_text(alternate,
+                                           fd->special_new_kit[slot] ||
+                                               fd->alternate_new_kit[slot],
+                                           0, fd->alternate_details[slot]),
+                2, 4);
+            bench_note(second, 4);
+            continue;
+        }
+        // The same ability as an earlier entry: named once. With the
+        // setting off it is still what SHIFTER does on this special.
+        if (ability_select)
+            continue;
+        for (const belt::Entry& earlier : catalog) {
+            if (std::strcmp(entry_name(fd, earlier, new_specials), alternate) != 0)
+                continue;
+            append_help_wrapped(
+                out,
+                std::format("SHIFTER: {}, as {}'s.", special_title(alternate),
+                            special_title(og::sim::special_name(
+                                fd, earlier.slot, new_specials))),
+                2, 4);
+            break;
+        }
+    }
+    return out;
 }
 
 std::string hire_description(const FamilyDescriptor* fd, short new_specials)
@@ -5438,13 +5606,6 @@ AbilityRow belt_row(const belt::Resolved& slot, int b, int& cut)
         row.text += locked_suffix(row.opens_at);
     cut_to(row.text, kAbilityRowChars, cut);
     return row;
-}
-
-const char* entry_name(const FamilyDescriptor* fd, const belt::Entry& entry,
-                       short new_specials)
-{
-    return entry.alt ? og::sim::alternate_name(fd, entry.slot, new_specials)
-                     : og::sim::special_name(fd, entry.slot, new_specials);
 }
 
 // The byte that keeps what slot b shows when it moves: a DEFAULT byte is
