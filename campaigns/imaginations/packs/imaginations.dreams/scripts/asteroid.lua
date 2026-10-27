@@ -16,12 +16,16 @@
 --     falls one floor onto the asteroid: hurt and slow, the Fallen One
 --     (coming down the stairs instead makes him the Stomper),
 --   * the raider waves and the key are narrated as they come, and the last
---     bad guy's death flashes along the rainbow by the big door.
+--     bad guy's death sets the rainbow by the big door sparkling: flashes
+--     roll across the whole arc, band by band, outer to inner, for three
+--     seconds.
 --
 -- Determinism cookbook (docs/lua-classpacks-design.md §3): no mutable sim
 -- state in locals or upvalues (R6) — every answer re-derives from the
--- world on each dispatch, and the fall beat carries its state in the
--- golem's name. No randomness is drawn.
+-- world on each dispatch, the fall beat carries its state in the
+-- golem's name, and the rainbow's countdown rides in the exit pad's cycle
+-- field (the pad is on the fx list and never acts, so nothing else reads
+-- it). No randomness is drawn.
 
 local C = og.C
 local posts = og.use("dream_posts")
@@ -30,6 +34,7 @@ local LEVEL = 3
 
 local FAM_GOLEM = assert(og.family_id("living", "core:#18"))
 local FX_FLASH = assert(og.family_id("fx", "core:flash"))
+local FAM_EXIT = assert(og.family_id("treasure", "core:exit"))
 
 -- The isle's mist rule: hostile sight caps at seven tiles.
 local SIGHT_CAP = 7
@@ -65,17 +70,27 @@ local STAIR_HP = 180
 local STAIR_DAMAGE = 40
 local STAIR_STEP = 6
 
--- Flashes from the deck edge toward the gate when he falls, and along
--- the rainbow's white band (ring 5 round the big door's middle, tile 15
--- row 46) when the last bad guy dies.
+-- Flashes from the deck edge toward the gate when he falls.
 local FALL_ARC = {
   { 44, 15 }, { 41, 17 }, { 38, 19 }, { 35, 21 }, { 32, 22 }, { 29, 23 },
   { 26, 24 },
 }
-local WIN_ARC = {
-  { 11, 49 }, { 12, 50 }, { 13, 51 }, { 15, 51 }, { 17, 51 }, { 18, 50 },
-  { 19, 49 },
-}
+
+-- The rainbow (the mapgen's asteroid_rainbow_ring): rings 3..7 round the
+-- big door's middle (tile 15, row 46), rows 49 to 55, x 7 to 23. When the
+-- last bad guy dies the rings flash one at a time, outer (7) to inner
+-- (3) and round again, one ring every RAINBOW_PERIOD ticks for
+-- RAINBOW_SWEEPS sweeps (180 ticks).
+local RAINBOW_CX = 15
+local RAINBOW_CY = 46
+local RAINBOW_X0 = 7
+local RAINBOW_X1 = 23
+local RAINBOW_Y0 = 49
+local RAINBOW_Y1 = 55
+local RAINBOW_OUTER = 7
+local RAINBOW_INNER = 3
+local RAINBOW_PERIOD = 10
+local RAINBOW_SWEEPS = 18
 
 -- The centre tile of an entity.
 local function tile_of(ob)
@@ -203,6 +218,76 @@ end
 local function flash_arc(arc)
   for i = 1, #arc do
     flash_at(arc[i][1], arc[i][2], 0)
+  end
+end
+
+-- The rainbow ring (3..7) a tile lies on, or 0: its distance from the
+-- big door's middle rounds to the ring, (2r-1)^2 <= 4 d^2 < (2r+1)^2.
+local function rainbow_ring(tx, ty)
+  if ty < RAINBOW_Y0 then
+    return 0
+  end
+  local dx = tx - RAINBOW_CX
+  local dy = ty - RAINBOW_CY
+  local d2x4 = 4 * (dx * dx + dy * dy)
+  for r = RAINBOW_INNER, RAINBOW_OUTER do
+    local lo = (2 * r - 1) * (2 * r - 1)
+    local hi = (2 * r + 1) * (2 * r + 1)
+    if lo <= d2x4 then
+      if d2x4 < hi then
+        return r
+      end
+    end
+  end
+  return 0
+end
+
+-- A flash on every tile of one rainbow ring.
+local function flash_ring(r)
+  for ty = RAINBOW_Y0, RAINBOW_Y1 do
+    for tx = RAINBOW_X0, RAINBOW_X1 do
+      if rainbow_ring(tx, ty) == r then
+        flash_at(tx, ty, 0)
+      end
+    end
+  end
+end
+
+-- The exit pad (the big door's vestibule), whose cycle field counts the
+-- rainbow's sweeps still to run.
+local function exit_pad()
+  local fx = og.fxlist()
+  for i = 1, #fx do
+    local e = fx[i]
+    if e:order() == C.ORDER_TREASURE then
+      if e:family() == FAM_EXIT then
+        return e
+      end
+    end
+  end
+  return nil
+end
+
+-- One sweep of the rainbow show: the next ring flashes and the count
+-- drops. The rings roll outer to inner, then start again at the outer.
+local function rainbow_sweep(pad)
+  local left = pad:cycle()
+  local done = RAINBOW_SWEEPS - left
+  local span = RAINBOW_OUTER - RAINBOW_INNER + 1
+  flash_ring(RAINBOW_OUTER - og.mod(done, span))
+  pad:set_cycle(left - 1)
+end
+
+local function rainbow_show(tick)
+  if og.mod(tick, RAINBOW_PERIOD) ~= 0 then
+    return
+  end
+  local pad = exit_pad()
+  if pad == nil then
+    return
+  end
+  if pad:cycle() > 0 then
+    rainbow_sweep(pad)
   end
 end
 
@@ -411,6 +496,7 @@ local function on_tick(level, tick)
     posts.stand_down(asteroid_reposts)
   end
   narrate(tick)
+  rainbow_show(tick)
 end
 
 local function on_entity_death(ent)
@@ -433,7 +519,12 @@ local function on_entity_death(ent)
   og.emit_notification("A rainbow lands on the big door.", 100)
   og.emit_notification("Key 3 opens it. Dream won!", 100)
   og.emit_sound(C.SOUND_MONEY)
-  flash_arc(WIN_ARC)
+  local pad = exit_pad()
+  if pad == nil then
+    return
+  end
+  pad:set_cycle(RAINBOW_SWEEPS)
+  rainbow_sweep(pad)
 end
 
 og.register_level_hooks(LEVEL, {

@@ -22,6 +22,7 @@
 #include <gtest/gtest.h>
 
 #include <openglad/core/constants.h>
+#include <openglad/core/decordefs.h>
 #include <openglad/core/pixdefs.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/mapgen/builders.h>
@@ -528,6 +529,48 @@ TEST_F(ImaginationsCampaignTest, castle_rooms_lie_on_inert_floors)
     {
         EXPECT_TRUE(stand(x, 15)) << "the pad square at x " << x;
         EXPECT_TRUE(stand(x, 19)) << "the open south at x " << x;
+    }
+    // The gate tunnel behind the three gate doors (row 43) is purple, like
+    // every door in the dream; the doors' own row stays stone.
+    for (int y = 41; y <= 42; ++y)
+        for (int x = 30; x <= 32; ++x)
+            EXPECT_EQ(PIX_CARPET_M, at(x, y))
+                << "the gate tunnel at " << x << "," << y;
+    for (int x = 30; x <= 32; ++x)
+        EXPECT_NE(PIX_CARPET_M, at(x, 43)) << "the gate door row at " << x;
+}
+
+// The autotiler's cracked wall base (one in ten) has a black crack that
+// reads at 1x as a dark figure standing in the wall: the castles' walls
+// are mended whole, every base tile plain, and the walls keep their torches.
+TEST_F(ImaginationsCampaignTest, castle_walls_stand_whole)
+{
+    for (int level : {kCastleLevel, 3})
+    {
+        LoadedImaginationsLevel fx(level);
+        ASSERT_TRUE(fx.loaded) << "level " << level;
+        const PixieData& g = fx.world().grid;
+        int bases = 0;
+        for (int y = 0; y < g.h; ++y)
+            for (int x = 0; x < g.w; ++x)
+            {
+                const unsigned char t =
+                    g.data[static_cast<std::size_t>(x + y * g.w)];
+                EXPECT_NE(PIX_WALLSIDE_CRACK_C1, t)
+                    << "a cracked wall base at " << x << "," << y
+                    << " on level " << level;
+                if (t == PIX_WALLSIDE1)
+                    ++bases;
+            }
+        EXPECT_GT(bases, 20) << "level " << level << " has its wall bases";
+        const PixieData& dec = fx.world().decor_for_floor(0);
+        ASSERT_EQ(g.w, dec.w);
+        int torches = 0;
+        for (std::size_t c = 0;
+             c < static_cast<std::size_t>(dec.w) * dec.h; ++c)
+            if (dec.data[c] == DECOR_TORCH1)
+                ++torches;
+        EXPECT_GE(torches, 10) << "level " << level << " keeps its torches";
     }
 }
 
@@ -1054,8 +1097,8 @@ TEST_F(ImaginationsCampaignTest, asteroid_floats_in_space_with_a_spiked_castle)
     for (int y = 29; y <= 31; ++y)
         EXPECT_EQ(PIX_COBBLE_1, at(g0, 24, y)) << "the apron row " << y;
     // The rainbow round the big door's middle (tile 15, row 46): rings 3..7
-    // by rounded distance, rows 49 and down, outer red-brown to inner
-    // purple.
+    // by rounded distance, rows 49 and down, in the tileset's spectrum:
+    // outer red lava, white snow, green grass, blue water, inner purple.
     auto ring_of = [](int x, int y) {
         if (y < 49)
             return 0;
@@ -1066,8 +1109,8 @@ TEST_F(ImaginationsCampaignTest, asteroid_floats_in_space_with_a_spiked_castle)
                 return r;
         return 0;
     };
-    const unsigned char kBands[8] = {0, 0, 0, PIX_CARPET_M, PIX_GRASS1,
-                                     PIX_SNOW1, PIX_DIRT_1, PIX_FLOOR1};
+    const unsigned char kBands[8] = {0, 0, 0, PIX_CARPET_M, PIX_WATER1,
+                                     PIX_GRASS1, PIX_SNOW1, PIX_LAVA1};
     int rainbow_cells[8] = {};
     for (int y = 47; y <= 55; ++y)
         for (int x = 7; x <= 23; ++x)
@@ -1095,16 +1138,16 @@ TEST_F(ImaginationsCampaignTest, asteroid_floats_in_space_with_a_spiked_castle)
         EXPECT_GE(rainbow_cells[r], 3) << "ring " << r << " is an arc";
     // The arc's legs and its foot: the outer ring reaches row 49 at both
     // ends and row 53 under the door.
-    EXPECT_EQ(PIX_FLOOR1, at(g0, 9, 49));
-    EXPECT_EQ(PIX_FLOOR1, at(g0, 21, 49));
-    EXPECT_EQ(PIX_FLOOR1, at(g0, 15, 53));
+    EXPECT_EQ(PIX_LAVA1, at(g0, 9, 49));
+    EXPECT_EQ(PIX_LAVA1, at(g0, 21, 49));
+    EXPECT_EQ(PIX_LAVA1, at(g0, 15, 53));
     EXPECT_EQ(PIX_CARPET_M, at(g0, 15, 49));
     // An asteroid, not a meadow: no grass anywhere on the rock but the
     // rainbow's green band.
     for (int y = 0; y < 64; ++y)
         for (int x = 0; x < 64; ++x)
         {
-            if (ring_of(x, y) == 4 && x >= 7 && x <= 23)
+            if (ring_of(x, y) == 5 && x >= 7 && x <= 23)
                 continue;
             const unsigned char t = at(g0, x, y);
             const bool grass =
@@ -1460,8 +1503,90 @@ TEST_F(ImaginationsCampaignTest, asteroid_last_bad_guy_lands_the_rainbow)
         fell(hostiles[i]);
     EXPECT_FALSE(saw_notification(fx.events, "Dream won!"))
         << "one bad guy is left (a dormant raider counts)";
+    // Rainbow ring (3..7) of a flash, or 0 when it is off the arc.
+    auto ring_of = [](const walker& ob) {
+        const int tx = ob.xpos() / GRID_SIZE;
+        const int ty = ob.ypos() / GRID_SIZE;
+        if (ty < 49 || tx < 7 || tx > 23)
+            return 0;
+        const int d2x4 = 4 * ((tx - 15) * (tx - 15) + (ty - 46) * (ty - 46));
+        for (int r = 3; r <= 7; ++r)
+            if ((2 * r - 1) * (2 * r - 1) <= d2x4 &&
+                d2x4 < (2 * r + 1) * (2 * r + 1))
+                return r;
+        return 0;
+    };
+    // Every rainbow flash not seen before, as (tick, ring) per new flash.
+    // The flashes alive last tick, keyed by address and tile: a flash is
+    // new when no flash at its address stood on its tile a tick ago.
+    struct Seen
+    {
+        const walker* ob;
+        int x;
+        int y;
+    };
+    std::vector<Seen> seen;
+    struct Spawn
+    {
+        std::uint32_t tick;
+        int ring;
+    };
+    std::vector<Spawn> spawns;
+    std::vector<Seen> now;
+    auto collect = [&](std::uint32_t tick) {
+        for (const auto& uptr : world.oblist)
+        {
+            if (!uptr || uptr->query_order() != Order::FX ||
+                uptr->family() != FAMILY_FLASH)
+                continue;
+            const int r = ring_of(*uptr);
+            if (r == 0)
+                continue;
+            const Seen key{uptr.get(), uptr->xpos(), uptr->ypos()};
+            now.push_back(key);
+            if (std::none_of(seen.begin(), seen.end(), [&](const Seen& o) {
+                    return o.ob == key.ob && o.x == key.x && o.y == key.y;
+                }))
+                spawns.push_back({tick, r});
+        }
+        seen.swap(now);
+        now.clear();
+    };
+    collect(0);
+    ASSERT_TRUE(spawns.empty()) << "no rainbow before the last one falls";
     fell(hostiles.back());
     EXPECT_TRUE(saw_notification(fx.events, "Dream won!"));
+    // The show: every ring of the arc sparkles, one ring at a time, outer
+    // to inner and round again, for about 180 ticks, so it outlasts the
+    // 100-tick win lines; then the arc is quiet.
+    collect(0);
+    for (std::uint32_t t = 1; t <= 300; ++t)
+    {
+        world.tick();
+        collect(t);
+    }
+    ASSERT_FALSE(spawns.empty());
+    // Group the spawns into sweeps: one tick, one ring.
+    std::vector<Spawn> sweeps;
+    int lit[8] = {};
+    for (const Spawn& sp : spawns)
+    {
+        ++lit[sp.ring];
+        if (sweeps.empty() || sweeps.back().tick != sp.tick)
+            sweeps.push_back(sp);
+        else
+            EXPECT_EQ(sweeps.back().ring, sp.ring)
+                << "one ring per sweep, tick " << sp.tick;
+    }
+    EXPECT_EQ(18u, sweeps.size()) << "eighteen sweeps";
+    EXPECT_EQ(0u, sweeps.front().tick) << "the outer ring flashes at once";
+    for (std::size_t k = 0; k < sweeps.size(); ++k)
+        EXPECT_EQ(7 - static_cast<int>(k % 5), sweeps[k].ring)
+            << "sweep " << k << " rolls outer to inner";
+    for (int r = 3; r <= 7; ++r)
+        EXPECT_GE(lit[r], 3 * 3) << "ring " << r << " sparkles, every pass";
+    EXPECT_GE(sweeps.back().tick, 160u) << "the show runs about 3 s";
+    EXPECT_LE(sweeps.back().tick, 180u) << "and then it ends";
     expect_no_script_errors(world);
 }
 

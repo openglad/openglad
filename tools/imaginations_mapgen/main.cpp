@@ -139,6 +139,19 @@ void paint_pavement(PixieData& g, int tx0, int ty0, int tx1, int ty1)
             og::mapgen::paint(g, x, y, variants[(x * 7 + y * 13) % 3]);
 }
 
+// The autotiler gives one wall-base tile in ten the cracked brick
+// (PIX_WALLSIDE_CRACK_C1), whose black crack reads at 1x as a dark figure
+// standing in the wall. The castles' walls stay whole: every cracked base
+// becomes the plain one, after smoothing (so the smoother's draws stand).
+void mend_cracked_walls(PixieData& g)
+{
+    for (int y = 0; y < g.h; ++y)
+        for (int x = 0; x < g.w; ++x)
+            if (g.data[static_cast<std::size_t>(x + y * g.w)] ==
+                PIX_WALLSIDE_CRACK_C1)
+                og::mapgen::paint(g, x, y, PIX_WALLSIDE1);
+}
+
 void save_level_files(GameWorld& world, int id, const char* title,
                       const std::vector<std::string>& description,
                       int par_value, int time_bonus_limit)
@@ -603,6 +616,7 @@ void build_castle_of_gold()
                 og::mapgen::paint(g, x, y, PIX_GRASS1);
 
     og::mapgen::smooth_world(w);
+    mend_cracked_walls(g);
 
     // Post-smooth inert pavement: five bridges over each river, every one
     // >= 4 wide and no river cell more than 10 tiles from one (the beeline
@@ -623,6 +637,10 @@ void build_castle_of_gold()
                                room.first + 6, room.second + 6, PIX_CARPET_M);
     og::mapgen::paint_rect(g, 55, 9, 59, 12, PIX_CARPET_M);
     og::mapgen::paint_rect(g, 11, 48, 16, 53, PIX_FLOOR1);
+    // The gate tunnel behind the three gate doors in purple, like every
+    // door in the drawing, so the gate reads purple from the court and the
+    // causeway (the doors' own row, y 43, stays cobble).
+    og::mapgen::paint_rect(g, 30, 41, 32, 42, PIX_CARPET_M);
 
     // --- The faerie war (team 1). Faeries only; every one a roamer that
     // comes to the war — flyers cross the rivers, the castle walls stop
@@ -841,7 +859,7 @@ void build_castle_of_gold()
 // in the north hall, and the big door (three team-4 doors at key 3, row
 // 43) sealing the striped vestibule that holds the exit pad. South of the
 // spike band the rainbow lies in an arc round the big door: five
-// one-tile half-rings, red-brown, orange, white, green and purple. A
+// one-tile half-rings, red lava, white, green, blue water and purple. A
 // 2-wide jagged spike band hugs the outer wall, broken only by the gate apron:
 // jagged ground is too sharp for anyone to walk or fly over, so raiders
 // pile up against it and the script's spikes bite them there.
@@ -865,8 +883,10 @@ bool in_asteroid_castle(int x, int y)
 }
 
 // The rainbow's five bands, outer (ring 7) to inner (ring 3).
+// The tileset's own spectrum: red-orange lava, white snow (the brightest
+// stand-in for yellow), green grass, blue water, purple carpet.
 constexpr unsigned char kAsteroidRainbow[5] = {
-    PIX_FLOOR1, PIX_DIRT_1, PIX_SNOW1, PIX_GRASS1, PIX_CARPET_M};
+    PIX_LAVA1, PIX_SNOW1, PIX_GRASS1, PIX_WATER1, PIX_CARPET_M};
 
 // The rainbow ring (3..7) a floor-0 cell lies on, or 0: rings centre on
 // the big door's middle (tile 15, row 46) and lie only on rows 49 and down.
@@ -904,6 +924,7 @@ void build_asteroid_castle()
     og::mapgen::paint_rect(g1, 46, 7, 52, 13, PIX_COBBLE_1);
 
     og::mapgen::smooth_world(w);
+    mend_cracked_walls(g0);
 
     // --- Floor 0, inert tiles (after smoothing).
     // The spike band: two tiles of jagged ground all around the walls
@@ -1051,8 +1072,10 @@ void build_asteroid_castle()
     // The rainbow: concentric one-tile half-rings round the big door's
     // middle (tile 15, row 46), radii 3..7, south of the spike band (rows
     // 49 and down) and only on the bare rock. A cell is on ring r when its
-    // distance rounds to r: (2r-1)^2 <= 4 d^2 < (2r+1)^2. All five floors
-    // are walkable and painted after smoothing, so they stay inert.
+    // distance rounds to r: (2r-1)^2 <= 4 d^2 < (2r+1)^2. Painted after
+    // smoothing, so they stay inert. The lava and water bands block
+    // ground walkers, which costs nothing: the arc is a dead end south of
+    // the spike band that no route crosses.
     for (int y = 49; y <= 55; ++y)
         for (int x = 7; x <= 23; ++x)
         {

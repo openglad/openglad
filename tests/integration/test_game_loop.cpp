@@ -8257,8 +8257,9 @@ TEST(GameLoop, zz_capture_imaginations_moments)
                 // set down at one hit point against the south spike band
                 // beside the big door's apron. The next spike bite kills
                 // him inside the sim tick, so the level script sees the
-                // last bad guy fall and lands its rainbow arc over the big
-                // door.
+                // last bad guy fall and sets the rainbow sparkling, band by
+                // band, for 180 ticks: past the 100-tick win lines, so the
+                // last frames show the sparkles with no HUD text.
                 walker* last = nullptr;
                 for (auto& up : w.oblist)
                     if (walker* a = up.get(); a != nullptr && !a->dead() &&
@@ -8300,7 +8301,7 @@ TEST(GameLoop, zz_capture_imaginations_moments)
         };
         d.keep = [](int f) { return f % 3 == 0; };
         // From 1550 the camera frames the big door with the whole rainbow
-        // arc below it (rows 49..54), so the win flashes land in view; from
+        // arc below it (rows 49..55), so the win show plays in view; from
         // 1680 it rises a little to take in the key-bearer at the doors.
         epic_rec::record("imag_moments_3", 3, WeatherKind::Snow, crew,
             {{0, 416, 440, 0, true}, {60, 860, 150, 0, true},
