@@ -521,7 +521,7 @@ void build_raspberry_isle()
 }
 
 // --- Scen 2: THE CASTLE OF GOLD. ---------------------------------------------
-// A yellow castle that is OURS, four strongrooms of gold inside it, and a
+// A grey stone castle that is OURS, four strongrooms of gold inside it, and a
 // faerie war raging all around. The faeries pour in from the map's edges
 // and want in: the gate opens for no faerie until the faeries between them
 // carry all twelve keys scattered on the shores. Inside, one of us keeps
@@ -594,7 +594,7 @@ void build_castle_of_gold()
     // The gate tunnel (3 wide through the 3-thick wall) and the causeway.
     og::mapgen::paint_rect(g, 30, 41, 32, 43, PIX_COBBLE_1);
     og::mapgen::paint_rect(g, 29, 44, 33, 60, PIX_COBBLE_1);
-    // The counting house (the yellow box northeast), open to the south.
+    // The counting house, northeast, open to the south.
     og::mapgen::paint_rect(g, 54, 8, 60, 13, PIX_WALL2);
     og::mapgen::paint_rect(g, 55, 9, 59, 12, PIX_DIRT_1);
     og::mapgen::paint_rect(g, 56, 13, 58, 13, PIX_COBBLE_1);
@@ -735,18 +735,19 @@ void build_castle_of_gold()
     // dispatcher, gated on level 2 and team 0).
     og::mapgen::place_generator(w, FAMILY_TENT, 0, 0, 52, 31, 1);
 
-    // --- The castle gold: two bars per strongroom, the ghost engine.
-    for (const auto& bar : {std::pair{22, 19}, {25, 22}, {38, 19}, {41, 22},
-                            {22, 38}, {25, 35}, {38, 38}, {41, 35}})
+    // --- The castle gold: two bars per strongroom, the ghost engine, laid
+    // in the row just inside each door mouth (the first thing seen through
+    // the doors), flanking the middle door.
+    for (const auto& bar : {std::pair{22, 23}, {24, 23}, {39, 23}, {41, 23},
+                            {22, 34}, {24, 34}, {39, 34}, {41, 34}})
         treasure(FAMILY_GOLD_BAR, bar.first, bar.second, 0);
-    // Silver heaped round the gold, four bars a room, off the door mouths
-    // (the two rows inside each mouth stay clear). Silver banks the classic
-    // way: only gold wakes ghosts.
+    // Silver heaped along each room's back wall, four bars a room. Silver
+    // banks the classic way: only gold wakes ghosts.
     for (const auto& bar :
-         {std::pair{21, 21}, {24, 18}, {26, 20}, {23, 20},   // northwest
-          {40, 18}, {42, 19}, {37, 21}, {37, 23},            // northeast
-          {21, 36}, {24, 39}, {26, 37}, {26, 39},            // southwest
-          {37, 36}, {42, 37}, {40, 39}, {42, 39}})           // southeast
+         {std::pair{21, 18}, {23, 18}, {24, 18}, {26, 18},   // northwest
+          {37, 18}, {39, 18}, {40, 18}, {42, 18},            // northeast
+          {21, 39}, {23, 39}, {24, 39}, {26, 39},            // southwest
+          {37, 39}, {39, 39}, {40, 39}, {42, 39}})           // southeast
         treasure(FAMILY_SILVER_BAR, bar.first, bar.second, 0);
     treasure(FAMILY_MAGIC_POTION, 39, 21, 0);
     treasure(FAMILY_INVULNERABLE_POTION, 23, 36, 0);
@@ -1612,7 +1613,7 @@ void self_check_castle_script()
         walker* ob = uptr.get();
         if (ob != nullptr && ob->query_order() == Order::Treasure &&
             ob->family() == FAMILY_GOLD_BAR && ob->xpos() == 22 * GRID_SIZE &&
-            ob->ypos() == 19 * GRID_SIZE)
+            ob->ypos() == 23 * GRID_SIZE)
             bar = ob;
     }
     walker* keeper = world.add_ob(Order::Living, FAMILY_SOLDIER);

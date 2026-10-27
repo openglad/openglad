@@ -68,6 +68,7 @@ local LANDINGS = {
 
 local SHORE_KEYS = 0x1FFE  -- key bits 1..12
 local KEYS_NEEDED = 12
+local CASTLE_KEY = 13      -- the keeper's strongroom key, not one of the twelve
 local GHOST_CAP = 110      -- og.living_count() ceiling for new ghosts
 
 local function in_rect(ob, x0, y0, x1, y1)
@@ -284,6 +285,19 @@ local function drop_gate_if_twelve(held)
   og.emit_notification("Hold the hall. Ghosts, to me!", 100)
 end
 
+-- The crew's pickup line: on scen 2 the castle key is named, so the HUD
+-- never counts a thirteenth key while the dream counts twelve; every other
+-- key keeps the classic line.
+local function key_pickup_line(who, level)
+  if og.level_id() ~= LEVEL then
+    return string.format("%s picks up key %d", who, level)
+  end
+  if level ~= CASTLE_KEY then
+    return string.format("%s picks up key %d", who, level)
+  end
+  return string.format("%s takes the castle key.", who)
+end
+
 -- core:key on_eat, campaign-wide while this pack is mounted: the classic
 -- body (one key bit in the eater's own mask, the team-0 broadcast, here
 -- for the crew's own characters only), then scen 2's count of the keys the
@@ -310,7 +324,7 @@ local function key_on_eat(self, eater)
     announce = is_keeper(eater)
   end
   if announce then
-    og.emit_notification(string.format("%s picks up key %d", who, level))
+    og.emit_notification(key_pickup_line(who, level))
     og.emit_sound(C.SOUND_MONEY)
   end
   if og.level_id() ~= LEVEL then

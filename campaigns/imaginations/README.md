@@ -29,7 +29,7 @@ generator's `write_campaign_yaml`).
 | scen | title | submitted idea (condensed) |
 |------|-------|----------------------------|
 | 1 | The Raspberry Isle | "We start at the edges of the island, at every corner. The sea is all around us. The enemies start in the middle, in a castle, near the water. We must run at them right away." (64x64; double-walled castle — bailey + keep — 19 posted foes, 3 college generators, two timed reinforcement waves, reef atolls, landing piers, bramble groves. Rebalanced 2026-08-11 down from the statue-era 25 when the hold-post wake bug was fixed and the garrison started genuinely fighting.) |
-| 2 | The Castle of Gold | Our own yellow castle in a faerie war. Four strongrooms of gold inside, each behind a row of doors; one of us keeps the castle and every gold bar taken wakes six ghosts for our side at the Ghost Tent, the last bar seven. Enemies are faeries only, pouring in from the map's edges; they must carry twelve keys between them to open the gate, and nobody teleports into the castle. (64x64; 3-thick castle ring with a 3-door gate and a purple gate tunnel, four 8x8 strongrooms with 3-door rows, each heaped with two gold and four silver bars (silver banks the classic way), two rivers with five bridges each, a grove, a brick field camp, a counting house, a pad square in a pool rim, the Ghost Tent (a tent of ours whose own spawns are stillborn) on an island ringed in water and open on the west, two teleporter pairs; 27 faeries — 4 awake, waves at ticks 400/900/1500, the Fae Queen and four knights at 2200; exit on the hall dais.) |
+| 2 | The Castle of Gold | Our own castle of gold in a faerie war. Four strongrooms of gold inside, each behind a row of doors; one of us keeps the castle and every gold bar taken wakes six ghosts for our side at the Ghost Tent, the last bar seven. Enemies are faeries only, pouring in from the map's edges; they must carry twelve keys between them to open the gate, and nobody teleports into the castle. (64x64; 3-thick castle ring with a 3-door gate and a purple gate tunnel, four 8x8 strongrooms with 3-door rows, each with two gold bars just inside its doors and four silver bars along its back wall (silver banks the classic way), two rivers with five bridges each, a grove, a brick field camp, a counting house, a pad square in a pool rim, the Ghost Tent (a tent of ours whose own spawns are stillborn) on an island ringed in water and open on the west, two teleporter pairs; 27 faeries — 4 awake, waves at ticks 400/900/1500, the Fae Queen and four knights at 2200; exit on the hall dais.) |
 | 3 | The Asteroid Castle | Our tall castle on an asteroid in space, with spikes all around its walls; bad guys think it is their castle, come close and get caught. The Big One sits on a floating rock and must be made to fall; the key is up there on the other floor, and the big door is the way out. A hero called the Purple Man is on our side. (64x64, 2 floors. Floor 0: a ragged grey-rock asteroid on black space (cobble, rust-brown dust, dark-rimmed craters with rubble, glittering stardust), the castle on the west rim with walls 2 thick, a flagstone court and a 3-wide east gate, a 2-wide band of jagged spikes around the walls, the crown of spikes, the big door (three doors at key 3) sealing the exit, and the rainbow in five one-tile half-rings round the big door (lava red, snow white, grass green, water blue, carpet purple, outer to inner); yard posts, the pen in the southeast, craters, stardust drifts that bring the snow. Floor 1: sky, and the striped Balloon Rock over a pit of space, reached by a 3-wide stair. 22 foes: 10 posted, the Big One on the rock, and 11 raiders in three waves at ticks 300/800/1400, the last led by Black Dash. The Purple Man holds the ground by the gate.) |
 
 Growth rule: new ideas append new scens (2, 3, …). Each level's exit
@@ -199,22 +199,21 @@ a level-4 boss all beat a fresh crew that now had to FIGHT for the
 castle — trimmed to 19/3/level-2, measured back to a fresh-team win.)
 
 The Castle of Gold, measured with `scripts/imaginations_playtest.sh
---levels 2` on 2026-10-26 under the shipped defaults (re-measured after
-four silver bars were heaped in each strongroom): PASS. The 8-mixed
+--levels 2` on 2026-10-27 under the shipped defaults (re-measured after
+each strongroom's gold was laid just inside its doors and its silver along
+the back wall): PASS. The 8-mixed
 gate roster reached `level_done == 1` on 3/3 seeds at crew 1 (ticks
-2716/2814/2840, 6-8 of 8 alive) and on 3/3 at crew 2 (2673/2700/3181, 5-8
+3202/3203/3437, 4-7 of 8 alive) and on 3/3 at crew 2 (2634/2938/3117, 5-8
 alive). The war runs as long as its waves: the Fae Queen's wave wakes at
 2200, so no run can clear before then. The 4-soldier stand-in (not the
-gate) cleared 0/3 seeds at crew 1 and 2/3 at crew 2 (1-2 alive): soldiers
+gate) cleared 0/3 seeds at crew 1 and 2/3 at crew 2 (4 alive): soldiers
 are melee only against a flying, freezing enemy, and the stand-in AI only
 rarely takes the castle gold that wakes the ghosts.
 
 The Asteroid Castle, measured with `scripts/imaginations_playtest.sh
---levels 3` on 2026-10-26 under the shipped defaults (re-measured after
-the ground was repainted as bare rock, dust, craters and stardust inside a
-ragged rim): PASS. The 8-mixed
+--levels 3` on 2026-10-27 under the shipped defaults: PASS. The 8-mixed
 gate roster reached `level_done == 1` on 3/3 seeds at crew 1 (ticks
-1689/1798/1915, 6-8 of 8 alive) and on 3/3 at crew 2 (1627/1694/1722, 7-8
+1760/1906/1915, 6-8 of 8 alive) and on 3/3 at crew 2 (1658/1700/1739, 8
 alive). The Big One fell off the rock on every run; Black Dash's band
 (wakes at 1400) sets the floor on the clear time. The 4-soldier stand-in
 (not the gate) cleared 3/3 seeds at crew 1 (3-4 alive) and 3/3 at crew 2

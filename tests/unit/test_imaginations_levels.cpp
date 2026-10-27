@@ -484,8 +484,8 @@ void expect_no_script_errors(GameWorld& world)
 }
 
 constexpr std::pair<int, int> kCastleBars[] = {
-    {22, 19}, {25, 22}, {38, 19}, {41, 22},
-    {22, 38}, {25, 35}, {38, 38}, {41, 35}};
+    {22, 23}, {24, 23}, {39, 23}, {41, 23},
+    {22, 34}, {24, 34}, {39, 34}, {41, 34}};
 
 TEST_F(ImaginationsCampaignTest, castle_rooms_lie_on_inert_floors)
 {
@@ -602,6 +602,16 @@ TEST_F(ImaginationsCampaignTest, castle_keys_announce_the_crew_not_ghosts)
     key2->eat_me(keeper);
     EXPECT_EQ(1u << 2, keeper->keys() & kShoreKeys);
     EXPECT_TRUE(saw_notification(fx.events, "picks up key 2"));
+    // The keeper's own castle key (key 13) is named, never counted: the
+    // HUD must not say "key 13" while the dream counts twelve.
+    (void)fx.events.drain();
+    walker* castle_key = find_treasure(world, FAMILY_KEY, 31, 36);
+    ASSERT_NE(nullptr, castle_key);
+    ASSERT_EQ(13, castle_key->stats()->level());
+    castle_key->eat_me(keeper);
+    EXPECT_EQ(1u << 13, keeper->keys() & (1u << 13));
+    EXPECT_TRUE(saw_notification(fx.events, "takes the castle key."));
+    EXPECT_FALSE(saw_notification(fx.events, "picks up key 13"));
     expect_no_script_errors(world);
 }
 
@@ -621,7 +631,7 @@ TEST_F(ImaginationsCampaignTest, castle_gold_wakes_six_ghosts_then_seven)
     ASSERT_NE(nullptr, drifter);
     drifter->set_team_num(0);
     drifter->set_real_team_num(0);
-    walker* first = find_treasure(world, FAMILY_GOLD_BAR, 22, 19);
+    walker* first = find_treasure(world, FAMILY_GOLD_BAR, 22, 23);
     ASSERT_NE(nullptr, first);
     first->eat_me(drifter);
     EXPECT_FALSE(first->dead()) << "an allied ghost must not take castle gold";
@@ -674,8 +684,9 @@ TEST_F(ImaginationsCampaignTest, castle_gold_wakes_six_ghosts_then_seven)
     expect_no_script_errors(world);
 }
 
-// The strongrooms read full of treasure: four silver bars heaped round
-// each room's gold. Silver banks the classic way and wakes no ghosts.
+// The strongrooms read full of treasure: two gold bars just inside the
+// doors, four silver bars along the back wall. Silver banks the classic
+// way and wakes no ghosts.
 TEST_F(ImaginationsCampaignTest, castle_strongroom_silver_banks_without_ghosts)
 {
     LoadedImaginationsLevel fx(kCastleLevel);
@@ -699,11 +710,24 @@ TEST_F(ImaginationsCampaignTest, castle_strongroom_silver_banks_without_ghosts)
             const int ty = ob->ypos() / GRID_SIZE;
             if (tx >= room.first && tx <= room.first + 5 &&
                 ty >= room.second && ty <= room.second + 5)
+            {
                 ++silver;
+                // The back wall: the top rooms open down, the bottom
+                // rooms open up, so the back row is the far one.
+                const int back = room.second < 30 ? room.second
+                                                  : room.second + 5;
+                EXPECT_EQ(back, ty) << "silver off the back wall at " << tx
+                                    << "," << ty;
+            }
         }
         EXPECT_EQ(4, silver) << "strongroom at " << room.first << ","
                              << room.second;
     }
+    // Each room's two gold bars lie in the row just inside its doors (the
+    // door rows are 24 and 33), the first thing seen through them.
+    for (const auto& bar : kCastleBars)
+        EXPECT_TRUE(bar.second == 23 || bar.second == 34)
+            << "castle gold at " << bar.first << "," << bar.second;
     walker* keeper = spawn_keeper(world);
     ASSERT_NE(nullptr, keeper);
     walker* silver = find_treasure(world, FAMILY_SILVER_BAR, 24, 18);
@@ -725,7 +749,7 @@ TEST_F(ImaginationsCampaignTest, castle_ghosts_respect_the_living_cap)
     world.tick();
     walker* keeper = spawn_keeper(world);
     ASSERT_NE(nullptr, keeper);
-    walker* bar = find_treasure(world, FAMILY_GOLD_BAR, 22, 19);
+    walker* bar = find_treasure(world, FAMILY_GOLD_BAR, 22, 23);
     ASSERT_NE(nullptr, bar);
     // Three below the script's 110-living ceiling: three ghosts, not six.
     world.living_count = 107;

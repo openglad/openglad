@@ -8118,20 +8118,17 @@ TEST(GameLoop, zz_capture_imaginations_moments)
         d.stage = [qx = -1.0f, qy = -1.0f](int f, GameWorld& w, float& cx,
                                           float& cy, int& floor) mutable
         {
-            // The court twice: at the deploy, and again at 57 so the crew
-            // and the keeper stand there under the dream-log's opening
-            // lines (tick 60), the keeper walking north onto the castle
-            // key (31,36).
-            if (f == 57)
-                if (walker* k = lead_of(w); k != nullptr)
-                {
-                    place_at(k, 31, 39, 0);
-                    k->stats()->set_command(COMMAND_WALK, 6, 0, -1);
-                }
-            if (f == 2 || f == 57)
+            // The court: from the deploy until 140 the keeper and three of
+            // the field crew are held on their marks by the gate, so the
+            // gate's lines (on_load) and the dream-log's opening lines
+            // (tick 60) read in order over them, and nobody walks over the
+            // castle key (31,36) to put a pickup line between the two.
+            // Then they go free.
+            if (in(f, 2, 140))
             {
+                place_at(lead_of(w), 31, 39, 0);
                 int placed = 0;
-                const int spots[3][2] = {{29, 39}, {33, 39}, {31, 34}};
+                const int spots[3][2] = {{29, 39}, {33, 39}, {31, 41}};
                 for (auto& up : w.oblist)
                     if (walker* a = up.get(); a != nullptr && placed < 3 &&
                         a->query_order() == Order::Living &&
@@ -8142,10 +8139,12 @@ TEST(GameLoop, zz_capture_imaginations_moments)
                         ++placed;
                     }
             }
+            // The keeper is dropped onto a bar just inside each room's
+            // doors (the room's second bar lies beside it).
             if (f == 150)
-                place_at(lead_of(w), 22, 38, 0);
+                place_at(lead_of(w), 22, 34, 0);
             if (f == 300)
-                place_at(lead_of(w), 38, 38, 0);
+                place_at(lead_of(w), 39, 34, 0);
             // Once the tent shot is done, the keeper is handed the castle
             // key (13), as if he had stepped over it by the gate: the
             // strongroom doors open for him and he walks back out to the
@@ -8216,10 +8215,35 @@ TEST(GameLoop, zz_capture_imaginations_moments)
                         pair[i]->walkstep(0, -1);
                 return follow(k, cx, cy, floor);
             }
+            // Just before her wave wakes, the Queen and her four knights
+            // (still dormant on the south shore) are drawn in tight, the
+            // Queen at the head of a V of knights in the middle of the
+            // shot, so the wake flashes mark her and her escort together.
+            if (f == 2196)
+            {
+                const int knight_spots[4][2] = {{29, 61}, {33, 61},
+                                                {27, 62}, {35, 62}};
+                int k = 0;
+                for (auto& up : w.oblist)
+                    if (walker* a = up.get(); a != nullptr && !a->dead() &&
+                        a->dormant() && a->query_order() == Order::Living &&
+                        a->ypos() >= 59 * GRID_SIZE)
+                    {
+                        if (a->stats()->name == "Fae Queen")
+                            place_at(a, 31, 60, 0);
+                        else if (a->stats()->name == "Fae Knight" && k < 4)
+                        {
+                            place_at(a, knight_spots[k][0],
+                                     knight_spots[k][1], 0);
+                            ++k;
+                        }
+                    }
+            }
             // The Queen's wave wakes on the south shore (spawn_delay 2200)
             // under "The Fae Queen is coming." (tick 2150): the keyframe
-            // holds the camera on her post until 2260, then it rides her.
-            if (f < 2260)
+            // holds the camera on her post until she wakes, then it rides
+            // her, her knights flanking her on the shore.
+            if (f <= 2200)
                 return false;
             if (follow(named(w, "Fae Queen"), cx, cy, floor))
             {
@@ -8241,7 +8265,7 @@ TEST(GameLoop, zz_capture_imaginations_moments)
                  in(f, 2190, 2900));
         };
         epic_rec::record("imag_moments_2", 2, WeatherKind::None, crew,
-            {{0, 504, 600, 0, true}, {140, 376, 592, 0, true},
+            {{0, 504, 600, 0, true}, {140, 376, 560, 0, true},
              {290, 832, 528, 0, true}, {900, 504, 680, 0, true},
              {1500, 504, 704, 0, true},
              {2190, 504, 984, 0, true}, {2900, 504, 448, 0, true}},
@@ -8253,7 +8277,8 @@ TEST(GameLoop, zz_capture_imaginations_moments)
     // the lead
     // is dropped within the Big One's wake range and the camera rides him
     // off the rock and down. Then the first gust is set down in sight of
-    // the gate and the camera finds any bad guy up against the spikes.
+    // the gate and the camera finds any bad guy up against the spikes, and
+    // Black Dash's band is set down by the east gate to break on them.
     if (want("imag_moments_3"))
     {
         epic_rec::Director d;
@@ -8287,6 +8312,36 @@ TEST(GameLoop, zz_capture_imaginations_moments)
                     {
                         place_at(a, spots[placed][0], spots[placed][1], 0);
                         ++placed;
+                    }
+            }
+            if (f == 1402)
+            {
+                // Black Dash and his two orcs (awake at 1400 on the
+                // southeast rim) set down against the east spike band, just
+                // north and south of the gate apron (rows 29..31): they
+                // fight the crew on the apron with the spikes biting them,
+                // and break on them in front of the gate. The band's faerie
+                // stays out on the rim, so the war still ends on the staged
+                // last raider below.
+                const int spots[3][2] = {{26, 27}, {26, 33}, {26, 25}};
+                int others = 1;
+                for (auto& up : w.oblist)
+                    if (walker* a = up.get(); a != nullptr &&
+                        !a->dead() && !a->dormant() &&
+                        a->query_order() == Order::Living &&
+                        a->team_num() != 0 &&
+                        a->xpos() >= 50 * GRID_SIZE &&
+                        a->ypos() >= 40 * GRID_SIZE &&
+                        a->family() != FAMILY_FAERIE)
+                    {
+                        if (a->stats()->name == "Black Dash")
+                            place_at(a, spots[0][0], spots[0][1], 0);
+                        else if (others < 3)
+                        {
+                            place_at(a, spots[others][0], spots[others][1],
+                                     0);
+                            ++others;
+                        }
                     }
             }
             if (f == 1560)
@@ -8346,15 +8401,18 @@ TEST(GameLoop, zz_capture_imaginations_moments)
             return false;
         };
         d.keep = [](int f) { return f % 3 == 0; };
-        // From 1550 the camera frames the big door with the whole rainbow
-        // arc below it (rows 49..55), so the win show plays in view; from
+        // From 1402 the camera holds on the east gate and its spike band
+        // for Black Dash's charge. From 1550 it frames the big door with
+        // the whole rainbow arc below it (rows 49..55), so the win show
+        // plays in view; from
         // 1700 it rises half a tile to take in the key-bearer coming down
         // to the doors (row 42) with the arc's outer ring (row 53) still
         // whole at the bottom edge.
         epic_rec::record("imag_moments_3", 3, WeatherKind::Snow, crew,
             {{0, 416, 440, 0, true}, {60, 860, 150, 0, true},
              {120, 784, 168, 1, true}, {330, 360, 480, 0, true},
-             {1390, 904, 736, 0, true}, {1550, 240, 780, 0, true},
+             {1390, 904, 736, 0, true}, {1402, 424, 488, 0, true},
+             {1550, 240, 780, 0, true},
              {1700, 248, 772, 0, true}, {1900, 248, 772, 0, true}},
             "imaginations", d);
     }
