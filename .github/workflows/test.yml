@@ -274,10 +274,20 @@ jobs:
           echo "campaign trees match their generators"
 
   asan:
-    name: ASan+UBSan
+    name: ASan+UBSan (${{ matrix.shard }}/3)
     runs-on: ubuntu-latest
     # The sanitizer suite outgrew 30 minutes once IXWebSocket gained a TLS
-    # build and the multi-seat networking tests landed.
+    # build and the multi-seat networking tests landed, and then outgrew 60:
+    # by 2026-10-27 the tests alone took 37-50 minutes, most of it one heavy
+    # binary at a time, and every master push (cold cache, 21-26 minute
+    # build) was cancelled at the cap. So the tests run as three shards, each
+    # a full build plus a third of the tests, picked by the asan-shard-N
+    # labels cmake/OpenGladTests.cmake sets at its end (shard 3 is every test
+    # without a shard label). A cold shard needs about 45 minutes.
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
@@ -293,6 +303,10 @@ jobs:
         with:
           key: ci-asan
           max-size: 2G
+          # The three shards build the same objects. One cache entry is
+          # enough; three would triple what each push writes into a repo
+          # cache that is already past its 10 GB and evicting master's entry.
+          save: ${{ matrix.shard == 1 }}
 
       - name: Configure (ci-asan preset)
         run: cmake --preset ci-asan -DVALIDATE_SERIALIZATION=ON -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
@@ -315,7 +329,12 @@ jobs:
           export OG_EXPECT_VERSION_MINOR
           OG_EXPECT_GIT_HASH="$(git rev-parse --short=8 HEAD)"
           export OG_EXPECT_GIT_HASH
-          ctest --test-dir build/ci-asan --parallel "$(nproc)" --output-on-failure --timeout 420 --no-tests=error
+          case "${{ matrix.shard }}" in
+            1) SELECT=(-L '^asan-shard-1$');;
+            2) SELECT=(-L '^asan-shard-2$');;
+            3) SELECT=(-LE '^asan-shard-[12]$');;
+          esac
+          ctest --test-dir build/ci-asan --parallel "$(nproc)" --output-on-failure --timeout 420 --no-tests=error "${SELECT[@]}"
 
   tsan:
     name: TSan
