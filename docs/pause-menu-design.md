@@ -103,8 +103,16 @@ Keeping the transport alive while the menu blocks (the two pause traps):
   or desync-disconnected at all — those semantics exist for remote
   transports.
 
-Curses/text clients: unchanged. Their Esc = withdraw prompt is the terminal
-analogue; no terminal PAUSED projection.
+The curses client opens PAUSED on Esc: `[r]esume [a]bilities [k]eys
+[q]uit mission`. Q withdraws; any other key resumes. Local, networked host
+and networked joiner sessions all send the pause request when the menu
+opens. While the menu or its ABILITIES or KEYS page is open they keep
+advancing without input and re-ask for the pause every 20 s as the
+keep-alive. Closing the menu sends the pause response. The curses session
+has three pause calls (request, response, `set_belt`), written once over the
+session's `GameClient` (`CursesClientSession`). An ABILITIES edit is sent
+only if the same body is still driven when the page closes. The text client
+is unchanged: its Esc is still the withdraw prompt.
 
 ### 2.2 Per-player settings (in-game and Base Camp)
 
@@ -119,6 +127,7 @@ seat settings, minus TEAM):
         [ REMAP ALL     ]     existing remap wizard
         [ RESET         ]
         [ REMOVE PLAYER ]     hidden when networked or last local seat
+        [ ABILITIES ][ KEYMAP ]  per-seat doors (#376, #388), see §7.1
         ... live binding grid (existing seat-settings content draw) ...
 ```
 
@@ -330,7 +339,8 @@ screen share one geometry)
   | (binding panel, 12..208)   | [FOES:  ON ]
   |                            | [SCORE: ON ]
   +----------------------------+
-  [TEAM n       ][REMOVE PLAYER]              y=169 (variant-gated)
+  [TEAM n][KEYMAP][REMOVE PLAYER]              y=169 (Base Camp)
+  [ABILITIES][KEYMAP][REMOVE PLAYER]           y=169 (pause)
 ```
 
 - The binding panel narrows to x=12..208 (movement col x=20, actions x=104);
@@ -347,8 +357,23 @@ screen share one geometry)
   keep their keys. REMAP ALL and the cells save through one helper.
 - Ordinals: the pause player screen is rows 0..10, key cells 11..26,
   ABILITIES 27, KEYMAP 28 (29 rows); Base Camp seat settings is rows 0..11,
-  key cells 12..27, KEYMAP 28 (29 rows). TEAM on the seat screen is 66 wide
-  so KEYMAP can share its band.
+  key cells 12..27, KEYMAP 28 (29 rows).
+- The y=169 band: the left door (TEAM on the seat screen, ABILITIES on the
+  pause screen) at x=12 and KEYMAP at x=84 are 66 wide; REMOVE PLAYER stays
+  at x=166. ABILITIES is dimmed with New Ability Select off or with no living
+  body under the seat; KEYMAP is hidden for a phone touch seat. One rewire
+  (`rewire_player_screen_bottom_band`) chains the band left to right and
+  sends each door down to BACK on both screens; the last movement cell goes
+  down to the left door.
+- ABILITIES (pause) edits the layout of the body this seat drives (the guy
+  under `viewob[seat]->control`, checked every frame). BACK sends one
+  BeltChange through `PauseMenuHost::set_belt` only if the layout changed and
+  the same body is still driven; a Switch or a possession while it is open
+  closes it with nothing sent. A body with no saved layout opens read-only
+  ("THIS BODY HAS NO SAVED LAYOUT."). The held SPEC latch for the seat is
+  cleared on commit, so a key held through the pause cannot cast the old
+  entry. KEYMAP shows the keyboard picture of every local keyboard seat,
+  this one first. Both keep the paused session pumped.
 - The remap prompt's control summary wraps at 48 characters per line (#383),
   long key names have short forms (PrtSc, ScrLk, NumLk, Ins, Del, PgUp, PgDn,
   `KP x` for keypad keys), and a prompt with four or more lines centres in
@@ -503,7 +528,7 @@ in the same pass.
 
 ## 8. Non-goals
 
-- No terminal (text/curses) pause menu.
+- No text-client pause menu (curses has one since #376, §2.1).
 - No networked mid-game add/remove; no per-seat leave in networked play
   (QUIT keeps the all-or-nothing withdraw semantics).
 - No replacement for RESET ALL CONTROLS: the global CONTROLS screen is

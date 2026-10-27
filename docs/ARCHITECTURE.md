@@ -640,9 +640,13 @@ mirror, and a won level merges it into the save. The server refuses an edit
 silently when the seat is not bound, has no body, the body is dead, the
 entity id is stale (the seat switched character or possessed another between
 open and BACK), or there is no guy record; `GameServer::last_belt_change_verdict()`
-names the last verdict for tests. Locally `local_transport_shadow_set_belt`
-sends it for a seat (false when no client carries that seat); the curses
-client calls `GameClient::send_belt_change`. The snapshot format stays v18:
+names the last verdict for tests. In the SDL game the PAUSED menu's
+ABILITIES screen calls `PauseMenuHost::set_belt`, which `game_loop.cpp` wires
+to `local_transport_shadow_set_belt` (false when no client carries that
+seat). The curses client's PAUSED menu (Esc, then `a`) sends it through
+`CursesClientSession::set_belt`, one implementation over the session's
+`GameClient::send_belt_change` shared by local, host and joiner sessions.
+Both send only when the same body is still driven. The snapshot format stays v18:
 not one snapshot byte changes, and the protocol byte already rejects every
 v22 peer.
 

@@ -107,8 +107,10 @@ movement; the in-game help lists the 8-direction ones):
 
 Each ability key casts the ability on it, and holding Shifter gives a second
 row of three. **TRAIN > ABILITIES** in Base Camp chooses which ability sits
-on which key. Turning off **Game Settings > UI FX > New Ability Select**
-brings back the original rules on the same keys: the first ability key casts
+on which key; mid-mission, **ABILITIES** on your player screen in the PAUSED
+menu changes it for the character you are playing. **KEYMAP** on a player's
+screen shows every local player's keys on one keyboard picture. Turning off
+**Game Settings > UI FX > New Ability Select** brings back the original rules on the same keys: the first ability key casts
 the selected special, the second changes it, and Shifter casts the
 alternate. On a player's screen (open the player's **P#** card in Base Camp,
 or the PAUSED menu), click one key in the key list to change only that key,

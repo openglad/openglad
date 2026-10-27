@@ -585,7 +585,8 @@ the setting is off or the hero cannot train.
 
 `e` on a roster row (`src/platform/curses/curses_picker_client.cpp`) opens
 the page: pick a slot, then an ability or another slot; `c` empties the
-highlighted slot; Done or Esc saves.
+highlighted slot; Done or Esc saves. In a mission, Esc then `a` opens the
+same page for the body this player drives (section E.6).
 
 ### E.4 The in-game HUD
 
@@ -671,6 +672,31 @@ curses clients have no pictures.
   `cfg/help_classes.txt` holds only the prose around them.
 - **DETAILS** (`og::ui::detail_page`): with the setting on the alternate's
   line reads `Also: <name>` instead of `Shift: <name>`.
+
+### E.6 ABILITIES and KEYMAP from the PAUSED menu (#376, #388)
+
+- **Doors**: the pause player screen's bottom band carries ABILITIES and
+  KEYMAP (left of REMOVE PLAYER); the Base Camp seat screen carries KEYMAP
+  beside TEAM. ABILITIES is dimmed with the setting off or when the seat has
+  no living body. KEYMAP is hidden for a phone touch seat.
+- **Whose layout**: the body the seat drives now (after a Switch or a
+  possession, that body), not the roster hero. A body with no saved layout
+  opens read-only with `THIS BODY HAS NO SAVED LAYOUT.`
+- **Commit**: the screen edits a copy. BACK sends one BeltChange (protocol
+  23, see `docs/ARCHITECTURE.md`) only if the layout changed and the same
+  body is still driven; if control moves to another body while it is open,
+  the screen closes and nothing is sent. The seat's held SPEC latch is
+  cleared, so a key held through the pause casts nothing until it is
+  pressed again. The server applies the change while paused; RESUME shows it
+  on the HUD.
+- **KEYMAP**: the keyboard picture (F.5) of every local keyboard seat, this
+  seat first.
+- **Curses**: Esc opens `[r]esume [a]bilities [k]eys [q]uit mission`. `a`
+  opens the ABILITIES page for the driven body (same rules; the edit is sent
+  only if the same body is still driven when the page closes), `k` a KEYS
+  page listing the binding panel rows. The session keeps advancing and the
+  pause is re-asked every 20 s while either page is open.
+- **Text client**: unchanged (no pause menu).
 
 ---
 
@@ -1000,6 +1026,7 @@ picture.
    SHIFTER Left Alt, LOOK UP unbound; P1: LOOK UP Tab).
 6. **No ABILITIES from the PAUSED menu** mid-mission: an edit there would
    need a new client-to-server message. Left for a follow-up.
+   Superseded by #376: the BeltChange message carries it (section E.6).
 7. **The compact HUD cuts names** to 12 letters in four-seat panes rather
    than adding short names to every pack. Superseded: the HUD now shows
    pictures, not names (section I); the cut is kept only for the panes too
