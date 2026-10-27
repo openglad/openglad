@@ -5,6 +5,7 @@
 #include <cmath>
 #include <filesystem>
 #include <format>
+#include <functional>
 #include <fstream>
 #include <memory>
 #include <set>
@@ -7500,10 +7501,23 @@ bool action_center(GameWorld& w, int floor, float& out_x, float& out_y)
     return true;
 }
 
+// Optional per-frame hooks for staged scenes. `stage` runs on the
+// AUTHORITATIVE server world before each sim tick (place a walker, poke a
+// scripted beat) and may take the camera: return true with a target centre
+// and floor to snap there for this frame. `keep` picks which frames are
+// written (every frame when empty), so long films can dump a few windows.
+struct Director
+{
+    std::function<bool(int frame, GameWorld& server, float& cx, float& cy,
+                       int& floor)> stage;
+    std::function<bool(int frame)> keep;
+};
+
 void record(const char* scene, int scen, WeatherKind kind,
             const std::vector<int>& roster,
             const std::vector<Key>& keys,
-            const char* campaign = "westlands")
+            const char* campaign = "westlands",
+            const Director& director = {})
 {
     screen* const s = og::runtime::current_session->myscreen_;
     // The crew deploys at the level's team-0 start position markers.
@@ -7558,13 +7572,18 @@ void record(const char* scene, int scen, WeatherKind kind,
             seg++;
         const Key& a = keys[seg];
         float tx = static_cast<float>(a.cx), ty = static_cast<float>(a.cy);
+        int floor = a.floor;
+        bool snap = a.forced;
         if (!a.forced)
             action_center(s->world(), a.floor, tx, ty);
-        if (a.floor != last_floor || a.forced)
+        if (director.stage &&
+            director.stage(f, server->world(), tx, ty, floor))
+            snap = true;
+        if (floor != last_floor || snap)
         {
             cam_x = tx; // snap on a floor cut or scripted anchor
             cam_y = ty;
-            last_floor = a.floor;
+            last_floor = floor;
         }
         cam_x += (tx - cam_x) * 0.05f; // eased drift toward the action
         cam_y += (ty - cam_y) * 0.05f;
@@ -7578,11 +7597,13 @@ void record(const char* scene, int scen, WeatherKind kind,
         // The transport shadow re-assigns viewport control every tick; the
         // manual camera only holds while control is null, so clear it both
         // before the sim tick and before the redraw.
-        vs->editor_floor_override_ = static_cast<Sint32>(a.floor);
+        vs->editor_floor_override_ = static_cast<Sint32>(floor);
         vs->control = nullptr;
         s->set_level_draw_pos(topx, topy);
         if (game_frame_with_result(*s, st, deps) != GameFrameResult::Continue)
             break;
+        if (director.keep && !director.keep(f))
+            continue;
         vs->control = nullptr;
         s->set_level_draw_pos(topx, topy);
         s->redraw();
@@ -7949,6 +7970,556 @@ TEST(GameLoop, zz_capture_imaginations)
              {660, 240, 704, 0, true}, {780, 504, 504, 0, true},
              {950, 504, 504, 0, false}},
             "imaginations");
+    // 2 The Castle of Gold — the faerie war around our own castle. Open on
+    // the keeper inside by the gate, follow the first faeries over the
+    // rivers, look in on the Ghost Tent east of the walls, then hold on
+    // the gate and the court while the waves press it.
+    if (want("imag_2"))
+        epic_rec::record("imag_2", 2, WeatherKind::None,
+            {FAMILY_SOLDIER, FAMILY_SOLDIER, FAMILY_SOLDIER, FAMILY_ELF,
+             FAMILY_ELF, FAMILY_ARCHER, FAMILY_CLERIC, FAMILY_BARBARIAN},
+            {{0, 504, 600, 0, true}, {120, 504, 720, 0, false},
+             {300, 832, 528, 0, true}, {450, 504, 720, 0, true},
+             {700, 504, 480, 0, false}, {1000, 504, 480, 0, false}},
+            "imaginations");
+    // 3 The Asteroid Castle — the spiked castle on its rock in space. Open
+    // on the crew in the court, swing to the east gate as the first gust
+    // bites on the spike band, look up at the Big One on the Balloon Rock
+    // (floor 1) and follow the fight to the rock's edge, then watch the
+    // captain's band wake on the southeast rim.
+    if (want("imag_3"))
+        epic_rec::record("imag_3", 3, WeatherKind::Snow,
+            {FAMILY_SOLDIER, FAMILY_SOLDIER, FAMILY_SOLDIER, FAMILY_ELF,
+             FAMILY_ELF, FAMILY_ARCHER, FAMILY_CLERIC, FAMILY_BARBARIAN},
+            {{0, 248, 488, 0, true}, {200, 400, 480, 0, false},
+             {340, 400, 480, 0, true}, {420, 784, 168, 1, true},
+             {520, 736, 192, 0, false}, {1420, 896, 736, 0, true},
+             {1700, 784, 784, 0, false}},
+            "imaginations");
+}
+
+// ---------------------------------------------------------------------------
+// Staged moments for the two castle levels (proof stills): the epic_rec film
+// with a Director that sets up each beat on the server world — the crew in
+// the court, the lead dropped onto a strongroom's gold bar (the gold beat
+// is a keeper's pickup), the lead dropped within the Big One's wake range —
+// and a camera that follows the named walker the beat is about.
+// ---------------------------------------------------------------------------
+namespace moments_rec {
+
+walker* lead_of(GameWorld& w)
+{
+    for (auto& up : w.oblist)
+        if (walker* a = up.get(); a != nullptr && !a->dead() &&
+            a->query_order() == Order::Living && a->user() != -1)
+            return a;
+    return nullptr;
+}
+
+walker* named(GameWorld& w, const char* name, int family = -1)
+{
+    for (auto& up : w.oblist)
+        if (walker* a = up.get(); a != nullptr && !a->dead() &&
+            a->query_order() == Order::Living && !a->dormant() &&
+            (family < 0 || a->family() == family) &&
+            (name == nullptr || a->stats()->name == name))
+            return a;
+    return nullptr;
+}
+
+// Moves a walker to tile (tx, ty) on `floor`, floor first (obmap buckets
+// follow every position change).
+void place_at(walker* w, int tx, int ty, int floor)
+{
+    if (w == nullptr)
+        return;
+    w->set_floor(static_cast<unsigned char>(floor));
+    w->setxy(tx * GRID_SIZE, ty * GRID_SIZE);
+}
+
+bool follow(walker* w, float& cx, float& cy, int& floor)
+{
+    if (w == nullptr)
+        return false;
+    cx = static_cast<float>(w->xpos());
+    cy = static_cast<float>(w->ypos());
+    floor = static_cast<int>(w->floor());
+    return true;
+}
+
+bool in(int f, int a, int b) { return f >= a && f < b; }
+
+// An awake hostile on the asteroid with its tile up against the spike band
+// around scen 3's castle (the band is tiles 6..25 x 13..48 around the
+// castle block 8..23 x 15..46; a hostile within one tile of it gets bitten).
+walker* by_the_spikes(GameWorld& w)
+{
+    for (auto& up : w.oblist)
+        if (walker* a = up.get(); a != nullptr && !a->dead() &&
+            !a->dormant() && a->query_order() == Order::Living &&
+            a->team_num() != 0 && a->floor() == 0)
+        {
+            const int tx = static_cast<int>(a->xpos()) / GRID_SIZE;
+            const int ty = static_cast<int>(a->ypos()) / GRID_SIZE;
+            const bool near_band = tx >= 5 && tx <= 26 && ty >= 12 && ty <= 49;
+            const bool in_castle = tx >= 9 && tx <= 22 && ty >= 16 && ty <= 45;
+            if (near_band && !in_castle)
+                return a;
+        }
+    return nullptr;
+}
+
+// The awake hostile on floor 0 nearest tile (tx, ty), within `reach`
+// tiles; nullptr when none is that close.
+walker* nearest_hostile(GameWorld& w, int tx, int ty, int reach)
+{
+    walker* best = nullptr;
+    long best_d = static_cast<long>(reach) * reach * GRID_SIZE * GRID_SIZE;
+    for (auto& up : w.oblist)
+        if (walker* a = up.get(); a != nullptr && !a->dead() &&
+            !a->dormant() && a->query_order() == Order::Living &&
+            a->team_num() != 0 && a->floor() == 0)
+        {
+            const long dx = static_cast<long>(a->xpos()) - tx * GRID_SIZE;
+            const long dy = static_cast<long>(a->ypos()) - ty * GRID_SIZE;
+            if (dx * dx + dy * dy <= best_d)
+            {
+                best_d = dx * dx + dy * dy;
+                best = a;
+            }
+        }
+    return best;
+}
+
+} // namespace moments_rec
+
+TEST(GameLoop, zz_capture_imaginations_moments)
+{
+    if (!getenv("OG_FX_CAPTURE_DIR"))
+        GTEST_SKIP() << "set OG_FX_CAPTURE_DIR to record";
+    using epic_rec::Key;
+    using namespace moments_rec;
+    const char* only = getenv("OG_FX_CAPTURE_ONLY");
+    const auto want = [&](const char* n) {
+        return only == nullptr || strcmp(only, n) == 0;
+    };
+    const std::vector<int> crew = {
+        FAMILY_SOLDIER, FAMILY_SOLDIER, FAMILY_SOLDIER, FAMILY_ELF,
+        FAMILY_ELF, FAMILY_ARCHER, FAMILY_CLERIC, FAMILY_BARBARIAN};
+    // 2 The Castle of Gold: the crew in the court (three of the field crew
+    // brought in beside the keeper), the keeper's first bar in the
+    // southwest strongroom, the next (southeast room) filmed from the Ghost
+    // Tent, the waves at the gate, the camera riding the Fae Queen in, and
+    // last the lead walking from the south bridge onto the throne dais.
+    if (want("imag_moments_2"))
+    {
+        epic_rec::Director d;
+        // The camera holds where the Queen last flew once she pops.
+        d.stage = [qx = -1.0f, qy = -1.0f](int f, GameWorld& w, float& cx,
+                                          float& cy, int& floor) mutable
+        {
+            // The court: from the deploy until 140 the keeper and three of
+            // the field crew are held on their marks by the gate, so the
+            // gate's lines (on_load) and the dream-log's opening lines
+            // (tick 60) read in order over them, and nobody walks over the
+            // castle key (31,36) to put a pickup line between the two.
+            // Then they go free.
+            if (in(f, 2, 140))
+            {
+                place_at(lead_of(w), 31, 39, 0);
+                int placed = 0;
+                const int spots[3][2] = {{29, 39}, {33, 39}, {31, 41}};
+                for (auto& up : w.oblist)
+                    if (walker* a = up.get(); a != nullptr && placed < 3 &&
+                        a->query_order() == Order::Living &&
+                        a->team_num() == 0 && a->user() == -1 &&
+                        a->myguy != nullptr)
+                    {
+                        place_at(a, spots[placed][0], spots[placed][1], 0);
+                        ++placed;
+                    }
+            }
+            // The keeper is dropped onto a bar just inside each room's
+            // doors (the room's second bar lies beside it).
+            if (f == 150)
+                place_at(lead_of(w), 22, 34, 0);
+            if (f == 300)
+                place_at(lead_of(w), 39, 34, 0);
+            // Once the tent shot is done, the keeper is handed the castle
+            // key (13), as if he had stepped over it by the gate: the
+            // strongroom doors open for him and he walks back out to the
+            // war instead of bumping a locked door for the rest of the
+            // film. (Handed over earlier, he would leave the first room and
+            // empty the second before his drop onto its bar.)
+            if (f == 420)
+                if (walker* k = lead_of(w); k != nullptr)
+                    k->set_keys(k->keys() | (1u << 13));
+            // The waves at the gate: the camera finds the faerie nearest
+            // the gate apron (31,44) while the war comes to the wall.
+            if (in(f, 900, 1400))
+                return follow(nearest_hostile(w, 31, 44, 14), cx, cy, floor);
+            // The Fae Knights' wave (awake at 1500 on the shores) is set
+            // down on the gate apron, flanking the causeway, where the
+            // camera holds on the gate; the front pair stands two rows
+            // below the wall so no knight overlaps the wall face. They
+            // land at 1572, once a crewman's potion pickup line (about
+            // 1495..1570) has left the HUD, so the gate beat plays under
+            // no stray pickup text.
+            if (f == 1572)
+            {
+                const int spots[6][2] = {{27, 46}, {35, 46}, {28, 48},
+                                         {34, 48}, {26, 49}, {36, 49}};
+                int placed = 0;
+                for (auto& up : w.oblist)
+                    if (walker* a = up.get(); a != nullptr && placed < 6 &&
+                        !a->dead() && !a->dormant() &&
+                        a->query_order() == Order::Living &&
+                        a->team_num() != 0 && a->stats()->name == "Fae Knight")
+                    {
+                        place_at(a, spots[placed][0], spots[placed][1], 0);
+                        ++placed;
+                    }
+            }
+            // "Walk to the throne!": once the Queen's pop lines are gone,
+            // the lead and two of the crew are set down on the south
+            // bridge and walk north up the causeway, through the gate and
+            // the court, onto the purple dais (the exit pad is at 31,28;
+            // the two flank it at 30 and 32). The camera rides the lead.
+            if (f >= 2580)
+            {
+                walker* k = lead_of(w);
+                if (k == nullptr)
+                    return false;
+                walker* pair[2] = {nullptr, nullptr};
+                int found = 0;
+                for (auto& up : w.oblist)
+                    if (walker* a = up.get(); a != nullptr && found < 2 &&
+                        !a->dead() && a->query_order() == Order::Living &&
+                        a->team_num() == 0 && a->user() == -1 &&
+                        a->myguy != nullptr)
+                        pair[found++] = a;
+                if (f == 2580)
+                {
+                    place_at(k, 31, 58, 0);
+                    k->set_act_type(ACT_GUARD);
+                    for (int i = 0; i < found; ++i)
+                    {
+                        place_at(pair[i], 30 + 2 * i, 59, 0);
+                        pair[i]->set_act_type(ACT_GUARD);
+                    }
+                }
+                if (k->ypos() > 28 * GRID_SIZE)
+                    k->walkstep(0, -1);
+                for (int i = 0; i < found; ++i)
+                    if (pair[i]->ypos() > 29 * GRID_SIZE)
+                        pair[i]->walkstep(0, -1);
+                return follow(k, cx, cy, floor);
+            }
+            // Just before her wave wakes, the Queen and her four knights
+            // (still dormant on the south shore) are drawn in tight, the
+            // Queen at the head of a V of knights in the middle of the
+            // shot, so the wake flashes mark her and her escort together.
+            if (f == 2196)
+            {
+                const int knight_spots[4][2] = {{29, 61}, {33, 61},
+                                                {27, 62}, {35, 62}};
+                int k = 0;
+                for (auto& up : w.oblist)
+                    if (walker* a = up.get(); a != nullptr && !a->dead() &&
+                        a->dormant() && a->query_order() == Order::Living &&
+                        a->ypos() >= 59 * GRID_SIZE)
+                    {
+                        if (a->stats()->name == "Fae Queen")
+                            place_at(a, 31, 60, 0);
+                        else if (a->stats()->name == "Fae Knight" && k < 4)
+                        {
+                            place_at(a, knight_spots[k][0],
+                                     knight_spots[k][1], 0);
+                            ++k;
+                        }
+                    }
+            }
+            // The Queen's wave wakes on the south shore (spawn_delay 2200)
+            // under "The Fae Queen is coming." (tick 2150): the keyframe
+            // holds the camera on her post until she wakes, then it rides
+            // her, her knights flanking her on the shore.
+            if (f <= 2200)
+                return false;
+            if (follow(named(w, "Fae Queen"), cx, cy, floor))
+            {
+                qx = cx;
+                qy = cy;
+                return true;
+            }
+            if (qx < 0.0f)
+                return false;
+            cx = qx;
+            cy = qy;
+            return true;
+        };
+        d.keep = [](int f)
+        {
+            return f % 3 == 0 &&
+                (in(f, 0, 120) || in(f, 140, 230) || in(f, 290, 420) ||
+                 in(f, 900, 1400) || in(f, 1500, 1900) ||
+                 in(f, 2190, 2900));
+        };
+        epic_rec::record("imag_moments_2", 2, WeatherKind::None, crew,
+            {{0, 504, 600, 0, true}, {140, 376, 560, 0, true},
+             {290, 832, 528, 0, true}, {900, 504, 680, 0, true},
+             {1500, 504, 704, 0, true},
+             {2190, 504, 984, 0, true}, {2900, 504, 448, 0, true}},
+            "imaginations", d);
+    }
+    // 3 The Asteroid Castle: the Purple Man at the east gate, space past
+    // the Balloon pit, the Big One on the rock with the key (floor 1). The
+    // crew but the lead are posted in the court ("we sit in the castle");
+    // the lead
+    // is dropped within the Big One's wake range and the camera rides him
+    // off the rock and down. Then the first gust is set down in sight of
+    // the gate and the camera finds any bad guy up against the spikes, and
+    // Black Dash's band is set down by the east gate to break on them.
+    if (want("imag_moments_3"))
+    {
+        epic_rec::Director d;
+        d.stage = [](int f, GameWorld& w, float& cx, float& cy, int& floor)
+        {
+            if (f == 2)
+                for (auto& up : w.oblist)
+                    if (walker* a = up.get(); a != nullptr &&
+                        a->query_order() == Order::Living &&
+                        a->team_num() == 0 && a->user() == -1 &&
+                        a->myguy != nullptr)
+                        a->set_act_type(ACT_GUARD);
+            if (f == 150)
+                place_at(lead_of(w), 42, 15, 0);
+            if (f == 330)
+            {
+                // The first gust's four (awake, on the east rim) set down
+                // along the east band, north and south of the gate, in
+                // sight of the crew on the gate apron.
+                const int spots[4][2] = {{26, 20}, {26, 40}, {27, 23},
+                                         {27, 37}};
+                int placed = 0;
+                for (auto& up : w.oblist)
+                    if (walker* a = up.get(); a != nullptr && placed < 4 &&
+                        !a->dead() && !a->dormant() &&
+                        a->query_order() == Order::Living &&
+                        a->team_num() != 0 &&
+                        a->xpos() >= 50 * GRID_SIZE &&
+                        (a->family() == FAMILY_ORC ||
+                         a->family() == FAMILY_FAERIE))
+                    {
+                        place_at(a, spots[placed][0], spots[placed][1], 0);
+                        ++placed;
+                    }
+            }
+            if (f == 1402)
+            {
+                // Black Dash and his two orcs (awake at 1400 on the
+                // southeast rim) set down against the east spike band, just
+                // north and south of the gate apron (rows 29..31): they
+                // fight the crew on the apron with the spikes biting them,
+                // and break on them in front of the gate. The band's faerie
+                // stays out on the rim, so the war still ends on the staged
+                // last raider below.
+                const int spots[3][2] = {{26, 27}, {26, 33}, {26, 25}};
+                int others = 1;
+                for (auto& up : w.oblist)
+                    if (walker* a = up.get(); a != nullptr &&
+                        !a->dead() && !a->dormant() &&
+                        a->query_order() == Order::Living &&
+                        a->team_num() != 0 &&
+                        a->xpos() >= 50 * GRID_SIZE &&
+                        a->ypos() >= 40 * GRID_SIZE &&
+                        a->family() != FAMILY_FAERIE)
+                    {
+                        if (a->stats()->name == "Black Dash")
+                            place_at(a, spots[0][0], spots[0][1], 0);
+                        else if (others < 3)
+                        {
+                            place_at(a, spots[others][0], spots[others][1],
+                                     0);
+                            ++others;
+                        }
+                    }
+            }
+            if (f == 1560)
+            {
+                // The war's end, staged: every bad guy left (dormant ones
+                // too) is struck off quietly but one awake raider, who is
+                // set down at one hit point against the south spike band
+                // beside the big door's apron. The next spike bite kills
+                // him inside the sim tick, so the level script sees the
+                // last bad guy fall and sets the rainbow sparkling, band by
+                // band, for 180 ticks: past the 100-tick win lines, so the
+                // last frames show the sparkles with no HUD text.
+                walker* last = nullptr;
+                for (auto& up : w.oblist)
+                    if (walker* a = up.get(); a != nullptr && !a->dead() &&
+                        a->query_order() == Order::Living &&
+                        a->team_num() != 0)
+                    {
+                        if (last == nullptr && !a->dormant() &&
+                            a->floor() == 0 && a->family() != FAMILY_GOLEM)
+                        {
+                            last = a;
+                            continue;
+                        }
+                        a->set_dead(1);
+                    }
+                if (last != nullptr)
+                {
+                    place_at(last, 18, 49, 0);
+                    last->stats()->set_hitpoints(1.0f);
+                }
+            }
+            // The key-bearer at the big door, once the win lines are gone
+            // (they run to about 1660) and the arc has been filmed
+            // sparkling with all three doors shut: the lead, with key 3,
+            // walks south into each of the three doors in turn (court
+            // side), then on through the open middle door and the striped
+            // vestibule onto the exit pad (15,45).
+            const int door_x[3] = {14, 16, 15};
+            for (int i = 0; i < 3; ++i)
+                if (f == 1700 + 40 * i)
+                    if (walker* k = lead_of(w); k != nullptr)
+                    {
+                        k->set_keys(k->keys() | (1u << 3));
+                        k->set_act_type(ACT_GUARD);
+                        place_at(k, door_x[i], 41, 0);
+                        k->stats()->set_command(COMMAND_WALK, 6, 0, 1);
+                    }
+            if (f >= 1820)
+                if (walker* k = lead_of(w);
+                    k != nullptr && k->ypos() < 45 * GRID_SIZE)
+                    k->walkstep(0, 1);
+            if (in(f, 150, 330))
+                return follow(named(w, nullptr, FAMILY_GOLEM), cx, cy, floor);
+            if (in(f, 330, 1390))
+                return follow(by_the_spikes(w), cx, cy, floor);
+            return false;
+        };
+        d.keep = [](int f) { return f % 3 == 0; };
+        // From 1402 the camera holds on the east gate and its spike band
+        // for Black Dash's charge. From 1550 it frames the big door with
+        // the whole rainbow arc below it (rows 49..55), so the win show
+        // plays in view; from
+        // 1700 it rises half a tile to take in the key-bearer coming down
+        // to the doors (row 42) with the arc's outer ring (row 53) still
+        // whole at the bottom edge.
+        epic_rec::record("imag_moments_3", 3, WeatherKind::Snow, crew,
+            {{0, 416, 440, 0, true}, {60, 860, 150, 0, true},
+             {120, 784, 168, 1, true}, {330, 360, 480, 0, true},
+             {1390, 904, 736, 0, true}, {1402, 424, 488, 0, true},
+             {1550, 240, 780, 0, true},
+             {1700, 248, 772, 0, true}, {1900, 248, 772, 0, true}},
+            "imaginations", d);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Whole-level overviews: every floor of a level rendered at native tile scale
+// with its placed units, as a grid of 320x200 camera tiles for stitching.
+// Same setup as epic_rec::record (save, glad_init, free spectator camera);
+// one sim tick deploys the crew, then nothing moves while the camera steps
+// across the map. The editor floor override draws the dormant waves too,
+// and the notification lines are cleared off every tile.
+// Tiles land in $OG_FX_CAPTURE_DIR/<scene>/f<floor>_x<topx>_y<topy>.ppm.
+// ---------------------------------------------------------------------------
+namespace overview_rec {
+
+void dump_tile(screen* s, const char* scene, int floor, int topx, int topy)
+{
+    char dir[512];
+    gameplay_rec::dump_dir_for(scene, dir, sizeof(dir));
+    char path[600];
+    snprintf(path, sizeof(path), "%s/f%d_x%04d_y%04d.ppm", dir, floor, topx,
+             topy);
+    FILE* fp = fopen(path, "wb");
+    ASSERT_NE(nullptr, fp);
+    fprintf(fp, "P6\n320 200\n255\n");
+    for (int j = 0; j < 200; j++)
+        for (int i = 0; i < 320; i++)
+        {
+            Uint8 r, g, b;
+            s->get_pixel(i, j, &r, &g, &b);
+            fputc(r, fp);
+            fputc(g, fp);
+            fputc(b, fp);
+        }
+    fclose(fp);
+}
+
+// The tile origins along one axis: steps of `step`, the last clamped so the
+// final tile ends flush with the map edge.
+std::vector<int> origins(int extent, int step)
+{
+    std::vector<int> out;
+    for (int o = 0; o < extent; o += step)
+        out.push_back(o + step > extent ? extent - step : o);
+    return out;
+}
+
+void record(const char* scene, int scen, const char* campaign)
+{
+    screen* const s = og::runtime::current_session->myscreen_;
+    gameplay_rec::build_save(s, campaign, scen, 1,
+        {FAMILY_SOLDIER, FAMILY_SOLDIER, FAMILY_SOLDIER, FAMILY_ELF,
+         FAMILY_ELF, FAMILY_ARCHER, FAMILY_CLERIC, FAMILY_BARBARIAN}, 7);
+    glad_init();
+    gameplay_rec::force_weather(WeatherKind::None);
+    viewscreen* vs = s->viewob[0].get();
+    ASSERT_NE(nullptr, vs);
+
+    GameLoopFrameState st;
+    GameLoopDeps deps;
+    deps.enable_render = false;
+    deps.enable_event_poll = false;
+    deps.enable_frame_timing = false;
+    vs->control = nullptr;
+    ASSERT_EQ(GameFrameResult::Continue,
+              game_frame_with_result(*s, st, deps));
+    gameplay_rec::force_weather(WeatherKind::None);
+
+    const int world_w = static_cast<int>(s->world().grid.w) * GRID_SIZE;
+    const int world_h = static_cast<int>(s->world().grid.h) * GRID_SIZE;
+    const int floors = static_cast<int>(s->world().floor_count());
+    for (int floor = 0; floor < floors; ++floor)
+        for (int topy : origins(world_h, 200))
+            for (int topx : origins(world_w, 320))
+            {
+                vs->editor_floor_override_ = static_cast<Sint32>(floor);
+                vs->control = nullptr;
+                vs->clear_text(); // no notification lines over the map
+                s->set_level_draw_pos(topx, topy);
+                s->redraw();
+                s->swap();
+                dump_tile(s, scene, floor, topx, topy);
+                if (::testing::Test::HasFatalFailure())
+                    return;
+            }
+    vs->editor_floor_override_ = -1;
+    s->world().end = 0;
+    s->world().delete_objects();
+}
+
+} // namespace overview_rec
+
+TEST(GameLoop, zz_capture_imaginations_overview)
+{
+    if (!getenv("OG_FX_CAPTURE_DIR"))
+        GTEST_SKIP() << "set OG_FX_CAPTURE_DIR to record";
+    const char* only = getenv("OG_FX_CAPTURE_ONLY");
+    const auto want = [&](const char* n) {
+        return only == nullptr || strcmp(only, n) == 0;
+    };
+    // Scen 2 The Castle of Gold (one floor), scen 3 The Asteroid Castle
+    // (the asteroid and the Balloon Rock's sky floor).
+    if (want("imag_overview_2"))
+        overview_rec::record("imag_overview_2", 2, "imaginations");
+    if (want("imag_overview_3"))
+        overview_rec::record("imag_overview_3", 3, "imaginations");
 }
 
 // ---------------------------------------------------------------------------
@@ -10161,6 +10732,7 @@ TEST(GameLoop, long_pause_menu_visit_then_resume_keeps_local_peers_connected)
 // differently and neither costs a snapshot-hash strike.
 // ---------------------------------------------------------------------------
 #include <format>
+#include <functional>
 #include <openglad/gameplay/lobby_state.h>
 #include <openglad/gameplay/mode/mode_state.h>
 

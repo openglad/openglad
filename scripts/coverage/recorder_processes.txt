@@ -60,6 +60,7 @@ og_unit_entity
 og_unit_families
 og_unit_ffa
 og_unit_headless_platform
+og_unit_imaginations
 og_unit_kits
 og_unit_mapgen
 og_unit_mode

@@ -50,8 +50,10 @@ CAMPAIGN="imaginations"
 # "Difficulty curve"): the dream-log stays anchored at crew 1.
 declare -A CREW_LEVEL=(
     [1]=1
+    [2]=1
+    [3]=1
 )
-ALL_LEVELS="1"
+ALL_LEVELS="1 2 3"
 
 if [ ! -x "$BIN" ]; then
     echo "FAIL: openglad_text not found at $BIN (build with: cmake --build --preset ci-test --target openglad_text)" >&2

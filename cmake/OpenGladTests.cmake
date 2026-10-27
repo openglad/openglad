@@ -1101,8 +1101,6 @@ og_add_unit_group(og_unit_data FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_modes_levels.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_modes_book.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_match_setup_session.cpp
-    ${CMAKE_SOURCE_DIR}/tests/unit/test_imaginations_levels.cpp
-    ${CMAKE_SOURCE_DIR}/tests/unit/test_imaginations_dream_log.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_builtin_archives.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_decor_format.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_level_file_io_coverage.cpp
@@ -1131,6 +1129,15 @@ target_compile_definitions(og_unit_data PRIVATE
 # their own time budget.
 og_add_unit_group(og_unit_westlands_fire FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_westlands_fire.cpp
+)
+
+# The Imaginations dream-log campaign (campaigns/imaginations): its level
+# sims (the castle gate, the ghost tent, the asteroid's spikes and stairs)
+# and the dream-log book. Its own group beside og_unit_data so those sims
+# keep their own time budget under the instrumented lanes.
+og_add_unit_group(og_unit_imaginations FILES
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_imaginations_levels.cpp
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_imaginations_dream_log.cpp
 )
 
 og_add_unit_group(og_unit_respawn FILES

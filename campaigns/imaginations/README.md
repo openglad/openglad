@@ -29,10 +29,74 @@ generator's `write_campaign_yaml`).
 | scen | title | submitted idea (condensed) |
 |------|-------|----------------------------|
 | 1 | The Raspberry Isle | "We start at the edges of the island, at every corner. The sea is all around us. The enemies start in the middle, in a castle, near the water. We must run at them right away." (64x64; double-walled castle — bailey + keep — 19 posted foes, 3 college generators, two timed reinforcement waves, reef atolls, landing piers, bramble groves. Rebalanced 2026-08-11 down from the statue-era 25 when the hold-post wake bug was fixed and the garrison started genuinely fighting.) |
+| 2 | The Castle of Gold | Our own castle of gold in a faerie war. Four strongrooms of gold inside, each behind a row of doors; one of us keeps the castle and every gold bar taken wakes six ghosts for our side at the Ghost Tent, the last bar seven. Enemies are faeries only, pouring in from the map's edges; they must carry twelve keys between them to open the gate, and nobody teleports into the castle. (64x64; 3-thick castle ring with a 3-door gate and a purple gate tunnel, four 8x8 strongrooms with 3-door rows, each with two gold bars just inside its doors and four silver bars along its back wall (silver banks the classic way), two rivers with five bridges each, a grove, a brick field camp, a counting house, a pad square in a pool rim, the Ghost Tent (a tent of ours whose own spawns are stillborn) on an island ringed in water and open on the west, two teleporter pairs; 27 faeries — 4 awake, waves at ticks 400/900/1500, the Fae Queen and four knights at 2200; exit on the hall dais.) |
+| 3 | The Asteroid Castle | Our tall castle on an asteroid in space, with spikes all around its walls; bad guys think it is their castle, come close and get caught. The Big One sits on a floating rock and must be made to fall; the key is up there on the other floor, and the big door is the way out. A hero called the Purple Man is on our side. (64x64, 2 floors. Floor 0: a ragged grey-rock asteroid on black space (cobble, rust-brown dust, dark-rimmed craters with rubble, glittering stardust), the castle on the west rim with walls 2 thick, a flagstone court and a 3-wide east gate, a 2-wide band of jagged spikes around the walls, the crown of spikes, the big door (three doors at key 3) sealing the exit, and the rainbow in five one-tile half-rings round the big door (lava red, snow white, grass green, water blue, carpet purple, outer to inner); yard posts, the pen in the southeast, craters, stardust drifts that bring the snow. Floor 1: sky, and the striped Balloon Rock over a pit of space, reached by a 3-wide stair. 22 foes: 10 posted, the Big One on the rock, and 11 raiders in three waves at ticks 300/800/1400, the last led by Black Dash. The Purple Man holds the ground by the gate.) |
 
-Growth rule: new ideas append new scens (2, 3, …). The newest level's
-walk-out exit loops home to 1; when its successor lands, the generator
-retargets that exit to the new scen. `first_level` stays 1.
+Growth rule: new ideas append new scens (2, 3, …). Each level's exit
+leads to the next; the newest level's walk-out exit loops home to 1, and
+when its successor lands the generator retargets that exit to the new
+scen. `first_level` stays 1. Today: 1 → 2 → 3 → 1.
+
+The Castle of Gold's beats live in
+`packs/imaginations.dreams/scripts/gold_castle.lua`:
+- Gold: the script overrides `core:gold_bar` on_eat for the whole
+  campaign. Off scen 2, and for the counting-house bar on it, the body is
+  the classic one (team 0 or a roster character banks). A castle bar
+  banks only for a keeper (a saved character or a player-driven walker),
+  so allied ghosts floating through the strongrooms leave the gold alone,
+  and wakes six allied ghosts at the tent (seven for the last bar). New
+  ghosts stop at 110 livings. The tent is our own generator on the
+  island; its own spawns are stillborn (the campaign's one generator
+  dispatcher in `isle.lua`, gated on scen 2 and team 0), so only gold
+  wakes ghosts.
+- Keys: the gate's three doors are team 0 (the crew and its ghosts walk
+  through their own gate) at key level 30, which no key opens. The script
+  (a `core:key` on_eat override plus a check every 100 ticks) drops them
+  when the living faeries carry shore keys 1..12 between them; a bearer's
+  death takes its keys out of the count. The strongroom doors are neutral
+  (team 4) at key 13, the castle key by the keeper's start.
+- No teleporting in: while the gate stands, any hostile inside the
+  castle, and any of ours landing a teleport there, is thrown out onto
+  the causeway.
+- Stand-down: faeries fly the rivers but not walls, so a hunting faerie
+  within two tiles of the castle ring or the counting house is posted
+  every 50 ticks; the engine's sight test re-wakes it. Out in the field
+  the waves keep hunting. (The stand-down loop itself is shared by every
+  level: `packs/imaginations.dreams/lib/dream_posts.lua`; each level
+  passes the test for which hunters it posts.) `og.register_hooks` on `core:gold_bar` and
+  `core:key` may come from ONE chunk only; a later level that needs
+  either shares that dispatcher.
+
+The Asteroid Castle's beats live in
+`packs/imaginations.dreams/scripts/asteroid.lua`:
+- Spikes: jagged ground is impassable to walkers AND flyers, so the band
+  around the walls is a barrier the raiders pile up against. Every ten
+  ticks the script bites (12 hp, a flash and a clang) every awake hostile
+  on floor 0 whose centre tile is on or beside a spike, the crown of
+  spikes in the court included. The crew is never bitten. The gate apron
+  is spike-free.
+- The Big One: on the rock (floor 1) his sight is held at 0, so he never
+  throws. He wakes when any of the crew comes within nine tiles (any
+  floor). Awake on the rock, his orders are replaced every tick by one
+  straight step toward the nearest of the crew: the hunt AI's path search
+  would walk him round to the stairs, because it knows the sky is not a
+  floor. Every foe he can want is south or west of the rock, so the
+  straight walk takes him off the deck and he falls one floor (the first
+  floor of a fall is free). Landed under open sky he is the Fallen One:
+  90 hp, 24 damage, step 4, sight 7. Down the stairs instead he is the
+  Stomper: 180 hp, 40 damage, step 6. The engine resets a walker's step to
+  its family's every act, so the slow pace is a speed bonus the script
+  re-arms every tick. The name carries the state.
+- Stand-down: the shared loop posts every hostile hunter every 50 ticks,
+  except the Big One while he is on the rock.
+- Narration at ticks 80, 260, 301 (first gust), 801 (falling stars), 1401
+  (Black Dash's band) and 1500 (the key); the last bad guy's death sets the
+  rainbow sparkling: flashes roll across the whole arc, one band every
+  ten ticks from the outer red to the inner purple, for 180 ticks. The
+  countdown rides in the exit pad's `cycle` field (the pad lives on the
+  fx list and never acts, so nothing else reads it).
+- The key (key 3, under the rock's mast on floor 1) and the big door are
+  native: one walker holding key 3 opens the door for everyone.
 
 Engine rule for moat/water-ring layouts (learned in playtest): place NO
 roaming (ACT_RANDOM) foes whose straight line to the crew crosses
@@ -114,6 +178,8 @@ save's level-1 crew (crew power 1 in the longseason README's terms).
 | level | crew power entering | calibration floor (8-mixed, tick 600, min over seeds 42/1337/2025) |
 |-------|---------------------|--------------------------------------------------------------------|
 | 1 | 1 | 7 (measured 8/7/8 on 2026-08-11; pinned in tests/unit/test_imaginations_calibration.cpp) |
+| 2 | 1 | 8 (measured 8/8/8 on 2026-10-26; only the four tick-0 faeries are awake by tick 600) |
+| 3 | 1 | 6 (measured 8/8/6 on 2026-10-26; the first gust wakes at 300) |
 
 Gate (kill-all): 8-mixed at crew 1 reaches `level_done == 1` within 6000
 ticks on 3/3 seeds. Measured with `scripts/imaginations_playtest.sh` on
@@ -131,3 +197,24 @@ runs — three-wide gates fixed it; and when the hold-post wake bug fell,
 the statue-era balance had to fall with it: 25 foes, six wave units and
 a level-4 boss all beat a fresh crew that now had to FIGHT for the
 castle — trimmed to 19/3/level-2, measured back to a fresh-team win.)
+
+The Castle of Gold, measured with `scripts/imaginations_playtest.sh
+--levels 2` on 2026-10-27 under the shipped defaults (re-measured after
+each strongroom's gold was laid just inside its doors and its silver along
+the back wall): PASS. The 8-mixed
+gate roster reached `level_done == 1` on 3/3 seeds at crew 1 (ticks
+3202/3203/3437, 4-7 of 8 alive) and on 3/3 at crew 2 (2634/2938/3117, 5-8
+alive). The war runs as long as its waves: the Fae Queen's wave wakes at
+2200, so no run can clear before then. The 4-soldier stand-in (not the
+gate) cleared 0/3 seeds at crew 1 and 2/3 at crew 2 (4 alive): soldiers
+are melee only against a flying, freezing enemy, and the stand-in AI only
+rarely takes the castle gold that wakes the ghosts.
+
+The Asteroid Castle, measured with `scripts/imaginations_playtest.sh
+--levels 3` on 2026-10-27 under the shipped defaults: PASS. The 8-mixed
+gate roster reached `level_done == 1` on 3/3 seeds at crew 1 (ticks
+1760/1906/1915, 6-8 of 8 alive) and on 3/3 at crew 2 (1658/1700/1739, 8
+alive). The Big One fell off the rock on every run; Black Dash's band
+(wakes at 1400) sets the floor on the clear time. The 4-soldier stand-in
+(not the gate) cleared 3/3 seeds at crew 1 (3-4 alive) and 3/3 at crew 2
+(3 alive).

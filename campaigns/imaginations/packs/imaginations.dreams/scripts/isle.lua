@@ -20,8 +20,10 @@
 -- the world on every dispatch.
 
 local C = og.C
+local posts = og.use("dream_posts")
 
 local ISLE_LEVEL = 1
+local GOLD_LEVEL = 2
 
 -- Family bytes resolved once at chunk load. core:#20 is the immobile
 -- arrow turret (tower1) — the wizard's watchtowers.
@@ -119,6 +121,15 @@ local function on_load(level)
   og.set_entity_hooks(wizard, { on_death = on_wizard_death })
 end
 
+-- The isle stands down its hostile hunters and the Dreamkin (the
+-- dreamer's own crew keeps hunting).
+local function isle_reposts(ob)
+  if ob:team_num() ~= 0 then
+    return true
+  end
+  return ob:s_name() == "Dreamkin"
+end
+
 -- on_tick: the dream-log reads the submitted argument back over the
 -- landing — the level narrating its own creation. Anchored to absolute
 -- level ticks (an origin of "since landing" would be remembered state).
@@ -132,37 +143,10 @@ local function on_tick(level, tick)
     og.emit_notification("...is the sea in the middle, or", 90)
     og.emit_notification("around? BOTH. It is my dream.", 90)
   end
-  -- Dream soldiers return to their posts: a once-woken guard hunts
-  -- (ACT_RANDOM) forever, and with no pathfinding a hunter whose prey
-  -- is unreachable — across the moat, behind a wall — stands in place
-  -- turning toward it forever. The cure is the engine's own sight
-  -- test: act_guard fires at genuinely sighted foes and RE-WAKES on
-  -- the next tick of any clear sighting (the garrison ships with
-  -- hold-post OFF for exactly this reason — a held post never wakes),
-  -- so cycling every hostile hunter (and every Dreamkin) back onto a
-  -- post costs an engaged fighter nothing while a blocked one stands
-  -- down cleanly. Two kinds of hunter are never posted: the dreamer's
-  -- own crew (team 0), and ANY walker carrying a saved character
-  -- (has_guy) — a company member on a foreign roster color is a
-  -- player's hero without a seat here, and posting it would park
-  -- someone's save on the beach for the whole dream.
+  -- Dream soldiers return to their posts (lib/dream_posts.lua): every
+  -- hostile hunter, and every Dreamkin, stands down on the 50-tick beat.
   if og.mod(tick, 50) == 0 then
-    local obs = og.oblist()
-    for i = 1, #obs do
-      local ob = obs[i]
-      if ob:order() == C.ORDER_LIVING
-          and ob:dead() == 0
-          and ob:act_type() == C.ACT_RANDOM
-          and not ob:has_guy() then
-        local reposts = ob:team_num() ~= 0
-        if not reposts and ob:s_name() == "Dreamkin" then
-          reposts = true
-        end
-        if reposts then
-          ob:set_act_type(C.ACT_GUARD)
-        end
-      end
-    end
+    posts.stand_down(isle_reposts)
   end
 end
 
@@ -195,13 +179,21 @@ local function on_entity_death(ent)
   end
 end
 
--- Generator customize_spawn, gated on the isle's level id so future
--- dream-log levels with colleges stay untouched. In a dream, some
--- enemies were friends all along: a stable fifth of every college's
+-- Generator customize_spawn: the campaign's one generator dispatcher (a
+-- second chunk registering the same family hook would be a duplicate).
+-- On the Castle of Gold our own Ghost Tent's spawns are stillborn, since
+-- there ghosts are bought with gold (gold_castle.lua). Past that it is
+-- gated on the isle's level id, so future dream-log levels with colleges
+-- stay untouched. On the isle, in a dream, some enemies were friends all
+-- along: a stable fifth of every college's
 -- spawns defect to the dreamer's team at birth. "Every 5th" is derived,
 -- not counted (R6): the spawn's sim entity id is assigned identically on
 -- every peer, so og.mod picks the same stable share everywhere.
 local function customize_spawn(generator, spawn)
+  if og.level_id() == GOLD_LEVEL and generator:team_num() == 0 then
+    spawn:set_dead(1)
+    return
+  end
   if og.level_id() ~= ISLE_LEVEL then
     return
   end
@@ -226,8 +218,9 @@ og.register_level_hooks(ISLE_LEVEL, {
 })
 
 -- The three colleges of the isle: the mage tower, the bone tent, the elf
--- treehouse. One registration per generator family; core registers no
--- generator hooks, so nothing is shadowed.
+-- treehouse (and the Castle of Gold's Ghost Tent). One registration per
+-- generator family; core registers no generator hooks, so nothing is
+-- shadowed.
 local COLLEGE_FAMILIES = {
   "core:tent", "core:tower", "core:treehouse",
 }

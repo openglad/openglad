@@ -2,15 +2,22 @@
  *
  * Produces campaigns/imaginations/ (the source tree the build composes
  * into builtin/imaginations.glad): the dream-log campaign — levels kids
- * imagine, sent in and made real, one scenario per idea. Ships ONE level
- * today, scen 1 "The Raspberry Isle": an island ringed by open sea, the
- * crew landing on the shores all around, and a moated castle in the
- * middle whose garrison must be cleared. The layout is a faithful build
- * of the first submitted idea (spoken aloud, briefing-voice preserved in
- * the level text): "we start at the edges of the island, the sea is all
- * around us, and the enemies are in the middle." New ideas append new
- * scens; the walk-out exit of the newest level loops home to 1 until its
- * successor exists.
+ * imagine, sent in and made real, one scenario per idea:
+ *   scen 1 "The Raspberry Isle": an island ringed by open sea, the crew
+ *     landing on the shores all around, and a moated castle in the
+ *     middle whose garrison must be cleared ("we start at the edges of
+ *     the island, the sea is all around us, and the enemies are in the
+ *     middle"). Exits to 2.
+ *   scen 2 "The Castle of Gold": our own castle in a faerie war; gold
+ *     taken from its strongrooms wakes ghosts for our side, and the gate
+ *     opens for no faerie until the faeries carry all twelve keys.
+ *     Exits to 3.
+ *   scen 3 "The Asteroid Castle": our castle on an asteroid in black
+ *     space, ringed by spikes that catch the raiders; the Big One sits
+ *     on the Balloon Rock (a second floor) until he is lured off it and
+ *     falls, and the key to the big door hangs under the rock.
+ * New ideas append new scens; the walk-out exit of the newest level
+ * loops home to 1 until its successor exists.
  *
  * Built on the og::mapgen builder library (the authoritative authoring
  * API; the older tools keep private helper copies to protect committed
@@ -132,6 +139,19 @@ void paint_pavement(PixieData& g, int tx0, int ty0, int tx1, int ty1)
             og::mapgen::paint(g, x, y, variants[(x * 7 + y * 13) % 3]);
 }
 
+// The autotiler gives one wall-base tile in ten the cracked brick
+// (PIX_WALLSIDE_CRACK_C1), whose black crack reads at 1x as a dark figure
+// standing in the wall. The castles' walls stay whole: every cracked base
+// becomes the plain one, after smoothing (so the smoother's draws stand).
+void mend_cracked_walls(PixieData& g)
+{
+    for (int y = 0; y < g.h; ++y)
+        for (int x = 0; x < g.w; ++x)
+            if (g.data[static_cast<std::size_t>(x + y * g.w)] ==
+                PIX_WALLSIDE_CRACK_C1)
+                og::mapgen::paint(g, x, y, PIX_WALLSIDE1);
+}
+
 void save_level_files(GameWorld& world, int id, const char* title,
                       const std::vector<std::string>& description,
                       int par_value, int time_bonus_limit)
@@ -165,6 +185,13 @@ void save_level_files(GameWorld& world, int id, const char* title,
     const std::string base = user + "temp/pix/" + metadata.grid_file;
     if (!write_pixie_png((base + ".png").c_str(), world.grid))
         fail(std::format("failed to write {}.png", base));
+    // Extra floors by derived name "{grid}_f{N}".
+    for (int f = 1; f < world.floor_count(); ++f)
+    {
+        const std::string p = std::format("{}_f{}.png", base, f);
+        if (!write_pixie_png(p.c_str(), world.grid_for_floor(f)))
+            fail(std::format("failed to write {}", p));
+    }
     // Decor planes by derived name "{grid}_d{N}" for exactly the floors the
     // .fss payload flags as present (valid plane with a nonzero byte).
     for (int f = 0; f < world.floor_count(); ++f)
@@ -439,9 +466,8 @@ void build_raspberry_isle()
     og::mapgen::place(w, Order::Treasure, FAMILY_GOLD_BAR, 0, 0, 28, 28);
     og::mapgen::place(w, Order::Treasure, FAMILY_GOLD_BAR, 0, 0, 35, 35);
     // The walk-out exit on the south landing beach, beside the lead
-    // marker: clear the isle, then sail home. Destination 1 = itself —
-    // the loop-home rule for the newest level of a growing campaign.
-    og::mapgen::place_exit(w, 0, 34, 57, 1);
+    // marker: clear the isle, then sail on to the next dream (scen 2).
+    og::mapgen::place_exit(w, 0, 34, 57, 2);
 
     // --- Set dressing (after every entity, so scatters keep clearance). -----
     // Torches on both wall rings: corners and gate flanks.
@@ -492,6 +518,802 @@ void build_raspberry_isle()
                          "take the throne.",
                      },
                      2, 8000);
+}
+
+// --- Scen 2: THE CASTLE OF GOLD. ---------------------------------------------
+// A grey stone castle that is OURS, four strongrooms of gold inside it, and a
+// faerie war raging all around. The faeries pour in from the map's edges
+// and want in: the gate opens for no faerie until the faeries between them
+// carry all twelve keys scattered on the shores. Inside, one of us keeps
+// the castle: every gold bar taken from the strongrooms wakes six ghosts
+// for our side at the Ghost Tent (a tent of ours on an island in a blue
+// circle east of the walls), the last bar seven. Nobody teleports into
+// the castle. Two rivers cut the faerie shores off the battlefield. Kill-all, then the throne on the hall
+// dais is the way out.
+//
+// Geometry on a 64x64 grid (tiles, inclusive):
+//   x0-4 / x59-63 / y0-4 / y59-63   the light-grass faerie shores
+//   y5-6 and y57-58                  two rivers, five paved bridges each
+//   17..46 x 14..43                  the castle ring, 3 walls thick (a
+//                                    faerie blink of 24+2L px cannot hop
+//                                    48 px of wall up to level 11)
+//   20..43 x 17..40                  the cobbled court; four 8x8
+//                                    strongrooms in its corners, each with
+//                                    a 3-door row facing the court
+//   30..32 x 41..43                  the gate tunnel, 3 doors at y43
+//   29..33 x 44..60                  the causeway south over the bridge
+// The gold and key beats live in the dream script
+// (packs/imaginations.dreams/scripts/gold_castle.lua): the gate doors are
+// TEAM 0 (the crew and its ghosts pass their own gate without opening it)
+// at key level 30, which no key on the map opens, so only the script drops
+// them; the strongroom doors are neutral (team 4) at key 13, the castle key
+// lying one step north of the keeper's start.
+//
+// Exit destination: the throne leads on to scen 3.
+constexpr int kCastleOfGoldExit = 3;
+
+void build_castle_of_gold()
+{
+    LevelRuntimeData level(2, true, &headless_level_data_hooks());
+    GameWorld& w = level.world();
+    og::mapgen::init_world(w, 1, 64, 64);
+    PixieData& g = w.grid;
+
+    // Terrain (genre tiles only; the autotiler shapes every face).
+    // The faerie shores, light meadow on every edge.
+    og::mapgen::paint_rect(g, 0, 0, 63, 4, PIX_GRASS_LIGHT_1);
+    og::mapgen::paint_rect(g, 0, 59, 63, 63, PIX_GRASS_LIGHT_1);
+    og::mapgen::paint_rect(g, 0, 7, 4, 56, PIX_GRASS_LIGHT_1);
+    og::mapgen::paint_rect(g, 59, 7, 63, 56, PIX_GRASS_LIGHT_1);
+    // The two rivers between the shores and the battlefield.
+    og::mapgen::paint_rect(g, 0, 5, 63, 6, PIX_WATER1);
+    og::mapgen::paint_rect(g, 0, 57, 63, 58, PIX_WATER1);
+    // The grove (west) and the Ghost Tent's dark ring (east).
+    og::mapgen::paint_rect(g, 3, 18, 8, 23, PIX_GRASS_DARK_1);
+    og::mapgen::paint_ring(g, 52.5, 33.5, 0.0, 2.6, PIX_GRASS_DARK_1);
+    // The castle: a 3-thick ring and its court.
+    og::mapgen::paint_rect(g, 17, 14, 46, 43, PIX_WALL2);
+    og::mapgen::paint_rect(g, 20, 17, 43, 40, PIX_COBBLE_1);
+    // Four strongrooms in the court corners (their floors are laid after
+    // smoothing, below).
+    for (const auto& room : {std::pair{20, 17}, {36, 17}, {20, 33}, {36, 33}})
+    {
+        og::mapgen::paint_rect(g, room.first, room.second, room.first + 7,
+                               room.second + 7, PIX_WALL2);
+        og::mapgen::paint_rect(g, room.first + 1, room.second + 1,
+                               room.first + 6, room.second + 6, PIX_DIRT_1);
+    }
+    // Door mouths, 3 wide, through each strongroom's court-facing wall:
+    // the top rooms open down, the bottom rooms open up.
+    og::mapgen::paint_rect(g, 22, 24, 24, 24, PIX_COBBLE_1);
+    og::mapgen::paint_rect(g, 39, 24, 41, 24, PIX_COBBLE_1);
+    og::mapgen::paint_rect(g, 22, 33, 24, 33, PIX_COBBLE_1);
+    og::mapgen::paint_rect(g, 39, 33, 41, 33, PIX_COBBLE_1);
+    // The hall dais, where the throne (the exit) stands.
+    og::mapgen::paint_rect(g, 29, 26, 33, 30, PIX_CARPET_M);
+    // The gate tunnel (3 wide through the 3-thick wall) and the causeway.
+    og::mapgen::paint_rect(g, 30, 41, 32, 43, PIX_COBBLE_1);
+    og::mapgen::paint_rect(g, 29, 44, 33, 60, PIX_COBBLE_1);
+    // The counting house, northeast, open to the south.
+    og::mapgen::paint_rect(g, 54, 8, 60, 13, PIX_WALL2);
+    og::mapgen::paint_rect(g, 55, 9, 59, 12, PIX_DIRT_1);
+    og::mapgen::paint_rect(g, 56, 13, 58, 13, PIX_COBBLE_1);
+    // The pad square (the blue box northeast, x 56..60, y 15..18) sits in a
+    // one-tile pool rim on its west, north and east sides. The south side
+    // stays open for the crew, and so does the north row under the
+    // counting house's mouth (x 56..58), so the house still walks out onto
+    // the square. Faeries and ghosts fly over the rim.
+    og::mapgen::paint_rect(g, 55, 14, 55, 18, PIX_WATER1);
+    og::mapgen::paint_rect(g, 61, 14, 61, 18, PIX_WATER1);
+    og::mapgen::paint_rect(g, 59, 14, 60, 14, PIX_WATER1);
+    // The Ghost Tent is a blue circle: a water ring around its dark disc,
+    // open on the west (x 49, y 33..34) so the crew walks in to the
+    // channel-1 pad. Ghosts and faeries fly over the rim.
+    og::mapgen::paint_ring(g, 52.5, 33.5, 2.6, 4.4, PIX_WATER1);
+    for (int y = 33; y <= 34; ++y)
+        for (int x = 47; x <= 50; ++x)
+            if (g.data[static_cast<std::size_t>(x + y * g.w)] == PIX_WATER1)
+                og::mapgen::paint(g, x, y, PIX_GRASS1);
+
+    og::mapgen::smooth_world(w);
+    mend_cracked_walls(g);
+
+    // Post-smooth inert pavement: five bridges over each river, every one
+    // >= 4 wide and no river cell more than 10 tiles from one (the beeline
+    // AI slides into a crossing), and the pad square northeast.
+    for (int x0 : {6, 20, 29, 40, 54})
+    {
+        const int x1 = (x0 == 29) ? 33 : x0 + 3;
+        paint_pavement(g, x0, 4, x1, 7);
+        paint_pavement(g, x0, 56, x1, 59);
+    }
+    paint_pavement(g, 56, 15, 60, 18);
+    // Post-smooth floors, inert to the autotiler so no grass fringe rims a
+    // room against its own walls: the four strongrooms and the counting
+    // house in purple carpet (the gold bars stand out on it), the field
+    // camp in red-brown dungeon brick.
+    for (const auto& room : {std::pair{20, 17}, {36, 17}, {20, 33}, {36, 33}})
+        og::mapgen::paint_rect(g, room.first + 1, room.second + 1,
+                               room.first + 6, room.second + 6, PIX_CARPET_M);
+    og::mapgen::paint_rect(g, 55, 9, 59, 12, PIX_CARPET_M);
+    og::mapgen::paint_rect(g, 11, 48, 16, 53, PIX_FLOOR1);
+    // The gate tunnel behind the three gate doors in purple, like every
+    // door in the drawing, so the gate reads purple from the court and the
+    // causeway (the doors' own row, y 43, stays cobble).
+    og::mapgen::paint_rect(g, 30, 41, 32, 42, PIX_CARPET_M);
+
+    // --- The faerie war (team 1). Faeries only; every one a roamer that
+    // comes to the war — flyers cross the rivers, the castle walls stop
+    // them, and the dream script stands a faerie grinding at a wall back
+    // down onto a post (the engine's own sight test re-wakes it). Four
+    // wake at once; four waves follow from the same shores (WAVE HUD).
+    auto faerie = [&](int tx, int ty, int lvl, int delay, const char* name)
+    {
+        walker* f = og::mapgen::place_living(
+            w, FAMILY_FAERIE, 1, 0, tx, ty, lvl, /*guard=*/false,
+            /*hold_post=*/false, /*specials_disabled=*/false, delay);
+        if (f != nullptr && name != nullptr)
+            f->stats()->name = name; // <= 11 chars
+    };
+    const std::pair<int, int> wave1_spots[] = {
+        {12, 2}, {50, 2}, {12, 61}, {50, 61}, {2, 20}, {61, 42}};
+    const std::pair<int, int> wave2_spots[] = {
+        {18, 2}, {44, 2}, {18, 61}, {44, 61}, {2, 42}, {61, 20}};
+    for (const auto& s : {std::pair{31, 2}, {31, 61}, {2, 31}, {61, 31}})
+        faerie(s.first, s.second, 1, 0, nullptr);
+    for (const auto& s : wave1_spots)
+        faerie(s.first, s.second, 1, 400, nullptr);
+    for (const auto& s : wave2_spots)
+        faerie(s.first, s.second, 1, 900, nullptr);
+    for (const auto& s : wave1_spots) // wave 3 crosses the same keys
+        faerie(s.first, s.second, 2, 1500, "Fae Knight");
+    // The finale: the Fae Queen and her four knights on the south shore.
+    faerie(31, 62, 3, 2200, "Fae Queen");
+    for (const auto& s : {std::pair{27, 61}, {35, 61}, {23, 60}, {39, 60}})
+        faerie(s.first, s.second, 2, 2200, "Fae Knight");
+
+    // --- The crew (team 0): twelve markers, the keeper FIRST, inside by
+    // the gate; the rest on the battlefield around the castle.
+    og::mapgen::place_start(w, 0, 31, 38); // lead: the castle-keeper
+    og::mapgen::place_start(w, 0, 31, 47); // the causeway foot
+    og::mapgen::place_start(w, 0, 27, 47);
+    og::mapgen::place_start(w, 0, 35, 47);
+    og::mapgen::place_start(w, 0, 12, 30); // west field
+    og::mapgen::place_start(w, 0, 50, 28); // east field
+    og::mapgen::place_start(w, 0, 31, 10); // north
+    og::mapgen::place_start(w, 0, 31, 53); // south
+    og::mapgen::place_start(w, 0, 12, 12); // the corners
+    og::mapgen::place_start(w, 0, 50, 12);
+    og::mapgen::place_start(w, 0, 12, 44);
+    og::mapgen::place_start(w, 0, 50, 44);
+
+    // --- Doors. The gate: team 0 at key 30 (no such key exists, so only
+    // the script opens it). The strongrooms: neutral team 4 at key 13.
+    auto door = [&](int tx, int ty, int team, int key)
+    {
+        walker* d = og::mapgen::place(w, Order::Weapon, FAMILY_DOOR, team, 0,
+                                      tx, ty);
+        if (d != nullptr)
+            d->stats()->set_level(static_cast<short>(key));
+    };
+    for (int x = 30; x <= 32; ++x)
+        door(x, 43, 0, 30);
+    for (int x : {22, 23, 24, 39, 40, 41})
+    {
+        door(x, 24, 4, 13);
+        door(x, 33, 4, 13);
+    }
+
+    // --- Keys. The castle key (13) one step north of the keeper; the
+    // twelve shore keys (1..12), each two tiles inward of a wave spawn on
+    // its line to the castle.
+    auto treasure = [&](int family, int tx, int ty, int lvl)
+    {
+        walker* t = og::mapgen::place(w, Order::Treasure, family, 0, 0, tx, ty);
+        if (t != nullptr && lvl > 0)
+            t->stats()->set_level(static_cast<short>(lvl));
+    };
+    treasure(FAMILY_KEY, 31, 36, 13);
+    {
+        const std::pair<int, int> shore_keys[] = {
+            {12, 4}, {50, 4}, {12, 59}, {50, 59}, {4, 20}, {59, 42},
+            {18, 4}, {44, 4}, {18, 59}, {44, 59}, {4, 42}, {59, 20}};
+        int key = 1;
+        for (const auto& k : shore_keys)
+            treasure(FAMILY_KEY, k.first, k.second, key++);
+    }
+    // --- Teleporters (pairs in fxlist order): channel 1 joins the pad
+    // square to the Ghost Tent, channel 2 the field camp to the grove.
+    // None inside the castle.
+    treasure(FAMILY_TELEPORTER, 58, 16, 1);
+    treasure(FAMILY_TELEPORTER, 52, 33, 1);
+    treasure(FAMILY_TELEPORTER, 13, 50, 2);
+    treasure(FAMILY_TELEPORTER, 6, 21, 2);
+    // The Ghost Tent itself: our tent (the classic tent generator, 2x2
+    // tiles) on the island, one row north of its pad. Its own spawns are
+    // stillborn here: ghosts are bought with gold (isle.lua's generator
+    // dispatcher, gated on level 2 and team 0).
+    og::mapgen::place_generator(w, FAMILY_TENT, 0, 0, 52, 31, 1);
+
+    // --- The castle gold: two bars per strongroom, the ghost engine, laid
+    // in the row just inside each door mouth (the first thing seen through
+    // the doors), flanking the middle door.
+    for (const auto& bar : {std::pair{22, 23}, {24, 23}, {39, 23}, {41, 23},
+                            {22, 34}, {24, 34}, {39, 34}, {41, 34}})
+        treasure(FAMILY_GOLD_BAR, bar.first, bar.second, 0);
+    // Silver heaped along each room's back wall, four bars a room. Silver
+    // banks the classic way: only gold wakes ghosts.
+    for (const auto& bar :
+         {std::pair{21, 18}, {23, 18}, {24, 18}, {26, 18},   // northwest
+          {37, 18}, {39, 18}, {40, 18}, {42, 18},            // northeast
+          {21, 39}, {23, 39}, {24, 39}, {26, 39},            // southwest
+          {37, 39}, {39, 39}, {40, 39}, {42, 39}})           // southeast
+        treasure(FAMILY_SILVER_BAR, bar.first, bar.second, 0);
+    treasure(FAMILY_MAGIC_POTION, 39, 21, 0);
+    treasure(FAMILY_INVULNERABLE_POTION, 23, 36, 0);
+    treasure(FAMILY_SPEED_POTION, 40, 37, 0);
+    treasure(FAMILY_DRUMSTICK, 28, 32, 0);
+    treasure(FAMILY_DRUMSTICK, 35, 32, 0);
+    // The counting house banks the classic way (outside the castle).
+    treasure(FAMILY_GOLD_BAR, 57, 10, 0);
+    treasure(FAMILY_SILVER_BAR, 55, 10, 0);
+    treasure(FAMILY_SILVER_BAR, 59, 12, 0);
+    treasure(FAMILY_SPEED_POTION, 56, 11, 0);
+    // The camp, the grove, the shores, and wings by the tent.
+    treasure(FAMILY_DRUMSTICK, 12, 49, 0);
+    treasure(FAMILY_DRUMSTICK, 15, 52, 0);
+    treasure(FAMILY_MAGIC_POTION, 14, 48, 0);
+    treasure(FAMILY_SILVER_BAR, 5, 19, 0);
+    treasure(FAMILY_DRUMSTICK, 7, 22, 0);
+    for (const auto& r : {std::pair{31, 8}, {31, 54}, {8, 31}, {57, 31}})
+        treasure(FAMILY_DRUMSTICK, r.first, r.second, 0);
+    treasure(FAMILY_FLIGHT_POTION, 48, 36, 0);
+    // The throne on the hall dais is the way out.
+    og::mapgen::place_exit(w, 0, 31, 28, kCastleOfGoldExit);
+
+    // --- Set dressing (after every entity, so scatters keep clearance). -----
+    // Torches on the ring's wall faces and the strongroom walls (wall
+    // tiles only: a torch blocks ground).
+    for (int x = 19; x <= 44; x += 4)
+    {
+        og::mapgen::paint_decor(w, 0, x, 14, DECOR_TORCH1);
+        if (x < 29 || x > 33)
+            og::mapgen::paint_decor(w, 0, x, 43, DECOR_TORCH1);
+    }
+    for (int y = 18; y <= 40; y += 4)
+    {
+        og::mapgen::paint_decor(w, 0, 17, y, DECOR_TORCH1);
+        og::mapgen::paint_decor(w, 0, 46, y, DECOR_TORCH1);
+    }
+    for (const auto& t : {std::pair{20, 20}, {27, 20}, {36, 20}, {43, 20},
+                          {20, 37}, {27, 37}, {36, 37}, {43, 37}})
+        og::mapgen::paint_decor(w, 0, t.first, t.second, DECOR_TORCH1);
+    // Braziers: the dais corners, the gate mouth, the camp, the tent's
+    // west mouth.
+    for (const auto& b : {std::pair{29, 26}, {33, 26}, {29, 30}, {33, 30},
+                          {29, 44}, {33, 44}, {11, 48}, {16, 48}, {48, 32}})
+        og::mapgen::paint_decor(w, 0, b.first, b.second, DECOR_BRAZIER);
+    // Two columns flank the causeway, off its funnel.
+    og::mapgen::paint_decor(w, 0, 28, 46, DECOR_COLUMN_BOTTOM);
+    og::mapgen::paint_decor(w, 0, 34, 46, DECOR_COLUMN_BOTTOM);
+    // The Ghost Tent's pad is ringed with bones, but for the two under
+    // the tent.
+    for (int dy = -1; dy <= 1; ++dy)
+        for (int dx = -1; dx <= 1; ++dx)
+            if ((dx != 0 || dy != 0) && !(dy == -1 && dx >= 0))
+                og::mapgen::paint_decor(w, 0, 52 + dx, 33 + dy, DECOR_BONES);
+    og::mapgen::scatter_decor(w, kScatterSeed, 0, 3, 18, 8, 23, 2, DECOR_SHRUB,
+                              {og::mapgen::ScatterGround::DarkGrass});
+    og::mapgen::scatter_decor(w, kScatterSeed, 0, 50, 31, 55, 36, 3,
+                              DECOR_SHRUB,
+                              {og::mapgen::ScatterGround::DarkGrass});
+    og::mapgen::scatter_decor(w, kScatterSeed, 0, 6, 8, 57, 55, 23,
+                              DECOR_SHRUB,
+                              {og::mapgen::ScatterGround::Grass});
+    og::mapgen::scatter_decor(w, kScatterSeed, 0, 0, 0, 63, 63, 11,
+                              DECOR_PEBBLES,
+                              {og::mapgen::ScatterGround::LightGrass});
+    // Boulders on the open battlefield only — never in the court, on the
+    // causeway or on a bridge.
+    og::mapgen::scatter_boulders(w, kScatterSeed, 0, 6, 8, 15, 55, 47);
+    og::mapgen::scatter_boulders(w, kScatterSeed, 0, 48, 19, 57, 55, 47);
+    og::mapgen::scatter_boulders(w, kScatterSeed, 0, 17, 8, 52, 12, 47);
+    og::mapgen::scatter_boulders(w, kScatterSeed, 0, 17, 45, 27, 55, 47);
+    og::mapgen::scatter_boulders(w, kScatterSeed, 0, 35, 45, 46, 55, 47);
+    // The Ghost Tent's water ring and its west mouth stay bare, so the blue
+    // circle reads whole and the way in is clear.
+    for (int y = 29; y <= 38; ++y)
+        for (int x = 47; x <= 57; ++x)
+        {
+            const double dx = x - 52.5;
+            const double dy = y - 33.5;
+            if (dx * dx + dy * dy >= 2.6 * 2.6 && dx * dx + dy * dy < 4.4 * 4.4)
+                og::mapgen::paint_decor(w, 0, x, y, DECOR_NONE);
+        }
+
+    save_level_files(w, 2, "The Castle of Gold",
+                     {
+                         "From the dream-log of a young",
+                         "commander: a castle of gold,",
+                         "and it is OURS. The faeries",
+                         "want in: they must find all",
+                         "twelve keys first. One of us",
+                         "keeps the castle: every gold",
+                         "bar wakes six ghosts for our",
+                         "side. Beat the faerie war!",
+                     },
+                     3, 9000);
+}
+
+// --- Scen 3: THE ASTEROID CASTLE. --------------------------------------------
+// Our castle stands on an asteroid in black space, spikes all around its
+// walls. Bad guys ride the space wind (stardust drifts force the snow
+// weather) and think the castle is theirs; the spike band catches them.
+// The Big One, a golem, sits on the Balloon Rock: a striped deck floating
+// on floor 1 over a pit of black space, reached by a 3-wide Z-stair on
+// the north ledge. The key to the big door hangs under the rock's mast.
+//
+// Floor 0, 64x64: a ragged grey-rock asteroid (cobble, rust-brown dust,
+// dark-rimmed craters with rubble, stardust) on PIX_VOID1 space. West
+// side: the tall castle (x 8..23, y 15..46, walls 2 thick, flagstone court)
+// with a 3-wide east gate (y 29..31), the crown of spikes (a jagged V)
+// in the north hall, and the big door (three team-4 doors at key 3, row
+// 43) sealing the striped vestibule that holds the exit pad. South of the
+// spike band the rainbow lies in an arc round the big door: five
+// one-tile half-rings, red lava, white, green, blue water and purple. A
+// 2-wide jagged spike band hugs the outer wall, broken only by the gate apron:
+// jagged ground is too sharp for anyone to walk or fly over, so raiders
+// pile up against it and the script's spikes bite them there.
+// Yard posts east of the castle, the pen (an ash square with boulder
+// faces) in the southeast, four craters, three stardust drifts, and the
+// Balloon pit (void under the whole deck except the three up-stairs).
+// Floor 1: all AIR but the striped 7x7 deck (x 46..52, y 7..13).
+//
+// The dream script (packs/imaginations.dreams/scripts/asteroid.lua)
+// carries the beats: the spikes bite every hostile against the band, the Big
+// One never fires while on the rock and wakes when the crew comes within
+// nine tiles, then walks off the deck and falls (hurt and slow), and the
+// raider waves are narrated as they wake. Exit: the newest level loops
+// home to 1.
+constexpr int kAsteroidCastleExit = 1;
+
+// Floor-0 cells inside the castle block (walls and court).
+bool in_asteroid_castle(int x, int y)
+{
+    return x >= 8 && x <= 23 && y >= 15 && y <= 46;
+}
+
+// The rainbow's five bands, outer (ring 7) to inner (ring 3).
+// The tileset's own spectrum: red-orange lava, white snow (the brightest
+// stand-in for yellow), green grass, blue water, purple carpet.
+constexpr unsigned char kAsteroidRainbow[5] = {
+    PIX_LAVA1, PIX_SNOW1, PIX_GRASS1, PIX_WATER1, PIX_CARPET_M};
+
+// The rainbow ring (3..7) a floor-0 cell lies on, or 0: rings centre on
+// the big door's middle (tile 15, row 46) and lie only on rows 49 and down.
+int asteroid_rainbow_ring(int x, int y)
+{
+    if (y < 49)
+        return 0;
+    const int d2x4 = 4 * ((x - 15) * (x - 15) + (y - 46) * (y - 46));
+    for (int r = 3; r <= 7; ++r)
+        if ((2 * r - 1) * (2 * r - 1) <= d2x4 &&
+            d2x4 < (2 * r + 1) * (2 * r + 1))
+            return r;
+    return 0;
+}
+
+void build_asteroid_castle()
+{
+    LevelRuntimeData level(3, true, &headless_level_data_hooks());
+    GameWorld& w = level.world();
+    og::mapgen::init_world(w, 2, 64, 64);
+    PixieData& g0 = w.grid_for_floor(0);
+    PixieData& g1 = w.grid_for_floor(1);
+
+    // --- Floor 0 genre paint: bare grey rock (the autotiler mixes the four
+    // cobble faces), cut to the asteroid's ragged outline after smoothing.
+    og::mapgen::paint_rect(g0, 3, 4, 60, 59, PIX_COBBLE_1);
+    // The castle: walls 2 thick, the court, the east gate (3 wide, on the
+    // court's centre row), the big-door row and the vestibule behind it.
+    og::mapgen::paint_rect(g0, 8, 15, 23, 46, PIX_WALL2);
+    og::mapgen::paint_rect(g0, 10, 17, 21, 42, PIX_COBBLE_1);
+    og::mapgen::paint_rect(g0, 22, 29, 23, 31, PIX_COBBLE_1);
+    og::mapgen::paint_rect(g0, 14, 43, 16, 43, PIX_COBBLE_1);
+    og::mapgen::paint_rect(g0, 14, 44, 16, 45, PIX_COBBLE_1);
+    // --- Floor 1 genre paint: the deck.
+    og::mapgen::paint_rect(g1, 46, 7, 52, 13, PIX_COBBLE_1);
+
+    og::mapgen::smooth_world(w);
+    mend_cracked_walls(g0);
+
+    // --- Floor 0, inert tiles (after smoothing).
+    // The spike band: two tiles of jagged ground all around the walls
+    // (impassable to walkers and flyers alike).
+    for (int y = 13; y <= 48; ++y)
+        for (int x = 6; x <= 25; ++x)
+            if (!in_asteroid_castle(x, y))
+                og::mapgen::paint(
+                    g0, x, y,
+                    static_cast<unsigned char>(PIX_JAGGED_GROUND_1 +
+                                               (x + y) % 4));
+    // The gate apron: the band's one spike-free mouth, cobbled like the
+    // gate passage it continues.
+    og::mapgen::paint_rect(g0, 24, 29, 25, 31, PIX_COBBLE_1);
+    // The crown of spikes in the north hall: a jagged V against the north
+    // wall, the same spikes as the band (the script bites there too).
+    for (const auto& v : {std::pair{11, 17}, {20, 17}, {12, 18}, {19, 18},
+                          {13, 19}, {18, 19}, {14, 20}, {17, 20}, {15, 21},
+                          {16, 21}})
+        og::mapgen::paint(
+            g0, v.first, v.second,
+            static_cast<unsigned char>(PIX_JAGGED_GROUND_1 +
+                                       (v.first + v.second) % 4));
+
+    // The open rock outside the castle, as painted: grey cobble faces. Only
+    // those cells take dust, stardust and craters below, never the court,
+    // the spike band, the rainbow's frame or the pen.
+    auto tile_at = [&](int x, int y) {
+        return g0.data[static_cast<std::size_t>(x + y * 64)];
+    };
+    auto is_rock = [&](int x, int y) {
+        const unsigned char t = tile_at(x, y);
+        return t == PIX_COBBLE_1 || t == PIX_COBBLE_2 || t == PIX_COBBLE_3 ||
+               t == PIX_COBBLE_4;
+    };
+    // The court is laid in cool grey flagstones, so the castle floor
+    // reads apart from the bare rock outside (the crown keeps its spikes).
+    for (int y = 17; y <= 42; ++y)
+        for (int x = 10; x <= 21; ++x)
+            if (is_rock(x, y))
+                og::mapgen::paint(
+                    g0, x, y,
+                    static_cast<unsigned char>(
+                        (x * 7 + y * 3) % 5 == 0
+                            ? PIX_PAVEMENT2
+                            : ((x + y) % 7 == 0 ? PIX_PAVEMENT3
+                                                : PIX_PAVEMENT1)));
+    auto open_rock = [&](int x, int y) {
+        if (x < 0 || y < 0 || x > 63 || y > 63)
+            return false;
+        if (in_asteroid_castle(x, y))
+            return false;
+        if (x >= 7 && x <= 23 && y >= 47 && y <= 55)
+            return false; // the rainbow's plain rock frame
+        if (x >= 43 && x <= 56 && y >= 42 && y <= 55)
+            return false; // the pen and its margin
+        if (x >= 23 && x <= 26 && y >= 28 && y <= 32)
+            return false; // the gate apron
+        return is_rock(x, y);
+    };
+    auto hash = [](int x, int y, std::uint32_t salt) {
+        return og::mapgen::position_hash(kScatterSeed, x, y, salt);
+    };
+    // Regolith: ragged drifts of rust-brown dust over the grey rock.
+    {
+        struct Patch
+        {
+            double cx, cy, rx, ry;
+        };
+        static constexpr Patch kDust[] = {
+            {40.0, 17.0, 6.0, 3.5}, {52.0, 22.0, 4.0, 5.0},
+            {33.0, 33.0, 4.5, 3.0}, {45.0, 38.0, 5.0, 3.0},
+            {37.0, 56.0, 6.0, 2.5}, {57.0, 10.0, 2.5, 4.0},
+            {9.0, 9.0, 4.0, 3.0},   {8.0, 54.0, 3.0, 3.0},
+            {30.0, 21.0, 3.0, 4.0}, {52.0, 57.0, 3.0, 2.0}};
+        for (const Patch& p : kDust)
+            for (int y = 0; y < 64; ++y)
+                for (int x = 0; x < 64; ++x)
+                {
+                    const double dx = (x - p.cx) / p.rx;
+                    const double dy = (y - p.cy) / p.ry;
+                    const double d = dx * dx + dy * dy;
+                    const bool edge = d >= 0.6 && d < 1.3;
+                    if (d >= 1.3 || !open_rock(x, y))
+                        continue;
+                    if (edge && hash(x, y, 31u) % 2u != 0u)
+                        continue;
+                    og::mapgen::paint(g0, x, y,
+                                      (hash(x, y, 32u) % 3u) ? PIX_ASH1
+                                                             : PIX_ASH2);
+                }
+    }
+    // Craters: a dust bowl in a dark rim (rubble boulders land on the rim
+    // with the set dressing below).
+    struct Crater
+    {
+        double cx, cy, r;
+    };
+    static constexpr Crater kCraters[] = {
+        {33.0, 10.0, 2.8}, {36.0, 50.0, 3.0}, {29.0, 44.0, 2.4},
+        {48.0, 28.0, 2.6}};
+    for (const Crater& c : kCraters)
+        for (int y = 0; y < 64; ++y)
+            for (int x = 0; x < 64; ++x)
+            {
+                const double dx = x - c.cx;
+                const double dy = y - c.cy;
+                const double d2 = dx * dx + dy * dy;
+                if (!open_rock(x, y) && tile_at(x, y) != PIX_ASH1 &&
+                    tile_at(x, y) != PIX_ASH2)
+                    continue;
+                if (in_asteroid_castle(x, y))
+                    continue;
+                if (d2 < (c.r - 1.0) * (c.r - 1.0))
+                    og::mapgen::paint(g0, x, y,
+                                      (x + y) % 2 ? PIX_ASH2 : PIX_ASH1);
+                else if (d2 < (c.r + 0.6) * (c.r + 0.6))
+                    og::mapgen::paint(g0, x, y, PIX_DIRT_DARK_1);
+            }
+    // Stardust drifts, the space wind (snow weather past 40 tiles), with
+    // ragged edges, and loose glitter on the open rock. The southwest drift
+    // keeps clear of the rainbow's frame (x 7..23, y 47..55).
+    for (const auto& d : {std::pair{26.0, 9.0}, {25.0, 55.0}, {56.0, 52.0}})
+        for (int y = 0; y < 64; ++y)
+            for (int x = 0; x < 64; ++x)
+            {
+                const double dx = x - d.first;
+                const double dy = y - d.second;
+                const double d2 = dx * dx + dy * dy;
+                if (d2 >= 3.6 * 3.6 || !open_rock(x, y))
+                    continue;
+                if (d2 >= 2.4 * 2.4 && hash(x, y, 33u) % 2u != 0u)
+                    continue;
+                og::mapgen::paint(g0, x, y,
+                                  (x + y) % 3 == 0 ? PIX_SNOW2 : PIX_SNOW1);
+            }
+    for (int y = 0; y < 64; ++y)
+        for (int x = 0; x < 64; ++x)
+            if (open_rock(x, y) && hash(x, y, 34u) % 41u == 0u)
+                og::mapgen::paint(g0, x, y, PIX_SNOW2);
+    // The striped vestibule behind the big door: a purple row and an ash
+    // row, both walkable.
+    og::mapgen::paint_rect(g0, 14, 44, 16, 44, PIX_CARPET_M);
+    og::mapgen::paint_rect(g0, 14, 45, 16, 45, PIX_ASH1);
+    // The rainbow: concentric one-tile half-rings round the big door's
+    // middle (tile 15, row 46), radii 3..7, south of the spike band (rows
+    // 49 and down) and only on the bare rock. A cell is on ring r when its
+    // distance rounds to r: (2r-1)^2 <= 4 d^2 < (2r+1)^2. Painted after
+    // smoothing, so they stay inert. The lava and water bands block
+    // ground walkers, which costs nothing: the arc is a dead end south of
+    // the spike band that no route crosses.
+    for (int y = 49; y <= 55; ++y)
+        for (int x = 7; x <= 23; ++x)
+        {
+            const int r = asteroid_rainbow_ring(x, y);
+            if (r != 0 && is_rock(x, y))
+                og::mapgen::paint(g0, x, y, kAsteroidRainbow[7 - r]);
+        }
+    // The pen: an ash checker outlined in pavement, no walls.
+    for (int y = 45; y <= 52; ++y)
+        for (int x = 46; x <= 53; ++x)
+            og::mapgen::paint(g0, x, y, ((x + y) % 2) ? PIX_ASH2 : PIX_ASH1);
+    for (int x = 45; x <= 54; ++x)
+    {
+        og::mapgen::paint(g0, x, 44, PIX_PAVEMENT2);
+        og::mapgen::paint(g0, x, 53, PIX_PAVEMENT2);
+    }
+    for (int y = 44; y <= 53; ++y)
+    {
+        og::mapgen::paint(g0, 45, y, PIX_PAVEMENT2);
+        og::mapgen::paint(g0, 54, y, PIX_PAVEMENT2);
+    }
+    // Space: the void all around a ragged rim. Each edge bites in by 0..3
+    // tiles (a smoothed hash walk), held shallow wherever a wave spawns or
+    // the Balloon Rock's north landing stands, and the corners are rounded
+    // at four different radii.
+    {
+        auto inset = [&](int edge, int i, int cap) {
+            const std::uint32_t salt = 40u + static_cast<std::uint32_t>(edge);
+            const int a = static_cast<int>(hash(i - 1, edge, salt) % 4u);
+            const int b = static_cast<int>(hash(i, edge, salt) % 4u);
+            const int c = static_cast<int>(hash(i + 1, edge, salt) % 4u);
+            return std::min(cap, (a + 2 * b + c + 1) / 4);
+        };
+        for (int i = 0; i < 64; ++i)
+        {
+            const bool landing = i >= 42 && i <= 54;
+            const bool south_spawn = (i >= 17 && i <= 23) ||
+                                     (i >= 27 && i <= 33) ||
+                                     (i >= 37 && i <= 43) ||
+                                     (i >= 51 && i <= 57);
+            const int top = inset(0, i, landing ? 0 : 3);
+            const int bottom = inset(1, i, south_spawn ? 1 : 3);
+            const int left = inset(2, i, (i >= 11 && i <= 50) ? 1 : 3);
+            const int right = inset(3, i, (i >= 18 && i <= 54) ? 1 : 3);
+            for (int k = 0; k < 4 + top; ++k)
+                og::mapgen::paint(g0, i, k, PIX_VOID1);
+            for (int k = 60 - bottom; k < 64; ++k)
+                og::mapgen::paint(g0, i, k, PIX_VOID1);
+            for (int k = 0; k < 3 + left; ++k)
+                og::mapgen::paint(g0, k, i, PIX_VOID1);
+            for (int k = 61 - right; k < 64; ++k)
+                og::mapgen::paint(g0, k, i, PIX_VOID1);
+        }
+        struct Corner
+        {
+            double cx, cy, r;
+        };
+        static constexpr Corner kCorners[] = {
+            {3.0, 4.0, 7.0}, {60.0, 4.0, 5.5}, {3.0, 59.0, 6.5},
+            {60.0, 59.0, 6.0}};
+        for (const Corner& c : kCorners)
+            og::mapgen::paint_ring(g0, c.cx, c.cy, 0.0, c.r, PIX_VOID1);
+    }
+    // The Balloon pit: space under the whole deck but the up-stairs, so
+    // nothing ever stands under the Big One.
+    og::mapgen::paint_rect(g0, 46, 7, 52, 13, PIX_VOID1);
+
+    // --- Floor 1, inert: sky everywhere, the deck striped purple and grey.
+    og::mapgen::paint_rect(g1, 0, 0, 63, 63, PIX_AIR);
+    for (int y = 7; y <= 13; ++y)
+        og::mapgen::paint_rect(g1, 46, y, 52, y,
+                               (y - 7) % 2 == 0 ? PIX_CARPET_M : PIX_PAVEMENT1);
+    // The 3-wide Z-stair on the north ledge: up on floor 0, down on 1.
+    for (int x = 48; x <= 50; ++x)
+        og::mapgen::stair_pair(w, 0, x, 7);
+
+    // The space wind needs its drifts: 40+ snow tiles force snow weather.
+    {
+        int snow = 0;
+        for (std::size_t c = 0; c < 64u * 64u; ++c)
+            if (g0.data[c] == PIX_SNOW1 || g0.data[c] == PIX_SNOW2)
+                ++snow;
+        if (snow < 40)
+            fail(std::format("scen3: only {} stardust tiles; the snow "
+                             "weather needs 40", snow));
+    }
+
+    // --- The bad guys (team 1). Yard posts and the pen are POSTED guards
+    // (they wake at true sight); the waves roam from the rim and come to
+    // the castle, piling up against the spikes or finding the gate.
+    auto post = [&](int family, int tx, int ty)
+    {
+        og::mapgen::place_living(w, family, 1, 0, tx, ty, 1, /*guard=*/true);
+    };
+    post(FAMILY_SKELETON, 30, 30); // the gate watcher
+    post(FAMILY_ORC, 34, 24);
+    post(FAMILY_ORC, 34, 36);
+    post(FAMILY_ELF, 40, 30);
+    post(FAMILY_ARCHER, 40, 20);
+    post(FAMILY_SKELETON, 40, 40);
+    post(FAMILY_ELF, 44, 16); // the Balloon Rock approach
+    post(FAMILY_SKELETON, 49, 48); // the pen
+    post(FAMILY_SMALL_SLIME, 47, 51);
+    post(FAMILY_SMALL_SLIME, 52, 51);
+    // The Big One on the Balloon Rock (floor 1), awake and visible.
+    {
+        walker* golem = og::mapgen::place_living(w, FAMILY_GOLEM, 1, 1, 47,
+                                                 10, 1, /*guard=*/true);
+        if (golem != nullptr)
+            golem->stats()->name = "Big One";
+    }
+    auto raider = [&](int family, int tx, int ty, int lvl, int delay)
+    {
+        return og::mapgen::place_living(w, family, 1, 0, tx, ty, lvl,
+                                        /*guard=*/false, /*hold_post=*/false,
+                                        /*specials_disabled=*/false, delay);
+    };
+    // Wave 1, the first gust (east rim).
+    raider(FAMILY_ORC, 57, 26, 1, 300);
+    raider(FAMILY_ORC, 57, 34, 1, 300);
+    raider(FAMILY_FAERIE, 56, 22, 1, 300);
+    raider(FAMILY_FAERIE, 56, 38, 1, 300);
+    // Wave 2, falling stars (south rim).
+    raider(FAMILY_SKELETON, 20, 56, 1, 800);
+    raider(FAMILY_SKELETON, 30, 57, 1, 800);
+    raider(FAMILY_ELF, 40, 56, 1, 800);
+    // Wave 3, the captain's band (southeast rim).
+    if (walker* captain = raider(FAMILY_BIG_ORC, 57, 46, 2, 1400))
+        captain->stats()->name = "Black Dash";
+    raider(FAMILY_ORC, 56, 50, 1, 1400);
+    raider(FAMILY_ORC, 58, 42, 1, 1400);
+    raider(FAMILY_FAERIE, 54, 56, 1, 1400);
+
+    // --- Team 0: the Purple Man holds the ground beside the east gate.
+    if (walker* ally = og::mapgen::place_living(
+            w, FAMILY_BARBARIAN, 0, 0, 26, 27, 2, /*guard=*/true,
+            /*hold_post=*/true))
+        ally->stats()->name = "Purple Man";
+
+    // --- The crew: sixteen markers in the court, the lead first.
+    for (const auto& s : {std::pair{15, 30}, {12, 30}, {18, 30}, {15, 27},
+                          {15, 33}, {12, 27}, {18, 27}, {12, 33}, {18, 33},
+                          {15, 36}, {12, 36}, {18, 36}, {15, 24}, {12, 24},
+                          {18, 24}, {15, 39}})
+        og::mapgen::place_start(w, 0, s.first, s.second);
+
+    // --- The big door: three neutral doors at key 3.
+    for (int x = 14; x <= 16; ++x)
+        if (walker* d = og::mapgen::place(w, Order::Weapon, FAMILY_DOOR, 4, 0,
+                                          x, 43))
+            d->stats()->set_level(3);
+
+    // --- Treasure.
+    auto treasure = [&](int family, int floor, int tx, int ty, int lvl)
+    {
+        walker* t =
+            og::mapgen::place(w, Order::Treasure, family, 0, floor, tx, ty);
+        if (t != nullptr && lvl > 0)
+            t->stats()->set_level(static_cast<short>(lvl));
+    };
+    treasure(FAMILY_KEY, 1, 51, 10, 3); // under the mast
+    for (const auto& b : {std::pair{11, 20}, {20, 20}, {10, 25}, {21, 25},
+                          {10, 35}, {21, 35}, {11, 41}, {20, 41}, {49, 46},
+                          {46, 49}, {53, 49}})
+        treasure(FAMILY_GOLD_BAR, 0, b.first, b.second, 0);
+    // Just under the crown's point: the V and the north wall seal off the
+    // court cells between its arms, so no prize lies in there.
+    treasure(FAMILY_INVULNERABLE_POTION, 0, 15, 22, 0);
+    treasure(FAMILY_MAGIC_POTION, 0, 30, 24, 0);
+    for (const auto& d : {std::pair{11, 30}, {20, 30}, {30, 36}, {44, 6}})
+        treasure(FAMILY_DRUMSTICK, 0, d.first, d.second, 0);
+    treasure(FAMILY_SPEED_POTION, 1, 46, 13, 0);
+    og::mapgen::place_exit(w, 0, 15, 45, kAsteroidCastleExit);
+
+    // --- Set dressing (last).
+    for (const auto& t : {std::pair{8, 15}, {23, 15}, {8, 46}, {23, 46},
+                          {22, 28}, {22, 32}, {13, 43}, {17, 43}, {12, 16},
+                          {15, 16}, {19, 16}})
+        og::mapgen::paint_decor(w, 0, t.first, t.second, DECOR_TORCH1);
+    og::mapgen::paint_decor(w, 0, 13, 42, DECOR_BRAZIER);
+    og::mapgen::paint_decor(w, 0, 17, 42, DECOR_BRAZIER);
+    for (const auto& b : {std::pair{24, 20}, {25, 38}, {15, 13}, {6, 30},
+                          {16, 48}})
+        og::mapgen::paint_decor(w, 0, b.first, b.second, DECOR_BONES);
+    og::mapgen::paint_decor(w, 0, 46, 46, DECOR_BOULDER_1);
+    og::mapgen::paint_decor(w, 0, 53, 46, DECOR_BOULDER_2);
+    og::mapgen::paint_decor(w, 0, 46, 52, DECOR_BOULDER_3);
+    og::mapgen::paint_decor(w, 0, 53, 52, DECOR_BOULDER_4);
+    // The mast on the Balloon Rock.
+    og::mapgen::paint_decor(w, 1, 52, 8, DECOR_COLUMN_TOP);
+    og::mapgen::paint_decor(w, 1, 52, 9, DECOR_COLUMN_BOTTOM);
+    // Boulders on the open yard, never in the landing ring around the
+    // pit (44..54, 5..15), the pen or the gate apron.
+    og::mapgen::scatter_boulders(w, kScatterSeed, 0, 27, 16, 43, 58, 37);
+    og::mapgen::scatter_boulders(w, kScatterSeed, 0, 44, 16, 58, 42, 37);
+    og::mapgen::scatter_boulders(w, kScatterSeed, 0, 55, 5, 58, 15, 37);
+    og::mapgen::scatter_boulders(w, kScatterSeed, 0, 27, 6, 43, 15, 37);
+    // Rubble on the crater rims (never beside a unit or a pad).
+    for (const Crater& c : kCraters)
+        for (int y = 0; y < 64; ++y)
+            for (int x = 0; x < 64; ++x)
+            {
+                const double dx = x - c.cx;
+                const double dy = y - c.cy;
+                const double d2 = dx * dx + dy * dy;
+                if (d2 < (c.r - 1.0) * (c.r - 1.0) ||
+                    d2 >= (c.r + 0.6) * (c.r + 0.6))
+                    continue;
+                if (tile_at(x, y) != PIX_DIRT_DARK_1)
+                    continue;
+                if (hash(x, y, 35u) % 3u != 0u)
+                    continue;
+                if (og::mapgen::cell_near_entity(w, 0, x, y, 1))
+                    continue;
+                og::mapgen::paint_decor(
+                    w, 0, x, y,
+                    static_cast<unsigned char>(DECOR_BOULDER_1 +
+                                               hash(x, y, 36u) % 4u));
+            }
+    // Gravel over the bare rock and the dust.
+    og::mapgen::scatter_decor(w, kScatterSeed, 0, 0, 0, 63, 63, 9,
+                              DECOR_PEBBLES,
+                              {og::mapgen::ScatterGround::Cobble,
+                               og::mapgen::ScatterGround::Ash});
+
+    save_level_files(w, 3, "The Asteroid Castle",
+                     {
+                         "From the dream-log of a young",
+                         "commander: our castle stands on",
+                         "an asteroid, spikes all around.",
+                         "Bad guys ride the space wind and",
+                         "think it is their castle. The",
+                         "spikes catch them. The Big One",
+                         "sits on the Balloon Rock. Make",
+                         "him fall, take the key, go home.",
+                     },
+                     3, 9000);
 }
 
 void write_campaign_yaml(const std::string& path)
@@ -750,6 +1572,234 @@ void self_check_isle_script()
     current_game = prev;
 }
 
+// The castle's dream script must dispatch too: one tick of scen 2 runs
+// gold_castle.lua's on_load (the gate notification), and a crew member
+// taking a castle gold bar wakes exactly six allied "Gold Ghost"s — the
+// declared core:gold_bar override, proven live on the packaged level.
+void self_check_castle_script()
+{
+    LevelRuntimeData level(2, true, &headless_level_data_hooks());
+    SaveData save;
+    og::sim::SimEventLog events;
+    level.set_sim_context(&save, &events, &cfg);
+    GameplayContext script_ctx;
+    script_ctx.world = &level.world();
+    script_ctx.save = &save;
+    script_ctx.sim_events = &events;
+    script_ctx.config = &cfg;
+    GameplayContext* prev = current_game;
+    current_game = &script_ctx;
+
+    if (!level.load())
+    {
+        fail("self-check: scen2 failed to load for the script check");
+        current_game = prev;
+        return;
+    }
+    GameWorld& world = level.world();
+    world.tick();
+
+    bool gate_announced = false;
+    for (const og::sim::Event& ev : events.drain())
+        if (ev.kind == og::sim::EventKind::Notification &&
+            ev.text.find("The gate knows us") != std::string::npos)
+            gate_announced = true;
+    if (!gate_announced)
+        fail("self-check: castle on_load did not announce the gate");
+
+    walker* bar = nullptr;
+    for (const auto& uptr : world.fxlist)
+    {
+        walker* ob = uptr.get();
+        if (ob != nullptr && ob->query_order() == Order::Treasure &&
+            ob->family() == FAMILY_GOLD_BAR && ob->xpos() == 22 * GRID_SIZE &&
+            ob->ypos() == 23 * GRID_SIZE)
+            bar = ob;
+    }
+    walker* keeper = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    if (bar == nullptr || keeper == nullptr)
+    {
+        fail("self-check: scen2 castle bar or keeper missing");
+        current_game = prev;
+        return;
+    }
+    keeper->set_team_num(0);
+    keeper->set_real_team_num(0);
+    keeper->set_act_type(ACT_CONTROL);
+    bar->eat_me(keeper);
+    int ghosts = 0;
+    for (const auto& uptr : world.oblist)
+    {
+        walker* ob = uptr.get();
+        if (ob != nullptr && ob->query_order() == Order::Living &&
+            ob->family() == FAMILY_GHOST && ob->team_num() == 0 &&
+            ob->stats()->name == "Gold Ghost")
+            ++ghosts;
+    }
+    if (!bar->dead() || ghosts != 6)
+        fail(std::format("self-check: a castle bar woke {} ghosts (bar dead "
+                         "{}), expected 6", ghosts, bar->dead() ? 1 : 0));
+
+    for (const og::script::ScriptError& err : world.scripts().host().errors())
+        fail(std::format("self-check: script error at {}: {}", err.where,
+                         err.message));
+    current_game = prev;
+}
+
+// The asteroid's dream script, end to end on the packaged level: one tick
+// runs asteroid.lua's on_load (every hostile under the seven-tile sight
+// cap, the Big One on the rock at sight 0 and still posted); a hostile on
+// the spike band loses hitpoints; a crew member three tiles from the deck
+// wakes the Big One, who walks off the rock, falls and lands crippled;
+// and the stairs branch (a golem arriving on floor 0 over the deck)
+// names him the Stomper.
+namespace asteroid_check {
+walker* find_golem(GameWorld& world)
+{
+    for (const auto& uptr : world.oblist)
+    {
+        walker* ob = uptr.get();
+        if (ob != nullptr && ob->query_order() == Order::Living &&
+            !ob->dead() && ob->family() == FAMILY_GOLEM && ob->team_num() == 1)
+            return ob;
+    }
+    return nullptr;
+}
+} // namespace asteroid_check
+
+void self_check_asteroid_script()
+{
+    using asteroid_check::find_golem;
+    for (int pass = 0; pass < 2; ++pass)
+    {
+        LevelRuntimeData level(3, true, &headless_level_data_hooks());
+        SaveData save;
+        og::sim::SimEventLog events;
+        level.set_sim_context(&save, &events, &cfg);
+        GameplayContext script_ctx;
+        script_ctx.world = &level.world();
+        script_ctx.save = &save;
+        script_ctx.sim_events = &events;
+        script_ctx.config = &cfg;
+        GameplayContext* prev = current_game;
+        current_game = &script_ctx;
+        if (!level.load())
+        {
+            fail("self-check: scen3 failed to load for the script check");
+            current_game = prev;
+            return;
+        }
+        GameWorld& world = level.world();
+        world.tick();
+        walker* golem = find_golem(world);
+        if (golem == nullptr)
+        {
+            fail("self-check: scen3 has no Big One");
+            current_game = prev;
+            return;
+        }
+        if (pass == 0)
+        {
+            for (const auto& uptr : world.oblist)
+            {
+                walker* ob = uptr.get();
+                if (ob != nullptr && ob->query_order() == Order::Living &&
+                    ob->team_num() == 1 && ob->lineofsight() > 7)
+                    fail("self-check: a scen3 hostile escaped the sight cap");
+            }
+            if (golem->lineofsight() != 0 || golem->act_type() != ACT_GUARD ||
+                golem->floor() != 1)
+                fail(std::format("self-check: the Big One on the rock has "
+                                 "sight {} act {} floor {}, expected 0/guard/1",
+                                 golem->lineofsight(),
+                                 static_cast<int>(golem->act_type()),
+                                 golem->floor()));
+            // The spikes: the gate watcher set down against the band.
+            walker* watcher = nullptr;
+            for (const auto& uptr : world.oblist)
+            {
+                walker* ob = uptr.get();
+                if (ob != nullptr && ob->query_order() == Order::Living &&
+                    ob->family() == FAMILY_SKELETON &&
+                    ob->xpos() == 30 * GRID_SIZE && ob->ypos() == 30 * GRID_SIZE)
+                    watcher = ob;
+            }
+            if (watcher == nullptr)
+            {
+                fail("self-check: scen3 gate watcher missing");
+                current_game = prev;
+                return;
+            }
+            const float hp0 = watcher->stats()->hitpoints();
+            for (int t = 0; t < 30; ++t)
+            {
+                watcher->setxy(static_cast<short>(5 * GRID_SIZE),
+                               static_cast<short>(25 * GRID_SIZE));
+                world.tick();
+            }
+            if (!(watcher->stats()->hitpoints() < hp0))
+                fail("self-check: the spike band did not bite a raider "
+                     "up against it");
+            // The fall: a crew member at the pit's west edge wakes him.
+            walker* lure = world.add_ob(Order::Living, FAMILY_SOLDIER);
+            if (lure == nullptr)
+            {
+                fail("self-check: scen3 lure refused");
+                current_game = prev;
+                return;
+            }
+            lure->set_team_num(0);
+            lure->set_real_team_num(0);
+            lure->set_act_type(ACT_SIT);
+            lure->set_floor(0);
+            lure->setxy(static_cast<short>(44 * GRID_SIZE),
+                        static_cast<short>(12 * GRID_SIZE));
+            lure->stats()->set_max_hitpoints(30000.0f);
+            lure->stats()->set_hitpoints(30000.0f);
+            world.tick();
+            if (golem->act_type() != ACT_RANDOM)
+                fail("self-check: the Big One did not wake for a lure "
+                     "three tiles from the deck");
+            // Up to five seconds to walk off the deck and land.
+            for (int t = 0; t < 60 && golem->stats()->name == "Big One"; ++t)
+                world.tick();
+            // Landed this tick: hp cut to 90 (one regen tick may follow).
+            if (golem->floor() != 0 || golem->stats()->name != "Fallen One" ||
+                golem->stats()->hitpoints() > 92.0f ||
+                golem->stats()->hitpoints() < 89.0f ||
+                golem->stepsize() != 4.0f || golem->lineofsight() != 7)
+                fail(std::format("self-check: the Big One did not fall "
+                                 "crippled (floor {}, name '{}', hp {}, "
+                                 "step {}, sight {})", golem->floor(),
+                                 golem->stats()->name,
+                                 golem->stats()->hitpoints(),
+                                 golem->stepsize(), golem->lineofsight()));
+        }
+        else
+        {
+            // The stairs branch: arriving on floor 0 with the deck above.
+            golem->change_floor(0);
+            golem->setxy(static_cast<short>(48 * GRID_SIZE),
+                         static_cast<short>(7 * GRID_SIZE));
+            world.tick();
+            if (golem->stats()->name != "Stomper" ||
+                golem->stats()->hitpoints() > 182.0f ||
+                golem->stats()->hitpoints() < 179.0f ||
+                golem->stepsize() != 6.0f || golem->lineofsight() != 7)
+                fail(std::format("self-check: the stairs branch left name "
+                                 "'{}', hp {}, step {}, sight {}",
+                                 golem->stats()->name,
+                                 golem->stats()->hitpoints(),
+                                 golem->stepsize(), golem->lineofsight()));
+        }
+        for (const og::script::ScriptError& err :
+             world.scripts().host().errors())
+            fail(std::format("self-check: scen3 script error at {}: {}",
+                             err.where, err.message));
+        current_game = prev;
+    }
+}
+
 } // namespace
 } // namespace imaggen
 
@@ -810,6 +1860,8 @@ int main(int argc, char* argv[])
         fail("failed to stage the embedded dreams pack");
 
     build_raspberry_isle();
+    build_castle_of_gold();
+    build_asteroid_castle();
 
     const std::string glad_path = user + "campaigns/imaginations.glad";
     std::remove(glad_path.c_str());
@@ -826,15 +1878,21 @@ int main(int argc, char* argv[])
         }
         else
         {
-            const std::set<int> registered = {1};
+            const std::set<int> registered = {1, 2, 3};
             const ExpectedLevel expectations[] = {
                 // {id, floors, title, starts, t0 liv/gen, t1 liv/gen,
                 //  delayed, specials-disabled, exit destinations}
-                {1, 1, "The Raspberry Isle", 16, 0, 0, 19, 3, 3, 1, {1}},
+                {1, 1, "The Raspberry Isle", 16, 0, 0, 19, 3, 3, 1, {2}},
+                {2, 1, "The Castle of Gold", 12, 0, 1, 27, 0, 23, 0,
+                 {kCastleOfGoldExit}},
+                {3, 2, "The Asteroid Castle", 16, 1, 0, 22, 0, 11, 0,
+                 {kAsteroidCastleExit}},
             };
             for (const ExpectedLevel& e : expectations)
                 self_check_level(e, registered);
             self_check_isle_script();
+            self_check_castle_script();
+            self_check_asteroid_script();
             (void)unmount_campaign_package_with_error("imaginations");
         }
     }
