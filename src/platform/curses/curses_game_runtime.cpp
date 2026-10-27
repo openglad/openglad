@@ -61,10 +61,10 @@ void CursesClientSession::send_pause_response()
 
 void CursesClientSession::set_belt(const og::sim::belt::Bytes& belt)
 {
-    const std::uint32_t followed = followed_entity_id();
+    const std::uint32_t driven = driven_entity_id();
     // Local slot 0: a curses machine plays one seat.
-    if (followed != 0 && !follow_engaged())
-        session_client().send_belt_change(0, followed, belt);
+    if (driven != 0)
+        session_client().send_belt_change(0, driven, belt);
 }
 
 namespace {
@@ -534,22 +534,58 @@ void draw_paused_menu(ITerminal& term, CursesRenderer& renderer,
     term.present();
 }
 
+// While the PAUSED menu is open (its pages included) the session keeps
+// advancing without input, so the in-process server answers, a networked
+// host keeps serving its joiners and a client keeps its link alive; and the
+// pause is asked for again every kPausedKeepaliveMs. One tick for the menu
+// line and both pages.
+class PausedMenuPump
+{
+public:
+    PausedMenuPump(CursesGameSession& session, IClock& clock)
+        : session_(session), clock_(clock)
+    {
+        session_.request_pause();
+        last_request_ = clock_.now_ms();
+    }
+    void tick()
+    {
+        session_.advance();
+        if (clock_.now_ms() - last_request_ >= kPausedKeepaliveMs) {
+            session_.request_pause();
+            last_request_ = clock_.now_ms();
+        }
+    }
+    // The pages wait the same way: tick between non-blocking polls, and
+    // under no_pacing an empty scripted queue closes the page.
+    PageIdle page_idle(const LevelLoopOptions& opt)
+    {
+        return PageIdle{.tick = [this] { tick(); },
+                        .poll_ms = kPausedMenuPollMs,
+                        .end_when_no_key = opt.no_pacing};
+    }
+
+private:
+    CursesGameSession& session_;
+    IClock& clock_;
+    std::uint64_t last_request_ = 0;
+};
+
 // 'a': the ABILITIES page over the walker the player drives. A changed
 // layout goes to the server (one BeltChange); a body with no saved layout
 // opens read-only.
 void paused_menu_abilities(CursesGameSession& session, ITerminal& term,
-                           IClock& clock, CursesRenderer& renderer)
+                           IClock& clock, CursesRenderer& renderer,
+                           PausedMenuPump& pump, const LevelLoopOptions& opt)
 {
     if (!og::input::ability_select_on()) {
         renderer.log_message(
             "Abilities need New Ability Select (Game Settings).");
         return;
     }
-    const std::uint32_t followed = session.followed_entity_id();
+    const std::uint32_t driven = session.driven_entity_id();
     const walker* const body =
-        followed != 0 && !session.follow_engaged()
-            ? session.mirror_world().find_by_id(followed)
-            : nullptr;
+        driven != 0 ? session.mirror_world().find_by_id(driven) : nullptr;
     if (body == nullptr || body->dead() || body->stats() == nullptr) {
         renderer.log_message("No character to show abilities for.");
         return;
@@ -563,26 +599,30 @@ void paused_menu_abilities(CursesGameSession& session, ITerminal& term,
                           .level = shown.level,
                           .new_specials = session.mirror_world().new_specials,
                           .stored = shown.stored,
-                          .editable = editable});
-    if (editable && edited != shown.stored)
+                          .editable = editable},
+        pump.page_idle(opt));
+    // The session advanced while the page was open: a resume from another
+    // player and a death can have moved control to another body. The layout
+    // was edited for this one, so it goes only if this one is still driven.
+    if (editable && edited != shown.stored &&
+        session.driven_entity_id() == driven)
         session.set_belt(edited);
 }
 
 // Esc opens it over the frozen world: [r]esume (or Esc, or any other key),
 // [a]bilities, [k]eys, [q]uit mission. The pause is asked for once; while
-// the menu waits for a key the session keeps advancing (no input) so the
-// in-process server answers the pause and the keep-alive. Closing it either
-// way sends the pause response.
+// the menu or one of its pages waits for a key the session keeps advancing
+// (no input) so the in-process server answers the pause and the keep-alive.
+// Closing it either way sends the pause response.
 PausedMenuChoice run_paused_menu(CursesGameSession& session, ITerminal& term,
                                  IClock& clock, CursesInput& input,
                                  CursesRenderer& renderer,
                                  const LevelLoopOptions& opt)
 {
-    session.request_pause();
-    std::uint64_t last_request = clock.now_ms();
+    PausedMenuPump pump(session, clock);
     PausedMenuChoice choice = PausedMenuChoice::Resume;
     for (;;) {
-        session.advance();
+        pump.tick();
         draw_paused_menu(term, renderer, session, opt);
         const Key key = term.poll_key(false);
         if (key.is_none()) {
@@ -591,10 +631,6 @@ PausedMenuChoice run_paused_menu(CursesGameSession& session, ITerminal& term,
             // ask_exit_prompt declines.
             if (opt.no_pacing)
                 break;
-            if (clock.now_ms() - last_request >= kPausedKeepaliveMs) {
-                session.request_pause();
-                last_request = clock.now_ms();
-            }
             clock.sleep_ms(kPausedMenuPollMs);
             continue;
         }
@@ -605,14 +641,15 @@ PausedMenuChoice run_paused_menu(CursesGameSession& session, ITerminal& term,
             break;
         }
         if (key.is_char(U'a') || key.is_char(U'A')) {
-            paused_menu_abilities(session, term, clock, renderer);
+            paused_menu_abilities(session, term, clock, renderer, pump, opt);
             continue;
         }
         if (key.is_char(U'k') || key.is_char(U'K')) {
             show_keys_page(term, clock, input.keybindings(),
                            get_player_control_mode(0) ==
                                static_cast<int>(
-                                   ControlDirectionMode::EightDirection));
+                                   ControlDirectionMode::EightDirection),
+                           pump.page_idle(opt));
             continue;
         }
         break;  // [r]esume, Esc, anything else
@@ -684,9 +721,7 @@ GameRunResult run_level_loop(CursesGameSession& session, ITerminal& term, IClock
         // New Ability Select: the SPEC keys fold against the followed walker's
         // belt; a watched (follow-camera) target is not ours to cast with.
         const std::optional<og::sim::belt::Layout> belt =
-            session.follow_engaged()
-                ? std::nullopt
-                : followed_belt(session.mirror_world(), session.followed_entity_id());
+            followed_belt(session.mirror_world(), session.driven_entity_id());
         const InputState st = input.sample(belt ? &*belt : nullptr);
         session.send_input(st);
         session.advance();

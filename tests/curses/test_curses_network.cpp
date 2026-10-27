@@ -111,6 +111,8 @@ int curses_network_testing_force_server_win(CursesGameSession& session,
 int curses_network_testing_clear_server_team(CursesGameSession& session,
                                              short team);
 GameWorld* curses_network_testing_server_world(CursesGameSession& session);
+bool curses_network_testing_set_server_clock(
+    CursesGameSession& session, std::function<std::uint64_t()> source);
 const SaveData* curses_network_testing_host_server_save(
     CursesGameSession& session);
 } // namespace og::curses
@@ -4587,4 +4589,82 @@ TEST(CursesNetwork, joiner_pause_and_layout_change_reach_the_host_server)
     join.send_pause_response();
     advance_all(*game.host_session, join, 2);
     EXPECT_FALSE(server->paused) << "the joiner's response resumes the world";
+}
+
+// The networked JOINER inside its ABILITIES page: the page keeps advancing
+// the session and keeps the pause alive. The host's server runs on the
+// test's clock; 45 s into the page the joiner re-asks, so at 75 s (past the
+// server's 60 s auto-resume counted from the first ask) the shared world is
+// still paused. Leaving the page and the menu resumes it.
+//
+// RED (planted): the pages wait on a blocking poll with no idle tick, so
+// the joiner goes quiet and the server lets the pause go at 60 s.
+TEST(CursesNetwork, joiner_abilities_page_keeps_the_pause_alive_on_the_host_server)
+{
+    ScopedAbilitySelect on(true);
+    SaveData host_save;
+    SaveData join_save;
+    init_team_save(host_save, 0, FAMILY_SOLDIER, "Host");
+    init_team_save(join_save, 1, FAMILY_SOLDIER, "Joiner");
+    level_up_team(join_save);
+
+    StartedGame game = negotiate_and_start(host_save, join_save);
+    ASSERT_NE(game.host_session, nullptr);
+    ASSERT_NE(game.join_session, nullptr);
+    advance_all(*game.host_session, *game.join_session, 10);
+
+    CursesGameSession& host = *game.host_session;
+    CursesGameSession& join = *game.join_session;
+    ASSERT_NE(0u, join.followed_entity_id());
+    GameWorld* const server = curses_network_testing_server_world(host);
+    ASSERT_NE(nullptr, server);
+
+    // One clock for the joiner's menu and the host's server, starting where
+    // the server's own steady clock is, so nothing it stamped is "future".
+    FakeClock clock(static_cast<std::uint64_t>(
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now().time_since_epoch())
+            .count()));
+    ASSERT_TRUE(curses_network_testing_set_server_clock(
+        host, [&clock] { return clock.now_ms(); }));
+
+    const auto step_host = [&host] {
+        for (int i = 0; i < 3; ++i)
+            host.advance();
+    };
+    PauseProbeTerminal term;
+    term.keys = {Key::special(KeyCode::Escape), Key::character(U'a'),
+                 Key::special(KeyCode::Down), Key::special(KeyCode::Down),
+                 Key::special(KeyCode::Escape), Key::character(U'r')};
+    std::string paused_seen;
+    int downs = 0;
+    term.before_key = [&](const Key& key) {
+        if (key.is_char(U'a')) {
+            step_host();  // the server takes the first ask
+            paused_seen += server->paused ? 'P' : '-';
+        }
+        if (key.code == KeyCode::Down && ++downs == 1)
+            clock.advance(45'000);  // the page sits open; re-ask is due
+        if (key.code == KeyCode::Down && downs == 2) {
+            step_host();             // the server takes the re-ask
+            clock.advance(30'000);   // 75 s after the first ask
+            step_host();
+            paused_seen += server->paused ? 'P' : '-';
+        }
+    };
+    CursesInput input;
+    CursesRenderer renderer;
+    LevelLoopOptions opt;
+    opt.max_frames = 1;
+    opt.no_pacing = true;
+    opt.render = false;
+    const GameRunResult result =
+        run_level_loop(join, term, clock, input, renderer, opt);
+    EXPECT_FALSE(result.withdrew);
+    EXPECT_TRUE(term.keys.empty()) << "every scripted key was read";
+    EXPECT_EQ("PP", paused_seen)
+        << "paused at the first ask, and still paused 75 s on because the "
+           "page re-asked at 45 s";
+    step_host();
+    EXPECT_FALSE(server->paused) << "closing the menu resumes the world";
 }

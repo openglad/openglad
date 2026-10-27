@@ -85,6 +85,13 @@ public:
     // "(following NAME)" and the seat's SwitchChar binding cycles the target
     // (Shift = reverse). Local sessions never follow.
     virtual bool follow_engaged() const { return false; }
+    // The walker the player drives: followed_entity_id(), or 0 while the
+    // camera follows a watched walker (that body is not ours to cast with or
+    // to edit). The one place that rule is asked.
+    std::uint32_t driven_entity_id() const
+    {
+        return follow_engaged() ? 0 : followed_entity_id();
+    }
     // Server tick used to stamp outgoing input.
     virtual std::uint32_t next_input_tick() const = 0;
 
@@ -100,14 +107,14 @@ public:
 
     // The in-game PAUSED menu (Esc). The level loop asks for the pause once
     // when the menu opens and keeps calling advance() without input while it
-    // is open (re-asking as the keep-alive); closing the menu sends the pause
-    // response. Every real session implements these once, through
+    // is open, the ABILITIES and KEYS pages included (re-asking as the
+    // keep-alive); closing the menu sends the pause response. Every real session implements these once, through
     // CursesClientSession below; only test doubles keep the do-nothing
     // defaults.
     virtual void request_pause() {}
     virtual void send_pause_response() {}
     // ABILITIES from that menu: send the layout of the walker the player
-    // drives (one BeltChange naming followed_entity_id()).
+    // drives (one BeltChange naming driven_entity_id()).
     virtual void set_belt(const og::sim::belt::Bytes& /*belt*/) {}
 
     // Exit prompt: when a player steps on the level exit, the server asks for
@@ -124,8 +131,7 @@ public:
     virtual void commit_result_to_save() {}
 };
 
-// The PAUSED menu's three calls, written once over the session's GameClient
-// and its mirror world. The local session, the networked host and the
+// The PAUSED menu's three calls, written once over the session's GameClient. The local session, the networked host and the
 // networked joiner each hold one GameClient and one mirror, so all three
 // derive from this instead of repeating the calls.
 class CursesClientSession : public CursesGameSession
@@ -138,8 +144,7 @@ public:
     // the pause reaches the mirror (skipping the response then would leave
     // the world paused for everyone until the server's auto-resume).
     void send_pause_response() override;
-    // Sends nothing while the camera follows a watched walker (follow
-    // engaged): the followed id is then someone else's body.
+    // Sends nothing while the player drives no walker (driven_entity_id() 0).
     void set_belt(const og::sim::belt::Bytes& belt) override;
 
 protected:

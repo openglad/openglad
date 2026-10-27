@@ -64,6 +64,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace og::curses {
@@ -95,7 +96,10 @@ struct ListEntry {
 class Menu
 {
 public:
-    Menu(ITerminal& term, IClock& clock) : term_(term), clock_(clock) {}
+    Menu(ITerminal& term, IClock& clock, PageIdle idle = {})
+        : term_(term), clock_(clock), idle_(std::move(idle))
+    {
+    }
 
     // Render `entries` under `title`, let the user move the highlight and pick
     // one. Returns the chosen entry index, or -1 on cancel (Esc/q/Backspace or
@@ -118,7 +122,7 @@ public:
         for (;;) {
             draw_list(title, entries, hint, cursor);
 
-            const Key key = term_.poll_key(true);
+            const Key key = wait_key();
             if (key.is_none())
                 return -1; // scripted input exhausted -> treat as cancel
             if (key.is_release())
@@ -187,7 +191,7 @@ public:
         // movement key is still held, and its auto-repeat would otherwise dismiss
         // this "press any key" prompt instantly (the modal would never be seen).
         for (;;) {
-            const Key key = term_.poll_key(true);
+            const Key key = wait_key();
             if (key.is_none() || key.is_press())
                 break;
         }
@@ -353,6 +357,23 @@ public:
     }
 
 private:
+    // The next key of choose / show_text. Without an idle tick: a blocking
+    // poll (none = scripted input exhausted). With one (a page over a
+    // running mission): tick, then a non-blocking poll, round again after
+    // poll_ms until a key comes, so the session never stops advancing.
+    Key wait_key()
+    {
+        if (!idle_.tick)
+            return term_.poll_key(true);
+        for (;;) {
+            idle_.tick();
+            const Key key = term_.poll_key(false);
+            if (!key.is_none() || idle_.end_when_no_key)
+                return key;
+            clock_.sleep_ms(idle_.poll_ms);
+        }
+    }
+
     static bool is_cancel(const Key& k)
     {
         return k.code == KeyCode::Escape || k.code == KeyCode::Backspace ||
@@ -444,6 +465,7 @@ private:
 
     ITerminal& term_;
     IClock& clock_;
+    PageIdle idle_;
 };
 
 // --- dynamic menu labels (shared binding layer) --------------------------
@@ -1413,9 +1435,10 @@ void show_load_failed(Menu& menu, const std::string& slot, SaveDataIoError io)
 } // namespace
 
 og::sim::belt::Bytes run_abilities_page(ITerminal& term, IClock& clock,
-                                        const AbilitiesPageHero& hero)
+                                        const AbilitiesPageHero& hero,
+                                        const PageIdle& idle)
 {
-    Menu menu(term, clock);
+    Menu menu(term, clock, idle);
     return edit_abilities(menu, hero);
 }
 
@@ -1441,9 +1464,10 @@ std::vector<std::string> keys_page_lines(std::span<const int, NUM_KEYS> keys,
 }
 
 void show_keys_page(ITerminal& term, IClock& clock,
-                    std::span<const int, NUM_KEYS> keys, bool eight_direction)
+                    std::span<const int, NUM_KEYS> keys, bool eight_direction,
+                    const PageIdle& idle)
 {
-    Menu menu(term, clock);
+    Menu menu(term, clock, idle);
     menu.show_text(
         "Keys: " + og::input::mapping_display_name(
                        og::input::derive_mapping_name(keys.data())),

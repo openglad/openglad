@@ -16,6 +16,8 @@
 #include <openglad/platform/curses/terminal.h>
 #include <openglad/resources/save_data.h>
 
+#include <cstdint>
+#include <functional>
 #include <memory>
 #include <span>
 #include <string>
@@ -129,11 +131,24 @@ struct AbilitiesPageHero {
     bool editable = true;  // false: shown with the no-saved-layout line
 };
 
+// What a page opened over a running mission does while it waits for a key
+// (the in-game PAUSED menu's pages: the session must keep advancing and
+// keep the pause alive). With a tick, the page polls without blocking: tick,
+// poll, and when no key is waiting either sleep `poll_ms` and go round
+// again or, with `end_when_no_key` (scripted input, no pacing), take the
+// empty queue as the page's cancel.
+struct PageIdle {
+    std::function<void()> tick;
+    std::uint32_t poll_ms = 30;
+    bool end_when_no_key = false;
+};
+
 // The ABILITIES page on its own (the in-game PAUSED menu's 'a'): returns the
 // layout as the player left it (== hero.stored when nothing changed or the
 // page is read-only). The caller commits it.
 og::sim::belt::Bytes run_abilities_page(ITerminal& term, IClock& clock,
-                                        const AbilitiesPageHero& hero);
+                                        const AbilitiesPageHero& hero,
+                                        const PageIdle& idle = {});
 
 // The KEYS page's lines (the in-game PAUSED menu's 'k'): MOVEMENT then
 // ACTIONS, in the binding panels' row order, one "  LABEL: key" line each;
@@ -144,7 +159,8 @@ std::vector<std::string> keys_page_lines(std::span<const int, NUM_KEYS> keys,
                                          bool ability_select);
 // Shows them under "Keys: <mapping name>" until a key is pressed.
 void show_keys_page(ITerminal& term, IClock& clock,
-                    std::span<const int, NUM_KEYS> keys, bool eight_direction);
+                    std::span<const int, NUM_KEYS> keys, bool eight_direction,
+                    const PageIdle& idle = {});
 
 // Convenience entry point: construct a CursesPickerClient and run the shared
 // picker state machine until the user quits.

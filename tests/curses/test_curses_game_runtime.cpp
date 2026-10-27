@@ -38,6 +38,8 @@
 #include "test_match_seed.h"
 
 #include <filesystem>
+#include <functional>
+#include <optional>
 #include <tuple>
 #include <memory>
 #include <string>
@@ -1134,11 +1136,23 @@ public:
         sent.push_back(input);
         inner_->send_input(input);
     }
-    void advance() override { inner_->advance(); }
+    // Every advance() is counted and can be watched (on_advance runs first).
+    int advances = 0;
+    std::function<void()> on_advance;
+    void advance() override
+    {
+        ++advances;
+        if (on_advance)
+            on_advance();
+        inner_->advance();
+    }
     GameWorld& mirror_world() override { return inner_->mirror_world(); }
+    // Set: the loop sees control move to another body (a teammate after a
+    // death) while the real session goes on as before.
+    std::optional<std::uint32_t> followed_override;
     std::uint32_t followed_entity_id() const override
     {
-        return inner_->followed_entity_id();
+        return followed_override.value_or(inner_->followed_entity_id());
     }
     bool follow_engaged() const override { return inner_->follow_engaged(); }
     std::uint32_t next_input_tick() const override
@@ -1397,6 +1411,116 @@ TEST(CursesGameRuntimeLocal, escape_then_a_edits_the_driven_heros_layout_on_the_
         << "the server's guy takes the layout";
     for (std::size_t slot = 1; slot < before.size(); ++slot)
         EXPECT_EQ(before[slot], after->myguy->belt[slot]) << "slot " << slot;
+}
+
+// The ABILITIES and KEYS pages are opened over a running mission: while
+// either waits for a key the session keeps advancing (a networked host keeps
+// serving its joiners, a joiner keeps its link) and the pause is asked for
+// again every 20 s. The clock jumps 25 s inside the ABILITIES page: the
+// keep-alive goes out from there.
+//
+// RED (planted): the pages wait on a blocking poll with no idle tick.
+TEST(CursesGameRuntimeLocal, escape_pages_keep_the_session_advancing_and_the_pause_alive)
+{
+    ScopedAbilitySelect on(true);
+    SaveData save;
+    init_test_save(save);
+    for (auto& member : save.team_list)
+        if (member)
+            member->upgrade_to_level(13);
+    std::string err;
+    auto inner = make_local_session(save, 1, &err);
+    ASSERT_NE(inner, nullptr) << err;
+    RecordingSession session(std::move(inner));
+
+    HeadlessTerminal term(30, 100);
+    FakeClock clock;
+    CursesInput input;
+    CursesRenderer renderer;
+    LevelLoopOptions opt = settle(session, term, clock, input, renderer);
+    ASSERT_NE(0u, session.followed_entity_id());
+
+    // Seven keys. The menu line reads 'a' (6 left before it), 'k' (3) and
+    // 'r' (1); the ABILITIES page reads 'c' (5) and its Esc (4); the KEYS
+    // page reads 'x' (2).
+    term.push_special(KeyCode::Escape);
+    term.push_char(U'a');
+    term.push_char(U'c');
+    term.push_special(KeyCode::Escape);
+    term.push_char(U'k');
+    term.push_char(U'x');
+    term.push_char(U'r');
+    int abilities_page_advances = 0;
+    int keys_page_advances = 0;
+    bool jumped = false;
+    session.on_advance = [&] {
+        const std::size_t left = term.keys_left();
+        if (left == 5 || left == 4)
+            ++abilities_page_advances;
+        if (left == 2)
+            ++keys_page_advances;
+        if (left == 5 && !jumped) {
+            clock.advance(25'000);
+            jumped = true;
+        }
+    };
+    opt.max_frames = 1;
+    run_level_loop(session, term, clock, input, renderer, opt);
+    session.on_advance = nullptr;
+    EXPECT_TRUE(term.input_exhausted());
+    EXPECT_GT(abilities_page_advances, 0)
+        << "the ABILITIES page advances the session while it waits";
+    EXPECT_GT(keys_page_advances, 0)
+        << "the KEYS page advances the session while it waits";
+    EXPECT_EQ("PPBR", session.pause_calls)
+        << "the pause, its keep-alive from inside the page 25 s on, the "
+           "edit, the response";
+}
+
+// Esc, A: while the page is open control moves to another body (the
+// session advanced; a teammate took over after a death). The layout was
+// edited for the first body, so nothing is sent.
+//
+// RED (planted): the page's result is sent without asking whether the body
+// it was edited for is still the one driven.
+TEST(CursesGameRuntimeLocal, escape_then_a_sends_nothing_when_control_moves_to_another_body)
+{
+    ScopedAbilitySelect on(true);
+    SaveData save;
+    init_test_save(save);
+    for (auto& member : save.team_list)
+        if (member)
+            member->upgrade_to_level(13);
+    std::string err;
+    auto inner = make_local_session(save, 1, &err);
+    ASSERT_NE(inner, nullptr) << err;
+    RecordingSession session(std::move(inner));
+
+    HeadlessTerminal term(30, 100);
+    FakeClock clock;
+    CursesInput input;
+    CursesRenderer renderer;
+    LevelLoopOptions opt = settle(session, term, clock, input, renderer);
+    const std::uint32_t followed = session.followed_entity_id();
+    ASSERT_NE(0u, followed);
+
+    term.push_special(KeyCode::Escape);
+    term.push_char(U'a');
+    term.push_char(U'c');                // empty key 1
+    term.push_special(KeyCode::Escape);  // done
+    term.push_char(U'r');
+    session.on_advance = [&] {
+        if (term.keys_left() == 2)  // inside the page, after the edit
+            session.followed_override = followed + 1;
+    };
+    opt.max_frames = 1;
+    run_level_loop(session, term, clock, input, renderer, opt);
+    session.on_advance = nullptr;
+    ASSERT_TRUE(session.followed_override.has_value())
+        << "control moved while the page was open";
+    EXPECT_TRUE(session.belts_sent.empty())
+        << "the edit was for a body the player no longer drives";
+    EXPECT_EQ("PR", session.pause_calls);
 }
 
 // Esc, A with the setting off: no page, a line in the message log; Esc, K:
