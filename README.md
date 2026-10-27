@@ -110,8 +110,9 @@ row of three. **TRAIN > ABILITIES** in Base Camp chooses which ability sits
 on which key. Turning off **Game Settings > UI FX > New Ability Select**
 brings back the original rules on the same keys: the first ability key casts
 the selected special, the second changes it, and Shifter casts the
-alternate. **REMAP** on a player's screen (open the player's **P#** card in
-Base Camp, or the PAUSED menu) changes any key; gamepads work too. **Esc**
+alternate. On a player's screen (open the player's **P#** card in Base Camp,
+or the PAUSED menu), click one key in the key list to change only that key,
+or press **REMAP ALL** to change every key in turn; gamepads work too. **Esc**
 pauses. The design is in
 [docs/ability-select-design.md](docs/ability-select-design.md).
 

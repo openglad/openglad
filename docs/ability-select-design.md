@@ -651,7 +651,18 @@ curses clients have no pictures.
 - **REMAP** (`src/interface/ui/picker.cpp`, `remap_prompts`): on, 12
   prompts in 4-direction (UP, RIGHT, DOWN, LEFT, FIRE, SPEC 1, SPEC 2,
   SPEC 3, YELL, SWITCH CHARACTER, SHIFTER, LOOK UP) and 16 in 8-direction;
-  off, the old 11 and 15, with SPECIAL SWITCH binding slot 17.
+  off, the old 11 and 15, with SPECIAL SWITCH binding slot 17. The button
+  reads **REMAP ALL** since #358.
+- **One key** (#358): every line of a binding panel is a key cell; a click
+  (or Enter) asks for that key alone, with the same prompt label as REMAP
+  ALL. A key already on another slot of the same seat in the same mode
+  leaves that slot (it shows `--`); other seats keep their keys
+  (`og::input::bind_player_key`). The key that opened the prompt and a held
+  key's auto-repeat never answer it. Both paths save through
+  `save_player_keys_after_remap`.
+- **Prompt summary** (#383): the control summary under a REMAP prompt wraps
+  at 48 characters per line, breaking after a `/`, and long key names have
+  short forms (PrtSc, ScrLk, NumLk, Ins, Del, PgUp, PgDn, `KP x`).
 - **HELP > Controls** (`src/interface/ui/help.cpp`): a key table for each
   setting.
 - **HELP > Classes**: a paragraph explaining SHIFTER under the belt. Each
