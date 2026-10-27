@@ -275,7 +275,7 @@ TEST(NetTransport, header_helpers_roundtrip_envelope)
     std::vector<std::uint8_t> bytes;
     og::sim::append_transport_header(bytes, og::sim::kHelloMessageType, 0x2211u);
 
-    const std::vector<std::uint8_t> expected = {0x16, 0x01, 0x11, 0x22};
+    const std::vector<std::uint8_t> expected = {0x17, 0x01, 0x11, 0x22};
     EXPECT_EQ(expected, bytes);
 
     og::sim::TransportEnvelope envelope;
@@ -1111,6 +1111,23 @@ TEST(NetTransport, lightweight_message_roundtrips_and_decode)
     ASSERT_NE(nullptr, control_change_typed.control_change);
     EXPECT_EQ(control_change, *control_change_typed.control_change);
 
+    const og::sim::BeltChangeMessage belt_change{
+        .local_slot = 2u,
+        .entity_id = 0x01020304u,
+        .belt = {9u, 0u, 0xffu, 3u, 128u, 1u},
+    };
+    const auto belt_change_bytes =
+        og::sim::serialize_belt_change_message(belt_change);
+    ASSERT_EQ(belt_change,
+              *og::sim::deserialize_belt_change_message(belt_change_bytes));
+    const auto belt_change_typed =
+        og::sim::decode_received_message({.peer_id = 1u,
+                                          .data = belt_change_bytes});
+    EXPECT_EQ(og::sim::TypedReceivedMessageKind::BeltChange,
+              belt_change_typed.kind);
+    ASSERT_NE(nullptr, belt_change_typed.belt_change);
+    EXPECT_EQ(belt_change, *belt_change_typed.belt_change);
+
     const og::sim::SnapshotHashCheckMessage hash_check{
         .tick = 500u,
         .snapshot_hash = 0xabcdef12u,
@@ -1150,6 +1167,7 @@ TEST(NetTransport, default_send_wrappers_emit_messages_and_ignore_nulls)
     transport.send_pause_broadcast(1u, {});
     transport.send_pause_response(1u, {});
     transport.send_control_change(1u, {});
+    transport.send_belt_change(1u, {});
     transport.send_snapshot_hash_check(1u, {});
     // Pack transfer (protocol v14): the four wrappers guard the same way, so
     // a host with nothing to announce never emits a headerless frame.
@@ -1256,6 +1274,13 @@ TEST(NetTransport, default_send_wrappers_emit_messages_and_ignore_nulls)
                 .player_index = 4u,
                 .entity_id = 5u,
             }));
+    const og::sim::BeltChangeMessage belt_change{
+        .local_slot = 1u,
+        .entity_id = 77u,
+        .belt = {1u, 2u, 3u, 4u, 5u, 6u},
+    };
+    transport.send_belt_change(
+        2u, std::make_shared<og::sim::BeltChangeMessage>(belt_change));
     transport.send_snapshot_hash_check(
         2u,
         std::make_shared<og::sim::SnapshotHashCheckMessage>(
@@ -1291,7 +1316,7 @@ TEST(NetTransport, default_send_wrappers_emit_messages_and_ignore_nulls)
     transport.send_pack_transfer_done(
         2u, std::make_shared<og::sim::PackTransferDoneMessage>(pack_done));
 
-    const std::array<og::sim::TypedReceivedMessageKind, 22> expected_kinds = {
+    const std::array<og::sim::TypedReceivedMessageKind, 23> expected_kinds = {
         og::sim::TypedReceivedMessageKind::Snapshot,
         og::sim::TypedReceivedMessageKind::DeltaSnapshot,
         og::sim::TypedReceivedMessageKind::Input,
@@ -1309,6 +1334,7 @@ TEST(NetTransport, default_send_wrappers_emit_messages_and_ignore_nulls)
         og::sim::TypedReceivedMessageKind::PauseBroadcast,
         og::sim::TypedReceivedMessageKind::PauseResponse,
         og::sim::TypedReceivedMessageKind::ControlChange,
+        og::sim::TypedReceivedMessageKind::BeltChange,
         og::sim::TypedReceivedMessageKind::SnapshotHashCheck,
         og::sim::TypedReceivedMessageKind::PackManifest,
         og::sim::TypedReceivedMessageKind::PackRequest,
@@ -1370,6 +1396,10 @@ TEST(NetTransport, default_send_wrappers_emit_messages_and_ignore_nulls)
             ASSERT_NE(nullptr, typed.pack_transfer_done);
             EXPECT_EQ(pack_done, *typed.pack_transfer_done);
             break;
+        case og::sim::TypedReceivedMessageKind::BeltChange:
+            ASSERT_NE(nullptr, typed.belt_change);
+            EXPECT_EQ(belt_change, *typed.belt_change);
+            break;
         default:
             EXPECT_NE(og::sim::TypedReceivedMessageKind::Malformed,
                       typed.kind);
@@ -1413,7 +1443,7 @@ TEST(NetTransport, decode_received_message_reports_malformed_typed_payloads)
         return bytes;
     };
 
-    const std::array<std::pair<std::uint8_t, std::uint16_t>, 24> cases = {
+    const std::array<std::pair<std::uint8_t, std::uint16_t>, 25> cases = {
         std::pair{og::sim::kSnapshotMessageType, 1u},
         std::pair{og::sim::kDeltaSnapshotMessageType, 1u},
         std::pair{og::sim::kInputMessageType, 1u},
@@ -1438,6 +1468,7 @@ TEST(NetTransport, decode_received_message_reports_malformed_typed_payloads)
         std::pair{og::sim::kPackTransferDoneMessageType, 1u},
         std::pair{og::sim::kStagedMatchSetupMessageType, 1u},
         std::pair{og::sim::kStagedMatchKeyframeMessageType, 1u},
+        std::pair{og::sim::kBeltChangeMessageType, 1u},
     };
 
     for (const auto& [message_type, payload_length] : cases)
@@ -1468,8 +1499,8 @@ TEST(NetTransport, serialize_hello_emits_expected_wire_format)
 
     constexpr std::array<std::uint8_t, og::sim::kSerializedHelloMessageSize>
         expected = {
-            0x16, 0x01, 0x17, 0x00,
-            0x16, 0x16, 0x03,
+            0x17, 0x01, 0x17, 0x00,
+            0x17, 0x17, 0x03,
             0x00, 0x01, 0x02, 0x03,
             0x04, 0x05, 0x06, 0x07,
             0x08, 0x09, 0x0a, 0x0b,
@@ -1782,6 +1813,55 @@ TEST(NetTransport,
         }));
     EXPECT_FALSE(
         og::sim::deserialize_control_change_message(control_change).has_value());
+
+    const auto belt_change = bad_version(
+        og::sim::serialize_belt_change_message({
+            .local_slot = 0u,
+            .entity_id = 42u,
+            .belt = {1u, 2u, 3u, 4u, 5u, 6u},
+        }));
+    EXPECT_FALSE(
+        og::sim::deserialize_belt_change_message(belt_change).has_value());
+}
+
+// ABILITIES (protocol v23): the BeltChange wire layout is pinned byte for
+// byte (u8 local_slot, u32 little-endian entity_id, six belt bytes = 11
+// payload bytes after the 4-byte header), and a payload one byte short or
+// one byte long is malformed rather than silently padded or truncated.
+TEST(NetTransport, belt_change_wire_format_is_pinned)
+{
+    const og::sim::BeltChangeMessage message{
+        .local_slot = 3u,
+        .entity_id = 0x11223344u,
+        .belt = {0xa0u, 0xa1u, 0xa2u, 0xa3u, 0xa4u, 0xa5u},
+    };
+    const std::vector<std::uint8_t> bytes =
+        og::sim::serialize_belt_change_message(message);
+    const std::vector<std::uint8_t> expected = {
+        og::sim::kNetworkProtocolVersion, 25u, 11u, 0u,
+        3u,
+        0x44u, 0x33u, 0x22u, 0x11u,
+        0xa0u, 0xa1u, 0xa2u, 0xa3u, 0xa4u, 0xa5u,
+    };
+    EXPECT_EQ(expected, bytes);
+
+    std::vector<std::uint8_t> short_frame;
+    og::sim::append_transport_header(
+        short_frame, og::sim::kBeltChangeMessageType, 10u);
+    short_frame.insert(short_frame.end(), bytes.begin() + 4, bytes.end() - 1);
+    EXPECT_FALSE(
+        og::sim::deserialize_belt_change_message(short_frame).has_value());
+
+    std::vector<std::uint8_t> long_frame;
+    og::sim::append_transport_header(
+        long_frame, og::sim::kBeltChangeMessageType, 12u);
+    long_frame.insert(long_frame.end(), bytes.begin() + 4, bytes.end());
+    long_frame.push_back(0u);
+    EXPECT_FALSE(
+        og::sim::deserialize_belt_change_message(long_frame).has_value());
+    EXPECT_EQ(og::sim::TypedReceivedMessageKind::Malformed,
+              og::sim::decode_received_message({.peer_id = 4u,
+                                                .data = long_frame}).kind);
 }
 
 // (Removed: NetTransport.interface_is_mockable_and_preserves_message_buffers

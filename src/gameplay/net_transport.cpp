@@ -1005,6 +1005,33 @@ std::optional<ControlChangeMessage> deserialize_control_change_message(
         });
 }
 
+std::vector<std::uint8_t> serialize_belt_change_message(
+    const BeltChangeMessage& message)
+{
+    std::vector<std::uint8_t> payload;
+    append_u8(payload, message.local_slot);
+    append_u32(payload, message.entity_id);
+    for (const std::uint8_t byte : message.belt)
+        append_u8(payload, byte);
+    return wrap_transport_message(kBeltChangeMessageType, payload);
+}
+
+std::optional<BeltChangeMessage> deserialize_belt_change_message(
+    std::span<const std::uint8_t> bytes)
+{
+    // The six belt bytes are stored as sent (no normalising here): the
+    // server owns validation, and VALIDATE_SERIALIZATION needs a lossless
+    // round trip.
+    return deserialize_message<BeltChangeMessage>(
+        bytes, kBeltChangeMessageType,
+        [](PayloadReader& reader, BeltChangeMessage& message) {
+            message.local_slot = reader.read_u8();
+            message.entity_id = reader.read_u32();
+            for (std::uint8_t& byte : message.belt)
+                byte = reader.read_u8();
+        });
+}
+
 std::vector<std::uint8_t> serialize_snapshot_hash_check_message(
     const SnapshotHashCheckMessage& message)
 {
@@ -1455,6 +1482,18 @@ void ITransport::send_control_change(
     send(peer_id, bytes.data(), bytes.size());
 }
 
+void ITransport::send_belt_change(
+    PeerId peer_id,
+    std::shared_ptr<BeltChangeMessage> message)
+{
+    if (!message)
+        return;
+
+    const std::vector<std::uint8_t> bytes =
+        serialize_belt_change_message(*message);
+    send(peer_id, bytes.data(), bytes.size());
+}
+
 void ITransport::send_snapshot_hash_check(
     PeerId peer_id,
     std::shared_ptr<SnapshotHashCheckMessage> message)
@@ -1734,6 +1773,18 @@ TypedReceivedMessage decode_received_message(const ReceivedMessage& message)
             typed_message.kind = TypedReceivedMessageKind::ControlChange;
             typed_message.control_change =
                 std::make_shared<ControlChangeMessage>(std::move(*decoded));
+            return typed_message;
+        }
+
+        case kBeltChangeMessageType:
+        {
+            const auto decoded = deserialize_belt_change_message(message.data);
+            if (!decoded.has_value())
+                return malformed_typed_message(message.peer_id);
+
+            typed_message.kind = TypedReceivedMessageKind::BeltChange;
+            typed_message.belt_change =
+                std::make_shared<BeltChangeMessage>(std::move(*decoded));
             return typed_message;
         }
 

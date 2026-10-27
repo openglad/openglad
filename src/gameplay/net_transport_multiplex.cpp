@@ -309,6 +309,18 @@ void MultiplexTransport::send_control_change(
         std::move(message));
 }
 
+void MultiplexTransport::send_belt_change(
+    PeerId peer_id,
+    std::shared_ptr<BeltChangeMessage> message)
+{
+    EndpointState* const endpoint = find_endpoint_for_public_peer(peer_id);
+    if (endpoint == nullptr)
+        return;
+    endpoint->transport->send_belt_change(
+        endpoint->public_to_native[peer_id],
+        std::move(message));
+}
+
 void MultiplexTransport::send_snapshot_hash_check(
     PeerId peer_id,
     std::shared_ptr<SnapshotHashCheckMessage> message)

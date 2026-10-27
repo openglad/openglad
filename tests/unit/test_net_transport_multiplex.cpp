@@ -233,6 +233,11 @@ public:
     {
         control_change_peer = peer_id;
     }
+    void send_belt_change(og::sim::PeerId peer_id,
+                          std::shared_ptr<og::sim::BeltChangeMessage>) override
+    {
+        belt_change_peer = peer_id;
+    }
     void send_snapshot_hash_check(
         og::sim::PeerId peer_id,
         std::shared_ptr<og::sim::SnapshotHashCheckMessage>) override
@@ -275,6 +280,7 @@ public:
     og::sim::PeerId pause_broadcast_peer = 0;
     og::sim::PeerId pause_response_peer = 0;
     og::sim::PeerId control_change_peer = 0;
+    og::sim::PeerId belt_change_peer = 0;
     og::sim::PeerId hash_check_peer = 0;
     og::sim::PeerId disconnected_peer = 0;
 
@@ -675,6 +681,8 @@ TEST(NetTransportMultiplex, typed_forwarding_methods_route_to_native_peer)
                                   std::make_shared<og::sim::PauseResponseMessage>());
     transport.send_control_change(public_peer,
                                   std::make_shared<og::sim::ControlChangeMessage>());
+    transport.send_belt_change(public_peer,
+                               std::make_shared<og::sim::BeltChangeMessage>());
     transport.send_snapshot_hash_check(
         public_peer, std::make_shared<og::sim::SnapshotHashCheckMessage>());
     transport.disconnect(public_peer);
@@ -715,6 +723,8 @@ TEST(NetTransportMultiplex, typed_forwarding_methods_route_to_native_peer)
         unknown_peer, std::make_shared<og::sim::PauseResponseMessage>());
     transport.send_control_change(
         unknown_peer, std::make_shared<og::sim::ControlChangeMessage>());
+    transport.send_belt_change(
+        unknown_peer, std::make_shared<og::sim::BeltChangeMessage>());
     transport.send_snapshot_hash_check(
         unknown_peer,
         std::make_shared<og::sim::SnapshotHashCheckMessage>());
@@ -741,6 +751,7 @@ TEST(NetTransportMultiplex, typed_forwarding_methods_route_to_native_peer)
     EXPECT_EQ(44u, typed->pause_broadcast_peer);
     EXPECT_EQ(44u, typed->pause_response_peer);
     EXPECT_EQ(44u, typed->control_change_peer);
+    EXPECT_EQ(44u, typed->belt_change_peer);
     EXPECT_EQ(44u, typed->hash_check_peer);
     EXPECT_EQ(44u, typed->disconnected_peer);
 }

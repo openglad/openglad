@@ -45,6 +45,7 @@ enum class NetMessageType : std::uint8_t {
     PackTransferDone = 22,
     StagedMatchSetup = 23,
     StagedMatchKeyframe = 24,
+    BeltChange = 25,
 };
 
 constexpr std::uint8_t net_message_type_value(NetMessageType message_type) noexcept
@@ -210,7 +211,15 @@ constexpr std::uint8_t net_message_type_value(NetMessageType message_type) noexc
 // seat after the four player bitfields (payload 21 -> 25).
 // LobbyCharacterData, InitialSetupGuyData and GuySnapshot gain six u8 belt
 // bytes appended LAST; snapshot v18; replay v24.
-inline constexpr std::uint8_t kNetworkProtocolVersion = 22;
+// v23: ABILITIES from the PAUSED menu. A new client -> server message,
+// BeltChange (25: u8 local_slot, u32 entity_id, six u8 belt bytes), sets the
+// six belt bytes of the guy a seat drives on the SERVER; the next delta
+// carries them back to every mirror through GuySnapshot.belt. Replay format
+// moves to v25 (it records the protocol byte). The snapshot format STAYS at
+// v18 on purpose: not one snapshot byte changes, this protocol byte already
+// rejects every v22 peer, and a content-free snapshot bump would only make
+// every stored snapshot/replay fixture mismatch for no byte change.
+inline constexpr std::uint8_t kNetworkProtocolVersion = 23;
 
 // Global networked player-index cap (seats across ALL peers). Distinct from
 // MAX_PLAYERS, which stays 4 and caps the seats of ONE machine (input slots,
@@ -280,6 +289,8 @@ inline constexpr std::uint8_t kStagedMatchSetupMessageType =
     net_message_type_value(NetMessageType::StagedMatchSetup);
 inline constexpr std::uint8_t kStagedMatchKeyframeMessageType =
     net_message_type_value(NetMessageType::StagedMatchKeyframe);
+inline constexpr std::uint8_t kBeltChangeMessageType =
+    net_message_type_value(NetMessageType::BeltChange);
 
 // Hello payload wire format:
 // - byte 0: current protocol version
@@ -416,6 +427,20 @@ struct ControlChangeMessage {
     std::uint32_t entity_id = 0;
 
     bool operator==(const ControlChangeMessage&) const = default;
+};
+
+// Client -> server (protocol v23): set the ability layout (guy::belt) of the
+// character one of the sender's seats drives. `local_slot` is the seat
+// (BoundPlayer::local_slot), `entity_id` the walker that seat drove when the
+// ABILITIES screen opened (a stale id is refused), `belt` the six bytes,
+// stored as sent: the reader never normalises them, so a round trip is
+// lossless. Wire: u8 local_slot, u32 entity_id, 6 x u8 = 11 payload bytes.
+struct BeltChangeMessage {
+    std::uint8_t local_slot = 0xff;
+    std::uint32_t entity_id = 0;
+    std::array<std::uint8_t, 6> belt{};
+
+    bool operator==(const BeltChangeMessage&) const = default;
 };
 
 struct SnapshotHashCheckMessage {
@@ -570,6 +595,7 @@ enum class TypedReceivedMessageKind : std::uint8_t {
     PackTransferDone,
     StagedMatchSetup,
     StagedMatchKeyframe,
+    BeltChange,
     Malformed,
 };
 
@@ -590,6 +616,7 @@ enum class TypedReceivedMessageKind : std::uint8_t {
     case TypedReceivedMessageKind::ExitPromptResponse:
     case TypedReceivedMessageKind::PauseBroadcast:
     case TypedReceivedMessageKind::PauseResponse:
+    case TypedReceivedMessageKind::BeltChange:
     case TypedReceivedMessageKind::SnapshotHashCheck:
     // Pack transfers are a lobby-phase concern (LobbyServer); a stale request
     // that slips into the gameplay stream is legal traffic the dispatcher
@@ -646,6 +673,7 @@ struct TypedReceivedMessage {
     std::shared_ptr<PackTransferDoneMessage> pack_transfer_done;
     std::shared_ptr<StagedMatchSetupMessage> staged_match_setup;
     std::shared_ptr<StagedMatchKeyframeMessage> staged_match_keyframe;
+    std::shared_ptr<BeltChangeMessage> belt_change;
     std::uint32_t tick = 0;
 };
 
@@ -691,6 +719,10 @@ std::optional<PauseResponseMessage> deserialize_pause_response_message(
 std::vector<std::uint8_t> serialize_control_change_message(
     const ControlChangeMessage& message);
 std::optional<ControlChangeMessage> deserialize_control_change_message(
+    std::span<const std::uint8_t> bytes);
+std::vector<std::uint8_t> serialize_belt_change_message(
+    const BeltChangeMessage& message);
+std::optional<BeltChangeMessage> deserialize_belt_change_message(
     std::span<const std::uint8_t> bytes);
 std::vector<std::uint8_t> serialize_snapshot_hash_check_message(
     const SnapshotHashCheckMessage& message);
@@ -800,6 +832,8 @@ public:
         std::shared_ptr<PauseResponseMessage> message);
     virtual void send_control_change(PeerId peer_id,
                                      std::shared_ptr<ControlChangeMessage> message);
+    virtual void send_belt_change(PeerId peer_id,
+                                  std::shared_ptr<BeltChangeMessage> message);
     virtual void send_snapshot_hash_check(
         PeerId peer_id,
         std::shared_ptr<SnapshotHashCheckMessage> message);

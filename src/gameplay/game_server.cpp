@@ -1763,6 +1763,11 @@ void GameServer::process_non_input_messages(std::uint32_t expected_tick)
                 handle_pause_response();
             break;
 
+        case TypedReceivedMessageKind::BeltChange:
+            if (message.belt_change)
+                handle_belt_change(client, *message.belt_change);
+            break;
+
         case TypedReceivedMessageKind::SnapshotHashCheck:
             if (message.snapshot_hash_check)
             {
@@ -2371,6 +2376,60 @@ void GameServer::handle_pause_request(PeerId peer_id)
             other_peer_id,
             std::make_shared<PauseBroadcastMessage>(message));
     }
+}
+
+// ABILITIES (protocol v23): a seat sets the ability layout of the character
+// it drives. The edit lands on the SERVER's guy record; nothing else reads a
+// belt here, so no tick and no broadcast: the next snapshot's guy list carries
+// the bytes to every mirror, and a mission win merges the guy (belt included)
+// into the save. Accepted paused or running. Every refusal is silent on the
+// wire (the client's next delta simply shows the old layout).
+void GameServer::handle_belt_change(ConnectedClientState& client,
+                                    const BeltChangeMessage& message)
+{
+    const auto refuse = [&](BeltChangeVerdict verdict, const char* why) {
+        last_belt_change_verdict_ = verdict;
+        (void)why; // TRACE is a no-op outside TESTING builds
+        TRACE("belt", "refused: %s (seat %u, entity %u)", why,
+              static_cast<unsigned>(message.local_slot),
+              static_cast<unsigned>(message.entity_id));
+    };
+
+    // 1. The seat is one this peer has bound.
+    const auto seat_it = std::find_if(
+        client.bound_players.begin(),
+        client.bound_players.end(),
+        [&message](const BoundPlayer& seat) {
+            return seat.local_slot == message.local_slot;
+        });
+    if (seat_it == client.bound_players.end())
+        return refuse(BeltChangeVerdict::SeatNotBound, "seat not bound");
+
+    // 2. The seat still drives a live walker, and it is the one the screen
+    //    opened on. A Switch, or a ghost's POSSESS that moves control to the
+    //    host body, between open and BACK makes the id stale.
+    walker* const control = seat_it->control;
+    if (control == nullptr)
+        return refuse(BeltChangeVerdict::NoBody, "seat drives nothing");
+    if (control->dead())
+        return refuse(BeltChangeVerdict::DeadBody, "body is dead");
+    if (control->entity_id() != message.entity_id)
+        return refuse(BeltChangeVerdict::StaleEntity, "stale entity");
+
+    // 3. Only a character with a guy record has a layout to keep. Summons,
+    //    raised dead and possessed hosts have none and keep using the class
+    //    default.
+    if (control->myguy == nullptr)
+        return refuse(BeltChangeVerdict::NoGuyRecord, "no guy record");
+
+    // 4. Ownership is control: the seat drives this walker, so it may set its
+    //    keys (under owner-locked policy a seat can only drive its own
+    //    machine's heroes anyway).
+    control->myguy->belt = message.belt;
+    last_belt_change_verdict_ = BeltChangeVerdict::Accepted;
+    TRACE("belt", "accepted: seat %u entity %u",
+          static_cast<unsigned>(message.local_slot),
+          static_cast<unsigned>(message.entity_id));
 }
 
 void GameServer::handle_pause_response()
