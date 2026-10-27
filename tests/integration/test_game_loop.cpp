@@ -8109,7 +8109,8 @@ TEST(GameLoop, zz_capture_imaginations_moments)
     // 2 The Castle of Gold: the crew in the court (three of the field crew
     // brought in beside the keeper), the keeper's first bar in the
     // southwest strongroom, the next (southeast room) filmed from the Ghost
-    // Tent, the waves at the gate, then the camera rides the Fae Queen in.
+    // Tent, the waves at the gate, the camera riding the Fae Queen in, and
+    // last the lead walking from the south bridge onto the throne dais.
     if (want("imag_moments_2"))
     {
         epic_rec::Director d;
@@ -8161,8 +8162,11 @@ TEST(GameLoop, zz_capture_imaginations_moments)
             // The Fae Knights' wave (awake at 1500 on the shores) is set
             // down on the gate apron, flanking the causeway, where the
             // camera holds on the gate; the front pair stands two rows
-            // below the wall so no knight overlaps the wall face.
-            if (f == 1503)
+            // below the wall so no knight overlaps the wall face. They
+            // land at 1572, once a crewman's potion pickup line (about
+            // 1495..1570) has left the HUD, so the gate beat plays under
+            // no stray pickup text.
+            if (f == 1572)
             {
                 const int spots[6][2] = {{27, 46}, {35, 46}, {28, 48},
                                          {34, 48}, {26, 49}, {36, 49}};
@@ -8176,6 +8180,41 @@ TEST(GameLoop, zz_capture_imaginations_moments)
                         place_at(a, spots[placed][0], spots[placed][1], 0);
                         ++placed;
                     }
+            }
+            // "Walk to the throne!": once the Queen's pop lines are gone,
+            // the lead and two of the crew are set down on the south
+            // bridge and walk north up the causeway, through the gate and
+            // the court, onto the purple dais (the exit pad is at 31,28;
+            // the two flank it at 30 and 32). The camera rides the lead.
+            if (f >= 2580)
+            {
+                walker* k = lead_of(w);
+                if (k == nullptr)
+                    return false;
+                walker* pair[2] = {nullptr, nullptr};
+                int found = 0;
+                for (auto& up : w.oblist)
+                    if (walker* a = up.get(); a != nullptr && found < 2 &&
+                        !a->dead() && a->query_order() == Order::Living &&
+                        a->team_num() == 0 && a->user() == -1 &&
+                        a->myguy != nullptr)
+                        pair[found++] = a;
+                if (f == 2580)
+                {
+                    place_at(k, 31, 58, 0);
+                    k->set_act_type(ACT_GUARD);
+                    for (int i = 0; i < found; ++i)
+                    {
+                        place_at(pair[i], 30 + 2 * i, 59, 0);
+                        pair[i]->set_act_type(ACT_GUARD);
+                    }
+                }
+                if (k->ypos() > 28 * GRID_SIZE)
+                    k->walkstep(0, -1);
+                for (int i = 0; i < found; ++i)
+                    if (pair[i]->ypos() > 29 * GRID_SIZE)
+                        pair[i]->walkstep(0, -1);
+                return follow(k, cx, cy, floor);
             }
             // The Queen's wave wakes on the south shore (spawn_delay 2200)
             // under "The Fae Queen is coming." (tick 2150): the keyframe
@@ -8199,13 +8238,13 @@ TEST(GameLoop, zz_capture_imaginations_moments)
             return f % 3 == 0 &&
                 (in(f, 0, 120) || in(f, 140, 230) || in(f, 290, 420) ||
                  in(f, 900, 1400) || in(f, 1500, 1900) ||
-                 in(f, 2190, 2700));
+                 in(f, 2190, 2900));
         };
         epic_rec::record("imag_moments_2", 2, WeatherKind::None, crew,
             {{0, 504, 600, 0, true}, {140, 376, 592, 0, true},
              {290, 832, 528, 0, true}, {900, 504, 680, 0, true},
              {1500, 504, 704, 0, true},
-             {2190, 504, 984, 0, true}, {2700, 504, 680, 0, true}},
+             {2190, 504, 984, 0, true}, {2900, 504, 448, 0, true}},
             "imaginations", d);
     }
     // 3 The Asteroid Castle: the Purple Man at the east gate, space past
@@ -8280,12 +8319,15 @@ TEST(GameLoop, zz_capture_imaginations_moments)
                     last->stats()->set_hitpoints(1.0f);
                 }
             }
-            // The key-bearer at the big door: the lead, with key 3, walks
-            // south into each of the three doors in turn (court side), and
-            // stops short of the exit pad behind them.
+            // The key-bearer at the big door, once the win lines are gone
+            // (they run to about 1660) and the arc has been filmed
+            // sparkling with all three doors shut: the lead, with key 3,
+            // walks south into each of the three doors in turn (court
+            // side), then on through the open middle door and the striped
+            // vestibule onto the exit pad (15,45).
             const int door_x[3] = {14, 16, 15};
             for (int i = 0; i < 3; ++i)
-                if (f == 1640 + 40 * i)
+                if (f == 1700 + 40 * i)
                     if (walker* k = lead_of(w); k != nullptr)
                     {
                         k->set_keys(k->keys() | (1u << 3));
@@ -8293,6 +8335,10 @@ TEST(GameLoop, zz_capture_imaginations_moments)
                         place_at(k, door_x[i], 41, 0);
                         k->stats()->set_command(COMMAND_WALK, 6, 0, 1);
                     }
+            if (f >= 1820)
+                if (walker* k = lead_of(w);
+                    k != nullptr && k->ypos() < 45 * GRID_SIZE)
+                    k->walkstep(0, 1);
             if (in(f, 150, 330))
                 return follow(named(w, nullptr, FAMILY_GOLEM), cx, cy, floor);
             if (in(f, 330, 1390))
@@ -8302,12 +8348,14 @@ TEST(GameLoop, zz_capture_imaginations_moments)
         d.keep = [](int f) { return f % 3 == 0; };
         // From 1550 the camera frames the big door with the whole rainbow
         // arc below it (rows 49..55), so the win show plays in view; from
-        // 1680 it rises a little to take in the key-bearer at the doors.
+        // 1700 it rises half a tile to take in the key-bearer coming down
+        // to the doors (row 42) with the arc's outer ring (row 53) still
+        // whole at the bottom edge.
         epic_rec::record("imag_moments_3", 3, WeatherKind::Snow, crew,
             {{0, 416, 440, 0, true}, {60, 860, 150, 0, true},
              {120, 784, 168, 1, true}, {330, 360, 480, 0, true},
              {1390, 904, 736, 0, true}, {1550, 240, 780, 0, true},
-             {1680, 248, 752, 0, true}, {1780, 248, 752, 0, true}},
+             {1700, 248, 772, 0, true}, {1900, 248, 772, 0, true}},
             "imaginations", d);
     }
 }
