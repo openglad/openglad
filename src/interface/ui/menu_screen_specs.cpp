@@ -3277,6 +3277,23 @@ RowState seat_settings_zoom_row_state(const MenuLabelContext& /*context*/)
                                      : RowState::Disabled;
 }
 
+// #358 click cells: each cell's state for the seat on screen (the shared
+// rule, binding_panel_cell_state, in pause_menu.cpp).
+template <int Cell>
+RowState seat_binding_cell_state(const MenuLabelContext& /*context*/)
+{
+    return binding_panel_cell_state(
+        g_seat_settings_state != nullptr ? g_seat_settings_state->local_slot
+                                         : -1,
+        Cell);
+}
+
+// The KEYMAP door (#388) holds its ordinal until its row is filled in.
+RowState seat_settings_reserved_row_state(const MenuLabelContext& /*context*/)
+{
+    return RowState::Hidden;
+}
+
 // §7.1 unified player screen (the kPlayerScreen* grid in picker_sdl_defs.h):
 // ZOOM rides the y=54 band beside INPUT; the RADAR/HP/FOES/SCORE stack sits
 // right of the binding panel at x=214 on a 22px pitch, sharing the panel's
@@ -3292,7 +3309,7 @@ constexpr MenuButtonSpec kSeatSettingsRows[] = {
      .x = kPlayerScreenColAX, .y = kPlayerScreenBottomBandY,
      .w = 138, .h = 18,
      .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsTeamIndex,
-     .nav = {.up = kSeatSettingsInputRow,
+     .nav = {.up = kSeatSettingsCellFirstRow + 7,
              .down = kSeatSettingsBackIndex,
              .right = kSeatSettingsRemoveIndex}},
     {.id = "seat_direction", .label = "4-DIRECTION",
@@ -3329,15 +3346,16 @@ constexpr MenuButtonSpec kSeatSettingsRows[] = {
      .w = kPlayerScreenColAW, .h = kPlayerScreenBandH,
      .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsInputIndex,
      .nav = {.up = kSeatSettingsModeIndex,
-             .down = kSeatSettingsTeamIndex,
+             .down = kSeatSettingsCellFirstRow,
              .right = kSeatSettingsZoomRow}},
     {.id = "seat_zoom", .label = "ZOOM: GAME",
      .x = kPlayerScreenColBX, .y = kPlayerScreenBand2Y,
      .w = kPlayerScreenColBW, .h = kPlayerScreenBandH,
      .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsZoomIndex,
      .nav = {.up = kSeatSettingsRemapIndex,
-             .down = kSeatSettingsHudRadarRow,
-             .left = kSeatSettingsInputRow},
+             .down = kSeatSettingsCellFirstRow + 8,
+             .left = kSeatSettingsInputRow,
+             .right = kSeatSettingsHudRadarRow},
      .state_override = &seat_settings_zoom_row_state},
     {.id = "seat_hud_radar", .label = "RADAR: ON",
      .x = kPlayerScreenColCX, .y = kPlayerScreenHudTopY,
@@ -3345,7 +3363,8 @@ constexpr MenuButtonSpec kSeatSettingsRows[] = {
      .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsHudRadarIndex,
      .nav = {.up = kSeatSettingsResetIndex,
              .down = kSeatSettingsHudLifeRow,
-             .left = kSeatSettingsZoomRow}},
+             .left = kSeatSettingsCellFirstRow + 8 +
+                     binding_cell_line_beside_hud(0)}},
     {.id = "seat_hud_life", .label = "HP: ON",
      .x = kPlayerScreenColCX,
      .y = kPlayerScreenHudTopY + kPlayerScreenHudPitch,
@@ -3353,7 +3372,8 @@ constexpr MenuButtonSpec kSeatSettingsRows[] = {
      .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsHudLifeIndex,
      .nav = {.up = kSeatSettingsHudRadarRow,
              .down = kSeatSettingsHudFoesRow,
-             .left = kSeatSettingsInputRow}},
+             .left = kSeatSettingsCellFirstRow + 8 +
+                     binding_cell_line_beside_hud(1)}},
     {.id = "seat_hud_foes", .label = "FOES: ON",
      .x = kPlayerScreenColCX,
      .y = kPlayerScreenHudTopY + 2 * kPlayerScreenHudPitch,
@@ -3361,7 +3381,8 @@ constexpr MenuButtonSpec kSeatSettingsRows[] = {
      .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsHudFoesIndex,
      .nav = {.up = kSeatSettingsHudLifeRow,
              .down = kSeatSettingsHudScoreRow,
-             .left = kSeatSettingsInputRow}},
+             .left = kSeatSettingsCellFirstRow + 8 +
+                     binding_cell_line_beside_hud(2)}},
     {.id = "seat_hud_score", .label = "SCORE: ON",
      .x = kPlayerScreenColCX,
      .y = kPlayerScreenHudTopY + 3 * kPlayerScreenHudPitch,
@@ -3369,7 +3390,22 @@ constexpr MenuButtonSpec kSeatSettingsRows[] = {
      .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsHudScoreIndex,
      .nav = {.up = kSeatSettingsHudFoesRow,
              .down = kSeatSettingsRemoveIndex,
-             .left = kSeatSettingsInputRow}},
+             .left = kSeatSettingsCellFirstRow + 8 +
+                     binding_cell_line_beside_hud(3)}},
+    // #358: the binding panel's click cells, 12..27 (the pause player
+    // screen's 11..26, same shape).
+    OG_BINDING_PANEL_CELLS("seat", kSeatSettingsCellFirstRow,
+                           seat_binding_cell_state, kSeatSettingsInputRow,
+                           kSeatSettingsZoomRow, kSeatSettingsHudRadarRow,
+                           kSeatSettingsTeamIndex, kSeatSettingsRemoveIndex),
+    // Reserved: the KEYMAP door on the bottom band (design §3.3).
+    {.id = "seat_keymap", .label = "KEYMAP",
+     .x = 84, .y = kPlayerScreenBottomBandY, .w = 66,
+     .h = kPlayerScreenBandH,
+     .action = ButtonAction::MenuSpecRow, .arg = kSeatSettingsKeymapRow,
+     .nav = {.up = kSeatSettingsBackIndex, .down = kSeatSettingsBackIndex},
+     .state_override = &seat_settings_reserved_row_state,
+     .hidden = true},
 };
 
 static_assert(static_cast<int>(std::size(kSeatSettingsRows))
@@ -3434,6 +3470,18 @@ void seat_settings_rewire(button* buttons, int count,
             ? "SPECTATE"
             : "REMOVE PLAYER");
 
+    // #358: the click cells (and INPUT/ZOOM/HUD/TEAM links into them)
+    // around the cells this seat cannot use.
+    rewire_binding_panel_cells(
+        buttons, count,
+        {.first_cell = kSeatSettingsCellFirstRow,
+         .input = kSeatSettingsInputRow,
+         .zoom = kSeatSettingsZoomRow,
+         .hud_first = kSeatSettingsHudRadarRow,
+         .bottom_left = kSeatSettingsTeamIndex,
+         .bottom_right = kSeatSettingsRemoveIndex,
+         .back = kSeatSettingsBackIndex});
+
     ensure_highlighted_button_visible(buttons, count, highlighted_button);
 }
 
@@ -3456,76 +3504,9 @@ void seat_settings_draw_content(void* screen_state)
                     static_cast<int>(player.player_index) + 1)
             .c_str());
 
-    // §7.1 unified geometry: the binding panel spans columns A+B
-    // (x=12..208, y=78..161, sharing the HUD stack's vertical span);
-    // movement column x=20, actions x=104, 8px line pitch, both columns
-    // budget-clamped.
-    game->draw_button(kPlayerScreenColAX, kPlayerScreenPanelTopY,
-                      kPlayerScreenPanelRightX, kPlayerScreenPanelBottomY,
-                      2, 1);
-    mytext.write_xy(20, kPlayerScreenPanelHeaderY, DARK_BLUE, "%s",
-                    "MOVEMENT");
-    mytext.write_xy(104, kPlayerScreenPanelHeaderY, DARK_BLUE, "%s",
-                    "ACTIONS");
-
-    struct BindingLine {
-        const char* label;
-        int key;
-        bool diagonal;
-    };
-    // Compact diagonal labels: the movement column has 14 chars before the
-    // ACTIONS column at x=104 ((104-20)/6).
-    static constexpr std::array<BindingLine, 8> movement{{
-        {"UP", KEY_UP, false},
-        {"UP-R", KEY_UP_RIGHT, true},
-        {"RIGHT", KEY_RIGHT, false},
-        {"DN-R", KEY_DOWN_RIGHT, true},
-        {"DOWN", KEY_DOWN, false},
-        {"DN-L", KEY_DOWN_LEFT, true},
-        {"LEFT", KEY_LEFT, false},
-        {"UP-L", KEY_UP_LEFT, true},
-    }};
-    // The ACTIONS rows are the shared list both binding panels draw (this
-    // seat panel and the pause player screen): seven classic rows with the
-    // setting off, the eight belt rows with it on.
-    const std::span<const og::ui::BindingPanelRow> actions =
-        og::ui::binding_panel_action_rows(og::input::ability_select_on());
-    const bool eight_dir =
-        get_player_control_mode(state->local_slot) ==
-        static_cast<int>(ControlDirectionMode::EightDirection);
-    // A joystick-driven seat reads its own device bindings; showing the
-    // (still-stored, still-reserved) keyboard names there would be a lie.
-    const int slot = state->local_slot;
-    const bool joystick = slot >= 0 && slot < MAX_PLAYERS &&
-        playerHasJoystick(slot);
-    const auto binding_value = [slot, joystick](int key) {
-        return joystick
-            ? joy_binding_display_name(player_joy[slot].key_type[key],
-                                       player_joy[slot].key_index[key])
-            : player_control_key_display_name(slot, key);
-    };
-
-    for (std::size_t index = 0; index < movement.size(); ++index) {
-        const BindingLine& binding = movement[index];
-        const bool active = !binding.diagonal || eight_dir;
-        const std::string value = active
-            ? binding_value(binding.key)
-            : std::string("--");
-        const std::string line = format_binding_panel_line(
-            binding.label, value, kBindingPanelMovementChars);
-        mytext.write_xy(
-            20, kPlayerScreenPanelLineY + static_cast<int>(index) * 8,
-            active ? DARK_BLUE : GREY, "%s", line.c_str());
-    }
-    for (std::size_t index = 0; index < actions.size(); ++index) {
-        const og::ui::BindingPanelRow& binding = actions[index];
-        const std::string line = format_binding_panel_line(
-            binding.label, binding_value(binding.key),
-            kBindingPanelActionsChars);
-        mytext.write_xy(
-            104, kPlayerScreenPanelLineY + static_cast<int>(index) * 8,
-            DARK_BLUE, "%s", line.c_str());
-    }
+    // §7.1 unified geometry: the one binding panel both player screens
+    // draw (x=12..208, y=78..161, sharing the HUD stack's vertical span).
+    draw_binding_panel(state->local_slot, og::input::ability_select_on());
 }
 
 bool seat_settings_frame_tick(void* screen_state, int /*frame*/)
@@ -3605,11 +3586,23 @@ Sint32 seat_settings_on_spec_row(int row, void* screen_state)
         (void)edit_player_keymap(state->local_slot);
         // Design §3.2: a remap writes through to the mapping library under
         // the seat's re-derived name, so cycling away and back — or
-        // restarting — keeps the customization. A factory-identical result
-        // returns false and drops any stale entry; that is success.
-        (void)og::input::save_player_mapping_to_library(
-            cfg, state->local_slot);
-        persist_player_controls();
+        // restarting — keeps the customization.
+        save_player_keys_after_remap(state->local_slot);
+        return MENU_OK;
+    }
+    if (row >= kSeatSettingsCellFirstRow &&
+        row < kSeatSettingsCellFirstRow + kBindingPanelCellCount) {
+        // #358: one key, from its line in the panel.
+        const int cell = row - kSeatSettingsCellFirstRow;
+        const int key =
+            binding_panel_cell_key(cell, og::input::ability_select_on());
+        if (key < 0 || binding_panel_cell_state(state->local_slot, cell) !=
+                           RowState::Visible)
+            return MENU_OK;
+        TRACE("basecamp", "seat_rebind slot=%d key=%d",
+              state->local_slot + 1, key);
+        (void)rebind_player_key(state->local_slot, key);
+        save_player_keys_after_remap(state->local_slot);
         return MENU_OK;
     }
     if (row == kSeatSettingsInputIndex) {

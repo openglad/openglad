@@ -471,6 +471,40 @@ std::vector<std::string> available_mapping_names(cfg_store& config, int for_play
     return options;
 }
 
+// --- One key at a time (input_mappings.h) ---------------------------------
+
+std::vector<int> unbind_slots_holding(KeyMap& keys, int slot, int keycode)
+{
+    std::vector<int> unbound;
+    if (keycode == KEYCODE_UNKNOWN)
+        return unbound;
+    for (int k = 0; k < NUM_KEYS; ++k)
+    {
+        if (k == slot || k == KEY_SPECIAL_SWITCH || k == KEY_PREFS)
+            continue;
+        int& held = keys[key_slot(k)];
+        if (held == keycode)
+        {
+            held = KEYCODE_UNKNOWN;
+            unbound.push_back(k);
+        }
+    }
+    return unbound;
+}
+
+void bind_player_key(int player_index, int slot, int keycode)
+{
+    if (player_index < 0 || player_index >= 4 || slot < 0 || slot >= NUM_KEYS)
+        return;
+    const int mode = get_player_control_mode(player_index);
+    KeyMap keys{};
+    for (int k = 0; k < NUM_KEYS; ++k)
+        keys[key_slot(k)] = get_player_key_binding_for_mode(player_index, mode, k);
+    for (const int loser : unbind_slots_holding(keys, slot, keycode))
+        set_player_key_binding(player_index, loser, KEYCODE_UNKNOWN);
+    set_player_key_binding(player_index, slot, keycode);
+}
+
 // --- One-time migration of saved keys (input_mappings.h) -----------------
 
 namespace

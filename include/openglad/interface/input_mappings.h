@@ -141,6 +141,21 @@ std::string current_mapping_name(int player_index, bool has_joystick = false,
 std::vector<std::string> available_mapping_names(cfg_store& config, int for_player,
                                                  int active_player_count);
 
+// --- One key at a time (#358) ----------------------------------------------
+// The rule when a player binds a key (REMAP, or one click on a key in the
+// binding panel): the key goes on the slot, and any OTHER slot of the same
+// map that held it comes out unbound ("--"): the player's latest choice
+// wins, the loser shows "--", as in the migration's step 3 below. Another
+// seat holding the same key is left alone (a pad seat's stale keys must not
+// block a keyboard seat; the KEYMAP picture shows the clash). Reserved
+// slots are never touched. KEYCODE_UNKNOWN never unbinds anything.
+// Pure: returns the slots it unbound.
+std::vector<int> unbind_slots_holding(KeyMap& keys, int slot, int keycode);
+// The seat-level writer: binds `keycode` to `slot` in the seat's CURRENT
+// direction mode (set_player_key_binding) and unbinds the other slots of
+// that mode that held it, through unbind_slots_holding.
+void bind_player_key(int player_index, int slot, int keycode);
+
 // --- One-time migration of saved keys (New Ability Select) -----------------
 // The factory tables changed (input_state.cpp: kDefault*DirKeys, with the
 // pre-change kLegacy*DirKeys kept beside them), and every returning player

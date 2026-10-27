@@ -156,6 +156,15 @@ void draw_menu_highlight(const MenuScreenSpec& spec,
         }
         return;
     }
+    const std::vector<const MenuButtonSpec*> rows =
+        materialized_spec_rows(spec);
+    if (highlighted_button >= 0 &&
+        static_cast<std::size_t>(highlighted_button) < rows.size() &&
+        rows[static_cast<std::size_t>(highlighted_button)]->interior_highlight)
+    {
+        draw_highlight_interior(buttons[highlighted_button]);
+        return;
+    }
     draw_highlight(buttons[highlighted_button]);
 }
 

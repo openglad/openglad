@@ -595,8 +595,34 @@ const void* wait_for_key_event();
 // teaching the input layer about that owner. The callback runs once before
 // each event-queue pass and returns false to cancel the wait.
 using KeyWaitPollCallback = bool (*)();
+// Waits for one key (or pad input) and binds it to the slot. Anything already
+// queued when the wait starts is dropped first, so the key press that opened
+// the prompt can never bind itself. Escape keeps the current key. A key goes
+// through og::input::bind_player_key (input_mappings.h): any other slot of
+// the seat in the same direction mode that held it comes out unbound.
 bool assignKeyFromWaitEventPolling(
     int player_num, int key_enum, KeyWaitPollCallback poll_callback);
+
+namespace og::input_native { struct EventData; }
+namespace og::input {
+// The key wait's one rule for which events end the wait: Quit, a key press
+// that is not the keyboard's auto-repeat (a held key must not bind itself
+// again on the next prompt), a pad button, a pad hat, or a pad axis past the
+// dead zone. The real wait loop and the TESTING queue both ask it.
+bool accepts_key_wait_event(const og::input_native::EventData& event);
+} // namespace og::input
+#ifdef TESTING
+namespace og::input {
+// Test-only key wait queue. Under TESTING the key wait never blocks: it reads
+// what is already in the real event queue, then this queue, each through
+// accepts_key_wait_event, and answers a fake Escape (keep the key) when
+// nothing is accepted. Thread-safe: an injector thread may push while the
+// menu thread waits. Key presses only (a non-key event here is dropped).
+void testing_push_key_wait_event(const og::input_native::EventData& event);
+void testing_clear_key_wait_events();
+int testing_pending_key_wait_events();
+} // namespace og::input
+#endif
 void quit_if_quit_event(const void* native_event);
 template <typename EventT>
 inline void quit_if_quit_event(const EventT& event)

@@ -95,6 +95,11 @@ struct MenuButtonSpec {
     // live state). test_menu_layout pins these defaults per screen.
     bool hidden = false;
     MenuBuildGate build = MenuBuildGate::Always;
+    // Keyboard focus ring drawn INSIDE the row (draw_highlight_interior)
+    // instead of pulsing 3 px outward: for rows packed at a pitch the
+    // outward ring would paint over their neighbours (the binding panel's
+    // 8 px click cells, #358).
+    bool interior_highlight = false;
 };
 
 // Navigation precedence: a rewire hook wins; otherwise the static links

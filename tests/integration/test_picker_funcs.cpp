@@ -871,9 +871,15 @@ TEST(PickerFuncs, player_control_summary_rejects_bad_slots_and_clips_long_key_na
         ~KeyRestore() { target = saved; }
     } restore{key, saved_key};
 
+    // #383: Print Screen has a short name of its own now ...
     key = SDLK_PRINTSCREEN;
-    EXPECT_EQ("PrintScre", player_control_key_display_name(0, KEY_FIRE))
-        << "the 11-character SDL key name must use the nine-character face";
+    EXPECT_EQ("PrtSc", player_control_key_display_name(0, KEY_FIRE))
+        << "Print Screen reads as its short name";
+    // ... and a name still longer than ten after the table keeps the
+    // nine-character face.
+    key = SDLK_AC_BOOKMARKS;
+    EXPECT_EQ("AC Bookma", player_control_key_display_name(0, KEY_FIRE))
+        << "the 12-character SDL key name must use the nine-character face";
 }
 
 
