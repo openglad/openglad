@@ -162,9 +162,11 @@ Four alternates do not sit on SHIFTER + their primary's key. The
 skeleton's LEGION, the elemental's SUPERNOVA and the orc captain's WARBAND
 belong to a primary that itself landed on SHIFTER+1 (REASSEMBLE, REKINDLE,
 WAR BANNER), so they take the next free SHIFTER key, SHIFTER+2. The
-fourth is the cleric's dropped second TURN UNDEAD. The class help text
-(`cfg/help_classes.txt`) words its SHIFTER rule so it stays true for all
-four.
+fourth is the cleric's dropped second TURN UNDEAD. The class help's
+ability lines are generated from this same catalog (`og::ui` in
+`src/interface/ui/picker_common.cpp`, composed into HELP > Classes by
+`src/interface/ui/help.cpp`); `cfg/help_classes.txt` keeps only each class's
+prose, so the help names every second form where the catalog puts it.
 
 With New Specials off the New Specials entries leave the catalog and the
 rule runs again: Skeleton 1 TUNNEL; Elemental 1 STARBURST; Faerie and Orc
@@ -284,7 +286,7 @@ only by the migration (C.5) and its tests.
 | SPEC 1 / 2 / 3 | 1 2 3 | [ ] \ | 8 9 0 | 4 5 6 |
 | Shifter | Left Shift | / | M | B |
 | Yell | E | Enter | O | Y |
-| Look up (hold) | Q | Right Ctrl | U | R |
+| Look up (hold) | Q | Right Ctrl (web: Delete) | U | R |
 | Switch character | `` ` `` | ' | - | N |
 | Cheat | F5 | F6 | F7 | F8 |
 
@@ -300,7 +302,7 @@ with. Rows that differ from 4-direction:
 | Switch character | `` ` `` | ' | - | = |
 | Yell | S (web: Tab) | Enter | K | 7 |
 | Shifter | Left Shift | / | ; | Left Alt |
-| Look up (hold) | Tab (web: unbound) | Right Ctrl | P | unbound |
+| Look up (hold) | Tab (web: unbound) | Right Ctrl (web: Delete) | P | unbound |
 
 No key is bound by two players in either mode, native or web. The sweeps
 in `tests/integration/test_input_keybinds.cpp` and
@@ -312,17 +314,43 @@ the browser owns Ctrl+W, so web P1's FIRE stays off Ctrl (Z, or S in
 8-direction), and in 8-direction YELL moves to Tab and LOOK UP starts
 unbound. `browser_safe_default_key` substitutes these at the read sites.
 
-**Modifier chords across seats.** With two players on one keyboard, P2's
-look-up (Right Ctrl) held while P1 presses 1/2/3 is Ctrl+1/2/3, a browser
-tab shortcut; P4's 8-direction SHIFTER on Left Alt makes its 4/5/6 Alt+digit.
-The page prevents the default on every key it hands to the game, and
-`tests/e2e/wasm-game.spec.js` ("Modifier chords across seats") tests it: in
-a four-player mission it holds Right Ctrl while pressing 1/2/3 and Left Alt
-while pressing 4/5/6, and every one of those keydowns reaches the game with
-its default prevented. Whether a browser still runs its own shortcut after
-that is up to the browser. The same kind of chord existed before (P2's Right
-Ctrl + P1's old Tab was Ctrl+Tab). Moving web P2's look-up is question
-K.9.
+**Web player 2** (#391): on web P2's LOOK UP is Delete in both modes, not
+Right Ctrl (`kWebP2LookupKey`, substituted by the same
+`browser_safe_default_key`). With it no web default binds Ctrl at all, so no
+two players on one keyboard can form a Ctrl chord (Ctrl+1/2/3 tab switching,
+Ctrl+W) out of the factory keys. Mac laptops have no forward-Delete key: P2
+presses fn + delete there (the key labelled "delete" is Backspace, the web
+PAUSE key). `web/help.html` and the KEYMAP legend say so.
+
+**Modifier chords across seats.** `tests/unit/test_web_control_defaults.cpp`
+walks every seat's modifier keys against every other bound key, including
+the PAUSE key (Esc native, Backspace web), in every mode combination, web and
+native, and fails on any chord a page cannot intercept (Ctrl+W/T/N/Q/Tab,
+Ctrl+PgUp/PgDn, Ctrl+F4, Ctrl+Shift+W/T/N/Q/P/Tab, Alt+F4,
+Ctrl/Alt+Backspace). The Alt chords that remain with P4's 8-direction
+SHIFTER on Left Alt (Alt+Tab with web P1's 8-direction YELL, Alt+Space,
+Alt+\`, Alt+F5-F8, Shift+Alt, Alt+Backspace) are listed there by name as the
+known set, so a new one fails; Left Alt stays a default (PR #256). The page
+prevents the default on every key it hands to the game, and
+`tests/e2e/wasm-game.spec.js` ("Modifier chords across seats") checks that
+P2's Delete reaches the game and looks up, that Alt with P4's keys keeps its
+default prevented, and that a player who rebinds to Ctrl still gets 1/2/3
+with the default prevented. Playwright's synthetic keys never trigger
+browser shortcuts, so the unit walk is the real guard.
+
+**Native keyboard grab.** With two or more of this machine's seats on the
+keyboard, a running mission grabs the keyboard
+(`og::input_native::set_mission_keyboard_grab`, rule
+`want_keyboard_grab(in_mission, keyboard_seats)` in
+`include/openglad/interface/native_input.h`), so OS shortcuts such as
+Alt+Tab or the Super key do not steal a player's keys, and Alt+Tab does not
+minimise a fullscreen window while grabbed. One keyboard seat never grabs.
+The grab is released before the PAUSED menu opens, at mission end and on
+entry to any menu screen, so Esc is always the way out. On GNOME Wayland the
+first grab shows a one-time "wants to inhibit shortcuts" dialog. On stock
+macOS the grab does nothing, and Ctrl+arrows (P1 FIRE on Left Ctrl, P2 on
+the arrows) can still open Mission Control (a follow-up issue). The web
+build never grabs.
 
 ### C.3 Gamepads, touch, terminals
 
@@ -360,7 +388,8 @@ The game writes the whole controls block back to cfg on every start, so
 every returning player has the old factory keys saved. They move once.
 
 - **The marker**: `controls/default_keys_version` (integer;
-  `kDefaultKeysVersion = 1` in `include/openglad/interface/input_mappings.h`).
+  `kDefaultKeysVersion = 2` in `include/openglad/interface/input_mappings.h`;
+  1 = New Ability Select, 2 = web P2 LOOK UP on Delete).
   It is not in the shipped cfg and has no default, so a cfg without it is
   migrated.
 - **The rule**, in one pure function, `og::input::migrate_seat_keys`
@@ -395,6 +424,14 @@ every returning player has the old factory keys saved. They move once.
   can write a stale entry. The old web-only migration and its
   `controls/web_default_keys_version` counter are retired; old cfgs keep
   that key, unread.
+- **Version 2** (#391): `migrate_seat_keys` takes the version the keys were
+  stamped with. Version 0 runs the rule above. Version 1 reads the New
+  Ability Select tables as the old factory ones; they equal today's except
+  web P2 LOOK UP, which was Right Ctrl (`kV1WebP2LookupKey`). Step 3 is
+  checked only for slots whose key actually moves, so a native 1 -> 2 run
+  changes nothing but the stamp, and on web P2's LOOK UP moves to Delete, or
+  is left unbound when Delete is some seat's own key. The mapping library
+  migrates each entry from its own `mapping{K}_default_keys_version`.
 
 ### C.6 How a press reaches the server: the client resolves, the wire carries the entry
 
@@ -617,8 +654,10 @@ curses clients have no pictures.
   off, the old 11 and 15, with SPECIAL SWITCH binding slot 17.
 - **HELP > Controls** (`src/interface/ui/help.cpp`): a key table for each
   setting.
-- **HELP > Classes** (`cfg/help_classes.txt`): a paragraph explaining
-  SHIFTER under the belt.
+- **HELP > Classes**: a paragraph explaining SHIFTER under the belt. Each
+  class's ability lines are generated from the live catalog (with the
+  setting on the second forms read `Also:`, off `SHIFTER:`);
+  `cfg/help_classes.txt` holds only the prose around them.
 - **DETAILS** (`og::ui::detail_page`): with the setting on the alternate's
   line reads `Also: <name>` instead of `Shift: <name>`.
 
@@ -685,26 +724,55 @@ SDL picker.
 
 ### F.4 The keyboard picture
 
-- **Files**: `pix/changelog/keyboard_belt.png` (desktop) and
-  `pix/changelog/keyboard_belt_web.png` (web, P1 FIRE on Z): full-colour
-  pictures of the keyboard, drawn at the window's real resolution, not on
-  the 320x200 game canvas, so the key labels stay sharp.
-- **Made by**: `scripts/keyboard_map/make_keyboard_map.py --write` from
-  `scripts/keyboard_map/keyboard_map.txt`, which also writes
-  `keyboard_map.stamp` (SHA-256 of the text and both pictures).
-- **Kept true**: `tests/unit/test_keyboard_map_asset.cpp` builds the text
-  from the live key tables and compares it with `keyboard_map.txt`, and
-  `scripts/check_keyboard_map.sh` checks the text and both pictures against
-  the stamp. A key change without a new picture fails the build.
-- **Drawn by**: `og::io::read_rgba_png` (`src/resources/io/og_file.cpp`)
-  and `video::draw_rgba_scaled`, smooth-scaled into the band under the
-  text. The band (the `kChangelogBand*` constants in `changelog_screen.h`)
-  has the picture's own shape and sits inside the panel's frame lines,
-  with three rows of bare panel above it and below it. If that drawing
-  cannot happen (a tiny window) the band says
+- **Drawn by**: one renderer, `og::ui::keyboard_picture`
+  (`include/openglad/interface/ui/keyboard_picture.h`,
+  `src/interface/ui/keyboard_picture.cpp`). It owns the layout (a US
+  keyboard: the six main rows, the navigation block and the arrows), the cap
+  geometry, the player colours, the hit test (`cap_at`) and the drawing. It
+  is SDL-free and fills a 1560x550 RGBA image from a set of seats and their
+  keys; a cap two players use is drawn split in both colours and reported,
+  and a key with no cap (the numpad, media keys) is reported as off the
+  picture. Action names come from `og::ui::binding_panel_action_rows`, like
+  the binding panels. The CHANGELOG! page draws it from the factory keys
+  (`keyboard_picture::factory_input(web)`); the KEYMAP screen draws it from
+  the live keys (F.5).
+- **Labels**: DejaVu Sans, the look of the approved picture, without the
+  game loading a TrueType font. `scripts/keyboard_picture/generate_glyphs.py`
+  (run inside `nix develop`, which carries Pillow and the fonts) bakes every
+  glyph the picture prints, at the few sizes it prints them, into the
+  committed atlas `pix/keyboard/glyphs.png` and its table
+  `src/interface/ui/keyboard_glyphs.inc`; the renderer composes the text
+  from them at run time.
+- **Kept true**: the `check_keyboard_glyphs` build check
+  (`scripts/check_keyboard_glyphs.sh`) fails unless the atlas and the
+  generator hash to what the table records; inside `nix develop` it also
+  redraws the atlas and table and compares them (CI lanes have no Pillow, so
+  they run the hash part only). `tests/unit/test_keyboard_map_asset.cpp`
+  checks the renderer: every factory key of every seat, web and native, is
+  on a cap and no cap is shared, each bound cap's colour, the action labels
+  for both settings, and the `cap_at` round trip.
+- **On screen**: smooth-scaled with `video::draw_rgba_scaled` into the band
+  under the text (the `kChangelogBand*` constants in `changelog_screen.h`),
+  which has the picture's own shape and sits inside the panel's frame lines.
+  If that drawing cannot happen (a tiny window) the band says
   `Keyboard picture: see HELP > Controls`. At 640x400 the picture is soft
-  but readable (question K.4); the six lines carry the rule in words
-  either way.
+  but readable (question K.4); the six lines carry the rule in words either
+  way.
+- `og::io::read_rgba_png` loads the atlas; the old PNG pictures and the
+  `scripts/keyboard_map/` pipeline are gone.
+
+### F.5 KEYMAP
+
+`og::ui::run_keymap_screen(seat, host)` (`include/openglad/interface/ui/keymap_screen.h`,
+`src/interface/ui/keymap_screen.cpp`) shows the keyboard picture of all of
+this machine's keyboard seats, from their live keys, so players can see who
+has which key and spot a clash. The title names each seat's key set; under
+the picture a legend lists a seat that plays on a pad, a key two players
+share and a key with no cap, and on web, when a seat uses Delete, says
+`DEL ON A MAC: FN + DELETE`. BACK (Esc) closes it. One draw body sits behind
+two specs: the Base Camp seat screen's (`MenuScreenId::Keymap`, follows the
+host's GO) and the pause player screen's (an overlay that keeps the paused
+session pumped). Its tests are in `tests/integration/test_keymap_screen.cpp`.
 
 ---
 
@@ -927,3 +995,4 @@ picture.
    small even for the half-size pictures, which fall back to the text rows.
 8. **The TRAIN door shows dimmed with the setting off**, not hidden.
 9. **Web P2's look-up stays on Right Ctrl** (C.2, chords across seats).
+   Superseded by #391: web P2's look-up is Delete (C.2, "Web player 2").

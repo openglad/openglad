@@ -1086,7 +1086,12 @@ The main GitHub Actions workflow (`.github/workflows/test.yml`) runs:
 4. **campaign-drift** — Reruns every `tools/<x>_mapgen` generator against the
    checkout and fails when a committed campaign tree drifts from its generator
    (generated content under `campaigns/<id>/` is committed like a lockfile)
-5. **asan** — ASan + UBSan build and test
+5. **asan** — ASan + UBSan build and test, as three shards, "ASan+UBSan (1/3)"
+   to "(3/3)". Shards 1 and 2 run the tests labelled `asan-shard-1` and
+   `asan-shard-2` (the lists at the end of `cmake/OpenGladTests.cmake`; a test
+   in both fails configure); shard 3 runs every other test. About 20 minutes
+   each with a warm cache, 40-45 cold. Tests registered after that block can
+   only land in shard 3, so it stays the last thing in the file
 6. **tsan** — ThreadSanitizer build and test
 7. **x11-display** — `og_test_display_x11` on SDL's real x11 driver under Xvfb,
    through `scripts/ci/run_x11_display_lane.sh`: one X screen with XRandR modes
