@@ -4802,19 +4802,25 @@ TEST(PausePlayerDraw, menushots_key_cell_and_wrapped_prompts)
     screen* const scr = og::runtime::current_session->myscreen_;
 
     {
-        std::vector<button> buttons;
-        og::ui::materialize_menu_buttons(spec, buttons);
+        button* const buttons = spec.buttons_accessor();
+        const int count = spec.count_accessor();
+        og::runtime::current_session->localbuttons_ =
+            init_buttons(buttons, count);
+        std::vector<button> gated(buttons, buttons + count);
         int highlighted = kFireCell;
-        apply_gates_and_rewire(spec, buttons, highlighted);
+        apply_gates_and_rewire(spec, gated, highlighted);
+        for (int i = 0; i < count; ++i)
+            buttons[i].hidden = gated[static_cast<std::size_t>(i)].hidden;
         spec.draw_background(&state);
-        draw_buttons(buttons.data(), static_cast<int>(buttons.size()));
+        draw_buttons(buttons, count);
         spec.draw_content(&state);
         const bool nav_was = key_cell_pks().menu_nav_enabled;
         key_cell_pks().menu_nav_enabled = true;
-        og::ui::picker_testing_draw_menu_highlight(spec, buttons.data(),
-                                                   kFireCell);
+        og::ui::picker_testing_draw_menu_highlight(spec, buttons, kFireCell);
         key_cell_pks().menu_nav_enabled = nav_was;
         EXPECT_TRUE(write_menushot(scr, "pause_key_cell_fire"));
+        clear_allbuttons();
+        og::runtime::current_session->localbuttons_ = nullptr;
     }
 
     g_remap_shot_polls = 0;
