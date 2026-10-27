@@ -706,7 +706,8 @@ constexpr MenuButtonSpec kPausePlayerRows[] = {
                            pause_binding_cell_state, kPausePlayerInputIndex,
                            kPausePlayerZoomIndex, kPausePlayerHudRadarIndex,
                            kPausePlayerRemoveIndex, kPausePlayerRemoveIndex),
-    // Reserved: the bottom-left band's two doors (§2.3 / §3.3 of the design).
+    // Reserved: the bottom-left band's two doors, ABILITIES (#376) and
+    // KEYMAP (#388).
     {.id = "pause_abilities", .label = "ABILITIES",
      .x = kPlayerScreenColAX, .y = kPlayerScreenBottomBandY,
      .w = kPlayerScreenBottomHalfW,
@@ -1219,6 +1220,13 @@ std::string format_binding_panel_line(const char* label,
 // --- The one binding panel (#358 folded the two screens' copies) ---------
 
 namespace {
+// The MOVEMENT column's eight lines, in panel order (UP, UP-R, RIGHT, ...).
+// Compact diagonal labels: the column has 14 chars before ACTIONS at x=104.
+struct BindingPanelMovementRow {
+    const char* label;
+    int key;
+    bool diagonal;
+};
 constexpr std::array<BindingPanelMovementRow, 8> kBindingPanelMovementRows{{
     {"UP", KEY_UP, false},
     {"UP-R", KEY_UP_RIGHT, true},
@@ -1237,11 +1245,6 @@ bool seat_in_range(int seat)
     return seat >= 0 && seat < MAX_PLAYERS;
 }
 } // namespace
-
-std::span<const BindingPanelMovementRow> binding_panel_movement_rows()
-{
-    return kBindingPanelMovementRows;
-}
 
 void draw_binding_panel(int seat, bool ability_select)
 {

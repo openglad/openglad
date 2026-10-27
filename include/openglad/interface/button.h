@@ -275,8 +275,8 @@ void save_player_keys_after_remap(int player_index);
 // SPEC 1/2/3 keys, then YELL, SWITCH, SHIFTER and LOOK UP). Each group
 // starts a line and wraps at 48 glyphs (#383), so long key names make more
 // lines, never a longer one; short names give exactly the two or three
-// lines above. An out-of-range player gives no lines. (The joined one-line form went with the global
-// CONTROLS screen — the only thing that drew it.)
+// lines above. An out-of-range player gives no lines. (The joined one-line
+// form went with the global CONTROLS screen — the only thing that drew it.)
 std::vector<std::string> build_player_control_summary_lines(int player_index, bool remap_mode);
 std::string player_control_key_display_name(int player_index, int key_enum);
 Sint32 overscan_adjust(Sint32 arg);

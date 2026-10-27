@@ -7,7 +7,6 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
-#include <span>
 
 // Menu loop return value flags (bitmask).
 inline constexpr int32_t MENU_EXIT   = 1;
@@ -537,14 +536,6 @@ std::string format_binding_panel_line(const char* label,
                                       int budget_chars);
 
 // --- The one binding panel (both player screens; pause_menu.cpp) ----------
-// The MOVEMENT column's eight lines, in panel order (UP, UP-R, RIGHT, ...).
-// Compact diagonal labels: the column has 14 chars before ACTIONS at x=104.
-struct BindingPanelMovementRow {
-    const char* label;
-    int key;
-    bool diagonal;
-};
-std::span<const BindingPanelMovementRow> binding_panel_movement_rows();
 // The panel itself for a seat: the bevelled box over x 12..208 / y 78..161,
 // the two headers and every line (keyboard names, or the device's for a
 // joystick seat; inactive diagonals grey "--").

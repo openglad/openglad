@@ -3398,7 +3398,7 @@ constexpr MenuButtonSpec kSeatSettingsRows[] = {
                            seat_binding_cell_state, kSeatSettingsInputRow,
                            kSeatSettingsZoomRow, kSeatSettingsHudRadarRow,
                            kSeatSettingsTeamIndex, kSeatSettingsRemoveIndex),
-    // Reserved: the KEYMAP door on the bottom band (design §3.3).
+    // Reserved: the KEYMAP door on the bottom band (#388).
     {.id = "seat_keymap", .label = "KEYMAP",
      .x = kPlayerScreenBottomMidX, .y = kPlayerScreenBottomBandY,
      .w = kPlayerScreenBottomHalfW,

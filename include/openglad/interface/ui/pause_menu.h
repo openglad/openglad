@@ -91,7 +91,7 @@ inline constexpr int kPausePlayerHudRadarIndex = 7;
 inline constexpr int kPausePlayerHudLifeIndex = 8;
 inline constexpr int kPausePlayerHudFoesIndex = 9;
 inline constexpr int kPausePlayerHudScoreIndex = 10;
-// The final ordinal table (docs: controls follow-ups §2.3), appended so 0..10
+// The final ordinal table, appended so 0..10
 // stay put. #358: sixteen click cells over the binding panel's lines, 11..18
 // the MOVEMENT column (UP, UP-R, RIGHT, DN-R, DOWN, DN-L, LEFT, UP-L) and
 // 19..26 the ACTIONS rows of the setting (an eighth row only with New
