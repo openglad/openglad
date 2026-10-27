@@ -30,6 +30,7 @@
 #include <openglad/interface/render/view.h>
 //buffers:  using input.h instead #include "int32.h"
 #include <openglad/interface/input.h>
+#include <openglad/interface/input_mappings.h>
 #include <openglad/interface/native_input.h>
 #include <openglad/interface/web_back_key.h>
 #include <openglad/core/util.h>
@@ -65,6 +66,8 @@
 #include <exception>
 #include <filesystem>
 #include <format>
+#include <string_view>
+#include <utility>
 #include <memory>
 #include <optional>
 #include <string>
@@ -2519,6 +2522,23 @@ static std::string get_key_display_name_short(int keycode)
     if (sname == "Backspace") return "Bk";
     if (sname == "CapsLock") return "Cap";
     if (sname == "Unknown Key") return "--";
+    // #383: shorter names for the long keys a player actually binds, always
+    // (not only when a line runs long, so one key reads the same everywhere:
+    // the REMAP summary, its prompt and both binding panels).
+    static constexpr std::pair<std::string_view, std::string_view> kShortNames[] = {
+        {"PrintScreen", "PrtSc"}, {"ScrollLock", "ScrLk"},
+        {"NumLockClear", "NumLk"}, {"Numlock", "NumLk"},
+        {"Application", "Menu"},
+        {"Insert", "Ins"}, {"Delete", "Del"}, {"PageUp", "PgUp"},
+        {"PageDown", "PgDn"},
+    };
+    for (const auto& [full, short_name] : kShortNames)
+        if (sname == full)
+            return std::string(short_name);
+    // "Keypad 8" -> "KP 8", "Keypad Enter" -> "KP Enter".
+    constexpr std::string_view kKeypad = "Keypad ";
+    if (sname.starts_with(kKeypad))
+        sname = "KP " + sname.substr(kKeypad.size());
     if (sname.size() > 10)
         return sname.substr(0, 9);
     return sname;
@@ -2538,6 +2558,70 @@ std::string player_control_key_display_name(int player_index, int key_enum)
         : get_key_display_name_short(keycode);
 }
 
+// The REMAP wizard's control summary rows (draw_remap_prompt).
+constexpr int kRemapSummaryTwoLineY = 150;
+constexpr int kRemapSummaryThreeLineY = 145;
+// The prompt's inset box, (x, y, w, h): x 10..309, y 30..179. Centred
+// across the 320-wide canvas so the centred text sits in it, and wide
+// enough for a 48-glyph summary line (288 px, x 16..303).
+constexpr int kRemapInsetX = 10;
+constexpr int kRemapInsetY = 30;
+constexpr int kRemapInsetW = 300;
+constexpr int kRemapInsetH = 150;
+// #383: the summary wraps to this many glyphs a line: the box's inside
+// less a 6 px margin each side, at 6 px a glyph ((300 - 12) / 6 = 48).
+constexpr int kRemapSummaryChars = (kRemapInsetW - 2 * 6) / 6;
+static_assert(kRemapSummaryChars == 48);
+// Four lines or more centre in the free band under the "Press ESC" line
+// (written at y 105 in the 12 px font, so its ink ends at 116) and above the
+// box's bottom bevel (y 179): rows 117..178. Four lines keep the 10 px
+// pitch; five or six close to 9 px (six lines: 5 * 9 + 12 = 57 px in 62).
+constexpr int kRemapSummaryBandTopY = 117;
+constexpr int kRemapSummaryBandBottomY = kRemapInsetY + kRemapInsetH - 2;  // 178
+constexpr int kRemapSummaryFontH = 12;
+
+namespace {
+// One piece of the summary: "F:LC", or one direction name. `glued` items
+// follow the previous one with no space (the direction names), so a long
+// direction list breaks after a '/'.
+struct SummaryItem {
+    std::string text;
+    bool glued = false;
+};
+
+// Greedy wrap of each group onto lines of at most kRemapSummaryChars glyphs;
+// every group starts a line of its own. The widest item is "SS:" plus a
+// 10-glyph name (13), so every binding fits.
+std::vector<std::string> wrap_summary_groups(
+    const std::vector<std::vector<SummaryItem>>& groups)
+{
+    std::vector<std::string> lines;
+    for (const std::vector<SummaryItem>& group : groups)
+    {
+        std::string line;
+        bool open = false;
+        for (const SummaryItem& item : group)
+        {
+            const std::string sep = item.glued ? "" : " ";
+            if (open &&
+                static_cast<int>(line.size() + sep.size() + item.text.size()) <=
+                    kRemapSummaryChars)
+            {
+                line += sep + item.text;
+                continue;
+            }
+            if (open)
+                lines.push_back(line);
+            line = item.text;
+            open = true;
+        }
+        if (open)
+            lines.push_back(line);
+    }
+    return lines;
+}
+} // namespace
+
 std::vector<std::string> build_player_control_summary_lines(int player_index, bool remap_mode)
 {
     if (player_index < 0 || player_index >= 4)
@@ -2550,63 +2634,55 @@ std::vector<std::string> build_player_control_summary_lines(int player_index, bo
     const auto name = [player_index](int key) {
         return player_control_key_display_name(player_index, key);
     };
-    const std::string up_s = name(KEY_UP);
-    const std::string left_s = name(KEY_LEFT);
-    const std::string down_s = name(KEY_DOWN);
-    const std::string right_s = name(KEY_RIGHT);
 
-    std::string direction_line;
-    if (!eight_dir)
+    // Directions: remap form "Dir:U/L/D/R" (8-direction clockwise from Up),
+    // compact form "D:ULDR". Each name is its own glued item, carrying its
+    // '/' in the remap form, so a line can only break after a slash.
+    const std::vector<int> directions = eight_dir
+        ? std::vector<int>{KEY_UP, KEY_UP_RIGHT, KEY_RIGHT, KEY_DOWN_RIGHT,
+                           KEY_DOWN, KEY_DOWN_LEFT, KEY_LEFT, KEY_UP_LEFT}
+        : std::vector<int>{KEY_UP, KEY_LEFT, KEY_DOWN, KEY_RIGHT};
+    std::vector<SummaryItem> direction_items;
+    for (std::size_t i = 0; i < directions.size(); ++i)
     {
-        direction_line = remap_mode
-            ? std::format("Dir:{}/{}/{}/{}", up_s, left_s, down_s, right_s)
-            : std::format("D:{}{}{}{}", up_s, left_s, down_s, right_s);
+        std::string text = name(directions[i]);
+        if (i == 0)
+            text = (remap_mode ? "Dir:" : "D:") + text;
+        if (remap_mode && i + 1 < directions.size())
+            text += "/";
+        direction_items.push_back({std::move(text), i > 0});
     }
-    else
-    {
-        const std::string up_right_s = name(KEY_UP_RIGHT);
-        const std::string down_right_s = name(KEY_DOWN_RIGHT);
-        const std::string down_left_s = name(KEY_DOWN_LEFT);
-        const std::string up_left_s = name(KEY_UP_LEFT);
-        direction_line = remap_mode
-            ? std::format("Dir:{}/{}/{}/{}/{}/{}/{}/{}",
-                  up_s, up_right_s, right_s, down_right_s, down_s, down_left_s, left_s, up_left_s)
-            : std::format("D:{}{}{}{}{}{}{}{}",
-                  up_s, up_right_s, right_s, down_right_s, down_s, down_left_s, left_s, up_left_s);
-    }
+
+    const auto items = [&name](std::initializer_list<std::pair<const char*, int>> list) {
+        std::vector<SummaryItem> out;
+        for (const auto& [tag, key] : list)
+            out.push_back({std::format("{}:{}", tag, name(key))});
+        return out;
+    };
 
     if (og::input::ability_select_on())
     {
         // New Ability Select: one key per ability, so the actions take two
-        // lines (each at most 48 glyphs under the worst-case key names).
-        return {
-            direction_line,
-            std::format("F:{} S1:{} S2:{} S3:{}", name(KEY_FIRE),
-                        name(KEY_SPECIAL), name(KEY_SPEC2), name(KEY_SPEC3)),
-            std::format("Y:{} SW:{} Sh:{} L:{}", name(KEY_YELL),
-                        name(KEY_SWITCH), name(KEY_SHIFTER), name(KEY_LOOKUP)),
-        };
+        // groups: FIRE and the SPEC keys, then YELL, SWITCH, SHIFTER and
+        // LOOK UP.
+        return wrap_summary_groups({
+            direction_items,
+            items({{"F", KEY_FIRE}, {"S1", KEY_SPECIAL}, {"S2", KEY_SPEC2},
+                   {"S3", KEY_SPEC3}}),
+            items({{"Y", KEY_YELL}, {"SW", KEY_SWITCH}, {"Sh", KEY_SHIFTER},
+                   {"L", KEY_LOOKUP}}),
+        });
     }
-    // The setting off: the classic line. SS (change special) is the SPEC 2
+    // The setting off: the classic group. SS (change special) is the SPEC 2
     // key, which cycles with the setting off; slot 11 stays unbound.
-    return {
-        direction_line,
-        std::format("Y:{} F:{} S:{} SS:{} SW:{} Sh:{} L:{}",
-            name(KEY_YELL), name(KEY_FIRE), name(KEY_SPECIAL), name(KEY_SPEC2),
-            name(KEY_SWITCH), name(KEY_SHIFTER), name(KEY_LOOKUP)),
-    };
+    return wrap_summary_groups({
+        direction_items,
+        items({{"Y", KEY_YELL}, {"F", KEY_FIRE}, {"S", KEY_SPECIAL},
+               {"SS", KEY_SPEC2}, {"SW", KEY_SWITCH}, {"Sh", KEY_SHIFTER},
+               {"L", KEY_LOOKUP}}),
+    });
 }
 
-// The REMAP wizard's control summary rows (draw_remap_prompt).
-constexpr int kRemapSummaryTwoLineY = 150;
-constexpr int kRemapSummaryThreeLineY = 145;
-// The prompt's inset box, (x, y, w, h): x 10..309, y 30..179. Centred
-// across the 320-wide canvas so the centred text sits in it, and wide
-// enough for a 48-glyph summary line (288 px, x 16..303).
-constexpr int kRemapInsetX = 10;
-constexpr int kRemapInsetY = 30;
-constexpr int kRemapInsetW = 300;
-constexpr int kRemapInsetH = 150;
 
 static void draw_remap_prompt(const std::string& prompt, int player_index)
 {
@@ -2625,13 +2701,22 @@ static void draw_remap_prompt(const std::string& prompt, int player_index)
         build_player_control_summary_lines(player_index, true);
     // Two lines at y 150/160 (the setting off, as ever); the three-line New
     // Ability Select summary starts half a pitch higher (145/155/165) so the
-    // block stays centred on the same band.
-    const int first_y = summary_lines.size() > 2 ? kRemapSummaryThreeLineY
-                                                 : kRemapSummaryTwoLineY;
-    for (std::size_t line = 0; line < summary_lines.size(); ++line)
+    // block stays centred on the same band. Long key names wrap (#383) to
+    // four lines or more, which centre in the band under the ESC line.
+    const int count = static_cast<int>(summary_lines.size());
+    int first_y = count > 2 ? kRemapSummaryThreeLineY : kRemapSummaryTwoLineY;
+    int pitch = 10;
+    if (count >= 4)
     {
-        mytext.write_xy_center(160, first_y + static_cast<int>(line) * 10,
-                               DARK_BLUE, "%s", summary_lines[line].c_str());
+        pitch = count == 4 ? 10 : 9;
+        const int block_h = (count - 1) * pitch + kRemapSummaryFontH;
+        const int band_h = kRemapSummaryBandBottomY - kRemapSummaryBandTopY + 1;
+        first_y = kRemapSummaryBandTopY + std::max(0, (band_h - block_h) / 2);
+    }
+    for (int line = 0; line < count; ++line)
+    {
+        mytext.write_xy_center(160, first_y + line * pitch, DARK_BLUE, "%s",
+                               summary_lines[static_cast<std::size_t>(line)].c_str());
     }
     og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200);
 }
@@ -2755,6 +2840,58 @@ static void remap_player_keys(int player_index,
             break;
         }
     }
+}
+
+// #358: one key from the binding panel. The prompt's label comes from the
+// same remap_prompts table the REMAP wizard walks (the seat's direction mode
+// and the setting pick the table), so a key the wizard would not ask for
+// here (a diagonal in 4-direction, SPEC 3 with the setting off) is refused
+// before any prompt shows.
+static bool rebind_one_player_key(int player_index, int key_enum,
+                                  KeyWaitPollCallback poll_callback)
+{
+    if (player_index < 0 || player_index >= 4)
+        return false;
+    const std::span<const RemapPrompt> prompts = remap_prompts(
+        get_player_control_mode(player_index) ==
+            static_cast<int>(ControlDirectionMode::EightDirection),
+        og::input::ability_select_on());
+    const auto prompt = std::find_if(
+        prompts.begin(), prompts.end(),
+        [key_enum](const RemapPrompt& p) { return p.key == key_enum; });
+    if (prompt == prompts.end())
+    {
+        TRACE("remap", "rebind refused key=%d", key_enum);
+        return false;
+    }
+    TRACE("remap", "rebind key=%d label=%s", prompt->key, prompt->label);
+    draw_remap_prompt(std::format("P{} {}", player_index + 1, prompt->label),
+                      player_index);
+    return assignKeyFromWaitEventPolling(player_index, prompt->key,
+                                         poll_callback);
+}
+
+bool rebind_player_key(int player_index, int key_enum)
+{
+    return rebind_one_player_key(player_index, key_enum,
+                                 &poll_lobby_during_control_remap);
+}
+
+bool rebind_player_key_with_poll(int player_index, int key_enum,
+                                 KeyWaitPollCallback poll_callback)
+{
+    return rebind_one_player_key(player_index, key_enum, poll_callback);
+}
+
+void save_player_keys_after_remap(int player_index)
+{
+    // Design §3.2 (pause-menu): the keys write through to the mapping
+    // library under the seat's re-derived name, so cycling away and back, or
+    // restarting, keeps them. A factory-identical seat returns false and
+    // drops any stale entry; that is success. Then the controls block.
+    (void)og::input::save_player_mapping_to_library(cfg, player_index);
+    save_player_control_settings_to_cfg(cfg);
+    cfg.save_settings();
 }
 
 Sint32 toggle_player_control_mode(Sint32 arg)

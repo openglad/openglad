@@ -25,6 +25,7 @@
 #include <openglad/interface/session_state.h>
 #include <openglad/interface/device_seats.h>
 #include <openglad/interface/input_hardware_state.h>
+#include <openglad/interface/input_mappings.h>
 #include <openglad/interface/screen.h> // active canvas dims for pointer mapping
 #include <openglad/gameplay/input_state.h> // MAX_PLAYERS: the local-seat hard cap
 #include <openglad/core/util.h>
@@ -33,6 +34,8 @@
 #include <cstdio>
 #include <ctime>
 #include <cstring> //buffers: for strlen
+#include <deque>
+#include <mutex>
 #include <string>
 
 #ifdef __EMSCRIPTEN__
@@ -763,8 +766,40 @@ bool isJoystickEvent(const void* native_event)
             || event.type == og::input_native::EventType::JoyButtonDown);
 }
 
+namespace og::input
+{
+
+bool accepts_key_wait_event(const og::input_native::EventData& event)
+{
+    using og::input_native::EventType;
+    switch (event.type)
+    {
+    case EventType::Quit:
+        return true;
+    case EventType::KeyDown:
+        // A held key's auto-repeat is not a fresh press: after the 400 ms
+        // debounce it would otherwise bind the same key to the next prompt.
+        return !event.key_repeat;
+    case EventType::JoyAxisMotion:
+        return event.joy_axis_value > JOY_DEAD_ZONE ||
+               event.joy_axis_value < -JOY_DEAD_ZONE;
+    case EventType::JoyButtonDown:
+    case EventType::JoyHatMotion:
+        return true;
+    default:
+        return false;
+    }
+}
+
+} // namespace og::input
+
 namespace
 {
+
+#ifdef TESTING
+std::mutex g_key_wait_queue_mutex;
+std::deque<og::input_native::EventData> g_key_wait_queue;
+#endif
 
 const void* wait_for_key_event_polling(KeyWaitPollCallback poll_callback)
 {
@@ -774,7 +809,43 @@ const void* wait_for_key_event_polling(KeyWaitPollCallback poll_callback)
         TRACE("input", "wait_for_key_event: cancelled by poll callback");
         return nullptr;
     }
-    // In test mode, return immediately with a fake ESC keypress
+    // What is already in the real event queue first (the caller dropped
+    // everything queued before the prompt, so only a press that arrived
+    // since is here), through the same rule as the real loop below.
+    while (const void* event = og::input_native::poll_event())
+    {
+        og::input_native::EventData event_data;
+        (void)as_event_data(event, event_data);
+        if (og::input::accepts_key_wait_event(event_data))
+        {
+            TRACE("input", "wait_for_key_event: queued event type=%d key=%d",
+                  static_cast<int>(event_data.type), event_data.key_sym);
+            return event;
+        }
+    }
+    // Then the test's own queue: a key "pressed" during the wait.
+    for (;;)
+    {
+        og::input_native::EventData queued;
+        {
+            const std::lock_guard<std::mutex> lock(g_key_wait_queue_mutex);
+            if (g_key_wait_queue.empty())
+                break;
+            queued = g_key_wait_queue.front();
+            g_key_wait_queue.pop_front();
+        }
+        if (queued.type != og::input_native::EventType::KeyDown ||
+            !og::input::accepts_key_wait_event(queued))
+        {
+            TRACE("input", "wait_for_key_event: dropped test event key=%d "
+                  "repeat=%d", queued.key_sym, queued.key_repeat ? 1 : 0);
+            continue;
+        }
+        TRACE("input", "wait_for_key_event: test key %d", queued.key_sym);
+        return og::input_native::make_test_keydown_event(
+            queued.key_sym, queued.key_scancode);
+    }
+    // Nothing pressed: a fake ESC keypress (keep the current key).
     TRACE("input", "wait_for_key_event: returning fake ESC (test mode)");
     return og::input_native::make_test_keydown_event(KEYCODE_ESCAPE, KEYSTATE_ESCAPE);
 #else
@@ -788,12 +859,7 @@ const void* wait_for_key_event_polling(KeyWaitPollCallback poll_callback)
             // decode_event rejects.
             og::input_native::EventData event_data;
             (void)as_event_data(event, event_data);
-            if(event_data.type == og::input_native::EventType::Quit
-                    || event_data.type == og::input_native::EventType::KeyDown
-                    || (event_data.type == og::input_native::EventType::JoyAxisMotion
-                        && (event_data.joy_axis_value > JOY_DEAD_ZONE || event_data.joy_axis_value < -JOY_DEAD_ZONE))
-                    || event_data.type == og::input_native::EventType::JoyButtonDown
-                    || event_data.type == og::input_native::EventType::JoyHatMotion)
+            if (og::input::accepts_key_wait_event(event_data))
                 return event;
         }
         YIELD_SLEEP(10);
@@ -803,6 +869,28 @@ const void* wait_for_key_event_polling(KeyWaitPollCallback poll_callback)
 }
 
 } // namespace
+
+#ifdef TESTING
+namespace og::input {
+void testing_push_key_wait_event(const og::input_native::EventData& event)
+{
+    const std::lock_guard<std::mutex> lock(g_key_wait_queue_mutex);
+    g_key_wait_queue.push_back(event);
+}
+
+void testing_clear_key_wait_events()
+{
+    const std::lock_guard<std::mutex> lock(g_key_wait_queue_mutex);
+    g_key_wait_queue.clear();
+}
+
+int testing_pending_key_wait_events()
+{
+    const std::lock_guard<std::mutex> lock(g_key_wait_queue_mutex);
+    return static_cast<int>(g_key_wait_queue.size());
+}
+} // namespace og::input
+#endif
 
 const void* wait_for_key_event()
 {
@@ -826,6 +914,9 @@ void clear_events()
 bool assignKeyFromWaitEventPolling(
     int player_num, int key_enum, KeyWaitPollCallback poll_callback)
 {
+    // Whatever is queued before the prompt is not an answer to it: the key
+    // press (or its repeats) that opened the prompt must never bind itself.
+    clear_events();
     const void* event = wait_for_key_event_polling(poll_callback);
     if (event == nullptr)
     {
@@ -842,7 +933,7 @@ bool assignKeyFromWaitEventPolling(
     {
         if(event_data.key_sym != KEYCODE_ESCAPE)
         {
-            set_player_key_binding(player_num, key_enum, event_data.key_sym);
+            og::input::bind_player_key(player_num, key_enum, event_data.key_sym);
         }
     }
     else if(isJoystickEvent(event))

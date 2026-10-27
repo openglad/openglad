@@ -1173,3 +1173,69 @@ TEST(InputHardwareState, touch_overlay_starts_down)
 {
     EXPECT_FALSE(InputHardwareState{}.touch_overlay_active);
 }
+
+// --- One key at a time (#358) ---------------------------------------------
+
+// The pure rule: the other slots that held the key come out unbound; the
+// slot itself, the reserved slots and an unbound key are left alone.
+//
+// RED (planted): unbind_slots_holding returns without touching the map.
+TEST(InputMappings, unbind_slots_holding_unbinds_only_the_other_holders)
+{
+    KeyMap keys{};
+    keys.fill(KEYCODE_UNKNOWN);
+    keys[static_cast<std::size_t>(KEY_FIRE)] = KEYCODE_9;
+    keys[static_cast<std::size_t>(KEY_SPEC2)] = KEYCODE_9;
+    keys[static_cast<std::size_t>(KEY_YELL)] = KEYCODE_8;
+    keys[static_cast<std::size_t>(KEY_SPECIAL_SWITCH)] = KEYCODE_9;
+    keys[static_cast<std::size_t>(KEY_PREFS)] = KEYCODE_9;
+
+    const std::vector<int> unbound =
+        og::input::unbind_slots_holding(keys, KEY_SPECIAL, KEYCODE_9);
+    EXPECT_EQ((std::vector<int>{KEY_FIRE, KEY_SPEC2}), unbound);
+    EXPECT_EQ(KEYCODE_UNKNOWN, keys[static_cast<std::size_t>(KEY_FIRE)]);
+    EXPECT_EQ(KEYCODE_UNKNOWN, keys[static_cast<std::size_t>(KEY_SPEC2)]);
+    EXPECT_EQ(KEYCODE_8, keys[static_cast<std::size_t>(KEY_YELL)]);
+    EXPECT_EQ(KEYCODE_9, keys[static_cast<std::size_t>(KEY_SPECIAL_SWITCH)])
+        << "reserved slots are never touched";
+    EXPECT_EQ(KEYCODE_9, keys[static_cast<std::size_t>(KEY_PREFS)]);
+
+    // The slot's own key is not "another holder".
+    keys[static_cast<std::size_t>(KEY_YELL)] = KEYCODE_8;
+    EXPECT_TRUE(og::input::unbind_slots_holding(keys, KEY_YELL, KEYCODE_8).empty());
+    EXPECT_EQ(KEYCODE_8, keys[static_cast<std::size_t>(KEY_YELL)]);
+    // An unbound key unbinds nothing (every "--" slot holds it).
+    EXPECT_TRUE(
+        og::input::unbind_slots_holding(keys, KEY_FIRE, KEYCODE_UNKNOWN).empty());
+}
+
+// The seat writer: the current mode's map only, the key on the slot, the
+// seat's other holder unbound, another seat's same key untouched.
+TEST(InputMappings, bind_player_key_moves_the_key_inside_one_seat_and_mode)
+{
+    ControlStateGuard guard;
+    set_player_control_mode(0, kFourMode);
+    const int special = get_player_key_binding_for_mode(0, kFourMode, KEY_SPECIAL);
+    const int eight_special =
+        get_player_key_binding_for_mode(0, kEightMode, KEY_SPECIAL);
+    ASSERT_NE(KEYCODE_UNKNOWN, special);
+    set_player_key_binding(1, KEY_YELL, special);
+
+    og::input::bind_player_key(0, KEY_FIRE, special);
+    EXPECT_EQ(special, get_player_key_binding_for_mode(0, kFourMode, KEY_FIRE));
+    EXPECT_EQ(special, og::runtime::current_session->player_keys_[0][KEY_FIRE]);
+    EXPECT_EQ(KEYCODE_UNKNOWN,
+              get_player_key_binding_for_mode(0, kFourMode, KEY_SPECIAL));
+    EXPECT_EQ(KEYCODE_UNKNOWN,
+              og::runtime::current_session->player_keys_[0][KEY_SPECIAL]);
+    EXPECT_EQ(eight_special,
+              get_player_key_binding_for_mode(0, kEightMode, KEY_SPECIAL))
+        << "the other direction mode's map is its own";
+    EXPECT_EQ(special, og::runtime::current_session->player_keys_[1][KEY_YELL])
+        << "another seat keeps its key";
+
+    // Out of range: nothing happens.
+    og::input::bind_player_key(4, KEY_FIRE, KEYCODE_9);
+    og::input::bind_player_key(0, NUM_KEYS, KEYCODE_9);
+    EXPECT_EQ(special, og::runtime::current_session->player_keys_[0][KEY_FIRE]);
+}

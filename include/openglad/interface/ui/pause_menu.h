@@ -91,7 +91,17 @@ inline constexpr int kPausePlayerHudRadarIndex = 7;
 inline constexpr int kPausePlayerHudLifeIndex = 8;
 inline constexpr int kPausePlayerHudFoesIndex = 9;
 inline constexpr int kPausePlayerHudScoreIndex = 10;
-inline constexpr int kPausePlayerButtonCount = 11;
+// The final ordinal table, appended so 0..10
+// stay put. #358: sixteen click cells over the binding panel's lines, 11..18
+// the MOVEMENT column (UP, UP-R, RIGHT, DN-R, DOWN, DN-L, LEFT, UP-L) and
+// 19..26 the ACTIONS rows of the setting (an eighth row only with New
+// Ability Select on). Then two doors on the bottom-left band, reserved here
+// and shown once their rows are filled in: ABILITIES (#376) and KEYMAP
+// (#388, the Base Camp seat screen's twin is kSeatSettingsKeymapRow).
+inline constexpr int kPausePlayerCellFirstIndex = 11;
+inline constexpr int kPausePlayerAbilitiesIndex = 27;
+inline constexpr int kPausePlayerKeymapIndex = 28;
+inline constexpr int kPausePlayerButtonCount = 29;
 
 // One local seat shown as a PAUSED-screen player row: the controller-profile
 // slot this machine samples (seat) and the displayed P# (global player index

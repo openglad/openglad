@@ -1,6 +1,7 @@
 #pragma once
 #include <openglad/interface/ui/campaign_picker_session.h>
 #include <openglad/interface/ui/match_setup_session.h>
+#include <openglad/interface/ui/menu_screen_spec.h>
 #include <openglad/interface/ui/picker_common.h>
 
 #include <array>
@@ -421,7 +422,14 @@ inline constexpr int kSeatSettingsHudRadarRow = 8;
 inline constexpr int kSeatSettingsHudLifeRow = 9;
 inline constexpr int kSeatSettingsHudFoesRow = 10;
 inline constexpr int kSeatSettingsHudScoreRow = 11;
-inline constexpr int kSeatSettingsButtonCount = 12;
+// #358: the sixteen click cells over the binding panel's lines (movement
+// 12..19, actions 20..27; OG_BINDING_PANEL_CELLS below), then the KEYMAP
+// door (#388, reserved here; it shows once its row is filled in). This is
+// the final table: the pause player screen's twin ends at 29 too, with
+// ABILITIES at 27 there (Base Camp's ABILITIES door is TRAIN).
+inline constexpr int kSeatSettingsCellFirstRow = 12;
+inline constexpr int kSeatSettingsKeymapRow = 28;
+inline constexpr int kSeatSettingsButtonCount = 29;
 
 // --- §7.1 unified player-screen grid ---------------------------------------
 // One geometry behind BOTH player screens (Base Camp seat settings and the
@@ -448,10 +456,51 @@ inline constexpr int kPlayerScreenPanelBottomY = 161; // == HUD stack bottom
 inline constexpr int kPlayerScreenHudTopY = 78;
 inline constexpr int kPlayerScreenHudPitch = 22;
 inline constexpr int kPlayerScreenBottomBandY = 169;  // TEAM / REMOVE
+// The bottom band's left half splits into two 66 px doors (the PAUSED
+// menu's half width) with a 6 px gutter: TEAM | KEYMAP on the Base Camp seat
+// screen, ABILITIES | KEYMAP on the pause player screen; REMOVE keeps x 166.
+inline constexpr int kPlayerScreenBottomHalfW = 66;
+inline constexpr int kPlayerScreenBottomMidX =
+    kPlayerScreenColAX + kPlayerScreenBottomHalfW + 6;  // 84, ends 150
 // Binding-panel interior: headers at panel+4, first line at panel+15,
 // 8px line pitch (columns kBindingPanel*Chars below).
 inline constexpr int kPlayerScreenPanelHeaderY = kPlayerScreenPanelTopY + 4;
 inline constexpr int kPlayerScreenPanelLineY = kPlayerScreenPanelTopY + 15;
+
+// #358 click cells over the panel lines: one 8 px row per line, from a row
+// above the line's ink (y = line - 1) so the eight rows tile the panel with
+// no gap. Movement cells cover x 14..101 (the column's text starts at 20),
+// action cells x 102..205 (text at 104); both stay inside the panel bevel
+// (12..208). kBindingPanelCellCount = 8 movement + 8 action.
+inline constexpr int kBindingPanelCellCount = 16;
+inline constexpr int kBindingPanelLinesPerColumn = 8;
+inline constexpr int kBindingPanelLinePitch = 8;
+inline constexpr int kBindingCellTopY = kPlayerScreenPanelLineY - 1;
+inline constexpr int kBindingCellH = kBindingPanelLinePitch;
+inline constexpr int kBindingCellMoveX = 14;
+inline constexpr int kBindingCellMoveW = 88;
+inline constexpr int kBindingCellActionX = kBindingCellMoveX + kBindingCellMoveW;  // 102
+inline constexpr int kBindingCellActionW = 104;                                     // ends 206
+static_assert(kBindingCellActionX + kBindingCellActionW < kPlayerScreenPanelRightX);
+static_assert(kBindingCellTopY + kBindingPanelLinesPerColumn * kBindingCellH <=
+              kPlayerScreenPanelBottomY);
+// The HUD stack row (0..3, RADAR..SCORE) beside action line j: the one whose
+// 22 px band holds the line's middle row (clamped to the stack).
+// The other way: the action line beside HUD row r (0..3), the one holding
+// the row's middle (clamped to the column).
+constexpr int binding_cell_line_beside_hud(int hud_row)
+{
+    const int mid = kPlayerScreenHudTopY + hud_row * kPlayerScreenHudPitch +
+                    kPlayerScreenBandH / 2;
+    const int line = (mid - kBindingCellTopY) / kBindingCellH;
+    return line < 0 ? 0 : (line > 7 ? 7 : line);
+}
+constexpr int binding_cell_hud_offset(int line)
+{
+    const int mid = kBindingCellTopY + line * kBindingCellH + kBindingCellH / 2;
+    const int row = (mid - kPlayerScreenHudTopY) / kPlayerScreenHudPitch;
+    return row < 0 ? 0 : (row > 3 ? 3 : row);
+}
 
 // --- §7.1 shared per-player HUD/zoom row helpers ---------------------------
 // One implementation (pause_menu.cpp) behind both player screens: the seat's
@@ -485,7 +534,92 @@ inline constexpr int kBindingPanelActionsChars = 17;
 std::string format_binding_panel_line(const char* label,
                                       const std::string& value,
                                       int budget_chars);
+
+// --- The one binding panel (both player screens; pause_menu.cpp) ----------
+// The panel itself for a seat: the bevelled box over x 12..208 / y 78..161,
+// the two headers and every line (keyboard names, or the device's for a
+// joystick seat; inactive diagonals grey "--").
+void draw_binding_panel(int seat, bool ability_select);
+// The key slot (KEY_*) behind click cell 0..15 (0..7 movement, 8..15 the
+// ACTIONS rows of the setting); -1 for an action cell past the rows.
+int binding_panel_cell_key(int cell, bool ability_select);
+// Whether a cell can be clicked for this seat: Hidden for an action cell
+// past the setting's rows, and for a diagonal in 4-direction or on a pad
+// seat (pads cannot bind diagonals). seat < 0 (no live seat: the bare spec
+// shape) hides only the action cells past the rows.
+RowState binding_panel_cell_state(int seat, int cell);
+// The cells' keyboard nav, recomputed each frame after the gate pass, plus
+// the four neighbours' links into them: INPUT's down (first movement cell),
+// ZOOM's down (first action cell), the HUD rows' left, and bottom_left's up.
+// Hidden cells are skipped; the ends of a column leave to INPUT/ZOOM above
+// and to bottom_left / bottom_right below, falling back to BACK when the
+// bottom row is hidden. bottom_left < 0 = no bottom-left neighbour.
+struct BindingCellNavAnchors {
+    int first_cell;
+    int input;
+    int zoom;
+    int hud_first;  // RADAR; HP/FOES/SCORE follow
+    int bottom_left;
+    int bottom_right;
+    int back;
+};
+void rewire_binding_panel_cells(button* buttons, int count,
+                                const BindingCellNavAnchors& anchors);
 } // namespace og::ui
+
+// The sixteen no_draw click cells, one shared shape for both player screens
+// (OG_BASE_CAMP_ROW style): `prefix` is the id prefix literal ("pause"/
+// "seat"), `first` the first cell ordinal, `state` a template taking the
+// cell index (each screen reads its own seat), and the anchors the static
+// nav ends (the per-frame rewire above owns the live links).
+#define OG_BINDING_MOVE_CELL(prefix, first, i, state, input, bottom_left)      \
+    {.id = prefix "_key_move_" #i, .label = "",                                 \
+     .x = kBindingCellMoveX, .y = kBindingCellTopY + kBindingCellH * (i),       \
+     .w = kBindingCellMoveW, .h = kBindingCellH,                                \
+     .action = ButtonAction::MenuSpecRow, .arg = (first) + (i),                 \
+     .nav = {.up = (i) > 0 ? (first) + (i) - 1 : (input),                       \
+             .down = (i) < 7 ? (first) + (i) + 1 : (bottom_left),               \
+             .right = (first) + 8 + (i)},                                       \
+     .state_override = &state<(i)>,                                             \
+     .no_draw = true, .cell_highlight = true}
+#define OG_BINDING_ACTION_CELL(prefix, first, j, state, zoom, hud_first,       \
+                               bottom_right)                                    \
+    {.id = prefix "_key_action_" #j, .label = "",                               \
+     .x = kBindingCellActionX, .y = kBindingCellTopY + kBindingCellH * (j),     \
+     .w = kBindingCellActionW, .h = kBindingCellH,                              \
+     .action = ButtonAction::MenuSpecRow, .arg = (first) + 8 + (j),             \
+     .nav = {.up = (j) > 0 ? (first) + 8 + (j) - 1 : (zoom),                    \
+             .down = (j) < 7 ? (first) + 8 + (j) + 1 : (bottom_right),          \
+             .left = (first) + (j),                                             \
+             .right = (hud_first) + binding_cell_hud_offset(j)},                \
+     .state_override = &state<8 + (j)>,                                         \
+     .no_draw = true, .cell_highlight = true}
+#define OG_BINDING_PANEL_CELLS(prefix, first, state, input, zoom, hud_first,   \
+                               bottom_left, bottom_right)                       \
+    OG_BINDING_MOVE_CELL(prefix, first, 0, state, input, bottom_left),          \
+    OG_BINDING_MOVE_CELL(prefix, first, 1, state, input, bottom_left),          \
+    OG_BINDING_MOVE_CELL(prefix, first, 2, state, input, bottom_left),          \
+    OG_BINDING_MOVE_CELL(prefix, first, 3, state, input, bottom_left),          \
+    OG_BINDING_MOVE_CELL(prefix, first, 4, state, input, bottom_left),          \
+    OG_BINDING_MOVE_CELL(prefix, first, 5, state, input, bottom_left),          \
+    OG_BINDING_MOVE_CELL(prefix, first, 6, state, input, bottom_left),          \
+    OG_BINDING_MOVE_CELL(prefix, first, 7, state, input, bottom_left),          \
+    OG_BINDING_ACTION_CELL(prefix, first, 0, state, zoom, hud_first,           \
+                           bottom_right),                                       \
+    OG_BINDING_ACTION_CELL(prefix, first, 1, state, zoom, hud_first,           \
+                           bottom_right),                                       \
+    OG_BINDING_ACTION_CELL(prefix, first, 2, state, zoom, hud_first,           \
+                           bottom_right),                                       \
+    OG_BINDING_ACTION_CELL(prefix, first, 3, state, zoom, hud_first,           \
+                           bottom_right),                                       \
+    OG_BINDING_ACTION_CELL(prefix, first, 4, state, zoom, hud_first,           \
+                           bottom_right),                                       \
+    OG_BINDING_ACTION_CELL(prefix, first, 5, state, zoom, hud_first,           \
+                           bottom_right),                                       \
+    OG_BINDING_ACTION_CELL(prefix, first, 6, state, zoom, hud_first,           \
+                           bottom_right),                                       \
+    OG_BINDING_ACTION_CELL(prefix, first, 7, state, zoom, hud_first,           \
+                           bottom_right)
 
 // --- SCENARIO subscreen layout contract ------------------------------------
 // Positional indices into k_scenariomenu_buttons / picker_scenariomenu_buttons().

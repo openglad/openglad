@@ -95,6 +95,11 @@ struct MenuButtonSpec {
     // live state). test_menu_layout pins these defaults per screen.
     bool hidden = false;
     MenuBuildGate build = MenuBuildGate::Always;
+    // Keyboard focus ring drawn as a steady box on the row's own edge pixels
+    // instead of pulsing 3 px outward: for rows packed at a pitch, where any
+    // pulse would paint over their own text or their neighbours (the binding
+    // panel's 8 px key cells, #358).
+    bool cell_highlight = false;
 };
 
 // Navigation precedence: a rewire hook wins; otherwise the static links
