@@ -978,12 +978,16 @@ TEST_F(ImaginationsCampaignTest, castle_ghost_tent_spawns_are_stillborn)
                 ++n;
         return n;
     };
-    auto spawns_over = [&](int team, int ticks) {
+    // Fire the tent by hand, one shot a tick, down onto the island: the
+    // dispatcher sees the same spawn path as the tent's own cadence,
+    // without running the whole level for thousands of ticks.
+    auto spawns_over = [&](int team, int shots) {
         LoadedImaginationsLevel fx(kCastleLevel);
         EXPECT_TRUE(fx.loaded);
         if (!fx.loaded)
             return -1;
         GameWorld& world = fx.world();
+        world.tick(); // on_load
         walker* tent = find_tent(world);
         EXPECT_NE(nullptr, tent);
         if (tent == nullptr)
@@ -993,8 +997,11 @@ TEST_F(ImaginationsCampaignTest, castle_ghost_tent_spawns_are_stillborn)
         tent->stats()->set_max_hitpoints(1.0e6f); // it outlives the span
         tent->stats()->set_hitpoints(1.0e6f);
         int seen = 0;
-        for (int t = 0; t < ticks; ++t)
+        for (int t = 0; t < shots; ++t)
         {
+            tent->set_lastx(0.0f);
+            tent->set_lasty(1.0f);
+            tent->fire();
             world.tick();
             seen += live_skeletons(world);
         }
@@ -1034,8 +1041,8 @@ TEST_F(ImaginationsCampaignTest, castle_ghost_tent_spawns_are_stillborn)
         EXPECT_EQ(0, live_skeletons(world));
         expect_no_script_errors(world);
     }
-    EXPECT_EQ(0, spawns_over(0, 3000)) << "our tent's own spawns never live";
-    EXPECT_GT(spawns_over(1, 3000), 0)
+    EXPECT_EQ(0, spawns_over(0, 40)) << "our tent's own spawns never live";
+    EXPECT_GT(spawns_over(1, 40), 0)
         << "a tent of theirs spawns in the same span";
 }
 
