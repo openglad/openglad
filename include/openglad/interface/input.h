@@ -617,7 +617,9 @@ namespace og::input {
 // what is already in the real event queue, then this queue, each through
 // accepts_key_wait_event, and answers a fake Escape (keep the key) when
 // nothing is accepted. Thread-safe: an injector thread may push while the
-// menu thread waits. Key presses only (a non-key event here is dropped).
+// menu thread waits. Key presses, and mouse button releases (the button
+// let go during the wait: pushed as a real SDL event and read back through
+// the real loop's pass). Any other event here is dropped.
 void testing_push_key_wait_event(const og::input_native::EventData& event);
 void testing_clear_key_wait_events();
 int testing_pending_key_wait_events();
@@ -647,6 +649,9 @@ inline bool isJoystickEvent(const EventT& event)
     return isJoystickEvent(to_native_event_ptr(event));
 }
 
+// Drops every queued event, except that a mouse button release still
+// reaches the mouse state (a dropped release would leave the button "down"
+// and swallow the next click).
 void clear_events();
 
 const char* query_key_name(int keycode);
