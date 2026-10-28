@@ -898,6 +898,80 @@ int hire_two_players_injector(void* data)
     return escape(0, "");
 }
 
+// What the player sees of the band: the LIVE buttons (the faces drawn and
+// clicked), read on the menu thread, not the descriptor table.
+struct HireLiveBand {
+    bool read = false;       // both live buttons are HIRE's
+    int hire_xloc = -1;
+    int hire_xend = -1;
+    bool cycler_hidden = false;
+    int team_xend = -1;
+};
+
+HireLiveBand main_thread_hire_live_band()
+{
+    HireLiveBand band;
+    (void)run_on_main_thread([&band] {
+        const auto& live = og::runtime::current_session->allbuttons_;
+        const vbutton* const hire = live[kHireMenuHireMeIndex];
+        const vbutton* const team = live[kHireMenuChangeTeamIndex];
+        if (hire == nullptr || team == nullptr || hire->id != "hire_me" ||
+            team->id != "change_hire_team")
+            return;
+        band.read = true;
+        band.hire_xloc = hire->xloc;
+        band.hire_xend = hire->xend;
+        band.cycler_hidden = team->hidden;
+        band.team_xend = team->xend;
+    });
+    return band;
+}
+
+struct HireLiveFlipState {
+    std::atomic<bool> test_finished{false};
+    bool finished = false;
+    HireLiveBand entry;   // one player, before any click on HIRE
+    HireLiveBand joined;  // a second player, no click
+    HireLiveBand left;    // back to one, no click
+};
+
+// A player joins or leaves under the open screen: the lobby's own seat
+// change on the menu thread (HIRE polls the lobby every frame and its
+// apply_state_to_save rewrites save.numplayers from the lobby's players, so
+// a bare save write would be undone by the next poll), then two completed
+// frames.
+void set_players_and_settle(int players)
+{
+    (void)run_on_main_thread(
+        [players] { picker_lobby_set_player_mode(players); });
+    (void)wait_for_menu_frames(2);
+}
+
+// One player opens HIRE: the face is in the cycler's place at once (no
+// NEXT first), and it follows the cycler when a friend joins and leaves
+// with nobody clicking.
+int hire_live_flip_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* const state = static_cast<HireLiveFlipState*>(data);
+    const auto escape = [state](int leg, const char* why) {
+        return escape_to_the_main_thread(state->test_finished, leg, why,
+                                         kHireDetailsEscapeDoors);
+    };
+    HireFlowState entered;
+    if (const int failed = enter_hire(&entered, escape))
+        return failed;
+    state->entry = main_thread_hire_live_band();
+    capture_presented_frame("hire_entry", uxshots_dir());
+    set_players_and_settle(2);
+    state->joined = main_thread_hire_live_band();
+    capture_presented_frame("hire_friend_joined", uxshots_dir());
+    set_players_and_settle(1);
+    state->left = main_thread_hire_live_band();
+    state->finished = true;
+    return escape(0, "");
+}
+
 // --- 3. Direct runs: the screen on one hero, no picker around it ----------
 
 struct DirectState {
@@ -1541,9 +1615,10 @@ TEST(AbilitiesLayout, train_door_row_follows_the_setting)
 // place. HIRE ME is the band's tall face, centred on the others' line; the
 // keyboard walks the band in the order it reads, and the door is lit in
 // both New Ability Select settings (it opens DETAILS, which both have).
-// The layout follows the team cycler's live hidden flag, read every frame
-// by the rewire, because a networked lobby changes the player count under
-// an open HIRE (a friend joins or leaves).
+// This pins the rule's arithmetic on the descriptor table the rewire
+// writes (from the cycler's hidden flag, every frame, because a networked
+// lobby changes the player count under an open HIRE). What the player sees
+// is the live face: AbilitiesFlow.hire_me_face_follows_the_team_cycler.
 // RED: the old order (HIRE ME second), HIRE ME left at the right edge when
 // solo, HIRE ME placed once at entry (a friend joining puts the cycler on
 // top of it), or the door dimmed with the setting off.
@@ -1927,6 +2002,59 @@ TEST(AbilitiesFlow, hire_shows_the_team_cycler_with_two_players)
     ASSERT_TRUE(state.finished);
     EXPECT_TRUE(state.team_cycler_shown);
     verify_captured_frames("hire_two_players", 1);
+}
+
+// The face the player sees and clicks follows the team cycler: at entry
+// with one player (before any click), and when a friend joins and leaves
+// under the open screen. RED: the rewire moves only the descriptor (the
+// face stays at 242 until the first NEXT); or HIRE ME is placed once at
+// entry (the cycler then lands on it when the friend joins).
+TEST(AbilitiesFlow, hire_me_face_follows_the_team_cycler)
+{
+    (void)take_captured_frames();
+    trace_clear();
+    og::data::ScopedActiveCompany pin("save0");
+    ASSERT_TRUE(pin.applied());
+    write_ability_company();
+
+    HireLiveFlipState state;
+    SDL_Thread* thread =
+        SDL_CreateThread(hire_live_flip_injector, "hire_live_flip", &state);
+    ASSERT_NE(nullptr, thread);
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 1;
+    picker_main(0, nullptr);
+    state.test_finished.store(true);
+    int thread_result = 0;
+    SDL_WaitThread(thread, &thread_result);
+    escape_tail_join_hygiene();
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+
+    EXPECT_EQ(0, thread_result) << "the injector gave up at leg "
+                                << thread_result;
+    ASSERT_TRUE(state.finished);
+    const int solo_x = kHireTeamX;  // HIRE ME takes the cycler's place
+    const int shown_x = hire_me_x(true);
+
+    ASSERT_TRUE(state.entry.read);
+    EXPECT_TRUE(state.entry.cycler_hidden) << "entry: one player";
+    EXPECT_EQ(solo_x, state.entry.hire_xloc)
+        << "entry, before any click: the face is in the cycler's place";
+
+    ASSERT_TRUE(state.joined.read);
+    EXPECT_FALSE(state.joined.cycler_hidden) << "a friend joined";
+    EXPECT_EQ(shown_x, state.joined.hire_xloc)
+        << "the face moved right with nobody clicking";
+    EXPECT_LE(state.joined.team_xend, state.joined.hire_xloc)
+        << "the cycler never sits on the face";
+    EXPECT_LE(state.joined.hire_xend, 300) << "the cost box's edge";
+
+    ASSERT_TRUE(state.left.read);
+    EXPECT_TRUE(state.left.cycler_hidden) << "the friend left";
+    EXPECT_EQ(solo_x, state.left.hire_xloc)
+        << "the face came back into the cycler's place";
+    verify_captured_frames("hire_live_flip", 2);
 }
 
 TEST(AbilitiesFlow, mage_page_greys_locked_rows_and_the_keyboard_walks_it)

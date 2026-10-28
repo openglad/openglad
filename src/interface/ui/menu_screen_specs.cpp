@@ -75,6 +75,7 @@ void draw_cycle_effect_button(button& b, const std::string& category,
 void draw_sprite_sheet_button(button& b);
 void draw_build_stamp();
 void sync_button_hidden_state(const button* buttons, int button_index);
+void sync_button_live_rect(const button* buttons, int button_index);
 void ensure_highlighted_button_visible(const button* buttons, int num_buttons,
                                        int& highlighted_button);
 void sync_scenario_menu_host_control_visibility(button* buttons,
@@ -1623,13 +1624,9 @@ void zone_submenu_rewire(button* buttons, int count, int& /*highlighted*/)
             buttons[r].label = face.label;
             vbutton* live = og::runtime::current_session
                                 ->allbuttons_[static_cast<std::size_t>(r)];
+            sync_button_live_rect(buttons, r);
             if (live != nullptr) {
                 live->label = buttons[r].label;
-                live->xloc = buttons[r].x;
-                live->yloc = buttons[r].y;
-                live->width = buttons[r].sizex;
-                live->xend = buttons[r].x + buttons[r].sizex;
-                live->yend = buttons[r].y + buttons[r].sizey;
                 apply_scripted_row_face_ink(live, face.face);
             }
         }
@@ -3861,15 +3858,9 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
                             ->allbuttons_[static_cast<std::size_t>(ordinal)];
         if (live == nullptr)
             return;
-        const button& b = buttons[ordinal];
-        live->xloc = b.x;
-        live->yloc = b.y;
-        live->width = b.sizex;
-        live->height = b.sizey;
-        live->xend = b.x + b.sizex;
-        live->yend = b.y + b.sizey;
-        live->no_draw = b.no_draw;
-        live->label = b.label;
+        sync_button_live_rect(buttons, ordinal);
+        live->no_draw = buttons[ordinal].no_draw;
+        live->label = buttons[ordinal].label;
     };
     // Per-row face stamp (the READY/GO face precedent): the gate pass has
     // already reset every face to BUTTON_FACING this frame, so a rewire

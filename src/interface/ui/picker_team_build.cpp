@@ -287,6 +287,29 @@ void sync_button_hidden_state(const button* buttons, int button_index)
         buttons[button_index].hidden;
 }
 
+// Writes a descriptor's rect through to its live vbutton. init_buttons
+// copies geometry once, at screen entry and on the reset tail; a rewire
+// that moves a button every frame calls this, or the face drawn and
+// clicked stays where entry put it while the descriptor (and the keyboard
+// focus ring drawn from it) moves.
+void sync_button_live_rect(const button* buttons, int button_index)
+{
+    if (buttons == nullptr || button_index < 0 ||
+        og::runtime::current_session == nullptr)
+        return;
+    vbutton* const live = og::runtime::current_session
+                              ->allbuttons_[static_cast<std::size_t>(button_index)];
+    if (live == nullptr)
+        return;
+    const button& b = buttons[button_index];
+    live->xloc = b.x;
+    live->yloc = b.y;
+    live->width = b.sizex;
+    live->height = b.sizey;
+    live->xend = b.x + b.sizex;
+    live->yend = b.y + b.sizey;
+}
+
 void ensure_highlighted_button_visible(const button* buttons,
                                        int num_buttons,
                                        int& highlighted_button)
@@ -1720,10 +1743,11 @@ void picker_hire_menu_engine_prepare_buttons(button* buttons, int num_buttons,
 // The bottom band over the solo-hidden team cycler: the band reads BACK |
 // ABILITIES | team cycler | HIRE ME, and while the cycler is hidden HIRE ME
 // takes its place (so the gaps stay even) and ABILITIES and HIRE ME link
-// to each other across it. Every frame, from the cycler's live hidden flag:
-// a networked lobby rewrites numplayers under an open HIRE (a friend joins
-// or leaves), so an entry-time placement would put the cycler on top of
-// HIRE ME.
+// to each other across it. Every frame, from the cycler's live hidden flag
+// (a networked lobby rewrites numplayers under an open HIRE when a friend
+// joins or leaves), and written through to the live button: init_buttons
+// copies geometry only at entry and on a reset, so the descriptor alone
+// would move the focus ring and leave the face where it was.
 void picker_hire_menu_engine_rewire(button* buttons, int num_buttons,
                                     int& /*highlighted_button*/)
 {
@@ -1731,6 +1755,7 @@ void picker_hire_menu_engine_rewire(button* buttons, int num_buttons,
         return;
     const bool team_shown = !buttons[kHireMenuChangeTeamIndex].hidden;
     buttons[kHireMenuHireMeIndex].x = hire_me_x(team_shown);
+    sync_button_live_rect(buttons, kHireMenuHireMeIndex);
     buttons[kHireMenuAbilitiesIndex].nav.right =
         team_shown ? kHireMenuChangeTeamIndex : kHireMenuHireMeIndex;
     buttons[kHireMenuHireMeIndex].nav.left =
