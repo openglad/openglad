@@ -94,15 +94,26 @@ static_assert(ordinal_belt_slot(belt_ordinal(0)) == 0 &&
 // The read-only notice (a joiner looking at a hero this machine does not
 // own): <= kAbilityStatusChars glyphs.
 constexpr const char* kReadOnlyNotice = "Read only: this hero is not yours.";
+// What HIRE's copy says under a class nobody has hired yet.
+constexpr const char* kRecruitNotice =
+    "Hire, then change these in TRAIN > ABILITIES.";
 
 // What the face shows while a slot is selected: a leading '>' on both
 // label surfaces (the row is cut by one glyph if it would leave its face).
 constexpr char kSelectedMark = '>';
 
+// HIRE's copy: a class, not a hero (nobody is hired yet).
+struct AbilitiesRecruit {
+    int family = 0;
+    int level = 1;
+};
+
 struct AbilitiesScreenState {
     // Base Camp: the save team_list slot. The PAUSED menu's copy: -1, and
-    // `pause` names the seat whose body the screen shows.
+    // `pause` names the seat whose body the screen shows. HIRE's copy: -1,
+    // and `recruit` names the class.
     int team_slot = -1;
+    std::optional<AbilitiesRecruit> recruit = std::nullopt;
     const PauseAbilitiesHost* pause = nullptr;
     std::uint32_t entity_id = 0;  // the body the pause copy opened on
     bool body_has_record = true;  // false: a pause body with no guy
@@ -160,6 +171,18 @@ std::optional<AbilitiesHero> abilities_hero()
 {
     if (g_abilities == nullptr)
         return std::nullopt;
+    if (g_abilities->recruit) {
+        // The class, named for itself, on its class default, under the New
+        // Specials value this game plays.
+        const AbilitiesRecruit& recruit = *g_abilities->recruit;
+        return AbilitiesHero{
+            .name = family_display_name(recruit.family),
+            .family = recruit.family,
+            .level = recruit.level,
+            .new_specials =
+                og::runtime::current_session->myscreen_->save_data.new_specials,
+            .stored = belt::default_bytes()};
+    }
     if (g_abilities->pause != nullptr) {
         const walker* const body = pause_body(*g_abilities);
         if (body == nullptr)
@@ -278,6 +301,8 @@ RowState bench_row_state(const MenuLabelContext& /*context*/)
 
 RowState defaults_row_state(const MenuLabelContext& /*context*/)
 {
+    if (g_abilities != nullptr && g_abilities->recruit)
+        return RowState::Hidden;  // a class default has nothing to reset
     return g_abilities != nullptr && !g_abilities->editable
         ? RowState::Disabled
         : RowState::Visible;
@@ -369,7 +394,8 @@ void abilities_rewire(button* buttons, int count, int& highlighted_button)
             .push_back(ordinal);
     }
     left.push_back(kAbilitiesBackIndex);
-    right.push_back(kAbilitiesDefaultsIndex);
+    if (!buttons[kAbilitiesDefaultsIndex].hidden)
+        right.push_back(kAbilitiesDefaultsIndex);
     link_column(buttons, left);
     link_column(buttons, right);
     for (int ordinal = 0; ordinal < kAbilitiesRowCount; ++ordinal) {
@@ -782,6 +808,8 @@ std::string abilities_screen_status_line()
     const std::optional<AbilitiesHero> hero = abilities_hero();
     if (!hero)
         return {};
+    if (g_abilities->recruit)
+        return kRecruitNotice;
     if (!g_abilities->editable)
         return g_abilities->body_has_record ? kReadOnlyNotice
                                             : kNoSavedLayoutNotice;
@@ -816,6 +844,24 @@ Sint32 run_abilities_menu(int team_slot)
         picker_base_camp_after_roster_mutation();
     }
     return MENU_REDRAW;
+}
+
+Sint32 run_recruit_abilities_menu(int family, int level)
+{
+    if (get_family_descriptor(family) == nullptr)
+        return MENU_REDRAW;
+    AbilitiesScreenState state{
+        .recruit = AbilitiesRecruit{.family = family, .level = level},
+        .editable = false,
+        .working = belt::default_bytes(),
+    };
+    AbilitiesScreenState* const previous = g_abilities;
+    g_abilities = &state;
+    TRACE("abilities", "open recruit family=%d level=%d", family, level);
+    const Sint32 result = run_menu_screen(abilities_menu_screen_spec(), &state);
+    g_abilities = previous;
+    // Nothing to commit: a class has no record. A host's GO propagates.
+    return result == MENU_EXIT ? MENU_EXIT : MENU_REDRAW;
 }
 
 walker* seat_driven_walker(int seat)

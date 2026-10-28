@@ -2088,12 +2088,10 @@ struct DetailPage {
                                      short new_specials,
                                      bool ability_select = false);
 
-// "Special: Teleport, Teleport Marker, Warp Space, ...": every ability the
-// class has this session, title-cased, in the belt catalog's order
-// (og::sim::belt::catalog: each slot's special, then its second form, a
-// name that repeats an earlier one listed once). Names only; the levels
-// they open at are on the DETAILS page. "Special: none" when the catalog
-// is empty.
+// "Special: Howl, Eat Corpse, Hook Blade, War Banner": the slot names in
+// play (special_name not "NONE"), title-cased, in slot order, alternates
+// not listed (the DETAILS page has them); "Special: none" when no slot is
+// in play. The HIRE box's line with New Ability Select off.
 [[nodiscard]] std::string specials_summary(const FamilyDescriptor* fd,
                                            short new_specials);
 
@@ -2126,11 +2124,14 @@ inline constexpr int kHelpClassesProseChars = 43;
 [[nodiscard]] std::vector<std::string> class_help_lines(
     const FamilyDescriptor* fd, short new_specials, bool ability_select);
 
-// fd->description + "\n\n" + specials_summary(fd, new_specials); "" when fd
-// or its description is null (the HIRE box's text; the pack prose no longer
-// carries a Special line of its own).
+// The HIRE box's text; "" when fd or its description is null (the pack
+// prose carries no Special line of its own). With New Ability Select on it
+// is fd->description alone: the HIRE screen's ABILITIES door lists the
+// class's abilities on their keys. With it off (the door dimmed) it is
+// fd->description + "\n\n" + specials_summary(fd, new_specials).
 [[nodiscard]] std::string hire_description(const FamilyDescriptor* fd,
-                                           short new_specials);
+                                           short new_specials,
+                                           bool ability_select);
 
 // The HIRE box draws its flowed text at a 10px pitch while it has at most
 // kHireBoxRoomyLines lines, and at 8px past that.
@@ -2139,8 +2140,8 @@ inline constexpr std::size_t kHireBoxRoomyLines = 8;
 // The HIRE box's lines: `text` (hire_description) flowed at `width` chars
 // in Paragraphs mode. When the text needs more than kHireBoxRoomyLines
 // lines, the blank line before the "Special:" line is dropped: at the 8px
-// pitch a tenth line sits on the box's bottom frame (the mage's and the
-// thief's six abilities with New Specials on), and the blank line is the
+// pitch a tenth line sits on the box's bottom frame (the cleric's and the
+// barbarian's text with New Ability Select off), and the blank line is the
 // one row the box can spare.
 [[nodiscard]] std::vector<std::string> hire_box_lines(std::string_view text,
                                                       int width);

@@ -423,18 +423,19 @@ TEST(PickerCommon, reset_for_new_game)
 
 // --- class description budget (issue #152) ---
 
-// Every playable family's HIRE text (its description and the generated
-// "Special:" line, og::ui::hire_description), flowed exactly as the HIRE
-// screen flows it (og::ui::hire_box_lines at the description box's 27-char
-// budget: description_box_content.w / 6 = 164 / 6), must fit the box under
-// either New Specials value — at most 9 lines (at the 8px fallback pitch a
-// tenth line's last glyph row touches the box's bottom frame) and no line
-// over 27 chars. This is the regression guard that a future pack
-// edit cannot silently overflow the box. The hire list itself is covered
-// too, whatever its families' playable flags say: every family on offer
-// must ship a description for the box. And no pack description carries a
-// "Special:" line of its own any more: the line is generated, so a static
-// one would print twice and go stale.
+// Every playable family's HIRE text (og::ui::hire_description: its
+// description, and with New Ability Select off the generated "Special:"
+// line), flowed exactly as the HIRE screen flows it (og::ui::hire_box_lines
+// at the description box's 27-char budget: description_box_content.w / 6 =
+// 164 / 6), must fit the box under either New Specials value and either New
+// Ability Select value — at most 9 lines (at the 8px fallback pitch a tenth
+// line's last glyph row touches the box's bottom frame) and no line over 27
+// chars. This is the regression guard that a future pack edit cannot
+// silently overflow the box. The hire list itself is covered too, whatever
+// its families' playable flags say: every family on offer must ship a
+// description for the box. And no pack description carries a "Special:"
+// line of its own any more: the line is generated, so a static one would
+// print twice and go stale.
 TEST(PickerCommon, playable_descriptions_flow_within_hire_box)
 {
     init_family_registry();
@@ -464,13 +465,15 @@ TEST(PickerCommon, playable_descriptions_flow_within_hire_box)
         if (!fd->is_playable && !on_hire_list(family_id))
             continue;
         for (const short new_specials : {short{0}, short{1}})
+        for (const bool ability_select : {false, true})
         {
             const std::string text =
-                og::ui::hire_description(fd, new_specials);
+                og::ui::hire_description(fd, new_specials, ability_select);
             const std::vector<std::string> flowed =
                 og::ui::hire_box_lines(text, 27);
             EXPECT_LE(flowed.size(), 9u)
                 << "family " << family_id << " new_specials " << new_specials
+                << " ability_select " << ability_select
                 << " HIRE text overflows the box (27 chars x 9 lines): "
                 << text;
             for (const std::string& line : flowed)
@@ -831,39 +834,24 @@ TEST(PickerCommon, special_title_title_cases_hud_names)
     EXPECT_EQ("", og::ui::special_title(""));
 }
 
-// The HIRE box's line: every ability the class has this session, in the
-// belt catalog's order (each special, then its second form), a repeated
-// name listed once, in both New Ability Select settings (with it off a
-// second form is still the class's ability, reached with SHIFTER).
-// RED: list the primaries only (the mage loses Teleport Marker).
-TEST(PickerCommon, specials_summary_lists_the_catalog)
+// The HIRE box's line with New Ability Select off (the classic line): every
+// slot in play, slot order, no second forms.
+// RED: list the belt catalog (the mage gains Teleport Marker).
+TEST(PickerCommon, specials_summary_lists_the_slots_in_play)
 {
     init_family_registry();
     for (const short new_specials : {short{0}, short{1}})
         EXPECT_EQ("Special: Charge, Boomerang, Whirlwind, Disarm",
                   og::ui::specials_summary(&core_family(FAMILY_SOLDIER),
                                            new_specials));
-    EXPECT_EQ("Special: Teleport, Teleport Marker, Warp Space, Freeze Time, "
-              "Energy Wave, Heartburst",
+    EXPECT_EQ("Special: Teleport, Warp Space, Freeze Time, Energy Wave, "
+              "Heartburst",
               og::ui::specials_summary(&core_family(FAMILY_MAGE), 1));
-    // Turn Undead is the second form of Raise Undead and of Raise Ghost:
-    // named once.
-    EXPECT_EQ("Special: Heal, Mystic Mace, Raise Undead, Turn Undead, "
-              "Raise Ghost, Resurrect",
-              og::ui::specials_summary(&core_family(FAMILY_CLERIC), 0));
-    EXPECT_EQ("Special: Drop Bomb, Mine, Cloak, Taunt Enemy, Charm Opponent, "
-              "Poison Cloud",
-              og::ui::specials_summary(&core_family(FAMILY_THIEF), 1));
-    // New Specials off hides the new second form with the new specials.
-    EXPECT_EQ("Special: Drop Bomb, Cloak, Taunt Enemy, Charm Opponent, "
-              "Poison Cloud",
-              og::ui::specials_summary(&core_family(FAMILY_THIEF), 0));
-    EXPECT_EQ("Special: Scare, Wail, Siphon, Possess, Phase",
+    EXPECT_EQ("Special: Scare, Siphon, Possess, Phase",
               og::ui::specials_summary(&core_family(FAMILY_GHOST), 1));
     EXPECT_EQ("Special: Scare",
               og::ui::specials_summary(&core_family(FAMILY_GHOST), 0));
-    EXPECT_EQ("Special: Howl, Eat Corpse, Hook Blade, Knife Fan, War Banner, "
-              "Warband",
+    EXPECT_EQ("Special: Howl, Eat Corpse, Hook Blade, War Banner",
               og::ui::specials_summary(&core_family(FAMILY_BIG_ORC), 1));
     EXPECT_EQ("Special: none",
               og::ui::specials_summary(&core_family(FAMILY_BIG_ORC), 0));
@@ -872,29 +860,52 @@ TEST(PickerCommon, specials_summary_lists_the_catalog)
     EXPECT_EQ("Special: Split",
               og::ui::specials_summary(&core_family(FAMILY_SLIME), 0));
     EXPECT_EQ("Special: none", og::ui::specials_summary(nullptr, 1));
+}
 
-    // The HIRE text is the prose, a blank line, then the summary.
+// The HIRE text: with New Ability Select off the prose, a blank line, then
+// the summary; with it on the prose alone (the HIRE screen's ABILITIES door
+// lists the abilities).
+// RED: keep the "Special:" line with the setting on.
+TEST(PickerCommon, hire_description_follows_ability_select)
+{
+    init_family_registry();
     const FamilyDescriptor& orc = core_family(FAMILY_ORC);
     EXPECT_EQ(std::string(orc.description) + "\n\nSpecial: Howl, Eat Corpse",
-              og::ui::hire_description(&orc, 0));
-    EXPECT_EQ("", og::ui::hire_description(nullptr, 1));
-    FamilyDescriptor silent = orc;
-    silent.description = nullptr;
-    EXPECT_EQ("", og::ui::hire_description(&silent, 1));
+              og::ui::hire_description(&orc, 0, false));
+    for (const short new_specials : {short{0}, short{1}})
+    {
+        EXPECT_EQ(std::string(orc.description),
+                  og::ui::hire_description(&orc, new_specials, true));
+        const std::string mage = og::ui::hire_description(
+            &core_family(FAMILY_MAGE), new_specials, true);
+        EXPECT_EQ(std::string::npos, mage.find("Special:")) << mage;
+    }
+    for (const bool ability_select : {false, true})
+    {
+        EXPECT_EQ("", og::ui::hire_description(nullptr, 1, ability_select));
+        FamilyDescriptor silent = orc;
+        silent.description = nullptr;
+        EXPECT_EQ("", og::ui::hire_description(&silent, 1, ability_select));
+    }
 }
 
 // A HIRE text past the box's 10px-pitch room loses the blank line before
-// "Special:" (the mage's six abilities with New Specials on flow to ten
-// lines with it, nine without); a text that fits keeps it.
-// RED: never drop the blank line (the mage keeps ten lines).
+// "Special:" (the cleric's with New Ability Select off flows to ten lines
+// with it, nine without); a text that fits keeps it.
+// RED: never drop the blank line (the cleric keeps ten lines).
 TEST(PickerCommon, hire_box_lines_drop_the_blank_line_when_full)
 {
     init_family_registry();
-    const std::vector<std::string> mage = og::ui::hire_box_lines(
-        og::ui::hire_description(&core_family(FAMILY_MAGE), 1), 27);
-    EXPECT_EQ(9u, mage.size());
-    EXPECT_TRUE(std::find(mage.begin(), mage.end(), std::string{}) ==
-                mage.end());
+    const std::string cleric_text =
+        og::ui::hire_description(&core_family(FAMILY_CLERIC), 1, false);
+    ASSERT_EQ(10u, og::core::wrap_text(cleric_text, 27,
+                                       og::core::WrapMode::Paragraphs)
+                       .size());
+    const std::vector<std::string> cleric =
+        og::ui::hire_box_lines(cleric_text, 27);
+    EXPECT_EQ(9u, cleric.size());
+    EXPECT_TRUE(std::find(cleric.begin(), cleric.end(), std::string{}) ==
+                cleric.end());
 
     const std::vector<std::string> roomy =
         og::ui::hire_box_lines("A short blurb.\n\nSpecial: Howl", 27);

@@ -513,6 +513,26 @@ int picker_team_build_testing_exercise_internal_paths(int* checks_run)
         hire_buttons, static_cast<int>(std::size(hire_buttons)),
         ignored_highlight);
     check(hire_buttons[3].nav.right == 2);
+    // The full table: the team cycler's left neighbour is the ABILITIES
+    // door, and HIRE ME keeps its link to the door.
+    button hire_rows[6] = {
+        hire_buttons[0], hire_buttons[1], hire_buttons[2], hire_buttons[3],
+        button("back", "BACK", KEYSTATE_UNKNOWN, 0, 0, 10, 10, 0, 0,
+               MenuNav{}),
+        button("abilities", "ABILITIES", KEYSTATE_UNKNOWN, 0, 0, 10, 10, 0,
+               0, MenuNav{.right = 2}),
+    };
+    hire_rows[3].nav.right = kHireMenuAbilitiesIndex;
+    hire_rows[2].hidden = true;
+    picker_hire_menu_engine_rewire(hire_rows, 6, ignored_highlight);
+    check(hire_rows[5].nav.right == -1);
+    check(hire_rows[3].nav.right == kHireMenuAbilitiesIndex);
+    hire_rows[2].hidden = false;
+    picker_hire_menu_engine_rewire(hire_rows, 6, ignored_highlight);
+    check(hire_rows[5].nav.right == kHireMenuChangeTeamIndex);
+    picker_hire_menu_engine_rewire(hire_rows, 3, ignored_highlight);
+    check(picker_hire_menu_engine_on_spec_row(kHireMenuChangeTeamIndex,
+                                              nullptr) == MENU_OK);
     picker_hire_menu_engine_draw_content(nullptr);
     picker_train_menu_engine_draw_content(nullptr);
 
@@ -640,8 +660,10 @@ int picker_team_build_testing_exercise_internal_paths(int* checks_run)
     check(!g_start_game_requested);
 #endif
 
-    check(!get_class_description(FAMILY_SOLDIER, 1).empty());
-    check(get_class_description(250, 0).empty());
+    check(!get_class_description(FAMILY_SOLDIER, 1, false).empty());
+    check(get_class_description(FAMILY_SOLDIER, 1, true).find("Special:") ==
+          std::string::npos);
+    check(get_class_description(250, 0, false).empty());
     // The HIRE/TRAIN star faces of every hireable family, spelled out from
     // the core pack's train prices (STR, DEX, CON, INT, ARMOR) rather than
     // recomputed from the product's own ((55 / cost) * 5) / 11 -- a test that

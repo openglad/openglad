@@ -8,7 +8,8 @@
 #pragma once
 
 // ABILITIES (New Ability Select, docs/ability-select-design.md E.1): the
-// TRAIN screen's door to which ability sits on which SPEC key. The page's
+// TRAIN screen's door to which ability sits on which SPEC key (HIRE and the
+// PAUSED menu open copies of it, below). The page's
 // words and edit rules are og::ui::ability_page and its edits
 // (picker_common.h); this screen is their SDL projection.
 //
@@ -40,6 +41,17 @@ const MenuScreenSpec& abilities_menu_screen_spec();
 // (picker_lobby_save_slot_editable) opens read-only. An empty slot returns
 // MENU_REDRAW at once.
 Sint32 run_abilities_menu(int team_slot);
+
+// --- HIRE's copy ---------------------------------------------------------------
+//
+// The same screen, opened from the HIRE screen's ABILITIES door over the class
+// HIRE is showing: titled for the class ("ABILITIES: MAGE"), a recruit of
+// `level` on the class default layout, locked abilities marked with the level
+// they open at, New Specials as this game plays it. Read-only: nobody is hired
+// yet, so DEFAULTS is hidden, a click only traces, and BACK commits nothing.
+// Returns MENU_REDRAW, or a host's GO (MENU_EXIT) while parked here; an
+// unknown family returns MENU_REDRAW at once.
+Sint32 run_recruit_abilities_menu(int family, int level);
 
 // --- The PAUSED menu's copy (#376) -------------------------------------------
 //

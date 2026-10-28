@@ -3170,7 +3170,8 @@ TEST(MenuEngine, content_screen_registry_hosts_and_semantics)
     {
         std::vector<button> rows;
         og::ui::materialize_menu_buttons(*hire, rows);
-        ASSERT_EQ(5, static_cast<int>(rows.size()));
+        ASSERT_EQ(6, static_cast<int>(rows.size()))
+            << "PREV, NEXT, team, HIRE ME, BACK, ABILITIES";
         hire->prepare_buttons(rows.data(), static_cast<int>(rows.size()),
                               nullptr);
         // The computed portrait-flanking positions the legacy loop wrote
@@ -3180,6 +3181,8 @@ TEST(MenuEngine, content_screen_registry_hosts_and_semantics)
         EXPECT_EQ(135, rows[1].x) << "next";
         EXPECT_EQ(37, rows[1].y) << "next";
     }
+    // ABILITIES is a spec row the screen's own hook answers.
+    EXPECT_NE(nullptr, hire->on_spec_row);
     // The solo-hidden team cycler is a per-frame state override
     // (entry-equivalent: numplayers cannot change under the open screen).
     ASSERT_NE(nullptr, hire->rows[2].state_override);

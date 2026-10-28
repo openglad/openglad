@@ -971,6 +971,36 @@ inline constexpr int kTrainMenuSellIndex = 19;
 // off, so the screen stays discoverable.
 inline constexpr int kTrainMenuAbilitiesIndex = 20;
 
+// --- HIRE screen layout contract --------------------------------------------
+// Rows of kHireMenuRows / picker_hiremenu_buttons(): PREV, NEXT, the team
+// cycler, HIRE ME, BACK, then the ABILITIES door (New Ability Select; the
+// class's abilities on their keys, read-only, the screen TRAIN opens).
+inline constexpr int kHireMenuChangeTeamIndex = 2;
+inline constexpr int kHireMenuHireMeIndex = 3;
+inline constexpr int kHireMenuAbilitiesIndex = 5;
+// The bottom band: BACK | HIRE ME | ABILITIES | the team cycler, left to
+// right with one gap between neighbours. BACK keeps its x and the team
+// cycler its right edge (the cost box's, 300); HIRE ME is the band's tall
+// face and stays centred on the others' line.
+inline constexpr int kHireBandGap = 6;
+inline constexpr int kHireBandY = 170;
+inline constexpr int kHireBandH = 20;
+inline constexpr int kHireBackX = 10;
+inline constexpr int kHireBackW = 40;
+inline constexpr int kHireMeX = kHireBackX + kHireBackW + kHireBandGap;
+inline constexpr int kHireMeW = 58;
+inline constexpr int kHireMeY = 166;
+inline constexpr int kHireMeH = 28;
+inline constexpr int kHireAbilitiesX = kHireMeX + kHireMeW + kHireBandGap;
+inline constexpr int kHireAbilitiesW = 64;  // TRAIN's ABILITIES face
+inline constexpr int kHireTeamX =
+    kHireAbilitiesX + kHireAbilitiesW + kHireBandGap;
+inline constexpr int kHireTeamW = 110;
+static_assert(kHireTeamX == 190 && kHireTeamX + kHireTeamW == 300,
+              "the team cycler keeps its face, right edge on the cost box's");
+static_assert(kHireMeY + kHireMeH / 2 == kHireBandY + kHireBandH / 2,
+              "HIRE ME is centred on the band's line");
+
 // --- ABILITIES screen layout contract (docs/ability-select-design.md E.1) ---
 // Ordinals: BACK, DEFAULTS, the six belt slots row-major (key 1 | SHIFTER+1,
 // key 2 | SHIFTER+2, key 3 | SHIFTER+3), then the four bench rows row-major

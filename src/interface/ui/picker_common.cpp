@@ -5370,13 +5370,13 @@ const char* entry_name(const FamilyDescriptor* fd,
 std::string specials_summary(const FamilyDescriptor* fd, short new_specials)
 {
     std::string names;
-    if (fd != nullptr) {
-        for (const og::sim::belt::Entry& e :
-             og::sim::belt::catalog(fd, new_specials)) {
-            if (!names.empty())
-                names += ", ";
-            names += special_title(entry_name(fd, e, new_specials));
-        }
+    for (int slot = 1; fd != nullptr && slot < FD_NUM_SPECIALS; ++slot) {
+        const char* name = og::sim::special_name(fd, slot, new_specials);
+        if (!names_a_special(name))
+            continue;
+        if (!names.empty())
+            names += ", ";
+        names += special_title(name);
     }
     return "Special: " + (names.empty() ? std::string("none") : names);
 }
@@ -5537,10 +5537,13 @@ std::vector<std::string> class_help_lines(const FamilyDescriptor* fd,
     return out;
 }
 
-std::string hire_description(const FamilyDescriptor* fd, short new_specials)
+std::string hire_description(const FamilyDescriptor* fd, short new_specials,
+                             bool ability_select)
 {
     if (fd == nullptr || fd->description == nullptr)
         return {};
+    if (ability_select)
+        return fd->description;
     return std::string(fd->description) + "\n\n" +
            specials_summary(fd, new_specials);
 }

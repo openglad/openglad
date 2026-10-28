@@ -12,7 +12,6 @@
 #include "test_company_cleanup.h"
 #include "test_interact.h"
 #include "test_escape_tail.h"
-#include "test_frame_capture.h"
 #include <openglad/resources/save_data.h>
 #include <openglad/resources/company.h>
 #include <openglad/resources/io_common.h>
@@ -20,7 +19,6 @@
 #include <algorithm>
 #include <atomic>
 #include <cstdint>
-#include <cstdlib>
 #include <optional>
 #include <string>
 #include <vector>
@@ -562,108 +560,4 @@ TEST(HireTeam, hire_autosaves_into_the_open_company_not_a_stray_slot)
     ASSERT_TRUE(reloaded.load("hireopen"));
     ASSERT_EQ(2, static_cast<int>(reloaded.team_size))
         << "the hire must have autosaved into the open company";
-}
-
-// PR proof frames: the HIRE box for the mage and the thief, with the full
-// ability list the box's Special line now carries (#387). A capture tool,
-// not a check: skipped unless UXSHOTS_DIR names where the 320x200 PPMs go
-// (the PausePlayerDraw.menushots_* shape). The candidate is read from the
-// screen on the menu thread, so each frame is the class it is named for.
-
-struct HireBoxShotState {
-    std::atomic<bool> finished{false};
-    bool saw_hire_menu = false;
-    bool left_hire_menu = false;
-    std::vector<std::string> shot;  // the families filmed, in order
-};
-
-static int hire_box_shot_injector(void* data)
-{
-    og::runtime::ensure_thread_session();
-    auto* state = static_cast<HireBoxShotState*>(data);
-    const char* const dir = std::getenv("UXSHOTS_DIR");
-
-    wait_for_interactable("begin_new_game", 5000);
-    wait_for_menu_frames(2);
-    interact("begin_new_game");
-    accept_generated_company_name();
-    if (wait_for_interactable("hire_troops", 10000)) {
-        wait_for_menu_frames(2);
-        interact("hire_troops");
-    }
-    if (wait_for_interactable("hire_me", 10000)) {
-        state->saw_hire_menu = true;
-        wait_for_menu_frames(2);
-        const std::pair<int, const char*> wanted[] = {
-            {FAMILY_MAGE, "hire_mage"},
-            {FAMILY_THIEF, "hire_thief"},
-        };
-        for (const auto& [family, name] : wanted) {
-            // At most one lap of the candidate list.
-            for (int step = 0; step < 32; ++step) {
-                int now = -1;
-                if (!run_on_main_thread([&now] {
-                        const guy* g = og::runtime::current_session->current_guy_.get();
-                        now = g != nullptr ? static_cast<int>(g->family) : -1;
-                    }))
-                    break;
-                if (now == family) {
-                    wait_for_menu_frames(2);
-                    capture_presented_frame(name, dir);
-                    state->shot.emplace_back(name);
-                    break;
-                }
-                if (!cycle_hire_candidate("next"))
-                    break;
-                settle_pointer_between_clicks();
-            }
-        }
-        if (wait_for_interactable("back", 5000))
-            state->left_hire_menu = interact("back");
-    }
-    if (wait_for_interactable("hire_troops", 10000)) {
-        wait_for_menu_frames(2);
-        if (wait_for_interactable("back", 5000))
-            interact("back");
-    }
-    state->finished = true;
-    return 0;
-}
-
-TEST(HireTeam, zz_capture_hire_box_mage_and_thief)
-{
-    if (std::getenv("UXSHOTS_DIR") == nullptr)
-        GTEST_SKIP() << "set UXSHOTS_DIR to write the PR proof frames";
-
-    og::data::ScopedActiveCompany pin("save0");
-    ASSERT_TRUE(pin.applied()) << "save0 must be a valid company slot";
-    og::runtime::current_session->myscreen_->save_data.reset();
-    og::runtime::current_session->myscreen_->save_data.numplayers = 1;
-    og::runtime::current_session->myscreen_->save_data.current_campaign = "gladiator";
-    og::runtime::current_session->myscreen_->save_data.save("save0");
-    (void)take_captured_frames();
-
-    HireBoxShotState state;
-    SDL_Thread* thread =
-        SDL_CreateThread(hire_box_shot_injector, "hire_box_shot", &state);
-    ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
-    g_picker_mainmenu_calls = 0;
-    g_picker_max_mainmenu_calls = 1;
-    picker_main(0, nullptr);
-    SDL_WaitThread(thread, nullptr);
-    cleanup_picker_state();
-    g_picker_max_mainmenu_calls = 0;
-
-    ASSERT_TRUE(state.finished.load());
-    ASSERT_TRUE(state.saw_hire_menu) << "the hire screen opened";
-    EXPECT_TRUE(state.left_hire_menu) << "BACK left the hire screen";
-    EXPECT_EQ((std::vector<std::string>{"hire_mage", "hire_thief"}), state.shot)
-        << "NEXT reached the mage and then the thief";
-    const std::vector<CapturedFrame> frames = take_captured_frames();
-    ASSERT_EQ(2u, frames.size()) << "one frame for each class";
-    for (const CapturedFrame& f : frames) {
-        EXPECT_TRUE(f.captured) << f.name << " froze a presented frame";
-        EXPECT_TRUE(f.written) << f.name << " was written";
-        EXPECT_GT(f.nonblack, kCapturedFrameMinNonblackPixels) << f.name;
-    }
 }

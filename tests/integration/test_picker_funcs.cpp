@@ -51,7 +51,8 @@ std::string picker_testing_show_campaign_select(bool cancel);
 void campaign_picker_testing_set_auto_accept(bool enabled);
 
 // Forward declarations from picker.cpp
-std::string get_class_description(unsigned char family, short new_specials);
+std::string get_class_description(unsigned char family, short new_specials,
+                                  bool ability_select);
 const char* family_name_copy(short family);
 const char* get_family_string(Sint32 family);
 const char* get_training_cost_rating(unsigned char family, int stat);
@@ -656,30 +657,49 @@ std::string expected_training_stars(std::int32_t cost)
 TEST(PickerFuncs, get_class_description_soldier)
 {
     // get_class_description hands back the family's OWN descriptor->description
-    // and the "Special:" line generated from its specials table (the HIRE
-    // screen text; the prose is in packs/core/families/living-00-soldier.lua).
-    const std::string desc = get_class_description(FAMILY_SOLDIER, 0);
+    // and, with New Ability Select off, the "Special:" line generated from its
+    // specials table (the HIRE screen text; the prose is in
+    // packs/core/families/living-00-soldier.lua).
+    const std::string desc = get_class_description(FAMILY_SOLDIER, 0, false);
     EXPECT_NE(std::string::npos, desc.find("Your basic grunt"))
         << "the soldier blurb opens with its own line, got: " << desc;
     EXPECT_NE(std::string::npos,
               desc.find("Special: Charge, Boomerang, Whirlwind, Disarm"))
         << "the soldier blurb names all four soldier specials, got: " << desc;
-    EXPECT_NE(desc, get_class_description(FAMILY_MAGE, 0))
+    EXPECT_NE(desc, get_class_description(FAMILY_MAGE, 0, false))
         << "a lookup that hands every family the same text is not a lookup";
 }
 
 
 TEST(PickerFuncs, get_class_description_mage)
 {
-    const std::string desc = get_class_description(FAMILY_MAGE, 1);
+    // Setting off: the classic line, the five specials and no second form.
+    const std::string desc = get_class_description(FAMILY_MAGE, 1, false);
     EXPECT_NE(std::string::npos, desc.find("fireballs"))
         << "the mage blurb names its ranged attack, got: " << desc;
     EXPECT_NE(std::string::npos,
-              desc.find("Special: Teleport, Teleport Marker, Warp Space, "
-                        "Freeze Time, Energy Wave, Heartburst"))
-        << "the mage blurb names all six mage abilities, got: " << desc;
-    EXPECT_NE(desc, get_class_description(FAMILY_SOLDIER, 1))
+              desc.find("Special: Teleport, Warp Space, Freeze Time, "
+                        "Energy Wave, Heartburst"))
+        << "the mage blurb names all five mage specials, got: " << desc;
+    EXPECT_NE(desc, get_class_description(FAMILY_SOLDIER, 1, false))
         << "the mage must not be handed the soldier's blurb";
+}
+
+// Setting on: the HIRE screen's ABILITIES door lists the abilities, so the
+// box carries the class's prose alone.
+// RED: hire_description keeps the "Special:" line with the setting on.
+TEST(PickerFuncs, get_class_description_has_no_special_line_with_ability_select)
+{
+    for (const int family : {FAMILY_SOLDIER, FAMILY_MAGE, FAMILY_THIEF,
+                             FAMILY_CLERIC})
+    {
+        const std::string desc = get_class_description(
+            static_cast<unsigned char>(family), 1, true);
+        EXPECT_FALSE(desc.empty()) << "family " << family;
+        EXPECT_EQ(std::string::npos, desc.find("Special:"))
+            << "family " << family << ": " << desc;
+        EXPECT_EQ(std::string(get_family_descriptor(family)->description), desc);
+    }
 }
 
 
@@ -697,7 +717,7 @@ TEST(PickerFuncs, get_class_description_all_families)
     // set and fails here while every HIRE screen is wrong.
     std::set<std::string> seen;
     for (int i = 0; i < 16; i++) {
-        const std::string desc = get_class_description(families[i], 1);
+        const std::string desc = get_class_description(families[i], 1, false);
         ASSERT_FALSE(desc.empty())
             << "family " << int(families[i]) << " has no description";
         seen.insert(desc);

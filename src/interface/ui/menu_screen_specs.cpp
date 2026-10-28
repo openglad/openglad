@@ -112,6 +112,7 @@ void picker_hire_menu_engine_rewire(button* buttons, int num_buttons,
                                     int& highlighted_button);
 void picker_hire_menu_engine_on_reset(void* screen_state);
 void picker_hire_menu_engine_draw_content(void* screen_state);
+Sint32 picker_hire_menu_engine_on_spec_row(int row, void* screen_state);
 void picker_train_menu_engine_on_reset(void* screen_state);
 void picker_train_menu_engine_draw_content(void* screen_state);
 Sint32 picker_train_menu_engine_on_spec_row(int row, void* screen_state);
@@ -2012,7 +2013,7 @@ Sint32 zone_submenu_on_spec_row(int row, void* screen_state)
 
 // ---------------------------------------------------------------------------
 // HIRE (§1.8 step 6): PREV/NEXT candidate cyclers over the recruit portrait,
-// the hire-team cycler, HIRE ME, BACK. Rows transcribed VERBATIM from the
+// the hire-team cycler, HIRE ME, BACK, and (appended) the ABILITIES door. Rows transcribed VERBATIM from the
 // deleted k_hiremenu_buttons — including the PREV/NEXT table positions
 // (10,40)/(110,40) that the legacy loop immediately recomputed from the
 // description/name box geometry before init_buttons: that entry-time
@@ -2035,6 +2036,11 @@ RowState hire_change_team_row_state(const MenuLabelContext& context)
         : RowState::Visible;
 }
 
+// The ABILITIES door's state: TRAIN's own rule (defined with its table
+// below), dimmed with New Ability Select off. With the setting off the HIRE
+// box's own "Special:" line names the specials instead.
+RowState train_abilities_row_state(const MenuLabelContext& context);
+
 constexpr MenuButtonSpec kHireMenuRows[] = {
     {.id = "prev", .label = "PREV",
      .x = 10, .y = 40, .w = 40, .h = 20,
@@ -2045,19 +2051,31 @@ constexpr MenuButtonSpec kHireMenuRows[] = {
      .action = ButtonAction::CycleGuy, .arg = 1,
      .nav = {.down = 3, .left = 0, .right = 3}},
     {.id = "change_hire_team", .label = "hiring for team X",
-     .x = 190, .y = 170, .w = 110, .h = 20,
+     .x = kHireTeamX, .y = kHireBandY, .w = kHireTeamW, .h = kHireBandH,
      .action = ButtonAction::ChangeHireTeam, .arg = 1,
-     .nav = {.up = 1, .left = 3},
+     .nav = {.up = 1, .left = kHireMenuAbilitiesIndex},
      .state_override = &hire_change_team_row_state},
     {.id = "hire_me", .label = "HIRE ME",
-     .x = 82, .y = 166, .w = 88, .h = 28,
+     .x = kHireMeX, .y = kHireMeY, .w = kHireMeW, .h = kHireMeH,
      .action = ButtonAction::AddGuy, .arg = -1,
-     .nav = {.up = 1, .left = 4, .right = 2}},
+     .nav = {.up = 1, .left = 4, .right = kHireMenuAbilitiesIndex}},
     {.id = "back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
-     .x = 10, .y = 170, .w = 40, .h = 20,
+     .x = kHireBackX, .y = kHireBandY, .w = kHireBackW, .h = kHireBandH,
      .action = ButtonAction::ReturnMenu, .arg = MENU_EXIT,
-     .nav = {.up = 0, .right = 3}},
+     .nav = {.up = 0, .right = kHireMenuHireMeIndex}},
+    // New Ability Select: the recruit's class on the ABILITIES screen,
+    // read-only (abilities_screen.cpp, run_recruit_abilities_menu).
+    {.id = "hire_abilities", .label = "ABILITIES",
+     .x = kHireAbilitiesX, .y = kHireBandY, .w = kHireAbilitiesW,
+     .h = kHireBandH,
+     .action = ButtonAction::MenuSpecRow, .arg = kHireMenuAbilitiesIndex,
+     .nav = {.up = 1, .left = kHireMenuHireMeIndex,
+             .right = kHireMenuChangeTeamIndex},
+     .state_override = &train_abilities_row_state},
 };
+
+static_assert(std::size(kHireMenuRows) == kHireMenuAbilitiesIndex + 1,
+              "hire table anchor: the ABILITIES door is the last row");
 
 // ---------------------------------------------------------------------------
 // TRAIN (§1.8 step 6): the six +/- stat pairs beside the portrait (pixie
@@ -2081,7 +2099,8 @@ RowState train_change_team_row_state(const MenuLabelContext& context)
 
 // The ABILITIES door is dimmed, not hidden, with New Ability Select off
 // (docs/ability-select-design.md K8): the screen stays discoverable, and
-// the setting that brings it back is one UI FX row away.
+// the setting that brings it back is one UI FX row away. HIRE's door
+// follows the same rule.
 RowState train_abilities_row_state(const MenuLabelContext& /*context*/)
 {
     return og::input::ability_select_on() ? RowState::Visible
@@ -6835,6 +6854,8 @@ const MenuScreenSpec& hire_menu_screen_spec()
         .draw_content = &picker_hire_menu_engine_draw_content,
         // The legacy reset tail: re-derive the hire-team label surfaces.
         .on_reset = &picker_hire_menu_engine_on_reset,
+        // ABILITIES: the shown class, read-only.
+        .on_spec_row = &picker_hire_menu_engine_on_spec_row,
         // Every legacy local exit returned MENU_REDRAW.
         .exit_value = MENU_REDRAW,
     };
