@@ -4993,12 +4993,19 @@ int key_cell_click_injector(void* data)
 //
 // RED (planted): the cell handler skips save_player_keys_after_remap (the
 // cfg pin below).
-TEST(PauseMenuFlow, one_click_on_the_fire_line_rebinds_fire)
+namespace
 {
-    KeyCellGuard guard;
-    ScopedAbilitySelect on(true);
+
+// The PAUSED menu of a one-seat mission, driven by `injector` until it
+// RESUMEs (a dead leg is escaped by the shared tail). Returns the injector's
+// exit code: 0 = every leg passed.
+int run_paused_player_screen_flow(SDL_ThreadFunction injector_fn,
+                                  KeyCellFlow& flow)
+{
     screen* const game_screen = og::runtime::current_session->myscreen_;
-    ASSERT_TRUE(game_screen != nullptr);
+    EXPECT_TRUE(game_screen != nullptr);
+    if (game_screen == nullptr)
+        return -1;
 
     game_screen->save_data.reset();
     game_screen->save_data.current_campaign = "gladiator";
@@ -5012,19 +5019,20 @@ TEST(PauseMenuFlow, one_click_on_the_fire_line_rebinds_fire)
         game_screen->save_data.team_list[0] = std::move(leader);
         game_screen->save_data.team_size = 1;
     }
-    ASSERT_TRUE(game_screen->save_data.save("save0"));
+    EXPECT_TRUE(game_screen->save_data.save("save0"));
 
     glad_init();
-    ASSERT_TRUE(og::runtime::current_game_session != nullptr);
+    EXPECT_TRUE(og::runtime::current_game_session != nullptr);
+    if (og::runtime::current_game_session == nullptr)
+        return -1;
     og::ui::pause_menu_testing_set_force_real(true);
     picker_testing_yes_or_no_queue_clear();
-    const int before_special =
-        og::runtime::current_session->player_keys_[0][KEY_SPECIAL];
 
-    KeyCellFlow flow;
     SDL_Thread* const injector = SDL_CreateThread(
-        key_cell_click_injector, "key_cell_injector", &flow);
-    ASSERT_TRUE(injector != nullptr);
+        injector_fn, "key_cell_injector", &flow);
+    EXPECT_TRUE(injector != nullptr);
+    if (injector == nullptr)
+        return -1;
 
     const float old_speed = og::runtime::current_session->g_game_speed_factor_;
     set_game_speed(0.0f);
@@ -5054,6 +5062,31 @@ TEST(PauseMenuFlow, one_click_on_the_fire_line_rebinds_fire)
     int injector_result = -1;
     SDL_WaitThread(injector, &injector_result);
     escape_tail_join_hygiene();
+
+    og::ui::pause_menu_testing_set_force_real(false);
+    picker_testing_yes_or_no_queue_clear();
+    set_game_speed(old_speed);
+    og::runtime::clear_local_transport_shadow(
+        *og::runtime::current_game_session);
+    game_screen->world().delete_objects();
+    game_screen->world().end = 0;
+    game_screen->world().retry = false;
+    return injector_result;
+}
+
+} // namespace
+
+TEST(PauseMenuFlow, one_click_on_the_fire_line_rebinds_fire)
+{
+    KeyCellGuard guard;
+    ScopedAbilitySelect on(true);
+    const int before_special =
+        og::runtime::current_session->player_keys_[0][KEY_SPECIAL];
+
+    KeyCellFlow flow;
+    trace_clear();
+    const int injector_result =
+        run_paused_player_screen_flow(key_cell_click_injector, flow);
     EXPECT_EQ(0, injector_result) << "injector leg " << injector_result
                                   << " timed out";
 
@@ -5065,15 +5098,172 @@ TEST(PauseMenuFlow, one_click_on_the_fire_line_rebinds_fire)
         << "one click changes one key";
     EXPECT_EQ(std::to_string(SDLK_F15), saved_mode4_key(0, KEY_FIRE))
         << "the click's key is saved";
+}
 
-    og::ui::pause_menu_testing_set_force_real(false);
-    picker_testing_yes_or_no_queue_clear();
-    set_game_speed(old_speed);
-    og::runtime::clear_local_transport_shadow(
-        *og::runtime::current_game_session);
-    game_screen->world().delete_objects();
-    game_screen->world().end = 0;
-    game_screen->world().retry = false;
+namespace
+{
+
+// A mouse release as the key wait's test queue carries it: the button let
+// go while the prompt waits.
+og::input_native::EventData key_wait_mouse_release(int win_x, int win_y)
+{
+    og::input_native::EventData event;
+    event.type = og::input_native::EventType::MouseButtonUp;
+    event.button = og::input_native::kMouseButtonLeft;
+    event.button_x = win_x;
+    event.button_y = win_y;
+    return event;
+}
+
+// The player's seat-0 key in `slot`, read on the menu thread.
+int seat0_key_on_menu_thread(int slot)
+{
+    int key = KEYCODE_UNKNOWN;
+    if (!run_on_main_thread([&key, slot] {
+            key = og::runtime::current_session->player_keys_[0][slot];
+        }))
+        return KEYCODE_UNKNOWN;
+    return key;
+}
+
+// Polls (50 ms ticks) until `done` or `budget_ms` pass.
+template <typename Done>
+bool poll_until(Done done, int budget_ms)
+{
+    const Uint64 started_at = SDL_GetTicks();
+    for (;;)
+    {
+        if (done())
+            return true;
+        if (SDL_GetTicks() - started_at >= static_cast<Uint64>(budget_ms))
+            return false;
+        SDL_Delay(50);
+    }
+}
+
+// The click after a key wait, the way a person clicks: the press that opens
+// the prompt is acted on at once, so the button comes up while the prompt
+// waits (the release goes into the key wait's queue, ahead of the key), and
+// only then is a key pressed. The NEXT click is ONE click on the SPEC 1
+// line, proven by the key it binds, read on the menu thread, never re-sent.
+// `opener` is the button whose press starts a key wait: a key list line or
+// REMAP ALL.
+struct ClickAfterKeyWaitFlow : KeyCellFlow
+{
+    const char* opener = "pause_key_action_0";
+};
+
+int click_after_key_wait_injector(void* data)
+{
+    auto* const flow = static_cast<ClickAfterKeyWaitFlow*>(data);
+    og::runtime::ensure_thread_session();
+
+    if (!wait_for_pause_interactable("pause_player_0", 10'000) ||
+        !wait_for_completed_pause_menu_frames(2, 10'000))
+        return escape_the_pause_menu(flow->test_finished, 1,
+                                     "the PAUSED screen never showed P1");
+    if (!click_until_edge("pause_player_0", [](int wait_ms) {
+            return wait_for_interactable("pause_key_action_1", wait_ms);
+        }))
+        return escape_the_pause_menu(flow->test_finished, 2,
+                                     "P1's player screen never opened");
+    if (!wait_for_completed_pause_menu_frames(2, 10'000))
+        return escape_the_pause_menu(flow->test_finished, 2,
+                                     "the player screen never composed");
+
+    // The press alone; its release and then F15 wait in the key queue.
+    int win_x = -1;
+    int win_y = -1;
+    if (!interact_window_point(flow->opener, win_x, win_y))
+        return escape_the_pause_menu(flow->test_finished, 3,
+                                     "the opener is not on the screen");
+    og::input::testing_push_key_wait_event(
+        key_wait_mouse_release(win_x, win_y));
+    og::input::testing_push_key_wait_event(key_wait_press(SDLK_F15));
+    inject_mouse_down(win_x, win_y);
+    if (!poll_until(
+            [] { return og::input::testing_pending_key_wait_events() == 0; },
+            10'000) ||
+        !wait_for_completed_pause_menu_frames(2, 10'000))
+        return escape_the_pause_menu(flow->test_finished, 3,
+                                     "the press never opened a key prompt");
+
+    // ONE click on the SPEC 1 line, its key F14 waiting in the queue.
+    og::input::testing_push_key_wait_event(key_wait_press(SDLK_F14));
+    if (!interact("pause_key_action_1"))
+        return escape_the_pause_menu(flow->test_finished, 4,
+                                     "the SPEC 1 line is not on the screen");
+    if (!poll_until(
+            [] { return seat0_key_on_menu_thread(KEY_SPECIAL) == SDLK_F14; },
+            10'000))
+        return escape_the_pause_menu(
+            flow->test_finished, 4,
+            "the click after the key prompt was ignored");
+
+    if (!click_until_edge("pause_player_back", [](int wait_ms) {
+            return wait_for_interactable("pause_resume", wait_ms);
+        }))
+        return escape_the_pause_menu(flow->test_finished, 5,
+                                     "BACK never brought PAUSED back");
+    if (!wait_for_completed_pause_menu_frames(2, 10'000))
+        return escape_the_pause_menu(flow->test_finished, 5,
+                                     "PAUSED never composed after BACK");
+    interact("pause_resume");
+    return 0;
+}
+
+} // namespace
+
+// The click after a one-key rebind is not ignored: the release of the click
+// on the FIRE line comes while its prompt waits, and the prompt must not eat
+// it, or the mouse stays "down" and the next click has no press to show.
+//
+// RED (planted): clear_events() and the key wait drop a mouse release like
+// any other event (drop_event_keeping_mouse_releases ignores the release).
+TEST(PauseMenuFlow, the_click_after_a_key_line_rebind_is_acted_on)
+{
+    KeyCellGuard guard;
+    ScopedAbilitySelect on(true);
+    set_player_control_mode(
+        0, static_cast<int>(ControlDirectionMode::FourDirection));
+
+    ClickAfterKeyWaitFlow flow;
+    flow.opener = "pause_key_action_0";
+    const int injector_result =
+        run_paused_player_screen_flow(click_after_key_wait_injector, flow);
+    EXPECT_EQ(0, injector_result) << "injector leg " << injector_result
+                                  << " failed";
+    EXPECT_EQ(SDLK_F15,
+              og::runtime::current_session->player_keys_[0][KEY_FIRE]);
+    EXPECT_EQ(SDLK_F14,
+              og::runtime::current_session->player_keys_[0][KEY_SPECIAL])
+        << "the next click bound SPEC 1";
+}
+
+// The same for REMAP ALL: its first prompt takes F15, the rest keep their
+// keys (nothing more is queued), and the next click still lands.
+//
+// RED (planted): as above.
+TEST(PauseMenuFlow, the_click_after_remap_all_is_acted_on)
+{
+    KeyCellGuard guard;
+    ScopedAbilitySelect on(true);
+    set_player_control_mode(
+        0, static_cast<int>(ControlDirectionMode::FourDirection));
+
+    ClickAfterKeyWaitFlow flow;
+    flow.opener = "pause_remap";
+    trace_clear();
+    const int injector_result =
+        run_paused_player_screen_flow(click_after_key_wait_injector, flow);
+    EXPECT_EQ(0, injector_result) << "injector leg " << injector_result
+                                  << " failed";
+    EXPECT_TRUE(trace_contains("remap", "prompt 1/"));
+    EXPECT_EQ(SDLK_F15, og::runtime::current_session->player_keys_[0][KEY_UP])
+        << "REMAP ALL's first prompt is UP";
+    EXPECT_EQ(SDLK_F14,
+              og::runtime::current_session->player_keys_[0][KEY_SPECIAL])
+        << "the next click bound SPEC 1";
 }
 
 // ---------------------------------------------------------------------------

@@ -796,6 +796,40 @@ bool accepts_key_wait_event(const og::input_native::EventData& event)
 namespace
 {
 
+// The key wait and clear_events() throw away every event that is not an
+// answer to the prompt, but a mouse button RELEASE they throw away still
+// happened. The click that opened the prompt is acted on at its press, so
+// its release arrives while the prompt waits; dropped, it left
+// mouse_state.left stuck down, and the next click's press found no up->down
+// edge and was ignored. Releases go to the mouse handler; everything else
+// (presses, keys, motion) is dropped as before.
+void drop_event_keeping_mouse_releases(const void* native_event)
+{
+    og::input_native::EventData event;
+    if (!as_event_data(native_event, event))
+        return;
+    if (event.type == og::input_native::EventType::MouseButtonUp)
+        handle_mouse_event(native_event);
+}
+
+// One pass over the real event queue: the first event the key wait accepts,
+// or nullptr once the queue is empty. Both the real loop and the TESTING
+// path poll through here, so they drop events by one rule.
+const void* poll_key_wait_answer()
+{
+    while (const void* event = og::input_native::poll_event())
+    {
+        // poll_event never hands out nullptr, the only input decode_event
+        // rejects.
+        og::input_native::EventData event_data;
+        (void)as_event_data(event, event_data);
+        if (og::input::accepts_key_wait_event(event_data))
+            return event;
+        drop_event_keeping_mouse_releases(event);
+    }
+    return nullptr;
+}
+
 #ifdef TESTING
 std::mutex g_key_wait_queue_mutex;
 std::deque<og::input_native::EventData> g_key_wait_queue;
@@ -812,18 +846,16 @@ const void* wait_for_key_event_polling(KeyWaitPollCallback poll_callback)
     // What is already in the real event queue first (the caller dropped
     // everything queued before the prompt, so only a press that arrived
     // since is here), through the same rule as the real loop below.
-    while (const void* event = og::input_native::poll_event())
+    if (const void* event = poll_key_wait_answer())
     {
         og::input_native::EventData event_data;
         (void)as_event_data(event, event_data);
-        if (og::input::accepts_key_wait_event(event_data))
-        {
-            TRACE("input", "wait_for_key_event: queued event type=%d key=%d",
-                  static_cast<int>(event_data.type), event_data.key_sym);
-            return event;
-        }
+        TRACE("input", "wait_for_key_event: queued event type=%d key=%d",
+              static_cast<int>(event_data.type), event_data.key_sym);
+        return event;
     }
-    // Then the test's own queue: a key "pressed" during the wait.
+    // Then the test's own queue: a key "pressed" (or a mouse button let go)
+    // during the wait.
     for (;;)
     {
         og::input_native::EventData queued;
@@ -833,6 +865,17 @@ const void* wait_for_key_event_polling(KeyWaitPollCallback poll_callback)
                 break;
             queued = g_key_wait_queue.front();
             g_key_wait_queue.pop_front();
+        }
+        if (queued.type == og::input_native::EventType::MouseButtonUp)
+        {
+            // A real SDL event, read back through the real loop's pass.
+            TRACE("input", "wait_for_key_event: test mouse release button=%d",
+                  queued.button);
+            og::input_native::push_mouse_button_event(
+                false, queued.button, queued.button_x, queued.button_y);
+            if (const void* event = poll_key_wait_answer())
+                return event;
+            continue;
         }
         if (queued.type != og::input_native::EventType::KeyDown ||
             !og::input::accepts_key_wait_event(queued))
@@ -853,15 +896,8 @@ const void* wait_for_key_event_polling(KeyWaitPollCallback poll_callback)
     {
         if (poll_callback != nullptr && !poll_callback())
             return nullptr;
-        while(const void* event = og::input_native::poll_event())
-        {
-            // poll_event never hands out nullptr, the only input
-            // decode_event rejects.
-            og::input_native::EventData event_data;
-            (void)as_event_data(event, event_data);
-            if (og::input::accepts_key_wait_event(event_data))
-                return event;
-        }
+        if (const void* event = poll_key_wait_answer())
+            return event;
         YIELD_SLEEP(10);
     }
     return nullptr;
@@ -908,7 +944,8 @@ void quit_if_quit_event(const void* native_event)
 
 void clear_events()
 {
-    while (og::input_native::poll_event() != nullptr) {}
+    while (const void* event = og::input_native::poll_event())
+        drop_event_keeping_mouse_releases(event);
 }
 
 bool assignKeyFromWaitEventPolling(
