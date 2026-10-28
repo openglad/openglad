@@ -523,10 +523,12 @@ int picker_team_build_testing_exercise_internal_paths(int* checks_run)
     picker_hire_menu_engine_rewire(hire_rows, 6, ignored_highlight);
     check(hire_rows[5].nav.right == kHireMenuHireMeIndex);
     check(hire_rows[3].nav.left == kHireMenuAbilitiesIndex);
+    check(hire_rows[3].x == hire_me_x(false));
     hire_rows[2].hidden = false;
     picker_hire_menu_engine_rewire(hire_rows, 6, ignored_highlight);
     check(hire_rows[5].nav.right == kHireMenuChangeTeamIndex);
     check(hire_rows[3].nav.left == kHireMenuChangeTeamIndex);
+    check(hire_rows[3].x == hire_me_x(true));
     check(picker_hire_menu_engine_on_spec_row(kHireMenuChangeTeamIndex,
                                               nullptr) == MENU_OK);
     picker_hire_menu_engine_draw_content(nullptr);

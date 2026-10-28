@@ -2027,20 +2027,21 @@ Sint32 zone_submenu_on_spec_row(int row, void* screen_state)
 // propagates its MENU_EXIT directly (the slot-menu normalization).
 
 // The team cycler is hidden for solo play (the legacy entry-time
-// `buttons[2].hidden = (numplayers == 1)` — numplayers can only change on
-// screens that are never open at the same time, so the per-frame gate is
-// entry-equivalent). The entry-time HIRE ME placement reads the same rule
-// (::hire_team_cycler_shown, picker_team_build.cpp).
+// `buttons[2].hidden = (numplayers == 1)`). The gate is per frame: a
+// networked lobby rewrites numplayers under an open HIRE when a player
+// joins or leaves, and the HIRE rewire moves HIRE ME from this row's live
+// hidden flag (picker_team_build.cpp).
 RowState hire_change_team_row_state(const MenuLabelContext& context)
 {
-    return ::hire_team_cycler_shown(context.save) ? RowState::Visible
-                                                  : RowState::Hidden;
+    return (context.save != nullptr && context.save->numplayers == 1)
+        ? RowState::Hidden
+        : RowState::Visible;
 }
 
 // The bottom band reads BACK | ABILITIES | Hiring for Team N | HIRE ME
 // (kHire* in picker_sdl_defs.h). The table is the band with the team
-// cycler shown; solo, the prepare hook moves HIRE ME into the cycler's
-// place and the rewire closes the links around the hidden cycler.
+// cycler shown; solo, the rewire moves HIRE ME into the cycler's place and
+// closes the links around the hidden cycler.
 constexpr MenuButtonSpec kHireMenuRows[] = {
     {.id = "prev", .label = "PREV",
      .x = 10, .y = 40, .w = 40, .h = 20,

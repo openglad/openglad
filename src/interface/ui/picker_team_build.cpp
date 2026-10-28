@@ -1701,19 +1701,9 @@ static void hire_box_rebuild(HireEngineState& state, unsigned char family)
           static_cast<int>(state.desc.size()));
 }
 
-// The team cycler shows with more than one player (the HIRE spec's row
-// state and the entry-time HIRE ME placement below both ask this).
-bool hire_team_cycler_shown(const SaveData* save)
-{
-    return save == nullptr || save->numplayers != 1;
-}
-
 // Entry-time repositioning of PREV/NEXT around the portrait, verbatim from
-// the deleted loop, and of HIRE ME into the team cycler's place when the
-// cycler is hidden (solo), so the bottom band keeps one gap between
-// neighbours. Runs once, before init_buttons (numplayers cannot change
-// while HIRE is open); the accessor output — what the G2 pins transcribe —
-// keeps the table shape.
+// the deleted loop (runs once, before init_buttons; the accessor output —
+// what the G2 pins transcribe — keeps the table shape).
 void picker_hire_menu_engine_prepare_buttons(button* buttons, int num_buttons,
                                              void* /*screen_state*/)
 {
@@ -1725,27 +1715,22 @@ void picker_hire_menu_engine_prepare_buttons(button* buttons, int num_buttons,
 
     buttons[1].x = l.description_box.x + l.description_box.w/2 + 4 + 30;
     buttons[1].y = l.name_box.y + l.name_box.h + (l.description_box.y - (l.name_box.y + l.name_box.h))/2 - buttons[1].sizey/2;
-
-    if (num_buttons > kHireMenuHireMeIndex)
-    {
-        const screen* const scr = og::runtime::current_session != nullptr
-            ? og::runtime::current_session->myscreen_
-            : nullptr;
-        buttons[kHireMenuHireMeIndex].x = hire_me_x(
-            hire_team_cycler_shown(scr != nullptr ? &scr->save_data : nullptr));
-    }
 }
 
-// Nav over the solo-hidden team cycler: the band reads BACK | ABILITIES |
-// team cycler | HIRE ME, and while the cycler is hidden ABILITIES and HIRE
-// ME link to each other across its place (where HIRE ME then sits). Every
-// frame, from the cycler's live hidden flag.
+// The bottom band over the solo-hidden team cycler: the band reads BACK |
+// ABILITIES | team cycler | HIRE ME, and while the cycler is hidden HIRE ME
+// takes its place (so the gaps stay even) and ABILITIES and HIRE ME link
+// to each other across it. Every frame, from the cycler's live hidden flag:
+// a networked lobby rewrites numplayers under an open HIRE (a friend joins
+// or leaves), so an entry-time placement would put the cycler on top of
+// HIRE ME.
 void picker_hire_menu_engine_rewire(button* buttons, int num_buttons,
                                     int& /*highlighted_button*/)
 {
     if (num_buttons <= kHireMenuAbilitiesIndex)
         return;
     const bool team_shown = !buttons[kHireMenuChangeTeamIndex].hidden;
+    buttons[kHireMenuHireMeIndex].x = hire_me_x(team_shown);
     buttons[kHireMenuAbilitiesIndex].nav.right =
         team_shown ? kHireMenuChangeTeamIndex : kHireMenuHireMeIndex;
     buttons[kHireMenuHireMeIndex].nav.left =

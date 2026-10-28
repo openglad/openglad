@@ -1541,22 +1541,20 @@ TEST(AbilitiesLayout, train_door_row_follows_the_setting)
 // place. HIRE ME is the band's tall face, centred on the others' line; the
 // keyboard walks the band in the order it reads, and the door is lit in
 // both New Ability Select settings (it opens DETAILS, which both have).
+// The layout follows the team cycler's live hidden flag, read every frame
+// by the rewire, because a networked lobby changes the player count under
+// an open HIRE (a friend joins or leaves).
 // RED: the old order (HIRE ME second), HIRE ME left at the right edge when
-// solo, or the door dimmed with the setting off.
+// solo, HIRE ME placed once at entry (a friend joining puts the cycler on
+// top of it), or the door dimmed with the setting off.
 TEST(AbilitiesLayout, hire_band_reads_back_abilities_team_hire)
 {
     const og::ui::MenuScreenSpec& spec = og::ui::hire_menu_screen_spec();
     ASSERT_EQ(kHireMenuAbilitiesIndex + 1, spec.row_count);
-    ASSERT_NE(nullptr, spec.prepare_buttons);
     ASSERT_NE(nullptr, spec.nav.rewire);
-    SaveData& save = test_screen()->save_data;
-    const unsigned char numplayers_before = save.numplayers;
     for (const bool solo : {false, true}) {
-        save.numplayers = solo ? 1 : 2;
         std::vector<button> rows;
         og::ui::materialize_menu_buttons(spec, rows);
-        spec.prepare_buttons(rows.data(), static_cast<int>(rows.size()),
-                             nullptr);
         rows[kHireMenuChangeTeamIndex].hidden = solo;
         int highlighted = spec.default_highlight;
         spec.nav.rewire(rows.data(), static_cast<int>(rows.size()),
@@ -1634,7 +1632,28 @@ TEST(AbilitiesLayout, hire_band_reads_back_abilities_team_hire)
             }
         }
     }
-    save.numplayers = numplayers_before;
+
+    // One open HIRE whose team cycler flips: solo, a friend joins (the
+    // cycler shows), the friend leaves (it hides again). HIRE ME follows
+    // the flag on the very next rewire, never sitting under the cycler.
+    {
+        std::vector<button> rows;
+        og::ui::materialize_menu_buttons(spec, rows);
+        const int n = static_cast<int>(rows.size());
+        int highlighted = spec.default_highlight;
+        button& team = rows[kHireMenuChangeTeamIndex];
+        const button& hire = rows[kHireMenuHireMeIndex];
+        for (const bool shown : {false, true, false, true}) {
+            team.hidden = !shown;
+            spec.nav.rewire(rows.data(), n, highlighted);
+            const char* const where = shown ? "cycler shown" : "cycler hidden";
+            EXPECT_EQ(shown ? 242 : 126, hire.x) << where;
+            if (shown) {
+                EXPECT_LE(team.x + team.sizex, hire.x)
+                    << "the cycler never overlaps HIRE ME";
+            }
+        }
+    }
 
     // Lit whatever New Ability Select says.
     const og::ui::MenuButtonSpec& row = spec.rows[kHireMenuAbilitiesIndex];

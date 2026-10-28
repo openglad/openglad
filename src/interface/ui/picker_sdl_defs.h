@@ -115,7 +115,6 @@ inline constexpr std::size_t kNetworkingMenuMachineRowLabelChars = 39;
 
 // Forward declare button for menu descriptor arrays.
 struct button;
-class SaveData;
 
 // Deterministically rewires the NETWORKING subscreen nav graph for the
 // current number of visible list rows (0..kNetworkingMenuRoomSlots): every
@@ -1017,9 +1016,6 @@ static_assert(kHireMeY + kHireMeH / 2 == kHireBandY + kHireBandH / 2,
 static_assert(kHireMeH > kHireBandH && kHireMeW > kHireBackW &&
                   kHireMeW * kHireMeH > kHireAbilitiesW * kHireBandH,
               "HIRE ME stays the band's biggest face (the tall one)");
-// The same rule the team cycler's row state uses: it shows with more than
-// one player (menu_screen_specs.cpp).
-bool hire_team_cycler_shown(const SaveData* save);
 
 // --- ABILITIES screen layout contract (docs/ability-select-design.md E.1) ---
 // Ordinals: BACK, DEFAULTS, the six belt slots row-major (key 1 | SHIFTER+1,
