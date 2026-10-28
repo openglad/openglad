@@ -39,14 +39,12 @@ inline constexpr int kKeymapLegendY = kKeymapBandY + kKeymapBandH + 8;
 inline constexpr int kKeymapLegendPitch = 8;
 inline constexpr std::size_t kKeymapLegendLines = 4;
 inline constexpr std::size_t kKeymapMaxGlyphs = 48;
-inline constexpr int kKeymapBackX = 10;
-inline constexpr int kKeymapBackY = 180;
-inline constexpr int kKeymapBackW = 50;
-inline constexpr int kKeymapBackH = 15;
-static_assert(kKeymapLegendY + kKeymapLegendPitch *
-                      static_cast<int>(kKeymapLegendLines - 1) + 6 <
-                  kKeymapBackY,
-              "the legend ends above BACK");
+// The legend's last glyph row; BACK sits below it. BACK's face is the
+// ABILITIES screen's footer BACK, rect for rect (keymap_screen.cpp), so
+// both panels keep the same margin to the frame.
+inline constexpr int kKeymapLegendBottomY =
+    kKeymapLegendY +
+    kKeymapLegendPitch * static_cast<int>(kKeymapLegendLines - 1) + 6;
 
 // One of this machine's seats: its local controller slot (the row of
 // input_player_keys()) and the player number it plays as.

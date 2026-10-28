@@ -554,7 +554,7 @@ TEST(PauseMenuPins, pause_player_exact_table)
     // (28, #388): half-width 66 px faces at x 12 and x 84 on the y=169
     // band, left of REMOVE.
     std::vector<ExpectedButton> expected = {
-        {"pause_player_back", "BACK", KEYSTATE_ESCAPE, 10, 8, 50, 15,
+        {"pause_player_back", "BACK", KEYSTATE_ESCAPE, 12, 8, 50, 15,
          button_action_id(ButtonAction::ReturnMenu), MENU_REDRAW,
          MenuNav{.up = 5, .down = 2}},
         {"pause_input", "INPUT: WASD", KEYSTATE_UNKNOWN, 12, 54, 98, 18,

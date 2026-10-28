@@ -75,6 +75,7 @@ void draw_cycle_effect_button(button& b, const std::string& category,
 void draw_sprite_sheet_button(button& b);
 void draw_build_stamp();
 void sync_button_hidden_state(const button* buttons, int button_index);
+void sync_button_live_rect(const button* buttons, int button_index);
 void ensure_highlighted_button_visible(const button* buttons, int num_buttons,
                                        int& highlighted_button);
 void sync_scenario_menu_host_control_visibility(button* buttons,
@@ -1623,13 +1624,9 @@ void zone_submenu_rewire(button* buttons, int count, int& /*highlighted*/)
             buttons[r].label = face.label;
             vbutton* live = og::runtime::current_session
                                 ->allbuttons_[static_cast<std::size_t>(r)];
+            sync_button_live_rect(buttons, r);
             if (live != nullptr) {
                 live->label = buttons[r].label;
-                live->xloc = buttons[r].x;
-                live->yloc = buttons[r].y;
-                live->width = buttons[r].sizex;
-                live->xend = buttons[r].x + buttons[r].sizex;
-                live->yend = buttons[r].y + buttons[r].sizey;
                 apply_scripted_row_face_ink(live, face.face);
             }
         }
@@ -2013,7 +2010,8 @@ Sint32 zone_submenu_on_spec_row(int row, void* screen_state)
 
 // ---------------------------------------------------------------------------
 // HIRE (§1.8 step 6): PREV/NEXT candidate cyclers over the recruit portrait,
-// the hire-team cycler, HIRE ME, BACK, and (appended) the ABILITIES door. Rows transcribed VERBATIM from the
+// the hire-team cycler, HIRE ME, BACK, and (appended) the ABILITIES door.
+// Rows transcribed VERBATIM from the
 // deleted k_hiremenu_buttons — including the PREV/NEXT table positions
 // (10,40)/(110,40) that the legacy loop immediately recomputed from the
 // description/name box geometry before init_buttons: that entry-time
@@ -2026,9 +2024,10 @@ Sint32 zone_submenu_on_spec_row(int row, void* screen_state)
 // propagates its MENU_EXIT directly (the slot-menu normalization).
 
 // The team cycler is hidden for solo play (the legacy entry-time
-// `buttons[2].hidden = (numplayers == 1)` — numplayers can only change on
-// screens that are never open at the same time, so the per-frame gate is
-// entry-equivalent).
+// `buttons[2].hidden = (numplayers == 1)`). The gate is per frame: a
+// networked lobby rewrites numplayers under an open HIRE when a player
+// joins or leaves, and the HIRE rewire moves HIRE ME from this row's live
+// hidden flag (picker_team_build.cpp).
 RowState hire_change_team_row_state(const MenuLabelContext& context)
 {
     return (context.save != nullptr && context.save->numplayers == 1)
@@ -2036,42 +2035,43 @@ RowState hire_change_team_row_state(const MenuLabelContext& context)
         : RowState::Visible;
 }
 
-// The ABILITIES door's state: TRAIN's own rule (defined with its table
-// below), dimmed with New Ability Select off. With the setting off the HIRE
-// box's own "Special:" line names the specials instead.
-RowState train_abilities_row_state(const MenuLabelContext& context);
-
+// The bottom band reads BACK | ABILITIES | Hiring for Team N | HIRE ME
+// (kHire* in picker_sdl_defs.h). The table is the band with the team
+// cycler shown; solo, the rewire moves HIRE ME into the cycler's place and
+// closes the links around the hidden cycler.
 constexpr MenuButtonSpec kHireMenuRows[] = {
     {.id = "prev", .label = "PREV",
      .x = 10, .y = 40, .w = 40, .h = 20,
      .action = ButtonAction::CycleGuy, .arg = -1,
-     .nav = {.down = 4, .right = 1}},
+     .nav = {.down = kHireMenuBackIndex, .right = 1}},
     {.id = "next", .label = "NEXT",
      .x = 110, .y = 40, .w = 40, .h = 20,
      .action = ButtonAction::CycleGuy, .arg = 1,
-     .nav = {.down = 3, .left = 0, .right = 3}},
+     .nav = {.down = kHireMenuHireMeIndex, .left = 0,
+             .right = kHireMenuHireMeIndex}},
     {.id = "change_hire_team", .label = "hiring for team X",
      .x = kHireTeamX, .y = kHireBandY, .w = kHireTeamW, .h = kHireBandH,
      .action = ButtonAction::ChangeHireTeam, .arg = 1,
-     .nav = {.up = 1, .left = kHireMenuAbilitiesIndex},
+     .nav = {.up = 1, .left = kHireMenuAbilitiesIndex,
+             .right = kHireMenuHireMeIndex},
      .state_override = &hire_change_team_row_state},
     {.id = "hire_me", .label = "HIRE ME",
-     .x = kHireMeX, .y = kHireMeY, .w = kHireMeW, .h = kHireMeH,
+     .x = hire_me_x(true), .y = kHireMeY, .w = kHireMeW, .h = kHireMeH,
      .action = ButtonAction::AddGuy, .arg = -1,
-     .nav = {.up = 1, .left = 4, .right = kHireMenuAbilitiesIndex}},
+     .nav = {.up = 1, .left = kHireMenuChangeTeamIndex}},
     {.id = "back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
      .x = kHireBackX, .y = kHireBandY, .w = kHireBackW, .h = kHireBandH,
      .action = ButtonAction::ReturnMenu, .arg = MENU_EXIT,
-     .nav = {.up = 0, .right = kHireMenuHireMeIndex}},
-    // New Ability Select: the recruit's class on the ABILITIES screen,
-    // read-only (abilities_screen.cpp, run_recruit_abilities_menu).
+     .nav = {.up = 0, .right = kHireMenuAbilitiesIndex}},
+    // The TRAIN screen's DETAILS.. page for the class on show, as a level-1
+    // recruit (create_recruit_detail_menu). DETAILS is there whatever New
+    // Ability Select says, so the door is too.
     {.id = "hire_abilities", .label = "ABILITIES",
      .x = kHireAbilitiesX, .y = kHireBandY, .w = kHireAbilitiesW,
      .h = kHireBandH,
      .action = ButtonAction::MenuSpecRow, .arg = kHireMenuAbilitiesIndex,
-     .nav = {.up = 1, .left = kHireMenuHireMeIndex,
-             .right = kHireMenuChangeTeamIndex},
-     .state_override = &train_abilities_row_state},
+     .nav = {.up = 0, .left = kHireMenuBackIndex,
+             .right = kHireMenuChangeTeamIndex}},
 };
 
 static_assert(std::size(kHireMenuRows) == kHireMenuAbilitiesIndex + 1,
@@ -2099,8 +2099,7 @@ RowState train_change_team_row_state(const MenuLabelContext& context)
 
 // The ABILITIES door is dimmed, not hidden, with New Ability Select off
 // (docs/ability-select-design.md K8): the screen stays discoverable, and
-// the setting that brings it back is one UI FX row away. HIRE's door
-// follows the same rule.
+// the setting that brings it back is one UI FX row away.
 RowState train_abilities_row_state(const MenuLabelContext& /*context*/)
 {
     return og::input::ability_select_on() ? RowState::Visible
@@ -3324,7 +3323,8 @@ RowState seat_settings_keymap_row_state(const MenuLabelContext& /*context*/)
 constexpr MenuButtonSpec kSeatSettingsRows[] = {
     {.id = "seat_settings_back", .label = "BACK",
      .hotkey = KEYSTATE_ESCAPE,
-     .x = 10, .y = 8, .w = 50, .h = 15,
+     .x = kPlayerScreenBackX, .y = kPlayerScreenBackY,
+     .w = kPlayerScreenBackW, .h = kPlayerScreenBackH,
      .action = ButtonAction::ReturnMenu, .arg = MENU_REDRAW,
      .nav = {.up = kSeatSettingsTeamIndex,
              .down = kSeatSettingsModeIndex}},
@@ -3858,15 +3858,9 @@ void base_camp_rewire(button* buttons, int count, int& highlighted_button)
                             ->allbuttons_[static_cast<std::size_t>(ordinal)];
         if (live == nullptr)
             return;
-        const button& b = buttons[ordinal];
-        live->xloc = b.x;
-        live->yloc = b.y;
-        live->width = b.sizex;
-        live->height = b.sizey;
-        live->xend = b.x + b.sizex;
-        live->yend = b.y + b.sizey;
-        live->no_draw = b.no_draw;
-        live->label = b.label;
+        sync_button_live_rect(buttons, ordinal);
+        live->no_draw = buttons[ordinal].no_draw;
+        live->label = buttons[ordinal].label;
     };
     // Per-row face stamp (the READY/GO face precedent): the gate pass has
     // already reset every face to BUTTON_FACING this frame, so a rewire

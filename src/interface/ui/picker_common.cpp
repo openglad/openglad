@@ -5365,23 +5365,6 @@ const char* entry_name(const FamilyDescriptor* fd,
                      : og::sim::special_name(fd, entry.slot, new_specials);
 }
 
-}  // namespace
-
-std::string specials_summary(const FamilyDescriptor* fd, short new_specials)
-{
-    std::string names;
-    for (int slot = 1; fd != nullptr && slot < FD_NUM_SPECIALS; ++slot) {
-        const char* name = og::sim::special_name(fd, slot, new_specials);
-        if (!names_a_special(name))
-            continue;
-        if (!names.empty())
-            names += ", ";
-        names += special_title(name);
-    }
-    return "Special: " + (names.empty() ? std::string("none") : names);
-}
-
-namespace {
 
 // `text` wrapped so that no line, indent included, passes
 // kHelpClassesProseChars: the first line starts `first` spaces in, the
@@ -5537,30 +5520,11 @@ std::vector<std::string> class_help_lines(const FamilyDescriptor* fd,
     return out;
 }
 
-std::string hire_description(const FamilyDescriptor* fd, short new_specials,
-                             bool ability_select)
+std::string hire_description(const FamilyDescriptor* fd)
 {
     if (fd == nullptr || fd->description == nullptr)
         return {};
-    if (ability_select)
-        return fd->description;
-    return std::string(fd->description) + "\n\n" +
-           specials_summary(fd, new_specials);
-}
-
-std::vector<std::string> hire_box_lines(std::string_view text, int width)
-{
-    std::vector<std::string> lines =
-        og::core::wrap_text(text, width, og::core::WrapMode::Paragraphs);
-    if (lines.size() <= kHireBoxRoomyLines)
-        return lines;
-    for (std::size_t i = 1; i < lines.size(); ++i) {
-        if (lines[i].starts_with("Special:") && lines[i - 1].empty()) {
-            lines.erase(lines.begin() + static_cast<std::ptrdiff_t>(i - 1));
-            break;
-        }
-    }
-    return lines;
+    return fd->description;
 }
 
 // --- New Ability Select ---

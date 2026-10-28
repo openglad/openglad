@@ -169,6 +169,13 @@ Sint32 load2(Sint32 arg1);
 Sint32 load3(Sint32 arg1);
 Sint32 create_team_menu(Sint32 arg1); // Create / modify team members
 Sint32 create_detail_menu(guy *arg1); // detailed character information
+// The same DETAILS page over HIRE's recruit (current_guy_): HIRE's
+// ABILITIES door. No promotion offered; returns MENU_REDRAW.
+Sint32 create_recruit_detail_menu();
+#ifdef TESTING
+// The family the open DETAILS page shows, -1 while none is open.
+int detail_menu_testing_family();
+#endif
 Sint32 create_hire_menu(Sint32 arg1);  // Purchase new team members
 Sint32 create_train_menu(Sint32 arg1); // Edit or sell team members
 Sint32 create_progress_menu(Sint32 arg1); // View level progress

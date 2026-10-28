@@ -446,7 +446,7 @@ TEST(MenuEnginePins, trainmenu_exact_table)
 // ---------------------------------------------------------------------------
 // Hire (k_hiremenu_buttons): PREV/NEXT candidate cyclers, the hire-team
 // cycler (label rewritten by change_hire_teamnum via index 2), HIRE ME, BACK,
-// and the ABILITIES door (New Ability Select) appended at index 5.
+// and the ABILITIES door (the DETAILS page) appended at index 5.
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
@@ -599,18 +599,20 @@ TEST(MenuEnginePins, hiremenu_exact_table)
         {"next", "NEXT", KEYSTATE_UNKNOWN, 110, 40, 40, 20,
          button_action_id(ButtonAction::CycleGuy), 1,
          MenuNav{.down = 3, .left = 0, .right = 3}},
-        {"change_hire_team", "hiring for team X", KEYSTATE_UNKNOWN, 190, 170,
+        // The bottom band, left to right: BACK 10 | ABILITIES 56 | team
+        // cycler 126 | HIRE ME 242 (ends 300), 6 px between neighbours.
+        {"change_hire_team", "hiring for team X", KEYSTATE_UNKNOWN, 126, 170,
          110, 20, button_action_id(ButtonAction::ChangeHireTeam), 1,
-         MenuNav{.up = 1, .left = 5}},
-        {"hire_me", "HIRE ME", KEYSTATE_UNKNOWN, 56, 166, 58, 28,
+         MenuNav{.up = 1, .left = 5, .right = 3}},
+        {"hire_me", "HIRE ME", KEYSTATE_UNKNOWN, 242, 166, 58, 28,
          button_action_id(ButtonAction::AddGuy), -1,
-         MenuNav{.up = 1, .left = 4, .right = 5}},
+         MenuNav{.up = 1, .left = 2}},
         {"back", "BACK", KEYSTATE_ESCAPE, 10, 170, 40, 20,
          button_action_id(ButtonAction::ReturnMenu), MENU_EXIT,
-         MenuNav{.up = 0, .right = 3}},
-        {"hire_abilities", "ABILITIES", KEYSTATE_UNKNOWN, 120, 170, 64, 20,
+         MenuNav{.up = 0, .right = 5}},
+        {"hire_abilities", "ABILITIES", KEYSTATE_UNKNOWN, 56, 170, 64, 20,
          button_action_id(ButtonAction::MenuSpecRow), 5,
-         MenuNav{.up = 1, .left = 3, .right = 2}},
+         MenuNav{.up = 0, .left = 4, .right = 2}},
     };
     button* buttons = picker_hiremenu_buttons();
     const int count = picker_hiremenu_button_count();

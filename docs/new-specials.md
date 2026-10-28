@@ -557,11 +557,8 @@ alternate's one-line `detail`. A slot the
 character has not reached yet is one line at the foot of its column,
 `Hook Blade: lvl 7`. Slots 1 and 2 are in the left column, 3 to 5 in the
 right. A character with no special in play reads `No special abilities.`
-With New Ability Select off, the HIRE box's last line is generated the
-same way (`og::ui::specials_summary`): `Special:` and the slot names in
-play, in slot order. With it on the box has no such line: HIRE's ABILITIES
-button lists the class's abilities instead (`docs/ability-select-design.md`
-E.1).
+The HIRE box has no such list: its ABILITIES button opens this page for
+the class on show (`docs/ability-select-design.md` E.1).
 
 ## The scene tests
 

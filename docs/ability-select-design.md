@@ -549,15 +549,14 @@ two instead (one ability, one slot). A locked ability can be placed.
   and SELL. With the setting off it shows dimmed, so players can still find
   it (question K.8). Dimmed is the menu's one rule for an inert row: the
   darker face every dimmed door uses (`vbutton::vdisplay`).
-- **HIRE's door**: `ABILITIES` beside HIRE ME on HIRE's bottom row (BACK |
-  HIRE ME | ABILITIES | the team picker, one gap between each), dimmed with
-  the setting off like TRAIN's. It opens the same screen on the class HIRE
-  shows (`run_recruit_abilities_menu`): titled for the class, a level-1
-  recruit on the class default, locked abilities with their level, read-only
-  (DEFAULTS hidden, a click changes nothing, the status line says to hire
-  first and use TRAIN > ABILITIES). BACK returns to HIRE on the same class.
-  With the setting on the HIRE box carries the class's description only;
-  with it off it keeps the `Special:` line (`og::ui::hire_description`).
+- **HIRE's door**: `ABILITIES` on HIRE's bottom row (BACK | ABILITIES |
+  the team picker, shown with more than one player | HIRE ME, one gap
+  between each; solo, HIRE ME takes the team picker's place). It opens the
+  TRAIN screen's DETAILS.. page (`create_recruit_detail_menu`) for the
+  class HIRE shows, as the level-1 recruit HIRE ME would hire: no PROMOTE,
+  nobody hired. BACK returns to HIRE on the same class. DETAILS exists in
+  both settings, so the door is lit in both, and the HIRE box carries the
+  class's description only (`og::ui::hire_description`).
 - **Screen**: `MenuScreenId::Abilities`, `src/interface/ui/abilities_screen.cpp`,
   layout constants in `src/interface/ui/picker_sdl_defs.h`. Title and
   "Class, level N" at the top; the six slots in two columns (1 | S1, 2 |

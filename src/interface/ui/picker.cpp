@@ -3034,23 +3034,32 @@ void render_family_abilities(text& mytext, const guy* g, short new_specials) {
 
 } // namespace
 
+#ifdef TESTING
+namespace {
+// The family the open DETAILS page shows, -1 while none is open (an
+// injector reads it on the menu thread).
+int g_detail_menu_testing_family = -1;
+}  // namespace
+
+int detail_menu_testing_family()
+{
+    return g_detail_menu_testing_family;
+}
+#endif
+
+namespace {
+
+// Whose page the DETAILS loop shows: a hero on the team (TRAIN's DETAILS..,
+// the save slot editguy_ names) or the recruit HIRE is showing
+// (current_guy_, nobody hired yet).
+enum class DetailSubject : std::uint8_t { TeamSlot, Recruit };
+
+Sint32 run_detail_menu(DetailSubject subject);
+
+}  // namespace
+
 Sint32 create_detail_menu(guy *arg1)
 {
-   Sint32 retvalue = 0;
-   Sint32 start_time = query_timer();
-
-   release_mouse();
-
-	   // init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
-    
-	button* buttons = picker_details_buttons();
-	int num_buttons = picker_details_button_count();
-	int highlighted_button = 0;
-	og::runtime::current_session->localbuttons_ = init_buttons(buttons, num_buttons);
-
-   //leftmouse(buttons);
-   //localbuttons->leftclick(buttons);
-
    // The parameter SEATS the slot and is never dereferenced past the first
    // poll: every iteration below opens with picker_lobby_poll(), which
    // rebuilds save.team_list (picker_lobby_client.cpp, apply_state_to_save),
@@ -3068,20 +3077,80 @@ Sint32 create_detail_menu(guy *arg1)
            }
        }
    }
+   return run_detail_menu(DetailSubject::TeamSlot);
+}
+
+// HIRE's ABILITIES door: the same page over the recruit HIRE is showing (a
+// level-1 hero of the class on show; HIRE ME has not run). Nobody is on
+// the team yet, so the page never offers the promotion. BACK returns
+// MENU_REDRAW to HIRE, whose recruit is untouched.
+Sint32 create_recruit_detail_menu()
+{
+   const guy* const recruit =
+       og::runtime::current_session->current_guy_.get();
+   if (recruit == nullptr)
+       return MENU_REDRAW;
+   TRACE("detail", "open recruit family=%d level=%d",
+         static_cast<int>(recruit->family), static_cast<int>(recruit->level));
+   return run_detail_menu(DetailSubject::Recruit);
+}
+
+namespace {
+
+Sint32 run_detail_menu(DetailSubject subject)
+{
+   Sint32 retvalue = 0;
+   Sint32 start_time = query_timer();
+
+   release_mouse();
+
+	   // init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
+    
+	button* buttons = picker_details_buttons();
+	int num_buttons = picker_details_button_count();
+	int highlighted_button = 0;
+	og::runtime::current_session->localbuttons_ = init_buttons(buttons, num_buttons);
+
+   //leftmouse(buttons);
+   //localbuttons->leftclick(buttons);
+
+#ifdef TESTING
+   struct DetailFamilyReset {
+       ~DetailFamilyReset() { g_detail_menu_testing_family = -1; }
+   } detail_family_reset;
+#endif
 
    while ( !(retvalue & MENU_EXIT) )
    {
+       // Null outside tests: an injector's menu-thread reads land here
+       // (picker_lobby_client.h), since this loop is not engine-hosted.
+       if (og::ui::g_picker_main_thread_pump != nullptr)
+           og::ui::g_picker_main_thread_pump();
        picker_lobby_poll();
-       auto& tl = og::runtime::current_session->myscreen_->save_data.team_list;
-       const int slot = og::runtime::current_session->editguy_;
-       if (slot < 0 || slot >= static_cast<int>(tl.size()))
-           return MENU_REDRAW;
-       guy* thisguy = tl[static_cast<std::size_t>(slot)].get();
+       guy* thisguy = nullptr;
+       if (subject == DetailSubject::Recruit)
+       {
+           // HIRE's recruit lives outside the team list, so the lobby poll
+           // never frees it.
+           thisguy = og::runtime::current_session->current_guy_.get();
+       }
+       else
+       {
+           auto& tl = og::runtime::current_session->myscreen_->save_data.team_list;
+           const int slot = og::runtime::current_session->editguy_;
+           if (slot < 0 || slot >= static_cast<int>(tl.size()))
+               return MENU_REDRAW;
+           thisguy = tl[static_cast<std::size_t>(slot)].get();
+       }
        if (!thisguy)
            return MENU_REDRAW;
+#ifdef TESTING
+       g_detail_menu_testing_family = static_cast<int>(thisguy->family);
+#endif
 
        const auto* fd = get_family_descriptor(thisguy->family);
-       buttons[1].hidden = !(fd && fd->promotes_to >= 0 && thisguy->level >= fd->promotion_level_req);
+       buttons[1].hidden = subject == DetailSubject::Recruit ||
+           !(fd && fd->promotes_to >= 0 && thisguy->level >= fd->promotion_level_req);
 
        show_guy(query_timer()-start_time, 1); // 1 means ourteam[editguy]
     
@@ -3149,6 +3218,8 @@ Sint32 create_detail_menu(guy *arg1)
    }
    return MENU_REDRAW;  // back to edit menu
 }
+
+}  // namespace
 
 
 
