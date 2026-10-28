@@ -5203,9 +5203,13 @@ TEST(MenuLayout, player_screen_grid_relations_and_cross_screen_identity)
     const auto& p = pause_rows;
     const auto& s = seat_rows;
 
-    // Column A: DIRECTION, INPUT, and (seat) TEAM share one left edge.
+    // Column A: BACK, DIRECTION, INPUT, and (seat) TEAM share one left
+    // edge. BACK shipped at x 10, two pixels left of the column under it.
+    // RED: BACK back at x 10 on either screen.
     for (const button* b :
-         {&p[og::ui::kPausePlayerModeIndex], &p[og::ui::kPausePlayerInputIndex],
+         {&p[og::ui::kPausePlayerBackIndex],
+          &p[og::ui::kPausePlayerModeIndex], &p[og::ui::kPausePlayerInputIndex],
+          &s[kSeatSettingsBackIndex],
           &s[kSeatSettingsModeIndex], &s[kSeatSettingsInputRow],
           &s[kSeatSettingsTeamIndex]})
         EXPECT_EQ(kPlayerScreenColAX, b->x) << b->id;

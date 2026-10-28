@@ -66,6 +66,7 @@
 #include <SDL3/SDL.h>
 
 #include <algorithm>
+#include <cstring>
 #include <array>
 #include <atomic>
 #include <cstdlib>
@@ -129,10 +130,12 @@ constexpr EscapeDoor kAbilitiesEscapeDoors[] = {
 // The company every flow opens: an Archmage (slot 0) and a level-1 Mage
 // (slot 1), on gladiator, as the most recent company on disk so CONTINUE
 // opens it.
-void write_ability_company(short archmage_level = 12)
+void write_ability_company(short archmage_level = 12,
+                           unsigned char numplayers = 1)
 {
     write_save0_with_soldiers("gladiator", 1, 2, {}, "ABILITY HALL");
     SaveData& save = test_screen()->save_data;
+    save.numplayers = numplayers;
     auto archmage = std::make_unique<guy>(FAMILY_ARCHMAGE);
     archmage->name = "MERLIN";
     archmage->level = archmage_level;
@@ -649,15 +652,17 @@ int door_off_injector(void* data)
     return escape(0, "");
 }
 
-// --- 2b. HIRE's door: the shown class, read-only, and back to it ----------
+// --- 2b. HIRE's door: the DETAILS page of the class on show, and back -----
 
-// HIRE's door table, in PRECEDENCE order: ABILITIES' own BACK, HIRE's BACK
-// (HIRE ME says it is up), Base Camp's, then the main menu's way forward.
-constexpr EscapeDoor kHireAbilitiesEscapeDoors[] = {
-    {"abilities_back", "abilities_back"},
+// HIRE's door table, in PRECEDENCE order: HIRE's BACK (HIRE ME says it is
+// up), Base Camp's, the main menu's way forward, then the DETAILS page's
+// BACK (the only screen left that publishes a bare "back": its PROMOTE row
+// is hidden over a recruit).
+constexpr EscapeDoor kHireDetailsEscapeDoors[] = {
     {"hire_me", "back"},
     {"go", "back"},
     {"continue_game", "continue_game"},
+    {"back", "back"},
 };
 
 // Main thread: the family of the candidate HIRE is showing, -1 when none.
@@ -703,17 +708,58 @@ bool step_hire_to(int family)
     return main_thread_hire_family() == family;
 }
 
+// What the open DETAILS page shows, read on the menu thread (the page pumps
+// the injector's tasks; it is not engine-hosted, so there are no menu
+// frames to count).
+struct DetailsSeen {
+    int family = -1;        // the family the page draws
+    int recruit_family = -1;  // HIRE's recruit, untouched under it
+    int recruit_level = -1;
+    int team_size = -1;     // nobody was hired by opening it
+    bool promote_offered = true;  // the page's PROMOTE row is live
+};
+
+bool main_thread_details(DetailsSeen& out)
+{
+    return run_on_main_thread([&out] {
+        out.family = detail_menu_testing_family();
+        const guy* const recruit =
+            og::runtime::current_session->current_guy_.get();
+        out.recruit_family =
+            recruit != nullptr ? static_cast<int>(recruit->family) : -1;
+        out.recruit_level = recruit != nullptr ? recruit->level : -1;
+        out.team_size = og::runtime::current_session->myscreen_->save_data
+                            .team_size;
+        // The page's own row table (what its click and keyboard guards
+        // read); the live surface keeps PROMOTE listed but undrawn.
+        const std::vector<button>& rows = pks().details_buttons;
+        out.promote_offered = rows.size() > 1 && !rows[1].hidden;
+    });
+}
+
+// The DETAILS page is up: its rows are published (PROMOTE is hidden over a
+// recruit but still listed) and it reports the family it draws.
+bool details_page_up(int ms)
+{
+    const Uint64 deadline = SDL_GetTicks() + static_cast<Uint64>(ms);
+    while (SDL_GetTicks() < deadline) {
+        const std::vector<std::string> ids = get_button_ids();
+        if (std::find(ids.begin(), ids.end(), "promote") != ids.end()) {
+            DetailsSeen seen;
+            if (main_thread_details(seen) && seen.family >= 0)
+                return true;
+        }
+        SDL_Delay(20);  // poll tick
+    }
+    return false;
+}
+
 struct HireClassSeen {
     int family = -1;
     bool hire_box_traced = false;  // the box was built for it
-    bool special_line = true;      // ... and it carried a "Special:" line
     bool opened = false;
-    std::array<std::string, belt::kSlots> faces;
-    std::string bench_0;
-    bool defaults_shown = true;
-    std::string status;
-    bool refused_pick = false;
-    std::string face_after_pick;
+    DetailsSeen details;
+    int team_size_before = -1;
     bool back_on_hire = false;
     int family_after_back = -1;
     bool door_still_there = false;
@@ -724,9 +770,7 @@ struct HireFlowState {
     bool finished = false;
     bool hire_seen = false;
     bool door_enabled = false;
-    bool door_dimmed = false;
-    bool door_inert = false;
-    bool still_on_hire = false;
+    bool team_cycler_shown = true;
     std::array<HireClassSeen, 2> seen;  // the mage, then the thief
 };
 
@@ -750,9 +794,9 @@ int enter_hire(HireFlowState* state,
     return 0;
 }
 
-// One class: HIRE on it, its box, its ABILITIES, a refused pick, BACK.
+// One class: HIRE on it, its box, ABILITIES -> its DETAILS page, BACK.
 int visit_hire_class(HireClassSeen& seen, int family, const char* hire_shot,
-                     const char* abilities_shot, int leg,
+                     const char* details_shot, int leg,
                      const std::function<int(int, const char*)>& escape)
 {
     seen.family = family;
@@ -760,36 +804,25 @@ int visit_hire_class(HireClassSeen& seen, int family, const char* hire_shot,
         return escape(leg, "NEXT never reached the class");
     const std::string box = "box family=" + std::to_string(family) + " ";
     seen.hire_box_traced = wait_for_trace("hire", box.c_str(), 5000);
-    // Any box HIRE built so far that carried a "Special:" line.
-    seen.special_line = trace_contains("hire", "special_line=1");
     (void)wait_for_menu_frames(2);
-    capture_presented_frame(hire_shot, uxshots_dir());
+    if (hire_shot != nullptr)
+        capture_presented_frame(hire_shot, uxshots_dir());
+    (void)run_on_main_thread([&seen] {
+        seen.team_size_before =
+            og::runtime::current_session->myscreen_->save_data.team_size;
+    });
 
     const std::string opened =
         "open recruit family=" + std::to_string(family) + " level=1";
-    seen.opened = click_until_edge(
-        "hire_abilities",
-        [](int ms) { return wait_for_interactable("belt_0", ms); },
-        opened.c_str(), 3, 2500, "abilities");
+    seen.opened = click_until_edge("hire_abilities", details_page_up,
+                                   opened.c_str(), 3, 2500, "detail");
     if (!seen.opened)
-        return escape(leg + 1, "the HIRE door never opened ABILITIES");
-    (void)wait_for_menu_frames(2);
-    for (int b = 0; b < belt::kSlots; ++b)
-        seen.faces[static_cast<std::size_t>(b)] =
-            interactable_label("belt_" + std::to_string(b));
-    seen.bench_0 = interactable_label("bench_0");
-    seen.defaults_shown = has_interactable("abilities_defaults");
-    seen.status = main_thread_status_line();
-    capture_presented_frame(abilities_shot, uxshots_dir());
+        return escape(leg + 1, "the HIRE door never opened DETAILS");
+    (void)main_thread_details(seen.details);
+    if (details_shot != nullptr)
+        capture_presented_frame(details_shot, uxshots_dir());
 
-    // A pick is refused: the trace says so and the face gains no '>'.
-    seen.refused_pick =
-        click_and_acknowledge_trace("belt_0", "abilities", "read_only slot=0",
-                                    false);
-    (void)wait_for_menu_frames(2);
-    seen.face_after_pick = interactable_label("belt_0");
-
-    seen.back_on_hire = click_until_edge("abilities_back", [](int ms) {
+    seen.back_on_hire = click_until_edge("back", [](int ms) {
         return wait_for_interactable("hire_me", ms);
     });
     if (!seen.back_on_hire)
@@ -806,50 +839,61 @@ int hire_door_injector(void* data)
     auto* const state = static_cast<HireFlowState*>(data);
     const auto escape = [state](int leg, const char* why) {
         return escape_to_the_main_thread(state->test_finished, leg, why,
-                                         kHireAbilitiesEscapeDoors);
+                                         kHireDetailsEscapeDoors);
     };
     if (const int failed = enter_hire(state, escape))
         return failed;
     state->door_enabled = has_enabled_interactable("hire_abilities");
+    state->team_cycler_shown = has_interactable("change_hire_team");
     if (const int failed =
             visit_hire_class(state->seen[0], FAMILY_MAGE, "hire_mage",
-                             "hire_abilities_mage", 10, escape))
+                             "hire_details_mage", 10, escape))
         return failed;
     if (const int failed =
             visit_hire_class(state->seen[1], FAMILY_THIEF, "hire_thief",
-                             "hire_abilities_thief", 20, escape))
+                             "hire_details_thief", 20, escape))
         return failed;
     state->finished = true;
     return escape(0, "");
 }
 
-// The setting off: the door is dimmed and inert, the box keeps the classic
-// "Special:" line.
+// The setting off: the door is lit all the same (DETAILS is there whatever
+// New Ability Select says) and opens the mage's page.
 int hire_door_off_injector(void* data)
 {
     og::runtime::ensure_thread_session();
     auto* const state = static_cast<HireFlowState*>(data);
     const auto escape = [state](int leg, const char* why) {
         return escape_to_the_main_thread(state->test_finished, leg, why,
-                                         kHireAbilitiesEscapeDoors);
+                                         kHireDetailsEscapeDoors);
     };
     if (const int failed = enter_hire(state, escape))
         return failed;
-    HireClassSeen& mage = state->seen[0];
-    mage.family = FAMILY_MAGE;
+    state->door_enabled = has_enabled_interactable("hire_abilities");
+    if (const int failed = visit_hire_class(state->seen[0], FAMILY_MAGE,
+                                            nullptr, nullptr, 10, escape))
+        return failed;
+    state->finished = true;
+    return escape(0, "");
+}
+
+// Two players: the team cycler shows between ABILITIES and HIRE ME. One
+// still of the band, then out.
+int hire_two_players_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* const state = static_cast<HireFlowState*>(data);
+    const auto escape = [state](int leg, const char* why) {
+        return escape_to_the_main_thread(state->test_finished, leg, why,
+                                         kHireDetailsEscapeDoors);
+    };
+    if (const int failed = enter_hire(state, escape))
+        return failed;
+    state->team_cycler_shown = wait_for_interactable("change_hire_team", 5000);
     if (!step_hire_to(FAMILY_MAGE))
         return escape(4, "NEXT never reached the mage");
-    const std::string box = "box family=" + std::to_string(FAMILY_MAGE) + " ";
-    mage.hire_box_traced = wait_for_trace("hire", box.c_str(), 5000);
-    mage.special_line = trace_contains("hire", "special_line=1");
-    state->door_dimmed = has_interactable("hire_abilities") &&
-                         !has_enabled_interactable("hire_abilities");
-    (void)run_on_main_thread([] { reset_mouse_click_tracking(); });
-    (void)interact("hire_abilities");
-    (void)wait_for_menu_frames(3);
-    state->door_inert = !trace_contains("abilities", "open recruit");
-    state->still_on_hire =
-        has_interactable("hire_me") && !has_interactable("belt_0");
+    (void)wait_for_menu_frames(2);
+    capture_presented_frame("hire_mage_two_players", uxshots_dir());
     state->finished = true;
     return escape(0, "");
 }
@@ -1414,15 +1458,12 @@ TEST(AbilitiesLayout, nav_reaches_every_visible_row_for_every_bench_shape)
         shapes.push_back(shown);
     }
 
-    // HIRE's copy hides DEFAULTS: every bench shape again without it.
-    for (const bool defaults_hidden : {false, true})
     for (const std::vector<bool>& shown : shapes) {
         std::vector<button> rows;
         og::ui::materialize_menu_buttons(spec, rows);
         for (int i = 0; i < kAbilitiesBenchRows; ++i)
             rows[static_cast<std::size_t>(kAbilitiesBenchBase + i)].hidden =
                 !shown[static_cast<std::size_t>(i)];
-        rows[kAbilitiesDefaultsIndex].hidden = defaults_hidden;
         int highlighted = 0;
         spec.nav.rewire(rows.data(), static_cast<int>(rows.size()),
                         highlighted);
@@ -1430,8 +1471,6 @@ TEST(AbilitiesLayout, nav_reaches_every_visible_row_for_every_bench_shape)
         std::string where;
         for (bool s : shown)
             where += s ? '1' : '0';
-        if (defaults_hidden)
-            where += " (no DEFAULTS)";
         std::set<int> seen{kAbilitiesBackIndex};
         std::deque<int> todo{kAbilitiesBackIndex};
         while (!todo.empty()) {
@@ -1459,8 +1498,7 @@ TEST(AbilitiesLayout, nav_reaches_every_visible_row_for_every_bench_shape)
         // The column pairs: key N's left/right partner is SHIFTER + key N.
         EXPECT_EQ(kAbilitiesBeltBase + 1, rows[kAbilitiesBeltBase].nav.right);
         EXPECT_EQ(kAbilitiesBeltBase, rows[kAbilitiesBeltBase + 1].nav.left);
-        EXPECT_EQ(defaults_hidden ? -1 : kAbilitiesDefaultsIndex,
-                  rows[kAbilitiesBackIndex].nav.right);
+        EXPECT_EQ(kAbilitiesDefaultsIndex, rows[kAbilitiesBackIndex].nav.right);
     }
 }
 
@@ -1497,60 +1535,84 @@ TEST(AbilitiesLayout, train_door_row_follows_the_setting)
     }
 }
 
-// The HIRE door: row 5, on the bottom band between HIRE ME and the team
-// cycler, one gap from each neighbour, dimmed with the setting off and lit
-// with it on; the keyboard reaches it from HIRE ME and the team cycler, and
-// the team cycler's link closes when the cycler hides (solo).
-// RED: drop the row, or link HIRE ME straight to the team cycler.
-TEST(AbilitiesLayout, hire_door_row_sits_on_the_bottom_band)
+// The HIRE bottom band reads BACK | ABILITIES | the team cycler | HIRE ME
+// with one gap between neighbours in both layouts: with the team cycler
+// shown (two players or more) and solo, where HIRE ME takes the cycler's
+// place. HIRE ME is the band's tall face, centred on the others' line; the
+// keyboard walks the band in the order it reads, and the door is lit in
+// both New Ability Select settings (it opens DETAILS, which both have).
+// RED: the old order (HIRE ME second), HIRE ME left at the right edge when
+// solo, or the door dimmed with the setting off.
+TEST(AbilitiesLayout, hire_band_reads_back_abilities_team_hire)
 {
-    button* const buttons = picker_hiremenu_buttons();
-    ASSERT_EQ(kHireMenuAbilitiesIndex + 1, picker_hiremenu_button_count());
-    const button& door = buttons[kHireMenuAbilitiesIndex];
-    const button& back = buttons[4];
-    const button& hire = buttons[kHireMenuHireMeIndex];
-    const button& team = buttons[kHireMenuChangeTeamIndex];
-    EXPECT_EQ("hire_abilities", door.id);
-    EXPECT_EQ("ABILITIES", door.label);
-    EXPECT_EQ("hire_me", hire.id);
-    EXPECT_EQ("back", back.id);
-    EXPECT_EQ("change_hire_team", team.id);
-    // Every face holds its label with room (6 px a glyph, 4 px a side).
-    for (const button* b : {&back, &hire, &door, &team})
-        EXPECT_LE(6 * static_cast<int>(b->label.size()) + 8, b->sizex) << b->id;
-    // One line: the band's faces share y and height, HIRE ME (the tall
-    // face) is centred on them.
-    EXPECT_EQ(back.y, door.y);
-    EXPECT_EQ(team.y, door.y);
-    EXPECT_EQ(back.sizey, door.sizey);
-    EXPECT_EQ(door.y * 2 + door.sizey, hire.y * 2 + hire.sizey);
-    // Left to right, one gap between neighbours, inside the 320 canvas.
-    const int gap = hire.x - (back.x + back.sizex);
-    EXPECT_GT(gap, 0);
-    EXPECT_EQ(gap, door.x - (hire.x + hire.sizex));
-    EXPECT_EQ(gap, team.x - (door.x + door.sizex));
-    EXPECT_LE(team.x + team.sizex, 320);
-    // The keyboard.
-    EXPECT_EQ(kHireMenuAbilitiesIndex, hire.nav.right);
-    EXPECT_EQ(kHireMenuHireMeIndex, door.nav.left);
-    EXPECT_EQ(kHireMenuAbilitiesIndex, team.nav.left);
-
-    std::vector<button> rows(buttons, buttons + kHireMenuAbilitiesIndex + 1);
-    int highlighted = 1;
     const og::ui::MenuScreenSpec& spec = og::ui::hire_menu_screen_spec();
+    ASSERT_EQ(kHireMenuAbilitiesIndex + 1, spec.row_count);
+    ASSERT_NE(nullptr, spec.prepare_buttons);
     ASSERT_NE(nullptr, spec.nav.rewire);
+    SaveData& save = test_screen()->save_data;
+    const unsigned char numplayers_before = save.numplayers;
     for (const bool solo : {false, true}) {
+        save.numplayers = solo ? 1 : 2;
+        std::vector<button> rows;
+        og::ui::materialize_menu_buttons(spec, rows);
+        spec.prepare_buttons(rows.data(), static_cast<int>(rows.size()),
+                             nullptr);
         rows[kHireMenuChangeTeamIndex].hidden = solo;
+        int highlighted = spec.default_highlight;
         spec.nav.rewire(rows.data(), static_cast<int>(rows.size()),
                         highlighted);
-        EXPECT_EQ(solo ? -1 : kHireMenuChangeTeamIndex,
-                  rows[kHireMenuAbilitiesIndex].nav.right)
-            << (solo ? "solo" : "with the team cycler");
-        EXPECT_EQ(kHireMenuAbilitiesIndex, rows[kHireMenuHireMeIndex].nav.right);
-        // Every shown row is reached from NEXT (the screen's first
-        // highlight), and no link lands on a hidden one.
-        std::set<int> seen{1};
-        std::deque<int> todo{1};
+        const button& back = rows[kHireMenuBackIndex];
+        const button& door = rows[kHireMenuAbilitiesIndex];
+        const button& team = rows[kHireMenuChangeTeamIndex];
+        const button& hire = rows[kHireMenuHireMeIndex];
+        const char* const where = solo ? "solo" : "two players";
+        EXPECT_EQ("back", back.id);
+        EXPECT_EQ("hire_abilities", door.id);
+        EXPECT_EQ("ABILITIES", door.label);
+        EXPECT_EQ("change_hire_team", team.id);
+        EXPECT_EQ("hire_me", hire.id);
+        // The band, left to right, one gap between neighbours.
+        std::vector<const button*> band = {&back, &door};
+        if (!solo)
+            band.push_back(&team);
+        band.push_back(&hire);
+        const int gap = door.x - (back.x + back.sizex);
+        EXPECT_GT(gap, 0) << where;
+        for (std::size_t i = 1; i < band.size(); ++i)
+            EXPECT_EQ(gap, band[i]->x - (band[i - 1]->x + band[i - 1]->sizex))
+                << where << ": before " << band[i]->id;
+        EXPECT_LE(hire.x + hire.sizex, 300) << where << ": the cost box's edge";
+        if (!solo) {
+            EXPECT_EQ(300, hire.x + hire.sizex) << "HIRE ME closes the row";
+        }
+        // One line; HIRE ME the tall face, centred on it, bigger than BACK
+        // and ABILITIES.
+        for (const button* b : {&back, &door, &team}) {
+            EXPECT_EQ(back.y, b->y) << b->id;
+            EXPECT_EQ(back.sizey, b->sizey) << b->id;
+        }
+        EXPECT_EQ(back.y * 2 + back.sizey, hire.y * 2 + hire.sizey);
+        EXPECT_GT(hire.sizey, back.sizey);
+        EXPECT_GT(hire.sizex * hire.sizey, door.sizex * door.sizey);
+        // Every face holds its label (6 px a glyph, 4 px a side); the team
+        // cycler's live label is "Hiring for Team N".
+        for (const button* b : {&back, &door, &hire})
+            EXPECT_LE(6 * static_cast<int>(b->label.size()) + 8, b->sizex)
+                << b->id;
+        EXPECT_LE(6 * static_cast<int>(std::strlen("Hiring for Team 4")) + 8,
+                  team.sizex);
+        // The keyboard walks the band in the order it reads.
+        for (std::size_t i = 1; i < band.size(); ++i) {
+            const int left = static_cast<int>(band[i - 1] - rows.data());
+            const int right = static_cast<int>(band[i] - rows.data());
+            EXPECT_EQ(right, band[i - 1]->nav.right)
+                << where << ": " << band[i - 1]->id;
+            EXPECT_EQ(left, band[i]->nav.left) << where << ": " << band[i]->id;
+        }
+        // Every shown row is reached from NEXT (the first highlight), and
+        // no link lands on a hidden one.
+        std::set<int> seen{spec.default_highlight};
+        std::deque<int> todo{spec.default_highlight};
         while (!todo.empty()) {
             const int at = todo.front();
             todo.pop_front();
@@ -1559,7 +1621,7 @@ TEST(AbilitiesLayout, hire_door_row_sits_on_the_bottom_band)
                 if (link < 0)
                     continue;
                 EXPECT_FALSE(rows[static_cast<std::size_t>(link)].hidden)
-                    << rows[static_cast<std::size_t>(at)].id;
+                    << where << ": " << rows[static_cast<std::size_t>(at)].id;
                 if (seen.insert(link).second)
                     todo.push_back(link);
             }
@@ -1567,27 +1629,17 @@ TEST(AbilitiesLayout, hire_door_row_sits_on_the_bottom_band)
         for (int i = 0; i < static_cast<int>(rows.size()); ++i) {
             if (!rows[static_cast<std::size_t>(i)].hidden) {
                 EXPECT_TRUE(seen.count(i) != 0)
-                    << rows[static_cast<std::size_t>(i)].id << " unreachable";
+                    << where << ": " << rows[static_cast<std::size_t>(i)].id
+                    << " unreachable";
             }
         }
     }
+    save.numplayers = numplayers_before;
 
-    // A family the game does not know opens nothing.
-    trace_clear();
-    EXPECT_EQ(MENU_REDRAW, og::ui::run_recruit_abilities_menu(255, 1));
-    EXPECT_FALSE(trace_contains("abilities", "open recruit"));
-
+    // Lit whatever New Ability Select says.
     const og::ui::MenuButtonSpec& row = spec.rows[kHireMenuAbilitiesIndex];
-    ASSERT_NE(nullptr, row.state_override);
-    const og::ui::MenuLabelContext context{};
-    {
-        ScopedAbilitySelect off;
-        EXPECT_EQ(og::ui::RowState::Disabled, row.state_override(context));
-    }
-    {
-        ScopedAbilitySelect on(true);
-        EXPECT_EQ(og::ui::RowState::Visible, row.state_override(context));
-    }
+    EXPECT_EQ(nullptr, row.state_override)
+        << "the DETAILS door has no setting to follow";
 }
 
 // ---------------------------------------------------------------------------
@@ -1734,13 +1786,14 @@ TEST(AbilitiesFlow, setting_off_dims_the_train_door)
     verify_captured_frames("abilities_off", 1);
 }
 
-// HIRE -> ABILITIES on the class HIRE shows -> its default layout at level
-// 1, read-only, DEFAULTS hidden -> BACK -> HIRE on the same class; the mage
-// and then the thief. With the setting on the HIRE box has no "Special:"
-// line. Captures: each class's HIRE box and its ABILITIES page.
-// RED: open the screen on another source (the faces), let the pick through
-// (the '>'), leave DEFAULTS up, or keep the "Special:" line.
-TEST(AbilitiesFlow, hire_door_shows_the_class_read_only_and_back_keeps_it)
+// HIRE -> ABILITIES on the class HIRE shows -> the TRAIN screen's DETAILS
+// page for that class as a level-1 recruit (no PROMOTE, nobody hired) ->
+// BACK -> HIRE on the same class; the mage and then the thief. The HIRE box
+// is the class's prose alone. Captures: each class's HIRE box and its
+// DETAILS page.
+// RED: open the read-only ABILITIES screen again, open DETAILS on another
+// class, or hire the recruit on the way.
+TEST(AbilitiesFlow, hire_door_opens_the_details_page_and_back_keeps_the_class)
 {
     (void)take_captured_frames();
     trace_clear();
@@ -1750,7 +1803,7 @@ TEST(AbilitiesFlow, hire_door_shows_the_class_read_only_and_back_keeps_it)
 
     HireFlowState state;
     SDL_Thread* thread =
-        SDL_CreateThread(hire_door_injector, "abilities_hire", &state);
+        SDL_CreateThread(hire_door_injector, "hire_details", &state);
     ASSERT_NE(nullptr, thread);
     g_picker_mainmenu_calls = 0;
     g_picker_max_mainmenu_calls = 1;
@@ -1765,62 +1818,36 @@ TEST(AbilitiesFlow, hire_door_shows_the_class_read_only_and_back_keeps_it)
     EXPECT_EQ(0, thread_result) << "the injector gave up at leg "
                                 << thread_result;
     ASSERT_TRUE(state.finished);
-    EXPECT_TRUE(state.door_enabled) << "the door is lit with the setting on";
+    EXPECT_TRUE(state.door_enabled);
+    EXPECT_FALSE(state.team_cycler_shown) << "one player: no team cycler";
 
-    const HireClassSeen& mage = state.seen[0];
-    EXPECT_TRUE(mage.hire_box_traced);
-    EXPECT_FALSE(mage.special_line)
-        << "with the setting on the HIRE box carries no Special line";
-    EXPECT_TRUE(mage.opened);
-    // A level-1 mage's default: the level each locked one opens at.
-    EXPECT_EQ("1 TELEPORT", mage.faces[0]);
-    EXPECT_EQ("2 WARP SPACE L4", mage.faces[1]);
-    EXPECT_EQ("3 FREEZE TIME L7", mage.faces[2]);
-    EXPECT_EQ("S1 TELEPORT MARKER", mage.faces[3]);
-    EXPECT_EQ("S2 ENERGY WAVE L10", mage.faces[4]);
-    EXPECT_EQ("S3 HEARTBURST L13", mage.faces[5]);
-    EXPECT_EQ("", mage.bench_0);
-    EXPECT_FALSE(mage.defaults_shown) << "a class has no layout to reset";
-    EXPECT_EQ("Hire, then change these in TRAIN > ABILITIES.", mage.status);
-    EXPECT_TRUE(mage.refused_pick);
-    EXPECT_EQ("1 TELEPORT", mage.face_after_pick) << "no '>' on a refused pick";
-    EXPECT_TRUE(mage.back_on_hire);
-    EXPECT_EQ(FAMILY_MAGE, mage.family_after_back)
-        << "BACK lands on HIRE with the same class";
-    EXPECT_TRUE(mage.door_still_there);
-
-    const HireClassSeen& thief = state.seen[1];
-    EXPECT_TRUE(thief.hire_box_traced);
-    EXPECT_FALSE(thief.special_line);
-    EXPECT_TRUE(thief.opened);
-    const FamilyDescriptor* const thief_fd = get_family_descriptor(FAMILY_THIEF);
-    const og::ui::AbilityPage want = og::ui::ability_page(
-        "THIEF", thief_fd, 1, 1, belt::default_bytes());
-    for (int b = 0; b < belt::kSlots; ++b)
-        EXPECT_EQ(want.belt[static_cast<std::size_t>(b)].text,
-                  thief.faces[static_cast<std::size_t>(b)])
-            << "belt " << b;
-    EXPECT_EQ("1 DROP BOMB", thief.faces[0]);
-    EXPECT_FALSE(thief.defaults_shown);
-    EXPECT_TRUE(thief.refused_pick);
-    EXPECT_EQ(thief.faces[0], thief.face_after_pick);
-    EXPECT_TRUE(thief.back_on_hire);
-    EXPECT_EQ(FAMILY_THIEF, thief.family_after_back);
-
-    const std::string mage_opened =
-        "open recruit family=" + std::to_string(FAMILY_MAGE) + " level=1";
-    EXPECT_TRUE(trace_contains("abilities", mage_opened.c_str()));
-    EXPECT_FALSE(trace_contains("abilities", "open slot="))
-        << "HIRE never opens a hired hero's page";
-    EXPECT_FALSE(trace_contains("abilities", "commit"))
-        << "a class has nothing to commit";
-    verify_captured_frames("abilities_hire", 4);
+    for (std::size_t i = 0; i < state.seen.size(); ++i) {
+        const HireClassSeen& seen = state.seen[i];
+        SCOPED_TRACE(i == 0 ? "mage" : "thief");
+        EXPECT_TRUE(seen.hire_box_traced);
+        EXPECT_TRUE(seen.opened);
+        EXPECT_EQ(seen.family, seen.details.family)
+            << "DETAILS draws the class HIRE showed";
+        EXPECT_EQ(seen.family, seen.details.recruit_family);
+        EXPECT_EQ(1, seen.details.recruit_level) << "a level-1 recruit";
+        EXPECT_EQ(seen.team_size_before, seen.details.team_size)
+            << "opening DETAILS hires nobody";
+        EXPECT_FALSE(seen.details.promote_offered)
+            << "a recruit is never promoted";
+        EXPECT_TRUE(seen.back_on_hire);
+        EXPECT_EQ(seen.family, seen.family_after_back)
+            << "BACK lands on HIRE with the same class";
+        EXPECT_TRUE(seen.door_still_there);
+    }
+    EXPECT_FALSE(trace_contains("abilities", "open"))
+        << "HIRE's door no longer opens the ABILITIES screen";
+    verify_captured_frames("hire_details", 4);
 }
 
-// The setting off: HIRE's door is dimmed like TRAIN's, a click on it opens
-// nothing, and the box keeps the classic "Special:" line.
-// RED: hide the door, light it, or drop the Special line with it off.
-TEST(AbilitiesFlow, setting_off_dims_the_hire_door_and_keeps_the_special_line)
+// The setting off: the door is lit and opens the same DETAILS page.
+// RED: dim the door with the setting off (the click lands on a dimmed row
+// and opens nothing).
+TEST(AbilitiesFlow, setting_off_keeps_the_hire_door_lit)
 {
     trace_clear();
     ScopedAbilitySelect off;
@@ -1830,7 +1857,7 @@ TEST(AbilitiesFlow, setting_off_dims_the_hire_door_and_keeps_the_special_line)
 
     HireFlowState state;
     SDL_Thread* thread =
-        SDL_CreateThread(hire_door_off_injector, "abilities_hire_off", &state);
+        SDL_CreateThread(hire_door_off_injector, "hire_details_off", &state);
     ASSERT_NE(nullptr, thread);
     g_picker_mainmenu_calls = 0;
     g_picker_max_mainmenu_calls = 1;
@@ -1845,15 +1872,42 @@ TEST(AbilitiesFlow, setting_off_dims_the_hire_door_and_keeps_the_special_line)
     EXPECT_EQ(0, thread_result) << "the injector gave up at leg "
                                 << thread_result;
     ASSERT_TRUE(state.finished);
-    EXPECT_TRUE(state.seen[0].hire_box_traced);
-    EXPECT_TRUE(state.seen[0].special_line)
-        << "with the setting off the box names the specials";
-    EXPECT_TRUE(state.door_dimmed) << "shown, dimmed and inert";
-    EXPECT_TRUE(state.door_inert) << "a click on the dimmed door opens nothing";
-    EXPECT_TRUE(state.still_on_hire);
-    EXPECT_TRUE(trace_contains("menu_engine",
-                               "disabled_row_click hire_abilities"))
-        << "the click landed on the dimmed row";
+    EXPECT_TRUE(state.door_enabled);
+    EXPECT_TRUE(state.seen[0].opened);
+    EXPECT_EQ(FAMILY_MAGE, state.seen[0].details.family);
+    EXPECT_EQ(FAMILY_MAGE, state.seen[0].family_after_back);
+}
+
+// Two players: HIRE shows the team cycler between ABILITIES and HIRE ME
+// (the still of the multi-player band).
+TEST(AbilitiesFlow, hire_shows_the_team_cycler_with_two_players)
+{
+    (void)take_captured_frames();
+    trace_clear();
+    og::data::ScopedActiveCompany pin("save0");
+    ASSERT_TRUE(pin.applied());
+    write_ability_company(12, 2);
+
+    HireFlowState state;
+    state.team_cycler_shown = false;
+    SDL_Thread* thread = SDL_CreateThread(hire_two_players_injector,
+                                          "hire_two_players", &state);
+    ASSERT_NE(nullptr, thread);
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 1;
+    picker_main(0, nullptr);
+    state.test_finished.store(true);
+    int thread_result = 0;
+    SDL_WaitThread(thread, &thread_result);
+    escape_tail_join_hygiene();
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+
+    EXPECT_EQ(0, thread_result) << "the injector gave up at leg "
+                                << thread_result;
+    ASSERT_TRUE(state.finished);
+    EXPECT_TRUE(state.team_cycler_shown);
+    verify_captured_frames("hire_two_players", 1);
 }
 
 TEST(AbilitiesFlow, mage_page_greys_locked_rows_and_the_keyboard_walks_it)

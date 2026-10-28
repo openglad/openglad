@@ -32,10 +32,17 @@ namespace og::ui {
 
 namespace {
 
+// BACK is the ABILITIES screen's footer BACK (picker_sdl_defs.h): the same
+// panel, so the same rect, 4 px clear of the frame's bevel. It used to sit
+// at y 180..194, on the bevel.
+static_assert(kKeymapLegendBottomY < kAbilitiesFooterY,
+              "the legend ends above BACK");
+
 constexpr MenuButtonSpec kKeymapRows[] = {
     {.id = "keymap_back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
-     .x = kKeymapBackX, .y = kKeymapBackY, .w = kKeymapBackW,
-     .h = kKeymapBackH, .action = ButtonAction::ReturnMenu, .arg = MENU_EXIT},
+     .x = kAbilitiesLeftColX, .y = kAbilitiesFooterY, .w = kAbilitiesBackW,
+     .h = kAbilitiesFooterH, .action = ButtonAction::ReturnMenu,
+     .arg = MENU_EXIT},
 };
 
 struct KeymapScreenState {

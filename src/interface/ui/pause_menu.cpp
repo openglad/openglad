@@ -636,7 +636,8 @@ RowState pause_player_keymap_row_state(const MenuLabelContext& /*context*/)
 constexpr MenuButtonSpec kPausePlayerRows[] = {
     {.id = "pause_player_back", .label = "BACK",
      .hotkey = KEYSTATE_ESCAPE,
-     .x = 10, .y = 8, .w = 50, .h = 15,
+     .x = kPlayerScreenBackX, .y = kPlayerScreenBackY,
+     .w = kPlayerScreenBackW, .h = kPlayerScreenBackH,
      .action = ButtonAction::ReturnMenu, .arg = MENU_REDRAW,
      .nav = {.up = kPausePlayerRemoveIndex,
              .down = kPausePlayerModeIndex}},

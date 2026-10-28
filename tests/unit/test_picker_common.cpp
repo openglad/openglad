@@ -424,18 +424,16 @@ TEST(PickerCommon, reset_for_new_game)
 // --- class description budget (issue #152) ---
 
 // Every playable family's HIRE text (og::ui::hire_description: its
-// description, and with New Ability Select off the generated "Special:"
-// line), flowed exactly as the HIRE screen flows it (og::ui::hire_box_lines
-// at the description box's 27-char budget: description_box_content.w / 6 =
-// 164 / 6), must fit the box under either New Specials value and either New
-// Ability Select value — at most 9 lines (at the 8px fallback pitch a tenth
-// line's last glyph row touches the box's bottom frame) and no line over 27
+// description alone), flowed exactly as the HIRE screen flows it
+// (og::core::wrap_text, Paragraphs, at the description box's 27-char
+// budget: description_box_content.w / 6 = 164 / 6), must fit the box at its
+// roomy 10px pitch — at most kHireBoxRoomyLines lines — and no line over 27
 // chars. This is the regression guard that a future pack edit cannot
 // silently overflow the box. The hire list itself is covered too, whatever
 // its families' playable flags say: every family on offer must ship a
 // description for the box. And no pack description carries a "Special:"
-// line of its own any more: the line is generated, so a static one would
-// print twice and go stale.
+// line of its own: the class's abilities are on the DETAILS page HIRE's
+// ABILITIES door opens.
 TEST(PickerCommon, playable_descriptions_flow_within_hire_box)
 {
     init_family_registry();
@@ -464,18 +462,15 @@ TEST(PickerCommon, playable_descriptions_flow_within_hire_box)
             << fd->description;
         if (!fd->is_playable && !on_hire_list(family_id))
             continue;
-        for (const short new_specials : {short{0}, short{1}})
-        for (const bool ability_select : {false, true})
         {
-            const std::string text =
-                og::ui::hire_description(fd, new_specials, ability_select);
-            const std::vector<std::string> flowed =
-                og::ui::hire_box_lines(text, 27);
-            EXPECT_LE(flowed.size(), 9u)
-                << "family " << family_id << " new_specials " << new_specials
-                << " ability_select " << ability_select
-                << " HIRE text overflows the box (27 chars x 9 lines): "
-                << text;
+            const std::string text = og::ui::hire_description(fd);
+            EXPECT_EQ(std::string(fd->description), text);
+            const std::vector<std::string> flowed = og::core::wrap_text(
+                text, 27, og::core::WrapMode::Paragraphs);
+            EXPECT_LE(flowed.size(), og::ui::kHireBoxRoomyLines)
+                << "family " << family_id
+                << " HIRE text outgrows the box's 10px pitch (27 chars x "
+                << og::ui::kHireBoxRoomyLines << " lines): " << text;
             for (const std::string& line : flowed)
             {
                 EXPECT_LE(line.size(), 27u)
@@ -834,84 +829,21 @@ TEST(PickerCommon, special_title_title_cases_hud_names)
     EXPECT_EQ("", og::ui::special_title(""));
 }
 
-// The HIRE box's line with New Ability Select off (the classic line): every
-// slot in play, slot order, no second forms.
-// RED: list the belt catalog (the mage gains Teleport Marker).
-TEST(PickerCommon, specials_summary_lists_the_slots_in_play)
-{
-    init_family_registry();
-    for (const short new_specials : {short{0}, short{1}})
-        EXPECT_EQ("Special: Charge, Boomerang, Whirlwind, Disarm",
-                  og::ui::specials_summary(&core_family(FAMILY_SOLDIER),
-                                           new_specials));
-    EXPECT_EQ("Special: Teleport, Warp Space, Freeze Time, Energy Wave, "
-              "Heartburst",
-              og::ui::specials_summary(&core_family(FAMILY_MAGE), 1));
-    EXPECT_EQ("Special: Scare, Siphon, Possess, Phase",
-              og::ui::specials_summary(&core_family(FAMILY_GHOST), 1));
-    EXPECT_EQ("Special: Scare",
-              og::ui::specials_summary(&core_family(FAMILY_GHOST), 0));
-    EXPECT_EQ("Special: Howl, Eat Corpse, Hook Blade, War Banner",
-              og::ui::specials_summary(&core_family(FAMILY_BIG_ORC), 1));
-    EXPECT_EQ("Special: none",
-              og::ui::specials_summary(&core_family(FAMILY_BIG_ORC), 0));
-    EXPECT_EQ("Special: none",
-              og::ui::specials_summary(&core_family(FAMILY_FAERIE), 0));
-    EXPECT_EQ("Special: Split",
-              og::ui::specials_summary(&core_family(FAMILY_SLIME), 0));
-    EXPECT_EQ("Special: none", og::ui::specials_summary(nullptr, 1));
-}
-
-// The HIRE text: with New Ability Select off the prose, a blank line, then
-// the summary; with it on the prose alone (the HIRE screen's ABILITIES door
-// lists the abilities).
-// RED: keep the "Special:" line with the setting on.
-TEST(PickerCommon, hire_description_follows_ability_select)
+// The HIRE text is the class's prose and nothing else, in both New Ability
+// Select settings (the abilities are on the DETAILS page); "" without one.
+// RED: append a "Special:" line again.
+TEST(PickerCommon, hire_description_is_the_prose_alone)
 {
     init_family_registry();
     const FamilyDescriptor& orc = core_family(FAMILY_ORC);
-    EXPECT_EQ(std::string(orc.description) + "\n\nSpecial: Howl, Eat Corpse",
-              og::ui::hire_description(&orc, 0, false));
-    for (const short new_specials : {short{0}, short{1}})
-    {
-        EXPECT_EQ(std::string(orc.description),
-                  og::ui::hire_description(&orc, new_specials, true));
-        const std::string mage = og::ui::hire_description(
-            &core_family(FAMILY_MAGE), new_specials, true);
-        EXPECT_EQ(std::string::npos, mage.find("Special:")) << mage;
-    }
-    for (const bool ability_select : {false, true})
-    {
-        EXPECT_EQ("", og::ui::hire_description(nullptr, 1, ability_select));
-        FamilyDescriptor silent = orc;
-        silent.description = nullptr;
-        EXPECT_EQ("", og::ui::hire_description(&silent, 1, ability_select));
-    }
-}
-
-// A HIRE text past the box's 10px-pitch room loses the blank line before
-// "Special:" (the cleric's with New Ability Select off flows to ten lines
-// with it, nine without); a text that fits keeps it.
-// RED: never drop the blank line (the cleric keeps ten lines).
-TEST(PickerCommon, hire_box_lines_drop_the_blank_line_when_full)
-{
-    init_family_registry();
-    const std::string cleric_text =
-        og::ui::hire_description(&core_family(FAMILY_CLERIC), 1, false);
-    ASSERT_EQ(10u, og::core::wrap_text(cleric_text, 27,
-                                       og::core::WrapMode::Paragraphs)
-                       .size());
-    const std::vector<std::string> cleric =
-        og::ui::hire_box_lines(cleric_text, 27);
-    EXPECT_EQ(9u, cleric.size());
-    EXPECT_TRUE(std::find(cleric.begin(), cleric.end(), std::string{}) ==
-                cleric.end());
-
-    const std::vector<std::string> roomy =
-        og::ui::hire_box_lines("A short blurb.\n\nSpecial: Howl", 27);
-    EXPECT_EQ((std::vector<std::string>{"A short blurb.", "",
-                                        "Special: Howl"}),
-              roomy);
+    EXPECT_EQ(std::string(orc.description), og::ui::hire_description(&orc));
+    const std::string mage =
+        og::ui::hire_description(&core_family(FAMILY_MAGE));
+    EXPECT_EQ(std::string::npos, mage.find("Special:")) << mage;
+    EXPECT_EQ("", og::ui::hire_description(nullptr));
+    FamilyDescriptor silent = orc;
+    silent.description = nullptr;
+    EXPECT_EQ("", og::ui::hire_description(&silent));
 }
 
 // --- class_help_lines (HELP > CLASSES) ---

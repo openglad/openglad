@@ -115,6 +115,7 @@ inline constexpr std::size_t kNetworkingMenuMachineRowLabelChars = 39;
 
 // Forward declare button for menu descriptor arrays.
 struct button;
+class SaveData;
 
 // Deterministically rewires the NETWORKING subscreen nav graph for the
 // current number of visible list rows (0..kNetworkingMenuRoomSlots): every
@@ -441,13 +442,19 @@ inline constexpr int kSeatSettingsButtonCount = 29;
 // 144..161, so the panel's bottom corner is y=161. Vertical rhythm:
 // BACK bottom (22) -7- band1 (30..47) -6- band2 (54..71) -6- panel/stack
 // (78..161) -7- command band (169..186).
-inline constexpr int kPlayerScreenColAX = 12;   // DIRECTION/INPUT/panel/TEAM
+inline constexpr int kPlayerScreenColAX = 12;   // BACK/DIRECTION/INPUT/panel/TEAM
 inline constexpr int kPlayerScreenColAW = 98;
 inline constexpr int kPlayerScreenColBX = 116;  // REMAP/ZOOM; ends 208
 inline constexpr int kPlayerScreenColBW = 92;
 inline constexpr int kPlayerScreenColCX = 214;  // RESET + HUD stack
 inline constexpr int kPlayerScreenColCW = 90;   // ends 304
 inline constexpr int kPlayerScreenBandH = 18;
+// BACK, top left over the title row: on column A's left edge like every
+// button under it (it sat at x 10, two pixels left of the column).
+inline constexpr int kPlayerScreenBackX = kPlayerScreenColAX;
+inline constexpr int kPlayerScreenBackY = 8;
+inline constexpr int kPlayerScreenBackW = 50;
+inline constexpr int kPlayerScreenBackH = 15;
 inline constexpr int kPlayerScreenBand1Y = 30;  // MODE | REMAP | RESET
 inline constexpr int kPlayerScreenBand2Y = 54;  // INPUT | ZOOM
 inline constexpr int kPlayerScreenPanelTopY = 78;
@@ -973,33 +980,46 @@ inline constexpr int kTrainMenuAbilitiesIndex = 20;
 
 // --- HIRE screen layout contract --------------------------------------------
 // Rows of kHireMenuRows / picker_hiremenu_buttons(): PREV, NEXT, the team
-// cycler, HIRE ME, BACK, then the ABILITIES door (New Ability Select; the
-// class's abilities on their keys, read-only, the screen TRAIN opens).
+// cycler, HIRE ME, BACK, then the ABILITIES door (the TRAIN screen's
+// DETAILS.. page for the class on show, as a level-1 recruit).
 inline constexpr int kHireMenuChangeTeamIndex = 2;
 inline constexpr int kHireMenuHireMeIndex = 3;
+inline constexpr int kHireMenuBackIndex = 4;
 inline constexpr int kHireMenuAbilitiesIndex = 5;
-// The bottom band: BACK | HIRE ME | ABILITIES | the team cycler, left to
-// right with one gap between neighbours. BACK keeps its x and the team
-// cycler its right edge (the cost box's, 300); HIRE ME is the band's tall
-// face and stays centred on the others' line.
+// The bottom band, left to right: BACK | ABILITIES | the team cycler
+// ("Hiring for Team N", shown only with more than one player) | HIRE ME,
+// one gap between neighbours. HIRE ME is the band's tall face, centred on
+// the others' line, and closes the row: with the team cycler shown it
+// ends on the cost box's right edge (300); solo it takes the cycler's
+// place, so the gaps stay even (hire_me_x).
 inline constexpr int kHireBandGap = 6;
 inline constexpr int kHireBandY = 170;
 inline constexpr int kHireBandH = 20;
 inline constexpr int kHireBackX = 10;
 inline constexpr int kHireBackW = 40;
-inline constexpr int kHireMeX = kHireBackX + kHireBackW + kHireBandGap;
-inline constexpr int kHireMeW = 58;
-inline constexpr int kHireMeY = 166;
-inline constexpr int kHireMeH = 28;
-inline constexpr int kHireAbilitiesX = kHireMeX + kHireMeW + kHireBandGap;
+inline constexpr int kHireAbilitiesX = kHireBackX + kHireBackW + kHireBandGap;
 inline constexpr int kHireAbilitiesW = 64;  // TRAIN's ABILITIES face
 inline constexpr int kHireTeamX =
     kHireAbilitiesX + kHireAbilitiesW + kHireBandGap;
-inline constexpr int kHireTeamW = 110;
-static_assert(kHireTeamX == 190 && kHireTeamX + kHireTeamW == 300,
-              "the team cycler keeps its face, right edge on the cost box's");
+inline constexpr int kHireTeamW = 110;  // "Hiring for Team 4": 17 glyphs
+inline constexpr int kHireMeW = 58;
+inline constexpr int kHireMeY = 166;
+inline constexpr int kHireMeH = 28;
+constexpr int hire_me_x(bool team_cycler_shown)
+{
+    return team_cycler_shown ? kHireTeamX + kHireTeamW + kHireBandGap
+                             : kHireTeamX;
+}
+static_assert(hire_me_x(true) + kHireMeW == 300,
+              "with the team cycler, HIRE ME ends on the cost box's edge");
 static_assert(kHireMeY + kHireMeH / 2 == kHireBandY + kHireBandH / 2,
               "HIRE ME is centred on the band's line");
+static_assert(kHireMeH > kHireBandH && kHireMeW > kHireBackW &&
+                  kHireMeW * kHireMeH > kHireAbilitiesW * kHireBandH,
+              "HIRE ME stays the band's biggest face (the tall one)");
+// The same rule the team cycler's row state uses: it shows with more than
+// one player (menu_screen_specs.cpp).
+bool hire_team_cycler_shown(const SaveData* save);
 
 // --- ABILITIES screen layout contract (docs/ability-select-design.md E.1) ---
 // Ordinals: BACK, DEFAULTS, the six belt slots row-major (key 1 | SHIFTER+1,

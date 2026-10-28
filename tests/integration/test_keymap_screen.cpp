@@ -25,6 +25,7 @@
 #include <openglad/interface/native_input.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/session_state.h>
+#include <openglad/interface/ui/abilities_screen.h>
 #include <openglad/interface/ui/keyboard_picture.h>
 #include <openglad/interface/ui/keymap_screen.h>
 #include <openglad/interface/ui/menu_screen_spec.h>
@@ -48,6 +49,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -344,7 +346,33 @@ TEST(KeymapScreen, base_camp_copy_is_in_the_registry_and_the_pause_copy_is_an_ov
     ASSERT_EQ(1, host.spec->row_count);
     EXPECT_STREQ("keymap_back", host.spec->rows[0].id);
     EXPECT_EQ(KEYSTATE_ESCAPE, host.spec->rows[0].hotkey);
-    EXPECT_EQ(og::ui::kKeymapBackY, host.spec->rows[0].y);
+}
+
+// BACK keeps the panel's footer margin: the ABILITIES screen's BACK, rect
+// for rect, on the same options panel, and clear of the frame's bevel line
+// (y 195) and of the legend above it. The 1280x800 still showed it sitting
+// on the bevel (y 180..194).
+// RED: BACK back at (10, 180, 50, 15).
+TEST(KeymapScreen, back_sits_where_the_abilities_screens_back_sits)
+{
+    const og::ui::MenuScreenSpec& abilities =
+        og::ui::abilities_menu_screen_spec();
+    const og::ui::MenuButtonSpec& want = abilities.rows[kAbilitiesBackIndex];
+    ASSERT_STREQ("abilities_back", want.id);
+    for (const og::ui::MenuScreenSpec* spec :
+         {&og::ui::keymap_menu_screen_spec(),
+          &og::ui::keymap_pause_menu_screen_spec()}) {
+        const og::ui::MenuButtonSpec& back = spec->rows[0];
+        ASSERT_STREQ("keymap_back", back.id);
+        EXPECT_EQ(want.x, back.x);
+        EXPECT_EQ(want.y, back.y);
+        EXPECT_EQ(want.w, back.w);
+        EXPECT_EQ(want.h, back.h);
+        // The inverted bevel's bottom line is y 195 (4 + 192 - 1): BACK's
+        // last row stays at least 3 rows above it.
+        EXPECT_LE(back.y + back.h - 1, 195 - 4);
+        EXPECT_GT(back.y, og::ui::kKeymapLegendBottomY);
+    }
 }
 
 TEST(KeymapScreen, title_and_legend_words)
@@ -585,11 +613,17 @@ TEST(KeymapScreen, zz_capture_four_seats_one_on_a_pad)
     ASSERT_TRUE(assign_joystick_to_player(3, device));
     og::ui::KeymapScreenHost host;
     host.seats = {{0, 1}, {1, 2}, {2, 3}, {3, 4}};
+    // Every window size the screen is played at: BACK keeps its margin to
+    // the frame at each.
+    for (const auto& [w, h, name] :
+         {std::tuple{640, 400, "keymap_four_seats_640x400"},
+          std::tuple{1280, 800, "keymap_four_seats_1280x800"},
+          std::tuple{1920, 1080, "keymap_four_seats_1920x1080"}})
     {
         WindowSize window;
-        WindowSize::set(1280, 800);
+        WindowSize::set(w, h);
         Seen seen;
-        seen.shot_name = "keymap_four_seats_1280x800";
+        seen.shot_name = name;
         EXPECT_EQ(MENU_REDRAW, run_with_injector(seen, 0, host, nullptr));
         EXPECT_EQ(0u, seen.title.rfind("KEYS: P1 ", 0)) << seen.title;
         EXPECT_EQ(1, player_on(seen, KEYCODE_CAPSLOCK));
