@@ -109,8 +109,6 @@ bool picker_testing_cloud_passphrase_queue_pop(std::string& out);
 // picker_team_build.cpp).
 void picker_hire_menu_engine_prepare_buttons(button* buttons, int num_buttons,
                                              void* screen_state);
-void picker_hire_menu_engine_rewire(button* buttons, int num_buttons,
-                                    int& highlighted_button);
 void picker_hire_menu_engine_on_reset(void* screen_state);
 void picker_hire_menu_engine_draw_content(void* screen_state);
 Sint32 picker_hire_menu_engine_on_spec_row(int row, void* screen_state);
@@ -2023,22 +2021,9 @@ Sint32 zone_submenu_on_spec_row(int row, void* screen_state)
 // spec's MENU_REDRAW exit_value (the legacy return); a remote start
 // propagates its MENU_EXIT directly (the slot-menu normalization).
 
-// The team cycler is hidden for solo play (the legacy entry-time
-// `buttons[2].hidden = (numplayers == 1)`). The gate is per frame: a
-// networked lobby rewrites numplayers under an open HIRE when a player
-// joins or leaves, and the HIRE rewire moves HIRE ME from this row's live
-// hidden flag (picker_team_build.cpp).
-RowState hire_change_team_row_state(const MenuLabelContext& context)
-{
-    return (context.save != nullptr && context.save->numplayers == 1)
-        ? RowState::Hidden
-        : RowState::Visible;
-}
-
-// The bottom band reads BACK | ABILITIES | Hiring for Team N | HIRE ME
-// (kHire* in picker_sdl_defs.h). The table is the band with the team
-// cycler shown; solo, the rewire moves HIRE ME into the cycler's place and
-// closes the links around the hidden cycler.
+// The bottom band reads BACK | ABILITIES | TEAM N | HIRE ME (kHire* in
+// picker_sdl_defs.h), one fixed layout: the team cycler shows whatever the
+// player count, so the keyboard walks the band in the order it reads.
 constexpr MenuButtonSpec kHireMenuRows[] = {
     {.id = "prev", .label = "PREV",
      .x = 10, .y = 40, .w = 40, .h = 20,
@@ -2049,14 +2034,13 @@ constexpr MenuButtonSpec kHireMenuRows[] = {
      .action = ButtonAction::CycleGuy, .arg = 1,
      .nav = {.down = kHireMenuHireMeIndex, .left = 0,
              .right = kHireMenuHireMeIndex}},
-    {.id = "change_hire_team", .label = "hiring for team X",
+    {.id = "change_hire_team", .label = kHireTeamDefaultLabel.text,
      .x = kHireTeamX, .y = kHireBandY, .w = kHireTeamW, .h = kHireBandH,
      .action = ButtonAction::ChangeHireTeam, .arg = 1,
      .nav = {.up = 1, .left = kHireMenuAbilitiesIndex,
-             .right = kHireMenuHireMeIndex},
-     .state_override = &hire_change_team_row_state},
+             .right = kHireMenuHireMeIndex}},
     {.id = "hire_me", .label = "HIRE ME",
-     .x = hire_me_x(true), .y = kHireMeY, .w = kHireMeW, .h = kHireMeH,
+     .x = kHireMeX, .y = kHireMeY, .w = kHireMeW, .h = kHireMeH,
      .action = ButtonAction::AddGuy, .arg = -1,
      .nav = {.up = 1, .left = kHireMenuChangeTeamIndex}},
     {.id = "back", .label = "BACK", .hotkey = KEYSTATE_ESCAPE,
@@ -6827,11 +6811,7 @@ const MenuScreenSpec& hire_menu_screen_spec()
         .row_count = static_cast<int>(std::size(kHireMenuRows)),
         .buttons_accessor = &picker_hiremenu_buttons,
         .count_accessor = &picker_hiremenu_button_count,
-        // Nav closure over the solo-hidden team cycler (the legacy links
-        // into it were refused by handle_menu_nav; the engine writes the
-        // explicit no-op instead — §1.5 invariant).
-        .nav = {.kind = NavProgramKind::Rewire,
-                .rewire = &picker_hire_menu_engine_rewire},
+        // Static links: every row shows, whatever the player count.
         // The loop-top host-GO check that launches a joiner parked here.
         // The remote MENU_EXIT propagates directly (legacy folded it to
         // MENU_REDRAW and the parent re-detected the start one loop later —

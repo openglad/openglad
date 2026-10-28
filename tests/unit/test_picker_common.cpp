@@ -1442,6 +1442,32 @@ TEST(PickerCommon, hire_session_reports_team_and_handles_missing_empty_slot)
     EXPECT_EQ(-1, session.hire());
 }
 
+// HIRE's team cycler moves the open session: the recruit on the counter
+// takes the new team at once, the hire lands on it, and that team's wallet
+// pays. RED: the session keeps the team it was opened with (the hire lands
+// on team 1 and team 1's gold pays, whatever the cycler shows).
+TEST(PickerCommon, hire_session_set_team_moves_the_hire_and_the_wallet)
+{
+    init_family_registry();
+    SaveData save;
+    save.team_size = 0;
+    save.m_totalcash[0] = 50000;
+    save.m_totalcash[1] = 50000;
+
+    og::ui::HireSession session(save, 0);
+    session.set_team(1);
+    EXPECT_EQ(1, session.team_num());
+    ASSERT_NE(nullptr, session.current_recruit());
+    EXPECT_EQ(1, session.current_recruit()->teamnum);
+
+    const std::uint32_t cost = session.current_cost();
+    const int slot = session.hire();
+    ASSERT_GE(slot, 0);
+    EXPECT_EQ(1, save.team_list[static_cast<std::size_t>(slot)]->teamnum);
+    EXPECT_EQ(50000u, save.m_totalcash[0]) << "team 1's gold is untouched";
+    EXPECT_EQ(50000u - cost, save.m_totalcash[1]) << "team 2's gold pays";
+}
+
 // --- TrainSession ---
 
 TEST(PickerCommon, train_session_cycle)

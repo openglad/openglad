@@ -2779,6 +2779,13 @@ void HireSession::rename_hired(int slot, const std::string& name)
         save_.team_list[static_cast<std::size_t>(slot)]->name = name;
 }
 
+void HireSession::set_team(int team_num)
+{
+    team_num_ = team_num;
+    if (recruit_)
+        recruit_->teamnum = static_cast<short>(team_num_);
+}
+
 const guy* HireSession::current_recruit() const
 {
     return recruit_.get();

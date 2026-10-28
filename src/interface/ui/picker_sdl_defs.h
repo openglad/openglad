@@ -986,36 +986,71 @@ inline constexpr int kHireMenuHireMeIndex = 3;
 inline constexpr int kHireMenuBackIndex = 4;
 inline constexpr int kHireMenuAbilitiesIndex = 5;
 // The bottom band, left to right: BACK | ABILITIES | the team cycler
-// ("Hiring for Team N", shown only with more than one player) | HIRE ME,
-// one gap between neighbours. HIRE ME is the band's tall face, centred on
-// the others' line, and closes the row: with the team cycler shown it
-// ends on the cost box's right edge (300); solo it takes the cycler's
-// place, so the gaps stay even (hire_me_x).
-inline constexpr int kHireBandGap = 6;
+// ("TEAM N", always shown, whatever the player count) | HIRE ME, one fixed
+// layout with one gap between neighbours. The band runs from x=10 to the
+// cost box's right edge (300). Every face is sized to its label; HIRE ME
+// is the band's biggest face (master's 88x28), centred on the others' line.
+inline constexpr int kHireBandLeft = 10;
+inline constexpr int kHireBandRight = 300;  // the cost box's right edge
 inline constexpr int kHireBandY = 170;
 inline constexpr int kHireBandH = 20;
-inline constexpr int kHireBackX = 10;
-inline constexpr int kHireBackW = 40;
-inline constexpr int kHireAbilitiesX = kHireBackX + kHireBackW + kHireBandGap;
+inline constexpr int kHireBackW = 40;       // "BACK": 4 glyphs
 inline constexpr int kHireAbilitiesW = 64;  // TRAIN's ABILITIES face
+inline constexpr int kHireTeamW = 50;       // "TEAM 4": 6 glyphs
+inline constexpr int kHireMeW = 88;
+inline constexpr int kHireMeH = 28;
+inline constexpr int kHireMeY = kHireBandY - (kHireMeH - kHireBandH) / 2;
+// The three gaps share what the faces leave of the band.
+inline constexpr int kHireBandGap =
+    (kHireBandRight - kHireBandLeft - kHireBackW - kHireAbilitiesW -
+     kHireTeamW - kHireMeW) / 3;
+inline constexpr int kHireBackX = kHireBandLeft;
+inline constexpr int kHireAbilitiesX = kHireBackX + kHireBackW + kHireBandGap;
 inline constexpr int kHireTeamX =
     kHireAbilitiesX + kHireAbilitiesW + kHireBandGap;
-inline constexpr int kHireTeamW = 110;  // "Hiring for Team 4": 17 glyphs
-inline constexpr int kHireMeW = 58;
-inline constexpr int kHireMeY = 166;
-inline constexpr int kHireMeH = 28;
-constexpr int hire_me_x(bool team_cycler_shown)
+inline constexpr int kHireMeX = kHireTeamX + kHireTeamW + kHireBandGap;
+
+// The team cycler's face, "TEAM N" for team index 0..3: the one builder of
+// that string, for the table's default label and for the label
+// change_hire_teamnum writes.
+struct HireTeamLabel
 {
-    return team_cycler_shown ? kHireTeamX + kHireTeamW + kHireBandGap
-                             : kHireTeamX;
+    char text[7];
+};
+constexpr HireTeamLabel hire_team_label(int team_index)
+{
+    return {{'T', 'E', 'A', 'M', ' ',
+             static_cast<char>('1' + team_index), '\0'}};
 }
-static_assert(hire_me_x(true) + kHireMeW == 300,
-              "with the team cycler, HIRE ME ends on the cost box's edge");
-static_assert(kHireMeY + kHireMeH / 2 == kHireBandY + kHireBandH / 2,
+inline constexpr HireTeamLabel kHireTeamDefaultLabel = hire_team_label(0);
+inline constexpr int kHireTeamCount = 4;  // change_hire_teamnum wraps 1..4
+static_assert(kHireTeamCount <= 9, "a team number is one glyph");
+
+// A label fits its face at 6 px a glyph and 4 px a side.
+constexpr bool hire_label_fits(int glyphs, int face_w)
+{
+    return 6 * glyphs + 8 <= face_w;
+}
+static_assert(kHireBandGap > 0 &&
+                  kHireBandLeft + kHireBackW + kHireAbilitiesW + kHireTeamW +
+                          kHireMeW + 3 * kHireBandGap ==
+                      kHireBandRight,
+              "the row fits the band with even gaps, HIRE ME ending on the "
+              "cost box's edge");
+static_assert(kHireMeX + kHireMeW == kHireBandRight,
+              "HIRE ME closes the row on the cost box's edge");
+static_assert(kHireMeY * 2 + kHireMeH == kHireBandY * 2 + kHireBandH,
               "HIRE ME is centred on the band's line");
-static_assert(kHireMeH > kHireBandH && kHireMeW > kHireBackW &&
-                  kHireMeW * kHireMeH > kHireAbilitiesW * kHireBandH,
-              "HIRE ME stays the band's biggest face (the tall one)");
+static_assert(kHireMeW > kHireBackW && kHireMeW > kHireAbilitiesW &&
+                  kHireMeW > kHireTeamW && kHireMeH > kHireBandH,
+              "HIRE ME is the band's widest and tallest face");
+static_assert(hire_label_fits(4, kHireBackW) &&
+                  hire_label_fits(9, kHireAbilitiesW) &&
+                  hire_label_fits(
+                      static_cast<int>(sizeof(kHireTeamDefaultLabel.text)) - 1,
+                      kHireTeamW) &&
+                  hire_label_fits(7, kHireMeW),
+              "every face holds its label");
 
 // --- ABILITIES screen layout contract (docs/ability-select-design.md E.1) ---
 // Ordinals: BACK, DEFAULTS, the six belt slots row-major (key 1 | SHIFTER+1,

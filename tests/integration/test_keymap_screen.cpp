@@ -40,6 +40,7 @@
 #include "test_frame_capture.h"
 #include "test_input_helpers.h"
 #include "test_interact.h"
+#include "test_menu_highlight.h"
 
 #include <SDL3/SDL.h>
 
@@ -133,6 +134,12 @@ struct Seen
     std::vector<std::string> legend;
     std::vector<int> players_on_caps;  // per caps() index: first player, -1
     bool pictured = false;
+    // Wake the keyboard ring (on BACK, the one row) before the capture, so
+    // every size of a set is taken in the same focus state: the ring is
+    // drawn only within 5 s of a key, so otherwise an earlier size's run
+    // decides whether the next one shows it.
+    bool wake_ring = false;
+    bool ring_woke = false;
     PhysicalFrame physical;
 };
 
@@ -173,6 +180,12 @@ int read_and_close(void* data)
     seen.up = true;
     if (!wait_for_menu_frames(2))
         return leave(2, "KEYMAP completed no frames");
+    if (seen.wake_ring) {
+        // LEFT: BACK has no link that way, so the ring wakes and stays put.
+        seen.ring_woke = wake_nav_highlight(KEY_LEFT) &&
+                         highlighted_id() == "keymap_back" &&
+                         wait_for_menu_frames(2);
+    }
     (void)run_on_main_thread([&seen] {
         seen.title = og::ui::keymap_screen_title();
         seen.legend = og::ui::keymap_screen_legend();
@@ -624,7 +637,9 @@ TEST(KeymapScreen, zz_capture_four_seats_one_on_a_pad)
         WindowSize::set(w, h);
         Seen seen;
         seen.shot_name = name;
+        seen.wake_ring = true;
         EXPECT_EQ(MENU_REDRAW, run_with_injector(seen, 0, host, nullptr));
+        EXPECT_TRUE(seen.ring_woke) << name;
         EXPECT_EQ(0u, seen.title.rfind("KEYS: P1 ", 0)) << seen.title;
         EXPECT_EQ(1, player_on(seen, KEYCODE_CAPSLOCK));
         ASSERT_FALSE(seen.legend.empty());

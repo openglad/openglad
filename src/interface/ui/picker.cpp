@@ -3658,7 +3658,7 @@ Sint32 change_hire_teamnum(Sint32 arg)
 {
    // Change the team number of the hiring menu ..
    int next_team = og::runtime::current_session->current_team_num_ + static_cast<int>(arg);
-   next_team = (next_team % 4 + 4) % 4;
+   next_team = (next_team % kHireTeamCount + kHireTeamCount) % kHireTeamCount;
    og::runtime::current_session->current_team_num_ = static_cast<short>(next_team);
 
    // Change our guy, if he exists ..
@@ -3666,10 +3666,15 @@ Sint32 change_hire_teamnum(Sint32 arg)
    {
        og::runtime::current_session->current_guy_->teamnum = static_cast<short>(og::runtime::current_session->current_team_num_);
    }
+   // .. and the one HIRE ME hires, with the wallet that pays for him: the
+   // session took the team once, at entry, so the cycler used to change
+   // only the face on the counter.
+   if (pks().hire_session != nullptr)
+       pks().hire_session->set_team(next_team);
 
    // Update our button display
-   if (og::runtime::current_session->allbuttons_[2] != nullptr)
-       og::runtime::current_session->allbuttons_[2]->label = std::format("Hiring for Team {}", og::runtime::current_session->current_team_num_ + 1);
+   if (og::runtime::current_session->allbuttons_[kHireMenuChangeTeamIndex] != nullptr)
+       og::runtime::current_session->allbuttons_[kHireMenuChangeTeamIndex]->label = hire_team_label(next_team).text;
 
    return MENU_OK;
 }

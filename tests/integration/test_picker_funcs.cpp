@@ -1097,7 +1097,7 @@ TEST(PickerFuncs, how_many_with_team)
         << "the button dispatcher should route hire-team changes";
     ASSERT_EQ(1, (int)og::runtime::current_session->current_team_num_) << "hire team num should increment";
     ASSERT_EQ(1, (int)og::runtime::current_session->current_guy_->teamnum) << "current guy team should mirror hire team";
-    ASSERT_TRUE(std::string(og::runtime::current_session->allbuttons_[2]->label).find("Hiring for Team ") == 0) << "hire label should be updated";
+    ASSERT_STREQ("TEAM 2", og::runtime::current_session->allbuttons_[2]->label.c_str()) << "hire label should be updated";
 
     // change_allied remains a save/replay compatibility hook after the visible
     // seat-mode row moved out; it no longer writes either button surface.

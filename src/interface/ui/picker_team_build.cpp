@@ -1740,28 +1740,6 @@ void picker_hire_menu_engine_prepare_buttons(button* buttons, int num_buttons,
     buttons[1].y = l.name_box.y + l.name_box.h + (l.description_box.y - (l.name_box.y + l.name_box.h))/2 - buttons[1].sizey/2;
 }
 
-// The bottom band over the solo-hidden team cycler: the band reads BACK |
-// ABILITIES | team cycler | HIRE ME, and while the cycler is hidden HIRE ME
-// takes its place (so the gaps stay even) and ABILITIES and HIRE ME link
-// to each other across it. Every frame, from the cycler's live hidden flag
-// (a networked lobby rewrites numplayers under an open HIRE when a friend
-// joins or leaves), and written through to the live button: init_buttons
-// copies geometry only at entry and on a reset, so the descriptor alone
-// would move the focus ring and leave the face where it was.
-void picker_hire_menu_engine_rewire(button* buttons, int num_buttons,
-                                    int& /*highlighted_button*/)
-{
-    if (num_buttons <= kHireMenuAbilitiesIndex)
-        return;
-    const bool team_shown = !buttons[kHireMenuChangeTeamIndex].hidden;
-    buttons[kHireMenuHireMeIndex].x = hire_me_x(team_shown);
-    sync_button_live_rect(buttons, kHireMenuHireMeIndex);
-    buttons[kHireMenuAbilitiesIndex].nav.right =
-        team_shown ? kHireMenuChangeTeamIndex : kHireMenuHireMeIndex;
-    buttons[kHireMenuHireMeIndex].nav.left =
-        team_shown ? kHireMenuChangeTeamIndex : kHireMenuAbilitiesIndex;
-}
-
 // ABILITIES: the TRAIN screen's DETAILS.. page for the class HIRE is
 // showing, as the level-1 recruit HIRE ME would hire. BACK comes back to
 // HIRE on the same class (the recruit is untouched).

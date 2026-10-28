@@ -1537,6 +1537,10 @@ public:
     // Rename the recruit that was just placed in the given slot.
     void rename_hired(int slot, const std::string& name);
 
+    // The team the recruit is hired for, and whose gold pays (HIRE's team
+    // cycler). The recruit on the counter takes it at once.
+    void set_team(int team_num);
+
     // State queries (for rendering)
     const guy* current_recruit() const;
     std::uint32_t current_cost() const;

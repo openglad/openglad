@@ -503,32 +503,6 @@ int picker_team_build_testing_exercise_internal_paths(int* checks_run)
     picker_hire_menu_engine_prepare_buttons(
         hire_buttons, static_cast<int>(std::size(hire_buttons)), nullptr);
     check(hire_buttons[0].x != 0 && hire_buttons[1].x != 0);
-    // A table without the ABILITIES row is left alone.
-    hire_buttons[2].hidden = true;
-    picker_hire_menu_engine_rewire(
-        hire_buttons, static_cast<int>(std::size(hire_buttons)),
-        ignored_highlight);
-    check(hire_buttons[3].nav.right == 2);
-    hire_buttons[2].hidden = false;
-    // The full table: BACK | ABILITIES | team cycler | HIRE ME; solo,
-    // ABILITIES and HIRE ME link across the hidden cycler's place.
-    button hire_rows[6] = {
-        hire_buttons[0], hire_buttons[1], hire_buttons[2], hire_buttons[3],
-        button("back", "BACK", KEYSTATE_UNKNOWN, 0, 0, 10, 10, 0, 0,
-               MenuNav{}),
-        button("abilities", "ABILITIES", KEYSTATE_UNKNOWN, 0, 0, 10, 10, 0,
-               0, MenuNav{.right = 2}),
-    };
-    hire_rows[2].hidden = true;
-    picker_hire_menu_engine_rewire(hire_rows, 6, ignored_highlight);
-    check(hire_rows[5].nav.right == kHireMenuHireMeIndex);
-    check(hire_rows[3].nav.left == kHireMenuAbilitiesIndex);
-    check(hire_rows[3].x == hire_me_x(false));
-    hire_rows[2].hidden = false;
-    picker_hire_menu_engine_rewire(hire_rows, 6, ignored_highlight);
-    check(hire_rows[5].nav.right == kHireMenuChangeTeamIndex);
-    check(hire_rows[3].nav.left == kHireMenuChangeTeamIndex);
-    check(hire_rows[3].x == hire_me_x(true));
     check(picker_hire_menu_engine_on_spec_row(kHireMenuChangeTeamIndex,
                                               nullptr) == MENU_OK);
     picker_hire_menu_engine_draw_content(nullptr);

@@ -549,12 +549,13 @@ two instead (one ability, one slot). A locked ability can be placed.
   and SELL. With the setting off it shows dimmed, so players can still find
   it (question K.8). Dimmed is the menu's one rule for an inert row: the
   darker face every dimmed door uses (`vbutton::vdisplay`).
-- **HIRE's door**: `ABILITIES` on HIRE's bottom row (BACK | ABILITIES |
-  the team picker, shown with more than one player | HIRE ME, one gap
-  between each; solo, HIRE ME takes the team picker's place). HIRE ME is
-  the tall face, 58x28, beside 20-high BACK, ABILITIES and team picker
-  (110 wide, to fit "HIRING FOR TEAM 4"); the rewire moves it every frame
-  as the team picker shows or hides. It opens the
+- **HIRE's door**: `ABILITIES` on HIRE's bottom row, which reads BACK |
+  ABILITIES | TEAM N | HIRE ME in one fixed layout, the same with one
+  player or four, with even 16-pixel gaps from x=10 to the cost box's
+  right edge (300). The team button (`TEAM 1` to `TEAM 4`, 50 wide) is
+  always there and sets the team the recruit is hired for and whose gold
+  pays. HIRE ME is the biggest face, 88x28, beside the 20-high BACK,
+  ABILITIES and team button. The door opens the
   TRAIN screen's DETAILS.. page (`create_recruit_detail_menu`) for the
   class HIRE shows, as the level-1 recruit HIRE ME would hire: no PROMOTE,
   nobody hired. BACK returns to HIRE on the same class. DETAILS exists in

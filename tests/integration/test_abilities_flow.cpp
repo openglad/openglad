@@ -877,8 +877,8 @@ int hire_door_off_injector(void* data)
     return escape(0, "");
 }
 
-// Two players: the team cycler shows between ABILITIES and HIRE ME. One
-// still of the band, then out.
+// Two players: the same band as solo (the team cycler between ABILITIES
+// and HIRE ME). One still of it, then out.
 int hire_two_players_injector(void* data)
 {
     og::runtime::ensure_thread_session();
@@ -904,8 +904,10 @@ struct HireLiveBand {
     bool read = false;       // both live buttons are HIRE's
     int hire_xloc = -1;
     int hire_xend = -1;
-    bool cycler_hidden = false;
+    bool cycler_hidden = true;
+    int team_xloc = -1;
     int team_xend = -1;
+    std::string team_label;
 };
 
 HireLiveBand main_thread_hire_live_band()
@@ -922,17 +924,63 @@ HireLiveBand main_thread_hire_live_band()
         band.hire_xloc = hire->xloc;
         band.hire_xend = hire->xend;
         band.cycler_hidden = team->hidden;
+        band.team_xloc = team->xloc;
         band.team_xend = team->xend;
+        band.team_label = team->label;
     });
     return band;
 }
 
-struct HireLiveFlipState {
+// The roster and the wallets, read on the menu thread.
+struct HireRoster {
+    std::array<bool, MAX_TEAM_SIZE> filled{};
+    int team_size = -1;
+    std::array<std::uint32_t, 4> cash{};
+};
+
+HireRoster main_thread_hire_roster()
+{
+    HireRoster roster;
+    (void)run_on_main_thread([&roster] {
+        const SaveData& save =
+            og::runtime::current_session->myscreen_->save_data;
+        for (std::size_t i = 0; i < roster.filled.size(); ++i)
+            roster.filled[i] = save.team_list[i] != nullptr;
+        roster.team_size = save.team_size;
+        for (std::size_t t = 0; t < roster.cash.size(); ++t)
+            roster.cash[t] = save.m_totalcash[t];
+    });
+    return roster;
+}
+
+// The team of the one hero in a slot `before` left empty; -1 when there is
+// none (read on the menu thread).
+int main_thread_new_hero_team(const HireRoster& before)
+{
+    int team = -1;
+    (void)run_on_main_thread([&before, &team] {
+        const SaveData& save =
+            og::runtime::current_session->myscreen_->save_data;
+        for (std::size_t i = 0; i < before.filled.size(); ++i) {
+            if (!before.filled[i] && save.team_list[i] != nullptr)
+                team = save.team_list[i]->teamnum;
+        }
+    });
+    return team;
+}
+
+struct HireTeamCyclerState {
     std::atomic<bool> test_finished{false};
     bool finished = false;
-    HireLiveBand entry;   // one player, before any click on HIRE
-    HireLiveBand joined;  // a second player, no click
-    HireLiveBand left;    // back to one, no click
+    HireLiveBand entry;    // one player, before any click on HIRE
+    bool cycled = false;   // the cycler's face reads TEAM 2
+    HireLiveBand cycled_band;
+    bool hired = false;    // HIRE ME grew the roster
+    HireRoster before_hire;
+    HireRoster after_hire;
+    int hired_team = -1;
+    HireLiveBand joined;   // a second player, no click
+    HireLiveBand left;     // back to one, no click
 };
 
 // A player joins or leaves under the open screen: the lobby's own seat
@@ -947,13 +995,13 @@ void set_players_and_settle(int players)
     (void)wait_for_menu_frames(2);
 }
 
-// One player opens HIRE: the face is in the cycler's place at once (no
-// NEXT first), and it follows the cycler when a friend joins and leaves
-// with nobody clicking.
-int hire_live_flip_injector(void* data)
+// One player opens HIRE: the team cycler is there, reading TEAM 1. One
+// click makes it TEAM 2 and HIRE ME hires onto team 2, paid from team 2's
+// gold. A friend joining and leaving moves nothing.
+int hire_team_cycler_injector(void* data)
 {
     og::runtime::ensure_thread_session();
-    auto* const state = static_cast<HireLiveFlipState*>(data);
+    auto* const state = static_cast<HireTeamCyclerState*>(data);
     const auto escape = [state](int leg, const char* why) {
         return escape_to_the_main_thread(state->test_finished, leg, why,
                                          kHireDetailsEscapeDoors);
@@ -963,6 +1011,30 @@ int hire_live_flip_injector(void* data)
         return failed;
     state->entry = main_thread_hire_live_band();
     capture_presented_frame("hire_entry", uxshots_dir());
+
+    state->cycled = click_until_label("change_hire_team", "TEAM 2");
+    if (!state->cycled)
+        return escape(5, "the team cycler never read TEAM 2");
+    state->cycled_band = main_thread_hire_live_band();
+
+    state->before_hire = main_thread_hire_roster();
+    const int size_before = state->before_hire.team_size;
+    state->hired = click_until_edge("hire_me", [size_before](int ms) {
+        const Uint64 deadline = SDL_GetTicks() + static_cast<Uint64>(ms);
+        while (SDL_GetTicks() < deadline) {
+            if (main_thread_hire_roster().team_size > size_before)
+                return true;
+            (void)wait_for_menu_frames(1, ms);
+        }
+        return false;
+    });
+    if (!state->hired)
+        return escape(6, "HIRE ME never grew the roster");
+    (void)run_on_main_thread([] { reset_mouse_click_tracking(); });
+    (void)wait_for_menu_frames(2);
+    state->after_hire = main_thread_hire_roster();
+    state->hired_team = main_thread_new_hero_team(state->before_hire);
+
     set_players_and_settle(2);
     state->joined = main_thread_hire_live_band();
     capture_presented_frame("hire_friend_joined", uxshots_dir());
@@ -1609,130 +1681,105 @@ TEST(AbilitiesLayout, train_door_row_follows_the_setting)
     }
 }
 
-// The HIRE bottom band reads BACK | ABILITIES | the team cycler | HIRE ME
-// with one gap between neighbours in both layouts: with the team cycler
-// shown (two players or more) and solo, where HIRE ME takes the cycler's
-// place. HIRE ME is the band's tall face, centred on the others' line; the
-// keyboard walks the band in the order it reads, and the door is lit in
-// both New Ability Select settings (it opens DETAILS, which both have).
-// This pins the rule's arithmetic on the descriptor table the rewire
-// writes (from the cycler's hidden flag, every frame, because a networked
-// lobby changes the player count under an open HIRE). What the player sees
-// is the live face: AbilitiesFlow.hire_me_face_follows_the_team_cycler.
-// RED: the old order (HIRE ME second), HIRE ME left at the right edge when
-// solo, HIRE ME placed once at entry (a friend joining puts the cycler on
-// top of it), or the door dimmed with the setting off.
+// The HIRE bottom band reads BACK | ABILITIES | TEAM N | HIRE ME, one
+// fixed layout whatever the player count: even gaps, HIRE ME closing the
+// row on the cost box's edge and the widest and tallest face, centred on
+// the others' line. No row hides and nothing rewires, so the static links
+// are the keyboard's whole story: they walk the band in the order it
+// reads, and every row is reached. The door is lit in both New Ability
+// Select settings (it opens DETAILS, which both have). What the player
+// sees is the live face: AbilitiesFlow.hire_team_cycler_shows_solo_and_
+// sets_the_hired_team.
+// RED: the cycler gated on the player count again, a rewire moving HIRE
+// ME, HIRE ME back to 58 wide (narrower than ABILITIES), the band order
+// or its links out of step, or the door dimmed with the setting off.
 TEST(AbilitiesLayout, hire_band_reads_back_abilities_team_hire)
 {
     const og::ui::MenuScreenSpec& spec = og::ui::hire_menu_screen_spec();
     ASSERT_EQ(kHireMenuAbilitiesIndex + 1, spec.row_count);
-    ASSERT_NE(nullptr, spec.nav.rewire);
-    for (const bool solo : {false, true}) {
-        std::vector<button> rows;
-        og::ui::materialize_menu_buttons(spec, rows);
-        rows[kHireMenuChangeTeamIndex].hidden = solo;
-        int highlighted = spec.default_highlight;
-        spec.nav.rewire(rows.data(), static_cast<int>(rows.size()),
-                        highlighted);
-        const button& back = rows[kHireMenuBackIndex];
-        const button& door = rows[kHireMenuAbilitiesIndex];
-        const button& team = rows[kHireMenuChangeTeamIndex];
-        const button& hire = rows[kHireMenuHireMeIndex];
-        const char* const where = solo ? "solo" : "two players";
-        EXPECT_EQ("back", back.id);
-        EXPECT_EQ("hire_abilities", door.id);
-        EXPECT_EQ("ABILITIES", door.label);
-        EXPECT_EQ("change_hire_team", team.id);
-        EXPECT_EQ("hire_me", hire.id);
-        // The band, left to right, one gap between neighbours.
-        std::vector<const button*> band = {&back, &door};
-        if (!solo)
-            band.push_back(&team);
-        band.push_back(&hire);
-        const int gap = door.x - (back.x + back.sizex);
-        EXPECT_GT(gap, 0) << where;
-        for (std::size_t i = 1; i < band.size(); ++i)
-            EXPECT_EQ(gap, band[i]->x - (band[i - 1]->x + band[i - 1]->sizex))
-                << where << ": before " << band[i]->id;
-        EXPECT_LE(hire.x + hire.sizex, 300) << where << ": the cost box's edge";
-        if (!solo) {
-            EXPECT_EQ(300, hire.x + hire.sizex) << "HIRE ME closes the row";
-        }
-        // One line; HIRE ME the tall face, centred on it, bigger than BACK
-        // and ABILITIES.
-        for (const button* b : {&back, &door, &team}) {
-            EXPECT_EQ(back.y, b->y) << b->id;
-            EXPECT_EQ(back.sizey, b->sizey) << b->id;
-        }
-        EXPECT_EQ(back.y * 2 + back.sizey, hire.y * 2 + hire.sizey);
-        EXPECT_GT(hire.sizey, back.sizey);
-        EXPECT_GT(hire.sizex * hire.sizey, door.sizex * door.sizey);
-        // Every face holds its label (6 px a glyph, 4 px a side); the team
-        // cycler's live label is "Hiring for Team N".
-        for (const button* b : {&back, &door, &hire})
-            EXPECT_LE(6 * static_cast<int>(b->label.size()) + 8, b->sizex)
-                << b->id;
-        EXPECT_LE(6 * static_cast<int>(std::strlen("Hiring for Team 4")) + 8,
-                  team.sizex);
-        // The keyboard walks the band in the order it reads.
-        for (std::size_t i = 1; i < band.size(); ++i) {
-            const int left = static_cast<int>(band[i - 1] - rows.data());
-            const int right = static_cast<int>(band[i] - rows.data());
-            EXPECT_EQ(right, band[i - 1]->nav.right)
-                << where << ": " << band[i - 1]->id;
-            EXPECT_EQ(left, band[i]->nav.left) << where << ": " << band[i]->id;
-        }
-        // Every shown row is reached from NEXT (the first highlight), and
-        // no link lands on a hidden one.
-        std::set<int> seen{spec.default_highlight};
-        std::deque<int> todo{spec.default_highlight};
-        while (!todo.empty()) {
-            const int at = todo.front();
-            todo.pop_front();
-            const MenuNav& nav = rows[static_cast<std::size_t>(at)].nav;
-            for (const int link : {nav.up, nav.down, nav.left, nav.right}) {
-                if (link < 0)
-                    continue;
-                EXPECT_FALSE(rows[static_cast<std::size_t>(link)].hidden)
-                    << where << ": " << rows[static_cast<std::size_t>(at)].id;
-                if (seen.insert(link).second)
-                    todo.push_back(link);
-            }
-        }
-        for (int i = 0; i < static_cast<int>(rows.size()); ++i) {
-            if (!rows[static_cast<std::size_t>(i)].hidden) {
-                EXPECT_TRUE(seen.count(i) != 0)
-                    << where << ": " << rows[static_cast<std::size_t>(i)].id
-                    << " unreachable";
-            }
-        }
-    }
+    EXPECT_EQ(nullptr, spec.nav.rewire) << "one fixed layout, no rewire";
+    const og::ui::MenuButtonSpec& team_row =
+        spec.rows[kHireMenuChangeTeamIndex];
+    EXPECT_EQ(nullptr, team_row.state_override)
+        << "the team cycler shows whatever the player count";
+    EXPECT_EQ(og::ui::MenuGate::Always, team_row.gate.gate);
+    EXPECT_FALSE(team_row.hidden);
+    EXPECT_STREQ("TEAM 1", team_row.label);
 
-    // One open HIRE whose team cycler flips: solo, a friend joins (the
-    // cycler shows), the friend leaves (it hides again). HIRE ME follows
-    // the flag on the very next rewire, never sitting under the cycler.
-    {
-        std::vector<button> rows;
-        og::ui::materialize_menu_buttons(spec, rows);
-        const int n = static_cast<int>(rows.size());
-        int highlighted = spec.default_highlight;
-        button& team = rows[kHireMenuChangeTeamIndex];
-        const button& hire = rows[kHireMenuHireMeIndex];
-        for (const bool shown : {false, true, false, true}) {
-            team.hidden = !shown;
-            spec.nav.rewire(rows.data(), n, highlighted);
-            const char* const where = shown ? "cycler shown" : "cycler hidden";
-            EXPECT_EQ(shown ? 242 : 126, hire.x) << where;
-            if (shown) {
-                EXPECT_LE(team.x + team.sizex, hire.x)
-                    << "the cycler never overlaps HIRE ME";
-            }
+    std::vector<button> rows;
+    og::ui::materialize_menu_buttons(spec, rows);
+    const button& back = rows[kHireMenuBackIndex];
+    const button& door = rows[kHireMenuAbilitiesIndex];
+    const button& team = rows[kHireMenuChangeTeamIndex];
+    const button& hire = rows[kHireMenuHireMeIndex];
+    EXPECT_EQ("back", back.id);
+    EXPECT_EQ("hire_abilities", door.id);
+    EXPECT_EQ("ABILITIES", door.label);
+    EXPECT_EQ("change_hire_team", team.id);
+    EXPECT_EQ("hire_me", hire.id);
+    for (const button& row : rows)
+        EXPECT_FALSE(row.hidden) << row.id;
+
+    // The band, left to right, one gap between neighbours, from x=10 to the
+    // cost box's right edge.
+    const std::array<const button*, 4> band = {&back, &door, &team, &hire};
+    EXPECT_EQ(10, back.x);
+    const int gap = door.x - (back.x + back.sizex);
+    EXPECT_GT(gap, 0);
+    for (std::size_t i = 1; i < band.size(); ++i)
+        EXPECT_EQ(gap, band[i]->x - (band[i - 1]->x + band[i - 1]->sizex))
+            << "before " << band[i]->id;
+    EXPECT_EQ(300, hire.x + hire.sizex) << "HIRE ME closes the row";
+
+    // One line; HIRE ME master's 88x28, centred on it, wider and taller
+    // than every other face.
+    for (const button* b : {&back, &door, &team}) {
+        EXPECT_EQ(back.y, b->y) << b->id;
+        EXPECT_EQ(back.sizey, b->sizey) << b->id;
+        EXPECT_GT(hire.sizex, b->sizex) << "HIRE ME is wider than " << b->id;
+    }
+    EXPECT_EQ(88, hire.sizex);
+    EXPECT_EQ(28, hire.sizey);
+    EXPECT_EQ(back.y * 2 + back.sizey, hire.y * 2 + hire.sizey);
+
+    // Every face holds its label (6 px a glyph, 4 px a side), the cycler's
+    // at its longest team.
+    for (const button* b : {&back, &door, &hire})
+        EXPECT_LE(6 * static_cast<int>(b->label.size()) + 8, b->sizex)
+            << b->id;
+    EXPECT_STREQ("TEAM 4", hire_team_label(kHireTeamCount - 1).text);
+    EXPECT_LE(6 * static_cast<int>(std::strlen(
+                      hire_team_label(kHireTeamCount - 1).text)) + 8,
+              team.sizex);
+
+    // The keyboard walks the band in the order it reads.
+    for (std::size_t i = 1; i < band.size(); ++i) {
+        const int left = static_cast<int>(band[i - 1] - rows.data());
+        const int right = static_cast<int>(band[i] - rows.data());
+        EXPECT_EQ(right, band[i - 1]->nav.right) << band[i - 1]->id;
+        EXPECT_EQ(left, band[i]->nav.left) << band[i]->id;
+    }
+    EXPECT_EQ(-1, back.nav.left);
+    EXPECT_EQ(-1, hire.nav.right);
+
+    // Every row is reached from NEXT (the first highlight).
+    std::set<int> seen{spec.default_highlight};
+    std::deque<int> todo{spec.default_highlight};
+    while (!todo.empty()) {
+        const int at = todo.front();
+        todo.pop_front();
+        const MenuNav& nav = rows[static_cast<std::size_t>(at)].nav;
+        for (const int link : {nav.up, nav.down, nav.left, nav.right}) {
+            if (link >= 0 && seen.insert(link).second)
+                todo.push_back(link);
         }
     }
+    for (int i = 0; i < static_cast<int>(rows.size()); ++i)
+        EXPECT_TRUE(seen.count(i) != 0)
+            << rows[static_cast<std::size_t>(i)].id << " unreachable";
 
     // Lit whatever New Ability Select says.
-    const og::ui::MenuButtonSpec& row = spec.rows[kHireMenuAbilitiesIndex];
-    EXPECT_EQ(nullptr, row.state_override)
+    EXPECT_EQ(nullptr, spec.rows[kHireMenuAbilitiesIndex].state_override)
         << "the DETAILS door has no setting to follow";
 }
 
@@ -1913,7 +1960,7 @@ TEST(AbilitiesFlow, hire_door_opens_the_details_page_and_back_keeps_the_class)
                                 << thread_result;
     ASSERT_TRUE(state.finished);
     EXPECT_TRUE(state.door_enabled);
-    EXPECT_FALSE(state.team_cycler_shown) << "one player: no team cycler";
+    EXPECT_TRUE(state.team_cycler_shown) << "one player: the team cycler shows";
 
     for (std::size_t i = 0; i < state.seen.size(); ++i) {
         const HireClassSeen& seen = state.seen[i];
@@ -1972,8 +2019,8 @@ TEST(AbilitiesFlow, setting_off_keeps_the_hire_door_lit)
     EXPECT_EQ(FAMILY_MAGE, state.seen[0].family_after_back);
 }
 
-// Two players: HIRE shows the team cycler between ABILITIES and HIRE ME
-// (the still of the multi-player band).
+// Two players: HIRE shows the team cycler between ABILITIES and HIRE ME,
+// as it does solo (the still of the two-player band).
 TEST(AbilitiesFlow, hire_shows_the_team_cycler_with_two_players)
 {
     (void)take_captured_frames();
@@ -2004,22 +2051,31 @@ TEST(AbilitiesFlow, hire_shows_the_team_cycler_with_two_players)
     verify_captured_frames("hire_two_players", 1);
 }
 
-// The face the player sees and clicks follows the team cycler: at entry
-// with one player (before any click), and when a friend joins and leaves
-// under the open screen. RED: the rewire moves only the descriptor (the
-// face stays at 242 until the first NEXT); or HIRE ME is placed once at
-// entry (the cycler then lands on it when the friend joins).
-TEST(AbilitiesFlow, hire_me_face_follows_the_team_cycler)
+// One player: the team cycler is on HIRE's row from the first frame, in
+// its fixed place, reading TEAM 1; one click makes it TEAM 2, and HIRE ME
+// then hires onto team 2, paid from team 2's gold (the cost box's CASH is
+// that wallet). A friend joining and leaving under the open screen moves
+// nothing. RED: the cycler hidden for one player again; HIRE ME moved
+// into its place; the cycler changing only the face on the counter (the
+// hire lands on team 1 and team 1's gold pays); or the long label back.
+TEST(AbilitiesFlow, hire_team_cycler_shows_solo_and_sets_the_hired_team)
 {
     (void)take_captured_frames();
     trace_clear();
     og::data::ScopedActiveCompany pin("save0");
     ASSERT_TRUE(pin.applied());
     write_ability_company();
+    {
+        // Team 2's wallet, so the TEAM 2 hire is affordable; team 1 keeps
+        // its own to prove it is not the one that pays.
+        SaveData& save = test_screen()->save_data;
+        save.m_totalcash[1] = 5000;
+        ASSERT_TRUE(seed_open_company(save, "save0", newest_company_stamp() + 1));
+    }
 
-    HireLiveFlipState state;
-    SDL_Thread* thread =
-        SDL_CreateThread(hire_live_flip_injector, "hire_live_flip", &state);
+    HireTeamCyclerState state;
+    SDL_Thread* thread = SDL_CreateThread(hire_team_cycler_injector,
+                                          "hire_team_cycler", &state);
     ASSERT_NE(nullptr, thread);
     g_picker_mainmenu_calls = 0;
     g_picker_max_mainmenu_calls = 1;
@@ -2034,27 +2090,36 @@ TEST(AbilitiesFlow, hire_me_face_follows_the_team_cycler)
     EXPECT_EQ(0, thread_result) << "the injector gave up at leg "
                                 << thread_result;
     ASSERT_TRUE(state.finished);
-    const int solo_x = kHireTeamX;  // HIRE ME takes the cycler's place
-    const int shown_x = hire_me_x(true);
 
     ASSERT_TRUE(state.entry.read);
-    EXPECT_TRUE(state.entry.cycler_hidden) << "entry: one player";
-    EXPECT_EQ(solo_x, state.entry.hire_xloc)
-        << "entry, before any click: the face is in the cycler's place";
+    EXPECT_FALSE(state.entry.cycler_hidden) << "one player: the cycler shows";
+    EXPECT_EQ("TEAM 1", state.entry.team_label);
+    EXPECT_EQ(kHireTeamX, state.entry.team_xloc);
+    EXPECT_EQ(kHireMeX, state.entry.hire_xloc)
+        << "HIRE ME keeps its one place";
+    EXPECT_EQ(kHireBandRight, state.entry.hire_xend) << "the cost box's edge";
 
-    ASSERT_TRUE(state.joined.read);
-    EXPECT_FALSE(state.joined.cycler_hidden) << "a friend joined";
-    EXPECT_EQ(shown_x, state.joined.hire_xloc)
-        << "the face moved right with nobody clicking";
-    EXPECT_LE(state.joined.team_xend, state.joined.hire_xloc)
-        << "the cycler never sits on the face";
-    EXPECT_LE(state.joined.hire_xend, 300) << "the cost box's edge";
+    ASSERT_TRUE(state.cycled);
+    EXPECT_EQ("TEAM 2", state.cycled_band.team_label);
 
-    ASSERT_TRUE(state.left.read);
-    EXPECT_TRUE(state.left.cycler_hidden) << "the friend left";
-    EXPECT_EQ(solo_x, state.left.hire_xloc)
-        << "the face came back into the cycler's place";
-    verify_captured_frames("hire_live_flip", 2);
+    ASSERT_TRUE(state.hired);
+    EXPECT_EQ(1, state.hired_team) << "the hire lands on the team the cycler "
+                                      "shows (index 1 = TEAM 2)";
+    EXPECT_EQ(state.before_hire.cash[0], state.after_hire.cash[0])
+        << "team 1's gold is untouched";
+    EXPECT_LT(state.after_hire.cash[1], state.before_hire.cash[1])
+        << "team 2's gold pays";
+
+    for (const HireLiveBand* band : {&state.joined, &state.left}) {
+        const char* const where = band == &state.joined ? "friend joined"
+                                                         : "friend left";
+        ASSERT_TRUE(band->read) << where;
+        EXPECT_FALSE(band->cycler_hidden) << where;
+        EXPECT_EQ(state.entry.team_xloc, band->team_xloc) << where;
+        EXPECT_EQ(state.entry.hire_xloc, band->hire_xloc) << where;
+        EXPECT_EQ("TEAM 2", band->team_label) << where;
+    }
+    verify_captured_frames("hire_team_cycler", 2);
 }
 
 TEST(AbilitiesFlow, mage_page_greys_locked_rows_and_the_keyboard_walks_it)

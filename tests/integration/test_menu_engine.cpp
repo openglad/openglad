@@ -3183,20 +3183,11 @@ TEST(MenuEngine, content_screen_registry_hosts_and_semantics)
     }
     // ABILITIES is a spec row the screen's own hook answers.
     EXPECT_NE(nullptr, hire->on_spec_row);
-    // The solo-hidden team cycler is a per-frame state override
-    // (entry-equivalent: numplayers cannot change under the open screen).
-    ASSERT_NE(nullptr, hire->rows[2].state_override);
-    {
-        SaveData save;
-        og::ui::MenuLabelContext context;
-        context.save = &save;
-        save.numplayers = 1;
-        EXPECT_EQ(og::ui::RowState::Hidden,
-                  hire->rows[2].state_override(context));
-        save.numplayers = 2;
-        EXPECT_EQ(og::ui::RowState::Visible,
-                  hire->rows[2].state_override(context));
-    }
+    // The team cycler (TEAM N) shows whatever the player count, so it has
+    // no state override and the screen no rewire: one fixed layout on
+    // static links.
+    EXPECT_EQ(nullptr, hire->rows[2].state_override);
+    EXPECT_EQ(nullptr, hire->nav.rewire);
 
     // TRAIN: exit-bearing paths carry MENU_EXIT (the wrapper folds unless a
     // start was selected); nested DETAILS/RENAME MENU_REDRAWs are consumed
