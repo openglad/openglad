@@ -5435,12 +5435,23 @@ TEST(PauseMenuFlow, abilities_from_the_paused_menu_reach_the_server_guy_and_the_
         trace_clear();
         game_screen->clearbuffer();
         (void)new_score_panel(game_screen, 1);
-        // The PR still of that HUD (the canvas: the world draws in its own
-        // plane, so it is black here).
+        // The PR still of that frame, world and HUD together: with the world
+        // canvas pinned to the classic 320x200 the scenery and the HUD land
+        // on the one surface write_menushot reads (unpinned, the world draws
+        // in its own plane and the still would be the HUD over black).
         if (flow.shots)
         {
+            const CanvasTarget saved_target = game_screen->active_canvas();
+            game_screen->set_world_canvas_pinned_classic(true);
+            game_screen->relayout_views();
+            (void)game_screen->redraw();
+            (void)new_score_panel(game_screen, 1);
             EXPECT_TRUE(write_menushot(game_screen,
                                        "pause_abilities_hud_after_resume"));
+            game_screen->set_active_canvas(CanvasTarget::UI);
+            game_screen->set_world_canvas_pinned_classic(false);
+            game_screen->relayout_views();
+            game_screen->set_active_canvas(saved_target);
         }
     }
     const belt::Entry mind = entry_named(FAMILY_ARCHMAGE, "MIND CONTROL");

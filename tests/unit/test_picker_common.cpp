@@ -425,10 +425,11 @@ TEST(PickerCommon, reset_for_new_game)
 
 // Every playable family's HIRE text (its description and the generated
 // "Special:" line, og::ui::hire_description), flowed exactly as the HIRE
-// screen flows it (Paragraphs mode at the description box's 27-char budget:
-// description_box_content.w / 6 = 164 / 6), must fit the box under either
-// New Specials value — at most 10 lines (the 8px fallback pitch ceiling) and
-// no line over 27 chars. This is the regression guard that a future pack
+// screen flows it (og::ui::hire_box_lines at the description box's 27-char
+// budget: description_box_content.w / 6 = 164 / 6), must fit the box under
+// either New Specials value — at most 9 lines (at the 8px fallback pitch a
+// tenth line's last glyph row touches the box's bottom frame) and no line
+// over 27 chars. This is the regression guard that a future pack
 // edit cannot silently overflow the box. The hire list itself is covered
 // too, whatever its families' playable flags say: every family on offer
 // must ship a description for the box. And no pack description carries a
@@ -466,11 +467,11 @@ TEST(PickerCommon, playable_descriptions_flow_within_hire_box)
         {
             const std::string text =
                 og::ui::hire_description(fd, new_specials);
-            const std::vector<std::string> flowed = og::core::wrap_text(
-                text, 27, og::core::WrapMode::Paragraphs);
-            EXPECT_LE(flowed.size(), 10u)
+            const std::vector<std::string> flowed =
+                og::ui::hire_box_lines(text, 27);
+            EXPECT_LE(flowed.size(), 9u)
                 << "family " << family_id << " new_specials " << new_specials
-                << " HIRE text overflows the box (27 chars x 10 lines): "
+                << " HIRE text overflows the box (27 chars x 9 lines): "
                 << text;
             for (const std::string& line : flowed)
             {
@@ -880,6 +881,26 @@ TEST(PickerCommon, specials_summary_lists_the_catalog)
     FamilyDescriptor silent = orc;
     silent.description = nullptr;
     EXPECT_EQ("", og::ui::hire_description(&silent, 1));
+}
+
+// A HIRE text past the box's 10px-pitch room loses the blank line before
+// "Special:" (the mage's six abilities with New Specials on flow to ten
+// lines with it, nine without); a text that fits keeps it.
+// RED: never drop the blank line (the mage keeps ten lines).
+TEST(PickerCommon, hire_box_lines_drop_the_blank_line_when_full)
+{
+    init_family_registry();
+    const std::vector<std::string> mage = og::ui::hire_box_lines(
+        og::ui::hire_description(&core_family(FAMILY_MAGE), 1), 27);
+    EXPECT_EQ(9u, mage.size());
+    EXPECT_TRUE(std::find(mage.begin(), mage.end(), std::string{}) ==
+                mage.end());
+
+    const std::vector<std::string> roomy =
+        og::ui::hire_box_lines("A short blurb.\n\nSpecial: Howl", 27);
+    EXPECT_EQ((std::vector<std::string>{"A short blurb.", "",
+                                        "Special: Howl"}),
+              roomy);
 }
 
 // --- class_help_lines (HELP > CLASSES) ---

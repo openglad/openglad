@@ -2132,6 +2132,19 @@ inline constexpr int kHelpClassesProseChars = 43;
 [[nodiscard]] std::string hire_description(const FamilyDescriptor* fd,
                                            short new_specials);
 
+// The HIRE box draws its flowed text at a 10px pitch while it has at most
+// kHireBoxRoomyLines lines, and at 8px past that.
+inline constexpr std::size_t kHireBoxRoomyLines = 8;
+
+// The HIRE box's lines: `text` (hire_description) flowed at `width` chars
+// in Paragraphs mode. When the text needs more than kHireBoxRoomyLines
+// lines, the blank line before the "Special:" line is dropped: at the 8px
+// pitch a tenth line sits on the box's bottom frame (the mage's and the
+// thief's six abilities with New Specials on), and the blank line is the
+// one row the box can spare.
+[[nodiscard]] std::vector<std::string> hire_box_lines(std::string_view text,
+                                                      int width);
+
 // --- New Ability Select (docs/ability-select-design.md) ---
 //
 // One pure model for the ABILITIES page in all three clients (the SDL

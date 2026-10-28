@@ -15,7 +15,6 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
-#include <openglad/core/text_wrap.h>
 #include <openglad/gameplay/script/campaign_hooks.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/families/family_descriptor.h>
@@ -1772,9 +1771,8 @@ void picker_hire_menu_engine_draw_content(void* screen_state)
         state->last_family = static_cast<unsigned char>(og::runtime::current_session->current_guy_->family);
         state->last_new_specials = new_specials;
         state->description = get_class_description(state->last_family, new_specials);
-        state->desc = og::core::wrap_text(state->description,
-                                          l.description_box_content.w / 6,
-                                          og::core::WrapMode::Paragraphs);
+        state->desc = og::ui::hire_box_lines(state->description,
+                                             l.description_box_content.w / 6);
 
         state->family_name = get_family_string(state->last_family);
     }
@@ -1785,7 +1783,8 @@ void picker_hire_menu_engine_draw_content(void* screen_state)
     // past the inner bevel — a runaway pack description stays inside.
     {
         const int desc_lines = static_cast<int>(state->desc.size());
-        const int pitch = (desc_lines <= 8) ? 10 : 8;
+        const int pitch =
+            (desc_lines <= static_cast<int>(og::ui::kHireBoxRoomyLines)) ? 10 : 8;
         const int max_desc_lines =
             (l.description_box_inner.y + l.description_box_inner.h -
              l.description_box_content.y - 6) / pitch + 1;
@@ -1899,9 +1898,8 @@ Sint32 create_hire_menu(Sint32 /*arg1*/)
     state.last_family = static_cast<unsigned char>(og::runtime::current_session->current_guy_->family);
     state.last_new_specials = og::runtime::current_session->myscreen_->save_data.new_specials;
     state.description = get_class_description(state.last_family, *state.last_new_specials);
-    state.desc = og::core::wrap_text(state.description,
-                                     HireMenuLayout{}.description_box_content.w / 6,
-                                     og::core::WrapMode::Paragraphs);
+    state.desc = og::ui::hire_box_lines(state.description,
+                                        HireMenuLayout{}.description_box_content.w / 6);
     state.family_name = get_family_string(state.last_family);
 
 	grab_mouse();

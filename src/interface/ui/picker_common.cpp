@@ -5545,6 +5545,21 @@ std::string hire_description(const FamilyDescriptor* fd, short new_specials)
            specials_summary(fd, new_specials);
 }
 
+std::vector<std::string> hire_box_lines(std::string_view text, int width)
+{
+    std::vector<std::string> lines =
+        og::core::wrap_text(text, width, og::core::WrapMode::Paragraphs);
+    if (lines.size() <= kHireBoxRoomyLines)
+        return lines;
+    for (std::size_t i = 1; i < lines.size(); ++i) {
+        if (lines[i].starts_with("Special:") && lines[i - 1].empty()) {
+            lines.erase(lines.begin() + static_cast<std::ptrdiff_t>(i - 1));
+            break;
+        }
+    }
+    return lines;
+}
+
 // --- New Ability Select ---
 
 bool ability_select_pref(cfg_store& config)
