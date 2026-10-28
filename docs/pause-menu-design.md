@@ -343,6 +343,8 @@ screen share one geometry)
   [ABILITIES][KEYMAP][REMOVE PLAYER]           y=169 (pause)
 ```
 
+- BACK sits at x=12, y=8 (50x15) on both screens (`kPlayerScreenBack*`), on
+  the same x=12 column as the bands and the binding panel under it.
 - The binding panel narrows to x=12..208 (movement col x=20, actions x=104);
   the HUD toggles stack on the right at x=214, w=90, 22px pitch.
 - Each line of the binding panel is a key cell (#358): clicking it, or
@@ -352,7 +354,11 @@ screen share one geometry)
   edge). Cells a seat cannot use are Hidden, so navigation skips them. Both
   screens share the cell table (`OG_BINDING_PANEL_CELLS`), the cell state
   rule and the nav rewire. The key that opened the prompt and a held key's
-  auto-repeat never answer it. A key already bound to another slot of the
+  auto-repeat never answer it. The menu acts on a click at the press, so
+  the mouse release arrives while the prompt waits; the prompt drops every
+  event that does not answer it but still hands a mouse button release to
+  the mouse handler, so the click after a rebind is acted on (the same for
+  REMAP ALL and the classic REMAP). A key already bound to another slot of the
   same seat in the same mode leaves that slot (it shows `--`); other seats
   keep their keys. REMAP ALL and the cells save through one helper.
 - Ordinals: the pause player screen is rows 0..10, key cells 11..26,

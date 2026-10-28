@@ -551,7 +551,10 @@ two instead (one ability, one slot). A locked ability can be placed.
   darker face every dimmed door uses (`vbutton::vdisplay`).
 - **HIRE's door**: `ABILITIES` on HIRE's bottom row (BACK | ABILITIES |
   the team picker, shown with more than one player | HIRE ME, one gap
-  between each; solo, HIRE ME takes the team picker's place). It opens the
+  between each; solo, HIRE ME takes the team picker's place). HIRE ME is
+  the tall face, 58x28, beside 20-high BACK, ABILITIES and team picker
+  (110 wide, to fit "HIRING FOR TEAM 4"); the rewire moves it every frame
+  as the team picker shows or hides. It opens the
   TRAIN screen's DETAILS.. page (`create_recruit_detail_menu`) for the
   class HIRE shows, as the level-1 recruit HIRE ME would hire: no PROMOTE,
   nobody hired. BACK returns to HIRE on the same class. DETAILS exists in
@@ -814,7 +817,8 @@ this machine's keyboard seats, from their live keys, so players can see who
 has which key and spot a clash. The title names each seat's key set; under
 the picture a legend lists a seat that plays on a pad, a key two players
 share and a key with no cap, and on web, when a seat uses Delete, says
-`DEL ON A MAC: FN + DELETE`. BACK (Esc) closes it. One draw body sits behind
+`DEL ON A MAC: FN + DELETE`. BACK (Esc) closes it; it sits where the
+ABILITIES screen's BACK sits (x=12, y=176, 50x16, clear of the frame). One draw body sits behind
 two specs: the Base Camp seat screen's (`MenuScreenId::Keymap`, follows the
 host's GO) and the pause player screen's (an overlay that keeps the paused
 session pumped). Its tests are in `tests/integration/test_keymap_screen.cpp`.
