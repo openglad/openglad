@@ -1332,6 +1332,10 @@ TEST(PausePlayerDraw, menushots_player_screen_keyboard_and_joystick)
     {
         ScopedAbilitySelect on(true);
         compose_and_capture("pause_player_screen");
+        // Two seats: REMOVE PLAYER joins the bottom band beside the doors.
+        g_stub.can_remove = true;
+        compose_and_capture("pause_player_screen_two_seats");
+        g_stub.can_remove = false;
     }
     {
         // The same panel with New Ability Select off: the classic seven
@@ -4845,7 +4849,7 @@ TEST(PausePlayerDraw, menushots_key_cell_and_wrapped_prompts)
         og::ui::pause_player_menu_screen_spec();
     screen* const scr = og::runtime::current_session->myscreen_;
 
-    {
+    const auto shoot_panel = [&](const char* name) {
         button* const buttons = spec.buttons_accessor();
         const int count = spec.count_accessor();
         og::runtime::current_session->localbuttons_ =
@@ -4862,10 +4866,11 @@ TEST(PausePlayerDraw, menushots_key_cell_and_wrapped_prompts)
         key_cell_pks().menu_nav_enabled = true;
         og::ui::picker_testing_draw_menu_highlight(spec, buttons, kFireCell);
         key_cell_pks().menu_nav_enabled = nav_was;
-        EXPECT_TRUE(write_menushot(scr, "pause_key_cell_fire"));
+        EXPECT_TRUE(write_menushot(scr, name));
         clear_allbuttons();
         og::runtime::current_session->localbuttons_ = nullptr;
-    }
+    };
+    shoot_panel("pause_key_cell_fire");
 
     g_remap_shot_polls = 0;
     g_remap_shot_prompt = 1;
@@ -4873,6 +4878,9 @@ TEST(PausePlayerDraw, menushots_key_cell_and_wrapped_prompts)
     g_remap_shot_written = false;
     (void)rebind_player_key_with_poll(0, KEY_FIRE, &remap_shot_poll);
     EXPECT_TRUE(g_remap_shot_written);
+    // The panel once the prompt took a key (F, as a player would press it).
+    set_player_key_binding(0, KEY_FIRE, SDLK_F);
+    shoot_panel("pause_key_cell_fire_after");
 
     // Four lines: 8-direction numpad movement with the issue's long names.
     set_player_control_mode(
@@ -5283,6 +5291,12 @@ int pause_abilities_injector(void* data)
             return wait_for_interactable("abilities_back", ms);
         }))
         return leave(3, "ABILITIES never opened");
+    if (flow->shots && wait_for_interactable(flow->belt_id, 10'000) &&
+        wait_for_menu_frames(2))
+        (void)run_on_main_thread([] {
+            (void)write_menushot(og::runtime::current_session->myscreen_,
+                                 "pause_abilities_before");
+        });
     if (!place_mind_control(flow->belt_id, flow->slot))
         return leave(4, "MIND CONTROL never reached the slot");
     if (flow->shots && wait_for_menu_frames(2))
@@ -5421,6 +5435,13 @@ TEST(PauseMenuFlow, abilities_from_the_paused_menu_reach_the_server_guy_and_the_
         trace_clear();
         game_screen->clearbuffer();
         (void)new_score_panel(game_screen, 1);
+        // The PR still of that HUD (the canvas: the world draws in its own
+        // plane, so it is black here).
+        if (flow.shots)
+        {
+            EXPECT_TRUE(write_menushot(game_screen,
+                                       "pause_abilities_hud_after_resume"));
+        }
     }
     const belt::Entry mind = entry_named(FAMILY_ARCHMAGE, "MIND CONTROL");
     EXPECT_TRUE(trace_contains(

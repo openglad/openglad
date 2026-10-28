@@ -22,6 +22,7 @@
 #include <openglad/core/test_trace.h>
 #include <openglad/interface/input.h>
 #include <openglad/interface/input_hardware_state.h>
+#include <openglad/interface/native_input.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/session_state.h>
 #include <openglad/interface/ui/keyboard_picture.h>
@@ -49,6 +50,8 @@
 #include <string>
 #include <utility>
 #include <vector>
+
+extern og::input_native::JoystickHandle joysticks[10];
 
 namespace
 {
@@ -541,4 +544,64 @@ TEST(KeymapScreen, seat_screen_door_shows_every_local_seat_this_one_first)
     }
     og::ui::install_seat_settings_state_for_screen(nullptr);
     og::ui::install_active_picker_lobby_client(nullptr);
+}
+
+// PR proof frame: all four seats of a desktop on KEYMAP at 1280x800, player
+// 1 on a custom key (LOOK UP on Caps Lock) and player 4 on a gamepad, so the
+// legend's gamepad line shows. A capture tool, not a check: skipped unless
+// OG_KEYMAP_SHOT_DIR names where it goes. The pad is an SDL virtual device
+// (the same minimal shape as test_pause_menu.cpp's menushot pad).
+TEST(KeymapScreen, zz_capture_four_seats_one_on_a_pad)
+{
+    if (shot_dir() == nullptr)
+        GTEST_SKIP() << "set OG_KEYMAP_SHOT_DIR to write the PR proof frame";
+    ASSERT_TRUE(E_Screen);
+    ControlsRestore restore;
+    og::input_native::joystick_init_subsystem();
+    SDL_VirtualJoystickDesc desc;
+    SDL_INIT_INTERFACE(&desc);
+    desc.type = SDL_JOYSTICK_TYPE_GAMEPAD;
+    desc.naxes = 2;
+    desc.nbuttons = 6;
+    desc.name = "OpenGlad keymap shot pad";
+    const SDL_JoystickID id = SDL_AttachVirtualJoystick(&desc);
+    ASSERT_NE(0u, id) << SDL_GetError();
+    SDL_Joystick* const pad = SDL_OpenJoystick(id);
+    ASSERT_NE(nullptr, pad) << SDL_GetError();
+    int device = -1;
+    int count = 0;
+    if (SDL_JoystickID* ids = SDL_GetJoysticks(&count)) {
+        for (int i = 0; i < count; ++i)
+            if (ids[i] == id)
+                device = i;
+        SDL_free(ids);
+    }
+    ASSERT_GE(device, 0);
+    ASSERT_LT(device, 10);
+    const og::input_native::JoystickHandle old_handle = joysticks[device];
+    joysticks[device] = pad;
+
+    input_player_keys()[0][KEY_LOOKUP] = KEYCODE_CAPSLOCK;
+    ASSERT_TRUE(assign_joystick_to_player(3, device));
+    og::ui::KeymapScreenHost host;
+    host.seats = {{0, 1}, {1, 2}, {2, 3}, {3, 4}};
+    {
+        WindowSize window;
+        WindowSize::set(1280, 800);
+        Seen seen;
+        seen.shot_name = "keymap_four_seats_1280x800";
+        EXPECT_EQ(MENU_REDRAW, run_with_injector(seen, 0, host, nullptr));
+        EXPECT_EQ(0u, seen.title.rfind("KEYS: P1 ", 0)) << seen.title;
+        EXPECT_EQ(1, player_on(seen, KEYCODE_CAPSLOCK));
+        ASSERT_FALSE(seen.legend.empty());
+        EXPECT_EQ(0u, seen.legend.front().rfind("P4: GAMEPAD", 0))
+            << seen.legend.front();
+        EXPECT_TRUE(seen.physical.captured);
+    }
+
+    clear_player_joystick(3);
+    joysticks[device] = old_handle;
+    SDL_CloseJoystick(pad);
+    SDL_DetachVirtualJoystick(id);
+    og::input_native::joystick_quit_subsystem();
 }
