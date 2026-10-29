@@ -773,12 +773,159 @@ TEST_F(ModesOnslaught, flip_keeps_existing_spawns_on_their_old_team)
     ASSERT_TRUE(fx.ons_active());
     walker* veteran = fx.spawn_living(FAMILY_SKELETON, 0, 250, 320, ACT_GUARD);
     veteran->stats()->set_bit_flags(kSpawnMarkBit, 1);
+    // A tent's spawn keeps the tent as its owner for life (#389).
+    veteran->set_owner(fx.red_gen_a);
     fx.green->setxy(140, 340);
     fx.smash(fx.green, fx.red_gen_a);
 
     ASSERT_EQ(1, fx.red_gen_a->team_num());
     EXPECT_EQ(0, veteran->team_num())
         << "a captured post's old spawns fight on as a remnant";
+    EXPECT_EQ(nullptr, veteran->owner())
+        << "the capture releases the post's troops";
+    EXPECT_EQ(0, fx.green->is_friendly(veteran))
+        << "a remnant is the captor's foe, not its ally in red";
+}
+
+namespace {
+
+// Two real spawns out of `post`'s own fire path. A second fire() onto the
+// occupied cell makes nothing, so the first spawn is moved off it first.
+std::vector<walker*> fire_two(walker* post)
+{
+    std::vector<walker*> troops;
+    walker* first = post->fire();
+    if (first == nullptr)
+        return troops;
+    troops.push_back(first);
+    first->setxy(static_cast<short>(first->xpos() + 64), first->ypos());
+    walker* second = post->fire();
+    if (second != nullptr)
+        troops.push_back(second);
+    return troops;
+}
+
+// #389, the reporter's scenario: a green tent or bones post with its troops
+// alive is captured by red. The troops keep green's colour, so they must
+// also keep green's side: red can hit them, green cannot, their own hits
+// count for green, and the cap census still counts them on green.
+void check_captured_post_releases_its_troops(int family, const char* label)
+{
+    OnsWorld fx;
+    walker* post = fx.spawn_generator(family, 1, 320, 480, 2);
+    ASSERT_NE(nullptr, post);
+    fx.tick(1);
+    ASSERT_TRUE(fx.ons_active());
+    const std::vector<walker*> troops = fire_two(post);
+    ASSERT_EQ(2u, troops.size());
+    // A troop of another post, which this capture must leave alone.
+    walker* bystander = fx.green_gen->fire();
+    ASSERT_NE(nullptr, bystander);
+    ASSERT_EQ(fx.green_gen, bystander->owner());
+    for (walker* t : troops)
+    {
+        ASSERT_EQ(post, t->owner()) << "a spawn is owned by its post";
+        ASSERT_EQ(1, t->team_num());
+        ASSERT_EQ(0, fx.red->is_friendly(t))
+            << "before the capture red and the troops are foes";
+    }
+
+    fx.red->setxy(332, 500);
+    fx.smash(fx.red, post);
+    ASSERT_EQ(0, post->team_num());
+    EXPECT_TRUE(has_notification(fx.events, std::string("RED TAKES A ") + label + "!"));
+    EXPECT_EQ(fx.green_gen, bystander->owner())
+        << "only the captured post's own troops are released";
+
+    for (walker* t : troops)
+    {
+        EXPECT_EQ(1, t->team_num()) << "the troops keep the colour they wear";
+        EXPECT_EQ(nullptr, t->owner()) << "the capture releases them";
+        EXPECT_EQ(0, fx.red->is_friendly(t)) << "the captor's foes";
+        EXPECT_EQ(1, fx.green->is_friendly(t)) << "their own side's friends";
+        ASSERT_NE(nullptr, t->stats());
+        EXPECT_TRUE(t->stats()->query_bit_flags(kSpawnMarkBit))
+            << "still a marked spawn for the cap census";
+        EXPECT_EQ(0, t->lifetime())
+            << "and drops its clock: an ownerless timed living dies at once";
+        t->stats()->set_hitpoints(1000.0f);
+        fx.red->set_damage(20.0f);
+        EXPECT_TRUE(fx.red->attack(t)) << "the captor's hit lands";
+        EXPECT_EQ(fx.red->entity_id(), t->last_attacker_id());
+        fx.red->stats()->set_hitpoints(1000.0f);
+        t->set_damage(1.0f);
+        EXPECT_TRUE(t->attack(fx.red)) << "the troop fights the captor";
+        EXPECT_EQ(t->entity_id(), fx.red->last_attacker_id())
+            << "a released troop is the head of its own chain: its hits count";
+        EXPECT_EQ(1, fx.red->last_attacker_team());
+    }
+
+    // The census still counts them for green: with one more marked green
+    // spawn green stands at its cap of three and its tent pauses.
+    fx.red->setxy(96, 96);
+    walker* third = fx.spawn_living(FAMILY_SKELETON, 1, 520, 700, ACT_GUARD);
+    ASSERT_NE(nullptr, third);
+    third->stats()->set_bit_flags(kSpawnMarkBit, 1);
+    bystander->set_dead(1);
+    align_before_cadence(fx.world());
+    fx.tick(1);
+    for (walker* t : troops)
+        EXPECT_FALSE(t->dead()) << "a released troop lives on its own";
+    EXPECT_GE(fx.green_gen->fire_frequency(),
+              static_cast<float>(kPauseFireFrequency))
+        << "two released troops and one more spawn: green at its cap";
+    EXPECT_LT(post->fire_frequency(),
+              static_cast<float>(kPauseFireFrequency))
+        << "red's census holds none of them";
+    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
+}
+
+}  // namespace
+
+TEST_F(ModesOnslaught, a_captured_bones_post_releases_its_troops)
+{
+    check_captured_post_releases_its_troops(FAMILY_BONES, "BONES");
+}
+
+TEST_F(ModesOnslaught, a_captured_tent_releases_its_troops)
+{
+    check_captured_post_releases_its_troops(FAMILY_TENT, "TENT");
+}
+
+TEST_F(ModesOnslaught, released_troops_can_take_the_post_back)
+{
+    OnsWorld fx;
+    walker* post = fx.spawn_generator(FAMILY_BONES, 1, 320, 480, 2);
+    ASSERT_NE(nullptr, post);
+    fx.tick(1);
+    ASSERT_TRUE(fx.ons_active());
+    const std::vector<walker*> troops = fire_two(post);
+    ASSERT_EQ(2u, troops.size());
+    troops[1]->setxy(static_cast<short>(troops[1]->xpos() - 64),
+                     troops[1]->ypos());  // clear the spawn cell
+    fx.red->setxy(332, 500);
+    fx.smash(fx.red, post);  // red takes it at world tick 1
+    ASSERT_EQ(0, post->team_num());
+    // Red's own troop out of the captured post.
+    walker* red_troop = post->fire();
+    ASSERT_NE(nullptr, red_troop);
+    ASSERT_EQ(post, red_troop->owner());
+    ASSERT_EQ(0, red_troop->team_num());
+
+    // Past the 96-tick flip guard, with no AI turn in between.
+    fx.world().tick_count_ += 96;
+    walker* remnant = troops[0];
+    ASSERT_EQ(nullptr, remnant->owner());
+    fx.smash(remnant, post);
+
+    EXPECT_EQ(1, post->team_num()) << "the remnant takes its post back";
+    EXPECT_FALSE(post->dead()) << "generators never die (D5)";
+    EXPECT_EQ(1, count_notifications(fx.events, "GREEN TAKES A BONES!"));
+    EXPECT_EQ(nullptr, red_troop->owner())
+        << "the same rule again: red's troop is red's remnant now";
+    EXPECT_EQ(0, red_troop->team_num());
+    EXPECT_EQ(0, fx.green->is_friendly(red_troop));
+    EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
 }
 
 // ===========================================================================
