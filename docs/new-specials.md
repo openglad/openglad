@@ -555,7 +555,7 @@ or not. A special that opens above the character's level carries the level
 after its name, `Hook Blade (L7)`; one the character has carries nothing. A
 slot with an alternate in play adds a `Shift: <name>` line (`Also: <name>`
 with New Ability Select on, where SHIFTER is the second row of keys rather
-than "the alternate") and the alternate's one-line `detail`.
+than "the alternate") and the alternate's `detail` (a line or two).
 
 The page is two columns of ten rows, 7 pixels apart (HELP's line pitch),
 with a blank row between two specials. A special that does not fit what is
