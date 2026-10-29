@@ -65,10 +65,23 @@ struct TickSchedule {
     bool immediate_tick = false;
 };
 
-GameFrameResult finish_done(GameLoopFrameState& st)
+// The mission is over: the screen gets its own colours back (#365). A time
+// stop still running when the mission ends would otherwise leave the menus
+// after it blue: nothing on the way out re-set the palette, and the
+// level-end batch re-sends the frozen palette id (the 2004 "freeze time
+// messing up the palette").
+void restore_mission_palette(screen& s)
+{
+    s.world().current_palette_id = 0;
+    set_palette(s.ourpalette);
+    s.redrawme = 1;
+}
+
+GameFrameResult finish_done(screen& s, GameLoopFrameState& st)
 {
     // The mission is over: the desktop gets its shortcuts back (#391).
     og::input_native::set_mission_keyboard_grab(false);
+    restore_mission_palette(s);
     st.done = true;
     st.has_pending_input = false;
     st.pending_input = {};
@@ -357,7 +370,7 @@ GameFrameResult run_game_tick(screen& s,
         deps.after_act(s);
 
     if (s.world().end)
-        return finish_done(st);
+        return finish_done(s, st);
 
     // Now cycle palette ..
     if (s.cyclemode)
@@ -416,12 +429,12 @@ GameFrameResult game_frame_with_result(screen& s, GameLoopFrameState& st, const 
     }
 
     if (s.world().end || st.done)
-        return finish_done(st);
+        return finish_done(s, st);
 
     og::runtime::GameSession* const gameplay_session =
         require_local_transport_session();
     if (gameplay_session == nullptr)
-        return finish_done(st);
+        return finish_done(s, st);
 
     // Cross-seat chords (#391): while two or more players share the
     // keyboard, hold the native keyboard grab so one player's modifier plus
@@ -522,6 +535,7 @@ GameFrameResult game_frame_with_result(screen& s, GameLoopFrameState& st, const 
                             // authoritatively here.
                             st.done = true;
                             og::runtime::finish_replay_recording();
+                            restore_mission_palette(s);
                             results_screen(2, -1); // Should not show an extra popup
                             return GameFrameResult::AbortedMission;
                         }
@@ -541,6 +555,7 @@ GameFrameResult game_frame_with_result(screen& s, GameLoopFrameState& st, const 
                         // save (web re-enters Playing on done, glad.cpp).
                         st.done = true;
                         og::runtime::finish_replay_recording();
+                        restore_mission_palette(s);
                         return GameFrameResult::AbortedMission;
                     }
                     // Resumed / SessionEnded: fall through — the loop-top end
@@ -554,7 +569,7 @@ GameFrameResult game_frame_with_result(screen& s, GameLoopFrameState& st, const 
     }
 
     if (s.world().end || st.done)
-        return finish_done(st);
+        return finish_done(s, st);
 
     ctx().poll_input();
     latch_polled_input(st, ctx().input);
