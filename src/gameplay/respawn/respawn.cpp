@@ -863,6 +863,57 @@ bool respawn_spot_clear(GameWorld& world, walker* w, short x, short y,
     return classic_spot_clear(world, w, x, y, floor);
 }
 
+// Probed with a detached walker (walker.h, WeaponProfileProbeTag: never in a
+// list or the obmap, no entity id, no draw), through the eat-free placement
+// rule every spawn uses (spawn_spot_blocked_by: the grid with the body's own
+// flags, then livings, generators, doors, trees, boulders and placement
+// blockers on exact boxes), and never onto a delayed spawn that has not
+// entered the world yet.
+bool body_spot_clear(GameWorld& world, Order order, std::int32_t family,
+                     short x, short y, int floor)
+{
+    walker probe(walker::WeaponProfileProbeTag{});
+    const PixieData* data = world.configure_existing_entity(probe, order, family);
+    if (data == nullptr)
+        return false;
+    probe.set_data(*data);
+    probe.set_floor(static_cast<short>(floor));
+    probe.set_xpos(x);      // SimEntity's plain setters: never setxy, which
+    probe.set_ypos(y);      // would register the probe in the obmap
+    if (!respawn_spot_clear(world, &probe, x, y, floor))
+        return false;
+    return !world.dormant_occupies_spot(&probe);
+}
+
+bool body_spot_near(GameWorld& world, Order order, std::int32_t family,
+                    short x, short y, int floor, int radius,
+                    short& out_x, short& out_y)
+{
+    if (body_spot_clear(world, order, family, x, y, floor))
+    {
+        out_x = x;
+        out_y = y;
+        return true;
+    }
+    static constexpr int kRing[8][2] = {
+        {-1, 0}, {1, 0}, {0, -1}, {0, 1}, {-1, -1}, {1, -1}, {-1, 1}, {1, 1}};
+    for (int r = 1; r <= radius; ++r)
+    {
+        for (const auto& step : kRing)
+        {
+            const short sx = static_cast<short>(x + step[0] * r);
+            const short sy = static_cast<short>(y + step[1] * r);
+            if (body_spot_clear(world, order, family, sx, sy, floor))
+            {
+                out_x = sx;
+                out_y = sy;
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 void respawn_scrub_stains_at(GameWorld& world, short x, short y, int floor)
 {
     // The corpse-relative rule of scrub_corpse_drops_in, keyed by position:
