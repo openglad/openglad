@@ -6263,6 +6263,80 @@ TEST(GameLoop, game_frame_escape_pause_menu_quit_and_restart_outcomes)
     game_screen->world().delete_objects();
 }
 
+// PAUSED's QUIT and RESTART end the mission without passing finish_done:
+// a time stop still running then must not follow the player out either
+// (#365). QUIT shows the results over the normal colours.
+TEST(GameLoop, quitting_or_restarting_a_frozen_mission_leaves_with_its_own_colours)
+{
+    screen* const display = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(display != nullptr);
+    FreezePaletteGuard guard;
+    write_one_soldier_company(*display);
+    GameSpeedGuard speed_guard(0.0f);
+
+    const auto escape_into = [&](og::ui::PauseMenuResult outcome) {
+        glad_init();
+        EXPECT_TRUE(og::runtime::local_transport_active(*og::runtime::current_session));
+        // A time stop on the server, as FREEZE TIME casts it, and on the
+        // display: the abort's last snapshot carries the frozen id too.
+        screen* const server =
+            og::runtime::local_transport_shadow_testing_server_screen(
+                *og::runtime::current_game_session);
+        EXPECT_NE(nullptr, server);
+        if (server != nullptr)
+        {
+            server->world().enemy_freeze = 200;
+            server->world().current_palette_id = 1;
+        }
+        dispatch_display_palette(*display, 1u);
+        EXPECT_TRUE(display_palette_is(display->bluepalette))
+            << "the time stop reached the display";
+        EXPECT_FALSE(display_palette_is(display->ourpalette));
+
+        og::ui::pause_menu_testing_clear_queue();
+        og::ui::pause_menu_testing_queue_outcome(outcome, /*release_pause=*/false);
+        EventScript script;
+        SDL_Event e{};
+        e.type = SDL_EVENT_KEY_DOWN;
+        e.key.key = SDLK_ESCAPE;
+        script.events.push_back(e);
+        g_script = &script;
+        GameLoopFrameState st;
+        GameLoopDeps deps;
+        deps.enable_render = false;
+        deps.enable_event_poll = true;
+        deps.enable_frame_timing = false;
+        deps.poll_event = scripted_poll_adapter;
+        const GameFrameResult result = game_frame_with_result(*display, st, deps);
+        g_script = nullptr;
+        return result;
+    };
+
+    EXPECT_EQ(static_cast<int>(GameFrameResult::AbortedMission),
+              static_cast<int>(escape_into(og::ui::PauseMenuResult::Quit)));
+    EXPECT_EQ(0, static_cast<int>(display->world().current_palette_id))
+        << "QUIT leaves the time stop behind";
+    EXPECT_TRUE(display_palette_is(display->ourpalette))
+        << "QUIT leaves the screen in its own colours";
+    og::runtime::clear_local_transport_shadow(*og::runtime::current_game_session);
+    display->world().delete_objects();
+    display->world().end = 0;
+    display->world().retry = false;
+
+    EXPECT_EQ(static_cast<int>(GameFrameResult::AbortedMission),
+              static_cast<int>(escape_into(og::ui::PauseMenuResult::Restart)));
+    EXPECT_EQ(0, static_cast<int>(display->world().current_palette_id))
+        << "RESTART leaves the time stop behind";
+    EXPECT_TRUE(display_palette_is(display->ourpalette))
+        << "RESTART leaves the screen in its own colours";
+    og::runtime::clear_local_transport_shadow(*og::runtime::current_game_session);
+    display->world().delete_objects();
+
+    og::ui::pause_menu_testing_clear_queue();
+    display->world().end = 0;
+    display->world().retry = false;
+}
+
 // Regression: in a local split-screen game, a NON-display player (here player 2)
 // triggering the "Exit Field?" prompt at a level exit must have that prompt
 // answered so the authoritative sim resumes. Player 2 is a *background* client
