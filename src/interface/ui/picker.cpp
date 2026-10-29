@@ -53,6 +53,7 @@
 #include <openglad/interface/ui/picker_lobby_network_client.h>
 #include <openglad/interface/platform_bridge.h>
 #include <openglad/interface/ui/menu_model.h>
+#include <openglad/interface/ui/menu_binding.h>
 #include <openglad/interface/ui/menu_screen_spec.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/interface/ui/picker_state.h>
@@ -2051,9 +2052,15 @@ void picker_quit()
 
 static const button k_details_buttons[] =
     {
-        button("back", "BACK", KEYSTATE_ESCAPE, 10, 170, 40, 20, button_action_id(ButtonAction::ReturnMenu) , MENU_EXIT, MenuNav{.up=1, .right=1}),
-        button("promote", 160, 4, 315 - 160, 66 - 4, 0 , -1, MenuNav{.down=0, .left=0}, false, true) // PROMOTE
+        button("back", "BACK", KEYSTATE_ESCAPE, kDetailsBackX, kDetailsFooterY, kDetailsBackWidth, kDetailsFooterHeight, button_action_id(ButtonAction::ReturnMenu) , MENU_EXIT, MenuNav{.up=kDetailsPromoteIndex, .right=kDetailsPromoteIndex}),
+        button("promote", 160, 4, 315 - 160, 66 - 4, 0 , -1, MenuNav{.down=kDetailsBackIndex, .left=kDetailsBackIndex}, false, true), // PROMOTE
+        // PREV/NEXT page the abilities when they run past one page
+        // (og::ui::DetailPage::pages); run_detail_menu shows them.
+        button("detail_page_prev", "PREV", KEYSTATE_PAGEUP, kDetailsPrevX, kDetailsFooterY, kDetailsPagerWidth, kDetailsFooterHeight, button_action_id(ButtonAction::ReturnMenu), kDetailsPagePrevCode, MenuNav{.up=kDetailsPromoteIndex, .left=kDetailsBackIndex, .right=kDetailsNextIndex}, true),
+        button("detail_page_next", "NEXT", KEYSTATE_PAGEDOWN, kDetailsNextX, kDetailsFooterY, kDetailsPagerWidth, kDetailsFooterHeight, button_action_id(ButtonAction::ReturnMenu), kDetailsPageNextCode, MenuNav{.up=kDetailsPromoteIndex, .left=kDetailsPrevIndex}, true)
     };
+static_assert(std::size(k_details_buttons) == kDetailsNextIndex + 1,
+              "k_details_buttons rows sit at their kDetails*Index");
 
 // TRAIN / HIRE: engine-hosted — specs, accessor shims, and the per-frame
 // hooks/entry wrappers live in menu_screen_specs.cpp / picker_team_build.cpp
@@ -2991,22 +2998,20 @@ namespace {
 
 inline constexpr int DETAIL_LM = 11;
 inline constexpr int DETAIL_MM = 164;
-constexpr int detail_line_y(int x) { return 90 + x * 6; }
+// The promotion box above the panel keeps the 2002 page's 6 px grid.
+constexpr int promo_line_y(int x) { return 90 + x * 6; }
 
 // The page itself is composed by og::ui::detail_page (picker_common) from
-// the specials table as this session sees it; this draws it.
-void render_family_abilities(text& mytext, const guy* g, short new_specials) {
+// the specials table as this session sees it; this draws page `page_index`
+// of it, and the promotion box when the hero has earned one.
+void render_family_abilities(text& mytext, const guy* g,
+                             const og::ui::DetailPage& page, int page_index) {
     const auto* fd = get_family_descriptor(g->family);
-    const og::ui::DetailPage page = og::ui::detail_page(fd, g->level, new_specials,
-                                                          og::input::ability_select_on());
     for (const og::ui::DetailLine& line : page.lines) {
-        const int x = line.right ? DETAIL_MM : DETAIL_LM;
-        const int y = detail_line_y(line.row);
-        if (line.ink == og::ui::DetailInk::Title) {
-            mytext.write_xy(x + 1, y + 1, line.text.c_str(), 10, 1);
-            mytext.write_xy(x, y, line.text.c_str(), DARK_BLUE, 1);
+        if (line.page != page_index)
             continue;
-        }
+        const int x = line.right ? DETAIL_MM : DETAIL_LM;
+        const int y = og::ui::kDetailTopY + og::ui::kDetailRowPitch * line.row;
         const unsigned char color = line.ink == og::ui::DetailInk::Name
             ? static_cast<unsigned char>(RED) : static_cast<unsigned char>(DARK_BLUE);
         mytext.write_xy(x, y, line.text.c_str(), color, 1);
@@ -3016,19 +3021,19 @@ void render_family_abilities(text& mytext, const guy* g, short new_specials) {
     if (g->family == FAMILY_MAGE && fd && g->level >= fd->promotion_level_req) {
         std::string promo_msg = std::format("Level {} Archmage. This", (g->level-6)/2+1);
         og::runtime::current_session->myscreen_->draw_dialog(158, 4, 315, 66, "Become ArchMage");
-        mytext.write_xy(DETAIL_MM, detail_line_y(-10), "Your Mage is now of high", RED, 1);
-        mytext.write_xy(DETAIL_MM, detail_line_y(-9), "enough level to become a", RED, 1);
-        mytext.write_xy(DETAIL_MM, detail_line_y(-8), promo_msg.c_str(), RED, 1);
-        mytext.write_xy(DETAIL_MM, detail_line_y(-7), "change CANNOT be undone!", RED, 1);
-        mytext.write_xy(DETAIL_MM, detail_line_y(-6), " Click here to change.  ", RED, 1);
+        mytext.write_xy(DETAIL_MM, promo_line_y(-10), "Your Mage is now of high", RED, 1);
+        mytext.write_xy(DETAIL_MM, promo_line_y(-9), "enough level to become a", RED, 1);
+        mytext.write_xy(DETAIL_MM, promo_line_y(-8), promo_msg.c_str(), RED, 1);
+        mytext.write_xy(DETAIL_MM, promo_line_y(-7), "change CANNOT be undone!", RED, 1);
+        mytext.write_xy(DETAIL_MM, promo_line_y(-6), " Click here to change.  ", RED, 1);
     }
     if (g->family == FAMILY_ORC && fd && g->level >= fd->promotion_level_req) {
         og::runtime::current_session->myscreen_->draw_dialog(158, 4, 315, 66, "Become Orc Captain");
-        mytext.write_xy(DETAIL_MM, detail_line_y(-10), "Your Orc is now of high ", RED, 1);
-        mytext.write_xy(DETAIL_MM, detail_line_y(-9), "enough level to become a", RED, 1);
-        mytext.write_xy(DETAIL_MM, detail_line_y(-8), "Level 1 Orc Captain. You", RED, 1);
-        mytext.write_xy(DETAIL_MM, detail_line_y(-7), "CANNOT undo this action!", RED, 1);
-        mytext.write_xy(DETAIL_MM, detail_line_y(-6), " Click here to change.  ", RED, 1);
+        mytext.write_xy(DETAIL_MM, promo_line_y(-10), "Your Orc is now of high ", RED, 1);
+        mytext.write_xy(DETAIL_MM, promo_line_y(-9), "enough level to become a", RED, 1);
+        mytext.write_xy(DETAIL_MM, promo_line_y(-8), "Level 1 Orc Captain. You", RED, 1);
+        mytext.write_xy(DETAIL_MM, promo_line_y(-7), "CANNOT undo this action!", RED, 1);
+        mytext.write_xy(DETAIL_MM, promo_line_y(-6), " Click here to change.  ", RED, 1);
     }
 }
 
@@ -3039,12 +3044,28 @@ namespace {
 // The family the open DETAILS page shows, -1 while none is open (an
 // injector reads it on the menu thread).
 int g_detail_menu_testing_family = -1;
+int g_detail_menu_testing_page = -1;
+int g_detail_menu_testing_pages = -1;
 }  // namespace
 
 int detail_menu_testing_family()
 {
     return g_detail_menu_testing_family;
 }
+
+int detail_menu_testing_page()
+{
+    return g_detail_menu_testing_page;
+}
+
+int detail_menu_testing_pages()
+{
+    return g_detail_menu_testing_pages;
+}
+#endif
+
+#ifdef TESTING
+std::mutex& get_allbuttons_mutex();
 #endif
 
 namespace {
@@ -3116,9 +3137,21 @@ Sint32 run_detail_menu(DetailSubject subject)
 
 #ifdef TESTING
    struct DetailFamilyReset {
-       ~DetailFamilyReset() { g_detail_menu_testing_family = -1; }
+       ~DetailFamilyReset()
+       {
+           g_detail_menu_testing_family = -1;
+           g_detail_menu_testing_page = -1;
+           g_detail_menu_testing_pages = -1;
+       }
    } detail_family_reset;
 #endif
+
+   // Which page of the abilities shows: PREV/NEXT, PageUp/PageDown and the
+   // mouse wheel step it, clamped like HELP's (og::ui::PageModel, one item
+   // a page). A wheel notch queued before entry must not page the first
+   // frame.
+   og::ui::PageModel pager = og::ui::PageModel::make(1, 1);
+   (void)get_and_reset_scroll_amount();
 
    while ( !(retvalue & MENU_EXIT) )
    {
@@ -3149,8 +3182,36 @@ Sint32 run_detail_menu(DetailSubject subject)
 #endif
 
        const auto* fd = get_family_descriptor(thisguy->family);
-       buttons[1].hidden = subject == DetailSubject::Recruit ||
+       buttons[kDetailsPromoteIndex].hidden = subject == DetailSubject::Recruit ||
            !(fd && fd->promotes_to >= 0 && thisguy->level >= fd->promotion_level_req);
+
+       // The page model is re-read every frame (a lobby poll or a level can
+       // change it under the open page); the window keeps its place,
+       // clamped to what is there.
+       const og::ui::DetailPage page = og::ui::detail_page(
+           fd, thisguy->level,
+           og::runtime::current_session->myscreen_->save_data.new_specials,
+           og::input::ability_select_on());
+       const int shown_page = pager.page;
+       pager = og::ui::PageModel::make(page.pages, 1);
+       (void)pager.step(shown_page);
+       const bool paged = pager.multi_page();
+       for (const int pager_row : {kDetailsPrevIndex, kDetailsNextIndex})
+       {
+           buttons[pager_row].hidden = !paged;
+           // The live surface too: leftmouse and the test probes read it
+           // (the probes under the allbuttons lock, as the engine writes).
+#ifdef TESTING
+           std::lock_guard<std::mutex> lock(get_allbuttons_mutex());
+#endif
+           if (vbutton* live = og::runtime::current_session->allbuttons_[
+                   static_cast<std::size_t>(pager_row)])
+               live->hidden = !paged;
+       }
+       buttons[kDetailsBackIndex].nav.right =
+           paged ? kDetailsPrevIndex : kDetailsPromoteIndex;
+       if (buttons[highlighted_button].hidden)
+           highlighted_button = kDetailsBackIndex;
 
        show_guy(query_timer()-start_time, 1); // 1 means ourteam[editguy]
     
@@ -3191,6 +3252,27 @@ Sint32 run_detail_menu(DetailSubject subject)
         
         if(do_click)
             retvalue=og::runtime::current_session->localbuttons_->leftclick(buttons);
+
+       // PREV/NEXT (a click, FIRE on the ring, or PageUp/PageDown) hand
+       // back their code through ReturnMenu; the wheel steps too.
+       int page_step = 0;
+       if (retvalue == kDetailsPagePrevCode)
+           page_step = -1;
+       else if (retvalue == kDetailsPageNextCode)
+           page_step = 1;
+       if (page_step != 0)
+           retvalue = 0;
+       const short scroll_delta = get_and_reset_scroll_amount();
+       if (scroll_delta < 0)
+           page_step = 1;
+       else if (scroll_delta > 0)
+           page_step = -1;
+       if (page_step != 0 && pager.step(page_step))
+           TRACE("detail", "page %d/%d", pager.page + 1, pager.page_count());
+#ifdef TESTING
+       g_detail_menu_testing_page = pager.page;
+       g_detail_menu_testing_pages = pager.page_count();
+#endif
        
        
     
@@ -3206,13 +3288,27 @@ Sint32 run_detail_menu(DetailSubject subject)
        og::runtime::current_session->myscreen_->draw_dialog(5, 68, 315, 167, "Character Special Abilities");
        og::runtime::current_session->myscreen_->draw_text_bar(160, 90, 162, 160);
 
-       render_family_abilities(mytext, thisguy,
-                               og::runtime::current_session->myscreen_->save_data.new_specials);
+       render_family_abilities(mytext, thisguy, page, pager.page);
 
        show_guy(0, 1);
        
        
        draw_buttons(buttons, num_buttons);
+       if (paged)
+       {
+           // HELP's footer: the key hint, and the page indicator right-aligned.
+           screen* const scr = og::runtime::current_session->myscreen_;
+           scr->draw_text_bar(kDetailsFooterBarLeft, kDetailsFooterY,
+                              kDetailsFooterBarRight,
+                              kDetailsFooterY + kDetailsFooterHeight - 1);
+           mytext.write_xy(kDetailsFooterBarLeft + 2, kDetailsFooterY + 2,
+                           "PGUP/PGDN:Page", static_cast<unsigned char>(RED), 1);
+           const std::string indicator = pager.indicator();
+           mytext.write_xy(kDetailsFooterBarRight - 1 -
+                               static_cast<int>(indicator.size()) * 6,
+                           kDetailsFooterY + 11, indicator.c_str(),
+                           static_cast<unsigned char>(RED), 1);
+       }
        draw_highlight_interior(buttons[highlighted_button]);
        og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200);
    }

@@ -415,14 +415,16 @@ has the whole design):
 
 **Details (`detail`).** A `specials` entry, and its `alternate`, may carry
 `detail = "..."`: the prose the TRAIN -> DETAILS page shows under the
-special's name (the alternate's under a `Shift: <name>` line). Write it as
-plain prose; the page wraps it at 23 characters. A primary's `detail` should
-make at most four lines (three when the slot has an alternate), and an
-alternate's is ONE line of at most 23 characters, so two slots with
-alternates still fit a column. Without `detail` the page shows the name
-alone. The page and the HIRE screen's `Special:` line follow the New
-Specials setting: a hidden slot or alternate is not listed, and a slot above
-the character's level shows as `<Name>: lvl <N>`.
+special's name (the alternate's under a `Shift: <name>` line, `Also: <name>`
+with New Ability Select on). Write it as plain prose; the page wraps it at
+22 characters. Keep a primary's `detail` to about four lines and an
+alternate's to a line or two (the game's own are one line each), so a
+special and its alternate read as one short block; a longer one is not cut, it runs on
+into the next column or page. Without `detail` the page shows the name
+alone. The page and the HIRE screen follow the New Specials setting: a
+hidden slot or alternate is not listed. Every special is listed with its
+`detail`; one above the character's level shows the level it opens at
+after its name, `<Name> (L<N>)`.
 
 **Icons (`icon`).** A `specials` entry, and its `alternate`, may carry
 `icon = "..."`: the ability's picture, which New Ability Select draws in its

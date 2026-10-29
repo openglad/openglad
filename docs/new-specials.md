@@ -548,17 +548,25 @@ after LEGION has spent the pool reads what the last 16 magic buy (8 s).
 TRAIN -> DETAILS composes the "Character Special Abilities" page from the
 specials table as the session sees it (`og::ui::detail_page`), so the page
 changes with the New Specials setting and can never name a special the
-character does not have. Each special's text is the `detail` on its row in
-the pack. A slot the character has reached is a block: the name in red
-and its text under it; a slot with an alternate in play adds a
-`Shift: <name>` line (`Also: <name>` with New Ability Select on, where
-SHIFTER is the second row of keys rather than "the alternate") and the
-alternate's one-line `detail`. A slot the
-character has not reached yet is one line at the foot of its column,
-`Hook Blade: lvl 7`. Slots 1 and 2 are in the left column, 3 to 5 in the
-right. A character with no special in play reads `No special abilities.`
-The HIRE box has no such list: its ABILITIES button opens this page for
-the class on show (`docs/ability-select-design.md` E.1).
+character does not have. There is no title line: the page is every special
+the class has, in slot order, each one its name in red and its text under
+it (the `detail` on its row in the pack), whether the character has it yet
+or not. A special that opens above the character's level carries the level
+after its name, `Hook Blade (L7)`; one the character has carries nothing. A
+slot with an alternate in play adds a `Shift: <name>` line (`Also: <name>`
+with New Ability Select on, where SHIFTER is the second row of keys rather
+than "the alternate") and the alternate's one-line `detail`.
+
+The page is two columns of ten rows, 7 pixels apart (HELP's line pitch),
+with a blank row between two specials. A special that does not fit what is
+left of a column starts the next column, and after the right column comes
+the next page: PREV and NEXT then show at the bottom right (where HELP has
+them), with PageUp/PageDown and the mouse wheel doing the same, and a bar
+beside BACK shows the page, `1/2`. A class whose specials fit one page
+shows no pagers. Nothing is ever cut or left out. A character with no
+special in play reads `No special abilities.` The HIRE box has no such
+list: its ABILITIES button opens this page for the class on show, as the
+level-1 recruit HIRE ME would hire (`docs/ability-select-design.md` E.1).
 
 ## The scene tests
 

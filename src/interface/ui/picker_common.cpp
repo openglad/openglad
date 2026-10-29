@@ -5249,14 +5249,46 @@ struct DetailText {
     std::string text;
 };
 
+// The ability prose rule both the DETAILS page and HELP > CLASSES wrap by:
+// a number keeps the word after it, so "Rests 20 s." never breaks before
+// the "s.", nor "75 Int." before "Int.". glue_numbers swaps such a space
+// for kGlue, which wrap_text does not break at; unglue puts it back.
+constexpr char kGlue = '\x1f';
+std::string glue_numbers(std::string text)
+{
+    for (std::size_t i = 1; i + 1 < text.size(); ++i) {
+        if (text[i] == ' ' &&
+            std::isdigit(static_cast<unsigned char>(text[i - 1])) != 0)
+            text[i] = kGlue;
+    }
+    return text;
+}
+
+std::string unglue(std::string line)
+{
+    std::replace(line.begin(), line.end(), kGlue, ' ');
+    return line;
+}
+
+// A name line: one space in, wrapped at the column so a mod's long name
+// (or a name with its level tag) takes two lines instead of running over
+// the divider.
+void append_detail_name(std::vector<DetailText>& block, const std::string& name)
+{
+    for (const std::string& line : og::core::wrap_text(
+             name, kDetailLineChars - 1, og::core::WrapMode::Paragraphs))
+        block.push_back({DetailInk::Name, " " + line});
+}
+
 // The prose under a name: wrapped at kDetailProseChars, two spaces in.
 void append_detail_prose(std::vector<DetailText>& block, const char* detail)
 {
     if (detail == nullptr)
         return;
-    for (const std::string& line : og::core::wrap_text(
-             detail, kDetailProseChars, og::core::WrapMode::Paragraphs))
-        block.push_back({DetailInk::Prose, "  " + line});
+    for (const std::string& line :
+         og::core::wrap_text(glue_numbers(detail), kDetailProseChars,
+                             og::core::WrapMode::Paragraphs))
+        block.push_back({DetailInk::Prose, "  " + unglue(line)});
 }
 
 }  // namespace
@@ -5265,100 +5297,69 @@ DetailPage detail_page(const FamilyDescriptor* fd, int level,
                        short new_specials, bool ability_select)
 {
     DetailPage page;
-    const std::string family =
-        (fd != nullptr && fd->name != nullptr) ? special_title(fd->name)
-                                               : std::string("Character");
-    // A mod family's long name is cut like any other line, so the title
-    // never runs over the divider at x 160.
-    std::string title = std::format("Level {} {} has:", level, family);
-    if (title.size() > static_cast<std::size_t>(kDetailLineChars)) {
-        title.resize(static_cast<std::size_t>(kDetailLineChars));
-        ++page.cut;
-    }
-    page.lines.push_back({false, 0, DetailInk::Title, std::move(title)});
 
-    // [0] = left column (slots 1-2), [1] = right column (slots 3-5).
-    std::vector<std::vector<DetailText>> blocks[2];
-    std::vector<DetailText> locked[2];
-    bool any_in_play = false;
+    // One block per special in play, in slot order.
+    std::vector<std::vector<DetailText>> blocks;
     for (int slot = 1; fd != nullptr && slot < FD_NUM_SPECIALS; ++slot) {
         const char* name = og::sim::special_name(fd, slot, new_specials);
         if (!names_a_special(name))
             continue;
-        any_in_play = true;
-        const int column = slot >= 3 ? 1 : 0;
+        std::vector<DetailText> block;
         // The level a slot opens at: the one rule, slot_open_level.
         const int opens_at = og::sim::slot_open_level(fd, slot);
-        if (level < opens_at) {
-            locked[column].push_back(
-                {DetailInk::Prose,
-                 std::format(" {}: lvl {}", special_title(name), opens_at)});
-            continue;
-        }
-        std::vector<DetailText> block;
-        block.push_back({DetailInk::Name, " " + special_title(name)});
+        std::string heading = special_title(name);
+        if (level < opens_at)
+            heading += std::format(" (L{})", opens_at);
+        append_detail_name(block, heading);
         append_detail_prose(block, fd->special_details[slot]);
         // A classic slot with no alternate is "in play" and named NONE:
-        // only a named alternate earns a Shift line.
+        // only a named alternate earns a second line.
         const char* alternate = og::sim::alternate_name(fd, slot, new_specials);
         if (og::sim::alternate_in_play(fd, slot, new_specials) &&
             names_a_special(alternate)) {
             // With New Ability Select on the alternate has a key of its
             // own, so it is "also" an ability, not "Shift" on this one.
-            block.push_back(
-                {DetailInk::Name, (ability_select ? " Also: " : " Shift: ") +
-                                      special_title(alternate)});
+            append_detail_name(block, (ability_select ? "Also: " : "Shift: ") +
+                                          special_title(alternate));
             append_detail_prose(block, fd->alternate_details[slot]);
         }
-        blocks[column].push_back(std::move(block));
+        blocks.push_back(std::move(block));
     }
 
-    if (!any_in_play) {
-        page.lines.push_back({false, kDetailLeftFirstRow, DetailInk::Prose,
-                              " No special abilities."});
+    if (blocks.empty()) {
+        page.lines.push_back(
+            {0, false, 0, DetailInk::Prose, " No special abilities."});
         return page;
     }
 
-    for (int column = 0; column < 2; ++column) {
-        const int first_row = column == 0 ? kDetailLeftFirstRow : 0;
-        const int room = kDetailRows - first_row;
-        std::size_t needed = locked[column].size();
-        for (const auto& block : blocks[column])
-            needed += block.size();
-        const std::size_t block_count = blocks[column].size();
-        std::size_t gaps = block_count > 0 ? block_count - 1 : 0;
-        if (block_count > 0 && !locked[column].empty())
-            ++gaps;
-        // The 2002 page breathed between blocks; it still does when every
-        // gap fits, and packs tight when not all of them do.
-        const bool breathe =
-            needed + gaps <= static_cast<std::size_t>(room);
-
-        int row = first_row;
-        auto place = [&](const DetailText& line) {
-            if (row >= kDetailRows) {
-                ++page.dropped;
-                return;
-            }
-            std::string text = line.text;
-            if (text.size() > static_cast<std::size_t>(kDetailLineChars)) {
-                text.resize(static_cast<std::size_t>(kDetailLineChars));
-                ++page.cut;
-            }
-            page.lines.push_back({column == 1, row, line.ink, std::move(text)});
-            ++row;
-        };
-        for (std::size_t b = 0; b < block_count; ++b) {
-            if (b > 0 && breathe)
+    // Columns run left, right, then the next page's left.
+    int column = 0;  // 0, 1, 2, ... : page = column / 2
+    int row = 0;
+    const auto next_column = [&] {
+        ++column;
+        row = 0;
+    };
+    for (const std::vector<DetailText>& block : blocks) {
+        if (row > 0) {
+            // A blank row between two specials, and a special starts a
+            // fresh column rather than splitting when the rest of this one
+            // cannot hold it.
+            if (row + 1 + static_cast<int>(block.size()) <= kDetailRows)
                 ++row;
-            for (const DetailText& line : blocks[column][b])
-                place(line);
+            else
+                next_column();
         }
-        if (breathe && block_count > 0 && !locked[column].empty())
+        for (const DetailText& line : block) {
+            if (row >= kDetailRows)
+                next_column();  // a block longer than a whole column
+            // wrap_text splits even a word wider than the line, so every
+            // line is at most kDetailLineChars: nothing here is ever cut.
+            page.lines.push_back(
+                {column / 2, column % 2 == 1, row, line.ink, line.text});
             ++row;
-        for (const DetailText& line : locked[column])
-            place(line);
+        }
     }
+    page.pages = column / 2 + 1;
     return page;
 }
 
@@ -5377,21 +5378,12 @@ const char* entry_name(const FamilyDescriptor* fd,
 // kHelpClassesProseChars: the first line starts `first` spaces in, the
 // rest `rest` spaces in (wrap_text has no hanging indent, so the first
 // line is wrapped at its own width and the remainder again at theirs). A
-// number keeps the word after it: "Rests 20 s." never breaks before the
-// "s.", nor "75 Int." before "Int.".
-constexpr char kGlue = '\x1f';  // a space wrap_text must not break at
+// number keeps the word after it (glue_numbers, the DETAILS page's rule
+// too).
 void append_help_wrapped(std::vector<std::string>& out, std::string text,
                          int first, int rest)
 {
-    for (std::size_t i = 1; i + 1 < text.size(); ++i) {
-        if (text[i] == ' ' &&
-            std::isdigit(static_cast<unsigned char>(text[i - 1])) != 0)
-            text[i] = kGlue;
-    }
-    const auto unglue = [](std::string line) {
-        std::replace(line.begin(), line.end(), kGlue, ' ');
-        return line;
-    };
+    text = glue_numbers(std::move(text));
     std::vector<std::string> lines = og::core::wrap_text(
         text, kHelpClassesProseChars - first, og::core::WrapMode::Paragraphs);
     if (lines.empty())

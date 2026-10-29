@@ -131,7 +131,7 @@ constexpr EscapeDoor kAbilitiesEscapeDoors[] = {
 // (slot 1), on gladiator, as the most recent company on disk so CONTINUE
 // opens it.
 void write_ability_company(short archmage_level = 12,
-                           unsigned char numplayers = 1)
+                           unsigned char numplayers = 1, short mage_level = 1)
 {
     write_save0_with_soldiers("gladiator", 1, 2, {}, "ABILITY HALL");
     SaveData& save = test_screen()->save_data;
@@ -142,7 +142,7 @@ void write_ability_company(short archmage_level = 12,
     archmage->deployed = true;
     auto mage = std::make_unique<guy>(FAMILY_MAGE);
     mage->name = "NIMUE";
-    mage->level = 1;
+    mage->level = mage_level;
     mage->deployed = true;
     save.team_list[0] = std::move(archmage);
     save.team_list[1] = std::move(mage);
@@ -717,12 +717,14 @@ struct DetailsSeen {
     int recruit_level = -1;
     int team_size = -1;     // nobody was hired by opening it
     bool promote_offered = true;  // the page's PROMOTE row is live
+    int pages = -1;         // how many pages the page model has
 };
 
 bool main_thread_details(DetailsSeen& out)
 {
     return run_on_main_thread([&out] {
         out.family = detail_menu_testing_family();
+        out.pages = detail_menu_testing_pages();
         const guy* const recruit =
             og::runtime::current_session->current_guy_.get();
         out.recruit_family =
@@ -754,8 +756,25 @@ bool details_page_up(int ms)
     return false;
 }
 
+// The DETAILS page shows page `want` (0-based), read on the menu thread.
+bool details_page_is(int want, int ms)
+{
+    const Uint64 deadline = SDL_GetTicks() + static_cast<Uint64>(ms);
+    for (;;) {
+        int page = -2;
+        (void)run_on_main_thread(
+            [&page] { page = detail_menu_testing_page(); });
+        if (page == want)
+            return true;
+        if (SDL_GetTicks() >= deadline)
+            return false;
+        SDL_Delay(20);  // poll tick
+    }
+}
+
 struct HireClassSeen {
     int family = -1;
+    int pages_turned = 0;   // NEXT presses that turned the page
     bool hire_box_traced = false;  // the box was built for it
     bool opened = false;
     DetailsSeen details;
@@ -821,6 +840,20 @@ int visit_hire_class(HireClassSeen& seen, int family, const char* hire_shot,
     (void)main_thread_details(seen.details);
     if (details_shot != nullptr)
         capture_presented_frame(details_shot, uxshots_dir());
+    // Every further page, by NEXT, each one a still of its own.
+    for (int page = 1; page < seen.details.pages; ++page) {
+        if (!click_until_edge(
+                "detail_page_next",
+                [page](int ms) { return details_page_is(page, ms); },
+                nullptr, 3, 2500, "detail"))
+            return escape(leg + 3, "NEXT never turned the DETAILS page");
+        ++seen.pages_turned;
+        if (details_shot != nullptr) {
+            const std::string shot =
+                std::string(details_shot) + "-p" + std::to_string(page + 1);
+            capture_presented_frame(shot.c_str(), uxshots_dir());
+        }
+    }
 
     seen.back_on_hire = click_until_edge("back", [](int ms) {
         return wait_for_interactable("hire_me", ms);
@@ -1979,10 +2012,122 @@ TEST(AbilitiesFlow, hire_door_opens_the_details_page_and_back_keeps_the_class)
         EXPECT_EQ(seen.family, seen.family_after_back)
             << "BACK lands on HIRE with the same class";
         EXPECT_TRUE(seen.door_still_there);
+        // The recruit's page is the one page model, every page of it
+        // reachable by NEXT.
+        EXPECT_EQ(og::ui::detail_page(get_family_descriptor(seen.family), 1,
+                                      1, true).pages,
+                  seen.details.pages);
+        EXPECT_EQ(seen.details.pages - 1, seen.pages_turned);
     }
     EXPECT_FALSE(trace_contains("abilities", "open"))
         << "HIRE's door no longer opens the ABILITIES screen";
-    verify_captured_frames("hire_details", 4);
+    verify_captured_frames(
+        "hire_details",
+        static_cast<std::size_t>(2 + state.seen[0].details.pages +
+                                 state.seen[1].details.pages));
+}
+
+// TRAIN -> DETAILS.. on a team hero with abilities still to come (NIMUE, a
+// level-4 mage): the same page model as HIRE's door, every page reached by
+// NEXT and captured (11-train-details-mage*), no PROMOTE, BACK to TRAIN.
+// RED: a second page model for TRAIN (the page count differs from
+// og::ui::detail_page's), or NEXT not turning the page.
+constexpr EscapeDoor kTrainDetailsEscapeDoors[] = {
+    {"promote", "back"},
+    {"inc_str", "back"},
+    {"go", "back"},
+    {"continue_game", "continue_game"},
+};
+
+struct TrainDetailsState {
+    std::atomic<bool> test_finished{false};
+    bool finished = false;
+    bool train_seen = false;
+    DetailsSeen details;
+    int pages_turned = 0;
+    bool back_on_train = false;
+};
+
+int train_details_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* const state = static_cast<TrainDetailsState*>(data);
+    const auto escape = [state](int leg, const char* why) {
+        return escape_to_the_main_thread(state->test_finished, leg, why,
+                                         kTrainDetailsEscapeDoors);
+    };
+    if (!wait_for_interactable("continue_game", 10000))
+        return escape(1, "the main menu never came up");
+    (void)wait_for_menu_frames(2);
+    (void)interact("continue_game");
+    if (!wait_for_interactable("roster_row_1", 15000))
+        return escape(2, "Base Camp never showed the roster row");
+    (void)wait_for_menu_frames(2);
+    state->train_seen = click_until_edge("roster_row_1", [](int ms) {
+        return wait_for_interactable("details", ms);
+    });
+    if (!state->train_seen)
+        return escape(3, "the roster row never opened TRAIN");
+    (void)wait_for_menu_frames(2);
+    if (!click_until_edge("details", details_page_up))
+        return escape(4, "DETAILS.. never opened the page");
+    (void)main_thread_details(state->details);
+    capture_presented_frame("train_details_mage", uxshots_dir());
+    for (int page = 1; page < state->details.pages; ++page) {
+        if (!click_until_edge(
+                "detail_page_next",
+                [page](int ms) { return details_page_is(page, ms); },
+                nullptr, 3, 2500, "detail"))
+            return escape(5, "NEXT never turned the DETAILS page");
+        ++state->pages_turned;
+        const std::string shot =
+            "train_details_mage-p" + std::to_string(page + 1);
+        capture_presented_frame(shot.c_str(), uxshots_dir());
+    }
+    state->back_on_train = click_until_edge("back", [](int ms) {
+        return wait_for_interactable("details", ms);
+    });
+    if (!state->back_on_train)
+        return escape(6, "BACK never returned to TRAIN");
+    state->finished = true;
+    return escape(0, "");
+}
+
+TEST(AbilitiesFlow, train_details_pages_a_hero_with_abilities_to_come)
+{
+    (void)take_captured_frames();
+    trace_clear();
+    ScopedAbilitySelect on(true);
+    og::data::ScopedActiveCompany pin("save0");
+    ASSERT_TRUE(pin.applied());
+    write_ability_company(12, 1, 4);
+
+    TrainDetailsState state;
+    SDL_Thread* thread =
+        SDL_CreateThread(train_details_injector, "train_details", &state);
+    ASSERT_NE(nullptr, thread);
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 1;
+    picker_main(0, nullptr);
+    state.test_finished.store(true);
+    int thread_result = 0;
+    SDL_WaitThread(thread, &thread_result);
+    escape_tail_join_hygiene();
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+
+    EXPECT_EQ(0, thread_result) << "the injector gave up at leg "
+                                << thread_result;
+    ASSERT_TRUE(state.finished);
+    EXPECT_EQ(FAMILY_MAGE, state.details.family);
+    const int pages = og::ui::detail_page(get_family_descriptor(FAMILY_MAGE),
+                                          4, 1, true).pages;
+    EXPECT_GT(pages, 1) << "a level-4 mage's page runs on";
+    EXPECT_EQ(pages, state.details.pages) << "TRAIN's door, the same model";
+    EXPECT_EQ(pages - 1, state.pages_turned);
+    EXPECT_FALSE(state.details.promote_offered) << "level 4: no promotion";
+    EXPECT_TRUE(state.back_on_train);
+    verify_captured_frames("train_details", static_cast<std::size_t>(pages));
 }
 
 // The setting off: the door is lit and opens the same DETAILS page.

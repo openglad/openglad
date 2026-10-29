@@ -178,7 +178,7 @@ std::size_t count_palette(int x1, int x2, int y1, int y2, int lo, int hi)
 
 // create_detail_menu's abilities panel: draw_dialog(5, 68, 315, 167,
 // "Character Special Abilities") plus render_family_abilities' left column
-// (DETAIL_LM = 11, detail_line_y(n) = 90 + 6n).
+// (DETAIL_LM = 11, rows at og::ui::kDetailTopY + og::ui::kDetailRowPitch * n).
 constexpr int kAbilityHeaderX1 = 9;
 constexpr int kAbilityHeaderX2 = 311;
 constexpr int kAbilityHeaderY1 = 72;   // draw_dialog header field: y1+4
@@ -1152,4 +1152,213 @@ TEST(PickerDetailMenuDriven, zz_capture_details_stills)
             EXPECT_EQ(0u, right) << "nothing on the right with the setting off";
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// The pages: when a class's abilities run past one page, PREV and NEXT show
+// on HELP's footer and step the page by mouse, by the keyboard ring and
+// FIRE, and by the wheel; a page that fits hides them. Read through the
+// DETAILS loop's TESTING probes on the menu thread.
+// ---------------------------------------------------------------------------
+#include <openglad/interface/input_hardware_state.h>
+#include <openglad/interface/ui/picker_common.h>
+#include <openglad/gameplay/families/family_registry.h>
+
+#include "test_ability_select_scope.h"
+#include "test_click_ladder.h"
+
+extern int g_test_menu_nav_key;
+
+namespace
+{
+struct PagerSeen
+{
+    std::atomic<bool>* done = nullptr;
+    bool want_pagers = true;
+    bool pagers_shown = false;
+    int pages = -1;
+    bool next_by_mouse = false;    // page 0 -> 1 on a NEXT click
+    bool next_clamps = false;      // NEXT on the last page stays there
+    bool prev_by_keyboard = false; // RIGHT to PREV, FIRE: back to page 0
+    bool wheel_down = false;       // a notch down: page 1
+    bool wheel_up = false;         // a notch up: page 0
+    bool closed = false;
+};
+
+int main_thread_detail_page()
+{
+    int page = -2;
+    (void)run_on_main_thread([&page] { page = detail_menu_testing_page(); });
+    return page;
+}
+
+bool detail_page_reaches(int want, int ms)
+{
+    const Uint64 deadline = SDL_GetTicks() + static_cast<Uint64>(ms);
+    while (SDL_GetTicks() < deadline)
+    {
+        if (main_thread_detail_page() == want)
+            return true;
+        SDL_Delay(20);  // poll tick
+    }
+    return main_thread_detail_page() == want;
+}
+
+// One keyboard-ring step, acknowledged by the loop consuming the hook.
+bool detail_nav_step(int key)
+{
+    if (!run_on_main_thread([key] { g_test_menu_nav_key = key; }))
+        return false;
+    const Uint64 deadline = SDL_GetTicks() + 5000;
+    while (SDL_GetTicks() < deadline)
+    {
+        int hook = key;
+        if (!run_on_main_thread([&hook] { hook = g_test_menu_nav_key; }))
+            return false;
+        if (hook == -1)
+            return true;
+        SDL_Delay(20);  // poll tick
+    }
+    return false;
+}
+
+int detail_pager_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* seen = static_cast<PagerSeen*>(data);
+    const Uint64 up = SDL_GetTicks() + 10000;
+    while (SDL_GetTicks() < up && !has_interactable("back"))
+        SDL_Delay(20);  // poll tick
+    (void)detail_page_reaches(0, 5000);
+    (void)run_on_main_thread(
+        [seen] { seen->pages = detail_menu_testing_pages(); });
+    seen->pagers_shown = has_interactable("detail_page_next") &&
+                         has_interactable("detail_page_prev");
+
+    if (seen->want_pagers && seen->pagers_shown)
+    {
+        seen->next_by_mouse = click_until_edge(
+            "detail_page_next",
+            [](int ms) { return detail_page_reaches(1, ms); }, "page 2/", 3,
+            2500, "detail");
+        // Walk to the last page, then one NEXT more: the page stays.
+        for (int page = 1; page + 1 < seen->pages; ++page)
+            (void)click_until_edge(
+                "detail_page_next",
+                [page](int ms) { return detail_page_reaches(page + 1, ms); },
+                nullptr, 3, 2500, "detail");
+        const int before_clamp = count_trace_containing("detail", "page ");
+        (void)interact("detail_page_next");
+        (void)run_on_main_thread([] {});  // one loop turn after the click
+        (void)run_on_main_thread([] {});
+        seen->next_clamps =
+            main_thread_detail_page() == seen->pages - 1 &&
+            count_trace_containing("detail", "page ") == before_clamp;
+        // Back to page 1 so the keyboard has somewhere to go.
+        for (int page = seen->pages - 1; page > 1; --page)
+            (void)click_until_edge(
+                "detail_page_prev",
+                [page](int ms) { return detail_page_reaches(page - 1, ms); },
+                nullptr, 3, 2500, "detail");
+
+        // The ring starts on BACK; RIGHT is PREV while the page is paged.
+        // FIRE is held through the touch seam (the menu's FIRE reads the
+        // seat's held keys) and let go once the page has turned.
+        if (detail_nav_step(KEY_RIGHT) &&
+            run_on_main_thread([] {
+                input_hardware_state().touch_keystate[0][KEY_FIRE] = true;
+            }))
+        {
+            seen->prev_by_keyboard = detail_page_reaches(0, 5000);
+        }
+        (void)run_on_main_thread([] {
+            input_hardware_state().touch_keystate[0][KEY_FIRE] = false;
+        });
+
+        (void)run_on_main_thread([] { input_scroll_amount_ref() = -1; });
+        seen->wheel_down = detail_page_reaches(1, 5000);
+        (void)run_on_main_thread([] { input_scroll_amount_ref() = 1; });
+        seen->wheel_up = detail_page_reaches(0, 5000);
+    }
+
+    for (int attempt = 0; attempt < 3 && !seen->closed; ++attempt)
+    {
+        (void)interact("back");
+        const Uint64 deadline = SDL_GetTicks() + 2500;
+        while (SDL_GetTicks() < deadline &&
+               !seen->done->load(std::memory_order_acquire))
+            SDL_Delay(20);  // poll tick
+        seen->closed = seen->done->load(std::memory_order_acquire);
+    }
+    return 0;
+}
+
+// Open TRAIN's DETAILS for `family` at `level` and run the pager injector.
+void run_pager_flow(int family, int level, PagerSeen& seen)
+{
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    og::runtime::current_session->editguy_ = 0;
+    save.team_size = 1;
+    save.team_list[0].reset(new guy(family));
+    save.team_list[0]->name = "TEAM_GUY";
+    save.team_list[0]->level = static_cast<short>(level);
+    og::runtime::current_session->current_guy_ =
+        std::make_unique<guy>(*save.team_list[0]);
+    E_Screen->set_active_canvas(CanvasTarget::UI);
+
+    std::atomic<bool> done{false};
+    seen.done = &done;
+    prepare_detail_menu_mouse_click();
+    SDL_Thread* th = SDL_CreateThread(detail_pager_injector, "detail_pager", &seen);
+    ASSERT_TRUE(th != nullptr);
+    const Sint32 r = create_detail_menu(save.team_list[0].get());
+    done.store(true, std::memory_order_release);
+    SDL_WaitThread(th, nullptr);
+    clear_events();
+    EXPECT_EQ(2, (int)r) << "the detail menu closed on BACK";
+    save.team_list[0].reset();
+    save.team_size = 0;
+}
+} // namespace
+
+// RED: never show the pagers (pagers_shown); drop the ReturnMenu code check
+// (NEXT does nothing); leave BACK's RIGHT on PROMOTE (the ring never reaches
+// PREV and FIRE closes the page); ignore the wheel.
+TEST(PickerDetailMenuDriven, detail_pages_turn_by_mouse_keyboard_and_wheel)
+{
+    PickerStateGuard guard;
+    TeamSlotGuard slot_guard(0);
+    PickerLobbyShutdownGuard lobby_guard;
+    CanvasRoutingGuard canvas_guard;
+    ScopedAbilitySelect on(true);
+    trace_clear();
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    const short saved_new_specials = save.new_specials;
+    save.new_specials = 1;
+    const int pages = og::ui::detail_page(get_family_descriptor(FAMILY_MAGE),
+                                          4, 1, true).pages;
+    ASSERT_GT(pages, 1) << "a level-4 mage's abilities run past one page";
+
+    PagerSeen seen;
+    run_pager_flow(FAMILY_MAGE, 4, seen);
+    EXPECT_TRUE(seen.pagers_shown);
+    EXPECT_EQ(pages, seen.pages) << "the loop pages the one page model";
+    EXPECT_TRUE(seen.next_by_mouse);
+    EXPECT_TRUE(seen.next_clamps) << "NEXT on the last page stays there";
+    EXPECT_TRUE(seen.prev_by_keyboard);
+    EXPECT_TRUE(seen.wheel_down);
+    EXPECT_TRUE(seen.wheel_up);
+    EXPECT_TRUE(seen.closed) << "BACK still closes a paged page";
+
+    // A class whose abilities fit: no pagers, BACK as before.
+    PagerSeen slime;
+    slime.want_pagers = false;
+    ASSERT_EQ(1, og::ui::detail_page(get_family_descriptor(FAMILY_SLIME), 4, 1,
+                                     true).pages);
+    run_pager_flow(FAMILY_SLIME, 4, slime);
+    EXPECT_FALSE(slime.pagers_shown) << "one page: PREV and NEXT hidden";
+    EXPECT_EQ(1, slime.pages);
+    EXPECT_TRUE(slime.closed);
+    save.new_specials = saved_new_specials;
 }

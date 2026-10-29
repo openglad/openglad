@@ -1206,6 +1206,33 @@ inline constexpr int kHelpNextX = 270;
 inline constexpr int kHelpPagerWidth = 40;
 inline constexpr int kHelpFooterHeight = 20;
 
+// --- TRAIN > DETAILS.. / HIRE > ABILITIES (run_detail_menu) ------------------
+// Positional indices in k_details_buttons (append-only: injector flows read
+// PROMOTE as row 1). The pagers sit on HELP's footer geometry, with HELP's
+// PageUp/PageDown hotkeys, and are hidden while the page model is one page.
+inline constexpr int kDetailsBackIndex = 0;
+inline constexpr int kDetailsPromoteIndex = 1;
+inline constexpr int kDetailsPrevIndex = 2;
+inline constexpr int kDetailsNextIndex = 3;
+inline constexpr int kDetailsBackX = 10;
+inline constexpr int kDetailsBackWidth = 40;
+inline constexpr int kDetailsFooterY = kHelpFooterY;
+inline constexpr int kDetailsFooterHeight = kHelpFooterHeight;
+inline constexpr int kDetailsPrevX = kHelpPrevX;
+inline constexpr int kDetailsNextX = kHelpNextX;
+inline constexpr int kDetailsPagerWidth = kHelpPagerWidth;
+// What a pager's ReturnMenu hands the loop: not MENU_EXIT, so the page stays
+// open and steps.
+inline constexpr int32_t kDetailsPagePrevCode = 8;
+inline constexpr int32_t kDetailsPageNextCode = 16;
+// The footer bar between BACK and PREV (the key hint and the "p/N"
+// indicator), drawn only while there is more than one page, as on HELP.
+inline constexpr int kDetailsFooterBarLeft = kDetailsBackX + kDetailsBackWidth + 2;
+inline constexpr int kDetailsFooterBarRight = kDetailsPrevX - 3;
+static_assert((kDetailsPagePrevCode & MENU_EXIT) == 0 &&
+                  (kDetailsPageNextCode & MENU_EXIT) == 0,
+              "a pager never closes the page");
+
 // --- GRAPHICS FX subscreen layout contract ----------------------------------
 // Positional index of the depth-selector cycle row (id "depth_fx") in
 // k_graphics_fx_options_buttons / picker_graphics_fx_options_buttons()

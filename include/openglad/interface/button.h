@@ -175,6 +175,10 @@ Sint32 create_recruit_detail_menu();
 #ifdef TESTING
 // The family the open DETAILS page shows, -1 while none is open.
 int detail_menu_testing_family();
+// The page the open DETAILS screen shows (0-based) and how many it has;
+// -1 while none is open.
+int detail_menu_testing_page();
+int detail_menu_testing_pages();
 #endif
 Sint32 create_hire_menu(Sint32 arg1);  // Purchase new team members
 Sint32 create_train_menu(Sint32 arg1); // Edit or sell team members
