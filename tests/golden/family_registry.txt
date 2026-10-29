@@ -1584,6 +1584,7 @@
   special[4].alternate = "WARBAND"
   special[4].cost = 80
   special[4].new_kit = true
+  special[4].alternate_cost = 120
   special[4].detail = "Plant a standard on a corpse: allies near it mend and never flee."
   special[4].alternate_detail = "Grunts come running in."
   special[4].icon = "icons/war_banner.png"
