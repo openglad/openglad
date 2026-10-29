@@ -335,6 +335,10 @@ ghost is ridden `possess_min` (120 ticks). Every ride ends.
 - The banner's aura numbers (`banner_pulse`, `banner_radius`,
   `banner_regen`, `banner_fright`) are on the `core:war_banner` family,
   because a banner outlives its captain.
+- WARBAND has its own price, 120; WAR BANNER keeps its 80. The grunts
+  fight at a third of the captain's level, at least level 1: a level-10
+  captain's whole pool (133 for one never trained) buys one call, two
+  level-3 orcs. A bot captain calls the warband only when it can pay.
 - Warband grunts gather at the middle of a standing banner. When no
   banner stands, they run to where the captain stood when they were
   called, then follow him.
