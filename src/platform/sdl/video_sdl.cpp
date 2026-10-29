@@ -108,6 +108,13 @@ static void video_init_palettes(sdl_video& v)
 	}
 
 	load_palette("our.pal", v.bluepalette);
+
+	// Create the blue-shifted palette
+	for (Sint32 i = 32; i < 256; i++)
+	{
+		v.bluepalette[static_cast<std::size_t>(i*3+0)] /= 2;
+		v.bluepalette[static_cast<std::size_t>(i*3+1)] /= 2;
+	}
 }
 
 static void video_create_display(int windowed_base_w, int windowed_base_h)

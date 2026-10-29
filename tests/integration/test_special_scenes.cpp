@@ -433,6 +433,45 @@ std::uint64_t viewport_hash(screen* s)
     return h;
 }
 
+// What a time stop does to the screen, measured on the viewport: the mean of
+// red + green (the two channels the blue palette halves) and the mean of blue
+// (the one it keeps), over the pixels that are not a neutral grey. The grey
+// ramps (palette entries below 32) are the same in both palettes, so the
+// stone of the status panel would only dilute the change.
+struct MeanColour
+{
+    float warm = 0.0f;  // red + green
+    float blue = 0.0f;
+};
+
+MeanColour viewport_mean(screen* s)
+{
+    viewscreen* const vs = s->viewob[0].get();
+    double warm = 0.0;
+    double blue = 0.0;
+    int count = 0;
+    for (int j = 0; j < vs->yview; ++j)
+        for (int i = 0; i < vs->xview; ++i)
+        {
+            Uint8 r = 0;
+            Uint8 g = 0;
+            Uint8 b = 0;
+            s->get_pixel(vs->xloc + i, vs->yloc + j, &r, &g, &b);
+            if (r == g && g == b)
+                continue;
+            warm += r + g;
+            blue += b;
+            ++count;
+        }
+    MeanColour mean;
+    if (count > 0)
+    {
+        mean.warm = static_cast<float>(warm / count);
+        mean.blue = static_cast<float>(blue / count);
+    }
+    return mean;
+}
+
 // Plays `sc` in the real game and fills `out`. The scene always plays and
 // its tells always count. With OG_FX_CAPTURE_DIR set (the tools under
 // scripts/media/ set it; a test run never does) every frame is also written
@@ -3368,9 +3407,9 @@ std::vector<Pair> pairs()
     // waits for the allies' fight (three foes at blows with allies, or an
     // ally at blows near death). A soldier walks in from the right, 120 px
     // from the fighter at the cue on both sides and at blows with nobody:
-    // the classic time stop freezes him mid-stride for the rest of the scene
-    // (the port draws no blue screen, so he is the visible sign), while with
-    // the fix nothing is cast and he walks up and strikes the fighter.
+    // the classic time stop turns the screen blue and freezes him mid-stride
+    // for the rest of the scene, while with the fix nothing is cast and he
+    // walks up and strikes the fighter.
     {
         Pair c;
         c.name = "b_mage_bot_freeze";
@@ -3392,6 +3431,10 @@ std::vector<Pair> pairs()
                 return;
             if (f == kCue)
             {
+                // The screen as frame kCue - 1 left it, before any time stop.
+                const MeanColour before = viewport_mean(run.display);
+                run.marks["warm"] = before.warm;
+                run.marks["blue"] = before.blue;
                 ready_bot(mage);
                 fill_mana(mage, 600.0f);
                 run.marks["hp"] = hp_of(run.hero_seen());
@@ -3406,9 +3449,19 @@ std::vector<Pair> pairs()
         const auto struck = [](Run& f) {
             return has_mark(f, "hp") && hp_of(f.hero_seen()) < f.mark("hp");
         };
+        // Read from the pixels, not the palette id: red + green fall to under
+        // 0.6 of what the screen showed before the cue, blue keeps 0.9 of it.
+        const auto blue_screen = [](Run& f) {
+            if (!has_mark(f, "warm") || f.mark("warm") <= 0.0f)
+                return false;
+            const MeanColour now = viewport_mean(f.display);
+            return now.warm < 0.6f * f.mark("warm") &&
+                   now.blue >= 0.9f * f.mark("blue");
+        };
         c.off_shows = {
             {"the time stop is on (the palette switches to the blue one)",
              [](Run& f) { return f.display->world().current_palette_id == 1; }},
+            {"the screen turns blue", blue_screen},
             {"the server banks a time stop",
              [](Run& f) { return f.server->world().enemy_freeze > 0; }},
             {"the foe stands frozen far off at frame 60",
@@ -3426,6 +3479,7 @@ std::vector<Pair> pairs()
         };
         c.on_never = {
             {"the blue palette", [](Run& f) { return f.display->world().current_palette_id == 1; }},
+            {"the screen turns blue", blue_screen},
             {"a time stop", [](Run& f) { return f.server->world().enemy_freeze > 0; }},
             {"the mage throws a fireball", [weap_fireball](Run& f) {
                  return count_of(f.display->world(), Order::Weapon, weap_fireball,
