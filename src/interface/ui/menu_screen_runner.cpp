@@ -83,6 +83,13 @@ std::atomic<std::uint64_t> g_menu_screen_completed_frames{0};
 // run_menu_screen with no accessor of its own. -1 whenever no engine screen
 // is running, so a waiter can tell "no highlight yet" from index 0.
 std::atomic<int> g_menu_screen_highlighted_button{-1};
+// Draw-time publication check. A gate pass (apply_row_states) resets every
+// Always row to visible; a Rewire screen's nav program then hides the rows
+// it owns (Base Camp's empty deploy boxes). True between the two, so a frame
+// drawn while it is set shows rows the screen never meant to show. Main
+// thread only, like the passes it brackets.
+bool g_row_states_awaiting_nav = false;
+std::atomic<std::uint64_t> g_menu_screen_draws_before_nav{0};
 
 // Clears the mirror on EVERY exit path of run_menu_screen (there are six,
 // including two nested-door propagations), so an injector that reads it after
@@ -108,6 +115,11 @@ std::uint64_t menu_screen_testing_completed_frames()
 int menu_screen_testing_highlighted_button()
 {
     return g_menu_screen_highlighted_button.load(std::memory_order_acquire);
+}
+
+std::uint64_t menu_screen_testing_draws_before_nav()
+{
+    return g_menu_screen_draws_before_nav.load(std::memory_order_acquire);
 }
 #endif
 
@@ -249,6 +261,9 @@ void apply_row_states(const SpecRowView& rows, button* buttons,
             }
         }
     }
+#ifdef TESTING
+    g_row_states_awaiting_nav = true;
+#endif
 }
 
 void apply_nav_program(const MenuScreenSpec& spec, button* buttons,
@@ -266,6 +281,7 @@ void apply_nav_program(const MenuScreenSpec& spec, button* buttons,
     ensure_highlighted_button_visible(buttons, num_buttons, highlighted_button);
 
 #ifdef TESTING
+    g_row_states_awaiting_nav = false;
     // Engine invariant (§1.5): after nav application no visible button's nav
     // links target a hidden one (Disabled counts as visible).
     for (int i = 0; i < num_buttons; ++i) {
@@ -282,6 +298,20 @@ void apply_nav_program(const MenuScreenSpec& spec, button* buttons,
                 "visible button nav-links to a hidden button");
         }
     }
+#endif
+}
+
+// Called just before each draw_buttons of an engine frame: a frame composed
+// after a gate pass but before its nav program is counted and traced.
+void note_frame_draw(const MenuScreenSpec& spec)
+{
+#ifdef TESTING
+    if (g_row_states_awaiting_nav) {
+        g_menu_screen_draws_before_nav.fetch_add(1, std::memory_order_release);
+        TRACE("menu_engine", "draw_before_nav %s", spec.name);
+    }
+#else
+    (void)spec;
 #endif
 }
 
@@ -729,6 +759,7 @@ Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state)
         }
         if (spec.draw_background != nullptr)
             spec.draw_background(screen_state);
+        note_frame_draw(spec);
         draw_buttons(buttons, num_buttons);
         if (spec.draw_content != nullptr)
             spec.draw_content(screen_state);
@@ -880,9 +911,19 @@ Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state)
             }
             retvalue = 0;
             apply_art_bindings(spec_rows, num_buttons);
+            // The screen's own reset hook first: Base Camp re-collects its
+            // roster here, and the nav program below reads that roster.
+            if (spec.on_reset != nullptr)
+                spec.on_reset(screen_state);
             if (rebuilt) {
                 // A rebuilt array is bare of the gate pass's live-only
-                // state; republish it before this frame is composed.
+                // state; republish it before this frame is composed — the
+                // gate pass AND the nav program, as at entry and at every
+                // frame top. The gate pass alone shows every row its
+                // static table marks visible: coming back from the seat
+                // screen, Base Camp drew all eight deploy boxes for one
+                // frame because the rewire that hides the empty rows' boxes
+                // had not run yet.
                 const MenuLabelContext reset_context =
                     build_label_context();
 #ifdef TESTING
@@ -890,9 +931,9 @@ Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state)
 #endif
                 apply_row_states(spec_rows, buttons, num_buttons,
                                  reset_context, states);
+                apply_nav_program(spec, buttons, num_buttons,
+                                  highlighted_button);
             }
-            if (spec.on_reset != nullptr)
-                spec.on_reset(screen_state);
         }
 
         ++frame;
@@ -918,6 +959,7 @@ Sint32 run_menu_screen(const MenuScreenSpec& spec, void* screen_state)
 
         if (spec.draw_background != nullptr)
             spec.draw_background(screen_state);
+        note_frame_draw(spec);
         draw_buttons(buttons, num_buttons);
         if (spec.draw_content != nullptr)
             spec.draw_content(screen_state);

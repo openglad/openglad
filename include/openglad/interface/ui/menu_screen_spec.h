@@ -242,6 +242,10 @@ std::uint64_t menu_screen_testing_completed_frames();
 // Mirror of the live loop's highlighted-button index, published just before
 // each completed-frame bump; -1 when no engine screen is running.
 int menu_screen_testing_highlighted_button();
+// Frames drawn between a gate pass and its nav program (each one traces
+// "menu_engine" "draw_before_nav <screen>"): a rewire-hidden row flashes on
+// such a frame. Monotonic; compare before/after a flow.
+std::uint64_t menu_screen_testing_draws_before_nav();
 #endif
 
 // #237 fade ownership (docs/menu-engine.md, "Drawing and transitions").

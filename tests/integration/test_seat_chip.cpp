@@ -11,6 +11,7 @@
 // never ride og_test_menu_ui).
 
 #include <openglad/core/test_trace.h>
+#include <openglad/gameplay/guy.h>
 #include <openglad/interface/button.h>
 #include <openglad/interface/screen.h>
 #include <openglad/resources/company.h>
@@ -24,6 +25,8 @@
 
 #include <atomic>
 #include <chrono>
+#include <cstdint>
+#include <memory>
 #include <string>
 
 // Forward declarations from picker.cpp.
@@ -308,7 +311,118 @@ int seat_chip_injector(void* data)
     return finish_flow(state, "back");
 }
 
+// --- the seat editor round trip ---------------------------------------------
+//
+// BACK from the seat editor to Base Camp rebuilds Base Camp's buttons from its
+// static table, where every deploy box is visible. The maintainer saw all
+// eight boxes for one frame with only one hero, then all but one vanish: the
+// rebuilt frame got the gate pass but not the rewire that hides the empty
+// rows' boxes. The runner counts every frame it draws between those two
+// passes (menu_screen_testing_draws_before_nav), at draw time, so the one bad
+// frame is seen even though the next frame top hides the boxes again.
+struct EditorRoundTripState {
+    bool reached_base_camp = false;
+    bool opened_editor = false;
+    bool returned = false;
+    // Base Camp's empty rows really have no deploy box (the seeded save
+    // has one hero); without that the flow could not show the flash.
+    bool first_dep_visible = false;
+    bool second_dep_hidden = false;
+    std::uint64_t draws_before_nav_before = 0;
+    std::uint64_t draws_before_nav_after = 0;
+    std::atomic<bool> main_left{false};
+};
+
+constexpr int kRoundTripTeamMenu = 201;
+constexpr int kRoundTripSeatCard = 202;
+constexpr int kRoundTripEditor = 203;
+constexpr int kRoundTripReturn = 204;
+
+int round_trip_abort(EditorRoundTripState* state, int stage)
+{
+    return escape_to_the_main_thread(
+        state->main_left, stage, "a wait died; the stage ids above name it",
+        kSeatChipEscapeDoors);
+}
+
+int editor_round_trip_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* state = static_cast<EditorRoundTripState*>(data);
+    if (!wait_for_team_menu() || !wait_for_interactable("seat_card_0", 5000) ||
+        !wait_for_menu_frames(2))
+        return round_trip_abort(state, kRoundTripTeamMenu);
+    state->reached_base_camp = true;
+    state->first_dep_visible = has_interactable("roster_dep_0");
+    state->second_dep_hidden = !has_interactable("roster_dep_1");
+
+    state->draws_before_nav_before =
+        og::ui::menu_screen_testing_draws_before_nav();
+    if (!interact("seat_card_0"))
+        return round_trip_abort(state, kRoundTripSeatCard);
+    if (!wait_for_interactable("seat_settings_back", 5000) ||
+        !wait_for_menu_frames(2))
+        return round_trip_abort(state, kRoundTripEditor);
+    state->opened_editor = true;
+    interact("seat_settings_back");
+    // Two completed Base Camp frames: the first is the rebuilt one.
+    if (!wait_for_team_menu() || !wait_for_menu_frames(2))
+        return round_trip_abort(state, kRoundTripReturn);
+    state->returned = true;
+    state->draws_before_nav_after =
+        og::ui::menu_screen_testing_draws_before_nav();
+
+    const EscapeDoor door[] = {{"back", "back"}};
+    return escape_to_the_main_thread(state->main_left, 0, "", door);
+}
+
 } // namespace
+
+TEST(SeatChip, back_from_the_seat_editor_never_draws_the_empty_rows_deploy_boxes)
+{
+    trace_clear();
+
+    // The maintainer's shape: a company with ONE hero, so Base Camp shows
+    // one deploy box and seven empty rows.
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    save.reset();
+    save.numplayers = 1;
+    save.current_campaign = "gladiator";
+    save.scen_num = 1;
+    auto soldier = std::make_unique<guy>(FAMILY_SOLDIER);
+    soldier->name = "ONLY";
+    save.team_list[0] = std::move(soldier);
+    save.team_size = 1;
+    save.save("save0");
+
+    EditorRoundTripState state;
+    SDL_Thread* thread = SDL_CreateThread(editor_round_trip_injector,
+                                          "seat_editor_round_trip", &state);
+    ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
+
+    pks().selected_menu_item = nullptr;
+    create_team_menu(0);
+    state.main_left.store(true);
+    int thread_result = -1;
+    SDL_WaitThread(thread, &thread_result);
+    escape_tail_join_hygiene();
+
+    cleanup_picker_state();
+
+    ASSERT_EQ(0, thread_result)
+        << "the injector stalled at stage " << thread_result;
+    ASSERT_TRUE(state.reached_base_camp);
+    ASSERT_TRUE(state.first_dep_visible)
+        << "the fresh company's one hero must have its deploy box";
+    ASSERT_TRUE(state.second_dep_hidden)
+        << "an empty roster row must have no deploy box";
+    ASSERT_TRUE(state.opened_editor);
+    ASSERT_TRUE(state.returned);
+    EXPECT_EQ(state.draws_before_nav_before, state.draws_before_nav_after)
+        << "a frame was drawn after the gate pass but before the nav "
+           "program: Base Camp flashed every deploy box on the way back";
+    EXPECT_FALSE(trace_contains("menu_engine", "draw_before_nav team_build"));
+}
 
 TEST(SeatChip, chip_click_cycles_team_and_card_click_still_opens_editor)
 {
