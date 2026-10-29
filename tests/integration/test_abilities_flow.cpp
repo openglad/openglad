@@ -2515,11 +2515,13 @@ int details_start_injector(void* data)
         return escape(2, "the door never opened the DETAILS page");
 
     // The host presses GO: the fake lobby starts the game on its next poll.
-    state->armed_polls = state->lobby->poll_count.load();
+    // The poll count is read last, right before the GO, so the page's own
+    // polls while the frame count is read on its thread do not count.
     state->presses_before = g_escape_tail_presses.load();
     (void)run_on_main_thread([state] {
         state->frames_before = og::ui::menu_screen_testing_completed_frames();
     });
+    state->armed_polls = state->lobby->poll_count.load();
     state->lobby->start_on_next_poll.store(true);
 
     // Press nothing while DETAILS is up and has polled fewer than the bound
