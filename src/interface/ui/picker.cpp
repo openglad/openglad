@@ -3153,6 +3153,7 @@ Sint32 run_detail_menu(DetailSubject subject)
    og::ui::PageModel pager = og::ui::PageModel::make(1, 1);
    (void)get_and_reset_scroll_amount();
 
+   bool name_box_traced = false;
    while ( !(retvalue & MENU_EXIT) )
    {
        // Null outside tests: an injector's menu-thread reads land here
@@ -3282,9 +3283,23 @@ Sint32 run_detail_menu(DetailSubject subject)
        og::runtime::current_session->myscreen_->draw_text_bar(36, 10, 124, 22);
        
        text& mytext = og::runtime::current_session->myscreen_->text_normal;
-       if (og::runtime::current_session->current_guy_)
-           mytext.write_xy(80 - mytext.query_width(og::runtime::current_session->current_guy_->name.c_str())/2, 14,
-                        og::runtime::current_session->current_guy_->name.c_str(),static_cast<unsigned char>(DARK_BLUE), 1);
+       // HIRE's recruit has no name of its own yet (the one on it is only a
+       // suggestion for HIRE ME), so its box shows the class, as HIRE does.
+       const char* const box_label = subject == DetailSubject::Recruit
+           ? get_family_string(thisguy->family)
+           : (og::runtime::current_session->current_guy_
+                  ? og::runtime::current_session->current_guy_->name.c_str()
+                  : nullptr);
+       if (box_label != nullptr)
+       {
+           if (!name_box_traced)
+           {
+               TRACE("detail", "name box %s", box_label);
+               name_box_traced = true;
+           }
+           mytext.write_xy(80 - mytext.query_width(box_label)/2, 14,
+                        box_label, static_cast<unsigned char>(DARK_BLUE), 1);
+       }
        og::runtime::current_session->myscreen_->draw_dialog(5, 68, 315, 167, "Character Special Abilities");
        og::runtime::current_session->myscreen_->draw_text_bar(160, 90, 162, 160);
 

@@ -2018,6 +2018,12 @@ TEST(AbilitiesFlow, hire_door_opens_the_details_page_and_back_keeps_the_class)
                                       1, true).pages,
                   seen.details.pages);
         EXPECT_EQ(seen.details.pages - 1, seen.pages_turned);
+        // The recruit's box names the class, as HIRE's does, never the
+        // name HIRE ME would give it.
+        EXPECT_TRUE(trace_contains(
+            "detail", (std::string("name box ") +
+                       og::ui::family_display_name(seen.family)).c_str()))
+            << "DETAILS from HIRE shows the class in the name box";
     }
     EXPECT_FALSE(trace_contains("abilities", "open"))
         << "HIRE's door no longer opens the ABILITIES screen";
