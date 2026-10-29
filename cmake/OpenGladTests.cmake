@@ -1188,7 +1188,7 @@ og_add_unit_group(og_unit_mode FILES
 # overran og_unit_modes' 180 s coverage ceiling, so they live in their own
 # group, parallel with (not on top of) the mode suites. Absorbed the
 # retired plan-phase group (og_unit_matchplan) when the plan phase died.
-og_add_unit_group(og_unit_stage FILES
+og_add_unit_group(og_unit_stage NO_DEFAULT_TEST FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_match_stage.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_staged_report.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_staged_rules.cpp
@@ -1222,7 +1222,7 @@ target_compile_definitions(og_unit_ffa PRIVATE
     OG_MODES_PACK_SOURCE_DIR="${CMAKE_SOURCE_DIR}/campaigns/modes/packs/modes.core"
 )
 
-og_add_unit_group(og_unit_basketball FILES
+og_add_unit_group(og_unit_basketball NO_DEFAULT_TEST FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_modes_basketball.cpp
 )
 target_compile_definitions(og_unit_basketball PRIVATE
@@ -1458,6 +1458,24 @@ og_add_filtered_test(og_unit_data_westlands og_unit_data "WestlandsCampaignTest.
 og_add_filtered_test(og_unit_data_campaigns og_unit_data
     "*CampaignTest.*-WestlandsCampaignTest.*")
 og_add_filtered_test(og_unit_data og_unit_data "-*CampaignTest.*")
+# og_unit_stage and og_unit_basketball: on the coverage lane each ran
+# 130-180 s against its 180 s budget (master too), passing only on a retry
+# in most runs and on none of three on 2026-10-29. og_unit_stage: the five
+# staged_world_matrix tests (about 70 s there) alone, the other StagedRules
+# tests (about 43 s), and the rest (about 66 s). og_unit_basketball: tests
+# starting a-f (about 48 s) and the rest (about 60 s).
+og_add_filtered_test(og_unit_stage_matrix og_unit_stage
+    "StagedRules.staged_world_matrix_*")
+og_add_filtered_test(og_unit_stage_rules og_unit_stage
+    "StagedRules.*-StagedRules.staged_world_matrix_*")
+og_add_filtered_test(og_unit_stage og_unit_stage "-StagedRules.*")
+set(OG_BASKETBALL_A_TO_F
+    "ModesBasketball.a*:ModesBasketball.b*:ModesBasketball.c*:ModesBasketball.d*:ModesBasketball.e*:ModesBasketball.f*")
+og_add_filtered_test(og_unit_basketball_a_f og_unit_basketball
+    "${OG_BASKETBALL_A_TO_F}")
+og_add_filtered_test(og_unit_basketball og_unit_basketball
+    "-${OG_BASKETBALL_A_TO_F}")
+
 # Every property set on one of these binaries below names its list, so all
 # of its slices get it, never the binary's own entry alone.
 set(OG_PARITY_TESTS og_test_parity og_test_parity_gates)
