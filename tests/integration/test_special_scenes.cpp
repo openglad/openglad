@@ -1805,11 +1805,13 @@ std::vector<Scene> scenes()
         sc.slot = 4;
         sc.frames = 130;
         sc.stage = [](Run& run) {
-            // A held tap calls the warband on both of its frames (the cap of
-            // six grunts is the only refusal): enough mana for that and for
-            // the second banner, with some over, so the plant's held second
-            // frame is the quiet "no corpse" refusal and not a price one.
-            fill_mana(run.hero(), 400.0f);
+            // A held tap calls the warband on both of its frames (two grunts
+            // each at level 10, under the cap of six): mana for the banner,
+            // both warband frames and the second banner, and one banner's
+            // price over (3 x 80 + 2 x 120), so the plant's held second frame
+            // is the quiet "no corpse" refusal and not a price one, whether
+            // WARBAND costs 80 or 120.
+            fill_mana(run.hero(), 480.0f);
             add_corpse(run, FAMILY_SOLDIER, 1, 6, 6);
             add_corpse(run, FAMILY_SOLDIER, 1, -64, 2);
             walker* captain = run.hero();
