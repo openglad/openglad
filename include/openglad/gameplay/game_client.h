@@ -86,6 +86,13 @@ public:
     }
     void send_pause_request();
     void send_pause_response();
+    // ABILITIES (protocol v23): ask the server to set the six belt bytes of
+    // the guy that this machine's seat `local_slot` drives. `entity_id` is
+    // the walker the seat drove when the screen opened; the server refuses a
+    // stale id, a seat it does not know, and a body with no guy record.
+    void send_belt_change(std::uint8_t local_slot,
+                          std::uint32_t entity_id,
+                          const std::array<std::uint8_t, 6>& belt);
     void send_snapshot_hash_check();
     void poll_messages();
     void poll_messages(float current_render_alpha);

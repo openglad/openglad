@@ -322,7 +322,7 @@ TEST(PickerUncovered, picker_team_wraps_on_negative_step)
     ASSERT_EQ(4, (int)change_hire_teamnum(-1)) << "change_hire_teamnum should return OK";
     ASSERT_EQ(3, (int)og::runtime::current_session->current_team_num_) << "change_hire_teamnum should wrap 0 -> 3 for arg -1";
     ASSERT_EQ(3, (int)og::runtime::current_session->current_guy_->teamnum) << "change_hire_teamnum should mirror to current_guy";
-    ASSERT_STREQ("Hiring for Team 4", og::runtime::current_session->allbuttons_[2]->label.c_str()) << "hire label should wrap to Team 4";
+    ASSERT_STREQ("TEAM 4", og::runtime::current_session->allbuttons_[2]->label.c_str()) << "hire label should wrap to Team 4";
 
     og::runtime::current_session->current_team_num_ = saved_team_num;
 }

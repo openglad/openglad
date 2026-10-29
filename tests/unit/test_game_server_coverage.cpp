@@ -15,6 +15,8 @@
 #include <openglad/core/constants.h>
 #include <openglad/core/sound_ids.h>
 #include <openglad/resources/packs.h>
+#include <openglad/resources/save_data.h>
+#include <openglad/gameplay/families/belt.h>
 
 #include <gtest/gtest.h>
 
@@ -518,6 +520,8 @@ std::vector<KindFrame> well_formed_server_bound_frames()
          og::sim::serialize_pause_broadcast_message(og::sim::PauseBroadcastMessage{})},
         {Kind::PauseResponse,
          og::sim::serialize_pause_response_message(og::sim::PauseResponseMessage{})},
+        {Kind::BeltChange,
+         og::sim::serialize_belt_change_message(og::sim::BeltChangeMessage{})},
         {Kind::SnapshotHashCheck,
          og::sim::serialize_snapshot_hash_check_message(
              og::sim::SnapshotHashCheckMessage{})},
@@ -569,14 +573,13 @@ TEST(GameServerCoverage, rejects_every_client_bound_kind_on_raw_and_typed_transp
         const std::vector<KindFrame> client_bound = well_formed_client_bound_frames();
         const std::vector<KindFrame> server_bound = well_formed_server_bound_frames();
         ASSERT_EQ(12u, client_bound.size());
-        ASSERT_EQ(12u, server_bound.size());
+        ASSERT_EQ(13u, server_bound.size());
 
         std::vector<og::sim::PeerId> all_peers;
-        for (std::size_t index = 0; index < 12u; ++index)
-        {
+        for (std::size_t index = 0; index < client_bound.size(); ++index)
             all_peers.push_back(static_cast<og::sim::PeerId>(201u + index));
+        for (std::size_t index = 0; index < server_bound.size(); ++index)
             all_peers.push_back(static_cast<og::sim::PeerId>(301u + index));
-        }
         transport.set_connected(all_peers);
         server.poll_incoming_messages();
 
@@ -2816,6 +2819,192 @@ TEST(GameServerCoverage, belt_byte_counts_as_activity)
     server.poll_incoming_messages();
     ASSERT_EQ(1u, server.disconnected_players().size());
     EXPECT_EQ(0x09, server.disconnected_players().front().repeated_input.belt_cast);
+}
+
+// ABILITIES (protocol v23): BeltChange sets the six belt bytes of the guy a
+// seat drives, on the SERVER. Each refusal is proven by its effect (no guy
+// changed) AND by the server's verdict, so a refusal that would only be
+// caught by a later rule still goes red when its own rule is removed.
+using og::sim::BeltChangeVerdict;
+
+constexpr std::array<std::uint8_t, 6> kEditedBelt = {0x09u, 0x0Au, 0x00u,
+                                                     0x01u, 0x02u, 0x03u};
+
+std::vector<std::uint8_t> belt_change_frame(std::uint8_t local_slot,
+                                            std::uint32_t entity_id)
+{
+    return og::sim::serialize_belt_change_message(
+        {.local_slot = local_slot, .entity_id = entity_id, .belt = kEditedBelt});
+}
+
+// A seat whose control carries a guy record (the BeltSeat mage has none),
+// with the game paused, so each delivery runs the message handler and no
+// world tick (a staged dead body or swapped control stays exactly as set).
+struct GuyBeltSeat : BeltSeat {
+    explicit GuyBeltSeat(bool with_guy = true)
+    {
+        if (with_guy)
+        {
+            control->set_owned_myguy(std::make_unique<guy>(FAMILY_MAGE));
+            control->myguy->owner_player_index = 0;
+            control->myguy->owner_save_slot = 0;
+        }
+        transport.queue_raw(96u, og::sim::serialize_pause_broadcast_message({}));
+        server->step();
+        frozen_tick = fixture.world().tick_count_;
+    }
+
+    void deliver(std::vector<std::uint8_t> frame)
+    {
+        transport.queue_raw(96u, std::move(frame));
+        server->step();
+    }
+
+    std::uint32_t frozen_tick = 0;
+};
+
+TEST(GameServerCoverage, belt_change_sets_the_driven_guy_paused_or_running)
+{
+    {
+        SCOPED_TRACE("paused");
+        GuyBeltSeat seat;
+        ASSERT_TRUE(seat.server->paused());
+        ASSERT_NE(kEditedBelt, seat.control->myguy->belt);
+        seat.deliver(belt_change_frame(0u, seat.control->entity_id()));
+        EXPECT_EQ(BeltChangeVerdict::Accepted,
+                  seat.server->last_belt_change_verdict());
+        EXPECT_EQ(kEditedBelt, seat.control->myguy->belt)
+            << "the edit lands while the game is paused";
+        EXPECT_EQ(seat.frozen_tick, seat.fixture.world().tick_count_);
+        EXPECT_TRUE(seat.server->paused()) << "and does not resume it";
+        EXPECT_TRUE(seat.transport.disconnected().empty())
+            << "BeltChange is server-bound traffic, never a malformed peer";
+    }
+    {
+        SCOPED_TRACE("running");
+        BeltSeat seat;
+        seat.control->set_owned_myguy(std::make_unique<guy>(FAMILY_MAGE));
+        ASSERT_FALSE(seat.server->paused());
+        seat.transport.queue_raw(
+            96u, belt_change_frame(0u, seat.control->entity_id()));
+        seat.server->step();
+        EXPECT_EQ(BeltChangeVerdict::Accepted,
+                  seat.server->last_belt_change_verdict());
+        EXPECT_EQ(kEditedBelt, seat.control->myguy->belt);
+    }
+}
+
+// Refusal 1: the seat named is not one this peer bound.
+TEST(GameServerCoverage, belt_change_for_an_unbound_seat_is_refused)
+{
+    GuyBeltSeat seat;
+    const og::sim::belt::Bytes before = seat.control->myguy->belt;
+    seat.deliver(belt_change_frame(1u, seat.control->entity_id()));
+    EXPECT_EQ(BeltChangeVerdict::SeatNotBound,
+              seat.server->last_belt_change_verdict());
+    EXPECT_EQ(before, seat.control->myguy->belt);
+    EXPECT_TRUE(seat.transport.disconnected().empty())
+        << "a refusal is silent, never a disconnect";
+}
+
+// Refusal 2: the seat drives nothing.
+TEST(GameServerCoverage, belt_change_for_a_seat_with_no_body_is_refused)
+{
+    GuyBeltSeat seat;
+    walker* const body = seat.control;
+    const og::sim::belt::Bytes before = body->myguy->belt;
+    seat.server->set_player_control(0u, nullptr);
+    seat.deliver(belt_change_frame(0u, body->entity_id()));
+    EXPECT_EQ(BeltChangeVerdict::NoBody, seat.server->last_belt_change_verdict());
+    EXPECT_EQ(before, body->myguy->belt);
+}
+
+// Refusal 3: the body the seat drives is dead.
+TEST(GameServerCoverage, belt_change_for_a_dead_body_is_refused)
+{
+    GuyBeltSeat seat;
+    const og::sim::belt::Bytes before = seat.control->myguy->belt;
+    seat.control->set_dead(1);
+    seat.deliver(belt_change_frame(0u, seat.control->entity_id()));
+    EXPECT_EQ(BeltChangeVerdict::DeadBody, seat.server->last_belt_change_verdict());
+    EXPECT_EQ(before, seat.control->myguy->belt);
+    seat.control->set_dead(0);
+}
+
+// Refusal 4: the seat's body changed between the screen opening and BACK.
+// Both shapes: a Switch to another hero with a guy record (without the rule
+// the edit would land on the WRONG hero), and a ghost's POSSESS that moves
+// control to a host body with no record (this rule must refuse first, not
+// the no-record rule).
+TEST(GameServerCoverage, belt_change_naming_a_stale_body_is_refused)
+{
+    {
+        SCOPED_TRACE("switch");
+        GuyBeltSeat seat;
+        walker* const opened_on = seat.control;
+        walker* const switched_to =
+            seat.fixture.world().add_ob(Order::Living, FAMILY_SOLDIER);
+        ASSERT_NE(nullptr, switched_to);
+        switched_to->setxy(96, 64);
+        switched_to->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+        const og::sim::belt::Bytes opened_before = opened_on->myguy->belt;
+        const og::sim::belt::Bytes switched_before = switched_to->myguy->belt;
+        seat.server->set_player_control(0u, switched_to);
+        seat.deliver(belt_change_frame(0u, opened_on->entity_id()));
+        EXPECT_EQ(BeltChangeVerdict::StaleEntity,
+                  seat.server->last_belt_change_verdict());
+        EXPECT_EQ(opened_before, opened_on->myguy->belt);
+        EXPECT_EQ(switched_before, switched_to->myguy->belt)
+            << "the edit must never land on the hero switched to";
+    }
+    {
+        SCOPED_TRACE("possession");
+        GuyBeltSeat seat;
+        walker* const ghost = seat.control;
+        walker* const host =
+            seat.fixture.world().add_ob(Order::Living, FAMILY_SOLDIER);
+        ASSERT_NE(nullptr, host);
+        host->setxy(96, 64);
+        ASSERT_EQ(nullptr, host->myguy) << "a possessed host has no record";
+        const og::sim::belt::Bytes before = ghost->myguy->belt;
+        seat.server->set_player_control(0u, host);
+        seat.deliver(belt_change_frame(0u, ghost->entity_id()));
+        EXPECT_EQ(BeltChangeVerdict::StaleEntity,
+                  seat.server->last_belt_change_verdict());
+        EXPECT_EQ(before, ghost->myguy->belt);
+    }
+}
+
+// Refusal 5: the body has no guy record (a summon, raised dead, possessed
+// host): it keeps using the class default.
+TEST(GameServerCoverage, belt_change_for_a_body_with_no_guy_is_refused)
+{
+    GuyBeltSeat seat(/*with_guy=*/false);
+    ASSERT_EQ(nullptr, seat.control->myguy);
+    seat.deliver(belt_change_frame(0u, seat.control->entity_id()));
+    EXPECT_EQ(BeltChangeVerdict::NoGuyRecord,
+              seat.server->last_belt_change_verdict());
+    EXPECT_EQ(nullptr, seat.control->myguy);
+}
+
+// The edit persists the way level-ups do: a won level merges the survivor's
+// guy (belt included) into this machine's save.
+TEST(GameServerCoverage, belt_change_persists_through_the_win_merge)
+{
+    GuyBeltSeat seat;
+    seat.deliver(belt_change_frame(0u, seat.control->entity_id()));
+    ASSERT_EQ(kEditedBelt, seat.control->myguy->belt);
+
+    SaveData disk;
+    auto record = std::make_unique<guy>(FAMILY_MAGE);
+    ASSERT_NE(kEditedBelt, record->belt);
+    disk.team_list[0] = std::move(record);
+    disk.team_size = 1;
+    disk.merge_owned_guys_from(seat.fixture.world().oblist, std::uint8_t{0});
+    ASSERT_EQ(1, static_cast<int>(disk.team_size));
+    ASSERT_NE(nullptr, disk.team_list[0]);
+    EXPECT_EQ(kEditedBelt, disk.team_list[0]->belt)
+        << "the won level keeps the layout set from the PAUSED menu";
 }
 
 } // namespace

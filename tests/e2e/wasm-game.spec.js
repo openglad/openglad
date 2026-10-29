@@ -551,44 +551,42 @@ test.describe('Landing Page', () => {
 });
 
 test.describe('Landing page browser warning', () => {
-  // Firefox reserves Ctrl+W at browser-chrome level, so the landing page
-  // warns Firefox players before they reach the game. Playwright ships only
-  // chromium + webkit engines here, which is exactly why the page detects
-  // via navigator.userAgent (isCtrlReservedBrowser) — a UA override drives
-  // both sides of the branch.
-  test.describe('firefox UA', () => {
-    test.use({
-      userAgent:
-        'Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0',
-    });
+  // The browser keeps Ctrl+W for itself in windowed play (Firefox closes the
+  // tab even when the page handles the key, Chromium never delivers it), so
+  // the landing page warns every player off binding Ctrl with REMAP (#391:
+  // no browser default is a Ctrl key any more, so the warning is about
+  // REMAP alone, and no longer Firefox-only).
+  for (const [name, userAgent] of [
+    ['firefox UA', 'Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0'],
+    ['default UA', undefined],
+  ]) {
+    test.describe(name, () => {
+      if (userAgent) {
+        test.use({ userAgent });
+      }
 
-    test('warns about Ctrl+W above the play button', async ({ page }) => {
-      await page.goto('/');
+      test('warns about Ctrl+W above the play button', async ({ page }) => {
+        await page.goto('/');
 
-      const warning = page.locator('#browser-warning');
-      await expect(warning).toBeVisible();
-      await expect(warning).toContainText('Ctrl+W');
+        const warning = page.locator('#browser-warning');
+        await expect(warning).toBeVisible();
+        await expect(warning).toContainText('Ctrl+W');
+        await expect(warning).toContainText('REMAP');
 
-      // The warning must precede the Play button in DOM order so it is read
-      // before the player commits.
-      const warningPrecedesButton = await page.evaluate(() => {
-        const warningEl = document.getElementById('browser-warning');
-        const button = document.querySelector('a.play-button');
-        return Boolean(
-          warningEl.compareDocumentPosition(button) &
-            Node.DOCUMENT_POSITION_FOLLOWING,
-        );
+        // The warning must precede the Play button in DOM order so it is
+        // read before the player commits.
+        const warningPrecedesButton = await page.evaluate(() => {
+          const warningEl = document.getElementById('browser-warning');
+          const button = document.querySelector('a.play-button');
+          return Boolean(
+            warningEl.compareDocumentPosition(button) &
+              Node.DOCUMENT_POSITION_FOLLOWING,
+          );
+        });
+        expect(warningPrecedesButton).toBe(true);
       });
-      expect(warningPrecedesButton).toBe(true);
     });
-  });
-
-  test.describe('default UA', () => {
-    test('stays hidden outside Firefox', async ({ page }) => {
-      await page.goto('/');
-      await expect(page.locator('#browser-warning')).toBeHidden();
-    });
-  });
+  }
 });
 
 test.describe('Game Loading', () => {
@@ -1369,21 +1367,23 @@ test.describe('Browser Alt containment', () => {
 });
 
 test.describe('Modifier chords across seats', () => {
-  test('Ctrl+digit and Alt+digit chords reach the game and keep their browser default suppressed', async ({
-    page,
-  }) => {
-    test.setTimeout(120_000);
+  // #391: with several players on one keyboard, one player's modifier plus
+  // another's key is a browser chord. Playwright's synthetic keys never
+  // trigger browser accelerators (Ctrl+W cannot close this tab here), so the
+  // guard that no web default forms a chord the page cannot stop is the unit
+  // walk in tests/unit/test_web_control_defaults.cpp. What a browser test
+  // can prove is that the keys the game does use arrive, with the browser
+  // default suppressed, and that the shipped build really uses them.
 
-    const errors = [];
-    attachRuntimeErrorCollectors(page, errors);
-
-    // Four players on the one keyboard, in a running mission: P1 casts on
-    // 1/2/3, P2 looks up on Right Ctrl, P4 casts on 4/5/6 (and an
-    // 8-direction P4 holds SHIFTER on Left Alt).
-    await page.addInitScript(() => {
+  // Four players on the one keyboard, in a running mission.
+  async function startFourSeatMission(page, { traceCapture = false } = {}) {
+    await page.addInitScript((capture) => {
       window.__opengladSeedPlayerCount = 4;
       window.__opengladSkipIntroForTests = true;
-    });
+      if (capture) {
+        window.__opengladEnableRuntimeTraceCapture = true;
+      }
+    }, traceCapture);
     await page.goto('/play.html');
     await waitForGameLoad(page);
     await startSeededSinglePlayerFromPicker(page);
@@ -1392,18 +1392,72 @@ test.describe('Modifier chords across seats', () => {
     });
     await focusCanvas(page);
     await installChordProbe(page);
+  }
 
-    // P2 holds look-up while P1 presses SPEC 1, 2, 3: Ctrl+1/2/3.
-    expect(
-      await pressChordAndRead(page, 'ControlRight', ['Digit1', 'Digit2', 'Digit3']),
-    ).toEqual([
-      ['ControlRight', true, true],
-      ['Digit1', true, true],
-      ['Digit2', true, true],
-      ['Digit3', true, true],
-    ]);
+  // The game's edge trace for a seat's look-up hold (view.cpp), from the
+  // runtime trace capture.
+  async function lookUpEvents(page) {
+    return page.evaluate(() =>
+      (window.__opengladRuntimeTraceEvents || [])
+        .filter((e) => e.category === 'input' && e.event.startsWith('look_up_hold'))
+        .map((e) => e.event),
+    );
+  }
 
-    // Left Alt held while P4 presses SPEC 1, 2, 3: Alt+4/5/6.
+  test('P2 looks up on Delete, not Right Ctrl, with the browser default suppressed', async ({
+    page,
+  }) => {
+    test.setTimeout(120_000);
+    const errors = [];
+    attachRuntimeErrorCollectors(page, errors);
+    await startFourSeatMission(page, { traceCapture: true });
+
+    // Paired control first: Right Ctrl is no longer anybody's key on the
+    // web, so holding it makes no seat look up.
+    await page.evaluate(() => {
+      window.__opengladRuntimeTraceEvents = [];
+      window.__chordProbe = [];
+    });
+    await page.keyboard.down('ControlRight');
+    await waitForGameplayProgress(page, 5_000);
+    await page.keyboard.up('ControlRight');
+    expect(await lookUpEvents(page)).toEqual([]);
+
+    // Delete: P2's view looks up while it is held, and lets go after.
+    await page.evaluate(() => {
+      window.__opengladRuntimeTraceEvents = [];
+      window.__chordProbe = [];
+    });
+    await page.keyboard.down('Delete');
+    await expect
+      .poll(() => lookUpEvents(page), { timeout: 10_000 })
+      .toEqual(['look_up_hold P2 on']);
+    await page.keyboard.up('Delete');
+    await expect
+      .poll(() => lookUpEvents(page), { timeout: 10_000 })
+      .toEqual(['look_up_hold P2 on', 'look_up_hold P2 off']);
+    const deletes = await page.evaluate(() =>
+      window.__chordProbe
+        .filter((r) => r.code === 'Delete')
+        .map((r) => [r.code, r.ctrl, r.defaultPrevented]),
+    );
+    expect(deletes.length).toBeGreaterThan(0);
+    expect(deletes[0]).toEqual(['Delete', false, true]);
+
+    assertNoRuntimeErrors(errors, 'P2 look-up on Delete');
+  });
+
+  test('Alt chords and a rebound Ctrl reach the game and keep their browser default suppressed', async ({
+    page,
+  }) => {
+    test.setTimeout(120_000);
+    const errors = [];
+    attachRuntimeErrorCollectors(page, errors);
+    // P1 casts on 1/2/3 and walks on WASD, P2 walks on the arrows, P4 casts
+    // on 4/5/6 (and an 8-direction P4 holds SHIFTER on Left Alt).
+    await startFourSeatMission(page);
+
+    // Left Alt held while P4 presses SPEC 1, 2, 3: Alt+4/5/6 (tab switch).
     expect(
       await pressChordAndRead(page, 'AltLeft', ['Digit4', 'Digit5', 'Digit6']),
     ).toEqual([
@@ -1411,6 +1465,30 @@ test.describe('Modifier chords across seats', () => {
       ['Digit4', true, true],
       ['Digit5', true, true],
       ['Digit6', true, true],
+    ]);
+
+    // Left Alt held while P1 walks right (Alt+D: address bar), P4 walks left
+    // (Alt+F: browser menu), P1 yells (Alt+E: Firefox's Edit menu) and P2
+    // walks left (Alt+Left: Back).
+    expect(
+      await pressChordAndRead(page, 'AltLeft', ['KeyD', 'KeyF', 'KeyE', 'ArrowLeft']),
+    ).toEqual([
+      ['AltLeft', true, true],
+      ['KeyD', true, true],
+      ['KeyF', true, true],
+      ['KeyE', true, true],
+      ['ArrowLeft', true, true],
+    ]);
+
+    // A player who rebinds a key to Right Ctrl with REMAP, held while P1
+    // presses SPEC 1, 2, 3: Ctrl+1/2/3 (tab switch) stays suppressed too.
+    expect(
+      await pressChordAndRead(page, 'ControlRight', ['Digit1', 'Digit2', 'Digit3']),
+    ).toEqual([
+      ['ControlRight', true, true],
+      ['Digit1', true, true],
+      ['Digit2', true, true],
+      ['Digit3', true, true],
     ]);
 
     // The game is still running in this tab.

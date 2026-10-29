@@ -288,8 +288,12 @@ here decides on its own that a given key moves, fires, or quits.
   need to rebind them to printable keys). The default ability keys are `1`, `2`
   and `3`; what they do depends on New Ability Select (below).
 - Meta keys are fixed and are *not* player bindings: `Esc`
-  (`MetaAction::OpenGameMenu`) opens the in-game menu / withdraws on its **press**
-  event. Everything else the level loop reads is fed straight through the bindings.
+  (`MetaAction::OpenGameMenu`) opens the PAUSED menu on its **press** event:
+  `[r]esume [a]bilities [k]eys [q]uit mission`. `q` withdraws, `a` edits the
+  ability layout of the body you drive, `k` lists your keys, anything else
+  resumes. The session keeps running and the pause stays held while the menu
+  or a page is open (see [pause-menu-design.md](pause-menu-design.md) §2.1).
+  Everything else the level loop reads is fed straight through the bindings.
 
 #### New Ability Select
 
@@ -432,7 +436,7 @@ CTest that asserts the shipped binary has zero SDL symbols.
    count cycle; quit unwinds. Assertions on `SaveData`.
 6. **curses_game_runtime (local)** — load real level 1, run the loop headlessly;
    assert the mirror world is populated (team + foes), the followed avatar
-   resolves, movement input moves the avatar, `Esc` withdraws while a non-meta key
+   resolves, movement input moves the avatar, `Esc` then `q` withdraws while a non-meta key
    like `q` does **not**, and the **exit prompt is asked, not auto-accepted** —
    `n` declines (stay), `y` accepts. A **server-forwarded `EndGame` event durably
    ends the session** (the latched end survives later delta snapshots that

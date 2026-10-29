@@ -83,6 +83,27 @@ module.exports = defineConfig({
         },
       },
     },
+    // Firefox, for input bugs reported there. Opt-in: set OG_FIREFOX_PATH to
+    // a Playwright Firefox build of the same Playwright version as the
+    // runner (a stock Firefox cannot be driven). Headless Firefox has no
+    // WebGL on a GPU-less box, so run it --headed under xvfb-run with
+    // Mesa's software GL on the library path. Only the suites written for
+    // it run here.
+    ...(process.env.OG_FIREFOX_PATH
+      ? [
+          {
+            name: 'firefox',
+            testMatch: /wasm-key-rebind-click\.spec\.js/,
+            use: {
+              browserName: 'firefox',
+              launchOptions: {
+                executablePath: process.env.OG_FIREFOX_PATH,
+                firefoxUserPrefs: { 'webgl.force-enabled': true },
+              },
+            },
+          },
+        ]
+      : []),
     ...(process.env.OG_WEBKIT
       ? [
           {

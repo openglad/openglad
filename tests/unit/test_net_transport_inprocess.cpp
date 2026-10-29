@@ -847,6 +847,17 @@ TEST(NetTransportInProcess, validating_mode_roundtrips_lightweight_typed_message
         pair.peer_id,
         std::make_shared<og::sim::ControlChangeMessage>(control_change));
 
+    // Bytes across the full u8 range: the reader stores them as sent, so the
+    // validating round trip must hand back exactly what went in.
+    const og::sim::BeltChangeMessage belt_change{
+        .local_slot = 3u,
+        .entity_id = 0xfedcba98u,
+        .belt = {0u, 255u, 128u, 7u, 1u, 200u},
+    };
+    pair.server->send_belt_change(
+        pair.peer_id,
+        std::make_shared<og::sim::BeltChangeMessage>(belt_change));
+
     const og::sim::SnapshotHashCheckMessage hash_check{
         .tick = 7u,
         .snapshot_hash = 0xabcdef01u,
@@ -857,7 +868,7 @@ TEST(NetTransportInProcess, validating_mode_roundtrips_lightweight_typed_message
 
     const std::vector<og::sim::TypedReceivedMessage> messages =
         pair.client->poll_typed();
-    ASSERT_EQ(11u, messages.size());
+    ASSERT_EQ(12u, messages.size());
 
     EXPECT_EQ(og::sim::TypedReceivedMessageKind::InitialSetup, messages[0].kind);
     ASSERT_NE(nullptr, messages[0].initial_setup);
@@ -904,10 +915,15 @@ TEST(NetTransportInProcess, validating_mode_roundtrips_lightweight_typed_message
     ASSERT_NE(nullptr, messages[9].control_change);
     EXPECT_EQ(control_change, *messages[9].control_change);
 
-    EXPECT_EQ(og::sim::TypedReceivedMessageKind::SnapshotHashCheck,
+    EXPECT_EQ(og::sim::TypedReceivedMessageKind::BeltChange,
               messages[10].kind);
-    ASSERT_NE(nullptr, messages[10].snapshot_hash_check);
-    EXPECT_EQ(hash_check, *messages[10].snapshot_hash_check);
+    ASSERT_NE(nullptr, messages[10].belt_change);
+    EXPECT_EQ(belt_change, *messages[10].belt_change);
+
+    EXPECT_EQ(og::sim::TypedReceivedMessageKind::SnapshotHashCheck,
+              messages[11].kind);
+    ASSERT_NE(nullptr, messages[11].snapshot_hash_check);
+    EXPECT_EQ(hash_check, *messages[11].snapshot_hash_check);
 }
 
 TEST(NetTransportInProcess, null_typed_sends_are_ignored)
@@ -932,6 +948,7 @@ TEST(NetTransportInProcess, null_typed_sends_are_ignored)
     pair.server->send_pause_broadcast(pair.peer_id, {});
     pair.server->send_pause_response(pair.peer_id, {});
     pair.server->send_control_change(pair.peer_id, {});
+    pair.server->send_belt_change(pair.peer_id, {});
     pair.server->send_snapshot_hash_check(pair.peer_id, {});
 
     EXPECT_TRUE(pair.client->poll_typed().empty());
@@ -1887,6 +1904,75 @@ TEST(NetTransportInProcess, network_fixture_pause_broadcast_freezes_and_resumes)
 
     EXPECT_FALSE(fixture.server().paused());
     EXPECT_GT(fixture.server_world().tick_count_, frozen_tick);
+    fixture.expect_clients_match_server();
+}
+
+// ABILITIES (protocol v23): in a two-seat in-process session, seat 1 sets
+// its hero's ability layout while seat 0's pause holds the game. The server
+// guy changes at once, the very next snapshot (still paused) carries the new
+// bytes to BOTH mirrors, and the mirrors still match the server.
+TEST(NetTransportInProcess, network_fixture_belt_change_while_paused_reaches_every_mirror)
+{
+    og::sim::test::NetworkTestFixture fixture({
+        .player_count = 2,
+        .level_id = 1,
+        .tick_count = 0,
+        .validate_serialization = true,
+        .input_sequence = {},
+    });
+
+    fixture.load_level();
+    std::uint32_t hero_id = 0;
+    fixture.with_server_context([&] {
+        for (std::size_t index = 0; index < 2u; ++index)
+        {
+            walker* const control = fixture.server_control(index);
+            ASSERT_NE(nullptr, control);
+            if (control->myguy == nullptr)
+                control->set_owned_myguy(std::make_unique<guy>(control->family()));
+            control->myguy->owner_player_index = static_cast<std::uint8_t>(index);
+            control->myguy->owner_save_slot = static_cast<std::uint8_t>(index);
+        }
+        hero_id = fixture.server_control(1)->entity_id();
+    });
+    fixture.initial_sync();
+    fixture.step_ticks(1);
+
+    fixture.client(0).send_pause_request();
+    fixture.with_server_context([&] { fixture.server().step(); });
+    fixture.poll_client_messages(0);
+    fixture.poll_client_messages(1);
+    ASSERT_TRUE(fixture.server().paused());
+    const std::uint32_t frozen_tick = fixture.server_world().tick_count_;
+
+    const std::array<std::uint8_t, 6> edited = {0x09u, 0x00u, 0x0Au,
+                                                0x00u, 0x01u, 0x02u};
+    for (std::size_t index = 0; index < 2u; ++index)
+    {
+        const walker* const mirror = fixture.client_world(index).find_by_id(hero_id);
+        ASSERT_NE(nullptr, mirror);
+        ASSERT_NE(nullptr, mirror->myguy);
+        ASSERT_NE(edited, mirror->myguy->belt) << "precondition, mirror " << index;
+    }
+
+    fixture.client(1).send_belt_change(0u, hero_id, edited);
+    fixture.with_server_context([&] { fixture.server().step(); });
+    fixture.poll_client_messages(0);
+    fixture.poll_client_messages(1);
+
+    EXPECT_EQ(frozen_tick, fixture.server_world().tick_count_);
+    EXPECT_TRUE(fixture.server().paused());
+    ASSERT_NE(nullptr, fixture.server_control(1)->myguy);
+    EXPECT_EQ(edited, fixture.server_control(1)->myguy->belt);
+    for (std::size_t index = 0; index < 2u; ++index)
+    {
+        const walker* const mirror = fixture.client_world(index).find_by_id(hero_id);
+        ASSERT_NE(nullptr, mirror);
+        ASSERT_NE(nullptr, mirror->myguy);
+        EXPECT_EQ(edited, mirror->myguy->belt)
+            << "mirror " << index << " shows the new layout before RESUME";
+    }
+    EXPECT_EQ(0u, fixture.server().snapshot_hash_mismatch_count());
     fixture.expect_clients_match_server();
 }
 

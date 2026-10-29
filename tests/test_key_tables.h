@@ -51,6 +51,9 @@ inline constexpr int kWebFourDirFire = KEYCODE_z;
 inline constexpr int kWebEightDirFire = KEYCODE_s;
 inline constexpr int kWebEightDirYell = KEYCODE_TAB;
 inline constexpr int kWebEightDirLookup = KEYCODE_UNKNOWN;
+// Web P2 (profile 1) differs in one slot, both maps: LOOK UP on Delete, not
+// Right Ctrl (#391). No other web default binds Ctrl.
+inline constexpr int kWebP2Lookup = KEYCODE_DELETE;
 
 // The factory value of (profile, mode, slot) on this build flavour.
 inline constexpr int new_factory_key(int profile, bool eight, int k, bool web)
@@ -64,6 +67,8 @@ inline constexpr int new_factory_key(int profile, bool eight, int k, bool web)
         if (eight && k == KEY_LOOKUP)
             return kWebEightDirLookup;
     }
+    if (web && profile == 1 && k == KEY_LOOKUP)
+        return kWebP2Lookup;
     return eight ? kNewEightDir[profile][k] : kNewFourDir[profile][k];
 }
 

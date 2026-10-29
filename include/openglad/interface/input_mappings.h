@@ -141,6 +141,21 @@ std::string current_mapping_name(int player_index, bool has_joystick = false,
 std::vector<std::string> available_mapping_names(cfg_store& config, int for_player,
                                                  int active_player_count);
 
+// --- One key at a time (#358) ----------------------------------------------
+// The rule when a player binds a key (REMAP, or one click on a key in the
+// binding panel): the key goes on the slot, and any OTHER slot of the same
+// map that held it comes out unbound ("--"): the player's latest choice
+// wins, the loser shows "--", as in the migration's step 3 below. Another
+// seat holding the same key is left alone (a pad seat's stale keys must not
+// block a keyboard seat; the KEYMAP picture shows the clash). Reserved
+// slots are never touched. KEYCODE_UNKNOWN never unbinds anything.
+// Pure: returns the slots it unbound.
+std::vector<int> unbind_slots_holding(KeyMap& keys, int slot, int keycode);
+// The seat-level writer: binds `keycode` to `slot` in the seat's CURRENT
+// direction mode (set_player_key_binding) and unbinds the other slots of
+// that mode that held it, through unbind_slots_holding.
+void bind_player_key(int player_index, int slot, int keycode);
+
 // --- One-time migration of saved keys (New Ability Select) -----------------
 // The factory tables changed (input_state.cpp: kDefault*DirKeys, with the
 // pre-change kLegacy*DirKeys kept beside them), and every returning player
@@ -168,7 +183,24 @@ std::vector<std::string> available_mapping_names(cfg_store& config, int for_play
 // Slots 11 and 14 come out unbound. A seat with profile -1 (a CUSTOM library
 // entry) has no factory slots: every stored key is kept, a never-stored
 // slot is unbound, slot 17 takes the change-special key when bound.
-inline constexpr int kDefaultKeysVersion = 1;
+//
+// The rules above are version 0 (keys saved before New Ability Select). The
+// keys a cfg was stamped with decide which old factory table step 1 reads:
+//   from_version 0: the d758bcb1 tables (plus the browser scheme), as above.
+//   from_version 1: the New Ability Select tables. Those are today's tables
+//      except web P2 LOOK UP, which was Right Ctrl and is Delete since #391
+//      (kV1WebP2LookupKey, web_control_defaults.h). A slot is factory when
+//      never stored or stored == its version-1 value; slot 11 is ignored
+//      (a v1 build saves it unbound). Step 3 referees only a factory slot whose key
+//      actually MOVES, so a native v1 -> v2 run changes nothing (a v1 cfg
+//      was already checked against the same keys), and on web only P2's
+//      LOOK UP can yield: to Delete, or unbound when Delete is some seat's
+//      own key.
+//   from_version >= kDefaultKeysVersion: nothing moves; never-stored and
+//      reserved slots come out unbound.
+// Version history: 1 = New Ability Select (#380); 2 = web P2 LOOK UP on
+// Delete (#391).
+inline constexpr int kDefaultKeysVersion = 2;
 // cfg controls/<this>; also mappings/mapping{K}_default_keys_version per entry.
 inline constexpr const char* kDefaultKeysVersionSetting = "default_keys_version";
 // A slot the saved keys never mention (or hold something that is not a key).
@@ -191,7 +223,9 @@ struct SeatKeysToMigrate
 };
 
 // Rewrites every seat's `keys` in place to the migrated maps (no
-// kKeyNotStored left). Pure: reads only the factory tables.
-void migrate_seat_keys(std::vector<SeatKeysToMigrate>& seats, bool web_mode);
+// kKeyNotStored left). Pure: reads only the factory tables. `from_version`
+// is the default-keys version the keys were saved under (0 when unstamped).
+void migrate_seat_keys(std::vector<SeatKeysToMigrate>& seats, bool web_mode,
+                       int from_version);
 
 } // namespace og::input

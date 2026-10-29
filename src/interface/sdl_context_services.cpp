@@ -16,6 +16,7 @@
 #include <openglad/interface/level_runtime_data.h>
 #include <openglad/interface/level_render.h>
 #include <openglad/interface/session_state.h>
+#include <openglad/interface/ui/abilities_screen.h>
 #include <openglad/resources/level_data_hooks.h>
 #include <openglad/resources/gloader.h>
 #include <openglad/gameplay/belt_input.h>
@@ -69,15 +70,10 @@ bool same_input(const PlayerInput& a, const PlayerInput& b)
 const og::sim::belt::Layout* seat_belt(int seat,
                                        og::sim::belt::Layout& storage)
 {
-    og::runtime::SessionState* const session = og::runtime::current_session;
-    if (session == nullptr || session->myscreen_ == nullptr)
+    const walker* const control = og::ui::seat_driven_walker(seat);
+    if (control == nullptr)
         return nullptr;
-    screen& view_screen = *session->myscreen_;
-    if (seat >= view_screen.numviews || !view_screen.viewob[seat])
-        return nullptr;
-    const walker* const control = view_screen.viewob[seat]->control;
-    if (control == nullptr || control->dead() || control->stats() == nullptr)
-        return nullptr;
+    const screen& view_screen = *og::runtime::current_session->myscreen_;
     const FamilyDescriptor* const descriptor = get_family_descriptor(
         static_cast<int>(static_cast<unsigned char>(control->family())));
     storage = og::sim::belt::resolve(descriptor, control->stats()->level(),

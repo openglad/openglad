@@ -1,6 +1,7 @@
 #pragma once
 #include <openglad/interface/ui/campaign_picker_session.h>
 #include <openglad/interface/ui/match_setup_session.h>
+#include <openglad/interface/ui/menu_screen_spec.h>
 #include <openglad/interface/ui/picker_common.h>
 
 #include <array>
@@ -421,7 +422,14 @@ inline constexpr int kSeatSettingsHudRadarRow = 8;
 inline constexpr int kSeatSettingsHudLifeRow = 9;
 inline constexpr int kSeatSettingsHudFoesRow = 10;
 inline constexpr int kSeatSettingsHudScoreRow = 11;
-inline constexpr int kSeatSettingsButtonCount = 12;
+// #358: the sixteen click cells over the binding panel's lines (movement
+// 12..19, actions 20..27; OG_BINDING_PANEL_CELLS below), then the KEYMAP
+// door (#388, reserved here; it shows once its row is filled in). This is
+// the final table: the pause player screen's twin ends at 29 too, with
+// ABILITIES at 27 there (Base Camp's ABILITIES door is TRAIN).
+inline constexpr int kSeatSettingsCellFirstRow = 12;
+inline constexpr int kSeatSettingsKeymapRow = 28;
+inline constexpr int kSeatSettingsButtonCount = 29;
 
 // --- §7.1 unified player-screen grid ---------------------------------------
 // One geometry behind BOTH player screens (Base Camp seat settings and the
@@ -433,13 +441,19 @@ inline constexpr int kSeatSettingsButtonCount = 12;
 // 144..161, so the panel's bottom corner is y=161. Vertical rhythm:
 // BACK bottom (22) -7- band1 (30..47) -6- band2 (54..71) -6- panel/stack
 // (78..161) -7- command band (169..186).
-inline constexpr int kPlayerScreenColAX = 12;   // DIRECTION/INPUT/panel/TEAM
+inline constexpr int kPlayerScreenColAX = 12;   // BACK/DIRECTION/INPUT/panel/TEAM
 inline constexpr int kPlayerScreenColAW = 98;
 inline constexpr int kPlayerScreenColBX = 116;  // REMAP/ZOOM; ends 208
 inline constexpr int kPlayerScreenColBW = 92;
 inline constexpr int kPlayerScreenColCX = 214;  // RESET + HUD stack
 inline constexpr int kPlayerScreenColCW = 90;   // ends 304
 inline constexpr int kPlayerScreenBandH = 18;
+// BACK, top left over the title row: on column A's left edge like every
+// button under it (it sat at x 10, two pixels left of the column).
+inline constexpr int kPlayerScreenBackX = kPlayerScreenColAX;
+inline constexpr int kPlayerScreenBackY = 8;
+inline constexpr int kPlayerScreenBackW = 50;
+inline constexpr int kPlayerScreenBackH = 15;
 inline constexpr int kPlayerScreenBand1Y = 30;  // MODE | REMAP | RESET
 inline constexpr int kPlayerScreenBand2Y = 54;  // INPUT | ZOOM
 inline constexpr int kPlayerScreenPanelTopY = 78;
@@ -448,10 +462,51 @@ inline constexpr int kPlayerScreenPanelBottomY = 161; // == HUD stack bottom
 inline constexpr int kPlayerScreenHudTopY = 78;
 inline constexpr int kPlayerScreenHudPitch = 22;
 inline constexpr int kPlayerScreenBottomBandY = 169;  // TEAM / REMOVE
+// The bottom band's left half splits into two 66 px doors (the PAUSED
+// menu's half width) with a 6 px gutter: TEAM | KEYMAP on the Base Camp seat
+// screen, ABILITIES | KEYMAP on the pause player screen; REMOVE keeps x 166.
+inline constexpr int kPlayerScreenBottomHalfW = 66;
+inline constexpr int kPlayerScreenBottomMidX =
+    kPlayerScreenColAX + kPlayerScreenBottomHalfW + 6;  // 84, ends 150
 // Binding-panel interior: headers at panel+4, first line at panel+15,
 // 8px line pitch (columns kBindingPanel*Chars below).
 inline constexpr int kPlayerScreenPanelHeaderY = kPlayerScreenPanelTopY + 4;
 inline constexpr int kPlayerScreenPanelLineY = kPlayerScreenPanelTopY + 15;
+
+// #358 click cells over the panel lines: one 8 px row per line, from a row
+// above the line's ink (y = line - 1) so the eight rows tile the panel with
+// no gap. Movement cells cover x 14..101 (the column's text starts at 20),
+// action cells x 102..205 (text at 104); both stay inside the panel bevel
+// (12..208). kBindingPanelCellCount = 8 movement + 8 action.
+inline constexpr int kBindingPanelCellCount = 16;
+inline constexpr int kBindingPanelLinesPerColumn = 8;
+inline constexpr int kBindingPanelLinePitch = 8;
+inline constexpr int kBindingCellTopY = kPlayerScreenPanelLineY - 1;
+inline constexpr int kBindingCellH = kBindingPanelLinePitch;
+inline constexpr int kBindingCellMoveX = 14;
+inline constexpr int kBindingCellMoveW = 88;
+inline constexpr int kBindingCellActionX = kBindingCellMoveX + kBindingCellMoveW;  // 102
+inline constexpr int kBindingCellActionW = 104;                                     // ends 206
+static_assert(kBindingCellActionX + kBindingCellActionW < kPlayerScreenPanelRightX);
+static_assert(kBindingCellTopY + kBindingPanelLinesPerColumn * kBindingCellH <=
+              kPlayerScreenPanelBottomY);
+// The HUD stack row (0..3, RADAR..SCORE) beside action line j: the one whose
+// 22 px band holds the line's middle row (clamped to the stack).
+// The other way: the action line beside HUD row r (0..3), the one holding
+// the row's middle (clamped to the column).
+constexpr int binding_cell_line_beside_hud(int hud_row)
+{
+    const int mid = kPlayerScreenHudTopY + hud_row * kPlayerScreenHudPitch +
+                    kPlayerScreenBandH / 2;
+    const int line = (mid - kBindingCellTopY) / kBindingCellH;
+    return line < 0 ? 0 : (line > 7 ? 7 : line);
+}
+constexpr int binding_cell_hud_offset(int line)
+{
+    const int mid = kBindingCellTopY + line * kBindingCellH + kBindingCellH / 2;
+    const int row = (mid - kPlayerScreenHudTopY) / kPlayerScreenHudPitch;
+    return row < 0 ? 0 : (row > 3 ? 3 : row);
+}
 
 // --- §7.1 shared per-player HUD/zoom row helpers ---------------------------
 // One implementation (pause_menu.cpp) behind both player screens: the seat's
@@ -485,7 +540,106 @@ inline constexpr int kBindingPanelActionsChars = 17;
 std::string format_binding_panel_line(const char* label,
                                       const std::string& value,
                                       int budget_chars);
+
+// --- The one binding panel (both player screens; pause_menu.cpp) ----------
+// The panel itself for a seat: the bevelled box over x 12..208 / y 78..161,
+// the two headers and every line (keyboard names, or the device's for a
+// joystick seat; inactive diagonals grey "--").
+void draw_binding_panel(int seat, bool ability_select);
+// The key slot (KEY_*) behind click cell 0..15 (0..7 movement, 8..15 the
+// ACTIONS rows of the setting); -1 for an action cell past the rows.
+int binding_panel_cell_key(int cell, bool ability_select);
+// Whether a cell can be clicked for this seat: Hidden for an action cell
+// past the setting's rows, and for a diagonal in 4-direction or on a pad
+// seat (pads cannot bind diagonals). seat < 0 (no live seat: the bare spec
+// shape) hides only the action cells past the rows.
+RowState binding_panel_cell_state(int seat, int cell);
+// The cells' keyboard nav, recomputed each frame after the gate pass, plus
+// the four neighbours' links into them: INPUT's down (first movement cell),
+// ZOOM's down (first action cell), the HUD rows' left, and bottom_left's up.
+// Hidden cells are skipped; the ends of a column leave to INPUT/ZOOM above
+// and to bottom_left / bottom_right below, falling back to BACK when the
+// bottom row is hidden. bottom_left < 0 = no bottom-left neighbour.
+struct BindingCellNavAnchors {
+    int first_cell;
+    int input;
+    int zoom;
+    int hud_first;  // RADAR; HP/FOES/SCORE follow
+    int bottom_left;
+    int bottom_right;
+    int back;
+};
+void rewire_binding_panel_cells(button* buttons, int count,
+                                const BindingCellNavAnchors& anchors);
+// The y=169 command band both player screens end on, left to right: the
+// left door (ABILITIES on the pause screen, TEAM in Base Camp), KEYMAP and
+// REMOVE PLAYER. The visible faces chain left/right in that order and each
+// goes down to BACK; KEYMAP's up is the ACTIONS column's last visible line.
+// Run after rewire_binding_panel_cells (which sets the left door's up).
+struct PlayerScreenBottomBand {
+    int first_cell;
+    int left;
+    int keymap;
+    int remove;
+    int back;
+};
+void rewire_player_screen_bottom_band(button* buttons, int count,
+                                      const PlayerScreenBottomBand& band);
 } // namespace og::ui
+
+// The sixteen no_draw click cells, one shared shape for both player screens
+// (OG_BASE_CAMP_ROW style): `prefix` is the id prefix literal ("pause"/
+// "seat"), `first` the first cell ordinal, `state` a template taking the
+// cell index (each screen reads its own seat), and the anchors the static
+// nav ends (the per-frame rewire above owns the live links).
+#define OG_BINDING_MOVE_CELL(prefix, first, i, state, input, bottom_left)      \
+    {.id = prefix "_key_move_" #i, .label = "",                                 \
+     .x = kBindingCellMoveX, .y = kBindingCellTopY + kBindingCellH * (i),       \
+     .w = kBindingCellMoveW, .h = kBindingCellH,                                \
+     .action = ButtonAction::MenuSpecRow, .arg = (first) + (i),                 \
+     .nav = {.up = (i) > 0 ? (first) + (i) - 1 : (input),                       \
+             .down = (i) < 7 ? (first) + (i) + 1 : (bottom_left),               \
+             .right = (first) + 8 + (i)},                                       \
+     .state_override = &state<(i)>,                                             \
+     .no_draw = true, .cell_highlight = true}
+#define OG_BINDING_ACTION_CELL(prefix, first, j, state, zoom, hud_first,       \
+                               bottom_right)                                    \
+    {.id = prefix "_key_action_" #j, .label = "",                               \
+     .x = kBindingCellActionX, .y = kBindingCellTopY + kBindingCellH * (j),     \
+     .w = kBindingCellActionW, .h = kBindingCellH,                              \
+     .action = ButtonAction::MenuSpecRow, .arg = (first) + 8 + (j),             \
+     .nav = {.up = (j) > 0 ? (first) + 8 + (j) - 1 : (zoom),                    \
+             .down = (j) < 7 ? (first) + 8 + (j) + 1 : (bottom_right),          \
+             .left = (first) + (j),                                             \
+             .right = (hud_first) + binding_cell_hud_offset(j)},                \
+     .state_override = &state<8 + (j)>,                                         \
+     .no_draw = true, .cell_highlight = true}
+#define OG_BINDING_PANEL_CELLS(prefix, first, state, input, zoom, hud_first,   \
+                               bottom_left, bottom_right)                       \
+    OG_BINDING_MOVE_CELL(prefix, first, 0, state, input, bottom_left),          \
+    OG_BINDING_MOVE_CELL(prefix, first, 1, state, input, bottom_left),          \
+    OG_BINDING_MOVE_CELL(prefix, first, 2, state, input, bottom_left),          \
+    OG_BINDING_MOVE_CELL(prefix, first, 3, state, input, bottom_left),          \
+    OG_BINDING_MOVE_CELL(prefix, first, 4, state, input, bottom_left),          \
+    OG_BINDING_MOVE_CELL(prefix, first, 5, state, input, bottom_left),          \
+    OG_BINDING_MOVE_CELL(prefix, first, 6, state, input, bottom_left),          \
+    OG_BINDING_MOVE_CELL(prefix, first, 7, state, input, bottom_left),          \
+    OG_BINDING_ACTION_CELL(prefix, first, 0, state, zoom, hud_first,           \
+                           bottom_right),                                       \
+    OG_BINDING_ACTION_CELL(prefix, first, 1, state, zoom, hud_first,           \
+                           bottom_right),                                       \
+    OG_BINDING_ACTION_CELL(prefix, first, 2, state, zoom, hud_first,           \
+                           bottom_right),                                       \
+    OG_BINDING_ACTION_CELL(prefix, first, 3, state, zoom, hud_first,           \
+                           bottom_right),                                       \
+    OG_BINDING_ACTION_CELL(prefix, first, 4, state, zoom, hud_first,           \
+                           bottom_right),                                       \
+    OG_BINDING_ACTION_CELL(prefix, first, 5, state, zoom, hud_first,           \
+                           bottom_right),                                       \
+    OG_BINDING_ACTION_CELL(prefix, first, 6, state, zoom, hud_first,           \
+                           bottom_right),                                       \
+    OG_BINDING_ACTION_CELL(prefix, first, 7, state, zoom, hud_first,           \
+                           bottom_right)
 
 // --- SCENARIO subscreen layout contract ------------------------------------
 // Positional indices into k_scenariomenu_buttons / picker_scenariomenu_buttons().
@@ -823,6 +977,81 @@ inline constexpr int kTrainMenuSellIndex = 19;
 // off, so the screen stays discoverable.
 inline constexpr int kTrainMenuAbilitiesIndex = 20;
 
+// --- HIRE screen layout contract --------------------------------------------
+// Rows of kHireMenuRows / picker_hiremenu_buttons(): PREV, NEXT, the team
+// cycler, HIRE ME, BACK, then the ABILITIES door (the TRAIN screen's
+// DETAILS.. page for the class on show, as a level-1 recruit).
+inline constexpr int kHireMenuChangeTeamIndex = 2;
+inline constexpr int kHireMenuHireMeIndex = 3;
+inline constexpr int kHireMenuBackIndex = 4;
+inline constexpr int kHireMenuAbilitiesIndex = 5;
+// The bottom band, left to right: BACK | ABILITIES | the team cycler
+// ("TEAM N", always shown, whatever the player count) | HIRE ME, one fixed
+// layout with one gap between neighbours. The band runs from x=10 to the
+// cost box's right edge (300). Every face is sized to its label; HIRE ME
+// is the band's biggest face (master's 88x28), centred on the others' line.
+inline constexpr int kHireBandLeft = 10;
+inline constexpr int kHireBandRight = 300;  // the cost box's right edge
+inline constexpr int kHireBandY = 170;
+inline constexpr int kHireBandH = 20;
+inline constexpr int kHireBackW = 40;       // "BACK": 4 glyphs
+inline constexpr int kHireAbilitiesW = 64;  // TRAIN's ABILITIES face
+inline constexpr int kHireTeamW = 50;       // "TEAM 4": 6 glyphs
+inline constexpr int kHireMeW = 88;
+inline constexpr int kHireMeH = 28;
+inline constexpr int kHireMeY = kHireBandY - (kHireMeH - kHireBandH) / 2;
+// The three gaps share what the faces leave of the band.
+inline constexpr int kHireBandGap =
+    (kHireBandRight - kHireBandLeft - kHireBackW - kHireAbilitiesW -
+     kHireTeamW - kHireMeW) / 3;
+inline constexpr int kHireBackX = kHireBandLeft;
+inline constexpr int kHireAbilitiesX = kHireBackX + kHireBackW + kHireBandGap;
+inline constexpr int kHireTeamX =
+    kHireAbilitiesX + kHireAbilitiesW + kHireBandGap;
+inline constexpr int kHireMeX = kHireTeamX + kHireTeamW + kHireBandGap;
+
+// The team cycler's face, "TEAM N" for team index 0..3: the one builder of
+// that string, for the table's default label and for the label
+// change_hire_teamnum writes.
+struct HireTeamLabel
+{
+    char text[7];
+};
+constexpr HireTeamLabel hire_team_label(int team_index)
+{
+    return {{'T', 'E', 'A', 'M', ' ',
+             static_cast<char>('1' + team_index), '\0'}};
+}
+inline constexpr HireTeamLabel kHireTeamDefaultLabel = hire_team_label(0);
+inline constexpr int kHireTeamCount = 4;  // change_hire_teamnum wraps 1..4
+static_assert(kHireTeamCount <= 9, "a team number is one glyph");
+
+// A label fits its face at 6 px a glyph and 4 px a side.
+constexpr bool hire_label_fits(int glyphs, int face_w)
+{
+    return 6 * glyphs + 8 <= face_w;
+}
+static_assert(kHireBandGap > 0 &&
+                  kHireBandLeft + kHireBackW + kHireAbilitiesW + kHireTeamW +
+                          kHireMeW + 3 * kHireBandGap ==
+                      kHireBandRight,
+              "the row fits the band with even gaps, HIRE ME ending on the "
+              "cost box's edge");
+static_assert(kHireMeX + kHireMeW == kHireBandRight,
+              "HIRE ME closes the row on the cost box's edge");
+static_assert(kHireMeY * 2 + kHireMeH == kHireBandY * 2 + kHireBandH,
+              "HIRE ME is centred on the band's line");
+static_assert(kHireMeW > kHireBackW && kHireMeW > kHireAbilitiesW &&
+                  kHireMeW > kHireTeamW && kHireMeH > kHireBandH,
+              "HIRE ME is the band's widest and tallest face");
+static_assert(hire_label_fits(4, kHireBackW) &&
+                  hire_label_fits(9, kHireAbilitiesW) &&
+                  hire_label_fits(
+                      static_cast<int>(sizeof(kHireTeamDefaultLabel.text)) - 1,
+                      kHireTeamW) &&
+                  hire_label_fits(7, kHireMeW),
+              "every face holds its label");
+
 // --- ABILITIES screen layout contract (docs/ability-select-design.md E.1) ---
 // Ordinals: BACK, DEFAULTS, the six belt slots row-major (key 1 | SHIFTER+1,
 // key 2 | SHIFTER+2, key 3 | SHIFTER+3), then the four bench rows row-major
@@ -976,6 +1205,33 @@ inline constexpr int kHelpPrevX = 220;
 inline constexpr int kHelpNextX = 270;
 inline constexpr int kHelpPagerWidth = 40;
 inline constexpr int kHelpFooterHeight = 20;
+
+// --- TRAIN > DETAILS.. / HIRE > ABILITIES (run_detail_menu) ------------------
+// Positional indices in k_details_buttons (append-only: injector flows read
+// PROMOTE as row 1). The pagers sit on HELP's footer geometry, with HELP's
+// PageUp/PageDown hotkeys, and are hidden while the page model is one page.
+inline constexpr int kDetailsBackIndex = 0;
+inline constexpr int kDetailsPromoteIndex = 1;
+inline constexpr int kDetailsPrevIndex = 2;
+inline constexpr int kDetailsNextIndex = 3;
+inline constexpr int kDetailsBackX = 10;
+inline constexpr int kDetailsBackWidth = 40;
+inline constexpr int kDetailsFooterY = kHelpFooterY;
+inline constexpr int kDetailsFooterHeight = kHelpFooterHeight;
+inline constexpr int kDetailsPrevX = kHelpPrevX;
+inline constexpr int kDetailsNextX = kHelpNextX;
+inline constexpr int kDetailsPagerWidth = kHelpPagerWidth;
+// What a pager's ReturnMenu hands the loop: not MENU_EXIT, so the page stays
+// open and steps.
+inline constexpr int32_t kDetailsPagePrevCode = 8;
+inline constexpr int32_t kDetailsPageNextCode = 16;
+// The footer bar between BACK and PREV (the key hint and the "p/N"
+// indicator), drawn only while there is more than one page, as on HELP.
+inline constexpr int kDetailsFooterBarLeft = kDetailsBackX + kDetailsBackWidth + 2;
+inline constexpr int kDetailsFooterBarRight = kDetailsPrevX - 3;
+static_assert((kDetailsPagePrevCode & MENU_EXIT) == 0 &&
+                  (kDetailsPageNextCode & MENU_EXIT) == 0,
+              "a pager never closes the page");
 
 // --- GRAPHICS FX subscreen layout contract ----------------------------------
 // Positional index of the depth-selector cycle row (id "depth_fx") in

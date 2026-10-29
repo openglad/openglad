@@ -25,6 +25,7 @@
 #include <openglad/interface/input.h>
 #include <openglad/interface/input_hardware_state.h>
 #include <openglad/interface/input_mappings.h>
+#include <openglad/interface/native_input.h>
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/screen.h>
 #include <openglad/gameplay/script/campaign_hooks.h>
@@ -42,6 +43,7 @@
 #include <openglad/resources/company.h>
 #include <openglad/interface/ui/cloud_save_client.h>
 #include "../../src/interface/ui/picker_sdl_defs.h"
+#include "test_ability_select_scope.h"
 #include "test_click_ladder.h"
 #include "test_fake_lobby_client.h"
 #include "test_interact.h"
@@ -3168,7 +3170,8 @@ TEST(MenuEngine, content_screen_registry_hosts_and_semantics)
     {
         std::vector<button> rows;
         og::ui::materialize_menu_buttons(*hire, rows);
-        ASSERT_EQ(5, static_cast<int>(rows.size()));
+        ASSERT_EQ(6, static_cast<int>(rows.size()))
+            << "PREV, NEXT, team, HIRE ME, BACK, ABILITIES";
         hire->prepare_buttons(rows.data(), static_cast<int>(rows.size()),
                               nullptr);
         // The computed portrait-flanking positions the legacy loop wrote
@@ -3178,20 +3181,13 @@ TEST(MenuEngine, content_screen_registry_hosts_and_semantics)
         EXPECT_EQ(135, rows[1].x) << "next";
         EXPECT_EQ(37, rows[1].y) << "next";
     }
-    // The solo-hidden team cycler is a per-frame state override
-    // (entry-equivalent: numplayers cannot change under the open screen).
-    ASSERT_NE(nullptr, hire->rows[2].state_override);
-    {
-        SaveData save;
-        og::ui::MenuLabelContext context;
-        context.save = &save;
-        save.numplayers = 1;
-        EXPECT_EQ(og::ui::RowState::Hidden,
-                  hire->rows[2].state_override(context));
-        save.numplayers = 2;
-        EXPECT_EQ(og::ui::RowState::Visible,
-                  hire->rows[2].state_override(context));
-    }
+    // ABILITIES is a spec row the screen's own hook answers.
+    EXPECT_NE(nullptr, hire->on_spec_row);
+    // The team cycler (TEAM N) shows whatever the player count, so it has
+    // no state override and the screen no rewire: one fixed layout on
+    // static links.
+    EXPECT_EQ(nullptr, hire->rows[2].state_override);
+    EXPECT_EQ(nullptr, hire->nav.rewire);
 
     // TRAIN: exit-bearing paths carry MENU_EXIT (the wrapper folds unless a
     // start was selected); nested DETAILS/RENAME MENU_REDRAWs are consumed
@@ -3684,9 +3680,13 @@ TEST(MenuEngine, seat_settings_registry_and_player_control_ownership)
 
     const og::ui::MenuScreenSpec& seat =
         og::ui::seat_settings_menu_screen_spec();
-    EXPECT_EQ(12, kSeatSettingsButtonCount);
+    // Twelve rows, the sixteen #358 key cells (12..27) and the KEYMAP door
+    // (28): the final table the pause player screen shares.
+    EXPECT_EQ(29, kSeatSettingsButtonCount);
+    EXPECT_EQ(12, kSeatSettingsCellFirstRow);
+    EXPECT_EQ(28, kSeatSettingsKeymapRow);
     EXPECT_EQ(kSeatSettingsButtonCount, seat.row_count)
-        << "the seat screen ships exactly the twelve rows below";
+        << "the seat screen ships exactly the rows below";
     EXPECT_STREQ("seat_settings_back", seat.rows[kSeatSettingsBackIndex].id);
     EXPECT_STREQ("seat_remove", seat.rows[kSeatSettingsRemoveIndex].id);
     EXPECT_STREQ("seat_reset", seat.rows[kSeatSettingsResetIndex].id);
@@ -3734,7 +3734,8 @@ TEST(MenuEngine, seat_settings_registry_and_player_control_ownership)
                   spec->rows[kSeatSettingsResetIndex].nav.left);
         // §7.1: the y=54 band is INPUT + ZOOM; the y=30 band drops into it
         // (MODE onto INPUT, REMAP onto ZOOM) and RESET drops onto the HUD
-        // stack; INPUT still drops into the bottom band.
+        // stack; INPUT drops into the binding panel's first key cell (#358),
+        // and the bottom band's TEAM climbs back into its last one.
         const int zoom_row = kSeatSettingsZoomRow;
         const int radar_row = kSeatSettingsHudRadarRow;
         const int score_row = kSeatSettingsHudScoreRow;
@@ -3742,10 +3743,11 @@ TEST(MenuEngine, seat_settings_registry_and_player_control_ownership)
         EXPECT_EQ(zoom_row, spec->rows[kSeatSettingsRemapIndex].nav.down);
         EXPECT_EQ(radar_row, spec->rows[kSeatSettingsResetIndex].nav.down);
         EXPECT_EQ(kSeatSettingsModeIndex, spec->rows[input_row].nav.up);
-        EXPECT_EQ(kSeatSettingsTeamIndex, spec->rows[input_row].nav.down);
+        EXPECT_EQ(kSeatSettingsCellFirstRow, spec->rows[input_row].nav.down);
         EXPECT_EQ(-1, spec->rows[input_row].nav.left);
         EXPECT_EQ(zoom_row, spec->rows[input_row].nav.right);
-        EXPECT_EQ(input_row, spec->rows[kSeatSettingsTeamIndex].nav.up);
+        EXPECT_EQ(kSeatSettingsCellFirstRow + 7,
+                  spec->rows[kSeatSettingsTeamIndex].nav.up);
         // ZOOM + HUD stack geometry and dispatch args (one table, so each
         // row's position is its arg — the seat_input precedent).
         expect_geometry(spec->rows[zoom_row], 116, 54, 92, 18);
@@ -3773,13 +3775,25 @@ TEST(MenuEngine, seat_settings_registry_and_player_control_ownership)
         }
     }
     expect_geometry(seat.rows[kSeatSettingsTeamIndex],
-                    12, 169, 138, 18);
+                    12, 169, 66, 18);  // TEAM | KEYMAP halves (#388)
     expect_geometry(seat.rows[kSeatSettingsRemoveIndex],
                     166, 169, 138, 18);
-    EXPECT_EQ(kSeatSettingsRemoveIndex,
+    expect_geometry(seat.rows[kSeatSettingsKeymapRow],
+                    84, 169, 66, 18);
+    EXPECT_STREQ("seat_keymap", seat.rows[kSeatSettingsKeymapRow].id);
+    EXPECT_STREQ("KEYMAP", seat.rows[kSeatSettingsKeymapRow].label);
+    EXPECT_FALSE(seat.rows[kSeatSettingsKeymapRow].hidden);
+    // TEAM | KEYMAP | REMOVE, left to right.
+    EXPECT_EQ(kSeatSettingsKeymapRow,
               seat.rows[kSeatSettingsTeamIndex].nav.right);
     EXPECT_EQ(kSeatSettingsTeamIndex,
+              seat.rows[kSeatSettingsKeymapRow].nav.left);
+    EXPECT_EQ(kSeatSettingsRemoveIndex,
+              seat.rows[kSeatSettingsKeymapRow].nav.right);
+    EXPECT_EQ(kSeatSettingsKeymapRow,
               seat.rows[kSeatSettingsRemoveIndex].nav.left);
+    EXPECT_EQ(kSeatSettingsBackIndex,
+              seat.rows[kSeatSettingsKeymapRow].nav.down);
     EXPECT_EQ(kSeatSettingsHudScoreRow,
               seat.rows[kSeatSettingsRemoveIndex].nav.up);
 
@@ -3807,6 +3821,8 @@ TEST(MenuEngine, seat_settings_registry_and_player_control_ownership)
             }
         }
         for (int row = 0; row < spec->row_count; ++row) {
+            if (spec->rows[row].hidden)
+                continue;  // a row its gate has not shown yet
             EXPECT_TRUE(seen[static_cast<std::size_t>(row)])
                 << "unreachable seat-settings row " << spec->rows[row].id;
         }
@@ -5249,4 +5265,140 @@ TEST(MenuEngine, cloud_save_names_the_company_by_slot_when_its_header_is_unreada
         << "an unreadable header reads COMPANY: <slot>";
     EXPECT_NE(company_line(named_otherwise), drawn)
         << "control: the hashed band does see the company's name";
+}
+
+#ifdef TESTING
+namespace og::ui {
+void picker_testing_apply_row_states(const MenuScreenSpec& spec,
+                                     button* buttons, int num_buttons);
+}
+#endif
+
+// #358 on the Base Camp seat screen: the same sixteen key cells as the
+// pause player screen, walked by the same rewire, and one cell binds one
+// key through the same save. Every direction mode x setting: the cells this
+// seat cannot use are hidden, every visible row is reachable, nothing links
+// into a hidden row, and TEAM climbs into the last movement line.
+TEST(MenuEngine, seat_settings_key_cells_nav_and_one_key_rebind)
+{
+    EngineTestGuard engine_guard;
+    MenuCallbackStateGuard callback_guard;
+    SavedControlState saved_controls;
+    ASSERT_TRUE(saved_controls.config_file.ready())
+        << saved_controls.config_file.error().message();
+    FakeLobbyClient lobby;
+    lobby.players = {make_menu_lobby_player(0, "LOCAL COMPANY")};
+    lobby.local_indices = {0};
+    lobby.local_seats = 1;
+    og::ui::install_active_picker_lobby_client(&lobby);
+    og::ui::SeatSettingsScreenState state{
+        .seat_id = lobby.players.front().seat_id,
+        .player_index = lobby.players.front().player_index,
+        .local_slot = 0,
+    };
+    og::ui::install_seat_settings_state_for_screen(&state);
+    const og::ui::MenuScreenSpec& spec =
+        og::ui::seat_settings_menu_screen_spec();
+    constexpr int first = kSeatSettingsCellFirstRow;
+    og::input::testing_clear_key_wait_events();
+    reset_default_player_controls();
+
+    for (const bool eight_dir : {false, true}) {
+        for (const bool ability_select : {false, true}) {
+            SCOPED_TRACE(std::format("eight_dir={} ability_select={}",
+                                     eight_dir, ability_select));
+            ScopedAbilitySelect scope(ability_select);
+            set_player_control_mode(
+                0, static_cast<int>(
+                       eight_dir ? ControlDirectionMode::EightDirection
+                                 : ControlDirectionMode::FourDirection));
+            button* const buttons = spec.buttons_accessor();
+            const int count = spec.count_accessor();
+            og::ui::picker_testing_apply_row_states(spec, buttons, count);
+            int highlighted = spec.default_highlight;
+            spec.nav.rewire(buttons, count, highlighted);
+
+            int last_movement = -1;
+            for (int line = 0; line < 8; ++line) {
+                EXPECT_EQ(line % 2 == 1 && !eight_dir,
+                          buttons[first + line].hidden)
+                    << "movement line " << line;
+                EXPECT_EQ(line == 7 && !ability_select,
+                          buttons[first + 8 + line].hidden)
+                    << "action line " << line;
+                if (!buttons[first + line].hidden)
+                    last_movement = first + line;
+            }
+            // #388: KEYMAP between TEAM and REMOVE on the bottom band.
+            EXPECT_FALSE(buttons[kSeatSettingsKeymapRow].hidden);
+            EXPECT_EQ(first, buttons[kSeatSettingsInputRow].nav.down);
+            EXPECT_EQ(first + 8, buttons[kSeatSettingsZoomRow].nav.down);
+            EXPECT_EQ(last_movement, buttons[kSeatSettingsTeamIndex].nav.up);
+            const int last_action = first + 8 + (ability_select ? 7 : 6);
+            EXPECT_EQ(last_action, buttons[kSeatSettingsKeymapRow].nav.up);
+            EXPECT_EQ(kSeatSettingsKeymapRow,
+                      buttons[kSeatSettingsTeamIndex].nav.right);
+            EXPECT_EQ(kSeatSettingsTeamIndex,
+                      buttons[kSeatSettingsKeymapRow].nav.left);
+            EXPECT_EQ(kSeatSettingsRemoveIndex,
+                      buttons[kSeatSettingsKeymapRow].nav.right);
+            EXPECT_EQ(kSeatSettingsKeymapRow,
+                      buttons[kSeatSettingsRemoveIndex].nav.left);
+            EXPECT_EQ(kSeatSettingsBackIndex,
+                      buttons[kSeatSettingsKeymapRow].nav.down);
+
+            std::vector<bool> seen(static_cast<std::size_t>(count), false);
+            std::vector<int> queue{kSeatSettingsModeIndex};
+            seen[kSeatSettingsModeIndex] = true;
+            while (!queue.empty()) {
+                const int row = queue.back();
+                queue.pop_back();
+                for (const int link : {buttons[row].nav.up, buttons[row].nav.down,
+                                       buttons[row].nav.left,
+                                       buttons[row].nav.right}) {
+                    if (link < 0)
+                        continue;
+                    ASSERT_LT(link, count);
+                    EXPECT_FALSE(buttons[link].hidden)
+                        << buttons[row].id << " links to hidden "
+                        << buttons[link].id;
+                    if (!seen[static_cast<std::size_t>(link)]) {
+                        seen[static_cast<std::size_t>(link)] = true;
+                        queue.push_back(link);
+                    }
+                }
+            }
+            for (int row = 0; row < count; ++row) {
+                if (!buttons[row].hidden) {
+                    EXPECT_TRUE(seen[static_cast<std::size_t>(row)])
+                        << "unreachable " << buttons[row].id;
+                }
+            }
+        }
+    }
+
+    // One cell, one key, on this screen too: the FIRE line (the first
+    // ACTIONS line with the setting on) binds the key pressed at its prompt.
+    ScopedAbilitySelect on(true);
+    og::input_native::EventData press;
+    press.type = og::input_native::EventType::KeyDown;
+    press.key_sym = SDLK_F16;
+    og::input::testing_push_key_wait_event(press);
+    trace_clear();
+    EXPECT_EQ(MENU_OK, spec.on_spec_row(first + 8, &state));
+    EXPECT_TRUE(trace_contains("basecamp", "seat_rebind slot=1 key=8"));
+    EXPECT_EQ(SDLK_F16,
+              og::runtime::current_session->player_keys_[0][KEY_FIRE]);
+    const int mode = get_player_control_mode(0);
+    EXPECT_EQ(std::to_string(SDLK_F16),
+              cfg.get_setting("controls",
+                              std::format("player1_mode{}_key{}",
+                                          mode == static_cast<int>(
+                                                      ControlDirectionMode::
+                                                          EightDirection)
+                                              ? 8
+                                              : 4,
+                                          KEY_FIRE)));
+    og::input::testing_clear_key_wait_events();
+    og::ui::install_seat_settings_state_for_screen(nullptr);
 }

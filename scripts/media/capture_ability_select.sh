@@ -52,7 +52,6 @@
 #              (PausePlayerDraw.menushots_* in og_test_game_core,
 #              MENUSHOTS_DIR), and the main menu's dimmed NO COMPANY YET
 #              (UxShots.a_mainmenu_no_company)
-#   keyboard   the committed keyboard pictures, pix/changelog/*.png, as-is
 #   changelog  the CHANGELOG! page with the keyboard picture at three window
 #              sizes, 640x400, 1280x800 and 1920x1080, kept at the window's
 #              real size (ChangelogFlow.page_at_three_window_sizes_keeps_the_
@@ -88,7 +87,7 @@ case "$BUILD_DIR" in
     *) BUILD_DIR="$REPO_ROOT/$BUILD_DIR" ;;
 esac
 RADAR_FRAME="${RADAR_FRAME:-20}"
-STEPS=(hud hud-radar radar abilities ui-fx panels keyboard changelog icons)
+STEPS=(hud hud-radar radar abilities ui-fx panels changelog icons)
 
 usage() {
     sed -n '/^# Usage:/,/^# Build first/s/^# \{0,1\}//p' "${BASH_SOURCE[0]}"
@@ -320,13 +319,6 @@ if wanted panels; then
     canvas_png "$WORK_DIR/panels/pause_player_screen_off.ppm" pause-keys-off
     canvas_png "$WORK_DIR/panels/remap_p1_spec2.ppm" remap-p1-spec2
     canvas_png "$WORK_DIR/panels/mainmenu_no_company.ppm" dimmed-no-company
-fi
-
-if wanted keyboard; then
-    for name in keyboard_belt keyboard_belt_web; do
-        cp -- "$REPO_ROOT/pix/changelog/$name.png" "$OUT_DIR/$name.png"
-        printf 'wrote %s\n' "$OUT_DIR/$name.png"
-    done
 fi
 
 if wanted changelog; then

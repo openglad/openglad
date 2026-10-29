@@ -246,6 +246,19 @@ bool local_transport_shadow_abort_level(GameSession& session);
 void local_transport_shadow_send_input(GameSession& session,
                                        const InputState& input,
                                        std::uint32_t tick);
+// ABILITIES from the PAUSED menu (protocol v23): send one BeltChange for
+// local seat `seat` through the client whose input_slots holds that seat (in
+// local play every seat is its own in-process peer; a networked machine's one
+// connection carries all its seats), naming `entity_id`, the walker the seat
+// drove when the screen opened. Also writes the display mirror's guy for that
+// walker at once so the HUD shows the new layout before the next snapshot;
+// that snapshot confirms the edit, or reverts it if the server refused.
+// Returns false (and sends nothing) when no shadow is live or no client
+// carries the seat.
+bool local_transport_shadow_set_belt(GameSession& session,
+                                     int seat,
+                                     std::uint32_t entity_id,
+                                     const std::array<std::uint8_t, 6>& belt);
 void local_transport_shadow_finish_tick(GameSession& session);
 
 #ifdef TESTING

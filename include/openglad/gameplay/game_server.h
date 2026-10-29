@@ -78,6 +78,19 @@ WorldSnapshot consume_delta_snapshot_for_client(PerClientState& client_state,
 // in-flight ticks; 120 (~4 seconds of ticks) is decisively pathological.
 inline constexpr std::uint32_t kMaxConsecutiveSnapshotHashMismatches = 120;
 
+// What the server did with the last BeltChange it processed (ABILITIES,
+// protocol v23). Refusals are silent on the wire; this is how a caller (and
+// a test) can tell which rule refused.
+enum class BeltChangeVerdict : std::uint8_t {
+    None,          // no BeltChange processed yet
+    Accepted,
+    SeatNotBound,  // the peer has no seat with that local_slot
+    NoBody,        // the seat drives nothing
+    DeadBody,      // the seat's body is dead
+    StaleEntity,   // the seat drives a different walker than the one named
+    NoGuyRecord,   // the body has no guy record (summon, raised dead, host)
+};
+
 // One bound seat of a connected peer: a peer may bind up to MAX_PLAYERS local
 // seats (local_slot selects the peer's InputState slot), each mapped to a
 // GLOBAL player_index < kMaxGlobalPlayers.
@@ -241,6 +254,10 @@ public:
     {
         return pending_pause_state_.has_value();
     }
+    [[nodiscard]] BeltChangeVerdict last_belt_change_verdict() const noexcept
+    {
+        return last_belt_change_verdict_;
+    }
     [[nodiscard]] std::size_t snapshot_hash_mismatch_count() const noexcept
     {
         return snapshot_hash_mismatch_count_;
@@ -311,6 +328,8 @@ private:
     void send_forced_keyframe_to_ready_clients();
     void handle_pause_request(PeerId peer_id);
     void handle_pause_response();
+    void handle_belt_change(ConnectedClientState& client,
+                            const BeltChangeMessage& message);
     void handle_hello(PeerId peer_id, const HelloMessage& message);
     void handle_heartbeat(PeerId peer_id);
     void prepare_clients_for_loaded_level();
@@ -372,6 +391,7 @@ private:
     std::optional<PendingExitPromptState> pending_exit_prompt_state_ =
         std::nullopt;
     std::optional<PendingPauseState> pending_pause_state_ = std::nullopt;
+    BeltChangeVerdict last_belt_change_verdict_ = BeltChangeVerdict::None;
     std::size_t snapshot_hash_mismatch_count_ = 0;
     std::uint32_t next_sim_event_sequence_ = 1;
     std::uint32_t next_game_flow_event_sequence_ = 1;

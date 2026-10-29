@@ -16,6 +16,9 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <functional>
+#include <atomic>
+#include <thread>
 #include <memory>
 
 #include "../test_save_state_guard.h"
@@ -142,6 +145,10 @@ struct RemapPollScript
     SDL_Keycode first_release = SDLK_UNKNOWN;
     SDL_Keycode first_press = SDLK_UNKNOWN;
     SDL_Keycode second_press = SDLK_UNKNOWN;
+    // Device input made during the wait (a virtual pad's press), run at
+    // `queue_at` before the key events: anything queued before the wait
+    // starts is dropped (#358).
+    std::function<void()> on_queue;
 };
 RemapPollScript g_remap_poll;
 
@@ -151,6 +158,8 @@ bool scripted_remap_poll()
     ++s.calls;
     if (s.calls == s.queue_at)
     {
+        if (s.on_queue)
+            s.on_queue();
         if (s.first_release != SDLK_UNKNOWN)
             push_sdl_key(SDL_EVENT_KEY_UP, s.first_release);
         if (s.first_press != SDLK_UNKNOWN)
@@ -287,11 +296,13 @@ TEST(RemapWait, joystick_button_press_binds_through_joy_layout)
     ASSERT_NE(JoyData::BUTTON, player_joy[0].key_type[KEY_SPECIAL]);
 
     clear_events(); // the device-added notice is not part of the answer
-    ASSERT_TRUE(SDL_SetJoystickVirtualButton(joy.pad, 2, true)) << SDL_GetError();
-    SDL_UpdateJoysticks(); // posts the button-down event
 
     g_remap_poll = RemapPollScript{};
     g_remap_poll.budget = 100;
+    g_remap_poll.on_queue = [&joy] {
+        EXPECT_TRUE(SDL_SetJoystickVirtualButton(joy.pad, 2, true)) << SDL_GetError();
+        SDL_UpdateJoysticks(); // posts the button-down event
+    };
     EXPECT_TRUE(assignKeyFromWaitEventPolling(0, KEY_SPECIAL, &scripted_remap_poll))
         << "a joystick button press must end the remap wait";
     EXPECT_EQ(JoyData::BUTTON, player_joy[0].key_type[KEY_SPECIAL]);
@@ -369,13 +380,15 @@ TEST(RemapWait, joystick_axis_inside_dead_zone_is_ignored)
     ASSERT_NE(JoyData::BUTTON, player_joy[0].key_type[KEY_SPECIAL]);
 
     clear_events(); // the device-added notice is not part of the answer
-    ASSERT_TRUE(SDL_SetJoystickVirtualAxis(joy.pad, 0, 4000)) << SDL_GetError();
-    SDL_UpdateJoysticks(); // posts the in-dead-zone axis motion
-    ASSERT_TRUE(SDL_SetJoystickVirtualButton(joy.pad, 2, true)) << SDL_GetError();
-    SDL_UpdateJoysticks(); // posts the button-down behind it
 
     g_remap_poll = RemapPollScript{};
     g_remap_poll.budget = 100;
+    g_remap_poll.on_queue = [&joy] {
+        EXPECT_TRUE(SDL_SetJoystickVirtualAxis(joy.pad, 0, 4000)) << SDL_GetError();
+        SDL_UpdateJoysticks(); // posts the in-dead-zone axis motion
+        EXPECT_TRUE(SDL_SetJoystickVirtualButton(joy.pad, 2, true)) << SDL_GetError();
+        SDL_UpdateJoysticks(); // posts the button-down behind it
+    };
     EXPECT_TRUE(assignKeyFromWaitEventPolling(0, KEY_SPECIAL, &scripted_remap_poll));
     EXPECT_EQ(JoyData::BUTTON, player_joy[0].key_type[KEY_SPECIAL])
         << "the in-dead-zone axis motion must not answer the remap";
@@ -386,11 +399,13 @@ TEST(RemapWait, joystick_axis_inside_dead_zone_is_ignored)
     SDL_UpdateJoysticks();
     clear_events();
     player_joy[0] = joy.saved_layout;
-    ASSERT_TRUE(SDL_SetJoystickVirtualAxis(joy.pad, 0, 9000)) << SDL_GetError();
-    SDL_UpdateJoysticks();
 
     g_remap_poll = RemapPollScript{};
     g_remap_poll.budget = 100;
+    g_remap_poll.on_queue = [&joy] {
+        EXPECT_TRUE(SDL_SetJoystickVirtualAxis(joy.pad, 0, 9000)) << SDL_GetError();
+        SDL_UpdateJoysticks();
+    };
     EXPECT_TRUE(assignKeyFromWaitEventPolling(0, KEY_SPECIAL, &scripted_remap_poll));
     EXPECT_EQ(JoyData::POS_AXIS, player_joy[0].key_type[KEY_SPECIAL])
         << "an axis past the dead zone answers the remap";
@@ -571,11 +586,56 @@ TEST(GameLoopWrapper, browser_wrapper_emits_one_browser_frame_step_per_call)
     og::runtime::set_runtime_trace_enabled(false);
 }
 
+// The real wait loop drops a held key's auto-repeat (#358): the owner
+// queues a repeat of K on its first pass and a fresh press of J on its
+// second, and J is what binds.
+int g_repeat_poll_calls = 0;
+bool repeat_then_press_poll()
+{
+    ++g_repeat_poll_calls;
+    SDL_Event event{};
+    event.type = SDL_EVENT_KEY_DOWN;
+    event.key.down = true;
+    if (g_repeat_poll_calls == 1)
+    {
+        event.key.key = SDLK_K;
+        event.key.repeat = true;
+        event.key.scancode = SDL_GetScancodeFromKey(SDLK_K, nullptr);
+        (void)SDL_PushEvent(&event);
+    }
+    else if (g_repeat_poll_calls == 2)
+    {
+        event.key.key = SDLK_J;
+        event.key.scancode = SDL_GetScancodeFromKey(SDLK_J, nullptr);
+        (void)SDL_PushEvent(&event);
+    }
+    return g_repeat_poll_calls < 100;
+}
+
+TEST(RemapWait, auto_repeat_does_not_answer_the_wait)
+{
+    og::test::ScopedCampaignMountState mount_restore;
+    ensure_game_loop_wrapper_test_runtime();
+    mount_game_loop_wrapper_campaign();
+    auto session = make_wait_loop_session();
+    auto scope = session->activate();
+    ScopedKeyBinding restore(0, KEY_SPECIAL);
+
+    clear_events();
+    g_repeat_poll_calls = 0;
+    EXPECT_TRUE(assignKeyFromWaitEventPolling(0, KEY_SPECIAL,
+                                              &repeat_then_press_poll));
+    EXPECT_EQ(static_cast<int>(SDLK_J), bound_key(0, KEY_SPECIAL))
+        << "the repeated K must not bind";
+}
+
 // LAST in the file: the remap wait without a poll owner has no exit but a
-// delivered event (the gate test above proves delivery), so the press is
-// queued before the wait starts. It binds the key and then debounces for a
-// flat 400 ms, the product's own timer.
-TEST(RemapWait, without_owner_binds_a_queued_press)
+// delivered event (the gate test above proves delivery). A press queued
+// BEFORE the wait is dropped (#358: it is the press that opened the
+// prompt), so a helper thread keeps pressing J until the wait has
+// answered. It binds the key and then debounces for a flat 400 ms, the
+// product's own timer.
+TEST(RemapWait, without_owner_binds_a_press_made_during_the_wait)
 {
     og::test::ScopedCampaignMountState mount_restore;
     ensure_game_loop_wrapper_test_runtime();
@@ -585,8 +645,26 @@ TEST(RemapWait, without_owner_binds_a_queued_press)
     ScopedKeyBinding restore(0, KEY_SPECIAL);
     ASSERT_NE(static_cast<int>(SDLK_J), restore.saved);
 
+    // Queued before the wait: dropped, so it must not be what binds.
     clear_events();
-    push_sdl_key(SDL_EVENT_KEY_DOWN, SDLK_J);
-    EXPECT_TRUE(assignKeyFromWaitEventPolling(0, KEY_SPECIAL, nullptr));
+    push_sdl_key(SDL_EVENT_KEY_DOWN, SDLK_K);
+    std::atomic<bool> answered{false};
+    std::thread presser([&answered] {
+        while (!answered.load())
+        {
+            SDL_Event event{};
+            event.type = SDL_EVENT_KEY_DOWN;
+            event.key.down = true;
+            event.key.key = SDLK_J;
+            event.key.scancode = SDL_GetScancodeFromKey(SDLK_J, nullptr);
+            (void)SDL_PushEvent(&event);
+            SDL_Delay(20);
+        }
+    });
+    const bool bound = assignKeyFromWaitEventPolling(0, KEY_SPECIAL, nullptr);
+    answered.store(true);
+    presser.join();
+    clear_events();
+    EXPECT_TRUE(bound);
     EXPECT_EQ(static_cast<int>(SDLK_J), bound_key(0, KEY_SPECIAL));
 }

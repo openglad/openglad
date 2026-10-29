@@ -24,7 +24,9 @@
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/session_state.h>
+#include <openglad/interface/ui/abilities_screen.h>
 #include <openglad/interface/ui/input_cycler.h>
+#include <openglad/interface/ui/keymap_screen.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/resources/gparser.h>
 
@@ -32,6 +34,8 @@
 
 #include <algorithm>
 #include <array>
+#include <cstdlib>
+#include <initializer_list>
 #include <format>
 #include <span>
 #include <string>
@@ -596,10 +600,44 @@ RowState pause_player_zoom_row_state(const MenuLabelContext& /*context*/)
                                      : RowState::Disabled;
 }
 
+// #358 click cells: each cell's state for the seat on screen (the shared
+// rule, binding_panel_cell_state). No installed state = the bare spec shape.
+template <int Cell>
+RowState pause_binding_cell_state(const MenuLabelContext& /*context*/)
+{
+    return binding_panel_cell_state(
+        g_pause_player_state != nullptr ? g_pause_player_state->seat : -1,
+        Cell);
+}
+
+// ABILITIES (#376): the character this seat drives. Dimmed with New Ability
+// Select off (there is no layout to edit, design E.1) and while the seat
+// drives no living body. No installed state = the bare spec shape.
+RowState pause_player_abilities_row_state(const MenuLabelContext& /*context*/)
+{
+    if (!og::input::ability_select_on())
+        return RowState::Disabled;
+    if (g_pause_player_state == nullptr)
+        return RowState::Visible;
+    return seat_driven_walker(g_pause_player_state->seat) != nullptr
+        ? RowState::Visible
+        : RowState::Disabled;
+}
+
+// KEYMAP (#388): every seat but a phone's touch seat.
+RowState pause_player_keymap_row_state(const MenuLabelContext& /*context*/)
+{
+    if (g_pause_player_state == nullptr)
+        return RowState::Visible;
+    return keymap_door_shown(g_pause_player_state->seat) ? RowState::Visible
+                                                          : RowState::Hidden;
+}
+
 constexpr MenuButtonSpec kPausePlayerRows[] = {
     {.id = "pause_player_back", .label = "BACK",
      .hotkey = KEYSTATE_ESCAPE,
-     .x = 10, .y = 8, .w = 50, .h = 15,
+     .x = kPlayerScreenBackX, .y = kPlayerScreenBackY,
+     .w = kPlayerScreenBackW, .h = kPlayerScreenBackH,
      .action = ButtonAction::ReturnMenu, .arg = MENU_REDRAW,
      .nav = {.up = kPausePlayerRemoveIndex,
              .down = kPausePlayerModeIndex}},
@@ -608,7 +646,7 @@ constexpr MenuButtonSpec kPausePlayerRows[] = {
      .w = kPlayerScreenColAW, .h = kPlayerScreenBandH,
      .action = ButtonAction::MenuSpecRow, .arg = kPausePlayerInputIndex,
      .nav = {.up = kPausePlayerModeIndex,
-             .down = kPausePlayerRemoveIndex,
+             .down = kPausePlayerCellFirstIndex,
              .right = kPausePlayerZoomIndex}},
     {.id = "pause_direction", .label = "4-DIRECTION",
      .x = kPlayerScreenColAX, .y = kPlayerScreenBand1Y,
@@ -617,7 +655,7 @@ constexpr MenuButtonSpec kPausePlayerRows[] = {
      .nav = {.up = kPausePlayerBackIndex,
              .down = kPausePlayerInputIndex,
              .right = kPausePlayerRemapIndex}},
-    {.id = "pause_remap", .label = "REMAP",
+    {.id = "pause_remap", .label = "REMAP ALL",
      .x = kPlayerScreenColBX, .y = kPlayerScreenBand1Y,
      .w = kPlayerScreenColBW, .h = kPlayerScreenBandH,
      .action = ButtonAction::MenuSpecRow, .arg = kPausePlayerRemapIndex,
@@ -643,8 +681,9 @@ constexpr MenuButtonSpec kPausePlayerRows[] = {
      .w = kPlayerScreenColBW, .h = kPlayerScreenBandH,
      .action = ButtonAction::MenuSpecRow, .arg = kPausePlayerZoomIndex,
      .nav = {.up = kPausePlayerRemapIndex,
-             .down = kPausePlayerHudRadarIndex,
-             .left = kPausePlayerInputIndex},
+             .down = kPausePlayerCellFirstIndex + 8,
+             .left = kPausePlayerInputIndex,
+             .right = kPausePlayerHudRadarIndex},
      .state_override = &pause_player_zoom_row_state},
     {.id = "pause_hud_radar", .label = "RADAR: ON",
      .x = kPlayerScreenColCX, .y = kPlayerScreenHudTopY,
@@ -652,7 +691,8 @@ constexpr MenuButtonSpec kPausePlayerRows[] = {
      .action = ButtonAction::MenuSpecRow, .arg = kPausePlayerHudRadarIndex,
      .nav = {.up = kPausePlayerResetIndex,
              .down = kPausePlayerHudLifeIndex,
-             .left = kPausePlayerZoomIndex}},
+             .left = kPausePlayerCellFirstIndex + 8 +
+                     binding_cell_line_beside_hud(0)}},
     {.id = "pause_hud_life", .label = "HP: ON",
      .x = kPlayerScreenColCX,
      .y = kPlayerScreenHudTopY + kPlayerScreenHudPitch,
@@ -660,7 +700,8 @@ constexpr MenuButtonSpec kPausePlayerRows[] = {
      .action = ButtonAction::MenuSpecRow, .arg = kPausePlayerHudLifeIndex,
      .nav = {.up = kPausePlayerHudRadarIndex,
              .down = kPausePlayerHudFoesIndex,
-             .left = kPausePlayerInputIndex}},
+             .left = kPausePlayerCellFirstIndex + 8 +
+                     binding_cell_line_beside_hud(1)}},
     {.id = "pause_hud_foes", .label = "FOES: ON",
      .x = kPlayerScreenColCX,
      .y = kPlayerScreenHudTopY + 2 * kPlayerScreenHudPitch,
@@ -668,7 +709,8 @@ constexpr MenuButtonSpec kPausePlayerRows[] = {
      .action = ButtonAction::MenuSpecRow, .arg = kPausePlayerHudFoesIndex,
      .nav = {.up = kPausePlayerHudLifeIndex,
              .down = kPausePlayerHudScoreIndex,
-             .left = kPausePlayerInputIndex}},
+             .left = kPausePlayerCellFirstIndex + 8 +
+                     binding_cell_line_beside_hud(2)}},
     {.id = "pause_hud_score", .label = "SCORE: ON",
      .x = kPlayerScreenColCX,
      .y = kPlayerScreenHudTopY + 3 * kPlayerScreenHudPitch,
@@ -676,7 +718,34 @@ constexpr MenuButtonSpec kPausePlayerRows[] = {
      .action = ButtonAction::MenuSpecRow, .arg = kPausePlayerHudScoreIndex,
      .nav = {.up = kPausePlayerHudFoesIndex,
              .down = kPausePlayerRemoveIndex,
-             .left = kPausePlayerInputIndex}},
+             .left = kPausePlayerCellFirstIndex + 8 +
+                     binding_cell_line_beside_hud(3)}},
+    // #358: the binding panel's click cells, 11..26.
+    OG_BINDING_PANEL_CELLS("pause", kPausePlayerCellFirstIndex,
+                           pause_binding_cell_state, kPausePlayerInputIndex,
+                           kPausePlayerZoomIndex, kPausePlayerHudRadarIndex,
+                           kPausePlayerAbilitiesIndex, kPausePlayerRemoveIndex),
+    // The bottom-left band's two doors, ABILITIES (#376) and KEYMAP (#388):
+    // left to right ABILITIES, KEYMAP, REMOVE PLAYER, each down to BACK.
+    {.id = "pause_abilities", .label = "ABILITIES",
+     .x = kPlayerScreenColAX, .y = kPlayerScreenBottomBandY,
+     .w = kPlayerScreenBottomHalfW,
+     .h = kPlayerScreenBandH,
+     .action = ButtonAction::MenuSpecRow, .arg = kPausePlayerAbilitiesIndex,
+     .nav = {.up = kPausePlayerCellFirstIndex + 7,
+             .down = kPausePlayerBackIndex,
+             .right = kPausePlayerKeymapIndex},
+     .state_override = &pause_player_abilities_row_state},
+    {.id = "pause_keymap", .label = "KEYMAP",
+     .x = kPlayerScreenBottomMidX, .y = kPlayerScreenBottomBandY,
+     .w = kPlayerScreenBottomHalfW,
+     .h = kPlayerScreenBandH,
+     .action = ButtonAction::MenuSpecRow, .arg = kPausePlayerKeymapIndex,
+     .nav = {.up = kPausePlayerCellFirstIndex + 15,
+             .down = kPausePlayerBackIndex,
+             .left = kPausePlayerAbilitiesIndex,
+             .right = kPausePlayerRemoveIndex},
+     .state_override = &pause_player_keymap_row_state},
 };
 static_assert(static_cast<int>(std::size(kPausePlayerRows)) ==
               kPausePlayerButtonCount);
@@ -712,10 +781,28 @@ void pause_player_rewire(button* buttons, int count, int& highlighted_button)
     // vertical chains around it when it is gone (ZOOM is only ever Disabled
     // — still nav-visible — so the static links through it stand).
     const bool remove_visible = !buttons[kPausePlayerRemoveIndex].hidden;
-    buttons[kPausePlayerInputIndex].nav.down =
-        remove_visible ? kPausePlayerRemoveIndex : kPausePlayerBackIndex;
     buttons[kPausePlayerHudScoreIndex].nav.down =
         remove_visible ? kPausePlayerRemoveIndex : kPausePlayerBackIndex;
+    // #358: the click cells (and INPUT/ZOOM/HUD links into them) around the
+    // cells this seat cannot use.
+    rewire_binding_panel_cells(
+        buttons, count,
+        {.first_cell = kPausePlayerCellFirstIndex,
+         .input = kPausePlayerInputIndex,
+         .zoom = kPausePlayerZoomIndex,
+         .hud_first = kPausePlayerHudRadarIndex,
+         .bottom_left = kPausePlayerAbilitiesIndex,
+         // Under the ACTIONS column: REMOVE, or KEYMAP when REMOVE is gone.
+         .bottom_right = remove_visible ? kPausePlayerRemoveIndex
+                                        : kPausePlayerKeymapIndex,
+         .back = kPausePlayerBackIndex});
+    rewire_player_screen_bottom_band(
+        buttons, count,
+        {.first_cell = kPausePlayerCellFirstIndex,
+         .left = kPausePlayerAbilitiesIndex,
+         .keymap = kPausePlayerKeymapIndex,
+         .remove = kPausePlayerRemoveIndex,
+         .back = kPausePlayerBackIndex});
     buttons[kPausePlayerBackIndex].nav.up =
         remove_visible ? kPausePlayerRemoveIndex : kPausePlayerHudScoreIndex;
 
@@ -747,84 +834,15 @@ void pause_player_draw_content(void* screen_state)
                     state->player_number)
             .c_str());
 
-    // §7.1 unified geometry: the binding panel spans columns A+B
-    // (x=12..208, top/bottom aligned with the HUD stack at y=78..161) with
-    // the seat-settings 8px line pitch; movement column x=20, actions
-    // x=104, both budget-clamped.
-    scr->draw_button(kPlayerScreenColAX, kPlayerScreenPanelTopY,
-                     kPlayerScreenPanelRightX, kPlayerScreenPanelBottomY,
-                     2, 1);
-    mytext.write_xy(20, kPlayerScreenPanelHeaderY, DARK_BLUE, "%s",
-                    "MOVEMENT");
-    mytext.write_xy(104, kPlayerScreenPanelHeaderY, DARK_BLUE, "%s",
-                    "ACTIONS");
-
-    struct BindingLine {
-        const char* label;
-        int key;
-        bool diagonal;
-    };
-    // Compact diagonal labels: the movement column has 14 chars before the
-    // ACTIONS column at x=104 ((104-20)/6).
-    static constexpr std::array<BindingLine, 8> movement{{
-        {"UP", KEY_UP, false},
-        {"UP-R", KEY_UP_RIGHT, true},
-        {"RIGHT", KEY_RIGHT, false},
-        {"DN-R", KEY_DOWN_RIGHT, true},
-        {"DOWN", KEY_DOWN, false},
-        {"DN-L", KEY_DOWN_LEFT, true},
-        {"LEFT", KEY_LEFT, false},
-        {"UP-L", KEY_UP_LEFT, true},
-    }};
-    // The ACTIONS rows follow New Ability Select: the classic seven with the
-    // setting off, one row per ability key (SPEC 1/2/3) with it on. One
-    // table for both binding panels (og::ui::binding_panel_action_rows).
-    const std::span<const og::ui::BindingPanelRow> actions =
-        og::ui::binding_panel_action_rows(og::input::ability_select_on());
-    const bool eight_dir =
-        get_player_control_mode(state->seat) ==
-        static_cast<int>(ControlDirectionMode::EightDirection);
-    // Joystick seats show the device bindings (B0/A0+/HU style) — the
-    // keyboard names would be misleading while the assigned device drives.
-    const bool joystick_seat = playerHasJoystick(state->seat);
-    const auto binding_value = [state, joystick_seat](int key) {
-        if (joystick_seat)
-        {
-            return joy_binding_display_name(
-                player_joy[state->seat].key_type[key],
-                player_joy[state->seat].key_index[key]);
-        }
-        return player_control_key_display_name(state->seat, key);
-    };
-
-    for (std::size_t index = 0; index < movement.size(); ++index)
-    {
-        const BindingLine& binding = movement[index];
-        const bool active = !binding.diagonal || eight_dir;
-        const std::string value =
-            active ? binding_value(binding.key) : std::string("--");
-        const std::string line = format_binding_panel_line(
-            binding.label, value, kBindingPanelMovementChars);
-        mytext.write_xy(
-            20, kPlayerScreenPanelLineY + static_cast<int>(index) * 8,
-            active ? DARK_BLUE : GREY, "%s", line.c_str());
-    }
-    for (std::size_t index = 0; index < actions.size(); ++index)
-    {
-        const og::ui::BindingPanelRow& binding = actions[index];
-        const std::string line = format_binding_panel_line(
-            binding.label, binding_value(binding.key),
-            kBindingPanelActionsChars);
-        mytext.write_xy(
-            104, kPlayerScreenPanelLineY + static_cast<int>(index) * 8,
-            DARK_BLUE, "%s", line.c_str());
-    }
+    // §7.1 unified geometry: the one binding panel both player screens
+    // draw (x=12..208, top/bottom aligned with the HUD stack at y=78..161).
+    draw_binding_panel(state->seat, og::input::ability_select_on());
 }
 
 bool pause_player_frame_tick(void* screen_state, int /*frame*/)
 {
     auto* const state = static_cast<PausePlayerScreenState*>(screen_state);
-    if (state == nullptr || state->removed)
+    if (state == nullptr || state->removed || state->session_ended)
         return false;
     if (state->host != nullptr)
     {
@@ -854,6 +872,23 @@ void persist_pause_player_controls()
 bool pause_remap_poll()
 {
     PausePlayerScreenState* const state = g_pause_player_state;
+    if (state == nullptr || state->host == nullptr)
+        return true;
+    if (state->host->pump_paused != nullptr && !state->host->pump_paused())
+    {
+        state->session_ended = true;
+        return false;
+    }
+    maintain_pause_keepalive(*state->host, state->last_keepalive_ms);
+    return true;
+}
+
+// The pump a door on this screen hands its own screen (KEYMAP, ABILITIES):
+// the paused transport plus the menu's keep-alive, once per frame of the
+// child; false when the session died underneath it.
+bool pause_player_child_pump(void* context)
+{
+    auto* const state = static_cast<PausePlayerScreenState*>(context);
     if (state == nullptr || state->host == nullptr)
         return true;
     if (state->host->pump_paused != nullptr && !state->host->pump_paused())
@@ -897,10 +932,64 @@ Sint32 pause_player_on_spec_row(int row, void* screen_state)
     if (row == kPausePlayerRemapIndex)
     {
         (void)edit_player_keymap_with_poll(state->seat, &pause_remap_poll);
-        // Write the customization through to the mapping library (design
-        // §3.2); false = the seat is factory-identical, which is success.
-        (void)og::input::save_player_mapping_to_library(cfg, state->seat);
-        persist_pause_player_controls();
+        save_player_keys_after_remap(state->seat);
+        return MENU_OK;
+    }
+    if (row >= kPausePlayerCellFirstIndex &&
+        row < kPausePlayerCellFirstIndex + kBindingPanelCellCount)
+    {
+        // #358: one key, from its line in the panel.
+        const int cell = row - kPausePlayerCellFirstIndex;
+        const int key =
+            binding_panel_cell_key(cell, og::input::ability_select_on());
+        if (key < 0 ||
+            binding_panel_cell_state(state->seat, cell) != RowState::Visible)
+        {
+            return MENU_OK;
+        }
+        TRACE("pause_menu", "rebind seat=%d key=%d", state->seat, key);
+        (void)rebind_player_key_with_poll(state->seat, key, &pause_remap_poll);
+        save_player_keys_after_remap(state->seat);
+        return MENU_OK;
+    }
+    if (row == kPausePlayerAbilitiesIndex)
+    {
+        // #376: the character this seat drives, edited in place; BACK sends
+        // a changed layout to the server.
+        if (!og::input::ability_select_on() ||
+            seat_driven_walker(state->seat) == nullptr)
+        {
+            return MENU_OK;
+        }
+        const PauseAbilitiesHost abilities_host{
+            .seat = state->seat,
+            .pump = &pause_player_child_pump,
+            .pump_context = state,
+            .set_belt = state->host != nullptr ? state->host->set_belt
+                                               : nullptr,
+        };
+        [[maybe_unused]] const PauseAbilitiesResult result =
+            run_pause_abilities_screen(abilities_host);
+        TRACE("pause_menu", "abilities seat=%d committed=%d changed=%d",
+              state->seat, result.committed ? 1 : 0,
+              result.control_changed ? 1 : 0);
+        return MENU_OK;
+    }
+    if (row == kPausePlayerKeymapIndex)
+    {
+        // #388: the keyboard picture of this machine's seats, this seat
+        // first.
+        if (!keymap_door_shown(state->seat))
+            return MENU_OK;
+        KeymapScreenHost keymap_host;
+        for (const PauseSeatInfo& seat : collect_pause_seats(networked))
+            keymap_host.seats.push_back(
+                KeymapSeat{.seat = seat.seat,
+                           .player_number = seat.player_number});
+        keymap_host.pump = &pause_player_child_pump;
+        keymap_host.pump_context = state;
+        TRACE("pause_menu", "keymap seat=%d", state->seat);
+        (void)run_keymap_screen(state->seat, keymap_host);
         return MENU_OK;
     }
     if (row == kPausePlayerResetIndex)
@@ -1214,6 +1303,235 @@ std::string format_binding_panel_line(const char* label,
         line.resize(static_cast<std::size_t>(budget_chars));
     }
     return line;
+}
+
+// --- The one binding panel (#358 folded the two screens' copies) ---------
+
+namespace {
+
+bool seat_in_range(int seat)
+{
+    return seat >= 0 && seat < MAX_PLAYERS;
+}
+} // namespace
+
+void draw_binding_panel(int seat, bool ability_select)
+{
+    screen* const scr = og::runtime::current_session->myscreen_;
+    text& mytext = scr->text_normal;
+    scr->draw_button(kPlayerScreenColAX, kPlayerScreenPanelTopY,
+                     kPlayerScreenPanelRightX, kPlayerScreenPanelBottomY,
+                     2, 1);
+    mytext.write_xy(20, kPlayerScreenPanelHeaderY, DARK_BLUE, "%s",
+                    "MOVEMENT");
+    mytext.write_xy(104, kPlayerScreenPanelHeaderY, DARK_BLUE, "%s",
+                    "ACTIONS");
+
+    // The ACTIONS rows follow New Ability Select: the classic seven with the
+    // setting off, one row per ability key (SPEC 1/2/3) with it on
+    // (og::ui::binding_panel_action_rows).
+    const std::span<const BindingPanelRow> actions =
+        binding_panel_action_rows(ability_select);
+    const bool eight_dir =
+        get_player_control_mode(seat) ==
+        static_cast<int>(ControlDirectionMode::EightDirection);
+    // A joystick-driven seat reads its own device bindings (B0/A0+/HU style);
+    // the still-stored keyboard names would be a lie while the pad drives.
+    const bool joystick = seat_in_range(seat) && playerHasJoystick(seat);
+    const auto binding_value = [seat, joystick](int key) {
+        return joystick
+            ? joy_binding_display_name(player_joy[seat].key_type[key],
+                                       player_joy[seat].key_index[key])
+            : player_control_key_display_name(seat, key);
+    };
+
+    const std::span<const BindingPanelMovementRow> movement =
+        binding_panel_movement_rows();
+    for (std::size_t index = 0; index < movement.size(); ++index)
+    {
+        const BindingPanelMovementRow& binding = movement[index];
+        const bool active = !binding.diagonal || eight_dir;
+        const std::string value =
+            active ? binding_value(binding.key) : std::string("--");
+        const std::string line = format_binding_panel_line(
+            binding.label, value, kBindingPanelMovementChars);
+        mytext.write_xy(
+            20,
+            kPlayerScreenPanelLineY +
+                static_cast<int>(index) * kBindingPanelLinePitch,
+            active ? DARK_BLUE : GREY, "%s", line.c_str());
+    }
+    for (std::size_t index = 0; index < actions.size(); ++index)
+    {
+        const BindingPanelRow& binding = actions[index];
+        const std::string line = format_binding_panel_line(
+            binding.label, binding_value(binding.key),
+            kBindingPanelActionsChars);
+        mytext.write_xy(
+            104,
+            kPlayerScreenPanelLineY +
+                static_cast<int>(index) * kBindingPanelLinePitch,
+            DARK_BLUE, "%s", line.c_str());
+    }
+}
+
+int binding_panel_cell_key(int cell, bool ability_select)
+{
+    if (cell < 0 || cell >= kBindingPanelCellCount)
+        return -1;
+    if (cell < kBindingPanelLinesPerColumn)
+        return binding_panel_movement_rows()[static_cast<std::size_t>(cell)].key;
+    const std::span<const BindingPanelRow> actions =
+        binding_panel_action_rows(ability_select);
+    const auto line =
+        static_cast<std::size_t>(cell - kBindingPanelLinesPerColumn);
+    return line < actions.size() ? actions[line].key : -1;
+}
+
+RowState binding_panel_cell_state(int seat, int cell)
+{
+    if (binding_panel_cell_key(cell, og::input::ability_select_on()) < 0)
+        return RowState::Hidden;
+    if (cell < kBindingPanelLinesPerColumn && seat_in_range(seat) &&
+        binding_panel_movement_rows()[static_cast<std::size_t>(cell)].diagonal)
+    {
+        // The panel draws an unused diagonal grey "--": nothing to click.
+        // Pads never bind diagonals (JoyData::setKeyFromEvent forces NONE).
+        const bool eight_dir =
+            get_player_control_mode(seat) ==
+            static_cast<int>(ControlDirectionMode::EightDirection);
+        if (!eight_dir || playerHasJoystick(seat))
+            return RowState::Hidden;
+    }
+    return RowState::Visible;
+}
+
+void rewire_binding_panel_cells(button* buttons, int count,
+                                const BindingCellNavAnchors& anchors)
+{
+    if (buttons == nullptr ||
+        anchors.first_cell + kBindingPanelCellCount > count)
+    {
+        return;
+    }
+    const auto visible = [buttons, count](int index) {
+        return index >= 0 && index < count && !buttons[index].hidden;
+    };
+    // The visible cells of each column, top to bottom.
+    std::vector<int> movement;
+    std::vector<int> actions;
+    for (int line = 0; line < kBindingPanelLinesPerColumn; ++line)
+    {
+        const int move_cell = anchors.first_cell + line;
+        const int action_cell =
+            anchors.first_cell + kBindingPanelLinesPerColumn + line;
+        if (visible(move_cell))
+            movement.push_back(move_cell);
+        if (visible(action_cell))
+            actions.push_back(action_cell);
+    }
+    // The column's cell nearest a panel line (ties go up).
+    const auto nearest = [&anchors](const std::vector<int>& column,
+                                    int line, int column_first) {
+        int best = -1;
+        int best_distance = 0;
+        for (const int cell : column)
+        {
+            const int distance =
+                std::abs((cell - anchors.first_cell - column_first) - line);
+            if (best < 0 || distance < best_distance)
+            {
+                best = cell;
+                best_distance = distance;
+            }
+        }
+        return best;
+    };
+    const auto first_visible = [&visible](std::initializer_list<int> order,
+                                          int fallback) {
+        for (const int index : order)
+            if (visible(index))
+                return index;
+        return fallback;
+    };
+    const int movement_exit = first_visible(
+        {anchors.bottom_left, anchors.bottom_right}, anchors.back);
+    const int actions_exit = first_visible(
+        {anchors.bottom_right, anchors.bottom_left}, anchors.back);
+
+    for (std::size_t k = 0; k < movement.size(); ++k)
+    {
+        MenuNav& nav = buttons[movement[k]].nav;
+        const int line = movement[k] - anchors.first_cell;
+        nav.up = k > 0 ? movement[k - 1] : anchors.input;
+        nav.down = k + 1 < movement.size() ? movement[k + 1] : movement_exit;
+        nav.left = -1;
+        nav.right = actions.empty()
+            ? anchors.hud_first + binding_cell_hud_offset(line)
+            : nearest(actions, line, kBindingPanelLinesPerColumn);
+    }
+    for (std::size_t k = 0; k < actions.size(); ++k)
+    {
+        MenuNav& nav = buttons[actions[k]].nav;
+        const int line =
+            actions[k] - anchors.first_cell - kBindingPanelLinesPerColumn;
+        nav.up = k > 0 ? actions[k - 1] : anchors.zoom;
+        nav.down = k + 1 < actions.size() ? actions[k + 1] : actions_exit;
+        nav.left = movement.empty() ? anchors.input : nearest(movement, line, 0);
+        nav.right = anchors.hud_first + binding_cell_hud_offset(line);
+    }
+
+    // The neighbours' links in.
+    if (!movement.empty())
+        buttons[anchors.input].nav.down = movement.front();
+    if (!actions.empty())
+        buttons[anchors.zoom].nav.down = actions.front();
+    for (int row = 0; row < 4; ++row)
+    {
+        const int hud = anchors.hud_first + row;
+        if (hud < count && !actions.empty())
+            buttons[hud].nav.left =
+                nearest(actions, binding_cell_line_beside_hud(row),
+                        kBindingPanelLinesPerColumn);
+    }
+    if (visible(anchors.bottom_left) && !movement.empty())
+        buttons[anchors.bottom_left].nav.up = movement.back();
+}
+
+void rewire_player_screen_bottom_band(button* buttons, int count,
+                                      const PlayerScreenBottomBand& band)
+{
+    if (buttons == nullptr ||
+        band.first_cell + kBindingPanelCellCount > count)
+    {
+        return;
+    }
+    const auto visible = [buttons, count](int index) {
+        return index >= 0 && index < count && !buttons[index].hidden;
+    };
+    std::vector<int> faces;
+    for (const int face : {band.left, band.keymap, band.remove})
+        if (visible(face))
+            faces.push_back(face);
+    for (std::size_t k = 0; k < faces.size(); ++k)
+    {
+        MenuNav& nav = buttons[faces[k]].nav;
+        nav.left = k > 0 ? faces[k - 1] : -1;
+        nav.right = k + 1 < faces.size() ? faces[k + 1] : -1;
+        nav.down = band.back;
+    }
+    if (!visible(band.keymap))
+        return;
+    // KEYMAP sits under the ACTIONS column's left half: up is its last line.
+    for (int line = kBindingPanelLinesPerColumn - 1; line >= 0; --line)
+    {
+        const int cell = band.first_cell + kBindingPanelLinesPerColumn + line;
+        if (visible(cell))
+        {
+            buttons[band.keymap].nav.up = cell;
+            return;
+        }
+    }
 }
 
 const MenuScreenSpec& pause_menu_screen_spec()

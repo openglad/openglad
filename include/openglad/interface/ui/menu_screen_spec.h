@@ -95,6 +95,11 @@ struct MenuButtonSpec {
     // live state). test_menu_layout pins these defaults per screen.
     bool hidden = false;
     MenuBuildGate build = MenuBuildGate::Always;
+    // Keyboard focus ring drawn as a steady box on the row's own edge pixels
+    // instead of pulsing 3 px outward: for rows packed at a pitch, where any
+    // pulse would paint over their own text or their neighbours (the binding
+    // panel's 8 px key cells, #358).
+    bool cell_highlight = false;
 };
 
 // Navigation precedence: a rewire hook wins; otherwise the static links
@@ -237,6 +242,10 @@ std::uint64_t menu_screen_testing_completed_frames();
 // Mirror of the live loop's highlighted-button index, published just before
 // each completed-frame bump; -1 when no engine screen is running.
 int menu_screen_testing_highlighted_button();
+// Frames drawn between a gate pass and its nav program (each one traces
+// "menu_engine" "draw_before_nav <screen>"): a rewire-hidden row flashes on
+// such a frame. Monotonic; compare before/after a flow.
+std::uint64_t menu_screen_testing_draws_before_nav();
 #endif
 
 // #237 fade ownership (docs/menu-engine.md, "Drawing and transitions").
@@ -424,6 +433,10 @@ enum class MenuScreenId : std::uint8_t {
     // any lobby exists (so its remote-start scope is None, on the engine
     // test's allowlist).
     Changelog,
+    // KEYMAP (#388): the keyboard picture of this machine's seats, opened
+    // from the Base Camp seat screen; TeamBuildScope like ABILITIES. (The
+    // pause player screen's copy is an overlay outside the registry.)
+    Keymap,
     Count,
 };
 

@@ -6,10 +6,10 @@
  * (at your option) any later version.
  */
 
-// og::io::read_rgba_png, the loader behind the CHANGELOG! keyboard picture
-// (docs/ability-select-design.md F.4): the shipped pictures decode as RGBA,
-// and every kind of bad file comes back empty instead of crashing or asking
-// for an unbounded allocation.
+// og::io::read_rgba_png, the loader behind the keyboard picture's glyph atlas
+// (og::ui::keyboard_picture, drawn on KEYMAP and the CHANGELOG! page): the
+// shipped atlas decodes as RGBA, and every kind of bad file comes back empty
+// instead of crashing or asking for an unbounded allocation.
 
 #include <gtest/gtest.h>
 
@@ -31,8 +31,9 @@ namespace
 
 namespace fs = std::filesystem;
 
-constexpr const char* kDesktopPicture = "pix/changelog/keyboard_belt.png";
-constexpr const char* kWebPicture = "pix/changelog/keyboard_belt_web.png";
+// The one shipped picture read_rgba_png loads: 8-bit grey coverage, written
+// by scripts/keyboard_picture/generate_glyphs.py.
+constexpr const char* kShippedPicture = "pix/keyboard/glyphs.png";
 
 // Scratch under the user dir's temp/, spelled absolute and removed at the
 // end (the test_io_coverage.cpp pattern).
@@ -140,41 +141,40 @@ std::vector<char> one_row_png(std::uint32_t w)
 
 } // namespace
 
-TEST(RgbaPng, decodes_both_shipped_keyboard_pictures)
+TEST(RgbaPng, decodes_the_shipped_glyph_atlas_as_opaque_rgba)
 {
-    for (const char* path : {kDesktopPicture, kWebPicture}) {
-        const std::optional<og::io::RgbaImage> image =
-            og::io::read_rgba_png(path);
-        ASSERT_TRUE(image.has_value()) << path;
-        EXPECT_EQ(1560, image->w) << path;
-        EXPECT_EQ(550, image->h) << path;
-        ASSERT_EQ(static_cast<std::size_t>(1560 * 550 * 4), image->bytes.size())
-            << path;
-        // The picture is opaque (the native plane composites it without
-        // blending) and not blank.
-        std::size_t opaque = 0;
-        std::size_t bright = 0;
-        for (std::size_t i = 0; i < image->bytes.size(); i += 4) {
-            if (image->bytes[i + 3] == 255)
-                ++opaque;
-            if (image->bytes[i] > 200)
-                ++bright;
-        }
-        EXPECT_EQ(static_cast<std::size_t>(1560 * 550), opaque) << path;
-        EXPECT_GT(bright, 10000u) << path << " has no coloured key caps";
+    const std::optional<og::io::RgbaImage> image =
+        og::io::read_rgba_png(kShippedPicture);
+    ASSERT_TRUE(image.has_value()) << kShippedPicture;
+    EXPECT_EQ(1024, image->w);
+    ASSERT_GT(image->h, 0);
+    ASSERT_EQ(static_cast<std::size_t>(image->w) *
+                  static_cast<std::size_t>(image->h) * 4u,
+              image->bytes.size());
+    EXPECT_NE(0u, image->serial);
+    // A grey PNG comes back as RGBA: every pixel opaque, its three colour
+    // channels equal; and the glyphs are there (not a blank sheet).
+    std::size_t opaque = 0;
+    std::size_t grey = 0;
+    std::size_t ink = 0;
+    for (std::size_t i = 0; i < image->bytes.size(); i += 4) {
+        if (image->bytes[i + 3] == 255)
+            ++opaque;
+        if (image->bytes[i] == image->bytes[i + 1] &&
+            image->bytes[i] == image->bytes[i + 2])
+            ++grey;
+        if (image->bytes[i] > 200)
+            ++ink;
     }
-    const std::optional<og::io::RgbaImage> desktop =
-        og::io::read_rgba_png(kDesktopPicture);
-    const std::optional<og::io::RgbaImage> web =
-        og::io::read_rgba_png(kWebPicture);
-    ASSERT_TRUE(desktop && web);
-    EXPECT_NE(desktop->bytes, web->bytes)
-        << "the web picture shows player 1's FIRE on Z";
+    const std::size_t pixels = image->bytes.size() / 4u;
+    EXPECT_EQ(pixels, opaque);
+    EXPECT_EQ(pixels, grey);
+    EXPECT_GT(ink, 10000u) << kShippedPicture << " holds no glyphs";
 }
 
 TEST(RgbaPng, a_missing_file_is_empty)
 {
-    EXPECT_FALSE(og::io::read_rgba_png("pix/changelog/no_such_picture.png"));
+    EXPECT_FALSE(og::io::read_rgba_png("pix/keyboard/no_such_picture.png"));
 }
 
 TEST(RgbaPng, an_empty_file_is_empty)
@@ -186,7 +186,7 @@ TEST(RgbaPng, an_empty_file_is_empty)
 TEST(RgbaPng, a_truncated_file_is_rejected)
 {
     const Scratch scratch;
-    std::vector<char> bytes = read_bytes(kDesktopPicture);
+    std::vector<char> bytes = read_bytes(kShippedPicture);
     ASSERT_GT(bytes.size(), 400u);
     // The signature and half the header: the decoder cannot even read the
     // size.
@@ -204,16 +204,16 @@ TEST(RgbaPng, an_oversize_file_or_picture_is_rejected)
 {
     const Scratch scratch;
     // Over the 16 MiB file cap: refused before anything is read.
-    const std::string big = scratch.write("big.png", read_bytes(kDesktopPicture));
+    const std::string big = scratch.write("big.png", read_bytes(kShippedPicture));
     std::error_code ec;
     fs::resize_file(big, 16u * 1024u * 1024u + 1u, ec);
     ASSERT_FALSE(ec) << ec.message();
     EXPECT_FALSE(og::io::read_rgba_png(big.c_str()));
 
-    // A small file whose header claims 5000 x 550: refused at the header,
+    // A small file whose header claims 5000 pixels wide: refused at the header,
     // before the decoder allocates for it. Width sits at byte 16, the IHDR
     // CRC (over the chunk type and data) at byte 29.
-    std::vector<char> bytes = read_bytes(kDesktopPicture);
+    std::vector<char> bytes = read_bytes(kShippedPicture);
     ASSERT_GT(bytes.size(), 33u);
     ASSERT_EQ(std::string("IHDR"), std::string(bytes.data() + 12, 4));
     put_be32(bytes, 16, 5000u);

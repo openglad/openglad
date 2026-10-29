@@ -503,16 +503,8 @@ int picker_team_build_testing_exercise_internal_paths(int* checks_run)
     picker_hire_menu_engine_prepare_buttons(
         hire_buttons, static_cast<int>(std::size(hire_buttons)), nullptr);
     check(hire_buttons[0].x != 0 && hire_buttons[1].x != 0);
-    hire_buttons[2].hidden = true;
-    picker_hire_menu_engine_rewire(
-        hire_buttons, static_cast<int>(std::size(hire_buttons)),
-        ignored_highlight);
-    check(hire_buttons[3].nav.right == -1);
-    hire_buttons[2].hidden = false;
-    picker_hire_menu_engine_rewire(
-        hire_buttons, static_cast<int>(std::size(hire_buttons)),
-        ignored_highlight);
-    check(hire_buttons[3].nav.right == 2);
+    check(picker_hire_menu_engine_on_spec_row(kHireMenuChangeTeamIndex,
+                                              nullptr) == MENU_OK);
     picker_hire_menu_engine_draw_content(nullptr);
     picker_train_menu_engine_draw_content(nullptr);
 
@@ -640,8 +632,10 @@ int picker_team_build_testing_exercise_internal_paths(int* checks_run)
     check(!g_start_game_requested);
 #endif
 
-    check(!get_class_description(FAMILY_SOLDIER, 1).empty());
-    check(get_class_description(250, 0).empty());
+    check(!get_class_description(FAMILY_SOLDIER).empty());
+    check(get_class_description(FAMILY_SOLDIER).find("Special:") ==
+          std::string::npos);
+    check(get_class_description(250).empty());
     // The HIRE/TRAIN star faces of every hireable family, spelled out from
     // the core pack's train prices (STR, DEX, CON, INT, ARMOR) rather than
     // recomputed from the product's own ((55 / cost) * 5) / 11 -- a test that

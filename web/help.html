@@ -183,7 +183,13 @@
 
         <p>If player 1 switches to 8-direction movement, <span class="shortcut">Z</span> becomes a diagonal movement key, so attack moves to <span class="shortcut">S</span> in the middle of the movement keys and yell moves to <span class="shortcut">Tab</span>. Look-up starts unbound there &mdash; assign it with REMAP on player 1's player screen (Base Camp, the P1 card) if you want it.</p>
 
-        <p>With two players on one keyboard, player 2's look-up is <span class="shortcut">Right Ctrl</span>. Holding it while player 1 presses <span class="shortcut">1</span>, <span class="shortcut">2</span> or <span class="shortcut">3</span> makes a Ctrl + digit chord, which some browsers use to switch tabs; Alt + digit does the same if someone binds Alt. The game page asks the browser not to (the game's browser tests check that it does, for both chords), but if a browser switches tabs anyway, give player 2's look-up another key with REMAP.</p>
+        <p>With two or more players on one keyboard, one player holding a key like Ctrl or Alt while another presses a letter makes a chord: player 2 holding Ctrl while player 1 walks up is <span class="shortcut">Ctrl + W</span>. So in the browser no default key is a Ctrl key: player 2's look-up is <span class="shortcut">Delete</span>, not the desktop's <span class="shortcut">Right Ctrl</span>. A Mac laptop has no Delete key of its own (its "delete" key is Backspace, which pauses the game), so there player 2 presses <span class="shortcut">fn + delete</span>. If you played before this change, a look-up still on Right Ctrl moves to Delete by itself; if you had already given it another key, that key stays.</p>
+
+        <p>One Alt key is still a default: player 4's Shifter in 8-direction movement is <span class="shortcut">Left Alt</span>. The game page keeps Alt from opening the browser menus, but some Alt chords belong to the desktop and never reach the page: with player 4 in 8-direction, <span class="shortcut">Alt + Tab</span> (player 1's 8-direction yell), <span class="shortcut">Alt + Space</span> (player 3's attack), <span class="shortcut">Alt + `</span> (player 1's switch), Alt with the F5&ndash;F8 cheat keys, and <span class="shortcut">Shift + Alt</span> (the Windows keyboard-layout switch). If one of them gets in the way, give player 4's Shifter another key with REMAP. Alt + digit (player 4 holding Alt while player 1 uses an ability) is a tab switch in some browsers; the game page asks the browser not to, and the game's browser tests check that it does.</p>
+
+        <h3>The desktop game</h3>
+
+        <p>The desktop game keeps its own defaults (player 1 attacks with <span class="shortcut">Left Ctrl</span>, player 2 looks up with <span class="shortcut">Right Ctrl</span>): Ctrl + a letter is not a desktop shortcut. Instead, while a mission runs with two or more players on the keyboard, the game holds the keyboard, so chords like <span class="shortcut">Alt + Tab</span> stay in the game (all but <span class="shortcut">Ctrl + Alt + Del</span>). <span class="shortcut">Esc</span> opens the PAUSED menu and lets go of the keyboard: Alt+Tab works again there, and RESUME takes the keyboard back. One player alone, or one keyboard player with gamepads, never has the keyboard held. On a Linux desktop running GNOME on Wayland, the first two-player mission shows a one-time question asking whether OpenGlad may inhibit the desktop's shortcuts; allow it for the behaviour above. On macOS the keyboard cannot be held, so the Control + arrow shortcuts below still apply.</p>
 
         <div class="note">
             <strong>Warning:</strong> If you rebind attack to <span class="shortcut">Ctrl</span> with REMAP, attacking while walking up (<span class="shortcut">Ctrl + W</span>) will close the game tab. On Linux, <span class="shortcut">Ctrl + Q</span> can quit Firefox entirely. Your progress is saved automatically, but the game will still vanish mid-fight &mdash; keep attack off Ctrl in the browser.
@@ -238,7 +244,7 @@
                 <tr><th>Abilities</th><td>1 2 3</td><td>[ ] \</td><td>8 9 0</td><td>4 5 6</td></tr>
                 <tr><th>Shifter</th><td>Left Shift</td><td>/</td><td>M</td><td>B</td></tr>
                 <tr><th>Yell</th><td>E</td><td>Enter</td><td>O</td><td>Y</td></tr>
-                <tr><th>Look up (hold)</th><td>Q</td><td>Right Ctrl</td><td>U</td><td>R</td></tr>
+                <tr><th>Look up (hold)</th><td>Q</td><td>Delete (Mac laptop: fn + delete)</td><td>U</td><td>R</td></tr>
                 <tr><th>Switch character</th><td>`</td><td>'</td><td>-</td><td>N</td></tr>
             </tbody>
         </table>

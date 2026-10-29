@@ -279,8 +279,15 @@ TEST(InputMappings, factory_mapping_applies_the_web_substitution_to_wasd_only)
     // Movement is untouched, so the name survives the substitution.
     ASSERT_EQ("WASD", derive_mapping_name(web.mode4_keys));
 
-    // Profiles 1-3 never move.
-    for (int profile = 1; profile < 4; ++profile)
+    // ARROWS moves only its LOOK UP, Right Ctrl -> Delete (#391); profiles
+    // 2-3 never move.
+    MappingDefinition arrows_web = factory_mapping(1, true);
+    ASSERT_EQ(KEYCODE_DELETE, arrows_web.mode4_keys[static_cast<std::size_t>(KEY_LOOKUP)]);
+    ASSERT_EQ(KEYCODE_DELETE, arrows_web.mode8_keys[static_cast<std::size_t>(KEY_LOOKUP)]);
+    arrows_web.mode4_keys[static_cast<std::size_t>(KEY_LOOKUP)] = KEYCODE_RCTRL;
+    arrows_web.mode8_keys[static_cast<std::size_t>(KEY_LOOKUP)] = KEYCODE_RCTRL;
+    ASSERT_EQ(factory_mapping(1, false), arrows_web);
+    for (int profile = 2; profile < 4; ++profile)
     {
         ASSERT_EQ(factory_mapping(profile, false), factory_mapping(profile, true))
             << "profile " << profile;
@@ -718,7 +725,7 @@ TEST(MigrateSeatKeys, pristine_four_player_cfg_reaches_the_new_tables_in_both_mo
     for (const bool web : {false, true})
     {
         std::vector<SeatKeysToMigrate> seats = pristine_old_cfg(web);
-        migrate_seat_keys(seats, web);
+        migrate_seat_keys(seats, web, 0);
         expect_new_tables(seats, web);
     }
 }
@@ -733,7 +740,7 @@ TEST(MigrateSeatKeys, factory_slots_move_together_when_the_tables_hand_keys_arou
     ASSERT_EQ(KEYCODE_RSHIFT, key_of(seats, 1, kFour, KEY_SHIFTER));
     ASSERT_EQ(KEYCODE_b, key_of(seats, 3, kFour, KEY_LOOKUP));
     ASSERT_EQ(KEYCODE_g, key_of(seats, 3, kEight, KEY_YELL));
-    migrate_seat_keys(seats, false);
+    migrate_seat_keys(seats, false, 0);
     EXPECT_EQ(KEYCODE_RSHIFT, key_of(seats, 1, kFour, KEY_FIRE));
     EXPECT_EQ(KEYCODE_SLASH, key_of(seats, 1, kFour, KEY_SHIFTER));
     EXPECT_EQ(KEYCODE_b, key_of(seats, 3, kFour, KEY_SHIFTER));
@@ -745,7 +752,7 @@ TEST(MigrateSeatKeys, factory_slots_move_together_when_the_tables_hand_keys_arou
     for (int p = 0; p < 4; ++p)
     {
         std::vector<SeatKeysToMigrate> alone{pristine_old_seat(p, false)};
-        migrate_seat_keys(alone, false);
+        migrate_seat_keys(alone, false, 0);
         EXPECT_EQ(seats[sz(p)].keys, alone[0].keys) << "P" << (p + 1);
     }
 }
@@ -759,7 +766,7 @@ TEST(MigrateSeatKeys, never_stored_slots_are_factory_and_reserved_slots_come_out
     // A stale value in a reserved slot is dropped, whatever it was.
     seats[0].keys[sz(kFour)][sz(KEY_PREFS)] = KEYCODE_1;
     seats[0].keys[sz(kFour)][sz(KEY_SPECIAL_SWITCH)] = KEYCODE_TAB;
-    migrate_seat_keys(seats, false);
+    migrate_seat_keys(seats, false, 0);
     expect_new_tables(seats, false);
 }
 
@@ -769,7 +776,7 @@ TEST(MigrateSeatKeys, a_custom_key_beats_the_factory_key_it_collides_with_same_s
     // goes unbound in that map instead of taking the player's key.
     std::vector<SeatKeysToMigrate> seats = pristine_old_cfg(false);
     seats[0].keys[sz(kFour)][sz(KEY_YELL)] = KEYCODE_2;
-    migrate_seat_keys(seats, false);
+    migrate_seat_keys(seats, false, 0);
     EXPECT_EQ(KEYCODE_2, key_of(seats, 0, kFour, KEY_YELL));
     EXPECT_EQ(KEYCODE_UNKNOWN, key_of(seats, 0, kFour, KEY_SPEC2));
     // The 8-direction map is never active with the 4-direction one: its
@@ -788,7 +795,7 @@ TEST(MigrateSeatKeys, a_custom_key_beats_a_factory_key_across_seats_in_either_mo
     // live on a shared keyboard). P2 keeps its key.
     std::vector<SeatKeysToMigrate> seats = pristine_old_cfg(false);
     seats[1].keys[sz(kEight)][sz(KEY_FIRE)] = KEYCODE_8;
-    migrate_seat_keys(seats, false);
+    migrate_seat_keys(seats, false, 0);
     EXPECT_EQ(KEYCODE_8, key_of(seats, 1, kEight, KEY_FIRE));
     EXPECT_EQ(KEYCODE_RSHIFT, key_of(seats, 1, kFour, KEY_FIRE));
     EXPECT_EQ(KEYCODE_UNKNOWN, key_of(seats, 2, kFour, KEY_SPECIAL));
@@ -803,7 +810,7 @@ TEST(MigrateSeatKeys, custom_against_custom_is_left_as_found)
     std::vector<SeatKeysToMigrate> seats = pristine_old_cfg(false);
     seats[0].keys[sz(kFour)][sz(KEY_CHEAT)] = KEYCODE_F12;
     seats[1].keys[sz(kFour)][sz(KEY_CHEAT)] = KEYCODE_F12;
-    migrate_seat_keys(seats, false);
+    migrate_seat_keys(seats, false, 0);
     EXPECT_EQ(KEYCODE_F12, key_of(seats, 0, kFour, KEY_CHEAT));
     EXPECT_EQ(KEYCODE_F12, key_of(seats, 1, kFour, KEY_CHEAT));
 }
@@ -816,7 +823,7 @@ TEST(MigrateSeatKeys, custom_change_special_read_from_cfg_becomes_spec2)
     seats[0].change_special[sz(kFour)] = KEYCODE_F9;
     // P3 had cleared change special: no custom key, so SPEC 2 is factory.
     seats[2].change_special = {KEYCODE_UNKNOWN, KEYCODE_UNKNOWN};
-    migrate_seat_keys(seats, false);
+    migrate_seat_keys(seats, false, 0);
     EXPECT_EQ(KEYCODE_F9, key_of(seats, 0, kFour, KEY_SPEC2));
     EXPECT_EQ(KEYCODE_2, key_of(seats, 0, kEight, KEY_SPEC2));
     EXPECT_EQ(KEYCODE_UNKNOWN, key_of(seats, 0, kFour, KEY_SPECIAL_SWITCH));
@@ -826,7 +833,7 @@ TEST(MigrateSeatKeys, custom_change_special_read_from_cfg_becomes_spec2)
     // factory SPEC 1 '[' yields to P1's change-special '['.
     seats = pristine_old_cfg(false);
     seats[0].change_special[sz(kFour)] = KEYCODE_LEFTBRACKET;
-    migrate_seat_keys(seats, false);
+    migrate_seat_keys(seats, false, 0);
     EXPECT_EQ(KEYCODE_LEFTBRACKET, key_of(seats, 0, kFour, KEY_SPEC2));
     EXPECT_EQ(KEYCODE_UNKNOWN, key_of(seats, 1, kFour, KEY_SPECIAL));
     EXPECT_EQ(KEYCODE_UNKNOWN, key_of(seats, 1, kEight, KEY_SPECIAL));
@@ -841,7 +848,7 @@ TEST(MigrateSeatKeys, a_spec_key_already_stored_is_kept)
     seats[0].keys[sz(kFour)][sz(KEY_SPEC2)] = KEYCODE_F10;
     seats[0].change_special[sz(kFour)] = KEYCODE_F9;
     seats[0].keys[sz(kFour)][sz(KEY_SPEC3)] = KEYCODE_3;
-    migrate_seat_keys(seats, false);
+    migrate_seat_keys(seats, false, 0);
     EXPECT_EQ(KEYCODE_F10, key_of(seats, 0, kFour, KEY_SPEC2));
     EXPECT_EQ(KEYCODE_3, key_of(seats, 0, kFour, KEY_SPEC3));
 }
@@ -853,7 +860,7 @@ TEST(MigrateSeatKeys, web_pre_v1_and_v1_values_are_both_factory)
     for (const bool v1 : {false, true})
     {
         std::vector<SeatKeysToMigrate> seats{pristine_old_seat(0, /*web=*/v1)};
-        migrate_seat_keys(seats, /*web_mode=*/true);
+        migrate_seat_keys(seats, /*web_mode=*/true, 0);
         for (int m = 0; m < 2; ++m)
             for (int k = 0; k < NUM_KEYS; ++k)
                 EXPECT_EQ(tk::new_factory_key(0, m == kEight, k, true), key_of(seats, 0, m, k))
@@ -863,12 +870,12 @@ TEST(MigrateSeatKeys, web_pre_v1_and_v1_values_are_both_factory)
     // Natively the browser scheme's x is nobody's factory key: kept.
     std::vector<SeatKeysToMigrate> seats{pristine_old_seat(0, false)};
     seats[0].keys[sz(kFour)][sz(KEY_SPECIAL)] = KEYCODE_x;
-    migrate_seat_keys(seats, false);
+    migrate_seat_keys(seats, false, 0);
     EXPECT_EQ(KEYCODE_x, key_of(seats, 0, kFour, KEY_SPECIAL));
     // And on web the browser values are factory only for profile 0.
     seats = {pristine_old_seat(1, false)};
     seats[0].keys[sz(kFour)][sz(KEY_FIRE)] = KEYCODE_z;
-    migrate_seat_keys(seats, true);
+    migrate_seat_keys(seats, true, 0);
     EXPECT_EQ(KEYCODE_z, key_of(seats, 0, kFour, KEY_FIRE));
 }
 
@@ -881,7 +888,7 @@ TEST(MigrateSeatKeys, custom_entry_loads_17_from_11_and_18_unbound)
     entry.keys[sz(kFour)][sz(KEY_SPECIAL)] = KEYCODE_LALT;
     entry.change_special = {KEYCODE_TAB, KEYCODE_UNKNOWN};
     std::vector<SeatKeysToMigrate> seats{entry};
-    migrate_seat_keys(seats, false);
+    migrate_seat_keys(seats, false, 0);
     EXPECT_EQ(KEYCODE_w, key_of(seats, 0, kFour, KEY_UP));
     EXPECT_EQ(KEYCODE_LALT, key_of(seats, 0, kFour, KEY_SPECIAL))
         << "an old factory value is still the entry's own choice";
@@ -904,6 +911,151 @@ TEST(MigrateSeatKeys, legacy_reader_is_the_d758bcb1_table)
     EXPECT_EQ(KEYCODE_UNKNOWN, og::input::legacy_factory_key(-1, kFour, KEY_UP));
     EXPECT_EQ(KEYCODE_UNKNOWN, og::input::legacy_factory_key(4, kFour, KEY_UP));
     EXPECT_EQ(KEYCODE_UNKNOWN, og::input::legacy_factory_key(0, kFour, -1));
+}
+
+// --- Version 1 -> 2 (#391): web P2 LOOK UP leaves Right Ctrl -------------
+
+namespace
+{
+
+// A seat as a version-1 build (New Ability Select) left it in cfg: every
+// slot written, today's factory keys, except web P2 LOOK UP still on Right
+// Ctrl, and the reserved slots unbound.
+SeatKeysToMigrate v1_seat(int profile, bool web)
+{
+    SeatKeysToMigrate seat;
+    seat.profile = profile;
+    for (int m = 0; m < 2; ++m)
+    {
+        for (int k = 0; k < NUM_KEYS; ++k)
+        {
+            int key = tk::new_factory_key(profile, m == kEight, k, web);
+            if (web && profile == 1 && k == KEY_LOOKUP)
+                key = KEYCODE_RCTRL;
+            seat.keys[sz(m)][sz(k)] = key;
+        }
+        seat.change_special[sz(m)] = KEYCODE_UNKNOWN;
+    }
+    return seat;
+}
+
+std::vector<SeatKeysToMigrate> v1_cfg(bool web)
+{
+    std::vector<SeatKeysToMigrate> seats;
+    for (int p = 0; p < 4; ++p)
+        seats.push_back(v1_seat(p, web));
+    return seats;
+}
+
+} // namespace
+
+TEST(MigrateSeatKeys, v1_to_v2_web_moves_p2_look_up_to_delete_in_both_maps)
+{
+    ASSERT_EQ(2, og::input::kDefaultKeysVersion);
+    std::vector<SeatKeysToMigrate> seats = v1_cfg(true);
+    ASSERT_EQ(KEYCODE_RCTRL, key_of(seats, 1, kFour, KEY_LOOKUP));
+    ASSERT_EQ(KEYCODE_RCTRL, key_of(seats, 1, kEight, KEY_LOOKUP));
+    migrate_seat_keys(seats, /*web_mode=*/true, 1);
+    EXPECT_EQ(KEYCODE_DELETE, key_of(seats, 1, kFour, KEY_LOOKUP));
+    EXPECT_EQ(KEYCODE_DELETE, key_of(seats, 1, kEight, KEY_LOOKUP));
+    expect_new_tables(seats, true);
+}
+
+TEST(MigrateSeatKeys, v1_to_v2_web_keeps_a_chosen_look_up_and_yields_delete_to_a_chosen_key)
+{
+    // P2 had moved LOOK UP off Right Ctrl itself: that is P2's choice, kept.
+    std::vector<SeatKeysToMigrate> seats = v1_cfg(true);
+    seats[1].keys[sz(kFour)][sz(KEY_LOOKUP)] = KEYCODE_F9;
+    migrate_seat_keys(seats, true, 1);
+    EXPECT_EQ(KEYCODE_F9, key_of(seats, 1, kFour, KEY_LOOKUP));
+    EXPECT_EQ(KEYCODE_DELETE, key_of(seats, 1, kEight, KEY_LOOKUP));
+
+    // P3 had bound YELL to Delete: P2's LOOK UP stays factory but has no key
+    // to go to, so it comes out unbound in both maps (the C.5 rule), and
+    // P3 keeps Delete.
+    seats = v1_cfg(true);
+    seats[2].keys[sz(kFour)][sz(KEY_YELL)] = KEYCODE_DELETE;
+    migrate_seat_keys(seats, true, 1);
+    EXPECT_EQ(KEYCODE_DELETE, key_of(seats, 2, kFour, KEY_YELL));
+    EXPECT_EQ(KEYCODE_UNKNOWN, key_of(seats, 1, kFour, KEY_LOOKUP));
+    EXPECT_EQ(KEYCODE_UNKNOWN, key_of(seats, 1, kEight, KEY_LOOKUP));
+    // Nothing else yielded.
+    EXPECT_EQ(KEYCODE_RSHIFT, key_of(seats, 1, kFour, KEY_FIRE));
+    EXPECT_EQ(KEYCODE_o, key_of(seats, 2, kEight, KEY_UP_RIGHT));
+}
+
+TEST(MigrateSeatKeys, v1_to_v2_native_changes_nothing)
+{
+    // A pristine native v1 cfg is already on the version-2 tables.
+    std::vector<SeatKeysToMigrate> seats = v1_cfg(false);
+    migrate_seat_keys(seats, false, 1);
+    expect_new_tables(seats, false);
+
+    // A player's own key that equals ANOTHER seat's factory key: P2 bound
+    // YELL to 'w', P1's UP. Version 1 already accepted that pair, and P1's
+    // UP does not move, so nothing may unbind it. (Re-running the version-0
+    // rule here unbinds P1's UP: under the old tables 'w' is still a
+    // factory key and P2's 'w' a custom one.)
+    seats = v1_cfg(false);
+    seats[1].keys[sz(kFour)][sz(KEY_YELL)] = KEYCODE_w;
+    // And P1 bound YELL to 'r', P4's 4-direction LOOK UP.
+    seats[0].keys[sz(kFour)][sz(KEY_YELL)] = KEYCODE_r;
+    const std::vector<SeatKeysToMigrate> before = seats;
+    migrate_seat_keys(seats, false, 1);
+    for (int p = 0; p < 4; ++p)
+        EXPECT_EQ(before[sz(p)].keys, seats[sz(p)].keys) << "P" << (p + 1);
+    EXPECT_EQ(KEYCODE_w, key_of(seats, 0, kFour, KEY_UP));
+    EXPECT_EQ(KEYCODE_r, key_of(seats, 3, kFour, KEY_LOOKUP));
+}
+
+TEST(MigrateSeatKeys, current_version_moves_nothing)
+{
+    std::vector<SeatKeysToMigrate> seats = v1_cfg(true);
+    seats[0].keys[sz(kFour)][sz(KEY_SPEC3)] = kKeyNotStored;
+    migrate_seat_keys(seats, true, og::input::kDefaultKeysVersion);
+    EXPECT_EQ(KEYCODE_RCTRL, key_of(seats, 1, kFour, KEY_LOOKUP))
+        << "a current cfg's keys are the player's";
+    EXPECT_EQ(KEYCODE_UNKNOWN, key_of(seats, 0, kFour, KEY_SPEC3));
+}
+
+TEST(InputMappings, library_entry_stamped_v1_migrates_p2_look_up_on_web_only)
+{
+    // The factory-named ARROWS entry saved by a version-1 build, with SPEC 3
+    // never stored (the library's own "not stored" case): on web its Right
+    // Ctrl LOOK UP moves to Delete and SPEC 3 reads the factory key; natively
+    // Right Ctrl stays.
+    cfg_store config;
+    config.apply_setting("mappings", "mapping0_name", "ARROWS");
+    config.apply_setting("mappings", "mapping0_mode", "4");
+    config.apply_setting("mappings", "mapping0_default_keys_version", "1");
+    for (int k = 0; k < NUM_KEYS; ++k)
+    {
+        if (k == KEY_SPEC3)
+            continue;
+        const int four = (k == KEY_LOOKUP) ? KEYCODE_RCTRL : tk::kNewFourDir[1][k];
+        const int eight = (k == KEY_LOOKUP) ? KEYCODE_RCTRL : tk::kNewEightDir[1][k];
+        config.apply_setting("mappings", std::format("mapping0_mode4_key{}", k),
+                             std::to_string(four));
+        config.apply_setting("mappings", std::format("mapping0_mode8_key{}", k),
+                             std::to_string(eight));
+    }
+
+    const std::vector<MappingDefinition> web = load_mapping_library(config, true);
+    ASSERT_EQ(1u, web.size());
+    EXPECT_EQ(KEYCODE_DELETE, web[0].mode4_keys[sz(KEY_LOOKUP)]);
+    EXPECT_EQ(KEYCODE_DELETE, web[0].mode8_keys[sz(KEY_LOOKUP)]);
+    EXPECT_EQ(KEYCODE_BACKSLASH, web[0].mode4_keys[sz(KEY_SPEC3)]);
+    EXPECT_EQ(KEYCODE_UP, web[0].mode4_keys[sz(KEY_UP)]);
+
+    const std::vector<MappingDefinition> native = load_mapping_library(config, false);
+    ASSERT_EQ(1u, native.size());
+    EXPECT_EQ(KEYCODE_RCTRL, native[0].mode4_keys[sz(KEY_LOOKUP)]);
+    EXPECT_EQ(KEYCODE_BACKSLASH, native[0].mode4_keys[sz(KEY_SPEC3)]);
+
+    // Stamped current: the stored Right Ctrl is the entry's own choice.
+    config.apply_setting("mappings", "mapping0_default_keys_version",
+                         std::to_string(og::input::kDefaultKeysVersion));
+    EXPECT_EQ(KEYCODE_RCTRL, load_mapping_library(config, true)[0].mode4_keys[sz(KEY_LOOKUP)]);
 }
 
 // --- The library migrates its pre-New Ability Select entries --------------
@@ -1020,4 +1172,70 @@ TEST(InputMappings, saved_entries_are_stamped_and_never_migrated_again)
 TEST(InputHardwareState, touch_overlay_starts_down)
 {
     EXPECT_FALSE(InputHardwareState{}.touch_overlay_active);
+}
+
+// --- One key at a time (#358) ---------------------------------------------
+
+// The pure rule: the other slots that held the key come out unbound; the
+// slot itself, the reserved slots and an unbound key are left alone.
+//
+// RED (planted): unbind_slots_holding returns without touching the map.
+TEST(InputMappings, unbind_slots_holding_unbinds_only_the_other_holders)
+{
+    KeyMap keys{};
+    keys.fill(KEYCODE_UNKNOWN);
+    keys[static_cast<std::size_t>(KEY_FIRE)] = KEYCODE_9;
+    keys[static_cast<std::size_t>(KEY_SPEC2)] = KEYCODE_9;
+    keys[static_cast<std::size_t>(KEY_YELL)] = KEYCODE_8;
+    keys[static_cast<std::size_t>(KEY_SPECIAL_SWITCH)] = KEYCODE_9;
+    keys[static_cast<std::size_t>(KEY_PREFS)] = KEYCODE_9;
+
+    const std::vector<int> unbound =
+        og::input::unbind_slots_holding(keys, KEY_SPECIAL, KEYCODE_9);
+    EXPECT_EQ((std::vector<int>{KEY_FIRE, KEY_SPEC2}), unbound);
+    EXPECT_EQ(KEYCODE_UNKNOWN, keys[static_cast<std::size_t>(KEY_FIRE)]);
+    EXPECT_EQ(KEYCODE_UNKNOWN, keys[static_cast<std::size_t>(KEY_SPEC2)]);
+    EXPECT_EQ(KEYCODE_8, keys[static_cast<std::size_t>(KEY_YELL)]);
+    EXPECT_EQ(KEYCODE_9, keys[static_cast<std::size_t>(KEY_SPECIAL_SWITCH)])
+        << "reserved slots are never touched";
+    EXPECT_EQ(KEYCODE_9, keys[static_cast<std::size_t>(KEY_PREFS)]);
+
+    // The slot's own key is not "another holder".
+    keys[static_cast<std::size_t>(KEY_YELL)] = KEYCODE_8;
+    EXPECT_TRUE(og::input::unbind_slots_holding(keys, KEY_YELL, KEYCODE_8).empty());
+    EXPECT_EQ(KEYCODE_8, keys[static_cast<std::size_t>(KEY_YELL)]);
+    // An unbound key unbinds nothing (every "--" slot holds it).
+    EXPECT_TRUE(
+        og::input::unbind_slots_holding(keys, KEY_FIRE, KEYCODE_UNKNOWN).empty());
+}
+
+// The seat writer: the current mode's map only, the key on the slot, the
+// seat's other holder unbound, another seat's same key untouched.
+TEST(InputMappings, bind_player_key_moves_the_key_inside_one_seat_and_mode)
+{
+    ControlStateGuard guard;
+    set_player_control_mode(0, kFourMode);
+    const int special = get_player_key_binding_for_mode(0, kFourMode, KEY_SPECIAL);
+    const int eight_special =
+        get_player_key_binding_for_mode(0, kEightMode, KEY_SPECIAL);
+    ASSERT_NE(KEYCODE_UNKNOWN, special);
+    set_player_key_binding(1, KEY_YELL, special);
+
+    og::input::bind_player_key(0, KEY_FIRE, special);
+    EXPECT_EQ(special, get_player_key_binding_for_mode(0, kFourMode, KEY_FIRE));
+    EXPECT_EQ(special, og::runtime::current_session->player_keys_[0][KEY_FIRE]);
+    EXPECT_EQ(KEYCODE_UNKNOWN,
+              get_player_key_binding_for_mode(0, kFourMode, KEY_SPECIAL));
+    EXPECT_EQ(KEYCODE_UNKNOWN,
+              og::runtime::current_session->player_keys_[0][KEY_SPECIAL]);
+    EXPECT_EQ(eight_special,
+              get_player_key_binding_for_mode(0, kEightMode, KEY_SPECIAL))
+        << "the other direction mode's map is its own";
+    EXPECT_EQ(special, og::runtime::current_session->player_keys_[1][KEY_YELL])
+        << "another seat keeps its key";
+
+    // Out of range: nothing happens.
+    og::input::bind_player_key(4, KEY_FIRE, KEYCODE_9);
+    og::input::bind_player_key(0, NUM_KEYS, KEYCODE_9);
+    EXPECT_EQ(special, og::runtime::current_session->player_keys_[0][KEY_FIRE]);
 }

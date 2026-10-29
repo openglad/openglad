@@ -103,8 +103,16 @@ Keeping the transport alive while the menu blocks (the two pause traps):
   or desync-disconnected at all — those semantics exist for remote
   transports.
 
-Curses/text clients: unchanged. Their Esc = withdraw prompt is the terminal
-analogue; no terminal PAUSED projection.
+The curses client opens PAUSED on Esc: `[r]esume [a]bilities [k]eys
+[q]uit mission`. Q withdraws; any other key resumes. Local, networked host
+and networked joiner sessions all send the pause request when the menu
+opens. While the menu or its ABILITIES or KEYS page is open they keep
+advancing without input and re-ask for the pause every 20 s as the
+keep-alive. Closing the menu sends the pause response. The curses session
+has three pause calls (request, response, `set_belt`), written once over the
+session's `GameClient` (`CursesClientSession`). An ABILITIES edit is sent
+only if the same body is still driven when the page closes. The text client
+is unchanged: its Esc is still the withdraw prompt.
 
 ### 2.2 Per-player settings (in-game and Base Camp)
 
@@ -116,9 +124,10 @@ seat settings, minus TEAM):
         [ BACK ]
         [ INPUT: ARROWS ]     cycler
         [ 8-DIRECTION   ]     mode toggle
-        [ REMAP         ]     existing remap wizard
+        [ REMAP ALL     ]     existing remap wizard
         [ RESET         ]
         [ REMOVE PLAYER ]     hidden when networked or last local seat
+        [ ABILITIES ][ KEYMAP ]  per-seat doors (#376, #388), see §7.1
         ... live binding grid (existing seat-settings content draw) ...
 ```
 
@@ -132,7 +141,8 @@ seat settings, minus TEAM):
   Both screens share the cycler helper (`og::ui::cycle_player_input`).
 - REMOVE PLAYER mid-game performs the local mid-game seat removal (§5) after
   a `no_or_yes_prompt` confirm. In Base Camp it keeps today's behavior.
-- REMAP keeps the existing wizard, which already accepts joystick events.
+- REMAP ALL (named REMAP before #358) keeps the existing wizard, which
+  already accepts joystick events.
   While the menu is open the world stays paused, so the blocking prompts are
   safe; the remap poll callback also pumps `local_transport_shadow_pump_paused`.
 
@@ -322,18 +332,58 @@ screen share one geometry)
 
 ```
   [BACK]              LOCAL PLAYER n · Pm
-  [4/8-DIRECTION][REMAP     ][RESET     ]     y=38 band (unchanged)
+  [4/8-DIRECTION][REMAP ALL ][RESET     ]     y=38 band (unchanged)
   [INPUT: WASD  ][ZOOM: GAME]                 y=62 band
   +----------------------------+ [RADAR: ON ]  right stack y=84/106/128/150
   | MOVEMENT      ACTIONS      | [HP:    ON ]
   | (binding panel, 12..208)   | [FOES:  ON ]
   |                            | [SCORE: ON ]
   +----------------------------+
-  [TEAM n       ][REMOVE PLAYER]              y=169 (variant-gated)
+  [TEAM n][KEYMAP][REMOVE PLAYER]              y=169 (Base Camp)
+  [ABILITIES][KEYMAP][REMOVE PLAYER]           y=169 (pause)
 ```
 
+- BACK sits at x=12, y=8 (50x15) on both screens (`kPlayerScreenBack*`), on
+  the same x=12 column as the bands and the binding panel under it.
 - The binding panel narrows to x=12..208 (movement col x=20, actions x=104);
   the HUD toggles stack on the right at x=214, w=90, 22px pitch.
+- Each line of the binding panel is a key cell (#358): clicking it, or
+  pressing Enter on it, asks for that one key only. Movement cells sit at
+  x=14 w=88, action cells at x=102 w=104, y = 92 + 8i, h=8, drawn by the
+  panel itself (the menu draws only a steady yellow focus box on the cell's
+  edge). Cells a seat cannot use are Hidden, so navigation skips them. Both
+  screens share the cell table (`OG_BINDING_PANEL_CELLS`), the cell state
+  rule and the nav rewire. The key that opened the prompt and a held key's
+  auto-repeat never answer it. The menu acts on a click at the press, so
+  the mouse release arrives while the prompt waits; the prompt drops every
+  event that does not answer it but still hands a mouse button release to
+  the mouse handler, so the click after a rebind is acted on (the same for
+  REMAP ALL and the classic REMAP). A key already bound to another slot of the
+  same seat in the same mode leaves that slot (it shows `--`); other seats
+  keep their keys. REMAP ALL and the cells save through one helper.
+- Ordinals: the pause player screen is rows 0..10, key cells 11..26,
+  ABILITIES 27, KEYMAP 28 (29 rows); Base Camp seat settings is rows 0..11,
+  key cells 12..27, KEYMAP 28 (29 rows).
+- The y=169 band: the left door (TEAM on the seat screen, ABILITIES on the
+  pause screen) at x=12 and KEYMAP at x=84 are 66 wide; REMOVE PLAYER stays
+  at x=166. ABILITIES is dimmed with New Ability Select off or with no living
+  body under the seat; KEYMAP is hidden for a phone touch seat. One rewire
+  (`rewire_player_screen_bottom_band`) chains the band left to right and
+  sends each door down to BACK on both screens; the last movement cell goes
+  down to the left door.
+- ABILITIES (pause) edits the layout of the body this seat drives (the guy
+  under `viewob[seat]->control`, checked every frame). BACK sends one
+  BeltChange through `PauseMenuHost::set_belt` only if the layout changed and
+  the same body is still driven; a Switch or a possession while it is open
+  closes it with nothing sent. A body with no saved layout opens read-only
+  ("THIS BODY HAS NO SAVED LAYOUT."). The held SPEC latch for the seat is
+  cleared on commit, so a key held through the pause cannot cast the old
+  entry. KEYMAP shows the keyboard picture of every local keyboard seat,
+  this one first. Both keep the paused session pumped.
+- The remap prompt's control summary wraps at 48 characters per line (#383),
+  long key names have short forms (PrtSc, ScrLk, NumLk, Ins, Del, PgUp, PgDn,
+  `KP x` for keypad keys), and a prompt with four or more lines centres in
+  the band under the question.
 - RADAR/FOES/SCORE toggle `prefs[PREF_RADAR/FOES/SCORE]`. HP is ON/OFF only
   (ON = PREF_LIFE_BOTH, OFF = PREF_LIFE_OFF; the TEXT/BARS/SMALL states are
   retired — SMALL was a dead state rendering as BOTH). PREF_OVERLAY keeps
@@ -484,7 +534,7 @@ in the same pass.
 
 ## 8. Non-goals
 
-- No terminal (text/curses) pause menu.
+- No text-client pause menu (curses has one since #376, §2.1).
 - No networked mid-game add/remove; no per-seat leave in networked play
   (QUIT keeps the all-or-nothing withdraw semantics).
 - No replacement for RESET ALL CONTROLS: the global CONTROLS screen is

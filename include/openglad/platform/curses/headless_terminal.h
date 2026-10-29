@@ -55,6 +55,7 @@ public:
     void push_char_tap(char32_t c) { push_char(c); push_char_release(c); }
     void push_string(std::string_view ascii); // one Char key per byte
     bool input_exhausted() const { return scripted_keys_.empty(); }
+    std::size_t keys_left() const { return scripted_keys_.size(); }
 
     // --- assertions over the back buffer (current frame being drawn) ---
     const Cell& cell_at(int row, int col) const;

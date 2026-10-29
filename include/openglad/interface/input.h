@@ -206,6 +206,15 @@ inline constexpr int KEYCODE_LALT = 1073742050;
 inline constexpr int KEYCODE_RCTRL = 1073742052;
 inline constexpr int KEYCODE_RSHIFT = 1073742053;
 inline constexpr int KEYCODE_RALT = 1073742054;
+// The keys the keyboard picture draws a cap for and no table binds by
+// default (og::ui::keyboard_picture): Caps Lock, Insert, the two Windows
+// keys and Menu (SDLK_CAPSLOCK, SDLK_INSERT, SDLK_LGUI, SDLK_RGUI,
+// SDLK_APPLICATION).
+inline constexpr int KEYCODE_CAPSLOCK = 1073741881;
+inline constexpr int KEYCODE_INSERT = 1073741897;
+inline constexpr int KEYCODE_LGUI = 1073742051;
+inline constexpr int KEYCODE_RGUI = 1073742055;
+inline constexpr int KEYCODE_APPLICATION = 1073741925;
 inline constexpr int KEYMOD_CTRL = 0x00C0;
 
 template <typename EventT>
@@ -586,8 +595,36 @@ const void* wait_for_key_event();
 // teaching the input layer about that owner. The callback runs once before
 // each event-queue pass and returns false to cancel the wait.
 using KeyWaitPollCallback = bool (*)();
+// Waits for one key (or pad input) and binds it to the slot. Anything already
+// queued when the wait starts is dropped first, so the key press that opened
+// the prompt can never bind itself. Escape keeps the current key. A key goes
+// through og::input::bind_player_key (input_mappings.h): any other slot of
+// the seat in the same direction mode that held it comes out unbound.
 bool assignKeyFromWaitEventPolling(
     int player_num, int key_enum, KeyWaitPollCallback poll_callback);
+
+namespace og::input_native { struct EventData; }
+namespace og::input {
+// The key wait's one rule for which events end the wait: Quit, a key press
+// that is not the keyboard's auto-repeat (a held key must not bind itself
+// again on the next prompt), a pad button, a pad hat, or a pad axis past the
+// dead zone. The real wait loop and the TESTING queue both ask it.
+bool accepts_key_wait_event(const og::input_native::EventData& event);
+} // namespace og::input
+#ifdef TESTING
+namespace og::input {
+// Test-only key wait queue. Under TESTING the key wait never blocks: it reads
+// what is already in the real event queue, then this queue, each through
+// accepts_key_wait_event, and answers a fake Escape (keep the key) when
+// nothing is accepted. Thread-safe: an injector thread may push while the
+// menu thread waits. Key presses, and mouse button releases (the button
+// let go during the wait: pushed as a real SDL event and read back through
+// the real loop's pass). Any other event here is dropped.
+void testing_push_key_wait_event(const og::input_native::EventData& event);
+void testing_clear_key_wait_events();
+int testing_pending_key_wait_events();
+} // namespace og::input
+#endif
 void quit_if_quit_event(const void* native_event);
 template <typename EventT>
 inline void quit_if_quit_event(const EventT& event)
@@ -612,6 +649,9 @@ inline bool isJoystickEvent(const EventT& event)
     return isJoystickEvent(to_native_event_ptr(event));
 }
 
+// Drops every queued event, except that a mouse button release still
+// reaches the mouse state (a dropped release would leave the button "down"
+// and swallow the next click).
 void clear_events();
 
 const char* query_key_name(int keycode);

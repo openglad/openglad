@@ -337,7 +337,7 @@
   special[3].name = "FREEZE TIME"
   special[3].alternate = "NONE"
   special[3].cost = 500
-  special[3].detail = "Freeze time for all but your team and kill enemies with ease."
+  special[3].detail = "Freeze all but your team and kill with ease. Rests 30 s."
   special[3].icon = "icons/freeze_time.png"
   special[4].id = "energy_wave"
   special[4].name = "ENERGY WAVE"
@@ -789,7 +789,7 @@
   special[2].alternate = "NONE"
   special[2].cost = 40
   special[2].new_kit = true
-  special[2].detail = "A freezing sprinkle in all eight directions, a quarter as long as the normal freeze."
+  special[2].detail = "A quarter-length freeze in all eight directions. Rests 15 s."
   special[2].icon = "icons/glimmer.png"
   special[3].id = "hasten"
   special[3].name = "HASTEN"
@@ -829,7 +829,7 @@
   ai_line_of_sight = 8
   anim_row_count = 0
   anim_table = ~
-  description = "Faeries are small, flying above friends and enemies alike unnoticed. Delicate and easily destroyed, they sprinkle a magic powder which freezes their enemies."
+  description = "Faeries are small, flying above friends and foes alike unnoticed. Delicate and easily destroyed, they sprinkle a magic powder that freezes their enemies."
   name_pool_size = 16
   name_pool[0] = "Tink"
   name_pool[1] = "Gem"
@@ -1264,7 +1264,7 @@
   special[1].cost = 30
   special[1].alternate_new_kit = true
   special[1].alternate_cost = 50
-  special[1].detail = "Frighten nearby foes into fleeing."
+  special[1].detail = "Frighten nearby foes into fleeing. Rests 8 s."
   special[1].alternate_detail = "Fear leaps foe to foe."
   special[1].icon = "icons/scare.png"
   special[1].alternate_icon = "icons/wail.png"
@@ -1463,7 +1463,7 @@
   special[1].name = "HOWL"
   special[1].alternate = "NONE"
   special[1].cost = 25
-  special[1].detail = "Howl in rage, stunning nearby enemies in their tracks."
+  special[1].detail = "Howl in rage, stunning nearby enemies in their tracks. Rests 10 s."
   special[1].icon = "icons/howl.png"
   special[2].id = "eat_corpse"
   special[2].name = "EAT CORPSE"
@@ -1797,7 +1797,7 @@
   special[4].name = "MIND CONTROL"
   special[4].alternate = "NONE"
   special[4].cost = 150
-  special[4].detail = "Convert nearby foes to your team, for a time."
+  special[4].detail = "Convert nearby foes to your team, for a time. Rests 20 s."
   special[4].icon = "icons/mind_control.png"
   special[5].id = ~
   special[5].name = "NONE"

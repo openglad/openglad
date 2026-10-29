@@ -1931,7 +1931,7 @@ TEST(InputKeybinds, slot_11_unbound_everywhere)
     // A stored value is dropped by the loader (the cfg is already migrated,
     // so this is the plain reservation, not the migration) ...
     cfg_store config;
-    config.apply_setting("controls", og::input::kDefaultKeysVersionSetting, "1");
+    config.apply_setting("controls", og::input::kDefaultKeysVersionSetting, "2");
     config.apply_setting("controls", "player1_mode4_key11", std::to_string(SDLK_TAB));
     config.apply_setting("controls", "player1_key11", std::to_string(SDLK_TAB));
     load_player_control_settings_from_cfg(config);
@@ -2049,7 +2049,7 @@ TEST(InputKeybinds, classic_factory_cfg_migrates_once)
 
     load_player_control_settings_from_cfg(config);
     expect_seat_tables(/*web=*/false, "migrated");
-    EXPECT_EQ("1", config.get_setting("controls", og::input::kDefaultKeysVersionSetting))
+    EXPECT_EQ("2", config.get_setting("controls", og::input::kDefaultKeysVersionSetting))
         << "the migration stamps its marker (native too)";
 
     // The boot path saves the whole block right after loading.
@@ -2132,7 +2132,7 @@ TEST(InputKeybinds, web_pre_v1_and_v1_cfgs_both_reach_the_new_web_table)
         config.apply_setting("controls", "web_default_keys_version", "1");
         load_player_control_settings_from_cfg(config, /*web_mode=*/true);
         expect_seat_tables(/*web=*/true, "v1 web");
-        EXPECT_EQ("1", config.get_setting("controls", og::input::kDefaultKeysVersionSetting));
+        EXPECT_EQ("2", config.get_setting("controls", og::input::kDefaultKeysVersionSetting));
     }
     {
         // The browser scheme's X is a factory key only on web: a native
@@ -2141,6 +2141,39 @@ TEST(InputKeybinds, web_pre_v1_and_v1_cfgs_both_reach_the_new_web_table)
         write_old_controls(config, /*web=*/true);
         load_player_control_settings_from_cfg(config, /*web_mode=*/false);
         EXPECT_EQ(static_cast<int>(SDLK_X), get_player_key_binding_for_mode(0, kFourMode, KEY_SPECIAL));
+    }
+}
+
+// #391: a cfg a version-1 build wrote (every slot of every seat on the New
+// Ability Select tables, web P2 LOOK UP on Right Ctrl) moves P2's LOOK UP to
+// Delete on web and nothing at all natively, and is stamped 2 either way.
+TEST(InputKeybinds, v1_cfg_moves_web_p2_look_up_to_delete)
+{
+    FullControlSnapshotGuard guard;
+    for (const bool web : {false, true})
+    {
+        cfg_store config;
+        config.apply_setting("controls", og::input::kDefaultKeysVersionSetting, "1");
+        for (int p = 0; p < 4; ++p)
+            for (int k = 0; k < NUM_KEYS; ++k)
+            {
+                const auto v1 = [&](bool eight) {
+                    if (p == 1 && k == KEY_LOOKUP)
+                        return static_cast<int>(SDLK_RCTRL);
+                    return tk::new_factory_key(p, eight, k, web);
+                };
+                config.apply_setting("controls", std::format("player{}_key{}", p + 1, k),
+                                     std::to_string(v1(false)));
+                config.apply_setting("controls", std::format("player{}_mode4_key{}", p + 1, k),
+                                     std::to_string(v1(false)));
+                config.apply_setting("controls", std::format("player{}_mode8_key{}", p + 1, k),
+                                     std::to_string(v1(true)));
+            }
+        load_player_control_settings_from_cfg(config, web);
+        expect_seat_tables(web, web ? "v1 -> v2 web" : "v1 -> v2 native");
+        EXPECT_EQ(web ? static_cast<int>(SDLK_DELETE) : static_cast<int>(SDLK_RCTRL),
+                  get_player_key_binding_for_mode(1, kFourMode, KEY_LOOKUP));
+        EXPECT_EQ("2", config.get_setting("controls", og::input::kDefaultKeysVersionSetting));
     }
 }
 

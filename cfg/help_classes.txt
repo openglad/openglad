@@ -17,194 +17,56 @@ free SHIFTER key.
 TRAIN > ABILITIES shows and changes
 your layout.
 
-SOLDIER
-========================
+@class SOLDIER
 Basic fighter, good all-around.
 Weapon: Magical returning blade.
-1. Charge: Run forward at high
-   speed, damaging enemies.
-2. Boomerang: Spiraling blade
-   that hits multiple targets.
-3. Whirl: Lash out at all nearby
-   foes, may stun them.
-4. Disarm: Stagger the foe you face so
-   it waits before its next swing. A
-   stronger foe resists. With Gameplay
-   Fixes on, a resisted try costs half
-   and nobody in reach costs nothing.
 
-BARBARIAN
-========================
+@class BARBARIAN
 Tough fighter, resists magic.
 Weapon: Heavy iron hammer.
-1. Hurl Boulder: Throw rocks at
-   enemies, damage by strength.
-2. Exploding Boulder: Rock that
-   explodes on impact.
 
-ELF
-========================
+@class ELF
 Small and hard to hit.
 Has ForestWalk ability.
 Weapon: Thrown stones.
-1-4. Rocks: Increasing amounts
-   of bouncing rocks.
 
-ARCHER
-========================
+@class ARCHER
 Fast with long-range arrows.
-1. Fire Arrows: Spin and fire
-   blazing arrows in all dirs.
-2. Barrage: Stream of arrows at
-   one target.
-3. Exploding Bolt: Single arrow
-   that explodes on impact.
 
-MAGE
-========================
+@class MAGE
 Slow but powerful magic user.
 Can teleport at any level.
-1. Teleport: Random or memorized
-   location (SHIFTER to mark).
-2. Warp Space: Damages nearby
-   foes with twisted space.
-3. Time Stop: Freeze time for
-   all non-team members.
-   Rests 30s between casts.
-4. Energy Wave: Expanding flood
-   of energy through walls.
-5. HeartBurst: Enemies burst into
-   flames from within!
 
-ARCHMAGE
-========================
-Specialized Mage (level 6+).
+@class ARCHMAGE
 Extreme firepower, very weak.
-1. Teleport: Same as Mage.
-2. HeartBurst / Chain Lightning
-   (SHIFTER for chain).
-3. Summon Image / Fire Elemental
-   (SHIFTER for elemental).
-4. Mind Control: Bend enemies
-   to your will temporarily.
-   Rests 20s between casts.
 
-CLERIC
-========================
+@class CLERIC
 Slow healer, generates barriers.
-1. Heal: Heal nearby friends.
-   SHIFTER: Mystic Mace defense.
-2. Raise Undead: Bring back the
-   fallen. SHIFTER: Turn Undead,
-   reach 60 pixels or more, undead only.
-3. Raise Ghost: Summon spirits.
-   SHIFTER: Turn Undead, as Raise Undead's.
-4. Resurrect: Full resurrection
-   of fallen comrades.
 
-THIEF
-========================
+@class THIEF
 Fast with unlimited daggers.
-1. Plant Bomb: Drop explosives.
-   SHIFTER: Mine*, unseen until
-   a foe steps on it.
-2. Cloak: Become invisible.
-3. Taunt: Lure enemies away.
-   SHIFTER: Charm enemies.
-4. Poison Cloud: Create noxious
-   cloud to damage enemies.
 
-DRUID
-========================
+@class DRUID
 Nature magician, throws lightning.
-1. Grow Tree: Plant trees that
-   block enemies but not friends.
-2. Summon: Call sprites that
-   freeze foes.
-3. Reveal Items: Show treasure
-   and generators on radar.
-4. Protection: Wind shield for
-   nearby teammates.
 
-GHOST
-========================
+@class GHOST
 Passes through walls.
-1. Scare: Make enemies flee.
-   SHIFTER: Wail*, fear that
-   leaps from foe to foe.
-   Both rest 8s between casts.
-2. Siphon*: A touch that heals
-   you by half the harm it does.
-3. Possess*: Enter a foe and
-   drive it for a while.
-4. Phase*: Untouchable and fast
-   for a few seconds, no attacks.
 
-FAERIE
-========================
+@class FAERIE
 Flying, freezing powder.
-1. Blink*: Short random hop.
-   SHIFTER: Swap*, trade places
-   with anyone in sight.
-2. Glimmer*: A brief freeze in
-   all eight directions; rests
-   15s between casts.
-3. Hasten*: Speed up an ally.
-   SHIFTER: Haste Self*, speed
-   yourself up.
-4. Wish*: The faerie dies; a
-   fallen ally rises and allies
-   nearby are healed.
 
-SKELETON
-========================
+@class SKELETON
 Fast, can Tunnel.
-1. Tunnel: Burrow to a spot
-   nearby.
-2. Dig In*: Sink into the floor,
-   unseen and mending.
-3. Bone Wall*: Line of bones that
-   blocks the way for a while.
-   Up to 2 walls, more by level.
-   SHIFTER: Bone Storm*, shatter
-   all your walls.
-4. Reassemble*: Ward your next
-   death, rise at quarter health.
-   SHIFTER: Legion*, half your
-   kills rise as your skeletons.
 
-FIRE ELEMENTAL
-========================
+@class ELEMENTAL
 Fast; bursts into flame on death.
-1. Starburst: Fling flaming
-   meteors in all directions.
-2. Immolate*: Burn all who touch
-   you, leave burning footprints.
-3. Meteor Rain*: Meteors fall on
-   a distant area.
-4. Rekindle*: Burn magic into
-   health. SHIFTER: Supernova*,
-   die in one huge blast.
 
-ORC CAPTAIN
-========================
-Promoted Orc (level 5+).
-1. Howl*: Stun nearby enemies;
-   rests 10s between casts.
-2. Eat Corpse*: Heal by eating
-   the fallen.
-3. Hook Blade*: Spiraling knife
-   reels a foe to your feet.
-   SHIFTER: Knife Fan*, three
-   knives in a spread.
-4. War Banner*: Plant it on a
-   corpse; allies near it mend
-   and never flee.
-   SHIFTER: Warband*, grunts
-   charge in to help.
+@class ORC
+Strong melee fighter, hard to hurt.
 
-OTHER CLASSES
-========================
-Orc: Strong melee, Howl stuns
-   (rests 10s between casts).
-Slime: Grows and splits in two.
+@class ORC CAPTAIN
+Stronger and smarter than an orc.
+Weapon: Thrown blades.
+
+@class SLIME
+Grows, and splits in two when big.

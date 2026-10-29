@@ -169,6 +169,17 @@ Sint32 load2(Sint32 arg1);
 Sint32 load3(Sint32 arg1);
 Sint32 create_team_menu(Sint32 arg1); // Create / modify team members
 Sint32 create_detail_menu(guy *arg1); // detailed character information
+// The same DETAILS page over HIRE's recruit (current_guy_): HIRE's
+// ABILITIES door. No promotion offered; returns MENU_REDRAW.
+Sint32 create_recruit_detail_menu();
+#ifdef TESTING
+// The family the open DETAILS page shows, -1 while none is open.
+int detail_menu_testing_family();
+// The page the open DETAILS screen shows (0-based) and how many it has;
+// -1 while none is open.
+int detail_menu_testing_page();
+int detail_menu_testing_pages();
+#endif
 Sint32 create_hire_menu(Sint32 arg1);  // Purchase new team members
 Sint32 create_train_menu(Sint32 arg1); // Edit or sell team members
 Sint32 create_progress_menu(Sint32 arg1); // View level progress
@@ -258,12 +269,25 @@ Sint32 edit_player_keymap(Sint32 arg);
 // menu pumps the paused transport there; false cancels the prompt sequence).
 Sint32 edit_player_keymap_with_poll(Sint32 arg,
                                     KeyWaitPollCallback poll_callback);
+// #358: one key, from a click on its line in the binding panel: the REMAP
+// prompt for that key alone (label from the wizard's own table), then the
+// key wait. False when the key is not one the seat's mode and the setting
+// ask for, or the wait was cancelled. The first form polls the picker lobby
+// (Base Camp), the second takes the pause menu's callback.
+bool rebind_player_key(int player_index, int key_enum);
+bool rebind_player_key_with_poll(int player_index, int key_enum,
+                                 KeyWaitPollCallback poll_callback);
+// The one save after any key change (REMAP or one key): the mapping library
+// entry, the controls block, and the cfg file.
+void save_player_keys_after_remap(int player_index);
 // The REMAP wizard's control summary, one string per drawn line: the
 // directions first, then the actions. With New Ability Select off that is
-// two lines (the classic actions line); with it on, three (FIRE and the
-// SPEC 1/2/3 keys, then YELL, SWITCH, SHIFTER and LOOK UP). An out-of-range
-// player gives no lines. (The joined one-line form went with the global
-// CONTROLS screen — the only thing that drew it.)
+// two groups (the classic actions line); with it on, three (FIRE and the
+// SPEC 1/2/3 keys, then YELL, SWITCH, SHIFTER and LOOK UP). Each group
+// starts a line and wraps at 48 glyphs (#383), so long key names make more
+// lines, never a longer one; short names give exactly the two or three
+// lines above. An out-of-range player gives no lines. (The joined one-line
+// form went with the global CONTROLS screen — the only thing that drew it.)
 std::vector<std::string> build_player_control_summary_lines(int player_index, bool remap_mode);
 std::string player_control_key_display_name(int player_index, int key_enum);
 Sint32 overscan_adjust(Sint32 arg);

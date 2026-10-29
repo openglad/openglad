@@ -20,8 +20,10 @@
 
 #include <openglad/interface/ui/menu_screen_spec.h>
 
+#include <array>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 namespace og::ui {
 
@@ -50,6 +52,11 @@ struct PauseMenuHost {
     bool (*add_player)() = nullptr;
     bool (*can_remove_player)(int seat) = nullptr;
     bool (*remove_player)(int seat) = nullptr;
+    // ABILITIES (#376): send the six belt bytes for the walker `entity_id`
+    // that local seat `seat` drives (one BeltChange through the client that
+    // carries the seat). False when nothing could carry it.
+    bool (*set_belt)(int seat, std::uint32_t entity_id,
+                     const std::array<std::uint8_t, 6>& belt) = nullptr;
     bool networked = false;
     bool restart_allowed = false;  // hidden networked / retry-suppressed modes
 };
@@ -91,7 +98,19 @@ inline constexpr int kPausePlayerHudRadarIndex = 7;
 inline constexpr int kPausePlayerHudLifeIndex = 8;
 inline constexpr int kPausePlayerHudFoesIndex = 9;
 inline constexpr int kPausePlayerHudScoreIndex = 10;
-inline constexpr int kPausePlayerButtonCount = 11;
+// The final ordinal table, appended so 0..10
+// stay put. #358: sixteen click cells over the binding panel's lines, 11..18
+// the MOVEMENT column (UP, UP-R, RIGHT, DN-R, DOWN, DN-L, LEFT, UP-L) and
+// 19..26 the ACTIONS rows of the setting (an eighth row only with New
+// Ability Select on). Then the two doors on the bottom-left band:
+// ABILITIES (#376, the character this seat drives; dimmed with New Ability
+// Select off or with no living body under the seat) and KEYMAP (#388, the
+// keyboard picture of this machine's seats; the Base Camp seat screen's twin
+// is kSeatSettingsKeymapRow; hidden for a phone's touch seat).
+inline constexpr int kPausePlayerCellFirstIndex = 11;
+inline constexpr int kPausePlayerAbilitiesIndex = 27;
+inline constexpr int kPausePlayerKeymapIndex = 28;
+inline constexpr int kPausePlayerButtonCount = 29;
 
 // One local seat shown as a PAUSED-screen player row: the controller-profile
 // slot this machine samples (seat) and the displayed P# (global player index

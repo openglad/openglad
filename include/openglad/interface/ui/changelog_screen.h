@@ -21,6 +21,7 @@
 // only leaves a trace unless a test forces it.
 
 #include <openglad/interface/ui/menu_screen_spec.h>
+#include <openglad/resources/rgba_image.h>
 
 #include <cstddef>
 #include <span>
@@ -33,8 +34,9 @@ struct ChangelogEntry {
     int id;                              // monotonic; the marker holds the highest shown
     const char* title;                   // big-font title
     std::span<const char* const> lines;  // at most kChangelogMaxLines lines
-    const char* image;                   // under pix/, or nullptr
-    const char* web_image;               // the web build's picture, or nullptr
+    // Draw the keyboard picture (og::ui::keyboard_picture, the factory keys
+    // of this kind of build) in the band under the lines.
+    bool keyboard_picture;
 };
 
 // The page's text budget: the lines sit centred in the 4..316 bevel at
@@ -74,8 +76,8 @@ static_assert(kChangelogBandH * 1560 / 550 <= kChangelogBandW &&
               "the band is the picture's own aspect, height-limited");
 
 // Entry 1: New Ability Select. The picture under the text is the new default
-// keyboard (scripts/keyboard_map/make_keyboard_map.py draws it from the key
-// tables).
+// keyboard, drawn from the key tables by og::ui::keyboard_picture (on the web
+// build player 1 attacks with Z and PAUSE is Backspace).
 inline constexpr const char* kAbilitySelectLines[] = {
     "The controls have changed! Up to three specials",
     "can now be invoked directly, and up to 3 more",
@@ -85,8 +87,7 @@ inline constexpr const char* kAbilitySelectLines[] = {
 };
 
 inline constexpr ChangelogEntry kChangelog[] = {
-    {1, "CHANGELOG!", kAbilitySelectLines, "pix/changelog/keyboard_belt.png",
-     "pix/changelog/keyboard_belt_web.png"},
+    {1, "CHANGELOG!", kAbilitySelectLines, true},
 };
 inline constexpr int kChangelogLatestId = 1;
 
@@ -123,9 +124,14 @@ const MenuScreenSpec& changelog_menu_screen_spec();
 // The marker as cfg holds it (0 when absent or not a number).
 int changelog_seen_marker();
 
-// The picture path an entry shows on this build (the _web picture on the web
-// build, where player 1 attacks with Z).
-const char* changelog_entry_image(const ChangelogEntry& entry, bool web);
+// Draw a truecolour picture into a band of the menu canvas (menu pixels)
+// through a native plane, aspect-fitted and centred: its pixels are the
+// display's own, so the keyboard's labels stay sharp at any window size.
+// False when no plane is available (a tiny window, a lost device); the
+// caller draws its fallback line. CHANGELOG! and KEYMAP both draw their
+// keyboard picture through it.
+bool draw_picture_in_band(const og::io::RgbaImage& picture, int band_x,
+                          int band_y, int band_w, int band_h);
 
 }  // namespace og::ui
 

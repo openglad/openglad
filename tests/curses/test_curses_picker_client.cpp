@@ -75,6 +75,7 @@
 #include <openglad/platform/net_transport_websocket_server.h>
 
 #include "curses_mount_restore.h"
+#include "test_ability_select_scope.h"
 
 using namespace og::curses;
 using og::ui::PickerMenuCommand;
@@ -3573,7 +3574,8 @@ TEST(CursesPickerClient, run_game_starts_real_session_and_withdraws)
     PickerFixture f;
     f.config.level = 1;
     f.config.team_families.clear();
-    f.t().push_special(KeyCode::Escape);
+    f.t().push_special(KeyCode::Escape);  // the PAUSED menu
+    f.t().push_char(U'q');               // quit mission
 
     f.client.run_game();
 
@@ -3600,7 +3602,8 @@ TEST(CursesPickerClient, run_game_quit_of_armed_replay_restores_cursor)
     f.config.campaign = "gladiator";
     f.config.level = 1;
     f.config.team_families.clear();
-    f.t().push_special(KeyCode::Escape);  // quit the level immediately
+    f.t().push_special(KeyCode::Escape);
+    f.t().push_char(U'q');  // quit the level immediately
 
     f.client.run_game();
 
@@ -5542,7 +5545,8 @@ TEST(CursesPickerClient, run_game_solo_win_folds_autosaves_and_reports)
         f.config.campaign = "gladiator";
         f.config.level = 1;
         f.config.team_families.clear();
-        f.t().push_special(KeyCode::Escape);
+        f.t().push_special(KeyCode::Escape);  // the PAUSED menu
+        f.t().push_char(U'q');               // quit mission
         f.client.run_game();
         EXPECT_FALSE(f.save().is_level_completed(1)) << "a quit is not a win";
         EXPECT_EQ(1, static_cast<int>(f.save().scen_num));
@@ -5625,4 +5629,77 @@ TEST(CursesPickerClient, run_game_tower_floor_win_shows_the_mode_summary)
               static_cast<int>(f.save().scen_num));
 
     EXPECT_TRUE(mount_restore.restore());
+}
+
+// --- The in-game PAUSED menu's pages (#376 ABILITIES, #388 KEYS) ------------
+
+// The KEYS page: MOVEMENT then ACTIONS in the binding panels' order, the
+// diagonals in 8-direction mode only, SPEC 1/2/3 with New Ability Select on.
+TEST(CursesPickerPages, keys_page_lists_the_panel_rows_in_order)
+{
+    std::array<int, NUM_KEYS> keys{};
+    keys[KEY_UP] = KEYCODE_w;
+    keys[KEY_FIRE] = KEYCODE_LCTRL;
+    keys[KEY_SPECIAL] = KEYCODE_1;
+    keys[KEY_UP_RIGHT] = KEYCODE_e;
+    const std::vector<std::string> four =
+        og::curses::keys_page_lines(keys, false, true);
+    ASSERT_GE(four.size(), 2u);
+    EXPECT_EQ("MOVEMENT", four.front());
+    EXPECT_EQ("  UP: W", four[1]);
+    EXPECT_EQ(four.end(), std::find(four.begin(), four.end(), "  UP-R: E"))
+        << "no diagonals in 4-direction mode";
+    const auto actions = std::find(four.begin(), four.end(), "ACTIONS");
+    ASSERT_NE(four.end(), actions);
+    EXPECT_EQ(5, actions - four.begin()) << "four movement lines";
+    EXPECT_EQ("  FIRE: Left Ctrl", *(actions + 1));
+    EXPECT_EQ("  SPEC 1: 1", *(actions + 2));
+    EXPECT_EQ("  SPEC 2: --", *(actions + 3)) << "an unbound slot";
+    EXPECT_EQ(8, four.end() - actions - 1) << "eight ACTIONS rows";
+
+    const std::vector<std::string> eight =
+        og::curses::keys_page_lines(keys, true, false);
+    EXPECT_EQ("  UP-R: E", eight[2]);
+    const auto classic = std::find(eight.begin(), eight.end(), "ACTIONS");
+    ASSERT_NE(eight.end(), classic);
+    EXPECT_EQ(9, classic - eight.begin()) << "eight movement lines";
+    EXPECT_EQ("  SPECIAL: 1", *(classic + 2)) << "the classic names, setting off";
+}
+
+// The ABILITIES page on its own: an editable hero comes back with the edit
+// ('c' empties the cursor's slot); a body with no saved layout is shown,
+// with the line that says so, and comes back unchanged.
+TEST(CursesPickerPages, abilities_page_returns_the_edit_or_shows_read_only)
+{
+    ScopedAbilitySelect on(true);
+    guy soldier(FAMILY_SOLDIER);
+    soldier.upgrade_to_level(13);
+    og::curses::AbilitiesPageHero hero{.name = "ROLF",
+                                       .family = FAMILY_SOLDIER,
+                                       .level = 13,
+                                       .new_specials = 1,
+                                       .stored = soldier.belt};
+    FakeClock clock;
+    {
+        HeadlessTerminal term(30, 100);
+        term.push_char(U'c');
+        term.push_special(KeyCode::Escape);
+        const og::sim::belt::Bytes edited =
+            og::curses::run_abilities_page(term, clock, hero);
+        EXPECT_EQ(og::sim::belt::kEmptyByte, edited[0]);
+    }
+    {
+        hero.editable = false;
+        HeadlessTerminal term(30, 100);
+        term.push_char(U'c');
+        const og::sim::belt::Bytes shown =
+            og::curses::run_abilities_page(term, clock, hero);
+        EXPECT_EQ(hero.stored, shown);
+        bool notice = false;
+        for (int row = 0; row < term.rows(); ++row)
+            if (term.text_row(row).find(og::ui::kNoSavedLayoutNotice) !=
+                std::string::npos)
+                notice = true;
+        EXPECT_TRUE(notice) << "the read-only page says why";
+    }
 }

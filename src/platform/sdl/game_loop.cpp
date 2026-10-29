@@ -15,6 +15,7 @@
 #include <openglad/legacy/colors.h>
 #include <openglad/interface/game_context.h>
 #include <openglad/interface/input.h>
+#include <openglad/interface/native_input.h>
 #include <openglad/interface/render/pal32.h>
 #include <openglad/interface/ui/pause_menu.h>
 #include <openglad/interface/ui/results_screen.h>
@@ -25,6 +26,9 @@
 #include <openglad/platform/game_session.h>
 #include <openglad/platform/local_transport_shadow.h>
 #include <openglad/resources/progression.h>
+
+#include <array>
+#include <cstdint>
 
 #ifdef TESTING
 void picker_testing_mark_frame_advance();
@@ -63,11 +67,28 @@ struct TickSchedule {
 
 GameFrameResult finish_done(GameLoopFrameState& st)
 {
+    // The mission is over: the desktop gets its shortcuts back (#391).
+    og::input_native::set_mission_keyboard_grab(false);
     st.done = true;
     st.has_pending_input = false;
     st.pending_input = {};
     og::runtime::finish_replay_recording();
     return GameFrameResult::Done;
+}
+
+// This machine's seats that read the keyboard: the pause menu's seat list
+// (the one owner of "who plays here", local or networked) minus the seats a
+// joystick drives.
+int local_keyboard_seat_count(const og::runtime::GameSession& session)
+{
+    int count = 0;
+    for (const og::ui::PauseSeatInfo& seat :
+         og::ui::collect_pause_seats(session.networked_session_))
+    {
+        if (seat.seat >= 0 && seat.seat < MAX_PLAYERS && !playerHasJoystick(seat.seat))
+            ++count;
+    }
+    return count;
 }
 
 TickSchedule compute_tick_schedule(const screen& s, const GameLoopDeps& deps)
@@ -271,6 +292,18 @@ bool pause_menu_host_remove_player(int seat)
                                                                 seat);
 }
 
+// ABILITIES from the PAUSED menu (#376): one BeltChange through the client
+// that carries the seat; the shadow also writes the display mirror's guy so
+// the HUD shows the new layout at once.
+bool pause_menu_host_set_belt(int seat, std::uint32_t entity_id,
+                              const std::array<std::uint8_t, 6>& belt)
+{
+    og::runtime::GameSession* const session = og::runtime::current_game_session;
+    return session != nullptr &&
+        og::runtime::local_transport_shadow_set_belt(*session, seat, entity_id,
+                                                     belt);
+}
+
 og::ui::PauseMenuResult run_gameplay_pause_menu(
     og::runtime::GameSession& session)
 {
@@ -284,6 +317,7 @@ og::ui::PauseMenuResult run_gameplay_pause_menu(
     host.add_player = &pause_menu_host_add_player;
     host.can_remove_player = &pause_menu_host_can_remove_player;
     host.remove_player = &pause_menu_host_remove_player;
+    host.set_belt = &pause_menu_host_set_belt;
     host.networked = session.networked_session_;
     // RESTART is hidden for networked sessions (design §2.1) and for modes
     // whose progression suppresses retry (the tower's results RETRY gate) —
@@ -389,6 +423,13 @@ GameFrameResult game_frame_with_result(screen& s, GameLoopFrameState& st, const 
     if (gameplay_session == nullptr)
         return finish_done(st);
 
+    // Cross-seat chords (#391): while two or more players share the
+    // keyboard, hold the native keyboard grab so one player's modifier plus
+    // another's key cannot become a desktop shortcut. Released before the
+    // PAUSED menu and when the mission ends.
+    og::input_native::set_mission_keyboard_grab(og::input_native::want_keyboard_grab(
+        true, local_keyboard_seat_count(*gameplay_session)));
+
     // Two-pacer split: sim_pacer gates event poll, input latching, and sim
     // tick on the master cadence (world.timer_wait), while render_pacer gates
     // the render path on target_fps. enable_frame_timing == false (browser
@@ -465,6 +506,10 @@ GameFrameResult game_frame_with_result(screen& s, GameLoopFrameState& st, const 
                 // silently reverted cheat mode's blue palette.
                 else if (event.key.key == SDLK_ESCAPE && !event.key.repeat)
                 {
+                    // PAUSED is the way out of the keyboard grab (#391): the
+                    // menus never hold it. The next mission frame takes it
+                    // again on RESUME.
+                    og::input_native::set_mission_keyboard_grab(false);
                     const og::ui::PauseMenuResult menu_result =
                         run_gameplay_pause_menu(*gameplay_session);
                     s.redrawme = 1;

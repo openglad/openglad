@@ -51,7 +51,7 @@ std::string picker_testing_show_campaign_select(bool cancel);
 void campaign_picker_testing_set_auto_accept(bool enabled);
 
 // Forward declarations from picker.cpp
-std::string get_class_description(unsigned char family, short new_specials);
+std::string get_class_description(unsigned char family);
 const char* family_name_copy(short family);
 const char* get_family_string(Sint32 family);
 const char* get_training_cost_rating(unsigned char family, int stat);
@@ -656,29 +656,40 @@ std::string expected_training_stars(std::int32_t cost)
 TEST(PickerFuncs, get_class_description_soldier)
 {
     // get_class_description hands back the family's OWN descriptor->description
-    // and the "Special:" line generated from its specials table (the HIRE
-    // screen text; the prose is in packs/core/families/living-00-soldier.lua).
-    const std::string desc = get_class_description(FAMILY_SOLDIER, 0);
+    // (the HIRE screen text; the prose is in
+    // packs/core/families/living-00-soldier.lua) and nothing else: the
+    // class's abilities are on the DETAILS page HIRE's ABILITIES door opens.
+    const std::string desc = get_class_description(FAMILY_SOLDIER);
     EXPECT_NE(std::string::npos, desc.find("Your basic grunt"))
         << "the soldier blurb opens with its own line, got: " << desc;
-    EXPECT_NE(std::string::npos,
-              desc.find("Special: Charge, Boomerang, Whirlwind, Disarm"))
-        << "the soldier blurb names all four soldier specials, got: " << desc;
-    EXPECT_NE(desc, get_class_description(FAMILY_MAGE, 0))
+    EXPECT_NE(desc, get_class_description(FAMILY_MAGE))
         << "a lookup that hands every family the same text is not a lookup";
 }
 
 
 TEST(PickerFuncs, get_class_description_mage)
 {
-    const std::string desc = get_class_description(FAMILY_MAGE, 1);
+    const std::string desc = get_class_description(FAMILY_MAGE);
     EXPECT_NE(std::string::npos, desc.find("fireballs"))
         << "the mage blurb names its ranged attack, got: " << desc;
-    EXPECT_NE(std::string::npos,
-              desc.find("Special: Teleport, Warp Space, Freeze Time, Energy Wave, Heartburst"))
-        << "the mage blurb names all five mage specials, got: " << desc;
-    EXPECT_NE(desc, get_class_description(FAMILY_SOLDIER, 1))
+    EXPECT_NE(desc, get_class_description(FAMILY_SOLDIER))
         << "the mage must not be handed the soldier's blurb";
+}
+
+// The box is the class's prose alone, whatever New Ability Select says.
+// RED: hire_description appends a "Special:" line again.
+TEST(PickerFuncs, get_class_description_has_no_special_line)
+{
+    for (const int family : {FAMILY_SOLDIER, FAMILY_MAGE, FAMILY_THIEF,
+                             FAMILY_CLERIC, FAMILY_BARBARIAN})
+    {
+        const std::string desc =
+            get_class_description(static_cast<unsigned char>(family));
+        EXPECT_FALSE(desc.empty()) << "family " << family;
+        EXPECT_EQ(std::string::npos, desc.find("Special:"))
+            << "family " << family << ": " << desc;
+        EXPECT_EQ(std::string(get_family_descriptor(family)->description), desc);
+    }
 }
 
 
@@ -696,7 +707,7 @@ TEST(PickerFuncs, get_class_description_all_families)
     // set and fails here while every HIRE screen is wrong.
     std::set<std::string> seen;
     for (int i = 0; i < 16; i++) {
-        const std::string desc = get_class_description(families[i], 1);
+        const std::string desc = get_class_description(families[i]);
         ASSERT_FALSE(desc.empty())
             << "family " << int(families[i]) << " has no description";
         seen.insert(desc);
@@ -870,9 +881,15 @@ TEST(PickerFuncs, player_control_summary_rejects_bad_slots_and_clips_long_key_na
         ~KeyRestore() { target = saved; }
     } restore{key, saved_key};
 
+    // #383: Print Screen has a short name of its own now ...
     key = SDLK_PRINTSCREEN;
-    EXPECT_EQ("PrintScre", player_control_key_display_name(0, KEY_FIRE))
-        << "the 11-character SDL key name must use the nine-character face";
+    EXPECT_EQ("PrtSc", player_control_key_display_name(0, KEY_FIRE))
+        << "Print Screen reads as its short name";
+    // ... and a name still longer than ten after the table keeps the
+    // nine-character face.
+    key = SDLK_AC_BOOKMARKS;
+    EXPECT_EQ("AC Bookma", player_control_key_display_name(0, KEY_FIRE))
+        << "the 12-character SDL key name must use the nine-character face";
 }
 
 
@@ -1080,7 +1097,7 @@ TEST(PickerFuncs, how_many_with_team)
         << "the button dispatcher should route hire-team changes";
     ASSERT_EQ(1, (int)og::runtime::current_session->current_team_num_) << "hire team num should increment";
     ASSERT_EQ(1, (int)og::runtime::current_session->current_guy_->teamnum) << "current guy team should mirror hire team";
-    ASSERT_TRUE(std::string(og::runtime::current_session->allbuttons_[2]->label).find("Hiring for Team ") == 0) << "hire label should be updated";
+    ASSERT_STREQ("TEAM 2", og::runtime::current_session->allbuttons_[2]->label.c_str()) << "hire label should be updated";
 
     // change_allied remains a save/replay compatibility hook after the visible
     // seat-mode row moved out; it no longer writes either button surface.

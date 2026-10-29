@@ -30,6 +30,7 @@
 #include <openglad/interface/render/view.h>
 //buffers:  using input.h instead #include "int32.h"
 #include <openglad/interface/input.h>
+#include <openglad/interface/input_mappings.h>
 #include <openglad/interface/native_input.h>
 #include <openglad/interface/web_back_key.h>
 #include <openglad/core/util.h>
@@ -52,6 +53,7 @@
 #include <openglad/interface/ui/picker_lobby_network_client.h>
 #include <openglad/interface/platform_bridge.h>
 #include <openglad/interface/ui/menu_model.h>
+#include <openglad/interface/ui/menu_binding.h>
 #include <openglad/interface/ui/menu_screen_spec.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/interface/ui/picker_state.h>
@@ -65,6 +67,8 @@
 #include <exception>
 #include <filesystem>
 #include <format>
+#include <string_view>
+#include <utility>
 #include <memory>
 #include <optional>
 #include <string>
@@ -2048,9 +2052,15 @@ void picker_quit()
 
 static const button k_details_buttons[] =
     {
-        button("back", "BACK", KEYSTATE_ESCAPE, 10, 170, 40, 20, button_action_id(ButtonAction::ReturnMenu) , MENU_EXIT, MenuNav{.up=1, .right=1}),
-        button("promote", 160, 4, 315 - 160, 66 - 4, 0 , -1, MenuNav{.down=0, .left=0}, false, true) // PROMOTE
+        button("back", "BACK", KEYSTATE_ESCAPE, kDetailsBackX, kDetailsFooterY, kDetailsBackWidth, kDetailsFooterHeight, button_action_id(ButtonAction::ReturnMenu) , MENU_EXIT, MenuNav{.up=kDetailsPromoteIndex, .right=kDetailsPromoteIndex}),
+        button("promote", 160, 4, 315 - 160, 66 - 4, 0 , -1, MenuNav{.down=kDetailsBackIndex, .left=kDetailsBackIndex}, false, true), // PROMOTE
+        // PREV/NEXT page the abilities when they run past one page
+        // (og::ui::DetailPage::pages); run_detail_menu shows them.
+        button("detail_page_prev", "PREV", KEYSTATE_PAGEUP, kDetailsPrevX, kDetailsFooterY, kDetailsPagerWidth, kDetailsFooterHeight, button_action_id(ButtonAction::ReturnMenu), kDetailsPagePrevCode, MenuNav{.up=kDetailsPromoteIndex, .left=kDetailsBackIndex, .right=kDetailsNextIndex}, true),
+        button("detail_page_next", "NEXT", KEYSTATE_PAGEDOWN, kDetailsNextX, kDetailsFooterY, kDetailsPagerWidth, kDetailsFooterHeight, button_action_id(ButtonAction::ReturnMenu), kDetailsPageNextCode, MenuNav{.up=kDetailsPromoteIndex, .left=kDetailsPrevIndex}, true)
     };
+static_assert(std::size(k_details_buttons) == kDetailsNextIndex + 1,
+              "k_details_buttons rows sit at their kDetails*Index");
 
 // TRAIN / HIRE: engine-hosted — specs, accessor shims, and the per-frame
 // hooks/entry wrappers live in menu_screen_specs.cpp / picker_team_build.cpp
@@ -2519,6 +2529,23 @@ static std::string get_key_display_name_short(int keycode)
     if (sname == "Backspace") return "Bk";
     if (sname == "CapsLock") return "Cap";
     if (sname == "Unknown Key") return "--";
+    // #383: shorter names for the long keys a player actually binds, always
+    // (not only when a line runs long, so one key reads the same everywhere:
+    // the REMAP summary, its prompt and both binding panels).
+    static constexpr std::pair<std::string_view, std::string_view> kShortNames[] = {
+        {"PrintScreen", "PrtSc"}, {"ScrollLock", "ScrLk"},
+        {"NumLockClear", "NumLk"}, {"Numlock", "NumLk"},
+        {"Application", "Menu"},
+        {"Insert", "Ins"}, {"Delete", "Del"}, {"PageUp", "PgUp"},
+        {"PageDown", "PgDn"},
+    };
+    for (const auto& [full, short_name] : kShortNames)
+        if (sname == full)
+            return std::string(short_name);
+    // "Keypad 8" -> "KP 8", "Keypad Enter" -> "KP Enter".
+    constexpr std::string_view kKeypad = "Keypad ";
+    if (sname.starts_with(kKeypad))
+        sname = "KP " + sname.substr(kKeypad.size());
     if (sname.size() > 10)
         return sname.substr(0, 9);
     return sname;
@@ -2538,6 +2565,70 @@ std::string player_control_key_display_name(int player_index, int key_enum)
         : get_key_display_name_short(keycode);
 }
 
+// The REMAP wizard's control summary rows (draw_remap_prompt).
+constexpr int kRemapSummaryTwoLineY = 150;
+constexpr int kRemapSummaryThreeLineY = 145;
+// The prompt's inset box, (x, y, w, h): x 10..309, y 30..179. Centred
+// across the 320-wide canvas so the centred text sits in it, and wide
+// enough for a 48-glyph summary line (288 px, x 16..303).
+constexpr int kRemapInsetX = 10;
+constexpr int kRemapInsetY = 30;
+constexpr int kRemapInsetW = 300;
+constexpr int kRemapInsetH = 150;
+// #383: the summary wraps to this many glyphs a line: the box's inside
+// less a 6 px margin each side, at 6 px a glyph ((300 - 12) / 6 = 48).
+constexpr int kRemapSummaryChars = (kRemapInsetW - 2 * 6) / 6;
+static_assert(kRemapSummaryChars == 48);
+// Four lines or more centre in the free band under the "Press ESC" line
+// (written at y 105 in the 12 px font, so its ink ends at 116) and above the
+// box's bottom bevel (y 179): rows 117..178. Four lines keep the 10 px
+// pitch; five or six close to 9 px (six lines: 5 * 9 + 12 = 57 px in 62).
+constexpr int kRemapSummaryBandTopY = 117;
+constexpr int kRemapSummaryBandBottomY = kRemapInsetY + kRemapInsetH - 2;  // 178
+constexpr int kRemapSummaryFontH = 12;
+
+namespace {
+// One piece of the summary: "F:LC", or one direction name. `glued` items
+// follow the previous one with no space (the direction names), so a long
+// direction list breaks after a '/'.
+struct SummaryItem {
+    std::string text;
+    bool glued = false;
+};
+
+// Greedy wrap of each group onto lines of at most kRemapSummaryChars glyphs;
+// every group starts a line of its own. The widest item is "SS:" plus a
+// 10-glyph name (13), so every binding fits.
+std::vector<std::string> wrap_summary_groups(
+    const std::vector<std::vector<SummaryItem>>& groups)
+{
+    std::vector<std::string> lines;
+    for (const std::vector<SummaryItem>& group : groups)
+    {
+        std::string line;
+        bool open = false;
+        for (const SummaryItem& item : group)
+        {
+            const std::string sep = item.glued ? "" : " ";
+            if (open &&
+                static_cast<int>(line.size() + sep.size() + item.text.size()) <=
+                    kRemapSummaryChars)
+            {
+                line += sep + item.text;
+                continue;
+            }
+            if (open)
+                lines.push_back(line);
+            line = item.text;
+            open = true;
+        }
+        if (open)
+            lines.push_back(line);
+    }
+    return lines;
+}
+} // namespace
+
 std::vector<std::string> build_player_control_summary_lines(int player_index, bool remap_mode)
 {
     if (player_index < 0 || player_index >= 4)
@@ -2550,63 +2641,55 @@ std::vector<std::string> build_player_control_summary_lines(int player_index, bo
     const auto name = [player_index](int key) {
         return player_control_key_display_name(player_index, key);
     };
-    const std::string up_s = name(KEY_UP);
-    const std::string left_s = name(KEY_LEFT);
-    const std::string down_s = name(KEY_DOWN);
-    const std::string right_s = name(KEY_RIGHT);
 
-    std::string direction_line;
-    if (!eight_dir)
+    // Directions: remap form "Dir:U/L/D/R" (8-direction clockwise from Up),
+    // compact form "D:ULDR". Each name is its own glued item, carrying its
+    // '/' in the remap form, so a line can only break after a slash.
+    const std::vector<int> directions = eight_dir
+        ? std::vector<int>{KEY_UP, KEY_UP_RIGHT, KEY_RIGHT, KEY_DOWN_RIGHT,
+                           KEY_DOWN, KEY_DOWN_LEFT, KEY_LEFT, KEY_UP_LEFT}
+        : std::vector<int>{KEY_UP, KEY_LEFT, KEY_DOWN, KEY_RIGHT};
+    std::vector<SummaryItem> direction_items;
+    for (std::size_t i = 0; i < directions.size(); ++i)
     {
-        direction_line = remap_mode
-            ? std::format("Dir:{}/{}/{}/{}", up_s, left_s, down_s, right_s)
-            : std::format("D:{}{}{}{}", up_s, left_s, down_s, right_s);
+        std::string text = name(directions[i]);
+        if (i == 0)
+            text = (remap_mode ? "Dir:" : "D:") + text;
+        if (remap_mode && i + 1 < directions.size())
+            text += "/";
+        direction_items.push_back({std::move(text), i > 0});
     }
-    else
-    {
-        const std::string up_right_s = name(KEY_UP_RIGHT);
-        const std::string down_right_s = name(KEY_DOWN_RIGHT);
-        const std::string down_left_s = name(KEY_DOWN_LEFT);
-        const std::string up_left_s = name(KEY_UP_LEFT);
-        direction_line = remap_mode
-            ? std::format("Dir:{}/{}/{}/{}/{}/{}/{}/{}",
-                  up_s, up_right_s, right_s, down_right_s, down_s, down_left_s, left_s, up_left_s)
-            : std::format("D:{}{}{}{}{}{}{}{}",
-                  up_s, up_right_s, right_s, down_right_s, down_s, down_left_s, left_s, up_left_s);
-    }
+
+    const auto items = [&name](std::initializer_list<std::pair<const char*, int>> list) {
+        std::vector<SummaryItem> out;
+        for (const auto& [tag, key] : list)
+            out.push_back({std::format("{}:{}", tag, name(key))});
+        return out;
+    };
 
     if (og::input::ability_select_on())
     {
         // New Ability Select: one key per ability, so the actions take two
-        // lines (each at most 48 glyphs under the worst-case key names).
-        return {
-            direction_line,
-            std::format("F:{} S1:{} S2:{} S3:{}", name(KEY_FIRE),
-                        name(KEY_SPECIAL), name(KEY_SPEC2), name(KEY_SPEC3)),
-            std::format("Y:{} SW:{} Sh:{} L:{}", name(KEY_YELL),
-                        name(KEY_SWITCH), name(KEY_SHIFTER), name(KEY_LOOKUP)),
-        };
+        // groups: FIRE and the SPEC keys, then YELL, SWITCH, SHIFTER and
+        // LOOK UP.
+        return wrap_summary_groups({
+            direction_items,
+            items({{"F", KEY_FIRE}, {"S1", KEY_SPECIAL}, {"S2", KEY_SPEC2},
+                   {"S3", KEY_SPEC3}}),
+            items({{"Y", KEY_YELL}, {"SW", KEY_SWITCH}, {"Sh", KEY_SHIFTER},
+                   {"L", KEY_LOOKUP}}),
+        });
     }
-    // The setting off: the classic line. SS (change special) is the SPEC 2
+    // The setting off: the classic group. SS (change special) is the SPEC 2
     // key, which cycles with the setting off; slot 11 stays unbound.
-    return {
-        direction_line,
-        std::format("Y:{} F:{} S:{} SS:{} SW:{} Sh:{} L:{}",
-            name(KEY_YELL), name(KEY_FIRE), name(KEY_SPECIAL), name(KEY_SPEC2),
-            name(KEY_SWITCH), name(KEY_SHIFTER), name(KEY_LOOKUP)),
-    };
+    return wrap_summary_groups({
+        direction_items,
+        items({{"Y", KEY_YELL}, {"F", KEY_FIRE}, {"S", KEY_SPECIAL},
+               {"SS", KEY_SPEC2}, {"SW", KEY_SWITCH}, {"Sh", KEY_SHIFTER},
+               {"L", KEY_LOOKUP}}),
+    });
 }
 
-// The REMAP wizard's control summary rows (draw_remap_prompt).
-constexpr int kRemapSummaryTwoLineY = 150;
-constexpr int kRemapSummaryThreeLineY = 145;
-// The prompt's inset box, (x, y, w, h): x 10..309, y 30..179. Centred
-// across the 320-wide canvas so the centred text sits in it, and wide
-// enough for a 48-glyph summary line (288 px, x 16..303).
-constexpr int kRemapInsetX = 10;
-constexpr int kRemapInsetY = 30;
-constexpr int kRemapInsetW = 300;
-constexpr int kRemapInsetH = 150;
 
 static void draw_remap_prompt(const std::string& prompt, int player_index)
 {
@@ -2625,13 +2708,22 @@ static void draw_remap_prompt(const std::string& prompt, int player_index)
         build_player_control_summary_lines(player_index, true);
     // Two lines at y 150/160 (the setting off, as ever); the three-line New
     // Ability Select summary starts half a pitch higher (145/155/165) so the
-    // block stays centred on the same band.
-    const int first_y = summary_lines.size() > 2 ? kRemapSummaryThreeLineY
-                                                 : kRemapSummaryTwoLineY;
-    for (std::size_t line = 0; line < summary_lines.size(); ++line)
+    // block stays centred on the same band. Long key names wrap (#383) to
+    // four lines or more, which centre in the band under the ESC line.
+    const int count = static_cast<int>(summary_lines.size());
+    int first_y = count > 2 ? kRemapSummaryThreeLineY : kRemapSummaryTwoLineY;
+    int pitch = 10;
+    if (count >= 4)
     {
-        mytext.write_xy_center(160, first_y + static_cast<int>(line) * 10,
-                               DARK_BLUE, "%s", summary_lines[line].c_str());
+        pitch = count == 4 ? 10 : 9;
+        const int block_h = (count - 1) * pitch + kRemapSummaryFontH;
+        const int band_h = kRemapSummaryBandBottomY - kRemapSummaryBandTopY + 1;
+        first_y = kRemapSummaryBandTopY + std::max(0, (band_h - block_h) / 2);
+    }
+    for (int line = 0; line < count; ++line)
+    {
+        mytext.write_xy_center(160, first_y + line * pitch, DARK_BLUE, "%s",
+                               summary_lines[static_cast<std::size_t>(line)].c_str());
     }
     og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200);
 }
@@ -2757,6 +2849,58 @@ static void remap_player_keys(int player_index,
     }
 }
 
+// #358: one key from the binding panel. The prompt's label comes from the
+// same remap_prompts table the REMAP wizard walks (the seat's direction mode
+// and the setting pick the table), so a key the wizard would not ask for
+// here (a diagonal in 4-direction, SPEC 3 with the setting off) is refused
+// before any prompt shows.
+static bool rebind_one_player_key(int player_index, int key_enum,
+                                  KeyWaitPollCallback poll_callback)
+{
+    if (player_index < 0 || player_index >= 4)
+        return false;
+    const std::span<const RemapPrompt> prompts = remap_prompts(
+        get_player_control_mode(player_index) ==
+            static_cast<int>(ControlDirectionMode::EightDirection),
+        og::input::ability_select_on());
+    const auto prompt = std::find_if(
+        prompts.begin(), prompts.end(),
+        [key_enum](const RemapPrompt& p) { return p.key == key_enum; });
+    if (prompt == prompts.end())
+    {
+        TRACE("remap", "rebind refused key=%d", key_enum);
+        return false;
+    }
+    TRACE("remap", "rebind key=%d label=%s", prompt->key, prompt->label);
+    draw_remap_prompt(std::format("P{} {}", player_index + 1, prompt->label),
+                      player_index);
+    return assignKeyFromWaitEventPolling(player_index, prompt->key,
+                                         poll_callback);
+}
+
+bool rebind_player_key(int player_index, int key_enum)
+{
+    return rebind_one_player_key(player_index, key_enum,
+                                 &poll_lobby_during_control_remap);
+}
+
+bool rebind_player_key_with_poll(int player_index, int key_enum,
+                                 KeyWaitPollCallback poll_callback)
+{
+    return rebind_one_player_key(player_index, key_enum, poll_callback);
+}
+
+void save_player_keys_after_remap(int player_index)
+{
+    // Design §3.2 (pause-menu): the keys write through to the mapping
+    // library under the seat's re-derived name, so cycling away and back, or
+    // restarting, keeps them. A factory-identical seat returns false and
+    // drops any stale entry; that is success. Then the controls block.
+    (void)og::input::save_player_mapping_to_library(cfg, player_index);
+    save_player_control_settings_to_cfg(cfg);
+    cfg.save_settings();
+}
+
 Sint32 toggle_player_control_mode(Sint32 arg)
 {
     const int player_index = static_cast<int>(arg);
@@ -2854,22 +2998,20 @@ namespace {
 
 inline constexpr int DETAIL_LM = 11;
 inline constexpr int DETAIL_MM = 164;
-constexpr int detail_line_y(int x) { return 90 + x * 6; }
+// The promotion box above the panel keeps the 2002 page's 6 px grid.
+constexpr int promo_line_y(int x) { return 90 + x * 6; }
 
 // The page itself is composed by og::ui::detail_page (picker_common) from
-// the specials table as this session sees it; this draws it.
-void render_family_abilities(text& mytext, const guy* g, short new_specials) {
+// the specials table as this session sees it; this draws page `page_index`
+// of it, and the promotion box when the hero has earned one.
+void render_family_abilities(text& mytext, const guy* g,
+                             const og::ui::DetailPage& page, int page_index) {
     const auto* fd = get_family_descriptor(g->family);
-    const og::ui::DetailPage page = og::ui::detail_page(fd, g->level, new_specials,
-                                                          og::input::ability_select_on());
     for (const og::ui::DetailLine& line : page.lines) {
-        const int x = line.right ? DETAIL_MM : DETAIL_LM;
-        const int y = detail_line_y(line.row);
-        if (line.ink == og::ui::DetailInk::Title) {
-            mytext.write_xy(x + 1, y + 1, line.text.c_str(), 10, 1);
-            mytext.write_xy(x, y, line.text.c_str(), DARK_BLUE, 1);
+        if (line.page != page_index)
             continue;
-        }
+        const int x = line.right ? DETAIL_MM : DETAIL_LM;
+        const int y = og::ui::kDetailTopY + og::ui::kDetailRowPitch * line.row;
         const unsigned char color = line.ink == og::ui::DetailInk::Name
             ? static_cast<unsigned char>(RED) : static_cast<unsigned char>(DARK_BLUE);
         mytext.write_xy(x, y, line.text.c_str(), color, 1);
@@ -2879,41 +3021,66 @@ void render_family_abilities(text& mytext, const guy* g, short new_specials) {
     if (g->family == FAMILY_MAGE && fd && g->level >= fd->promotion_level_req) {
         std::string promo_msg = std::format("Level {} Archmage. This", (g->level-6)/2+1);
         og::runtime::current_session->myscreen_->draw_dialog(158, 4, 315, 66, "Become ArchMage");
-        mytext.write_xy(DETAIL_MM, detail_line_y(-10), "Your Mage is now of high", RED, 1);
-        mytext.write_xy(DETAIL_MM, detail_line_y(-9), "enough level to become a", RED, 1);
-        mytext.write_xy(DETAIL_MM, detail_line_y(-8), promo_msg.c_str(), RED, 1);
-        mytext.write_xy(DETAIL_MM, detail_line_y(-7), "change CANNOT be undone!", RED, 1);
-        mytext.write_xy(DETAIL_MM, detail_line_y(-6), " Click here to change.  ", RED, 1);
+        mytext.write_xy(DETAIL_MM, promo_line_y(-10), "Your Mage is now of high", RED, 1);
+        mytext.write_xy(DETAIL_MM, promo_line_y(-9), "enough level to become a", RED, 1);
+        mytext.write_xy(DETAIL_MM, promo_line_y(-8), promo_msg.c_str(), RED, 1);
+        mytext.write_xy(DETAIL_MM, promo_line_y(-7), "change CANNOT be undone!", RED, 1);
+        mytext.write_xy(DETAIL_MM, promo_line_y(-6), " Click here to change.  ", RED, 1);
     }
     if (g->family == FAMILY_ORC && fd && g->level >= fd->promotion_level_req) {
         og::runtime::current_session->myscreen_->draw_dialog(158, 4, 315, 66, "Become Orc Captain");
-        mytext.write_xy(DETAIL_MM, detail_line_y(-10), "Your Orc is now of high ", RED, 1);
-        mytext.write_xy(DETAIL_MM, detail_line_y(-9), "enough level to become a", RED, 1);
-        mytext.write_xy(DETAIL_MM, detail_line_y(-8), "Level 1 Orc Captain. You", RED, 1);
-        mytext.write_xy(DETAIL_MM, detail_line_y(-7), "CANNOT undo this action!", RED, 1);
-        mytext.write_xy(DETAIL_MM, detail_line_y(-6), " Click here to change.  ", RED, 1);
+        mytext.write_xy(DETAIL_MM, promo_line_y(-10), "Your Orc is now of high ", RED, 1);
+        mytext.write_xy(DETAIL_MM, promo_line_y(-9), "enough level to become a", RED, 1);
+        mytext.write_xy(DETAIL_MM, promo_line_y(-8), "Level 1 Orc Captain. You", RED, 1);
+        mytext.write_xy(DETAIL_MM, promo_line_y(-7), "CANNOT undo this action!", RED, 1);
+        mytext.write_xy(DETAIL_MM, promo_line_y(-6), " Click here to change.  ", RED, 1);
     }
 }
 
 } // namespace
 
+#ifdef TESTING
+namespace {
+// The family the open DETAILS page shows, -1 while none is open (an
+// injector reads it on the menu thread).
+int g_detail_menu_testing_family = -1;
+int g_detail_menu_testing_page = -1;
+int g_detail_menu_testing_pages = -1;
+}  // namespace
+
+int detail_menu_testing_family()
+{
+    return g_detail_menu_testing_family;
+}
+
+int detail_menu_testing_page()
+{
+    return g_detail_menu_testing_page;
+}
+
+int detail_menu_testing_pages()
+{
+    return g_detail_menu_testing_pages;
+}
+#endif
+
+#ifdef TESTING
+std::mutex& get_allbuttons_mutex();
+#endif
+
+namespace {
+
+// Whose page the DETAILS loop shows: a hero on the team (TRAIN's DETAILS..,
+// the save slot editguy_ names) or the recruit HIRE is showing
+// (current_guy_, nobody hired yet).
+enum class DetailSubject : std::uint8_t { TeamSlot, Recruit };
+
+Sint32 run_detail_menu(DetailSubject subject);
+
+}  // namespace
+
 Sint32 create_detail_menu(guy *arg1)
 {
-   Sint32 retvalue = 0;
-   Sint32 start_time = query_timer();
-
-   release_mouse();
-
-	   // init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
-    
-	button* buttons = picker_details_buttons();
-	int num_buttons = picker_details_button_count();
-	int highlighted_button = 0;
-	og::runtime::current_session->localbuttons_ = init_buttons(buttons, num_buttons);
-
-   //leftmouse(buttons);
-   //localbuttons->leftclick(buttons);
-
    // The parameter SEATS the slot and is never dereferenced past the first
    // poll: every iteration below opens with picker_lobby_poll(), which
    // rebuilds save.team_list (picker_lobby_client.cpp, apply_state_to_save),
@@ -2931,20 +3098,121 @@ Sint32 create_detail_menu(guy *arg1)
            }
        }
    }
+   return run_detail_menu(DetailSubject::TeamSlot);
+}
 
+// HIRE's ABILITIES door: the same page over the recruit HIRE is showing (a
+// level-1 hero of the class on show; HIRE ME has not run). Nobody is on
+// the team yet, so the page never offers the promotion. BACK returns
+// MENU_REDRAW to HIRE, whose recruit is untouched.
+Sint32 create_recruit_detail_menu()
+{
+   const guy* const recruit =
+       og::runtime::current_session->current_guy_.get();
+   if (recruit == nullptr)
+       return MENU_REDRAW;
+   TRACE("detail", "open recruit family=%d level=%d",
+         static_cast<int>(recruit->family), static_cast<int>(recruit->level));
+   return run_detail_menu(DetailSubject::Recruit);
+}
+
+namespace {
+
+Sint32 run_detail_menu(DetailSubject subject)
+{
+   Sint32 retvalue = 0;
+   Sint32 start_time = query_timer();
+
+   release_mouse();
+
+	   // init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
+    
+	button* buttons = picker_details_buttons();
+	int num_buttons = picker_details_button_count();
+	int highlighted_button = 0;
+	og::runtime::current_session->localbuttons_ = init_buttons(buttons, num_buttons);
+
+   //leftmouse(buttons);
+   //localbuttons->leftclick(buttons);
+
+#ifdef TESTING
+   struct DetailFamilyReset {
+       ~DetailFamilyReset()
+       {
+           g_detail_menu_testing_family = -1;
+           g_detail_menu_testing_page = -1;
+           g_detail_menu_testing_pages = -1;
+       }
+   } detail_family_reset;
+#endif
+
+   // Which page of the abilities shows: PREV/NEXT, PageUp/PageDown and the
+   // mouse wheel step it, clamped like HELP's (og::ui::PageModel, one item
+   // a page). A wheel notch queued before entry must not page the first
+   // frame.
+   og::ui::PageModel pager = og::ui::PageModel::make(1, 1);
+   (void)get_and_reset_scroll_amount();
+
+   bool name_box_traced = false;
    while ( !(retvalue & MENU_EXIT) )
    {
+       // Null outside tests: an injector's menu-thread reads land here
+       // (picker_lobby_client.h), since this loop is not engine-hosted.
+       if (og::ui::g_picker_main_thread_pump != nullptr)
+           og::ui::g_picker_main_thread_pump();
        picker_lobby_poll();
-       auto& tl = og::runtime::current_session->myscreen_->save_data.team_list;
-       const int slot = og::runtime::current_session->editguy_;
-       if (slot < 0 || slot >= static_cast<int>(tl.size()))
-           return MENU_REDRAW;
-       guy* thisguy = tl[static_cast<std::size_t>(slot)].get();
+       guy* thisguy = nullptr;
+       if (subject == DetailSubject::Recruit)
+       {
+           // HIRE's recruit lives outside the team list, so the lobby poll
+           // never frees it.
+           thisguy = og::runtime::current_session->current_guy_.get();
+       }
+       else
+       {
+           auto& tl = og::runtime::current_session->myscreen_->save_data.team_list;
+           const int slot = og::runtime::current_session->editguy_;
+           if (slot < 0 || slot >= static_cast<int>(tl.size()))
+               return MENU_REDRAW;
+           thisguy = tl[static_cast<std::size_t>(slot)].get();
+       }
        if (!thisguy)
            return MENU_REDRAW;
+#ifdef TESTING
+       g_detail_menu_testing_family = static_cast<int>(thisguy->family);
+#endif
 
        const auto* fd = get_family_descriptor(thisguy->family);
-       buttons[1].hidden = !(fd && fd->promotes_to >= 0 && thisguy->level >= fd->promotion_level_req);
+       buttons[kDetailsPromoteIndex].hidden = subject == DetailSubject::Recruit ||
+           !(fd && fd->promotes_to >= 0 && thisguy->level >= fd->promotion_level_req);
+
+       // The page model is re-read every frame (a lobby poll or a level can
+       // change it under the open page); the window keeps its place,
+       // clamped to what is there.
+       const og::ui::DetailPage page = og::ui::detail_page(
+           fd, thisguy->level,
+           og::runtime::current_session->myscreen_->save_data.new_specials,
+           og::input::ability_select_on());
+       const int shown_page = pager.page;
+       pager = og::ui::PageModel::make(page.pages, 1);
+       (void)pager.step(shown_page);
+       const bool paged = pager.multi_page();
+       for (const int pager_row : {kDetailsPrevIndex, kDetailsNextIndex})
+       {
+           buttons[pager_row].hidden = !paged;
+           // The live surface too: leftmouse and the test probes read it
+           // (the probes under the allbuttons lock, as the engine writes).
+#ifdef TESTING
+           std::lock_guard<std::mutex> lock(get_allbuttons_mutex());
+#endif
+           if (vbutton* live = og::runtime::current_session->allbuttons_[
+                   static_cast<std::size_t>(pager_row)])
+               live->hidden = !paged;
+       }
+       buttons[kDetailsBackIndex].nav.right =
+           paged ? kDetailsPrevIndex : kDetailsPromoteIndex;
+       if (buttons[highlighted_button].hidden)
+           highlighted_button = kDetailsBackIndex;
 
        show_guy(query_timer()-start_time, 1); // 1 means ourteam[editguy]
     
@@ -2985,6 +3253,27 @@ Sint32 create_detail_menu(guy *arg1)
         
         if(do_click)
             retvalue=og::runtime::current_session->localbuttons_->leftclick(buttons);
+
+       // PREV/NEXT (a click, FIRE on the ring, or PageUp/PageDown) hand
+       // back their code through ReturnMenu; the wheel steps too.
+       int page_step = 0;
+       if (retvalue == kDetailsPagePrevCode)
+           page_step = -1;
+       else if (retvalue == kDetailsPageNextCode)
+           page_step = 1;
+       if (page_step != 0)
+           retvalue = 0;
+       const short scroll_delta = get_and_reset_scroll_amount();
+       if (scroll_delta < 0)
+           page_step = 1;
+       else if (scroll_delta > 0)
+           page_step = -1;
+       if (page_step != 0 && pager.step(page_step))
+           TRACE("detail", "page %d/%d", pager.page + 1, pager.page_count());
+#ifdef TESTING
+       g_detail_menu_testing_page = pager.page;
+       g_detail_menu_testing_pages = pager.page_count();
+#endif
        
        
     
@@ -2994,24 +3283,54 @@ Sint32 create_detail_menu(guy *arg1)
        og::runtime::current_session->myscreen_->draw_text_bar(36, 10, 124, 22);
        
        text& mytext = og::runtime::current_session->myscreen_->text_normal;
-       if (og::runtime::current_session->current_guy_)
-           mytext.write_xy(80 - mytext.query_width(og::runtime::current_session->current_guy_->name.c_str())/2, 14,
-                        og::runtime::current_session->current_guy_->name.c_str(),static_cast<unsigned char>(DARK_BLUE), 1);
+       // HIRE's recruit has no name of its own yet (the one on it is only a
+       // suggestion for HIRE ME), so its box shows the class, as HIRE does.
+       const char* const box_label = subject == DetailSubject::Recruit
+           ? get_family_string(thisguy->family)
+           : (og::runtime::current_session->current_guy_
+                  ? og::runtime::current_session->current_guy_->name.c_str()
+                  : nullptr);
+       if (box_label != nullptr)
+       {
+           if (!name_box_traced)
+           {
+               TRACE("detail", "name box %s", box_label);
+               name_box_traced = true;
+           }
+           mytext.write_xy(80 - mytext.query_width(box_label)/2, 14,
+                        box_label, static_cast<unsigned char>(DARK_BLUE), 1);
+       }
        og::runtime::current_session->myscreen_->draw_dialog(5, 68, 315, 167, "Character Special Abilities");
        og::runtime::current_session->myscreen_->draw_text_bar(160, 90, 162, 160);
 
-       render_family_abilities(mytext, thisguy,
-                               og::runtime::current_session->myscreen_->save_data.new_specials);
+       render_family_abilities(mytext, thisguy, page, pager.page);
 
        show_guy(0, 1);
        
        
        draw_buttons(buttons, num_buttons);
+       if (paged)
+       {
+           // HELP's footer: the key hint, and the page indicator right-aligned.
+           screen* const scr = og::runtime::current_session->myscreen_;
+           scr->draw_text_bar(kDetailsFooterBarLeft, kDetailsFooterY,
+                              kDetailsFooterBarRight,
+                              kDetailsFooterY + kDetailsFooterHeight - 1);
+           mytext.write_xy(kDetailsFooterBarLeft + 2, kDetailsFooterY + 2,
+                           "PGUP/PGDN:Page", static_cast<unsigned char>(RED), 1);
+           const std::string indicator = pager.indicator();
+           mytext.write_xy(kDetailsFooterBarRight - 1 -
+                               static_cast<int>(indicator.size()) * 6,
+                           kDetailsFooterY + 11, indicator.c_str(),
+                           static_cast<unsigned char>(RED), 1);
+       }
        draw_highlight_interior(buttons[highlighted_button]);
        og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200);
    }
    return MENU_REDRAW;  // back to edit menu
 }
+
+}  // namespace
 
 
 
@@ -3450,7 +3769,7 @@ Sint32 change_hire_teamnum(Sint32 arg)
 {
    // Change the team number of the hiring menu ..
    int next_team = og::runtime::current_session->current_team_num_ + static_cast<int>(arg);
-   next_team = (next_team % 4 + 4) % 4;
+   next_team = (next_team % kHireTeamCount + kHireTeamCount) % kHireTeamCount;
    og::runtime::current_session->current_team_num_ = static_cast<short>(next_team);
 
    // Change our guy, if he exists ..
@@ -3458,10 +3777,15 @@ Sint32 change_hire_teamnum(Sint32 arg)
    {
        og::runtime::current_session->current_guy_->teamnum = static_cast<short>(og::runtime::current_session->current_team_num_);
    }
+   // .. and the one HIRE ME hires, with the wallet that pays for him: the
+   // session took the team once, at entry, so the cycler used to change
+   // only the face on the counter.
+   if (pks().hire_session != nullptr)
+       pks().hire_session->set_team(next_team);
 
    // Update our button display
-   if (og::runtime::current_session->allbuttons_[2] != nullptr)
-       og::runtime::current_session->allbuttons_[2]->label = std::format("Hiring for Team {}", og::runtime::current_session->current_team_num_ + 1);
+   if (og::runtime::current_session->allbuttons_[kHireMenuChangeTeamIndex] != nullptr)
+       og::runtime::current_session->allbuttons_[kHireMenuChangeTeamIndex]->label = hire_team_label(next_team).text;
 
    return MENU_OK;
 }

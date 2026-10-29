@@ -570,8 +570,9 @@ contribute up to 4 local seats, with up to 16 seats lobby-wide. The same
 machinery also runs single-player and local split-screen — see [Local Transport
 Shadow](#local-transport-shadow).
 
-The current network compatibility line is lobby/gameplay protocol **v22**, world
-snapshot format **v18**, and replay format **v24** (New Ability Select, below).
+The current network compatibility line is lobby/gameplay protocol **v23**, world
+snapshot format **v18**, and replay format **v25** (ABILITIES from the PAUSED
+menu, below).
 Protocol v13 added the
 staged-lobby channel: `StagedMatchSetup`/`StagedMatchKeyframe` wrap a
 complete InitialSetup / keyframe snapshot of the host's staged world so every
@@ -630,6 +631,24 @@ six former reserved bytes at guy offset +52..+57; six zeros are the class
 default, so an untouched guy is byte-identical on disk. A seat with the
 setting off sends 0 and today's bits, so its frame differs from v21's only
 in the header and four zero bytes.
+
+Protocol v23 (replay v25; snapshot stays v18) brings ABILITIES to the PAUSED
+menu (#376). A new client -> server message, `BeltChange` (type 25: u8
+`local_slot`, u32 `entity_id`, six u8 belt bytes), sets the belt of the guy a
+seat drives on the server; the next snapshot's guy list carries it to every
+mirror, and a won level merges it into the save. The server refuses an edit
+silently when the seat is not bound, has no body, the body is dead, the
+entity id is stale (the seat switched character or possessed another between
+open and BACK), or there is no guy record; `GameServer::last_belt_change_verdict()`
+names the last verdict for tests. In the SDL game the PAUSED menu's
+ABILITIES screen calls `PauseMenuHost::set_belt`, which `game_loop.cpp` wires
+to `local_transport_shadow_set_belt` (false when no client carries that
+seat). The curses client's PAUSED menu (Esc, then `a`) sends it through
+`CursesClientSession::set_belt`, one implementation over the session's
+`GameClient::send_belt_change` shared by local, host and joiner sessions.
+Both send only when the same body is still driven. The snapshot format stays v18:
+not one snapshot byte changes, and the protocol byte already rejects every
+v22 peer.
 
 ### Core components (`og_gameplay`, SDL-free)
 
@@ -1086,7 +1105,12 @@ The main GitHub Actions workflow (`.github/workflows/test.yml`) runs:
 4. **campaign-drift** — Reruns every `tools/<x>_mapgen` generator against the
    checkout and fails when a committed campaign tree drifts from its generator
    (generated content under `campaigns/<id>/` is committed like a lockfile)
-5. **asan** — ASan + UBSan build and test
+5. **asan** — ASan + UBSan build and test, as three shards, "ASan+UBSan (1/3)"
+   to "(3/3)". Shards 1 and 2 run the tests labelled `asan-shard-1` and
+   `asan-shard-2` (the lists at the end of `cmake/OpenGladTests.cmake`; a test
+   in both fails configure); shard 3 runs every other test. About 20 minutes
+   each with a warm cache, 40-45 cold. Tests registered after that block can
+   only land in shard 3, so it stays the last thing in the file
 6. **tsan** — ThreadSanitizer build and test
 7. **x11-display** — `og_test_display_x11` on SDL's real x11 driver under Xvfb,
    through `scripts/ci/run_x11_display_lane.sh`: one X screen with XRandR modes

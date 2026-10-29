@@ -97,6 +97,48 @@ int CursesInput::keycode_for_key(const Key& k)
     }
 }
 
+std::string CursesInput::key_label(int keycode)
+{
+    if (keycode == KEYCODE_UNKNOWN)
+        return "--";
+    if (keycode == ' ')
+        return "Space";
+    if (keycode > ' ' && keycode < 0x7f &&
+        keycode_for_key(Key::character(static_cast<char32_t>(keycode))) ==
+            keycode) {
+        char c = static_cast<char>(keycode);
+        if (c >= 'a' && c <= 'z')
+            c = static_cast<char>(c - 'a' + 'A');
+        return std::string(1, c);
+    }
+    struct Named {
+        KeyCode code;
+        const char* name;
+    };
+    static constexpr Named kNamed[] = {
+        {KeyCode::Up, "Up"},          {KeyCode::Down, "Down"},
+        {KeyCode::Left, "Left"},      {KeyCode::Right, "Right"},
+        {KeyCode::Enter, "Enter"},    {KeyCode::Tab, "Tab"},
+        {KeyCode::Backspace, "Backspace"},
+        {KeyCode::Escape, "Esc"},     {KeyCode::Home, "Home"},
+        {KeyCode::End, "End"},        {KeyCode::Delete, "Delete"},
+        {KeyCode::LeftCtrl, "Left Ctrl"},
+        {KeyCode::LeftAlt, "Left Alt"},
+        {KeyCode::LeftShift, "Left Shift"},
+        {KeyCode::RightCtrl, "Right Ctrl"},
+        {KeyCode::RightAlt, "Right Alt"},
+        {KeyCode::RightShift, "Right Shift"},
+        {KeyCode::F1, "F1"},   {KeyCode::F2, "F2"},   {KeyCode::F3, "F3"},
+        {KeyCode::F4, "F4"},   {KeyCode::F5, "F5"},   {KeyCode::F6, "F6"},
+        {KeyCode::F7, "F7"},   {KeyCode::F8, "F8"},   {KeyCode::F9, "F9"},
+        {KeyCode::F10, "F10"}, {KeyCode::F11, "F11"}, {KeyCode::F12, "F12"},
+    };
+    for (const Named& named : kNamed)
+        if (keycode_for_key(Key::special(named.code)) == keycode)
+            return named.name;
+    return "key " + std::to_string(keycode) + " (not on a terminal)";
+}
+
 MetaAction CursesInput::meta_for_key(const Key& k)
 {
     // Esc is the universal in-game menu / quit key (matching the SDL client's

@@ -346,6 +346,22 @@ void GameClient::send_pause_response()
     note_outbound_activity();
 }
 
+void GameClient::send_belt_change(std::uint8_t local_slot,
+                                  std::uint32_t entity_id,
+                                  const std::array<std::uint8_t, 6>& belt)
+{
+    update_transport_connection_state();
+    maybe_send_hello_if_needed();
+    BeltChangeMessage message;
+    message.local_slot = local_slot;
+    message.entity_id = entity_id;
+    message.belt = belt;
+    transport_.send_belt_change(
+        server_peer_id_,
+        std::make_shared<BeltChangeMessage>(message));
+    note_outbound_activity();
+}
+
 std::uint32_t GameClient::compute_local_snapshot_hash() const
 {
     // The sole caller (send_snapshot_hash_check) returns early unless a
@@ -989,6 +1005,7 @@ void GameClient::poll_messages_impl(float first_snapshot_prior_alpha,
         case TypedReceivedMessageKind::KeyframeRequest:
         case TypedReceivedMessageKind::ExitPromptResponse:
         case TypedReceivedMessageKind::PauseResponse:
+        case TypedReceivedMessageKind::BeltChange:
         case TypedReceivedMessageKind::SnapshotHashCheck:
         // Pack transfers complete during the lobby phase; the gameplay
         // client ignores stragglers.

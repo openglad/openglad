@@ -12,6 +12,7 @@
 #include <openglad/resources/io_common.h>
 #include <openglad/interface/input_hardware_state.h>
 #include <openglad/interface/input_mappings.h>
+#include <openglad/interface/native_input.h>
 #include <openglad/interface/ui/menu_screen_spec.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/ui/picker_common.h>
@@ -4995,26 +4996,158 @@ TEST(MenuLayout, controls_summary_with_ability_select_is_three_lines)
     EXPECT_EQ("D:WASD", compact[0]);
     EXPECT_EQ(remap[1], compact[1]);
 
-    // The worst-case names (the classic pin's set, plus two more 6-glyph
-    // ones on the new keys) fit the 48-glyph row.
+    // Long names (#383): at least the three groups, every line inside the
+    // 48-glyph row (the wrap makes more lines, never a longer one).
     set_player_key_binding(0, KEY_YELL, SDLK_BACKSPACE);       // "Bk"
-    set_player_key_binding(0, KEY_FIRE, SDLK_PRINTSCREEN);     // "PrintScre"
+    set_player_key_binding(0, KEY_FIRE, SDLK_PRINTSCREEN);     // "PrtSc"
     set_player_key_binding(0, KEY_SPECIAL, SDLK_RETURN);       // "Return"
-    set_player_key_binding(0, KEY_SPEC2, SDLK_DELETE);         // "Delete"
-    set_player_key_binding(0, KEY_SPEC3, SDLK_PAGEDOWN);       // "PageDown"
+    set_player_key_binding(0, KEY_SPEC2, SDLK_DELETE);         // "Del"
+    set_player_key_binding(0, KEY_SPEC3, SDLK_PAGEDOWN);       // "PgDn"
     set_player_key_binding(0, KEY_SWITCH, SDLK_RETURN);        // "Return"
-    set_player_key_binding(0, KEY_SHIFTER, SDLK_PRINTSCREEN);  // "PrintScre"
+    set_player_key_binding(0, KEY_SHIFTER, SDLK_PRINTSCREEN);  // "PrtSc"
     set_player_key_binding(0, KEY_LOOKUP, SDLK_CAPSLOCK);      // "Cap"
     set_player_control_mode(0, static_cast<int>(ControlDirectionMode::EightDirection));
     for (const bool remap_mode : {true, false})
     {
         const std::vector<std::string> lines =
             build_player_control_summary_lines(0, remap_mode);
-        ASSERT_EQ(3u, lines.size());
-        for (std::size_t i = 1; i < lines.size(); ++i)
+        ASSERT_GE(lines.size(), 3u);
+        for (std::size_t i = 0; i < lines.size(); ++i)
             EXPECT_LE(lines[i].size(), 48u)
                 << "summary line " << i << " must fit the row: " << lines[i];
     }
+}
+
+namespace
+{
+// One key set of the #383 sweep: (slot, key) pairs on top of the factory
+// keys, the direction mode and the setting.
+struct SummaryKeySet
+{
+    const char* name;
+    bool eight_dir;
+    std::vector<std::pair<int, int>> keys;
+};
+
+std::vector<SummaryKeySet> summary_worst_cases()
+{
+    const std::vector<std::pair<int, int>> numpad = {
+        {KEY_UP, SDLK_KP_8},        {KEY_UP_RIGHT, SDLK_KP_9},
+        {KEY_RIGHT, SDLK_KP_6},     {KEY_DOWN_RIGHT, SDLK_KP_3},
+        {KEY_DOWN, SDLK_KP_2},      {KEY_DOWN_LEFT, SDLK_KP_1},
+        {KEY_LEFT, SDLK_KP_4},      {KEY_UP_LEFT, SDLK_KP_7}};
+    std::vector<std::pair<int, int>> ten_glyphs;
+    for (const int key : {KEY_UP, KEY_UP_RIGHT, KEY_RIGHT, KEY_DOWN_RIGHT,
+                          KEY_DOWN, KEY_DOWN_LEFT, KEY_LEFT, KEY_UP_LEFT})
+        ten_glyphs.emplace_back(key, SDLK_VOLUMEDOWN);
+    for (const int key : {KEY_FIRE, KEY_SPECIAL, KEY_SPEC2, KEY_SPEC3,
+                          KEY_YELL, KEY_SWITCH, KEY_SHIFTER, KEY_LOOKUP})
+        ten_glyphs.emplace_back(key, SDLK_MEDIA_PAUSE);
+    return {
+        // The issue's report (setting off): FIRE and SHIFTER on Print
+        // Screen, YELL Backspace, LOOK UP Caps Lock, SWITCH Return.
+        {"issue_383",
+         false,
+         {{KEY_FIRE, SDLK_PRINTSCREEN},
+          {KEY_SHIFTER, SDLK_PRINTSCREEN},
+          {KEY_YELL, SDLK_BACKSPACE},
+          {KEY_LOOKUP, SDLK_CAPSLOCK},
+          {KEY_SWITCH, SDLK_RETURN}}},
+        // 8-direction on the numpad (75 glyphs on one line before #383).
+        {"numpad_8dir", true, numpad},
+        // Ten-glyph names on every slot: the six-line worst case.
+        {"ten_glyphs_8dir", true, ten_glyphs},
+    };
+}
+} // namespace
+
+// #383: every REMAP summary line fits the 48-glyph row for any bindings,
+// both settings, both forms; and short names still read exactly as before.
+//
+// RED (planted): the builder stops wrapping (each group one line), and on
+// the base tree (before the fix) the numpad set alone is 75 glyphs.
+TEST(MenuLayout, controls_summary_lines_always_fit_the_row)
+{
+    PlayerControlSnapshotGuard guard(0);
+    for (const bool ability_select : {false, true})
+    {
+        ScopedAbilitySelect scope(ability_select);
+        for (const SummaryKeySet& set : summary_worst_cases())
+        {
+            SCOPED_TRACE(std::format("{} ability_select={}", set.name,
+                                     ability_select));
+            reset_default_player_controls_for_player(0);
+            set_player_control_mode(
+                0, static_cast<int>(set.eight_dir
+                                        ? ControlDirectionMode::EightDirection
+                                        : ControlDirectionMode::FourDirection));
+            for (const auto& [slot, key] : set.keys)
+                set_player_key_binding(0, slot, key);
+            for (const bool remap_mode : {true, false})
+            {
+                const std::vector<std::string> lines =
+                    build_player_control_summary_lines(0, remap_mode);
+                ASSERT_GE(lines.size(), ability_select ? 3u : 2u);
+                EXPECT_LE(lines.size(), 6u) << "the prompt band holds six";
+                for (const std::string& line : lines)
+                {
+                    EXPECT_LE(line.size(), 48u) << "'" << line << "'";
+                }
+                if (remap_mode)
+                {
+                    EXPECT_EQ(0u, lines.front().rfind("Dir:", 0));
+                }
+            }
+        }
+    }
+    // The six-line worst case really is six (setting on, 8-direction,
+    // ten-glyph names everywhere), and a direction line breaks after '/'.
+    {
+        ScopedAbilitySelect on(true);
+        reset_default_player_controls_for_player(0);
+        set_player_control_mode(
+            0, static_cast<int>(ControlDirectionMode::EightDirection));
+        // Held by name: a range-for does not keep the vector alive
+        // through operator[] (C++20), and clang's -Wdangling-gsl says so.
+        const std::vector<SummaryKeySet> sets = summary_worst_cases();
+        for (const auto& [slot, key] : sets[2].keys)
+            set_player_key_binding(0, slot, key);
+        const std::vector<std::string> lines =
+            build_player_control_summary_lines(0, true);
+        ASSERT_EQ(6u, lines.size());
+        EXPECT_EQ('/', lines[0].back());
+        EXPECT_EQ("VolumeDown/", lines[1].substr(0, 11));
+        EXPECT_EQ("F:MediaPause S1:MediaPause S2:MediaPause", lines[2]);
+        EXPECT_EQ("S3:MediaPause", lines[3]);
+    }
+}
+
+// #383's shorter names: one fixed table inside the one key-name owner, so
+// the summary, the prompt and both binding panels read them the same.
+TEST(MenuLayout, long_key_names_have_short_forms)
+{
+    PlayerControlSnapshotGuard guard(0);
+    const std::pair<int, const char*> cases[] = {
+        {SDLK_PRINTSCREEN, "PrtSc"}, {SDLK_SCROLLLOCK, "ScrLk"},
+        {SDLK_NUMLOCKCLEAR, "NumLk"}, {SDLK_APPLICATION, "Menu"},
+        {SDLK_INSERT, "Ins"},         {SDLK_DELETE, "Del"},
+        {SDLK_HOME, "Home"},          {SDLK_END, "End"},
+        {SDLK_PAGEUP, "PgUp"},        {SDLK_PAGEDOWN, "PgDn"},
+        {SDLK_KP_8, "KP 8"},          {SDLK_KP_ENTER, "KP Enter"},
+        {SDLK_KP_000, "KP 000"},      {SDLK_VOLUMEDOWN, "VolumeDown"},
+    };
+    for (const auto& [keycode, want] : cases)
+    {
+        set_player_key_binding(0, KEY_FIRE, keycode);
+        EXPECT_EQ(want, player_control_key_display_name(0, KEY_FIRE))
+            << og::input_native::key_name(keycode);
+    }
+    // ScrollLock no longer cuts to "ScrollLo" in the panel's SHIFTER line.
+    set_player_key_binding(0, KEY_SHIFTER, SDLK_SCROLLLOCK);
+    EXPECT_EQ("SHIFTER: ScrLk",
+              og::ui::format_binding_panel_line(
+                  "SHIFTER", player_control_key_display_name(0, KEY_SHIFTER),
+                  og::ui::kBindingPanelActionsChars));
 }
 
 // Both settings' ACTIONS rows (og::ui::binding_panel_action_rows, the one
@@ -5070,9 +5203,13 @@ TEST(MenuLayout, player_screen_grid_relations_and_cross_screen_identity)
     const auto& p = pause_rows;
     const auto& s = seat_rows;
 
-    // Column A: DIRECTION, INPUT, and (seat) TEAM share one left edge.
+    // Column A: BACK, DIRECTION, INPUT, and (seat) TEAM share one left
+    // edge. BACK shipped at x 10, two pixels left of the column under it.
+    // RED: BACK back at x 10 on either screen.
     for (const button* b :
-         {&p[og::ui::kPausePlayerModeIndex], &p[og::ui::kPausePlayerInputIndex],
+         {&p[og::ui::kPausePlayerBackIndex],
+          &p[og::ui::kPausePlayerModeIndex], &p[og::ui::kPausePlayerInputIndex],
+          &s[kSeatSettingsBackIndex],
           &s[kSeatSettingsModeIndex], &s[kSeatSettingsInputRow],
           &s[kSeatSettingsTeamIndex]})
         EXPECT_EQ(kPlayerScreenColAX, b->x) << b->id;
@@ -5116,8 +5253,50 @@ TEST(MenuLayout, player_screen_grid_relations_and_cross_screen_identity)
               kPlayerScreenPanelTopY -
                   (kPlayerScreenBand2Y + kPlayerScreenBandH));
 
+    // #358 key cells: one 8 px row per binding-panel line, the MOVEMENT
+    // column sharing one left edge, the ACTIONS column the next, both
+    // inside the panel's bevel, on the panel's line pitch.
+    for (int line = 0; line < kBindingPanelLinesPerColumn; ++line)
+    {
+        const button& move =
+            p[static_cast<std::size_t>(og::ui::kPausePlayerCellFirstIndex + line)];
+        const button& action = p[static_cast<std::size_t>(
+            og::ui::kPausePlayerCellFirstIndex + 8 + line)];
+        EXPECT_EQ(kBindingCellMoveX, move.x) << move.id;
+        EXPECT_EQ(move.x + move.sizex, action.x) << action.id;
+        EXPECT_EQ(move.y, action.y) << action.id;
+        EXPECT_EQ(kPlayerScreenPanelLineY - 1 + line * 8, move.y) << move.id;
+        EXPECT_EQ(8, move.sizey) << move.id;
+        EXPECT_GT(move.x, kPlayerScreenColAX) << "inside the panel bevel";
+        EXPECT_LT(action.x + action.sizex, kPlayerScreenPanelRightX)
+            << "inside the panel bevel";
+        EXPECT_GT(move.y, kPlayerScreenPanelHeaderY) << "under the headers";
+        EXPECT_LT(move.y + move.sizey, kPlayerScreenPanelBottomY);
+    }
+
+    // The y=169 command band (#376/#388): ABILITIES | KEYMAP | REMOVE on
+    // one row of 18 px faces, two 66 px halves with the PAUSED menu's 6 px
+    // gap between them, REMOVE 16 px on and ending on the shared right edge.
+    const button& abilities = p[og::ui::kPausePlayerAbilitiesIndex];
+    const button& keymap = p[og::ui::kPausePlayerKeymapIndex];
+    const button& remove = p[og::ui::kPausePlayerRemoveIndex];
+    for (const button* b : {&abilities, &keymap, &remove})
+    {
+        EXPECT_EQ(kPlayerScreenBottomBandY, b->y) << b->id;
+        EXPECT_EQ(kPlayerScreenBandH, b->sizey) << b->id;
+    }
+    EXPECT_EQ(kPlayerScreenColAX, abilities.x);
+    EXPECT_EQ(abilities.sizex, keymap.sizex);
+    EXPECT_EQ(6, keymap.x - (abilities.x + abilities.sizex));
+    EXPECT_EQ(16, remove.x - (keymap.x + keymap.sizex));
+    EXPECT_EQ(kPlayerScreenColCX + kPlayerScreenColCW,
+              remove.x + remove.sizex);
+    // Each label fits its face with the font's 6 px advance.
+    EXPECT_LE(6 * static_cast<int>(abilities.label.size()), abilities.sizex - 8);
+    EXPECT_LE(6 * static_cast<int>(keymap.label.size()), keymap.sizex - 8);
+
     // §7.1 identity: every row shared by both screens has IDENTICAL geometry.
-    const std::pair<int, int> shared[] = {
+    std::vector<std::pair<int, int>> shared = {
         {og::ui::kPausePlayerBackIndex, kSeatSettingsBackIndex},
         {og::ui::kPausePlayerModeIndex, kSeatSettingsModeIndex},
         {og::ui::kPausePlayerRemapIndex, kSeatSettingsRemapIndex},
@@ -5129,7 +5308,14 @@ TEST(MenuLayout, player_screen_grid_relations_and_cross_screen_identity)
         {og::ui::kPausePlayerHudFoesIndex, kSeatSettingsHudFoesRow},
         {og::ui::kPausePlayerHudScoreIndex, kSeatSettingsHudScoreRow},
         {og::ui::kPausePlayerRemoveIndex, kSeatSettingsRemoveIndex},
+        // The KEYMAP door (#388); ABILITIES has no seat twin (that door is
+        // TRAIN in Base Camp), but it sits exactly where the seat's TEAM does.
+        {og::ui::kPausePlayerAbilitiesIndex, kSeatSettingsTeamIndex},
+        {og::ui::kPausePlayerKeymapIndex, kSeatSettingsKeymapRow},
     };
+    for (int cell = 0; cell < kBindingPanelCellCount; ++cell)
+        shared.emplace_back(og::ui::kPausePlayerCellFirstIndex + cell,
+                            kSeatSettingsCellFirstRow + cell);
     for (const auto& [pi, si] : shared)
     {
         const auto pu = static_cast<std::size_t>(pi);

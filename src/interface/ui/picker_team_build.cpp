@@ -287,6 +287,29 @@ void sync_button_hidden_state(const button* buttons, int button_index)
         buttons[button_index].hidden;
 }
 
+// Writes a descriptor's rect through to its live vbutton. init_buttons
+// copies geometry once, at screen entry and on the reset tail; a rewire
+// that moves a button every frame calls this, or the face drawn and
+// clicked stays where entry put it while the descriptor (and the keyboard
+// focus ring drawn from it) moves.
+void sync_button_live_rect(const button* buttons, int button_index)
+{
+    if (buttons == nullptr || button_index < 0 ||
+        og::runtime::current_session == nullptr)
+        return;
+    vbutton* const live = og::runtime::current_session
+                              ->allbuttons_[static_cast<std::size_t>(button_index)];
+    if (live == nullptr)
+        return;
+    const button& b = buttons[button_index];
+    live->xloc = b.x;
+    live->yloc = b.y;
+    live->width = b.sizex;
+    live->height = b.sizey;
+    live->xend = b.x + b.sizex;
+    live->yend = b.y + b.sizey;
+}
+
 void ensure_highlighted_button_visible(const button* buttons,
                                        int num_buttons,
                                        int& highlighted_button)
@@ -1608,12 +1631,12 @@ Sint32 create_progress_menu(Sint32 arg1)
     return MENU_REDRAW;
 }
 
-// The HIRE box's text: the family's prose and the "Special:" line for the
-// specials in play under this New Specials value. Reads no session, so it
-// answers with no picker open.
-std::string get_class_description(unsigned char family, short new_specials)
+// The HIRE box's text: the family's prose (og::ui::hire_description; the
+// class's abilities are on the DETAILS page HIRE's ABILITIES door opens).
+// Reads no session, so it answers with no picker open.
+std::string get_class_description(unsigned char family)
 {
-    return og::ui::hire_description(get_family_descriptor(family), new_specials);
+    return og::ui::hire_description(get_family_descriptor(family));
 }
 
 // stat is a StatAxis index (the caller walks the priced axes at runtime,
@@ -1681,14 +1704,25 @@ struct HireEngineState
 {
     Sint32 start_time = 0;
     unsigned char last_family = 0;
-    // The New Specials value the description was built under; empty until
-    // a frame or the entry records it (a state filled by hand keeps the
-    // text it was given until the setting actually changes).
-    std::optional<short> last_new_specials;
     std::string description;
     std::vector<std::string> desc;
     const char* family_name = "";
 };
+
+// The HIRE box's text for `family`, flowed to the box's width, and the
+// name-box label: what the entry builds and what a frame re-derives when
+// the class changes.
+static void hire_box_rebuild(HireEngineState& state, unsigned char family)
+{
+    state.last_family = family;
+    state.description = get_class_description(family);
+    state.desc = og::core::wrap_text(state.description,
+                                     HireMenuLayout{}.description_box_content.w / 6,
+                                     og::core::WrapMode::Paragraphs);
+    state.family_name = get_family_string(family);
+    TRACE("hire", "box family=%d lines=%d", static_cast<int>(family),
+          static_cast<int>(state.desc.size()));
+}
 
 // Entry-time repositioning of PREV/NEXT around the portrait, verbatim from
 // the deleted loop (runs once, before init_buttons; the accessor output —
@@ -1706,15 +1740,15 @@ void picker_hire_menu_engine_prepare_buttons(button* buttons, int num_buttons,
     buttons[1].y = l.name_box.y + l.name_box.h + (l.description_box.y - (l.name_box.y + l.name_box.h))/2 - buttons[1].sizey/2;
 }
 
-// Nav closure over the solo-hidden team cycler: legacy left HIRE ME's
-// right-link pointing at the hidden row — a no-op in handle_menu_nav (it
-// refuses hidden targets) — so the explicit no-op (-1) is
-// behavior-identical and satisfies the engine's §1.5 nav invariant.
-void picker_hire_menu_engine_rewire(button* buttons, int num_buttons,
-                                    int& /*highlighted_button*/)
+// ABILITIES: the TRAIN screen's DETAILS.. page for the class HIRE is
+// showing, as the level-1 recruit HIRE ME would hire. BACK comes back to
+// HIRE on the same class (the recruit is untouched).
+Sint32 picker_hire_menu_engine_on_spec_row(int row, void* /*screen_state*/)
 {
-    if (num_buttons > 3)
-        buttons[3].nav.right = buttons[2].hidden ? -1 : 2;
+    if (row != kHireMenuAbilitiesIndex ||
+        og::runtime::current_session->current_guy_ == nullptr)
+        return MENU_OK;
+    return create_recruit_detail_menu();
 }
 
 // The legacy reset tail: after any consumed MENU_OK/MENU_REDRAW re-init,
@@ -1760,23 +1794,11 @@ void picker_hire_menu_engine_draw_content(void* screen_state)
         l.description_box_inner.x, l.description_box_inner.y,
         static_cast<Uint32>(l.description_box_inner.w), static_cast<Uint32>(l.description_box_inner.h));
 
-    // A lobby can change the host's New Specials value while HIRE is open,
-    // and the "Special:" line follows it.
-    const short new_specials = og::runtime::current_session->myscreen_->save_data.new_specials;
-    if (!state->last_new_specials)
-        state->last_new_specials = new_specials;
-    if(og::runtime::current_session->current_guy_->family != state->last_family ||
-       new_specials != *state->last_new_specials)
+    if(og::runtime::current_session->current_guy_->family != state->last_family)
     {
         // Update description
-        state->last_family = static_cast<unsigned char>(og::runtime::current_session->current_guy_->family);
-        state->last_new_specials = new_specials;
-        state->description = get_class_description(state->last_family, new_specials);
-        state->desc = og::core::wrap_text(state->description,
-                                          l.description_box_content.w / 6,
-                                          og::core::WrapMode::Paragraphs);
-
-        state->family_name = get_family_string(state->last_family);
+        hire_box_rebuild(*state,
+                         static_cast<unsigned char>(og::runtime::current_session->current_guy_->family));
     }
 
     // Fit the flowed description inside the box (issue #152): the shipped
@@ -1785,7 +1807,8 @@ void picker_hire_menu_engine_draw_content(void* screen_state)
     // past the inner bevel — a runaway pack description stays inside.
     {
         const int desc_lines = static_cast<int>(state->desc.size());
-        const int pitch = (desc_lines <= 8) ? 10 : 8;
+        const int pitch =
+            (desc_lines <= static_cast<int>(og::ui::kHireBoxRoomyLines)) ? 10 : 8;
         const int max_desc_lines =
             (l.description_box_inner.y + l.description_box_inner.h -
              l.description_box_content.y - 6) / pitch + 1;
@@ -1896,13 +1919,8 @@ Sint32 create_hire_menu(Sint32 /*arg1*/)
 
     HireEngineState state;
     state.start_time = query_timer();
-    state.last_family = static_cast<unsigned char>(og::runtime::current_session->current_guy_->family);
-    state.last_new_specials = og::runtime::current_session->myscreen_->save_data.new_specials;
-    state.description = get_class_description(state.last_family, *state.last_new_specials);
-    state.desc = og::core::wrap_text(state.description,
-                                     HireMenuLayout{}.description_box_content.w / 6,
-                                     og::core::WrapMode::Paragraphs);
-    state.family_name = get_family_string(state.last_family);
+    hire_box_rebuild(state,
+                     static_cast<unsigned char>(og::runtime::current_session->current_guy_->family));
 
 	grab_mouse();
 

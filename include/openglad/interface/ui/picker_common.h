@@ -25,6 +25,7 @@
 #include <vector>
 
 class guy;
+class walker;
 class GameWorld;
 struct FamilyDescriptor;
 struct LevelDataHooks;
@@ -1536,6 +1537,10 @@ public:
     // Rename the recruit that was just placed in the given slot.
     void rename_hired(int slot, const std::string& name);
 
+    // The team the recruit is hired for, and whose gold pays (HIRE's team
+    // cycler). The recruit on the counter takes it at once.
+    void set_team(int team_num);
+
     // State queries (for rendering)
     const guy* current_recruit() const;
     std::uint32_t current_cost() const;
@@ -2045,60 +2050,104 @@ std::int16_t arena_deal_fill_code(const SaveData& save);
 // a special the character does not have.
 
 // The DETAILS panel: draw_dialog(5, 68, 315, 167), two columns at x 11 and
-// 164, rows at y = 90 + 6*row (picker.cpp detail_line_y); row 11 ends at
-// y 162 and the dialog at 167, so twelve rows is the panel. 25 characters
-// at 6 px end at x 161 (left; the divider is at 160-162) and 314 (right).
-inline constexpr int kDetailLineChars = 25;
-inline constexpr int kDetailProseChars = 23;   // after the two-space indent
-inline constexpr int kDetailRows = 12;         // rows 0..11
-inline constexpr int kDetailLeftFirstRow = 2;  // rows 0-1 carry the title
+// 164 with the divider at x 160-162, rows at y = kDetailTopY +
+// kDetailRowPitch * row (the HELP screen's 7 px line pitch): row 9 sits at
+// y 153 and ends at 159, inside the divider (90-160) and the dialog (167),
+// so ten rows is a column. 24 characters at 6 px end at x 155 (left, 5 px
+// clear of the divider) and 308 (right, clear of the frame's bevel at
+// 311-315). A page is two columns; what does not fit goes on the next page,
+// behind PREV/NEXT.
+inline constexpr int kDetailLineChars = 24;
+inline constexpr int kDetailProseChars = 22;   // after the two-space indent
+inline constexpr int kDetailRows = 10;         // rows 0..9 in each column
+inline constexpr int kDetailTopY = 90;
+inline constexpr int kDetailRowPitch = 7;
+inline constexpr int kDetailGlyphHeight = 6;   // the small font's line
+static_assert(kDetailTopY + kDetailRowPitch * (kDetailRows - 1) +
+                      kDetailGlyphHeight <= 160,
+              "the last row ends inside the divider (y 90-160)");
+static_assert(11 + 6 * kDetailLineChars <= 157 &&
+                  164 + 6 * kDetailLineChars <= 310,
+              "a full line stays clear of the divider and the frame");
 
-enum class DetailInk { Title, Name, Prose };
+enum class DetailInk { Name, Prose };
 
 struct DetailLine {
+    int page;          // 0..DetailPage::pages-1
     bool right;        // false = left column (x 11), true = right (x 164)
     int row;           // 0..kDetailRows-1
-    DetailInk ink;     // Title: dark blue with a shadow; Name: red; Prose: dark blue
-    std::string text;  // at most kDetailLineChars characters
+    DetailInk ink;     // Name: red; Prose: dark blue
+    std::string text;  // at most kDetailLineChars characters, never cut
 };
 
 struct DetailPage {
     std::vector<DetailLine> lines;
-    int dropped = 0;   // lines that did not fit a column (0 for every core family)
-    int cut = 0;       // lines shortened to kDetailLineChars (0 for every core family)
+    int pages = 1;     // PREV/NEXT show when this is more than 1
 };
 
 // "EAT CORPSE" -> "Eat Corpse", "LOTS OF ROCKS" -> "Lots of Rocks": the HUD
 // name with each word title-cased; "of" after the first word stays lower.
 [[nodiscard]] std::string special_title(std::string_view hud_name);
 
-// The page for a character of this family at this level, under this New
+// The pages for a character of this family at this level, under this New
 // Specials value (SaveData::new_specials). Pure: reads the descriptor and
 // og::sim::special_in_play / alternate_in_play / special_name /
-// alternate_name only, never the world or the session. A null descriptor
-// gives the title and "No special abilities.". Every line, the title too,
-// is cut to kDetailLineChars and counted in cut.
+// alternate_name / slot_open_level only, never the world or the session.
 //
-// With New Ability Select on (`ability_select`), every ability has a key of
-// its own, so an alternate is no longer "the special with Shift held": its
-// line reads " Also: <name>" in place of " Shift: <name>" (same line count,
-// so the page fits exactly as it does with the setting off).
+// No title: the page is every special the class has, in slot order, each
+// one its name in red and its `detail` under it, whether the character has
+// it yet or not. A special that opens above `level` carries the level it
+// opens at after its name, " Hook Blade (L7)"; one the character has
+// carries nothing. A named alternate follows its special as " Shift: <name>"
+// (" Also: <name>" with New Ability Select on, `ability_select`, where it
+// has a key of its own) with its own `detail`. One blank row between two
+// specials; a special that does not fit what is left of a column starts the
+// next column, and after the right column the next page. Nothing is ever
+// left out: a mod special longer than a whole column runs on into the next
+// one. A word too long for a line is split across two (og::core::wrap_text),
+// so no line is ever cut. A null descriptor, or a class with nothing in play, reads
+// " No special abilities.".
 [[nodiscard]] DetailPage detail_page(const FamilyDescriptor* fd, int level,
                                      short new_specials,
                                      bool ability_select = false);
 
-// "Special: Howl, Eat Corpse, Hook Blade, War Banner": the slot names in
-// play (special_name not "NONE"), title-cased, in slot order, alternates
-// not listed (the DETAILS page has them); "Special: none" when no slot is
-// in play.
-[[nodiscard]] std::string specials_summary(const FamilyDescriptor* fd,
-                                           short new_specials);
+// The width the HELP screen's CLASSES tab is written to: the widest line
+// the authored prose in cfg/help_classes.txt uses. The frame itself takes
+// 50 glyphs (help.cpp, help_char_budget(kHelpTextBoxWidth)); the generated
+// lines stay at the authored width so the tab reads as one column.
+inline constexpr int kHelpClassesProseChars = 43;
 
-// fd->description + "\n\n" + specials_summary(fd, new_specials); "" when fd
-// or its description is null (the HIRE box's text; the pack prose no longer
-// carries a Special line of its own).
-[[nodiscard]] std::string hire_description(const FamilyDescriptor* fd,
-                                           short new_specials);
+// The CLASSES help tab's ability lines for one family, every line at most
+// kHelpClassesProseChars. Everything comes from the descriptor, through
+// the same owners as HIRE, DETAILS and the ABILITIES screen, so the help
+// can never disagree with them:
+//   - a promotion line ("Promotes to Archmage at level 6." /
+//     "Promoted from Mage (level 6).");
+//   - per special, in slot order: "Name* (level N): <detail>", the star on
+//     a New Specials ability, the level when it is above 1; continuation
+//     lines indented two spaces;
+//   - its second form under it, "  SHIFTER: Name: <detail>" with New
+//     Ability Select off and "  Also: Name: <detail>" with it on (the
+//     DETAILS page's wording). A second form whose name repeats an earlier
+//     one (the cleric's TURN UNDEAD) is listed once, by the belt catalog's
+//     rule; with the setting off the later slot says
+//     "  SHIFTER: Turn Undead, as Raise Undead's.", because there it is
+//     reached with SHIFTER on that special;
+//   - with New Ability Select on, a note under every ability the class's
+//     default layout leaves off the keys (the archmage's MIND CONTROL);
+//   - "No special abilities." when the class has none this session.
+// A null descriptor gives no lines.
+[[nodiscard]] std::vector<std::string> class_help_lines(
+    const FamilyDescriptor* fd, short new_specials, bool ability_select);
+
+// The HIRE box's text: fd->description; "" when fd or its description is
+// null. The class's abilities are not in it, in either New Ability Select
+// setting: HIRE's ABILITIES door opens the DETAILS page for the class.
+[[nodiscard]] std::string hire_description(const FamilyDescriptor* fd);
+
+// The HIRE box draws its flowed text at a 10px pitch while it has at most
+// kHireBoxRoomyLines lines, and at 8px past that.
+inline constexpr std::size_t kHireBoxRoomyLines = 8;
 
 // --- New Ability Select (docs/ability-select-design.md) ---
 //
@@ -2200,6 +2249,32 @@ struct BindingPanelRow {
 // CHAR SW (eight rows, the panel's height).
 [[nodiscard]] std::span<const BindingPanelRow> binding_panel_action_rows(
     bool ability_select);
+// The MOVEMENT column of the same panels: UP, UP-R, RIGHT, DN-R, DOWN, DN-L,
+// LEFT, UP-L (the four diagonals are used in 8-direction mode only). The
+// curses KEYS page lists the same rows in the same order.
+struct BindingPanelMovementRow {
+    const char* label;
+    int key;
+    bool diagonal;
+};
+[[nodiscard]] std::span<const BindingPanelMovementRow>
+binding_panel_movement_rows();
+
+// The hero a body stands for on the ABILITIES page (the PAUSED menu's copy,
+// SDL and curses): its guy's name, family and saved layout, the body's own
+// level. A body with no guy (a summon, a raised dead, a possessed host) is
+// named for its class, shows its class default and has no record to edit.
+struct AbilityBodyHero {
+    std::string name;
+    int family = 0;
+    int level = 1;
+    og::sim::belt::Bytes stored{};
+    bool has_record = false;
+};
+[[nodiscard]] AbilityBodyHero ability_hero_of_body(const walker& body);
+// What the page says for such a body (<= kAbilityStatusChars).
+inline constexpr const char* kNoSavedLayoutNotice =
+    "THIS BODY HAS NO SAVED LAYOUT.";
 
 // One HUD belt row: "<key> <NAME>" ("S1 TELEPORT MARKER"), a locked one
 // adds " L<level>", an empty one reads "<key> --"; the name is cut so the

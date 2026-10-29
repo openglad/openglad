@@ -32,6 +32,8 @@ namespace og::sim {
 inline constexpr std::size_t kEntitySnapshotDirtyMaskWords = 2;
 inline constexpr std::int32_t kNoGuyId = -1;
 inline constexpr std::uint8_t kNoPausePlayerIndex = 0xff;
+// Stays 18 at protocol v23: BeltChange is a new client -> server message and
+// changes no snapshot byte (see the v23 note in net_transport.h).
 inline constexpr std::uint8_t kSnapshotFormatVersion = 18;
 inline constexpr std::uint8_t kSnapshotProtocolVersion = kNetworkProtocolVersion;
 inline constexpr std::uint8_t kDeltaPayloadUncompressedFlag = 0x01;
