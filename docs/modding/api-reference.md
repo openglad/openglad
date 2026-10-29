@@ -730,6 +730,7 @@ range.
 |---|---|
 | `attack(target)` | `bool`. **Draws from the RNG** — reordering or short-circuiting it changes the stream. |
 | `fire()` | New weapon handle, or `nil`. |
+| `fire_pad_clear() → bool` | Would `fire()` launch this living's current weapon instead of meeting something on its pad? The pad `fire()` uses, probed quietly with a detached weapon of the same family, owner and team: own-team bodies pass; an enemy body, a wall, a door, a tree or a generator blocks; an enemy weapon in flight passes. No entity is made, nothing draws, nothing is eaten or opened. `false` for a non-living. A bot gate's question (see Terrain). |
 | `special()` | `true, nil` on success; `false, reason` on refusal. Player hook errors show as `SPECIAL SCRIPT ERROR`. |
 | `death()` | `bool`. |
 | `teleport()` | `bool`. |
@@ -806,7 +807,7 @@ values from `og.C.BIT_*`.
 | `s_force_fright(iterations, info1, info2)` | The ghost-scare fright injection (`statistics::force_fright`). NOT interchangeable with `s_force_command`: it MERGES into an existing forced `COMMAND_WALK` at the queue front so overlapping scares cannot stack end to end. Does nothing to a fearless walker (`og.fearless`). |
 | `s_front_command() → int` | The front queue entry's command type, 0 when the queue is empty. |
 | `s_refresh_front(iterations, com1, com2)` | Rewrites the FRONT entry's lease and payload in place, never its type and never growing the queue (the refresh-in-place idiom a mode director uses when `s_front_command()` already answers the wanted type). Errors on an empty queue. |
-| `s_forward_blocked() → bool` | |
+| `s_forward_blocked([quiet]) → bool` | Is the one-pixel step along `curdir` blocked? Without `quiet` (or `false`) it is the classic probe and keeps its side effects: a body in front gets `collide()` (a living starts a swing), a treasure is eaten, a keyed door opens. `quiet` `true` gives the same answer with none of them and no draw. |
 
 ## Guy record (`g_` prefix)
 
@@ -850,6 +851,7 @@ which accepts either a guy handle or a walker.
 |---|---|
 | `og.find_near_foe(self)` | Handle or `nil`. First foe met by the searcher's floor-specific obmap spiral; nearest foe if the spiral finds none or leaves the map. |
 | `og.find_nearest_blood(self)` | Handle or `nil`. |
+| `og.blood_in_reach(self)` | Array — every stain `og.find_nearest_blood` would consider (a live stain whose squared centre distance from `self` is under 800, about 28 px), on `self`'s floor, nearest first; equal distances keep fx-list order. Draw-free. |
 | `og.foes_in_range(self, range)` | Array — the `for_each_foe_in_range` traversal. |
 | `og.find_foes_in_range(list, range, self)` | Array, count. |
 | `og.find_friends_in_range(list, range, self)` | Array, count. Other live friendly Living actors in range; excludes `self`. |
@@ -877,6 +879,25 @@ the RNG** through the obmap miss roll.
 can `ent` stand at pixel `(x, y)`? It eats nothing and opens nothing (never
 use `og.query_passable` to probe: its collision route can eat a drumstick or
 pick up a flag). Without `floor` it probes `ent`'s own floor.
+
+The same rule (never `og.query_passable` for a probe) has three more probes,
+each draw-free and eat-free:
+
+- `og.quiet_passable(x, y, ent) → bool` is `og.query_passable`'s answer on
+  `ent`'s floor, asked quietly: no obmap miss roll (an enemy weapon in flight
+  passes), no arrow-slit roll (the slit passes a weapon), no treasure eaten,
+  no door opened (a door still blocks), no `collide()`. Ask it for a spot
+  `ent`'s own box would step to.
+- `og.body_spot_near(order, family, x, y, floor, radius) → x, y | nil` asks
+  where a body that does not exist yet would fit: a detached body of that
+  family (its own box and flags) is put through the `og.spawn_spot_clear`
+  rule on `floor`, and never onto a delayed spawn. It tries `(x, y)`, then
+  for `r = 1 .. radius` the eight offsets `(-r,0) (r,0) (0,-r) (0,r) (-r,-r)
+  (r,-r) (-r,r) (r,r)`, and answers the first that fits. `family` is a byte
+  (`og.family_id`); `nil` for a family the loader cannot make.
+- `walker:fire_pad_clear() → bool` (the walker methods above) probes the
+  pad `fire()` would use.
+
 `og.scrub_corpse_stain(x, y [, floor])` removes the fresh stain and life gem
 dropped at a corpse's top-left corner, so the body cannot be raised again or
 farmed for gem score; a stain a pending respawn is waiting on is kept.
