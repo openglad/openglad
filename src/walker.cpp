@@ -2832,6 +2832,9 @@ short walker::special()
 							return 0;
 						newob->owner = this;
 						newob->team_num = team_num;
+						// a summoned weapon starts centred on its caster, at its level, as the current game's og.summon does
+						newob->center_on(this);
+						newob->stats->level = stats->level;
 						newob->ani_type = 1; // dummy, non-zero value
 						// Specify settings based on our mana ..
 						generic = stats->magicpoints - stats->special_cost[(int)current_special];
