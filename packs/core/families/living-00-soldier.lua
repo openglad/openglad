@@ -8,7 +8,7 @@ local G = og.use("gates")
 local FX_BOOMERANG = assert(og.family_id("fx", "core:boomerang"))
 
 local function charge(self)
-  if self:s_forward_blocked() then
+  if self:s_forward_blocked(gf.on()) then
     return false, "PATH BLOCKED"
   end
   -- lastx/lasty are C++ floats: one fdiv then one C trunc, per axis
@@ -80,7 +80,7 @@ local function disarm(self)
     return false, "SPECIAL BUSY"
   end
   -- can't do this if no frontal enemy
-  if not self:s_forward_blocked() then
+  if not self:s_forward_blocked(gf.on()) then
     return false, "FACE FOE AT CLOSE RANGE"
   end
 
@@ -188,8 +188,8 @@ local function fixed(self, classic_answer)
     local out = G.owned(self, C.ORDER_FX, FX_BOOMERANG)
     return out == 0 and G.foes_within(self, 1, 17 + 6 * self.level, false)
   end
-  if slot == 3 then
-    return G.targets_within(self, 2, 32 + 2 * self.level)
+  if slot == 3 or gf.special_busy(self) then  -- a busy DISARM is refused here too
+    return not gf.special_busy(self) and G.targets_within(self, 2, 32 + 2 * self.level)
   end
   local f = G.ahead_blocked_by_foe(self, 28)
   return f ~= nil and f.level <= self.level

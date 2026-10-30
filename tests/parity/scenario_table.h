@@ -3495,7 +3495,7 @@ inline constexpr FactPredicate kFacts_special_soldier_1_scen99[] = {
 
 inline constexpr Mutation kMut_special_soldier_1_scen99 = {
     "packs/core/families/living-00-soldier.lua", 11,
-    "if self:s_forward_blocked() then",
+    "if self:s_forward_blocked(gf.on()) then",
     "if true then",
     "Closes CHARGE's forward-blocked gate permanently, so soldier slot 1 returns false before it issues COMMAND_RUSH or emits SOUND_CHARGE. The level-1 caster never dashes into the team-1 soldier and WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 6300, 6300) no longer finds a caster at exactly 63 HP."
 };
