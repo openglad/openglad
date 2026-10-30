@@ -10771,6 +10771,15 @@ TEST(GameLoop, midgame_add_player_resume_play_repause_keeps_transport_alive)
     // re-teamed instead of the one that happened to live, and the census
     // is eighteen: three isolated runs of this build agree on 18. Both RNG
     // seeds, the seat check and the lead-team check are unchanged.
+    // Re-pinned 2026-10-30 for Gameplay Fixes V and W (#369, #370, #371),
+    // with the setting on: the soldier's CHARGE gate and the elf's rock gate
+    // now ask what their casts ask (the rush's front and path, the rock's
+    // pad), and a bot whose special roll cast nothing takes its ordinary act
+    // instead of standing. More walkers fall inside the 420 ticks and the
+    // census reads eleven: three isolated runs of this build agree on 11. Undoing
+    // only the refused-roll change (living.cpp) reads 14; undoing it and
+    // both V gate probes reads 18 again. Both RNG seeds, the seat check, the
+    // lead-team check and the re-teamed check are unchanged.
     {
         screen* const authority =
             og::runtime::local_transport_shadow_testing_server_screen(session);
@@ -10795,7 +10804,7 @@ TEST(GameLoop, midgame_add_player_resume_play_repause_keeps_transport_alive)
             << "the lead team is the two heroes and nothing else";
         EXPECT_EQ(reteamed, living[empty_team])
             << "every walker this case re-teamed must still be on the board";
-        EXPECT_EQ(18, total_living)
+        EXPECT_EQ(11, total_living)
             << "the pinned stream no longer produces the fight this case was "
                "written around";
     }

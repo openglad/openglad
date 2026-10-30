@@ -828,10 +828,10 @@ TEST(StatsCommands, stats_hit_response_all_families)
 // orc/archer/elemental/ghost foe_within) answer false with no foe, because
 // walkers owned by a test are outside the oblist that find_near_foe scans.
 // Legs A and B hold the setting off for that classic claim. With Gameplay
-// Fixes on (legs C and D) the elf's ROCKS gate answers before the roll: the
-// elf's nearest living foe faced and inside the rocks' flight. An unpaid
-// cast is refused before special() is entered, whatever rng(3) says; a paid
-// one enters it.
+// Fixes on (legs C, D and E) the elf's ROCKS gate answers before the roll:
+// the rock's pad clear (fix V, #370) and the elf's nearest living foe faced
+// and inside the rocks' flight. An unpaid cast is refused before special()
+// is entered, whatever rng(3) says; a paid one enters it.
 TEST(StatsCommands, stats_hit_response_default_arm_special_gate_opens_when_rng3_is_zero)
 {
     ScopedArena arena;
@@ -904,11 +904,15 @@ TEST(StatsCommands, stats_hit_response_default_arm_special_gate_opens_when_rng3_
     }
 
     // Gameplay Fixes on. The attacker is a soldier ON the board (the gate's
-    // foe search sees only the world's lists), at a 4 px gap from the elf,
+    // foe search sees only the world's lists), at a set gap from the elf,
     // which is aimed up (set_lasty(-1): the fire heading the rocks leave
-    // along). rng(3) == 0 every time: the roll that opens the gate.
+    // along). rng(3) == 0 every time: the roll that opens the gate. Each leg
+    // also states whether the rock's pad is clear (walker::fire_pad_clear,
+    // the spot fire() would place the rock on, one pixel above the elf's
+    // box), the question the gate asks first.
     world().gameplay_fixes = 1;
-    auto strike = [](short dx, short dy, bool expect_special, const char* why) {
+    auto strike = [](short dx, short dy, bool expect_pad_clear, bool expect_special,
+                     const char* why) {
         world().delete_objects(); // the earlier leg's rocks and fallen attacker
         std::unique_ptr<walker> elf = make_walker(FAMILY_ELF);
         ASSERT_NE(nullptr, elf) << "elf target created";
@@ -924,6 +928,7 @@ TEST(StatsCommands, stats_hit_response_default_arm_special_gate_opens_when_rng3_
         attacker->set_team_num(1);
         ASSERT_TRUE(attacker->setxy(static_cast<std::int32_t>(elf->xpos() + dx),
                                     static_cast<std::int32_t>(elf->ypos() + dy)));
+        EXPECT_EQ(expect_pad_clear, elf->fire_pad_clear()) << why;
         FixedRandom zero(0);
         ScopedSimRandom sim(&zero);
         trace_clear();
@@ -934,11 +939,19 @@ TEST(StatsCommands, stats_hit_response_default_arm_special_gate_opens_when_rng3_
     };
     // Leg C: the attacker 4 px east of the elf, which faces up: the rocks
     // would leave away from it. The gate refuses: special() is not entered.
-    strike(static_cast<short>(16 + 4), 0, false,
+    strike(static_cast<short>(16 + 4), 0, true, false,
            "fixes on: a foe the elf does not face, the ROCKS gate refuses before special()");
-    // Leg D: the attacker 4 px above the elf: faced and inside the flight.
-    strike(0, static_cast<short>(-(16 + 4)), true,
-           "fixes on: a faced foe inside the rocks' flight, rng(3) == 0 enters special()");
+    // Leg D: the attacker 20 px above the elf: faced, inside the flight (56
+    // px for this level-1 elf, gates.lua flight_px) and clear of the pad, so
+    // the rock can leave. (This leg stood at a 4 px gap before fix V: there
+    // the foe stands on the pad itself, which is leg E now.)
+    strike(0, static_cast<short>(-(16 + 20)), true, true,
+           "fixes on: a faced foe inside the rocks' flight, off the pad, rng(3) == 0 enters special()");
+    // Leg E: the attacker 4 px above the elf, on the rock's pad: faced and
+    // in the flight, but fire() could not place the rock there and the cast
+    // would refuse COULD NOT FIRE (#370). The gate refuses first.
+    strike(0, static_cast<short>(-(16 + 4)), false, false,
+           "fixes on: a faced foe standing on the rock's pad, the ROCKS gate refuses before special()");
     // ScopedArena's delete_objects() sweeps whatever the elf's ROCKS special
     // spawned into the world lists.
 }
