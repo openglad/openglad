@@ -28,7 +28,12 @@ class walker : public pixieN
 	public:
 		friend class statistics;
 		friend class command;
-		walker(const PixieData& data);
+		// detached_probe: a body that is only asked about (the raise's body
+		// probe, the weapon pad probe): never filed in the obmap and no rand()
+		// for the path cadence, since random() reads the same rand() stream
+		// and one extra call would move every later draw. (port of the
+		// current game's 15053f4a, its WeaponProfileProbeTag constructor)
+		walker(const PixieData& data, bool detached_probe = false);
 		virtual ~walker();
 		short reset(void);
 		short move(short x, short y);
@@ -47,6 +52,16 @@ class walker : public pixieN
 		short init_fire(short xdir, short ydir);
 		void set_weapon_heading(walker *weapon);
 		walker  * fire();
+		// Where fire() puts the weapon it creates: the top-left corner of
+		// `weapon`'s box one pixel outside this walker, on the side
+		// facing(lastx, lasty) names. The one table fire() reads.
+		void weapon_pad(walker *weapon, short *px, short *py);
+		// True when fire() would launch this living's current weapon instead
+		// of meeting something on its pad (a wall, an enemy body, a door, a
+		// tree, a generator): the pad probed quietly with a detached weapon,
+		// no walker made, no draw, nothing eaten or opened. A bot gate's
+		// question. (port of the current game's 15053f4a)
+		bool fire_pad_clear();
 		virtual short act();
 		short set_act_type(short num);
 		short restore_act_type();

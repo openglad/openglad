@@ -73,7 +73,9 @@ class statistics
 		bool right_blocked(); // is our right blocked?
 		bool right_forward_blocked();
 		bool right_back_blocked();
-		bool forward_blocked(); // are we blocked in front?
+		// quiet: the same question asked without a draw or a side effect
+		// (port of the current game's 15053f4a)
+		bool forward_blocked(bool quiet = false); // are we blocked in front?
 		//short distance_to_foe(); //not in use???????
 		bool right_walk();      // walk using right-hand rule
 		bool direct_walk(); // walk in a line toward foe ..

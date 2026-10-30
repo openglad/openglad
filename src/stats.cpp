@@ -908,7 +908,7 @@ bool statistics::right_back_blocked()
 }
 
 // Returns whether our front is blocked
-bool statistics::forward_blocked()
+bool statistics::forward_blocked(bool quiet)
 {
 	float xdelta, ydelta;
 	float controlx = controller->xpos, controly = controller->ypos;
@@ -954,7 +954,7 @@ bool statistics::forward_blocked()
 			break;
 	}
 
-	return !myscreen->query_passable(controlx + xdelta, controly + ydelta, controller);
+	return !myscreen->query_passable(controlx + xdelta, controly + ydelta, controller, quiet);
 }
 
 bool statistics::right_walk()

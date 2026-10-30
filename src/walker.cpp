@@ -42,7 +42,7 @@ extern Sint32 current_difficulty;
 // from glad.cpp
 short remaining_foes(screen *myscreen, walker* myguy);
 
-walker::walker(const PixieData& data)
+walker::walker(const PixieData& data, bool detached_probe)
     : pixieN(data)
 {
 	// Set our stats ..
@@ -103,10 +103,11 @@ walker::walker(const PixieData& data)
 	weapons_left = 1; // default, used for fighters
 
 	myobmap = NULL;
-	if(myscreen != NULL)
+	if(myscreen != NULL && !detached_probe)
         myobmap = myscreen->level_data.myobmap;  // default obmap (spatial partitioning optimization?) changed when added to a list
     
-	path_check_counter = 5 + rand()%10;
+	// a detached probe draws nothing (port of the current game's 15053f4a)
+	path_check_counter = detached_probe ? 0 : 5 + rand()%10;
 	hurt_flash = false;
 	attack_lunge = 0.0f;
 	hit_recoil = 0.0f;
@@ -726,49 +727,44 @@ walker  * walker::fire()
 	waver = (signed char) ((weapon->stepsize)/2); // Absolute amount ..
 	waver = (signed char) (random(waver+1) - waver/2);
 
+	short pad_x = 0, pad_y = 0;
+	weapon_pad(weapon, &pad_x, &pad_y);
 	switch(facing(lastx, lasty))
 	{
 		case FACE_RIGHT:
-			weapon->setxy(xpos+sizex+1,ypos+(sizey - weapon->sizey)/2);
 			weapon->lastx = weapon->stepsize;
 			weapon->lasty = waver;
 			break;
 		case FACE_LEFT:
-			weapon->setxy(xpos - weapon->sizex-1, ypos+(sizey-weapon->sizey)/2);
 			weapon->lastx = -weapon->stepsize;
 			weapon->lasty = waver;
 			break;
 		case FACE_DOWN:
-			weapon->setxy(xpos+(sizex-weapon->sizex)/2, ypos+sizey+1);
 			weapon->lasty = weapon->stepsize;
 			weapon->lastx = waver;
 			break;
 		case FACE_UP:
-			weapon->setxy(xpos+(sizex-weapon->sizex)/2, ypos - weapon->sizey-1);
 			weapon->lasty = - weapon->stepsize;
 			weapon->lastx = waver;
 			break;
 		case FACE_UP_RIGHT:
-			weapon->setxy(xpos+sizex+1, ypos-weapon->sizey-1);
 			weapon->lastx = weapon->stepsize + waver;
 			weapon->lasty = -weapon->stepsize + waver;
 			break;
 		case FACE_UP_LEFT:
-			weapon->setxy(xpos - weapon->sizex-1, ypos-weapon->sizey-1);
 			weapon->lastx = -weapon->stepsize - waver;
 			weapon->lasty = -weapon->stepsize + waver;
 			break;
 		case FACE_DOWN_RIGHT:
-			weapon->setxy(xpos+sizex+1, ypos + sizey+1);
 			weapon->lasty = weapon->stepsize + waver;
 			weapon->lastx = weapon->stepsize - waver;
 			break;
 		case FACE_DOWN_LEFT:
-			weapon->setxy(xpos - weapon->sizex-1, ypos+sizey+1);
 			weapon->lasty = weapon->stepsize + waver;
 			weapon->lastx = -weapon->stepsize + waver;
 			break;
 	}
+	weapon->setxy(pad_x, pad_y);
 
 	weapon->set_frame(frame);
 	// Make sure our current direction is wrong so first walk
@@ -5338,4 +5334,76 @@ Sint32 walker::is_friendly_to_team(unsigned char team)
 	
 	// If we're a hired guy in allied mode, then we're friendly with team 0 (red)
 	return (has_myguy == 1 && team == 0);
+}
+
+// The pad table of fire(): where the weapon it creates is placed, one pixel
+// outside this walker's box on the side facing(lastx, lasty) names. fire()
+// and fire_pad_clear() both read it, so the pad has one rule. (port of the
+// current game's 15053f4a)
+void walker::weapon_pad(walker *weapon, short *px, short *py)
+{
+	Sint32 x = weapon->xpos;
+	Sint32 y = weapon->ypos;
+	switch(facing(lastx, lasty))
+	{
+		case FACE_RIGHT:
+			x = xpos+sizex+1;
+			y = ypos+(sizey - weapon->sizey)/2;
+			break;
+		case FACE_LEFT:
+			x = xpos - weapon->sizex-1;
+			y = ypos+(sizey-weapon->sizey)/2;
+			break;
+		case FACE_DOWN:
+			x = xpos+(sizex-weapon->sizex)/2;
+			y = ypos+sizey+1;
+			break;
+		case FACE_UP:
+			x = xpos+(sizex-weapon->sizex)/2;
+			y = ypos - weapon->sizey-1;
+			break;
+		case FACE_UP_RIGHT:
+			x = xpos+sizex+1;
+			y = ypos-weapon->sizey-1;
+			break;
+		case FACE_UP_LEFT:
+			x = xpos - weapon->sizex-1;
+			y = ypos-weapon->sizey-1;
+			break;
+		case FACE_DOWN_RIGHT:
+			x = xpos+sizex+1;
+			y = ypos + sizey+1;
+			break;
+		case FACE_DOWN_LEFT:
+			x = xpos - weapon->sizex-1;
+			y = ypos+sizey+1;
+			break;
+	}
+	// setxy(short, short) narrows the same way
+	*px = (short) x;
+	*py = (short) y;
+}
+
+// The pad fire() would place this walker's current weapon on, probed quietly:
+// the same spot (weapon_pad), the same weapon rules (own-team bodies pass, an
+// enemy body, door, tree or generator blocks), no walker made, no draw (an
+// enemy weapon in flight passes a quiet probe; an arrow slit is passable at
+// the pad's distance), nothing eaten or opened. A bot gate's question.
+// (port of the current game's 15053f4a)
+bool walker::fire_pad_clear()
+{
+	if (query_order() != ORDER_LIVING || !myscreen)
+		return false;
+	loader *ld = myscreen->level_data.myloader;
+	if (!ld || !ld->graphics[PIX(ORDER_WEAPON, current_weapon)].valid())
+		return false;
+	walker probe(ld->graphics[PIX(ORDER_WEAPON, current_weapon)], true);
+	ld->set_walker(&probe, ORDER_WEAPON, current_weapon);
+	probe.owner = this;          // the chain create_weapon gives it: is_friendly reads it
+	probe.team_num = team_num;
+	short px = 0, py = 0;
+	weapon_pad(&probe, &px, &py);
+	probe.xpos = px;             // the plain fields: never setxy, which
+	probe.ypos = py;             // would file the probe in the obmap
+	return myscreen->query_passable(px, py, &probe, true);
 }

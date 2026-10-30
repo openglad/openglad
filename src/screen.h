@@ -27,6 +27,7 @@
 #include <map>
 #include <string>
 #include <set>
+#include <vector>
 #include "level_data.h"
 #include "save_data.h"
 
@@ -45,9 +46,15 @@ class screen : public video
 		void cleanup(short);
 		void clear();
 		video * get_video_ob();
-		bool query_passable(float x, float y, walker  *ob);
-		bool query_object_passable(float x, float y, walker  *ob);
-		bool query_grid_passable(float x, float y, walker  *ob);
+		// quiet = true is a question that changes nothing: the same answer with
+		// no draw and no side effect (obmap::query_list's quiet; the grid half
+		// skips the arrow slit's shooter-distance roll and treats the slit as
+		// passable, the loud answer at the one spot a quiet weapon probe is
+		// ever made, a weapon's pad one pixel outside its shooter). Loud by
+		// default. (port of the current game's 15053f4a)
+		bool query_passable(float x, float y, walker  *ob, bool quiet = false);
+		bool query_object_passable(float x, float y, walker  *ob, bool quiet = false);
+		bool query_grid_passable(float x, float y, walker  *ob, bool quiet = false);
 		short redraw();
 		void refresh();
 		walker  * first_of(unsigned char whatorder, unsigned char whatfamily,
@@ -62,6 +69,23 @@ class screen : public video
 		walker *find_far_foe(walker *ob);
 		void draw_panels(short howmany);
 		walker* find_nearest_blood(walker *who);
+		// Every stain find_nearest_blood would consider (live FAMILY_STAIN
+		// treasure, squared centre distance under 800), nearest first; ties
+		// keep fxlist order. Draw-free; empty for a NULL who. (port of the
+		// current game's 15053f4a)
+		std::vector<walker*> find_blood_in_reach(walker *who);
+		// Does a body of this order and family fit at (x, y)? Probed with a
+		// detached walker (never in a list or the obmap, no draw) through the
+		// current game's eat-free spawn placement rule: the grid with the
+		// body's own flags, then livings, generators, doors, trees and
+		// boulders on exact boxes. (port of the current game's 15053f4a)
+		bool body_spot_clear(char order, char family, short x, short y);
+		// The first spot within `radius` px of (x, y) where the body fits, in
+		// a fixed order: the corner itself, then for r = 1 .. radius the eight
+		// offsets (-r,0) (r,0) (0,-r) (0,r) (-r,-r) (r,-r) (-r,r) (r,r).
+		// Deterministic, draw-free.
+		bool body_spot_near(char order, char family, short x, short y,
+		                    int radius, short *out_x, short *out_y);
 		walker* find_nearest_player(walker *ob);
 		std::list<walker*> find_in_range(std::list<walker*>& somelist, Sint32 range, short *howmany, walker  *ob);
 		std::list<walker*> find_foes_in_range(std::list<walker*>& somelist, Sint32 range, short *howmany, walker  *ob);

@@ -32,6 +32,9 @@
 #include "results_screen.h"
 #include <string>
 #include <cstring>
+#include <algorithm>
+#include <utility>
+#include <vector>
 #ifdef OG_PARITY_RECORDER
 #include "parity_event_log.h"
 #endif
@@ -376,7 +379,7 @@ void screen::reset(short howmany)
 
 }
 
-bool screen::query_grid_passable(float x, float y, walker  *ob)
+bool screen::query_grid_passable(float x, float y, walker  *ob, bool quiet)
 {
 	Sint32 i,j;
 	//  short xsize=ob->sizex, ysize=ob->sizey;
@@ -539,17 +542,31 @@ bool screen::query_grid_passable(float x, float y, walker  *ob)
 						//if (!ob->owner)
 						if (ob->query_order()==ORDER_LIVING)
 							return 0;
-
-						if (abs(ob->xpos - ob->owner->xpos)>
-						        abs(ob->ypos - ob->owner->ypos))
-							dist = abs(ob->xpos - ob->owner->xpos);
-						else
-							dist = abs(ob->ypos - ob->owner->ypos);
-						dist -= (GRID_SIZE/2);
-						if (dist < GRID_SIZE)
-							dist += GRID_SIZE;
-						if (random(dist/GRID_SIZE))
+						// port of the current game's guard: a stain or another
+						// ownerless probe over a slit read a NULL owner below
+						if (!ob->owner)
 							return 0;
+
+						// A quiet probe never rolls the gamble and treats the
+						// slit as passable. That is the loud answer at the one
+						// place a quiet weapon probe is made, a weapon's pad one
+						// pixel outside its shooter (walker::fire_pad_clear):
+						// the pad is under 40 px from the shooter's corner, so
+						// dist / GRID_SIZE is 0 or 1 after the adjustment below,
+						// and random(0) and random(1) both answer 0 (passable).
+						if (!quiet)
+						{
+							if (abs(ob->xpos - ob->owner->xpos)>
+							        abs(ob->ypos - ob->owner->ypos))
+								dist = abs(ob->xpos - ob->owner->xpos);
+							else
+								dist = abs(ob->ypos - ob->owner->ypos);
+							dist -= (GRID_SIZE/2);
+							if (dist < GRID_SIZE)
+								dist += GRID_SIZE;
+							if (random(dist/GRID_SIZE))
+								return 0;
+						}
 					}
 				case PIX_WATER1:      // Water
 				case PIX_WATER2:
@@ -593,16 +610,16 @@ bool screen::query_grid_passable(float x, float y, walker  *ob)
 	return 1;
 }
 
-bool screen::query_object_passable(float x, float y, walker  *ob)
+bool screen::query_object_passable(float x, float y, walker  *ob, bool quiet)
 {
 	if (ob->dead)
 		return 1;
-	return level_data.myobmap->query_list(ob, x, y);
+	return level_data.myobmap->query_list(ob, x, y, quiet);
 }
 
-bool screen::query_passable(float x, float y, walker  *ob)
+bool screen::query_passable(float x, float y, walker  *ob, bool quiet)
 {
-	return query_grid_passable(x, y, ob) && query_object_passable(x, y, ob);
+	return query_grid_passable(x, y, ob, quiet) && query_object_passable(x, y, ob, quiet);
 }
 
 void screen::clear()
@@ -1207,6 +1224,117 @@ walker  * screen::find_nearest_blood(walker  *who)
 	}
 	return returnob;
 
+}
+
+// The walk of find_nearest_blood, keeping every stain it would consider
+// instead of the nearest alone, sorted nearest first by the same squared
+// centre distance; a stable sort, so equal distances keep fxlist order.
+// find_nearest_blood itself is left as it is (the classic raises read it).
+std::vector<walker*> screen::find_blood_in_reach(walker  *who)
+{
+	std::vector<std::pair<Sint32, walker*> > found;
+	std::vector<walker*> stains;
+	if (!who)
+		return stains;
+
+	for(auto e = level_data.fxlist.begin(); e != level_data.fxlist.end(); e++)
+	{
+	    walker* w = *e;
+		if (w && w->query_order() == ORDER_TREASURE &&
+		        w->query_family() == FAMILY_STAIN && !w->dead)
+		{
+			Sint32 distance = (Uint32) who->distance_to_ob_center(w);
+			if (distance < 800)
+				found.push_back(std::make_pair(distance, w));
+		}
+	}
+
+	std::stable_sort(found.begin(), found.end(),
+	                 [](const std::pair<Sint32, walker*>& a, const std::pair<Sint32, walker*>& b) { return a.first < b.first; });
+	for (size_t i = 0; i < found.size(); i++)
+		stains.push_back(found[i].second);
+	return stains;
+}
+
+// The current game's spawn_spot_blocked_by (respawn.cpp) without its two
+// tests that have no counterpart here: other->hidden() (this walker has no
+// hidden state) and declares_blocks_placement (a class-pack declaration;
+// the old game has no packs, and the parity rows play New Specials off).
+static bool body_spot_blocked_by(walker *other, walker *w, short x, short y)
+{
+	if (other == NULL || other == w || other->dead)
+		return false;
+	char order = other->query_order();
+	bool blocking = (order == ORDER_LIVING || order == ORDER_GENERATOR
+	                 || (order == ORDER_WEAPON
+	                     && (other->query_family() == FAMILY_DOOR
+	                         || other->query_family() == FAMILY_TREE
+	                         || other->query_family() == FAMILY_BOULDER)));
+	if (!blocking)
+		return false;
+	return x + w->sizex > other->xpos &&
+	       x < other->xpos + other->sizex &&
+	       y + w->sizey > other->ypos &&
+	       y < other->ypos + other->sizey;
+}
+
+bool screen::body_spot_clear(char order, char family, short x, short y)
+{
+	loader *ld = level_data.myloader;
+	if (!ld || !ld->graphics[PIX(order, family)].valid())
+		return false;
+	walker probe(ld->graphics[PIX(order, family)], true);
+	ld->set_walker(&probe, order, family);
+	probe.xpos = x;   // the plain fields: never setxy, which would file
+	probe.ypos = y;   // the probe in the obmap
+	if (!query_grid_passable(x, y, &probe))
+		return false;
+	if (!level_data.myobmap)
+		return true;
+	// The current game's classic_spot_clear sweep: every 32 px bucket the
+	// box spans, read with find (no node is made).
+	const int bucket = 32;
+	for (int bx = x; bx < x + probe.sizex + bucket; bx += bucket)
+	{
+		for (int by = y; by < y + probe.sizey + bucket; by += bucket)
+		{
+			const std::list<walker*>* pile = level_data.myobmap->find_list((short) bx, (short) by);
+			if (!pile)
+				continue;
+			for (auto e = pile->begin(); e != pile->end(); e++)
+				if (body_spot_blocked_by(*e, &probe, x, y))
+					return false;
+		}
+	}
+	return true;
+}
+
+bool screen::body_spot_near(char order, char family, short x, short y,
+                            int radius, short *out_x, short *out_y)
+{
+	if (body_spot_clear(order, family, x, y))
+	{
+		*out_x = x;
+		*out_y = y;
+		return true;
+	}
+	static const int ring[8][2] = {
+		{-1, 0}, {1, 0}, {0, -1}, {0, 1}, {-1, -1}, {1, -1}, {-1, 1}, {1, 1}};
+	for (int r = 1; r <= radius; ++r)
+	{
+		for (int k = 0; k < 8; ++k)
+		{
+			short sx = (short) (x + ring[k][0] * r);
+			short sy = (short) (y + ring[k][1] * r);
+			if (body_spot_clear(order, family, sx, sy))
+			{
+				*out_x = sx;
+				*out_y = sy;
+				return true;
+			}
+		}
+	}
+	return false;
 }
 
 std::list<walker*> screen::find_in_range(std::list<walker*>& somelist, Sint32 range, short *howmany, walker  *ob)
