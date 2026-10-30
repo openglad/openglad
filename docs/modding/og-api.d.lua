@@ -167,7 +167,7 @@
 ---@field s_do_command fun(self: og.Walker): integer # walker:s_do_command() → short — runs the queued command one step (statistics::do_command).
 ---@field s_force_command fun(self: og.Walker, arg2: integer, arg3: integer, arg4: integer, arg5: integer)
 ---@field s_force_fright fun(self: og.Walker, iterations: integer, info1: integer, info2: integer) # walker:s_force_fright(iterations, info1, info2) — statistics::force_fright, the ghost-scare fright injection (stats.cpp).
----@field s_forward_blocked fun(self: og.Walker, arg2: any?): boolean
+---@field s_forward_blocked fun(self: og.Walker, quiet: any?): boolean # walker:s_forward_blocked([quiet])
 ---@field s_front_command fun(self: og.Walker): integer # walker:s_front_command() — the front queue entry's commandtype, 0 when the queue is empty.
 ---@field s_frozen_delay fun(self: og.Walker): integer
 ---@field s_frozen_delay_raw fun(self: og.Walker): integer # Raw (unmasked) frozen_delay: negatives are the thaw-immunity phase, which the masked s_frozen_delay getter hides (orc howl needs the raw value).

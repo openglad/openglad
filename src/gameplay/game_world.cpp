@@ -867,12 +867,12 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob, int floor, boo
                         return false;
 
                     // A quiet probe never rolls the gamble and treats the slit
-                    // as passable. That is the loud answer at the one place a
-                    // quiet weapon probe is made, a weapon's pad one pixel
-                    // outside its shooter (walker::fire_pad_clear): the pad is
-                    // under 40 px from the shooter's corner, so dist / GRID_SIZE
-                    // is 0 or 1 after the adjustment below, and rng_.next(0)
-                    // and rng_.next(1) both answer 0 (passable).
+                    // as passable. That is the loud answer where a quiet weapon
+                    // probe is made today (walker::fire_pad_clear: the pad one
+                    // pixel outside a shooter up to 38 px a side gives dist /
+                    // GRID_SIZE 0 or 1 below, and rng_.next(0) and rng_.next(1)
+                    // both answer 0). A golem (48x36) or giant skeleton (64x64)
+                    // pad can reach a bound of 2, where the loud roll blocks half.
                     if (!quiet)
                     {
                         if (std::abs(ob->xpos() - ob->owner()->xpos()) >

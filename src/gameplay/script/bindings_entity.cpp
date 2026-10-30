@@ -844,7 +844,7 @@ int s_refresh_front(lua_State* L)
     front.com2 = static_cast<std::int32_t>(luaL_checkinteger(L, 4));
     return 0;
 }
-
+// walker:s_forward_blocked([quiet])
 int s_forward_blocked(lua_State* L)
 {
     lua_pushboolean(L, stats_arg(L)->forward_blocked(!lua_isnoneornil(L, 2) && lua_toboolean(L, 2) != 0) ? 1 : 0);

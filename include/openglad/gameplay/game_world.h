@@ -404,9 +404,9 @@ public:
     // pathfinding uses these to probe a different target floor for stair edges.
     // quiet = true is a question that changes nothing: the same answer with no
     // draw and no side effect (obmap::query_list's quiet; the grid half skips
-    // the arrow slit's shooter-distance roll and treats the slit as passable,
-    // the loud answer at the one spot a quiet weapon probe is ever made, a
-    // weapon's pad one pixel outside its shooter). The 3-arg forms stay loud.
+    // the arrow slit's shooter-distance roll and treats the slit as passable:
+    // the loud answer for a weapon's pad one pixel outside a shooter up to
+    // 38 px a side; a golem's or giant skeleton's can differ). 3-arg forms stay loud.
     bool query_passable(float x, float y, walker* ob, int floor, bool quiet = false);
     bool query_object_passable(float x, float y, walker* ob, int floor, bool quiet = false);
     bool query_grid_passable(float x, float y, walker* ob, int floor, bool quiet = false);
