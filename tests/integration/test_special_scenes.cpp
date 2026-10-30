@@ -4516,7 +4516,7 @@ std::vector<Pair> pairs()
         c.name = "u_charge_front_foe";
         c.scene.family = FAMILY_SOLDIER;
         c.scene.slot = 1;
-        c.scene.frames = 60;
+        c.scene.frames = 100; // every tell lands by frame 40; the GIF wants 8 s
         c.scene.stage = [](Run& run) {
             walker* hero = run.hero();
             stop_mp_regen(hero);
