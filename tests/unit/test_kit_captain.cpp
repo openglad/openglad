@@ -367,7 +367,8 @@ TEST(KitCaptain, captain_has_no_specials_when_off)
     EXPECT_EQ(40, og::sim::cast_cost(*captain, 3, false));
     EXPECT_EQ(30, og::sim::cast_cost(*captain, 3, true));
     EXPECT_EQ(80, og::sim::cast_cost(*captain, 4, false));
-    EXPECT_EQ(80, og::sim::cast_cost(*captain, 4, true));
+    EXPECT_EQ(120, og::sim::cast_cost(*captain, 4, true))
+        << "WARBAND has its own price";
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
@@ -1426,6 +1427,10 @@ TEST(KitCaptain, banner_is_chopped_by_foes_and_passes_allies)
 // walled edge refuses with nothing spent.
 // RED with the goal at the banner's top-left (the first shape): com1 and
 // com2 read 6 and 11 short of the centre of the 12x22 banner.
+// RED with the grunts at half the captain's level, `og.div(self.level, 2)`:
+//   Expected equality of these values: 3 g->stats()->level() Which is: 5
+// and with the floor `og.max(0, ...)`, on the level-2 captain:
+//   Expected equality of these values: 1 g->stats()->level() Which is: 0
 TEST(KitCaptain, warband_arrives_from_the_nearest_edge_fearless_and_runs_to_the_banner)
 {
     og::test::ScopedHookFailureGuard guard;
@@ -1439,7 +1444,7 @@ TEST(KitCaptain, warband_arrives_from_the_nearest_edge_fearless_and_runs_to_the_
         captain->setxy(40, 200);  // nearest edge: the west
         const Cast c = cast(captain, 4, true);
         ASSERT_TRUE(c.ok) << c.reason;
-        EXPECT_FLOAT_EQ(80.0f, c.mp_spent);
+        EXPECT_FLOAT_EQ(120.0f, c.mp_spent);
         const auto grunts = grunts_of(tw, captain);
         ASSERT_EQ(2u, grunts.size());
         for (std::size_t i = 0; i < grunts.size(); ++i) {
@@ -1448,7 +1453,7 @@ TEST(KitCaptain, warband_arrives_from_the_nearest_edge_fearless_and_runs_to_the_
                 << "on the west edge, scanning inward";
             EXPECT_EQ(200, g->ypos());
             EXPECT_EQ(kUs, g->team_num());
-            EXPECT_EQ(5, g->stats()->level()) << "half the captain's level";
+            EXPECT_EQ(3, g->stats()->level()) << "a third of the captain's level";
             EXPECT_EQ(kWarbandLifetime, g->lifetime());
             EXPECT_NE(0, g->kit_state() & KIT_FEARLESS);
             EXPECT_TRUE(og::sim::fearless(*g));
@@ -1466,6 +1471,7 @@ TEST(KitCaptain, warband_arrives_from_the_nearest_edge_fearless_and_runs_to_the_
         short x, y, level;
         int want_x, want_y;  // the first grunt
         std::size_t count;
+        int grunt_level;  // a third of the captain's, at least 1
     };
     // 512 x 512 px field. No banner: they run to the captain.
     const std::array<EdgeCase, 3> cases = {{
@@ -1473,9 +1479,9 @@ TEST(KitCaptain, warband_arrives_from_the_nearest_edge_fearless_and_runs_to_the_
         // edge reaches the map's last pixel (x + size >= width), so the
         // scan starts one tile in; the next two tiles (480 and 464) overlap
         // the captain's box (470..485), so the first grunt is four in.
-        {470, 200, 10, 512 - 4 * GRID_SIZE, 200, 2},  // east
-        {200, 30, 16, 200, 0, 4},                     // north, level 16: 2 + 2
-        {200, 470, 10, 200, 512 - 4 * GRID_SIZE, 2},  // south
+        {470, 200, 10, 512 - 4 * GRID_SIZE, 200, 2, 3},  // east
+        {200, 30, 16, 200, 0, 4, 5},                     // north, level 16: 2 + 2
+        {200, 470, 10, 200, 512 - 4 * GRID_SIZE, 2, 3},  // south
     }};
     for (const EdgeCase& e : cases) {
         TestGameWorld tw;
@@ -1489,6 +1495,9 @@ TEST(KitCaptain, warband_arrives_from_the_nearest_edge_fearless_and_runs_to_the_
         ASSERT_EQ(e.count, grunts.size()) << "captain at " << e.x << "," << e.y;
         EXPECT_EQ(e.want_x, grunts.front()->xpos());
         EXPECT_EQ(e.want_y, grunts.front()->ypos());
+        for (const walker* g : grunts)
+            EXPECT_EQ(e.grunt_level, g->stats()->level())
+                << "a level-" << e.level << " captain's grunt";
         for (const walker* g : grunts)
             EXPECT_FALSE(g->xpos() + g->sizex() > captain->xpos() &&
                          g->xpos() < captain->xpos() + captain->sizex() &&
@@ -1512,6 +1521,8 @@ TEST(KitCaptain, warband_arrives_from_the_nearest_edge_fearless_and_runs_to_the_
         // overlap his box (40..55) and are skipped, never filled.
         EXPECT_EQ((std::vector<short>{0, 16, 64, 80, 96}),
                   xs_of(grunts_of(tw, captain)));
+        for (const walker* g : grunts_of(tw, captain))
+            EXPECT_EQ(6, g->stats()->level()) << "a third of level 19";
         ASSERT_TRUE(cast(captain, 4, true).ok);
         EXPECT_EQ((std::vector<short>{0, 16, 64, 80, 96, 112}),
                   xs_of(grunts_of(tw, captain)))
@@ -1519,6 +1530,21 @@ TEST(KitCaptain, warband_arrives_from_the_nearest_edge_fearless_and_runs_to_the_
         const Cast full = cast(captain, 4, true);
         EXPECT_EQ("WARBAND ALREADY HERE", full.reason);
         EXPECT_FLOAT_EQ(0.0f, full.mp_spent);
+    }
+
+    {
+        // A level-2 captain (the cast reads no level): a third of 2 is 0,
+        // and a grunt is never below level 1.
+        TestGameWorld tw;
+        open_field(tw);
+        tw.world().new_specials = 1;
+        walker* captain = add_captain(tw, 40, 200, 2);
+        ASSERT_NE(nullptr, captain);
+        ASSERT_TRUE(cast(captain, 4, true).ok);
+        const auto grunts = grunts_of(tw, captain);
+        ASSERT_EQ(2u, grunts.size());
+        for (const walker* g : grunts)
+            EXPECT_EQ(1, g->stats()->level()) << "the level floor";
     }
 
     {
@@ -1554,6 +1580,50 @@ TEST(KitCaptain, warband_arrives_from_the_nearest_edge_fearless_and_runs_to_the_
         EXPECT_FLOAT_EQ(0.0f, c.mp_spent);
         EXPECT_TRUE(grunts_of(tw, captain).empty());
     }
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+// WARBAND has its own price, 120, and WAR BANNER keeps its 80 (#375). One
+// short of the price the call is refused for magic with nothing spent and
+// no grunt, while the same pool still plants a banner; at the price the
+// call is paid in full.
+//
+// Proof it can fail: `mp_cost = 120, ` dropped from WARBAND's alternate in
+// living-15-orc_captain.lua printed
+//   Expected equality of these values: 120 og::sim::cast_cost(*captain, 4, true) Which is: 80
+TEST(KitCaptain, warband_has_its_own_price_and_a_short_pool_is_refused)
+{
+    og::test::ScopedHookFailureGuard guard;
+    TestGameWorld tw;
+    open_field(tw);
+    tw.world().new_specials = 1;
+    walker* captain = add_captain(tw, 200, 200);
+    ASSERT_NE(nullptr, captain);
+    EXPECT_EQ(120, og::sim::cast_cost(*captain, 4, true));
+    EXPECT_EQ(80, og::sim::cast_cost(*captain, 4, false));
+
+    captain->stats()->set_magicpoints(119.0f);
+    add_stain(tw, captain);
+    const Cast plant = cast(captain, 4, false);
+    ASSERT_TRUE(plant.ok) << plant.reason;
+    EXPECT_FLOAT_EQ(80.0f, plant.mp_spent) << "the banner keeps its price";
+    EXPECT_EQ(1u, banners(tw).size());
+
+    captain->setxy(40, 200);  // nearest edge: the west
+    captain->stats()->set_magicpoints(119.0f);
+    const Cast short_pool = cast(captain, 4, true);
+    EXPECT_FALSE(short_pool.ok);
+    EXPECT_EQ(walker::SpecialFailure::NoMP, short_pool.why);
+    EXPECT_EQ("NOT ENOUGH MP", short_pool.reason);
+    EXPECT_FLOAT_EQ(0.0f, short_pool.mp_spent);
+    EXPECT_TRUE(grunts_of(tw, captain).empty());
+
+    captain->stats()->set_magicpoints(120.0f);
+    const Cast paid = cast(captain, 4, true);
+    ASSERT_TRUE(paid.ok) << paid.reason;
+    EXPECT_FLOAT_EQ(120.0f, paid.mp_spent);
+    EXPECT_FLOAT_EQ(0.0f, captain->stats()->magicpoints());
+    EXPECT_EQ(2u, grunts_of(tw, captain).size());
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
@@ -1721,6 +1791,73 @@ TEST(KitCaptain, ai_banner_plants_among_friends_and_calls_the_warband_when_press
     ASSERT_TRUE(cast(s.captain, 4, true).ok);
     s.captain->setxy(200, 200);
     EXPECT_FALSE(s.ask(4).first) << "a grunt is still alive";
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+// The warband arm asks the price before it chooses it (gates.lua rule 3:
+// the engine does not re-check). Two foes pressing, no grunt, no corpse to
+// plant on: one short of WARBAND's 120 the gate holds and writes no shift;
+// at 120 it calls the warband.
+//
+// Proof it can fail: `and G.can_pay(self, 4, true)` dropped from ai_banner
+// printed
+//   Expected equality of these values: (std::pair<bool, int>{false, -1})
+//   Which is: (false, -1) s.ask(4) Which is: (true, 1)
+TEST(KitCaptain, ai_banner_holds_the_warband_it_cannot_pay)
+{
+    og::test::ScopedHookFailureGuard guard;
+    BotScene s;
+    ASSERT_NE(nullptr, s.bot);
+    add_living(s.tw, FAMILY_SOLDIER, kThem, 280, 200);
+    add_living(s.tw, FAMILY_SOLDIER, kThem, 200, 280);
+    s.captain->stats()->set_magicpoints(119.0f);
+    EXPECT_EQ((std::pair<bool, int>{false, -1}), s.ask(4))
+        << "pressed but short of the price: hold";
+    s.captain->stats()->set_magicpoints(120.0f);
+    EXPECT_EQ((std::pair<bool, int>{true, 1}), s.ask(4)) << "warband";
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+// The same through the engine's bot path, from a pinned RNG state: one
+// short of the price check_special() says no and special() is never asked,
+// so there is no NOT ENOUGH MP refusal; at the price the warband comes.
+//
+// Proof it can fail: the same `G.can_pay` dropped printed
+//   Value of: yes Actual: true Expected: false
+// and the refusal "NOT ENOUGH MP" in place of "".
+TEST(KitCaptain, bot_captain_calls_the_warband_only_when_it_can_pay)
+{
+    og::test::ScopedHookFailureGuard guard;
+    BotScene s;
+    ASSERT_NE(nullptr, s.bot);
+    s.captain->setxy(40, 200);  // nearest edge: the west
+    add_living(s.tw, FAMILY_SOLDIER, kThem, 120, 200);
+    add_living(s.tw, FAMILY_SOLDIER, kThem, 40, 300);
+
+    s.captain->stats()->set_magicpoints(119.0f);
+    s.bot->set_current_special(4);
+    s.tw.world().rng_.state_ = 4242u;
+    const bool yes = s.bot->check_special();
+    std::string refusal;
+    if (yes) {
+        walker::SpecialFailure why = walker::SpecialFailure::None;
+        s.bot->special(&why, &refusal);
+    }
+    EXPECT_FALSE(yes) << "the bot holds the warband it cannot pay";
+    EXPECT_EQ("", refusal);
+    EXPECT_EQ(0, s.bot->shifter_down());
+    EXPECT_FLOAT_EQ(119.0f, s.captain->stats()->magicpoints());
+    EXPECT_TRUE(grunts_of(s.tw, s.captain).empty());
+
+    s.captain->stats()->set_magicpoints(120.0f);
+    s.bot->set_current_special(4);
+    s.tw.world().rng_.state_ = 4242u;
+    ASSERT_TRUE(s.bot->check_special());
+    EXPECT_EQ(4, s.bot->current_special());
+    EXPECT_EQ(1, s.bot->shifter_down()) << "the warband arm";
+    ASSERT_TRUE(s.bot->special());
+    EXPECT_FLOAT_EQ(0.0f, s.captain->stats()->magicpoints());
+    EXPECT_EQ(2u, grunts_of(s.tw, s.captain).size());
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 

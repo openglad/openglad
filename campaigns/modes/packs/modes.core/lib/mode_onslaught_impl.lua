@@ -115,6 +115,33 @@ local function generator_rank(target)
   return rank
 end
 
+-- The post changes hands; the troops it spawned do not. A tent's or a bones
+-- generator's spawn keeps the generator as its owner for life (clear_owner
+-- false), and the engine's alliance follows the owner chain (walker.cpp,
+-- is_friendly), so a captured post would drag its old troops onto the
+-- captor's side in everything but colour: unhittable by the captor, shoving
+-- through its squad, struck by their own. Released, each is the head of its
+-- own chain: a remnant that fights on, earns its kills, and can take the post
+-- back (the flip guard still applies). A timed living with no owner dies on
+-- its next turn (living.cpp, "our owner gone?"), so a released troop drops
+-- its clock too: it ends up exactly like a tower's or a treehouse's spawn,
+-- which drop their owner at birth, carry no clock, and never had this
+-- problem.
+local function release_troops(target)
+  local target_id = og.entity_id(target)
+  local obs = og.oblist()
+  for k = 1, #obs do
+    local w = obs[k]
+    if w:dead() == 0 and w:order() == C.ORDER_LIVING then
+      local owner = w:owner()
+      if owner ~= nil and og.entity_id(owner) == target_id then
+        w:set_owner(nil)
+        w:set_lifetime(0)
+      end
+    end
+  end
+end
+
 local function guard_read(rank)
   local slot = og.div(rank, 2)
   if slot >= GUARD_SLOTS then
@@ -202,6 +229,7 @@ local function on_damage(target, attacker, amount)
     return og.trunc(hp) - 1
   end
   guard_write(rank, og.mod(og.world_tick(), GUARD_WINDOW) + 1)
+  release_troops(target)
   target:set_team_num(team)
   target:set_real_team_num(team)
   target.hp = target.max_hp

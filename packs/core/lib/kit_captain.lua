@@ -341,7 +341,7 @@ local function warband(self)
     local grunt = self:do_summon(LIVING_ORC, t.warband_lifetime)
     if grunt then
       grunt.team = self.team
-      grunt.level = og.max(1, og.div(self.level, 2))
+      grunt.level = og.max(1, og.div(self.level, 3))
       grunt:set_difficulty(grunt.level)
       grunt:setxy(spots[i], spots[i + 1])
       grunt:set_kit_state(C.KIT_FEARLESS)
@@ -462,7 +462,8 @@ function M.ai_banner(self)
     return true
   end
   local pressed = G.foes_within(self, 2, 120, true)
-  if pressed and live_grunts(self) == 0 then
+  if pressed and live_grunts(self) == 0
+      and G.can_pay(self, 4, true) then
     self:set_shifter_down(1)
     return true
   end

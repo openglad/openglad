@@ -24,7 +24,7 @@ og.family("living", {
     { id = "howl",       name = "HOWL",       mp_cost = 25, new_kit = true, cast = kc.howl,       ai = kc.ai_howl, detail = "Howl in rage, stunning nearby enemies in their tracks. Rests 10 s.", icon = "icons/howl.png" },
     { id = "eat_corpse", name = "EAT CORPSE", mp_cost = 20, new_kit = true, level = 1, cast = kc.eat_corpse, ai = kc.ai_eat, detail = "Regain health by devouring the corpses of your foes.", icon = "icons/eat_corpse.png" },
     { id = "hook",       name = "HOOK BLADE", mp_cost = 40, new_kit = true, alternate = { name = "KNIFE FAN", mp_cost = 30, detail = "Three knives in a fan.", icon = "icons/knife_fan.png" }, cast = kc.hook_or_fan,       ai = kc.ai_hook, detail = "A knife spirals out; the first foe it snags is reeled to your feet.", icon = "icons/hook_blade.png" },
-    { id = "banner",     name = "WAR BANNER", mp_cost = 80, new_kit = true, alternate = { name = "WARBAND", detail = "Grunts come running in.", icon = "icons/warband.png" },                 cast = kc.banner_or_warband, ai = kc.ai_banner, detail = "Plant a standard on a corpse: allies near it mend and never flee.", icon = "icons/war_banner.png" },
+    { id = "banner",     name = "WAR BANNER", mp_cost = 80, new_kit = true, alternate = { name = "WARBAND", mp_cost = 120, detail = "Grunts come running in.", icon = "icons/warband.png" },                 cast = kc.banner_or_warband, ai = kc.ai_banner, detail = "Plant a standard on a corpse: allies near it mend and never flee.", icon = "icons/war_banner.png" },
   },
   default_weapon = "core:knife",
   flags = {},

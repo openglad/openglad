@@ -364,13 +364,13 @@ Orc Captain:  An orc of level 5 or more may be promoted to
              in its radius never flee.  Enemies can chop it down.
              Planting a second banner strikes the captain's first one
              quietly and sends his grunts to the new one.
-             SHIFTER: Warband (80): Orc grunts charge in from the
+             SHIFTER: Warband (120): Orc grunts charge in from the
              nearest map edge: two at level 10, one more for every
              three levels after that, never more than six alive at
-             once.  They fight at half the captain's level for 400
-             ticks, never flee, and fall with their captain.  If a
-             banner stands they run to it; otherwise they run to the
-             captain.
+             once.  They fight at a third of the captain's level
+             for 400 ticks, never flee, and fall with their
+             captain.  If a banner stands they run to it; otherwise
+             they run to the captain.
 
 
 ® Fire Elemental:  Fire elementals have been known to strike
