@@ -2584,6 +2584,7 @@ void expect_details_left_on_the_go(const DetailsStartState& state,
 // GO starts with everyone, not when he next presses BACK.
 TEST(AbilitiesFlow, a_host_go_on_train_details_starts_without_back)
 {
+    trace_clear();
     DirectRunScope scope;
     write_ability_company(12, 1, 4);
 
@@ -2604,6 +2605,7 @@ TEST(AbilitiesFlow, a_host_go_on_train_details_starts_without_back)
 // GO hires nobody.
 TEST(AbilitiesFlow, a_host_go_on_hire_abilities_starts_without_back)
 {
+    trace_clear();
     DirectRunScope scope;
     write_ability_company(12, 1, 4);
 
