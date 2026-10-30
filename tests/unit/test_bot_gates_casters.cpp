@@ -389,6 +389,58 @@ TEST_F(GameplayFixesBots, raise_spot_draws_nothing)
     }
 }
 
+// The cleric's busy casts (Gameplay Fixes W): MYSTIC MACE refuses SPECIAL
+// BUSY while busy > 0, so with the setting on its gate says no while busy;
+// the classic gate maces on the coin (no friend in reach, the pool half
+// full) whatever busy says.
+//
+// RED today: with the setting on and busy 3 the gate maces.
+TEST_F(GameplayFixesBots, cleric_mace_waits_while_busy_with_the_setting_on)
+{
+    living* cleric = body(add(FAMILY_CLERIC, 1, 200, 200, 4, 50.0f), 16, 16);
+    living* foe = body(add(FAMILY_SOLDIER, 0, 240, 200, 1), 16, 16);  // 40 px
+    ASSERT_TRUE(cleric && foe);
+
+    cleric->set_shifter_down(0);
+    EXPECT_TRUE(gate(cleric, 1, 1)) << "not busy: a foe in the orbit";
+    EXPECT_EQ(1, cleric->shifter_down()) << "the mace is Shift 1";
+
+    cleric->set_busy(3.0f);
+    EXPECT_FALSE(gate(cleric, 1, 1)) << "busy 3: the cast would refuse SPECIAL BUSY";
+    cleric->set_shifter_down(0);
+    EXPECT_TRUE(gate(cleric, 1, 0)) << "the classic answer";
+    EXPECT_EQ(1, cleric->shifter_down()) << "the classic mace";
+}
+
+// TURN UNDEAD (the Shift of RAISE UNDEAD and RAISE GHOST) refuses SPECIAL
+// BUSY while busy > 0, so with the setting on a busy cleric does not pick it:
+// with a skeleton 50 px off (inside the fixed 60 px reach) and no corpse, the
+// gate turns when idle and says no when busy (the raise has no corpse). The
+// classic gate is yes, its Shift the coin's.
+//
+// RED today: with the setting on and busy 3 the gate turns.
+TEST_F(GameplayFixesBots, cleric_turn_undead_waits_while_busy_with_the_setting_on)
+{
+    living* cleric = body(add(FAMILY_CLERIC, 1, 200, 200, 4, 100.0f), 16, 16);
+    living* skeleton = body(add(FAMILY_SKELETON, 0, 250, 200, 1), 16, 16);
+    ASSERT_TRUE(cleric && skeleton);
+
+    for (const int slot : {2, 3}) {
+        SCOPED_TRACE(testing::Message() << "slot " << slot);
+        cleric->set_busy(0.0f);
+        cleric->set_shifter_down(0);
+        EXPECT_TRUE(gate(cleric, slot, 1)) << "not busy: an undead in reach";
+        EXPECT_EQ(1, cleric->shifter_down()) << "TURN UNDEAD";
+
+        cleric->set_busy(3.0f);
+        EXPECT_FALSE(gate(cleric, slot, 1)) << "busy 3: no turn, and no corpse to raise";
+        EXPECT_EQ(0, cleric->shifter_down());
+        cleric->set_shifter_down(1);
+        EXPECT_TRUE(gate(cleric, slot, 0)) << "the classic answer";
+        EXPECT_EQ(1, cleric->shifter_down()) << "the classic gate keeps the coin";
+    }
+}
+
 // ---------------------------------------------------------------------------
 // The thief
 // ---------------------------------------------------------------------------
