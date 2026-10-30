@@ -8942,14 +8942,14 @@ inline constexpr FactPredicate kFacts_cleric_turn_no_undead_fixes_scen99[] = {
     pred::TickReached(40),
     pred::WalkerFamilyCount(FAMILY_CLERIC, 1, 1),
     pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 1),
-    pred::EventKindExactly(/*play_sound*/1, 4,
-        "consequence: with the setting on a ring with foes but nothing undead is refused (NO UNDEAD IN RANGE) before any roll: no SOUND_HEAL, only four combat sounds (the soldier bot, with no heading at tick 0, is refused the CHARGE that would rush nowhere)"),
+    pred::EventKindExactly(/*play_sound*/1, 5,
+        "consequence: with the setting on a ring with foes but nothing undead is refused (NO UNDEAD IN RANGE) before any roll: no SOUND_HEAL, five combat sounds (the soldier bot, with no heading at tick 0, is refused the CHARGE that would rush nowhere and takes its ordinary act instead, fix W)"),
 };
 inline constexpr Mutation kMut_cleric_turn_no_undead_fixes_scen99 = {
     "src/gameplay/walker_specials.cpp", 398,
     "if (!any_undead)",
     "if (!any_undead && false)",
-    "Disables the refusal (the ring's undead check never refuses), so the cast goes on with only a living soldier in reach, turns nothing and plays SOUND_HEAL: EventKindExactly(play_sound, 4) reads 5."
+    "Disables the refusal (the ring's undead check never refuses), so the cast goes on with only a living soldier in reach, turns nothing and plays SOUND_HEAL: EventKindExactly(play_sound, 5) reads 6."
 };
 
 // --- cleric_bot_raise_or_turn (fix C: the cleric bot's slot-2 choice) ------
@@ -8963,7 +8963,7 @@ inline constexpr Mutation kMut_cleric_turn_no_undead_fixes_scen99 = {
 // mace out and the tower dead. With the setting on the raise also wants the
 // corpse it would raise within reach and a foe for the risen to fight, so the
 // slot-2 rolls before the faerie dies are refused, and the fight ends with
-// the tower alive at 16 hp.
+// the tower alive at 20 hp.
 inline constexpr SpawnSpec kFamilySpawns_cleric_bot_raise_or_turn_scen99[] = {
     { FAMILY_BIG_ORC, 1, kOrderLiving, 152, 120, 0, 0 },           // the cleric's ally: kills the faerie
     { FAMILY_FAERIE,  0, kOrderLiving, 136, 120, 0, 0 },           // dies beside the cleric: the corpse
@@ -8981,14 +8981,14 @@ inline constexpr FactPredicate kFacts_cleric_bot_raise_or_turn_scen99[] = {
 inline constexpr FactPredicate kFacts_cleric_bot_raise_or_turn_fixes_scen99[] = {
     pred::TickReached(130),
     pred::WalkerFamilyCount(FAMILY_CLERIC, 1, 1),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 1600, 1600,
-        "consequence: with the setting on the cleric bot's slot-2 rolls never turn (no undead in reach) and raise only with a corpse in reach; the fight that follows leaves the hostile tower alive at 16 hp"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 2000, 2000,
+        "consequence: with the setting on the cleric bot's slot-2 rolls never turn (no undead in reach) and raise only with a corpse in reach; the fight that follows leaves the hostile tower alive at 20 hp"),
 };
 inline constexpr Mutation kMut_cleric_bot_raise_or_turn_fixes_scen99 = {
     "packs/core/families/living-05-cleric.lua", 353,
     "if corpses.raise_spot(self, range, body) == nil then",
     "if false then",
-    "Drops the gate's raise_spot test, so a slot-2 roll with no corpse in reach gets a yes that reaches a raise refused for free (NO CORPSE NEARBY). On the act path both answers now take the ordinary act (fix W), so what parts the streams is the hit path: a struck bot draws rng(3) after a yes and not after a no (stats.cpp, check_special() && !rng(3)), and the tower is hitting the cleric. The fight changes and the tower does not end where the setting-on fight leaves it (measured on the current game: 20 hp unmutated, 39 hp mutated)."
+    "Drops the gate's raise_spot test, so a slot-2 roll with no corpse in reach gets a yes that reaches a raise refused for free (NO CORPSE NEARBY). On the act path both answers now take the ordinary act (fix W), so what parts the streams is the hit path: a struck bot draws rng(3) after a yes and not after a no (stats.cpp, check_special() && !rng(3)), and the tower is hitting the cleric. The fight changes and the tower does not end where the setting-on fight leaves it (measured on the current game and the old game: 20 hp unmutated, 39 hp mutated)."
 };
 
 // --- special_cleric_heal_ally_fixes_scen99 (fix J: HEAL) ------------------
@@ -9034,14 +9034,14 @@ inline constexpr FactPredicate kFacts_thief_charm_nearest_fixes_scen99[] = {
     pred::WalkerFamilyCount(FAMILY_THIEF, 1, 1),
     pred::EventKindExactly(/*notification*/2, 1,
         "anchor: the charm succeeds on both values (\"Thief charmed an opponent!\")"),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_ORC, 14000, 14000,
-        "consequence: with the setting on the charm takes the nearest foe, the orc 20 px away; the soldier bot, with no heading at tick 0, is refused the CHARGE that would rush nowhere, and the charmed orc ends the run at its full 140 hp"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_ORC, 12900, 12900,
+        "consequence: with the setting on the charm takes the nearest foe, the orc 20 px away; the soldier bot, with no heading at tick 0, is refused the CHARGE that would rush nowhere and takes its ordinary act instead (fix W), and the charmed orc ends the run at 129 hp"),
 };
 inline constexpr Mutation kMut_thief_charm_nearest_fixes_scen99 = {
     "packs/core/lib/gameplay_fixes.lua", 65,
     "if best == nil or dist < best_dist then",
     "if best == nil or dist > best_dist then",
-    "Turns the nearest search into a farthest search, so the charm takes the soldier 40 px away as the classic list order does: the charmed soldier fights the orc and WalkerHpRangeAtFinalTick(FAMILY_ORC, 14000, 14000) fails."
+    "Turns the nearest search into a farthest search, so the charm takes the soldier 40 px away as the classic list order does: the charmed soldier fights the orc, which ends at 113 hp, and WalkerHpRangeAtFinalTick(FAMILY_ORC, 12900, 12900) fails."
 };
 
 // --- thief_taunt_no_foe (fix K: TAUNT with nobody in reach) ---------------
@@ -9344,9 +9344,10 @@ inline constexpr FactPredicate kFacts_archmage_bot_summon_no_foe_fixes_scen99[] 
         "consequence: with the setting on slot 3 wants a foe within 200 px, so the alone archmage summons nothing"),
     // negative_assertion: the slot-3 gate refuses with no foe within 200 px, so no phantom
     pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 1),
-    pred::WalkerOfOrderFamilyCount(FAMILY_MARKER, kOrderFX, 1, 1,
-        "consequence: the bot's refused slot-3 rolls leave its tick-3 TELEPORT MARKER standing (the only sound of the run)"),
-    pred::EventKindExactly(/*play_sound*/1, 1),
+    pred::WalkerOfOrderFamilyCount(FAMILY_MARKER, kOrderFX, 0, 0,
+        "consequence: every roll the bot makes is refused and takes its ordinary act (fix W), so it leaves no TELEPORT MARKER and plays no sound"),
+    // negative_assertion: no roll in this run casts, so no marker stands (the old tick-3 marker is gone with fix W)
+    pred::EventKindExactly(/*play_sound*/1, 0),
 };
 inline constexpr Mutation kMut_archmage_bot_summon_no_foe_fixes_scen99 = {
     "packs/core/families/living-17-archmage.lua", 256,
@@ -9360,7 +9361,7 @@ inline constexpr Mutation kMut_archmage_bot_summon_no_foe_fixes_scen99 = {
 // inside the 120 px mind-control reach. The seed (2) makes the bot's tick-0
 // special roll slot 4 and the control roll succeed: the classic archmage takes
 // the player's hero. With the setting on a seated hero resists (NO VALID
-// TARGET); the bot's next roll bursts the hero, who dies at tick 4.
+// TARGET) and is still the player's when the run ends.
 inline constexpr SpawnSpec kFamilySpawns_archmage_bot_mind_control_hero_scen99[] = {
     { FAMILY_ARCHMAGE, 1, kOrderLiving, 120, 120, 0, 0, 10, 600 },  // hostile bot caster
     { FAMILY_SOLDIER,  0, kOrderLiving, 200, 120, 0, 0, 10, 0 },    // the player's hero LAST, 80 px east
@@ -9376,14 +9377,14 @@ inline constexpr FactPredicate kFacts_archmage_bot_mind_control_hero_fixes_scen9
     pred::TickReached(10),
     pred::WalkerFamilyCount(FAMILY_ARCHMAGE, 1, 1),
     pred::EventKindExactly(/*notification*/2, 0),
-    pred::WalkerDiedByFinal(FAMILY_SOLDIER,
-        "consequence: with the setting on the hero a player drives resists MIND CONTROL (NO VALID TARGET); the bot's next roll bursts it and it dies at tick 4"),
+    pred::WalkerOfTeamAlive(0, 1, 1,
+        "consequence: with the setting on the hero a player drives resists MIND CONTROL (NO VALID TARGET) and is still on the player's team when the run ends"),
 };
 inline constexpr Mutation kMut_archmage_bot_mind_control_hero_fixes_scen99 = {
     "packs/core/lib/gameplay_fixes.lua", 47,
     "return not foe:seat_driven()",
     "return true",
-    "Makes a seated hero charmable again, so the tick-0 MIND CONTROL takes the player's hero and the bot never bursts it: WalkerDiedByFinal(FAMILY_SOLDIER) fails."
+    "Makes a seated hero charmable again, so the tick-0 MIND CONTROL takes the player's hero (\"ArchMage has controlled 1 men\"): the hero ends on the archmage's team, and EventKindExactly(notification, 0) and WalkerOfTeamAlive(0, 1, 1) fail."
 };
 
 // --- archmage_hit_stale_shift (fix C: the archmage's summon when hit) ------
@@ -9765,7 +9766,8 @@ inline constexpr Mutation kMut_mage_bot_marker_home_fixes_scen99 = {
 // SPACE on tick 0. The classic gate (fewer than one or more than three foes
 // within 110 px) sees two and refuses every slot; with the setting on WARP
 // SPACE's ring, whose bolts crawl a pixel a tick, wants two foes inside it (or
-// one the mage does not face), finds both towers and kills them.
+// one the mage does not face), finds both towers and kills one of them
+// within the budget.
 inline constexpr SpawnSpec kFamilySpawns_mage_bot_warp_two_at_blows_scen99[] = {
     { FAMILY_TOWER1,  0, kOrderLiving, 137, 120, 0, 0 },          // a foe a 1 px gap east
     { FAMILY_TOWER1,  0, kOrderLiving,  94, 120, 0, 0 },          // a foe a 1 px gap west (its 25 px body)
@@ -9788,17 +9790,17 @@ inline constexpr Mutation kMut_mage_bot_warp_two_at_blows_scen99 = {
 };
 inline constexpr FactPredicate kFacts_mage_bot_warp_two_at_blows_fixes_scen99[] = {
     pred::TickReached(10),
-    pred::WeaponFamilyCount(FAMILY_FIREBALL, 6, 6,
-        "consequence: with the setting on WARP SPACE finds two foes inside its point-blank ring and casts it on tick 0; six of its fireballs are still out at the end of the budget"),
-    pred::WalkerFamilyCount(FAMILY_TOWER1, 0, 0,
-        "consequence: the ring kills both towers at blows"),
-    // negative_assertion: both towers are dead with the setting on; the mutation flips it by refusing the ring (0 -> 2).
+    pred::WeaponFamilyCount(FAMILY_FIREBALL, 4, 4,
+        "consequence: with the setting on WARP SPACE finds two foes inside its point-blank ring and casts it on tick 0; four of its fireballs are still out at the end of the budget"),
+    pred::WalkerFamilyCount(FAMILY_TOWER1, 1, 1,
+        "consequence: the ring kills one of the two towers at blows"),
+    // negative_assertion: one tower is dead with the setting on; the mutation flips it by refusing the ring (1 -> 2).
 };
 inline constexpr Mutation kMut_mage_bot_warp_two_at_blows_fixes_scen99 = {
     "packs/core/lib/gates.lua", 328,
     "in_ring >= 2",
     "in_ring >= 20",
-    "Asks for twenty foes in the ring where two stand (both unfaced, so the one-foe arm does not answer either), so WARP SPACE is refused: WeaponFamilyCount(FAMILY_FIREBALL, 6, 6) fails."
+    "Asks for twenty foes in the ring where two stand (both unfaced, so the one-foe arm does not answer either), so WARP SPACE is refused: WeaponFamilyCount(FAMILY_FIREBALL, 4, 4) and WalkerFamilyCount(FAMILY_TOWER1, 1, 1) fail."
 };
 
 // --- archmage_bot_image_one_foe (bot gates: SUMMON IMAGE is a decoy for two hunters) ---
