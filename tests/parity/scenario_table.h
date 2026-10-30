@@ -9324,9 +9324,20 @@ inline constexpr Mutation kMut_archmage_mind_control_berserk_fixes_scen99 = {
 // --- archmage_bot_summon_no_foe (fix B: the archmage's slot-3 gate) --------
 // A hostile level-7 archmage bot with 600 MP and no foe within 200 px; a bot
 // rolls its specials only in its first wandering ticks. The seed (45) makes
-// the classic bot summon an image (an elf phantom) with nobody near; with the
-// setting on slot 3 wants a foe within 200 px, the summon is refused and the
-// bot's tick-3 TELEPORT MARKER is what the run leaves behind.
+// the classic bot summon an image (an elf phantom) with nobody near, once a
+// TELEPORT has carried it out of the walled corner it starts in.
+// The setting-on twin keeps the seed and the budget but has its own spawns:
+// the archmage stands at (160, 160), where a phantom has room beside it. At
+// (60, 60) no walker can stand next to it, so a SUMMON IMAGE there is refused
+// NO ROOM TO SUMMON whatever the gate says, and with fix W that refused roll
+// is not the act: the bot sets off on a 300-tick search for the player and
+// rolls nothing more in the budget. Only a roll before the first cast reaches
+// the gate's last test (afterwards the pool never again covers the 500 and a
+// HEARTBURST), and on every seed from 0 to 127 that roll comes at tick 1, in
+// the corner, even with a 900-tick budget: so neither a new seed nor a longer
+// run would let the gate's choice change anything. With the setting on slot 3
+// wants two foes hunting the archmage within 200 px; nobody hunts it, so the
+// tick-1 roll is refused and the bot walks toward the player instead.
 inline constexpr SpawnSpec kFamilySpawns_archmage_bot_summon_no_foe_scen99[] = {
     { FAMILY_ARCHMAGE, 1, kOrderLiving,  60,  60, 0, 0, 7, 600 },  // hostile bot caster
     { FAMILY_SOLDIER,  0, kOrderLiving, 560, 440, 0, 0 },          // idle player LAST, far away
@@ -9337,15 +9348,23 @@ inline constexpr FactPredicate kFacts_archmage_bot_summon_no_foe_scen99[] = {
     pred::WalkerFamilyCount(FAMILY_ELF, 1, 1,
         "consequence: the classic bot casts SUMMON IMAGE on a slot-3 roll with no foe within 200 px; its pool buys an elf phantom"),
 };
+inline constexpr SpawnSpec kFamilySpawns_archmage_bot_summon_no_foe_fixes_scen99[] = {
+    { FAMILY_ARCHMAGE, 1, kOrderLiving, 160, 160, 0, 0, 7, 600 },  // hostile bot caster, with room beside it
+    { FAMILY_SOLDIER,  0, kOrderLiving, 560, 440, 0, 0 },          // idle player LAST, far away
+};
 inline constexpr FactPredicate kFacts_archmage_bot_summon_no_foe_fixes_scen99[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(FAMILY_ARCHMAGE, 1, 1),
     pred::WalkerFamilyCount(FAMILY_ELF, 0, 0,
-        "consequence: with the setting on slot 3 wants a foe within 200 px, so the alone archmage summons nothing"),
-    // negative_assertion: the slot-3 gate refuses with no foe within 200 px, so no phantom
+        "consequence: with the setting on slot 3 wants two foes hunting the archmage within 200 px, so the alone archmage summons nothing"),
+    // negative_assertion: the slot-3 gate refuses with nobody hunting the archmage, so no phantom
+    pred::WalkerOfTeamAlive(/*team=*/1, 1, 1,
+        "consequence: the tick-1 SUMMON IMAGE roll is refused, so the archmage stands alone on team 1 (a phantom would join it there)"),
+    pred::WalkerOfTeamAlive(/*team=*/0, 1, 1,
+        "consequence: with no phantom the bot only walks toward the player in the budget, and the player's soldier is still standing"),
     pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 1),
     pred::WalkerOfOrderFamilyCount(FAMILY_MARKER, kOrderFX, 0, 0,
-        "consequence: every roll the bot makes is refused and takes its ordinary act (fix W), so it leaves no TELEPORT MARKER and plays no sound"),
+        "consequence: the refused roll takes its ordinary act (fix W), a 300-tick search, so it leaves no TELEPORT MARKER and plays no sound"),
     // negative_assertion: no roll in this run casts, so no marker stands (the old tick-3 marker is gone with fix W)
     pred::EventKindExactly(/*play_sound*/1, 0),
 };
@@ -9353,7 +9372,7 @@ inline constexpr Mutation kMut_archmage_bot_summon_no_foe_fixes_scen99 = {
     "packs/core/families/living-17-archmage.lua", 256,
     "#G.hunters(self, SUMMON_GATE_RANGE) >= 2",
     "#G.hunters(self, SUMMON_GATE_RANGE) >= 0",
-    "Lets SUMMON IMAGE's decoy rule pass with nobody hunting the archmage, so the alone bot summons a phantom on its slot-3 roll: WalkerFamilyCount(FAMILY_ELF, 0, 0) fails."
+    "Lets SUMMON IMAGE's decoy rule pass with nobody hunting the archmage, so the alone bot summons a phantom (a soldier, on this seed) beside it on its tick-1 slot-3 roll; the twin stands the archmage where the phantom has room, which the classic twin's walled corner does not give: WalkerOfTeamAlive(1, 1, 1), WalkerOfTeamAlive(0, 1, 1) and EventKindExactly(play_sound, 0) fail."
 };
 
 // --- archmage_bot_mind_control_hero (#355: a seated hero resists MIND CONTROL)
@@ -12754,7 +12773,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
     { "archmage_bot_summon_no_foe_fixes_scen99", "scen/scen1.fss", 0x0000002Du,
       kInputsEmpty, std::size(kInputsEmpty), 150,
       CompareMode::SemanticParity, false,
-      kFamilySpawns_archmage_bot_summon_no_foe_scen99, std::size(kFamilySpawns_archmage_bot_summon_no_foe_scen99),
+      kFamilySpawns_archmage_bot_summon_no_foe_fixes_scen99, std::size(kFamilySpawns_archmage_bot_summon_no_foe_fixes_scen99),
       0, false, true, Exercises::None,
       kFacts_archmage_bot_summon_no_foe_fixes_scen99, std::size(kFacts_archmage_bot_summon_no_foe_fixes_scen99),
       kMut_archmage_bot_summon_no_foe_fixes_scen99, {}, 1, nullptr, 0, 1 },
