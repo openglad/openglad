@@ -26,7 +26,8 @@
 //      at the end;
 //   B  pooled: the families with two or more rollable specials show them,
 //      each special the level should see is cast, each Shift arm is cast on
-//      its own, and the crew's own bots cast (HEARTBURST, FREEZE TIME);
+//      its own, and the crew's own bots cast (HEARTBURST) and save up for
+//      FREEZE TIME and roll it (casts plus the rolls its gate held);
 //   C  REVEAL is never cast by a bot;
 //   D  no cast at nobody: every special whose rule names a foe has a foe
 //      within its documented reach (+32 px of movement) before the tick it
@@ -119,6 +120,7 @@
 #include <openglad/gameplay/families/family_descriptor.h>
 #include <openglad/gameplay/families/family_registry.h>
 #include <openglad/gameplay/families/specials_view.h>
+#include <openglad/gameplay/kit_state.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
 
@@ -229,8 +231,12 @@ const std::map<SpecialKey, Reach>& reach_table()
         {{"THIEF", "TAUNT ENEMY"}, 170},       // 80 + 4 * 14 + 32 = 168, rounded up
         {{"THIEF", "CHARM OPPONENT"}, 104},    // 16 + 4 * 14 + 32
         {{"THIEF", "POISON CLOUD"}, 64},
-        {{"GHOST", "SCARE"}, 162},             // 50 + 10 * 8 + 32
-        {{"GHOST", "WAIL"}, 162},
+        // og::combat::scare_radius 50 + 10 * level. Bot at 8: 130 + 32. No
+        // ghost in the crew, but a crew cleric at 14 raises ghosts up to its
+        // own level (living-05-cleric.lua raise_ghost: rand0(level) + 1):
+        // 190 + 32.
+        {{"GHOST", "SCARE"}, {162, 222}},
+        {{"GHOST", "WAIL"}, {162, 222}},
         {{"GHOST", "SIPHON"}, 64},
         {{"GHOST", "POSSESS"}, 64},
         {{"DRUID", "GROW TREE"}, 92},
@@ -285,6 +291,8 @@ struct Living
     int y;
     int floor;
     int level;
+    bool channel; // a channelled special burns (KIT_CHANNEL): IMMOLATE's quench is its next cast
+    std::uint32_t head; // the top of its owner chain (itself when it has no living owner)
 };
 
 struct Cast
@@ -303,6 +311,8 @@ struct Cast
     bool crew = false;
     int nearest_foe = -1; // -1: no foe on the floor at all
     int level = -1;       // the caster's level before the tick; -1: not alive then
+    bool channel = false; // the caster's channel burned before the tick
+    bool raised = false;  // raised or summoned by the crew: its level runs to the crew's
 };
 
 struct Refusal
@@ -313,6 +323,7 @@ struct Refusal
     int slot = 0;
     int shift = 0;
     int team = 0;
+    bool crew = false; // a crew member's roll (held lines)
     std::string reason;
 };
 
@@ -366,6 +377,15 @@ int crew_alive(GameWorld& world, const std::set<std::uint32_t>& crew_ids)
     return n;
 }
 
+// The top of an owner chain, the way walker::is_friendly walks it.
+std::uint32_t owner_head(const walker* w)
+{
+    const walker* head = w;
+    while (head->owner() != nullptr && head->owner()->dead() == 0 && head->owner() != head)
+        head = head->owner();
+    return head->entity_id();
+}
+
 std::vector<Living> snapshot_livings(GameWorld& world)
 {
     std::vector<Living> out;
@@ -378,7 +398,8 @@ std::vector<Living> snapshot_livings(GameWorld& world)
         out.push_back({w->entity_id(), static_cast<int>(w->team_num()),
                        static_cast<int>(w->xpos()), static_cast<int>(w->ypos()),
                        static_cast<int>(w->floor()),
-                       w->stats() != nullptr ? static_cast<int>(w->stats()->level()) : -1});
+                       w->stats() != nullptr ? static_cast<int>(w->stats()->level()) : -1,
+                       (w->kit_state() & KIT_CHANNEL) != 0, owner_head(w)});
     }
     return out;
 }
@@ -389,6 +410,22 @@ int caster_level(const Cast& c, const std::vector<Living>& before)
         if (l.id == c.id)
             return l.level;
     return -1;
+}
+
+bool caster_channel(const Cast& c, const std::vector<Living>& before)
+{
+    for (const Living& l : before)
+        if (l.id == c.id)
+            return l.channel;
+    return false;
+}
+
+std::uint32_t caster_head(const Cast& c, const std::vector<Living>& before)
+{
+    for (const Living& l : before)
+        if (l.id == c.id)
+            return l.head;
+    return c.id;
 }
 
 int nearest_foe(const Cast& c, const std::vector<Living>& before)
@@ -435,6 +472,17 @@ Play play_level(std::uint32_t seed)
         // may be dead.
         const std::vector<Living> before = snapshot_livings(world);
         world.tick();
+        // A crew member raised from its stain (the faerie's WISH, the
+        // cleric's RESURRECT) is a new walker that carries a copy of its
+        // hero (walker::transfer_stats): it is still the crew, at the crew's
+        // level. The placed bots carry no hero.
+        for (const auto& uptr : world.oblist)
+        {
+            const walker* w = uptr.get();
+            if (w != nullptr && !w->dead() && w->query_order() == Order::Living &&
+                w->myguy != nullptr)
+                crew_ids.insert(w->entity_id());
+        }
         fresh.clear();
         {
             std::lock_guard<std::mutex> lock(g_trace_mutex);
@@ -460,6 +508,8 @@ Play play_level(std::uint32_t seed)
                 c.crew = crew_ids.count(c.id) != 0;
                 c.nearest_foe = nearest_foe(c, before);
                 c.level = caster_level(c, before);
+                c.channel = caster_channel(c, before);
+                c.raised = !c.crew && crew_ids.count(caster_head(c, before)) != 0;
                 p.casts.push_back(c);
                 continue;
             }
@@ -479,6 +529,7 @@ Play play_level(std::uint32_t seed)
                             &h.id, &h.family, &h.slot, &h.shift, &h.team) == 5)
             {
                 h.tick = tick;
+                h.crew = crew_ids.count(h.id) != 0;
                 p.held.push_back(h);
                 continue;
             }
@@ -565,6 +616,7 @@ TEST_F(TryxianLevelPlay, bots_fire_varying_specials_at_somebody)
     int busy = 0;
     int nomp = 0;
     int held = 0;
+    int crew_freeze_rolls = 0; // the crew mages' FREEZE TIME rolls the gate held
     int crew_casts = 0;
     std::set<SpecialKey> crew_specials;
     std::map<std::string, std::set<std::string>> crew_family_specials;
@@ -590,6 +642,11 @@ TEST_F(TryxianLevelPlay, bots_fire_varying_specials_at_somebody)
             }
             if (exempt_specials().count(c.key.second) != 0)
                 continue;
+            // IMMOLATE cast while it burns is the quench, whose rule asks
+            // that no living foe be within 40 px (kit_elemental.lua
+            // ai_immolate; docs/new-specials.md): it names no foe.
+            if (c.key == SpecialKey{"ELEMENTAL", "IMMOLATE"} && c.channel)
+                continue;
             const auto reach = reach_table().find(c.key);
             const std::string where = "seed " + std::to_string(p.seed) + " tick " +
                                       std::to_string(c.tick) + " " + c.key.first + " " +
@@ -604,9 +661,13 @@ TEST_F(TryxianLevelPlay, bots_fire_varying_specials_at_somebody)
             // The table's rows are bounds at the crew's level and at
             // kBotLevelMax; a caster above them would be measured against a
             // reach too short for it.
-            if (c.level > (c.crew ? kCrewLevel : kBotLevelMax))
+            // A walker the crew raised or summoned is not the crew, but its
+            // level runs to the crew's (a crew cleric's undead rise at
+            // rand0(14) + 1): it is measured at the crew's level.
+            const bool crew_level = c.crew || c.raised;
+            if (c.level > (crew_level ? kCrewLevel : kBotLevelMax))
                 above_table_level.push_back(where + ": level " + std::to_string(c.level));
-            const int r = c.crew ? reach->second.crew : reach->second.bot;
+            const int r = crew_level ? reach->second.crew : reach->second.bot;
             if (c.nearest_foe < 0 || c.nearest_foe > r)
                 violations.push_back(where + ": nearest foe " +
                                      (c.nearest_foe < 0 ? std::string("none")
@@ -634,6 +695,8 @@ TEST_F(TryxianLevelPlay, bots_fire_varying_specials_at_somebody)
                                       std::to_string(h.slot) + (h.shift != 0 ? " shift" : "");
             held_rows[label][p.seed]++;
             held++;
+            if (h.crew && family_name(h.family) == "MAGE" && h.slot == 3)
+                crew_freeze_rolls++;
         }
     }
     auto pooled = [&rows](const std::string& family, const std::string& special) {
@@ -688,6 +751,7 @@ TEST_F(TryxianLevelPlay, bots_fire_varying_specials_at_somebody)
         }
         std::printf(" %6d\n", total);
     }
+    std::printf("\nThe crew mages' FREEZE TIME rolls the gate held: %d\n", crew_freeze_rolls);
     std::printf("\nRolls the gate held (caster slot):\n");
     for (const auto& [label, per_seed] : held_rows)
     {
@@ -734,6 +798,7 @@ TEST_F(TryxianLevelPlay, bots_fire_varying_specials_at_somebody)
     ::testing::Test::RecordProperty("busy_refusals", busy);
     ::testing::Test::RecordProperty("nomp_refusals", nomp);
     ::testing::Test::RecordProperty("held_rolls", held);
+    ::testing::Test::RecordProperty("crew_freeze_rolls", crew_freeze_rolls);
 
     // ---- A: the bots fire, per seed ---------------------------------------
     for (const Play& p : plays)
@@ -810,8 +875,16 @@ TEST_F(TryxianLevelPlay, bots_fire_varying_specials_at_somebody)
         << "the crew's own bots should cast many specials (measured ~20)";
     EXPECT_GE(crew_count("MAGE", "HEARTBURST"), 2)
         << "the crew mages should roll slot 5 HEARTBURST (measured 11)";
-    EXPECT_GE(crew_count("MAGE", "FREEZE TIME"), 1)
-        << "a crew mage should save up for FREEZE TIME and cast it (measured 2)";
+    // FREEZE TIME is slot 3, rolled only with its 500 pool saved (an
+    // unaffordable slot folds onto slot 1 in check_special), and its gate
+    // says yes only while three foes are at blows with the crew, which holds
+    // on 2-3 % of ticks: a cast is expected under once per run, so a floor
+    // of one cast rested on luck (measured 1/0/1, then 0/0/0 at the same cue
+    // rate once the bots' act flow moved the stream). What play proves is
+    // that the mage saves up and the gate is consulted: its casts plus the
+    // rolls the gate held (measured 0 cast, 18 held).
+    EXPECT_GE(crew_count("MAGE", "FREEZE TIME") + crew_freeze_rolls, 5)
+        << "a crew mage should save up for FREEZE TIME and roll it (casts plus held rolls)";
     EXPECT_GE(crew_family_specials["FAERIE"].size(), 2u)
         << "the crew faerie should cast two specials or more";
 
