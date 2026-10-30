@@ -673,10 +673,10 @@ TEST_F(QuietProbe, body_spot_clear_asks_the_placement_rule_with_the_bodys_box)
     EXPECT_TRUE(og::sim::body_spot_clear(world(), Order::Living, skeleton,
                                          400, 400, 0)) << "on a drumstick";
     EXPECT_FALSE(og::sim::body_spot_clear(world(), Order::Living, skeleton,
-                                          160 - bw + 1, 160, 0))
+                                          static_cast<short>(160 - bw + 1), 160, 0))
         << "one pixel of the box on the wall tile";
     EXPECT_TRUE(og::sim::body_spot_clear(world(), Order::Living, skeleton,
-                                         160 - bw, 160, 0))
+                                         static_cast<short>(160 - bw), 160, 0))
         << "the box just left of the wall tile";
     EXPECT_FALSE(og::sim::body_spot_clear(world(), Order::Living, skeleton,
                                           600 + 15, 600 + 15, 0))

@@ -87,7 +87,6 @@ constexpr int kHookHp = 30;
 constexpr int kHookStart = 12;
 constexpr int kHookGrowth = 2;
 constexpr int kHookReach = 60;
-constexpr int kHookReelStep = 8;
 constexpr int kHookReelMax = 8;
 constexpr int kHookStun = 12;
 constexpr int kBannerHpBase = 120;
