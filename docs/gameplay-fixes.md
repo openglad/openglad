@@ -368,15 +368,15 @@ ordinary act too.
 the rules in a real level: it plays The Tryxian Chronicles' first level, its
 104 bots on four warring teams plus a crew of 12 heroes at level 14, for 2400
 ticks on three seeds, and counts every cast, every refusal and every roll a
-gate holds. On the shipped default the bots cast about <measured> times and
-<measured> different specials, among them the eight Shift arms the level
+gate holds. On the shipped default the bots cast about 1270 times (423, 479 and 367 on
+the three seeds) and 46 different specials, among them the eight Shift arms the level
 reaches (MYSTIC MACE, CHAIN LIGHTNING, TELEPORT MARKER, MINE, CHARM
 OPPONENT, TURN UNDEAD, WAIL, HASTE SELF) and the crew's slot-5 HEARTBURST
 and FREEZE TIME, none at nobody (each special whose rule names a foe has
 one within its reach, worked from the gate's own arithmetic), REVEAL never,
 and no gate says yes to a cast that then refuses for the fact the gate
-reads. With the setting off the same level shows <measured> casts at
-nobody, REVEAL <measured> times and <measured> such refusals, so the test
+reads. With the setting off the same level shows 245 casts at
+nobody, REVEAL 30 times and 199 such refusals, so the test
 tells the rules from their absence.
 
 The same run counts the refusals fixes V and W are about. Pooled over the
@@ -386,10 +386,11 @@ times, a foe already touching 19, an ally 12, a door 2, the rest a blocker
 gone by the end of the tick or a caster gone), the elves `COULD NOT FIRE` 80
 times to 44 volleys (a wall on the rock's pad 57 times, a foe on it 15, the
 rest the same), and casts were refused `SPECIAL BUSY` 154 times. With the fixes
-in they read `PATH BLOCKED` <measured> to <measured> charges, `COULD NOT
-FIRE` <measured> to <measured> volleys and `SPECIAL BUSY` <measured>, and
-the test will cap each at its measured count plus a third (at least 3): <measured>. The
-gates hold <measured> rolls, each of which now takes the bot's ordinary
+in they read `PATH BLOCKED` 0 to 35 charges, `COULD NOT
+FIRE` 5 to 51 volleys and `SPECIAL BUSY` 4, and
+the test caps each at its measured count plus a third (at least 3): `PATH BLOCKED` at
+most 3, the elves' `COULD NOT FIRE` at most 7, `SPECIAL BUSY` at most 6. The
+gates hold 2698 rolls, each of which now takes the bot's ordinary
 act. The `SPECIAL BUSY` refusals left come from casts no gate is asked
 about, among them the mage bot's own hit response: below its flee
 threshold it teleports without asking its gate, and a mage struck again
@@ -905,76 +906,90 @@ elf rolls on casts that refuse.
 
 | level | crew | before T to W | after |
 |---|---|---|---|
-| 1 | 1 | 8 8 8 | <measured> |
-| 2 | 2 | 8 8 8 | <measured> |
-| 3 | 2 | 7 8 7 | <measured> |
-| 4 | 3 | 8 7 8 | <measured> |
-| 5 | 3 | 8 6 4 | <measured> |
-| 6 | 4 | 8 7 7 | <measured> |
-| 7 | 4 | 1 1 0 | <measured> |
-| 8 | 5 | 0 3 6 | <measured> |
-| 9 | 6 | 0 2 1 | <measured> |
-| 10 | 5 | 1 0 0 | <measured> |
-| 11 | 6 | 5 5 4 | <measured> |
-| 12 | 6 | 0 0 0 | <measured> |
-| 13 | 6 | 1 0 0 | <measured> |
-| 14 | 7 | 0 0 0 | <measured> |
-| 15 | 7 | 2 1 1 | <measured> |
-| 16 | 8 | 3 3 2 | <measured> |
-| 17 | 8 | 3 6 6 | <measured> |
-| 19 | 6 | 5 7 5 | <measured> |
-| 20 | 7 | 0 0 0 | <measured> |
-| 21 | 7 | 8 7 8 | <measured> |
-| 22 | 8 | 0 2 0 | <measured> |
-| 23 | 8 | 8 6 5 | <measured> |
-| 24 | 8 | 3 5 5 | <measured> |
-| 25 | 9 | 8 4 5 | <measured> |
-| 26 | 9 | 8 8 8 | <measured> |
+| 1 | 1 | 8 8 8 | 8 8 8 |
+| 2 | 2 | 8 8 8 | 8 8 8 |
+| 3 | 2 | 7 8 7 | 8 8 6 |
+| 4 | 3 | 8 7 8 | 7 7 8 |
+| 5 | 3 | 8 6 4 | 5 7 5 |
+| 6 | 4 | 8 7 7 | 7 5 4 |
+| 7 | 4 | 1 1 0 | 0 0 0 |
+| 8 | 5 | 0 3 6 | 2 6 4 |
+| 9 | 6 | 0 2 1 | 2 1 0 |
+| 10 | 5 | 1 0 0 | 0 0 0 |
+| 11 | 6 | 5 5 4 | 4 1 6 |
+| 12 | 6 | 0 0 0 | 0 0 0 |
+| 13 | 6 | 1 0 0 | 1 1 2 |
+| 14 | 7 | 0 0 0 | 0 0 0 |
+| 15 | 7 | 2 1 1 | 3 4 1 |
+| 16 | 8 | 3 3 2 | 2 3 3 |
+| 17 | 8 | 3 6 6 | 8 7 8 |
+| 19 | 6 | 5 7 5 | 5 4 6 |
+| 20 | 7 | 0 0 0 | 3 0 2 |
+| 21 | 7 | 8 7 8 | 8 6 7 |
+| 22 | 8 | 0 2 0 | 0 0 0 |
+| 23 | 8 | 8 6 5 | 8 7 6 |
+| 24 | 8 | 3 5 5 | 5 7 4 |
+| 25 | 9 | 8 4 5 | 8 8 6 |
+| 26 | 9 | 8 8 8 | 8 8 8 |
 
 **Long Season**
 
 | level | crew | before T to W | after |
 |---|---|---|---|
-| 1 | 1 | 8 8 8 | <measured> |
-| 2 | 1 | 6 6 7 | <measured> |
-| 3 | 2 | 8 8 8 | <measured> |
-| 4 | 2 | 2 3 3 | <measured> |
-| 5 | 3 | 8 6 4 | <measured> |
-| 6 | 3 | 7 6 5 | <measured> |
-| 7 | 4 | 8 7 8 | <measured> |
-| 8 | 4 | 6 7 7 | <measured> |
-| 9 | 5 | 8 8 8 | <measured> |
-| 10 | 5 | 4 6 7 | <measured> |
-| 11 | 5 | 6 7 7 | <measured> |
-| 12 | 6 | 6 6 7 | <measured> |
-| 13 | 6 | 5 7 4 | <measured> |
-| 14 | 7 | 7 7 8 | <measured> |
-| 15 | 7 | 8 8 8 | <measured> |
-| 16 | 7 | 7 5 7 | <measured> |
-| 17 | 8 | 0 0 0 | <measured> |
-| 18 | 8 | 0 0 0 | <measured> |
-| 19 | 8 | 8 8 8 | <measured> |
+| 1 | 1 | 8 8 8 | 8 8 8 |
+| 2 | 1 | 6 6 7 | 7 6 7 |
+| 3 | 2 | 8 8 8 | 8 8 8 |
+| 4 | 2 | 2 3 3 | 1 1 2 |
+| 5 | 3 | 8 6 4 | 8 5 5 |
+| 6 | 3 | 7 6 5 | 5 7 5 |
+| 7 | 4 | 8 7 8 | 8 7 8 |
+| 8 | 4 | 6 7 7 | 6 8 7 |
+| 9 | 5 | 8 8 8 | 8 8 8 |
+| 10 | 5 | 4 6 7 | 1 7 6 |
+| 11 | 5 | 6 7 7 | 5 8 6 |
+| 12 | 6 | 6 6 7 | 6 6 7 |
+| 13 | 6 | 5 7 4 | 4 4 6 |
+| 14 | 7 | 7 7 8 | 8 8 8 |
+| 15 | 7 | 8 8 8 | 8 8 8 |
+| 16 | 7 | 7 5 7 | 4 7 5 |
+| 17 | 8 | 0 0 0 | 0 0 0 |
+| 18 | 8 | 0 0 0 | 0 0 0 |
+| 19 | 8 | 8 8 8 | 8 8 8 |
 
 **Tower** (floor, crew)
 
 | floor | crew | before T to W | after |
 |---|---|---|---|
-| 1 | 1 | 8 7 7 | <measured> |
-| 5 | 2 | 3 0 8 | <measured> |
-| 10 | 3 | 0 0 0 | <measured> |
-| 15 | 4 | 0 0 0 | <measured> |
-| 20 | 6 | 0 0 0 | <measured> |
+| 1 | 1 | 8 7 7 | 8 7 5 |
+| 5 | 2 | 3 0 8 | 2 0 8 |
+| 10 | 3 | 0 0 0 | 0 0 0 |
+| 15 | 4 | 0 0 0 | 0 8 0 |
+| 20 | 6 | 0 0 0 | 0 0 0 |
 
-**Imaginations** (level 1, crew 1): `6 7 6` before, `<measured>` after.
+**Imaginations** (level 1, crew 1): `6 7 6` before, `7 6 7` after.
 
 With both settings off, the four fixes are not asked and no line is
-expected to move: <measured>. With New Specials on and this setting off,
+expected to move: none of the 52 lines did (Westlands 25, Long Season 19,
+Imaginations 3, Tower 5, identical before and after). With New Specials on and this setting off,
 the kits' busy guards (behind New Specials, not this setting) can move a
-line: <measured>. The asserting runs (seed 42 against each level's floor
-and ceiling; every seed on the Tower): <measured>. Lines that moved by two
-or more survivors on seed 42, and the fix that moved each, found by taking
-the fixes out one at a time: <measured>. Levels eased, each with a dated
-note in its builder: <measured>. No floor or ceiling was lowered and no
+line: 14 lines moved, thirteen Westlands levels (4, 9, 10, 11, 13, 15, 16, 17, 20,
+21, 23, 24, 25) and the Tower's floor 15, every one from those guards and none
+from WARBAND's price; none of them is asserted, since the asserting run plays
+both settings on. The asserting runs (seed 42 against each level's floor
+and ceiling; every seed on the Tower): three lines out of band, Westlands 5 on
+seed 42 (5 standing, floor 6), the Tower's floor 1 on seed 2025 (5, floor 6)
+and its floor 15 on seed 1337 (8, ceiling 7); every other line in band. Lines that moved by two
+or more survivors on seed 42: Westlands 5 (8 to 5), 8 (0 to 2), 17 (3 to 8),
+20 (0 to 3) and 24 (3 to 5), Long Season 10 (4 to 1) and 16 (7 to 4), none on
+the Tower. Taking the fixes out one at a time shows the three out-of-band lines
+moved by V, W1 and W2 together (each moves them; V alone or W2 alone taken
+out puts all three back in band), and 100 sim seeds per line read the same
+mean before and after (Westlands 5: 6.21 and 6.16, where the unchanged game
+misses the floor of 6 on 28 of 100 seeds; Tower floor 1: 7.50 on both; floor
+15 on the seed-1337 layout: 4.86 and 4.28), so the moves are the stream, not
+the levels' heat; the lines that stayed in band were not bisected one by one. Levels eased, each with a dated
+note in its builder: none, because no level got hotter (the crew worse on
+two seeds or more), so the protocol allowed no ease. No floor or ceiling was lowered and no
 seed was changed; a Westlands level that falls under its floor goes to the
 maintainer with the three seeds and the fix that moved it (see
 [Rulings](#rulings-2026-10-29)).
