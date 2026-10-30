@@ -13,8 +13,10 @@
 //
 // What it counts: walker::special traces every charged cast and every refusal
 // that reached the MP check or the script ("special" trace category; TRACE is
-// compiled only into test builds). The test drains those lines every tick, so
-// a cast is counted exactly once, under the name the HUD gives it.
+// compiled only into test builds), and living::act traces every roll its gate
+// held ("held": the gate said no, so no cast was tried). The test drains those
+// lines every tick, so a cast is counted exactly once, under the name the HUD
+// gives it.
 //
 // What it asserts (the pooled floors in B are at most a quarter of the pooled
 // measurement, or 1 where that is 2 to 5 casts; the per-seed floors in A sit
@@ -321,6 +323,7 @@ struct Play
     std::size_t crew_deployed = 0;
     std::vector<Cast> casts;
     std::vector<Refusal> refusals;
+    std::vector<Refusal> held; // the act's rolls the gate said no to (no reason)
     std::vector<std::string> lines; // every "special" trace line, in order
     int crew_alive_1200 = 0;
     int crew_alive_2400 = 0;
@@ -471,6 +474,14 @@ Play play_level(std::uint32_t seed)
                 p.refusals.push_back(r);
                 continue;
             }
+            Refusal h;
+            if (std::sscanf(line.c_str(), "held id=%u family=%d slot=%d shift=%d team=%d",
+                            &h.id, &h.family, &h.slot, &h.shift, &h.team) == 5)
+            {
+                h.tick = tick;
+                p.held.push_back(h);
+                continue;
+            }
             ADD_FAILURE() << "seed " << seed << " tick " << tick
                           << ": unreadable special trace line: " << line;
         }
@@ -546,12 +557,14 @@ TEST_F(TryxianLevelPlay, bots_fire_varying_specials_at_somebody)
     };
     std::map<SpecialKey, Row> rows;
     std::map<std::pair<std::string, std::string>, std::map<std::uint32_t, int>> refusal_rows;
+    std::map<std::string, std::map<std::uint32_t, int>> held_rows;
     std::vector<std::string> violations;
     std::vector<std::string> unclassified;
     std::vector<std::string> above_table_level;
     std::vector<std::string> fact_refusals;
     int busy = 0;
     int nomp = 0;
+    int held = 0;
     int crew_casts = 0;
     std::set<SpecialKey> crew_specials;
     std::map<std::string, std::set<std::string>> crew_family_specials;
@@ -615,6 +628,13 @@ TEST_F(TryxianLevelPlay, bots_fire_varying_specials_at_somebody)
             if (is_counted_nomp(r))
                 nomp++;
         }
+        for (const Refusal& h : p.held)
+        {
+            const std::string label = family_name(h.family) + " slot " +
+                                      std::to_string(h.slot) + (h.shift != 0 ? " shift" : "");
+            held_rows[label][p.seed]++;
+            held++;
+        }
     }
     auto pooled = [&rows](const std::string& family, const std::string& special) {
         const auto it = rows.find({family, special});
@@ -668,6 +688,20 @@ TEST_F(TryxianLevelPlay, bots_fire_varying_specials_at_somebody)
         }
         std::printf(" %6d\n", total);
     }
+    std::printf("\nRolls the gate held (caster slot):\n");
+    for (const auto& [label, per_seed] : held_rows)
+    {
+        int total = 0;
+        std::printf("  %-55s", label.c_str());
+        for (std::uint32_t seed : kSeeds)
+        {
+            const auto it = per_seed.find(seed);
+            const int n = it == per_seed.end() ? 0 : it->second;
+            total += n;
+            std::printf(" %5d", n);
+        }
+        std::printf(" %6d\n", total);
+    }
     std::printf("\n");
     for (const Play& p : plays)
     {
@@ -686,9 +720,9 @@ TEST_F(TryxianLevelPlay, bots_fire_varying_specials_at_somebody)
                                         static_cast<int>(p.casts.size()));
     }
     std::printf("pooled: %zu specials, crew casts %d (%zu specials), casts at nobody %zu, "
-                "fact refusals %zu, SPECIAL BUSY %d, NOT ENOUGH MP %d\n",
+                "fact refusals %zu, SPECIAL BUSY %d, NOT ENOUGH MP %d, held %d\n",
                 rows.size(), crew_casts, crew_specials.size(), violations.size(),
-                fact_refusals.size(), busy, nomp);
+                fact_refusals.size(), busy, nomp, held);
     for (const std::string& v : violations)
         std::printf("  CAST AT NOBODY: %s\n", v.c_str());
     for (const std::string& f : fact_refusals)
@@ -699,6 +733,7 @@ TEST_F(TryxianLevelPlay, bots_fire_varying_specials_at_somebody)
     ::testing::Test::RecordProperty("fact_refusals", static_cast<int>(fact_refusals.size()));
     ::testing::Test::RecordProperty("busy_refusals", busy);
     ::testing::Test::RecordProperty("nomp_refusals", nomp);
+    ::testing::Test::RecordProperty("held_rolls", held);
 
     // ---- A: the bots fire, per seed ---------------------------------------
     for (const Play& p : plays)

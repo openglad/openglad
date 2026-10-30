@@ -420,6 +420,7 @@ TEST_F(GameplayFixesBots, skeleton_dig_in_counts_living_foes_only)
     ASSERT_NE(nullptr, skel);
     ASSERT_NE(nullptr, tent(world(), kFoes, 200, 250));
     skel->stats()->set_hitpoints(200.0f);  // under 60 %
+    skel->set_ani_type(static_cast<char>(ANI_WALK));  // risen: a fresh one is mid-teleport
     EXPECT_TRUE(kit_gate(skel, 2, 0)) << "New Specials off: the guard's yes";
     EXPECT_FALSE(kit_gate(skel, 2)) << "a foe and a tent: one foe";
     ASSERT_NE(nullptr, body(add(FAMILY_SOLDIER, kFoes, 150, 200, 1), 16, 16));

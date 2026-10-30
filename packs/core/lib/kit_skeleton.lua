@@ -652,6 +652,11 @@ function M.ai_dig_in(self)
   if self:possess_link() ~= 0 then
     return false
   end
+  -- The dig refuses a skeleton in the middle of a teleport (M.dig_in),
+  -- whatever the Gameplay Fixes setting.
+  if lc.mid_teleport(self) then
+    return false
+  end
   if not G.hp_below(self, 6, 10) then
     return false
   end

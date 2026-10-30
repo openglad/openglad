@@ -56,6 +56,10 @@ local function check_special_ai(self)
   elseif self:current_special() == 3 then
     local t = og.tuning(self)
     if gf.on() then
+      -- TAUNT and CHARM refuse a busy thief (the casts' guard).
+      if lc.is_busy(self) then
+        return false
+      end
       -- Gameplay Fixes: CHARM only with a foe the thief can take inside
       -- charm reach, else TAUNT; the coin is drawn either way.
       local reach = t.charm_range_base + t.charm_range_per_level * self.level
@@ -92,8 +96,8 @@ local function check_special_ai(self)
       return G.hunted_by(self, 130) ~= nil
     end
     -- Gameplay Fixes: POISON CLOUD wants two living foes at blows and no
-    -- cloud of the thief's alive.
-    if G.owned(self, C.ORDER_FX, FX_CLOUD) > 0 then
+    -- cloud of the thief's alive, and the thief not busy (the cast's guard).
+    if lc.is_busy(self) or G.owned(self, C.ORDER_FX, FX_CLOUD) > 0 then
       return false
     end
     return #G.foes_at_blows(self) >= 2

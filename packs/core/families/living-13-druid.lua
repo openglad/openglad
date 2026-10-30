@@ -152,6 +152,10 @@ local function check_special_ai(self)
   if not gf.on() then
     return true -- the classic druid casts every roll
   end
+  -- All four casts refuse a busy druid (their own guard).
+  if lc.is_busy(self) then
+    return false
+  end
   local slot = self:current_special()
   if slot == 1 then
     -- GROW TREE: a tree between the druid and a foe closing on it: the
