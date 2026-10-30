@@ -453,15 +453,15 @@ The parity goldens are captures from the old game (branch
   wants a living foe in the path its rush runs) and its table mirror
   `5d4ddd77`; no golden moved. Fix S was ported as `4440414c`, with the
   table mirror `813d5f31`; no golden moved. Fixes T to W: the table
-  mirror `<sha>` (the five new arenas), then `<sha>`, the probes the fixes
+  mirror `0f1c407d` (the five new arenas), then `81b24d2e`, the probes the fixes
   ask with and no behaviour (the passability probe's quiet flag, a
   detached body probe that draws nothing, the stain walk and the rock's
   pad; and, not behind the setting, a guard the current game already had:
   an ownerless probe over an arrow slit no longer dereferences a null
-  owner; no golden moved), `<sha>` (T), `<sha>` (U), `<sha>` (V: the
-  soldier bot's CHARGE), `<sha>` (V: the elf bot's volley), `<sha>` (W:
-  the busy casts' gates read busy) and `<sha>` (W: a refused roll is not
-  the act), with the table mirror `<sha>` after them. `<sha>` is the
+  owner; no golden moved), `1dfa6ab5` (T), `d983e120` (U), `4a94b64a` (V: the
+  soldier bot's CHARGE), `ecd10c07` (V: the elf bot's volley), `b77fa3ec` (W:
+  the busy casts' gates read busy) and `5bb8b94f` (W: a refused roll is not
+  the act), with the table mirror `d6c9e094` after them. `d6c9e094` is the
   commit the goldens are captured from: <measured> of <measured> goldens
   `cmp` equal to a full capture there.
   `tests/parity/golden/DRIFT_LEDGER.md` records each one.
