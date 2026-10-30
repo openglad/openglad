@@ -602,8 +602,12 @@ short living::check_special()
 				if (current_special == 2)
 					return (bg_owned(this, ORDER_FX, FAMILY_BOOMERANG, NULL) == 0
 					        && bg_foes_within(this, 1, 17 + 6*stats->level));
+				// WHIRLWIND and DISARM refuse a busy soldier: so do their gates
+				// (port of the current game's 1ef4a313, Gameplay Fixes W)
 				if (current_special == 3)
-					return bg_targets_within(this, 2, 32 + 2*stats->level);
+					return (busy <= 0 && bg_targets_within(this, 2, 32 + 2*stats->level));
+				if (busy > 0)
+					return 0;
 				walker *blocker = bg_ahead_blocked_by_foe(this, 28);
 				return (blocker && blocker->stats->level <= stats->level);
 			}
@@ -641,6 +645,10 @@ short living::check_special()
 					foe = myscreen->find_near_foe(this);
 				if (current_special == 1)
 					return bg_ring_pays(this, 8, 12, 0);
+				// BARRAGE and EXPLODING BOLT refuse a busy archer (the casts'
+				// guard) (port of the current game's 44a685f0, Gameplay Fixes W)
+				if (busy > 0)
+					return 0;
 				if (!foe || foe->dead || foe->query_order() != ORDER_LIVING
 				        || !bg_faces(this, foe))
 					return 0;
@@ -700,7 +708,8 @@ short living::check_special()
 					Sint32 yell = 160 + 20*stats->level;
 					if (yell > 420)
 						yell = 420;
-					return bg_targets_within(this, 1, yell);
+					// HOWL refuses a busy orc (port of the current game's 44a685f0, Gameplay Fixes W)
+					return (busy <= 0 && bg_targets_within(this, 1, yell));
 				}
 				if (current_special == 2)
 					return (bg_hp_below(this, 3, 5) && bg_corpse_underfoot(this, 24) != NULL);
@@ -757,6 +766,10 @@ short living::check_special()
 			{
 				if (myscreen->gameplay_fixes)
 				{
+					// TAUNT and CHARM refuse a busy thief (the casts' guard)
+					// (port of the current game's 44a685f0, Gameplay Fixes W)
+					if (busy > 0)
+						return 0;
 					// port of the current game's 45c6e7ab: CHARM only with a foe the
 					// thief can take inside charm reach, else TAUNT; the coin is drawn
 					// either way
@@ -794,8 +807,9 @@ short living::check_special()
 			else if (myscreen->gameplay_fixes)
 			{
 				// port of the current game's 324f7f74: POISON CLOUD wants two living
-				// foes at blows and no cloud of the thief's alive
-				return (bg_owned(this, ORDER_FX, FAMILY_CLOUD, NULL) == 0
+				// foes at blows and no cloud of the thief's alive, and the thief not
+				// busy (the cast's guard) (port of the current game's 44a685f0, Gameplay Fixes W)
+				return (busy <= 0 && bg_owned(this, ORDER_FX, FAMILY_CLOUD, NULL) == 0
 				        && bg_foes_at_blows(this).size() >= 2);
 			}
 			else
@@ -822,11 +836,14 @@ short living::check_special()
 				// mage faces.
 				if (current_special == 1)
 				{
-					if (howmany < 1 && bg_marker_pays(this, 2, 75))
+					// a busy mage places no marker, and one mid-teleport does not
+					// teleport (the casts' guards) (port of the current game's 44a685f0, Gameplay Fixes W)
+					if (howmany < 1 && bg_marker_pays(this, 2, 75) && busy <= 0)
 						shifter_down = 1;
 					else
 						shifter_down = 0;
-					return (howmany < 1 || howmany > 3);
+					return ((howmany < 1 || howmany > 3)
+					        && !(ani_type == ANI_TELE_OUT || ani_type == ANI_TELE_IN));
 				}
 				if (current_special == 2)
 				{
@@ -885,7 +902,9 @@ short living::check_special()
 						return 0;
 					if (myguy && myguy->intelligence < 50)
 						return 0;
-					if (bg_owned(this, ORDER_FX, FAMILY_MAGIC_SHIELD, NULL) == 0
+					// and not busy: the cast refuses SPECIAL BUSY (port of the
+					// current game's b746503d, Gameplay Fixes W)
+					if (busy <= 0 && bg_owned(this, ORDER_FX, FAMILY_MAGIC_SHIELD, NULL) == 0
 					        && bg_foes_within(this, 1, 48))
 					{
 						shifter_down = 1; // do mace
@@ -921,7 +940,8 @@ short living::check_special()
 					int reach = 4*stats->level;
 					if (reach < 60)
 						reach = 60;
-					if (!(myguy && myguy->intelligence < 60) && undead_foes_in_range(reach) > 0)
+					// and not busy (port of the current game's b746503d, Gameplay Fixes W)
+					if (!(myguy && myguy->intelligence < 60) && busy <= 0 && undead_foes_in_range(reach) > 0)
 						shifter_down = 1;
 					else
 						shifter_down = 0;
@@ -965,7 +985,13 @@ short living::check_special()
 			                                        5*GRID_SIZE, &howmany, this);
 
 			if (howmany < 1) //  away from anybody ..
+			{
+				// with the setting on, not mid-teleport: TUNNEL's own guard
+				// (port of the current game's 44a685f0, Gameplay Fixes W)
+				if (myscreen->gameplay_fixes && (ani_type == ANI_TELE_OUT || ani_type == ANI_TELE_IN))
+					return 0;
 				return 1;      //  so tunnel
+			}
 			return 0;
 			//break; // end of skeleton case
 		case FAMILY_ARCHMAGE:
@@ -983,13 +1009,19 @@ short living::check_special()
 				// where the archmage stands when no marker of its own stands, a
 				// hero has the cast's 75 INT, and half the pool left after the
 				// price still covers HEARTBURST. Written after the coin.
-				shifter_down = (howmany < 1 && bg_marker_pays(this, 2, 75)) ? 1 : 0;
-				return (howmany < 1 || howmany > 3);
+				// A busy archmage places no marker, and one mid-teleport does
+				// not teleport (the casts' guards) (port of the current game's 44a685f0, Gameplay Fixes W)
+				shifter_down = (howmany < 1 && bg_marker_pays(this, 2, 75) && busy <= 0) ? 1 : 0;
+				return ((howmany < 1 || howmany > 3)
+				        && !(ani_type == ANI_TELE_OUT || ani_type == ANI_TELE_IN));
 			}
 			if (current_special == 2)
 				return bg_archmage_burst_or_chain(this);
 			if (current_special == 3)
 			{
+				// The cast's own guard: it refuses a busy archmage (port of the current game's 44a685f0, Gameplay Fixes W)
+				if (busy > 0)
+					return 0;
 				// SUMMON ELEMENTAL only when the spare pool is at least the slot's
 				// own price, and then a living foe within 200 is wanted; else the
 				// image. Port of the current game's a5ee6f18: SUMMON IMAGE, a
@@ -1021,6 +1053,9 @@ short living::check_special()
 			// above the archmage's level) inside its reach; the rest above holds
 			// the slot on both values
 			{
+				// The cast's own guard: it refuses a busy archmage (port of the current game's 44a685f0, Gameplay Fixes W)
+				if (busy > 0)
+					return 0;
 				std::list<walker*> foes = bg_living_foes(this, 80 + 4*stats->level);
 				return (nearest_charmable(foes, stats->level) != NULL);
 			}
@@ -1070,6 +1105,10 @@ short living::check_special()
 				// always did.
 				if (!myscreen->gameplay_fixes)
 					return 1;
+				// All four casts refuse a busy druid (their own guard)
+				// (port of the current game's 44a685f0, Gameplay Fixes W)
+				if (busy > 0)
+					return 0;
 				if (current_special == 1)
 				{
 					walker *f = bg_nearest_living_foe(this, 60);
@@ -1101,6 +1140,10 @@ short living::check_special()
 				// default arm always did.
 				if (!myscreen->gameplay_fixes)
 					return 1;
+				// Both throws refuse a busy barbarian (the cast's guard)
+				// (port of the current game's 44a685f0, Gameplay Fixes W)
+				if (busy > 0)
+					return 0;
 				int step;
 				if (myguy)
 					step = 1 + myguy->strength / 7;

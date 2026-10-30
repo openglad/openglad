@@ -458,6 +458,10 @@ static inline bool bg_marker_pays(walker *self, int next_slot, int int_req)
 // refused when neither has
 static inline bool bg_archmage_burst_or_chain(walker *self)
 {
+	// The cast's own guard: it refuses a busy archmage (port of the current
+	// game's 44a685f0, Gameplay Fixes W)
+	if (self->busy > 0)
+		return false;
 	short in_burst = 0;
 	short in_chain = 0;
 	myscreen->find_foes_in_range(myscreen->level_data.oblist,
