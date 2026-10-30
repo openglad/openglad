@@ -4208,12 +4208,14 @@ std::vector<Pair> pairs()
         // measure), never as close as the 50 px arrived() asks for (with
         // only that fix undone it reaches 50 on frame 79). What the scene
         // claims is that the second scare goes off with the foe in its
-        // reach, so this
-        // side asks exactly that: inside the scare's radius
-        // (og::combat::scare_radius, 60 px at level 1, the radius the cast's
-        // own no-foe refusal reads) by the press on frame 94.
+        // reach, so this side asks exactly that, at the measured closest
+        // approach: within 52 px by the game's measure, inside the scare's
+        // radius (og::combat::scare_radius, 60 px at level 1, the radius the
+        // cast's own no-foe refusal reads), by the press on frame 94. The
+        // number is its own claim: the cast's refusal two tells below reads
+        // the radius, and this one would red first at 51.
         c.on_shows = {
-            arrived_by(og::combat::scare_radius(c.scene.level), 94),
+            arrived_by(52, 94),
             says("NO FOE IN RANGE"),
             pool_at(13, 120.0f),
             {"the scare goes off at the foe", [carrier](Run& f) { return f.frame >= 94 && carrier(f); }},

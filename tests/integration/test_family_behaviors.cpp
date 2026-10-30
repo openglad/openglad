@@ -812,10 +812,10 @@ TEST(FamilyBehaviors, check_special_skeleton_tunnel)
     // Add foe very close
     add_living_to_level(FAMILY_SOLDIER, 1, 120, 100);
     result = skel->check_special();
-    EXPECT_TRUE(result == false) << "fixes on: foe nearby should not tunnel (false)";
+    EXPECT_FALSE(result) << "fixes on: foe nearby should not tunnel (false)";
     world.gameplay_fixes = 0;
     result = skel->check_special();
-    EXPECT_TRUE(result == false) << "skeleton: foe nearby should not tunnel (false)";
+    EXPECT_FALSE(result) << "skeleton: foe nearby should not tunnel (false)";
 
     world.gameplay_fixes = fixes_before;
 }
