@@ -10222,6 +10222,222 @@ inline constexpr Mutation kMut_elemental_bot_starburst_one_foe_fixes_scen99 = {
     "in_ring >= 1",
     "Lets one foe in the ring's flight pay for it, faced or not, so the elemental casts STARBURST at the tower: WeaponFamilyCount(FAMILY_METEOR, 0, 0) fails."
 };
+
+// --- cleric_raise_blocked_corpse (fix T: the cleric raises where the body can stand) ---
+// The cleric_raise_skeleton rig turned around: the executioner stands west of
+// the victim, so the faerie dies against the caster and leaves its stain at
+// (106,120). The stain's 16x16 box reaches into the cleric's own body at
+// (120,120). The classic RAISE UNDEAD probes the stain's box and refuses
+// CORPSE IS BLOCKED: no skeleton. With the setting on the raise probes the
+// skeleton's own box, nudged up to 16 px from the corner, and raises it at
+// (106,121). The faerie's x (102) was tuned by trying 100 to 113: at 101 the
+// classic raise succeeds as well, and every other spot leaves the faerie
+// alive at the cast or its stain where neither value raises. A far hostile
+// tower keeps the level from ending.
+inline constexpr SpawnSpec kFamilySpawns_cleric_raise_blocked_corpse_scen99[] = {
+    { FAMILY_TOWER1,  1, kOrderLiving, 560, 440, 0, 0 },           // far hostile: keeps level_done at 0
+    { FAMILY_BIG_ORC, 0, kOrderLiving,  88, 120, 0, 0 },           // executioner, west of the victim
+    { FAMILY_FAERIE,  1, kOrderLiving, 102, 120, 0, 0 },           // victim: its stain's box reaches into the cleric
+    { FAMILY_CLERIC,  0, kOrderLiving, 120, 120, 0, 0, 10, 600 },  // caster LAST (the player); level 10 clears the slot-2 cycle gate
+};
+inline constexpr FactPredicate kFacts_cleric_raise_blocked_corpse_scen99[] = {
+    pred::TickReached(130),
+    pred::LevelDoneEquals(0),
+    pred::WalkerFamilyCount(FAMILY_FAERIE, 0, 0),
+    // negative_assertion: the victim faerie is reaped once dead; the stain it left is the corpse the cast probes.
+    pred::WalkerFamilyCount(FAMILY_SKELETON, 0, 0,
+        "consequence: the classic probe reads the stain's 16x16 box into the caster's own body and refuses CORPSE IS BLOCKED"),
+    // negative_assertion: no skeleton rises with the setting off; the mutation flips it by letting the classic probe through (0 -> 1).
+    pred::WalkerOfTeamAlive(/*team=*/0, 2, 2,
+        "consequence: cleric and executioner alive on team 0, and no raised skeleton beside them"),
+};
+inline constexpr Mutation kMut_cleric_raise_blocked_corpse_scen99 = {
+    "packs/core/families/living-05-cleric.lua", 68,
+    "local passable = og.query_passable(blood:xpos(), blood:ypos(), blood)",
+    "local passable = true",
+    "Skips the classic stain probe, so the corpse under the cleric's edge counts as clear and the skeleton rises at the stain's corner: WalkerFamilyCount(FAMILY_SKELETON, 0, 0) reads 1 and team 0 has 3 alive."
+};
+inline constexpr FactPredicate kFacts_cleric_raise_blocked_corpse_fixes_scen99[] = {
+    pred::TickReached(130),
+    pred::LevelDoneEquals(0),
+    pred::WalkerFamilyCount(FAMILY_SKELETON, 1, 1,
+        "consequence: with the setting on the raise probes the skeleton's own box, nudged off the caster, and raises it beside the stain"),
+    pred::WalkerAliveAtFinal(FAMILY_SKELETON, 1),
+    pred::WalkerOfTeamAlive(/*team=*/0, 3, 3,
+        "consequence: cleric, executioner and the raised skeleton alive on team 0"),
+};
+inline constexpr Mutation kMut_cleric_raise_blocked_corpse_fixes_scen99 = {
+    "packs/core/lib/corpses.lua", 18,
+    "M.NUDGE = 16",
+    "M.NUDGE = 0",
+    "Allows no nudge, so the skeleton's box is probed at the stain's corner alone, where the cleric's body blocks it, and the raise is refused: WalkerFamilyCount(FAMILY_SKELETON, 1, 1) reads 0 and team 0 has 2 alive."
+};
+
+// --- soldier_charge_front_foe (fix U: the soldier's front probe is quiet) ---
+// A level-10 player soldier with a TOWER1 touching it from the south (a 1 px
+// overlap, the soldier_disarm_matched_levels geometry). One step DOWN at tick
+// 1 sets a heading with curdir = enddir and bumps the tower (the walk's own
+// blow, on both values); CHARGE at tick 20, busy back at 0. The cast asks
+// "is my front blocked?" and refuses PATH BLOCKED on both values. The classic
+// probe moves the soldier's box into the tower and the collision swings at it
+// (one more blow: 8 sounds, the tower ends at 93 hp); with the setting on it
+// is asked quietly (7 sounds, the tower ends at 112 hp). The tower fires back
+// at the soldier throughout and never dies in the budget.
+inline constexpr InputEvent kInputs_soldier_charge_front_foe[] = {
+    {  1, 0, K_DOWN },    {  2, 0, K_NONE },
+    { 20, 0, K_SPECIAL }, { 21, 0, K_NONE },
+};
+inline constexpr SpawnSpec kFamilySpawns_soldier_charge_front_foe_scen99[] = {
+    { FAMILY_TOWER1,  1, kOrderLiving, 120, 135, 0, 0 },           // touching south: a 1 px overlap
+    { FAMILY_SOLDIER, 0, kOrderLiving, 120, 120, 0, 0, 10, 600 },  // caster LAST (the player)
+};
+inline constexpr FactPredicate kFacts_soldier_charge_front_foe_scen99[] = {
+    pred::TickReached(40),
+    pred::EventKindExactly(/*play_sound*/1, 8,
+        "consequence: the walk's bump and the classic front probe's bump each land a blow on the tower, beside the tower's own shots"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 9300, 9300,
+        "consequence: the classic probe's swing takes the tower down to 93 hp"),
+};
+inline constexpr Mutation kMut_soldier_charge_front_foe_scen99 = {
+    "src/gameplay/stats.cpp", 936,
+    "return !current_game->world->query_passable(controlx + xdelta, controly + ydelta, controller_, controller_->floor(), quiet);",
+    "return true || !current_game->world->query_passable(controlx + xdelta, controly + ydelta, controller_, controller_->floor(), quiet);",
+    "Answers blocked without probing, so CHARGE still refuses PATH BLOCKED but no probe bumps the tower, which ends at 112 hp: WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 9300, 9300) fails (the sound count stays 8: the tower's own shots fall differently)."
+};
+inline constexpr FactPredicate kFacts_soldier_charge_front_foe_fixes_scen99[] = {
+    pred::TickReached(40),
+    pred::EventKindExactly(/*play_sound*/1, 7,
+        "consequence: with the setting on the front probe is asked quietly: CHARGE refuses PATH BLOCKED with no blow, so only the walk's bump and the tower's shots sound"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 11200, 11200,
+        "consequence: only the walk's bump lands: the tower ends at 112 hp"),
+};
+inline constexpr Mutation kMut_soldier_charge_front_foe_fixes_scen99 = {
+    "src/gameplay/script/bindings_entity.cpp", 850,
+    "forward_blocked(!lua_isnoneornil(L, 2) && lua_toboolean(L, 2) != 0)",
+    "forward_blocked(false)",
+    "Makes s_forward_blocked ignore its quiet flag, so CHARGE's probe is the loud one again and swings at the tower: EventKindExactly(play_sound, 7) reads 8 and the tower ends at 93 hp."
+};
+
+// --- soldier_bot_charge_door (fix V: the CHARGE gate walks the rush's path) ---
+// A hostile level-1 soldier bot, a stationary TOWER1 44 px east (inside the
+// classic 20-75 window) and a closed team-2 door between them at (144,120),
+// which no key opens. The seed (7) makes the bot walk, gain a heading toward
+// the tower and roll CHARGE at tick 6 with its front clear. The classic gate
+// asks only the window and charges into the door (the charge sound); with the
+// setting on the gate walks the rush's nine steps, meets the door before the
+// tower and holds the 25 MP.
+inline constexpr SpawnSpec kFamilySpawns_soldier_bot_charge_door_scen99[] = {
+    { FAMILY_TOWER1,  0, kOrderLiving, 164, 120, 0, 0 },           // the foe, 44 px east: inside the 20-75 window
+    { FAMILY_DOOR,    2, kOrderWeapon, 144, 120, 0, 0 },           // a closed door in the rush's path; team 2, so no key opens it
+    { FAMILY_SOLDIER, 1, kOrderLiving, 120, 120, 0, 0, 1, 100 },   // hostile level-1 bot
+    { FAMILY_SOLDIER, 0, kOrderLiving, 560, 440, 0, 0 },           // idle player LAST, far away
+};
+inline constexpr FactPredicate kFacts_soldier_bot_charge_door_scen99[] = {
+    pred::TickReached(10),
+    pred::EventKindExactly(/*play_sound*/1, 4,
+        "consequence: the classic bot charges into the door at tick 6: the charge sound beside the tower's shot and the blows"),
+};
+inline constexpr Mutation kMut_soldier_bot_charge_door_scen99 = {
+    "packs/core/families/living-00-soldier.lua", 259,
+    "G.with_classic(ai.foe_in_window(20, 75), fixed)",
+    "G.with_classic(ai.foe_in_window(20, 25), fixed)",
+    "Narrows the classic window to 20-25 px, so the tower 44 px off is refused and the bot never charges: EventKindExactly(play_sound, 4) reads 3."
+};
+inline constexpr FactPredicate kFacts_soldier_bot_charge_door_fixes_scen99[] = {
+    pred::TickReached(10),
+    pred::EventKindExactly(/*play_sound*/1, 3,
+        "consequence: with the setting on the gate walks the rush's path, meets the door before the tower and refuses the charge: no charge sound in the budget"),
+};
+inline constexpr Mutation kMut_soldier_bot_charge_door_fixes_scen99 = {
+    "packs/core/lib/gates.lua", 505,
+    "if not og.quiet_passable(ax - 1, ay - 1, self) then",
+    "if false then",
+    "Drops the path test, so the rush's steps run through the door to the tower and the bot charges at tick 6 as the classic one does: EventKindExactly(play_sound, 3) reads 4."
+};
+
+// --- elf_bot_rocks_blocked (fix V: the rock gate asks the rock's pad) ---
+// elf_rocks_blocked's geometry with a bot: a hostile level-1 elf bot with a
+// TOWER1 touching it from above, 5 px left so the two centres line up (the
+// elf_bot_rocks_far x: at x = 120 the heading between the centres is not UP
+// and the volley's own test already says no). The spawn heading is UP, so the
+// rock's pad is the tower and the tower is faced and inside the flight. The
+// seed (2) makes the elf roll ROCKS on tick 0. The classic elf has no gate:
+// fire() meets the tower on the pad, lands a melee blow (one sound, the tower
+// at 120 hp) and the cast refuses COULD NOT FIRE. With the setting on the gate
+// probes the pad first and says no; the roll takes the bot's ordinary act
+// (fix W), which strikes nothing in the budget: no sound, the tower at 130.
+inline constexpr SpawnSpec kFamilySpawns_elf_bot_rocks_blocked_scen99[] = {
+    { FAMILY_TOWER1,  0, kOrderLiving, 115, 104, 0, 0 },           // touching above, centred: the rock's pad
+    { FAMILY_ELF,     1, kOrderLiving, 120, 120, 0, 0, 1, 100 },   // hostile level-1 bot, heading UP at spawn
+    { FAMILY_SOLDIER, 0, kOrderLiving, 560, 440, 0, 0 },           // idle player LAST, far away
+};
+inline constexpr FactPredicate kFacts_elf_bot_rocks_blocked_scen99[] = {
+    pred::TickReached(3),
+    pred::EventKindExactly(/*play_sound*/1, 1,
+        "consequence: the classic elf fires into the tower: fire() lands a melee blow on the pad"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 12000, 12000,
+        "consequence: the blow takes the tower to 120 hp"),
+    pred::WeaponFamilyCount(FAMILY_ROCK, 0, 0),
+    // negative_assertion: no rock flies on either value: the pad is the tower.
+};
+inline constexpr Mutation kMut_elf_bot_rocks_blocked_scen99 = {
+    "packs/core/families/living-01-elf.lua", 21,
+    "local rock = self:fire()",
+    "local rock = nil",
+    "The cast never fires, so no blow lands on the tower: EventKindExactly(play_sound, 1) reads 0 and the tower stays at 130 hp.",
+    "local function some_rocks(self)"
+};
+inline constexpr FactPredicate kFacts_elf_bot_rocks_blocked_fixes_scen99[] = {
+    pred::TickReached(3),
+    pred::EventKindExactly(/*play_sound*/1, 0,
+        "consequence: with the setting on the gate finds the rock's pad on the tower and holds the volley; the bot's ordinary act lands nothing in the budget"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 13000, 13000,
+        "consequence: the tower is untouched"),
+    pred::WeaponFamilyCount(FAMILY_ROCK, 0, 0),
+    // negative_assertion: no rock flies on either value: the pad is the tower.
+};
+inline constexpr Mutation kMut_elf_bot_rocks_blocked_fixes_scen99 = {
+    "packs/core/families/living-01-elf.lua", 117,
+    "return G.pad_clear(self) and volley(self, v[1], v[2])",
+    "return volley(self, v[1], v[2])",
+    "Drops the pad test, so the gate says yes to the faced tower and the cast's fire() lands a blow on it before refusing COULD NOT FIRE: EventKindExactly(play_sound, 0) reads 1 and the tower ends at 120 hp."
+};
+
+// --- soldier_bot_refused_roll_acts (fix W: a refused roll is not the act) ---
+// A lone hostile level-1 soldier bot with 100 MP, the idle player far away
+// (no foe in the classic 20-75 window, so every special roll is refused on
+// both values), open field. The bot walks toward the player between rolls.
+// The seed (2) gives refused rolls inside the budget. The classic bot idles
+// on each refused roll and ends at (152,152); with the setting on a refused
+// roll takes the act the coin would have given it, and the bot ends at
+// (160,160). The player is an elf so the soldier position facts name the bot
+// alone.
+inline constexpr SpawnSpec kFamilySpawns_soldier_bot_refused_roll_acts_scen99[] = {
+    { FAMILY_SOLDIER, 1, kOrderLiving, 120, 120, 0, 0, 1, 100 },   // hostile level-1 bot, no foe in its window
+    { FAMILY_ELF,     0, kOrderLiving, 560, 440, 0, 0 },           // idle player LAST, far away
+};
+inline constexpr FactPredicate kFacts_soldier_bot_refused_roll_acts_scen99[] = {
+    pred::TickReached(12),
+    pred::WalkerPositionMoved(FAMILY_SOLDIER, 152, 152,
+        "consequence: the classic bot walks toward the player between rolls and idles on each refused roll"),
+};
+inline constexpr Mutation kMut_soldier_bot_refused_roll_acts_scen99 = {
+    "src/gameplay/living.cpp", 361,
+    "rng_.next(5) ) //1 in 5 to do our special",
+    "rng_.next(1) ) //1 in 5 to do our special",
+    "The special coin always comes up, so every act is a refused roll and the classic bot never moves from (120,120): WalkerPositionMoved(FAMILY_SOLDIER, 152, 152) fails."
+};
+inline constexpr FactPredicate kFacts_soldier_bot_refused_roll_acts_fixes_scen99[] = {
+    pred::TickReached(12),
+    pred::WalkerPositionMoved(FAMILY_SOLDIER, 160, 160,
+        "consequence: with the setting on a refused roll takes the bot's ordinary act, so it walks further than the classic one"),
+};
+inline constexpr Mutation kMut_soldier_bot_refused_roll_acts_fixes_scen99 = {
+    "src/gameplay/living.cpp", 384,
+    "if (og::sim::session_gameplay_fixes() == 0)",
+    "if (true)",
+    "Ends the act on every refused roll as the classic game does, so the bot idles like the classic one and stops short of (160,160): WalkerPositionMoved(FAMILY_SOLDIER, 160, 160) fails."
+};
 inline constexpr ScenarioSpec kScenarios[] = {
     { "ai_idle_wander_scen9301",
       "scen/scen1.fss", 0x00000001u,
@@ -12903,6 +13119,86 @@ inline constexpr ScenarioSpec kScenarios[] = {
       0, false, true, Exercises::None,
       kFacts_elemental_bot_starburst_one_foe_fixes_scen99, std::size(kFacts_elemental_bot_starburst_one_foe_fixes_scen99),
       kMut_elemental_bot_starburst_one_foe_fixes_scen99, {}, 1, nullptr, 0, 1 },
+
+    { "cleric_raise_blocked_corpse_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputs_cleric_raise_late_slot2, std::size(kInputs_cleric_raise_late_slot2), 130,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_cleric_raise_blocked_corpse_scen99, std::size(kFamilySpawns_cleric_raise_blocked_corpse_scen99),
+      0, false, true, Exercises::Special_Cleric_2,
+      kFacts_cleric_raise_blocked_corpse_scen99, std::size(kFacts_cleric_raise_blocked_corpse_scen99),
+      kMut_cleric_raise_blocked_corpse_scen99 },
+
+    { "cleric_raise_blocked_corpse_fixes_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputs_cleric_raise_late_slot2, std::size(kInputs_cleric_raise_late_slot2), 130,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_cleric_raise_blocked_corpse_scen99, std::size(kFamilySpawns_cleric_raise_blocked_corpse_scen99),
+      0, false, true, Exercises::Special_Cleric_2,
+      kFacts_cleric_raise_blocked_corpse_fixes_scen99, std::size(kFacts_cleric_raise_blocked_corpse_fixes_scen99),
+      kMut_cleric_raise_blocked_corpse_fixes_scen99, {}, 1, nullptr, 0, 1 },
+
+    { "soldier_charge_front_foe_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputs_soldier_charge_front_foe, std::size(kInputs_soldier_charge_front_foe), 40,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_soldier_charge_front_foe_scen99, std::size(kFamilySpawns_soldier_charge_front_foe_scen99),
+      0, false, true, Exercises::Special_Soldier_1,
+      kFacts_soldier_charge_front_foe_scen99, std::size(kFacts_soldier_charge_front_foe_scen99),
+      kMut_soldier_charge_front_foe_scen99 },
+
+    { "soldier_charge_front_foe_fixes_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputs_soldier_charge_front_foe, std::size(kInputs_soldier_charge_front_foe), 40,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_soldier_charge_front_foe_scen99, std::size(kFamilySpawns_soldier_charge_front_foe_scen99),
+      0, false, true, Exercises::Special_Soldier_1,
+      kFacts_soldier_charge_front_foe_fixes_scen99, std::size(kFacts_soldier_charge_front_foe_fixes_scen99),
+      kMut_soldier_charge_front_foe_fixes_scen99, {}, 1, nullptr, 0, 1 },
+
+    { "soldier_bot_charge_door_scen99", "scen/scen1.fss", 0x00000007u,
+      kInputsEmpty, std::size(kInputsEmpty), 10,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_soldier_bot_charge_door_scen99, std::size(kFamilySpawns_soldier_bot_charge_door_scen99),
+      0, false, true, Exercises::None,
+      kFacts_soldier_bot_charge_door_scen99, std::size(kFacts_soldier_bot_charge_door_scen99),
+      kMut_soldier_bot_charge_door_scen99 },
+
+    { "soldier_bot_charge_door_fixes_scen99", "scen/scen1.fss", 0x00000007u,
+      kInputsEmpty, std::size(kInputsEmpty), 10,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_soldier_bot_charge_door_scen99, std::size(kFamilySpawns_soldier_bot_charge_door_scen99),
+      0, false, true, Exercises::None,
+      kFacts_soldier_bot_charge_door_fixes_scen99, std::size(kFacts_soldier_bot_charge_door_fixes_scen99),
+      kMut_soldier_bot_charge_door_fixes_scen99, {}, 1, nullptr, 0, 1 },
+
+    { "elf_bot_rocks_blocked_scen99", "scen/scen1.fss", 0x00000002u,
+      kInputsEmpty, std::size(kInputsEmpty), 3,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_elf_bot_rocks_blocked_scen99, std::size(kFamilySpawns_elf_bot_rocks_blocked_scen99),
+      0, false, true, Exercises::None,
+      kFacts_elf_bot_rocks_blocked_scen99, std::size(kFacts_elf_bot_rocks_blocked_scen99),
+      kMut_elf_bot_rocks_blocked_scen99 },
+
+    { "elf_bot_rocks_blocked_fixes_scen99", "scen/scen1.fss", 0x00000002u,
+      kInputsEmpty, std::size(kInputsEmpty), 3,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_elf_bot_rocks_blocked_scen99, std::size(kFamilySpawns_elf_bot_rocks_blocked_scen99),
+      0, false, true, Exercises::None,
+      kFacts_elf_bot_rocks_blocked_fixes_scen99, std::size(kFacts_elf_bot_rocks_blocked_fixes_scen99),
+      kMut_elf_bot_rocks_blocked_fixes_scen99, {}, 1, nullptr, 0, 1 },
+
+    { "soldier_bot_refused_roll_acts_scen99", "scen/scen1.fss", 0x00000002u,
+      kInputsEmpty, std::size(kInputsEmpty), 12,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_soldier_bot_refused_roll_acts_scen99, std::size(kFamilySpawns_soldier_bot_refused_roll_acts_scen99),
+      0, false, true, Exercises::None,
+      kFacts_soldier_bot_refused_roll_acts_scen99, std::size(kFacts_soldier_bot_refused_roll_acts_scen99),
+      kMut_soldier_bot_refused_roll_acts_scen99 },
+
+    { "soldier_bot_refused_roll_acts_fixes_scen99", "scen/scen1.fss", 0x00000002u,
+      kInputsEmpty, std::size(kInputsEmpty), 12,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_soldier_bot_refused_roll_acts_scen99, std::size(kFamilySpawns_soldier_bot_refused_roll_acts_scen99),
+      0, false, true, Exercises::None,
+      kFacts_soldier_bot_refused_roll_acts_fixes_scen99, std::size(kFacts_soldier_bot_refused_roll_acts_fixes_scen99),
+      kMut_soldier_bot_refused_roll_acts_fixes_scen99, {}, 1, nullptr, 0, 1 },
 };
 
 inline constexpr std::size_t kScenarioCount = std::size(kScenarios);
