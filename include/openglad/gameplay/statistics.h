@@ -109,6 +109,9 @@ class statistics
 		bool right_forward_blocked();
 		bool right_back_blocked();
 		bool forward_blocked(); // are we blocked in front?
+		// The same step asked through GameWorld::query_passable's quiet probe
+		// when quiet is true (no side effect); false is the call above.
+		bool forward_blocked(bool quiet);
 		//short distance_to_foe(); //not in use???????
 		bool right_walk();      // walk using right-hand rule
 		bool direct_walk(); // walk in a line toward foe ..
@@ -227,6 +230,9 @@ class statistics
 		walker* controller_ = nullptr;
 		walker* owner_ = nullptr;
 };
+
+// The classic front probe is the loud one.
+inline bool statistics::forward_blocked() { return forward_blocked(false); }
 
 #undef OG_STATS_DIRTY_FIELD
 

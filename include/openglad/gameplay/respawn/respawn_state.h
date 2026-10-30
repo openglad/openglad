@@ -17,6 +17,7 @@
 
 class GameWorld;
 class walker;
+enum class Order : unsigned char;
 
 namespace og::sim {
 
@@ -163,6 +164,23 @@ int respawn_pending_count(const GameWorld& world, int team);
 // (the anchor probe); floor >= 0 is the floor-explicit classic probe.
 bool respawn_spot_clear(GameWorld& world, walker* w, short x, short y,
                         int floor);
+
+// Does a body of (order, family) fit with its top-left at (x, y) on `floor`?
+// The body does not exist: a detached walker of that family (its own box and
+// flags; never in a list or the obmap, no entity id, no draw) is put through
+// respawn_spot_clear and dormant_occupies_spot. Draw-free and eat-free.
+// False for a family the loader cannot make.
+bool body_spot_clear(GameWorld& world, Order order, std::int32_t family,
+                     short x, short y, int floor);
+
+// The first spot within `radius` px of (x, y) where body_spot_clear holds,
+// in a fixed order: (x, y) itself, then for r = 1 .. radius the eight
+// offsets (-r,0) (r,0) (0,-r) (0,r) (-r,-r) (r,-r) (-r,r) (r,r). Writes the
+// spot to out_x/out_y and returns true, or returns false and leaves them
+// alone. Deterministic, draw-free.
+bool body_spot_near(GameWorld& world, Order order, std::int32_t family,
+                    short x, short y, int floor, int radius,
+                    short& out_x, short& out_y);
 
 // The one obmap re-registration rule for a walker just placed with setxy():
 // setxy() moves obmap entries through obmap::move, which does nothing when

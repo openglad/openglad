@@ -100,6 +100,7 @@
 ---@field find_teleport_target fun(self: og.Walker): og.Walker?
 ---@field fire fun(self: og.Walker): og.Walker?
 ---@field fire_frequency fun(self: og.Walker): number
+---@field fire_pad_clear fun(self: og.Walker): boolean # walker:fire_pad_clear() → boolean — would fire() launch this living's current weapon instead of meeting something on its pad? The pad probed quietly with a d...
 ---@field flight_left fun(self: og.Walker): integer
 ---@field floor fun(self: og.Walker): integer
 ---@field foe og.Walker?|fun(self: og.Walker): og.Walker? # write-through property: `self.foe = v` runs m_set_foe; reads answer the method (method-first)
@@ -166,7 +167,7 @@
 ---@field s_do_command fun(self: og.Walker): integer # walker:s_do_command() → short — runs the queued command one step (statistics::do_command).
 ---@field s_force_command fun(self: og.Walker, arg2: integer, arg3: integer, arg4: integer, arg5: integer)
 ---@field s_force_fright fun(self: og.Walker, iterations: integer, info1: integer, info2: integer) # walker:s_force_fright(iterations, info1, info2) — statistics::force_fright, the ghost-scare fright injection (stats.cpp).
----@field s_forward_blocked fun(self: og.Walker): boolean
+---@field s_forward_blocked fun(self: og.Walker, arg2: any?): boolean
 ---@field s_front_command fun(self: og.Walker): integer # walker:s_front_command() — the front queue entry's commandtype, 0 when the queue is empty.
 ---@field s_frozen_delay fun(self: og.Walker): integer
 ---@field s_frozen_delay_raw fun(self: og.Walker): integer # Raw (unmasked) frozen_delay: negatives are the thaw-immunity phase, which the masked s_frozen_delay getter hides (orc howl needs the raw value).
@@ -697,6 +698,8 @@
 ---@field apply_level_up fun(self: og.Guy|og.Walker, diff: integer, arg3: integer, arg4: integer, arg5: integer, arg6: integer, arg7: integer)
 ---@field authored_team_mask fun(): integer # og.authored_team_mask() — bitmask of teams with authored start markers (dead ones included; the versus-map team domain).
 ---@field award_score fun(team: integer, points: integer) # og.award_score(team, points) — the treasure families' score credit: bump GameWorld::m_score and emit ScoreChange with the same payload.
+---@field blood_in_reach fun(entity: og.Walker): og.Walker[] # og.blood_in_reach(self) → array — every stain og.find_nearest_blood would consider (squared centre distance under 800) on self's floor, nearest first, ties i...
+---@field body_spot_near fun(order: og.OrderName, family: integer, x: integer, y: integer, floor: integer, radius: integer): integer, integer # og.body_spot_near(order, family, x, y, floor, radius) → x, y | nil — the first spot within radius px of (x, y) where a body of that family fits (og::sim::bod...
 ---@field campaign_current_level fun(): integer
 ---@field campaign_gold fun(): integer
 ---@field campaign_grant_gold fun(amount: integer)
@@ -781,6 +784,7 @@
 ---@field query_grid_passable fun(x: number, y: number, entity: og.Walker, arg4: integer?): boolean
 ---@field query_object_passable fun(x: number, y: number, entity: og.Walker, arg4: integer?): boolean
 ---@field query_passable fun(x: number, y: number, entity: og.Walker, arg4: integer?): boolean
+---@field quiet_passable fun(x: number, y: number, entity: og.Walker): boolean # og.quiet_passable(x, y, ent) → boolean — og.query_passable's answer on ent's floor, asked quietly: no draw, no treasure eaten, no door opened, no collide().
 ---@field rand fun(n: integer): integer # og.rand(n) → deterministic sim RNG (world-owned).
 ---@field rand0 fun(n: integer): integer # og.rand0(n) — the world RNG's `next(n)` with IRandom's real n <= 0 contract instead of og.rand's error: next(0) answers 0 WITHOUT advancing the generator (Si...
 ---@field register_campaign_hooks fun(hooks: og.CampaignHooks) # og.register_campaign_hooks({ vars = {...}, picker_menu = fn, picker_action = fn, base_camp = fn, match_knobs = fn, lineup = { power = fn } }) — load-time onl...
