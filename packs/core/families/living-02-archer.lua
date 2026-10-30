@@ -101,6 +101,10 @@ local function fixed(self)
   if slot == 1 then
     return G.ring_pays(self, 8, 12)
   end
+  -- BARRAGE and EXPLODING BOLT refuse a busy archer (the casts' guard).
+  if gf.special_busy(self) then
+    return false
+  end
   local f = self:foe()
   if not f or f:dead() ~= 0 then
     return false

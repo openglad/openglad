@@ -173,12 +173,14 @@ local function ai_teleport(self)
   -- near, mark where the archmage stands when no marker of its own stands,
   -- a hero has the cast's 75 INT, and half the pool left after the price
   -- still covers HEARTBURST. Written after the engine's coin.
-  if foe_count < 1 and G.marker_pays(self, FX_MARKER, 2, 75) then
+  local mark = foe_count < 1 and G.marker_pays(self, FX_MARKER, 2, 75)
+  if mark and not lc.is_busy(self) then
     self:set_shifter_down(1)
   else
     self:set_shifter_down(0)
   end
-  return foe_count < 1 or foe_count > 3
+  local yes = foe_count < 1 or foe_count > 3
+  return yes and not lc.mid_teleport(self)
 end
 
 -- CHAIN LIGHTNING wants a foe inside its radius, HEARTBURST inside its own:
@@ -187,6 +189,10 @@ end
 ai_burst_or_chain = function(self)
   if not gf.on() then
     return true
+  end
+  -- The cast's own guard: it refuses a busy archmage.
+  if lc.is_busy(self) then
+    return false
   end
   local t = og.tuning(self)
   local bonus = t.radius_bonus_per_level * self.level
@@ -221,6 +227,10 @@ local function ai_summon(self)
   if not gf.on() then
     return true
   end
+  -- The cast's own guard: it refuses a busy archmage.
+  if lc.is_busy(self) then
+    return false
+  end
   summon_shift(self)
   if self:shifter_down() ~= 0 then
     return G.foes_within(self, 1, SUMMON_GATE_RANGE, false)
@@ -252,6 +262,10 @@ end
 local function ai_mind_control(self)
   if not gf.on() then
     return true
+  end
+  -- The cast's own guard: it refuses a busy archmage.
+  if lc.is_busy(self) then
+    return false
   end
   local t = og.tuning(self)
   local foes = og.find_foes_in_range("ob",
