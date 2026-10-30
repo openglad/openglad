@@ -948,6 +948,7 @@ TEST(GameLoop, a_level_won_during_a_time_stop_leaves_with_its_own_colours)
     }
     ASSERT_GT(killed, 0) << "the level must have foes to kill";
 
+    trace_clear();
     GameFrameResult result = GameFrameResult::Continue;
     int frames = 0;
     while (result == GameFrameResult::Continue && frames < 200)
@@ -966,6 +967,10 @@ TEST(GameLoop, a_level_won_during_a_time_stop_leaves_with_its_own_colours)
         << "the menus after the mission are not in a time stop";
     EXPECT_TRUE(display_palette_is(display->ourpalette))
         << "the won level must leave the screen in its own colours";
+    EXPECT_TRUE(trace_contains("endgame", "results screen palette 0"))
+        << "the results screen must be drawn in the level's own colours";
+    EXPECT_FALSE(trace_contains("endgame", "results screen palette 1"))
+        << "the results screen must not be drawn in the time stop's colours";
 
     display->world().end = 0;
     og::runtime::clear_local_transport_shadow(session);
