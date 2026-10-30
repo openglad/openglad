@@ -56,12 +56,12 @@ local function do_turn_undead(self)
   return true
 end
 
--- Corpse gate shared by the three raise specials: the nearest bloodstain,
--- accepted only when its tile is passable and it sits within `range`.
--- query_passable rolls (obmap miss): the probe stays first, the range
--- compare second, exactly the ladder's `passable and distance` order.
-local function nearby_corpse(self, range)
-  local blood = og.find_nearest_blood(self)
+local corpses = og.use("corpses")
+local function nearby_corpse(self, range, body)  -- body: the family to raise; nil for RESURRECT
+  if gf.on() then  -- Gameplay Fixes T: where the body can stand (lib/corpses.lua)
+    return corpses.raise_spot(self, range, body)
+  end
+  local blood = og.find_nearest_blood(self)  -- the classic: the stain's own box, then the range
   if not blood then
     return nil, "NO CORPSE NEARBY"
   end
@@ -70,7 +70,7 @@ local function nearby_corpse(self, range)
     return nil, "CORPSE IS BLOCKED"
   end
   if self:distance_to_ob(blood) < range then
-    return blood
+    return blood, nil, blood:xpos(), blood:ypos()  -- the spot is the corner, as always
   end
   return nil, "CORPSE TOO FAR"
 end
@@ -175,7 +175,7 @@ local function raise_skeleton(self)
     return do_turn_undead(self)
   end
   -- raise skeleton at the nearest bloodstain
-  local blood, reason = nearby_corpse(self, og.tuning(self).raise_skeleton_range)
+  local blood, reason, sx, sy = nearby_corpse(self, og.tuning(self).raise_skeleton_range, LIVING_SKELETON)
   if not blood then
     return false, reason
   end
@@ -188,7 +188,7 @@ local function raise_skeleton(self)
   alive.level = og.rand0(self.level) + 1
   alive:set_difficulty(alive.level)
   alive:set_floor(blood:floor())  -- rise at the bloodstain's floor
-  alive:setxy(blood:xpos(), blood:ypos())
+  alive:setxy(sx, sy)
   alive:set_owner(self)
   blood:set_dead(1)
   if self:has_guy() then
@@ -205,7 +205,7 @@ local function raise_ghost(self)
     return do_turn_undead(self)
   end
   -- raise ghost at the nearest bloodstain
-  local blood, reason = nearby_corpse(self, og.tuning(self).raise_ghost_range)
+  local blood, reason, sx, sy = nearby_corpse(self, og.tuning(self).raise_ghost_range, LIVING_GHOST)
   if not blood then
     return false, reason
   end
@@ -218,7 +218,7 @@ local function raise_ghost(self)
   alive:set_difficulty(alive.level)
   alive.team = self.team
   alive:set_floor(blood:floor())  -- rise at the bloodstain's floor
-  alive:setxy(blood:xpos(), blood:ypos())
+  alive:setxy(sx, sy)
   alive:set_owner(self)
   blood:set_dead(1)
   if self:has_guy() then
@@ -231,7 +231,7 @@ end
 -- Resurrect our guys ..
 local function resurrect(self)
   local t = og.tuning(self)
-  local blood, reason = nearby_corpse(self, t.resurrect_range)
+  local blood, reason, sx, sy = nearby_corpse(self, t.resurrect_range, nil)
   if not blood then
     return false, reason
   end
@@ -278,7 +278,7 @@ local function resurrect(self)
     alive:set_owner(self)
   end
   alive:set_floor(blood:floor())  -- return at the bloodstain's floor
-  alive:setxy(blood:xpos(), blood:ypos())
+  alive:setxy(sx --[[@as number]], sy --[[@as number]])  -- a stain always comes with its spot
   blood:set_dead(1)
   if self:has_guy() then
     self:g_set_exp(self:g_exp() +
@@ -346,11 +346,11 @@ local function check_special_ai(self)
       if self:shifter_down() == 0 then
         -- Gameplay Fixes: the raise wants the corpse it would raise and a
         -- living foe within 130 px for the risen to fight.
-        local range = t.raise_skeleton_range
+        local range, body = t.raise_skeleton_range, LIVING_SKELETON
         if slot == 3 then
-          range = t.raise_ghost_range
+          range, body = t.raise_ghost_range, LIVING_GHOST
         end
-        if G.corpse_near(self, range) == nil then
+        if corpses.raise_spot(self, range, body) == nil then
           return false
         end
         return G.foes_within(self, 1, 130, false)
@@ -358,7 +358,7 @@ local function check_special_ai(self)
     elseif slot == 4 then
       -- Gameplay Fixes: RESURRECT wants a friendly corpse in reach (a foe's
       -- stain is RAISE GHOST's job, at a third of the price).
-      local b = G.corpse_near(self, og.tuning(self).resurrect_range)
+      local b = corpses.raise_spot(self, og.tuning(self).resurrect_range, nil)
       return b ~= nil and self:is_friendly(b)
     end
   end

@@ -28,6 +28,8 @@
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
 
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 
 using og::test::bot_gates::GameplayFixesBots;
@@ -72,6 +74,23 @@ int count_live(GameWorld& w, Order order, int family)
             !ob->dead())
             ++n;
     return n;
+}
+
+// A pocket of grass one tile high (row 12, y 192..207) between wall rows 11
+// and 13, closed on the east by column 15 (columns 13..15 walled above and
+// below), open to the west. A 16 by 16 cleric at (210, 192) in its mouth
+// leaves 14 px (x 226..239) between itself and the wall: room for no
+// skeleton (15 wide) and no soldier (16), at the corner or nudged 16 px.
+void wall_pocket(GameWorld& w)
+{
+    const auto wall = [&w](int col, int row) {
+        w.grid.data[static_cast<std::size_t>(col + w.grid.w * row)] = PIX_H_WALL1;
+    };
+    for (const int col : {13, 14, 15}) {
+        wall(col, 11);
+        wall(col, 13);
+    }
+    wall(15, 12);
 }
 
 }  // namespace
@@ -260,6 +279,114 @@ TEST_F(GameplayFixesBots, cleric_resurrect_wants_a_friendly_corpse_within_30)
     blood->setxy(231, 200);  // 31 px
     EXPECT_FALSE(gate(cleric, 4, 1)) << "the friendly stain 31 px off";
     EXPECT_TRUE(gate(cleric, 4, 0)) << "the classic answer";
+}
+
+// RAISE UNDEAD with the setting on asks the cast's own question
+// (corpses.raise_spot, the stain the cast would raise and room for the
+// skeleton within 16 px of it), not only "is there a stain": a foe's stain
+// boxed into the wall pocket beside the cleric (226, 192), 16 px off, is
+// found by the finder, but no skeleton fits there, so the cast would refuse
+// CORPSE IS BLOCKED and the gate says no. The same stain on the open side of
+// the cleric (194, 192): yes. The classic gate is yes throughout.
+//
+// RED today: the gate asked G.corpse_near and said yes on the boxed stain.
+TEST_F(GameplayFixesBots, cleric_raise_undead_wants_a_corpse_it_can_raise)
+{
+    wall_pocket(world());
+    living* cleric = body(add(FAMILY_CLERIC, 1, 210, 192, 4, 100.0f), 16, 16);
+    living* foe = body(add(FAMILY_SOLDIER, 0, 310, 192, 1), 16, 16);  // 100 px
+    walker* blood = stain(world(), 2, 226, 192);
+    ASSERT_TRUE(cleric && foe && blood);
+    ASSERT_EQ(blood, world().find_nearest_blood(cleric));
+
+    EXPECT_TRUE(gate(cleric, 2, 0)) << "the classic answer";
+    EXPECT_FALSE(gate(cleric, 2, 1)) << "no room for the skeleton: the cast would refuse";
+    EXPECT_EQ(0, cleric->shifter_down()) << "the raise, nothing undead to turn";
+
+    blood->setxy(194, 192);
+    EXPECT_TRUE(gate(cleric, 2, 1)) << "the same stain on the open side";
+    EXPECT_TRUE(gate(cleric, 2, 0)) << "the classic answer";
+}
+
+// RESURRECT's twin: a friendly stain (a soldier's, 16 by 16) in the pocket
+// is one the cast would refuse, so the gate says no; on the open side, yes.
+//
+// RED today: the gate asked G.corpse_near and said yes on the boxed stain.
+TEST_F(GameplayFixesBots, cleric_resurrect_wants_a_friendly_corpse_it_can_raise)
+{
+    wall_pocket(world());
+    living* cleric = body(add(FAMILY_CLERIC, 1, 210, 192, 10, 600.0f), 16, 16);
+    walker* blood = stain(world(), 1, 226, 192);
+    ASSERT_TRUE(cleric && blood);
+    blood->stats()->set_old_family(FAMILY_SOLDIER);
+
+    EXPECT_TRUE(gate(cleric, 4, 0)) << "the classic answer";
+    EXPECT_FALSE(gate(cleric, 4, 1)) << "no room for the soldier: the cast would refuse";
+
+    blood->setxy(194, 192);
+    EXPECT_TRUE(gate(cleric, 4, 1)) << "the same stain on the open side";
+}
+
+// The raise gates walk every stain the finder would answer and probe up to
+// 129 spots for each body, and none of it touches the world: three stains
+// (two boxed into the pocket, nearest first, then one in the open with a
+// drumstick on it) asked by RAISE UNDEAD, RAISE GHOST and RESURRECT with the
+// setting on leave the world's stream, the three lists, the next entity id
+// and the drumstick where they were. The answers show the walk reached the
+// third stain: RAISE UNDEAD's only raisable corpse is the open one.
+//
+// RED (planted in corpses.lua: the spot also asked of og.query_passable on
+// the stain, the classic probe): the open stain's box eats the drumstick
+// (one draw) and the stream moves.
+TEST_F(GameplayFixesBots, raise_spot_draws_nothing)
+{
+    wall_pocket(world());
+    living* cleric = body(add(FAMILY_CLERIC, 1, 210, 192, 4, 600.0f), 16, 16);
+    living* foe = body(add(FAMILY_SOLDIER, 0, 310, 192, 1), 16, 16);
+    walker* a = stain(world(), 2, 224, 192);  // squared centre distance 196
+    walker* b = stain(world(), 2, 226, 192);  // 256
+    walker* c = stain(world(), 2, 193, 192);  // 289
+    walker* drumstick = world().add_ob(Order::Treasure, FAMILY_DRUMSTICK);
+    ASSERT_TRUE(cleric && foe && a && b && c && drumstick);
+    drumstick->setxy(195, 194);
+    drumstick->stats()->set_level(1);
+    c->stats()->set_max_hitpoints(100.0f);
+    c->stats()->set_hitpoints(0.0f);  // as a death leaves it: a drumstick would heal it
+    ASSERT_EQ(a, world().find_nearest_blood(cleric));
+
+    struct Ask {
+        int slot;
+        bool answer;
+    };
+    // RAISE UNDEAD: only the open stain has room. RAISE GHOST: the ethereal
+    // ghost fits beside the nearest. RESURRECT: a foe's stain, no.
+    const Ask asks[] = {{2, true}, {3, true}, {4, false}};
+    for (const Ask& ask : asks) {
+        SCOPED_TRACE(testing::Message() << "slot " << ask.slot);
+        walker* before = world().add_fx_ob(Order::Treasure, FAMILY_STAIN);
+        ASSERT_NE(nullptr, before);
+        before->set_dead(1);  // a marker: never a corpse the gate reads
+        const std::uint32_t rng = world().rng_.state_;
+        const std::size_t obs = world().oblist.size();
+        const std::size_t fxs = world().fxlist.size();
+        const std::size_t weaps = world().weaplist.size();
+
+        EXPECT_EQ(ask.answer, gate(cleric, ask.slot, 1));
+
+        EXPECT_EQ(rng, world().rng_.state_);
+        EXPECT_EQ(obs, world().oblist.size());
+        EXPECT_EQ(fxs, world().fxlist.size());
+        EXPECT_EQ(weaps, world().weaplist.size());
+        walker* after = world().add_fx_ob(Order::Treasure, FAMILY_STAIN);
+        ASSERT_NE(nullptr, after);
+        after->set_dead(1);
+        EXPECT_EQ(before->entity_id() + 1, after->entity_id())
+            << "no entity was made in between";
+        EXPECT_EQ(0, a->dead());
+        EXPECT_EQ(0, b->dead());
+        EXPECT_EQ(0, c->dead());
+        EXPECT_EQ(0, drumstick->dead()) << "nothing eaten";
+    }
 }
 
 // ---------------------------------------------------------------------------
