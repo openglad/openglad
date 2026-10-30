@@ -615,6 +615,8 @@ TEST_F(TryxianLevelPlay, bots_fire_varying_specials_at_somebody)
     std::vector<std::string> fact_refusals;
     int busy = 0;
     int nomp = 0;
+    int path_blocked = 0;      // soldier CHARGE refused after its gate said yes (fix V)
+    int elf_could_not_fire = 0; // elf ROCKS refused after its gate said yes (fix V)
     int held = 0;
     int crew_freeze_rolls = 0; // the crew mages' FREEZE TIME rolls the gate held
     int crew_casts = 0;
@@ -686,6 +688,10 @@ TEST_F(TryxianLevelPlay, bots_fire_varying_specials_at_somebody)
                                         std::to_string(r.id) + ": " + r.reason);
             if (r.reason == "SPECIAL BUSY")
                 busy++;
+            if (r.reason == "PATH BLOCKED")
+                path_blocked++;
+            if (r.reason == "COULD NOT FIRE" && fam == "ELF")
+                elf_could_not_fire++;
             if (is_counted_nomp(r))
                 nomp++;
         }
@@ -784,9 +790,9 @@ TEST_F(TryxianLevelPlay, bots_fire_varying_specials_at_somebody)
                                         static_cast<int>(p.casts.size()));
     }
     std::printf("pooled: %zu specials, crew casts %d (%zu specials), casts at nobody %zu, "
-                "fact refusals %zu, SPECIAL BUSY %d, NOT ENOUGH MP %d, held %d\n",
+                "fact refusals %zu, SPECIAL BUSY %d, NOT ENOUGH MP %d, PATH BLOCKED %d, elf COULD NOT FIRE %d, held %d\n",
                 rows.size(), crew_casts, crew_specials.size(), violations.size(),
-                fact_refusals.size(), busy, nomp, held);
+                fact_refusals.size(), busy, nomp, path_blocked, elf_could_not_fire, held);
     for (const std::string& v : violations)
         std::printf("  CAST AT NOBODY: %s\n", v.c_str());
     for (const std::string& f : fact_refusals)
@@ -798,6 +804,8 @@ TEST_F(TryxianLevelPlay, bots_fire_varying_specials_at_somebody)
     ::testing::Test::RecordProperty("busy_refusals", busy);
     ::testing::Test::RecordProperty("nomp_refusals", nomp);
     ::testing::Test::RecordProperty("held_rolls", held);
+    ::testing::Test::RecordProperty("path_blocked", path_blocked);
+    ::testing::Test::RecordProperty("elf_could_not_fire", elf_could_not_fire);
     ::testing::Test::RecordProperty("crew_freeze_rolls", crew_freeze_rolls);
 
     // ---- A: the bots fire, per seed ---------------------------------------
@@ -907,9 +915,22 @@ TEST_F(TryxianLevelPlay, bots_fire_varying_specials_at_somebody)
     EXPECT_EQ(0u, fact_refusals.size())
         << "a gate said yes and the cast refused for the fact the gate reads, first: "
         << (fact_refusals.empty() ? std::string() : fact_refusals.front());
-    EXPECT_LE(busy, 200) << "SPECIAL BUSY refusals (measured 157 pooled, 50 / 50 / 57)";
+    // The three refusals fixes V and W are about are capped at the measured
+    // pooled count plus a third, at least 3 (a measured 0 is capped at 3, not
+    // pinned to 0, which the stream could break); a cap is never raised to
+    // pass.
+    EXPECT_LE(busy, 6)
+        << "SPECIAL BUSY refusals (measured 4 pooled, 0 / 3 / 1: the mage bot's own hit "
+           "response, which asks no gate; 157 before fix W)";
+    EXPECT_LE(path_blocked, 3)
+        << "soldier CHARGE refused PATH BLOCKED after its gate said yes (measured 0 pooled; "
+           "139 before fixes V and W)";
+    EXPECT_LE(elf_could_not_fire, 7)
+        << "elf ROCKS refused COULD NOT FIRE after its gate said yes (measured 5 pooled, "
+           "3 / 2 / 0; 80 before fix V)";
     EXPECT_LE(nomp, 100)
-        << "NOT ENOUGH MP refusals after the roll (measured 61 pooled, 18 / 22 / 21)";
+        << "NOT ENOUGH MP refusals after the roll (measured 19 pooled, 0 / 5 / 14; 61 before "
+           "fix W)";
 }
 
 TEST_F(TryxianLevelPlay, same_seed_same_casts)
