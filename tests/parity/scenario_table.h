@@ -8981,7 +8981,7 @@ inline constexpr FactPredicate kFacts_cleric_bot_raise_or_turn_fixes_scen99[] = 
 };
 inline constexpr Mutation kMut_cleric_bot_raise_or_turn_fixes_scen99 = {
     "packs/core/families/living-05-cleric.lua", 353,
-    "if G.corpse_near(self, range) == nil then",
+    "if corpses.raise_spot(self, range, body) == nil then",
     "if false then",
     "Drops the raise's corpse test, so the slot-2 rolls before the faerie dies go to a raise that probes for a corpse and the fight changes: the tower does not end at 16 hp."
 };
