@@ -515,8 +515,8 @@ arenas it answers as the old probe did. U moved
 loud front test turned the bot a notch; the quiet one does not). The three
 player DISARM rows it was expected to move record the same bytes: a
 player's stale heading only sets where it will turn, and nothing these
-recordings read follows within their budgets. W moved <measured> of the
-48 rows with the setting on: a bot in each meets a refused roll within
+recordings read follows within their budgets. W moved 33 of the
+48 rows with the setting on (W1 two, W2 32, one of them in both): a bot in each meets a refused roll within
 the row's budget and now takes its ordinary act;
 `tests/parity/golden/DRIFT_LEDGER.md` lists them. Each exact fact a
 recapture broke was worked out again from the new capture and its pin
@@ -597,8 +597,6 @@ Rows deliberately not added:
   the rows W moved and by `GameplayFixesBots` in
   `tests/unit/test_gameplay_fixes_bots.cpp`, which asks every guarded gate
   with its caster busy.
-- <measured>, whose arena no seed or tuning could build: the unit tests
-  under its fix pin its rule instead.
 - `archmage_bot_struck_scen99`: the struck archmage's arena has no
   setting-off twin, because the two games' classic hit responses differ.
   The old game's `walker::special` always answers 0, so after a summon its
