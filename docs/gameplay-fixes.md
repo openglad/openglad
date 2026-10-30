@@ -382,12 +382,13 @@ tells the rules from their absence.
 The same run counts the refusals fixes V and W are about. Pooled over the
 three seeds on the shipped default, before fixes T to W the soldier bots
 met `PATH BLOCKED` 139 times to 61 charges (a wall or the map edge 74
-times, a foe already touching 19, an ally 12, a door 2), the elves `COULD
-NOT FIRE` 80 times to 44 volleys (a wall on the rock's pad 57 times, a foe
-on it 15), and casts were refused `SPECIAL BUSY` 154 times. With the fixes
+times, a foe already touching 19, an ally 12, a door 2, the rest a blocker
+gone by the end of the tick or a caster gone), the elves `COULD NOT FIRE` 80
+times to 44 volleys (a wall on the rock's pad 57 times, a foe on it 15, the
+rest the same), and casts were refused `SPECIAL BUSY` 154 times. With the fixes
 in they read `PATH BLOCKED` <measured> to <measured> charges, `COULD NOT
 FIRE` <measured> to <measured> volleys and `SPECIAL BUSY` <measured>, and
-the test caps each at its measured count plus a third (at least 3). The
+the test will cap each at its measured count plus a third (at least 3): <measured>. The
 gates hold <measured> rolls, each of which now takes the bot's ordinary
 act. The `SPECIAL BUSY` refusals left come from casts no gate is asked
 about, among them the mage bot's own hit response: below its flee
@@ -1049,7 +1050,7 @@ in effect.
 
 Fixes T to W, and the other changes of the same work (#365, #375, #389,
 #400), asked nine questions. The maintainer has not answered them yet;
-each line below is the default the design took, and what the game does
+each line below is the default taken, and what the game does
 today, until he does.
 
 1. **#371's shape.** The busy guard in every gate and the full

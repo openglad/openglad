@@ -8988,7 +8988,7 @@ inline constexpr Mutation kMut_cleric_bot_raise_or_turn_fixes_scen99 = {
     "packs/core/families/living-05-cleric.lua", 353,
     "if corpses.raise_spot(self, range, body) == nil then",
     "if false then",
-    "Drops the gate's raise_spot test, so the slot-2 rolls before the faerie dies go to a raise that finds no corpse and is refused, and that roll takes the bot's ordinary act (fix W): the fight changes and the tower does not end where the setting-on fight leaves it (measured on the current game: 20 hp unmutated, 39 hp mutated)."
+    "Drops the gate's raise_spot test, so a slot-2 roll with no corpse in reach gets a yes that reaches a raise refused for free (NO CORPSE NEARBY). On the act path both answers now take the ordinary act (fix W), so what parts the streams is the hit path: a struck bot draws rng(3) after a yes and not after a no (stats.cpp, check_special() && !rng(3)), and the tower is hitting the cleric. The fight changes and the tower does not end where the setting-on fight leaves it (measured on the current game: 20 hp unmutated, 39 hp mutated)."
 };
 
 // --- special_cleric_heal_ally_fixes_scen99 (fix J: HEAL) ------------------
@@ -10412,6 +10412,9 @@ inline constexpr Mutation kMut_elf_bot_rocks_blocked_fixes_scen99 = {
 // roll takes the act the coin would have given it, and the bot ends at
 // (160,160). The player is an elf so the soldier position facts name the bot
 // alone.
+// The classic row's position fact is a lower bound (WalkerPositionMoved asks
+// "at least this far"), which the setting-on play meets too: the pair parts
+// through the setting-on row's own fact and the byte compare.
 inline constexpr SpawnSpec kFamilySpawns_soldier_bot_refused_roll_acts_scen99[] = {
     { FAMILY_SOLDIER, 1, kOrderLiving, 120, 120, 0, 0, 1, 100 },   // hostile level-1 bot, no foe in its window
     { FAMILY_ELF,     0, kOrderLiving, 560, 440, 0, 0 },           // idle player LAST, far away
