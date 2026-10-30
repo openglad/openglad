@@ -1084,11 +1084,12 @@ TEST_F(WalkerSpecials, family_special_sweep_outcomes_with_new_specials_on)
 // The classic sweep with the Gameplay Fixes setting on: the same casters,
 // neighbourhood, stream and classic kits (New Specials off), so the setting
 // is the only difference from family_special_sweep_outcomes_are_pinned.
-// Every row's mask equals the classic table: the fixes turn a cast that
-// did nothing into a free refusal, and in this neighbourhood a foe stands
-// 12 px from every caster, so the no-foe refusals (WHIRLWIND, TAUNT, SCARE,
-// HOWL) never fire. What the setting changes here is the price of a cast
-// that is refused and the reason it gives, so this sweep pins those too:
+// Every row's mask but the cleric's equals the classic table: the fixes turn
+// a cast that did nothing into a free refusal, and in this neighbourhood a
+// foe stands 12 px from every caster, so the no-foe refusals (WHIRLWIND,
+// TAUNT, SCARE, HOWL) never fire. What the setting changes here is the price
+// of a cast that is refused and the reason it gives, so this sweep pins
+// those too:
 //   elf     0  every rock volley still declines COULD NOT FIRE (the foe is
 //              too close to throw at, so fire() swings instead). The classic
 //              game keeps the refund it paid up front for the rocks, so a
@@ -1100,11 +1101,21 @@ TEST_F(WalkerSpecials, family_special_sweep_outcomes_with_new_specials_on)
 //              way; the classic refund makes the swing free (1500 MP left),
 //              the setting charges the swing (4 MP): 1496. REVEAL and
 //              PROTECTION cast as before on both values: 1350, 1300.
-//   cleric  2  TURN UNDEAD (shifted slots 2 and 3) is refused on both values,
-//              for a different reason: the classic reach, 4 px per level,
-//              falls short of the orc at 12 px for this bare low-level caster
-//              (NO FOE IN RANGE); with the setting on the reach is at least
-//              60 px, the orc is in it and is not undead (NO UNDEAD IN RANGE,
+//   cleric  6  MYSTIC MACE (bit 1) casts on both values. RAISE UNDEAD (slot
+//              2 unshifted, bit 2) is where the two part (fix T, #390): the
+//              classic probe asks for a 16x16 square on the stain at 106,
+//              where the caster, the ally and the orc all stand, and refuses
+//              CORPSE IS BLOCKED (the classic table's 2); with the setting on
+//              the cast looks for room for the skeleton's own box up to 16 px
+//              from the stain, finds it, raises the soldier's stain for 20 MP
+//              (1480 left) and uses it up, so the raises after it (RAISE
+//              GHOST, bit 4, and RESURRECT, bits 6 and 7) find NO CORPSE
+//              NEARBY where the classic game read CORPSE IS BLOCKED. TURN
+//              UNDEAD (shifted slots 2 and 3) is refused on both values, for
+//              a different reason: the classic reach, 4 px per level, falls
+//              short of the orc at 12 px for this bare low-level caster (NO
+//              FOE IN RANGE); with the setting on the reach is at least 60
+//              px, the orc is in it and is not undead (NO UNDEAD IN RANGE,
 //              free).
 TEST_F(WalkerSpecials, family_special_sweep_outcomes_with_gameplay_fixes_on)
 {
@@ -1118,7 +1129,7 @@ TEST_F(WalkerSpecials, family_special_sweep_outcomes_with_gameplay_fixes_on)
     static const SweepCase kSweep[] = {
         {FAMILY_SOLDIER, "soldier", 255u},
         {FAMILY_ARCHER, "archer", 63u},
-        {FAMILY_CLERIC, "cleric", 2u},
+        {FAMILY_CLERIC, "cleric", 6u},  // fix T: RAISE UNDEAD (bit 2) casts
         {FAMILY_MAGE, "mage", 797u},
         {FAMILY_ARCHMAGE, "archmage", 125u},
         {FAMILY_ELF, "elf", 0u},
@@ -1152,6 +1163,10 @@ TEST_F(WalkerSpecials, family_special_sweep_outcomes_with_gameplay_fixes_on)
     };
     // TURN UNDEAD is the shifted press of slots 2 and 3: bits 3 and 5.
     static constexpr int kTurnUndeadBits[] = {3, 5};
+    // RAISE UNDEAD is slot 2 unshifted, bit 2; the raises after it, which
+    // find the stain used up: RAISE GHOST (bit 4) and RESURRECT (6 and 7).
+    static constexpr int kRaiseUndeadBit = 2;
+    static constexpr int kLaterRaiseBits[] = {4, 6, 7};
 
     ensure_level_loaded();
     auto& world = og::runtime::current_session->myscreen_->world();
@@ -1196,6 +1211,18 @@ TEST_F(WalkerSpecials, family_special_sweep_outcomes_with_gameplay_fixes_on)
                     << "cleric TURN UNDEAD at bit " << bit;
                 EXPECT_EQ(1500.0f, mp_after[bit])
                     << "a refused TURN UNDEAD spends nothing (bit " << bit << ")";
+            }
+            // Fix T (#390): the body finds room near the stain.
+            EXPECT_EQ("", reasons[kRaiseUndeadBit])
+                << "cleric RAISE UNDEAD raises the stain the ally stands beside";
+            EXPECT_EQ(1480.0f, mp_after[kRaiseUndeadBit])
+                << "RAISE UNDEAD costs its 20 MP";
+            for (int bit : kLaterRaiseBits)
+            {
+                EXPECT_EQ("NO CORPSE NEARBY", reasons[bit])
+                    << "cleric raise at bit " << bit << ": the one stain was raised";
+                EXPECT_EQ(1500.0f, mp_after[bit])
+                    << "a refused raise spends nothing (bit " << bit << ")";
             }
         }
     }

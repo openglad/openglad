@@ -32,6 +32,7 @@
 
 #include <gtest/gtest.h>
 
+#include <openglad/core/combat_math.h>
 #include <openglad/core/test_trace.h>
 #include <openglad/core/weather.h>
 #include <openglad/gameplay/families/family_string_ids.h>
@@ -3078,6 +3079,21 @@ Tell arrived(float within)
             [within](Run& f) { return gap(f.hero_seen(), f.actor_seen("foe")) <= within; }};
 }
 
+// A walked-in foe stands inside `reach` as the game itself measures it for
+// the special (walker::distance_to_ob, |dx| + |dy| between the top-left
+// corners, the measure find_foes_in_range uses), on or before frame `by`
+// (both sides; the mirror's positions).
+Tell arrived_by(int reach, int by)
+{
+    return {"the foe has walked into the special's reach by frame " + std::to_string(by),
+            [reach, by](Run& f) {
+                const walker* const me = f.hero_seen();
+                const walker* const foe = f.actor_seen("foe");
+                return f.frame <= by && me != nullptr && foe != nullptr && !me->dead() &&
+                       !foe->dead() && me->distance_to_ob(foe) <= reach;
+            }};
+}
+
 // A bot kept on its mark, foe-less and with nothing queued, so every tick is
 // one where it weighs its special; its mana is zero except on the cue frame.
 walker* steer_bot(Run& run, const std::string& name)
@@ -4185,8 +4201,21 @@ std::vector<Pair> pairs()
             says("NO FOE IN RANGE"),
             {"a second scare", [carrier](Run& f) { return f.frame > 94 && carrier(f); }},
         };
+        // The foe's walk differs with the setting on: the soldier bot's
+        // refused special rolls now take its ordinary act (fix W, #371), so
+        // its pauses on the way in fall on other ticks and from frame 81 it
+        // stands 54 px from the ghost centre to centre (52 by the game's
+        // measure), never as close as the 50 px arrived() asks for (with
+        // only that fix undone it reaches 50 on frame 79). What the scene
+        // claims is that the second scare goes off with the foe in its
+        // reach, so this side asks exactly that, at the measured closest
+        // approach: within 52 px by the game's measure, inside the scare's
+        // radius (og::combat::scare_radius, 60 px at level 1, the radius the
+        // cast's own no-foe refusal reads), by the press on frame 94. The
+        // number is its own claim: the cast's refusal two tells below reads
+        // the radius, and this one would red first at 51.
         c.on_shows = {
-            arrived(kInReach),
+            arrived_by(52, 94),
             says("NO FOE IN RANGE"),
             pool_at(13, 120.0f),
             {"the scare goes off at the foe", [carrier](Run& f) { return f.frame >= 94 && carrier(f); }},

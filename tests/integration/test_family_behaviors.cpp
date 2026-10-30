@@ -775,23 +775,49 @@ TEST(FamilyBehaviors, check_special_mage_foe_count)
 }
 
 
-// Skeleton: no foes within 5*GRID_SIZE → true (tunnel), foes nearby → false
+// Skeleton: no foes within 5*GRID_SIZE → true (tunnel), foes nearby → false.
+// A freshly added skeleton is still in its teleport row (ANI_TELE_IN), and
+// the two values of the Gameplay Fixes setting part there. The classic gate
+// (living-04-skeleton.lua check_special_ai) counts foes and nothing else, so
+// it says yes mid-teleport, where the cast itself refuses SPECIAL BUSY. With
+// the setting on (fix W, #371) the gate asks the cast's own first guard
+// too, and says no until the skeleton has arrived.
 TEST(FamilyBehaviors, check_special_skeleton_tunnel)
 {
-    og::runtime::current_session->myscreen_->world().create_new_grid();
+    GameWorld& world = og::runtime::current_session->myscreen_->world();
+    const short fixes_before = world.gameplay_fixes;
+    world.create_new_grid();
     walker* skel = add_living_to_level(FAMILY_SKELETON, 0, 100, 100);
     ASSERT_TRUE(skel != nullptr) << "skeleton created";
     skel->stats()->set_magicpoints(1000);
     skel->set_current_special(1);
+    ASSERT_EQ(ANI_TELE_IN, static_cast<int>(skel->ani_type()))
+        << "a fresh skeleton is mid-teleport";
 
-    // No foes nearby
+    // No foes nearby. The classic game, with the setting held off: the gate
+    // never read the teleport row.
+    world.gameplay_fixes = 0;
     bool result = skel->check_special();
     ASSERT_TRUE(result == true) << "skeleton: no foes should tunnel (true)";
+
+    // The setting on: mid-teleport the gate says no, as the cast would...
+    world.gameplay_fixes = 1;
+    EXPECT_FALSE(skel->check_special())
+        << "fixes on: no foes, but mid-teleport TUNNEL would refuse SPECIAL BUSY";
+    // ...and once the skeleton has arrived, no foes is a yes again.
+    skel->set_ani_type(static_cast<char>(ANI_WALK));
+    EXPECT_TRUE(skel->check_special())
+        << "fixes on: arrived, no foes should tunnel (true)";
 
     // Add foe very close
     add_living_to_level(FAMILY_SOLDIER, 1, 120, 100);
     result = skel->check_special();
-    ASSERT_TRUE(result == false) << "skeleton: foe nearby should not tunnel (false)";
+    EXPECT_FALSE(result) << "fixes on: foe nearby should not tunnel (false)";
+    world.gameplay_fixes = 0;
+    result = skel->check_special();
+    EXPECT_FALSE(result) << "skeleton: foe nearby should not tunnel (false)";
+
+    world.gameplay_fixes = fixes_before;
 }
 
 
