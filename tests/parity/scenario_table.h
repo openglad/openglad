@@ -8531,6 +8531,9 @@ inline constexpr Mutation kMut_soldier_disarm_resisted_price_fixes_scen99 = {
 // tower by -6 and plays SOUND_CHARGE. The busy shows as one tick: the held
 // fire throws at 26 and 58, and without the busy at 25 and 57, so the budget
 // of 58 ticks (events through tick 57) catches the second throw only then.
+// With the setting on and the front probe quiet (fix U) the first throw falls
+// at tick 26 with or without the 5 busy, so the setting-on pin makes the busy
+// longer instead of dropping it.
 inline constexpr FactPredicate kFacts_soldier_disarm_resisted_busy_scen99[] = {
     pred::TickReached(58),
     pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 1),
@@ -8554,8 +8557,8 @@ inline constexpr FactPredicate kFacts_soldier_disarm_resisted_busy_fixes_scen99[
 inline constexpr Mutation kMut_soldier_disarm_resisted_busy_fixes_scen99 = {
     "packs/core/families/living-00-soldier.lua", 123,
     "self:set_busy(og.fadd(self:busy(), 5.0))",
-    "self:set_busy(self:busy())",
-    "Drops the resisted try's 5 busy, so the held fire throws a tick sooner (25 and 57 instead of 26 and 58) and the second throw lands inside the 58-tick budget: EventKindExactly(play_sound, 10) fails.",
+    "self:set_busy(og.fadd(self:busy(), 50.0))",
+    "Makes the resisted try's busy ten times longer, so the held fire never throws inside the budget: EventKindExactly(play_sound, 10) reads 9. (Dropping the 5 busy no longer moves a byte: with the front probe quiet, fix U, the first throw falls at tick 26 with or without it.)",
     "      return false, \"NO ONE TO DISARM\""
 };
 
@@ -8954,7 +8957,8 @@ inline constexpr Mutation kMut_cleric_turn_no_undead_fixes_scen99 = {
 // a faerie next to it) and a hostile stationary TOWER1 16 px west. The classic
 // bot flips a coin between TURN UNDEAD and the raise on its slot-2 rolls; with
 // the setting on it turns only with an undead foe in reach, so every slot-2
-// roll goes to the raise (whose corpse probe draws from the random stream).
+// roll goes to the raise (which with the setting on asks where the body would
+// stand, lib/corpses.lua raise_spot, and draws nothing).
 // The two fights part there: the classic one ends with the cleric's mystic
 // mace out and the tower dead. With the setting on the raise also wants the
 // corpse it would raise within reach and a foe for the risen to fight, so the
@@ -8984,7 +8988,7 @@ inline constexpr Mutation kMut_cleric_bot_raise_or_turn_fixes_scen99 = {
     "packs/core/families/living-05-cleric.lua", 353,
     "if corpses.raise_spot(self, range, body) == nil then",
     "if false then",
-    "Drops the raise's corpse test, so the slot-2 rolls before the faerie dies go to a raise that probes for a corpse and the fight changes: the tower does not end at 16 hp."
+    "Drops the gate's raise_spot test, so the slot-2 rolls before the faerie dies go to a raise that finds no corpse and is refused, and that roll takes the bot's ordinary act (fix W): the fight changes and the tower does not end where the setting-on fight leaves it (measured on the current game: 20 hp unmutated, 39 hp mutated)."
 };
 
 // --- special_cleric_heal_ally_fixes_scen99 (fix J: HEAL) ------------------
@@ -9588,12 +9592,15 @@ inline constexpr FactPredicate kFacts_soldier_bot_disarm_front_fixes_scen99[] = 
     pred::TickReached(5),
     pred::EventKindExactly(/*play_sound*/1, 1,
         "consequence: with the setting on DISARM finds the level-1 foe blocking the bot's front and disarms it on tick 0 (the charge sound)"),
+    pred::WeaponFamilyCount(FAMILY_KNIFE, 0, 0,
+        "consequence: the disarm is the bot's act, so it throws nothing in the budget"),
+    // negative_assertion: no knife flies with the setting on; the mutation flips it: the refused roll takes the bot's ordinary act (fix W), which throws one at tick 4 (0 -> 1).
 };
 inline constexpr Mutation kMut_soldier_bot_disarm_front_fixes_scen99 = {
     "packs/core/families/living-00-soldier.lua", 194,
     "G.ahead_blocked_by_foe(self, 28)",
     "G.ahead_blocked_by_foe(self, 0)",
-    "Shrinks the reach the gate scans to 0 px, so no foe is found blocking the front and DISARM is refused: EventKindExactly(play_sound, 1) reads 0."
+    "Shrinks the reach the gate scans to 0 px, so no foe is found blocking the front and DISARM is refused; the refused roll takes the bot's ordinary act (fix W), which throws a knife at tick 4: WeaponFamilyCount(FAMILY_KNIFE, 0, 0) reads 1 (the throw's sound stands in for the charge sound, so the play_sound count stays 1)."
 };
 
 // --- elf_bot_rocks_far (bot gates: ROCKS want the nearest foe in flight) ----
