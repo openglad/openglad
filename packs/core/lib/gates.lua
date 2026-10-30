@@ -8,7 +8,7 @@
 --      og.find_nearest_foe / og.check_special_ai_distance (find_near_foe
 --      rolls rng(invisibility_left / 20) per cloaked candidate), no loud
 --      og.query_passable or s_forward_blocked() (eat, latch, open, swing);
---      s_forward_blocked(true), og.quiet_passable and fire_pad_clear are ours.
+--      s_forward_blocked(true), og.quiet_passable and fire_pad_clear are ours: no draw, no change.
 --   2. A family whose classic gate acquires a foe (ai.foe_within,
 --      ai.foe_in_window) calls it FIRST through G.with_classic, on both
 --      values of the setting, and tests after.

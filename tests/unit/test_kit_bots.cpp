@@ -217,7 +217,10 @@ TEST(KitBots, unaffordable_priced_alternate_drops_the_shift_only_when_priced)
 // stream goes on with those draws.
 // RED (checked by mutation): the cap applied whatever the setting gives
 // slot 2 for the setting-off bot ("Which is: 2", 1 wanted): the draw that
-// picks the sixth of six slots picks the second of four.
+// picks the sixth of six slots picks the second of four. The setting-on
+// hand went red on the fixed tree while it still expected the roll's draws
+// alone ("the same number of draws on both values"): the ordinary act's
+// draws above are what W2 adds.
 TEST(KitBots, bot_roll_is_identical_with_gameplay_fixes_off)
 {
     og::test::ScopedHookFailureGuard guard;

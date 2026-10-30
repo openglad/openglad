@@ -1082,7 +1082,7 @@ TEST_F(GameplayFixesBots, a_busy_bot_never_rolls_a_busy_cast_with_the_setting_on
         classic_row(mage, 1, true, "MAGE TELEPORT", teleporting, walking);
         ASSERT_NE(nullptr, mage);
         mage->set_shifter_down(0);
-        EXPECT_TRUE(gate(mage, 1, 1));
+        EXPECT_TRUE(gate(mage, 1, 1)) << "idle: TELEPORT";
         EXPECT_EQ(1, mage->shifter_down()) << "idle: the marker";
         busy(mage);
         EXPECT_TRUE(gate(mage, 1, 1)) << "busy: the plain TELEPORT";
@@ -1101,7 +1101,7 @@ TEST_F(GameplayFixesBots, a_busy_bot_never_rolls_a_busy_cast_with_the_setting_on
         classic_row(arch, 1, true, "ARCHMAGE TELEPORT", teleporting, walking);
         ASSERT_NE(nullptr, arch);
         arch->set_shifter_down(0);
-        EXPECT_TRUE(gate(arch, 1, 1));
+        EXPECT_TRUE(gate(arch, 1, 1)) << "idle: TELEPORT";
         EXPECT_EQ(1, arch->shifter_down()) << "idle: the marker";
         busy(arch);
         EXPECT_TRUE(gate(arch, 1, 1)) << "busy: the plain TELEPORT";
