@@ -1040,6 +1040,10 @@ short living::check_special()
 				// is also every other slot
 				static const int volleys[5][2] = { { 2, 5 }, { 1, 2 }, { 1, 3 }, { 2, 4 }, { 2, 5 } };
 				int v = (current_special >= 1 && current_special <= 4) ? current_special : 4;
+				// port of the current game's 9953b30b (Gameplay Fixes V): and the
+				// rock's pad is clear, or the cast refuses COULD NOT FIRE
+				if (!bg_pad_clear(this))
+					return 0;
 				walker *target = bg_nearest_living_foe(this, 320);
 				if (!target || !bg_faces(this, target)
 				        || !bg_in_flight(this, target, 5, 8, volleys[v][1], 2, 0))

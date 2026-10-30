@@ -420,6 +420,16 @@ static inline walker *bg_rush_strikes(walker *self, int steps)
 	return NULL;
 }
 
+// port of the current game's 9953b30b (Gameplay Fixes V): the pad fire()
+// would place the caster's weapon on is clear: the weapon would fly instead
+// of meeting a wall, a door, the map edge or a foe's body there
+// (walker::fire_pad_clear, the same spot and the same weapon rules, asked
+// quietly). A body of the caster's own team passes, as the weapon passes it.
+static inline bool bg_pad_clear(walker *self)
+{
+	return self->fire_pad_clear();
+}
+
 // The old game has no priced alternates: a Shift costs the slot's price.
 static inline bool bg_can_pay(walker *self, int slot)
 {
