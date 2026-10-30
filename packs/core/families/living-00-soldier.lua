@@ -188,8 +188,8 @@ local function fixed(self, classic_answer)
     local out = G.owned(self, C.ORDER_FX, FX_BOOMERANG)
     return out == 0 and G.foes_within(self, 1, 17 + 6 * self.level, false)
   end
-  if slot == 3 then
-    return G.targets_within(self, 2, 32 + 2 * self.level)
+  if slot == 3 or gf.special_busy(self) then  -- a busy DISARM is refused here too
+    return not gf.special_busy(self) and G.targets_within(self, 2, 32 + 2 * self.level)
   end
   local f = G.ahead_blocked_by_foe(self, 28)
   return f ~= nil and f.level <= self.level

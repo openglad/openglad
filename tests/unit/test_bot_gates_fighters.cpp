@@ -329,6 +329,44 @@ TEST_F(GameplayFixesBots, soldier_charge_refuses_a_door_in_the_rush_path)
     EXPECT_FALSE(gate(soldier, 1, 1)) << "the fifth step meets the door";
 }
 
+// WHIRLWIND and DISARM refuse SPECIAL BUSY while the fire delay runs
+// (gf.special_busy, the casts' first guard), so with the setting on their
+// gates ask it too (Gameplay Fixes W). The classic gate never did.
+//
+// RED (the gate without the busy guard): busy 3 with two targets in the
+// spin, the gate says yes with the setting on.
+TEST_F(GameplayFixesBots, soldier_whirlwind_waits_out_its_busy)
+{
+    living* soldier = body(add(FAMILY_SOLDIER, 1, 200, 200, 7, 300.0f), 16, 16);
+    living* first = body(add(FAMILY_TOWER1, 2, 230, 200, 1), 25, 29);   // 30 px
+    living* second = body(add(FAMILY_TOWER1, 2, 200, 244, 1), 25, 29);  // 44 px
+    ASSERT_TRUE(soldier && first && second);
+
+    EXPECT_TRUE(gate(soldier, 3, 1)) << "two in the spin, not busy";
+    soldier->set_busy(3.0f);
+    EXPECT_TRUE(gate(soldier, 3, 0)) << "the classic answer: a foe inside the window";
+    EXPECT_FALSE(gate(soldier, 3, 1)) << "busy 3: the cast would say SPECIAL BUSY";
+    soldier->set_busy(-0.5f);
+    EXPECT_TRUE(gate(soldier, 3, 1)) << "busy below zero is not busy with the setting on";
+}
+
+// RED (the gate without the busy guard): busy 3 with a tower blocking the
+// front, the gate says yes with the setting on.
+TEST_F(GameplayFixesBots, soldier_disarm_waits_out_its_busy)
+{
+    living* soldier = body(add(FAMILY_SOLDIER, 1, 200, 200, 10, 300.0f), 16, 16);
+    // A 25 x 29 tower whose bottom edge meets the soldier's top: it blocks
+    // the step up, and its corner is 28 px off, inside the classic window.
+    living* tower = body(add(FAMILY_TOWER1, 2, 200, 172, 1), 25, 29);
+    ASSERT_TRUE(soldier && tower);
+    soldier->set_curdir(FACE_UP);
+
+    EXPECT_TRUE(gate(soldier, 4, 1)) << "the tower blocks the front, not busy";
+    soldier->set_busy(3.0f);
+    EXPECT_TRUE(gate(soldier, 4, 0)) << "the classic answer: 28 px is inside the window";
+    EXPECT_FALSE(gate(soldier, 4, 1)) << "busy 3: the cast would say SPECIAL BUSY";
+}
+
 // ---------------------------------------------------------------------------
 // The elf
 // ---------------------------------------------------------------------------
