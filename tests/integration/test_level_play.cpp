@@ -18,9 +18,12 @@
 // lines every tick, so a cast is counted exactly once, under the name the HUD
 // gives it.
 //
-// What it asserts (the pooled floors in B are at most a quarter of the pooled
-// measurement, or 1 where that is 2 to 5 casts; the per-seed floors in A sit
-// at a half to three quarters of the lowest seed's measurement):
+// What it asserts (the floors were set from the 5b288bd7 measurement: the
+// pooled floors in B at a quarter of it, or 1 where it was 2 to 5 casts, the
+// per-seed floors in A at a half to three quarters of the lowest seed; the
+// Gameplay Fixes batch moved the stream and left every floor where it was,
+// since a floor is never lowered to pass; the thinnest today is MAGE WARP
+// SPACE, 1 cast against a floor of 1):
 //   A  per seed: >= 250 casts, >= 28 different specials, >= 50 different
 //      casters, >= 30 casters with two or more specials, a crew member alive
 //      at the end;
@@ -35,33 +38,44 @@
 //      crew's level and at the bots' (8 or less, which D checks too);
 //   E  the gates and the casts agree: no gate says yes to a cast that then
 //      refuses for the fact the gate reads (NO FOE, NO CORPSE, NO UNDEAD, NO
-//      TARGET, NO ALLY), and SPECIAL BUSY and NOT ENOUGH MP refusals stay rare.
+//      TARGET, NO ALLY); SPECIAL BUSY, the soldier's PATH BLOCKED and the
+//      elf's COULD NOT FIRE are capped at the measured count plus a third (at
+//      least 3), and NOT ENOUGH MP refusals stay rare.
 //   A replay of seed 42 gives the same casts in the same order.
 //
-// Measured (5b288bd7 plus the trace), casts per seed 42 / 1337 / 2025 [pooled]:
-//   total casts 553 / 480 / 596 [1629]; distinct (family, special) 39 / 37 / 42
-//   [46]; distinct casters 92 / 90 / 104; casters with >= 2 specials 62 / 64 / 71
-//   ARCHER FIRE ARROWS 126/91/71 [288] BARRAGE 33/25/15 [73] EXPLODING BOLT 2/0/0
-//   ARCHMAGE CHAIN LIGHTNING 1/8/3 [12] HEARTBURST 2/2/4 [8] TELEPORT 5/11/4 [20]
-//            TELEPORT MARKER 0/1/0
-//   CLERIC HEAL 112/39/88 [239] MYSTIC MACE 5/6/3 [14] TURN UNDEAD 2/5/2 [9]
-//          RAISE UNDEAD 1/1/1
-//   DRUID SUMMON FAERIE 4/1/8 [13] GROW TREE 0/1/0 PROTECTION 1/0/0 REVEAL 0/0/0
-//   ELEMENTAL STARBURST 27/16/29 [72] IMMOLATE 2/3/2 [7]
-//   ELF ROCKS 11/11/17 [39] BOUNCING ROCKS 0/1/3 MEGA ROCKS 0/0/1
-//   FAERIE BLINK 2/1/1 GLIMMER 0/1/6 HASTE SELF 1/0/3 HASTEN 0/2/4
-//   GHOST SCARE 17/15/16 [48] WAIL 1/1/1 [3]
-//   MAGE TELEPORT 14/9/3 [26] TELEPORT MARKER 2/0/1 WARP SPACE 2/2/3 [7]
-//        HEARTBURST 10/0/1 [11] FREEZE TIME 1/0/1 [2]
-//   ORC CAPTAIN HOOK BLADE 5/2/2 [9] HOWL 5/3/3 [11]
-//   SKELETON TUNNEL 45/120/160 [325] DIG IN 8/0/12 [20]
-//   SLIME GROW 1/3/3 [7] SPLIT 0/2/2 [4]
-//   SOLDIER BOOMERANG 42/38/34 [114] CHARGE 20/9/34 [63] WHIRLWIND 1/1/1 [3]
-//   THIEF CLOAK 13/20/13 [46] TAUNT ENEMY 19/15/20 [54] CHARM OPPONENT 3/7/8 [18]
-//         MINE 2/4/3 [9] DROP BOMB 2/1/6 [9]
-//   BARBARIAN HURL BOULDER 2/2/3 [7] EXPLODING BOULDER 1/0/1
-//   refusals after the roll: SPECIAL BUSY 50/50/57 [157] (cap 200), NOT ENOUGH
-//   MP 18/22/21 [61] (cap 100; the shoved cleric's ungated heal not counted)
+// Measured with every Gameplay Fixes fix in (T to W, the shipped default,
+// 2026-10-30), casts per seed 42 / 1337 / 2025 [pooled]:
+//   total casts 423 / 479 / 367 [1269]; distinct (family, special) 37 / 38 / 39
+//   [46]; distinct casters 93 / 93 / 90; casters with >= 2 specials 37 / 42 / 40;
+//   crew alive at the end 7 / 6 / 10
+//   ARCHER FIRE ARROWS 70/118/67 [255] BARRAGE 17/31/23 [71] EXPLODING BOLT 0/3/0
+//   ARCHMAGE CHAIN LIGHTNING 6/2/2 [10] HEARTBURST 1/1/3 [5] TELEPORT 2/0/4 [6]
+//            TELEPORT MARKER 0/1/0 SUMMON IMAGE 0/0/1
+//   CLERIC HEAL 36/40/32 [108] MYSTIC MACE 7/7/7 [21] TURN UNDEAD 5/6/4 [15]
+//          RAISE UNDEAD 1/3/0 [4] RAISE GHOST 0/2/1 [3]
+//   DRUID SUMMON FAERIE 6/3/3 [12] GROW TREE 0/0/0 PROTECTION 0/0/0 REVEAL 0/0/0
+//   ELEMENTAL STARBURST 15/26/25 [66] IMMOLATE 3/3/1 [7]
+//   ELF ROCKS 22/11/18 [51] BOUNCING ROCKS 2/0/2 [4] LOTS OF ROCKS 0/0/2
+//       MEGA ROCKS 0/0/1
+//   FAERIE GLIMMER 2/2/3 [7] HASTE SELF 1/1/1 [3] HASTEN 1/3/1 [5] BLINK 0/0/0
+//   GHOST SCARE 12/7/11 [30] WAIL 1/1/1 [3]
+//   MAGE TELEPORT 10/14/5 [29] TELEPORT MARKER 2/0/0 WARP SPACE 0/1/0
+//        HEARTBURST 2/0/3 [5] ENERGY WAVE 0/0/1 FREEZE TIME 0/0/0 (the crew
+//        mages' gate held 18 FREEZE TIME rolls)
+//   ORC CAPTAIN HOOK BLADE 2/5/3 [10] HOWL 4/4/2 [10]
+//   SKELETON TUNNEL 92/90/61 [243] DIG IN 16/2/2 [20]
+//   SLIME GROW 1/1/1 [3] SPLIT 0/2/2 [4]
+//   SOLDIER BOOMERANG 31/32/28 [91] CHARGE 13/12/10 [35] WHIRLWIND 2/1/2 [5]
+//   THIEF CLOAK 12/9/11 [32] TAUNT ENEMY 5/11/9 [25] CHARM OPPONENT 5/4/5 [14]
+//         MINE 5/4/5 [14] DROP BOMB 3/12/4 [19]
+//   BARBARIAN HURL BOULDER 6/3/0 [9] EXPLODING BOULDER 2/1/0 [3]
+//   refusals after the roll: SPECIAL BUSY 0/3/1 [4] (cap 6; the mage bot's
+//   own hit response, which asks no gate), NOT ENOUGH MP 0/5/14 [19] (cap 100),
+//   soldier PATH BLOCKED 0/0/0 (cap 3), elf COULD NOT FIRE 3/2/0 [5] (cap 7);
+//   rolls the gates held, each now the bot's ordinary act: 971/890/837 [2698].
+//   At 5b288bd7, before the fixes, the same seeds read 553 / 480 / 596 casts,
+//   SPECIAL BUSY 157, NOT ENOUGH MP 61, soldier PATH BLOCKED 139 and elf
+//   COULD NOT FIRE 80 (docs/gameplay-fixes.md, "Level play").
 //
 // The classic bots (OG_CALIBRATION_GAMEPLAY_FIXES=0) cast MORE and show MORE
 // different specials, because they cast at nobody: A and B alone cannot tell
@@ -69,23 +83,25 @@
 // red (recorded below, RED WITH THE CLASSIC BOTS).
 //
 // RED WITH THE CLASSIC BOTS (OG_CALIBRATION_GAMEPLAY_FIXES=0, measured on
-// the same three seeds): 800 / 813 / 864 casts, 52 different specials pooled,
-// and
-//   C  REVEAL cast 29 times;
-//   D  217 casts at nobody (the first: tick 1, a druid summons a faerie at a
-//      foe 192 px away, R 162; clerics macing with nobody near 89, elves
-//      throwing rocks 39, thieves bombing 35 and cloaking 20, druids growing
-//      trees 19);
-//   E  176 fact refusals (the first: tick 16, the cleric's TURN UNDEAD coin
-//      with NO FOE IN RANGE), 1069 SPECIAL BUSY refusals (cap 200), 643 NOT
-//      ENOUGH MP (cap 100; 534 of them the classic cleric macing at an
-//      empty pool with Shift left down after a shove);
+// the same three seeds, 2026-10-30): 804 / 873 / 906 casts, 51 different
+// specials pooled, and
+//   C  REVEAL cast 30 times;
+//   D  245 casts at nobody (the first: tick 1, a druid summons a faerie at a
+//      foe 192 px away, reach 162; clerics macing with nobody near 86, elves
+//      throwing rocks 73, thieves bombing 37 and cloaking 25, druids growing
+//      trees 16);
+//   E  199 fact refusals (the first: tick 16, the cleric's TURN UNDEAD coin
+//      with NO FOE IN RANGE), 1090 SPECIAL BUSY refusals (cap 6; 857 of them
+//      the classic cleric macing with Shift left down after a shove), 338 NOT
+//      ENOUGH MP (cap 100; 262 of them that cleric at an empty pool), 337
+//      soldier PATH BLOCKED (cap 3) and 151 elf COULD NOT FIRE (cap 7);
 //   B  MAGE HEARTBURST 0 (the classic roll turns a slot above 4 into slot 1,
 //      so the crew's level-14 mages never cast their slot 5).
-// With OG_CALIBRATION_NEW_SPECIALS=0 the kit specials go missing instead: B
-// reds on ORC CAPTAIN, FAERIE, ELEMENTAL and SKELETON variety, on IMMOLATE,
-// HOOK BLADE, HOWL, DIG IN, MINE, WAIL, HASTE SELF and FREEZE TIME, and one
-// seed shows 27 specials (floor 28). That setting is not run in CI.
+// With OG_CALIBRATION_NEW_SPECIALS=0 the kit specials go missing instead
+// (measured 2026-10-30): B reds on ORC CAPTAIN, FAERIE, ELEMENTAL and SKELETON
+// variety, on IMMOLATE, HOOK BLADE, HOWL, DIG IN, MINE, WAIL and HASTE SELF
+// and on the crew faerie, and A reds on one seed with 27 specials (floor 28)
+// and 29 versatile casters (floor 30). That setting is not run in CI.
 //
 // What this test must not do: change the level, a gate or the pack Lua to go
 // green; swap a seed; drop a special from a list; raise a reach; widen a cap.
@@ -776,15 +792,19 @@ TEST_F(TryxianLevelPlay, bots_fire_varying_specials_at_somebody)
     for (const Play& p : plays)
     {
         std::set<SpecialKey> distinct;
-        std::set<unsigned> casters;
+        std::map<unsigned, std::set<SpecialKey>> casters;
         for (const Cast& c : p.casts)
         {
             distinct.insert(c.key);
-            casters.insert(c.id);
+            casters[c.id].insert(c.key);
         }
-        std::printf("seed %u: %zu casts, %zu specials, %zu casters, crew alive %d at 1200 "
-                    "and %d at %d, %.0f ms\n",
-                    p.seed, p.casts.size(), distinct.size(), casters.size(),
+        int versatile = 0;
+        for (const auto& [id, k] : casters)
+            if (k.size() >= 2)
+                ++versatile;
+        std::printf("seed %u: %zu casts, %zu specials, %zu casters (%d with two or more "
+                    "specials), crew alive %d at 1200 and %d at %d, %.0f ms\n",
+                    p.seed, p.casts.size(), distinct.size(), casters.size(), versatile,
                     p.crew_alive_1200, p.crew_alive_2400, kTicks, p.ms);
         ::testing::Test::RecordProperty("casts_seed_" + std::to_string(p.seed),
                                         static_cast<int>(p.casts.size()));
@@ -823,11 +843,11 @@ TEST_F(TryxianLevelPlay, bots_fire_varying_specials_at_somebody)
         for (const auto& [id, k] : kinds)
             if (k.size() >= 2)
                 ++versatile;
-        EXPECT_GE(p.casts.size(), 250u) << "the bots should cast (measured 480-596)";
-        EXPECT_GE(distinct.size(), 28u) << "the bots should cast many specials (measured 37-42)";
-        EXPECT_GE(kinds.size(), 50u) << "many bots should cast (measured 90-104)";
-        EXPECT_GE(versatile, 30) << "many bots should cast two specials or more (measured 62-71)";
-        EXPECT_GE(p.crew_alive_2400, 1) << "the crew should still be in the level (measured 6-9)";
+        EXPECT_GE(p.casts.size(), 250u) << "the bots should cast (measured 367-479)";
+        EXPECT_GE(distinct.size(), 28u) << "the bots should cast many specials (measured 37-39)";
+        EXPECT_GE(kinds.size(), 50u) << "many bots should cast (measured 90-93)";
+        EXPECT_GE(versatile, 30) << "many bots should cast two specials or more (measured 37-42)";
+        EXPECT_GE(p.crew_alive_2400, 1) << "the crew should still be in the level (measured 6-10)";
     }
 
     // ---- B1: the families show their specials -----------------------------
@@ -878,11 +898,11 @@ TEST_F(TryxianLevelPlay, bots_fire_varying_specials_at_somebody)
         << "a TELEPORT MARKER (a Shift arm) should be cast";
 
     // ---- B4: the crew's own bots ------------------------------------------
-    EXPECT_GE(crew_casts, 40) << "the crew's own bots should cast (measured ~160)";
+    EXPECT_GE(crew_casts, 40) << "the crew's own bots should cast (measured 146)";
     EXPECT_GE(crew_specials.size(), 10u)
-        << "the crew's own bots should cast many specials (measured ~20)";
+        << "the crew's own bots should cast many specials (measured 24)";
     EXPECT_GE(crew_count("MAGE", "HEARTBURST"), 2)
-        << "the crew mages should roll slot 5 HEARTBURST (measured 11)";
+        << "the crew mages should roll slot 5 HEARTBURST (measured 5; 11 before the fixes)";
     // FREEZE TIME is slot 3, rolled only with its 500 pool saved (an
     // unaffordable slot folds onto slot 1 in check_special), and its gate
     // says yes only while three foes are at blows with the crew, which holds
