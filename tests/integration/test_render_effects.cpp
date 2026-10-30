@@ -7546,6 +7546,67 @@ TEST_F(RenderEffects, brightness_survives_every_palette_set)
         << "brightness 0 must be byte-identical to the un-hooked path";
 }
 
+// FREEZE TIME (#365): the time stop switches the display to bluepalette, and
+// that palette must actually be blue. It is our.pal with red and green halved
+// from entry 32 on (the mirror of the red-shifted palette); the two grey
+// ramps below 32 stay as they are. The pixel half proves the switch reaches
+// the screen and that switching back restores the normal colours.
+TEST_F(RenderEffects, freeze_time_palette_is_blue_shifted)
+{
+    BrightnessGuard guard;
+    set_display_brightness_steps(0);
+    const std::array<unsigned char, 768>& our = scr()->ourpalette;
+    const std::array<unsigned char, 768>& blue = scr()->bluepalette;
+
+    for (std::size_t i = 0; i < 32; ++i)
+    {
+        for (std::size_t c = 0; c < 3; ++c)
+            ASSERT_EQ(our[i * 3 + c], blue[i * 3 + c])
+                << "entry " << i << " component " << c
+                << ": the grey ramps below 32 keep their colour";
+    }
+    for (std::size_t i = 32; i < 256; ++i)
+    {
+        ASSERT_EQ(our[i * 3 + 0] / 2, blue[i * 3 + 0])
+            << "entry " << i << ": red is halved";
+        ASSERT_EQ(our[i * 3 + 1] / 2, blue[i * 3 + 1])
+            << "entry " << i << ": green is halved";
+        ASSERT_EQ(our[i * 3 + 2], blue[i * 3 + 2])
+            << "entry " << i << ": blue is kept";
+    }
+    // One entry by its numbers, so the loop above cannot just restate the
+    // code: entry 100 is (45,24,45) in our.pal.
+    ASSERT_EQ(45, our[300]);
+    ASSERT_EQ(24, our[301]);
+    ASSERT_EQ(45, our[302]);
+    EXPECT_EQ(22, blue[300]);
+    EXPECT_EQ(12, blue[301]);
+    EXPECT_EQ(45, blue[302]);
+
+    constexpr unsigned char kSpot = 100;
+    constexpr int kX = 40;
+    constexpr int kY = 40;
+    const auto paint_and_read = [&] {
+        ScopedCanvasTarget world_canvas(*scr(), CanvasTarget::World);
+        scr()->fastbox(kX, kY, 4, 4, kSpot);
+        return px(kX + 1, kY + 1);
+    };
+
+    dispatch_set_palette_event(1);
+    EXPECT_EQ(1, static_cast<int>(scr()->world().current_palette_id));
+    const RGB frozen = paint_and_read();
+    EXPECT_EQ(88, frozen.r) << "the time stop draws colour 100 blue";
+    EXPECT_EQ(48, frozen.g);
+    EXPECT_EQ(180, frozen.b);
+
+    dispatch_set_palette_event(0);
+    EXPECT_EQ(0, static_cast<int>(scr()->world().current_palette_id));
+    const RGB thawed = paint_and_read();
+    EXPECT_EQ(180, thawed.r) << "the thaw draws colour 100 in its own colour";
+    EXPECT_EQ(96, thawed.g);
+    EXPECT_EQ(180, thawed.b);
+}
+
 // The boot seed: the applied gamma comes from cfg, which is what the old
 // prefs[PREF_GAMMA] never did (viewscreen::gamma was constructed at 0 and
 // the stored pref was never read back).

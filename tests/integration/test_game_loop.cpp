@@ -48,6 +48,7 @@
 #include <openglad/interface/input_hardware_state.h>
 #include <openglad/interface/native_input.h>
 #include <openglad/gameplay/walker.h>
+#include <openglad/interface/render/pal32.h>
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/render/walker_draw.h>
 #include <openglad/interface/screen.h>
@@ -62,6 +63,7 @@
 // myscreen is now a macro defined in base.h (via game_session.h)
 
 short load_saved_game(const char* filename, screen* scr);
+extern bool g_test_remove_exits;
 void glad_init(
     bool preserve_frame_timing,
     const og::ui::PickerLobbyGameStartConfig* lobby_config);
@@ -789,6 +791,190 @@ TEST(GameLoop, game_frame_with_result_done_when_end_is_set)
     ASSERT_TRUE(st.done) << "state.done should be set when end is set";
 
     og::runtime::current_session->myscreen_->world().end = old_end;
+}
+
+namespace {
+// FREEZE TIME's palette and the end of a mission (#365). The display keeps
+// whatever palette the last SetPalette gave it, so a time stop still running
+// when the mission ends must not follow the player out of it.
+bool display_palette_is(const std::array<unsigned char, 768>& want)
+{
+    const std::array<unsigned char, 768>& shown =
+        og::runtime::current_session->curpal_;
+    return std::equal(want.begin(), want.end(), shown.begin());
+}
+
+void dispatch_display_palette(screen& display, std::uint32_t palette_id)
+{
+    og::sim::SimEventBatch batch;
+    og::sim::Event event;
+    event.kind = og::sim::EventKind::SetPalette;
+    event.a = palette_id;
+    event.b = 0u;
+    batch.events.push_back(std::move(event));
+    display.dispatch_cosmetic_events(batch);
+}
+
+// The palette tests compare raw palettes, which only reach the display
+// byte for byte at brightness 0; the normal palette goes back on the way out.
+struct FreezePaletteGuard
+{
+    Sint32 saved_steps = display_brightness_steps();
+    bool saved_remove_exits = g_test_remove_exits;
+    FreezePaletteGuard() { set_display_brightness_steps(0); }
+    ~FreezePaletteGuard()
+    {
+        g_test_remove_exits = saved_remove_exits;
+        set_display_brightness_steps(saved_steps);
+        screen* const display = og::runtime::current_session->myscreen_;
+        display->world().current_palette_id = 0;
+        set_palette(display->ourpalette);
+    }
+    FreezePaletteGuard(const FreezePaletteGuard&) = delete;
+    FreezePaletteGuard& operator=(const FreezePaletteGuard&) = delete;
+};
+
+void write_one_soldier_company(screen& display)
+{
+    SaveData& save = display.save_data;
+    save.reset();
+    save.current_campaign = "gladiator";
+    save.current_levels[save.current_campaign] = 1;
+    save.scen_num = 1;
+    save.numplayers = 1;
+    save.my_team = 0;
+    auto leader = std::make_unique<guy>(FAMILY_SOLDIER);
+    leader->name = "Leader";
+    leader->teamnum = 0;
+    save.team_list[0] = std::move(leader);
+    save.team_size = 1;
+    ASSERT_TRUE(save.save("save0"));
+}
+
+GameLoopDeps headless_frame_deps()
+{
+    GameLoopDeps deps;
+    deps.enable_render = false;
+    deps.enable_event_poll = false;
+    deps.enable_frame_timing = false;
+    return deps;
+}
+} // namespace
+
+TEST(GameLoop, a_mission_that_ends_frozen_leaves_with_its_own_colours)
+{
+    screen* const display = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(display != nullptr);
+    FreezePaletteGuard guard;
+    write_one_soldier_company(*display);
+
+    glad_init();
+    ASSERT_TRUE(og::runtime::current_game_session != nullptr);
+    og::runtime::GameSession& session = *og::runtime::current_game_session;
+    ASSERT_TRUE(og::runtime::local_transport_active(session));
+
+    // The display is in a time stop.
+    dispatch_display_palette(*display, 1u);
+    ASSERT_EQ(1, static_cast<int>(display->world().current_palette_id));
+    ASSERT_TRUE(display_palette_is(display->bluepalette))
+        << "the time stop must reach the display before the mission ends";
+    ASSERT_FALSE(display_palette_is(display->ourpalette))
+        << "the blue palette must differ from the normal one";
+
+    // The mission ends while it lasts.
+    display->world().end = 1;
+    GameLoopFrameState st;
+    const GameLoopDeps deps = headless_frame_deps();
+    EXPECT_EQ(static_cast<int>(GameFrameResult::Done),
+              static_cast<int>(game_frame_with_result(*display, st, deps)));
+    EXPECT_TRUE(st.done);
+
+    EXPECT_EQ(0, static_cast<int>(display->world().current_palette_id))
+        << "the menus after the mission are not in a time stop";
+    EXPECT_TRUE(display_palette_is(display->ourpalette))
+        << "the mission must leave the screen in its own colours";
+
+    display->world().end = 0;
+    og::runtime::clear_local_transport_shadow(session);
+    display->world().delete_objects();
+}
+
+// The same, through the real end of a level: the last foe dies while time is
+// frozen, so the level-end batch itself re-sends the frozen palette id.
+TEST(GameLoop, a_level_won_during_a_time_stop_leaves_with_its_own_colours)
+{
+    screen* const display = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(display != nullptr);
+    FreezePaletteGuard guard;
+    write_one_soldier_company(*display);
+    g_test_remove_exits = true;
+
+    glad_init();
+    ASSERT_TRUE(og::runtime::current_game_session != nullptr);
+    og::runtime::GameSession& session = *og::runtime::current_game_session;
+    ASSERT_TRUE(og::runtime::local_transport_active(session));
+    screen* const server =
+        og::runtime::local_transport_shadow_testing_server_screen(session);
+    ASSERT_NE(nullptr, server);
+
+    GameLoopFrameState st;
+    const GameLoopDeps deps = headless_frame_deps();
+    for (int i = 0; i < 4; ++i)
+        ASSERT_EQ(static_cast<int>(GameFrameResult::Continue),
+                  static_cast<int>(game_frame_with_result(*display, st, deps)));
+
+    // A time stop on the server, as FREEZE TIME casts it.
+    server->world().enemy_freeze = 200;
+    server->world().current_palette_id = 1;
+    dispatch_display_palette(*display, 1u);
+    for (int i = 0; i < 4; ++i)
+        ASSERT_EQ(static_cast<int>(GameFrameResult::Continue),
+                  static_cast<int>(game_frame_with_result(*display, st, deps)));
+    ASSERT_EQ(1, static_cast<int>(display->world().current_palette_id))
+        << "the frozen level keeps the display in the time stop";
+    ASSERT_TRUE(display_palette_is(display->bluepalette));
+
+    // The last foes die while time is frozen.
+    int killed = 0;
+    for (auto& uptr : server->world().oblist)
+    {
+        walker* const w = uptr.get();
+        if (w != nullptr && !w->dead() && w->query_order() == Order::Living &&
+            w->team_num() != 0)
+        {
+            w->set_dead(1);
+            ++killed;
+        }
+    }
+    ASSERT_GT(killed, 0) << "the level must have foes to kill";
+
+    trace_clear();
+    GameFrameResult result = GameFrameResult::Continue;
+    int frames = 0;
+    while (result == GameFrameResult::Continue && frames < 200)
+    {
+        result = game_frame_with_result(*display, st, deps);
+        ++frames;
+    }
+    ASSERT_EQ(static_cast<int>(GameFrameResult::Done), static_cast<int>(result))
+        << "the level never ended after " << frames << " frames";
+    EXPECT_EQ(0, static_cast<int>(display->world().ending))
+        << "the level ended as a win";
+    EXPECT_GT(server->world().enemy_freeze, 0)
+        << "time was still frozen when the level ended";
+
+    EXPECT_EQ(0, static_cast<int>(display->world().current_palette_id))
+        << "the menus after the mission are not in a time stop";
+    EXPECT_TRUE(display_palette_is(display->ourpalette))
+        << "the won level must leave the screen in its own colours";
+    EXPECT_TRUE(trace_contains("endgame", "results screen palette 0"))
+        << "the results screen must be drawn in the level's own colours";
+    EXPECT_FALSE(trace_contains("endgame", "results screen palette 1"))
+        << "the results screen must not be drawn in the time stop's colours";
+
+    display->world().end = 0;
+    og::runtime::clear_local_transport_shadow(session);
+    display->world().delete_objects();
 }
 
 namespace {
@@ -6080,6 +6266,80 @@ TEST(GameLoop, game_frame_escape_pause_menu_quit_and_restart_outcomes)
     og::ui::pause_menu_testing_clear_queue();
     game_screen->world().end = 0;
     game_screen->world().delete_objects();
+}
+
+// PAUSED's QUIT and RESTART end the mission without passing finish_done:
+// a time stop still running then must not follow the player out either
+// (#365). QUIT shows the results over the normal colours.
+TEST(GameLoop, quitting_or_restarting_a_frozen_mission_leaves_with_its_own_colours)
+{
+    screen* const display = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(display != nullptr);
+    FreezePaletteGuard guard;
+    write_one_soldier_company(*display);
+    GameSpeedGuard speed_guard(0.0f);
+
+    const auto escape_into = [&](og::ui::PauseMenuResult outcome) {
+        glad_init();
+        EXPECT_TRUE(og::runtime::local_transport_active(*og::runtime::current_session));
+        // A time stop on the server, as FREEZE TIME casts it, and on the
+        // display: the abort's last snapshot carries the frozen id too.
+        screen* const server =
+            og::runtime::local_transport_shadow_testing_server_screen(
+                *og::runtime::current_game_session);
+        EXPECT_NE(nullptr, server);
+        if (server != nullptr)
+        {
+            server->world().enemy_freeze = 200;
+            server->world().current_palette_id = 1;
+        }
+        dispatch_display_palette(*display, 1u);
+        EXPECT_TRUE(display_palette_is(display->bluepalette))
+            << "the time stop reached the display";
+        EXPECT_FALSE(display_palette_is(display->ourpalette));
+
+        og::ui::pause_menu_testing_clear_queue();
+        og::ui::pause_menu_testing_queue_outcome(outcome, /*release_pause=*/false);
+        EventScript script;
+        SDL_Event e{};
+        e.type = SDL_EVENT_KEY_DOWN;
+        e.key.key = SDLK_ESCAPE;
+        script.events.push_back(e);
+        g_script = &script;
+        GameLoopFrameState st;
+        GameLoopDeps deps;
+        deps.enable_render = false;
+        deps.enable_event_poll = true;
+        deps.enable_frame_timing = false;
+        deps.poll_event = scripted_poll_adapter;
+        const GameFrameResult result = game_frame_with_result(*display, st, deps);
+        g_script = nullptr;
+        return result;
+    };
+
+    EXPECT_EQ(static_cast<int>(GameFrameResult::AbortedMission),
+              static_cast<int>(escape_into(og::ui::PauseMenuResult::Quit)));
+    EXPECT_EQ(0, static_cast<int>(display->world().current_palette_id))
+        << "QUIT leaves the time stop behind";
+    EXPECT_TRUE(display_palette_is(display->ourpalette))
+        << "QUIT leaves the screen in its own colours";
+    og::runtime::clear_local_transport_shadow(*og::runtime::current_game_session);
+    display->world().delete_objects();
+    display->world().end = 0;
+    display->world().retry = false;
+
+    EXPECT_EQ(static_cast<int>(GameFrameResult::AbortedMission),
+              static_cast<int>(escape_into(og::ui::PauseMenuResult::Restart)));
+    EXPECT_EQ(0, static_cast<int>(display->world().current_palette_id))
+        << "RESTART leaves the time stop behind";
+    EXPECT_TRUE(display_palette_is(display->ourpalette))
+        << "RESTART leaves the screen in its own colours";
+    og::runtime::clear_local_transport_shadow(*og::runtime::current_game_session);
+    display->world().delete_objects();
+
+    og::ui::pause_menu_testing_clear_queue();
+    display->world().end = 0;
+    display->world().retry = false;
 }
 
 // Regression: in a local split-screen game, a NON-display player (here player 2)
