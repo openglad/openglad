@@ -3222,7 +3222,7 @@ void play_pair(const Pair& pair, PairResult& out)
 
 // ---- the scenes ------------------------------------------------------------
 
-// The 22 scenes, each with both sides' tells, in the order the tests play
+// The 23 scenes, each with both sides' tells, in the order the tests play
 // them.
 std::vector<Pair> pairs()
 {
@@ -3273,6 +3273,9 @@ std::vector<Pair> pairs()
             pool_at(20, 50.0f),
             {"so BOOMERANG is NOT ENOUGH MP",
              [](Run& f) { return f.frame >= 44 && voiced(f, "NOT ENOUGH MP"); }},
+            // The cast's front probe bumps the tower: the swing's knife
+            // takes its 2 MP on the next frame (50 -> 48).
+            pool_at(30, 48.0f),
         };
         c.off_never = {
             says("DISARM RESISTED"),
@@ -3283,6 +3286,9 @@ std::vector<Pair> pairs()
             pool_guard(19, 200.0f),
             says("DISARM RESISTED"),
             pool_at(20, 125.0f),
+            // Gameplay Fixes U: the front probe is asked quietly, no swing,
+            // so the pool stays at 125 (before the fix the knife took 2).
+            pool_at(30, 125.0f),
             {"the boomerang flies", [fx_boomerang](Run& f) {
                  return count_of(f.display->world(), Order::FX, fx_boomerang, f.hero_id) >= 1; }},
         };
@@ -3387,6 +3393,7 @@ std::vector<Pair> pairs()
             {"the foe's third swing since the cast", third_swing},
             {"the foe's blows land", blows_land},
             pool_guard(19, 250.0f),
+            pool_at(30, 98.0f),   // the front probe's swing: the knife's 2 MP
         };
         c.off_never = {says("DISARM RESISTED")};
         c.on_shows = {
@@ -3395,6 +3402,7 @@ std::vector<Pair> pairs()
             {"the foe's third swing since the cast", third_swing},
             {"the foe's blows land", blows_land},
             pool_guard(19, 250.0f),
+            pool_at(30, 175.0f),  // the quiet front probe swings at nothing (fix U)
         };
         c.on_never = {says("Fighter Disarmed")};
         c.leads = {{2, 3}};
@@ -4467,6 +4475,54 @@ std::vector<Pair> pairs()
         all.push_back(c);
     }
 
+    // U. CHARGE pressed into a foe that stands against the fighter's
+    // front. The cast's "is my front blocked?" probe meets the foe and the
+    // cast refuses PATH BLOCKED on both sides. In the classic game that
+    // probe is a bump: the fighter swings, and on the next frames the knife
+    // lands (the foe's HP falls, the knife's 2 MP are spent). With the fix
+    // the question is asked quietly and nothing happens. The foe is a posted
+    // soldier held from fighting, so nothing else ever touches its HP.
+    {
+        Pair c;
+        c.name = "u_charge_front_foe";
+        c.scene.family = FAMILY_SOLDIER;
+        c.scene.slot = 1;
+        c.scene.frames = 60;
+        c.scene.stage = [](Run& run) {
+            walker* hero = run.hero();
+            stop_mp_regen(hero);
+            hero->face_delta(0, 1);                   // faces the foe below; no step, no draw
+            walker* foe = add_posted(run, "foe", FAMILY_SOLDIER, 1, 0, 15, 1);
+            run.marks["foe.hp"] = hp_of(foe);
+        };
+        c.scene.before_tick = [](Run& run, int) {
+            hold_fire(run.actor("foe"));                // a passive blocker: it never swings
+        };
+        c.scene.keys = [](Run&, int f) { return press_at(f, 20); };
+        const Tell blow_lands = {"the fighter's knife lands on the foe", [](Run& f) {
+            return f.frame > 20 && hp_of(f.actor_seen("foe")) < f.mark("foe.hp"); }};
+        const Tell knife_paid = {"the knife's 2 MP are spent", [](Run& f) {
+            return f.frame > 20 && mp(f.hero()) == 248.0f; }};
+        const Tell pool_drops = {"the pool drops", [](Run& f) { return mp(f.hero()) < 250.0f; }};
+        c.off_shows = {
+            pool_guard(19, 250.0f),
+            says("PATH BLOCKED"),
+            blow_lands,
+            knife_paid,
+        };
+        c.on_shows = {
+            pool_guard(19, 250.0f),
+            says("PATH BLOCKED"),
+            pool_at(40, 250.0f),
+            {"the foe is untouched on frame 40", [](Run& f) {
+                 return f.frame == 40 && hp_of(f.actor_seen("foe")) == f.mark("foe.hp"); }},
+        };
+        c.on_never = {blow_lands, pool_drops};
+        c.fork = 20;
+        c.still_frame = 24;
+        all.push_back(c);
+    }
+
     return all;
 }
 
@@ -4517,6 +4573,7 @@ GAMEPLAY_FIXES_SCENE(a_mage_bot_slot_roll_of_five_casts_heartburst, "l_slot_roll
 GAMEPLAY_FIXES_SCENE(a_driven_hero_resists_a_bot_charm, "m1_hero_resists_charm")
 GAMEPLAY_FIXES_SCENE(a_seat_never_lands_on_a_charmed_walker, "m2_seat_skips_charmed")
 GAMEPLAY_FIXES_SCENE(a_hero_that_threw_can_still_whirlwind, "s_busy_after_a_throw")
+GAMEPLAY_FIXES_SCENE(a_charge_into_a_foe_at_the_front_no_longer_swings, "u_charge_front_foe")
 
 TEST_F(GameplayFixes, the_tests_name_every_scene_in_order)
 {
