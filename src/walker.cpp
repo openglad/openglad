@@ -2605,7 +2605,9 @@ short walker::special()
 			switch (current_special)
 			{
 				case 1: // charge enemy
-					if (!stats->forward_blocked())
+					// Gameplay Fixes U (port of the current game's 04739688): the
+					// front is asked quietly, with no bump swing, busy or turn
+					if (!stats->forward_blocked(myscreen->gameplay_fixes != 0))
 					{
 						stats->add_command(COMMAND_RUSH, 3, lastx/stepsize, lasty/stepsize);
 						if (on_screen())
@@ -2672,7 +2674,8 @@ short walker::special()
 				case 4:  // Disarm opponent
 					if (myscreen->gameplay_fixes ? busy > 0 : busy != 0)
 						return 0; // port of the current game's 5c5777f8: a busy below zero is not busy (a hero's fractional fire delay leaves it there for good)
-					if (!stats->forward_blocked())
+					// Gameplay Fixes U (port of the current game's 04739688): quietly
+					if (!stats->forward_blocked(myscreen->gameplay_fixes != 0))
 						return 0; // can't do this if no frontal enemy
                     
                     {
