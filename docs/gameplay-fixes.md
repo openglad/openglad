@@ -462,9 +462,14 @@ The parity goldens are captures from the old game (branch
   owner; no golden moved), `1dfa6ab5` (T), `d983e120` (U), `4a94b64a` (V: the
   soldier bot's CHARGE), `ecd10c07` (V: the elf bot's volley), `b77fa3ec` (W:
   the busy casts' gates read busy) and `5bb8b94f` (W: a refused roll is not
-  the act), with the table mirror `d6c9e094` after them. `d6c9e094` is the
-  commit the goldens are captured from: <measured> of <measured> goldens
-  `cmp` equal to a full capture there.
+  the act), with the table mirror `d6c9e094` after them. Then, not behind
+  the setting, `0182905f`: a summoned MYSTIC MACE starts centred on its
+  caster, at its level, as the current game's `og.summon` has done since
+  `19d7eeb3` (one golden moved, the cleric bot's raise-or-turn row with the
+  setting on); and the table mirror `8fdb91b8`, which gives the archmage
+  bot's summon row with the setting on spawns of its own. `8fdb91b8` is the
+  commit the goldens are captured from: 331 of 331 goldens `cmp` equal to a
+  full capture there.
   `tests/parity/golden/DRIFT_LEDGER.md` records each one.
 
 The rows with the setting on, by fix:
