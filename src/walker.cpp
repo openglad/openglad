@@ -101,6 +101,7 @@ walker::walker(const PixieData& data, bool detached_probe)
 	worldx = worldy = -1;
 
 	weapons_left = 1; // default, used for fighters
+	special_charged = false; // port of the current game's a202cb8a
 
 	myobmap = NULL;
 	if(myscreen != NULL && !detached_probe)
@@ -2528,6 +2529,8 @@ short walker::special()
 	char message[80], tempstr[80];
 	short person;
 
+	special_charged = false; // port of the current game's a202cb8a
+
 	// Are we somehow dead already?
 	if (dead)
 	{
@@ -4334,6 +4337,7 @@ short walker::special()
 	} // end of family switch
 
 	stats->magicpoints -= stats->special_cost[(int)current_special];
+	special_charged = true; // port of the current game's a202cb8a: this cast went through
 	return 0;
 }
 

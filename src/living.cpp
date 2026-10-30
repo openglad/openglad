@@ -367,7 +367,18 @@ short living::act()
 						   )
 							current_special = 1;
 						if (check_special() )
-							return special();
+						{
+							if (!myscreen->gameplay_fixes)
+								return special();
+							special();
+							if (special_charged)
+								return 1;
+						}
+						if (!myscreen->gameplay_fixes)
+							return 0; // the classic act: the roll was the act, refused or not
+						// Gameplay Fixes W (port of the current game's a202cb8a): a roll
+						// the gate or the cast refused is not the bot's act; it takes
+						// the act the coin would have given it.
 					}
 					else       // do random walking ..
 					{
@@ -375,7 +386,7 @@ short living::act()
 						return 1;
 					}
 				}
-				else if (!random(5) ) //1 in 5 to do act_random() function
+				if (!random(5) ) //1 in 5 to do act_random() function
 					act_random();
 				else // 4 of 5 times
 				{

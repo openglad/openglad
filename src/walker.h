@@ -119,6 +119,11 @@ class walker : public pixieN
 		void face_delta(short xdelta, short ydelta);
 		short query_next_to();
 		short special();
+		// Set by special() when the cast went through to its charge, cleared
+		// when it starts: special() itself returns 0 either way, as it always
+		// has. The bot act reads it with Gameplay Fixes W (port of the current
+		// game's a202cb8a, whose special() answers whether it cast).
+		bool special_charged;
 		short teleport();
 		short teleport_ranged(Sint32 range);
 		Sint32  turn_undead(Sint32 range, Sint32 power);
