@@ -385,10 +385,18 @@ static inline walker *bg_ahead_blocked_by_foe(walker *self, Sint32 reach)
 // (walker.cpp, truncated into the command's shorts) and strikes and shoves
 // the body it ran into (stats.cpp). The first living foe whose box meets
 // the caster's box moved k such steps, k = 1 .. steps (collide()'s shrink),
-// or NULL; NULL with no heading, where the rush walks nowhere. From
-// positions alone: a wall or an ally in the way is not modelled.
+// or NULL; NULL with no heading, where the rush walks nowhere. A wall, an
+// ally, a door or a generator before the foe refuses, and so does a front
+// the cast itself finds blocked (port of the current game's 9953b30b,
+// Gameplay Fixes V).
 static inline walker *bg_rush_strikes(walker *self, int steps)
 {
+	// The cast refuses PATH BLOCKED when the one-pixel step along curdir is
+	// blocked (a wall, any body, a door): the same question, asked quietly
+	// (Gameplay Fixes U); a foe already pressed against the front is a blow,
+	// not a charge.
+	if (self->stats->forward_blocked(true))
+		return NULL;
 	float step = self->stepsize;
 	int ux = (int) (self->lastx / step);
 	int uy = (int) (self->lasty / step);
@@ -403,6 +411,11 @@ static inline walker *bg_rush_strikes(walker *self, int steps)
 		int ay = self->ypos + (int) ((float) (uy * k) * step) + 1;
 		walker *w = bg_foe_meeting(foes, ax, ay, aw, ah);
 		if (w) return w;
+		// Nothing struck here: the rush must be able to stand here on its way.
+		// A wall, an ally, a door or a generator at this step stops it before
+		// any later foe (COMMAND_RUSH strikes whatever its walksteps bump into).
+		if (!myscreen->query_passable(ax - 1, ay - 1, self, true))
+			return NULL;
 	}
 	return NULL;
 }
