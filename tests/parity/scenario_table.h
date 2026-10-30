@@ -9077,12 +9077,22 @@ inline constexpr Mutation kMut_thief_taunt_no_foe_fixes_scen99 = {
 // charm reach (44 px) and two levels above the thief, so a charm is always
 // resisted; the orc stands inside the thief's 43 px blast, so with the
 // setting on the bomb is refused, and inside the taunt reach (108 px), so a
-// taunt has an ally to back it. The seed (27) makes the bot roll slot 3 at
-// tick 1 on both values. The classic coin picks the charm ("Thief failed to
+// taunt has an ally to back it. The classic twin's seed (27) makes the bot
+// roll slot 3 at tick 1. The classic coin picks the charm ("Thief failed to
 // charm!", and the soldier gets its free hit), and the soldier kills the
-// thief and the orc by tick 12. With the setting on the thief charms only a
-// foe it can take, so it taunts ("Nyah Nyah!") instead, and at tick 20 both
-// are alive and the soldier is down to 108 hp.
+// thief and the orc by tick 12.
+// The setting-on twin plays the same arena with its own seed (97). Seed 27
+// stopped testing anything with the setting on: its first roll (tick 0) is a
+// bomb the gate refuses (the orc is in the blast); since a refused roll now
+// takes the bot's ordinary act (Gameplay Fixes W) the bot goes at the soldier
+// instead of standing, and its later rolls (ticks 8 and 16) are bombs too, so
+// slot 3 never comes up inside the run. A roll at tick 0 does not test the
+// choice either (seeds 12, 25, 31, 39, 43 taunt there): the soldier has not
+// acted yet, so it still carries its spawn team as its real team and no charm
+// could take it, whatever the level test says. With seed 97 the bot rolls slot
+// 3 at tick 9, the soldier 20 px away; the thief charms only a foe it can
+// take, the level-9 soldier is above it, so it taunts ("Nyah Nyah!"), and at
+// tick 20 the thief, its orc and the soldier (110 hp) are all alive.
 inline constexpr SpawnSpec kFamilySpawns_thief_bot_charm_or_taunt_scen99[] = {
     { FAMILY_SOLDIER, 0, kOrderLiving, 160, 120, 0, 0, 9, 0 },     // higher-level foe, 40 px east
     { FAMILY_THIEF,   1, kOrderLiving, 120, 120, 0, 0, 7, 100 },   // hostile bot caster
@@ -9106,17 +9116,17 @@ inline constexpr Mutation kMut_thief_bot_charm_or_taunt_scen99 = {
 inline constexpr FactPredicate kFacts_thief_bot_charm_or_taunt_fixes_scen99[] = {
     pred::TickReached(20),
     pred::EventKindExactly(/*notification*/2, 1,
-        "anchor: one cast at tick 1 on both values"),
+        "anchor: one slot-3 cast, at tick 9 (seed 97)"),
     pred::WalkerOfTeamAlive(1, 2, 2,
         "consequence: with the setting on the thief bot charms only a foe it can take; the level-9 soldier is above it, so it taunts (\"Nyah Nyah!\") with its orc in reach, and both are alive at tick 20"),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 10800, 10800,
-        "consequence: with no free hit the taunted soldier fights the thief and its orc and is down to 108 hp at tick 20"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 11000, 11000,
+        "consequence: with no free hit the taunted soldier fights the thief and its orc and is down to 110 hp at tick 20"),
 };
 inline constexpr Mutation kMut_thief_bot_charm_or_taunt_fixes_scen99 = {
     "packs/core/lib/gameplay_fixes.lua", 61,
     "eligible = foe.level <= max_level",
     "eligible = foe.level >= max_level",
-    "Turns the level test around (a foe at or ABOVE the thief's level counts as charmable), so the gate sends the bot at the level-9 soldier's charm again: it is resisted, the soldier gets its free hit and kills the thief and the orc by tick 12, so WalkerOfTeamAlive(1, 2, 2) and the soldier's 108 hp fail."
+    "Turns the level test around (a foe at or ABOVE the thief's level counts as charmable), so at tick 9 the gate sends the bot at the level-9 soldier's charm: it is resisted (\"Thief failed to charm!\"), the soldier gets its free hit and kills the thief and the orc by tick 19, so WalkerOfTeamAlive(1, 2, 2) reads 0 and no soldier is at 110 hp (both are at 120)."
 };
 
 // --- thief_bot_charm_hero (#355: a hero a player drives resists a charm) ----
@@ -12643,7 +12653,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kFacts_thief_bot_charm_or_taunt_scen99, std::size(kFacts_thief_bot_charm_or_taunt_scen99),
       kMut_thief_bot_charm_or_taunt_scen99 },
 
-    { "thief_bot_charm_or_taunt_fixes_scen99", "scen/scen1.fss", 0x0000001Bu,
+    { "thief_bot_charm_or_taunt_fixes_scen99", "scen/scen1.fss", 0x00000061u,
       kInputsEmpty, std::size(kInputsEmpty), 20,
       CompareMode::SemanticParity, false,
       kFamilySpawns_thief_bot_charm_or_taunt_scen99, std::size(kFamilySpawns_thief_bot_charm_or_taunt_scen99),
