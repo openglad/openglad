@@ -2878,13 +2878,23 @@ short walker::special()
 					} // end of turn undead, low level
 					else
 					{
-						newob = myscreen->find_nearest_blood(this);
+						// Gameplay Fixes T (port of the current game's d80a7faa): the
+						// first stain in range whose body fits, and the body's spot
+						short fixed = myscreen->gameplay_fixes;
+						short spotx = 0, spoty = 0;
+						if (fixed)
+						{
+							if (!raise_spot(60, FAMILY_SKELETON, &newob, &spotx, &spoty))
+								return 0;
+						}
+						else
+							newob = myscreen->find_nearest_blood(this);
 						if (newob)
 						{
 							targetx = newob->xpos;
 							targety = newob->ypos;
 							distance = (Uint32) distance_to_ob(newob); //(targetx-xpos)*(targetx-xpos) + (targety-ypos)*(targety-ypos);
-							if (myscreen->query_passable(targetx, targety, newob) && distance < 60)
+							if (fixed || (myscreen->query_passable(targetx, targety, newob) && distance < 60))
 							{
 								alive = do_summon(FAMILY_SKELETON, 125 + (stats->level*40) );
 								if (!alive)
@@ -2892,7 +2902,10 @@ short walker::special()
 								alive->team_num = team_num;
 								alive->stats->level = random(stats->level) + 1;
 								alive->set_difficulty((Uint32) alive->stats->level);
-								alive->setxy(newob->xpos, newob->ypos);
+								if (fixed)
+									alive->setxy(spotx, spoty);
+								else
+									alive->setxy(newob->xpos, newob->ypos);
 								alive->owner = this;
 								//myscreen->remove_fx_ob(newob);
 								//myscreen->remove_ob(newob, 0);
@@ -2944,13 +2957,22 @@ short walker::special()
 					} // end of turn undead, high level
 					else
 					{
-						newob = myscreen->find_nearest_blood(this);
+						// Gameplay Fixes T (port of the current game's d80a7faa)
+						short fixed = myscreen->gameplay_fixes;
+						short spotx = 0, spoty = 0;
+						if (fixed)
+						{
+							if (!raise_spot(30, FAMILY_GHOST, &newob, &spotx, &spoty))
+								return 0;
+						}
+						else
+							newob = myscreen->find_nearest_blood(this);
 						if (newob)
 						{
 							targetx = newob->xpos;
 							targety = newob->ypos;
 							distance = (Uint32) distance_to_ob(newob); //(targetx-xpos)*(targetx-xpos) + (targety-ypos)*(targety-ypos);
-							if (myscreen->query_passable(targetx, targety, newob) && distance < 30)
+							if (fixed || (myscreen->query_passable(targetx, targety, newob) && distance < 30))
 							{
 								//alive = myscreen->level_data.add_ob(ORDER_LIVING, FAMILY_SKELETON);
 								alive = do_summon(FAMILY_GHOST, 150 + (stats->level*40) );
@@ -2959,7 +2981,10 @@ short walker::special()
 								alive->stats->level = random(stats->level) + 1;
 								alive->set_difficulty((Uint32) alive->stats->level);
 								alive->team_num = team_num;
-								alive->setxy(newob->xpos, newob->ypos);
+								if (fixed)
+									alive->setxy(spotx, spoty);
+								else
+									alive->setxy(newob->xpos, newob->ypos);
 								alive->owner = this;
 								//myscreen->remove_fx_ob(newob);
 								//myscreen->remove_ob(newob, 0);
@@ -2976,13 +3001,24 @@ short walker::special()
 					break;
 				case 4:  // Resurrect our guys ..
 				default:
-					newob = myscreen->find_nearest_blood(this);
+				{
+					// Gameplay Fixes T (port of the current game's d80a7faa): the
+					// nearest usable stain still decides friend or foe
+					short fixed = myscreen->gameplay_fixes;
+					short spotx = 0, spoty = 0;
+					if (fixed)
+					{
+						if (!raise_spot(30, -1, &newob, &spotx, &spoty))
+							return 0;
+					}
+					else
+						newob = myscreen->find_nearest_blood(this);
 					if (newob)
 					{
 						targetx = newob->xpos;
 						targety = newob->ypos;
 						distance = distance_to_ob(newob); //(targetx-xpos)*(targetx-xpos) + (targety-ypos)*(targety-ypos);
-						if (myscreen->query_passable(targetx, targety, newob) && distance < 30)
+						if (fixed || (myscreen->query_passable(targetx, targety, newob) && distance < 30))
 						{
 							if ( is_friendly(newob) ) // normal resurrection
 							{
@@ -3013,7 +3049,10 @@ short walker::special()
 								alive->set_difficulty((Uint32) alive->stats->level);
 								alive->owner = this;
 							}
-							alive->setxy(newob->xpos, newob->ypos);
+							if (fixed)
+								alive->setxy(spotx, spoty);
+							else
+								alive->setxy(newob->xpos, newob->ypos);
 							//myscreen->remove_fx_ob(newob);
 							//myscreen->remove_ob(newob, 0);
 							newob->dead = 1;
@@ -3026,6 +3065,7 @@ short walker::special()
 					else
 						return 0; // end of ressurection
 					break;
+				}
 			}
 			break; // end of cleric
 		case FAMILY_MAGE:
@@ -5406,4 +5446,33 @@ bool walker::fire_pad_clear()
 	probe.xpos = px;             // the plain fields: never setxy, which
 	probe.ypos = py;             // would file the probe in the obmap
 	return myscreen->query_passable(px, py, &probe, true);
+}
+
+// Gameplay Fixes T: where a raise's body stands (port of the current game's
+// d80a7faa, packs/core/lib/corpses.lua raise_spot). The stains are walked
+// nearest first; the body is probed, not the stain, with its own box and
+// flags, the caster blocking it like any body; nothing is drawn or eaten.
+short walker::raise_spot(Sint32 range, short body_family, walker **stain, short *sx, short *sy)
+{
+	std::vector<walker*> stains = myscreen->find_blood_in_reach(this);
+	for (size_t i = 0; i < stains.size(); i++)
+	{
+		walker *blood = stains[i];
+		if (distance_to_ob(blood) < range)
+		{
+			char fam;
+			if (body_family >= 0)
+				fam = (char) body_family;
+			else if (is_friendly(blood))
+				fam = blood->stats->old_family;
+			else
+				fam = FAMILY_GHOST;
+			if (myscreen->body_spot_near(ORDER_LIVING, fam, blood->xpos, blood->ypos, 16, sx, sy))
+			{
+				*stain = blood;
+				return 1;
+			}
+		}
+	}
+	return 0;
 }

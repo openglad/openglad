@@ -928,15 +928,32 @@ short living::check_special()
 					// port of the current game's e50189dd: the raise wants the corpse it
 					// would raise (60 for a skeleton, 30 for a ghost) and a living foe
 					// within 130 for the risen to fight
+					// and (port of the current game's d80a7faa, Gameplay Fixes T) the
+					// corpse is one the cast can raise: its body fits near it
 					if (!shifter_down)
-						return (bg_corpse_near(this, current_special == 3 ? 30 : 60) != NULL
-						        && bg_foes_within(this, 1, 130));
+					{
+						walker *b = NULL;
+						short bx = 0, by = 0;
+						if (current_special == 3)
+						{
+							if (!raise_spot(30, FAMILY_GHOST, &b, &bx, &by))
+								return 0;
+						}
+						else if (!raise_spot(60, FAMILY_SKELETON, &b, &bx, &by))
+							return 0;
+						return bg_foes_within(this, 1, 130);
+					}
 				}
 				else if (myscreen->gameplay_fixes && current_special == 4)
 				{
 					// port of the current game's e50189dd: RESURRECT wants a friendly
-					// corpse within 30 (a foe's stain is RAISE GHOST's job)
-					walker *b = bg_corpse_near(this, 30);
+					// corpse within 30 (a foe's stain is RAISE GHOST's job); the
+					// corpse the cast would take (port of the current game's
+					// d80a7faa, Gameplay Fixes T)
+					walker *b = NULL;
+					short bx = 0, by = 0;
+					if (!raise_spot(30, -1, &b, &bx, &by))
+						return 0;
 					return (b && is_friendly(b));
 				}
 				return 1;

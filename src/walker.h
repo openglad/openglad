@@ -62,6 +62,15 @@ class walker : public pixieN
 		// no walker made, no draw, nothing eaten or opened. A bot gate's
 		// question. (port of the current game's 15053f4a)
 		bool fire_pad_clear();
+		// Gameplay Fixes T (port of the current game's d80a7faa, its
+		// packs/core/lib/corpses.lua raise_spot): the stain a raise takes and
+		// the spot its body stands on. The stains find_nearest_blood would
+		// answer, nearest first; the first inside `range` (distance_to_ob, the
+		// cast's compare) with room for the body within 16 px of its corner
+		// (screen::body_spot_near) wins. body_family -1 is RESURRECT: the
+		// corpse's own family when the stain is friendly, else a ghost.
+		// Draw-free and eat-free; 0 when nothing can be raised.
+		short raise_spot(Sint32 range, short body_family, walker **stain, short *sx, short *sy);
 		virtual short act();
 		short set_act_type(short num);
 		short restore_act_type();
