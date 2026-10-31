@@ -730,7 +730,8 @@ range.
 |---|---|
 | `attack(target)` | `bool`. **Draws from the RNG** — reordering or short-circuiting it changes the stream. |
 | `fire()` | New weapon handle, or `nil`. |
-| `fire_pad_clear() → bool` | Would `fire()` launch this living's current weapon instead of meeting something on its pad? The pad `fire()` uses, probed quietly with a detached weapon of the same family, owner and team: own-team bodies pass; an enemy body, a wall, a door, a tree or a generator blocks; an enemy weapon in flight passes. No entity is made, nothing draws, nothing is eaten or opened. `false` for a non-living. A bot gate's question (see Terrain). |
+| `fire_pad_clear([weapon_family]) → bool` | Would `fire()` launch this living's weapon instead of meeting something on its pad? The pad `fire()` uses, probed quietly with a detached weapon of the same family, owner and team: own-team bodies pass; a wall, the map edge, an enemy living or a generator blocks, and so does a tree's crown or trunk unless the weapon flies or walks the forest (a rock does); every weapon crosses water; an enemy door, grown tree or weapon in flight passes too (the probe is a weapon, and a weapon passes another weapon-order body: the real `fire()` rolls for those and blocks 4 times in 10). `weapon_family` (an `og.family_id("weapon", ...)` id) probes that weapon instead of the current one, for a cast that swaps a weapon in for its `fire()` (the archer's EXPLODING BOLT fires `core:fire_arrow`); an id outside the family slots is an error. No entity is made, nothing draws, nothing is eaten or opened. `false` for a non-living or a weapon the loader cannot make. A bot gate's question (see Terrain). |
+| `fire_pad_answer([weapon_family]) → string` | What that pad holds, by the same probe: `"clear"` (the weapon would fly; `fire_pad_clear` is exactly this answer), `"terrain"` (the grid refuses it: a wall, the map edge, a tree the weapon cannot cross), `"body"` (an enemy living or a generator `fire()` would strike in melee), `"none"` (a non-living, or a weapon the loader cannot make). |
 | `special()` | `true, nil` on success; `false, reason` on refusal. Player hook errors show as `SPECIAL SCRIPT ERROR`. |
 | `death()` | `bool`. |
 | `teleport()` | `bool`. |
@@ -895,8 +896,10 @@ each draw-free and eat-free:
   for `r = 1 .. radius` the eight offsets `(-r,0) (r,0) (0,-r) (0,r) (-r,-r)
   (r,-r) (-r,r) (r,r)`, and answers the first that fits. `family` is a byte
   (`og.family_id`); `nil` for a family the loader cannot make.
-- `walker:fire_pad_clear() → bool` (the walker methods above) probes the
-  pad `fire()` would use.
+- `walker:fire_pad_clear([weapon_family]) → bool` and
+  `walker:fire_pad_answer([weapon_family]) → string` (the walker methods
+  above) probe the pad `fire()` would use, for the current weapon or a named
+  one; the answer says whether terrain or a body is in the way.
 
 `og.scrub_corpse_stain(x, y [, floor])` removes the fresh stain and life gem
 dropped at a corpse's top-left corner, so the body cannot be raised again or

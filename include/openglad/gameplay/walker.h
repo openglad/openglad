@@ -124,14 +124,30 @@ class walker : public og::sim::SimEntity
 		walker  * fire();
 		// Where fire() puts the weapon it creates: the top-left corner of
 		// `weapon`'s box one pixel outside this walker, on the side
-		// facing(lastx(), lasty()) names. The one table fire() reads.
+		// facing(lastx(), lasty()) names. The one table fire() and
+		// set_weapon_heading() read.
 		void weapon_pad(const walker& weapon, short& px, short& py);
-		// True when fire() would launch this living's current weapon instead
-		// of meeting something on its pad (a wall, an enemy body, a door, a
-		// tree, a generator): the pad probed quietly with a detached weapon,
-		// no entity made, no draw, nothing eaten or opened. A bot gate's
-		// question. False for a non-living or a weapon the loader cannot make.
-		[[nodiscard]] bool fire_pad_clear();
+		// What the pad fire() would place the weapon on holds, probed quietly
+		// with a detached weapon: Clear (the weapon would fly); Terrain (the
+		// grid refuses it: a wall, the map edge, a tree's crown or trunk for a
+		// weapon that neither flies nor walks the forest; every weapon crosses
+		// water); Body (a body a weapon probe meets and fire()
+		// would strike in melee: an enemy living or a generator); NoProbe (a
+		// non-living caster, or a weapon the loader cannot make). Own-team
+		// bodies pass, as the weapon passes them; an enemy door, tree or weapon
+		// in flight is passed by a weapon probe too (obmap.cpp's
+		// weapon-vs-weapon arm) and answers Clear, though the loud fire() blocks
+		// on it 4 times in 10. weapon_family -1 probes current_weapon(); a cast
+		// that swaps a weapon in for its fire() (the archer's EXPLODING BOLT)
+		// passes its family. The soldier's, cleric's and archmage's weapon
+		// hooks leave the box alone, so the pad is fire()'s for them too; the
+		// soldier's out-of-blades veto (its on_fire_weapon) is the one refusal
+		// the probe cannot see, and no gate asks the soldier's pad.
+		// No entity made, no draw, nothing eaten or opened. A bot gate's question.
+		enum class PadAnswer : std::uint8_t { Clear, Terrain, Body, NoProbe };
+		[[nodiscard]] PadAnswer fire_pad_answer(std::int32_t weapon_family = -1);
+		// fire_pad_answer(weapon_family) == PadAnswer::Clear.
+		[[nodiscard]] bool fire_pad_clear(std::int32_t weapon_family = -1);
 		virtual bool act();
 		short set_act_type(short num);
 		short restore_act_type();

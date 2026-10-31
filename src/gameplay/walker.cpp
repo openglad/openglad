@@ -2610,7 +2610,7 @@ void walker::set_hidden(bool value)
 
 // The pad table of fire(): where the weapon it creates is placed, one pixel
 // outside this walker's box on the side facing(lastx(), lasty()) names.
-// fire() and fire_pad_clear() both read it, so the pad has one rule.
+// fire(), set_weapon_heading() and fire_pad_answer() read it: one rule.
 // Appended at EOF so the parity canary pins above never shift.
 void walker::weapon_pad(const walker& weapon, short& px, short& py)
 {
@@ -2656,21 +2656,28 @@ void walker::weapon_pad(const walker& weapon, short& px, short& py)
 	py = static_cast<short>(y);
 }
 
-// The pad fire() would place this walker's current weapon on, probed quietly:
-// the same spot (weapon_pad), the same weapon rules (own-team bodies pass, an
-// enemy body, door, tree or generator blocks), no entity, no draw (an enemy
-// weapon in flight passes a quiet probe; an arrow slit is passable at the
-// pad's distance), nothing eaten or opened. A bot gate's question.
+// The pad fire() would place a weapon on, probed quietly: the same spot
+// (weapon_pad), the same weapon rules (own-team bodies pass; an enemy living
+// or a generator blocks; an enemy door, tree or weapon in flight passes a
+// quiet weapon probe, the weapon-vs-weapon arm coming before the door arm),
+// no entity, no draw (an arrow slit is passable at the pad's distance),
+// nothing eaten or opened. The grid half is asked first, then the bodies, as
+// the loud query_passable asks them. A bot gate's question.
 // Appended at EOF so the parity canary pins above never shift.
-bool walker::fire_pad_clear()
+walker::PadAnswer walker::fire_pad_answer(std::int32_t weapon_family)
 {
 	if (query_order() != Order::Living || current_game == nullptr || current_game->world == nullptr)
-		return false;
+		return PadAnswer::NoProbe;
+	if (weapon_family >= NUM_FAMILY_SLOTS)
+		return PadAnswer::NoProbe;
+	const std::int32_t family = weapon_family >= 0
+		? weapon_family
+		: static_cast<std::int32_t>(static_cast<char>(current_weapon()));
 	weap probe(WeaponProfileProbeTag{});
 	const PixieData* data = current_game->world->configure_existing_entity(
-		probe, Order::Weapon, static_cast<std::int32_t>(static_cast<char>(current_weapon())));
+		probe, Order::Weapon, family);
 	if (data == nullptr)
-		return false;
+		return PadAnswer::NoProbe;
 	probe.set_data(*data);
 	probe.set_owner(this);          // the chain create_weapon gives it: is_friendly reads it
 	probe.set_team_num(team_num());
@@ -2679,5 +2686,15 @@ bool walker::fire_pad_clear()
 	weapon_pad(probe, px, py);
 	probe.set_xpos(px);             // SimEntity's plain setters: never setxy,
 	probe.set_ypos(py);             // which would register the probe in the obmap
-	return current_game->world->query_passable(px, py, &probe, floor(), /*quiet=*/true);
+	if (!current_game->world->query_grid_passable(px, py, &probe, floor(), /*quiet=*/true))
+		return PadAnswer::Terrain;
+	if (!current_game->world->query_object_passable(px, py, &probe, floor(), /*quiet=*/true))
+		return PadAnswer::Body;
+	return PadAnswer::Clear;
+}
+
+// fire_pad_answer's yes: the weapon would fly.
+bool walker::fire_pad_clear(std::int32_t weapon_family)
+{
+	return fire_pad_answer(weapon_family) == PadAnswer::Clear;
 }

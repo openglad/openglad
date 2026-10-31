@@ -510,12 +510,16 @@ function M.rush_strikes(self, steps)
 end
 
 -- The pad fire() would place the caster's weapon on is clear: the weapon
--- would fly instead of meeting a wall, a door, the map edge or a foe's body
--- there (walker:fire_pad_clear, the same spot and the same weapon rules,
--- asked quietly). A body of the caster's own team passes, as the weapon
--- passes it.
-function M.pad_clear(self)
-  return self:fire_pad_clear()
+-- would fly instead of meeting a wall, the map edge, a tree it cannot cross,
+-- a foe's body or a generator there (walker:fire_pad_clear, the same spot and the
+-- same weapon rules, asked quietly). A body of the caster's own team passes,
+-- as the weapon passes it; so does an enemy door, tree or weapon in flight
+-- (the weapon-vs-weapon arm: the loud fire() blocks on those 4 times in 10).
+-- `weapon`, optional: the weapon family the cast fires when it is not the
+-- current one (the archer's EXPLODING BOLT swaps in core:fire_arrow); a gate
+-- may not do the cast's swap itself (nothing here writes a walker field).
+function M.pad_clear(self, weapon)
+  return self:fire_pad_clear(weapon)
 end
 
 -- The bot can pay the slot's price, or the alternate's when shifted. An

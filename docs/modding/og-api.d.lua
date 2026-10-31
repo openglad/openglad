@@ -100,7 +100,8 @@
 ---@field find_teleport_target fun(self: og.Walker): og.Walker?
 ---@field fire fun(self: og.Walker): og.Walker?
 ---@field fire_frequency fun(self: og.Walker): number
----@field fire_pad_clear fun(self: og.Walker): boolean # walker:fire_pad_clear() → boolean — would fire() launch this living's current weapon instead of meeting something on its pad? The pad probed quietly with a d...
+---@field fire_pad_answer fun(self: og.Walker, weapon_family: integer?): string # walker:fire_pad_answer([weapon_family]) → "clear" | "terrain" | "body" | "none" — what that pad holds (walker::fire_pad_answer): "terrain" a wall, the map ed...
+---@field fire_pad_clear fun(self: og.Walker, weapon_family: integer?): boolean # walker:fire_pad_clear([weapon_family]) → boolean — would fire() launch this living's weapon (the current one, or weapon_family) instead of meeting something...
 ---@field flight_left fun(self: og.Walker): integer
 ---@field floor fun(self: og.Walker): integer
 ---@field foe og.Walker?|fun(self: og.Walker): og.Walker? # write-through property: `self.foe = v` runs m_set_foe; reads answer the method (method-first)
