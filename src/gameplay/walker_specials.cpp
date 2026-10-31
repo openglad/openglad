@@ -113,9 +113,9 @@ bool teleport_landing_clear(GameWorld& world, walker* self,
 	{
 		for (std::int32_t by = y; by < y + self->sizey() + kBucket; by += kBucket)
 		{
-			const std::list<walker*>& pile = world.myobmap->obmap_get_list(
-				static_cast<short>(bx), static_cast<short>(by), target_floor);
-			for (const walker* other : pile)
+			const std::list<walker*>* pile = world.myobmap->find_list(static_cast<short>(bx), static_cast<short>(by), target_floor);
+			if (pile == nullptr) continue;
+			for (const walker* other : *pile)
 			{
 				if (teleport_spot_blocked_by(other, self, x, y, self_z))
 					return false;

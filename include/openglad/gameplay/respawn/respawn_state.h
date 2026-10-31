@@ -173,6 +173,16 @@ bool respawn_spot_clear(GameWorld& world, walker* w, short x, short y,
 bool body_spot_clear(GameWorld& world, Order order, std::int32_t family,
                      short x, short y, int floor);
 
+// The ground half of body_spot_clear, asked with the same detached body:
+// does the grid let a body of (order, family) stand with its top-left at
+// (x, y) on `floor`, with its own box and flags (flight_left 0, so a flying
+// family passes water as the game lets it, a walker does not)? Bodies are
+// not asked. Draw-free; false for a family the loader cannot make or a box
+// past the map's edge. The parity spawn-room gate (#423) asks it of every
+// living spawn, never with the caster itself as the probe.
+bool body_ground_clear(GameWorld& world, Order order, std::int32_t family,
+                       short x, short y, int floor);
+
 // The first spot within `radius` px of (x, y) where body_spot_clear holds,
 // in a fixed order: (x, y) itself, then for r = 1 .. radius the eight
 // offsets (-r,0) (r,0) (0,-r) (0,r) (-r,-r) (r,-r) (-r,r) (r,r). Writes the

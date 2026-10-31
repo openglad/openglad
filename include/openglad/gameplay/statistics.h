@@ -112,6 +112,11 @@ class statistics
 		// The same step asked through GameWorld::query_passable's quiet probe
 		// when quiet is true (no side effect); false is the call above.
 		bool forward_blocked(bool quiet);
+		// The right-hand walk's three probes in the same shape (Gameplay
+		// Fixes Y): quiet asks without a side effect; false is the call above.
+		bool right_blocked(bool quiet);
+		bool right_forward_blocked(bool quiet);
+		bool right_back_blocked(bool quiet);
 		//short distance_to_foe(); //not in use???????
 		bool right_walk();      // walk using right-hand rule
 		bool direct_walk(); // walk in a line toward foe ..
@@ -233,6 +238,9 @@ class statistics
 
 // The classic front probe is the loud one.
 inline bool statistics::forward_blocked() { return forward_blocked(false); }
+inline bool statistics::right_blocked() { return right_blocked(false); }
+inline bool statistics::right_forward_blocked() { return right_forward_blocked(false); }
+inline bool statistics::right_back_blocked() { return right_back_blocked(false); }
 
 #undef OG_STATS_DIRTY_FIELD
 

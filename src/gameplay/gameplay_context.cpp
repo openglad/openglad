@@ -202,10 +202,10 @@ public:
                         continue;
                 }
                 // Any moving objects in the way?
-                if (current_game->world->myobmap
-                             ->obmap_get_list(static_cast<short>(adj_x),
-                                              static_cast<short>(adj_y), f)
-                             .size() > 0)
+                const std::list<walker*>* pile =
+                    current_game->world->myobmap->find_list(
+                        static_cast<short>(adj_x), static_cast<short>(adj_y), f);
+                if (pile != nullptr && !pile->empty())
                 {
                     // TODO: Make doors impassable without a key.
                     // TODO: Add an adjacent edge to a teleporter's far side.
