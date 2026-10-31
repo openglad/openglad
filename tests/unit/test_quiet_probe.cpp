@@ -864,6 +864,8 @@ TEST_F(QuietProbe, fire_pad_answer_names_what_the_pad_holds)
 
     walker* elf = living_at(FAMILY_ELF, 1, 400, 400);
     ASSERT_NE(nullptr, elf);
+    // Holds while no shipped pack declares a weapon at wire id 100; the
+    // NUM_FAMILY_SLOTS case below is the one that cannot rot.
     EXPECT_EQ(PA::NoProbe, elf->fire_pad_answer(100)) << "a weapon slot no pack declares";
     EXPECT_EQ(PA::NoProbe, elf->fire_pad_answer(NUM_FAMILY_SLOTS)) << "beyond the slots";
     EXPECT_FALSE(elf->fire_pad_clear(NUM_FAMILY_SLOTS));

@@ -181,6 +181,8 @@ void reload_display_brightness_from_cfg()
 {
 	og::runtime::current_session->display_brightness_seeded_ = false;
 	(void)display_brightness_steps();
+	// Same reason as set_display_brightness_steps: a reloaded brightness
+	// changes what every palette id looks like, so the next sync paints.
 	og::runtime::current_session->shown_palette_id_ = -1;
 }
 

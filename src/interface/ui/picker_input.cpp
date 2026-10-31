@@ -213,15 +213,16 @@ bool handle_menu_nav(button* buttons, int& highlighted_button, Sint32& retvalue,
             pressed = true;
         else
         {
-            og::runtime::current_session->myscreen_->soundp->play_sound(SOUND_BOW);
             if(use_global_vbuttons &&
                og::runtime::current_session->allbuttons_[static_cast<std::size_t>(highlighted_button)] == nullptr)
             {
                 // A highlight on an unpublished slot (a set a dialog
-                // replaced, #416) presses nothing: never dereference it.
+                // replaced, #416) presses nothing: never dereference it,
+                // and no bow sounds for a press that lands nowhere.
             }
             else if(use_global_vbuttons)
             {
+                og::runtime::current_session->myscreen_->soundp->play_sound(SOUND_BOW);
                 og::runtime::current_session->allbuttons_[static_cast<std::size_t>(highlighted_button)]->vdisplay(1);
                 // Pressed, then released — both presented (see vbutton::vdisplay).
                 og::runtime::current_session->allbuttons_[static_cast<std::size_t>(highlighted_button)]->vdisplay(0);

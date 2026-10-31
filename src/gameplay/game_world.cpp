@@ -2348,8 +2348,8 @@ void GameWorld::adopt_scripts_from(GameWorld& source) noexcept
 // instead of the nearest alone, on who's own floor, sorted nearest first by
 // the same squared centre distance; a stable sort, so equal distances keep
 // fxlist order. find_nearest_blood itself is left as it is (the classic
-// raises read it). Appended below the last parity canary
-// pin in this file so the pins above never shift.
+// raises read it). Appended below the last parity canary pin in this file
+// so the pins above never shift.
 std::vector<walker*> GameWorld::find_blood_in_reach(walker* who)
 {
     std::vector<std::pair<std::int32_t, walker*>> found;

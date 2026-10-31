@@ -67,8 +67,6 @@
 extern std::int32_t calculate_level(std::uint32_t temp_exp);
 
 short exp_from_action(ExpAction action, walker* w, walker* target, short value);
-short collide(short x, short y, short xsize, short ysize,
-              short x2, short y2, short xsize2, short ysize2);
 
 std::uint32_t query_difficulty_percent()
 {

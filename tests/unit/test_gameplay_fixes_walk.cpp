@@ -724,6 +724,10 @@ TEST_F(GameplayFixesWalk, the_right_probes_answer_the_same_on_both_values)
                 const bool quiet = probe == 0 ? st->right_blocked(true)
                                  : probe == 1 ? st->right_forward_blocked(true)
                                               : st->right_back_blocked(true);
+                // The quiet call answers and leaves nothing behind: no
+                // collide_ob to swing at, no busy frames.
+                EXPECT_EQ(nullptr, w->collide_ob()) << "facing " << facing << " blocker " << blocker << " probe " << probe;
+                EXPECT_FLOAT_EQ(0.0f, w->busy()) << "facing " << facing << " blocker " << blocker << " probe " << probe;
                 const bool loud = probe == 0 ? st->right_blocked(false)
                                 : probe == 1 ? st->right_forward_blocked(false)
                                              : st->right_back_blocked(false);
