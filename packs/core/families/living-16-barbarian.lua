@@ -109,8 +109,8 @@ local function check_special_ai(self)
   if not gf.on() then
     return true
   end
-  -- Both throws refuse a busy barbarian (do_special's guard).
-  if lc.is_busy(self) then
+  -- Both throws refuse a busy barbarian (do_special's guard) and a blocked hammer pad.
+  if lc.is_busy(self) or not G.pad_clear(self) then
     return false
   end
   local slot = self:current_special()

@@ -160,18 +160,18 @@ local function check_special_ai(self)
   if slot == 1 then
     -- GROW TREE: a tree between the druid and a foe closing on it: the
     -- nearest living foe faced, within 60 px, not yet at blows (a foe
-    -- touching the druid blocks the bolt the tree grows from).
+    -- touching blocks the bolt the tree grows from), the bolt's pad clear.
     local f = G.nearest_living_foe(self, 60, true)
-    if f == nil then
+    if f == nil or not G.pad_clear(self) then
       return false
     end
     return G.faces(self, f) and not G.at_blows(self, f)
   elseif slot == 2 then
-    -- SUMMON FAERIE: a living foe within 130 px and no faerie out.
+    -- SUMMON FAERIE: a living foe within 130 px, no faerie out, the bolt's pad clear.
     if G.owned(self, C.ORDER_LIVING, LIVING_FAERIE) > 0 then
       return false
     end
-    return G.foes_within(self, 1, 130, false)
+    return G.foes_within(self, 1, 130, false) and G.pad_clear(self)
   elseif slot == 3 then
     -- REVEAL changes only a viewscreen's radar: a bot never casts it.
     return false

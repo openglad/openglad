@@ -93,6 +93,28 @@ void wall_pocket(GameWorld& w)
     wall(15, 12);
 }
 
+// A wall cell at grid (tx, ty), what a weapon probe on the pad meets.
+void pad_wall(GameWorld& w, int tx, int ty)
+{
+    w.grid.data[static_cast<std::size_t>(tx + w.grid.w * ty)] =
+        static_cast<std::uint8_t>(PIX_H_WALL1);
+}
+
+// The obmap files a body under the cells its box covered when it was
+// placed, so a body whose size the test set afterwards is moved once more:
+// the pad probe reads the obmap, not positions.
+template <class W>
+W* settle_body(W* w)
+{
+    if (w != nullptr) {
+        const short x = w->xpos();
+        const short y = w->ypos();
+        w->setxy(static_cast<short>(x + 1), y);
+        w->setxy(x, y);
+    }
+    return w;
+}
+
 }  // namespace
 
 // ---------------------------------------------------------------------------
@@ -749,4 +771,65 @@ TEST_F(GameplayFixesBots, druid_protection_wants_an_ally_under_blows_without_a_f
     ally->setxy(261, 160);  // 61 + 40 = 101 px from the druid
     foe->setxy(278, 160);
     EXPECT_FALSE(gate(druid, 4, 1)) << "the ally out of the druid's 60 px";
+}
+
+// GROW TREE fires the lightning the tree grows from (living-13-druid.lua,
+// plant_tree): with a wall under the lightning's pad fire() makes nothing
+// and the cast refuses COULD NOT FIRE. With the setting on the gate asks
+// the pad (G.pad_clear) and says no; the classic gate says yes. The druid
+// faces RIGHT from (192, 192): the pad starts at x 209, inside grid cell
+// (13, 12); the foe stands 40 px east, past that cell, faced and not at
+// blows.
+//
+// RED (the gate's pad term removed): gate(druid, 1, 1) is true with the
+// wall under the pad.
+TEST_F(GameplayFixesBots, druid_tree_refuses_a_pad_on_a_wall)
+{
+    living* druid = settle_body(body(add(FAMILY_DRUID, 1, 192, 192, 1, 100.0f), 16, 16));
+    living* foe = settle_body(body(add(FAMILY_SOLDIER, 0, 232, 192, 1), 16, 16));  // 40 px east
+    ASSERT_TRUE(druid && foe);
+    druid->set_lastx(1.0f);
+    druid->set_lasty(0.0f);
+
+    EXPECT_TRUE(gate(druid, 1, 1)) << "open grass: faced, closing, the pad clear";
+    EXPECT_TRUE(gate(druid, 1, 0)) << "the classic answer";
+    pad_wall(world(), 13, 12);
+    ASSERT_EQ(walker::PadAnswer::Terrain, druid->fire_pad_answer())
+        << "precondition: the wall is under the lightning's pad";
+    EXPECT_TRUE(gate(druid, 1, 0)) << "the classic answer: the druid casts every roll";
+    EXPECT_FALSE(gate(druid, 1, 1)) << "a wall under the pad: COULD NOT FIRE";
+}
+
+// SUMMON FAERIE fires the lightning the faerie rides out on (summon_faerie):
+// a foe's body on the pad takes fire()'s melee blow instead and the cast
+// refuses COULD NOT FIRE. A body of the druid's own team on the pad is
+// passed by the bolt, as by any weapon. The druid faces RIGHT from
+// (200, 200): the pad is x 217 on; a foe stands 100 px east (inside 130).
+//
+// RED (the gate's pad term removed): gate(druid, 2, 1) is true with the
+// second foe on the pad.
+TEST_F(GameplayFixesBots, druid_faerie_refuses_a_pad_on_a_foe)
+{
+    living* druid = settle_body(body(add(FAMILY_DRUID, 1, 200, 200, 4, 300.0f), 16, 16));
+    living* foe = settle_body(body(add(FAMILY_SOLDIER, 0, 300, 200, 1), 16, 16));  // 100 px
+    ASSERT_TRUE(druid && foe);
+    druid->set_lastx(1.0f);
+    druid->set_lasty(0.0f);
+    EXPECT_TRUE(gate(druid, 2, 1)) << "a foe at 100 px, the pad clear";
+
+    living* on_pad = settle_body(body(add(FAMILY_SOLDIER, 0, 217, 200, 1), 16, 16));
+    ASSERT_NE(nullptr, on_pad);
+    ASSERT_EQ(walker::PadAnswer::Body, druid->fire_pad_answer())
+        << "precondition: the second foe stands on the lightning's pad";
+    EXPECT_TRUE(gate(druid, 2, 0)) << "the classic answer: the druid casts every roll";
+    EXPECT_FALSE(gate(druid, 2, 1)) << "a foe's body on the pad: COULD NOT FIRE";
+
+    on_pad->setxy(600, 600);  // off the pad and out of range
+    EXPECT_TRUE(gate(druid, 2, 1)) << "the body moved off: the pad clear";
+
+    on_pad->set_team_num(1);  // an ally of the druid's
+    on_pad->setxy(217, 200);
+    ASSERT_EQ(walker::PadAnswer::Clear, druid->fire_pad_answer())
+        << "the bolt passes the druid's own team";
+    EXPECT_TRUE(gate(druid, 2, 1)) << "an ally on the pad is not in the way";
 }
