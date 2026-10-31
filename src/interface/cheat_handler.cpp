@@ -119,11 +119,29 @@ void handle_cheat_keys(walker*& control, short mynum,
 			control->stats()->set_level(control->stats()->level() - 1);
 	}
 
-	if (query_key_event(KEYCODE_F1, native_event))
+	if (query_key_event(KEYCODE_F1, native_event)) // freeze time
 	{
-		game_screen->world().enemy_freeze += 50;
-		set_palette(game_screen->bluepalette);
-	}
+		// The cheat is sim state (#413): in local play the screen here is a
+		// mirror the next snapshot overwrites, so a freeze and a palette written
+		// on it lasted one tick and froze nobody. Write the server world when
+		// there is one (the snapshot then carries the freeze and the palette id
+		// to every view, and GameWorld thaws it with FREEZE TIME's own rule);
+		// with no shadow (a direct test) the display world is the sim; in a
+		// networked session nothing (a host's cheat would change every player's
+		// game, and a joiner has no server world).
+		GameWorld* world =
+			og::runtime::cheat_target_world(*og::runtime::current_session);
+		if (world == nullptr &&
+			!og::runtime::local_transport_active(*og::runtime::current_session))
+			world = &game_screen->world();
+		if (world != nullptr)
+		{
+			world->enemy_freeze += 50;
+			world->current_palette_id = 1;
+			game_screen->show_palette_id(1); // blue now; the next snapshot says the same
+		}
+		//clear_key_code(SDLK_F1);
+	}//end freeze time
 
 	// generate magic shield
 	if (query_key_event(KEYCODE_F2, native_event))

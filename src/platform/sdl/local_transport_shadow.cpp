@@ -1750,6 +1750,22 @@ bool display_follow_cycle_target(SessionState& session, int view_index,
     return true;
 }
 
+// #413 cheat seam (declared in session_state.h so the interface's cheat
+// handler can reach it). Local, non-networked play only: in a networked
+// session the cheat does nothing, because a host's cheat would change every
+// player's game and a joiner has no server world to write.
+GameWorld* cheat_target_world(SessionState& session)
+{
+    if (!session.has_local_transport_runtime())
+        return nullptr;
+    GameSession& game_session = static_cast<GameSession&>(session);
+    const auto runtime = game_session.local_transport_runtime_;
+    if (!local_seat_mutation_allowed(runtime.get(), session))
+        return nullptr;
+    screen* const server = runtime->server_screen();
+    return server != nullptr ? &server->world() : nullptr;
+}
+
 void local_transport_shadow_set_player_companies(
     GameSession& session,
     std::span<const std::pair<std::uint8_t, std::string>> companies)

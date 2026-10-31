@@ -208,6 +208,15 @@ bool local_transport_active(const SessionState& session) noexcept;
 bool display_follow_cycle_target(SessionState& session, int view_index,
                                  bool reverse);
 
+// The world a debug cheat may change (#413): the authoritative server world of
+// a plain local session (the display is a mirror the next snapshot
+// overwrites), or nullptr when the session is networked, a replay playback, a
+// spectator view or finished, or when no shadow is installed. Declared here so
+// the interface's cheat handler can reach it; implemented by the platform
+// local transport shadow (local_transport_shadow.cpp), on the same gate as
+// the local seat tools (local_seat_mutation_allowed).
+GameWorld* cheat_target_world(SessionState& session);
+
 // Non-thread-local atomic pointer to the most recently installed session.
 // Used by child threads (e.g. test injector threads) to inherit the session
 // when their thread_local current_session is still nullptr.

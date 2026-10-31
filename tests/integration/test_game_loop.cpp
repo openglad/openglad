@@ -33,6 +33,7 @@
 #include <openglad/core/runtime_trace.h>
 #include <openglad/interface/replay_runtime.h>
 #include <openglad/interface/input_mappings.h>
+#include <openglad/interface/cheat_handler.h>
 #include <openglad/interface/ui/pause_menu.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/core/test_trace.h>
@@ -1029,8 +1030,10 @@ TEST(GameLoop, a_level_won_during_a_time_stop_leaves_with_its_own_colours)
 }
 
 namespace {
-// The water and lava cycle (#414), through the real loop: the display is a
-// mirror the shadow re-syncs from the server world every tick.
+// The F1 FREEZE TIME cheat (#413) and the water and lava cycle (#414), both
+// through the real loop: the display is a mirror the shadow re-syncs from the
+// server world every tick, so a cheat or a palette written on the display
+// alone lasts until the next snapshot.
 
 // The swatches of the two bands as the display shows them now: 16 water
 // then 8 lava, three bytes each.
@@ -1072,6 +1075,22 @@ void dump_band_strip(const char* scene,
     std::fclose(fp);
 }
 
+// Press F5+F1 on view 0's seat the way viewscreen::input hands the key to
+// the cheat handler.
+void press_freeze_time_cheat(screen& display)
+{
+    viewscreen* const view = display.viewob[0].get();
+    ASSERT_NE(nullptr, view);
+    walker* control = view->control;
+    ASSERT_NE(nullptr, control);
+    SDL_Event ev{};
+    ev.type = SDL_EVENT_KEY_DOWN;
+    ev.key.key = SDLK_F1;
+    PlayerInput pi;
+    pi.held[static_cast<int>(InputAction::Cheat)] = true;
+    handle_cheat_keys(control, 0, ev, pi, &display);
+}
+
 // Puts the colour cycle setting back on the way out.
 struct CycleModeGuard
 {
@@ -1083,6 +1102,115 @@ struct CycleModeGuard
     CycleModeGuard& operator=(const CycleModeGuard&) = delete;
 };
 } // namespace
+
+// F5+F1 in local play: enemies stand still for 50 ticks, the screen is blue,
+// and the thaw is FREEZE TIME's own.
+TEST(GameLoop, the_freeze_time_cheat_freezes_the_level_and_stays_blue)
+{
+    screen* const display = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(display != nullptr);
+    FreezePaletteGuard guard;
+    CycleModeGuard cycle(display->cyclemode);
+    write_one_soldier_company(*display);
+
+    glad_init();
+    ASSERT_TRUE(og::runtime::current_game_session != nullptr);
+    og::runtime::GameSession& session = *og::runtime::current_game_session;
+    ASSERT_TRUE(og::runtime::local_transport_active(session));
+    screen* const server =
+        og::runtime::local_transport_shadow_testing_server_screen(session);
+    ASSERT_NE(nullptr, server);
+    // The cycle off: the palette compares below are against whole palettes.
+    display->cyclemode = 0;
+
+    GameLoopFrameState st;
+    const GameLoopDeps deps = headless_frame_deps();
+    for (int i = 0; i < 4; ++i)
+        ASSERT_EQ(static_cast<int>(GameFrameResult::Continue),
+                  static_cast<int>(game_frame_with_result(*display, st, deps)));
+    ASSERT_EQ(0, server->world().enemy_freeze);
+    ASSERT_TRUE(display_palette_is(display->ourpalette));
+
+    press_freeze_time_cheat(*display);
+    EXPECT_TRUE(display_palette_is(display->bluepalette))
+        << "the cheat shows the blue at once";
+
+    ASSERT_EQ(static_cast<int>(GameFrameResult::Continue),
+              static_cast<int>(game_frame_with_result(*display, st, deps)));
+    EXPECT_EQ(49, server->world().enemy_freeze)
+        << "the cheat must freeze the level (the server world), 50 ticks less "
+           "the one just played";
+    EXPECT_EQ(49, display->world().enemy_freeze)
+        << "the display shows the server's countdown";
+    EXPECT_EQ(1, static_cast<int>(display->world().current_palette_id));
+    EXPECT_TRUE(display_palette_is(display->bluepalette))
+        << "the blue must outlast the next snapshot";
+
+    int frames = 0;
+    while (server->world().enemy_freeze > 0 && frames < 60)
+    {
+        ASSERT_EQ(static_cast<int>(GameFrameResult::Continue),
+                  static_cast<int>(game_frame_with_result(*display, st, deps)));
+        ++frames;
+        // The thaw gives the colours back on the last frozen tick
+        // (GameWorld: enemy_freeze == 1 sets palette 0), as for the cast.
+        if (server->world().enemy_freeze > 1)
+        {
+            ASSERT_TRUE(display_palette_is(display->bluepalette))
+                << "the blue holds while time is frozen (frame " << frames
+                << ", " << server->world().enemy_freeze << " ticks left)";
+        }
+    }
+    EXPECT_EQ(49, frames) << "the freeze lasts its 50 ticks";
+    EXPECT_EQ(0, server->world().enemy_freeze);
+    EXPECT_EQ(0, static_cast<int>(display->world().current_palette_id))
+        << "the thaw gives the level its own colours back";
+    EXPECT_TRUE(display_palette_is(display->ourpalette));
+
+    og::runtime::clear_local_transport_shadow(session);
+    display->world().delete_objects();
+}
+
+// In a networked session the cheat does nothing: a host's cheat would change
+// every player's game, and a joiner has no server world to write.
+TEST(GameLoop, the_freeze_time_cheat_does_nothing_while_networked)
+{
+    screen* const display = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(display != nullptr);
+    FreezePaletteGuard guard;
+    CycleModeGuard cycle(display->cyclemode);
+    write_one_soldier_company(*display);
+
+    glad_init();
+    ASSERT_TRUE(og::runtime::current_game_session != nullptr);
+    og::runtime::GameSession& session = *og::runtime::current_game_session;
+    ASSERT_TRUE(og::runtime::local_transport_active(session));
+    screen* const server =
+        og::runtime::local_transport_shadow_testing_server_screen(session);
+    ASSERT_NE(nullptr, server);
+    display->cyclemode = 0;
+
+    GameLoopFrameState st;
+    const GameLoopDeps deps = headless_frame_deps();
+    for (int i = 0; i < 4; ++i)
+        ASSERT_EQ(static_cast<int>(GameFrameResult::Continue),
+                  static_cast<int>(game_frame_with_result(*display, st, deps)));
+
+    session.networked_session_ = true;
+    press_freeze_time_cheat(*display);
+    session.networked_session_ = false;
+
+    EXPECT_EQ(0, server->world().enemy_freeze)
+        << "a networked cheat must not reach the shared game";
+    EXPECT_EQ(0, display->world().enemy_freeze)
+        << "nor the display's copy of it";
+    EXPECT_EQ(0, static_cast<int>(display->world().current_palette_id));
+    EXPECT_TRUE(display_palette_is(display->ourpalette))
+        << "a cheat that froze nothing must not turn the screen blue";
+
+    og::runtime::clear_local_transport_shadow(session);
+    display->world().delete_objects();
+}
 
 // The water and lava bands turn one step every third tick (do_cycle, after
 // the snapshot in the same tick) and keep turning: a snapshot that re-sends
