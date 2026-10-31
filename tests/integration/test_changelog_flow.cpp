@@ -40,6 +40,7 @@
 
 #include "../../src/interface/ui/picker_sdl_defs.h"
 #include "test_escape_tail.h"
+#include "test_click_ladder.h"
 #include "test_frame_capture.h"
 #include "test_input_helpers.h"
 #include "test_interact.h"
@@ -100,6 +101,12 @@ constexpr EscapeDoor kChangelogEscapeDoors[] = {
     {"company_row_0", "back"},
     {"quit", "quit"},
 };
+
+// Each screen a flow waits for is up within this many completed engine
+// frames of the wait's start: a menu thread stalled in a disk write
+// completes no frame and so spends none of it (the page's close saves the
+// settings before the next screen opens).
+constexpr int kScreenUpFrames = 60;
 
 // The main-menu doors the page follows, and the screen each one opens.
 constexpr const char* kBeginDoor = "begin_new_game";
@@ -235,7 +242,7 @@ int leave(Flow& flow, int leg, const char* why)
 // Returns the leg that failed, or 0.
 int click_door(Flow& flow, int& fades_before)
 {
-    if (!wait_for_interactable(flow.door, 15000)) {
+    if (!wait_for_interactable_within_frames(flow.door, kScreenUpFrames)) {
         fprintf(stderr, "  [test] '%s' never came up on the main menu\n",
                 flow.door);
         return 1;
@@ -254,7 +261,8 @@ int click_door(Flow& flow, int& fades_before)
 // The screen the door opens, settled; the fades counted across the door.
 int settle_next_screen(Flow& flow, int fades_before, int leg)
 {
-    if (!wait_for_interactable(flow.next_screen, 15000))
+    if (!wait_for_interactable_within_frames(flow.next_screen,
+                                             kScreenUpFrames))
         return leg;
     flow.next_screen_seen = true;
     if (!wait_for_menu_frames(2))
@@ -271,7 +279,7 @@ int page_then_ok(Flow& flow)
     int fades_before = 0;
     if (const int leg = click_door(flow, fades_before))
         return leave(flow, leg, "the main menu never took the door's click");
-    if (!wait_for_interactable("changelog_ok", 15000))
+    if (!wait_for_interactable_within_frames("changelog_ok", kScreenUpFrames))
         return leave(flow, 4, "the CHANGELOG! page did not follow the click");
     flow.page_seen = true;
     if (!wait_for_menu_frames(2))
@@ -283,8 +291,21 @@ int page_then_ok(Flow& flow)
             flow.menu_frame = std::move(frames.back());
     }
     flow.physical = capture_physical_frame(flow.shot_name, shot_dir());
-    if (!interact("changelog_ok"))
-        return leave(flow, 6, "OK was not on the page");
+    // OK, acknowledged: the page traces its close before the settings are
+    // saved, so an OK that landed is never pressed again, however long the
+    // save holds the menu thread.
+    const int closes = count_trace_containing("changelog", "CHANGELOG!: closed id=");
+    const bool ok_landed =
+        click_until_edge(
+            "changelog_ok",
+            [&flow](int ms) {
+                return wait_for_interactable_within_frames(
+                    flow.next_screen, kScreenUpFrames, ms);
+            },
+            "CHANGELOG!: closed id=", 3, 2500, "changelog") ||
+        count_trace_containing("changelog", "CHANGELOG!: closed id=") > closes;
+    if (!ok_landed)
+        return leave(flow, 6, "OK never closed the page");
     if (const int leg = settle_next_screen(flow, fades_before, 7))
         return leave(flow, leg, "OK did not lead into the door's screen");
     (void)run_on_main_thread([&flow] {
@@ -316,13 +337,14 @@ int page_then_escape(Flow& flow)
     int fades_before = 0;
     if (const int leg = click_door(flow, fades_before))
         return leave(flow, leg, "the main menu never took the door's click");
-    if (!wait_for_interactable("changelog_ok", 15000))
+    if (!wait_for_interactable_within_frames("changelog_ok", kScreenUpFrames))
         return leave(flow, 4, "the CHANGELOG! page did not follow the click");
     flow.page_seen = true;
     if (!wait_for_menu_frames(2))
         return leave(flow, 5, "the page completed no frames");
     inject_key_press(SDLK_ESCAPE);
-    if (!wait_for_interactable(flow.next_screen, 15000))
+    if (!wait_for_interactable_within_frames(flow.next_screen,
+                                             kScreenUpFrames))
         return leave(flow, 6, "Escape did not close the page");
     flow.next_screen_seen = true;
     if (!wait_for_menu_frames(3))
@@ -370,7 +392,7 @@ int page_with_held_keys(Flow& flow)
         release_held_keys(held);
         return leave(flow, leg, why);
     };
-    if (!wait_for_interactable("changelog_ok", 15000))
+    if (!wait_for_interactable_within_frames("changelog_ok", kScreenUpFrames))
         return give_up(1, "the CHANGELOG! page never came up");
     flow.page_seen = true;
     if (!wait_for_menu_frames(4, 3000))

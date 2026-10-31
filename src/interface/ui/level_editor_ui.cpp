@@ -510,7 +510,18 @@ bool prompt_for_string_block(const std::string& message, std::list<std::string>&
     return !cancel;
 }
 
+bool prompt_for_string(const std::string& message, std::string& result,
+                       bool (*poll)());
+
 bool prompt_for_string(const std::string& message, std::string& result)
+{
+    return prompt_for_string(message, result, nullptr);
+}
+
+// `poll` is the editor's hook (text::input_string_ex): a prompt a host's GO
+// must reach passes one; every other caller uses the two-argument form.
+bool prompt_for_string(const std::string& message, std::string& result,
+                       bool (*poll)())
 {
 #ifdef TESTING
     // Tests can optionally queue deterministic inputs for prompt_for_string().
@@ -539,7 +550,7 @@ bool prompt_for_string(const std::string& message, std::string& result)
     s_prompt_real_active.store(true, std::memory_order_release);
     s_prompt_real_entered_count.fetch_add(1, std::memory_order_release);
 #endif
-    auto str_opt = screen_ctx->text_normal.input_string_ex_value(x, y, max_chars, message.c_str(), result.c_str());
+    auto str_opt = screen_ctx->text_normal.input_string_ex_value(x, y, max_chars, message.c_str(), result.c_str(), poll);
 #ifdef TESTING
     s_prompt_real_active.store(false, std::memory_order_release);
 #endif
