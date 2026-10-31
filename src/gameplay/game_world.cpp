@@ -672,7 +672,7 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob)
     return query_grid_passable(x, y, ob, ob != nullptr ? ob->floor() : 0);
 }
 
-bool GameWorld::query_grid_passable(float x, float y, walker* ob, int floor)
+bool GameWorld::query_grid_passable(float x, float y, walker* ob, int floor, bool quiet)
 {
     if (ob == nullptr)
         return false;
@@ -866,24 +866,34 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob, int floor)
                     if (ob->owner() == nullptr)
                         return false;
 
-                    if (std::abs(ob->xpos() - ob->owner()->xpos()) >
-                        std::abs(ob->ypos() - ob->owner()->ypos()))
+                    // A quiet probe never rolls the gamble and treats the slit
+                    // as passable. That is the loud answer where a quiet weapon
+                    // probe is made today (walker::fire_pad_clear: the pad one
+                    // pixel outside a shooter up to 38 px a side gives dist /
+                    // GRID_SIZE 0 or 1 below, and rng_.next(0) and rng_.next(1)
+                    // both answer 0). A golem (48x36) or giant skeleton (64x64)
+                    // pad can reach a bound of 2, where the loud roll blocks half.
+                    if (!quiet)
                     {
-                        std::int32_t dist = std::abs(ob->xpos() - ob->owner()->xpos());
-                        dist -= (GRID_SIZE / 2);
-                        if (dist < GRID_SIZE)
-                            dist += GRID_SIZE;
-                        if (rng_.next(static_cast<std::uint32_t>(dist / GRID_SIZE)))
-                            return false;
-                    }
-                    else
-                    {
-                        std::int32_t dist = std::abs(ob->ypos() - ob->owner()->ypos());
-                        dist -= (GRID_SIZE / 2);
-                        if (dist < GRID_SIZE)
-                            dist += GRID_SIZE;
-                        if (rng_.next(static_cast<std::uint32_t>(dist / GRID_SIZE)))
-                            return false;
+                        if (std::abs(ob->xpos() - ob->owner()->xpos()) >
+                            std::abs(ob->ypos() - ob->owner()->ypos()))
+                        {
+                            std::int32_t dist = std::abs(ob->xpos() - ob->owner()->xpos());
+                            dist -= (GRID_SIZE / 2);
+                            if (dist < GRID_SIZE)
+                                dist += GRID_SIZE;
+                            if (rng_.next(static_cast<std::uint32_t>(dist / GRID_SIZE)))
+                                return false;
+                        }
+                        else
+                        {
+                            std::int32_t dist = std::abs(ob->ypos() - ob->owner()->ypos());
+                            dist -= (GRID_SIZE / 2);
+                            if (dist < GRID_SIZE)
+                                dist += GRID_SIZE;
+                            if (rng_.next(static_cast<std::uint32_t>(dist / GRID_SIZE)))
+                                return false;
+                        }
                     }
                     [[fallthrough]];
                 case PIX_WALLSIDE_L:
@@ -983,7 +993,7 @@ bool GameWorld::query_object_passable(float x, float y, walker* ob)
     return query_object_passable(x, y, ob, ob != nullptr ? ob->floor() : 0);
 }
 
-bool GameWorld::query_object_passable(float x, float y, walker* ob, int floor)
+bool GameWorld::query_object_passable(float x, float y, walker* ob, int floor, bool quiet)
 {
     if (ob == nullptr)
         return false;
@@ -1002,7 +1012,7 @@ bool GameWorld::query_object_passable(float x, float y, walker* ob, int floor)
     // cross-floor probe must NOT use this path — the cross-floor helpers
     // (floor_landing_clear / teleport_landing_clear / classic_spot_clear) do
     // their own manual obmap sweep at an explicit floor instead.
-    return om->query_list(ob, static_cast<short>(x), static_cast<short>(y));
+    return om->query_list(ob, static_cast<short>(x), static_cast<short>(y), quiet);
 }
 
 bool GameWorld::query_passable(float x, float y, walker* ob)
@@ -1010,10 +1020,10 @@ bool GameWorld::query_passable(float x, float y, walker* ob)
     return query_passable(x, y, ob, ob != nullptr ? ob->floor() : 0);
 }
 
-bool GameWorld::query_passable(float x, float y, walker* ob, int floor)
+bool GameWorld::query_passable(float x, float y, walker* ob, int floor, bool quiet)
 {
-    return query_grid_passable(x, y, ob, floor) &&
-           query_object_passable(x, y, ob, floor);
+    return query_grid_passable(x, y, ob, floor, quiet) &&
+           query_object_passable(x, y, ob, floor, quiet);
 }
 
 namespace {
@@ -2328,4 +2338,39 @@ void GameWorld::adopt_scripts_from(GameWorld& source) noexcept
     if (&source == this)
         return;
     scripts_ = std::move(source.scripts_);
+}
+
+// The walk of find_nearest_blood, keeping every stain it would consider
+// instead of the nearest alone, on who's own floor, sorted nearest first by
+// the same squared centre distance; a stable sort, so equal distances keep
+// fxlist order. find_nearest_blood itself is left as it is (the classic
+// raises and G.corpse_near read it). Appended below the last parity canary
+// pin in this file so the pins above never shift.
+std::vector<walker*> GameWorld::find_blood_in_reach(walker* who)
+{
+    std::vector<std::pair<std::int32_t, walker*>> found;
+    if (!who)
+        return {};
+
+    for (auto& uptr : fxlist)
+    {
+        walker* w = uptr.get();
+        if (w && w->query_order() == Order::Treasure &&
+            w->family() == FAMILY_STAIN && !w->dead() &&
+            w->floor() == who->floor())
+        {
+            const std::int32_t distance =
+                static_cast<std::int32_t>(who->distance_to_ob_center(w));
+            if (distance < 800)
+                found.emplace_back(distance, w);
+        }
+    }
+
+    std::stable_sort(found.begin(), found.end(),
+                     [](const auto& a, const auto& b) { return a.first < b.first; });
+    std::vector<walker*> stains;
+    stains.reserve(found.size());
+    for (const auto& entry : found)
+        stains.push_back(entry.second);
+    return stains;
 }

@@ -28,7 +28,10 @@
 #include <openglad/gameplay/sim_emit.h>
 
 
-short ob_pass_check(short x, short y, walker* ob, const std::list<walker*>& pile, const obmap* map);
+// quiet: the probe asks the loud call's question and changes nothing (no
+// draw, no treasure eaten, no door opened, no collide()); see query_list in
+// obmap.h. Every caller but obmap::query_list(..., true) is loud.
+short ob_pass_check(short x, short y, walker* ob, const std::list<walker*>& pile, const obmap* map, bool quiet = false);
 short collide(short x,  short y,  short xsize,  short ysize,
               short x2, short y2, short xsize2, short ysize2);
 
@@ -85,7 +88,7 @@ size_t obmap::size() const
     return walker_to_pos.size();
 }
 
-short obmap::query_list(walker  *ob, short x, short y)
+short obmap::query_list(walker  *ob, short x, short y, bool quiet)
 {
 	short numx, startnumx, endnumx;
 	short numy, startnumy, endnumy;
@@ -129,7 +132,7 @@ short obmap::query_list(walker  *ob, short x, short y)
 			// and corrupt iterator traversal — the root cause of the
 			// walker_to_pos.find() infinite-loop hang.
 			auto pile_snapshot = *pile;
-			if (!ob_pass_check(x, y, ob, pile_snapshot, this))
+			if (!ob_pass_check(x, y, ob, pile_snapshot, this, quiet))
 				return 0;
 		}
 	}
@@ -320,7 +323,7 @@ std::list<walker*>& obmap::obmap_get_list(short x, short y, int floor)
 /***********************************************
 **  All pass checking from here down.
 ***********************************************/
-short ob_pass_check(short x, short y, walker* ob, const std::list<walker*>& pile, const obmap* map)
+short ob_pass_check(short x, short y, walker* ob, const std::list<walker*>& pile, const obmap* map, bool quiet)
 {
 	short oxsize, oysize;
 	short x2, y2, xsize2, ysize2;
@@ -362,7 +365,8 @@ short ob_pass_check(short x, short y, walker* ob, const std::list<walker*>& pile
             if((targetorder == Order::Weapon || myorder == Order::Weapon) && ob->is_friendly(w))
                 continue;
             // Allow weapons to sometimes 'miss' opposing team's weapons
-            else if(targetorder == Order::Weapon && myorder == Order::Weapon && (current_game->world->rng_.next(10) > 3))
+            // (a quiet probe never rolls: an enemy weapon in flight passes it)
+            else if(targetorder == Order::Weapon && myorder == Order::Weapon && (quiet || current_game->world->rng_.next(10) > 3))
                 continue;
             // Weapons never hit treasure
             else if(targetorder == Order::Treasure && myorder == Order::Weapon)
@@ -389,6 +393,10 @@ short ob_pass_check(short x, short y, walker* ob, const std::list<walker*>& pile
                 {
                     if ( targetorder == Order::Treasure )
                     {
+                        // A quiet probe eats nothing and latches no exit: a
+                        // treasure never blocks, so it is simply passed.
+                        if (quiet)
+                            continue;
                         // #160: exit pads fire once per CONTACT, not once per
                         // skip_exit cooldown. Every movement probe lands here,
                         // so held-direction walking on the pad used to re-run
@@ -413,6 +421,15 @@ short ob_pass_check(short x, short y, walker* ob, const std::list<walker*>& pile
                     else if ( (targetorder == Order::Weapon)
                               && (w->family() == FAMILY_DOOR) )
                     {
+                        // A quiet probe gives the loud answer below without
+                        // opening the door, posting the notice or colliding:
+                        // a door it holds the key to blocks this round unless
+                        // the prober is BIT_NO_COLLIDE; a locked one blocks.
+                        if (quiet)
+                        {
+                            const bool keyed = (ob->keys() & static_cast<std::uint32_t>(key_level_mask(w->stats()->level()))) != 0;
+                            return (keyed && ob->stats()->query_bit_flags(BIT_NO_COLLIDE)) ? 1 : 0;
+                        }
                         // Can we unlock this door?
                         if (ob->keys() & static_cast<std::uint32_t>(key_level_mask(w->stats()->level())))
                         {
@@ -478,13 +495,14 @@ short ob_pass_check(short x, short y, walker* ob, const std::list<walker*>& pile
                             if (d_new > d_old)
                                 continue; // separating: not blocked by w
                         }
-                        ob->collide(w);
+                        if (!quiet)
+                            ob->collide(w);
                         if (ob->stats()->query_bit_flags(BIT_NO_COLLIDE))
                             return 1;
                         return 0;
                     }
                 }
-                else
+                else if (!quiet)
                     // if (ob->collide_ob()) //let's just assume its safe
                     ob->set_collide_ob(nullptr);
             }

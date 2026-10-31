@@ -49,12 +49,13 @@ local function fixed_gate(self, foe_count)
   if slot == 1 then
     local t = og.tuning(self)
     local yes = foe_count < 1 or foe_count > 3
-    if foe_count < 1 and G.marker_pays(self, FX_MARKER, 2, t.marker_int_req) then
+    local mark = foe_count < 1 and G.marker_pays(self, FX_MARKER, 2, t.marker_int_req)
+    if mark and not lc.is_busy(self) then
       self:set_shifter_down(1)
     else
       self:set_shifter_down(0)
     end
-    return yes
+    return yes and not lc.mid_teleport(self)
   end
   if slot == 2 then
     -- each bolt's range add, as starburst computes it from the spare pool

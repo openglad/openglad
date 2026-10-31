@@ -1,6 +1,6 @@
 -- core:barbarian — boulder-toss special (cookbook: docs/lua-classpacks-design.md §3).
 -- Copyright (C) 1995-2002 FSGames; ported by Sean Ford and Yan Shosh.
-
+local lc = og.use("living_common")
 local gf = og.use("gameplay_fixes")
 local G = og.use("gates")
 local WEAP_BOULDER = assert(og.family_id("weapon", "core:boulder"))
@@ -13,7 +13,7 @@ local WEAP_BOULDER = assert(og.family_id("weapon", "core:boulder"))
 local BOULDER_LOS = 9
 
 local function do_special(self)
-  if self:busy() > 0 then
+  if lc.is_busy(self) then
     return false, "SPECIAL BUSY"
   end
   local shot = self:fire()
@@ -108,6 +108,10 @@ end
 local function check_special_ai(self)
   if not gf.on() then
     return true
+  end
+  -- Both throws refuse a busy barbarian (do_special's guard).
+  if lc.is_busy(self) then
+    return false
   end
   local slot = self:current_special()
   if slot == 2 then

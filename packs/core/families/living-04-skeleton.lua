@@ -3,7 +3,7 @@
 local ks = og.use("kit_skeleton")
 local C = og.C
 local lc = og.use("living_common")
-
+local gf = og.use("gameplay_fixes")
 local function handle_teleport(self)
   self.ani_type = C.ANI_TELE_IN
   self:set_cycle(0)
@@ -17,9 +17,9 @@ local function check_special_ai(self)
   -- Historical rule: tunnel only when "away from anybody."
   -- This per-tick gate keeps its fixed five-grid range in code.
   local _, foe_count = og.find_foes_in_range("ob", 5 * 16, self)
-  return foe_count < 1
+  local held = gf.on() and lc.mid_teleport(self)
+  return foe_count < 1 and not held
 end
-
 local function level_up(guy, level_diff)
   og.apply_level_up(guy, level_diff, 8, 12, 4, 4, 1)
 end

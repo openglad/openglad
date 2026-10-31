@@ -210,11 +210,17 @@ TEST(KitBots, unaffordable_priced_alternate_drops_the_shift_only_when_priced)
 // the classic fold sends the bot to slot 1. The state after the act is the
 // hand replay of the classic stream: the 1-in-5 roll, the slot roll and
 // check_special's shift coin (the probe's slots run no script). With the
-// setting on, the same state rolls next(4) instead: the same number of
-// draws, a slot the family has, and no fold.
+// setting on, the same state rolls next(4) instead: a slot the family has,
+// and no fold. The probe's slot casts nothing, so with the setting on that
+// roll is not the bot's act (Gameplay Fixes W2): the bot then takes the act
+// the coin would have given it, alone on the field a random walk, and the
+// stream goes on with those draws.
 // RED (checked by mutation): the cap applied whatever the setting gives
 // slot 2 for the setting-off bot ("Which is: 2", 1 wanted): the draw that
-// picks the sixth of six slots picks the second of four.
+// picks the sixth of six slots picks the second of four. The setting-on
+// hand went red on the fixed tree while it still expected the roll's draws
+// alone ("the same number of draws on both values"): the ordinary act's
+// draws above are what W2 adds.
 TEST(KitBots, bot_roll_is_identical_with_gameplay_fixes_off)
 {
     og::test::ScopedHookFailureGuard guard;
@@ -246,6 +252,18 @@ TEST(KitBots, bot_roll_is_identical_with_gameplay_fixes_off)
     og::sim::SimRandom fixed(start);
     (void)fixed.next(5);
     const int fixed_slot = static_cast<int>(fixed.next(4)) + 1;
+    (void)fixed.next(2);  // check_special's shift coin
+    // The ordinary act after the refused roll: the second coin, then
+    // act_random() (its next(80), no foe, a walk of two rng(3)) or the
+    // four-in-five branch (no foe: next(2), and on 1 the same walk).
+    if (fixed.next(5) == 0) {
+        (void)fixed.next(80);
+        (void)fixed.next(3);
+        (void)fixed.next(3);
+    } else if (fixed.next(2) != 0) {
+        (void)fixed.next(3);
+        (void)fixed.next(3);
+    }
 
     const ActOutcome off = act_with(0);
     EXPECT_EQ(1, off.current_special)
@@ -256,8 +274,8 @@ TEST(KitBots, bot_roll_is_identical_with_gameplay_fixes_off)
     const ActOutcome on = act_with(1);
     EXPECT_EQ(fixed_slot, on.current_special)
         << "with the setting on the roll is next(4), unfolded";
-    EXPECT_EQ(off.rng_state, on.rng_state)
-        << "the same number of draws on both values";
+    EXPECT_EQ(fixed.state_, on.rng_state)
+        << "the roll's draws, then the ordinary act's";
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 

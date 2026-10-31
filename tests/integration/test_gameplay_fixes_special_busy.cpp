@@ -244,8 +244,8 @@ TEST_F(GameplayFixesSpecialBusy, disarm_after_a_shot)
                               static_cast<Sint32>(w->ypos()));
         ASSERT_NE(nullptr, foe);
         // The foe overlaps the box one pixel ahead, so it blocks the way
-        // forward. (Not asked here: the engine's passability probe against a
-        // foe is a bump that swings at it, which would make the hero busy.)
+        // forward. (Not asked here: with the setting off the probe is a bump
+        // that swings at the foe and makes the hero busy; on, it is quiet.)
         const float pool = w->stats()->magicpoints();
 
         const Cast c = try_special(w);

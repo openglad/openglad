@@ -114,7 +114,7 @@ local function check_special_ai(self)
     return true
   end
   local v = VOLLEYS[self:current_special()] or VOLLEYS[4]
-  return volley(self, v[1], v[2])
+  return G.pad_clear(self) and volley(self, v[1], v[2])
 end
 
 og.family("living", {

@@ -75,10 +75,13 @@
 #include <list>
 #include <memory>
 #include <set>
+#include <span>
 #include <string>
 #include <vector>
 
 void picker_main(Sint32 argc, char** argv);
+Sint32 create_train_menu(Sint32 arg1);
+Sint32 create_hire_menu(Sint32 arg1);
 short new_score_panel(screen* scr, short do_it); // score_panel.cpp, the HUD
 extern int g_picker_mainmenu_calls;
 extern int g_picker_max_mainmenu_calls;
@@ -2445,6 +2448,180 @@ TEST(AbilitiesFlow, a_host_go_while_parked_starts_and_commits_nothing)
         << "an edit in flight when the match starts is not committed";
     EXPECT_FALSE(trace_contains("abilities", "commit slot="));
     EXPECT_TRUE(scope.lobby.ready_requests.empty());
+}
+
+// --- #400: a host's GO while this machine reads the DETAILS page ----------
+
+namespace
+{
+
+// DETAILS is not engine-hosted: it publishes its own rows (PROMOTE among
+// them, hidden or not, and nothing of the screen under it), so "DETAILS is
+// up" is the published id list naming promote. has_interactable() would not
+// do: it skips hidden buttons, and PROMOTE is hidden for every recruit and
+// for a hero under his promotion level.
+bool details_listed()
+{
+    const std::vector<std::string> ids = get_button_ids();
+    return std::find(ids.begin(), ids.end(), "promote") != ids.end();
+}
+
+// How many lobby polls DETAILS may idle through after the host's GO before
+// the test calls it stuck. DETAILS polls once per loop, so this is a bound
+// in frames, not in time.
+constexpr int kDetailsHeldPolls = 8;
+
+// TRAIN's DETAILS door table, plus a last BACK for the page itself: the
+// tail presses it only when DETAILS is still up after the bound (the bug),
+// so a failing run ends red instead of spinning.
+constexpr EscapeDoor kTrainDetailsStartDoors[] = {
+    {"promote", "back"},
+    {"inc_str", "back"},
+    {"go", "back"},
+    {"continue_game", "continue_game"},
+    {"back", "back"},
+};
+
+struct DetailsStartState {
+    std::atomic<bool> test_finished{false};
+    FakeLobbyClient* lobby = nullptr;
+    const char* door = nullptr;              // the row that opens DETAILS
+    std::span<const EscapeDoor> doors;
+    bool opened = false;                     // DETAILS came up
+    int armed_polls = -1;                    // lobby polls when the GO came
+    int presses_before = -1;                 // the tail's presses then
+    std::uint64_t frames_before = 0;         // engine frames then
+    bool held_bound_hit = false;             // DETAILS outlived the bound
+    int team_size_before = -1;
+};
+
+int details_start_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* const state = static_cast<DetailsStartState*>(data);
+    const auto escape = [state](int leg, const char* why) {
+        return escape_to_the_main_thread(state->test_finished, leg, why,
+                                         state->doors);
+    };
+    if (!wait_for_interactable(state->door, 10000))
+        return escape(1, "the screen with the DETAILS door never came up");
+    (void)wait_for_menu_frames(2);
+    (void)run_on_main_thread([state] {
+        state->team_size_before =
+            og::runtime::current_session->myscreen_->save_data.team_size;
+    });
+    state->opened = click_until_edge(state->door, details_page_up);
+    if (!state->opened)
+        return escape(2, "the door never opened the DETAILS page");
+
+    // The host presses GO: the fake lobby starts the game on its next poll.
+    // The poll count is read last, right before the GO, so the page's own
+    // polls while the frame count is read on its thread do not count.
+    state->presses_before = g_escape_tail_presses.load();
+    (void)run_on_main_thread([state] {
+        state->frames_before = og::ui::menu_screen_testing_completed_frames();
+    });
+    state->armed_polls = state->lobby->poll_count.load();
+    state->lobby->start_on_next_poll.store(true);
+
+    // Press nothing while DETAILS is up and has polled fewer than the bound
+    // since the GO; DETAILS must leave by itself. The clock is only the
+    // dead-pump ceiling.
+    const Uint64 give_up = SDL_GetTicks() + kHeldTailCeilingMs;
+    return escape_to_the_main_thread(
+        state->test_finished, 0, "", state->doors, [state, give_up] {
+            if (state->held_bound_hit || !details_listed())
+                return false;
+            if (state->lobby->poll_count.load() >=
+                    state->armed_polls + kDetailsHeldPolls ||
+                SDL_GetTicks() >= give_up) {
+                state->held_bound_hit = true;
+                return false;
+            }
+            return true;
+        });
+}
+
+// Runs `screen_fn(0)` (TRAIN or HIRE) on the main thread under the injector.
+Sint32 run_details_start(DetailsStartState& state, Sint32 (*screen_fn)(Sint32),
+                         int& thread_result)
+{
+    SDL_Thread* thread =
+        SDL_CreateThread(details_start_injector, "details_start", &state);
+    EXPECT_NE(nullptr, thread);
+    if (thread == nullptr)
+        return 0;
+    const Sint32 result = screen_fn(0);
+    state.test_finished.store(true);
+    SDL_WaitThread(thread, &thread_result);
+    escape_tail_join_hygiene();
+    return result;
+}
+
+void expect_details_left_on_the_go(const DetailsStartState& state,
+                                   const FakeLobbyClient& lobby, Sint32 result)
+{
+    EXPECT_EQ(MENU_EXIT, result) << "the host's GO propagates";
+    ASSERT_NE(nullptr, pks().selected_menu_item);
+    EXPECT_EQ(og::ui::PickerMenuCommand::StartGame,
+              pks().selected_menu_item->command)
+        << "the exit is the start of the game";
+    EXPECT_FALSE(state.held_bound_hit)
+        << "DETAILS was still up " << kDetailsHeldPolls
+        << " polls after the host's GO";
+    EXPECT_EQ(state.presses_before, g_escape_tail_presses.load())
+        << "the host's GO left DETAILS without a BACK";
+    EXPECT_LE(lobby.poll_count.load() - state.armed_polls, 2)
+        << "DETAILS leaves on the poll that brings the GO, or the next";
+    EXPECT_EQ(state.frames_before,
+              og::ui::menu_screen_testing_completed_frames())
+        << "the screen under DETAILS composed no frame after the GO";
+    EXPECT_TRUE(trace_contains("detail", "remote start"));
+}
+} // namespace
+
+// The reporter's case: a joiner on TRAIN > DETAILS.. when the host presses
+// GO starts with everyone, not when he next presses BACK.
+TEST(AbilitiesFlow, a_host_go_on_train_details_starts_without_back)
+{
+    trace_clear();
+    DirectRunScope scope;
+    write_ability_company(12, 1, 4);
+
+    DetailsStartState state;
+    state.lobby = &scope.lobby;
+    state.door = "details";
+    state.doors = kTrainDetailsStartDoors;
+    int thread_result = 0;
+    const Sint32 result =
+        run_details_start(state, create_train_menu, thread_result);
+
+    EXPECT_EQ(0, thread_result);
+    ASSERT_TRUE(state.opened) << "DETAILS never opened";
+    expect_details_left_on_the_go(state, scope.lobby, result);
+}
+
+// The same from HIRE's ABILITIES door (the recruit's DETAILS page), and the
+// GO hires nobody.
+TEST(AbilitiesFlow, a_host_go_on_hire_abilities_starts_without_back)
+{
+    trace_clear();
+    DirectRunScope scope;
+    write_ability_company(12, 1, 4);
+
+    DetailsStartState state;
+    state.lobby = &scope.lobby;
+    state.door = "hire_abilities";
+    state.doors = kHireDetailsEscapeDoors;
+    int thread_result = 0;
+    const Sint32 result =
+        run_details_start(state, create_hire_menu, thread_result);
+
+    EXPECT_EQ(0, thread_result);
+    ASSERT_TRUE(state.opened) << "DETAILS never opened";
+    expect_details_left_on_the_go(state, scope.lobby, result);
+    EXPECT_EQ(state.team_size_before, test_screen()->save_data.team_size)
+        << "nobody was hired";
 }
 
 // The longest core row, a level-1 Barbarian's locked "2 EXPLODING BOULDER

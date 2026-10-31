@@ -540,49 +540,44 @@ walker  * walker::fire()
 	waver = static_cast<signed char>(std::clamp((weapon->stepsize())/2, 0.0f, 127.0f)); // Absolute amount ..
 	waver = static_cast<signed char>(current_game->world->rng_.next(static_cast<std::uint32_t>(waver+1)) - static_cast<std::uint32_t>(waver/2));
 
+	short pad_x = 0, pad_y = 0;
+	weapon_pad(*weapon, pad_x, pad_y);
 	switch (facing(lastx(), lasty()))
 	{
 		case FACE_RIGHT:
-			weapon->setxy(xpos()+sizex()+1,ypos()+(sizey() - weapon->sizey())/2);
 			weapon->set_lastx(weapon->stepsize());
 			weapon->set_lasty(waver);
 			break;
 		case FACE_LEFT:
-			weapon->setxy(xpos() - weapon->sizex()-1, ypos()+(sizey()-weapon->sizey())/2);
 			weapon->set_lastx(-weapon->stepsize());
 			weapon->set_lasty(waver);
 			break;
 		case FACE_DOWN:
-			weapon->setxy(xpos()+(sizex()-weapon->sizex())/2, ypos()+sizey()+1);
 			weapon->set_lasty(weapon->stepsize());
 			weapon->set_lastx(waver);
 			break;
 		case FACE_UP:
-			weapon->setxy(xpos()+(sizex()-weapon->sizex())/2, ypos() - weapon->sizey()-1);
 			weapon->set_lasty(- weapon->stepsize());
 			weapon->set_lastx(waver);
 			break;
 		case FACE_UP_RIGHT:
-			weapon->setxy(xpos()+sizex()+1, ypos()-weapon->sizey()-1);
 			weapon->set_lastx(weapon->stepsize() + waver);
 			weapon->set_lasty(-weapon->stepsize() + waver);
 			break;
 		case FACE_UP_LEFT:
-			weapon->setxy(xpos() - weapon->sizex()-1, ypos()-weapon->sizey()-1);
 			weapon->set_lastx(-weapon->stepsize() - waver);
 			weapon->set_lasty(-weapon->stepsize() + waver);
 			break;
 		case FACE_DOWN_RIGHT:
-			weapon->setxy(xpos()+sizex()+1, ypos() + sizey()+1);
 			weapon->set_lasty(weapon->stepsize() + waver);
 			weapon->set_lastx(weapon->stepsize() - waver);
 			break;
 		case FACE_DOWN_LEFT:
-			weapon->setxy(xpos() - weapon->sizex()-1, ypos()+sizey()+1);
 			weapon->set_lasty(weapon->stepsize() + waver);
 			weapon->set_lastx(-weapon->stepsize() + waver);
 			break;
 	}
+	weapon->setxy(pad_x, pad_y);
 
 	weapon->set_frame(frame());
 	// Make sure our current direction is wrong so first walk
@@ -2616,4 +2611,78 @@ void walker::set_hidden(bool value)
 		map->remove(this);
 	else if (!ignore() && !dormant())
 		map->add(this, xpos(), ypos());
+}
+
+// The pad table of fire(): where the weapon it creates is placed, one pixel
+// outside this walker's box on the side facing(lastx(), lasty()) names.
+// fire() and fire_pad_clear() both read it, so the pad has one rule.
+// Appended at EOF so the parity canary pins above never shift.
+void walker::weapon_pad(const walker& weapon, short& px, short& py)
+{
+	std::int32_t x = weapon.xpos();
+	std::int32_t y = weapon.ypos();
+	switch (facing(lastx(), lasty()))
+	{
+		case FACE_RIGHT:
+			x = xpos()+sizex()+1;
+			y = ypos()+(sizey() - weapon.sizey())/2;
+			break;
+		case FACE_LEFT:
+			x = xpos() - weapon.sizex()-1;
+			y = ypos()+(sizey()-weapon.sizey())/2;
+			break;
+		case FACE_DOWN:
+			x = xpos()+(sizex()-weapon.sizex())/2;
+			y = ypos()+sizey()+1;
+			break;
+		case FACE_UP:
+			x = xpos()+(sizex()-weapon.sizex())/2;
+			y = ypos() - weapon.sizey()-1;
+			break;
+		case FACE_UP_RIGHT:
+			x = xpos()+sizex()+1;
+			y = ypos()-weapon.sizey()-1;
+			break;
+		case FACE_UP_LEFT:
+			x = xpos() - weapon.sizex()-1;
+			y = ypos()-weapon.sizey()-1;
+			break;
+		case FACE_DOWN_RIGHT:
+			x = xpos()+sizex()+1;
+			y = ypos() + sizey()+1;
+			break;
+		case FACE_DOWN_LEFT:
+			x = xpos() - weapon.sizex()-1;
+			y = ypos()+sizey()+1;
+			break;
+	}
+	// setxy(std::int32_t, std::int32_t) narrows the same way.
+	px = static_cast<short>(x);
+	py = static_cast<short>(y);
+}
+
+// The pad fire() would place this walker's current weapon on, probed quietly:
+// the same spot (weapon_pad), the same weapon rules (own-team bodies pass, an
+// enemy body, door, tree or generator blocks), no entity, no draw (an enemy
+// weapon in flight passes a quiet probe; an arrow slit is passable at the
+// pad's distance), nothing eaten or opened. A bot gate's question.
+// Appended at EOF so the parity canary pins above never shift.
+bool walker::fire_pad_clear()
+{
+	if (query_order() != Order::Living || current_game == nullptr || current_game->world == nullptr)
+		return false;
+	weap probe(WeaponProfileProbeTag{});
+	const PixieData* data = current_game->world->configure_existing_entity(
+		probe, Order::Weapon, static_cast<std::int32_t>(static_cast<char>(current_weapon())));
+	if (data == nullptr)
+		return false;
+	probe.set_data(*data);
+	probe.set_owner(this);          // the chain create_weapon gives it: is_friendly reads it
+	probe.set_team_num(team_num());
+	probe.set_floor(floor());
+	short px = 0, py = 0;
+	weapon_pad(probe, px, py);
+	probe.set_xpos(px);             // SimEntity's plain setters: never setxy,
+	probe.set_ypos(py);             // which would register the probe in the obmap
+	return current_game->world->query_passable(px, py, &probe, floor(), /*quiet=*/true);
 }
