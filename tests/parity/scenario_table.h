@@ -8311,7 +8311,7 @@ inline constexpr FactPredicate kFacts_walk_to_foe_adopts_near_foe_scen99[] = {
 };
 
 inline constexpr Mutation kMut_walk_to_foe_adopts_near_foe_scen99 = {
-    "src/gameplay/stats.cpp", 1310,
+    "src/gameplay/stats.cpp", 1318,
     "controller_->set_foe(near_foe);",
     "(void)near_foe;",
     "Drops the adoption and keeps the this-tick re-aim (the recomputed xdelta/ydelta still steer the turn), which the recon measured byte-identical to the pre-#320 golden on every switch row: the archer keeps the soldier as its foe, its arrows never land on the thief, WalkerHpRangeAtFinalTick(FAMILY_THIEF, 5600, 5600) reads 6700 and the soldier fact reads 7200. The archer control and the tick budget hold."
@@ -10330,7 +10330,7 @@ inline constexpr FactPredicate kFacts_soldier_charge_front_foe_scen99[] = {
         "consequence: the classic probe's swing takes the tower down to 93 hp"),
 };
 inline constexpr Mutation kMut_soldier_charge_front_foe_scen99 = {
-    "src/gameplay/stats.cpp", 937,
+    "src/gameplay/stats.cpp", 938,
     "return !current_game->world->query_passable(controlx + xdelta, controly + ydelta, controller_, controller_->floor(), quiet);",
     "return true || !current_game->world->query_passable(controlx + xdelta, controly + ydelta, controller_, controller_->floor(), quiet);",
     "Answers blocked without probing, so CHARGE still refuses PATH BLOCKED but no probe bumps the tower, which ends at 112 hp: WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 9300, 9300) fails (the sound count stays 8: the tower's own shots fall differently)."

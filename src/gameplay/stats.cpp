@@ -770,7 +770,7 @@ void statistics::set_bit_flags(Sint32 someflag, short newvalue)
 }
 
 // Returns whether our right is blocked
-bool statistics::right_blocked()
+bool statistics::right_blocked(bool quiet)
 {
 	float xdelta, ydelta;
 	float controlx = controller_->xpos(), controly = controller_->ypos();
@@ -817,11 +817,12 @@ bool statistics::right_blocked()
 			break;
 	}
 
-	return !current_game->world->query_passable(controlx + xdelta, controly + ydelta, controller_);
+	const float px = controlx + xdelta, py = controly + ydelta;
+	return !current_game->world->query_passable(px, py, controller_, controller_->floor(), quiet);
 }
 
 // Returns whether our right-forward is blocked
-bool statistics::right_forward_blocked()
+bool statistics::right_forward_blocked(bool quiet)
 {
 	float controlx = controller_->xpos(), controly = controller_->ypos();
 	float mystep = controller_->stepsize();
@@ -830,22 +831,22 @@ bool statistics::right_forward_blocked()
 	switch (controller_->curdir())
 	{
 		case FACE_UP:
-			return !current_game->world->query_passable(controlx+mystep, controly-mystep, controller_);
+			return !current_game->world->query_passable(controlx+mystep, controly-mystep, controller_, controller_->floor(), quiet);
 		case FACE_UP_RIGHT:
-			return !current_game->world->query_passable(controlx+mystep, controly, controller_);
+			return !current_game->world->query_passable(controlx+mystep, controly, controller_, controller_->floor(), quiet);
 
 		case FACE_RIGHT:
-			return !current_game->world->query_passable(controlx+mystep, controly+mystep, controller_);
+			return !current_game->world->query_passable(controlx+mystep, controly+mystep, controller_, controller_->floor(), quiet);
 		case FACE_DOWN_RIGHT:
-			return !current_game->world->query_passable(controlx, controly+mystep, controller_);
+			return !current_game->world->query_passable(controlx, controly+mystep, controller_, controller_->floor(), quiet);
 		case FACE_DOWN:
-			return !current_game->world->query_passable(controlx-mystep, controly+mystep, controller_);
+			return !current_game->world->query_passable(controlx-mystep, controly+mystep, controller_, controller_->floor(), quiet);
 		case FACE_DOWN_LEFT:
-			return !current_game->world->query_passable(controlx-mystep, controly, controller_);
+			return !current_game->world->query_passable(controlx-mystep, controly, controller_, controller_->floor(), quiet);
 		case FACE_LEFT:
-			return !current_game->world->query_passable(controlx-mystep, controly-mystep, controller_);
+			return !current_game->world->query_passable(controlx-mystep, controly-mystep, controller_, controller_->floor(), quiet);
 		case FACE_UP_LEFT:
-			return !current_game->world->query_passable(controlx, controly-mystep, controller_);
+			return !current_game->world->query_passable(controlx, controly-mystep, controller_, controller_->floor(), quiet);
 		default:
 			break;
 
@@ -854,7 +855,7 @@ bool statistics::right_forward_blocked()
 }
 
 // Returns whether our right-back is blocked
-bool statistics::right_back_blocked()
+bool statistics::right_back_blocked(bool quiet)
 {
 	float controlx = controller_->xpos(), controly = controller_->ypos();
 	float mystep = controller_->stepsize();
@@ -863,23 +864,23 @@ bool statistics::right_back_blocked()
 	switch (controller_->curdir())
 	{
 		case FACE_UP:
-			return !current_game->world->query_passable(controlx+mystep, controly+mystep, controller_);
+			return !current_game->world->query_passable(controlx+mystep, controly+mystep, controller_, controller_->floor(), quiet);
 		case FACE_UP_RIGHT:
-			return !current_game->world->query_passable(controlx, controly+mystep, controller_);
+			return !current_game->world->query_passable(controlx, controly+mystep, controller_, controller_->floor(), quiet);
 
 		case FACE_RIGHT:
-			return !current_game->world->query_passable(controlx-mystep, controly+mystep, controller_);
+			return !current_game->world->query_passable(controlx-mystep, controly+mystep, controller_, controller_->floor(), quiet);
 		case FACE_DOWN_RIGHT:
-			return !current_game->world->query_passable(controlx-mystep, controly, controller_);
+			return !current_game->world->query_passable(controlx-mystep, controly, controller_, controller_->floor(), quiet);
 		case FACE_DOWN:
-			return !current_game->world->query_passable(controlx-mystep, controly-mystep, controller_);
+			return !current_game->world->query_passable(controlx-mystep, controly-mystep, controller_, controller_->floor(), quiet);
 		case FACE_DOWN_LEFT:
 			return !current_game->world->query_passable(controlx, controly-mystep,
-			                                controller_);
+			                                controller_, controller_->floor(), quiet);
 		case FACE_LEFT:
-			return !current_game->world->query_passable(controlx+mystep, controly-mystep, controller_);
+			return !current_game->world->query_passable(controlx+mystep, controly-mystep, controller_, controller_->floor(), quiet);
 		case FACE_UP_LEFT:
-			return !current_game->world->query_passable(controlx+mystep, controly, controller_);
+			return !current_game->world->query_passable(controlx+mystep, controly, controller_, controller_->floor(), quiet);
 		default:
 			break;
 	}
@@ -937,13 +938,20 @@ bool statistics::forward_blocked(bool quiet)
 	return !current_game->world->query_passable(controlx + xdelta, controly + ydelta, controller_, controller_->floor(), quiet);
 }
 
+// Gameplay Fixes Y: the right-hand walk's four probes ask quietly. The classic
+// probes were the walker's own step moved one pixel to a side: they ate a
+// potion the bot never stood on, opened a door, and a body a side probe
+// grazed took a bump swing (busy, a knife along the heading two acts later)
+// or turned the bot, and was left in collide_ob for the stale shove of fix X.
+// Off, the loud probes stand. The same flag reaches COMMAND_GOTO's walk below.
 bool statistics::right_walk()
 {
 	float xdelta, ydelta;
+	const bool quiet = og::sim::session_gameplay_fixes() != 0;   // Gameplay Fixes Y: a pathing probe changes nothing
 
-	if (right_blocked() || right_forward_blocked() )
+	if (right_blocked(quiet) || right_forward_blocked(quiet) )
 	{
-		if (!forward_blocked())  // walk forward
+		if (!forward_blocked(quiet))  // walk forward
 		{
 			xdelta = controller_->lastx();
 			ydelta = controller_->lasty();
@@ -964,12 +972,12 @@ bool statistics::right_walk()
 			return controller_->turn(controller_->enddir());
 		}
 	}
-	else if (forward_blocked())
+	else if (forward_blocked(quiet))
 	{
 		controller_->set_enddir(static_cast<char>((controller_->enddir()+6) %8));  // turn left
 		return controller_->turn(controller_->enddir());
 	}
-	else if (right_back_blocked())
+	else if (right_back_blocked(quiet))
 	{
 		controller_->set_enddir(static_cast<char>((controller_->enddir()+2) %8));  // turn right
 		switch (controller_->enddir())
@@ -1486,10 +1494,11 @@ bool statistics::right_walk_to_point(short x, short y)
 {
 	float xdelta, ydelta;
 	short xstep, ystep;
+	const bool quiet = og::sim::session_gameplay_fixes() != 0;   // Gameplay Fixes Y: a pathing probe changes nothing
 
-	if (right_blocked() || right_forward_blocked())
+	if (right_blocked(quiet) || right_forward_blocked(quiet))
 	{
-		if (!forward_blocked())  // walk forward
+		if (!forward_blocked(quiet))  // walk forward
 		{
 			xdelta = controller_->lastx();
 			ydelta = controller_->lasty();
@@ -1509,12 +1518,12 @@ bool statistics::right_walk_to_point(short x, short y)
 			return controller_->turn(controller_->enddir());
 		}
 	}
-	else if (forward_blocked())
+	else if (forward_blocked(quiet))
 	{
 		controller_->set_enddir(static_cast<char>((controller_->enddir() + 6) % 8));  // turn left
 		return controller_->turn(controller_->enddir());
 	}
-	else if (right_back_blocked())
+	else if (right_back_blocked(quiet))
 	{
 		controller_->set_enddir(static_cast<char>((controller_->enddir() + 2) % 8));  // turn right
 		facing_step_delta(controller_->enddir(), xstep, ystep);

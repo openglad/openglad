@@ -82,6 +82,18 @@ std::uint32_t state_after(std::uint32_t state, std::initializer_list<std::uint32
     return probe.state_;
 }
 
+// How many LCG steps lead from `from` to `to` (-1: none within 1000).
+int lcg_steps(std::uint32_t from, std::uint32_t to)
+{
+    og::sim::SimRandom probe(from);
+    for (int n = 0; n < 1000; ++n) {
+        if (probe.state_ == to)
+            return n;
+        (void)probe.next(2);
+    }
+    return -1;
+}
+
 class GameplayFixesWalk : public ::testing::Test {
 protected:
     og::test::ScopedPackStoreState pack_store_restore_;
@@ -333,6 +345,129 @@ TEST_F(GameplayFixesWalk, a_body_the_step_meets_is_still_shoved)
 }
 
 // ---------------------------------------------------------------------------
+// Fix Y: the right-hand walk's probes
+// ---------------------------------------------------------------------------
+
+namespace {
+
+enum class SideCase { Wall, Foe, Ally };
+
+const char* side_case_name(SideCase c)
+{
+    switch (c) {
+    case SideCase::Wall: return "a wall up-right";
+    case SideCase::Foe: return "a foe up-right";
+    case SideCase::Ally: return "an ally up-right";
+    }
+    return "?";
+}
+
+}  // namespace
+
+// The reporter's scenario (#405). A team-1 soldier at (320,320) heading up,
+// 10 MP; a magic potion at (335,322), one pixel outside its right side, so
+// only right_blocked's probe (the box moved one pixel right) meets it, never
+// the soldier's own box or its steps. Up-right, where right_forward_blocked
+// probes, is (case A) a wall tile, (B) a team-2 orc or (C) a team-1 soldier;
+// so the walk takes its first branch on both values and steps forward.
+// Off: the side probe eats the potion (MP 10 -> 550) and in case B the
+// up-right probe's collide() starts a swing at the orc (busy 6, the attack
+// row). On: the potion stands, MP 10, no swing, nothing in collide_ob.
+//
+// RED at bb5e13d7 on the setting-on arm. Planted break on the fixed tree:
+// right_walk's `const bool quiet = og::sim::session_gameplay_fixes() != 0;`
+// -> `= false;`.
+TEST_F(GameplayFixesWalk, a_right_walk_side_probe_eats_nothing_and_swings_at_nobody)
+{
+    for (SideCase c : {SideCase::Wall, SideCase::Foe, SideCase::Ally}) {
+        for (short fixes : {short{0}, short{1}}) {
+            SCOPED_TRACE(std::string(side_case_name(c)) + ", setting " + std::to_string(fixes));
+            fresh_world(fixes);
+            walker* w = living_at(FAMILY_SOLDIER, 1, 320, 320);
+            walker* potion = treasure_at(FAMILY_MAGIC_POTION, 335, 322, 8, 8);
+            walker* body = nullptr;
+            if (c == SideCase::Wall)
+                tile(21, 19, PIX_H_WALL1);
+            else
+                body = c == SideCase::Foe ? living_at(FAMILY_ORC, 2, 335, 305)
+                                          : living_at(FAMILY_SOLDIER, 1, 335, 305);
+            ASSERT_TRUE(w && potion);
+            ASSERT_TRUE(c == SideCase::Wall || body != nullptr);
+            face(w, FACE_UP);
+            w->set_lastx(0.0f);
+            w->set_lasty(-w->stepsize());
+            w->stats()->set_magicpoints(10.0f);
+            const char ani0 = w->ani_type();
+            const std::uint32_t s = world().rng_.state_;
+
+            EXPECT_TRUE(w->stats()->right_walk());
+
+            EXPECT_EQ(320, w->xpos()) << "the walk stepped forward";
+            EXPECT_EQ(static_cast<short>(320 - w->stepsize()), w->ypos());
+            EXPECT_EQ(s, world().rng_.state_) << "no probe and no step draws here";
+            if (fixes == 0) {
+                EXPECT_TRUE(potion->dead()) << "setting off: the side probe ate the potion";
+                EXPECT_FLOAT_EQ(550.0f, w->stats()->magicpoints());
+                if (c == SideCase::Foe) {
+                    EXPECT_FLOAT_EQ(6.0f, w->busy()) << "setting off: a bump swing at the orc";
+                    EXPECT_EQ(ANI_ATTACK, w->ani_type());
+                } else {
+                    EXPECT_FLOAT_EQ(0.0f, w->busy());
+                    EXPECT_EQ(ani0, w->ani_type());
+                }
+            } else {
+                EXPECT_FALSE(potion->dead()) << "setting on: the potion stands";
+                EXPECT_FLOAT_EQ(10.0f, w->stats()->magicpoints());
+                EXPECT_FLOAT_EQ(0.0f, w->busy()) << "setting on: no swing";
+                EXPECT_EQ(ani0, w->ani_type());
+                EXPECT_EQ(nullptr, w->collide_ob());
+            }
+        }
+    }
+}
+
+// Case B carried on: the swing the classic side probe started ends in a
+// throw. Six animate() calls (the commands and foe cleared each time, so
+// nothing but the swing can fire): off, one knife flies (weaplist + 1),
+// the soldier pays 2 MP and fire() draws its waver once; on, nothing.
+TEST_F(GameplayFixesWalk, a_side_probe_does_not_swing_at_a_foe_with_the_setting_on)
+{
+    for (short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE("setting " + std::to_string(fixes));
+        fresh_world(fixes);
+        walker* w = living_at(FAMILY_SOLDIER, 1, 320, 320);
+        walker* potion = treasure_at(FAMILY_MAGIC_POTION, 335, 322, 8, 8);
+        walker* orc = living_at(FAMILY_ORC, 2, 335, 305);
+        ASSERT_TRUE(w && potion && orc);
+        face(w, FACE_UP);
+        w->set_lastx(0.0f);
+        w->set_lasty(-w->stepsize());
+        w->stats()->set_magicpoints(10.0f);
+        EXPECT_TRUE(w->stats()->right_walk());
+        const float mp = w->stats()->magicpoints();
+        const std::size_t weapons = world().weaplist.size();
+        const std::uint32_t s = world().rng_.state_;
+
+        for (int t = 0; t < 6; ++t) {
+            w->stats()->clear_command();
+            w->set_foe(nullptr);
+            (void)w->animate();
+        }
+
+        if (fixes == 0) {
+            EXPECT_EQ(weapons + 1, world().weaplist.size()) << "setting off: the swing threw a knife";
+            EXPECT_FLOAT_EQ(mp - 2.0f, w->stats()->magicpoints());
+            EXPECT_EQ(1, lcg_steps(s, world().rng_.state_)) << "setting off: the throw's one draw";
+        } else {
+            EXPECT_EQ(weapons, world().weaplist.size()) << "setting on: nothing thrown";
+            EXPECT_FLOAT_EQ(10.0f, w->stats()->magicpoints());
+            EXPECT_EQ(s, world().rng_.state_) << "setting on: nothing drawn";
+        }
+        EXPECT_FLOAT_EQ(400.0f, orc->stats()->hitpoints()) << "the classic knife flies up, past the orc";
+    }
+}
+
+// ---------------------------------------------------------------------------
 // The seams the fixes share
 // ---------------------------------------------------------------------------
 
@@ -399,4 +534,77 @@ TEST_F(GameplayFixesWalk, step_meets_answers_what_collide_answers_on_the_three_b
     EXPECT_EQ(obmap, world().myobmap->size()) << "nothing filed";
     EXPECT_EQ(nullptr, mover->collide_ob()) << "nothing written";
     EXPECT_EQ(320, mover->xpos());
+}
+
+// The quiet right-hand probes answer what the loud ones answer. A soldier at
+// (320,320) faces each of the eight headings in turn, with nothing beside it,
+// with one wall tile on each of its eight neighbouring tiles, and with an
+// enemy orc one pixel into each of its eight sides and corners. Each of the
+// three probes is asked on its own fresh world (a loud probe's bump swing
+// can turn the soldier, which would change what the next probe asks):
+// quietly first (the quiet call changes nothing), then loudly on the same
+// world. Two anchors pin what an answer is: open ground is clear, and a
+// wall right of a soldier heading up blocks its right.
+TEST_F(GameplayFixesWalk, the_right_probes_answer_the_same_on_both_values)
+{
+    const int dirs[8][2] = {{0, -1}, {1, -1}, {1, 0}, {1, 1}, {0, 1}, {-1, 1}, {-1, 0}, {-1, -1}};
+    int asked = 0;
+    for (int facing = 0; facing < 8; ++facing) {
+        for (int blocker = -1; blocker < 16; ++blocker) {
+            for (int probe = 0; probe < 3; ++probe) {
+                fresh_world(0);
+                walker* w = living_at(FAMILY_SOLDIER, 1, 320, 320);
+                ASSERT_NE(nullptr, w);
+                face(w, facing);
+                if (blocker >= 0 && blocker < 8) {
+                    tile(20 + dirs[blocker][0], 20 + dirs[blocker][1], PIX_H_WALL1);
+                } else if (blocker >= 8) {
+                    const int d = blocker - 8;
+                    ASSERT_NE(nullptr, living_at(FAMILY_ORC, 2, static_cast<short>(320 + 15 * dirs[d][0]),
+                                                 static_cast<short>(320 + 15 * dirs[d][1])));
+                }
+                statistics* st = w->stats();
+                const bool quiet = probe == 0 ? st->right_blocked(true)
+                                 : probe == 1 ? st->right_forward_blocked(true)
+                                              : st->right_back_blocked(true);
+                const bool loud = probe == 0 ? st->right_blocked(false)
+                                : probe == 1 ? st->right_forward_blocked(false)
+                                             : st->right_back_blocked(false);
+                EXPECT_EQ(quiet, loud) << "facing " << facing << " blocker " << blocker << " probe " << probe;
+                if (blocker == -1) {
+                    EXPECT_FALSE(quiet) << "open ground is clear, facing " << facing << " probe " << probe;
+                }
+                if (facing == FACE_UP && blocker == 2 && probe == 0) {
+                    EXPECT_TRUE(quiet) << "a wall right of a soldier heading up blocks its right";
+                }
+                ++asked;
+            }
+        }
+    }
+    EXPECT_EQ(8 * 17 * 3, asked);
+}
+
+// COMMAND_GOTO's right-hand walk reads the same flag (one rule): the
+// reporter's case A asked through right_walk_to_point. Off, the side probe
+// eats the potion; on, it stands.
+TEST_F(GameplayFixesWalk, right_walk_to_point_probes_quietly)
+{
+    for (short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE("setting " + std::to_string(fixes));
+        fresh_world(fixes);
+        walker* w = living_at(FAMILY_SOLDIER, 1, 320, 320);
+        walker* potion = treasure_at(FAMILY_MAGIC_POTION, 335, 322, 8, 8);
+        ASSERT_TRUE(w && potion);
+        tile(21, 19, PIX_H_WALL1);
+        face(w, FACE_UP);
+        w->set_lastx(0.0f);
+        w->set_lasty(-w->stepsize());
+        w->stats()->set_magicpoints(10.0f);
+
+        EXPECT_TRUE(w->stats()->right_walk_to_point(320, 100));
+
+        EXPECT_EQ(static_cast<short>(320 - w->stepsize()), w->ypos()) << "the walk stepped forward";
+        EXPECT_EQ(fixes == 0, potion->dead() != 0);
+        EXPECT_FLOAT_EQ(fixes == 0 ? 550.0f : 10.0f, w->stats()->magicpoints());
+    }
 }
