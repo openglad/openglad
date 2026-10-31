@@ -13,6 +13,9 @@ local function plant_tree(self)
   if lc.is_busy(self) then  -- do not start the fire-and-replace sequence
     return false, "SPECIAL BUSY"
   end
+  if gf.pad_blocked_by_terrain(self) then
+    return false, "COULD NOT FIRE"
+  end
   -- shim kept: magicpoints is a C++ float: per-op float rounding.
   self.magicpoints = og.fadd(self.magicpoints, self:s_weapon_cost())
   local bolt = self:fire()
@@ -38,6 +41,9 @@ end
 local function summon_faerie(self)
   if lc.is_busy(self) then
     return false, "SPECIAL BUSY"
+  end
+  if gf.pad_blocked_by_terrain(self) then
+    return false, "COULD NOT FIRE"
   end
   -- shim kept: magicpoints is a C++ float: per-op float rounding.
   self.magicpoints = og.fadd(self.magicpoints, self:s_weapon_cost())
