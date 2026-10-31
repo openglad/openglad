@@ -264,6 +264,11 @@ TEST(StatsCommands, stats_do_command_search_without_a_live_foe_abandons_the_orde
 TEST(StatsCommands, stats_do_command_rush_takes_three_steps_and_shoves_the_collider)
 {
     ScopedArena arena;
+    // The classic rush, setting off: it strikes whatever collide_ob names,
+    // a body parked far from its path included (the stale collider of
+    // #406). Gameplay Fixes Z changes that with the setting on; the twin
+    // below pins the fixed arm.
+    world().gameplay_fixes = 0;
     // COMMAND_RUSH -> attack() rolls damage through combat_rng(), which falls
     // back to this stream, and the victim's hit_response then draws
     // check_special()'s next(2) and the `!rng(3)` gate; rng(3)==1 keeps the
@@ -316,6 +321,51 @@ TEST(StatsCommands, stats_do_command_rush_takes_three_steps_and_shoves_the_colli
     EXPECT_EQ(1, shove.com1) << "the shove is along the rush's com1";
     EXPECT_EQ(0, shove.com2) << "the shove is along the rush's com2";
     EXPECT_TRUE(shove.forced) << "the shove enters through force_command";
+}
+
+// Gameplay Fixes Z (#406): with the setting on the rush strikes only a
+// non-friendly body its last step ran into. A collide_ob left over from an
+// earlier probe, parked ten cells away, is neither struck nor shoved: its
+// orders and its hit points stand.
+TEST(StatsCommands, stats_do_command_rush_with_the_setting_on_leaves_a_parked_collider_alone)
+{
+    ScopedArena arena;
+    world().gameplay_fixes = 1;
+    FixedRandom rng_source(1);
+    ScopedSimRandom rng(&rng_source);
+    auto w = make_walker(FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, w) << "walker created";
+    ASSERT_TRUE(w->setxy(static_cast<std::int32_t>(GRID_SIZE * 10), static_cast<std::int32_t>(GRID_SIZE * 10))) << "actor placed on open grass";
+    w->set_curdir(static_cast<signed char>(FACE_RIGHT));
+    w->set_enddir(static_cast<char>(FACE_RIGHT));
+    w->set_stepsize(4.0f);
+    w->set_lastx(w->stepsize());
+    w->set_lasty(0);
+
+    auto target = make_walker(FAMILY_ORC);
+    ASSERT_NE(nullptr, target) << "parked collider created";
+    ASSERT_TRUE(target->setxy(static_cast<std::int32_t>(GRID_SIZE * 20), static_cast<std::int32_t>(GRID_SIZE * 20))) << "target parked clear of the rush";
+    target->set_team_num(1);
+    target->stats()->commands.clear();
+    target->stats()->add_command(COMMAND_WALK, 9, 0, 1);
+    const float hp_before = target->stats()->hitpoints();
+
+    const int x0 = w->xpos();
+    w->set_collide_ob(target.get());
+    w->stats()->commands.clear();
+    w->stats()->force_command(COMMAND_RUSH, 1, 1, 0);
+    ASSERT_EQ(1, w->stats()->do_command()) << "COMMAND_RUSH still reports success";
+    EXPECT_EQ(stepped(x0, 3.0f * w->stepsize()), static_cast<int>(w->xpos()))
+        << "the rush still takes its three walksteps";
+
+    ASSERT_EQ(1u, target->stats()->commands.size()) << "the parked collider keeps exactly its own order";
+    const command& kept = target->stats()->commands.front();
+    EXPECT_EQ(COMMAND_WALK, kept.commandtype) << "the order is the walk it had";
+    EXPECT_EQ(9, kept.commandcount) << "untouched: not the shove's 4";
+    EXPECT_EQ(0, kept.com1) << "untouched: its own com1";
+    EXPECT_EQ(1, kept.com2) << "untouched: its own com2";
+    EXPECT_FALSE(kept.forced) << "no shove entered through force_command";
+    EXPECT_FLOAT_EQ(hp_before, target->stats()->hitpoints()) << "no blow landed on a body the step never met";
 }
 
 
