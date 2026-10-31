@@ -168,7 +168,7 @@ inline constexpr std::uint8_t kOrderFX        = 4;   // Order::FX
 // Phase 01 (semantic-parity): optional tail fields. `stats_level`
 // raises walker level so cycle/fire gates accept later special slots.
 // Cycling gate: src/gameplay/sim_input_handler.cpp:243 `(control.current_special() - 1) * 3 + 1` must be <= stats()->level().
-// Firing gate: src/gameplay/living.cpp:588 `stats_->magicpoints() < og::sim::cast_cost` denies the cast when the caster is short of MP.
+// Firing gate: src/gameplay/living.cpp:600 `stats_->magicpoints() < og::sim::cast_cost` denies the cast when the caster is short of MP.
 // Zero defaults preserve byte-mirror layout; scenario_runtime applies
 // them only when non-zero.
 struct SpawnSpec
@@ -1176,7 +1176,7 @@ inline constexpr Mutation kMut_smoke_inputs_no_move = {
 };
 
 inline constexpr Mutation kMut_smoke_tick_freeze = {
-    "src/gameplay/game_world.cpp", 1692,
+    "src/gameplay/game_world.cpp", 1702,
     "tick_count_++;",
     "tick_count_ += 0;",
     "Stops the per-tick world counter from advancing, freezing the schema-v1 tick field at 0. smoke_empty_scen99 flips TickReached(1) through --evaluate-facts because its Invariant gtest checks capture determinism; smoke_nonempty_scen99 flips TickReached(60) and its SemanticParity result.",
@@ -1215,7 +1215,7 @@ inline constexpr Mutation kMut_snapshot_dirty = {
 // EventKindAtLeast predicates these flip on canary run.
 
 inline constexpr Mutation kMut_special_archmage_do_special = {
-    "packs/core/families/living-17-archmage.lua", 267,
+    "packs/core/families/living-17-archmage.lua", 281,
     "if lc.mid_teleport(self) then",
     "if true then",
     "Makes the archmage's slot-1 TELEPORT believe it is already mid-teleport, so the body returns false without the SOUND_TELEPORT cue and without the ANI_TELE_OUT that hands off to handle_teleport. The caster never leaves its start tile: WalkerPositionMoved(FAMILY_ARCHMAGE, 240, 880) fails."
@@ -1229,14 +1229,14 @@ inline constexpr Mutation kMut_special_cleric_do_special = {
 };
 
 inline constexpr Mutation kMut_special_mage_do_special = {
-    "packs/core/families/living-03-mage.lua", 138,
+    "packs/core/families/living-03-mage.lua", 139,
     "if lc.mid_teleport(self) then",
     "if true then",
     "Makes the mage's slot-1 TELEPORT believe it is already mid-teleport, so the body returns false without the SOUND_TELEPORT cue and without the ANI_TELE_OUT hand-off. The caster never leaves its start tile: WalkerPositionMoved(FAMILY_MAGE, 240, 640) fails."
 };
 
 inline constexpr Mutation kMut_special_thief_do_special = {
-    "packs/core/families/living-11-thief.lua", 109,
+    "packs/core/families/living-11-thief.lua", 113,
     "local bomb = og.add_ob(\"fx\", FX_BOMB)",
     "local bomb = nil",
     "Suppresses DROP BOMB's FX_BOMB creation, so drop_bomb takes its 'if not bomb' exit and the timed bomb never enters oblist. Team-0 alive collapses from 2 to the lone thief and WalkerOfTeamAlive(0, 2, 3) fails its floor."
@@ -1295,7 +1295,7 @@ inline constexpr Mutation kMut_family_soldier_init = {
 };
 
 inline constexpr Mutation kMut_family_archer_init = {
-    "packs/core/families/living-02-archer.lua", 127,
+    "packs/core/families/living-02-archer.lua", 131,
     "hp = 90",
     "hp = 9000",
     "Cranks ARCHER descriptor HP x100 "
@@ -1307,7 +1307,7 @@ inline constexpr Mutation kMut_family_archer_init = {
 };
 
 inline constexpr Mutation kMut_family_mage_init = {
-    "packs/core/families/living-03-mage.lua", 348,
+    "packs/core/families/living-03-mage.lua", 349,
     "hp = 90",
     "hp = 9000",
     "Cranks MAGE descriptor HP x100 "
@@ -1406,7 +1406,7 @@ inline constexpr Mutation kMut_family_medium_slime_init = {
 };
 
 inline constexpr Mutation kMut_family_thief_init = {
-    "packs/core/families/living-11-thief.lua", 279,
+    "packs/core/families/living-11-thief.lua", 283,
     "hp = 75",
     "hp = 7500",
     "Cranks THIEF descriptor HP x100 "
@@ -1418,7 +1418,7 @@ inline constexpr Mutation kMut_family_thief_init = {
 };
 
 inline constexpr Mutation kMut_family_druid_init = {
-    "packs/core/families/living-13-druid.lua", 200,
+    "packs/core/families/living-13-druid.lua", 204,
     "hp = 110",
     "hp = 11000",
     "Cranks DRUID descriptor HP x100 "
@@ -1454,7 +1454,7 @@ inline constexpr Mutation kMut_family_big_orc_init = {
 };
 
 inline constexpr Mutation kMut_family_barbarian_init = {
-    "packs/core/families/living-16-barbarian.lua", 142,
+    "packs/core/families/living-16-barbarian.lua", 146,
     "hp = 150",
     "hp = 1",
     "Drops BARBARIAN descriptor HP to 1 "
@@ -1466,7 +1466,7 @@ inline constexpr Mutation kMut_family_barbarian_init = {
 };
 
 inline constexpr Mutation kMut_family_archmage_init = {
-    "packs/core/families/living-17-archmage.lua", 677,
+    "packs/core/families/living-17-archmage.lua", 691,
     "hp = 150",
     "hp = 1",
     "Drops ARCHMAGE descriptor HP to 1 "
@@ -2113,7 +2113,7 @@ inline constexpr FactPredicate kFacts_weapon_knife_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_knife_emission = {
-    "src/gameplay/walker.cpp", 1199,
+    "src/gameplay/walker.cpp", 1194,
     "weapon->set_stepsize((weapon->stepsize() * 362.0f) / 256.0f);",
     "weapon->set_stepsize((weapon->stepsize() * 512.0f) / 256.0f);",
     "Inflates the cardinal-facing projectile stepsize multiplier (walker.cpp:1190, applied in create_weapon() for FACE_UP/RIGHT/DOWN/LEFT). FAMILY_KNIFE fires FACE_RIGHT at the adjacent target; base stepsize 5 normally scales by 362/256 (~1.414) to ~7 giving a constant dx=7,dy=waver step of hypot(7,1)*100 = 707 centi-px/tick. Changing 362->512 scales to 10, raising the per-tick step to ~1005 centi-px/tick, which exceeds the WeaponSpeed(FAMILY_KNIFE,600,800) upper bound and flips that trajectory predicate. The only travelling weaplist family in this arena is the knife (FAMILY_BLOOD stays stationary), so the speed flip is unambiguous. WeaponNetTravel STRAIGHT stays satisfied because the path is still straight, but WeaponSpeed alone flipping satisfies the >=1-predicate canary requirement."
@@ -2136,7 +2136,7 @@ inline constexpr FactPredicate kFacts_weapon_rock_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_rock_emission = {
-    "src/gameplay/walker.cpp", 1199,
+    "src/gameplay/walker.cpp", 1194,
     "weapon->set_stepsize((weapon->stepsize() * 362.0f) / 256.0f);",
     "weapon->set_stepsize((weapon->stepsize() * 181.0f) / 256.0f);",
     "Halves the cardinal-facing weapon stepsize scale. FAMILY_ROCK remains emitted and travels straight, but its per-tick step falls below the exact 800-centipixel speed pin, flipping WeaponSpeed."
@@ -2159,7 +2159,7 @@ inline constexpr FactPredicate kFacts_weapon_arrow_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_arrow_emission = {
-    "src/gameplay/walker.cpp", 1199,
+    "src/gameplay/walker.cpp", 1194,
     "weapon->set_stepsize((weapon->stepsize() * 362.0f) / 256.0f);",
     "weapon->set_stepsize((weapon->stepsize() * 256.0f) / 256.0f);",
     "walker::create_weapon scales every fired projectile's stepsize by 362/256 (~1.414) for the cardinal/diagonal facing cases; FAMILY_ARROW is a data-only weapon family (descriptor installed from packs/core/families/weapon-02-arrow.lua, no script movement hook) so its per-tick speed is exactly this scaled stepsize. Dropping the scale (362->256) cuts the arrow's step from ~11.3px/tick to 8px/tick, so weapon_tracks seq=0 max_step_centi falls from 1105 to ~800, below WeaponSpeed(FAMILY_ARROW,1000,1250)'s lower bound, flipping that predicate. The path stays straight so WeaponNetTravel(STRAIGHT) is unaffected, demonstrating the speed teeth are independent of the path-class teeth."
@@ -2189,7 +2189,7 @@ inline constexpr FactPredicate kFacts_weapon_fireball_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_fireball_emission = {
-    "src/gameplay/walker.cpp", 1199,
+    "src/gameplay/walker.cpp", 1194,
     "(weapon->stepsize() * 362.0f)",
     "(weapon->stepsize() * 256.0f)",
     "Removes the sqrt(2)=362/256 cardinal-fire velocity scale applied to the fired FIREBALL's stepsize in walker::create_weapon(); the projectile's per-tick step drops from ~922 to ~600-667 centi-px/tick, so WeaponSpeed(FAMILY_FIREBALL,850,1000) observes a max consecutive step below 850 and flips pass->fail. Path stays straight so WeaponNetTravel(STRAIGHT) is unaffected (>=1 trajectory predicate flips, as required)."
@@ -2268,7 +2268,7 @@ inline constexpr FactPredicate kFacts_weapon_meteor_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_meteor_emission = {
-    "src/gameplay/walker.cpp", 1199,
+    "src/gameplay/walker.cpp", 1194,
     "362.0f",
     "181.0f",
     "Halves the cardinal-fire stepsize boost (362/256 ~= 1.414 -> 181/256 ~= 0.707) applied in walker::create_weapon() to projectiles fired UP/RIGHT/DOWN/LEFT. FAMILY_METEOR is fired RIGHT (cardinal), so its per-tick stepsize halves: max_step_centi drops from ~1020 to ~510 centi-px/tick, falling below the 950 floor of WeaponSpeed(FAMILY_METEOR,950,1100), which flips pass->fail."
@@ -2292,7 +2292,7 @@ inline constexpr FactPredicate kFacts_weapon_sprinkle_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_sprinkle_emission = {
-    "src/gameplay/walker.cpp", 1199,
+    "src/gameplay/walker.cpp", 1194,
     "\t\t\tweapon->set_stepsize((weapon->stepsize() * 362.0f) / 256.0f);",
     "\t\t\tweapon->set_stepsize((weapon->stepsize() * 181.0f) / 256.0f);",
     "Halves the cardinal-fire stepsize boost. FAMILY_SPRINKLE fires right, so its speed drops below WeaponSpeed's 900 floor and its net displacement drops below WeaponNetTravel's 2500 threshold; both trajectory predicates flip."
@@ -2371,7 +2371,7 @@ inline constexpr FactPredicate kFacts_weapon_blob_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_blob_emission = {
-    "src/gameplay/walker.cpp", 1199,
+    "src/gameplay/walker.cpp", 1194,
     "weapon->set_stepsize((weapon->stepsize() * 362.0f) / 256.0f);",
     "weapon->set_stepsize((weapon->stepsize() * 256.0f) / 256.0f);",
     "Neutralizes the cardinal-facing 1.414x stepsize boost (362/256) applied to weapons fired straight (FACE_UP/RIGHT/DOWN/LEFT) in create_weapon(). The FAMILY_BLOB the slime fires FACE_RIGHT now keeps its base stepsize (~2.12 px/tick instead of ~3 px/tick), so its max consecutive-tick step drops from 316 to ~224 centi-px/tick, below the WeaponSpeed(FAMILY_BLOB, 280, 360) floor of 280 -> WeaponSpeed flips pass->fail. BLOB is still emitted and still tracked with consecutive samples (no Indeterminate), and the path stays straight so WeaponNetTravel still holds. The from/to omit the line's leading TABs and match as the unique substring of walker.cpp:1190 (the canary's _apply_mutation does a substring str.replace, and the lint parser transports the from-text through a tab-delimited line, so embedded tabs would corrupt the canary's IFS parse — identical convention to the sibling kMut_weapon_knife_emission/_rock/_arrow which target the same line)."
@@ -2532,7 +2532,7 @@ inline constexpr FactPredicate kFacts_weapon_wave_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_wave_emission = {
-    "packs/core/families/living-03-mage.lua", 291,
+    "packs/core/families/living-03-mage.lua", 292,
     "  wave:set_lastx(bolt:lastx())",
     "  wave:set_lastx(og.fdiv(bolt:lastx(), 2))",
     "Halves the MAGE ENERGY WAVE projectile's horizontal velocity (lastx 8->4) at the cast site; the FAMILY_WAVE entity still enters world.weaplist (WeaponFamilyEmitted stays true) but its seq-0 consecutive-tick step drops from 806 to 412 centi-px/tick and net travel from 1612 to 825 centi, so WeaponSpeed(FAMILY_WAVE,700,900) flips pass->fail and WeaponNetTravel(FAMILY_WAVE,STRAIGHT,1000) also flips (net 825 < 1000)."
@@ -2740,7 +2740,7 @@ inline constexpr FactPredicate kFacts_weapon_hammer_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_hammer_emission = {
-    "src/gameplay/walker.cpp", 1199,
+    "src/gameplay/walker.cpp", 1194,
     "\t\t\tweapon->set_stepsize((weapon->stepsize() * 362.0f) / 256.0f);",
     "\t\t\tweapon->set_stepsize((weapon->stepsize() * 181.0f) / 256.0f);",
     "Halves the cardinal-facing weapon stepsize multiplier. HAMMER fires right, so its per-tick step falls from about 922 to 460 centipixels, below WeaponSpeed's 850 floor; emission and straight-path predicates remain satisfied."
@@ -3473,7 +3473,7 @@ inline constexpr FactPredicate kFacts_event_set_end_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_event_set_end_emission = {
-    "src/gameplay/game_world.cpp", 1804,
+    "src/gameplay/game_world.cpp", 1814,
     "level_done = 0;",
     "level_done = 2;",
     "Neuters the enemy-alive guard in GameWorld::tick's normal living-act loop (the branch that runs for awake enemies; the sibling guards cover dormant, frozen, and weapon walkers): instead of resetting level_done to 0 when a live non-friendly Living enemy acts, it forces level_done to stay 2. With enemies still alive the level_done==2 completion check latches game_ended and the server layer pushes EventKind::SetEnd, so the arena's set_end suppression is broken and the event sneaks through. (`level_done = 0;` has textual twins in this function -- the dormant guard above and the frozen guard below, byte-identical including indentation -- so the pin says which one it means with context_before: only the awake branch runs its foe through set_in_act.)",
@@ -3495,7 +3495,7 @@ inline constexpr FactPredicate kFacts_special_soldier_1_scen99[] = {
 
 inline constexpr Mutation kMut_special_soldier_1_scen99 = {
     "packs/core/families/living-00-soldier.lua", 11,
-    "if self:s_forward_blocked() then",
+    "if self:s_forward_blocked(gf.on()) then",
     "if true then",
     "Closes CHARGE's forward-blocked gate permanently, so soldier slot 1 returns false before it issues COMMAND_RUSH or emits SOUND_CHARGE. The level-1 caster never dashes into the team-1 soldier and WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 6300, 6300) no longer finds a caster at exactly 63 HP."
 };
@@ -3724,7 +3724,7 @@ inline constexpr FactPredicate kFacts_special_mage_2_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_mage_2_scen99 = {
-    "packs/core/families/living-03-mage.lua", 221,
+    "packs/core/families/living-03-mage.lua", 222,
     "if i ~= 0 or j ~= 0 then",
     "if false then",
     "Empties STARBURST's 3x3 direction sweep so not one of the eight fireballs is fired, while the MP refund and the aim save/restore still run. EventKindAtLeast(play_sound, 22) and WalkerHpRangeAtFinalTick(FAMILY_MAGE, 3100, 3100) both fail."
@@ -3754,7 +3754,7 @@ inline constexpr FactPredicate kFacts_special_mage_3_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_mage_3_scen99 = {
-    "packs/core/families/living-03-mage.lua", 254,
+    "packs/core/families/living-03-mage.lua", 255,
     "if self.team == og.u8(og.my_team()) then",
     "if false and self.team == og.u8(og.my_team()) then",
     "Reroutes FREEZE TIME's player-team branch into the foreign-team branch: no world enemy_freeze bank and no palette tint, but a 'TIME IS FROZEN' notification instead. EventKindExactly(notification, 0) flips to one notification and WalkerHpRangeAtFinalTick(FAMILY_MAGE, 7600, 7800) fails."
@@ -3774,7 +3774,7 @@ inline constexpr FactPredicate kFacts_special_mage_4_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_mage_4_scen99 = {
-    "packs/core/families/living-03-mage.lua", 279,
+    "packs/core/families/living-03-mage.lua", 280,
     "local bolt = self:fire()",
     "local bolt = nil",
     "Suppresses the seed bolt ENERGY WAVE rides on, so energy_wave takes its 'if not bolt' exit and no FAMILY_WAVE weapon is ever placed. WalkerHpRangeAtFinalTick(FAMILY_MAGE, 3400, 3400) flips.",
@@ -3795,7 +3795,7 @@ inline constexpr FactPredicate kFacts_special_mage_5_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_mage_5_scen99 = {
-    "packs/core/families/living-03-mage.lua", 303,
+    "packs/core/families/living-03-mage.lua", 304,
     "if foe_count == 0 then",
     "if true then",
     "Makes HEARTBURST report 'no foes in range' unconditionally, so mage slot 5 returns false before draining the MP pool or summoning one explosion per foe. EventKindAtLeast(score_change, 1) and WalkerHpRangeAtFinalTick(FAMILY_MAGE, 8600, 8700) both fail."
@@ -3988,7 +3988,7 @@ inline constexpr FactPredicate kFacts_special_thief_2_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_thief_2_scen99 = {
-    "packs/core/families/living-11-thief.lua", 141,
+    "packs/core/families/living-11-thief.lua", 145,
     "self:set_invisibility_left(og.combat.cloak_total(cur, gain))",
     "self:set_invisibility_left(0)",
     "Discards CLOAK's invisibility grant at the cast site (the cloak roll is still drawn, only the total is thrown away), so the level-4 thief never gains cover and the team-1 soldier keeps engaging it. WalkerHpRangeAtFinalTick(FAMILY_THIEF, 2800, 2800) flips: the uncovered thief ends at 700."
@@ -4010,7 +4010,7 @@ inline constexpr FactPredicate kFacts_special_thief_3_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_thief_3_scen99 = {
-    "packs/core/families/living-11-thief.lua", 149,
+    "packs/core/families/living-11-thief.lua", 153,
     "if lc.is_busy(self) then",
     "if true then",
     "Closes the busy gate on the TAUNT branch of taunt_or_charm, so thief slot 3 returns false before rolling any foe and before the 'Nyah Nyah!' line. EventKindAtLeast(notification, 1) and WalkerHpRangeAtFinalTick(FAMILY_THIEF, 3800, 3800) both fail.",
@@ -4033,7 +4033,7 @@ inline constexpr FactPredicate kFacts_special_thief_4_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_thief_4_scen99 = {
-    "packs/core/families/living-11-thief.lua", 253,
+    "packs/core/families/living-11-thief.lua", 257,
     "if lc.is_busy(self) then",
     "if true then",
     "Closes POISON CLOUD's busy gate permanently, so thief slot 4 returns false before FX_CLOUD is summoned and no cloud is ever placed. WalkerHpRangeAtFinalTick(FAMILY_THIEF, 1600, 1600) flips.",
@@ -4118,7 +4118,7 @@ inline constexpr FactPredicate kFacts_special_druid_3_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_druid_3_scen99 = {
-    "packs/core/families/living-13-druid.lua", 200,
+    "packs/core/families/living-13-druid.lua", 204,
     "hp = 110",
     "hp = 11000",
     "Cranks the FAMILY_DRUID init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -4137,7 +4137,7 @@ inline constexpr FactPredicate kFacts_special_druid_4_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_druid_4_scen99 = {
-    "packs/core/families/living-13-druid.lua", 200,
+    "packs/core/families/living-13-druid.lua", 204,
     "hp = 110",
     "hp = 11000",
     "Cranks the FAMILY_DRUID init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -4203,9 +4203,10 @@ inline constexpr FactPredicate kFacts_special_barbarian_1_scen99[] = {
 
 inline constexpr Mutation kMut_special_barbarian_1_scen99 = {
     "packs/core/families/living-16-barbarian.lua", 16,
-    "if self:busy() > 0 then",
+    "if lc.is_busy(self) then",
     "if true then",
-    "Closes HURL BOULDER's busy gate permanently, so do_special returns false before the shot is fired and before WEAP_BOULDER is created; no boulder ever rolls. EventKindAtLeast(play_sound, 15) fails."
+    "Closes HURL BOULDER's busy gate permanently, so do_special returns false before the shot is fired and before WEAP_BOULDER is created; no boulder ever rolls. EventKindAtLeast(play_sound, 15) fails.",
+    "local function do_special(self)"
 };
 
 inline constexpr SpawnSpec kFamilySpawns_special_barbarian_2_scen99[] = {
@@ -4254,7 +4255,7 @@ inline constexpr FactPredicate kFacts_special_archmage_2_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_archmage_2_scen99 = {
-    "packs/core/families/living-17-archmage.lua", 347,
+    "packs/core/families/living-17-archmage.lua", 361,
     "if foe_count == 0 then",
     "if true then",
     "Makes burst_or_chain report 'no foes in range' unconditionally, so HEARTBURST returns false before the MP pool is drained and before a single FX_EXPLOSION is summoned. The caster keeps the HP and MP the burst would have spent and leaves the (10000, 15000) cent band of WalkerHpRangeAtFinalTick(FAMILY_ARCHMAGE)."
@@ -4273,7 +4274,7 @@ inline constexpr FactPredicate kFacts_special_archmage_3_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_archmage_3_scen99 = {
-    "packs/core/families/living-17-archmage.lua", 551,
+    "packs/core/families/living-17-archmage.lua", 565,
     "local phantom = og.add_ob(\"living\", person)",
     "local phantom = nil",
     "Suppresses the illusion body SUMMON IMAGE conjures after its tier roll, so archmage slot 3 takes its 'if not phantom' exit and no Phantom joins the caster's team. WalkerHpRangeAtFinalTick(FAMILY_ARCHMAGE, 9200, 9200) flips."
@@ -4300,7 +4301,7 @@ inline constexpr FactPredicate kFacts_special_archmage_4_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_archmage_4_scen99 = {
-    "packs/core/families/living-17-archmage.lua", 606,
+    "packs/core/families/living-17-archmage.lua", 620,
     "if foe_count < 1 then",
     "if true then",
     "Makes MIND CONTROL report 'no foes in range' unconditionally, so archmage slot 4 returns false before any foe is charmed and before the 'has controlled N men' notice. EventKindAtLeast(notification, 1) and WalkerHpRangeAtFinalTick(FAMILY_ARCHMAGE, 10000, 15000) both fail."
@@ -4348,7 +4349,7 @@ inline constexpr FactPredicate kFacts_enemy_freeze_mage_scen99[] = {
 };
 
 inline constexpr Mutation kMut_enemy_freeze_mage_scen99 = {
-    "packs/core/families/living-03-mage.lua", 395,
+    "packs/core/families/living-03-mage.lua", 396,
     "freeze_per_level = 11",
     "freeze_per_level = 0",
     "Cuts the freeze grant from 20+11*level to a flat 20 ticks in the mage's tuning block, which the mage declaration reads through og.tuning(self).freeze_per_level each cast. At mage level 5 the banked enemy_freeze drops 75 -> 20, enemies act normally for most of the 150-tick window, the level-5 archer steps west toward the mage and its xpos drops below 200, flipping WalkerPositionMoved(FAMILY_ARCHER, 200, 120) on the x floor."
@@ -4371,7 +4372,7 @@ inline constexpr FactPredicate kFacts_invisibility_thief_scen99[] = {
 };
 
 inline constexpr Mutation kMut_invisibility_thief_scen99 = {
-    "packs/core/families/living-11-thief.lua", 141,
+    "packs/core/families/living-11-thief.lua", 145,
     "  self:set_invisibility_left(og.combat.cloak_total(cur, gain))",
     "  self:set_invisibility_left(0)",
     "Forces invisibility_left to 0 so the slot-2 CLOAK cast never grants cover (zeroing the whole cloak_total gain; the runaway-specials 350-tick accumulator cap never binds at L4, where the max single cast is 96); the team-1 soldier keeps engaging the level-4 thief for the full 150-tick window, killing the thief and dropping its HP outside the (1300, 2500) cent band — flipping WalkerHpRangeAtFinalTick."
@@ -4521,7 +4522,7 @@ inline constexpr FactPredicate kFacts_generator_saturation_scen99[] = {
 };
 
 inline constexpr Mutation kMut_generator_saturation_scen99 = {
-    "src/gameplay/walker.cpp", 1590,
+    "src/gameplay/walker.cpp", 1585,
     "if ( current_game->world->living_count < MAXOBS &&",
     "if ( false &&",
     "Replaces the `living_count < MAXOBS` half of the act_generate gate with `false`, making the conjunction always false; the generator never fires, zero FAMILY_MAGE spawn, and WalkerFamilyCount(FAMILY_MAGE, 3, 30) fails on its lower bound."
@@ -4710,7 +4711,7 @@ inline constexpr FactPredicate kFacts_effect_heartburst_multitarget_scen99[] = {
 };
 
 inline constexpr Mutation kMut_effect_heartburst_multitarget_scen99 = {
-    "packs/core/families/living-17-archmage.lua", 363,
+    "packs/core/families/living-17-archmage.lua", 377,
     "      local burst = og.summon(self, \"fx\", FX_EXPLOSION)",
     "      do return false, 'MUTATION REFUSAL' end",
     "Replaces the HEARTBURST per-foe explosion summon with `do return false, 'MUTATION REFUSAL' end`, so burst_or_chain declines on its first loop iteration before any FAMILY_EXPLOSION is created: no explosion lands on any in-range soldier (all stay at full 12000-cent HP) and no SOUND_EXPLODE is emitted, so the soldier-HP window and EventKindAtLeast(play_sound, 4) both fail. The `do ... end` wrapper is load-bearing — Lua only allows `return` as the last statement of a block, so a bare mid-block `return false` here is a SYNTAX ERROR that fails the whole archmage.lua load and takes every archmage special down with it; the row would then flip on collateral damage rather than on the heartburst. With the wrapper, chain lightning (slot 1 teleport, slot 3 summon image, slot 4 mind control) still load and run: only the burst branch is neutered."
@@ -4732,7 +4733,7 @@ inline constexpr FactPredicate kFacts_effect_poison_cloud_emit_scen99[] = {
 };
 
 inline constexpr Mutation kMut_effect_poison_cloud_emit_scen99 = {
-    "packs/core/families/living-11-thief.lua", 257,
+    "packs/core/families/living-11-thief.lua", 261,
     "  local cloud = og.summon(self, \"fx\", FX_CLOUD)",
     "  do return false, 'MUTATION REFUSAL' end",
     "Replaces the POISON CLOUD FX summon with `do return false, 'MUTATION REFUSAL' end`, so poison_cloud declines before the FAMILY_CLOUD walker is created; the cloud never enters oblist so team 0 holds only the lone thief — WalkerOfTeamAlive(0, 2, 2) collapses to 1 and fails its lower bound. The `do ... end` wrapper is load-bearing — Lua only allows `return` as the last statement of a block, so a bare mid-block `return false` here is a SYNTAX ERROR that fails the whole thief.lua load; the row would then flip because every thief special died, not because the cloud did. With the wrapper, drop bomb / cloak / taunt-charm keep working and only the cloud branch is neutered."
@@ -4807,7 +4808,7 @@ inline constexpr FactPredicate kFacts_effect_bomb_timer_scen99[] = {
 };
 
 inline constexpr Mutation kMut_effect_bomb_timer_scen99 = {
-    "packs/core/families/living-11-thief.lua", 109,
+    "packs/core/families/living-11-thief.lua", 113,
     "  local bomb = og.add_ob(\"fx\", FX_BOMB)",
     "  do return false, 'MUTATION REFUSAL' end",
     "Replaces the DROP BOMB FX spawn with `do return false, 'MUTATION REFUSAL' end`, so drop_bomb declines before any FAMILY_BOMB walker is created; oblist never holds a bomb so the thief's team (team 0) keeps only the lone thief alive and WalkerOfTeamAlive(0, 2, 3) collapses to 1, below its floor. The `do ... end` wrapper is load-bearing — Lua only allows `return` as the last statement of a block, so a bare mid-block `return false` here is a SYNTAX ERROR that fails the whole thief.lua load; the row would then flip because every thief special died, not because the bomb did. With the wrapper, cloak / taunt-charm / poison cloud keep working and only the bomb branch is neutered. (Shares the thief.lua:57 anchor with kMut_special_thief_do_special, which neuters the same spawn a different way; both rows and effect_bomb_emission_scen99 observe the bomb, so all three move together — as does the FAMILY_BOMB effect-family coverage gate, since the corpus then spawns no bomb at all.)"
@@ -4934,7 +4935,7 @@ inline constexpr FactPredicate kFacts_input_switch_char_scen99[] = {
 };
 
 inline constexpr Mutation kMut_input_switch_char_scen99 = {
-    "packs/core/families/living-02-archer.lua", 138,
+    "packs/core/families/living-02-archer.lua", 142,
     "default_weapon = \"core:arrow\"",
     "default_weapon = \"core:knife\"",
     "Swaps the archer's default weapon so post-switch held K_FIRE throws FAMILY_KNIFE instead of FAMILY_ARROW. No arrow is emitted, flipping WeaponFamilyEmitted(FAMILY_ARROW)."
@@ -4982,7 +4983,7 @@ inline constexpr FactPredicate kFacts_input_special_switch_wrap_scen99[] = {
 };
 
 inline constexpr Mutation kMut_input_special_switch_wrap_scen99 = {
-    "packs/core/families/living-03-mage.lua", 254,
+    "packs/core/families/living-03-mage.lua", 255,
     "  if self.team == og.u8(og.my_team()) then",
     "  if false and self.team == og.u8(og.my_team()) then",
     "Reroutes the player-team FREEZE TIME cast into the foreign-team branch. The cast still fires, but emits notifications and RequestRedraw instead of tinting the palette, so EventKindAtLeast(set_palette,1) flips."
@@ -5043,7 +5044,7 @@ inline constexpr FactPredicate kFacts_multiplayer_two_teams_scen99[] = {
 };
 
 inline constexpr Mutation kMut_multiplayer_two_teams_scen99 = {
-    "src/gameplay/walker.cpp", 2512,
+    "src/gameplay/walker.cpp", 2507,
     "return headus->team_num() == headtarget->team_num();",
     "return headus == headtarget || headus->team_num() != headtarget->team_num();",
     "Keeps identical owner-chain heads friendly while inverting the team-number comparison for distinct heads, continuing to consume both locals. Because the three scenario walkers have distinct teams and no owners, every relationship becomes friendly: the melee never starts, every walker keeps full HP, and play_sound collapses to one event, below the floor of four."
@@ -5846,7 +5847,7 @@ inline constexpr FactPredicate kFacts_thief_charm_opponent_scen99[] = {
 };
 
 inline constexpr Mutation kMut_thief_charm_opponent_scen99 = {
-    "packs/core/families/living-11-thief.lua", 219,
+    "packs/core/families/living-11-thief.lua", 223,
     "        target.team = self.team",
     "        target.team = target.team",
     "Keeps the charm bookkeeping (real_team_num latch, charm_left, the notification, busy += 10) but never moves the victim onto the caster's team, so both WalkerOfTeamAlive predicates flip (team-0 alive 2 -> 1, team-1 alive 0 -> 1)."
@@ -5882,7 +5883,7 @@ inline constexpr FactPredicate kFacts_archmage_summon_elemental_scen99[] = {
 };
 
 inline constexpr Mutation kMut_archmage_summon_elemental_scen99 = {
-    "packs/core/families/living-17-archmage.lua", 431,
+    "packs/core/families/living-17-archmage.lua", 445,
     "    local elemental = og.add_ob(\"living\", LIVING_ELEMENTAL)",
     "    local elemental = nil",
     "Makes the TRUE SUMMON branch's add_ob yield nothing, so the `if not elemental then return false end` failsafe aborts the cast: no FAMILY_FIREELEMENTAL ever enters oblist, WalkerFamilyCount(FAMILY_FIREELEMENTAL,1,1) collapses to 0, WalkerAliveAtFinal fails, and team-0 alive drops below 2."
@@ -5928,7 +5929,7 @@ inline constexpr FactPredicate kFacts_mage_teleport_marker_scen99[] = {
 };
 
 inline constexpr Mutation kMut_mage_teleport_marker_scen99 = {
-    "packs/core/families/living-03-mage.lua", 187,
+    "packs/core/families/living-03-mage.lua", 188,
     "    marker.lifetime = self.level // 4 + 1",
     "    marker.lifetime = 1",
     "Gives the placed marker a single use instead of level//4+1 = 3. walker::teleport decrements the use counter on a successful jump and calls death() when it reaches 0, so the marker is reaped and WalkerOfTeamAlive(0,2,2) falls to 1 -- proving both that the marker persisted and that the return teleport actually consumed it."
@@ -5982,7 +5983,7 @@ inline constexpr FactPredicate kFacts_archmage_teleport_marker_scen99[] = {
 };
 
 inline constexpr Mutation kMut_archmage_teleport_marker_scen99 = {
-    "packs/core/families/living-17-archmage.lua", 304,
+    "packs/core/families/living-17-archmage.lua", 318,
     "  local marker = og.add_ob(\"fx\", FX_MARKER)",
     "  local marker = nil",
     "Makes the marker arm's add_ob yield nothing, so the body takes its own `if not marker then return false end` exit before set_owner / center_on / the use count and before either notification. Both casts go silent: EventKindAtLeast(notification, 4) collapses to 0. mage.lua carries the identical text at line 114, but that is a different file, so the pin stays unambiguous."
@@ -6017,7 +6018,7 @@ inline constexpr FactPredicate kFacts_archmage_mind_control_team_flip_scen99[] =
 };
 
 inline constexpr Mutation kMut_archmage_mind_control_team_flip_scen99 = {
-    "packs/core/families/living-17-archmage.lua", 643,
+    "packs/core/families/living-17-archmage.lua", 657,
     "        foe.team = self.team",
     "        foe.team = foe.team",
     "Keeps the real_team_num latch, charm_left and the 'has controlled N men' notification but never moves the victim onto the caster's team: WalkerOfTeamAlive(0,2,2) falls to 1, WalkerOfTeamAlive(1,0,0) rises to 1, and the still-hostile soldier melees the archmage."
@@ -6050,7 +6051,7 @@ inline constexpr FactPredicate kFacts_archmage_summon_image_phantom_scen99[] = {
 };
 
 inline constexpr Mutation kMut_archmage_summon_image_phantom_scen99 = {
-    "packs/core/families/living-17-archmage.lua", 572,
+    "packs/core/families/living-17-archmage.lua", 586,
     "          phantom.team = self.team",
     "          phantom.team = 3",
     "Conjures the illusion onto an unrelated team instead of the caster's, so the phantom stops counting as an allied oblist entry and WalkerOfTeamAlive(0,2,2) falls to 1 while the family and HP-signature predicates still hold -- isolating the team binding."
@@ -6098,7 +6099,7 @@ inline constexpr FactPredicate kFacts_mage_starburst_ring_scen99[] = {
 };
 
 inline constexpr Mutation kMut_mage_starburst_ring_scen99 = {
-    "packs/core/families/living-03-mage.lua", 221,
+    "packs/core/families/living-03-mage.lua", 222,
     "      if i ~= 0 or j ~= 0 then",
     "      if false then",
     "Suppresses every bolt of the WARP SPACE fan while leaving the aim save/restore, the damage-bonus MP spend and the 8*weapon_cost refund intact. No FIREBALL is emitted and all three foes end at their full spawn HP, failing WeaponFamilyEmitted and all three per-heading HP windows."
@@ -6973,7 +6974,7 @@ inline constexpr FactPredicate kFacts_bomb_l10_vs_cleric_l9_scen99[] = {
 };
 
 inline constexpr Mutation kMut_bomb_l10_vs_cleric_l9_scen99 = {
-    "packs/core/families/living-11-thief.lua", 118,
+    "packs/core/families/living-11-thief.lua", 122,
     "  bomb.damage = og.combat.bomb_damage(self.level)",
     "  bomb.damage = og.combat.bomb_damage(1)",
     "Severs the caster-level -> bomb-damage mapping: a level-10 thief arms a level-1 bomb (raw 30, rolled 27..31 landed). The blast still fires, still shoves and still emits SOUND_EXPLODE, but the level-9 cleric survives it at 91 of 120, so WalkerDiedByFinal(FAMILY_CLERIC) fails, the exact ScoreDelta fails with it (439 -> 38, the hit XP alone) and the sound track drops from four play_sounds to three (the cleric's DIE2 never fires). Measured: 3 predicate flips."
@@ -7823,7 +7824,7 @@ inline constexpr FactPredicate kFacts_mage_freeze_time_offteam_scen99[] = {
 };
 
 inline constexpr Mutation kMut_mage_freeze_time_offteam_scen99 = {
-    "packs/core/families/living-03-mage.lua", 398,
+    "packs/core/families/living-03-mage.lua", 399,
     "bonus_rounds_per_level = 2",
     "bonus_rounds_per_level = 0",
     "Collapses the off-team freeze grant from min(5 + 2*15, 50) = 35 rounds to the base 5. The allies get seven times fewer extra act() passes, so neither orc reaches the WalkerPositionMoved bound (the trailing orc stops at (471,439) instead of (387,523))."
@@ -7900,7 +7901,7 @@ inline constexpr FactPredicate kFacts_thief_taunt_matched_levels_scen99[] = {
 };
 
 inline constexpr Mutation kMut_thief_taunt_matched_levels_scen99 = {
-    "packs/core/families/living-11-thief.lua", 165,
+    "packs/core/families/living-11-thief.lua", 169,
     "      if my_roll >= foe_roll then",
     "      if foe_roll >= my_roll then",
     "Inverts the taunt adjudication. With matched levels both draws share the bound rand(7), so this is exactly the observable of the RIGHT-first draw order the parity port rejected: the same two draws are consumed but the opposite foe is taunted, which moves the FOLLOW-duration draw within the stream and shifts every later combat roll (medium slime 72 -> 61 hp, orc 140 -> 131 hp at (192,177), team-0 score 22 -> 70)."
@@ -7999,7 +8000,7 @@ inline constexpr FactPredicate kFacts_mage_heartburst_multitarget_scen99[] = {
 };
 
 inline constexpr Mutation kMut_mage_heartburst_multitarget_scen99 = {
-    "packs/core/families/living-03-mage.lua", 401,
+    "packs/core/families/living-03-mage.lua", 402,
     "heartburst_range_base = 80",
     "heartburst_range_base = 0",
     "Drops the mage's heartburst acquisition radius from 80 + 2*13 = 106px to 26px, short of every orc at cast time. Only the one foe that walks inside 26px is ever detonated: FAMILY_EXPLOSION tracks fall 9 -> 3, play_sound 6 -> 5, and the surviving orc finishes on 14000 cents instead of 6100."
@@ -8098,7 +8099,7 @@ inline constexpr FactPredicate kFacts_thief_ai_bomb_flee_scen99[] = {
 };
 
 inline constexpr Mutation kMut_thief_ai_bomb_flee_scen99 = {
-    "packs/core/families/living-11-thief.lua", 128,
+    "packs/core/families/living-11-thief.lua", 132,
     "    local flee_dy = og.rand(3) - 1",
     "    local flee_dy = flee_dx; flee_dx = og.rand(3) - 1",
     "Transposes the two flee draws so the FIRST value lands on dy and the SECOND on dx - exactly the RIGHT-first adjudication the parity port rejected. Stream consumption is unchanged (both bounds are 3), so the only effect is the flee vector: the bomber survives to the dump tick, the level never completes and no soldier reaches (146,166)."
@@ -8530,6 +8531,9 @@ inline constexpr Mutation kMut_soldier_disarm_resisted_price_fixes_scen99 = {
 // tower by -6 and plays SOUND_CHARGE. The busy shows as one tick: the held
 // fire throws at 26 and 58, and without the busy at 25 and 57, so the budget
 // of 58 ticks (events through tick 57) catches the second throw only then.
+// With the setting on and the front probe quiet (fix U) the first throw falls
+// at tick 26 with or without the 5 busy, so the setting-on pin makes the busy
+// longer instead of dropping it.
 inline constexpr FactPredicate kFacts_soldier_disarm_resisted_busy_scen99[] = {
     pred::TickReached(58),
     pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 1),
@@ -8553,8 +8557,8 @@ inline constexpr FactPredicate kFacts_soldier_disarm_resisted_busy_fixes_scen99[
 inline constexpr Mutation kMut_soldier_disarm_resisted_busy_fixes_scen99 = {
     "packs/core/families/living-00-soldier.lua", 123,
     "self:set_busy(og.fadd(self:busy(), 5.0))",
-    "self:set_busy(self:busy())",
-    "Drops the resisted try's 5 busy, so the held fire throws a tick sooner (25 and 57 instead of 26 and 58) and the second throw lands inside the 58-tick budget: EventKindExactly(play_sound, 10) fails.",
+    "self:set_busy(og.fadd(self:busy(), 50.0))",
+    "Makes the resisted try's busy ten times longer, so the held fire never throws inside the budget: EventKindExactly(play_sound, 10) reads 9. (Dropping the 5 busy no longer moves a byte: with the front probe quiet, fix U, the first throw falls at tick 26 with or without it.)",
     "      return false, \"NO ONE TO DISARM\""
 };
 
@@ -8708,7 +8712,7 @@ inline constexpr FactPredicate kFacts_mage_bot_freeze_no_foe_scen99[] = {
         "consequence: the classic gate answers yes with no foe within 110 px for every slot, so the allied mage bot casts at nobody in its first ticks (16 fireball sounds)"),
 };
 inline constexpr Mutation kMut_mage_bot_freeze_no_foe_scen99 = {
-    "packs/core/families/living-03-mage.lua", 86,
+    "packs/core/families/living-03-mage.lua", 87,
     "return foe_count < 1 or foe_count > 3",
     "return foe_count > 3",
     "Drops the \"no foe in reach\" half of the classic gate (only \"more than three\" is left), so the alone mage casts nothing: EventKindExactly(play_sound, 16) reads 0.",
@@ -8751,7 +8755,7 @@ inline constexpr FactPredicate kFacts_mage_bot_freeze_alone_scen99[] = {
         "consequence: the classic gate answers yes with no foe within 110 px for every slot, so on tick 0 the allied mage bot stops time at nobody: the palette switches, and switches back when the 20 + 11*7 = 97 tick stop ends"),
 };
 inline constexpr Mutation kMut_mage_bot_freeze_alone_scen99 = {
-    "packs/core/families/living-03-mage.lua", 86,
+    "packs/core/families/living-03-mage.lua", 87,
     "return foe_count < 1 or foe_count > 3",
     "return foe_count > 3",
     "Drops the \"no foe in reach\" half of the classic gate (only \"more than three\" is left), so the alone mage refuses the FREEZE TIME it rolls on tick 0 and never stops time: EventKindExactly(set_palette, 2) reads 0.",
@@ -8809,7 +8813,7 @@ inline constexpr FactPredicate kFacts_mage_bot_freeze_engaged_scen99[] = {
         "consequence: with three foes within 110 px the classic gate answers no for every slot, FREEZE TIME included, so the classic mage never stops time"),
 };
 inline constexpr Mutation kMut_mage_bot_freeze_engaged_scen99 = {
-    "packs/core/families/living-03-mage.lua", 86,
+    "packs/core/families/living-03-mage.lua", 87,
     "return foe_count < 1 or foe_count > 3",
     "return foe_count < 1 or foe_count > 2",
     "Lets the classic gate answer yes with three foes in reach, so the classic mage stops time on the tick 0 it rolls FREEZE TIME: EventKindExactly(set_palette, 0) fails.",
@@ -8851,7 +8855,7 @@ inline constexpr FactPredicate kFacts_mage_bot_heartburst_scen99[] = {
         "consequence: with three foes inside 110 px the classic gate answers no for every slot and a roll of 5 is folded back to slot 1, so the mage fights with fireballs only"),
 };
 inline constexpr Mutation kMut_mage_bot_heartburst_scen99 = {
-    "packs/core/families/living-03-mage.lua", 86,
+    "packs/core/families/living-03-mage.lua", 87,
     "return foe_count < 1 or foe_count > 3",
     "return foe_count < 1 or foe_count > 2",
     "Lets the classic gate answer yes with three foes in reach, so the mage casts its specials at the towers: EventKindExactly(play_sound, 17) fails.",
@@ -8938,14 +8942,14 @@ inline constexpr FactPredicate kFacts_cleric_turn_no_undead_fixes_scen99[] = {
     pred::TickReached(40),
     pred::WalkerFamilyCount(FAMILY_CLERIC, 1, 1),
     pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 1),
-    pred::EventKindExactly(/*play_sound*/1, 4,
-        "consequence: with the setting on a ring with foes but nothing undead is refused (NO UNDEAD IN RANGE) before any roll: no SOUND_HEAL, only four combat sounds (the soldier bot, with no heading at tick 0, is refused the CHARGE that would rush nowhere)"),
+    pred::EventKindExactly(/*play_sound*/1, 5,
+        "consequence: with the setting on a ring with foes but nothing undead is refused (NO UNDEAD IN RANGE) before any roll: no SOUND_HEAL, five combat sounds (the soldier bot, with no heading at tick 0, is refused the CHARGE that would rush nowhere and takes its ordinary act instead, fix W)"),
 };
 inline constexpr Mutation kMut_cleric_turn_no_undead_fixes_scen99 = {
     "src/gameplay/walker_specials.cpp", 398,
     "if (!any_undead)",
     "if (!any_undead && false)",
-    "Disables the refusal (the ring's undead check never refuses), so the cast goes on with only a living soldier in reach, turns nothing and plays SOUND_HEAL: EventKindExactly(play_sound, 4) reads 5."
+    "Disables the refusal (the ring's undead check never refuses), so the cast goes on with only a living soldier in reach, turns nothing and plays SOUND_HEAL: EventKindExactly(play_sound, 5) reads 6."
 };
 
 // --- cleric_bot_raise_or_turn (fix C: the cleric bot's slot-2 choice) ------
@@ -8953,12 +8957,13 @@ inline constexpr Mutation kMut_cleric_turn_no_undead_fixes_scen99 = {
 // a faerie next to it) and a hostile stationary TOWER1 16 px west. The classic
 // bot flips a coin between TURN UNDEAD and the raise on its slot-2 rolls; with
 // the setting on it turns only with an undead foe in reach, so every slot-2
-// roll goes to the raise (whose corpse probe draws from the random stream).
+// roll goes to the raise (which with the setting on asks where the body would
+// stand, lib/corpses.lua raise_spot, and draws nothing).
 // The two fights part there: the classic one ends with the cleric's mystic
 // mace out and the tower dead. With the setting on the raise also wants the
 // corpse it would raise within reach and a foe for the risen to fight, so the
 // slot-2 rolls before the faerie dies are refused, and the fight ends with
-// the tower alive at 16 hp.
+// the tower alive at 20 hp.
 inline constexpr SpawnSpec kFamilySpawns_cleric_bot_raise_or_turn_scen99[] = {
     { FAMILY_BIG_ORC, 1, kOrderLiving, 152, 120, 0, 0 },           // the cleric's ally: kills the faerie
     { FAMILY_FAERIE,  0, kOrderLiving, 136, 120, 0, 0 },           // dies beside the cleric: the corpse
@@ -8976,14 +8981,14 @@ inline constexpr FactPredicate kFacts_cleric_bot_raise_or_turn_scen99[] = {
 inline constexpr FactPredicate kFacts_cleric_bot_raise_or_turn_fixes_scen99[] = {
     pred::TickReached(130),
     pred::WalkerFamilyCount(FAMILY_CLERIC, 1, 1),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 1600, 1600,
-        "consequence: with the setting on the cleric bot's slot-2 rolls never turn (no undead in reach) and raise only with a corpse in reach; the fight that follows leaves the hostile tower alive at 16 hp"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 2000, 2000,
+        "consequence: with the setting on the cleric bot's slot-2 rolls never turn (no undead in reach) and raise only with a corpse in reach; the fight that follows leaves the hostile tower alive at 20 hp"),
 };
 inline constexpr Mutation kMut_cleric_bot_raise_or_turn_fixes_scen99 = {
     "packs/core/families/living-05-cleric.lua", 353,
-    "if G.corpse_near(self, range) == nil then",
+    "if corpses.raise_spot(self, range, body) == nil then",
     "if false then",
-    "Drops the raise's corpse test, so the slot-2 rolls before the faerie dies go to a raise that probes for a corpse and the fight changes: the tower does not end at 16 hp."
+    "Drops the gate's raise_spot test, so a slot-2 roll with no corpse in reach gets a yes that reaches a raise refused for free (NO CORPSE NEARBY). On the act path both answers now take the ordinary act (fix W), so what parts the streams is the hit path: a struck bot draws rng(3) after a yes and not after a no (stats.cpp, check_special() && !rng(3)), and the tower is hitting the cleric. The fight changes and the tower does not end where the setting-on fight leaves it (measured on the current game and the old game: 20 hp unmutated, 39 hp mutated)."
 };
 
 // --- special_cleric_heal_ally_fixes_scen99 (fix J: HEAL) ------------------
@@ -9029,14 +9034,14 @@ inline constexpr FactPredicate kFacts_thief_charm_nearest_fixes_scen99[] = {
     pred::WalkerFamilyCount(FAMILY_THIEF, 1, 1),
     pred::EventKindExactly(/*notification*/2, 1,
         "anchor: the charm succeeds on both values (\"Thief charmed an opponent!\")"),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_ORC, 14000, 14000,
-        "consequence: with the setting on the charm takes the nearest foe, the orc 20 px away; the soldier bot, with no heading at tick 0, is refused the CHARGE that would rush nowhere, and the charmed orc ends the run at its full 140 hp"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_ORC, 12900, 12900,
+        "consequence: with the setting on the charm takes the nearest foe, the orc 20 px away; the soldier bot, with no heading at tick 0, is refused the CHARGE that would rush nowhere and takes its ordinary act instead (fix W), and the charmed orc ends the run at 129 hp"),
 };
 inline constexpr Mutation kMut_thief_charm_nearest_fixes_scen99 = {
     "packs/core/lib/gameplay_fixes.lua", 65,
     "if best == nil or dist < best_dist then",
     "if best == nil or dist > best_dist then",
-    "Turns the nearest search into a farthest search, so the charm takes the soldier 40 px away as the classic list order does: the charmed soldier fights the orc and WalkerHpRangeAtFinalTick(FAMILY_ORC, 14000, 14000) fails."
+    "Turns the nearest search into a farthest search, so the charm takes the soldier 40 px away as the classic list order does: the charmed soldier fights the orc, which ends at 113 hp, and WalkerHpRangeAtFinalTick(FAMILY_ORC, 12900, 12900) fails."
 };
 
 // --- thief_taunt_no_foe (fix K: TAUNT with nobody in reach) ---------------
@@ -9060,7 +9065,7 @@ inline constexpr FactPredicate kFacts_thief_taunt_no_foe_fixes_scen99[] = {
         "consequence: with the setting on a taunt with nobody in reach is refused (NO FOE IN RANGE) for free: no shout"),
 };
 inline constexpr Mutation kMut_thief_taunt_no_foe_fixes_scen99 = {
-    "packs/core/families/living-11-thief.lua", 154,
+    "packs/core/families/living-11-thief.lua", 158,
     "if gf.on() and #foes == 0 then",
     "if false then",
     "Removes the refusal, so the taunt shouts at nobody again and EventKindExactly(notification, 0) reads 1."
@@ -9072,12 +9077,22 @@ inline constexpr Mutation kMut_thief_taunt_no_foe_fixes_scen99 = {
 // charm reach (44 px) and two levels above the thief, so a charm is always
 // resisted; the orc stands inside the thief's 43 px blast, so with the
 // setting on the bomb is refused, and inside the taunt reach (108 px), so a
-// taunt has an ally to back it. The seed (27) makes the bot roll slot 3 at
-// tick 1 on both values. The classic coin picks the charm ("Thief failed to
+// taunt has an ally to back it. The classic twin's seed (27) makes the bot
+// roll slot 3 at tick 1. The classic coin picks the charm ("Thief failed to
 // charm!", and the soldier gets its free hit), and the soldier kills the
-// thief and the orc by tick 12. With the setting on the thief charms only a
-// foe it can take, so it taunts ("Nyah Nyah!") instead, and at tick 20 both
-// are alive and the soldier is down to 108 hp.
+// thief and the orc by tick 12.
+// The setting-on twin plays the same arena with its own seed (97). Seed 27
+// stopped testing anything with the setting on: its first roll (tick 0) is a
+// bomb the gate refuses (the orc is in the blast); since a refused roll now
+// takes the bot's ordinary act (Gameplay Fixes W) the bot goes at the soldier
+// instead of standing, and its later rolls (ticks 8 and 16) are bombs too, so
+// slot 3 never comes up inside the run. A roll at tick 0 does not test the
+// choice either (seeds 12, 25, 31, 39, 43 taunt there): the soldier has not
+// acted yet, so it still carries its spawn team as its real team and no charm
+// could take it, whatever the level test says. With seed 97 the bot rolls slot
+// 3 at tick 9, the soldier 20 px away; the thief charms only a foe it can
+// take, the level-9 soldier is above it, so it taunts ("Nyah Nyah!"), and at
+// tick 20 the thief, its orc and the soldier (110 hp) are all alive.
 inline constexpr SpawnSpec kFamilySpawns_thief_bot_charm_or_taunt_scen99[] = {
     { FAMILY_SOLDIER, 0, kOrderLiving, 160, 120, 0, 0, 9, 0 },     // higher-level foe, 40 px east
     { FAMILY_THIEF,   1, kOrderLiving, 120, 120, 0, 0, 7, 100 },   // hostile bot caster
@@ -9093,7 +9108,7 @@ inline constexpr FactPredicate kFacts_thief_bot_charm_or_taunt_scen99[] = {
     // negative_assertion: nobody of the thief's team is alive at tick 20; the mutation flips it by dropping the free hit, so the orc lives (0 -> 1).
 };
 inline constexpr Mutation kMut_thief_bot_charm_or_taunt_scen99 = {
-    "packs/core/families/living-11-thief.lua", 215,
+    "packs/core/families/living-11-thief.lua", 219,
     "        target:attack(self)",
     "        target:set_foe(self)",
     "Drops the free hit a resisted charm gives the foe, so the classic fight changes and the thief's orc is still alive at tick 20: WalkerOfTeamAlive(1, 0, 0) fails."
@@ -9101,17 +9116,17 @@ inline constexpr Mutation kMut_thief_bot_charm_or_taunt_scen99 = {
 inline constexpr FactPredicate kFacts_thief_bot_charm_or_taunt_fixes_scen99[] = {
     pred::TickReached(20),
     pred::EventKindExactly(/*notification*/2, 1,
-        "anchor: one cast at tick 1 on both values"),
+        "anchor: one slot-3 cast, at tick 9 (seed 97)"),
     pred::WalkerOfTeamAlive(1, 2, 2,
         "consequence: with the setting on the thief bot charms only a foe it can take; the level-9 soldier is above it, so it taunts (\"Nyah Nyah!\") with its orc in reach, and both are alive at tick 20"),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 10800, 10800,
-        "consequence: with no free hit the taunted soldier fights the thief and its orc and is down to 108 hp at tick 20"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 11000, 11000,
+        "consequence: with no free hit the taunted soldier fights the thief and its orc and is down to 110 hp at tick 20"),
 };
 inline constexpr Mutation kMut_thief_bot_charm_or_taunt_fixes_scen99 = {
     "packs/core/lib/gameplay_fixes.lua", 61,
     "eligible = foe.level <= max_level",
     "eligible = foe.level >= max_level",
-    "Turns the level test around (a foe at or ABOVE the thief's level counts as charmable), so the gate sends the bot at the level-9 soldier's charm again: it is resisted, the soldier gets its free hit and kills the thief and the orc by tick 12, so WalkerOfTeamAlive(1, 2, 2) and the soldier's 108 hp fail."
+    "Turns the level test around (a foe at or ABOVE the thief's level counts as charmable), so at tick 9 the gate sends the bot at the level-9 soldier's charm: it is resisted (\"Thief failed to charm!\"), the soldier gets its free hit and kills the thief and the orc by tick 19, so WalkerOfTeamAlive(1, 2, 2) reads 0 and no soldier is at 110 hp (both are at 120)."
 };
 
 // --- thief_bot_charm_hero (#355: a hero a player drives resists a charm) ----
@@ -9142,7 +9157,7 @@ inline constexpr FactPredicate kFacts_thief_bot_charm_hero_fixes_scen99[] = {
     // negative_assertion: the hero is dead with the setting on; the mutation flips it too: with the taunt let through the hero is still alive at tick 90 (0 -> 1).
 };
 inline constexpr Mutation kMut_thief_bot_charm_hero_fixes_scen99 = {
-    "packs/core/families/living-11-thief.lua", 74,
+    "packs/core/families/living-11-thief.lua", 78,
     "G.allies_within(self, 1, reach)",
     "G.allies_within(self, 0, reach)",
     "Lets the taunt through with no ally in reach, so the bot taunts (\"Nyah Nyah!\") at tick 0: EventKindExactly(notification, 0) reads 1."
@@ -9243,7 +9258,7 @@ inline constexpr FactPredicate kFacts_archmage_summon_no_room_scen99[] = {
         "consequence: the classic refused summon still took its half-MP surcharge, so the tick-40 HEARTBURST pool is smaller and the surviving hostile tower ends at 39 hp (the allied towers sit at 101 and above)"),
 };
 inline constexpr Mutation kMut_archmage_summon_no_room_scen99 = {
-    "packs/core/families/living-17-archmage.lua", 427,
+    "packs/core/families/living-17-archmage.lua", 441,
     "if not gf.on() then",
     "if false then",
     "Skips the classic surcharge before the placement, so the refused summon costs nothing and the HEARTBURST at tick 40 spends the larger pool: the surviving hostile tower ends at 23 hp and WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 3900, 3900) fails.",
@@ -9258,7 +9273,7 @@ inline constexpr FactPredicate kFacts_archmage_summon_no_room_fixes_scen99[] = {
         "consequence: with the setting on the surcharge is paid only once the elemental stands, so the refused summon costs nothing and the tick-40 HEARTBURST spends the larger pool: the surviving hostile tower ends at 23 hp"),
 };
 inline constexpr Mutation kMut_archmage_summon_no_room_fixes_scen99 = {
-    "packs/core/families/living-17-archmage.lua", 427,
+    "packs/core/families/living-17-archmage.lua", 441,
     "if not gf.on() then",
     "if true then",
     "Takes the surcharge before the placement again, so the refused summon keeps it and the HEARTBURST pool shrinks: the surviving hostile tower ends at 39 hp and WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 2300, 2300) fails.",
@@ -9285,7 +9300,7 @@ inline constexpr FactPredicate kFacts_archmage_mind_control_berserk_scen99[] = {
     pred::LevelDoneEquals(2),
 };
 inline constexpr Mutation kMut_archmage_mind_control_berserk_scen99 = {
-    "packs/core/families/living-17-archmage.lua", 634,
+    "packs/core/families/living-17-archmage.lua", 648,
     "local colour = og.rand(8)",
     "local colour = og.rand(8) + 1",
     "Shifts the berserk colour roll up by one, so the failed control sends the orc to team 1, its own: it stays a foe and WalkerOfTeamAlive(0, 2, 2) and LevelDoneEquals(2) fail."
@@ -9300,7 +9315,7 @@ inline constexpr FactPredicate kFacts_archmage_mind_control_berserk_fixes_scen99
     pred::LevelDoneEquals(0),
 };
 inline constexpr Mutation kMut_archmage_mind_control_berserk_fixes_scen99 = {
-    "packs/core/families/living-17-archmage.lua", 637,
+    "packs/core/families/living-17-archmage.lua", 651,
     "colour = og.mod(colour + 1, 8)",
     "colour = colour",
     "Keeps the rolled colour, so a berserk roll of 0 puts the orc on the caster's team again: WalkerOfTeamAlive(1, 1, 1) and LevelDoneEquals(0) fail."
@@ -9309,9 +9324,20 @@ inline constexpr Mutation kMut_archmage_mind_control_berserk_fixes_scen99 = {
 // --- archmage_bot_summon_no_foe (fix B: the archmage's slot-3 gate) --------
 // A hostile level-7 archmage bot with 600 MP and no foe within 200 px; a bot
 // rolls its specials only in its first wandering ticks. The seed (45) makes
-// the classic bot summon an image (an elf phantom) with nobody near; with the
-// setting on slot 3 wants a foe within 200 px, the summon is refused and the
-// bot's tick-3 TELEPORT MARKER is what the run leaves behind.
+// the classic bot summon an image (an elf phantom) with nobody near, once a
+// TELEPORT has carried it out of the walled corner it starts in.
+// The setting-on twin keeps the seed and the budget but has its own spawns:
+// the archmage stands at (160, 160), where a phantom has room beside it. At
+// (60, 60) no walker can stand next to it, so a SUMMON IMAGE there is refused
+// NO ROOM TO SUMMON whatever the gate says, and with fix W that refused roll
+// is not the act: the bot sets off on a 300-tick search for the player and
+// rolls nothing more in the budget. Only a roll before the first cast reaches
+// the gate's last test (afterwards the pool never again covers the 500 and a
+// HEARTBURST), and on every seed from 0 to 127 that roll comes at tick 1, in
+// the corner, even with a 900-tick budget: so neither a new seed nor a longer
+// run would let the gate's choice change anything. With the setting on slot 3
+// wants two foes hunting the archmage within 200 px; nobody hunts it, so the
+// tick-1 roll is refused and the bot walks toward the player instead.
 inline constexpr SpawnSpec kFamilySpawns_archmage_bot_summon_no_foe_scen99[] = {
     { FAMILY_ARCHMAGE, 1, kOrderLiving,  60,  60, 0, 0, 7, 600 },  // hostile bot caster
     { FAMILY_SOLDIER,  0, kOrderLiving, 560, 440, 0, 0 },          // idle player LAST, far away
@@ -9322,22 +9348,31 @@ inline constexpr FactPredicate kFacts_archmage_bot_summon_no_foe_scen99[] = {
     pred::WalkerFamilyCount(FAMILY_ELF, 1, 1,
         "consequence: the classic bot casts SUMMON IMAGE on a slot-3 roll with no foe within 200 px; its pool buys an elf phantom"),
 };
+inline constexpr SpawnSpec kFamilySpawns_archmage_bot_summon_no_foe_fixes_scen99[] = {
+    { FAMILY_ARCHMAGE, 1, kOrderLiving, 160, 160, 0, 0, 7, 600 },  // hostile bot caster, with room beside it
+    { FAMILY_SOLDIER,  0, kOrderLiving, 560, 440, 0, 0 },          // idle player LAST, far away
+};
 inline constexpr FactPredicate kFacts_archmage_bot_summon_no_foe_fixes_scen99[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(FAMILY_ARCHMAGE, 1, 1),
     pred::WalkerFamilyCount(FAMILY_ELF, 0, 0,
-        "consequence: with the setting on slot 3 wants a foe within 200 px, so the alone archmage summons nothing"),
-    // negative_assertion: the slot-3 gate refuses with no foe within 200 px, so no phantom
+        "consequence: with the setting on slot 3 wants two foes hunting the archmage within 200 px, so the alone archmage summons nothing"),
+    // negative_assertion: the slot-3 gate refuses with nobody hunting the archmage, so no phantom
+    pred::WalkerOfTeamAlive(/*team=*/1, 1, 1,
+        "consequence: the tick-1 SUMMON IMAGE roll is refused, so the archmage stands alone on team 1 (a phantom would join it there)"),
+    pred::WalkerOfTeamAlive(/*team=*/0, 1, 1,
+        "consequence: with no phantom the bot only walks toward the player in the budget, and the player's soldier is still standing"),
     pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 1),
-    pred::WalkerOfOrderFamilyCount(FAMILY_MARKER, kOrderFX, 1, 1,
-        "consequence: the bot's refused slot-3 rolls leave its tick-3 TELEPORT MARKER standing (the only sound of the run)"),
-    pred::EventKindExactly(/*play_sound*/1, 1),
+    pred::WalkerOfOrderFamilyCount(FAMILY_MARKER, kOrderFX, 0, 0,
+        "consequence: the refused roll takes its ordinary act (fix W), a 300-tick search, so it leaves no TELEPORT MARKER and plays no sound"),
+    // negative_assertion: no roll in this run casts, so no marker stands (the old tick-3 marker is gone with fix W)
+    pred::EventKindExactly(/*play_sound*/1, 0),
 };
 inline constexpr Mutation kMut_archmage_bot_summon_no_foe_fixes_scen99 = {
-    "packs/core/families/living-17-archmage.lua", 246,
+    "packs/core/families/living-17-archmage.lua", 256,
     "#G.hunters(self, SUMMON_GATE_RANGE) >= 2",
     "#G.hunters(self, SUMMON_GATE_RANGE) >= 0",
-    "Lets SUMMON IMAGE's decoy rule pass with nobody hunting the archmage, so the alone bot summons a phantom on its slot-3 roll: WalkerFamilyCount(FAMILY_ELF, 0, 0) fails."
+    "Lets SUMMON IMAGE's decoy rule pass with nobody hunting the archmage, so the alone bot summons a phantom (a soldier, on this seed) beside it on its tick-1 slot-3 roll; the twin stands the archmage where the phantom has room, which the classic twin's walled corner does not give: WalkerOfTeamAlive(1, 1, 1), WalkerOfTeamAlive(0, 1, 1) and EventKindExactly(play_sound, 0) fail."
 };
 
 // --- archmage_bot_mind_control_hero (#355: a seated hero resists MIND CONTROL)
@@ -9345,7 +9380,7 @@ inline constexpr Mutation kMut_archmage_bot_summon_no_foe_fixes_scen99 = {
 // inside the 120 px mind-control reach. The seed (2) makes the bot's tick-0
 // special roll slot 4 and the control roll succeed: the classic archmage takes
 // the player's hero. With the setting on a seated hero resists (NO VALID
-// TARGET); the bot's next roll bursts the hero, who dies at tick 4.
+// TARGET) and is still the player's when the run ends.
 inline constexpr SpawnSpec kFamilySpawns_archmage_bot_mind_control_hero_scen99[] = {
     { FAMILY_ARCHMAGE, 1, kOrderLiving, 120, 120, 0, 0, 10, 600 },  // hostile bot caster
     { FAMILY_SOLDIER,  0, kOrderLiving, 200, 120, 0, 0, 10, 0 },    // the player's hero LAST, 80 px east
@@ -9361,14 +9396,14 @@ inline constexpr FactPredicate kFacts_archmage_bot_mind_control_hero_fixes_scen9
     pred::TickReached(10),
     pred::WalkerFamilyCount(FAMILY_ARCHMAGE, 1, 1),
     pred::EventKindExactly(/*notification*/2, 0),
-    pred::WalkerDiedByFinal(FAMILY_SOLDIER,
-        "consequence: with the setting on the hero a player drives resists MIND CONTROL (NO VALID TARGET); the bot's next roll bursts it and it dies at tick 4"),
+    pred::WalkerOfTeamAlive(0, 1, 1,
+        "consequence: with the setting on the hero a player drives resists MIND CONTROL (NO VALID TARGET) and is still on the player's team when the run ends"),
 };
 inline constexpr Mutation kMut_archmage_bot_mind_control_hero_fixes_scen99 = {
     "packs/core/lib/gameplay_fixes.lua", 47,
     "return not foe:seat_driven()",
     "return true",
-    "Makes a seated hero charmable again, so the tick-0 MIND CONTROL takes the player's hero and the bot never bursts it: WalkerDiedByFinal(FAMILY_SOLDIER) fails."
+    "Makes a seated hero charmable again, so the tick-0 MIND CONTROL takes the player's hero (\"ArchMage has controlled 1 men\"): the hero ends on the archmage's team, and EventKindExactly(notification, 0) and WalkerOfTeamAlive(0, 1, 1) fail."
 };
 
 // --- archmage_hit_stale_shift (fix C: the archmage's summon when hit) ------
@@ -9587,12 +9622,15 @@ inline constexpr FactPredicate kFacts_soldier_bot_disarm_front_fixes_scen99[] = 
     pred::TickReached(5),
     pred::EventKindExactly(/*play_sound*/1, 1,
         "consequence: with the setting on DISARM finds the level-1 foe blocking the bot's front and disarms it on tick 0 (the charge sound)"),
+    pred::WeaponFamilyCount(FAMILY_KNIFE, 0, 0,
+        "consequence: the disarm is the bot's act, so it throws nothing in the budget"),
+    // negative_assertion: no knife flies with the setting on; the mutation flips it: the refused roll takes the bot's ordinary act (fix W), which throws one at tick 4 (0 -> 1).
 };
 inline constexpr Mutation kMut_soldier_bot_disarm_front_fixes_scen99 = {
     "packs/core/families/living-00-soldier.lua", 194,
     "G.ahead_blocked_by_foe(self, 28)",
     "G.ahead_blocked_by_foe(self, 0)",
-    "Shrinks the reach the gate scans to 0 px, so no foe is found blocking the front and DISARM is refused: EventKindExactly(play_sound, 1) reads 0."
+    "Shrinks the reach the gate scans to 0 px, so no foe is found blocking the front and DISARM is refused; the refused roll takes the bot's ordinary act (fix W), which throws a knife at tick 4: WeaponFamilyCount(FAMILY_KNIFE, 0, 0) reads 1 (the throw's sound stands in for the charge sound, so the play_sound count stays 1)."
 };
 
 // --- elf_bot_rocks_far (bot gates: ROCKS want the nearest foe in flight) ----
@@ -9649,7 +9687,7 @@ inline constexpr FactPredicate kFacts_archer_bot_ring_one_foe_scen99[] = {
         "consequence: the classic gate casts the ring at the one faced foe; six of its fire arrows are still in flight at the end of the budget"),
 };
 inline constexpr Mutation kMut_archer_bot_ring_one_foe_scen99 = {
-    "packs/core/families/living-02-archer.lua", 175,
+    "packs/core/families/living-02-archer.lua", 179,
     "G.with_classic(ai.foe_within(130), fixed)",
     "G.with_classic(ai.foe_within(13), fixed)",
     "Shrinks the classic reach to 13 px, so the tower is out of reach and the ring is refused: WeaponFamilyCount(FAMILY_FIRE_ARROW, 6, 6) fails."
@@ -9687,7 +9725,7 @@ inline constexpr FactPredicate kFacts_archer_bot_bolt_at_blows_scen99[] = {
     // negative_assertion: the archer is dead with the setting off; the mutation flips it by keeping the bolt in its quiver (0 -> 1).
 };
 inline constexpr Mutation kMut_archer_bot_bolt_at_blows_scen99 = {
-    "packs/core/families/living-02-archer.lua", 175,
+    "packs/core/families/living-02-archer.lua", 179,
     "G.with_classic(ai.foe_within(130), fixed)",
     "G.with_classic(ai.foe_within(13), fixed)",
     "Shrinks the classic reach to 13 px, so the tower is out of reach and the bolt is never fired: the archer lives and WalkerFamilyCount(FAMILY_ARCHER, 0, 0) fails."
@@ -9698,7 +9736,7 @@ inline constexpr FactPredicate kFacts_archer_bot_bolt_at_blows_fixes_scen99[] = 
         "consequence: with the setting on the exploding bolt wants its foe outside the blast; the archer stands inside it, so it shoots ordinary arrows and lives"),
 };
 inline constexpr Mutation kMut_archer_bot_bolt_at_blows_fixes_scen99 = {
-    "packs/core/families/living-02-archer.lua", 117,
+    "packs/core/families/living-02-archer.lua", 121,
     "G.blast_clear(self, f, G.blast_reach(self.level), true)",
     "G.blast_clear(self, f, G.blast_reach(self.level), false)",
     "Stops the gate counting the archer itself in the blast, so the bolt is fired at the tower and kills the archer: WalkerFamilyCount(FAMILY_ARCHER, 1, 1) fails."
@@ -9723,7 +9761,7 @@ inline constexpr FactPredicate kFacts_mage_bot_marker_home_scen99[] = {
     // negative_assertion: no marker with the setting off: the coin left the Shift at 0, so the slot-1 roll is a plain TELEPORT.
 };
 inline constexpr Mutation kMut_mage_bot_marker_home_scen99 = {
-    "packs/core/families/living-03-mage.lua", 86,
+    "packs/core/families/living-03-mage.lua", 87,
     "return foe_count < 1 or foe_count > 3",
     "return foe_count > 3",
     "Drops the \"no foe in reach\" half of the classic gate, so the alone mage casts nothing and walks: WalkerPositionMoved(FAMILY_MAGE, 0, 300) fails.",
@@ -9747,7 +9785,8 @@ inline constexpr Mutation kMut_mage_bot_marker_home_fixes_scen99 = {
 // SPACE on tick 0. The classic gate (fewer than one or more than three foes
 // within 110 px) sees two and refuses every slot; with the setting on WARP
 // SPACE's ring, whose bolts crawl a pixel a tick, wants two foes inside it (or
-// one the mage does not face), finds both towers and kills them.
+// one the mage does not face), finds both towers and kills one of them
+// within the budget.
 inline constexpr SpawnSpec kFamilySpawns_mage_bot_warp_two_at_blows_scen99[] = {
     { FAMILY_TOWER1,  0, kOrderLiving, 137, 120, 0, 0 },          // a foe a 1 px gap east
     { FAMILY_TOWER1,  0, kOrderLiving,  94, 120, 0, 0 },          // a foe a 1 px gap west (its 25 px body)
@@ -9762,7 +9801,7 @@ inline constexpr FactPredicate kFacts_mage_bot_warp_two_at_blows_scen99[] = {
     // negative_assertion: no fireball with the setting off; the mutation flips it by letting the classic gate cast with two foes (0 -> 6).
 };
 inline constexpr Mutation kMut_mage_bot_warp_two_at_blows_scen99 = {
-    "packs/core/families/living-03-mage.lua", 86,
+    "packs/core/families/living-03-mage.lua", 87,
     "return foe_count < 1 or foe_count > 3",
     "return foe_count < 1 or foe_count > 1",
     "Lets the classic gate answer yes with two foes in reach, so the classic mage casts the ring on tick 0: WeaponFamilyCount(FAMILY_FIREBALL, 0, 0) fails.",
@@ -9770,17 +9809,17 @@ inline constexpr Mutation kMut_mage_bot_warp_two_at_blows_scen99 = {
 };
 inline constexpr FactPredicate kFacts_mage_bot_warp_two_at_blows_fixes_scen99[] = {
     pred::TickReached(10),
-    pred::WeaponFamilyCount(FAMILY_FIREBALL, 6, 6,
-        "consequence: with the setting on WARP SPACE finds two foes inside its point-blank ring and casts it on tick 0; six of its fireballs are still out at the end of the budget"),
-    pred::WalkerFamilyCount(FAMILY_TOWER1, 0, 0,
-        "consequence: the ring kills both towers at blows"),
-    // negative_assertion: both towers are dead with the setting on; the mutation flips it by refusing the ring (0 -> 2).
+    pred::WeaponFamilyCount(FAMILY_FIREBALL, 4, 4,
+        "consequence: with the setting on WARP SPACE finds two foes inside its point-blank ring and casts it on tick 0; four of its fireballs are still out at the end of the budget"),
+    pred::WalkerFamilyCount(FAMILY_TOWER1, 1, 1,
+        "consequence: the ring kills one of the two towers at blows"),
+    // negative_assertion: one tower is dead with the setting on; the mutation flips it by refusing the ring (1 -> 2).
 };
 inline constexpr Mutation kMut_mage_bot_warp_two_at_blows_fixes_scen99 = {
     "packs/core/lib/gates.lua", 328,
     "in_ring >= 2",
     "in_ring >= 20",
-    "Asks for twenty foes in the ring where two stand (both unfaced, so the one-foe arm does not answer either), so WARP SPACE is refused: WeaponFamilyCount(FAMILY_FIREBALL, 6, 6) fails."
+    "Asks for twenty foes in the ring where two stand (both unfaced, so the one-foe arm does not answer either), so WARP SPACE is refused: WeaponFamilyCount(FAMILY_FIREBALL, 4, 4) and WalkerFamilyCount(FAMILY_TOWER1, 1, 1) fail."
 };
 
 // --- archmage_bot_image_one_foe (bot gates: SUMMON IMAGE is a decoy for two hunters) ---
@@ -9800,7 +9839,7 @@ inline constexpr FactPredicate kFacts_archmage_bot_image_one_foe_scen99[] = {
         "consequence: the classic bot casts SUMMON IMAGE on its slot-3 roll with one foe 150 px off; its pool buys an elf phantom"),
 };
 inline constexpr Mutation kMut_archmage_bot_image_one_foe_scen99 = {
-    "packs/core/families/living-17-archmage.lua", 222,
+    "packs/core/families/living-17-archmage.lua", 228,
     "return true",
     "return false",
     "Makes the setting-off summon gate answer no, so the classic bot summons nothing: WalkerFamilyCount(FAMILY_ELF, 1, 1) fails.",
@@ -9813,7 +9852,7 @@ inline constexpr FactPredicate kFacts_archmage_bot_image_one_foe_fixes_scen99[] 
     // negative_assertion: no phantom with the setting on; the mutation flips it by letting the decoy rule pass with no hunter (0 -> 1).
 };
 inline constexpr Mutation kMut_archmage_bot_image_one_foe_fixes_scen99 = {
-    "packs/core/families/living-17-archmage.lua", 246,
+    "packs/core/families/living-17-archmage.lua", 256,
     "#G.hunters(self, SUMMON_GATE_RANGE) >= 2",
     "#G.hunters(self, SUMMON_GATE_RANGE) >= 0",
     "Lets SUMMON IMAGE's decoy rule pass with nobody hunting the archmage, so the bot summons a phantom: WalkerFamilyCount(FAMILY_ELF, 0, 0) fails."
@@ -9984,7 +10023,7 @@ inline constexpr FactPredicate kFacts_thief_bot_cloud_alone_scen99[] = {
         "consequence: the classic gate casts POISON CLOUD with nobody near the thief"),
 };
 inline constexpr Mutation kMut_thief_bot_cloud_alone_scen99 = {
-    "packs/core/families/living-11-thief.lua", 101,
+    "packs/core/families/living-11-thief.lua", 105,
     "return true -- default: go for it",
     "do return false end -- default: go for it",
     "Makes the classic default answer no, so the alone thief lets no cloud out: WalkerOfOrderFamilyCount(FAMILY_CLOUD, kOrderFX, 1, 1) fails."
@@ -9996,7 +10035,7 @@ inline constexpr FactPredicate kFacts_thief_bot_cloud_alone_fixes_scen99[] = {
     // negative_assertion: no cloud with the setting on; the mutation flips it by letting the cloud out with nobody at blows (0 -> 1).
 };
 inline constexpr Mutation kMut_thief_bot_cloud_alone_fixes_scen99 = {
-    "packs/core/families/living-11-thief.lua", 99,
+    "packs/core/families/living-11-thief.lua", 103,
     "#G.foes_at_blows(self) >= 2",
     "#G.foes_at_blows(self) >= 0",
     "Lets the cloud out with nobody at blows, so the alone thief casts it: WalkerOfOrderFamilyCount(FAMILY_CLOUD, kOrderFX, 0, 0) fails."
@@ -10031,7 +10070,7 @@ inline constexpr FactPredicate kFacts_druid_bot_tree_behind_fixes_scen99[] = {
     // negative_assertion: no tree with the setting on; the mutation flips it by dropping the facing test (0 -> 1).
 };
 inline constexpr Mutation kMut_druid_bot_tree_behind_fixes_scen99 = {
-    "packs/core/families/living-13-druid.lua", 164,
+    "packs/core/families/living-13-druid.lua", 168,
     "G.faces(self, f)",
     "true",
     "Drops the facing test, so the druid grows a tree with the tower behind it: WeaponFamilyCount(FAMILY_TREE, 0, 0) fails."
@@ -10065,7 +10104,7 @@ inline constexpr FactPredicate kFacts_druid_bot_faerie_alone_fixes_scen99[] = {
     // negative_assertion: no faerie with the setting on; the mutation flips it by letting the summon through with no foe near (0 -> 1).
 };
 inline constexpr Mutation kMut_druid_bot_faerie_alone_fixes_scen99 = {
-    "packs/core/families/living-13-druid.lua", 170,
+    "packs/core/families/living-13-druid.lua", 174,
     "G.foes_within(self, 1, 130, false)",
     "G.foes_within(self, 0, 130, false)",
     "Lets the summon through with no foe within 130 px, so the alone druid summons a faerie: WalkerFamilyCount(FAMILY_FAERIE, 0, 0) fails."
@@ -10100,7 +10139,7 @@ inline constexpr FactPredicate kFacts_druid_bot_protection_idle_fixes_scen99[] =
     // negative_assertion: no circle with the setting on; the mutation flips it by letting any ally in reach qualify (0 -> 1).
 };
 inline constexpr Mutation kMut_druid_bot_protection_idle_fixes_scen99 = {
-    "packs/core/families/living-13-druid.lua", 177,
+    "packs/core/families/living-13-druid.lua", 181,
     "G.ally_at_blows(self, 60)",
     "G.allies(self, 60)[1]",
     "Lets any ally within 60 px qualify, at blows or not, so the idle orc gets a circle: WeaponFamilyCount(FAMILY_CIRCLE_PROTECTION, 0, 0) fails."
@@ -10173,7 +10212,7 @@ inline constexpr FactPredicate kFacts_barbarian_bot_explode_lone_fixes_scen99[] 
     // negative_assertion: no explosion with the setting on; the mutation flips it by letting one foe make a cluster (0 -> 1).
 };
 inline constexpr Mutation kMut_barbarian_bot_explode_lone_fixes_scen99 = {
-    "packs/core/families/living-16-barbarian.lua", 126,
+    "packs/core/families/living-16-barbarian.lua", 130,
     "return near >= 2 and",
     "return near >= 1 and",
     "Lets one foe make a cluster, so the barbarian hurls the exploding boulder at the lone tower: WalkerOfOrderFamilyCount(FAMILY_EXPLOSION, kOrderFX, 0, 0) fails."
@@ -10213,6 +10252,225 @@ inline constexpr Mutation kMut_elemental_bot_starburst_one_foe_fixes_scen99 = {
     "in_ring >= 2",
     "in_ring >= 1",
     "Lets one foe in the ring's flight pay for it, faced or not, so the elemental casts STARBURST at the tower: WeaponFamilyCount(FAMILY_METEOR, 0, 0) fails."
+};
+
+// --- cleric_raise_blocked_corpse (fix T: the cleric raises where the body can stand) ---
+// The cleric_raise_skeleton rig turned around: the executioner stands west of
+// the victim, so the faerie dies against the caster and leaves its stain at
+// (106,120). The stain's 16x16 box reaches into the cleric's own body at
+// (120,120). The classic RAISE UNDEAD probes the stain's box and refuses
+// CORPSE IS BLOCKED: no skeleton. With the setting on the raise probes the
+// skeleton's own box, nudged up to 16 px from the corner, and raises it at
+// (106,121). The faerie's x (102) was tuned by trying 100 to 113: at 101 the
+// classic raise succeeds as well, and every other spot leaves the faerie
+// alive at the cast or its stain where neither value raises. A far hostile
+// tower keeps the level from ending.
+inline constexpr SpawnSpec kFamilySpawns_cleric_raise_blocked_corpse_scen99[] = {
+    { FAMILY_TOWER1,  1, kOrderLiving, 560, 440, 0, 0 },           // far hostile: keeps level_done at 0
+    { FAMILY_BIG_ORC, 0, kOrderLiving,  88, 120, 0, 0 },           // executioner, west of the victim
+    { FAMILY_FAERIE,  1, kOrderLiving, 102, 120, 0, 0 },           // victim: its stain's box reaches into the cleric
+    { FAMILY_CLERIC,  0, kOrderLiving, 120, 120, 0, 0, 10, 600 },  // caster LAST (the player); level 10 clears the slot-2 cycle gate
+};
+inline constexpr FactPredicate kFacts_cleric_raise_blocked_corpse_scen99[] = {
+    pred::TickReached(130),
+    pred::LevelDoneEquals(0),
+    pred::WalkerFamilyCount(FAMILY_FAERIE, 0, 0),
+    // negative_assertion: the victim faerie is reaped once dead; the stain it left is the corpse the cast probes.
+    pred::WalkerFamilyCount(FAMILY_SKELETON, 0, 0,
+        "consequence: the classic probe reads the stain's 16x16 box into the caster's own body and refuses CORPSE IS BLOCKED"),
+    // negative_assertion: no skeleton rises with the setting off; the mutation flips it by letting the classic probe through (0 -> 1).
+    pred::WalkerOfTeamAlive(/*team=*/0, 2, 2,
+        "consequence: cleric and executioner alive on team 0, and no raised skeleton beside them"),
+};
+inline constexpr Mutation kMut_cleric_raise_blocked_corpse_scen99 = {
+    "packs/core/families/living-05-cleric.lua", 68,
+    "local passable = og.query_passable(blood:xpos(), blood:ypos(), blood)",
+    "local passable = true",
+    "Skips the classic stain probe, so the corpse under the cleric's edge counts as clear and the skeleton rises at the stain's corner: WalkerFamilyCount(FAMILY_SKELETON, 0, 0) reads 1 and team 0 has 3 alive."
+};
+inline constexpr FactPredicate kFacts_cleric_raise_blocked_corpse_fixes_scen99[] = {
+    pred::TickReached(130),
+    pred::LevelDoneEquals(0),
+    pred::WalkerFamilyCount(FAMILY_SKELETON, 1, 1,
+        "consequence: with the setting on the raise probes the skeleton's own box, nudged off the caster, and raises it beside the stain"),
+    pred::WalkerAliveAtFinal(FAMILY_SKELETON, 1),
+    pred::WalkerOfTeamAlive(/*team=*/0, 3, 3,
+        "consequence: cleric, executioner and the raised skeleton alive on team 0"),
+};
+inline constexpr Mutation kMut_cleric_raise_blocked_corpse_fixes_scen99 = {
+    "packs/core/lib/corpses.lua", 18,
+    "M.NUDGE = 16",
+    "M.NUDGE = 0",
+    "Allows no nudge, so the skeleton's box is probed at the stain's corner alone, where the cleric's body blocks it, and the raise is refused: WalkerFamilyCount(FAMILY_SKELETON, 1, 1) reads 0 and team 0 has 2 alive."
+};
+
+// --- soldier_charge_front_foe (fix U: the soldier's front probe is quiet) ---
+// A level-10 player soldier with a TOWER1 touching it from the south (a 1 px
+// overlap, the soldier_disarm_matched_levels geometry). One step DOWN at tick
+// 1 sets a heading with curdir = enddir and bumps the tower (the walk's own
+// blow, on both values); CHARGE at tick 20, busy back at 0. The cast asks
+// "is my front blocked?" and refuses PATH BLOCKED on both values. The classic
+// probe moves the soldier's box into the tower and the collision swings at it
+// (one more blow: 8 sounds, the tower ends at 93 hp); with the setting on it
+// is asked quietly (7 sounds, the tower ends at 112 hp). The tower fires back
+// at the soldier throughout and never dies in the budget.
+inline constexpr InputEvent kInputs_soldier_charge_front_foe[] = {
+    {  1, 0, K_DOWN },    {  2, 0, K_NONE },
+    { 20, 0, K_SPECIAL }, { 21, 0, K_NONE },
+};
+inline constexpr SpawnSpec kFamilySpawns_soldier_charge_front_foe_scen99[] = {
+    { FAMILY_TOWER1,  1, kOrderLiving, 120, 135, 0, 0 },           // touching south: a 1 px overlap
+    { FAMILY_SOLDIER, 0, kOrderLiving, 120, 120, 0, 0, 10, 600 },  // caster LAST (the player)
+};
+inline constexpr FactPredicate kFacts_soldier_charge_front_foe_scen99[] = {
+    pred::TickReached(40),
+    pred::EventKindExactly(/*play_sound*/1, 8,
+        "consequence: the walk's bump and the classic front probe's bump each land a blow on the tower, beside the tower's own shots"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 9300, 9300,
+        "consequence: the classic probe's swing takes the tower down to 93 hp"),
+};
+inline constexpr Mutation kMut_soldier_charge_front_foe_scen99 = {
+    "src/gameplay/stats.cpp", 936,
+    "return !current_game->world->query_passable(controlx + xdelta, controly + ydelta, controller_, controller_->floor(), quiet);",
+    "return true || !current_game->world->query_passable(controlx + xdelta, controly + ydelta, controller_, controller_->floor(), quiet);",
+    "Answers blocked without probing, so CHARGE still refuses PATH BLOCKED but no probe bumps the tower, which ends at 112 hp: WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 9300, 9300) fails (the sound count stays 8: the tower's own shots fall differently)."
+};
+inline constexpr FactPredicate kFacts_soldier_charge_front_foe_fixes_scen99[] = {
+    pred::TickReached(40),
+    pred::EventKindExactly(/*play_sound*/1, 7,
+        "consequence: with the setting on the front probe is asked quietly: CHARGE refuses PATH BLOCKED with no blow, so only the walk's bump and the tower's shots sound"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 11200, 11200,
+        "consequence: only the walk's bump lands: the tower ends at 112 hp"),
+};
+inline constexpr Mutation kMut_soldier_charge_front_foe_fixes_scen99 = {
+    "src/gameplay/script/bindings_entity.cpp", 850,
+    "forward_blocked(!lua_isnoneornil(L, 2) && lua_toboolean(L, 2) != 0)",
+    "forward_blocked(false)",
+    "Makes s_forward_blocked ignore its quiet flag, so CHARGE's probe is the loud one again and swings at the tower: EventKindExactly(play_sound, 7) reads 8 and the tower ends at 93 hp."
+};
+
+// --- soldier_bot_charge_door (fix V: the CHARGE gate walks the rush's path) ---
+// A hostile level-1 soldier bot, a stationary TOWER1 44 px east (inside the
+// classic 20-75 window) and a closed team-2 door between them at (144,120),
+// which no key opens. The seed (7) makes the bot walk, gain a heading toward
+// the tower and roll CHARGE at tick 6 with its front clear. The classic gate
+// asks only the window and charges into the door (the charge sound); with the
+// setting on the gate walks the rush's nine steps, meets the door before the
+// tower and holds the 25 MP.
+inline constexpr SpawnSpec kFamilySpawns_soldier_bot_charge_door_scen99[] = {
+    { FAMILY_TOWER1,  0, kOrderLiving, 164, 120, 0, 0 },           // the foe, 44 px east: inside the 20-75 window
+    { FAMILY_DOOR,    2, kOrderWeapon, 144, 120, 0, 0 },           // a closed door in the rush's path; team 2, so no key opens it
+    { FAMILY_SOLDIER, 1, kOrderLiving, 120, 120, 0, 0, 1, 100 },   // hostile level-1 bot
+    { FAMILY_SOLDIER, 0, kOrderLiving, 560, 440, 0, 0 },           // idle player LAST, far away
+};
+inline constexpr FactPredicate kFacts_soldier_bot_charge_door_scen99[] = {
+    pred::TickReached(10),
+    pred::EventKindExactly(/*play_sound*/1, 4,
+        "consequence: the classic bot charges into the door at tick 6: the charge sound beside the tower's shot and the blows"),
+};
+inline constexpr Mutation kMut_soldier_bot_charge_door_scen99 = {
+    "packs/core/families/living-00-soldier.lua", 259,
+    "G.with_classic(ai.foe_in_window(20, 75), fixed)",
+    "G.with_classic(ai.foe_in_window(20, 25), fixed)",
+    "Narrows the classic window to 20-25 px, so the tower 44 px off is refused and the bot never charges: EventKindExactly(play_sound, 4) reads 3."
+};
+inline constexpr FactPredicate kFacts_soldier_bot_charge_door_fixes_scen99[] = {
+    pred::TickReached(10),
+    pred::EventKindExactly(/*play_sound*/1, 3,
+        "consequence: with the setting on the gate walks the rush's path, meets the door before the tower and refuses the charge: no charge sound in the budget"),
+};
+inline constexpr Mutation kMut_soldier_bot_charge_door_fixes_scen99 = {
+    "packs/core/lib/gates.lua", 505,
+    "if not og.quiet_passable(ax - 1, ay - 1, self) then",
+    "if false then",
+    "Drops the path test, so the rush's steps run through the door to the tower and the bot charges at tick 6 as the classic one does: EventKindExactly(play_sound, 3) reads 4."
+};
+
+// --- elf_bot_rocks_blocked (fix V: the rock gate asks the rock's pad) ---
+// elf_rocks_blocked's geometry with a bot: a hostile level-1 elf bot with a
+// TOWER1 touching it from above, 5 px left so the two centres line up (the
+// elf_bot_rocks_far x: at x = 120 the heading between the centres is not UP
+// and the volley's own test already says no). The spawn heading is UP, so the
+// rock's pad is the tower and the tower is faced and inside the flight. The
+// seed (2) makes the elf roll ROCKS on tick 0. The classic elf has no gate:
+// fire() meets the tower on the pad, lands a melee blow (one sound, the tower
+// at 120 hp) and the cast refuses COULD NOT FIRE. With the setting on the gate
+// probes the pad first and says no; the roll takes the bot's ordinary act
+// (fix W), which strikes nothing in the budget: no sound, the tower at 130.
+inline constexpr SpawnSpec kFamilySpawns_elf_bot_rocks_blocked_scen99[] = {
+    { FAMILY_TOWER1,  0, kOrderLiving, 115, 104, 0, 0 },           // touching above, centred: the rock's pad
+    { FAMILY_ELF,     1, kOrderLiving, 120, 120, 0, 0, 1, 100 },   // hostile level-1 bot, heading UP at spawn
+    { FAMILY_SOLDIER, 0, kOrderLiving, 560, 440, 0, 0 },           // idle player LAST, far away
+};
+inline constexpr FactPredicate kFacts_elf_bot_rocks_blocked_scen99[] = {
+    pred::TickReached(3),
+    pred::EventKindExactly(/*play_sound*/1, 1,
+        "consequence: the classic elf fires into the tower: fire() lands a melee blow on the pad"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 12000, 12000,
+        "consequence: the blow takes the tower to 120 hp"),
+    pred::WeaponFamilyCount(FAMILY_ROCK, 0, 0),
+    // negative_assertion: no rock flies on either value: the pad is the tower.
+};
+inline constexpr Mutation kMut_elf_bot_rocks_blocked_scen99 = {
+    "packs/core/families/living-01-elf.lua", 21,
+    "local rock = self:fire()",
+    "local rock = nil",
+    "The cast never fires, so no blow lands on the tower: EventKindExactly(play_sound, 1) reads 0 and the tower stays at 130 hp.",
+    "local function some_rocks(self)"
+};
+inline constexpr FactPredicate kFacts_elf_bot_rocks_blocked_fixes_scen99[] = {
+    pred::TickReached(3),
+    pred::EventKindExactly(/*play_sound*/1, 0,
+        "consequence: with the setting on the gate finds the rock's pad on the tower and holds the volley; the bot's ordinary act lands nothing in the budget"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 13000, 13000,
+        "consequence: the tower is untouched"),
+    pred::WeaponFamilyCount(FAMILY_ROCK, 0, 0),
+    // negative_assertion: no rock flies on either value: the pad is the tower.
+};
+inline constexpr Mutation kMut_elf_bot_rocks_blocked_fixes_scen99 = {
+    "packs/core/families/living-01-elf.lua", 117,
+    "return G.pad_clear(self) and volley(self, v[1], v[2])",
+    "return volley(self, v[1], v[2])",
+    "Drops the pad test, so the gate says yes to the faced tower and the cast's fire() lands a blow on it before refusing COULD NOT FIRE: EventKindExactly(play_sound, 0) reads 1 and the tower ends at 120 hp."
+};
+
+// --- soldier_bot_refused_roll_acts (fix W: a refused roll is not the act) ---
+// A lone hostile level-1 soldier bot with 100 MP, the idle player far away
+// (no foe in the classic 20-75 window, so every special roll is refused on
+// both values), open field. The bot walks toward the player between rolls.
+// The seed (2) gives refused rolls inside the budget. The classic bot idles
+// on each refused roll and ends at (152,152); with the setting on a refused
+// roll takes the act the coin would have given it, and the bot ends at
+// (160,160). The player is an elf so the soldier position facts name the bot
+// alone.
+// The classic row's position fact is a lower bound (WalkerPositionMoved asks
+// "at least this far"), which the setting-on play meets too: the pair parts
+// through the setting-on row's own fact and the byte compare.
+inline constexpr SpawnSpec kFamilySpawns_soldier_bot_refused_roll_acts_scen99[] = {
+    { FAMILY_SOLDIER, 1, kOrderLiving, 120, 120, 0, 0, 1, 100 },   // hostile level-1 bot, no foe in its window
+    { FAMILY_ELF,     0, kOrderLiving, 560, 440, 0, 0 },           // idle player LAST, far away
+};
+inline constexpr FactPredicate kFacts_soldier_bot_refused_roll_acts_scen99[] = {
+    pred::TickReached(12),
+    pred::WalkerPositionMoved(FAMILY_SOLDIER, 152, 152,
+        "consequence: the classic bot walks toward the player between rolls and idles on each refused roll"),
+};
+inline constexpr Mutation kMut_soldier_bot_refused_roll_acts_scen99 = {
+    "src/gameplay/living.cpp", 361,
+    "rng_.next(5) ) //1 in 5 to do our special",
+    "rng_.next(1) ) //1 in 5 to do our special",
+    "The special coin always comes up, so every act is a refused roll and the classic bot never moves from (120,120): WalkerPositionMoved(FAMILY_SOLDIER, 152, 152) fails."
+};
+inline constexpr FactPredicate kFacts_soldier_bot_refused_roll_acts_fixes_scen99[] = {
+    pred::TickReached(12),
+    pred::WalkerPositionMoved(FAMILY_SOLDIER, 160, 160,
+        "consequence: with the setting on a refused roll takes the bot's ordinary act, so it walks further than the classic one"),
+};
+inline constexpr Mutation kMut_soldier_bot_refused_roll_acts_fixes_scen99 = {
+    "src/gameplay/living.cpp", 384,
+    "if (og::sim::session_gameplay_fixes() == 0)",
+    "if (true)",
+    "Ends the act on every refused roll as the classic game does, so the bot idles like the classic one and stops short of (160,160): WalkerPositionMoved(FAMILY_SOLDIER, 160, 160) fails."
 };
 inline constexpr ScenarioSpec kScenarios[] = {
     { "ai_idle_wander_scen9301",
@@ -12416,7 +12674,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kFacts_thief_bot_charm_or_taunt_scen99, std::size(kFacts_thief_bot_charm_or_taunt_scen99),
       kMut_thief_bot_charm_or_taunt_scen99 },
 
-    { "thief_bot_charm_or_taunt_fixes_scen99", "scen/scen1.fss", 0x0000001Bu,
+    { "thief_bot_charm_or_taunt_fixes_scen99", "scen/scen1.fss", 0x00000061u,
       kInputsEmpty, std::size(kInputsEmpty), 20,
       CompareMode::SemanticParity, false,
       kFamilySpawns_thief_bot_charm_or_taunt_scen99, std::size(kFamilySpawns_thief_bot_charm_or_taunt_scen99),
@@ -12515,7 +12773,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
     { "archmage_bot_summon_no_foe_fixes_scen99", "scen/scen1.fss", 0x0000002Du,
       kInputsEmpty, std::size(kInputsEmpty), 150,
       CompareMode::SemanticParity, false,
-      kFamilySpawns_archmage_bot_summon_no_foe_scen99, std::size(kFamilySpawns_archmage_bot_summon_no_foe_scen99),
+      kFamilySpawns_archmage_bot_summon_no_foe_fixes_scen99, std::size(kFamilySpawns_archmage_bot_summon_no_foe_fixes_scen99),
       0, false, true, Exercises::None,
       kFacts_archmage_bot_summon_no_foe_fixes_scen99, std::size(kFacts_archmage_bot_summon_no_foe_fixes_scen99),
       kMut_archmage_bot_summon_no_foe_fixes_scen99, {}, 1, nullptr, 0, 1 },
@@ -12895,6 +13153,86 @@ inline constexpr ScenarioSpec kScenarios[] = {
       0, false, true, Exercises::None,
       kFacts_elemental_bot_starburst_one_foe_fixes_scen99, std::size(kFacts_elemental_bot_starburst_one_foe_fixes_scen99),
       kMut_elemental_bot_starburst_one_foe_fixes_scen99, {}, 1, nullptr, 0, 1 },
+
+    { "cleric_raise_blocked_corpse_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputs_cleric_raise_late_slot2, std::size(kInputs_cleric_raise_late_slot2), 130,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_cleric_raise_blocked_corpse_scen99, std::size(kFamilySpawns_cleric_raise_blocked_corpse_scen99),
+      0, false, true, Exercises::Special_Cleric_2,
+      kFacts_cleric_raise_blocked_corpse_scen99, std::size(kFacts_cleric_raise_blocked_corpse_scen99),
+      kMut_cleric_raise_blocked_corpse_scen99 },
+
+    { "cleric_raise_blocked_corpse_fixes_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputs_cleric_raise_late_slot2, std::size(kInputs_cleric_raise_late_slot2), 130,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_cleric_raise_blocked_corpse_scen99, std::size(kFamilySpawns_cleric_raise_blocked_corpse_scen99),
+      0, false, true, Exercises::Special_Cleric_2,
+      kFacts_cleric_raise_blocked_corpse_fixes_scen99, std::size(kFacts_cleric_raise_blocked_corpse_fixes_scen99),
+      kMut_cleric_raise_blocked_corpse_fixes_scen99, {}, 1, nullptr, 0, 1 },
+
+    { "soldier_charge_front_foe_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputs_soldier_charge_front_foe, std::size(kInputs_soldier_charge_front_foe), 40,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_soldier_charge_front_foe_scen99, std::size(kFamilySpawns_soldier_charge_front_foe_scen99),
+      0, false, true, Exercises::Special_Soldier_1,
+      kFacts_soldier_charge_front_foe_scen99, std::size(kFacts_soldier_charge_front_foe_scen99),
+      kMut_soldier_charge_front_foe_scen99 },
+
+    { "soldier_charge_front_foe_fixes_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputs_soldier_charge_front_foe, std::size(kInputs_soldier_charge_front_foe), 40,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_soldier_charge_front_foe_scen99, std::size(kFamilySpawns_soldier_charge_front_foe_scen99),
+      0, false, true, Exercises::Special_Soldier_1,
+      kFacts_soldier_charge_front_foe_fixes_scen99, std::size(kFacts_soldier_charge_front_foe_fixes_scen99),
+      kMut_soldier_charge_front_foe_fixes_scen99, {}, 1, nullptr, 0, 1 },
+
+    { "soldier_bot_charge_door_scen99", "scen/scen1.fss", 0x00000007u,
+      kInputsEmpty, std::size(kInputsEmpty), 10,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_soldier_bot_charge_door_scen99, std::size(kFamilySpawns_soldier_bot_charge_door_scen99),
+      0, false, true, Exercises::None,
+      kFacts_soldier_bot_charge_door_scen99, std::size(kFacts_soldier_bot_charge_door_scen99),
+      kMut_soldier_bot_charge_door_scen99 },
+
+    { "soldier_bot_charge_door_fixes_scen99", "scen/scen1.fss", 0x00000007u,
+      kInputsEmpty, std::size(kInputsEmpty), 10,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_soldier_bot_charge_door_scen99, std::size(kFamilySpawns_soldier_bot_charge_door_scen99),
+      0, false, true, Exercises::None,
+      kFacts_soldier_bot_charge_door_fixes_scen99, std::size(kFacts_soldier_bot_charge_door_fixes_scen99),
+      kMut_soldier_bot_charge_door_fixes_scen99, {}, 1, nullptr, 0, 1 },
+
+    { "elf_bot_rocks_blocked_scen99", "scen/scen1.fss", 0x00000002u,
+      kInputsEmpty, std::size(kInputsEmpty), 3,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_elf_bot_rocks_blocked_scen99, std::size(kFamilySpawns_elf_bot_rocks_blocked_scen99),
+      0, false, true, Exercises::None,
+      kFacts_elf_bot_rocks_blocked_scen99, std::size(kFacts_elf_bot_rocks_blocked_scen99),
+      kMut_elf_bot_rocks_blocked_scen99 },
+
+    { "elf_bot_rocks_blocked_fixes_scen99", "scen/scen1.fss", 0x00000002u,
+      kInputsEmpty, std::size(kInputsEmpty), 3,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_elf_bot_rocks_blocked_scen99, std::size(kFamilySpawns_elf_bot_rocks_blocked_scen99),
+      0, false, true, Exercises::None,
+      kFacts_elf_bot_rocks_blocked_fixes_scen99, std::size(kFacts_elf_bot_rocks_blocked_fixes_scen99),
+      kMut_elf_bot_rocks_blocked_fixes_scen99, {}, 1, nullptr, 0, 1 },
+
+    { "soldier_bot_refused_roll_acts_scen99", "scen/scen1.fss", 0x00000002u,
+      kInputsEmpty, std::size(kInputsEmpty), 12,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_soldier_bot_refused_roll_acts_scen99, std::size(kFamilySpawns_soldier_bot_refused_roll_acts_scen99),
+      0, false, true, Exercises::None,
+      kFacts_soldier_bot_refused_roll_acts_scen99, std::size(kFacts_soldier_bot_refused_roll_acts_scen99),
+      kMut_soldier_bot_refused_roll_acts_scen99 },
+
+    { "soldier_bot_refused_roll_acts_fixes_scen99", "scen/scen1.fss", 0x00000002u,
+      kInputsEmpty, std::size(kInputsEmpty), 12,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_soldier_bot_refused_roll_acts_scen99, std::size(kFamilySpawns_soldier_bot_refused_roll_acts_scen99),
+      0, false, true, Exercises::None,
+      kFacts_soldier_bot_refused_roll_acts_fixes_scen99, std::size(kFacts_soldier_bot_refused_roll_acts_fixes_scen99),
+      kMut_soldier_bot_refused_roll_acts_fixes_scen99, {}, 1, nullptr, 0, 1 },
 };
 
 inline constexpr std::size_t kScenarioCount = std::size(kScenarios);

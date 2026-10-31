@@ -33,7 +33,7 @@
 #include <openglad/core/constants.h>
 #include <openglad/core/util.h>
 #include <cstring>
-
+#include <openglad/core/test_trace.h>
 #include <openglad/gameplay/possession.h>
 #include "sim_difficulty.h"
 
@@ -373,7 +373,19 @@ bool living::act()
 						   )
 							set_current_special(1);
 						if (check_special() )
-							return special();
+						{
+							if (special())
+								return 1;
+						}
+						else
+							TRACE("special", "held id=%u family=%d slot=%d shift=%d team=%d",
+							      static_cast<unsigned>(entity_id()), family(),
+							      static_cast<int>(current_special()), shifter_down(), team_num());
+						if (og::sim::session_gameplay_fixes() == 0)
+							return 0; // the classic act: the roll was the act, refused or not
+						// Gameplay Fixes W: a roll the gate or the cast refused is
+						// not the bot's act; it takes the act the coin would have
+						// given it.
 					}
 					else       // do random walking ..
 					{
@@ -381,7 +393,7 @@ bool living::act()
 						return 1;
 					}
 				}
-				else if (!current_game->world->rng_.next(5) ) //1 in 5 to do act_random() function
+				if (!current_game->world->rng_.next(5) ) //1 in 5 to do act_random() function
 					act_random();
 				else // 4 of 5 times
 				{

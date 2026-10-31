@@ -32,6 +32,7 @@
 
 #include <gtest/gtest.h>
 
+#include <openglad/core/combat_math.h>
 #include <openglad/core/test_trace.h>
 #include <openglad/core/weather.h>
 #include <openglad/gameplay/families/family_string_ids.h>
@@ -431,6 +432,45 @@ std::uint64_t viewport_hash(screen* s)
             }
         }
     return h;
+}
+
+// What a time stop does to the screen, measured on the viewport: the mean of
+// red + green (the two channels the blue palette halves) and the mean of blue
+// (the one it keeps), over the pixels that are not a neutral grey. The grey
+// ramps (palette entries below 32) are the same in both palettes, so the
+// stone of the status panel would only dilute the change.
+struct MeanColour
+{
+    float warm = 0.0f;  // red + green
+    float blue = 0.0f;
+};
+
+MeanColour viewport_mean(screen* s)
+{
+    viewscreen* const vs = s->viewob[0].get();
+    double warm = 0.0;
+    double blue = 0.0;
+    int count = 0;
+    for (int j = 0; j < vs->yview; ++j)
+        for (int i = 0; i < vs->xview; ++i)
+        {
+            Uint8 r = 0;
+            Uint8 g = 0;
+            Uint8 b = 0;
+            s->get_pixel(vs->xloc + i, vs->yloc + j, &r, &g, &b);
+            if (r == g && g == b)
+                continue;
+            warm += r + g;
+            blue += b;
+            ++count;
+        }
+    MeanColour mean;
+    if (count > 0)
+    {
+        mean.warm = static_cast<float>(warm / count);
+        mean.blue = static_cast<float>(blue / count);
+    }
+    return mean;
 }
 
 // Plays `sc` in the real game and fills `out`. The scene always plays and
@@ -1766,11 +1806,13 @@ std::vector<Scene> scenes()
         sc.slot = 4;
         sc.frames = 130;
         sc.stage = [](Run& run) {
-            // A held tap calls the warband on both of its frames (the cap of
-            // six grunts is the only refusal): enough mana for that and for
-            // the second banner, with some over, so the plant's held second
-            // frame is the quiet "no corpse" refusal and not a price one.
-            fill_mana(run.hero(), 400.0f);
+            // A held tap calls the warband on both of its frames (two grunts
+            // each at level 10, under the cap of six): mana for the banner,
+            // both warband frames and the second banner, and one banner's
+            // price over (3 x 80 + 2 x 120), so the plant's held second frame
+            // is the quiet "no corpse" refusal and not a price one, whether
+            // WARBAND costs 80 or 120.
+            fill_mana(run.hero(), 480.0f);
             add_corpse(run, FAMILY_SOLDIER, 1, 6, 6);
             add_corpse(run, FAMILY_SOLDIER, 1, -64, 2);
             walker* captain = run.hero();
@@ -3037,6 +3079,21 @@ Tell arrived(float within)
             [within](Run& f) { return gap(f.hero_seen(), f.actor_seen("foe")) <= within; }};
 }
 
+// A walked-in foe stands inside `reach` as the game itself measures it for
+// the special (walker::distance_to_ob, |dx| + |dy| between the top-left
+// corners, the measure find_foes_in_range uses), on or before frame `by`
+// (both sides; the mirror's positions).
+Tell arrived_by(int reach, int by)
+{
+    return {"the foe has walked into the special's reach by frame " + std::to_string(by),
+            [reach, by](Run& f) {
+                const walker* const me = f.hero_seen();
+                const walker* const foe = f.actor_seen("foe");
+                return f.frame <= by && me != nullptr && foe != nullptr && !me->dead() &&
+                       !foe->dead() && me->distance_to_ob(foe) <= reach;
+            }};
+}
+
 // A bot kept on its mark, foe-less and with nothing queued, so every tick is
 // one where it weighs its special; its mana is zero except on the cue frame.
 walker* steer_bot(Run& run, const std::string& name)
@@ -3181,7 +3238,7 @@ void play_pair(const Pair& pair, PairResult& out)
 
 // ---- the scenes ------------------------------------------------------------
 
-// The 22 scenes, each with both sides' tells, in the order the tests play
+// The 23 scenes, each with both sides' tells, in the order the tests play
 // them.
 std::vector<Pair> pairs()
 {
@@ -3232,6 +3289,9 @@ std::vector<Pair> pairs()
             pool_at(20, 50.0f),
             {"so BOOMERANG is NOT ENOUGH MP",
              [](Run& f) { return f.frame >= 44 && voiced(f, "NOT ENOUGH MP"); }},
+            // The cast's front probe bumps the tower: the swing's knife
+            // takes its 2 MP on the next frame (50 -> 48).
+            pool_at(30, 48.0f),
         };
         c.off_never = {
             says("DISARM RESISTED"),
@@ -3242,6 +3302,9 @@ std::vector<Pair> pairs()
             pool_guard(19, 200.0f),
             says("DISARM RESISTED"),
             pool_at(20, 125.0f),
+            // Gameplay Fixes U: the front probe is asked quietly, no swing,
+            // so the pool stays at 125 (before the fix the knife took 2).
+            pool_at(30, 125.0f),
             {"the boomerang flies", [fx_boomerang](Run& f) {
                  return count_of(f.display->world(), Order::FX, fx_boomerang, f.hero_id) >= 1; }},
         };
@@ -3346,6 +3409,7 @@ std::vector<Pair> pairs()
             {"the foe's third swing since the cast", third_swing},
             {"the foe's blows land", blows_land},
             pool_guard(19, 250.0f),
+            pool_at(30, 98.0f),   // the front probe's swing: the knife's 2 MP
         };
         c.off_never = {says("DISARM RESISTED")};
         c.on_shows = {
@@ -3354,6 +3418,7 @@ std::vector<Pair> pairs()
             {"the foe's third swing since the cast", third_swing},
             {"the foe's blows land", blows_land},
             pool_guard(19, 250.0f),
+            pool_at(30, 175.0f),  // the quiet front probe swings at nothing (fix U)
         };
         c.on_never = {says("Fighter Disarmed")};
         c.leads = {{2, 3}};
@@ -3368,9 +3433,9 @@ std::vector<Pair> pairs()
     // waits for the allies' fight (three foes at blows with allies, or an
     // ally at blows near death). A soldier walks in from the right, 120 px
     // from the fighter at the cue on both sides and at blows with nobody:
-    // the classic time stop freezes him mid-stride for the rest of the scene
-    // (the port draws no blue screen, so he is the visible sign), while with
-    // the fix nothing is cast and he walks up and strikes the fighter.
+    // the classic time stop turns the screen blue and freezes him mid-stride
+    // for the rest of the scene, while with the fix nothing is cast and he
+    // walks up and strikes the fighter.
     {
         Pair c;
         c.name = "b_mage_bot_freeze";
@@ -3392,6 +3457,10 @@ std::vector<Pair> pairs()
                 return;
             if (f == kCue)
             {
+                // The screen as frame kCue - 1 left it, before any time stop.
+                const MeanColour before = viewport_mean(run.display);
+                run.marks["warm"] = before.warm;
+                run.marks["blue"] = before.blue;
                 ready_bot(mage);
                 fill_mana(mage, 600.0f);
                 run.marks["hp"] = hp_of(run.hero_seen());
@@ -3406,9 +3475,19 @@ std::vector<Pair> pairs()
         const auto struck = [](Run& f) {
             return has_mark(f, "hp") && hp_of(f.hero_seen()) < f.mark("hp");
         };
+        // Read from the pixels, not the palette id: red + green fall to under
+        // 0.6 of what the screen showed before the cue, blue keeps 0.9 of it.
+        const auto blue_screen = [](Run& f) {
+            if (!has_mark(f, "warm") || f.mark("warm") <= 0.0f)
+                return false;
+            const MeanColour now = viewport_mean(f.display);
+            return now.warm < 0.6f * f.mark("warm") &&
+                   now.blue >= 0.9f * f.mark("blue");
+        };
         c.off_shows = {
             {"the time stop is on (the palette switches to the blue one)",
              [](Run& f) { return f.display->world().current_palette_id == 1; }},
+            {"the screen turns blue", blue_screen},
             {"the server banks a time stop",
              [](Run& f) { return f.server->world().enemy_freeze > 0; }},
             {"the foe stands frozen far off at frame 60",
@@ -3426,6 +3505,7 @@ std::vector<Pair> pairs()
         };
         c.on_never = {
             {"the blue palette", [](Run& f) { return f.display->world().current_palette_id == 1; }},
+            {"the screen turns blue", blue_screen},
             {"a time stop", [](Run& f) { return f.server->world().enemy_freeze > 0; }},
             {"the mage throws a fireball", [weap_fireball](Run& f) {
                  return count_of(f.display->world(), Order::Weapon, weap_fireball,
@@ -4121,8 +4201,21 @@ std::vector<Pair> pairs()
             says("NO FOE IN RANGE"),
             {"a second scare", [carrier](Run& f) { return f.frame > 94 && carrier(f); }},
         };
+        // The foe's walk differs with the setting on: the soldier bot's
+        // refused special rolls now take its ordinary act (fix W, #371), so
+        // its pauses on the way in fall on other ticks and from frame 81 it
+        // stands 54 px from the ghost centre to centre (52 by the game's
+        // measure), never as close as the 50 px arrived() asks for (with
+        // only that fix undone it reaches 50 on frame 79). What the scene
+        // claims is that the second scare goes off with the foe in its
+        // reach, so this side asks exactly that, at the measured closest
+        // approach: within 52 px by the game's measure, inside the scare's
+        // radius (og::combat::scare_radius, 60 px at level 1, the radius the
+        // cast's own no-foe refusal reads), by the press on frame 94. The
+        // number is its own claim: the cast's refusal two tells below reads
+        // the radius, and this one would red first at 51.
         c.on_shows = {
-            arrived(kInReach),
+            arrived_by(52, 94),
             says("NO FOE IN RANGE"),
             pool_at(13, 120.0f),
             {"the scare goes off at the foe", [carrier](Run& f) { return f.frame >= 94 && carrier(f); }},
@@ -4411,6 +4504,54 @@ std::vector<Pair> pairs()
         all.push_back(c);
     }
 
+    // U. CHARGE pressed into a foe that stands against the fighter's
+    // front. The cast's "is my front blocked?" probe meets the foe and the
+    // cast refuses PATH BLOCKED on both sides. In the classic game that
+    // probe is a bump: the fighter swings, and on the next frames the knife
+    // lands (the foe's HP falls, the knife's 2 MP are spent). With the fix
+    // the question is asked quietly and nothing happens. The foe is a posted
+    // soldier held from fighting, so nothing else ever touches its HP.
+    {
+        Pair c;
+        c.name = "u_charge_front_foe";
+        c.scene.family = FAMILY_SOLDIER;
+        c.scene.slot = 1;
+        c.scene.frames = 100; // every tell lands by frame 40; the GIF wants 8 s
+        c.scene.stage = [](Run& run) {
+            walker* hero = run.hero();
+            stop_mp_regen(hero);
+            hero->face_delta(0, 1);                   // faces the foe below; no step, no draw
+            walker* foe = add_posted(run, "foe", FAMILY_SOLDIER, 1, 0, 15, 1);
+            run.marks["foe.hp"] = hp_of(foe);
+        };
+        c.scene.before_tick = [](Run& run, int) {
+            hold_fire(run.actor("foe"));                // a passive blocker: it never swings
+        };
+        c.scene.keys = [](Run&, int f) { return press_at(f, 20); };
+        const Tell blow_lands = {"the fighter's knife lands on the foe", [](Run& f) {
+            return f.frame > 20 && hp_of(f.actor_seen("foe")) < f.mark("foe.hp"); }};
+        const Tell knife_paid = {"the knife's 2 MP are spent", [](Run& f) {
+            return f.frame > 20 && mp(f.hero()) == 248.0f; }};
+        const Tell pool_drops = {"the pool drops", [](Run& f) { return mp(f.hero()) < 250.0f; }};
+        c.off_shows = {
+            pool_guard(19, 250.0f),
+            says("PATH BLOCKED"),
+            blow_lands,
+            knife_paid,
+        };
+        c.on_shows = {
+            pool_guard(19, 250.0f),
+            says("PATH BLOCKED"),
+            pool_at(40, 250.0f),
+            {"the foe is untouched on frame 40", [](Run& f) {
+                 return f.frame == 40 && hp_of(f.actor_seen("foe")) == f.mark("foe.hp"); }},
+        };
+        c.on_never = {blow_lands, pool_drops};
+        c.fork = 20;
+        c.still_frame = 24;
+        all.push_back(c);
+    }
+
     return all;
 }
 
@@ -4461,6 +4602,7 @@ GAMEPLAY_FIXES_SCENE(a_mage_bot_slot_roll_of_five_casts_heartburst, "l_slot_roll
 GAMEPLAY_FIXES_SCENE(a_driven_hero_resists_a_bot_charm, "m1_hero_resists_charm")
 GAMEPLAY_FIXES_SCENE(a_seat_never_lands_on_a_charmed_walker, "m2_seat_skips_charmed")
 GAMEPLAY_FIXES_SCENE(a_hero_that_threw_can_still_whirlwind, "s_busy_after_a_throw")
+GAMEPLAY_FIXES_SCENE(a_charge_into_a_foe_at_the_front_no_longer_swings, "u_charge_front_foe")
 
 TEST_F(GameplayFixes, the_tests_name_every_scene_in_order)
 {

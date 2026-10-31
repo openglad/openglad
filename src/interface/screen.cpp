@@ -2044,6 +2044,17 @@ short screen::endgame(short ending, short nextlevel)
 			save_data, world_, run_outcome);
 	}
 
+	// The results screen is part of the mission's end, so it is drawn in the
+	// level's own colours (#365): a level won while time is frozen reaches
+	// here with the frozen palette, because the level-end batch re-sends it.
+	// The same three writes are restore_mission_palette() in
+	// src/platform/sdl/game_loop.cpp, which runs after this frame returns.
+	world_.current_palette_id = 0;
+	set_palette(ourpalette);
+	redrawme = 1;
+	TRACE("endgame", "results screen palette %d",
+		static_cast<int>(world_.current_palette_id));
+
 	// Let's show the results!
     world_.retry = results_screen(ending, nextlevel, before, after);
     

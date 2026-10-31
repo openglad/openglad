@@ -1013,3 +1013,223 @@ TEST_F(GameplayFixesBots, orc_eats_when_hurt_on_a_corpse_whatever_the_foe)
     EXPECT_TRUE(gate(orc, 2, 0)) << "the classic answer: a foe within 130";
     EXPECT_FALSE(gate(orc, 2, 1)) << "full health: nothing to eat for";
 }
+
+// ---------------------------------------------------------------------------
+// Busy casts (fix W1)
+// ---------------------------------------------------------------------------
+
+// A cast whose first statement refuses a busy caster (SPECIAL BUSY) is no
+// payoff while the caster is busy, so with the setting on its gate asks the
+// cast's own guard first: the busy archer, mage marker, archmage, druid,
+// thief, barbarian and orc, and a skeleton or a mage in the middle of a
+// teleport. With the setting off each gate keeps its classic answer, busy
+// or not. The New Specials kits (the captain's HOWL and KNIFE FAN, the
+// ghost's SIPHON, the faerie's GLIMMER and her rest after BLINK or SWAP, the
+// skeleton's DIG IN) have no classic gate to keep, so their guard holds on
+// both values of the setting.
+//
+// Each row is first asked idle (the gate's yes with the setting on: the
+// field is set up for the payoff), then held by the cast's own guard.
+//
+// RED (no guard in the gates): Value of: gate(w, slot, 1) Actual: true
+// Expected: false "ARCHER BARRAGE: held, setting on", and the same for every
+// row.
+TEST_F(GameplayFixesBots, a_busy_bot_never_rolls_a_busy_cast_with_the_setting_on)
+{
+    // A classic family's row: `classic` is the setting-off answer, which the
+    // guard never changes.
+    auto classic_row = [&](living* w, int slot, bool classic, const char* what,
+                           auto hold, auto release) {
+        ASSERT_NE(nullptr, w) << what;
+        release(w);
+        EXPECT_TRUE(gate(w, slot, 1)) << what << ": idle, setting on";
+        EXPECT_EQ(classic, gate(w, slot, 0)) << what << ": idle, setting off";
+        hold(w);
+        EXPECT_FALSE(gate(w, slot, 1)) << what << ": held, setting on";
+        EXPECT_EQ(classic, gate(w, slot, 0)) << what << ": held, setting off";
+        release(w);
+    };
+    // A kit's row: New Specials on, the Gameplay Fixes setting at both values.
+    auto kit_row = [&](living* w, int slot, const char* what, auto hold, auto release) {
+        ASSERT_NE(nullptr, w) << what;
+        for (short fixes : {short{0}, short{1}}) {
+            world().gameplay_fixes = fixes;
+            release(w);
+            EXPECT_TRUE(kit_gate(w, slot)) << what << ": idle, setting " << fixes;
+            hold(w);
+            EXPECT_FALSE(kit_gate(w, slot)) << what << ": held, setting " << fixes;
+            release(w);
+        }
+    };
+    auto busy = [](living* w) { w->set_busy(3.0f); };
+    auto idle = [](living* w) { w->set_busy(0.0f); };
+    auto teleporting = [](living* w) { w->set_ani_type(static_cast<char>(ANI_TELE_OUT)); };
+    auto walking = [](living* w) { w->set_ani_type(static_cast<char>(ANI_WALK)); };
+
+    // The archer: BARRAGE and EXPLODING BOLT at a foe faced 80 px above.
+    {
+        living* archer = body(add(FAMILY_ARCHER, 1, 200, 200, 7, 300.0f), 16, 16);
+        ASSERT_NE(nullptr, body(add(FAMILY_TOWER1, 2, 200, 91, 1), 25, 29));
+        classic_row(archer, 2, true, "ARCHER BARRAGE", busy, idle);
+        classic_row(archer, 3, true, "ARCHER EXPLODING BOLT", busy, idle);
+    }
+
+    // The mage, alone: TELEPORT refuses mid-teleport; the TELEPORT MARKER
+    // refuses busy, so a busy mage alone teleports plainly instead.
+    fresh_world();
+    {
+        living* mage = body(add(FAMILY_MAGE, 1, 200, 200, 7, 600.0f), 16, 16);
+        classic_row(mage, 1, true, "MAGE TELEPORT", teleporting, walking);
+        ASSERT_NE(nullptr, mage);
+        mage->set_shifter_down(0);
+        EXPECT_TRUE(gate(mage, 1, 1)) << "idle: TELEPORT";
+        EXPECT_EQ(1, mage->shifter_down()) << "idle: the marker";
+        busy(mage);
+        EXPECT_TRUE(gate(mage, 1, 1)) << "busy: the plain TELEPORT";
+        EXPECT_EQ(0, mage->shifter_down()) << "busy: no marker";
+        mage->set_shifter_down(1);
+        EXPECT_TRUE(gate(mage, 1, 0));
+        EXPECT_EQ(1, mage->shifter_down()) << "busy, setting off: the coin stands";
+        idle(mage);
+    }
+
+    // The archmage: TELEPORT and its marker as the mage's, then the three
+    // busy slots at a level-10 soldier 80 px away.
+    fresh_world();
+    {
+        living* arch = body(add(FAMILY_ARCHMAGE, 1, 200, 200, 10, 600.0f), 16, 16);
+        classic_row(arch, 1, true, "ARCHMAGE TELEPORT", teleporting, walking);
+        ASSERT_NE(nullptr, arch);
+        arch->set_shifter_down(0);
+        EXPECT_TRUE(gate(arch, 1, 1)) << "idle: TELEPORT";
+        EXPECT_EQ(1, arch->shifter_down()) << "idle: the marker";
+        busy(arch);
+        EXPECT_TRUE(gate(arch, 1, 1)) << "busy: the plain TELEPORT";
+        EXPECT_EQ(0, arch->shifter_down()) << "busy: no marker";
+        idle(arch);
+
+        ASSERT_NE(nullptr, body(add(FAMILY_SOLDIER, 2, 280, 200, 10), 16, 16));
+        classic_row(arch, 2, true, "ARCHMAGE HEARTBURST", busy, idle);
+        arch->stats()->set_magicpoints(1100.0f);  // the elemental's pool
+        classic_row(arch, 3, true, "ARCHMAGE SUMMON ELEMENTAL", busy, idle);
+        arch->stats()->set_magicpoints(600.0f);
+        classic_row(arch, 4, true, "ARCHMAGE MIND CONTROL", busy, idle);
+    }
+
+    // The druid: each of its three castable slots, every one a busy cast.
+    fresh_world();
+    {
+        living* druid = body(add(FAMILY_DRUID, 1, 200, 200, 4, 1250.0f), 16, 16);
+        ASSERT_NE(nullptr, body(add(FAMILY_SOLDIER, 0, 200, 160, 1), 16, 16));  // 40 px ahead
+        classic_row(druid, 1, true, "DRUID GROW TREE", busy, idle);
+        classic_row(druid, 2, true, "DRUID SUMMON FAERIE", busy, idle);
+        ASSERT_NE(nullptr, body(add(FAMILY_ORC, 1, 240, 200, 1), 16, 16));      // an ally at 40
+        ASSERT_NE(nullptr, body(add(FAMILY_SOLDIER, 0, 257, 200, 1), 16, 16));  // at blows with it
+        classic_row(druid, 4, true, "DRUID PROTECTION", busy, idle);
+    }
+
+    // The thief: TAUNT (a foe at 60, an ally at 90), CHARM (a level-1 foe
+    // 30 px away) and POISON CLOUD (two foes at blows).
+    fresh_world();
+    {
+        living* thief = body(add(FAMILY_THIEF, 1, 200, 200, 7, 600.0f), 16, 16);
+        living* foe = body(add(FAMILY_SOLDIER, 0, 260, 200, 1), 16, 16);
+        ASSERT_NE(nullptr, body(add(FAMILY_ORC, 1, 110, 200, 1), 16, 16));
+        ASSERT_NE(nullptr, foe);
+        classic_row(thief, 3, true, "THIEF TAUNT", busy, idle);
+        EXPECT_EQ(0, thief->shifter_down()) << "the taunt";
+        foe->setxy(230, 200);
+        classic_row(thief, 3, true, "THIEF CHARM", busy, idle);
+        EXPECT_EQ(1, thief->shifter_down()) << "the charm";
+        foe->setxy(217, 200);  // a 1 px gap
+        ASSERT_NE(nullptr, body(add(FAMILY_SOLDIER, 0, 183, 200, 1), 16, 16));
+        classic_row(thief, 4, true, "THIEF POISON CLOUD", busy, idle);
+    }
+
+    // The barbarian: HURL BOULDER and EXPLODING BOULDER, at a foe with a
+    // 40 px gap ahead (a level-4 boulder rolls 64) and a second one beside it.
+    fresh_world();
+    {
+        living* barbarian = body(add(FAMILY_BARBARIAN, 1, 200, 200, 4, 200.0f), 16, 16);
+        ASSERT_NE(nullptr, body(add(FAMILY_SOLDIER, 2, 200, 144, 1), 16, 16));
+        ASSERT_NE(nullptr, body(add(FAMILY_SOLDIER, 2, 220, 144, 1), 16, 16));
+        classic_row(barbarian, 1, true, "BARBARIAN HURL BOULDER", busy, idle);
+        classic_row(barbarian, 2, true, "BARBARIAN EXPLODING BOULDER", busy, idle);
+    }
+
+    // The orc: HOWL at a tower 160 px away, inside the yell (the classic
+    // gate wants a foe within 130: no).
+    fresh_world();
+    {
+        living* orc = body(add(FAMILY_ORC, 1, 200, 200, 1, 100.0f), 16, 16);
+        ASSERT_NE(nullptr, body(add(FAMILY_TOWER1, 2, 360, 200, 1), 25, 29));
+        classic_row(orc, 1, false, "ORC HOWL", busy, idle);
+    }
+
+    // The skeleton, alone: TUNNEL refuses mid-teleport.
+    fresh_world();
+    {
+        living* skel = body(add(FAMILY_SKELETON, 1, 200, 200, 4, 100.0f), 16, 16);
+        classic_row(skel, 1, true, "SKELETON TUNNEL", teleporting, walking);
+    }
+
+    // The kits.
+    fresh_world();
+    {
+        living* cap = body(add(FAMILY_BIG_ORC, 1, 200, 200, 7, 100.0f), 16, 16);
+        ASSERT_NE(nullptr, cap);
+        living* tower = body(add(FAMILY_TOWER1, 2, 360, 200, 1), 25, 29);  // 160 px
+        ASSERT_NE(nullptr, tower);
+        kit_row(cap, 1, "CAPTAIN HOWL", busy, idle);
+        tower->set_dead(1);
+        // Two towers on the fan's lines, past the hook's 60 px.
+        ASSERT_NE(nullptr, body(add(FAMILY_TOWER1, 2, 196, 131, 1), 25, 29));
+        ASSERT_NE(nullptr, body(add(FAMILY_TOWER1, 2, 256, 131, 1), 25, 29));
+        cap->set_lastx(0.0f);
+        cap->set_lasty(-1.0f);
+        cap->set_curdir(FACE_UP);
+        kit_row(cap, 3, "CAPTAIN KNIFE FAN", busy, idle);
+        cap->set_shifter_down(9);
+        busy(cap);
+        EXPECT_FALSE(kit_gate(cap, 3));
+        EXPECT_EQ(9, cap->shifter_down()) << "busy: neither arm, the coin stands";
+        idle(cap);
+    }
+    fresh_world();
+    {
+        living* ghost = body(add(FAMILY_GHOST, 1, 200, 200, 4, 100.0f), 16, 16);
+        ASSERT_NE(nullptr, ghost);
+        ASSERT_NE(nullptr, body(add(FAMILY_SOLDIER, 2, 216, 200, 1), 16, 16));
+        ghost->stats()->set_hitpoints(200.0f);  // under 80 %
+        kit_row(ghost, 2, "GHOST SIPHON", busy, idle);
+    }
+    fresh_world();
+    {
+        living* f = body(add(FAMILY_FAERIE, 1, 200, 200, 4, 100.0f), 16, 16);
+        ASSERT_NE(nullptr, f);
+        ASSERT_NE(nullptr, body(add(FAMILY_SOLDIER, 2, 200, 220, 1), 16, 16));  // 20 px
+        f->stats()->set_hitpoints(150.0f);  // under half
+        kit_row(f, 2, "FAERIE GLIMMER", busy, idle);
+        // BLINK and SWAP rest a hop's while: busy past her attack pause.
+        // The pause alone (busy up to fire_frequency) is no rest.
+        const float pause = f->fire_frequency();
+        ASSERT_GT(pause, 0.0f);
+        auto resting = [pause](living* w) { w->set_busy(pause + 1.0f); };
+        kit_row(f, 1, "FAERIE BLINK", resting, idle);
+        for (short fixes : {short{0}, short{1}}) {
+            world().gameplay_fixes = fixes;
+            f->set_busy(pause);
+            EXPECT_TRUE(kit_gate(f, 1)) << "the plain pause, setting " << fixes;
+        }
+        idle(f);
+    }
+    fresh_world();
+    {
+        living* skel = body(add(FAMILY_SKELETON, 1, 200, 200, 4, 100.0f), 16, 16);
+        ASSERT_NE(nullptr, skel);
+        ASSERT_NE(nullptr, body(add(FAMILY_SOLDIER, 2, 250, 200, 1), 16, 16));
+        ASSERT_NE(nullptr, body(add(FAMILY_SOLDIER, 2, 150, 200, 1), 16, 16));
+        skel->stats()->set_hitpoints(200.0f);  // under 60 %
+        kit_row(skel, 2, "SKELETON DIG IN", teleporting, walking);
+    }
+}

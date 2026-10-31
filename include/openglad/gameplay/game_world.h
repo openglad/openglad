@@ -402,9 +402,14 @@ public:
     bool query_grid_passable(float x, float y, walker* ob);
     // Floor-explicit variants. The 3-arg forms above forward with ob->floor();
     // pathfinding uses these to probe a different target floor for stair edges.
-    bool query_passable(float x, float y, walker* ob, int floor);
-    bool query_object_passable(float x, float y, walker* ob, int floor);
-    bool query_grid_passable(float x, float y, walker* ob, int floor);
+    // quiet = true is a question that changes nothing: the same answer with no
+    // draw and no side effect (obmap::query_list's quiet; the grid half skips
+    // the arrow slit's shooter-distance roll and treats the slit as passable:
+    // the loud answer for a weapon's pad one pixel outside a shooter up to
+    // 38 px a side; a golem's or giant skeleton's can differ). 3-arg forms stay loud.
+    bool query_passable(float x, float y, walker* ob, int floor, bool quiet = false);
+    bool query_object_passable(float x, float y, walker* ob, int floor, bool quiet = false);
+    bool query_grid_passable(float x, float y, walker* ob, int floor, bool quiet = false);
     // Side-effect-free landing probe for floor transitions (Z-stairs, air
     // falls, cross-floor teleports): true when ob's bbox at (x, y) on
     // target_floor is grid-passable AND overlaps no blocking entity there.
@@ -447,6 +452,10 @@ public:
     // Scan all live, non-dormant foes and return the nearest by 2D distance.
     walker* find_nearest_foe(walker* ob);
     walker* find_nearest_blood(walker* who);
+    // Every stain find_nearest_blood would consider (live FAMILY_STAIN
+    // treasure, squared centre distance under 800) on who's floor, nearest
+    // first; ties keep fxlist order. Draw-free; empty for a null who.
+    std::vector<walker*> find_blood_in_reach(walker* who);
     walker* find_nearest_player(walker* ob);
     std::list<walker*> find_in_range(const std::list<std::unique_ptr<walker>>& somelist,
                                      std::int32_t range, std::int32_t* howmany, walker* ob);

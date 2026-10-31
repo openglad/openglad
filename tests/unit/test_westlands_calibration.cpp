@@ -185,9 +185,21 @@ struct BattleResult
 // and lost the turn. With the bot gate asking the same INT question as the
 // cast, level 11 reads 6 5 6 across seeds {42, 1337, 2025}. Every floor
 // held; no ceiling moved (8 and 15 sit at their ceilings, 2 and 5).)
+// (Re-pinned 2026-10-31 for fixes T to W, docs/gameplay-fixes.md ("After
+// fixes T, U, V and W"): the bots' busy guard and fall-through and the
+// CHARGE and ROCKS gates shift the random stream of every brawl. Level 5
+// read 5 on seed 42 against its floor of 6 (5 7 5 across seeds {42, 1337,
+// 2025}; 8 6 4 before). Taking the fixes out one at a time, V, W1 and W2
+// each move it, and V alone or W2 alone taken out puts it back; over 100
+// sim seeds the mean is unchanged (6.21 before, 6.16 after) and the
+// unchanged game misses this floor on 28 of 100 seeds, so the move is the
+// stream, not a hotter level. Re-pinned 6 -> 5 at the maintainer's word,
+// this once; every other floor and ceiling held (8, 17, 20 and 24 moved up
+// inside their bands). Tower floors 1 and 15 moved in the same pass, see
+// test_tower_calibration.cpp.)
 constexpr CurvePin kCurve[] = {
     {1, 1, 7, 8},  {2, 2, 8, 8},  {3, 2, 6, 8},  {4, 3, 7, 8},
-    {5, 3, 6, 8},  {6, 4, 3, 8},  {7, 4, 0, 2},  {8, 5, 0, 2},
+    {5, 3, 5, 8},  {6, 4, 3, 8},  {7, 4, 0, 2},  {8, 5, 0, 2},
     {9, 6, 0, 3},  {10, 5, 0, 2}, {11, 6, 4, 8}, {12, 6, 0, 2},
     {13, 6, 0, 3}, {14, 7, 0, 2}, {15, 7, 0, 5}, {16, 8, 2, 8},
     {17, 8, 2, 8}, {19, 6, 4, 8}, {20, 7, 0, 5}, {21, 7, 7, 8},

@@ -844,10 +844,10 @@ int s_refresh_front(lua_State* L)
     front.com2 = static_cast<std::int32_t>(luaL_checkinteger(L, 4));
     return 0;
 }
-
+// walker:s_forward_blocked([quiet])
 int s_forward_blocked(lua_State* L)
 {
-    lua_pushboolean(L, stats_arg(L)->forward_blocked() ? 1 : 0);
+    lua_pushboolean(L, stats_arg(L)->forward_blocked(!lua_isnoneornil(L, 2) && lua_toboolean(L, 2) != 0) ? 1 : 0);
     return 1;
 }
 
@@ -3118,6 +3118,82 @@ W_SET_INT(special_rest_slot, std::int32_t)
 // Registration tables
 // ---------------------------------------------------------------------------
 
+// --- The quiet probes (docs/modding/api-reference.md, Terrain) ------------
+// Kept together here, below every line a parity row cites in this file. The
+// s_forward_blocked shim above takes the same optional quiet flag.
+
+// The same as push_walker_list for a std::vector<walker*>, in vector order.
+void push_walker_list(lua_State* L, const std::vector<walker*>& list)
+{
+    lua_createtable(L, static_cast<int>(list.size()), 0);
+    lua_Integer i = 1;
+    for (walker* w : list) {
+        push_walker_here(L, w);
+        lua_rawseti(L, -2, i++);
+    }
+}
+
+// og.blood_in_reach(self) → array — every stain og.find_nearest_blood would
+// consider (squared centre distance under 800) on self's floor, nearest
+// first, ties in fxlist order. Draw-free.
+int og_blood_in_reach(lua_State* L)
+{
+    GameWorld* world = world_arg(L);
+    walker* w = resolve_walker(L, 1, /*required=*/true);
+    push_walker_list(L, world->find_blood_in_reach(w));
+    return 1;
+}
+
+// og.quiet_passable(x, y, ent) → boolean — og.query_passable's answer on
+// ent's floor, asked quietly: no draw, no treasure eaten, no door opened, no
+// collide(). The probe a script uses; og.query_passable is the walker's own
+// step and keeps every side effect.
+int og_quiet_passable(lua_State* L)
+{
+    GameWorld* world = world_arg(L);
+    const float x = static_cast<float>(luaL_checknumber(L, 1));
+    const float y = static_cast<float>(luaL_checknumber(L, 2));
+    walker* w = resolve_walker(L, 3, /*required=*/true);
+    lua_pushboolean(L, world->query_passable(x, y, w, w->floor(), /*quiet=*/true) ? 1 : 0);
+    return 1;
+}
+
+// og.body_spot_near(order, family, x, y, floor, radius) → x, y | nil — the
+// first spot within radius px of (x, y) where a body of that family fits
+// (og::sim::body_spot_near: the corner, then the eight-way ring r = 1 ..
+// radius), probed with a detached body: no entity, no draw, nothing eaten.
+int og_body_spot_near(lua_State* L)
+{
+    GameWorld* world = world_arg(L);
+    const Order order = order_from_string(L, 1);
+    const auto family = static_cast<std::int32_t>(luaL_checkinteger(L, 2));
+    const short x = static_cast<short>(luaL_checkinteger(L, 3));
+    const short y = static_cast<short>(luaL_checkinteger(L, 4));
+    const int floor = static_cast<int>(luaL_checkinteger(L, 5));
+    const int radius = static_cast<int>(luaL_checkinteger(L, 6));
+    short out_x = 0;
+    short out_y = 0;
+    if (!og::sim::body_spot_near(*world, order, family, x, y, floor, radius,
+                                 out_x, out_y))
+    {
+        lua_pushnil(L);
+        return 1;
+    }
+    lua_pushinteger(L, static_cast<lua_Integer>(out_x));
+    lua_pushinteger(L, static_cast<lua_Integer>(out_y));
+    return 2;
+}
+
+// walker:fire_pad_clear() → boolean — would fire() launch this living's
+// current weapon instead of meeting something on its pad? The pad probed
+// quietly with a detached weapon (walker::fire_pad_clear): no entity, no
+// draw, nothing eaten or opened. A bot gate's question.
+int m_fire_pad_clear(lua_State* L)
+{
+    lua_pushboolean(L, self_arg(L)->fire_pad_clear() ? 1 : 0);
+    return 1;
+}
+
 const luaL_Reg kWalkerMethods[] = {
     {"xpos", m_xpos}, {"ypos", m_ypos},
     {"sizex", m_sizex}, {"sizey", m_sizey}, {"sizez", m_sizez},
@@ -3194,6 +3270,7 @@ const luaL_Reg kWalkerMethods[] = {
     {"distance_to_ob_center", m_distance_to_ob_center},
     {"can_approach_weapon_range", m_can_approach_weapon_range},
     {"attack", m_attack}, {"fire", m_fire}, {"special", m_special},
+    {"fire_pad_clear", m_fire_pad_clear},
     {"death", m_death},
     {"teleport", m_teleport}, {"teleport_ranged", m_teleport_ranged},
     {"find_teleport_target", m_find_teleport_target},
@@ -3308,6 +3385,7 @@ const luaL_Reg kOgWorldFuncs[] = {
     {"summon_configured", og_summon_configured},
     {"find_near_foe", og_find_near_foe},
     {"find_nearest_blood", og_find_nearest_blood},
+    {"blood_in_reach", og_blood_in_reach},
     {"find_foes_in_range", og_find_foes_in_range},
     {"find_friends_in_range", og_find_friends_in_range},
     {"find_in_range", og_find_in_range},
@@ -3318,6 +3396,7 @@ const luaL_Reg kOgWorldFuncs[] = {
     {"weaplist", og_weaplist},
     {"find_by_id", og_find_by_id},
     {"query_passable", og_query_passable},
+    {"quiet_passable", og_quiet_passable},
     {"query_grid_passable", og_query_grid_passable},
     {"query_object_passable", og_query_object_passable},
     {"query_genre", og_query_genre},
@@ -3384,6 +3463,7 @@ const luaL_Reg kOgWorldFuncs[] = {
     {"respawn_anchor_count", og_respawn_anchor_count},
     {"respawn_anchor", og_respawn_anchor},
     {"spawn_spot_clear", og_spawn_spot_clear},
+    {"body_spot_near", og_body_spot_near},
     {"scrub_corpse_stain", og_scrub_corpse_stain},
     // Deterministic arithmetic/branch helpers; definitions and
     // exact-semantics contracts are above.

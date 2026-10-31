@@ -1,7 +1,7 @@
 -- core:orc — yell stun, corpse eating (cookbook: docs/lua-classpacks-design.md §3).
 -- Copyright (C) 1995-2002 FSGames; ported by Sean Ford and Yan Shosh.
 -- The shareware-era source labelled the Orc its "registered monster."
-
+local lc = og.use("living_common")
 local ai = og.use("ai")
 local G = og.use("gates")
 -- HOWL and EAT CORPSE live in lib/orc_specials.lua: the orc captain casts them too.
@@ -20,7 +20,7 @@ local CORPSE_EAT_REACH_SQ = 24
 local function fixed_gate(self, classic_answer)
   local slot = self:current_special()
   if slot == 1 then
-    return G.targets_within(self, 1, og.combat.yell_radius(self.level))
+    return not lc.is_busy(self) and G.targets_within(self, 1, og.combat.yell_radius(self.level))
   end
   if slot == 2 then
     return G.hp_below(self, 3, 5) and G.corpse_underfoot(self, CORPSE_EAT_REACH_SQ) ~= nil

@@ -24,6 +24,7 @@
 #include "bot_gate_fixture.h"
 
 #include <openglad/core/constants.h>
+#include <openglad/core/pixdefs.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/living.h>
@@ -33,6 +34,7 @@
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
 
+#include <cstddef>
 #include <cstdint>
 #include <map>
 #include <memory>
@@ -858,7 +860,163 @@ TEST_F(BotGatesLib, rush_strikes_walks_the_charge_path)
     ASSERT_NE(nullptr, near);
     EXPECT_EQ("225,200", probe(self, lua).at("rush"));
     near->set_floor(1);
+    // A body that changes floors is filed again under its new floor (the
+    // rush's path is probed through the obmap): a move does it.
+    near->setxy(226, 200);
+    near->setxy(225, 200);
     EXPECT_EQ("245,200", probe(self, lua).at("rush")) << "the nearer one is upstairs";
+}
+
+// rush_strikes asks the cast's own question first, quietly: the one-pixel
+// step along curdir, where CHARGE refuses PATH BLOCKED. Then every step of
+// the rush that strikes nobody must be one the rush can stand on. The
+// caster at (192, 192) covers grid cell (12, 12); heading east, its front
+// step reaches cell 13 and the rush's fifth step cell 14. The foe at
+// (240, 192) is met on the ninth step.
+//
+// RED (the path test dropped): the wall in cell 14 does not stop the rush
+// and the foe at 240 is found. RED (the front probe dropped): a foe pressed
+// one pixel into the front is struck on the first step, and a wall above a
+// caster whose curdir is UP (a heading it has not turned to yet) is not
+// seen.
+TEST_F(BotGatesLib, rush_strikes_stops_at_a_wall)
+{
+    const std::string lua = "    og.log('rush', where(G.rush_strikes(self, 9)))\n";
+    const auto stage = [&]() {
+        fresh_world();
+        living* self = caster(192, 192);
+        self->set_stepsize(4.0f);
+        self->set_lastx(4.0f);
+        self->set_curdir(FACE_RIGHT);
+        self->set_enddir(FACE_RIGHT);
+        return self;
+    };
+    const auto wall = [&](int tx, int ty) {
+        world().grid.data[static_cast<std::size_t>(tx + world().grid.w * ty)] =
+            static_cast<std::uint8_t>(PIX_H_WALL1);
+    };
+    // The obmap files a body by the box it had when it moved: a size set
+    // after the move is filed by a second one.
+    const auto foe_at = [&](short x, short y) {
+        living* f = fighter(0, x, y);
+        if (f != nullptr) {
+            f->setxy(static_cast<short>(x + 1), y);
+            f->setxy(x, y);
+        }
+        return f;
+    };
+
+    living* self = stage();
+    ASSERT_NE(nullptr, foe_at(240, 192));
+    EXPECT_EQ("240,192", probe(self, lua).at("rush")) << "open grass: the ninth step";
+
+    self = stage();
+    ASSERT_NE(nullptr, foe_at(240, 192));
+    wall(15, 12);
+    EXPECT_EQ("240,192", probe(self, lua).at("rush"))
+        << "a wall under the foe itself: the strike comes before the step";
+
+    self = stage();
+    ASSERT_NE(nullptr, foe_at(240, 192));
+    wall(14, 12);
+    EXPECT_EQ("nil", probe(self, lua).at("rush")) << "the fifth step meets the wall";
+
+    self = stage();
+    ASSERT_NE(nullptr, foe_at(240, 192));
+    wall(13, 12);
+    EXPECT_EQ("nil", probe(self, lua).at("rush")) << "the wall is one pixel ahead";
+
+    self = stage();
+    ASSERT_NE(nullptr, foe_at(207, 192));
+    EXPECT_EQ("nil", probe(self, lua).at("rush")) << "a foe pressed one pixel into the front";
+
+    self = stage();
+    ASSERT_NE(nullptr, foe_at(209, 192));
+    EXPECT_EQ("209,192", probe(self, lua).at("rush"))
+        << "a foe a pixel off the front: the first step strikes it";
+
+    self = stage();
+    ASSERT_NE(nullptr, foe_at(240, 192));
+    self->set_curdir(FACE_UP);
+    wall(12, 11);
+    EXPECT_EQ("nil", probe(self, lua).at("rush"))
+        << "curdir UP into a wall: the cast steps along curdir and refuses";
+}
+
+// The gates' quiet probes change nothing. First the front: the caster
+// holds a heading (curdir = enddir = the fire heading, busy 0) into a foe
+// pressed one pixel into its front, where the loud probe would start a
+// swing (busy, the attack row) and set collide_ob, and a drumstick lies in
+// that front with the caster hungry, where the loud probe would eat it.
+// Then the pad: an enemy rock sits on the knife's pad, where a loud weapon
+// probe would roll the rock's miss chance. The stream starts at a pinned
+// state and must end there.
+//
+// RED (planted, the front probe asked loud: s_forward_blocked() in
+// rush_strikes): busy is the fire delay, the row ANI_ATTACK, collide_ob the
+// foe. RED (planted, fire_pad_clear probing loud): the stream moves.
+TEST_F(BotGatesLib, pad_clear_and_the_front_probe_draw_nothing)
+{
+    const auto settle = [](walker* w) {
+        const short x = w->xpos();
+        const short y = w->ypos();
+        w->setxy(static_cast<short>(x + 1), y);
+        w->setxy(x, y);
+    };
+    living* self = caster(192, 192);
+    ASSERT_NE(nullptr, self);
+    self->set_stepsize(4.0f);
+    self->set_lastx(4.0f);
+    self->set_curdir(FACE_RIGHT);
+    self->set_enddir(FACE_RIGHT);
+    self->stats()->set_hitpoints(100.0f);
+    living* foe = fighter(0, 207, 192);
+    ASSERT_NE(nullptr, foe);
+    settle(foe);
+    walker* food = world().add_fx_ob(Order::Treasure, FAMILY_DRUMSTICK);
+    ASSERT_NE(nullptr, food);
+    food->set_sizex(8);
+    food->set_sizey(8);
+    food->setxy(206, 196);
+    settle(food);
+    self->set_collide_ob(nullptr);
+
+    world().rng_.state_ = 4242u;
+    const Answers front = probe(self, "    og.log('rush', where(G.rush_strikes(self, 9)))\n");
+    EXPECT_EQ("nil", front.at("rush")) << "the foe blocks the front: no charge";
+    EXPECT_EQ(4242u, world().rng_.state_) << "the front probe drew nothing";
+    EXPECT_FLOAT_EQ(0.0f, self->busy()) << "no swing was started";
+    EXPECT_EQ(ANI_WALK, self->ani_type()) << "no attack row";
+    EXPECT_EQ(nullptr, self->collide_ob()) << "collide_ob untouched";
+    EXPECT_EQ(FACE_RIGHT, self->curdir()) << "no turn";
+    EXPECT_EQ(0, food->dead()) << "the drumstick is not eaten";
+    EXPECT_FLOAT_EQ(100.0f, self->stats()->hitpoints());
+    EXPECT_EQ(0, foe->dead());
+
+    fresh_world();
+    self = caster(192, 192);
+    ASSERT_NE(nullptr, self);
+    self->set_lastx(4.0f);
+    walker* rock = world().add_weap_ob(Order::Weapon, FAMILY_ROCK);
+    ASSERT_NE(nullptr, rock);
+    rock->set_team_num(0);
+    rock->set_sizex(6);
+    rock->set_sizey(6);
+    rock->setxy(209, 197);
+    settle(rock);
+    // A state whose miss roll would say "hit", so a loud probe would also
+    // block on the rock.
+    std::uint32_t seed = 1;
+    for (;; ++seed) {
+        og::sim::SimRandom r(seed);
+        if (r.next(10) <= 3)
+            break;
+    }
+    world().rng_.state_ = seed;
+    const Answers pad = probe(self, "    og.log('pad', tostring(G.pad_clear(self)))\n");
+    EXPECT_EQ("true", pad.at("pad")) << "an enemy rock in flight passes a quiet probe";
+    EXPECT_EQ(seed, world().rng_.state_) << "the pad probe drew nothing";
+    EXPECT_EQ(0, rock->dead()) << "the rock is not touched";
 }
 
 // can_pay: the alternate's own price when shifted, the slot's price when

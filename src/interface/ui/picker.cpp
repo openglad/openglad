@@ -3161,6 +3161,16 @@ Sint32 run_detail_menu(DetailSubject subject)
        if (og::ui::g_picker_main_thread_pump != nullptr)
            og::ui::g_picker_main_thread_pump();
        picker_lobby_poll();
+       // A host's GO while a joiner reads this page: leave with the remote
+       // MENU_EXIT (TeamBuild START GAME selected), as every team-build screen
+       // does, so TRAIN / HIRE and Base Camp unwind into the launch without
+       // drawing a frame. BACK keeps its MENU_REDRAW below (#400).
+       Sint32 remote_start = 0;
+       if (team_build_remote_start_requested(remote_start))
+       {
+           TRACE("detail", "remote start");
+           return remote_start;
+       }
        guy* thisguy = nullptr;
        if (subject == DetailSubject::Recruit)
        {

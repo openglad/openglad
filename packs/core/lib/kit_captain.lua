@@ -341,7 +341,7 @@ local function warband(self)
     local grunt = self:do_summon(LIVING_ORC, t.warband_lifetime)
     if grunt then
       grunt.team = self.team
-      grunt.level = og.max(1, og.div(self.level, 2))
+      grunt.level = og.max(1, og.div(self.level, 3))
       grunt:set_difficulty(grunt.level)
       grunt:setxy(spots[i], spots[i + 1])
       grunt:set_kit_state(C.KIT_FEARLESS)
@@ -377,6 +377,12 @@ M.ai_howl = orc.howl_gate(function(self)
     return true
   end
   og.check_special_ai_distance(self, 130)
+  -- The howl refuses a busy captain (orc_specials.yell); a kit gate has no
+  -- classic answer to keep, so the guard holds whatever the Gameplay Fixes
+  -- setting.
+  if lc.is_busy(self) then
+    return false
+  end
   return G.targets_within(self, 1, og.combat.yell_radius(self.level))
 end)
 
@@ -437,7 +443,9 @@ function M.ai_hook(self)
       end
     end
   end
-  if foes_in_fan(self) >= 2 then
+  -- The fan refuses a busy captain (knife_fan), whatever the Gameplay Fixes
+  -- setting.
+  if not lc.is_busy(self) and foes_in_fan(self) >= 2 then
     self:set_shifter_down(1)
     return true
   end
@@ -445,8 +453,8 @@ function M.ai_hook(self)
 end
 
 -- Plant a banner on a corpse with friends around, a foe within 120 to
--- fight and no banner standing; call the warband when foes press and no
--- grunt is left.
+-- fight and no banner standing; call the warband when foes press, no
+-- grunt is left and he can pay.
 function M.ai_banner(self)
   if og.match_setting("new_specials") == 0 then
     return true
@@ -462,7 +470,8 @@ function M.ai_banner(self)
     return true
   end
   local pressed = G.foes_within(self, 2, 120, true)
-  if pressed and live_grunts(self) == 0 then
+  if pressed and live_grunts(self) == 0
+      and G.can_pay(self, 4, true) then
     self:set_shifter_down(1)
     return true
   end

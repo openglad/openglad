@@ -35,7 +35,13 @@ class obmap
 		// would alias the source's piles.
 		obmap(const obmap&) = delete;
 		obmap& operator=(const obmap&) = delete;
-		short query_list(walker  *ob, short x, short y);
+		// The pile half of query_passable. quiet = true asks the same question
+		// without changing anything: no draw (an enemy weapon in flight is
+		// passed, where the loud probe passes it 6 times in 10), no treasure
+		// eaten or exit latched (a treasure never blocks), no door opened and
+		// no "Key N needed!" notice (the loud answer is kept: a door blocks
+		// this round), and no collide() or collide_ob change. Loud by default.
+		short query_list(walker  *ob, short x, short y, bool quiet = false);
 		short remove(walker  *ob);  // This goes in walker's destructor
 		short add(walker  *ob, short x, short y);  // This goes in walker's constructor
 		short move(walker  *ob, short x, short y);  // This goes in walker's setxy

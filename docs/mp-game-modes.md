@@ -411,9 +411,11 @@ than the number above and they all play, up to sixteen.
 - **Onslaught** (800-803): sprawling generator fields. A lethal hit on a
   generator never destroys it — it flips, full-HP, to the attacker's team
   and starts pumping that team's fighters (existing troops keep their old
-  colors). A team whose last generator flips away has a short grace to take
-  one back — its HUD row counts the seconds down — and is eliminated when
-  the clock runs out. Last team standing wins.
+  colors and their old loyalty: they fight on for the side they wear, their
+  kills count for it, and they can take the post back). A team whose last
+  generator flips away has a short grace to take one back — its HUD row
+  counts the seconds down — and is eliminated when the clock runs out.
+  Last team standing wins.
 - **Soccer** (820-823): hit the ball to send it flying; a fast ball hurts
   and bounces off whoever it hits. Fully inside the enemy goal strip = a
   goal for the last-touching team. A ball that reaches water floats onward

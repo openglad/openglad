@@ -189,6 +189,7 @@ end
 local function resting(self)
   return self:busy() > self:fire_frequency()
 end
+M.resting = resting
 
 -- After a hop: a full attack pause plus blink_cooldown ticks of busy, so a
 -- held key cannot hop again for blink_cooldown ticks and she cannot sprinkle
@@ -353,6 +354,11 @@ function M.ai_blink(self)
   if og.match_setting("new_specials") == 0 then
     return true
   end
+  -- BLINK and SWAP refuse while she rests after a hop, whatever the
+  -- Gameplay Fixes setting.
+  if resting(self) then
+    return false
+  end
   local partner = affordable_swap_partner(self)
   if partner then
     if self:is_friendly(partner) then
@@ -386,6 +392,11 @@ end
 M.ai_glimmer = lc.gate_with_rest(function(self)
   if og.match_setting("new_specials") == 0 then
     return true
+  end
+  -- The sprinkle refuses a busy faerie (glimmer), whatever the Gameplay
+  -- Fixes setting.
+  if lc.is_busy(self) then
+    return false
   end
   return G.foes_within(self, 1, 60, false)
 end, GLIMMER_SLOT)

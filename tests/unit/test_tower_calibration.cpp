@@ -122,8 +122,22 @@ struct FloorBattle
 // (Re-measured 2026-10-17 on the shipped default (Gameplay Fixes on, New
 // Specials on), which the asserting run now plays: f1 8 8 7, f5 1 6 7,
 // f10 0 0 0, f15 0 0 0, f20 0 0 0; every pin held.)
+// (Re-pinned 2026-10-31 for fixes T to W, docs/gameplay-fixes.md ("After
+// fixes T, U, V and W"): the bots' busy guard and fall-through and the
+// CHARGE and ROCKS gates shift the random stream of every brawl.
+// Re-measured: f1 8 7 5 (pin 6 -> 5: run seed 2025 loses one more on the
+// Bailey floor; 100 sim seeds read a mean of 7.50 before and after),
+// f5 2 0 8, f10 0 0 0, f15 0 8 0 (run seed 1337 keeps all eight standing,
+// above the 7-slack ceiling: the same layout as before, the posts do
+// fight, the crew wins the opening fight and climbs; 100 sim seeds on that
+// layout read 4.86 before and 4.28 after; the ceiling is lifted to 8 = none
+// for that band, as floor 5's was for #320), f20 0 0 0. Taking the fixes
+// out one at a time, V, W1 and W2 each move both lines, and V alone or W2
+// alone taken out puts them back, so the moves are the stream, not the
+// floors' heat. Re-pinned at the maintainer's word, this once. WP-7
+// bracket sweeps still pending as before.)
 constexpr FloorPin kPins[] = {
-    {1, 1, 6, 8}, {5, 2, 0, 8}, {10, 3, 0, 7}, {15, 4, 0, 7}, {20, 6, 0, 7},
+    {1, 1, 5, 8}, {5, 2, 0, 8}, {10, 3, 0, 7}, {15, 4, 0, 8}, {20, 6, 0, 7},
 };
 
 void prune_all_floors()

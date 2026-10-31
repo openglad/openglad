@@ -6,9 +6,9 @@
 -- same order. So:
 --   1. Nothing here draws: no og.rand, no og.find_near_foe /
 --      og.find_nearest_foe / og.check_special_ai_distance (find_near_foe
---      rolls rng(invisibility_left / 20) per cloaked candidate), no
---      og.query_passable (it makes obmap nodes, eats treasure, latches exits
---      and opens doors), no s_forward_blocked (the same probe).
+--      rolls rng(invisibility_left / 20) per cloaked candidate), no loud
+--      og.query_passable or s_forward_blocked() (eat, latch, open, swing);
+--      s_forward_blocked(true), og.quiet_passable and fire_pad_clear are ours: no draw, no change.
 --   2. A family whose classic gate acquires a foe (ai.foe_within,
 --      ai.foe_in_window) calls it FIRST through G.with_classic, on both
 --      values of the setting, and tests after.
@@ -471,9 +471,17 @@ end
 -- step soldier.lua's charge passes) and strikes and shoves the body it ran
 -- into (stats.cpp). The first living foe whose box meets the caster's box
 -- moved k such steps, k = 1 .. steps (collide()'s shrink), or nil; nil with
--- no heading, where the rush walks nowhere. From positions alone: a wall
--- or an ally in the way is not modelled.
+-- no heading, where the rush walks nowhere. A wall, an ally, a door or a
+-- generator before the foe refuses, and so does a front the cast itself
+-- finds blocked.
 function M.rush_strikes(self, steps)
+  -- The cast refuses PATH BLOCKED when the one-pixel step along curdir is
+  -- blocked (a wall, any body, a door): the same question, asked quietly
+  -- (Gameplay Fixes U); a foe already pressed against the front is a blow,
+  -- not a charge.
+  if self:s_forward_blocked(true) then
+    return nil
+  end
   local step = self:stepsize()
   local ux = og.trunc(og.fdiv(self:lastx(), step))
   local uy = og.trunc(og.fdiv(self:lasty(), step))
@@ -491,8 +499,23 @@ function M.rush_strikes(self, steps)
     if f then
       return f
     end
+    -- Nothing struck here: the rush must be able to stand here on its way.
+    -- A wall, an ally, a door or a generator at this step stops it before
+    -- any later foe (COMMAND_RUSH strikes whatever its walksteps bump into).
+    if not og.quiet_passable(ax - 1, ay - 1, self) then
+      return nil
+    end
   end
   return nil
+end
+
+-- The pad fire() would place the caster's weapon on is clear: the weapon
+-- would fly instead of meeting a wall, a door, the map edge or a foe's body
+-- there (walker:fire_pad_clear, the same spot and the same weapon rules,
+-- asked quietly). A body of the caster's own team passes, as the weapon
+-- passes it.
+function M.pad_clear(self)
+  return self:fire_pad_clear()
 end
 
 -- The bot can pay the slot's price, or the alternate's when shifted. An

@@ -24,9 +24,38 @@
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
 
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 
 using og::test::bot_gates::GameplayFixesBots;
+
+namespace {
+
+// A wall cell at grid (tx, ty): what the quiet probes of CHARGE's front and
+// path and of the elf's rock pad meet on a level.
+void wall(GameWorld& w, int tx, int ty)
+{
+    w.grid.data[static_cast<std::size_t>(tx + w.grid.w * ty)] =
+        static_cast<std::uint8_t>(PIX_H_WALL1);
+}
+
+// The obmap files a body under every cell its box covers when it moves, so
+// a body whose size the test set after it was placed is moved once more:
+// the quiet probes read the obmap, not positions.
+template <class W>
+W* settle(W* w)
+{
+    if (w != nullptr) {
+        const short x = w->xpos();
+        const short y = w->ypos();
+        w->setxy(static_cast<short>(x + 1), y);
+        w->setxy(x, y);
+    }
+    return w;
+}
+
+}  // namespace
 
 // ---------------------------------------------------------------------------
 // The soldier
@@ -176,6 +205,168 @@ TEST_F(GameplayFixesBots, soldier_disarm_wants_a_foe_blocking_its_front)
     EXPECT_FALSE(gate(soldier, 4, 1)) << "no direction: nothing is in front";
 }
 
+// CHARGE refuses PATH BLOCKED when the one-pixel step along curdir is
+// blocked, and the gate asks the same question, quietly, before the rush
+// (Gameplay Fixes U and V). The soldier's 16 px box at (192, 192) covers
+// grid cell (12, 12) alone; the step east reaches cell 13. A foe 40 px east
+// is inside the classic window (20 to 75) and met by the rush's seventh
+// step, so only the wall differs.
+//
+// RED (the gate read from positions alone): the rush finds the foe through
+// the wall and the gate says yes with the setting on.
+TEST_F(GameplayFixesBots, soldier_charge_refuses_a_wall_in_front)
+{
+    living* soldier = settle(body(add(FAMILY_SOLDIER, 1, 192, 192, 1, 200.0f), 16, 16));
+    living* foe = settle(body(add(FAMILY_SOLDIER, 2, 232, 192, 1), 16, 16));
+    ASSERT_TRUE(soldier && foe);
+    soldier->set_stepsize(4.0f);
+    soldier->set_lastx(4.0f);
+    soldier->set_curdir(FACE_RIGHT);
+    soldier->set_enddir(FACE_RIGHT);
+
+    EXPECT_TRUE(gate(soldier, 1, 1)) << "open grass: the rush runs into the foe";
+    wall(world(), 13, 12);
+    EXPECT_TRUE(gate(soldier, 1, 0)) << "the classic answer: a foe inside the window";
+    EXPECT_FALSE(gate(soldier, 1, 1)) << "a wall one pixel ahead: the cast says PATH BLOCKED";
+}
+
+// A foe already pressed against the soldier's front is a blow, not a
+// charge: the cast's step meets it and refuses. One pixel farther the step
+// is clear and the rush's first step strikes it. The foe is a 25 x 29
+// tower 13 px up, so the corner distance (28 and 30 px) is inside the
+// classic window on both.
+//
+// RED (the gate read from positions alone): at gap -1 the rush's first
+// step meets the tower and the gate says yes.
+TEST_F(GameplayFixesBots, soldier_charge_refuses_a_touching_foe)
+{
+    living* soldier = settle(body(add(FAMILY_SOLDIER, 1, 192, 192, 1, 200.0f), 16, 16));
+    living* foe = settle(body(add(FAMILY_TOWER1, 2, 207, 179, 1), 25, 29));  // gap -1
+    ASSERT_TRUE(soldier && foe);
+    soldier->set_stepsize(4.0f);
+    soldier->set_lastx(4.0f);
+    soldier->set_curdir(FACE_RIGHT);
+    soldier->set_enddir(FACE_RIGHT);
+
+    EXPECT_TRUE(gate(soldier, 1, 0)) << "the classic answer: 28 px is inside the window";
+    EXPECT_FALSE(gate(soldier, 1, 1)) << "gap -1: the step along curdir meets the tower";
+
+    foe->setxy(209, 179);  // gap 1
+    EXPECT_TRUE(gate(soldier, 1, 0)) << "the classic answer";
+    EXPECT_TRUE(gate(soldier, 1, 1)) << "gap 1: the front is clear and the first step strikes";
+}
+
+// An ally pressed against the front blocks the cast's step as a foe does
+// (any body blocks a living's step), however clear the way to the foe
+// beyond it.
+//
+// RED (allies not modelled): the rush finds the foe past the ally and the
+// gate says yes.
+TEST_F(GameplayFixesBots, soldier_charge_refuses_an_ally_in_front)
+{
+    living* soldier = settle(body(add(FAMILY_SOLDIER, 1, 192, 192, 1, 200.0f), 16, 16));
+    living* foe = settle(body(add(FAMILY_SOLDIER, 2, 240, 192, 1), 16, 16));  // 48 px
+    ASSERT_TRUE(soldier && foe);
+    soldier->set_stepsize(4.0f);
+    soldier->set_lastx(4.0f);
+    soldier->set_curdir(FACE_RIGHT);
+    soldier->set_enddir(FACE_RIGHT);
+
+    EXPECT_TRUE(gate(soldier, 1, 1)) << "nobody in the way: the ninth step strikes the foe";
+    living* ally = settle(body(add(FAMILY_SOLDIER, 1, 207, 192, 1), 16, 16));  // gap -1
+    ASSERT_NE(nullptr, ally);
+    EXPECT_TRUE(gate(soldier, 1, 0)) << "the classic answer";
+    EXPECT_FALSE(gate(soldier, 1, 1)) << "an ally against the front: PATH BLOCKED";
+}
+
+// The rush walks its steps and strikes what it bumps: a wall between the
+// soldier and its foe stops it first. The front is clear (cell 13 is
+// grass); the wall in cell 14 is met by the fifth step, the foe at 240 by
+// the ninth.
+//
+// RED (the gate read from positions alone): the foe behind the wall is
+// found and the gate says yes.
+TEST_F(GameplayFixesBots, soldier_charge_refuses_a_wall_between_the_soldier_and_its_foe)
+{
+    living* soldier = settle(body(add(FAMILY_SOLDIER, 1, 192, 192, 1, 200.0f), 16, 16));
+    living* foe = settle(body(add(FAMILY_SOLDIER, 2, 240, 192, 1), 16, 16));  // 48 px
+    ASSERT_TRUE(soldier && foe);
+    soldier->set_stepsize(4.0f);
+    soldier->set_lastx(4.0f);
+    soldier->set_curdir(FACE_RIGHT);
+    soldier->set_enddir(FACE_RIGHT);
+
+    EXPECT_TRUE(gate(soldier, 1, 1)) << "without the wall the ninth step strikes the foe";
+    wall(world(), 14, 12);
+    EXPECT_TRUE(gate(soldier, 1, 0)) << "the classic answer";
+    EXPECT_FALSE(gate(soldier, 1, 1)) << "the fifth step meets the wall";
+}
+
+// A closed door on the rush's path stops it as a wall does: a living's
+// step never passes a door it holds no key to. The door (16 px, cell 14) is
+// met by the fifth step, the foe just past it by the ninth.
+//
+// RED (the gate read from positions alone): the foe past the door is
+// found and the gate says yes.
+TEST_F(GameplayFixesBots, soldier_charge_refuses_a_door_in_the_rush_path)
+{
+    living* soldier = settle(body(add(FAMILY_SOLDIER, 1, 192, 192, 1, 200.0f), 16, 16));
+    living* foe = settle(body(add(FAMILY_SOLDIER, 2, 240, 192, 1), 16, 16));  // 48 px
+    ASSERT_TRUE(soldier && foe);
+    soldier->set_stepsize(4.0f);
+    soldier->set_lastx(4.0f);
+    soldier->set_curdir(FACE_RIGHT);
+    soldier->set_enddir(FACE_RIGHT);
+
+    EXPECT_TRUE(gate(soldier, 1, 1)) << "no door: the ninth step strikes the foe";
+    walker* door = world().add_weap_ob(Order::Weapon, FAMILY_DOOR);
+    ASSERT_NE(nullptr, door);
+    door->set_team_num(2);
+    door->stats()->set_level(1);
+    door->setxy(224, 192);
+    settle(body(door, 16, 16));
+    EXPECT_TRUE(gate(soldier, 1, 0)) << "the classic answer";
+    EXPECT_FALSE(gate(soldier, 1, 1)) << "the fifth step meets the door";
+}
+
+// WHIRLWIND and DISARM refuse SPECIAL BUSY while the fire delay runs
+// (gf.special_busy, the casts' first guard), so with the setting on their
+// gates ask it too (Gameplay Fixes W). The classic gate never did.
+//
+// RED (the gate without the busy guard): busy 3 with two targets in the
+// spin, the gate says yes with the setting on.
+TEST_F(GameplayFixesBots, soldier_whirlwind_waits_out_its_busy)
+{
+    living* soldier = body(add(FAMILY_SOLDIER, 1, 200, 200, 7, 300.0f), 16, 16);
+    living* first = body(add(FAMILY_TOWER1, 2, 230, 200, 1), 25, 29);   // 30 px
+    living* second = body(add(FAMILY_TOWER1, 2, 200, 244, 1), 25, 29);  // 44 px
+    ASSERT_TRUE(soldier && first && second);
+
+    EXPECT_TRUE(gate(soldier, 3, 1)) << "two in the spin, not busy";
+    soldier->set_busy(3.0f);
+    EXPECT_TRUE(gate(soldier, 3, 0)) << "the classic answer: a foe inside the window";
+    EXPECT_FALSE(gate(soldier, 3, 1)) << "busy 3: the cast would say SPECIAL BUSY";
+    soldier->set_busy(-0.5f);
+    EXPECT_TRUE(gate(soldier, 3, 1)) << "busy below zero is not busy with the setting on";
+}
+
+// RED (the gate without the busy guard): busy 3 with a tower blocking the
+// front, the gate says yes with the setting on.
+TEST_F(GameplayFixesBots, soldier_disarm_waits_out_its_busy)
+{
+    living* soldier = body(add(FAMILY_SOLDIER, 1, 200, 200, 10, 300.0f), 16, 16);
+    // A 25 x 29 tower whose bottom edge meets the soldier's top: it blocks
+    // the step up, and its corner is 28 px off, inside the classic window.
+    living* tower = body(add(FAMILY_TOWER1, 2, 200, 172, 1), 25, 29);
+    ASSERT_TRUE(soldier && tower);
+    soldier->set_curdir(FACE_UP);
+
+    EXPECT_TRUE(gate(soldier, 4, 1)) << "the tower blocks the front, not busy";
+    soldier->set_busy(3.0f);
+    EXPECT_TRUE(gate(soldier, 4, 0)) << "the classic answer: 28 px is inside the window";
+    EXPECT_FALSE(gate(soldier, 4, 1)) << "busy 3: the cast would say SPECIAL BUSY";
+}
+
 // ---------------------------------------------------------------------------
 // The elf
 // ---------------------------------------------------------------------------
@@ -277,6 +468,92 @@ TEST_F(GameplayFixesBots, elf_mega_rocks_wants_two_foes_in_flight)
     EXPECT_FALSE(gate(elf, 3, 1)) << "out of LOTS OF ROCKS' shorter flight";
     behind->setxy(26, 200);
     EXPECT_FALSE(gate(elf, 4, 1)) << "the second a pixel out of flight";
+}
+
+// The rocks leave from a pad one pixel outside the elf on its fire heading
+// (fire(): weapon_pad), and a rock whose pad is blocked never flies: the
+// cast refuses COULD NOT FIRE. With the setting on the gate probes that pad
+// quietly first (Gameplay Fixes V). The elf's 16 px box at (192, 192)
+// covers cell (12, 12); its pad east, at x 209, lies in cell 13.
+//
+// RED (the gate without the pad): a wall under the pad, the foe faced and
+// in flight beyond it, and the gate says yes with the setting on.
+TEST_F(GameplayFixesBots, elf_rocks_refuse_a_pad_on_a_wall)
+{
+    living* elf = settle(body(add(FAMILY_ELF, 1, 192, 192, 1, 100.0f), 16, 16));
+    living* foe = settle(body(add(FAMILY_TOWER1, 2, 230, 186, 1), 25, 29));  // a 22 px gap east
+    ASSERT_TRUE(elf && foe);
+    elf->set_lastx(1.0f);
+    elf->set_lasty(0.0f);
+
+    EXPECT_TRUE(gate(elf, 1, 1)) << "open grass: faced, in flight, the pad clear";
+    wall(world(), 13, 12);
+    EXPECT_TRUE(gate(elf, 1, 0)) << "the classic answer: always";
+    EXPECT_FALSE(gate(elf, 1, 1)) << "a wall under the pad: COULD NOT FIRE";
+}
+
+// A foe's body on the pad: fire() lands a melee blow there instead of a
+// rock and the cast still reports COULD NOT FIRE. The tower stands
+// touching above the elf, on the spawn heading (lastx = lasty = 0 fires
+// UP), so it is faced and in flight.
+//
+// RED (the gate without the pad): the gate says yes with the setting on.
+TEST_F(GameplayFixesBots, elf_rocks_refuse_a_foe_on_the_pad)
+{
+    living* elf = settle(body(add(FAMILY_ELF, 1, 200, 200, 1, 100.0f), 16, 16));
+    living* foe = settle(body(add(FAMILY_TOWER1, 2, 196, 171, 1), 25, 29));  // touching above
+    ASSERT_TRUE(elf && foe);
+
+    EXPECT_TRUE(gate(elf, 1, 0)) << "the classic answer: always";
+    EXPECT_FALSE(gate(elf, 1, 1)) << "the tower stands on the pad";
+
+    foe->setxy(196, 140);  // a 31 px gap above: off the pad, still in flight
+    EXPECT_TRUE(gate(elf, 1, 1)) << "the pad clear, the tower in flight";
+}
+
+// A weapon passes its own team's bodies, so an ally on the pad is not in
+// the way: the rock flies over it at the foe beyond. The same body on the
+// other team is a foe on the pad.
+//
+// RED (the gate without the pad): with the touching tower on the foes'
+// team the gate says yes with the setting on.
+TEST_F(GameplayFixesBots, elf_rocks_an_ally_on_the_pad_is_not_in_the_way)
+{
+    living* elf = settle(body(add(FAMILY_ELF, 1, 200, 200, 1, 100.0f), 16, 16));
+    living* ally = settle(body(add(FAMILY_TOWER1, 1, 196, 171, 1), 25, 29));  // touching above
+    living* foe = settle(body(add(FAMILY_TOWER1, 2, 196, 130, 1), 25, 29));  // a 41 px gap above
+    ASSERT_TRUE(elf && ally && foe);
+
+    EXPECT_TRUE(gate(elf, 1, 0)) << "the classic answer: always";
+    EXPECT_TRUE(gate(elf, 1, 1)) << "the ally on the pad: the rock passes it";
+
+    ally->set_team_num(2);
+    EXPECT_TRUE(gate(elf, 1, 0)) << "the classic answer";
+    EXPECT_FALSE(gate(elf, 1, 1)) << "the same body on the foes' team blocks the pad";
+}
+
+// A pad off the map: the rock cannot be placed and fire() makes nothing.
+// The elf stands six pixels under the map's top edge throwing up-left, so
+// its pad (6 x 6, one pixel outside the corner) starts at y -1; one pixel
+// lower it starts at 0 and is on the map. The foe is an 8 x 8 body up-left,
+// faced, in flight, and off the pad on both.
+//
+// RED (the gate without the pad): at y 6 the gate says yes with the setting
+// on.
+TEST_F(GameplayFixesBots, elf_rocks_refuse_a_pad_off_the_map)
+{
+    living* elf = settle(body(add(FAMILY_ELF, 1, 300, 6, 1, 100.0f), 16, 16));
+    living* foe = settle(body(add(FAMILY_TOWER1, 2, 284, 0, 1), 8, 8));
+    ASSERT_TRUE(elf && foe);
+    elf->set_lastx(-1.0f);
+    elf->set_lasty(-1.0f);
+
+    EXPECT_TRUE(gate(elf, 1, 0)) << "the classic answer: always";
+    EXPECT_FALSE(gate(elf, 1, 1)) << "the pad starts at y -1, off the map";
+
+    elf->setxy(300, 7);
+    foe->setxy(284, 1);
+    EXPECT_TRUE(gate(elf, 1, 1)) << "one pixel lower the pad is on the map";
 }
 
 // ---------------------------------------------------------------------------

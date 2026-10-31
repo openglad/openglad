@@ -122,6 +122,16 @@ class walker : public og::sim::SimEntity
 		bool init_fire(short xdir, short ydir);
 		void set_weapon_heading(walker *weapon);
 		walker  * fire();
+		// Where fire() puts the weapon it creates: the top-left corner of
+		// `weapon`'s box one pixel outside this walker, on the side
+		// facing(lastx(), lasty()) names. The one table fire() reads.
+		void weapon_pad(const walker& weapon, short& px, short& py);
+		// True when fire() would launch this living's current weapon instead
+		// of meeting something on its pad (a wall, an enemy body, a door, a
+		// tree, a generator): the pad probed quietly with a detached weapon,
+		// no entity made, no draw, nothing eaten or opened. A bot gate's
+		// question. False for a non-living or a weapon the loader cannot make.
+		[[nodiscard]] bool fire_pad_clear();
 		virtual bool act();
 		short set_act_type(short num);
 		short restore_act_type();
@@ -143,6 +153,14 @@ class walker : public og::sim::SimEntity
 		[[nodiscard]] std::int32_t prospective_weapon_reach(short xdelta,
 		                                                    short ydelta);
 		[[nodiscard]] bool can_approach_weapon_range(const walker* objective);
+		// A detached profile walker: the ordinary walker fields and statistics
+		// without the construction-time path cadence draw, never in a list or
+		// the obmap, no entity id. Its three readers are the prospective
+		// weapon-reach query and the pad probe (walker.cpp) and the raised-body
+		// probe (body_spot_clear, respawn.cpp), so the tag and its constructor
+		// are public.
+		struct WeaponProfileProbeTag {};
+		explicit walker(WeaponProfileProbeTag);
 		// Why a fire_check() attempt was denied. Callers that care (the
 		// COMMAND_ATTACK melee loop) distinguish the orientation denials —
 		// Facing, and NoRanged at bump range ("the foe is in weapon reach
@@ -507,11 +525,6 @@ class walker : public og::sim::SimEntity
 		std::list<DamageNumber> damage_numbers;
 
 	protected:
-		// A detached weapon-profile object needs the ordinary walker fields and
-		// statistics without consuming the construction-time path cadence draw.
-		// Only weap and walker's prospective-range query can name this tag.
-		struct WeaponProfileProbeTag {};
-		explicit walker(WeaponProfileProbeTag);
 		void configure_weapon_profile_base(walker* weapon, float heading_x,
 		                                   float heading_y);
 		void finalize_weapon_profile(walker* weapon, float heading_x,

@@ -156,6 +156,11 @@ function M.ai_siphon(self)
   if phased(self) then
     return false
   end
+  -- The touch refuses a busy ghost (M.siphon), whatever the Gameplay Fixes
+  -- setting.
+  if lc.is_busy(self) then
+    return false
+  end
   -- max_hp is a C++ float: per-op rounding.
   if self.hp >= og.fmul(self.max_hp, 0.8) then
     return false
