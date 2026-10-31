@@ -615,16 +615,7 @@ void adopt_display_session_settings(screen& server_screen,
 
 void apply_palette_id(screen& gameplay_screen, std::uint8_t palette_id)
 {
-    if (palette_id == 0u)
-    {
-        gameplay_screen.world().current_palette_id = 0;
-        set_palette(gameplay_screen.ourpalette);
-    }
-    else
-    {
-        gameplay_screen.world().current_palette_id = 1;
-        set_palette(gameplay_screen.bluepalette);
-    }
+    gameplay_screen.show_palette_id(palette_id);
     gameplay_screen.redrawme = 1;
 }
 

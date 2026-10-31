@@ -125,6 +125,10 @@ short set_palette(std::span<const unsigned char> newpalette)
 {
 	std::size_t i;
 
+	// Whatever id the screen showed, it now shows this palette: the next
+	// palette sync must paint again (screen::show_palette_id, #414).
+	og::runtime::current_session->shown_palette_id_ = -1;
+
 	// The user's BRIGHTNESS survives the swap. Every palette source in the
 	// game funnels through here (level start, the keyframe palette sync,
 	// the cheat palette, the intro fades), and each one used to hand the
@@ -168,12 +172,16 @@ void set_display_brightness_steps(Sint32 steps)
 	session.display_brightness_ =
 		std::clamp(static_cast<int>(steps), og::ui::kBrightnessStepMin,
 		           og::ui::kBrightnessStepMax);
+	// A new brightness changes what every palette id looks like: the next
+	// palette sync must paint again (screen::show_palette_id, #414).
+	session.shown_palette_id_ = -1;
 }
 
 void reload_display_brightness_from_cfg()
 {
 	og::runtime::current_session->display_brightness_seeded_ = false;
 	(void)display_brightness_steps();
+	og::runtime::current_session->shown_palette_id_ = -1;
 }
 
 //

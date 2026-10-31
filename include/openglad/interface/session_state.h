@@ -84,6 +84,10 @@ struct SessionState {
     // Render/palette state (Batch 6) — moved from pal32.cpp/video.cpp.
     std::array<unsigned char, 768> curpal_ = {};
     std::array<unsigned char, 768> temppal_ = {};
+    // The palette id curpal_ shows (0 the level's own, 1 FREEZE TIME's
+    // blue), -1 unknown: set_palette() marks it so, so any other writer
+    // makes the next palette sync repaint (screen::show_palette_id, #414).
+    int shown_palette_id_ = -1;
     // BRIGHTNESS (cfg graphics/brightness, DISPLAY subscreen): the gamma
     // steps set_palette() re-applies to curpal_ on EVERY palette set. This
     // used to be viewscreen::gamma, a per-view member nothing re-applied —

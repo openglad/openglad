@@ -391,6 +391,11 @@ public:
     const LevelRuntimeData& level_runtime_data() const { return level_runtime_data_; }
     GameWorld& world() { return world_; }
     const GameWorld& world() const { return world_; }
+    // Show the mission's palette by id (0 the level's own, 1 FREEZE TIME's
+    // blue) and record it as world().current_palette_id. Paints only when the
+    // shown id changes, so the water and lava cycle keeps turning across
+    // snapshots (#414); `force` always paints (the mission-end restores).
+    void show_palette_id(std::uint8_t id, bool force = false);
     LevelVisuals& level_visuals() { return level_visuals_; }
     const LevelVisuals& level_visuals() const { return level_visuals_; }
     void set_render_interpolation_client(
