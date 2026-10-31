@@ -94,6 +94,19 @@ int lcg_steps(std::uint32_t from, std::uint32_t to)
     return -1;
 }
 
+// The gameplay stream (combat_rng: walker::attack's damage roll) counted:
+// answers 0 like the fixture's FixedRandom and counts every call.
+class CountingRandom : public IRandom
+{
+public:
+    std::uint32_t next(std::uint32_t) override
+    {
+        ++calls;
+        return 0;
+    }
+    int calls = 0;
+};
+
 class GameplayFixesWalk : public ::testing::Test {
 protected:
     og::test::ScopedPackStoreState pack_store_restore_;
@@ -464,6 +477,150 @@ TEST_F(GameplayFixesWalk, a_side_probe_does_not_swing_at_a_foe_with_the_setting_
             EXPECT_EQ(s, world().rng_.state_) << "setting on: nothing drawn";
         }
         EXPECT_FLOAT_EQ(400.0f, orc->stats()->hitpoints()) << "the classic knife flies up, past the orc";
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Fix Z: the rush
+// ---------------------------------------------------------------------------
+
+// The reporter's scenario (#406). A seated team-1 soldier (no fallback
+// steps) rushes right into an allied orc 20 px ahead with its own search
+// queued. The rush's walksteps run into the orc (the walk's shoves: on a
+// state whose three rolls come up 0, none steals its queue), and then the
+// rush strikes collide_ob. Off: walker::attack draws its damage roll and
+// refuses a friend (hp unchanged), and the rush still erases the orc's
+// orders and force-walks it four steps right. On: a friendly collide_ob is
+// not struck: no damage roll, the orc keeps its search.
+//
+// RED at bb5e13d7 on the setting-on arm. Planted break on the fixed tree:
+// `!controller_->is_friendly(controller_->collide_ob())` -> `true`.
+TEST_F(GameplayFixesWalk, a_rush_into_an_ally_erases_no_orders_with_the_setting_on)
+{
+    const std::uint32_t s = state_where({{3, 0}, {3, 0}, {3, 0}});
+    for (short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE("setting " + std::to_string(fixes));
+        fresh_world(fixes);
+        walker* soldier = living_at(FAMILY_SOLDIER, 1, 320, 320);
+        walker* ally = living_at(FAMILY_ORC, 1, 340, 320);
+        ASSERT_TRUE(soldier && ally);
+        soldier->set_user(0);
+        soldier->set_stepsize(4.0f);
+        face(soldier, FACE_RIGHT);
+        ally->stats()->add_command(COMMAND_SEARCH, 10, 0, 0);
+        soldier->stats()->add_command(COMMAND_RUSH, 3, 1, 0);
+        soldier->set_collide_ob(nullptr);
+        CountingRandom combat;
+        tw_->gc.rng = &combat;
+        world().rng_.state_ = s;
+
+        (void)soldier->stats()->do_command();
+
+        tw_->gc.rng = &tw_->rng;
+        EXPECT_EQ(state_after(s, {3, 3, 3}), world().rng_.state_)
+            << "the walk's three shoves, on both values";
+        EXPECT_FLOAT_EQ(400.0f, ally->stats()->hitpoints()) << "walker::attack never hurts a friend";
+        const Front f = front_of(ally);
+        ASSERT_EQ(1u, f.size);
+        if (fixes == 0) {
+            EXPECT_EQ(1, combat.calls) << "setting off: attack's damage roll";
+            EXPECT_EQ(COMMAND_WALK, f.type) << "setting off: the rush erased the ally's orders";
+            EXPECT_EQ(4, f.count);
+            EXPECT_EQ(1, f.com1);
+            EXPECT_EQ(0, f.com2);
+        } else {
+            EXPECT_EQ(0, combat.calls) << "setting on: no strike, no damage roll";
+            EXPECT_EQ(COMMAND_SEARCH, f.type) << "setting on: the ally keeps its own order";
+            EXPECT_EQ(10, f.count);
+        }
+    }
+}
+
+// The control: a foe in the same spot is struck on both values (hp 400 ->
+// 382 on the fixture's fixed damage roll) and force-walked.
+TEST_F(GameplayFixesWalk, a_rush_into_a_foe_still_strikes_it)
+{
+    for (short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE("setting " + std::to_string(fixes));
+        fresh_world(fixes);
+        walker* soldier = living_at(FAMILY_SOLDIER, 1, 320, 320);
+        walker* foe = living_at(FAMILY_ORC, 2, 340, 320);
+        ASSERT_TRUE(soldier && foe);
+        soldier->set_user(0);
+        soldier->set_stepsize(4.0f);
+        face(soldier, FACE_RIGHT);
+        soldier->stats()->add_command(COMMAND_RUSH, 3, 1, 0);
+        soldier->set_collide_ob(nullptr);
+
+        (void)soldier->stats()->do_command();
+
+        EXPECT_FLOAT_EQ(382.0f, foe->stats()->hitpoints()) << "struck on both values";
+        const Front f = front_of(foe);
+        ASSERT_GE(f.size, 1u);
+        EXPECT_EQ(COMMAND_WALK, f.type) << "and force-walked";
+        EXPECT_EQ(4, f.count);
+        EXPECT_EQ(1, f.com1);
+        EXPECT_EQ(0, f.com2);
+    }
+}
+
+// A stale collide_ob: a team-2 orc 40 px ahead names collide_ob from an
+// earlier act and the rush's three steps (12 px) never reach it. Off: the
+// rush strikes it from where it stands (hp 400 -> 382) and force-walks it.
+// On: no step box meets it: no strike. Then the same orc 4 px ahead of a
+// bot in a walled corridor: the steps run into it, the fallback up is
+// stopped by the wall, and the last step's box meets it: struck on both.
+//
+// RED at bb5e13d7 on the setting-on arm of the first half. Planted break on
+// the fixed tree: the rush's `og::sim::step_meets(...)` term -> `true`.
+TEST_F(GameplayFixesWalk, a_wall_stopped_rush_strikes_no_stale_body)
+{
+    for (short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE("stale, setting " + std::to_string(fixes));
+        fresh_world(fixes);
+        walker* soldier = living_at(FAMILY_SOLDIER, 1, 320, 320);
+        walker* foe = living_at(FAMILY_ORC, 2, 376, 320);
+        ASSERT_TRUE(soldier && foe);
+        soldier->set_stepsize(4.0f);
+        face(soldier, FACE_RIGHT);
+        foe->stats()->add_command(COMMAND_SEARCH, 10, 0, 0);
+        soldier->stats()->add_command(COMMAND_RUSH, 3, 1, 0);
+        soldier->set_collide_ob(foe);
+
+        (void)soldier->stats()->do_command();
+
+        EXPECT_EQ(332, soldier->xpos()) << "three clean steps: none scanned the foe's cell";
+        const Front f = front_of(foe);
+        ASSERT_GE(f.size, 1u);
+        if (fixes == 0) {
+            EXPECT_FLOAT_EQ(382.0f, foe->stats()->hitpoints()) << "setting off: struck from 40 px";
+            EXPECT_EQ(COMMAND_WALK, f.type);
+            EXPECT_EQ(4, f.count);
+        } else {
+            EXPECT_FLOAT_EQ(400.0f, foe->stats()->hitpoints()) << "setting on: no step met it";
+            EXPECT_EQ(COMMAND_SEARCH, f.type);
+            EXPECT_EQ(10, f.count);
+        }
+    }
+    for (short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE("met, setting " + std::to_string(fixes));
+        fresh_world(fixes);
+        for (int tx = 16; tx <= 26; ++tx) {
+            tile(tx, 19, PIX_H_WALL1);
+            tile(tx, 21, PIX_H_WALL1);
+        }
+        walker* soldier = living_at(FAMILY_SOLDIER, 1, 320, 320);
+        walker* foe = living_at(FAMILY_ORC, 2, 340, 320);
+        ASSERT_TRUE(soldier && foe);
+        soldier->set_stepsize(4.0f);
+        face(soldier, FACE_RIGHT);
+        ASSERT_EQ(-1, soldier->user());
+        soldier->stats()->add_command(COMMAND_RUSH, 3, 1, 0);
+        soldier->set_collide_ob(nullptr);
+
+        (void)soldier->stats()->do_command();
+
+        EXPECT_FLOAT_EQ(382.0f, foe->stats()->hitpoints()) << "the last step ran into it: struck on both";
     }
 }
 

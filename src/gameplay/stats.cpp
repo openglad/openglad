@@ -496,7 +496,19 @@ short statistics::do_command()
 				controller_->walkstep(com1, com2);
 				controller_->walkstep(com1, com2);
 				controller_->walkstep(com1, com2);
-				if (controller_->collide_ob()) // We hit someone
+				// Gameplay Fixes Z: the rush strikes the body its last step ran
+				// into: not an ally (walker::attack refuses one, but only after
+				// its damage draw, and the queue theft and the forced walk below
+				// hit a seat hero and a wall-pressed ally alike), and not a body
+				// collide_ob still names from an earlier step this act (a wall
+				// stopped the rush; fix X). Off, the classic strike stands.
+				if (controller_->collide_ob() // We hit someone
+				        && (og::sim::session_gameplay_fixes() == 0
+				            || (!controller_->is_friendly(controller_->collide_ob())
+				                && og::sim::step_meets(*controller_,
+				                                       static_cast<float>(com1) * controller_->stepsize(),
+				                                       static_cast<float>(com2) * controller_->stepsize(),
+				                                       *controller_->collide_ob()))))
 				{
 					target = controller_->collide_ob();
 					controller_->attack(target);
