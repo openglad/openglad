@@ -995,7 +995,11 @@ note in its builder: none, because no level got hotter (the crew worse on
 two seeds or more), so the protocol allowed no ease. No floor or ceiling was lowered and no
 seed was changed; a Westlands level that falls under its floor goes to the
 maintainer with the three seeds and the fix that moved it (see
-[Rulings](#rulings-2026-10-29)).
+[Rulings](#rulings-2026-10-29)). **Update (2026-10-31):** the maintainer accepted the three moves as the
+stream, this once: Westlands 5's floor went 6 to 5, the Tower's floor 1 floor
+6 to 5 and its floor 15 ceiling 7 to none, each with a dated note in its test
+(`tests/unit/test_westlands_calibration.cpp`,
+`tests/unit/test_tower_calibration.cpp`), and the asserting runs pass.
 
 **The other change outside the setting that moves a calibration line.**
 Besides the four eased Long Season levels, and the kits' bot rules
@@ -1067,9 +1071,10 @@ in effect.
 ## Rulings (2026-10-29)
 
 Fixes T to W, and the other changes of the same work (#365, #375, #389,
-#400), asked nine questions. The maintainer has not answered them yet;
-each line below is the default taken, and what the game does
-today, until he does.
+#400), asked nine questions. The maintainer answered on 2026-10-31: the
+defaults below stand, and for the calibration lines (9) he accepted the
+three moves as the stream, this once. Each line below is the default
+taken, and what the game does today.
 
 1. **#371's shape.** The busy guard in every gate and the full
    fall-through: a refused roll, the gate's or the cast's, takes the
@@ -1116,7 +1121,10 @@ today, until he does.
 9. **Calibration dips.** A Long Season or Imaginations level that falls
    under its floor is eased in its builder, as before; a Westlands level
    is reported with the three seeds and the fix that moved it, for the
-   maintainer's word, as level 24 was. Default: so.
+   maintainer's word, as level 24 was. Default: so. **Update (2026-10-31):**
+   the three lines fixes T to W put out of band (Westlands 5 on seed 42, the
+   Tower's floors 1 and 15) were accepted as the stream, this once, and
+   re-pinned with dated notes; see "After fixes T, U, V and W".
 
 One precedent, recorded with them: fixes H and I made a classic free
 swing paid, because the swing was the cast's own (the volley and the bolt
