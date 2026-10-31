@@ -2142,9 +2142,11 @@ bool GameWorld::floor_landing_clear(walker* ob, float x, float y,
         for (std::int32_t by = yi; by < yi + ob->sizey() + kBucket;
              by += kBucket)
         {
-            const std::list<walker*>& pile = myobmap->obmap_get_list(
+            const std::list<walker*>* pile = myobmap->find_list(
                 static_cast<short>(bx), static_cast<short>(by), target_floor);
-            for (const walker* other : pile)
+            if (pile == nullptr)
+                continue;
+            for (const walker* other : *pile)
             {
                 if (landing_blocked_by(other, ob, xi, yi))
                     return false;
@@ -2209,9 +2211,11 @@ bool GameWorld::wake_spot_blocked(walker* ob)
         for (std::int32_t by = yi; by < yi + ob->sizey() + kBucket;
              by += kBucket)
         {
-            const std::list<walker*>& pile = myobmap->obmap_get_list(
+            const std::list<walker*>* pile = myobmap->find_list(
                 static_cast<short>(bx), static_cast<short>(by), ob->floor());
-            for (const walker* other : pile)
+            if (pile == nullptr)
+                continue;
+            for (const walker* other : *pile)
             {
                 if (landing_blocked_by(other, ob, xi, yi))
                     return true;
@@ -2344,7 +2348,7 @@ void GameWorld::adopt_scripts_from(GameWorld& source) noexcept
 // instead of the nearest alone, on who's own floor, sorted nearest first by
 // the same squared centre distance; a stable sort, so equal distances keep
 // fxlist order. find_nearest_blood itself is left as it is (the classic
-// raises and G.corpse_near read it). Appended below the last parity canary
+// raises read it). Appended below the last parity canary
 // pin in this file so the pins above never shift.
 std::vector<walker*> GameWorld::find_blood_in_reach(walker* who)
 {

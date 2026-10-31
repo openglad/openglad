@@ -94,9 +94,11 @@ namespace {
     {
         for (int by = y; by < y + w->sizey() + kBucket; by += kBucket)
         {
-            const std::list<walker*>& pile = world.myobmap->obmap_get_list(
+            const std::list<walker*>* pile = world.myobmap->find_list(
                 static_cast<short>(bx), static_cast<short>(by));
-            for (walker* other : pile)
+            if (pile == nullptr)
+                continue;
+            for (walker* other : *pile)
             {
                 if (spawn_spot_blocked_by(other, w, x, y))
                     return false;
@@ -501,9 +503,11 @@ namespace {
     {
         for (int by = y; by < y + w->sizey() + kBucket; by += kBucket)
         {
-            const std::list<walker*>& pile = world.myobmap->obmap_get_list(
+            const std::list<walker*>* pile = world.myobmap->find_list(
                 static_cast<short>(bx), static_cast<short>(by), floor);
-            for (walker* other : pile)
+            if (pile == nullptr)
+                continue;
+            for (walker* other : *pile)
             {
                 if (spawn_spot_blocked_by(other, w, x, y))
                     return false;

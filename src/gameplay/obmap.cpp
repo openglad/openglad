@@ -300,24 +300,45 @@ short obmap::unhash(short y)
     return y*OBRES;
 }
 
-std::list<walker*>& obmap::obmap_get_list(short x, short y, int floor)
+// The pile key of (x, y) on `floor`, the floor clamped as floor_numx_offset
+// clamps a walker's: one rule for obmap_get_list and find_list.
+static std::pair<short, short> floor_cell(short x, short y, int floor)
 {
 	if (floor < 0) floor = 0;
 	if (floor > 120) floor = 120;
 	const short fo = static_cast<short>(floor * OB_FLOOR_STRIDE);
-	const short numx = static_cast<short>(hash(x) + fo);
-	const short numy = hash(y);
+	return {static_cast<short>(obmap::hash(x) + fo), obmap::hash(y)};
+}
+
+std::list<walker*>& obmap::obmap_get_list(short x, short y, int floor)
+{
+	const auto [numx, numy] = floor_cell(x, y, floor);
 	sync_cell_index();
 	const std::uint32_t key = pack_cell(numx, numy);
 	auto cached = cell_index_.find(key);
 	if (cached != cell_index_.end())
 		return *cached->second;
 	// A miss still default-constructs the empty pile node (the historical
-	// operator[] semantics): diagnostics iterate pos_to_walker and observe
-	// these nodes, so queries must keep creating them.
+	// operator[] semantics) for the one caller that writes into the list
+	// (GameWorld::find_near_foe); read-only sweeps use find_list, so the
+	// debug overlay (obmap_debug_draw.cpp) now draws fewer empty boxes.
 	std::list<walker*>& pile = pos_to_walker[std::make_pair(numx, numy)];
 	cell_index_.emplace(key, &pile);
 	return pile;
+}
+
+const std::list<walker*>* obmap::find_list(short x, short y, int floor)
+{
+	const auto [numx, numy] = floor_cell(x, y, floor);
+	sync_cell_index();
+	auto cached = cell_index_.find(pack_cell(numx, numy));
+	if (cached != cell_index_.end())
+		return cached->second;
+	// A miss makes no node in either map.
+	auto it = pos_to_walker.find(std::make_pair(numx, numy));
+	if (it == pos_to_walker.end())
+		return nullptr;
+	return &it->second;
 }
 
 /***********************************************

@@ -46,6 +46,10 @@ class obmap
 		short add(walker  *ob, short x, short y);  // This goes in walker's constructor
 		short move(walker  *ob, short x, short y);  // This goes in walker's setxy
 		std::list<walker*>& obmap_get_list(short x, short y, int floor = 0); //Returns the list at x,y for fnf
+		// The pile at (x, y) on `floor`, or nullptr when no walker is filed
+		// there: a read that makes no node (#417; obmap_get_list stays for the
+		// one caller that erases through it, GameWorld::find_near_foe).
+		const std::list<walker*>* find_list(short x, short y, int floor = 0);
 		short obmapres;
 		size_t size() const;
 
