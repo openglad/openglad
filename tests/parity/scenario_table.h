@@ -168,7 +168,7 @@ inline constexpr std::uint8_t kOrderFX        = 4;   // Order::FX
 // Phase 01 (semantic-parity): optional tail fields. `stats_level`
 // raises walker level so cycle/fire gates accept later special slots.
 // Cycling gate: src/gameplay/sim_input_handler.cpp:243 `(control.current_special() - 1) * 3 + 1` must be <= stats()->level().
-// Firing gate: src/gameplay/living.cpp:600 `stats_->magicpoints() < og::sim::cast_cost` denies the cast when the caster is short of MP.
+// Firing gate: src/gameplay/living.cpp:601 `stats_->magicpoints() < og::sim::cast_cost` denies the cast when the caster is short of MP.
 // Zero defaults preserve byte-mirror layout; scenario_runtime applies
 // them only when non-zero.
 struct SpawnSpec
@@ -4477,7 +4477,7 @@ inline constexpr FactPredicate kFacts_summon_lifetime_decrement_faerie_scen99[] 
 };
 
 inline constexpr Mutation kMut_summon_lifetime_decrement_faerie_scen99 = {
-    "src/gameplay/living.cpp", 116,
+    "src/gameplay/living.cpp", 117,
     "const auto remaining_lifetime = lifetime() - 1;",
     "const auto remaining_lifetime = lifetime();",
     "Removes the `- 1` so remaining_lifetime == lifetime() every tick; `if (remaining_lifetime < 1)` at line 106 is permanently false and the lifetime-expiry kill at 108-109 never fires. With the druid kept alive (off-map enemy), owner-death cascades at 87/98 also never fire, so the faerie is still alive at tick 650 and WalkerDiedByFinal(FAMILY_FAERIE) fails because an alive FAMILY_FAERIE remains. Exercises the decrement path rather than initialisation."
@@ -8311,7 +8311,7 @@ inline constexpr FactPredicate kFacts_walk_to_foe_adopts_near_foe_scen99[] = {
 };
 
 inline constexpr Mutation kMut_walk_to_foe_adopts_near_foe_scen99 = {
-    "src/gameplay/stats.cpp", 1309,
+    "src/gameplay/stats.cpp", 1310,
     "controller_->set_foe(near_foe);",
     "(void)near_foe;",
     "Drops the adoption and keeps the this-tick re-aim (the recomputed xdelta/ydelta still steer the turn), which the recon measured byte-identical to the pre-#320 golden on every switch row: the archer keeps the soldier as its foe, its arrows never land on the thief, WalkerHpRangeAtFinalTick(FAMILY_THIEF, 5600, 5600) reads 6700 and the soldier fact reads 7200. The archer control and the tick budget hold."
@@ -8357,7 +8357,7 @@ inline constexpr FactPredicate kFacts_thief_charm_third_party_hit_scen99[] = {
 // clear_command itself. The first routine clear (direct_walk's fire_check at
 // tick 22) then un-charms, as classic did.
 inline constexpr Mutation kMut_thief_charm_third_party_hit_scen99 = {
-    "src/gameplay/stats.cpp", 149,
+    "src/gameplay/stats.cpp", 150,
     "controller_->set_leader(nullptr);",
     "controller_->set_leader(nullptr); if (controller_->real_team_num() != 255) { controller_->set_team_num(controller_->real_team_num()); controller_->set_real_team_num(255); }",
     "Restores the pre-#317 un-charm inside clear_command, so the soldier's own fire_check clear at tick 22 puts it back on team 1 (the classic capture): team-0 alive 2 -> 1, team-1 alive 0 -> 1, ScoreDelta(0) 345 -> 0 because its later kills credit team 1, which the dump does not score.",
@@ -8381,7 +8381,7 @@ inline constexpr FactPredicate kFacts_thief_charm_expires_on_timer_scen99[] = {
 };
 
 inline constexpr Mutation kMut_thief_charm_expires_on_timer_scen99 = {
-    "src/gameplay/living.cpp", 212,
+    "src/gameplay/living.cpp", 213,
     "set_team_num(real_team_num());",
     "set_team_num(team_num());",
     "The decay still zeroes charm_left and clears real_team_num but never moves the soldier back: team-1 alive 1 -> 0 and team-0 alive 1 -> 2 at tick 160. This is the only pin on the one remaining un-charm."
@@ -8869,7 +8869,7 @@ inline constexpr FactPredicate kFacts_mage_bot_heartburst_fixes_scen99[] = {
         "consequence: with the setting on the mage casts its specials at the three towers in reach and a roll of 5 is HEARTBURST (its explosions are the three sounds at tick 0)"),
 };
 inline constexpr Mutation kMut_mage_bot_heartburst_fixes_scen99 = {
-    "src/gameplay/living.cpp", 368,
+    "src/gameplay/living.cpp", 369,
     "(current_special() > 4 && og::sim::session_gameplay_fixes() == 0)",
     "(current_special() > 4)",
     "Folds every roll of 5 back to slot 1 again even with the setting on, so the HEARTBURST never comes (slot 1 refuses with three foes in reach): EventKindExactly(play_sound, 22) fails."
@@ -10330,7 +10330,7 @@ inline constexpr FactPredicate kFacts_soldier_charge_front_foe_scen99[] = {
         "consequence: the classic probe's swing takes the tower down to 93 hp"),
 };
 inline constexpr Mutation kMut_soldier_charge_front_foe_scen99 = {
-    "src/gameplay/stats.cpp", 936,
+    "src/gameplay/stats.cpp", 937,
     "return !current_game->world->query_passable(controlx + xdelta, controly + ydelta, controller_, controller_->floor(), quiet);",
     "return true || !current_game->world->query_passable(controlx + xdelta, controly + ydelta, controller_, controller_->floor(), quiet);",
     "Answers blocked without probing, so CHARGE still refuses PATH BLOCKED but no probe bumps the tower, which ends at 112 hp: WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 9300, 9300) fails (the sound count stays 8: the tower's own shots fall differently)."
@@ -10456,7 +10456,7 @@ inline constexpr FactPredicate kFacts_soldier_bot_refused_roll_acts_scen99[] = {
         "consequence: the classic bot walks toward the player between rolls and idles on each refused roll"),
 };
 inline constexpr Mutation kMut_soldier_bot_refused_roll_acts_scen99 = {
-    "src/gameplay/living.cpp", 361,
+    "src/gameplay/living.cpp", 362,
     "rng_.next(5) ) //1 in 5 to do our special",
     "rng_.next(1) ) //1 in 5 to do our special",
     "The special coin always comes up, so every act is a refused roll and the classic bot never moves from (120,120): WalkerPositionMoved(FAMILY_SOLDIER, 152, 152) fails."
@@ -10467,7 +10467,7 @@ inline constexpr FactPredicate kFacts_soldier_bot_refused_roll_acts_fixes_scen99
         "consequence: with the setting on a refused roll takes the bot's ordinary act, so it walks further than the classic one"),
 };
 inline constexpr Mutation kMut_soldier_bot_refused_roll_acts_fixes_scen99 = {
-    "src/gameplay/living.cpp", 384,
+    "src/gameplay/living.cpp", 385,
     "if (og::sim::session_gameplay_fixes() == 0)",
     "if (true)",
     "Ends the act on every refused roll as the classic game does, so the bot idles like the classic one and stops short of (160,160): WalkerPositionMoved(FAMILY_SOLDIER, 160, 160) fails."

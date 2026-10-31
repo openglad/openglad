@@ -24,6 +24,7 @@
 #include <openglad/core/constants.h>
 #include <openglad/core/util.h>
 #include <algorithm>
+#include <cmath>
 #include <format>
 #include <openglad/gameplay/sim_emit.h>
 
@@ -32,8 +33,6 @@
 // draw, no treasure eaten, no door opened, no collide()); see query_list in
 // obmap.h. Every caller but obmap::query_list(..., true) is loud.
 short ob_pass_check(short x, short y, walker* ob, const std::list<walker*>& pile, const obmap* map, bool quiet = false);
-short collide(short x,  short y,  short xsize,  short ysize,
-              short x2, short y2, short xsize2, short ysize2);
 
 //#define XRES GRID_SIZE
 //#define YRES GRID_SIZE
@@ -568,4 +567,14 @@ short collide(short x,  short y,  short xsize,  short ysize,
 		return 0;
 
 	return 1;
+}
+
+bool og::sim::step_meets(const walker& mover, float dx, float dy, const walker& body)
+{
+	const float offs[3][2] = { {dx, dy}, {ceilf(dx), ceilf(dy)}, {floorf(dx), floorf(dy)} };
+	for (const auto& o : offs)
+		if (collide(static_cast<short>(mover.xpos() + o[0]), static_cast<short>(mover.ypos() + o[1]),
+		            mover.sizex(), mover.sizey(), body.xpos(), body.ypos(), body.sizex(), body.sizey()))
+			return true;
+	return false;
 }

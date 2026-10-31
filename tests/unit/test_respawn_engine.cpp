@@ -1244,3 +1244,39 @@ TEST(RespawnEngine, a_path_search_makes_no_empty_pile)
                 == w.myobmap->pos_to_walker.end())
         << "a cell on the way, where nobody stands";
 }
+
+// #423's seam: body_ground_clear is the grid half of body_spot_clear, asked
+// with the same detached body of the family (its own box and flags): grass
+// is ground, water is not for a walker and is for a flyer, and beyond the
+// map's edge is not. Bodies are not asked: a
+// living on the spot leaves the ground clear while body_spot_clear refuses
+// it. Nothing is drawn or filed.
+TEST(RespawnEngine, body_ground_clear_asks_the_grid_with_the_bodys_own_flags)
+{
+    ScriptedWorld fx;
+    GameWorld& w = fx.world();
+    std::fill_n(w.grid.data.get(), static_cast<std::size_t>(w.grid.w) * w.grid.h,
+                static_cast<std::uint8_t>(PIX_GRASS1));
+    w.grid.data[static_cast<std::size_t>(12 + 12 * w.grid.w)] = PIX_WATER1;
+    walker* stander = fx.spawn_living(FAMILY_SOLDIER, 1, 96, 160);
+    ASSERT_NE(nullptr, stander);
+    fx.tick();
+    const std::size_t piles = w.myobmap->pos_to_walker.size();
+    const std::uint32_t s = w.rng_.state_;
+
+    EXPECT_TRUE(og::sim::body_ground_clear(w, Order::Living, FAMILY_SOLDIER, 96, 96, 0));
+    EXPECT_TRUE(og::sim::body_spot_clear(w, Order::Living, FAMILY_SOLDIER, 96, 96, 0));
+    EXPECT_TRUE(og::sim::body_ground_clear(w, Order::Living, FAMILY_SOLDIER, 96, 160, 0))
+        << "a body on the spot is not the ground's question";
+    EXPECT_FALSE(og::sim::body_spot_clear(w, Order::Living, FAMILY_SOLDIER, 96, 160, 0));
+    EXPECT_FALSE(og::sim::body_ground_clear(w, Order::Living, FAMILY_SOLDIER, 192, 192, 0))
+        << "a walker cannot stand in the water";
+    EXPECT_FALSE(og::sim::body_spot_clear(w, Order::Living, FAMILY_SOLDIER, 192, 192, 0));
+    EXPECT_TRUE(og::sim::body_ground_clear(w, Order::Living, FAMILY_FAERIE, 192, 192, 0))
+        << "a flyer passes the water as the game lets it";
+    EXPECT_FALSE(og::sim::body_ground_clear(w, Order::Living, FAMILY_SOLDIER, 2000, 2000, 0))
+        << "off the map";
+
+    EXPECT_EQ(s, w.rng_.state_) << "nothing drawn";
+    EXPECT_EQ(piles, w.myobmap->pos_to_walker.size()) << "nothing filed";
+}

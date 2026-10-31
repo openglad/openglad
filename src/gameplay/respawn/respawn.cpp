@@ -867,16 +867,14 @@ bool respawn_spot_clear(GameWorld& world, walker* w, short x, short y,
     return classic_spot_clear(world, w, x, y, floor);
 }
 
-// Probed with a detached walker (walker.h, WeaponProfileProbeTag: never in a
-// list or the obmap, no entity id, no draw), through the eat-free placement
-// rule every spawn uses (spawn_spot_blocked_by: the grid with the body's own
-// flags, then livings, generators, doors, trees, boulders and placement
-// blockers on exact boxes), and never onto a delayed spawn that has not
-// entered the world yet.
-bool body_spot_clear(GameWorld& world, Order order, std::int32_t family,
-                     short x, short y, int floor)
+namespace {
+
+// The detached body both probes below ask with: a walker of (order,
+// family) at (x, y) on `floor`, never in a list or the obmap. False for a
+// family the loader cannot make.
+[[nodiscard]] bool make_body_probe(GameWorld& world, walker& probe, Order order,
+                                   std::int32_t family, short x, short y, int floor)
 {
-    walker probe(walker::WeaponProfileProbeTag{});
     const PixieData* data = world.configure_existing_entity(probe, order, family);
     if (data == nullptr)
         return false;
@@ -884,6 +882,44 @@ bool body_spot_clear(GameWorld& world, Order order, std::int32_t family,
     probe.set_floor(static_cast<short>(floor));
     probe.set_xpos(x);      // SimEntity's plain setters: never setxy, which
     probe.set_ypos(y);      // would register the probe in the obmap
+    return true;
+}
+
+// The ground rule: the grid with the body's own box and flags, as
+// spawn_spot_clear and classic_spot_clear ask it (the probe's floor is
+// `floor`, so the two arms read the same grid).
+[[nodiscard]] bool probe_ground_clear(GameWorld& world, walker& probe,
+                                      short x, short y, int floor)
+{
+    return world.query_grid_passable(x, y, &probe, floor);
+}
+
+} // namespace
+
+bool body_ground_clear(GameWorld& world, Order order, std::int32_t family,
+                       short x, short y, int floor)
+{
+    walker probe(walker::WeaponProfileProbeTag{});
+    if (!make_body_probe(world, probe, order, family, x, y, floor))
+        return false;
+    return probe_ground_clear(world, probe, x, y, floor);
+}
+
+// Probed with a detached walker (walker.h, WeaponProfileProbeTag: never in a
+// list or the obmap, no entity id, no draw), through the eat-free placement
+// rule every spawn uses (spawn_spot_blocked_by: the grid with the body's own
+// flags, then livings, generators, doors, trees, boulders and placement
+// blockers on exact boxes), and never onto a delayed spawn that has not
+// entered the world yet. The ground is body_ground_clear's question, asked
+// first; respawn_spot_clear asks the same grid again before its bodies.
+bool body_spot_clear(GameWorld& world, Order order, std::int32_t family,
+                     short x, short y, int floor)
+{
+    walker probe(walker::WeaponProfileProbeTag{});
+    if (!make_body_probe(world, probe, order, family, x, y, floor))
+        return false;
+    if (!probe_ground_clear(world, probe, x, y, floor))
+        return false;
     if (!respawn_spot_clear(world, &probe, x, y, floor))
         return false;
     return !world.dormant_occupies_spot(&probe);

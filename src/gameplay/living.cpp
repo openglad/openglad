@@ -30,6 +30,7 @@
 #include <openglad/gameplay/living.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/obmap.h>
 #include <openglad/core/constants.h>
 #include <openglad/core/util.h>
 #include <cstring>
