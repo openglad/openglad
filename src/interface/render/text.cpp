@@ -575,7 +575,8 @@ char * text::input_string(Sint32 x, Sint32 y, short maxlength, const char *begin
 }
 
 // One pass of a prompt's wait: blocking (the 2002 shape) with no hook; with
-// one, the hook's answer, a poll and a yield. false: cancel the prompt.
+// one, the hook's answer, then one event or a yield. false: cancel the
+// prompt.
 static bool prompt_wait_pass(bool (*poll)())
 {
 	if (poll == nullptr)
@@ -588,8 +589,16 @@ static bool prompt_wait_pass(bool (*poll)())
 		TRACE("prompt", "remote start");
 		return false;
 	}
-	get_input_events(POLL);
-	// The one yield per lap every modal owes (menu_screen_runner.cpp).
+	// One event per pass, as the blocking wait takes them: a press and its
+	// release queued together must not cancel each other out before the
+	// editor has looked (an ACCEPT click would be lost).
+	if (const void* event = og::input_native::poll_event())
+	{
+		handle_events(event);
+		return true;
+	}
+	// Nothing waiting: the one yield per lap every modal owes
+	// (menu_screen_runner.cpp).
 	og::input_native::sleep_ms(10);
 	return true;
 }
