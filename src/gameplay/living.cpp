@@ -611,9 +611,18 @@ bool living::check_special()
 	if (shifter_down() != 0 && og::sim::cannot_afford_priced_alternate(*this, static_cast<int>(current_special()))) set_shifter_down(0);
 
 	auto* fd = get_family_descriptor(family());
-	if (auto hook_result = og::script::hooks::check_special_ai(fd, this))
-		return *hook_result;
-
+	const auto hook_result = og::script::hooks::check_special_ai(fd, this);
+	if (hook_result.has_value() && !*hook_result)
+		return false;
+	// Gameplay Fixes AB (#409): a yes the bot cannot pay for is a no. The fold
+	// above lands on slot 1 without asking slot 1's own price, and the hit
+	// path (statistics::hit_response) has no "full of magic?" guard like the
+	// act's, so its rng(3) bought a cast refused NOT ENOUGH MP. Asked after
+	// the gate, which may have chosen the Shift arm. The act path never
+	// reaches an unaffordable slot (its guard), so only the hit path moves.
+	if (og::sim::session_gameplay_fixes() != 0 &&
+	    stats_->magicpoints() < og::sim::cast_cost(*this, static_cast<int>(current_special()), shifter_down() != 0))
+		return false;
 	// Default: always allow
 	return true;
 }
