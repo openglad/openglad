@@ -598,6 +598,103 @@ TEST_F(QuietProbe, fire_pad_clear_matches_fires_own_pad)
     }
 }
 
+// set_weapon_heading (fire_check's launch) puts the weapon on fire()'s pad
+// and gives it fire()'s heading. For each of the eight facings, a 17x13 elf
+// (odd sizes, both unlike the rock's box, so the centring truncates) and a
+// rock made by create_weapon: after set_weapon_heading the rock stands on
+// the pad worked out here from the 2002 table, weapon_pad answers the same
+// spot, and lastx / lasty are the 2002 heading rows for the waver drawn from
+// a copy of the stream (one draw, no more).
+// RED (planted): weapon_pad's FACE_DOWN_LEFT row one pixel off
+// (ypos()+sizey()+1 -> ypos()+sizey()+2): the weapon_pad assertion reds,
+// and once set_weapon_heading reads weapon_pad its own position does too.
+TEST_F(QuietProbe, set_weapon_heading_lands_on_fires_pad)
+{
+    const struct Facing
+    {
+        int face;
+        float dx;
+        float dy;
+    } facings[] = {
+        {FACE_UP, 0.0f, -1.0f},       {FACE_UP_RIGHT, 1.0f, -1.0f},
+        {FACE_RIGHT, 1.0f, 0.0f},     {FACE_DOWN_RIGHT, 1.0f, 1.0f},
+        {FACE_DOWN, 0.0f, 1.0f},      {FACE_DOWN_LEFT, -1.0f, 1.0f},
+        {FACE_LEFT, -1.0f, 0.0f},     {FACE_UP_LEFT, -1.0f, -1.0f},
+    };
+    constexpr int kX = 320;
+    constexpr int kY = 320;
+    constexpr int kW = 17;
+    constexpr int kH = 13;
+    for (const Facing& f : facings) {
+        SCOPED_TRACE(std::format("facing {}", f.face));
+        fresh_world();
+        walker* elf = living_at(FAMILY_ELF, 1, kX, kY, kW, kH);
+        ASSERT_NE(nullptr, elf);
+        elf->set_current_weapon(FAMILY_ROCK);
+        elf->set_lastx(f.dx);
+        elf->set_lasty(f.dy);
+        walker* rock = elf->create_weapon();
+        ASSERT_NE(nullptr, rock);
+        const int rw = rock->sizex();
+        const int rh = rock->sizey();
+        ASSERT_GT(rw, 0);
+        ASSERT_GT(rh, 0);
+        ASSERT_NE(kW, rw);
+        ASSERT_NE(kH, rh);
+
+        // The waver, from a copy of the stream as it stands now.
+        og::sim::SimRandom r(world().rng_.state_);
+        const float step = rock->stepsize();
+        signed char waver = static_cast<signed char>(std::clamp(step / 2, 0.0f, 127.0f));
+        waver = static_cast<signed char>(
+            r.next(static_cast<std::uint32_t>(waver + 1)) -
+            static_cast<std::uint32_t>(waver / 2));
+        const float wv = static_cast<float>(waver);
+
+        // The 2002 table: the pad, then the heading.
+        int px = -1;
+        int py = -1;
+        float hx = 0.0f;
+        float hy = 0.0f;
+        switch (f.face) {
+        case FACE_RIGHT:
+            px = kX + kW + 1; py = kY + (kH - rh) / 2; hx = step; hy = wv; break;
+        case FACE_LEFT:
+            px = kX - rw - 1; py = kY + (kH - rh) / 2; hx = -step; hy = wv; break;
+        case FACE_DOWN:
+            px = kX + (kW - rw) / 2; py = kY + kH + 1; hx = wv; hy = step; break;
+        case FACE_UP:
+            px = kX + (kW - rw) / 2; py = kY - rh - 1; hx = wv; hy = -step; break;
+        case FACE_UP_RIGHT:
+            px = kX + kW + 1; py = kY - rh - 1;
+            hx = step + wv; hy = -step + wv; break;
+        case FACE_UP_LEFT:
+            px = kX - rw - 1; py = kY - rh - 1;
+            hx = -step - wv; hy = -step + wv; break;
+        case FACE_DOWN_RIGHT:
+            px = kX + kW + 1; py = kY + kH + 1;
+            hx = step - wv; hy = step + wv; break;
+        case FACE_DOWN_LEFT:
+            px = kX - rw - 1; py = kY + kH + 1;
+            hx = -step + wv; hy = step + wv; break;
+        default:
+            FAIL() << "not a facing";
+        }
+
+        elf->set_weapon_heading(rock);
+        EXPECT_EQ(px, rock->xpos()) << "set_weapon_heading's x";
+        EXPECT_EQ(py, rock->ypos()) << "set_weapon_heading's y";
+        EXPECT_EQ(hx, rock->lastx()) << "the heading's x";
+        EXPECT_EQ(hy, rock->lasty()) << "the heading's y";
+        EXPECT_EQ(r.state_, world().rng_.state_) << "exactly the waver's draw";
+        short wx = 0;
+        short wy = 0;
+        elf->weapon_pad(*rock, wx, wy);
+        EXPECT_EQ(px, wx) << "weapon_pad's x";
+        EXPECT_EQ(py, wy) << "weapon_pad's y";
+    }
+}
+
 // fire_pad_clear makes nothing and changes nothing: the obmap, the three
 // lists, the events and the stream are as they were, a drumstick and an
 // enemy rock on the pad are untouched (the probe passes both), the elf's

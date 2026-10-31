@@ -703,45 +703,40 @@ void walker::set_weapon_heading(walker *weapon)
 	waver = static_cast<signed char>(std::clamp((weapon->stepsize())/2, 0.0f, 127.0f)); // Absolute amount ..
 	waver = static_cast<signed char>(current_game->world->rng_.next(static_cast<std::uint32_t>(waver+1)) - static_cast<std::uint32_t>(waver/2));
 
+	short pad_x = 0, pad_y = 0;
+	weapon_pad(*weapon, pad_x, pad_y);  // fire()'s pad: one table
+	weapon->setxy(pad_x, pad_y);
 	switch (facing(lastx(), lasty()))  // these are from the 'owner'
 	{
 		case FACE_RIGHT:
-			weapon->setxy(xpos()+sizex()+1,ypos()+(sizey() - weapon->sizey())/2);
 			weapon->set_lastx(weapon->stepsize());
 			weapon->set_lasty(waver);
 			break;
 		case FACE_LEFT:
-			weapon->setxy(xpos() - weapon->sizex()-1, ypos()+(sizey()-weapon->sizey())/2);
 			weapon->set_lastx(-weapon->stepsize());
 			weapon->set_lasty(waver);
 			break;
 		case FACE_DOWN:
-			weapon->setxy(xpos()+(sizex()-weapon->sizex())/2, ypos()+sizey()+1);
 			weapon->set_lasty(weapon->stepsize());
 			weapon->set_lastx(waver);
 			break;
 		case FACE_UP:
-			weapon->setxy(xpos()+(sizex()-weapon->sizex())/2, ypos() - weapon->sizey()-1);
 			weapon->set_lasty(- weapon->stepsize());
 			weapon->set_lastx(waver);
 			break;
 		case FACE_UP_RIGHT:
-			weapon->setxy(xpos()+sizex()+1, ypos()-weapon->sizey()-1);
 			weapon->set_lastx(weapon->stepsize() + waver);
 			weapon->set_lasty(-weapon->stepsize() + waver);
 			break;
 		case FACE_UP_LEFT:
-			weapon->setxy(xpos() - weapon->sizex()-1, ypos()-weapon->sizey()-1);
 			weapon->set_lastx(-weapon->stepsize() - waver);
 			weapon->set_lasty(-weapon->stepsize() + waver);
 			break;
 		case FACE_DOWN_RIGHT:
-			weapon->setxy(xpos()+sizex()+1, ypos() + sizey()+1);
 			weapon->set_lasty(weapon->stepsize() + waver);
 			weapon->set_lastx(weapon->stepsize() - waver);
 			break;
 		case FACE_DOWN_LEFT:
-			weapon->setxy(xpos() - weapon->sizex()-1, ypos()+sizey()+1);
 			weapon->set_lasty(weapon->stepsize() + waver);
 			weapon->set_lastx(-weapon->stepsize() + waver);
 			break;
