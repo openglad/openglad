@@ -315,12 +315,12 @@ bool walker::attack(walker  *target)
     if (gated_damage < 0)
         return 0;
     const short tempdamage_i = gated_damage;
-    // Kill attribution (server-only transients): stamp the owner-chain ROOT
-    // — weapon and summon kills credit the head, exactly like the score
-    // path — AFTER the gate allowed a positive amount. A non-living root
-    // (a scripted ball fx) never stamps, so its kills read as environment.
-    if (tempdamage_i > 0 && headguy->query_order() == Order::Living)
-        target->note_attacker(headguy, current_game->world->tick_count_);
+    // Kill attribution (server-only transients): stamp the topmost LIVING on
+    // the owner chain (credit_head: a weapon's thrower, a summon's caster; a
+    // tent's troop is its own credit) AFTER the gate allowed a positive
+    // amount. No living on the chain (a scripted ball fx): no stamp.
+    walker* const credit = credit_head();
+    if (tempdamage_i > 0) target->note_attacker(credit, current_game->world->tick_count_);
     do_combat_damage(attacker, target, tempdamage_i);
     TRACE("walker", "attack: %s deals %d damage", attacker->stats_->name.c_str(), tempdamage_i);
 
@@ -501,11 +501,11 @@ bool walker::attack(walker  *target)
         // death() has left the corpse and the life gem behind. A walker that
         // got back up inside death() (a warded skeleton) was not killed.
         if (targetorder == Order::Living && target->dead() &&
-            headguy->query_order() == Order::Living)
+            credit != nullptr)
             og::script::hooks::on_kill(
                 get_family_descriptor(static_cast<int>(
-                    static_cast<unsigned char>(headguy->family()))),
-                headguy, target);
+                    static_cast<unsigned char>(credit->family()))),
+                credit, target);
     }
     set_collide_ob(nullptr);
 

@@ -435,19 +435,17 @@ std::int32_t walker::turn_undead(std::int32_t range, std::int32_t power)
 					    og::script::hooks::level_damage_gate(w, this, lethal);
 					if (gated < 0)
 						continue;
-					walker* headguy = this;
-					while (headguy->owner() && headguy->owner() != headguy && !headguy->charmed_head())
-						headguy = headguy->owner();
+					walker* const credit = credit_head();  // #411: the topmost living
 					if (gated < lethal)
 					{
 						if (gated > 0 &&
-						    headguy->query_order() == Order::Living)
-							w->note_attacker(headguy, world->tick_count_);
+						    credit != nullptr)
+							w->note_attacker(credit, world->tick_count_);
 						do_combat_damage(this, w, gated);
 						w->stats()->hit_response(this);
 						continue;
 					}
-					w->note_attacker(headguy, world->tick_count_);
+					w->note_attacker(credit, world->tick_count_);
 					w->set_dead(1);
 					w->stats()->set_hitpoints(0);
 					w->death();

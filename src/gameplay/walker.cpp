@@ -2696,3 +2696,26 @@ bool walker::fire_pad_clear(std::int32_t weapon_family)
 {
 	return fire_pad_answer(weapon_family) == PadAnswer::Clear;
 }
+
+// The walker a hit or a kill is credited to (#411): the topmost LIVING on
+// this walker's owner chain (a weapon's thrower, a summon's caster, a tent
+// or bones troop itself: its owner is a post, not a body), or nullptr when
+// no living is on the chain (a scripted ball fx). The climb stops where
+// attack()'s does (a self-loop) and, with Gameplay Fixes AD, at a charmed
+// walker. The kill stamp and on_kill read it; classic score and experience
+// keep the chain's root. Appended at the end of the file so the parity
+// canary pins above never shift.
+walker* walker::credit_head()
+{
+	walker* top = nullptr;
+	for (walker* w = this;;)
+	{
+		if (w->query_order() == Order::Living)
+			top = w;
+		walker* next = w->owner();
+		if (next == nullptr || next == w || w->charmed_head())
+			break;
+		w = next;
+	}
+	return top;
+}
