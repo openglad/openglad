@@ -501,6 +501,10 @@ struct FlowState {
     std::string reopened_key3;
     std::string reopened_s1;
     bool reclosed = false;
+    // Presses sent again for want of a witness, from the first BACK to the
+    // second: a BACK that landed and is pressed again lands on TRAIN's BACK
+    // at the same place (#420).
+    int back_represses = -1;
     // The setting-off flow.
     bool door_dimmed_seen = false;
     bool door_inert = false;
@@ -529,6 +533,10 @@ int enter_train(FlowState* state, const std::string& row,
 }
 
 // --- 1. The whole road: TRAIN door -> edits -> BACK -> the saved hero ------
+
+// A press that landed (its witness traced) brings its screen up within this
+// many completed engine frames, however long the menu thread stalls first.
+constexpr int kLandedEdgeFrames = 60;
 
 int full_flow_injector(void* data)
 {
@@ -611,10 +619,20 @@ int full_flow_injector(void* data)
     if (!state->cleared_s1)
         return escape(10, "picking S1 twice never emptied it");
 
-    // BACK commits once and returns to TRAIN.
-    state->back_to_train = click_until_edge("abilities_back", [](int ms) {
-        return wait_for_interactable("inc_str", ms);
-    });
+    const int retries_before_back = g_click_ladder_click_retries;
+    // BACK commits once and returns to TRAIN. The commit is traced before
+    // the autosave, which can stall the menu thread for longer than the
+    // ladder waits: a BACK that landed is never pressed again (it would land
+    // on TRAIN's BACK at the same place), and TRAIN is then waited for by
+    // its frames, not by the clock.
+    const int commits = count_trace_containing("abilities", "commit slot=0");
+    state->back_to_train =
+        click_until_edge(
+            "abilities_back",
+            [](int ms) { return wait_for_interactable("inc_str", ms); },
+            "commit slot=0", 3, 2500, "abilities") ||
+        (count_trace_containing("abilities", "commit slot=0") > commits &&
+         wait_for_interactable_within_frames("inc_str", kLandedEdgeFrames));
     if (!state->back_to_train)
         return escape(11, "BACK never returned to TRAIN");
     state->committed = wait_for_trace("abilities", "commit slot=0", 5000);
@@ -632,11 +650,18 @@ int full_flow_injector(void* data)
     (void)wait_for_menu_frames(2);
     state->reopened_key3 = interactable_label("belt_2");
     state->reopened_s1 = interactable_label("belt_3");
-    state->reclosed = click_until_edge("abilities_back", [](int ms) {
-        return wait_for_interactable("inc_str", ms);
-    });
+    // The unchanged second visit commits nothing; its witness is the close.
+    const int closes = count_trace_containing("abilities", "close slot=0");
+    state->reclosed =
+        click_until_edge(
+            "abilities_back",
+            [](int ms) { return wait_for_interactable("inc_str", ms); },
+            "close slot=0", 3, 2500, "abilities") ||
+        (count_trace_containing("abilities", "close slot=0") > closes &&
+         wait_for_interactable_within_frames("inc_str", kLandedEdgeFrames));
     if (!state->reclosed)
         return escape(13, "the second BACK never returned to TRAIN");
+    state->back_represses = g_click_ladder_click_retries - retries_before_back;
 
     state->finished = true;
     return escape(0, "");
@@ -673,8 +698,8 @@ int door_off_injector(void* data)
 
 // HIRE's door table, in PRECEDENCE order: HIRE's BACK (HIRE ME says it is
 // up), Base Camp's, the main menu's way forward, then the DETAILS page's
-// BACK (the only screen left that publishes a bare "back": its PROMOTE row
-// is hidden over a recruit).
+// BACK (the only screen left that publishes a bare "back": its PROMOTE
+// descriptor is hidden over a recruit).
 constexpr EscapeDoor kHireDetailsEscapeDoors[] = {
     {"hire_me", "back"},
     {"go", "back"},
@@ -1912,6 +1937,8 @@ TEST(AbilitiesFlow, train_door_opens_the_screen_and_the_edit_reaches_the_save)
     EXPECT_TRUE(state.placed_again);
     EXPECT_TRUE(state.cleared_s1);
     EXPECT_TRUE(state.back_to_train);
+    EXPECT_EQ(0, state.back_represses)
+        << "a BACK that landed was pressed again";
     EXPECT_TRUE(state.committed) << "BACK commits the edited copy";
     EXPECT_EQ(1, count_trace_containing("abilities", "commit slot=0"))
         << "one commit for the visit; the unchanged second visit commits "
@@ -2060,6 +2087,7 @@ constexpr EscapeDoor kTrainDetailsEscapeDoors[] = {
     {"inc_str", "back"},
     {"go", "back"},
     {"continue_game", "continue_game"},
+    {"back", "back"},
 };
 
 struct TrainDetailsState {
