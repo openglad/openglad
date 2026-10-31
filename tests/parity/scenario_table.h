@@ -168,7 +168,7 @@ inline constexpr std::uint8_t kOrderFX        = 4;   // Order::FX
 // Phase 01 (semantic-parity): optional tail fields. `stats_level`
 // raises walker level so cycle/fire gates accept later special slots.
 // Cycling gate: src/gameplay/sim_input_handler.cpp:243 `(control.current_special() - 1) * 3 + 1` must be <= stats()->level().
-// Firing gate: src/gameplay/living.cpp:601 `stats_->magicpoints() < og::sim::cast_cost` denies the cast when the caster is short of MP.
+// Firing gate: src/gameplay/living.cpp:608 `stats_->magicpoints() < og::sim::cast_cost` denies the cast when the caster is short of MP.
 // Zero defaults preserve byte-mirror layout; scenario_runtime applies
 // them only when non-zero.
 struct SpawnSpec

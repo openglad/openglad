@@ -50,6 +50,38 @@
 
 namespace {
 
+// A draw and the value a pinned state must give (kAny: any value).
+constexpr std::uint32_t kAny = 0xFFFFFFFFu;
+struct Draw
+{
+    std::uint32_t bound;
+    std::uint32_t want;
+};
+
+// The first RNG state from which the draws come out as `draws` says.
+std::uint32_t state_where(std::initializer_list<Draw> draws)
+{
+    for (std::uint32_t seed = 1;; ++seed) {
+        og::sim::SimRandom probe(seed);
+        bool all = true;
+        for (const Draw& d : draws) {
+            const std::uint32_t got = probe.next(d.bound);
+            all = all && (d.want == kAny || got == d.want);
+        }
+        if (all)
+            return seed;
+    }
+}
+
+// The state after the draws `bounds` from `state`.
+std::uint32_t state_after(std::uint32_t state, std::initializer_list<std::uint32_t> bounds)
+{
+    og::sim::SimRandom probe(state);
+    for (std::uint32_t b : bounds)
+        (void)probe.next(b);
+    return probe.state_;
+}
+
 class GameplayFixesWalk : public ::testing::Test {
 protected:
     og::test::ScopedPackStoreState pack_store_restore_;
@@ -134,7 +166,171 @@ protected:
     }
 };
 
+// The front of a walker's command queue.
+struct Front
+{
+    std::size_t size = 0;
+    int type = -1;
+    int count = -1;
+    int com1 = 0;
+    int com2 = 0;
+};
+
+Front front_of(const walker* w)
+{
+    Front f;
+    const auto& c = w->stats()->commands;
+    f.size = c.size();
+    if (!c.empty()) {
+        f.type = c.front().commandtype;
+        f.count = c.front().commandcount;
+        f.com1 = c.front().com1;
+        f.com2 = c.front().com2;
+    }
+    return f;
+}
+
 }  // namespace
+
+// ---------------------------------------------------------------------------
+// Fix X: the walk's shove
+// ---------------------------------------------------------------------------
+
+// The reporter's scenario (#403). A team-1 skeleton stands on teleporter A
+// at (100,100), an allied cleric beside it at (117,100) with its own search
+// queued; teleporter B is at (592,592) in a one-cell pocket walled above,
+// below and to both sides. One NPC walkstep right: the full step's first
+// probe eats A, which centres the skeleton on B, and the same probe's pile
+// loop then meets the cleric at the OLD coordinates, so collide_ob names
+// it. The step fails and the baby step and the perpendicular fallback (up)
+// are stopped by the pocket's walls in the grid half, so collide_ob still
+// names the cleric 967 px away. Off: three stale shoves (three rng(3)), the
+// last of them (the fallback's, up) steals the cleric's queue. On: no step
+// box meets the cleric from B, so nothing is drawn and its search stands.
+//
+// RED at bb5e13d7 on the setting-on arm (no fix: the three draws and the
+// stolen queue). Planted break on the fixed tree: living::walk's
+// `og::sim::step_meets(*this, x, y, *collide_ob())` -> `true`.
+TEST_F(GameplayFixesWalk, a_walk_that_eats_a_teleporter_does_not_shove_the_ally_it_left)
+{
+    const std::uint32_t s = state_where({{3, 1}, {3, 1}, {3, 1}});
+    for (short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE("setting " + std::to_string(fixes));
+        fresh_world(fixes);
+        walker* pad_a = treasure_at(FAMILY_TELEPORTER, 100, 100, 16, 16);
+        walker* pad_b = treasure_at(FAMILY_TELEPORTER, 592, 592, 16, 16);
+        tile(36, 37, PIX_H_WALL1);
+        tile(38, 37, PIX_H_WALL1);
+        tile(37, 36, PIX_H_WALL1);
+        tile(37, 38, PIX_H_WALL1);
+        walker* cleric = living_at(FAMILY_CLERIC, 1, 117, 100);
+        walker* skel = living_at(FAMILY_SKELETON, 1, 100, 100);
+        ASSERT_TRUE(pad_a && pad_b && cleric && skel);
+        cleric->stats()->add_command(COMMAND_SEARCH, 10, 0, 0);
+        face(skel, FACE_RIGHT);
+        ASSERT_EQ(-1, skel->user()) << "an NPC: walkstep takes the fallback step";
+        world().rng_.state_ = s;
+
+        (void)skel->walkstep(1.0f, 0.0f);
+
+        EXPECT_EQ(592, skel->xpos()) << "the first probe ate pad A and centred the skeleton on B";
+        EXPECT_EQ(592, skel->ypos());
+        EXPECT_EQ(cleric, skel->collide_ob()) << "collide_ob itself is left as the probe wrote it";
+        EXPECT_EQ(967, skel->distance_to_ob(cleric)) << "the body collide_ob names is far behind";
+        const Front f = front_of(cleric);
+        ASSERT_EQ(1u, f.size);
+        if (fixes == 0) {
+            EXPECT_EQ(state_after(s, {3, 3, 3}), world().rng_.state_)
+                << "setting off: the full step, the baby step and the fallback each shove the cleric";
+            EXPECT_EQ(COMMAND_WALK, f.type) << "setting off: the cleric's search is stolen";
+            EXPECT_EQ(4, f.count);
+            EXPECT_EQ(0, f.com1) << "the last shove was the fallback's, up";
+            EXPECT_EQ(-1, f.com2);
+        } else {
+            EXPECT_EQ(s, world().rng_.state_) << "setting on: no stale shove, nothing drawn";
+            EXPECT_EQ(COMMAND_SEARCH, f.type) << "setting on: the cleric keeps its own order";
+            EXPECT_EQ(10, f.count);
+        }
+    }
+}
+
+// The near shape (#403's second kind). A team-1 orc in a corridor walled
+// above and below, an allied orc ahead whose box the orc's overlaps by one
+// pixel (collide() needs two, so they stand apart). One NPC walkstep right:
+// the full step and the baby step both run into the ally (two real shoves),
+// then the perpendicular fallback (up) is stopped by the wall in the grid
+// half and leaves collide_ob naming the ally. Off: a third shove of the ally
+// for a step that never touched it (its own grid probe up refuses, so the
+// queue the baby step's shove set stands). On: two draws, not three.
+//
+// RED at bb5e13d7 on the setting-on arm (three draws).
+TEST_F(GameplayFixesWalk, a_grid_stopped_fallback_does_not_shove_the_ally_the_full_step_met)
+{
+    const std::uint32_t s = state_where({{3, 1}, {3, 1}, {3, 1}});
+    for (short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE("setting " + std::to_string(fixes));
+        fresh_world(fixes);
+        for (int tx = 16; tx <= 26; ++tx) {
+            tile(tx, 19, PIX_H_WALL1);
+            tile(tx, 21, PIX_H_WALL1);
+        }
+        walker* orc = living_at(FAMILY_ORC, 1, 320, 320);
+        walker* ally = living_at(FAMILY_ORC, 1, 335, 320);
+        ASSERT_TRUE(orc && ally);
+        ally->stats()->add_command(COMMAND_SEARCH, 10, 0, 0);
+        face(orc, FACE_RIGHT);
+        ASSERT_GE(orc->stepsize(), 1.0f) << "the full step meets the ally";
+        world().rng_.state_ = s;
+
+        (void)orc->walkstep(1.0f, 0.0f);
+
+        EXPECT_EQ(320, orc->xpos()) << "every step failed";
+        EXPECT_EQ(320, orc->ypos());
+        const Front f = front_of(ally);
+        ASSERT_EQ(1u, f.size);
+        EXPECT_EQ(COMMAND_WALK, f.type) << "the real shoves stole the ally's search on both values";
+        EXPECT_EQ(4, f.count);
+        EXPECT_EQ(1, f.com1) << "the last stealing shove was the baby step's, right";
+        EXPECT_EQ(0, f.com2);
+        if (fixes == 0)
+            EXPECT_EQ(state_after(s, {3, 3, 3}), world().rng_.state_)
+                << "setting off: the fallback shoves the ally its step never met";
+        else
+            EXPECT_EQ(state_after(s, {3, 3}), world().rng_.state_)
+                << "setting on: only the two steps that ran into the ally shove it";
+    }
+}
+
+// The control: on open ground the fallback step up succeeds, so only the
+// two steps that met the ally shove it, the same on both values. Fix X
+// does not take a shove away from a step that ran into its body.
+TEST_F(GameplayFixesWalk, a_body_the_step_meets_is_still_shoved)
+{
+    const std::uint32_t s = state_where({{3, 1}, {3, 1}});
+    for (short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE("setting " + std::to_string(fixes));
+        fresh_world(fixes);
+        walker* orc = living_at(FAMILY_ORC, 1, 320, 320);
+        walker* ally = living_at(FAMILY_ORC, 1, 335, 320);
+        ASSERT_TRUE(orc && ally);
+        ally->stats()->add_command(COMMAND_SEARCH, 10, 0, 0);
+        face(orc, FACE_RIGHT);
+        world().rng_.state_ = s;
+
+        (void)orc->walkstep(1.0f, 0.0f);
+
+        EXPECT_EQ(state_after(s, {3, 3}), world().rng_.state_)
+            << "the full step and the baby step shove the ally on both values";
+        EXPECT_EQ(320, orc->xpos());
+        EXPECT_EQ(static_cast<short>(320 - orc->stepsize()), orc->ypos()) << "the fallback stepped up";
+        const Front f = front_of(ally);
+        ASSERT_EQ(1u, f.size);
+        EXPECT_EQ(COMMAND_WALK, f.type);
+        EXPECT_EQ(4, f.count);
+        EXPECT_EQ(1, f.com1);
+        EXPECT_EQ(0, f.com2);
+    }
+}
 
 // ---------------------------------------------------------------------------
 // The seams the fixes share

@@ -514,7 +514,14 @@ bool living::walk(float x, float y)
 		}
 		else //Invalid move?
 		{
-			if (collide_ob() && !collide_ob()->dead())
+			// Gameplay Fixes X: the shove below pushes the body THIS step met,
+			// from where the walker stands now. collide_ob can be stale: a step
+			// the grid stops never reaches the object probe (query_passable is
+			// grid && object), so it still names the last body touched, however
+			// far; and a probe that eats a teleporter moves the walker before it
+			// meets the body it left behind. Off, the classic stale shove stands.
+			if (collide_ob() && !collide_ob()->dead()
+			        && (og::sim::session_gameplay_fixes() == 0 || og::sim::step_meets(*this, x, y, *collide_ob())))
 			{
 				if (collide_ob()->query_order() == Order::Living && is_friendly(collide_ob()) )
 				{
