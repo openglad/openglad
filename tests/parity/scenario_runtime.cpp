@@ -59,10 +59,12 @@ void apply_post_load_spawns(GameWorld& world, const ScenarioSpec& spec)
         if (w == nullptr) continue;
 
 
-        // setxy runs the passability check and updates the spatial index;
-        // set_xpos / set_ypos alone leave the walker in the obmap at its
-        // construction-time origin and the simulator immediately relocates
-        // it back to (-1, -1) on the first act() pass.
+        // setxy moves the obmap entry and sets the position; it asks no
+        // passability. set_xpos / set_ypos alone leave the walker in the obmap
+        // at its construction-time origin and the simulator immediately
+        // relocates it back to (-1, -1) on the first act() pass. The
+        // spawn-room gate (test_scenario_spawn_room.cpp) checks every living
+        // spawn's ground.
         w->setxy(static_cast<short>(s.x), static_cast<short>(s.y));
         w->set_team_num(s.team);
         w->set_real_team_num(s.team);
