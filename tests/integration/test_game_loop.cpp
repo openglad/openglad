@@ -33,6 +33,7 @@
 #include <openglad/core/runtime_trace.h>
 #include <openglad/interface/replay_runtime.h>
 #include <openglad/interface/input_mappings.h>
+#include <openglad/interface/cheat_handler.h>
 #include <openglad/interface/ui/pause_menu.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/core/test_trace.h>
@@ -804,6 +805,54 @@ bool display_palette_is(const std::array<unsigned char, 768>& want)
     return std::equal(want.begin(), want.end(), shown.begin());
 }
 
+// The rotation do_cycle has given the band [first, first + n) of the shown
+// palette against `base`: the k with shown[first + i] == base[first + (i - k)
+// mod n] for every entry, or -1 when no rotation of `base` is shown.
+int shown_band_rotation(const std::array<unsigned char, 768>& base,
+                        int first, int n)
+{
+    const std::array<unsigned char, 768>& shown =
+        og::runtime::current_session->curpal_;
+    for (int k = 0; k < n; ++k)
+    {
+        bool match = true;
+        for (int i = 0; i < n && match; ++i)
+        {
+            const int from = first + ((i - k) % n + n) % n;
+            for (int c = 0; c < 3 && match; ++c)
+                match = shown[static_cast<std::size_t>((first + i) * 3 + c)] ==
+                    base[static_cast<std::size_t>(from * 3 + c)];
+        }
+        if (match)
+            return k;
+    }
+    return -1;
+}
+
+constexpr int kWaterFirst = WATER_START;
+constexpr int kWaterCount = WATER_END - WATER_START + 1;   // 16
+constexpr int kOrangeFirst = ORANGE_START;
+constexpr int kOrangeCount = ORANGE_END - ORANGE_START + 1; // 8
+
+// `base` as the display shows it while the colour cycle runs: every entry
+// outside the water and lava bands byte for byte, each band some rotation.
+bool display_shows_cycled(const std::array<unsigned char, 768>& base)
+{
+    const std::array<unsigned char, 768>& shown =
+        og::runtime::current_session->curpal_;
+    for (int e = 0; e < 256; ++e)
+    {
+        if (e >= kWaterFirst && e <= ORANGE_END)
+            continue;
+        for (int c = 0; c < 3; ++c)
+            if (shown[static_cast<std::size_t>(e * 3 + c)] !=
+                base[static_cast<std::size_t>(e * 3 + c)])
+                return false;
+    }
+    return shown_band_rotation(base, kWaterFirst, kWaterCount) >= 0 &&
+        shown_band_rotation(base, kOrangeFirst, kOrangeCount) >= 0;
+}
+
 void dispatch_display_palette(screen& display, std::uint32_t palette_id)
 {
     og::sim::SimEventBatch batch;
@@ -932,7 +981,10 @@ TEST(GameLoop, a_level_won_during_a_time_stop_leaves_with_its_own_colours)
                   static_cast<int>(game_frame_with_result(*display, st, deps)));
     ASSERT_EQ(1, static_cast<int>(display->world().current_palette_id))
         << "the frozen level keeps the display in the time stop";
-    ASSERT_TRUE(display_palette_is(display->bluepalette));
+    // The colour cycle turns the water and lava bands of the blue palette
+    // (#414), so only the rest of it is compared byte for byte here.
+    ASSERT_TRUE(display_shows_cycled(display->bluepalette));
+    ASSERT_FALSE(display_shows_cycled(display->ourpalette));
 
     // The last foes die while time is frozen.
     int killed = 0;
@@ -971,6 +1023,314 @@ TEST(GameLoop, a_level_won_during_a_time_stop_leaves_with_its_own_colours)
         << "the results screen must be drawn in the level's own colours";
     EXPECT_FALSE(trace_contains("endgame", "results screen palette 1"))
         << "the results screen must not be drawn in the time stop's colours";
+
+    display->world().end = 0;
+    og::runtime::clear_local_transport_shadow(session);
+    display->world().delete_objects();
+}
+
+namespace {
+// The F1 FREEZE TIME cheat (#413) and the water and lava cycle (#414), both
+// through the real loop: the display is a mirror the shadow re-syncs from the
+// server world every tick, so a cheat or a palette written on the display
+// alone lasts until the next snapshot.
+
+// The swatches of the two bands as the display shows them now: 16 water
+// then 8 lava, three bytes each.
+std::vector<unsigned char> shown_band_row()
+{
+    const std::array<unsigned char, 768>& shown =
+        og::runtime::current_session->curpal_;
+    std::vector<unsigned char> row;
+    for (int e = kWaterFirst; e <= ORANGE_END; ++e)
+        for (int c = 0; c < 3; ++c)
+            row.push_back(shown[static_cast<std::size_t>(e * 3 + c)]);
+    return row;
+}
+
+// When asked ($OG_FX_CAPTURE_DIR set), the band rows one tick per row as a
+// P6 picture, $OG_FX_CAPTURE_DIR/<scene>/strip.ppm: water that flows draws
+// a diagonal, water stuck at one step two alternating rows. The palette
+// holds 6-bit colours (0..63), scaled up for the picture.
+void dump_band_strip(const char* scene,
+                     const std::vector<std::vector<unsigned char>>& rows)
+{
+    if (std::getenv("OG_FX_CAPTURE_DIR") == nullptr || rows.empty())
+        return;
+    constexpr int kSwatch = 12;
+    const int swatches = static_cast<int>(rows.front().size() / 3);
+    char dir[512];
+    live_game::dump_dir_for(scene, dir, sizeof(dir));
+    const std::string path = std::string(dir) + "/strip.ppm";
+    FILE* fp = std::fopen(path.c_str(), "wb");
+    ASSERT_NE(nullptr, fp);
+    std::fprintf(fp, "P6\n%d %d\n255\n", swatches * kSwatch,
+                 static_cast<int>(rows.size()) * kSwatch);
+    for (const std::vector<unsigned char>& row : rows)
+        for (int y = 0; y < kSwatch; ++y)
+            for (int s = 0; s < swatches; ++s)
+                for (int x = 0; x < kSwatch; ++x)
+                    for (int c = 0; c < 3; ++c)
+                        std::fputc(std::min(255, row[static_cast<std::size_t>(s * 3 + c)] * 4), fp);
+    std::fclose(fp);
+}
+
+// Press F5+F1 on view 0's seat the way viewscreen::input hands the key to
+// the cheat handler.
+void press_freeze_time_cheat(screen& display)
+{
+    viewscreen* const view = display.viewob[0].get();
+    ASSERT_NE(nullptr, view);
+    walker* control = view->control;
+    ASSERT_NE(nullptr, control);
+    SDL_Event ev{};
+    ev.type = SDL_EVENT_KEY_DOWN;
+    ev.key.key = SDLK_F1;
+    PlayerInput pi;
+    pi.held[static_cast<int>(InputAction::Cheat)] = true;
+    handle_cheat_keys(control, 0, ev, pi, &display);
+}
+
+// Puts the colour cycle setting back on the way out.
+struct CycleModeGuard
+{
+    short& mode;
+    short saved;
+    explicit CycleModeGuard(short& m) : mode(m), saved(m) {}
+    ~CycleModeGuard() { mode = saved; }
+    CycleModeGuard(const CycleModeGuard&) = delete;
+    CycleModeGuard& operator=(const CycleModeGuard&) = delete;
+};
+} // namespace
+
+// F5+F1 in local play: enemies stand still for 50 ticks, the screen is blue,
+// and the thaw is FREEZE TIME's own.
+TEST(GameLoop, the_freeze_time_cheat_freezes_the_level_and_stays_blue)
+{
+    screen* const display = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(display != nullptr);
+    FreezePaletteGuard guard;
+    CycleModeGuard cycle(display->cyclemode);
+    write_one_soldier_company(*display);
+
+    glad_init();
+    ASSERT_TRUE(og::runtime::current_game_session != nullptr);
+    og::runtime::GameSession& session = *og::runtime::current_game_session;
+    ASSERT_TRUE(og::runtime::local_transport_active(session));
+    screen* const server =
+        og::runtime::local_transport_shadow_testing_server_screen(session);
+    ASSERT_NE(nullptr, server);
+    // The cycle off: the palette compares below are against whole palettes.
+    display->cyclemode = 0;
+
+    GameLoopFrameState st;
+    const GameLoopDeps deps = headless_frame_deps();
+    for (int i = 0; i < 4; ++i)
+        ASSERT_EQ(static_cast<int>(GameFrameResult::Continue),
+                  static_cast<int>(game_frame_with_result(*display, st, deps)));
+    ASSERT_EQ(0, server->world().enemy_freeze);
+    ASSERT_TRUE(display_palette_is(display->ourpalette));
+
+    press_freeze_time_cheat(*display);
+    EXPECT_TRUE(display_palette_is(display->bluepalette))
+        << "the cheat shows the blue at once";
+
+    ASSERT_EQ(static_cast<int>(GameFrameResult::Continue),
+              static_cast<int>(game_frame_with_result(*display, st, deps)));
+    EXPECT_EQ(49, server->world().enemy_freeze)
+        << "the cheat must freeze the level (the server world), 50 ticks less "
+           "the one just played";
+    EXPECT_EQ(49, display->world().enemy_freeze)
+        << "the display shows the server's countdown";
+    EXPECT_EQ(1, static_cast<int>(display->world().current_palette_id));
+    EXPECT_TRUE(display_palette_is(display->bluepalette))
+        << "the blue must outlast the next snapshot";
+
+    int frames = 0;
+    while (server->world().enemy_freeze > 0 && frames < 60)
+    {
+        ASSERT_EQ(static_cast<int>(GameFrameResult::Continue),
+                  static_cast<int>(game_frame_with_result(*display, st, deps)));
+        ++frames;
+        // The thaw gives the colours back on the last frozen tick
+        // (GameWorld: enemy_freeze == 1 sets palette 0), as for the cast.
+        if (server->world().enemy_freeze > 1)
+        {
+            ASSERT_TRUE(display_palette_is(display->bluepalette))
+                << "the blue holds while time is frozen (frame " << frames
+                << ", " << server->world().enemy_freeze << " ticks left)";
+        }
+    }
+    EXPECT_EQ(49, frames) << "the freeze lasts its 50 ticks";
+    EXPECT_EQ(0, server->world().enemy_freeze);
+    EXPECT_EQ(0, static_cast<int>(display->world().current_palette_id))
+        << "the thaw gives the level its own colours back";
+    EXPECT_TRUE(display_palette_is(display->ourpalette));
+
+    og::runtime::clear_local_transport_shadow(session);
+    display->world().delete_objects();
+}
+
+// In a networked session the cheat does nothing: a host's cheat would change
+// every player's game, and a joiner has no server world to write.
+TEST(GameLoop, the_freeze_time_cheat_does_nothing_while_networked)
+{
+    screen* const display = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(display != nullptr);
+    FreezePaletteGuard guard;
+    CycleModeGuard cycle(display->cyclemode);
+    write_one_soldier_company(*display);
+
+    glad_init();
+    ASSERT_TRUE(og::runtime::current_game_session != nullptr);
+    og::runtime::GameSession& session = *og::runtime::current_game_session;
+    ASSERT_TRUE(og::runtime::local_transport_active(session));
+    screen* const server =
+        og::runtime::local_transport_shadow_testing_server_screen(session);
+    ASSERT_NE(nullptr, server);
+    display->cyclemode = 0;
+
+    GameLoopFrameState st;
+    const GameLoopDeps deps = headless_frame_deps();
+    for (int i = 0; i < 4; ++i)
+        ASSERT_EQ(static_cast<int>(GameFrameResult::Continue),
+                  static_cast<int>(game_frame_with_result(*display, st, deps)));
+
+    session.networked_session_ = true;
+    press_freeze_time_cheat(*display);
+    session.networked_session_ = false;
+
+    EXPECT_EQ(0, server->world().enemy_freeze)
+        << "a networked cheat must not reach the shared game";
+    EXPECT_EQ(0, display->world().enemy_freeze)
+        << "nor the display's copy of it";
+    EXPECT_EQ(0, static_cast<int>(display->world().current_palette_id));
+    EXPECT_TRUE(display_palette_is(display->ourpalette))
+        << "a cheat that froze nothing must not turn the screen blue";
+
+    og::runtime::clear_local_transport_shadow(session);
+    display->world().delete_objects();
+}
+
+// The water and lava bands turn one step every third tick (do_cycle, after
+// the snapshot in the same tick) and keep turning: a snapshot that re-sends
+// the palette id it already showed must not put them back to step 0.
+TEST(GameLoop, water_and_lava_keep_cycling_across_snapshots)
+{
+    screen* const display = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(display != nullptr);
+    FreezePaletteGuard guard;
+    CycleModeGuard cycle(display->cyclemode);
+    write_one_soldier_company(*display);
+
+    glad_init();
+    ASSERT_TRUE(og::runtime::current_game_session != nullptr);
+    og::runtime::GameSession& session = *og::runtime::current_game_session;
+    ASSERT_TRUE(og::runtime::local_transport_active(session));
+    screen* const server =
+        og::runtime::local_transport_shadow_testing_server_screen(session);
+    ASSERT_NE(nullptr, server);
+    display->cyclemode = 1;
+
+    GameLoopFrameState st;
+    const GameLoopDeps deps = headless_frame_deps();
+
+    // Plays `frames` ticks from cycle step 0 and checks after each that the
+    // bands have turned exactly as often as do_cycle ran: step s after frame
+    // f is (f - 1) / 3 + 1; the water band has 16 entries, the lava 8.
+    const auto play_and_check = [&](const std::array<unsigned char, 768>& base,
+                                    const char* what, int frames,
+                                    const char* scene) {
+        st.currentcycle = 0;
+        std::vector<std::vector<unsigned char>> rows;
+        std::vector<int> water_steps;
+        std::vector<int> orange_steps;
+        std::vector<int> want_water;
+        std::vector<int> want_orange;
+        for (int f = 1; f <= frames; ++f)
+        {
+            ASSERT_EQ(static_cast<int>(GameFrameResult::Continue),
+                      static_cast<int>(
+                          game_frame_with_result(*display, st, deps)));
+            ASSERT_EQ(f, static_cast<int>(st.currentcycle))
+                << "one tick, one cycle call per frame";
+            const int s = (f - 1) / 3 + 1;
+            want_water.push_back(s % kWaterCount);
+            want_orange.push_back(s % kOrangeCount);
+            water_steps.push_back(
+                shown_band_rotation(base, kWaterFirst, kWaterCount));
+            orange_steps.push_back(
+                shown_band_rotation(base, kOrangeFirst, kOrangeCount));
+            rows.push_back(shown_band_row());
+        }
+        EXPECT_EQ(want_water, water_steps)
+            << what << ": the water band's step after each frame";
+        EXPECT_EQ(want_orange, orange_steps)
+            << what << ": the lava band's step after each frame";
+        dump_band_strip(scene, rows);
+    };
+
+    // The level's own colours.
+    play_and_check(display->ourpalette, "the level's colours", 24,
+                   "water_lava_cycle");
+
+    // A time stop on the server, as FREEZE TIME casts it: the bands turn the
+    // same in the blue palette.
+    server->world().enemy_freeze = 200;
+    server->world().current_palette_id = 1;
+    play_and_check(display->bluepalette, "a time stop", 12,
+                   "water_lava_cycle_frozen");
+    ASSERT_EQ(1, static_cast<int>(display->world().current_palette_id));
+
+    // Any other palette write (BRIGHTNESS sets the palette from scratch)
+    // leaves the screen in a palette the next snapshot does not know it
+    // shows: the next snapshot paints the time stop's again. Cycle step 1 of
+    // 3 is not a turning step, so the bands sit at step 0.
+    set_palette(display->ourpalette);
+    st.currentcycle = 1;
+    ASSERT_EQ(static_cast<int>(GameFrameResult::Continue),
+              static_cast<int>(game_frame_with_result(*display, st, deps)));
+    EXPECT_TRUE(display_palette_is(display->bluepalette))
+        << "the next snapshot must paint the time stop over another writer's "
+           "palette";
+
+    og::runtime::clear_local_transport_shadow(session);
+    display->world().delete_objects();
+}
+
+// The cycle turns the bands of the shown palette in place, so a mission that
+// ends in its own colours must still set them back: the menus after it are
+// drawn in the palette as loaded, not at whatever step the water stopped.
+TEST(GameLoop, a_mission_ends_with_the_water_and_lava_bands_set_back)
+{
+    screen* const display = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(display != nullptr);
+    FreezePaletteGuard guard;
+    CycleModeGuard cycle(display->cyclemode);
+    write_one_soldier_company(*display);
+
+    glad_init();
+    ASSERT_TRUE(og::runtime::current_game_session != nullptr);
+    og::runtime::GameSession& session = *og::runtime::current_game_session;
+    ASSERT_TRUE(og::runtime::local_transport_active(session));
+    display->cyclemode = 1;
+
+    GameLoopFrameState st;
+    const GameLoopDeps deps = headless_frame_deps();
+    for (int i = 0; i < 4; ++i)
+        ASSERT_EQ(static_cast<int>(GameFrameResult::Continue),
+                  static_cast<int>(game_frame_with_result(*display, st, deps)));
+    ASSERT_EQ(0, static_cast<int>(display->world().current_palette_id));
+    ASSERT_EQ(2, shown_band_rotation(display->ourpalette, kWaterFirst,
+                                     kWaterCount))
+        << "four ticks turn the water twice";
+
+    display->world().end = 1;
+    EXPECT_EQ(static_cast<int>(GameFrameResult::Done),
+              static_cast<int>(game_frame_with_result(*display, st, deps)));
+    EXPECT_TRUE(st.done);
+    EXPECT_TRUE(display_palette_is(display->ourpalette))
+        << "the mission must leave the bands as the palette was loaded";
 
     display->world().end = 0;
     og::runtime::clear_local_transport_shadow(session);
