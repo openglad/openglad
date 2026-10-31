@@ -58,6 +58,7 @@
 #include "test_click_ladder.h"
 #include "test_company_cleanup.h"
 #include "test_escape_tail.h"
+#include "test_fake_kicked_join_client.h"
 #include "test_fake_lobby_client.h"
 #include "test_frame_capture.h"
 #include "test_input_helpers.h"
@@ -67,6 +68,7 @@
 #include <SDL3/SDL.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cstring>
 #include <array>
 #include <atomic>
@@ -79,12 +81,21 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <vector>
 
 void picker_main(Sint32 argc, char** argv);
 Sint32 create_train_menu(Sint32 arg1);
 Sint32 create_hire_menu(Sint32 arg1);
+Sint32 create_team_menu(Sint32 arg1);
 void level_editor_testing_prompt_force_real(bool enabled);
+void picker_testing_set_force_real_dialogs(bool enabled);
+bool handle_menu_nav(button* buttons, int& highlighted_button,
+                     Sint32& retvalue, bool use_global_vbuttons);
+// The owning slot the per-frame kicked check swaps through
+// (tests/coverage_internal/picker_sdl_client_factory.inc).
+void picker_testing_set_lobby_client_owner(
+    std::unique_ptr<og::ui::IPickerLobbyClient>* owner);
 short new_score_panel(screen* scr, short do_it); // score_panel.cpp, the HUD
 extern int g_picker_mainmenu_calls;
 extern int g_picker_max_mainmenu_calls;
@@ -2981,6 +2992,283 @@ TEST(AbilitiesFlow, a_rename_survives_the_lobbys_roster_rebuild)
         << "the typed name reached the rebuilt roster";
     ASSERT_NE(nullptr, test_screen()->save_data.team_list[0].get());
     EXPECT_EQ("ZZ", test_screen()->save_data.team_list[0]->name);
+}
+
+// --- #416: the kick popup gives the screen its buttons back ----------------
+//
+// A joiner kicked while a Team Build screen is up gets the KICKED BY HOST
+// popup from the screen's own frame top. The popup publishes its OK over
+// the screen's live buttons; when it closes the screen must have its own
+// controls again, not the popup's OK. The popups run for real here
+// (picker_testing_set_force_real_dialogs).
+
+namespace
+{
+
+// The fake kicked joiner, owned through the picker's owning slot so the
+// per-frame check may swap it for a local client; real dialogs; the active
+// company the screens autosave into.
+struct KickScope {
+    og::ui::IPickerLobbyClient* saved_client =
+        og::ui::active_picker_lobby_client();
+    og::data::ScopedActiveCompany company{"save0"};
+    std::atomic<bool> kicked{false};
+    std::unique_ptr<og::ui::IPickerLobbyClient> owned =
+        std::make_unique<FakeKickedJoinClient>(&kicked);
+
+    KickScope()
+    {
+        og::ui::install_active_picker_lobby_client(owned.get());
+        picker_testing_set_lobby_client_owner(&owned);
+        picker_testing_set_force_real_dialogs(true);
+        trace_clear();
+    }
+    ~KickScope()
+    {
+        picker_testing_set_force_real_dialogs(false);
+        picker_testing_set_lobby_client_owner(nullptr);
+        og::ui::install_active_picker_lobby_client(saved_client);
+        owned.reset();
+        g_start_game_requested = false;
+        pks().selected_menu_item = nullptr;
+        pks().menu_spec_clicked_row = -1;
+        clear_allbuttons();
+        og::runtime::current_session->localbuttons_ = nullptr;
+    }
+    KickScope(const KickScope&) = delete;
+    KickScope& operator=(const KickScope&) = delete;
+};
+
+// Every screen the kick flows can be left in, the ghost OK last: on a tree
+// where the popup keeps the screen's buttons, nothing else is published
+// and the tail needs it to get out.
+constexpr EscapeDoor kKickDoors[] = {
+    {"promote", "back"},
+    {"inc_str", "back"},
+    {"go", "back"},
+    {"ok", "ok"},
+};
+
+bool listed(const char* id)
+{
+    const std::vector<std::string> ids = get_button_ids();
+    return std::find(ids.begin(), ids.end(), id) != ids.end();
+}
+
+struct KickState {
+    std::atomic<bool> test_finished{false};
+    std::atomic<bool>* kicked = nullptr;
+    const char* screen_id = nullptr;     // the screen is up
+    bool open_details = false;           // kick inside DETAILS
+    std::vector<const char*> expected;   // its controls after the popup
+    const char* door = nullptr;          // one real click after it
+    const char* door_edge = nullptr;     // what that click opens
+    // The screen's own button table, for a tree where the popup leaves the
+    // screen dead (see kick_injector); nullptr when its tail can get out.
+    button* (*rescue_buttons)() = nullptr;
+    int (*rescue_count)() = nullptr;
+    bool screen_up = false;
+    bool popup_up = false;
+    bool popup_closed = false;
+    std::vector<std::string> missing;    // expected ids not published
+    bool ok_left = true;                 // the popup's OK still published
+    bool door_worked = false;
+};
+
+int kick_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* const state = static_cast<KickState*>(data);
+    const auto escape = [state](int leg, const char* why) {
+        return escape_to_the_main_thread(state->test_finished, leg, why,
+                                         kKickDoors);
+    };
+    if (!wait_for_interactable(state->screen_id, 10000))
+        return escape(1, "the screen never came up");
+    (void)wait_for_menu_frames(2);
+    if (state->open_details && !click_until_edge("details", details_page_up))
+        return escape(2, "DETAILS.. never opened the page");
+    state->screen_up = true;
+
+    // The host kicks this machine: the screen's next frame top reverts to a
+    // local client and opens KICKED BY HOST.
+    state->kicked->store(true);
+    state->popup_up = wait_for_interactable("ok", 10000);
+    if (!state->popup_up)
+        return escape(3, "the kick never opened its popup");
+    // OK, until the popup has closed. The popup pumps no main-thread task
+    // and the screen under it does (an engine frame top, DETAILS' loop), so
+    // a task that runs is the witness that the press landed; a task that
+    // did not run says the popup is still up, and only then is OK pressed
+    // again. (Not click_until_edge: its pre-press reset is a main-thread
+    // task too, which the popup would sit on for the whole ceiling.)
+    for (int attempt = 0; attempt < 3 && !state->popup_closed; ++attempt) {
+        (void)interact("ok");
+        state->popup_closed = run_on_main_thread([] {}, 2500);
+    }
+    if (!state->popup_closed)
+        return escape(4, "OK never closed the popup");
+    // One more turn of the screen's loop after the close.
+    (void)run_on_main_thread([] {});
+    for (const char* id : state->expected)
+        if (!has_interactable(id))
+            state->missing.emplace_back(id);
+    state->ok_left = listed("ok");
+    // Where the popup kept the screen's buttons, Base Camp is left with the
+    // ghost OK alone, wired to a row that never rebuilds the set: nothing
+    // the tail can press gets out. Put the screen's own table back from its
+    // thread, so such a tree ends red instead of spinning.
+    if (!state->missing.empty() && state->rescue_buttons != nullptr)
+        (void)run_on_main_thread([state] {
+            og::runtime::current_session->localbuttons_ = init_buttons(
+                state->rescue_buttons(), state->rescue_count());
+        });
+
+    // The screen takes input again: one real click on its own control.
+    const char* const edge = state->door_edge;
+    state->door_worked = click_until_edge(state->door, [edge](int ms) {
+        if (std::string_view(edge) == "promote")
+            return details_page_up(ms);
+        return wait_for_interactable(edge, ms);
+    });
+    return escape(0, "");
+}
+
+void run_kick(KickState& state, Sint32 (*screen_fn)(Sint32),
+              int& thread_result)
+{
+    SDL_Thread* thread = SDL_CreateThread(kick_injector, "kick", &state);
+    EXPECT_NE(nullptr, thread);
+    if (thread == nullptr)
+        return;
+    (void)screen_fn(0);
+    state.test_finished.store(true);
+    SDL_WaitThread(thread, &thread_result);
+    escape_tail_join_hygiene();
+}
+
+void expect_buttons_handed_back(const KickState& state, int thread_result)
+{
+    EXPECT_EQ(0, thread_result) << "the injector gave up at leg "
+                                << thread_result;
+    ASSERT_TRUE(state.screen_up);
+    ASSERT_TRUE(state.popup_up);
+    ASSERT_TRUE(state.popup_closed);
+    EXPECT_TRUE(trace_contains("networking", "kicked by host"));
+    std::string missing;
+    for (const std::string& id : state.missing)
+        missing += id + " ";
+    EXPECT_EQ("", missing) << "controls not published after the popup";
+    EXPECT_FALSE(state.ok_left) << "the popup's OK outlived the popup";
+    EXPECT_TRUE(state.door_worked)
+        << "a click on the screen's own control did nothing";
+}
+
+} // namespace
+
+// The reporter's case: kicked on TRAIN, the popup's OK gives TRAIN its
+// stat pairs, RENAME, DETAILS and BACK back.
+TEST(AbilitiesFlow, a_kick_popup_hands_train_its_buttons_back)
+{
+    KickScope scope;
+    write_ability_company(12, 1, 4);
+
+    KickState state;
+    state.kicked = &scope.kicked;
+    state.screen_id = "inc_str";
+    state.expected = {"inc_str", "rename", "details", "back"};
+    state.door = "details";
+    state.door_edge = "promote";
+    int thread_result = 0;
+    run_kick(state, create_train_menu, thread_result);
+    expect_buttons_handed_back(state, thread_result);
+}
+
+// Kicked while TRAIN > DETAILS.. is up: the page keeps its PROMOTE and BACK,
+// and BACK returns to TRAIN.
+TEST(AbilitiesFlow, a_kick_popup_hands_details_its_buttons_back)
+{
+    KickScope scope;
+    write_ability_company(12, 1, 4);
+
+    KickState state;
+    state.kicked = &scope.kicked;
+    state.screen_id = "details";
+    state.open_details = true;
+    state.expected = {"promote", "back"};
+    state.door = "back";
+    state.door_edge = "inc_str";
+    int thread_result = 0;
+    run_kick(state, create_train_menu, thread_result);
+    expect_buttons_handed_back(state, thread_result);
+}
+
+// Kicked on Base Camp: GO and the roster rows come back, and a row opens
+// TRAIN.
+TEST(AbilitiesFlow, a_kick_popup_hands_base_camp_its_buttons_back)
+{
+    KickScope scope;
+    write_ability_company(12, 1, 4);
+
+    KickState state;
+    state.kicked = &scope.kicked;
+    state.screen_id = "roster_row_0";
+    state.expected = {"go", "roster_row_0", "back"};
+    state.door = "roster_row_0";
+    state.door_edge = "inc_str";
+    state.rescue_buttons = &picker_createmenu_buttons;
+    state.rescue_count = &picker_createmenu_button_count;
+    int thread_result = 0;
+    run_kick(state, create_team_menu, thread_result);
+    expect_buttons_handed_back(state, thread_result);
+}
+
+// Keyboard FIRE with the highlight on a slot nothing is published in (the
+// set a dialog left behind it, #416) presses nothing and does not crash.
+TEST(KickPopup, fire_on_an_unpublished_highlight_presses_nothing)
+{
+    disablePlayerJoystick(0);
+    int& fire_key =
+        og::runtime::current_session->player_keys_[0][KEY_FIRE];
+    const int saved_fire_key = fire_key;
+    fire_key = SDLK_SPACE;
+    int numkeys = 0;
+    bool* const keys = const_cast<bool*>(SDL_GetKeyboardState(&numkeys));
+    ASSERT_NE(nullptr, keys);
+    const SDL_Scancode space = SDL_GetScancodeFromKey(SDLK_SPACE, nullptr);
+    ASSERT_LT(static_cast<int>(space), numkeys);
+
+    // Two rows, only the first one published.
+    button rows[] = {
+        button("b0", "A", KEYSTATE_UNKNOWN, 10, 10, 30, 10,
+               button_action_id(ButtonAction::ReturnMenu), 1234, MenuNav{},
+               false),
+        button("b1", "B", KEYSTATE_UNKNOWN, 10, 30, 30, 10,
+               button_action_id(ButtonAction::ReturnMenu), 5678, MenuNav{},
+               false),
+    };
+    ASSERT_NE(nullptr, init_buttons(rows, 1));
+    ASSERT_EQ(nullptr, og::runtime::current_session->allbuttons_[1]);
+    pks().menu_nav_enabled = true;
+    pks().menu_nav_enabled_time = og::input_native::ticks_ms();
+    int highlighted = 1;
+    Sint32 retvalue = 0;
+    keys[space] = true;
+    std::thread release([keys, space] {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        keys[space] = false;
+    });
+    const bool activated = handle_menu_nav(rows, highlighted, retvalue, true);
+    release.join();
+
+    EXPECT_TRUE(activated) << "the FIRE press was taken";
+    EXPECT_EQ(0, retvalue) << "no action ran for the unpublished row";
+    EXPECT_EQ(1, highlighted);
+    EXPECT_NE(nullptr, og::runtime::current_session->allbuttons_[0]);
+    clear_allbuttons();
+    og::runtime::current_session->localbuttons_ = nullptr;
+    pks().menu_nav_enabled = false;
+    fire_key = saved_fire_key;
 }
 
 // The longest core row, a level-1 Barbarian's locked "2 EXPLODING BOULDER
