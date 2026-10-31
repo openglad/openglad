@@ -38,6 +38,7 @@
 #include <openglad/interface/ability_icons.h>
 #include <openglad/interface/button.h>
 #include <openglad/interface/input.h>
+#include <openglad/interface/native_input.h>
 #include <openglad/interface/render/pal32.h>
 #include <openglad/interface/render/text.h>
 #include <openglad/interface/screen.h>
@@ -77,11 +78,13 @@
 #include <set>
 #include <span>
 #include <string>
+#include <string_view>
 #include <vector>
 
 void picker_main(Sint32 argc, char** argv);
 Sint32 create_train_menu(Sint32 arg1);
 Sint32 create_hire_menu(Sint32 arg1);
+void level_editor_testing_prompt_force_real(bool enabled);
 short new_score_panel(screen* scr, short do_it); // score_panel.cpp, the HUD
 extern int g_picker_mainmenu_calls;
 extern int g_picker_max_mainmenu_calls;
@@ -2622,6 +2625,362 @@ TEST(AbilitiesFlow, a_host_go_on_hire_abilities_starts_without_back)
     expect_details_left_on_the_go(state, scope.lobby, result);
     EXPECT_EQ(state.team_size_before, test_screen()->save_data.team_size)
         << "nobody was hired";
+}
+
+// --- #415: a host's GO while this machine types a name -------------------
+//
+// TRAIN > RENAME and HIRE ME open the blocking one-line editor
+// (text::input_string / input_string_ex), which is not engine-hosted: no
+// completed menu frames inside it, and its only observable is
+// og::input_native::text_input_is_active(). The host's GO must reach it the
+// way it reaches DETAILS (#400): the editor closes by itself, the screen
+// under it composes no frame, and the exit is the start of the game.
+
+namespace
+{
+
+// The editor is up (its text-input session is open), bounded by a poll.
+bool text_input_up(int ms)
+{
+    const Uint64 deadline = SDL_GetTicks() + static_cast<Uint64>(ms);
+    while (SDL_GetTicks() < deadline) {
+        if (og::input_native::text_input_is_active())
+            return true;
+        SDL_Delay(5);  // poll tick
+    }
+    return og::input_native::text_input_is_active();
+}
+
+// TRAIN's door table for a flow that may give up inside the editor: the
+// editor itself has no published door (its faces are drawn, never in
+// allbuttons), so the hold predicate closes it with Escape first; then
+// TRAIN's BACK, or HIRE's.
+constexpr EscapeDoor kPromptStartDoors[] = {
+    {"inc_str", "back"},
+    {"hire_me", "back"},
+    {"back", "back"},
+};
+
+struct PromptStartState {
+    std::atomic<bool> test_finished{false};
+    FakeLobbyClient* lobby = nullptr;
+    const char* door = nullptr;          // the row that opens the editor
+    bool editor_up = false;              // the editor opened
+    int slot = -1;                       // the hero RENAME names
+    std::string name_before;             // his name before the prompt
+    std::string recruit_name;            // HIRE's suggested name
+    int hire_slot = -1;                  // the slot a hire fills
+    int team_size_before = -1;
+    int armed_polls = -1;                // lobby polls when the GO came
+    int presses_before = -1;             // the tail's presses then
+    std::uint64_t frames_before = 0;     // engine frames then
+    bool held_bound_hit = false;         // the editor outlived the bound
+    bool escape_sent = false;            // the give-up closed the editor
+};
+
+int prompt_start_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* const state = static_cast<PromptStartState*>(data);
+    const auto escape = [state](int leg, const char* why) {
+        return escape_to_the_main_thread(
+            state->test_finished, leg, why, kPromptStartDoors, [] {
+                // Never press a screen's door while the editor is up: a
+                // click aimed at an allbuttons id would land under it.
+                if (!og::input_native::text_input_is_active())
+                    return false;
+                inject_key_press(SDLK_ESCAPE, 10);
+                return true;
+            });
+    };
+    if (!wait_for_interactable(state->door, 10000))
+        return escape(1, "the screen with the name door never came up");
+    (void)wait_for_menu_frames(2);
+    (void)run_on_main_thread([state] {
+        SaveData& save = og::runtime::current_session->myscreen_->save_data;
+        state->team_size_before = save.team_size;
+        state->slot = og::runtime::current_session->editguy_;
+        if (state->slot >= 0 && state->slot < MAX_TEAM_SIZE &&
+            save.team_list[static_cast<std::size_t>(state->slot)])
+            state->name_before =
+                save.team_list[static_cast<std::size_t>(state->slot)]->name;
+        if (og::runtime::current_session->current_guy_)
+            state->recruit_name =
+                og::runtime::current_session->current_guy_->name;
+        for (int i = 0; i < MAX_TEAM_SIZE; ++i) {
+            if (!save.team_list[static_cast<std::size_t>(i)]) {
+                state->hire_slot = i;
+                break;
+            }
+        }
+    });
+    state->editor_up = click_until_edge(state->door, text_input_up);
+    if (!state->editor_up)
+        return escape(2, "the door never opened the name editor");
+    // A half-typed name, no Return.
+    inject_text_input("ZZ");
+
+    // The host presses GO: the fake lobby starts the game on its next poll.
+    // The frame count is an atomic, read here directly (a main-thread read
+    // would wait on an editor that pumps nothing); the poll count is read
+    // last, right before the GO.
+    state->presses_before = g_escape_tail_presses.load();
+    state->frames_before = og::ui::menu_screen_testing_completed_frames();
+    state->armed_polls = state->lobby->poll_count.load();
+    state->lobby->start_on_next_poll.store(true);
+
+    // Press nothing while the GO has been polled fewer than the bound times;
+    // the editor and the screen under it must leave by themselves. The
+    // clock is only the dead-pump ceiling. Past the bound the editor is
+    // closed by its own door (Escape), once, and the tail takes over.
+    const Uint64 give_up = SDL_GetTicks() + kHeldTailCeilingMs;
+    return escape_to_the_main_thread(
+        state->test_finished, 0, "", kPromptStartDoors, [state, give_up] {
+            if (!state->held_bound_hit) {
+                if (state->lobby->poll_count.load() <
+                        state->armed_polls + kDetailsHeldPolls &&
+                    SDL_GetTicks() < give_up)
+                    return true;
+                state->held_bound_hit = true;
+            }
+            if (!og::input_native::text_input_is_active())
+                return false;
+            if (!state->escape_sent) {
+                state->escape_sent = true;
+                inject_key_press(SDLK_ESCAPE, 10);
+            }
+            return true;
+        });
+}
+
+Sint32 run_prompt_start(PromptStartState& state, Sint32 (*screen_fn)(Sint32),
+                        int& thread_result)
+{
+    SDL_Thread* thread =
+        SDL_CreateThread(prompt_start_injector, "prompt_start", &state);
+    EXPECT_NE(nullptr, thread);
+    if (thread == nullptr)
+        return 0;
+    const Sint32 result = screen_fn(0);
+    state.test_finished.store(true);
+    SDL_WaitThread(thread, &thread_result);
+    escape_tail_join_hygiene();
+    return result;
+}
+
+void expect_prompt_left_on_the_go(const PromptStartState& state,
+                                  const FakeLobbyClient& lobby, Sint32 result)
+{
+    EXPECT_EQ(MENU_EXIT, result) << "the host's GO propagates";
+    ASSERT_NE(nullptr, pks().selected_menu_item);
+    EXPECT_EQ(og::ui::PickerMenuCommand::StartGame,
+              pks().selected_menu_item->command)
+        << "the exit is the start of the game";
+    EXPECT_FALSE(state.held_bound_hit)
+        << "the name editor was still up " << kDetailsHeldPolls
+        << " polls (or the dead-pump ceiling) after the host's GO";
+    EXPECT_FALSE(state.escape_sent) << "nobody pressed Escape";
+    EXPECT_EQ(state.presses_before, g_escape_tail_presses.load())
+        << "the host's GO left the editor without a door";
+    EXPECT_LE(lobby.poll_count.load() - state.armed_polls, 2)
+        << "the editor leaves on the poll that brings the GO, or the next";
+    EXPECT_GE(lobby.poll_count.load() - state.armed_polls, 1)
+        << "the GO was polled";
+    EXPECT_EQ(state.frames_before,
+              og::ui::menu_screen_testing_completed_frames())
+        << "the screen under the editor composed no frame after the GO";
+    EXPECT_FALSE(og::input_native::text_input_is_active())
+        << "the editor closed its text-input session";
+    EXPECT_TRUE(trace_contains("prompt", "remote start"));
+}
+
+// Restores the editor's test seam: HIRE ME's prompt runs for real.
+struct ForceRealPrompt {
+    ForceRealPrompt() { level_editor_testing_prompt_force_real(true); }
+    ~ForceRealPrompt() { level_editor_testing_prompt_force_real(false); }
+    ForceRealPrompt(const ForceRealPrompt&) = delete;
+    ForceRealPrompt& operator=(const ForceRealPrompt&) = delete;
+};
+
+} // namespace
+
+// The reporter's case: a joiner typing a new name in TRAIN > RENAME when the
+// host presses GO starts with everyone, not when he next presses Return.
+// The half-typed name is dropped.
+TEST(AbilitiesFlow, a_host_go_while_renaming_starts_without_enter)
+{
+    trace_clear();
+    DirectRunScope scope;
+    write_ability_company(12, 1, 4);
+
+    PromptStartState state;
+    state.lobby = &scope.lobby;
+    state.door = "rename";
+    int thread_result = 0;
+    const Sint32 result =
+        run_prompt_start(state, create_train_menu, thread_result);
+
+    EXPECT_EQ(0, thread_result);
+    ASSERT_TRUE(state.editor_up) << "RENAME never opened the editor";
+    expect_prompt_left_on_the_go(state, scope.lobby, result);
+    ASSERT_GE(state.slot, 0);
+    ASSERT_NE(nullptr,
+              test_screen()->save_data.team_list[static_cast<std::size_t>(
+                  state.slot)].get());
+    EXPECT_EQ("MERLIN", state.name_before);
+    EXPECT_EQ(state.name_before,
+              test_screen()->save_data.team_list[static_cast<std::size_t>(
+                  state.slot)]->name)
+        << "the half-typed name is not written";
+}
+
+// The same from HIRE ME's name prompt: the hire stands with its suggested
+// name, as CANCEL leaves it.
+TEST(AbilitiesFlow, a_host_go_while_naming_a_hire_starts_and_keeps_the_hire)
+{
+    trace_clear();
+    DirectRunScope scope;
+    write_ability_company(12, 1, 4);
+    for (std::uint32_t& cash : test_screen()->save_data.m_totalcash)
+        cash = 100000;
+    ForceRealPrompt real_prompt;
+
+    PromptStartState state;
+    state.lobby = &scope.lobby;
+    state.door = "hire_me";
+    int thread_result = 0;
+    const Sint32 result =
+        run_prompt_start(state, create_hire_menu, thread_result);
+
+    EXPECT_EQ(0, thread_result);
+    ASSERT_TRUE(state.editor_up) << "HIRE ME never opened the name prompt";
+    expect_prompt_left_on_the_go(state, scope.lobby, result);
+    EXPECT_EQ(state.team_size_before + 1, test_screen()->save_data.team_size)
+        << "the hire stands";
+    ASSERT_GE(state.hire_slot, 0);
+    const auto& hired = test_screen()->save_data.team_list[
+        static_cast<std::size_t>(state.hire_slot)];
+    ASSERT_NE(nullptr, hired.get());
+    EXPECT_FALSE(state.recruit_name.empty());
+    EXPECT_EQ(state.recruit_name, hired->name)
+        << "the hire keeps its suggested name; the half-typed one is dropped";
+}
+
+// The local lobby rebuilds save.team_list on every poll
+// (picker_lobby_client.cpp, apply_state_to_save), so an editor that polls
+// frees the guy it is renaming. On the REAL local client: type a name, let
+// the editor poll at least twice, press Return; the name is on the slot and
+// survives TRAIN's next frame.
+namespace
+{
+
+struct RenameRebuildState {
+    std::atomic<bool> test_finished{false};
+    bool editor_up = false;
+    bool polled_while_editing = false;   // the editor yielded (and polled)
+    bool editor_closed = false;
+    bool train_framed = false;
+    std::string name_after;              // team_list[0] after a TRAIN frame
+};
+
+constexpr EscapeDoor kRenameRebuildDoors[] = {
+    {"inc_str", "back"},
+};
+
+int rename_rebuild_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* const state = static_cast<RenameRebuildState*>(data);
+    const auto escape = [state](int leg, const char* why) {
+        return escape_to_the_main_thread(
+            state->test_finished, leg, why, kRenameRebuildDoors, [] {
+                if (!og::input_native::text_input_is_active())
+                    return false;
+                inject_key_press(SDLK_ESCAPE, 10);
+                return true;
+            });
+    };
+    if (!wait_for_interactable("rename", 10000))
+        return escape(1, "TRAIN never came up");
+    (void)wait_for_menu_frames(2);
+    state->editor_up = click_until_edge("rename", text_input_up);
+    if (!state->editor_up)
+        return escape(2, "RENAME never opened the editor");
+    inject_text_input("ZZ");
+    // Each pass of a hooked editor polls the lobby, then yields: three
+    // yields past this point are at least two polls of the rebuilding
+    // client while the editor holds the name.
+    const unsigned long yields = og::input_native::yield_count();
+    const Uint64 ceiling = SDL_GetTicks() + 5000;
+    while (og::input_native::yield_count() < yields + 3 &&
+           SDL_GetTicks() < ceiling)
+        SDL_Delay(5);  // poll tick
+    state->polled_while_editing = og::input_native::yield_count() >= yields + 3;
+    inject_key_press(SDLK_RETURN, 10);
+    const Uint64 close_ceiling = SDL_GetTicks() + 5000;
+    while (og::input_native::text_input_is_active() &&
+           SDL_GetTicks() < close_ceiling)
+        SDL_Delay(5);  // poll tick
+    state->editor_closed = !og::input_native::text_input_is_active();
+    if (!state->editor_closed)
+        return escape(3, "Return never closed the editor");
+    // One TRAIN frame: its picker_lobby_poll rebuilds the roster again.
+    state->train_framed = wait_for_menu_frames(1);
+    (void)run_on_main_thread([state] {
+        const auto& member =
+            og::runtime::current_session->myscreen_->save_data.team_list[0];
+        state->name_after = member ? member->name : "<empty slot>";
+    });
+    return escape(0, "");
+}
+
+} // namespace
+
+TEST(AbilitiesFlow, a_rename_survives_the_lobbys_roster_rebuild)
+{
+    trace_clear();
+    og::data::ScopedActiveCompany company{"save0"};
+    ASSERT_TRUE(company.applied());
+    write_ability_company(12, 1, 4);
+    og::ui::IPickerLobbyClient* const saved_client =
+        og::ui::active_picker_lobby_client();
+    std::unique_ptr<og::ui::IPickerLobbyClient> local =
+        og::ui::create_local_picker_lobby_client();
+    og::ui::install_active_picker_lobby_client(local.get());
+    local->initialize_from_save();
+    struct Restore {
+        og::ui::IPickerLobbyClient* saved;
+        std::unique_ptr<og::ui::IPickerLobbyClient>& local;
+        ~Restore()
+        {
+            og::ui::install_active_picker_lobby_client(saved);
+            local.reset();
+            clear_allbuttons();
+            og::runtime::current_session->localbuttons_ = nullptr;
+        }
+    } restore{saved_client, local};
+
+    RenameRebuildState state;
+    SDL_Thread* thread =
+        SDL_CreateThread(rename_rebuild_injector, "rename_rebuild", &state);
+    ASSERT_NE(nullptr, thread);
+    (void)create_train_menu(0);
+    state.test_finished.store(true);
+    int thread_result = 0;
+    SDL_WaitThread(thread, &thread_result);
+    escape_tail_join_hygiene();
+
+    EXPECT_EQ(0, thread_result) << "the injector gave up at leg "
+                                << thread_result;
+    ASSERT_TRUE(state.editor_up);
+    EXPECT_TRUE(state.polled_while_editing)
+        << "the editor polled the lobby while the name was being typed";
+    EXPECT_TRUE(state.editor_closed);
+    EXPECT_TRUE(state.train_framed);
+    EXPECT_EQ("ZZ", state.name_after)
+        << "the typed name reached the rebuilt roster";
+    ASSERT_NE(nullptr, test_screen()->save_data.team_list[0].get());
+    EXPECT_EQ("ZZ", test_screen()->save_data.team_list[0]->name);
 }
 
 // The longest core row, a level-1 Barbarian's locked "2 EXPLODING BOULDER

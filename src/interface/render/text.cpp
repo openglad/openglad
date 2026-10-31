@@ -22,6 +22,7 @@
 #include <openglad/interface/input.h>
 #include <openglad/interface/native_input.h>
 #include <openglad/interface/base.h>
+#include <openglad/core/test_trace.h>
 #include <array>
 #include <cstdarg>
 #include <cstring>
@@ -567,9 +568,30 @@ struct LineEditor
 } // namespace
 
 // This version passes DARK_BLUE and a grey color as defaults ..
-char * text::input_string(Sint32 x, Sint32 y, short maxlength, const char *begin)
+char * text::input_string(Sint32 x, Sint32 y, short maxlength, const char *begin,
+                          bool (*poll)())
 {
-	return input_string(x, y, maxlength, begin, DARK_BLUE, 13);
+	return input_string(x, y, maxlength, begin, DARK_BLUE, 13, poll);
+}
+
+// One pass of a prompt's wait: blocking (the 2002 shape) with no hook; with
+// one, the hook's answer, a poll and a yield. false: cancel the prompt.
+static bool prompt_wait_pass(bool (*poll)())
+{
+	if (poll == nullptr)
+	{
+		get_input_events(WAIT);
+		return true;
+	}
+	if (!poll())
+	{
+		TRACE("prompt", "remote start");
+		return false;
+	}
+	get_input_events(POLL);
+	// The one yield per lap every modal owes (menu_screen_runner.cpp).
+	og::input_native::sleep_ms(10);
+	return true;
 }
 
 // Input_string reads a string from the keyboard, displaying it
@@ -578,7 +600,8 @@ char * text::input_string(Sint32 x, Sint32 y, short maxlength, const char *begin
 // entered at the start.  Fore- and backcolor are used for the
 // text foreground and background color
 char * text::input_string(Sint32 x, Sint32 y, short maxlength, const char *begin,
-                          unsigned char forecolor, unsigned char backcolor)
+                          unsigned char forecolor, unsigned char backcolor,
+                          bool (*poll)())
 {
 	LineEditor edit(*this, x, y, maxlength, begin);
 	maxlength = edit.maxlength;
@@ -601,8 +624,16 @@ char * text::input_string(Sint32 x, Sint32 y, short maxlength, const char *begin
 	{
 		// Wait for a key to be pressed ..
 		while (!query_key_press_event() && !query_text_input_event())
+		{
 			//dumbcount++;
-			get_input_events(WAIT);
+			if (!prompt_wait_pass(poll))
+			{
+				edit.cancel();
+				break;
+			}
+		}
+		if (edit.done)
+			break;
         
         edit.step();
 
@@ -624,17 +655,19 @@ char * text::input_string(Sint32 x, Sint32 y, short maxlength, const char *begin
 
 }
 
-std::optional<std::string> text::input_string_value(Sint32 x, Sint32 y, short maxlength, const char* begin)
+std::optional<std::string> text::input_string_value(Sint32 x, Sint32 y, short maxlength, const char* begin,
+                                                    bool (*poll)())
 {
-    char* value = input_string(x, y, maxlength, begin);
+    char* value = input_string(x, y, maxlength, begin, poll);
     if (value == nullptr)
         return std::nullopt;
     return std::string(value);
 }
 
-std::optional<std::string> text::input_string_ex_value(Sint32 x, Sint32 y, short maxlength, const char* message, const char* begin)
+std::optional<std::string> text::input_string_ex_value(Sint32 x, Sint32 y, short maxlength, const char* message, const char* begin,
+                                                       bool (*poll)())
 {
-    char* value = input_string_ex(x, y, maxlength, message, begin);
+    char* value = input_string_ex(x, y, maxlength, message, begin, poll);
     if (value == nullptr)
         return std::nullopt;
     return std::string(value);
@@ -642,13 +675,15 @@ std::optional<std::string> text::input_string_ex_value(Sint32 x, Sint32 y, short
 
 
 // This version passes DARK_BLUE and a grey color as defaults ..
-char * text::input_string_ex(Sint32 x, Sint32 y, short maxlength, const char* message, const char *begin)
+char * text::input_string_ex(Sint32 x, Sint32 y, short maxlength, const char* message, const char *begin,
+                             bool (*poll)())
 {
-	return input_string_ex(x, y, maxlength, message, begin, DARK_BLUE, 13);
+	return input_string_ex(x, y, maxlength, message, begin, DARK_BLUE, 13, poll);
 }
 
 char * text::input_string_ex(Sint32 x, Sint32 y, short maxlength, const char* message, const char *begin,
-                          unsigned char forecolor, unsigned char backcolor)
+                          unsigned char forecolor, unsigned char backcolor,
+                          bool (*poll)())
 {
 	sync_geometry();
 	LineEditor edit(*this, x, y, maxlength, begin);
@@ -725,8 +760,16 @@ char * text::input_string_ex(Sint32 x, Sint32 y, short maxlength, const char* me
 		// Wait for a key to be pressed ..
 		while (!query_key_press_event() && !query_text_input_event() &&
 		       !prompt_mouse.left && hover_action() == rendered_hover)
+		{
 			//dumbcount++;
-			get_input_events(WAIT);
+			if (!prompt_wait_pass(poll))
+			{
+				edit.cancel();
+				break;
+			}
+		}
+		if (edit.done)
+			break;
         
         edit.step();
 

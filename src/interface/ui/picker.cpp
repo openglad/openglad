@@ -2732,8 +2732,15 @@ static void draw_remap_prompt(const std::string& prompt, int player_index)
 // still receive an accepted host GO while waiting for the next key. Returning
 // false cancels the prompt sequence; the enclosing engine screen then sees
 // the same remote-start flag at its next loop-top check and unwinds normally.
-static bool poll_lobby_during_control_remap()
+// The same hook keeps TRAIN > RENAME's and HIRE ME's name editors live
+// (#415). It pumps the main-thread task queue first (null outside tests, as
+// DETAILS' loop does), and it never runs the kick revert
+// (team_build_remote_start_requested): that opens a modal, which must not
+// open inside a prompt; a kick stays latched until the screen's next frame.
+bool picker_lobby_poll_keep_waiting()
 {
+    if (og::ui::g_picker_main_thread_pump != nullptr)
+        og::ui::g_picker_main_thread_pump();
     picker_lobby_poll();
     return !g_start_game_requested ||
         !picker_lobby_has_game_start_config();
@@ -2881,7 +2888,7 @@ static bool rebind_one_player_key(int player_index, int key_enum,
 bool rebind_player_key(int player_index, int key_enum)
 {
     return rebind_one_player_key(player_index, key_enum,
-                                 &poll_lobby_during_control_remap);
+                                 &picker_lobby_poll_keep_waiting);
 }
 
 bool rebind_player_key_with_poll(int player_index, int key_enum,
@@ -2918,7 +2925,7 @@ Sint32 toggle_player_control_mode(Sint32 arg)
 Sint32 edit_player_keymap(Sint32 arg)
 {
     remap_player_keys(static_cast<int>(arg),
-                      &poll_lobby_during_control_remap);
+                      &picker_lobby_poll_keep_waiting);
     return MENU_REDRAW;
 }
 
