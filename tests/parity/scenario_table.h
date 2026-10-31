@@ -10380,7 +10380,7 @@ inline constexpr FactPredicate kFacts_soldier_bot_charge_door_fixes_scen99[] = {
         "consequence: with the setting on the gate walks the rush's path, meets the door before the tower and refuses the charge: no charge sound in the budget"),
 };
 inline constexpr Mutation kMut_soldier_bot_charge_door_fixes_scen99 = {
-    "packs/core/lib/gates.lua", 505,
+    "packs/core/lib/gates.lua", 491,
     "if not og.quiet_passable(ax - 1, ay - 1, self) then",
     "if false then",
     "Drops the path test, so the rush's steps run through the door to the tower and the bot charges at tick 6 as the classic one does: EventKindExactly(play_sound, 3) reads 4."

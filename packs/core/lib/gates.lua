@@ -12,9 +12,9 @@
 --   2. A family whose classic gate acquires a foe (ai.foe_within,
 --      ai.foe_in_window) calls it FIRST through G.with_classic, on both
 --      values of the setting, and tests after.
---   3. The engine draws the Shift coin before the hook (living.cpp:584); a
---      gate that chooses an arm writes it AFTER, with set_shifter_down, and
---      only an arm the bot can pay (G.can_pay): the engine does not re-check.
+--   3. The engine draws the Shift coin before the hook (living.cpp:596); a gate that chooses an arm writes it
+--      AFTER, with set_shifter_down, and only an arm the bot can pay (G.can_pay): the engine does not re-check on
+--      the act path; with the setting on it holds a yes the bot cannot pay (fix AB), so G.can_pay is how a gate picks a payable arm, not the only guard.
 --   4. No og.tuning here: a gate runs on every fifth act tick and on every
 --      hit, and a tuning read there costs instructions (lib/ai.lua). The
 --      families pass numbers in.
@@ -401,22 +401,8 @@ function M.owned_phantom(self)
   return nil
 end
 
--- The stain find_nearest_blood returns, when it is on the caster's floor
--- and within range (Manhattan, the raises' own compare). The finder itself
--- never answers beyond about 28 px of centre (its 800 start on a squared
--- distance), so a range above that is a promise the finder cannot keep.
-function M.corpse_near(self, range)
-  local blood = og.find_nearest_blood(self)
-  if not blood or blood:floor() ~= self:floor() then
-    return nil
-  end
-  if self:distance_to_ob(blood) < range then
-    return blood
-  end
-  return nil
-end
-
--- The same stain by the meal's compare: squared centre distance.
+-- The stain find_nearest_blood returns on the caster's floor, by the meal's
+-- compare: squared centre distance (the finder never answers beyond about 28 px of centre).
 function M.corpse_underfoot(self, reach_sq)
   local blood = og.find_nearest_blood(self)
   if not blood or blood:floor() ~= self:floor() then
