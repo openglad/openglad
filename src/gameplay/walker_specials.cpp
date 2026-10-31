@@ -436,7 +436,7 @@ std::int32_t walker::turn_undead(std::int32_t range, std::int32_t power)
 					if (gated < 0)
 						continue;
 					walker* headguy = this;
-					while (headguy->owner() && headguy->owner() != headguy)
+					while (headguy->owner() && headguy->owner() != headguy && !headguy->charmed_head())
 						headguy = headguy->owner();
 					if (gated < lethal)
 					{
@@ -488,3 +488,18 @@ std::int32_t walker::undead_foes_in_range(std::int32_t range)
 // If we find one, we init_fire.  If not,
 // we do nothing. init_fire will take care of
 // turning us if we need it.
+
+// Gameplay Fixes AD (#412): with the setting on a charmed walker heads its own
+// chain for the charm's length. charm_left is the charm's clock: CHARM and
+// MIND CONTROL set it with the colour, living::act counts it down and puts the
+// team back when it runs out. (real_team_num alone is not the test: the
+// parity runners, mapgen, several level hooks and the possession rider write
+// it for a tick or a possession with no charm behind it.) Its owner, a tent, a
+// bones pile or the caster that summoned it, stays on the old side, and the
+// alliance follows the walker's own colour until the charm ends. Off, the
+// climbs pass through it as always. Appended at the end of the file so the
+// parity canary pin above stays where it is.
+bool walker::charmed_head() const
+{
+	return og::sim::session_gameplay_fixes() != 0 && charm_left() > 0;
+}

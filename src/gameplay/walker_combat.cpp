@@ -258,7 +258,7 @@ bool walker::attack(walker  *target)
 
     // who's the top on our chain (ie, weapon->summoned->mage)
     headguy = this;
-    while (headguy->owner() && (headguy->owner() != headguy) )
+    while (headguy->owner() && (headguy->owner() != headguy) && !headguy->charmed_head() )
         headguy = headguy->owner();
 
     // Score and kill semantics follow the actual attacker's team. The legacy

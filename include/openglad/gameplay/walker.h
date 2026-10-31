@@ -264,6 +264,11 @@ class walker : public og::sim::SimEntity
 			unsigned char query_team_color() const;
 		std::int32_t is_friendly(const walker *target) const;
 		std::int32_t is_friendly_to_team(unsigned char team) const;
+		// Gameplay Fixes AD (#412): true while this walker's charm runs
+		// (charm_left() > 0) with the setting on. Every owner-chain climb
+		// stops here: a charmed troop or summon heads its own chain and fights
+		// for the colour it wears. Defined in walker_specials.cpp.
+		bool charmed_head() const;
 
 
 		// stats (unique_ptr ownership is protected; getter returns raw pointer)

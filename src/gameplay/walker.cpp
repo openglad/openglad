@@ -2476,12 +2476,12 @@ std::int32_t walker::is_friendly(const walker *target) const
 	// who's the top on our chains (ie, weapon->summoned->mage)
 	// First us ..
 	headguy = this;
-	while (headguy->owner() && (headguy->owner()->dead() == 0) && (headguy->owner() != headguy) )
+	while (headguy->owner() && (headguy->owner()->dead() == 0) && (headguy->owner() != headguy) && !headguy->charmed_head() )
 		headguy = headguy->owner();
 	headus = headguy;
 	// Now our target ..
 	headguy = target;
-	while (headguy->owner() && (headguy->owner()->dead() == 0) && (headguy->owner() != headguy) )
+	while (headguy->owner() && (headguy->owner()->dead() == 0) && (headguy->owner() != headguy) && !headguy->charmed_head() )
 		headguy = headguy->owner();
 	headtarget = headguy;
 
@@ -2496,7 +2496,7 @@ std::int32_t walker::is_friendly(const walker *target) const
 	// friendly. Likewise, Base Camp seat assignments choose a player's control
 	// team; they never make a red walker friendly to a yellow walker. Following
 	// owner chains keeps weapons, summons, and effects on their living owner's
-	// current team (including charm changes).
+	// current team; with Gameplay Fixes AD a charmed walker heads its own chain.
 	return headus->team_num() == headtarget->team_num();
 }
 
@@ -2514,7 +2514,7 @@ std::int32_t walker::is_friendly_to_team(unsigned char team) const
 	// who's the top on our chains (ie, weapon->summoned->mage)
 	// First us ..
 	headguy = this;
-	while (headguy->owner() && (headguy->owner()->dead() == 0) && (headguy->owner() != headguy) )
+	while (headguy->owner() && (headguy->owner()->dead() == 0) && (headguy->owner() != headguy) && !headguy->charmed_head() )
 		headguy = headguy->owner();
 	headus = headguy;
 	
