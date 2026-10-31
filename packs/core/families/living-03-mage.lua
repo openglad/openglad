@@ -115,7 +115,7 @@ local function hit_response(self, foe)
     self.current_special = 1
     self:set_shifter_down(0)
     self.busy = 0
-    self:special()
+    local _ = lc.mid_teleport(self) or self:special()  -- struck mid-teleport: no second cast
   else
     -- we're hit by a new enemy
     if self:foe() ~= foe then
