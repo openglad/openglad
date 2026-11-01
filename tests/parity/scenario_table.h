@@ -8696,9 +8696,10 @@ inline constexpr Mutation kMut_druid_tree_blocked_fixes_scen99 = {
 // classic gate ("fewer than one or more than three foes within 110 px") was
 // written for TELEPORT and answers yes for every slot here, so in its first
 // ticks the bot casts its specials at nobody (16 fireball sounds). With the
-// setting on WARP SPACE and ENERGY WAVE want a foe within 110 px, FREEZE TIME
-// waits for the allies' fight (nobody here is at blows), and the mage casts
-// nothing.
+// setting on WARP SPACE and ENERGY WAVE want a foe within 110 px and FREEZE
+// TIME waits for the allies' fight (nobody here is at blows). The fixed run
+// reaches one roll in its budget (WARP SPACE, which says no), so the mage
+// casts nothing.
 inline constexpr SpawnSpec kFamilySpawns_mage_bot_freeze_no_foe_scen99[] = {
     { FAMILY_TOWER1,  1, kOrderLiving, 600, 680, 0, 0 },           // the one foe, far away; holds the level open
     { FAMILY_MAGE,    0, kOrderLiving,  60,  60, 0, 0, 7, 600 },   // allied bot caster
@@ -8717,6 +8718,19 @@ inline constexpr Mutation kMut_mage_bot_freeze_no_foe_scen99 = {
     "return foe_count > 3",
     "Drops the \"no foe in reach\" half of the classic gate (only \"more than three\" is left), so the alone mage casts nothing: EventKindExactly(play_sound, 16) reads 0.",
     "  -- TP if away from guys .. or too many enemies!"
+};
+// The setting-on twin stands its mage at (160, 160), on grass, not in the lake
+// at (60, 60) where the classic twin's mage stands: a living on water is given
+// a tick of flight and loses 1 hp a tick, so that mage drowned 19 hp and flew
+// off across the map, and the row measured a drowning flight as much as a gate
+// (#423; the PR #404 ruling lets a setting-on twin take its own arena). On grass
+// the run shows one roll reaching the gate in the 200 ticks, WARP SPACE, and the
+// gate says no; fix W's fall-through then gives the bot its ordinary act, and
+// no second roll comes in the budget. The classic twin is untouched.
+inline constexpr SpawnSpec kFamilySpawns_mage_bot_freeze_no_foe_fixes_scen99[] = {
+    { FAMILY_TOWER1,  1, kOrderLiving, 600, 680, 0, 0 },           // the one foe, far away; holds the level open
+    { FAMILY_MAGE,    0, kOrderLiving, 160, 160, 0, 0, 7, 600 },   // allied bot caster, on grass
+    { FAMILY_SOLDIER, 0, kOrderLiving, 120, 120, 0, 0 },           // idle player LAST
 };
 inline constexpr FactPredicate kFacts_mage_bot_freeze_no_foe_fixes_scen99[] = {
     pred::TickReached(200),
@@ -8760,6 +8774,19 @@ inline constexpr Mutation kMut_mage_bot_freeze_alone_scen99 = {
     "return foe_count > 3",
     "Drops the \"no foe in reach\" half of the classic gate (only \"more than three\" is left), so the alone mage refuses the FREEZE TIME it rolls on tick 0 and never stops time: EventKindExactly(set_palette, 2) reads 0.",
     "  -- TP if away from guys .. or too many enemies!"
+};
+// The setting-on twin stands its mage at (160, 160), on grass, not in the lake
+// at (60, 60) where the classic twin's mage stands: a living on water is given
+// a tick of flight and loses 1 hp a tick, so that mage drowned 19 hp and flew
+// off across the map (#423; the PR #404 ruling lets a setting-on twin take its
+// own arena). On grass the run shows one roll reaching the gate in the 200
+// ticks, FREEZE TIME, and the gate says no; fix W's fall-through then gives the
+// bot its ordinary act, and no second roll comes in the budget. The classic
+// twin is untouched.
+inline constexpr SpawnSpec kFamilySpawns_mage_bot_freeze_alone_fixes_scen99[] = {
+    { FAMILY_TOWER1,  1, kOrderLiving, 600, 680, 0, 0 },           // the one foe, far away; holds the level open
+    { FAMILY_MAGE,    0, kOrderLiving, 160, 160, 0, 0, 7, 600 },   // allied bot caster, on grass
+    { FAMILY_SOLDIER, 0, kOrderLiving, 120, 120, 0, 0 },           // idle player LAST
 };
 inline constexpr FactPredicate kFacts_mage_bot_freeze_alone_fixes_scen99[] = {
     pred::TickReached(200),
@@ -12525,7 +12552,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
     { "mage_bot_freeze_no_foe_fixes_scen99", "scen/scen1.fss", 0x00000042u,
       kInputsEmpty, std::size(kInputsEmpty), 200,
       CompareMode::SemanticParity, false,
-      kFamilySpawns_mage_bot_freeze_no_foe_scen99, std::size(kFamilySpawns_mage_bot_freeze_no_foe_scen99),
+      kFamilySpawns_mage_bot_freeze_no_foe_fixes_scen99, std::size(kFamilySpawns_mage_bot_freeze_no_foe_fixes_scen99),
       0, false, true, Exercises::None,
       kFacts_mage_bot_freeze_no_foe_fixes_scen99, std::size(kFacts_mage_bot_freeze_no_foe_fixes_scen99),
       kMut_mage_bot_freeze_no_foe_fixes_scen99, {}, 1, nullptr, 0, 1 },
@@ -12541,7 +12568,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
     { "mage_bot_freeze_alone_fixes_scen99", "scen/scen1.fss", 0x00000050u,
       kInputsEmpty, std::size(kInputsEmpty), 200,
       CompareMode::SemanticParity, false,
-      kFamilySpawns_mage_bot_freeze_alone_scen99, std::size(kFamilySpawns_mage_bot_freeze_alone_scen99),
+      kFamilySpawns_mage_bot_freeze_alone_fixes_scen99, std::size(kFamilySpawns_mage_bot_freeze_alone_fixes_scen99),
       0, false, true, Exercises::None,
       kFacts_mage_bot_freeze_alone_fixes_scen99, std::size(kFacts_mage_bot_freeze_alone_fixes_scen99),
       kMut_mage_bot_freeze_alone_fixes_scen99, {}, 1, nullptr, 0, 1 },
