@@ -8696,9 +8696,10 @@ inline constexpr Mutation kMut_druid_tree_blocked_fixes_scen99 = {
 // classic gate ("fewer than one or more than three foes within 110 px") was
 // written for TELEPORT and answers yes for every slot here, so in its first
 // ticks the bot casts its specials at nobody (16 fireball sounds). With the
-// setting on WARP SPACE and ENERGY WAVE want a foe within 110 px, FREEZE TIME
-// waits for the allies' fight (nobody here is at blows), and the mage casts
-// nothing.
+// setting on WARP SPACE and ENERGY WAVE want a foe within 110 px and FREEZE
+// TIME waits for the allies' fight (nobody here is at blows). The fixed run
+// reaches one roll in its budget (WARP SPACE, which says no), so the mage
+// casts nothing.
 inline constexpr SpawnSpec kFamilySpawns_mage_bot_freeze_no_foe_scen99[] = {
     { FAMILY_TOWER1,  1, kOrderLiving, 600, 680, 0, 0 },           // the one foe, far away; holds the level open
     { FAMILY_MAGE,    0, kOrderLiving,  60,  60, 0, 0, 7, 600 },   // allied bot caster
@@ -8717,6 +8718,19 @@ inline constexpr Mutation kMut_mage_bot_freeze_no_foe_scen99 = {
     "return foe_count > 3",
     "Drops the \"no foe in reach\" half of the classic gate (only \"more than three\" is left), so the alone mage casts nothing: EventKindExactly(play_sound, 16) reads 0.",
     "  -- TP if away from guys .. or too many enemies!"
+};
+// The setting-on twin stands its mage at (160, 160), on grass, not in the lake
+// at (60, 60) where the classic twin's mage stands: a living on water is given
+// a tick of flight and loses 1 hp a tick, so that mage drowned 19 hp and flew
+// off across the map, and the row measured a drowning flight as much as a gate
+// (#423; the PR #404 ruling lets a setting-on twin take its own arena). On grass
+// the run shows one roll reaching the gate in the 200 ticks, WARP SPACE, and the
+// gate says no; fix W's fall-through then gives the bot its ordinary act, and
+// no second roll comes in the budget. The classic twin is untouched.
+inline constexpr SpawnSpec kFamilySpawns_mage_bot_freeze_no_foe_fixes_scen99[] = {
+    { FAMILY_TOWER1,  1, kOrderLiving, 600, 680, 0, 0 },           // the one foe, far away; holds the level open
+    { FAMILY_MAGE,    0, kOrderLiving, 160, 160, 0, 0, 7, 600 },   // allied bot caster, on grass
+    { FAMILY_SOLDIER, 0, kOrderLiving, 120, 120, 0, 0 },           // idle player LAST
 };
 inline constexpr FactPredicate kFacts_mage_bot_freeze_no_foe_fixes_scen99[] = {
     pred::TickReached(200),
@@ -8760,6 +8774,19 @@ inline constexpr Mutation kMut_mage_bot_freeze_alone_scen99 = {
     "return foe_count > 3",
     "Drops the \"no foe in reach\" half of the classic gate (only \"more than three\" is left), so the alone mage refuses the FREEZE TIME it rolls on tick 0 and never stops time: EventKindExactly(set_palette, 2) reads 0.",
     "  -- TP if away from guys .. or too many enemies!"
+};
+// The setting-on twin stands its mage at (160, 160), on grass, not in the lake
+// at (60, 60) where the classic twin's mage stands: a living on water is given
+// a tick of flight and loses 1 hp a tick, so that mage drowned 19 hp and flew
+// off across the map (#423; the PR #404 ruling lets a setting-on twin take its
+// own arena). On grass the run shows one roll reaching the gate in the 200
+// ticks, FREEZE TIME, and the gate says no; fix W's fall-through then gives the
+// bot its ordinary act, and no second roll comes in the budget. The classic
+// twin is untouched.
+inline constexpr SpawnSpec kFamilySpawns_mage_bot_freeze_alone_fixes_scen99[] = {
+    { FAMILY_TOWER1,  1, kOrderLiving, 600, 680, 0, 0 },           // the one foe, far away; holds the level open
+    { FAMILY_MAGE,    0, kOrderLiving, 160, 160, 0, 0, 7, 600 },   // allied bot caster, on grass
+    { FAMILY_SOLDIER, 0, kOrderLiving, 120, 120, 0, 0 },           // idle player LAST
 };
 inline constexpr FactPredicate kFacts_mage_bot_freeze_alone_fixes_scen99[] = {
     pred::TickReached(200),
@@ -10472,6 +10499,483 @@ inline constexpr Mutation kMut_soldier_bot_refused_roll_acts_fixes_scen99 = {
     "if (true)",
     "Ends the act on every refused roll as the classic game does, so the bot idles like the classic one and stops short of (160,160): WalkerPositionMoved(FAMILY_SOLDIER, 160, 160) fails."
 };
+// --- orc_stale_shove (fix X: a walk shoves only the body its own step met) ---
+// A hostile level-1 orc bot walks east at the idle player and is pressed into an
+// allied TOWER1 that overlaps its box by one pixel, under the tree bottoms of
+// scen1 (tiles 15..17, 7). Each act the orc's full step and its baby step meet
+// the tower: two real shoves. Its fallback for a step to the right is a step
+// up, which the tree bottoms stop on the grid, so that walk never reaches the
+// object probe and collide_ob still names the tower: the classic walk shoves it
+// a third time (one more rng(3), a stolen order on a non-zero roll), from a
+// step that never touched it. With the setting on (fix X) that stale shove is
+// skipped. The tower does not move (it is stationary); the streams part by one
+// draw per act. On this seed the classic orc then rolls HOWL (one sound) and
+// drifts west to x 227; with the setting on it never howls and stays pressed at
+// x 248. The player at x 340 is inside 100 px of the orc, so the orc walks
+// straight (no A* round the tower).
+inline constexpr SpawnSpec kFamilySpawns_orc_stale_shove_scen99[] = {
+    { FAMILY_TOWER1,  1, kOrderLiving, 263, 128, 0, 0, 10, 0 },   // the pressed ally: stationary, 1 px overlapped by the orc's box; level 10 outlives the budget
+    { FAMILY_ORC,     1, kOrderLiving, 248, 128, 0, 0, 1, 0 },    // the shover: under the tree bottoms, walking east
+    { FAMILY_SOLDIER, 0, kOrderLiving, 340, 128, 0, 0 },          // idle player LAST, due east on the same row
+};
+inline constexpr FactPredicate kFacts_orc_stale_shove_scen99[] = {
+    pred::TickReached(90),
+    pred::WalkerFamilyCount(FAMILY_ORC, 1, 1),
+    pred::WalkerFamilyCount(FAMILY_TOWER1, 1, 1),
+    pred::EventKindExactly(/*play_sound*/1, 1,
+        "consequence: the classic stale shove draws one more rng(3) each act; on this seed the parted stream gives the orc a HOWL (one sound)"),
+};
+inline constexpr Mutation kMut_orc_stale_shove_scen99 = {
+    "src/gameplay/living.cpp", 528,
+    "shove(collide_ob(), x, y);",
+    "(void)0;",
+    "Drops every walk shove, real and stale, so the orc never draws the shove rolls and its stream never reaches the HOWL: EventKindExactly(play_sound, 1) reads 0.",
+    "		else //Invalid move?"
+};
+inline constexpr FactPredicate kFacts_orc_stale_shove_fixes_scen99[] = {
+    pred::TickReached(90),
+    pred::WalkerFamilyCount(FAMILY_ORC, 1, 1),
+    pred::WalkerFamilyCount(FAMILY_TOWER1, 1, 1),
+    // negative_assertion: with the setting on no stale shove is drawn and the orc never howls; the pin restores the stale shove and the sound.
+    pred::EventKindExactly(/*play_sound*/1, 0,
+        "consequence: with the setting on the shove the grid-stopped fallback left behind is skipped, so the orc's stream never reaches a HOWL"),
+    pred::WalkerPositionMoved(FAMILY_ORC, 248, 128,
+        "consequence: the orc stays pressed against the tower at x 248; the classic orc drifts west to x 227"),
+};
+inline constexpr Mutation kMut_orc_stale_shove_fixes_scen99 = {
+    "src/gameplay/living.cpp", 524,
+    "|| og::sim::step_meets(*this, x, y, *collide_ob())))",
+    "|| true))",
+    "Shoves collide_ob whatever the step met, as the classic walk does, so the stale shove of the tree-stopped fallback returns with its rng(3): the orc howls and drifts west, and EventKindExactly(play_sound, 0) and WalkerPositionMoved(FAMILY_ORC, 248, 128) fail."
+};
+
+// --- orc_right_walk_potion (fix Y: the right-hand walk asks quietly) ---
+// A hostile level-1 orc bot is at blows with a level-10 TOWER1 directly above it
+// (a one-pixel gap), so it stays heading UP and alternates its attack windows
+// with right-hand walk ticks. A magic potion (7x13) stands one pixel outside the
+// orc's right side: the orc's own box and its steps never cover it, but
+// right_blocked's FACE_UP probe (the orc's box moved one pixel right) does. The
+// classic probe is loud: it eats the potion. With the setting on (fix Y) the
+// right-hand walk's probes ask quietly and the potion stands to the end.
+inline constexpr SpawnSpec kFamilySpawns_orc_right_walk_potion_scen99[] = {
+    { FAMILY_TOWER1,       0, kOrderLiving,   115,  90, 0, 0, 10, 0 },  // the foe above, a 1 px gap: the orc stays at blows and heading UP; level 10 outlives the budget
+    { FAMILY_MAGIC_POTION, 2, kOrderTreasure, 135, 124, 0, 0 },         // 7x13, one pixel outside the orc's right side: only right_blocked's FACE_UP probe meets it
+    { FAMILY_ORC,          1, kOrderLiving,   120, 120, 0, 0, 1, 0 },   // hostile melee bot, heading UP at spawn (its right is +x)
+    { FAMILY_SOLDIER,      0, kOrderLiving,   560, 440, 0, 0 },         // idle player LAST
+};
+inline constexpr FactPredicate kFacts_orc_right_walk_potion_scen99[] = {
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(FAMILY_ORC, 1, 1),
+    pred::WalkerOfOrderFamilyCount(FAMILY_MAGIC_POTION, kOrderTreasure, 0, 0,
+        "consequence: the classic right-hand probe one pixel right of the orc eats the potion the orc never stands on"),
+    // negative_assertion: the potion is gone by the final tick on the classic run; the pin makes the probe quiet and the potion stands (0 -> 1).
+    pred::WalkerPositionMoved(FAMILY_ORC, 105, 118,
+        "consequence: the classic run ends with the orc at (105, 118); with the setting on it ends at (97, 108)"),
+};
+inline constexpr Mutation kMut_orc_right_walk_potion_scen99 = {
+    "src/gameplay/stats.cpp", 962,
+    "const bool quiet = og::sim::session_gameplay_fixes() != 0;",
+    "const bool quiet = true;",
+    "right_walk's probes ask quietly with the setting off too, so the probe beside the orc never eats the potion: WalkerOfOrderFamilyCount(FAMILY_MAGIC_POTION, kOrderTreasure, 0, 0) reads 1.",
+    "bool statistics::right_walk()"
+};
+inline constexpr FactPredicate kFacts_orc_right_walk_potion_fixes_scen99[] = {
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(FAMILY_ORC, 1, 1),
+    // negative_assertion: the potion stands to the end with the setting on; the pin makes the probe loud again and it is eaten (1 -> 0).
+    pred::WalkerOfOrderFamilyCount(FAMILY_MAGIC_POTION, kOrderTreasure, 1, 1,
+        "consequence: with the setting on the right-hand walk's probes ask quietly, so the potion beside the orc is not eaten"),
+};
+inline constexpr Mutation kMut_orc_right_walk_potion_fixes_scen99 = {
+    "src/gameplay/stats.cpp", 962,
+    "const bool quiet = og::sim::session_gameplay_fixes() != 0;",
+    "const bool quiet = false;",
+    "right_walk's probes are loud again with the setting on, so right_blocked's probe eats the potion: WalkerOfOrderFamilyCount(FAMILY_MAGIC_POTION, kOrderTreasure, 1, 1) reads 0.",
+    "bool statistics::right_walk()"
+};
+
+// --- soldier_charge_ally (fix Z: a rush strikes only a foe its last step ran into) ---
+// The player soldier charges east into an allied BIG_ORC bot 10 px ahead (the
+// front test is clear, so the cast is not PATH BLOCKED). Each rush act whose
+// last walk leaves the orc in collide_ob runs the classic strike at it:
+// walker::attack draws its damage roll and then refuses a friend (no hp moves),
+// and the rush erases the orc's orders and force-walks it four steps east. With
+// the setting on (fix Z) the rush strikes no friend: no draw, the orc keeps its
+// orders (the walk shoves still push it). The orc's hp never differs; where its
+// own AI takes it does: on this seed the classic orc ends at (194, 162), the
+// fixed one at (200, 150). A far hostile tower holds the level open.
+inline constexpr InputEvent kInputs_soldier_charge_ally[] = {
+    {  1, 0, K_RIGHT },   {  2, 0, K_NONE },     // heading RIGHT, curdir = enddir
+    {  5, 0, K_SPECIAL }, {  6, 0, K_NONE },     // CHARGE
+};
+inline constexpr SpawnSpec kFamilySpawns_soldier_charge_ally_scen99[] = {
+    { FAMILY_BIG_ORC, 0, kOrderLiving, 146, 120, 0, 0, 1, 0 },     // an allied bot 10 px ahead: the front test is clear on both values
+    { FAMILY_TOWER1,  1, kOrderLiving, 560, 440, 0, 0, 10, 0 },    // a far hostile tower holds the level open
+    { FAMILY_SOLDIER, 0, kOrderLiving, 120, 120, 0, 0, 1, 600 },   // caster LAST (the player)
+};
+inline constexpr FactPredicate kFacts_soldier_charge_ally_scen99[] = {
+    pred::TickReached(30),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_BIG_ORC, 18000, 18000),
+    pred::WalkerPositionMoved(FAMILY_BIG_ORC, 194, 162,
+        "consequence: the classic rush's strikes at the ally erase its orders and force-walk it; its AI then takes it to (194, 162), below where the fixed run's orc ends"),
+};
+inline constexpr Mutation kMut_soldier_charge_ally_scen99 = {
+    "src/gameplay/stats.cpp", 514,
+    "controller_->attack(target);",
+    "(void)target;",
+    "The rush never calls attack, so its damage draw is gone and the stream parts from the classic one: WalkerPositionMoved(FAMILY_BIG_ORC, 194, 162) fails."
+};
+inline constexpr FactPredicate kFacts_soldier_charge_ally_fixes_scen99[] = {
+    pred::TickReached(30),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_BIG_ORC, 18000, 18000),
+    pred::WalkerPositionMoved(FAMILY_BIG_ORC, 200, 150,
+        "consequence: with the setting on the rush strikes no ally, so the orc keeps its orders and ends at (200, 150), east of where the classic run's orc ends"),
+};
+inline constexpr Mutation kMut_soldier_charge_ally_fixes_scen99 = {
+    "src/gameplay/stats.cpp", 507,
+    "!controller_->is_friendly(controller_->collide_ob())",
+    "true",
+    "The rush strikes a friend again with the setting on (the damage draw, the erased orders, the forced walk), so the orc ends where the classic one does: WalkerPositionMoved(FAMILY_BIG_ORC, 200, 150) fails."
+};
+
+// --- druid_bot_faerie_pad_body (fix AA: SUMMON FAERIE asks the bolt's pad) ---
+// elf_bot_rocks_blocked's geometry with a level-4 druid bot (slot 2 open): a
+// TOWER1 of the player's team touching it from above, centred, so the pad of
+// the lightning bolt SUMMON FAERIE fires is the tower; the tower is a living
+// foe within 130 px, so every other term of the gate says yes. The seed (2)
+// makes the druid roll SUMMON FAERIE on tick 0. The classic druid has no gate:
+// fire() meets the tower on the pad, lands a melee blow (one sound, the tower
+// at 122 hp) and the cast refuses COULD NOT FIRE. With the setting on the gate
+// asks the pad (fix AA) and says no; the roll takes the bot's ordinary act
+// (fix W), which strikes nothing in the budget.
+inline constexpr SpawnSpec kFamilySpawns_druid_bot_faerie_pad_body_scen99[] = {
+    { FAMILY_TOWER1,  0, kOrderLiving, 115,  91, 0, 0 },           // touching above, centred: the weapon's pad
+    { FAMILY_DRUID,   1, kOrderLiving, 120, 120, 0, 0, 4, 100 },   // hostile level-4 bot, heading UP at spawn
+    { FAMILY_SOLDIER, 0, kOrderLiving, 560, 440, 0, 0 },           // idle player LAST, far away
+};
+inline constexpr FactPredicate kFacts_druid_bot_faerie_pad_body_scen99[] = {
+    pred::TickReached(3),
+    pred::EventKindExactly(/*play_sound*/1, 1,
+        "consequence: the classic druid fires into the tower: fire() lands a melee blow on the pad"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 12200, 12200,
+        "consequence: the blow takes the tower to 122 hp"),
+    pred::WeaponFamilyCount(FAMILY_LIGHTNING, 0, 0),
+    // negative_assertion: no weapon flies on either value: the pad is the tower.
+};
+inline constexpr Mutation kMut_druid_bot_faerie_pad_body_scen99 = {
+    "packs/core/families/living-13-druid.lua", 50,
+    "local bolt = self:fire()",
+    "local bolt = nil",
+    "SUMMON FAERIE never fires its bolt, so no blow lands on the tower: EventKindExactly(play_sound, 1) reads 0 and the tower stays at 130 hp.",
+    "local function summon_faerie(self)"
+};
+inline constexpr FactPredicate kFacts_druid_bot_faerie_pad_body_fixes_scen99[] = {
+    pred::TickReached(3),
+    // negative_assertion: no blow lands with the setting on; the pin drops the gate's pad test and the blow returns (0 -> 1).
+    pred::EventKindExactly(/*play_sound*/1, 0,
+        "consequence: with the setting on the gate finds the pad on the tower and holds the cast; the bot's ordinary act lands nothing in the budget"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 13000, 13000,
+        "consequence: the tower is untouched"),
+    pred::WeaponFamilyCount(FAMILY_LIGHTNING, 0, 0),
+    // negative_assertion: no weapon flies on either value: the pad is the tower.
+};
+inline constexpr Mutation kMut_druid_bot_faerie_pad_body_fixes_scen99 = {
+    "packs/core/families/living-13-druid.lua", 180,
+    "return G.foes_within(self, 1, 130, false) and G.pad_clear(self)",
+    "return G.foes_within(self, 1, 130, false)",
+    "Drops the pad test, so the gate says yes to the touching tower and the cast's fire() lands a blow on it before refusing COULD NOT FIRE: EventKindExactly(play_sound, 0) reads 1 and the tower ends at 122 hp."
+};
+
+// --- barbarian_bot_boulder_pad_body (fix AA: HURL BOULDER asks the hammer's pad) ---
+// elf_bot_rocks_blocked's geometry with a level-1 barbarian bot: a TOWER1 of the
+// player's team touching it from above, centred, so the pad of the hammer HURL
+// BOULDER fires is the tower, a faced foe inside the boulder's flight. The seed
+// (2) makes the barbarian roll HURL BOULDER on tick 0. The classic barbarian has
+// no gate: fire() meets the tower on the pad, lands a melee blow (one sound, the
+// tower at 104 hp) and the throw refuses COULD NOT FIRE. With the setting on the
+// gate asks the pad (fix AA) and says no; the roll takes the bot's ordinary act
+// (fix W), which strikes nothing in the budget.
+inline constexpr SpawnSpec kFamilySpawns_barbarian_bot_boulder_pad_body_scen99[] = {
+    { FAMILY_TOWER1,  0, kOrderLiving, 115,  91, 0, 0 },           // touching above, centred: the weapon's pad
+    { FAMILY_BARBARIAN, 1, kOrderLiving, 120, 120, 0, 0, 1, 100 }, // hostile level-1 bot, heading UP at spawn
+    { FAMILY_SOLDIER, 0, kOrderLiving, 560, 440, 0, 0 },           // idle player LAST, far away
+};
+inline constexpr FactPredicate kFacts_barbarian_bot_boulder_pad_body_scen99[] = {
+    pred::TickReached(3),
+    pred::EventKindExactly(/*play_sound*/1, 1,
+        "consequence: the classic barbarian fires into the tower: fire() lands a melee blow on the pad"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 10400, 10400,
+        "consequence: the blow takes the tower to 104 hp"),
+    pred::WeaponFamilyCount(FAMILY_HAMMER, 0, 0),
+    // negative_assertion: no weapon flies on either value: the pad is the tower.
+};
+inline constexpr Mutation kMut_barbarian_bot_boulder_pad_body_scen99 = {
+    "packs/core/families/living-16-barbarian.lua", 19,
+    "local shot = self:fire()",
+    "local shot = nil",
+    "The throw never fires its hammer, so no blow lands on the tower: EventKindExactly(play_sound, 1) reads 0 and the tower stays at 130 hp."
+};
+inline constexpr FactPredicate kFacts_barbarian_bot_boulder_pad_body_fixes_scen99[] = {
+    pred::TickReached(3),
+    // negative_assertion: no blow lands with the setting on; the pin drops the gate's pad test and the blow returns (0 -> 1).
+    pred::EventKindExactly(/*play_sound*/1, 0,
+        "consequence: with the setting on the gate finds the pad on the tower and holds the cast; the bot's ordinary act lands nothing in the budget"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 13000, 13000,
+        "consequence: the tower is untouched"),
+    pred::WeaponFamilyCount(FAMILY_HAMMER, 0, 0),
+    // negative_assertion: no weapon flies on either value: the pad is the tower.
+};
+inline constexpr Mutation kMut_barbarian_bot_boulder_pad_body_fixes_scen99 = {
+    "packs/core/families/living-16-barbarian.lua", 113,
+    "if lc.is_busy(self) or not G.pad_clear(self) then",
+    "if lc.is_busy(self) then",
+    "Drops the pad test, so the gate says yes to the touching tower and the throw's fire() lands a blow on it before refusing COULD NOT FIRE: EventKindExactly(play_sound, 0) reads 1 and the tower ends at 104 hp."
+};
+
+// --- mage_bot_wave_pad_body (fix AA: ENERGY WAVE asks the fireball's pad) ---
+// elf_bot_rocks_blocked's geometry with a level-10 mage bot (slot 4 open): a
+// TOWER1 of the player's team touching it from above, centred, so the pad of
+// the fireball ENERGY WAVE rides on is the tower, the nearest living foe and
+// faced. Three more allied towers stand within 110 px: the classic gate ("fewer
+// than one or more than three foes within 110 px") says yes only with four. The
+// seed (2) makes the mage roll ENERGY WAVE on tick 0. The classic mage casts:
+// fire() meets the tower on the pad, lands a melee blow (one sound, the tower at
+// 127 hp) and the cast refuses COULD NOT FIRE. With the setting on the gate asks
+// the pad (fix AA) and says no; the roll takes the bot's ordinary act (fix W),
+// which strikes nothing in the budget.
+inline constexpr SpawnSpec kFamilySpawns_mage_bot_wave_pad_body_scen99[] = {
+    { FAMILY_TOWER1,  0, kOrderLiving, 115,  91, 0, 0 },           // touching above, centred: the weapon's pad
+    { FAMILY_TOWER1,  0, kOrderLiving, 170, 120, 0, 0 },           // three more foes within 110 px: the classic gate wants four
+    { FAMILY_TOWER1,  0, kOrderLiving,  70, 150, 0, 0 },
+    { FAMILY_TOWER1,  0, kOrderLiving, 120, 170, 0, 0 },
+    { FAMILY_MAGE,    1, kOrderLiving, 120, 120, 0, 0, 10, 600 },  // hostile level-10 bot, heading UP at spawn
+    { FAMILY_SOLDIER, 0, kOrderLiving, 560, 440, 0, 0 },           // idle player LAST, far away
+};
+inline constexpr FactPredicate kFacts_mage_bot_wave_pad_body_scen99[] = {
+    pred::TickReached(3),
+    pred::EventKindExactly(/*play_sound*/1, 1,
+        "consequence: the classic mage fires into the tower: fire() lands a melee blow on the pad"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 12700, 12700,
+        "consequence: the blow takes the tower to 127 hp"),
+    pred::WeaponFamilyCount(FAMILY_FIREBALL, 0, 0),
+    // negative_assertion: no weapon flies on either value: the pad is the tower.
+};
+inline constexpr Mutation kMut_mage_bot_wave_pad_body_scen99 = {
+    "packs/core/families/living-03-mage.lua", 280,
+    "local bolt = self:fire()",
+    "local bolt = nil",
+    "ENERGY WAVE never fires its fireball, so no blow lands on the tower: EventKindExactly(play_sound, 1) reads 0 and the tower stays at 130 hp.",
+    "local function energy_wave(self)"
+};
+inline constexpr FactPredicate kFacts_mage_bot_wave_pad_body_fixes_scen99[] = {
+    pred::TickReached(3),
+    // negative_assertion: no blow lands with the setting on; the pin drops the gate's pad test and the blow returns (0 -> 1).
+    pred::EventKindExactly(/*play_sound*/1, 0,
+        "consequence: with the setting on the gate finds the pad on the tower and holds the cast; the bot's ordinary act lands nothing in the budget"),
+    pred::WeaponFamilyCount(FAMILY_FIREBALL, 0, 0),
+    // negative_assertion: no weapon flies on either value: the pad is the tower.
+};
+inline constexpr Mutation kMut_mage_bot_wave_pad_body_fixes_scen99 = {
+    "packs/core/families/living-03-mage.lua", 71,
+    "return faced and G.pad_clear(self)",
+    "return faced",
+    "Drops the pad test, so the gate says yes to the touching tower and the cast's fire() lands a blow on it before refusing COULD NOT FIRE: EventKindExactly(play_sound, 0) reads 1."
+};
+
+// --- druid_bot_tree_pad_body (fix AA: GROW TREE asks the bolt's pad) ---
+// GROW TREE wants its foe faced, within 60 px and not at blows, so a touching
+// tower cannot test the pad term (the gate says no on both values). Here a
+// TOWER1 of the player's team stands 6 px above a level-1 druid bot, centred: a
+// gap of 6 is not at blows (G.BLOW_GAP is 5), yet the tower's box reaches into
+// the 8x8 pad the lightning bolt is placed on, 8 px above the druid. The seed
+// (2) makes the druid roll GROW TREE on tick 0. The classic druid has no gate:
+// fire() meets the tower on the pad, lands a melee blow (one sound, the tower at
+// 122 hp) and the cast refuses COULD NOT FIRE. With the setting on the gate asks
+// the pad (fix AA) and says no; the roll takes the bot's ordinary act (fix W),
+// which strikes nothing in the budget. (A terrain pad cannot test the term: with
+// fix AC a GROW TREE whose pad is terrain refuses before it spends, the same
+// act as the gate's no.)
+inline constexpr SpawnSpec kFamilySpawns_druid_bot_tree_pad_body_scen99[] = {
+    { FAMILY_TOWER1,  0, kOrderLiving, 115,  85, 0, 0 },           // 6 px above, centred: not at blows, yet inside the bolt's pad
+    { FAMILY_DRUID,   1, kOrderLiving, 120, 120, 0, 0, 1, 100 },   // hostile level-1 bot, heading UP at spawn
+    { FAMILY_SOLDIER, 0, kOrderLiving, 560, 440, 0, 0 },           // idle player LAST, far away
+};
+inline constexpr FactPredicate kFacts_druid_bot_tree_pad_body_scen99[] = {
+    pred::TickReached(3),
+    pred::EventKindExactly(/*play_sound*/1, 1,
+        "consequence: the classic druid fires into the tower: fire() lands a melee blow on the pad"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 12200, 12200,
+        "consequence: the blow takes the tower to 122 hp"),
+    pred::WeaponFamilyCount(FAMILY_LIGHTNING, 0, 0),
+    // negative_assertion: no weapon flies on either value: the pad is the tower.
+};
+inline constexpr Mutation kMut_druid_bot_tree_pad_body_scen99 = {
+    "packs/core/families/living-13-druid.lua", 21,
+    "local bolt = self:fire()",
+    "local bolt = nil",
+    "GROW TREE never fires its bolt, so no blow lands on the tower: EventKindExactly(play_sound, 1) reads 0 and the tower stays at 130 hp.",
+    "local function plant_tree(self)"
+};
+inline constexpr FactPredicate kFacts_druid_bot_tree_pad_body_fixes_scen99[] = {
+    pred::TickReached(3),
+    // negative_assertion: no blow lands with the setting on; the pin drops the gate's pad test and the blow returns (0 -> 1).
+    pred::EventKindExactly(/*play_sound*/1, 0,
+        "consequence: with the setting on the gate finds the pad on the tower and holds the cast; the bot's ordinary act lands nothing in the budget"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 13000, 13000,
+        "consequence: the tower is untouched"),
+    pred::WeaponFamilyCount(FAMILY_LIGHTNING, 0, 0),
+    // negative_assertion: no weapon flies on either value: the pad is the tower.
+};
+inline constexpr Mutation kMut_druid_bot_tree_pad_body_fixes_scen99 = {
+    "packs/core/families/living-13-druid.lua", 171,
+    "if f == nil or not G.pad_clear(self) then",
+    "if f == nil then",
+    "Drops the pad test, so the gate says yes to the tower 6 px above and the cast's fire() lands a blow on it before refusing COULD NOT FIRE: EventKindExactly(play_sound, 0) reads 1 and the tower ends at 122 hp."
+};
+
+// --- elemental_struck_short_pool (fix AB: a yes the bot cannot pay is a no) ---
+// A hostile level-1 fire elemental bot with 30 MP (STARBURST costs 50; the act
+// path's slot-1 guard keeps it from rolling at all) is struck by two orcs of a
+// third team at blows, below and to its right. Every blow asks the hit
+// response: the gate, then rng(3); a 0 casts and the cast refuses NOT ENOUGH MP
+// (twice in this run). With the setting on (fix AB) the gate answers no for a
+// slot the bot cannot pay, so no rng(3) is drawn for it. Every later draw
+// shifts: the classic run ends with 10 sounds and the struck orc at 82 hp, the
+// fixed one with 8 sounds and that orc at 96.
+inline constexpr SpawnSpec kFamilySpawns_elemental_struck_short_pool_scen99[] = {
+    { FAMILY_FIREELEMENTAL, 1, kOrderLiving, 120, 120, 0, 0, 1, 30 },  // hostile level-1 bot, 30 MP: under STARBURST's 50 and under the act path's slot-1 guard, so only hits reach the gate
+    { FAMILY_ORC,           2, kOrderLiving, 120, 137, 0, 0 },         // at blows below, a third team: nothing is friendly
+    { FAMILY_ORC,           2, kOrderLiving, 137, 120, 0, 0 },         // at blows to the right
+    { FAMILY_SOLDIER,       0, kOrderLiving, 560, 440, 0, 0 },         // idle player LAST
+};
+inline constexpr FactPredicate kFacts_elemental_struck_short_pool_scen99[] = {
+    pred::TickReached(60),
+    pred::WalkerFamilyCount(FAMILY_FIREELEMENTAL, 1, 1),
+    pred::EventKindExactly(/*play_sound*/1, 10,
+        "consequence: the classic hit response draws rng(3) for a STARBURST the elemental cannot pay (refused NOT ENOUGH MP twice); the parted stream gives 10 sounds"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_ORC, 8200, 8200,
+        "consequence: on the classic stream the struck orc ends at 82 hp"),
+};
+inline constexpr Mutation kMut_elemental_struck_short_pool_scen99 = {
+    "src/gameplay/stats.cpp", 693,
+    "&& !rng(3) )",
+    "&& false )",
+    "A struck bot never casts, so the rng(3) and the refused casts are gone and the stream parts: the orc's 82 hp (WalkerHpRangeAtFinalTick) fails.",
+    "	// Default: attack our attacker"
+};
+inline constexpr FactPredicate kFacts_elemental_struck_short_pool_fixes_scen99[] = {
+    pred::TickReached(60),
+    pred::WalkerFamilyCount(FAMILY_FIREELEMENTAL, 1, 1),
+    pred::EventKindExactly(/*play_sound*/1, 8,
+        "consequence: with the setting on the gate refuses the slot the elemental cannot pay and no rng(3) is drawn; the fixed stream gives 8 sounds"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_ORC, 9600, 9600,
+        "consequence: on the fixed stream the struck orc ends at 96 hp"),
+};
+inline constexpr Mutation kMut_elemental_struck_short_pool_fixes_scen99 = {
+    "src/gameplay/living.cpp", 624,
+    "stats_->magicpoints() < og::sim::cast_cost(*this, static_cast<int>(current_special()), shifter_down() != 0))",
+    "false)",
+    "The price test never refuses, so the hit response draws rng(3) for the unpaid STARBURST again: the orc's 96 hp (WalkerHpRangeAtFinalTick) fails.",
+    "	// Gameplay Fixes AB (#409): a yes the bot cannot pay for is a no. The fold"
+};
+
+// --- elf_rocks_edge_pad (fix AC: a volley that would hit nothing refuses before it pays) ---
+// The player elf (level 1, exactly ROCKS' 10 MP) stands at the top edge of the
+// map heading UP, so the first press's rock pad is off the map: terrain. The
+// classic cast refunds two rocks, fire() charges its swing and draws the
+// waver, and the cast refuses COULD NOT FIRE: 11 MP. With the setting on (fix
+// AC) the cast asks the pad first and refuses before it pays: 10 MP, no draw.
+// The elf then steps down and the second press throws its two rocks at the
+// hostile TOWER1 below on both values. The extra waver draw parts the classic
+// stream: it ends with 4 sounds, the tower at 127 hp and the elf at 71 (an
+// arrow of the tower's lands); the fixed one with 3 sounds, the tower at 126
+// and the elf untouched.
+inline constexpr InputEvent kInputs_elf_rocks_edge_pad[] = {
+    {  5, 0, K_SPECIAL }, {  6, 0, K_NONE },     // heading UP (the spawn heading): the rock's pad is off the map
+    { 12, 0, K_DOWN },    { 13, 0, K_NONE },     // one step DOWN sets the heading
+    { 20, 0, K_SPECIAL }, { 21, 0, K_NONE },     // ROCKS down at the tower
+};
+inline constexpr SpawnSpec kFamilySpawns_elf_rocks_edge_pad_scen99[] = {
+    { FAMILY_TOWER1, 1, kOrderLiving, 173, 60, 0, 0 },             // hostile, below, centred on the elf: holds the level open and takes the rocks
+    { FAMILY_ELF,    0, kOrderLiving, 176,  2, 0, 0, 1, 10 },      // the player LAST, level 1, exactly 10 MP = ROCKS' price; row 0, grass
+};
+inline constexpr FactPredicate kFacts_elf_rocks_edge_pad_scen99[] = {
+    pred::TickReached(40),
+    pred::EventKindExactly(/*play_sound*/1, 4,
+        "consequence: the classic refused press draws fire()'s waver; on the parted stream the run gives 4 sounds"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 12700, 12700,
+        "consequence: the second press's rocks leave the tower at 127 hp on the classic stream"),
+};
+inline constexpr Mutation kMut_elf_rocks_edge_pad_scen99 = {
+    "packs/core/families/living-01-elf.lua", 24,
+    "local rock = self:fire()",
+    "local rock = nil",
+    "The classic ROCKS never fires, so neither press throws a rock and the tower stays at 130 hp: WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 12700, 12700) fails.",
+    "local function some_rocks(self)"
+};
+inline constexpr FactPredicate kFacts_elf_rocks_edge_pad_fixes_scen99[] = {
+    pred::TickReached(40),
+    pred::EventKindExactly(/*play_sound*/1, 3,
+        "consequence: with the setting on the press at the map's edge refuses before it pays, so nothing is drawn and the run gives 3 sounds"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 12600, 12600,
+        "consequence: the second press's rocks leave the tower at 126 hp on the fixed stream"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_ELF, 7500, 7500,
+        "consequence: no arrow of the tower's lands on the elf on the fixed stream"),
+};
+inline constexpr Mutation kMut_elf_rocks_edge_pad_fixes_scen99 = {
+    "packs/core/lib/gameplay_fixes.lua", 96,
+    "return M.on() and self:fire_pad_answer() == \"terrain\"",
+    "return false",
+    "The press at the map's edge pays fire()'s swing again and takes its refund back, leaving 9 MP, so the second press refuses NOT ENOUGH MP and no rock is thrown: the sound count and the tower's 126 hp fail."
+};
+
+// --- thief_charm_tent_troop (fix AD: a charmed walker heads its own chain) ---
+// A level-2 hostile tent stands 100 px north of a level-20 player thief (charm
+// reach 16 + 4 * 20 = 96 px) who holds CHARM OPPONENT down. The tent's
+// skeletons walk at the thief; the first one inside the reach is charmed (about
+// tick 167) and takes the thief's colour, but its owner is still the tent. The
+// classic alliance climbs the owner chain to the tent: the charmed skeleton is
+// still the thief's foe, keeps fighting it, and the thief is dead by the final
+// tick. With the setting on (fix AD) a charmed walker heads its own chain: the
+// skeleton fights for the thief, the tent falls (the level is won) and the
+// thief ends untouched.
+inline constexpr InputEvent kInputs_thief_charm_tent_troop[] = {
+    {   5, 0, K_SPECIAL_SWITCH }, {   6, 0, K_NONE },     // slot 1 -> 2
+    {   8, 0, K_SPECIAL_SWITCH }, {   9, 0, K_NONE },     // slot 2 -> 3 (CHARM OPPONENT is slot 3's Shift arm)
+    {  12, 0, K_SPECIAL | K_SHIFT }, { 330, 0, K_NONE },  // held: a press with no charmable foe in reach refuses and spends nothing
+};
+inline constexpr SpawnSpec kFamilySpawns_thief_charm_tent_troop_scen99[] = {
+    { FAMILY_TENT,  1, kOrderGenerator, 300, 500, 0, 0, 2, 0 },   // level 2: its skeletons walk at the thief
+    { FAMILY_THIEF, 0, kOrderLiving,    300, 600, 0, 0, 20, 600 }, // the player LAST, 100 px south of the tent: outside the 96 px charm reach until a skeleton comes
+};
+inline constexpr FactPredicate kFacts_thief_charm_tent_troop_scen99[] = {
+    pred::TickReached(440),
+    pred::WalkerDiedByFinal(FAMILY_THIEF,
+        "consequence: the classic alliance climbs the charmed skeleton's owner chain to the tent, so it keeps fighting the thief and the thief dies"),
+    pred::WalkerOfTeamAlive(/*team=*/0, 1, 1,
+        "consequence: the charm lands: the skeleton wears the thief's colour to the end"),
+    pred::LevelDoneEquals(0),
+};
+inline constexpr Mutation kMut_thief_charm_tent_troop_scen99 = {
+    "packs/core/families/living-11-thief.lua", 223,
+    "        target.team = self.team",
+    "        target.team = target.team",
+    "The charm never moves the skeleton onto the thief's team, so no team-0 skeleton stands at the end: WalkerOfTeamAlive(0, 1, 1) fails."
+};
+inline constexpr FactPredicate kFacts_thief_charm_tent_troop_fixes_scen99[] = {
+    pred::TickReached(440),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_THIEF, 7500, 7500,
+        "consequence: with the setting on the charmed skeleton fights for the thief, and the thief ends untouched"),
+    pred::LevelDoneEquals(2,
+        "consequence: the charmed skeleton brings the tent down and the level is won"),
+};
+inline constexpr Mutation kMut_thief_charm_tent_troop_fixes_scen99 = {
+    "src/gameplay/walker_specials.cpp", 502,
+    "return og::sim::session_gameplay_fixes() != 0 && charm_left() > 0;",
+    "return false;",
+    "The climbs pass through the charmed skeleton to the tent as the classic ones do, so it fights the thief again: WalkerHpRangeAtFinalTick(FAMILY_THIEF, 7500, 7500) and LevelDoneEquals(2) fail."
+};
+
 inline constexpr ScenarioSpec kScenarios[] = {
     { "ai_idle_wander_scen9301",
       "scen/scen1.fss", 0x00000001u,
@@ -12525,7 +13029,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
     { "mage_bot_freeze_no_foe_fixes_scen99", "scen/scen1.fss", 0x00000042u,
       kInputsEmpty, std::size(kInputsEmpty), 200,
       CompareMode::SemanticParity, false,
-      kFamilySpawns_mage_bot_freeze_no_foe_scen99, std::size(kFamilySpawns_mage_bot_freeze_no_foe_scen99),
+      kFamilySpawns_mage_bot_freeze_no_foe_fixes_scen99, std::size(kFamilySpawns_mage_bot_freeze_no_foe_fixes_scen99),
       0, false, true, Exercises::None,
       kFacts_mage_bot_freeze_no_foe_fixes_scen99, std::size(kFacts_mage_bot_freeze_no_foe_fixes_scen99),
       kMut_mage_bot_freeze_no_foe_fixes_scen99, {}, 1, nullptr, 0, 1 },
@@ -12541,7 +13045,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
     { "mage_bot_freeze_alone_fixes_scen99", "scen/scen1.fss", 0x00000050u,
       kInputsEmpty, std::size(kInputsEmpty), 200,
       CompareMode::SemanticParity, false,
-      kFamilySpawns_mage_bot_freeze_alone_scen99, std::size(kFamilySpawns_mage_bot_freeze_alone_scen99),
+      kFamilySpawns_mage_bot_freeze_alone_fixes_scen99, std::size(kFamilySpawns_mage_bot_freeze_alone_fixes_scen99),
       0, false, true, Exercises::None,
       kFacts_mage_bot_freeze_alone_fixes_scen99, std::size(kFacts_mage_bot_freeze_alone_fixes_scen99),
       kMut_mage_bot_freeze_alone_fixes_scen99, {}, 1, nullptr, 0, 1 },
@@ -13233,6 +13737,146 @@ inline constexpr ScenarioSpec kScenarios[] = {
       0, false, true, Exercises::None,
       kFacts_soldier_bot_refused_roll_acts_fixes_scen99, std::size(kFacts_soldier_bot_refused_roll_acts_fixes_scen99),
       kMut_soldier_bot_refused_roll_acts_fixes_scen99, {}, 1, nullptr, 0, 1 },
+    { "orc_stale_shove_scen99", "scen/scen1.fss", 0x00000000u,
+      kInputsEmpty, std::size(kInputsEmpty), 90,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_orc_stale_shove_scen99, std::size(kFamilySpawns_orc_stale_shove_scen99),
+      0, false, true, Exercises::None,
+      kFacts_orc_stale_shove_scen99, std::size(kFacts_orc_stale_shove_scen99),
+      kMut_orc_stale_shove_scen99 },
+    { "orc_stale_shove_fixes_scen99", "scen/scen1.fss", 0x00000000u,
+      kInputsEmpty, std::size(kInputsEmpty), 90,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_orc_stale_shove_scen99, std::size(kFamilySpawns_orc_stale_shove_scen99),
+      0, false, true, Exercises::None,
+      kFacts_orc_stale_shove_fixes_scen99, std::size(kFacts_orc_stale_shove_fixes_scen99),
+      kMut_orc_stale_shove_fixes_scen99, {}, 1, nullptr, 0, 1 },
+    { "orc_right_walk_potion_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsEmpty, std::size(kInputsEmpty), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_orc_right_walk_potion_scen99, std::size(kFamilySpawns_orc_right_walk_potion_scen99),
+      0, false, true, Exercises::None,
+      kFacts_orc_right_walk_potion_scen99, std::size(kFacts_orc_right_walk_potion_scen99),
+      kMut_orc_right_walk_potion_scen99 },
+    { "orc_right_walk_potion_fixes_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsEmpty, std::size(kInputsEmpty), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_orc_right_walk_potion_scen99, std::size(kFamilySpawns_orc_right_walk_potion_scen99),
+      0, false, true, Exercises::None,
+      kFacts_orc_right_walk_potion_fixes_scen99, std::size(kFacts_orc_right_walk_potion_fixes_scen99),
+      kMut_orc_right_walk_potion_fixes_scen99, {}, 1, nullptr, 0, 1 },
+    { "soldier_charge_ally_scen99", "scen/scen1.fss", 0x00000018u,
+      kInputs_soldier_charge_ally, std::size(kInputs_soldier_charge_ally), 30,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_soldier_charge_ally_scen99, std::size(kFamilySpawns_soldier_charge_ally_scen99),
+      0, false, true, Exercises::None,
+      kFacts_soldier_charge_ally_scen99, std::size(kFacts_soldier_charge_ally_scen99),
+      kMut_soldier_charge_ally_scen99 },
+    { "soldier_charge_ally_fixes_scen99", "scen/scen1.fss", 0x00000018u,
+      kInputs_soldier_charge_ally, std::size(kInputs_soldier_charge_ally), 30,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_soldier_charge_ally_scen99, std::size(kFamilySpawns_soldier_charge_ally_scen99),
+      0, false, true, Exercises::None,
+      kFacts_soldier_charge_ally_fixes_scen99, std::size(kFacts_soldier_charge_ally_fixes_scen99),
+      kMut_soldier_charge_ally_fixes_scen99, {}, 1, nullptr, 0, 1 },
+    { "druid_bot_faerie_pad_body_scen99", "scen/scen1.fss", 0x00000002u,
+      kInputsEmpty, std::size(kInputsEmpty), 3,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_druid_bot_faerie_pad_body_scen99, std::size(kFamilySpawns_druid_bot_faerie_pad_body_scen99),
+      0, false, true, Exercises::None,
+      kFacts_druid_bot_faerie_pad_body_scen99, std::size(kFacts_druid_bot_faerie_pad_body_scen99),
+      kMut_druid_bot_faerie_pad_body_scen99 },
+    { "druid_bot_faerie_pad_body_fixes_scen99", "scen/scen1.fss", 0x00000002u,
+      kInputsEmpty, std::size(kInputsEmpty), 3,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_druid_bot_faerie_pad_body_scen99, std::size(kFamilySpawns_druid_bot_faerie_pad_body_scen99),
+      0, false, true, Exercises::None,
+      kFacts_druid_bot_faerie_pad_body_fixes_scen99, std::size(kFacts_druid_bot_faerie_pad_body_fixes_scen99),
+      kMut_druid_bot_faerie_pad_body_fixes_scen99, {}, 1, nullptr, 0, 1 },
+    { "barbarian_bot_boulder_pad_body_scen99", "scen/scen1.fss", 0x00000002u,
+      kInputsEmpty, std::size(kInputsEmpty), 3,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_barbarian_bot_boulder_pad_body_scen99, std::size(kFamilySpawns_barbarian_bot_boulder_pad_body_scen99),
+      0, false, true, Exercises::None,
+      kFacts_barbarian_bot_boulder_pad_body_scen99, std::size(kFacts_barbarian_bot_boulder_pad_body_scen99),
+      kMut_barbarian_bot_boulder_pad_body_scen99 },
+    { "barbarian_bot_boulder_pad_body_fixes_scen99", "scen/scen1.fss", 0x00000002u,
+      kInputsEmpty, std::size(kInputsEmpty), 3,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_barbarian_bot_boulder_pad_body_scen99, std::size(kFamilySpawns_barbarian_bot_boulder_pad_body_scen99),
+      0, false, true, Exercises::None,
+      kFacts_barbarian_bot_boulder_pad_body_fixes_scen99, std::size(kFacts_barbarian_bot_boulder_pad_body_fixes_scen99),
+      kMut_barbarian_bot_boulder_pad_body_fixes_scen99, {}, 1, nullptr, 0, 1 },
+    { "mage_bot_wave_pad_body_scen99", "scen/scen1.fss", 0x00000002u,
+      kInputsEmpty, std::size(kInputsEmpty), 3,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_mage_bot_wave_pad_body_scen99, std::size(kFamilySpawns_mage_bot_wave_pad_body_scen99),
+      0, false, true, Exercises::None,
+      kFacts_mage_bot_wave_pad_body_scen99, std::size(kFacts_mage_bot_wave_pad_body_scen99),
+      kMut_mage_bot_wave_pad_body_scen99 },
+    { "mage_bot_wave_pad_body_fixes_scen99", "scen/scen1.fss", 0x00000002u,
+      kInputsEmpty, std::size(kInputsEmpty), 3,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_mage_bot_wave_pad_body_scen99, std::size(kFamilySpawns_mage_bot_wave_pad_body_scen99),
+      0, false, true, Exercises::None,
+      kFacts_mage_bot_wave_pad_body_fixes_scen99, std::size(kFacts_mage_bot_wave_pad_body_fixes_scen99),
+      kMut_mage_bot_wave_pad_body_fixes_scen99, {}, 1, nullptr, 0, 1 },
+    { "druid_bot_tree_pad_body_scen99", "scen/scen1.fss", 0x00000002u,
+      kInputsEmpty, std::size(kInputsEmpty), 3,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_druid_bot_tree_pad_body_scen99, std::size(kFamilySpawns_druid_bot_tree_pad_body_scen99),
+      0, false, true, Exercises::None,
+      kFacts_druid_bot_tree_pad_body_scen99, std::size(kFacts_druid_bot_tree_pad_body_scen99),
+      kMut_druid_bot_tree_pad_body_scen99 },
+    { "druid_bot_tree_pad_body_fixes_scen99", "scen/scen1.fss", 0x00000002u,
+      kInputsEmpty, std::size(kInputsEmpty), 3,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_druid_bot_tree_pad_body_scen99, std::size(kFamilySpawns_druid_bot_tree_pad_body_scen99),
+      0, false, true, Exercises::None,
+      kFacts_druid_bot_tree_pad_body_fixes_scen99, std::size(kFacts_druid_bot_tree_pad_body_fixes_scen99),
+      kMut_druid_bot_tree_pad_body_fixes_scen99, {}, 1, nullptr, 0, 1 },
+    { "elemental_struck_short_pool_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsEmpty, std::size(kInputsEmpty), 60,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_elemental_struck_short_pool_scen99, std::size(kFamilySpawns_elemental_struck_short_pool_scen99),
+      0, false, true, Exercises::None,
+      kFacts_elemental_struck_short_pool_scen99, std::size(kFacts_elemental_struck_short_pool_scen99),
+      kMut_elemental_struck_short_pool_scen99 },
+    { "elemental_struck_short_pool_fixes_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsEmpty, std::size(kInputsEmpty), 60,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_elemental_struck_short_pool_scen99, std::size(kFamilySpawns_elemental_struck_short_pool_scen99),
+      0, false, true, Exercises::None,
+      kFacts_elemental_struck_short_pool_fixes_scen99, std::size(kFacts_elemental_struck_short_pool_fixes_scen99),
+      kMut_elemental_struck_short_pool_fixes_scen99, {}, 1, nullptr, 0, 1 },
+    { "elf_rocks_edge_pad_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputs_elf_rocks_edge_pad, std::size(kInputs_elf_rocks_edge_pad), 40,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_elf_rocks_edge_pad_scen99, std::size(kFamilySpawns_elf_rocks_edge_pad_scen99),
+      0, false, true, Exercises::None,
+      kFacts_elf_rocks_edge_pad_scen99, std::size(kFacts_elf_rocks_edge_pad_scen99),
+      kMut_elf_rocks_edge_pad_scen99 },
+    { "elf_rocks_edge_pad_fixes_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputs_elf_rocks_edge_pad, std::size(kInputs_elf_rocks_edge_pad), 40,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_elf_rocks_edge_pad_scen99, std::size(kFamilySpawns_elf_rocks_edge_pad_scen99),
+      0, false, true, Exercises::None,
+      kFacts_elf_rocks_edge_pad_fixes_scen99, std::size(kFacts_elf_rocks_edge_pad_fixes_scen99),
+      kMut_elf_rocks_edge_pad_fixes_scen99, {}, 1, nullptr, 0, 1 },
+    { "thief_charm_tent_troop_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputs_thief_charm_tent_troop, std::size(kInputs_thief_charm_tent_troop), 440,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_thief_charm_tent_troop_scen99, std::size(kFamilySpawns_thief_charm_tent_troop_scen99),
+      0, false, true, Exercises::None,
+      kFacts_thief_charm_tent_troop_scen99, std::size(kFacts_thief_charm_tent_troop_scen99),
+      kMut_thief_charm_tent_troop_scen99 },
+    { "thief_charm_tent_troop_fixes_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputs_thief_charm_tent_troop, std::size(kInputs_thief_charm_tent_troop), 440,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_thief_charm_tent_troop_scen99, std::size(kFamilySpawns_thief_charm_tent_troop_scen99),
+      0, false, true, Exercises::None,
+      kFacts_thief_charm_tent_troop_fixes_scen99, std::size(kFacts_thief_charm_tent_troop_fixes_scen99),
+      kMut_thief_charm_tent_troop_fixes_scen99, {}, 1, nullptr, 0, 1 },
 };
 
 inline constexpr std::size_t kScenarioCount = std::size(kScenarios);

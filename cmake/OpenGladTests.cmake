@@ -201,6 +201,7 @@ set(ALL_INTEGRATION_TEST_SOURCES
     ${CMAKE_SOURCE_DIR}/tests/parity/test_golden_compare.cpp
     ${CMAKE_SOURCE_DIR}/tests/parity/test_parity_scenarios.cpp
     ${CMAKE_SOURCE_DIR}/tests/parity/test_parity_coverage_gate.cpp
+    ${CMAKE_SOURCE_DIR}/tests/parity/test_scenario_spawn_room.cpp
     ${CMAKE_SOURCE_DIR}/tests/parity/test_fact_predicate.cpp
     ${CMAKE_SOURCE_DIR}/tests/parity/test_state_dump_symbols.cpp
     ${CMAKE_SOURCE_DIR}/tests/parity/test_switch_guard_tripwire.cpp
@@ -800,6 +801,7 @@ og_add_test_group(og_test_mass_coverage FILES
 og_add_test_group(og_test_parity NO_DEFAULT_TEST FILES
     test_parity_scenarios.cpp
     test_parity_coverage_gate.cpp
+    test_scenario_spawn_room.cpp
     test_fact_predicate.cpp
     test_state_dump_symbols.cpp
     test_switch_guard_tripwire.cpp
