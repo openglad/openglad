@@ -381,7 +381,17 @@ short statistics::do_command()
 				controller->walkstep(com1, com2);
 				controller->walkstep(com1, com2);
 				controller->walkstep(com1, com2);
-				if (controller->collide_ob) // We hit someone
+				// port of the current game's 8e644cfb (Gameplay Fixes Z): the rush
+				// strikes the body its last step ran into: not an ally (attack
+				// refuses one, but only after its damage draw, and the queue theft
+				// and the forced walk below hit an ally all the same), and not a
+				// body collide_ob still names from an earlier step this act (a
+				// wall stopped the rush; fix X). Off, the classic strike stands.
+				if (controller->collide_ob // We hit someone
+				        && (!myscreen->gameplay_fixes
+				            || (!controller->is_friendly(controller->collide_ob)
+				                && step_meets(controller, com1 * controller->stepsize,
+				                              com2 * controller->stepsize, controller->collide_ob))))
 				{
 					target = controller->collide_ob;
 					controller->attack(target);
