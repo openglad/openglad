@@ -1804,7 +1804,15 @@ std::vector<Scene> scenes()
         sc.name = "captain_banner_warband";
         sc.family = FAMILY_BIG_ORC;
         sc.slot = 4;
-        sc.frames = 130;
+        // Room for the grunts' turn, measured 2026-11-01: they close on the
+        // new banner at frame 165 (106 before Gameplay Fixes X). Two grunts
+        // stand in a column at x 432 from frame 59. Before X every blocked
+        // act of the lower one shoved the one above twice: once from its
+        // step up, which met it, and once more from its sideways step east,
+        // which met no body and was stopped by the ground. X keeps only the
+        // first, the draws and queues go another way, and the column comes
+        // apart later. Every other tell lands by frame 66, as before.
+        sc.frames = 190;
         sc.stage = [](Run& run) {
             // A held tap calls the warband on both of its frames (two grunts
             // each at level 10, under the cap of six): mana for the banner,
