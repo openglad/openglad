@@ -747,7 +747,7 @@ its own foe, ported in `7ff1654a`) moved one of them again,
 `orc_right_walk_potion` and `elemental_struck_short_pool` (each
 `_fixes_scen99`; in the last the struck orc now ends at 67 hp, not 96).
 The old game's capture after the port moves exactly these three, and each
-`cmp`s equal to the current game's dump. The other twelve of Y's thirteen are byte-equal before and after: eleven
+`cmp`s equal to the current game's dump. Of Y's thirteen, the other twelve are byte-equal before and after: eleven
 have no melee-only bot, and in `thief_bot_bomb_ally` no bump of its orc
 changes a byte. After the last port every moved capture
 `cmp`s equal to the current game's dump but one:
