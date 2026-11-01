@@ -12,9 +12,9 @@
 --   2. A family whose classic gate acquires a foe (ai.foe_within,
 --      ai.foe_in_window) calls it FIRST through G.with_classic, on both
 --      values of the setting, and tests after.
---   3. The engine draws the Shift coin before the hook (living.cpp:596); a gate that chooses an arm writes it
---      AFTER, with set_shifter_down, and only an arm the bot can pay (G.can_pay): the engine does not re-check on
---      the act path; with the setting on it holds a yes the bot cannot pay (fix AB), so G.can_pay is how a gate picks a payable arm, not the only guard.
+--   3. The engine draws the Shift coin before the hook (living.cpp:602); a gate
+--      that picks an arm sets it AFTER (set_shifter_down), and only one G.can_pay
+--      allows: setting off, nothing re-checks it; on, fix AB holds an unpaid yes.
 --   4. No og.tuning here: a gate runs on every fifth act tick and on every
 --      hit, and a tuning read there costs instructions (lib/ai.lua). The
 --      families pass numbers in.
