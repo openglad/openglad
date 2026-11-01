@@ -485,9 +485,15 @@ short statistics::do_command()
 					else if (denial == walker::FireCheckDenial::Facing ||
 					         denial == walker::FireCheckDenial::NoRanged)
 						// Note for NoRanged (melee-only) families: this only
-						// FACES the bump-range foe; their actual swings keep
-						// coming from the classic walk_to_foe() init_fire()
-						// cadence between ATTACK windows. Wiring init_fire()
+						// FACES the bump-range foe. Their swings are bumps: a
+						// step of their own that runs into a body (living::walk's
+						// probe) and, with Gameplay Fixes on, the right-hand
+						// walk's probe that finds their own foe
+						// (statistics::path_probe; off, every loud probe bumps).
+						// walk_to_foe's near-branch init_fire() lands no melee
+						// swing (measured 2026-11-01: walker::turn moves a notch
+						// even when the bot already faces the foe, so init_fire
+						// only turns back). Wiring init_fire()
 						// here as well was tried and rejected: it roughly
 						// doubles melee swing rate over classic and swung
 						// campaign balance hard.
@@ -981,6 +987,8 @@ bool statistics::forward_blocked(bool quiet)
 // opened a door, and a body a side probe grazed took a bump swing (busy, a
 // knife along the heading two acts later) or turned the bot, and was left in
 // collide_ob for the stale shove of fix X. Off, the loud probes stand.
+// A melee-only bot's own foe in a probe's way is still the classic bump
+// (path_probe): that is how such a bot fights. Everything else stays quiet.
 bool statistics::right_walk()
 {
 	float xdelta, ydelta;
@@ -990,9 +998,9 @@ bool statistics::right_walk()
 	//    if (direct_walk()) return -1;
 	//  walkrounds++;
 
-	if (right_blocked(quiet) || right_forward_blocked(quiet) )
+	if (path_probe(Side::Right, quiet) || path_probe(Side::RightFront, quiet) )
 	{
-		if (!forward_blocked(quiet))  // walk forward
+		if (!path_probe(Side::Front, quiet))  // walk forward
 		{
 			xdelta = controller->lastx;
 			ydelta = controller->lasty;
@@ -1013,12 +1021,12 @@ bool statistics::right_walk()
 			return controller->turn(controller->enddir);
 		}
 	}
-	else if (forward_blocked(quiet))
+	else if (path_probe(Side::Front, quiet))
 	{
 		controller->enddir = (char) ((controller->enddir+6) %8);  // turn left
 		return controller->turn(controller->enddir);
 	}
-	else if (right_back_blocked(quiet))
+	else if (path_probe(Side::RightBack, quiet))
 	{
 		controller->enddir = (char) ((controller->enddir+2) %8);  // turn right
 		switch (controller->enddir)
@@ -1110,6 +1118,38 @@ bool statistics::right_walk()
 		}
 	}
 	return true;
+}
+
+// Gameplay Fixes Y, the bump (port of the current game's 5f946150). The
+// probe's box is the bot's own moved one pixel (CHECK_STEP_SIZE) toward
+// `side`, counted round from its facing: the same box facing_step_delta
+// names, and the same collide() rule the classic probe met the body with
+// (step_meets). A melee-only bot has no aimed shot (fire_check refuses it,
+// the ATTACK arm only faces): its blows are the bumps, its own step's and,
+// with the setting on, this one at its own foe. Measured 2026-11-01: the
+// quiet probes alone took a third of the orc, ghost and slime swings and a
+// fifth of their damage, and left an orc stopped exactly against a standing
+// foe swinging never. Off, the probe alone. One floor here, so no floor test.
+bool statistics::path_probe(Side side, bool quiet)
+{
+	bool blocked;
+	switch (side)
+	{
+		case Side::RightFront: blocked = right_forward_blocked(quiet); break;
+		case Side::Right:      blocked = right_blocked(quiet); break;
+		case Side::RightBack:  blocked = right_back_blocked(quiet); break;
+		default:               blocked = forward_blocked(quiet); break;
+	}
+	if (!quiet || !blocked)
+		return blocked;
+	walker *foe = controller->foe;
+	if (!foe || foe->dead || !query_bit_flags(BIT_NO_RANGED) || controller->is_friendly(foe))
+		return blocked;
+	short dx = 0, dy = 0;
+	facing_step_delta((char) ((controller->curdir + (short) side) % 8), dx, dy);
+	if (step_meets(controller, (float) (dx * CHECK_STEP_SIZE), (float) (dy * CHECK_STEP_SIZE), foe))
+		controller->collide(foe);
+	return blocked;
 }
 
 bool statistics::direct_walk()

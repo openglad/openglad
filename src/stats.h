@@ -78,6 +78,16 @@ class statistics
 		// quiet: the same question asked without a draw or a side effect
 		// (port of the current game's 15053f4a)
 		bool forward_blocked(bool quiet = false); // are we blocked in front?
+		// The right-hand walk's four probes, counted from the facing.
+		enum class Side : short { Front = 0, RightFront = 1, Right = 2, RightBack = 3 };
+		// Gameplay Fixes Y: one of the four probes asked with `quiet`, then
+		// the bump the classic loud probe gave: with the setting on, a
+		// melee-only bot (BIT_NO_RANGED) whose own live foe stands where the
+		// probe looked runs into it (living::collide: collide_ob, a swing
+		// along its heading). Everything else the probe met stays untouched.
+		// Off, the probe alone. See right_walk. (Port of the current game's
+		// 5f946150.)
+		bool path_probe(Side side, bool quiet);
 		//short distance_to_foe(); //not in use???????
 		bool right_walk();      // walk using right-hand rule
 		bool direct_walk(); // walk in a line toward foe ..
