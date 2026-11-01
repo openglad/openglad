@@ -3165,6 +3165,18 @@ void play_side(const Pair& pair, int side, Result& out)
     // palette id alone, so a time stop still running when the setting-off
     // run ended (b) would read as blue at the start of the next run.
     og::runtime::current_session->myscreen_->world().current_palette_id = 0;
+    // A run ends in live_game::finish_scene, not through the mission's end,
+    // so nothing sets the water and lava bands back: do_cycle turns them in
+    // the session's palette, and since the palette is painted only when its
+    // id changes (#414) the next run starts with them where the last run
+    // left them. The halves then differ from frame 0 or 4 whatever the
+    // setting does (measured 2026-11-01: 19 pairs red, each one whose two
+    // halves started on different rotations; the four whose halves started
+    // on the same rotation passed). The game makes this forced write on
+    // every way out of a mission (restore_mission_palette,
+    // src/platform/sdl/game_loop.cpp), so each half starts as a real
+    // mission does: the level's own colours, the bands at rotation 0.
+    og::runtime::current_session->myscreen_->show_palette_id(0, /*force=*/true);
     play(sc, out);
 }
 
