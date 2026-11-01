@@ -40,6 +40,8 @@
 #include <openglad/platform/local_transport_shadow.h>
 #include <openglad/resources/save_data.h>
 
+#include "test_sim_random_scope.h"
+
 // glad_gameplay.cpp: loads the level in save_data and starts the shadow.
 void glad_init(bool preserve_frame_timing = false);
 
@@ -268,22 +270,8 @@ inline void finish_scene()
     s->world().delete_objects();
 }
 
-// The first world-RNG state whose next draws are exactly `want` under the
-// matching bounds. A bound of 1 matches any draw and still steps the
-// generator (the LCG's step does not depend on the bound).
-inline std::uint32_t state_where_draws_are(const std::vector<std::uint32_t>& bounds,
-                                           const std::vector<std::uint32_t>& want)
-{
-    for (std::uint32_t seed = 1;; ++seed)
-    {
-        og::sim::SimRandom probe(seed);
-        bool match = true;
-        for (std::size_t i = 0; i < bounds.size() && match; ++i)
-            match = probe.next(bounds[i]) == want[i];
-        if (match)
-            return seed;
-    }
-}
+// The sim-RNG state search every test shares (test_sim_random_scope.h).
+using ::state_where_draws_are;
 
 } // namespace live_game
 

@@ -27,6 +27,7 @@
 #include <openglad/gameplay/walker.h>
 
 #include "../modes_pack_fixture.h"
+#include "../test_sim_random_scope.h"
 
 #include <algorithm>
 #include <cmath>
@@ -2475,22 +2476,6 @@ TEST_F(ModesOnslaught, a_tent_troops_kill_is_not_credited_to_the_victims_earlier
 }
 
 namespace {
-
-// The world-RNG state whose next draws are exactly `want` under `bounds`
-// (test_kit_skeleton.cpp's helper: the coin is pinned without a spy).
-std::uint32_t state_where_draws_are(const std::vector<std::uint32_t>& bounds,
-                                    const std::vector<std::uint32_t>& want)
-{
-    for (std::uint32_t seed = 1;; ++seed)
-    {
-        og::sim::SimRandom probe(seed);
-        bool match = true;
-        for (std::size_t i = 0; i < bounds.size() && match; ++i)
-            match = probe.next(bounds[i]) == want[i];
-        if (match)
-            return seed;
-    }
-}
 
 int skeletons_alive_on_team(GameWorld& world, unsigned char team)
 {

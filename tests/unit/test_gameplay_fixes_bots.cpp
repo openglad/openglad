@@ -29,6 +29,7 @@
 
 #include "../test_family_hook_dispatch.h"
 #include "../test_game_world_fixture.h"
+#include "../test_sim_random_scope.h"
 #include "bot_gate_fixture.h"
 #include "unit_pack_store_guard.h"
 
@@ -225,14 +226,12 @@ TEST_F(GameplayFixesBots, mage_energy_wave_refuses_a_pad_on_a_wall)
     living* mage = body(add(FAMILY_MAGE, 1, 192, 192, 10, 600.0f), 16, 16);
     living* tower = body(add(FAMILY_TOWER1, 2, 248, 186, 1), 25, 29);  // a 40 px gap east
     ASSERT_TRUE(mage && tower);
-    mage->setxy(193, 192);  // file the 16 by 16 box the test set
-    mage->setxy(192, 192);
+    settle_body(mage);  // file the 16 by 16 box the test set
     mage->set_lastx(1.0f);
     mage->set_lasty(0.0f);
     EXPECT_TRUE(gate(mage, 4, 1)) << "open grass: a faced tower within 110, the pad clear";
 
-    world().grid.data[static_cast<std::size_t>(13 + world().grid.w * 12)] =
-        static_cast<std::uint8_t>(PIX_H_WALL1);
+    pad_wall(world(), 13, 12);
     ASSERT_EQ(walker::PadAnswer::Terrain, mage->fire_pad_answer())
         << "precondition: the wall is under the fireball's pad";
     EXPECT_FALSE(gate(mage, 4, 0)) << "the classic answer: one foe within 110";
@@ -663,23 +662,9 @@ TEST_F(GameplayFixesBots, archmage_mind_control_wants_a_charmable_foe_in_reach)
 
 namespace {
 
-// The first world-RNG state from which the next draws of next(bound) are
-// `want`, in order: pins the hit response's rolls without a spy.
-std::uint32_t state_where_draws_are(std::initializer_list<std::pair<std::uint32_t, std::uint32_t>> draws)
-{
-    for (std::uint32_t seed = 1;; ++seed) {
-        og::sim::SimRandom probe(seed);
-        bool all = true;
-        for (const auto& d : draws)
-            all = all && probe.next(d.first) == d.second;
-        if (all)
-            return seed;
-    }
-}
-
 std::uint32_t state_where_next_is(std::uint32_t bound, std::uint32_t want)
 {
-    return state_where_draws_are({{bound, want}});
+    return state_where_draws_are({bound}, {want});
 }
 
 // The world-RNG state after `draws` more draws of next(bound) from `state`.
@@ -848,7 +833,7 @@ TEST_F(GameplayFixesArchmageHit, a_struck_bot_below_the_threshold_still_teleport
         EXPECT_EQ(0, o.elementals + o.phantoms + o.explosions + o.chains);
     }
 
-    const std::uint32_t stay = state_where_draws_are({{3, 0}, {2, 0}});
+    const std::uint32_t stay = state_where_draws_are({3, 2}, {0, 0});
     const StruckOutcome classic = struck(0, 1, 1100.0f, false, 230, 100.0f, stay);
     EXPECT_EQ(1, classic.elementals) << "the classic order summons";
     const StruckOutcome fixed = struck(1, 1, 1100.0f, false, 230, 100.0f, stay);

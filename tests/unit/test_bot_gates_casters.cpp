@@ -93,28 +93,6 @@ void wall_pocket(GameWorld& w)
     wall(15, 12);
 }
 
-// A wall cell at grid (tx, ty), what a weapon probe on the pad meets.
-void pad_wall(GameWorld& w, int tx, int ty)
-{
-    w.grid.data[static_cast<std::size_t>(tx + w.grid.w * ty)] =
-        static_cast<std::uint8_t>(PIX_H_WALL1);
-}
-
-// The obmap files a body under the cells its box covered when it was
-// placed, so a body whose size the test set afterwards is moved once more:
-// the pad probe reads the obmap, not positions.
-template <class W>
-W* settle_body(W* w)
-{
-    if (w != nullptr) {
-        const short x = w->xpos();
-        const short y = w->ypos();
-        w->setxy(static_cast<short>(x + 1), y);
-        w->setxy(x, y);
-    }
-    return w;
-}
-
 }  // namespace
 
 // ---------------------------------------------------------------------------

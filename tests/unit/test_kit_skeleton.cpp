@@ -23,6 +23,7 @@
 
 #include "../test_family_hook_dispatch.h"
 #include "../test_game_world_fixture.h"
+#include "../test_sim_random_scope.h"
 #include "unit_pack_store_guard.h"
 
 #include <openglad/core/constants.h>
@@ -128,21 +129,6 @@ int skeletons_on_team(GameWorld& world, unsigned char team)
 bool in_obmap(GameWorld& world, walker* w)
 {
     return world.myobmap->walker_to_pos.count(w) != 0;
-}
-
-// The first world-RNG state whose next draws are exactly `want` under the
-// matching bounds (the bot's rolls, pinned without a spy).
-std::uint32_t state_where_draws_are(const std::vector<std::uint32_t>& bounds,
-                                    const std::vector<std::uint32_t>& want)
-{
-    for (std::uint32_t seed = 1;; ++seed) {
-        og::sim::SimRandom probe(seed);
-        bool match = true;
-        for (std::size_t i = 0; i < bounds.size() && match; ++i)
-            match = probe.next(bounds[i]) == want[i];
-        if (match)
-            return seed;
-    }
 }
 
 class KitSkeleton : public ::testing::Test {
