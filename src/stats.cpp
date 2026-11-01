@@ -957,17 +957,24 @@ bool statistics::forward_blocked(bool quiet)
 	return !myscreen->query_passable(controlx + xdelta, controly + ydelta, controller, quiet);
 }
 
+// port of the current game's af9ff6cd (Gameplay Fixes Y): the right-hand
+// walk's four probes ask quietly. The classic probes were the walker's own
+// step moved one pixel to a side: they ate a potion the bot never stood on,
+// opened a door, and a body a side probe grazed took a bump swing (busy, a
+// knife along the heading two acts later) or turned the bot, and was left in
+// collide_ob for the stale shove of fix X. Off, the loud probes stand.
 bool statistics::right_walk()
 {
 	float xdelta, ydelta;
+	const bool quiet = myscreen->gameplay_fixes != 0;   // Gameplay Fixes Y: a pathing probe changes nothing
 
 	//  if (walkrounds > 60)
 	//    if (direct_walk()) return -1;
 	//  walkrounds++;
 
-	if (right_blocked() || right_forward_blocked() )
+	if (right_blocked(quiet) || right_forward_blocked(quiet) )
 	{
-		if (!forward_blocked())  // walk forward
+		if (!forward_blocked(quiet))  // walk forward
 		{
 			xdelta = controller->lastx;
 			ydelta = controller->lasty;
@@ -988,12 +995,12 @@ bool statistics::right_walk()
 			return controller->turn(controller->enddir);
 		}
 	}
-	else if (forward_blocked())
+	else if (forward_blocked(quiet))
 	{
 		controller->enddir = (char) ((controller->enddir+6) %8);  // turn left
 		return controller->turn(controller->enddir);
 	}
-	else if (right_back_blocked())
+	else if (right_back_blocked(quiet))
 	{
 		controller->enddir = (char) ((controller->enddir+2) %8);  // turn right
 		switch (controller->enddir)
