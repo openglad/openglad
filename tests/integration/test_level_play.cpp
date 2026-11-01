@@ -77,6 +77,9 @@
 //   soldier PATH BLOCKED 0 (cap 3), elf COULD NOT FIRE 5 (cap 7: 5 plus a
 //   third), druid / barbarian / mage / archer COULD NOT FIRE 2 (cap 3); walk
 //   shoves of a body the step did not meet 0; rolls the gates held 5265.
+//   After fix Y's amendment (2026-11-01; the caps' own comment in E gives the
+//   trace): elf COULD NOT FIRE 11 (cap 15), the four families 0 (cap 3), the
+//   rest unchanged at 0; rolls the gates held 5170; crew casts 314.
 //   What moved it, from the 2026-10-30 census (bb5e13d7) on the first three
 //   seeds, each fix taken out alone and the census re-read: fix X (#403) took
 //   the far shoves 23 -> 0 (X taken out alone: 15, up to 592 px); fix AB
@@ -999,20 +1002,34 @@ TEST_F(TryxianLevelPlay, bots_fire_varying_specials_at_somebody)
     // pooled count plus a third, at least 3 (a measured 0 is capped at 3, not
     // pinned to 0, which the stream could break); a cap is never raised to
     // pass. Measured 2026-11-01 over the six seeds.
+    // Measured again 2026-11-01 after fix Y's amendment (a melee-only bot
+    // still bumps its own foe, statistics::path_probe), which moves the whole
+    // stream on purpose: SPECIAL BUSY 0, PATH BLOCKED 0, NOT ENOUGH MP 0, the
+    // four families' COULD NOT FIRE 0 (caps 3), far shoves 0, and the elf's
+    // COULD NOT FIRE 11 = 2 / 0 / 0 / 4 / 4 / 1 by seed (cap 15: 11 plus a
+    // third, rounded up as 5 -> 7 was). Every one of the 11 was traced: the
+    // grid was clear, the gate's quiet pad probe had passed an enemy weapon
+    // in flight on the pad (9 knives, 2 rocks; a quiet probe never rolls),
+    // and fire()'s loud probe then met it and lost the weapon clash roll
+    // (rng 10 read 1, 2 or 3; 0-3 clash). That is the residue
+    // docs/gameplay-fixes.md "What the gates still do not see" names; its
+    // mechanism did not change, the amended stream only reaches it more
+    // often. No other count rose.
     EXPECT_LE(busy, 3)
         << "SPECIAL BUSY refusals (measured 0 pooled; 4 on the three seeds before the "
            "mage's flee teleport asked the busy guard, #408; 157 before fix W)";
     EXPECT_LE(path_blocked, 3)
         << "soldier CHARGE refused PATH BLOCKED after its gate said yes (measured 0 pooled; "
            "139 before fixes V and W)";
-    EXPECT_LE(elf_could_not_fire, 7)
-        << "elf ROCKS refused COULD NOT FIRE after its gate said yes (measured 5 pooled, "
-           "0 / 0 / 0 / 2 / 0 / 3; 80 before fix V)";
+    EXPECT_LE(elf_could_not_fire, 15)
+        << "elf ROCKS refused COULD NOT FIRE after its gate said yes (measured 11 pooled, "
+           "2 / 0 / 0 / 4 / 4 / 1, each an enemy weapon in flight on the pad that won the "
+           "clash roll; 5 before fix Y's amendment; 80 before fix V)";
     EXPECT_LE(pad_could_not_fire, 3)
         << "druid, barbarian, mage or archer cast refused COULD NOT FIRE after its gate "
-           "said yes (measured 2 pooled, both the druid's SUMMON FAERIE: a door, a grown "
-           "tree or a weapon in flight on the pad, which a weapon probe passes; 25 on the "
-           "three seeds before fix AA)";
+           "said yes (measured 0 pooled; 2 before fix Y's amendment, both the druid's "
+           "SUMMON FAERIE: a door, a grown tree or a weapon in flight on the pad, which a "
+           "weapon probe passes; 25 on the three seeds before fix AA)";
     EXPECT_LE(nomp, 3)
         << "NOT ENOUGH MP refusals after the roll (measured 0 pooled: a struck bot holds a "
            "slot it cannot pay, fix AB; 19 on the three seeds before it, 61 before fix W)";
