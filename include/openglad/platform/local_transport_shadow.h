@@ -294,6 +294,13 @@ bool local_transport_shadow_testing_open_exit_prompt(
 bool local_transport_shadow_testing_server_pending_exit_prompt(
     GameSession& session) noexcept;
 
+// Test-only: set the installed runtime's own networked flag (the one the
+// install copies from the session), leaving the session's flag alone, so a
+// test can prove each half of a gate that asks both. False when no runtime
+// is installed.
+bool local_transport_shadow_testing_set_runtime_networked(GameSession& session,
+                                                          bool networked) noexcept;
+
 // Test-only: drive the shadow's internal win finalize (the FIRST finalizer in
 // every local/host flow: shared win fold + rematch gate + the persist tail
 // gated on the mode's persist_after_win()) and withdraw finalize (run-end

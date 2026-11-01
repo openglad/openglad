@@ -1196,6 +1196,8 @@ TEST(GameLoop, the_freeze_time_cheat_does_nothing_while_networked)
         ASSERT_EQ(static_cast<int>(GameFrameResult::Continue),
                   static_cast<int>(game_frame_with_result(*display, st, deps)));
 
+    // The gate asks both flags: the session's (set by the lobby) and the
+    // installed runtime's own copy. Each one alone refuses the cheat.
     session.networked_session_ = true;
     press_freeze_time_cheat(*display);
     session.networked_session_ = false;
@@ -1204,6 +1206,20 @@ TEST(GameLoop, the_freeze_time_cheat_does_nothing_while_networked)
         << "a networked cheat must not reach the shared game";
     EXPECT_EQ(0, display->world().enemy_freeze)
         << "nor the display's copy of it";
+    EXPECT_EQ(0, static_cast<int>(display->world().current_palette_id));
+    EXPECT_TRUE(display_palette_is(display->ourpalette))
+        << "a cheat that froze nothing must not turn the screen blue";
+
+    ASSERT_TRUE(og::runtime::local_transport_shadow_testing_set_runtime_networked(
+        session, true));
+    ASSERT_FALSE(session.networked_session_);
+    press_freeze_time_cheat(*display);
+    ASSERT_TRUE(og::runtime::local_transport_shadow_testing_set_runtime_networked(
+        session, false));
+
+    EXPECT_EQ(0, server->world().enemy_freeze)
+        << "a runtime installed for a networked game refuses the cheat too";
+    EXPECT_EQ(0, display->world().enemy_freeze);
     EXPECT_EQ(0, static_cast<int>(display->world().current_palette_id));
     EXPECT_TRUE(display_palette_is(display->ourpalette))
         << "a cheat that froze nothing must not turn the screen blue";

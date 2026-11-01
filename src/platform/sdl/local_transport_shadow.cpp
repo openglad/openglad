@@ -1825,6 +1825,16 @@ bool local_transport_shadow_testing_server_pending_exit_prompt(
     return runtime->server->pending_exit_prompt();
 }
 
+bool local_transport_shadow_testing_set_runtime_networked(GameSession& session,
+                                                          bool networked) noexcept
+{
+    const auto runtime = session.local_transport_runtime_;
+    if (runtime == nullptr)
+        return false;
+    runtime->networked = networked;
+    return true;
+}
+
 bool local_transport_shadow_testing_finalize_win(screen& gameplay_screen,
                                                  int next_level,
                                                  bool networked,
