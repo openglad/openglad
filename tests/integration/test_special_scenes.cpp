@@ -1804,7 +1804,15 @@ std::vector<Scene> scenes()
         sc.name = "captain_banner_warband";
         sc.family = FAMILY_BIG_ORC;
         sc.slot = 4;
-        sc.frames = 130;
+        // Room for the grunts' turn, measured 2026-11-01: they close on the
+        // new banner at frame 165 (106 before Gameplay Fixes X). Two grunts
+        // stand in a column at x 432 from frame 59. Before X every blocked
+        // act of the lower one shoved the one above twice: once from its
+        // step up, which met it, and once more from its sideways step east,
+        // which met no body and was stopped by the ground. X keeps only the
+        // first, the draws and queues go another way, and the column comes
+        // apart later. Every other tell lands by frame 66, as before.
+        sc.frames = 190;
         sc.stage = [](Run& run) {
             // A held tap calls the warband on both of its frames (two grunts
             // each at level 10, under the cap of six): mana for the banner,
@@ -3165,6 +3173,18 @@ void play_side(const Pair& pair, int side, Result& out)
     // palette id alone, so a time stop still running when the setting-off
     // run ended (b) would read as blue at the start of the next run.
     og::runtime::current_session->myscreen_->world().current_palette_id = 0;
+    // A run ends in live_game::finish_scene, not through the mission's end,
+    // so nothing sets the water and lava bands back: do_cycle turns them in
+    // the session's palette, and since the palette is painted only when its
+    // id changes (#414) the next run starts with them where the last run
+    // left them. The halves then differ from frame 0 or 4 whatever the
+    // setting does (measured 2026-11-01: 19 pairs red, each one whose two
+    // halves started on different rotations; the four whose halves started
+    // on the same rotation passed). The game makes this forced write on
+    // every way out of a mission (restore_mission_palette,
+    // src/platform/sdl/game_loop.cpp), so each half starts as a real
+    // mission does: the level's own colours, the bands at rotation 0.
+    og::runtime::current_session->myscreen_->show_palette_id(0, /*force=*/true);
     play(sc, out);
 }
 
