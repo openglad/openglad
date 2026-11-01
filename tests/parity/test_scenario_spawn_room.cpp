@@ -19,6 +19,7 @@
 
 #include "parity_runner.h"
 #include "scenario_table.h"
+#include "state_dump.h"
 
 #include <openglad/core/order.h>
 #include <openglad/gameplay/game_world.h>
@@ -26,10 +27,8 @@
 
 #include <gtest/gtest.h>
 
-#include <array>
 #include <cstddef>
 #include <cstdint>
-#include <iterator>
 #include <set>
 #include <sstream>
 #include <string>
@@ -130,17 +129,17 @@ constexpr TerrainSpawn kTerrainSpawns[] = {
     { "soldier_whirlwind_no_foe_fixes_scen99", 0,
       "the far bot soldier stands on a tree bottom and flies off drowning; the caster is the player at (120, 120), on grass" },
     { "elf_volley_refund_scen99", 0,
-      "the stationary target TOWER1 parked in the lake; it loses 1 hp a tick standing there, and the row's hp facts were derived with that in" },
+      "the stationary target TOWER1, parked in the lake on purpose; it loses 1 hp a tick standing there, and the golden the row's facts were read from ends without it" },
     { "elf_volley_refund_fixes_scen99", 0,
-      "the stationary target TOWER1 parked in the lake; it loses 1 hp a tick standing there, and the row's hp facts were derived with that in" },
+      "the stationary target TOWER1, parked in the lake on purpose; it loses 1 hp a tick standing there, and the golden the row's facts were read from ends without it" },
     { "mage_bot_freeze_no_foe_scen99", 1,
       "classic twin, untouched by the PR #404 ruling: the mage casts from the lake, drowns 1 hp a tick and flies out; its golden records that (the setting-on twin stands at (160, 160))" },
     { "mage_bot_freeze_alone_scen99", 1,
       "classic twin, untouched by the PR #404 ruling: the mage stops time from the lake on tick 0, drowns 1 hp a tick and flies out; its golden records that (the setting-on twin stands at (160, 160))" },
     { "mage_bot_freeze_engaged_scen99", 1,
-      "the stationary target TOWER1 parked on a tree bottom; it loses 1 hp a tick standing there, and the row's hp facts were derived with that in" },
+      "the east TOWER1, parked on a tree bottom on purpose; it loses 1 hp a tick standing there, and the golden the row's facts were read from ends without it (the west and far towers remain)" },
     { "mage_bot_freeze_engaged_fixes_scen99", 1,
-      "the stationary target TOWER1 parked on a tree bottom; it loses 1 hp a tick standing there, and the row's hp facts were derived with that in" },
+      "the east TOWER1, parked on a tree bottom on purpose; it loses 1 hp a tick standing there, and the golden the row's facts were read from ends without it (the west and far towers remain)" },
     { "archmage_summon_no_room_scen99", 0,
       "one of the four hostile TOWER1s 100 px out that the HEARTBURST splits its pool over; it stands in terrain and loses 1 hp a tick there, and the row's facts were derived with that in" },
     { "archmage_summon_no_room_scen99", 2,
@@ -156,36 +155,37 @@ constexpr TerrainSpawn kTerrainSpawns[] = {
     { "archmage_bot_summon_no_foe_scen99", 0,
       "classic twin: the archmage drowns in the lake and teleports out before its counted SUMMON IMAGE; the fixed twin stands at (160, 160)" },
     { "elf_bot_rocks_far_scen99", 0,
-      "the stationary target TOWER1 parked in the lake; it loses 1 hp a tick standing there, and the row's hp facts were derived with that in" },
+      "the stationary target TOWER1, parked in the lake on purpose; it loses 1 hp a tick standing there, and that drowning is in the golden the row's facts were read from (the tower ends the run below its 130 hp)" },
     { "elf_bot_rocks_far_fixes_scen99", 0,
-      "the stationary target TOWER1 parked in the lake; it loses 1 hp a tick standing there, and the row's hp facts were derived with that in" },
+      "the stationary target TOWER1, parked in the lake on purpose; it loses 1 hp a tick standing there, and that drowning is in the golden the row's facts were read from (the tower ends the run below its 130 hp)" },
     { "archer_bot_ring_one_foe_scen99", 0,
-      "the stationary target TOWER1 parked in the lake; it loses 1 hp a tick standing there, and the row's hp facts were derived with that in" },
+      "the stationary target TOWER1, parked in the lake on purpose; it loses 1 hp a tick standing there, and that drowning is in the golden the row's facts were read from (the tower ends the run below its 130 hp)" },
     { "archer_bot_ring_one_foe_fixes_scen99", 0,
-      "the stationary target TOWER1 parked in the lake; it loses 1 hp a tick standing there, and the row's hp facts were derived with that in" },
+      "the stationary target TOWER1, parked in the lake on purpose; it loses 1 hp a tick standing there, and that drowning is in the golden the row's facts were read from (the tower ends the run below its 130 hp)" },
     { "barbarian_bot_boulder_far_scen99", 0,
-      "the stationary target TOWER1 parked in the lake; it loses 1 hp a tick standing there, and the row's hp facts were derived with that in" },
+      "the stationary target TOWER1, parked in the lake on purpose; it loses 1 hp a tick standing there, and that drowning is in the golden the row's facts were read from (the tower ends the run below its 130 hp)" },
     { "barbarian_bot_boulder_far_fixes_scen99", 0,
-      "the stationary target TOWER1 parked in the lake; it loses 1 hp a tick standing there, and the row's hp facts were derived with that in" },
+      "the stationary target TOWER1, parked in the lake on purpose; it loses 1 hp a tick standing there, and that drowning is in the golden the row's facts were read from (the tower ends the run below its 130 hp)" },
     { "barbarian_bot_explode_lone_scen99", 0,
-      "the stationary target TOWER1 parked in the lake; it loses 1 hp a tick standing there, and the row's hp facts were derived with that in" },
+      "the stationary target TOWER1, parked in the lake on purpose; it loses 1 hp a tick standing there, and that drowning is in the golden the row's facts were read from (the tower ends the run below its 130 hp)" },
     { "barbarian_bot_explode_lone_fixes_scen99", 0,
-      "the stationary target TOWER1 parked in the lake; it loses 1 hp a tick standing there, and the row's hp facts were derived with that in" },
+      "the stationary target TOWER1, parked in the lake on purpose; it loses 1 hp a tick standing there, and that drowning is in the golden the row's facts were read from (the tower ends the run below its 130 hp)" },
     { "elemental_bot_starburst_one_foe_scen99", 0,
-      "the stationary target TOWER1 parked in the lake; it loses 1 hp a tick standing there, and the row's hp facts were derived with that in" },
+      "the stationary target TOWER1, parked in the lake on purpose; it loses 1 hp a tick standing there, and that drowning is in the golden the row's facts were read from (the tower ends the run below its 130 hp)" },
     { "elemental_bot_starburst_one_foe_fixes_scen99", 0,
-      "the stationary target TOWER1 parked in the lake; it loses 1 hp a tick standing there, and the row's hp facts were derived with that in" },
+      "the stationary target TOWER1, parked in the lake on purpose; it loses 1 hp a tick standing there, and that drowning is in the golden the row's facts were read from (the tower ends the run below its 130 hp)" },
     { "archmage_bot_image_one_foe_scen99", 0,
-      "the stationary target TOWER1 parked on a tree bottom; it loses 1 hp a tick standing there, and the row's hp facts were derived with that in" },
+      "the stationary target TOWER1, parked on a tree bottom on purpose; it loses 1 hp a tick standing there, and that drowning is in the golden the row's facts were read from (the tower ends the run below its 130 hp)" },
     { "archmage_bot_image_one_foe_fixes_scen99", 0,
-      "the stationary target TOWER1 parked on a tree bottom; it loses 1 hp a tick standing there, and the row's hp facts were derived with that in" },
+      "the stationary target TOWER1, parked on a tree bottom on purpose; it loses 1 hp a tick standing there, and that drowning is in the golden the row's facts were read from (the tower ends the run below its 130 hp)" },
 };
 
 std::string describe(const ScenarioSpec& spec, std::size_t index)
 {
     const SpawnSpec& s = spec.spawns[index];
     std::ostringstream os;
-    os << spec.id << " spawn " << index << " (family " << s.family
+    os << spec.id << " spawn " << index << " ("
+       << og::parity::family_symbol_by_order(static_cast<std::int32_t>(s.order), s.family)
        << ", team " << static_cast<int>(s.team) << ", at " << s.x << ", "
        << s.y << ", floor " << s.floor << ")";
     return os.str();

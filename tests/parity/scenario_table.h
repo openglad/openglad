@@ -10860,7 +10860,7 @@ inline constexpr Mutation kMut_elemental_struck_short_pool_scen99 = {
     "src/gameplay/stats.cpp", 693,
     "&& !rng(3) )",
     "&& false )",
-    "A struck bot never casts, so the rng(3) and the refused casts are gone and the stream parts: EventKindExactly(play_sound, 10) and the orc's 82 hp fail.",
+    "A struck bot never casts, so the rng(3) and the refused casts are gone and the stream parts: the orc's 82 hp (WalkerHpRangeAtFinalTick) fails.",
     "	// Default: attack our attacker"
 };
 inline constexpr FactPredicate kFacts_elemental_struck_short_pool_fixes_scen99[] = {
@@ -10875,7 +10875,7 @@ inline constexpr Mutation kMut_elemental_struck_short_pool_fixes_scen99 = {
     "src/gameplay/living.cpp", 624,
     "stats_->magicpoints() < og::sim::cast_cost(*this, static_cast<int>(current_special()), shifter_down() != 0))",
     "false)",
-    "The price test never refuses, so the hit response draws rng(3) for the unpaid STARBURST again: EventKindExactly(play_sound, 8) and the orc's 96 hp fail.",
+    "The price test never refuses, so the hit response draws rng(3) for the unpaid STARBURST again: the orc's 96 hp (WalkerHpRangeAtFinalTick) fails.",
     "	// Gameplay Fixes AB (#409): a yes the bot cannot pay for is a no. The fold"
 };
 
