@@ -8311,7 +8311,7 @@ inline constexpr FactPredicate kFacts_walk_to_foe_adopts_near_foe_scen99[] = {
 };
 
 inline constexpr Mutation kMut_walk_to_foe_adopts_near_foe_scen99 = {
-    "src/gameplay/stats.cpp", 1330,
+    "src/gameplay/stats.cpp", 1371,
     "controller_->set_foe(near_foe);",
     "(void)near_foe;",
     "Drops the adoption and keeps the this-tick re-aim (the recomputed xdelta/ydelta still steer the turn), which the recon measured byte-identical to the pre-#320 golden on every switch row: the archer keeps the soldier as its foe, its arrows never land on the thief, WalkerHpRangeAtFinalTick(FAMILY_THIEF, 5600, 5600) reads 6700 and the soldier fact reads 7200. The archer control and the tick budget hold."
@@ -10386,7 +10386,7 @@ inline constexpr FactPredicate kFacts_soldier_charge_front_foe_scen99[] = {
         "consequence: the classic probe's swing takes the tower down to 93 hp"),
 };
 inline constexpr Mutation kMut_soldier_charge_front_foe_scen99 = {
-    "src/gameplay/stats.cpp", 950,
+    "src/gameplay/stats.cpp", 956,
     "return !current_game->world->query_passable(controlx + xdelta, controly + ydelta, controller_, controller_->floor(), quiet);",
     "return true || !current_game->world->query_passable(controlx + xdelta, controly + ydelta, controller_, controller_->floor(), quiet);",
     "Answers blocked without probing, so CHARGE still refuses PATH BLOCKED but no probe bumps the tower, which ends at 112 hp: WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 9300, 9300) fails (the sound count stays 8: the tower's own shots fall differently)."
@@ -10602,7 +10602,7 @@ inline constexpr FactPredicate kFacts_orc_right_walk_potion_scen99[] = {
         "consequence: the classic run ends with the orc at (105, 118); with the setting on it ends at (97, 108)"),
 };
 inline constexpr Mutation kMut_orc_right_walk_potion_scen99 = {
-    "src/gameplay/stats.cpp", 962,
+    "src/gameplay/stats.cpp", 970,
     "const bool quiet = og::sim::session_gameplay_fixes() != 0;",
     "const bool quiet = true;",
     "right_walk's probes ask quietly with the setting off too, so the probe beside the orc never eats the potion: WalkerOfOrderFamilyCount(FAMILY_MAGIC_POTION, kOrderTreasure, 0, 0) reads 1.",
@@ -10616,7 +10616,7 @@ inline constexpr FactPredicate kFacts_orc_right_walk_potion_fixes_scen99[] = {
         "consequence: with the setting on the right-hand walk's probes ask quietly, so the potion beside the orc is not eaten"),
 };
 inline constexpr Mutation kMut_orc_right_walk_potion_fixes_scen99 = {
-    "src/gameplay/stats.cpp", 962,
+    "src/gameplay/stats.cpp", 970,
     "const bool quiet = og::sim::session_gameplay_fixes() != 0;",
     "const bool quiet = false;",
     "right_walk's probes are loud again with the setting on, so right_blocked's probe eats the potion: WalkerOfOrderFamilyCount(FAMILY_MAGIC_POTION, kOrderTreasure, 1, 1) reads 0.",
@@ -10886,7 +10886,7 @@ inline constexpr FactPredicate kFacts_elemental_struck_short_pool_scen99[] = {
         "consequence: on the classic stream the struck orc ends at 82 hp"),
 };
 inline constexpr Mutation kMut_elemental_struck_short_pool_scen99 = {
-    "src/gameplay/stats.cpp", 693,
+    "src/gameplay/stats.cpp", 699,
     "&& !rng(3) )",
     "&& false )",
     "A struck bot never casts, so the rng(3) and the refused casts are gone and the stream parts: the orc's 82 hp (WalkerHpRangeAtFinalTick) fails.",
