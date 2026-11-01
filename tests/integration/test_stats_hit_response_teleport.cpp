@@ -27,7 +27,7 @@
 // GameContext::rng (what the deleted local RngGuard swapped) is never
 // consulted here. The old oracle was vacuous for a second reason:
 // current_special() == 1 is the living constructor's default
-// (src/gameplay/living.cpp:52/59), so it held on the teleport arm AND on the
+// (src/gameplay/living.cpp:45/52), so it held on the teleport arm AND on the
 // retarget arm. The oracles below are the animation and targeting state that
 // actually differ between the two arms.
 

@@ -4102,8 +4102,8 @@ TEST_F(ModesBasketball, point_blank_release_still_throws)
     }
     // Third arm: the OTHER point-blank shape — the defender already parked
     // ON the weapon spawn pad, so walker::fire() itself melees and kills
-    // its own spawn (walker.cpp:594-628: set_dead(1), return nullptr) with
-    // death_called() still 0, AFTER deducting weapon_cost (walker.cpp:514).
+    // its own spawn (walker.cpp:606-640: set_dead(1), return nullptr) with
+    // death_called() still 0, AFTER deducting weapon_cost (walker.cpp:531).
     // Consumed via D27's ACT_CONTROL arm; the refund makes the fire()-time
     // death net zero too. A future gate keyed on death_called() == 1 alone
     // would regress exactly this shape — this arm is its tripwire.
@@ -4133,7 +4133,7 @@ TEST_F(ModesBasketball, point_blank_release_still_throws)
         ASSERT_EQ(nullptr, fx.red->fire())
             << "pad blocked: fire() melees and returns no weapon";
         ASSERT_EQ(pre - cost, st->magicpoints())
-            << "the engine deducted before the pad probe (walker.cpp:514)";
+            << "the engine deducted before the pad probe (walker.cpp:531)";
         ASSERT_FALSE(fx.world().weaplist.empty());
         walker* dead_shot = fx.world().weaplist.back().get();
         ASSERT_NE(nullptr, dead_shot);
@@ -4164,7 +4164,7 @@ TEST_F(ModesBasketball, point_blank_release_still_throws)
 TEST_F(ModesBasketball, throw_refund_is_mana_neutral)
 {
     // Net zero across fire + consume: drive walker::fire() for real so the
-    // engine deducts weapon_cost (walker.cpp:514), then the consumption
+    // engine deducts weapon_cost (walker.cpp:531), then the consumption
     // refunds it. Regen is staged inert (per_round 0, delay far from its
     // pulse) so the equality below isolates the refund.
     {
@@ -4187,7 +4187,7 @@ TEST_F(ModesBasketball, throw_refund_is_mana_neutral)
         ASSERT_NE(nullptr, shot) << "mp >= cost: the engine gate passes";
         const std::uint32_t shot_id = shot->entity_id();
         ASSERT_EQ(pre - cost, st->magicpoints())
-            << "the engine really deducted (walker.cpp:514)";
+            << "the engine really deducted (walker.cpp:531)";
         fx.tick(1);
 
         EXPECT_FALSE(fx.weapon_present(shot_id)) << "consumed as the throw";
@@ -4349,7 +4349,7 @@ TEST_F(ModesBasketball, drained_carrier_release_residual)
     fx.red->set_lasty(0.0f);
 
     EXPECT_EQ(nullptr, fx.red->fire())
-        << "walker.cpp:506-507: no weapon spawns below weapon_cost";
+        << "walker.cpp:524-525: no weapon spawns below weapon_cost";
     fx.tick(1);
 
     EXPECT_EQ(kStateCarried, fx.var(kBbBallState))
@@ -4366,14 +4366,14 @@ TEST_F(ModesBasketball, drained_carrier_release_residual)
 
 TEST_F(ModesBasketball, fire_check_probes_never_release_or_mint)
 {
-    // walker::fire_check (walker.cpp:1245-1346) creates a REAL weaplist
+    // walker::fire_check (walker.cpp:1435-1556) creates a REAL weaplist
     // weapon as its ray probe — owner set, heading set — and set_dead(1)s
     // it on every denial/miss/success path WITHOUT paying weapon_cost. An
     // AI carrier engaging an in-range foe produces one per engagement tick
     // (act_random, and every COMMAND_FIRE/ATTACK dispatch). An unqualified
     // dead-weapon scan consumed them — a phantom release the carrier never
     // triggered — and the D28 refund credited a cost that was never paid.
-    // Both arms drive the COMMAND_FIRE dispatch (stats.cpp:407), which
+    // Both arms drive the COMMAND_FIRE dispatch (stats.cpp:418), which
     // runs fire_check on every dispatch tick.
     //
     // Arm 1 — the self-refuel exploit: a DRAINED bot carrier (mp < cost)
