@@ -524,10 +524,11 @@ What the gates still do not see:
 `tests/integration/test_level_play.cpp` (binary `og_test_level_play`) checks
 the rules in a real level: it plays The Tryxian Chronicles' first level, its
 104 bots on four warring teams plus a crew of 12 heroes at level 14, for 2400
-ticks on three seeds, and counts every cast, every refusal and every roll a
-gate holds. On the shipped default the bots cast about <measured> times (<measured> on
-the three seeds) and <measured> different specials, among them the <measured> Shift arms the level
-reaches (<measured>) and the crew's slot-5 HEARTBURST
+ticks on six seeds, and counts every cast, every refusal and every roll a
+gate holds. On the shipped default the bots cast about 480 times a seed (2887 on
+the six seeds) and 47 different specials, among them the eight Shift arms the level
+reaches (MYSTIC MACE 31, CHARM OPPONENT 31, MINE 24, CHAIN LIGHTNING 20, TURN
+UNDEAD 15, WAIL 10, TELEPORT MARKER 9, HASTE SELF 7) and the crew's slot-5 HEARTBURST
 and FREEZE TIME, none at nobody (each special whose rule names a foe has
 one within its reach, worked from the gate's own arithmetic), REVEAL never,
 and no gate says yes to a cast that then refuses for the fact the gate
@@ -554,13 +555,21 @@ For fixes X to AD it counts the far shoves, the price refusals and the
 pad refusals. With fixes T to W in, it read 23 shoves from more than 100 px (7 of them taking the ally's
 orders), 19 `NOT ENOUGH MP` refusals, and the druid, barbarian, mage and
 archer bots' `COULD NOT FIRE` 16, 3, 3 and 3 times. With fixes X to AD in
-it reads <measured> far shoves, <measured> `NOT ENOUGH MP`, `COULD NOT
-FIRE` <measured> for those four families and <measured> for the elves,
-`SPECIAL BUSY` <measured> and `PATH BLOCKED` <measured>; the gates hold
-<measured> rolls. The test caps each at its measured count plus a third
-(at least 3), and far shoves at 0: <measured>. What is left of `COULD NOT
-FIRE` and `NO ROOM TO SUMMON` comes from the shapes the gates do not see
-(above): <measured>.
+it reads, on the six seeds, 0 far shoves, 0 `NOT ENOUGH MP`, `COULD NOT
+FIRE` 0 for those four families and 11 for the elves (2, 0, 0, 4, 4 and 1
+a seed), `SPECIAL BUSY` 0 and `PATH BLOCKED` 0; the gates hold
+5170 rolls. The test caps each at its measured count plus a third
+(at least 3), and far shoves at 0: `SPECIAL BUSY`, `NOT ENOUGH MP`, `PATH
+BLOCKED` and the four families' `COULD NOT FIRE` at 3, the elves' at 15.
+Before the amendment of fix Y (a melee-only bot still bumps its own foe)
+the elves read 5 (cap 7) and the four families 2, both the druid's SUMMON
+FAERIE; the amendment moves the whole stream, and the caps were measured
+again on it. What is left of `COULD NOT FIRE` and `NO ROOM TO SUMMON` comes
+from the shapes the gates do not see (above): each of the elves' 11 is an
+enemy weapon in flight on the rock's pad (9 knives, 2 rocks), which the
+gate's quiet question passes and `fire()`'s loud one met and lost the
+weapon clash roll to; the druid's one `NO ROOM TO SUMMON` (seed 3) is
+the faerie's own room, which no gate asks about.
 
 ## Charm and seats
 
@@ -1581,8 +1590,8 @@ the default taken, and what the game does today.
    a rename could not reach it anyway). The alternative keeps the typed
    name in HIRE ME. Default: as built.
 10. **The level-play caps.** The rule PR #404 used, the measured count
-    plus a third and at least 3: `SPECIAL BUSY` <measured>, `NOT ENOUGH MP`
-    <measured> (it was capped at 100, "stay rare"), one pooled cap for the
+    plus a third and at least 3: `SPECIAL BUSY` 3 (measured 0), `NOT ENOUGH MP`
+    3 (measured 0; it was capped at 100, "stay rare"), one pooled cap for the
     druid, archer, barbarian and mage `COULD NOT FIRE`, the elves' and
     `PATH BLOCKED`'s caps measured again, and far shoves 0. A floor the new
     gates breach (DRUID SUMMON FAERIE at least 2, BARBARIAN HURL BOULDER at
