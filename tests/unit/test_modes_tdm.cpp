@@ -2320,3 +2320,64 @@ TEST_F(ModesTdm, matched_init_fits_a_tenth_of_the_instruction_budget)
         << "a 10x-reduced budget must never trip with matching on";
     EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
 }
+
+// #411: a tent's troop is its own kill credit (a generator is not a
+// living), so its kill of a competitor is a frag for the troop's colour.
+// RED at the base: the stamp is skipped for a chain whose root is not a
+// living, and the frag goes nowhere.
+TEST_F(ModesTdm, a_tent_troops_kill_counts_a_frag)
+{
+    TdmRig rig;
+    walker* gen = rig.fx.spawn_generator(FAMILY_TENT, 1, 432, 432);
+    ASSERT_NE(nullptr, gen);
+    rig.fx.tick(1);
+    ASSERT_TRUE(rig.active());
+    walker* troop = gen->fire();
+    ASSERT_NE(nullptr, troop);
+    ASSERT_EQ(gen, troop->owner());
+    troop->setxy(184, 200);
+
+    troop->set_damage(5000.0f);
+    rig.slay(troop, rig.red);
+    EXPECT_EQ(troop->entity_id(), rig.red->last_attacker_id());
+    EXPECT_EQ(1, rig.kills(1)) << "green's troop fragged red";
+    EXPECT_EQ(0, rig.kills(0));
+}
+
+// With Gameplay Fixes AD (#412) a charmed summon heads its own chain: a
+// green archmage's summon charmed onto red kills green's fighter, and the
+// frag is red's. With the setting off the summon still answers for its
+// summoner: the blow is refused and nobody scores. New Specials off.
+// RED with the climbs that ignore the charm: the blow is refused with the
+// setting on too.
+TEST_F(ModesTdm, a_charmed_summons_kill_credits_its_charmed_colour)
+{
+    for (const short fixes : {short{0}, short{1}})
+    {
+        SCOPED_TRACE(fixes);
+        TdmRig rig;
+        rig.fx.world().gameplay_fixes = fixes;
+        rig.fx.world().new_specials = 0;
+        walker* summoner = rig.fx.spawn_living(FAMILY_ARCHMAGE, 1, 400, 400);
+        ASSERT_NE(nullptr, summoner);
+        rig.fx.tick(1);
+        ASSERT_TRUE(rig.active());
+        walker* pet = rig.fx.spawn_living(FAMILY_SKELETON, 1, 232, 200);
+        ASSERT_NE(nullptr, pet);
+        pet->set_owner(summoner);
+        // The charm's own writes (living-11-thief.lua's success arm).
+        pet->set_real_team_num(1);
+        pet->set_team_num(0);
+        pet->set_charm_left(225);
+
+        rig.green->stats()->set_hitpoints(1.0f);
+        pet->set_damage(5000.0f);
+        const bool landed = pet->attack(rig.green);
+        EXPECT_EQ(fixes != 0, landed);
+        EXPECT_EQ(fixes != 0, rig.green->dead());
+        EXPECT_EQ(fixes != 0 ? pet->entity_id() : 0u,
+                  rig.green->last_attacker_id());
+        EXPECT_EQ(fixes != 0 ? 1 : 0, rig.kills(0)) << "red's frag";
+        EXPECT_EQ(0, rig.kills(1));
+    }
+}
