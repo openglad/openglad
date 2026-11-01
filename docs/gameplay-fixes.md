@@ -836,7 +836,7 @@ Rows deliberately not added:
 
 ## Not gated
 
-Nine changes apply whatever the setting, three from the first work (N, O
+Nine changes apply whatever the setting, three from the work that added it (N, O
 and P) and six from the second bugs batch:
 
 - **N. A slot that is not in play says so.** `walker::special()` refuses a
