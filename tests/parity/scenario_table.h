@@ -10870,7 +10870,7 @@ inline constexpr Mutation kMut_druid_bot_tree_pad_body_fixes_scen99 = {
 // (twice in this run). With the setting on (fix AB) the gate answers no for a
 // slot the bot cannot pay, so no rng(3) is drawn for it. Every later draw
 // shifts: the classic run ends with 10 sounds and the struck orc at 82 hp, the
-// fixed one with 8 sounds and that orc at 96.
+// fixed one with 8 sounds and that orc at 67 (96 before fix Y's melee bump).
 inline constexpr SpawnSpec kFamilySpawns_elemental_struck_short_pool_scen99[] = {
     { FAMILY_FIREELEMENTAL, 1, kOrderLiving, 120, 120, 0, 0, 1, 30 },  // hostile level-1 bot, 30 MP: under STARBURST's 50 and under the act path's slot-1 guard, so only hits reach the gate
     { FAMILY_ORC,           2, kOrderLiving, 120, 137, 0, 0 },         // at blows below, a third team: nothing is friendly
@@ -10897,14 +10897,14 @@ inline constexpr FactPredicate kFacts_elemental_struck_short_pool_fixes_scen99[]
     pred::WalkerFamilyCount(FAMILY_FIREELEMENTAL, 1, 1),
     pred::EventKindExactly(/*play_sound*/1, 8,
         "consequence: with the setting on the gate refuses the slot the elemental cannot pay and no rng(3) is drawn; the fixed stream gives 8 sounds"),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_ORC, 9600, 9600,
-        "consequence: on the fixed stream the struck orc ends at 96 hp"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_ORC, 6700, 6700,
+        "consequence: on the fixed stream the struck orc ends at 67 hp"),
 };
 inline constexpr Mutation kMut_elemental_struck_short_pool_fixes_scen99 = {
     "src/gameplay/living.cpp", 624,
     "stats_->magicpoints() < og::sim::cast_cost(*this, static_cast<int>(current_special()), shifter_down() != 0))",
     "false)",
-    "The price test never refuses, so the hit response draws rng(3) for the unpaid STARBURST again: the orc's 96 hp (WalkerHpRangeAtFinalTick) fails.",
+    "The price test never refuses, so the hit response draws rng(3) for the unpaid STARBURST again: the orc's 67 hp (WalkerHpRangeAtFinalTick) fails.",
     "	// Gameplay Fixes AB (#409): a yes the bot cannot pay for is a no. The fold"
 };
 
