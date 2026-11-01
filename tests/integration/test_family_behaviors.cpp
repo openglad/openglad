@@ -888,8 +888,9 @@ TEST(FamilyBehaviors, check_special_default_families_with_new_specials_on)
         ASSERT_TRUE(golem != nullptr);
         golem->stats()->set_magicpoints(1000);
         golem->set_current_special(1);
-        // Gameplay Fixes AB (#409): a yes the bot cannot pay for is a no.
-        // A slot with nothing in it keeps the loader's price, 5000 MP in
+        // Gameplay Fixes AB (#409): a yes the bot cannot pay for is a no
+        // (the price test at the end of living::check_special,
+        // src/gameplay/living.cpp:623-625). A slot with nothing in it keeps the loader's price, 5000 MP in
         // both games (kSpecialCostDisabled; the old game's gloader.cpp
         // default), so with 1000 MP the golem cannot pay for slot 1 and the
         // answer is no. The act path never asks a bot that cannot pay

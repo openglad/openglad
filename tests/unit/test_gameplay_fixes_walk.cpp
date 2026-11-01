@@ -17,7 +17,9 @@
 //    own step's boxes meet (og::sim::step_meets, the obmap's collide() rule).
 // Y (#405): stats::right_walk asks four probes one pixel to the walker's
 //    side, front and back. Loud, they ate a potion the bot never stood on
-//    and swung at a body they grazed. With the setting on they ask quietly.
+//    and swung at a body they grazed. With the setting on they ask quietly,
+//    with one exception (statistics::path_probe): a melee-only bot whose
+//    own foe stands where a probe looked still bumps it, as the classic did.
 // Z (#406): COMMAND_RUSH strikes collide_ob after its three walksteps,
 //    whatever its team and wherever it stands. With the setting on the rush
 //    strikes only a body that is not friendly and that its last step ran
@@ -442,8 +444,11 @@ TEST_F(GameplayFixesWalk, a_right_walk_side_probe_eats_nothing_and_swings_at_nob
 // Case B carried on: the swing the classic side probe started ends in a
 // throw. Six animate() calls (the commands and foe cleared each time, so
 // nothing but the swing can fire): off, one knife flies (weaplist + 1),
-// the soldier pays 2 MP and fire() draws its waver once; on, nothing.
-TEST_F(GameplayFixesWalk, a_side_probe_does_not_swing_at_a_foe_with_the_setting_on)
+// the soldier pays 2 MP and fire() draws its waver once; on, nothing. The
+// orc is never the soldier's foe() and the soldier has a ranged weapon, so
+// the melee bump of path_probe does not apply: with the setting on a body
+// the bot is not fighting takes no swing.
+TEST_F(GameplayFixesWalk, a_side_probe_does_not_swing_at_a_body_it_is_not_fighting_with_the_setting_on)
 {
     for (short fixes : {short{0}, short{1}}) {
         SCOPED_TRACE("setting " + std::to_string(fixes));
@@ -477,6 +482,82 @@ TEST_F(GameplayFixesWalk, a_side_probe_does_not_swing_at_a_foe_with_the_setting_
             EXPECT_EQ(s, world().rng_.state_) << "setting on: nothing drawn";
         }
         EXPECT_FLOAT_EQ(400.0f, orc->stats()->hitpoints()) << "the classic knife flies up, past the orc";
+    }
+}
+
+// Fix Y amended: a melee-only bot's bump at its own foe. A team-1 orc bot
+// (BIT_NO_RANGED) at (320,320) heading up, the walk heading (0,-3). Case A:
+// a team-2 orc at (320,305), its box 305..320 against the bot's 320..335,
+// exact contact: collide()'s one-pixel shrink forgives it, so the bot's own
+// box never meets it, while the front probe (320,319) and the right-front
+// probe (321,319) do. It is the bot's foe. Both values: right_walk bumps it
+// (busy 7, the orc's fire_delay; the attack row; collide_ob the foe), the
+// walk turns left and does not move, and nothing is drawn: off through the
+// loud probe, on through path_probe. Case B: the same orc, not the bot's foe
+// (the foe a far team-2 soldier): off, the classic loud probe bumps any
+// hostile; on, nothing (Y's intent kept). Case C: a team-1 soldier bot (it
+// has a knife) in the orc bot's place, the orc its foe: off, the classic
+// knife swing (busy 6); on, nothing (a ranged bot keeps Y whole).
+//
+// RED at 7e1063af on case A's setting-on arm (the quiet probes alone never
+// swing at exact contact). Planted break on the fixed tree: path_probe's
+// `|| !query_bit_flags(BIT_NO_RANGED)` -> `|| query_bit_flags(BIT_NO_RANGED)`
+// (case A's and case C's setting-on arms go red).
+enum class BumpCase { OwnFoe, NotItsFoe, RangedBot };
+
+const char* bump_case_name(BumpCase c)
+{
+    switch (c) {
+        case BumpCase::OwnFoe: return "the orc bot's own foe";
+        case BumpCase::NotItsFoe: return "a hostile it is not fighting";
+        case BumpCase::RangedBot: return "a soldier bot's foe";
+    }
+    return "?";
+}
+
+TEST_F(GameplayFixesWalk, a_melee_bot_bumps_the_foe_a_quiet_probe_finds)
+{
+    for (BumpCase c : {BumpCase::OwnFoe, BumpCase::NotItsFoe, BumpCase::RangedBot}) {
+        for (short fixes : {short{0}, short{1}}) {
+            SCOPED_TRACE(std::string(bump_case_name(c)) + ", setting " + std::to_string(fixes));
+            fresh_world(fixes);
+            walker* w = living_at(c == BumpCase::RangedBot ? FAMILY_SOLDIER : FAMILY_ORC, 1, 320, 320);
+            walker* orc = living_at(FAMILY_ORC, 2, 320, 305);
+            ASSERT_TRUE(w && orc);
+            ASSERT_EQ(c == BumpCase::RangedBot ? 0 : 1,
+                      w->stats()->query_bit_flags(BIT_NO_RANGED) != 0 ? 1 : 0);
+            if (c == BumpCase::NotItsFoe) {
+                walker* distant = living_at(FAMILY_SOLDIER, 2, 560, 440);
+                ASSERT_NE(nullptr, distant);
+                w->set_foe(distant);
+            } else {
+                w->set_foe(orc);
+            }
+            face(w, FACE_UP);
+            w->set_lastx(0.0f);
+            w->set_lasty(-w->stepsize());
+            w->set_collide_ob(nullptr);
+            const char ani0 = w->ani_type();
+            const std::uint32_t s = world().rng_.state_;
+
+            EXPECT_TRUE(w->stats()->right_walk());
+
+            EXPECT_EQ(320, w->xpos()) << "the walk turned left, it did not step";
+            EXPECT_EQ(320, w->ypos());
+            EXPECT_EQ(s, world().rng_.state_) << "neither a probe nor a bump draws";
+            EXPECT_FLOAT_EQ(400.0f, orc->stats()->hitpoints());
+            const bool bumps = fixes == 0 || c == BumpCase::OwnFoe;
+            if (bumps) {
+                const float delay = c == BumpCase::RangedBot ? 6.0f : 7.0f;
+                EXPECT_FLOAT_EQ(delay, w->busy()) << "a bump swing at the orc";
+                EXPECT_EQ(ANI_ATTACK, w->ani_type());
+                EXPECT_EQ(orc, w->collide_ob());
+            } else {
+                EXPECT_FLOAT_EQ(0.0f, w->busy()) << "setting on: no swing";
+                EXPECT_EQ(ani0, w->ani_type());
+                EXPECT_EQ(nullptr, w->collide_ob()) << "setting on: nothing written";
+            }
+        }
     }
 }
 
@@ -747,7 +828,15 @@ TEST_F(GameplayFixesWalk, the_right_probes_answer_the_same_on_both_values)
 
 // COMMAND_GOTO's right-hand walk reads the same flag (one rule): the
 // reporter's case A asked through right_walk_to_point. Off, the side probe
-// eats the potion; on, it stands.
+// eats the potion; on, it stands. A second arm: the melee orc bot of
+// a_melee_bot_bumps_the_foe_a_quiet_probe_finds sent to a point with its
+// own foe in exact contact in front. Off, the loud probe bumps it; on, the
+// errand's walk stays wholly quiet (path_probe's bump is right_walk's
+// alone): no swing, nothing in collide_ob.
+//
+// Planted break for the second arm: right_walk_to_point's
+// `right_blocked(quiet) || right_forward_blocked(quiet)` ->
+// `path_probe(Side::Right, quiet) || path_probe(Side::RightFront, quiet)`.
 TEST_F(GameplayFixesWalk, right_walk_to_point_probes_quietly)
 {
     for (short fixes : {short{0}, short{1}}) {
@@ -767,5 +856,34 @@ TEST_F(GameplayFixesWalk, right_walk_to_point_probes_quietly)
         EXPECT_EQ(static_cast<short>(320 - w->stepsize()), w->ypos()) << "the walk stepped forward";
         EXPECT_EQ(fixes == 0, potion->dead() != 0);
         EXPECT_FLOAT_EQ(fixes == 0 ? 550.0f : 10.0f, w->stats()->magicpoints());
+    }
+
+    for (short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE("the melee orc bot and its foe, setting " + std::to_string(fixes));
+        fresh_world(fixes);
+        walker* w = living_at(FAMILY_ORC, 1, 320, 320);
+        walker* orc = living_at(FAMILY_ORC, 2, 320, 305);
+        ASSERT_TRUE(w && orc);
+        w->set_foe(orc);
+        face(w, FACE_UP);
+        w->set_lastx(0.0f);
+        w->set_lasty(-w->stepsize());
+        w->set_collide_ob(nullptr);
+        const char ani0 = w->ani_type();
+        const std::uint32_t s = world().rng_.state_;
+
+        EXPECT_TRUE(w->stats()->right_walk_to_point(320, 100));
+
+        EXPECT_EQ(320, w->ypos()) << "the walk turned left, it did not step";
+        EXPECT_EQ(s, world().rng_.state_);
+        if (fixes == 0) {
+            EXPECT_FLOAT_EQ(7.0f, w->busy()) << "setting off: the loud probe bumps the foe";
+            EXPECT_EQ(ANI_ATTACK, w->ani_type());
+            EXPECT_EQ(orc, w->collide_ob());
+        } else {
+            EXPECT_FLOAT_EQ(0.0f, w->busy()) << "setting on: the errand's probes do not bump";
+            EXPECT_EQ(ani0, w->ani_type());
+            EXPECT_EQ(nullptr, w->collide_ob());
+        }
     }
 }
