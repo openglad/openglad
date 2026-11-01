@@ -84,7 +84,7 @@ usual pause.
 | V | Soldier and elf bot gates | The gate said yes through a wall and onto a blocked pad. | The gate asks the cast's front, path and pad. |
 | W | A bot's refused roll | The roll was the act; busy casts rolled while busy. | The ordinary act; the gate reads the cast's busy. |
 | X | A walker's shove | A step that fails shoves the last ally any probe of the act met, from wherever the walker now stands: a walker a probe carried across a teleporter shoves the ally it left behind from the far pad, and a step the grid stopped shoves a body an earlier box met. The shoved ally loses its orders, and a shoved cleric heals at nobody. | Only a body the step's own boxes meet from where the walker stands is shoved. |
-| Y | A bot's right-hand walk | Looking for a way round eats a potion one pixel to the side, swings at a body it grazes and turns the bot. | Asked quietly: the same way round, nothing eaten, no swing, no turn. |
+| Y | A bot's right-hand walk | Looking for a way round eats a potion one pixel to the side, swings at a body it grazes and turns the bot. | Asked quietly: the same way round, nothing eaten, no door opened, no swing at a body it merely grazed. A melee-only bot that finds its own foe in a probe's way still bumps it, as the classic did: that is how such a bot fights. |
 | Z | CHARGE's strike | The rush strikes whatever body the collision field names after its last step, an ally included. An ally takes no damage, but the strike draws the damage roll, erases the ally's orders and walks it four steps, a seated hero too; a rush a wall stopped can strike a body met on an earlier step. | The rush strikes only a foe its last step ran into; an ally in the way gets the ordinary shove. |
 | AA | Druid, barbarian, mage (ENERGY WAVE) and archer (EXPLODING BOLT) bot gates | Yes with a wall, the map edge or a foe's body on the weapon's pad; the cast refuses `COULD NOT FIRE`. | The gate asks the pad, as the elf's does (fix V); the archer asks it for the fire arrow it fires. |
 | AB | A struck bot's cast | The hit response folds a slot the bot cannot pay onto slot 1 whatever slot 1 costs, the gate says yes, the roll is drawn and the cast refuses `NOT ENOUGH MP`. | A yes the bot cannot pay is a no: the roll is not drawn and the bot holds. |
@@ -166,8 +166,18 @@ Fixes X to AD, in play:
   an orc from 10 MP to 550 in the test), swings at a body it grazes (busy,
   then a thrown knife) and turns the bot. With the setting on the
   questions are asked quietly: the same answers, so the same way round,
-  and nothing eaten, no swing, no turn. The crew no longer picks up a
-  potion beside its path, which can move a battle (see
+  and nothing eaten, no swing, no turn. One exception, measured
+  2026-11-01: an orc, ghost or slime has no aimed attack (its shot is
+  refused before any aim; the attack order only faces a foe at bump
+  range), so its blows are bumps, and the right-hand walk's probes were
+  about 43 % of them in the classic. Asked wholly quietly, those bots
+  started a third fewer swings, landed an eighth fewer blows and dealt a
+  fifth less damage across the four campaigns, and one that stopped
+  exactly against a standing foe never swung again. So a melee-only bot
+  whose own foe stands where a probe looks still runs into it, as the
+  classic did. Everything else the probe meets stays untouched, and a bot
+  with a ranged weapon throws no knife at a body it grazed. The crew no
+  longer picks up a potion beside its path, which can move a battle (see
   [Balance](#balance)).
 - **Z.** CHARGE runs three acts of three steps and after each act strikes
   the body the collision field names, erases that body's orders and walks
@@ -727,7 +737,14 @@ same rows: X, Z, AA, AC and AD move only their own new rows, Y moves
 its thirteen and AB its ten (and the new rows the ledger lists), and nine
 of Y's thirteen move again under AB in the old game (a target tower in
 each is struck short of its slot-1 price), where the current game's
-bisection saw them move once. After the last port every moved capture
+bisection saw them move once. The amendment to Y (a melee-only bot bumps
+its own foe), measured in the current game, moved one of them again,
+`mage_bot_freeze_engaged`, and two newer rows whose orcs fight at blows,
+`orc_right_walk_potion` and `elemental_struck_short_pool` (each
+`_fixes_scen99`; in the last the struck orc now ends at 67 hp, not 96).
+The other twelve of Y's thirteen are byte-equal before and after: eleven
+have no melee-only bot, and in `thief_bot_bomb_ally` no bump of its orc
+changes a byte. After the last port every moved capture
 `cmp`s equal to the current game's dump but one:
 `thief_charm_tent_troop_fixes_scen99` differed only by the four explosion
 sounds of the tent dying at tick 238. The old game plays a generator's
@@ -1323,14 +1340,19 @@ the shipped default with fixes X to AD in, on the same three seeds;
 What the fixes change in a battle. X takes the far and stale shoves out,
 and with them a draw each and a stolen order; Y stops the crew and the
 enemy eating a potion or a meal one pixel beside their path and swinging
-at a body they graze; Z leaves an ally's orders alone when a CHARGE meets
-it; AA spends fewer druid, barbarian, mage and archer rolls on casts that
-refuse; AB makes a struck bot short of magic hold instead of rolling; AD
-puts a charmed troop on its charmer's side. AC changes nothing for a bot
-(its gate asks the pad first). Each moves the random stream, so on one seed
-a line can move by several survivors either way. With New Specials on,
-#411 also reaches the campaigns: a tent's or bones' troop that strikes an
-elemental is the foe its IMMOLATE burns double.
+at a body they graze that they are not fighting; a melee-only bot still
+bumps its own foe (the first form of Y, measured 2026-11-01, took a third
+of the orc, ghost and slime swings and a fifth of their damage, and the
+crews came out a little ahead of the classic: Westlands 323 vs 317
+survivors over 75 battles, Long Season 348 vs 328); Z leaves an ally's
+orders alone when a CHARGE meets it; AA spends fewer druid, barbarian,
+mage and archer rolls on casts that refuse; AB makes a struck bot short of
+magic hold instead of rolling; AD puts a charmed troop on its charmer's
+side. AC changes nothing for a bot (its gate asks the pad first). Each
+moves the random stream, so on one seed a line can move by several
+survivors either way. With New Specials on, #411 also reaches the
+campaigns: a tent's or bones' troop that strikes an elemental is the foe
+its IMMOLATE burns double.
 
 <measured: the Westlands, Long Season and Tower tables, before and after>
 
@@ -1505,6 +1527,21 @@ the default taken, and what the game does today.
    the right-hand walk and a bot's walk to a point (this game only, the
    same setting). A seat's slide along a wall keeps its two loud probes:
    that is a player's own step, not in the issue. Default: as built.
+   Amended 2026-11-01: asked wholly quietly, the probes took away a third
+   of the orc, ghost and slime swings, an eighth of their blows and a
+   fifth of their damage over the four campaigns, and an orc that stops
+   exactly against a standing foe never swung again. The game now keeps
+   the bump for a melee-only bot's own foe and nothing else (a potion
+   stands, a door stays shut, an ally and a passing hostile are untouched,
+   a soldier throws no knife at a body it grazed); a bot's walk to a point
+   stays wholly quiet. Two alternatives: (1) the bump for every bot at
+   blows with its own foe, which gives a ranged bot back its classic knife
+   along its heading at a foe touching its side (2 MP and a draw, mostly
+   at air): not taken, ranged bots fight through their aimed shot already;
+   (2) the bump only from the two forward probes (front, right front),
+   where the swing can land: not taken, a new unmeasured rule; the full
+   classic cadence is what the campaigns were tuned at. Default: melee-only
+   bots, their own foe, all four probes.
 5. **#409: the shape.** With the setting on a struck bot holds a cast it
    cannot pay; the gate's yes is for a slot it can pay and the follow-up
    roll is not drawn. Ported, with a new pair of recordings where the
