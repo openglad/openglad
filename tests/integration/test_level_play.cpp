@@ -23,8 +23,9 @@
 // pooled floors in B at a quarter of it, or 1 where it was 2 to 5 casts, the
 // per-seed floors in A at a half to three quarters of the lowest seed; the
 // Gameplay Fixes batch moved the stream and left every floor where it was,
-// since a floor is never lowered to pass; the thinnest today is FAERIE
-// HASTE SELF, 6 casts, all on seed 3, against a floor of 1):
+// since a floor is never lowered to pass; the thinnest by margin today are
+// FAERIE HASTE SELF and TELEPORT MARKER, 6 casts against a floor of 1, and
+// ARCHMAGE HEARTBURST, 7 against a floor of 2):
 //   A  per seed: >= 250 casts, >= 28 different specials, >= 50 different
 //      casters, >= 30 casters with two or more specials, a crew member alive
 //      at the end;
@@ -84,9 +85,10 @@
 //   families' COULD NOT FIRE 25 -> 2 and, with the stream, the elf's 5 -> 0
 //   (AA out alone: 29 and 3). AA also moved the whole stream: over the first
 //   wave's fixes, crew casts 206 -> 155 (crew CLERIC HEAL 55 -> 22, crew MAGE
-//   TELEPORT 15 -> 27), and the crew faerie now dies at tick 1111 on seed 1337
-//   and 1446 on 2025, so it rolled HASTE SELF on none of the three seeds (1 a
-//   seed before; AA out alone: 1 / 0 / 1). Taking out AC or AD alone changes
+//   TELEPORT 15 -> 27), and the crew faerie now dies early (traced once, not
+//   printed here: tick 1111 on seed 1337 and 1446 on 2025), so it rolled
+//   HASTE SELF on none of the three seeds (1 a seed before; AA out alone:
+//   1 / 0 / 1). Taking out AC or AD alone changes
 //   no count; taking out Y or Z alone moves the stream only (HASTE SELF
 //   1 / 1 / 0 and 0 / 0 / 1). HASTE SELF's floor of 1 stayed: the remedy is
 //   more seeds pooled (1, 2 and 3, written down before they were played),

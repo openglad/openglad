@@ -211,7 +211,7 @@ TEST(StatsExtended, do_command_attack_faces_an_in_reach_foe_without_walking)
     w->set_foe(foe.get());
 
     // Pointed the wrong way: fire_check denies with Facing, and the
-    // guard-standoff rule (stats.cpp:610-616) faces the foe instead of walking.
+    // guard-standoff rule (stats.cpp:606-616) faces the foe instead of walking.
     w->set_curdir(static_cast<signed char>(FACE_UP));
     w->set_enddir(static_cast<char>(FACE_UP));
     w->set_lastx(0.0f);
