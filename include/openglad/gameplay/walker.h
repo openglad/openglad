@@ -264,6 +264,11 @@ class walker : public og::sim::SimEntity
 			unsigned char query_team_color() const;
 		std::int32_t is_friendly(const walker *target) const;
 		std::int32_t is_friendly_to_team(unsigned char team) const;
+		// Gameplay Fixes AD (#412): true while this walker's charm runs
+		// (charm_left() > 0) with the setting on. Every owner-chain climb
+		// stops here: a charmed troop or summon heads its own chain and fights
+		// for the colour it wears. Defined in walker_specials.cpp.
+		bool charmed_head() const;
 
 
 		// stats (unique_ptr ownership is protected; getter returns raw pointer)
@@ -498,6 +503,12 @@ class walker : public og::sim::SimEntity
 			last_attacker_team_ = static_cast<std::int16_t>(who->team_num());
 			last_attacker_tick_ = tick;
 		}
+		// The walker a hit or a kill is credited to (#411): the topmost
+		// LIVING on this walker's owner chain (a tent's troop is its own
+		// credit: a generator is not a body), stopping at a charmed head;
+		// nullptr when no living is on the chain. The kill stamp and on_kill
+		// read it; score and experience keep the chain's root.
+		walker* credit_head();
 
 		// TODO: Move this to screen class so it doesn't get overlapped by other walkers drawing
 		class DamageNumber

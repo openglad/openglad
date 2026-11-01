@@ -2476,12 +2476,12 @@ std::int32_t walker::is_friendly(const walker *target) const
 	// who's the top on our chains (ie, weapon->summoned->mage)
 	// First us ..
 	headguy = this;
-	while (headguy->owner() && (headguy->owner()->dead() == 0) && (headguy->owner() != headguy) )
+	while (headguy->owner() && (headguy->owner()->dead() == 0) && (headguy->owner() != headguy) && !headguy->charmed_head() )
 		headguy = headguy->owner();
 	headus = headguy;
 	// Now our target ..
 	headguy = target;
-	while (headguy->owner() && (headguy->owner()->dead() == 0) && (headguy->owner() != headguy) )
+	while (headguy->owner() && (headguy->owner()->dead() == 0) && (headguy->owner() != headguy) && !headguy->charmed_head() )
 		headguy = headguy->owner();
 	headtarget = headguy;
 
@@ -2496,7 +2496,7 @@ std::int32_t walker::is_friendly(const walker *target) const
 	// friendly. Likewise, Base Camp seat assignments choose a player's control
 	// team; they never make a red walker friendly to a yellow walker. Following
 	// owner chains keeps weapons, summons, and effects on their living owner's
-	// current team (including charm changes).
+	// current team; with Gameplay Fixes AD a charmed walker heads its own chain.
 	return headus->team_num() == headtarget->team_num();
 }
 
@@ -2514,7 +2514,7 @@ std::int32_t walker::is_friendly_to_team(unsigned char team) const
 	// who's the top on our chains (ie, weapon->summoned->mage)
 	// First us ..
 	headguy = this;
-	while (headguy->owner() && (headguy->owner()->dead() == 0) && (headguy->owner() != headguy) )
+	while (headguy->owner() && (headguy->owner()->dead() == 0) && (headguy->owner() != headguy) && !headguy->charmed_head() )
 		headguy = headguy->owner();
 	headus = headguy;
 	
@@ -2695,4 +2695,27 @@ walker::PadAnswer walker::fire_pad_answer(std::int32_t weapon_family)
 bool walker::fire_pad_clear(std::int32_t weapon_family)
 {
 	return fire_pad_answer(weapon_family) == PadAnswer::Clear;
+}
+
+// The walker a hit or a kill is credited to (#411): the topmost LIVING on
+// this walker's owner chain (a weapon's thrower, a summon's caster, a tent
+// or bones troop itself: its owner is a post, not a body), or nullptr when
+// no living is on the chain (a scripted ball fx). The climb stops where
+// attack()'s does (a self-loop) and, with Gameplay Fixes AD, at a charmed
+// walker. The kill stamp and on_kill read it; classic score and experience
+// keep the chain's root. Appended at the end of the file so the parity
+// canary pins above never shift.
+walker* walker::credit_head()
+{
+	walker* top = nullptr;
+	for (walker* w = this;;)
+	{
+		if (w->query_order() == Order::Living)
+			top = w;
+		walker* next = w->owner();
+		if (next == nullptr || next == w || w->charmed_head())
+			break;
+		w = next;
+	}
+	return top;
 }
