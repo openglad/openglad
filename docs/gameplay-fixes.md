@@ -1624,8 +1624,9 @@ and I's paid blow and refuses before paying only where no blow could land
 ## Rulings (2026-11-01)
 
 Fixes X to AD, and the other changes of the same work (#408, #411, #413 to
-#421, #423), asked seventeen questions, #422 among them. Each line below is
-the default taken, and what the game does today.
+#421, #423), asked seventeen questions, #422 among them, and an eighteenth
+when fix Y was amended (carried in ruling 4). Each line below is the default
+taken, and what the game does today.
 
 1. **#410: a blocked volley.** A rock or bolt whose pad holds terrain (a
    wall face, the map edge, or a tree crown for the druid's bolt) is
