@@ -624,16 +624,19 @@ The parity goldens are captures from the old game (branch
   `19d7eeb3` (one golden moved, the cleric bot's raise-or-turn row with the
   setting on); and the table mirror `8fdb91b8`, which gives the archmage
   bot's summon row with the setting on spawns of its own. Fixes X to AD:
-  the table mirror `<sha>` (the new arenas and the two mage freeze rows'
-  own spawns), then `<sha>`, the probes and helpers the fixes ask with and
+  the table mirror `15f14eb9` (the new arenas and the two mage freeze rows'
+  own spawns), then `7b611c1f`, the probes and helpers the fixes ask with and
   no behaviour (the test of whether a step's boxes meet a body, beside the
   obmap's collision rule; the pad question taking a weapon family and
   saying what it met; the right-hand walk's probes taking a quiet flag,
   still loud everywhere; `set_weapon_heading` placing the weapon with
   `fire()`'s pad table; the unused `bg_corpse_near` deleted; no golden
-  moved), `<sha>` (X), `<sha>` (Y), `<sha>` (Z), `<sha>` (AA), `<sha>` (AB),
-  `<sha>` (AC) and `<sha>` (AD), with the table mirror `<sha>` after them.
-  `<pin>` is the commit the goldens are captured from: <n> of <n> goldens
+  moved), `bf38a718` (X), `7f37d034` (Y), `bac61dd0` (Z), `38d71581` (AA),
+  `157e2619` (AB), `a5900f72` (AC) and `00887f9c` (AD), with the table
+  mirror `16f7503e` after them (the exact facts the recaptures broke, worked
+  out again, and four setting-on rows on a seed or spawns of their own:
+  see below).
+  `16f7503e` is the commit the goldens are captured from: 351 of 351 goldens
   `cmp` equal to a full capture there.
   `tests/parity/golden/DRIFT_LEDGER.md` records each one.
 
@@ -658,13 +661,13 @@ The rows with the setting on, by fix:
 | U | `soldier_charge_front_foe_fixes_scen99` (a new arena, with its setting-off twin) |
 | V | `soldier_bot_charge_door_fixes_scen99`, `elf_bot_rocks_blocked_fixes_scen99` (two new arenas, each with its setting-off twin) |
 | W | `soldier_bot_refused_roll_acts_fixes_scen99` (a new arena, with its setting-off twin) |
-| X | <rows: X> |
-| Y | <rows: Y> |
-| Z | <rows: Z> |
-| AA | <rows: AA> |
-| AB | <rows: AB> |
-| AC | <rows: AC> |
-| AD | <rows: AD> |
+| X | `orc_stale_shove_fixes_scen99` (a new arena, with its setting-off twin) |
+| Y | `orc_right_walk_potion_fixes_scen99` (a new arena, with its setting-off twin), and the 13 recaptured rows below |
+| Z | `soldier_charge_ally_fixes_scen99` (a new arena, with its setting-off twin) |
+| AA | `druid_bot_faerie_pad_body_fixes_scen99`, `barbarian_bot_boulder_pad_body_fixes_scen99`, `mage_bot_wave_pad_body_fixes_scen99`, `druid_bot_tree_pad_body_fixes_scen99` (four new arenas, each with its setting-off twin) |
+| AB | `elemental_struck_short_pool_fixes_scen99` (a new arena, with its setting-off twin), and the 10 recaptured rows below |
+| AC | `elf_rocks_edge_pad_fixes_scen99` (a new arena, with its setting-off twin) |
+| AD | `thief_charm_tent_troop_fixes_scen99` (a new arena, with its setting-off twin; the setting-on twin has spawns of its own: see below) |
 
 The bot payoff gates moved five existing rows with the setting on, each
 recaptured from the old game after its port: `cleric_bot_raise_or_turn_fixes_scen99`
@@ -699,7 +702,7 @@ the row's budget and now takes its ordinary act;
 recapture broke was worked out again from the new capture and its pin
 proven again.
 
-The second bugs batch (fixes X to AD) moved <m> existing rows with the
+The second bugs batch (fixes X to AD) moved 23 existing rows with the
 setting on, each recaptured from the old game after its port; no
 setting-off golden changed. Measured in the current game before the port,
 Y moved thirteen: `archmage_hit_stale_shift`, `cleric_bot_raise_or_turn`,
@@ -719,7 +722,35 @@ struck bot short of its slot-1 price, most of them the arenas' target
 towers. X, Z, AA, AC and AD moved none; in particular
 `elf_rocks_blocked_fixes_scen99` and `druid_tree_blocked_fixes_scen99`,
 whose pads hold a body, keep H's and I's paid blow under AC (they move
-under Y only). <measured: the old game's captures and their cmp>.
+under Y only). The old game's captures, one after each port, name the
+same rows: X, Z, AA, AC and AD move only their own new rows, Y moves
+its thirteen and AB its ten (and the new rows the ledger lists), and nine
+of Y's thirteen move again under AB in the old game (a target tower in
+each is struck short of its slot-1 price), where the current game's
+bisection saw them move once. After the last port every moved capture
+`cmp`s equal to the current game's dump but one:
+`thief_charm_tent_troop_fixes_scen99` differed only by the four explosion
+sounds of the tent dying at tick 238. The old game plays a generator's
+explosion only on screen, and the tent stood below the classic 320 x 200
+view, while the current game sounds it wherever the tent stands.
+
+The recaptures also broke exact facts in eight of the rows:
+`elf_rocks_blocked`, `druid_tree_blocked`, `mage_bot_heartburst`,
+`cleric_bot_raise_or_turn`, `special_cleric_heal_ally`,
+`archmage_summon_no_room`, `mage_bot_warp_two_at_blows` and
+`cleric_raise_blocked_corpse` (each `_fixes_scen99`). Each was worked out
+again from the new capture and its pin proven again. Four setting-on rows
+had lost what their mutation shows, and take a seed or spawns of their
+own while their setting-off twins stay as they were:
+`cleric_raise_blocked_corpse_fixes_scen99` takes seed 15 (on the old seed
+its faerie died only at the cast, so no skeleton could rise),
+`soldier_disarm_higher_foe_fixes_scen99` seed 2 (the soldier no longer won
+its roll), `cleric_bot_resurrect_foe_stain_fixes_scen99` seed 939 (no
+RESURRECT roll came while the stain was in reach), and
+`thief_charm_tent_troop_fixes_scen99` stands its tent at (160, 150),
+inside the view, as the engaged freeze arena did for an orc's HOWL. The
+table mirror `16f7503e` carries them; the capture there moves those four rows
+alone, and each `cmp`s equal to the current game's dump.
 
 A setting-on twin may stand in an arena of its own. The maintainer ruled
 this in PR #404: when a row's arena leaves its setting-on mutation nothing
@@ -831,8 +862,18 @@ Rows deliberately not added:
 - #417 and #418: no byte of the sim changes; every row proves it.
 - #413, #414, #415 and #416: the display and the lobby, which no recording
   reaches.
-- <rows the old game's capture could not stage, each with its reason and
-  the unit tests that stand for it>
+- Fix AA's two terrain pads. `archer_bot_bolt_pad_terrain`: a bot faces
+  up at its spawn and no tile that stops a weapon sits directly above
+  ground on scen1, so the only terrain arena is an archer beside a tree
+  trunk turned by a blocked first walk; over seeds 0 to 400 the two runs
+  then differ only in the random stream or the archer's final position
+  in one direction, so no fact lets each row's own pin flip a fact of its
+  own. `GameplayFixesBots.archer_exploding_bolt_asks_the_fire_arrows_own_pad`
+  and the gate's unit tests stand for it. `druid_bot_tree_pad_terrain`:
+  with fix AC a GROW TREE at terrain refuses before it spends, and a
+  refused cast and a gate's no take the same ordinary act, so the gate's
+  pad term has nothing to show on terrain; `druid_bot_tree_pad_body` (a
+  tower on the bolt's pad) took its place.
 
 ## Not gated
 
@@ -1546,8 +1587,11 @@ the default taken, and what the game does today.
     elemental short of magic, the ROCKS at the map edge, the charmed tent
     troop, and the two terrain pads of fix AA) is kept only if its two
     captures differ and a fact reads the difference; the three body pads
-    of fix AA follow the elf's precedent. Default: so;
-    <rows kept and dropped>.
+    of fix AA follow the elf's precedent. Default: so; kept: the near
+    stale shove, the potion, the CHARGE into an ally, the struck elemental,
+    the ROCKS at the map edge, the charmed tent troop and four body pads
+    (GROW TREE took a body pad in place of its terrain pad); dropped: the
+    archer's terrain pad (no fact pair in any scen1 arena).
 
 ## Out of scope
 
