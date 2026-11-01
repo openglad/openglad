@@ -12,6 +12,7 @@
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/mode/mode_state.h>
+#include <openglad/gameplay/obmap.h>
 #include <openglad/gameplay/respawn/respawn_state.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
@@ -20,6 +21,8 @@
 #include "test_game_world_fixture.h"
 
 #include <algorithm>
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 
 namespace {
@@ -1177,4 +1180,103 @@ TEST(RespawnEngine, spawn_probe_rejects_doors_and_cross_bucket_blockers)
         << "a cross-bucket living must veto the spot";
     EXPECT_TRUE(og::sim::respawn_spot_clear(fx.world(), runner, 224, 128, -1))
         << "a clear spot must pass the probe";
+}
+
+// #417: a probe never grows the world. The spawn probes sweep every obmap
+// bucket their box touches and must find nothing where nobody stands
+// without leaving an empty pile node behind (obmap_get_list makes one on a
+// miss; the obmap would grow with every probe). The answers are the ones a
+// clear spot gives; pos_to_walker keeps its size and holds no node for the
+// probed cells.
+TEST(RespawnEngine, spawn_probes_make_no_empty_pile)
+{
+    ScriptedWorld fx;
+    walker* runner = fx.spawn_living(FAMILY_SOLDIER, 0, 320, 320);
+    ASSERT_NE(nullptr, runner);
+    fx.tick();
+    obmap& map = *fx.world().myobmap;
+    const std::size_t piles = map.pos_to_walker.size();
+    const auto no_node_at = [&map](short x, short y) {
+        return map.pos_to_walker.find({obmap::hash(x), obmap::hash(y)}) == map.pos_to_walker.end();
+    };
+    ASSERT_TRUE(no_node_at(96, 96)) << "nobody stands near the probed spots";
+    ASSERT_TRUE(no_node_at(160, 96));
+
+    EXPECT_TRUE(og::sim::respawn_spot_clear(fx.world(), runner, 96, 96, -1));
+    EXPECT_TRUE(og::sim::respawn_spot_clear(fx.world(), runner, 96, 96, 0));
+    short ox = -1;
+    short oy = -1;
+    EXPECT_TRUE(og::sim::body_spot_near(fx.world(), Order::Living, FAMILY_SKELETON,
+                                        160, 96, 0, 16, ox, oy));
+    EXPECT_EQ(160, ox) << "the spot itself is clear";
+    EXPECT_EQ(96, oy);
+
+    EXPECT_EQ(piles, map.pos_to_walker.size()) << "no probe made a pile node";
+    EXPECT_TRUE(no_node_at(96, 96));
+    EXPECT_TRUE(no_node_at(128, 128));
+    EXPECT_TRUE(no_node_at(160, 96));
+}
+
+// #417, the largest grower: the A* cost callback asked every neighbour
+// cell of every expanded node whether a body stands there. A path search
+// over an empty field leaves the obmap as it found it.
+TEST(RespawnEngine, a_path_search_makes_no_empty_pile)
+{
+    TestGameWorld tw;
+    GameWorld& w = tw.world();
+    std::fill_n(w.grid.data.get(), static_cast<std::size_t>(w.grid.w) * w.grid.h,
+                static_cast<std::uint8_t>(PIX_GRASS1));
+    walker* orc = w.add_ob(Order::Living, FAMILY_ORC);
+    walker* target = w.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_TRUE(orc && target);
+    orc->set_team_num(1);
+    target->set_team_num(0);
+    orc->setxy(10 * GRID_SIZE, 10 * GRID_SIZE);
+    target->setxy(3 * GRID_SIZE, 10 * GRID_SIZE);
+    const std::size_t piles = w.myobmap->pos_to_walker.size();
+    orc->set_foe(target);
+
+    orc->find_path_to_foe();
+
+    ASSERT_FALSE(orc->path_to_foe.empty()) << "the open field has a path";
+    EXPECT_EQ(piles, w.myobmap->pos_to_walker.size()) << "the search made no pile node";
+    EXPECT_TRUE(w.myobmap->pos_to_walker.find({obmap::hash(static_cast<short>(6 * GRID_SIZE)), obmap::hash(static_cast<short>(10 * GRID_SIZE))})
+                == w.myobmap->pos_to_walker.end())
+        << "a cell on the way, where nobody stands";
+}
+
+// #423's seam: body_ground_clear is the grid half of body_spot_clear, asked
+// with the same detached body of the family (its own box and flags): grass
+// is ground, water is not for a walker and is for a flyer, and beyond the
+// map's edge is not. Bodies are not asked: a
+// living on the spot leaves the ground clear while body_spot_clear refuses
+// it. Nothing is drawn or filed.
+TEST(RespawnEngine, body_ground_clear_asks_the_grid_with_the_bodys_own_flags)
+{
+    ScriptedWorld fx;
+    GameWorld& w = fx.world();
+    std::fill_n(w.grid.data.get(), static_cast<std::size_t>(w.grid.w) * w.grid.h,
+                static_cast<std::uint8_t>(PIX_GRASS1));
+    w.grid.data[static_cast<std::size_t>(12 + 12 * w.grid.w)] = PIX_WATER1;
+    walker* stander = fx.spawn_living(FAMILY_SOLDIER, 1, 96, 160);
+    ASSERT_NE(nullptr, stander);
+    fx.tick();
+    const std::size_t piles = w.myobmap->pos_to_walker.size();
+    const std::uint32_t s = w.rng_.state_;
+
+    EXPECT_TRUE(og::sim::body_ground_clear(w, Order::Living, FAMILY_SOLDIER, 96, 96, 0));
+    EXPECT_TRUE(og::sim::body_spot_clear(w, Order::Living, FAMILY_SOLDIER, 96, 96, 0));
+    EXPECT_TRUE(og::sim::body_ground_clear(w, Order::Living, FAMILY_SOLDIER, 96, 160, 0))
+        << "a body on the spot is not the ground's question";
+    EXPECT_FALSE(og::sim::body_spot_clear(w, Order::Living, FAMILY_SOLDIER, 96, 160, 0));
+    EXPECT_FALSE(og::sim::body_ground_clear(w, Order::Living, FAMILY_SOLDIER, 192, 192, 0))
+        << "a walker cannot stand in the water";
+    EXPECT_FALSE(og::sim::body_spot_clear(w, Order::Living, FAMILY_SOLDIER, 192, 192, 0));
+    EXPECT_TRUE(og::sim::body_ground_clear(w, Order::Living, FAMILY_FAERIE, 192, 192, 0))
+        << "a flyer passes the water as the game lets it";
+    EXPECT_FALSE(og::sim::body_ground_clear(w, Order::Living, FAMILY_SOLDIER, 2000, 2000, 0))
+        << "off the map";
+
+    EXPECT_EQ(s, w.rng_.state_) << "nothing drawn";
+    EXPECT_EQ(piles, w.myobmap->pos_to_walker.size()) << "nothing filed";
 }

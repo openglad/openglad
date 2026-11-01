@@ -124,14 +124,30 @@ class walker : public og::sim::SimEntity
 		walker  * fire();
 		// Where fire() puts the weapon it creates: the top-left corner of
 		// `weapon`'s box one pixel outside this walker, on the side
-		// facing(lastx(), lasty()) names. The one table fire() reads.
+		// facing(lastx(), lasty()) names. The one table fire() and
+		// set_weapon_heading() read.
 		void weapon_pad(const walker& weapon, short& px, short& py);
-		// True when fire() would launch this living's current weapon instead
-		// of meeting something on its pad (a wall, an enemy body, a door, a
-		// tree, a generator): the pad probed quietly with a detached weapon,
-		// no entity made, no draw, nothing eaten or opened. A bot gate's
-		// question. False for a non-living or a weapon the loader cannot make.
-		[[nodiscard]] bool fire_pad_clear();
+		// What the pad fire() would place the weapon on holds, probed quietly
+		// with a detached weapon: Clear (the weapon would fly); Terrain (the
+		// grid refuses it: a wall, the map edge, a tree's crown or trunk for a
+		// weapon that neither flies nor walks the forest; every weapon crosses
+		// water); Body (a body a weapon probe meets and fire()
+		// would strike in melee: an enemy living or a generator); NoProbe (a
+		// non-living caster, or a weapon the loader cannot make). Own-team
+		// bodies pass, as the weapon passes them; an enemy door, tree or weapon
+		// in flight is passed by a weapon probe too (obmap.cpp's
+		// weapon-vs-weapon arm) and answers Clear, though the loud fire() blocks
+		// on it 4 times in 10. weapon_family -1 probes current_weapon(); a cast
+		// that swaps a weapon in for its fire() (the archer's EXPLODING BOLT)
+		// passes its family. The soldier's, cleric's and archmage's weapon
+		// hooks leave the box alone, so the pad is fire()'s for them too; the
+		// soldier's out-of-blades veto (its on_fire_weapon) is the one refusal
+		// the probe cannot see, and no gate asks the soldier's pad.
+		// No entity made, no draw, nothing eaten or opened. A bot gate's question.
+		enum class PadAnswer : std::uint8_t { Clear, Terrain, Body, NoProbe };
+		[[nodiscard]] PadAnswer fire_pad_answer(std::int32_t weapon_family = -1);
+		// fire_pad_answer(weapon_family) == PadAnswer::Clear.
+		[[nodiscard]] bool fire_pad_clear(std::int32_t weapon_family = -1);
 		virtual bool act();
 		short set_act_type(short num);
 		short restore_act_type();
@@ -248,6 +264,11 @@ class walker : public og::sim::SimEntity
 			unsigned char query_team_color() const;
 		std::int32_t is_friendly(const walker *target) const;
 		std::int32_t is_friendly_to_team(unsigned char team) const;
+		// Gameplay Fixes AD (#412): true while this walker's charm runs
+		// (charm_left() > 0) with the setting on. Every owner-chain climb
+		// stops here: a charmed troop or summon heads its own chain and fights
+		// for the colour it wears. Defined in walker_specials.cpp.
+		bool charmed_head() const;
 
 
 		// stats (unique_ptr ownership is protected; getter returns raw pointer)
@@ -482,6 +503,12 @@ class walker : public og::sim::SimEntity
 			last_attacker_team_ = static_cast<std::int16_t>(who->team_num());
 			last_attacker_tick_ = tick;
 		}
+		// The walker a hit or a kill is credited to (#411): the topmost
+		// LIVING on this walker's owner chain (a tent's troop is its own
+		// credit: a generator is not a body), stopping at a charmed head;
+		// nullptr when no living is on the chain. The kill stamp and on_kill
+		// read it; score and experience keep the chain's root.
+		walker* credit_head();
 
 		// TODO: Move this to screen class so it doesn't get overlapped by other walkers drawing
 		class DamageNumber

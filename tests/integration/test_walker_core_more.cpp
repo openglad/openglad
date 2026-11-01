@@ -1821,7 +1821,7 @@ TEST(WalkerCoreMore, walker_round17_query_next_to_and_fire_check_early_branches)
     og::runtime::current_session->myscreen_->world().remove_ob(blocker);
     ASSERT_TRUE(!actor->query_next_to()) << "query_next_to should report pass when adjacent tile is clear";
 
-    // fire_check generator early return path (walker.cpp:943-944).
+    // fire_check generator early return path (walker.cpp:1452-1453).
     walker* gen = og::runtime::current_session->myscreen_->world().add_ob(Order::Generator, FAMILY_TOWER);
     ASSERT_TRUE(gen != nullptr) << "generator created";
     if (gen)
@@ -1829,13 +1829,13 @@ TEST(WalkerCoreMore, walker_round17_query_next_to_and_fire_check_early_branches)
         ASSERT_TRUE(gen->fire_check(1, 0)) << "generator fire_check should short-circuit true";
     }
 
-    // fire_check no-foe early return path (walker.cpp:955-959).
+    // fire_check no-foe early return path (walker.cpp:1467-1473).
     actor->set_foe(nullptr);
     actor->stats()->set_bit_flags(BIT_NO_RANGED, 0);
     actor->stats()->set_magicpoints(9999.0f);
     ASSERT_TRUE(!actor->fire_check(1, 0)) << "fire_check should fail when actor has no foe";
 
-    // fire_check BIT_NO_RANGED early return path (walker.cpp:962-965).
+    // fire_check BIT_NO_RANGED early return path (walker.cpp:1489-1494).
     walker* foe = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ORC);
     ASSERT_TRUE(foe != nullptr) << "foe created";
     if (foe)
@@ -1853,7 +1853,7 @@ TEST(WalkerCoreMore, walker_round18_animate_teleport_and_skelgrow_completion_pat
     og::runtime::current_session->myscreen_->world().create_new_grid();
     og::runtime::current_session->myscreen_->world().delete_objects();
 
-    // ANI_TELE_OUT + family teleport handler branch (walker.cpp:817-821).
+    // ANI_TELE_OUT + family teleport handler branch (walker.cpp:1097-1105).
     walker* mage = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_MAGE);
     ASSERT_TRUE(mage != nullptr) << "mage created";
     if (mage)
@@ -1865,7 +1865,7 @@ TEST(WalkerCoreMore, walker_round18_animate_teleport_and_skelgrow_completion_pat
         ASSERT_EQ(ANI_TELE_IN, (int)mage->ani_type()) << "teleport handler should switch mage to ANI_TELE_IN";
     }
 
-    // ANI_SKEL_GROW completion branch (walker.cpp:807-815).
+    // ANI_SKEL_GROW completion branch (walker.cpp:1087-1096).
     walker* skeleton = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SKELETON);
     ASSERT_TRUE(skeleton != nullptr) << "skeleton created";
     if (skeleton)

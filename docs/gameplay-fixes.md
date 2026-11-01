@@ -83,14 +83,22 @@ usual pause.
 | U | Soldier CHARGE and DISARM's front test | The question swings and adds busy, eats a treasure, opens a door. | Asked quietly: no swing, no busy, nothing eaten or opened, and the collision field untouched; a refusal spends nothing. |
 | V | Soldier and elf bot gates | The gate said yes through a wall and onto a blocked pad. | The gate asks the cast's front, path and pad. |
 | W | A bot's refused roll | The roll was the act; busy casts rolled while busy. | The ordinary act; the gate reads the cast's busy. |
+| X | A walker's shove | A step that fails shoves the last ally any probe of the act met, from wherever the walker now stands: a walker a probe carried across a teleporter shoves the ally it left behind from the far pad, and a step the grid stopped shoves a body an earlier box met. The shoved ally loses its orders, and a shoved cleric heals at nobody. | Only a body the step's own boxes meet from where the walker stands is shoved. |
+| Y | A bot's right-hand walk | Looking for a way round eats a potion one pixel to the side, swings at a body it grazes and turns the bot. | Asked quietly: the same way round, nothing eaten, no door opened, no swing at a body it merely grazed. A melee-only bot that finds its own foe in a probe's way still bumps it, as the classic did: that is how such a bot fights. |
+| Z | CHARGE's strike | The rush strikes whatever body the collision field names after its last step, an ally included. An ally takes no damage, but the strike draws the damage roll, erases the ally's orders and walks it four steps, a seated hero too; a rush a wall stopped can strike a body met on an earlier step. | The rush strikes only a foe its last step ran into; an ally in the way gets the ordinary shove. |
+| AA | Druid, barbarian, mage (ENERGY WAVE) and archer (EXPLODING BOLT) bot gates | Yes with a wall, the map edge or a foe's body on the weapon's pad; the cast refuses `COULD NOT FIRE`. | The gate asks the pad, as the elf's does (fix V); the archer asks it for the fire arrow it fires. |
+| AB | A struck bot's cast | The hit response folds a slot the bot cannot pay onto slot 1 whatever slot 1 costs, the gate says yes, the roll is drawn and the cast refuses `NOT ENOUGH MP`. | A yes the bot cannot pay is a no: the roll is not drawn and the bot holds. |
+| AC | Elf volleys, druid GROW TREE and SUMMON FAERIE at a wall or the map edge | Classic: the cast draws the throw's waver and refuses; the elf's refund leaves it a point ahead (fix H's off column). With fixes H and I alone the cast paid the one swing (1 MP for the elf, 4 for the druid) for a rock or bolt that met the wall and struck nothing. | A pad blocked by terrain refuses `COULD NOT FIRE` before the refund and the swing: nothing drawn, nothing spent. A body on the pad keeps H's and I's paid blow. |
+| AD | A charmed tent or bones troop, a charmed summon | It wears the charmer's colour but keeps its owner's side: it fights its charmer and is struck by its charmer's team. | It heads its own owner chain while the charm lasts; its owner, its charm clock and its tent's cascade are unchanged. |
 
 TELEPORT, REVEAL, CLOAK and ENERGY WAVE are unchanged as casts (their bot
 rules are in [Bots](#bots)): each does something whenever it is cast
 (ENERGY WAVE crosses walls along the facing). CHARGE still refuses `PATH
 BLOCKED` when something stands against the soldier's front and otherwise
-moves the fighter; fix U changes only how it asks.
+moves the fighter; fix U changes only how it asks, and fix Z what the rush
+strikes.
 
-The four newest fixes, in play:
+Fixes T to W, in play:
 
 - **T.** A raised body stands where it fits. The cast walks the stains its
   finder answers, nearest first, and raises the first one inside the
@@ -129,6 +137,120 @@ The four newest fixes, in play:
   first asks "am I busy?" (or "am I mid-teleport?", or "am I resting?")
   asks the same before it says yes.
 
+Fixes X to AD, in play:
+
+- **X.** A walker whose step is refused shoves the ally in its way: the
+  shove draws a roll, and two times in three the ally loses its orders
+  and is sent four steps along the shover's path (a seat is never
+  shoved). The classic walk shoves the body the collision field names,
+  which is the last body any probe of the act met, not necessarily one
+  the failed step touched. A probe that crosses a
+  teleporter carries the walker away mid-step, and the walk then shoves,
+  from the far pad, the ally it left behind; a step the grid stopped
+  shoves a body an earlier box of the same walk met. On The Tryxian
+  Chronicles' first level that was 23 shoves from more than 100 px (the
+  farthest 624 px), 7 of which took the ally's orders, and a shoved cleric
+  casts its shove heal at nobody. Issue #403 compared two counters ("5 on
+  master, 23 with the batch": 5 and 7 are the thefts, 23 the far
+  attempts); both are 0 with the fix. With the setting on the walk shoves
+  only a body that one of the step's own three boxes (the step, and the
+  step rounded up and down, as the walk probes it) meets from where the
+  walker stands now. The collision field itself is left as it was, so
+  what else reads it reads the classic value.
+- **Y.** A bot that cannot walk straight at its foe follows its right hand
+  round the obstacle (and a bot sent to a point does the same). Before
+  each step it asks whether the spots one pixel to its right, its right
+  front and its right back are blocked. In the classic game each of those
+  questions is a real bump, as fix U's front test was: it eats a potion or
+  a meal one pixel aside that the bot never stands on (a magic potion took
+  an orc from 10 MP to 550 in the test), swings at a body it grazes (busy,
+  then a thrown knife) and turns the bot. With the setting on the
+  questions are asked quietly: the same answers, so the same way round,
+  and nothing eaten, no swing, no turn. One exception, measured
+  2026-11-01: an orc, ghost or slime has no aimed attack (its shot is
+  refused before any aim; the attack order only faces a foe at bump
+  range), so its blows are bumps, and the right-hand walk's probes were
+  about 43 % of them in the classic. Asked wholly quietly, those bots
+  started a third fewer swings, landed an eighth fewer blows and dealt a
+  fifth less damage across the four campaigns, and one that stopped
+  exactly against a standing foe never swung again. So a melee-only bot
+  whose own foe stands where a probe looks still runs into it, as the
+  classic did. Everything else the probe meets stays untouched, and a bot
+  with a ranged weapon throws no knife at a body it grazed. The crew no
+  longer picks up a potion beside its path, which can move a battle (see
+  [Balance](#balance)).
+- **Z.** CHARGE runs three acts of three steps and after each act strikes
+  the body the collision field names, erases that body's orders and walks
+  it four steps along the rush ("a violent shove", the 2002 comment says).
+  Issue #406 read this as a charge that hurts an ally. It never does:
+  `walker::attack` refuses a friend. But it draws the damage roll before it
+  refuses, and the order theft and the four-step walk ran on the ally
+  anyway, a seated hero included, with no wall check. A rush a wall stopped
+  could also strike a body named from an earlier step (fix X's shape).
+  With the setting on the rush strikes only a body that is not friendly
+  and that the last step's box ran into; an ally in the way gets the
+  ordinary shove of the walk (two times in three, never a seat).
+- **AA.** The druid's GROW TREE and SUMMON FAERIE, the barbarian's HURL
+  BOULDER and EXPLODING BOULDER, the mage's ENERGY WAVE and the archer's
+  EXPLODING BOLT fire a weapon from the caster's pad, as the elf's volleys
+  do, and fix V gave only the elf's gate the pad question. Their gates said
+  yes with a wall, the map edge or a foe's body on the pad, and the cast
+  refused `COULD NOT FIRE`: on The Tryxian Chronicles' first level, with
+  fixes T to W in, 16 times for the druid and 3 each for the barbarian,
+  the mage and the archer. With the setting on each of these gates asks
+  `G.pad_clear` too. The archer asks it with the fire arrow (9x9) its
+  EXPLODING BOLT fires, not the arrow (7x7) it holds: the pad question
+  now takes the weapon family the cast will fire (#419). Issue #419's
+  worry, that the soldier's, the cleric's and the archmage's weapon hooks
+  resize the weapon after the pad is asked, does not hold: none of those
+  specials fires through the pad question, and none of the hooks moves
+  the pad (a test compares the asked pad with `fire()`'s on every
+  heading). The EXPLODING BOLT's swap of weapons was the one real
+  difference. The pad question does not see everything that stops a
+  weapon; see [Bots](#bots) for what is left.
+- **AB.** A struck bot answers with its special one time in three when its
+  gate says yes. Before it asks, it folds a slot it cannot pay onto slot 1
+  and drops a Shift arm it cannot pay. Issue #409 read the fold as coming
+  after the gate; it comes before. What nothing asked was whether slot 1
+  itself could be paid, and the hit response, unlike the act, has no guard
+  for it (the act rolls a special only when the bot has slot 1's magic).
+  So the gate said yes, the roll was drawn, and the cast refused `NOT
+  ENOUGH MP`: 19 times on The Tryxian Chronicles' first level, every one on
+  slot 1 (the elemental 16, the soldier 3), the same in the old game. With
+  the setting on the gate's answer (`living::check_special`) also asks
+  whether the bot can pay the slot and arm the gate ended on, after the
+  gate has chosen the arm: a yes the bot cannot pay is a no, the roll is
+  not drawn and the bot holds. The act never reaches a slot it cannot pay,
+  so it does not change.
+- **AC.** Fixes H and I made a blocked volley or bolt cost exactly the one
+  swing, because with a foe on the pad the swing is the cast's own blow.
+  Issue #410 found the same swing paid with nothing on the pad to strike:
+  a rock whose pad lies on a wall face or past the map edge cost the elf
+  1 MP with the setting on (a druid's bolt 4) and hit nothing. With the
+  setting on the elf's four volleys, GROW TREE and SUMMON FAERIE ask what
+  the pad holds first (`walker:fire_pad_answer`); a pad blocked by terrain
+  refuses `COULD NOT FIRE` before the refund and the swing, drawing and
+  spending nothing. Terrain is a wall face, the map edge, and a tree crown
+  for a weapon that cannot cross the forest (the druid's bolt; the elf's
+  rock crosses it). Water is never terrain here: every weapon crosses it.
+  A body on the pad keeps H's and I's paid blow (question 1 of the
+  [rulings](#rulings-2026-11-01)). A bot never meets the new refusal,
+  because its gate asks the pad first (fixes V and AA).
+- **AD.** A tent or a bones pile owns the troops it makes, and every
+  question of whose side a walker is on climbs its owner chain to the
+  top: `is_friendly`, the blow's friend test and the score's team. A
+  thief's CHARM OPPONENT or an archmage's MIND CONTROL on such a troop,
+  or on an enemy caster's summon, changes its colour but not its owner,
+  so it wears the charmer's colour and answers for its owner's side: it
+  fights its charmer and is struck by its charmer's team. With the setting
+  on every such climb stops at a charmed walker (one whose charm clock is
+  running), so the troop fights for the colour it wears until the charm
+  ends. Its owner, its clock and the cascade when its tent falls are
+  unchanged. The level-play test met the classic shape once: an enemy
+  thief counted a crew-raised ghost as a foe and taunted it while the ghost
+  wore the thief's own colour, because the ghost's chain still answered
+  for the crew's cleric.
+
 ## Refusals at a glance
 
 Every refusal is at most 24 characters, so it fits the compact HUD. All
@@ -146,11 +268,14 @@ usual busy.
 | HOWL | `NO FOE IN RANGE` | nothing inside the howl radius |
 | RAISE UNDEAD, RAISE GHOST, RESURRECT | `CORPSE IS BLOCKED` | no room for the body within 16 px of the corpse, on every stain in range (free) |
 | CHARGE | `PATH BLOCKED` | a wall, a body or a door one pixel ahead along the heading (free: no swing, no busy) |
+| the elf's volleys, GROW TREE, SUMMON FAERIE | `COULD NOT FIRE` | a wall face or the map edge on the weapon's pad, or a tree crown on the druid's (free: nothing drawn, no swing; fix AC) |
 
-`NO ROOM TO SUMMON` (SUMMON ELEMENTAL) and `COULD NOT FIRE` (the elf's
-volleys, GROW TREE, SUMMON FAERIE) keep their text; with the setting on they
-cost nothing extra (SUMMON ELEMENTAL) or exactly one swing (a blocked
-volley or bolt).
+`NO ROOM TO SUMMON` (SUMMON ELEMENTAL) and `COULD NOT FIRE` keep their
+text. With the setting on `NO ROOM TO SUMMON` costs nothing extra. A pad
+blocked by terrain costs nothing (AC); a body on the pad costs exactly the
+one swing (H, I). A door, a grown tree or an enemy weapon in flight on the
+pad is not seen by the pad question, and `fire()`'s own probe passes such a
+body only six times in ten, so a cast at one can still cost the swing.
 
 ## Bots
 
@@ -223,14 +348,17 @@ because the spin strikes it and the yell stuns it (fix K).
   far). LOTS OF ROCKS and MEGA ROCKS want the same nearest foe faced and in
   flight, and at least two living foes inside their longer flights. Every
   volley also wants the rock's pad clear (fix V): the spot the first rock
-  would be placed on holds no wall, door, map edge or foe's body (a body of
-  the elf's own team passes, as the rock passes it). The classic elf threw
-  at nobody.
+  would be placed on holds no wall face, no map edge and no foe's body (a
+  body of the elf's own team passes, as the rock passes it; a door, a grown
+  tree or a weapon in flight passes the question too, see below). The
+  classic elf threw at nobody.
 - **Archer.** FIRE ARROWS, the ring, wants at least two living foes inside
   the arrows' flight, or one the archer does not face. BARRAGE wants the
   archer's foe, a living one, faced and inside the flight. EXPLODING BOLT
   wants that foe faced and inside the flight, with no ally of the archer,
-  and not the archer, inside the blast around it.
+  and not the archer, inside the blast around it, and the fire arrow's pad
+  clear (fix AA: the bolt is a fire arrow, 9x9, so the pad is asked for it
+  and not for the 7x7 arrow the archer holds).
 - **Mage.** Slot 1 keeps the classic rule: TELEPORT when no foe or more
   than three foes are within 110 px. The TELEPORT MARKER is no longer a
   coin: with nobody within 110 px the mage marks where it stands when no
@@ -247,8 +375,12 @@ because the spin strikes it and the yell stuns it (fix K).
   close the foes stand to the mage is not asked, and a mage on another
   team takes the same cue for its own freeze. ENERGY WAVE wants the mage's
   nearest living foe within 110 px to be one it faces (the wave runs about
-  that far along the heading, through walls). HEARTBURST wants a foe
-  inside its own reach, 80 px plus 2 per level.
+  that far along the heading, through walls) and the pad it leaves from
+  clear (fix AA). HEARTBURST wants a foe inside its own reach, 80 px plus 2
+  per level. A struck mage bot below its flee threshold teleports without
+  asking a gate, as the classic one does; struck again while that teleport
+  plays, it casts nothing (#408: the hit response asks `mid_teleport`
+  first, as the TELEPORT gate does).
 - **Archmage.** TELEPORT and the MARKER have the mage's rules, with
   HEARTBURST (80) as the special the halved pool must still cover.
   HEARTBURST or CHAIN LIGHTNING: the coin's choice is kept when it has a
@@ -267,7 +399,8 @@ because the spin strikes it and the yell stuns it (fix K).
   wants a foe it can take (never charmed, not a hero a player drives, not
   above the archmage's level) inside its reach, 80 px plus 4 per level,
   and the slot not resting. A struck archmage bot teleports below its flee
-  threshold as before; otherwise it answers with one HEARTBURST or CHAIN
+  threshold as before, and casts nothing while that teleport plays (#408,
+  the mage's guard); otherwise it answers with one HEARTBURST or CHAIN
   LIGHTNING chosen by the slot-2 rule, never with a summon and never with
   a second cast (the classic game summoned first and then cast slot 2
   twice). A player archmage's Shift stays the Shift key.
@@ -303,10 +436,11 @@ because the spin strikes it and the yell stuns it (fix K).
   reaches only from level 8), and SCARE not resting.
 - **Druid.** GROW TREE wants the druid's nearest living foe within 60 px
   faced and not yet within a blow (a foe touching the druid blocks the
-  bolt). SUMMON FAERIE wants a living foe within 130 px and no faerie of
-  the druid's alive. REVEAL is never cast by a bot: it changes a radar
-  only a player sees. PROTECTION wants an ally within 60 px with a living
-  foe at blows with it and no fresh circle (none, or one under 50 hp).
+  bolt), and the bolt's pad clear (fix AA). SUMMON FAERIE wants a living
+  foe within 130 px, no faerie of the druid's alive, and the pad clear.
+  REVEAL is never cast by a bot: it changes a radar only a player sees.
+  PROTECTION wants an ally within 60 px with a living foe at blows with it
+  and no fresh circle (none, or one under 50 hp).
 - **Orc.** HOWL wants a body the yell can stun (a living foe or a
   generator) inside the yell (160 px plus 20 per level, at most 420), not
   130, and HOWL not resting. EAT CORPSE wants the orc below 60 percent of
@@ -317,7 +451,7 @@ because the spin strikes it and the yell stuns it (fix K).
   a hero's steps come from its strength), so a 16 px gap at level 1 and
   120 px from level 8. EXPLODING BOULDER wants that foe to have a second
   living foe inside the blast around it, with no ally and not the
-  barbarian inside it.
+  barbarian inside it. Both want the boulder's pad clear (fix AA).
 - **Fire elemental.** STARBURST, the ring of meteors, wants at least two
   living foes inside the ring's flight, or one the elemental does not
   face.
@@ -332,7 +466,8 @@ because the spin strikes it and the yell stuns it (fix K).
   L), so a level-13 mage can roll HEARTBURST and a level-16 soldier rolls
   each of its four specials equally. An unaffordable roll still folds to
   slot 1 and the hit response still asks the slot the bot holds; with a
-  payoff rule on every slot neither habit casts at nothing any more.
+  payoff rule on every slot neither habit casts at nothing any more, and
+  with fix AB a slot 1 the bot cannot pay is a no too.
 
 A gate asks the cast's own first guard (fix W). A cast that opens by
 refusing `SPECIAL BUSY` while its caster is busy, mid-teleport or resting
@@ -364,14 +499,36 @@ unchanged (it has no act to fall into). A refusal that already acted,
 the resisted DISARM's half price and busy (fix A), is followed by the
 ordinary act too.
 
+A yes the bot cannot pay is a no (fix AB). The gate chooses the arm, and
+`G.can_pay` drops a Shift arm the bot cannot pay; with the setting on the
+engine then checks the slot and arm the gate ended on against what the cast
+will charge, and answers no when the bot cannot pay it. Only the hit
+response can meet that no: the act rolls a special only when the bot has
+slot 1's magic, and a slot it cannot pay is folded onto slot 1 before the
+gate is asked.
+
+What the gates still do not see:
+
+- A door, a grown tree or an enemy weapon in flight on the pad. The pad
+  question is asked with a weapon, and a weapon passes other weapon-order
+  bodies (doors and trees are weapon-order) when it is asked quietly;
+  `fire()` asks loudly and passes them six times in ten. A cast at such a
+  pad can still refuse `COULD NOT FIRE` and pay its swing.
+- Room for the faerie. SUMMON FAERIE asks the bolt's pad, not whether the
+  faerie's body has room where it would stand, so with a clear pad it can
+  still refuse `NO ROOM TO SUMMON` (an ally on the spot).
+- The soldier's empty hands. A soldier whose blades are all out has its
+  throw vetoed by its own weapon hook, which the pad question cannot see.
+  No soldier special fires a weapon, so no gate meets it today.
+
 `tests/integration/test_level_play.cpp` (binary `og_test_level_play`) checks
 the rules in a real level: it plays The Tryxian Chronicles' first level, its
 104 bots on four warring teams plus a crew of 12 heroes at level 14, for 2400
-ticks on three seeds, and counts every cast, every refusal and every roll a
-gate holds. On the shipped default the bots cast about 1270 times (423, 479 and 367 on
-the three seeds) and 46 different specials, among them the eight Shift arms the level
-reaches (MYSTIC MACE, CHAIN LIGHTNING, TELEPORT MARKER, MINE, CHARM
-OPPONENT, TURN UNDEAD, WAIL, HASTE SELF) and the crew's slot-5 HEARTBURST
+ticks on six seeds, and counts every cast, every refusal and every roll a
+gate holds. On the shipped default the bots cast about 480 times a seed (2887 on
+the six seeds) and 47 different specials, among them the eight Shift arms the level
+reaches (MYSTIC MACE 31, CHARM OPPONENT 31, MINE 24, CHAIN LIGHTNING 20, TURN
+UNDEAD 15, WAIL 10, TELEPORT MARKER 9, HASTE SELF 7) and the crew's slot-5 HEARTBURST
 and FREEZE TIME, none at nobody (each special whose rule names a foe has
 one within its reach, worked from the gate's own arithmetic), REVEAL never,
 and no gate says yes to a cast that then refuses for the fact the gate
@@ -381,20 +538,38 @@ tells the rules from their absence.
 
 The same run counts the refusals fixes V and W are about. Pooled over the
 three seeds on the shipped default, before fixes T to W the soldier bots
-met `PATH BLOCKED` 139 times to 61 charges (a wall or the map edge 74
+had met `PATH BLOCKED` 139 times to 61 charges (a wall or the map edge 74
 times, a foe already touching 19, an ally 12, a door 2, the rest a blocker
 gone by the end of the tick or a caster gone), the elves `COULD NOT FIRE` 80
 times to 44 volleys (a wall on the rock's pad 57 times, a foe on it 15, the
-rest the same), and casts were refused `SPECIAL BUSY` 154 times. With the fixes
-in they read `PATH BLOCKED` 0 to 35 charges, `COULD NOT
-FIRE` 5 to 51 volleys and `SPECIAL BUSY` 4, and
-the test caps each at its measured count plus a third (at least 3): `PATH BLOCKED` at
-most 3, the elves' `COULD NOT FIRE` at most 7, `SPECIAL BUSY` at most 6. The
-gates hold 2698 rolls, each of which now takes the bot's ordinary
-act. The `SPECIAL BUSY` refusals left come from casts no gate is asked
-about, among them the mage bot's own hit response: below its flee
-threshold it teleports without asking its gate, and a mage struck again
-while that teleport plays is refused.
+rest the same), and casts were refused `SPECIAL BUSY` 154 times. With
+fixes T to W in they read `PATH BLOCKED` 0 to 35 charges, `COULD NOT
+FIRE` 5 to 51 volleys and `SPECIAL BUSY` 4, and the gates held 2698
+rolls, each of which now takes the bot's ordinary act. The `SPECIAL BUSY`
+refusals left then came from casts no gate was asked about, among them
+the mage bot's own hit response: below its flee threshold it teleported
+without asking its gate, and a mage struck again while that teleport
+played was refused (#408 removed that call).
+
+For fixes X to AD it counts the far shoves, the price refusals and the
+pad refusals. With fixes T to W in, it read 23 shoves from more than 100 px (7 of them taking the ally's
+orders), 19 `NOT ENOUGH MP` refusals, and the druid, barbarian, mage and
+archer bots' `COULD NOT FIRE` 16, 3, 3 and 3 times. With fixes X to AD in
+it reads, on the six seeds, 0 far shoves, 0 `NOT ENOUGH MP`, `COULD NOT
+FIRE` 0 for those four families and 11 for the elves (2, 0, 0, 4, 4 and 1
+a seed), `SPECIAL BUSY` 0 and `PATH BLOCKED` 0; the gates hold
+5170 rolls. The test caps each at its measured count plus a third
+(at least 3), and far shoves at 0: `SPECIAL BUSY`, `NOT ENOUGH MP`, `PATH
+BLOCKED` and the four families' `COULD NOT FIRE` at 3, the elves' at 15.
+Before the amendment of fix Y (a melee-only bot still bumps its own foe)
+the elves read 5 (cap 7) and the four families 2, both the druid's SUMMON
+FAERIE; the amendment moves the whole stream, and the caps were measured
+again on it. What is left of `COULD NOT FIRE` and `NO ROOM TO SUMMON` comes
+from the shapes the gates do not see (above): each of the elves' 11 is an
+enemy weapon in flight on the rock's pad (9 knives, 2 rocks), which the
+gate's quiet question passes and `fire()`'s loud one met and lost the
+weapon clash roll to; the druid's one `NO ROOM TO SUMMON` (seed 3) is
+the faerie's own room, which no gate asks about.
 
 ## Charm and seats
 
@@ -467,9 +642,25 @@ The parity goldens are captures from the old game (branch
   caster, at its level, as the current game's `og.summon` has done since
   `19d7eeb3` (one golden moved, the cleric bot's raise-or-turn row with the
   setting on); and the table mirror `8fdb91b8`, which gives the archmage
-  bot's summon row with the setting on spawns of its own. `8fdb91b8` is the
-  commit the goldens are captured from: 331 of 331 goldens `cmp` equal to a
-  full capture there.
+  bot's summon row with the setting on spawns of its own. Fixes X to AD:
+  the table mirror `15f14eb9` (the new arenas and the two mage freeze rows'
+  own spawns), then `7b611c1f`, the probes and helpers the fixes ask with and
+  no behaviour (the test of whether a step's boxes meet a body, beside the
+  obmap's collision rule; the pad question taking a weapon family and
+  saying what it met; the right-hand walk's probes taking a quiet flag,
+  still loud everywhere; `set_weapon_heading` placing the weapon with
+  `fire()`'s pad table; the unused `bg_corpse_near` deleted; no golden
+  moved), `bf38a718` (X), `7f37d034` (Y), `bac61dd0` (Z), `38d71581` (AA),
+  `157e2619` (AB), `a5900f72` (AC) and `00887f9c` (AD), with the table
+  mirror `16f7503e` after them (the exact facts the recaptures broke, worked
+  out again, and four setting-on rows on a seed or spawns of their own:
+  see below). The amendment to Y: the table mirror `e4780cfc` (five pins
+  re-pointed by line and the struck orc's hp in the elemental row worked out
+  again; no golden moved), then `7ff1654a` (a melee-only bot whose own foe
+  stands where a right-hand probe looked still bumps it; three goldens with
+  the setting on moved).
+  `7ff1654a` is the commit the goldens are captured from: 351 of 351 goldens
+  `cmp` equal to a full capture there.
   `tests/parity/golden/DRIFT_LEDGER.md` records each one.
 
 The rows with the setting on, by fix:
@@ -485,7 +676,7 @@ The rows with the setting on, by fix:
 | G | `thief_charm_nearest_fixes_scen99` |
 | H | `elf_volley_refund_fixes_scen99`, `elf_rocks_blocked_fixes_scen99` |
 | I | `druid_tree_blocked_fixes_scen99` |
-| B, C, L | `mage_bot_freeze_no_foe_fixes_scen99`, `mage_bot_freeze_alone_fixes_scen99`, `mage_bot_freeze_engaged_fixes_scen99`, `mage_bot_heartburst_fixes_scen99`, `archmage_bot_summon_no_foe_fixes_scen99`, `cleric_bot_raise_or_turn_fixes_scen99`, `thief_bot_charm_or_taunt_fixes_scen99`, `archmage_hit_stale_shift_fixes_scen99` |
+| B, C, L | `mage_bot_freeze_no_foe_fixes_scen99`, `mage_bot_freeze_alone_fixes_scen99`, `mage_bot_freeze_engaged_fixes_scen99`, `mage_bot_heartburst_fixes_scen99`, `archmage_bot_summon_no_foe_fixes_scen99`, `cleric_bot_raise_or_turn_fixes_scen99`, `thief_bot_charm_or_taunt_fixes_scen99`, `archmage_hit_stale_shift_fixes_scen99` (the first two in arenas of their own since fixes X to AD: see below) |
 | M | `thief_bot_charm_hero_fixes_scen99`, `archmage_bot_mind_control_hero_fixes_scen99` |
 | Q | `archer_bot_bolt_at_blows_fixes_scen99`, `archer_bot_ring_one_foe_fixes_scen99`, `archmage_bot_image_one_foe_fixes_scen99`, `barbarian_bot_boulder_far_fixes_scen99`, `barbarian_bot_explode_lone_fixes_scen99`, `cleric_bot_mace_alone_fixes_scen99`, `cleric_bot_resurrect_foe_stain_fixes_scen99`, `druid_bot_faerie_alone_fixes_scen99`, `druid_bot_protection_idle_fixes_scen99`, `druid_bot_tree_behind_fixes_scen99`, `elemental_bot_starburst_one_foe_fixes_scen99`, `elf_bot_rocks_far_fixes_scen99`, `mage_bot_marker_home_fixes_scen99`, `mage_bot_warp_two_at_blows_fixes_scen99`, `soldier_bot_boomerang_far_fixes_scen99`, `soldier_bot_charge_unaimed_fixes_scen99`, `soldier_bot_disarm_front_fixes_scen99`, `soldier_bot_whirlwind_one_foe_fixes_scen99`, `thief_bot_bomb_ally_fixes_scen99`, `thief_bot_bomb_far_fixes_scen99`, `thief_bot_cloud_alone_fixes_scen99` (21 new arenas, each with its setting-off twin `<arena>_scen99`) |
 | R | `archmage_bot_struck_fixes_scen99` (no setting-off twin: see below) |
@@ -493,6 +684,13 @@ The rows with the setting on, by fix:
 | U | `soldier_charge_front_foe_fixes_scen99` (a new arena, with its setting-off twin) |
 | V | `soldier_bot_charge_door_fixes_scen99`, `elf_bot_rocks_blocked_fixes_scen99` (two new arenas, each with its setting-off twin) |
 | W | `soldier_bot_refused_roll_acts_fixes_scen99` (a new arena, with its setting-off twin) |
+| X | `orc_stale_shove_fixes_scen99` (a new arena, with its setting-off twin) |
+| Y | `orc_right_walk_potion_fixes_scen99` (a new arena, with its setting-off twin), and the 13 recaptured rows below; the amendment (a melee-only bot bumps its own foe) recaptured `orc_right_walk_potion_fixes_scen99`, `mage_bot_freeze_engaged_fixes_scen99` and `elemental_struck_short_pool_fixes_scen99` again |
+| Z | `soldier_charge_ally_fixes_scen99` (a new arena, with its setting-off twin) |
+| AA | `druid_bot_faerie_pad_body_fixes_scen99`, `barbarian_bot_boulder_pad_body_fixes_scen99`, `mage_bot_wave_pad_body_fixes_scen99`, `druid_bot_tree_pad_body_fixes_scen99` (four new arenas, each with its setting-off twin) |
+| AB | `elemental_struck_short_pool_fixes_scen99` (a new arena, with its setting-off twin), and the 10 recaptured rows below |
+| AC | `elf_rocks_edge_pad_fixes_scen99` (a new arena, with its setting-off twin) |
+| AD | `thief_charm_tent_troop_fixes_scen99` (a new arena, with its setting-off twin; the setting-on twin has spawns of its own: see below) |
 
 The bot payoff gates moved five existing rows with the setting on, each
 recaptured from the old game after its port: `cleric_bot_raise_or_turn_fixes_scen99`
@@ -526,6 +724,78 @@ the row's budget and now takes its ordinary act;
 `tests/parity/golden/DRIFT_LEDGER.md` lists them. Each exact fact a
 recapture broke was worked out again from the new capture and its pin
 proven again.
+
+The second bugs batch (fixes X to AD) moved 23 existing rows with the
+setting on, each recaptured from the old game after its port; no
+setting-off golden changed. Measured in the current game before the port,
+Y moved thirteen: `archmage_hit_stale_shift`, `cleric_bot_raise_or_turn`,
+`cleric_bot_resurrect_foe_stain`, `cleric_raise_blocked_corpse`,
+`druid_tree_blocked`, `elf_rocks_blocked`, `mage_bot_freeze_engaged`,
+`soldier_bot_disarm_front`, `soldier_charge_front_foe`,
+`soldier_disarm_higher_foe`, `soldier_disarm_resisted_busy`,
+`soldier_disarm_resisted_price` and `thief_bot_bomb_ally` (each
+`_fixes_scen99`): in each a bot's right-hand walk now asks its side
+probes quietly, and the random stream parts there. AB moved ten:
+`archer_bot_bolt_at_blows`, `archer_bot_ring_one_foe`,
+`archmage_summon_no_room`, `druid_bot_tree_behind`, `elf_volley_refund`,
+`mage_bot_heartburst`, `mage_bot_warp_two_at_blows`,
+`soldier_bot_whirlwind_one_foe`, `soldier_whirlwind_no_foe` and
+`special_cleric_heal_ally` (each `_fixes_scen99`), every one through a
+struck bot short of its slot-1 price, most of them the arenas' target
+towers. X, Z, AA, AC and AD moved none; in particular
+`elf_rocks_blocked_fixes_scen99` and `druid_tree_blocked_fixes_scen99`,
+whose pads hold a body, keep H's and I's paid blow under AC (they move
+under Y only). The old game's captures, one after each port, name the
+same rows: X, Z, AA, AC and AD move only their own new rows, Y moves
+its thirteen and AB its ten (and the new rows the ledger lists), and nine
+of Y's thirteen move again under AB in the old game (a target tower in
+each is struck short of its slot-1 price), where the current game's
+bisection saw them move once. The amendment to Y (a melee-only bot bumps
+its own foe, ported in `7ff1654a`) moved one of them again,
+`mage_bot_freeze_engaged`, and two newer rows whose orcs fight at blows,
+`orc_right_walk_potion` and `elemental_struck_short_pool` (each
+`_fixes_scen99`; in the last the struck orc now ends at 67 hp, not 96).
+The old game's capture after the port moves exactly these three, and each
+`cmp`s equal to the current game's dump. Of Y's thirteen, the other twelve are byte-equal before and after: eleven
+have no melee-only bot, and in `thief_bot_bomb_ally` no bump of its orc
+changes a byte. After the last port every moved capture
+`cmp`s equal to the current game's dump but one:
+`thief_charm_tent_troop_fixes_scen99` differed only by the four explosion
+sounds of the tent dying at tick 238. The old game plays a generator's
+explosion only on screen, and the tent stood below the classic 320 x 200
+view, while the current game sounds it wherever the tent stands.
+
+The recaptures also broke exact facts in eight of the rows:
+`elf_rocks_blocked`, `druid_tree_blocked`, `mage_bot_heartburst`,
+`cleric_bot_raise_or_turn`, `special_cleric_heal_ally`,
+`archmage_summon_no_room`, `mage_bot_warp_two_at_blows` and
+`cleric_raise_blocked_corpse` (each `_fixes_scen99`). Each was worked out
+again from the new capture and its pin proven again. Four setting-on rows
+had lost what their mutation shows, and take a seed or spawns of their
+own while their setting-off twins stay as they were:
+`cleric_raise_blocked_corpse_fixes_scen99` takes seed 15 (on the old seed
+its faerie died only at the cast, so no skeleton could rise),
+`soldier_disarm_higher_foe_fixes_scen99` seed 2 (the soldier no longer won
+its roll), `cleric_bot_resurrect_foe_stain_fixes_scen99` seed 939 (no
+RESURRECT roll came while the stain was in reach), and
+`thief_charm_tent_troop_fixes_scen99` stands its tent at (160, 150),
+inside the view, as the engaged freeze arena did for an orc's HOWL. The
+table mirror `16f7503e` carries them; the capture there moves those four rows
+alone, and each `cmp`s equal to the current game's dump.
+
+A setting-on twin may stand in an arena of its own. The maintainer ruled
+this in PR #404: when a row's arena leaves its setting-on mutation nothing
+a fact can read, the setting-on twin gets spawns of its own and its
+setting-off twin stays as it was. The first row to take it was
+`archmage_bot_summon_no_foe_fixes_scen99` (`8fdb91b8`): its archmage
+starts in scen1's corner at (60, 60), where nothing can stand beside it,
+so the summon its mutated gate let through was refused `NO ROOM TO
+SUMMON` and nothing showed. The spawn-room check that came with #423
+found two more such casters: `mage_bot_freeze_no_foe_fixes_scen99` and
+`mage_bot_freeze_alone_fixes_scen99` had their mage in the lake at that
+corner, where a living is given a tick of flight and loses 1 hp a tick.
+Both now start at (160, 160) on grass, with their seeds and budgets kept,
+each recaptured from the old game; their setting-off twins are untouched.
 
 Rows deliberately not added:
 
@@ -609,10 +879,37 @@ Rows deliberately not added:
   happens, while the current game's classic hit response uses the cast's
   real answer. No golden reaches that difference; it is recorded in the
   ledger.
+- Fix X's own shape, the far shove across a teleporter: no arena can
+  stage it. An arena's spawns go into the world's list of walkers, and a
+  teleporter finds its partner only among the effects, so an arena's pad
+  goes nowhere. The unit tests in `tests/unit/test_gameplay_fixes_walk.cpp`
+  (`GameplayFixesWalk`) stage it with a real pad pair, and the level-play
+  test counts far shoves.
+- #408: the skipped call was refused before it did anything, so both
+  values record the same bytes; `StatsHitResponseTeleport` in
+  `tests/integration/test_stats_hit_response_teleport.cpp` pins it.
+- #411: the kill credit is a field of the current game alone, not in the
+  recording; the mode tests (`ModesOnslaught`, `ModesTdm`) pin it.
+- #417 and #418: no byte of the sim changes; every row proves it.
+- #413, #414, #415 and #416: the display and the lobby, which no recording
+  reaches.
+- Fix AA's two terrain pads. `archer_bot_bolt_pad_terrain`: a bot faces
+  up at its spawn and no tile that stops a weapon sits directly above
+  ground on scen1, so the only terrain arena is an archer beside a tree
+  trunk turned by a blocked first walk; over seeds 0 to 400 the two runs
+  then differ only in the random stream or the archer's final position
+  in one direction, so no fact lets each row's own pin flip a fact of its
+  own. `GameplayFixesBots.archer_exploding_bolt_asks_the_fire_arrows_own_pad`
+  and the gate's unit tests stand for it. `druid_bot_tree_pad_terrain`:
+  with fix AC a GROW TREE at terrain refuses before it spends, and a
+  refused cast and a gate's no take the same ordinary act, so the gate's
+  pad term has nothing to show on terrain; `druid_bot_tree_pad_body` (a
+  tower on the bolt's pad) took its place.
 
 ## Not gated
 
-Three changes in this work apply whatever the setting:
+Nine changes apply whatever the setting, three from the work that added it (N, O
+and P) and six from the second bugs batch:
 
 - **N. A slot that is not in play says so.** `walker::special()` refuses a
   slot priced 5000 (an undeclared slot, or one New Specials hides) before it
@@ -630,6 +927,55 @@ Three changes in this work apply whatever the setting:
 - **P. The archer's comment** on its default cast now names the slots it
   serves (slot 3 and every unmapped slot; slot 4 is undeclared). Comment
   only.
+- **The mage's flee teleport casts nothing mid-teleport (#408).** The mage's
+  and the archmage's hit responses teleport below their flee threshold;
+  struck again while that teleport plays, they now skip the call
+  (`lc.mid_teleport` first), which the cast refused as `SPECIAL BUSY` anyway
+  before drawing, spending or moving anything. No byte changes on either
+  value; only the refusal's trace is gone. The old game refuses the same
+  call silently, so nothing is ported.
+- **A tent's or bones' troop is its own kill credit (#411).** The modes
+  credit a kill to the attacker the blow records (TDM's frags, Onslaught's
+  10 points, LEGION's raise, the elemental's double burn on the foe that
+  last struck it). The record named the top of the attacker's owner chain
+  only when that top was a living, so a troop's chain, which ends at its
+  tent, recorded nobody, or left the victim's earlier attacker in place.
+  It now records the topmost living on the chain (`walker::credit_head`):
+  the troop itself, a weapon's thrower, a summon's caster. Classic team
+  score and experience still go to the chain's top: a tent's troop never
+  earned experience in either game, and it pays the classic team score
+  when its tent is on the player's team. The record exists in this game
+  only.
+- **A probe no longer grows the world (#417).** Every read-only look into
+  the obmap's buckets (the spawn-spot probe, the landing and wake probes,
+  the path search's cost, the text client's grid and object commands)
+  reads `obmap::find_list`, which answers nothing for an empty cell
+  instead of making an empty bucket there; `obmap_get_list` stays for
+  `GameWorld::find_near_foe`, which edits the bucket it reads. No byte of
+  the sim changes. The obmap debug overlay draws fewer empty boxes. The old
+  game's spawn probe already reads with a find.
+- **One pad table (#418).** `walker::set_weapon_heading`, which places the
+  test weapon of a shooter's line-of-fire check, had its own copy of the
+  eight-heading pad table; it now places the weapon with
+  `walker::weapon_pad`, the table `fire()` uses. The gate predicate
+  `G.corpse_near`, which no pack read since fix T, is gone, and so is the
+  old game's `bg_corpse_near`. No byte of the sim changes.
+- **The F1 FREEZE TIME cheat freezes the level (#413).** In local play the
+  screen the cheat wrote is a copy that the next snapshot overwrites, so
+  the freeze froze nobody and the blue lasted a tick (the issue saw only
+  the colour). The cheat now writes the server world: the snapshot carries
+  the freeze and the blue to every view, and FREEZE TIME's own rule thaws
+  it. In a networked game it does nothing (a host's cheat would change
+  every player's game, and a joiner has no server world). A replay recorded
+  while cheating plays back differently, because a cheat is not recorded
+  input. This game only.
+- **Water and lava flow again (#414).** Since June 2026 (`de9d02b2`) every
+  snapshot repainted the palette and put the water and lava colour bands
+  back: measured over six frames, the bands' turn read 1, 0, 0, 1, 0, 0
+  where the cycle reads 1, 1, 1, 2, 2, 2, two frames shown in turn. One
+  writer, `screen::show_palette_id`, now paints only when the palette
+  shown changes; anything else that writes the colours marks it unknown,
+  and a mission's end forces the restore. This game only.
 
 ## Balance
 
@@ -1001,6 +1347,147 @@ stream, this once: Westlands 5's floor went 6 to 5, the Tower's floor 1 floor
 (`tests/unit/test_westlands_calibration.cpp`,
 `tests/unit/test_tower_calibration.cpp`), and the asserting runs pass.
 
+**After fixes X to AD (2026-11-01).** The four suites were measured again on
+the shipped default with fixes X to AD in, on the same three seeds, twice:
+with the fixes as first built, and again after fix Y's amendment (ruling 4).
+"Before" is the "after" column of the tables above; "now" is the game with
+fix Y amended.
+
+What the fixes change in a battle. X takes the far and stale shoves out,
+and with them a draw each and a stolen order; Y stops the crew and the
+enemy eating a potion or a meal one pixel beside their path and swinging
+at a body they graze that they are not fighting; a melee-only bot still
+bumps its own foe (the first form of Y, the middle column of the tables
+below, took a third of the orc, ghost and slime swings and a fifth of
+their damage, and the crews came out a little ahead of the classic: Westlands 323 vs 317
+survivors over 75 battles, Long Season 348 vs 328); Z leaves an ally's
+orders alone when a CHARGE meets it; AA spends fewer druid, barbarian,
+mage and archer rolls on casts that refuse; AB makes a struck bot short of
+magic hold instead of rolling; AD puts a charmed troop on its charmer's
+side. AC changes nothing for a bot (its gate asks the pad first). Each
+moves the random stream, so on one seed a line can move by several
+survivors either way. With New Specials on, #411 also reaches the
+campaigns: a tent's or bones' troop that strikes an elemental is the foe
+its IMMOLATE burns double.
+
+**Westlands** (survivors at tick 600, seeds 42 1337 2025, the shipped default)
+
+| level | crew | before X to AD | after X to AD as first built | now (fix Y amended) |
+|---|---|---|---|---|
+| 1 | 1 | 8 8 8 | 8 8 8 | 8 8 8 |
+| 2 | 2 | 8 8 8 | 8 8 8 | 8 8 8 |
+| 3 | 2 | 8 8 6 | 6 6 7 | 6 6 7 |
+| 4 | 3 | 7 7 8 | 8 7 8 | 8 7 8 |
+| 5 | 3 | 5 7 5 | 7 8 6 | 7 8 2 |
+| 6 | 4 | 7 5 4 | 3 8 7 | 3 8 7 |
+| 7 | 4 | 0 0 0 | 0 0 0 | 0 0 0 |
+| 8 | 5 | 2 6 4 | 2 5 4 | 2 5 2 |
+| 9 | 6 | 2 1 0 | 7 2 2 | 7 2 2 |
+| 10 | 5 | 0 0 0 | 0 0 0 | 0 0 0 |
+| 11 | 6 | 4 1 6 | 3 6 3 | 1 4 5 |
+| 12 | 6 | 0 0 0 | 0 0 0 | 0 0 0 |
+| 13 | 6 | 1 1 2 | 0 0 0 | 0 0 0 |
+| 14 | 7 | 0 0 0 | 0 0 0 | 0 0 0 |
+| 15 | 7 | 3 4 1 | 4 4 3 | 3 5 3 |
+| 16 | 8 | 2 3 3 | 6 1 4 | 4 2 4 |
+| 17 | 8 | 8 7 8 | 6 4 6 | 4 5 7 |
+| 19 | 6 | 5 4 6 | 6 6 4 | 6 6 5 |
+| 20 | 7 | 3 0 2 | 0 2 3 | 1 4 2 |
+| 21 | 7 | 8 6 7 | 8 8 8 | 7 7 8 |
+| 22 | 8 | 0 0 0 | 2 0 1 | 1 0 1 |
+| 23 | 8 | 8 7 6 | 7 4 7 | 5 7 6 |
+| 24 | 8 | 5 7 4 | 5 6 2 | 5 2 2 |
+| 25 | 9 | 8 8 6 | 7 6 6 | 6 7 5 |
+| 26 | 9 | 8 8 8 | 8 8 8 | 8 8 8 |
+| sum | | 318 | 323 | 309 |
+
+**Long Season**
+
+| level | crew | before X to AD | after X to AD as first built | now (fix Y amended) |
+|---|---|---|---|---|
+| 1 | 1 | 8 8 8 | 8 8 8 | 8 8 8 |
+| 2 | 1 | 7 6 7 | 6 6 8 | 6 6 8 |
+| 3 | 2 | 8 8 8 | 8 8 7 | 8 8 8 |
+| 4 | 2 | 1 1 2 | 3 0 3 | 1 5 3 |
+| 5 | 3 | 8 5 5 | 8 6 7 | 8 6 7 |
+| 6 | 3 | 5 7 5 | 6 4 7 | 6 4 7 |
+| 7 | 4 | 8 7 8 | 8 8 8 | 8 8 8 |
+| 8 | 4 | 6 8 7 | 8 7 6 | 8 7 6 |
+| 9 | 5 | 8 8 8 | 8 8 8 | 8 8 8 |
+| 10 | 5 | 1 7 6 | 5 6 7 | 5 7 7 |
+| 11 | 5 | 5 8 6 | 8 7 7 | 8 7 6 |
+| 12 | 6 | 6 6 7 | 6 7 5 | 5 7 5 |
+| 13 | 6 | 4 4 6 | 7 6 5 | 5 6 5 |
+| 14 | 7 | 8 8 8 | 8 8 8 | 8 8 8 |
+| 15 | 7 | 8 8 8 | 8 8 8 | 8 8 8 |
+| 16 | 7 | 4 7 5 | 8 4 8 | 6 7 8 |
+| 17 | 8 | 0 0 0 | 0 0 0 | 0 0 0 |
+| 18 | 8 | 0 0 0 | 0 0 0 | 0 0 0 |
+| 19 | 8 | 8 8 8 | 8 8 8 | 8 8 8 |
+| sum | | 329 | 348 | 350 |
+
+**Tower** (floor, crew)
+
+| floor | crew | before X to AD | after X to AD as first built | now (fix Y amended) |
+|---|---|---|---|---|
+| 1 | 1 | 8 7 5 | 7 8 7 | 7 8 7 |
+| 5 | 2 | 2 0 8 | 0 5 7 | 0 5 7 |
+| 10 | 3 | 0 0 0 | 0 0 0 | 0 0 0 |
+| 15 | 4 | 0 8 0 | 0 3 0 | 0 3 0 |
+| 20 | 6 | 0 0 0 | 0 0 0 | 0 0 0 |
+| sum | | 38 | 37 | 37 |
+
+**Imaginations** (level 1, crew 1): `7 6 7` before, `7 5 8` after fixes X to AD
+as first built, `7 5 8` now. Levels 2 and 3 read `8 8 8` and `8 8 7` before
+and `8 8 8` on both after; the three levels sum 67, 68 and 68.
+
+The asserting runs (seed 42 against each level's floor and ceiling; every
+seed on the Tower): Long Season, Imaginations and the Tower are in band in
+both later columns, so no level was eased. Westlands has two lines out of
+band on seed 42, in both later columns: level 9 reads 7 against its band
+of 0 to 3, and level 11 reads 1 now (3 as first built) against its band
+of 4 to 8. Taking the fixes out one at a time on the first build: level
+9's 7 needs X, Y and AB together (without X it reads 1, without Y 1,
+without AB 3; adding them in order, it reads 2, 1, 3, 3 and, with AB, 7);
+level 11's 3 came with AA on top of X, Y, Z and AB (6 before AA; without
+X it reads 6, without Y 5, without AA 6). The amendment leaves level 9
+exactly as it was on every one of a hundred seeds (the level has almost no
+melee-only bot near the crew, so the kept bump never fires there; what
+moved it is the rest of Y, which the amendment keeps), and it moved level
+11's seed 42 from 3 to 1, the stream. A hundred seeds per line (42, 1337,
+2025 and 1000 to 1096; sd over the hundred, SE = sd / 10):
+
+| line | build | mean | sd | SE | out of band |
+|---|---|---|---|---|---|
+| Westlands 9 (band 0 to 3) | before X to AD | 1.29 | 1.46 | 0.15 | 5 of 100 above 3 |
+| Westlands 9 | after X to AD as first built | 0.83 | 1.39 | 0.14 | 5 of 100 above 3 |
+| Westlands 9 | now | 0.83 | 1.39 | 0.14 | 5 of 100 above 3 |
+| Westlands 11 (band 4 to 8) | before X to AD | 4.77 | 1.86 | 0.19 | 24 of 100 below 4 |
+| Westlands 11 | after X to AD as first built | 4.51 | 1.73 | 0.17 | 30 of 100 below 4 |
+| Westlands 11 | now | 4.66 | 1.76 | 0.18 | 25 of 100 below 4 |
+
+Level 9's 7 is the crew doing better than its ceiling on one seed, and
+on average it does not: seed 42's 7 is a two-in-a-hundred draw, the game
+before the fixes breaks the ceiling on 5 seeds of the hundred too, and the
+mean fell from 1.29 to 0.83 (about two combined standard errors) on a war
+level whose floor is 0, the same on the first build and now. Level 11's
+mean is within one standard error of both earlier columns, and the game
+before the fixes already misses the floor on 24 seeds of the hundred, its
+own seed 42 reading exactly the floor: the stream, not a level that got
+hotter. The survivors over the 75 Westlands battles read 318, 323 and 309;
+paired battle by battle, now is 9 under the game before the fixes (SE 15)
+and 14 under the first build (SE 9). What the amendment did to the sums:
+Westlands 323 to 309, Long Season 348 to 350, Imaginations 68 to 68, the
+Tower 37 to 37. It gives back the classic bump a melee-only bot made, the
+part of Y that put the crews a little ahead of the game without Y (317 and
+328); Westlands lands 9 under the game before the fixes, inside one
+standard error, and the two lines measured over a hundred seeds read no
+hotter than they did on the first build. No level was eased, and no floor,
+ceiling or seed changed in any calibration test in this work (the four
+calibration test files are untouched since PR #404). The two Westlands
+lines go to the maintainer with the three seeds and the fixes that moved
+them (ruling 16 of the [rulings](#rulings-2026-11-01)).
+
 **The other change outside the setting that moves a calibration line.**
 Besides the four eased Long Season levels, and the kits' bot rules
 above, one more line moved with the setting off before the bot gates.
@@ -1130,7 +1617,145 @@ One precedent, recorded with them: fixes H and I made a classic free
 swing paid, because the swing was the cast's own (the volley and the bolt
 fire at the foe they meet); fix U removes a free swing instead, because
 that swing was never the cast's: CHARGE and DISARM only asked whether
-their front was blocked, and a question must not attack.
+their front was blocked, and a question must not attack. Fix AC keeps H's
+and I's paid blow and refuses before paying only where no blow could land
+(a wall face, the map edge).
+
+## Rulings (2026-11-01)
+
+Fixes X to AD, and the other changes of the same work (#408, #411, #413 to
+#421, #423), asked seventeen questions, #422 among them, and an eighteenth
+when fix Y was amended (carried in ruling 4). Each line below is the default
+taken, and what the game does today.
+
+1. **#410: a blocked volley.** A rock or bolt whose pad holds terrain (a
+   wall face, the map edge, or a tree crown for the druid's bolt) is
+   refused `COULD NOT FIRE` before the refund and the swing, so it costs
+   nothing; a rock that strikes a foe at point-blank range still costs its
+   one swing, as fix H ruled (and fix I for the druid). That closes the
+   issue's case, 1 MP for a swing at nothing, moves no existing recording
+   and keeps clubbing a point-blank foe with ROCKS. The alternative makes
+   every refused volley free: it reverses H's ruling, moves
+   `elf_rocks_blocked_fixes_scen99` and `druid_tree_blocked_fixes_scen99`,
+   and rewrites a test, two scenes and the precedent above. Default: as
+   built.
+2. **#403 and #406: the shape.** A walker shoves, and a rush strikes, only
+   a body its step's box meets from where it stands; the collision field
+   and the snapshots stay classic. The alternative is the issue's draft,
+   which empties the collision field at the top of every step and so also
+   changes what a bot's wall-stopped CHARGE strikes. Default: as built.
+3. **#406: allies in a CHARGE.** With the setting on a CHARGE never erases
+   an ally's orders or walks it off (the walk's ordinary shove, two times
+   in three and never a seat, still nudges it). The alternative keeps the
+   classic violent shove of allies and drops only the damage roll.
+   Default: as built.
+4. **#405: how far the quiet probes reach.** The three right-hand probes,
+   the right-hand walk and a bot's walk to a point (this game only, the
+   same setting). A seat's slide along a wall keeps its two loud probes:
+   that is a player's own step, not in the issue. Default: as built.
+   Amended 2026-11-01: asked wholly quietly, the probes took away a third
+   of the orc, ghost and slime swings, an eighth of their blows and a
+   fifth of their damage over the four campaigns, and an orc that stops
+   exactly against a standing foe never swung again. The game now keeps
+   the bump for a melee-only bot's own foe and nothing else (a potion
+   stands, a door stays shut, an ally and a passing hostile are untouched,
+   a soldier throws no knife at a body it grazed); a bot's walk to a point
+   stays wholly quiet. Two alternatives: (1) the bump for every bot at
+   blows with its own foe, which gives a ranged bot back its classic knife
+   along its heading at a foe touching its side (2 MP and a draw, mostly
+   at air): not taken, ranged bots fight through their aimed shot already;
+   (2) the bump only from the two forward probes (front, right front),
+   where the swing can land: not taken, a new unmeasured rule; the full
+   classic cadence is what the campaigns were tuned at. Default: melee-only
+   bots, their own foe, all four probes.
+5. **#409: the shape.** With the setting on a struck bot holds a cast it
+   cannot pay; the gate's yes is for a slot it can pay and the follow-up
+   roll is not drawn. Ported, with a new pair of recordings where the
+   capture shows it. The alternative skips only the refused call, which
+   changes no byte and needs no port but leaves the gate saying yes to a
+   cast the bot cannot pay. Default: as built.
+6. **#411: the credit.** The kill record (TDM, Onslaught, the mode scripts)
+   credits the topmost living on the chain, not behind the setting (this
+   game only); classic team score and experience are untouched. The
+   alternative also pays a hero experience for its troop's kill, a new
+   rule that would be gated and ported. Default: as built.
+7. **#412: the shape and the setting.** A charmed walker heads its own
+   chain while its charm clock runs, behind the setting and ported; its
+   owner, its 811-tick clock and the cascade when its tent falls are
+   unchanged, so a charmed troop is still its tent's. The test reads the
+   charm's clock, not the walker's recorded real team, which level hooks,
+   map generators, the parity runners and the possession rider also write
+   with no charm behind it. The alternatives: no setting, treating the
+   colour and the loyalty disagreeing as garbage behaviour (as MIND
+   CONTROL's duration was), or cutting the owner as Onslaught's release
+   does, which leaves the troop ownerless for good and moves the
+   generator's rate draw. Default: as built.
+8. **#413: where the cheat works.** The fixed F1 cheat works in local play
+   only; in a networked game it does nothing. A replay recorded while
+   cheating plays back differently (a cheat is not recorded input, and
+   local play always records, so refusing the cheat while recording would
+   refuse it always). The alternative lets a host cheat for everyone.
+   Default: as built.
+9. **#415: the typed name.** On the host's GO the half-typed name is
+   dropped, in RENAME and in HIRE ME; the hire stands with its suggested
+   name, as CANCEL leaves it (the match was set up at the confirmation, so
+   a rename could not reach it anyway). The alternative keeps the typed
+   name in HIRE ME. Default: as built.
+10. **The level-play caps.** The rule PR #404 used, the measured count
+    plus a third and at least 3: `SPECIAL BUSY` 3 (measured 0), `NOT ENOUGH MP`
+    3 (measured 0; it was capped at 100, "stay rare"), one pooled cap for the
+    druid, archer, barbarian and mage `COULD NOT FIRE` 3 (measured 0), the
+    elves' cap 15 (measured 11 after the amendment; it was 7), `PATH BLOCKED`
+    3 (measured 0), and far shoves 0. A floor the new
+    gates breach (DRUID SUMMON FAERIE at least 2, BARBARIAN HURL BOULDER at
+    least 1) is a balance question, never a lowered floor. Default: so.
+11. **#419: the shape.** The pad question takes the weapon family the cast
+    fires (the archer passes its fire arrow); the families' weapon hooks
+    are not run as a dry run, because the soldier's and the archmage's
+    write the caster's magic and blades and a dry run would not be pure.
+    A test proves the hooks do not move the pad. The soldier's veto when
+    no blade is left stays a gap no gate asks about. Default: as built.
+12. **#422, not fixed here.** The old game's `walker::special()` has
+    answered 0 on every path since the 2002 import, so its classic archmage
+    hit response never returns after a cast, while this game's does. The
+    recommendation is that the old game is the classic side: in a
+    follow-up pull request, this game's setting-off archmage hit response
+    ignores the cast's answer (`living-17-archmage.lua:131`, `:142`,
+    `:153`), keeping every draw and cast the old game makes, and
+    `archmage_bot_struck` then gets a setting-off twin captured from the
+    old game. The alternative changes the old game to answer whether it
+    cast. Default: the follow-up, not this work.
+13. **#423: the two mage rows.** `mage_bot_freeze_no_foe_fixes_scen99` and
+    `mage_bot_freeze_alone_fixes_scen99` take spawns of their own at (160,
+    160), each recaptured from the old game, under the PR #404 ruling (see
+    [Parity](#parity)); their classic twins are untouched. The alternative
+    leaves them in the lake and lists them with a reason. Default: as
+    built.
+14. **A CHANGELOG! entry.** None: these are bug fixes, and a player reads
+    them as the game playing as it should. The alternative is one line for
+    the three a player sees on screen (the cheat, the water and lava, the
+    kick popup). Default: none.
+15. **#407: how many gates.** The four the issue names. Not added: a gate
+    for the archer's BARRAGE (three arrows into a wall for 60 magic is a
+    question of payoff, not a refusal) and a probe of the faerie's room for
+    SUMMON FAERIE's `NO ROOM TO SUMMON` (one refusal in the census; a
+    follow-up issue). Default: so.
+16. **Calibration dips.** A Long Season or Imaginations level that falls
+    under its floor is eased in its builder; a Westlands level is reported
+    with the bisect and the three seeds for the maintainer's word; nothing
+    is re-pinned lower. Default: so.
+17. **The new pairs of recordings.** The far shove across a teleporter
+    cannot be staged in an arena, so the unit tests and the level-play
+    count stand for it. Each proposed pair (the near stale shove, the
+    potion beside a right-hand walk, the CHARGE into an ally, the struck
+    elemental short of magic, the ROCKS at the map edge, the charmed tent
+    troop, and the two terrain pads of fix AA) is kept only if its two
+    captures differ and a fact reads the difference; the three body pads
+    of fix AA follow the elf's precedent. Default: so; kept: the near
+    stale shove, the potion, the CHARGE into an ally, the struck elemental,
+    the ROCKS at the map edge, the charmed tent troop and four body pads
+    (GROW TREE took a body pad in place of its terrain pad); dropped: the
+    archer's terrain pad (no fact pair in any scen1 arena).
 
 ## Out of scope
 

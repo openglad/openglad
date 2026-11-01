@@ -654,7 +654,7 @@ TEST(StatsMorePaths, stats_round11_follow_force_walk_and_right_walk_distance_bra
     ASSERT_NE(nullptr, follower.get()) << "fixtures created";
     ASSERT_NE(nullptr, foe.get()) << "fixtures created";
 
-    // force_command WALK clamp path (stats.cpp:152-163).
+    // force_command WALK clamp path (stats.cpp:252-264).
     follower->stats()->commands.clear();
     follower->stats()->force_command(COMMAND_WALK, 3, 9, -9);
     ASSERT_EQ(1u, follower->stats()->commands.size()) << "force_command should enqueue walk";
@@ -664,7 +664,7 @@ TEST(StatsMorePaths, stats_round11_follow_force_walk_and_right_walk_distance_bra
         EXPECT_EQ(-1, (int)c.com2) << "force_command should clamp com2 to -1";
     }
 
-    // COMMAND_FOLLOW no-leader-found branch (stats.cpp:285-287): with no
+    // COMMAND_FOLLOW no-leader-found branch (stats.cpp:443-448): with no
     // leader and nothing for find_follow_leader() to hand back, the arm zeroes
     // its own commandcount and reports the round UNDONE -- so a four-round
     // FOLLOW is dropped whole, not retried next tick.
@@ -679,7 +679,7 @@ TEST(StatsMorePaths, stats_round11_follow_force_walk_and_right_walk_distance_bra
     EXPECT_FALSE(follower->stats()->has_commands())
         << "the no-leader arm zeroes commandcount, so the whole FOLLOW is dropped";
 
-    // COMMAND_FOLLOW axis-normalization branch (stats.cpp:303-310): a 300px/40px
+    // COMMAND_FOLLOW axis-normalization branch (stats.cpp:463-470): a 300px/40px
     // delta is past the 3:1 ratio, so the minor axis is zeroed and the escort
     // walks due east - exactly one step, not the raw delta.
     const short saved_numviews = og::runtime::current_session->myscreen_->numviews;
@@ -708,7 +708,7 @@ TEST(StatsMorePaths, stats_round11_follow_force_walk_and_right_walk_distance_bra
     EXPECT_EQ(follow_y, follower->ypos())
         << "the 3:1 test zeroes the minor axis, so y must not move at all";
 
-    // COMMAND_RIGHT_WALK distance gate (stats.cpp:360-368): right_walk() is used
+    // COMMAND_RIGHT_WALK distance gate (stats.cpp:541-549): right_walk() is used
     // ONLY when 120 < distance < 240; otherwise direct_walk() goes first and
     // right_walk is the fallback. Geometry: the body's bottom edge sitting on
     // the map edge, facing UP, leaves right-back (x+1,y+1) as the only blocked
@@ -782,7 +782,7 @@ TEST(StatsMorePaths, stats_round12_add_command_walk_clamps_and_follow_shortcuts)
 
     follower->stats()->commands.clear();
 
-    // add_command(COMMAND_WALK) clamp/default branches (stats.cpp:128-140).
+    // add_command(COMMAND_WALK) clamp/default branches (stats.cpp:227-239).
     follower->stats()->add_command(COMMAND_WALK, 2, 0, 0);
     ASSERT_EQ(1u, follower->stats()->commands.size()) << "add_command walk should enqueue";
     {
@@ -800,7 +800,7 @@ TEST(StatsMorePaths, stats_round12_add_command_walk_clamps_and_follow_shortcuts)
         EXPECT_EQ(-1, (int)c.com2) << "walk y should clamp low value to -1";
     }
 
-    // COMMAND_FOLLOW early exit when foe exists (stats.cpp:273-278). A count of
+    // COMMAND_FOLLOW early exit when foe exists (stats.cpp:433-439). A count of
     // 4 makes the branch's `commandcount = 0` load-bearing: the whole FOLLOW is
     // dropped, not merely this round.
     follower->set_foe(foe.get());
@@ -813,7 +813,7 @@ TEST(StatsMorePaths, stats_round12_add_command_walk_clamps_and_follow_shortcuts)
     EXPECT_FALSE(follower->stats()->has_commands())
         << "the foe branch zeroes commandcount, so the whole FOLLOW is dropped";
 
-    // COMMAND_FOLLOW close-distance branch (stats.cpp:295-300).
+    // COMMAND_FOLLOW close-distance branch (stats.cpp:455-460).
     follower->set_foe(nullptr);
     follower->set_leader(leader.get());
     leader->setxy(static_cast<Sint32>(follower->xpos()) + 10, static_cast<Sint32>(follower->ypos()) + 10);
@@ -835,14 +835,14 @@ TEST(StatsMorePaths, stats_round13_die_and_non_living_fire_command_branches)
     ASSERT_NE(nullptr, living.get()) << "fixtures created";
     ASSERT_NE(nullptr, weapon) << "fixtures created";
 
-    // COMMAND_DIE branch (stats.cpp:266-271).
+    // COMMAND_DIE branch (stats.cpp:426-431).
     living->set_dead(1);
     living->stats()->set_delete_me(0);
     living->stats()->force_command(COMMAND_DIE, 1, 0, 0);
     ASSERT_EQ(1, living->stats()->do_command()) << "the die round reports done";
     ASSERT_EQ(1, (int)living->stats()->delete_me()) << "COMMAND_DIE should set delete_me when count is low";
 
-    // COMMAND_FIRE on non-living controller path (stats.cpp:253-257).
+    // COMMAND_FIRE on non-living controller path (stats.cpp:413-417).
     weapon->stats()->force_command(COMMAND_FIRE, 1, 1, 0);
     const short fire_result = weapon->stats()->do_command();
     ASSERT_EQ(1, (int)fire_result)

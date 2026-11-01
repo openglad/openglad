@@ -16,6 +16,9 @@ local function next_spread_multiplier()
 end
 
 local function some_rocks(self)
+  if gf.pad_blocked_by_terrain(self) then
+    return false, "COULD NOT FIRE"
+  end
   -- magicpoints is a C++ float: per-op rounding.
   self.magicpoints = og.fadd(self.magicpoints, 2 * self:s_weapon_cost())
   local rock = self:fire()
@@ -48,6 +51,9 @@ end
 -- therefore `* 4 // 2`.
 local function bounce_volley(cost_mult, count, los_num)
   return function(self)
+    if gf.pad_blocked_by_terrain(self) then
+      return false, "COULD NOT FIRE"
+    end
     local refund = cost_mult
     if gf.on() then
       -- Gameplay Fixes: refund the rocks that will fly, not one more.

@@ -289,16 +289,8 @@ void dispatch_cosmetic_screen_events(screen& self,
                 }
                 break;
             case og::sim::EventKind::SetPalette:
-                if (ev.a == 0)
-                {
-                    self.world().current_palette_id = 0;
-                    set_palette(self.ourpalette);
-                }
-                else
-                {
-                    self.world().current_palette_id = 1;
-                    set_palette(self.bluepalette);
-                }
+                self.show_palette_id(
+                    static_cast<std::uint8_t>(ev.a == 0 ? 0 : 1));
                 break;
             case og::sim::EventKind::RequestRedraw:
                 self.redrawme = 1;
@@ -570,6 +562,23 @@ void screen::draw_line(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2,
 void screen::do_cycle(Sint32 curmode, Sint32 maxmode)
 {
     video_impl_->do_cycle(curmode, maxmode);
+}
+
+// The palette the mission shows, by id (0 the level's own, 1 FREEZE TIME's
+// blue), written once per change (#414): every snapshot re-sends the id, and
+// a set_palette on every tick put the water and lava bands back to rotation 0
+// before do_cycle could turn them, so they flickered between two steps
+// instead of flowing. `force` always writes (the mission-end restores, #365:
+// once the cycle really turns, curpal_ is rotated and must be set back).
+void screen::show_palette_id(std::uint8_t id, bool force)
+{
+    const int want = id == 0 ? 0 : 1;
+    world_.current_palette_id = static_cast<std::uint8_t>(want);
+    if (!force && og::runtime::current_session->shown_palette_id_ == want)
+        return;
+    set_palette(want == 0 ? ourpalette : bluepalette); // marks the id unknown ...
+    og::runtime::current_session->shown_palette_id_ = want; // ... this stamps it
+    redrawme = 1;
 }
 
 void screen::putdata(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize,
@@ -2047,11 +2056,9 @@ short screen::endgame(short ending, short nextlevel)
 	// The results screen is part of the mission's end, so it is drawn in the
 	// level's own colours (#365): a level won while time is frozen reaches
 	// here with the frozen palette, because the level-end batch re-sends it.
-	// The same three writes are restore_mission_palette() in
+	// The same forced write is restore_mission_palette() in
 	// src/platform/sdl/game_loop.cpp, which runs after this frame returns.
-	world_.current_palette_id = 0;
-	set_palette(ourpalette);
-	redrawme = 1;
+	show_palette_id(0, /*force=*/true);
 	TRACE("endgame", "results screen palette %d",
 		static_cast<int>(world_.current_palette_id));
 

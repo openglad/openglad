@@ -113,9 +113,9 @@ bool teleport_landing_clear(GameWorld& world, walker* self,
 	{
 		for (std::int32_t by = y; by < y + self->sizey() + kBucket; by += kBucket)
 		{
-			const std::list<walker*>& pile = world.myobmap->obmap_get_list(
-				static_cast<short>(bx), static_cast<short>(by), target_floor);
-			for (const walker* other : pile)
+			const std::list<walker*>* pile = world.myobmap->find_list(static_cast<short>(bx), static_cast<short>(by), target_floor);
+			if (pile == nullptr) continue;
+			for (const walker* other : *pile)
 			{
 				if (teleport_spot_blocked_by(other, self, x, y, self_z))
 					return false;
@@ -435,19 +435,17 @@ std::int32_t walker::turn_undead(std::int32_t range, std::int32_t power)
 					    og::script::hooks::level_damage_gate(w, this, lethal);
 					if (gated < 0)
 						continue;
-					walker* headguy = this;
-					while (headguy->owner() && headguy->owner() != headguy)
-						headguy = headguy->owner();
+					walker* const credit = credit_head();  // #411: the topmost living
 					if (gated < lethal)
 					{
 						if (gated > 0 &&
-						    headguy->query_order() == Order::Living)
-							w->note_attacker(headguy, world->tick_count_);
+						    credit != nullptr)
+							w->note_attacker(credit, world->tick_count_);
 						do_combat_damage(this, w, gated);
 						w->stats()->hit_response(this);
 						continue;
 					}
-					w->note_attacker(headguy, world->tick_count_);
+					w->note_attacker(credit, world->tick_count_);
 					w->set_dead(1);
 					w->stats()->set_hitpoints(0);
 					w->death();
@@ -488,3 +486,18 @@ std::int32_t walker::undead_foes_in_range(std::int32_t range)
 // If we find one, we init_fire.  If not,
 // we do nothing. init_fire will take care of
 // turning us if we need it.
+
+// Gameplay Fixes AD (#412): with the setting on a charmed walker heads its own
+// chain for the charm's length. charm_left is the charm's clock: CHARM and
+// MIND CONTROL set it with the colour, living::act counts it down and puts the
+// team back when it runs out. (real_team_num alone is not the test: the
+// parity runners, mapgen, several level hooks and the possession rider write
+// it for a tick or a possession with no charm behind it.) Its owner, a tent, a
+// bones pile or the caster that summoned it, stays on the old side, and the
+// alliance follows the walker's own colour until the charm ends. Off, the
+// climbs pass through it as always. Appended at the end of the file so the
+// parity canary pin above stays where it is.
+bool walker::charmed_head() const
+{
+	return og::sim::session_gameplay_fixes() != 0 && charm_left() > 0;
+}

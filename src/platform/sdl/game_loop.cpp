@@ -72,9 +72,7 @@ struct TickSchedule {
 // messing up the palette").
 void restore_mission_palette(screen& s)
 {
-    s.world().current_palette_id = 0;
-    set_palette(s.ourpalette);
-    s.redrawme = 1;
+    s.show_palette_id(0, /*force=*/true);
 }
 
 GameFrameResult finish_done(screen& s, GameLoopFrameState& st)

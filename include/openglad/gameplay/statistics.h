@@ -112,6 +112,20 @@ class statistics
 		// The same step asked through GameWorld::query_passable's quiet probe
 		// when quiet is true (no side effect); false is the call above.
 		bool forward_blocked(bool quiet);
+		// The right-hand walk's three probes in the same shape (Gameplay
+		// Fixes Y): quiet asks without a side effect; false is the call above.
+		bool right_blocked(bool quiet);
+		bool right_forward_blocked(bool quiet);
+		bool right_back_blocked(bool quiet);
+		// The right-hand walk's four probes, counted from the facing.
+		enum class Side : short { Front = 0, RightFront = 1, Right = 2, RightBack = 3 };
+		// Gameplay Fixes Y: one of the four probes asked with `quiet`, then
+		// the bump the classic loud probe gave: with the setting on, a
+		// melee-only bot (BIT_NO_RANGED) whose own live foe stands where the
+		// probe looked runs into it (living::collide: collide_ob, a swing
+		// along its heading). Everything else the probe met stays untouched.
+		// Off, the probe alone. See right_walk.
+		bool path_probe(Side side, bool quiet);
 		//short distance_to_foe(); //not in use???????
 		bool right_walk();      // walk using right-hand rule
 		bool direct_walk(); // walk in a line toward foe ..
@@ -233,6 +247,9 @@ class statistics
 
 // The classic front probe is the loud one.
 inline bool statistics::forward_blocked() { return forward_blocked(false); }
+inline bool statistics::right_blocked() { return right_blocked(false); }
+inline bool statistics::right_forward_blocked() { return right_forward_blocked(false); }
+inline bool statistics::right_back_blocked() { return right_back_blocked(false); }
 
 #undef OG_STATS_DIRTY_FIELD
 

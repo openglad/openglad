@@ -615,16 +615,7 @@ void adopt_display_session_settings(screen& server_screen,
 
 void apply_palette_id(screen& gameplay_screen, std::uint8_t palette_id)
 {
-    if (palette_id == 0u)
-    {
-        gameplay_screen.world().current_palette_id = 0;
-        set_palette(gameplay_screen.ourpalette);
-    }
-    else
-    {
-        gameplay_screen.world().current_palette_id = 1;
-        set_palette(gameplay_screen.bluepalette);
-    }
+    gameplay_screen.show_palette_id(palette_id);
     gameplay_screen.redrawme = 1;
 }
 
@@ -1759,6 +1750,22 @@ bool display_follow_cycle_target(SessionState& session, int view_index,
     return true;
 }
 
+// #413 cheat seam (declared in session_state.h so the interface's cheat
+// handler can reach it). Local, non-networked play only: in a networked
+// session the cheat does nothing, because a host's cheat would change every
+// player's game and a joiner has no server world to write.
+GameWorld* cheat_target_world(SessionState& session)
+{
+    if (!session.has_local_transport_runtime())
+        return nullptr;
+    GameSession& game_session = static_cast<GameSession&>(session);
+    const auto runtime = game_session.local_transport_runtime_;
+    if (!local_seat_mutation_allowed(runtime.get(), session))
+        return nullptr;
+    screen* const server = runtime->server_screen();
+    return server != nullptr ? &server->world() : nullptr;
+}
+
 void local_transport_shadow_set_player_companies(
     GameSession& session,
     std::span<const std::pair<std::uint8_t, std::string>> companies)
@@ -1816,6 +1823,16 @@ bool local_transport_shadow_testing_server_pending_exit_prompt(
     if (runtime == nullptr || runtime->server == nullptr)
         return false;
     return runtime->server->pending_exit_prompt();
+}
+
+bool local_transport_shadow_testing_set_runtime_networked(GameSession& session,
+                                                          bool networked) noexcept
+{
+    const auto runtime = session.local_transport_runtime_;
+    if (runtime == nullptr)
+        return false;
+    runtime->networked = networked;
+    return true;
 }
 
 bool local_transport_shadow_testing_finalize_win(screen& gameplay_screen,

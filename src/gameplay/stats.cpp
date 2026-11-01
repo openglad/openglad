@@ -34,6 +34,7 @@
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/obmap.h>
 #include <openglad/gameplay/walker.h>
+#include <openglad/gameplay/families/specials_view.h>
 // find_follow_leader is defined in the SDL build (screen.cpp) and stubbed
 // by the text client. Returns a walker to follow, or nullptr if none.
 walker* find_follow_leader();
@@ -327,9 +328,9 @@ bool statistics::has_commands() const
 // none in the queue
 // ^ never true: the body has appended unconditionally and returned 0
 // since the 2002 initial revision (9990ec7d stats.cpp:184-189). The
-// invariant lives in the callers (living::act living.cpp:320,
-// walker::act walker.cpp:900 both consume do_command() first; the
-// stats.cpp:1285 site clear_command()s), and it is only approximate:
+// invariant lives in the callers (living::act living.cpp:314,
+// walker::act walker.cpp:888 both consume do_command() first; the
+// stats.cpp:1317 site clear_command()s), and it is only approximate:
 // 560 of the 4509 try_command calls in the 267-scenario parity corpus
 // arrive with a non-empty queue. Making the body match this sentence is
 // a sim behaviour change that WOULD move goldens, not a cleanup.
@@ -495,7 +496,19 @@ short statistics::do_command()
 				controller_->walkstep(com1, com2);
 				controller_->walkstep(com1, com2);
 				controller_->walkstep(com1, com2);
-				if (controller_->collide_ob()) // We hit someone
+				// Gameplay Fixes Z: the rush strikes the body its last step ran
+				// into: not an ally (walker::attack refuses one, but only after
+				// its damage draw, and the queue theft and the forced walk below
+				// hit a seat hero and a wall-pressed ally alike), and not a body
+				// collide_ob still names from an earlier step this act (a wall
+				// stopped the rush; fix X). Off, the classic strike stands.
+				if (controller_->collide_ob() // We hit someone
+				        && (og::sim::session_gameplay_fixes() == 0
+				            || (!controller_->is_friendly(controller_->collide_ob())
+				                && og::sim::step_meets(*controller_,
+				                                       static_cast<float>(com1) * controller_->stepsize(),
+				                                       static_cast<float>(com2) * controller_->stepsize(),
+				                                       *controller_->collide_ob()))))
 				{
 					target = controller_->collide_ob();
 					controller_->attack(target);
@@ -593,9 +606,15 @@ short statistics::do_command()
 					else if (denial == walker::FireCheckDenial::Facing ||
 					         denial == walker::FireCheckDenial::NoRanged)
 						// Note for NoRanged (melee-only) families: this only
-						// FACES the bump-range foe; their actual swings keep
-						// coming from the classic walk_to_foe() init_fire()
-						// cadence between ATTACK windows. Wiring init_fire()
+						// FACES the bump-range foe. Their swings are bumps: a
+						// step of their own that runs into a body (living::walk's
+						// probe) and, with Gameplay Fixes on, the right-hand
+						// walk's probe that finds their own foe
+						// (statistics::path_probe; off, every loud probe bumps).
+						// walk_to_foe's near-branch init_fire() lands no melee
+						// swing (measured 2026-11-01: walker::turn moves a notch
+						// even when the bot already faces the foe, so init_fire
+						// only turns back). Wiring init_fire()
 						// here as well was tried and rejected: it roughly
 						// doubles melee swing rate over classic and swung
 						// campaign balance hard (Westlands L2's fight-through
@@ -769,7 +788,7 @@ void statistics::set_bit_flags(Sint32 someflag, short newvalue)
 }
 
 // Returns whether our right is blocked
-bool statistics::right_blocked()
+bool statistics::right_blocked(bool quiet)
 {
 	float xdelta, ydelta;
 	float controlx = controller_->xpos(), controly = controller_->ypos();
@@ -816,11 +835,12 @@ bool statistics::right_blocked()
 			break;
 	}
 
-	return !current_game->world->query_passable(controlx + xdelta, controly + ydelta, controller_);
+	const float px = controlx + xdelta, py = controly + ydelta;
+	return !current_game->world->query_passable(px, py, controller_, controller_->floor(), quiet);
 }
 
 // Returns whether our right-forward is blocked
-bool statistics::right_forward_blocked()
+bool statistics::right_forward_blocked(bool quiet)
 {
 	float controlx = controller_->xpos(), controly = controller_->ypos();
 	float mystep = controller_->stepsize();
@@ -829,22 +849,22 @@ bool statistics::right_forward_blocked()
 	switch (controller_->curdir())
 	{
 		case FACE_UP:
-			return !current_game->world->query_passable(controlx+mystep, controly-mystep, controller_);
+			return !current_game->world->query_passable(controlx+mystep, controly-mystep, controller_, controller_->floor(), quiet);
 		case FACE_UP_RIGHT:
-			return !current_game->world->query_passable(controlx+mystep, controly, controller_);
+			return !current_game->world->query_passable(controlx+mystep, controly, controller_, controller_->floor(), quiet);
 
 		case FACE_RIGHT:
-			return !current_game->world->query_passable(controlx+mystep, controly+mystep, controller_);
+			return !current_game->world->query_passable(controlx+mystep, controly+mystep, controller_, controller_->floor(), quiet);
 		case FACE_DOWN_RIGHT:
-			return !current_game->world->query_passable(controlx, controly+mystep, controller_);
+			return !current_game->world->query_passable(controlx, controly+mystep, controller_, controller_->floor(), quiet);
 		case FACE_DOWN:
-			return !current_game->world->query_passable(controlx-mystep, controly+mystep, controller_);
+			return !current_game->world->query_passable(controlx-mystep, controly+mystep, controller_, controller_->floor(), quiet);
 		case FACE_DOWN_LEFT:
-			return !current_game->world->query_passable(controlx-mystep, controly, controller_);
+			return !current_game->world->query_passable(controlx-mystep, controly, controller_, controller_->floor(), quiet);
 		case FACE_LEFT:
-			return !current_game->world->query_passable(controlx-mystep, controly-mystep, controller_);
+			return !current_game->world->query_passable(controlx-mystep, controly-mystep, controller_, controller_->floor(), quiet);
 		case FACE_UP_LEFT:
-			return !current_game->world->query_passable(controlx, controly-mystep, controller_);
+			return !current_game->world->query_passable(controlx, controly-mystep, controller_, controller_->floor(), quiet);
 		default:
 			break;
 
@@ -853,7 +873,7 @@ bool statistics::right_forward_blocked()
 }
 
 // Returns whether our right-back is blocked
-bool statistics::right_back_blocked()
+bool statistics::right_back_blocked(bool quiet)
 {
 	float controlx = controller_->xpos(), controly = controller_->ypos();
 	float mystep = controller_->stepsize();
@@ -862,23 +882,23 @@ bool statistics::right_back_blocked()
 	switch (controller_->curdir())
 	{
 		case FACE_UP:
-			return !current_game->world->query_passable(controlx+mystep, controly+mystep, controller_);
+			return !current_game->world->query_passable(controlx+mystep, controly+mystep, controller_, controller_->floor(), quiet);
 		case FACE_UP_RIGHT:
-			return !current_game->world->query_passable(controlx, controly+mystep, controller_);
+			return !current_game->world->query_passable(controlx, controly+mystep, controller_, controller_->floor(), quiet);
 
 		case FACE_RIGHT:
-			return !current_game->world->query_passable(controlx-mystep, controly+mystep, controller_);
+			return !current_game->world->query_passable(controlx-mystep, controly+mystep, controller_, controller_->floor(), quiet);
 		case FACE_DOWN_RIGHT:
-			return !current_game->world->query_passable(controlx-mystep, controly, controller_);
+			return !current_game->world->query_passable(controlx-mystep, controly, controller_, controller_->floor(), quiet);
 		case FACE_DOWN:
-			return !current_game->world->query_passable(controlx-mystep, controly-mystep, controller_);
+			return !current_game->world->query_passable(controlx-mystep, controly-mystep, controller_, controller_->floor(), quiet);
 		case FACE_DOWN_LEFT:
 			return !current_game->world->query_passable(controlx, controly-mystep,
-			                                controller_);
+			                                controller_, controller_->floor(), quiet);
 		case FACE_LEFT:
-			return !current_game->world->query_passable(controlx+mystep, controly-mystep, controller_);
+			return !current_game->world->query_passable(controlx+mystep, controly-mystep, controller_, controller_->floor(), quiet);
 		case FACE_UP_LEFT:
-			return !current_game->world->query_passable(controlx+mystep, controly, controller_);
+			return !current_game->world->query_passable(controlx+mystep, controly, controller_, controller_->floor(), quiet);
 		default:
 			break;
 	}
@@ -936,13 +956,22 @@ bool statistics::forward_blocked(bool quiet)
 	return !current_game->world->query_passable(controlx + xdelta, controly + ydelta, controller_, controller_->floor(), quiet);
 }
 
+// Gameplay Fixes Y: the right-hand walk's four probes ask quietly. The classic
+// probes were the walker's own step moved one pixel to a side: they ate a
+// potion the bot never stood on, opened a door, and a body a side probe
+// grazed took a bump swing (busy, a knife along the heading two acts later)
+// or turned the bot, and was left in collide_ob for the stale shove of fix X.
+// Off, the loud probes stand. The same flag reaches COMMAND_GOTO's walk below.
+// A melee-only bot's own foe in a probe's way is still the classic bump
+// (path_probe): that is how such a bot fights. Everything else stays quiet.
 bool statistics::right_walk()
 {
 	float xdelta, ydelta;
+	const bool quiet = og::sim::session_gameplay_fixes() != 0;   // Gameplay Fixes Y: a pathing probe changes nothing
 
-	if (right_blocked() || right_forward_blocked() )
+	if (path_probe(Side::Right, quiet) || path_probe(Side::RightFront, quiet) )
 	{
-		if (!forward_blocked())  // walk forward
+		if (!path_probe(Side::Front, quiet))  // walk forward
 		{
 			xdelta = controller_->lastx();
 			ydelta = controller_->lasty();
@@ -963,12 +992,12 @@ bool statistics::right_walk()
 			return controller_->turn(controller_->enddir());
 		}
 	}
-	else if (forward_blocked())
+	else if (path_probe(Side::Front, quiet))
 	{
 		controller_->set_enddir(static_cast<char>((controller_->enddir()+6) %8));  // turn left
 		return controller_->turn(controller_->enddir());
 	}
-	else if (right_back_blocked())
+	else if (path_probe(Side::RightBack, quiet))
 	{
 		controller_->set_enddir(static_cast<char>((controller_->enddir()+2) %8));  // turn right
 		switch (controller_->enddir())
@@ -1060,6 +1089,39 @@ bool statistics::right_walk()
 		}
 	}
 	return true;
+}
+
+// Gameplay Fixes Y, the bump. The probe's box is the bot's own moved one
+// pixel (CHECK_STEP_SIZE) toward `side`, counted round from its facing: the
+// same box facing_step_delta names, and the same collide() rule the classic
+// probe met the body with (og::sim::step_meets). A melee-only bot has no aimed
+// shot (fire_check refuses it, the ATTACK arm only faces): its blows are the
+// bumps, its own step's and, with the setting on, this one at its own foe.
+// Measured 2026-11-01: the quiet probes alone took a third of the orc, ghost
+// and slime swings and a fifth of their damage, and left an orc stopped
+// exactly against a standing foe swinging never. Off, the probe alone.
+bool statistics::path_probe(Side side, bool quiet)
+{
+	bool blocked;
+	switch (side)
+	{
+		case Side::RightFront: blocked = right_forward_blocked(quiet); break;
+		case Side::Right:      blocked = right_blocked(quiet); break;
+		case Side::RightBack:  blocked = right_back_blocked(quiet); break;
+		default:               blocked = forward_blocked(quiet); break;
+	}
+	if (!quiet || !blocked)
+		return blocked;
+	walker* foe = controller_->foe();
+	if (!foe || foe->dead() || foe->floor() != controller_->floor()
+	        || !query_bit_flags(BIT_NO_RANGED) || controller_->is_friendly(foe))
+		return blocked;
+	short dx = 0, dy = 0;
+	facing_step_delta(static_cast<char>((controller_->curdir() + static_cast<short>(side)) % 8), dx, dy);
+	if (og::sim::step_meets(*controller_, static_cast<float>(dx * CHECK_STEP_SIZE),
+	                        static_cast<float>(dy * CHECK_STEP_SIZE), *foe))
+		controller_->collide(foe);
+	return blocked;
 }
 
 bool statistics::direct_walk()
@@ -1485,10 +1547,11 @@ bool statistics::right_walk_to_point(short x, short y)
 {
 	float xdelta, ydelta;
 	short xstep, ystep;
+	const bool quiet = og::sim::session_gameplay_fixes() != 0;   // Gameplay Fixes Y: a pathing probe changes nothing
 
-	if (right_blocked() || right_forward_blocked())
+	if (right_blocked(quiet) || right_forward_blocked(quiet))
 	{
-		if (!forward_blocked())  // walk forward
+		if (!forward_blocked(quiet))  // walk forward
 		{
 			xdelta = controller_->lastx();
 			ydelta = controller_->lasty();
@@ -1508,12 +1571,12 @@ bool statistics::right_walk_to_point(short x, short y)
 			return controller_->turn(controller_->enddir());
 		}
 	}
-	else if (forward_blocked())
+	else if (forward_blocked(quiet))
 	{
 		controller_->set_enddir(static_cast<char>((controller_->enddir() + 6) % 8));  // turn left
 		return controller_->turn(controller_->enddir());
 	}
-	else if (right_back_blocked())
+	else if (right_back_blocked(quiet))
 	{
 		controller_->set_enddir(static_cast<char>((controller_->enddir() + 2) % 8));  // turn right
 		facing_step_delta(controller_->enddir(), xstep, ystep);

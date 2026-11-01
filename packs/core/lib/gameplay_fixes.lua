@@ -85,4 +85,15 @@ function M.special_busy(self)
   return self:busy() ~= 0
 end
 
+-- Gameplay Fixes AC: a volley or bolt whose pad the grid refuses (a wall
+-- face, the map edge; a tree crown for a weapon that does not walk the
+-- forest; never water, which every weapon crosses) would swing at nothing
+-- and still pay fire()'s one swing. The cast asks first and refuses before
+-- the refund and the swing. A body on the pad keeps fixes H and I's paid
+-- blow: that swing is the cast's own (walker:fire_pad_answer, the same pad
+-- and rules as fire(), asked quietly). Draws nothing.
+function M.pad_blocked_by_terrain(self)
+  return M.on() and self:fire_pad_answer() == "terrain"
+end
+
 return M

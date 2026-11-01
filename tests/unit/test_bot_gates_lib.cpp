@@ -710,39 +710,37 @@ TEST_F(BotGatesLib, owned_phantom_wants_max_hp_one)
     EXPECT_EQ("260,200", probe(self, lua).at("phantom"));
 }
 
-// corpse_near: the stain find_nearest_blood returns, within a Manhattan
-// range. The finder starts at 800 on the squared centre distance, so a
-// stain 40 px off (1600) is never returned, whatever the range.
+// corpse_underfoot: the stain find_nearest_blood returns, within a squared
+// centre distance (the meal's compare, inclusive). The finder starts at 800
+// on the squared centre distance, so a stain 40 px off (1600) is never
+// returned, whatever the reach.
 //
-// RED (corpse_near scanning the stains itself): far is 240,200.
-TEST_F(BotGatesLib, corpse_near_is_capped_by_the_finder)
+// RED (planted): the meal's compare made strict (distance_to_ob_center(blood)
+// <= reach_sq -> < reach_sq): under100 reads nil at 10 px.
+TEST_F(BotGatesLib, corpse_underfoot_is_capped_by_the_finder)
 {
     living* self = caster();
     walker* far = body(world().add_fx_ob(Order::Treasure, FAMILY_STAIN), 16, 16);
     ASSERT_NE(nullptr, far);
     far->setxy(240, 200);
     const std::string lua =
-        "    og.log('near100', where(G.corpse_near(self, 100)))\n"
-        "    og.log('near10', where(G.corpse_near(self, 10)))\n"
-        "    og.log('near11', where(G.corpse_near(self, 11)))\n"
+        "    og.log('under10000', where(G.corpse_underfoot(self, 10000)))\n"
         "    og.log('under100', where(G.corpse_underfoot(self, 100)))\n"
         "    og.log('under99', where(G.corpse_underfoot(self, 99)))\n";
     Answers a = probe(self, lua);
-    EXPECT_EQ("nil", a.at("near100")) << "40 px: beyond the finder";
+    EXPECT_EQ("nil", a.at("under10000")) << "40 px: beyond the finder";
 
     walker* close = body(world().add_fx_ob(Order::Treasure, FAMILY_STAIN), 16, 16);
     ASSERT_NE(nullptr, close);
     close->setxy(210, 200);  // 10 px: squared centre distance 100
     a = probe(self, lua);
-    EXPECT_EQ("210,200", a.at("near100"));
-    EXPECT_EQ("nil", a.at("near10")) << "the range is strict";
-    EXPECT_EQ("210,200", a.at("near11"));
+    EXPECT_EQ("210,200", a.at("under10000"));
     EXPECT_EQ("210,200", a.at("under100")) << "the meal's compare is inclusive";
     EXPECT_EQ("nil", a.at("under99"));
 
     close->set_floor(1);
     a = probe(self, lua);
-    EXPECT_EQ("nil", a.at("near100")) << "a stain upstairs";
+    EXPECT_EQ("nil", a.at("under10000")) << "a stain upstairs";
     EXPECT_EQ("nil", a.at("under100"));
 }
 

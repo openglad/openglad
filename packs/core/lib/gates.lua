@@ -12,9 +12,9 @@
 --   2. A family whose classic gate acquires a foe (ai.foe_within,
 --      ai.foe_in_window) calls it FIRST through G.with_classic, on both
 --      values of the setting, and tests after.
---   3. The engine draws the Shift coin before the hook (living.cpp:584); a
---      gate that chooses an arm writes it AFTER, with set_shifter_down, and
---      only an arm the bot can pay (G.can_pay): the engine does not re-check.
+--   3. The engine draws the Shift coin before the hook (living.cpp:604); a gate
+--      that picks an arm sets it AFTER (set_shifter_down), and only an arm
+--      G.can_pay allows: setting off, nothing re-checks; on, fix AB holds unpaid.
 --   4. No og.tuning here: a gate runs on every fifth act tick and on every
 --      hit, and a tuning read there costs instructions (lib/ai.lua). The
 --      families pass numbers in.
@@ -401,22 +401,8 @@ function M.owned_phantom(self)
   return nil
 end
 
--- The stain find_nearest_blood returns, when it is on the caster's floor
--- and within range (Manhattan, the raises' own compare). The finder itself
--- never answers beyond about 28 px of centre (its 800 start on a squared
--- distance), so a range above that is a promise the finder cannot keep.
-function M.corpse_near(self, range)
-  local blood = og.find_nearest_blood(self)
-  if not blood or blood:floor() ~= self:floor() then
-    return nil
-  end
-  if self:distance_to_ob(blood) < range then
-    return blood
-  end
-  return nil
-end
-
--- The same stain by the meal's compare: squared centre distance.
+-- The stain find_nearest_blood returns on the caster's floor, by the meal's
+-- compare: squared centre distance (the finder never answers beyond about 28 px of centre).
 function M.corpse_underfoot(self, reach_sq)
   local blood = og.find_nearest_blood(self)
   if not blood or blood:floor() ~= self:floor() then
@@ -510,12 +496,16 @@ function M.rush_strikes(self, steps)
 end
 
 -- The pad fire() would place the caster's weapon on is clear: the weapon
--- would fly instead of meeting a wall, a door, the map edge or a foe's body
--- there (walker:fire_pad_clear, the same spot and the same weapon rules,
--- asked quietly). A body of the caster's own team passes, as the weapon
--- passes it.
-function M.pad_clear(self)
-  return self:fire_pad_clear()
+-- would fly instead of meeting a wall, the map edge, a tree it cannot cross,
+-- a foe's body or a generator there (walker:fire_pad_clear, the same spot and the
+-- same weapon rules, asked quietly). A body of the caster's own team passes,
+-- as the weapon passes it; so does an enemy door, tree or weapon in flight
+-- (the weapon-vs-weapon arm: the loud fire() blocks on those 4 times in 10).
+-- `weapon`, optional: the weapon family the cast fires when it is not the
+-- current one (the archer's EXPLODING BOLT swaps in core:fire_arrow); a gate
+-- may not do the cast's swap itself (nothing here writes a walker field).
+function M.pad_clear(self, weapon)
+  return self:fire_pad_clear(weapon)
 end
 
 -- The bot can pay the slot's price, or the alternate's when shifted. An

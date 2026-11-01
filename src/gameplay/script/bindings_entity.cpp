@@ -3184,13 +3184,48 @@ int og_body_spot_near(lua_State* L)
     return 2;
 }
 
-// walker:fire_pad_clear() → boolean — would fire() launch this living's
-// current weapon instead of meeting something on its pad? The pad probed
-// quietly with a detached weapon (walker::fire_pad_clear): no entity, no
-// draw, nothing eaten or opened. A bot gate's question.
+// The optional weapon family of walker:fire_pad_clear and fire_pad_answer:
+// nil asks the current weapon; otherwise a weapon family id (og.family_id).
+std::int32_t pad_weapon_family(lua_State* L, lua_Integer weapon_family)
+{
+    if (weapon_family < -1 || weapon_family >= NUM_FAMILY_SLOTS)
+        script_raise(L, "weapon family %d out of range",
+                     static_cast<int>(weapon_family));
+    return static_cast<std::int32_t>(weapon_family);
+}
+
+// walker:fire_pad_clear([weapon_family]) → boolean — would fire() launch this
+// living's weapon (the current one, or weapon_family) instead of meeting
+// something on its pad? The pad probed quietly with a detached weapon
+// (walker::fire_pad_clear): no entity, no draw, nothing eaten or opened. A
+// bot gate's question.
 int m_fire_pad_clear(lua_State* L)
 {
-    lua_pushboolean(L, self_arg(L)->fire_pad_clear() ? 1 : 0);
+    const lua_Integer weapon_family = luaL_optinteger(L, 2, -1);
+    walker* self = self_arg(L);
+    lua_pushboolean(
+        L, self->fire_pad_clear(pad_weapon_family(L, weapon_family)) ? 1 : 0);
+    return 1;
+}
+
+// walker:fire_pad_answer([weapon_family]) → "clear" | "terrain" | "body" |
+// "none" — what that pad holds (walker::fire_pad_answer): "terrain" a wall,
+// the map edge or other ground the weapon cannot cross; "body" an enemy
+// living or a generator fire() would strike; "none" a non-living or a weapon
+// the loader cannot make. The same probe as fire_pad_clear: no draw.
+int m_fire_pad_answer(lua_State* L)
+{
+    const lua_Integer weapon_family = luaL_optinteger(L, 2, -1);
+    walker* self = self_arg(L);
+    const char* answer = "none";
+    switch (self->fire_pad_answer(pad_weapon_family(L, weapon_family)))
+    {
+    case walker::PadAnswer::Clear: answer = "clear"; break;
+    case walker::PadAnswer::Terrain: answer = "terrain"; break;
+    case walker::PadAnswer::Body: answer = "body"; break;
+    case walker::PadAnswer::NoProbe: break;
+    }
+    lua_pushstring(L, answer);
     return 1;
 }
 
@@ -3271,6 +3306,7 @@ const luaL_Reg kWalkerMethods[] = {
     {"can_approach_weapon_range", m_can_approach_weapon_range},
     {"attack", m_attack}, {"fire", m_fire}, {"special", m_special},
     {"fire_pad_clear", m_fire_pad_clear},
+    {"fire_pad_answer", m_fire_pad_answer},
     {"death", m_death},
     {"teleport", m_teleport}, {"teleport_ranged", m_teleport_ranged},
     {"find_teleport_target", m_find_teleport_target},

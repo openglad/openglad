@@ -120,14 +120,27 @@ class text
 		Sint32 write_char_xy(Sint32 x, Sint32 y, char letter, short to_buffer);
 		Sint32 write_char_xy(Sint32 x, Sint32 y, char letter, unsigned char color, short to_buffer);
 		Sint32 write_char_xy(Sint32 x, Sint32 y, char letter, unsigned char color, viewscreen *whereto);
-		char *input_string(Sint32 x, Sint32 y, short maxlength, const char *begin);
+		// `poll` is for a prompt that must not block the caller's other
+		// duties (a lobby a host can start from): while a hook is given,
+		// both editors poll instead of waiting, yield between polls, and ask
+		// the hook once per pass; false cancels the prompt as Escape would.
+		// Nothing is given by default: every other prompt blocks as it
+		// always did. The type is viewscreen::view_team's KeyWaitPollCallback
+		// (view.h), spelled out so this header does not include view.h.
 		char *input_string(Sint32 x, Sint32 y, short maxlength, const char *begin,
-		                   unsigned char forecolor, unsigned char backcolor);
-        char* input_string_ex(Sint32 x, Sint32 y, short maxlength, const char* message, const char *begin);
+		                   bool (*poll)() = nullptr);
+		char *input_string(Sint32 x, Sint32 y, short maxlength, const char *begin,
+		                   unsigned char forecolor, unsigned char backcolor,
+		                   bool (*poll)() = nullptr);
         char* input_string_ex(Sint32 x, Sint32 y, short maxlength, const char* message, const char *begin,
-                          unsigned char forecolor, unsigned char backcolor);
-        std::optional<std::string> input_string_value(Sint32 x, Sint32 y, short maxlength, const char* begin);
-        std::optional<std::string> input_string_ex_value(Sint32 x, Sint32 y, short maxlength, const char* message, const char* begin);
+                              bool (*poll)() = nullptr);
+        char* input_string_ex(Sint32 x, Sint32 y, short maxlength, const char* message, const char *begin,
+                          unsigned char forecolor, unsigned char backcolor,
+                          bool (*poll)() = nullptr);
+        std::optional<std::string> input_string_value(Sint32 x, Sint32 y, short maxlength, const char* begin,
+                                                      bool (*poll)() = nullptr);
+        std::optional<std::string> input_string_ex_value(Sint32 x, Sint32 y, short maxlength, const char* message, const char* begin,
+                                                         bool (*poll)() = nullptr);
 		~text();
 
 	    const PixieData* letters;

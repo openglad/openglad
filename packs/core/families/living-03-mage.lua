@@ -67,7 +67,8 @@ local function fixed_gate(self, foe_count)
   end
   if slot == 4 then
     local foe = G.nearest_living_foe(self, 110, false)
-    return foe ~= nil and G.faces(self, foe)
+    local faced = foe ~= nil and G.faces(self, foe)
+    return faced and G.pad_clear(self)
   end
   -- HEARTBURST: slot 5 and every unmapped slot (the family's default cast)
   local t = og.tuning(self)
@@ -77,8 +78,7 @@ local function fixed_gate(self, foe_count)
 end
 
 local function check_special_ai(self)
-  -- count_foes_in_range(self, 110) == the howmany out-param of the same
-  -- world->find_foes_in_range(oblist, ...) call the binding performs.
+  -- count_foes_in_range(self, 110) == the howmany out-param of the binding's world->find_foes_in_range.
   local _, foe_count = og.find_foes_in_range("ob", 110, self)
   if gf.on() then
     return fixed_gate(self, foe_count)
@@ -115,7 +115,7 @@ local function hit_response(self, foe)
     self.current_special = 1
     self:set_shifter_down(0)
     self.busy = 0
-    self:special()
+    local _ = lc.mid_teleport(self) or self:special()  -- struck mid-teleport: no second cast
   else
     -- we're hit by a new enemy
     if self:foe() ~= foe then

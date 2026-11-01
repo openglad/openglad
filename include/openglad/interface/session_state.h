@@ -84,6 +84,10 @@ struct SessionState {
     // Render/palette state (Batch 6) — moved from pal32.cpp/video.cpp.
     std::array<unsigned char, 768> curpal_ = {};
     std::array<unsigned char, 768> temppal_ = {};
+    // The palette id curpal_ shows (0 the level's own, 1 FREEZE TIME's
+    // blue), -1 unknown: set_palette() marks it so, so any other writer
+    // makes the next palette sync repaint (screen::show_palette_id, #414).
+    int shown_palette_id_ = -1;
     // BRIGHTNESS (cfg graphics/brightness, DISPLAY subscreen): the gamma
     // steps set_palette() re-applies to curpal_ on EVERY palette set. This
     // used to be viewscreen::gamma, a per-view member nothing re-applied —
@@ -203,6 +207,15 @@ bool local_transport_active(const SessionState& session) noexcept;
 // follow-engaged, or the cycle has nowhere to go. Never stamps user tags.
 bool display_follow_cycle_target(SessionState& session, int view_index,
                                  bool reverse);
+
+// The world a debug cheat may change (#413): the authoritative server world of
+// a plain local session (the display is a mirror the next snapshot
+// overwrites), or nullptr when the session is networked, a replay playback, a
+// spectator view or finished, or when no shadow is installed. Declared here so
+// the interface's cheat handler can reach it; implemented by the platform
+// local transport shadow (local_transport_shadow.cpp), on the same gate as
+// the local seat tools (local_seat_mutation_allowed).
+GameWorld* cheat_target_world(SessionState& session);
 
 // Non-thread-local atomic pointer to the most recently installed session.
 // Used by child threads (e.g. test injector threads) to inherit the session

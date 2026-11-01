@@ -67,8 +67,6 @@
 extern std::int32_t calculate_level(std::uint32_t temp_exp);
 
 short exp_from_action(ExpAction action, walker* w, walker* target, short value);
-short collide(short x, short y, short xsize, short ysize,
-              short x2, short y2, short xsize2, short ysize2);
 
 std::uint32_t query_difficulty_percent()
 {
@@ -703,45 +701,40 @@ void walker::set_weapon_heading(walker *weapon)
 	waver = static_cast<signed char>(std::clamp((weapon->stepsize())/2, 0.0f, 127.0f)); // Absolute amount ..
 	waver = static_cast<signed char>(current_game->world->rng_.next(static_cast<std::uint32_t>(waver+1)) - static_cast<std::uint32_t>(waver/2));
 
+	short pad_x = 0, pad_y = 0;
+	weapon_pad(*weapon, pad_x, pad_y);  // fire()'s pad: one table
+	weapon->setxy(pad_x, pad_y);
 	switch (facing(lastx(), lasty()))  // these are from the 'owner'
 	{
 		case FACE_RIGHT:
-			weapon->setxy(xpos()+sizex()+1,ypos()+(sizey() - weapon->sizey())/2);
 			weapon->set_lastx(weapon->stepsize());
 			weapon->set_lasty(waver);
 			break;
 		case FACE_LEFT:
-			weapon->setxy(xpos() - weapon->sizex()-1, ypos()+(sizey()-weapon->sizey())/2);
 			weapon->set_lastx(-weapon->stepsize());
 			weapon->set_lasty(waver);
 			break;
 		case FACE_DOWN:
-			weapon->setxy(xpos()+(sizex()-weapon->sizex())/2, ypos()+sizey()+1);
 			weapon->set_lasty(weapon->stepsize());
 			weapon->set_lastx(waver);
 			break;
 		case FACE_UP:
-			weapon->setxy(xpos()+(sizex()-weapon->sizex())/2, ypos() - weapon->sizey()-1);
 			weapon->set_lasty(- weapon->stepsize());
 			weapon->set_lastx(waver);
 			break;
 		case FACE_UP_RIGHT:
-			weapon->setxy(xpos()+sizex()+1, ypos()-weapon->sizey()-1);
 			weapon->set_lastx(weapon->stepsize() + waver);
 			weapon->set_lasty(-weapon->stepsize() + waver);
 			break;
 		case FACE_UP_LEFT:
-			weapon->setxy(xpos() - weapon->sizex()-1, ypos()-weapon->sizey()-1);
 			weapon->set_lastx(-weapon->stepsize() - waver);
 			weapon->set_lasty(-weapon->stepsize() + waver);
 			break;
 		case FACE_DOWN_RIGHT:
-			weapon->setxy(xpos()+sizex()+1, ypos() + sizey()+1);
 			weapon->set_lasty(weapon->stepsize() + waver);
 			weapon->set_lastx(weapon->stepsize() - waver);
 			break;
 		case FACE_DOWN_LEFT:
-			weapon->setxy(xpos() - weapon->sizex()-1, ypos()+sizey()+1);
 			weapon->set_lasty(weapon->stepsize() + waver);
 			weapon->set_lastx(-weapon->stepsize() + waver);
 			break;
@@ -2483,12 +2476,12 @@ std::int32_t walker::is_friendly(const walker *target) const
 	// who's the top on our chains (ie, weapon->summoned->mage)
 	// First us ..
 	headguy = this;
-	while (headguy->owner() && (headguy->owner()->dead() == 0) && (headguy->owner() != headguy) )
+	while (headguy->owner() && (headguy->owner()->dead() == 0) && (headguy->owner() != headguy) && !headguy->charmed_head() )
 		headguy = headguy->owner();
 	headus = headguy;
 	// Now our target ..
 	headguy = target;
-	while (headguy->owner() && (headguy->owner()->dead() == 0) && (headguy->owner() != headguy) )
+	while (headguy->owner() && (headguy->owner()->dead() == 0) && (headguy->owner() != headguy) && !headguy->charmed_head() )
 		headguy = headguy->owner();
 	headtarget = headguy;
 
@@ -2503,7 +2496,7 @@ std::int32_t walker::is_friendly(const walker *target) const
 	// friendly. Likewise, Base Camp seat assignments choose a player's control
 	// team; they never make a red walker friendly to a yellow walker. Following
 	// owner chains keeps weapons, summons, and effects on their living owner's
-	// current team (including charm changes).
+	// current team; with Gameplay Fixes AD a charmed walker heads its own chain.
 	return headus->team_num() == headtarget->team_num();
 }
 
@@ -2521,7 +2514,7 @@ std::int32_t walker::is_friendly_to_team(unsigned char team) const
 	// who's the top on our chains (ie, weapon->summoned->mage)
 	// First us ..
 	headguy = this;
-	while (headguy->owner() && (headguy->owner()->dead() == 0) && (headguy->owner() != headguy) )
+	while (headguy->owner() && (headguy->owner()->dead() == 0) && (headguy->owner() != headguy) && !headguy->charmed_head() )
 		headguy = headguy->owner();
 	headus = headguy;
 	
@@ -2615,7 +2608,7 @@ void walker::set_hidden(bool value)
 
 // The pad table of fire(): where the weapon it creates is placed, one pixel
 // outside this walker's box on the side facing(lastx(), lasty()) names.
-// fire() and fire_pad_clear() both read it, so the pad has one rule.
+// fire(), set_weapon_heading() and fire_pad_answer() read it: one rule.
 // Appended at EOF so the parity canary pins above never shift.
 void walker::weapon_pad(const walker& weapon, short& px, short& py)
 {
@@ -2661,21 +2654,28 @@ void walker::weapon_pad(const walker& weapon, short& px, short& py)
 	py = static_cast<short>(y);
 }
 
-// The pad fire() would place this walker's current weapon on, probed quietly:
-// the same spot (weapon_pad), the same weapon rules (own-team bodies pass, an
-// enemy body, door, tree or generator blocks), no entity, no draw (an enemy
-// weapon in flight passes a quiet probe; an arrow slit is passable at the
-// pad's distance), nothing eaten or opened. A bot gate's question.
+// The pad fire() would place a weapon on, probed quietly: the same spot
+// (weapon_pad), the same weapon rules (own-team bodies pass; an enemy living
+// or a generator blocks; an enemy door, tree or weapon in flight passes a
+// quiet weapon probe, the weapon-vs-weapon arm coming before the door arm),
+// no entity, no draw (an arrow slit is passable at the pad's distance),
+// nothing eaten or opened. The grid half is asked first, then the bodies, as
+// the loud query_passable asks them. A bot gate's question.
 // Appended at EOF so the parity canary pins above never shift.
-bool walker::fire_pad_clear()
+walker::PadAnswer walker::fire_pad_answer(std::int32_t weapon_family)
 {
 	if (query_order() != Order::Living || current_game == nullptr || current_game->world == nullptr)
-		return false;
+		return PadAnswer::NoProbe;
+	if (weapon_family >= NUM_FAMILY_SLOTS)
+		return PadAnswer::NoProbe;
+	const std::int32_t family = weapon_family >= 0
+		? weapon_family
+		: static_cast<std::int32_t>(static_cast<char>(current_weapon()));
 	weap probe(WeaponProfileProbeTag{});
 	const PixieData* data = current_game->world->configure_existing_entity(
-		probe, Order::Weapon, static_cast<std::int32_t>(static_cast<char>(current_weapon())));
+		probe, Order::Weapon, family);
 	if (data == nullptr)
-		return false;
+		return PadAnswer::NoProbe;
 	probe.set_data(*data);
 	probe.set_owner(this);          // the chain create_weapon gives it: is_friendly reads it
 	probe.set_team_num(team_num());
@@ -2684,5 +2684,38 @@ bool walker::fire_pad_clear()
 	weapon_pad(probe, px, py);
 	probe.set_xpos(px);             // SimEntity's plain setters: never setxy,
 	probe.set_ypos(py);             // which would register the probe in the obmap
-	return current_game->world->query_passable(px, py, &probe, floor(), /*quiet=*/true);
+	if (!current_game->world->query_grid_passable(px, py, &probe, floor(), /*quiet=*/true))
+		return PadAnswer::Terrain;
+	if (!current_game->world->query_object_passable(px, py, &probe, floor(), /*quiet=*/true))
+		return PadAnswer::Body;
+	return PadAnswer::Clear;
+}
+
+// fire_pad_answer's yes: the weapon would fly.
+bool walker::fire_pad_clear(std::int32_t weapon_family)
+{
+	return fire_pad_answer(weapon_family) == PadAnswer::Clear;
+}
+
+// The walker a hit or a kill is credited to (#411): the topmost LIVING on
+// this walker's owner chain (a weapon's thrower, a summon's caster, a tent
+// or bones troop itself: its owner is a post, not a body), or nullptr when
+// no living is on the chain (a scripted ball fx). The climb stops where
+// attack()'s does (a self-loop) and, with Gameplay Fixes AD, at a charmed
+// walker. The kill stamp and on_kill read it; classic score and experience
+// keep the chain's root. Appended at the end of the file so the parity
+// canary pins above never shift.
+walker* walker::credit_head()
+{
+	walker* top = nullptr;
+	for (walker* w = this;;)
+	{
+		if (w->query_order() == Order::Living)
+			top = w;
+		walker* next = w->owner();
+		if (next == nullptr || next == w || w->charmed_head())
+			break;
+		w = next;
+	}
+	return top;
 }

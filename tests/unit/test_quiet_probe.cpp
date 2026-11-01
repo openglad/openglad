@@ -20,12 +20,13 @@
 // 2. The detached body probe: a body that does not exist yet (the raised
 //    corpse, the weapon on its pad) is a walker built with the probe tag,
 //    never in a list or the obmap. body_spot_clear / body_spot_near place a
-//    living body; walker::fire_pad_clear asks fire()'s own pad
-//    (walker::weapon_pad, the one table fire() reads).
+//    living body; walker::fire_pad_answer / fire_pad_clear ask fire()'s own
+//    pad (walker::weapon_pad, the one table fire() and set_weapon_heading
+//    read), for the current weapon or a named one.
 //
-// Plus GameWorld::find_blood_in_reach and the five Lua doors to all of it:
+// Plus GameWorld::find_blood_in_reach and the six Lua doors to all of it:
 // s_forward_blocked(quiet), og.quiet_passable, og.body_spot_near,
-// og.blood_in_reach and walker:fire_pad_clear.
+// og.blood_in_reach, walker:fire_pad_clear and walker:fire_pad_answer.
 
 #include <gtest/gtest.h>
 
@@ -218,6 +219,7 @@ protected:
     {
         og::script::register_pack_script(
             {"test.quiet_probe", "quiet_probe.lua",
+             "local G = og.use('core:gates')\n"
              "og.register_hooks('living', 'core:soldier', {\n"
              "  do_special = function(self)\n"
              "    og.log('<probe>')\n" +
@@ -598,11 +600,110 @@ TEST_F(QuietProbe, fire_pad_clear_matches_fires_own_pad)
     }
 }
 
+// set_weapon_heading (fire_check's launch) puts the weapon on fire()'s pad
+// and gives it fire()'s heading. For each of the eight facings, a 17x13 elf
+// (odd sizes, both unlike the rock's box, so the centring truncates) and a
+// rock made by create_weapon: after set_weapon_heading the rock stands on
+// the pad worked out here from the 2002 table, weapon_pad answers the same
+// spot, and lastx / lasty are the 2002 heading rows for the waver drawn from
+// a copy of the stream (one draw, no more).
+// RED (planted): weapon_pad's FACE_DOWN_LEFT row one pixel off
+// (ypos()+sizey()+1 -> ypos()+sizey()+2): the weapon_pad assertion reds,
+// and once set_weapon_heading reads weapon_pad its own position does too.
+TEST_F(QuietProbe, set_weapon_heading_lands_on_fires_pad)
+{
+    const struct Facing
+    {
+        int face;
+        float dx;
+        float dy;
+    } facings[] = {
+        {FACE_UP, 0.0f, -1.0f},       {FACE_UP_RIGHT, 1.0f, -1.0f},
+        {FACE_RIGHT, 1.0f, 0.0f},     {FACE_DOWN_RIGHT, 1.0f, 1.0f},
+        {FACE_DOWN, 0.0f, 1.0f},      {FACE_DOWN_LEFT, -1.0f, 1.0f},
+        {FACE_LEFT, -1.0f, 0.0f},     {FACE_UP_LEFT, -1.0f, -1.0f},
+    };
+    constexpr int kX = 320;
+    constexpr int kY = 320;
+    constexpr int kW = 17;
+    constexpr int kH = 13;
+    for (const Facing& f : facings) {
+        SCOPED_TRACE(std::format("facing {}", f.face));
+        fresh_world();
+        walker* elf = living_at(FAMILY_ELF, 1, kX, kY, kW, kH);
+        ASSERT_NE(nullptr, elf);
+        elf->set_current_weapon(FAMILY_ROCK);
+        elf->set_lastx(f.dx);
+        elf->set_lasty(f.dy);
+        walker* rock = elf->create_weapon();
+        ASSERT_NE(nullptr, rock);
+        const int rw = rock->sizex();
+        const int rh = rock->sizey();
+        ASSERT_GT(rw, 0);
+        ASSERT_GT(rh, 0);
+        ASSERT_NE(kW, rw);
+        ASSERT_NE(kH, rh);
+
+        // The waver, from a copy of the stream as it stands now.
+        og::sim::SimRandom r(world().rng_.state_);
+        const float step = rock->stepsize();
+        signed char waver = static_cast<signed char>(std::clamp(step / 2, 0.0f, 127.0f));
+        waver = static_cast<signed char>(
+            r.next(static_cast<std::uint32_t>(waver + 1)) -
+            static_cast<std::uint32_t>(waver / 2));
+        const float wv = static_cast<float>(waver);
+
+        // The 2002 table: the pad, then the heading.
+        int px = -1;
+        int py = -1;
+        float hx = 0.0f;
+        float hy = 0.0f;
+        switch (f.face) {
+        case FACE_RIGHT:
+            px = kX + kW + 1; py = kY + (kH - rh) / 2; hx = step; hy = wv; break;
+        case FACE_LEFT:
+            px = kX - rw - 1; py = kY + (kH - rh) / 2; hx = -step; hy = wv; break;
+        case FACE_DOWN:
+            px = kX + (kW - rw) / 2; py = kY + kH + 1; hx = wv; hy = step; break;
+        case FACE_UP:
+            px = kX + (kW - rw) / 2; py = kY - rh - 1; hx = wv; hy = -step; break;
+        case FACE_UP_RIGHT:
+            px = kX + kW + 1; py = kY - rh - 1;
+            hx = step + wv; hy = -step + wv; break;
+        case FACE_UP_LEFT:
+            px = kX - rw - 1; py = kY - rh - 1;
+            hx = -step - wv; hy = -step + wv; break;
+        case FACE_DOWN_RIGHT:
+            px = kX + kW + 1; py = kY + kH + 1;
+            hx = step - wv; hy = step + wv; break;
+        case FACE_DOWN_LEFT:
+            px = kX - rw - 1; py = kY + kH + 1;
+            hx = -step + wv; hy = step + wv; break;
+        default:
+            FAIL() << "not a facing";
+        }
+
+        elf->set_weapon_heading(rock);
+        EXPECT_EQ(px, rock->xpos()) << "set_weapon_heading's x";
+        EXPECT_EQ(py, rock->ypos()) << "set_weapon_heading's y";
+        EXPECT_EQ(hx, rock->lastx()) << "the heading's x";
+        EXPECT_EQ(hy, rock->lasty()) << "the heading's y";
+        EXPECT_EQ(r.state_, world().rng_.state_) << "exactly the waver's draw";
+        short wx = 0;
+        short wy = 0;
+        elf->weapon_pad(*rock, wx, wy);
+        EXPECT_EQ(px, wx) << "weapon_pad's x";
+        EXPECT_EQ(py, wy) << "weapon_pad's y";
+    }
+}
+
 // fire_pad_clear makes nothing and changes nothing: the obmap, the three
 // lists, the events and the stream are as they were, a drumstick and an
 // enemy rock on the pad are untouched (the probe passes both), the elf's
 // busy, heading and collide_ob are kept, and the next body made takes the
-// next entity id (the probe spent none).
+// next entity id (the probe spent none). The same for fire_pad_answer and
+// for a named weapon's pad (the fire arrow's), which leaves the current
+// weapon as it was.
 // RED (planted): fire_pad_clear probing loud (quiet = false): the enemy
 // rock's miss roll draws (the stream moves) and, from this state, blocks.
 TEST_F(QuietProbe, fire_pad_clear_leaves_the_world_alone)
@@ -628,6 +729,9 @@ TEST_F(QuietProbe, fire_pad_clear_leaves_the_world_alone)
 
     const WorldState before = state(elf, {food, enemy_rock});
     EXPECT_TRUE(elf->fire_pad_clear());
+    EXPECT_EQ(walker::PadAnswer::Clear, elf->fire_pad_answer());
+    EXPECT_TRUE(elf->fire_pad_clear(FAMILY_FIRE_ARROW)) << "a named weapon's pad";
+    EXPECT_EQ(FAMILY_ROCK, elf->current_weapon()) << "the probe swaps nothing";
     EXPECT_EQ(before, state(elf, {food, enemy_rock}))
         << "before " << before.describe() << "\nafter  "
         << state(elf, {food, enemy_rock}).describe();
@@ -642,6 +746,277 @@ TEST_F(QuietProbe, fire_pad_clear_is_false_for_a_non_living)
     walker* tent = world().add_ob(Order::Generator, FAMILY_TENT);
     ASSERT_NE(nullptr, place(tent, 320, 320, 16, 16));
     EXPECT_FALSE(tent->fire_pad_clear());
+}
+
+// fire_pad_answer names what the pad of a level-4 elf's rock holds (the elf
+// 16x16 at 320,320 heading RIGHT: the pad is x 337, one pixel outside), and
+// fire_pad_clear is exactly "the answer is Clear". The grid half answers
+// first: a wall, the map edge and a tree's crown are Terrain (the crown for
+// an arrow: a rock walks the forest, BIT_FORESTWALK, and crosses it); a
+// weapon crosses water. Then the bodies: an enemy living and a generator are Body;
+// an ally passes, and so do an enemy door, a grown tree and an enemy weapon
+// in flight (the weapon-vs-weapon arm comes before the door arm, and a quiet
+// probe never rolls its miss: the loud fire() blocks on those 4 times in
+// 10, so no fire() control is run for them). Where fire() is
+// deterministic it is the control: it launches exactly when the answer is
+// Clear. Every case through the Lua door too, and the world after the probe
+// is the world before it. A generator caster and a weapon the loader cannot
+// make answer NoProbe.
+// RED (planted): fire_pad_answer's grid half answering Body instead of
+// Terrain (return PadAnswer::Terrain -> return PadAnswer::Body): the wall,
+// the arrow's tree tile and the map edge cases red.
+TEST_F(QuietProbe, fire_pad_answer_names_what_the_pad_holds)
+{
+    using PA = walker::PadAnswer;
+    struct PadCase
+    {
+        const char* name;
+        PA answer;
+        const char* lua_answer;
+        bool fire_is_deterministic;
+    };
+    const std::vector<PadCase> cases = {
+        {"open", PA::Clear, "clear", true},
+        {"wall", PA::Terrain, "terrain", true},
+        {"tree tile", PA::Clear, "clear", true},
+        {"tree tile, arrow", PA::Terrain, "terrain", true},
+        {"water", PA::Clear, "clear", true},
+        {"map edge", PA::Terrain, "terrain", true},
+        {"enemy living", PA::Body, "body", true},
+        {"ally living", PA::Clear, "clear", true},
+        {"generator", PA::Body, "body", true},
+        {"door", PA::Clear, "clear", false},
+        {"tree", PA::Clear, "clear", false},
+        {"weapon in flight", PA::Clear, "clear", false},
+    };
+    const auto build = [&](const std::string& kind,
+                           std::vector<const walker*>& watched) -> walker* {
+        fresh_world();
+        watched.clear();
+        walker* elf = living_at(FAMILY_ELF, 1, 320, 320);
+        if (elf == nullptr)
+            return nullptr;
+        elf->set_current_weapon(FAMILY_ROCK);
+        elf->set_lastx(1.0f);
+        elf->set_lasty(0.0f);
+        if (kind == "wall") {
+            tile(21, 20, PIX_H_WALL1);
+        } else if (kind == "tree tile") {
+            tile(21, 20, PIX_TREE_M1);
+        } else if (kind == "tree tile, arrow") {
+            tile(21, 20, PIX_TREE_M1);
+            elf->set_current_weapon(FAMILY_ARROW);
+        } else if (kind == "water") {
+            tile(21, 20, PIX_WATER1);
+        } else if (kind == "map edge") {
+            elf->setxy(1024 - 17, 320);
+        } else if (kind == "enemy living") {
+            watched.push_back(living_at(FAMILY_ORC, 2, 337, 320));
+        } else if (kind == "ally living") {
+            watched.push_back(living_at(FAMILY_ELF, 1, 337, 320));
+        } else if (kind == "generator") {
+            walker* tent = world().add_ob(Order::Generator, FAMILY_TENT);
+            if (tent != nullptr)
+                tent->set_team_num(2);
+            watched.push_back(place(tent, 337, 320, 16, 16));
+        } else if (kind == "door") {
+            walker* door = weapon_at(FAMILY_DOOR, 2, 337, 320, 16, 16);
+            if (door != nullptr)
+                door->stats()->set_level(2);
+            watched.push_back(door);
+        } else if (kind == "tree") {
+            watched.push_back(weapon_at(FAMILY_TREE, 2, 337, 320, 16, 16));
+        } else if (kind == "weapon in flight") {
+            watched.push_back(weapon_at(FAMILY_ARROW, 2, 338, 322));
+        }
+        return elf;
+    };
+    for (const PadCase& c : cases) {
+        SCOPED_TRACE(c.name);
+        std::vector<const walker*> watched;
+        walker* elf = build(c.name, watched);
+        ASSERT_NE(nullptr, elf);
+        for (const walker* w : watched)
+            ASSERT_NE(nullptr, w);
+        const WorldState before = state(elf, watched);
+        EXPECT_EQ(c.answer, elf->fire_pad_answer());
+        EXPECT_EQ(c.answer == PA::Clear, elf->fire_pad_clear());
+        EXPECT_EQ(before, state(elf, watched))
+            << "before " << before.describe() << "\nafter  "
+            << state(elf, watched).describe();
+        Answers a = lua(elf,
+                        "    og.log('answer', self:fire_pad_answer())\n"
+                        "    og.log('clear', self:fire_pad_clear() and 1 or 0)\n");
+        EXPECT_EQ(c.lua_answer, a["answer"]) << last_error();
+        EXPECT_EQ(c.answer == PA::Clear ? "1" : "0", a["clear"]);
+        if (c.fire_is_deterministic) {
+            EXPECT_EQ(c.answer == PA::Clear, elf->fire() != nullptr)
+                << "fire() launches exactly when the pad is clear";
+        }
+    }
+
+    fresh_world();
+    walker* tent = world().add_ob(Order::Generator, FAMILY_TENT);
+    ASSERT_NE(nullptr, place(tent, 320, 320, 16, 16));
+    EXPECT_EQ(PA::NoProbe, tent->fire_pad_answer()) << "a generator caster";
+    EXPECT_FALSE(tent->fire_pad_clear());
+    EXPECT_EQ("none", lua(tent, "    og.log('answer', self:fire_pad_answer())\n")["answer"]);
+
+    walker* elf = living_at(FAMILY_ELF, 1, 400, 400);
+    ASSERT_NE(nullptr, elf);
+    // Holds while no shipped pack declares a weapon at wire id 100; the
+    // NUM_FAMILY_SLOTS case below is the one that cannot rot.
+    EXPECT_EQ(PA::NoProbe, elf->fire_pad_answer(100)) << "a weapon slot no pack declares";
+    EXPECT_EQ(PA::NoProbe, elf->fire_pad_answer(NUM_FAMILY_SLOTS)) << "beyond the slots";
+    EXPECT_FALSE(elf->fire_pad_clear(NUM_FAMILY_SLOTS));
+    EXPECT_EQ(PA::Clear, elf->fire_pad_answer()) << "the control: its own rock flies";
+}
+
+// fire_pad_clear(weapon_family) probes that weapon's box instead of the
+// current one: the archer's EXPLODING BOLT fires core:fire_arrow (9x9) while
+// the archer holds core:arrow (7x7). An archer 16x16 at (192,184) heading UP
+// with a wall at tile (12,10) (y 160..175): the arrow's pad (196,176) lies
+// in row 11 and is clear, the fire arrow's pad (195,174) reaches row 10 and
+// meets the wall. fire() agrees with both answers, and the Lua doors
+// (walker:fire_pad_clear(fam), G.pad_clear(self, fam), fire_pad_answer(fam))
+// answer the same. The probes make nothing and draw nothing.
+// RED (planted): fire_pad_answer ignoring its argument
+// (weapon_family >= 0 ? weapon_family : ... -> -1 >= 0 ? ...): the fire
+// arrow is probed as an arrow and answers clear.
+TEST_F(QuietProbe, fire_pad_clear_takes_a_weapon_family)
+{
+    EXPECT_EQ((std::pair<short, short>{7, 7}), body_box(Order::Weapon, FAMILY_ARROW));
+    EXPECT_EQ((std::pair<short, short>{9, 9}), body_box(Order::Weapon, FAMILY_FIRE_ARROW));
+    const auto archer_up = [&]() {
+        fresh_world();
+        tile(12, 10, PIX_H_WALL1);
+        walker* archer = living_at(FAMILY_ARCHER, 1, 192, 184);
+        if (archer == nullptr)
+            return archer;
+        archer->set_current_weapon(FAMILY_ARROW);
+        archer->set_lastx(0.0f);
+        archer->set_lasty(-1.0f);
+        return archer;
+    };
+    walker* archer = archer_up();
+    ASSERT_NE(nullptr, archer);
+    const WorldState before = state(archer);
+    EXPECT_TRUE(archer->fire_pad_clear()) << "the arrow's own pad";
+    EXPECT_TRUE(archer->fire_pad_clear(FAMILY_ARROW));
+    EXPECT_FALSE(archer->fire_pad_clear(FAMILY_FIRE_ARROW)) << "the fire arrow's pad";
+    EXPECT_EQ(walker::PadAnswer::Terrain, archer->fire_pad_answer(FAMILY_FIRE_ARROW));
+    EXPECT_EQ(FAMILY_ARROW, archer->current_weapon()) << "the probe swaps nothing";
+    EXPECT_EQ(before, state(archer)) << "before " << before.describe()
+                                     << "\nafter  " << state(archer).describe();
+
+    Answers a = lua(
+        archer,
+        "    local fa = og.family_id('weapon', 'core:fire_arrow')\n"
+        "    og.log('own', self:fire_pad_clear() and 1 or 0)\n"
+        "    og.log('fire_arrow', self:fire_pad_clear(fa) and 1 or 0)\n"
+        "    og.log('gate_own', G.pad_clear(self) and 1 or 0)\n"
+        "    og.log('gate_fire_arrow', G.pad_clear(self, fa) and 1 or 0)\n"
+        "    og.log('answer', self:fire_pad_answer(fa))\n"
+        "    og.log('weapon', self:current_weapon())\n");
+    EXPECT_EQ("1", a["own"]) << last_error();
+    EXPECT_EQ("0", a["fire_arrow"]);
+    EXPECT_EQ("1", a["gate_own"]);
+    EXPECT_EQ("0", a["gate_fire_arrow"]);
+    EXPECT_EQ("terrain", a["answer"]);
+    EXPECT_EQ(std::to_string(FAMILY_ARROW), a["weapon"]);
+
+    // The control: fire() itself, with each weapon current.
+    EXPECT_NE(nullptr, archer->fire()) << "the arrow flies";
+    archer = archer_up();
+    ASSERT_NE(nullptr, archer);
+    archer->set_current_weapon(FAMILY_FIRE_ARROW);
+    EXPECT_EQ(nullptr, archer->fire()) << "the fire arrow meets the wall";
+}
+
+// #419: the soldier, the cleric and the archmage register weapon hooks
+// (on_fire_weapon; customize_weapon), and none of them changes the weapon's
+// box, so the detached probe's pad is fire()'s pad for all three. For each
+// family and each of the eight facings, on open grass: fire_pad_clear says
+// yes, and fire() makes a weapon of the probe's own box (the loader's,
+// before any hook) standing exactly on the pad the 2002 table gives for that
+// box. The one refusal the probe cannot see is the soldier's out-of-blades
+// veto (on_fire_weapon, weapons_left 0): fire_pad_clear says yes and fire()
+// returns nothing; no gate asks the soldier's pad.
+// RED (planted): finalize_weapon_profile growing the cleric's weapon after
+// its hook (weapon->set_sizex(weapon->sizex() + 2) for FAMILY_CLERIC): the
+// cleric's glow is wider than the probe's and stands off the pad on the
+// left-hand facings.
+TEST_F(QuietProbe, the_probe_pad_is_fires_pad_for_every_family_with_a_weapon_hook)
+{
+    const struct Facing
+    {
+        int face;
+        float dx;
+        float dy;
+    } facings[] = {
+        {FACE_UP, 0.0f, -1.0f},       {FACE_UP_RIGHT, 1.0f, -1.0f},
+        {FACE_RIGHT, 1.0f, 0.0f},     {FACE_DOWN_RIGHT, 1.0f, 1.0f},
+        {FACE_DOWN, 0.0f, 1.0f},      {FACE_DOWN_LEFT, -1.0f, 1.0f},
+        {FACE_LEFT, -1.0f, 0.0f},     {FACE_UP_LEFT, -1.0f, -1.0f},
+    };
+    const struct Family
+    {
+        int family;
+        int weapon;
+        const char* name;
+    } families[] = {
+        {FAMILY_SOLDIER, FAMILY_KNIFE, "soldier"},
+        {FAMILY_CLERIC, FAMILY_GLOW, "cleric"},
+        {FAMILY_ARCHMAGE, FAMILY_FIREBALL, "archmage"},
+    };
+    constexpr int kX = 320;
+    constexpr int kY = 320;
+    for (const Family& fam : families) {
+        const auto [ww, wh] = body_box(Order::Weapon, fam.weapon);
+        ASSERT_GT(ww, 0) << fam.name;
+        ASSERT_GT(wh, 0) << fam.name;
+        for (const Facing& f : facings) {
+            SCOPED_TRACE(std::format("{} facing {}", fam.name, f.face));
+            fresh_world();
+            walker* caster = living_at(fam.family, 1, kX, kY);
+            ASSERT_NE(nullptr, caster);
+            ASSERT_EQ(fam.weapon, caster->current_weapon());
+            caster->set_weapons_left(1);
+            caster->set_lastx(f.dx);
+            caster->set_lasty(f.dy);
+            int px = -1;
+            int py = -1;
+            switch (f.face) {
+            case FACE_RIGHT: px = kX + 16 + 1; py = kY + (16 - wh) / 2; break;
+            case FACE_LEFT: px = kX - ww - 1; py = kY + (16 - wh) / 2; break;
+            case FACE_DOWN: px = kX + (16 - ww) / 2; py = kY + 16 + 1; break;
+            case FACE_UP: px = kX + (16 - ww) / 2; py = kY - wh - 1; break;
+            case FACE_UP_RIGHT: px = kX + 16 + 1; py = kY - wh - 1; break;
+            case FACE_UP_LEFT: px = kX - ww - 1; py = kY - wh - 1; break;
+            case FACE_DOWN_RIGHT: px = kX + 16 + 1; py = kY + 16 + 1; break;
+            case FACE_DOWN_LEFT: px = kX - ww - 1; py = kY + 16 + 1; break;
+            default: FAIL() << "not a facing";
+            }
+            EXPECT_TRUE(caster->fire_pad_clear()) << "open grass";
+            walker* shot = caster->fire();
+            ASSERT_NE(nullptr, shot) << "fire() launches on open grass";
+            EXPECT_EQ(ww, shot->sizex()) << "the hook kept the box";
+            EXPECT_EQ(wh, shot->sizey());
+            EXPECT_EQ(px, shot->xpos()) << "fire()'s weapon stands on the probe's pad";
+            EXPECT_EQ(py, shot->ypos());
+        }
+    }
+
+    fresh_world();
+    walker* soldier = living_at(FAMILY_SOLDIER, 1, kX, kY);
+    ASSERT_NE(nullptr, soldier);
+    soldier->set_weapons_left(0);
+    soldier->set_lastx(1.0f);
+    soldier->set_lasty(0.0f);
+    EXPECT_TRUE(soldier->fire_pad_clear()) << "the probe cannot see the veto";
+    EXPECT_EQ(nullptr, soldier->fire()) << "out of blades: on_fire_weapon vetoes";
+    soldier->set_weapons_left(1);
+    EXPECT_NE(nullptr, soldier->fire()) << "the control: one blade left flies";
 }
 
 // body_spot_clear: a body of the family's own box fits on an open field and
@@ -817,7 +1192,8 @@ TEST_F(QuietProbe, find_blood_in_reach_walks_the_finders_stains_nearest_first)
 // leaves the swing out (busy unchanged; the loud one starts it);
 // og.quiet_passable is query_passable(..., quiet); og.body_spot_near
 // returns the spot (or nil); og.blood_in_reach returns the stains in order;
-// walker:fire_pad_clear is the C++ member.
+// walker:fire_pad_clear and walker:fire_pad_answer are the C++ members, a
+// named weapon family included, and a family id out of range is refused.
 // RED (planted): the binding passing quiet = false to forward_blocked: the
 // quiet call swings (busy moves before the loud call).
 TEST_F(QuietProbe, the_lua_doors_answer_what_the_engine_answers)
@@ -845,6 +1221,12 @@ TEST_F(QuietProbe, the_lua_doors_answer_what_the_engine_answers)
         "    for i = 1, #b do ids = ids .. og.entity_id(b[i]) .. ';' end\n"
         "    og.log('blood', ids)\n"
         "    og.log('pad', self:fire_pad_clear() and 1 or 0)\n"
+        "    og.log('pad_answer', self:fire_pad_answer())\n"
+        "    local knife = og.family_id('weapon', 'core:knife')\n"
+        "    og.log('pad_knife', self:fire_pad_clear(knife) and 1 or 0)\n"
+        "    og.log('pad_knife_answer', self:fire_pad_answer(knife))\n"
+        "    og.log('pad_bad', pcall(function() return self:fire_pad_clear(256) end)"
+        " and 'taken' or 'refused')\n"
         "    og.log('open', og.quiet_passable(100, 100, self) and 1 or 0)\n"
         "    og.log('wall', og.quiet_passable(150, 160, self) and 1 or 0)\n"
         "    local x, y = og.body_spot_near('living',"
@@ -868,4 +1250,9 @@ TEST_F(QuietProbe, the_lua_doors_answer_what_the_engine_answers)
     EXPECT_EQ(std::format("{};{};", near_id, far_id), a["blood"]);
     EXPECT_EQ(soldier->fire_pad_clear() ? "1" : "0", a["pad"]);
     EXPECT_EQ("0", a["pad"]) << "the orc is on the knife's pad";
+    EXPECT_EQ("body", a["pad_answer"]);
+    EXPECT_EQ(walker::PadAnswer::Body, soldier->fire_pad_answer());
+    EXPECT_EQ("0", a["pad_knife"]);
+    EXPECT_EQ("body", a["pad_knife_answer"]);
+    EXPECT_EQ("refused", a["pad_bad"]) << "256 is no family slot";
 }

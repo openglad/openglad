@@ -341,9 +341,11 @@ public:
 
     // our standard glad palette
     std::array<unsigned char, 768> ourpalette{};
+    // for 'faded' backgrounds during menus
     std::array<unsigned char, 768> redpalette{};
     // for special effects like time-freeze
     std::array<unsigned char, 768> bluepalette{};
+    // store the dos palette so we can restore it later
     std::array<unsigned char, 768> dospalette{};
 
     // color cycling on or off

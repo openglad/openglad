@@ -223,10 +223,14 @@ shifted): `on_entity_death` resolves killer_team from the 48-tick attack
 stamp; killer in band ∧ victim is a registered fighter or its owned spawn
 (`owns_its_life`) → `frags[killer−16] += 1`; killer_team == victim's band
 byte (suicide) → −1; nil/stale/environment → nothing; non-owning victims get
-`core.scrub_corpse`. Generator/summon kills credit the owner automatically
-(the stamp carries the owner-chain-root team = band byte,
-`walker_combat.cpp:324-329`); mutual kills score via the stamped team even
-with a nil killer handle.
+`core.scrub_corpse`. A summon's kills credit its caster automatically: the
+stamp carries the topmost living on the owner chain and its team (= band
+byte; `walker::credit_head`, read by `walker::attack`). A generator is not a
+living, so a generator's troop would be its own credit, but FFA clears
+generators at init. With the Gameplay Fixes setting on, a charmed walker
+heads its own chain for the charm's length, so a charmed summon's kill is
+credited to the summon in the color it wears. Mutual kills score via the
+stamped team even with a nil killer handle.
 
 **Win**: first fighter with frags ≥ limit (ascending color index tiebreak);
 at the deadline, leader by frags, tie → lowest index. Declared via

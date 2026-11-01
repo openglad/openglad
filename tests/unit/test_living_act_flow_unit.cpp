@@ -32,6 +32,7 @@
 
 #include <openglad/core/constants.h>
 #include <openglad/core/pixdefs.h>
+#include <openglad/gameplay/families/family_descriptor.h>
 #include <openglad/gameplay/families/family_registry.h>
 #include <openglad/gameplay/families/specials_view.h>
 #include <openglad/gameplay/game_world.h>
@@ -315,4 +316,125 @@ TEST_F(LivingActFlow, the_hit_response_draws_no_ordinary_act_after_a_gates_no)
             EXPECT_FLOAT_EQ(300.0f, druid->stats()->magicpoints()) << "nothing cast";
         }
     }
+}
+
+// Gameplay Fixes AB (#409): a yes the bot cannot pay for is a no.
+// living::check_special folds a slot the pool cannot cover onto slot 1
+// without asking slot 1's own price, and the hit path
+// (statistics::hit_response: the gate, then rng(3) on its yes, then the
+// special) has no "full of magic?" guard like the act's. A level-1 fire
+// elemental bot at 30 MP (STARBURST, slot 1, costs 50) struck by a soldier
+// 40 px east (the elemental faces up, so the one foe in its ring is unfaced
+// and STARBURST's gate says yes): off, the Shift coin and the rng(3) are
+// drawn, and on a 0 the cast refuses NOT ENOUGH MP having done nothing; on,
+// the gate's yes becomes a no and the rng(3) is not drawn. At 60 MP the yes
+// stands on both values. With New Specials on, slot 4 (REKINDLE, 40) folds
+// onto slot 1 and holds the same way.
+//
+// RED at bb5e13d7 on the setting-on arm (the hit draws the gate's coin and
+// the rng(3) on every value). Planted break on the fixed tree: the price
+// test in check_special -> `false`.
+TEST_F(LivingActFlow, a_struck_bot_that_cannot_pay_its_slot_holds_with_the_setting_on)
+{
+    struct Case
+    {
+        const char* name;
+        float mp;
+        short new_specials;
+        int slot;
+        bool pays;
+    };
+    const Case cases[] = {
+        {"30 MP, STARBURST", 30.0f, 0, 1, false},
+        {"60 MP, STARBURST", 60.0f, 0, 1, true},
+        {"30 MP, REKINDLE folded onto STARBURST", 30.0f, 1, 4, false},
+    };
+    for (const Case& c : cases) {
+        for (short fixes : {short{0}, short{1}}) {
+            SCOPED_TRACE(std::string(c.name) + ", setting " + std::to_string(fixes));
+            fresh_world(fixes);
+            world().new_specials = c.new_specials;
+            living* elemental = bot(FAMILY_FIREELEMENTAL, 1, 200, 200, 1, c.mp);
+            living* foe = bot(FAMILY_SOLDIER, 2, 240, 200, 1, 0.0f);
+            ASSERT_TRUE(elemental && foe);
+            elemental->stats()->set_hitpoints(150.0f);  // above the 5/16 flee line: no yell
+            elemental->set_curdir(static_cast<signed char>(FACE_UP));
+            elemental->set_enddir(static_cast<char>(FACE_UP));
+            ASSERT_EQ(50, og::sim::cast_cost(*elemental, 1, false)) << "STARBURST's price";
+            ASSERT_EQ(50, og::sim::cast_cost(*elemental, 1, true)) << "no priced alternate on slot 1";
+            if (c.slot == 4) {
+                ASSERT_EQ(40, og::sim::cast_cost(*elemental, 4, false)) << "REKINDLE's price";
+            }
+            elemental->set_current_special(static_cast<char>(c.slot));
+            // A cast on the 60 MP row would draw its own; a roll of 1 keeps
+            // it to the gate's question.
+            const std::uint32_t s = state_where({{2, 0}, {3, c.pays ? 1u : 0u}});
+            world().rng_.state_ = s;
+
+            elemental->stats()->hit_response(foe);
+
+            if (fixes != 0 && !c.pays)
+                EXPECT_EQ(state_after(s, {2}), world().rng_.state_)
+                    << "setting on: a slot the pool cannot pay is a no, so no rng(3)";
+            else
+                EXPECT_EQ(state_after(s, {2, 3}), world().rng_.state_)
+                    << "the gate's yes: the Shift coin and the rng(3)";
+            EXPECT_EQ(1, static_cast<int>(elemental->current_special())) << "folded onto slot 1";
+            EXPECT_FLOAT_EQ(c.mp, elemental->stats()->magicpoints()) << "nothing cast";
+            EXPECT_EQ(foe, elemental->foe()) << "the hit response still answers its attacker";
+        }
+    }
+}
+
+// The act path never reaches an unaffordable slot: living::act asks for
+// slot 1's price before the slot roll (the "full of magic?" guard), and the
+// fold in check_special can land only on slot 1. A 30 MP elemental bot (slot
+// 1 costs 50) whose coin comes up rolls no special at all and walks, the
+// same draws and the same walk on both values. At 60 MP with slot 2 held
+// (IMMOLATE, priced out with New Specials off), check_special folds onto
+// slot 1 and answers the same on both values with the same draws.
+TEST_F(LivingActFlow, the_act_path_never_reaches_an_unaffordable_slot)
+{
+    const std::uint32_t s = state_where({{5, 0}, {2, 1}});
+    std::uint32_t walked[2] = {0, 0};
+    std::size_t queued[2] = {0, 0};
+    for (short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE("short pool, setting " + std::to_string(fixes));
+        fresh_world(fixes);
+        living* elemental = bot(FAMILY_FIREELEMENTAL, 1, 200, 200, 1, 30.0f);
+        ASSERT_NE(nullptr, elemental);
+        ASSERT_EQ(50, og::sim::cast_cost(*elemental, 1, false));
+        const Act a = act_of(world(), elemental, s);
+        EXPECT_TRUE(a.returned) << "the random walk is the act";
+        EXPECT_FLOAT_EQ(30.0f, a.mp);
+        EXPECT_EQ(1, static_cast<int>(elemental->current_special())) << "no slot was rolled";
+        walked[fixes] = a.rng;
+        queued[fixes] = a.commands;
+    }
+    EXPECT_EQ(walked[0], walked[1]) << "the same draws on both values";
+    EXPECT_EQ(queued[0], queued[1]);
+    EXPECT_NE(s, walked[0]) << "the coin and the walk were drawn";
+
+    const std::uint32_t g = state_where({{2, 0}});
+    bool answers[2] = {false, false};
+    std::uint32_t after[2] = {0, 0};
+    for (short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE("dear slot, setting " + std::to_string(fixes));
+        fresh_world(fixes);
+        living* elemental = bot(FAMILY_FIREELEMENTAL, 1, 200, 200, 1, 60.0f);
+        living* foe = bot(FAMILY_SOLDIER, 2, 240, 200, 1, 0.0f);
+        ASSERT_TRUE(elemental && foe);
+        elemental->set_curdir(static_cast<signed char>(FACE_UP));
+        ASSERT_EQ(kSpecialCostDisabled, og::sim::cast_cost(*elemental, 2, false))
+            << "slot 2 is a New Specials slot: priced out of every pool with New Specials off";
+        elemental->set_current_special(2);
+        world().rng_.state_ = g;
+        answers[fixes] = elemental->check_special();
+        after[fixes] = world().rng_.state_;
+        EXPECT_EQ(1, static_cast<int>(elemental->current_special())) << "folded onto slot 1";
+    }
+    EXPECT_TRUE(answers[0]) << "the classic gate says yes to STARBURST with a foe in range";
+    EXPECT_EQ(answers[0], answers[1]) << "the fold lands on a slot the act path's guard paid for";
+    EXPECT_EQ(state_after(g, {2}), after[0]);
+    EXPECT_EQ(after[0], after[1]);
 }
