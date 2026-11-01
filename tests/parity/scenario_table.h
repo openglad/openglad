@@ -1418,7 +1418,7 @@ inline constexpr Mutation kMut_family_thief_init = {
 };
 
 inline constexpr Mutation kMut_family_druid_init = {
-    "packs/core/families/living-13-druid.lua", 204,
+    "packs/core/families/living-13-druid.lua", 210,
     "hp = 110",
     "hp = 11000",
     "Cranks DRUID descriptor HP x100 "
@@ -3574,7 +3574,7 @@ inline constexpr FactPredicate kFacts_special_elf_1_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_elf_1_scen99 = {
-    "packs/core/families/living-01-elf.lua", 21,
+    "packs/core/families/living-01-elf.lua", 24,
     "local rock = self:fire()",
     "local rock = nil",
     "Suppresses the first of SOME ROCKS' two rock releases, so some_rocks takes its 'if not rock' exit with the MP already refunded and nothing in flight. EventKindAtLeast(play_sound, 16) and WalkerHpRangeAtFinalTick(FAMILY_ELF, 1700, 1700) both fail.",
@@ -3595,7 +3595,7 @@ inline constexpr FactPredicate kFacts_special_elf_2_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_elf_2_scen99 = {
-    "packs/core/families/living-01-elf.lua", 137,
+    "packs/core/families/living-01-elf.lua", 143,
     "bounce_volley(3, 2, 3)",
     "bounce_volley(3, 1, 3)",
     "Halves slot 2's BOUNCING ROCKS volley by dropping the shared bounce_volley body's per-slot rock count from 2 to 1, so only one bouncing rock leaves the elf. WalkerHpRangeAtFinalTick(FAMILY_ELF, 1800, 1800) flips."
@@ -3615,7 +3615,7 @@ inline constexpr FactPredicate kFacts_special_elf_3_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_elf_3_scen99 = {
-    "packs/core/families/living-01-elf.lua", 139,
+    "packs/core/families/living-01-elf.lua", 145,
     "bounce_volley(4, 3, 4)",
     "bounce_volley(4, 1, 4)",
     "Cuts slot 3's BOUNCING ROCKS volley from three rocks to one at the shared bounce_volley body's per-slot count. WalkerHpRangeAtFinalTick(FAMILY_ELF, 1700, 1700) flips."
@@ -3635,7 +3635,7 @@ inline constexpr FactPredicate kFacts_special_elf_4_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_elf_4_scen99 = {
-    "packs/core/families/living-01-elf.lua", 142,
+    "packs/core/families/living-01-elf.lua", 148,
     "bounce_volley(5, 4, 5)",
     "bounce_volley(5, 1, 5)",
     "Cuts the default (slot 4) BOUNCING ROCKS volley from four rocks to one at the shared bounce_volley body's per-slot count. WalkerHpRangeAtFinalTick(FAMILY_ELF, 1800, 1800) flips."
@@ -4077,7 +4077,7 @@ inline constexpr FactPredicate kFacts_special_druid_1_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_druid_1_scen99 = {
-    "packs/core/families/living-13-druid.lua", 18,
+    "packs/core/families/living-13-druid.lua", 21,
     "local bolt = self:fire()",
     "local bolt = nil",
     "Suppresses the seed bolt PLANT TREE grows its tree from, so plant_tree takes its 'if not bolt' exit before the busy charge and before WEAP_TREE is summoned. EventKindAtLeast(play_sound, 15) fails.",
@@ -4099,7 +4099,7 @@ inline constexpr FactPredicate kFacts_special_druid_2_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_druid_2_scen99 = {
-    "packs/core/families/living-13-druid.lua", 52,
+    "packs/core/families/living-13-druid.lua", 58,
     "local faerie = og.add_ob(\"living\", LIVING_FAERIE)",
     "local faerie = nil",
     "Suppresses SUMMON FAERIE's pet creation, so the body takes its 'if not faerie' exit with the bolt fired but never converted into a faerie. EventKindAtLeast(play_sound, 16) fails."
@@ -4118,7 +4118,7 @@ inline constexpr FactPredicate kFacts_special_druid_3_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_druid_3_scen99 = {
-    "packs/core/families/living-13-druid.lua", 204,
+    "packs/core/families/living-13-druid.lua", 210,
     "hp = 110",
     "hp = 11000",
     "Cranks the FAMILY_DRUID init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -4137,7 +4137,7 @@ inline constexpr FactPredicate kFacts_special_druid_4_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_druid_4_scen99 = {
-    "packs/core/families/living-13-druid.lua", 204,
+    "packs/core/families/living-13-druid.lua", 210,
     "hp = 110",
     "hp = 11000",
     "Cranks the FAMILY_DRUID init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -4454,7 +4454,7 @@ inline constexpr FactPredicate kFacts_summon_lifetime_faerie_scen99[] = {
 };
 
 inline constexpr Mutation kMut_summon_lifetime_faerie_scen99 = {
-    "packs/core/families/living-13-druid.lua", 60,
+    "packs/core/families/living-13-druid.lua", 66,
     "  faerie.lifetime = og.combat.druid_faerie_lifetime(self.level)",
     "  faerie.lifetime = 99999",
     "Replaces the spawn-time lifetime initialisation (druid_faerie_lifetime — legacy 50+40*L bit-exact below the 570-tick knee, so 210 at this L4 caster) with an effectively-infinite value; the faerie is still alive at tick 650 so WalkerDiedByFinal(FAMILY_FAERIE) fails because an alive FAMILY_FAERIE remains."
@@ -4598,7 +4598,7 @@ inline constexpr FactPredicate kFacts_weapon_rock_slot2_emit_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_rock_slot2_emit_scen99 = {
-    "packs/core/families/living-01-elf.lua", 71,
+    "packs/core/families/living-01-elf.lua", 77,
     "      rock:set_lastx(og.fmul(rock:lastx(), next_spread_multiplier()))",
     "      rock:set_lastx(og.fmul(og.fmul(rock:lastx(), next_spread_multiplier()), 2.0))",
     "Doubles the BOUNCING ROCKS first projectile's x-step while preserving the spread RNG draw. MEASURED flip: WalkerPositionMoved(FAMILY_SOLDIER, 156, 120) fails because the advancing enemy ends at (152,120) instead of the golden's (156,120). (This rationale used to claim the rock's speed rises to ~1404 centi-px/tick, above WeaponSpeed's 900 ceiling: measured, the seq-0 max step goes 671 -> 781 and stays inside the band.)"
@@ -4767,7 +4767,7 @@ inline constexpr FactPredicate kFacts_effect_protection_emit_scen99[] = {
 };
 
 inline constexpr Mutation kMut_effect_protection_emit_scen99 = {
-    "packs/core/families/living-13-druid.lua", 112,
+    "packs/core/families/living-13-druid.lua", 118,
     "      local circle = og.summon(friend, \"weapon\", WEAP_CIRCLE_PROTECTION)",
     "        do return false, 'MUTATION REFUSAL' end",
     "Replaces the PROTECTION circle summon with `do return false, 'MUTATION REFUSAL' end`, so protection_circle declines on the first uncircled friend before the FAMILY_CIRCLE_PROTECTION weapon is created; weaplist never holds the circle so WeaponFamilyEmitted(FAMILY_CIRCLE_PROTECTION) fails — the emit never fires. The `do ... end` wrapper is load-bearing — Lua only allows `return` as the last statement of a block, so a bare mid-block `return false` here is a SYNTAX ERROR that fails the whole druid.lua load and takes plant-tree, the bolt, and summon faerie down with it; the row would then flip on collateral damage rather than on the circle. With the wrapper this is the only row in the corpus that moves."
@@ -7943,7 +7943,7 @@ inline constexpr FactPredicate kFacts_elf_mega_rocks_volley_scen99[] = {
 };
 
 inline constexpr Mutation kMut_elf_mega_rocks_volley_scen99 = {
-    "packs/core/families/living-01-elf.lua", 142,
+    "packs/core/families/living-01-elf.lua", 148,
     "    default_cast = bounce_volley(5, 4, 5),  -- case 4 and every unmapped slot",
     "    default_cast = bounce_volley(5, 1, 5),  -- case 4 and every unmapped slot",
     "Shrinks MEGA ROCKS from four rocks to one while keeping the MP refund and line-of-sight scaling. The play_sound floor of 4 collapses to 3, the weapon_tracks sample set drops from 62 to 5, and the lead orc survives, so WalkerFamilyCount(FAMILY_ORC, 1, 1) goes to 2."
@@ -8064,7 +8064,7 @@ inline constexpr FactPredicate kFacts_elf_rocks_pair_scen99[] = {
 };
 
 inline constexpr Mutation kMut_elf_rocks_pair_scen99 = {
-    "packs/core/families/living-01-elf.lua", 32,
+    "packs/core/families/living-01-elf.lua", 35,
     "  rock = self:fire()",
     "  rock = nil",
     "Suppresses the second of the two ROCKS releases (the guard on the next line then returns false). Exactly one rock is emitted instead of two: the play_sound floor of 3 fails at 2, the weapon_tracks sample set halves, and the downrange orc keeps 13600 cents instead of 13400."
@@ -8247,7 +8247,7 @@ inline constexpr FactPredicate kFacts_druid_protection_refresh_scen99[] = {
 };
 
 inline constexpr Mutation kMut_druid_protection_refresh_scen99 = {
-    "packs/core/families/living-13-druid.lua", 102,
+    "packs/core/families/living-13-druid.lua", 108,
     "    local circles = og.find_in_range(\"weap\", 100, friend)",
     "    local circles = og.find_in_range(\"ob\", 100, friend)",
     "Points the existing-circle scan back at oblist, resurrecting the bug this row exists to pin. oblist holds livings, generators and FX; a summoned circle lives in weaplist, so the scan finds nothing, `existing` stays nil and the recast takes the mint arm instead of the top-up arm. The friendly ends the run wearing TWO rings and WeaponFamilyCount(FAMILY_CIRCLE_PROTECTION, 1, 1) reads 2. Everything else holds: both casts still succeed, both still charge 200 magicpoints and emit SOUND_HEAL, so the play_sound floor and WeaponFamilyEmitted stay green and the flip is isolated to the stacking."
@@ -8587,7 +8587,7 @@ inline constexpr FactPredicate kFacts_elf_volley_refund_scen99[] = {
         "consequence: the extra MP is one more rock still in flight at the final tick"),
 };
 inline constexpr Mutation kMut_elf_volley_refund_scen99 = {
-    "packs/core/families/living-01-elf.lua", 51,
+    "packs/core/families/living-01-elf.lua", 57,
     "local refund = cost_mult",
     "local refund = cost_mult - 1",
     "Makes the classic refund one rock short (cost_mult - 1 = 2, the fixed amount), so the elf ends the volley one MP lower and throws one rock fewer: EventKindExactly(play_sound, 7) reads 6 and no rock is in flight at the end."
@@ -8601,7 +8601,7 @@ inline constexpr FactPredicate kFacts_elf_volley_refund_fixes_scen99[] = {
     // negative_assertion: the fixed refund leaves no MP for the rock the classic elf still has in flight
 };
 inline constexpr Mutation kMut_elf_volley_refund_fixes_scen99 = {
-    "packs/core/families/living-01-elf.lua", 54,
+    "packs/core/families/living-01-elf.lua", 60,
     "refund = count",
     "refund = count + 1",
     "Refunds one rock more than the volley throws, the classic overpay, so the held fire throws one more rock: EventKindExactly(play_sound, 6) reads 7 and WeaponFamilyCount(FAMILY_ROCK, 0, 0) sees a rock in flight.",
@@ -8632,7 +8632,7 @@ inline constexpr FactPredicate kFacts_elf_rocks_blocked_scen99[] = {
     pred::LevelDoneEquals(2),
 };
 inline constexpr Mutation kMut_elf_rocks_blocked_scen99 = {
-    "packs/core/families/living-01-elf.lua", 20,
+    "packs/core/families/living-01-elf.lua", 23,
     "self.magicpoints = og.fadd(self.magicpoints, 2 * self:s_weapon_cost())",
     "self.magicpoints = og.fadd(self.magicpoints, 0 * self:s_weapon_cost())",
     "Refunds nothing before the classic ROCKS, so the blocked cast costs its one swing as the fixed one does: the held fire runs short and the tower survives. WalkerDiedByFinal(FAMILY_TOWER1) and LevelDoneEquals(2) fail."
@@ -8672,7 +8672,7 @@ inline constexpr FactPredicate kFacts_druid_tree_blocked_scen99[] = {
         "consequence: the classic blocked GROW TREE keeps its one-bolt refund, so the held fire pays for one more swing and the tower ends at 86 hp"),
 };
 inline constexpr Mutation kMut_druid_tree_blocked_scen99 = {
-    "packs/core/families/living-13-druid.lua", 17,
+    "packs/core/families/living-13-druid.lua", 20,
     "self.magicpoints = og.fadd(self.magicpoints, self:s_weapon_cost())",
     "self.magicpoints = og.fadd(self.magicpoints, 0)",
     "Refunds nothing before the classic GROW TREE, so the blocked cast costs its swing as the fixed one does: one swing fewer and WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 8600, 8600) fails.",
@@ -9650,7 +9650,7 @@ inline constexpr FactPredicate kFacts_elf_bot_rocks_far_scen99[] = {
         "consequence: the classic elf has no gate and throws its two rocks on tick 0 at a foe they cannot reach"),
 };
 inline constexpr Mutation kMut_elf_bot_rocks_far_scen99 = {
-    "packs/core/families/living-01-elf.lua", 114,
+    "packs/core/families/living-01-elf.lua", 120,
     "    return true",
     "    return false",
     "Makes the setting-off gate answer no, so the classic elf throws nothing: WeaponFamilyCount(FAMILY_ROCK, 2, 2) fails.",
@@ -9663,7 +9663,7 @@ inline constexpr FactPredicate kFacts_elf_bot_rocks_far_fixes_scen99[] = {
     // negative_assertion: no rock flies with the setting on; the mutation flips it by stretching the flight the gate measures (0 -> 2).
 };
 inline constexpr Mutation kMut_elf_bot_rocks_far_fixes_scen99 = {
-    "packs/core/families/living-01-elf.lua", 92,
+    "packs/core/families/living-01-elf.lua", 98,
     "G.in_flight(self, foe, 5, 8",
     "G.in_flight(self, foe, 5, 80",
     "Stretches the rocks' range ten times in the gate, so the tower counts as in flight and the elf throws: WeaponFamilyCount(FAMILY_ROCK, 0, 0) fails."
@@ -10058,7 +10058,7 @@ inline constexpr FactPredicate kFacts_druid_bot_tree_behind_scen99[] = {
         "consequence: the classic druid has no gate and grows a tree along its heading, away from the tower behind it"),
 };
 inline constexpr Mutation kMut_druid_bot_tree_behind_scen99 = {
-    "packs/core/families/living-13-druid.lua", 153,
+    "packs/core/families/living-13-druid.lua", 159,
     "return true -- the classic druid casts every roll",
     "return false -- the classic druid casts every roll",
     "Makes the setting-off druid gate answer no, so no tree grows: WeaponFamilyCount(FAMILY_TREE, 1, 1) fails."
@@ -10070,7 +10070,7 @@ inline constexpr FactPredicate kFacts_druid_bot_tree_behind_fixes_scen99[] = {
     // negative_assertion: no tree with the setting on; the mutation flips it by dropping the facing test (0 -> 1).
 };
 inline constexpr Mutation kMut_druid_bot_tree_behind_fixes_scen99 = {
-    "packs/core/families/living-13-druid.lua", 168,
+    "packs/core/families/living-13-druid.lua", 174,
     "G.faces(self, f)",
     "true",
     "Drops the facing test, so the druid grows a tree with the tower behind it: WeaponFamilyCount(FAMILY_TREE, 0, 0) fails."
@@ -10092,7 +10092,7 @@ inline constexpr FactPredicate kFacts_druid_bot_faerie_alone_scen99[] = {
         "consequence: the classic druid summons a faerie with no foe near"),
 };
 inline constexpr Mutation kMut_druid_bot_faerie_alone_scen99 = {
-    "packs/core/families/living-13-druid.lua", 153,
+    "packs/core/families/living-13-druid.lua", 159,
     "return true -- the classic druid casts every roll",
     "return false -- the classic druid casts every roll",
     "Makes the setting-off druid gate answer no, so no faerie is summoned: WalkerFamilyCount(FAMILY_FAERIE, 1, 1) fails."
@@ -10104,7 +10104,7 @@ inline constexpr FactPredicate kFacts_druid_bot_faerie_alone_fixes_scen99[] = {
     // negative_assertion: no faerie with the setting on; the mutation flips it by letting the summon through with no foe near (0 -> 1).
 };
 inline constexpr Mutation kMut_druid_bot_faerie_alone_fixes_scen99 = {
-    "packs/core/families/living-13-druid.lua", 174,
+    "packs/core/families/living-13-druid.lua", 180,
     "G.foes_within(self, 1, 130, false)",
     "G.foes_within(self, 0, 130, false)",
     "Lets the summon through with no foe within 130 px, so the alone druid summons a faerie: WalkerFamilyCount(FAMILY_FAERIE, 0, 0) fails."
@@ -10127,7 +10127,7 @@ inline constexpr FactPredicate kFacts_druid_bot_protection_idle_scen99[] = {
         "consequence: the classic druid casts PROTECTION on an ally nobody is fighting"),
 };
 inline constexpr Mutation kMut_druid_bot_protection_idle_scen99 = {
-    "packs/core/families/living-13-druid.lua", 153,
+    "packs/core/families/living-13-druid.lua", 159,
     "return true -- the classic druid casts every roll",
     "return false -- the classic druid casts every roll",
     "Makes the setting-off druid gate answer no, so no circle is cast: WeaponFamilyCount(FAMILY_CIRCLE_PROTECTION, 1, 1) fails."
@@ -10139,7 +10139,7 @@ inline constexpr FactPredicate kFacts_druid_bot_protection_idle_fixes_scen99[] =
     // negative_assertion: no circle with the setting on; the mutation flips it by letting any ally in reach qualify (0 -> 1).
 };
 inline constexpr Mutation kMut_druid_bot_protection_idle_fixes_scen99 = {
-    "packs/core/families/living-13-druid.lua", 181,
+    "packs/core/families/living-13-druid.lua", 187,
     "G.ally_at_blows(self, 60)",
     "G.allies(self, 60)[1]",
     "Lets any ally within 60 px qualify, at blows or not, so the idle orc gets a circle: WeaponFamilyCount(FAMILY_CIRCLE_PROTECTION, 0, 0) fails."
@@ -10412,7 +10412,7 @@ inline constexpr FactPredicate kFacts_elf_bot_rocks_blocked_scen99[] = {
     // negative_assertion: no rock flies on either value: the pad is the tower.
 };
 inline constexpr Mutation kMut_elf_bot_rocks_blocked_scen99 = {
-    "packs/core/families/living-01-elf.lua", 21,
+    "packs/core/families/living-01-elf.lua", 24,
     "local rock = self:fire()",
     "local rock = nil",
     "The cast never fires, so no blow lands on the tower: EventKindExactly(play_sound, 1) reads 0 and the tower stays at 130 hp.",
@@ -10428,7 +10428,7 @@ inline constexpr FactPredicate kFacts_elf_bot_rocks_blocked_fixes_scen99[] = {
     // negative_assertion: no rock flies on either value: the pad is the tower.
 };
 inline constexpr Mutation kMut_elf_bot_rocks_blocked_fixes_scen99 = {
-    "packs/core/families/living-01-elf.lua", 117,
+    "packs/core/families/living-01-elf.lua", 123,
     "return G.pad_clear(self) and volley(self, v[1], v[2])",
     "return volley(self, v[1], v[2])",
     "Drops the pad test, so the gate says yes to the faced tower and the cast's fire() lands a blow on it before refusing COULD NOT FIRE: EventKindExactly(play_sound, 0) reads 1 and the tower ends at 120 hp."

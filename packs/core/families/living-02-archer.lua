@@ -95,7 +95,7 @@ end
 -- in its flight, or one the archer does not face (one faced foe is what an
 -- ordinary arrow hits). BARRAGE's three arrows fly along one line, so they
 -- want the archer's foe alive, faced and in flight. EXPLODING BOLT wants the
--- same, and neither the archer nor an ally of its own in the blast.
+-- same, no archer or ally of its own in the blast, and the fire arrow's pad clear.
 local function fixed(self)
   local slot = self:current_special()
   if slot == 1 then
@@ -118,7 +118,7 @@ local function fixed(self)
   if slot == 2 then
     return true
   end
-  return G.blast_clear(self, f, G.blast_reach(self.level), true)
+  return G.blast_clear(self, f, G.blast_reach(self.level), true) and G.pad_clear(self, WEAPON_FIRE_ARROW)
 end
 
 og.family("living", {

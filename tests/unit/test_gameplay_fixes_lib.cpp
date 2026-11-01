@@ -24,6 +24,7 @@
 #include "unit_pack_store_guard.h"
 
 #include <openglad/core/constants.h>
+#include <openglad/core/pixdefs.h>
 #include <openglad/gameplay/families/family_registries.h>
 #include <openglad/gameplay/families/family_registry.h>
 #include <openglad/gameplay/game_world.h>
@@ -33,6 +34,8 @@
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
 
+#include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -305,5 +308,73 @@ TEST_F(GameplayFixesLua, gf_nearest_charmable_takes_the_nearest_eligible_foe)
     hero->set_user(-1);
     EXPECT_EQ(14, pick("gf.nearest_charmable(self, foes, nil)"))
         << "the same foe off its seat is the nearest";
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+// gf.pad_blocked_by_terrain (fix AC): with the setting on, true when the
+// pad fire() would place the caster's weapon on is refused by the grid (a
+// wall face; the map edge), false on grass and false on a foe's body (that
+// pad takes fire()'s melee blow: fixes H and I keep its one paid swing).
+// With the setting off it is false whatever the pad, and the probe is not
+// asked. It draws nothing either way.
+//
+// RED (planted): M.pad_blocked_by_terrain returning false: the wall case
+// answers 30 with the setting on.
+TEST_F(GameplayFixesLua, gf_pad_blocked_by_terrain_is_the_grid_half_only_with_the_fixes)
+{
+    og::test::ScopedHookFailureGuard guard;
+    TestGameWorld tw;
+    GameWorld& w = tw.world();
+    w.resize_grid(64, 64);
+    std::fill_n(w.grid.data.get(), static_cast<std::size_t>(w.grid.w) * w.grid.h,
+                static_cast<std::uint8_t>(PIX_GRASS1));
+    walker* self = w.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, self);
+    self->set_team_num(1);
+    self->setxy(192, 192);
+    self->set_lastx(1.0f);  // the pad starts at x 192 + width + 1, in cell 13
+    self->set_lasty(0.0f);
+    ASSERT_EQ(13, (self->xpos() + self->sizex() + 1) / GRID_SIZE);
+    ASSERT_EQ(walker::PadAnswer::Clear, self->fire_pad_answer()) << "precondition: grass";
+
+    const std::string prelude = "local gf = og.use('core:gameplay_fixes')\n";
+    const auto answer = [&](short fixes) {
+        w.gameplay_fixes = fixes;
+        w.rng_.state_ = 4242u;
+        const auto handled = run(prelude,
+                                 "    self.level = 30\n"
+                                 "    if gf.pad_blocked_by_terrain(self) then\n"
+                                 "      self.level = 31\n"
+                                 "    end",
+                                 self);
+        EXPECT_TRUE(handled.has_value()) << last_error();
+        EXPECT_EQ(4242u, w.rng_.state_) << "the question draws nothing, setting " << fixes;
+        return static_cast<int>(self->stats()->level());
+    };
+
+    EXPECT_EQ(30, answer(0)) << "grass, the classic game";
+    EXPECT_EQ(30, answer(1)) << "grass, the setting on";
+
+    w.grid.data[static_cast<std::size_t>(13 + w.grid.w * 12)] = static_cast<std::uint8_t>(PIX_H_WALL1);
+    ASSERT_EQ(walker::PadAnswer::Terrain, self->fire_pad_answer()) << "precondition: the wall";
+    EXPECT_EQ(30, answer(0)) << "a wall, the classic game";
+    EXPECT_EQ(31, answer(1)) << "a wall, the setting on";
+    w.grid.data[static_cast<std::size_t>(13 + w.grid.w * 12)] = static_cast<std::uint8_t>(PIX_GRASS1);
+
+    walker* foe = w.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, foe);
+    foe->set_team_num(2);
+    foe->setxy(static_cast<short>(self->xpos() + self->sizex() + 1), self->ypos());
+    ASSERT_EQ(walker::PadAnswer::Body, self->fire_pad_answer()) << "precondition: a foe's body";
+    EXPECT_EQ(30, answer(0)) << "a body, the classic game";
+    EXPECT_EQ(30, answer(1)) << "a body, the setting on: the paid blow stands";
+    foe->setxy(600, 600);
+
+    self->setxy(192, 2);  // heading UP, the pad above the map's top edge
+    self->set_lastx(0.0f);
+    self->set_lasty(-1.0f);
+    ASSERT_EQ(walker::PadAnswer::Terrain, self->fire_pad_answer()) << "precondition: the map edge";
+    EXPECT_EQ(30, answer(0)) << "the map edge, the classic game";
+    EXPECT_EQ(31, answer(1)) << "the map edge, the setting on";
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }

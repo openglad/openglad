@@ -19,8 +19,12 @@
 #include "bot_gate_fixture.h"
 
 #include <openglad/core/constants.h>
+#include <openglad/gameplay/families/family_registry.h>
+#include <openglad/gameplay/families/family_string_ids.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/living.h>
+#include <openglad/gameplay/script/family_hooks.h>
+#include <openglad/gameplay/special_result.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
 
@@ -654,6 +658,62 @@ TEST_F(GameplayFixesBots, archer_exploding_bolt_wants_a_foe_past_its_own_blast_w
     EXPECT_FALSE(gate(archer, 3, 1)) << "a 170 px gap is past it";
 }
 
+// EXPLODING BOLT swaps the fire arrow in for its one fire()
+// (living-02-archer.lua, exploding_shot), and the fire arrow (9 by 9) is
+// wider than the archer's own arrow (7 by 7): the gate asks the pad with
+// the fire arrow's family, the weapon the cast fires. The archer faces UP
+// (the spawn heading) from (192, 184); a wall row at grid (12, 10), y 160 ..
+// 175: the arrow's pad (196, 176) lies wholly in row 11 and is clear, the
+// fire arrow's (195, 174) reaches into row 10 and is not. The foe is faced,
+// in flight and past the archer's own blast.
+//
+// RED (the gate asks G.pad_clear(self), the archer's own arrow): the arrow's
+// pad is clear and the gate says yes with the setting on; the cast then
+// refuses COULD NOT FIRE.
+TEST_F(GameplayFixesBots, archer_exploding_bolt_asks_the_fire_arrows_own_pad)
+{
+    living* archer = settle(body(add(FAMILY_ARCHER, 1, 192, 184, 7, 300.0f), 16, 16));
+    living* foe = settle(body(add(FAMILY_TOWER1, 2, 188, 70, 1), 25, 29));  // an 85 px gap above
+    ASSERT_TRUE(archer && foe);
+    const int fire_arrow = og::families::resolve_family_string_id(Order::Weapon, "core:fire_arrow");
+    ASSERT_GE(fire_arrow, 0);
+
+    EXPECT_TRUE(gate(archer, 3, 0)) << "the classic answer: a foe within 130";
+    EXPECT_TRUE(gate(archer, 3, 1)) << "open grass: faced, in flight, past the blast, the pad clear";
+
+    wall(world(), 12, 10);
+    ASSERT_EQ(walker::PadAnswer::Clear, archer->fire_pad_answer())
+        << "precondition: the archer's own arrow would fly";
+    ASSERT_EQ(walker::PadAnswer::Terrain, archer->fire_pad_answer(fire_arrow))
+        << "precondition: the fire arrow's wider pad reaches the wall";
+    EXPECT_TRUE(gate(archer, 3, 0)) << "the classic answer";
+    EXPECT_FALSE(gate(archer, 3, 1)) << "the fire arrow's pad is on the wall";
+
+    // A tree crown in the same cell: the fire arrow does not walk the
+    // forest, so the crown is terrain for it as the wall is.
+    world().grid.data[static_cast<std::size_t>(12 + world().grid.w * 10)] =
+        static_cast<std::uint8_t>(PIX_TREE_T1);
+    ASSERT_EQ(walker::PadAnswer::Terrain, archer->fire_pad_answer(fire_arrow))
+        << "precondition: a tree crown under the fire arrow's pad";
+    EXPECT_TRUE(gate(archer, 3, 0)) << "the classic answer";
+    EXPECT_FALSE(gate(archer, 3, 1)) << "a tree crown under the fire arrow's pad";
+
+    // What the gate spares the bot: the cast itself refuses.
+    world().gameplay_fixes = 1;
+    archer->set_current_special(3);
+    const auto cast = og::script::hooks::do_special(get_family_descriptor(FAMILY_ARCHER), archer);
+    ASSERT_TRUE(cast.has_value());
+    EXPECT_FALSE(cast->succeeded());
+    EXPECT_EQ("COULD NOT FIRE", cast->reason());
+
+    // The same cast with the wall gone fires its arrow.
+    world().grid.data[static_cast<std::size_t>(12 + world().grid.w * 10)] =
+        static_cast<std::uint8_t>(PIX_GRASS1);
+    const auto open = og::script::hooks::do_special(get_family_descriptor(FAMILY_ARCHER), archer);
+    ASSERT_TRUE(open.has_value());
+    EXPECT_TRUE(open->succeeded()) << open->reason();
+}
+
 // ---------------------------------------------------------------------------
 // The barbarian
 // ---------------------------------------------------------------------------
@@ -721,4 +781,35 @@ TEST_F(GameplayFixesBots, barbarian_exploding_boulder_wants_a_cluster_with_no_al
     second->setxy(220, 175);
     EXPECT_TRUE(gate(barbarian, 2, 0)) << "the classic answer";
     EXPECT_FALSE(gate(barbarian, 2, 1)) << "the barbarian would stand in its own blast";
+}
+
+// HURL BOULDER and EXPLODING BOULDER both fire() the hammer the boulder is
+// made from (living-16-barbarian.lua, do_special): with a wall under the
+// hammer's pad fire() makes nothing and the throw refuses COULD NOT FIRE.
+// With the setting on the gate asks the pad; the classic gate says yes. The
+// level-4 barbarian faces RIGHT from (192, 192) (its boulder rolls 64 px):
+// the pad starts at x 209, inside grid cell (13, 12); the foe stands 40 px
+// past the barbarian with a second foe 20 px from it, both past that cell.
+//
+// RED (the gate's pad term removed): gate(barbarian, 1, 1) and
+// gate(barbarian, 2, 1) are true with the wall under the pad.
+TEST_F(GameplayFixesBots, barbarian_boulder_refuses_a_pad_on_a_wall)
+{
+    living* barbarian = settle(body(add(FAMILY_BARBARIAN, 1, 192, 192, 4, 200.0f), 16, 16));
+    living* foe = settle(body(add(FAMILY_SOLDIER, 2, 248, 192, 1), 16, 16));  // a 40 px gap east
+    living* beside = settle(body(add(FAMILY_SOLDIER, 2, 248, 212, 1), 16, 16));  // 20 px from it
+    ASSERT_TRUE(barbarian && foe && beside);
+    barbarian->set_lastx(1.0f);
+    barbarian->set_lasty(0.0f);
+
+    EXPECT_TRUE(gate(barbarian, 1, 1)) << "open grass: HURL BOULDER, faced, in flight";
+    EXPECT_TRUE(gate(barbarian, 2, 1)) << "open grass: EXPLODING BOULDER, two foes in the blast";
+
+    wall(world(), 13, 12);
+    ASSERT_EQ(walker::PadAnswer::Terrain, barbarian->fire_pad_answer())
+        << "precondition: the wall is under the hammer's pad";
+    for (const int slot : {1, 2}) {
+        EXPECT_TRUE(gate(barbarian, slot, 0)) << "the classic answer: always, slot " << slot;
+        EXPECT_FALSE(gate(barbarian, slot, 1)) << "a wall under the hammer's pad, slot " << slot;
+    }
 }
