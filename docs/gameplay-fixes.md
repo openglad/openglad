@@ -234,7 +234,7 @@ Fixes X to AD, in play:
   for a weapon that cannot cross the forest (the druid's bolt; the elf's
   rock crosses it). Water is never terrain here: every weapon crosses it.
   A body on the pad keeps H's and I's paid blow (question 1 of the
-  [rulings](#rulings-2026-11-xx)). A bot never meets the new refusal,
+  [rulings](#rulings-2026-11-01)). A bot never meets the new refusal,
   because its gate asks the pad first (fixes V and AA).
 - **AD.** A tent or a bones pile owns the troops it makes, and every
   question of whose side a walker is on climbs its owner chain to the
@@ -1347,17 +1347,19 @@ stream, this once: Westlands 5's floor went 6 to 5, the Tower's floor 1 floor
 (`tests/unit/test_westlands_calibration.cpp`,
 `tests/unit/test_tower_calibration.cpp`), and the asserting runs pass.
 
-**After fixes X to AD (<date>).** The four suites were measured again on
-the shipped default with fixes X to AD in, on the same three seeds;
-"before" is the "after" column of the tables above.
+**After fixes X to AD (2026-11-01).** The four suites were measured again on
+the shipped default with fixes X to AD in, on the same three seeds, twice:
+with the fixes as first built, and again after fix Y's amendment (ruling 4).
+"Before" is the "after" column of the tables above; "now" is the game with
+fix Y amended.
 
 What the fixes change in a battle. X takes the far and stale shoves out,
 and with them a draw each and a stolen order; Y stops the crew and the
 enemy eating a potion or a meal one pixel beside their path and swinging
 at a body they graze that they are not fighting; a melee-only bot still
-bumps its own foe (the first form of Y, measured 2026-11-01, took a third
-of the orc, ghost and slime swings and a fifth of their damage, and the
-crews came out a little ahead of the classic: Westlands 323 vs 317
+bumps its own foe (the first form of Y, the middle column of the tables
+below, took a third of the orc, ghost and slime swings and a fifth of
+their damage, and the crews came out a little ahead of the classic: Westlands 323 vs 317
 survivors over 75 battles, Long Season 348 vs 328); Z leaves an ally's
 orders alone when a CHARGE meets it; AA spends fewer druid, barbarian,
 mage and archer rolls on casts that refuse; AB makes a struck bot short of
@@ -1368,14 +1370,123 @@ survivors either way. With New Specials on, #411 also reaches the
 campaigns: a tent's or bones' troop that strikes an elemental is the foe
 its IMMOLATE burns double.
 
-<measured: the Westlands, Long Season and Tower tables, before and after>
+**Westlands** (survivors at tick 600, seeds 42 1337 2025, the shipped default)
 
-**Imaginations** (level 1, crew 1): <measured>.
+| level | crew | before X to AD | after X to AD as first built | now (fix Y amended) |
+|---|---|---|---|---|
+| 1 | 1 | 8 8 8 | 8 8 8 | 8 8 8 |
+| 2 | 2 | 8 8 8 | 8 8 8 | 8 8 8 |
+| 3 | 2 | 8 8 6 | 6 6 7 | 6 6 7 |
+| 4 | 3 | 7 7 8 | 8 7 8 | 8 7 8 |
+| 5 | 3 | 5 7 5 | 7 8 6 | 7 8 2 |
+| 6 | 4 | 7 5 4 | 3 8 7 | 3 8 7 |
+| 7 | 4 | 0 0 0 | 0 0 0 | 0 0 0 |
+| 8 | 5 | 2 6 4 | 2 5 4 | 2 5 2 |
+| 9 | 6 | 2 1 0 | 7 2 2 | 7 2 2 |
+| 10 | 5 | 0 0 0 | 0 0 0 | 0 0 0 |
+| 11 | 6 | 4 1 6 | 3 6 3 | 1 4 5 |
+| 12 | 6 | 0 0 0 | 0 0 0 | 0 0 0 |
+| 13 | 6 | 1 1 2 | 0 0 0 | 0 0 0 |
+| 14 | 7 | 0 0 0 | 0 0 0 | 0 0 0 |
+| 15 | 7 | 3 4 1 | 4 4 3 | 3 5 3 |
+| 16 | 8 | 2 3 3 | 6 1 4 | 4 2 4 |
+| 17 | 8 | 8 7 8 | 6 4 6 | 4 5 7 |
+| 19 | 6 | 5 4 6 | 6 6 4 | 6 6 5 |
+| 20 | 7 | 3 0 2 | 0 2 3 | 1 4 2 |
+| 21 | 7 | 8 6 7 | 8 8 8 | 7 7 8 |
+| 22 | 8 | 0 0 0 | 2 0 1 | 1 0 1 |
+| 23 | 8 | 8 7 6 | 7 4 7 | 5 7 6 |
+| 24 | 8 | 5 7 4 | 5 6 2 | 5 2 2 |
+| 25 | 9 | 8 8 6 | 7 6 6 | 6 7 5 |
+| 26 | 9 | 8 8 8 | 8 8 8 | 8 8 8 |
+| sum | | 318 | 323 | 309 |
 
-<measured: the lines out of band on the asserting runs, the fix each was
-bisected to, the twenty-seed or hundred-seed means where a line moved,
-and any level eased with its dated note; a Westlands line under its floor
-goes to the maintainer>
+**Long Season**
+
+| level | crew | before X to AD | after X to AD as first built | now (fix Y amended) |
+|---|---|---|---|---|
+| 1 | 1 | 8 8 8 | 8 8 8 | 8 8 8 |
+| 2 | 1 | 7 6 7 | 6 6 8 | 6 6 8 |
+| 3 | 2 | 8 8 8 | 8 8 7 | 8 8 8 |
+| 4 | 2 | 1 1 2 | 3 0 3 | 1 5 3 |
+| 5 | 3 | 8 5 5 | 8 6 7 | 8 6 7 |
+| 6 | 3 | 5 7 5 | 6 4 7 | 6 4 7 |
+| 7 | 4 | 8 7 8 | 8 8 8 | 8 8 8 |
+| 8 | 4 | 6 8 7 | 8 7 6 | 8 7 6 |
+| 9 | 5 | 8 8 8 | 8 8 8 | 8 8 8 |
+| 10 | 5 | 1 7 6 | 5 6 7 | 5 7 7 |
+| 11 | 5 | 5 8 6 | 8 7 7 | 8 7 6 |
+| 12 | 6 | 6 6 7 | 6 7 5 | 5 7 5 |
+| 13 | 6 | 4 4 6 | 7 6 5 | 5 6 5 |
+| 14 | 7 | 8 8 8 | 8 8 8 | 8 8 8 |
+| 15 | 7 | 8 8 8 | 8 8 8 | 8 8 8 |
+| 16 | 7 | 4 7 5 | 8 4 8 | 6 7 8 |
+| 17 | 8 | 0 0 0 | 0 0 0 | 0 0 0 |
+| 18 | 8 | 0 0 0 | 0 0 0 | 0 0 0 |
+| 19 | 8 | 8 8 8 | 8 8 8 | 8 8 8 |
+| sum | | 329 | 348 | 350 |
+
+**Tower** (floor, crew)
+
+| floor | crew | before X to AD | after X to AD as first built | now (fix Y amended) |
+|---|---|---|---|---|
+| 1 | 1 | 8 7 5 | 7 8 7 | 7 8 7 |
+| 5 | 2 | 2 0 8 | 0 5 7 | 0 5 7 |
+| 10 | 3 | 0 0 0 | 0 0 0 | 0 0 0 |
+| 15 | 4 | 0 8 0 | 0 3 0 | 0 3 0 |
+| 20 | 6 | 0 0 0 | 0 0 0 | 0 0 0 |
+| sum | | 38 | 37 | 37 |
+
+**Imaginations** (level 1, crew 1): `7 6 7` before, `7 5 8` after fixes X to AD
+as first built, `7 5 8` now. Levels 2 and 3 read `8 8 8` and `8 8 7` before
+and `8 8 8` on both after; the three levels sum 67, 68 and 68.
+
+The asserting runs (seed 42 against each level's floor and ceiling; every
+seed on the Tower): Long Season, Imaginations and the Tower are in band in
+both later columns, so no level was eased. Westlands has two lines out of
+band on seed 42, in both later columns: level 9 reads 7 against its band
+of 0 to 3, and level 11 reads 1 now (3 as first built) against its band
+of 4 to 8. Taking the fixes out one at a time on the first build: level
+9's 7 needs X, Y and AB together (without X it reads 1, without Y 1,
+without AB 3; adding them in order, it reads 2, 1, 3, 3 and, with AB, 7);
+level 11's 3 came with AA on top of X, Y, Z and AB (6 before AA; without
+X it reads 6, without Y 5, without AA 6). The amendment leaves level 9
+exactly as it was on every one of a hundred seeds (the level has almost no
+melee-only bot near the crew, so the kept bump never fires there; what
+moved it is the rest of Y, which the amendment keeps), and it moved level
+11's seed 42 from 3 to 1, the stream. A hundred seeds per line (42, 1337,
+2025 and 1000 to 1096; sd over the hundred, SE = sd / 10):
+
+| line | build | mean | sd | SE | out of band |
+|---|---|---|---|---|---|
+| Westlands 9 (band 0 to 3) | before X to AD | 1.29 | 1.46 | 0.15 | 5 of 100 above 3 |
+| Westlands 9 | after X to AD as first built | 0.83 | 1.39 | 0.14 | 5 of 100 above 3 |
+| Westlands 9 | now | 0.83 | 1.39 | 0.14 | 5 of 100 above 3 |
+| Westlands 11 (band 4 to 8) | before X to AD | 4.77 | 1.86 | 0.19 | 24 of 100 below 4 |
+| Westlands 11 | after X to AD as first built | 4.51 | 1.73 | 0.17 | 30 of 100 below 4 |
+| Westlands 11 | now | 4.66 | 1.76 | 0.18 | 25 of 100 below 4 |
+
+Level 9's 7 is the crew doing better than its ceiling on one seed, and
+on average it does not: seed 42's 7 is a two-in-a-hundred draw, the game
+before the fixes breaks the ceiling on 5 seeds of the hundred too, and the
+mean fell from 1.29 to 0.83 (about two combined standard errors) on a war
+level whose floor is 0, the same on the first build and now. Level 11's
+mean is within one standard error of both earlier columns, and the game
+before the fixes already misses the floor on 24 seeds of the hundred, its
+own seed 42 reading exactly the floor: the stream, not a level that got
+hotter. The survivors over the 75 Westlands battles read 318, 323 and 309;
+paired battle by battle, now is 9 under the game before the fixes (SE 15)
+and 14 under the first build (SE 9). What the amendment did to the sums:
+Westlands 323 to 309, Long Season 348 to 350, Imaginations 68 to 68, the
+Tower 37 to 37. It gives back the classic bump a melee-only bot made, the
+part of Y that put the crews a little ahead of the game without Y (317 and
+328); Westlands lands 9 under the game before the fixes, inside one
+standard error, and the two lines measured over a hundred seeds read no
+hotter than they did on the first build. No level was eased, and no floor,
+ceiling or seed changed in any calibration test in this work (the four
+calibration test files are untouched since PR #404). The two Westlands
+lines go to the maintainer with the three seeds and the fixes that moved
+them (ruling 16 of the [rulings](#rulings-2026-11-01)).
 
 **The other change outside the setting that moves a calibration line.**
 Besides the four eased Long Season levels, and the kits' bot rules
@@ -1510,7 +1621,7 @@ their front was blocked, and a question must not attack. Fix AC keeps H's
 and I's paid blow and refuses before paying only where no blow could land
 (a wall face, the map edge).
 
-## Rulings (2026-11-xx)
+## Rulings (2026-11-01)
 
 Fixes X to AD, and the other changes of the same work (#408, #411, #413 to
 #421, #423), asked seventeen questions, #422 among them. Each line below is
