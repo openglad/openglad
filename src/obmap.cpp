@@ -25,9 +25,6 @@ bool debug_draw_obmap = false;
 // draw, no treasure eaten, no door opened, no collide()); see query_list in
 // obmap.h. Every caller but obmap::query_list(..., true) is loud.
 short ob_pass_check(short x, short y, walker  *ob, const std::list<walker*>& pile, bool quiet = false);
-short collide(short x,  short y,  short xsize,  short ysize,
-              short x2, short y2, short xsize2, short ysize2);
-
 //#define XRES GRID_SIZE
 //#define YRES GRID_SIZE
 #define OBRES 32 //GRID_SIZE
@@ -420,4 +417,16 @@ short collide(short x,  short y,  short xsize,  short ysize,
 		return 0;
 
 	return 1;
+}
+
+// Gameplay Fixes X and Z's box test (see obmap.h; port of the current
+// game's 94a4ae95)
+bool step_meets(walker *mover, float dx, float dy, walker *body)
+{
+	const float offs[3][2] = { {dx, dy}, {ceilf(dx), ceilf(dy)}, {floorf(dx), floorf(dy)} };
+	for (int i = 0; i < 3; i++)
+		if (collide((short) (mover->xpos + offs[i][0]), (short) (mover->ypos + offs[i][1]),
+		            mover->sizex, mover->sizey, body->xpos, body->ypos, body->sizex, body->sizey))
+			return true;
+	return false;
 }

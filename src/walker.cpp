@@ -900,45 +900,40 @@ void walker::set_weapon_heading(walker *weapon)
 	waver = (signed char) ((weapon->stepsize)/2); // Absolute amount ..
 	waver = (signed char) (random(waver+1) - waver/2);
 
+	short pad_x = 0, pad_y = 0;
+	weapon_pad(weapon, &pad_x, &pad_y);  // fire()'s pad: one table (port of the current game's 55138099)
+	weapon->setxy(pad_x, pad_y);
 	switch(facing(lastx, lasty))  // these are from the 'owner'
 	{
 		case FACE_RIGHT:
-			weapon->setxy(xpos+sizex+1,ypos+(sizey - weapon->sizey)/2);
 			weapon->lastx = weapon->stepsize;
 			weapon->lasty = waver;
 			break;
 		case FACE_LEFT:
-			weapon->setxy(xpos - weapon->sizex-1, ypos+(sizey-weapon->sizey)/2);
 			weapon->lastx = -weapon->stepsize;
 			weapon->lasty = waver;
 			break;
 		case FACE_DOWN:
-			weapon->setxy(xpos+(sizex-weapon->sizex)/2, ypos+sizey+1);
 			weapon->lasty = weapon->stepsize;
 			weapon->lastx = waver;
 			break;
 		case FACE_UP:
-			weapon->setxy(xpos+(sizex-weapon->sizex)/2, ypos - weapon->sizey-1);
 			weapon->lasty = - weapon->stepsize;
 			weapon->lastx = waver;
 			break;
 		case FACE_UP_RIGHT:
-			weapon->setxy(xpos+sizex+1, ypos-weapon->sizey-1);
 			weapon->lastx = weapon->stepsize + waver;
 			weapon->lasty = -weapon->stepsize + waver;
 			break;
 		case FACE_UP_LEFT:
-			weapon->setxy(xpos - weapon->sizex-1, ypos-weapon->sizey-1);
 			weapon->lastx = -weapon->stepsize - waver;
 			weapon->lasty = -weapon->stepsize + waver;
 			break;
 		case FACE_DOWN_RIGHT:
-			weapon->setxy(xpos+sizex+1, ypos + sizey+1);
 			weapon->lasty = weapon->stepsize + waver;
 			weapon->lastx = weapon->stepsize - waver;
 			break;
 		case FACE_DOWN_LEFT:
-			weapon->setxy(xpos - weapon->sizex-1, ypos+sizey+1);
 			weapon->lasty = weapon->stepsize + waver;
 			weapon->lastx = -weapon->stepsize + waver;
 			break;
@@ -5387,9 +5382,9 @@ Sint32 walker::is_friendly_to_team(unsigned char team)
 }
 
 // The pad table of fire(): where the weapon it creates is placed, one pixel
-// outside this walker's box on the side facing(lastx, lasty) names. fire()
-// and fire_pad_clear() both read it, so the pad has one rule. (port of the
-// current game's 15053f4a)
+// outside this walker's box on the side facing(lastx, lasty) names. fire(),
+// set_weapon_heading() and fire_pad_answer() read it: one rule. (port of the
+// current game's 15053f4a and 55138099)
 void walker::weapon_pad(walker *weapon, short *px, short *py)
 {
 	Sint32 x = weapon->xpos;
@@ -5434,28 +5429,41 @@ void walker::weapon_pad(walker *weapon, short *px, short *py)
 	*py = (short) y;
 }
 
-// The pad fire() would place this walker's current weapon on, probed quietly:
-// the same spot (weapon_pad), the same weapon rules (own-team bodies pass, an
-// enemy body, door, tree or generator blocks), no walker made, no draw (an
-// enemy weapon in flight passes a quiet probe; an arrow slit is passable at
-// the pad's distance), nothing eaten or opened. A bot gate's question.
-// (port of the current game's 15053f4a)
-bool walker::fire_pad_clear()
+// The pad fire() would place a weapon on, probed quietly: the same spot
+// (weapon_pad), the same weapon rules (own-team bodies pass; an enemy living
+// or a generator blocks; an enemy door, tree or weapon in flight passes a
+// quiet weapon probe, the weapon-vs-weapon arm coming before the door arm),
+// no walker made, no draw (an arrow slit is passable at the pad's distance),
+// nothing eaten or opened. The grid half is asked first, then the bodies, as
+// the loud query_passable asks them. A bot gate's question. (port of the
+// current game's 15053f4a and 6ae833d7)
+short walker::fire_pad_answer(short weapon)
 {
 	if (query_order() != ORDER_LIVING || !myscreen)
-		return false;
+		return 3;
+	short fam = (weapon >= 0) ? weapon : (short) current_weapon;
 	loader *ld = myscreen->level_data.myloader;
-	if (!ld || !ld->graphics[PIX(ORDER_WEAPON, current_weapon)].valid())
-		return false;
-	walker probe(ld->graphics[PIX(ORDER_WEAPON, current_weapon)], true);
-	ld->set_walker(&probe, ORDER_WEAPON, current_weapon);
+	if (!ld || !ld->graphics[PIX(ORDER_WEAPON, fam)].valid())
+		return 3;
+	walker probe(ld->graphics[PIX(ORDER_WEAPON, fam)], true);
+	ld->set_walker(&probe, ORDER_WEAPON, fam);
 	probe.owner = this;          // the chain create_weapon gives it: is_friendly reads it
 	probe.team_num = team_num;
 	short px = 0, py = 0;
 	weapon_pad(&probe, &px, &py);
 	probe.xpos = px;             // the plain fields: never setxy, which
 	probe.ypos = py;             // would file the probe in the obmap
-	return myscreen->query_passable(px, py, &probe, true);
+	if (!myscreen->query_grid_passable(px, py, &probe, true))
+		return 1;
+	if (!myscreen->query_object_passable(px, py, &probe, true))
+		return 2;
+	return 0;
+}
+
+// fire_pad_answer's yes: the weapon would fly.
+bool walker::fire_pad_clear(short weapon)
+{
+	return fire_pad_answer(weapon) == 0;
 }
 
 // Gameplay Fixes T: where a raise's body stands (port of the current game's

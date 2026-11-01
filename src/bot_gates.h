@@ -335,13 +335,6 @@ static inline walker *bg_owned_phantom(walker *self)
 	return NULL;
 }
 
-static inline walker *bg_corpse_near(walker *self, Sint32 range)
-{
-	walker *blood = myscreen->find_nearest_blood(self);
-	if (!blood) return NULL;
-	return (self->distance_to_ob(blood) < range) ? blood : NULL;
-}
-
 static inline walker *bg_corpse_underfoot(walker *self, Sint32 reach_sq)
 {
 	walker *blood = myscreen->find_nearest_blood(self);
@@ -420,14 +413,18 @@ static inline walker *bg_rush_strikes(walker *self, int steps)
 	return NULL;
 }
 
-// port of the current game's 9953b30b (Gameplay Fixes V): the pad fire()
-// would place the caster's weapon on is clear: the weapon would fly instead
-// of meeting a wall, a door, the map edge or a foe's body there
+// port of the current game's 9953b30b (Gameplay Fixes V) and 6ae833d7: the
+// pad fire() would place the caster's weapon on is clear: the weapon would
+// fly instead of meeting a wall face, the map edge, a tree crown (for a
+// weapon that does not walk the forest) or a foe's body there
 // (walker::fire_pad_clear, the same spot and the same weapon rules, asked
-// quietly). A body of the caster's own team passes, as the weapon passes it.
-static inline bool bg_pad_clear(walker *self)
+// quietly). Every weapon crosses water. A body of the caster's own team
+// passes, as the weapon passes it; a door, a grown tree or a weapon in
+// flight on the pad is passed by the weapon probe too. weapon -1 probes the
+// current weapon; a cast that fires another one passes its family.
+static inline bool bg_pad_clear(walker *self, short weapon = -1)
 {
-	return self->fire_pad_clear();
+	return self->fire_pad_clear(weapon);
 }
 
 // The old game has no priced alternates: a Shift costs the slot's price.

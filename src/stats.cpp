@@ -790,7 +790,7 @@ void statistics::set_bit_flags(Sint32 someflag, short newvalue)
 }
 
 // Returns whether our right is blocked
-bool statistics::right_blocked()
+bool statistics::right_blocked(bool quiet)
 {
 	float xdelta, ydelta;
 	float controlx = controller->xpos, controly = controller->ypos;
@@ -837,11 +837,11 @@ bool statistics::right_blocked()
 			break;
 	}
 
-	return !myscreen->query_passable(controlx + xdelta, controly + ydelta, controller);
+	return !myscreen->query_passable(controlx + xdelta, controly + ydelta, controller, quiet);
 }
 
 // Returns whether our right-forward is blocked
-bool statistics::right_forward_blocked()
+bool statistics::right_forward_blocked(bool quiet)
 {
 	float controlx = controller->xpos, controly = controller->ypos;
 	float mystep = controller->stepsize;
@@ -850,22 +850,22 @@ bool statistics::right_forward_blocked()
 	switch (controller->curdir)
 	{
 		case FACE_UP:
-			return !myscreen->query_passable(controlx+mystep, controly-mystep, controller);
+			return !myscreen->query_passable(controlx+mystep, controly-mystep, controller, quiet);
 		case FACE_UP_RIGHT:
-			return !myscreen->query_passable(controlx+mystep, controly, controller);
+			return !myscreen->query_passable(controlx+mystep, controly, controller, quiet);
 
 		case FACE_RIGHT:
-			return !myscreen->query_passable(controlx+mystep, controly+mystep, controller);
+			return !myscreen->query_passable(controlx+mystep, controly+mystep, controller, quiet);
 		case FACE_DOWN_RIGHT:
-			return !myscreen->query_passable(controlx, controly+mystep, controller);
+			return !myscreen->query_passable(controlx, controly+mystep, controller, quiet);
 		case FACE_DOWN:
-			return !myscreen->query_passable(controlx-mystep, controly+mystep, controller);
+			return !myscreen->query_passable(controlx-mystep, controly+mystep, controller, quiet);
 		case FACE_DOWN_LEFT:
-			return !myscreen->query_passable(controlx-mystep, controly, controller);
+			return !myscreen->query_passable(controlx-mystep, controly, controller, quiet);
 		case FACE_LEFT:
-			return !myscreen->query_passable(controlx-mystep, controly-mystep, controller);
+			return !myscreen->query_passable(controlx-mystep, controly-mystep, controller, quiet);
 		case FACE_UP_LEFT:
-			return !myscreen->query_passable(controlx, controly-mystep, controller);
+			return !myscreen->query_passable(controlx, controly-mystep, controller, quiet);
 		default:
 			break;
 
@@ -874,7 +874,7 @@ bool statistics::right_forward_blocked()
 }
 
 // Returns whether our right-back is blocked
-bool statistics::right_back_blocked()
+bool statistics::right_back_blocked(bool quiet)
 {
 	float controlx = controller->xpos, controly = controller->ypos;
 	float mystep = controller->stepsize;
@@ -883,23 +883,23 @@ bool statistics::right_back_blocked()
 	switch (controller->curdir)
 	{
 		case FACE_UP:
-			return !myscreen->query_passable(controlx+mystep, controly+mystep, controller);
+			return !myscreen->query_passable(controlx+mystep, controly+mystep, controller, quiet);
 		case FACE_UP_RIGHT:
-			return !myscreen->query_passable(controlx, controly+mystep, controller);
+			return !myscreen->query_passable(controlx, controly+mystep, controller, quiet);
 
 		case FACE_RIGHT:
-			return !myscreen->query_passable(controlx-mystep, controly+mystep, controller);
+			return !myscreen->query_passable(controlx-mystep, controly+mystep, controller, quiet);
 		case FACE_DOWN_RIGHT:
-			return !myscreen->query_passable(controlx-mystep, controly, controller);
+			return !myscreen->query_passable(controlx-mystep, controly, controller, quiet);
 		case FACE_DOWN:
-			return !myscreen->query_passable(controlx-mystep, controly-mystep, controller);
+			return !myscreen->query_passable(controlx-mystep, controly-mystep, controller, quiet);
 		case FACE_DOWN_LEFT:
 			return !myscreen->query_passable(controlx, controly-mystep,
-			                                controller);
+			                                controller, quiet);
 		case FACE_LEFT:
-			return !myscreen->query_passable(controlx+mystep, controly-mystep, controller);
+			return !myscreen->query_passable(controlx+mystep, controly-mystep, controller, quiet);
 		case FACE_UP_LEFT:
-			return !myscreen->query_passable(controlx+mystep, controly, controller);
+			return !myscreen->query_passable(controlx+mystep, controly, controller, quiet);
 		default:
 			break;
 	}

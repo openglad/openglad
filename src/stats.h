@@ -70,9 +70,11 @@ class statistics
 		short query_bit_flags(Sint32 myvalue);
         void clear_bit_flags();
 		void set_bit_flags(Sint32 someflag, short newvalue); // sets a single flag
-		bool right_blocked(); // is our right blocked?
-		bool right_forward_blocked();
-		bool right_back_blocked();
+		// quiet: the right-hand walk's probes asked without a side effect
+		// (Gameplay Fixes Y; port of the current game's af9ff6cd)
+		bool right_blocked(bool quiet = false); // is our right blocked?
+		bool right_forward_blocked(bool quiet = false);
+		bool right_back_blocked(bool quiet = false);
 		// quiet: the same question asked without a draw or a side effect
 		// (port of the current game's 15053f4a)
 		bool forward_blocked(bool quiet = false); // are we blocked in front?

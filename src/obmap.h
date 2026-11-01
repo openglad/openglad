@@ -55,4 +55,18 @@ class obmap
 		short unhash(short y);
 };
 
+// The obmap's box test (obmap.cpp): two boxes meet when they overlap by more
+// than the one-pixel shrink the passability probe applies.
+short collide(short x, short y, short xsize, short ysize, short x2, short y2, short xsize2, short ysize2);
+
+// Does `mover`'s box, moved by (dx, dy) from where it stands NOW, meet
+// `body`'s box, by the obmap's own collide() rule? The three boxes
+// living::walk probes are tried (the exact step, its ceil and its floor),
+// narrowed to short as obmap::query_list narrows them. Pure integer
+// arithmetic: no draw, nothing written. Gameplay Fixes X and Z: a walk
+// shoves and a rush strikes only a body the step itself ran into, never the
+// stale collide_ob a grid-stopped step or a side probe left behind. (port of
+// the current game's 94a4ae95)
+bool step_meets(walker *mover, float dx, float dy, walker *body);
+
 #endif

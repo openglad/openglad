@@ -54,14 +54,26 @@ class walker : public pixieN
 		walker  * fire();
 		// Where fire() puts the weapon it creates: the top-left corner of
 		// `weapon`'s box one pixel outside this walker, on the side
-		// facing(lastx, lasty) names. The one table fire() reads.
+		// facing(lastx, lasty) names. The one table fire() and
+		// set_weapon_heading() read.
 		void weapon_pad(walker *weapon, short *px, short *py);
-		// True when fire() would launch this living's current weapon instead
-		// of meeting something on its pad (a wall, an enemy body, a door, a
-		// tree, a generator): the pad probed quietly with a detached weapon,
-		// no walker made, no draw, nothing eaten or opened. A bot gate's
-		// question. (port of the current game's 15053f4a)
-		bool fire_pad_clear();
+		// What the pad fire() would place a weapon on holds, probed quietly
+		// with a detached weapon: 0 clear (the weapon would fly); 1 terrain
+		// (the grid refuses it: a wall, the map edge, a tree's crown or trunk
+		// for a weapon that neither flies nor walks the forest; every weapon
+		// crosses water); 2 a body (an enemy living or a generator, which
+		// fire() would strike in melee); 3 no probe (a non-living caster, or a
+		// weapon the loader cannot make). Own-team bodies pass, as the weapon
+		// passes them; an enemy door, tree or weapon in flight is passed by a
+		// weapon probe too (obmap.cpp's weapon-vs-weapon arm) and answers
+		// clear, though the loud fire() blocks on it 4 times in 10. weapon -1
+		// probes current_weapon; a cast that swaps a weapon in for its fire()
+		// (the archer's EXPLODING BOLT) passes its family. No walker made, no
+		// draw, nothing eaten or opened. A bot gate's question. (port of the
+		// current game's 15053f4a and 6ae833d7)
+		short fire_pad_answer(short weapon = -1);
+		// fire_pad_answer(weapon) == 0
+		bool fire_pad_clear(short weapon = -1);
 		// Gameplay Fixes T (port of the current game's d80a7faa, its
 		// packs/core/lib/corpses.lua raise_spot): the stain a raise takes and
 		// the spot its body stands on. The stains find_nearest_blood would
