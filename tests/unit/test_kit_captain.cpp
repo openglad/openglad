@@ -46,6 +46,7 @@
 
 #include "../test_family_hook_dispatch.h"
 #include "../test_game_world_fixture.h"
+#include "../test_sim_random_scope.h"
 
 #include <openglad/core/constants.h>
 #include <openglad/core/family_presentation.h>
@@ -1953,25 +1954,6 @@ TEST(KitCaptain, fresh_captain_has_howl_and_eat_corpse_from_level_1)
     EXPECT_STREQ("NONE", og::sim::alternate_name(fd, 2, 1));
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
-
-namespace {
-
-// The first world-RNG state whose next draws are exactly `want` under the
-// matching bounds (the bot's rolls, pinned without a spy).
-std::uint32_t state_where_draws_are(const std::vector<std::uint32_t>& bounds,
-                                    const std::vector<std::uint32_t>& want)
-{
-    for (std::uint32_t seed = 1;; ++seed) {
-        og::sim::SimRandom probe(seed);
-        bool match = true;
-        for (std::size_t i = 0; i < bounds.size() && match; ++i)
-            match = probe.next(bounds[i]) == want[i];
-        if (match)
-            return seed;
-    }
-}
-
-}  // namespace
 
 // A level-1 bot captain rolls EAT CORPSE as well as HOWL: its slot roll
 // draws next(2), because slot 2 opens at level 1. The state is pinned so the

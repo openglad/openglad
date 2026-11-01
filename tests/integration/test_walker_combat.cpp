@@ -1040,7 +1040,7 @@ TEST(WalkerCombat, walker_fire_check_all_dirs)
 
     // Pin the SIM stream before anything is built. The probe below and the
     // fire_check under test each draw the knife's waver inside
-    // walker::set_weapon_heading (src/gameplay/walker.cpp:709) from
+    // walker::set_weapon_heading (src/gameplay/walker.cpp:696) from
     // GameWorld::rng_. Left unpinned those are two ADJACENT LCG outputs, the
     // asserted shot leaves the probe's line whenever
     // waver_ray - waver_probe <= -2 (3 of the 16 possible pairs), and the foe

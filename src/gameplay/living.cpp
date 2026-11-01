@@ -525,7 +525,7 @@ bool living::walk(float x, float y)
 			{
 				if (collide_ob()->query_order() == Order::Living && is_friendly(collide_ob()) )
 				{
-					shove(collide_ob(), x, y);
+					TRACE("shove", "walk dist=%d reach=%d", static_cast<int>(distance_to_ob(collide_ob())), static_cast<int>(static_cast<float>(sizex() + sizey() + collide_ob()->sizex() + collide_ob()->sizey()) + std::fabs(x) + std::fabs(y)) + 4); shove(collide_ob(), x, y);
 				}
 			}  // end hit some object
 			if (stats_->query_bit_flags(BIT_ANIMATE) )  // animate regardless..

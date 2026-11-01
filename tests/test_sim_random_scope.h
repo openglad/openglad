@@ -3,6 +3,10 @@
 #include <openglad/core/irandom.h>
 #include <openglad/gameplay/game_world.h>
 
+#include <cstddef>
+#include <cstdint>
+#include <vector>
+
 // The ONE way a test scripts the simulation RNG.
 //
 // OpenGlad runs two independent random streams and a test has to say which one
@@ -47,3 +51,21 @@ private:
     IRandom* rng_;
     IRandom** previous_;
 };
+
+// The first sim-RNG state whose next draws are exactly `want` under the
+// matching `bounds`, for the other idiom above: set `world.rng_.state_` to it
+// and the bot's rolls are pinned without a spy. A bound of 1 matches any draw
+// and still steps the generator (the LCG's step does not depend on the bound).
+inline std::uint32_t state_where_draws_are(const std::vector<std::uint32_t>& bounds,
+                                           const std::vector<std::uint32_t>& want)
+{
+    for (std::uint32_t seed = 1;; ++seed)
+    {
+        og::sim::SimRandom probe(seed);
+        bool match = true;
+        for (std::size_t i = 0; i < bounds.size() && match; ++i)
+            match = probe.next(bounds[i]) == want[i];
+        if (match)
+            return seed;
+    }
+}

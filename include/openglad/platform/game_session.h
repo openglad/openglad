@@ -152,6 +152,8 @@ private:
         bool withdraw);
     friend bool local_transport_shadow_testing_server_pending_exit_prompt(
         GameSession& session) noexcept;
+    friend bool local_transport_shadow_testing_set_runtime_networked(
+        GameSession& session, bool networked) noexcept;
 #endif
 
     Config cfg_;
