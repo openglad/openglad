@@ -645,8 +645,12 @@ The parity goldens are captures from the old game (branch
   `157e2619` (AB), `a5900f72` (AC) and `00887f9c` (AD), with the table
   mirror `16f7503e` after them (the exact facts the recaptures broke, worked
   out again, and four setting-on rows on a seed or spawns of their own:
-  see below).
-  `16f7503e` is the commit the goldens are captured from: 351 of 351 goldens
+  see below). The amendment to Y: the table mirror `e4780cfc` (five pins
+  re-pointed by line and the struck orc's hp in the elemental row worked out
+  again; no golden moved), then `7ff1654a` (a melee-only bot whose own foe
+  stands where a right-hand probe looked still bumps it; three goldens with
+  the setting on moved).
+  `7ff1654a` is the commit the goldens are captured from: 351 of 351 goldens
   `cmp` equal to a full capture there.
   `tests/parity/golden/DRIFT_LEDGER.md` records each one.
 
@@ -672,7 +676,7 @@ The rows with the setting on, by fix:
 | V | `soldier_bot_charge_door_fixes_scen99`, `elf_bot_rocks_blocked_fixes_scen99` (two new arenas, each with its setting-off twin) |
 | W | `soldier_bot_refused_roll_acts_fixes_scen99` (a new arena, with its setting-off twin) |
 | X | `orc_stale_shove_fixes_scen99` (a new arena, with its setting-off twin) |
-| Y | `orc_right_walk_potion_fixes_scen99` (a new arena, with its setting-off twin), and the 13 recaptured rows below |
+| Y | `orc_right_walk_potion_fixes_scen99` (a new arena, with its setting-off twin), and the 13 recaptured rows below; the amendment (a melee-only bot bumps its own foe) recaptured `orc_right_walk_potion_fixes_scen99`, `mage_bot_freeze_engaged_fixes_scen99` and `elemental_struck_short_pool_fixes_scen99` again |
 | Z | `soldier_charge_ally_fixes_scen99` (a new arena, with its setting-off twin) |
 | AA | `druid_bot_faerie_pad_body_fixes_scen99`, `barbarian_bot_boulder_pad_body_fixes_scen99`, `mage_bot_wave_pad_body_fixes_scen99`, `druid_bot_tree_pad_body_fixes_scen99` (four new arenas, each with its setting-off twin) |
 | AB | `elemental_struck_short_pool_fixes_scen99` (a new arena, with its setting-off twin), and the 10 recaptured rows below |
@@ -738,11 +742,12 @@ its thirteen and AB its ten (and the new rows the ledger lists), and nine
 of Y's thirteen move again under AB in the old game (a target tower in
 each is struck short of its slot-1 price), where the current game's
 bisection saw them move once. The amendment to Y (a melee-only bot bumps
-its own foe), measured in the current game, moved one of them again,
+its own foe, ported in `7ff1654a`) moved one of them again,
 `mage_bot_freeze_engaged`, and two newer rows whose orcs fight at blows,
 `orc_right_walk_potion` and `elemental_struck_short_pool` (each
 `_fixes_scen99`; in the last the struck orc now ends at 67 hp, not 96).
-The other twelve of Y's thirteen are byte-equal before and after: eleven
+The old game's capture after the port moves exactly these three, and each
+`cmp`s equal to the current game's dump. The other twelve of Y's thirteen are byte-equal before and after: eleven
 have no melee-only bot, and in `thief_bot_bomb_ally` no bump of its orc
 changes a byte. After the last port every moved capture
 `cmp`s equal to the current game's dump but one:
