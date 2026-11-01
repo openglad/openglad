@@ -920,6 +920,7 @@ bool body_spot_clear(GameWorld& world, Order order, std::int32_t family,
         return false;
     if (!probe_ground_clear(world, probe, x, y, floor))
         return false;
+    // Reads the grid a second time: the same answer, and no draw.
     if (!respawn_spot_clear(world, &probe, x, y, floor))
         return false;
     return !world.dormant_occupies_spot(&probe);
