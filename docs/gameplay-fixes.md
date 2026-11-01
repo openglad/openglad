@@ -1705,8 +1705,8 @@ taken, and what the game does today.
     plus a third and at least 3: `SPECIAL BUSY` 3 (measured 0), `NOT ENOUGH MP`
     3 (measured 0; it was capped at 100, "stay rare"), one pooled cap for the
     druid, archer, barbarian and mage `COULD NOT FIRE` 3 (measured 0), the
-    elves' cap measured again (11 after the amendment, so 15; it was 7) and
-    `PATH BLOCKED`'s (measured 0, so 3), and far shoves 0. A floor the new
+    elves' cap 15 (measured 11 after the amendment; it was 7), `PATH BLOCKED`
+    3 (measured 0), and far shoves 0. A floor the new
     gates breach (DRUID SUMMON FAERIE at least 2, BARBARIAN HURL BOULDER at
     least 1) is a balance question, never a lowered floor. Default: so.
 11. **#419: the shape.** The pad question takes the weapon family the cast
