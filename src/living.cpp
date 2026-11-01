@@ -674,7 +674,10 @@ short living::check_special()
 					return 0;
 				if (current_special == 2)
 					return 1;
-				return bg_blast_clear(this, foe, bg_blast_reach(stats->level), true);
+				// port of the current game's 34417c86 (Gameplay Fixes AA): and the
+				// fire arrow's own pad is clear, or the cast refuses COULD NOT FIRE
+				return bg_blast_clear(this, foe, bg_blast_reach(stats->level), true)
+				       && bg_pad_clear(this, FAMILY_FIRE_ARROW);
 			}
 			// fall through: with the setting off the archer shares the classic gate
 		case FAMILY_FIREELEMENTAL:     // Check for foe in range x
@@ -882,7 +885,9 @@ short living::check_special()
 				if (current_special == 4)
 				{
 					walker *target = bg_nearest_living_foe(this, 110);
-					return (target && bg_faces(this, target));
+					// port of the current game's 34417c86 (Gameplay Fixes AA): and
+					// the fireball's pad is clear
+					return (target && bg_faces(this, target) && bg_pad_clear(this));
 				}
 				// HEARTBURST: slot 5 and every other slot
 				short in_reach = 0;
@@ -1130,11 +1135,13 @@ short living::check_special()
 				if (current_special == 1)
 				{
 					walker *f = bg_nearest_living_foe(this, 60);
-					return (f && bg_faces(this, f) && !bg_at_blows(this, f));
+					// port of the current game's 34417c86 (Gameplay Fixes AA): and
+					// the bolt's pad is clear (both casts grow from a fired bolt)
+					return (f && bg_faces(this, f) && !bg_at_blows(this, f) && bg_pad_clear(this));
 				}
 				if (current_special == 2)
 					return (bg_owned(this, ORDER_LIVING, FAMILY_FAERIE, NULL) == 0
-					        && bg_foes_within(this, 1, 130));
+					        && bg_foes_within(this, 1, 130) && bg_pad_clear(this));
 				if (current_special == 3)
 					return 0;
 				walker *ally = bg_ally_at_blows(this, 60, NULL);
@@ -1159,8 +1166,10 @@ short living::check_special()
 				if (!myscreen->gameplay_fixes)
 					return 1;
 				// Both throws refuse a busy barbarian (the cast's guard)
-				// (port of the current game's 44a685f0, Gameplay Fixes W)
-				if (busy > 0)
+				// (port of the current game's 44a685f0, Gameplay Fixes W) and a
+				// blocked hammer pad (port of the current game's 34417c86,
+				// Gameplay Fixes AA)
+				if (busy > 0 || !bg_pad_clear(this))
 					return 0;
 				int step;
 				if (myguy)
