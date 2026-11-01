@@ -3960,6 +3960,12 @@ short walker::special()
 			}
 			break;
 		case FAMILY_ELF:
+			// port of the current game's 77dce018 (Gameplay Fixes AC): a volley whose
+			// pad the grid refuses (a wall face, the map edge) would swing at nothing
+			// and still pay fire()'s one swing; it refuses before the refund and the
+			// swing. A body on the pad keeps fixes H and I's paid blow.
+			if (myscreen->gameplay_fixes && fire_pad_answer() == 1)
+				return 0;
 			switch(current_special)
 			{
 				case 1:  // some rocks (normal)
@@ -4051,6 +4057,8 @@ short walker::special()
 				case 1: // plant tree
 					if (busy > 0)
 						return 0;
+					if (myscreen->gameplay_fixes && fire_pad_answer() == 1)
+						return 0; // port of the current game's 77dce018 (Gameplay Fixes AC): a bolt at terrain refuses before it pays
 					stats->magicpoints += stats->weapon_cost;
 					newob = fire();
 					if (!newob)
@@ -4070,6 +4078,8 @@ short walker::special()
 				case 2:  // summon faerie
 					if (busy > 0)
 						return 0;
+					if (myscreen->gameplay_fixes && fire_pad_answer() == 1)
+						return 0; // port of the current game's 77dce018 (Gameplay Fixes AC): a bolt at terrain refuses before it pays
 					stats->magicpoints += stats->weapon_cost;
 					newob = fire();
 					if (!newob)
