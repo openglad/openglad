@@ -845,8 +845,9 @@ TEST(FamilyBehaviors, check_special_default_families)
 
 // The same families with New Specials on. The druid, the barbarian and the
 // golem have no new kit. With Gameplay Fixes off they keep the classic
-// answer, always true; with it on (the shipped default) the golem has no
-// special to gate and still answers true, while the druid's GROW TREE and
+// answer, always true; with it on (the shipped default) the golem, which has
+// no special at all, answers false (Gameplay Fixes AB, below), while the
+// druid's GROW TREE and
 // the barbarian's HURL BOULDER have payoff gates (living-13-druid.lua,
 // living-16-barbarian.lua): a faced living foe, inside 60 px and not at
 // blows for the tree, inside the boulder's short flight (16 px of gap at
@@ -887,8 +888,18 @@ TEST(FamilyBehaviors, check_special_default_families_with_new_specials_on)
         ASSERT_TRUE(golem != nullptr);
         golem->stats()->set_magicpoints(1000);
         golem->set_current_special(1);
-        EXPECT_TRUE(golem->check_special())
-            << "golem, fixes on: no special and no gate, the default answer";
+        // Gameplay Fixes AB (#409): a yes the bot cannot pay for is a no.
+        // A slot with nothing in it keeps the loader's price, 5000 MP in
+        // both games (kSpecialCostDisabled; the old game's gloader.cpp
+        // default), so with 1000 MP the golem cannot pay for slot 1 and the
+        // answer is no. The act path never asks a bot that cannot pay
+        // slot 1 (living.cpp's "full of magic?" guard), so only the hit
+        // path hears it: there the classic yes bought a draw and a cast
+        // refused NOT ENOUGH MP, and the no buys neither.
+        ASSERT_EQ(kSpecialCostDisabled, golem->stats()->special_cost(1))
+            << "a golem's empty slot 1 keeps the disabled price";
+        EXPECT_FALSE(golem->check_special())
+            << "golem, fixes on: nothing to cast is nothing the bot can pay for";
     }
     {
         world.delete_objects();
