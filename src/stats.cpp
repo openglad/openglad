@@ -710,7 +710,15 @@ void statistics::hit_response(walker  *who)
 			break;
 		default:  // attack our attacker
 			// Chance of doing special ..
-			if (controller->check_special() && !random(3) )
+			// port of the current game's f82a49db (Gameplay Fixes AB): a yes the
+			// bot cannot pay for is a no. check_special folds an unaffordable slot
+			// onto slot 1 without asking slot 1's own price, and this path has no
+			// "full of magic?" guard like the act's, so the random(3) below bought
+			// a cast refused for want of magic. Off, the classic order stands.
+			if (controller->check_special()
+			        && (!myscreen->gameplay_fixes
+			            || magicpoints >= special_cost[(int)controller->current_special])
+			        && !random(3) )
 				controller->special();
 			if (controller->myguy) // are we a player's character?
 				threshold = (5 * max_hitpoints)/10; // then flee at 50%
