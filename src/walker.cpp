@@ -1994,7 +1994,7 @@ short walker::attack(walker  *target)
 
 	// who's the top on our chain (ie, weapon->summoned->mage)
 	headguy = this;
-	while (headguy->owner && (headguy->owner != headguy) )
+	while (headguy->owner && (headguy->owner != headguy) && !headguy->charmed_head() )
 		headguy = headguy->owner;
 
 	// Score and kill semantics follow the actual attacker's team. The legacy
@@ -5300,12 +5300,12 @@ Sint32 walker::is_friendly(walker *target)
 	// who's the top on our chains (ie, weapon->summoned->mage)
 	// First us ..
 	headguy = this;
-	while (headguy->owner && (headguy->owner->dead == 0) && (headguy->owner != headguy) )
+	while (headguy->owner && (headguy->owner->dead == 0) && (headguy->owner != headguy) && !headguy->charmed_head() )
 		headguy = headguy->owner;
 	headus = headguy;
 	// Now our target ..
 	headguy = target;
-	while (headguy->owner && (headguy->owner->dead == 0) && (headguy->owner != headguy) )
+	while (headguy->owner && (headguy->owner->dead == 0) && (headguy->owner != headguy) && !headguy->charmed_head() )
 		headguy = headguy->owner;
 	headtarget = headguy;
 
@@ -5364,7 +5364,7 @@ Sint32 walker::is_friendly_to_team(unsigned char team)
 	// who's the top on our chains (ie, weapon->summoned->mage)
 	// First us ..
 	headguy = this;
-	while (headguy->owner && (headguy->owner->dead == 0) && (headguy->owner != headguy) )
+	while (headguy->owner && (headguy->owner->dead == 0) && (headguy->owner != headguy) && !headguy->charmed_head() )
 		headguy = headguy->owner;
 	headus = headguy;
 	
@@ -5474,6 +5474,18 @@ short walker::fire_pad_answer(short weapon)
 bool walker::fire_pad_clear(short weapon)
 {
 	return fire_pad_answer(weapon) == 0;
+}
+
+// port of the current game's 55596283 (Gameplay Fixes AD): with the setting
+// on a charmed walker heads its own chain for the charm's length. charm_left
+// is the charm's clock: CHARM and MIND CONTROL set it with the colour, the
+// act counts it down and puts the team back when it runs out. Its owner (a
+// tent, a bones pile or the caster that summoned it) stays on the old side,
+// and the alliance follows the walker's own colour until the charm ends.
+// Off, the climbs pass through it as always.
+bool walker::charmed_head()
+{
+	return myscreen->gameplay_fixes && charm_left > 0;
 }
 
 // Gameplay Fixes T: where a raise's body stands (port of the current game's

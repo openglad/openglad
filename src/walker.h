@@ -74,6 +74,11 @@ class walker : public pixieN
 		short fire_pad_answer(short weapon = -1);
 		// fire_pad_answer(weapon) == 0
 		bool fire_pad_clear(short weapon = -1);
+		// Gameplay Fixes AD (port of the current game's 55596283): true while
+		// this walker's charm runs (charm_left > 0) with the setting on. Every
+		// owner-chain climb stops here: a charmed troop or summon heads its
+		// own chain and fights for the colour it wears.
+		bool charmed_head();
 		// Gameplay Fixes T (port of the current game's d80a7faa, its
 		// packs/core/lib/corpses.lua raise_spot): the stain a raise takes and
 		// the spot its body stands on. The stains find_nearest_blood would
