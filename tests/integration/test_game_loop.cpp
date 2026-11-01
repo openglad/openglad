@@ -11156,6 +11156,18 @@ TEST(GameLoop, midgame_add_player_resume_play_repause_keeps_transport_alive)
     // only the refused-roll change (living.cpp) reads 14; undoing it and
     // both V gate probes reads 18 again. Both RNG seeds, the seat check, the
     // lead-team check and the re-teamed check are unchanged.
+    // Re-pinned 2026-11-01 for Gameplay Fixes X to AD (#403 to #412), with
+    // the setting on: walks shove and rushes strike only a body their step
+    // met, the right-hand walk probes quietly, a struck bot holds a cast it
+    // cannot pay, four more bot gates ask the weapon's pad, a refused volley
+    // at a wall spends nothing and a charmed troop fights for its charmer.
+    // More walkers stand at the end and the census reads twelve: three
+    // isolated runs of this build agree on 12. Undoing only the quiet
+    // right-hand walk (Y) reads 10, and so does undoing only the held unpaid
+    // yes (AB); undoing only X, Z, AA, AC or AD reads 12; undoing all seven
+    // reads 11 again, and putting them back in order reads 11 (X), 10 (Y),
+    // 10 (Z), 12 (AB) and 12 (AA, AC, AD). Both RNG seeds, the seat check,
+    // the lead-team check and the re-teamed check are unchanged.
     {
         screen* const authority =
             og::runtime::local_transport_shadow_testing_server_screen(session);
@@ -11180,7 +11192,7 @@ TEST(GameLoop, midgame_add_player_resume_play_repause_keeps_transport_alive)
             << "the lead team is the two heroes and nothing else";
         EXPECT_EQ(reteamed, living[empty_team])
             << "every walker this case re-teamed must still be on the board";
-        EXPECT_EQ(11, total_living)
+        EXPECT_EQ(12, total_living)
             << "the pinned stream no longer produces the fight this case was "
                "written around";
     }
