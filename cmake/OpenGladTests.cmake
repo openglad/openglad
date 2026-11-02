@@ -17,6 +17,7 @@ set(ALL_INTEGRATION_TEST_SOURCES
     ${CMAKE_SOURCE_DIR}/tests/integration/test_util.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_stats.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_game_loop.cpp
+    ${CMAKE_SOURCE_DIR}/tests/integration/test_sem_traces.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_special_scenes.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_level_play.cpp
     ${CMAKE_SOURCE_DIR}/tests/integration/test_timed_effects_mirror.cpp
@@ -514,6 +515,7 @@ og_add_test_group(og_test_game_core FILES
     test_gloader_funcs.cpp
     test_campaign_sprite_uaf.cpp
     test_game_loop.cpp
+    test_sem_traces.cpp
     test_timed_effects_mirror.cpp
     test_game_launch.cpp
     test_go_no_team.cpp

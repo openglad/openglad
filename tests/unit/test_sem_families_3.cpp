@@ -998,3 +998,88 @@ TEST_F(SemBarbarian, an_exploding_boulder_gate_with_no_boulder_target_refuses)
     b->setxy(215, 131);
     EXPECT_TRUE(gate(barb, 2, 1)) << "control: the same cluster inside the flight";
 }
+
+// ===========================================================================
+// The archmage (packs/core/families/living-17-archmage.lua)
+// ===========================================================================
+
+namespace {
+
+class SemArchmage : public SemFamilies3
+{
+protected:
+    // One shot east from a bot archmage with `mp` magic; the shot's damage
+    // and the magic left, the draws pinned to one constant.
+    struct Shot {
+        bool fired = false;
+        float damage = 0.0f;
+        float mp = 0.0f;
+    };
+
+    Shot shoot(float mp)
+    {
+        fresh_world();
+        ConstRandom rng(0);
+        ScopedSimRandom scoped(&rng);
+        Shot s;
+        living* a = add(FAMILY_ARCHMAGE, 0, 200, 100, 4, mp);
+        if (a == nullptr)
+            return s;
+        a->stats()->set_max_magicpoints(mp + 1.0f);
+        a->stats()->set_magicpoints(mp);
+        face(a, 1, 0, FACE_RIGHT);
+        walker* shot = a->fire();
+        if (shot == nullptr || shot->dead())
+            return s;
+        s.fired = true;
+        s.damage = shot->damage();
+        s.mp = a->stats()->magicpoints();
+        return s;
+    }
+
+    float weapon_cost()
+    {
+        fresh_world();
+        living* a = add(FAMILY_ARCHMAGE, 0, 200, 100, 4, 0.0f);
+        return a == nullptr ? -1.0f : a->stats()->weapon_cost();
+    }
+};
+
+}  // namespace
+
+// living-17-archmage.lua:35 on_fire_weapon, the cap arm. Every shot drains a
+// twentieth of the magic left after its cost into its damage, capped at
+// SHOT_DRAIN_CAP (50): the cap binds above 1000 magic after the cost. This
+// is the current game's documented rule (docs/runaway-effects-design.md
+// section 2.12, "Archmage weapon drain/damage bonus | min(magicpoints / 20,
+// 50)"), not a classic one: the old game drains magicpoints / 20 uncapped.
+//
+// RED (`og.min(extra, C.SHOT_DRAIN_CAP)` -> `og.min(extra, C.SHOT_DRAIN_CAP
+// * 100)` at living-17-archmage.lua:35): Expected equality of these values:
+// base.damage + 50.0f Which is: 120 capped.damage Which is: 121.
+TEST_F(SemArchmage, an_archmage_shot_drains_at_most_fifty_magic_into_its_damage)
+{
+    const float cost = weapon_cost();
+    ASSERT_GT(cost, 0.0f) << "staging: the archmage's shot has a price";
+    const Shot base = shoot(cost);
+    ASSERT_TRUE(base.fired) << "staging: the control shot launches";
+    EXPECT_FLOAT_EQ(0.0f, base.mp) << "control: no spare magic, nothing drained";
+
+    // Exactly 1000 after the cost: 1000 / 20 = 50, the cap and the drain agree.
+    const Shot edge = shoot(cost + 1000.0f);
+    ASSERT_TRUE(edge.fired);
+    EXPECT_FLOAT_EQ(base.damage + 50.0f, edge.damage) << "1000 spare: drain 50";
+    EXPECT_FLOAT_EQ(950.0f, edge.mp) << "1000 spare: drain 50";
+
+    // 1020 after the cost: 1020 / 20 = 51, held to 50.
+    const Shot capped = shoot(cost + 1020.0f);
+    ASSERT_TRUE(capped.fired);
+    EXPECT_FLOAT_EQ(base.damage + 50.0f, capped.damage) << "1020 spare: capped at 50, not 51";
+    EXPECT_FLOAT_EQ(970.0f, capped.mp) << "1020 spare: capped at 50, not 51";
+
+    // 3000 after the cost: 150 uncapped, held to 50.
+    const Shot rich = shoot(cost + 3000.0f);
+    ASSERT_TRUE(rich.fired);
+    EXPECT_FLOAT_EQ(base.damage + 50.0f, rich.damage) << "3000 spare: capped at 50, not 150";
+    EXPECT_FLOAT_EQ(2950.0f, rich.mp) << "3000 spare: capped at 50, not 150";
+}
