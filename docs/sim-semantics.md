@@ -39,6 +39,7 @@ and of every class-pack Lua file under `packs/`.
 | the check | `scripts/semantics/check_manifest.py` |
 | the in-scope file list and the branch grep | `SCOPE_CPP`, `SCOPE_LUA_GLOB`, `CPP_BRANCH` and `LUA_BRANCH` at the top of the check, the only place they are spelled |
 | the generator | `scripts/semantics/gen_manifest.py`, which built the first manifest from the review's files |
+| the tests the review added | `tests/unit/test_sem_<area>_<n>.cpp`, one unit binary each (`og_unit_sem_<area>_<n>`), registered in `cmake/semantics/<area>.cmake`; the areas are walker, ai, world, script, families and libs |
 | ctest | `semantics_manifest_check` (the check on the tree) and `semantics_manifest_selftest` |
 
 A manifest file is `{"path": ..., "rules": [...], "other": [...]}`, rows in
@@ -94,7 +95,7 @@ line order. A rule row:
   that depends on a setting is asserted under each value.
 - `status` is `asserted`, `partial` (some arms are), `executed-only` (tests
   reach the line and assert none of its arms), `none` (nothing reaches it),
-  `deferred` (with `"issue": 451`) or `unreachable` (with a `note`). A
+  `deferred` (with `"issue": "#451"`) or `unreachable` (with a `note`). A
   deferred row needs its issue; with one it may cite no test, which is how a
   classic-path row whose current game differs from the old game is
   recorded: no test pins the difference, the issue tracks it. A deferred row
