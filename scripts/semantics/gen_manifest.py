@@ -37,6 +37,10 @@ literal source text, are kept as `condition`.
 Test citations are normalised from the review's free text:
     "tests/unit/x.cpp: TEST_F(Suite, name) (remark)"
         -> {"file": "tests/unit/x.cpp", "test": "Suite.name", "note": "remark"}
+    "tests/unit/x.cpp: Suite.name (remark)"
+        -> {"file": "tests/unit/x.cpp", "test": "Suite.name", "note": "remark"}
+    "tests/unit/x.cpp: Suite.a; tests/unit/y.cpp: Suite.b"
+        -> one entry per "; "-separated citation
     "parity: some_row_scen99 / Fact(...)"
         -> {"parity": "some_row_scen99", "fact": "Fact(...)"}
 A TEST() with no file of its own takes the last file named earlier in the
@@ -62,6 +66,10 @@ import check_manifest as cm  # noqa: E402  (the scope, the anchor rules, the wri
 
 TEST_RX = re.compile(r"\bTEST(?:_F|_P)?\s*\(\s*(\w+)\s*,\s*(\w+)\s*\)")
 FILE_RX = re.compile(r"\b(tests/[\w./-]+\.(?:cpp|cc|h))\b")
+# "<path>: Suite.name" with an optional remark after the name; the path is
+# optional only for the later pieces of a "; "-joined string.
+DOTTED_RX = re.compile(
+    r"^(?:(tests/[\w./-]+\.cpp)\s*:\s+)?([A-Z]\w*)\.([A-Za-z_]\w*)(?=\s|$)(.*)$", re.DOTALL)
 PARITY_ID_RX = re.compile(r"\b([A-Za-z]\w*_scen\d+)\b")
 NOT_A_CITATION_RX = re.compile(r"^\s*(GAP|NOT credited|gap|UNASSERTED|unasserted)\b")
 ANCHOR_MAX = 160
@@ -90,15 +98,27 @@ def closing_paren(text: str) -> int:
     return -1
 
 
+def dotted_citation(piece: str) -> tuple[str | None, str, str] | None:
+    """A `<path>: Suite.name [remark]` citation, as (file, test, remark).
+
+    The path may be absent only for a piece that follows a path-carrying
+    piece of the same string (the caller supplies the file then)."""
+    m = DOTTED_RX.match(piece)
+    if not m:
+        return None
+    return m.group(1), f"{m.group(2)}.{m.group(3)}", clean(m.group(4))
+
+
 def normalise_where(where: list[str]) -> tuple[list[dict], list[str]]:
     tests: list[dict] = []
     notes: list[str] = []
     last_file: str | None = None
-    for raw in where:
-        text = raw.strip()
+
+    def one(text: str) -> None:
+        nonlocal last_file
         if NOT_A_CITATION_RX.match(text):
             notes.append(text)
-            continue
+            return
         m = re.match(r"^\s*parity\s*:\s*(.*)$", text, re.DOTALL)
         if m:
             body = m.group(1)
@@ -106,21 +126,21 @@ def normalise_where(where: list[str]) -> tuple[list[dict], list[str]]:
             ids = list(dict.fromkeys(PARITY_ID_RX.findall(ids_part)))
             if not ids:
                 notes.append(text)
-                continue
+                return
             leftover = clean(PARITY_ID_RX.sub("", ids_part).replace(",", " ").replace("/", " "))
             for pid in ids:
                 entry: dict = {"parity": pid, "fact": fact.strip() if sep else ""}
                 tests.append(entry)
             if leftover:
                 tests[-1]["note"] = leftover
-            continue
+            return
         hits = list(TEST_RX.finditer(text))
         if not hits:
             files = FILE_RX.findall(text)
             if files:
                 last_file = files[-1]
             notes.append(text)
-            continue
+            return
         produced = 0
         for i, hit in enumerate(hits):
             files_before = FILE_RX.findall(text[: hit.start()])
@@ -142,6 +162,29 @@ def normalise_where(where: list[str]) -> tuple[list[dict], list[str]]:
             lead = clean(FILE_RX.sub("", text[: hits[0].start()]))
             if lead:
                 tests[-produced].setdefault("note", lead)
+
+    for raw in where:
+        text = raw.strip()
+        # "<path>: Suite.name [remark]", possibly several joined by "; ".
+        # Only a string with at least one such path-carrying piece is split,
+        # so any other string holding "; " in a remark stays whole.
+        pieces = [p.strip() for p in text.split("; ")]
+        if NOT_A_CITATION_RX.match(text) or not any(
+                (h := dotted_citation(p)) is not None and h[0] is not None for p in pieces):
+            one(text)
+            continue
+        for piece in pieces:
+            hit = dotted_citation(piece)
+            if hit is None:
+                one(piece)
+                continue
+            file, test, remark = hit
+            if file is not None:
+                last_file = file
+            entry = {"file": last_file, "test": test}
+            if remark:
+                entry["note"] = remark
+            tests.append(entry)
     return tests, notes
 
 
