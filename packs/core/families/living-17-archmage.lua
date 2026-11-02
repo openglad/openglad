@@ -28,6 +28,9 @@ local LIVING_ORC_CAPTAIN = assert(og.family_id("living", "core:orc_captain"))
 local TELEPORT_GATE_RANGE = 110
 local SUMMON_GATE_RANGE = 200
 
+-- Every weapon an archmage fires drains a twentieth of the MP it has left after the shot's cost,
+-- capped at SHOT_DRAIN_CAP (50, so the cap binds only above 1000 MP), and adds the drained amount
+-- to that shot's damage.
 local function on_fire_weapon(self, weapon)
   -- ArchMage gets 1/20th of 'extra' magic for more damage.
   -- The drain cap binds only above 1000 MP; /20 is one float division.
@@ -43,12 +46,20 @@ end
 -- Fires every tick per archmage: bonus viewing periodically based on level.
 local function on_act_living(self)
   local period
+  -- rule: An archmage's magical sight (view_all) grows by one every (40 - level) ticks of its own
+  --   act counter, every tick from level 40.
+  -- tests: FamilyBehaviors.archmage_on_act_low_level_periodic_gate
+  -- tests: SemArchmage.classic_view_all_grows_every_act_from_level_40_and_restarts_its_cadence_at_the_drawcycle_wrap
   if self.level >= 40 then
     period = 1
   else
     period = 40 - self.level
   end
   -- Keep C remainder semantics explicit for drawcycle.
+  -- rule: Part of the rule above that begins "An archmage's magical sight (view_all) grows by one
+  --   every ..."
+  -- tests: FamilyBehaviors.archmage_on_act_low_level_periodic_gate
+  -- tests: SemArchmage.classic_view_all_grows_every_act_from_level_40_and_restarts_its_cadence_at_the_drawcycle_wrap
   if og.mod(self:drawcycle(), period) == 0 then
     self:set_view_all(self:view_all() + 1)
   end
@@ -59,6 +70,11 @@ end
 -- With the Gameplay Fixes setting on, a bot's summon gate asks this instead
 -- of keeping the coin.
 local function summon_shift(self)
+  -- rule: Gameplay Fixes: a bot archmage picks SUMMON ELEMENTAL only when the pool left after the
+  --   slot-3 price still covers that price again (1000+ MP for the 500 slot); otherwise SUMMON
+  --   IMAGE.
+  -- tests: parity:archmage_hit_stale_shift_fixes_scen99
+  -- tests: GameplayFixesBots.archmage_summon_wants_a_foe_and_the_pool_for_an_elemental_with_the_setting_on
   if lc.spare_mp(self, 3) >= self:s_special_cost(3) then
     self:set_shifter_down(1)
   else
@@ -76,7 +92,13 @@ local function hit_response(self, foe)
   self.busy = 0 -- yes, this is a cheat
 
   local possible = {}
+  -- plumbing: builds the hit response's possible[] table over slots 0..(L+2)/3; rule row
+  --   living-17-archmage.lua:80
   for i = 0, (self.level + 2) // 3 do
+    -- rule: A struck archmage can only answer with a special its level unlocks ((L+2)/3 slots) and
+    --   its MP covers.
+    -- tests: PackLuaArchmage.a_struck_archmage_answers_with_chain_lightning
+    -- tests: SemArchmage.a_struck_archmage_never_answers_with_a_slot_its_level_locks_or_its_magic_cannot_pay
     if i < C.NUM_SPECIALS
         and self.magicpoints >= self:s_special_cost(i) then
       possible[i] = 1
@@ -84,6 +106,11 @@ local function hit_response(self, foe)
   end
 
   local threshold
+  -- rule: A struck hero archmage flees (teleports) below 60% health; a monster archmage is braver
+  --   and waits until 3/8.
+  -- tests: StatsHitResponseTeleport.an_archmage_struck_again_mid_teleport_casts_nothing
+  -- tests: GameplayFixesArchmageHit.a_struck_bot_below_the_threshold_still_teleports
+  -- tests: SemArchmage.a_struck_hero_archmage_flees_below_three_fifths_and_a_monster_only_below_three_eighths
   if self:has_guy() then
     -- Player characters flee at 60% health.
     -- max_hp is a C++ float: per-op rounding.
@@ -96,27 +123,63 @@ local function hit_response(self, foe)
 
   -- C++ &&-chain short-circuit preserved: rand(3) is drawn only when the
   -- hitpoint and possible[1] conditions already hold.
+  -- rule: A struck archmage under its flee threshold teleports away two times in three (rand(3)
+  --   drawn only when hurt and TELEPORT affordable); otherwise it turns on its attacker.
+  -- tests: FamilyBehaviors.archmage_hit_response_threshold_and_retarget_branches
+  -- tests: GameplayFixesArchmageHit.a_struck_bot_below_the_threshold_still_teleports
+  -- tests: StatsHitResponseTeleport.stats_hit_response_mage_and_archmage_teleport_branches
+  -- tests: GameplayFixesArchmageHit.a_struck_bot_bursts_once_and_never_summons
   if self.hp < threshold and possible[1]
       and og.rand(3) ~= 0 then
     self.current_special = 1
     self:set_shifter_down(0)
     self.busy = 0
+    -- rule: An archmage struck again while already mid-teleport casts nothing more (no second
+    --   teleport).
+    -- tests: StatsHitResponseTeleport.an_archmage_struck_again_mid_teleport_casts_nothing
     local _ = lc.mid_teleport(self) or self:special()  -- struck mid-teleport: no second cast
   else
+    -- rule: A struck archmage that is not already fighting its attacker takes the attacker as its
+    --   foe, and the attacker takes it back; its range memory resets.
+    -- tests: FamilyBehaviors.archmage_hit_response_threshold_and_retarget_branches
+    -- tests: PackLuaArchmage.a_struck_archmage_answers_with_chain_lightning
+    -- tests: SemArchmage.a_struck_archmage_already_fighting_its_attacker_keeps_its_range_memory
     if self:foe() ~= foe then
       self.foe = foe
       foe.foe = self
       self:s_set_current_distance(15000)
       self:s_set_last_distance(15000)
     end
+    -- rule: Gameplay Fixes: a struck bot archmage answers only with HEARTBURST or CHAIN LIGHTNING,
+    --   chosen by the slot-2 gate (coin drawn first as classic did), at most once; it never summons
+    --   from the hit response. A seat-driven archmage keeps the classic response.
+    -- tests: GameplayFixesArchmageHit.a_struck_bot_bursts_once_and_never_summons
+    -- tests: GameplayFixesArchmageHit.a_struck_bot_with_no_target_in_reach_casts_nothing
+    -- tests: GameplayFixesArchmageHit.a_seated_archmage_keeps_its_shift_key
+    -- tests: parity:archmage_bot_struck_fixes_scen99
+    -- tests: SemArchmage.a_struck_bot_archmage_that_cannot_pay_heartburst_answers_nothing_with_gameplay_fixes
     if gf.on() and not self:seat_driven() then
       -- Gameplay Fixes: a struck bot answers with HEARTBURST or CHAIN
       -- LIGHTNING by the slot-2 gate, once; SUMMON IMAGE only by its own
       -- gate on an act tick; never a second cast on a stale slot. The coin
       -- is the classic slot-2 coin, drawn here as the classic order drew it.
+      -- rule: Part of the rule above that begins "Gameplay Fixes: a struck bot archmage answers
+      --   only with ..."
+      -- tests: GameplayFixesArchmageHit.a_struck_bot_bursts_once_and_never_summons
+      -- tests: GameplayFixesArchmageHit.a_struck_bot_with_no_target_in_reach_casts_nothing
+      -- tests: GameplayFixesArchmageHit.a_seated_archmage_keeps_its_shift_key
+      -- tests: parity:archmage_bot_struck_fixes_scen99
+      -- tests: SemArchmage.a_struck_bot_archmage_that_cannot_pay_heartburst_answers_nothing_with_gameplay_fixes
       if possible[2] then
         self:set_shifter_down(og.rand(2))
         self.current_special = 2
+        -- rule: Part of the rule above that begins "Gameplay Fixes: a struck bot archmage answers
+        --   only with ..."
+        -- tests: GameplayFixesArchmageHit.a_struck_bot_bursts_once_and_never_summons
+        -- tests: GameplayFixesArchmageHit.a_struck_bot_with_no_target_in_reach_casts_nothing
+        -- tests: GameplayFixesArchmageHit.a_seated_archmage_keeps_its_shift_key
+        -- tests: parity:archmage_bot_struck_fixes_scen99
+        -- tests: SemArchmage.a_struck_bot_archmage_that_cannot_pay_heartburst_answers_nothing_with_gameplay_fixes
         if ai_burst_or_chain(self) then
           self:special()
         end
@@ -124,23 +187,67 @@ local function hit_response(self, foe)
       return
     end
     local _, foe_count = og.find_foes_in_range("ob", 200, self)
+    -- rule: Classic: a struck archmage with a foe within 200 px first tries SUMMON (slot 3) with
+    --   whatever Shift was left over (stale coin: image or elemental), and stops there if it
+    --   worked.
+    -- tests: GameplayFixesArchmageHit.a_struck_bot_with_no_target_in_reach_casts_nothing
+    -- tests: GameplayFixesArchmageHit.a_struck_bot_bursts_once_and_never_summons
+    -- tests: GameplayFixesArchmageHit.a_seated_archmage_keeps_its_shift_key
+    -- tests: GameplayFixesArchmageHit.a_struck_bot_below_the_threshold_still_teleports
+    -- tests: SemArchmage.classic_a_struck_archmage_summons_first_and_casts_slot_2_only_when_the_summon_fails
     if foe_count ~= 0 then
       -- can we summon illusion?
+      -- rule: Part of the rule above that begins "Classic: a struck archmage with a foe within 200
+      --   ..."
+      -- tests: GameplayFixesArchmageHit.a_struck_bot_with_no_target_in_reach_casts_nothing
+      -- tests: GameplayFixesArchmageHit.a_struck_bot_bursts_once_and_never_summons
+      -- tests: GameplayFixesArchmageHit.a_seated_archmage_keeps_its_shift_key
+      -- tests: GameplayFixesArchmageHit.a_struck_bot_below_the_threshold_still_teleports
+      -- tests: SemArchmage.classic_a_struck_archmage_summons_first_and_casts_slot_2_only_when_the_summon_fails
       if possible[3] then
         self.current_special = 3
+        -- rule: Part of the rule above that begins "Classic: a struck archmage with a foe within
+        --   200 ..."
+        -- tests: GameplayFixesArchmageHit.a_struck_bot_with_no_target_in_reach_casts_nothing
+        -- tests: GameplayFixesArchmageHit.a_struck_bot_bursts_once_and_never_summons
+        -- tests: GameplayFixesArchmageHit.a_seated_archmage_keeps_its_shift_key
+        -- tests: GameplayFixesArchmageHit.a_struck_bot_below_the_threshold_still_teleports
+        -- tests: SemArchmage.classic_a_struck_archmage_summons_first_and_casts_slot_2_only_when_the_summon_fails
         if self:special() then
           return
         end
       end
       -- heartburst, chain lightning, etc.
+      -- rule: Classic: failing a summon, a struck archmage casts CHAIN LIGHTNING half the time
+      --   (else HEARTBURST), and if that worked and it can still afford a TELEPORT it casts AGAIN
+      --   at once - but slot 2 is still selected, so the 'then leave' follow-up is a second
+      --   heartburst, not a teleport. A failed chain falls through to heartburst.
+      -- tests: SemArchmageClassicSlot2.classic_a_struck_archmage_chains_and_then_heartbursts_when_it_can_still_pay_a_teleport
+      -- tests: SemArchmageClassicSlot2.classic_a_struck_archmage_heartbursts_twice_and_a_failed_burst_casts_nothing
+      -- tests: SemArchmageClassicSlot2.classic_a_struck_archmage_whose_chain_fails_falls_through_to_a_heartburst_attempt
       if possible[2] then
         -- The old source called the follow-up "then leave! :)", but never
         -- switched to teleport: it repeats slot 2 as a normal heartburst.
+        -- rule: Part of the rule above that begins "Classic: failing a summon, a struck archmage
+        --   casts CHAIN ..."
+        -- tests: SemArchmageClassicSlot2.classic_a_struck_archmage_chains_and_then_heartbursts_when_it_can_still_pay_a_teleport
+        -- tests: SemArchmageClassicSlot2.classic_a_struck_archmage_heartbursts_twice_and_a_failed_burst_casts_nothing
+        -- tests: SemArchmageClassicSlot2.classic_a_struck_archmage_whose_chain_fails_falls_through_to_a_heartburst_attempt
         if og.rand(2) ~= 0 then
           self:set_shifter_down(1)
           self.current_special = 2
+          -- rule: Part of the rule above that begins "Classic: failing a summon, a struck archmage
+          --   casts CHAIN ..."
+          -- tests: SemArchmageClassicSlot2.classic_a_struck_archmage_chains_and_then_heartbursts_when_it_can_still_pay_a_teleport
+          -- tests: SemArchmageClassicSlot2.classic_a_struck_archmage_heartbursts_twice_and_a_failed_burst_casts_nothing
+          -- tests: SemArchmageClassicSlot2.classic_a_struck_archmage_whose_chain_fails_falls_through_to_a_heartburst_attempt
           if self:special() then
             self:set_shifter_down(0)
+            -- rule: Part of the rule above that begins "Classic: failing a summon, a struck
+            --   archmage casts CHAIN ..."
+            -- tests: SemArchmageClassicSlot2.classic_a_struck_archmage_chains_and_then_heartbursts_when_it_can_still_pay_a_teleport
+            -- tests: SemArchmageClassicSlot2.classic_a_struck_archmage_heartbursts_twice_and_a_failed_burst_casts_nothing
+            -- tests: SemArchmageClassicSlot2.classic_a_struck_archmage_whose_chain_fails_falls_through_to_a_heartburst_attempt
             if self.magicpoints >= self:s_special_cost(1) then
               self.busy = 0
               self:special()
@@ -150,7 +257,17 @@ local function hit_response(self, foe)
         end
         self:set_shifter_down(0)
         self.current_special = 2
+        -- rule: Part of the rule above that begins "Classic: failing a summon, a struck archmage
+        --   casts CHAIN ..."
+        -- tests: SemArchmageClassicSlot2.classic_a_struck_archmage_chains_and_then_heartbursts_when_it_can_still_pay_a_teleport
+        -- tests: SemArchmageClassicSlot2.classic_a_struck_archmage_heartbursts_twice_and_a_failed_burst_casts_nothing
+        -- tests: SemArchmageClassicSlot2.classic_a_struck_archmage_whose_chain_fails_falls_through_to_a_heartburst_attempt
         if self:special() then
+          -- rule: Part of the rule above that begins "Classic: failing a summon, a struck archmage
+          --   casts CHAIN ..."
+          -- tests: SemArchmageClassicSlot2.classic_a_struck_archmage_chains_and_then_heartbursts_when_it_can_still_pay_a_teleport
+          -- tests: SemArchmageClassicSlot2.classic_a_struck_archmage_heartbursts_twice_and_a_failed_burst_casts_nothing
+          -- tests: SemArchmageClassicSlot2.classic_a_struck_archmage_whose_chain_fails_falls_through_to_a_heartburst_attempt
           if self.magicpoints >= self:s_special_cost(1) then
             self.busy = 0
             self:special()
@@ -165,6 +282,15 @@ end
 -- Gameplay Fixes bot gates for slots 1-3 (slot 4 keeps its rest gate). Off,
 -- each answers true, which is what a row with no `ai` answered.
 local function ai_teleport(self)
+  -- rule: Classic: a bot archmage teleports on every TELEPORT roll. Gameplay Fixes: it teleports
+  --   (the mage's rule) only when nobody is within 110 px or more than three foes are, never
+  --   mid-teleport; with nobody near it plants a TELEPORT MARKER instead (Shift 1) when it has no
+  --   marker standing, a hero has 75 INT, the pool after the price still covers HEARTBURST, and it
+  --   is not busy.
+  -- tests: GameplayFixesBots.archmage_teleport_takes_the_mage_rule_with_the_setting_on
+  -- tests: GameplayFixesBots.archmage_marker_is_placed_once_where_the_archmage_will_return
+  -- tests: GameplayFixesBots.a_busy_bot_never_rolls_a_busy_cast_with_the_setting_on
+  -- tests: SemArchmage.a_crowded_bot_archmage_flees_with_a_plain_teleport_never_a_marker
   if not gf.on() then
     return true
   end
@@ -173,13 +299,37 @@ local function ai_teleport(self)
   -- near, mark where the archmage stands when no marker of its own stands,
   -- a hero has the cast's 75 INT, and half the pool left after the price
   -- still covers HEARTBURST. Written after the engine's coin.
+  -- rule: Part of the rule above that begins "Classic: a bot archmage teleports on every TELEPORT
+  --   roll. ..."
+  -- tests: GameplayFixesBots.archmage_teleport_takes_the_mage_rule_with_the_setting_on
+  -- tests: GameplayFixesBots.archmage_marker_is_placed_once_where_the_archmage_will_return
+  -- tests: GameplayFixesBots.a_busy_bot_never_rolls_a_busy_cast_with_the_setting_on
+  -- tests: SemArchmage.a_crowded_bot_archmage_flees_with_a_plain_teleport_never_a_marker
   local mark = foe_count < 1 and G.marker_pays(self, FX_MARKER, 2, 75)
+  -- rule: Part of the rule above that begins "Classic: a bot archmage teleports on every TELEPORT
+  --   roll. ..."
+  -- tests: GameplayFixesBots.archmage_teleport_takes_the_mage_rule_with_the_setting_on
+  -- tests: GameplayFixesBots.archmage_marker_is_placed_once_where_the_archmage_will_return
+  -- tests: GameplayFixesBots.a_busy_bot_never_rolls_a_busy_cast_with_the_setting_on
+  -- tests: SemArchmage.a_crowded_bot_archmage_flees_with_a_plain_teleport_never_a_marker
   if mark and not lc.is_busy(self) then
     self:set_shifter_down(1)
   else
     self:set_shifter_down(0)
   end
+  -- rule: Part of the rule above that begins "Classic: a bot archmage teleports on every TELEPORT
+  --   roll. ..."
+  -- tests: GameplayFixesBots.archmage_teleport_takes_the_mage_rule_with_the_setting_on
+  -- tests: GameplayFixesBots.archmage_marker_is_placed_once_where_the_archmage_will_return
+  -- tests: GameplayFixesBots.a_busy_bot_never_rolls_a_busy_cast_with_the_setting_on
+  -- tests: SemArchmage.a_crowded_bot_archmage_flees_with_a_plain_teleport_never_a_marker
   local yes = foe_count < 1 or foe_count > 3
+  -- rule: Part of the rule above that begins "Classic: a bot archmage teleports on every TELEPORT
+  --   roll. ..."
+  -- tests: GameplayFixesBots.archmage_teleport_takes_the_mage_rule_with_the_setting_on
+  -- tests: GameplayFixesBots.archmage_marker_is_placed_once_where_the_archmage_will_return
+  -- tests: GameplayFixesBots.a_busy_bot_never_rolls_a_busy_cast_with_the_setting_on
+  -- tests: SemArchmage.a_crowded_bot_archmage_flees_with_a_plain_teleport_never_a_marker
   return yes and not lc.mid_teleport(self)
 end
 
@@ -187,10 +337,23 @@ end
 -- the coin's arm is kept when it has a target, swapped when only the other
 -- has one, refused when neither has.
 ai_burst_or_chain = function(self)
+  -- rule: Gameplay Fixes: a bot's slot-2 cast keeps the coin's arm when that arm has a foe in its
+  --   radius (heartburst 80+2L, chain 200+5L+2L), swaps to the other arm when only it has one, and
+  --   is refused when neither has a foe or the archmage is busy.
+  -- tests: GameplayFixesBots.archmage_burst_or_chain_takes_the_arm_with_a_target_with_the_setting_on
+  -- tests: GameplayFixesBots.a_busy_bot_never_rolls_a_busy_cast_with_the_setting_on
+  -- tests: SemArchmage.a_bot_archmage_whose_chain_coin_has_only_a_burst_target_swaps_to_heartburst
+  -- deferred: #453 the missing arm is asserted (tuning override); the row stays on #453: the gate's
+  --   chain radius ignores the hero formula the cast uses
   if not gf.on() then
     return true
   end
   -- The cast's own guard: it refuses a busy archmage.
+  -- rule: Part of the rule above that begins "Gameplay Fixes: a bot's slot-2 cast keeps the coin's
+  --   ..."
+  -- tests: GameplayFixesBots.archmage_burst_or_chain_takes_the_arm_with_a_target_with_the_setting_on
+  -- tests: GameplayFixesBots.a_busy_bot_never_rolls_a_busy_cast_with_the_setting_on
+  -- tests: SemArchmage.a_bot_archmage_whose_chain_coin_has_only_a_burst_target_swaps_to_heartburst
   if lc.is_busy(self) then
     return false
   end
@@ -199,16 +362,36 @@ ai_burst_or_chain = function(self)
   local _, in_burst = og.find_foes_in_range("ob", t.burst_radius_base + bonus, self)
   local _, in_chain = og.find_foes_in_range("ob",
     t.chain_radius_base + t.chain_radius_per_level * self.level + bonus, self)
+  -- rule: Part of the rule above that begins "Gameplay Fixes: a bot's slot-2 cast keeps the coin's
+  --   ..."
+  -- tests: GameplayFixesBots.archmage_burst_or_chain_takes_the_arm_with_a_target_with_the_setting_on
+  -- tests: GameplayFixesBots.a_busy_bot_never_rolls_a_busy_cast_with_the_setting_on
+  -- tests: SemArchmage.a_bot_archmage_whose_chain_coin_has_only_a_burst_target_swaps_to_heartburst
   if self:shifter_down() ~= 0 then
+    -- rule: Part of the rule above that begins "Gameplay Fixes: a bot's slot-2 cast keeps the
+    --   coin's ..."
+    -- tests: GameplayFixesBots.archmage_burst_or_chain_takes_the_arm_with_a_target_with_the_setting_on
+    -- tests: GameplayFixesBots.a_busy_bot_never_rolls_a_busy_cast_with_the_setting_on
+    -- tests: SemArchmage.a_bot_archmage_whose_chain_coin_has_only_a_burst_target_swaps_to_heartburst
     if in_chain >= 1 then
       return true
     end
     self:set_shifter_down(0)
     return in_burst >= 1
   end
+  -- rule: Part of the rule above that begins "Gameplay Fixes: a bot's slot-2 cast keeps the coin's
+  --   ..."
+  -- tests: GameplayFixesBots.archmage_burst_or_chain_takes_the_arm_with_a_target_with_the_setting_on
+  -- tests: GameplayFixesBots.a_busy_bot_never_rolls_a_busy_cast_with_the_setting_on
+  -- tests: SemArchmage.a_bot_archmage_whose_chain_coin_has_only_a_burst_target_swaps_to_heartburst
   if in_burst >= 1 then
     return true
   end
+  -- rule: Part of the rule above that begins "Gameplay Fixes: a bot's slot-2 cast keeps the coin's
+  --   ..."
+  -- tests: GameplayFixesBots.archmage_burst_or_chain_takes_the_arm_with_a_target_with_the_setting_on
+  -- tests: GameplayFixesBots.a_busy_bot_never_rolls_a_busy_cast_with_the_setting_on
+  -- tests: SemArchmage.a_bot_archmage_whose_chain_coin_has_only_a_burst_target_swaps_to_heartburst
   if in_chain >= 1 then
     self:set_shifter_down(1)
     return true
@@ -224,32 +407,90 @@ end
 -- threshold (below it TELEPORT is the answer), no phantom of its own
 -- stands, and the pool after the 500 still covers a HEARTBURST.
 local function ai_summon(self)
+  -- rule: Gameplay Fixes: a bot's SUMMON ELEMENTAL (pool-chosen) wants a living foe within 200 px;
+  --   its SUMMON IMAGE is a decoy cast before blows land: two or more foes within 200 px hunting
+  --   it, none at blows yet, its health above the flee threshold (60% hero, 3/8 monster), no
+  --   phantom of its own standing, and a pool after the 500 that still covers HEARTBURST.
+  -- tests: GameplayFixesBots.archmage_summon_wants_a_foe_and_the_pool_for_an_elemental_with_the_setting_on
+  -- tests: GameplayFixesBots.archmage_summon_image_wants_two_hunters_not_yet_at_blows_and_a_pool_left
+  -- tests: GameplayFixesBots.a_busy_bot_never_rolls_a_busy_cast_with_the_setting_on
+  -- tests: parity:archmage_bot_summon_no_foe_fixes_scen99
+  -- tests: parity:archmage_bot_image_one_foe_fixes_scen99
   if not gf.on() then
     return true
   end
   -- The cast's own guard: it refuses a busy archmage.
+  -- rule: Part of the rule above that begins "Gameplay Fixes: a bot's SUMMON ELEMENTAL
+  --   (pool-chosen) wants a ..."
+  -- tests: GameplayFixesBots.archmage_summon_wants_a_foe_and_the_pool_for_an_elemental_with_the_setting_on
+  -- tests: GameplayFixesBots.archmage_summon_image_wants_two_hunters_not_yet_at_blows_and_a_pool_left
+  -- tests: GameplayFixesBots.a_busy_bot_never_rolls_a_busy_cast_with_the_setting_on
+  -- tests: parity:archmage_bot_summon_no_foe_fixes_scen99
+  -- tests: parity:archmage_bot_image_one_foe_fixes_scen99
   if lc.is_busy(self) then
     return false
   end
   summon_shift(self)
+  -- rule: Part of the rule above that begins "Gameplay Fixes: a bot's SUMMON ELEMENTAL
+  --   (pool-chosen) wants a ..."
+  -- tests: GameplayFixesBots.archmage_summon_wants_a_foe_and_the_pool_for_an_elemental_with_the_setting_on
+  -- tests: GameplayFixesBots.archmage_summon_image_wants_two_hunters_not_yet_at_blows_and_a_pool_left
+  -- tests: GameplayFixesBots.a_busy_bot_never_rolls_a_busy_cast_with_the_setting_on
+  -- tests: parity:archmage_bot_summon_no_foe_fixes_scen99
+  -- tests: parity:archmage_bot_image_one_foe_fixes_scen99
   if self:shifter_down() ~= 0 then
     return G.foes_within(self, 1, SUMMON_GATE_RANGE, false)
   end
   local hurt
+  -- rule: Part of the rule above that begins "Gameplay Fixes: a bot's SUMMON ELEMENTAL
+  --   (pool-chosen) wants a ..."
+  -- tests: GameplayFixesBots.archmage_summon_wants_a_foe_and_the_pool_for_an_elemental_with_the_setting_on
+  -- tests: GameplayFixesBots.archmage_summon_image_wants_two_hunters_not_yet_at_blows_and_a_pool_left
+  -- tests: GameplayFixesBots.a_busy_bot_never_rolls_a_busy_cast_with_the_setting_on
+  -- tests: parity:archmage_bot_summon_no_foe_fixes_scen99
+  -- tests: parity:archmage_bot_image_one_foe_fixes_scen99
   if self:has_guy() then
     hurt = G.hp_below(self, 3, 5)
   else
     hurt = G.hp_below(self, 3, 8)
   end
+  -- rule: Part of the rule above that begins "Gameplay Fixes: a bot's SUMMON ELEMENTAL
+  --   (pool-chosen) wants a ..."
+  -- tests: GameplayFixesBots.archmage_summon_wants_a_foe_and_the_pool_for_an_elemental_with_the_setting_on
+  -- tests: GameplayFixesBots.archmage_summon_image_wants_two_hunters_not_yet_at_blows_and_a_pool_left
+  -- tests: GameplayFixesBots.a_busy_bot_never_rolls_a_busy_cast_with_the_setting_on
+  -- tests: parity:archmage_bot_summon_no_foe_fixes_scen99
+  -- tests: parity:archmage_bot_image_one_foe_fixes_scen99
   if hurt then
     return false
   end
+  -- rule: Part of the rule above that begins "Gameplay Fixes: a bot's SUMMON ELEMENTAL
+  --   (pool-chosen) wants a ..."
+  -- tests: GameplayFixesBots.archmage_summon_wants_a_foe_and_the_pool_for_an_elemental_with_the_setting_on
+  -- tests: GameplayFixesBots.archmage_summon_image_wants_two_hunters_not_yet_at_blows_and_a_pool_left
+  -- tests: GameplayFixesBots.a_busy_bot_never_rolls_a_busy_cast_with_the_setting_on
+  -- tests: parity:archmage_bot_summon_no_foe_fixes_scen99
+  -- tests: parity:archmage_bot_image_one_foe_fixes_scen99
   if G.owned_phantom(self) ~= nil then
     return false
   end
+  -- rule: Part of the rule above that begins "Gameplay Fixes: a bot's SUMMON ELEMENTAL
+  --   (pool-chosen) wants a ..."
+  -- tests: GameplayFixesBots.archmage_summon_wants_a_foe_and_the_pool_for_an_elemental_with_the_setting_on
+  -- tests: GameplayFixesBots.archmage_summon_image_wants_two_hunters_not_yet_at_blows_and_a_pool_left
+  -- tests: GameplayFixesBots.a_busy_bot_never_rolls_a_busy_cast_with_the_setting_on
+  -- tests: parity:archmage_bot_summon_no_foe_fixes_scen99
+  -- tests: parity:archmage_bot_image_one_foe_fixes_scen99
   if #G.foes_at_blows(self) > 0 then
     return false
   end
+  -- rule: Part of the rule above that begins "Gameplay Fixes: a bot's SUMMON ELEMENTAL
+  --   (pool-chosen) wants a ..."
+  -- tests: GameplayFixesBots.archmage_summon_wants_a_foe_and_the_pool_for_an_elemental_with_the_setting_on
+  -- tests: GameplayFixesBots.archmage_summon_image_wants_two_hunters_not_yet_at_blows_and_a_pool_left
+  -- tests: GameplayFixesBots.a_busy_bot_never_rolls_a_busy_cast_with_the_setting_on
+  -- tests: parity:archmage_bot_summon_no_foe_fixes_scen99
+  -- tests: parity:archmage_bot_image_one_foe_fixes_scen99
   if lc.spare_mp(self, 3) < self:s_special_cost(2) then
     return false
   end
@@ -260,10 +501,19 @@ end
 -- a seat drives, not above the archmage's level) inside its reach; the rest
 -- holds the slot on both values (lc.gate_with_rest).
 local function ai_mind_control(self)
+  -- rule: Gameplay Fixes: MIND CONTROL wants a foe it can take inside its reach: never charmed, not
+  --   a seated hero, not above the archmage's level (the rest gate wraps it on both values).
+  -- tests: GameplayFixesBots.archmage_mind_control_wants_a_charmable_foe_in_reach
+  -- tests: GameplayFixesBots.a_busy_bot_never_rolls_a_busy_cast_with_the_setting_on
+  -- tests: parity:archmage_bot_mind_control_hero_fixes_scen99
   if not gf.on() then
     return true
   end
   -- The cast's own guard: it refuses a busy archmage.
+  -- rule: Part of the rule above that begins "Gameplay Fixes: MIND CONTROL wants a foe it can ..."
+  -- tests: GameplayFixesBots.archmage_mind_control_wants_a_charmable_foe_in_reach
+  -- tests: GameplayFixesBots.a_busy_bot_never_rolls_a_busy_cast_with_the_setting_on
+  -- tests: parity:archmage_bot_mind_control_hero_fixes_scen99
   if lc.is_busy(self) then
     return false
   end
@@ -278,9 +528,23 @@ local function level_up(guy, level_diff)
 end
 
 local function teleport(self)
+  -- rule: TELEPORT unshifted sends the archmage out (ANI_TELE_OUT, teleport sound) unless it is
+  --   already teleporting; Shift places/replaces a marker instead.
+  -- tests: WalkerSpecials.archmage_teleport_drives_simulation
+  -- tests: StatsHitResponseTeleport.stats_hit_response_mage_and_archmage_teleport_branches
+  -- tests: GameplayFixesArchmageHit.a_struck_bot_below_the_threshold_still_teleports
+  -- tests: StatsHitResponseTeleport.an_archmage_struck_again_mid_teleport_casts_nothing
+  -- tests: SemArchmage.an_archmage_already_teleporting_cannot_teleport_again
   if lc.mid_teleport(self) then
     return false, "SPECIAL BUSY"
   end
+  -- rule: Part of the rule above that begins "TELEPORT unshifted sends the archmage out
+  --   (ANI_TELE_OUT, teleport sound) ..."
+  -- tests: WalkerSpecials.archmage_teleport_drives_simulation
+  -- tests: StatsHitResponseTeleport.stats_hit_response_mage_and_archmage_teleport_branches
+  -- tests: GameplayFixesArchmageHit.a_struck_bot_below_the_threshold_still_teleports
+  -- tests: StatsHitResponseTeleport.an_archmage_struck_again_mid_teleport_casts_nothing
+  -- tests: SemArchmage.an_archmage_already_teleporting_cannot_teleport_again
   if self:shifter_down() == 0 then
     og.emit_positional_sound(self, C.SOUND_TELEPORT)
     self.ani_type = C.ANI_TELE_OUT
@@ -288,9 +552,21 @@ local function teleport(self)
     return true
   end
   -- leave/remove a marker
+  -- rule: Placing a TELEPORT MARKER refuses a busy archmage and a hero with under 75 intelligence
+  --   (monsters have no INT requirement), at no cost.
+  -- tests: WalkerSpecials.archmage_marker_needs_75_int_then_chain_and_summon_are_one_each
+  -- tests: FamilyBehaviors.archmage_handle_teleport_and_special_guards
+  -- tests: SimInputUnit.intelligence_refusals_use_one_private_cue
+  -- tests: parity:archmage_teleport_marker_scen99
   if lc.is_busy(self) then
     return false, "SPECIAL BUSY"
   end
+  -- rule: Part of the rule above that begins "Placing a TELEPORT MARKER refuses a busy archmage and
+  --   ..."
+  -- tests: WalkerSpecials.archmage_marker_needs_75_int_then_chain_and_summon_are_one_each
+  -- tests: FamilyBehaviors.archmage_handle_teleport_and_special_guards
+  -- tests: SimInputUnit.intelligence_refusals_use_one_private_cue
+  -- tests: parity:archmage_teleport_marker_scen99
   if self:has_guy() and self:g_intelligence() < 75 then
     return false, "75 INT REQUIRED"
   end
@@ -298,8 +574,14 @@ local function teleport(self)
   -- generic = 1 here but never tests it: a new marker is always
   -- placed below.)
   local obs = og.oblist()
+  -- plumbing: oblist scan for this caster's live marker; rule row living-17-archmage.lua:303
   for i = 1, #obs do
     local ob = obs[i]
+    -- rule: An archmage has at most one marker: placing a new one retires its own previous live
+    --   marker (and only its own), costing 8 extra busy ticks.
+    -- tests: PackLuaArchmage.a_second_teleport_marker_retires_the_first
+    -- tests: WalkerSpecials.archmage_marker_needs_75_int_then_chain_and_summon_are_one_each
+    -- tests: SemArchmage.a_new_marker_retires_only_its_own_casters_old_marker
     if ob
         and ob:order() == C.ORDER_FX
         and ob:family() == FX_MARKER
@@ -307,6 +589,12 @@ local function teleport(self)
         and ob:dead() == 0 then
       ob.dead = 1
       ob:death()
+      -- rule: Marker messages ('(Old Marker Removed)', 'Teleport Marker Placed', '(N Uses)') are
+      --   told only on the player's side or for a hero, addressed to the caster; unlike the mage
+      --   they are not gated on user() (any team-0 bot also announces).
+      -- tests: PackLuaArchmage.a_second_teleport_marker_retires_the_first
+      -- tests: parity:archmage_teleport_marker_scen99
+      -- tests: SemArchmage.an_enemy_archmage_places_and_replaces_its_marker_in_silence
       if self.team == 0 or self:has_guy() then
         og.emit_notification("(Old Marker Removed)", 0, self)
       end
@@ -316,18 +604,29 @@ local function teleport(self)
     end
   end
   local marker = og.add_ob("fx", FX_MARKER)
+  -- plumbing: add_ob failure for the marker: 'COULD NOT CREATE MARKER' (old marker already
+  --   retired).
   if not marker then
     return false, "COULD NOT CREATE MARKER"
   end
   marker:set_owner(self)
   marker:set_floor(self:floor())  -- marker stays on the caster's floor
   marker:center_on(self)
+  -- rule: A marker's number of uses is a hero's intelligence / 33, a monster's level / 4 + 1.
+  -- tests: WalkerSpecials.archmage_marker_needs_75_int_then_chain_and_summon_are_one_each
+  -- tests: WalkerSpecials.archmage_teleport_drives_simulation
+  -- tests: SemArchmage.a_monster_archmages_marker_holds_a_quarter_of_its_level_plus_one_uses
   if self:has_guy() then
     marker.lifetime = self:g_intelligence() // 33
   else
     marker.lifetime = self.level // 4 + 1
   end
   marker.ani_type = C.ANI_SPIN  -- the C++ wrote a raw 2 past the 16-row table
+  -- rule: Part of the rule above that begins "Marker messages ('(Old Marker Removed)', 'Teleport
+  --   Marker Placed', '(N ..."
+  -- tests: PackLuaArchmage.a_second_teleport_marker_retires_the_first
+  -- tests: parity:archmage_teleport_marker_scen99
+  -- tests: SemArchmage.an_enemy_archmage_places_and_replaces_its_marker_in_silence
   if self.team == 0 or self:has_guy() then
     og.emit_notification("Teleport Marker Placed", 0, self)
     og.emit_notification(string.format("(%d Uses)", marker:lifetime()), 0, self)
@@ -341,12 +640,23 @@ end
 
 local function burst_or_chain(self)
   -- heartburst / chain lightning
+  -- rule: A busy archmage cannot cast HEARTBURST / CHAIN LIGHTNING.
+  -- tests: WalkerSpecials.archmage_heartburst_drives_simulation
+  -- tests: SemArchmage.a_busy_archmage_cannot_heartburst_or_chain
   if lc.is_busy(self) then
     return false, "SPECIAL BUSY"
   end
   local t = og.tuning(self)
   local radius
+  -- rule: HEARTBURST reaches foes within 80 + 2L px; CHAIN LIGHTNING acquires within 200 + Int/2 +
+  --   2L for a hero, 200 + 5L + 2L for a monster.
+  -- tests: SemArchmage.heartburst_reaches_80_plus_2l_and_a_monsters_chain_200_plus_7l
+  -- tests: SemArchmage.a_heros_chain_reaches_200_plus_half_its_intelligence_plus_2l
   if self:shifter_down() ~= 0 then
+    -- rule: Part of the rule above that begins "HEARTBURST reaches foes within 80 + 2L px; CHAIN
+    --   ..."
+    -- tests: SemArchmage.heartburst_reaches_80_plus_2l_and_a_monsters_chain_200_plus_7l
+    -- tests: SemArchmage.a_heros_chain_reaches_200_plus_half_its_intelligence_plus_2l
     if self:has_guy() then
       -- Int/2 stays a formula: a guy-stat conversion, not a tuning knob.
       radius = t.chain_radius_base + self:g_intelligence() // 2
@@ -358,23 +668,37 @@ local function burst_or_chain(self)
   end
   local foes, foe_count = og.find_foes_in_range(
     "ob", radius + t.radius_bonus_per_level * self.level, self)
+  -- rule: HEARTBURST / CHAIN with no foe in reach fail free.
+  -- tests: WalkerSpecials.archmage_heartburst_drives_simulation
+  -- tests: SemArchmage.heartburst_or_chain_with_nobody_in_reach_fails_free
   if foe_count == 0 then
     return false, "NO FOE IN RANGE"
   end
+  -- rule: HEARTBURST splits its MP pool evenly over every foe in reach, one magical explosion
+  --   centred on each (on that foe's floor), spending the pool share per foe; CHAIN LIGHTNING
+  --   spends the pool once on a single bolt.
+  -- tests: WalkerSpecials.archmage_chain_lightning_spawns_one_leashed_bolt
+  -- tests: SemArchmage.heartburst_splits_its_pool_evenly_into_one_explosion_on_each_foe_in_reach
   if self:shifter_down() == 0 then
     -- normal heartburst
     local pool = lc.mp_pool_damage(self, 2)
     -- Preserve C truncation if a malformed state produces a negative pool.
     pool = og.div(pool, foe_count)
+    -- rule: A hero's HEARTBURST counts one shot per foe it bursts; its CHAIN LIGHTNING counts one
+    --   shot however many it hits (accuracy can exceed 100%).
+    -- tests: SemArchmage.a_heros_heartburst_counts_a_shot_per_foe_and_its_chain_counts_one
     if self:has_guy() then
       self:g_set_total_shots(self:g_total_shots() + foe_count)
       self:g_set_scen_shots(self:g_scen_shots() + foe_count)
     end
     -- busy is a C++ float: per-op rounding.
     self.busy = og.fadd(self:busy(), 5.0)
+    -- plumbing: one explosion per foe; rule row living-17-archmage.lua:364
     for i = 1, #foes do
       local foe = foes[i]
       local burst = og.summon(self, "fx", FX_EXPLOSION)
+      -- plumbing: og.summon failure mid-burst: 'COULD NOT MAKE EXPLOSION' (earlier explosions
+      --   stand, their MP spent).
       if not burst then
         return false, "COULD NOT MAKE EXPLOSION"
       end
@@ -396,6 +720,8 @@ local function burst_or_chain(self)
   -- chain lightning
   -- busy is a C++ float: per-op rounding.
   self.busy = og.fadd(self:busy(), 5.0)
+  -- rule: Part of the rule above that begins "A hero's HEARTBURST counts one shot per foe it ..."
+  -- tests: SemArchmage.a_heros_heartburst_counts_a_shot_per_foe_and_its_chain_counts_one
   if self:has_guy() then
     -- One cast is one shot even when the chain hits several foes, so the
     -- old accuracy counter can get above 100% :)
@@ -403,6 +729,7 @@ local function burst_or_chain(self)
     self:g_set_scen_shots(self:g_scen_shots() + 1)
   end
   local bolt = og.summon(self, "fx", FX_CHAIN)
+  -- plumbing: og.summon failure for the chain bolt: 'COULD NOT CREATE CHAIN' (busy already added).
   if not bolt then
     return false, "COULD NOT CREATE CHAIN"
   end
@@ -412,12 +739,23 @@ local function burst_or_chain(self)
   self.magicpoints = og.fsub(self.magicpoints, pool)
   bolt.damage = pool
   local best_dist = 30000
+  -- plumbing: first-strike search over the foes; rule row living-17-archmage.lua:419
   for i = 1, #foes do
     local foe = foes[i]
     -- Chain lightning cannot arc through solid floors: only same-floor
     -- foes are valid first strikes.
+    -- rule: CHAIN LIGHTNING's first strike is the nearest foe (centre distance) on the archmage's
+    --   own floor; it cannot arc through floors.
+    -- tests: WalkerSpecials.archmage_chain_lightning_spawns_one_leashed_bolt
+    -- tests: SemArchmage.chain_lightning_strikes_first_the_nearest_foe_on_its_own_floor
+    -- deferred: #455 a nearer upstairs foe is skipped (asserted); the leaderless other-floor-only
+    --   bolt is #455 and is not pinned
     if foe:floor() == self:floor() then
       local dist = self:distance_to_ob_center(foe)
+      -- rule: Part of the rule above that begins "CHAIN LIGHTNING's first strike is the nearest foe
+      --   (centre ..."
+      -- tests: WalkerSpecials.archmage_chain_lightning_spawns_one_leashed_bolt
+      -- tests: SemArchmage.chain_lightning_strikes_first_the_nearest_foe_on_its_own_floor
       if best_dist > dist then
         best_dist = dist
         bolt:set_leader(foe)
@@ -429,20 +767,44 @@ end
 
 local function summon_image(self)
   -- summon image / elemental
+  -- rule: A busy archmage cannot summon.
+  -- tests: WalkerSpecials.archmage_summon_image_drives_simulation
+  -- tests: WalkerSpecials.archmage_true_summon_places_one_owned_fire_elemental
+  -- tests: SemArchmage.a_busy_archmage_cannot_summon
   if lc.is_busy(self) then
     return false, "SPECIAL BUSY"
   end
+  -- rule: SUMMON with Shift calls a real fire elemental; unshifted it conjures a one-hit-point
+  --   phantom of a random class.
+  -- tests: WalkerSpecials.archmage_true_summon_places_one_owned_fire_elemental
+  -- tests: parity:archmage_summon_elemental_scen99
+  -- tests: PackLuaArchmage.the_illusion_summoned_widens_with_the_magic_behind_it
+  -- tests: WalkerSpecials.archmage_summon_image_drives_simulation
   if self:shifter_down() ~= 0 then
     -- true summoning
     local t = og.tuning(self)
+    -- rule: A hero needs 150 intelligence for the true summon; monsters do not.
+    -- tests: FamilyBehaviors.archmage_special_case2_case3_case4_guard_branches
+    -- tests: SimInputUnit.intelligence_refusals_use_one_private_cue
+    -- tests: WalkerSpecials.archmage_true_summon_places_one_owned_fire_elemental
+    -- tests: PackLuaArchmage.a_placed_true_summon_pays_half_the_spare_pool_on_both_values
     if self:has_guy() and self:g_intelligence() < t.summon_int_req then
       return false, string.format("%d INT REQUIRED", t.summon_int_req)
     end
+    -- rule: The true summon also takes half the MP left after its price. Classic: taken before the
+    --   elemental is placed, so a summon with nowhere to stand still pays it. Gameplay Fixes: taken
+    --   only once the elemental stands.
+    -- tests: PackLuaArchmage.a_true_summon_with_nowhere_to_stand_is_cancelled
+    -- tests: PackLuaArchmage.a_true_summon_with_nowhere_to_stand_costs_nothing_with_gameplay_fixes
+    -- tests: PackLuaArchmage.a_placed_true_summon_pays_half_the_spare_pool_on_both_values
+    -- tests: parity:archmage_summon_no_room_scen99, parity:archmage_summon_no_room_fixes_scen99
     if not gf.on() then
       lc.halve_mp_surcharge(self, 3)
     end
     -- First make the guy we'd summon, at least physically
     local elemental = og.add_ob("living", LIVING_ELEMENTAL)
+    -- plumbing: add_ob failure for the elemental: 'COULD NOT SUMMON' (classic surcharge already
+    --   taken).
     if not elemental then
       return false, "COULD NOT SUMMON"
     end
@@ -454,12 +816,26 @@ local function summon_image(self)
     -- the grid once placed (the C++ `generic` latch) — query_passable is
     -- never probed again after a success.
     local placed = false
+    -- plumbing: 3x3 placement scan around the caster; rule row living-17-archmage.lua:459
     for i = -1, 1 do
+      -- plumbing: 3x3 placement scan around the caster; rule row living-17-archmage.lua:459
       for j = -1, 1 do
+        -- rule: The elemental stands in the first passable of the eight neighbouring body-sized
+        --   cells, scanned column by column from the west (i outer -1..1, j inner -1..1, skipping
+        --   the caster's own cell); it is level (L+1)/2, the caster's team, owned, with
+        --   elemental_lifetime(L). With no free cell the summon is cancelled.
+        -- tests: PackLuaArchmage.a_true_summon_with_nowhere_to_stand_is_cancelled
+        -- tests: PackLuaArchmage.a_true_summon_with_nowhere_to_stand_costs_nothing_with_gameplay_fixes
+        -- tests: SemArchmage.a_summoned_elemental_stands_in_the_first_free_cell_from_the_west_column
         if not ((i == 0 and j == 0)
                 or placed) then
           local testx = self:xpos() + (elemental:sizex() + 1) * i
           local testy = self:ypos() + (elemental:sizey() + 1) * j
+          -- rule: Part of the rule above that begins "The elemental stands in the first passable of
+          --   the ..."
+          -- tests: PackLuaArchmage.a_true_summon_with_nowhere_to_stand_is_cancelled
+          -- tests: PackLuaArchmage.a_true_summon_with_nowhere_to_stand_costs_nothing_with_gameplay_fixes
+          -- tests: SemArchmage.a_summoned_elemental_stands_in_the_first_free_cell_from_the_west_column
           if og.query_passable(testx, testy, elemental) then
             placed = true
             elemental:setxy(testx, testy)
@@ -472,10 +848,20 @@ local function summon_image(self)
         end
       end
     end
+    -- rule: Part of the rule above that begins "The elemental stands in the first passable of the
+    --   ..."
+    -- tests: PackLuaArchmage.a_true_summon_with_nowhere_to_stand_is_cancelled
+    -- tests: PackLuaArchmage.a_true_summon_with_nowhere_to_stand_costs_nothing_with_gameplay_fixes
+    -- tests: SemArchmage.a_summoned_elemental_stands_in_the_first_free_cell_from_the_west_column
     if not placed then
       elemental.dead = 1
       return false, "NO ROOM TO SUMMON"
     end
+    -- rule: Part of the rule above that begins "The true summon also takes half the MP left ..."
+    -- tests: PackLuaArchmage.a_true_summon_with_nowhere_to_stand_is_cancelled
+    -- tests: PackLuaArchmage.a_true_summon_with_nowhere_to_stand_costs_nothing_with_gameplay_fixes
+    -- tests: PackLuaArchmage.a_placed_true_summon_pays_half_the_spare_pool_on_both_values
+    -- tests: parity:archmage_summon_no_room_scen99, parity:archmage_summon_no_room_fixes_scen99
     if gf.on() then
       -- Gameplay Fixes: the surcharge is paid once the elemental stands.
       lc.halve_mp_surcharge(self, 3)
@@ -489,21 +875,36 @@ local function summon_image(self)
   -- exact (0/1/1/1/1 draws for the 5 tiers).
   local mp_pool = lc.spare_mp(self, 3)
   local person
+  -- rule: The phantom's class widens with the magic left after the 500 price: under 100 always an
+  --   elf (no draw); under 250 elf/soldier/archer; under 500 adds orc/skeleton; under 1000 adds
+  --   druid/cleric; 1000+ adds elemental and orc captain; one rand draw for every tier but the
+  --   first.
+  -- tests: WalkerSpecials.archmage_illusion_family_follows_the_magic_pool_tier
+  -- tests: PackLuaArchmage.the_illusion_summoned_widens_with_the_magic_behind_it
   if mp_pool < 100 then
     person = LIVING_ELF
   elseif mp_pool < 250 then
     local tier_roll = og.rand(3)
+    -- rule: Part of the rule above that begins "The phantom's class widens with the magic left
+    --   after ..."
+    -- tests: WalkerSpecials.archmage_illusion_family_follows_the_magic_pool_tier
+    -- tests: PackLuaArchmage.the_illusion_summoned_widens_with_the_magic_behind_it
     if tier_roll == 0 then
       person = LIVING_ELF
     elseif tier_roll == 1 then
       person = LIVING_SOLDIER
     elseif tier_roll == 2 then
       person = LIVING_ARCHER
-    else  -- C++ default (unreachable)
+    else  -- C++ default (unreachable) -- plumbing: C++ switch default arms: og.rand(n) returns
+      --   0..n-1, so tier_roll never exceeds the listed cases
       person = LIVING_SOLDIER
     end
   elseif mp_pool < 500 then
     local tier_roll = og.rand(5)
+    -- rule: Part of the rule above that begins "The phantom's class widens with the magic left
+    --   after ..."
+    -- tests: WalkerSpecials.archmage_illusion_family_follows_the_magic_pool_tier
+    -- tests: PackLuaArchmage.the_illusion_summoned_widens_with_the_magic_behind_it
     if tier_roll == 0 then
       person = LIVING_ELF
     elseif tier_roll == 1 then
@@ -514,11 +915,16 @@ local function summon_image(self)
       person = LIVING_ORC
     elseif tier_roll == 4 then
       person = LIVING_SKELETON
-    else  -- C++ default (unreachable)
+    else  -- C++ default (unreachable) -- plumbing: C++ switch default arms: og.rand(n) returns
+      --   0..n-1, so tier_roll never exceeds the listed cases
       person = LIVING_ARCHER
     end
   elseif mp_pool < 1000 then
     local tier_roll = og.rand(7)
+    -- rule: Part of the rule above that begins "The phantom's class widens with the magic left
+    --   after ..."
+    -- tests: WalkerSpecials.archmage_illusion_family_follows_the_magic_pool_tier
+    -- tests: PackLuaArchmage.the_illusion_summoned_widens_with_the_magic_behind_it
     if tier_roll == 0 then
       person = LIVING_ELF
     elseif tier_roll == 1 then
@@ -533,12 +939,17 @@ local function summon_image(self)
       person = LIVING_DRUID
     elseif tier_roll == 6 then
       person = LIVING_CLERIC
-    else  -- C++ default (unreachable)
+    else  -- C++ default (unreachable) -- plumbing: C++ switch default arms: og.rand(n) returns
+      --   0..n-1, so tier_roll never exceeds the listed cases
       person = LIVING_ARCHER
     end
   -- our maximum possible, insert before if needed
   else
     local tier_roll = og.rand(9)
+    -- rule: Part of the rule above that begins "The phantom's class widens with the magic left
+    --   after ..."
+    -- tests: WalkerSpecials.archmage_illusion_family_follows_the_magic_pool_tier
+    -- tests: PackLuaArchmage.the_illusion_summoned_widens_with_the_magic_behind_it
     if tier_roll == 0 then
       person = LIVING_ELF
     elseif tier_roll == 1 then
@@ -557,12 +968,14 @@ local function summon_image(self)
       person = LIVING_ELEMENTAL
     elseif tier_roll == 8 then
       person = LIVING_ORC_CAPTAIN
-    else  -- C++ default (unreachable)
+    else  -- C++ default (unreachable) -- plumbing: C++ switch default arms: og.rand(n) returns
+      --   0..n-1, so tier_roll never exceeds the listed cases
       person = LIVING_ARCHER
     end
   end
   -- Now make the guy we'd summon, at least physically
   local phantom = og.add_ob("living", person)
+  -- plumbing: add_ob failure for the phantom: 'COULD NOT MAKE ILLUSION'.
   if not phantom then
     return false, "COULD NOT MAKE ILLUSION"
   end
@@ -572,12 +985,26 @@ local function summon_image(self)
   -- SAVE_ALL mission when it expires.
   phantom:set_summoned(true)
   local placed = false
+  -- plumbing: 3x3 placement scan for the phantom; rule row living-17-archmage.lua:577
   for i = -1, 1 do
+    -- plumbing: 3x3 placement scan for the phantom; rule row living-17-archmage.lua:577
     for j = -1, 1 do
+      -- rule: The phantom stands in the first free neighbouring cell (same scan order as the
+      --   elemental) as a level (L+2)/3, caster-team, owned decoy with image_lifetime(L), 1 max hp
+      --   and 0 hp, no armour, magical, named 'Phantom', sharing the caster's foe; with no free
+      --   cell the summon is cancelled.
+      -- tests: PackLuaArchmage.the_illusion_summoned_widens_with_the_magic_behind_it
+      -- tests: WalkerSpecials.archmage_summon_image_drives_simulation
+      -- tests: SemArchmage.a_summoned_image_shares_its_casters_foe_and_with_no_room_is_cancelled
       if not ((i == 0 and j == 0)
               or placed) then
         local testx = self:xpos() + (phantom:sizex() + 1) * i
         local testy = self:ypos() + (phantom:sizey() + 1) * j
+        -- rule: Part of the rule above that begins "The phantom stands in the first free
+        --   neighbouring cell ..."
+        -- tests: PackLuaArchmage.the_illusion_summoned_widens_with_the_magic_behind_it
+        -- tests: WalkerSpecials.archmage_summon_image_drives_simulation
+        -- tests: SemArchmage.a_summoned_image_shares_its_casters_foe_and_with_no_room_is_cancelled
         if og.query_passable(testx, testy, phantom) then
           placed = true
           phantom:setxy(testx, testy)
@@ -597,6 +1024,11 @@ local function summon_image(self)
       end
     end
   end
+  -- rule: Part of the rule above that begins "The phantom stands in the first free neighbouring
+  --   cell ..."
+  -- tests: PackLuaArchmage.the_illusion_summoned_widens_with_the_magic_behind_it
+  -- tests: WalkerSpecials.archmage_summon_image_drives_simulation
+  -- tests: SemArchmage.a_summoned_image_shares_its_casters_foe_and_with_no_room_is_cancelled
   if not placed then
     phantom.dead = 1
     return false, "NO ROOM TO SUMMON"
@@ -608,6 +1040,10 @@ local function summon_image(self)
 end
 
 local function mind_control(self)
+  -- rule: MIND CONTROL refuses a busy archmage and needs a foe within 80 + 4L px; both refusals are
+  --   free.
+  -- tests: WalkerSpecials.archmage_mind_control_drives_simulation
+  -- tests: SemArchmage.mind_control_refuses_a_busy_archmage_and_one_with_nobody_in_reach_free
   if lc.is_busy(self) then
     return false, "SPECIAL BUSY"
   end
@@ -617,6 +1053,9 @@ local function mind_control(self)
     "ob",
     t.mind_control_range_base + t.mind_control_range_per_level * self.level,
     self)
+  -- rule: Part of the rule above that begins "MIND CONTROL refuses a busy archmage and needs a ..."
+  -- tests: WalkerSpecials.archmage_mind_control_drives_simulation
+  -- tests: SemArchmage.mind_control_refuses_a_busy_archmage_and_one_with_nobody_in_reach_free
   if foe_count < 1 then
     return false, "NO FOE IN RANGE"
   end
@@ -624,12 +1063,24 @@ local function mind_control(self)
   local budget = mp_after_base_cost + 10
   -- Gameplay Fixes: a hero a seat drives resists, as Possess's does.
   local fixes = gf.on()
+  -- plumbing: foe iteration under the MP budget; rule rows living-17-archmage.lua:628, :633, :640
   for i = 1, #foes do
+    -- rule: MIND CONTROL takes foes while its budget lasts: the first is covered by the base price,
+    --   each further one costs 10 MP of the spare pool; when the budget is gone the rest are left
+    --   alone.
+    -- tests: WalkerSpecials.archmage_mind_control_stats_name_path
+    -- tests: SemArchmage.mind_control_takes_one_foe_on_the_price_and_one_more_per_10_spare
     if budget < 10 then
       break
     end
     local foe = foes[i]
     -- never been charmed
+    -- rule: MIND CONTROL takes only never-charmed living foes with no charm running (and, with
+    --   Gameplay Fixes, not a seated hero); others are skipped without spending budget.
+    -- tests: GameplayFixesBots.mind_control_skips_a_seated_hero_with_the_setting_on
+    -- tests: parity:archmage_bot_mind_control_hero_scen99
+    -- tests: parity:archmage_bot_mind_control_hero_fixes_scen99
+    -- tests: SemArchmage.mind_control_skips_the_charmed_and_generators_without_spending
     if gf.charmable(foe, fixes) and foe:charm_left() <= 10 then
       budget = budget - 10
       local level_edge = self.level - foe.level
@@ -637,15 +1088,40 @@ local function mind_control(self)
       -- short-circuit preserved: rand(20) is drawn only when the edge
       -- is >= 0.
       local confused
+      -- rule: A foe above the archmage's level always resists (no draw) and an equal/lower one
+      --   resists 1 in 20; a resisting foe goes berserk onto a random team (rand(8)) for
+      --   charm_duration(edge) ticks; a controlled foe joins the archmage's team with no foe, for
+      --   charm_duration(edge) ticks. Either way its real team is remembered.
+      -- tests: PackLuaArchmage.an_undominated_victim_goes_berserk_rather_than_joining
+      -- tests: PackLuaArchmage.a_higher_level_berserk_lasts_25_ticks
+      -- tests: PackLuaArchmage.the_berserk_draw_count_is_one_on_both_values
+      -- tests: WalkerSpecials.archmage_mind_control_drives_simulation
+      -- tests: parity:archmage_mind_control_team_flip_scen99
+      -- tests: SemArchmage.an_equal_level_foe_that_rolls_zero_resists_mind_control_and_goes_berserk
       if level_edge < 0 then
         confused = true
       else
         confused = (og.rand(20) == 0)
       end
+      -- rule: Part of the rule above that begins "A foe above the archmage's level always resists
+      --   (no ..."
+      -- tests: PackLuaArchmage.an_undominated_victim_goes_berserk_rather_than_joining
+      -- tests: PackLuaArchmage.a_higher_level_berserk_lasts_25_ticks
+      -- tests: PackLuaArchmage.the_berserk_draw_count_is_one_on_both_values
+      -- tests: WalkerSpecials.archmage_mind_control_drives_simulation
+      -- tests: parity:archmage_mind_control_team_flip_scen99
+      -- tests: SemArchmage.an_equal_level_foe_that_rolls_zero_resists_mind_control_and_goes_berserk
       if confused then
         -- Resisted proper control: berserk onto a random team.
         foe:set_real_team_num(foe.team)
         local colour = og.rand(8)
+        -- rule: Classic: a berserk foe's random colour can land on the archmage's own team, handing
+        --   it over anyway. Gameplay Fixes: berserk always means someone else's side (own colour
+        --   becomes the next one, 7 wraps to 0).
+        -- tests: PackLuaArchmage.an_undominated_victim_never_joins_the_caster
+        -- tests: PackLuaArchmage.the_berserk_draw_count_is_one_on_both_values
+        -- tests: parity:archmage_mind_control_berserk_scen99
+        -- tests: parity:archmage_mind_control_berserk_fixes_scen99
         if gf.on() and colour == self.team then
           -- Gameplay Fixes: berserk means someone else's side, never ours.
           colour = og.mod(colour + 1, 8)
@@ -662,6 +1138,10 @@ local function mind_control(self)
       controlled = controlled + 1
     end
   end
+  -- rule: MIND CONTROL with foes in reach but none it can take fails free.
+  -- tests: GameplayFixesBots.mind_control_skips_a_seated_hero_with_the_setting_on
+  -- tests: parity:archmage_bot_mind_control_hero_fixes_scen99
+  -- tests: WalkerSpecials.archmage_mind_control_stats_name_path
   if controlled == 0 then
     return false, "NO VALID TARGET"
   end
@@ -670,6 +1150,10 @@ local function mind_control(self)
     og.entity_display_name(self, "ArchMage"), controlled))
   -- Target budget starts at mp_after_base_cost + 10, so the first
   -- control is covered by base special cost and extras cost 10 MP each.
+  -- rule: Each foe controlled beyond the first costs 10 MP more, never more than the pool left
+  --   after the base price.
+  -- tests: WalkerSpecials.archmage_mind_control_stats_name_path
+  -- tests: SemArchmage.mind_control_takes_one_foe_on_the_price_and_one_more_per_10_spare
   if mp_after_base_cost > 0 and controlled > 1 then
     local spend = (controlled - 1) * 10
     spend = og.min(spend, mp_after_base_cost)

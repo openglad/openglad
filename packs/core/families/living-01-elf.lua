@@ -16,13 +16,32 @@ local function next_spread_multiplier()
 end
 
 local function some_rocks(self)
+  -- rule: Gameplay Fixes AC: when the rock's launch pad is refused by terrain (wall face, map edge;
+  --   not a tree crown, not water) the volley is refused 'COULD NOT FIRE' before any refund or
+  --   swing: it costs nothing. Classic: the cast refunds 2 weapon costs, fire() fails and the one
+  --   swing is still paid. A body on the pad is not 'terrain' and keeps the paid swing (fixes H/I).
+  --   Same rule as :54.
+  -- tests: GameplayFixesElf.a_volley_at_a_wall_spends_nothing_with_the_setting_on
+  -- tests: GameplayFixesElf.a_volley_at_the_map_edge_spends_nothing
+  -- tests: GameplayFixesElf.a_tree_crown_on_the_pad_lets_the_rocks_fly
+  -- tests: parity:elf_rocks_blocked_scen99
+  -- tests: SemElf.a_volley_at_a_wall_leaves_the_elf_rested_with_the_setting_on
   if gf.pad_blocked_by_terrain(self) then
     return false, "COULD NOT FIRE"
   end
   -- magicpoints is a C++ float: per-op rounding.
   self.magicpoints = og.fadd(self.magicpoints, 2 * self:s_weapon_cost())
   local rock = self:fire()
+  -- rule: ROCKS pre-refunds two weapon costs so its two rocks are free beyond the slot price; if
+  --   the first rock cannot be fired the cast fails 'COULD NOT FIRE'. Classic keeps the 2-rock
+  --   refund even though none flew (net MP gain over the swing); Gameplay Fixes takes both back.
+  -- tests: GameplayFixesElf.a_blocked_volley_costs_one_swing
+  -- tests: GameplayFixesElf.volleys_refund_exactly_the_rocks_fired, parity:elf_rocks_pair_scen99
   if not rock then
+    -- rule: Part of the rule above that begins "ROCKS pre-refunds two weapon costs so its two rocks
+    --   ..."
+    -- tests: GameplayFixesElf.a_blocked_volley_costs_one_swing
+    -- tests: GameplayFixesElf.volleys_refund_exactly_the_rocks_fired, parity:elf_rocks_pair_scen99
     if gf.on() then
       -- Gameplay Fixes: the two rocks that never flew are not refunded.
       gf.take_back(self, 2)
@@ -33,7 +52,15 @@ local function some_rocks(self)
   rock:set_lastx(og.fmul(rock:lastx(), next_spread_multiplier()))
   rock:set_lasty(og.fmul(rock:lasty(), next_spread_multiplier()))
   rock = self:fire()
+  -- rule: If the first rock flew but the second cannot, ROCKS reports 'COULD NOT FIRE' (one rock in
+  --   the air). Classic keeps the refund for the second rock; Gameplay Fixes takes one weapon cost
+  --   back.
+  -- tests: GameplayFixesElf.rocks_take_back_the_second_rock_that_never_flew
+  -- tests: GameplayFixesElf.volleys_refund_exactly_the_rocks_fired, parity:elf_rocks_pair_scen99
   if not rock then
+    -- rule: Part of the rule above that begins "If the first rock flew but the second cannot, ..."
+    -- tests: GameplayFixesElf.rocks_take_back_the_second_rock_that_never_flew
+    -- tests: GameplayFixesElf.volleys_refund_exactly_the_rocks_fired, parity:elf_rocks_pair_scen99
     if gf.on() then
       -- Gameplay Fixes: the second rock never flew.
       gf.take_back(self, 1)
@@ -51,10 +78,20 @@ end
 -- therefore `* 4 // 2`.
 local function bounce_volley(cost_mult, count, los_num)
   return function(self)
+    -- rule: Same rule as :19 for the bouncing volleys: a terrain-blocked pad refuses free with the
+    --   setting on.
+    -- tests: GameplayFixesElf.a_volley_at_a_wall_spends_nothing_with_the_setting_on
+    -- tests: GameplayFixesElf.a_volley_at_the_map_edge_spends_nothing
+    -- tests: parity:elf_rocks_blocked_fixes_scen99
     if gf.pad_blocked_by_terrain(self) then
       return false, "COULD NOT FIRE"
     end
     local refund = cost_mult
+    -- rule: Classic bouncing volleys refund cost_mult weapon costs (3/4/5) while firing only count
+    --   rocks (2/3/4): each volley over-refunds one rock (net MP gain). Gameplay Fixes refunds
+    --   exactly the rocks that fly.
+    -- tests: GameplayFixesElf.volleys_refund_exactly_the_rocks_fired
+    -- tests: parity:elf_volley_refund_scen99
     if gf.on() then
       -- Gameplay Fixes: refund the rocks that will fly, not one more.
       refund = count
@@ -62,9 +99,26 @@ local function bounce_volley(cost_mult, count, los_num)
     -- magicpoints is a C++ float: per-op rounding.
     self.magicpoints = og.fadd(self.magicpoints,
                                refund * self:s_weapon_cost())
+    -- rule: A bouncing volley releases `count` rocks (2/3/4 for slots 2/3/4 and any unmapped slot),
+    --   each with do_bounce set and line of sight multiplied by los_num/2 (x1.5, x2, x2.5), each
+    --   with an independent 0.8-1.2 cosmetic speed spread.
+    -- tests: WalkerSpecials.elf_bouncing_rocks_drives_simulation
+    -- tests: GameplayFixesElf.volleys_refund_exactly_the_rocks_fired
+    -- tests: SemElf.bouncing_volleys_throw_bouncing_rocks_with_the_slots_longer_sight
     for i = 1, count do
       local rock = self:fire()
+      -- rule: When a volley's i-th rock cannot be fired the cast stops 'COULD NOT FIRE' with the
+      --   earlier rocks still flying. Classic keeps the whole refund; Gameplay Fixes takes back the
+      --   count-i+1 rocks that never flew.
+      -- tests: GameplayFixesElf.a_blocked_volley_costs_one_swing
+      -- tests: GameplayFixesElf.volleys_refund_exactly_the_rocks_fired
+      -- tests: SemElf.a_volley_that_runs_dry_takes_back_only_the_rocks_that_never_flew
       if not rock then
+        -- rule: Part of the rule above that begins "When a volley's i-th rock cannot be fired the
+        --   ..."
+        -- tests: GameplayFixesElf.a_blocked_volley_costs_one_swing
+        -- tests: GameplayFixesElf.volleys_refund_exactly_the_rocks_fired
+        -- tests: SemElf.a_volley_that_runs_dry_takes_back_only_the_rocks_that_never_flew
         if gf.on() then
           -- Gameplay Fixes: the rocks that never flew are not refunded.
           gf.take_back(self, count - i + 1)
@@ -94,16 +148,34 @@ end
 -- Draw-free: finders and positions only.
 local function volley(self, count_needed, los_num)
   local foe = G.nearest_living_foe(self, 320, false)
+  -- rule: Gameplay Fixes bot elf: a volley needs its nearest living foe (within 320 px) faced along
+  --   the elf's heading and inside the rock's flight (step 5 x range 8, multiplied by los_num/2 for
+  --   bouncing volleys).
+  -- tests: GameplayFixesBots.elf_rocks_want_the_nearest_foe_faced_inside_the_flight
+  -- tests: GameplayFixesBots.elf_bouncing_rocks_reach_half_again
+  -- tests: parity:elf_bot_rocks_far_fixes_scen99
+  -- tests: SemElf.the_elf_bot_gate_with_no_living_foe_never_throws
   if not foe or not G.faces(self, foe)
       or not G.in_flight(self, foe, 5, 8, los_num, 2) then
     return false
   end
+  -- rule: ROCKS and BOUNCING ROCKS need only the one faced foe; LOTS OF ROCKS and MEGA ROCKS also
+  --   need a second living foe.
+  -- tests: GameplayFixesBots.elf_rocks_want_the_nearest_foe_faced_inside_the_flight
+  -- tests: GameplayFixesBots.elf_lots_of_rocks_wants_two_foes_in_flight
   if count_needed < 2 then
     return true
   end
   local foes = G.living_foes(self, 320, false)
   local n = 0
+  -- rule: LOTS OF ROCKS / MEGA ROCKS (bot, fixes on) want at least two living foes inside the
+  --   volley's flight from the elf, in any direction (only the nearest must be faced).
+  -- tests: GameplayFixesBots.elf_lots_of_rocks_wants_two_foes_in_flight
+  -- tests: GameplayFixesBots.elf_mega_rocks_wants_two_foes_in_flight
   for i = 1, #foes do
+    -- rule: Part of the rule above that begins "LOTS OF ROCKS / MEGA ROCKS (bot, fixes on) ..."
+    -- tests: GameplayFixesBots.elf_lots_of_rocks_wants_two_foes_in_flight
+    -- tests: GameplayFixesBots.elf_mega_rocks_wants_two_foes_in_flight
     if G.in_flight(self, foes[i], 5, 8, los_num, 2) then
       n = n + 1
     end
@@ -116,10 +188,26 @@ end
 local VOLLEYS = { { 1, 2 }, { 1, 3 }, { 2, 4 }, { 2, 5 } }
 
 local function check_special_ai(self)
+  -- rule: Classic elf bot has no special gate: it casts whichever slot it rolled at any time, even
+  --   with no foe (throws at nothing). Gameplay Fixes adds the pad and volley gates.
+  -- tests: GameplayFixesBots.elf_rocks_want_the_nearest_foe_faced_inside_the_flight
+  -- tests: parity:elf_bot_rocks_far_scen99
   if not gf.on() then
     return true
   end
+  -- rule: Each elf slot maps to its volley shape (foes needed, range multiplier): 1:(1,x1)
+  --   2:(1,x1.5) 3:(2,x2) 4 and any unmapped slot:(2,x2.5), matching default_cast.
+  -- tests: GameplayFixesBots.elf_bouncing_rocks_reach_half_again
+  -- tests: GameplayFixesBots.elf_mega_rocks_wants_two_foes_in_flight
+  -- tests: SemElf.an_unmapped_elf_slot_aims_like_mega_rocks
   local v = VOLLEYS[self:current_special()] or VOLLEYS[4]
+  -- rule: Gameplay Fixes bot elf never casts when its rock's launch pad is blocked (wall, edge, or
+  --   a foe body on the pad) even with a foe in flight; an ally on the pad does not block.
+  -- tests: GameplayFixesBots.elf_rocks_refuse_a_pad_on_a_wall
+  -- tests: GameplayFixesBots.elf_rocks_refuse_a_pad_off_the_map
+  -- tests: GameplayFixesBots.elf_rocks_refuse_a_foe_on_the_pad
+  -- tests: GameplayFixesBots.elf_rocks_an_ally_on_the_pad_is_not_in_the_way
+  -- tests: parity:elf_bot_rocks_blocked_fixes_scen99
   return G.pad_clear(self) and volley(self, v[1], v[2])
 end
 

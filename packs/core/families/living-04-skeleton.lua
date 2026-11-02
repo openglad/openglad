@@ -17,7 +17,15 @@ local function check_special_ai(self)
   -- Historical rule: tunnel only when "away from anybody."
   -- This per-tick gate keeps its fixed five-grid range in code.
   local _, foe_count = og.find_foes_in_range("ob", 5 * 16, self)
+  -- rule: A bot skeleton tunnels only when no foe is within 80 px ('away from anybody'). Gameplay
+  --   Fixes (fix W, #371): never while already mid-teleport (a freshly spawned skeleton is in
+  --   ANI_TELE_IN), where the cast refuses SPECIAL BUSY.
+  -- tests: FamilyBehaviors.check_special_skeleton_tunnel
+  -- tests: GameplayFixesBots.a_busy_bot_never_rolls_a_busy_cast_with_the_setting_on
   local held = gf.on() and lc.mid_teleport(self)
+  -- rule: Part of the rule above that begins "A bot skeleton tunnels only when no foe is ..."
+  -- tests: FamilyBehaviors.check_special_skeleton_tunnel
+  -- tests: GameplayFixesBots.a_busy_bot_never_rolls_a_busy_cast_with_the_setting_on
   return foe_count < 1 and not held
 end
 local function level_up(guy, level_diff)
@@ -25,6 +33,11 @@ local function level_up(guy, level_diff)
 end
 
 local function do_special(self)
+  -- rule: TUNNEL refuses 'SPECIAL BUSY' mid-teleport; otherwise it starts tele-out and
+  --   handle_teleport hops the skeleton to a random spot within 18*level px (teleport_ranged).
+  -- tests: KitSkeleton.tunnel_and_level_up_stay_classic
+  -- tests: WalkerSpecials.skeleton_tunnel_drives_simulation
+  -- tests: parity:skeleton_tunnel_displacement_scen99
   if lc.mid_teleport(self) then
     return false, "SPECIAL BUSY"
   end

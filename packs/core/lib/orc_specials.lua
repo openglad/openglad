@@ -11,12 +11,21 @@ local M = {}
 
 function M.yell(self)
   -- yell and 'freeze' foes (special 1)
+  -- rule: An orc (or captain) that is busy (> 0) cannot howl; the refusal is free.
+  -- tests: KitCaptain.captain_howl_refuses_while_busy
+  -- tests: KitCaptain.promoted_orc_keeps_howl_and_eat_corpse
+  -- tests: FamilyOrc.r15_howl_freezes_foes_in_radius_and_spares_the_horde
   if lc.is_busy(self) then
     return false, "SPECIAL BUSY"
   end
   local t = og.tuning(self)
   local foes = og.find_foes_in_range(
     "ob", og.combat.yell_radius(self.level), self)
+  -- rule: Classic: HOWL with nobody in reach still costs its price, 2 busy and roars. Gameplay
+  --   Fixes: a howl that would stun nobody is refused for free (NO FOE IN RANGE).
+  -- tests: parity:orc_howl_no_foe_scen99, parity:orc_howl_no_foe_fixes_scen99
+  -- tests: FamilyOrc.r15_howl_freezes_foes_in_radius_and_spares_the_horde
+  -- tests: SemOrcHowl.a_howl_with_a_foe_in_reach_goes_off_with_fixes_on_or_off
   if gf.on() and #foes == 0 then
     -- Gameplay Fixes: a howl that would stun nobody costs nothing.
     return false, "NO FOE IN RANGE"
@@ -24,10 +33,20 @@ function M.yell(self)
   -- busy is a C++ float: per-op rounding.
   self.busy = og.fadd(self:busy(), 2.0)
 
+  -- plumbing: stun loop over foes in yell_radius; rule in orc_specials.lua:31
   for i = 1, #foes do
     local foe = foes[i]
+    -- plumbing: nil foe guard inside the foe list
     if foe then
       local con
+      -- rule: HOWL stuns every foe in 160+20*level px for max(0, yell_stun_base + rand(level*10) -
+      --   rand(con*10)) ticks of frozen_delay, where con is a hero's constitution, or for a guyless
+      --   foe its hp/30 (trunc); a zero con draws nothing.
+      -- tests: FamilyOrc.r15_howl_freezes_foes_in_radius_and_spares_the_horde
+      -- tests: SemOrcHowl.a_guyless_foe_resists_a_howl_by_a_thirtieth_of_its_hitpoints
+      -- unreachable: add_frozen_stun's stun_total floors a negative add at 0
+      --   (include/openglad/core/combat_math.h:312), so removing og.max(0, ...) changes no state;
+      --   candidate for a defensive-guard note
       if foe:has_guy() then
         con = foe:g_constitution()
       else
@@ -56,16 +75,25 @@ end
 function M.eat_corpse(self)
   -- eat corpse for health (specials 2/3/4 and the default case)
   -- can't eat if we're 'full'
+  -- rule: EAT CORPSE refuses at full health, with no bloodstain anywhere, or with the nearest stain
+  --   out of reach (24 squared px) - each refusal free.
+  -- tests: KitCaptain.captain_eats_a_corpse_when_hurt, parity:orc_eat_corpse_scen99
   if self.hp >= self.max_hp then
     return false, "ALREADY AT FULL HEALTH"
   end
   local t = og.tuning(self)
   local corpse = og.find_nearest_blood(self)
   -- no blood, so do nothing
+  -- rule: Part of the rule above that begins "EAT CORPSE refuses at full health, with no bloodstain
+  --   ..."
+  -- tests: KitCaptain.captain_eats_a_corpse_when_hurt, parity:orc_eat_corpse_scen99
   if not corpse then
     return false, "NO CORPSE NEARBY"
   end
   local dist = self:distance_to_ob_center(corpse)
+  -- rule: Part of the rule above that begins "EAT CORPSE refuses at full health, with no bloodstain
+  --   ..."
+  -- tests: KitCaptain.captain_eats_a_corpse_when_hurt, parity:orc_eat_corpse_scen99
   if dist > t.corpse_eat_range then
     return false, "NO CORPSE IN RANGE"
   end
@@ -74,6 +102,11 @@ function M.eat_corpse(self)
   -- narrows to int16 (short) like the C++ destination.
   self:do_heal_effects(
     nil, self, og.i16(corpse.level * t.corpse_heal_per_level))
+  -- rule: Eating a corpse heals corpse level * 5, pays a hero EXP_EAT_CORPSE experience, notifies
+  --   "<name> ate a corpse." and consumes the stain.
+  -- tests: KitCaptain.captain_eats_a_corpse_when_hurt
+  -- tests: FamilyOrc.r15_eating_a_corpse_heals_by_its_level_and_consumes_it
+  -- tests: KitCaptain.promoted_orc_keeps_howl_and_eat_corpse
   if self:has_guy() then
     self:g_set_exp(self:g_exp() +
                    og.exp_from_action(self, corpse, "eat_corpse", 0))
@@ -83,6 +116,9 @@ function M.eat_corpse(self)
     og.entity_display_name(self, "Orc") .. " ate a corpse.")
   -- Overheal clamps only AFTER the exp grant and the notice (C++ order),
   -- which is why this heal is not a self:heal_clamped call.
+  -- rule: A corpse meal larger than the wound tops up to max hp, no further (clamped after exp and
+  --   notice).
+  -- tests: KitCaptain.captain_eats_a_corpse_when_hurt
   if self.hp > self.max_hp then
     self.hp = self.max_hp
   end

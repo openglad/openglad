@@ -59,7 +59,18 @@ public:
     explicit SimRandom(std::uint32_t seed = 0) : state_(seed) {}
 
     std::uint32_t next(std::uint32_t max_exclusive) override {
+        // rule: The sim RNG is a glibc-constant LCG; asking for a draw with bound 0 answers 0 and
+        //   does NOT advance the stream (so a guarded draw costs nothing); a test override, when
+        //   installed, answers instead of the world stream.
+        // tests: SimEntity.sim_random_lcg_arithmetic_is_pinned
+        // tests: SimWorldHeadless.sim_random_override_steers_generator_death_scatter_in_a_unit_group
+        // tests: SimWorldHeadless.sim_random_zero_max_returns_zero
         if (max_exclusive == 0) return 0;
+        // rule: Part of the rule above that begins "The sim RNG is a glibc-constant LCG; asking for
+        //   ..."
+        // tests: SimEntity.sim_random_lcg_arithmetic_is_pinned
+        // tests: SimWorldHeadless.sim_random_override_steers_generator_death_scatter_in_a_unit_group
+        // tests: SimWorldHeadless.sim_random_zero_max_returns_zero
         if (IRandom* override_rng = sim_random_override())
             return override_rng->next(max_exclusive);
         // LCG: same constants as glibc.
@@ -247,24 +258,45 @@ public:
     }
     [[nodiscard]] PixieData& grid_for_floor(int floor) noexcept
     {
+        // rule: Every per-floor lookup with a floor index outside 1..extra floors (including
+        //   negative or too-large indices from a hostile snapshot/save) falls back to floor 0's
+        //   grid, decor and smoother, so an untrusted floor can never index out of bounds.
+        // tests: MapgenBuilders.stair_pair_paints_aligned_up_down
+        // tests: DecorFormatTest.v11_round_trip_multifloor_planes_and_presence_flags
+        // tests: SemWorld.a_floor_index_outside_the_stacked_floors_reads_floor_zero
         return valid_floor(floor)
                    ? extra_floors_[static_cast<std::size_t>(floor - 1)].grid
                    : grid;
     }
     [[nodiscard]] const PixieData& grid_for_floor(int floor) const noexcept
     {
+        // rule: Part of the rule above that begins "Every per-floor lookup with a floor index
+        //   outside 1..extra ..."
+        // tests: MapgenBuilders.stair_pair_paints_aligned_up_down
+        // tests: DecorFormatTest.v11_round_trip_multifloor_planes_and_presence_flags
+        // tests: SemWorld.a_floor_index_outside_the_stacked_floors_reads_floor_zero
         return valid_floor(floor)
                    ? extra_floors_[static_cast<std::size_t>(floor - 1)].grid
                    : grid;
     }
     [[nodiscard]] PixieData& decor_for_floor(int floor) noexcept
     {
+        // rule: Part of the rule above that begins "Every per-floor lookup with a floor index
+        //   outside 1..extra ..."
+        // tests: MapgenBuilders.stair_pair_paints_aligned_up_down
+        // tests: DecorFormatTest.v11_round_trip_multifloor_planes_and_presence_flags
+        // tests: SemWorld.a_floor_index_outside_the_stacked_floors_reads_floor_zero
         return valid_floor(floor)
                    ? extra_floors_[static_cast<std::size_t>(floor - 1)].decor
                    : decor;
     }
     [[nodiscard]] const PixieData& decor_for_floor(int floor) const noexcept
     {
+        // rule: Part of the rule above that begins "Every per-floor lookup with a floor index
+        //   outside 1..extra ..."
+        // tests: MapgenBuilders.stair_pair_paints_aligned_up_down
+        // tests: DecorFormatTest.v11_round_trip_multifloor_planes_and_presence_flags
+        // tests: SemWorld.a_floor_index_outside_the_stacked_floors_reads_floor_zero
         return valid_floor(floor)
                    ? extra_floors_[static_cast<std::size_t>(floor - 1)].decor
                    : decor;
@@ -279,8 +311,16 @@ public:
                                          std::int32_t grid_y) const noexcept
     {
         const PixieData& dec = decor_for_floor(floor);
+        // rule: A walker is concealed by decor only on a cell whose decor id is registered as
+        //   concealing (shrub); a level without a decor plane, an off-map cell or a non-concealing
+        //   decor (bones, boulder) never conceals.
+        // tests: Decor.shrub_conceals_for_living_and_weapon_but_bones_does_not
+        // tests: SemWorld.a_decor_id_past_the_registry_never_conceals
         if (!dec.valid())
             return false;
+        // rule: Part of the rule above that begins "A walker is concealed by decor only on a ..."
+        // tests: Decor.shrub_conceals_for_living_and_weapon_but_bones_does_not
+        // tests: SemWorld.a_decor_id_past_the_registry_never_conceals
         if (grid_x < 0 || grid_y < 0 || grid_x >= dec.w || grid_y >= dec.h)
             return false;
         const unsigned char d =
@@ -289,6 +329,11 @@ public:
     }
     [[nodiscard]] smoother& smoother_for_floor(int floor) noexcept
     {
+        // rule: Part of the rule above that begins "Every per-floor lookup with a floor index
+        //   outside 1..extra ..."
+        // tests: MapgenBuilders.stair_pair_paints_aligned_up_down
+        // tests: DecorFormatTest.v11_round_trip_multifloor_planes_and_presence_flags
+        // tests: SemWorld.a_floor_index_outside_the_stacked_floors_reads_floor_zero
         return valid_floor(floor)
                    ? extra_floors_[static_cast<std::size_t>(floor - 1)].floor_smoother
                    : mysmoother;
@@ -311,15 +356,30 @@ public:
     // lender's RNG unless whoever moves them rebinds it.
     [[nodiscard]] bool smoothers_in_sync() const noexcept
     {
+        // plumbing: smoothers_in_sync: invariant oracle (every floor's smoother targets its own
+        //   grid and the world's RNG); no game rule, read by tests
+        //   (test_level_editor_issue12_wall_crash.cpp asserts true after create/resize/load).
         if (grid.valid() ? !mysmoother.targets(grid) : mysmoother.has_target())
             return false;
+        // plumbing: smoothers_in_sync: invariant oracle (every floor's smoother targets its own
+        //   grid and the world's RNG); no game rule, read by tests
+        //   (test_level_editor_issue12_wall_crash.cpp asserts true after create/resize/load).
         if (!mysmoother.uses_rng(&rng_))
             return false;
+        // plumbing: smoothers_in_sync: invariant oracle (every floor's smoother targets its own
+        //   grid and the world's RNG); no game rule, read by tests
+        //   (test_level_editor_issue12_wall_crash.cpp asserts true after create/resize/load).
         for (const ExtraFloor& floor : extra_floors_)
         {
+            // plumbing: smoothers_in_sync: invariant oracle (every floor's smoother targets its own
+            //   grid and the world's RNG); no game rule, read by tests
+            //   (test_level_editor_issue12_wall_crash.cpp asserts true after create/resize/load).
             if (floor.grid.valid() ? !floor.floor_smoother.targets(floor.grid)
                                    : floor.floor_smoother.has_target())
                 return false;
+            // plumbing: smoothers_in_sync: invariant oracle (every floor's smoother targets its own
+            //   grid and the world's RNG); no game rule, read by tests
+            //   (test_level_editor_issue12_wall_crash.cpp asserts true after create/resize/load).
             if (!floor.floor_smoother.uses_rng(&rng_))
                 return false;
         }
@@ -332,13 +392,28 @@ public:
     void rebind_smoothers() noexcept
     {
         mysmoother.set_rng(&rng_);
+        // plumbing: rebind_smoothers: re-targets each floor's smoother at its grid (or resets it
+        //   when the grid is gone) and the world RNG after a world handoff
+        //   (level_runtime_data.cpp:310,625); oracle smoothers_in_sync, asserted in
+        //   TEST(Issue12EditorWallCrash,
+        //   floor_smoothers_follow_the_live_world_rng_across_a_level_load).
         if (grid.valid())
             mysmoother.set_target(grid);
         else
             mysmoother.reset();
+        // plumbing: rebind_smoothers: re-targets each floor's smoother at its grid (or resets it
+        //   when the grid is gone) and the world RNG after a world handoff
+        //   (level_runtime_data.cpp:310,625); oracle smoothers_in_sync, asserted in
+        //   TEST(Issue12EditorWallCrash,
+        //   floor_smoothers_follow_the_live_world_rng_across_a_level_load).
         for (ExtraFloor& floor : extra_floors_)
         {
             floor.floor_smoother.set_rng(&rng_);
+            // plumbing: rebind_smoothers: re-targets each floor's smoother at its grid (or resets
+            //   it when the grid is gone) and the world RNG after a world handoff
+            //   (level_runtime_data.cpp:310,625); oracle smoothers_in_sync, asserted in
+            //   TEST(Issue12EditorWallCrash,
+            //   floor_smoothers_follow_the_live_world_rng_across_a_level_load).
             if (floor.grid.valid())
                 floor.floor_smoother.set_target(floor.grid);
             else

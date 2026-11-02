@@ -170,6 +170,16 @@ class statistics
         // masked getter).
         [[nodiscard]] short frozen_delay() const noexcept
         {
+            // rule: A walker in its post-thaw immunity window (negative raw freeze timer, written
+            //   only by the player-side drain statistics::player_thaw_tick,
+            //   src/gameplay/sim_input_handler.cpp:561) counts as NOT frozen for every reader: it
+            //   can act and move, the HUD/snapshot/replay show 0, and every legacy freeze guard
+            //   sees the classic value. The immunity itself is read through frozen_delay_raw
+            //   (living.cpp:131 climbs it +1/tick back to 0; transfer_stats copies the raw value so
+            //   immunity follows the body, walker.cpp:1809).
+            // tests: StatsFright.frozen_delay_masked_getter_and_raw
+            // tests: StatsFright.sim_player_thaw_immunity_window
+            // tests: SemWalker1.a_thawing_walker_reads_as_unfrozen_in_the_snapshot
             return frozen_delay_ < 0 ? static_cast<short>(0) : frozen_delay_;
         }
         [[nodiscard]] short frozen_delay_raw() const noexcept { return frozen_delay_; }
@@ -189,12 +199,16 @@ class statistics
         OG_STATS_DIRTY_FIELD(std::uint32_t, controller_id, og::dirty::BIT_CONTROLLER_ID);
         [[nodiscard]] unsigned short special_cost(int index) const noexcept
         {
+            // plumbing: Bounds guards on special_cost[] index (getter returns 0, setter ignores)
+            //   for out-of-range slot indices from Lua/snapshot; no game semantic.
             if (index < 0 || index >= NUM_SPECIALS)
                 return 0;
             return special_cost_[index];
         }
         void set_special_cost(int index, unsigned short value)
         {
+            // plumbing: Bounds guards on special_cost[] index (getter returns 0, setter ignores)
+            //   for out-of-range slot indices from Lua/snapshot; no game semantic.
             if (index < 0 || index >= NUM_SPECIALS)
                 return;
             special_cost_[index] = value;

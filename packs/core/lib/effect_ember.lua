@@ -18,8 +18,16 @@ local function foes_touching(ent, grow)
   local reach = ent:sizex() + ent:sizey() + 2 * LIVING_BOX + 2 * grow
   local foes = og.find_foes_in_range("ob", reach, ent)
   local touching = {}
+  -- plumbing: iterates the foe scan; rule at effect_ember.lua:23
   for i = 1, #foes do
     local w = foes[i]
+    -- rule: IMMOLATE's fire (the embers and the burner's own contact burn) touches only living foes
+    --   on its own floor whose box overlaps the fire's box (grown by `grow` px for the contact
+    --   burn); generators, weapons and other-floor foes are not burned, and the 64-px search reach
+    --   means even the biggest core living is found from any side.
+    -- tests: KitElemental.embers_burn_crossers_then_die
+    -- tests: KitElemental.immolate_drains_two_per_tick_burns_contact_melee_most_and_lays_embers
+    -- tests: SemLibsEmber.an_ember_burns_only_living_foes_on_its_own_floor
     if w:order() == C.ORDER_LIVING
         and w:floor() == ent:floor()
         and hits(ent:xpos() - grow, ent:ypos() - grow,
@@ -38,16 +46,28 @@ end
 local function on_act(self)
   local t = og.tuning(self)
   self.lifetime = self:lifetime() - 1
+  -- rule: An ember smoulders for its lifetime and goes out on the act its count reaches 0, burning
+  --   nothing that act; it outlives its elemental (keeps its own team and damage).
+  -- tests: KitElemental.embers_burn_crossers_then_die
+  -- tests: SemLibsEmber.an_ember_goes_out_on_its_last_act_without_burning
   if self:lifetime() <= 0 then
     self.dead = 1
     self:death()
     return true
   end
+  -- rule: An ember shows its dying frame for its last 10 ticks.
+  -- tests: KitElemental.embers_burn_crossers_then_die
+  -- tests: SemLibsEmber.an_ember_shows_its_dying_frame_only_in_its_last_nine_ticks
   if self:lifetime() < t.ember_dying then
     self:set_frame(1)
   end
+  -- rule: An ember burns each living foe standing on it once every 6 ticks (on lifetimes divisible
+  --   by 6), not every tick.
+  -- tests: KitElemental.embers_burn_crossers_then_die
   if og.mod(self:lifetime(), t.ember_pulse) == 0 then
     local foes = foes_touching(self, 0)
+    -- rule: Part of the rule above that begins "An ember burns each living foe standing on it ..."
+    -- tests: KitElemental.embers_burn_crossers_then_die
     for i = 1, #foes do
       self:attack(foes[i])
     end

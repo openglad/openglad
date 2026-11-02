@@ -8,6 +8,8 @@ local FX_DOOR_OPEN = assert(og.family_id("fx", "core:door_open"))
 -- plays the opening animation.
 local function on_death(self)
   local opened = og.add_weap_ob("fx", FX_DOOR_OPEN)
+  -- plumbing: add_weap_ob('fx', core:door_open) failure guard: no opening effect, hook reports
+  --   unhandled.
   if not opened then
     return false
   end
@@ -20,6 +22,11 @@ local function on_death(self)
   -- (og.query_genre reads the default-floor smoother, like the C++
   -- `current_game->world->mysmoother` this replaces; the tile conversion
   -- is og.div — C trunc.)
+  -- rule: A broken door is replaced by an opening-door effect on its spot (same floor, level,
+  --   team); with a wall directly above the door the effect faces right (a vertical door),
+  --   otherwise — verbatim classic quirk — FACE_UP is written onto the dead DOOR and the effect
+  --   keeps its spawn facing (down).
+  -- tests: WeapBehavior.weap_death_door
   if og.query_genre(og.div(self:xpos(), C.GRID_SIZE),
                     og.div(self:ypos(), C.GRID_SIZE) - 1) == C.TYPE_WALL then
     opened:set_curdir(C.FACE_RIGHT)

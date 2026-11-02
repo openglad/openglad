@@ -10,16 +10,39 @@ local LIVING_FAERIE = assert(og.family_id("living", "core:faerie"))
 local WEAP_CIRCLE_PROTECTION = assert(og.family_id("weapon", "core:circle_protection"))
 
 local function plant_tree(self)
+  -- rule: A busy druid cannot cast GROW TREE (same rule as the other three druid casts:
+  --   living-13-druid.lua:13/:42/:78/:88).
+  -- tests: GameplayFixesDruid.an_open_tree_costs_its_price_on_both_values
+  -- tests: WalkerSpecials.druid_grow_tree_drives_simulation
+  -- tests: SemDruid.a_busy_druid_casts_none_of_its_four_specials
   if lc.is_busy(self) then  -- do not start the fire-and-replace sequence
     return false, "SPECIAL BUSY"
   end
+  -- rule: Gameplay Fixes: a druid aiming its bolt into terrain (wall/map edge on the fire pad) is
+  --   refused before anything is paid (same rule in plant_tree :16 and summon_faerie :45). Classic:
+  --   the cast goes on to fire() and fails there.
+  -- tests: GameplayFixesDruid.a_cast_at_terrain_spends_nothing_with_the_setting_on
+  -- tests: GameplayFixesDruid.a_cast_at_the_map_edge_spends_nothing
+  -- tests: GameplayFixesDruid.an_open_tree_costs_its_price_on_both_values
+  -- tests: SemDruid.a_classic_cast_into_a_wall_attempts_the_bolt_and_fails_there
   if gf.pad_blocked_by_terrain(self) then
     return false, "COULD NOT FIRE"
   end
   -- shim kept: magicpoints is a C++ float: per-op float rounding.
   self.magicpoints = og.fadd(self.magicpoints, self:s_weapon_cost())
   local bolt = self:fire()
+  -- rule: The druid pre-refunds its bolt's cost before fire(); classic keeps that refund when the
+  --   bolt never flies (a blocked cast gives back one bolt's MP), Gameplay Fixes takes it back so a
+  --   failed bolt costs exactly nothing extra (same rule in plant_tree and summon_faerie).
+  -- tests: GameplayFixesDruid.a_blocked_tree_costs_the_swing, parity:druid_tree_blocked_scen99
+  -- tests: parity:druid_tree_blocked_fixes_scen99
+  -- tests: GameplayFixesDruid.an_open_tree_costs_its_price_on_both_values
   if not bolt then
+    -- rule: Part of the rule above that begins "The druid pre-refunds its bolt's cost before
+    --   fire(); classic ..."
+    -- tests: GameplayFixesDruid.a_blocked_tree_costs_the_swing, parity:druid_tree_blocked_scen99
+    -- tests: parity:druid_tree_blocked_fixes_scen99
+    -- tests: GameplayFixesDruid.an_open_tree_costs_its_price_on_both_values
     if gf.on() then
       -- Gameplay Fixes: the refund paid for a bolt that never flew.
       gf.take_back(self, 1)
@@ -29,6 +52,8 @@ local function plant_tree(self)
   -- shim kept: busy and fire_frequency are C++ floats: per-op float rounding.
   self:set_busy(og.fadd(self:busy(), og.fmul(self:fire_frequency(), 2.0)))
   local tree = og.summon(self, "weapon", WEAP_TREE)
+  -- plumbing: og.summon failure for the tree (object cap): 'COULD NOT CREATE TREE' (bolt already
+  --   flew).
   if not tree then
     return false, "COULD NOT CREATE TREE"
   end
@@ -39,16 +64,36 @@ local function plant_tree(self)
 end
 
 local function summon_faerie(self)
+  -- rule: A busy druid cannot cast SUMMON FAERIE (same rule as the other three druid casts:
+  --   living-13-druid.lua:13/:42/:78/:88).
+  -- tests: WalkerSpecials.druid_summon_faerie_drives_simulation
+  -- tests: SemDruid.a_busy_druid_casts_none_of_its_four_specials
   if lc.is_busy(self) then
     return false, "SPECIAL BUSY"
   end
+  -- rule: Gameplay Fixes: a druid aiming its bolt into terrain (wall/map edge on the fire pad) is
+  --   refused before anything is paid (same rule in plant_tree :16 and summon_faerie :45). Classic:
+  --   the cast goes on to fire() and fails there.
+  -- tests: GameplayFixesDruid.a_cast_at_terrain_spends_nothing_with_the_setting_on
+  -- tests: GameplayFixesDruid.a_cast_at_the_map_edge_spends_nothing
+  -- tests: WalkerSpecials.druid_summon_faerie_drives_simulation
+  -- tests: SemDruid.a_classic_cast_into_a_wall_attempts_the_bolt_and_fails_there
   if gf.pad_blocked_by_terrain(self) then
     return false, "COULD NOT FIRE"
   end
   -- shim kept: magicpoints is a C++ float: per-op float rounding.
   self.magicpoints = og.fadd(self.magicpoints, self:s_weapon_cost())
   local bolt = self:fire()
+  -- rule: The druid pre-refunds its bolt's cost before fire(); classic keeps that refund when the
+  --   bolt never flies (a blocked cast gives back one bolt's MP), Gameplay Fixes takes it back so a
+  --   failed bolt costs exactly nothing extra (same rule in plant_tree and summon_faerie).
+  -- tests: GameplayFixesDruid.a_blocked_faerie_costs_the_swing
+  -- tests: WalkerSpecials.druid_summon_faerie_drives_simulation
   if not bolt then
+    -- rule: Part of the rule above that begins "The druid pre-refunds its bolt's cost before
+    --   fire(); classic ..."
+    -- tests: GameplayFixesDruid.a_blocked_faerie_costs_the_swing
+    -- tests: WalkerSpecials.druid_summon_faerie_drives_simulation
     if gf.on() then
       -- Gameplay Fixes: the refund paid for a bolt that never flew.
       gf.take_back(self, 1)
@@ -56,6 +101,7 @@ local function summon_faerie(self)
     return false, "COULD NOT FIRE"
   end
   local faerie = og.add_ob("living", LIVING_FAERIE)
+  -- plumbing: add_ob failure for the faerie (object cap): 'COULD NOT CREATE FAERIE'.
   if not faerie then
     return false, "COULD NOT CREATE FAERIE"
   end
@@ -65,6 +111,10 @@ local function summon_faerie(self)
   faerie:setxy(bolt:xpos(), bolt:ypos())
   faerie.lifetime = og.combat.druid_faerie_lifetime(self.level)
   bolt.dead = 1
+  -- rule: A faerie summoned where its body cannot stand (the bolt's spot is blocked) is cancelled:
+  --   the faerie dies and the cast fails NO ROOM TO SUMMON.
+  -- tests: SemDruid.a_faerie_summoned_on_open_ground_lives_for_its_lifetime
+  -- tests: SemDruid.a_faerie_summoned_onto_a_body_is_cancelled
   if not og.query_passable(faerie:xpos(), faerie:ypos(), faerie) then
     faerie.dead = 1
     return false, "NO ROOM TO SUMMON"
@@ -75,6 +125,11 @@ local function summon_faerie(self)
 end
 
 local function reveal_items(self)
+  -- rule: A busy druid cannot cast REVEAL (same rule as the other three druid casts:
+  --   living-13-druid.lua:13/:42/:78/:88).
+  -- tests: FamilyBehaviors.druid_batch3_special_branches
+  -- tests: WalkerSpecials.druid_reveal_drives_simulation
+  -- tests: SemDruid.a_busy_druid_casts_none_of_its_four_specials
   if lc.is_busy(self) then
     return false, "SPECIAL BUSY"
   end
@@ -85,15 +140,26 @@ local function reveal_items(self)
 end
 
 local function protection_circle(self)
+  -- rule: A busy druid cannot cast PROTECTION (same rule as the other three druid casts:
+  --   living-13-druid.lua:13/:42/:78/:88).
+  -- tests: FamilyBehaviors.druid_batch3_special_branches
+  -- tests: PackLuaDruid.one_ally_receives_one_circle_and_caster_receives_none
+  -- tests: SemDruid.a_busy_druid_casts_none_of_its_four_specials
   if lc.is_busy(self) then
     return false, "SPECIAL BUSY"
   end
   local friends, friend_count = og.find_friends_in_range("ob", 60, self)
+  -- rule: PROTECTION needs at least one ally within 60 px (the druid itself is not protected); with
+  --   none the cast is free.
+  -- tests: PackLuaDruid.a_lone_druid_cannot_cast_circle_of_protection
+  -- tests: PackLuaDruid.one_ally_receives_one_circle_and_caster_receives_none
   if friend_count == 0 then
     -- Everyone was okay; don't charge us.
     return false, "NO ALLY IN RANGE"
   end
   local protected_count = 0
+  -- plumbing: per-friend loop and per-friend circle scan; rule rows living-13-druid.lua:111, :117,
+  --   :137
   for i = 1, #friends do
     local friend = friends[i]
     -- Historic slow path, now looking where circles actually live. The
@@ -106,16 +172,31 @@ local function protection_circle(self)
     -- filter, not the radius, is what selects the friend's own circle.
     local existing = nil
     local circles = og.find_in_range("weap", 100, friend)
+    -- plumbing: per-friend loop and per-friend circle scan; rule rows living-13-druid.lua:111,
+    --   :117, :137
     for j = 1, #circles do
       local ob = circles[j]
+      -- rule: A friend's existing ring is recognised only by owner AND family among weapons within
+      --   100 px (another friend's ring nearby is not this friend's).
+      -- tests: WalkerSpecials.druid_protection_tops_up_an_existing_circle
+      -- tests: PackLuaDruid.each_circle_of_protection_cast_shields_every_friend_in_range
+      -- tests: parity:druid_protection_refresh_scen99
+      -- tests: SemDruid.a_friends_own_knife_is_not_mistaken_for_its_ring
       if ob:owner() == friend
           and ob:family() == WEAP_CIRCLE_PROTECTION then
         existing = ob
         break
       end
     end
+    -- rule: An unringed friend gets a new circle of protection; an already-ringed friend's circle
+    --   is topped up by a fresh circle's full charge instead of stacking a second ring.
+    -- tests: PackLuaDruid.one_ally_receives_one_circle_and_caster_receives_none
+    -- tests: WalkerSpecials.druid_protection_tops_up_an_existing_circle
+    -- tests: parity:druid_protection_refresh_scen99, FamilyBehaviors.druid_batch3_special_branches
     if not existing then
       local circle = og.summon(friend, "weapon", WEAP_CIRCLE_PROTECTION)
+      -- plumbing: og.summon / add_ob failure for the circle: 'COULD NOT PROTECT' (returns mid-loop;
+      --   earlier friends keep their circles and exp, cast reported failed).
       if not circle then
         return false, "COULD NOT PROTECT"
       end
@@ -124,6 +205,8 @@ local function protection_circle(self)
       -- A fresh circle is minted only to read a full charge off it;
       -- its hitpoints top up the existing circle and it dies unused.
       local fresh = og.add_ob("weapon", WEAP_CIRCLE_PROTECTION)
+      -- plumbing: og.summon / add_ob failure for the circle: 'COULD NOT PROTECT' (returns mid-loop;
+      --   earlier friends keep their circles and exp, cast reported failed).
       if not fresh then
         return false, "COULD NOT PROTECT"
       end
@@ -134,17 +217,25 @@ local function protection_circle(self)
       -- TODO: Should we show healing numbers here?
     end
     -- Get experience either way
+    -- rule: A hero druid earns experience for every friend it protects, whether the friend got a
+    --   new ring or a top-up; a monster druid earns nothing.
+    -- tests: SemDruid.a_hero_druid_earns_experience_per_friend_protected
     if self:has_guy() then
       self:g_set_exp(self:g_exp() +
                      og.exp_from_action(self, friend, "protection", 0))
     end
   end
   local message
+  -- rule: The PROTECTION message counts the friends protected, singular for one.
+  -- tests: SemDruid.the_protection_message_counts_the_friends_singular_for_one
   if protected_count == 1 then
     message = "Druid protected 1 man!"
   else
     message = "Druid protected " .. protected_count .. " men!"
   end
+  -- rule: Only the player's side (team 0) or a hero druid announces PROTECTION; an enemy druid
+  --   casts silently (the heal sound plays either way).
+  -- tests: SemDruid.only_the_home_team_or_a_hero_druid_announces_protection
   if self.team == 0 or self:has_guy() then
     og.emit_notification(message)
   end
@@ -155,40 +246,88 @@ end
 -- The bot gate. The classic druid had none: every special it rolled was
 -- cast. With the Gameplay Fixes setting on, each asks for its payoff.
 local function check_special_ai(self)
+  -- rule: Classic: the druid has no bot gate; every special it rolls is cast.
+  -- tests: GameplayFixesBots.druid_tree_wants_a_faced_foe_closing_but_not_touching
+  -- tests: GameplayFixesBots.druid_faerie_wants_a_foe_near_and_no_faerie_out
+  -- tests: GameplayFixesBots.druid_reveal_is_never_cast_by_a_bot
+  -- tests: GameplayFixesBots.druid_protection_wants_an_ally_under_blows_without_a_fresh_circle
+  -- tests: parity:druid_bot_tree_behind_scen99, parity:druid_bot_faerie_alone_scen99
+  -- tests: parity:druid_bot_protection_idle_scen99
   if not gf.on() then
     return true -- the classic druid casts every roll
   end
   -- All four casts refuse a busy druid (their own guard).
+  -- rule: Gameplay Fixes: a busy druid bot rolls no special.
+  -- tests: GameplayFixesBots.a_busy_bot_never_rolls_a_busy_cast_with_the_setting_on
   if lc.is_busy(self) then
     return false
   end
   local slot = self:current_special()
+  -- rule: Gameplay Fixes: GROW TREE pays only between the druid and a living foe closing on it: the
+  --   nearest living foe within 60 px, faced, not yet at blows, with the bolt's pad clear.
+  -- tests: GameplayFixesBots.druid_tree_wants_a_faced_foe_closing_but_not_touching
+  -- tests: GameplayFixesBots.druid_tree_refuses_a_pad_on_a_wall
+  -- tests: parity:druid_bot_tree_behind_fixes_scen99, parity:druid_bot_tree_pad_body_fixes_scen99
   if slot == 1 then
     -- GROW TREE: a tree between the druid and a foe closing on it: the
     -- nearest living foe faced, within 60 px, not yet at blows (a foe
     -- touching blocks the bolt the tree grows from), the bolt's pad clear.
     local f = G.nearest_living_foe(self, 60, true)
+    -- rule: Part of the rule above that begins "Gameplay Fixes: GROW TREE pays only between the
+    --   druid ..."
+    -- tests: GameplayFixesBots.druid_tree_wants_a_faced_foe_closing_but_not_touching
+    -- tests: GameplayFixesBots.druid_tree_refuses_a_pad_on_a_wall
+    -- tests: parity:druid_bot_tree_behind_fixes_scen99, parity:druid_bot_tree_pad_body_fixes_scen99
     if f == nil or not G.pad_clear(self) then
       return false
     end
+    -- rule: Part of the rule above that begins "Gameplay Fixes: GROW TREE pays only between the
+    --   druid ..."
+    -- tests: GameplayFixesBots.druid_tree_wants_a_faced_foe_closing_but_not_touching
+    -- tests: GameplayFixesBots.druid_tree_refuses_a_pad_on_a_wall
+    -- tests: parity:druid_bot_tree_behind_fixes_scen99, parity:druid_bot_tree_pad_body_fixes_scen99
     return G.faces(self, f) and not G.at_blows(self, f)
-  elseif slot == 2 then
+  elseif slot == 2 then  -- rule: Gameplay Fixes: SUMMON FAERIE pays with a living foe within 130
+    --   px, no faerie of the druid's out, and the bolt's pad clear.
+    -- tests: GameplayFixesBots.druid_faerie_wants_a_foe_near_and_no_faerie_out
+    -- tests: GameplayFixesBots.druid_faerie_refuses_a_pad_on_a_foe
+    -- tests: parity:druid_bot_faerie_alone_fixes_scen99
     -- SUMMON FAERIE: a living foe within 130 px, no faerie out, the bolt's pad clear.
+    -- rule: Part of the rule above that begins "Gameplay Fixes: SUMMON FAERIE pays with a living
+    --   foe ..."
+    -- tests: GameplayFixesBots.druid_faerie_wants_a_foe_near_and_no_faerie_out
+    -- tests: GameplayFixesBots.druid_faerie_refuses_a_pad_on_a_foe
+    -- tests: parity:druid_bot_faerie_alone_fixes_scen99
     if G.owned(self, C.ORDER_LIVING, LIVING_FAERIE) > 0 then
       return false
     end
+    -- rule: Part of the rule above that begins "Gameplay Fixes: SUMMON FAERIE pays with a living
+    --   foe ..."
+    -- tests: GameplayFixesBots.druid_faerie_wants_a_foe_near_and_no_faerie_out
+    -- tests: GameplayFixesBots.druid_faerie_refuses_a_pad_on_a_foe
+    -- tests: parity:druid_bot_faerie_alone_fixes_scen99
     return G.foes_within(self, 1, 130, false) and G.pad_clear(self)
-  elseif slot == 3 then
+  elseif slot == 3 then  -- rule: Gameplay Fixes: a druid bot never casts REVEAL (it only changes a
+    --   viewscreen's radar).
+    -- tests: GameplayFixesBots.druid_reveal_is_never_cast_by_a_bot
     -- REVEAL changes only a viewscreen's radar: a bot never casts it.
     return false
   end
   -- PROTECTION: an ally within 60 px with a living foe at blows with it,
   -- and no circle on it or one under 50 hp.
   local ally = G.ally_at_blows(self, 60)
+  -- rule: Gameplay Fixes: PROTECTION pays for an ally within 60 px that a living foe is at blows
+  --   with, and only if that ally has no circle or one under 50 hp.
+  -- tests: GameplayFixesBots.druid_protection_wants_an_ally_under_blows_without_a_fresh_circle
+  -- tests: parity:druid_bot_protection_idle_fixes_scen99
   if not ally then
     return false
   end
   local _, circle = G.owned(ally, C.ORDER_WEAPON, WEAP_CIRCLE_PROTECTION)
+  -- rule: Part of the rule above that begins "Gameplay Fixes: PROTECTION pays for an ally within 60
+  --   ..."
+  -- tests: GameplayFixesBots.druid_protection_wants_an_ally_under_blows_without_a_fresh_circle
+  -- tests: parity:druid_bot_protection_idle_fixes_scen99
   return circle == nil or circle.hp < 50
 end
 

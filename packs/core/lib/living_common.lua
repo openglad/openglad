@@ -19,6 +19,10 @@ end
 -- read serves both compares (the getter is pure).
 function M.mid_teleport(self)
   local ani = self:ani_type()
+  -- rule: A walker in either half of a teleport (going out or coming in) is mid-teleport and cannot
+  --   start the specials that guard on it (TUNNEL, DIG IN, mage teleport).
+  -- tests: KitSkeleton.tunnel_and_level_up_stay_classic, KitSkeleton.possessed_body_cannot_dig_in
+  -- tests: SemTeleportGuard.a_walker_going_out_of_a_teleport_is_mid_teleport
   return ani == C.ANI_TELE_OUT or ani == C.ANI_TELE_IN
 end
 
@@ -65,10 +69,24 @@ end
 function M.with_rest(cast, slot, rest_key, name)
   return function(self)
     local left = self:special_rest_left()
+    -- rule: A rested special refuses "<NAME> IN <N>S" for free while its rest runs on its own slot;
+    --   a successful cast starts the rest (tuning rest_key ticks) on that slot; a refused cast
+    --   starts nothing. One clock per walker: only the last rested slot waits. Holds whatever the
+    --   New Specials setting.
+    -- tests: KitRests.orc_howl_rests_ten_seconds, KitRests.freeze_time_rests_thirty_seconds
+    -- tests: KitRests.with_the_setting_off_the_classic_specials_rest_too
+    -- tests: KitRests.the_clock_is_on_the_walker
+    -- tests: GameplayFixesBots.mind_control_skips_a_seated_hero_with_the_setting_on
     if left > 0 and self:special_rest_slot() == slot then
       return false, string.format("%s IN %dS", name, og.timer_seconds(left))
     end
     local ok, why = cast(self)
+    -- rule: Part of the rule above that begins "A rested special refuses "<NAME> IN <N>S" for free
+    --   ..."
+    -- tests: KitRests.orc_howl_rests_ten_seconds, KitRests.freeze_time_rests_thirty_seconds
+    -- tests: KitRests.with_the_setting_off_the_classic_specials_rest_too
+    -- tests: KitRests.the_clock_is_on_the_walker
+    -- tests: GameplayFixesBots.mind_control_skips_a_seated_hero_with_the_setting_on
     if ok then
       self:set_special_rest_left(og.tuning(self)[rest_key])
       self:set_special_rest_slot(slot)
@@ -82,11 +100,15 @@ end
 -- the rest is read only when the bot is on the rested slot.
 function M.gate_with_rest(gate, slot)
   return function(self)
+    -- rule: A bot never picks a special while it is resting; other slots and a rested-out special
+    --   answer their own gate.
+    -- tests: KitRests.bot_gates_hold_a_resting_special
     if self:current_special() == slot
         and self:special_rest_slot() == slot
         and self:special_rest_left() > 0 then
       return false
     end
+    -- plumbing: gate_with_rest: no wrapped gate means 'yes'
     if gate then
       return gate(self)
     end

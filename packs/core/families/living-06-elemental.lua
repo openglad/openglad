@@ -12,8 +12,25 @@ local function do_special(self)
   local saved_aim_y = og.trunc(self:lasty())
   -- shim kept: magicpoints is a C++ float: per-op float rounding.
   self.magicpoints = og.fadd(self.magicpoints, 8 * self:s_weapon_cost())
+  -- rule: STARBURST fires one meteor along each of the 8 compass headings (weapon costs
+  --   pre-refunded, 8 x wc) and restores the elemental's facing.
+  -- tests: WalkerSpecials.fire_elemental_starburst_drives_simulation
+  -- tests: KitElemental.dying_elemental_always_fires_slot_one
+  -- tests: parity:fireelemental_starburst_ring_scen99
+  -- tests: SemElemental.starburst_fires_all_eight_headings_and_restores_the_facing
   for i = -1, 1 do
+    -- rule: Part of the rule above that begins "STARBURST fires one meteor along each of the 8 ..."
+    -- tests: WalkerSpecials.fire_elemental_starburst_drives_simulation
+    -- tests: KitElemental.dying_elemental_always_fires_slot_one
+    -- tests: parity:fireelemental_starburst_ring_scen99
+    -- tests: SemElemental.starburst_fires_all_eight_headings_and_restores_the_facing
     for j = -1, 1 do
+      -- rule: Part of the rule above that begins "STARBURST fires one meteor along each of the 8
+      --   ..."
+      -- tests: WalkerSpecials.fire_elemental_starburst_drives_simulation
+      -- tests: KitElemental.dying_elemental_always_fires_slot_one
+      -- tests: parity:fireelemental_starburst_ring_scen99
+      -- tests: SemElemental.starburst_fires_all_eight_headings_and_restores_the_facing
       if i ~= 0 or j ~= 0 then
         self:set_lastx(i)
         self:set_lasty(j)
@@ -31,9 +48,16 @@ end
 -- flight, or one the elemental does not face. The classic foe search runs
 -- first either way (G.with_classic). The meteor is step 7, range 9.
 local function fixed_starburst(self)
+  -- Classic bot elemental casts STARBURST with an acquired foe within 130 px. Gameplay Fixes: the
+  -- classic search still runs, then the ring must pay: two living foes inside the meteor flight (7
+  -- x 9) or one the elemental does not face.
   return G.ring_pays(self, 7, 9)
 end
 
+-- A dying elemental ALWAYS fires a free parting STARBURST (slot 1 unshifted) whatever slot or Shift
+-- it was parked on: the slot-1 cost is refunded first so net MP is unchanged, a burning IMMOLATE
+-- channel is put out, the body is un-killed for the cast and re-killed, and
+-- current_special/shifter_down are restored so the body dies as it was.
 local function on_death(self)
   -- Free parting starburst: un-kill, refund the special cost, fire, re-kill.
   -- The parting shot is ALWAYS slot 1 unshifted: a dying elemental parked
@@ -62,22 +86,50 @@ local function on_act_living(self)
   -- A summoned elemental (finite lifetime) takes the old "toll from our
   -- mage": 1 HP + 3 MP buys 1 HP of healing; if the owner cannot pay both,
   -- the elemental burns lifetime instead.
+  -- rule: Only a summoned elemental (finite lifetime) with a living owner and missing health takes
+  --   the toll from its summoner; a natural (lifetime 0) or full-health elemental, or one whose
+  --   owner is gone/dead, takes nothing and burns no lifetime.
+  -- tests: KitElemental.classic_level_up_and_summoned_toll_are_unchanged
+  -- tests: SemElemental.only_a_hurt_summoned_elemental_with_a_living_owner_takes_the_toll
   if self:lifetime() ~= 0 then
     local owner = self:owner()
+    -- rule: Part of the rule above that begins "Only a summoned elemental (finite lifetime) with a
+    --   living ..."
+    -- tests: KitElemental.classic_level_up_and_summoned_toll_are_unchanged
+    -- tests: SemElemental.only_a_hurt_summoned_elemental_with_a_living_owner_takes_the_toll
     if owner and owner:dead() == 0 then
+      -- rule: Part of the rule above that begins "Only a summoned elemental (finite lifetime) with
+      --   a living ..."
+      -- tests: KitElemental.classic_level_up_and_summoned_toll_are_unchanged
+      -- tests: SemElemental.only_a_hurt_summoned_elemental_with_a_living_owner_takes_the_toll
       if self.hp < self.max_hp then
         local paid = 0
         -- shim kept: max_hp is a C++ float: per-op float rounding.
+        -- rule: A hurt summoned elemental takes 1 HP (if its owner is at or above a third of max
+        --   health) and then 3 MP from its owner to heal 1 HP per tick; if the owner cannot pay
+        --   both, the elemental loses one EXTRA tick of lifetime (on top of the engine's per-act
+        --   lifetime tick) instead -- and an owner who paid the HP but not the MP still loses that
+        --   HP (classic quirk).
+        -- tests: KitElemental.classic_level_up_and_summoned_toll_are_unchanged
+        -- tests: SemElemental.classic_an_owner_who_cannot_pay_both_costs_the_elemental_a_tick
         if owner.hp >= og.fdiv(owner.max_hp, 3.0) then
           paid = 1
           -- shim kept: hp is a C++ float: per-op float rounding.
           owner.hp = og.fsub(owner.hp, 1.0)
         end
+        -- rule: Part of the rule above that begins "A hurt summoned elemental takes 1 HP (if its
+        --   ..."
+        -- tests: KitElemental.classic_level_up_and_summoned_toll_are_unchanged
+        -- tests: SemElemental.classic_an_owner_who_cannot_pay_both_costs_the_elemental_a_tick
         if paid ~= 0 and owner.magicpoints >= 3 then
           paid = paid + 1
           -- shim kept: magicpoints is a C++ float: per-op float rounding.
           owner.magicpoints = og.fsub(owner.magicpoints, 3.0)
         end
+        -- rule: Part of the rule above that begins "A hurt summoned elemental takes 1 HP (if its
+        --   ..."
+        -- tests: KitElemental.classic_level_up_and_summoned_toll_are_unchanged
+        -- tests: SemElemental.classic_an_owner_who_cannot_pay_both_costs_the_elemental_a_tick
         if paid == 2 then
           -- shim kept: hp is a C++ float: per-op float rounding.
           self.hp = og.fadd(self.hp, 1.0)

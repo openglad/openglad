@@ -26,6 +26,8 @@ local SPRINKLE_REFRESH_FLOOR = 10         -- combat_math.h kSprinkleRefreshFloor
 -- every one of them means "no such sequence", i.e. stop (return true).
 local function weapon_animate_step(self)
   local dir_index = og.u8(self:curdir())  -- C++ (int)(unsigned char)curdir()
+  -- plumbing: weapon_animate_step facing bound: a snapshot-borne curdir outside 0..7 animates row 0
+  --   instead of indexing out of range.
   if dir_index < 0 or dir_index >= NUM_FACINGS then
     dir_index = 0
   end
@@ -34,15 +36,22 @@ local function weapon_animate_step(self)
   local ani_index = dir_index + type_index * NUM_FACINGS
 
   local seq = og.ani_row(self, ani_index)
+  -- plumbing: weapon_animate_step: og.ani_row nil (no table, past ani_count, null row, no sentinel)
+  --   or an empty row means 'no such sequence' -> report ended (true), so tree/glow reset to their
+  --   rest state.
   if not seq then
     return true
   end
   local seq_len = #seq
+  -- plumbing: weapon_animate_step: og.ani_row nil (no table, past ani_count, null row, no sentinel)
+  --   or an empty row means 'no such sequence' -> report ended (true), so tree/glow reset to their
+  --   rest state.
   if seq_len <= 0 then
     return true
   end
 
   local c = self:cycle()
+  -- plumbing: weapon_animate_step cycle bound: an out-of-range cycle restarts the row at frame 0.
   if c < 0 or c >= seq_len then
     c = 0
   end
@@ -60,9 +69,20 @@ end
 -- --- TREE and BLOOD: simple animation cycling ---
 
 local function tree_blood_on_animate(self)
+  -- rule: A tree or blood splat plays its current animation (type 0 = still, type 1 = sway/splash)
+  --   through once frame by frame; any other type is treated as still, and when the row ends it
+  --   returns to the still animation at frame 0.
+  -- tests: WeapBehavior.weapon_family_animate_callbacks_and_sprinkle_hit_paths
+  -- tests: WeapBehavior.weapon_animate_clamps_out_of_range_facing_and_cycle_to_row_zero
+  -- tests: SemWeaponAnimate.a_tree_or_blood_plays_its_sway_once_then_stands_still
   if self:ani_type() > 1 then
     self:set_ani_type(0)
   end
+  -- rule: Part of the rule above that begins "A tree or blood splat plays its current animation
+  --   ..."
+  -- tests: WeapBehavior.weapon_family_animate_callbacks_and_sprinkle_hit_paths
+  -- tests: WeapBehavior.weapon_animate_clamps_out_of_range_facing_and_cycle_to_row_zero
+  -- tests: SemWeaponAnimate.a_tree_or_blood_plays_its_sway_once_then_stands_still
   if weapon_animate_step(self) then
     self:set_ani_type(0)
     self:set_cycle(0)
@@ -74,6 +94,11 @@ end
 
 local function circle_protection_on_animate(self)
   local owner = self:owner()
+  -- rule: A druid's protection ring follows its owner every tick and vanishes the moment its owner
+  --   is gone or dead or the ring's own hitpoints are spent.
+  -- tests: WeapBehavior.weapon_family_animate_callbacks_and_sprinkle_hit_paths
+  -- tests: parity:weapon_circle_protection_follow_scen99
+  -- tests: SemWeaponAnimate.a_protection_ring_dies_with_its_owner_or_its_hitpoints
   if not owner
       or owner:dead() ~= 0
       or self.hp <= 0 then
@@ -87,15 +112,29 @@ end
 -- --- GLOW: pulse animation with lifetime ---
 
 local function glow_on_animate(self)
+  -- rule: A glow (the cleric/mage halo effect) loops its pulse animation (type 2) forever; an
+  --   illegal type above 2 is forced to the pulse, and every row end restarts the pulse at frame 0.
+  -- tests: WeapBehavior.weapon_family_animate_callbacks_and_sprinkle_hit_paths
+  -- tests: WeapBehavior.weapon_animate_clamps_out_of_range_facing_and_cycle_to_row_zero
+  -- tests: SemWeaponAnimate.a_glow_pulses_frame_by_frame_and_restarts_at_the_row_end
   if self:ani_type() > 2 then  -- illegal case
     self:set_ani_type(2)       -- pulse case
   end
+  -- rule: Part of the rule above that begins "A glow (the cleric/mage halo effect) loops its pulse
+  --   ..."
+  -- tests: WeapBehavior.weapon_family_animate_callbacks_and_sprinkle_hit_paths
+  -- tests: WeapBehavior.weapon_animate_clamps_out_of_range_facing_and_cycle_to_row_zero
+  -- tests: SemWeaponAnimate.a_glow_pulses_frame_by_frame_and_restarts_at_the_row_end
   if weapon_animate_step(self) then
     self:set_ani_type(2)       -- pulse
     self:set_cycle(0)
   end
   local lifetime = self:lifetime()
   self:set_lifetime(lifetime - 1)
+  -- rule: A glow burns one lifetime tick per animate and dies on the animate that finds its
+  --   lifetime already below 1 (a glow with lifetime N shows for N+1 animates).
+  -- tests: WeapBehavior.weapon_family_animate_callbacks_and_sprinkle_hit_paths
+  -- tests: SemWeaponAnimate.a_glow_with_lifetime_n_shows_for_n_plus_one_animates
   if lifetime < 1 then
     self:set_dead(1)
     self:death()
@@ -108,23 +147,44 @@ end
 -- The C++ dereferences `owner` unconditionally, so a sprinkle with no owner
 -- was already undefined behavior there; here it is a clean script error.
 local function sprinkle_on_hit_target(self, target, owner)
+  -- rule: A faerie's sprinkle freezes only living creatures; hitting a generator, weapon or
+  --   treasure freezes nothing.
+  -- tests: WeapBehavior.weapon_family_animate_callbacks_and_sprinkle_hit_paths
   if target:order() ~= C.ORDER_LIVING then
     return true
   end
   local con = 0
+  -- rule: A hero's constitution shortens a sprinkle freeze (freeze_duration bound shrinks by
+  --   con/21); a guy-less creature resists with constitution 0.
+  -- tests: WeapBehavior.weapon_family_animate_callbacks_and_sprinkle_hit_paths
+  -- tests: SemWeaponAnimate.a_heros_constitution_shortens_a_sprinkle_freeze
   if target:has_guy() then
     con = target:g_constitution()
   end
   -- The roll is ALWAYS drawn; only the assignment below is gated, so refresh
   -- policy cannot move the RNG stream. og.i16 matches the short result.
+  -- A GLIMMER sprinkle (marked with the quarter-freeze kit bit) freezes for a quarter of the rolled
+  -- time; a plain sprinkle freezes the full roll. The roll is drawn either way.
   local roll = og.i16(og.div(og.freeze_duration(owner.level, con), 1 + 3 * og.div(self:kit_state() & C.KIT_QUARTER_FREEZE, C.KIT_QUARTER_FREEZE)))
   -- At owner level 21+, do not replace a freeze still above 10 ticks. This
   -- mirrors the charm refresh floor while leaving lower-level thaw cadence
   -- unchanged.
+  -- rule: A sprinkle hit re-sets the victim's freeze to the new roll, except (a) a level-21+ faerie
+  --   never replaces a freeze still above 10 ticks (so it cannot chain a victim forever), and (b)
+  --   nobody can be re-frozen during the 12-tick thaw-immunity window after a controlled hero
+  --   thaws. The RNG roll is drawn on every living hit regardless.
+  -- tests: SillinessBattery.sprinkle_refresh_gate_level_boundary_and_immunity
+  -- tests: SillinessBattery.sprinkle_ai_victim_gate_window_and_escape
+  -- tests: SemWeaponAnimate.a_high_level_sprinkle_refreshes_a_freeze_at_the_ten_tick_floor
   local refresh_gated = owner.level >= SPRINKLE_REFRESH_OWNER_LEVEL
       and target:s_frozen_delay() > SPRINKLE_REFRESH_FLOOR
   -- Never re-freeze inside the negative thaw-immunity phase.
   local thaw_immune = target:s_frozen_delay_raw() < 0
+  -- rule: Part of the rule above that begins "A sprinkle hit re-sets the victim's freeze to the
+  --   ..."
+  -- tests: SillinessBattery.sprinkle_refresh_gate_level_boundary_and_immunity
+  -- tests: SillinessBattery.sprinkle_ai_victim_gate_window_and_escape
+  -- tests: SemWeaponAnimate.a_high_level_sprinkle_refreshes_a_freeze_at_the_ten_tick_floor
   if not refresh_gated and not thaw_immune then
     target:s_set_frozen_delay(roll)
   end

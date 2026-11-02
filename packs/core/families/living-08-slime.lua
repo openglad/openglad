@@ -20,6 +20,11 @@ local LIVING_MEDIUM_SLIME = assert(og.family_id("living", "core:#10"))
 local function calculate_level(experience)
   local result = 1
   local acc = 0  -- calculate_exp(1) == 0
+  -- rule: A slime character's level after a high-experience split is the highest level whose
+  --   cumulative experience requirement (sum over k=2..L of 8000+2000(k-1)+4000(k-2), uint32) does
+  --   not exceed the experience held; level 1 below 8000.
+  -- tests: PackLuaSlime.a_veteran_split_halves_the_experience_across_both_bodies
+  -- tests: SemSlime.a_veteran_split_levels_both_halves_on_the_experience_ladder
   while acc <= experience do
     result = result + 1
     -- og.mod by 2^32 = the C++ uint32 wrap (see above)
@@ -40,6 +45,8 @@ local function slime_check_special_ai(self)
   -- living_count is the world's maintained head-count (og.living_count
   -- reads the same field the C++ read — an oblist recount would not be
   -- faithful; the counter can legitimately drift, e.g. editor map-resize).
+  -- A big slime bot only SPLITs while the world's head-count is under MAXOBS (room for the extra
+  -- body); small and medium slimes have no AI gate (GROW is always rolled).
   return og.living_count() < C.MAXOBS
 end
 
@@ -48,6 +55,8 @@ end
 local function split_on_death(self, offspring_family)
   self:set_dead(1)
   local child = og.add_ob("living", offspring_family)
+  -- plumbing: add_ob failure (object cap) on death split: the dying slime simply dies with no
+  --   offspring; null guard.
   if not child then
     return true
   end
@@ -57,11 +66,24 @@ local function split_on_death(self, offspring_family)
   child:set_difficulty(self.level)
   child:set_foe(self:foe())
   child:set_leader(self:leader())
+  -- rule: When a NAMED slime dies and splits, the dying slime takes the offspring's freshly drawn
+  --   name (sic, classic direction); an unnamed slime keeps no name.
+  -- tests: PackLuaSlime.a_split_carries_the_name_and_the_player_character_across
+  -- tests: SemSlime.classic_a_dying_slime_ends_unnamed_named_or_not
+  -- unreachable: no teeth possible: a fresh offspring is always unnamed in both games, so the
+  --   unnamed arm's outcome (name stays empty) equals the copy's; the planted 'if true' stays
+  --   green.
   if #self:s_name() > 0 then
     -- (sic: the DYING slime takes the offspring's fresh name — not the
     -- other way around)
     self:s_set_name(child:s_name())
   end
+  -- rule: A dying slime that carries a player character hands the character to its offspring (the
+  --   roster entry survives the split).
+  -- tests: PackLuaSlime.a_split_carries_the_name_and_the_player_character_across
+  -- tests: SemSlime.a_slime_without_a_character_leaves_an_offspring_without_one
+  -- unreachable: no teeth possible: walker::move_myguy_to with no guy is a no-op, so dropping the
+  --   has_guy gate changes nothing; the planted 'if true' stays green
   if self:has_guy() then
     self:move_myguy_to(child)
   end
@@ -79,6 +101,11 @@ local function medium_slime_on_death(self)
 end
 
 local function slime_on_ani_complete(self)
+  -- rule: A big slime fissions only when its SPLIT animation completes; any other animation wrap is
+  --   ignored.
+  -- tests: PackLuaSlime.the_split_hook_ignores_other_animations
+  -- tests: PackLuaSlime.a_completed_split_animation_leaves_two_small_slimes
+  -- tests: parity:special_slime_1_scen99
   if self:ani_type() ~= C.ANI_SLIME_SPLIT then
     return false
   end
@@ -92,6 +119,8 @@ local function slime_on_ani_complete(self)
 
   -- Create a new small slime ..
   local child = og.add_ob("living", LIVING_SMALL_SLIME)
+  -- plumbing: add_ob failure on split: parent already transformed into a small slime, no sibling;
+  --   object-cap guard.
   if not child then
     return true
   end
@@ -100,9 +129,19 @@ local function slime_on_ani_complete(self)
   -- Transfer stats/etc. across to new guy ..
   self:transfer_stats(child)
   local exp_needed = 1000 * self.level  -- uint32 cast as above
+  -- plumbing: exp_needed = 1000*level is negative only for level < 0, unreachable (level >= 1
+  --   engine invariant); uint32-cast mirror.
   if exp_needed < 0 then
     exp_needed = exp_needed + 4294967296
   end
+  -- rule: A hired slime that splits can only sustain a second character if it holds at least 1000 x
+  --   level experience: below that the sibling is stripped to a plain monster named SLIME at level
+  --   calculate_level(exp/2); at or above it both halves keep a character, each levelled to
+  --   calculate_level(exp/2) holding exp/2.
+  -- tests: PackLuaSlime.a_low_experience_split_strips_the_offspring_to_a_monster
+  -- tests: PackLuaSlime.a_veteran_split_halves_the_experience_across_both_bodies
+  -- tests: SemSlime.a_monster_slime_split_copies_its_level_and_makes_no_character
+  -- tests: SemSlime.a_slime_split_at_exactly_one_thousand_per_level_keeps_both_characters
   if child:has_guy() and child:g_exp() < exp_needed then
     -- The second character cannot be "sustained" at this experience.
     child:clear_myguy()
@@ -133,6 +172,10 @@ end
 -- C++ too: grow into the next size up when there is room.
 local function grow_into(self, grown_family)
   -- room to grow?
+  -- rule: A small or medium slime GROWs into the next size only when all eight neighbouring probe
+  --   boxes are free; otherwise the cast fails with NO ROOM TO GROW and the slime wanders 10 steps
+  --   in a random direction (two og.rand(3) draws, y first).
+  -- tests: parity:special_small_slime_1_scen99, parity:slime_grow_blocked_scen99
   if self:spaces_clear() > 7 then
     self:transform_to("living", grown_family)
   else

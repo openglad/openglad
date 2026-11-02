@@ -14,6 +14,10 @@ local hits = og.use("effect_common").hits
 -- cloud_on_act: a poison cloud ages out, fades as it expires, damages any foe
 -- it overlaps, and drifts one random step at a time.
 local function on_act(self)
+  -- rule: A poison cloud ages one tick per act and vanishes on the act after its lifetime reaches 0
+  --   (without acting further that tick).
+  -- tests: EffectAct.cloud_ages_and_queues_its_drift_walk, EffectAct.cloud_expired
+  -- tests: SemLibsCloud.an_expired_cloud_vanishes_without_acting_that_tick
   if self:lifetime() > 0 then
     self:set_lifetime(self:lifetime() - 1)
   else
@@ -21,9 +25,15 @@ local function on_act(self)
     self:death()
     return true
   end
+  -- rule: A cloud fades out over its last 8 ticks: each such tick adds 3 to its invisibility and
+  --   every tick spends 1, so it thins by a net 2 a tick as it expires; a fresh cloud's starting
+  --   invisibility drains 1 a tick.
+  -- tests: SemLibsCloud.a_cloud_fades_out_over_its_last_eight_ticks
   if self:lifetime() < 8 then
     self:set_invisibility_left(self:invisibility_left() + 3)
   end
+  -- rule: Part of the rule above that begins "A cloud fades out over its last 8 ticks: ..."
+  -- tests: SemLibsCloud.a_cloud_fades_out_over_its_last_eight_ticks
   if self:invisibility_left() > 0 then
     self:set_invisibility_left(self:invisibility_left() - 1)
   end
@@ -31,8 +41,17 @@ local function on_act(self)
   -- Foes only: friendlies stand in the cloud unharmed (the C++ kept the
   -- friendly branch "for now", and parity keeps it forever).
   local foes = og.find_foes_in_range("ob", self:sizex(), self)
+  -- rule: A cloud hurts every foe whose box overlaps its own, each tick; friends stand in it
+  --   unharmed, and a foe merely near (in the finder's range) but outside the box is unharmed.
+  -- tests: PackLuaCloud.a_cloud_damages_the_foe_it_covers_and_spares_its_own_team
+  -- tests: PackLuaCloud.a_foe_in_range_but_outside_the_cloud_box_is_unharmed
+  -- tests: parity:effect_cloud_poison_scen99
   for i = 1, #foes do
     local w = foes[i]
+    -- rule: Part of the rule above that begins "A cloud hurts every foe whose box overlaps its ..."
+    -- tests: PackLuaCloud.a_cloud_damages_the_foe_it_covers_and_spares_its_own_team
+    -- tests: PackLuaCloud.a_foe_in_range_but_outside_the_cloud_box_is_unharmed
+    -- tests: parity:effect_cloud_poison_scen99
     if hits(self:xpos(), self:ypos(), self:sizex(), self:sizey(),
             w:xpos(), w:ypos(), w:sizex(), w:sizey()) then
       self:attack(w)
@@ -40,6 +59,11 @@ local function on_act(self)
   end
 
   -- Are we performing some action?
+  -- rule: A cloud drifts by queued random walks: with a walk queued it executes one step; with none
+  --   it queues a new walk of rand(20) steps in a random non-zero direction (draw order xd, yd,
+  --   count).
+  -- tests: EffectAct.cloud_ages_and_queues_its_drift_walk
+  -- tests: EffectMorePaths.effect_cloud_queues_walk_then_executes_the_drift_step
   if self:s_has_commands() then
     -- do_command hides walkstep's result (stats.cpp keeps result == 1), so
     -- blockage is read back from state: a tick that moved nothing AND kept
@@ -50,11 +74,31 @@ local function on_act(self)
     local held_y = self:ypos()
     local held_dir = self:curdir()
     self:s_do_command()
+    -- rule: A cloud wedged against a wall (its step moved nothing and did not even turn it) drops
+    --   its stuck walk and picks a fresh random direction, so it never freezes in place (#233); a
+    --   cloud that slid, moved or turned keeps its walk and draws nothing.
+    -- tests: EffectMorePaths.effect_cloud_queues_walk_then_executes_the_drift_step
+    -- tests: SemLibsCloud.a_cloud_that_moved_or_turned_keeps_its_walk_and_draws_nothing
+    -- deferred: #486 divergence: the wedged-cloud re-roll (#233, 28f8168a / PR #245) is not in the
+    --   old game at 7ff1654a, whose cloud only calls do_command; the moved/turned no-draw arm is
+    --   asserted, the wedge arm is not pinned
     if self:xpos() == held_x then
+      -- rule: Part of the rule above that begins "A cloud wedged against a wall (its step moved
+      --   ..."
+      -- tests: EffectMorePaths.effect_cloud_queues_walk_then_executes_the_drift_step
+      -- tests: SemLibsCloud.a_cloud_that_moved_or_turned_keeps_its_walk_and_draws_nothing
       if self:ypos() == held_y then
+        -- rule: Part of the rule above that begins "A cloud wedged against a wall (its step moved
+        --   ..."
+        -- tests: EffectMorePaths.effect_cloud_queues_walk_then_executes_the_drift_step
+        -- tests: SemLibsCloud.a_cloud_that_moved_or_turned_keeps_its_walk_and_draws_nothing
         if self:curdir() == held_dir then
           self:s_clear_command()
           local xd, yd = 0, 0
+          -- rule: A cloud's drift direction is never the zero step: the two -1..1 rolls are redrawn
+          --   together until at least one is non-zero.
+          -- tests: EffectMorePaths.effect_cloud_queues_walk_then_executes_the_drift_step
+          -- tests: SemLibsCloud.a_cloud_never_drifts_by_the_zero_step
           while xd == 0 and yd == 0 do
             xd = og.rand(3) - 1
             yd = og.rand(3) - 1
@@ -67,6 +111,10 @@ local function on_act(self)
     -- Two separate C++ statements, so the draw order is defined: xd then yd,
     -- re-rolled together until the step is non-zero.
     local xd, yd = 0, 0
+    -- rule: Part of the rule above that begins "A cloud's drift direction is never the zero step:
+    --   ..."
+    -- tests: EffectMorePaths.effect_cloud_queues_walk_then_executes_the_drift_step
+    -- tests: SemLibsCloud.a_cloud_never_drifts_by_the_zero_step
     while xd == 0 and yd == 0 do
       xd = og.rand(3) - 1
       yd = og.rand(3) - 1

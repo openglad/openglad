@@ -54,9 +54,18 @@ function M.living_foes(self, range, floor_only)
   local found = og.find_foes_in_range("ob", range, self)
   local out = {}
   local floor = self:floor()
+  -- rule: A bot gate's 'foes' are living bodies only (a generator the finder counts as a foe is
+  --   never one), within the finder's Manhattan range between top-left corners (inclusive), and,
+  --   when asked, only those on the caster's own floor.
+  -- tests: BotGatesLib.living_foes_skips_generators
   for i = 1, #found do
     local w = found[i]
+    -- rule: Part of the rule above that begins "A bot gate's 'foes' are living bodies only (a ..."
+    -- tests: BotGatesLib.living_foes_skips_generators
     if w:order() == C.ORDER_LIVING then
+      -- rule: Part of the rule above that begins "A bot gate's 'foes' are living bodies only (a
+      --   ..."
+      -- tests: BotGatesLib.living_foes_skips_generators
       if not floor_only or w:floor() == floor then
         out[#out + 1] = w
       end
@@ -66,12 +75,19 @@ function M.living_foes(self, range, floor_only)
 end
 
 -- "At least n living foes within range": the one check most gates are.
+-- 'At least n foes (allies) within range' is an inclusive count of LIVING bodies only (living_foes
+-- / allies, gates.lua:59 / gates.lua:100): exactly n passes, a generator never counts. Contrast
+-- gates.lua:75 (targets_within), which counts generators.
 function M.foes_within(self, n, range, floor_only)
   return #M.living_foes(self, range, floor_only) >= n
 end
 
 -- "At least n bodies the finder counts as foes", generators included: for a
 -- cast that acts on a generator (WHIRLWIND strikes it, HOWL stuns it; fix K).
+-- 'At least n targets within range' counts everything the finder counts as a foe, generators
+-- INCLUDED (fix K: WHIRLWIND strikes a tent, HOWL stuns one), inclusive of n and of the range
+-- (Manhattan between top-left corners). Consumed by living-14-orc.lua:23, living-00-soldier.lua:192
+-- and kit_captain.lua:386 (a stunned tent is the point).
 function M.targets_within(self, n, range)
   local _, count = og.find_foes_in_range("ob", range, self)
   return count >= n
@@ -83,8 +99,14 @@ function M.nearest_living_foe(self, range, floor_only)
   local foes = M.living_foes(self, range, floor_only)
   local best = nil
   local best_dist = 0
+  -- rule: The nearest living foe in range is the one at the smallest finder distance; a tie goes to
+  --   the one the object list holds first; a nearer generator is passed over; the gate never
+  --   assigns self.foe.
+  -- tests: BotGatesLib.nearest_living_foe_ties_to_list_order
   for i = 1, #foes do
     local dist = self:distance_to_ob(foes[i])
+    -- rule: Part of the rule above that begins "The nearest living foe in range is the one ..."
+    -- tests: BotGatesLib.nearest_living_foe_ties_to_list_order
     if best == nil or dist < best_dist then
       best = foes[i]
       best_dist = dist
@@ -97,7 +119,15 @@ end
 function M.allies(self, range)
   local found = og.find_friends_in_range("ob", range, self)
   local out = {}
+  -- rule: A bot's 'allies' are living friends in range, never the caster itself and never a
+  --   friendly generator. (The finder og.find_friends_in_range is already Living-only and skips the
+  --   caller, game_world.cpp:1390-1415; the ORDER_LIVING filter here is belt-and-braces, so a
+  --   friendly generator is excluded by both.)
+  -- tests: BotGatesLib.allies_hurt_ally_and_ally_at_blows
   for i = 1, #found do
+    -- rule: Part of the rule above that begins "A bot's 'allies' are living friends in range, never
+    --   ..."
+    -- tests: BotGatesLib.allies_hurt_ally_and_ally_at_blows
     if found[i]:order() == C.ORDER_LIVING then
       out[#out + 1] = found[i]
     end
@@ -123,6 +153,9 @@ end
 -- Within a blow: both gaps at most BLOW_GAP.
 function M.at_blows(a, b)
   local gap_x, gap_y = M.gap(a, b)
+  -- rule: Two bodies are at blows (a melee swing connects) when the edge-to-edge gap is at most 5
+  --   px on BOTH axes.
+  -- tests: BotGatesLib.at_blows_gap_five_in_six_out
   return gap_x <= M.BLOW_GAP and gap_y <= M.BLOW_GAP
 end
 
@@ -130,7 +163,12 @@ end
 function M.foes_at_blows(self)
   local foes = M.living_foes(self, M.BLOW_SCAN, false)
   local out = {}
+  -- rule: The foes at blows with the caster are the living foes within a blow on both axes; a
+  --   friend at blows is not one.
+  -- tests: BotGatesLib.at_blows_gap_five_in_six_out
   for i = 1, #foes do
+    -- rule: Part of the rule above that begins "The foes at blows with the caster are the ..."
+    -- tests: BotGatesLib.at_blows_gap_five_in_six_out
     if M.at_blows(self, foes[i]) then
       out[#out + 1] = foes[i]
     end
@@ -147,17 +185,33 @@ function M.allies_fight(self)
   local foes = M.living_foes(self, M.FAR, false)
   local engaged = 0
   local hurt = false
+  -- rule: The allies' fight (FREEZE TIME's cue): count each living foe at blows with any ally other
+  --   than the caster once (foe-major), and report whether any such engaged ally is under a quarter
+  --   of its health.
+  -- tests: BotGatesLib.allies_fight_counts_a_foe_once
   for i = 1, #foes do
     local near = false
+    -- rule: Part of the rule above that begins "The allies' fight (FREEZE TIME's cue): count each
+    --   living ..."
+    -- tests: BotGatesLib.allies_fight_counts_a_foe_once
     for j = 1, #allies do
       local ally = allies[j]
+      -- rule: Part of the rule above that begins "The allies' fight (FREEZE TIME's cue): count each
+      --   living ..."
+      -- tests: BotGatesLib.allies_fight_counts_a_foe_once
       if M.at_blows(ally, foes[i]) then
         near = true
+        -- rule: Part of the rule above that begins "The allies' fight (FREEZE TIME's cue): count
+        --   each living ..."
+        -- tests: BotGatesLib.allies_fight_counts_a_foe_once
         if ally.hp * 4 < ally.max_hp then
           hurt = true
         end
       end
     end
+    -- rule: Part of the rule above that begins "The allies' fight (FREEZE TIME's cue): count each
+    --   living ..."
+    -- tests: BotGatesLib.allies_fight_counts_a_foe_once
     if near then
       engaged = engaged + 1
     end
@@ -170,8 +224,15 @@ end
 function M.ally_at_blows(self, range)
   local allies = M.allies(self, range)
   local foes = M.living_foes(self, range + M.BLOW_SCAN, false)
+  -- rule: An ally within range that has a living foe at blows with it: the first such ally
+  --   (ally-major list order) and that foe, else nil.
+  -- tests: BotGatesLib.allies_hurt_ally_and_ally_at_blows
   for i = 1, #allies do
+    -- rule: Part of the rule above that begins "An ally within range that has a living foe ..."
+    -- tests: BotGatesLib.allies_hurt_ally_and_ally_at_blows
     for j = 1, #foes do
+      -- rule: Part of the rule above that begins "An ally within range that has a living foe ..."
+      -- tests: BotGatesLib.allies_hurt_ally_and_ally_at_blows
       if M.at_blows(allies[i], foes[j]) then
         return allies[i], foes[j]
       end
@@ -185,7 +246,13 @@ end
 function M.hunters(self, range)
   local foes = M.living_foes(self, range, false)
   local out = {}
+  -- rule: The foes hunting the caster are the living foes in range whose current foe is the caster;
+  --   hunted_by answers the first in list order.
+  -- tests: BotGatesLib.hunters_are_the_foes_whose_foe_is_the_caster
   for i = 1, #foes do
+    -- rule: Part of the rule above that begins "The foes hunting the caster are the living foes
+    --   ..."
+    -- tests: BotGatesLib.hunters_are_the_foes_whose_foe_is_the_caster
     if foes[i]:foe() == self then
       out[#out + 1] = foes[i]
     end
@@ -200,7 +267,11 @@ end
 -- An ally within range below its maximum health.
 function M.hurt_ally(self, range)
   local allies = M.allies(self, range)
+  -- rule: A hurt ally is the first living ally in range below its maximum health.
+  -- tests: BotGatesLib.allies_hurt_ally_and_ally_at_blows
   for i = 1, #allies do
+    -- rule: Part of the rule above that begins "A hurt ally is the first living ally in ..."
+    -- tests: BotGatesLib.allies_hurt_ally_and_ally_at_blows
     if allies[i].hp < allies[i].max_hp then
       return allies[i]
     end
@@ -210,10 +281,17 @@ end
 
 -- hp below num/den of max_hp. hp and max_hp are C++ floats: one float
 -- multiply each side keeps the comparison free of decimal fractions.
+-- A bot gate's 'hurt below a fraction' test is strict: a body at exactly num/den of its max hp is
+-- NOT below it; the comparison is two C++ float products (hp*den vs max*num), no decimal fraction.
+-- Consumed by kit_skeleton.lua:660/686/709, living-17-archmage.lua:240/242, living-14-orc.lua:26
+-- gates, which rely on this boundary.
 function M.hp_below(w, num, den)
   return og.fmul(w.hp, den) < og.fmul(w.max_hp, num)
 end
 
+-- The heading from a caster to a target is the engine facing of the centre-to-centre vector, each
+-- centre the top-left plus half the size floored (integer division). Every 'faces / fan covers / in
+-- flight' gate reads it.
 function M.centre(w)
   return w:xpos() + w:sizex() // 2, w:ypos() + w:sizey() // 2
 end
@@ -229,6 +307,9 @@ end
 -- fire; at spawn lastx = lasty = 0 and facing(0, 0) is FACE_UP). lastx and
 -- lasty are C++ floats; the facing binding takes integers and the C++
 -- narrows a float to short by truncation.
+-- Where a fired weapon leaves is facing(lastx, lasty), not curdir: at spawn lastx = lasty = 0 and
+-- facing(0, 0) is FACE_UP (while curdir is DOWN); a fractional aim is truncated toward zero first,
+-- so lastx -0.5 reads as 0 and the heading is UP.
 function M.fire_heading(self)
   return self:facing(og.trunc(self:lastx()), og.trunc(self:lasty()))
 end
@@ -236,6 +317,9 @@ end
 -- The caster has a heading at all: walk(0, 0) and a rush along (0, 0) move
 -- nothing.
 function M.has_heading(self)
+  -- rule: A walker has a heading only once it has an aim (lastx or lasty non-zero); a fresh spawn
+  --   has none and a rush would go nowhere.
+  -- tests: BotGatesLib.has_heading_is_false_at_spawn
   return self:lastx() ~= 0.0 or self:lasty() ~= 0.0
 end
 
@@ -246,6 +330,9 @@ end
 
 -- The caster has a heading and it is toward the target (CHARGE's rush).
 function M.aimed_at(self, target)
+  -- rule: A caster is aimed at a target (CHARGE's rush) only when it has a heading AND its fire
+  --   heading points at the target.
+  -- tests: BotGatesLib.faces_aimed_at_and_fan_faces_read_the_fire_heading
   return M.has_heading(self) and M.faces(self, target)
 end
 
@@ -254,6 +341,10 @@ end
 -- rises across. The kit passes the facing its own cast uses.
 function M.fan_covers(self, facing, target)
   local h = M.heading_to(self, target)
+  -- rule: A fan (three knives, a bone wall) covers the facing it is cast along and its two
+  --   neighbouring headings, wrapping round 0/7.
+  -- tests: BotGatesLib.fan_covers_takes_the_facing_the_kit_passes
+  -- tests: BotGatesLib.faces_aimed_at_and_fan_faces_read_the_fire_heading
   return h == facing
       or h == og.mod(facing + 1, 8)
       or h == og.mod(facing + 7, 8)
@@ -265,6 +356,11 @@ function M.fan_faces(self, target)
 end
 
 local function straight(heading)
+  -- rule: A fired weapon's flight is longer on the four straight headings than on diagonals (the
+  --   engine's 309/256 range and 362/256 step scaling apply only there).
+  -- tests: BotGatesLib.flight_px_matches_the_engine
+  -- tests: GameplayFixesBots.elemental_starburst_wants_a_crowd_or_a_foe_behind
+  -- tests: SemGatesProbe.a_shot_flies_further_on_all_four_straight_headings_than_on_a_diagonal
   return heading == C.FACE_UP
       or heading == C.FACE_RIGHT
       or heading == C.FACE_DOWN
@@ -281,20 +377,38 @@ end
 -- so los - 1 steps move. The product is a C++ float: truncated.
 function M.flight_px(self, step, los, heading, los_num, los_den, los_add)
   local steps = los
+  -- rule: How far a fired weapon flies per axis: a hero adds strength/23 + dexterity/31 to the
+  --   range, every caster adds level/3, straight headings scale range by 309/256 and step by
+  --   362/256 (except a 1 px/tick bolt), then a volley's multiplier and an additive bonus apply;
+  --   los-1 steps move.
+  -- tests: BotGatesLib.flight_px_matches_the_engine
+  -- tests: BotGatesLib.in_flight_takes_the_elf_multiplier_and_the_mage_add
   if self:has_guy() then
     steps = steps + self:g_strength() // 23 + self:g_dexterity() // 31
   end
   steps = steps + self.level // 3
   local px = step
+  -- rule: Part of the rule above that begins "How far a fired weapon flies per axis: a ..."
+  -- tests: BotGatesLib.flight_px_matches_the_engine
+  -- tests: BotGatesLib.in_flight_takes_the_elf_multiplier_and_the_mage_add
   if straight(heading) then
     steps = steps * 309 // 256
+    -- rule: Part of the rule above that begins "How far a fired weapon flies per axis: a ..."
+    -- tests: BotGatesLib.flight_px_matches_the_engine
+    -- tests: BotGatesLib.in_flight_takes_the_elf_multiplier_and_the_mage_add
     if step ~= M.UNIT_STEP then
       px = og.fdiv(og.fmul(step, 362), 256)
     end
   end
+  -- rule: Part of the rule above that begins "How far a fired weapon flies per axis: a ..."
+  -- tests: BotGatesLib.flight_px_matches_the_engine
+  -- tests: BotGatesLib.in_flight_takes_the_elf_multiplier_and_the_mage_add
   if los_num then
     steps = steps * los_num // los_den
   end
+  -- rule: Part of the rule above that begins "How far a fired weapon flies per axis: a ..."
+  -- tests: BotGatesLib.flight_px_matches_the_engine
+  -- tests: BotGatesLib.in_flight_takes_the_elf_multiplier_and_the_mage_add
   if los_add then
     steps = steps + los_add
   end
@@ -304,6 +418,10 @@ end
 -- The target is within the weapon's flight along the heading to it: the
 -- edge gap on the dominant axis is at most the reach (the bolt starts just
 -- outside the caster's body and stops at the target's edge).
+-- A target is within a fired weapon's flight when the edge-to-edge gap on the DOMINANT axis is at
+-- most the reach along the heading to it (flight_px, gates.lua:284), inclusive; it is not a
+-- corner-to-corner or Manhattan distance. The elf multiplier and the mage's ring add flow through
+-- flight_px.
 function M.in_flight(self, target, step, los, los_num, los_den, los_add)
   local heading = M.heading_to(self, target)
   local reach = M.flight_px(self, step, los, heading, los_num, los_den, los_add)
@@ -317,21 +435,34 @@ end
 function M.ring_pays(self, step, los, los_add)
   local foes = M.living_foes(self, M.RING_SCAN, false)
   local in_ring, unfaced = 0, false
+  -- rule: A ring cast (one bolt on all eight headings) pays over a single bolt only when two or
+  --   more living foes are in its flight, or exactly one that the caster does not already face.
+  -- tests: BotGatesLib.ring_pays_two_in_or_one_unfaced
   for i = 1, #foes do
+    -- rule: Part of the rule above that begins "A ring cast (one bolt on all eight headings) ..."
+    -- tests: BotGatesLib.ring_pays_two_in_or_one_unfaced
     if M.in_flight(self, foes[i], step, los, nil, nil, los_add) then
       in_ring = in_ring + 1
+      -- rule: Part of the rule above that begins "A ring cast (one bolt on all eight headings) ..."
+      -- tests: BotGatesLib.ring_pays_two_in_or_one_unfaced
       if not M.faces(self, foes[i]) then
         unfaced = true
       end
     end
   end
+  -- rule: Part of the rule above that begins "A ring cast (one bolt on all eight headings) ..."
+  -- tests: BotGatesLib.ring_pays_two_in_or_one_unfaced
   if in_ring >= 2 then
     return true
   end
+  -- rule: Part of the rule above that begins "A ring cast (one bolt on all eight headings) ..."
+  -- tests: BotGatesLib.ring_pays_two_in_or_one_unfaced
   return in_ring == 1 and unfaced
 end
 
 -- The explosion's reach: find_in_range(15 + clamp(4 * level, 16, 96)).
+-- An explosion's reach is 15 + 4*level clamped to 16..96, so 31 px at levels 1-4, rising 4 px a
+-- level, capped 111 px from level 24 (the explosion's own find_in_range).
 function M.blast_reach(level)
   return 15 + og.clamp(level * 4, 16, 96)
 end
@@ -342,16 +473,26 @@ end
 -- caster's allies are scanned around the caster and sifted by their
 -- distance to the centre; the centre may be a foe.
 function M.blast_clear(self, centre, reach, check_self)
+  -- rule: A blast cast is clear when no living ally of the CASTER stands within the blast's reach
+  --   of its centre (the centre's own friends do not count), and, if asked, the caster itself is
+  --   outside it.
+  -- tests: BotGatesLib.blast_clear_sees_the_casters_allies_around_a_foe
   if check_self and centre ~= self
       and self:distance_to_ob(centre) <= reach then
     return false
   end
   local scan = reach
+  -- rule: Part of the rule above that begins "A blast cast is clear when no living ally ..."
+  -- tests: BotGatesLib.blast_clear_sees_the_casters_allies_around_a_foe
   if centre ~= self then
     scan = scan + self:distance_to_ob(centre)
   end
   local allies = M.allies(self, scan)
+  -- rule: Part of the rule above that begins "A blast cast is clear when no living ally ..."
+  -- tests: BotGatesLib.blast_clear_sees_the_casters_allies_around_a_foe
   for i = 1, #allies do
+    -- rule: Part of the rule above that begins "A blast cast is clear when no living ally ..."
+    -- tests: BotGatesLib.blast_clear_sees_the_casters_allies_around_a_foe
     if centre:distance_to_ob(allies[i]) <= reach then
       return false
     end
@@ -366,6 +507,11 @@ end
 -- orders (boomerang 7 is the faerie's number, cloud 8 the slime's).
 function M.owned(self, order, family)
   local obs
+  -- rule: A caster's own live summons are counted by order AND family (family numbers collide
+  --   across orders), weapons from the weapon list and everything else from the object list; dead
+  --   ones and others' do not count.
+  -- tests: BotGatesLib.owned_tests_the_order
+  -- tests: SemGatesProbe.owned_answers_zero_and_no_first_when_the_caster_owns_none
   if order == C.ORDER_WEAPON then
     obs = og.find_in_range("weap", M.FAR, self)
   else
@@ -373,13 +519,24 @@ function M.owned(self, order, family)
   end
   local count = 0
   local first = nil
+  -- rule: Part of the rule above that begins "A caster's own live summons are counted by order ..."
+  -- tests: BotGatesLib.owned_tests_the_order
+  -- tests: SemGatesProbe.owned_answers_zero_and_no_first_when_the_caster_owns_none
   for i = 1, #obs do
     local ob = obs[i]
+    -- rule: Part of the rule above that begins "A caster's own live summons are counted by order
+    --   ..."
+    -- tests: BotGatesLib.owned_tests_the_order
+    -- tests: SemGatesProbe.owned_answers_zero_and_no_first_when_the_caster_owns_none
     if ob and ob:order() == order
         and ob:family() == family
         and ob:dead() == 0
         and ob:owner() == self then
       count = count + 1
+      -- rule: Part of the rule above that begins "A caster's own live summons are counted by order
+      --   ..."
+      -- tests: BotGatesLib.owned_tests_the_order
+      -- tests: SemGatesProbe.owned_answers_zero_and_no_first_when_the_caster_owns_none
       first = first or ob
     end
   end
@@ -389,8 +546,12 @@ end
 -- A phantom of the caster's: a summoned living with max_hp 1.
 function M.owned_phantom(self)
   local obs = og.oblist()
+  -- rule: A phantom (SUMMON IMAGE) is a live living the caster owns whose max_hp is 1.
+  -- tests: BotGatesLib.owned_phantom_wants_max_hp_one
   for i = 1, #obs do
     local ob = obs[i]
+    -- rule: Part of the rule above that begins "A phantom (SUMMON IMAGE) is a live living the ..."
+    -- tests: BotGatesLib.owned_phantom_wants_max_hp_one
     if ob and ob:order() == C.ORDER_LIVING
         and ob:dead() == 0
         and ob:owner() == self
@@ -405,9 +566,16 @@ end
 -- compare: squared centre distance (the finder never answers beyond about 28 px of centre).
 function M.corpse_underfoot(self, reach_sq)
   local blood = og.find_nearest_blood(self)
+  -- rule: A corpse is underfoot when the nearest blood stain (the finder never answers beyond ~28
+  --   px of centre) is on the caster's floor and within the squared centre distance asked
+  --   (inclusive).
+  -- tests: BotGatesLib.corpse_underfoot_is_capped_by_the_finder
   if not blood or blood:floor() ~= self:floor() then
     return nil
   end
+  -- rule: Part of the rule above that begins "A corpse is underfoot when the nearest blood stain
+  --   ..."
+  -- tests: BotGatesLib.corpse_underfoot_is_capped_by_the_finder
   if self:distance_to_ob_center(blood) <= reach_sq then
     return blood
   end
@@ -422,10 +590,18 @@ local STEP_Y = { [0] = -1, -1, 0, 1, 1, 1, 0, -1 }
 -- shrinks it, meets the box at (ax, ay) of size aw x ah (already shrunk);
 -- collide() compares inclusively.
 local function foe_meeting(foes, ax, ay, aw, ah)
+  -- rule: Two bodies collide as the engine's collide() sees them: both boxes shrunk 1 px each side,
+  --   compared inclusively; the first such foe in list order.
+  -- tests: BotGatesLib.ahead_blocked_by_foe_mirrors_collide
+  -- tests: BotGatesLib.rush_strikes_walks_the_charge_path
   for i = 1, #foes do
     local f = foes[i]
     local fx, fy = f:xpos() + 1, f:ypos() + 1
     local fw, fh = f:sizex() - 2, f:sizey() - 2
+    -- rule: Part of the rule above that begins "Two bodies collide as the engine's collide() sees
+    --   them: ..."
+    -- tests: BotGatesLib.ahead_blocked_by_foe_mirrors_collide
+    -- tests: BotGatesLib.rush_strikes_walks_the_charge_path
     if ax <= fx + fw
         and ax + aw >= fx
         and ay <= fy + fh
@@ -442,6 +618,10 @@ end
 -- by 1 px on every side and compares inclusively). From positions alone.
 function M.ahead_blocked_by_foe(self, reach)
   local d = self:curdir()
+  -- rule: A foe blocks the caster's front when its box meets the caster's box moved one pixel along
+  --   curdir (DISARM's probe), same floor, within reach; a caster parked on the curdir -1 sentinel
+  --   (after FIRE ARROWS / WHIRLWIND) has no front.
+  -- tests: BotGatesLib.ahead_blocked_by_foe_mirrors_collide
   if d < 0 or d > 7 then
     return nil
   end
@@ -465,12 +645,22 @@ function M.rush_strikes(self, steps)
   -- blocked (a wall, any body, a door): the same question, asked quietly
   -- (Gameplay Fixes U); a foe already pressed against the front is a blow,
   -- not a charge.
+  -- rule: CHARGE's rush (nine walksteps along the truncated aim) strikes the first living foe its
+  --   path meets; it strikes nobody when its 1 px front is already blocked (PATH BLOCKED, Gameplay
+  --   Fixes U, asked quietly), when it has no heading, or when a wall, ally, door or generator
+  --   stops it earlier. Asking draws nothing and changes nothing.
+  -- tests: BotGatesLib.rush_strikes_walks_the_charge_path, BotGatesLib.rush_strikes_stops_at_a_wall
+  -- tests: BotGatesLib.pad_clear_and_the_front_probe_draw_nothing
   if self:s_forward_blocked(true) then
     return nil
   end
   local step = self:stepsize()
   local ux = og.trunc(og.fdiv(self:lastx(), step))
   local uy = og.trunc(og.fdiv(self:lasty(), step))
+  -- rule: Part of the rule above that begins "CHARGE's rush (nine walksteps along the truncated
+  --   aim) strikes ..."
+  -- tests: BotGatesLib.rush_strikes_walks_the_charge_path, BotGatesLib.rush_strikes_stops_at_a_wall
+  -- tests: BotGatesLib.pad_clear_and_the_front_probe_draw_nothing
   if ux == 0 and uy == 0 then
     return nil
   end
@@ -478,16 +668,30 @@ function M.rush_strikes(self, steps)
   local run = og.trunc(og.fmul(steps * span, step))
   local foes = M.living_foes(self, 2 * run + M.BLOW_SCAN, true)
   local aw, ah = self:sizex() - 2, self:sizey() - 2
+  -- rule: Part of the rule above that begins "CHARGE's rush (nine walksteps along the truncated
+  --   aim) strikes ..."
+  -- tests: BotGatesLib.rush_strikes_walks_the_charge_path, BotGatesLib.rush_strikes_stops_at_a_wall
+  -- tests: BotGatesLib.pad_clear_and_the_front_probe_draw_nothing
   for k = 1, steps do
     local ax = self:xpos() + og.trunc(og.fmul(ux * k, step)) + 1
     local ay = self:ypos() + og.trunc(og.fmul(uy * k, step)) + 1
     local f = foe_meeting(foes, ax, ay, aw, ah)
+    -- rule: Part of the rule above that begins "CHARGE's rush (nine walksteps along the truncated
+    --   aim) strikes ..."
+    -- tests: BotGatesLib.rush_strikes_walks_the_charge_path
+    -- tests: BotGatesLib.rush_strikes_stops_at_a_wall
+    -- tests: BotGatesLib.pad_clear_and_the_front_probe_draw_nothing
     if f then
       return f
     end
     -- Nothing struck here: the rush must be able to stand here on its way.
     -- A wall, an ally, a door or a generator at this step stops it before
     -- any later foe (COMMAND_RUSH strikes whatever its walksteps bump into).
+    -- rule: Part of the rule above that begins "CHARGE's rush (nine walksteps along the truncated
+    --   aim) strikes ..."
+    -- tests: BotGatesLib.rush_strikes_walks_the_charge_path
+    -- tests: BotGatesLib.rush_strikes_stops_at_a_wall
+    -- tests: BotGatesLib.pad_clear_and_the_front_probe_draw_nothing
     if not og.quiet_passable(ax - 1, ay - 1, self) then
       return nil
     end
@@ -513,9 +717,15 @@ end
 -- costs the slot's price.
 function M.can_pay(self, slot, shifted)
   local price = 0
+  -- rule: A bot can pay a slot when its magic covers the alternate's own price while shifted, or
+  --   the slot's price when unshifted or when the alternate has no price of its own (alternate_cost
+  --   0).
+  -- tests: BotGatesLib.can_pay_falls_back_to_the_slot_price_when_the_alternate_has_none
   if shifted then
     price = self:alternate_cost(slot)
   end
+  -- rule: Part of the rule above that begins "A bot can pay a slot when its magic ..."
+  -- tests: BotGatesLib.can_pay_falls_back_to_the_slot_price_when_the_alternate_has_none
   if price == 0 then
     price = self:s_special_cost(slot)
   end
@@ -524,6 +734,8 @@ end
 
 -- The slot's rest is running (living_common gate_with_rest reads the same).
 function M.resting(self, slot)
+  -- rule: A slot is resting when the walker's rest clock is on that slot and still running.
+  -- tests: BotGatesLib.resting_reads_the_slot_and_the_clock
   return self:special_rest_slot() == slot and self:special_rest_left() > 0
 end
 
@@ -532,10 +744,16 @@ end
 -- is left after the slot's price (the marker's surcharge) still leaves the
 -- price of next_slot, so marking does not cost the bot its fighting special.
 function M.marker_pays(self, fx_marker, next_slot, int_req)
+  -- rule: TELEPORT MARKER pays for a bot only when no marker of its own stands, a hero has the INT
+  --   the cast asks, and half the magic left after the slot's price still covers the next slot's
+  --   price.
+  -- tests: BotGatesLib.marker_pays_once_and_only_when_funded
   if self:has_guy() and self:g_intelligence() < int_req then
     return false
   end
   local count = M.owned(self, C.ORDER_FX, fx_marker)
+  -- rule: Part of the rule above that begins "TELEPORT MARKER pays for a bot only when no ..."
+  -- tests: BotGatesLib.marker_pays_once_and_only_when_funded
   if count > 0 then
     return false
   end
@@ -551,6 +769,10 @@ end
 function M.with_classic(classic, fixed)
   return function(self)
     local classic_answer = classic(self)
+    -- rule: A family whose classic gate acquires a foe always runs that classic gate first (same
+    --   draws, same foe on both settings); with Gameplay Fixes off its answer stands, with it on
+    --   the fixed rule decides, seeing the classic answer.
+    -- tests: BotGatesLib.with_classic_calls_classic_first_on_both_values
     if not gf.on() then
       return classic_answer
     end

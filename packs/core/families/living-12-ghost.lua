@@ -12,7 +12,13 @@ local FX_GHOST_SCARE = assert(og.family_id("fx", "core:ghost_scare"))
 -- refused before it spends anything.
 local function no_living_foe_in_reach(self)
   local foes = og.find_foes_in_range("ob", og.scare_radius(self.level), self)
+  -- plumbing: scans foes in scare radius; rule row living-12-ghost.lua:16
   for i = 1, #foes do
+    -- rule: Only a LIVING foe counts as a scare target: a generator (tent) inside the scare radius
+    --   does not make the scare worth casting.
+    -- tests: GameplayFixes.scare_at_nobody_is_refused_and_starts_no_rest
+    -- tests: parity:ghost_scare_no_foe_fixes_scen99
+    -- tests: SemGhost.a_generator_alone_in_the_scare_radius_does_not_let_a_scare_through
     if foes[i]:order() == C.ORDER_LIVING then
       return false
     end
@@ -27,15 +33,24 @@ end
 -- kit's (kit_ghost.wail_gate).
 local function fixed_scare(self)
   self:set_shifter_down(0)
+  -- Gameplay Fixes: a ghost bot's SCARE pays only with a living foe inside the level's scare radius
+  -- (the classic gate wanted any foe within 130 px, which the fright only reaches from level 8);
+  -- the classic foe search still runs for its draws and SCARE is cast unshifted.
   return G.foes_within(self, 1, og.scare_radius(self.level), true)
 end
 
 local function do_special(self)
+  -- rule: Classic: SCARE summons its fright carrier and spends its MP even with nobody to frighten.
+  --   Gameplay Fixes: a scare with no living foe inside the scare radius is refused for free.
+  -- tests: parity:ghost_scare_no_foe_scen99, parity:ghost_scare_no_foe_fixes_scen99
+  -- tests: GameplayFixes.scare_at_nobody_is_refused_and_starts_no_rest
+  -- tests: KitGhost.wail_costs_50_and_is_scare_when_off, parity:effect_ghost_scare_emission_scen99
   if gf.on() and no_living_foe_in_reach(self) then
     return false, "NO FOE IN RANGE"
   end
   -- The old "nifty scare thing" is a carrier; its on_death does the scare.
   local scare = og.summon(self, "fx", FX_GHOST_SCARE)
+  -- plumbing: og.summon failure for the scare carrier: 'COULD NOT CREATE SCARE'.
   if not scare then
     return false, "COULD NOT CREATE SCARE"
   end
