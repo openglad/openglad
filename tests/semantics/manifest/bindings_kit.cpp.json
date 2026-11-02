@@ -7,6 +7,10 @@
         57,
         62
       ],
+      "kinds": [
+        "if",
+        "ternary"
+      ],
       "function": "m_set_kit_state",
       "anchor": "if (hide != w->hidden())",
       "condition": "hide != w->hidden() ; w->hidden() ? KIT_HIDDEN : 0",
@@ -56,6 +60,14 @@
         197,
         219,
         231
+      ],
+      "kinds": [
+        "ternary",
+        "ternary",
+        "ternary",
+        "ternary",
+        "ternary",
+        "ternary"
       ],
       "function": "m_hidden / m_init_fire / m_blocks_placement / og_fearless / og_line_clear / og_swap_places",
       "anchor": "lua_pushboolean(L, kit_self_arg(L)->hidden() ? 1 : 0);",
@@ -114,6 +126,11 @@
         82,
         85
       ],
+      "kinds": [
+        "if",
+        "else",
+        "if"
+      ],
       "function": "m_set_hidden",
       "anchor": "if (lua_isboolean(L, 2)) {",
       "condition": "lua_isboolean ; is_integer == 0",
@@ -153,6 +170,9 @@
       "lines": [
         143
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "m_alternate_cost",
       "anchor": "if (slot < 0 || slot >= NUM_SPECIALS)",
       "condition": "slot < 0 || slot >= NUM_SPECIALS",
@@ -191,6 +211,9 @@
       "lines": [
         155
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "kit_world",
       "anchor": "if (current_game == nullptr || current_game->world == nullptr)",
       "condition": "current_game == nullptr || current_game->world == nullptr",
@@ -225,6 +248,12 @@
         173,
         174,
         176
+      ],
+      "kinds": [
+        "if",
+        "ternary",
+        "if",
+        "ternary"
       ],
       "function": "og_possess",
       "anchor": "if (ticks < 0 || ticks > std::numeric_limits<std::int16_t>::max())",
@@ -262,6 +291,9 @@
       "lines": [
         316
       ],
+      "kinds": [
+        "for"
+      ],
       "kind": "loop",
       "anchor": "for (const luaL_Reg* r = kOgKitFuncs; r->name != nullptr; r++)",
       "note": "register_kit_bindings: fences every og.* kit verb behind the load-time world fence; rule asserted via the fence error tests (test_script_bindings_errors.cpp)."
@@ -270,6 +302,9 @@
       "id": "bindings_kit.cpp:321",
       "lines": [
         321
+      ],
+      "kinds": [
+        "for"
       ],
       "kind": "loop",
       "anchor": "for (const KitConst& c : kKitConstants) {",

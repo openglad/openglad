@@ -7,6 +7,10 @@
         60,
         69
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "teleport_spot_blocked_by",
       "anchor": "if (other == nullptr || other == self || other->dead() || other->hidden())",
       "condition": "other == nullptr || other == self || other->dead() || other->hidden(); !blocking (Living|Generator|Weapon door/tree/boulder/declares_blocks_placement)",
@@ -59,6 +63,10 @@
         74,
         79
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "teleport_spot_blocked_by",
       "anchor": "if (self->sizez() > 0 && other->sizez() > 0)",
       "condition": "self->sizez() > 0 && other->sizez() > 0; sz2 <= oz1 || oz2 <= self_z",
@@ -93,6 +101,9 @@
       "id": "walker_specials.cpp:98",
       "lines": [
         98
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "teleport_landing_clear",
       "anchor": "if (!grid_ok)",
@@ -140,6 +151,9 @@
       "lines": [
         104
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "teleport_landing_clear",
       "anchor": "if (self->stats() != nullptr &&",
       "condition": "self->stats() && query_bit_flags(BIT_NO_COLLIDE)",
@@ -175,6 +189,9 @@
       "lines": [
         108
       ],
+      "kinds": [
+        "ternary"
+      ],
       "function": "teleport_landing_clear",
       "anchor": "(target_floor == self->floor()) ? self->worldz() : 0.0f;",
       "condition": "target_floor == self->floor() ? self->worldz() : 0.0f",
@@ -202,6 +219,9 @@
       "lines": [
         135
       ],
+      "kinds": [
+        "ternary"
+      ],
       "function": "turnable",
       "anchor": "const auto* target_fd = w ? get_family_descriptor(w->family()) : nullptr;",
       "condition": "w && target_fd && target_fd->is_undead && !(BIT_INVINCIBLE || invulnerable_left()!=0)",
@@ -221,7 +241,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_gameplay_fixes_engine.cpp",
@@ -244,14 +264,15 @@
           "note": "warded skeleton does not justify the bot's turn"
         }
       ],
-      "missing_arms": [
-        "undead with invulnerable_left>0 or BIT_INVINCIBLE"
-      ]
+      "missing_arms": []
     },
     {
       "id": "walker_specials.cpp:162",
       "lines": [
         162
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "walker::special",
       "anchor": "if (specials_disabled())",
@@ -268,7 +289,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_specials_unit.cpp",
@@ -286,14 +307,15 @@
           "note": "enabled walker continues and casts"
         }
       ],
-      "missing_arms": [
-        "specials disabled"
-      ]
+      "missing_arms": []
     },
     {
       "id": "walker_specials.cpp:168",
       "lines": [
         168
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "walker::special",
       "anchor": "if (dead())",
@@ -310,7 +332,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_specials_unit.cpp",
@@ -328,14 +350,15 @@
           "note": "live walker continues and casts"
         }
       ],
-      "missing_arms": [
-        "dead"
-      ]
+      "missing_arms": []
     },
     {
       "id": "walker_specials.cpp:182",
       "lines": [
         182
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "walker::special",
       "anchor": "if (special_index < 0 || special_index >= NUM_SPECIALS)",
@@ -365,6 +388,9 @@
       "id": "walker_specials.cpp:195",
       "lines": [
         195
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "walker::special",
       "anchor": "if (cast_price >= kSpecialCostDisabled)",
@@ -412,6 +438,10 @@
         197,
         200
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "walker::special",
       "anchor": "if (stats_->magicpoints() < cast_price)",
       "condition": "stats_->magicpoints() < cast_price",
@@ -427,7 +457,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_specials.cpp",
@@ -445,14 +475,15 @@
           "note": "MP 500 >= 15 continues and casts"
         }
       ],
-      "missing_arms": [
-        "MP < price"
-      ]
+      "missing_arms": []
     },
     {
       "id": "walker_specials.cpp:203",
       "lines": [
         203
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "walker::special",
       "anchor": "if (query_order() != Order::Living)",
@@ -489,6 +520,10 @@
       "lines": [
         210,
         214
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "walker::special",
       "anchor": "if (auto hook_result = og::script::hooks::do_special(fd, this, &decline_reason))",
@@ -539,6 +574,9 @@
       "lines": [
         221
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "walker::special",
       "anchor": "if (current_game != nullptr && current_game->world != nullptr &&",
       "condition": "world->enemy_freeze > kEnemyFreezeBankCap",
@@ -554,7 +592,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_stats_fright.cpp",
@@ -572,9 +610,7 @@
           "note": "below cap: L20 240, L14 174 unchanged"
         }
       ],
-      "missing_arms": [
-        "bank above cap after a special"
-      ]
+      "missing_arms": []
     },
     {
       "id": "walker_specials.cpp:228",
@@ -583,6 +619,12 @@
         231,
         232,
         234
+      ],
+      "kinds": [
+        "if",
+        "ternary",
+        "if",
+        "ternary"
       ],
       "function": "walker::special",
       "anchor": "if (!did_special)",
@@ -622,7 +664,6 @@
         }
       ],
       "missing_arms": [
-        "script refused with reason R",
         "refused with empty reason / no hook"
       ]
     },
@@ -630,6 +671,9 @@
       "id": "walker_specials.cpp:254",
       "lines": [
         254
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "walker::teleport",
       "anchor": "if (current_game != nullptr && current_game->world != nullptr)",
@@ -653,6 +697,10 @@
       "lines": [
         259,
         262
+      ],
+      "kinds": [
+        "for",
+        "if"
       ],
       "function": "walker::teleport",
       "anchor": "for(auto& uptr : current_game->world->oblist)",
@@ -696,6 +744,10 @@
         277,
         297
       ],
+      "kinds": [
+        "if",
+        "else"
+      ],
       "function": "walker::teleport",
       "anchor": "if ((distance > 64) &&",
       "condition": "(distance > 64) && teleport_landing_clear(landx, landy, marker_floor)",
@@ -715,7 +767,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_specials.cpp",
@@ -738,14 +790,15 @@
           "note": "far blocked: lifetime 5, false, x/y unchanged"
         }
       ],
-      "missing_arms": [
-        "far + clear"
-      ]
+      "missing_arms": []
     },
     {
       "id": "walker_specials.cpp:290",
       "lines": [
         290
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "walker::teleport",
       "anchor": "if (ob->lifetime() < 1)",
@@ -762,7 +815,7 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/integration/test_walker_specials.cpp",
@@ -776,7 +829,6 @@
         }
       ],
       "missing_arms": [
-        "lifetime reaches 0",
         "uses left"
       ]
     },
@@ -784,6 +836,9 @@
       "id": "walker_specials.cpp:299",
       "lines": [
         299
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "walker::teleport",
       "anchor": "if (user() != -1 && (distance > 64) ) // only tell players",
@@ -822,6 +877,11 @@
         330,
         333
       ],
+      "kinds": [
+        "do",
+        "while",
+        "if"
+      ],
       "function": "walker::teleport",
       "anchor": "} while (keep_going > 0 &&",
       "anchor_index": 1,
@@ -838,7 +898,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_specials_unit.cpp",
@@ -855,14 +915,15 @@
           "note": "no clear cell: false, x/y unchanged"
         }
       ],
-      "missing_arms": [
-        "no clear cell in 200 attempts"
-      ]
+      "missing_arms": []
     },
     {
       "id": "walker_specials.cpp:327",
       "lines": [
         327
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "walker::teleport",
       "anchor": "if (floors > 1)",
@@ -879,7 +940,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_specials_unit.cpp",
@@ -892,14 +953,15 @@
           "note": "2 draws, floor 0"
         }
       ],
-      "missing_arms": [
-        "floor_count>1"
-      ]
+      "missing_arms": []
     },
     {
       "id": "walker_specials.cpp:352",
       "lines": [
         352
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "walker::teleport_ranged",
       "anchor": "if (current_game != nullptr && current_game->world != nullptr)",
@@ -924,6 +986,10 @@
         362,
         368
       ],
+      "kinds": [
+        "while",
+        "if"
+      ],
       "function": "walker::teleport_ranged",
       "anchor": "while(!teleport_landing_clear(*current_game->world, this, newx, newy, floor()) && keep_going)",
       "condition": "while(!teleport_landing_clear(..., floor()) && keep_going); if (keep_going)",
@@ -939,7 +1005,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_specials_unit.cpp",
@@ -948,16 +1014,27 @@
         {
           "file": "tests/integration/test_walker_specials_unit.cpp",
           "test": "WalkerSpecialsUnit.walker_specials_r11_special_and_teleport_paths"
+        },
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.unknown_family_and_teleport_ranged_fail_loop",
+          "note": "none in budget: ASSERT_TRUE(!teleport_ranged(...)), the false return; position unchanged not read"
+        },
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.guard_paths_and_teleport_failures",
+          "note": "none in budget: ASSERT_TRUE(!teleport_ranged(...)), the false return; position unchanged not read"
         }
       ],
-      "missing_arms": [
-        "none in budget"
-      ]
+      "missing_arms": []
     },
     {
       "id": "walker_specials.cpp:387",
       "lines": [
         387
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "walker::turn_undead",
       "anchor": "if (!targets)",
@@ -974,7 +1051,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_specials_unit.cpp",
@@ -987,9 +1064,7 @@
           "note": "-1 with nobody, RNG not checked after that call"
         }
       ],
-      "missing_arms": [
-        "no foe in range"
-      ]
+      "missing_arms": []
     },
     {
       "id": "walker_specials.cpp:391",
@@ -998,6 +1073,12 @@
         396,
         397,
         398
+      ],
+      "kinds": [
+        "if",
+        "for",
+        "if",
+        "if"
       ],
       "function": "walker::turn_undead",
       "anchor": "if (fixes)",
@@ -1048,6 +1129,9 @@
       "lines": [
         405
       ],
+      "kinds": [
+        "ternary"
+      ],
       "function": "walker::turn_undead",
       "anchor": "const auto roll_bound = fixes ? static_cast<std::uint32_t>(power * 160)",
       "condition": "fixes ? power*160 : range*40",
@@ -1076,6 +1160,9 @@
       "id": "walker_specials.cpp:410",
       "lines": [
         410
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "walker::turn_undead",
       "anchor": "if (turnable(w))",
@@ -1123,6 +1210,9 @@
       "lines": [
         412
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "walker::turn_undead",
       "anchor": "if (current_game->world->rng_.next(roll_bound) > current_game->world->rng_.next(static_cast<std::uint32_t>(w->stats()->level()*10)) )",
       "condition": "rng.next(roll_bound) > rng.next(level*10)",
@@ -1138,7 +1228,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_specials_unit.cpp",
@@ -1156,14 +1246,15 @@
           "note": "WalkerDiedByFinal(FAMILY_SKELETON)  WalkerOfTeamAlive(1 0 0)"
         }
       ],
-      "missing_arms": [
-        "otherwise"
-      ]
+      "missing_arms": []
     },
     {
       "id": "walker_specials.cpp:418",
       "lines": [
         418
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "walker::turn_undead",
       "anchor": "if (scripted_mode)",
@@ -1211,6 +1302,11 @@
         436,
         439,
         441
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
       ],
       "function": "walker::turn_undead",
       "anchor": "if (gated < 0)",
@@ -1266,6 +1362,10 @@
         473,
         474
       ],
+      "kinds": [
+        "for",
+        "if"
+      ],
       "function": "walker::undead_foes_in_range",
       "anchor": "for (auto* w : foes)",
       "condition": "for foes: if turnable(w)",
@@ -1298,6 +1398,9 @@
       "id": "walker_specials.cpp:502",
       "lines": [
         502
+      ],
+      "kinds": [
+        ""
       ],
       "function": "walker::charmed_head",
       "anchor": "return og::sim::session_gameplay_fixes() != 0 && charm_left() > 0;",
@@ -1339,6 +1442,9 @@
       "lines": [
         100
       ],
+      "kinds": [
+        "if"
+      ],
       "kind": "defensive",
       "anchor": "if (world.myobmap == nullptr)",
       "note": "myobmap == nullptr: no collision table, grid probe alone decides (headless/test worlds)"
@@ -1352,6 +1458,13 @@
         118,
         120
       ],
+      "kinds": [
+        "for",
+        "for",
+        "if",
+        "for",
+        "if"
+      ],
       "kind": "loop",
       "anchor": "for (std::int32_t bx = x; bx < x + self->sizex() + kBucket; bx += kBucket)",
       "note": "obmap bucket scan over every 32 px bucket the landing box spans; per-candidate test is the rule at walker_specials.cpp:60 and :74; pile==nullptr (117) is an empty-bucket skip"
@@ -1364,6 +1477,12 @@
         153,
         155
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if"
+      ],
       "kind": "plumbing",
       "anchor": "if (why)",
       "note": "SpecialFailure/reason out-param writes (null-checked); the reasons themselves are the rule rows below"
@@ -1372,6 +1491,9 @@
       "id": "walker_specials.cpp:175",
       "lines": [
         175
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "defensive",
       "anchor": "if (!stats_)",
@@ -1382,6 +1504,9 @@
       "lines": [
         309
       ],
+      "kinds": [
+        "if"
+      ],
       "kind": "defensive",
       "anchor": "if (!current_game || !current_game->world || !current_game->world->grid.valid() ||",
       "note": "no world/grid/pixel extents: random blink refused (return 0) instead of looping"
@@ -1390,6 +1515,9 @@
       "id": "walker_specials.cpp:408",
       "lines": [
         408
+      ],
+      "kinds": [
+        "for"
       ],
       "kind": "loop",
       "anchor": "for(auto* w : deadlist)",

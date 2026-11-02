@@ -10,6 +10,13 @@
         116,
         120
       ],
+      "kinds": [
+        "while",
+        "if",
+        "if",
+        "if",
+        "while"
+      ],
       "function": "OpenQueue::push / update",
       "anchor": "while (true)",
       "condition": "push: insert before first strictly greater cost; update: hop to head if below predecessor, then slide right past cheaper",
@@ -38,6 +45,11 @@
         178,
         181,
         194
+      ],
+      "kinds": [
+        "for",
+        "if",
+        "for"
       ],
       "function": "AStar::Impl::reconstruct",
       "anchor": "for (Node* it = goal; it->parent != nullptr; it = it->parent)",
@@ -72,6 +84,9 @@
       "lines": [
         232
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "AStar::solve",
       "anchor": "if (start == end)",
       "condition": "start == end",
@@ -97,6 +112,10 @@
       "lines": [
         247,
         251
+      ],
+      "kinds": [
+        "while",
+        "if"
       ],
       "function": "AStar::solve",
       "anchor": "while (!open.empty())",
@@ -136,6 +155,10 @@
         263,
         265
       ],
+      "kinds": [
+        "for",
+        "if"
+      ],
       "function": "AStar::solve",
       "anchor": "for (const StateCost& edge : impl_->neighbors)",
       "condition": "edge.cost == kImpassableCost",
@@ -172,6 +195,12 @@
         276,
         285,
         289
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "else"
       ],
       "function": "AStar::solve",
       "anchor": "if (child->in_open || child->in_closed)",
@@ -217,6 +246,9 @@
       "lines": [
         51
       ],
+      "kinds": [
+        "if"
+      ],
       "kind": "plumbing",
       "anchor": "if (node.cost_from_start < FLT_MAX && node.est_to_goal < FLT_MAX)",
       "note": "f=g+h, infinity when either component is unreachable"
@@ -225,6 +257,9 @@
       "id": "astar.cpp:163",
       "lines": [
         163
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "plumbing",
       "anchor": "if (inserted)",

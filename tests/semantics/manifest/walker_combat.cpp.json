@@ -6,6 +6,9 @@
       "lines": [
         67
       ],
+      "kinds": [
+        "ternary"
+      ],
       "function": "exp_from_action",
       "anchor": "(target != nullptr && target->stats() != nullptr) ? target->stats()->level() : 0;",
       "condition": "target && target->stats() ? target level : 0",
@@ -46,6 +49,9 @@
       "lines": [
         90
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "award_score",
       "anchor": "if (!(current_game && current_game->world && is_valid_score_team(team_num)))",
       "condition": "current_game && world && team < SCORE_TEAM_COUNT",
@@ -83,6 +89,9 @@
       "id": "walker_combat.cpp:100",
       "lines": [
         100
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "walker::do_heal_effects",
       "anchor": "if(healer)",
@@ -124,6 +133,9 @@
       "lines": [
         118
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "walker::do_hit_effects",
       "anchor": "if(attacker)",
       "condition": "attacker",
@@ -160,6 +172,11 @@
         132,
         175,
         179
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
       ],
       "function": "walker::do_hit_effects",
       "anchor": "if (target->stats()->hitpoints() < 0)",
@@ -211,6 +228,14 @@
         159,
         163
       ],
+      "kinds": [
+        "if",
+        "ternary",
+        "if",
+        "if",
+        "if",
+        "else"
+      ],
       "function": "walker::do_hit_effects",
       "anchor": "if (current_game != nullptr && current_game->world != nullptr)",
       "condition": "order != FX || efd->creates_hit_effect; attacker == this",
@@ -251,6 +276,9 @@
       "lines": [
         199
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "walker::do_combat_damage",
       "anchor": "if (target->stats()->query_bit_flags(BIT_INVINCIBLE) ||",
       "condition": "BIT_INVINCIBLE || invulnerable_left != 0",
@@ -285,6 +313,9 @@
       "id": "walker_combat.cpp:204",
       "lines": [
         204
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "walker::do_combat_damage",
       "anchor": "if (attacker && attacker->myguy && target->query_order() == Order::Living)  // hit a living",
@@ -332,6 +363,10 @@
         216,
         220
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "walker::do_combat_damage",
       "anchor": "if (target->stats()->hitpoints() < 0)",
       "condition": "tempdamage (+ negative hp) > 0",
@@ -375,6 +410,10 @@
         223,
         226
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "walker::do_combat_damage",
       "anchor": "if(target->myguy != nullptr)",
       "condition": "target->myguy; scen_min_hp > hp",
@@ -410,6 +449,10 @@
       "lines": [
         243,
         247
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "walker::attack",
       "anchor": "if (target && target->dead())",
@@ -464,6 +507,9 @@
       "lines": [
         250
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "walker::attack",
       "anchor": "if (target->stats()->query_bit_flags(BIT_INVINCIBLE) ||",
       "condition": "BIT_INVINCIBLE || invulnerable_left || hidden()",
@@ -509,6 +555,10 @@
         254,
         256
       ],
+      "kinds": [
+        "if",
+        "else"
+      ],
       "function": "walker::attack",
       "anchor": "if (order() != Order::Living && owner())",
       "condition": "order != Living && owner()",
@@ -543,6 +593,9 @@
       "id": "walker_combat.cpp:261",
       "lines": [
         261
+      ],
+      "kinds": [
+        "while"
       ],
       "function": "walker::attack",
       "anchor": "while (headguy->owner() && (headguy->owner() != headguy) && !headguy->charmed_head() )",
@@ -580,6 +633,9 @@
       "id": "walker_combat.cpp:268",
       "lines": [
         268
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "walker::attack",
       "anchor": "if (headguy->myguy != nullptr ||",
@@ -620,6 +676,11 @@
         277,
         279
       ],
+      "kinds": [
+        "switch",
+        "case",
+        "if"
+      ],
       "function": "walker::attack",
       "anchor": "switch (targetorder) // generally going to be livings..",
       "condition": "switch(targetorder) case Living; attacker->myguy",
@@ -652,6 +713,10 @@
       "lines": [
         285,
         288
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "walker::attack",
       "anchor": "if (stats_->query_bit_flags(BIT_MAGICAL))",
@@ -693,6 +758,10 @@
         292,
         295
       ],
+      "kinds": [
+        "default",
+        "if"
+      ],
       "function": "walker::attack",
       "anchor": "if (attacker->myguy)",
       "anchor_index": 1,
@@ -726,6 +795,9 @@
       "lines": [
         304
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "walker::attack",
       "anchor": "if (tempdamage < 0)",
       "condition": "tempdamage < 0",
@@ -757,6 +829,9 @@
       "id": "walker_combat.cpp:315",
       "lines": [
         315
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "walker::attack",
       "anchor": "if (gated_damage < 0)",
@@ -827,6 +902,9 @@
       "lines": [
         323
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "walker::attack",
       "anchor": "if (tempdamage_i > 0) target->note_attacker(credit, current_game->world->tick_count_);",
       "condition": "tempdamage_i > 0",
@@ -842,7 +920,7 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_mode_tick.cpp",
@@ -855,7 +933,10 @@
           "note": "positive arm: on_entity_death killer == the thrower"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [],
+      "note": [
+        "Sub-part convention (file-wide): an arm whose primary observable is asserted counts as asserted and leaves missing_arms; any field of its compound observable that no cited test reads is listed in assertion.unasserted_subparts, and a row with unasserted_subparts is never 'asserted' (at best 'partial')."
+      ]
     },
     {
       "id": "walker_combat.cpp:332",
@@ -865,6 +946,13 @@
         339,
         342,
         345
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "else",
+        "if",
+        "if"
       ],
       "function": "walker::attack",
       "anchor": "if (order() != Order::Living && owner())",
@@ -922,6 +1010,11 @@
         355,
         357
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
+      ],
       "function": "walker::attack",
       "anchor": "if (order() == Order::Weapon)",
       "condition": "order == Weapon; hp <= 0; !BIT_IMMORTAL",
@@ -961,6 +1054,11 @@
         370,
         373
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
+      ],
       "function": "walker::attack",
       "anchor": "if (owner() && targetorder != Order::Weapon && playerteam != target->team_num())",
       "condition": "owner() && target not Weapon && playerteam != target team; getscore; order != Weapon && headguy->myguy",
@@ -997,6 +1095,9 @@
       "id": "walker_combat.cpp:382",
       "lines": [
         382
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "walker::attack",
       "anchor": "if (target->stats()->hitpoints() <= 0)",
@@ -1044,6 +1145,10 @@
         391,
         396
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "walker::attack",
       "anchor": "if (targetorder == Order::Living &&",
       "condition": "target Living && KIT_WARD; !target->dead() after death()",
@@ -1081,6 +1186,9 @@
       "id": "walker_combat.cpp:403",
       "lines": [
         403
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "walker::attack",
       "anchor": "if (targetorder == Order::Living)",
@@ -1122,6 +1230,9 @@
       "lines": [
         405
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "walker::attack",
       "anchor": "if (playerteam > -1)",
       "condition": "playerteam > -1",
@@ -1154,6 +1265,11 @@
         407,
         409,
         422
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
       ],
       "function": "walker::attack",
       "anchor": "if (playerteam != target->team_num())",
@@ -1196,6 +1312,10 @@
         435,
         439
       ],
+      "kinds": [
+        "if",
+        "ternary"
+      ],
       "function": "walker::attack",
       "anchor": "if (target->stats()->name.size() && !(target->lifetime())",
       "condition": "victim named && !lifetime && !owner; my_team != victim team",
@@ -1234,6 +1354,9 @@
       "id": "walker_combat.cpp:452",
       "lines": [
         452
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "walker::attack",
       "anchor": "if(!mode_owned &&",
@@ -1295,6 +1418,14 @@
         469,
         472
       ],
+      "kinds": [
+        "else",
+        "if",
+        "else if",
+        "else if",
+        "else",
+        "ternary"
+      ],
       "function": "walker::attack",
       "anchor": "if ( (target->owner() || target->lifetime()) // summoned?",
       "anchor_index": 1,
@@ -1341,6 +1472,9 @@
       "lines": [
         481
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "walker::attack",
       "anchor": "if (blood)",
       "condition": "blood (living killed)",
@@ -1375,6 +1509,11 @@
         492,
         494
       ],
+      "kinds": [
+        "if",
+        "if",
+        "else"
+      ],
       "function": "walker::attack",
       "anchor": "if (targetorder == Order::Living && positional_sound_visible(this, SOUND_DIE1))",
       "condition": "target Living && positional_sound_visible; rng.next(2)",
@@ -1406,6 +1545,9 @@
       "id": "walker_combat.cpp:503",
       "lines": [
         503
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "walker::attack",
       "anchor": "if (targetorder == Order::Living && target->dead() &&",
@@ -1444,6 +1586,10 @@
         42,
         45
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "kind": "test-only",
       "anchor": "if (IRandom* override_rng = gameplay_rng_override())",
       "note": "combat RNG source: a test override when installed, else world.rng_; no world aborts"
@@ -1452,6 +1598,9 @@
       "id": "walker_combat.cpp:54",
       "lines": [
         54
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "plumbing",
       "anchor": "if (current_game && current_game->positional_sound_visible &&",

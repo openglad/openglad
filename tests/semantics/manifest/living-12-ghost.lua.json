@@ -6,6 +6,9 @@
       "lines": [
         16
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "no_living_foe_in_reach",
       "anchor": "if foes[i]:order() == C.ORDER_LIVING then",
       "condition": "if foes[i]:order() == C.ORDER_LIVING then return false",
@@ -42,6 +45,9 @@
       "lines": [
         30
       ],
+      "kinds": [
+        ""
+      ],
       "function": "fixed_scare (ai: scare_gate(wail_gate(with_classic(foe_within(130), fixed_scare))))",
       "anchor": "return G.foes_within(self, 1, og.scare_radius(self.level), true)",
       "condition": "return G.foes_within(self, 1, og.scare_radius(self.level), true)",
@@ -77,6 +83,9 @@
       "id": "living-12-ghost.lua:34",
       "lines": [
         34
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "do_special",
       "anchor": "if gf.on() and no_living_foe_in_reach(self) then",
@@ -131,6 +140,9 @@
       "lines": [
         15
       ],
+      "kinds": [
+        "for"
+      ],
       "kind": "loop",
       "anchor": "for i = 1, #foes do",
       "note": "scans foes in scare radius; rule row living-12-ghost.lua:16"
@@ -139,6 +151,9 @@
       "id": "living-12-ghost.lua:39",
       "lines": [
         39
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "defensive",
       "anchor": "if not scare then",
@@ -149,6 +164,9 @@
       "lines": [
         64
       ],
+      "kinds": [
+        "and"
+      ],
       "kind": "dead",
       "anchor": "{ id = \"possess\", name = \"POSSESS\", mp_cost = 50, new_kit = true, cast = kg.possess, ai = kg.ai_possess, detail = \"Enter a foe and drive it, with its weapon and",
       "note": "not a branch (prose 'and' in a detail/description string)"
@@ -157,6 +175,9 @@
       "id": "living-12-ghost.lua:82",
       "lines": [
         82
+      ],
+      "kinds": [
+        "and"
       ],
       "kind": "dead",
       "anchor": "description = \"Ghosts can pass through walls, trees, and anything else that gets in the way. Their chilling touch can bring death quickly at close range.\",",

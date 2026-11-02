@@ -6,6 +6,9 @@
       "lines": [
         33
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "special_in_play",
       "anchor": "if (fd == nullptr || !slot_in_range(slot))",
       "condition": "fd == nullptr || !slot_in_range ; !special_new_kit || new_specials",
@@ -49,6 +52,10 @@
         41,
         43
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "alternate_in_play",
       "anchor": "if (!special_in_play(fd, slot, new_specials))",
       "condition": "!special_in_play ; !alternate_new_kit || new_specials",
@@ -91,6 +98,10 @@
       "lines": [
         51,
         60
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "special_name / alternate_name",
       "anchor": "if (fd == nullptr || !slot_in_range(slot) ||",
@@ -137,6 +148,9 @@
       "lines": [
         69
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "alternate_cost_in_play",
       "anchor": "if (fd == nullptr || !slot_in_range(slot) ||",
       "condition": "fd null || slot bad || !alternate_in_play",
@@ -170,6 +184,9 @@
       "lines": [
         77
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "slot_open_level",
       "anchor": "if (fd != nullptr && slot_in_range(slot) && fd->special_level[slot] != 0)",
       "condition": "fd && slot_in_range && special_level[slot] != 0",
@@ -201,6 +218,12 @@
         96,
         98,
         104
+      ],
+      "kinds": [
+        "for",
+        "if",
+        "if",
+        "if"
       ],
       "function": "bot_slot_roll_bound",
       "anchor": "for (int slot = 1; slot < FD_NUM_SPECIALS; ++slot) {",
@@ -246,6 +269,13 @@
         132,
         134,
         137
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if",
+        "if"
       ],
       "function": "cast_cost",
       "anchor": "if (!special_in_play(fd, slot, ns))",
@@ -304,6 +334,9 @@
       "lines": [
         148
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "cannot_afford_priced_alternate",
       "anchor": "if (price == 0 || w.stats() == nullptr)",
       "condition": "price == 0 || stats null ; mp < price",
@@ -339,6 +372,10 @@
       "lines": [
         111,
         118
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "kind": "plumbing",
       "function": "session_new_specials / session_gameplay_fixes",

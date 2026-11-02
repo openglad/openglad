@@ -6,6 +6,9 @@
       "lines": [
         16
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "gold_bar_on_eat",
       "anchor": "if eater.team == 0 or eater:has_guy() then",
       "condition": "eater.team == 0 or eater:has_guy()",
@@ -49,6 +52,9 @@
       "lines": [
         27
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "silver_bar_on_eat",
       "anchor": "if eater.team == 0 or eater:has_guy() then",
       "condition": "eater.team == 0 or eater:has_guy()",
@@ -81,6 +87,9 @@
       "id": "treasure_valuables.lua:40",
       "lines": [
         40
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "life_gem_on_eat",
       "anchor": "if eater.team ~= self.team then",
@@ -120,6 +129,9 @@
       "lines": [
         64
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "key_on_eat",
       "anchor": "if (eater:keys() & key_mask) == 0 then  -- just got it?",
       "condition": "(eater:keys() & key_mask) == 0",
@@ -155,6 +167,10 @@
         67,
         69
       ],
+      "kinds": [
+        "if",
+        "else"
+      ],
       "function": "key_on_eat",
       "anchor": "if eater:has_guy() then",
       "condition": "eater:has_guy()",
@@ -181,6 +197,9 @@
       "id": "treasure_valuables.lua:73",
       "lines": [
         73
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "key_on_eat",
       "anchor": "if eater.team == 0 then  -- only show players picking up keys",
@@ -217,6 +236,9 @@
       "id": "treasure_valuables.lua:47",
       "lines": [
         47
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "defensive",
       "anchor": "if flash then",

@@ -7,6 +7,10 @@
         26,
         29
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "body_for",
       "anchor": "if body ~= nil then",
       "condition": "body ~= nil / self:is_friendly(blood)",
@@ -51,6 +55,9 @@
       "lines": [
         45
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "M.raise_spot",
       "anchor": "if #stains == 0 then",
       "condition": "#stains == 0",
@@ -90,6 +97,11 @@
         51,
         54,
         60
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
       ],
       "function": "M.raise_spot",
       "anchor": "if self:distance_to_ob(blood) < range then",
@@ -145,6 +157,9 @@
       "id": "corpses.lua:49",
       "lines": [
         49
+      ],
+      "kinds": [
+        "for"
       ],
       "kind": "loop",
       "anchor": "for i = 1, #stains do",

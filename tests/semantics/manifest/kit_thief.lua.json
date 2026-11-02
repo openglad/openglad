@@ -10,6 +10,13 @@
         19,
         40
       ],
+      "kinds": [
+        "if",
+        "and",
+        "and",
+        "and",
+        "if"
+      ],
       "function": "live_mines / mine",
       "anchor": "if ob:order() == C.ORDER_FX",
       "condition": "order==FX and family==MINE and dead==0 and owner==self ; found and count >= mine_cap",
@@ -39,6 +46,9 @@
       "id": "kit_thief.lua:31",
       "lines": [
         31
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "step_off",
       "anchor": "if flee_dx == 0 and flee_dy == 0 then",
@@ -71,6 +81,9 @@
       "id": "kit_thief.lua:48",
       "lines": [
         48
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "mine",
       "anchor": "if self:has_guy() then",
@@ -106,6 +119,9 @@
       "id": "kit_thief.lua:62",
       "lines": [
         62
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "mine",
       "anchor": "if self:user() == -1 then",
@@ -144,6 +160,9 @@
       "lines": [
         72
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "M.bomb_or_mine",
       "anchor": "if self:alternate_down() then",
       "condition": "self:alternate_down()",
@@ -176,6 +195,9 @@
       "lines": [
         14
       ],
+      "kinds": [
+        "for"
+      ],
       "kind": "loop",
       "anchor": "for i = 1, #obs do",
       "note": "live_mines oblist scan; rule in kit_thief.lua:16"
@@ -184,6 +206,9 @@
       "id": "kit_thief.lua:44",
       "lines": [
         44
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "defensive",
       "anchor": "if not laid then",

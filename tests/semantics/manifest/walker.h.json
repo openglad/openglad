@@ -6,6 +6,9 @@
       "lines": [
         500
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "walker::note_attacker",
       "anchor": "if (who == nullptr)",
       "condition": "who == nullptr",

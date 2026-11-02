@@ -6,6 +6,9 @@
       "lines": [
         62
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "treasure::eat_me",
       "anchor": "if (auto hook_result = og::script::hooks::treasure_on_eat(tfd, this, eater))",
       "condition": "treasure_on_eat hook present",
@@ -51,6 +54,15 @@
         106,
         109,
         111
+      ],
+      "kinds": [
+        "if",
+        "for",
+        "if",
+        "if",
+        "for",
+        "if",
+        "if"
       ],
       "function": "treasure::find_teleport_target",
       "anchor": "if(mine == ls.end())",

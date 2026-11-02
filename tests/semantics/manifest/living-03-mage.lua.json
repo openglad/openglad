@@ -6,6 +6,9 @@
       "lines": [
         29
       ],
+      "kinds": [
+        "or"
+      ],
       "function": "freeze_wanted (bot FREEZE TIME cue)",
       "anchor": "return engaged >= 3 or hurt",
       "condition": "engaged >= 3 or hurt",
@@ -56,6 +59,11 @@
         51,
         58
       ],
+      "kinds": [
+        "if",
+        "or",
+        "and"
+      ],
       "function": "fixed_gate (bot TELEPORT, slot 1)",
       "anchor": "if slot == 1 then",
       "condition": "slot == 1; yes = foe_count < 1 or foe_count > 3; return yes and not lc.mid_teleport(self)",
@@ -101,6 +109,11 @@
         53,
         55
       ],
+      "kinds": [
+        "and",
+        "if",
+        "else"
+      ],
       "function": "fixed_gate (bot TELEPORT MARKER arm)",
       "anchor": "local mark = foe_count < 1 and G.marker_pays(self, FX_MARKER, 2, t.marker_int_req)",
       "condition": "mark = foe_count < 1 and G.marker_pays(...); if mark and not lc.is_busy(self) -> shifter 1 else 0",
@@ -141,6 +154,9 @@
       "lines": [
         60
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "fixed_gate (bot WARP SPACE, slot 2)",
       "anchor": "if slot == 2 then",
       "condition": "slot == 2 -> G.ring_pays(self, UNIT_STEP, 7, add)",
@@ -180,6 +196,9 @@
       "lines": [
         65
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "fixed_gate (bot FREEZE TIME, slot 3)",
       "anchor": "if slot == 3 then",
       "condition": "slot == 3 -> freeze_wanted(self)",
@@ -214,6 +233,11 @@
         68,
         70,
         71
+      ],
+      "kinds": [
+        "if",
+        "and",
+        "and"
       ],
       "function": "fixed_gate (bot ENERGY WAVE, slot 4)",
       "anchor": "if slot == 4 then",
@@ -259,6 +283,9 @@
       "lines": [
         77
       ],
+      "kinds": [
+        ""
+      ],
       "function": "fixed_gate (bot HEARTBURST, slot 5 and unmapped)",
       "anchor": "return in_reach >= 1",
       "condition": "in_reach >= 1",
@@ -289,6 +316,10 @@
       "lines": [
         83,
         87
+      ],
+      "kinds": [
+        "if",
+        "or"
       ],
       "function": "check_special_ai",
       "anchor": "if gf.on() then",
@@ -350,6 +381,10 @@
         94,
         97
       ],
+      "kinds": [
+        "if",
+        "else"
+      ],
       "function": "hit_response",
       "anchor": "if self:has_guy() then",
       "condition": "self:has_guy() -> threshold 3/5 max_hp else 3/8",
@@ -393,6 +428,11 @@
         106,
         107
       ],
+      "kinds": [
+        "for",
+        "if",
+        "and"
+      ],
       "function": "hit_response",
       "anchor": "for i = 0, (self.level + 2) // 3 do",
       "condition": "for i = 0, (level+2)//3: i < NUM_SPECIALS and magicpoints >= special_cost(i)",
@@ -425,6 +465,10 @@
       "lines": [
         112,
         119
+      ],
+      "kinds": [
+        "if",
+        "else"
       ],
       "function": "hit_response",
       "anchor": "if self.hp < threshold and possible[1] then",
@@ -467,6 +511,9 @@
       "lines": [
         118
       ],
+      "kinds": [
+        "or"
+      ],
       "function": "hit_response",
       "anchor": "local _ = lc.mid_teleport(self) or self:special()  -- struck mid-teleport: no second cast",
       "condition": "lc.mid_teleport(self) or self:special()",
@@ -496,6 +543,9 @@
       "id": "living-03-mage.lua:121",
       "lines": [
         121
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "hit_response",
       "anchor": "if self:foe() ~= foe then",
@@ -529,6 +579,9 @@
       "lines": [
         139
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "teleport (TELEPORT / MARKER cast)",
       "anchor": "if lc.mid_teleport(self) then",
       "condition": "lc.mid_teleport(self)",
@@ -560,6 +613,9 @@
       "id": "living-03-mage.lua:142",
       "lines": [
         142
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "teleport",
       "anchor": "if self:shifter_down() == 0 then",
@@ -598,6 +654,9 @@
       "lines": [
         149
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "teleport (marker)",
       "anchor": "if lc.is_busy(self) then",
       "condition": "lc.is_busy(self)",
@@ -629,6 +688,9 @@
       "id": "living-03-mage.lua:153",
       "lines": [
         153
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "teleport (marker)",
       "anchor": "if self:has_guy() and self:g_intelligence() < t.marker_int_req then",
@@ -680,6 +742,14 @@
         163,
         164
       ],
+      "kinds": [
+        "for",
+        "if",
+        "and",
+        "and",
+        "and",
+        "and"
+      ],
       "function": "teleport (marker)",
       "anchor": "for i = 1, #obs do",
       "condition": "for each ob: ob and order FX and family MARKER and owner == self and not dead",
@@ -712,6 +782,10 @@
       "lines": [
         167,
         168
+      ],
+      "kinds": [
+        "if",
+        "and"
       ],
       "function": "teleport (marker removal notice)",
       "anchor": "if (self.team == 0 or self:has_guy())",
@@ -746,6 +820,10 @@
         185,
         187
       ],
+      "kinds": [
+        "if",
+        "else"
+      ],
       "function": "teleport (marker)",
       "anchor": "if self:has_guy() then",
       "condition": "self:has_guy() -> lifetime = INT // 33 else level // 4 + 1",
@@ -778,6 +856,10 @@
       "lines": [
         191,
         192
+      ],
+      "kinds": [
+        "if",
+        "and"
       ],
       "function": "teleport (marker placed notice)",
       "anchor": "if (self.team == 0 or self:has_guy())",
@@ -812,6 +894,10 @@
         208,
         214
       ],
+      "kinds": [
+        "if",
+        "else"
+      ],
       "function": "starburst (WARP SPACE, slot 2)",
       "anchor": "if dmg_bonus > 0 then",
       "condition": "dmg_bonus > 0 (spare MP after cost) else 0",
@@ -840,6 +926,11 @@
         220,
         221,
         222
+      ],
+      "kinds": [
+        "for",
+        "for",
+        "if"
       ],
       "function": "starburst",
       "anchor": "for i = -1, 1 do",
@@ -874,6 +965,9 @@
       "lines": [
         226
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "starburst",
       "anchor": "if bolt then",
       "condition": "if bolt",
@@ -907,6 +1001,10 @@
         231,
         235
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "starburst",
       "anchor": "if bolt:lastx() ~= 0.0 then",
       "condition": "bolt:lastx() ~= 0.0 / bolt:lasty() ~= 0.0",
@@ -934,6 +1032,10 @@
       "lines": [
         255,
         260
+      ],
+      "kinds": [
+        "if",
+        "else"
       ],
       "function": "freeze_time (FREEZE TIME, slot 3)",
       "anchor": "if self.team == og.u8(og.my_team()) then",
@@ -987,6 +1089,9 @@
       "lines": [
         269
       ],
+      "kinds": [
+        "for"
+      ],
       "function": "freeze_time",
       "anchor": "for i = 1, #friends do",
       "condition": "for each friend within 30000",
@@ -1017,6 +1122,9 @@
       "id": "living-03-mage.lua:281",
       "lines": [
         281
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "energy_wave (ENERGY WAVE, slot 4)",
       "anchor": "if not bolt then",
@@ -1056,6 +1164,9 @@
       "lines": [
         304
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "heartburst (HEARTBURST, slot 5/unmapped)",
       "anchor": "if foe_count == 0 then",
       "condition": "foe_count == 0",
@@ -1093,6 +1204,9 @@
       "lines": [
         310
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "heartburst",
       "anchor": "if self:has_guy() then",
       "condition": "self:has_guy()",
@@ -1119,6 +1233,9 @@
       "id": "living-03-mage.lua:316",
       "lines": [
         316
+      ],
+      "kinds": [
+        "for"
       ],
       "function": "heartburst",
       "anchor": "for i = 1, #foes do",
@@ -1152,6 +1269,9 @@
       "id": "living-03-mage.lua:408",
       "lines": [
         408
+      ],
+      "kinds": [
+        ""
       ],
       "function": "family table (check_special_ai wiring)",
       "anchor": "check_special_ai = lc.gate_with_rest(check_special_ai, 3),",
@@ -1189,6 +1309,9 @@
       "lines": [
         179
       ],
+      "kinds": [
+        "if"
+      ],
       "kind": "defensive",
       "anchor": "if not marker then",
       "note": "og.add_ob returned nil (object cap): 'COULD NOT CREATE MARKER'. No rule."
@@ -1197,6 +1320,9 @@
       "id": "living-03-mage.lua:271",
       "lines": [
         271
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "defensive",
       "anchor": "if w then",
@@ -1207,6 +1333,9 @@
       "lines": [
         285
       ],
+      "kinds": [
+        "if"
+      ],
       "kind": "defensive",
       "anchor": "if not wave then",
       "note": "og.add_ob('weapon', WAVE) nil: 'COULD NOT CREATE WAVE' (object cap)."
@@ -1215,6 +1344,9 @@
       "id": "living-03-mage.lua:319",
       "lines": [
         319
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "defensive",
       "anchor": "if not burst then",
@@ -1225,6 +1357,9 @@
       "lines": [
         357
       ],
+      "kinds": [
+        "and"
+      ],
       "kind": "dead",
       "anchor": "{ id = \"freeze_time\", name = \"FREEZE TIME\", mp_cost = 500, cast = lc.with_rest(freeze_time, 3, \"freeze_rest\", \"FREEZE TIME\"), detail = \"Freeze all but your team",
       "note": "not a branch ('and' in the FREEZE TIME detail string)"
@@ -1233,6 +1368,9 @@
       "id": "living-03-mage.lua:358",
       "lines": [
         358
+      ],
+      "kinds": [
+        "and"
       ],
       "kind": "dead",
       "anchor": "{ id = \"energy_wave\", name = \"ENERGY WAVE\", mp_cost = 70,  cast = energy_wave, detail = \"Send a growing ripple of energy through walls and foes.\", icon = \"icons",
@@ -1243,6 +1381,9 @@
       "lines": [
         360
       ],
+      "kinds": [
+        "and"
+      ],
       "kind": "dead",
       "anchor": "default_cast = heartburst,  -- case 5 and every unmapped slot",
       "note": "not a branch ('and' in the default_cast comment)"
@@ -1251,6 +1392,9 @@
       "id": "living-03-mage.lua:377",
       "lines": [
         377
+      ],
+      "kinds": [
+        "and"
       ],
       "kind": "dead",
       "anchor": "description = \"Mages are slow, can't stand much damage, and are horrible at hand-to-hand combat, but their magical fireballs pack a big punch.\",",

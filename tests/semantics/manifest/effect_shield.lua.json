@@ -6,6 +6,9 @@
       "lines": [
         28
       ],
+      "kinds": [
+        "for"
+      ],
       "function": "guard_tail",
       "anchor": "for i = 1, #weapons do",
       "condition": "for each foe weapon within weapon_range",
@@ -48,6 +51,9 @@
       "lines": [
         37
       ],
+      "kinds": [
+        "for"
+      ],
       "function": "guard_tail",
       "anchor": "for i = 1, #foes do",
       "condition": "for each foe within sizex",
@@ -85,6 +91,10 @@
       "lines": [
         47,
         52
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "guard_tail",
       "anchor": "if self.hp > 0 then",
@@ -131,6 +141,9 @@
       "lines": [
         61
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "magic_shield_on_act",
       "anchor": "if not owner or owner:dead() ~= 0 then",
       "condition": "not owner or owner:dead() ~= 0",
@@ -169,6 +182,11 @@
         82,
         83,
         84
+      ],
+      "kinds": [
+        "if",
+        "or",
+        "or"
       ],
       "function": "boomerang_on_act",
       "anchor": "if not owner",

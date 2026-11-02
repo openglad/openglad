@@ -6,6 +6,9 @@
       "lines": [
         16
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "check_special_ai",
       "anchor": "if gf.on() or og.match_setting(\"new_specials\") ~= 0 then",
       "condition": "if gf.on() or og.match_setting(\"new_specials\") ~= 0 then",
@@ -44,6 +47,13 @@
         27,
         28,
         29
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "and",
+        "and",
+        "and"
       ],
       "function": "check_special_ai",
       "anchor": "if og.match_setting(\"new_specials\") ~= 0 then",
@@ -92,6 +102,10 @@
         35,
         40
       ],
+      "kinds": [
+        "if",
+        "and"
+      ],
       "function": "check_special_ai",
       "anchor": "if gf.on() then",
       "condition": "if gf.on() then ... return G.foes_within(self, 1, reach, true) and clear",
@@ -131,6 +145,11 @@
         45,
         48,
         51
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "else"
       ],
       "function": "check_special_ai",
       "anchor": "if foe then",
@@ -189,6 +208,10 @@
         58,
         60
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "check_special_ai",
       "anchor": "if gf.on() then",
       "condition": "if gf.on() then if lc.is_busy(self) then return false",
@@ -220,6 +243,11 @@
         67,
         69,
         75
+      ],
+      "kinds": [
+        "if",
+        "else",
+        "if"
       ],
       "function": "check_special_ai",
       "anchor": "if gf.nearest_charmable(self, foes, self.level) then",
@@ -283,6 +311,10 @@
         82,
         84
       ],
+      "kinds": [
+        "if",
+        "else"
+      ],
       "function": "check_special_ai",
       "anchor": "if self:shifter_down() == 0 then",
       "condition": "if self:shifter_down() == 0 then range = taunt ... else range = charm",
@@ -316,6 +348,9 @@
       "id": "living-11-thief.lua:89",
       "lines": [
         89
+      ],
+      "kinds": [
+        "elseif"
       ],
       "function": "check_special_ai",
       "anchor": "elseif gf.on() then",
@@ -362,6 +397,10 @@
         90,
         93
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "check_special_ai",
       "anchor": "if self:current_special() == 2 then",
       "condition": "if self:current_special() == 2 then if self:invisibility_left() ~= 0 then return false end return G.hunted_by(self,130) ~= nil",
@@ -395,6 +434,9 @@
       "id": "living-11-thief.lua:100",
       "lines": [
         100
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "check_special_ai",
       "anchor": "if lc.is_busy(self) or G.owned(self, C.ORDER_FX, FX_CLOUD) > 0 then",
@@ -443,6 +485,9 @@
       "lines": [
         118
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "drop_bomb",
       "anchor": "if self:has_guy() then",
       "condition": "if self:has_guy() then",
@@ -470,6 +515,10 @@
       "lines": [
         130,
         133
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "drop_bomb",
       "anchor": "if self:user() == -1 then",
@@ -502,6 +551,9 @@
       "id": "living-11-thief.lua:151",
       "lines": [
         151
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "taunt_or_charm",
       "anchor": "if self:shifter_down() == 0 then",
@@ -548,6 +600,9 @@
       "lines": [
         153
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "taunt_or_charm",
       "anchor": "if lc.is_busy(self) then",
       "condition": "if lc.is_busy(self) then return false, \"SPECIAL BUSY\"",
@@ -582,6 +637,9 @@
       "id": "living-11-thief.lua:158",
       "lines": [
         158
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "taunt_or_charm",
       "anchor": "if gf.on() and #foes == 0 then",
@@ -630,6 +688,9 @@
       "lines": [
         169
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "taunt_or_charm",
       "anchor": "if my_roll >= foe_roll then",
       "condition": "if my_roll >= foe_roll then",
@@ -662,6 +723,9 @@
       "lines": [
         173
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "taunt_or_charm",
       "anchor": "if foe:act_type() ~= C.ACT_CONTROL then",
       "condition": "if foe:act_type() ~= C.ACT_CONTROL then",
@@ -693,6 +757,9 @@
       "id": "living-11-thief.lua:186",
       "lines": [
         186
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "taunt_or_charm",
       "anchor": "if lc.is_busy(self) then",
@@ -729,6 +796,9 @@
       "lines": [
         191
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "taunt_or_charm",
       "anchor": "if foe_count < 1 then",
       "condition": "if foe_count < 1 then return false, \"NO FOE IN RANGE\"",
@@ -764,6 +834,10 @@
       "lines": [
         196,
         201
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "taunt_or_charm",
       "anchor": "if fixes then",
@@ -804,6 +878,9 @@
       "lines": [
         214
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "taunt_or_charm",
       "anchor": "if gf.charmable(target, fixes) then",
       "condition": "if gf.charmable(target, fixes) then",
@@ -843,6 +920,10 @@
       "lines": [
         216,
         221
+      ],
+      "kinds": [
+        "if",
+        "else"
       ],
       "function": "taunt_or_charm",
       "anchor": "if level_diff < 0 or og.rand(20) == 0 then",
@@ -900,6 +981,10 @@
         224,
         226
       ],
+      "kinds": [
+        "if",
+        "else"
+      ],
       "function": "taunt_or_charm",
       "anchor": "if self:foe() == target then",
       "condition": "if self:foe() == target then target:set_foe(nil) else target:set_foe(self:foe())",
@@ -937,6 +1022,9 @@
       "lines": [
         239
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "taunt_or_charm",
       "anchor": "if handled == 0 then",
       "condition": "if handled == 0 then return false, \"NO VALID TARGET\"",
@@ -973,6 +1061,10 @@
         243,
         246
       ],
+      "kinds": [
+        "if",
+        "else"
+      ],
       "function": "taunt_or_charm",
       "anchor": "if resisted ~= 0 then",
       "condition": "if resisted ~= 0 then 'failed to charm!' else 'charmed an opponent!'",
@@ -1007,6 +1099,9 @@
       "id": "living-11-thief.lua:257",
       "lines": [
         257
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "poison_cloud",
       "anchor": "if lc.is_busy(self) then",
@@ -1046,6 +1141,10 @@
         15,
         56
       ],
+      "kinds": [
+        "if",
+        "elseif"
+      ],
       "kind": "plumbing",
       "anchor": "if self:current_special() == 1 then",
       "note": "slot dispatch of check_special_ai (slot 1 bomb/mine, slot 3 taunt/charm, else cloak/cloud); see living-11-thief.lua:16, :45, :58, :82, :89"
@@ -1055,6 +1154,9 @@
       "lines": [
         114
       ],
+      "kinds": [
+        "if"
+      ],
       "kind": "defensive",
       "anchor": "if not bomb then",
       "note": "add_ob failure creating the bomb (object cap): cast fails 'COULD NOT CREATE BOMB'."
@@ -1063,6 +1165,9 @@
       "id": "living-11-thief.lua:162",
       "lines": [
         162
+      ],
+      "kinds": [
+        "for"
       ],
       "kind": "loop",
       "anchor": "for i = 1, #foes do",
@@ -1074,6 +1179,10 @@
         207,
         208
       ],
+      "kinds": [
+        "for",
+        "if"
+      ],
       "kind": "loop",
       "anchor": "for i = 1, #candidates do",
       "note": "candidate loop stops after the first handled target (one charm per cast); rule rows living-11-thief.lua:214, :216, :224"
@@ -1082,6 +1191,9 @@
       "id": "living-11-thief.lua:262",
       "lines": [
         262
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "defensive",
       "anchor": "if not cloud then",
@@ -1092,6 +1204,9 @@
       "lines": [
         289
       ],
+      "kinds": [
+        "and"
+      ],
       "kind": "dead",
       "anchor": "{ id = \"drop_bomb\",    name = \"DROP BOMB\",    mp_cost = 35,  alternate = { name = \"MINE\", mp_cost = 70, new_kit = true, detail = \"Waits unseen for a foe.\", icon",
       "note": "not a branch (descriptor table / description string; 'or'/'and' in identifiers or prose)"
@@ -1100,6 +1215,9 @@
       "id": "living-11-thief.lua:291",
       "lines": [
         291
+      ],
+      "kinds": [
+        "and"
       ],
       "kind": "dead",
       "anchor": "{ id = \"taunt_enemy\",  name = \"TAUNT ENEMY\",  mp_cost = 100, alternate = { name = \"CHARM OPPONENT\", detail = \"One foe fights for you.\", icon = \"icons/charm_oppo",
@@ -1110,6 +1228,9 @@
       "lines": [
         292
       ],
+      "kinds": [
+        "and"
+      ],
       "kind": "dead",
       "anchor": "{ id = \"poison_cloud\", name = \"POISON CLOUD\", mp_cost = 150, detail = \"Release a cloud of poisonous gas to roam at will and sicken your foes.\", icon = \"icons/po",
       "note": "not a branch (descriptor table / description string; 'or'/'and' in identifiers or prose)"
@@ -1119,6 +1240,9 @@
       "lines": [
         293
       ],
+      "kinds": [
+        "and"
+      ],
       "kind": "dead",
       "anchor": "default_cast = poison_cloud,  -- case 4 and every unmapped slot",
       "note": "not a branch (descriptor table / description string; 'or'/'and' in identifiers or prose)"
@@ -1127,6 +1251,9 @@
       "id": "living-11-thief.lua:310",
       "lines": [
         310
+      ],
+      "kinds": [
+        "and"
       ],
       "kind": "dead",
       "anchor": "description = \"Thieves are fast, though not so potent as the soldier. Thieves can throw small blades rapidly and damage whole groups of enemies with their bombs",

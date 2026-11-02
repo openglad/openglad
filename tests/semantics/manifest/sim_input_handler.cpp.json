@@ -14,6 +14,17 @@
         50,
         51
       ],
+      "kinds": [
+        "switch",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case"
+      ],
       "function": "special_failure_message",
       "anchor": "switch (why)",
       "condition": "switch (why)",
@@ -52,6 +63,9 @@
       "id": "sim_input_handler.cpp:64",
       "lines": [
         64
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "emit_throttled_cue",
       "anchor": "if (message == nullptr || debounce.cue_delay > 0)",
@@ -96,6 +110,10 @@
         85,
         87
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "player_cast_special",
       "anchor": "if (control->special(&why, &reason))",
       "condition": "control->special() / ScriptDeclined && !press_edge",
@@ -138,6 +156,15 @@
         115,
         121,
         124
+      ],
+      "kinds": [
+        "switch",
+        "case",
+        "ternary",
+        "case",
+        "if",
+        "case",
+        "if"
       ],
       "function": "sim_arm_belt_entry",
       "anchor": "switch (refusal)",
@@ -188,6 +215,9 @@
       "lines": [
         137
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "sim_find_next_control",
       "anchor": "if (w && !w->dead() && !w->dormant() && !w->hidden() &&",
       "condition": "alive && awake && visible && unpossessed && Living && unseated && myguy && team && seat_may_claim",
@@ -220,6 +250,9 @@
       "id": "sim_input_handler.cpp:154",
       "lines": [
         154
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "sim_find_next_control",
       "anchor": "if (w && !w->dead() && !w->dormant() && !w->hidden() &&",
@@ -265,6 +298,16 @@
         211,
         217
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if",
+        "else",
+        "if",
+        "if",
+        "if"
+      ],
       "function": "sim_cycle_next_character",
       "anchor": "if (!reverse)",
       "condition": "!reverse / current not found / pred(w)",
@@ -303,6 +346,9 @@
       "id": "sim_input_handler.cpp:241",
       "lines": [
         241
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "sim_advance_current_special",
       "anchor": "if (special_index < 0 || special_index > (NUM_SPECIALS - 1)",
@@ -382,6 +428,9 @@
       "lines": [
         251
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "sim_switch_control",
       "anchor": "if (control.user() == player_num)",
       "condition": "control.user() == player_num",
@@ -412,6 +461,9 @@
       "id": "sim_input_handler.cpp:265",
       "lines": [
         265
+      ],
+      "kinds": [
+        ""
       ],
       "function": "sim_switch_control filter",
       "anchor": "return !w->dead() && !w->dormant() && !w->hidden() &&",
@@ -458,6 +510,9 @@
       "lines": [
         277
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "sim_claim_control",
       "anchor": "if (!og::sim::control_claim_allowed(level, &control, player_num))",
       "condition": "!control_claim_allowed",
@@ -495,6 +550,9 @@
       "lines": [
         301
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "sim_process_player_input",
       "anchor": "if (debounce.cue_delay > 0)",
       "condition": "debounce.cue_delay > 0",
@@ -526,6 +584,10 @@
       "lines": [
         312,
         315
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "sim_process_player_input",
       "anchor": "if (control != before_redirect)",
@@ -565,6 +627,10 @@
         325,
         327
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "sim_process_player_input",
       "anchor": "if (control && control->user() == -1)",
       "condition": "control && user()==-1 / !sim_claim_control",
@@ -599,6 +665,10 @@
         336,
         342
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "sim_process_player_input",
       "anchor": "if (!control || control->dead())",
       "condition": "!control || dead / respawn_retains_player_control",
@@ -628,6 +698,10 @@
       "lines": [
         352,
         354
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "sim_process_player_input",
       "anchor": "if (og::sim::sim_reacquire_apply(level, my_team, player_num, control, result))",
@@ -679,6 +753,10 @@
         362,
         365
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "sim_process_player_input",
       "anchor": "if (control && control->bonus_rounds())",
       "condition": "bonus_rounds() / lastx||lasty",
@@ -720,6 +798,10 @@
       "lines": [
         370,
         372
+      ],
+      "kinds": [
+        "if",
+        "else if"
       ],
       "function": "sim_process_player_input",
       "anchor": "if (!pi.was_pressed(InputAction::SwitchChar))",
@@ -769,6 +851,10 @@
         381,
         383
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "sim_process_player_input",
       "anchor": "if (control->possess_link() != 0 && !control->hidden())",
       "condition": "possess_link() != 0 && !hidden() / release_possession rider",
@@ -801,6 +887,9 @@
       "id": "sim_input_handler.cpp:402",
       "lines": [
         402
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "sim_process_player_input",
       "anchor": "if (!control)",
@@ -839,6 +928,9 @@
       "lines": [
         419
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "sim_process_player_input",
       "anchor": "if (control->user() == -1)",
       "condition": "control->user() == -1 after switch",
@@ -866,6 +958,12 @@
         430,
         432,
         435
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "else if"
       ],
       "function": "sim_process_player_input",
       "anchor": "if (control->hidden())",
@@ -911,6 +1009,10 @@
         444,
         447
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "sim_process_player_input",
       "anchor": "if (!pi.was_pressed(InputAction::SwitchSpecial))",
       "condition": "!pressed(SwitchSpecial) / pressed && !changedspec",
@@ -948,6 +1050,9 @@
       "lines": [
         456
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "sim_process_player_input",
       "anchor": "if (control->yo_delay() > 0)",
       "condition": "yo_delay() > 0",
@@ -981,6 +1086,10 @@
       "lines": [
         460,
         467
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "sim_process_player_input",
       "anchor": "if (pi.was_pressed(InputAction::Yell) && !control->yo_delay()",
@@ -1048,6 +1157,15 @@
         517,
         531
       ],
+      "kinds": [
+        "if",
+        "switch",
+        "case",
+        "if",
+        "case",
+        "if",
+        "default"
+      ],
       "function": "sim_process_player_input",
       "anchor": "if (pi.is_held(InputAction::Shift) && pi.was_pressed(InputAction::Yell)",
       "condition": "held(Shift) && pressed(Yell) && !Cheat / switch (control->action())",
@@ -1102,6 +1220,9 @@
       "lines": [
         538
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "sim_process_player_input",
       "anchor": "if (control->user() != player_num)",
       "condition": "control->user() != player_num",
@@ -1135,6 +1256,9 @@
       "lines": [
         544
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "sim_process_player_input",
       "anchor": "if (control->ani_type() != ANI_WALK)",
       "condition": "ani_type() != ANI_WALK",
@@ -1161,6 +1285,9 @@
       "id": "sim_input_handler.cpp:548",
       "lines": [
         548
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "sim_process_player_input",
       "anchor": "if (control != oldcontrol)",
@@ -1198,6 +1325,11 @@
         551,
         553,
         558
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
       ],
       "function": "sim_process_player_input",
       "anchor": "if (control->dead() || control->stats()->frozen_delay())",
@@ -1241,6 +1373,9 @@
       "id": "sim_input_handler.cpp:569",
       "lines": [
         569
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "sim_process_player_input",
       "anchor": "if (control->stats()->commands.empty())",
@@ -1290,6 +1425,11 @@
         583,
         584
       ],
+      "kinds": [
+        "if",
+        "else",
+        "ternary"
+      ],
       "function": "sim_process_player_input",
       "anchor": "if (pi.belt_cast != 0 &&",
       "condition": "belt_cast != 0 && Special / else shifter = held(Shift) ? 1 : 0",
@@ -1331,6 +1471,9 @@
       "lines": [
         586
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "sim_process_player_input",
       "anchor": "if (pi.was_pressed(InputAction::Special) && !belt_refused)",
       "condition": "pressed(Special) && !belt_refused",
@@ -1363,6 +1506,9 @@
       "id": "sim_input_handler.cpp:597",
       "lines": [
         597
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "sim_process_player_input",
       "anchor": "if (cast && !control->stats()->commands.empty() &&",
@@ -1411,6 +1557,10 @@
         608,
         632
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "sim_process_player_input",
       "anchor": "if (control->hidden())",
       "condition": "control->hidden() after a press cast / after a held cast",
@@ -1440,6 +1590,10 @@
       "lines": [
         615,
         651
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "sim_process_player_input",
       "anchor": "if (pi.was_pressed(InputAction::Fire))",
@@ -1476,6 +1630,9 @@
       "lines": [
         625
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "sim_process_player_input",
       "anchor": "if (pi.is_held(InputAction::Special) &&",
       "condition": "held(Special) && !pressed(Special) && !belt_refused",
@@ -1505,6 +1662,10 @@
       "lines": [
         641,
         645
+      ],
+      "kinds": [
+        "if",
+        "else if"
       ],
       "function": "sim_process_player_input",
       "anchor": "if (walkx != 0 || walky != 0)",
@@ -1548,6 +1709,10 @@
         134,
         151
       ],
+      "kinds": [
+        "for",
+        "for"
+      ],
       "kind": "loop",
       "anchor": "for (auto& uptr : level.oblist)",
       "note": "oblist scans of sim_find_next_control; the rules are sim_input_handler.cpp:137 and :154"
@@ -1560,6 +1725,12 @@
         208,
         214
       ],
+      "kinds": [
+        "for",
+        "for",
+        "for",
+        "for"
+      ],
       "kind": "loop",
       "anchor": "for (auto e = std::next(mine); e != oblist.end(); ++e)",
       "note": "the four list scans of sim_cycle_next_character; rule at sim_input_handler.cpp:182"
@@ -1570,6 +1741,11 @@
         464,
         498,
         514
+      ],
+      "kinds": [
+        "for",
+        "for",
+        "for"
       ],
       "kind": "loop",
       "anchor": "for (auto& uptr : level.oblist)",

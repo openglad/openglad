@@ -6,6 +6,9 @@
       "lines": [
         45
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "decode_well_formed",
       "anchor": "if ((byte & (kZeroBits | kItemBit)) != 0 || slot < kFirstSpecial ||",
       "condition": "(byte & (kZeroBits | kItemBit)) != 0 || slot < kFirstSpecial || slot > kLastSpecial",
@@ -53,6 +56,16 @@
         124,
         128,
         130
+      ],
+      "kinds": [
+        "for",
+        "if",
+        "for",
+        "if",
+        "if",
+        "else if",
+        "if",
+        "if"
       ],
       "function": "default_layout / lowest_free",
       "anchor": "for (int b = from; b < to; ++b)",
@@ -102,6 +115,12 @@
         90,
         95
       ],
+      "kinds": [
+        "for",
+        "for",
+        "if",
+        "if"
+      ],
       "function": "catalog",
       "anchor": "for (int slot = kFirstSpecial; slot <= kLastSpecial; ++slot) {",
       "condition": "!is_named(name) / repeat",
@@ -141,6 +160,12 @@
         144,
         146,
         147
+      ],
+      "kinds": [
+        "for",
+        "if",
+        "else if",
+        "if"
       ],
       "function": "resolve",
       "anchor": "for (std::size_t b = 0; b < layout.size(); ++b) {",
@@ -183,6 +208,9 @@
       "lines": [
         151
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "resolve",
       "anchor": "if (layout[b].entry && !slot_open(fd, layout[b].entry->slot, level))",
       "condition": "layout[b].entry && !slot_open(fd, slot, level)",
@@ -213,6 +241,10 @@
         161,
         165
       ],
+      "kinds": [
+        "for",
+        "if"
+      ],
       "function": "bench",
       "anchor": "for (const Entry& entry : catalog(fd, new_specials)) {",
       "condition": "!on_belt",
@@ -242,6 +274,9 @@
       "lines": [
         174
       ],
+      "kinds": [
+        "ternary"
+      ],
       "function": "encode",
       "anchor": "(entry.alt ? kAltBit : 0));",
       "condition": "entry.alt ? kAltBit : 0",
@@ -270,6 +305,9 @@
       "id": "belt.cpp:179",
       "lines": [
         179
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "normalize_stored",
       "anchor": "if (stored == kDefaultByte || stored == kEmptyByte ||",
@@ -303,6 +341,9 @@
       "id": "belt.cpp:192",
       "lines": [
         192
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "cast_byte",
       "anchor": "if (resolved.state == SlotState::Empty || !resolved.entry)",
@@ -349,6 +390,9 @@
       "lines": [
         199
       ],
+      "kinds": [
+        "ternary"
+      ],
       "function": "slot_index",
       "anchor": "return (key - 1) + (shift ? kPlainSlots : 0);",
       "condition": "shift ? kPlainSlots : 0",
@@ -378,6 +422,10 @@
       "lines": [
         204,
         209
+      ],
+      "kinds": [
+        "ternary",
+        "ternary"
       ],
       "function": "bytes_for",
       "anchor": "return stored != nullptr ? *stored : default_bytes();",
@@ -414,6 +462,12 @@
         219,
         220,
         224
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if"
       ],
       "function": "validate_cast",
       "anchor": "if (!entry || !is_named(entry_name(fd, *entry, new_specials)))",

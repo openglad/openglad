@@ -6,6 +6,9 @@
       "lines": [
         19
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "M.turn_range",
       "anchor": "if not M.on() then",
       "condition": "not M.on()",
@@ -40,6 +43,11 @@
         38,
         41,
         44
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
       ],
       "function": "M.charmable",
       "anchor": "if foe:real_team_num() ~= 255 then",
@@ -84,6 +92,11 @@
         63,
         65
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
+      ],
       "function": "M.nearest_charmable",
       "anchor": "if eligible and max_level ~= nil then",
       "condition": "eligible and max_level ~= nil / eligible / best == nil or dist < best_dist",
@@ -124,6 +137,9 @@
       "id": "gameplay_fixes.lua:82",
       "lines": [
         82
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "M.special_busy",
       "anchor": "if M.on() then",
@@ -174,6 +190,9 @@
       "lines": [
         96
       ],
+      "kinds": [
+        "and"
+      ],
       "function": "M.pad_blocked_by_terrain",
       "anchor": "return M.on() and self:fire_pad_answer() == \"terrain\"",
       "condition": "M.on() and self:fire_pad_answer() == \"terrain\"",
@@ -216,6 +235,9 @@
       "id": "gameplay_fixes.lua:57",
       "lines": [
         57
+      ],
+      "kinds": [
+        "for"
       ],
       "kind": "loop",
       "anchor": "for i = 1, #foes do",

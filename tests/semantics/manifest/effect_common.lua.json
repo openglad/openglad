@@ -9,6 +9,12 @@
         21,
         25
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if"
+      ],
       "function": "M.hits",
       "anchor": "if x > x2right then",
       "condition": "x > x2+xs2 / x+xs < x2 / y > y2+ys2 / y+ys < y2",

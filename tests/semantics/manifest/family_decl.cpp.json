@@ -7,6 +7,10 @@
         82,
         91
       ],
+      "kinds": [
+        "if",
+        "for"
+      ],
       "function": "push_family_ref",
       "anchor": "if (luaL_newmetatable(L, kFamilyRefMeta)) {",
       "condition": "luaL_newmetatable(L, kFamilyRefMeta) / for event in kBlocked",
@@ -47,6 +51,9 @@
       "lines": [
         116
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "Harvest::fail",
       "anchor": "if (err.empty())",
       "condition": "err.empty()",
@@ -84,6 +91,9 @@
       "lines": [
         133
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "type_name_of",
       "anchor": "if (is_og_nil(L, idx))",
       "condition": "is_og_nil(L, idx)",
@@ -118,6 +128,9 @@
       "lines": [
         142
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "Harvest::take_string",
       "anchor": "if (lua_type(L, -1) != LUA_TSTRING) {",
       "condition": "lua_type(L, -1) != LUA_TSTRING",
@@ -151,6 +164,10 @@
       "lines": [
         156,
         163
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "Harvest::take_int",
       "anchor": "if (!lua_isinteger(L, -1)) {",
@@ -193,6 +210,9 @@
       "lines": [
         171
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "Harvest::take_number",
       "anchor": "if (lua_type(L, -1) != LUA_TNUMBER) {",
       "condition": "lua_type(L,-1) != LUA_TNUMBER",
@@ -221,6 +241,9 @@
       "id": "family_decl.cpp:185",
       "lines": [
         185
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "Harvest::take_bool",
       "anchor": "if (lua_type(L, -1) != LUA_TBOOLEAN) {",
@@ -258,6 +281,11 @@
         198,
         204,
         207
+      ],
+      "kinds": [
+        "if",
+        "for",
+        "if"
       ],
       "function": "Harvest::take_string_list",
       "anchor": "if (lua_type(L, -1) != LUA_TTABLE) {",
@@ -315,6 +343,9 @@
       "lines": [
         226
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "has_field",
       "anchor": "if (lua_isnil(L, -1)) {",
       "condition": "lua_isnil(L,-1)",
@@ -347,6 +378,9 @@
       "id": "family_decl.cpp:237",
       "lines": [
         237
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "reject_og_nil",
       "anchor": "if (!is_og_nil(h.L, -1))",
@@ -383,6 +417,10 @@
         317,
         320
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "opt_nullable",
       "anchor": "if (!has_field(h.L, tbl, key))",
       "condition": "!has_field / is_og_nil",
@@ -417,6 +455,11 @@
         334,
         336,
         341
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
       ],
       "function": "opt_wire_id",
       "anchor": "if (!has_field(h.L, tbl, \"wire_id\"))",
@@ -482,6 +525,13 @@
         398,
         404
       ],
+      "kinds": [
+        "ternary",
+        "for",
+        "if",
+        "if",
+        "if"
+      ],
       "function": "did_you_mean",
       "anchor": "const size_t cost = (a[i - 1] == b[j - 1]) ? 0u : 1u;",
       "condition": "d > budget / best tie-break / best == nullptr",
@@ -525,6 +575,12 @@
         418,
         422,
         424
+      ],
+      "kinds": [
+        "while",
+        "if",
+        "for",
+        "if"
       ],
       "function": "check_keys",
       "anchor": "while (lua_next(L, tbl) != 0) {",
@@ -575,6 +631,13 @@
         447,
         449,
         457
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "else if",
+        "else",
+        "if"
       ],
       "function": "take_radar_color",
       "anchor": "if (lua_type(h.L, -1) == LUA_TSTRING) {",
@@ -630,6 +693,19 @@
         519,
         523,
         529
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "while",
+        "if",
+        "switch",
+        "case",
+        "case",
+        "case",
+        "if",
+        "else",
+        "default"
       ],
       "function": "harvest_tuning",
       "anchor": "if (!has_field(h.L, tbl, \"tuning\"))",
@@ -695,6 +771,11 @@
         554,
         557
       ],
+      "kinds": [
+        "if",
+        "for",
+        "if"
+      ],
       "function": "is_special_id",
       "anchor": "if (id.empty())",
       "condition": "empty / each char in [a-z0-9_]",
@@ -733,6 +814,14 @@
         594,
         596,
         598
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if"
       ],
       "function": "harvest_special",
       "anchor": "if (!has_field(L, tbl, \"id\"))",
@@ -777,6 +866,10 @@
         583,
         587
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "harvest_special",
       "anchor": "if (!is_special_id(out.id))",
       "condition": "!is_special_id / id == \"default\"",
@@ -806,6 +899,10 @@
       "lines": [
         603,
         609
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "harvest_special",
       "anchor": "if (out.mp_cost >= static_cast<std::int32_t>(kSpecialCostDisabled))",
@@ -852,6 +949,12 @@
         618,
         620
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if"
+      ],
       "function": "harvest_special",
       "anchor": "if (has_field(L, tbl, \"slot\") && !h.take_int(named + \".slot\", out.slot))",
       "condition": "has slot && !take_int / has level / level < 1",
@@ -895,6 +998,12 @@
         625,
         650,
         652
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if"
       ],
       "function": "harvest_special",
       "anchor": "if (has_field(L, tbl, \"alternate\")) {",
@@ -943,6 +1052,10 @@
         654,
         660
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "harvest_special",
       "anchor": "if (alt_cost && *alt_cost >= static_cast<std::int32_t>(kSpecialCostDisabled))",
       "condition": "alt_cost >= kSpecialCostDisabled / alt_cost < 0",
@@ -981,6 +1094,11 @@
         671,
         675,
         679
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
       ],
       "function": "harvest_special",
       "anchor": "if (!opt_bool(h, tbl, named, \"new_kit\", new_kit))",
@@ -1035,6 +1153,13 @@
         685,
         687,
         697
+      ],
+      "kinds": [
+        "for",
+        "if",
+        "if",
+        "else",
+        "if"
       ],
       "function": "harvest_special",
       "anchor": "for (const char* key : {\"cast\", \"ai\"}) {",
@@ -1091,6 +1216,10 @@
         713,
         716
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "harvest_specials",
       "anchor": "if (!has_field(h.L, tbl, \"specials\"))",
       "condition": "!has_field specials / not table",
@@ -1122,6 +1251,9 @@
       "lines": [
         733
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "harvest_specials",
       "anchor": "if (lua_type(L, -1) != LUA_TTABLE) {",
       "condition": "entry not a table",
@@ -1152,6 +1284,11 @@
         744,
         745,
         750
+      ],
+      "kinds": [
+        "for",
+        "if",
+        "if"
       ],
       "function": "harvest_specials",
       "anchor": "for (const og::data::ClasspackSpecialEntry& seen : entries) {",
@@ -1186,6 +1323,9 @@
       "id": "family_decl.cpp:752",
       "lines": [
         752
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "harvest_specials",
       "anchor": "if (entry.slot == 0)",
@@ -1227,6 +1367,10 @@
         754,
         760
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "harvest_specials",
       "anchor": "if (entry.slot < 1 || entry.slot > og::data::kMaxSpecialSlot) {",
       "condition": "slot outside 1..kMaxSpecialSlot / slot <= previous",
@@ -1263,6 +1407,11 @@
         768,
         776,
         777
+      ],
+      "kinds": [
+        "if",
+        "ternary",
+        "if"
       ],
       "function": "harvest_specials",
       "anchor": "if (entry.level > default_opens_at) {",
@@ -1302,6 +1451,10 @@
         792,
         797
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "harvest_specials",
       "anchor": "if (ok && has_field(L, list, \"default_cast\")) {",
       "condition": "has default_cast / !is_fn",
@@ -1336,6 +1489,10 @@
       "lines": [
         804,
         807
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "harvest_specials",
       "anchor": "if (ok)",
@@ -1372,6 +1529,11 @@
         828,
         830,
         835
+      ],
+      "kinds": [
+        "for",
+        "if",
+        "if"
       ],
       "function": "check_hook_types",
       "anchor": "for (size_t i = 0; i < oi->hook_count; i++) {",
@@ -1412,6 +1574,10 @@
         850,
         858
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "req_int/req_number",
       "anchor": "if (!has_field(h.L, tbl, key))",
       "condition": "!has_field",
@@ -1446,6 +1612,10 @@
       "lines": [
         870,
         872
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "open_block",
       "anchor": "if (!has_field(h.L, tbl, key))",
@@ -1492,6 +1662,12 @@
         905,
         915,
         930
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if"
       ],
       "function": "harvest_stats/harvest_combat",
       "anchor": "if (state != BlockState::Present)",
@@ -1568,6 +1744,18 @@
         981,
         986
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "for",
+        "for",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if"
+      ],
       "function": "harvest_costs",
       "anchor": "if (state != BlockState::Present)",
       "condition": "state / ok / train Present / members loop / value.has_value",
@@ -1626,6 +1814,10 @@
         1050,
         1058
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "harvest_living",
       "anchor": "if (behavior.any_ai && has_field(h.L, tbl, \"check_special_ai\")) {",
       "condition": "any_ai && check_special_ai / any_cast && do_special",
@@ -1673,6 +1865,13 @@
         1137,
         1162,
         1188
+      ],
+      "kinds": [
+        "for",
+        "for",
+        "for",
+        "for",
+        "for"
       ],
       "function": "harvest_living / harvest_weapon / harvest_effect / harvest_treasure / harvest_generator",
       "anchor": "for (const char* k :",
@@ -1742,6 +1941,9 @@
       "lines": [
         1103
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "harvest_weapon",
       "anchor": "if (e.rally_radius && *e.rally_radius < 0)",
       "condition": "e.rally_radius && *e.rally_radius < 0",
@@ -1780,6 +1982,11 @@
         1202,
         1206,
         1208
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
       ],
       "function": "harvest_entry",
       "anchor": "if (!has_field(h.L, tbl, \"id\"))",
@@ -1827,6 +2034,19 @@
         1241,
         1246,
         1249
+      ],
+      "kinds": [
+        "switch",
+        "case",
+        "if",
+        "case",
+        "if",
+        "case",
+        "if",
+        "case",
+        "if",
+        "case",
+        "if"
       ],
       "function": "harvest_entry",
       "anchor": "switch (oi->order) {",
@@ -1890,6 +2110,18 @@
         1308,
         1312
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "for",
+        "if",
+        "else if",
+        "else",
+        "for",
+        "if",
+        "if"
+      ],
       "function": "harvest_anim_set",
       "anchor": "if (!opt_int(h, tbl, where, \"rows\", out.rows) ||",
       "condition": "rows/keys / frames missing / not table / row false / row not table / frames ints",
@@ -1945,6 +2177,15 @@
         1347,
         1348
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "for",
+        "if"
+      ],
       "function": "harvest_pack_header",
       "anchor": "if (!opt_string(h, tbl, where, \"id\", id) ||",
       "condition": "opt readers / has_value / joined.empty",
@@ -1991,6 +2232,10 @@
         1385,
         1406
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "push_declared_set/take_declared_hook",
       "anchor": "if (lua_istable(L, -1))",
       "condition": "declared set is table",
@@ -2033,6 +2278,9 @@
       "lines": [
         1454
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "per_special_ai",
       "anchor": "if (!lua_isfunction(L, -1)) {",
       "condition": "self ? current_special : 0 / slot fn missing",
@@ -2074,6 +2322,9 @@
       "lines": [
         1475
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "bind_one_hook",
       "anchor": "if (occupied)",
       "condition": "occupied",
@@ -2109,6 +2360,11 @@
         1513,
         1515,
         1518
+      ],
+      "kinds": [
+        "if",
+        "else",
+        "if"
       ],
       "function": "bind_specials",
       "anchor": "if (lua_istable(L, entry))",
@@ -2149,6 +2405,9 @@
       "id": "family_decl.cpp:1535",
       "lines": [
         1535
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "bind_specials",
       "anchor": "if (slot < 0) {",
@@ -2191,6 +2450,11 @@
         1544,
         1551,
         1558
+      ],
+      "kinds": [
+        "if",
+        "else if",
+        "else"
       ],
       "function": "bind_specials",
       "anchor": "if (lua_isfunction(L, -1)) {",
@@ -2238,6 +2502,10 @@
         1562,
         1570
       ],
+      "kinds": [
+        "if",
+        "else"
+      ],
       "function": "bind_specials",
       "anchor": "if (lua_isfunction(L, -1)) {",
       "condition": "ai is function",
@@ -2272,6 +2540,10 @@
       "lines": [
         1577,
         1583
+      ],
+      "kinds": [
+        "if",
+        "else"
       ],
       "function": "bind_specials",
       "anchor": "if (lua_isfunction(L, -1)) {",
@@ -2312,6 +2584,10 @@
       "lines": [
         1587,
         1594
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "bind_specials",
       "anchor": "if (ai_count > 0) {",
@@ -2359,6 +2635,10 @@
       "lines": [
         1609,
         1616
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "bind_family",
       "anchor": "if (id == nullptr)",
@@ -2409,6 +2689,11 @@
         1634,
         1641
       ],
+      "kinds": [
+        "for",
+        "if",
+        "if"
+      ],
       "function": "bind_family",
       "anchor": "for (size_t i = 0; i < oi->hook_count; i++) {",
       "condition": "for hooks / !lua_isfunction / order == Living",
@@ -2449,6 +2734,9 @@
       "id": "family_decl.cpp:1663",
       "lines": [
         1663
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "require_families_chunk",
       "anchor": "if (st != nullptr && st->current_chunk == ChunkKind::Family)",
@@ -2491,6 +2779,9 @@
       "id": "family_decl.cpp:1675",
       "lines": [
         1676
+      ],
+      "kinds": [
+        ""
       ],
       "function": "og_family / og_anims / og_pack",
       "anchor": "const char* order_str = luaL_checkstring(L, 1);",
@@ -2539,6 +2830,9 @@
       "lines": [
         1681
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "og_family",
       "anchor": "if (oi == nullptr)",
       "condition": "oi == nullptr",
@@ -2574,6 +2868,11 @@
         1684,
         1706,
         1721
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
       ],
       "function": "og_family/og_anims/og_pack",
       "anchor": "if (st->mode != VmMode::Declare) {",
@@ -2629,6 +2928,9 @@
       "lines": [
         1783
       ],
+      "kinds": [
+        "ternary"
+      ],
       "function": "lua_declared_family_pack",
       "anchor": "return hit == map.end() ? nullptr : &hit->second;",
       "condition": "hit == end",
@@ -2666,6 +2968,11 @@
         1796,
         1801
       ],
+      "kinds": [
+        "for",
+        "if",
+        "if"
+      ],
       "function": "declare_pack_families",
       "anchor": "for (const PackScript& chunk : pack_family_chunks()) {",
       "condition": "any chunk for pack",
@@ -2702,6 +3009,12 @@
         1826,
         1828,
         1834
+      ],
+      "kinds": [
+        "for",
+        "if",
+        "if",
+        "ternary"
       ],
       "function": "declare_pack_families",
       "anchor": "for (const PackScript& chunk : pack_family_chunks()) {",
@@ -2756,6 +3069,11 @@
         251,
         254
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
+      ],
       "kind": "plumbing",
       "anchor": "if (!has_field(h.L, tbl, key))",
       "note": "opt_field: composes has_field (226), reject_og_nil (237) and the typed reader; see those rows"
@@ -2766,6 +3084,11 @@
         302,
         304,
         307
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
       ],
       "kind": "plumbing",
       "anchor": "if (!has_field(h.L, tbl, key))",
@@ -2778,6 +3101,11 @@
         373,
         376
       ],
+      "kinds": [
+        "for",
+        "for",
+        "for"
+      ],
       "kind": "loop",
       "anchor": "for (size_t j = 0; j <= b.size(); j++)",
       "note": "did_you_mean: Levenshtein rolling-row loops; the rule is did_you_mean row family_decl.cpp:396"
@@ -2787,6 +3115,10 @@
       "lines": [
         466,
         474
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "kind": "plumbing",
       "anchor": "if (!opt_string(h, tbl, where, \"glyph\", p.glyph) ||",
@@ -2798,6 +3130,10 @@
         729,
         742
       ],
+      "kinds": [
+        "for",
+        "if"
+      ],
       "kind": "loop",
       "anchor": "for (lua_Integer i = 1; ok && i <= n; i++) {",
       "note": "harvest_specials entry loop and its failure break; rules in rows 733, 745, 752, 754, 768"
@@ -2806,6 +3142,9 @@
       "id": "family_decl.cpp:818",
       "lines": [
         818
+      ],
+      "kinds": [
+        "for"
       ],
       "kind": "loop",
       "anchor": "for (size_t i = 0; i < oi->hook_count; i++)",
@@ -2816,6 +3155,9 @@
       "lines": [
         1002
       ],
+      "kinds": [
+        "for"
+      ],
       "kind": "loop",
       "anchor": "for (const char* k :",
       "note": "append_common_keys: iteration"
@@ -2824,6 +3166,9 @@
       "id": "family_decl.cpp:1017",
       "lines": [
         1017
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "plumbing",
       "anchor": "if (!opt_wire_id(h, tbl, where, e.wire_id) ||",
@@ -2834,6 +3179,9 @@
       "lines": [
         1082
       ],
+      "kinds": [
+        "if"
+      ],
       "kind": "plumbing",
       "anchor": "if (!opt_wire_id(h, tbl, where, e.wire_id) ||",
       "note": "harvest_weapon: chain of field readers"
@@ -2842,6 +3190,9 @@
       "id": "family_decl.cpp:1121",
       "lines": [
         1121
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "plumbing",
       "anchor": "if (!opt_wire_id(h, tbl, where, e.wire_id) ||",
@@ -2852,6 +3203,9 @@
       "lines": [
         1147
       ],
+      "kinds": [
+        "if"
+      ],
       "kind": "plumbing",
       "anchor": "if (!opt_wire_id(h, tbl, where, e.wire_id) ||",
       "note": "harvest_treasure: chain of field readers"
@@ -2860,6 +3214,9 @@
       "id": "family_decl.cpp:1172",
       "lines": [
         1172
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "plumbing",
       "anchor": "if (!opt_wire_id(h, tbl, where, e.wire_id) ||",
@@ -2870,6 +3227,9 @@
       "lines": [
         1254
       ],
+      "kinds": [
+        "default"
+      ],
       "kind": "defensive",
       "anchor": "default:",
       "note": "harvest_entry default: unreachable through og.family — find_order (world_scripts.cpp:98) only yields the five orders"
@@ -2878,6 +3238,9 @@
       "id": "family_decl.cpp:1431",
       "lines": [
         1431
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "plumbing",
       "anchor": "if (lua_istable(L, -1))",
@@ -2891,6 +3254,12 @@
         1563,
         1578
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if"
+      ],
       "kind": "test-only",
       "anchor": "if (coverage::enabled())",
       "note": "coverage::enabled() — Lua coverage-gate hook registration only"
@@ -2899,6 +3268,9 @@
       "id": "family_decl.cpp:1483",
       "lines": [
         1483
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "defensive",
       "anchor": "if (st->owner != nullptr)",
@@ -2909,6 +3281,9 @@
       "lines": [
         1496
       ],
+      "kinds": [
+        "if"
+      ],
       "kind": "plumbing",
       "anchor": "if (!lua_istable(L, -1)) {",
       "note": "bind_specials: family without a specials list binds no casts"
@@ -2917,6 +3292,9 @@
       "id": "family_decl.cpp:1510",
       "lines": [
         1510
+      ],
+      "kinds": [
+        "for"
       ],
       "kind": "loop",
       "anchor": "for (lua_Integer i = 1; i <= n; i++) {",
@@ -2928,6 +3306,11 @@
         1694,
         1710,
         1724
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
       ],
       "kind": "plumbing",
       "anchor": "if (!harvest_entry(h, oi, 2, *st->harvest))",

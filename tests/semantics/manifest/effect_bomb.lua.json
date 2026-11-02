@@ -6,6 +6,9 @@
       "lines": [
         11
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "compute_explosion_range",
       "anchor": "if skip_exit > 0 then",
       "condition": "skip_exit > 0",
@@ -36,6 +39,10 @@
       "lines": [
         24,
         46
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "bomb_on_death / explosion_on_death",
       "anchor": "if not self:owner() or self:owner():dead() ~= 0 then",
@@ -80,6 +87,9 @@
       "lines": [
         29
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "bomb_on_death",
       "anchor": "if not blast then",
       "condition": "not blast",
@@ -114,6 +124,9 @@
       "id": "effect_bomb.lua:57",
       "lines": [
         57
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "explosion_on_death",
       "anchor": "if nearby_count < 1 then",
@@ -154,6 +167,12 @@
         68,
         69
       ],
+      "kinds": [
+        "if",
+        "and",
+        "and",
+        "and"
+      ],
       "function": "explosion_on_death",
       "anchor": "if w and w:dead() == 0",
       "condition": "w and w:dead()==0 and w:floor()==self:floor() and w:order()~=TREASURE and w:order()~=FX",
@@ -164,8 +183,12 @@
           "observable": "s_force_command WALK shove away from the centre (min(2+level/15, 8) steps) and attack"
         },
         {
-          "when": "other floor",
-          "observable": "untouched: hp and command queue unchanged"
+          "when": "other floor (hp)",
+          "observable": "untouched: hp unchanged"
+        },
+        {
+          "when": "other floor (command queue)",
+          "observable": "untouched: no forced WALK queued"
         },
         {
           "when": "treasure or fx order",
@@ -187,10 +210,15 @@
         {
           "file": "tests/unit/test_pack_lua_paths.cpp",
           "test": "PackLuaExplosion.a_blast_throws_even_an_invulnerable_bystander_clear"
+        },
+        {
+          "file": "tests/unit/test_zaxis_fx_floor.cpp",
+          "test": "ZAxisFxFloor.explosion_damage_never_crosses_floors",
+          "note": "other floor: EXPECT_EQ(below_hp, hp) asserts the hp half; the command queue is not read"
         }
       ],
       "missing_arms": [
-        "other floor",
+        "other floor (command queue)",
         "treasure or fx order",
         "already dead"
       ],
@@ -203,6 +231,10 @@
       "lines": [
         70,
         71
+      ],
+      "kinds": [
+        "and",
+        "or"
       ],
       "function": "explosion_on_death",
       "anchor": "and (self:skip_exit() == 0",
@@ -246,6 +278,13 @@
         86,
         87,
         95
+      ],
+      "kinds": [
+        "if",
+        "elseif",
+        "or",
+        "and",
+        "else"
       ],
       "function": "explosion_on_death",
       "anchor": "if w == self:owner() then",
@@ -300,6 +339,9 @@
       "id": "effect_bomb.lua:61",
       "lines": [
         61
+      ],
+      "kinds": [
+        "for"
       ],
       "kind": "loop",
       "anchor": "for i = 1, #nearby do",

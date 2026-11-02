@@ -6,6 +6,9 @@
       "lines": [
         17
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "on_animate",
       "anchor": "if left <= 0 then",
       "condition": "left = lifetime - 1; left <= 0",
@@ -35,6 +38,10 @@
       "lines": [
         23,
         25
+      ],
+      "kinds": [
+        "if",
+        "else"
       ],
       "function": "on_animate",
       "anchor": "if self.hp < og.fdiv(self.max_hp, 2.0) then",

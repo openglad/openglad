@@ -6,6 +6,9 @@
       "lines": [
         19
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "lacks_turn_int",
       "anchor": "if not self:has_guy() then",
       "condition": "not self:has_guy() -> false; else INT < turn_undead_int_req (60)",
@@ -50,6 +53,9 @@
       "lines": [
         29
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "do_turn_undead (TURN UNDEAD, Shift on slots 2/3)",
       "anchor": "if lc.is_busy(self) then",
       "condition": "lc.is_busy(self)",
@@ -81,6 +87,9 @@
       "id": "living-05-cleric.lua:33",
       "lines": [
         33
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "do_turn_undead",
       "anchor": "if lacks_turn_int(self, t) then",
@@ -122,6 +131,10 @@
       "lines": [
         41,
         44
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "do_turn_undead",
       "anchor": "if turned == -1 then",
@@ -181,6 +194,10 @@
         47,
         50
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "do_turn_undead",
       "anchor": "if self:has_guy() and turned ~= 0 then",
       "condition": "self:has_guy() and turned ~= 0 / self.team == 0 or self:has_guy()",
@@ -228,6 +245,9 @@
       "lines": [
         61
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "nearby_corpse",
       "anchor": "if gf.on() then  -- Gameplay Fixes T: where the body can stand (lib/corpses.lua)",
       "condition": "gf.on() -> corpses.raise_spot(self, range, body)",
@@ -267,6 +287,11 @@
         65,
         69,
         72
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
       ],
       "function": "nearby_corpse (classic)",
       "anchor": "if not blood then",
@@ -330,6 +355,9 @@
       "lines": [
         80
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "heal_or_mace (slot 1)",
       "anchor": "if self:shifter_down() == 0 then",
       "condition": "self:shifter_down() == 0",
@@ -365,6 +393,9 @@
       "lines": [
         85
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "heal_or_mace (HEAL)",
       "anchor": "if friend_count == 0 then",
       "condition": "friend_count == 0",
@@ -395,6 +426,10 @@
       "lines": [
         89,
         91
+      ],
+      "kinds": [
+        "for",
+        "if"
       ],
       "function": "heal_or_mace (HEAL)",
       "anchor": "for i = 1, #friends do",
@@ -436,6 +471,9 @@
       "lines": [
         98
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "heal_or_mace (HEAL)",
       "anchor": "if amount <= 0 then",
       "condition": "amount <= 0",
@@ -468,6 +506,9 @@
       "id": "living-05-cleric.lua:106",
       "lines": [
         106
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "heal_or_mace (HEAL)",
       "anchor": "if gf.on() and ally.hp > ally.max_hp then",
@@ -511,6 +552,9 @@
       "lines": [
         113
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "heal_or_mace (HEAL)",
       "anchor": "if self:has_guy() then",
       "condition": "self:has_guy()",
@@ -545,6 +589,9 @@
       "id": "living-05-cleric.lua:123",
       "lines": [
         123
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "heal_or_mace (HEAL)",
       "anchor": "if healed == 0 then",
@@ -588,6 +635,10 @@
         127,
         129
       ],
+      "kinds": [
+        "if",
+        "else"
+      ],
       "function": "heal_or_mace (HEAL)",
       "anchor": "if healed == 1 then",
       "condition": "healed == 1 / else",
@@ -629,6 +680,9 @@
       "id": "living-05-cleric.lua:132",
       "lines": [
         132
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "heal_or_mace (HEAL)",
       "anchor": "if self.team == 0 or self:has_guy() then",
@@ -672,6 +726,9 @@
       "lines": [
         139
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "heal_or_mace (MYSTIC MACE)",
       "anchor": "if lc.is_busy(self) then",
       "condition": "lc.is_busy(self)",
@@ -713,6 +770,9 @@
       "lines": [
         142
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "heal_or_mace (MYSTIC MACE)",
       "anchor": "if self:has_guy() and self:g_intelligence() < t.mace_int_req then",
       "condition": "self:has_guy() and INT < mace_int_req (50)",
@@ -745,6 +805,9 @@
       "id": "living-05-cleric.lua:146",
       "lines": [
         146
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "heal_or_mace (MYSTIC MACE)",
       "anchor": "if self:has_guy() then",
@@ -786,6 +849,9 @@
       "id": "living-05-cleric.lua:174",
       "lines": [
         174
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "raise_skeleton (slot 2)",
       "anchor": "if self:shifter_down() ~= 0 then",
@@ -831,6 +897,9 @@
       "id": "living-05-cleric.lua:179",
       "lines": [
         179
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "raise_skeleton",
       "anchor": "if not blood then",
@@ -878,6 +947,9 @@
       "lines": [
         194
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "raise_skeleton",
       "anchor": "if self:has_guy() then",
       "condition": "self:has_guy()",
@@ -912,6 +984,9 @@
       "id": "living-05-cleric.lua:203",
       "lines": [
         203
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "raise_ghost (slot 3)",
       "anchor": "if self:shifter_down() ~= 0 then",
@@ -952,6 +1027,9 @@
       "id": "living-05-cleric.lua:209",
       "lines": [
         209
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "raise_ghost",
       "anchor": "if not blood then",
@@ -998,6 +1076,9 @@
       "lines": [
         224
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "raise_ghost",
       "anchor": "if self:has_guy() then",
       "condition": "self:has_guy()",
@@ -1033,6 +1114,9 @@
       "lines": [
         235
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "resurrect (slot 4 and unmapped)",
       "anchor": "if not blood then",
       "condition": "not blood -> false, reason",
@@ -1066,6 +1150,10 @@
       "lines": [
         239,
         269
+      ],
+      "kinds": [
+        "if",
+        "else"
       ],
       "function": "resurrect",
       "anchor": "if self:is_friendly(blood) then",
@@ -1125,6 +1213,12 @@
         260,
         263,
         265
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "else"
       ],
       "function": "resurrect (friendly) penalty",
       "anchor": "if self:has_guy() then",
@@ -1191,6 +1285,9 @@
       "lines": [
         283
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "resurrect",
       "anchor": "if self:has_guy() then",
       "condition": "self:has_guy()",
@@ -1231,6 +1328,9 @@
       "lines": [
         296
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "heal_or_mace_wanted (fixed bot slot 1)",
       "anchor": "if G.hurt_ally(self, t.heal_range) then",
       "condition": "G.hurt_ally(self, heal_range)",
@@ -1259,6 +1359,9 @@
       "id": "living-05-cleric.lua:300",
       "lines": [
         300
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "heal_or_mace_wanted",
       "anchor": "if self.magicpoints < og.fdiv(self.max_magicpoints, 2) then",
@@ -1290,6 +1393,9 @@
       "lines": [
         303
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "heal_or_mace_wanted",
       "anchor": "if self:has_guy() and self:g_intelligence() < t.mace_int_req then",
       "condition": "has_guy and INT < 50 -> false",
@@ -1320,6 +1426,10 @@
       "lines": [
         306,
         307
+      ],
+      "kinds": [
+        "if",
+        "and"
       ],
       "function": "heal_or_mace_wanted",
       "anchor": "if not lc.is_busy(self) and G.owned(self, C.ORDER_FX, FX_MAGIC_SHIELD) == 0",
@@ -1360,6 +1470,12 @@
         316,
         322,
         326
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "elseif"
       ],
       "function": "check_special_ai (slot 1)",
       "anchor": "if self:current_special() == 1 then -- healing",
@@ -1416,6 +1532,13 @@
         340,
         341,
         343
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "and",
+        "if",
+        "else"
       ],
       "function": "check_special_ai (fixed slots 2/3)",
       "anchor": "if gf.on() then",
@@ -1478,6 +1601,11 @@
         350,
         353
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
+      ],
       "function": "check_special_ai (fixed raise)",
       "anchor": "if self:shifter_down() == 0 then",
       "condition": "shifter_down == 0: range/body by slot; raise_spot == nil -> false; return G.foes_within(self, 1, 130, false)",
@@ -1524,6 +1652,10 @@
         358,
         362
       ],
+      "kinds": [
+        "elseif",
+        "and"
+      ],
       "function": "check_special_ai (fixed RESURRECT)",
       "anchor": "elseif slot == 4 then",
       "condition": "slot == 4: b ~= nil and self:is_friendly(b)",
@@ -1567,6 +1699,9 @@
       "lines": [
         374
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "on_shoved",
       "anchor": "if gf.on() then",
       "condition": "gf.on() -> shifter 0",
@@ -1599,6 +1734,9 @@
       "lines": [
         152
       ],
+      "kinds": [
+        "if"
+      ],
       "kind": "defensive",
       "anchor": "if not mace then",
       "note": "og.summon MAGIC_SHIELD nil (object cap): 'COULD NOT CREATE MACE'."
@@ -1607,6 +1745,9 @@
       "id": "living-05-cleric.lua:184",
       "lines": [
         184
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "defensive",
       "anchor": "if not alive then",
@@ -1617,6 +1758,9 @@
       "lines": [
         214
       ],
+      "kinds": [
+        "if"
+      ],
       "kind": "defensive",
       "anchor": "if not alive then",
       "note": "do_summon nil: 'COULD NOT CREATE GHOST'."
@@ -1625,6 +1769,9 @@
       "id": "living-05-cleric.lua:244",
       "lines": [
         244
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "defensive",
       "anchor": "if not alive then",
@@ -1635,6 +1782,9 @@
       "lines": [
         272
       ],
+      "kinds": [
+        "if"
+      ],
       "kind": "defensive",
       "anchor": "if not alive then",
       "note": "do_summon ghost nil: 'COULD NOT CREATE GHOST'."
@@ -1643,6 +1793,9 @@
       "id": "living-05-cleric.lua:402",
       "lines": [
         402
+      ],
+      "kinds": [
+        "and"
       ],
       "kind": "dead",
       "anchor": "{ id = \"raise_ghost\",  name = \"RAISE GHOST\",  mp_cost = 50,  alternate = { name = \"TURN UNDEAD\", detail = \"Turning needs 60 Int.\", icon = \"icons/turn_undead.png",
@@ -1653,6 +1806,9 @@
       "lines": [
         403
       ],
+      "kinds": [
+        "or"
+      ],
       "kind": "dead",
       "anchor": "{ id = \"resurrect\",    name = \"RESURRECT\",    mp_cost = 150, detail = \"Restores dead friends to life, or enemies to undead. Beware: this uses your own EXP to ca",
       "note": "not a branch ('or' in the RESURRECT detail string)"
@@ -1662,6 +1818,9 @@
       "lines": [
         404
       ],
+      "kinds": [
+        "and"
+      ],
       "kind": "dead",
       "anchor": "default_cast = resurrect,  -- case 4 and every unmapped slot",
       "note": "not a branch ('and' in the default_cast comment)"
@@ -1670,6 +1829,9 @@
       "id": "living-05-cleric.lua:421",
       "lines": [
         421
+      ],
+      "kinds": [
+        "and"
       ],
       "kind": "dead",
       "anchor": "description = \"Clerics, like mages, are slow, but have a stronger hand-to-hand attack. Clerics possess abilities related to healing and interaction with the dea",

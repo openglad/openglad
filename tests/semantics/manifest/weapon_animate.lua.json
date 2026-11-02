@@ -7,6 +7,10 @@
         63,
         66
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "tree_blood_on_animate",
       "anchor": "if self:ani_type() > 1 then",
       "condition": "self:ani_type() > 1 ; weapon_animate_step(self)",
@@ -47,6 +51,11 @@
         77,
         78,
         79
+      ],
+      "kinds": [
+        "if",
+        "or",
+        "or"
       ],
       "function": "circle_protection_on_animate",
       "anchor": "if not owner",
@@ -94,6 +103,10 @@
         90,
         93
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "glow_on_animate",
       "anchor": "if self:ani_type() > 2 then  -- illegal case",
       "condition": "self:ani_type() > 2 ; weapon_animate_step(self)",
@@ -133,6 +146,9 @@
       "lines": [
         99
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "glow_on_animate",
       "anchor": "if lifetime < 1 then",
       "condition": "lifetime < 1 (read before the decrement)",
@@ -164,6 +180,9 @@
       "lines": [
         111
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "sprinkle_on_hit_target",
       "anchor": "if target:order() ~= C.ORDER_LIVING then",
       "condition": "target:order() ~= C.ORDER_LIVING",
@@ -192,6 +211,9 @@
       "id": "weapon_animate.lua:115",
       "lines": [
         115
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "sprinkle_on_hit_target",
       "anchor": "if target:has_guy() then",
@@ -223,6 +245,9 @@
       "id": "weapon_animate.lua:120",
       "lines": [
         120
+      ],
+      "kinds": [
+        ""
       ],
       "function": "sprinkle_on_hit_target",
       "anchor": "local roll = og.i16(og.div(og.freeze_duration(owner.level, con), 1 + 3 * og.div(self:kit_state() & C.KIT_QUARTER_FREEZE, C.KIT_QUARTER_FREEZE)))",
@@ -257,6 +282,10 @@
       "lines": [
         125,
         128
+      ],
+      "kinds": [
+        "and",
+        "if"
       ],
       "function": "sprinkle_on_hit_target",
       "anchor": "and target:s_frozen_delay() > SPRINKLE_REFRESH_FLOOR",
@@ -303,6 +332,9 @@
       "lines": [
         29
       ],
+      "kinds": [
+        "if"
+      ],
       "kind": "defensive",
       "anchor": "if dir_index < 0 or dir_index >= NUM_FACINGS then",
       "note": "weapon_animate_step facing bound: a snapshot-borne curdir outside 0..7 animates row 0 instead of indexing out of range. Pinned anyway by tests/integration/test_weap_behavior.cpp: TEST(WeapBehavior, weapon_animate_clamps_out_of_range_facing_and_cycle_to_row_zero)."
@@ -313,6 +345,10 @@
         37,
         41
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "kind": "defensive",
       "anchor": "if not seq then",
       "note": "weapon_animate_step: og.ani_row nil (no table, past ani_count, null row, no sentinel) or an empty row means 'no such sequence' -> report ended (true), so tree/glow reset to their rest state. Snapshot/loader safety, no game rule; no test feeds a nil row to a weapon family hook."
@@ -321,6 +357,9 @@
       "id": "weapon_animate.lua:46",
       "lines": [
         46
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "defensive",
       "anchor": "if c < 0 or c >= seq_len then",

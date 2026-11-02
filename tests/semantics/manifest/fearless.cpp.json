@@ -13,6 +13,16 @@
         43,
         46
       ],
+      "kinds": [
+        "if",
+        "if",
+        "for",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if"
+      ],
       "function": "og::sim::fearless",
       "anchor": "if (w.fearless_bit())",
       "condition": "fearless_bit ; session_new_specials()==0 ; for weaplist: dead/self ; order Weapon && same floor ; rally_radius > 0 ; is_friendly ; dist^2 <= r^2",

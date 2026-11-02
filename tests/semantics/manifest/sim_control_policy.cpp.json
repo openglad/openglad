@@ -6,6 +6,9 @@
       "lines": [
         37
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "machine_entry_for_player",
       "anchor": "if (player_index < 0 ||",
       "condition": "player_index < 0 || player_index >= player_machine.size()",
@@ -41,6 +44,9 @@
       "lines": [
         49
       ],
+      "kinds": [
+        ""
+      ],
       "function": "derive_control_policy",
       "anchor": "return (networked && !cross_control) ? kControlPolicyOwnerLocked",
       "condition": "(networked && !cross_control) ? OwnerLocked : Legacy",
@@ -69,6 +75,9 @@
       "id": "sim_control_policy.cpp:58",
       "lines": [
         58
+      ],
+      "kinds": [
+        "ternary"
       ],
       "function": "encode_player_machine / player_machine_deployed",
       "anchor": "(deployed ? kPlayerMachineDeployedBit : 0));",
@@ -105,6 +114,11 @@
         88,
         92
       ],
+      "kinds": [
+        "for",
+        "if",
+        "if"
+      ],
       "function": "deployed_players_from_roster",
       "anchor": "for (const std::unique_ptr<guy>& member : roster)",
       "condition": "member == nullptr; owner_player_index < deployed.size()",
@@ -136,6 +150,12 @@
         110,
         116,
         118
+      ],
+      "kinds": [
+        "for",
+        "if",
+        "for",
+        "if"
       ],
       "function": "build_player_machine_map",
       "anchor": "for (const LobbyPlayerBinding& binding : bindings)",
@@ -174,6 +194,14 @@
         159,
         162,
         166
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if"
       ],
       "function": "control_claim_allowed",
       "anchor": "if (!owner_locked(world))",
@@ -228,6 +256,9 @@
       "lines": [
         182
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "seat_is_follow_only",
       "anchor": "if (!owner_locked(world))",
       "condition": "!owner_locked",
@@ -262,6 +293,11 @@
         198,
         200,
         203
+      ],
+      "kinds": [
+        "if",
+        "for",
+        "if"
       ],
       "function": "sim_find_next_control_owned",
       "anchor": "if ((level.type & GameWorld::TYPE_SCRIPTED) != 0 && player_index >= 0)",
@@ -316,6 +352,9 @@
       "lines": [
         222
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "sim_find_next_control_owned",
       "anchor": "if (!owner_locked(level))",
       "condition": "!owner_locked(level)",
@@ -357,6 +396,12 @@
         256,
         259
       ],
+      "kinds": [
+        "for",
+        "if",
+        "for",
+        "if"
+      ],
       "function": "sim_find_next_control_owned",
       "anchor": "for (auto& uptr : level.oblist)",
       "condition": "pass 1: ... && w->myguy && team==my_team && allowed && seat_may_claim; pass 2: same without myguy",
@@ -371,8 +416,12 @@
           "observable": "first troop"
         },
         {
-          "when": "none",
-          "observable": "nullptr, TRACE 'found no claimable walker'"
+          "when": "none: return",
+          "observable": "nullptr"
+        },
+        {
+          "when": "none: trace",
+          "observable": "TRACE 'found no claimable walker'"
         }
       ],
       "setting": "none",
@@ -395,7 +444,7 @@
         }
       ],
       "missing_arms": [
-        "none"
+        "none: trace"
       ]
     },
     {
@@ -404,6 +453,11 @@
         280,
         287,
         297
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
       ],
       "function": "sim_reacquire_control",
       "anchor": "if (control_out != nullptr)",
@@ -419,8 +473,12 @@
           "observable": "EndGame"
         },
         {
-          "when": "owner-locked, legacy pool non-empty",
-          "observable": "Follow, TRACE 'reacquire follow'"
+          "when": "owner-locked, legacy pool non-empty: verdict",
+          "observable": "Follow"
+        },
+        {
+          "when": "owner-locked, legacy pool non-empty: trace",
+          "observable": "TRACE 'reacquire follow'"
         },
         {
           "when": "owner-locked, pool empty",
@@ -444,7 +502,7 @@
         }
       ],
       "missing_arms": [
-        "owner-locked, legacy pool non-empty"
+        "owner-locked, legacy pool non-empty: trace"
       ]
     },
     {
@@ -455,6 +513,13 @@
         312,
         314,
         315
+      ],
+      "kinds": [
+        "switch",
+        "case",
+        "case",
+        "case",
+        "default"
       ],
       "function": "sim_reacquire_apply",
       "anchor": "switch (sim_reacquire_control(level, my_team, player_index, control_out))",
@@ -490,6 +555,11 @@
         344,
         347,
         349
+      ],
+      "kinds": [
+        "for",
+        "if",
+        "if"
       ],
       "function": "first_eligible_follow_target_id",
       "anchor": "for (const auto& uptr : world.oblist)",
@@ -530,6 +600,11 @@
         363,
         366
       ],
+      "kinds": [
+        "for",
+        "if",
+        "if"
+      ],
       "function": "default_follow_target_id",
       "anchor": "for (const std::uint32_t entity_id : controlled_entity_ids)",
       "condition": "entity_id == 0 -> skip; w != nullptr && !w->dead()",
@@ -559,6 +634,12 @@
         382,
         388,
         393
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "ternary"
       ],
       "function": "next_follow_target_id",
       "anchor": "if (current == nullptr)",

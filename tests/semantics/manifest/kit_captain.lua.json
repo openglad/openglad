@@ -8,6 +8,11 @@
         30,
         31
       ],
+      "kinds": [
+        "if",
+        "for",
+        "if"
+      ],
       "function": "facing_index",
       "anchor": "if dir >= 0 then",
       "condition": "dir >= 0 ; DIR_X[i] == sx and DIR_Y[i] == sy",
@@ -46,6 +51,10 @@
       "lines": [
         41,
         44
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "ring_coord",
       "anchor": "if side > 0 then",
@@ -87,6 +96,11 @@
         58,
         62,
         63
+      ],
+      "kinds": [
+        "for",
+        "or",
+        "if"
       ],
       "function": "M.ring_spot",
       "anchor": "for i = 1, 8 do",
@@ -136,6 +150,12 @@
         83,
         84,
         85
+      ],
+      "kinds": [
+        "for",
+        "if",
+        "and",
+        "and"
       ],
       "function": "live_banner",
       "anchor": "for i = 1, #weaps do",
@@ -192,6 +212,13 @@
         100,
         101
       ],
+      "kinds": [
+        "for",
+        "if",
+        "and",
+        "and",
+        "and"
+      ],
       "function": "own_grunts",
       "anchor": "for i = 1, #obs do",
       "condition": "LIVING and family == LIVING_ORC and dead == 0 and owner == self",
@@ -239,6 +266,9 @@
       "lines": [
         131
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "hook_blade",
       "anchor": "if live_blade(self) then",
       "condition": "live_blade(self)",
@@ -268,6 +298,10 @@
       "lines": [
         155,
         166
+      ],
+      "kinds": [
+        "if",
+        "for"
       ],
       "function": "knife_fan",
       "anchor": "if lc.is_busy(self) then",
@@ -304,6 +338,9 @@
       "lines": [
         179
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "M.hook_or_fan",
       "anchor": "if self:shifter_down() ~= 0 then",
       "condition": "self:shifter_down() ~= 0",
@@ -336,6 +373,9 @@
       "id": "kit_captain.lua:195",
       "lines": [
         195
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "M.snag",
       "anchor": "if foe:dead() ~= 0 then",
@@ -376,6 +416,11 @@
         212,
         235,
         246
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "for"
       ],
       "function": "war_banner",
       "anchor": "if not corpse then",
@@ -430,6 +475,11 @@
         269,
         272
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
+      ],
       "function": "on_the_captain",
       "anchor": "if sx + w <= x then",
       "condition": "sx + w <= x ; sx >= x + w ; sy + h <= y ; sy < y + h",
@@ -472,6 +522,17 @@
         304,
         308,
         309
+      ],
+      "kinds": [
+        "for",
+        "if",
+        "for",
+        "if",
+        "elseif",
+        "elseif",
+        "else",
+        "and",
+        "if"
       ],
       "function": "edge_spots",
       "anchor": "for i = 2, 4 do",
@@ -527,6 +588,12 @@
         334,
         338
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "for"
+      ],
       "function": "warband",
       "anchor": "if here >= t.warband_cap then",
       "condition": "here >= warband_cap ; #spots == 0 ; rally ; for i = 1, #spots, 2",
@@ -574,6 +641,9 @@
       "lines": [
         357
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "M.banner_or_warband",
       "anchor": "if self:shifter_down() ~= 0 then",
       "condition": "self:shifter_down() ~= 0",
@@ -603,6 +673,10 @@
       "lines": [
         376,
         383
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "M.ai_howl",
       "anchor": "if og.match_setting(\"new_specials\") == 0 then",
@@ -654,6 +728,10 @@
         393,
         399
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "M.ai_eat",
       "anchor": "if og.match_setting(\"new_specials\") == 0 then",
       "condition": "new_specials off ; not hurt (hp*5 < max*3)",
@@ -697,6 +775,11 @@
         421,
         422
       ],
+      "kinds": [
+        "for",
+        "if",
+        "if"
+      ],
       "function": "foes_in_fan",
       "anchor": "for i = 1, #foes do",
       "condition": "fan_covers(facing_index) ; in_flight(knife 5,7)",
@@ -735,6 +818,13 @@
         439,
         440,
         448
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if",
+        "if"
       ],
       "function": "M.ai_hook",
       "anchor": "if og.match_setting(\"new_specials\") == 0 then",
@@ -801,6 +891,14 @@
         468,
         473,
         474
+      ],
+      "kinds": [
+        "if",
+        "and",
+        "if",
+        "if",
+        "if",
+        "and"
       ],
       "function": "M.ai_banner",
       "anchor": "if og.match_setting(\"new_specials\") == 0 then",
@@ -878,6 +976,9 @@
       "lines": [
         144
       ],
+      "kinds": [
+        "if"
+      ],
       "kind": "defensive",
       "anchor": "if not blade then",
       "note": "summon_configured nil (world full): 'COULD NOT MAKE A BLADE'"
@@ -887,6 +988,9 @@
       "lines": [
         219
       ],
+      "kinds": [
+        "if"
+      ],
       "kind": "defensive",
       "anchor": "if not banner then",
       "note": "add_weap_ob nil (world full): 'COULD NOT RAISE BANNER'"
@@ -895,6 +999,9 @@
       "id": "kit_captain.lua:342",
       "lines": [
         342
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "defensive",
       "anchor": "if grunt then",

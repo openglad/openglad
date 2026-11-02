@@ -6,6 +6,9 @@
       "lines": [
         64
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "classic_census",
       "anchor": "if w:dead() == 0 and not w:dormant() then",
       "condition": "w:dead() == 0 and not w:dormant()",
@@ -42,6 +45,9 @@
       "id": "lineup_stage.lua:66",
       "lines": [
         66
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "classic_census",
       "anchor": "if team < C.SCORE_TEAM_COUNT then",
@@ -85,6 +91,11 @@
         70,
         71
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
+      ],
       "function": "classic_census",
       "anchor": "if order == C.ORDER_SPECIAL then",
       "condition": "order == ORDER_SPECIAL and family == FAMILY_RESERVED_TEAM and row.mx < 0",
@@ -124,6 +135,11 @@
         77,
         81
       ],
+      "kinds": [
+        "elseif",
+        "if",
+        "else"
+      ],
       "function": "classic_census",
       "anchor": "elseif lineup.is_troop(order) then",
       "condition": "lineup.is_troop(order) ; w:has_guy()",
@@ -160,6 +176,9 @@
       "id": "lineup_stage.lua:99",
       "lines": [
         99
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "classic_anchor",
       "anchor": "if row.units > 0 then",
@@ -203,6 +222,10 @@
         118,
         122
       ],
+      "kinds": [
+        "if",
+        "elseif"
+      ],
       "function": "classic_centroids",
       "anchor": "if bodies > 0 then",
       "condition": "bodies > 0 ; row.mx >= 0",
@@ -236,6 +259,11 @@
         137,
         138,
         139
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
       ],
       "function": "classic_hostiles",
       "anchor": "if w:dead() == 0 and not w:dormant() then",
@@ -273,6 +301,10 @@
       "lines": [
         158,
         159
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "hostile_adjacent",
       "anchor": "if dx <= 16 then",
@@ -312,6 +344,10 @@
         179,
         182
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "classic_reach",
       "anchor": "if w:xpos() > reach_x then",
       "condition": "w:xpos() > reach_x ; w:ypos() > reach_y",
@@ -338,6 +374,9 @@
       "id": "lineup_stage.lua:200",
       "lines": [
         200
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "farthest_open_spot",
       "anchor": "if #centroids == 0 then",
@@ -367,6 +406,10 @@
         216,
         218
       ],
+      "kinds": [
+        "if",
+        "elseif"
+      ],
       "function": "farthest_open_spot",
       "anchor": "if score < 0 then",
       "condition": "score < 0 ; d2 < score",
@@ -395,6 +438,11 @@
         222,
         223,
         224
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
       ],
       "function": "farthest_open_spot",
       "anchor": "if score > best_score then",
@@ -439,6 +487,16 @@
         259,
         260,
         261
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "for",
+        "for",
+        "if",
+        "if",
+        "if"
       ],
       "function": "classic_place",
       "anchor": "if ax >= 0 then",
@@ -486,6 +544,9 @@
       "lines": [
         270
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "classic_place",
       "anchor": "if not allow_teleport then",
       "condition": "not allow_teleport",
@@ -517,6 +578,9 @@
       "id": "lineup_stage.lua:273",
       "lines": [
         273
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "classic_place",
       "anchor": "if hostiles == nil then",
@@ -550,6 +614,10 @@
       "lines": [
         278,
         280
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "classic_place",
       "anchor": "if w:teleport() then",
@@ -588,6 +656,10 @@
       "lines": [
         295,
         325
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "classic_wants_squad",
       "anchor": "if lineup.squad_off(knob) then",
@@ -637,6 +709,11 @@
         313,
         317
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
+      ],
       "function": "stage_level",
       "anchor": "if not lineup.map_units_fielded(team) then",
       "condition": "any team with MAP UNITS off or FILL not NONE",
@@ -681,6 +758,9 @@
       "lines": [
         329
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "stage_level",
       "anchor": "if ax < 0 then",
       "condition": "ax < 0 (site-less team)",
@@ -718,6 +798,9 @@
       "lines": [
         339
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "stage_level (placer closure)",
       "anchor": "if not sited then",
       "condition": "not sited",
@@ -747,6 +830,9 @@
       "lines": [
         50
       ],
+      "kinds": [
+        "for"
+      ],
       "kind": "plumbing",
       "anchor": "for team = 0, C.SCORE_TEAM_COUNT - 1 do",
       "note": "Initialises one empty census row per score team (0..3)."
@@ -755,6 +841,9 @@
       "id": "lineup_stage.lua:62",
       "lines": [
         62
+      ],
+      "kinds": [
+        "for"
       ],
       "kind": "loop",
       "anchor": "for k = 1, #obs do",
@@ -765,6 +854,9 @@
       "lines": [
         115
       ],
+      "kinds": [
+        "for"
+      ],
       "kind": "loop",
       "anchor": "for t = 1, C.SCORE_TEAM_COUNT do",
       "note": "Per-team centroid list; rule in lineup_stage.lua:118."
@@ -773,6 +865,9 @@
       "id": "lineup_stage.lua:135",
       "lines": [
         135
+      ],
+      "kinds": [
+        "for"
       ],
       "kind": "loop",
       "anchor": "for k = 1, #obs do",
@@ -783,6 +878,9 @@
       "lines": [
         154
       ],
+      "kinds": [
+        "for"
+      ],
       "kind": "loop",
       "anchor": "for k = 1, #hostiles do",
       "note": "Hostile adjacency scan; rule in lineup_stage.lua:158."
@@ -791,6 +889,9 @@
       "id": "lineup_stage.lua:177",
       "lines": [
         177
+      ],
+      "kinds": [
+        "for"
       ],
       "kind": "loop",
       "anchor": "for k = 1, #list do",
@@ -802,6 +903,10 @@
         208,
         210
       ],
+      "kinds": [
+        "while",
+        "while"
+      ],
       "kind": "loop",
       "anchor": "while py <= reach_y do",
       "note": "Row-major 32-px lattice scan; rules in lineup_stage.lua:216 and :222."
@@ -810,6 +915,9 @@
       "id": "lineup_stage.lua:212",
       "lines": [
         212
+      ],
+      "kinds": [
+        "for"
       ],
       "kind": "loop",
       "anchor": "for c = 1, #centroids do",
@@ -820,6 +928,9 @@
       "lines": [
         277
       ],
+      "kinds": [
+        "for"
+      ],
       "kind": "loop",
       "anchor": "for _ = 1, 8 do",
       "note": "Up to eight seeded teleport draws; rule in lineup_stage.lua:278."
@@ -829,6 +940,9 @@
       "lines": [
         309
       ],
+      "kinds": [
+        "for"
+      ],
       "kind": "loop",
       "anchor": "for team = 0, C.SCORE_TEAM_COUNT - 1 do",
       "note": "Fast-path knob scan over teams 0..3; rule in lineup_stage.lua:317."
@@ -837,6 +951,9 @@
       "id": "lineup_stage.lua:322",
       "lines": [
         322
+      ],
+      "kinds": [
+        "for"
       ],
       "kind": "loop",
       "anchor": "for team = 0, C.SCORE_TEAM_COUNT - 1 do",

@@ -8,6 +8,11 @@
         59,
         60
       ],
+      "kinds": [
+        "for",
+        "if",
+        "if"
+      ],
       "function": "M.living_foes",
       "anchor": "for i = 1, #found do",
       "condition": "w:order() == C.ORDER_LIVING ; not floor_only or w:floor() == floor",
@@ -45,6 +50,9 @@
       "lines": [
         69
       ],
+      "kinds": [
+        ""
+      ],
       "function": "M.foes_within / M.allies_within",
       "anchor": "function M.foes_within(self, n, range, floor_only)",
       "condition": "#M.living_foes(self, range, floor_only) >= n ; #M.allies(self, range) >= n",
@@ -79,6 +87,9 @@
       "id": "gates.lua:75",
       "lines": [
         75
+      ],
+      "kinds": [
+        ""
       ],
       "function": "M.targets_within",
       "anchor": "function M.targets_within(self, n, range)",
@@ -115,6 +126,10 @@
         86,
         88
       ],
+      "kinds": [
+        "for",
+        "if"
+      ],
       "function": "M.nearest_living_foe",
       "anchor": "for i = 1, #foes do",
       "condition": "best == nil or dist < best_dist",
@@ -149,6 +164,10 @@
         100,
         101
       ],
+      "kinds": [
+        "for",
+        "if"
+      ],
       "function": "M.allies",
       "anchor": "for i = 1, #found do",
       "condition": "found[i]:order() == C.ORDER_LIVING",
@@ -177,6 +196,9 @@
       "id": "gates.lua:126",
       "lines": [
         126
+      ],
+      "kinds": [
+        "and"
       ],
       "function": "M.at_blows",
       "anchor": "return gap_x <= M.BLOW_GAP and gap_y <= M.BLOW_GAP",
@@ -207,6 +229,10 @@
       "lines": [
         133,
         134
+      ],
+      "kinds": [
+        "for",
+        "if"
       ],
       "function": "M.foes_at_blows",
       "anchor": "for i = 1, #foes do",
@@ -244,6 +270,13 @@
         154,
         156,
         161
+      ],
+      "kinds": [
+        "for",
+        "for",
+        "if",
+        "if",
+        "if"
       ],
       "function": "M.allies_fight",
       "anchor": "for i = 1, #foes do",
@@ -284,6 +317,11 @@
         174,
         175
       ],
+      "kinds": [
+        "for",
+        "for",
+        "if"
+      ],
       "function": "M.ally_at_blows",
       "anchor": "for i = 1, #allies do",
       "condition": "M.at_blows(allies[i], foes[j])",
@@ -313,6 +351,10 @@
       "lines": [
         188,
         189
+      ],
+      "kinds": [
+        "for",
+        "if"
       ],
       "function": "M.hunters",
       "anchor": "for i = 1, #foes do",
@@ -344,6 +386,10 @@
         203,
         204
       ],
+      "kinds": [
+        "for",
+        "if"
+      ],
       "function": "M.hurt_ally",
       "anchor": "for i = 1, #allies do",
       "condition": "allies[i].hp < allies[i].max_hp",
@@ -372,6 +418,9 @@
       "id": "gates.lua:213",
       "lines": [
         213
+      ],
+      "kinds": [
+        ""
       ],
       "function": "M.hp_below",
       "anchor": "function M.hp_below(w, num, den)",
@@ -403,6 +452,9 @@
       "lines": [
         217
       ],
+      "kinds": [
+        ""
+      ],
       "function": "M.centre / M.heading_to",
       "anchor": "function M.centre(w)",
       "condition": "centre = xpos + sizex // 2 ; facing(tx - sx, ty - sy)",
@@ -431,6 +483,9 @@
       "id": "gates.lua:232",
       "lines": [
         232
+      ],
+      "kinds": [
+        ""
       ],
       "function": "M.fire_heading",
       "anchor": "function M.fire_heading(self)",
@@ -473,6 +528,9 @@
       "lines": [
         239
       ],
+      "kinds": [
+        "or"
+      ],
       "function": "M.has_heading",
       "anchor": "return self:lastx() ~= 0.0 or self:lasty() ~= 0.0",
       "condition": "self:lastx() ~= 0.0 or self:lasty() ~= 0.0",
@@ -501,6 +559,9 @@
       "id": "gates.lua:249",
       "lines": [
         249
+      ],
+      "kinds": [
+        "and"
       ],
       "function": "M.aimed_at",
       "anchor": "return M.has_heading(self) and M.faces(self, target)",
@@ -531,6 +592,10 @@
       "lines": [
         258,
         259
+      ],
+      "kinds": [
+        "or",
+        "or"
       ],
       "function": "M.fan_covers",
       "anchor": "or h == og.mod(facing + 1, 8)",
@@ -570,6 +635,11 @@
         269,
         270,
         271
+      ],
+      "kinds": [
+        "or",
+        "or",
+        "or"
       ],
       "function": "straight",
       "anchor": "or heading == C.FACE_RIGHT",
@@ -615,6 +685,13 @@
         291,
         295,
         298
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if",
+        "if"
       ],
       "function": "M.flight_px",
       "anchor": "if self:has_guy() then",
@@ -665,6 +742,9 @@
       "lines": [
         307
       ],
+      "kinds": [
+        ""
+      ],
       "function": "M.in_flight",
       "anchor": "function M.in_flight(self, target, step, los, los_num, los_den, los_add)",
       "condition": "og.max(gap_x, gap_y) <= reach",
@@ -714,6 +794,13 @@
         328,
         331
       ],
+      "kinds": [
+        "for",
+        "if",
+        "if",
+        "if",
+        "and"
+      ],
       "function": "M.ring_pays",
       "anchor": "for i = 1, #foes do",
       "condition": "in_flight ; not faces ; in_ring >= 2 ; in_ring == 1 and unfaced",
@@ -755,6 +842,9 @@
       "lines": [
         335
       ],
+      "kinds": [
+        ""
+      ],
       "function": "M.blast_reach",
       "anchor": "function M.blast_reach(level)",
       "condition": "15 + og.clamp(level * 4, 16, 96)",
@@ -791,6 +881,13 @@
         350,
         354,
         355
+      ],
+      "kinds": [
+        "if",
+        "and",
+        "if",
+        "for",
+        "if"
       ],
       "function": "M.blast_clear",
       "anchor": "if check_self and centre ~= self",
@@ -835,6 +932,16 @@
         380,
         381,
         383
+      ],
+      "kinds": [
+        "if",
+        "else",
+        "for",
+        "if",
+        "and",
+        "and",
+        "and",
+        "or"
       ],
       "function": "M.owned",
       "anchor": "if order == C.ORDER_WEAPON then",
@@ -883,6 +990,13 @@
         396,
         397
       ],
+      "kinds": [
+        "for",
+        "if",
+        "and",
+        "and",
+        "and"
+      ],
       "function": "M.owned_phantom",
       "anchor": "for i = 1, #obs do",
       "condition": "ob and LIVING and not dead and owner == self and max_hp == 1",
@@ -912,6 +1026,10 @@
       "lines": [
         408,
         411
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "M.corpse_underfoot",
       "anchor": "if not blood or blood:floor() ~= self:floor() then",
@@ -954,6 +1072,13 @@
         431,
         432
       ],
+      "kinds": [
+        "for",
+        "if",
+        "and",
+        "and",
+        "and"
+      ],
       "function": "foe_meeting",
       "anchor": "for i = 1, #foes do",
       "condition": "ax <= fx+fw and ax+aw >= fx and ay <= fy+fh and ay+ah >= fy",
@@ -986,6 +1111,9 @@
       "id": "gates.lua:445",
       "lines": [
         445
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "M.ahead_blocked_by_foe",
       "anchor": "if d < 0 or d > 7 then",
@@ -1027,6 +1155,13 @@
         481,
         485,
         491
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "for",
+        "if",
+        "if"
       ],
       "function": "M.rush_strikes",
       "anchor": "if self:s_forward_blocked(true) then",
@@ -1078,6 +1213,10 @@
         516,
         519
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "M.can_pay",
       "anchor": "if shifted then",
       "condition": "shifted ; price == 0",
@@ -1115,6 +1254,9 @@
       "lines": [
         527
       ],
+      "kinds": [
+        "and"
+      ],
       "function": "M.resting",
       "anchor": "return self:special_rest_slot() == slot and self:special_rest_left() > 0",
       "condition": "special_rest_slot() == slot and special_rest_left() > 0",
@@ -1144,6 +1286,10 @@
       "lines": [
         535,
         539
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "M.marker_pays",
       "anchor": "if self:has_guy() and self:g_intelligence() < int_req then",
@@ -1177,6 +1323,9 @@
       "id": "gates.lua:554",
       "lines": [
         554
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "M.with_classic",
       "anchor": "if not gf.on() then",

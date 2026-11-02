@@ -9,6 +9,12 @@
         122,
         124
       ],
+      "kinds": [
+        "if",
+        "else",
+        "if",
+        "else"
+      ],
       "function": "register_pack_script / register_pack_family_chunk",
       "anchor": "if (it != v.end())",
       "condition": "it != v.end() (same pack_id + chunk_name)",
@@ -40,6 +46,9 @@
       "id": "pack_scripts.cpp:135",
       "lines": [
         135
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "unregister_pack_family_chunks",
       "anchor": "if (removed == v.end())",
@@ -73,6 +82,10 @@
       "lines": [
         30,
         31
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "kind": "test-only",
       "anchor": "if (!coverage::enabled()) return;",

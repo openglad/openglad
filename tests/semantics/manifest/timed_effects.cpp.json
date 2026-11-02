@@ -6,6 +6,9 @@
       "lines": [
         56
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "Best::offer",
       "anchor": "if (timer.label == nullptr || ticks < timer.ticks ||",
       "condition": "no timer yet || ticks < best || (equal && rank lower)",
@@ -50,6 +53,17 @@
         105,
         109,
         111
+      ],
+      "kinds": [
+        "for",
+        "if",
+        "for",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if"
       ],
       "function": "seat_timer / label_for_role",
       "anchor": "for (const MarkerLabel& m : kMarkerLabels) {",
@@ -96,6 +110,9 @@
       "lines": [
         84
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "seat_timer",
       "anchor": "if (world.new_specials != 0)",
       "condition": "world.new_specials != 0",
@@ -124,6 +141,9 @@
       "id": "timed_effects.cpp:88",
       "lines": [
         88
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "seat_timer",
       "anchor": "if (control.possess_link() != 0 && !control.hidden() &&",
@@ -164,6 +184,15 @@
         127,
         131,
         134
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if"
       ],
       "function": "seat_timer",
       "anchor": "if (control.lifetime() > 0)",

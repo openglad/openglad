@@ -8,6 +8,11 @@
         59,
         61
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
+      ],
       "function": "effect::act",
       "anchor": "if (foe() && foe()->dead())",
       "condition": "foe()/leader()/owner() && ->dead()",
@@ -39,6 +44,10 @@
       "lines": [
         72,
         74
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "effect::act",
       "anchor": "if (auto hook_result = og::script::hooks::effect_on_act(efd, this))",
@@ -86,6 +95,9 @@
       "lines": [
         80
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "effect::act",
       "anchor": "if (ani_type() != ANI_WALK)",
       "condition": "ani_type() != ANI_WALK",
@@ -129,6 +141,12 @@
         138,
         140
       ],
+      "kinds": [
+        "if",
+        "if",
+        "else",
+        "if"
+      ],
       "function": "effect::animate",
       "anchor": "if (efd && efd->loops_animation)",
       "condition": "efd->loops_animation ; seq[c] == -1",
@@ -165,6 +183,9 @@
       "id": "effect.cpp:155",
       "lines": [
         155
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "effect::death",
       "anchor": "if (death_called())",
@@ -209,6 +230,12 @@
         177,
         181,
         185
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if"
       ],
       "function": "hits",
       "anchor": "if (x > x2right)",
@@ -258,6 +285,16 @@
         120,
         122,
         126
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "while",
+        "if",
+        "if"
       ],
       "kind": "defensive",
       "function": "effect::animate",

@@ -6,6 +6,9 @@
       "lines": [
         23
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "declares_blocks_placement",
       "anchor": "if (w.query_order() != Order::Weapon)",
       "condition": "query_order() != Order::Weapon ; wfd && blocks_placement",
@@ -38,6 +41,9 @@
       "id": "placement.cpp:41",
       "lines": [
         41
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "swap_places",
       "anchor": "if (&a == &b || !swappable(a) || !swappable(b))",
@@ -80,6 +86,9 @@
       "id": "placement.cpp:45",
       "lines": [
         45
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "defensive",
       "function": "swap_places",

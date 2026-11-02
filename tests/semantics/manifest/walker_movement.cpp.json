@@ -8,6 +8,11 @@
         51,
         53
       ],
+      "kinds": [
+        "if",
+        "if",
+        "else"
+      ],
       "function": "walker::setxy",
       "anchor": "if (map != nullptr)",
       "condition": "map && !ignore && !dormant && !hidden",
@@ -69,6 +74,11 @@
         73,
         75
       ],
+      "kinds": [
+        "if",
+        "if",
+        "else"
+      ],
       "function": "walker::setworldxy",
       "anchor": "if (map != nullptr)",
       "condition": "map && !ignore && !dormant && !hidden",
@@ -123,6 +133,21 @@
         125,
         127
       ],
+      "kinds": [
+        "if",
+        "if",
+        "else",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "else",
+        "if",
+        "if",
+        "if",
+        "if"
+      ],
       "function": "walker::facing",
       "anchor": "if (!x)",
       "condition": "x==0 ? (y>0 DOWN : UP) : slope=1000y/x vs +-2414/+-414",
@@ -168,6 +193,9 @@
       "lines": [
         138
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "walker::shove",
       "anchor": "if (x || y || target)",
       "condition": "x || y || target (log only)",
@@ -199,6 +227,10 @@
       "lines": [
         161,
         164
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "walker::walkstep",
       "anchor": "if (order() == Order::Living)",
@@ -235,6 +267,10 @@
       "lines": [
         176,
         179
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "walker::walkstep",
       "anchor": "if (!returnvalue) // couldn't walk this direction ..",
@@ -291,6 +327,19 @@
         214,
         220,
         226
+      ],
+      "kinds": [
+        "if",
+        "switch",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "default"
       ],
       "function": "walker::walkstep",
       "anchor": "if (user() == -1) // means we are an npc",
@@ -355,6 +404,23 @@
         276,
         281
       ],
+      "kinds": [
+        "else",
+        "switch",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "default",
+        "if",
+        "for",
+        "if",
+        "if"
+      ],
       "function": "walker::walkstep (user slide)",
       "anchor": "else // we're a user",
       "condition": "user != -1; switch myfacing; dx||dy; for i < (int)step; passable(y+dy) / passable(x+dx)",
@@ -409,6 +475,15 @@
         297,
         300
       ],
+      "kinds": [
+        "if",
+        "if",
+        "else",
+        "else if",
+        "if",
+        "else",
+        "if"
+      ],
       "function": "walker::walkstep (user slide)",
       "anchor": "if (!gotup && gotover)  // moved horizontally",
       "condition": "!gotup && gotover / gotup && !gotover; dx>0; dy<0; gotup||gotover",
@@ -452,6 +527,10 @@
         323,
         326
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "walker::walk",
       "anchor": "if (order() == Order::Living)",
       "condition": "Living && fd->is_stationary",
@@ -476,6 +555,9 @@
       "id": "walker_movement.cpp:333",
       "lines": [
         333
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "walker::walk",
       "anchor": "if (x == 0.0f && y == 0.0f)",
@@ -512,6 +594,10 @@
         339,
         375
       ],
+      "kinds": [
+        "if",
+        "else"
+      ],
       "function": "walker::walk (base; living::walk overrides for livings)",
       "anchor": "if (curdir() == dir)  // if continue direction",
       "condition": "curdir() == dir",
@@ -547,6 +633,9 @@
       "lines": [
         342
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "walker::walk",
       "anchor": "if (x + xpos() < 0 ||",
       "condition": "off map (x<0, x>=grid.w*GRID_SIZE, y<0, y>=grid.h*GRID_SIZE)",
@@ -581,6 +670,11 @@
         353,
         363,
         367
+      ],
+      "kinds": [
+        "if",
+        "else",
+        "if"
       ],
       "function": "walker::walk",
       "anchor": "if (current_game->world->query_passable(xpos() + x, ypos() + y, this))",
@@ -638,6 +732,18 @@
         403,
         405
       ],
+      "kinds": [
+        "switch",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "default"
+      ],
       "function": "walker::get_current_angle",
       "anchor": "switch (curdir())",
       "condition": "switch curdir",
@@ -676,6 +782,10 @@
       "lines": [
         424,
         426
+      ],
+      "kinds": [
+        "if",
+        "else"
       ],
       "function": "walker::turn",
       "anchor": "if ( ( (distance >= -4) && (distance < 0) ) || (distance >= 4) )",
@@ -719,6 +829,19 @@
         464,
         468,
         472
+      ],
+      "kinds": [
+        "if",
+        "switch",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "default"
       ],
       "function": "walker::turn",
       "anchor": "if (!stationary)",
@@ -770,6 +893,9 @@
       "id": "walker_movement.cpp:501",
       "lines": [
         501
+      ],
+      "kinds": [
+        "ternary"
       ],
       "function": "walker::face_delta",
       "anchor": "const float scale = (stepsize() == 0.0f) ? 1.0f : stepsize();",

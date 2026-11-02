@@ -7,6 +7,10 @@
         23,
         26
       ],
+      "kinds": [
+        "if",
+        "else"
+      ],
       "function": "on_death",
       "anchor": "if og.query_genre(og.div(self:xpos(), C.GRID_SIZE),",
       "condition": "og.query_genre(x/GRID, y/GRID - 1) == TYPE_WALL",
@@ -37,6 +41,9 @@
       "id": "weapon_door.lua:11",
       "lines": [
         11
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "defensive",
       "anchor": "if not opened then",

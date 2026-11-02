@@ -9,6 +9,12 @@
         66,
         69
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if"
+      ],
       "function": "weap::act",
       "anchor": "if (foe() && foe()->dead())",
       "condition": "foe dead -> null; leader dead -> null; owner dead -> null; !owner -> owner = this",
@@ -37,6 +43,9 @@
       "id": "weap.cpp:75",
       "lines": [
         75
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "weap::act",
       "anchor": "if (ani_type() != ANI_WALK)",
@@ -67,6 +76,10 @@
       "lines": [
         85,
         87
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "weap::act",
       "anchor": "if (current_game->world->mysmoother.query_genre_x_y(xpos(), ypos()) == TYPE_TREES",
@@ -111,22 +124,37 @@
         126,
         152
       ],
+      "kinds": [
+        "switch",
+        "case",
+        "case",
+        "case",
+        "default"
+      ],
       "function": "weap::act",
       "anchor": "switch (act_type())",
       "condition": "switch (act_type()): ACT_CONTROL / ACT_GENERATE / ACT_GUARD / default",
       "semantic": "A weapon in a living-only act mode does nothing: ACT_CONTROL returns at once, ACT_GENERATE and ACT_GUARD fall through to 'did nothing', and an unknown act notifies 'No act type set for weapon'.",
       "arms": [
         {
-          "when": "ACT_CONTROL",
-          "observable": "act() true, no move"
+          "when": "ACT_CONTROL: return",
+          "observable": "act() true"
+        },
+        {
+          "when": "ACT_CONTROL: no move",
+          "observable": "position unchanged"
         },
         {
           "when": "ACT_GENERATE/ACT_GUARD",
           "observable": "act() false"
         },
         {
-          "when": "unknown act",
-          "observable": "act() false, Notification 'No act type set for weapon'"
+          "when": "unknown act: return",
+          "observable": "act() false"
+        },
+        {
+          "when": "unknown act: notification",
+          "observable": "Notification 'No act type set for weapon'"
         }
       ],
       "setting": "none",
@@ -135,12 +163,12 @@
         {
           "file": "tests/integration/test_weap_behavior.cpp",
           "test": "WeapBehavior.weap_act_control_generate_guard_and_default_paths",
-          "note": "ACT_GENERATE/ACT_GUARD arm: act() returns false"
+          "note": "ACT_CONTROL act() true; ACT_GENERATE/ACT_GUARD act() false; unknown act act() false"
         }
       ],
       "missing_arms": [
-        "ACT_CONTROL",
-        "unknown act"
+        "ACT_CONTROL: no move",
+        "unknown act: notification"
       ]
     },
     {
@@ -148,6 +176,10 @@
       "lines": [
         98,
         101
+      ],
+      "kinds": [
+        "case",
+        "if"
       ],
       "function": "weap::act",
       "anchor": "case ACT_SIT: // for things like trees",
@@ -187,14 +219,21 @@
       "lines": [
         119
       ],
+      "kinds": [
+        "case"
+      ],
       "function": "weap::act",
       "anchor": "case ACT_FIRE:",
       "condition": "ACT_FIRE",
       "semantic": "A fired weapon flies: it spends one point of range per tick and dies when range runs out.",
       "arms": [
         {
-          "when": "range left",
-          "observable": "lineofsight-1, moves"
+          "when": "range left: range spent",
+          "observable": "lineofsight-1"
+        },
+        {
+          "when": "range left: moves",
+          "observable": "moves (act_fire steps the weapon along lastx/lasty)"
         },
         {
           "when": "range 0",
@@ -206,17 +245,21 @@
       "tests": [
         {
           "file": "tests/integration/test_weap_behavior.cpp",
-          "test": "WeapBehavior.weap_act_fire"
+          "test": "WeapBehavior.weap_act_fire",
+          "note": "range-spent arm: lineofsight 5 -> 4; range-0 arm: dead()==1"
         }
       ],
       "missing_arms": [
-        "range left"
+        "range left: moves"
       ]
     },
     {
       "id": "weap.cpp:132",
       "lines": [
         132
+      ],
+      "kinds": [
+        "case"
       ],
       "function": "weap::act",
       "anchor": "case ACT_DIE:",
@@ -243,6 +286,9 @@
       "lines": [
         138
       ],
+      "kinds": [
+        "case"
+      ],
       "function": "weap::act",
       "anchor": "case ACT_RANDOM:",
       "condition": "ACT_RANDOM",
@@ -268,6 +314,9 @@
       "lines": [
         170
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "weap::death",
       "anchor": "if (death_called())  // Make sure we don't get multiple deaths",
       "condition": "death_called()",
@@ -278,8 +327,12 @@
           "observable": "weapon_on_death hook runs, returns 1"
         },
         {
-          "when": "second",
-          "observable": "returns 0, nothing runs"
+          "when": "second: return",
+          "observable": "returns 0"
+        },
+        {
+          "when": "second: nothing runs",
+          "observable": "weapon_on_death hook not run again"
         }
       ],
       "setting": "none",
@@ -288,7 +341,7 @@
         {
           "file": "tests/integration/test_weap_behavior.cpp",
           "test": "WeapBehavior.weap_death_is_idempotent",
-          "note": "return values"
+          "note": "first call returns 1, second returns 0"
         },
         {
           "file": "tests/integration/test_weap_behavior.cpp",
@@ -297,7 +350,7 @@
         }
       ],
       "missing_arms": [
-        "second"
+        "second: nothing runs"
       ]
     },
     {
@@ -306,6 +359,11 @@
         194,
         196,
         199
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "else"
       ],
       "function": "weap::animate",
       "anchor": "if (auto hook_result = og::script::hooks::weapon_on_animate(wfd, this))",
@@ -353,6 +411,15 @@
         217,
         220,
         224
+      ],
+      "kinds": [
+        "if",
+        "ternary",
+        "if",
+        "while",
+        "if",
+        "if",
+        "if"
       ],
       "function": "weap::animate",
       "anchor": "if (dir_index < 0 || dir_index >= NUM_FACINGS)",

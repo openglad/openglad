@@ -7,6 +7,10 @@
         30,
         34
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "wail",
       "anchor": "if not foe then",
       "condition": "not foe ; not bolt",
@@ -45,6 +49,9 @@
       "id": "kit_ghost.lua:52",
       "lines": [
         52
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "M.scare_or_wail",
       "anchor": "if self:alternate_down() then",
@@ -91,6 +98,13 @@
         83,
         84
       ],
+      "kinds": [
+        "if",
+        "if",
+        "for",
+        "if",
+        "if"
+      ],
       "function": "wail_pays",
       "anchor": "if #near ~= 1 then",
       "condition": "#near ~= 1 ; not can_pay(1,true) ; far[i] ~= struck ; distance <= 120",
@@ -128,6 +142,10 @@
       "lines": [
         99,
         102
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "M.wail_gate",
       "anchor": "if og.match_setting(\"new_specials\") == 0 then",
@@ -168,6 +186,12 @@
         123,
         128,
         144
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if"
       ],
       "function": "M.siphon",
       "anchor": "if phased(self) then",
@@ -221,6 +245,12 @@
         156,
         161,
         165
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if"
       ],
       "function": "M.ai_siphon",
       "anchor": "if og.match_setting(\"new_specials\") == 0 then",
@@ -278,6 +308,12 @@
         186,
         189
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if"
+      ],
       "function": "host_refusal",
       "anchor": "if og.family_flag(\"living\", foe:family(), \"is_undead\") then",
       "condition": "is_undead ; seat_driven ; possess_link ~= 0 ; real_team_num ~= 255",
@@ -323,6 +359,9 @@
       "lines": [
         205
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "possess_ticks",
       "anchor": "if gap < 0 then",
       "condition": "gap < 0",
@@ -358,6 +397,16 @@
         234,
         243,
         259
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "else",
+        "if",
+        "if"
       ],
       "function": "M.possess",
       "anchor": "if phased(self) then",
@@ -417,6 +466,12 @@
         283,
         286
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if"
+      ],
       "function": "M.ai_possess",
       "anchor": "if og.match_setting(\"new_specials\") == 0 then",
       "condition": "off ; phased or charmed ; not foe(24) ; host_refusal",
@@ -467,6 +522,10 @@
         314,
         323
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "veil",
       "anchor": "if not owner then",
       "condition": "not owner ; lifetime <= 0",
@@ -504,6 +563,10 @@
       "lines": [
         333,
         338
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "M.phase",
       "anchor": "if km.find(self, km.PHASE_VEIL) then",
@@ -545,6 +608,13 @@
         368,
         371,
         376
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if",
+        "if"
       ],
       "function": "M.ai_phase",
       "anchor": "if og.match_setting(\"new_specials\") == 0 then",
@@ -596,6 +666,9 @@
       "id": "kit_ghost.lua:265",
       "lines": [
         265
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "defensive",
       "anchor": "if burst then",

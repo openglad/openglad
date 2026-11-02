@@ -7,6 +7,10 @@
         116,
         117
       ],
+      "kinds": [
+        "for",
+        "if"
+      ],
       "function": "find_order",
       "anchor": "for (const auto& oi : kOrders)",
       "condition": "strcmp(oi.name, name) == 0 over kOrders",
@@ -42,6 +46,12 @@
         162,
         170,
         175
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if"
       ],
       "function": "resolve_walker",
       "anchor": "if (h->entity_id != 0 && current_game != nullptr &&",
@@ -92,6 +102,10 @@
         192,
         196
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "resolve_guy",
       "anchor": "if (st != nullptr &&",
       "condition": "h->gen in live_gens -> raw; required && null -> raise",
@@ -120,6 +134,9 @@
       "id": "world_scripts.cpp:384",
       "lines": [
         384
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "push_frozen_view_of_top",
       "anchor": "if (!lua_istable(L, -1))",
@@ -168,6 +185,14 @@
         514,
         520,
         533
+      ],
+      "kinds": [
+        "if",
+        "else",
+        "if",
+        "if",
+        "else",
+        "ternary"
       ],
       "function": "load_pack_lib_module",
       "anchor": "if (luaL_loadbufferx(L, m.source.data(), m.source.size(),",
@@ -234,6 +259,19 @@
         588,
         593,
         599
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if",
+        "switch",
+        "case",
+        "case",
+        "case",
+        "if",
+        "if",
+        "if"
       ],
       "function": "og_use",
       "anchor": "if (st->current_pack.empty())",
@@ -307,6 +345,11 @@
         644,
         646
       ],
+      "kinds": [
+        "if",
+        "else",
+        "ternary"
+      ],
       "function": "walker_eq",
       "anchor": "if (a->entity_id != 0 || b->entity_id != 0)",
       "condition": "either entity_id != 0 -> compare ids; else compare raw pointer and generation",
@@ -332,16 +375,14 @@
           "file": "tests/unit/test_script_hooks.cpp",
           "test": "ScriptBindingTest.world_query_rows_read_the_live_world",
           "note": "spawn:collide_ob() == gen logged true"
-        },
-        {
-          "file": "tests/unit/test_script_bindings_props.cpp",
-          "test": "ScriptBindingPropsTest.kit_possess_and_release_hand_back_the_engine_answer",
-          "note": "og.release_possession(self) == self logged 1"
         }
       ],
       "missing_arms": [
         "handles to different walkers",
         "untracked walker, same gen"
+      ],
+      "note": [
+        "The previously cited ScriptBindingPropsTest.kit_possess_and_release_hand_back_the_engine_answer compares og.release_possession(self) == nil (test_script_bindings_props.cpp:1305), not == self; a userdata-vs-nil comparison never calls __eq, so it neither reaches nor asserts walker_eq and was dropped."
       ]
     },
     {
@@ -354,6 +395,15 @@
         757,
         759,
         763
+      ],
+      "kinds": [
+        "if",
+        "for",
+        "if",
+        "for",
+        "if",
+        "if",
+        "if"
       ],
       "function": "special_slot_for_id / declared_special_ids",
       "anchor": "if (fd == nullptr)",
@@ -398,6 +448,11 @@
         1108,
         1218
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
+      ],
       "function": "og_register_hooks / og_register_level_hooks / og_register_campaign_hooks",
       "anchor": "if (const VmState* fence_st = get_vm_state(L);",
       "condition": "vm state campaign_dispatch -> raise",
@@ -418,15 +473,28 @@
         {
           "file": "tests/unit/test_campaign_hooks.cpp",
           "test": "CampaignHooksTest.fence_walk_everything_outside_the_allowlist_errors",
-          "note": "pcall of register_hooks/register_level_hooks/register_campaign_hooks inside picker_menu errors with a message containing 'campaign hooks'; NOFENCE/WRONGMSG asserted absent"
+          "note": "picker_menu dispatch: pcall of register_hooks/register_level_hooks/register_campaign_hooks errors with a message containing 'campaign hooks'; NOFENCE/WRONGMSG asserted absent"
+        },
+        {
+          "file": "tests/unit/test_campaign_hooks.cpp",
+          "test": "CampaignHooksTest.zone_dispatch_is_fenced_and_brackets_cleanly",
+          "note": "base_camp dispatch: pcall(og.register_campaign_hooks) refused, NOFENCE asserted absent"
+        },
+        {
+          "file": "tests/unit/test_campaign_hooks.cpp",
+          "test": "CampaignHooksTest.match_knobs_dispatch_is_fenced_and_brackets_cleanly",
+          "note": "match_knobs dispatch: pcall(og.register_campaign_hooks) refused, NOFENCE asserted absent"
         },
         {
           "file": "tests/unit/test_script_hooks.cpp",
           "test": "ScriptHooksTest.register_hooks_load_error_vocabulary",
-          "note": "load-time control registers do_special and it dispatches"
+          "note": "at-load arm: the f.lua control at 1579-1589 asserts has_hook true and do_special dispatches true"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [],
+      "note": [
+        "partially: base_camp/match_knobs dispatches are asserted for og.register_campaign_hooks only (og.register_hooks/og.register_level_hooks are fence-walked inside picker_menu only); the fence is the one campaign_dispatch flag shared by all three dispatches."
+      ]
     },
     {
       "id": "world_scripts.cpp:785",
@@ -437,6 +505,14 @@
         806,
         814,
         816
+      ],
+      "kinds": [
+        "if",
+        "for",
+        "while",
+        "if",
+        "for",
+        "if"
       ],
       "function": "og_register_hooks",
       "anchor": "if (oi == nullptr)",
@@ -461,11 +537,23 @@
       "tests": [
         {
           "file": "tests/unit/test_script_hooks.cpp",
-          "test": "ScriptHooksTest.unknown_hook_name_is_a_load_error"
+          "test": "ScriptHooksTest.unknown_hook_name_is_a_load_error",
+          "note": "'on_deatch'-class arm: \"has no hook 'do_speshul'\" + \"did you mean 'do_special'\""
         },
         {
           "file": "tests/unit/test_script_hooks.cpp",
-          "test": "ScriptHooksTest.register_hooks_load_error_vocabulary"
+          "test": "ScriptHooksTest.register_hooks_load_error_vocabulary",
+          "note": "(number-key arm: 'keys are hook names (got a number key' at 1547-1551; valid-names arm: the f.lua control at 1579-1589 asserts has_hook(Living, SOLDIER, DoSpecial) true and do_special dispatches true)"
+        },
+        {
+          "file": "tests/unit/test_script_hooks.cpp",
+          "test": "ScriptHooksTest.order_alias_fx_and_effect_both_resolve",
+          "note": "valid-names arm: errors empty and has_hook EXPECT_TRUE for FX boomerang EffectOnAct and chain EffectOnDeath, 196-200"
+        },
+        {
+          "file": "tests/unit/test_script_hooks.cpp",
+          "test": "SpecialsDispatchTest.table_selects_by_current_special",
+          "note": "valid-names arm via the 'specials' key: r1 has_value and log 'charge'"
         }
       ],
       "missing_arms": []
@@ -475,6 +563,10 @@
       "lines": [
         830,
         1118
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "og_register_hooks / og_register_level_hooks",
       "anchor": "if (declare_st != nullptr && declare_st->mode == VmMode::Declare)",
@@ -506,12 +598,18 @@
       ],
       "missing_arms": [
         "bind replay"
+      ],
+      "note": [
+        "partially: the declare-VM arm asserts 'no host error' (DeclareResult ok, later family harvested); 'no hook installed' is not read for og.register_hooks (the test's install control is og.register_default_lineup). The bind-replay citation covers og.register_level_hooks only, so the bind-replay arm stays missing for og.register_hooks."
       ]
     },
     {
       "id": "world_scripts.cpp:835",
       "lines": [
         835
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "og_register_hooks",
       "anchor": "if (family_id < 0)",
@@ -537,7 +635,7 @@
         {
           "file": "tests/unit/test_script_hooks.cpp",
           "test": "ScriptHooksTest.register_hooks_load_error_vocabulary",
-          "note": "known-family control registers"
+          "note": "known-family arm: f.lua control for core:soldier asserts has_hook true, 1579-1589"
         }
       ],
       "missing_arms": []
@@ -550,6 +648,13 @@
         860,
         872,
         875
+      ],
+      "kinds": [
+        "for",
+        "if",
+        "if",
+        "if",
+        "if"
       ],
       "function": "og_register_hooks",
       "anchor": "for (size_t i = 0; i < oi->hook_count; i++) {",
@@ -601,6 +706,13 @@
         898,
         902,
         909
+      ],
+      "kinds": [
+        "if",
+        "else",
+        "if",
+        "if",
+        "if"
       ],
       "function": "og_register_hooks (specials)",
       "anchor": "if (lua_isnil(L, -1)) {",
@@ -654,6 +766,17 @@
         955,
         961,
         968
+      ],
+      "kinds": [
+        "while",
+        "if",
+        "else if",
+        "if",
+        "else",
+        "if",
+        "else",
+        "if",
+        "if"
       ],
       "function": "og_register_hooks (specials)",
       "anchor": "while (lua_next(L, spec_idx) != 0) {",
@@ -719,6 +842,14 @@
         996,
         1008
       ],
+      "kinds": [
+        "ternary",
+        "for",
+        "if",
+        "if",
+        "if",
+        "if"
+      ],
       "function": "og_register_hooks (specials)",
       "anchor": "has_default ? 1 : 0);",
       "condition": "store private slot-ordered copy; has_default -> store default; occupied && !overriding_declaration -> report",
@@ -777,6 +908,10 @@
         1017,
         1140
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "og_register_hooks / og_register_level_hooks",
       "anchor": "if (registered == 0)",
       "condition": "registered == 0 -> raise",
@@ -796,11 +931,18 @@
       "tests": [
         {
           "file": "tests/unit/test_script_hooks.cpp",
-          "test": "ScriptHooksTest.register_hooks_load_error_vocabulary"
+          "test": "ScriptHooksTest.register_hooks_load_error_vocabulary",
+          "note": "{} arm for register_hooks: 'no valid hooks for living'; one-valid-hook arm: f.lua control asserts has_hook true, 1579-1589"
         },
         {
           "file": "tests/unit/test_level_scripts.cpp",
-          "test": "LevelScriptsTest.level_and_entity_hook_registration_rejections"
+          "test": "LevelScriptsTest.level_and_entity_hook_registration_rejections",
+          "note": "{} arm for register_level_hooks: 'no valid hooks (check names)'"
+        },
+        {
+          "file": "tests/unit/test_level_scripts.cpp",
+          "test": "LevelScriptsTest.a_family_chunk_registers_level_hooks_in_the_real_pass",
+          "note": "one-valid-hook arm for register_level_hooks: kinds == on_load bit"
         }
       ],
       "missing_arms": []
@@ -811,6 +953,11 @@
         1041,
         1043,
         1045
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
       ],
       "function": "og_rand",
       "anchor": "if (n <= 0)",
@@ -861,6 +1008,9 @@
       "lines": [
         1057
       ],
+      "kinds": [
+        "ternary"
+      ],
       "function": "og_is_alive",
       "anchor": "lua_pushboolean(L, (w != nullptr && w->dead() == 0) ? 1 : 0);",
       "condition": "w != nullptr && w->dead() == 0",
@@ -897,6 +1047,9 @@
       "id": "world_scripts.cpp:1062",
       "lines": [
         1062
+      ],
+      "kinds": [
+        ""
       ],
       "function": "og_entity_id",
       "anchor": "int og_entity_id(lua_State* L)",
@@ -938,6 +1091,9 @@
       "id": "world_scripts.cpp:1081",
       "lines": [
         1081
+      ],
+      "kinds": [
+        "ternary"
       ],
       "function": "level_hook_key",
       "anchor": "level_id < 0 ? 0 : static_cast<lua_Integer>(level_id) + 1;",
@@ -984,6 +1140,12 @@
         1129,
         1132
       ],
+      "kinds": [
+        "for",
+        "if",
+        "if",
+        "if"
+      ],
       "function": "og_register_level_hooks",
       "anchor": "for (const auto& h : kLevelHookNames) {",
       "condition": "nil skip; non-function -> raise",
@@ -1019,6 +1181,11 @@
         1154,
         1161,
         1164
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
       ],
       "function": "og_set_entity_hooks",
       "anchor": "if (h->entity_id == 0)",
@@ -1068,6 +1235,12 @@
         1245,
         1247
       ],
+      "kinds": [
+        "while",
+        "if",
+        "for",
+        "if"
+      ],
       "function": "og_register_campaign_hooks",
       "anchor": "while (lua_next(L, 1) != 0) {",
       "condition": "every key a string among vars/picker_menu/picker_action/base_camp/match_knobs/lineup",
@@ -1114,6 +1287,14 @@
         1272,
         1277,
         1321
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if"
       ],
       "function": "og_register_campaign_hooks",
       "anchor": "if (has_menu && !lua_isfunction(L, 2))",
@@ -1166,6 +1347,15 @@
         1313,
         1317
       ],
+      "kinds": [
+        "if",
+        "while",
+        "if",
+        "for",
+        "if",
+        "if",
+        "if"
+      ],
       "function": "og_register_campaign_hooks (lineup)",
       "anchor": "if (has_lineup) {",
       "condition": "lineup keys: only 'power' (string); power must be a function and present",
@@ -1216,6 +1406,13 @@
         1339,
         1341
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "for",
+        "if"
+      ],
       "function": "og_register_campaign_hooks (vars)",
       "anchor": "if (!lua_isnil(L, -1)) {",
       "condition": "vars present: must be a table; rawlen <= kCampaignVarsMax (64); each entry a string of 1..kCampaignVarNameMax [a-z0-9_]; (continues past line 1341: array-only key check)",
@@ -1261,6 +1458,9 @@
       "lines": [
         1348
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "og_register_campaign_hooks",
       "anchor": "if (!hooks::valid_campaign_var_name({name, len}))",
       "condition": "!hooks::valid_campaign_var_name({name,len})",
@@ -1298,6 +1498,11 @@
         1362,
         1364
       ],
+      "kinds": [
+        "while",
+        "if",
+        "if"
+      ],
       "function": "og_register_campaign_hooks",
       "anchor": "while (lua_next(L, -2) != 0) {",
       "condition": "lua_next loop; index<1 || index>count",
@@ -1333,6 +1538,9 @@
       "lines": [
         1375
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "og_register_campaign_hooks",
       "anchor": "if (st != nullptr && st->mode == VmMode::Declare)",
       "condition": "st->mode == VmMode::Declare",
@@ -1348,30 +1556,30 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_campaign_hooks.cpp",
-          "test": "CampaignHooksTest.declare_mode_registrar_is_a_silent_noop",
-          "note": "DeclareResult ok"
-        },
-        {
-          "file": "tests/unit/test_campaign_hooks.cpp",
-          "test": "CampaignHooksTest.declare_mode_still_rejects_a_bad_registration"
-        },
-        {
-          "file": "tests/unit/test_campaign_hooks.cpp",
           "test": "CampaignHooksTest.registration_happy_path_serves_picker_and_vars",
-          "note": "world pass installs"
+          "note": "world pass installs: campaign_picker_registered TRUE, vars listed"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "declaration pass"
+      ],
+      "note": [
+        "declaration pass: only DeclareResult ok (no error) is asserted, which holds whether or not the early return exists; no test asserts that the declare pass installed no campaign book (contrast :1492, where the_declaration_pass_bows_out_of_behaviour_registrars asserts campaign_lineup_registered() FALSE after the declaration)."
+      ]
     },
     {
       "id": "world_scripts.cpp:1378",
       "lines": [
         1378,
         1383
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "og_register_campaign_hooks",
       "anchor": "if (st->campaign_registered) {",
@@ -1421,6 +1629,13 @@
         1407,
         1413
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if",
+        "if"
+      ],
       "function": "og_register_campaign_hooks",
       "anchor": "if (has_menu) {",
       "condition": "has_menu / has_action / has_zone / has_knobs / has_lineup_power",
@@ -1465,14 +1680,25 @@
         {
           "file": "tests/unit/test_campaign_hooks.cpp",
           "test": "CampaignHooksTest.match_knobs_and_lineup_coexist_at_their_slots"
+        },
+        {
+          "file": "tests/unit/test_campaign_hooks.cpp",
+          "test": "CampaignHooksTest.state_set_bounds_rejection_raises_before_mutation",
+          "note": "picker_action present: ASSERT_TRUE(campaign_picker_action) and the Lua body's six log lines, lines 701-710"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [],
+      "note": [
+        "per key: menu present (match_knobs_and_lineup_coexist: page.title 'BOOK'), action present (state_set_bounds_rejection...), zone present (base_camp_alone: 1 widget), knobs present (match_knobs_alone: every field), lineup present (coexist: power 67); absent: action/page (base_camp_alone), zone (zone_unregistered...), knobs (match_knobs_absent: defaults), lineup (no_lineup_hook...)."
+      ]
     },
     {
       "id": "world_scripts.cpp:1449",
       "lines": [
         1449
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "og_register_default_lineup",
       "anchor": "if (st != nullptr && st->campaign_dispatch)",
@@ -1512,6 +1738,12 @@
         1471,
         1473
       ],
+      "kinds": [
+        "while",
+        "if",
+        "for",
+        "if"
+      ],
       "function": "og_register_default_lineup",
       "anchor": "while (lua_next(L, 1) != 0) {",
       "condition": "lua_next key loop; key not string; key not in {'power'}",
@@ -1546,6 +1778,9 @@
       ],
       "missing_arms": [
         "misspelled key 'powr'"
+      ],
+      "note": [
+        "misspelled key: 'unknown key 'powr'' is asserted, but the arm's did-you-mean 'power' hint (did_you_mean() appended to the same message) is never read for og.register_default_lineup; the other registrars' did-you-mean tests do not reach this call site."
       ]
     },
     {
@@ -1553,6 +1788,10 @@
       "lines": [
         1484,
         1487
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "og_register_default_lineup",
       "anchor": "if (lua_isnil(L, -1))",
@@ -1591,6 +1830,9 @@
       "id": "world_scripts.cpp:1492",
       "lines": [
         1492
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "og_register_default_lineup",
       "anchor": "if (st != nullptr && st->mode == VmMode::Declare)",
@@ -1634,6 +1876,9 @@
       "lines": [
         1513
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "og_family_id",
       "anchor": "if (oi == nullptr)",
       "condition": "oi == nullptr",
@@ -1662,6 +1907,9 @@
       "id": "world_scripts.cpp:1521",
       "lines": [
         1521
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "og_family_id",
       "anchor": "if (st != nullptr && st->mode == VmMode::Declare) {",
@@ -1697,6 +1945,10 @@
       "lines": [
         1527,
         1529
+      ],
+      "kinds": [
+        "if",
+        "else"
       ],
       "function": "og_family_id",
       "anchor": "if (id < 0)",
@@ -1734,6 +1986,14 @@
         1588,
         1595,
         1597
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if"
       ],
       "function": "warn_unhandled_castable_specials",
       "anchor": "if (!lua_istable(L, -1)) {",
@@ -1812,6 +2072,12 @@
         1768,
         1770
       ],
+      "kinds": [
+        "for",
+        "if",
+        "if",
+        "else"
+      ],
       "function": "WorldScripts::WorldScripts",
       "anchor": "for (const PackLibModule& m : pack_lib_modules()) {",
       "condition": "lib_status != None; settled",
@@ -1836,16 +2102,19 @@
         {
           "file": "tests/unit/test_script_host.cpp",
           "test": "PackLibTest.modules_load_eagerly_in_order_before_scripts",
-          "note": "each module runs once, in order, before the script"
+          "note": "module not yet loaded: each module runs once, in order, before the script"
         },
         {
           "file": "tests/unit/test_script_host.cpp",
           "test": "PackLibTest.on_demand_load_inside_the_eager_pass_settles_once",
-          "note": "'late' loaded on demand by 'early', eager pass skips it via the memoized export: log has it once"
+          "note": "export pushed but status None: 'late' was loaded on demand by 'early', its export is memoized with nil status, the eager pass pops it and skips: log size 3"
         }
       ],
       "missing_arms": [
         "module already settled"
+      ],
+      "note": [
+        "'module already settled' is the lib_status != None arm (status 'failed' or 'loading'; a successful load leaves status nil, which is the third arm). No test pins that a module latched failed on demand inside the eager pass is not re-run by the eager loop."
       ]
     },
     {
@@ -1854,6 +2123,11 @@
         1781,
         1785,
         1788
+      ],
+      "kinds": [
+        "for",
+        "if",
+        "if"
       ],
       "function": "WorldScripts::WorldScripts",
       "anchor": "for (const PackScript& fc : pack_family_chunks()) {",
@@ -1874,7 +2148,7 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_classpack_lua_install.cpp",
@@ -1892,13 +2166,22 @@
           "note": "bind fails: error 'the world API is dispatch-time only' latched"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "bind fails"
+      ],
+      "note": [
+        "bind fails: the latched host error ('the world API is dispatch-time only') is asserted, but run_chunk writes it; the branch's own effect, LogError 'class pack ... family chunk ... failed to bind', is read by no test (no test anywhere captures 'failed to bind'). Same convention as :1802 and :1900."
+      ]
     },
     {
       "id": "world_scripts.cpp:1802",
       "lines": [
         1800,
         1802
+      ],
+      "kinds": [
+        "for",
+        "if"
       ],
       "function": "WorldScripts::WorldScripts",
       "anchor": "for (const PackScript& ps : pack_scripts()) {",
@@ -1915,21 +2198,30 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_script_host.cpp",
           "test": "ScriptHostPackTest.a_chunk_that_fails_to_compile_is_recorded_not_silent",
-          "note": "error recorded with 'syntax error'; the healthy sibling chunk's do_special registered"
+          "note": "chunk ok: healthy sibling's do_special registered; chunk fails: host error record only, lines 732-736"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "chunk fails"
+      ],
+      "note": [
+        "chunk ok asserted (sibling b_healthy.lua's do_special has_hook TRUE). chunk fails only half asserted: the host error record ('a_broken', 'syntax error') is asserted, but it is written by run_chunk, not this branch; the branch's own effect, LogError 'class pack ... chunk ... failed to load', is read by no test, and no test asserts that a family the failing chunk would have bound (e.g. a chunk that registers core:soldier hooks and then errors at top level) answers has_hook FALSE."
+      ]
     },
     {
       "id": "world_scripts.cpp:1854",
       "lines": [
         1854,
         1859
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "active_world_scripts",
       "anchor": "if (current_game != nullptr && current_game->world != nullptr)",
@@ -1950,7 +2242,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_level_scripts.cpp",
@@ -1961,10 +2253,16 @@
           "file": "tests/unit/test_campaign_hooks.cpp",
           "test": "CampaignHooksTest.registration_happy_path_serves_picker_and_vars",
           "note": "no-world stale-rebuild arm"
+        },
+        {
+          "file": "tests/unit/test_script_hooks.cpp",
+          "test": "ScriptHooksTest.erroring_hook_is_latched_loudly",
+          "note": "no world, fresh: the fixture sets no current_game; hooks::on_death records the runtime 'boom' error in the shared VM, then a second active_world_scripts() call must return that SAME VM: ASSERT_FALSE(errors().empty()) and find('boom') at lines 143-146 fail on a rebuilt VM, which has no runtime error"
         }
       ],
-      "missing_arms": [
-        "no world, fresh"
+      "missing_arms": [],
+      "note": [
+        "the 'no world, fresh' arm is asserted indirectly (through VM state that survives only on reuse), not by an address or built_generation() comparison; the stage sketch's direct form would be stronger."
       ]
     },
     {
@@ -1973,6 +2271,11 @@
         1891,
         1892,
         1900
+      ],
+      "kinds": [
+        "for",
+        "if",
+        "if"
       ],
       "function": "note_hook_failure",
       "anchor": "for (auto it = impl.errors.rbegin(); it != impl.errors.rend(); ++it) {",
@@ -2013,6 +2316,12 @@
         1961,
         1965,
         1970
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if"
       ],
       "function": "HookFrame::begin_special",
       "anchor": "if (lua_istable(L_, -1)) {",
@@ -2072,6 +2381,10 @@
         2012,
         2018
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "HookFrame::call",
       "anchor": "if (!impl_.protected_call(where, nargs_, wants_result ? 1 : 0)) {",
       "condition": "!protected_call; wants_result",
@@ -2122,6 +2435,9 @@
       ],
       "missing_arms": [
         "result hook returns any other value"
+      ],
+      "note": [
+        "'returns true' is asserted (healthy_hook_leaves_the_failure_latch_clear); the missing arm is the Lua-truthiness half: a non-boolean truthy return (0, '', a table) coerced to true is never asserted."
       ]
     },
     {
@@ -2137,6 +2453,18 @@
         2067,
         2075,
         2085
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "else",
+        "if",
+        "if",
+        "else",
+        "if",
+        "else",
+        "if",
+        "ternary"
       ],
       "function": "HookFrame::call_special",
       "anchor": "if (!impl_.protected_call(where, nargs_, 2)) {",
@@ -2196,6 +2524,9 @@
       "lines": [
         2134
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "try_script_hook",
       "anchor": "if (!ws.has_hook(order, family_id, hook))",
       "condition": "!ws.has_hook(order,family,hook)",
@@ -2215,21 +2546,39 @@
       "tests": [
         {
           "file": "tests/unit/test_script_hooks.cpp",
-          "test": "ScriptHooksTest.no_scripts_means_cpp_dispatch_untouched"
+          "test": "SpecialsDispatchTest.table_selects_by_current_special",
+          "note": "registered arm: the Lua function runs, vm_log().back() == 'charge' / 'boomerang', lines 306-315"
+        },
+        {
+          "file": "tests/unit/test_script_hooks.cpp",
+          "test": "ScriptHooksTest.healthy_hook_leaves_the_failure_latch_clear",
+          "note": "registered on_death through try_script_hook: has_value() and *result true, count 0"
+        },
+        {
+          "file": "tests/unit/test_script_hooks.cpp",
+          "test": "ScriptHooksTest.no_scripts_means_cpp_dispatch_untouched",
+          "note": "not-registered arm: real soldier descriptor, no hook: on_death has no value"
         },
         {
           "file": "tests/unit/test_script_hooks.cpp",
           "test": "ScriptHooksTest.an_unclaimed_family_has_no_behavior",
-          "note": "control: registered hooks answer"
+          "note": "only its control half, lines 1498-1517, reaches this branch: registered do_special/on_shoved/weapon_on_death/effect_on_act answer has_value() && true; its null-descriptor half stops at the wrapper fd==nullptr check, row :2187, and never reaches has_hook"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [],
+      "note": [
+        "partially: the not-registered arm's 'no error' half is unread by the cited test (no_scripts_means_cpp_dispatch_untouched asserts only the nullopt); 'no VM call' has no direct observable. The nullopt itself, the branch's own effect, is asserted."
+      ]
     },
     {
       "id": "world_scripts.cpp:2153",
       "lines": [
         2153,
         2162
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "try_script_do_special",
       "anchor": "if (!ws.has_hook(Order::Living, family_id, FamilyHook::DoSpecial))",
@@ -2302,6 +2651,30 @@
         2403,
         2415
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if"
+      ],
       "function": "hooks::* wrappers",
       "anchor": "if (fd == nullptr)",
       "condition": "fd == nullptr (and stats == nullptr in hit_response)",
@@ -2328,6 +2701,9 @@
       "missing_arms": [
         "descriptor null",
         "descriptor present"
+      ],
+      "note": [
+        "per wrapper (22 sites): descriptor null asserted for 21 (an_unclaimed_family_has_no_behavior, EXPECT_FALSE each, failure latch 0); never for on_kill, and hit_response's stats == nullptr half is never called with a real descriptor. Descriptor present asserted only for do_special, on_shoved, weapon_on_death, effect_on_act in the cited test. Status partial because each arm is asserted for some wrappers; both arms stay in missing_arms because neither holds for every wrapper (see stage.sketch)."
       ]
     },
     {
@@ -2344,6 +2720,19 @@
         2393,
         2405,
         2417
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if"
       ],
       "function": "hooks::do_special / check_special_ai / on_death / on_fire_weapon / handle_teleport / on_ani_complete / weapon_on_death / weapon_on_animate / effect_on_act / effect_on_death / treasure_on_eat",
       "anchor": "if (auto r = try_script_do_special(fd->family_id, self, error_reason))",
@@ -2393,6 +2782,11 @@
         2221,
         2233
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
+      ],
       "function": "hooks::hit_response / set_difficulty / level_up",
       "anchor": "if (try_script_hook(Order::Living, fd->family_id, FamilyHook::HitResponse,",
       "condition": "try_script_hook(...) has_value",
@@ -2418,6 +2812,9 @@
         "hook ran",
         "no hook",
         "hook errored"
+      ],
+      "note": [
+        "level_up_guy_handle_is_dispatch_scoped does assert the level_up wrapper's own return (ran -> true, errored -> false with the latch), but every arm's observable is the CALLER's choice between hook and C++ default, which no test reads for any of the three; hit_response and set_difficulty are never asserted even at the wrapper."
       ]
     },
     {
@@ -2430,6 +2827,15 @@
         2336,
         2346,
         2381
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if"
       ],
       "function": "hooks::on_act_living / on_shoved / on_create / customize_weapon / on_melee_hit / on_kill / weapon_on_hit_target / generator_customize_spawn",
       "anchor": "if (try_script_hook(Order::Living, fd->family_id, FamilyHook::OnActLiving,",
@@ -2472,12 +2878,19 @@
         "hook ran",
         "no hook",
         "hook errored"
+      ],
+      "note": [
+        "tests/unit/test_campaign_packs.cpp: on_create for a pack wisp family (line 388: ASSERT_TRUE(hooks::on_create(fd, wisp)), then magicpoints < 100 and >= 84, ani_type ANI_WALK: hook ran -> true with Lua side effects)",
+        "per wrapper: hook ran asserted for on_melee_hit, on_shoved, generator_customize_spawn, on_create; not for on_act_living, customize_weapon, on_kill, weapon_on_hit_target. hook errored asserted for on_melee_hit only. no hook (real descriptor, no hook of that kind) asserted for none. All three arms stay in missing_arms because none holds for every wrapper."
       ]
     },
     {
       "id": "world_scripts.cpp:2263",
       "lines": [
         2263
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "hooks::on_act_override",
       "anchor": "if (auto r = try_script_hook(Order::Living, fd->family_id,",
@@ -2519,6 +2932,11 @@
         2444,
         2448,
         2528
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
       ],
       "function": "level_vm_state / level_entity_death",
       "anchor": "if (pack_lua_absent())",
@@ -2562,6 +2980,10 @@
       "lines": [
         2460,
         2466
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "push_level_hook_fn",
       "anchor": "if (lua_isfunction(L, -1)) {",
@@ -2607,6 +3029,11 @@
         2478,
         2484,
         2487
+      ],
+      "kinds": [
+        "if",
+        "for",
+        "if"
       ],
       "function": "level_hook_kinds_for",
       "anchor": "if (pack_lua_absent())",
@@ -2655,6 +3082,12 @@
         2513,
         2516
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if"
+      ],
       "function": "level_load / level_tick",
       "anchor": "if (st == nullptr || world == nullptr)",
       "condition": "st==nullptr || world==nullptr; !push_level_hook_fn",
@@ -2696,6 +3129,13 @@
         2569,
         2592,
         2594
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "else",
+        "if",
+        "else"
       ],
       "function": "level_entity_death",
       "anchor": "if (world != nullptr && self->last_attacker_id() != 0 &&",
@@ -2748,6 +3188,13 @@
         2574,
         2577
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "else",
+        "else"
+      ],
       "function": "level_entity_death",
       "anchor": "if (st->has_entity_hooks && self->entity_id() != 0) {",
       "condition": "has_entity_hooks && entity_id!=0; istable(entry); isfunction(on_death)",
@@ -2785,6 +3232,10 @@
       "lines": [
         2583,
         2588
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "level_entity_death",
       "anchor": "if ((st->level_hook_kinds &",
@@ -2826,6 +3277,11 @@
         2609,
         2612
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
+      ],
       "function": "level_entity_spawn",
       "anchor": "if (st == nullptr)",
       "condition": "st==nullptr; world==nullptr; !push_level_hook_fn",
@@ -2864,6 +3320,10 @@
       "lines": [
         2624,
         2628
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "level_mode_init",
       "anchor": "if (st == nullptr || world == nullptr)",
@@ -2913,6 +3373,10 @@
         2647,
         2650
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "level_mode_tick",
       "anchor": "if (st == nullptr || world == nullptr)",
       "condition": "st/world null; !push_level_hook_fn",
@@ -2950,6 +3414,10 @@
       "lines": [
         2664,
         2667
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "level_respawn",
       "anchor": "if (st == nullptr || world == nullptr || revived == nullptr)",
@@ -2990,6 +3458,9 @@
       "lines": [
         2679
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "level_lineup_stage",
       "anchor": "if (st == nullptr || world == nullptr)",
       "condition": "st == nullptr || world == nullptr (continues past chunk end at 2683)",
@@ -3029,6 +3500,9 @@
       "id": "world_scripts.cpp:2683",
       "lines": [
         2683
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "level_lineup_stage",
       "anchor": "if (!push_level_hook_fn(L, st, LevelHook::LineupStage, world->id))",
@@ -3075,6 +3549,10 @@
         2700,
         2708
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "level_damage_gate",
       "anchor": "if (st == nullptr || target == nullptr)",
       "condition": "st == nullptr || target == nullptr; !push_level_hook_fn(L, st, LevelHook::Damage, world->id)",
@@ -3117,6 +3595,14 @@
         2723,
         2732,
         2734
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "else if",
+        "if",
+        "else if"
       ],
       "function": "level_damage_gate",
       "anchor": "if (impl.protected_call(\"level:on_damage\", 3, 1)) {",
@@ -3220,6 +3706,10 @@
         2761,
         2768
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "CampaignDispatchScope",
       "anchor": "if (impl.entry_depth == 0 && !st.campaign_dispatch) {",
       "condition": "impl.entry_depth == 0 && !st.campaign_dispatch; if (armed_)",
@@ -3266,6 +3756,12 @@
         2794,
         2795
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if"
+      ],
       "function": "campaign_vm_state",
       "anchor": "if (pack_lua_absent())",
       "condition": "pack_lua_absent(); st == nullptr || !st->campaign_registered; !campaign_conflict_source.empty(); !campaign_conflict_reported",
@@ -3307,6 +3803,10 @@
       "lines": [
         2819,
         2823
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "default_lineup_vm_state",
       "anchor": "if (pack_lua_absent())",
@@ -3359,6 +3859,15 @@
         3966,
         3983
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if"
+      ],
       "function": "push_campaign_hook_fn (+ each dispatcher)",
       "anchor": "if (lua_isfunction(L, -1)) {",
       "condition": "lua_isfunction(L, -1) on the book's slot",
@@ -3408,6 +3917,17 @@
         2910,
         2914
       ],
+      "kinds": [
+        "ternary",
+        "if",
+        "if",
+        "ternary",
+        "if",
+        "if",
+        "ternary",
+        "if",
+        "if"
+      ],
       "function": "read_string_field / read_int_field_opt / read_bool_field",
       "anchor": "lua_rawget(L, idx > 0 ? idx : idx - 1);",
       "condition": "idx > 0 ? idx : idx-1; lua_isnil; lua_type != LUA_TSTRING; !lua_isinteger; !lua_isboolean",
@@ -3450,6 +3970,11 @@
         2925,
         2929,
         2933
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
       ],
       "function": "parse_entry_kind",
       "anchor": "if (s == \"level\") {",
@@ -3500,13 +4025,31 @@
         2974,
         2980
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if"
+      ],
       "function": "read_page_entry",
       "anchor": "if (!read_string_field(L, -1, \"id\", entry.id, present) || !present ||",
       "condition": "id missing/empty; kind; label; note; level; cost; done; replay",
       "semantic": "A picker/zone row must carry a non-empty string id and a valid kind; label/note (strings), level/cost (integers), done/replay (booleans) are optional but must be typed. Whether the replay mark arms is the engine's check (level cleared), not the script's.",
       "arms": [
         {
-          "when": "id missing, non-string or empty",
+          "when": "id missing",
+          "observable": "'.id is missing or not a string'"
+        },
+        {
+          "when": "id non-string (e.g. id = 5)",
+          "observable": "'.id is missing or not a string'"
+        },
+        {
+          "when": "id empty string",
           "observable": "'.id is missing or not a string'"
         },
         {
@@ -3548,7 +4091,7 @@
         {
           "file": "tests/unit/test_campaign_hooks.cpp",
           "test": "CampaignHooksTest.malformed_pages_answer_no_scripted_picker",
-          "note": "{noid,badkind,badlabel,badnote,badlevel,badcost,baddone,badreplay}"
+          "note": "{noid,badkind,badlabel,badnote,badlevel,badcost,baddone,badreplay} (id missing arm: {noid} -> errors_contain(\".id is missing\"))"
         },
         {
           "file": "tests/unit/test_campaign_hooks.cpp",
@@ -3567,7 +4110,8 @@
         }
       ],
       "missing_arms": [
-        "id missing, non-string or empty"
+        "id non-string (e.g. id = 5)",
+        "id empty string"
       ]
     },
     {
@@ -3575,6 +4119,10 @@
       "lines": [
         2994,
         2999
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "parse_campaign_page",
       "anchor": "if (!lua_istable(L, -1))",
@@ -3613,6 +4161,12 @@
         3012,
         3014
       ],
+      "kinds": [
+        "if",
+        "if",
+        "for",
+        "if"
+      ],
       "function": "parse_campaign_page",
       "anchor": "if (!lua_isnil(L, -1)) {",
       "condition": "lines nil / not table / for i<=min(rawlen,6) / lines[i] not string",
@@ -3646,6 +4200,11 @@
           "file": "tests/unit/test_campaign_hooks.cpp",
           "test": "CampaignHooksTest.malformed_pages_answer_no_scripted_picker",
           "note": "{badlines,badline}"
+        },
+        {
+          "file": "tests/unit/test_campaign_hooks.cpp",
+          "test": "CampaignHooksTest.page_parse_happy_path",
+          "note": "lines nil arm: page \"other\" -> EXPECT_TRUE(empty.lines.empty())"
         }
       ],
       "missing_arms": []
@@ -3658,6 +4217,13 @@
         3037,
         3040,
         3046
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "for",
+        "if",
+        "if"
       ],
       "function": "parse_campaign_page",
       "anchor": "if (!lua_isnil(L, -1)) {",
@@ -3696,6 +4262,11 @@
           "file": "tests/unit/test_campaign_hooks.cpp",
           "test": "CampaignHooksTest.malformed_pages_answer_no_scripted_picker",
           "note": "{badentries,entrynotable}"
+        },
+        {
+          "file": "tests/unit/test_campaign_hooks.cpp",
+          "test": "CampaignHooksTest.page_parse_happy_path",
+          "note": "entries nil arm: page \"other\" -> EXPECT_TRUE(empty.entries.empty())"
         }
       ],
       "missing_arms": []
@@ -3707,6 +4278,12 @@
         3077,
         3081,
         3085
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if"
       ],
       "function": "parse_zone_kind",
       "anchor": "if (s == \"roster\") {",
@@ -3750,6 +4327,19 @@
         3142,
         3143,
         3152
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "for",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if"
       ],
       "function": "parse_zone_locks",
       "anchor": "if (lua_isnil(L, -1)) {",
@@ -3823,6 +4413,15 @@
         3203,
         3213
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if",
+        "for",
+        "if",
+        "if"
+      ],
       "function": "parse_zone_assign",
       "anchor": "if (lua_isnil(L, -1)) {",
       "condition": "assign nil / not table / key invalid / labels not exactly 2 / label empty or non-string / frozen not string",
@@ -3845,7 +4444,11 @@
           "observable": "'.assign.labels must list exactly 2 labels'"
         },
         {
-          "when": "empty/non-string label",
+          "when": "empty label",
+          "observable": "'.assign.labels[k] must be a non-empty string'"
+        },
+        {
+          "when": "non-string label",
           "observable": "'.assign.labels[k] must be a non-empty string'"
         },
         {
@@ -3863,7 +4466,7 @@
         {
           "file": "tests/unit/test_campaign_hooks.cpp",
           "test": "CampaignHooksTest.zone_bounds_and_malformed_shapes_fall_to_default",
-          "note": "{33,34,35 + key + labels}"
+          "note": "{33,34,35 + key + labels} (empty label arm: shape 34 labels={'',B} -> errors_contain('assign.labels[1] must be a non-empty string'))"
         },
         {
           "file": "tests/unit/test_campaign_hooks.cpp",
@@ -3871,7 +4474,7 @@
         }
       ],
       "missing_arms": [
-        "empty/non-string label"
+        "non-string label"
       ]
     },
     {
@@ -3880,6 +4483,11 @@
         3236,
         3237,
         3242
+      ],
+      "kinds": [
+        "for",
+        "if",
+        "if"
       ],
       "function": "parse_zone_roster",
       "anchor": "for (const auto& cap : caps) {",
@@ -3919,6 +4527,13 @@
         3268,
         3270
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "for",
+        "if"
+      ],
       "function": "parse_zone_text",
       "anchor": "if (lua_isnil(L, -1)) {",
       "condition": "lines nil / not table / count>6 / line not string",
@@ -3942,17 +4557,20 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_campaign_hooks.cpp",
           "test": "CampaignHooksTest.zone_bounds_and_malformed_shapes_fall_to_default",
           "note": "{11,36,37}"
+        },
+        {
+          "file": "tests/unit/test_campaign_picker_session.cpp",
+          "test": "CampaignPickerSessionTest.terminal_camp_skips_empty_text_and_empty_actions",
+          "note": "nil arm: a text widget with no lines parses and leaves the camp page byte-identical to the control: EXPECT_EQ(control, with_empties)"
         }
       ],
-      "missing_arms": [
-        "nil"
-      ]
+      "missing_arms": []
     },
     {
       "id": "world_scripts.cpp:3303",
@@ -3963,6 +4581,14 @@
         3313,
         3317,
         3323
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "for",
+        "if",
+        "if"
       ],
       "function": "parse_zone_actions",
       "anchor": "if (lua_isnil(L, -1)) {",
@@ -3991,17 +4617,20 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_campaign_hooks.cpp",
           "test": "CampaignHooksTest.zone_bounds_and_malformed_shapes_fall_to_default",
           "note": "{23,38,39,'action rows in total'}"
+        },
+        {
+          "file": "tests/unit/test_campaign_picker_session.cpp",
+          "test": "CampaignPickerSessionTest.terminal_camp_skips_empty_text_and_empty_actions",
+          "note": "nil arm: an actions widget with no entries adds no row: prompt label stays 'Camp # [1-1] (0 = back): '"
         }
       ],
-      "missing_arms": [
-        "nil"
-      ]
+      "missing_arms": []
     },
     {
       "id": "world_scripts.cpp:3349",
@@ -4013,6 +4642,15 @@
         3360,
         3367,
         3373
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "for",
+        "if",
+        "if",
+        "if"
       ],
       "function": "parse_zone_readout",
       "anchor": "if (lua_isnil(L, -1)) {",
@@ -4065,6 +4703,12 @@
         3405,
         3409
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if"
+      ],
       "function": "parse_zone_widget",
       "anchor": "if (!read_string_field(L, -1, \"kind\", kind, present) || !present ||",
       "condition": "kind invalid; weight not int; weight < 0; weight > 8",
@@ -4111,6 +4755,14 @@
         3458,
         3461,
         3467
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "for",
+        "if",
+        "if"
       ],
       "function": "parse_campaign_zone",
       "anchor": "if (!lua_istable(L, -1))",
@@ -4170,6 +4822,17 @@
         3501,
         3506
       ],
+      "kinds": [
+        "switch",
+        "case",
+        "case",
+        "case",
+        "case",
+        "if",
+        "if",
+        "if",
+        "if"
+      ],
       "function": "parse_campaign_zone",
       "anchor": "switch (widget.kind) {",
       "condition": "switch widget.kind counting; roster != 1; readout > 1; actions > 2; text > 2",
@@ -4216,6 +4879,13 @@
         3543,
         3547
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if",
+        "if"
+      ],
       "function": "parse_fill_word",
       "anchor": "if (word == \"none\") {",
       "condition": "word == none/weak/fair/strong/brutal",
@@ -4255,6 +4925,15 @@
         3587,
         3590,
         3592
+      ],
+      "kinds": [
+        "if",
+        "for",
+        "if",
+        "if",
+        "while",
+        "if",
+        "if"
       ],
       "function": "parse_knobs_lines",
       "anchor": "if (count > kCampaignMatchKnobsMaxLines) {",
@@ -4305,6 +4984,13 @@
         3626,
         3628
       ],
+      "kinds": [
+        "if",
+        "while",
+        "if",
+        "for",
+        "if"
+      ],
       "function": "parse_campaign_match_knobs",
       "anchor": "if (!lua_istable(L, -1))",
       "condition": "not table; lua_next over keys: key not string; key not in {teams,fill,score,time,lines,arena_page,deal}",
@@ -4343,6 +5029,11 @@
         3643,
         3646,
         3647
+      ],
+      "kinds": [
+        "for",
+        "if",
+        "if"
       ],
       "function": "parse_campaign_match_knobs",
       "anchor": "for (const auto& flag : flags) {",
@@ -4391,6 +5082,14 @@
         3670,
         3676
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "else if",
+        "else if",
+        "if"
+      ],
       "function": "parse_campaign_match_knobs",
       "anchor": "if (!lua_isnil(L, -1)) {",
       "condition": "fill: string 'macro' / 'band'; boolean false; else refuse",
@@ -4427,6 +5126,11 @@
         {
           "file": "tests/unit/test_campaign_hooks.cpp",
           "test": "CampaignHooksTest.match_knobs_refuses_mis_shaped_answers_by_name"
+        },
+        {
+          "file": "tests/unit/test_campaign_hooks.cpp",
+          "test": "CampaignHooksTest.match_knobs_empty_table_answers_every_default",
+          "note": "nil arm: EXPECT_EQ(CampaignFillKnob::Macro, knobs.fill)"
         }
       ],
       "missing_arms": []
@@ -4437,6 +5141,11 @@
         3686,
         3687,
         3692
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
       ],
       "function": "parse_campaign_match_knobs",
       "anchor": "if (!lua_isnil(L, -1)) {",
@@ -4461,7 +5170,23 @@
       "tests": [
         {
           "file": "tests/unit/test_campaign_hooks.cpp",
-          "test": "CampaignHooksTest.match_knobs_refuses_mis_shaped_answers_by_name"
+          "test": "CampaignHooksTest.match_knobs_empty_table_answers_every_default",
+          "note": "nil arm: EXPECT_TRUE(knobs.lines.empty())"
+        },
+        {
+          "file": "tests/unit/test_campaign_hooks.cpp",
+          "test": "CampaignHooksTest.match_knobs_refuses_mis_shaped_answers_by_name",
+          "note": "lines='x' arm: errors_contain(\"'lines' is not an array of strings\")"
+        },
+        {
+          "file": "tests/unit/test_campaign_hooks.cpp",
+          "test": "CampaignHooksTest.match_knobs_alone_is_a_legal_registration",
+          "note": "table arm: ASSERT_EQ(1u, knobs.lines.size()), lines[0] text"
+        },
+        {
+          "file": "tests/unit/test_campaign_hooks.cpp",
+          "test": "CampaignHooksTest.match_knobs_accepts_every_wheel_word_and_fill_spelling",
+          "note": "table arm: ASSERT_EQ(2u, knobs.lines.size()), sizes 38 / \"second\""
         }
       ],
       "missing_arms": []
@@ -4471,6 +5196,10 @@
       "lines": [
         3701,
         3702
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "parse_campaign_match_knobs",
       "anchor": "if (!lua_isnil(L, -1)) {",
@@ -4510,6 +5239,10 @@
         3714,
         3718
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "parse_campaign_match_knobs",
       "anchor": "if (!lua_isnil(L, -1)) {",
       "condition": "deal !nil; !(string && parse_fill_word)",
@@ -4533,11 +5266,17 @@
       "tests": [
         {
           "file": "tests/unit/test_campaign_hooks.cpp",
-          "test": "CampaignHooksTest.match_knobs_accepts_every_wheel_word_and_fill_spelling"
+          "test": "CampaignHooksTest.match_knobs_accepts_every_wheel_word_and_fill_spelling",
+          "note": "'brutal' arm via the wheel loop"
         },
         {
           "file": "tests/unit/test_campaign_hooks.cpp",
           "test": "CampaignHooksTest.match_knobs_refuses_mis_shaped_answers_by_name"
+        },
+        {
+          "file": "tests/unit/test_campaign_hooks.cpp",
+          "test": "CampaignHooksTest.match_knobs_empty_table_answers_every_default",
+          "note": "nil arm: EXPECT_EQ(kFillFair, knobs.deal_fill)"
         }
       ],
       "missing_arms": []
@@ -4546,6 +5285,9 @@
       "id": "world_scripts.cpp:3761",
       "lines": [
         3761
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "campaign_picker_page",
       "anchor": "if (ok) {",
@@ -4588,6 +5330,12 @@
         3804,
         3806
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if"
+      ],
       "function": "campaign_picker_action",
       "anchor": "if (impl.protected_call(\"campaign:picker_action\", 1, 1)) {",
       "condition": "protected_call ok; lua_istable(result); lua_isinteger(level); 0 <= level <= 32767",
@@ -4615,25 +5363,30 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_campaign_hooks.cpp",
-          "test": "CampaignHooksTest.action_dispatch_and_message"
+          "test": "CampaignHooksTest.action_dispatch_and_message",
+          "note": "error arm: ok false, message empty, errors_contain(\"action exploded\"); nil/non-table arm: \"silent\" and \"notable\" -> ASSERT_TRUE dispatch, EXPECT_TRUE(result.ok), EXPECT_TRUE(result.message.empty()); message arm"
         },
         {
           "file": "tests/unit/test_campaign_hooks.cpp",
           "test": "CampaignHooksTest.action_result_level_parse_and_bounds"
         }
       ],
-      "missing_arms": [
-        "returns nil / non-table"
+      "missing_arms": [],
+      "note": [
+        "the level==-1 sub-clause of the nil/non-table arm is not asserted for \"silent\"/\"notable\"; the absent-level -1 default is asserted by action_result_level_parse_and_bounds (\"no_level\")"
       ]
     },
     {
       "id": "world_scripts.cpp:3820",
       "lines": [
         3820
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "campaign_lineup_registered",
       "anchor": "if (st != nullptr && st->campaign_lineup_registered)",
@@ -4677,6 +5430,11 @@
         3835,
         3839,
         3841
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
       ],
       "function": "campaign_fighter_power",
       "anchor": "if (st != nullptr) {",
@@ -4725,6 +5483,15 @@
         3905,
         3911
       ],
+      "kinds": [
+        "if",
+        "if",
+        "else if",
+        "else",
+        "if",
+        "else",
+        "if"
+      ],
       "function": "campaign_fighter_power",
       "anchor": "if (impl.protected_call(label.c_str(), 1, 1)) {",
       "condition": "protected_call ok; type != number; isinteger; finite && in int64 range; !ok",
@@ -4732,7 +5499,11 @@
       "arms": [
         {
           "when": "error",
-          "observable": "false; error label 'campaign:lineup_power' or 'default:lineup_power'"
+          "observable": "false; out untouched; an error recorded"
+        },
+        {
+          "when": "error (which pricer)",
+          "observable": "recorded error's where label is 'campaign:lineup_power' for a book, 'default:lineup_power' for the default"
         },
         {
           "when": "returns 'x' / '42'",
@@ -4776,13 +5547,19 @@
         }
       ],
       "missing_arms": [
-        "error"
+        "error (which pricer)"
+      ],
+      "note": [
+        "error arm asserted by lineup_power_that_errors_answers_false / default_lineup_power_that_errors_answers_false (EXPECT_FALSE, power==12345, EXPECT_FALSE(vm_errors().empty())); no test reads errors()[i].where for either label"
       ]
     },
     {
       "id": "world_scripts.cpp:3950",
       "lines": [
         3950
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "campaign_zone",
       "anchor": "if (ok) {",
@@ -4822,6 +5599,10 @@
         3992,
         3994
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "campaign_match_knobs",
       "anchor": "if (ok) {",
       "condition": "if (ok); if (!ok) out = defaults",
@@ -4845,11 +5626,8 @@
       "tests": [
         {
           "file": "tests/unit/test_campaign_hooks.cpp",
-          "test": "CampaignHooksTest.match_knobs_refuses_mis_shaped_answers_by_name"
-        },
-        {
-          "file": "tests/unit/test_campaign_hooks.cpp",
-          "test": "CampaignHooksTest.match_knobs_absent_answers_defaults_and_false"
+          "test": "CampaignHooksTest.match_knobs_refuses_mis_shaped_answers_by_name",
+          "note": "malformed arm: refuses() lambda asserts false + teams/fill/lines/arena_page/deal defaults; error arm: 'knobs blew up' block asserts false, teams true; valid arm: control block arena_page=='soccer'"
         }
       ],
       "missing_arms": []
@@ -4861,6 +5639,9 @@
       "lines": [
         135
       ],
+      "kinds": [
+        "if"
+      ],
       "kind": "plumbing",
       "anchor": "if (lua_islightuserdata(L, -1))",
       "note": "registry lookup of the VM state pointer (get_vm_state)"
@@ -4869,6 +5650,9 @@
       "id": "world_scripts.cpp:182",
       "lines": [
         182
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "plumbing",
       "anchor": "if (lua_isnoneornil(L, idx))",
@@ -4879,6 +5663,9 @@
       "lines": [
         203
       ],
+      "kinds": [
+        "if"
+      ],
       "kind": "plumbing",
       "anchor": "if (w == nullptr) {",
       "note": "a null walker reaches Lua as nil (push_walker_handle)"
@@ -4888,6 +5675,9 @@
       "lines": [
         218
       ],
+      "kinds": [
+        "ternary"
+      ],
       "kind": "defensive",
       "anchor": "return st != nullptr ? st->dispatch_gen : 0;",
       "note": "current_dispatch_gen: null VM state answers generation 0"
@@ -4896,6 +5686,9 @@
       "id": "world_scripts.cpp:235",
       "lines": [
         235
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "plumbing",
       "anchor": "if (it != st->live_gens.end())",
@@ -4907,6 +5700,10 @@
         263,
         264
       ],
+      "kinds": [
+        "for",
+        "if"
+      ],
       "kind": "plumbing",
       "anchor": "for (PackLibModule& existing : lib_module_storage()) {",
       "note": "pack lib registry: re-registering pack_id+name replaces the module and bumps the generation"
@@ -4915,6 +5712,9 @@
       "id": "world_scripts.cpp:281",
       "lines": [
         281
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "plumbing",
       "anchor": "if (removed == modules.end())",
@@ -4926,6 +5726,10 @@
         336,
         338
       ],
+      "kinds": [
+        "if",
+        "else"
+      ],
       "kind": "plumbing",
       "anchor": "if (map.empty())",
       "note": "family tuning store: an empty tuning map erases the entry instead of storing it"
@@ -4934,6 +5738,9 @@
       "id": "world_scripts.cpp:347",
       "lines": [
         347
+      ],
+      "kinds": [
+        "ternary"
       ],
       "kind": "plumbing",
       "anchor": "return it == store.end() ? nullptr : &it->second;",
@@ -4946,6 +5753,12 @@
         415,
         428,
         429
+      ],
+      "kinds": [
+        "for",
+        "if",
+        "for",
+        "if"
       ],
       "kind": "plumbing",
       "anchor": "for (const PackLibModule& m : pack_lib_modules()) {",
@@ -4960,6 +5773,13 @@
         460,
         472
       ],
+      "kinds": [
+        "if",
+        "ternary",
+        "if",
+        "else",
+        "if"
+      ],
       "kind": "plumbing",
       "anchor": "if (lua_isstring(L, -1))",
       "note": "lib status/export memo table reads and writes (Loading/Failed/None, memoized export); observable through og.use rules world_scripts.cpp:579 and :502"
@@ -4968,6 +5788,9 @@
       "id": "world_scripts.cpp:631",
       "lines": [
         631
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "test-only",
       "anchor": "if (!coverage::enabled()) return;  // callers guard too; belt and braces",
@@ -4978,6 +5801,10 @@
       "lines": [
         661,
         675
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "kind": "plumbing",
       "anchor": "if (luaL_newmetatable(L, kWalkerMeta)) {",
@@ -4991,6 +5818,12 @@
         1202,
         1204
       ],
+      "kinds": [
+        "while",
+        "if",
+        "while",
+        "if"
+      ],
       "kind": "plumbing",
       "anchor": "while (!where.empty() && (where.back() == ' ' || where.back() == ':'))",
       "note": "error-location string trimming for duplicate-registration reports ('chunk:line' or the registrar name when no debug info)"
@@ -5000,6 +5833,9 @@
       "lines": [
         716
       ],
+      "kinds": [
+        "if"
+      ],
       "kind": "defensive",
       "anchor": "if (st->host_impl != nullptr)",
       "note": "null host_impl guard before recording the duplicate-hook error"
@@ -5008,6 +5844,9 @@
       "id": "world_scripts.cpp:843",
       "lines": [
         843
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "plumbing",
       "anchor": "if (!lua_istable(L, -1)) {",
@@ -5022,6 +5861,13 @@
         1409,
         1415
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if",
+        "if"
+      ],
       "kind": "test-only",
       "anchor": "if (coverage::enabled())",
       "note": "coverage::enabled() instrumentation of Lua hook declarations for the coverage gate; no sim effect"
@@ -5030,6 +5876,9 @@
       "id": "world_scripts.cpp:1499",
       "lines": [
         1499
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "test-only",
       "anchor": "if (coverage::enabled())",
@@ -5041,6 +5890,10 @@
         1555,
         1583
       ],
+      "kinds": [
+        "for",
+        "for"
+      ],
       "kind": "loop",
       "anchor": "for (int family_id = 0; family_id < NUM_FAMILY_SLOTS; family_id++) {",
       "note": "iterate family slots / special slots; rule in world_scripts.cpp:1597"
@@ -5049,6 +5902,9 @@
       "id": "world_scripts.cpp:1557",
       "lines": [
         1557
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "defensive",
       "anchor": "if (fd == nullptr)",
@@ -5059,6 +5915,9 @@
       "lines": [
         1582
       ],
+      "kinds": [
+        "ternary"
+      ],
       "kind": "plumbing",
       "anchor": "fd->declared_id != nullptr ? fd->declared_id : fd->name;",
       "note": "label for the diagnostic message (declared id vs legacy name)"
@@ -5067,6 +5926,9 @@
       "id": "world_scripts.cpp:1613",
       "lines": [
         1613
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "defensive",
       "anchor": "if (st.host_impl != nullptr)",
@@ -5077,6 +5939,9 @@
       "lines": [
         1709
       ],
+      "kinds": [
+        "for"
+      ],
       "kind": "loop",
       "anchor": "for (const char* name : {\"rand\", \"is_alive\", \"entity_id\",",
       "note": "installs the load-time fence on rand/is_alive/entity_id/set_entity_hooks; no branch, fence semantics live in fence_world_entry (other chunk)"
@@ -5085,6 +5950,9 @@
       "id": "world_scripts.cpp:1733",
       "lines": [
         1733
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "test-only",
       "anchor": "if (g_test_world_instruction_budget > 0)",
@@ -5096,6 +5964,10 @@
         1837,
         1846
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "kind": "defensive",
       "anchor": "if (oi >= masks_.size() || family_id < 0 || family_id > 255)",
       "note": "order / family id bounds guard for the hook mask"
@@ -5104,6 +5976,9 @@
       "id": "world_scripts.cpp:1887",
       "lines": [
         1887
+      ],
+      "kinds": [
+        "ternary"
       ],
       "kind": "defensive",
       "anchor": "state.where = (where != nullptr) ? where : \"?\";",
@@ -5114,6 +5989,9 @@
       "lines": [
         2037
       ],
+      "kinds": [
+        "ternary"
+      ],
       "kind": "defensive",
       "anchor": "const std::string source_name = source.source ? source.source : \"?\";",
       "note": "null debug source name replaced with '?'"
@@ -5123,6 +6001,10 @@
       "lines": [
         2042,
         2081
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "kind": "defensive",
       "anchor": "if (error_reason)",
@@ -5157,6 +6039,33 @@
         2122,
         2123
       ],
+      "kinds": [
+        "switch",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "default"
+      ],
       "kind": "plumbing",
       "anchor": "switch (hook) {",
       "note": "hook_where: maps FamilyHook to the where-label string used in error records/hook_failures().where; no game rule"
@@ -5165,6 +6074,9 @@
       "id": "world_scripts.cpp:2185",
       "lines": [
         2185
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "plumbing",
       "anchor": "if (error_reason)",
@@ -5176,6 +6088,10 @@
         2528,
         2536
       ],
+      "kinds": [
+        "if",
+        "ternary"
+      ],
       "kind": "defensive",
       "anchor": "if (self == nullptr || pack_lua_absent())",
       "note": "self==nullptr half of 2528 (null entity guard) and the 2536 current_game/world null ternary; the pack_lua_absent() half of 2528 is rule row world_scripts.cpp:2448"
@@ -5184,6 +6100,9 @@
       "id": "world_scripts.cpp:2586",
       "lines": [
         2586
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "defensive",
       "anchor": "if (world == nullptr)",
@@ -5194,6 +6113,9 @@
       "lines": [
         2608
       ],
+      "kinds": [
+        "ternary"
+      ],
       "kind": "defensive",
       "anchor": "(current_game != nullptr) ? current_game->world : nullptr;",
       "note": "current_game null -> world null"
@@ -5203,6 +6125,10 @@
       "lines": [
         2703,
         2704
+      ],
+      "kinds": [
+        "ternary",
+        "if"
       ],
       "kind": "defensive",
       "anchor": "(current_game != nullptr) ? current_game->world : nullptr;",
@@ -5216,6 +6142,13 @@
         3418,
         3420,
         3422
+      ],
+      "kinds": [
+        "switch",
+        "case",
+        "case",
+        "case",
+        "case"
       ],
       "kind": "plumbing",
       "anchor": "switch (widget.kind) {",
@@ -5232,6 +6165,15 @@
         3962,
         3979
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if"
+      ],
       "kind": "plumbing",
       "anchor": "if (st == nullptr)",
       "note": "`if (st == nullptr) return false/{}` in each public campaign query: the 'no book / conflicted book' arm of world_scripts.cpp:2794 surfaced per entry point (asserted there and in action_without_registration_answers_false, no_registration_means_no_picker)."
@@ -5245,6 +6187,13 @@
         3944,
         3986
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if",
+        "if"
+      ],
       "kind": "defensive",
       "anchor": "if (!scope.armed()) {",
       "note": "Per-dispatcher `if (!scope.armed())` after a CampaignDispatchScope: the nested-dispatch refusal arm of world_scripts.cpp:2761 (pop the pushed fn, answer false). Same unreachable-under-assert status."
@@ -5254,6 +6203,10 @@
       "lines": [
         4011,
         4012
+      ],
+      "kinds": [
+        "while",
+        "if"
       ],
       "kind": "test-only",
       "anchor": "while (lua_next(L, -2) != 0) {",

@@ -7,6 +7,10 @@
         51,
         54
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "ensure_obmap_registration",
       "anchor": "if (world.myobmap == nullptr || w == nullptr || w->ignore() || w->dead() ||",
       "condition": "world.myobmap == nullptr || w == nullptr || w->ignore() || w->dead() || w->dormant() || w->hidden(); walker_to_pos.find(w) == end",
@@ -39,6 +43,10 @@
       "lines": [
         67,
         76
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "spawn_spot_blocked_by",
       "anchor": "if (other == nullptr || other == w || other->dead() || other->hidden())",
@@ -100,6 +108,10 @@
         86,
         103
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "spawn_spot_clear",
       "anchor": "if (!world.query_grid_passable(x, y, w))",
       "condition": "!world.query_grid_passable(x, y, w); spawn_spot_blocked_by(other, w, x, y) over every obmap bucket the box spans",
@@ -140,6 +152,9 @@
       "id": "respawn.cpp:118",
       "lines": [
         118
+      ],
+      "kinds": [
+        ""
       ],
       "function": "revive_player_walker",
       "anchor": "w->set_dead(0);",
@@ -186,6 +201,10 @@
       "lines": [
         134,
         136
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "revive_player_walker",
       "anchor": "if (w->real_team_num() != 255)",
@@ -234,6 +253,10 @@
         141,
         146
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "revive_player_walker",
       "anchor": "if (w->user() != -1)",
       "condition": "w->user() != -1 && another live Living with the same user() and ACT_CONTROL exists",
@@ -267,6 +290,9 @@
       "lines": [
         163
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "already_scheduled",
       "anchor": "if (entry.walker_entity_id == entity_id)",
       "condition": "entry.walker_entity_id == entity_id",
@@ -297,6 +323,10 @@
       "lines": [
         184,
         189
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "live_duplicate_exists",
       "anchor": "if (corpse->myguy == nullptr)",
@@ -334,6 +364,11 @@
         {
           "file": "tests/unit/test_classic_respawn.cpp",
           "test": "ClassicRespawn.live_duplicate_hero_corpse_is_never_rescheduled"
+        },
+        {
+          "file": "tests/unit/test_respawn_engine.cpp",
+          "test": "RespawnEngine.ai_respawn_spawns_fresh_walker_of_same_family_level_team",
+          "note": "AI corpse with no guy: ASSERT_TRUE(schedule) through respawn_schedule_corpse's live_duplicate_exists check, then fresh replacement ASSERT_NE nullptr; the AI-corpse arm"
         }
       ],
       "missing_arms": []
@@ -343,6 +378,10 @@
       "lines": [
         207,
         291
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "stain_matches_corpse_identity / scrub_corpse_drops_in",
       "anchor": "if (corpse->myguy == nullptr)",
@@ -375,6 +414,10 @@
       "lines": [
         220,
         223
+      ],
+      "kinds": [
+        "for",
+        "if"
       ],
       "function": "stain_belongs_to_pending_respawn",
       "anchor": "for (const RespawnEntry& entry : world.respawn.respawn_queue)",
@@ -415,6 +458,11 @@
         250,
         303
       ],
+      "kinds": [
+        "for",
+        "if",
+        "if"
+      ],
       "function": "stain_belongs_to_another_corpse / scrub_corpse_drops_in",
       "anchor": "for (const auto& uptr : world.oblist)",
       "condition": "another dead Living (not the firing corpse) with matching identity/team/floor/exact corner",
@@ -452,6 +500,10 @@
       "lines": [
         275,
         278
+      ],
+      "kinds": [
+        "for",
+        "if"
       ],
       "function": "scrub_corpse_drops_in",
       "anchor": "for (const auto& uptr : list)",
@@ -506,6 +558,9 @@
       "lines": [
         315
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "scrub_corpse_drops_in",
       "anchor": "if (dx + dy <= 8)",
       "condition": "|center dx| + |center dy| <= 8",
@@ -544,6 +599,11 @@
         330,
         335,
         356
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
       ],
       "function": "schedule_respawn",
       "anchor": "if (respawn.respawn_queue.size() >= static_cast<std::size_t>(kRespawnMaxQueueEntries))",
@@ -602,6 +662,10 @@
         364,
         371
       ],
+      "kinds": [
+        "ternary",
+        "ternary"
+      ],
       "function": "schedule_respawn",
       "anchor": "entry.kind = (corpse->myguy != nullptr) ? 0 : 1;",
       "condition": "kind = myguy ? 0 : 1; team = real_team != 255 ? real_team : team_num; level = stats ? level : 1 (clamped 1..255)",
@@ -644,6 +708,10 @@
         378,
         384
       ],
+      "kinds": [
+        "if",
+        "else"
+      ],
       "function": "schedule_respawn",
       "anchor": "if (corpse->spawn_x() >= 0 && corpse->spawn_y() >= 0)",
       "condition": "corpse->spawn_x() >= 0 && corpse->spawn_y() >= 0",
@@ -680,6 +748,9 @@
       "id": "respawn.cpp:415",
       "lines": [
         415
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "respawn_run_timers",
       "anchor": "if (entry.ticks_left > 0)",
@@ -723,6 +794,11 @@
         425,
         428
       ],
+      "kinds": [
+        "if",
+        "if",
+        "else"
+      ],
       "function": "respawn_run_timers",
       "anchor": "if (scripted)",
       "condition": "scripted = mode_scripted_active(world); revived != nullptr -> level_respawn hook",
@@ -764,6 +840,9 @@
       "id": "respawn.cpp:438",
       "lines": [
         438
+      ],
+      "kinds": [
+        ""
       ],
       "function": "classic_respawn_active",
       "anchor": "return !mode_scripted_active(world) &&",
@@ -810,6 +889,11 @@
         446,
         459,
         465
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
       ],
       "function": "respawn_retains_player_control",
       "anchor": "if (control == nullptr || !control->dead() || control->myguy == nullptr ||",
@@ -868,6 +952,10 @@
         477,
         479
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "respawn_suppress_team_wipe_endgame",
       "anchor": "if (mode_scripted_active(world) && !world.mode.win_latched)",
       "condition": "scripted && !win_latched -> true; !classic_active -> false; mode != TeamOneHeroes || wiped_team < 0 || wiped_team == 0",
@@ -920,6 +1008,10 @@
         496,
         512
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "classic_spot_clear",
       "anchor": "if (!world.query_grid_passable(x, y, w, floor))",
       "condition": "!world.query_grid_passable(x, y, w, floor); spawn_spot_blocked_by over the floor-keyed buckets",
@@ -961,6 +1053,10 @@
       "lines": [
         529,
         532
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "classic_fire_player_respawn",
       "anchor": "if (w == nullptr || !w->dead() || w->query_order() != Order::Living)",
@@ -1005,6 +1101,9 @@
       "id": "respawn.cpp:535",
       "lines": [
         535
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "classic_fire_player_respawn",
       "anchor": "if (w->spawn_x() >= 0 && w->spawn_y() >= 0 &&",
@@ -1052,6 +1151,10 @@
         561,
         578
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "classic_fire_ai_respawn",
       "anchor": "if (entry.x >= 0 && entry.y >= 0 &&",
       "condition": "entry.x >= 0 && entry.y >= 0 && classic_spot_clear(entry spot); corpse != nullptr && corpse->dead() && Living -> scrub + retire",
@@ -1093,6 +1196,9 @@
       "lines": [
         587
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "classic_fire_ai_respawn",
       "anchor": "if (entry.x >= 0 && entry.y >= 0 &&",
       "condition": "blocked: entry.x >= 0 && entry.y >= 0 && queue.size() < cap -> re-enqueue with kClassicBlockedRetryTicks",
@@ -1128,6 +1234,9 @@
       "id": "respawn.cpp:600",
       "lines": [
         600
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "classic_fire_respawn",
       "anchor": "if (entry.kind == 0)",
@@ -1165,6 +1274,13 @@
         630,
         632,
         644
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if",
+        "if"
       ],
       "function": "classic_respawn_corpse_eligible / classic_run_death_scan",
       "anchor": "if (w == nullptr || !w->dead() || w->query_order() != Order::Living)",
@@ -1238,6 +1354,11 @@
         674,
         681
       ],
+      "kinds": [
+        "if",
+        "ternary",
+        "if"
+      ],
       "function": "classic_respawn_run_tick",
       "anchor": "if (!classic_respawn_active(world))",
       "condition": "!classic_respawn_active -> return; delay = requested in [kClassicMin, kClassicMax] ? requested : kRespawnDefaultTicks; world.game_ended -> flush",
@@ -1278,6 +1399,11 @@
         {
           "file": "tests/unit/test_classic_respawn.cpp",
           "test": "ClassicRespawn.timeout_end_shape_flushes_pending_heroes"
+        },
+        {
+          "file": "tests/unit/test_classic_respawn.cpp",
+          "test": "ClassicRespawn.scripted_active_worlds_ignore_respawn_mode",
+          "note": "engine inactive: classic_respawn_active false, kill + tick(8), ASSERT_TRUE(respawn_queue.empty()); the engine-inactive arm"
         }
       ],
       "missing_arms": []
@@ -1288,6 +1414,11 @@
         695,
         710,
         712
+      ],
+      "kinds": [
+        "if",
+        "for",
+        "if"
       ],
       "function": "classic_respawn_flush_pending",
       "anchor": "if (!classic_respawn_active(world))",
@@ -1339,6 +1470,15 @@
         734,
         737,
         742
+      ],
+      "kinds": [
+        "if",
+        "for",
+        "if",
+        "if",
+        "for",
+        "if",
+        "if"
       ],
       "function": "classic_respawn_pending_hostile_foe",
       "anchor": "if (!classic_respawn_active(world))",
@@ -1398,6 +1538,10 @@
         766,
         772
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "respawn_scan_anchors",
       "anchor": "if (w == nullptr || w->query_order() != Order::Special ||",
       "condition": "Order::Special && FAMILY_RESERVED_TEAM; is_score_team(team) && anchor_count[team] < kRespawnMaxAnchorsPerTeam",
@@ -1443,6 +1587,13 @@
         801,
         805,
         810
+      ],
+      "kinds": [
+        "for",
+        "for",
+        "if",
+        "if",
+        "ternary"
       ],
       "function": "respawn_flush_revive_all",
       "anchor": "for (const RespawnEntry& entry : pending)",
@@ -1499,10 +1650,10 @@
         }
       ],
       "missing_arms": [
+        "charmed hero true team 0-3",
         "queued bot",
         "unqueued dead FFA/mutant hero, true band byte 16-31",
         "scripted mode, after mode_declare_winner + tick, queued entries present",
-        "charmed hero true team 0-3",
         "queued bot whose spot is blocked during the flush"
       ]
     },
@@ -1514,6 +1665,13 @@
         824,
         827,
         833
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if",
+        "if"
       ],
       "function": "respawn_schedule_corpse",
       "anchor": "if (corpse == nullptr || !corpse->dead() ||",
@@ -1579,6 +1737,10 @@
         852,
         854
       ],
+      "kinds": [
+        "for",
+        "if"
+      ],
       "function": "respawn_pending_count",
       "anchor": "for (const RespawnEntry& entry : world.respawn.respawn_queue)",
       "condition": "entry.team == team",
@@ -1604,6 +1766,10 @@
       "lines": [
         863,
         865
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "respawn_spot_clear",
       "anchor": "if (w == nullptr)",
@@ -1651,6 +1817,11 @@
         903,
         919
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
+      ],
       "function": "make_body_probe / body_ground_clear / body_spot_clear",
       "anchor": "if (data == nullptr)",
       "condition": "configure_existing_entity(order, family) == nullptr -> false",
@@ -1693,6 +1864,10 @@
       "lines": [
         921,
         924
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "body_spot_clear",
       "anchor": "if (!probe_ground_clear(world, probe, x, y, floor))",
@@ -1742,6 +1917,12 @@
         943,
         947
       ],
+      "kinds": [
+        "if",
+        "for",
+        "for",
+        "if"
+      ],
       "function": "body_spot_near",
       "anchor": "if (body_spot_clear(world, order, family, x, y, floor))",
       "condition": "corner clear -> it; else rings r=1..radius in order (-1,0),(1,0),(0,-1),(0,1),(-1,-1),(1,-1),(-1,1),(1,1)",
@@ -1781,6 +1962,12 @@
         976,
         980,
         986
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if"
       ],
       "function": "respawn_scrub_stains_at",
       "anchor": "if (fx == nullptr || fx->dead() ||",
@@ -1841,6 +2028,10 @@
         88,
         99
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "kind": "defensive",
       "anchor": "if (world.myobmap == nullptr)",
       "note": "null obmap (no world map yet) answers clear; a bucket with no pile is skipped (find_list miss, #417 makes no node)"
@@ -1852,6 +2043,11 @@
         95,
         101
       ],
+      "kinds": [
+        "for",
+        "for",
+        "for"
+      ],
       "kind": "loop",
       "anchor": "for (int bx = x; bx < x + w->sizex() + kBucket; bx += kBucket)",
       "note": "bucket sweep over the spawn box and pile iteration; the rule is respawn.cpp:86 / respawn.cpp:67"
@@ -1860,6 +2056,9 @@
       "id": "respawn.cpp:120",
       "lines": [
         120
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "defensive",
       "anchor": "if (w->stats() != nullptr)",
@@ -1870,6 +2069,9 @@
       "lines": [
         143
       ],
+      "kinds": [
+        "for"
+      ],
       "kind": "loop",
       "anchor": "for (const auto& uptr : world.oblist)",
       "note": "oblist scan for a conflicting controller; rule is respawn.cpp:141"
@@ -1878,6 +2080,9 @@
       "id": "respawn.cpp:161",
       "lines": [
         161
+      ],
+      "kinds": [
+        "for"
       ],
       "kind": "loop",
       "anchor": "for (const auto& entry : respawn.respawn_queue)",
@@ -1888,6 +2093,9 @@
       "lines": [
         186
       ],
+      "kinds": [
+        "for"
+      ],
       "kind": "loop",
       "anchor": "for (const auto& uptr : world.oblist)",
       "note": "oblist scan; rule respawn.cpp:184"
@@ -1896,6 +2104,9 @@
       "id": "respawn.cpp:407",
       "lines": [
         407
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "plumbing",
       "anchor": "if (respawn.respawn_queue.empty())",
@@ -1906,6 +2117,9 @@
       "lines": [
         411
       ],
+      "kinds": [
+        "for"
+      ],
       "kind": "loop",
       "anchor": "for (std::size_t i = 0; i < respawn.respawn_queue.size();)",
       "note": "queue walk with in-place erase; rules respawn.cpp:415 and respawn.cpp:423"
@@ -1915,6 +2129,10 @@
       "lines": [
         498,
         508
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "kind": "defensive",
       "anchor": "if (world.myobmap == nullptr)",
@@ -1927,6 +2145,11 @@
         504,
         510
       ],
+      "kinds": [
+        "for",
+        "for",
+        "for"
+      ],
       "kind": "loop",
       "anchor": "for (int bx = x; bx < x + w->sizex() + kBucket; bx += kBucket)",
       "note": "floor-keyed bucket sweep; rule respawn.cpp:496"
@@ -1937,6 +2160,10 @@
         554,
         558
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "kind": "defensive",
       "anchor": "if (w == nullptr)",
       "note": "add_ob failure (no loader data for the family) and null stats guards in classic_fire_ai_respawn"
@@ -1945,6 +2172,9 @@
       "id": "respawn.cpp:641",
       "lines": [
         641
+      ],
+      "kinds": [
+        "for"
       ],
       "kind": "loop",
       "anchor": "for (const auto& uptr : world.oblist)",
@@ -1956,6 +2186,10 @@
         761,
         763
       ],
+      "kinds": [
+        "for",
+        "for"
+      ],
       "kind": "loop",
       "anchor": "for (int t = 0; t < 4; ++t)",
       "note": "anchor array reset and oblist scan; rule respawn.cpp:766"
@@ -1965,6 +2199,9 @@
       "lines": [
         844
       ],
+      "kinds": [
+        "if"
+      ],
       "kind": "defensive",
       "anchor": "if (w == nullptr)",
       "note": "null walker guard in respawn_pending_for (asserted by exported_probes_hold_null_and_impassable_guards)"
@@ -1973,6 +2210,9 @@
       "id": "respawn.cpp:966",
       "lines": [
         966
+      ],
+      "kinds": [
+        "for"
       ],
       "kind": "loop",
       "anchor": "for (const auto& uptr : list)",

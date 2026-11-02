@@ -6,6 +6,9 @@
       "lines": [
         31
       ],
+      "kinds": [
+        ""
+      ],
       "function": "on_fire_weapon",
       "anchor": "local function on_fire_weapon(self, weapon)",
       "condition": "extra = og.min(og.fdiv(magicpoints, 20), C.SHOT_DRAIN_CAP); magicpoints -= extra; weapon.damage += extra",
@@ -39,6 +42,11 @@
         46,
         48,
         52
+      ],
+      "kinds": [
+        "if",
+        "else",
+        "if"
       ],
       "function": "on_act_living",
       "anchor": "if self.level >= 40 then",
@@ -77,6 +85,10 @@
         62,
         64
       ],
+      "kinds": [
+        "if",
+        "else"
+      ],
       "function": "summon_shift",
       "anchor": "if lc.spare_mp(self, 3) >= self:s_special_cost(3) then",
       "condition": "if lc.spare_mp(self, 3) >= self:s_special_cost(3) then shifter 1 else 0",
@@ -112,6 +124,10 @@
         80,
         81
       ],
+      "kinds": [
+        "if",
+        "and"
+      ],
       "function": "hit_response",
       "anchor": "if i < C.NUM_SPECIALS",
       "condition": "if i < C.NUM_SPECIALS and self.magicpoints >= self:s_special_cost(i)",
@@ -144,6 +160,10 @@
       "lines": [
         87,
         91
+      ],
+      "kinds": [
+        "if",
+        "else"
       ],
       "function": "hit_response",
       "anchor": "if self:has_guy() then",
@@ -188,6 +208,11 @@
         99,
         100,
         105
+      ],
+      "kinds": [
+        "if",
+        "and",
+        "else"
       ],
       "function": "hit_response",
       "anchor": "if self.hp < threshold and possible[1]",
@@ -238,6 +263,9 @@
       "lines": [
         104
       ],
+      "kinds": [
+        "or"
+      ],
       "function": "hit_response",
       "anchor": "local _ = lc.mid_teleport(self) or self:special()  -- struck mid-teleport: no second cast",
       "condition": "local _ = lc.mid_teleport(self) or self:special()",
@@ -266,6 +294,9 @@
       "id": "living-17-archmage.lua:106",
       "lines": [
         106
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "hit_response",
       "anchor": "if self:foe() ~= foe then",
@@ -303,6 +334,11 @@
         112,
         117,
         120
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
       ],
       "function": "hit_response",
       "anchor": "if gf.on() and not self:seat_driven() then",
@@ -357,6 +393,11 @@
         129,
         131
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
+      ],
       "function": "hit_response",
       "anchor": "if foe_count ~= 0 then",
       "condition": "if foe_count ~= 0 then if possible[3] then current_special=3; if special() then return",
@@ -382,10 +423,24 @@
           "file": "tests/unit/test_gameplay_fixes_bots.cpp",
           "test": "GameplayFixesArchmageHit.a_struck_bot_with_no_target_in_reach_casts_nothing",
           "note": "fixes off, orc at 300 px: no summon, no explosion, MP 1100"
+        },
+        {
+          "file": "tests/unit/test_gameplay_fixes_bots.cpp",
+          "test": "GameplayFixesArchmageHit.a_struck_bot_bursts_once_and_never_summons",
+          "note": "fixes off: elementals == 1, phantoms == 0"
+        },
+        {
+          "file": "tests/unit/test_gameplay_fixes_bots.cpp",
+          "test": "GameplayFixesArchmageHit.a_seated_archmage_keeps_its_shift_key",
+          "note": "seated, either value: phantoms == 1 with Shift up, elementals == 1 with Shift held"
+        },
+        {
+          "file": "tests/unit/test_gameplay_fixes_bots.cpp",
+          "test": "GameplayFixesArchmageHit.a_struck_bot_below_the_threshold_still_teleports",
+          "note": "classic rand(3)==0: elementals == 1"
         }
       ],
       "missing_arms": [
-        "slot 3 affordable, summon succeeds",
         "summon fails"
       ]
     },
@@ -398,6 +453,14 @@
         144,
         153,
         154
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if"
       ],
       "function": "hit_response",
       "anchor": "if possible[2] then",
@@ -445,6 +508,14 @@
         179,
         182,
         183
+      ],
+      "kinds": [
+        "if",
+        "and",
+        "if",
+        "else",
+        "or",
+        "and"
       ],
       "function": "ai_teleport",
       "anchor": "if not gf.on() then",
@@ -506,6 +577,14 @@
         203,
         209,
         212
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if"
       ],
       "function": "ai_burst_or_chain",
       "anchor": "if not gf.on() then",
@@ -570,6 +649,17 @@
         247,
         250,
         253
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if",
+        "else",
+        "if",
+        "if",
+        "if",
+        "if"
       ],
       "function": "ai_summon",
       "anchor": "if not gf.on() then",
@@ -650,6 +740,10 @@
         263,
         267
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "ai_mind_control",
       "anchor": "if not gf.on() then",
       "condition": "if not gf.on() true; busy false; return nearest_charmable(self, foes in 80+4L, self.level) ~= nil",
@@ -697,6 +791,10 @@
         281,
         284
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "teleport",
       "anchor": "if lc.mid_teleport(self) then",
       "condition": "if lc.mid_teleport(self) then SPECIAL BUSY; if shifter_down == 0 then (teleport out)",
@@ -722,11 +820,25 @@
           "file": "tests/integration/test_walker_specials.cpp",
           "test": "WalkerSpecials.archmage_teleport_drives_simulation",
           "note": "shifter 1: marker placed"
+        },
+        {
+          "file": "tests/integration/test_stats_hit_response_teleport.cpp",
+          "test": "StatsHitResponseTeleport.stats_hit_response_mage_and_archmage_teleport_branches",
+          "note": "shifter 0 via the hit hook: EXPECT_EQ(ANI_TELE_OUT, arch->ani_type())"
+        },
+        {
+          "file": "tests/unit/test_gameplay_fixes_bots.cpp",
+          "test": "GameplayFixesArchmageHit.a_struck_bot_below_the_threshold_still_teleports",
+          "note": "shifter 0: ani_type ANI_TELE_OUT, MP 1090 = TELEPORT's 10, on both values"
+        },
+        {
+          "file": "tests/integration/test_stats_hit_response_teleport.cpp",
+          "test": "StatsHitResponseTeleport.an_archmage_struck_again_mid_teleport_casts_nothing",
+          "note": "first hit, shifter 0: ANI_TELE_OUT, MP 90"
         }
       ],
       "missing_arms": [
-        "mid teleport",
-        "shifter 0"
+        "mid teleport"
       ]
     },
     {
@@ -734,6 +846,10 @@
       "lines": [
         291,
         294
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "teleport (marker)",
       "anchor": "if lc.is_busy(self) then",
@@ -787,6 +903,13 @@
         306,
         307
       ],
+      "kinds": [
+        "if",
+        "and",
+        "and",
+        "and",
+        "and"
+      ],
       "function": "teleport (marker)",
       "anchor": "if ob",
       "condition": "if ob and ob:order()==FX and family==FX_MARKER and owner==self and dead()==0 then retire it, busy +8, break",
@@ -825,6 +948,10 @@
         310,
         331
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "teleport (marker)",
       "anchor": "if self.team == 0 or self:has_guy() then",
       "condition": "if self.team == 0 or self:has_guy() then og.emit_notification(...)",
@@ -861,6 +988,10 @@
       "lines": [
         325,
         327
+      ],
+      "kinds": [
+        "if",
+        "else"
       ],
       "function": "teleport (marker)",
       "anchor": "if self:has_guy() then",
@@ -899,6 +1030,9 @@
       "lines": [
         344
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "burst_or_chain",
       "anchor": "if lc.is_busy(self) then",
       "condition": "if lc.is_busy(self) then SPECIAL BUSY",
@@ -914,20 +1048,17 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
-        {
-          "file": "tests/integration/test_family_behaviors.cpp",
-          "test": "FamilyBehaviors.archmage_special_case2_case3_case4_guard_branches",
-          "note": "busy: false"
-        },
         {
           "file": "tests/integration/test_walker_specials.cpp",
           "test": "WalkerSpecials.archmage_heartburst_drives_simulation",
           "note": "idle: proceeds"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "busy"
+      ]
     },
     {
       "id": "living-17-archmage.lua:349",
@@ -936,6 +1067,12 @@
         350,
         353,
         356
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "else",
+        "else"
       ],
       "function": "burst_or_chain",
       "anchor": "if self:shifter_down() ~= 0 then",
@@ -969,6 +1106,9 @@
       "lines": [
         361
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "burst_or_chain",
       "anchor": "if foe_count == 0 then",
       "condition": "if foe_count == 0 then NO FOE IN RANGE",
@@ -1000,6 +1140,9 @@
       "id": "living-17-archmage.lua:364",
       "lines": [
         364
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "burst_or_chain",
       "anchor": "if self:shifter_down() == 0 then",
@@ -1034,6 +1177,10 @@
         369,
         399
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "burst_or_chain",
       "anchor": "if self:has_guy() then",
       "condition": "if self:has_guy() then shots += foe_count (burst) / += 1 (chain)",
@@ -1067,6 +1214,10 @@
         419,
         421
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "burst_or_chain",
       "anchor": "if foe:floor() == self:floor() then",
       "condition": "if foe:floor() == self:floor() then if best_dist > dist then leader = foe",
@@ -1098,6 +1249,9 @@
       "id": "living-17-archmage.lua:432",
       "lines": [
         432
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "summon_image",
       "anchor": "if lc.is_busy(self) then",
@@ -1136,6 +1290,9 @@
       "lines": [
         435
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "summon_image",
       "anchor": "if self:shifter_down() ~= 0 then",
       "condition": "if self:shifter_down() ~= 0 then (true summon: elemental) else (illusion)",
@@ -1151,7 +1308,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_specials.cpp",
@@ -1160,16 +1317,27 @@
         {
           "parity": "archmage_summon_elemental_scen99",
           "fact": "WalkerFamilyCount(FAMILY_FIREELEMENTAL,1,1)"
+        },
+        {
+          "file": "tests/unit/test_pack_lua_paths.cpp",
+          "test": "PackLuaArchmage.the_illusion_summoned_widens_with_the_magic_behind_it",
+          "note": "no shift: count_family FAMILY_ELF == 1 at the sub-100 tier, name 'Phantom', hp 0, owner the mage"
+        },
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.archmage_summon_image_drives_simulation",
+          "note": "no shift: one FAMILY_ELF phantom, owner, team"
         }
       ],
-      "missing_arms": [
-        "no shift"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living-17-archmage.lua:438",
       "lines": [
         438
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "summon_image",
       "anchor": "if self:has_guy() and self:g_intelligence() < t.summon_int_req then",
@@ -1216,6 +1384,10 @@
       "lines": [
         441,
         479
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "summon_image",
       "anchor": "if not gf.on() then",
@@ -1269,6 +1441,12 @@
         463,
         475
       ],
+      "kinds": [
+        "if",
+        "or",
+        "if",
+        "if"
+      ],
       "function": "summon_image (elemental)",
       "anchor": "if not ((i == 0 and j == 0)",
       "condition": "if not ((i==0 and j==0) or placed) then if query_passable(testx,testy) then place ... if not placed then dead, NO ROOM TO SUMMON",
@@ -1288,12 +1466,22 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_pack_lua_paths.cpp",
+          "test": "PackLuaArchmage.a_true_summon_with_nowhere_to_stand_is_cancelled",
+          "note": "all blocked: do_special false, count FAMILY_FIREELEMENTAL == 0"
+        },
+        {
+          "file": "tests/unit/test_pack_lua_paths.cpp",
+          "test": "PackLuaArchmage.a_true_summon_with_nowhere_to_stand_costs_nothing_with_gameplay_fixes",
+          "note": "all blocked: false, no elemental"
+        }
+      ],
       "missing_arms": [
         "NW cell free",
-        "west column blocked, N free",
-        "all blocked"
+        "west column blocked, N free"
       ]
     },
     {
@@ -1328,6 +1516,37 @@
         554,
         556,
         558
+      ],
+      "kinds": [
+        "if",
+        "elseif",
+        "if",
+        "elseif",
+        "elseif",
+        "elseif",
+        "if",
+        "elseif",
+        "elseif",
+        "elseif",
+        "elseif",
+        "elseif",
+        "if",
+        "elseif",
+        "elseif",
+        "elseif",
+        "elseif",
+        "elseif",
+        "elseif",
+        "else",
+        "if",
+        "elseif",
+        "elseif",
+        "elseif",
+        "elseif",
+        "elseif",
+        "elseif",
+        "elseif",
+        "elseif"
       ],
       "function": "summon_image (illusion)",
       "anchor": "if mp_pool < 100 then",
@@ -1378,6 +1597,12 @@
         581,
         600
       ],
+      "kinds": [
+        "if",
+        "or",
+        "if",
+        "if"
+      ],
       "function": "summon_image (illusion)",
       "anchor": "if not ((i == 0 and j == 0)",
       "condition": "if not ((i==0 and j==0) or placed) then if query_passable then place phantom ... if not placed then dead, NO ROOM TO SUMMON",
@@ -1393,10 +1618,20 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_pack_lua_paths.cpp",
+          "test": "PackLuaArchmage.the_illusion_summoned_widens_with_the_magic_behind_it",
+          "note": "free cell: phantom placed, name 'Phantom', owner, team 1, hp 0"
+        },
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.archmage_summon_image_drives_simulation",
+          "note": "free cell: one phantom placed, owner, team"
+        }
+      ],
       "missing_arms": [
-        "free cell",
         "no free cell"
       ]
     },
@@ -1405,6 +1640,10 @@
       "lines": [
         611,
         620
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "mind_control",
       "anchor": "if lc.is_busy(self) then",
@@ -1443,6 +1682,9 @@
       "lines": [
         628
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "mind_control",
       "anchor": "if budget < 10 then",
       "condition": "if budget < 10 then break",
@@ -1474,6 +1716,9 @@
       "id": "living-17-archmage.lua:633",
       "lines": [
         633
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "mind_control",
       "anchor": "if gf.charmable(foe, fixes) and foe:charm_left() <= 10 then",
@@ -1517,6 +1762,12 @@
         642,
         645,
         655
+      ],
+      "kinds": [
+        "if",
+        "else",
+        "if",
+        "else"
       ],
       "function": "mind_control",
       "anchor": "if level_edge < 0 then",
@@ -1573,6 +1824,9 @@
       "lines": [
         649
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "mind_control",
       "anchor": "if gf.on() and colour == self.team then",
       "condition": "if gf.on() and colour == self.team then colour = (colour + 1) % 8",
@@ -1618,6 +1872,9 @@
       "lines": [
         665
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "mind_control",
       "anchor": "if controlled == 0 then",
       "condition": "if controlled == 0 then NO VALID TARGET",
@@ -1656,6 +1913,9 @@
       "id": "living-17-archmage.lua:673",
       "lines": [
         673
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "mind_control",
       "anchor": "if mp_after_base_cost > 0 and controlled > 1 then",
@@ -1696,6 +1956,9 @@
       "lines": [
         79
       ],
+      "kinds": [
+        "for"
+      ],
       "kind": "loop",
       "anchor": "for i = 0, (self.level + 2) // 3 do",
       "note": "builds the hit response's possible[] table over slots 0..(L+2)/3; rule row living-17-archmage.lua:80"
@@ -1704,6 +1967,9 @@
       "id": "living-17-archmage.lua:301",
       "lines": [
         301
+      ],
+      "kinds": [
+        "for"
       ],
       "kind": "loop",
       "anchor": "for i = 1, #obs do",
@@ -1714,6 +1980,9 @@
       "lines": [
         319
       ],
+      "kinds": [
+        "if"
+      ],
       "kind": "defensive",
       "anchor": "if not marker then",
       "note": "add_ob failure for the marker: 'COULD NOT CREATE MARKER' (old marker already retired)."
@@ -1722,6 +1991,9 @@
       "id": "living-17-archmage.lua:375",
       "lines": [
         375
+      ],
+      "kinds": [
+        "for"
       ],
       "kind": "loop",
       "anchor": "for i = 1, #foes do",
@@ -1732,6 +2004,9 @@
       "lines": [
         378
       ],
+      "kinds": [
+        "if"
+      ],
       "kind": "defensive",
       "anchor": "if not burst then",
       "note": "og.summon failure mid-burst: 'COULD NOT MAKE EXPLOSION' (earlier explosions stand, their MP spent)."
@@ -1740,6 +2015,9 @@
       "id": "living-17-archmage.lua:406",
       "lines": [
         406
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "defensive",
       "anchor": "if not bolt then",
@@ -1750,6 +2028,9 @@
       "lines": [
         415
       ],
+      "kinds": [
+        "for"
+      ],
       "kind": "loop",
       "anchor": "for i = 1, #foes do",
       "note": "first-strike search over the foes; rule row living-17-archmage.lua:419"
@@ -1758,6 +2039,9 @@
       "id": "living-17-archmage.lua:446",
       "lines": [
         446
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "defensive",
       "anchor": "if not elemental then",
@@ -1768,6 +2052,10 @@
       "lines": [
         457,
         458
+      ],
+      "kinds": [
+        "for",
+        "for"
       ],
       "kind": "loop",
       "anchor": "for i = -1, 1 do",
@@ -1781,6 +2069,12 @@
         536,
         560
       ],
+      "kinds": [
+        "else",
+        "else",
+        "else",
+        "else"
+      ],
       "kind": "dead",
       "anchor": "else  -- C++ default (unreachable)",
       "note": "C++ switch default arms: og.rand(n) returns 0..n-1, so tier_roll never exceeds the listed cases"
@@ -1789,6 +2083,9 @@
       "id": "living-17-archmage.lua:566",
       "lines": [
         566
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "defensive",
       "anchor": "if not phantom then",
@@ -1800,6 +2097,10 @@
         575,
         576
       ],
+      "kinds": [
+        "for",
+        "for"
+      ],
       "kind": "loop",
       "anchor": "for i = -1, 1 do",
       "note": "3x3 placement scan for the phantom; rule row living-17-archmage.lua:577"
@@ -1808,6 +2109,9 @@
       "id": "living-17-archmage.lua:627",
       "lines": [
         627
+      ],
+      "kinds": [
+        "for"
       ],
       "kind": "loop",
       "anchor": "for i = 1, #foes do",

@@ -7,6 +7,10 @@
         28,
         32
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "M.foe_in_window (closure)",
       "anchor": "if not foe then",
       "condition": "not foe / not foe",
@@ -42,6 +46,9 @@
       "lines": [
         36
       ],
+      "kinds": [
+        "and"
+      ],
       "function": "M.foe_in_window (closure)",
       "anchor": "return distance < far and distance > near",
       "condition": "distance < far and distance > near",
@@ -52,12 +59,20 @@
           "observable": "gate true"
         },
         {
-          "when": "distance <= near (incl. exactly 20)",
+          "when": "distance < near (e.g. 19 px)",
           "observable": "gate false"
         },
         {
-          "when": "distance >= far (incl. exactly 75)",
+          "when": "distance exactly near (20)",
+          "observable": "gate false (pins > not >=)"
+        },
+        {
+          "when": "distance > far (e.g. 76 px)",
           "observable": "gate false"
+        },
+        {
+          "when": "distance exactly far (75)",
+          "observable": "gate false (pins < not <=)"
         }
       ],
       "setting": "none",
@@ -75,8 +90,8 @@
         }
       ],
       "missing_arms": [
-        "distance <= near (incl. exactly 20)",
-        "distance >= far (incl. exactly 75)"
+        "distance exactly near (20)",
+        "distance exactly far (75)"
       ],
       "note": [
         "Both closed edges are named in the arms (exactly 20 and exactly 75) and no test stands a foe at 20 or 75: a mutation to distance <= far or distance >= near survives (19/76 are one past the edge)."

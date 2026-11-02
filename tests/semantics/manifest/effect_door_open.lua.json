@@ -6,6 +6,9 @@
       "lines": [
         20
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "on_act (core:door_open)",
       "anchor": "if self:ani_type() ~= C.ANI_WALK then",
       "condition": "self:ani_type() ~= C.ANI_WALK",
@@ -45,6 +48,9 @@
       "lines": [
         27
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "on_act (core:door_open)",
       "anchor": "if not opened then",
       "condition": "not opened",
@@ -52,8 +58,11 @@
       "arms": [
         {
           "when": "copy spawned",
-          "observable": "one FAMILY_DOOR_OPEN on fxlist: same worldx/worldy/floor/curdir, ignore 1, ANI_WALK; original dead",
-          "asserted": false
+          "observable": "one FAMILY_DOOR_OPEN on fxlist: same worldx/worldy/curdir, ignore 1, ANI_WALK; original dead"
+        },
+        {
+          "when": "copy spawned (floor)",
+          "observable": "copy floor == original floor"
         },
         {
           "when": "fxlist full",
@@ -62,10 +71,21 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_pack_lua_paths.cpp",
+          "test": "PackLuaEffectDoorOpen.a_finished_opening_settles_into_an_ignored_copy",
+          "note": "worldx/worldy, curdir, ignore, team, level, original dead; floor not"
+        },
+        {
+          "file": "tests/integration/test_effect_chain_and_door.cpp",
+          "test": "EffectChainAndDoor.effect_chain_hits_leader_spawns_explosion_and_secondary_chains_and_door_open_spawns_fx",
+          "note": "worldx/worldy, ignore, curdir, ANI_WALK, original dead; floor not"
+        }
+      ],
       "missing_arms": [
-        "copy spawned",
+        "copy spawned (floor)",
         "fxlist full"
       ],
       "note": [

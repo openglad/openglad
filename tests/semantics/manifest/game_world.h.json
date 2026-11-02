@@ -7,6 +7,10 @@
         62,
         63
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "SimRandom::next",
       "anchor": "if (max_exclusive == 0) return 0;",
       "condition": "max_exclusive == 0 ; sim_random_override()",
@@ -55,6 +59,13 @@
         269,
         293
       ],
+      "kinds": [
+        "ternary",
+        "ternary",
+        "ternary",
+        "ternary",
+        "ternary"
+      ],
       "function": "grid_for_floor / decor_for_floor / smoother_for_floor",
       "anchor": "? extra_floors_[static_cast<std::size_t>(floor - 1)].grid",
       "condition": "valid_floor(floor) ? extra_floors_[floor-1].X : floor0 X",
@@ -92,6 +103,10 @@
       "lines": [
         282,
         284
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "decor_conceals_at",
       "anchor": "if (!dec.valid())",
@@ -143,6 +158,13 @@
         320,
         323
       ],
+      "kinds": [
+        "if",
+        "if",
+        "for",
+        "if",
+        "if"
+      ],
       "kind": "defensive",
       "anchor": "if (grid.valid() ? !mysmoother.targets(grid) : mysmoother.has_target())",
       "note": "smoothers_in_sync: invariant oracle (every floor's smoother targets its own grid and the world's RNG); no game rule, read by tests (test_level_editor_issue12_wall_crash.cpp asserts true after create/resize/load). The false arms are not directly asserted."
@@ -155,6 +177,13 @@
         339,
         342,
         344
+      ],
+      "kinds": [
+        "if",
+        "else",
+        "for",
+        "if",
+        "else"
       ],
       "kind": "plumbing",
       "anchor": "if (grid.valid())",

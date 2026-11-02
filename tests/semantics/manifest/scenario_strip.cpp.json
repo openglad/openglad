@@ -10,6 +10,13 @@
         63,
         66
       ],
+      "kinds": [
+        "if",
+        "if",
+        "for",
+        "if",
+        "if"
+      ],
       "function": "is_authored_troop / classic_strip_authored_troops",
       "anchor": "if (w == nullptr || w->myguy != nullptr)",
       "condition": "w == nullptr || w->myguy != nullptr ; order != Living && != Generator ; !save_all_protected ; doomed.empty()",
@@ -80,6 +87,17 @@
         73,
         75
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "for",
+        "for",
+        "for",
+        "for"
+      ],
       "function": "clear_refs_into",
       "anchor": "if (is_doomed(ob->foe()))",
       "condition": "is_doomed(foe/leader/owner/collide_ob/stats->controller)",
@@ -115,6 +133,10 @@
       "lines": [
         79,
         81
+      ],
+      "kinds": [
+        "for",
+        "if"
       ],
       "function": "classic_strip_authored_troops",
       "anchor": "for (walker* const victim : doomed)",

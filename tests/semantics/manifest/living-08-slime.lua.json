@@ -6,6 +6,9 @@
       "lines": [
         23
       ],
+      "kinds": [
+        "while"
+      ],
       "function": "calculate_level",
       "anchor": "while acc <= experience do",
       "condition": "while acc <= experience do",
@@ -43,6 +46,9 @@
       "lines": [
         43
       ],
+      "kinds": [
+        ""
+      ],
       "function": "slime_check_special_ai",
       "anchor": "return og.living_count() < C.MAXOBS",
       "condition": "return og.living_count() < C.MAXOBS",
@@ -79,6 +85,9 @@
       "lines": [
         60
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "split_on_death",
       "anchor": "if #self:s_name() > 0 then",
       "condition": "if #self:s_name() > 0 then",
@@ -111,6 +120,9 @@
       "lines": [
         65
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "split_on_death",
       "anchor": "if self:has_guy() then",
       "condition": "if self:has_guy() then",
@@ -142,6 +154,9 @@
       "id": "living-08-slime.lua:82",
       "lines": [
         82
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "slime_on_ani_complete",
       "anchor": "if self:ani_type() ~= C.ANI_SLIME_SPLIT then",
@@ -180,6 +195,10 @@
       "lines": [
         106,
         111
+      ],
+      "kinds": [
+        "if",
+        "elseif"
       ],
       "function": "slime_on_ani_complete",
       "anchor": "if child:has_guy() and child:g_exp() < exp_needed then",
@@ -223,6 +242,10 @@
         136,
         138
       ],
+      "kinds": [
+        "if",
+        "else"
+      ],
       "function": "grow_into",
       "anchor": "if self:spaces_clear() > 7 then",
       "condition": "if self:spaces_clear() > 7 then ... else",
@@ -258,6 +281,9 @@
       "lines": [
         51
       ],
+      "kinds": [
+        "if"
+      ],
       "kind": "defensive",
       "anchor": "if not child then",
       "note": "add_ob failure (object cap) on death split: the dying slime simply dies with no offspring; null guard."
@@ -266,6 +292,9 @@
       "id": "living-08-slime.lua:95",
       "lines": [
         95
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "defensive",
       "anchor": "if not child then",
@@ -276,6 +305,9 @@
       "lines": [
         103
       ],
+      "kinds": [
+        "if"
+      ],
       "kind": "dead",
       "anchor": "if exp_needed < 0 then",
       "note": "exp_needed = 1000*level is negative only for level < 0, unreachable (level >= 1 engine invariant); uint32-cast mirror."
@@ -284,6 +316,9 @@
       "id": "living-08-slime.lua:194",
       "lines": [
         194
+      ],
+      "kinds": [
+        "and"
       ],
       "kind": "dead",
       "anchor": "description = \"Slimes are patches of ooze which grow and split into two smaller slimes, overwhelming the enemy. Their nebulous nature makes them more susceptibl",
@@ -294,6 +329,9 @@
       "lines": [
         242
       ],
+      "kinds": [
+        "and"
+      ],
       "kind": "dead",
       "anchor": "description = \"Slimes are patches of ooze which grow and split into two smaller slimes, overwhelming the enemy. Their nebulous nature makes them more susceptibl",
       "note": "not a branch (description string containing 'and')"
@@ -302,6 +340,9 @@
       "id": "living-08-slime.lua:286",
       "lines": [
         286
+      ],
+      "kinds": [
+        "and"
       ],
       "kind": "dead",
       "anchor": "description = \"Slimes are patches of ooze which grow and split into two smaller slimes, overwhelming the enemy. Their nebulous nature makes them more susceptibl",

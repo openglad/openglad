@@ -6,6 +6,9 @@
       "lines": [
         95
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "PathingMap::least_cost_estimate",
       "anchor": "if (f1 != f2)",
       "condition": "f1 != f2",
@@ -32,6 +35,9 @@
       "id": "gameplay_context.cpp:116",
       "lines": [
         116
+      ],
+      "kinds": [
+        ""
       ],
       "function": "PathingMap::adjacent_cost",
       "anchor": "const int target_x = owner_->has_goal",
@@ -60,6 +66,9 @@
       "lines": [
         128
       ],
+      "kinds": [
+        "ternary"
+      ],
       "function": "PathingMap::adjacent_cost",
       "anchor": "const int f = multifloor ? GET_STATE_FLOOR(state) : 0;",
       "condition": "multifloor ? GET_STATE_FLOOR(state) : 0",
@@ -86,6 +95,9 @@
       "id": "gameplay_context.cpp:147",
       "lines": [
         147
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "PathingMap::adjacent_cost",
       "anchor": "if (!current_game->world->query_grid_passable(",
@@ -122,6 +134,9 @@
       "lines": [
         157
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "PathingMap::adjacent_cost",
       "anchor": "if (multifloor && nonflyer &&",
       "condition": "multifloor && nonflyer && genre == TYPE_AIR",
@@ -156,6 +171,12 @@
         186,
         188,
         201
+      ],
+      "kinds": [
+        "if",
+        "for",
+        "if",
+        "if"
       ],
       "function": "PathingMap::adjacent_cost",
       "anchor": "if (i != 0 && j != 0)",
@@ -210,6 +231,11 @@
         214,
         217
       ],
+      "kinds": [
+        "if",
+        "else",
+        "ternary"
+      ],
       "function": "PathingMap::adjacent_cost",
       "anchor": "if (pile != nullptr && !pile->empty())",
       "condition": "pile != nullptr && !pile->empty() ? 10 : (orthogonal ? 1 : sqrt2)",
@@ -254,6 +280,12 @@
         243,
         245
       ],
+      "kinds": [
+        "if",
+        "if",
+        "else if",
+        "if"
+      ],
       "function": "PathingMap::adjacent_cost",
       "anchor": "if (multifloor && nonflyer)",
       "condition": "multifloor && nonflyer; tile UP && f+1<floors -> f+1; DOWN && f>0 -> f-1; tf>=0 && passable",
@@ -296,6 +328,12 @@
         40,
         45
       ],
+      "kinds": [
+        "while",
+        "while",
+        "if",
+        "else"
+      ],
       "kind": "plumbing",
       "anchor": "while (bit > value)",
       "note": "integer square root for a libm-free deterministic path distance; no game rule"
@@ -304,6 +342,9 @@
       "id": "gameplay_context.cpp:104",
       "lines": [
         104
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "defensive",
       "anchor": "if (!owner_ || !owner_->active_walker ||",
@@ -316,6 +357,11 @@
         134,
         136
       ],
+      "kinds": [
+        "for",
+        "for",
+        "if"
+      ],
       "kind": "loop",
       "anchor": "for (int i = -1; i <= 1; i++)",
       "note": "8-neighbour expansion (skip self); rules at gameplay_context.cpp:147, :157, :181, :208"
@@ -324,6 +370,9 @@
       "id": "gameplay_context.cpp:293",
       "lines": [
         293
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "defensive",
       "anchor": "if (!impl_ || owner == nullptr || owner->foe() == nullptr)",
@@ -334,6 +383,9 @@
       "lines": [
         314
       ],
+      "kinds": [
+        "if"
+      ],
       "kind": "defensive",
       "anchor": "if (!impl_ || owner == nullptr)",
       "note": "solve_for_point null owner guard"
@@ -342,6 +394,9 @@
       "id": "gameplay_context.cpp:328",
       "lines": [
         328
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "plumbing",
       "anchor": "if (!context.pathfinding)",
@@ -353,6 +408,10 @@
         335,
         352
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "kind": "test-only",
       "anchor": "if (g_rng_override_ref != nullptr)",
       "note": "thread-local RNG override (parity harness / tests) wins over the context override"
@@ -362,6 +421,10 @@
       "lines": [
         346,
         363
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "kind": "plumbing",
       "anchor": "if (current_game)",
@@ -373,6 +436,10 @@
         371,
         373
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "kind": "plumbing",
       "anchor": "if (IRandom* override_rng = cosmetic_rng_override())",
       "note": "cosmetic_rng: override, else the world's rng_, else nullptr between levels; asserted by tests/unit/test_sim_entity.cpp TEST(SimEntity, cosmetic_rng_follows_the_installed_world). Determinism plumbing, no game rule"
@@ -381,6 +448,9 @@
       "id": "gameplay_context.cpp:380",
       "lines": [
         380
+      ],
+      "kinds": [
+        ""
       ],
       "kind": "plumbing",
       "anchor": "return current_game == nullptr",

@@ -6,6 +6,9 @@
       "lines": [
         12
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "on_act (core:knife_back)",
       "anchor": "if not owner or owner:dead() ~= 0 then",
       "condition": "not owner or owner:dead() ~= 0",
@@ -37,6 +40,10 @@
       "lines": [
         17,
         52
+      ],
+      "kinds": [
+        "if",
+        "else"
       ],
       "function": "on_act (core:knife_back)",
       "anchor": "if distance > 10 then",
@@ -72,6 +79,12 @@
         24,
         26
       ],
+      "kinds": [
+        "if",
+        "elseif",
+        "if",
+        "elseif"
+      ],
       "function": "on_act (core:knife_back)",
       "anchor": "if owner:xpos() > self:xpos() then",
       "condition": "owner xpos >/< self xpos; owner ypos >/< self ypos",
@@ -104,6 +117,9 @@
       "lines": [
         32
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "on_act (core:knife_back)",
       "anchor": "if not probe then",
       "condition": "not probe",
@@ -130,6 +146,9 @@
       "id": "effect_knife_back.lua:45",
       "lines": [
         45
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "on_act (core:knife_back)",
       "anchor": "if not og.query_object_passable(og.fadd(self:xpos(), xd),",

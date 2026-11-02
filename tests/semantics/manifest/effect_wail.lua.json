@@ -6,6 +6,9 @@
       "lines": [
         20
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "M.launch",
       "anchor": "if not bolt then",
       "condition": "not bolt",
@@ -43,6 +46,12 @@
         50,
         53,
         56
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if"
       ],
       "function": "is_fork_target",
       "anchor": "if foe == leader then",
@@ -98,6 +107,10 @@
         69,
         73
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "strike",
       "anchor": "if leader:has_guy() then",
       "condition": "leader:has_guy() / fright > 0",
@@ -136,6 +149,9 @@
       "lines": [
         82
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "strike",
       "anchor": "if hops < 1 then",
       "condition": "hops < 1",
@@ -166,6 +182,10 @@
       "lines": [
         95,
         98
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "strike",
       "anchor": "if forks_left <= 0 then",
@@ -210,6 +230,12 @@
         120,
         122
       ],
+      "kinds": [
+        "if",
+        "elseif",
+        "if",
+        "elseif"
+      ],
       "function": "home_on",
       "anchor": "if tx > self:xpos() then",
       "condition": "tx >/< xpos; ty >/< ypos",
@@ -242,6 +268,10 @@
       "lines": [
         139,
         142
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "on_act (core:wail)",
       "anchor": "if not leader or not owner then",
@@ -278,6 +308,9 @@
       "lines": [
         147
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "on_act (core:wail)",
       "anchor": "if hits(cx - 4, cy - 4, 8, 8,",
       "condition": "hits(8x8 core at puff centre, leader box)",
@@ -312,6 +345,9 @@
       "id": "effect_wail.lua:93",
       "lines": [
         93
+      ],
+      "kinds": [
+        "for"
       ],
       "kind": "loop",
       "anchor": "for i = 1, #foes do",

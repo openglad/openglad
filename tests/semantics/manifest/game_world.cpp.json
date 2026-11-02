@@ -7,6 +7,10 @@
         50,
         52
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "sanitize_owner_chain_link",
       "anchor": "if (owner == nullptr || owner == current)",
       "condition": "owner == nullptr || owner == current ; !world.tracks(owner)",
@@ -48,6 +52,9 @@
       "lines": [
         592
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "add_to_list",
       "anchor": "if (count_living)",
       "condition": "count_living (== order == Order::Living for add_ob's oblist path)",
@@ -80,6 +87,10 @@
       "lines": [
         600,
         602
+      ],
+      "kinds": [
+        "if",
+        "else"
       ],
       "function": "add_to_list",
       "anchor": "if (atstart)",
@@ -116,6 +127,10 @@
       "lines": [
         610,
         617
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "add_ob",
       "anchor": "if (order == Order::Weapon)",
@@ -182,6 +197,12 @@
         658,
         660
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if"
+      ],
       "function": "remove_ob",
       "anchor": "if (e != weapons.end())",
       "condition": "e != weapons.end() ; f != effects.end() ; g != objects.end() ; ob && Living && living_count > 0",
@@ -241,6 +262,9 @@
       "lines": [
         689
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "query_grid_passable",
       "anchor": "if (x_i < 0 || y_i < 0 || xover >= pixmaxx || yover >= pixmaxy)",
       "condition": "x_i < 0 || y_i < 0 || xover >= pixmaxx || yover >= pixmaxy",
@@ -289,6 +313,9 @@
       "lines": [
         693
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "query_grid_passable",
       "anchor": "if (ob->stats()->query_bit_flags(BIT_ETHEREAL))",
       "condition": "ob->stats()->query_bit_flags(BIT_ETHEREAL)",
@@ -323,6 +350,9 @@
       "id": "game_world.cpp:697",
       "lines": [
         697
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "query_grid_passable",
       "anchor": "if (!fg.valid())",
@@ -361,6 +391,10 @@
       "lines": [
         709,
         711
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "query_grid_passable",
       "anchor": "if ((xover % GRID_SIZE) == 0)",
@@ -471,6 +505,86 @@
         799,
         800
       ],
+      "kinds": [
+        "switch",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case"
+      ],
       "function": "query_grid_passable",
       "anchor": "switch (static_cast<unsigned char>(fg.data[static_cast<std::size_t>(i + fg.w * j)]))",
       "condition": "switch (tile): grass/pavement/cobble/floor/carpet/dirt/path cases",
@@ -509,6 +623,15 @@
         807,
         808,
         810
+      ],
+      "kinds": [
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "if",
+        "if"
       ],
       "function": "query_grid_passable",
       "anchor": "case PIX_TREE_M1:",
@@ -574,6 +697,11 @@
         814,
         819
       ],
+      "kinds": [
+        "case",
+        "if",
+        "if"
+      ],
       "function": "query_grid_passable",
       "anchor": "case PIX_TREE_B1:",
       "condition": "PIX_TREE_B1: Order::Weapon || BIT_FORESTWALK ; BIT_FLYING || flight_left()",
@@ -628,6 +756,13 @@
         826,
         827,
         828
+      ],
+      "kinds": [
+        "case",
+        "case",
+        "case",
+        "case",
+        "case"
       ],
       "function": "query_grid_passable",
       "anchor": "case PIX_H_WALL1:",
@@ -695,6 +830,22 @@
         848,
         850
       ],
+      "kinds": [
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "if",
+        "if",
+        "if"
+      ],
       "function": "query_grid_passable",
       "anchor": "case PIX_WATER1:",
       "condition": "water bytes: Order::Weapon ; BIT_FLYING || flight_left() ; BIT_SWIMMING",
@@ -750,6 +901,22 @@
         888,
         892,
         894
+      ],
+      "kinds": [
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "else",
+        "if",
+        "if"
       ],
       "function": "query_grid_passable",
       "anchor": "case PIX_WALL4:",
@@ -840,6 +1007,25 @@
         914,
         916
       ],
+      "kinds": [
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "if",
+        "if"
+      ],
       "function": "query_grid_passable",
       "anchor": "case PIX_WALLSIDE_L:",
       "condition": "wallside/torch/brazier/column/boulder bytes: Order::Weapon ; BIT_FLYING || flight_left()",
@@ -894,6 +1080,16 @@
         925,
         926
       ],
+      "kinds": [
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case"
+      ],
       "function": "query_grid_passable",
       "anchor": "case PIX_AIR:",
       "condition": "PIX_AIR/GLASS/DROPBLOCK_*/ZSTAIR_* -> break",
@@ -927,6 +1123,14 @@
         937,
         938
       ],
+      "kinds": [
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case"
+      ],
       "function": "query_grid_passable",
       "anchor": "case PIX_SNOW1:",
       "condition": "PIX_SNOW1/2, MARSH1/2, ASH1/2 -> break",
@@ -954,6 +1158,12 @@
         941,
         944,
         946
+      ],
+      "kinds": [
+        "case",
+        "case",
+        "if",
+        "if"
       ],
       "function": "query_grid_passable",
       "anchor": "case PIX_LAVA1:",
@@ -992,6 +1202,9 @@
       "id": "game_world.cpp:949",
       "lines": [
         949
+      ],
+      "kinds": [
+        "default"
       ],
       "function": "query_grid_passable",
       "anchor": "default:",
@@ -1035,6 +1248,16 @@
         972,
         976,
         978
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "switch",
+        "case",
+        "case",
+        "case",
+        "if",
+        "if"
       ],
       "function": "query_grid_passable",
       "anchor": "if (has_decor)",
@@ -1100,6 +1323,9 @@
       "lines": [
         1001
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "query_object_passable",
       "anchor": "if (ob->dead())",
       "condition": "ob->dead()",
@@ -1153,6 +1379,25 @@
         1059,
         1061
       ],
+      "kinds": [
+        "switch",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "default"
+      ],
       "function": "sight_opaque_tile",
       "anchor": "switch (tile)",
       "condition": "switch (tile): tree crowns/trunk tops + solid walls + arrow walls -> true; default false",
@@ -1204,6 +1449,13 @@
         1107,
         1109,
         1111
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if",
+        "if"
       ],
       "function": "clear_sight_line",
       "anchor": "if (from->floor() != to->floor())",
@@ -1263,6 +1515,10 @@
         1122,
         1125
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "set_floor_count",
       "anchor": "if (count < 1)",
       "condition": "count < 1 ; extra < extra_floors_.size()",
@@ -1315,6 +1571,14 @@
         1168,
         1207
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "else",
+        "if",
+        "if"
+      ],
       "function": "find_near_foe",
       "anchor": "if (!myobmap)",
       "condition": "!myobmap ; (xchange % 2)==0 x-step else y-step ; targx/targy off map -> find_nearest_foe ; every second leg reverse direction and widen",
@@ -1365,6 +1629,10 @@
       "lines": [
         1192,
         1195
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "find_near_foe",
       "anchor": "if (!w->dead() && ob->is_friendly(w) == 0 &&",
@@ -1428,6 +1696,11 @@
         1236,
         1241,
         1247
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
       ],
       "function": "find_nearest_foe",
       "anchor": "if (foe == nullptr || foe->dead() || foe->dormant() || foe->hidden())",
@@ -1494,7 +1767,6 @@
       ],
       "missing_arms": [
         "equal distance",
-        "no qualifying foe",
         "foe on another floor"
       ]
     },
@@ -1503,6 +1775,10 @@
       "lines": [
         1270,
         1275
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "find_nearest_blood",
       "anchor": "if (w && w->query_order() == Order::Treasure &&",
@@ -1550,6 +1826,10 @@
       "lines": [
         1297,
         1300
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "find_nearest_player",
       "anchor": "if (w && !w->dormant() && !w->hidden() && w->user() != -1)",
@@ -1606,6 +1886,9 @@
       "lines": [
         1325
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "find_in_range",
       "anchor": "if (w && !w->dead() && !w->dormant() && !w->hidden() && ob->distance_to_ob(w) <= range)",
       "condition": "w && !dead && !dormant && !hidden && distance_to_ob(w) <= range",
@@ -1649,6 +1932,9 @@
       "lines": [
         1349
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "find_foes_in_range",
       "anchor": "if (w && !w->dead() && !w->dormant() && !w->hidden() &&",
       "condition": "alive && awake && visible && (Living||Generator) && !is_friendly && distance <= range",
@@ -1668,7 +1954,7 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/integration/test_level_data_coverage.cpp",
@@ -1683,14 +1969,16 @@
       ],
       "missing_arms": [
         "hostile living/generator in range",
-        "friendly / dead / weapon",
-        "cloaked hostile"
+        "friendly / dead / weapon"
       ]
     },
     {
       "id": "game_world.cpp:1377",
       "lines": [
         1377
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "find_foe_weapons_in_range",
       "anchor": "if (w && !w->dead() && !w->dormant() && !w->hidden() &&",
@@ -1737,6 +2025,9 @@
       "id": "game_world.cpp:1404",
       "lines": [
         1404
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "find_friends_in_range",
       "anchor": "if (w && w != ob && !w->dead() && !w->dormant() && !w->hidden() &&",
@@ -1788,6 +2079,14 @@
         1447,
         1448
       ],
+      "kinds": [
+        "for",
+        "switch",
+        "case",
+        "case",
+        "case",
+        "case"
+      ],
       "function": "create_new_grid",
       "anchor": "for (int i = 0; i < size; i++)",
       "condition": "switch (rng_.next(4)) cases 0..3",
@@ -1816,6 +2115,16 @@
         1470,
         1484,
         1486
+      ],
+      "kinds": [
+        "if",
+        "switch",
+        "case",
+        "case",
+        "case",
+        "case",
+        "if",
+        "else"
       ],
       "function": "resize_grid",
       "anchor": "if (width < 3 || height < 3 || width > 255 || height > 255)",
@@ -1854,6 +2163,11 @@
         1522,
         1528
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
+      ],
       "function": "resize_grid",
       "anchor": "if (erase)",
       "condition": "off_map(uptr) -> erase + unindex",
@@ -1869,7 +2183,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_level_data_coverage.cpp",
@@ -1877,9 +2191,7 @@
           "note": "list membership only"
         }
       ],
-      "missing_arms": [
-        "walker outside new bounds"
-      ]
+      "missing_arms": []
     },
     {
       "id": "game_world.cpp:1614",
@@ -1887,6 +2199,11 @@
         1614,
         1617,
         1622
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
       ],
       "function": "damage_tile",
       "anchor": "if (!grid.valid())",
@@ -1931,6 +2248,9 @@
       "lines": [
         1633
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "damage_tile",
       "anchor": "if (decor.valid() && decor.w == grid.w && decor.h == grid.h &&",
       "condition": "decor valid && same dims && decor cell != DECOR_NONE -> return 0",
@@ -1969,6 +2289,14 @@
         1643,
         1646
       ],
+      "kinds": [
+        "switch",
+        "case",
+        "case",
+        "case",
+        "case",
+        "default"
+      ],
       "function": "damage_tile",
       "anchor": "switch (static_cast<unsigned char>(grid.data[static_cast<std::size_t>(gridloc)]))",
       "condition": "switch (tile): PIX_GRASS1..4 -> PIX_GRASS1_DAMAGED ; default unchanged",
@@ -2005,6 +2333,9 @@
       "id": "game_world.cpp:1673",
       "lines": [
         1673
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "remaining_foes",
       "anchor": "if (w && !w->dead() &&",
@@ -2051,6 +2382,10 @@
         1708,
         1710
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "tick",
       "anchor": "if (og::sim::g_test_level_tick_limit_override > 0)",
       "condition": "g_test_level_tick_limit_override > 0 ; level_tick_count_ > max_level_ticks (36000)",
@@ -2066,7 +2401,7 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_sim_world.cpp",
@@ -2079,16 +2414,17 @@
           "note": "game_ended, ending==1"
         }
       ],
-      "missing_arms": [
-        "tick count <= limit",
-        "tick count > limit"
-      ]
+      "missing_arms": []
     },
     {
       "id": "game_world.cpp:1727",
       "lines": [
         1727,
         1729
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "tick",
       "anchor": "if (enemy_freeze)",
@@ -2123,7 +2459,6 @@
         }
       ],
       "missing_arms": [
-        "freeze 11",
         "freeze 0"
       ]
     },
@@ -2132,6 +2467,10 @@
       "lines": [
         1757,
         1766
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "tick::wake_delayed_spawn",
       "anchor": "if (!no_collide && wake_spot_blocked(ob) &&",
@@ -2180,8 +2519,6 @@
         }
       ],
       "missing_arms": [
-        "spot clear",
-        "whole radius blocked",
         "BIT_NO_COLLIDE, spot blocked"
       ]
     },
@@ -2192,6 +2529,12 @@
         1848,
         1854,
         1870
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if"
       ],
       "function": "tick",
       "anchor": "if (withdraw_requested)",
@@ -2236,6 +2579,12 @@
         1793,
         1795
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if"
+      ],
       "function": "tick",
       "anchor": "if (ob != nullptr && !ob->dead() && (ob->dormant() || ob->hidden()))",
       "condition": "!dead && (dormant || hidden) ; dormant && level_tick_count_ > spawn_delay -> wake ; still dormant/hidden -> census + continue",
@@ -2259,7 +2608,7 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_sim_world_headless.cpp",
@@ -2275,12 +2624,14 @@
           "file": "tests/unit/test_delayed_spawn_wake.cpp",
           "test": "DelayedSpawnWake.blocked_wake_defers_then_completes",
           "note": "wake after delay"
+        },
+        {
+          "file": "tests/unit/test_kit_seams_hidden.cpp",
+          "test": "KitSeams.hidden_walker_is_inert_and_skipped_by_every_finder",
+          "note": "hidden orc does not act, but level_done 0 is not discriminating: a visible hostile far_orc also holds the level"
         }
       ],
       "missing_arms": [
-        "dormant, delay not reached",
-        "dormant, delay passed, spot clear",
-        "hidden hostile",
         "hidden friendly"
       ]
     },
@@ -2291,6 +2642,12 @@
         1821,
         1826,
         1836
+      ],
+      "kinds": [
+        "if",
+        "else",
+        "if",
+        "if"
       ],
       "function": "tick",
       "anchor": "if (!enemy_freeze) // normal functionality",
@@ -2354,6 +2711,13 @@
         1838,
         1840
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if",
+        "if"
+      ],
       "function": "tick",
       "anchor": "if (ob && !ob->dead())",
       "condition": "ob && !dead (before and after act) ; !is_friendly_to_team(my_team) && Living -> level_done = 0",
@@ -2407,6 +2771,9 @@
       "lines": [
         1816
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "tick",
       "anchor": "if (ob->foe() == nullptr && ob->leader() == nullptr)",
       "condition": "ob->foe() == nullptr && ob->leader() == nullptr -> set_foe(find_nearest_foe(ob))",
@@ -2440,6 +2807,11 @@
         1858,
         1861,
         1863
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
       ],
       "function": "tick",
       "anchor": "if (ob && !ob->dead())",
@@ -2477,6 +2849,10 @@
       "lines": [
         1877,
         1879
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "tick",
       "anchor": "if (ob && !ob->dead())",
@@ -2531,6 +2907,12 @@
         1911,
         1917
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "else"
+      ],
       "function": "tick",
       "anchor": "if ((type & TYPE_SCRIPTED) && !(mode.init_attempted && !mode.active))",
       "condition": "(type & TYPE_SCRIPTED) && !(init_attempted && !active) -> mode_run_tick ; game_ended -> return ; init refused && !claim -> run_lineup_stage_step ; else classic arm",
@@ -2573,14 +2955,16 @@
         }
       ],
       "missing_arms": [
-        "scripted, mode active",
-        "mode declared winner"
+        "scripted, mode active"
       ]
     },
     {
       "id": "game_world.cpp:1933",
       "lines": [
         1933
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "tick",
       "anchor": "if (level_tick_count_ == 1 && ctf_requested_strip_scenario_troops >= 1)",
@@ -2637,6 +3021,10 @@
         1940,
         1943
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "tick",
       "anchor": "if (level_tick_count_ == 1 && !consume_staged_lineup_stage_claim())",
       "condition": "level_tick_count_ == 1 && !consume_staged_lineup_stage_claim() ; run_lineup_stage_step() && oblist grew -> level_done = 0",
@@ -2679,6 +3067,9 @@
       "id": "game_world.cpp:1961",
       "lines": [
         1961
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "tick",
       "anchor": "if (level_done == 2 &&",
@@ -2735,6 +3126,11 @@
         1981,
         1985
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
+      ],
       "function": "tick",
       "anchor": "if (end)",
       "condition": "end -> game_ended ; classic_respawn_run_tick ; game_ended -> return ; end (scripted path) -> game_ended, return",
@@ -2754,7 +3150,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_sim_world.cpp",
@@ -2776,10 +3172,7 @@
           "note": "pending heroes revived"
         }
       ],
-      "missing_arms": [
-        "end set, foes alive",
-        "game ended by completion"
-      ]
+      "missing_arms": []
     },
     {
       "id": "game_world.cpp:1993",
@@ -2790,6 +3183,14 @@
         2000,
         2002,
         2004
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if"
       ],
       "function": "tick::clear_stale_cross_refs",
       "anchor": "if (ob == nullptr)",
@@ -2845,6 +3246,10 @@
         2029,
         2035
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "tick",
       "anchor": "if (ob && ob->dead() && ob->myguy == nullptr &&",
       "condition": "ob->dead() && ob->myguy == nullptr && !respawn_pending_for(ob) -> move to dead_list ; Living -> living_count--",
@@ -2883,6 +3288,10 @@
         2046,
         2054
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "tick",
       "anchor": "if (!(ob && ob->dead()))",
       "condition": "fxlist / weaplist: ob && ob->dead() -> erase + unindex",
@@ -2898,7 +3307,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_runtime_coverage_paths.cpp",
@@ -2911,14 +3320,15 @@
           "note": "list sizes"
         }
       ],
-      "missing_arms": [
-        "dead effect / weapon"
-      ]
+      "missing_arms": []
     },
     {
       "id": "game_world.cpp:2063",
       "lines": [
         2063
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "run_pending_level_on_load",
       "anchor": "if (last_level_id_ == id)",
@@ -2939,7 +3349,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_level_scripts.cpp",
@@ -2950,14 +3360,15 @@
           "test": "LevelScriptsTest.claim_level_load_latch_suppresses_the_tick_dispatch"
         }
       ],
-      "missing_arms": [
-        "first tick of a level"
-      ]
+      "missing_arms": []
     },
     {
       "id": "game_world.cpp:2081",
       "lines": [
         2081
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "run_lineup_stage_step",
       "anchor": "if (mode.active)",
@@ -2996,6 +3407,10 @@
       "lines": [
         2104,
         2113
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "landing_blocked_by",
       "anchor": "if (other == nullptr || other == ob || other->dead() || other->hidden())",
@@ -3059,6 +3474,10 @@
         2128,
         2151
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "floor_landing_clear",
       "anchor": "if (!query_grid_passable(x, y, ob, target_floor))",
       "condition": "!query_grid_passable(x,y,ob,target_floor) -> false ; landing_blocked_by(other) -> false",
@@ -3101,6 +3520,10 @@
         2175,
         2178
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "dormant_overlaps_box",
       "anchor": "if (other == nullptr || other == self || other->dead() ||",
       "condition": "other dead/self/not dormant/other floor -> skip ; bbox overlap -> true",
@@ -3137,6 +3560,9 @@
       "id": "game_world.cpp:2220",
       "lines": [
         2220
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "wake_spot_blocked",
       "anchor": "if (landing_blocked_by(other, ob, xi, yi))",
@@ -3180,6 +3606,16 @@
         2245,
         2249,
         2255
+      ],
+      "kinds": [
+        "if",
+        "for",
+        "for",
+        "for",
+        "if",
+        "if",
+        "if",
+        "if"
       ],
       "function": "relocate_to_nearest_wake_spot",
       "anchor": "if (!g.valid())",
@@ -3226,6 +3662,10 @@
       "lines": [
         2276,
         2281
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "has_save_all_protected",
       "anchor": "if (uptr != nullptr && uptr->save_all_protected())",
@@ -3274,6 +3714,11 @@
         2302,
         2304,
         2308
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
       ],
       "function": "floor_hud_label",
       "anchor": "if (!tower)",
@@ -3337,6 +3782,10 @@
         2326,
         2330
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "retire_corpse",
       "anchor": "if (e->get() != ob)",
       "condition": "e->get() != ob -> continue ; Living -> living_count--",
@@ -3370,6 +3819,10 @@
       "lines": [
         2362,
         2368
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "find_blood_in_reach",
       "anchor": "if (w && w->query_order() == Order::Treasure &&",
@@ -3410,6 +3863,9 @@
       "lines": [
         47
       ],
+      "kinds": [
+        "for"
+      ],
       "kind": "loop",
       "anchor": "for (int depth = 0; depth < kMaxOwnerDepth; ++depth)",
       "note": "owner-chain walk bounded at 16 hops; see game_world.cpp:50"
@@ -3423,6 +3879,13 @@
         72,
         75
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if",
+        "if"
+      ],
       "kind": "plumbing",
       "anchor": "if (entity.foe() == &entity)",
       "note": "refresh_self_reference_ids: re-runs setters for self-references so pointer/id mirror fields agree after an id assignment; no game semantic"
@@ -3431,6 +3894,9 @@
       "id": "game_world.cpp:85",
       "lines": [
         85
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "defensive",
       "anchor": "if (candidate == nullptr)",
@@ -3442,6 +3908,10 @@
         134,
         138
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "kind": "plumbing",
       "anchor": "if (scripts_ != nullptr &&",
       "note": "scripts(): rebuild the Lua VM when the mounted pack generation changed; deterministic rebuild timing, no game rule"
@@ -3450,6 +3920,9 @@
       "id": "game_world.cpp:145",
       "lines": [
         145
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "plumbing",
       "anchor": "if (detach_callback_)",
@@ -3460,6 +3933,10 @@
       "lines": [
         247,
         257
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "kind": "defensive",
       "anchor": "if (entities_.empty())",
@@ -3472,6 +3949,11 @@
         293,
         303
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
+      ],
       "kind": "defensive",
       "anchor": "if (this == &other || other.entities_.empty())",
       "note": "splice of self/empty list is a no-op"
@@ -3481,6 +3963,10 @@
       "lines": [
         323,
         326
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "kind": "plumbing",
       "anchor": "if (owner_ == nullptr || entity == nullptr)",
@@ -3492,6 +3978,10 @@
         337,
         340
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "kind": "plumbing",
       "anchor": "if (entity == nullptr)",
       "note": "prepare_remove logs removed entity ids for the network delta"
@@ -3502,6 +3992,10 @@
         346,
         352
       ],
+      "kinds": [
+        "for",
+        "for"
+      ],
       "kind": "loop",
       "anchor": "for (auto& uptr : entities)",
       "note": "per-entity prepare_insert/prepare_remove over a spliced list; plumbing"
@@ -3510,6 +4004,9 @@
       "id": "game_world.cpp:358",
       "lines": [
         358
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "defensive",
       "anchor": "if (owner_ != nullptr)",
@@ -3520,6 +4017,10 @@
       "lines": [
         364,
         371
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "kind": "defensive",
       "anchor": "if (!entity_configurator)",
@@ -3533,6 +4034,12 @@
         406,
         408
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if"
+      ],
       "kind": "plumbing",
       "anchor": "if ((context.save == nullptr ||",
       "note": "populate_gameplay_context falls back to the active current_game bindings for this world (asserted by gameplay_context_falls_back_to_matching_active_context); dependency wiring, no game rule"
@@ -3543,6 +4050,10 @@
         451,
         453
       ],
+      "kinds": [
+        "if",
+        "else if"
+      ],
       "kind": "plumbing",
       "anchor": "if (entity.entity_id() == 0)",
       "note": "entity id allocation: fresh id for 0, next_entity_id_ bumped past adopted ids (asserted by assigns_unique_non_zero_ids_and_finds_entities / moving_entities_between_worlds_preserves_lookup_and_next_id)"
@@ -3551,6 +4062,9 @@
       "id": "game_world.cpp:462",
       "lines": [
         462
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "plumbing",
       "anchor": "if (entity.entity_id() == 0)",
@@ -3562,6 +4076,11 @@
         470,
         473,
         477
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
       ],
       "kind": "plumbing",
       "anchor": "if (entity == nullptr || entity->entity_id() == 0)",
@@ -3575,6 +4094,12 @@
         504,
         506
       ],
+      "kinds": [
+        "for",
+        "if",
+        "if",
+        "if"
+      ],
       "kind": "loop",
       "anchor": "for (auto& uptr : entities)",
       "note": "rebuild_id_index reindex loop: null skip, next-id bump, dead_list excluded from index; plumbing"
@@ -3585,6 +4110,11 @@
         525,
         529,
         537
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "ternary"
       ],
       "kind": "plumbing",
       "anchor": "if (entity == nullptr)",
@@ -3598,6 +4128,12 @@
         550,
         559
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "ternary"
+      ],
       "kind": "plumbing",
       "anchor": "if (entity_id == 0)",
       "note": "find_by_id: id 0 -> null, lazy rebuild, self-heal on a stale entry (asserted by direct_public_insert_assigns_id_and_rebuilds_id_index_on_lookup)"
@@ -3606,6 +4142,9 @@
       "id": "game_world.cpp:564",
       "lines": [
         564
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "defensive",
       "anchor": "if (this == &source)",
@@ -3617,6 +4156,10 @@
         584,
         589
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "kind": "defensive",
       "anchor": "if (!entity_factory)",
       "note": "no entity factory / factory refused -> nullptr, world unchanged (asserted by rejected_factory_results_leave_world_unchanged)"
@@ -3626,6 +4169,9 @@
       "lines": [
         672
       ],
+      "kinds": [
+        "ternary"
+      ],
       "kind": "plumbing",
       "anchor": "return query_grid_passable(x, y, ob, ob != nullptr ? ob->floor() : 0);",
       "note": "query_grid_passable overload defaults the floor to ob->floor()"
@@ -3634,6 +4180,9 @@
       "id": "game_world.cpp:677",
       "lines": [
         677
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "defensive",
       "anchor": "if (ob == nullptr)",
@@ -3645,6 +4194,10 @@
         718,
         720
       ],
+      "kinds": [
+        "for",
+        "for"
+      ],
       "kind": "loop",
       "anchor": "for (std::int32_t i = x_i / GRID_SIZE; i < xtarg; ++i)",
       "note": "per-cell scan of the box; see game_world.cpp:722 and the tile rows that follow"
@@ -3653,6 +4206,9 @@
       "id": "game_world.cpp:993",
       "lines": [
         993
+      ],
+      "kinds": [
+        "ternary"
       ],
       "kind": "plumbing",
       "anchor": "return query_object_passable(x, y, ob, ob != nullptr ? ob->floor() : 0);",
@@ -3663,6 +4219,9 @@
       "lines": [
         998
       ],
+      "kinds": [
+        "if"
+      ],
       "kind": "defensive",
       "anchor": "if (ob == nullptr)",
       "note": "null walker -> not passable"
@@ -3671,6 +4230,9 @@
       "id": "game_world.cpp:1005",
       "lines": [
         1005
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "defensive",
       "anchor": "if (!om)",
@@ -3681,6 +4243,9 @@
       "lines": [
         1020
       ],
+      "kinds": [
+        "ternary"
+      ],
       "kind": "plumbing",
       "anchor": "return query_passable(x, y, ob, ob != nullptr ? ob->floor() : 0);",
       "note": "query_passable overload defaults floor"
@@ -3689,6 +4254,9 @@
       "id": "game_world.cpp:1070",
       "lines": [
         1070
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "defensive",
       "anchor": "if (from == nullptr || to == nullptr)",
@@ -3705,6 +4273,15 @@
         1097,
         1102
       ],
+      "kinds": [
+        "ternary",
+        "ternary",
+        "ternary",
+        "ternary",
+        "while",
+        "if",
+        "if"
+      ],
       "kind": "loop",
       "anchor": "const int adx = x1 > x0 ? x1 - x0 : x0 - x1;",
       "note": "Bresenham setup (abs/sign ternaries) and stepping loop; see game_world.cpp:1072"
@@ -3714,6 +4291,9 @@
       "lines": [
         1130
       ],
+      "kinds": [
+        "while"
+      ],
       "kind": "loop",
       "anchor": "while (extra_floors_.size() < extra)",
       "note": "grow extra floors; see game_world.cpp:1122"
@@ -3722,6 +4302,9 @@
       "id": "game_world.cpp:1140",
       "lines": [
         1140
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "defensive",
       "anchor": "if (!ob)",
@@ -3734,6 +4317,11 @@
         1157,
         1182
       ],
+      "kinds": [
+        "while",
+        "for",
+        "for"
+      ],
       "kind": "loop",
       "anchor": "while (spread < MAX_SPREAD)",
       "note": "spiral legs and pile walk; see game_world.cpp:1146 and :1192"
@@ -3742,6 +4330,9 @@
       "id": "game_world.cpp:1185",
       "lines": [
         1185
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "defensive",
       "anchor": "if (!tracks(w))",
@@ -3752,6 +4343,9 @@
       "lines": [
         1221
       ],
+      "kinds": [
+        "if"
+      ],
       "kind": "defensive",
       "anchor": "if (!ob)",
       "note": "null searcher -> nullptr + log"
@@ -3760,6 +4354,9 @@
       "id": "game_world.cpp:1233",
       "lines": [
         1233
+      ],
+      "kinds": [
+        "for"
       ],
       "kind": "loop",
       "anchor": "for (auto& uptr : oblist)",
@@ -3770,6 +4367,9 @@
       "lines": [
         1261
       ],
+      "kinds": [
+        "if"
+      ],
       "kind": "defensive",
       "anchor": "if (!who)",
       "note": "null -> nullptr"
@@ -3778,6 +4378,9 @@
       "id": "game_world.cpp:1267",
       "lines": [
         1267
+      ],
+      "kinds": [
+        "for"
       ],
       "kind": "loop",
       "anchor": "for (auto& uptr : fxlist)",
@@ -3788,6 +4391,9 @@
       "lines": [
         1288
       ],
+      "kinds": [
+        "if"
+      ],
       "kind": "defensive",
       "anchor": "if (!ob)",
       "note": "null -> nullptr"
@@ -3796,6 +4402,9 @@
       "id": "game_world.cpp:1294",
       "lines": [
         1294
+      ],
+      "kinds": [
+        "for"
       ],
       "kind": "loop",
       "anchor": "for (auto& uptr : oblist)",
@@ -3813,6 +4422,16 @@
         1395,
         1398
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if"
+      ],
       "kind": "defensive",
       "anchor": "if (howmany != nullptr)",
       "note": "range finders: zero the count, null searcher or null count pointer -> empty result"
@@ -3825,6 +4444,12 @@
         1374,
         1401
       ],
+      "kinds": [
+        "for",
+        "for",
+        "for",
+        "for"
+      ],
       "kind": "loop",
       "anchor": "for (auto& uptr : somelist)",
       "note": "range-finder list scans; see game_world.cpp:1325, :1349, :1377, :1404"
@@ -3834,6 +4459,10 @@
       "lines": [
         1480,
         1482
+      ],
+      "kinds": [
+        "for",
+        "for"
       ],
       "kind": "loop",
       "anchor": "for (int i = 0; i < width; i++)",
@@ -3845,6 +4474,10 @@
         1545,
         1553
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "kind": "plumbing",
       "anchor": "if (!myobmap)",
       "note": "delete_objects: create obmap if missing, clear stale spatial index"
@@ -3853,6 +4486,9 @@
       "id": "game_world.cpp:1586",
       "lines": [
         1586
+      ],
+      "kinds": [
+        "for"
       ],
       "kind": "loop",
       "anchor": "for (int i = 0; i < 4; ++i)",
@@ -3864,6 +4500,10 @@
         1650,
         1654
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "kind": "plumbing",
       "anchor": "if (grid.data[static_cast<std::size_t>(gridloc)] != next_value)",
       "note": "dirty-tile fold for the network delta: only a changed byte is recorded, each cell once"
@@ -3872,6 +4512,9 @@
       "id": "game_world.cpp:1666",
       "lines": [
         1666
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "defensive",
       "anchor": "if (!myguy)",
@@ -3882,6 +4525,9 @@
       "lines": [
         1670
       ],
+      "kinds": [
+        "for"
+      ],
       "kind": "loop",
       "anchor": "for (auto& uptr : oblist)",
       "note": "oblist scan; see game_world.cpp:1673"
@@ -3890,6 +4536,9 @@
       "id": "game_world.cpp:1692",
       "lines": [
         1692
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "defensive",
       "anchor": "if (current_game == nullptr || current_game->sim_events == nullptr)",
@@ -3900,6 +4549,9 @@
       "lines": [
         1779
       ],
+      "kinds": [
+        "for"
+      ],
       "kind": "loop",
       "anchor": "for (auto& uptr : oblist)",
       "note": "entity act phase over oblist; see game_world.cpp:1781, :1789, :1802, :1812, :1816"
@@ -3909,6 +4561,9 @@
       "lines": [
         1852
       ],
+      "kinds": [
+        "for"
+      ],
       "kind": "loop",
       "anchor": "for (auto& uptr : weaplist)",
       "note": "weapon act phase; see game_world.cpp:1858"
@@ -3917,6 +4572,9 @@
       "id": "game_world.cpp:1874",
       "lines": [
         1874
+      ],
+      "kinds": [
+        "for"
       ],
       "kind": "loop",
       "anchor": "for (auto& uptr : fxlist)",
@@ -3929,6 +4587,11 @@
         2012,
         2015
       ],
+      "kinds": [
+        "for",
+        "for",
+        "for"
+      ],
       "kind": "loop",
       "anchor": "for (auto& uptr : oblist)",
       "note": "stale-reference sweep over the three lists; see game_world.cpp:1993"
@@ -3937,6 +4600,9 @@
       "id": "game_world.cpp:2023",
       "lines": [
         2023
+      ],
+      "kinds": [
+        "for"
       ],
       "kind": "loop",
       "anchor": "for (auto e = objects.begin(); e != objects.end();)",
@@ -3947,6 +4613,10 @@
       "lines": [
         2126,
         2130
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "kind": "defensive",
       "anchor": "if (ob == nullptr)",
@@ -3960,6 +4630,12 @@
         2147,
         2149
       ],
+      "kinds": [
+        "for",
+        "for",
+        "if",
+        "for"
+      ],
       "kind": "loop",
       "anchor": "for (std::int32_t bx = xi; bx < xi + ob->sizex() + kBucket; bx += kBucket)",
       "note": "bucket sweep over the landing bbox on the target floor; see game_world.cpp:2104"
@@ -3969,6 +4645,9 @@
       "lines": [
         2172
       ],
+      "kinds": [
+        "for"
+      ],
       "kind": "loop",
       "anchor": "for (const auto& uptr : world.oblist)",
       "note": "oblist scan; see game_world.cpp:2175"
@@ -3977,6 +4656,9 @@
       "id": "game_world.cpp:2201",
       "lines": [
         2201
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "defensive",
       "anchor": "if (ob == nullptr || myobmap == nullptr)",
@@ -3990,6 +4672,12 @@
         2216,
         2218
       ],
+      "kinds": [
+        "for",
+        "for",
+        "if",
+        "for"
+      ],
       "kind": "loop",
       "anchor": "for (std::int32_t bx = xi; bx < xi + ob->sizex() + kBucket; bx += kBucket)",
       "note": "bucket sweep on the waker's floor; see game_world.cpp:2220"
@@ -4000,6 +4688,10 @@
         2274,
         2279
       ],
+      "kinds": [
+        "for",
+        "for"
+      ],
       "kind": "loop",
       "anchor": "for (const auto& uptr : oblist)",
       "note": "scans oblist then dead_list; see game_world.cpp:2276"
@@ -4008,6 +4700,9 @@
       "id": "game_world.cpp:2324",
       "lines": [
         2324
+      ],
+      "kinds": [
+        "for"
       ],
       "kind": "loop",
       "anchor": "for (auto e = objects.begin(); e != objects.end(); ++e)",
@@ -4018,6 +4713,9 @@
       "lines": [
         2342
       ],
+      "kinds": [
+        "if"
+      ],
       "kind": "defensive",
       "anchor": "if (&source == this)",
       "note": "adopt_scripts_from(self) is a no-op"
@@ -4026,6 +4724,9 @@
       "id": "game_world.cpp:2356",
       "lines": [
         2356
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "defensive",
       "anchor": "if (!who)",
@@ -4036,6 +4737,10 @@
       "lines": [
         2359,
         2377
+      ],
+      "kinds": [
+        "for",
+        "for"
       ],
       "kind": "loop",
       "anchor": "for (auto& uptr : fxlist)",

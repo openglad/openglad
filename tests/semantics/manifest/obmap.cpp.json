@@ -8,6 +8,11 @@
         49,
         50
       ],
+      "kinds": [
+        "ternary",
+        "if",
+        "if"
+      ],
       "function": "floor_numx_offset",
       "anchor": "int f = ob ? static_cast<int>(ob->floor()) : 0;",
       "condition": "ob ? floor : 0; f<0 -> 0; f>120 -> 120",
@@ -48,6 +53,9 @@
       "lines": [
         134
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "obmap::query_list",
       "anchor": "if (!ob_pass_check(x, y, ob, pile_snapshot, this, quiet))",
       "condition": "!ob_pass_check(...) -> return 0",
@@ -80,6 +88,9 @@
       "lines": [
         222
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "obmap::add",
       "anchor": "if (x < 0 || y < 0)",
       "condition": "x < 0 || y < 0",
@@ -107,6 +118,10 @@
       "lines": [
         290,
         292
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "obmap::hash",
       "anchor": "if (num > 198)",
@@ -150,6 +165,10 @@
         306,
         307
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "floor_cell",
       "anchor": "if (floor < 0) floor = 0;",
       "condition": "floor<0 -> 0; floor>120 -> 120",
@@ -188,6 +207,10 @@
         371,
         379
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "ob_pass_check",
       "anchor": "if (w != ob)",
       "condition": "w != ob; w->dead()",
@@ -223,6 +246,9 @@
       "id": "obmap.cpp:385",
       "lines": [
         385
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "ob_pass_check",
       "anchor": "if((targetorder == Order::Weapon || myorder == Order::Weapon) && ob->is_friendly(w))",
@@ -263,6 +289,9 @@
       "lines": [
         389
       ],
+      "kinds": [
+        "else if"
+      ],
       "function": "ob_pass_check",
       "anchor": "else if(targetorder == Order::Weapon && myorder == Order::Weapon && (quiet || current_game->world->rng_.next(10) > 3))",
       "condition": "targetorder==Weapon && myorder==Weapon && (quiet || rng.next(10) > 3)",
@@ -299,6 +328,9 @@
       "lines": [
         392
       ],
+      "kinds": [
+        "else if"
+      ],
       "function": "ob_pass_check",
       "anchor": "else if(targetorder == Order::Treasure && myorder == Order::Weapon)",
       "condition": "targetorder==Treasure && myorder==Weapon",
@@ -332,6 +364,11 @@
         394,
         412,
         525
+      ],
+      "kinds": [
+        "else",
+        "if",
+        "else if"
       ],
       "function": "ob_pass_check",
       "anchor": "if(collide(x,y,oxsize,oysize,x2,y2,xsize2,ysize2))",
@@ -377,6 +414,10 @@
         399,
         405
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "ob_pass_check",
       "anchor": "if (ob->sizez() > 0 && w->sizez() > 0)",
       "condition": "ob->sizez()>0 && w->sizez()>0; oz2 <= wz1 || wz2 <= oz1",
@@ -414,6 +455,10 @@
         414,
         418
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "ob_pass_check",
       "anchor": "if ( targetorder == Order::Treasure )",
       "condition": "targetorder==Treasure; quiet",
@@ -444,6 +489,10 @@
       "lines": [
         433,
         435
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "ob_pass_check",
       "anchor": "if (w->family() == FAMILY_EXIT)",
@@ -493,6 +542,11 @@
         454,
         460
       ],
+      "kinds": [
+        "else if",
+        "if",
+        "if"
+      ],
       "function": "ob_pass_check",
       "anchor": "else if ( (targetorder == Order::Weapon)",
       "condition": "door && (keys & key_level_mask(door level)); BIT_NO_COLLIDE",
@@ -527,6 +581,10 @@
         448,
         451
       ],
+      "kinds": [
+        "if",
+        "ternary"
+      ],
       "function": "ob_pass_check",
       "anchor": "if (quiet)",
       "condition": "quiet door",
@@ -560,6 +618,10 @@
       "lines": [
         464,
         467
+      ],
+      "kinds": [
+        "else",
+        "if"
       ],
       "function": "ob_pass_check",
       "anchor": "if (!(ob->skip_exit()) && (ob->user() != -1))",
@@ -606,6 +668,11 @@
         518,
         520
       ],
+      "kinds": [
+        "else",
+        "if",
+        "if"
+      ],
       "function": "ob_pass_check",
       "anchor": "if (!quiet)",
       "anchor_index": 1,
@@ -644,6 +711,10 @@
       "lines": [
         496,
         515
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "ob_pass_check",
       "anchor": "if (myorder == Order::Living &&",
@@ -685,6 +756,12 @@
         562,
         566
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if"
+      ],
       "function": "collide",
       "anchor": "if (x > x2right)",
       "condition": "x > x2right / xright < x2 / y > y2down / ydown < y2",
@@ -721,6 +798,10 @@
         575,
         576
       ],
+      "kinds": [
+        "for",
+        "if"
+      ],
       "function": "og::sim::step_meets",
       "anchor": "for (const auto& o : offs)",
       "condition": "any of exact/ceil/floor offset boxes collide",
@@ -752,6 +833,9 @@
       "lines": [
         69
       ],
+      "kinds": [
+        "if"
+      ],
       "kind": "plumbing",
       "anchor": "if (!cell_index_.empty() && pos_to_walker.empty())",
       "note": "drop the cell-pointer cache after level teardown cleared pos_to_walker externally"
@@ -760,6 +844,9 @@
       "id": "obmap.cpp:94",
       "lines": [
         94
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "defensive",
       "anchor": "if (!ob || ob->dead())",
@@ -770,6 +857,10 @@
       "lines": [
         108,
         110
+      ],
+      "kinds": [
+        "for",
+        "for"
       ],
       "kind": "loop",
       "anchor": "for (numx = startnumx; numx <= endnumx; numx++)",
@@ -782,6 +873,11 @@
         119,
         123
       ],
+      "kinds": [
+        "if",
+        "else",
+        "if"
+      ],
       "kind": "plumbing",
       "anchor": "if (cached != cell_index_.end())",
       "note": "cell-index cache lookup; an absent pile is skipped without creating one"
@@ -790,6 +886,9 @@
       "id": "obmap.cpp:146",
       "lines": [
         146
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "defensive",
       "anchor": "if (!ob)",
@@ -807,6 +906,16 @@
         184,
         191
       ],
+      "kinds": [
+        "if",
+        "if",
+        "for",
+        "for",
+        "if",
+        "if",
+        "if",
+        "ternary"
+      ],
       "kind": "defensive",
       "anchor": "if (e == walker_to_pos.end())",
       "note": "bookkeeping-mismatch fallback: bounded removal from the walker's current bbox cells (skipped at negative coords), returns whether anything was removed; asserted by LivingCombat.obmap_remove_stale_and_collide_axis_reject_paths"
@@ -818,6 +927,11 @@
         199,
         202
       ],
+      "kinds": [
+        "for",
+        "if",
+        "if"
+      ],
       "kind": "plumbing",
       "anchor": "for (auto& pos : e->second)",
       "note": "normal removal: erase from each recorded cell, drop empty piles and their cache entry"
@@ -826,6 +940,9 @@
       "id": "obmap.cpp:219",
       "lines": [
         219
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "defensive",
       "anchor": "if (!ob)",
@@ -836,6 +953,9 @@
       "lines": [
         229
       ],
+      "kinds": [
+        "if"
+      ],
       "kind": "plumbing",
       "anchor": "if (walker_to_pos.find(ob) != walker_to_pos.end())",
       "note": "re-adding a registered walker removes its old registration first (one registration per walker)"
@@ -845,6 +965,10 @@
       "lines": [
         240,
         242
+      ],
+      "kinds": [
+        "for",
+        "for"
       ],
       "kind": "loop",
       "anchor": "for (numx = startnumx; numx <= endnumx; numx++)",
@@ -857,6 +981,11 @@
         255,
         260
       ],
+      "kinds": [
+        "if",
+        "else",
+        "if"
+      ],
       "kind": "plumbing",
       "anchor": "if (cached != cell_index_.end())",
       "note": "cached pile lookup / create pile; no duplicate entries in a pile"
@@ -866,6 +995,9 @@
       "lines": [
         275
       ],
+      "kinds": [
+        "if"
+      ],
       "kind": "plumbing",
       "anchor": "if(x == ob->xpos() && y == ob->ypos())",
       "note": "move to the same position is a no-op"
@@ -874,6 +1006,9 @@
       "id": "obmap.cpp:318",
       "lines": [
         318
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "plumbing",
       "anchor": "if (cached != cell_index_.end())",
@@ -885,6 +1020,10 @@
         334,
         338
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "kind": "plumbing",
       "anchor": "if (cached != cell_index_.end())",
       "note": "find_list cache hit / miss returns nullptr without creating a pile"
@@ -893,6 +1032,9 @@
       "id": "obmap.cpp:353",
       "lines": [
         353
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "defensive",
       "anchor": "if (!ob)",
@@ -903,6 +1045,9 @@
       "lines": [
         362
       ],
+      "kinds": [
+        "for"
+      ],
       "kind": "loop",
       "anchor": "for (auto it = pile.begin(); it != pile.end(); )",
       "note": "iterate a snapshot of the pile; rules at obmap.cpp:371..525"
@@ -911,6 +1056,9 @@
       "id": "obmap.cpp:376",
       "lines": [
         376
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "defensive",
       "anchor": "if (map != nullptr && map->walker_to_pos.find(w) == map->walker_to_pos.end())",

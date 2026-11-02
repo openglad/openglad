@@ -9,6 +9,12 @@
         40,
         43
       ],
+      "kinds": [
+        "ternary",
+        "if",
+        "if",
+        "if"
+      ],
       "function": "capped_alloc",
       "anchor": "const size_t old_size = (ptr != nullptr) ? osize : 0;",
       "condition": "nsize == 0 ; nsize > old_size && used + (nsize-old_size) > cap ; np != nullptr",
@@ -46,6 +52,9 @@
       "lines": [
         65
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "budget_hook",
       "anchor": "if (impl->instructions_remaining <= 0)",
       "condition": "impl->instructions_remaining <= 0",
@@ -80,6 +89,10 @@
       "lines": [
         102,
         104
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "og_div",
       "anchor": "if (b == 0)",
@@ -123,6 +136,10 @@
         114,
         116
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "og_mod",
       "anchor": "if (b == 0)",
       "condition": "b == 0 ; a == INT64_MIN && b == -1",
@@ -164,6 +181,9 @@
       "lines": [
         173
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "og_trunc",
       "anchor": "if (!(std::fabs(x) < 9223372036854775808.0))",
       "condition": "!(fabs(x) < 2^63)",
@@ -202,6 +222,16 @@
         193,
         194,
         197
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "switch",
+        "case",
+        "case",
+        "case",
+        "case",
+        "default"
       ],
       "function": "push_det_tostring",
       "anchor": "if (luaL_callmeta(L, idx, \"__tostring\")) {",
@@ -247,6 +277,10 @@
         215,
         219
       ],
+      "kinds": [
+        "for",
+        "if"
+      ],
       "function": "og_log",
       "anchor": "for (int i = 1; i <= n; i++) {",
       "condition": "for i in 1..n ; i > 1",
@@ -279,6 +313,9 @@
       "id": "script_host.cpp:231",
       "lines": [
         231
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "og_log",
       "anchor": "if (impl->log_lines.size() > kMaxStoredScriptLogLines) {",
@@ -315,6 +352,9 @@
       "lines": [
         340
       ],
+      "kinds": [
+        "ternary"
+      ],
       "function": "traceback_handler",
       "anchor": "luaL_traceback(L, L, msg != nullptr ? msg : \"(non-string error)\", 1);",
       "condition": "msg != nullptr ? msg : \"(non-string error)\"",
@@ -347,6 +387,10 @@
       "lines": [
         374,
         380
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "ScriptHost::Impl::push_environment",
       "anchor": "if (env_key.empty()) {",
@@ -389,6 +433,11 @@
         404,
         405,
         410
+      ],
+      "kinds": [
+        "for",
+        "if",
+        "if"
       ],
       "function": "ScriptHost::Impl::record_error",
       "anchor": "for (ScriptError& e : errors) {",
@@ -437,6 +486,12 @@
         431,
         434,
         440
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "else",
+        "if"
       ],
       "function": "ScriptHost::Impl::protected_call",
       "anchor": "if (outermost) {",
@@ -488,6 +543,9 @@
       "lines": [
         443
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "ScriptHost::Impl::protected_call",
       "anchor": "if (rc != LUA_OK) {",
       "condition": "rc != LUA_OK",
@@ -520,6 +578,9 @@
       "id": "script_host.cpp:495",
       "lines": [
         495
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "ScriptHost::run_chunk",
       "anchor": "if (luaL_loadbufferx(L, source.data(), source.size(), name.c_str(),",
@@ -565,6 +626,13 @@
         564,
         576,
         586
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if",
+        "if"
       ],
       "function": "eval_push / eval_*",
       "anchor": "if (luaL_loadbufferx(L, src.data(), src.size(), \"=eval\", \"t\") !=",
@@ -612,6 +680,11 @@
         555,
         567,
         589
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
       ],
       "function": "eval_integer / eval_number / eval_string",
       "anchor": "if (lua_isinteger(L, -1))",
@@ -661,6 +734,12 @@
         608,
         614
       ],
+      "kinds": [
+        "while",
+        "ternary",
+        "if",
+        "if"
+      ],
       "function": "ScriptHost::sandbox_has",
       "anchor": "while (start <= dotted_path.size()) {",
       "condition": "while start <= size ; dot == npos ; !lua_istable",
@@ -707,6 +786,9 @@
       "lines": [
         76
       ],
+      "kinds": [
+        "if"
+      ],
       "kind": "test-only",
       "anchor": "if (ar->event == LUA_HOOKLINE) {",
       "note": "budget_and_coverage_hook: line events go to the coverage recorder, count events to the budget; only installed when the coverage recorder is enabled (coverage builds). Recorder behaviour asserted by TEST(ScriptCoverage, records_the_lines_a_chunk_actually_ran)."
@@ -716,6 +798,9 @@
       "lines": [
         265
       ],
+      "kinds": [
+        "for"
+      ],
       "kind": "loop",
       "anchor": "for (size_t i = 0; i < count; i++) {",
       "note": "copy_allowed: iterates the whitelist of base/math names into the sandbox root; the rule (exactly these names visible) is asserted by TEST(ScriptSandbox, banned_symbols_absent)/allowed_symbols_present."
@@ -724,6 +809,9 @@
       "id": "script_host.cpp:352",
       "lines": [
         352
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "defensive",
       "anchor": "if (L != nullptr)",
@@ -735,6 +823,10 @@
         394,
         395
       ],
+      "kinds": [
+        "ternary",
+        "ternary"
+      ],
       "kind": "defensive",
       "anchor": "const char* w = (where != nullptr) ? where : \"?\";",
       "note": "record_error null-string substitutes ('?' / '(unknown error)'); reached only by a null where or a Lua error object lua_tostring cannot convert (already turned into text by traceback_handler)."
@@ -743,6 +835,9 @@
       "id": "script_host.cpp:462",
       "lines": [
         462
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "defensive",
       "anchor": "if (impl_->L == nullptr)",

@@ -7,6 +7,10 @@
         73,
         76
       ],
+      "kinds": [
+        "if",
+        "ternary"
+      ],
       "function": "query_difficulty_percent",
       "anchor": "if (current_game == nullptr || current_game->world == nullptr)",
       "condition": "current_game == nullptr || world == nullptr ; difficulty > 0 ? difficulty : 100",
@@ -41,6 +45,9 @@
       "id": "walker.cpp:96",
       "lines": [
         96
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "query_generator_rate_percent",
       "anchor": "if (rate <= 0)",
@@ -88,6 +95,12 @@
         485,
         489,
         491
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "else"
       ],
       "function": "walker::init_fire(short,short)",
       "anchor": "if (facing(xdir, ydir) != curdir())",
@@ -150,6 +163,9 @@
       "lines": [
         495
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "walker::init_fire(short,short)",
       "anchor": "if (busy() > 0.0f)",
       "condition": "busy() > 0.0f",
@@ -198,6 +214,12 @@
         510,
         512
       ],
+      "kinds": [
+        "if",
+        "else",
+        "if",
+        "else"
+      ],
       "function": "walker::init_fire(short,short)",
       "anchor": "if (ani_type() == ANI_WALK)  // This should allow generators to animate",
       "condition": "ani_type() == ANI_WALK ; else fire()",
@@ -244,6 +266,9 @@
       "lines": [
         524
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "walker::fire",
       "anchor": "if (stats_->magicpoints() < stats_->weapon_cost())",
       "condition": "stats_->magicpoints() < stats_->weapon_cost()",
@@ -289,6 +314,17 @@
         565,
         569,
         573
+      ],
+      "kinds": [
+        "switch",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case"
       ],
       "function": "walker::fire",
       "anchor": "switch (facing(lastx(), lasty()))",
@@ -355,6 +391,9 @@
       "lines": [
         598
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "walker::fire",
       "anchor": "if (query_order() == Order::Generator &&",
       "condition": "query_order() == Order::Generator && dormant_occupies_spot(weapon)",
@@ -394,6 +433,10 @@
       "lines": [
         606,
         609
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "walker::fire",
       "anchor": "if (!current_game->world->query_passable(weapon->xpos(), weapon->ypos(), weapon))",
@@ -444,6 +487,11 @@
         615,
         622
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
+      ],
       "function": "walker::fire",
       "anchor": "if (attack(weapon->collide_ob()))",
       "condition": "attack(collide_ob) ; query_order() == Order::Living ; order() == Order::Living",
@@ -478,6 +526,9 @@
       "id": "walker.cpp:628",
       "lines": [
         628
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "walker::fire",
       "anchor": "if (myguy)",
@@ -520,6 +571,10 @@
         637,
         642
       ],
+      "kinds": [
+        "else if",
+        "else"
+      ],
       "function": "walker::fire",
       "anchor": "else if (stats_->query_bit_flags(BIT_NO_RANGED))",
       "condition": "stats_->query_bit_flags(BIT_NO_RANGED)",
@@ -561,6 +616,11 @@
         644,
         647,
         649
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
       ],
       "function": "walker::fire",
       "anchor": "if (order() == Order::Living)",
@@ -606,6 +666,9 @@
       "lines": [
         655
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "walker::fire",
       "anchor": "if (myguy)",
       "condition": "myguy",
@@ -635,6 +698,9 @@
       "id": "walker.cpp:665",
       "lines": [
         665
+      ],
+      "kinds": [
+        "ternary"
       ],
       "function": "walker::fire",
       "anchor": "static_cast<std::uint32_t>(wfd ? wfd->fire_sound : SOUND_FWIP));",
@@ -671,6 +737,10 @@
       "lines": [
         667,
         670
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "walker::fire",
       "anchor": "if (order() == Order::Generator)",
@@ -716,6 +786,9 @@
       "lines": [
         672
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "walker::fire",
       "anchor": "if (gfd->spawn_ani_type != 0)",
       "condition": "gfd->spawn_ani_type != 0",
@@ -756,6 +829,9 @@
       "lines": [
         674
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "walker::fire",
       "anchor": "if (gfd->has_lifetime)",
       "condition": "gfd->has_lifetime",
@@ -790,6 +866,9 @@
       "id": "walker.cpp:678",
       "lines": [
         678
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "walker::fire",
       "anchor": "if (gfd->clear_owner)",
@@ -834,6 +913,17 @@
         733,
         737
       ],
+      "kinds": [
+        "switch",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case"
+      ],
       "function": "walker::set_weapon_heading",
       "anchor": "switch (facing(lastx(), lasty()))  // these are from the 'owner'",
       "condition": "switch (facing(lastx(), lasty()))",
@@ -870,6 +960,10 @@
       "lines": [
         769,
         829
+      ],
+      "kinds": [
+        "if",
+        "else"
       ],
       "function": "walker::compute_outline",
       "anchor": "if (stats_->query_bit_flags( BIT_NAMED ) || invisibility_left() || flight_left() || invulnerable_left())",
@@ -934,6 +1028,35 @@
         822,
         824,
         825
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "else if",
+        "if",
+        "if",
+        "if",
+        "else if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "else if",
+        "else if",
+        "if",
+        "else if",
+        "else if",
+        "else if",
+        "if",
+        "else if",
+        "else if",
+        "if",
+        "else",
+        "if",
+        "else if",
+        "else if",
+        "else if",
+        "if"
       ],
       "function": "walker::compute_outline",
       "anchor": "if (next_outline == OUTLINE_INVULNERABLE)",
@@ -1062,6 +1185,9 @@
       "lines": [
         839
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "walker::compute_outline",
       "anchor": "if (mark_player_controls && next_outline == 0 && user() != -1 && viewer_control",
       "condition": "mark_player_controls && next_outline == 0 && user() != -1 && viewer_control && this != viewer_control && same team",
@@ -1108,6 +1234,11 @@
         855,
         857
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
+      ],
       "function": "walker::act",
       "anchor": "if (foe() && foe()->dead())",
       "condition": "foe() && foe()->dead() ; leader() && leader()->dead() ; owner() && owner()->dead()",
@@ -1152,6 +1283,9 @@
       "lines": [
         863
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "walker::act",
       "anchor": "if (ani_type() != ANI_WALK)",
       "condition": "ani_type() != ANI_WALK",
@@ -1182,6 +1316,9 @@
       "id": "walker.cpp:867",
       "lines": [
         867
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "walker::act",
       "anchor": "if (stats_->frozen_delay())",
@@ -1220,6 +1357,9 @@
       "id": "walker.cpp:873",
       "lines": [
         873
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "walker::act",
       "anchor": "if (busy() > 0.0f)",
@@ -1263,6 +1403,10 @@
         888,
         891
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "walker::act",
       "anchor": "if (stats_->has_commands())",
       "condition": "stats_->has_commands() ; temp = do_command()",
@@ -1301,6 +1445,12 @@
         898,
         903,
         906
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if"
       ],
       "function": "walker::act",
       "anchor": "if(attack_lunge() > 0.0f)",
@@ -1346,6 +1496,16 @@
         938,
         944,
         970
+      ],
+      "kinds": [
+        "switch",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "default"
       ],
       "function": "walker::act",
       "anchor": "switch (act_type())",
@@ -1417,6 +1577,11 @@
         948,
         950
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
+      ],
       "function": "walker::act (ACT_RANDOM)",
       "anchor": "if (!current_game->world->rng_.next(4) )",
       "condition": "!rng(4) ; !rng(20) ; !special()",
@@ -1463,6 +1628,11 @@
         957,
         959,
         963
+      ],
+      "kinds": [
+        "else",
+        "if",
+        "if"
       ],
       "function": "walker::act (ACT_RANDOM)",
       "anchor": "else    //3 of 4 times",
@@ -1515,6 +1685,10 @@
         1063,
         1068
       ],
+      "kinds": [
+        "if",
+        "else"
+      ],
       "function": "walker::animate",
       "anchor": "if (c >= seq_len)",
       "condition": "c >= seq_len",
@@ -1556,6 +1730,10 @@
         1076,
         1080
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "walker::animate",
       "anchor": "if (at_end)",
       "condition": "at_end ; ani_type() == ANI_ATTACK",
@@ -1595,6 +1773,10 @@
       "lines": [
         1087,
         1090
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "walker::animate",
       "anchor": "if (ani_type() == ANI_SKEL_GROW && order() == Order::Living)",
@@ -1636,6 +1818,10 @@
       "lines": [
         1097,
         1100
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "walker::animate",
       "anchor": "if (ani_type() == ANI_TELE_OUT && order() == Order::Living)",
@@ -1693,6 +1879,10 @@
         1107,
         1110
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "walker::animate",
       "anchor": "if (order() == Order::Living)",
       "condition": "order() == Order::Living ; on_ani_complete(fd2,this).value_or(false)",
@@ -1743,6 +1933,12 @@
         1130,
         1138
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if"
+      ],
       "function": "walker::set_frame_from_current_walk_animation",
       "anchor": "if (!ani)",
       "condition": "!ani ; dir_index out of range ; !seq ; c < 0 || c >= seq_len -> set_cycle(0)",
@@ -1788,6 +1984,10 @@
         1165,
         1172
       ],
+      "kinds": [
+        "if",
+        "else"
+      ],
       "function": "walker::configure_weapon_profile_base",
       "anchor": "if (myguy)",
       "condition": "myguy ; else",
@@ -1823,6 +2023,14 @@
         1183,
         1189
       ],
+      "kinds": [
+        "switch",
+        "case",
+        "case",
+        "case",
+        "case",
+        "default"
+      ],
       "function": "walker::configure_weapon_profile_base",
       "anchor": "switch (facing(heading_x, heading_y)) // make 'circular' ranges",
       "condition": "switch (facing(heading_x, heading_y)) case UP/RIGHT/DOWN/LEFT ; default",
@@ -1856,6 +2064,9 @@
       "id": "walker.cpp:1198",
       "lines": [
         1198
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "walker::finalize_weapon_profile",
       "anchor": "if (order() != Order::Living)",
@@ -1896,6 +2107,9 @@
       "id": "walker.cpp:1218",
       "lines": [
         1218
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "weapon_profile_requires_hook",
       "anchor": "if (descriptor == nullptr)",
@@ -1946,6 +2160,9 @@
       "lines": [
         1247
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "footprint_touches_water",
       "anchor": "if (terrain.query_genre_x_y(tx, ty) == TYPE_WATER)",
       "condition": "terrain.query_genre_x_y(tx, ty) == TYPE_WATER",
@@ -1981,6 +2198,10 @@
       "lines": [
         1257,
         1259
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "water_blocks_mover",
       "anchor": "if (stats->query_bit_flags(BIT_ETHEREAL))",
@@ -2030,6 +2251,10 @@
       "lines": [
         1275,
         1286
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "walker::query_prospective_weapon_reach",
       "anchor": "if (query_order() != Order::Living || stats_ == nullptr ||",
@@ -2088,6 +2313,9 @@
       "id": "walker.cpp:1304",
       "lines": [
         1304
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "walker::can_approach_weapon_range",
       "anchor": "if (objective == nullptr || objective->dead() || objective->dormant() || objective->hidden() ||",
@@ -2153,6 +2381,10 @@
         1335,
         1337
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "walker::can_approach_weapon_range",
       "anchor": "if (std::abs(dx) > std::abs(3 * dy))",
       "condition": "abs(dx) > abs(3*dy) -> dy = 0 ; abs(dy) > abs(3*dx) -> dx = 0",
@@ -2189,6 +2421,11 @@
         1342,
         1345,
         1347
+      ],
+      "kinds": [
+        "ternary",
+        "if",
+        "if"
       ],
       "function": "walker::can_approach_weapon_range",
       "anchor": "std::int32_t& reach = cardinal ? cardinal_reach : diagonal_reach;",
@@ -2236,6 +2473,10 @@
         1353,
         1355
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "walker::can_approach_weapon_range",
       "anchor": "if (distance <= reach)",
       "condition": "distance <= reach ; (sx==0 && sy==0) || movement_step <= 0",
@@ -2274,6 +2515,9 @@
       "lines": [
         1360
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "walker::can_approach_weapon_range",
       "anchor": "if (blocked_by_water &&",
       "condition": "blocked_by_water && footprint_touches_water(next step) [continues past the chunk: 1-pixel retry, then false]",
@@ -2308,6 +2552,9 @@
       "id": "walker.cpp:1368",
       "lines": [
         1368
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "walker::can_approach_weapon_range",
       "anchor": "if (footprint_touches_water(*current_game->world, *this,",
@@ -2345,6 +2592,9 @@
       "id": "walker.cpp:1386",
       "lines": [
         1386
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "walker::create_weapon",
       "anchor": "if (query_order() == Order::Generator)",
@@ -2409,6 +2659,14 @@
         1425,
         1429
       ],
+      "kinds": [
+        "if",
+        "else if",
+        "if",
+        "else",
+        "if",
+        "else"
+      ],
       "function": "walker::query_next_to",
       "anchor": "if (lastx() > 0.0f)",
       "condition": "lastx() > 0 / lastx() < 0 / lasty() > 0 / else; !query_object_passable(newx,newy,this)",
@@ -2468,6 +2726,9 @@
       "lines": [
         1452
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "walker::fire_check",
       "anchor": "if (order() == Order::Generator)",
       "condition": "order() == Order::Generator",
@@ -2524,6 +2785,9 @@
       "lines": [
         1467
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "walker::fire_check",
       "anchor": "if (!foe())     // nobody to fire at?",
       "condition": "!foe()",
@@ -2553,6 +2817,9 @@
       "id": "walker.cpp:1482",
       "lines": [
         1482
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "walker::fire_check",
       "anchor": "if (distance > finalized_weapon_reach(*weapon))",
@@ -2595,6 +2862,9 @@
       "lines": [
         1489
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "walker::fire_check",
       "anchor": "if (stats_->query_bit_flags(BIT_NO_RANGED))",
       "condition": "stats_->query_bit_flags(BIT_NO_RANGED)",
@@ -2636,6 +2906,9 @@
       "lines": [
         1496
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "walker::fire_check",
       "anchor": "if (stats_->weapon_cost() > stats_->magicpoints())",
       "condition": "stats_->weapon_cost() > stats_->magicpoints()",
@@ -2671,6 +2944,9 @@
       "id": "walker.cpp:1504",
       "lines": [
         1504
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "walker::fire_check",
       "anchor": "if (targetdir != curdir())",
@@ -2710,6 +2986,9 @@
       "id": "walker.cpp:1528",
       "lines": [
         1528
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "walker::fire_check",
       "anchor": "if ( !current_game->world->query_grid_passable(weapon->xpos(), weapon->ypos(), weapon) )",
@@ -2751,6 +3030,9 @@
       "lines": [
         1535
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "walker::fire_check",
       "anchor": "if (ignored_foe != nullptr &&",
       "condition": "ignored_foe = foe()->ignore() && !dead && !dormant && !hidden && same floor && !is_friendly ? foe() : nullptr; ray box collides ignored_foe",
@@ -2791,6 +3073,9 @@
       "lines": [
         1544
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "walker::fire_check",
       "anchor": "if ( !current_game->world->query_object_passable(weapon->xpos(), weapon->ypos(), weapon) )",
       "condition": "!query_object_passable(weapon->xpos(), weapon->ypos(), weapon)",
@@ -2830,6 +3115,9 @@
       "id": "walker.cpp:1578",
       "lines": [
         1578
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "walker::act_generate",
       "anchor": "if ( current_game->world->living_count < MAXOBS &&",
@@ -2881,6 +3169,9 @@
       "lines": [
         1584
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "walker::act_generate",
       "anchor": "if (lastx() == 0.0f && lasty() == 0.0f)",
       "condition": "lastx() == 0.0f && lasty() == 0.0f",
@@ -2912,6 +3203,9 @@
       "id": "walker.cpp:1590",
       "lines": [
         1590
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "walker::act_generate",
       "anchor": "if (stats_->hitpoints() > stats_->max_hitpoints())",
@@ -2954,6 +3248,10 @@
         1604,
         1609
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "walker::act_fire",
       "anchor": "if (vz() != 0.0f || worldz() != 0.0f)",
       "condition": "vz() != 0 || worldz() != 0; worldz() < 0",
@@ -2989,6 +3287,13 @@
         1624,
         1626,
         1630
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if",
+        "else"
       ],
       "function": "walker::act_fire",
       "anchor": "if (zw != nullptr && zw->floor_count() > 1 && !dead())",
@@ -3039,6 +3344,9 @@
       "id": "walker.cpp:1642",
       "lines": [
         1642
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "walker::act_fire",
       "anchor": "if (!remaining_range) // this is the range of the weapon",
@@ -3095,6 +3403,10 @@
         1647,
         1650
       ],
+      "kinds": [
+        "else if",
+        "if"
+      ],
       "function": "walker::act_fire",
       "anchor": "else if (!walk() || stats_->query_bit_flags(BIT_NO_COLLIDE))",
       "condition": "!walk() || BIT_NO_COLLIDE; collide_ob() && !collide_ob()->dead()",
@@ -3141,6 +3453,9 @@
       "lines": [
         1654
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "walker::act_fire",
       "anchor": "if (!stats_->query_bit_flags(BIT_IMMORTAL))",
       "condition": "!stats_->query_bit_flags(BIT_IMMORTAL)",
@@ -3176,6 +3491,10 @@
       "lines": [
         1674,
         1722
+      ],
+      "kinds": [
+        "if",
+        "else"
       ],
       "function": "walker::act_guard",
       "anchor": "if (foe())",
@@ -3228,6 +3547,9 @@
       "lines": [
         1688
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "walker::act_guard",
       "anchor": "if (distance_to_ob(foe()) <= lineofsight() * GRID_SIZE &&",
       "condition": "distance_to_ob(foe()) <= lineofsight()*GRID_SIZE && clear_sight_line(this, foe())",
@@ -3269,6 +3591,9 @@
       "lines": [
         1709
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "walker::act_guard",
       "anchor": "if (!guard_hold_post())",
       "condition": "!guard_hold_post()",
@@ -3305,6 +3630,9 @@
       "id": "walker.cpp:1736",
       "lines": [
         1736
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "walker::act_random",
       "anchor": "if (!current_game->world->rng_.next(70) || (!foe()))",
@@ -3343,6 +3671,9 @@
       "lines": [
         1738
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "walker::act_random",
       "anchor": "if (!foe())",
       "condition": "!foe()",
@@ -3370,6 +3701,10 @@
       "lines": [
         1745,
         1748
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "walker::act_random",
       "anchor": "if (abs(xdist) < lineofsight() * GRID_SIZE &&",
@@ -3406,6 +3741,12 @@
         1762,
         1763
       ],
+      "kinds": [
+        "if",
+        "ternary",
+        "if",
+        "ternary"
+      ],
       "function": "walker::act_random",
       "anchor": "if (newx)                      // If it's not 0, then get",
       "condition": "newx ? (newx>0 ? 1 : -1) : 0; same for y",
@@ -3433,6 +3774,10 @@
       "lines": [
         1783,
         1784
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "walker::spaces_clear",
       "anchor": "if (i || j) // don't check our own location",
@@ -3478,6 +3823,9 @@
       "id": "walker.cpp:1818",
       "lines": [
         1818
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "walker::transfer_stats",
       "anchor": "if (myguy)",
@@ -3536,6 +3884,10 @@
         1838,
         1873
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "walker::transform_to",
       "anchor": "if (order() == whatorder) // same object type",
       "condition": "order() == whatorder -> reset; if (reset) set_act_type(tempact)",
@@ -3578,6 +3930,9 @@
       "lines": [
         1895
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "walker::death",
       "anchor": "if (death_called())",
       "condition": "death_called()",
@@ -3613,6 +3968,9 @@
       "lines": [
         1899
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "walker::death",
       "anchor": "if (current_game != nullptr && current_game->world != nullptr &&",
       "condition": "og::sim::kit_on_death(world, *this)",
@@ -3645,6 +4003,9 @@
       "id": "walker.cpp:1915",
       "lines": [
         1915
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "walker::death",
       "anchor": "if (myguy) // were we a real character?  Then make a heart ..",
@@ -3684,6 +4045,9 @@
       "lines": [
         1927
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "walker::death",
       "anchor": "if (current_game->world->keep_fallen_heroes != 0)",
       "condition": "current_game->world->keep_fallen_heroes != 0",
@@ -3718,6 +4082,11 @@
         1936,
         1938,
         1950
+      ],
+      "kinds": [
+        "switch",
+        "case",
+        "if"
       ],
       "function": "walker::death",
       "anchor": "switch (order())",
@@ -3800,6 +4169,11 @@
         1972,
         1976
       ],
+      "kinds": [
+        "if",
+        "else if",
+        "else"
+      ],
       "function": "walker::death",
       "anchor": "if (og::script::hooks::on_death(fd, this).has_value())",
       "condition": "on_death(fd,this).has_value() / fd && !fd->leaves_bloodspot / else",
@@ -3855,6 +4229,9 @@
       "id": "walker.cpp:1985",
       "lines": [
         1985
+      ],
+      "kinds": [
+        "case"
       ],
       "function": "walker::death",
       "anchor": "case Order::Generator:  // go up in flames :>",
@@ -3917,6 +4294,11 @@
         2087,
         2089
       ],
+      "kinds": [
+        "if",
+        "if",
+        "else if"
+      ],
       "function": "walker::set_dormant",
       "anchor": "if (dormant_ == value)",
       "condition": "dormant_ == value (no-op); dormant_ -> remove; else if !ignore() -> add",
@@ -3962,6 +4344,10 @@
       "lines": [
         2104,
         2112
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "walker::change_floor",
       "anchor": "if (new_floor == floor())",
@@ -4024,6 +4410,11 @@
         2151,
         2155
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
+      ],
       "function": "land_on_nearest_clear_cell (walker.cpp static)",
       "anchor": "if (std::max(std::abs(dx), std::abs(dy)) != r)",
       "condition": "max(|dx|,|dy|) != r -> skip; avoid_air && cell == PIX_AIR -> skip; !floor_landing_clear(...) -> skip",
@@ -4069,6 +4460,9 @@
       "lines": [
         2201
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "walker::resolve_fall_landing",
       "anchor": "if (extra <= 0)",
       "condition": "extra <= 0 (fall_stories_ - 1)",
@@ -4107,6 +4501,9 @@
       "lines": [
         2207
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "walker::resolve_fall_landing",
       "anchor": "if (stats_->query_bit_flags(BIT_INVINCIBLE) || invulnerable_left() != 0)",
       "condition": "BIT_INVINCIBLE || invulnerable_left() != 0",
@@ -4144,6 +4541,9 @@
       "id": "walker.cpp:2215",
       "lines": [
         2215
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "walker::resolve_fall_landing",
       "anchor": "if (dmg < 1.0f)",
@@ -4208,6 +4608,10 @@
         2223,
         2226
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "walker::resolve_fall_landing",
       "anchor": "if (myguy != nullptr)",
       "condition": "myguy != nullptr; myguy->scen_min_hp > hitpoints",
@@ -4234,6 +4638,9 @@
       "id": "walker.cpp:2232",
       "lines": [
         2232
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "walker::resolve_fall_landing",
       "anchor": "if (stats_->hitpoints() <= 0)",
@@ -4284,6 +4691,9 @@
       "lines": [
         2250
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "walker::apply_z_motion",
       "anchor": "if (w == nullptr || w->floor_count() <= 1)",
       "condition": "w == nullptr || w->floor_count() <= 1",
@@ -4316,6 +4726,9 @@
       "lines": [
         2252
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "walker::apply_z_motion",
       "anchor": "if (dead() || ignore())",
       "condition": "dead() || ignore()",
@@ -4347,6 +4760,9 @@
       "id": "walker.cpp:2255",
       "lines": [
         2255
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "walker::apply_z_motion",
       "anchor": "if (z_cooldown_ > 0)",
@@ -4386,6 +4802,10 @@
         2271,
         2292
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "walker::apply_z_motion",
       "anchor": "if (z_stair_latched_ && (cx != z_latch_cx_ || cy != z_latch_cy_))",
       "condition": "z_stair_latched_ && centre cell != latch cell -> clear; if (z_stair_latched_) return (on a stair)",
@@ -4422,6 +4842,9 @@
       "id": "walker.cpp:2279",
       "lines": [
         2279
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "walker::apply_z_motion",
       "anchor": "if (genre != TYPE_AIR)",
@@ -4470,6 +4893,12 @@
         2298,
         2300
       ],
+      "kinds": [
+        "if",
+        "if",
+        "else if",
+        "if"
+      ],
       "function": "walker::apply_z_motion",
       "anchor": "if (genre == TYPE_ZSTAIRS && !flying)",
       "condition": "genre == TYPE_ZSTAIRS && !flying; tile UP && floor+1 < count; tile DOWN && floor > 0; target != floor()",
@@ -4515,6 +4944,10 @@
       "lines": [
         2313,
         2319
+      ],
+      "kinds": [
+        "if",
+        "else if"
       ],
       "function": "walker::apply_z_motion",
       "anchor": "if (w->floor_landing_clear(this, static_cast<float>(xpos()),",
@@ -4579,6 +5012,11 @@
         2334,
         2376
       ],
+      "kinds": [
+        "if",
+        "if",
+        "else if"
+      ],
       "function": "walker::apply_z_motion",
       "anchor": "if (genre == TYPE_AIR && !flying && order() != Order::Weapon)",
       "condition": "genre == TYPE_AIR && !flying && order() != Order::Weapon; floor() > 0; else if (!dead())",
@@ -4625,6 +5063,11 @@
         2338,
         2346,
         2356
+      ],
+      "kinds": [
+        "if",
+        "else if",
+        "else"
       ],
       "function": "walker::apply_z_motion",
       "anchor": "if (w->floor_landing_clear(this, static_cast<float>(xpos()),",
@@ -4690,6 +5133,10 @@
         2362,
         2371
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "walker::apply_z_motion",
       "anchor": "if (landed)",
       "condition": "landed; landing centre cell genre != TYPE_AIR -> resolve_fall_landing()",
@@ -4724,6 +5171,10 @@
         2400,
         2402
       ],
+      "kinds": [
+        "switch",
+        "case"
+      ],
       "function": "walker::set_difficulty",
       "anchor": "switch (order())",
       "condition": "case Order::Generator",
@@ -4755,6 +5206,10 @@
         2414,
         2415
       ],
+      "kinds": [
+        "default",
+        "if"
+      ],
       "function": "walker::set_difficulty",
       "anchor": "default:  // adjust standard settings for the rest ..",
       "condition": "default: team_num() != 0",
@@ -4784,6 +5239,9 @@
       "id": "walker.cpp:2473",
       "lines": [
         2473
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "walker::is_friendly",
       "anchor": "if (dead() || target->dead())",
@@ -4817,6 +5275,10 @@
       "lines": [
         2479,
         2484
+      ],
+      "kinds": [
+        "while",
+        "while"
       ],
       "function": "walker::is_friendly",
       "anchor": "while (headguy->owner() && (headguy->owner()->dead() == 0) && (headguy->owner() != headguy) && !headguy->charmed_head() )",
@@ -4873,6 +5335,9 @@
       "lines": [
         2511
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "walker::is_friendly_to_team",
       "anchor": "if (dead())",
       "condition": "dead()",
@@ -4907,6 +5372,9 @@
       "id": "walker.cpp:2517",
       "lines": [
         2517
+      ],
+      "kinds": [
+        "while"
       ],
       "function": "walker::is_friendly_to_team",
       "anchor": "while (headguy->owner() && (headguy->owner()->dead() == 0) && (headguy->owner() != headguy) && !headguy->charmed_head() )",
@@ -4946,6 +5414,10 @@
       "lines": [
         2528,
         2530
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "entity_display_name",
       "anchor": "if (w->myguy && !w->myguy->name.empty())",
@@ -4988,6 +5460,10 @@
       "lines": [
         2556,
         2566
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "walker::update_exit_latch",
       "anchor": "if (!exit_latched_)",
@@ -5036,6 +5512,12 @@
         2595,
         2603,
         2605
+      ],
+      "kinds": [
+        "if",
+        "ternary",
+        "if",
+        "else if"
       ],
       "function": "walker::set_hidden",
       "anchor": "if (hidden() == value)",
@@ -5094,6 +5576,10 @@
         2586,
         2590
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "walker::set_hidden",
       "anchor": "if (value && possess_link() != 0 && current_game != nullptr &&",
       "condition": "value && possess_link() != 0 && partner found && partner->hidden() -> return",
@@ -5137,6 +5623,17 @@
         2639,
         2643,
         2647
+      ],
+      "kinds": [
+        "switch",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case"
       ],
       "function": "walker::weapon_pad",
       "anchor": "switch (facing(lastx(), lasty()))",
@@ -5189,6 +5686,11 @@
         2669,
         2677
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
+      ],
       "function": "walker::fire_pad_answer",
       "anchor": "if (query_order() != Order::Living || current_game == nullptr || current_game->world == nullptr)",
       "condition": "query_order() != Living || no world -> NoProbe; weapon_family >= NUM_FAMILY_SLOTS -> NoProbe; configure_existing_entity null -> NoProbe",
@@ -5226,6 +5728,10 @@
       "lines": [
         2687,
         2689
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "walker::fire_pad_answer",
       "anchor": "if (!current_game->world->query_grid_passable(px, py, &probe, floor(), /*quiet=*/true))",
@@ -5280,6 +5786,10 @@
       "lines": [
         2713,
         2716
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "walker::credit_head",
       "anchor": "if (w->query_order() == Order::Living)",
@@ -5339,6 +5849,12 @@
         112,
         115
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if"
+      ],
       "kind": "plumbing",
       "anchor": "if (IRandom* override_rng = gameplay_rng_override())",
       "note": "walker_rng(): picks which RNG seeds a new walker's path_check_counter (test override, world rng, session rng, fallback world rng); no game rule, determinism plumbing."
@@ -5347,6 +5863,9 @@
       "id": "walker.cpp:131",
       "lines": [
         131
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "test-only",
       "anchor": "if (IRandom* cos = cosmetic_rng_override())",
@@ -5357,6 +5876,9 @@
       "lines": [
         174
       ],
+      "kinds": [
+        "ternary"
+      ],
       "kind": "defensive",
       "anchor": "w->set_path_check_counter(rng != nullptr ? next_path_check_counter(*rng) : 0);",
       "note": "walker_init_common: a detached weapon-profile probe (rng == nullptr) gets path_check_counter 0 so it never draws from the world RNG (asserted by tests/unit/test_modes_soccer.cpp: TEST_F(ModesSoccer, recovery_range_probe_never_touches_the_world_obmap) rng_before==state)."
@@ -5365,6 +5887,9 @@
       "id": "walker.cpp:231",
       "lines": [
         231
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "defensive",
       "anchor": "if (frames <= 0) return 0;",
@@ -5377,6 +5902,11 @@
         258,
         260
       ],
+      "kinds": [
+        "if",
+        "if",
+        "else"
+      ],
       "kind": "plumbing",
       "anchor": "if (target == nullptr)",
       "note": "move_myguy_to: hands the guy record (owned or view) to another body (transform/possession); null target keeps it. Ownership plumbing, asserted in tests/integration/test_walker_core_more.cpp: TEST(WalkerCoreMore, walker_round18_animate_teleport_and_skelgrow_completion_paths)."
@@ -5388,6 +5918,12 @@
         276,
         283,
         290
+      ],
+      "kinds": [
+        "ternary",
+        "ternary",
+        "ternary",
+        "ternary"
       ],
       "kind": "plumbing",
       "anchor": "foe_id_ = (target != nullptr) ? target->entity_id() : 0;",
@@ -5415,6 +5951,26 @@
         375,
         382
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if",
+        "else",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "else",
+        "if",
+        "if",
+        "else",
+        "else",
+        "if",
+        "if",
+        "else if"
+      ],
       "kind": "plumbing",
       "anchor": "if (target != nullptr)",
       "note": "sync_ids_from_pointers: snapshot-apply id reconciliation; a link whose id does not resolve to the same entity (or a detached entity) is cleared; controller id likewise. Network plumbing, asserted in tests/unit/test_game_world_entity_ids.cpp: TEST_F(GameWorldEntityIdsFixture, sync_ids_from_pointers_clears_links_on_detached_entity / _clears_removed_cross_references_without_dereference / _clears_zero_id_cross_references)."
@@ -5423,6 +5979,9 @@
       "id": "walker.cpp:451",
       "lines": [
         451
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "defensive",
       "anchor": "if (stats_)",
@@ -5433,6 +5992,9 @@
       "lines": [
         528
       ],
+      "kinds": [
+        "if"
+      ],
       "kind": "defensive",
       "anchor": "if (!weapon)",
       "note": "fire(): create_weapon returned null (unbuildable family) -> no shot and no charge; asserted by tests/integration/test_walker_unit.cpp: TEST(WalkerUnit, fire_with_an_unbuildable_weapon_spends_no_magic)."
@@ -5441,6 +6003,9 @@
       "id": "walker.cpp:860",
       "lines": [
         860
+      ],
+      "kinds": [
+        ""
       ],
       "kind": "plumbing",
       "anchor": "set_collide_ob(nullptr); // always start with no collison..",
@@ -5457,6 +6022,15 @@
         1047,
         1055
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if"
+      ],
       "kind": "defensive",
       "anchor": "if (!ani)",
       "note": "animate(): no table, out-of-range facing/ani_type, ani_index past the family table (snapshot/save OOB guard), missing sequence, bad sequence length, negative cycle -> clamp or reset to walk. Asserted by tests/integration/test_walker_core_more.cpp: TEST(WalkerCoreMore, walker_animate_rejects_ani_type_beyond_family_table) and tests/integration/test_walker_combat.cpp: TEST(WalkerCombat, walker_batch8_act_default_and_animate_invalid_sequence_bounds)."
@@ -5466,6 +6040,9 @@
       "lines": [
         1045
       ],
+      "kinds": [
+        "while"
+      ],
       "kind": "loop",
       "anchor": "while (seq_len < 128 && seq[seq_len] != -1)",
       "note": "animate(): sentinel scan for the sequence length (see walker.cpp:1003 guards)."
@@ -5474,6 +6051,9 @@
       "id": "walker.cpp:1134",
       "lines": [
         1134
+      ],
+      "kinds": [
+        "while"
       ],
       "kind": "loop",
       "anchor": "while (seq_len < 128 && seq[seq_len] != -1)",
@@ -5485,6 +6065,10 @@
         1243,
         1245
       ],
+      "kinds": [
+        "for",
+        "for"
+      ],
       "kind": "loop",
       "anchor": "for (std::int32_t ty = tile_top; ty <= tile_bottom; ++ty)",
       "note": "footprint_touches_water: tile scan over the mover's footprint (see walker.cpp:1247)."
@@ -5493,6 +6077,9 @@
       "id": "walker.cpp:1331",
       "lines": [
         1331
+      ],
+      "kinds": [
+        "for"
       ],
       "kind": "loop",
       "anchor": "for (std::int32_t attempt = 0; attempt <= initial_distance; ++attempt)",
@@ -5504,6 +6091,10 @@
         1390,
         1406
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "kind": "defensive",
       "anchor": "if (!weapon) return nullptr;",
       "note": "create_weapon: add_ob returned null (object table full) for the generator troop (1390) or the weapon (1406) -> no emission."
@@ -5512,6 +6103,9 @@
       "id": "walker.cpp:1446",
       "lines": [
         1446
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "plumbing",
       "anchor": "if (denial != nullptr)",
@@ -5522,6 +6116,9 @@
       "lines": [
         1456
       ],
+      "kinds": [
+        "if"
+      ],
       "kind": "defensive",
       "anchor": "if (!weapon)",
       "note": "create_weapon() returned null (object table full / no configurator): the check fails. Note: it reports FireCheckDenial::NoFoe although a foe may exist; COMMAND_ATTACK treats that like 'nobody to shoot'. Only reachable at MAXOBS."
@@ -5530,6 +6127,9 @@
       "id": "walker.cpp:1524",
       "lines": [
         1524
+      ],
+      "kinds": [
+        "for"
       ],
       "kind": "loop",
       "anchor": "for (i=0; i < weapon->lineofsight(); i++)",
@@ -5541,6 +6141,10 @@
         1603,
         1608
       ],
+      "kinds": [
+        "ternary",
+        "ternary"
+      ],
       "kind": "defensive",
       "anchor": "GameWorld* const zw = (current_game != nullptr) ? current_game->world : nullptr;",
       "note": "Null guards: no world (1603) / no weapon family descriptor (1608 gravity 0)."
@@ -5551,6 +6155,10 @@
         1781,
         1782
       ],
+      "kinds": [
+        "for",
+        "for"
+      ],
       "kind": "loop",
       "anchor": "for (i=-1; i < 2; i++)",
       "note": "spaces_clear's 3x3 neighbourhood iteration; rule in walker.cpp:1783."
@@ -5560,6 +6168,9 @@
       "lines": [
         1810
       ],
+      "kinds": [
+        "for"
+      ],
       "kind": "loop",
       "anchor": "for (i=0; i < 5; i++)",
       "note": "transfer_stats copies the five special_cost slots; plumbing of walker.cpp:1818's stat transfer."
@@ -5568,6 +6179,9 @@
       "id": "walker.cpp:1835",
       "lines": [
         1835
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "defensive",
       "anchor": "if (current_game && current_game->world && current_game->world->myobmap)",
@@ -5579,6 +6193,10 @@
         1847,
         1854
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "kind": "defensive",
       "anchor": "if (current_game == nullptr || current_game->world == nullptr)",
       "note": "transform_to without a world (1847) or when configure_existing_entity returns null (1854) returns early. Caution: both return AFTER the walker was removed from the obmap (1835) and its bit flags cleared (1845), and never re-add it — a transform to an unconfigurable family (e.g. a bad id through Lua's transform_to) leaves the walker out of the collision table."
@@ -5587,6 +6205,9 @@
       "id": "walker.cpp:1912",
       "lines": [
         1912
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "defensive",
       "anchor": "if (active != nullptr)",
@@ -5597,6 +6218,9 @@
       "lines": [
         1918
       ],
+      "kinds": [
+        "if"
+      ],
       "kind": "defensive",
       "anchor": "if (newob)",
       "note": "add_ob for the life gem failed (object table full): no gem."
@@ -5606,6 +6230,9 @@
       "lines": [
         1986
       ],
+      "kinds": [
+        "for"
+      ],
       "kind": "loop",
       "anchor": "for (i=0; i < 4; i++)",
       "note": "The four-explosion loop of the generator death; rule in walker.cpp:1985."
@@ -5614,6 +6241,9 @@
       "id": "walker.cpp:1989",
       "lines": [
         1989
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "defensive",
       "anchor": "if (!newob) // failsafe",
@@ -5625,6 +6255,10 @@
         2006,
         2010
       ],
+      "kinds": [
+        "case",
+        "default"
+      ],
       "kind": "dead",
       "anchor": "case Order::FX:",
       "note": "FX and every other order: nothing on death in walker::death (FX dying here only logs 'Effect dying in walker?'; effect/treasure/weap override death)."
@@ -5633,6 +6267,9 @@
       "id": "walker.cpp:2027",
       "lines": [
         2027
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "defensive",
       "anchor": "if (!bloodstain) return;",
@@ -5643,6 +6280,9 @@
       "lines": [
         2052
       ],
+      "kinds": [
+        "if"
+      ],
       "kind": "dead",
       "anchor": "if (eater)",
       "note": "walker::eat_me base: logs 'EATING A NON-TREASURE!' and returns 0; a non-treasure is never eaten (asserted WalkerUnit.walker_death_save_all_and_misc_paths). Not a game branch."
@@ -5652,6 +6292,9 @@
       "lines": [
         2061
       ],
+      "kinds": [
+        "if"
+      ],
       "kind": "dead",
       "anchor": "if (whatfamily || summon_lifetime)",
       "note": "walker::do_summon base: logs and returns nullptr; living overrides it. Not a game branch."
@@ -5660,6 +6303,9 @@
       "id": "walker.cpp:2085",
       "lines": [
         2085
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "defensive",
       "anchor": "if (map == nullptr)",
@@ -5672,6 +6318,11 @@
         2107,
         2108
       ],
+      "kinds": [
+        "ternary",
+        "ternary",
+        "if"
+      ],
       "kind": "defensive",
       "anchor": "GameWorld* w = (current_game != nullptr) ? current_game->world : nullptr;",
       "note": "change_floor null guards for world and obmap."
@@ -5681,6 +6332,10 @@
       "lines": [
         2137,
         2149
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "kind": "defensive",
       "anchor": "if (!g.valid())",
@@ -5693,6 +6348,11 @@
         2141,
         2143
       ],
+      "kinds": [
+        "for",
+        "for",
+        "for"
+      ],
       "kind": "loop",
       "anchor": "for (std::int32_t r = 0; r <= radius; ++r)",
       "note": "Ring-by-ring, row-major scan of the landing nudge; rule in walker.cpp:2145."
@@ -5701,6 +6361,9 @@
       "id": "walker.cpp:2249",
       "lines": [
         2249
+      ],
+      "kinds": [
+        "ternary"
       ],
       "kind": "defensive",
       "anchor": "GameWorld* w = (current_game != nullptr) ? current_game->world : nullptr;",
@@ -5711,6 +6374,9 @@
       "lines": [
         2470
       ],
+      "kinds": [
+        "if"
+      ],
       "kind": "defensive",
       "anchor": "if (target == nullptr)",
       "note": "is_friendly(nullptr) -> 0 (unfriendly)."
@@ -5720,6 +6386,9 @@
       "lines": [
         2601
       ],
+      "kinds": [
+        "if"
+      ],
       "kind": "defensive",
       "anchor": "if (map == nullptr)",
       "note": "set_hidden without a world/obmap: only the flag and outline change."
@@ -5728,6 +6397,9 @@
       "id": "walker.cpp:2711",
       "lines": [
         2711
+      ],
+      "kinds": [
+        "for"
       ],
       "kind": "loop",
       "anchor": "for (walker* w = this;;)",

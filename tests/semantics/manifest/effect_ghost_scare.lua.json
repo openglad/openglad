@@ -6,6 +6,9 @@
       "lines": [
         16
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "on_act (core:ghost_scare)",
       "anchor": "if owner then",
       "condition": "if owner",
@@ -41,6 +44,9 @@
       "id": "effect_ghost_scare.lua:28",
       "lines": [
         28
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "on_death (core:ghost_scare)",
       "anchor": "if not owner or owner:dead() ~= 0 then",
@@ -81,6 +87,9 @@
       "lines": [
         37
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "on_death (core:ghost_scare)",
       "anchor": "if foe_count < 1 then",
       "condition": "foe_count < 1",
@@ -117,6 +126,9 @@
       "id": "effect_ghost_scare.lua:43",
       "lines": [
         43
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "on_death (core:ghost_scare)",
       "anchor": "if foe and foe:order() == C.ORDER_LIVING then",
@@ -155,6 +167,10 @@
         50,
         54
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "on_death (core:ghost_scare)",
       "anchor": "if foe:has_guy() then",
       "condition": "foe:has_guy() / fright > 0",
@@ -162,7 +178,11 @@
       "arms": [
         {
           "when": "monster foe",
-          "observable": "fright = scare_duration(level) (L5: 125), no draw"
+          "observable": "fright = scare_duration(level) (L5: 125)"
+        },
+        {
+          "when": "monster foe (RNG)",
+          "observable": "no rand0 draw"
         },
         {
           "when": "hero foe",
@@ -174,10 +194,16 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_effect_death_more.cpp",
+          "test": "EffectDeathMore.effect_death_ghost_scare_forces_walk_commands_on_foes",
+          "note": "two guy-less foes: EXPECT_EQ(125, front.commandcount)"
+        }
+      ],
       "missing_arms": [
-        "monster foe",
+        "monster foe (RNG)",
         "hero foe",
         "fright <= 0 after the roll"
       ]
@@ -188,6 +214,9 @@
       "id": "effect_ghost_scare.lua:41",
       "lines": [
         41
+      ],
+      "kinds": [
+        "for"
       ],
       "kind": "loop",
       "anchor": "for i = 1, #foes do",

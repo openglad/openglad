@@ -8,6 +8,11 @@
         39,
         42
       ],
+      "kinds": [
+        "if",
+        "for",
+        "if"
+      ],
       "function": "valid_campaign_var_name",
       "anchor": "if (name.empty() || name.size() > static_cast<std::size_t>(kCampaignVarNameMax))",
       "condition": "name.empty() || size > kCampaignVarNameMax ; for c ; !ok",
@@ -52,6 +57,9 @@
       "id": "campaign_hooks.cpp:60",
       "lines": [
         60
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "campaign_assign_set",
       "anchor": "if (!g_campaign_providers.assign_set)",

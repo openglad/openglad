@@ -7,6 +7,10 @@
         174,
         180
       ],
+      "kinds": [
+        "while",
+        "if"
+      ],
       "function": "statistics::clear_command_for_control_switch",
       "anchor": "while (keep_end != commands.end() && keep_end->forced",
       "condition": "while (keep_end != end && keep_end->forced && keep_end->commandtype == COMMAND_WALK) ... if (preserved > 0) TRACE",
@@ -51,6 +55,10 @@
         199,
         201
       ],
+      "kinds": [
+        "if",
+        "else if"
+      ],
       "function": "statistics::player_thaw_tick",
       "anchor": "if (cur > 1)",
       "condition": "if (cur > 1) ... else if (cur == 1)",
@@ -92,6 +100,9 @@
       "lines": [
         213
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "statistics::add_command",
       "anchor": "if (whatcommand == COMMAND_DIE)",
       "condition": "if (whatcommand == COMMAND_DIE)",
@@ -128,6 +139,14 @@
         233,
         235,
         237
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if"
       ],
       "function": "statistics::add_command",
       "anchor": "if (whatcommand == COMMAND_WALK)",
@@ -184,6 +203,14 @@
         258,
         260,
         262
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if"
       ],
       "function": "statistics::force_command",
       "anchor": "if (whatcommand == COMMAND_WALK)",
@@ -242,6 +269,10 @@
         294,
         309
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "statistics::force_fright",
       "anchor": "if (!commands.empty() && commands.front().forced",
       "condition": "if (!commands.empty() && front.forced && front.commandtype == COMMAND_WALK) { if (iterations > front.commandcount) front.commandcount = iterations; ... }",
@@ -287,6 +318,13 @@
         304,
         306
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if",
+        "if"
+      ],
       "function": "statistics::force_fright",
       "anchor": "if (info1 > 1)",
       "condition": "clamp info1/info2 to [-1,1]; zero -> (1,1)",
@@ -322,6 +360,10 @@
         352,
         354
       ],
+      "kinds": [
+        "if",
+        "else"
+      ],
       "function": "statistics::set_command(whatcommand, iterations)",
       "anchor": "if (whatcommand == COMMAND_RANDOM_WALK)",
       "condition": "if (whatcommand == COMMAND_RANDOM_WALK) ... else ...",
@@ -348,6 +390,9 @@
       "id": "stats.cpp:398",
       "lines": [
         398
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "statistics::do_command",
       "anchor": "if (commands.empty())",
@@ -384,6 +429,9 @@
       "lines": [
         409
       ],
+      "kinds": [
+        "case"
+      ],
       "function": "statistics::do_command",
       "anchor": "case COMMAND_WALK:",
       "condition": "case COMMAND_WALK",
@@ -410,6 +458,11 @@
         412,
         413,
         418
+      ],
+      "kinds": [
+        "case",
+        "if",
+        "if"
       ],
       "function": "statistics::do_command",
       "anchor": "case COMMAND_FIRE:",
@@ -458,6 +511,11 @@
         427,
         429
       ],
+      "kinds": [
+        "case",
+        "if",
+        "if"
+      ],
       "function": "statistics::do_command",
       "anchor": "case COMMAND_DIE:  // debugging, not currently used",
       "condition": "case COMMAND_DIE: if (!dead()) Log(...); if (commandcount < 2) set_delete_me(1)",
@@ -499,6 +557,12 @@
         440,
         443
       ],
+      "kinds": [
+        "case",
+        "if",
+        "if",
+        "if"
+      ],
       "function": "statistics::do_command",
       "anchor": "case COMMAND_FOLLOW:   // follow the leader",
       "condition": "case COMMAND_FOLLOW: if (foe()) { count = 0; leader = null; result 0 } if (!leader()) { leader = find_follow_leader(); if (!leader()) { count = 0; result 0 } }",
@@ -537,6 +601,10 @@
         452,
         455
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "statistics::do_command",
       "anchor": "if(controller_->leader())",
       "condition": "if (leader()) { if (distance_to_ob(leader) < 60) { leader = null; result 1; break; } ... }",
@@ -568,6 +636,12 @@
         465,
         467,
         469
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if"
       ],
       "function": "statistics::do_command",
       "anchor": "if (abs(newx) > abs(3*newy))",
@@ -613,6 +687,9 @@
       "lines": [
         474
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "statistics::do_command",
       "anchor": "if (commands.front().commandcount < 2)",
       "condition": "if (commands.front().commandcount < 2) leader = null",
@@ -642,6 +719,9 @@
       "id": "stats.cpp:479",
       "lines": [
         479
+      ],
+      "kinds": [
+        "case"
       ],
       "function": "statistics::do_command",
       "anchor": "case COMMAND_QUICK_FIRE:",
@@ -673,6 +753,11 @@
         483,
         485,
         489
+      ],
+      "kinds": [
+        "case",
+        "ternary",
+        "for"
       ],
       "function": "statistics::do_command",
       "anchor": "case COMMAND_MULTIDO: // Lets you do <com1> commands in one round",
@@ -716,6 +801,10 @@
         493,
         494
       ],
+      "kinds": [
+        "case",
+        "if"
+      ],
       "function": "statistics::do_command",
       "anchor": "case COMMAND_RUSH:    // Fighter's special",
       "condition": "case COMMAND_RUSH: if (query_order() == Order::Living) { walkstep x3; ... }",
@@ -757,6 +846,9 @@
       "id": "stats.cpp:505",
       "lines": [
         505
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "statistics::do_command",
       "anchor": "if (controller_->collide_ob() // We hit someone",
@@ -829,6 +921,10 @@
         523,
         526
       ],
+      "kinds": [
+        "case",
+        "case"
+      ],
       "function": "statistics::do_command",
       "anchor": "case COMMAND_SET_WEAPON: // set weapon to specified type",
       "condition": "case COMMAND_SET_WEAPON / case COMMAND_RESET_WEAPON",
@@ -859,6 +955,11 @@
         529,
         530,
         532
+      ],
+      "kinds": [
+        "case",
+        "if",
+        "else"
       ],
       "function": "statistics::do_command",
       "anchor": "case COMMAND_SEARCH: // use right-hand rule to find foe",
@@ -894,6 +995,9 @@
       "lines": [
         537
       ],
+      "kinds": [
+        "case"
+      ],
       "function": "statistics::do_command",
       "anchor": "case COMMAND_GOTO: // walk toward a fixed map position",
       "condition": "case COMMAND_GOTO: walk_to_point(com1, com2)",
@@ -919,6 +1023,13 @@
         544,
         546,
         547
+      ],
+      "kinds": [
+        "case",
+        "if",
+        "if",
+        "else",
+        "if"
       ],
       "function": "statistics::do_command",
       "anchor": "case COMMAND_RIGHT_WALK: // right-hand-walk ONLY",
@@ -971,6 +1082,10 @@
         551,
         552
       ],
+      "kinds": [
+        "case",
+        "if"
+      ],
       "function": "statistics::do_command",
       "anchor": "case COMMAND_ATTACK: // attack a nearby, set foe",
       "condition": "case COMMAND_ATTACK: if (!foe() || foe()->dead()) { count = 0; result = 1; break; }",
@@ -1012,6 +1127,14 @@
         566,
         567,
         568
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "ternary",
+        "if",
+        "ternary"
       ],
       "function": "statistics::do_command",
       "anchor": "if (abs(deltax) > abs(3*deltay))",
@@ -1062,6 +1185,12 @@
         606,
         623,
         626
+      ],
+      "kinds": [
+        "if",
+        "else if",
+        "else",
+        "else"
       ],
       "function": "statistics::do_command",
       "anchor": "if (!controller_->fire_check(deltax, deltay, &denial))",
@@ -1125,6 +1254,9 @@
       "lines": [
         591
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "statistics::do_command",
       "anchor": "if (deltax == 0 && deltay == 0)",
       "condition": "if (deltax == 0 && deltay == 0) { facing_step_delta(curdir, stepx, stepy); walkstep(stepx, stepy); }",
@@ -1153,6 +1285,10 @@
         633,
         647
       ],
+      "kinds": [
+        "case",
+        "default"
+      ],
       "function": "statistics::do_command",
       "anchor": "case COMMAND_UNCHARM:",
       "condition": "case COMMAND_UNCHARM: break; default: break;",
@@ -1175,6 +1311,10 @@
       "lines": [
         653,
         657
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "statistics::do_command",
       "anchor": "if(!commands.empty())",
@@ -1216,6 +1356,11 @@
         681,
         684
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
+      ],
       "function": "statistics::hit_response",
       "anchor": "if (who->dead() || controller_->dead())",
       "condition": "if (who->dead() || controller_->dead()) return; if (act_type() == ACT_CONTROL) return; if (query_order() != Order::Living) return;",
@@ -1239,7 +1384,7 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/integration/test_stats_unit.cpp",
@@ -1255,13 +1400,20 @@
           "test": "StatsMorePaths.stats_set_command_die_and_hit_response_early_returns"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "attacker or victim dead",
+        "victim ACT_CONTROL"
+      ]
     },
     {
       "id": "stats.cpp:689",
       "lines": [
         689,
         691
+      ],
+      "kinds": [
+        "if",
+        "else"
       ],
       "function": "statistics::hit_response",
       "anchor": "if (who->query_order() == Order::Weapon && who->owner())",
@@ -1297,6 +1449,9 @@
       "lines": [
         695
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "statistics::hit_response",
       "anchor": "if (og::script::hooks::hit_response(fd, this, foe))",
       "condition": "if (og::script::hooks::hit_response(fd, this, foe)) return;",
@@ -1312,7 +1467,7 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/integration/test_stats_commands.cpp",
@@ -1327,12 +1482,17 @@
           "test": "StatsHitResponseTeleport.stats_hit_response_mage_and_archmage_teleport_branches"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "hook returns true"
+      ]
     },
     {
       "id": "stats.cpp:699",
       "lines": [
         699
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "statistics::hit_response",
       "anchor": "if (controller_->check_special() && !rng(3) )",
@@ -1372,6 +1532,10 @@
         701,
         703
       ],
+      "kinds": [
+        "if",
+        "else"
+      ],
       "function": "statistics::hit_response",
       "anchor": "if (controller_->myguy) // are we a player's character?",
       "condition": "if (controller_->myguy) threshold = 5*max_hp/10; else threshold = 5*max_hp/16;",
@@ -1398,6 +1562,9 @@
       "id": "stats.cpp:707",
       "lines": [
         707
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "statistics::hit_response",
       "anchor": "if (controller_->foe() != foe) // we're attacked by a new enemy",
@@ -1431,6 +1598,9 @@
       "id": "stats.cpp:717",
       "lines": [
         717
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "statistics::hit_response",
       "anchor": "if ( (hitpoints_ < threshold)",
@@ -1475,6 +1645,9 @@
       "id": "stats.cpp:738",
       "lines": [
         738
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "statistics::yell_for_help",
       "anchor": "if (foe != w->foe())",
@@ -1524,6 +1697,10 @@
         750,
         753
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "statistics::yell_for_help",
       "anchor": "if (deltax)",
       "condition": "deltax = -(foe.x - x); if (deltax) deltax = sign; same for y",
@@ -1570,6 +1747,9 @@
       "lines": [
         756
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "statistics::yell_for_help",
       "anchor": "if (!og::sim::fearless(*controller_)) force_command(COMMAND_WALK, 16, deltax, deltay);  // rallied walkers hold",
       "condition": "if (!og::sim::fearless(*controller_)) force_command(COMMAND_WALK, 16, dx, dy);",
@@ -1585,20 +1765,26 @@
         }
       ],
       "setting": "new-specials",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_kit_seams_small.cpp",
           "test": "KitSeamsSmall.fearless_bit_and_rally_radius_block_the_flee_walk"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "fearless"
+      ]
     },
     {
       "id": "stats.cpp:758",
       "lines": [
         758,
         761
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "statistics::yell_for_help",
       "anchor": "if (controller_->myguy && (controller_->team_num() == 0) )",
@@ -1636,6 +1822,18 @@
         828,
         832
       ],
+      "kinds": [
+        "switch",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "default"
+      ],
       "function": "statistics::right_blocked",
       "anchor": "switch (controller_->curdir())",
       "condition": "switch (controller_->curdir()) { case FACE_*: ... default: ... }",
@@ -1651,7 +1849,7 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/integration/test_stats_extended.cpp",
@@ -1669,13 +1867,11 @@
           "file": "tests/integration/test_stats_unit.cpp",
           "test": "StatsUnit.stats_r14_hit_response_gates_and_direct_walk_and_blocked_defaults",
           "note": "default arm"
-        },
-        {
-          "file": "tests/unit/test_quiet_probe.cpp",
-          "test": "QuietProbe.every_blocker_answers_like_the_loud_probe_and_changes_nothing"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "facing outside 0..7"
+      ]
     },
     {
       "id": "stats.cpp:849",
@@ -1690,6 +1886,18 @@
         864,
         866,
         868
+      ],
+      "kinds": [
+        "switch",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "default"
       ],
       "function": "statistics::right_forward_blocked",
       "anchor": "switch (controller_->curdir())",
@@ -1706,7 +1914,7 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/integration/test_stats_extended.cpp",
@@ -1726,11 +1934,14 @@
           "note": "default arm"
         },
         {
-          "file": "tests/unit/test_quiet_probe.cpp",
-          "test": "QuietProbe.every_blocker_answers_like_the_loud_probe_and_changes_nothing"
+          "file": "tests/integration/test_stats_unit.cpp",
+          "test": "StatsUnit.stats_r11_clear_command_and_blocked_direction_defaults",
+          "note": "default arm: curdir 127 -> false on open ground"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "facing outside 0..7"
+      ]
     },
     {
       "id": "stats.cpp:882",
@@ -1745,6 +1956,18 @@
         898,
         900,
         902
+      ],
+      "kinds": [
+        "switch",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "default"
       ],
       "function": "statistics::right_back_blocked",
       "anchor": "switch (controller_->curdir())",
@@ -1761,7 +1984,7 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/integration/test_stats_extended.cpp",
@@ -1781,11 +2004,14 @@
           "note": "default arm"
         },
         {
-          "file": "tests/unit/test_quiet_probe.cpp",
-          "test": "QuietProbe.every_blocker_answers_like_the_loud_probe_and_changes_nothing"
+          "file": "tests/integration/test_stats_unit.cpp",
+          "test": "StatsUnit.stats_r11_clear_command_and_blocked_direction_defaults",
+          "note": "default arm: curdir 127 -> false on open ground"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "facing outside 0..7"
+      ]
     },
     {
       "id": "stats.cpp:916",
@@ -1800,6 +2026,18 @@
         942,
         946,
         950
+      ],
+      "kinds": [
+        "switch",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "default"
       ],
       "function": "statistics::forward_blocked",
       "anchor": "switch (controller_->curdir())",
@@ -1816,7 +2054,7 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/integration/test_stats_extended.cpp",
@@ -1840,7 +2078,9 @@
           "test": "QuietProbe.every_blocker_answers_like_the_loud_probe_and_changes_nothing"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "facing outside 0..7"
+      ]
     },
     {
       "id": "stats.cpp:972",
@@ -1852,6 +2092,15 @@
         1000,
         1044,
         1046
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "else",
+        "else if",
+        "else if",
+        "else",
+        "if"
       ],
       "function": "statistics::right_walk",
       "anchor": "if (path_probe(Side::Right, quiet) || path_probe(Side::RightFront, quiet) )",
@@ -1922,7 +2171,9 @@
         }
       ],
       "missing_arms": [
-        "nothing blocked, direct_walk succeeds"
+        "nothing blocked, direct_walk succeeds",
+        "fixes off, a probe overlaps a potion/door/body",
+        "fixes on, same"
       ]
     },
     {
@@ -1932,6 +2183,12 @@
         980,
         982,
         984
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if"
       ],
       "function": "statistics::right_walk",
       "anchor": "if (std::fabs(xdelta) > std::fabs(3 * ydelta))",
@@ -1982,6 +2239,18 @@
         1033,
         1037
       ],
+      "kinds": [
+        "switch",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "default"
+      ],
       "function": "statistics::right_walk",
       "anchor": "switch (controller_->enddir())",
       "condition": "switch (controller_->enddir()) after enddir = (enddir+2)%8",
@@ -2023,6 +2292,18 @@
         1074,
         1078,
         1082
+      ],
+      "kinds": [
+        "switch",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "default"
       ],
       "function": "statistics::right_walk",
       "anchor": "switch (controller_->curdir())",
@@ -2068,6 +2349,11 @@
         1116,
         1121
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
+      ],
       "function": "statistics::path_probe",
       "anchor": "if (!quiet || !blocked)",
       "condition": "if (!quiet || !blocked) return blocked; if (!foe || foe->dead() || foe->floor() != floor() || !BIT_NO_RANGED || is_friendly(foe)) return blocked; if (step_meets(...foe)) collide(foe);",
@@ -2108,6 +2394,9 @@
       "lines": [
         1140
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "statistics::direct_walk",
       "anchor": "if (!foe)",
       "condition": "if (!foe) return 0;",
@@ -2134,6 +2423,11 @@
         1149,
         1151,
         1154
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
       ],
       "function": "statistics::direct_walk",
       "anchor": "if (std::fabs(xdelta) > std::fabs(3 * ydelta))",
@@ -2176,6 +2470,19 @@
         1198,
         1208,
         1210
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "else",
+        "if",
+        "else",
+        "if",
+        "else",
+        "if"
       ],
       "function": "statistics::direct_walk",
       "anchor": "if (xdelta != 0.0f)",
@@ -2243,6 +2550,12 @@
         1256,
         1263
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if"
+      ],
       "function": "statistics::path_toward_stair",
       "anchor": "if (foe_floor == myfloor)",
       "condition": "if (foe_floor == myfloor) return false; want = foe_floor > myfloor ? PIX_ZSTAIR_UP : PIX_ZSTAIR_DOWN; nearest (Manhattan in cells, first in row-major order on ties); if none return false; find_path_to_point(stair); return !path.empty()",
@@ -2289,6 +2602,9 @@
       "lines": [
         1284
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "statistics::walk_to_foe",
       "anchor": "if (!foe || !rng(300) ) //random just to be sure this gets reset sometime",
       "condition": "if (!foe || !rng(300)) { last_distance = current_distance = 15000; return 0; }",
@@ -2322,6 +2638,7 @@
         }
       ],
       "missing_arms": [
+        "no foe",
         "foe and rng(300)==0"
       ]
     },
@@ -2329,6 +2646,9 @@
       "id": "stats.cpp:1330",
       "lines": [
         1330
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "statistics::walk_to_foe",
       "anchor": "if(controller_->path_check_counter() <= 0 || need_cross_floor_path)",
@@ -2360,6 +2680,11 @@
           "file": "tests/integration/test_stats_unit.cpp",
           "test": "StatsUnit.stats_r14_hit_response_gates_and_direct_walk_and_blocked_defaults",
           "note": "counter 5 -> 4: no reset on a same-floor throttled tick"
+        },
+        {
+          "file": "tests/integration/test_stats_more_paths.cpp",
+          "test": "StatsMorePaths.stats_walk_to_foe_short_circuit_and_path_branches",
+          "note": "counter 0, distant foe: 'path recomputed' half -- path_to_foe front (48,48), back (128,128)"
         }
       ],
       "missing_arms": [
@@ -2373,6 +2698,12 @@
         1356,
         1380,
         1383
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "else",
+        "if"
       ],
       "function": "statistics::walk_to_foe",
       "anchor": "if (!cross_floor &&",
@@ -2407,6 +2738,7 @@
         }
       ],
       "missing_arms": [
+        "foe within 100 px (any foe in range)",
         "crowded map, no foe within 100"
       ]
     },
@@ -2414,6 +2746,9 @@
       "id": "stats.cpp:1368",
       "lines": [
         1368
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "statistics::walk_to_foe",
       "anchor": "if (near_foe &&",
@@ -2434,7 +2769,7 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/integration/test_stats_unit.cpp",
@@ -2445,13 +2780,19 @@
           "fact": "its facts (canary on this line)"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "strictly nearer foe found"
+      ]
     },
     {
       "id": "stats.cpp:1387",
       "lines": [
         1387,
         1395
+      ],
+      "kinds": [
+        "else if",
+        "if"
       ],
       "function": "statistics::walk_to_foe",
       "anchor": "else if (!flyer || foe->floor() == controller_->floor())",
@@ -2498,6 +2839,12 @@
         1414,
         1419
       ],
+      "kinds": [
+        "if",
+        "else if",
+        "if",
+        "else"
+      ],
       "function": "statistics::walk_to_foe",
       "anchor": "if(controller_->path_to_foe.size() > 0)",
       "condition": "if (path.size() > 0) { follow_path_to_foe(); last_distance = dist } else if (tempdistance < last_distance()) { last_distance = tempdistance; if (!direct_walk()) right_walk(); } else right_walk();",
@@ -2523,17 +2870,25 @@
           "file": "tests/integration/test_stats_more_paths.cpp",
           "test": "StatsMorePaths.stats_walk_to_foe_short_circuit_and_path_branches",
           "note": "path arm: path front (48,48), back (128,128), xpos/ypos > 32"
+        },
+        {
+          "file": "tests/integration/test_stats_unit.cpp",
+          "test": "StatsUnit.stats_r14_hit_response_gates_and_direct_walk_and_blocked_defaults",
+          "note": "tail: no path, path_check_counter 5 -> 4 (throttled, tempdistance 9999999), last_distance 10: right_walk closes on the foe, xpos 97 -> 98"
         }
       ],
       "missing_arms": [
-        "no path, re-plan tick, new best distance",
-        "no path, not a new best (incl. every throttled tick)"
+        "path non-empty",
+        "no path, re-plan tick, new best distance"
       ]
     },
     {
       "id": "stats.cpp:1426",
       "lines": [
         1426
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "statistics::walk_to_foe",
       "anchor": "if (!cross_floor && tempdistance < 30 && !commands.empty())",
@@ -2576,6 +2931,18 @@
         1473,
         1477
       ],
+      "kinds": [
+        "switch",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "default"
+      ],
       "function": "facing_step_delta",
       "anchor": "switch (dir)",
       "condition": "switch (dir) { case FACE_*: unit vector; default: (0,0) }",
@@ -2605,6 +2972,12 @@
         1498,
         1501,
         1503
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if"
       ],
       "function": "statistics::direct_walk_to_point",
       "anchor": "if (std::fabs(xdelta) > std::fabs(3 * ydelta))",
@@ -2650,6 +3023,17 @@
         1528,
         1534,
         1536
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "else",
+        "if",
+        "else",
+        "if",
+        "else",
+        "if"
       ],
       "function": "statistics::direct_walk_to_point",
       "anchor": "if (!current_game->world->query_grid_passable(controlx + xdeltastep, controly + ydeltastep, controller_))",
@@ -2713,6 +3097,15 @@
         1585,
         1587
       ],
+      "kinds": [
+        "if",
+        "if",
+        "else",
+        "else if",
+        "else if",
+        "else",
+        "if"
+      ],
       "function": "statistics::right_walk_to_point",
       "anchor": "if (right_blocked(quiet) || right_forward_blocked(quiet))",
       "condition": "quiet = gameplay_fixes != 0; if (right_blocked(q) || right_forward_blocked(q)) { if (!forward_blocked(q)) step along last move; else turn left } else if (forward_blocked(q)) turn left; else if (right_back_blocked(q)) { turn right; queue WALK(1) } else if (!direct_walk_to_point) step along curdir",
@@ -2772,6 +3165,12 @@
         1562,
         1564
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if"
+      ],
       "function": "statistics::right_walk_to_point",
       "anchor": "if (std::fabs(xdelta) > std::fabs(3 * ydelta))",
       "condition": "3:1 snap and normalise of (lastx, lasty)",
@@ -2809,6 +3208,9 @@
       "lines": [
         1606
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "statistics::walk_to_point",
       "anchor": "if (!rng(300)) // random just to be sure this gets reset sometime",
       "condition": "if (!rng(300)) { distances = 15000; return 0; }",
@@ -2842,6 +3244,10 @@
         1617,
         1620
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "statistics::walk_to_point",
       "anchor": "if (tempdistance < GOTO_ARRIVAL_DISTANCE)",
       "condition": "if (tempdistance < 12) { path.clear(); if (!empty) front.count = 0; return 1 }",
@@ -2874,6 +3280,10 @@
       "lines": [
         1628,
         1635
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "statistics::walk_to_point",
       "anchor": "if (controller_->path_check_counter() <= 0)",
@@ -2909,6 +3319,12 @@
         1648,
         1652,
         1657
+      ],
+      "kinds": [
+        "if",
+        "else if",
+        "if",
+        "else"
       ],
       "function": "statistics::walk_to_point",
       "anchor": "if (controller_->path_to_foe.size() > 0)",
@@ -2952,6 +3368,12 @@
         95,
         100
       ],
+      "kinds": [
+        "if",
+        "else",
+        "if",
+        "else"
+      ],
       "kind": "defensive",
       "anchor": "if (someguy)",
       "note": "statistics constructor null-controller guard: defaults (Order::Living, FAMILY_SOLDIER, no controller id) and a Log line; no game rule"
@@ -2960,6 +3382,9 @@
       "id": "stats.cpp:85",
       "lines": [
         85
+      ],
+      "kinds": [
+        "for"
       ],
       "kind": "loop",
       "anchor": "for (i=0; i < NUM_SPECIALS; i++)",
@@ -2973,6 +3398,12 @@
         129,
         131
       ],
+      "kinds": [
+        "ternary",
+        "if",
+        "ternary",
+        "if"
+      ],
       "kind": "plumbing",
       "anchor": "walker* dirty_owner = owner_ != nullptr ? owner_ : controller_;",
       "note": "dirty-bit bookkeeping for snapshot replication (owner falls back to controller; null guard)"
@@ -2983,6 +3414,10 @@
         219,
         361
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "kind": "dead",
       "anchor": "if (whatcommand == COMMAND_FOLLOW)",
       "note": "Log-only branches (FOLLOW 'following', set_command DIE log line); no sim effect"
@@ -2992,6 +3427,9 @@
       "lines": [
         389
       ],
+      "kinds": [
+        "if"
+      ],
       "kind": "defensive",
       "anchor": "if (!controller_) // allow dead controllers for now",
       "note": "do_command with no controller returns 0 (null guard)"
@@ -3000,6 +3438,9 @@
       "id": "stats.cpp:407",
       "lines": [
         407
+      ],
+      "kinds": [
+        "switch"
       ],
       "kind": "plumbing",
       "anchor": "switch (commandtype)",
@@ -3011,6 +3452,10 @@
         635,
         640
       ],
+      "kinds": [
+        "if",
+        "else if"
+      ],
       "kind": "dead",
       "anchor": "if (commandcount > 1)",
       "note": "not a branch: inside a commented-out block of COMMAND_UNCHARM"
@@ -3019,6 +3464,9 @@
       "id": "stats.cpp:676",
       "lines": [
         676
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "defensive",
       "anchor": "if (!who || !controller_)",
@@ -3029,6 +3477,9 @@
       "lines": [
         735
       ],
+      "kinds": [
+        "for"
+      ],
       "kind": "loop",
       "anchor": "for(auto* w : helplist)",
       "note": "iterates allies within 160 px from find_friends_in_range; see stats.cpp:738"
@@ -3038,6 +3489,10 @@
       "lines": [
         779,
         783
+      ],
+      "kinds": [
+        "if",
+        "else"
       ],
       "kind": "plumbing",
       "anchor": "if (newvalue)",
@@ -3052,6 +3507,13 @@
         1110,
         1111
       ],
+      "kinds": [
+        "switch",
+        "case",
+        "case",
+        "case",
+        "default"
+      ],
       "kind": "plumbing",
       "anchor": "switch (side)",
       "note": "path_probe dispatches Side to the four probe tables (stats.cpp:798, 849, 882, 916); Front is the default"
@@ -3061,6 +3523,10 @@
       "lines": [
         1231,
         1243
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "kind": "defensive",
       "anchor": "if (!current_game || !current_game->world)",
@@ -3072,6 +3538,10 @@
         1250,
         1251
       ],
+      "kinds": [
+        "for",
+        "for"
+      ],
       "kind": "loop",
       "anchor": "for (int y = 0; y < g.h; ++y)",
       "note": "row-major grid scan for stair tiles; see stats.cpp:1253"
@@ -3080,6 +3550,9 @@
       "id": "stats.cpp:1337",
       "lines": [
         1337
+      ],
+      "kinds": [
+        ""
       ],
       "kind": "test-only",
       "anchor": "const std::uint32_t cadence = (cosmetic_rng_override() != nullptr)",

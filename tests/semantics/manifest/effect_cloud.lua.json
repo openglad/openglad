@@ -7,6 +7,10 @@
         17,
         19
       ],
+      "kinds": [
+        "if",
+        "else"
+      ],
       "function": "on_act (core:cloud)",
       "anchor": "if self:lifetime() > 0 then",
       "condition": "self:lifetime() > 0 / else",
@@ -18,7 +22,11 @@
         },
         {
           "when": "lifetime <= 0",
-          "observable": "dead == 1, no damage or drift that tick, lifetime unchanged"
+          "observable": "dead == 1, lifetime unchanged"
+        },
+        {
+          "when": "lifetime <= 0 (no action)",
+          "observable": "no damage or drift that tick"
         }
       ],
       "setting": "none",
@@ -28,10 +36,15 @@
           "file": "tests/integration/test_effect_act.cpp",
           "test": "EffectAct.cloud_ages_and_queues_its_drift_walk",
           "note": "lifetime 50 -> 49, walk queued"
+        },
+        {
+          "file": "tests/integration/test_effect_act.cpp",
+          "test": "EffectAct.cloud_expired",
+          "note": "lifetime 0: ASSERT_EQ(1, dead), EXPECT_EQ(0, lifetime); no foe and no queue check, so the no-damage, no-drift half is not asserted"
         }
       ],
       "missing_arms": [
-        "lifetime <= 0"
+        "lifetime <= 0 (no action)"
       ]
     },
     {
@@ -39,6 +52,10 @@
       "lines": [
         24,
         27
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "on_act (core:cloud)",
       "anchor": "if self:lifetime() < 8 then",
@@ -75,6 +92,10 @@
       "lines": [
         34,
         36
+      ],
+      "kinds": [
+        "for",
+        "if"
       ],
       "function": "on_act (core:cloud)",
       "anchor": "for i = 1, #foes do",
@@ -118,6 +139,10 @@
         43,
         66
       ],
+      "kinds": [
+        "if",
+        "else"
+      ],
       "function": "on_act (core:cloud)",
       "anchor": "if self:s_has_commands() then",
       "condition": "self:s_has_commands() / else",
@@ -153,6 +178,11 @@
         54,
         55
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
+      ],
       "function": "on_act (core:cloud)",
       "anchor": "if self:xpos() == held_x then",
       "condition": "xpos unchanged and ypos unchanged and curdir unchanged after s_do_command",
@@ -160,7 +190,11 @@
       "arms": [
         {
           "when": "moved on either axis or turned",
-          "observable": "queue kept, no RNG draw"
+          "observable": "queue kept (the queued walk keeps counting down)"
+        },
+        {
+          "when": "moved on either axis or turned (RNG)",
+          "observable": "no RNG draw"
         },
         {
           "when": "no move and no turn",
@@ -168,10 +202,16 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_effect_more_paths.cpp",
+          "test": "EffectMorePaths.effect_cloud_queues_walk_then_executes_the_drift_step",
+          "note": "moving arm: the queued walk is kept, commandcount 4 -> 3; no draw count is read"
+        }
+      ],
       "missing_arms": [
-        "moved on either axis or turned",
+        "moved on either axis or turned (RNG)",
         "no move and no turn"
       ]
     },
@@ -180,6 +220,10 @@
       "lines": [
         58,
         70
+      ],
+      "kinds": [
+        "while",
+        "while"
       ],
       "function": "on_act (core:cloud)",
       "anchor": "while xd == 0 and yd == 0 do",

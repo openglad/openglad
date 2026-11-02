@@ -6,6 +6,9 @@
       "lines": [
         52
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "M.on_act",
       "anchor": "if handler then",
       "condition": "handler (M.roles[ani_type])",
@@ -39,6 +42,14 @@
         74,
         75,
         76
+      ],
+      "kinds": [
+        "for",
+        "if",
+        "and",
+        "and",
+        "and",
+        "and"
       ],
       "function": "M.find",
       "anchor": "for i = 1, #obs do",
@@ -84,6 +95,9 @@
       "lines": [
         27
       ],
+      "kinds": [
+        ""
+      ],
       "kind": "defensive",
       "anchor": "assert(M.roles[role] == nil, \"kit_marker: role registered twice\")",
       "note": "load-time assert: a marker role registered twice is a pack load error (not a candidate line; listed for completeness)"
@@ -92,6 +106,9 @@
       "id": "kit_marker.lua:37",
       "lines": [
         37
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "defensive",
       "anchor": "if not marker then",

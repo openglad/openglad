@@ -7,6 +7,10 @@
         103,
         106
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "guy_arg",
       "anchor": "if (luaL_testudata(L, idx, kGuyMeta) != nullptr)",
       "condition": "luaL_testudata(L, idx, kGuyMeta) != nullptr / w->myguy == nullptr",
@@ -59,6 +63,13 @@
         137,
         138,
         139
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if",
+        "if"
       ],
       "function": "order_from_string",
       "anchor": "if (std::strcmp(s, \"living\") == 0) return Order::Living;",
@@ -143,6 +154,11 @@
         150,
         151
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
+      ],
       "function": "list_from_selector",
       "anchor": "if (std::strcmp(s, \"ob\") == 0) return world->oblist;",
       "condition": "strcmp(s, \"ob\"|\"weap\"|\"fx\")",
@@ -210,6 +226,9 @@
       "lines": [
         289
       ],
+      "kinds": [
+        "ternary"
+      ],
       "function": "m_alternate_down",
       "anchor": "lua_pushboolean(L, down ? 1 : 0);",
       "condition": "w->shifter_down() != 0 && og::sim::alternate_in_play(fd, current_special, session_new_specials())",
@@ -250,6 +269,11 @@
         432,
         434
       ],
+      "kinds": [
+        "ternary",
+        "if",
+        "else"
+      ],
       "function": "m_special",
       "anchor": "lua_pushboolean(L, succeeded ? 1 : 0);",
       "condition": "succeeded",
@@ -281,6 +305,9 @@
       "id": "bindings_entity.cpp:544",
       "lines": [
         544
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "m_heal_clamped",
       "anchor": "if (st->hitpoints() > st->max_hitpoints())",
@@ -325,6 +352,9 @@
       "lines": [
         820
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "s_front_command",
       "anchor": "if (!stats->has_commands()) {",
       "condition": "!stats->has_commands()",
@@ -354,6 +384,9 @@
       "id": "bindings_entity.cpp:839",
       "lines": [
         839
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "s_refresh_front",
       "anchor": "if (!stats->has_commands())",
@@ -387,6 +420,9 @@
       "lines": [
         850
       ],
+      "kinds": [
+        "ternary"
+      ],
       "function": "s_forward_blocked",
       "anchor": "lua_pushboolean(L, stats_arg(L)->forward_blocked(!lua_isnoneornil(L, 2) && lua_toboolean(L, 2) != 0) ? 1 : 0);",
       "condition": "!lua_isnoneornil(L, 2) && lua_toboolean(L, 2) != 0",
@@ -416,6 +452,9 @@
       "id": "bindings_entity.cpp:885",
       "lines": [
         885
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "s_force_fright",
       "anchor": "if (!og::sim::fearless(*self_arg(L))) stats_arg(L)->force_fright(iterations, info1, info2);  // a rallied walker holds",
@@ -473,6 +512,17 @@
         1065,
         1067
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if"
+      ],
       "function": "og_summon_configured",
       "anchor": "if (lua_getfield(L, 4, \"ani_type\") != LUA_TNIL) {",
       "condition": "lua_getfield(...) != LUA_TNIL / isnum == 0",
@@ -519,6 +569,9 @@
       "lines": [
         1082
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "og_summon_configured",
       "anchor": "if (total != recognized)",
       "condition": "total != recognized",
@@ -553,6 +606,9 @@
       "id": "bindings_entity.cpp:1089",
       "lines": [
         1089
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "og_summon_configured",
       "anchor": "if (w == nullptr) {",
@@ -592,6 +648,13 @@
         1099,
         1101,
         1103
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if",
+        "if"
       ],
       "function": "og_summon_configured",
       "anchor": "if (has_ani_type)",
@@ -649,6 +712,14 @@
         1241,
         1243
       ],
+      "kinds": [
+        "if",
+        "else",
+        "if",
+        "else",
+        "if",
+        "else"
+      ],
       "function": "og_query_passable / og_query_grid_passable / og_query_object_passable",
       "anchor": "if (lua_isnoneornil(L, 4))",
       "condition": "lua_isnoneornil(L, 4)",
@@ -682,6 +753,9 @@
       "id": "bindings_entity.cpp:1263",
       "lines": [
         1263
+      ],
+      "kinds": [
+        ""
       ],
       "function": "og_query_genre",
       "anchor": "lua_isnoneornil(L, 3)",
@@ -720,6 +794,10 @@
       "lines": [
         1281,
         1283
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "og_cosmetic_rand",
       "anchor": "if (n <= 0)",
@@ -762,6 +840,9 @@
       "lines": [
         1286
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "og_cosmetic_rand",
       "anchor": "if (IRandom* cos = cosmetic_rng_override()) {",
       "condition": "IRandom* cos = cosmetic_rng_override()",
@@ -792,6 +873,13 @@
         1388,
         1390,
         1394
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "ternary",
+        "else",
+        "if"
       ],
       "function": "og_emit_notification",
       "anchor": "if (!lua_isnoneornil(L, 3))",
@@ -850,6 +938,16 @@
         1448,
         1450,
         1452
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "else if",
+        "else if",
+        "else if",
+        "else",
+        "ternary"
       ],
       "function": "og_family_flag",
       "anchor": "if (order != Order::Living)",
@@ -919,6 +1017,9 @@
       "lines": [
         1469
       ],
+      "kinds": [
+        "ternary"
+      ],
       "function": "g_upgrade_to_level",
       "anchor": "lua_isnoneornil(L, 3) ? true : (lua_toboolean(L, 3) != 0);",
       "condition": "lua_isnoneornil(L, 3) ? true : lua_toboolean(L, 3) != 0",
@@ -957,6 +1058,19 @@
         1578,
         1579,
         1580
+      ],
+      "kinds": [
+        "if",
+        "else if",
+        "else if",
+        "else if",
+        "else if",
+        "else if",
+        "else if",
+        "else if",
+        "else if",
+        "else if",
+        "else"
       ],
       "function": "og_exp_from_action",
       "anchor": "if (std::strcmp(action_name, \"attack\") == 0) action = ExpAction::Attack;",
@@ -1001,6 +1115,16 @@
         1680,
         1681,
         1683
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "switch",
+        "case",
+        "case",
+        "case",
+        "ternary",
+        "case"
       ],
       "function": "og_tuning",
       "anchor": "if (lua_istable(L, -1)) {",
@@ -1057,6 +1181,10 @@
         1714,
         1716
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "ani_row_ptr",
       "anchor": "if (w->ani == nullptr || row < 0)",
       "condition": "w->ani == nullptr || row < 0 / w->ani_count > 0 && row >= ani_count",
@@ -1104,6 +1232,10 @@
         1725,
         1727
       ],
+      "kinds": [
+        "while",
+        "ternary"
+      ],
       "function": "ani_row_len",
       "anchor": "while (len < kAniScanCap && seq[len] != -1)",
       "condition": "len < kAniScanCap && seq[len] != -1 / len >= kAniScanCap ? -1 : len",
@@ -1134,6 +1266,10 @@
       "lines": [
         1740,
         1742
+      ],
+      "kinds": [
+        "ternary",
+        "if"
       ],
       "function": "og_ani_frame",
       "anchor": "const int len = (seq != nullptr) ? ani_row_len(seq) : -1;",
@@ -1172,6 +1308,10 @@
         1759,
         1760
       ],
+      "kinds": [
+        "ternary",
+        "if"
+      ],
       "function": "og_ani_row",
       "anchor": "const int len = (seq != nullptr) ? ani_row_len(seq) : -1;",
       "condition": "seq != nullptr ? ani_row_len(seq) : -1 / len < 0",
@@ -1205,6 +1345,9 @@
       "id": "bindings_entity.cpp:1786",
       "lines": [
         1786
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "og_award_score",
       "anchor": "if (team >= SCORE_TEAM_COUNT)",
@@ -1244,6 +1387,9 @@
       "id": "bindings_entity.cpp:1798",
       "lines": [
         1807
+      ],
+      "kinds": [
+        "ternary"
       ],
       "function": "og_world_can_exit_whenever / og_level_completed",
       "anchor": "lua_pushboolean(L, world->completed_levels.count(level) > 0 ? 1 : 0);",
@@ -1292,6 +1438,9 @@
       "lines": [
         1871
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "og_scenario_title",
       "anchor": "if (!world->scenario_title_provider) {",
       "condition": "!world->scenario_title_provider",
@@ -1325,6 +1474,9 @@
       "lines": [
         1890
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "og_campaign_var",
       "anchor": "if (key == name) {",
       "condition": "key == name",
@@ -1354,6 +1506,9 @@
       "id": "bindings_entity.cpp:1912",
       "lines": [
         1912
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "campaign_dispatch_arg",
       "anchor": "if (st == nullptr || !st->campaign_dispatch)",
@@ -1402,6 +1557,22 @@
         2156,
         2174,
         2195
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if"
       ],
       "function": "og_campaign_* (all provider-backed bindings)",
       "anchor": "if (!p.state_get)",
@@ -1453,6 +1624,9 @@
       "lines": [
         1940
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "og_campaign_state_set",
       "anchor": "if (!hooks::valid_campaign_var_name({key, len}))",
       "condition": "!hooks::valid_campaign_var_name({key, len})",
@@ -1487,6 +1661,9 @@
       "id": "bindings_entity.cpp:1945",
       "lines": [
         1945
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "og_campaign_state_set",
       "anchor": "if (value < std::numeric_limits<std::int32_t>::min() ||",
@@ -1529,6 +1706,9 @@
       "lines": [
         1953
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "og_campaign_state_set",
       "anchor": "if (!p.state_set(key, static_cast<std::int32_t>(value)))",
       "condition": "!p.state_set(key, value)",
@@ -1565,6 +1745,10 @@
         1979,
         1993
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "og_campaign_spend_gold / og_campaign_grant_gold",
       "anchor": "if (amount < 0)",
       "condition": "amount < 0",
@@ -1594,6 +1778,9 @@
       "id": "bindings_entity.cpp:1985",
       "lines": [
         1985
+      ],
+      "kinds": [
+        "ternary"
       ],
       "function": "og_campaign_spend_gold",
       "anchor": "lua_pushboolean(L, p.gold_spend(amount) ? 1 : 0);",
@@ -1630,6 +1817,9 @@
       "lines": [
         2046
       ],
+      "kinds": [
+        "ternary"
+      ],
       "function": "og_campaign_team",
       "anchor": "lua_pushboolean(L, entry.deployed ? 1 : 0);",
       "condition": "entry.deployed ? 1 : 0",
@@ -1656,6 +1846,9 @@
       "id": "bindings_entity.cpp:2063",
       "lines": [
         2063
+      ],
+      "kinds": [
+        "ternary"
       ],
       "function": "og_campaign_level_completed",
       "anchor": "lua_pushboolean(L, p.level_completed(id) ? 1 : 0);",
@@ -1688,6 +1881,11 @@
         2097,
         2098,
         2116
+      ],
+      "kinds": [
+        "for",
+        "if",
+        "if"
       ],
       "function": "known_match_setting / og_campaign_match_get",
       "anchor": "for (const char* known : hooks::kCampaignMatchSettingNames) {",
@@ -1730,6 +1928,9 @@
       "lines": [
         2136
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "og_campaign_match_set",
       "anchor": "if (value < std::numeric_limits<std::int32_t>::min() ||",
       "condition": "value < INT32_MIN || value > INT32_MAX",
@@ -1771,6 +1972,9 @@
       "lines": [
         2159
       ],
+      "kinds": [
+        "ternary"
+      ],
       "function": "og_campaign_is_host",
       "anchor": "lua_pushboolean(L, p.is_host() ? 1 : 0);",
       "condition": "p.is_host() ? 1 : 0",
@@ -1800,6 +2004,9 @@
       "id": "bindings_entity.cpp:2177",
       "lines": [
         2177
+      ],
+      "kinds": [
+        ""
       ],
       "function": "og_campaign_my_team",
       "anchor": "lua_pushinteger(L, std::clamp(p.my_team(), 0, SCORE_TEAM_COUNT - 1));",
@@ -1836,6 +2043,10 @@
         2190,
         2192
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "og_campaign_random",
       "anchor": "if (n < 1)",
       "condition": "n < 1; n > INT32_MAX",
@@ -1870,6 +2081,10 @@
       "lines": [
         2224,
         2226
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "check_number_arg",
       "anchor": "if (lua_type(L, idx) != LUA_TNUMBER)",
@@ -1909,6 +2124,9 @@
       "id": "bindings_entity.cpp:2250",
       "lines": [
         2250
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "og_rand0",
       "anchor": "if (n <= 0) {",
@@ -1954,6 +2172,9 @@
       "lines": [
         2254
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "og_rand0",
       "anchor": "if (n > kMaxRandBound)",
       "condition": "n > kMaxRandBound",
@@ -1989,6 +2210,10 @@
       "lines": [
         2273,
         2281
+      ],
+      "kinds": [
+        "ternary",
+        "ternary"
       ],
       "function": "og_max / og_min",
       "anchor": "lua_pushvalue(L, lua_compare(L, 1, 2, LUA_OPLT) ? 2 : 1);",
@@ -2027,6 +2252,9 @@
       "lines": [
         2295
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "og_clamp",
       "anchor": "if (lua_compare(L, 3, 2, LUA_OPLT))",
       "condition": "lua_compare(3,2,LT)  (hi < lo)",
@@ -2056,6 +2284,10 @@
       "lines": [
         2298,
         2300
+      ],
+      "kinds": [
+        "if",
+        "else if"
       ],
       "function": "og_clamp",
       "anchor": "if (lua_compare(L, 1, 2, LUA_OPLT))",
@@ -2091,6 +2323,10 @@
         2317,
         2319
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "og_sign",
       "anchor": "if (v > 0)",
       "condition": "v > 0; v < 0",
@@ -2124,6 +2360,10 @@
       "lines": [
         2511,
         2515
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "walker_index",
       "anchor": "if (lua_rawget(L, lua_upvalueindex(1)) != LUA_TNIL)",
@@ -2163,6 +2403,11 @@
         2531,
         2544,
         2549
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
       ],
       "function": "walker_newindex",
       "anchor": "if (lua_rawget(L, lua_upvalueindex(1)) == LUA_TFUNCTION) {",
@@ -2218,6 +2463,10 @@
         2570,
         2574
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "og_end_level",
       "anchor": "if (ending != 0 && ending != 1)",
       "condition": "ending not in {0,1}; next_level outside [-1, 32767]",
@@ -2255,6 +2504,10 @@
       "lines": [
         2592,
         2863
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "og_declare_winner / og_team_color_name",
       "anchor": "if (team < 0 || !og::sim::is_scoring_identity(static_cast<int>(team)))",
@@ -2312,6 +2565,10 @@
         2614,
         2628
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "og_mode_get / og_mode_set",
       "anchor": "if (i < 0 || i >= og::sim::kModeVarCount)",
       "condition": "i < 0 || i >= kModeVarCount",
@@ -2349,6 +2606,9 @@
       "lines": [
         2645
       ],
+      "kinds": [
+        ""
+      ],
       "function": "og_set_mode_name",
       "anchor": "const size_t n = std::min(len, static_cast<size_t>(",
       "condition": "std::min(len, kModeNameBytes - 1)",
@@ -2384,6 +2644,10 @@
       "lines": [
         2659,
         2688
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "og_set_hud_line / og_clear_hud_line",
       "anchor": "if (slot < 0 || slot >= og::sim::kModeHudLines)",
@@ -2426,6 +2690,10 @@
       "lines": [
         2665,
         2667
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "og_set_hud_line",
       "anchor": "if (!lua_isnoneornil(L, 3)) {",
@@ -2478,6 +2746,12 @@
         2708,
         2713,
         2715
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if"
       ],
       "function": "og_set_beacon",
       "anchor": "if (slot < 0 || slot >= og::sim::kModeBeacons)",
@@ -2543,6 +2817,10 @@
         2741,
         2783
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "og_set_camera_view",
       "anchor": "if (slot < 0 || slot >= og::sim::kModeCameraViews)",
       "condition": "slot range; w == nullptr",
@@ -2586,6 +2864,16 @@
         2762,
         2772,
         2776
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if",
+        "else if",
+        "else",
+        "while",
+        "if"
       ],
       "function": "og_set_camera_view",
       "anchor": "if (!lua_isnoneornil(L, 3)) {",
@@ -2650,6 +2938,12 @@
         3014,
         3029
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if"
+      ],
       "function": "og_team_score / og_respawn_pending_count / og_respawn_anchor_count / og_respawn_anchor",
       "anchor": "if (team < 0 || team >= SCORE_TEAM_COUNT)",
       "condition": "team < 0 || team >= SCORE_TEAM_COUNT",
@@ -2695,6 +2989,9 @@
       "id": "bindings_entity.cpp:2813",
       "lines": [
         2813
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "og_find_by_id",
       "anchor": "if (id <= 0) {",
@@ -2745,6 +3042,26 @@
         2929,
         2931,
         2933
+      ],
+      "kinds": [
+        "if",
+        "else if",
+        "else if",
+        "else if",
+        "else if",
+        "else if",
+        "else if",
+        "else if",
+        "else if",
+        "else if",
+        "else if",
+        "else if",
+        "else if",
+        "else if",
+        "else if",
+        "else if",
+        "else if",
+        "else"
       ],
       "function": "og_match_setting",
       "anchor": "if (std::strcmp(s, \"new_specials\") == 0)",
@@ -2811,6 +3128,10 @@
         2970,
         2972
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "og_respawn_schedule",
       "anchor": "if (!lua_isnoneornil(L, 2)) {",
       "condition": "!isnoneornil(2); ticks <= 0 || ticks > 65535",
@@ -2848,6 +3169,9 @@
       "lines": [
         2989
       ],
+      "kinds": [
+        "ternary"
+      ],
       "function": "og_respawn_pending",
       "anchor": "lua_pushboolean(L, og::sim::respawn_pending_for(*world, w) ? 1 : 0);",
       "condition": "respawn_pending_for(world, w) ? 1 : 0",
@@ -2877,6 +3201,9 @@
       "id": "bindings_entity.cpp:3035",
       "lines": [
         3035
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "og_respawn_anchor",
       "anchor": "if (i < 0 || i >= count)",
@@ -2915,6 +3242,10 @@
         3057,
         3060
       ],
+      "kinds": [
+        "if",
+        "ternary"
+      ],
       "function": "og_spawn_spot_clear",
       "anchor": "if (!lua_isnoneornil(L, 4))",
       "condition": "!isnoneornil(4); respawn_spot_clear(...) ? 1 : 0",
@@ -2951,6 +3282,9 @@
       "id": "bindings_entity.cpp:3074",
       "lines": [
         3074
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "og_scrub_corpse_stain",
       "anchor": "if (!lua_isnoneornil(L, 3))",
@@ -2989,6 +3323,9 @@
       "lines": [
         3086
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "m_set_act_type",
       "anchor": "if (n == ACT_CONTROL)",
       "condition": "n == ACT_CONTROL",
@@ -3018,6 +3355,9 @@
       "id": "bindings_entity.cpp:3157",
       "lines": [
         3157
+      ],
+      "kinds": [
+        "ternary"
       ],
       "function": "og_quiet_passable",
       "anchor": "lua_pushboolean(L, world->query_passable(x, y, w, w->floor(), /*quiet=*/true) ? 1 : 0);",
@@ -3049,6 +3389,9 @@
       "lines": [
         3176
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "og_body_spot_near",
       "anchor": "if (!og::sim::body_spot_near(*world, order, family, x, y, floor, radius,",
       "condition": "!body_spot_near(...)",
@@ -3078,6 +3421,9 @@
       "id": "bindings_entity.cpp:3191",
       "lines": [
         3191
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "pad_weapon_family",
       "anchor": "if (weapon_family < -1 || weapon_family >= NUM_FAMILY_SLOTS)",
@@ -3119,6 +3465,9 @@
       "id": "bindings_entity.cpp:3207",
       "lines": [
         3207
+      ],
+      "kinds": [
+        "ternary"
       ],
       "function": "m_fire_pad_clear",
       "anchor": "L, self->fire_pad_clear(pad_weapon_family(L, weapon_family)) ? 1 : 0);",
@@ -3164,6 +3513,13 @@
         3225,
         3226
       ],
+      "kinds": [
+        "switch",
+        "case",
+        "case",
+        "case",
+        "case"
+      ],
       "function": "m_fire_pad_answer",
       "anchor": "switch (self->fire_pad_answer(pad_weapon_family(L, weapon_family)))",
       "condition": "switch PadAnswer",
@@ -3207,6 +3563,11 @@
         3728,
         3825
       ],
+      "kinds": [
+        "for",
+        "if",
+        "if"
+      ],
       "function": "is_unfenced / install_entity_bindings_into_og",
       "anchor": "for (const char* n : kUnfencedWorldFuncs) {",
       "condition": "name in {max,min,clamp,sign}",
@@ -3243,6 +3604,9 @@
       "id": "bindings_entity.cpp:3748",
       "lines": [
         3748
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "load_fenced_call",
       "anchor": "if (st != nullptr && st->campaign_dispatch) {",
@@ -3283,6 +3647,9 @@
       "id": "bindings_entity.cpp:3753",
       "lines": [
         3753
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "load_fenced_call",
       "anchor": "if (st != nullptr && st->loading) {",
@@ -3331,6 +3698,9 @@
       "lines": [
         86
       ],
+      "kinds": [
+        "if"
+      ],
       "kind": "defensive",
       "anchor": "if (current_game == nullptr || current_game->world == nullptr)",
       "note": "world_arg: a world binding called with no active world raises 'no active world' instead of dereferencing null. Asserted: tests/unit/test_script_bindings_errors.cpp: TEST_F(ScriptBindingErrorTest, world_bindings_refuse_when_no_world_is_active)."
@@ -3339,6 +3709,9 @@
       "id": "bindings_entity.cpp:95",
       "lines": [
         95
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "defensive",
       "anchor": "if (lv == nullptr)",
@@ -3349,6 +3722,9 @@
       "lines": [
         126
       ],
+      "kinds": [
+        "for"
+      ],
       "kind": "loop",
       "anchor": "for (walker* w : list) {",
       "note": "push_walker_list: copies a C++ result list into a Lua array in list order (oblist scan order). No rule; the order rules belong to the GameWorld finders (find_foes_in_range etc.)."
@@ -3357,6 +3733,9 @@
       "id": "bindings_entity.cpp:193",
       "lines": [
         193
+      ],
+      "kinds": [
+        "ternary"
       ],
       "kind": "plumbing",
       "anchor": "lua_pushboolean(L, self_arg(L)->NAME() ? 1 : 0);       \\",
@@ -3367,6 +3746,10 @@
       "lines": [
         322,
         331
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "kind": "defensive",
       "anchor": "if (wp == nullptr)",
@@ -3392,6 +3775,24 @@
         1318,
         1620
       ],
+      "kinds": [
+        "ternary",
+        "ternary",
+        "ternary",
+        "ternary",
+        "ternary",
+        "ternary",
+        "ternary",
+        "ternary",
+        "ternary",
+        "ternary",
+        "ternary",
+        "ternary",
+        "ternary",
+        "ternary",
+        "ternary",
+        "ternary"
+      ],
       "kind": "plumbing",
       "anchor": "lua_pushboolean(L, w->setxy(x, y) ? 1 : 0);",
       "note": "bool -> Lua boolean conversions of C++ answers (setxy, can_approach_weapon_range, attack, death, teleport, teleport_ranged, seat_driven, is_friendly, animate, collide, has_guy (myguy != nullptr), query_bit_flags != 0, has_commands, query_*_passable results, game_ended, check_special_ai_distance). The game rule lives in the wrapped C++ member, reviewed in its own chunk; the binding adds no branch of its own. Exception worth pinning: line 757 (s_query_bit_flags) '!= 0' is load-bearing, not a plain conversion: statistics::query_bit_flags returns short, so bit 32768 reads back NEGATIVE and only '!= 0' (not '> 0') keeps the Mutant identity mark truthy. Asserted by tests/unit/test_mode_bindings.cpp: TEST(ModeBindings, bit_32768_reads_back_truthy); the test designer must keep that pin."
@@ -3400,6 +3801,9 @@
       "id": "bindings_entity.cpp:466",
       "lines": [
         466
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "defensive",
       "anchor": "if (t == nullptr)",
@@ -3411,6 +3815,10 @@
         735,
         745
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "kind": "defensive",
       "anchor": "if (idx < 0 || idx >= NUM_SPECIALS)",
       "note": "s_special_cost/s_set_special_cost: index outside [0, NUM_SPECIALS) raises 'special_cost index out of range' (fixed-size array). Asserted: test_script_hooks.cpp: TEST_F(ScriptBindingTest, special_cost_rows_reject_an_out_of_range_index)."
@@ -3420,6 +3828,9 @@
       "lines": [
         1078
       ],
+      "kinds": [
+        "while"
+      ],
       "kind": "loop",
       "anchor": "while (lua_next(L, 4) != 0) {",
       "note": "Counts every key in the options table; feeds the unknown-key check, see bindings_entity.cpp:1082."
@@ -3428,6 +3839,9 @@
       "id": "bindings_entity.cpp:1195",
       "lines": [
         1195
+      ],
+      "kinds": [
+        "for"
       ],
       "kind": "loop",
       "anchor": "for (const auto& uptr : world->oblist) {",
@@ -3443,6 +3857,14 @@
         1834,
         1851
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if"
+      ],
       "kind": "defensive",
       "anchor": "if (current_game == nullptr)",
       "note": "Sim-event bindings (emit_sound, emit_positional_sound, emit_notification, emit_event, emit_exit_confirmation, emit_withdraw_to_level) raise 'no active context' with no GameplayContext instead of writing through a null event log. Asserted: test_script_bindings_errors.cpp: TEST_F(ScriptBindingErrorTest, event_bindings_refuse_when_no_context_is_active) and TEST_F(ScriptBindingErrorTest, the_sim_event_bindings_refuse_with_no_context)."
@@ -3451,6 +3873,9 @@
       "id": "bindings_entity.cpp:1651",
       "lines": [
         1651
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "plumbing",
       "anchor": "if (st->tuning_cache_gen != family_tuning_generation()) {",
@@ -3461,6 +3886,9 @@
       "lines": [
         1670
       ],
+      "kinds": [
+        "for"
+      ],
       "kind": "loop",
       "anchor": "for (const TuningPair& p : *map) {",
       "note": "og_tuning: copies each declared tuning pair into the table; see bindings_entity.cpp:1662."
@@ -3469,6 +3897,9 @@
       "id": "bindings_entity.cpp:1765",
       "lines": [
         1765
+      ],
+      "kinds": [
+        "for"
       ],
       "kind": "loop",
       "anchor": "for (int i = 0; i < len; ++i) {",
@@ -3479,6 +3910,9 @@
       "lines": [
         1889
       ],
+      "kinds": [
+        "for"
+      ],
       "kind": "loop",
       "anchor": "for (const auto& [key, value] : world->campaign_vars) {",
       "note": "og_campaign_var: linear scan of world->campaign_vars; see bindings_entity.cpp:1890."
@@ -3487,6 +3921,9 @@
       "id": "bindings_entity.cpp:2014",
       "lines": [
         2014
+      ],
+      "kinds": [
+        "for"
       ],
       "kind": "loop",
       "anchor": "for (std::size_t i = 0; i < team.size(); i++) {",
@@ -3498,6 +3935,10 @@
         2828,
         2841
       ],
+      "kinds": [
+        "for",
+        "for"
+      ],
       "kind": "loop",
       "anchor": "for (const auto& uptr : world->fxlist) {",
       "note": "og.fxlist/og.weaplist list iteration; counts asserted by ModeBindings.fxlist_weaplist_enumerate_their_lists"
@@ -3506,6 +3947,9 @@
       "id": "bindings_entity.cpp:3130",
       "lines": [
         3130
+      ],
+      "kinds": [
+        "for"
       ],
       "kind": "loop",
       "anchor": "for (walker* w : list) {",
@@ -3517,6 +3961,10 @@
         3793,
         3796
       ],
+      "kinds": [
+        "for",
+        "if"
+      ],
       "kind": "loop",
       "anchor": "for (const WalkerProperty& p : kWalkerProperties) {",
       "note": "builds getter/setter tables from kWalkerProperties; read-only rows (xpos/ypos setter nullptr) feed the rule at bindings_entity.cpp:2531"
@@ -3526,6 +3974,9 @@
       "lines": [
         3824
       ],
+      "kinds": [
+        "for"
+      ],
       "kind": "loop",
       "anchor": "for (const luaL_Reg* r = kOgWorldFuncs; r->name != nullptr; r++) {",
       "note": "registers kOgWorldFuncs and wraps each non-allowlisted entry in the load fence; og.campaign_* and og.combat.* are registered after the loop (unfenced by design) — that semantic is carried by bindings_entity.cpp:3727; fence rules at 3748 / 3753"
@@ -3534,6 +3985,9 @@
       "id": "bindings_entity.cpp:3835",
       "lines": [
         3835
+      ],
+      "kinds": [
+        "for"
       ],
       "kind": "loop",
       "anchor": "for (const NamedConst& c : kConstants) {",

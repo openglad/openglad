@@ -6,6 +6,9 @@
       "lines": [
         13
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "plant_tree",
       "anchor": "if lc.is_busy(self) then  -- do not start the fire-and-replace sequence",
       "condition": "if lc.is_busy(self) then return false, \"SPECIAL BUSY\"",
@@ -42,6 +45,9 @@
       "id": "living-13-druid.lua:16",
       "lines": [
         16
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "plant_tree",
       "anchor": "if gf.pad_blocked_by_terrain(self) then",
@@ -90,6 +96,10 @@
         22,
         23
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "plant_tree",
       "anchor": "if not bolt then",
       "condition": "if not bolt then if gf.on() then gf.take_back(self, 1)",
@@ -137,6 +147,9 @@
       "lines": [
         42
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "summon_faerie",
       "anchor": "if lc.is_busy(self) then",
       "condition": "if lc.is_busy(self) then return false, \"SPECIAL BUSY\"",
@@ -168,6 +181,9 @@
       "id": "living-13-druid.lua:45",
       "lines": [
         45
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "summon_faerie",
       "anchor": "if gf.pad_blocked_by_terrain(self) then",
@@ -216,6 +232,10 @@
         51,
         52
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "summon_faerie",
       "anchor": "if not bolt then",
       "condition": "if not bolt then if gf.on() then gf.take_back(self, 1)",
@@ -255,6 +275,9 @@
       "lines": [
         68
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "summon_faerie",
       "anchor": "if not og.query_passable(faerie:xpos(), faerie:ypos(), faerie) then",
       "condition": "if not og.query_passable(faerie:xpos(), faerie:ypos(), faerie) then",
@@ -281,6 +304,9 @@
       "id": "living-13-druid.lua:78",
       "lines": [
         78
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "reveal_items",
       "anchor": "if lc.is_busy(self) then",
@@ -319,6 +345,9 @@
       "lines": [
         88
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "protection_circle",
       "anchor": "if lc.is_busy(self) then",
       "condition": "if lc.is_busy(self) then return false, \"SPECIAL BUSY\"",
@@ -356,6 +385,9 @@
       "lines": [
         92
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "protection_circle",
       "anchor": "if friend_count == 0 then",
       "condition": "if friend_count == 0 then return false, \"NO ALLY IN RANGE\"",
@@ -391,6 +423,10 @@
       "lines": [
         111,
         112
+      ],
+      "kinds": [
+        "if",
+        "and"
       ],
       "function": "protection_circle",
       "anchor": "if ob:owner() == friend",
@@ -438,6 +474,10 @@
         117,
         123
       ],
+      "kinds": [
+        "if",
+        "else"
+      ],
       "function": "protection_circle",
       "anchor": "if not existing then",
       "condition": "if not existing then (summon new) else (top up)",
@@ -482,6 +522,9 @@
       "lines": [
         137
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "protection_circle",
       "anchor": "if self:has_guy() then",
       "condition": "if self:has_guy() then g_set_exp(g_exp() + exp_from_action(self, friend, 'protection', 0))",
@@ -510,6 +553,10 @@
         143,
         145
       ],
+      "kinds": [
+        "if",
+        "else"
+      ],
       "function": "protection_circle",
       "anchor": "if protected_count == 1 then",
       "condition": "if protected_count == 1 then 'Druid protected 1 man!' else 'Druid protected N men!'",
@@ -537,6 +584,9 @@
       "lines": [
         148
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "protection_circle",
       "anchor": "if self.team == 0 or self:has_guy() then",
       "condition": "if self.team == 0 or self:has_guy() then og.emit_notification(message)",
@@ -563,6 +613,9 @@
       "id": "living-13-druid.lua:158",
       "lines": [
         158
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "check_special_ai",
       "anchor": "if not gf.on() then",
@@ -621,6 +674,9 @@
       "lines": [
         162
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "check_special_ai",
       "anchor": "if lc.is_busy(self) then",
       "condition": "if lc.is_busy(self) then return false",
@@ -652,6 +708,11 @@
         166,
         171,
         174
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "and"
       ],
       "function": "check_special_ai",
       "anchor": "if slot == 1 then",
@@ -708,6 +769,11 @@
         177,
         180
       ],
+      "kinds": [
+        "elseif",
+        "if",
+        "and"
+      ],
       "function": "check_special_ai",
       "anchor": "elseif slot == 2 then",
       "condition": "elseif slot == 2 then if owned faerie > 0 then false; return foes_within(130) and pad_clear",
@@ -753,6 +819,9 @@
       "lines": [
         181
       ],
+      "kinds": [
+        "elseif"
+      ],
       "function": "check_special_ai",
       "anchor": "elseif slot == 3 then",
       "condition": "elseif slot == 3 then return false",
@@ -778,6 +847,10 @@
       "lines": [
         188,
         192
+      ],
+      "kinds": [
+        "if",
+        "or"
       ],
       "function": "check_special_ai",
       "anchor": "if not ally then",
@@ -818,6 +891,9 @@
       "lines": [
         32
       ],
+      "kinds": [
+        "if"
+      ],
       "kind": "defensive",
       "anchor": "if not tree then",
       "note": "og.summon failure for the tree (object cap): 'COULD NOT CREATE TREE' (bolt already flew)."
@@ -826,6 +902,9 @@
       "id": "living-13-druid.lua:59",
       "lines": [
         59
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "defensive",
       "anchor": "if not faerie then",
@@ -837,6 +916,10 @@
         97,
         109
       ],
+      "kinds": [
+        "for",
+        "for"
+      ],
       "kind": "loop",
       "anchor": "for i = 1, #friends do",
       "note": "per-friend loop and per-friend circle scan; rule rows living-13-druid.lua:111, :117, :137"
@@ -847,6 +930,10 @@
         119,
         127
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "kind": "defensive",
       "anchor": "if not circle then",
       "note": "og.summon / add_ob failure for the circle: 'COULD NOT PROTECT' (returns mid-loop; earlier friends keep their circles and exp, cast reported failed)."
@@ -855,6 +942,9 @@
       "id": "living-13-druid.lua:218",
       "lines": [
         218
+      ],
+      "kinds": [
+        "and"
       ],
       "kind": "dead",
       "anchor": "{ id = \"reveal\",        name = \"REVEAL\",        mp_cost = 150, cast = reveal_items, detail = \"Gives you a magical view to see treasure, potions, outposts, and i",
@@ -865,6 +955,9 @@
       "lines": [
         220
       ],
+      "kinds": [
+        "and"
+      ],
       "kind": "dead",
       "anchor": "default_cast = protection_circle,  -- case 4 and every unmapped slot",
       "note": "not a branch (prose 'and' in a detail/description string or comment)"
@@ -873,6 +966,9 @@
       "id": "living-13-druid.lua:237",
       "lines": [
         237
+      ],
+      "kinds": [
+        "and"
       ],
       "kind": "dead",
       "anchor": "description = \"Druids are the magicians of nature, and have power over natural events. They throw lightning bolts at their foes; the fast bolts have long range.",

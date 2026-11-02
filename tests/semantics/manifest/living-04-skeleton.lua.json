@@ -7,6 +7,10 @@
         20,
         21
       ],
+      "kinds": [
+        "and",
+        "and"
+      ],
       "function": "check_special_ai (TUNNEL bot gate)",
       "anchor": "local held = gf.on() and lc.mid_teleport(self)",
       "condition": "held = gf.on() and lc.mid_teleport(self); return foe_count < 1 and not held",
@@ -50,6 +54,9 @@
       "lines": [
         28
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "do_special (TUNNEL, slot 1 and unmapped)",
       "anchor": "if lc.mid_teleport(self) then",
       "condition": "lc.mid_teleport(self)",
@@ -91,6 +98,9 @@
       "id": "living-04-skeleton.lua:50",
       "lines": [
         50
+      ],
+      "kinds": [
+        "and"
       ],
       "kind": "dead",
       "anchor": "{ id = \"dig_in\",     name = \"DIG IN\",     mp_cost = 15, new_kit = true, cast = ks.dig_in, ai = ks.ai_dig_in, detail = \"Sink into the floor, unseen and mending, ",

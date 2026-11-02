@@ -6,6 +6,9 @@
       "lines": [
         173
       ],
+      "kinds": [
+        "ternary"
+      ],
       "function": "statistics::frozen_delay",
       "anchor": "return frozen_delay_ < 0 ? static_cast<short>(0) : frozen_delay_;",
       "condition": "frozen_delay_ < 0 ? 0 : frozen_delay_",
@@ -45,6 +48,10 @@
       "lines": [
         192,
         198
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "kind": "defensive",
       "anchor": "if (index < 0 || index >= NUM_SPECIALS)",

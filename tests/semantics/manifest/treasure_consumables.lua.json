@@ -6,6 +6,9 @@
       "lines": [
         9
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "notify_potion_consume",
       "anchor": "if eater:user() ~= -1 then",
       "condition": "eater:user() ~= -1",
@@ -45,6 +48,9 @@
       "id": "treasure_consumables.lua:18",
       "lines": [
         18
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "drumstick_on_eat",
       "anchor": "if eater.hp >= eater.max_hp then",
@@ -89,6 +95,9 @@
       "lines": [
         27
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "drumstick_on_eat",
       "anchor": "if eater.hp > eater.max_hp then",
       "condition": "eater.hp > eater.max_hp",
@@ -121,6 +130,9 @@
       "lines": [
         38
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "magic_potion_on_eat",
       "anchor": "if eater.magicpoints < eater.max_magicpoints then",
       "condition": "eater.magicpoints < eater.max_magicpoints",
@@ -147,6 +159,9 @@
       "id": "treasure_consumables.lua:50",
       "lines": [
         50
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "flight_potion_on_eat",
       "anchor": "if not eater:s_query_bit_flags(C.BIT_FLYING) then",
@@ -186,6 +201,9 @@
       "id": "treasure_consumables.lua:60",
       "lines": [
         60
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "invulnerable_potion_on_eat",
       "anchor": "if not eater:s_query_bit_flags(C.BIT_INVINCIBLE) then",

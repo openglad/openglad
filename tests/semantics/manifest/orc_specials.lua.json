@@ -6,6 +6,9 @@
       "lines": [
         14
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "M.yell",
       "anchor": "if lc.is_busy(self) then",
       "condition": "lc.is_busy(self)  (busy > 0)",
@@ -45,6 +48,9 @@
       "id": "orc_specials.lua:20",
       "lines": [
         20
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "M.yell",
       "anchor": "if gf.on() and #foes == 0 then",
@@ -91,6 +97,10 @@
         31,
         33
       ],
+      "kinds": [
+        "if",
+        "else"
+      ],
       "function": "M.yell",
       "anchor": "if foe:has_guy() then",
       "condition": "foe:has_guy()",
@@ -129,6 +139,11 @@
         59,
         65,
         69
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
       ],
       "function": "M.eat_corpse",
       "anchor": "if self.hp >= self.max_hp then",
@@ -172,6 +187,9 @@
       "lines": [
         77
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "M.eat_corpse",
       "anchor": "if self:has_guy() then",
       "condition": "self:has_guy()",
@@ -212,6 +230,9 @@
       "lines": [
         86
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "M.eat_corpse",
       "anchor": "if self.hp > self.max_hp then",
       "condition": "self.hp > self.max_hp",
@@ -244,6 +265,9 @@
       "lines": [
         27
       ],
+      "kinds": [
+        "for"
+      ],
       "kind": "loop",
       "anchor": "for i = 1, #foes do",
       "note": "stun loop over foes in yell_radius; rule in orc_specials.lua:31"
@@ -252,6 +276,9 @@
       "id": "orc_specials.lua:29",
       "lines": [
         29
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "defensive",
       "anchor": "if foe then",

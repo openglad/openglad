@@ -6,6 +6,9 @@
       "lines": [
         36
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "M.end_channel",
       "anchor": "if burning(self) then",
       "condition": "burning(self)",
@@ -41,6 +44,10 @@
       "lines": [
         66,
         69
+      ],
+      "kinds": [
+        "for",
+        "if"
       ],
       "function": "burn_contacts",
       "anchor": "for i = 1, #foes do",
@@ -81,6 +88,16 @@
         89,
         90,
         102
+      ],
+      "kinds": [
+        "for",
+        "if",
+        "and",
+        "and",
+        "and",
+        "and",
+        "if",
+        "if"
       ],
       "function": "ember_underfoot / drop_ember",
       "anchor": "for i = 1, #obs do",
@@ -130,6 +147,12 @@
         131,
         136,
         146
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if"
       ],
       "function": "immolation_act",
       "anchor": "if not owner then",
@@ -190,6 +213,11 @@
         183,
         186
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
+      ],
       "function": "meteor_rain_act",
       "anchor": "if not owner then",
       "condition": "not owner ; lifetime % rain_cadence == 0 ; lifetime <= 0",
@@ -231,6 +259,11 @@
         243,
         328
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
+      ],
       "function": "M.starburst / M.meteor_rain / M.rekindle_or_supernova",
       "anchor": "if burning(self) then",
       "condition": "burning(self)",
@@ -268,6 +301,10 @@
       "lines": [
         209,
         210
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "M.immolate",
       "anchor": "if marker then",
@@ -309,6 +346,12 @@
         232,
         235
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if"
+      ],
       "function": "rain_target",
       "anchor": "if not foe then",
       "condition": "not foe ; dead ; floor differs ; distance > rain_range",
@@ -342,6 +385,10 @@
       "lines": [
         248,
         251
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "M.meteor_rain",
       "anchor": "if not target then",
@@ -384,6 +431,9 @@
       "lines": [
         266
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "rekindle",
       "anchor": "if self.hp >= self.max_hp then",
       "condition": "self.hp >= self.max_hp",
@@ -417,6 +467,11 @@
         307,
         308
       ],
+      "kinds": [
+        "for",
+        "for",
+        "if"
+      ],
       "function": "supernova",
       "anchor": "for i = -1, 1 do",
       "condition": "for i, j in -1..1 ; i ~= 0 or j ~= 0",
@@ -441,6 +496,9 @@
       "id": "kit_elemental.lua:332",
       "lines": [
         332
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "M.rekindle_or_supernova",
       "anchor": "if self:shifter_down() ~= 0 then",
@@ -476,6 +534,11 @@
         347,
         350,
         353
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
       ],
       "function": "M.ai_immolate",
       "anchor": "if og.match_setting(\"new_specials\") == 0 then",
@@ -534,6 +597,14 @@
         372,
         381,
         384
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "for",
+        "if",
+        "for",
+        "if"
       ],
       "function": "M.ai_meteor",
       "anchor": "if og.match_setting(\"new_specials\") == 0 then",
@@ -620,6 +691,12 @@
         401,
         408
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if"
+      ],
       "function": "M.ai_rekindle",
       "anchor": "if og.match_setting(\"new_specials\") == 0 then",
       "condition": "new_specials off ; hp < max/5 ; close >= 2 ; hp >= max/2",
@@ -677,6 +754,16 @@
         278,
         301,
         310
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if"
       ],
       "kind": "defensive",
       "anchor": "if flash then",

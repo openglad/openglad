@@ -7,6 +7,10 @@
         8,
         9
       ],
+      "kinds": [
+        "if",
+        "or"
+      ],
       "function": "on_death",
       "anchor": "if self:do_bounce() == 0 or self:lineofsight() == 0",
       "condition": "do_bounce == 0 or lineofsight == 0 or collide_ob ~= nil",
@@ -49,6 +53,12 @@
         24,
         33,
         42
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if"
       ],
       "function": "on_death",
       "anchor": "if og.query_grid_passable(og.fadd(self:xpos(), self:lastx()),",

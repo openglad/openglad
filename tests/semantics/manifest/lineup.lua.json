@@ -6,6 +6,9 @@
       "lines": [
         122
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "squad_room",
       "anchor": "if cap == nil then",
       "condition": "cap == nil",
@@ -45,6 +48,16 @@
         183,
         185,
         193
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "and",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if"
       ],
       "function": "squad_shape",
       "anchor": "if headcount > 0 then",
@@ -91,6 +104,9 @@
       "lines": [
         277
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "predicted_power",
       "anchor": "if row == nil then",
       "condition": "row == nil",
@@ -122,6 +138,12 @@
         300,
         301,
         303
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if"
       ],
       "function": "census_power",
       "anchor": "if w:dead() == 0 then",
@@ -159,6 +181,11 @@
         312,
         313,
         315
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "elseif"
       ],
       "function": "census_power",
       "anchor": "if sums[t] > 0 then",
@@ -205,6 +232,13 @@
         366,
         374
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if",
+        "if"
+      ],
       "function": "solve_matched_levels",
       "anchor": "if level == 9 then",
       "condition": "level == 9 ; up > 0 ; better = best_miss < 0 ; miss < best_miss ; target > b9",
@@ -246,6 +280,9 @@
       "lines": [
         412
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "bank_lineup_facts",
       "anchor": "if code == held then",
       "condition": "code == held",
@@ -277,6 +314,10 @@
       "lines": [
         431,
         434
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "bank_match_target",
       "anchor": "if not decision.matched then",
@@ -320,6 +361,10 @@
         455,
         459
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "bot_level_for",
       "anchor": "if code == 0 then",
       "condition": "code == 0 ; index <= mod(code,10)",
@@ -357,6 +402,14 @@
         523,
         526,
         529
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if",
+        "else",
+        "elseif"
       ],
       "function": "census_inputs",
       "anchor": "if w:dead() == 0 and not w:dormant() then",
@@ -408,6 +461,11 @@
         546,
         548
       ],
+      "kinds": [
+        "if",
+        "elseif",
+        "elseif"
+      ],
       "function": "ring_offset",
       "anchor": "if edge == 0 then",
       "condition": "edge == 0 / 1 / 2 / else",
@@ -437,6 +495,12 @@
         564,
         570,
         602
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if"
       ],
       "function": "place_at_anchor",
       "anchor": "if team >= 0 then",
@@ -476,6 +540,12 @@
         589,
         590
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if"
+      ],
       "function": "place_at_anchor",
       "anchor": "if final_x < 0 then",
       "condition": "final_x < 0 ; px >= 0 and py >= 0 ; spawn_spot_clear(ring cell)",
@@ -507,6 +577,9 @@
       "lines": [
         606
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "place_at_anchor",
       "anchor": "if allow_teleport then",
       "condition": "allow_teleport",
@@ -533,6 +606,9 @@
       "id": "lineup.lua:619",
       "lines": [
         619
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "squad_prefix",
       "anchor": "if count >= #families then",
@@ -575,6 +651,14 @@
         656,
         657,
         664
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if"
       ],
       "function": "fill_target",
       "anchor": "if reference <= 0 then",
@@ -625,6 +709,9 @@
       "lines": [
         696
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "place_member",
       "anchor": "if placer ~= nil then",
       "condition": "placer ~= nil",
@@ -655,6 +742,9 @@
       "id": "lineup.lua:737",
       "lines": [
         737
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "spawn_matched_bots",
       "anchor": "if announce ~= nil then",
@@ -698,6 +788,14 @@
         761,
         768
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if",
+        "else",
+        "if"
+      ],
       "function": "live_fielded_on",
       "anchor": "if w:dead() == 0 then",
       "condition": "dead==0 ; LIVING ; team == team ; has_guy ; else ; roster > 0",
@@ -739,6 +837,9 @@
       "lines": [
         805
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "spawn_bots",
       "anchor": "if squad_off(knob) then",
       "condition": "squad_off(knob)",
@@ -771,6 +872,9 @@
       "id": "lineup.lua:814",
       "lines": [
         814
+      ],
+      "kinds": [
+        "and"
       ],
       "function": "spawn_bots",
       "anchor": "local bodies_allowed = shape ~= nil and shape.bodies == true",
@@ -805,6 +909,10 @@
       "lines": [
         820,
         822
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "spawn_bots",
       "anchor": "if plan_code(team) == 0 then",
@@ -851,6 +959,9 @@
       "lines": [
         825
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "spawn_bots",
       "anchor": "if target == nil then",
       "condition": "target == nil",
@@ -876,6 +987,10 @@
       "lines": [
         832,
         851
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "spawn_bots",
       "anchor": "if spawn_matched_bots(team, squad, cursor_slot, placer, target,",
@@ -909,6 +1024,9 @@
       "id": "lineup.lua:867",
       "lines": [
         867
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "is_troop",
       "anchor": "if order == C.ORDER_LIVING then",
@@ -946,6 +1064,13 @@
         895,
         897,
         898
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if",
+        "if"
       ],
       "function": "strip_team_units",
       "anchor": "if w:dead() == 0 then",
@@ -993,6 +1118,10 @@
         921,
         925
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "strip_authored_troops",
       "anchor": "if not fielded[team + 1] then",
       "condition": "not fielded[team] ; not any_off",
@@ -1028,6 +1157,9 @@
       "lines": [
         9
       ],
+      "kinds": [
+        "if"
+      ],
       "kind": "plumbing",
       "anchor": "if v < 0 then",
       "note": "iabs: integer absolute value helper for the solver's miss"
@@ -1037,6 +1169,9 @@
       "lines": [
         297
       ],
+      "kinds": [
+        "for"
+      ],
       "kind": "loop",
       "anchor": "for k = 1, #obs do",
       "note": "census_power oblist scan; rule in lineup.lua:299"
@@ -1045,6 +1180,9 @@
       "id": "lineup.lua:311",
       "lines": [
         311
+      ],
+      "kinds": [
+        "for"
       ],
       "kind": "loop",
       "anchor": "for t = 1, C.SCORE_TEAM_COUNT do",
@@ -1060,6 +1198,14 @@
         350,
         357
       ],
+      "kinds": [
+        "for",
+        "for",
+        "for",
+        "for",
+        "for",
+        "for"
+      ],
       "kind": "loop",
       "anchor": "for i = 1, n do",
       "note": "solve_matched_levels prediction/sum/scan loops; rule in lineup.lua:354"
@@ -1069,6 +1215,10 @@
       "lines": [
         496,
         511
+      ],
+      "kinds": [
+        "for",
+        "for"
       ],
       "kind": "loop",
       "anchor": "for team = 0, C.SCORE_TEAM_COUNT - 1 do",
@@ -1082,6 +1232,12 @@
         582,
         584
       ],
+      "kinds": [
+        "for",
+        "for",
+        "for",
+        "for"
+      ],
       "kind": "loop",
       "anchor": "for _ = 1, count do",
       "note": "rotation and ring-walk loops; rules in lineup.lua:563 and :576"
@@ -1090,6 +1246,9 @@
       "id": "lineup.lua:623",
       "lines": [
         623
+      ],
+      "kinds": [
+        "for"
       ],
       "kind": "loop",
       "anchor": "for k = 1, count do",
@@ -1100,6 +1259,9 @@
       "lines": [
         655
       ],
+      "kinds": [
+        "for"
+      ],
       "kind": "loop",
       "anchor": "for t = 1, C.SCORE_TEAM_COUNT do",
       "note": "fill_target scan over other teams; rule in lineup.lua:642"
@@ -1109,6 +1271,9 @@
       "lines": [
         684
       ],
+      "kinds": [
+        "and"
+      ],
       "kind": "dead",
       "anchor": "local fam = og.family_id(\"living\", family_name) --[[@as integer]] -- caller tables name core families; a nil would be a load bug and add_ob erroring loudly is t",
       "note": "not a branch (the 'or'/'a nil would be' text is a trailing comment)"
@@ -1117,6 +1282,9 @@
       "id": "lineup.lua:686",
       "lines": [
         686
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "defensive",
       "anchor": "if w == nil then",
@@ -1128,6 +1296,10 @@
         718,
         731
       ],
+      "kinds": [
+        "for",
+        "for"
+      ],
       "kind": "loop",
       "anchor": "for k = 1, #families do",
       "note": "spawn_matched_bots member spawn and leveling loops"
@@ -1138,6 +1310,10 @@
         720,
         726
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "kind": "defensive",
       "anchor": "if w ~= nil then",
       "note": "nil member skipped; no member spawned returns 0 (feeds the bank-only-if-spawned rule at lineup.lua:832)"
@@ -1146,6 +1322,9 @@
       "id": "lineup.lua:754",
       "lines": [
         754
+      ],
+      "kinds": [
+        "for"
       ],
       "kind": "loop",
       "anchor": "for k = 1, #obs do",
@@ -1156,6 +1335,9 @@
       "lines": [
         811
       ],
+      "kinds": [
+        "if"
+      ],
       "kind": "plumbing",
       "anchor": "if shape ~= nil then",
       "note": "shape nil guard reading the hard cap"
@@ -1164,6 +1346,9 @@
       "id": "lineup.lua:841",
       "lines": [
         841
+      ],
+      "kinds": [
+        "for"
       ],
       "kind": "loop",
       "anchor": "for k = 1, #squad do",
@@ -1174,6 +1359,9 @@
       "lines": [
         843
       ],
+      "kinds": [
+        "if"
+      ],
       "kind": "defensive",
       "anchor": "if w ~= nil then",
       "note": "add_ob nil member skipped"
@@ -1183,6 +1371,10 @@
       "lines": [
         891,
         919
+      ],
+      "kinds": [
+        "for",
+        "for"
       ],
       "kind": "loop",
       "anchor": "for k = 1, #obs do",

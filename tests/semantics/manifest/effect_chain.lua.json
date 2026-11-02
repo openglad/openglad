@@ -8,6 +8,11 @@
         21,
         22
       ],
+      "kinds": [
+        "if",
+        "or",
+        "or"
+      ],
       "function": "on_act (core:chain)",
       "anchor": "if not leader",
       "condition": "not leader or lineofsight < 1 or not owner",
@@ -56,6 +61,9 @@
       "lines": [
         28
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "on_act (core:chain)",
       "anchor": "if hits(self:xpos(), self:ypos(), self:sizex(), self:sizey(),",
       "condition": "hits(self box, leader box)",
@@ -94,6 +102,9 @@
       "lines": [
         31
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "on_act (core:chain)",
       "anchor": "if not blast then",
       "condition": "not blast",
@@ -130,6 +141,10 @@
         55,
         59
       ],
+      "kinds": [
+        "if",
+        "else"
+      ],
       "function": "on_act (core:chain)",
       "anchor": "if self:owner():has_guy() then",
       "condition": "self:owner():has_guy()",
@@ -157,6 +172,9 @@
       "lines": [
         65
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "on_act (core:chain)",
       "anchor": "if foe_count ~= 0 and fork_damage > t.fork_min_damage then",
       "condition": "foe_count ~= 0 and fork_damage > t.fork_min_damage",
@@ -164,25 +182,37 @@
       "arms": [
         {
           "when": "foes in reach and trunc(damage*0.5) > 20",
-          "observable": "rand0(owner level)+1 drawn; child bolts of damage trunc(damage/2)",
-          "asserted": false
+          "observable": "child bolts of damage trunc(damage/2)"
+        },
+        {
+          "when": "foes in reach and fork damage > 20: fork budget draw",
+          "observable": "one rand0(owner level) draw; up to that +1 children (needs owner level > 1 to pin)"
         },
         {
           "when": "no foe in reach",
-          "observable": "no draw, no child",
-          "asserted": false
+          "observable": "no draw, no child"
         },
         {
           "when": "child damage <= 20 (bolt damage <= 41)",
-          "observable": "no draw, no child",
-          "asserted": false
+          "observable": "no draw, no child"
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_effect_chain_and_door.cpp",
+          "test": "EffectChainAndDoor.effect_chain_hits_leader_spawns_explosion_and_secondary_chains_and_door_open_spawns_fx",
+          "note": "ASSERT_EQ(1u, bolts.size()), EXPECT_FLOAT_EQ(50.0f, bolts[0]->damage()) from bolt damage 100"
+        },
+        {
+          "file": "tests/integration/test_effect_more_paths.cpp",
+          "test": "EffectMorePaths.effect_batch4_chain_guard_ownerless_and_non_myguy_foe_scan",
+          "note": "EXPECT_EQ(1, fork_count), EXPECT_FLOAT_EQ(35.0f, bolt->damage()) from 70"
+        }
+      ],
       "missing_arms": [
-        "foes in reach and trunc(damage*0.5) > 20",
+        "foes in reach and fork damage > 20: fork budget draw",
         "no foe in reach",
         "child damage <= 20 (bolt damage <= 41)"
       ],
@@ -194,6 +224,9 @@
       "id": "effect_chain.lua:70",
       "lines": [
         70
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "on_act (core:chain)",
       "anchor": "if forks_left <= 0 then",
@@ -227,6 +260,9 @@
       "id": "effect_chain.lua:76",
       "lines": [
         76
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "on_act (core:chain)",
       "anchor": "if w:floor() == self:floor() then",
@@ -263,6 +299,9 @@
       "lines": [
         77
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "on_act (core:chain)",
       "anchor": "if w ~= self:leader() and w:skip_exit() < 1 then",
       "condition": "w ~= self:leader() and w:skip_exit() < 1",
@@ -270,19 +309,48 @@
       "arms": [
         {
           "when": "other foe with skip_exit 0",
-          "observable": "child bolt: owner = caster, leader = w, level, BIT_MAGICAL, damage = fork damage, team, floor, centred on the bolt"
+          "observable": "child bolt: owner = caster, leader = w, BIT_MAGICAL, damage = fork damage, team, centred on the bolt"
         },
         {
-          "when": "w is the leader or skip_exit >= 1",
-          "observable": "no child (but the fork budget is still spent, see :70)"
+          "when": "other foe with skip_exit 0 (level, floor)",
+          "observable": "child level == bolt level; child floor == bolt floor"
+        },
+        {
+          "when": "w is the leader (its skip_exit already raised by +3)",
+          "observable": "no child"
+        },
+        {
+          "when": "non-leader foe with skip_exit >= 1",
+          "observable": "no child"
+        },
+        {
+          "when": "skipped foe (leader or skip_exit >= 1)",
+          "observable": "the fork budget is still spent (a later eligible foe loses its bolt when the budget was 1)"
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_effect_more_paths.cpp",
+          "test": "EffectMorePaths.effect_batch4_chain_guard_ownerless_and_non_myguy_foe_scan",
+          "note": "child owner, leader, damage 35, team, BIT_MAGICAL, centre asserted"
+        },
+        {
+          "file": "tests/integration/test_effect_chain_and_door.cpp",
+          "test": "EffectChainAndDoor.effect_chain_hits_leader_spawns_explosion_and_secondary_chains_and_door_open_spawns_fx",
+          "note": "child leader foe2, damage 50, owner"
+        },
+        {
+          "file": "tests/integration/test_effect_more_paths.cpp",
+          "test": "EffectMorePaths.effect_chain_lightning_hits_leader_and_spawns_explosion",
+          "note": "EXPECT_EQ(0, fork_count): the only foe in range is the leader, which gets no child"
+        }
+      ],
       "missing_arms": [
-        "other foe with skip_exit 0",
-        "w is the leader or skip_exit >= 1"
+        "other foe with skip_exit 0 (level, floor)",
+        "non-leader foe with skip_exit >= 1",
+        "skipped foe (leader or skip_exit >= 1)"
       ],
       "note": [
         "Arm 1 names level and floor and no test asserts either on a child bolt. Arm 2: dropping either half of `w ~= self:leader() and w:skip_exit() < 1` passes every test (the only skipped foe is the leader, which also carries skip_exit 3), and the fork slot spent on a skipped foe is never observed."
@@ -292,6 +360,9 @@
       "id": "effect_chain.lua:79",
       "lines": [
         79
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "on_act (core:chain)",
       "anchor": "if not bolt then",
@@ -329,6 +400,10 @@
         104,
         125
       ],
+      "kinds": [
+        "if",
+        "else"
+      ],
       "function": "on_act (core:chain)",
       "anchor": "if distance > og.fmul(self:stepsize(), 2) then",
       "condition": "distance > stepsize*2 / else",
@@ -364,6 +439,12 @@
         108,
         111,
         113
+      ],
+      "kinds": [
+        "if",
+        "elseif",
+        "if",
+        "elseif"
       ],
       "function": "on_act (core:chain)",
       "anchor": "if leader:xpos() > self:xpos() then",
@@ -407,7 +488,6 @@
         }
       ],
       "missing_arms": [
-        "target left/above",
         "any"
       ],
       "note": [
@@ -421,6 +501,9 @@
       "lines": [
         68
       ],
+      "kinds": [
+        "for"
+      ],
       "kind": "loop",
       "anchor": "for i = 1, #foes do",
       "note": "iterates the fork scan; rules at effect_chain.lua:70, :76, :77"
@@ -429,6 +512,9 @@
       "id": "effect_chain.lua:120",
       "lines": [
         120
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "defensive",
       "anchor": "if frame ~= nil then",

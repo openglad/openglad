@@ -8,6 +8,11 @@
         79,
         81
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
+      ],
       "function": "follow_path_to_foe",
       "anchor": "if (dx != 0 || dy != 0)",
       "condition": "dx != 0 || dy != 0 ; normalize signs",
@@ -53,6 +58,16 @@
         126,
         128,
         134
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "ternary",
+        "ternary",
+        "for",
+        "if",
+        "if"
       ],
       "function": "follow_path_to_foe",
       "anchor": "if ((dx == 0) != (dy == 0) && current_game != nullptr &&",
@@ -103,6 +118,12 @@
         159,
         161,
         163
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if"
       ],
       "function": "follow_path_to_foe",
       "anchor": "if (multifloor && GET_STATE_FLOOR(state) != floor())",
@@ -156,6 +177,12 @@
         48,
         52
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if"
+      ],
       "kind": "defensive",
       "function": "find_path_to_foe / find_path_to_point",
       "anchor": "if (foe() == nullptr || current_game == nullptr)",
@@ -165,6 +192,9 @@
       "id": "walker_pathing.cpp:69",
       "lines": [
         69
+      ],
+      "kinds": [
+        "while"
       ],
       "kind": "loop",
       "function": "follow_path_to_foe",

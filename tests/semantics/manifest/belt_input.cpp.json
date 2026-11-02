@@ -7,6 +7,10 @@
         21,
         23
       ],
+      "kinds": [
+        "for",
+        "if"
+      ],
       "function": "highest",
       "anchor": "for (int key = kBeltKeys; key >= 1; --key)",
       "condition": "flags[key-1] scanning 3..1",
@@ -46,6 +50,12 @@
         47,
         50,
         55
+      ],
+      "kinds": [
+        "if",
+        "else if",
+        "if",
+        "else"
       ],
       "function": "fold_belt_keys",
       "anchor": "if (edge != 0)",
@@ -100,6 +110,9 @@
       "lines": [
         61
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "fold_belt_keys",
       "anchor": "if (latch.active_key != 0)",
       "condition": "latch.active_key != 0",
@@ -133,6 +146,10 @@
       "lines": [
         83,
         85
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "fold_keys",
       "anchor": "if (!ability_select)",

@@ -6,6 +6,9 @@
       "lines": [
         19
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "some_rocks (ROCKS, slot 1)",
       "anchor": "if gf.pad_blocked_by_terrain(self) then",
       "condition": "gf.pad_blocked_by_terrain(self)",
@@ -13,7 +16,11 @@
       "arms": [
         {
           "when": "pad on wall/edge, setting on",
-          "observable": "special() false 'COULD NOT FIRE'; MP unchanged (special cost not charged); no rock; busy unchanged"
+          "observable": "special() false 'COULD NOT FIRE'; MP unchanged (special cost not charged); no rock"
+        },
+        {
+          "when": "pad on wall/edge, setting on: busy",
+          "observable": "busy unchanged"
         },
         {
           "when": "pad on wall/edge, setting off",
@@ -48,7 +55,7 @@
         }
       ],
       "missing_arms": [
-        "pad on wall/edge, setting on"
+        "pad on wall/edge, setting on: busy"
       ]
     },
     {
@@ -56,6 +63,10 @@
       "lines": [
         25,
         26
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "some_rocks",
       "anchor": "if not rock then",
@@ -102,6 +113,10 @@
         36,
         37
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "some_rocks",
       "anchor": "if not rock then",
       "condition": "not rock (second fire failed) / if gf.on()",
@@ -146,6 +161,9 @@
       "lines": [
         54
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "bounce_volley (BOUNCING/LOTS OF/MEGA ROCKS)",
       "anchor": "if gf.pad_blocked_by_terrain(self) then",
       "condition": "gf.pad_blocked_by_terrain(self)",
@@ -185,6 +203,9 @@
       "lines": [
         58
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "bounce_volley",
       "anchor": "if gf.on() then",
       "condition": "if gf.on() then refund = count",
@@ -219,6 +240,9 @@
       "lines": [
         65
       ],
+      "kinds": [
+        "for"
+      ],
       "function": "bounce_volley",
       "anchor": "for i = 1, count do",
       "condition": "for i = 1, count",
@@ -226,14 +250,29 @@
       "arms": [
         {
           "when": "each release",
-          "observable": "rock in weaplist with do_bounce==1 and lineofsight == base*los_num//2"
+          "observable": "one rock in weaplist per loop pass (count rocks)"
+        },
+        {
+          "when": "each release: rock shape",
+          "observable": "rock do_bounce==1 and lineofsight == base*los_num//2"
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.elf_bouncing_rocks_drives_simulation",
+          "note": "/ elf_lots_of_rocks_drives_simulation / elf_mega_rocks_drives_simulation (rock count +2/+3/+4 per volley)"
+        },
+        {
+          "file": "tests/integration/test_gameplay_fixes_elf.cpp",
+          "test": "GameplayFixesElf.volleys_refund_exactly_the_rocks_fired",
+          "note": "count_rocks == 2/3/4 for slots 2-4"
+        }
+      ],
       "missing_arms": [
-        "each release"
+        "each release: rock shape"
       ]
     },
     {
@@ -241,6 +280,10 @@
       "lines": [
         67,
         68
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "bounce_volley",
       "anchor": "if not rock then",
@@ -252,7 +295,11 @@
           "observable": "false; i-1 rocks; MP keeps full refund"
         },
         {
-          "when": "i-th fire nil, on",
+          "when": "first fire nil (i=1), on",
+          "observable": "false; 0 rocks; MP -= count*wc (net: the one swing)"
+        },
+        {
+          "when": "later fire nil (i>1), on",
           "observable": "false; i-1 rocks; MP -= (count-i+1)*wc"
         },
         {
@@ -275,7 +322,7 @@
         }
       ],
       "missing_arms": [
-        "i-th fire nil, on"
+        "later fire nil (i>1), on"
       ]
     },
     {
@@ -283,6 +330,10 @@
       "lines": [
         97,
         98
+      ],
+      "kinds": [
+        "if",
+        "or"
       ],
       "function": "volley (fixed bot gate helper)",
       "anchor": "if not foe or not G.faces(self, foe)",
@@ -334,6 +385,9 @@
       "lines": [
         101
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "volley",
       "anchor": "if count_needed < 2 then",
       "condition": "count_needed < 2",
@@ -370,6 +424,10 @@
         106,
         107
       ],
+      "kinds": [
+        "for",
+        "if"
+      ],
       "function": "volley",
       "anchor": "for i = 1, #foes do",
       "condition": "for each living foe within 320: G.in_flight(...) -> n+1; return n >= count_needed",
@@ -405,6 +463,9 @@
       "lines": [
         119
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "check_special_ai",
       "anchor": "if not gf.on() then",
       "condition": "not gf.on() -> true",
@@ -412,7 +473,7 @@
       "arms": [
         {
           "when": "setting off",
-          "observable": "check_special() true with no foe anywhere"
+          "observable": "check_special() true regardless of foes (asserted with foes unfaced, out of flight, past a wall pad or off-map pad)"
         },
         {
           "when": "setting on",
@@ -420,7 +481,7 @@
         }
       ],
       "setting": "both",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_bot_gates_fighters.cpp",
@@ -433,14 +494,15 @@
           "note": "classic twin: 2 rocks at an unreachable foe"
         }
       ],
-      "missing_arms": [
-        "setting off"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living-01-elf.lua:122",
       "lines": [
         122
+      ],
+      "kinds": [
+        "or"
       ],
       "function": "check_special_ai",
       "anchor": "local v = VOLLEYS[self:current_special()] or VOLLEYS[4]",
@@ -478,6 +540,9 @@
       "id": "living-01-elf.lua:123",
       "lines": [
         123
+      ],
+      "kinds": [
+        "and"
       ],
       "function": "check_special_ai",
       "anchor": "return G.pad_clear(self) and volley(self, v[1], v[2])",
@@ -535,6 +600,9 @@
       "lines": [
         143
       ],
+      "kinds": [
+        "and"
+      ],
       "kind": "dead",
       "anchor": "{ id = \"bouncing_rocks\", name = \"BOUNCING ROCKS\", mp_cost = 20, cast = bounce_volley(3, 2, 3), detail = \"Like #1, but these rocks bounce off walls and other bar",
       "note": "not a branch ('and' in the BOUNCING ROCKS detail string)"
@@ -543,6 +611,9 @@
       "id": "living-01-elf.lua:146",
       "lines": [
         146
+      ],
+      "kinds": [
+        "and"
       ],
       "kind": "dead",
       "anchor": "{ id = \"mega_rocks\",     name = \"MEGA ROCKS\",     mp_cost = 40, detail = \"This giant handful of rocks bounces far away and packs a big punch.\", icon = \"icons/me",
@@ -553,6 +624,9 @@
       "lines": [
         148
       ],
+      "kinds": [
+        "and"
+      ],
       "kind": "dead",
       "anchor": "default_cast = bounce_volley(5, 4, 5),  -- case 4 and every unmapped slot",
       "note": "not a branch ('and' in a comment on default_cast)"
@@ -561,6 +635,9 @@
       "id": "living-01-elf.lua:165",
       "lines": [
         165
+      ],
+      "kinds": [
+        "and"
       ],
       "kind": "dead",
       "anchor": "description = \"Elves are small and weak, but are harder to hit than most classes. Alone of all the classes, elves possess the 'ForestWalk' ability.\",",

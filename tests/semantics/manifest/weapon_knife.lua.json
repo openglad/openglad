@@ -6,6 +6,9 @@
       "lines": [
         15
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "on_death",
       "anchor": "if not owner then",
       "condition": "not owner",
@@ -31,6 +34,9 @@
       "id": "weapon_knife.lua:18",
       "lines": [
         18
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "on_death",
       "anchor": "if not og.family_flag(\"living\", owner:family(), \"has_returning_weapon\") then",
@@ -72,6 +78,9 @@
       "id": "weapon_knife.lua:23",
       "lines": [
         23
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "defensive",
       "anchor": "if not blade then",

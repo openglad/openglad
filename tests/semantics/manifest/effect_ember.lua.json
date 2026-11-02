@@ -8,6 +8,11 @@
         24,
         25
       ],
+      "kinds": [
+        "if",
+        "and",
+        "and"
+      ],
       "function": "foes_touching",
       "anchor": "if w:order() == C.ORDER_LIVING",
       "condition": "w:order()==LIVING and w:floor()==ent:floor() and hits(ent box grown by grow, w box)",
@@ -57,6 +62,9 @@
       "lines": [
         41
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "on_act (core:ember)",
       "anchor": "if self:lifetime() <= 0 then",
       "condition": "self:lifetime() <= 0 (after the decrement)",
@@ -64,7 +72,11 @@
       "arms": [
         {
           "when": "lifetime reaches 0",
-          "observable": "dead == 1, no burn that act"
+          "observable": "dead == 1"
+        },
+        {
+          "when": "lifetime reaches 0 (no burn)",
+          "observable": "no burn on that final act (lifetime 0 is a pulse tick)"
         },
         {
           "when": "lifetime > 0",
@@ -78,16 +90,24 @@
           "file": "tests/unit/test_kit_elemental.cpp",
           "test": "KitElemental.embers_burn_crossers_then_die",
           "note": "lifetime > 0: frame and pulse run"
+        },
+        {
+          "file": "tests/unit/test_kit_elemental.cpp",
+          "test": "KitElemental.embers_burn_crossers_then_die",
+          "note": "dead after exactly 40 acts from lifetime 40: EXPECT_EQ(40, acts)"
         }
       ],
       "missing_arms": [
-        "lifetime reaches 0"
+        "lifetime reaches 0 (no burn)"
       ]
     },
     {
       "id": "effect_ember.lua:46",
       "lines": [
         46
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "on_act (core:ember)",
       "anchor": "if self:lifetime() < t.ember_dying then",
@@ -122,6 +142,10 @@
         49,
         51
       ],
+      "kinds": [
+        "if",
+        "for"
+      ],
       "function": "on_act (core:ember)",
       "anchor": "if og.mod(self:lifetime(), t.ember_pulse) == 0 then",
       "condition": "og.mod(lifetime, ember_pulse) == 0",
@@ -153,6 +177,9 @@
       "id": "effect_ember.lua:21",
       "lines": [
         21
+      ],
+      "kinds": [
+        "for"
       ],
       "kind": "loop",
       "anchor": "for i = 1, #foes do",

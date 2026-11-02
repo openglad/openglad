@@ -7,6 +7,10 @@
         18,
         20
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "pack_coordinate",
       "anchor": "if (!(value > 0.0f))",
       "condition": "!(value > 0) ; value >= 65535",
@@ -53,6 +57,10 @@
         27,
         30
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "pack_value_q8",
       "anchor": "if (!(value > 0.0f))",
       "condition": "!(value > 0) ; scaled >= kMaxValueQ8",
@@ -85,6 +93,9 @@
       "id": "damage_number_event.cpp:54",
       "lines": [
         54
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "decode_damage_number_event",
       "anchor": "if (event.kind != EventKind::DamageNumber)",
@@ -125,6 +136,16 @@
         108,
         111,
         113
+      ],
+      "kinds": [
+        "for",
+        "if",
+        "for",
+        "if",
+        "if",
+        "for",
+        "if",
+        "if"
       ],
       "function": "lift_damage_number_events",
       "anchor": "for (const walker::DamageNumber& number : entity->damage_numbers)",
@@ -168,6 +189,12 @@
         131,
         135,
         143
+      ],
+      "kinds": [
+        "for",
+        "if",
+        "if",
+        "while"
       ],
       "function": "apply_damage_number_events",
       "anchor": "for (const Event& event : batch.events)",

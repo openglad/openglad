@@ -8,6 +8,11 @@
         21,
         24
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
+      ],
       "function": "trips",
       "anchor": "if foe:floor() ~= self:floor() then",
       "condition": "foe floor differs / BIT_FLYING / flight_left > 0",
@@ -49,6 +54,9 @@
       "lines": [
         40
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "on_act (core:mine)",
       "anchor": "if self:ani_type() ~= C.ANI_WALK then",
       "condition": "self:ani_type() ~= C.ANI_WALK",
@@ -82,6 +90,9 @@
       "lines": [
         45
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "on_act (core:mine)",
       "anchor": "if self:lifetime() <= 0 then",
       "condition": "self:lifetime() <= 0",
@@ -97,19 +108,24 @@
         }
       ],
       "setting": "new-specials",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_kit_thief.cpp",
           "test": "KitThief.mine_expires_quietly"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "lifetime reaches 0"
+      ]
     },
     {
       "id": "effect_mine.lua:53",
       "lines": [
         53
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "on_act (core:mine)",
       "anchor": "if trips(self, foes[i]) then",
@@ -143,6 +159,9 @@
       "id": "effect_mine.lua:66",
       "lines": [
         66
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "leave_puff",
       "anchor": "if not puff then",
@@ -180,6 +199,14 @@
         91,
         92
       ],
+      "kinds": [
+        "if",
+        "and",
+        "and",
+        "and",
+        "and",
+        "and"
+      ],
       "function": "light_neighbours",
       "anchor": "if ob ~= self",
       "condition": "ob ~= self and FX and family MINE and alive and same team and distance_to_ob <= 24",
@@ -195,19 +222,24 @@
         }
       ],
       "setting": "new-specials",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_kit_thief.cpp",
           "test": "KitThief.mines_chain_on_their_own_next_tick"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "foe-team mine / farther / dead / not a mine"
+      ]
     },
     {
       "id": "effect_mine.lua:101",
       "lines": [
         101
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "on_death (core:mine)",
       "anchor": "if self.hp < 0 then",
@@ -248,6 +280,9 @@
       "lines": [
         107
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "on_death (core:mine)",
       "anchor": "if self.level >= t.mine_puff_level then",
       "condition": "self.level >= t.mine_puff_level",
@@ -279,6 +314,9 @@
       "lines": [
         52
       ],
+      "kinds": [
+        "for"
+      ],
       "kind": "loop",
       "anchor": "for i = 1, #foes do",
       "note": "scan of foes within 128; rule at effect_mine.lua:53"
@@ -287,6 +325,9 @@
       "id": "effect_mine.lua:85",
       "lines": [
         85
+      ],
+      "kinds": [
+        "for"
       ],
       "kind": "loop",
       "anchor": "for i = 1, #obs do",

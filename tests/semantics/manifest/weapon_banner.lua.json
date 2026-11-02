@@ -6,6 +6,9 @@
       "lines": [
         15
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "pulse (on_animate)",
       "anchor": "if w:floor() == self:floor() then",
       "condition": "w:floor() == self:floor()",
@@ -40,6 +43,9 @@
       "id": "weapon_banner.lua:24",
       "lines": [
         24
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "pulse (on_animate)",
       "anchor": "if living and weaker then",
@@ -81,6 +87,9 @@
       "lines": [
         39
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "on_animate",
       "anchor": "if og.mod(og.world_tick(), t.banner_pulse) == 0 then",
       "condition": "og.mod(og.world_tick(), t.banner_pulse) == 0",
@@ -109,6 +118,9 @@
       "id": "weapon_banner.lua:43",
       "lines": [
         43
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "on_animate",
       "anchor": "if lifetime < 1 then",
@@ -142,6 +154,9 @@
       "id": "weapon_banner.lua:63",
       "lines": [
         63
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "on_death",
       "anchor": "if self:leader() then",
@@ -182,6 +197,9 @@
       "lines": [
         13
       ],
+      "kinds": [
+        "for"
+      ],
       "kind": "loop",
       "anchor": "for i = 1, #friends do",
       "note": "Iterates allies in banner_radius; rule in weapon_banner.lua:15."
@@ -191,6 +209,9 @@
       "lines": [
         20
       ],
+      "kinds": [
+        "for"
+      ],
       "kind": "loop",
       "anchor": "for i = 1, #foes do",
       "note": "Iterates foes in banner_radius; rule in weapon_banner.lua:24."
@@ -199,6 +220,9 @@
       "id": "weapon_banner.lua:58",
       "lines": [
         58
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "defensive",
       "anchor": "if flash then",

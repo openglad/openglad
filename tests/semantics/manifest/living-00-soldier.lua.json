@@ -6,6 +6,9 @@
       "lines": [
         11
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "charge (CHARGE, slot 1 cast)",
       "anchor": "if self:s_forward_blocked(gf.on()) then",
       "condition": "self:s_forward_blocked(gf.on())",
@@ -13,7 +16,11 @@
       "arms": [
         {
           "when": "path ahead clear",
-          "observable": "special() true; MP drops by special_cost(1)=25; commands.back()==COMMAND_RUSH count 3 com1=trunc(lastx/stepsize) com2=trunc(lasty/stepsize); sound SOUND_CHARGE"
+          "observable": "special() true; MP drops by special_cost(1)=25; commands.back()==COMMAND_RUSH count 3 com1=trunc(lastx/stepsize) com2=trunc(lasty/stepsize)"
+        },
+        {
+          "when": "path ahead clear: sound",
+          "observable": "SOUND_CHARGE emitted"
         },
         {
           "when": "blocked, setting off (foe in front)",
@@ -58,7 +65,7 @@
         }
       ],
       "missing_arms": [
-        "path ahead clear"
+        "path ahead clear: sound"
       ]
     },
     {
@@ -66,14 +73,25 @@
       "lines": [
         43
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "whirlwind (WHIRLWIND, slot 3 cast)",
       "anchor": "if gf.special_busy(self) then",
       "condition": "gf.special_busy(self)",
       "semantic": "WHIRLWIND is refused 'SPECIAL BUSY' (free) while the soldier is busy. Classic: busy ~= 0, so a hero whose busy rests a fraction below zero after a fractional-delay shot is refused forever; Gameplay Fixes (fix S): only busy > 0 refuses. Same rule as living-00-soldier.lua:79 (DISARM) and living-02-archer.lua:29/43.",
       "arms": [
         {
-          "when": "busy > 0 (both values)",
-          "observable": "special() false 'SPECIAL BUSY'; MP unchanged; no WALK commands queued"
+          "when": "busy > 0, setting off",
+          "observable": "special() false (a foe-less classic whirlwind would otherwise cast)"
+        },
+        {
+          "when": "busy > 0, setting on",
+          "observable": "special() false"
+        },
+        {
+          "when": "busy > 0: refusal details",
+          "observable": "reason 'SPECIAL BUSY'; MP unchanged; no WALK commands queued"
         },
         {
           "when": "busy < 0 (fractional rest after a shot), setting off",
@@ -81,7 +99,11 @@
         },
         {
           "when": "busy < 0, setting on",
-          "observable": "cast proceeds: busy becomes busy+8, 8 WALK commands queued"
+          "observable": "cast proceeds: busy becomes busy+8"
+        },
+        {
+          "when": "busy < 0, setting on: walk orders",
+          "observable": "8 WALK commands queued"
         },
         {
           "when": "busy == 0",
@@ -95,17 +117,26 @@
           "file": "tests/integration/test_gameplay_fixes_special_busy.cpp",
           "test": "GameplayFixesSpecialBusy.whirlwind_after_a_shot",
           "note": "busy<0 off: 200/200 refusals SPECIAL BUSY, MP unchanged; busy 0 both values: first cast true; busy<0 on: cast true, MP -120, busy > 7"
+        },
+        {
+          "file": "tests/integration/test_family_behaviors.cpp",
+          "test": "FamilyBehaviors.soldier_batch3_special_ai_and_fire_callback_paths",
+          "note": "busy>0 off: whirlwind busy 1, no foe, do_special false; without the busy the classic spin would cast; reason, MP and queue unread"
         }
       ],
       "missing_arms": [
-        "busy > 0 (both values)",
-        "busy < 0, setting on"
+        "busy > 0, setting on",
+        "busy > 0: refusal details",
+        "busy < 0, setting on: walk orders"
       ]
     },
     {
       "id": "living-00-soldier.lua:49",
       "lines": [
         49
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "whirlwind",
       "anchor": "if gf.on() and #foes == 0 then",
@@ -118,7 +149,11 @@
         },
         {
           "when": "no foe in ring, setting off",
-          "observable": "special() true; MP -120; busy +8; 8 COMMAND_WALK queued (compass order N,NE,E,SE,S,SW,W,NW); curdir -1, lastx=lasty=0"
+          "observable": "special() true; MP -120; busy +8; 8 commands queued, all COMMAND_WALK"
+        },
+        {
+          "when": "no foe in ring, setting off: spin shape",
+          "observable": "the 8 WALKs in compass order N,NE,E,SE,S,SW,W,NW; curdir -1, lastx=lasty=0"
         },
         {
           "when": "a foe in ring",
@@ -149,13 +184,16 @@
         }
       ],
       "missing_arms": [
-        "no foe in ring, setting off"
+        "no foe in ring, setting off: spin shape"
       ]
     },
     {
       "id": "living-00-soldier.lua:67",
       "lines": [
         67
+      ],
+      "kinds": [
+        "for"
       ],
       "function": "whirlwind",
       "anchor": "for i = 1, #foes do",
@@ -194,6 +232,9 @@
       "lines": [
         79
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "disarm (DISARM, slot 4 cast)",
       "anchor": "if gf.special_busy(self) then",
       "condition": "gf.special_busy(self)",
@@ -230,6 +271,9 @@
       "lines": [
         83
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "disarm",
       "anchor": "if not self:s_forward_blocked(gf.on()) then",
       "condition": "not self:s_forward_blocked(gf.on())",
@@ -264,6 +308,9 @@
       "id": "living-00-soldier.lua:95",
       "lines": [
         95
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "disarm",
       "anchor": "if og.rand(self.level) >= og.rand(foe.level) then",
@@ -305,6 +352,9 @@
       "lines": [
         99
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "disarm",
       "anchor": "if not gf.on() or penalty > 0 then",
       "condition": "not gf.on() or penalty > 0",
@@ -343,6 +393,10 @@
       "lines": [
         109,
         110
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "disarm",
       "anchor": "if found == 0 then",
@@ -386,6 +440,9 @@
       "lines": [
         117
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "disarm",
       "anchor": "if gf.on() and disarmed == 0 then",
       "condition": "gf.on() and disarmed == 0",
@@ -397,7 +454,11 @@
         },
         {
           "when": "all resisted, setting off",
-          "observable": "special() true; MP -= 150; busy +5; SOUND_CHARGE; notice if team0/hero"
+          "observable": "special() true; MP -= 150; notice if team0/hero"
+        },
+        {
+          "when": "all resisted, setting off: recovery and sound",
+          "observable": "busy +5; SOUND_CHARGE"
         },
         {
           "when": "at least one disarmed",
@@ -428,13 +489,16 @@
         }
       ],
       "missing_arms": [
-        "all resisted, setting off"
+        "all resisted, setting off: recovery and sound"
       ]
     },
     {
       "id": "living-00-soldier.lua:127",
       "lines": [
         127
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "disarm",
       "anchor": "if self.team == 0 or self:has_guy() then",
@@ -473,6 +537,9 @@
       "lines": [
         136
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "on_fire_weapon",
       "anchor": "if self:order() ~= C.ORDER_LIVING then",
       "condition": "self:order() ~= C.ORDER_LIVING",
@@ -504,6 +571,9 @@
       "id": "living-00-soldier.lua:141",
       "lines": [
         141
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "on_fire_weapon",
       "anchor": "if self:weapons_left() <= 0 then",
@@ -540,6 +610,9 @@
       "lines": [
         154
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "on_create",
       "anchor": "if self:order() == C.ORDER_LIVING then",
       "condition": "self:order() == C.ORDER_LIVING",
@@ -572,6 +645,10 @@
       "lines": [
         181,
         182
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "fixed (bot gate, CHARGE)",
       "anchor": "if slot == 1 then",
@@ -622,6 +699,10 @@
         187,
         189
       ],
+      "kinds": [
+        "if",
+        "and"
+      ],
       "function": "fixed (bot gate, BOOMERANG)",
       "anchor": "if slot == 2 then",
       "condition": "out == 0 and G.foes_within(self, 1, 17 + 6*level, false)",
@@ -661,6 +742,10 @@
       "lines": [
         191,
         192
+      ],
+      "kinds": [
+        "if",
+        "and"
       ],
       "function": "fixed (bot gate, WHIRLWIND; busy DISARM)",
       "anchor": "if slot == 3 or gf.special_busy(self) then  -- a busy DISARM is refused here too",
@@ -711,6 +796,9 @@
       "lines": [
         195
       ],
+      "kinds": [
+        "and"
+      ],
       "function": "fixed (bot gate, DISARM)",
       "anchor": "return f ~= nil and f.level <= self.level",
       "condition": "f ~= nil and f.level <= self.level",
@@ -750,6 +838,9 @@
       "lines": [
         259
       ],
+      "kinds": [
+        ""
+      ],
       "function": "check_special_ai (G.with_classic(ai.foe_in_window(20,75), fixed))",
       "anchor": "check_special_ai = G.with_classic(ai.foe_in_window(20, 75), fixed),  -- fixed per-tick AI gate",
       "condition": "classic: 20 < distance(foe) < 75",
@@ -765,7 +856,11 @@
         },
         {
           "when": "setting on",
-          "observable": "answer of fixed(); self.foe still assigned by the classic search"
+          "observable": "answer of fixed()"
+        },
+        {
+          "when": "setting on: foe acquisition",
+          "observable": "self.foe still assigned by the classic search"
         }
       ],
       "setting": "both",
@@ -797,7 +892,7 @@
         }
       ],
       "missing_arms": [
-        "setting on"
+        "setting on: foe acquisition"
       ]
     }
   ],
@@ -806,6 +901,9 @@
       "id": "living-00-soldier.lua:35",
       "lines": [
         35
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "defensive",
       "anchor": "if not boomerang then",
@@ -816,6 +914,9 @@
       "lines": [
         90
       ],
+      "kinds": [
+        "for"
+      ],
       "kind": "loop",
       "anchor": "for i = 1, #foes do",
       "note": "for each foe within disarm_range (28 px): see living-00-soldier.lua:95 (roll), :99 (penalty), and found=1 per foe in reach regardless of the roll (feeds :109)."
@@ -825,6 +926,9 @@
       "lines": [
         213
       ],
+      "kinds": [
+        "or"
+      ],
       "kind": "dead",
       "anchor": "{ id = \"whirlwind\", name = \"WHIRLWIND\", mp_cost = 120, cast = whirlwind, detail = \"The fighter whirls in a spiral, hurting or stunning melee foes.\", icon = \"ico",
       "note": "not a branch ('and' in the WHIRLWIND detail string)"
@@ -833,6 +937,9 @@
       "id": "living-00-soldier.lua:231",
       "lines": [
         231
+      ],
+      "kinds": [
+        "and"
       ],
       "kind": "dead",
       "anchor": "description = \"Your basic grunt, can absorb and deal damage and move moderately fast. A good all-around fighter. A soldier's normal weapon is a magical returnin",

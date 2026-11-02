@@ -9,6 +9,12 @@
         65,
         66
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if"
+      ],
       "function": "facing_of",
       "anchor": "if dir >= 0 then",
       "condition": "dir >= 0 / dir < 8 ; fx == 0 / fy == 0",
@@ -41,6 +47,9 @@
       "id": "kit_skeleton.lua:92",
       "lines": [
         92
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "ticks_mana_buys",
       "anchor": "if phase == 0 then",
@@ -77,6 +86,12 @@
         115,
         118,
         128
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if"
       ],
       "function": "walks_over / foe_on_top",
       "anchor": "if foe:order() ~= C.ORDER_LIVING then",
@@ -127,6 +142,9 @@
       "lines": [
         143
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "pop_up",
       "anchor": "if foe then",
       "condition": "if foe",
@@ -165,6 +183,10 @@
         155,
         157
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "sink",
       "anchor": "if owner:ani_type() == C.ANI_TELE_IN then",
       "condition": "owner:ani_type() == ANI_TELE_IN ; step < SINK_TICKS",
@@ -200,6 +222,9 @@
       "lines": [
         170
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "sink",
       "anchor": "if not owner:hidden() then",
       "condition": "not owner:hidden()",
@@ -233,6 +258,10 @@
       "lines": [
         183,
         184
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "buried",
       "anchor": "if og.mod(left, t.dig_drain_pulse) == 0 then",
@@ -275,6 +304,9 @@
       "lines": [
         193
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "buried",
       "anchor": "if og.mod(left, t.dig_regen_pulse) == 0 then",
       "condition": "og.mod(left, dig_regen_pulse)==0",
@@ -306,6 +338,9 @@
       "lines": [
         197
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "buried",
       "anchor": "if foe then",
       "condition": "if foe",
@@ -334,6 +369,9 @@
       "id": "kit_skeleton.lua:201",
       "lines": [
         201
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "buried",
       "anchor": "if left <= 0 then",
@@ -364,6 +402,9 @@
       "lines": [
         217
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "burrow",
       "anchor": "if owner:hidden() then",
       "condition": "owner:hidden()",
@@ -393,6 +434,10 @@
       "lines": [
         234,
         235
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "M.dig_in",
       "anchor": "if burrow_marker then",
@@ -427,6 +472,9 @@
       "lines": [
         241
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "M.dig_in",
       "anchor": "if self:possess_link() ~= 0 then",
       "condition": "self:possess_link() ~= 0",
@@ -459,6 +507,9 @@
       "id": "kit_skeleton.lua:244",
       "lines": [
         244
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "M.dig_in",
       "anchor": "if lc.mid_teleport(self) then",
@@ -493,6 +544,9 @@
       "lines": [
         247
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "M.dig_in",
       "anchor": "if lc.spare_mp(self, DIG_IN_SLOT) < t.dig_min_pool then",
       "condition": "lc.spare_mp(self, DIG_IN_SLOT) < dig_min_pool",
@@ -521,6 +575,9 @@
       "id": "kit_skeleton.lua:275",
       "lines": [
         275
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "wall_segment",
       "anchor": "if not og.spawn_spot_clear(seg, x, y) then",
@@ -561,6 +618,16 @@
         326,
         327,
         335
+      ],
+      "kinds": [
+        "for",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if"
       ],
       "function": "fell_oldest_walls",
       "anchor": "for k = 1, #new_segments do",
@@ -608,6 +675,10 @@
         354,
         358
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "bone_wall",
       "anchor": "if seg then",
       "condition": "if seg ; #placed == 0",
@@ -643,6 +714,9 @@
       "lines": [
         370
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "wall_burst",
       "anchor": "if i ~= 0 or j ~= 0 then",
       "condition": "i ~= 0 or j ~= 0",
@@ -670,6 +744,12 @@
         393,
         394,
         408
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if"
       ],
       "function": "own_wall_standing / bone_storm",
       "anchor": "if wall:family() == WEAP_BONE_WALL then",
@@ -706,6 +786,11 @@
         416,
         417
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
+      ],
       "function": "bone_storm",
       "anchor": "if wall:family() == WEAP_BONE_WALL then",
       "condition": "family==BONE_WALL and dead==0 and owner==self",
@@ -734,6 +819,9 @@
       "id": "kit_skeleton.lua:435",
       "lines": [
         435
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "M.wall_or_storm",
       "anchor": "if digging(self) then",
@@ -768,6 +856,9 @@
       "lines": [
         438
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "M.wall_or_storm",
       "anchor": "if self:shifter_down() ~= 0 then",
       "condition": "self:shifter_down() ~= 0",
@@ -801,6 +892,9 @@
       "lines": [
         457
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "reassemble",
       "anchor": "if warded(self) then",
       "condition": "warded(self)",
@@ -829,6 +923,9 @@
       "id": "kit_skeleton.lua:463",
       "lines": [
         463
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "reassemble",
       "anchor": "if stale then",
@@ -863,6 +960,9 @@
       "lines": [
         467
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "reassemble",
       "anchor": "if not km.spawn(self, km.WARD, og.tuning(self).ward_ticks) then",
       "condition": "not km.spawn(...)",
@@ -888,6 +988,9 @@
       "lines": [
         495
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "ward_window",
       "anchor": "if not warded(owner) then",
       "condition": "not warded(owner)",
@@ -912,6 +1015,9 @@
       "id": "kit_skeleton.lua:502",
       "lines": [
         502
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "ward_window",
       "anchor": "if left <= 0 then",
@@ -942,6 +1048,10 @@
       "lines": [
         506,
         507
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "ward_window",
       "anchor": "if og.mod(left, t.ward_drain_pulse) == 0 then",
@@ -974,6 +1084,9 @@
       "lines": [
         521
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "legion",
       "anchor": "if km.find(self, km.LEGION) then",
       "condition": "km.find(self, km.LEGION)",
@@ -999,6 +1112,10 @@
       "lines": [
         534,
         538
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "legion_window",
       "anchor": "if left <= 0 then",
@@ -1037,6 +1154,9 @@
       "lines": [
         544
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "M.reassemble_or_legion",
       "anchor": "if digging(self) then",
       "condition": "digging(self)",
@@ -1061,6 +1181,9 @@
       "id": "kit_skeleton.lua:547",
       "lines": [
         547
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "M.reassemble_or_legion",
       "anchor": "if self:shifter_down() ~= 0 then",
@@ -1099,6 +1222,14 @@
         569,
         572,
         577
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if"
       ],
       "function": "M.on_kill",
       "anchor": "if og.match_setting(\"new_specials\") == 0 then",
@@ -1170,6 +1301,16 @@
         677,
         680
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if"
+      ],
       "function": "M.ai_wall / at_own_wall / foes_at_walls",
       "anchor": "if wall:family() == WEAP_BONE_WALL then",
       "condition": "own_wall_standing ; magicpoints < STORM_COST ; foes_at_walls < 2 ; seg dist_to_ob(foe) <= 60",
@@ -1204,6 +1345,11 @@
         640,
         719,
         722
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
       ],
       "function": "M.ai_reassemble / foes_that_can_rise",
       "anchor": "if not og.family_flag(\"living\", foes[i]:family(), \"is_undead\") then",
@@ -1246,6 +1392,9 @@
       "lines": [
         649
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "M.ai_dig_in",
       "anchor": "if og.match_setting(\"new_specials\") == 0 then",
       "condition": "match_setting(new_specials)==0",
@@ -1280,6 +1429,11 @@
         652,
         660,
         664
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
       ],
       "function": "M.ai_dig_in",
       "anchor": "if self:possess_link() ~= 0 then",
@@ -1326,6 +1480,9 @@
       "lines": [
         657
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "M.ai_dig_in",
       "anchor": "if lc.mid_teleport(self) then",
       "condition": "lc.mid_teleport(self)",
@@ -1357,6 +1514,9 @@
       "lines": [
         673
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "M.ai_wall",
       "anchor": "if og.match_setting(\"new_specials\") == 0 then",
       "condition": "match_setting(new_specials)==0",
@@ -1383,6 +1543,11 @@
         686,
         690,
         696
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
       ],
       "function": "M.ai_wall",
       "anchor": "if not G.hp_below(self, 7, 10) then",
@@ -1425,6 +1590,9 @@
       "lines": [
         706
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "M.ai_reassemble",
       "anchor": "if og.match_setting(\"new_specials\") == 0 then",
       "condition": "match_setting(new_specials)==0",
@@ -1451,6 +1619,11 @@
         709,
         710,
         713
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
       ],
       "function": "M.ai_reassemble",
       "anchor": "if G.hp_below(self, 1, 2) then",
@@ -1487,6 +1660,9 @@
       "lines": [
         77
       ],
+      "kinds": [
+        "if"
+      ],
       "kind": "defensive",
       "anchor": "if flash then",
       "note": "flash_at: add_ob nil guard (world full) - the flash is cosmetic"
@@ -1495,6 +1671,9 @@
       "id": "kit_skeleton.lua:126",
       "lines": [
         126
+      ],
+      "kinds": [
+        "for"
       ],
       "kind": "loop",
       "anchor": "for i = 1, #foes do",
@@ -1505,6 +1684,9 @@
       "lines": [
         208
       ],
+      "kinds": [
+        "if"
+      ],
       "kind": "defensive",
       "anchor": "if not owner then",
       "note": "burrow marker with no owner (owner gone) finishes itself"
@@ -1514,6 +1696,9 @@
       "lines": [
         250
       ],
+      "kinds": [
+        "if"
+      ],
       "kind": "defensive",
       "anchor": "if not km.spawn(self, km.BURROW, t.dig_max) then",
       "note": "km.spawn failed (world full): 'COULD NOT DIG IN'; no test reaches it"
@@ -1522,6 +1707,9 @@
       "id": "kit_skeleton.lua:269",
       "lines": [
         269
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "defensive",
       "anchor": "if not seg then",
@@ -1533,6 +1721,10 @@
         316,
         320
       ],
+      "kinds": [
+        "while",
+        "for"
+      ],
       "kind": "loop",
       "anchor": "while true do",
       "note": "fell_oldest_walls outer repeat and weaplist scan; rule in kit_skeleton.lua:309"
@@ -1541,6 +1733,9 @@
       "id": "kit_skeleton.lua:352",
       "lines": [
         352
+      ],
+      "kinds": [
+        "for"
       ],
       "kind": "loop",
       "anchor": "for k = -1, 1 do",
@@ -1552,6 +1747,10 @@
         368,
         369
       ],
+      "kinds": [
+        "for",
+        "for"
+      ],
       "kind": "loop",
       "anchor": "for i = -1, 1 do",
       "note": "wall_burst 3x3 direction loops; rule in kit_skeleton.lua:370"
@@ -1560,6 +1759,9 @@
       "id": "kit_skeleton.lua:372",
       "lines": [
         372
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "defensive",
       "anchor": "if bone then",
@@ -1570,6 +1772,9 @@
       "lines": [
         390
       ],
+      "kinds": [
+        "for"
+      ],
       "kind": "loop",
       "anchor": "for i = 1, #weapons do",
       "note": "own_wall_standing weaplist scan; rule in kit_skeleton.lua:392"
@@ -1578,6 +1783,9 @@
       "id": "kit_skeleton.lua:413",
       "lines": [
         413
+      ],
+      "kinds": [
+        "for"
       ],
       "kind": "loop",
       "anchor": "for i = 1, #weapons do",
@@ -1588,6 +1796,9 @@
       "lines": [
         491
       ],
+      "kinds": [
+        "if"
+      ],
       "kind": "defensive",
       "anchor": "if not owner then",
       "note": "ward marker with no owner finishes"
@@ -1597,6 +1808,9 @@
       "lines": [
         524
       ],
+      "kinds": [
+        "if"
+      ],
       "kind": "defensive",
       "anchor": "if not km.spawn(self, km.LEGION, og.tuning(self).legion_ticks) then",
       "note": "LEGION marker spawn failed (world full): 'COULD NOT CALL LEGION'; untested"
@@ -1605,6 +1819,9 @@
       "id": "kit_skeleton.lua:581",
       "lines": [
         581
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "defensive",
       "anchor": "if not risen then",
@@ -1616,6 +1833,10 @@
         605,
         626
       ],
+      "kinds": [
+        "for",
+        "for"
+      ],
       "kind": "loop",
       "anchor": "for i = 1, #weapons do",
       "note": "at_own_wall weapon scan and foes_at_walls foe scan; rule in kit_skeleton.lua:676"
@@ -1624,6 +1845,9 @@
       "id": "kit_skeleton.lua:639",
       "lines": [
         639
+      ],
+      "kinds": [
+        "for"
       ],
       "kind": "loop",
       "anchor": "for i = 1, #foes do",

@@ -6,6 +6,9 @@
       "lines": [
         23
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "format_exit_prompt",
       "anchor": "if is_withdraw then",
       "condition": "is_withdraw",
@@ -32,6 +35,9 @@
       "id": "treasure_navigation.lua:34",
       "lines": [
         34
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "exit_on_eat",
       "anchor": "if eater:in_act() then",
@@ -67,6 +73,9 @@
       "id": "treasure_navigation.lua:37",
       "lines": [
         37
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "exit_on_eat",
       "anchor": "if eater:act_type() ~= C.ACT_CONTROL or eater:skip_exit() > 1 then",
@@ -114,6 +123,11 @@
         46,
         65
       ],
+      "kinds": [
+        "if",
+        "else",
+        "if"
+      ],
       "function": "exit_on_eat",
       "anchor": "if og.level_done() == 0 then",
       "condition": "level_done()==0 ; can_exit_now",
@@ -153,6 +167,9 @@
       "lines": [
         51
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "exit_on_eat",
       "anchor": "if exit_name == \"none\" then",
       "condition": "exit_name == \"none\"",
@@ -179,6 +196,9 @@
       "id": "treasure_navigation.lua:58",
       "lines": [
         58
+      ],
+      "kinds": [
+        "or"
       ],
       "function": "exit_on_eat",
       "anchor": "local can_exit_now = foes_left == 0 or og.world_can_exit_whenever()",
@@ -207,6 +227,10 @@
       "lines": [
         60,
         74
+      ],
+      "kinds": [
+        "and",
+        "if"
       ],
       "function": "exit_on_eat",
       "anchor": "and not og.level_completed(og.current_scenario())",
@@ -251,6 +275,9 @@
       "lines": [
         79
       ],
+      "kinds": [
+        "else"
+      ],
       "function": "exit_on_eat",
       "anchor": "else",
       "condition": "else (neither)",
@@ -278,6 +305,11 @@
         91,
         96,
         99
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
       ],
       "function": "teleporter_on_eat",
       "anchor": "if eater:skip_exit() > 1 then",
@@ -329,6 +361,11 @@
         108,
         111
       ],
+      "kinds": [
+        "if",
+        "else",
+        "if"
+      ],
       "function": "teleporter_on_eat",
       "anchor": "if not self:leader() then",
       "condition": "not self:leader() ; not target",
@@ -371,6 +408,9 @@
       "lines": [
         116
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "teleporter_on_eat",
       "anchor": "if not og.query_passable(eater:xpos(), eater:ypos(), eater) then",
       "condition": "not og.query_passable(...)",
@@ -404,6 +444,9 @@
       "id": "treasure_navigation.lua:122",
       "lines": [
         122
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "defensive",
       "anchor": "if flash then",

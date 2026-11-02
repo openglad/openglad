@@ -11,6 +11,14 @@
         45,
         46
       ],
+      "kinds": [
+        "if",
+        "switch",
+        "case",
+        "case",
+        "case",
+        "default"
+      ],
       "function": "team_color_name",
       "anchor": "if (kFfaTeamBase <= team && team < kFfaTeamBase + kFfaTeamCount)",
       "condition": "FFA band 16..31 -> band name; switch team 0/1/2/default",
@@ -56,6 +64,9 @@
       "lines": [
         52
       ],
+      "kinds": [
+        ""
+      ],
       "function": "is_scoring_identity",
       "anchor": "return t < SCORE_TEAM_COUNT ||",
       "condition": "t < SCORE_TEAM_COUNT || FFA band",
@@ -84,6 +95,9 @@
       "id": "mode_tick.cpp:58",
       "lines": [
         58
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "team_ramp_base",
       "anchor": "if (kFfaTeamBase <= team && team < kFfaTeamBase + kFfaTeamCount)",
@@ -117,6 +131,9 @@
       "id": "mode_tick.cpp:65",
       "lines": [
         65
+      ],
+      "kinds": [
+        ""
       ],
       "function": "mode_scripted_active",
       "anchor": "return (world.type & GameWorld::TYPE_SCRIPTED) != 0 && world.mode.active;",
@@ -152,6 +169,11 @@
         74,
         77,
         83
+      ],
+      "kinds": [
+        "for",
+        "if",
+        "if"
       ],
       "function": "authored_team_mask",
       "anchor": "for (const auto& uptr : world.oblist)",
@@ -194,6 +216,11 @@
         97,
         101,
         105
+      ],
+      "kinds": [
+        "if",
+        "for",
+        "if"
       ],
       "function": "effective_team_mask",
       "anchor": "if (requested <= 0)",
@@ -242,6 +269,9 @@
       "lines": [
         119
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "mode_end_level",
       "anchor": "if (!world.mode.win_latched)",
       "condition": "!world.mode.win_latched",
@@ -288,6 +318,9 @@
       "lines": [
         128
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "mode_declare_winner",
       "anchor": "if (!world.mode.win_latched)",
       "condition": "!world.mode.win_latched",
@@ -328,6 +361,11 @@
         136,
         139,
         151
+      ],
+      "kinds": [
+        "for",
+        "if",
+        "ternary"
       ],
       "function": "mode_declare_winner",
       "anchor": "for (const auto& uptr : world.oblist)",
@@ -390,6 +428,9 @@
       "lines": [
         171
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "mode_stage_init",
       "anchor": "if (world.mode.init_attempted)",
       "condition": "world.mode.init_attempted",
@@ -423,6 +464,9 @@
       "lines": [
         181
       ],
+      "kinds": [
+        "ternary"
+      ],
       "function": "mode_stage_init",
       "anchor": "(requested > 0) ? static_cast<std::uint16_t>(requested)",
       "condition": "requested > 0 ? requested : kRespawnDefaultTicks",
@@ -455,6 +499,9 @@
       "id": "mode_tick.cpp:184",
       "lines": [
         184
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "mode_stage_init",
       "anchor": "if (og::script::hooks::level_mode_init(&world))",
@@ -499,6 +546,11 @@
         196,
         199
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
+      ],
       "function": "mode_run_tick",
       "anchor": "if (!world.mode.active && !world.mode.init_attempted)",
       "condition": "!active && !init_attempted ; !active",
@@ -536,6 +588,10 @@
       "lines": [
         204,
         223
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "mode_run_tick",
       "anchor": "if (world.mode.win_latched)",

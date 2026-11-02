@@ -8,13 +8,22 @@
         118,
         123
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
+      ],
       "function": "possess",
       "anchor": "if (&rider == &host || !is_living(rider) || !is_living(host))",
       "condition": "&rider==&host || !living; rider dead/hidden/dormant/linked; rider.real_team_num() != kNoTeam",
       "semantic": "POSSESS needs a free rider: a visible, awake, living walker that is not already riding, not charmed, and not the host itself; otherwise 'CANNOT POSSESS' and nothing changes.",
       "arms": [
         {
-          "when": "rider is host / not living / dead / hidden / dormant / already linked / charmed",
+          "when": "rider is host / not living / already linked / charmed",
+          "observable": "{false,'CANNOT POSSESS'}; no link, rider visible, teams unchanged"
+        },
+        {
+          "when": "rider dead / hidden / dormant",
           "observable": "{false,'CANNOT POSSESS'}; no link, rider visible, teams unchanged"
         },
         {
@@ -37,7 +46,7 @@
         }
       ],
       "missing_arms": [
-        "rider is host / not living / dead / hidden / dormant / already linked / charmed"
+        "rider dead / hidden / dormant"
       ]
     },
     {
@@ -45,13 +54,20 @@
       "lines": [
         125
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "possess",
       "anchor": "if (host.dead() || host.hidden() || host.dormant())",
       "condition": "host.dead() || hidden() || dormant()",
       "semantic": "A dead, hidden or dormant body cannot be possessed ('NO HOST IN REACH').",
       "arms": [
         {
-          "when": "host dead/hidden/dormant",
+          "when": "host dead/hidden",
+          "observable": "refused 'NO HOST IN REACH'"
+        },
+        {
+          "when": "host dormant",
           "observable": "refused 'NO HOST IN REACH'"
         },
         {
@@ -69,13 +85,16 @@
         }
       ],
       "missing_arms": [
-        "host dead/hidden/dormant"
+        "host dormant"
       ]
     },
     {
       "id": "possession.cpp:127",
       "lines": [
         127
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "possess",
       "anchor": "if (host.possess_link() != 0)",
@@ -110,6 +129,9 @@
       "lines": [
         129
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "possess",
       "anchor": "if (is_undead(host))",
       "condition": "is_undead(host)",
@@ -138,6 +160,9 @@
       "id": "possession.cpp:132",
       "lines": [
         132
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "possess / seat_driven",
       "anchor": "if (seat_driven(host))",
@@ -168,6 +193,9 @@
       "lines": [
         135
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "possess",
       "anchor": "if (host.real_team_num() != kNoTeam)",
       "condition": "host.real_team_num() != kNoTeam",
@@ -196,6 +224,9 @@
       "id": "possession.cpp:154",
       "lines": [
         154
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "possess",
       "anchor": "if (rider.user() != -1)",
@@ -226,14 +257,21 @@
       "lines": [
         170
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "release_possession",
       "anchor": "if (either_side.possess_link() == 0)",
       "condition": "either_side.possess_link() == 0",
       "semantic": "Releasing a walker that is not possessed or riding does nothing.",
       "arms": [
         {
-          "when": "unlinked",
-          "observable": "nullptr, nothing changes"
+          "when": "unlinked: return",
+          "observable": "nullptr"
+        },
+        {
+          "when": "unlinked: nothing changes",
+          "observable": "no link/team/tag/visibility write, no scare burst, no notification"
         },
         {
           "when": "linked",
@@ -241,14 +279,17 @@
         }
       ],
       "setting": "new-specials",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_kit_possession.cpp",
-          "test": "KitPossession.host_tick_counts_down_follows_and_releases_at_zero"
+          "test": "KitPossession.host_tick_counts_down_follows_and_releases_at_zero",
+          "note": "unlinked: EXPECT_EQ(nullptr, release_possession); linked arm: full release asserted"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "unlinked: nothing changes"
+      ]
     },
     {
       "id": "possession.cpp:182",
@@ -260,6 +301,15 @@
         186,
         192,
         194
+      ],
+      "kinds": [
+        "ternary",
+        "ternary",
+        "if",
+        "ternary",
+        "if",
+        "if",
+        "else"
       ],
       "function": "release_possession",
       "anchor": "walker* const rider = from_rider ? &either_side : partner;",
@@ -307,6 +357,9 @@
       "lines": [
         201
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "release_possession",
       "anchor": "if (rider == nullptr)",
       "condition": "rider == nullptr",
@@ -335,6 +388,10 @@
         204,
         210
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "release_possession",
       "anchor": "if (host != nullptr)",
       "condition": "host != nullptr; host->user() != -1",
@@ -349,8 +406,12 @@
           "observable": "no tag moves"
         },
         {
-          "when": "any",
-          "observable": "rider centred on host, same floor, visible, scare burst spawned"
+          "when": "any: position and reveal",
+          "observable": "rider centred on host, visible, scare burst spawned"
+        },
+        {
+          "when": "any: floor",
+          "observable": "rider on the host's floor"
         }
       ],
       "setting": "new-specials",
@@ -364,13 +425,16 @@
       ],
       "missing_arms": [
         "bot",
-        "any"
+        "any: floor"
       ]
     },
     {
       "id": "possession.cpp:223",
       "lines": [
         223
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "release_possession",
       "anchor": "if (host != nullptr && host->dead())",
@@ -404,6 +468,10 @@
       "lines": [
         226,
         230
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "release_possession",
       "anchor": "if (overkill > 0 && !rider->dead())",
@@ -439,6 +507,10 @@
         241,
         244
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "possession_host_tick",
       "anchor": "if (host.possess_link() == 0)",
       "condition": "host.possess_link()==0; rider == nullptr || rider->dead()",
@@ -449,7 +521,11 @@
           "observable": "nothing"
         },
         {
-          "when": "rider missing or dead",
+          "when": "rider missing",
+          "observable": "host link/ticks 0; team unchanged (rider's team)"
+        },
+        {
+          "when": "rider dead (no death() run)",
           "observable": "host link/ticks 0; team unchanged (rider's team)"
         },
         {
@@ -472,7 +548,7 @@
         }
       ],
       "missing_arms": [
-        "rider missing or dead"
+        "rider dead (no death() run)"
       ]
     },
     {
@@ -480,6 +556,10 @@
       "lines": [
         263,
         267
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "possession_host_tick",
       "anchor": "if (host.possess_ticks() > 0)",
@@ -518,14 +598,21 @@
       "lines": [
         274
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "kit_on_death",
       "anchor": "if ((self.kit_state() & KIT_WARD) != 0 && self.stats() != nullptr)",
       "condition": "(kit_state & KIT_WARD) && stats",
       "semantic": "A skeleton under REASSEMBLE's ward does not die: the ward is used up, it stands back up at a quarter of max hp playing the teleport-in animation, its orders cleared, and the blow counts no kill; it announces '<name> reassembles!'.",
       "arms": [
         {
-          "when": "warded",
-          "observable": "dead()==0, hp==max/4, KIT_WARD cleared, ani ANI_TELE_IN, notification, killer gets no kill"
+          "when": "warded: survives",
+          "observable": "dead()==0, hp==max/4, KIT_WARD cleared, notification, killer gets no kill"
+        },
+        {
+          "when": "warded: animation",
+          "observable": "ani ANI_TELE_IN"
         },
         {
           "when": "unwarded",
@@ -557,7 +644,7 @@
         }
       ],
       "missing_arms": [
-        "warded"
+        "warded: animation"
       ]
     },
     {
@@ -567,6 +654,12 @@
         291,
         299,
         300
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "ternary",
+        "ternary"
       ],
       "function": "kit_on_death",
       "anchor": "if (self.possess_link() == 0)",
@@ -613,6 +706,10 @@
         312,
         315
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "possession_seat_redirect",
       "anchor": "if (control->hidden() && control->possess_link() != 0)",
       "condition": "control->hidden() && possess_link(); host alive && host->user()==player_num",
@@ -645,6 +742,11 @@
         326,
         329,
         332
+      ],
+      "kinds": [
+        "if",
+        "for",
+        "if"
       ],
       "function": "possession_seat_redirect",
       "anchor": "if (world.new_specials == 0 || control->user() != -1 ||",
@@ -688,6 +790,9 @@
       "lines": [
         65
       ],
+      "kinds": [
+        "ternary"
+      ],
       "kind": "plumbing",
       "anchor": "(fd != nullptr && fd->name != nullptr) ? fd->name : \"SOMEONE\";",
       "note": "display-name fallback 'SOMEONE' for notification text"
@@ -696,6 +801,9 @@
       "id": "possession.cpp:71",
       "lines": [
         71
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "defensive",
       "anchor": "if (current_game != nullptr)",
@@ -706,6 +814,9 @@
       "lines": [
         94
       ],
+      "kinds": [
+        "if"
+      ],
       "kind": "defensive",
       "anchor": "if (fx == nullptr)",
       "note": "add_ob refused (world full): no exit burst"
@@ -714,6 +825,9 @@
       "id": "possession.cpp:308",
       "lines": [
         308
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "defensive",
       "anchor": "if (control == nullptr)",

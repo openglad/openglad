@@ -10,6 +10,13 @@
         64,
         66
       ],
+      "kinds": [
+        "if",
+        "if",
+        "for",
+        "if",
+        "if"
+      ],
       "function": "swappable / swap_partner",
       "anchor": "if ob == self then",
       "condition": "ob == self ; order ~= LIVING ; line_clear ; dist < best_dist",
@@ -44,6 +51,11 @@
         81,
         83,
         85
+      ],
+      "kinds": [
+        "for",
+        "if",
+        "if"
       ],
       "function": "hasten_partner",
       "anchor": "for i = 1, #friends do",
@@ -87,6 +99,14 @@
         105,
         106,
         108
+      ],
+      "kinds": [
+        "for",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if"
       ],
       "function": "wish_stain",
       "anchor": "for i = 1, #fxs do",
@@ -134,6 +154,9 @@
       "lines": [
         123
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "hasten_target",
       "anchor": "if self:alternate_down() then",
       "condition": "self:alternate_down()",
@@ -164,6 +187,11 @@
         133,
         135,
         136
+      ],
+      "kinds": [
+        "for",
+        "if",
+        "if"
       ],
       "function": "heal_party",
       "anchor": "for i = 1, #friends do",
@@ -202,6 +230,11 @@
         152,
         154
       ],
+      "kinds": [
+        "for",
+        "if",
+        "if"
+      ],
       "function": "wounded_allies",
       "anchor": "for i = 1, #friends do",
       "condition": "same floor ; ally.hp < max/2",
@@ -233,6 +266,12 @@
         173,
         177,
         209
+      ],
+      "kinds": [
+        "for",
+        "for",
+        "if",
+        "if"
       ],
       "function": "blink_spot / blink",
       "anchor": "for k = 0, 7 do",
@@ -276,6 +315,10 @@
         204,
         223
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "resting (blink / swap)",
       "anchor": "if resting(self) then",
       "condition": "busy > fire_frequency",
@@ -315,6 +358,11 @@
         233,
         236
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
+      ],
       "function": "swap",
       "anchor": "if not partner then",
       "condition": "not partner ; not query_grid_passable(partner at her spot) ; not og.swap_places",
@@ -352,6 +400,9 @@
       "lines": [
         247
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "M.blink_or_swap",
       "anchor": "if self:alternate_down() then",
       "condition": "self:alternate_down()",
@@ -388,6 +439,13 @@
         266,
         267,
         273
+      ],
+      "kinds": [
+        "if",
+        "for",
+        "for",
+        "if",
+        "if"
       ],
       "function": "glimmer",
       "anchor": "if lc.is_busy(self) then",
@@ -437,6 +495,9 @@
       "lines": [
         295
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "M.hasten",
       "anchor": "if not target then",
       "condition": "not target",
@@ -465,6 +526,9 @@
       "id": "kit_faerie.lua:311",
       "lines": [
         311
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "M.wish",
       "anchor": "if not blood then",
@@ -498,6 +562,9 @@
       "id": "kit_faerie.lua:344",
       "lines": [
         344
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "affordable_swap_partner",
       "anchor": "if self.magicpoints < self:alternate_cost(1) then",
@@ -536,6 +603,18 @@
         370,
         380,
         382
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if"
       ],
       "function": "M.ai_blink",
       "anchor": "if og.match_setting(\"new_specials\") == 0 then",
@@ -617,6 +696,10 @@
         393,
         398
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "M.ai_glimmer",
       "anchor": "if og.match_setting(\"new_specials\") == 0 then",
       "condition": "off ; lc.is_busy",
@@ -681,6 +764,16 @@
         424,
         425
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if"
+      ],
       "function": "M.ai_hasten",
       "anchor": "if og.match_setting(\"new_specials\") == 0 then",
       "condition": "off ; ally ; speed_bonus_left == 0 ; ally:foe() alive ; self:foe() alive within 60",
@@ -731,6 +824,10 @@
         437,
         441
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "M.ai_wish",
       "anchor": "if og.match_setting(\"new_specials\") == 0 then",
       "condition": "off ; not wish_stain",
@@ -776,6 +873,12 @@
         32,
         273,
         315
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if"
       ],
       "kind": "defensive",
       "anchor": "if flash then",

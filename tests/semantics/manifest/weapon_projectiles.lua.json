@@ -6,6 +6,9 @@
       "lines": [
         8
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "explode_on_death",
       "anchor": "if self:skip_exit() == 0 then",
       "condition": "self:skip_exit() == 0",
@@ -43,6 +46,9 @@
       "lines": [
         12
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "explode_on_death",
       "anchor": "if not owner or owner:dead() ~= 0 then",
       "condition": "not owner or owner:dead() ~= 0",
@@ -75,6 +81,9 @@
       "id": "weapon_projectiles.lua:16",
       "lines": [
         16
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "defensive",
       "anchor": "if not explosion then",

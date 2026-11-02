@@ -6,6 +6,9 @@
       "lines": [
         22
       ],
+      "kinds": [
+        "or"
+      ],
       "function": "M.mid_teleport",
       "anchor": "return ani == C.ANI_TELE_OUT or ani == C.ANI_TELE_IN",
       "condition": "ani == ANI_TELE_OUT or ani == ANI_TELE_IN",
@@ -47,6 +50,10 @@
       "lines": [
         68,
         72
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "M.with_rest",
       "anchor": "if left > 0 and self:special_rest_slot() == slot then",
@@ -107,6 +114,11 @@
         86,
         87
       ],
+      "kinds": [
+        "if",
+        "and",
+        "and"
+      ],
       "function": "M.gate_with_rest",
       "anchor": "if self:current_special() == slot",
       "condition": "current_special()==slot and special_rest_slot()==slot and special_rest_left()>0",
@@ -142,6 +154,9 @@
       "id": "living_common.lua:90",
       "lines": [
         90
+      ],
+      "kinds": [
+        "if"
       ],
       "kind": "plumbing",
       "anchor": "if gate then",

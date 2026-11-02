@@ -9,6 +9,12 @@
         46,
         60
       ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if"
+      ],
       "function": "SimEventLog::push / push_with_text / push_notification / push_sound",
       "anchor": "if (suppressed_)",
       "condition": "suppressed_",
@@ -58,6 +64,9 @@
       "id": "sim_event_log.cpp:76",
       "lines": [
         76
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "SimEventLog::append",
       "anchor": "if (events.empty())",

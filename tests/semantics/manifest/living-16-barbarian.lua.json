@@ -6,6 +6,9 @@
       "lines": [
         16
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "do_special",
       "anchor": "if lc.is_busy(self) then",
       "condition": "if lc.is_busy(self) then return false, \"SPECIAL BUSY\"",
@@ -38,6 +41,9 @@
       "lines": [
         21
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "do_special",
       "anchor": "if not shot then",
       "condition": "if not shot then return false, \"COULD NOT FIRE\"",
@@ -66,6 +72,10 @@
         35,
         43
       ],
+      "kinds": [
+        "if",
+        "else"
+      ],
       "function": "do_special",
       "anchor": "if self:has_guy() then",
       "condition": "if self:has_guy() then stepsize = 1 + strength//7; damage += strength/5 else stepsize = 2*level; damage += level",
@@ -93,6 +103,10 @@
       "lines": [
         48,
         51
+      ],
+      "kinds": [
+        "if",
+        "if"
       ],
       "function": "do_special",
       "anchor": "if boulder:stepsize() < 1 then",
@@ -134,6 +148,12 @@
         59,
         61
       ],
+      "kinds": [
+        "if",
+        "elseif",
+        "if",
+        "elseif"
+      ],
       "function": "do_special",
       "anchor": "if boulder:lasty() > 0 then",
       "condition": "if lasty > 0 then stepsize elseif < 0 then -stepsize (same for lastx)",
@@ -171,6 +191,10 @@
       "lines": [
         65,
         67
+      ],
+      "kinds": [
+        "if",
+        "else"
       ],
       "function": "do_special",
       "anchor": "if self:current_special() == 2 then",
@@ -216,6 +240,10 @@
       "lines": [
         79,
         81
+      ],
+      "kinds": [
+        "if",
+        "else"
       ],
       "function": "boulder_reach",
       "anchor": "if self:has_guy() then",
@@ -264,6 +292,10 @@
         93,
         97
       ],
+      "kinds": [
+        "if",
+        "if"
+      ],
       "function": "boulder_target",
       "anchor": "if not f or not G.faces(self, f) then",
       "condition": "if not f or not G.faces(self, f) then nil; if max(gap_x, gap_y) > reach then nil",
@@ -306,6 +338,9 @@
       "id": "living-16-barbarian.lua:109",
       "lines": [
         109
+      ],
+      "kinds": [
+        "if"
       ],
       "function": "check_special_ai",
       "anchor": "if not gf.on() then",
@@ -355,6 +390,9 @@
       "lines": [
         113
       ],
+      "kinds": [
+        "if"
+      ],
       "function": "check_special_ai",
       "anchor": "if lc.is_busy(self) or not G.pad_clear(self) then",
       "condition": "if lc.is_busy(self) or not G.pad_clear(self) then return false",
@@ -400,6 +438,12 @@
         119,
         126,
         130
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "and"
       ],
       "function": "check_special_ai",
       "anchor": "if slot == 2 then",
@@ -460,6 +504,9 @@
       "lines": [
         25
       ],
+      "kinds": [
+        "if"
+      ],
       "kind": "defensive",
       "anchor": "if not boulder then",
       "note": "add_ob failure for the boulder: 'COULD NOT CREATE BOULDER'."
@@ -468,6 +515,9 @@
       "id": "living-16-barbarian.lua:125",
       "lines": [
         125
+      ],
+      "kinds": [
+        "for"
       ],
       "kind": "loop",
       "anchor": "for i = 1, #foes do",
@@ -478,6 +528,9 @@
       "lines": [
         153
       ],
+      "kinds": [
+        "and"
+      ],
       "kind": "dead",
       "anchor": "{ id = \"exploding_boulder\", name = \"EXPLODING BOULDER\", mp_cost = 30, detail = \"Hurl a boulder so hard that it explodes and hits foes all around.\", icon = \"icon",
       "note": "not a branch (prose 'and' in a detail/description string)"
@@ -486,6 +539,9 @@
       "id": "living-16-barbarian.lua:171",
       "lines": [
         171
+      ],
+      "kinds": [
+        "and"
       ],
       "kind": "dead",
       "anchor": "description = \"Barbarians are powerful and resist some magic damage, but have more will than skill. They are tough, tending to bash their way through trouble wi",
