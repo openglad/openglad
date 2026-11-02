@@ -2069,6 +2069,46 @@ set_tests_properties(lint_scenario_facts_selftest PROPERTIES
     TIMEOUT 60
 )
 
+# The simulation semantics manifest (tests/semantics/manifest, one file per
+# simulation source file; docs/sim-semantics.md) gives every branch point in
+# src/gameplay and the class-pack Lua a row: a rule with the tests that assert
+# each of its arms, or a note saying why the branch is plumbing. The check
+# fails on a branch line no row covers, a line two rows claim, a claimed line
+# that is no longer the branch the row recorded, a row whose anchor drifted,
+# a cited TEST or parity row that does not exist, and a rule
+# row that is not asserted (or deferred to an issue). Its self-test builds
+# small trees in a temp dir and pins every verdict and count exactly.
+if(Python3_Interpreter_FOUND)
+    add_test(NAME semantics_manifest_selftest
+        COMMAND ${CMAKE_COMMAND} -E env
+            PYTHONDONTWRITEBYTECODE=1
+            ${Python3_EXECUTABLE}
+            ${CMAKE_SOURCE_DIR}/scripts/semantics/check_manifest.py
+            --self-test
+    )
+    add_test(NAME semantics_manifest_check
+        COMMAND ${CMAKE_COMMAND} -E env
+            PYTHONDONTWRITEBYTECODE=1
+            ${Python3_EXECUTABLE}
+            ${CMAKE_SOURCE_DIR}/scripts/semantics/check_manifest.py
+            --repo ${CMAKE_SOURCE_DIR}
+    )
+else()
+    foreach(_og_sem_test semantics_manifest_selftest semantics_manifest_check)
+        add_test(NAME ${_og_sem_test}
+            COMMAND ${CMAKE_COMMAND} -E echo
+                "${_og_sem_test}: this check needs a Python 3 interpreter and none was found at configure time. Install Python 3 and reconfigure."
+        )
+        set_tests_properties(${_og_sem_test} PROPERTIES
+            FAIL_REGULAR_EXPRESSION "needs a Python 3 interpreter"
+        )
+    endforeach()
+endif()
+set_tests_properties(semantics_manifest_selftest semantics_manifest_check PROPERTIES
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    TIMEOUT 60
+)
+
 # The counter box's wave row was renamed in PR #292 (0464c673) and the prose
 # that named it by the old label was left pointing at a row that no longer
 # exists -- in campaign READMEs, mapgen comments and test comments, three of

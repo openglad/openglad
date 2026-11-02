@@ -1,0 +1,113 @@
+{
+  "path": "src/gameplay/treasure.cpp",
+  "rules": [
+    {
+      "id": "treasure.cpp:62",
+      "lines": [
+        62
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "treasure::eat_me",
+      "anchor": "if (auto hook_result = og::script::hooks::treasure_on_eat(tfd, this, eater))",
+      "condition": "treasure_on_eat hook present",
+      "semantic": "Whether a touched treasure is consumed is decided by its family's Lua on_eat (food heals, gold scores, keys, potions...); a family with no hook is simply eaten.",
+      "arms": [
+        {
+          "when": "hook",
+          "observable": "hook's bool (and its effects: hp, gold, flags)"
+        },
+        {
+          "when": "no hook",
+          "observable": "returns 1"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_treasure_eat.cpp",
+          "test": "TreasureEat.drumstick",
+          "note": "etc. (hook effects: hp)"
+        },
+        {
+          "file": "tests/integration/test_treasure_eat.cpp",
+          "test": "TreasureEat.drumstick_full_hp",
+          "note": "hook declines: hp unchanged, not dead"
+        },
+        {
+          "file": "tests/integration/test_treasure_eat.cpp",
+          "test": "TreasureEat.default_fallback_and_teleporter_wraparound",
+          "note": "no hook -> returns 1"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "treasure.cpp:95",
+      "lines": [
+        82,
+        90,
+        93,
+        95,
+        106,
+        109,
+        111
+      ],
+      "kinds": [
+        "if",
+        "for",
+        "if",
+        "if",
+        "for",
+        "if",
+        "if"
+      ],
+      "function": "treasure::find_teleport_target",
+      "anchor": "if(mine == ls.end())",
+      "condition": "self not in fxlist ; live && Treasure && TELEPORTER && same level (forward, then wrapped)",
+      "semantic": "A teleporter sends you to the next live teleporter with the same level number (its channel) after it in list order, wrapping to the start; if none matches you go nowhere.",
+      "arms": [
+        {
+          "when": "later same-level teleporter",
+          "observable": "that one"
+        },
+        {
+          "when": "only earlier one",
+          "observable": "wraps to the earlier one"
+        },
+        {
+          "when": "dead / other family / other level only",
+          "observable": "nullptr"
+        },
+        {
+          "when": "self not in fxlist",
+          "observable": "nullptr"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_treasure_eat.cpp",
+          "test": "TreasureEat.treasure_find_teleport_target_filters_invalid_candidates_and_wraps"
+        },
+        {
+          "file": "tests/integration/test_treasure_eat.cpp",
+          "test": "TreasureEat.treasure_find_teleport_target_loop_and_missing_self"
+        },
+        {
+          "file": "tests/integration/test_treasure_eat.cpp",
+          "test": "TreasureEat.treasure_batch7_explicit_fxlist_teleporter_branches"
+        },
+        {
+          "file": "tests/integration/test_treasure_eat.cpp",
+          "test": "TreasureEat.treasure_round10_find_teleport_target_forward_wrap_and_empty_paths"
+        }
+      ],
+      "missing_arms": []
+    }
+  ],
+  "other": []
+}

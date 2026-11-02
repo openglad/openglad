@@ -1,0 +1,386 @@
+{
+  "path": "src/gameplay/specials_view.cpp",
+  "rules": [
+    {
+      "id": "specials_view.cpp:33",
+      "lines": [
+        33
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "special_in_play",
+      "anchor": "if (fd == nullptr || !slot_in_range(slot))",
+      "condition": "fd == nullptr || !slot_in_range ; !special_new_kit || new_specials",
+      "semantic": "A class's New Specials kit slot exists only with New Specials on; classic slots are always in play (unknown family/slot is treated as in play).",
+      "arms": [
+        {
+          "when": "new-kit slot, setting off",
+          "observable": "false (name 'none', cost disabled)"
+        },
+        {
+          "when": "new-kit slot, setting on",
+          "observable": "true"
+        },
+        {
+          "when": "classic slot",
+          "observable": "true"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_specials_view.cpp",
+          "test": "SpecialsView.off_equals_registry_before_the_feature"
+        },
+        {
+          "file": "tests/unit/test_specials_view.cpp",
+          "test": "SpecialsView.alternate_cost_gates_only_when_shifted_and_in_play",
+          "note": "special_in_play(fd,2,0)==false, (fd,1,0)==true"
+        },
+        {
+          "file": "tests/unit/test_specials_view.cpp",
+          "test": "SpecialsView.cycle_skips_hidden_new_kit_slots"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "specials_view.cpp:41",
+      "lines": [
+        41,
+        43
+      ],
+      "kinds": [
+        "if",
+        "if"
+      ],
+      "function": "alternate_in_play",
+      "anchor": "if (!special_in_play(fd, slot, new_specials))",
+      "condition": "!special_in_play ; !alternate_new_kit || new_specials",
+      "semantic": "A shifted alternate exists only if its slot's special is in play and the alternate is either classic or New Specials is on.",
+      "arms": [
+        {
+          "when": "slot out of play",
+          "observable": "false"
+        },
+        {
+          "when": "new-kit alternate, setting off",
+          "observable": "false"
+        },
+        {
+          "when": "else",
+          "observable": "true"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_specials_view.cpp",
+          "test": "SpecialsView.alternate_cost_gates_only_when_shifted_and_in_play"
+        },
+        {
+          "file": "tests/unit/test_specials_view.cpp",
+          "test": "KitLuaTest.match_setting_and_alternate_down_follow_the_setting"
+        },
+        {
+          "file": "tests/unit/test_specials_view.cpp",
+          "test": "SpecialsView.off_view_matches_the_classic_six_literally",
+          "note": "classic CHARM OPPONENT alternate in play with the setting off"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "specials_view.cpp:51",
+      "lines": [
+        51,
+        60
+      ],
+      "kinds": [
+        "if",
+        "if"
+      ],
+      "function": "special_name / alternate_name",
+      "anchor": "if (fd == nullptr || !slot_in_range(slot) ||",
+      "condition": "fd null || slot out of range || not in play",
+      "semantic": "A special or alternate that is out of play has no name ('none'), which is what hides it from the HUD, the belt catalog and bot rolls.",
+      "arms": [
+        {
+          "when": "out of play",
+          "observable": "kSpecialNameNone"
+        },
+        {
+          "when": "bad slot / null descriptor",
+          "observable": "kSpecialNameNone"
+        },
+        {
+          "when": "in play",
+          "observable": "descriptor name"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_specials_view.cpp",
+          "test": "SpecialsView.off_equals_registry_before_the_feature",
+          "note": "probe slot 2 off -> NONE; DROP BOMB in play"
+        },
+        {
+          "file": "tests/unit/test_specials_view.cpp",
+          "test": "SpecialsView.off_view_matches_the_classic_six_literally"
+        },
+        {
+          "file": "tests/unit/test_specials_view.cpp",
+          "test": "SpecialsView.alternate_cost_gates_only_when_shifted_and_in_play",
+          "note": "alternate_name(fd,2,0)==NONE"
+        }
+      ],
+      "missing_arms": [
+        "bad slot / null descriptor"
+      ]
+    },
+    {
+      "id": "specials_view.cpp:69",
+      "lines": [
+        69
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "alternate_cost_in_play",
+      "anchor": "if (fd == nullptr || !slot_in_range(slot) ||",
+      "condition": "fd null || slot bad || !alternate_in_play",
+      "semantic": "A priced alternate has a price only while it is in play; out of play it costs 0 (meaning 'use the slot's own price').",
+      "arms": [
+        {
+          "when": "out of play",
+          "observable": "0"
+        },
+        {
+          "when": "in play",
+          "observable": "alternate_cost[slot]"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_specials_view.cpp",
+          "test": "SpecialsView.alternate_cost_gates_only_when_shifted_and_in_play"
+        },
+        {
+          "file": "tests/unit/test_kit_thief.cpp",
+          "test": "KitThief.mine_is_named_and_priced_only_with_the_setting_on"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "specials_view.cpp:77",
+      "lines": [
+        77
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "slot_open_level",
+      "anchor": "if (fd != nullptr && slot_in_range(slot) && fd->special_level[slot] != 0)",
+      "condition": "fd && slot_in_range && special_level[slot] != 0",
+      "semantic": "A special slot opens at the level its class declares, or at the classic 3n-2 (1,4,7,10,13) when none is declared.",
+      "arms": [
+        {
+          "when": "declared",
+          "observable": "special_level[slot]"
+        },
+        {
+          "when": "undeclared",
+          "observable": "3*slot-2"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_specials_view.cpp",
+          "test": "SpecialsView.a_slot_opens_at_its_own_level_or_at_three_n_minus_two"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "specials_view.cpp:96",
+      "lines": [
+        92,
+        96,
+        98,
+        104
+      ],
+      "kinds": [
+        "for",
+        "if",
+        "if",
+        "if"
+      ],
+      "function": "bot_slot_roll_bound",
+      "anchor": "for (int slot = 1; slot < FD_NUM_SPECIALS; ++slot) {",
+      "condition": "slot > bound && named_open ; named_open ; gameplay_fixes && bound > highest",
+      "semantic": "A bot rolls its special among the first (level+2)/3 slots, raised to include any named slot its class opens early; classic: the bound may exceed the last named slot, so an out-of-range roll folds back to slot 1; Gameplay Fixes on: the bound stops at the highest named open slot.",
+      "arms": [
+        {
+          "when": "classic count",
+          "observable": "(level+2)/3"
+        },
+        {
+          "when": "named slot opens early",
+          "observable": "bound raised to that slot"
+        },
+        {
+          "when": "fixes on and bound past last named",
+          "observable": "bound = highest named open slot"
+        },
+        {
+          "when": "fixes off",
+          "observable": "bound unclamped"
+        }
+      ],
+      "setting": "both",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_specials_view.cpp",
+          "test": "SpecialsView.the_bot_slot_roll_bound_is_the_classic_count_unless_a_row_opens_early"
+        },
+        {
+          "file": "tests/unit/test_specials_view.cpp",
+          "test": "SpecialsView.the_bot_slot_roll_bound_with_gameplay_fixes_on_stops_at_the_last_named_slot"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "specials_view.cpp:128",
+      "lines": [
+        128,
+        130,
+        132,
+        134,
+        137
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if",
+        "if"
+      ],
+      "function": "cast_cost",
+      "anchor": "if (!special_in_play(fd, slot, ns))",
+      "condition": "!special_in_play ; kit_state & (HIDDEN|CHANNEL) ; shifted && alternate > 0 ; stats null",
+      "semantic": "A special's MP price: an out-of-play slot is priced out (5000); a hidden or channelling walker's next press (pop up / release) is free; a shifted press of a priced alternate costs the alternate's price; otherwise the slot's own price.",
+      "arms": [
+        {
+          "when": "out of play",
+          "observable": "kSpecialCostDisabled"
+        },
+        {
+          "when": "KIT_HIDDEN or KIT_CHANNEL",
+          "observable": "0 (MP unchanged by the press)"
+        },
+        {
+          "when": "shifted, priced alternate",
+          "observable": "alternate_cost"
+        },
+        {
+          "when": "else",
+          "observable": "stats special_cost(slot)"
+        },
+        {
+          "when": "no stats",
+          "observable": "kSpecialCostDisabled (defensive)"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_specials_view.cpp",
+          "test": "SpecialsView.alternate_cost_gates_only_when_shifted_and_in_play",
+          "note": "out of play 5000, KIT_HIDDEN and KIT_CHANNEL both 0 across slots/flags/shift, priced alternate 70, own price 35"
+        },
+        {
+          "file": "tests/unit/test_specials_view.cpp",
+          "test": "SpecialsView.off_equals_registry_before_the_feature"
+        },
+        {
+          "file": "tests/unit/test_living_act_flow_unit.cpp",
+          "test": "LivingActFlow.the_act_path_never_reaches_an_unaffordable_slot"
+        },
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.second_press_pops_up_free_and_costs_nothing",
+          "note": "hidden arm, MP unchanged"
+        }
+      ],
+      "missing_arms": [
+        "no stats"
+      ]
+    },
+    {
+      "id": "specials_view.cpp:148",
+      "lines": [
+        148
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "cannot_afford_priced_alternate",
+      "anchor": "if (price == 0 || w.stats() == nullptr)",
+      "condition": "price == 0 || stats null ; mp < price",
+      "semantic": "A bot that cannot pay for a priced alternate drops its shift (casts the primary); an unpriced alternate never drops the shift; with New Specials off nothing is priced so nothing is dropped.",
+      "arms": [
+        {
+          "when": "priced, mp < price",
+          "observable": "check_special leaves shifter_down 0"
+        },
+        {
+          "when": "priced, affordable",
+          "observable": "shift kept, price = alternate"
+        },
+        {
+          "when": "unpriced or setting off",
+          "observable": "shift kept"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_bots.cpp",
+          "test": "KitBots.unaffordable_priced_alternate_drops_the_shift_only_when_priced"
+        }
+      ],
+      "missing_arms": []
+    }
+  ],
+  "other": [
+    {
+      "id": "specials_view.cpp:111",
+      "lines": [
+        111,
+        118
+      ],
+      "kinds": [
+        "if",
+        "if"
+      ],
+      "kind": "plumbing",
+      "function": "session_new_specials / session_gameplay_fixes",
+      "anchor": "if (current_game == nullptr || current_game->world == nullptr)",
+      "note": "Reads the current world's setting, 0 with no world. Pinned by TEST(SpecialsView, session_gameplay_fixes_reads_the_current_world)."
+    }
+  ]
+}

@@ -1,0 +1,773 @@
+{
+  "path": "packs/core/lib/kit_elemental.lua",
+  "rules": [
+    {
+      "id": "kit_elemental.lua:36",
+      "lines": [
+        36
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "M.end_channel",
+      "anchor": "if burning(self) then",
+      "condition": "burning(self)",
+      "semantic": "Ending IMMOLATE clears the channel mark on the elemental; it is a no-op when not burning. The dying elemental ends it so its parting starburst is never refused.",
+      "arms": [
+        {
+          "when": "burning",
+          "observable": "KIT_CHANNEL cleared"
+        },
+        {
+          "when": "not burning",
+          "observable": "kit_state unchanged"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_elemental.cpp",
+          "test": "KitElemental.dying_while_immolating_still_fires_the_parting_starburst"
+        },
+        {
+          "file": "tests/unit/test_kit_elemental.cpp",
+          "test": "KitElemental.second_press_ends_it_free_after_the_latch"
+        }
+      ],
+      "missing_arms": [
+        "not burning"
+      ]
+    },
+    {
+      "id": "kit_elemental.lua:66",
+      "lines": [
+        66,
+        69
+      ],
+      "kinds": [
+        "for",
+        "if"
+      ],
+      "function": "burn_contacts",
+      "anchor": "for i = 1, #foes do",
+      "condition": "for foes touching (box+4) ; entity_id(foe) == striker",
+      "semantic": "IMMOLATE burns every living foe on the elemental's floor touching its box grown by 4 px for immolate_contact + level each tick; the foe that last struck it burns double.",
+      "arms": [
+        {
+          "when": "foe touching (box + 4 px)",
+          "observable": "hp down by one rolled hit of base immolate_contact + level (6+L): walker::attack rolls d - sqrt(d)/2 + random(floor sqrt d) minus random(armor), so the test asserts a band (lost_one_hit_of)"
+        },
+        {
+          "when": "the foe that last struck the elemental",
+          "observable": "hp down by one rolled hit of base 2*(6+L)"
+        },
+        {
+          "when": "foe 5+ px away / an ally",
+          "observable": "hp unchanged"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_elemental.cpp",
+          "test": "KitElemental.immolate_drains_two_per_tick_burns_contact_melee_most_and_lays_embers"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_elemental.lua:81",
+      "lines": [
+        81,
+        83,
+        84,
+        85,
+        86,
+        89,
+        90,
+        102
+      ],
+      "kinds": [
+        "for",
+        "if",
+        "and",
+        "and",
+        "and",
+        "and",
+        "if",
+        "if"
+      ],
+      "function": "ember_underfoot / drop_ember",
+      "anchor": "for i = 1, #obs do",
+      "condition": "FX_EMBER and FX and not dead and owner ; on_spot and same floor ; ember_underfoot",
+      "semantic": "A burning elemental drops an ember at its feet (bottom centre) every ember_step ticks, but never a second one on a spot where one of its own still burns: standing still keeps one ember under it.",
+      "arms": [
+        {
+          "when": "own live ember on the spot",
+          "observable": "no new ember"
+        },
+        {
+          "when": "moved / ember gone",
+          "observable": "a new ember at bottom centre, damage 4+level/2, lifetime 40"
+        },
+        {
+          "when": "own ember on spot but other floor",
+          "observable": "new ember (executed-only)"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_elemental.cpp",
+          "test": "KitElemental.standing_burner_keeps_one_ember_underfoot"
+        },
+        {
+          "file": "tests/unit/test_kit_elemental.cpp",
+          "test": "KitElemental.embers_burn_crossers_then_die"
+        },
+        {
+          "file": "tests/unit/test_kit_elemental.cpp",
+          "test": "KitElemental.immolate_drains_two_per_tick_burns_contact_melee_most_and_lays_embers"
+        }
+      ],
+      "missing_arms": [
+        "own ember on spot but other floor"
+      ],
+      "note": [
+        "unasserted: own ember on the spot but on another floor -> a new ember"
+      ]
+    },
+    {
+      "id": "kit_elemental.lua:126",
+      "lines": [
+        126,
+        131,
+        136,
+        146
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if"
+      ],
+      "function": "immolation_act",
+      "anchor": "if not owner then",
+      "condition": "not owner ; magicpoints < drain ; lifetime <= 0 ; lifetime % ember_step == 0",
+      "semantic": "IMMOLATE drains immolate_drain MP a tick; it goes out when the elemental is gone, when the pool cannot pay the next tick, or after immolate_max ticks; its clock is cut to what the mana left buys.",
+      "arms": [
+        {
+          "when": "owner gone",
+          "observable": "marker dead"
+        },
+        {
+          "when": "mp < 2",
+          "observable": "quench: channel off, marker dead"
+        },
+        {
+          "when": "lifetime hits 0",
+          "observable": "quench at immolate_max"
+        },
+        {
+          "when": "mp left",
+          "observable": "mp -2, lifetime = min(lifetime, mp/2+1)"
+        },
+        {
+          "when": "lifetime % 4 == 0",
+          "observable": "drop_ember"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_elemental.cpp",
+          "test": "KitElemental.immolate_at_low_mana_goes_out"
+        },
+        {
+          "file": "tests/unit/test_kit_elemental.cpp",
+          "test": "KitElemental.immolation_clock_reads_what_the_mana_buys"
+        },
+        {
+          "file": "tests/unit/test_kit_elemental.cpp",
+          "test": "KitElemental.immolate_burns_out_after_its_longest_burn"
+        },
+        {
+          "file": "tests/unit/test_kit_elemental.cpp",
+          "test": "KitElemental.dying_while_immolating_still_fires_the_parting_starburst"
+        },
+        {
+          "file": "tests/unit/test_kit_elemental.cpp",
+          "test": "KitElemental.immolate_drains_two_per_tick_burns_contact_melee_most_and_lays_embers"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_elemental.lua:177",
+      "lines": [
+        177,
+        183,
+        186
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
+      ],
+      "function": "meteor_rain_act",
+      "anchor": "if not owner then",
+      "condition": "not owner ; lifetime % rain_cadence == 0 ; lifetime <= 0",
+      "semantic": "METEOR RAIN strikes a fire explosion within rain_spread of its spot every rain_cadence (6) ticks for rain_ticks and stops when its caster dies.",
+      "arms": [
+        {
+          "when": "caster gone",
+          "observable": "marker dead, no more strikes"
+        },
+        {
+          "when": "lifetime % 6 == 0",
+          "observable": "one FX explosion within 40 px, BIT_FIRE, skip_exit 100, SOUND_EXPLODE"
+        },
+        {
+          "when": "lifetime 0",
+          "observable": "marker dead"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_elemental.cpp",
+          "test": "KitElemental.meteor_rain_strikes_the_target_area_every_six_ticks"
+        },
+        {
+          "file": "tests/unit/test_kit_elemental.cpp",
+          "test": "KitElemental.meteor_rain_finds_the_nearest_foe_and_stops_with_its_caster"
+        }
+      ],
+      "missing_arms": [
+        "lifetime % 6 == 0"
+      ]
+    },
+    {
+      "id": "kit_elemental.lua:197",
+      "lines": [
+        197,
+        243,
+        328
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
+      ],
+      "function": "M.starburst / M.meteor_rain / M.rekindle_or_supernova",
+      "anchor": "if burning(self) then",
+      "condition": "burning(self)",
+      "semantic": "While IMMOLATE burns (every slot priced 0), STARBURST, METEOR RAIN and REKINDLE/SUPERNOVA refuse 'QUENCH IMMOLATE FIRST' instead of casting for nothing.",
+      "arms": [
+        {
+          "when": "burning",
+          "observable": "false, 'QUENCH IMMOLATE FIRST', no MP, nothing spawned"
+        },
+        {
+          "when": "not burning",
+          "observable": "the cast runs and pays"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_elemental.cpp",
+          "test": "KitElemental.a_burning_elemental_casts_nothing_else_for_free"
+        },
+        {
+          "file": "tests/unit/test_kit_elemental.cpp",
+          "test": "KitElemental.meteor_rain_strikes_the_target_area_every_six_ticks"
+        },
+        {
+          "file": "tests/unit/test_kit_elemental.cpp",
+          "test": "KitElemental.rekindle_heals_and_refuses_at_full"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_elemental.lua:209",
+      "lines": [
+        209,
+        210
+      ],
+      "kinds": [
+        "if",
+        "if"
+      ],
+      "function": "M.immolate",
+      "anchor": "if marker then",
+      "condition": "marker ; age < kit_latch",
+      "semantic": "IMMOLATE is a toggle: the first press lights it (KIT_CHANNEL on), a second press inside the 10-tick latch is refused IMMOLATE SETTLING, after it quenches for free.",
+      "arms": [
+        {
+          "when": "no marker",
+          "observable": "marker spawned, channel on"
+        },
+        {
+          "when": "marker age < 10",
+          "observable": "'IMMOLATE SETTLING', nothing spent"
+        },
+        {
+          "when": "marker age >= 10",
+          "observable": "quench: channel off, marker dead, 0 MP"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_elemental.cpp",
+          "test": "KitElemental.second_press_ends_it_free_after_the_latch"
+        },
+        {
+          "file": "tests/unit/test_kit_elemental.cpp",
+          "test": "KitElemental.immolate_drains_two_per_tick_burns_contact_melee_most_and_lays_embers"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_elemental.lua:226",
+      "lines": [
+        226,
+        229,
+        232,
+        235
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if"
+      ],
+      "function": "rain_target",
+      "anchor": "if not foe then",
+      "condition": "not foe ; dead ; floor differs ; distance > rain_range",
+      "semantic": "METEOR RAIN falls only on a foe that is alive, on the caster's floor and within rain_range (160).",
+      "arms": [
+        {
+          "when": "nil/dead/other floor/far",
+          "observable": "nil"
+        },
+        {
+          "when": "valid",
+          "observable": "the foe"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_elemental.cpp",
+          "test": "KitElemental.meteor_rain_passes_over_a_dead_foe"
+        },
+        {
+          "file": "tests/unit/test_kit_elemental.cpp",
+          "test": "KitElemental.meteor_rain_strikes_the_target_area_every_six_ticks"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_elemental.lua:248",
+      "lines": [
+        248,
+        251
+      ],
+      "kinds": [
+        "if",
+        "if"
+      ],
+      "function": "M.meteor_rain",
+      "anchor": "if not target then",
+      "condition": "not target (self:foe()) -> find_near_foe ; not target",
+      "semantic": "METEOR RAIN targets the caster's current foe when valid, else the nearest foe; with neither it refuses NO TARGET IN RANGE for free.",
+      "arms": [
+        {
+          "when": "current foe valid",
+          "observable": "rain marker centred on it"
+        },
+        {
+          "when": "current foe invalid, a near foe",
+          "observable": "rain on the near foe"
+        },
+        {
+          "when": "none",
+          "observable": "'NO TARGET IN RANGE'"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_elemental.cpp",
+          "test": "KitElemental.meteor_rain_finds_the_nearest_foe_and_stops_with_its_caster"
+        },
+        {
+          "file": "tests/unit/test_kit_elemental.cpp",
+          "test": "KitElemental.meteor_rain_passes_over_a_dead_foe"
+        },
+        {
+          "file": "tests/unit/test_kit_elemental.cpp",
+          "test": "KitElemental.meteor_rain_strikes_the_target_area_every_six_ticks"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_elemental.lua:266",
+      "lines": [
+        266
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "rekindle",
+      "anchor": "if self.hp >= self.max_hp then",
+      "condition": "self.hp >= self.max_hp",
+      "semantic": "REKINDLE heals rekindle_hp + 4/level (clamped to max) and refuses at full health for free.",
+      "arms": [
+        {
+          "when": "full",
+          "observable": "'ALREADY AT FULL HEALTH'"
+        },
+        {
+          "when": "hurt",
+          "observable": "hp + 40 + 4L clamped, hit flash, SOUND_HEAL"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_elemental.cpp",
+          "test": "KitElemental.rekindle_heals_and_refuses_at_full"
+        }
+      ],
+      "missing_arms": [
+        "hurt"
+      ]
+    },
+    {
+      "id": "kit_elemental.lua:306",
+      "lines": [
+        306,
+        307,
+        308
+      ],
+      "kinds": [
+        "for",
+        "for",
+        "if"
+      ],
+      "function": "supernova",
+      "anchor": "for i = -1, 1 do",
+      "condition": "for i, j in -1..1 ; i ~= 0 or j ~= 0",
+      "semantic": "SUPERNOVA turns all the elemental's health into one blast (1.5*hp + 15/level, level doubled up to 24) plus eight half-damage blasts in a ring nova_ring_px out; then it dies and its parting starburst follows.",
+      "arms": [
+        {
+          "when": "cast",
+          "observable": "9 KIT_NOVA explosions (centre + 8 ring at +-40), elemental dead, 8 starburst meteors"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_elemental.cpp",
+          "test": "KitElemental.supernova_spends_all_health_blasts_a_ring_and_the_starburst_follows"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_elemental.lua:332",
+      "lines": [
+        332
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "M.rekindle_or_supernova",
+      "anchor": "if self:shifter_down() ~= 0 then",
+      "condition": "self:shifter_down() ~= 0",
+      "semantic": "Slot 4 is REKINDLE unshifted and SUPERNOVA shifted.",
+      "arms": [
+        {
+          "when": "shift",
+          "observable": "supernova"
+        },
+        {
+          "when": "no shift",
+          "observable": "rekindle"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_elemental.cpp",
+          "test": "KitElemental.supernova_spends_all_health_blasts_a_ring_and_the_starburst_follows"
+        },
+        {
+          "file": "tests/unit/test_kit_elemental.cpp",
+          "test": "KitElemental.rekindle_heals_and_refuses_at_full"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_elemental.lua:347",
+      "lines": [
+        347,
+        350,
+        353
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
+      ],
+      "function": "M.ai_immolate",
+      "anchor": "if og.match_setting(\"new_specials\") == 0 then",
+      "condition": "new_specials off ; burning ; magicpoints <= 60",
+      "semantic": "A bot elemental lights IMMOLATE with a living foe at blows and more than 60 MP (its classic-style foe search within 40 runs for the draw and the foe); while burning it casts again (quench) only once no living foe is within 40 on its floor.",
+      "arms": [
+        {
+          "when": "off",
+          "observable": "true, no draw"
+        },
+        {
+          "when": "burning, foe within 40",
+          "observable": "false (keep burning)"
+        },
+        {
+          "when": "burning alone",
+          "observable": "true (quench)"
+        },
+        {
+          "when": "mp <= 60",
+          "observable": "false"
+        },
+        {
+          "when": "foe at blows",
+          "observable": "true, foe acquired"
+        },
+        {
+          "when": "10 px gap",
+          "observable": "false"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_elemental.cpp",
+          "test": "KitElemental.ai_immolate_fires_when_a_foe_is_close_and_mana_is_high"
+        },
+        {
+          "file": "tests/unit/test_bot_gates_kits.cpp",
+          "test": "GameplayFixesBots.elemental_immolate_lights_at_blows_and_quenches_alone"
+        },
+        {
+          "file": "tests/unit/test_kit_elemental.cpp",
+          "test": "KitElemental.ai_off_answers_the_classic_gate"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_elemental.lua:362",
+      "lines": [
+        362,
+        365,
+        371,
+        372,
+        381,
+        384
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "for",
+        "if",
+        "for",
+        "if"
+      ],
+      "function": "M.ai_meteor",
+      "anchor": "if og.match_setting(\"new_specials\") == 0 then",
+      "condition": "new_specials off ; not check_special_ai_distance(160) ; distance(target) <= 60 ; dx <= 71 and dy <= 71",
+      "semantic": "A bot elemental calls METEOR RAIN on its foe within 160 when at least one more foe stands within 60 of it, and never when one of its allies stands inside the strike box (71 px each axis of the target).",
+      "arms": [
+        {
+          "when": "off",
+          "observable": "true"
+        },
+        {
+          "when": "no foe within 160",
+          "observable": "false"
+        },
+        {
+          "when": "lone foe",
+          "observable": "false"
+        },
+        {
+          "when": "two foes clustered",
+          "observable": "true"
+        },
+        {
+          "when": "living ally 30 px / far corner 71,71",
+          "observable": "false"
+        },
+        {
+          "when": "ally 72 px",
+          "observable": "true"
+        },
+        {
+          "when": "a friendly generator (team-0 FAMILY_TOWER1 tent) with top-left inside the 71 px box of the target, two foes clustered",
+          "observable": "true: the tent does NOT hold the rain (og.find_friends_in_range is Living-only, game_world.cpp:1390-1415; unasserted)"
+        },
+        {
+          "when": "one living foe plus an ENEMY tent within 60 of the target",
+          "observable": "true (the tent counts toward the cluster; unasserted)"
+        },
+        {
+          "when": "a living ally inside the box but on another floor",
+          "observable": "false: the friend scan has no floor filter (unasserted)"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_elemental.cpp",
+          "test": "KitElemental.ai_meteor_fires_on_a_cluster_in_range"
+        },
+        {
+          "file": "tests/unit/test_kit_elemental.cpp",
+          "test": "KitElemental.ai_meteor_holds_fire_over_an_ally"
+        },
+        {
+          "file": "tests/unit/test_kit_elemental.cpp",
+          "test": "KitElemental.ai_meteor_holds_fire_over_a_far_corner_ally"
+        },
+        {
+          "file": "tests/unit/test_kit_elemental.cpp",
+          "test": "KitElemental.ai_meteor_fires_with_the_ally_clear"
+        },
+        {
+          "file": "tests/unit/test_kit_elemental.cpp",
+          "test": "KitElemental.ai_off_answers_the_classic_gate"
+        }
+      ],
+      "missing_arms": [
+        "a friendly generator (team-0 FAMILY_TOWER1 tent) with top-left inside the 71 px box of the target, two foes clustered",
+        "one living foe plus an ENEMY tent within 60 of the target",
+        "a living ally inside the box but on another floor"
+      ],
+      "note": [
+        "unasserted: friendly tent inside the strike box does not hold the rain",
+        "unasserted: enemy tent counted toward the cluster",
+        "unasserted: ally on another floor holds the rain"
+      ]
+    },
+    {
+      "id": "kit_elemental.lua:395",
+      "lines": [
+        395,
+        399,
+        401,
+        408
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if"
+      ],
+      "function": "M.ai_rekindle",
+      "anchor": "if og.match_setting(\"new_specials\") == 0 then",
+      "condition": "new_specials off ; hp < max/5 ; close >= 2 ; hp >= max/2",
+      "semantic": "A bot elemental goes SUPERNOVA (shift 1) below a fifth of its health with two bodies the finder counts as foes within 48; otherwise REKINDLE (shift 0) below half health when it can pay REKINDLE's 40; else holds.",
+      "arms": [
+        {
+          "when": "off",
+          "observable": "true"
+        },
+        {
+          "when": "full health",
+          "observable": "false, shift 0"
+        },
+        {
+          "when": "below half, one foe",
+          "observable": "true, shift 0"
+        },
+        {
+          "when": "below a fifth, two within 48",
+          "observable": "true, shift 1"
+        },
+        {
+          "when": "below half, 25 MP",
+          "observable": "false"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_elemental.cpp",
+          "test": "KitElemental.ai_rekindle_heals_when_hurt_and_novas_when_cornered"
+        },
+        {
+          "file": "tests/unit/test_bot_gates_kits.cpp",
+          "test": "GameplayFixesBots.elemental_rekindle_is_not_forced_on_a_pool_that_cannot_pay_it"
+        },
+        {
+          "file": "tests/unit/test_kit_elemental.cpp",
+          "test": "KitElemental.ai_off_answers_the_classic_gate"
+        }
+      ],
+      "missing_arms": []
+    }
+  ],
+  "other": [
+    {
+      "id": "kit_elemental.lua:50",
+      "lines": [
+        50,
+        106,
+        156,
+        217,
+        255,
+        278,
+        301,
+        310
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if"
+      ],
+      "kind": "defensive",
+      "anchor": "if flash then",
+      "note": "og.add_ob / km.spawn nil when the world is full: flash, ember, meteor strike, immolation marker (COULD NOT IGNITE), rain marker (COULD NOT CALL METEORS), nova blast and ring blast are skipped or refused"
+    }
+  ]
+}

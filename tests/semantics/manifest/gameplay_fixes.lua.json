@@ -1,0 +1,247 @@
+{
+  "path": "packs/core/lib/gameplay_fixes.lua",
+  "rules": [
+    {
+      "id": "gameplay_fixes.lua:19",
+      "lines": [
+        19
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "M.turn_range",
+      "anchor": "if not M.on() then",
+      "condition": "not M.on()",
+      "semantic": "TURN UNDEAD reaches 4 px per cleric level; with Gameplay Fixes on it never reaches less than turn_undead_range_min (60 px). The roll strength is unchanged.",
+      "arms": [
+        {
+          "when": "fixes off",
+          "observable": "reach = 4*level (L1: 4 px)"
+        },
+        {
+          "when": "fixes on",
+          "observable": "reach = max(4*level, 60)"
+        }
+      ],
+      "setting": "both",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_gameplay_fixes_lib.cpp",
+          "test": "GameplayFixesLua.gf_turn_range_has_a_floor_only_when_on"
+        },
+        {
+          "file": "tests/integration/test_gameplay_fixes_cleric.cpp",
+          "test": "GameplayFixesCleric.turn_undead_reaches_sixty_px_when_on"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "gameplay_fixes.lua:38",
+      "lines": [
+        38,
+        41,
+        44
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
+      ],
+      "function": "M.charmable",
+      "anchor": "if foe:real_team_num() ~= 255 then",
+      "condition": "real_team_num ~= 255 / order ~= LIVING / not fixes",
+      "semantic": "A charm can take a foe that is not already charmed and is a living body; with Gameplay Fixes on, never a hero a player is driving (HERO RESISTS).",
+      "arms": [
+        {
+          "when": "already charmed (real_team_num ~= 255)",
+          "observable": "false"
+        },
+        {
+          "when": "not living order",
+          "observable": "false"
+        },
+        {
+          "when": "fixes off",
+          "observable": "true"
+        },
+        {
+          "when": "fixes on and seat-driven",
+          "observable": "false"
+        },
+        {
+          "when": "fixes on and not driven",
+          "observable": "true"
+        }
+      ],
+      "setting": "both",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_gameplay_fixes_lib.cpp",
+          "test": "GameplayFixesLua.gf_charmable_skips_a_seated_hero_only_with_the_fixes"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "gameplay_fixes.lua:60",
+      "lines": [
+        60,
+        63,
+        65
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
+      ],
+      "function": "M.nearest_charmable",
+      "anchor": "if eligible and max_level ~= nil then",
+      "condition": "eligible and max_level ~= nil / eligible / best == nil or dist < best_dist",
+      "semantic": "With Gameplay Fixes on, the thief's and archmage's charms pick the nearest charmable foe (distance_to_ob), ties to the first in the list, and only one at or below the caster's level where a level cap applies (a higher level always resists). Draws nothing.",
+      "arms": [
+        {
+          "when": "foe above max_level",
+          "observable": "ineligible"
+        },
+        {
+          "when": "eligible and nearer",
+          "observable": "becomes best"
+        },
+        {
+          "when": "equal distance",
+          "observable": "first in list kept"
+        },
+        {
+          "when": "none eligible",
+          "observable": "nil"
+        }
+      ],
+      "setting": "fixes-on",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_gameplay_fixes_lib.cpp",
+          "test": "GameplayFixesLua.gf_nearest_charmable_takes_the_nearest_eligible_foe"
+        },
+        {
+          "parity": "thief_charm_nearest_fixes_scen99",
+          "fact": ""
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "gameplay_fixes.lua:82",
+      "lines": [
+        82
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "M.special_busy",
+      "anchor": "if M.on() then",
+      "condition": "M.on() -> busy > 0 ; else busy ~= 0",
+      "semantic": "The soldier's WHIRLWIND/DISARM and the archer's BARRAGE/EXPLODING BOLT refuse SPECIAL BUSY while busy. Classic: any non-zero busy refuses, so a hero whose fractional fire delay left busy a hair below zero is refused forever. Fixed: busy at or below zero is not busy.",
+      "arms": [
+        {
+          "when": "fixes off, busy < 0 (e.g. -0.2 after a hero shot)",
+          "observable": "SPECIAL BUSY forever"
+        },
+        {
+          "when": "fixes on, busy <= 0",
+          "observable": "casts"
+        },
+        {
+          "when": "busy > 0",
+          "observable": "busy on both"
+        },
+        {
+          "when": "busy == 0",
+          "observable": "casts on both"
+        }
+      ],
+      "setting": "both",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_gameplay_fixes_special_busy.cpp",
+          "test": "GameplayFixesSpecialBusy.whirlwind_after_a_shot"
+        },
+        {
+          "file": "tests/integration/test_gameplay_fixes_special_busy.cpp",
+          "test": "GameplayFixesSpecialBusy.disarm_after_a_shot"
+        },
+        {
+          "file": "tests/integration/test_gameplay_fixes_special_busy.cpp",
+          "test": "GameplayFixesSpecialBusy.archer_specials_after_a_shot"
+        },
+        {
+          "file": "tests/integration/test_gameplay_fixes_special_busy.cpp",
+          "test": "GameplayFixesSpecialBusy.positive_and_zero_busy_are_unchanged"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "gameplay_fixes.lua:96",
+      "lines": [
+        96
+      ],
+      "kinds": [
+        "and"
+      ],
+      "function": "M.pad_blocked_by_terrain",
+      "anchor": "return M.on() and self:fire_pad_answer() == \"terrain\"",
+      "condition": "M.on() and self:fire_pad_answer() == \"terrain\"",
+      "semantic": "With Gameplay Fixes on (AC), an elf or druid volley/bolt whose launch pad is refused by terrain (a wall face, the map edge, a tree crown for a non-forest weapon; never water) is refused before the refund and the swing; a body on the pad does not count (fixes H/I keep that paid blow). Classic: the cast swings at nothing and still pays.",
+      "arms": [
+        {
+          "when": "fixes off",
+          "observable": "false always (classic: cast proceeds, one swing paid)"
+        },
+        {
+          "when": "fixes on, pad on terrain",
+          "observable": "true: cast refused, nothing spent"
+        },
+        {
+          "when": "fixes on, body on pad or pad clear",
+          "observable": "false"
+        }
+      ],
+      "setting": "both",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_gameplay_fixes_lib.cpp",
+          "test": "GameplayFixesLua.gf_pad_blocked_by_terrain_is_the_grid_half_only_with_the_fixes"
+        },
+        {
+          "file": "tests/integration/test_gameplay_fixes_elf.cpp",
+          "test": "GameplayFixesElf.a_volley_at_a_wall_spends_nothing_with_the_setting_on"
+        },
+        {
+          "file": "tests/integration/test_gameplay_fixes_druid.cpp",
+          "test": "GameplayFixesDruid.a_cast_at_terrain_spends_nothing_with_the_setting_on"
+        }
+      ],
+      "missing_arms": []
+    }
+  ],
+  "other": [
+    {
+      "id": "gameplay_fixes.lua:57",
+      "lines": [
+        57
+      ],
+      "kinds": [
+        "for"
+      ],
+      "kind": "loop",
+      "anchor": "for i = 1, #foes do",
+      "note": "scan for the nearest charmable foe; rules at gameplay_fixes.lua:60, :63"
+    }
+  ]
+}

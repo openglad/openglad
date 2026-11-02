@@ -1,0 +1,99 @@
+{
+  "path": "src/gameplay/placement.cpp",
+  "rules": [
+    {
+      "id": "placement.cpp:23",
+      "lines": [
+        23
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "declares_blocks_placement",
+      "anchor": "if (w.query_order() != Order::Weapon)",
+      "condition": "query_order() != Order::Weapon ; wfd && blocks_placement",
+      "semantic": "Only weapon-order scenery whose family declares blocks_placement (bone wall, war banner) blocks spawn/summon placement spots; livings and other weapons do not.",
+      "arms": [
+        {
+          "when": "non-weapon",
+          "observable": "false"
+        },
+        {
+          "when": "declaring weapon",
+          "observable": "true"
+        },
+        {
+          "when": "other weapon",
+          "observable": "false"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_specials_view.cpp",
+          "test": "SpecialsView.blocks_placement_reaches_the_predicate"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "placement.cpp:41",
+      "lines": [
+        41
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "swap_places",
+      "anchor": "if (&a == &b || !swappable(a) || !swappable(b))",
+      "condition": "&a == &b || !swappable(a) || !swappable(b)",
+      "semantic": "Two different walkers that are alive, awake and visible trade positions and floors (nothing underfoot is eaten, both stay indexed once); a walker cannot swap with itself or with a dead, dormant or hidden walker.",
+      "arms": [
+        {
+          "when": "same walker",
+          "observable": "false, nothing moves"
+        },
+        {
+          "when": "either hidden",
+          "observable": "false, nothing moves"
+        },
+        {
+          "when": "either dead or dormant",
+          "observable": "false, nothing moves"
+        },
+        {
+          "when": "ok",
+          "observable": "true, positions and floors exchanged, obmap 1 entry each"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_script_bindings_props.cpp",
+          "test": "ScriptBindingPropsTest.kit_swap_places_trades_spots_and_floors_and_eats_nothing",
+          "note": "self -> false; ok -> positions/floors exchanged, 1 obmap entry each, food not eaten; hidden -> false, nothing moves"
+        }
+      ],
+      "missing_arms": [
+        "either dead or dormant"
+      ]
+    }
+  ],
+  "other": [
+    {
+      "id": "placement.cpp:45",
+      "lines": [
+        45
+      ],
+      "kinds": [
+        "if"
+      ],
+      "kind": "defensive",
+      "function": "swap_places",
+      "anchor": "if (world.myobmap != nullptr) {",
+      "note": "No obmap in a bare world: skip removal. Null guard."
+    }
+  ]
+}

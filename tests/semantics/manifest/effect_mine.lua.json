@@ -1,0 +1,337 @@
+{
+  "path": "packs/core/lib/effect_mine.lua",
+  "rules": [
+    {
+      "id": "effect_mine.lua:18",
+      "lines": [
+        18,
+        21,
+        24
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
+      ],
+      "function": "trips",
+      "anchor": "if foe:floor() ~= self:floor() then",
+      "condition": "foe floor differs / BIT_FLYING / flight_left > 0",
+      "semantic": "A thief's mine is set off only by a foe on its floor who is on its feet: a flying family or a walker under a flight potion floats over it.",
+      "arms": [
+        {
+          "when": "other floor",
+          "observable": "no trip"
+        },
+        {
+          "when": "flying family",
+          "observable": "no trip"
+        },
+        {
+          "when": "flight potion active",
+          "observable": "no trip"
+        },
+        {
+          "when": "grounded foe overlapping the mine box",
+          "observable": "trip -> detonate"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_thief.cpp",
+          "test": "KitThief.flying_foe_does_not_trip_a_mine"
+        },
+        {
+          "file": "tests/unit/test_kit_thief.cpp",
+          "test": "KitThief.mine_detonates_under_a_foe_not_an_ally"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "effect_mine.lua:40",
+      "lines": [
+        40
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "on_act (core:mine)",
+      "anchor": "if self:ani_type() ~= C.ANI_WALK then",
+      "condition": "self:ani_type() ~= C.ANI_WALK",
+      "semantic": "A mine lit by a neighbour's blast blows on its own next act (no recursion inside the first death).",
+      "arms": [
+        {
+          "when": "lit (ani_type EXPLODE)",
+          "observable": "dead; explosion spawned this act"
+        },
+        {
+          "when": "unlit",
+          "observable": "ages and waits"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_thief.cpp",
+          "test": "KitThief.mines_chain_on_their_own_next_tick"
+        },
+        {
+          "file": "tests/unit/test_kit_thief.cpp",
+          "test": "KitThief.mine_is_laid_invisible_and_waits"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "effect_mine.lua:45",
+      "lines": [
+        45
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "on_act (core:mine)",
+      "anchor": "if self:lifetime() <= 0 then",
+      "condition": "self:lifetime() <= 0",
+      "semantic": "A mine that nobody steps on for its lifetime (600 + 30 per level ticks) expires quietly: hp is set negative so its death makes no blast.",
+      "arms": [
+        {
+          "when": "lifetime reaches 0",
+          "observable": "dead, hp -1, no explosion spawned"
+        },
+        {
+          "when": "time left",
+          "observable": "trip scan"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_thief.cpp",
+          "test": "KitThief.mine_expires_quietly"
+        }
+      ],
+      "missing_arms": [
+        "lifetime reaches 0"
+      ]
+    },
+    {
+      "id": "effect_mine.lua:53",
+      "lines": [
+        53
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "on_act (core:mine)",
+      "anchor": "if trips(self, foes[i]) then",
+      "condition": "trips(self, foes[i])",
+      "semantic": "A mine blows under the first foe that trips it; allies walk over their own mines; otherwise it blinks (frame = (world_tick/8) % 2).",
+      "arms": [
+        {
+          "when": "a foe trips it",
+          "observable": "mine dead; explosion with the thief's damage at the mine"
+        },
+        {
+          "when": "only allies / nobody",
+          "observable": "mine alive; frame toggles every 8 world ticks"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_thief.cpp",
+          "test": "KitThief.mine_detonates_under_a_foe_not_an_ally"
+        },
+        {
+          "file": "tests/unit/test_kit_thief.cpp",
+          "test": "KitThief.mine_is_laid_invisible_and_waits"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "effect_mine.lua:66",
+      "lines": [
+        66
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "leave_puff",
+      "anchor": "if not puff then",
+      "condition": "not puff",
+      "semantic": "A high-level mine's poison puff is skipped in a full world (the blast still happens).",
+      "arms": [
+        {
+          "when": "world full",
+          "observable": "no FAMILY_CLOUD; explosion still spawned (if it fit)"
+        },
+        {
+          "when": "spawned",
+          "observable": "cloud: owner, team, floor, ignore 1, lifetime 20, invisibility 10, ANI_SPIN, damage level/2"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_thief.cpp",
+          "test": "KitThief.high_level_mine_leaves_a_puff"
+        }
+      ],
+      "missing_arms": [
+        "world full"
+      ]
+    },
+    {
+      "id": "effect_mine.lua:87",
+      "lines": [
+        87,
+        88,
+        89,
+        90,
+        91,
+        92
+      ],
+      "kinds": [
+        "if",
+        "and",
+        "and",
+        "and",
+        "and",
+        "and"
+      ],
+      "function": "light_neighbours",
+      "anchor": "if ob ~= self",
+      "condition": "ob ~= self and FX and family MINE and alive and same team and distance_to_ob <= 24",
+      "semantic": "A mine's blast lights every other live mine of the same TEAM (not owner, so a dead thief's mines still chain) within 24 px; each blows on its own next act. Foe mines and far mines are not lit.",
+      "arms": [
+        {
+          "when": "same-team live mine within 24 px",
+          "observable": "its ani_type = ANI_EXPLODE (blows next act)"
+        },
+        {
+          "when": "foe-team mine / farther / dead / not a mine",
+          "observable": "unchanged"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_thief.cpp",
+          "test": "KitThief.mines_chain_on_their_own_next_tick"
+        }
+      ],
+      "missing_arms": [
+        "foe-team mine / farther / dead / not a mine"
+      ]
+    },
+    {
+      "id": "effect_mine.lua:101",
+      "lines": [
+        101
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "on_death (core:mine)",
+      "anchor": "if self.hp < 0 then",
+      "condition": "self.hp < 0",
+      "semantic": "An expired mine (hp < 0) leaves without a blast, chain or puff.",
+      "arms": [
+        {
+          "when": "hp < 0",
+          "observable": "no explosion, neighbours not lit"
+        },
+        {
+          "when": "else",
+          "observable": "blast + chain + maybe puff"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_thief.cpp",
+          "test": "KitThief.mine_expires_quietly"
+        },
+        {
+          "file": "tests/unit/test_kit_thief.cpp",
+          "test": "KitThief.mines_chain_on_their_own_next_tick"
+        },
+        {
+          "file": "tests/unit/test_kit_thief.cpp",
+          "test": "KitThief.high_level_mine_leaves_a_puff"
+        }
+      ],
+      "missing_arms": [
+        "hp < 0"
+      ]
+    },
+    {
+      "id": "effect_mine.lua:107",
+      "lines": [
+        107
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "on_death (core:mine)",
+      "anchor": "if self.level >= t.mine_puff_level then",
+      "condition": "self.level >= t.mine_puff_level",
+      "semantic": "From level 7 a mine also leaves a short poison puff where it blew.",
+      "arms": [
+        {
+          "when": "level >= 7",
+          "observable": "one FAMILY_CLOUD at the mine, lifetime 20"
+        },
+        {
+          "when": "level < 7",
+          "observable": "no cloud"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_thief.cpp",
+          "test": "KitThief.high_level_mine_leaves_a_puff"
+        }
+      ],
+      "missing_arms": []
+    }
+  ],
+  "other": [
+    {
+      "id": "effect_mine.lua:52",
+      "lines": [
+        52
+      ],
+      "kinds": [
+        "for"
+      ],
+      "kind": "loop",
+      "anchor": "for i = 1, #foes do",
+      "note": "scan of foes within 128; rule at effect_mine.lua:53"
+    },
+    {
+      "id": "effect_mine.lua:85",
+      "lines": [
+        85
+      ],
+      "kinds": [
+        "for"
+      ],
+      "kind": "loop",
+      "anchor": "for i = 1, #obs do",
+      "note": "walks the whole oblist; rule at effect_mine.lua:87"
+    }
+  ]
+}

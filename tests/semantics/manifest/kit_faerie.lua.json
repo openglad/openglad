@@ -1,0 +1,888 @@
+{
+  "path": "packs/core/lib/kit_faerie.lua",
+  "rules": [
+    {
+      "id": "kit_faerie.lua:47",
+      "lines": [
+        47,
+        50,
+        62,
+        64,
+        66
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "for",
+        "if",
+        "if"
+      ],
+      "function": "swappable / swap_partner",
+      "anchor": "if ob == self then",
+      "condition": "ob == self ; order ~= LIVING ; line_clear ; dist < best_dist",
+      "semantic": "SWAP trades places with the nearest living walker, ally or foe, within swap_range (80) that has a clear line of sight to the faerie (same floor); never herself or a non-living; ties to list order.",
+      "arms": [
+        {
+          "when": "nearer foe behind a wall",
+          "observable": "skipped"
+        },
+        {
+          "when": "ally in sight",
+          "observable": "partner"
+        },
+        {
+          "when": "nobody in sight",
+          "observable": "nil -> 'NO ONE IN SIGHT'"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_faerie.cpp",
+          "test": "KitFaerie.swap_trades_places_only_in_line_of_sight"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_faerie.lua:81",
+      "lines": [
+        81,
+        83,
+        85
+      ],
+      "kinds": [
+        "for",
+        "if",
+        "if"
+      ],
+      "function": "hasten_partner",
+      "anchor": "for i = 1, #friends do",
+      "condition": "ally:floor() == self:floor() ; dist < best_dist",
+      "semantic": "HASTEN's partner is the nearest living ally on the faerie's floor within hasten_reach (40), never herself or a foe.",
+      "arms": [
+        {
+          "when": "two allies in reach",
+          "observable": "the nearer"
+        },
+        {
+          "when": "ally beyond 40",
+          "observable": "nil"
+        },
+        {
+          "when": "ally on another floor",
+          "observable": "skipped (executed-only)"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_faerie.cpp",
+          "test": "KitFaerie.hasten_ally_or_self_by_shift"
+        }
+      ],
+      "missing_arms": [
+        "ally on another floor"
+      ],
+      "note": [
+        "unasserted: the nearer ally on another floor is skipped"
+      ]
+    },
+    {
+      "id": "kit_faerie.lua:101",
+      "lines": [
+        101,
+        103,
+        104,
+        105,
+        106,
+        108
+      ],
+      "kinds": [
+        "for",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if"
+      ],
+      "function": "wish_stain",
+      "anchor": "for i = 1, #fxs do",
+      "condition": "TREASURE ; STAIN ; same floor ; is_friendly ; dist < best_dist",
+      "semantic": "WISH raises only a friendly blood stain on the faerie's floor strictly closer than wish_range (120), the nearest one.",
+      "arms": [
+        {
+          "when": "friendly stain at < 120",
+          "observable": "raised"
+        },
+        {
+          "when": "stain at exactly 120",
+          "observable": "too far"
+        },
+        {
+          "when": "foe's stain",
+          "observable": "never"
+        },
+        {
+          "when": "other floor",
+          "observable": "never (executed-only)"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_faerie.cpp",
+          "test": "KitFaerie.wish_raises_the_nearest_fallen_ally_at_full_and_heals_the_party_then_pops"
+        },
+        {
+          "file": "tests/unit/test_kit_faerie.cpp",
+          "test": "KitFaerie.wish_with_no_fallen_ally_refuses_and_spends_nothing"
+        }
+      ],
+      "missing_arms": [
+        "other floor"
+      ],
+      "note": [
+        "unasserted: a friendly stain on another floor is never raised"
+      ]
+    },
+    {
+      "id": "kit_faerie.lua:123",
+      "lines": [
+        123
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "hasten_target",
+      "anchor": "if self:alternate_down() then",
+      "condition": "self:alternate_down()",
+      "semantic": "HASTE SELF (Shift) speeds the faerie herself; unshifted HASTEN speeds her nearest ally.",
+      "arms": [
+        {
+          "when": "shift",
+          "observable": "faerie speed_bonus_left 150, bonus 2"
+        },
+        {
+          "when": "no shift",
+          "observable": "nearest ally hastened"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_faerie.cpp",
+          "test": "KitFaerie.hasten_ally_or_self_by_shift"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_faerie.lua:133",
+      "lines": [
+        133,
+        135,
+        136
+      ],
+      "kinds": [
+        "for",
+        "if",
+        "if"
+      ],
+      "function": "heal_party",
+      "anchor": "for i = 1, #friends do",
+      "condition": "same floor ; ally.hp < ally.max_hp",
+      "semantic": "WISH heals every living ally on the faerie's floor within wish_heal_radius (96) to full, with the healer's green number.",
+      "arms": [
+        {
+          "when": "hurt ally in radius",
+          "observable": "hp = max"
+        },
+        {
+          "when": "ally out of radius / foe",
+          "observable": "unchanged"
+        },
+        {
+          "when": "ally whole",
+          "observable": "no heal number"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_faerie.cpp",
+          "test": "KitFaerie.wish_raises_the_nearest_fallen_ally_at_full_and_heals_the_party_then_pops"
+        }
+      ],
+      "missing_arms": [
+        "ally whole"
+      ]
+    },
+    {
+      "id": "kit_faerie.lua:150",
+      "lines": [
+        150,
+        152,
+        154
+      ],
+      "kinds": [
+        "for",
+        "if",
+        "if"
+      ],
+      "function": "wounded_allies",
+      "anchor": "for i = 1, #friends do",
+      "condition": "same floor ; ally.hp < max/2",
+      "semantic": "The faerie's WISH gate counts living allies on her floor within 96 below half health.",
+      "arms": [
+        {
+          "when": "ally below half",
+          "observable": "counted"
+        },
+        {
+          "when": "at or above half",
+          "observable": "not"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_faerie.cpp",
+          "test": "KitFaerie.ai_wish_fires_with_a_fallen_ally_and_two_wounded"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_faerie.lua:171",
+      "lines": [
+        171,
+        173,
+        177,
+        209
+      ],
+      "kinds": [
+        "for",
+        "for",
+        "if",
+        "if"
+      ],
+      "function": "blink_spot / blink",
+      "anchor": "for k = 0, 7 do",
+      "condition": "for k (8 dirs from rng) ; for part 3..1 ; spawn_spot_clear ; x == nil",
+      "semantic": "BLINK hops blink_base+2/level px in a random one of eight directions, trying the others clockwise; a wall close by shortens the hop to 2/3 then 1/3 instead of cancelling; with every spot blocked it refuses NOWHERE TO BLINK for free.",
+      "arms": [
+        {
+          "when": "open ground",
+          "observable": "faerie moved exactly len px along one direction, two flashes, busy = fire_frequency+12"
+        },
+        {
+          "when": "hemmed in",
+          "observable": "shorter hop"
+        },
+        {
+          "when": "walled in",
+          "observable": "'NOWHERE TO BLINK', no MP, no move"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_faerie.cpp",
+          "test": "KitFaerie.blink_hops_a_fixed_length_then_rests_a_second"
+        },
+        {
+          "file": "tests/unit/test_kit_faerie.cpp",
+          "test": "KitFaerie.blink_falls_back_to_a_shorter_hop_when_hemmed_in"
+        },
+        {
+          "file": "tests/unit/test_kit_faerie.cpp",
+          "test": "KitFaerie.blink_with_nowhere_to_land_refuses_and_spends_nothing"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_faerie.lua:204",
+      "lines": [
+        204,
+        223
+      ],
+      "kinds": [
+        "if",
+        "if"
+      ],
+      "function": "resting (blink / swap)",
+      "anchor": "if resting(self) then",
+      "condition": "busy > fire_frequency",
+      "semantic": "BLINK and SWAP share a hop's rest: busy beyond her plain attack pause refuses both SPECIAL BUSY for free; the plain pause after a sprinkle does not, so she can hop between sprinkles.",
+      "arms": [
+        {
+          "when": "busy > fire_frequency",
+          "observable": "'SPECIAL BUSY'"
+        },
+        {
+          "when": "busy <= fire_frequency",
+          "observable": "hop allowed"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_faerie.cpp",
+          "test": "KitFaerie.blink_slips_out_between_sprinkles"
+        },
+        {
+          "file": "tests/unit/test_kit_faerie.cpp",
+          "test": "KitFaerie.swap_refuses_while_resting"
+        },
+        {
+          "file": "tests/unit/test_kit_faerie.cpp",
+          "test": "KitFaerie.blink_hops_a_fixed_length_then_rests_a_second"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_faerie.lua:228",
+      "lines": [
+        228,
+        233,
+        236
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
+      ],
+      "function": "swap",
+      "anchor": "if not partner then",
+      "condition": "not partner ; not query_grid_passable(partner at her spot) ; not og.swap_places",
+      "semantic": "SWAP refuses with nobody in sight, and refuses SWAP BLOCKED rather than drop the partner where it cannot stand (the faerie hovers over water).",
+      "arms": [
+        {
+          "when": "no partner",
+          "observable": "'NO ONE IN SIGHT'"
+        },
+        {
+          "when": "faerie over water",
+          "observable": "'SWAP BLOCKED', nobody moves"
+        },
+        {
+          "when": "ok",
+          "observable": "places traded, two flashes, rest"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_faerie.cpp",
+          "test": "KitFaerie.swap_trades_places_only_in_line_of_sight"
+        },
+        {
+          "file": "tests/unit/test_kit_faerie.cpp",
+          "test": "KitFaerie.swap_never_drops_a_walker_into_water_she_hovers_over"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_faerie.lua:247",
+      "lines": [
+        247
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "M.blink_or_swap",
+      "anchor": "if self:alternate_down() then",
+      "condition": "self:alternate_down()",
+      "semantic": "Slot 1 is BLINK unshifted and SWAP (24 MP) shifted.",
+      "arms": [
+        {
+          "when": "shift",
+          "observable": "swap"
+        },
+        {
+          "when": "no shift",
+          "observable": "blink"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_faerie.cpp",
+          "test": "KitFaerie.swap_trades_places_only_in_line_of_sight"
+        },
+        {
+          "file": "tests/unit/test_kit_faerie.cpp",
+          "test": "KitFaerie.blink_hops_a_fixed_length_then_rests_a_second"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_faerie.lua:257",
+      "lines": [
+        257,
+        265,
+        266,
+        267,
+        273
+      ],
+      "kinds": [
+        "if",
+        "for",
+        "for",
+        "if",
+        "if"
+      ],
+      "function": "glimmer",
+      "anchor": "if lc.is_busy(self) then",
+      "condition": "lc.is_busy ; for i, j in -1..1 ; i ~= 0 or j ~= 0",
+      "semantic": "GLIMMER fires a sprinkle in each of the eight directions (every direction but none), each marked to freeze a quarter as long, prepays their weapon cost within its own price, costs an attack pause, refuses a busy faerie, and puts her aim back truncated to whole pixels (C int temps). A direction whose launch pad a live body blocks becomes a melee attack() on that body (fire() returns nil, so no KIT_QUARTER_FREEZE mark) and the burst goes on.",
+      "arms": [
+        {
+          "when": "busy",
+          "observable": "'SPECIAL BUSY', 0 MP"
+        },
+        {
+          "when": "idle, open field",
+          "observable": "8 sprinkles with KIT_QUARTER_FREEZE, 40 MP net, busy += fire_frequency"
+        },
+        {
+          "when": "idle, a fractional aim (lastx 2.83 after a diagonal walk)",
+          "observable": "lastx after the cast == 2.0 (truncated, unlike knife_fan which keeps it whole)"
+        },
+        {
+          "when": "idle, a body touching one side (point-blank)",
+          "observable": "7 sprinkles in weaplist, no quarter-freeze on the touched body; a melee attack() is resolved on the touching body (walker::fire() melee arm, walker.cpp:606-635): if attack() returns true (a living foe, not invincible, not cancelled by a level on_damage hook) a SOUND_CLANG event and an hp drop of the rolled amount (base-damage jitter minus random(armor), walker_combat.cpp get_base_damage/compute_damage_reduction; may be 0); if it returns false (friendly, dead, invincible, treasure, gate-cancelled) no CLANG and no hp change. Certain either way: the shot is consumed (weapon dead, not in weaplist), the attacker's myguy total_shots/scen_shots +1, and the MP already charged is not refunded; mp still -40"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_faerie.cpp",
+          "test": "KitFaerie.glimmer_fires_eight_sprinkles_and_prepays"
+        },
+        {
+          "file": "tests/unit/test_kit_faerie.cpp",
+          "test": "KitFaerie.glimmer_sprinkle_freezes_a_quarter"
+        }
+      ],
+      "missing_arms": [
+        "idle, a fractional aim (lastx 2.83 after a diagonal walk)",
+        "idle, a body touching one side (point-blank)"
+      ],
+      "note": [
+        "unasserted: aim restored truncated (the test uses lastx=1, lasty=0 so truncation is invisible)",
+        "unasserted: point-blank blocked-pad melee arm"
+      ]
+    },
+    {
+      "id": "kit_faerie.lua:295",
+      "lines": [
+        295
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "M.hasten",
+      "anchor": "if not target then",
+      "condition": "not target",
+      "semantic": "HASTEN stacks hasten_ticks on the target's speed timer and keeps the stronger of its bonus and 2; with no ally in reach it refuses NO ALLY IN REACH for free.",
+      "arms": [
+        {
+          "when": "no ally",
+          "observable": "'NO ALLY IN REACH'"
+        },
+        {
+          "when": "target",
+          "observable": "speed_bonus_left += 150, speed_bonus = max(old, 2)"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_faerie.cpp",
+          "test": "KitFaerie.hasten_ally_or_self_by_shift"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_faerie.lua:311",
+      "lines": [
+        311
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "M.wish",
+      "anchor": "if not blood then",
+      "condition": "not blood",
+      "semantic": "WISH needs a fallen ally to raise: without one it refuses NO FALLEN ALLY NEARBY (no heal, no pop). With one, the ally rises at full health with its old stats, the party is healed and the faerie dies.",
+      "arms": [
+        {
+          "when": "no stain",
+          "observable": "refused, faerie alive, mp unchanged"
+        },
+        {
+          "when": "stain",
+          "observable": "risen living family/team/level of the stain at full hp, stain dead, faerie dead, one SOUND_HEAL"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_faerie.cpp",
+          "test": "KitFaerie.wish_raises_the_nearest_fallen_ally_at_full_and_heals_the_party_then_pops"
+        },
+        {
+          "file": "tests/unit/test_kit_faerie.cpp",
+          "test": "KitFaerie.wish_with_no_fallen_ally_refuses_and_spends_nothing"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_faerie.lua:344",
+      "lines": [
+        344
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "affordable_swap_partner",
+      "anchor": "if self.magicpoints < self:alternate_cost(1) then",
+      "condition": "magicpoints < alternate_cost(1)",
+      "semantic": "A bot faerie only considers SWAP when she can pay SWAP's own higher price (24 vs BLINK 20).",
+      "arms": [
+        {
+          "when": "mp < 24",
+          "observable": "no swap partner"
+        },
+        {
+          "when": "mp >= 24",
+          "observable": "nearest swappable"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_faerie.cpp",
+          "test": "KitFaerie.ai_blink_fires_when_a_dying_ally_is_the_swap_partner_or_she_is_cornered"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_faerie.lua:354",
+      "lines": [
+        354,
+        359,
+        363,
+        364,
+        366,
+        368,
+        369,
+        370,
+        380,
+        382
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if"
+      ],
+      "function": "M.ai_blink",
+      "anchor": "if og.match_setting(\"new_specials\") == 0 then",
+      "condition": "off ; resting ; partner ; friendly ; partner.hp < 0.3 max ; attacker alive ; within 40 ; foes_within(1,30) ; hp < max/2",
+      "semantic": "A bot faerie SWAPs (shift 1) a dying ally out (under 30 %, the walker SWAP would take, its attacker alive within 40 of it); else BLINKs (shift 0) when a living foe is within 30 and she is below half health; never while resting from a hop; otherwise holds and writes no shift.",
+      "arms": [
+        {
+          "when": "off",
+          "observable": "true, nothing touched"
+        },
+        {
+          "when": "resting",
+          "observable": "false (busy > fire_frequency; busy == fire_frequency is no rest -> true)"
+        },
+        {
+          "when": "dying ally + attacker on it, 24 MP",
+          "observable": "true, shift 1"
+        },
+        {
+          "when": "ally not dying / attacker far / attacker dead",
+          "observable": "no swap"
+        },
+        {
+          "when": "foe within 30, not hurt",
+          "observable": "false"
+        },
+        {
+          "when": "foe within 30, hurt",
+          "observable": "true, shift 0"
+        },
+        {
+          "when": "tent within 30",
+          "observable": "false"
+        },
+        {
+          "when": "nothing",
+          "observable": "false, shifter unchanged (7)"
+        },
+        {
+          "when": "hurt faerie, the only foe within 30 px is on another floor",
+          "observable": "true, shift 0 (unasserted; suspect)"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_faerie.cpp",
+          "test": "KitFaerie.ai_blink_fires_when_a_dying_ally_is_the_swap_partner_or_she_is_cornered"
+        },
+        {
+          "file": "tests/unit/test_kit_faerie.cpp",
+          "test": "KitFaerie.bot_faerie_swaps_a_dying_ally_out"
+        },
+        {
+          "file": "tests/unit/test_kit_faerie.cpp",
+          "test": "KitFaerie.ai_off_answers_the_classic_gate"
+        },
+        {
+          "file": "tests/unit/test_bot_gates_kits.cpp",
+          "test": "GameplayFixesBots.faerie_counts_living_foes_only"
+        },
+        {
+          "file": "tests/unit/test_gameplay_fixes_bots.cpp",
+          "test": "GameplayFixesBots.a_busy_bot_never_rolls_a_busy_cast_with_the_setting_on",
+          "note": "the resting arm: line 1234 kit_row(f, 1, \"FAERIE BLINK\", resting, idle) with resting = busy fire_frequency+1 -> false at both fixes values, and lines 1235-1238 busy == fire_frequency -> true; the hold is the hop rest, not lc.is_busy"
+        }
+      ],
+      "missing_arms": [
+        "hurt faerie, the only foe within 30 px is on another floor"
+      ],
+      "note": [
+        "unasserted: a foe on ANOTHER floor within 30 px makes a hurt faerie blink (foes_within floor_only=false; see suspect)"
+      ]
+    },
+    {
+      "id": "kit_faerie.lua:393",
+      "lines": [
+        393,
+        398
+      ],
+      "kinds": [
+        "if",
+        "if"
+      ],
+      "function": "M.ai_glimmer",
+      "anchor": "if og.match_setting(\"new_specials\") == 0 then",
+      "condition": "off ; lc.is_busy",
+      "semantic": "A bot faerie casts GLIMMER when a living foe is within 60 (a tent is no target), not while busy and not while GLIMMER rests.",
+      "arms": [
+        {
+          "when": "off",
+          "observable": "true"
+        },
+        {
+          "when": "busy",
+          "observable": "false"
+        },
+        {
+          "when": "resting (gate_with_rest)",
+          "observable": "false"
+        },
+        {
+          "when": "soldier at 20",
+          "observable": "true"
+        },
+        {
+          "when": "tent at 20 only",
+          "observable": "false"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_faerie.cpp",
+          "test": "KitFaerie.ai_glimmer_fires_when_a_foe_is_within_60"
+        },
+        {
+          "file": "tests/unit/test_bot_gates_kits.cpp",
+          "test": "GameplayFixesBots.faerie_counts_living_foes_only"
+        },
+        {
+          "file": "tests/unit/test_gameplay_fixes_bots.cpp",
+          "test": "GameplayFixesBots.a_busy_bot_never_rolls_a_busy_cast_with_the_setting_on"
+        },
+        {
+          "file": "tests/unit/test_kit_rests.cpp",
+          "test": "KitRests.bot_gates_hold_a_resting_special"
+        },
+        {
+          "file": "tests/unit/test_kit_faerie.cpp",
+          "test": "KitFaerie.ai_off_answers_the_classic_gate"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_faerie.lua:407",
+      "lines": [
+        407,
+        411,
+        412,
+        414,
+        415,
+        423,
+        424,
+        425
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if"
+      ],
+      "function": "M.ai_hasten",
+      "anchor": "if og.match_setting(\"new_specials\") == 0 then",
+      "condition": "off ; ally ; speed_bonus_left == 0 ; ally:foe() alive ; self:foe() alive within 60",
+      "semantic": "A bot faerie HASTENs (shift 0) the ally HASTEN would take when it is fighting (its foe alive) and not already hasted; else HASTE SELF (shift 1) when her own live foe is within 60; else holds.",
+      "arms": [
+        {
+          "when": "off",
+          "observable": "true"
+        },
+        {
+          "when": "ally fighting, unhasted",
+          "observable": "true, shift 0"
+        },
+        {
+          "when": "ally hasted (left 20)",
+          "observable": "no ally arm"
+        },
+        {
+          "when": "own foe within 60",
+          "observable": "true, shift 1"
+        },
+        {
+          "when": "nothing",
+          "observable": "false"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_faerie.cpp",
+          "test": "KitFaerie.ai_hasten_fires_for_a_fighting_ally_or_a_foe_on_her"
+        },
+        {
+          "file": "tests/unit/test_kit_faerie.cpp",
+          "test": "KitFaerie.ai_hastens_an_ally_again_once_its_haste_has_worn_off"
+        },
+        {
+          "file": "tests/unit/test_kit_faerie.cpp",
+          "test": "KitFaerie.ai_off_answers_the_classic_gate"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_faerie.lua:437",
+      "lines": [
+        437,
+        441
+      ],
+      "kinds": [
+        "if",
+        "if"
+      ],
+      "function": "M.ai_wish",
+      "anchor": "if og.match_setting(\"new_specials\") == 0 then",
+      "condition": "off ; not wish_stain",
+      "semantic": "A bot faerie WISHes only when there is a fallen ally to raise AND at least two living allies nearby are below half health.",
+      "arms": [
+        {
+          "when": "off",
+          "observable": "true"
+        },
+        {
+          "when": "no stain",
+          "observable": "false"
+        },
+        {
+          "when": "stain, one wounded",
+          "observable": "false"
+        },
+        {
+          "when": "stain, two wounded",
+          "observable": "true"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_faerie.cpp",
+          "test": "KitFaerie.ai_wish_fires_with_a_fallen_ally_and_two_wounded"
+        },
+        {
+          "file": "tests/unit/test_kit_faerie.cpp",
+          "test": "KitFaerie.ai_off_answers_the_classic_gate"
+        }
+      ],
+      "missing_arms": []
+    }
+  ],
+  "other": [
+    {
+      "id": "kit_faerie.lua:21",
+      "lines": [
+        21,
+        32,
+        273,
+        315
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if"
+      ],
+      "kind": "defensive",
+      "anchor": "if flash then",
+      "note": "og.add_ob (lines 21, 32) and add_ob('living') (315) nil when the world is full: flash and hit spark skipped, WISH refuses COULD NOT RESURRECT. Line 273 (glimmer's `if shot`) is NOT only a world-full guard: walker::fire() (src/gameplay/walker.cpp:517-690) answers nil for magicpoints < weapon_cost, create_weapon nil, a pad blocked by a live body (the MELEE arm: attack(collide_ob) + SOUND_CLANG, weapon dead, cost already charged), BIT_NO_RANGED, and an on_fire_weapon hook answering false. The blocked-pad melee arm is a game rule and is carried as an arm of kit_faerie.lua:257."
+    }
+  ]
+}

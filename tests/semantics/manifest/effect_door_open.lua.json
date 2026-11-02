@@ -1,0 +1,97 @@
+{
+  "path": "packs/core/lib/effect_door_open.lua",
+  "rules": [
+    {
+      "id": "effect_door_open.lua:20",
+      "lines": [
+        20
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "on_act (core:door_open)",
+      "anchor": "if self:ani_type() ~= C.ANI_WALK then",
+      "condition": "self:ani_type() ~= C.ANI_WALK",
+      "semantic": "An opening door plays its opening animation first (default effect animate); only when it has run out does the door settle.",
+      "arms": [
+        {
+          "when": "still animating (ani_type ~= WALK)",
+          "observable": "on_act returns false: default animate path, door_open alive",
+          "asserted": false
+        },
+        {
+          "when": "animation done",
+          "observable": "settles (effect_door_open.lua:27)",
+          "asserted": true
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_pack_lua_paths.cpp",
+          "test": "PackLuaEffectDoorOpen.a_finished_opening_settles_into_an_ignored_copy",
+          "note": "settle arm"
+        },
+        {
+          "file": "tests/integration/test_effect_chain_and_door.cpp",
+          "test": "EffectChainAndDoor.effect_chain_hits_leader_spawns_explosion_and_secondary_chains_and_door_open_spawns_fx",
+          "note": "settle arm"
+        }
+      ],
+      "missing_arms": [
+        "still animating (ani_type ~= WALK)"
+      ]
+    },
+    {
+      "id": "effect_door_open.lua:27",
+      "lines": [
+        27
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "on_act (core:door_open)",
+      "anchor": "if not opened then",
+      "condition": "not opened",
+      "semantic": "A finished door hands its open sprite to a fresh, ignored, non-acting copy on the fx list at the same spot, floor, team and facing, then retires; in a full fx list the door simply stays (handled, alive).",
+      "arms": [
+        {
+          "when": "copy spawned",
+          "observable": "one FAMILY_DOOR_OPEN on fxlist: same worldx/worldy/curdir, ignore 1, ANI_WALK; original dead"
+        },
+        {
+          "when": "copy spawned (floor)",
+          "observable": "copy floor == original floor"
+        },
+        {
+          "when": "fxlist full",
+          "observable": "on_act true; original NOT dead (retries next tick)",
+          "asserted": false
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_pack_lua_paths.cpp",
+          "test": "PackLuaEffectDoorOpen.a_finished_opening_settles_into_an_ignored_copy",
+          "note": "worldx/worldy, curdir, ignore, team, level, original dead; floor not"
+        },
+        {
+          "file": "tests/integration/test_effect_chain_and_door.cpp",
+          "test": "EffectChainAndDoor.effect_chain_hits_leader_spawns_explosion_and_secondary_chains_and_door_open_spawns_fx",
+          "note": "worldx/worldy, ignore, curdir, ANI_WALK, original dead; floor not"
+        }
+      ],
+      "missing_arms": [
+        "copy spawned (floor)",
+        "fxlist full"
+      ],
+      "note": [
+        "Arm 1 names the floor and no test runs a door_open off floor 0 or reads the copy floor."
+      ]
+    }
+  ],
+  "other": []
+}

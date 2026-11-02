@@ -1,0 +1,118 @@
+{
+  "path": "packs/core/lib/kit_marker.lua",
+  "rules": [
+    {
+      "id": "kit_marker.lua:52",
+      "lines": [
+        52
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "M.on_act",
+      "anchor": "if handler then",
+      "condition": "handler (M.roles[ani_type])",
+      "semantic": "A kit marker runs its role's handler every tick; a marker whose role has no handler (its kit not loaded, or a stray role byte from a snapshot) dies at once.",
+      "arms": [
+        {
+          "when": "role registered",
+          "observable": "handler runs, marker lives per the handler"
+        },
+        {
+          "when": "role unregistered",
+          "observable": "marker dead on its first act"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_specials_view.cpp",
+          "test": "KitLuaTest.kit_marker_spawns_finds_ages_and_dispatches_by_role"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_marker.lua:70",
+      "lines": [
+        70,
+        72,
+        73,
+        74,
+        75,
+        76
+      ],
+      "kinds": [
+        "for",
+        "if",
+        "and",
+        "and",
+        "and",
+        "and"
+      ],
+      "function": "M.find",
+      "anchor": "for i = 1, #obs do",
+      "condition": "FX and KIT_MARKER and not dead and ani_type == role and owner == owner",
+      "semantic": "A kit's live marker is found by owner AND role: another walker's marker, a dead one or another role's never answers (so IMMOLATE's second press, PHASE's ALREADY PHASED and the HUD countdown see only their own).",
+      "arms": [
+        {
+          "when": "own live marker of the role",
+          "observable": "that marker"
+        },
+        {
+          "when": "another role / owner / dead",
+          "observable": "nil"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_elemental.cpp",
+          "test": "KitElemental.second_press_ends_it_free_after_the_latch"
+        },
+        {
+          "file": "tests/unit/test_kit_ghost.cpp",
+          "test": "KitGhost.phase_doubles_speed_blocks_attacks_and_expires_clean"
+        },
+        {
+          "file": "tests/unit/test_specials_view.cpp",
+          "test": "KitLuaTest.kit_marker_spawns_finds_ages_and_dispatches_by_role"
+        }
+      ],
+      "missing_arms": [
+        "another role / owner / dead"
+      ],
+      "note": [
+        "unasserted: a dead veil -> PHASE casts again; another owner's marker never answers"
+      ]
+    }
+  ],
+  "other": [
+    {
+      "id": "kit_marker.lua:27",
+      "lines": [
+        27
+      ],
+      "kinds": [
+        ""
+      ],
+      "kind": "defensive",
+      "anchor": "assert(M.roles[role] == nil, \"kit_marker: role registered twice\")",
+      "note": "load-time assert: a marker role registered twice is a pack load error (not a candidate line; listed for completeness)"
+    },
+    {
+      "id": "kit_marker.lua:37",
+      "lines": [
+        37
+      ],
+      "kinds": [
+        "if"
+      ],
+      "kind": "defensive",
+      "anchor": "if not marker then",
+      "note": "og.summon nil (world full): spawn answers nil, each kit refuses its own COULD NOT ... reason"
+    }
+  ]
+}

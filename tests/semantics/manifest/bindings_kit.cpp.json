@@ -1,0 +1,314 @@
+{
+  "path": "src/gameplay/script/bindings_kit.cpp",
+  "rules": [
+    {
+      "id": "bindings_kit.cpp:57",
+      "lines": [
+        57,
+        62
+      ],
+      "kinds": [
+        "if",
+        "ternary"
+      ],
+      "function": "m_set_kit_state",
+      "anchor": "if (hide != w->hidden())",
+      "condition": "hide != w->hidden() ; w->hidden() ? KIT_HIDDEN : 0",
+      "semantic": "A kit setting its state bits from Lua goes through the real hide rule: flipping the HIDDEN bit hides/unhides the walker (it leaves/rejoins the collision table), and a possessed body can never be hidden, so the HIDDEN bit lands only as set_hidden allowed; the other bits land as asked (narrowed to a byte).",
+      "arms": [
+        {
+          "when": "HIDDEN requested, walker free",
+          "observable": "hidden()==true, kit_state has HIDDEN, walker out of obmap"
+        },
+        {
+          "when": "HIDDEN requested, walker possessed",
+          "observable": "hidden()==false, kit_state lacks HIDDEN but keeps the other bits, still in obmap"
+        },
+        {
+          "when": "HIDDEN cleared",
+          "observable": "hidden()==false, back in obmap"
+        },
+        {
+          "when": "HIDDEN unchanged",
+          "observable": "no set_hidden call, other bits replaced"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_specials_view.cpp",
+          "test": "KitLuaTest.kit_state_bindings_read_and_write_the_walker",
+          "note": "HIDDEN requested free: hidden, kit_state 3, out of obmap; HIDDEN cleared: set_kit_state(0) reveals, back in obmap"
+        },
+        {
+          "file": "tests/unit/test_specials_view.cpp",
+          "test": "KitLuaTest.set_kit_state_cannot_hide_a_possessed_body",
+          "note": "possessed: not hidden, kit_state == KIT_FEARLESS, still in obmap; then free: hidden + both bits"
+        }
+      ],
+      "missing_arms": [
+        "HIDDEN unchanged"
+      ]
+    },
+    {
+      "id": "bindings_kit.cpp:70",
+      "lines": [
+        70,
+        121,
+        131,
+        197,
+        219,
+        231
+      ],
+      "kinds": [
+        "ternary",
+        "ternary",
+        "ternary",
+        "ternary",
+        "ternary",
+        "ternary"
+      ],
+      "function": "m_hidden / m_init_fire / m_blocks_placement / og_fearless / og_line_clear / og_swap_places",
+      "anchor": "lua_pushboolean(L, kit_self_arg(L)->hidden() ? 1 : 0);",
+      "condition": "engine_bool ? 1 : 0",
+      "semantic": "These Lua verbs hand back the engine's own boolean answer unchanged (hidden, attack start accepted/refused while busy, family declares blocks_placement, fearless, clear sight line, swap succeeded). The game rules live in the engine functions (walker::init_fire, og::sim::fearless (fearless.cpp:27), GameWorld::clear_sight_line, og::sim::swap_places); this row is only the true/false mapping.",
+      "arms": [
+        {
+          "when": "engine true",
+          "observable": "Lua true"
+        },
+        {
+          "when": "engine false",
+          "observable": "Lua false"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_specials_view.cpp",
+          "test": "KitLuaTest.kit_state_bindings_read_and_write_the_walker",
+          "note": "m_hidden: Lua checks self:hidden() false then true"
+        },
+        {
+          "file": "tests/unit/test_script_bindings_props.cpp",
+          "test": "ScriptBindingPropsTest.kit_last_attacker_id_and_init_fire",
+          "note": "init_fire 'fire\\t1\\t0'"
+        },
+        {
+          "file": "tests/unit/test_script_bindings_props.cpp",
+          "test": "ScriptBindingPropsTest.kit_fearless_answers_the_kit_mark",
+          "note": "'fearless\\t0' / 'fearless\\t1'"
+        },
+        {
+          "file": "tests/unit/test_script_bindings_props.cpp",
+          "test": "ScriptBindingPropsTest.kit_alternate_cost_and_blocks_placement_read_the_family",
+          "note": "'solid\\t0\\t0\\t1'"
+        },
+        {
+          "file": "tests/unit/test_script_bindings_props.cpp",
+          "test": "ScriptBindingPropsTest.kit_line_clear_is_blocked_by_a_wall_and_by_floors",
+          "note": "'line\\t0\\t1\\t0'"
+        },
+        {
+          "file": "tests/unit/test_script_bindings_props.cpp",
+          "test": "ScriptBindingPropsTest.kit_swap_places_trades_spots_and_floors_and_eats_nothing",
+          "note": "'same\\t0', 'swap\\t1', 'hidden\\t0'"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "bindings_kit.cpp:80",
+      "lines": [
+        80,
+        82,
+        85
+      ],
+      "kinds": [
+        "if",
+        "else",
+        "if"
+      ],
+      "function": "m_set_hidden",
+      "anchor": "if (lua_isboolean(L, 2)) {",
+      "condition": "lua_isboolean ; is_integer == 0",
+      "semantic": "walker:set_hidden accepts a boolean or an integer (0 = show, nonzero = hide); anything else is a script error and changes nothing.",
+      "arms": [
+        {
+          "when": "boolean",
+          "observable": "hidden() == value"
+        },
+        {
+          "when": "integer",
+          "observable": "hidden() == (n != 0)"
+        },
+        {
+          "when": "string/float",
+          "observable": "error 'walker:set_hidden: expected a boolean or 0|1', hidden() unchanged"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_script_bindings_props.cpp",
+          "test": "ScriptBindingPropsTest.kit_set_hidden_refuses_a_non_integer",
+          "note": "boolean true; integer 0 -> false; 'x' and 0.5 -> error text, hidden unchanged"
+        },
+        {
+          "file": "tests/unit/test_specials_view.cpp",
+          "test": "KitLuaTest.kit_state_bindings_read_and_write_the_walker",
+          "note": "boolean false clears; integer 1 hides"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "bindings_kit.cpp:143",
+      "lines": [
+        143
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "m_alternate_cost",
+      "anchor": "if (slot < 0 || slot >= NUM_SPECIALS)",
+      "condition": "slot < 0 || slot >= NUM_SPECIALS",
+      "semantic": "walker:alternate_cost(slot) answers the shifted alternate's price as the session sees it (a new-kit alternate costs 0 = not in play with New Specials off); a slot outside 0..NUM_SPECIALS-1 is a script error.",
+      "arms": [
+        {
+          "when": "slot out of range",
+          "observable": "error 'alternate_cost index out of range'"
+        },
+        {
+          "when": "new-kit alternate, New Specials on",
+          "observable": "declared price"
+        },
+        {
+          "when": "new-kit alternate, off",
+          "observable": "0"
+        },
+        {
+          "when": "no own price",
+          "observable": "0"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_script_bindings_props.cpp",
+          "test": "ScriptBindingPropsTest.kit_alternate_cost_and_blocks_placement_read_the_family",
+          "note": "on 'alt\\t0\\t77\\t40', off 'alt\\t0\\t0\\t40', slots 6 and -1 -> 'alternate_cost index out of range'"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "bindings_kit.cpp:155",
+      "lines": [
+        155
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "kit_world",
+      "anchor": "if (current_game == nullptr || current_game->world == nullptr)",
+      "condition": "current_game == nullptr || current_game->world == nullptr",
+      "semantic": "The kit world verbs (og.possess, og.fearless, og.map_size ...) refuse to run with no active world (e.g. while a chunk is loading or between levels): script error 'no active world'.",
+      "arms": [
+        {
+          "when": "no world",
+          "observable": "error 'no active world'"
+        },
+        {
+          "when": "world",
+          "observable": "verb runs"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_script_bindings_props.cpp",
+          "test": "ScriptBindingPropsTest.kit_map_size_answers_pixel_bounds_and_floors",
+          "note": "world arm: verb runs, 'size\\t1234\\t567\\t3'"
+        }
+      ],
+      "missing_arms": [
+        "no world"
+      ]
+    },
+    {
+      "id": "bindings_kit.cpp:169",
+      "lines": [
+        169,
+        173,
+        174,
+        176
+      ],
+      "kinds": [
+        "if",
+        "ternary",
+        "if",
+        "ternary"
+      ],
+      "function": "og_possess",
+      "anchor": "if (ticks < 0 || ticks > std::numeric_limits<std::int16_t>::max())",
+      "condition": "ticks < 0 || ticks > 32767 ; r.ok ; r.reason != nullptr",
+      "semantic": "og.possess(rider, host, ticks): the possession length must fit the host's int16 countdown (0 = for good); the answer is true alone on success, or false plus a short HUD refusal reason (never nil reason on failure).",
+      "arms": [
+        {
+          "when": "ticks out of [0,32767]",
+          "observable": "error 'og.possess: ticks out of range'"
+        },
+        {
+          "when": "possession refused",
+          "observable": "returns false, reason string non-empty, <= 24 chars, no link set"
+        },
+        {
+          "when": "possession taken",
+          "observable": "returns true and NO second value; possess_link both ways, host possess_ticks == ticks, rider hidden, host on rider's team"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_script_bindings_props.cpp",
+          "test": "ScriptBindingPropsTest.kit_possess_and_release_hand_back_the_engine_answer",
+          "note": "40000 and -1 -> 'og.possess: ticks out of range'; dead host -> false, string reason 1..24 chars, no links; live foe -> true and nil second value, links both ways, possess_ticks 30, rider hidden, host on rider team"
+        }
+      ],
+      "missing_arms": []
+    }
+  ],
+  "other": [
+    {
+      "id": "bindings_kit.cpp:316",
+      "lines": [
+        316
+      ],
+      "kinds": [
+        "for"
+      ],
+      "kind": "loop",
+      "anchor": "for (const luaL_Reg* r = kOgKitFuncs; r->name != nullptr; r++)",
+      "note": "register_kit_bindings: fences every og.* kit verb behind the load-time world fence; rule asserted via the fence error tests (test_script_bindings_errors.cpp)."
+    },
+    {
+      "id": "bindings_kit.cpp:321",
+      "lines": [
+        321
+      ],
+      "kinds": [
+        "for"
+      ],
+      "kind": "loop",
+      "anchor": "for (const KitConst& c : kKitConstants) {",
+      "note": "register_kit_bindings: installs og.C.KIT_* / MARKER_* constants; values read back by the kit tests (e.g. og.C.KIT_FEARLESS in test_specials_view.cpp)."
+    }
+  ]
+}

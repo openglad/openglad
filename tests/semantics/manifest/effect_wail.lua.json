@@ -1,0 +1,357 @@
+{
+  "path": "packs/core/lib/effect_wail.lua",
+  "rules": [
+    {
+      "id": "effect_wail.lua:20",
+      "lines": [
+        20
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "M.launch",
+      "anchor": "if not bolt then",
+      "condition": "not bolt",
+      "semantic": "A WAIL (or a wail fork) that cannot get an entity (full world) does not launch; the cast is refused.",
+      "arms": [
+        {
+          "when": "world full",
+          "observable": "nil returned; no FAMILY_WAIL"
+        },
+        {
+          "when": "spawned",
+          "observable": "bolt: owner ghost, team, level, damage 0, floor, leader foe, lineofsight 60, stepsize 6, lifetime = hops"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_ghost.cpp",
+          "test": "KitGhost.a_full_world_refuses_the_casts_that_need_an_entity"
+        },
+        {
+          "file": "tests/unit/test_kit_ghost.cpp",
+          "test": "KitGhost.wail_hops_foe_to_foe_and_frights_each_once"
+        }
+      ],
+      "missing_arms": [
+        "spawned"
+      ]
+    },
+    {
+      "id": "effect_wail.lua:47",
+      "lines": [
+        47,
+        50,
+        53,
+        56
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if"
+      ],
+      "function": "is_fork_target",
+      "anchor": "if foe == leader then",
+      "condition": "foe == leader / not LIVING / other floor / farther than 120 px from the struck foe / skip_exit >= 1",
+      "semantic": "A wail hops only to another living foe on the struck bolt's floor within 120 px of the foe it just frightened and not wailed at in the last three rounds.",
+      "arms": [
+        {
+          "when": "the struck foe itself",
+          "observable": "no fork"
+        },
+        {
+          "when": "generator/weapon",
+          "observable": "no fork"
+        },
+        {
+          "when": "other floor",
+          "observable": "no fork"
+        },
+        {
+          "when": "> 120 px from the struck foe",
+          "observable": "no fork"
+        },
+        {
+          "when": "skip_exit >= 1",
+          "observable": "no fork"
+        },
+        {
+          "when": "eligible",
+          "observable": "fork bolt launched at it with hops-1"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_ghost.cpp",
+          "test": "KitGhost.wail_bolt_homes_forks_only_where_it_may_and_fades"
+        },
+        {
+          "file": "tests/unit/test_kit_ghost.cpp",
+          "test": "KitGhost.wail_forks_within_reach_of_the_struck_foe"
+        },
+        {
+          "file": "tests/unit/test_kit_ghost.cpp",
+          "test": "KitGhost.wail_hops_foe_to_foe_and_frights_each_once"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "effect_wail.lua:69",
+      "lines": [
+        69,
+        73
+      ],
+      "kinds": [
+        "if",
+        "if"
+      ],
+      "function": "strike",
+      "anchor": "if leader:has_guy() then",
+      "condition": "leader:has_guy() / fright > 0",
+      "semantic": "A wailed foe flees away from the ghost for a quarter of the scare's duration, less a constitution roll for a hero (one draw, heroes only); a hero who resists fully does not flee; either way it gains 3 rounds of wail immunity.",
+      "arms": [
+        {
+          "when": "monster",
+          "observable": "forced fright of scare_duration(L)/4 directed sign(foe-ghost); no draw",
+          "asserted": false
+        },
+        {
+          "when": "hero",
+          "observable": "rand0(con) subtracted",
+          "asserted": false
+        },
+        {
+          "when": "fright <= 0",
+          "observable": "no command; skip_exit still +3",
+          "asserted": false
+        }
+      ],
+      "setting": "new-specials",
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": [
+        "monster",
+        "hero",
+        "fright <= 0"
+      ],
+      "note": [
+        "Re-audited: the monster arm's flee direction sign(foe-ghost) and its no-draw claim are not asserted (only commandcount 62 and skip_exit 3); the hero arm asserts only that rng_.state_ moved, not that the roll shortens the fright; the full-resist arm is unasserted (wail_spares_a_fearless_foe goes through KIT_FEARLESS, not fright <= 0)."
+      ]
+    },
+    {
+      "id": "effect_wail.lua:82",
+      "lines": [
+        82
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "strike",
+      "anchor": "if hops < 1 then",
+      "condition": "hops < 1",
+      "semantic": "A wail bolt with no hops left frightens its foe and forks no further: the chain ends after wail_hops (3) hops; no fork RNG draw is made then.",
+      "arms": [
+        {
+          "when": "hops 0",
+          "observable": "no fork bolt, no rand0 draw"
+        },
+        {
+          "when": "hops >= 1",
+          "observable": "rand0(level)+1 fork budget drawn even with no other foe"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": [
+        "hops 0",
+        "hops >= 1"
+      ],
+      "note": [
+        "The no-fork outcome of hops 0 is asserted; neither arm's RNG claim (no draw at hops 0, one budget draw at hops >= 1) is pinned (rng_.state_ never compared)."
+      ]
+    },
+    {
+      "id": "effect_wail.lua:95",
+      "lines": [
+        95,
+        98
+      ],
+      "kinds": [
+        "if",
+        "if"
+      ],
+      "function": "strike",
+      "anchor": "if forks_left <= 0 then",
+      "condition": "forks_left <= 0 / is_fork_target",
+      "semantic": "A wail forks to at most rand0(ghost level)+1 eligible foes in list order; ineligible foes do NOT use up the budget (unlike chain lightning, effect_chain.lua:70).",
+      "arms": [
+        {
+          "when": "budget left and eligible",
+          "observable": "bolt launched; budget -1"
+        },
+        {
+          "when": "ineligible",
+          "observable": "skipped, budget kept"
+        },
+        {
+          "when": "budget spent",
+          "observable": "stop"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_ghost.cpp",
+          "test": "KitGhost.wail_forks_within_reach_of_the_struck_foe"
+        },
+        {
+          "file": "tests/unit/test_kit_ghost.cpp",
+          "test": "KitGhost.wail_hops_foe_to_foe_and_frights_each_once"
+        }
+      ],
+      "missing_arms": [
+        "ineligible",
+        "budget spent"
+      ]
+    },
+    {
+      "id": "effect_wail.lua:115",
+      "lines": [
+        115,
+        117,
+        120,
+        122
+      ],
+      "kinds": [
+        "if",
+        "elseif",
+        "if",
+        "elseif"
+      ],
+      "function": "home_on",
+      "anchor": "if tx > self:xpos() then",
+      "condition": "tx >/< xpos; ty >/< ypos",
+      "semantic": "A wail puff steers its centre onto its foe's centre, at most 6 px per axis per tick, never overshooting, facing where it flies.",
+      "arms": [
+        {
+          "when": "target right/below",
+          "observable": "+min(step,gap)"
+        },
+        {
+          "when": "target left/above",
+          "observable": "-min(step,gap)"
+        },
+        {
+          "when": "aligned",
+          "observable": "0"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": [
+        "target right/below",
+        "target left/above",
+        "aligned"
+      ]
+    },
+    {
+      "id": "effect_wail.lua:139",
+      "lines": [
+        139,
+        142
+      ],
+      "kinds": [
+        "if",
+        "if"
+      ],
+      "function": "on_act (core:wail)",
+      "anchor": "if not leader or not owner then",
+      "condition": "not leader or not owner / lineofsight < 1 or leader:hidden()",
+      "semantic": "A wail bolt whose foe or ghost is gone, that flew out its 60-tick life, or whose foe has gone hidden (invisible) fades without a fright.",
+      "arms": [
+        {
+          "when": "no leader/owner",
+          "observable": "bolt dead; no fright"
+        },
+        {
+          "when": "lineofsight < 1",
+          "observable": "dead; no fright"
+        },
+        {
+          "when": "leader hidden",
+          "observable": "dead; no fright"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_ghost.cpp",
+          "test": "KitGhost.wail_bolt_homes_forks_only_where_it_may_and_fades"
+        }
+      ],
+      "missing_arms": [
+        "lineofsight < 1"
+      ]
+    },
+    {
+      "id": "effect_wail.lua:147",
+      "lines": [
+        147
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "on_act (core:wail)",
+      "anchor": "if hits(cx - 4, cy - 4, 8, 8,",
+      "condition": "hits(8x8 core at puff centre, leader box)",
+      "semantic": "Only the puff's 8x8 core strikes, not its 48x40 frame: the wail frightens its foe when it is seen to touch.",
+      "arms": [
+        {
+          "when": "core overlaps the foe",
+          "observable": "strike + bolt dies"
+        },
+        {
+          "when": "frame overlaps but core does not",
+          "observable": "keeps homing; lineofsight -1; sparkle frame {1,2,3,2}[(los/2)%4]"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_ghost.cpp",
+          "test": "KitGhost.wail_strikes_from_its_core_not_its_cloud"
+        },
+        {
+          "file": "tests/unit/test_kit_ghost.cpp",
+          "test": "KitGhost.wail_cycles_the_small_sparkle_frames"
+        }
+      ],
+      "missing_arms": []
+    }
+  ],
+  "other": [
+    {
+      "id": "effect_wail.lua:93",
+      "lines": [
+        93
+      ],
+      "kinds": [
+        "for"
+      ],
+      "kind": "loop",
+      "anchor": "for i = 1, #foes do",
+      "note": "iterates the fork scan; rules at effect_wail.lua:95, :98"
+    }
+  ]
+}

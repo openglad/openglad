@@ -1,0 +1,1857 @@
+{
+  "path": "packs/core/lib/kit_skeleton.lua",
+  "rules": [
+    {
+      "id": "kit_skeleton.lua:58",
+      "lines": [
+        58,
+        59,
+        65,
+        66
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if"
+      ],
+      "function": "facing_of",
+      "anchor": "if dir >= 0 then",
+      "condition": "dir >= 0 / dir < 8 ; fx == 0 / fy == 0",
+      "semantic": "BONE WALL rises across the skeleton's facing: its 8-way curdir when it has one, else the signs of its last heading, else straight up.",
+      "arms": [
+        {
+          "when": "curdir 0..7",
+          "observable": "wall centre = skeleton centre + FACING step * wall_gap; segments laid perpendicular (e.g. FACE_UP_RIGHT gives segments at (99,58),(115,74),(131,90))"
+        },
+        {
+          "when": "curdir sentinel, last heading non-zero",
+          "observable": "wall placed along sign(lastx),sign(lasty) (lastx<0 -> segments at x 75)"
+        },
+        {
+          "when": "curdir sentinel, lastx=lasty=0",
+          "observable": "wall placed straight up (segments at y 74)"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.bone_wall_follows_the_facing"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_skeleton.lua:92",
+      "lines": [
+        92
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "ticks_mana_buys",
+      "anchor": "if phase == 0 then",
+      "condition": "phase == 0",
+      "semantic": "A mana-drained marker's clock (DIG IN burrow, REASSEMBLE ward) is clamped to the tick the mana actually runs out, so the countdown shown is the real end: pulses the pool can still pay plus the ticks to the next pulse (a full pulse right after one).",
+      "arms": [
+        {
+          "when": "left on a pulse boundary (phase 0)",
+          "observable": "clock clamps to floor(mp/drain)*pulse + pulse"
+        },
+        {
+          "when": "mid-pulse",
+          "observable": "clock clamps to floor(mp/drain)*pulse + (left mod pulse)"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.burrow_surfaces_when_the_mana_runs_dry"
+        },
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.ward_fades_when_the_mana_runs_dry"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_skeleton.lua:112",
+      "lines": [
+        112,
+        115,
+        118,
+        128
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if"
+      ],
+      "function": "walks_over / foe_on_top",
+      "anchor": "if foe:order() ~= C.ORDER_LIVING then",
+      "condition": "foe:order() ~= ORDER_LIVING ; floor differs ; BIT_FLYING ; flight_left()==0",
+      "semantic": "Only a foe that walks over the burrow wakes a buried skeleton: a living on the same floor, not a natural flyer and not under a flight potion; generators and foes on other floors pass over unnoticed.",
+      "arms": [
+        {
+          "when": "generator foe within dig_trigger",
+          "observable": "skeleton stays hidden"
+        },
+        {
+          "when": "other floor",
+          "observable": "stays hidden"
+        },
+        {
+          "when": "BIT_FLYING foe",
+          "observable": "stays hidden"
+        },
+        {
+          "when": "flight_left>0",
+          "observable": "stays hidden"
+        },
+        {
+          "when": "walking living on its floor",
+          "observable": "hidden()==false, foe()==that walker"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.dig_in_ignores_flyers_and_generators_over_the_burrow"
+        },
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.dig_in_on_floor_one_stays_on_floor_one"
+        },
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.dig_in_hides_regens_and_pops_when_a_foe_steps_close"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_skeleton.lua:143",
+      "lines": [
+        143
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "pop_up",
+      "anchor": "if foe then",
+      "condition": "if foe",
+      "semantic": "A skeleton that surfaces under a foe swings at it at once (the weapon leaves toward the foe); surfacing on a press, on time out or on dry mana throws nothing and keeps no foe.",
+      "arms": [
+        {
+          "when": "foe woke it",
+          "observable": "foe()==orc, a bone weapon fired, orc hp drops"
+        },
+        {
+          "when": "no foe (press/timeout/mana)",
+          "observable": "foe()==nullptr, no FAMILY_BONE owned by skeleton"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.dig_in_hides_regens_and_pops_when_a_foe_steps_close"
+        },
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.burrow_surfaces_when_the_mana_runs_dry"
+        },
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.dig_in_expires_on_its_own"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_skeleton.lua:155",
+      "lines": [
+        155,
+        157
+      ],
+      "kinds": [
+        "if",
+        "if"
+      ],
+      "function": "sink",
+      "anchor": "if owner:ani_type() == C.ANI_TELE_IN then",
+      "condition": "owner:ani_type() == ANI_TELE_IN ; step < SINK_TICKS",
+      "semantic": "DIG IN sinks over four ticks showing frames 24..27 while still visible and hittable, then goes under (hidden, parked on walk, channel cleared); if anything else takes over the skeleton's animation it goes under at once.",
+      "arms": [
+        {
+          "when": "TELE_IN and age<4",
+          "observable": "frame 24+age, hidden false, in obmap"
+        },
+        {
+          "when": "age reaches 4",
+          "observable": "hidden true, frame 27, ani WALK, KIT_CHANNEL clear, not in obmap"
+        },
+        {
+          "when": "ani_type changed mid-sink (e.g. set ANI_ATTACK)",
+          "observable": "goes under on that tick"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.dig_in_sinks_four_ticks_then_hides_at_frame_27_without_tunnelling"
+        }
+      ],
+      "missing_arms": [
+        "ani_type changed mid-sink (e.g. set ANI_ATTACK)"
+      ]
+    },
+    {
+      "id": "kit_skeleton.lua:170",
+      "lines": [
+        170
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "sink",
+      "anchor": "if not owner:hidden() then",
+      "condition": "not owner:hidden()",
+      "semantic": "A body a ghost possessed during the sink cannot be hidden: it stays up and the burrow ends, leaving no channel.",
+      "arms": [
+        {
+          "when": "possessed mid-sink",
+          "observable": "never hidden over 6 ticks, burrow marker gone, KIT_CHANNEL clear"
+        },
+        {
+          "when": "normal",
+          "observable": "hidden"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.a_body_possessed_mid_sink_stays_up"
+        },
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.dig_in_sinks_four_ticks_then_hides_at_frame_27_without_tunnelling"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_skeleton.lua:183",
+      "lines": [
+        183,
+        184
+      ],
+      "kinds": [
+        "if",
+        "if"
+      ],
+      "function": "buried",
+      "anchor": "if og.mod(left, t.dig_drain_pulse) == 0 then",
+      "condition": "og.mod(left, dig_drain_pulse)==0 ; magicpoints < dig_drain",
+      "semantic": "Staying buried costs dig_drain MP every dig_drain_pulse ticks; a pulse the pool cannot pay surfaces the skeleton plainly (no swing), never driving mana below zero.",
+      "arms": [
+        {
+          "when": "pulse and mp>=drain",
+          "observable": "mp -= dig_drain"
+        },
+        {
+          "when": "pulse and mp<drain",
+          "observable": "surfaces, foe null, no bone, mp unchanged (>=0)"
+        },
+        {
+          "when": "not a pulse",
+          "observable": "no change"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.burrow_surfaces_when_the_mana_runs_dry"
+        },
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.second_press_pops_up_free_and_costs_nothing"
+        },
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.dig_in_hides_regens_and_pops_when_a_foe_steps_close"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_skeleton.lua:193",
+      "lines": [
+        193
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "buried",
+      "anchor": "if og.mod(left, t.dig_regen_pulse) == 0 then",
+      "condition": "og.mod(left, dig_regen_pulse)==0",
+      "semantic": "A buried skeleton regenerates dig_regen HP every dig_regen_pulse ticks (clamped to max).",
+      "arms": [
+        {
+          "when": "regen pulse",
+          "observable": "hp += dig_regen, never above max"
+        },
+        {
+          "when": "other ticks",
+          "observable": "hp unchanged"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.dig_in_hides_regens_and_pops_when_a_foe_steps_close"
+        }
+      ],
+      "missing_arms": [
+        "regen pulse"
+      ]
+    },
+    {
+      "id": "kit_skeleton.lua:197",
+      "lines": [
+        197
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "buried",
+      "anchor": "if foe then",
+      "condition": "if foe",
+      "semantic": "A foe stepping within dig_trigger of a buried skeleton makes it pop up under that foe (see kit_skeleton.lua:112 for who counts).",
+      "arms": [
+        {
+          "when": "foe within dig_trigger",
+          "observable": "hidden false, foe set"
+        },
+        {
+          "when": "foe 40 px away",
+          "observable": "stays hidden"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.dig_in_hides_regens_and_pops_when_a_foe_steps_close"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_skeleton.lua:201",
+      "lines": [
+        201
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "buried",
+      "anchor": "if left <= 0 then",
+      "condition": "left <= 0",
+      "semantic": "A burrow lasts at most dig_max ticks; when the time runs out the skeleton surfaces without a target.",
+      "arms": [
+        {
+          "when": "299 buried ticks",
+          "observable": "hidden"
+        },
+        {
+          "when": "300th",
+          "observable": "surfaces, foe null, marker gone"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.dig_in_expires_on_its_own"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_skeleton.lua:217",
+      "lines": [
+        217
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "burrow",
+      "anchor": "if owner:hidden() then",
+      "condition": "owner:hidden()",
+      "semantic": "While a burrow lives the special in hand is pinned to DIG IN (a Switch Special during sink or burial cannot leave TUNNEL in hand); a hidden skeleton runs the buried phase, a visible one the sink.",
+      "arms": [
+        {
+          "when": "sinking",
+          "observable": "current_special stays 2 after a switch press"
+        },
+        {
+          "when": "buried",
+          "observable": "current_special 2; next press pops up through grow row, no tunnel hop"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.switching_special_while_sinking_keeps_dig_in_in_hand"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_skeleton.lua:234",
+      "lines": [
+        234,
+        235
+      ],
+      "kinds": [
+        "if",
+        "if"
+      ],
+      "function": "M.dig_in",
+      "anchor": "if burrow_marker then",
+      "condition": "burrow_marker ; km.age(burrow_marker) < kit_latch",
+      "semantic": "A second DIG IN press while dug in surfaces the skeleton for free, but presses in the first kit_latch ticks are silently refused (DIG IN SETTLING) so a held key does not pop the burrow.",
+      "arms": [
+        {
+          "when": "age<kit_latch",
+          "observable": "refused ScriptDeclined 'DIG IN SETTLING', mp unchanged"
+        },
+        {
+          "when": "age>=kit_latch",
+          "observable": "ok, hidden false, mp unchanged, marker gone"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.held_special_does_not_pop_the_burrow"
+        },
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.second_press_pops_up_free_and_costs_nothing"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_skeleton.lua:241",
+      "lines": [
+        241
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "M.dig_in",
+      "anchor": "if self:possess_link() ~= 0 then",
+      "condition": "self:possess_link() ~= 0",
+      "semantic": "A possessed skeleton body cannot dig in.",
+      "arms": [
+        {
+          "when": "possessed",
+          "observable": "refused 'POSSESSED BODY', mp unchanged, no marker"
+        },
+        {
+          "when": "free",
+          "observable": "digs"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.possessed_body_cannot_dig_in"
+        },
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.dig_in_sinks_four_ticks_then_hides_at_frame_27_without_tunnelling"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_skeleton.lua:244",
+      "lines": [
+        244
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "M.dig_in",
+      "anchor": "if lc.mid_teleport(self) then",
+      "condition": "lc.mid_teleport(self)",
+      "semantic": "A skeleton mid-teleport (TUNNEL in progress) cannot dig in (same rule as living_common.lua:22).",
+      "arms": [
+        {
+          "when": "ani TELE_IN/TELE_OUT",
+          "observable": "refused 'SPECIAL BUSY'"
+        },
+        {
+          "when": "otherwise",
+          "observable": "digs"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.possessed_body_cannot_dig_in"
+        },
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.dig_in_sinks_four_ticks_then_hides_at_frame_27_without_tunnelling"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_skeleton.lua:247",
+      "lines": [
+        247
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "M.dig_in",
+      "anchor": "if lc.spare_mp(self, DIG_IN_SLOT) < t.dig_min_pool then",
+      "condition": "lc.spare_mp(self, DIG_IN_SLOT) < dig_min_pool",
+      "semantic": "DIG IN refuses unless at least dig_min_pool MP remain after its price (a burrow that would surface at once is no burrow); the refusal is free.",
+      "arms": [
+        {
+          "when": "22 MP (7 left)",
+          "observable": "refused 'NEED MANA TO STAY DOWN', mp 22"
+        },
+        {
+          "when": "23 MP (8 left)",
+          "observable": "ok, mp 8"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.dig_in_refuses_without_a_pool_to_stay_down"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_skeleton.lua:275",
+      "lines": [
+        275
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "wall_segment",
+      "anchor": "if not og.spawn_spot_clear(seg, x, y) then",
+      "condition": "not og.spawn_spot_clear(seg, x, y)",
+      "semantic": "Each of a bone wall's three segments rises only on a clear spot (no door, tree, body or other wall); a blocked segment is simply not placed.",
+      "arms": [
+        {
+          "when": "spot blocked (door under the middle)",
+          "observable": "that segment absent, the other two stand"
+        },
+        {
+          "when": "clear",
+          "observable": "segment at its slot, team = skeleton's, ACT_SIT, hp 40+4*level, lifetime 360"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.bone_wall_refuses_on_a_door"
+        },
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.bone_wall_stands_three_segments_blocks_foes_passes_allies_and_landings"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_skeleton.lua:309",
+      "lines": [
+        309,
+        310,
+        322,
+        323,
+        324,
+        326,
+        327,
+        335
+      ],
+      "kinds": [
+        "for",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if"
+      ],
+      "function": "fell_oldest_walls",
+      "anchor": "for k = 1, #new_segments do",
+      "condition": "is_new ; family==BONE_WALL ; dead==0 ; owner==self ; not is_new ; lifetime < oldest ; standing <= cap or oldest==nil",
+      "semantic": "A skeleton keeps at most 3*walls_cap(level) of its own bone-wall segments standing (2 walls at L1 .. 7 at L13, 8 max); after a new wall the oldest own segments (least lifetime) fall quietly, one at a time, until under the cap - never the new ones, never another skeleton's, no bones, no notification. A chopped wall frees room.",
+      "arms": [
+        {
+          "when": "under cap",
+          "observable": "nothing falls"
+        },
+        {
+          "when": "over cap",
+          "observable": "oldest own segments dead until standing==3*cap; no FAMILY_BONE spawned, no Notification event"
+        },
+        {
+          "when": "another skeleton's walls",
+          "observable": "untouched"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.bone_walls_kept_follow_the_level_curve"
+        },
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.level_one_skeleton_keeps_two_walls_and_the_oldest_falls_quietly"
+        },
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.level_thirteen_skeleton_keeps_seven_walls"
+        },
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.a_chopped_wall_leaves_room_and_only_the_oldest_needed_fall"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_skeleton.lua:354",
+      "lines": [
+        354,
+        358
+      ],
+      "kinds": [
+        "if",
+        "if"
+      ],
+      "function": "bone_wall",
+      "anchor": "if seg then",
+      "condition": "if seg ; #placed == 0",
+      "semantic": "A bone wall with no segment that fits is refused for free (NO ROOM FOR A WALL); a wall with any segment placed is cast, fells old walls, and clangs.",
+      "arms": [
+        {
+          "when": "0 segments",
+          "observable": "refused 'NO ROOM FOR A WALL', mp unchanged"
+        },
+        {
+          "when": ">=1",
+          "observable": "ok, SOUND_CLANG positional"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.bone_wall_stands_three_segments_blocks_foes_passes_allies_and_landings"
+        },
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.bone_wall_refuses_on_a_door"
+        }
+      ],
+      "missing_arms": [
+        ">=1"
+      ]
+    },
+    {
+      "id": "kit_skeleton.lua:370",
+      "lines": [
+        370
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "wall_burst",
+      "anchor": "if i ~= 0 or j ~= 0 then",
+      "condition": "i ~= 0 or j ~= 0",
+      "semantic": "BONE STORM bursts eight bones out of each wall segment, one in each of the eight directions (none straight down at the centre), each owned by the skeleton on its team with its damage and storm_range.",
+      "arms": [
+        {
+          "when": "8 directions",
+          "observable": "8 FAMILY_BONE per segment, team = skeleton, owner = skeleton"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.bone_storm_bursts_from_every_wall_only"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_skeleton.lua:392",
+      "lines": [
+        392,
+        393,
+        394,
+        408
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if"
+      ],
+      "function": "own_wall_standing / bone_storm",
+      "anchor": "if wall:family() == WEAP_BONE_WALL then",
+      "condition": "family==BONE_WALL and dead==0 and owner==self ; not own_wall_standing",
+      "semantic": "BONE STORM needs a standing wall of THIS skeleton; with none (even if another skeleton's walls stand) it is refused for free.",
+      "arms": [
+        {
+          "when": "no own wall",
+          "observable": "refused 'NO WALL STANDING', mp unchanged, no bones"
+        },
+        {
+          "when": "own wall",
+          "observable": "storm proceeds"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.bone_storm_refuses_with_no_wall"
+        },
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.bone_storm_bursts_from_every_wall_only"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_skeleton.lua:415",
+      "lines": [
+        415,
+        416,
+        417
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
+      ],
+      "function": "bone_storm",
+      "anchor": "if wall:family() == WEAP_BONE_WALL then",
+      "condition": "family==BONE_WALL and dead==0 and owner==self",
+      "semantic": "BONE STORM shatters every standing wall of this skeleton (wherever it is) and only those; nothing leaves the skeleton itself.",
+      "arms": [
+        {
+          "when": "own segments",
+          "observable": "dead, each bursts 8 bones"
+        },
+        {
+          "when": "other skeleton's segments",
+          "observable": "stand"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.bone_storm_bursts_from_every_wall_only"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_skeleton.lua:435",
+      "lines": [
+        435
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "M.wall_or_storm",
+      "anchor": "if digging(self) then",
+      "condition": "digging(self)",
+      "semantic": "While DIG IN is in progress no other skeleton special may be cast (same rule as kit_skeleton.lua:544).",
+      "arms": [
+        {
+          "when": "burrow marker exists",
+          "observable": "BONE WALL/STORM refused 'SPECIAL BUSY', no wall"
+        },
+        {
+          "when": "none",
+          "observable": "cast"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.other_specials_wait_for_the_dig"
+        },
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.bone_wall_stands_three_segments_blocks_foes_passes_allies_and_landings"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_skeleton.lua:438",
+      "lines": [
+        438
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "M.wall_or_storm",
+      "anchor": "if self:shifter_down() ~= 0 then",
+      "condition": "self:shifter_down() ~= 0",
+      "semantic": "Slot 3 is BONE WALL plainly and BONE STORM with the shifter held.",
+      "arms": [
+        {
+          "when": "shift down",
+          "observable": "storm"
+        },
+        {
+          "when": "shift up",
+          "observable": "wall"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.bone_storm_bursts_from_every_wall_only"
+        },
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.bone_wall_stands_three_segments_blocks_foes_passes_allies_and_landings"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_skeleton.lua:457",
+      "lines": [
+        457
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "reassemble",
+      "anchor": "if warded(self) then",
+      "condition": "warded(self)",
+      "semantic": "REASSEMBLE cannot be bought twice: an armed ward refuses the cast for free.",
+      "arms": [
+        {
+          "when": "KIT_WARD set",
+          "observable": "refused 'ALREADY WARDED', mp unchanged"
+        },
+        {
+          "when": "unset",
+          "observable": "ward armed, 60 MP, flash"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.warded_skeleton_stands_back_up_at_a_quarter"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_skeleton.lua:463",
+      "lines": [
+        463
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "reassemble",
+      "anchor": "if stale then",
+      "condition": "stale",
+      "semantic": "A ward a death spent this tick may still have its marker; re-warding retires the stale marker first so the new ward keeps its own full clock.",
+      "arms": [
+        {
+          "when": "stale marker",
+          "observable": "old marker finished; one WARD marker with lifetime ward_ticks"
+        },
+        {
+          "when": "none",
+          "observable": "fresh marker"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.a_ward_bought_again_at_once_keeps_its_own_clock"
+        },
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.warded_skeleton_stands_back_up_at_a_quarter"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_skeleton.lua:467",
+      "lines": [
+        467
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "reassemble",
+      "anchor": "if not km.spawn(self, km.WARD, og.tuning(self).ward_ticks) then",
+      "condition": "not km.spawn(...)",
+      "semantic": "A ward that cannot get its timekeeping marker (world full) is not armed and costs nothing.",
+      "arms": [
+        {
+          "when": "spawn fails",
+          "observable": "refused 'COULD NOT WARD', KIT_WARD clear"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.a_full_world_cannot_ward"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_skeleton.lua:495",
+      "lines": [
+        495
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "ward_window",
+      "anchor": "if not warded(owner) then",
+      "condition": "not warded(owner)",
+      "semantic": "A ward spent by a death clears silently: the marker just goes with no 'ward fades' notice.",
+      "arms": [
+        {
+          "when": "bit cleared by death",
+          "observable": "marker gone, no fade notification"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.a_spent_ward_retires_its_marker"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_skeleton.lua:502",
+      "lines": [
+        502
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "ward_window",
+      "anchor": "if left <= 0 then",
+      "condition": "left <= 0",
+      "semantic": "An unused ward fades after ward_ticks (360), telling the skeleton's seat (or everyone for a bot) \"<name>'s ward fades\".",
+      "arms": [
+        {
+          "when": "tick 359",
+          "observable": "still warded"
+        },
+        {
+          "when": "tick 360",
+          "observable": "KIT_WARD clear, one fade notification"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.ward_fades_after_its_time"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_skeleton.lua:506",
+      "lines": [
+        506,
+        507
+      ],
+      "kinds": [
+        "if",
+        "if"
+      ],
+      "function": "ward_window",
+      "anchor": "if og.mod(left, t.ward_drain_pulse) == 0 then",
+      "condition": "mod(left, ward_drain_pulse)==0 ; magicpoints < ward_drain",
+      "semantic": "An armed ward costs ward_drain MP every ward_drain_pulse ticks and fades early when a pulse cannot be paid.",
+      "arms": [
+        {
+          "when": "pulse, mp>=drain",
+          "observable": "mp -= ward_drain"
+        },
+        {
+          "when": "pulse, mp<drain",
+          "observable": "fades with notice"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.ward_fades_when_the_mana_runs_dry"
+        }
+      ],
+      "missing_arms": [
+        "pulse, mp<drain"
+      ]
+    },
+    {
+      "id": "kit_skeleton.lua:521",
+      "lines": [
+        521
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "legion",
+      "anchor": "if km.find(self, km.LEGION) then",
+      "condition": "km.find(self, km.LEGION)",
+      "semantic": "LEGION cannot be cast while its window is open; the refusal is free.",
+      "arms": [
+        {
+          "when": "window open",
+          "observable": "refused 'LEGION ALREADY RISING', mp unchanged"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.legion_raises_melee_bone_and_explosion_kills_within_the_window"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_skeleton.lua:534",
+      "lines": [
+        534,
+        538
+      ],
+      "kinds": [
+        "if",
+        "if"
+      ],
+      "function": "legion_window",
+      "anchor": "if left <= 0 then",
+      "condition": "left <= 0 ; not marker:owner()",
+      "semantic": "The LEGION window lasts legion_ticks (300) and closes early when its skeleton is gone.",
+      "arms": [
+        {
+          "when": "tick 299",
+          "observable": "marker open"
+        },
+        {
+          "when": "tick 300",
+          "observable": "marker gone, later kill does not rise"
+        },
+        {
+          "when": "skeleton dead",
+          "observable": "marker gone next tick"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.legion_raises_melee_bone_and_explosion_kills_within_the_window"
+        },
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.legion_needs_a_living_skeleton_and_a_foe"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_skeleton.lua:544",
+      "lines": [
+        544
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "M.reassemble_or_legion",
+      "anchor": "if digging(self) then",
+      "condition": "digging(self)",
+      "semantic": "Same rule as kit_skeleton.lua:435: no REASSEMBLE/LEGION while DIG IN is in progress.",
+      "arms": [
+        {
+          "when": "burrow",
+          "observable": "refused 'SPECIAL BUSY', no ward bit"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.other_specials_wait_for_the_dig"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_skeleton.lua:547",
+      "lines": [
+        547
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "M.reassemble_or_legion",
+      "anchor": "if self:shifter_down() ~= 0 then",
+      "condition": "self:shifter_down() ~= 0",
+      "semantic": "Slot 4 is REASSEMBLE plainly and LEGION with the shifter held.",
+      "arms": [
+        {
+          "when": "shift",
+          "observable": "LEGION marker"
+        },
+        {
+          "when": "no shift",
+          "observable": "KIT_WARD"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.warded_skeleton_stands_back_up_at_a_quarter"
+        },
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.legion_raises_melee_bone_and_explosion_kills_within_the_window"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_skeleton.lua:557",
+      "lines": [
+        557,
+        560,
+        563,
+        569,
+        572,
+        577
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if"
+      ],
+      "function": "M.on_kill",
+      "anchor": "if og.match_setting(\"new_specials\") == 0 then",
+      "condition": "new_specials==0 ; self:dead() ; no LEGION marker ; victim.team == self.team ; is_undead ; og.rand(2)==0",
+      "semantic": "During LEGION, a foe this living skeleton kills (melee, its bone, its explosion) rises on its side as a skeleton at half the victim's level (min 1), at the victim's spot in the grow row, consuming the corpse and life gem - but only with New Specials on, never for a dead killer, never after the window, never for a victim on the killer's own team (a released possessed ally), never for the undead, and only on a coin of heads (tails leaves corpse and gem). The coin is drawn only for a kill that could rise.",
+      "arms": [
+        {
+          "when": "setting off",
+          "observable": "no risen, stain stays"
+        },
+        {
+          "when": "killer dead",
+          "observable": "nothing rises"
+        },
+        {
+          "when": "window closed",
+          "observable": "nothing rises"
+        },
+        {
+          "when": "same team",
+          "observable": "nothing rises, stain stays"
+        },
+        {
+          "when": "undead victim",
+          "observable": "nothing rises"
+        },
+        {
+          "when": "tails",
+          "observable": "stain + life gem stay, no rise"
+        },
+        {
+          "when": "heads",
+          "observable": "new skeleton team = killer's, level max(1,victim/2), at victim xy, ANI_TELE_IN, no owner, stain and gem gone"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.legion_hook_is_inert_when_off"
+        },
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.legion_needs_a_living_skeleton_and_a_foe"
+        },
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.legion_raises_melee_bone_and_explosion_kills_within_the_window"
+        },
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.legion_leaves_half_its_kills_down"
+        }
+      ],
+      "missing_arms": [
+        "heads"
+      ]
+    },
+    {
+      "id": "kit_skeleton.lua:676",
+      "lines": [
+        607,
+        608,
+        609,
+        610,
+        627,
+        676,
+        677,
+        680
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if"
+      ],
+      "function": "M.ai_wall / at_own_wall / foes_at_walls",
+      "anchor": "if wall:family() == WEAP_BONE_WALL then",
+      "condition": "own_wall_standing ; magicpoints < STORM_COST ; foes_at_walls < 2 ; seg dist_to_ob(foe) <= 60",
+      "semantic": "Once a wall of its own stands, a bot skeleton never raises another; it storms (shift 1) only with 45 MP and at least two living foes (each counted once, scanned within 400) within 60 px of one of its own standing segments.",
+      "arms": [
+        {
+          "when": "wall stands, one foe at it",
+          "observable": "false"
+        },
+        {
+          "when": "two foes within 60 of a segment",
+          "observable": "true, shifter_down 1"
+        },
+        {
+          "when": "44 MP",
+          "observable": "false"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.ai_wall_fires_when_hurt_with_a_foe_close_and_storms_a_crowd"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_skeleton.lua:719",
+      "lines": [
+        640,
+        719,
+        722
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
+      ],
+      "function": "M.ai_reassemble / foes_that_can_rise",
+      "anchor": "if not og.family_flag(\"living\", foes[i]:family(), \"is_undead\") then",
+      "condition": "km.find(LEGION) ; foes_that_can_rise(100) < 3 ; not is_undead",
+      "semantic": "A bot skeleton at or above half health calls LEGION (shift 1) when no window is open and at least three living foes that could rise (not undead) stand within 100.",
+      "arms": [
+        {
+          "when": "two foes",
+          "observable": "false"
+        },
+        {
+          "when": "three living non-undead foes",
+          "observable": "true, shifter 1"
+        },
+        {
+          "when": "window open",
+          "observable": "false"
+        },
+        {
+          "when": "three foes but one undead",
+          "observable": "false"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.ai_reassemble_fires_when_hurt_and_legion_when_crowded"
+        },
+        {
+          "file": "tests/unit/test_bot_gates_kits.cpp",
+          "test": "GameplayFixesBots.skeleton_legion_counts_only_foes_that_can_rise"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_skeleton.lua:649",
+      "lines": [
+        649
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "M.ai_dig_in",
+      "anchor": "if og.match_setting(\"new_specials\") == 0 then",
+      "condition": "match_setting(new_specials)==0",
+      "semantic": "With New Specials off DIG IN's bot gate answers true at once with no draw, no shift write and no foe acquired, so the classic special roll is untouched (same rule as kit_skeleton.lua:673, :706).",
+      "arms": [
+        {
+          "when": "off",
+          "observable": "true, rng state unchanged, foe null"
+        },
+        {
+          "when": "on",
+          "observable": "gate evaluates"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.ai_off_answers_the_classic_gate"
+        },
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.ai_dig_in_fires_when_hurt_and_outnumbered"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_skeleton.lua:652",
+      "lines": [
+        652,
+        660,
+        664
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
+      ],
+      "function": "M.ai_dig_in",
+      "anchor": "if self:possess_link() ~= 0 then",
+      "condition": "possess_link ~= 0 ; not hp_below(6/10) ; spare_mp < dig_min_pool",
+      "semantic": "A bot skeleton digs in only when below 60% hp, not possessed, able to stay down (dig_min_pool after the price), with two living foes within 80.",
+      "arms": [
+        {
+          "when": "possessed",
+          "observable": "false"
+        },
+        {
+          "when": "hp 60%",
+          "observable": "false"
+        },
+        {
+          "when": "22 MP",
+          "observable": "false"
+        },
+        {
+          "when": "hurt, 23 MP, 2 foes in 80",
+          "observable": "true"
+        },
+        {
+          "when": "one foe / second at 94 px",
+          "observable": "false"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.ai_dig_in_fires_when_hurt_and_outnumbered"
+        },
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.bot_skeleton_digs_in_when_outnumbered"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_skeleton.lua:657",
+      "lines": [
+        657
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "M.ai_dig_in",
+      "anchor": "if lc.mid_teleport(self) then",
+      "condition": "lc.mid_teleport(self)",
+      "semantic": "A bot skeleton mid-teleport (tunnelling) never picks DIG IN (the cast would refuse).",
+      "arms": [
+        {
+          "when": "ani TELE_IN or TELE_OUT",
+          "observable": "gate false"
+        },
+        {
+          "when": "walking",
+          "observable": "gate as per other conditions"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.ai_dig_in_fires_when_hurt_and_outnumbered"
+        }
+      ],
+      "missing_arms": [
+        "ani TELE_IN or TELE_OUT"
+      ]
+    },
+    {
+      "id": "kit_skeleton.lua:673",
+      "lines": [
+        673
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "M.ai_wall",
+      "anchor": "if og.match_setting(\"new_specials\") == 0 then",
+      "condition": "match_setting(new_specials)==0",
+      "semantic": "Same rule as kit_skeleton.lua:649 for BONE WALL's gate.",
+      "arms": [
+        {
+          "when": "off",
+          "observable": "true, no draw, shifter untouched"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.ai_off_answers_the_classic_gate"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_skeleton.lua:686",
+      "lines": [
+        686,
+        690,
+        696
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
+      ],
+      "function": "M.ai_wall",
+      "anchor": "if not G.hp_below(self, 7, 10) then",
+      "condition": "not hp_below(7/10) ; not foe ; not fan_covers(facing(fx,fy), foe)",
+      "semantic": "With no wall standing a bot skeleton raises one (shift 0) only when below 70% hp with the nearest living foe within 60 px on its floor and inside the three-way fan of its facing (where the wall rises).",
+      "arms": [
+        {
+          "when": "healthy",
+          "observable": "false"
+        },
+        {
+          "when": "no foe within 60",
+          "observable": "false"
+        },
+        {
+          "when": "foe within 60 behind the facing",
+          "observable": "false"
+        },
+        {
+          "when": "hurt, foe ahead within 60",
+          "observable": "true, shifter_down 0"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.ai_wall_fires_when_hurt_with_a_foe_close_and_storms_a_crowd"
+        },
+        {
+          "file": "tests/unit/test_bot_gates_kits.cpp",
+          "test": "GameplayFixesBots.skeleton_wall_rises_across_the_foes_line"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_skeleton.lua:706",
+      "lines": [
+        706
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "M.ai_reassemble",
+      "anchor": "if og.match_setting(\"new_specials\") == 0 then",
+      "condition": "match_setting(new_specials)==0",
+      "semantic": "Same rule as kit_skeleton.lua:649 for REASSEMBLE's gate.",
+      "arms": [
+        {
+          "when": "off",
+          "observable": "true, no draw"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.ai_off_answers_the_classic_gate"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_skeleton.lua:709",
+      "lines": [
+        709,
+        710,
+        713
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
+      ],
+      "function": "M.ai_reassemble",
+      "anchor": "if G.hp_below(self, 1, 2) then",
+      "condition": "hp_below(1/2) ; warded ; not foes_within(1, 60, floor)",
+      "semantic": "A bot skeleton below half health picks the ward (shift 0) only when unwarded and fighting (a living foe within 60 on its floor); a hurt skeleton never considers LEGION.",
+      "arms": [
+        {
+          "when": "hurt, unwarded, foe in 60",
+          "observable": "true, shifter 0"
+        },
+        {
+          "when": "hurt, foe at 74",
+          "observable": "false"
+        },
+        {
+          "when": "hurt, warded",
+          "observable": "false"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.ai_reassemble_fires_when_hurt_and_legion_when_crowded"
+        }
+      ],
+      "missing_arms": []
+    }
+  ],
+  "other": [
+    {
+      "id": "kit_skeleton.lua:77",
+      "lines": [
+        77
+      ],
+      "kinds": [
+        "if"
+      ],
+      "kind": "defensive",
+      "anchor": "if flash then",
+      "note": "flash_at: add_ob nil guard (world full) - the flash is cosmetic"
+    },
+    {
+      "id": "kit_skeleton.lua:126",
+      "lines": [
+        126
+      ],
+      "kinds": [
+        "for"
+      ],
+      "kind": "loop",
+      "anchor": "for i = 1, #foes do",
+      "note": "foe_on_top iteration over find_foes_in_range; rule in kit_skeleton.lua:112"
+    },
+    {
+      "id": "kit_skeleton.lua:208",
+      "lines": [
+        208
+      ],
+      "kinds": [
+        "if"
+      ],
+      "kind": "defensive",
+      "anchor": "if not owner then",
+      "note": "burrow marker with no owner (owner gone) finishes itself"
+    },
+    {
+      "id": "kit_skeleton.lua:250",
+      "lines": [
+        250
+      ],
+      "kinds": [
+        "if"
+      ],
+      "kind": "defensive",
+      "anchor": "if not km.spawn(self, km.BURROW, t.dig_max) then",
+      "note": "km.spawn failed (world full): 'COULD NOT DIG IN'; no test reaches it"
+    },
+    {
+      "id": "kit_skeleton.lua:269",
+      "lines": [
+        269
+      ],
+      "kinds": [
+        "if"
+      ],
+      "kind": "defensive",
+      "anchor": "if not seg then",
+      "note": "add_weap_ob nil guard (world full)"
+    },
+    {
+      "id": "kit_skeleton.lua:316",
+      "lines": [
+        316,
+        320
+      ],
+      "kinds": [
+        "while",
+        "for"
+      ],
+      "kind": "loop",
+      "anchor": "while true do",
+      "note": "fell_oldest_walls outer repeat and weaplist scan; rule in kit_skeleton.lua:309"
+    },
+    {
+      "id": "kit_skeleton.lua:352",
+      "lines": [
+        352
+      ],
+      "kinds": [
+        "for"
+      ],
+      "kind": "loop",
+      "anchor": "for k = -1, 1 do",
+      "note": "three-segment placement loop; rules in kit_skeleton.lua:275 and :354"
+    },
+    {
+      "id": "kit_skeleton.lua:368",
+      "lines": [
+        368,
+        369
+      ],
+      "kinds": [
+        "for",
+        "for"
+      ],
+      "kind": "loop",
+      "anchor": "for i = -1, 1 do",
+      "note": "wall_burst 3x3 direction loops; rule in kit_skeleton.lua:370"
+    },
+    {
+      "id": "kit_skeleton.lua:372",
+      "lines": [
+        372
+      ],
+      "kinds": [
+        "if"
+      ],
+      "kind": "defensive",
+      "anchor": "if bone then",
+      "note": "add_ob bone nil guard"
+    },
+    {
+      "id": "kit_skeleton.lua:390",
+      "lines": [
+        390
+      ],
+      "kinds": [
+        "for"
+      ],
+      "kind": "loop",
+      "anchor": "for i = 1, #weapons do",
+      "note": "own_wall_standing weaplist scan; rule in kit_skeleton.lua:392"
+    },
+    {
+      "id": "kit_skeleton.lua:413",
+      "lines": [
+        413
+      ],
+      "kinds": [
+        "for"
+      ],
+      "kind": "loop",
+      "anchor": "for i = 1, #weapons do",
+      "note": "bone_storm weaplist scan; rule in kit_skeleton.lua:415"
+    },
+    {
+      "id": "kit_skeleton.lua:491",
+      "lines": [
+        491
+      ],
+      "kinds": [
+        "if"
+      ],
+      "kind": "defensive",
+      "anchor": "if not owner then",
+      "note": "ward marker with no owner finishes"
+    },
+    {
+      "id": "kit_skeleton.lua:524",
+      "lines": [
+        524
+      ],
+      "kinds": [
+        "if"
+      ],
+      "kind": "defensive",
+      "anchor": "if not km.spawn(self, km.LEGION, og.tuning(self).legion_ticks) then",
+      "note": "LEGION marker spawn failed (world full): 'COULD NOT CALL LEGION'; untested"
+    },
+    {
+      "id": "kit_skeleton.lua:581",
+      "lines": [
+        581
+      ],
+      "kinds": [
+        "if"
+      ],
+      "kind": "defensive",
+      "anchor": "if not risen then",
+      "note": "add_ob risen skeleton nil (world full)"
+    },
+    {
+      "id": "kit_skeleton.lua:605",
+      "lines": [
+        605,
+        626
+      ],
+      "kinds": [
+        "for",
+        "for"
+      ],
+      "kind": "loop",
+      "anchor": "for i = 1, #weapons do",
+      "note": "at_own_wall weapon scan and foes_at_walls foe scan; rule in kit_skeleton.lua:676"
+    },
+    {
+      "id": "kit_skeleton.lua:639",
+      "lines": [
+        639
+      ],
+      "kinds": [
+        "for"
+      ],
+      "kind": "loop",
+      "anchor": "for i = 1, #foes do",
+      "note": "foes_that_can_rise scan; rule in kit_skeleton.lua:719"
+    }
+  ]
+}

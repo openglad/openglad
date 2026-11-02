@@ -1,0 +1,90 @@
+{
+  "path": "packs/core/lib/weapon_knife.lua",
+  "rules": [
+    {
+      "id": "weapon_knife.lua:15",
+      "lines": [
+        15
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "on_death",
+      "anchor": "if not owner then",
+      "condition": "not owner",
+      "semantic": "A knife with no owner at all just dies (no returning blade).",
+      "arms": [
+        {
+          "when": "owner nil",
+          "observable": "no core:knife_back fx spawned; hook returns false"
+        },
+        {
+          "when": "owner present",
+          "observable": "family gate (weapon_knife.lua:18)"
+        }
+      ],
+      "setting": "none",
+      "status": "none",
+      "tests": [],
+      "missing_arms": [
+        "owner nil"
+      ]
+    },
+    {
+      "id": "weapon_knife.lua:18",
+      "lines": [
+        18
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "on_death",
+      "anchor": "if not og.family_flag(\"living\", owner:family(), \"has_returning_weapon\") then",
+      "condition": "og.family_flag('living', owner:family(), 'has_returning_weapon')",
+      "semantic": "A knife thrown by a family with a returning weapon (the soldier) comes back: on death it spawns a knife_back fx owned by the thrower, centred on the knife, on its floor, with its velocity, stepsize and damage, playing the attack animation. Other families' knives just drop. Quirk: a knife whose thrower died is re-owned by itself (family byte 0 == FAMILY_SOLDIER), so an orphaned knife always returns, owned by the dead knife.",
+      "arms": [
+        {
+          "when": "owner family has_returning_weapon",
+          "observable": "exactly one FAMILY_KNIFE_BACK: owner, ani ANI_ATTACK, lastx/lasty/stepsize/damage copied, floor, centred"
+        },
+        {
+          "when": "owner family lacks it",
+          "observable": "no knife_back"
+        },
+        {
+          "when": "thrower died, owner defaulted to the knife itself (family 0)",
+          "observable": "knife_back spawned with owner == the knife"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_weap_behavior.cpp",
+          "test": "WeapBehavior.weap_death_knife_soldier_owner"
+        },
+        {
+          "file": "tests/integration/test_weap_behavior.cpp",
+          "test": "WeapBehavior.weap_death_knife_non_soldier"
+        }
+      ],
+      "missing_arms": [
+        "thrower died, owner defaulted to the knife itself (family 0)"
+      ]
+    }
+  ],
+  "other": [
+    {
+      "id": "weapon_knife.lua:23",
+      "lines": [
+        23
+      ],
+      "kinds": [
+        "if"
+      ],
+      "kind": "defensive",
+      "anchor": "if not blade then",
+      "note": "add_ob('fx', core:knife_back) failure guard."
+    }
+  ]
+}

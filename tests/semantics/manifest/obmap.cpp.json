@@ -1,0 +1,1068 @@
+{
+  "path": "src/gameplay/obmap.cpp",
+  "rules": [
+    {
+      "id": "obmap.cpp:49",
+      "lines": [
+        48,
+        49,
+        50
+      ],
+      "kinds": [
+        "ternary",
+        "if",
+        "if"
+      ],
+      "function": "floor_numx_offset",
+      "anchor": "int f = ob ? static_cast<int>(ob->floor()) : 0;",
+      "condition": "ob ? floor : 0; f<0 -> 0; f>120 -> 120",
+      "semantic": "Walkers on different floors never share a collision pile, so they never block, hit or eat each other; floors outside 0..120 collide as floor 0 / floor 120.",
+      "arms": [
+        {
+          "when": "same floor",
+          "observable": "normal collision (blocked by a body at the spot)"
+        },
+        {
+          "when": "different floors",
+          "observable": "passable through each other"
+        },
+        {
+          "when": "floor < 0",
+          "observable": "treated as floor 0"
+        },
+        {
+          "when": "floor > 120",
+          "observable": "treated as floor 120 (shares with 120)"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_zaxis.cpp",
+          "test": "ZAxis.collision_is_floor_separated"
+        }
+      ],
+      "missing_arms": [
+        "floor < 0",
+        "floor > 120"
+      ]
+    },
+    {
+      "id": "obmap.cpp:134",
+      "lines": [
+        134
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "obmap::query_list",
+      "anchor": "if (!ob_pass_check(x, y, ob, pile_snapshot, this, quiet))",
+      "condition": "!ob_pass_check(...) -> return 0",
+      "semantic": "A movement probe is blocked if its box meets a blocker in ANY covered 32px cell; cells are scanned column-major and the scan stops at the first blocking cell, so treasure in a later cell is not eaten (and later bodies get no collide()) on a blocked probe.",
+      "arms": [
+        {
+          "when": "some cell blocks",
+          "observable": "query_list 0; side effects only from cells scanned up to that one"
+        },
+        {
+          "when": "no cell blocks",
+          "observable": "1"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_quiet_probe.cpp",
+          "test": "QuietProbe.every_blocker_answers_like_the_loud_probe_and_changes_nothing",
+          "note": "no-block arm: open/drumstick cases return passable; block answer 0 asserted but not the stop-at-first-cell side effects"
+        }
+      ],
+      "missing_arms": [
+        "some cell blocks"
+      ]
+    },
+    {
+      "id": "obmap.cpp:222",
+      "lines": [
+        222
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "obmap::add",
+      "anchor": "if (x < 0 || y < 0)",
+      "condition": "x < 0 || y < 0",
+      "semantic": "A walker placed at negative coordinates is not registered in the collision map: nothing can bump into it, and it blocks nothing, until it is moved back onto the map.",
+      "arms": [
+        {
+          "when": "x<0 or y<0",
+          "observable": "add returns 0; walker_to_pos has no entry; another walker probing that spot passes"
+        },
+        {
+          "when": "on map",
+          "observable": "registered in every covered cell"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": [
+        "x<0 or y<0",
+        "on map"
+      ]
+    },
+    {
+      "id": "obmap.cpp:290",
+      "lines": [
+        290,
+        292
+      ],
+      "kinds": [
+        "if",
+        "if"
+      ],
+      "function": "obmap::hash",
+      "anchor": "if (num > 198)",
+      "condition": "num > 198 -> 199; num < 0 -> 199",
+      "semantic": "The collision grid has 199 real 32px cells per axis; any coordinate beyond cell 198 (x >= 6368) or below -31 lands in the shared overflow cell 199, so far off-map things collide with each other there; pixels -1..-31 truncate to cell 0.",
+      "arms": [
+        {
+          "when": "0..6367",
+          "observable": "cell y/32"
+        },
+        {
+          "when": ">= 6368",
+          "observable": "199"
+        },
+        {
+          "when": "-1..-31",
+          "observable": "0"
+        },
+        {
+          "when": "<= -32",
+          "observable": "199"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_living_combat.cpp",
+          "test": "LivingCombat.obmap_guard_and_hash_and_move_branches"
+        },
+        {
+          "file": "tests/integration/test_living_combat.cpp",
+          "test": "LivingCombat.obmap_round11_stale_query_and_helper_accessors_paths"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "obmap.cpp:306",
+      "lines": [
+        306,
+        307
+      ],
+      "kinds": [
+        "if",
+        "if"
+      ],
+      "function": "floor_cell",
+      "anchor": "if (floor < 0) floor = 0;",
+      "condition": "floor<0 -> 0; floor>120 -> 120",
+      "semantic": "Pile lookups by (x,y,floor) clamp the floor exactly as a walker's own registration does (same rule as obmap.cpp:49), so searches on an out-of-range floor see floor 0/120's walkers.",
+      "arms": [
+        {
+          "when": "floor<0",
+          "observable": "floor 0 pile"
+        },
+        {
+          "when": "floor>120",
+          "observable": "floor 120 pile"
+        },
+        {
+          "when": "in range",
+          "observable": "that floor's pile"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_zaxis.cpp",
+          "test": "ZAxis.find_near_foe_probes_the_searchers_floor",
+          "note": "in-range arm: obmap_get_list(.., ob->floor()=1) finds the floor-1 foe, not the floor-0 one"
+        }
+      ],
+      "missing_arms": [
+        "floor<0",
+        "floor>120"
+      ]
+    },
+    {
+      "id": "obmap.cpp:379",
+      "lines": [
+        371,
+        379
+      ],
+      "kinds": [
+        "if",
+        "if"
+      ],
+      "function": "ob_pass_check",
+      "anchor": "if (w != ob)",
+      "condition": "w != ob; w->dead()",
+      "semantic": "A walker is never blocked by itself, and a dead walker (corpse, opened door, spent weapon) never blocks, is never eaten and gets no collision.",
+      "arms": [
+        {
+          "when": "w == ob",
+          "observable": "skipped"
+        },
+        {
+          "when": "w dead",
+          "observable": "skipped: probe passes through it"
+        },
+        {
+          "when": "alive other",
+          "observable": "collision rules below"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_quiet_probe.cpp",
+          "test": "QuietProbe.every_blocker_answers_like_the_loud_probe_and_changes_nothing",
+          "note": "w == ob: the 'open' case's own pile holds the prober and it passes; alive other: 'enemy living' blocks"
+        }
+      ],
+      "missing_arms": [
+        "w dead"
+      ]
+    },
+    {
+      "id": "obmap.cpp:385",
+      "lines": [
+        385
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "ob_pass_check",
+      "anchor": "if((targetorder == Order::Weapon || myorder == Order::Weapon) && ob->is_friendly(w))",
+      "condition": "(targetorder==Weapon || myorder==Weapon) && ob->is_friendly(w)",
+      "semantic": "A weapon and anything friendly to it (same team on the owner chain: its thrower, allies, allied weapons) pass through each other: you never block or are blocked by your own side's projectiles.",
+      "arms": [
+        {
+          "when": "weapon involved, friendly",
+          "observable": "skipped: passable, no hit"
+        },
+        {
+          "when": "weapon involved, hostile",
+          "observable": "weapon rules obmap.cpp:389/392 then collision"
+        },
+        {
+          "when": "no weapon",
+          "observable": "body rules"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_bot_gates_fighters.cpp",
+          "test": "GameplayFixesBots.elf_rocks_an_ally_on_the_pad_is_not_in_the_way",
+          "note": "friendly: pad passes the ally; hostile: same body on team 2 blocks the pad"
+        },
+        {
+          "file": "tests/unit/test_quiet_probe.cpp",
+          "test": "QuietProbe.every_blocker_answers_like_the_loud_probe_and_changes_nothing",
+          "note": "no weapon: 'enemy living'/'ally living' bodies block"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "obmap.cpp:389",
+      "lines": [
+        389
+      ],
+      "kinds": [
+        "else if"
+      ],
+      "function": "ob_pass_check",
+      "anchor": "else if(targetorder == Order::Weapon && myorder == Order::Weapon && (quiet || current_game->world->rng_.next(10) > 3))",
+      "condition": "targetorder==Weapon && myorder==Weapon && (quiet || rng.next(10) > 3)",
+      "semantic": "Two hostile projectiles meeting usually fly through each other: 6 in 10 times (rng.next(10) > 3) they pass, 4 in 10 they collide; a quiet probe never rolls and always passes.",
+      "arms": [
+        {
+          "when": "roll 4..9",
+          "observable": "pass, one RNG draw"
+        },
+        {
+          "when": "roll 0..3",
+          "observable": "collide (body rules: weapon hits weapon)"
+        },
+        {
+          "when": "quiet",
+          "observable": "pass, no draw"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_quiet_probe.cpp",
+          "test": "QuietProbe.an_enemy_weapon_in_flight_passes_a_quiet_probe_without_a_draw",
+          "note": "roll 0..3: loud false + exactly one draw; quiet: pass + no draw"
+        }
+      ],
+      "missing_arms": [
+        "roll 4..9"
+      ]
+    },
+    {
+      "id": "obmap.cpp:392",
+      "lines": [
+        392
+      ],
+      "kinds": [
+        "else if"
+      ],
+      "function": "ob_pass_check",
+      "anchor": "else if(targetorder == Order::Treasure && myorder == Order::Weapon)",
+      "condition": "targetorder==Treasure && myorder==Weapon",
+      "semantic": "Projectiles never hit or pick up treasure: an arrow flies over gold, food and exit pads.",
+      "arms": [
+        {
+          "when": "weapon over treasure",
+          "observable": "pass; treasure not eaten"
+        },
+        {
+          "when": "living over treasure",
+          "observable": "eat rule obmap.cpp:414"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_quiet_probe.cpp",
+          "test": "QuietProbe.every_blocker_answers_like_the_loud_probe_and_changes_nothing",
+          "note": "living over treasure: loud drumstick probe passes and changes state - eaten"
+        }
+      ],
+      "missing_arms": [
+        "weapon over treasure"
+      ]
+    },
+    {
+      "id": "obmap.cpp:412",
+      "lines": [
+        394,
+        412,
+        525
+      ],
+      "kinds": [
+        "else",
+        "if",
+        "else if"
+      ],
+      "function": "ob_pass_check",
+      "anchor": "if(collide(x,y,oxsize,oysize,x2,y2,xsize2,ysize2))",
+      "anchor_index": 1,
+      "condition": "collide(...) ; else if (!quiet) set_collide_ob(nullptr)",
+      "semantic": "Boxes interact only when they overlap after each is shrunk by 1px on every side (edge contact is not a collision); a loud probe that shares a cell with a body without overlapping it forgets the mover's remembered collision partner (collide_ob cleared); a quiet probe keeps it.",
+      "arms": [
+        {
+          "when": "overlap",
+          "observable": "treasure/door/body rules"
+        },
+        {
+          "when": "no overlap, loud",
+          "observable": "passes; ob->collide_ob()==nullptr"
+        },
+        {
+          "when": "no overlap, quiet",
+          "observable": "passes; collide_ob unchanged"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_quiet_probe.cpp",
+          "test": "QuietProbe.a_quiet_probe_keeps_the_collide_ob_it_found"
+        },
+        {
+          "file": "tests/integration/test_living_combat.cpp",
+          "test": "LivingCombat.obmap_remove_stale_and_collide_axis_reject_paths"
+        },
+        {
+          "file": "tests/unit/test_quiet_probe.cpp",
+          "test": "QuietProbe.every_blocker_answers_like_the_loud_probe_and_changes_nothing",
+          "note": "overlap: 'enemy living' blocks"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "obmap.cpp:399",
+      "lines": [
+        399,
+        405
+      ],
+      "kinds": [
+        "if",
+        "if"
+      ],
+      "function": "ob_pass_check",
+      "anchor": "if (ob->sizez() > 0 && w->sizez() > 0)",
+      "condition": "ob->sizez()>0 && w->sizez()>0; oz2 <= wz1 || wz2 <= oz1",
+      "semantic": "Height matters only when both have a height: two things whose vertical spans (worldz..worldz+sizez) do not overlap pass each other (a high projectile flies over a short walker); either one with sizez 0 is full-height (classic single-floor collision).",
+      "arms": [
+        {
+          "when": "both sized, spans disjoint",
+          "observable": "pass"
+        },
+        {
+          "when": "both sized, overlap",
+          "observable": "collision rules"
+        },
+        {
+          "when": "either sizez 0",
+          "observable": "collision rules"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_zaxis.cpp",
+          "test": "ZAxis.cylinder_zoverlap_lets_high_projectile_pass",
+          "note": "both sized: disjoint passes, overlap collides"
+        }
+      ],
+      "missing_arms": [
+        "either sizez 0"
+      ]
+    },
+    {
+      "id": "obmap.cpp:414",
+      "lines": [
+        414,
+        418
+      ],
+      "kinds": [
+        "if",
+        "if"
+      ],
+      "function": "ob_pass_check",
+      "anchor": "if ( targetorder == Order::Treasure )",
+      "condition": "targetorder==Treasure; quiet",
+      "semantic": "Stepping onto a treasure picks it up (eat_me) and the treasure never blocks; a quiet probe picks nothing up.",
+      "arms": [
+        {
+          "when": "loud",
+          "observable": "treasure eaten (e.g. drumstick heals and vanishes), probe continues"
+        },
+        {
+          "when": "quiet",
+          "observable": "passes, nothing eaten"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_quiet_probe.cpp",
+          "test": "QuietProbe.every_blocker_answers_like_the_loud_probe_and_changes_nothing",
+          "note": "drumstick case"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "obmap.cpp:435",
+      "lines": [
+        433,
+        435
+      ],
+      "kinds": [
+        "if",
+        "if"
+      ],
+      "function": "ob_pass_check",
+      "anchor": "if (w->family() == FAMILY_EXIT)",
+      "condition": "w->family()==FAMILY_EXIT; ob->exit_latched()",
+      "semantic": "An exit pad fires once per contact: the first probe that touches it eats it and latches the walker to the pad's rect; further probes skip it until the walker has fully left the rect (cleared in living::act), so held walking on the pad prompts once.",
+      "arms": [
+        {
+          "when": "exit pad, not latched",
+          "observable": "latch set; exit_on_eat runs (prompt/withdraw/'Foes remain!')"
+        },
+        {
+          "when": "exit pad, latched",
+          "observable": "skipped, no prompt"
+        },
+        {
+          "when": "other treasure",
+          "observable": "eaten normally"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sim_world_headless.cpp",
+          "test": "SimWorldHeadless.exit_prompts_once_per_contact_not_per_cooldown"
+        },
+        {
+          "file": "tests/unit/test_sim_world_headless.cpp",
+          "test": "SimWorldHeadless.exit_reprompts_after_stepping_fully_off_and_back"
+        },
+        {
+          "file": "tests/unit/test_sim_world_headless.cpp",
+          "test": "SimWorldHeadless.exit_latch_holds_while_standing_still"
+        },
+        {
+          "file": "tests/unit/test_quiet_probe.cpp",
+          "test": "QuietProbe.every_blocker_answers_like_the_loud_probe_and_changes_nothing",
+          "note": "other treasure: drumstick eaten on the loud probe"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "obmap.cpp:454",
+      "lines": [
+        441,
+        454,
+        460
+      ],
+      "kinds": [
+        "else if",
+        "if",
+        "if"
+      ],
+      "function": "ob_pass_check",
+      "anchor": "else if ( (targetorder == Order::Weapon)",
+      "condition": "door && (keys & key_level_mask(door level)); BIT_NO_COLLIDE",
+      "semantic": "Walking into a door whose key you carry (key bit = 2^door level) opens it: the door dies; you are still stopped for that step unless you are no-collide.",
+      "arms": [
+        {
+          "when": "keyed, normal",
+          "observable": "door dead; probe 0"
+        },
+        {
+          "when": "keyed, BIT_NO_COLLIDE",
+          "observable": "door dead; probe 1"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_living_combat.cpp",
+          "test": "LivingCombat.obmap_query_list_door_unlock_and_lock_branches"
+        },
+        {
+          "file": "tests/unit/test_quiet_probe.cpp",
+          "test": "QuietProbe.a_door_is_neither_opened_nor_announced_by_a_quiet_probe"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "obmap.cpp:448",
+      "lines": [
+        448,
+        451
+      ],
+      "kinds": [
+        "if",
+        "ternary"
+      ],
+      "function": "ob_pass_check",
+      "anchor": "if (quiet)",
+      "condition": "quiet door",
+      "semantic": "A quiet probe answers a door like the loud one without touching it: a door you hold the key to blocks this round unless you are no-collide; a locked door blocks.",
+      "arms": [
+        {
+          "when": "keyed and BIT_NO_COLLIDE",
+          "observable": "1"
+        },
+        {
+          "when": "otherwise",
+          "observable": "0; door alive; no notice"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_quiet_probe.cpp",
+          "test": "QuietProbe.a_door_is_neither_opened_nor_announced_by_a_quiet_probe"
+        },
+        {
+          "file": "tests/unit/test_quiet_probe.cpp",
+          "test": "QuietProbe.every_blocker_answers_like_the_loud_probe_and_changes_nothing"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "obmap.cpp:467",
+      "lines": [
+        464,
+        467
+      ],
+      "kinds": [
+        "else",
+        "if"
+      ],
+      "function": "ob_pass_check",
+      "anchor": "if (!(ob->skip_exit()) && (ob->user() != -1))",
+      "anchor_index": 1,
+      "condition": "locked door; !skip_exit && user != -1",
+      "semantic": "A locked door blocks; a player-controlled walker bumping it is told 'Key N needed!' at most once per 10-tick cooldown; NPCs are never told.",
+      "arms": [
+        {
+          "when": "seat walker, cooldown 0",
+          "observable": "notification 'Key N needed!' to that user; skip_exit=10; blocked"
+        },
+        {
+          "when": "cooldown running",
+          "observable": "no notice; blocked"
+        },
+        {
+          "when": "NPC (user -1)",
+          "observable": "no notice; blocked"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_quiet_probe.cpp",
+          "test": "QuietProbe.a_door_is_neither_opened_nor_announced_by_a_quiet_probe",
+          "note": "seat arm: loud probe blocked, one event"
+        },
+        {
+          "file": "tests/integration/test_living_combat.cpp",
+          "test": "LivingCombat.obmap_query_list_door_unlock_and_lock_branches",
+          "note": "seat arm: blocked, skip_exit >= 10"
+        }
+      ],
+      "missing_arms": [
+        "cooldown running",
+        "NPC (user -1)"
+      ]
+    },
+    {
+      "id": "obmap.cpp:520",
+      "lines": [
+        480,
+        518,
+        520
+      ],
+      "kinds": [
+        "else",
+        "if",
+        "if"
+      ],
+      "function": "ob_pass_check",
+      "anchor": "if (!quiet)",
+      "anchor_index": 1,
+      "condition": "else (body); !quiet -> collide(w); BIT_NO_COLLIDE",
+      "semantic": "Any other overlapping thing (a living, a generator, a tree/obstacle weapon, an enemy weapon that did not miss) blocks the step; a loud probe records the collision (collide(): melee swing at an enemy, collide_ob set); a no-collide walker (ghost etc.) records it but passes.",
+      "arms": [
+        {
+          "when": "normal mover",
+          "observable": "0; collide_ob==w (enemy living: melee swing starts)"
+        },
+        {
+          "when": "BIT_NO_COLLIDE mover",
+          "observable": "1 after collide()"
+        },
+        {
+          "when": "quiet",
+          "observable": "0/1 same answer, no collide()"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_quiet_probe.cpp",
+          "test": "QuietProbe.every_blocker_answers_like_the_loud_probe_and_changes_nothing",
+          "note": "quiet arm: quiet answer == loud answer, WorldState unchanged"
+        }
+      ],
+      "missing_arms": [
+        "normal mover",
+        "BIT_NO_COLLIDE mover"
+      ]
+    },
+    {
+      "id": "obmap.cpp:496",
+      "lines": [
+        496,
+        515
+      ],
+      "kinds": [
+        "if",
+        "if"
+      ],
+      "function": "ob_pass_check",
+      "anchor": "if (myorder == Order::Living &&",
+      "condition": "both Living && already overlapping where we stand; d_new > d_old",
+      "semantic": "Two livings already overlapping can always step apart: if the mover already overlaps this living, a step that strictly increases the centre distance passes it (others may still block); a step that does not separate collides as usual.",
+      "arms": [
+        {
+          "when": "already overlapping, step separates",
+          "observable": "not blocked by w (continue)"
+        },
+        {
+          "when": "already overlapping, step does not separate",
+          "observable": "collision (blocked, collide())"
+        },
+        {
+          "when": "not overlapping now",
+          "observable": "normal collision"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_quiet_probe.cpp",
+          "test": "QuietProbe.every_blocker_answers_like_the_loud_probe_and_changes_nothing",
+          "note": "not overlapping now: 'enemy living' at 335 does not overlap the prober at 320; the step to 321 collides"
+        }
+      ],
+      "missing_arms": [
+        "already overlapping, step separates",
+        "already overlapping, step does not separate"
+      ]
+    },
+    {
+      "id": "obmap.cpp:554",
+      "lines": [
+        554,
+        558,
+        562,
+        566
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if"
+      ],
+      "function": "collide",
+      "anchor": "if (x > x2right)",
+      "condition": "x > x2right / xright < x2 / y > y2down / ydown < y2",
+      "semantic": "Overlap test: each box shrunk by one pixel on every side; separated on any axis means no collision.",
+      "arms": [
+        {
+          "when": "separated right/left/below/above",
+          "observable": "0"
+        },
+        {
+          "when": "overlap on both axes",
+          "observable": "1"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_living_combat.cpp",
+          "test": "LivingCombat.obmap_remove_stale_and_collide_axis_reject_paths",
+          "note": "four reject axes"
+        },
+        {
+          "file": "tests/unit/test_gameplay_fixes_walk.cpp",
+          "test": "GameplayFixesWalk.step_meets_answers_what_collide_answers_on_the_three_boxes",
+          "note": "overlap: collide true on exactly 29*29 body positions for the right heading"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "obmap.cpp:576",
+      "lines": [
+        575,
+        576
+      ],
+      "kinds": [
+        "for",
+        "if"
+      ],
+      "function": "og::sim::step_meets",
+      "anchor": "for (const auto& o : offs)",
+      "condition": "any of exact/ceil/floor offset boxes collide",
+      "semantic": "A fractional step 'meets' a body when the box at the exact offset, the rounded-up offset or the rounded-down offset overlaps it (used by the Gameplay Fixes walk rules to decide what a step actually touched).",
+      "arms": [
+        {
+          "when": "some rounding overlaps",
+          "observable": "true"
+        },
+        {
+          "when": "none",
+          "observable": "false"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_gameplay_fixes_walk.cpp",
+          "test": "GameplayFixesWalk.step_meets_answers_what_collide_answers_on_the_three_boxes"
+        }
+      ],
+      "missing_arms": []
+    }
+  ],
+  "other": [
+    {
+      "id": "obmap.cpp:69",
+      "lines": [
+        69
+      ],
+      "kinds": [
+        "if"
+      ],
+      "kind": "plumbing",
+      "anchor": "if (!cell_index_.empty() && pos_to_walker.empty())",
+      "note": "drop the cell-pointer cache after level teardown cleared pos_to_walker externally"
+    },
+    {
+      "id": "obmap.cpp:94",
+      "lines": [
+        94
+      ],
+      "kinds": [
+        "if"
+      ],
+      "kind": "defensive",
+      "anchor": "if (!ob || ob->dead())",
+      "note": "null or dead prober: logged and treated as passable (dead walkers do not move); asserted by LivingCombat.obmap_guard_and_hash_and_move_branches"
+    },
+    {
+      "id": "obmap.cpp:108",
+      "lines": [
+        108,
+        110
+      ],
+      "kinds": [
+        "for",
+        "for"
+      ],
+      "kind": "loop",
+      "anchor": "for (numx = startnumx; numx <= endnumx; numx++)",
+      "note": "iterate every hash cell the prober's box covers; see obmap.cpp:134 and the ob_pass_check rows"
+    },
+    {
+      "id": "obmap.cpp:115",
+      "lines": [
+        115,
+        119,
+        123
+      ],
+      "kinds": [
+        "if",
+        "else",
+        "if"
+      ],
+      "kind": "plumbing",
+      "anchor": "if (cached != cell_index_.end())",
+      "note": "cell-index cache lookup; an absent pile is skipped without creating one"
+    },
+    {
+      "id": "obmap.cpp:146",
+      "lines": [
+        146
+      ],
+      "kinds": [
+        "if"
+      ],
+      "kind": "defensive",
+      "anchor": "if (!ob)",
+      "note": "remove(nullptr) is a no-op"
+    },
+    {
+      "id": "obmap.cpp:156",
+      "lines": [
+        156,
+        161,
+        173,
+        175,
+        178,
+        182,
+        184,
+        191
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "for",
+        "for",
+        "if",
+        "if",
+        "if",
+        "ternary"
+      ],
+      "kind": "defensive",
+      "anchor": "if (e == walker_to_pos.end())",
+      "note": "bookkeeping-mismatch fallback: bounded removal from the walker's current bbox cells (skipped at negative coords), returns whether anything was removed; asserted by LivingCombat.obmap_remove_stale_and_collide_axis_reject_paths"
+    },
+    {
+      "id": "obmap.cpp:196",
+      "lines": [
+        196,
+        199,
+        202
+      ],
+      "kinds": [
+        "for",
+        "if",
+        "if"
+      ],
+      "kind": "plumbing",
+      "anchor": "for (auto& pos : e->second)",
+      "note": "normal removal: erase from each recorded cell, drop empty piles and their cache entry"
+    },
+    {
+      "id": "obmap.cpp:219",
+      "lines": [
+        219
+      ],
+      "kinds": [
+        "if"
+      ],
+      "kind": "defensive",
+      "anchor": "if (!ob)",
+      "note": "add(nullptr) refused"
+    },
+    {
+      "id": "obmap.cpp:229",
+      "lines": [
+        229
+      ],
+      "kinds": [
+        "if"
+      ],
+      "kind": "plumbing",
+      "anchor": "if (walker_to_pos.find(ob) != walker_to_pos.end())",
+      "note": "re-adding a registered walker removes its old registration first (one registration per walker)"
+    },
+    {
+      "id": "obmap.cpp:240",
+      "lines": [
+        240,
+        242
+      ],
+      "kinds": [
+        "for",
+        "for"
+      ],
+      "kind": "loop",
+      "anchor": "for (numx = startnumx; numx <= endnumx; numx++)",
+      "note": "register the walker in every covered cell"
+    },
+    {
+      "id": "obmap.cpp:251",
+      "lines": [
+        251,
+        255,
+        260
+      ],
+      "kinds": [
+        "if",
+        "else",
+        "if"
+      ],
+      "kind": "plumbing",
+      "anchor": "if (cached != cell_index_.end())",
+      "note": "cached pile lookup / create pile; no duplicate entries in a pile"
+    },
+    {
+      "id": "obmap.cpp:275",
+      "lines": [
+        275
+      ],
+      "kinds": [
+        "if"
+      ],
+      "kind": "plumbing",
+      "anchor": "if(x == ob->xpos() && y == ob->ypos())",
+      "note": "move to the same position is a no-op"
+    },
+    {
+      "id": "obmap.cpp:318",
+      "lines": [
+        318
+      ],
+      "kinds": [
+        "if"
+      ],
+      "kind": "plumbing",
+      "anchor": "if (cached != cell_index_.end())",
+      "note": "obmap_get_list cache hit"
+    },
+    {
+      "id": "obmap.cpp:334",
+      "lines": [
+        334,
+        338
+      ],
+      "kinds": [
+        "if",
+        "if"
+      ],
+      "kind": "plumbing",
+      "anchor": "if (cached != cell_index_.end())",
+      "note": "find_list cache hit / miss returns nullptr without creating a pile"
+    },
+    {
+      "id": "obmap.cpp:353",
+      "lines": [
+        353
+      ],
+      "kinds": [
+        "if"
+      ],
+      "kind": "defensive",
+      "anchor": "if (!ob)",
+      "note": "null prober passes"
+    },
+    {
+      "id": "obmap.cpp:362",
+      "lines": [
+        362
+      ],
+      "kinds": [
+        "for"
+      ],
+      "kind": "loop",
+      "anchor": "for (auto it = pile.begin(); it != pile.end(); )",
+      "note": "iterate a snapshot of the pile; rules at obmap.cpp:371..525"
+    },
+    {
+      "id": "obmap.cpp:376",
+      "lines": [
+        376
+      ],
+      "kinds": [
+        "if"
+      ],
+      "kind": "defensive",
+      "anchor": "if (map != nullptr && map->walker_to_pos.find(w) == map->walker_to_pos.end())",
+      "note": "stale pile entry (not in walker_to_pos) skipped without dereference; asserted by LivingCombat.obmap_round11_stale_query_and_helper_accessors_paths"
+    }
+  ]
+}

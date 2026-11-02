@@ -1,0 +1,169 @@
+{
+  "path": "packs/core/lib/corpses.lua",
+  "rules": [
+    {
+      "id": "corpses.lua:26",
+      "lines": [
+        26,
+        29
+      ],
+      "kinds": [
+        "if",
+        "if"
+      ],
+      "function": "body_for",
+      "anchor": "if body ~= nil then",
+      "condition": "body ~= nil / self:is_friendly(blood)",
+      "semantic": "With Gameplay Fixes on, the room a raise needs is measured for the body that will actually rise: RAISE SKELETON / RAISE GHOST probe their own family; RESURRECT probes the corpse's old family when the stain is friendly and a ghost when it is a foe's.",
+      "arms": [
+        {
+          "when": "body given (raise skeleton/ghost)",
+          "observable": "the probed family is the given one (a ghost-sized gap suffices for RAISE GHOST)"
+        },
+        {
+          "when": "RESURRECT on a friendly stain",
+          "observable": "probed family = blood:s_old_family(); a risen body of that family"
+        },
+        {
+          "when": "RESURRECT on a foe stain",
+          "observable": "probed family = core:ghost"
+        }
+      ],
+      "setting": "fixes-on",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_gameplay_fixes_cleric_unit.cpp",
+          "test": "GameplayFixesClericRaise.reporter_elf_against_a_wall_is_raised_with_the_setting_on",
+          "note": "RAISE UNDEAD probes the skeleton -> (218,212), RAISE GHOST probes the ghost -> (230,200): the given body decides the spot; RESURRECT of a friendly elf rises as an elf at (230,200)"
+        },
+        {
+          "file": "tests/unit/test_gameplay_fixes_cleric_unit.cpp",
+          "test": "GameplayFixesClericRaise.a_blocked_near_stain_does_not_hide_a_usable_far_one",
+          "note": "RESURRECT over friendly soldier stains: the near one is refused because a soldier does not fit where an ethereal ghost would, so the old family is what is probed"
+        }
+      ],
+      "missing_arms": [
+        "RESURRECT on a foe stain"
+      ],
+      "note": [
+        "Removed tests/unit/test_pack_lua_paths.cpp PackLuaCleric.resurrecting_a_friendly_corpse_restores_its_family: it runs with gameplay_fixes 0 (TestGameWorld default), so it takes the classic nearby_corpse path and never reaches corpses.lua."
+      ]
+    },
+    {
+      "id": "corpses.lua:45",
+      "lines": [
+        45
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "M.raise_spot",
+      "anchor": "if #stains == 0 then",
+      "condition": "#stains == 0",
+      "semantic": "With Gameplay Fixes on, a raise with no stain within the finder's own cap (squared centre distance < 800 on the caster's floor) refuses NO CORPSE NEARBY and spends nothing.",
+      "arms": [
+        {
+          "when": "no stain in reach",
+          "observable": "returns nil, \"NO CORPSE NEARBY\"; no mana spent, no draw"
+        },
+        {
+          "when": "some stain",
+          "observable": "continues to range/room scan"
+        }
+      ],
+      "setting": "fixes-on",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_gameplay_fixes_cleric_unit.cpp",
+          "test": "GameplayFixesClericRaise.refusals_spend_nothing_on_both_values",
+          "note": "Rig::None, fixes 1: reason NO CORPSE NEARBY, 0 draws, 0 MP, no events"
+        },
+        {
+          "file": "tests/unit/test_gameplay_fixes_cleric_unit.cpp",
+          "test": "GameplayFixesClericRaise.a_blocked_near_stain_does_not_hide_a_usable_far_one",
+          "note": "some stain: the scan goes on to raise the far stain"
+        }
+      ],
+      "missing_arms": [],
+      "note": [
+        "Removed PackLuaCleric.corpse_refusals_distinguish_absence_blockage_and_range: it runs with gameplay_fixes 0 and never reaches corpses.lua."
+      ]
+    },
+    {
+      "id": "corpses.lua:51",
+      "lines": [
+        51,
+        54,
+        60
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
+      ],
+      "function": "M.raise_spot",
+      "anchor": "if self:distance_to_ob(blood) < range then",
+      "condition": "distance_to_ob(blood) < range / sx ~= nil / blocked",
+      "semantic": "With Gameplay Fixes on, a raise takes the NEAREST stain inside the cast's Manhattan range that has room for the risen body within 16 px of the corpse corner; a blocked near stain never hides a usable far one; when none qualifies the refusal names a blocked corpse before a far one (CORPSE IS BLOCKED before CORPSE TOO FAR).",
+      "arms": [
+        {
+          "when": "first in-range stain with a body spot",
+          "observable": "returns that stain + (sx,sy); the risen body stands at (sx,sy) (within NUDGE=16 px of the corner)"
+        },
+        {
+          "when": "in-range stains all blocked",
+          "observable": "nil, \"CORPSE IS BLOCKED\""
+        },
+        {
+          "when": "stains exist but none in range",
+          "observable": "nil, \"CORPSE TOO FAR\""
+        }
+      ],
+      "setting": "fixes-on",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_gameplay_fixes_cleric_unit.cpp",
+          "test": "GameplayFixesClericRaise.a_blocked_near_stain_does_not_hide_a_usable_far_one"
+        },
+        {
+          "file": "tests/unit/test_gameplay_fixes_cleric_unit.cpp",
+          "test": "GameplayFixesClericRaise.reporter_elf_against_a_wall_is_raised_with_the_setting_on"
+        },
+        {
+          "file": "tests/unit/test_gameplay_fixes_cleric_unit.cpp",
+          "test": "GameplayFixesClericRaise.reporter_one_tile_corridor"
+        },
+        {
+          "file": "tests/unit/test_gameplay_fixes_cleric_unit.cpp",
+          "test": "GameplayFixesClericRaise.caster_standing_on_the_corpse"
+        },
+        {
+          "file": "tests/unit/test_gameplay_fixes_cleric_unit.cpp",
+          "test": "GameplayFixesClericRaise.refusals_spend_nothing_on_both_values",
+          "note": "fixes 1: Rig::Golem -> CORPSE IS BLOCKED, Rig::Far -> CORPSE TOO FAR"
+        }
+      ],
+      "missing_arms": [],
+      "note": [
+        "Removed PackLuaCleric.corpse_refusals_distinguish_absence_blockage_and_range: gameplay_fixes 0, classic path only. Added refusals_spend_nothing_on_both_values, which asserts the BLOCKED and TOO FAR arms with the setting on."
+      ]
+    }
+  ],
+  "other": [
+    {
+      "id": "corpses.lua:49",
+      "lines": [
+        49
+      ],
+      "kinds": [
+        "for"
+      ],
+      "kind": "loop",
+      "anchor": "for i = 1, #stains do",
+      "note": "iterates stains nearest first; the rule is corpses.lua:51"
+    }
+  ]
+}

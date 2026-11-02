@@ -1073,6 +1073,12 @@ All native test binaries use real GoogleTest (`<gtest/gtest.h>`).
 - Shared headless `GameSession` plus fallback world/save/event context restored by a listener
 - No SDL initialization; pure logic only
 
+**Simulation semantics** ([sim-semantics.md](sim-semantics.md)):
+- `tests/semantics/manifest/` gives every branch line of the simulation a row:
+  a rule with the tests that assert each arm, or a note saying it is plumbing
+- The `semantics_manifest_check` CTest entry fails on an uncovered branch
+  line, a cited test that does not exist, or a rule that is not asserted
+
 ### UI/Menu Testing Pattern
 
 Menu functions block in event loops. Tests use a separate thread to drive navigation:

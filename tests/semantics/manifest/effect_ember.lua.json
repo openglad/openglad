@@ -1,0 +1,189 @@
+{
+  "path": "packs/core/lib/effect_ember.lua",
+  "rules": [
+    {
+      "id": "effect_ember.lua:23",
+      "lines": [
+        23,
+        24,
+        25
+      ],
+      "kinds": [
+        "if",
+        "and",
+        "and"
+      ],
+      "function": "foes_touching",
+      "anchor": "if w:order() == C.ORDER_LIVING",
+      "condition": "w:order()==LIVING and w:floor()==ent:floor() and hits(ent box grown by grow, w box)",
+      "semantic": "IMMOLATE's fire (the embers and the burner's own contact burn) touches only living foes on its own floor whose box overlaps the fire's box (grown by `grow` px for the contact burn); generators, weapons and other-floor foes are not burned, and the 64-px search reach means even the biggest core living is found from any side.",
+      "arms": [
+        {
+          "when": "living foe overlapping on the same floor",
+          "observable": "in the touching list (burned)"
+        },
+        {
+          "when": "generator/weapon foe",
+          "observable": "excluded"
+        },
+        {
+          "when": "other floor",
+          "observable": "excluded"
+        },
+        {
+          "when": "in reach but no overlap",
+          "observable": "excluded"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_elemental.cpp",
+          "test": "KitElemental.embers_burn_crossers_then_die",
+          "note": "overlapping crosser and giant burn"
+        },
+        {
+          "file": "tests/unit/test_kit_elemental.cpp",
+          "test": "KitElemental.immolate_drains_two_per_tick_burns_contact_melee_most_and_lays_embers",
+          "note": "touching foes burn; far foe 120 px, in reach but clear, untouched"
+        }
+      ],
+      "missing_arms": [
+        "generator/weapon foe",
+        "other floor"
+      ],
+      "note": [
+        "Removed KitElemental.every_core_living_box_fits_the_burn_search: it checks loader box sizes and never runs foes_touching."
+      ]
+    },
+    {
+      "id": "effect_ember.lua:41",
+      "lines": [
+        41
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "on_act (core:ember)",
+      "anchor": "if self:lifetime() <= 0 then",
+      "condition": "self:lifetime() <= 0 (after the decrement)",
+      "semantic": "An ember smoulders for its lifetime and goes out on the act its count reaches 0, burning nothing that act; it outlives its elemental (keeps its own team and damage).",
+      "arms": [
+        {
+          "when": "lifetime reaches 0",
+          "observable": "dead == 1"
+        },
+        {
+          "when": "lifetime reaches 0 (no burn)",
+          "observable": "no burn on that final act (lifetime 0 is a pulse tick)"
+        },
+        {
+          "when": "lifetime > 0",
+          "observable": "dying frame/pulse checks"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_elemental.cpp",
+          "test": "KitElemental.embers_burn_crossers_then_die",
+          "note": "lifetime > 0: frame and pulse run"
+        },
+        {
+          "file": "tests/unit/test_kit_elemental.cpp",
+          "test": "KitElemental.embers_burn_crossers_then_die",
+          "note": "dead after exactly 40 acts from lifetime 40: EXPECT_EQ(40, acts)"
+        }
+      ],
+      "missing_arms": [
+        "lifetime reaches 0 (no burn)"
+      ]
+    },
+    {
+      "id": "effect_ember.lua:46",
+      "lines": [
+        46
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "on_act (core:ember)",
+      "anchor": "if self:lifetime() < t.ember_dying then",
+      "condition": "self:lifetime() < t.ember_dying",
+      "semantic": "An ember shows its dying frame for its last 10 ticks.",
+      "arms": [
+        {
+          "when": "lifetime < 10",
+          "observable": "frame == 1"
+        },
+        {
+          "when": "otherwise",
+          "observable": "frame unchanged (0)"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_elemental.cpp",
+          "test": "KitElemental.embers_burn_crossers_then_die",
+          "note": "frame 1 at 9 left"
+        }
+      ],
+      "missing_arms": [
+        "otherwise"
+      ]
+    },
+    {
+      "id": "effect_ember.lua:49",
+      "lines": [
+        49,
+        51
+      ],
+      "kinds": [
+        "if",
+        "for"
+      ],
+      "function": "on_act (core:ember)",
+      "anchor": "if og.mod(self:lifetime(), t.ember_pulse) == 0 then",
+      "condition": "og.mod(lifetime, ember_pulse) == 0",
+      "semantic": "An ember burns each living foe standing on it once every 6 ticks (on lifetimes divisible by 6), not every tick.",
+      "arms": [
+        {
+          "when": "lifetime % 6 == 0",
+          "observable": "each touching foe attacked once"
+        },
+        {
+          "when": "otherwise",
+          "observable": "no damage"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_elemental.cpp",
+          "test": "KitElemental.embers_burn_crossers_then_die",
+          "note": "acts at 39, 38, 37 burn nothing and 36 burns once: lost_one_hit_of after four acts"
+        }
+      ],
+      "missing_arms": []
+    }
+  ],
+  "other": [
+    {
+      "id": "effect_ember.lua:21",
+      "lines": [
+        21
+      ],
+      "kinds": [
+        "for"
+      ],
+      "kind": "loop",
+      "anchor": "for i = 1, #foes do",
+      "note": "iterates the foe scan; rule at effect_ember.lua:23"
+    }
+  ]
+}

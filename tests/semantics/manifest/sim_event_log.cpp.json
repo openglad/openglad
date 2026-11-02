@@ -1,0 +1,98 @@
+{
+  "path": "src/gameplay/sim_event_log.cpp",
+  "rules": [
+    {
+      "id": "sim_event_log.cpp:17",
+      "lines": [
+        17,
+        31,
+        46,
+        60
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if"
+      ],
+      "function": "SimEventLog::push / push_with_text / push_notification / push_sound",
+      "anchor": "if (suppressed_)",
+      "condition": "suppressed_",
+      "semantic": "While a snapshot is being replayed silently (apply_snapshot's guard), the sim emits no sounds, notifications, palette or text events; outside the guard every push is recorded with the current tick; the guard restores the previous state.",
+      "arms": [
+        {
+          "when": "suppressed",
+          "observable": "log stays empty for all four push kinds"
+        },
+        {
+          "when": "not suppressed",
+          "observable": "event recorded with tick, kind, payload, text, target_player"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sim_event_log.cpp",
+          "test": "SimEventLog.suppress_guard_blocks_pushes_and_restores_state",
+          "note": "suppressed: push_sound/push_notification/push all dropped; restored: recorded"
+        },
+        {
+          "file": "tests/unit/test_sim_entity.cpp",
+          "test": "SimEntity.suppressed_event_log_drops_text_events",
+          "note": "push_with_text dropped while suppressed; then text, kind, tick, a, b"
+        },
+        {
+          "file": "tests/unit/test_sim_event_log.cpp",
+          "test": "SimEventLog.push_sound",
+          "note": "kind, a, tick, target_player -1 and 6"
+        },
+        {
+          "file": "tests/unit/test_sim_event_log.cpp",
+          "test": "SimEventLog.push_notification",
+          "note": "kind, text, tick"
+        },
+        {
+          "file": "tests/unit/test_sim_event_log.cpp",
+          "test": "SimEventLog.tick_tracking",
+          "note": "tick stamps"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "sim_event_log.cpp:76",
+      "lines": [
+        76
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "SimEventLog::append",
+      "anchor": "if (events.empty())",
+      "condition": "events.empty()",
+      "semantic": "Adopting a staged lobby's queued events appends them behind whatever is queued with their own tick stamps (never restamped) and ignores suppression; an empty batch changes nothing.",
+      "arms": [
+        {
+          "when": "non-empty",
+          "observable": "events appended in order, original tick kept, even while suppressed"
+        },
+        {
+          "when": "empty",
+          "observable": "log unchanged"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_game_server_coverage.cpp",
+          "test": "GameServerCoverage.sim_event_log_append_preserves_event_stamps",
+          "note": "non-empty: appended behind the live event under a suppress guard, tick 1 kept, text and a kept; empty: size stays 2"
+        }
+      ],
+      "missing_arms": []
+    }
+  ],
+  "other": []
+}

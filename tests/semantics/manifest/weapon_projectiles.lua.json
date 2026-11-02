@@ -1,0 +1,93 @@
+{
+  "path": "packs/core/lib/weapon_projectiles.lua",
+  "rules": [
+    {
+      "id": "weapon_projectiles.lua:8",
+      "lines": [
+        8
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "explode_on_death",
+      "anchor": "if self:skip_exit() == 0 then",
+      "condition": "self:skip_exit() == 0",
+      "semantic": "A fire arrow or boulder explodes on death only when armed (skip_exit set by the firing special); an unarmed one just dies silently.",
+      "arms": [
+        {
+          "when": "skip_exit == 0",
+          "observable": "no explosion fx, no SOUND_EXPLODE"
+        },
+        {
+          "when": "skip_exit != 0",
+          "observable": "one core:explosion fx: ANI_EXPLODE, hp 0, damage = 2 x projectile damage, floor = projectile's, level = owner's; one SOUND_EXPLODE"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_weap_behavior.cpp",
+          "test": "WeapBehavior.weap_death_fire_arrow_exploding"
+        },
+        {
+          "file": "tests/integration/test_weap_behavior.cpp",
+          "test": "WeapBehavior.weap_death_fire_arrow_no_explode"
+        },
+        {
+          "file": "tests/integration/test_weap_behavior.cpp",
+          "test": "WeapBehavior.weap_death_boulder_exploding"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "weapon_projectiles.lua:12",
+      "lines": [
+        12
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "explode_on_death",
+      "anchor": "if not owner or owner:dead() ~= 0 then",
+      "condition": "not owner or owner:dead() ~= 0",
+      "semantic": "An exploding projectile whose shooter is gone or dead credits the explosion to the projectile itself: the explosion's owner is the projectile and its level is the projectile's own level, not the dead shooter's.",
+      "arms": [
+        {
+          "when": "owner nil or dead",
+          "observable": "explosion owner == projectile; explosion level == projectile level"
+        },
+        {
+          "when": "owner alive",
+          "observable": "explosion owner == shooter; explosion level == shooter level"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_weap_behavior.cpp",
+          "test": "WeapBehavior.weap_death_fire_arrow_exploding"
+        }
+      ],
+      "missing_arms": [
+        "owner nil or dead"
+      ]
+    }
+  ],
+  "other": [
+    {
+      "id": "weapon_projectiles.lua:16",
+      "lines": [
+        16
+      ],
+      "kinds": [
+        "if"
+      ],
+      "kind": "defensive",
+      "anchor": "if not explosion then",
+      "note": "add_ob('fx', core:explosion) failure guard ('failsafe')."
+    }
+  ]
+}

@@ -1,0 +1,86 @@
+{
+  "path": "src/gameplay/fearless.cpp",
+  "rules": [
+    {
+      "id": "fearless.cpp:27",
+      "lines": [
+        27,
+        31,
+        33,
+        35,
+        37,
+        41,
+        43,
+        46
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "for",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if"
+      ],
+      "function": "og::sim::fearless",
+      "anchor": "if (w.fearless_bit())",
+      "condition": "fearless_bit ; session_new_specials()==0 ; for weaplist: dead/self ; order Weapon && same floor ; rally_radius > 0 ; is_friendly ; dist^2 <= r^2",
+      "semantic": "A walker is fearless (never flees when hit, a fright binding skips it) if it carries the kit FEARLESS mark, or, with New Specials on, if a live friendly weapon-order rally object (war banner: a weapon family declaring rally_radius > 0) stands on its floor within rally_radius of its centre. With New Specials off a banner-like pack weapon never makes anyone fearless.",
+      "arms": [
+        {
+          "when": "KIT_FEARLESS set",
+          "observable": "fearless()==true regardless of setting"
+        },
+        {
+          "when": "New Specials off, no mark",
+          "observable": "false even next to a banner"
+        },
+        {
+          "when": "friendly live banner within radius, same floor",
+          "observable": "true; yell does not start the flee walk"
+        },
+        {
+          "when": "banner dead / other floor / foe team / out of radius",
+          "observable": "false"
+        },
+        {
+          "when": "the walker is itself the rally weapon (rally == &w)",
+          "observable": "skipped: a rally weapon is not made fearless by its own radius"
+        },
+        {
+          "when": "weapon on weaplist whose family rally_radius <= 0",
+          "observable": "skipped: false unless another banner qualifies"
+        },
+        {
+          "when": "distance^2 exactly r^2",
+          "observable": "true (inclusive boundary)"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_seams_small.cpp",
+          "test": "KitSeamsSmall.fearless_bit_and_rally_radius_block_the_flee_walk",
+          "note": "mark; in radius true + no flee; out of radius; foe-team banner both ways; other floor; setting off false next to a banner; dead banner false"
+        },
+        {
+          "file": "tests/unit/test_kit_captain.cpp",
+          "test": "KitCaptain.rallied_walker_does_not_flee_when_hit",
+          "note": "in radius, foe side, setting off, out of radius"
+        },
+        {
+          "file": "tests/unit/test_script_bindings_props.cpp",
+          "test": "ScriptBindingPropsTest.kit_fearless_answers_the_kit_mark"
+        }
+      ],
+      "missing_arms": [
+        "the walker is itself the rally weapon (rally == &w)",
+        "weapon on weaplist whose family rally_radius <= 0",
+        "distance^2 exactly r^2"
+      ]
+    }
+  ],
+  "other": []
+}

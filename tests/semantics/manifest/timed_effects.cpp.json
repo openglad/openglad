@@ -1,0 +1,243 @@
+{
+  "path": "src/gameplay/timed_effects.cpp",
+  "rules": [
+    {
+      "id": "timed_effects.cpp:56",
+      "lines": [
+        56
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "Best::offer",
+      "anchor": "if (timer.label == nullptr || ticks < timer.ticks ||",
+      "condition": "no timer yet || ticks < best || (equal && rank lower)",
+      "semantic": "The seat's HUD timer shows the running effect that ends soonest; a tie goes to the fixed order POSSESS, PHASE, DIG IN, REASSEMBLE, IMMOLATE, LEGION, SUMMONED, CHARMED, STUNNED, INVISIBLE, INVINCIBLE, FLYING, HASTE.",
+      "arms": [
+        {
+          "when": "shorter",
+          "observable": "label replaced"
+        },
+        {
+          "when": "tie, earlier rank",
+          "observable": "label replaced"
+        },
+        {
+          "when": "longer or tie later rank",
+          "observable": "kept"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_timed_effects.cpp",
+          "test": "TimedEffects.the_soonest_ending_effect_is_shown"
+        },
+        {
+          "file": "tests/unit/test_timed_effects.cpp",
+          "test": "TimedEffects.a_tie_goes_to_the_table_order"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "timed_effects.cpp:98",
+      "lines": [
+        66,
+        67,
+        96,
+        98,
+        100,
+        102,
+        105,
+        109,
+        111
+      ],
+      "kinds": [
+        "for",
+        "if",
+        "for",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if"
+      ],
+      "function": "seat_timer / label_for_role",
+      "anchor": "for (const MarkerLabel& m : kMarkerLabels) {",
+      "condition": "live FX ; owner == control && lifetime > 0 ; family == core:kit_marker ; known role ; role == PHASE_VEIL",
+      "semantic": "A kit marker counts toward a walker's timer only if it is a live core:kit_marker FX owned by that walker with time left and a known role (PHASE, DIG IN, REASSEMBLE, IMMOLATE, LEGION); a running phase veil means the walker's invulnerability and speed fields are the phase, not potions.",
+      "arms": [
+        {
+          "when": "another walker's marker / dead / lifetime 0 / other FX family / unknown role",
+          "observable": "ignored"
+        },
+        {
+          "when": "own marker known role",
+          "observable": "offered with its label and lifetime"
+        },
+        {
+          "when": "PHASE veil",
+          "observable": "phased = true (suppresses INVINCIBLE/HASTE)"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_timed_effects.cpp",
+          "test": "TimedEffects.only_the_walkers_own_running_markers_count"
+        },
+        {
+          "file": "tests/unit/test_timed_effects.cpp",
+          "test": "TimedEffects.phase_owns_its_fields"
+        },
+        {
+          "file": "tests/unit/test_timed_effects.cpp",
+          "test": "TimedEffects.each_running_effect_answers_its_label_and_clock"
+        },
+        {
+          "file": "tests/unit/test_timed_effects.cpp",
+          "test": "TimedEffectsLua.the_marker_roles_reach_lua_with_the_engines_numbers"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "timed_effects.cpp:84",
+      "lines": [
+        84
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "seat_timer",
+      "anchor": "if (world.new_specials != 0)",
+      "condition": "world.new_specials != 0",
+      "semantic": "Kit timers (possession, kit markers) are shown only with New Specials on; with it off a staged kit marker cannot leak into the HUD, while the classic timers always show.",
+      "arms": [
+        {
+          "when": "off",
+          "observable": "no POSSESS/marker label even if present"
+        },
+        {
+          "when": "on",
+          "observable": "kit labels considered"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_timed_effects.cpp",
+          "test": "TimedEffects.classic_timers_show_with_the_setting_off_and_kit_timers_do_not"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "timed_effects.cpp:88",
+      "lines": [
+        88
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "seat_timer",
+      "anchor": "if (control.possess_link() != 0 && !control.hidden() &&",
+      "condition": "possess_link != 0 && !hidden && possess_ticks > 0",
+      "semantic": "During a possession, the visible host body shows the POSSESS countdown; the hidden rider does not.",
+      "arms": [
+        {
+          "when": "host",
+          "observable": "label POSSESS, ticks possess_ticks"
+        },
+        {
+          "when": "rider (hidden) or no link",
+          "observable": "no POSSESS"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_timed_effects.cpp",
+          "test": "TimedEffects.each_running_effect_answers_its_label_and_clock"
+        },
+        {
+          "file": "tests/unit/test_timed_effects.cpp",
+          "test": "TimedEffects.only_the_walkers_own_running_markers_count",
+          "note": "possession with 0 ticks shows nothing"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "timed_effects.cpp:119",
+      "lines": [
+        119,
+        121,
+        123,
+        125,
+        127,
+        131,
+        134
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if"
+      ],
+      "function": "seat_timer",
+      "anchor": "if (control.lifetime() > 0)",
+      "condition": "lifetime>0 ; charm_left>0 ; frozen_delay>0 ; invisibility_left>0 ; !phased && invulnerable_left>0 ; flight_left>1 ; !phased && speed_bonus_left>0",
+      "semantic": "Classic timers shown on the HUD: SUMMONED (own lifetime), CHARMED, STUNNED, INVISIBLE, INVINCIBLE (unless phased), FLYING (only above 1, since 1 is the hover hold over unstandable ground), HASTE (down to its last tick, unless phased).",
+      "arms": [
+        {
+          "when": "each timer positive",
+          "observable": "offered with its label"
+        },
+        {
+          "when": "flight_left == 1",
+          "observable": "no FLYING"
+        },
+        {
+          "when": "haste 1",
+          "observable": "HASTE 1 shown; 0 not"
+        },
+        {
+          "when": "phased",
+          "observable": "no INVINCIBLE/HASTE"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_timed_effects.cpp",
+          "test": "TimedEffects.each_running_effect_answers_its_label_and_clock"
+        },
+        {
+          "file": "tests/unit/test_timed_effects.cpp",
+          "test": "TimedEffects.flight_hover_tick_is_not_shown"
+        },
+        {
+          "file": "tests/unit/test_timed_effects.cpp",
+          "test": "TimedEffects.haste_last_tick_is_shown_and_zero_is_not"
+        },
+        {
+          "file": "tests/unit/test_timed_effects.cpp",
+          "test": "TimedEffects.phase_owns_its_fields"
+        }
+      ],
+      "missing_arms": []
+    }
+  ],
+  "other": []
+}

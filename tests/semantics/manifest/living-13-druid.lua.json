@@ -1,0 +1,978 @@
+{
+  "path": "packs/core/families/living-13-druid.lua",
+  "rules": [
+    {
+      "id": "living-13-druid.lua:13",
+      "lines": [
+        13
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "plant_tree",
+      "anchor": "if lc.is_busy(self) then  -- do not start the fire-and-replace sequence",
+      "condition": "if lc.is_busy(self) then return false, \"SPECIAL BUSY\"",
+      "semantic": "A busy druid cannot cast GROW TREE (same rule as the other three druid casts: living-13-druid.lua:13/:42/:78/:88).",
+      "arms": [
+        {
+          "when": "busy",
+          "observable": "cast false 'SPECIAL BUSY', nothing spawned, no MP spent"
+        },
+        {
+          "when": "idle",
+          "observable": "cast proceeds"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_gameplay_fixes_druid.cpp",
+          "test": "GameplayFixesDruid.an_open_tree_costs_its_price_on_both_values",
+          "note": "idle: special() true, one tree, MP 85"
+        },
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.druid_grow_tree_drives_simulation",
+          "note": "idle: one tree owned by the druid, ANI_GROW"
+        }
+      ],
+      "missing_arms": [
+        "busy"
+      ]
+    },
+    {
+      "id": "living-13-druid.lua:16",
+      "lines": [
+        16
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "plant_tree",
+      "anchor": "if gf.pad_blocked_by_terrain(self) then",
+      "condition": "if gf.pad_blocked_by_terrain(self) then return false, \"COULD NOT FIRE\"",
+      "semantic": "Gameplay Fixes: a druid aiming its bolt into terrain (wall/map edge on the fire pad) is refused before anything is paid (same rule in plant_tree :16 and summon_faerie :45). Classic: the cast goes on to fire() and fails there.",
+      "arms": [
+        {
+          "when": "fixes on, pad on terrain",
+          "observable": "false 'COULD NOT FIRE', MP unchanged"
+        },
+        {
+          "when": "pad clear of terrain (either setting value: pad_blocked_by_terrain is false)",
+          "observable": "fire attempted and the cast proceeds (bolt, then tree/faerie)"
+        },
+        {
+          "when": "fixes off, pad on terrain",
+          "observable": "fire() attempted there (the waver drawn: rng_.state_ advances) and fails: false 'COULD NOT FIRE'"
+        }
+      ],
+      "setting": "fixes-on",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_gameplay_fixes_druid.cpp",
+          "test": "GameplayFixesDruid.a_cast_at_terrain_spends_nothing_with_the_setting_on",
+          "note": "fixes on, wall / tree crown: false 'COULD NOT FIRE', MP unchanged, rng and entity count unchanged"
+        },
+        {
+          "file": "tests/integration/test_gameplay_fixes_druid.cpp",
+          "test": "GameplayFixesDruid.a_cast_at_the_map_edge_spends_nothing",
+          "note": "fixes on, map edge: same"
+        },
+        {
+          "file": "tests/integration/test_gameplay_fixes_druid.cpp",
+          "test": "GameplayFixesDruid.an_open_tree_costs_its_price_on_both_values",
+          "note": "pad clear, both values: tree made, MP 85"
+        }
+      ],
+      "missing_arms": [
+        "fixes off, pad on terrain"
+      ]
+    },
+    {
+      "id": "living-13-druid.lua:22",
+      "lines": [
+        22,
+        23
+      ],
+      "kinds": [
+        "if",
+        "if"
+      ],
+      "function": "plant_tree",
+      "anchor": "if not bolt then",
+      "condition": "if not bolt then if gf.on() then gf.take_back(self, 1)",
+      "semantic": "The druid pre-refunds its bolt's cost before fire(); classic keeps that refund when the bolt never flies (a blocked cast gives back one bolt's MP), Gameplay Fixes takes it back so a failed bolt costs exactly nothing extra (same rule in plant_tree and summon_faerie).",
+      "arms": [
+        {
+          "when": "bolt fired",
+          "observable": "tree/faerie path"
+        },
+        {
+          "when": "no bolt, fixes off",
+          "observable": "false 'COULD NOT FIRE', MP = before + weapon_cost"
+        },
+        {
+          "when": "no bolt, fixes on",
+          "observable": "false, MP = before"
+        }
+      ],
+      "setting": "both",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_gameplay_fixes_druid.cpp",
+          "test": "GameplayFixesDruid.a_blocked_tree_costs_the_swing",
+          "note": "no bolt: off MP 23 = refund kept, on MP 19, reason 'COULD NOT FIRE', no tree"
+        },
+        {
+          "parity": "druid_tree_blocked_scen99",
+          "fact": "WalkerHpRangeAtFinalTick(FAMILY_TOWER1,8600,8600)"
+        },
+        {
+          "parity": "druid_tree_blocked_fixes_scen99",
+          "fact": "WalkerHpRangeAtFinalTick(FAMILY_TOWER1,9600,9600)"
+        },
+        {
+          "file": "tests/integration/test_gameplay_fixes_druid.cpp",
+          "test": "GameplayFixesDruid.an_open_tree_costs_its_price_on_both_values",
+          "note": "bolt fired: tree path, one tree"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-13-druid.lua:42",
+      "lines": [
+        42
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "summon_faerie",
+      "anchor": "if lc.is_busy(self) then",
+      "condition": "if lc.is_busy(self) then return false, \"SPECIAL BUSY\"",
+      "semantic": "A busy druid cannot cast SUMMON FAERIE (same rule as the other three druid casts: living-13-druid.lua:13/:42/:78/:88).",
+      "arms": [
+        {
+          "when": "busy",
+          "observable": "cast false 'SPECIAL BUSY', nothing spawned, no MP spent"
+        },
+        {
+          "when": "idle",
+          "observable": "cast proceeds"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.druid_summon_faerie_drives_simulation",
+          "note": "idle: one faerie, owner and team"
+        }
+      ],
+      "missing_arms": [
+        "busy"
+      ]
+    },
+    {
+      "id": "living-13-druid.lua:45",
+      "lines": [
+        45
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "summon_faerie",
+      "anchor": "if gf.pad_blocked_by_terrain(self) then",
+      "condition": "if gf.pad_blocked_by_terrain(self) then return false, \"COULD NOT FIRE\"",
+      "semantic": "Gameplay Fixes: a druid aiming its bolt into terrain (wall/map edge on the fire pad) is refused before anything is paid (same rule in plant_tree :16 and summon_faerie :45). Classic: the cast goes on to fire() and fails there.",
+      "arms": [
+        {
+          "when": "fixes on, pad on terrain",
+          "observable": "false 'COULD NOT FIRE', MP unchanged"
+        },
+        {
+          "when": "pad clear of terrain (either setting value: pad_blocked_by_terrain is false)",
+          "observable": "fire attempted and the cast proceeds (bolt, then tree/faerie)"
+        },
+        {
+          "when": "fixes off, pad on terrain",
+          "observable": "fire() attempted there (the waver drawn: rng_.state_ advances) and fails: false 'COULD NOT FIRE'"
+        }
+      ],
+      "setting": "fixes-on",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_gameplay_fixes_druid.cpp",
+          "test": "GameplayFixesDruid.a_cast_at_terrain_spends_nothing_with_the_setting_on",
+          "note": "fixes on, wall / tree crown: false 'COULD NOT FIRE', MP unchanged, rng and entity count unchanged"
+        },
+        {
+          "file": "tests/integration/test_gameplay_fixes_druid.cpp",
+          "test": "GameplayFixesDruid.a_cast_at_the_map_edge_spends_nothing",
+          "note": "fixes on, map edge: same"
+        },
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.druid_summon_faerie_drives_simulation",
+          "note": "pad clear: ASSERT_TRUE(special()) and ASSERT_EQ(faerie_before + 1, FAMILY_FAERIE count) = fire attempted and succeeded"
+        }
+      ],
+      "missing_arms": [
+        "fixes off, pad on terrain"
+      ]
+    },
+    {
+      "id": "living-13-druid.lua:51",
+      "lines": [
+        51,
+        52
+      ],
+      "kinds": [
+        "if",
+        "if"
+      ],
+      "function": "summon_faerie",
+      "anchor": "if not bolt then",
+      "condition": "if not bolt then if gf.on() then gf.take_back(self, 1)",
+      "semantic": "The druid pre-refunds its bolt's cost before fire(); classic keeps that refund when the bolt never flies (a blocked cast gives back one bolt's MP), Gameplay Fixes takes it back so a failed bolt costs exactly nothing extra (same rule in plant_tree and summon_faerie).",
+      "arms": [
+        {
+          "when": "bolt fired",
+          "observable": "tree/faerie path"
+        },
+        {
+          "when": "no bolt, fixes off",
+          "observable": "false 'COULD NOT FIRE', MP = before + weapon_cost"
+        },
+        {
+          "when": "no bolt, fixes on",
+          "observable": "false, MP = before"
+        }
+      ],
+      "setting": "both",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_gameplay_fixes_druid.cpp",
+          "test": "GameplayFixesDruid.a_blocked_faerie_costs_the_swing",
+          "note": "no bolt: off MP 100 = refund kept, on MP 100 - weapon_cost, reason 'COULD NOT FIRE', no faerie"
+        },
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.druid_summon_faerie_drives_simulation",
+          "note": "bolt fired: faerie path, one faerie"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-13-druid.lua:68",
+      "lines": [
+        68
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "summon_faerie",
+      "anchor": "if not og.query_passable(faerie:xpos(), faerie:ypos(), faerie) then",
+      "condition": "if not og.query_passable(faerie:xpos(), faerie:ypos(), faerie) then",
+      "semantic": "A faerie summoned where its body cannot stand (the bolt's spot is blocked) is cancelled: the faerie dies and the cast fails NO ROOM TO SUMMON.",
+      "arms": [
+        {
+          "when": "spot passable",
+          "observable": "faerie alive, owner druid, druid team, lifetime druid_faerie_lifetime(L), busy += 3*fire_frequency"
+        },
+        {
+          "when": "blocked",
+          "observable": "no live FAMILY_FAERIE, false 'NO ROOM TO SUMMON'"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": [
+        "spot passable",
+        "blocked"
+      ]
+    },
+    {
+      "id": "living-13-druid.lua:78",
+      "lines": [
+        78
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "reveal_items",
+      "anchor": "if lc.is_busy(self) then",
+      "condition": "if lc.is_busy(self) then return false, \"SPECIAL BUSY\"",
+      "semantic": "A busy druid cannot cast REVEAL (same rule as the other three druid casts: living-13-druid.lua:13/:42/:78/:88).",
+      "arms": [
+        {
+          "when": "busy",
+          "observable": "cast false 'SPECIAL BUSY', nothing spawned, no MP spent"
+        },
+        {
+          "when": "idle",
+          "observable": "cast proceeds"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_family_behaviors.cpp",
+          "test": "FamilyBehaviors.druid_batch3_special_branches",
+          "note": "idle: view_all += 50"
+        },
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.druid_reveal_drives_simulation",
+          "note": "idle: view_all 40, busy 4 x fire_frequency"
+        }
+      ],
+      "missing_arms": [
+        "busy"
+      ]
+    },
+    {
+      "id": "living-13-druid.lua:88",
+      "lines": [
+        88
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "protection_circle",
+      "anchor": "if lc.is_busy(self) then",
+      "condition": "if lc.is_busy(self) then return false, \"SPECIAL BUSY\"",
+      "semantic": "A busy druid cannot cast PROTECTION (same rule as the other three druid casts: living-13-druid.lua:13/:42/:78/:88).",
+      "arms": [
+        {
+          "when": "busy",
+          "observable": "cast false 'SPECIAL BUSY', nothing spawned, no MP spent"
+        },
+        {
+          "when": "idle",
+          "observable": "cast proceeds"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_family_behaviors.cpp",
+          "test": "FamilyBehaviors.druid_batch3_special_branches",
+          "note": "idle: the ally's circle is spawned"
+        },
+        {
+          "file": "tests/unit/test_pack_lua_paths.cpp",
+          "test": "PackLuaDruid.one_ally_receives_one_circle_and_caster_receives_none",
+          "note": "idle: one circle owned by the ally"
+        }
+      ],
+      "missing_arms": [
+        "busy"
+      ]
+    },
+    {
+      "id": "living-13-druid.lua:92",
+      "lines": [
+        92
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "protection_circle",
+      "anchor": "if friend_count == 0 then",
+      "condition": "if friend_count == 0 then return false, \"NO ALLY IN RANGE\"",
+      "semantic": "PROTECTION needs at least one ally within 60 px (the druid itself is not protected); with none the cast is free.",
+      "arms": [
+        {
+          "when": "no ally in 60",
+          "observable": "false, no circle, MP unchanged"
+        },
+        {
+          "when": "ally present",
+          "observable": "circles cast"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_pack_lua_paths.cpp",
+          "test": "PackLuaDruid.a_lone_druid_cannot_cast_circle_of_protection",
+          "note": "no ally: false, 0 circles, MP unchanged"
+        },
+        {
+          "file": "tests/unit/test_pack_lua_paths.cpp",
+          "test": "PackLuaDruid.one_ally_receives_one_circle_and_caster_receives_none",
+          "note": "ally: one circle on the ally"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-13-druid.lua:111",
+      "lines": [
+        111,
+        112
+      ],
+      "kinds": [
+        "if",
+        "and"
+      ],
+      "function": "protection_circle",
+      "anchor": "if ob:owner() == friend",
+      "condition": "if ob:owner() == friend and ob:family() == WEAP_CIRCLE_PROTECTION then",
+      "semantic": "A friend's existing ring is recognised only by owner AND family among weapons within 100 px (another friend's ring nearby is not this friend's).",
+      "arms": [
+        {
+          "when": "own circle present",
+          "observable": "top-up arm"
+        },
+        {
+          "when": "only someone else's circle in range",
+          "observable": "new circle arm"
+        },
+        {
+          "when": "only the friend's own non-circle weapons in range",
+          "observable": "new circle arm"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.druid_protection_tops_up_an_existing_circle",
+          "note": "own circle: one live ring on the protected ally, existing hp = 5 + fresh; someone else's circle within 100 px: the bare ally gets rings_on_bare == 1"
+        },
+        {
+          "file": "tests/unit/test_pack_lua_paths.cpp",
+          "test": "PackLuaDruid.each_circle_of_protection_cast_shields_every_friend_in_range",
+          "note": "two friends 16 px apart: 2 circles after the first cast, the second friend not fooled by the first's ring; still 2 after the recast"
+        },
+        {
+          "parity": "druid_protection_refresh_scen99",
+          "fact": "WeaponFamilyCount(FAMILY_CIRCLE_PROTECTION,1,1) (own circle: topped up, not stacked)"
+        }
+      ],
+      "missing_arms": [
+        "only the friend's own non-circle weapons in range"
+      ]
+    },
+    {
+      "id": "living-13-druid.lua:117",
+      "lines": [
+        117,
+        123
+      ],
+      "kinds": [
+        "if",
+        "else"
+      ],
+      "function": "protection_circle",
+      "anchor": "if not existing then",
+      "condition": "if not existing then (summon new) else (top up)",
+      "semantic": "An unringed friend gets a new circle of protection; an already-ringed friend's circle is topped up by a fresh circle's full charge instead of stacking a second ring.",
+      "arms": [
+        {
+          "when": "no circle",
+          "observable": "one new FAMILY_CIRCLE_PROTECTION owned by the friend"
+        },
+        {
+          "when": "circle exists",
+          "observable": "circle count unchanged, circle hp += a fresh circle's hp; the fresh one dead"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_pack_lua_paths.cpp",
+          "test": "PackLuaDruid.one_ally_receives_one_circle_and_caster_receives_none",
+          "note": "no circle: one new circle owned by the friend"
+        },
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.druid_protection_tops_up_an_existing_circle",
+          "note": "circle exists: one live ring, the fresh one dead, existing hp == 5 + fresh hp; the bare ally gets a new ring"
+        },
+        {
+          "parity": "druid_protection_refresh_scen99",
+          "fact": "WeaponFamilyCount(FAMILY_CIRCLE_PROTECTION,1,1)"
+        },
+        {
+          "file": "tests/integration/test_family_behaviors.cpp",
+          "test": "FamilyBehaviors.druid_batch3_special_branches",
+          "note": "hp rose"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-13-druid.lua:137",
+      "lines": [
+        137
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "protection_circle",
+      "anchor": "if self:has_guy() then",
+      "condition": "if self:has_guy() then g_set_exp(g_exp() + exp_from_action(self, friend, 'protection', 0))",
+      "semantic": "A hero druid earns experience for every friend it protects, whether the friend got a new ring or a top-up; a monster druid earns nothing.",
+      "arms": [
+        {
+          "when": "hero",
+          "observable": "myguy exp += exp_from_action('protection') per friend"
+        },
+        {
+          "when": "monster",
+          "observable": "no exp"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": [
+        "hero",
+        "monster"
+      ]
+    },
+    {
+      "id": "living-13-druid.lua:143",
+      "lines": [
+        143,
+        145
+      ],
+      "kinds": [
+        "if",
+        "else"
+      ],
+      "function": "protection_circle",
+      "anchor": "if protected_count == 1 then",
+      "condition": "if protected_count == 1 then 'Druid protected 1 man!' else 'Druid protected N men!'",
+      "semantic": "The PROTECTION message counts the friends protected, singular for one.",
+      "arms": [
+        {
+          "when": "1 friend",
+          "observable": "'Druid protected 1 man!'"
+        },
+        {
+          "when": "N>1",
+          "observable": "'Druid protected N men!'"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": [
+        "1 friend",
+        "N>1"
+      ]
+    },
+    {
+      "id": "living-13-druid.lua:148",
+      "lines": [
+        148
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "protection_circle",
+      "anchor": "if self.team == 0 or self:has_guy() then",
+      "condition": "if self.team == 0 or self:has_guy() then og.emit_notification(message)",
+      "semantic": "Only the player's side (team 0) or a hero druid announces PROTECTION; an enemy druid casts silently (the heal sound plays either way).",
+      "arms": [
+        {
+          "when": "team 0 or hero",
+          "observable": "notification emitted"
+        },
+        {
+          "when": "enemy monster druid",
+          "observable": "no notification; SOUND_HEAL still emitted"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": [
+        "team 0 or hero",
+        "enemy monster druid"
+      ]
+    },
+    {
+      "id": "living-13-druid.lua:158",
+      "lines": [
+        158
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "check_special_ai",
+      "anchor": "if not gf.on() then",
+      "condition": "if not gf.on() then return true",
+      "semantic": "Classic: the druid has no bot gate; every special it rolls is cast.",
+      "arms": [
+        {
+          "when": "fixes off",
+          "observable": "true for any slot"
+        },
+        {
+          "when": "fixes on",
+          "observable": "per-slot gates"
+        }
+      ],
+      "setting": "both",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_bot_gates_casters.cpp",
+          "test": "GameplayFixesBots.druid_tree_wants_a_faced_foe_closing_but_not_touching",
+          "note": "fixes off: true alone and with the foe behind"
+        },
+        {
+          "file": "tests/unit/test_bot_gates_casters.cpp",
+          "test": "GameplayFixesBots.druid_faerie_wants_a_foe_near_and_no_faerie_out",
+          "note": "fixes off: true alone and with a faerie out"
+        },
+        {
+          "file": "tests/unit/test_bot_gates_casters.cpp",
+          "test": "GameplayFixesBots.druid_reveal_is_never_cast_by_a_bot",
+          "note": "fixes off: slot 3 true"
+        },
+        {
+          "file": "tests/unit/test_bot_gates_casters.cpp",
+          "test": "GameplayFixesBots.druid_protection_wants_an_ally_under_blows_without_a_fresh_circle",
+          "note": "fixes off: true with an idle ally; fixes on: gated"
+        },
+        {
+          "parity": "druid_bot_tree_behind_scen99",
+          "fact": "WeaponFamilyCount(FAMILY_TREE,1,1)"
+        },
+        {
+          "parity": "druid_bot_faerie_alone_scen99",
+          "fact": "WalkerFamilyCount(FAMILY_FAERIE,1,1)"
+        },
+        {
+          "parity": "druid_bot_protection_idle_scen99",
+          "fact": "WeaponFamilyCount(FAMILY_CIRCLE_PROTECTION,1,1)"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-13-druid.lua:162",
+      "lines": [
+        162
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "check_special_ai",
+      "anchor": "if lc.is_busy(self) then",
+      "condition": "if lc.is_busy(self) then return false",
+      "semantic": "Gameplay Fixes: a busy druid bot rolls no special.",
+      "arms": [
+        {
+          "when": "busy",
+          "observable": "false"
+        },
+        {
+          "when": "idle",
+          "observable": "slot gate"
+        }
+      ],
+      "setting": "fixes-on",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_gameplay_fixes_bots.cpp",
+          "test": "GameplayFixesBots.a_busy_bot_never_rolls_a_busy_cast_with_the_setting_on",
+          "note": "druid rows GROW TREE, SUMMON FAERIE, PROTECTION: idle true, busy 3 false with the setting on"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-13-druid.lua:166",
+      "lines": [
+        166,
+        171,
+        174
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "and"
+      ],
+      "function": "check_special_ai",
+      "anchor": "if slot == 1 then",
+      "condition": "if slot == 1 then f = nearest_living_foe(60,true); if f == nil or not pad_clear then false; return faces(f) and not at_blows(f)",
+      "semantic": "Gameplay Fixes: GROW TREE pays only between the druid and a living foe closing on it: the nearest living foe within 60 px, faced, not yet at blows, with the bolt's pad clear.",
+      "arms": [
+        {
+          "when": "no living foe in 60",
+          "observable": "false"
+        },
+        {
+          "when": "pad blocked",
+          "observable": "false"
+        },
+        {
+          "when": "foe behind",
+          "observable": "false"
+        },
+        {
+          "when": "foe at blows",
+          "observable": "false"
+        },
+        {
+          "when": "faced, closing, pad clear",
+          "observable": "true"
+        }
+      ],
+      "setting": "fixes-on",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_bot_gates_casters.cpp",
+          "test": "GameplayFixesBots.druid_tree_wants_a_faced_foe_closing_but_not_touching"
+        },
+        {
+          "file": "tests/unit/test_bot_gates_casters.cpp",
+          "test": "GameplayFixesBots.druid_tree_refuses_a_pad_on_a_wall"
+        },
+        {
+          "parity": "druid_bot_tree_behind_fixes_scen99",
+          "fact": "WeaponFamilyCount(FAMILY_TREE,0,0)"
+        },
+        {
+          "parity": "druid_bot_tree_pad_body_fixes_scen99",
+          "fact": "WalkerHpRangeAtFinalTick(FAMILY_TOWER1,13000,13000)"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-13-druid.lua:175",
+      "lines": [
+        175,
+        177,
+        180
+      ],
+      "kinds": [
+        "elseif",
+        "if",
+        "and"
+      ],
+      "function": "check_special_ai",
+      "anchor": "elseif slot == 2 then",
+      "condition": "elseif slot == 2 then if owned faerie > 0 then false; return foes_within(130) and pad_clear",
+      "semantic": "Gameplay Fixes: SUMMON FAERIE pays with a living foe within 130 px, no faerie of the druid's out, and the bolt's pad clear.",
+      "arms": [
+        {
+          "when": "faerie out",
+          "observable": "false"
+        },
+        {
+          "when": "no foe in 130",
+          "observable": "false"
+        },
+        {
+          "when": "pad blocked",
+          "observable": "false"
+        },
+        {
+          "when": "all hold",
+          "observable": "true"
+        }
+      ],
+      "setting": "fixes-on",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_bot_gates_casters.cpp",
+          "test": "GameplayFixesBots.druid_faerie_wants_a_foe_near_and_no_faerie_out"
+        },
+        {
+          "file": "tests/unit/test_bot_gates_casters.cpp",
+          "test": "GameplayFixesBots.druid_faerie_refuses_a_pad_on_a_foe"
+        },
+        {
+          "parity": "druid_bot_faerie_alone_fixes_scen99",
+          "fact": "WalkerFamilyCount(FAMILY_FAERIE,0,0)"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-13-druid.lua:181",
+      "lines": [
+        181
+      ],
+      "kinds": [
+        "elseif"
+      ],
+      "function": "check_special_ai",
+      "anchor": "elseif slot == 3 then",
+      "condition": "elseif slot == 3 then return false",
+      "semantic": "Gameplay Fixes: a druid bot never casts REVEAL (it only changes a viewscreen's radar).",
+      "arms": [
+        {
+          "when": "slot 3, fixes on",
+          "observable": "false"
+        }
+      ],
+      "setting": "fixes-on",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_bot_gates_casters.cpp",
+          "test": "GameplayFixesBots.druid_reveal_is_never_cast_by_a_bot"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-13-druid.lua:188",
+      "lines": [
+        188,
+        192
+      ],
+      "kinds": [
+        "if",
+        "or"
+      ],
+      "function": "check_special_ai",
+      "anchor": "if not ally then",
+      "condition": "ally = ally_at_blows(60); if not ally then false; return circle == nil or circle.hp < 50",
+      "semantic": "Gameplay Fixes: PROTECTION pays for an ally within 60 px that a living foe is at blows with, and only if that ally has no circle or one under 50 hp.",
+      "arms": [
+        {
+          "when": "no ally under blows",
+          "observable": "false"
+        },
+        {
+          "when": "ally ringed, circle hp >= 50",
+          "observable": "false"
+        },
+        {
+          "when": "ally unringed or circle < 50",
+          "observable": "true"
+        }
+      ],
+      "setting": "fixes-on",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_bot_gates_casters.cpp",
+          "test": "GameplayFixesBots.druid_protection_wants_an_ally_under_blows_without_a_fresh_circle"
+        },
+        {
+          "parity": "druid_bot_protection_idle_fixes_scen99",
+          "fact": "WeaponFamilyCount(FAMILY_CIRCLE_PROTECTION,0,0)"
+        }
+      ],
+      "missing_arms": []
+    }
+  ],
+  "other": [
+    {
+      "id": "living-13-druid.lua:32",
+      "lines": [
+        32
+      ],
+      "kinds": [
+        "if"
+      ],
+      "kind": "defensive",
+      "anchor": "if not tree then",
+      "note": "og.summon failure for the tree (object cap): 'COULD NOT CREATE TREE' (bolt already flew)."
+    },
+    {
+      "id": "living-13-druid.lua:59",
+      "lines": [
+        59
+      ],
+      "kinds": [
+        "if"
+      ],
+      "kind": "defensive",
+      "anchor": "if not faerie then",
+      "note": "add_ob failure for the faerie (object cap): 'COULD NOT CREATE FAERIE'."
+    },
+    {
+      "id": "living-13-druid.lua:97",
+      "lines": [
+        97,
+        109
+      ],
+      "kinds": [
+        "for",
+        "for"
+      ],
+      "kind": "loop",
+      "anchor": "for i = 1, #friends do",
+      "note": "per-friend loop and per-friend circle scan; rule rows living-13-druid.lua:111, :117, :137"
+    },
+    {
+      "id": "living-13-druid.lua:119",
+      "lines": [
+        119,
+        127
+      ],
+      "kinds": [
+        "if",
+        "if"
+      ],
+      "kind": "defensive",
+      "anchor": "if not circle then",
+      "note": "og.summon / add_ob failure for the circle: 'COULD NOT PROTECT' (returns mid-loop; earlier friends keep their circles and exp, cast reported failed)."
+    },
+    {
+      "id": "living-13-druid.lua:218",
+      "lines": [
+        218
+      ],
+      "kinds": [
+        "and"
+      ],
+      "kind": "dead",
+      "anchor": "{ id = \"reveal\",        name = \"REVEAL\",        mp_cost = 150, cast = reveal_items, detail = \"Gives you a magical view to see treasure, potions, outposts, and i",
+      "note": "not a branch (prose 'and' in a detail/description string or comment)"
+    },
+    {
+      "id": "living-13-druid.lua:220",
+      "lines": [
+        220
+      ],
+      "kinds": [
+        "and"
+      ],
+      "kind": "dead",
+      "anchor": "default_cast = protection_circle,  -- case 4 and every unmapped slot",
+      "note": "not a branch (prose 'and' in a detail/description string or comment)"
+    },
+    {
+      "id": "living-13-druid.lua:237",
+      "lines": [
+        237
+      ],
+      "kinds": [
+        "and"
+      ],
+      "kind": "dead",
+      "anchor": "description = \"Druids are the magicians of nature, and have power over natural events. They throw lightning bolts at their foes; the fast bolts have long range.",
+      "note": "not a branch (prose 'and' in a detail/description string or comment)"
+    }
+  ]
+}

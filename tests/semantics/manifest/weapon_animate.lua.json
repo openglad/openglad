@@ -1,0 +1,369 @@
+{
+  "path": "packs/core/lib/weapon_animate.lua",
+  "rules": [
+    {
+      "id": "weapon_animate.lua:63",
+      "lines": [
+        63,
+        66
+      ],
+      "kinds": [
+        "if",
+        "if"
+      ],
+      "function": "tree_blood_on_animate",
+      "anchor": "if self:ani_type() > 1 then",
+      "condition": "self:ani_type() > 1 ; weapon_animate_step(self)",
+      "semantic": "A tree or blood splat plays its current animation (type 0 = still, type 1 = sway/splash) through once frame by frame; any other type is treated as still, and when the row ends it returns to the still animation at frame 0.",
+      "arms": [
+        {
+          "when": "ani_type > 1 on entry",
+          "observable": "ani_type reads 0 after the animate; frame = row[facing][0] of type 0"
+        },
+        {
+          "when": "mid-row",
+          "observable": "frame = row[facing+type*8][cycle], cycle advances by 1, ani_type unchanged"
+        },
+        {
+          "when": "advanced cycle reaches the sentinel",
+          "observable": "ani_type == 0 and cycle == 0 after the animate"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_weap_behavior.cpp",
+          "test": "WeapBehavior.weapon_family_animate_callbacks_and_sprinkle_hit_paths"
+        },
+        {
+          "file": "tests/integration/test_weap_behavior.cpp",
+          "test": "WeapBehavior.weapon_animate_clamps_out_of_range_facing_and_cycle_to_row_zero"
+        }
+      ],
+      "missing_arms": [
+        "mid-row"
+      ]
+    },
+    {
+      "id": "weapon_animate.lua:77",
+      "lines": [
+        77,
+        78,
+        79
+      ],
+      "kinds": [
+        "if",
+        "or",
+        "or"
+      ],
+      "function": "circle_protection_on_animate",
+      "anchor": "if not owner",
+      "condition": "not owner or owner:dead() ~= 0 or self.hp <= 0",
+      "semantic": "A druid's protection ring follows its owner every tick and vanishes the moment its owner is gone or dead or the ring's own hitpoints are spent.",
+      "arms": [
+        {
+          "when": "no owner",
+          "observable": "ring dead==1 after animate (death() runs via caller)"
+        },
+        {
+          "when": "owner dead",
+          "observable": "ring dead==1 after animate"
+        },
+        {
+          "when": "ring hp <= 0",
+          "observable": "ring dead==1 after animate"
+        },
+        {
+          "when": "live owner, hp > 0",
+          "observable": "ring re-centred on owner: ring center == owner center each tick; ring dead==0"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_weap_behavior.cpp",
+          "test": "WeapBehavior.weapon_family_animate_callbacks_and_sprinkle_hit_paths"
+        },
+        {
+          "parity": "weapon_circle_protection_follow_scen99",
+          "fact": "",
+          "note": "WeaponSpeed(FAMILY_CIRCLE_PROTECTION  400  700) floor: ring tracks the moving owner"
+        }
+      ],
+      "missing_arms": [
+        "owner dead",
+        "ring hp <= 0"
+      ]
+    },
+    {
+      "id": "weapon_animate.lua:90",
+      "lines": [
+        90,
+        93
+      ],
+      "kinds": [
+        "if",
+        "if"
+      ],
+      "function": "glow_on_animate",
+      "anchor": "if self:ani_type() > 2 then  -- illegal case",
+      "condition": "self:ani_type() > 2 ; weapon_animate_step(self)",
+      "semantic": "A glow (the cleric/mage halo effect) loops its pulse animation (type 2) forever; an illegal type above 2 is forced to the pulse, and every row end restarts the pulse at frame 0.",
+      "arms": [
+        {
+          "when": "ani_type > 2",
+          "observable": "ani_type == 2 after animate; frame from row facing + 2*8"
+        },
+        {
+          "when": "row end",
+          "observable": "ani_type == 2, cycle == 0"
+        },
+        {
+          "when": "ani_type 0..2 mid-row",
+          "observable": "frame advances, type kept"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_weap_behavior.cpp",
+          "test": "WeapBehavior.weapon_family_animate_callbacks_and_sprinkle_hit_paths"
+        },
+        {
+          "file": "tests/integration/test_weap_behavior.cpp",
+          "test": "WeapBehavior.weapon_animate_clamps_out_of_range_facing_and_cycle_to_row_zero"
+        }
+      ],
+      "missing_arms": [
+        "ani_type 0..2 mid-row"
+      ]
+    },
+    {
+      "id": "weapon_animate.lua:99",
+      "lines": [
+        99
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "glow_on_animate",
+      "anchor": "if lifetime < 1 then",
+      "condition": "lifetime < 1 (read before the decrement)",
+      "semantic": "A glow burns one lifetime tick per animate and dies on the animate that finds its lifetime already below 1 (a glow with lifetime N shows for N+1 animates).",
+      "arms": [
+        {
+          "when": "lifetime >= 1 before the animate",
+          "observable": "lifetime decremented by 1, dead==0"
+        },
+        {
+          "when": "lifetime < 1 before the animate",
+          "observable": "dead==1 and death() ran (death_called==1)"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_weap_behavior.cpp",
+          "test": "WeapBehavior.weapon_family_animate_callbacks_and_sprinkle_hit_paths"
+        }
+      ],
+      "missing_arms": [
+        "lifetime >= 1 before the animate"
+      ]
+    },
+    {
+      "id": "weapon_animate.lua:111",
+      "lines": [
+        111
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "sprinkle_on_hit_target",
+      "anchor": "if target:order() ~= C.ORDER_LIVING then",
+      "condition": "target:order() ~= C.ORDER_LIVING",
+      "semantic": "A faerie's sprinkle freezes only living creatures; hitting a generator, weapon or treasure freezes nothing.",
+      "arms": [
+        {
+          "when": "target not ORDER_LIVING",
+          "observable": "target frozen_delay unchanged; hook returns true"
+        },
+        {
+          "when": "living target",
+          "observable": "frozen_delay set from the roll (see weapon_animate.lua:128)"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_weap_behavior.cpp",
+          "test": "WeapBehavior.weapon_family_animate_callbacks_and_sprinkle_hit_paths"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "weapon_animate.lua:115",
+      "lines": [
+        115
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "sprinkle_on_hit_target",
+      "anchor": "if target:has_guy() then",
+      "condition": "target:has_guy()",
+      "semantic": "A hero's constitution shortens a sprinkle freeze (freeze_duration bound shrinks by con/21); a guy-less creature resists with constitution 0.",
+      "arms": [
+        {
+          "when": "target has a guy",
+          "observable": "roll bound = 40 + 2*owner level - con/21 (via og.freeze_duration), soft-capped"
+        },
+        {
+          "when": "no guy",
+          "observable": "roll bound = 40 + 2*owner level"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_weap_behavior.cpp",
+          "test": "WeapBehavior.weapon_family_animate_callbacks_and_sprinkle_hit_paths"
+        }
+      ],
+      "missing_arms": [
+        "target has a guy"
+      ]
+    },
+    {
+      "id": "weapon_animate.lua:120",
+      "lines": [
+        120
+      ],
+      "kinds": [
+        ""
+      ],
+      "function": "sprinkle_on_hit_target",
+      "anchor": "local roll = og.i16(og.div(og.freeze_duration(owner.level, con), 1 + 3 * og.div(self:kit_state() & C.KIT_QUARTER_FREEZE, C.KIT_QUARTER_FREEZE)))",
+      "condition": "1 + 3 * og.div(kit_state & KIT_QUARTER_FREEZE, KIT_QUARTER_FREEZE)",
+      "semantic": "A GLIMMER sprinkle (marked with the quarter-freeze kit bit) freezes for a quarter of the rolled time; a plain sprinkle freezes the full roll. The roll is drawn either way.",
+      "arms": [
+        {
+          "when": "KIT_QUARTER_FREEZE set",
+          "observable": "frozen_delay = roll / 4 (trunc)"
+        },
+        {
+          "when": "bit clear",
+          "observable": "frozen_delay = roll"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_faerie.cpp",
+          "test": "KitFaerie.glimmer_sprinkle_freezes_a_quarter"
+        },
+        {
+          "file": "tests/unit/test_kit_faerie.cpp",
+          "test": "KitFaerie.glimmer_fires_eight_sprinkles_and_prepays"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "weapon_animate.lua:128",
+      "lines": [
+        125,
+        128
+      ],
+      "kinds": [
+        "and",
+        "if"
+      ],
+      "function": "sprinkle_on_hit_target",
+      "anchor": "and target:s_frozen_delay() > SPRINKLE_REFRESH_FLOOR",
+      "condition": "not refresh_gated (owner.level >= 21 and target frozen > 10) and not thaw_immune (raw frozen_delay < 0)",
+      "semantic": "A sprinkle hit re-sets the victim's freeze to the new roll, except (a) a level-21+ faerie never replaces a freeze still above 10 ticks (so it cannot chain a victim forever), and (b) nobody can be re-frozen during the 12-tick thaw-immunity window after a controlled hero thaws. The RNG roll is drawn on every living hit regardless.",
+      "arms": [
+        {
+          "when": "owner level < 21, raw >= 0",
+          "observable": "frozen_delay = roll (replaces even a longer remaining freeze)"
+        },
+        {
+          "when": "owner level >= 21 and frozen_delay > 10",
+          "observable": "frozen_delay unchanged; rng advanced by exactly one draw"
+        },
+        {
+          "when": "owner level >= 21 and frozen_delay <= 10",
+          "observable": "frozen_delay = roll"
+        },
+        {
+          "when": "raw frozen_delay < 0 (thaw immunity)",
+          "observable": "raw frozen_delay unchanged (still negative); one rng draw consumed"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_silliness_battery.cpp",
+          "test": "SillinessBattery.sprinkle_refresh_gate_level_boundary_and_immunity"
+        },
+        {
+          "file": "tests/unit/test_silliness_battery.cpp",
+          "test": "SillinessBattery.sprinkle_ai_victim_gate_window_and_escape"
+        }
+      ],
+      "missing_arms": [
+        "owner level >= 21 and frozen_delay <= 10"
+      ]
+    }
+  ],
+  "other": [
+    {
+      "id": "weapon_animate.lua:29",
+      "lines": [
+        29
+      ],
+      "kinds": [
+        "if"
+      ],
+      "kind": "defensive",
+      "anchor": "if dir_index < 0 or dir_index >= NUM_FACINGS then",
+      "note": "weapon_animate_step facing bound: a snapshot-borne curdir outside 0..7 animates row 0 instead of indexing out of range. Pinned anyway by tests/integration/test_weap_behavior.cpp: TEST(WeapBehavior, weapon_animate_clamps_out_of_range_facing_and_cycle_to_row_zero)."
+    },
+    {
+      "id": "weapon_animate.lua:37",
+      "lines": [
+        37,
+        41
+      ],
+      "kinds": [
+        "if",
+        "if"
+      ],
+      "kind": "defensive",
+      "anchor": "if not seq then",
+      "note": "weapon_animate_step: og.ani_row nil (no table, past ani_count, null row, no sentinel) or an empty row means 'no such sequence' -> report ended (true), so tree/glow reset to their rest state. Snapshot/loader safety, no game rule; no test feeds a nil row to a weapon family hook."
+    },
+    {
+      "id": "weapon_animate.lua:46",
+      "lines": [
+        46
+      ],
+      "kinds": [
+        "if"
+      ],
+      "kind": "defensive",
+      "anchor": "if c < 0 or c >= seq_len then",
+      "note": "weapon_animate_step cycle bound: an out-of-range cycle restarts the row at frame 0. Asserted by tests/integration/test_weap_behavior.cpp: TEST(WeapBehavior, weapon_animate_clamps_out_of_range_facing_and_cycle_to_row_zero)."
+    }
+  ]
+}

@@ -1,0 +1,691 @@
+{
+  "path": "src/gameplay/sim_control_policy.cpp",
+  "rules": [
+    {
+      "id": "sim_control_policy.cpp:37",
+      "lines": [
+        37
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "machine_entry_for_player",
+      "anchor": "if (player_index < 0 ||",
+      "condition": "player_index < 0 || player_index >= player_machine.size()",
+      "semantic": "A seat index outside the machine table belongs to no machine (it can claim nothing and is follow-only under owner-locked control).",
+      "arms": [
+        {
+          "when": "index <0 or >= slots",
+          "observable": "kPlayerMachineNone"
+        },
+        {
+          "when": "in range",
+          "observable": "that seat's entry"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sim_control_policy.cpp",
+          "test": "SimControlPolicy.owner_locked_allow_deny_matrix_with_same_machine_seats",
+          "note": "-1, 99"
+        },
+        {
+          "file": "tests/unit/test_sim_control_policy.cpp",
+          "test": "SimControlPolicy.derive_encode_and_classify_helpers",
+          "note": "seat_is_follow_only -1, 99"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "sim_control_policy.cpp:49",
+      "lines": [
+        49
+      ],
+      "kinds": [
+        ""
+      ],
+      "function": "derive_control_policy",
+      "anchor": "return (networked && !cross_control) ? kControlPolicyOwnerLocked",
+      "condition": "(networked && !cross_control) ? OwnerLocked : Legacy",
+      "semantic": "Only a networked game with CROSS CONTROL off locks each character to its owner's machine; local games and cross-control games share every character among all seats.",
+      "arms": [
+        {
+          "when": "networked, cross control off",
+          "observable": "kControlPolicyOwnerLocked"
+        },
+        {
+          "when": "otherwise",
+          "observable": "kControlPolicyLegacy"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sim_control_policy.cpp",
+          "test": "SimControlPolicy.derive_encode_and_classify_helpers"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "sim_control_policy.cpp:58",
+      "lines": [
+        58
+      ],
+      "kinds": [
+        "ternary"
+      ],
+      "function": "encode_player_machine / player_machine_deployed",
+      "anchor": "(deployed ? kPlayerMachineDeployedBit : 0));",
+      "condition": "deployed ? kPlayerMachineDeployedBit : 0; entry != None && bit7",
+      "semantic": "A machine entry packs the machine id (low 7 bits) and whether that machine deployed any character (bit 7); the 'no player' value 0xff never reads as deployed.",
+      "arms": [
+        {
+          "when": "deployed",
+          "observable": "bit7 set"
+        },
+        {
+          "when": "not deployed",
+          "observable": "bit7 clear"
+        },
+        {
+          "when": "0xff",
+          "observable": "player_machine_deployed false"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sim_control_policy.cpp",
+          "test": "SimControlPolicy.derive_encode_and_classify_helpers"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "sim_control_policy.cpp:86",
+      "lines": [
+        86,
+        88,
+        92
+      ],
+      "kinds": [
+        "for",
+        "if",
+        "if"
+      ],
+      "function": "deployed_players_from_roster",
+      "anchor": "for (const std::unique_ptr<guy>& member : roster)",
+      "condition": "member == nullptr; owner_player_index < deployed.size()",
+      "semantic": "A player counts as having deployed this level when any roster character carries that player's owner tag; untagged (0xff) or out-of-range tags mark nobody.",
+      "arms": [
+        {
+          "when": "character tagged k in range",
+          "observable": "deployed[k] true"
+        },
+        {
+          "when": "tag 0xff / out of range / null slot",
+          "observable": "ignored"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sim_control_policy.cpp",
+          "test": "SimControlPolicy.install_helpers_build_machine_map_from_bindings_and_roster"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "sim_control_policy.cpp:108",
+      "lines": [
+        108,
+        110,
+        116,
+        118
+      ],
+      "kinds": [
+        "for",
+        "if",
+        "for",
+        "if"
+      ],
+      "function": "build_player_machine_map",
+      "anchor": "for (const LobbyPlayerBinding& binding : bindings)",
+      "condition": "binding.player_index >= size -> skip; inner: seat.peer_id != binding.peer_id || out of range -> skip",
+      "semantic": "Each bound seat's machine id is the lowest player index its peer seats, and a machine counts as deployed when any of its seats deployed; unbound or out-of-range bindings leave 'no player'.",
+      "arms": [
+        {
+          "when": "multi-seat peer",
+          "observable": "all its seats share id=min index and the OR of deployed"
+        },
+        {
+          "when": "single-seat",
+          "observable": "own index"
+        },
+        {
+          "when": "binding index out of range",
+          "observable": "ignored; entry stays 0xff"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sim_control_policy.cpp",
+          "test": "SimControlPolicy.install_helpers_build_machine_map_from_bindings_and_roster"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "sim_control_policy.cpp:149",
+      "lines": [
+        149,
+        151,
+        155,
+        159,
+        162,
+        166
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if",
+        "if",
+        "if"
+      ],
+      "function": "control_claim_allowed",
+      "anchor": "if (!owner_locked(world))",
+      "condition": "!owner_locked; w==nullptr; mine==None; w->myguy && owner < size && owner_entry != None -> same machine id; else player_machine_deployed(mine)",
+      "semantic": "Under owner-locked control a seat may take a hero only if that hero's owner sits on the same machine; a troop with no owner (or an owner with no machine this level) may be taken by any seat whose machine deployed at least one character; a seat with no machine, or a machine that deployed nothing, takes nothing. Under the legacy policy everyone may take anyone.",
+      "arms": [
+        {
+          "when": "legacy policy",
+          "observable": "true for any walker and seat"
+        },
+        {
+          "when": "null walker",
+          "observable": "false"
+        },
+        {
+          "when": "unbound seat",
+          "observable": "false"
+        },
+        {
+          "when": "owned hero, same machine",
+          "observable": "true"
+        },
+        {
+          "when": "owned hero, other machine",
+          "observable": "false"
+        },
+        {
+          "when": "orphan/unattributable owner or troop, deployed machine",
+          "observable": "true"
+        },
+        {
+          "when": "same, 0-deploy machine",
+          "observable": "false"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sim_control_policy.cpp",
+          "test": "SimControlPolicy.owner_locked_allow_deny_matrix_with_same_machine_seats"
+        },
+        {
+          "file": "tests/unit/test_sim_control_policy.cpp",
+          "test": "SimControlPolicy.owner_locked_unowned_troop_rule_net_f3"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "sim_control_policy.cpp:182",
+      "lines": [
+        182
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "seat_is_follow_only",
+      "anchor": "if (!owner_locked(world))",
+      "condition": "!owner_locked",
+      "semantic": "Under owner-locked control a seat whose machine deployed nothing (or has no machine) only watches; under legacy no seat is follow-only.",
+      "arms": [
+        {
+          "when": "legacy",
+          "observable": "false"
+        },
+        {
+          "when": "owner-locked, deployed machine",
+          "observable": "false"
+        },
+        {
+          "when": "owner-locked, 0-deploy/unbound/out of range",
+          "observable": "true"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sim_control_policy.cpp",
+          "test": "SimControlPolicy.derive_encode_and_classify_helpers"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "sim_control_policy.cpp:198",
+      "lines": [
+        198,
+        200,
+        203
+      ],
+      "kinds": [
+        "if",
+        "for",
+        "if"
+      ],
+      "function": "sim_find_next_control_owned",
+      "anchor": "if ((level.type & GameWorld::TYPE_SCRIPTED) != 0 && player_index >= 0)",
+      "condition": "(type & TYPE_SCRIPTED) && player_index >= 0; candidate: alive, awake, visible, unlinked, Living, unclaimed, myguy owner==player, claim allowed, seat_may_claim",
+      "semantic": "In a scripted match a seat reclaims its OWN tagged fighter first, whatever team byte the mode reseated it on (FFA bands), so a team-0 prop never steals the seat; classic worlds keep the team-filtered scans and the team-0 prop quirk.",
+      "arms": [
+        {
+          "when": "scripted, own tagged fighter claimable",
+          "observable": "that fighter"
+        },
+        {
+          "when": "scripted, none",
+          "observable": "fall through to team scans"
+        },
+        {
+          "when": "classic world",
+          "observable": "team scans only"
+        },
+        {
+          "when": "player_index<0",
+          "observable": "arm skipped"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sim_control_policy.cpp",
+          "test": "SimControlPolicy.scripted_owner_arm_reacquires_off_team_band_fighter"
+        },
+        {
+          "file": "tests/unit/test_sim_control_policy.cpp",
+          "test": "SimControlPolicy.scripted_owner_arm_skips_dead_claimed_dormant_and_untagged"
+        },
+        {
+          "file": "tests/unit/test_sim_control_policy.cpp",
+          "test": "SimControlPolicy.scripted_world_prop_not_claimed_when_owner_fighter_exists"
+        },
+        {
+          "file": "tests/unit/test_sim_control_policy.cpp",
+          "test": "SimControlPolicy.classic_world_keeps_team_filter_and_team0_prop_quirk"
+        },
+        {
+          "file": "tests/unit/test_sim_control_policy.cpp",
+          "test": "SimControlPolicy.scripted_owner_arm_honors_owner_locked_denials"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "sim_control_policy.cpp:222",
+      "lines": [
+        222
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "sim_find_next_control_owned",
+      "anchor": "if (!owner_locked(level))",
+      "condition": "!owner_locked(level)",
+      "semantic": "With the legacy policy the reclaim scan is exactly the classic one (sim_find_next_control).",
+      "arms": [
+        {
+          "when": "legacy",
+          "observable": "same walker as sim_find_next_control"
+        },
+        {
+          "when": "owner-locked",
+          "observable": "filtered scans below"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sim_control_policy.cpp",
+          "test": "SimControlPolicy.policy_off_matches_legacy_across_the_four_shapes"
+        },
+        {
+          "file": "tests/unit/test_sim_control_policy.cpp",
+          "test": "SimControlPolicy.policy_off_matches_legacy_over_random_worlds"
+        },
+        {
+          "file": "tests/unit/test_sim_control_policy.cpp",
+          "test": "SimControlPolicy.owner_locked_follow_when_only_foreign_heroes_remain",
+          "note": "owner-locked arm: the legacy scan returns the foreign hero, the owned scan does not: verdict Follow, reacquired nullptr"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "sim_control_policy.cpp:238",
+      "lines": [
+        238,
+        241,
+        256,
+        259
+      ],
+      "kinds": [
+        "for",
+        "if",
+        "for",
+        "if"
+      ],
+      "function": "sim_find_next_control_owned",
+      "anchor": "for (auto& uptr : level.oblist)",
+      "condition": "pass 1: ... && w->myguy && team==my_team && allowed && seat_may_claim; pass 2: same without myguy",
+      "semantic": "When a seat loses its character it takes, in world order, first an unclaimed hero (roster character) of its team, then any unclaimed living of its team, skipping dead, dormant, hidden, possession-linked, already-driven and (owner-locked) disallowed walkers, and (fixes on) walkers charmed onto the team.",
+      "arms": [
+        {
+          "when": "a claimable hero",
+          "observable": "the first hero in oblist order, even if a troop precedes it"
+        },
+        {
+          "when": "no hero, a claimable troop",
+          "observable": "first troop"
+        },
+        {
+          "when": "none: return",
+          "observable": "nullptr"
+        },
+        {
+          "when": "none: trace",
+          "observable": "TRACE 'found no claimable walker'"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_sim_control_policy.cpp",
+          "test": "SimControlPolicy.owner_locked_permissive_map_matches_legacy_over_random_worlds",
+          "note": "hero-first and troop arms, EXPECT_EQ against the legacy scan over 150 random worlds"
+        },
+        {
+          "file": "tests/unit/test_sim_control_policy.cpp",
+          "test": "SimControlPolicy.owner_locked_reacquire_claims_troop_for_deployed_machines",
+          "note": "troop arm; nullptr once the troop dies"
+        },
+        {
+          "file": "tests/unit/test_sim_control_policy.cpp",
+          "test": "SimControlPolicy.owner_locked_follow_when_only_foreign_heroes_remain",
+          "note": "nullptr for players 0/1: reacquired nullptr"
+        }
+      ],
+      "missing_arms": [
+        "none: trace"
+      ]
+    },
+    {
+      "id": "sim_control_policy.cpp:280",
+      "lines": [
+        280,
+        287,
+        297
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
+      ],
+      "function": "sim_reacquire_control",
+      "anchor": "if (control_out != nullptr)",
+      "condition": "control_out != nullptr; !owner_locked; legacy_candidate != nullptr",
+      "semantic": "A seat that finds a character claims it; with nothing to claim the legacy game asks for the end of the game; under owner-locked, a seat denied only by ownership (the legacy scan would still find someone) spectates instead of ending the game, and only a true wipe ends it.",
+      "arms": [
+        {
+          "when": "claimable found",
+          "observable": "Claimed"
+        },
+        {
+          "when": "legacy, none",
+          "observable": "EndGame"
+        },
+        {
+          "when": "owner-locked, legacy pool non-empty: verdict",
+          "observable": "Follow"
+        },
+        {
+          "when": "owner-locked, legacy pool non-empty: trace",
+          "observable": "TRACE 'reacquire follow'"
+        },
+        {
+          "when": "owner-locked, pool empty",
+          "observable": "EndGame"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_sim_control_policy.cpp",
+          "test": "SimControlPolicy.owner_locked_follow_when_only_foreign_heroes_remain"
+        },
+        {
+          "file": "tests/unit/test_sim_control_policy.cpp",
+          "test": "SimControlPolicy.owner_locked_reacquire_claims_troop_for_deployed_machines"
+        },
+        {
+          "file": "tests/unit/test_sim_control_policy.cpp",
+          "test": "SimControlPolicy.net_r1_allied_claimed_teammate_shape_yields_endgame_verdict"
+        }
+      ],
+      "missing_arms": [
+        "owner-locked, legacy pool non-empty: trace"
+      ]
+    },
+    {
+      "id": "sim_control_policy.cpp:308",
+      "lines": [
+        308,
+        310,
+        312,
+        314,
+        315
+      ],
+      "kinds": [
+        "switch",
+        "case",
+        "case",
+        "case",
+        "default"
+      ],
+      "function": "sim_reacquire_apply",
+      "anchor": "switch (sim_reacquire_control(level, my_team, player_index, control_out))",
+      "condition": "switch (verdict)",
+      "semantic": "The reclaim verdict maps onto the input result: Claimed leaves the result for the caller's claim; Follow returns with a null seat and NO endgame request; EndGame sets endgame_requested with type 1.",
+      "arms": [
+        {
+          "when": "Claimed",
+          "observable": "returns false; control set; result untouched"
+        },
+        {
+          "when": "Follow",
+          "observable": "returns true; control null; endgame_requested false"
+        },
+        {
+          "when": "EndGame/default",
+          "observable": "returns true; endgame_requested true; endgame_type 1"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sim_control_policy.cpp",
+          "test": "SimControlPolicy.reacquire_apply_maps_verdicts_onto_sim_input_result"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "sim_control_policy.cpp:344",
+      "lines": [
+        344,
+        347,
+        349
+      ],
+      "kinds": [
+        "for",
+        "if",
+        "if"
+      ],
+      "function": "first_eligible_follow_target_id",
+      "anchor": "for (const auto& uptr : world.oblist)",
+      "condition": "follow_target_preferred(w); fallback_id==0 && follow_target_visible(w)",
+      "semantic": "A spectator camera with nothing to watch starts on the first hero or seat-driven walker in world order; with none, on the first visible living; with nothing living, no target (0).",
+      "arms": [
+        {
+          "when": "a preferred walker",
+          "observable": "its id (even if a troop comes first)"
+        },
+        {
+          "when": "only anonymous troops",
+          "observable": "first troop's id"
+        },
+        {
+          "when": "no visible living",
+          "observable": "0"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_sim_control_policy.cpp",
+          "test": "SimControlPolicy.next_follow_target_without_a_current_target_restarts_at_the_first_hero",
+          "note": "preferred arm: troop first, hero_a returned"
+        }
+      ],
+      "missing_arms": [
+        "only anonymous troops",
+        "no visible living"
+      ]
+    },
+    {
+      "id": "sim_control_policy.cpp:361",
+      "lines": [
+        361,
+        363,
+        366
+      ],
+      "kinds": [
+        "for",
+        "if",
+        "if"
+      ],
+      "function": "default_follow_target_id",
+      "anchor": "for (const std::uint32_t entity_id : controlled_entity_ids)",
+      "condition": "entity_id == 0 -> skip; w != nullptr && !w->dead()",
+      "semantic": "A seatless view first follows the lowest-indexed player's live controlled walker; with none alive, the first eligible walker in world order.",
+      "arms": [
+        {
+          "when": "some controlled id alive",
+          "observable": "that id (lowest player index first)"
+        },
+        {
+          "when": "all 0 or dead",
+          "observable": "first_eligible_follow_target_id"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": [
+        "some controlled id alive",
+        "all 0 or dead"
+      ]
+    },
+    {
+      "id": "sim_control_policy.cpp:376",
+      "lines": [
+        376,
+        382,
+        388,
+        393
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "ternary"
+      ],
+      "function": "next_follow_target_id",
+      "anchor": "if (current == nullptr)",
+      "condition": "current == nullptr; preferred != nullptr; any_living != nullptr; follow_target_visible(current) ? id : 0",
+      "semantic": "Switch Character on a spectator cycles to the next hero/seat body in world order (wrapping, both directions); with no other hero, the next visible living; with nobody else, it keeps watching the current walker while it is visible, else drops to no target.",
+      "arms": [
+        {
+          "when": "no current",
+          "observable": "first eligible"
+        },
+        {
+          "when": "another preferred",
+          "observable": "next preferred (Shift reverses)"
+        },
+        {
+          "when": "no preferred but a living",
+          "observable": "next living"
+        },
+        {
+          "when": "nobody else, current visible",
+          "observable": "current id"
+        },
+        {
+          "when": "nobody else, current gone",
+          "observable": "0"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_sim_control_policy.cpp",
+          "test": "SimControlPolicy.next_follow_target_without_a_current_target_restarts_at_the_first_hero",
+          "note": "no-current arm"
+        },
+        {
+          "file": "tests/integration/test_game_loop.cpp",
+          "test": "GameLoop.display_view_follow_engages_cycles_and_never_stamps_user_tags",
+          "note": "another-preferred arm forward a->b->c->a and Shift-reverse a->c; no-preferred-but-living arm: all heroes dead -> the troop"
+        }
+      ],
+      "missing_arms": [
+        "nobody else, current visible",
+        "nobody else, current gone"
+      ]
+    }
+  ],
+  "other": []
+}

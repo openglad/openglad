@@ -1,0 +1,1356 @@
+{
+  "path": "packs/core/lib/gates.lua",
+  "rules": [
+    {
+      "id": "gates.lua:59",
+      "lines": [
+        57,
+        59,
+        60
+      ],
+      "kinds": [
+        "for",
+        "if",
+        "if"
+      ],
+      "function": "M.living_foes",
+      "anchor": "for i = 1, #found do",
+      "condition": "w:order() == C.ORDER_LIVING ; not floor_only or w:floor() == floor",
+      "semantic": "A bot gate's 'foes' are living bodies only (a generator the finder counts as a foe is never one), within the finder's Manhattan range between top-left corners (inclusive), and, when asked, only those on the caster's own floor.",
+      "arms": [
+        {
+          "when": "a living foe in range, same floor",
+          "observable": "counted"
+        },
+        {
+          "when": "a generator foe in range",
+          "observable": "not counted (finder count 3, living_foes 2)"
+        },
+        {
+          "when": "a living foe in range on another floor, floor_only true",
+          "observable": "not counted; counted with floor_only false"
+        },
+        {
+          "when": "a foe at exactly range px",
+          "observable": "counted (inclusive); at range+1 not"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_bot_gates_lib.cpp",
+          "test": "BotGatesLib.living_foes_skips_generators"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "gates.lua:69",
+      "lines": [
+        69
+      ],
+      "kinds": [
+        ""
+      ],
+      "function": "M.foes_within / M.allies_within",
+      "anchor": "function M.foes_within(self, n, range, floor_only)",
+      "condition": "#M.living_foes(self, range, floor_only) >= n ; #M.allies(self, range) >= n",
+      "semantic": "'At least n foes (allies) within range' is an inclusive count of LIVING bodies only (living_foes / allies, gates.lua:59 / gates.lua:100): exactly n passes, a generator never counts. Contrast gates.lua:75 (targets_within), which counts generators.",
+      "arms": [
+        {
+          "when": "n living foes in range",
+          "observable": "true"
+        },
+        {
+          "when": "n-1 living foes plus a tent in range",
+          "observable": "false"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_bot_gates_lib.cpp",
+          "test": "BotGatesLib.targets_within_counts_a_generator",
+          "note": "f1_40 true, f2_40 false 'the tent is not a living foe'"
+        },
+        {
+          "file": "tests/unit/test_bot_gates_lib.cpp",
+          "test": "BotGatesLib.allies_hurt_ally_and_ally_at_blows",
+          "note": "w1_40 true, w2_40 false with a friendly tent at 10 px, w2_100 true"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "gates.lua:75",
+      "lines": [
+        75
+      ],
+      "kinds": [
+        ""
+      ],
+      "function": "M.targets_within",
+      "anchor": "function M.targets_within(self, n, range)",
+      "condition": "count >= n (og.find_foes_in_range raw count)",
+      "semantic": "'At least n targets within range' counts everything the finder counts as a foe, generators INCLUDED (fix K: WHIRLWIND strikes a tent, HOWL stuns one), inclusive of n and of the range (Manhattan between top-left corners). Consumed by living-14-orc.lua:23, living-00-soldier.lua:192 and kit_captain.lua:386 (a stunned tent is the point).",
+      "arms": [
+        {
+          "when": "a fighter and a tent both at 40 px, n=2, range 40",
+          "observable": "true"
+        },
+        {
+          "when": "n=3",
+          "observable": "false"
+        },
+        {
+          "when": "range 39",
+          "observable": "false"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_bot_gates_lib.cpp",
+          "test": "BotGatesLib.targets_within_counts_a_generator",
+          "note": "t2_40 true, t3_40 false, t2_39 false"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "gates.lua:86",
+      "lines": [
+        86,
+        88
+      ],
+      "kinds": [
+        "for",
+        "if"
+      ],
+      "function": "M.nearest_living_foe",
+      "anchor": "for i = 1, #foes do",
+      "condition": "best == nil or dist < best_dist",
+      "semantic": "The nearest living foe in range is the one at the smallest finder distance; a tie goes to the one the object list holds first; a nearer generator is passed over; the gate never assigns self.foe.",
+      "arms": [
+        {
+          "when": "two foes at equal distance",
+          "observable": "the first in list order"
+        },
+        {
+          "when": "a nearer generator",
+          "observable": "skipped"
+        },
+        {
+          "when": "nobody in range",
+          "observable": "nil"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_bot_gates_lib.cpp",
+          "test": "BotGatesLib.nearest_living_foe_ties_to_list_order"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "gates.lua:100",
+      "lines": [
+        100,
+        101
+      ],
+      "kinds": [
+        "for",
+        "if"
+      ],
+      "function": "M.allies",
+      "anchor": "for i = 1, #found do",
+      "condition": "found[i]:order() == C.ORDER_LIVING",
+      "semantic": "A bot's 'allies' are living friends in range, never the caster itself and never a friendly generator. (The finder og.find_friends_in_range is already Living-only and skips the caller, game_world.cpp:1390-1415; the ORDER_LIVING filter here is belt-and-braces, so a friendly generator is excluded by both.)",
+      "arms": [
+        {
+          "when": "living friend in range",
+          "observable": "counted"
+        },
+        {
+          "when": "friendly tent in range",
+          "observable": "not counted"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_bot_gates_lib.cpp",
+          "test": "BotGatesLib.allies_hurt_ally_and_ally_at_blows"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "gates.lua:126",
+      "lines": [
+        126
+      ],
+      "kinds": [
+        "and"
+      ],
+      "function": "M.at_blows",
+      "anchor": "return gap_x <= M.BLOW_GAP and gap_y <= M.BLOW_GAP",
+      "condition": "gap_x <= M.BLOW_GAP and gap_y <= M.BLOW_GAP",
+      "semantic": "Two bodies are at blows (a melee swing connects) when the edge-to-edge gap is at most 5 px on BOTH axes.",
+      "arms": [
+        {
+          "when": "gap 5 on both axes",
+          "observable": "true"
+        },
+        {
+          "when": "gap 6 on either axis",
+          "observable": "false"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_bot_gates_lib.cpp",
+          "test": "BotGatesLib.at_blows_gap_five_in_six_out"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "gates.lua:133",
+      "lines": [
+        133,
+        134
+      ],
+      "kinds": [
+        "for",
+        "if"
+      ],
+      "function": "M.foes_at_blows",
+      "anchor": "for i = 1, #foes do",
+      "condition": "M.at_blows(self, foes[i])",
+      "semantic": "The foes at blows with the caster are the living foes within a blow on both axes; a friend at blows is not one.",
+      "arms": [
+        {
+          "when": "foe 5 px off",
+          "observable": "listed"
+        },
+        {
+          "when": "foe 6 px off",
+          "observable": "not listed"
+        },
+        {
+          "when": "friend at blows",
+          "observable": "not listed"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_bot_gates_lib.cpp",
+          "test": "BotGatesLib.at_blows_gap_five_in_six_out"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "gates.lua:150",
+      "lines": [
+        150,
+        152,
+        154,
+        156,
+        161
+      ],
+      "kinds": [
+        "for",
+        "for",
+        "if",
+        "if",
+        "if"
+      ],
+      "function": "M.allies_fight",
+      "anchor": "for i = 1, #foes do",
+      "condition": "at_blows(ally, foe) ; ally.hp * 4 < ally.max_hp ; near",
+      "semantic": "The allies' fight (FREEZE TIME's cue): count each living foe at blows with any ally other than the caster once (foe-major), and report whether any such engaged ally is under a quarter of its health.",
+      "arms": [
+        {
+          "when": "one foe at blows with two allies",
+          "observable": "counted once"
+        },
+        {
+          "when": "foe at blows only with the caster",
+          "observable": "not counted"
+        },
+        {
+          "when": "generator at blows with an ally",
+          "observable": "not counted"
+        },
+        {
+          "when": "engaged ally hp*4 < max_hp",
+          "observable": "hurt=true; at exactly a quarter hurt=false"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_bot_gates_lib.cpp",
+          "test": "BotGatesLib.allies_fight_counts_a_foe_once"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "gates.lua:173",
+      "lines": [
+        173,
+        174,
+        175
+      ],
+      "kinds": [
+        "for",
+        "for",
+        "if"
+      ],
+      "function": "M.ally_at_blows",
+      "anchor": "for i = 1, #allies do",
+      "condition": "M.at_blows(allies[i], foes[j])",
+      "semantic": "An ally within range that has a living foe at blows with it: the first such ally (ally-major list order) and that foe, else nil.",
+      "arms": [
+        {
+          "when": "ally in range engaged",
+          "observable": "ally and foe returned"
+        },
+        {
+          "when": "engaged ally outside range",
+          "observable": "nil"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_bot_gates_lib.cpp",
+          "test": "BotGatesLib.allies_hurt_ally_and_ally_at_blows"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "gates.lua:188",
+      "lines": [
+        188,
+        189
+      ],
+      "kinds": [
+        "for",
+        "if"
+      ],
+      "function": "M.hunters",
+      "anchor": "for i = 1, #foes do",
+      "condition": "foes[i]:foe() == self",
+      "semantic": "The foes hunting the caster are the living foes in range whose current foe is the caster; hunted_by answers the first in list order.",
+      "arms": [
+        {
+          "when": "foe whose foe is self",
+          "observable": "listed"
+        },
+        {
+          "when": "foe hunting someone else",
+          "observable": "not listed"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_bot_gates_lib.cpp",
+          "test": "BotGatesLib.hunters_are_the_foes_whose_foe_is_the_caster"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "gates.lua:203",
+      "lines": [
+        203,
+        204
+      ],
+      "kinds": [
+        "for",
+        "if"
+      ],
+      "function": "M.hurt_ally",
+      "anchor": "for i = 1, #allies do",
+      "condition": "allies[i].hp < allies[i].max_hp",
+      "semantic": "A hurt ally is the first living ally in range below its maximum health.",
+      "arms": [
+        {
+          "when": "all whole",
+          "observable": "nil"
+        },
+        {
+          "when": "an ally below max",
+          "observable": "that ally"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_bot_gates_lib.cpp",
+          "test": "BotGatesLib.allies_hurt_ally_and_ally_at_blows"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "gates.lua:213",
+      "lines": [
+        213
+      ],
+      "kinds": [
+        ""
+      ],
+      "function": "M.hp_below",
+      "anchor": "function M.hp_below(w, num, den)",
+      "condition": "og.fmul(w.hp, den) < og.fmul(w.max_hp, num)",
+      "semantic": "A bot gate's 'hurt below a fraction' test is strict: a body at exactly num/den of its max hp is NOT below it; the comparison is two C++ float products (hp*den vs max*num), no decimal fraction. Consumed by kit_skeleton.lua:660/686/709, living-17-archmage.lua:240/242, living-14-orc.lua:26 gates, which rely on this boundary.",
+      "arms": [
+        {
+          "when": "hp*den < max_hp*num",
+          "observable": "true"
+        },
+        {
+          "when": "hp exactly num/den of max_hp",
+          "observable": "false"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_bot_gates_lib.cpp",
+          "test": "BotGatesLib.hp_below_centre_and_heading_to",
+          "note": "hp 100 of max 400: hp_below(1,4) false 'not under 400'; hp 99.9 -> true"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "gates.lua:222",
+      "lines": [
+        217
+      ],
+      "kinds": [
+        ""
+      ],
+      "function": "M.centre / M.heading_to",
+      "anchor": "function M.centre(w)",
+      "condition": "centre = xpos + sizex // 2 ; facing(tx - sx, ty - sy)",
+      "semantic": "The heading from a caster to a target is the engine facing of the centre-to-centre vector, each centre the top-left plus half the size floored (integer division). Every 'faces / fan covers / in flight' gate reads it.",
+      "arms": [
+        {
+          "when": "target centre straight right",
+          "observable": "FACE_RIGHT"
+        },
+        {
+          "when": "target centre down-right diagonal",
+          "observable": "FACE_DOWN_RIGHT"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_bot_gates_lib.cpp",
+          "test": "BotGatesLib.hp_below_centre_and_heading_to"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "gates.lua:232",
+      "lines": [
+        232
+      ],
+      "kinds": [
+        ""
+      ],
+      "function": "M.fire_heading",
+      "anchor": "function M.fire_heading(self)",
+      "condition": "self:facing(og.trunc(self:lastx()), og.trunc(self:lasty()))",
+      "semantic": "Where a fired weapon leaves is facing(lastx, lasty), not curdir: at spawn lastx = lasty = 0 and facing(0, 0) is FACE_UP (while curdir is DOWN); a fractional aim is truncated toward zero first, so lastx -0.5 reads as 0 and the heading is UP.",
+      "arms": [
+        {
+          "when": "spawn (0,0)",
+          "observable": "FACE_UP while curdir FACE_DOWN"
+        },
+        {
+          "when": "lastx 1",
+          "observable": "FACE_RIGHT, even after set_curdir(FACE_LEFT)"
+        },
+        {
+          "when": "lastx -0.5",
+          "observable": "FACE_UP (truncated)"
+        },
+        {
+          "when": "(3,3) / (-3,3)",
+          "observable": "FACE_DOWN_RIGHT / FACE_DOWN_LEFT"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_bot_gates_lib.cpp",
+          "test": "BotGatesLib.fire_heading_is_up_at_spawn_and_follows_lastx_lasty"
+        },
+        {
+          "file": "tests/unit/test_bot_gates_lib.cpp",
+          "test": "BotGatesLib.faces_aimed_at_and_fan_faces_read_the_fire_heading"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "gates.lua:239",
+      "lines": [
+        239
+      ],
+      "kinds": [
+        "or"
+      ],
+      "function": "M.has_heading",
+      "anchor": "return self:lastx() ~= 0.0 or self:lasty() ~= 0.0",
+      "condition": "self:lastx() ~= 0.0 or self:lasty() ~= 0.0",
+      "semantic": "A walker has a heading only once it has an aim (lastx or lasty non-zero); a fresh spawn has none and a rush would go nowhere.",
+      "arms": [
+        {
+          "when": "spawn (0,0)",
+          "observable": "false"
+        },
+        {
+          "when": "lastx or lasty set",
+          "observable": "true"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_bot_gates_lib.cpp",
+          "test": "BotGatesLib.has_heading_is_false_at_spawn"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "gates.lua:249",
+      "lines": [
+        249
+      ],
+      "kinds": [
+        "and"
+      ],
+      "function": "M.aimed_at",
+      "anchor": "return M.has_heading(self) and M.faces(self, target)",
+      "condition": "M.has_heading(self) and M.faces(self, target)",
+      "semantic": "A caster is aimed at a target (CHARGE's rush) only when it has a heading AND its fire heading points at the target.",
+      "arms": [
+        {
+          "when": "spawn, target up",
+          "observable": "false (faces UP but no heading)"
+        },
+        {
+          "when": "heading set toward target",
+          "observable": "true"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_bot_gates_lib.cpp",
+          "test": "BotGatesLib.faces_aimed_at_and_fan_faces_read_the_fire_heading"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "gates.lua:258",
+      "lines": [
+        258,
+        259
+      ],
+      "kinds": [
+        "or",
+        "or"
+      ],
+      "function": "M.fan_covers",
+      "anchor": "or h == og.mod(facing + 1, 8)",
+      "condition": "h == facing or h == (facing+1)%8 or h == (facing+7)%8",
+      "semantic": "A fan (three knives, a bone wall) covers the facing it is cast along and its two neighbouring headings, wrapping round 0/7.",
+      "arms": [
+        {
+          "when": "heading == facing",
+          "observable": "true"
+        },
+        {
+          "when": "heading a neighbour (incl. wrap 7->0, 0->7)",
+          "observable": "true"
+        },
+        {
+          "when": "any other heading",
+          "observable": "false"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_bot_gates_lib.cpp",
+          "test": "BotGatesLib.fan_covers_takes_the_facing_the_kit_passes"
+        },
+        {
+          "file": "tests/unit/test_bot_gates_lib.cpp",
+          "test": "BotGatesLib.faces_aimed_at_and_fan_faces_read_the_fire_heading"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "gates.lua:269",
+      "lines": [
+        269,
+        270,
+        271
+      ],
+      "kinds": [
+        "or",
+        "or",
+        "or"
+      ],
+      "function": "straight",
+      "anchor": "or heading == C.FACE_RIGHT",
+      "condition": "heading is UP/RIGHT/DOWN/LEFT",
+      "semantic": "A fired weapon's flight is longer on the four straight headings than on diagonals (the engine's 309/256 range and 362/256 step scaling apply only there).",
+      "arms": [
+        {
+          "when": "straight heading FACE_UP / FACE_RIGHT / FACE_DOWN",
+          "observable": "scaled flight (los*309/256, step*362/256)"
+        },
+        {
+          "when": "straight heading FACE_LEFT",
+          "observable": "scaled flight"
+        },
+        {
+          "when": "diagonal",
+          "observable": "unscaled flight"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_bot_gates_lib.cpp",
+          "test": "BotGatesLib.flight_px_matches_the_engine",
+          "note": "FACE_RIGHT/FACE_UP straight, FACE_UP_RIGHT/FACE_DOWN_LEFT/FACE_UP_LEFT diagonal"
+        },
+        {
+          "file": "tests/unit/test_bot_gates_kits.cpp",
+          "test": "GameplayFixesBots.elemental_starburst_wants_a_crowd_or_a_foe_behind",
+          "note": "a 60 px gap straight below is inside the meteor ring only with FACE_DOWN scaled: 89 straight vs 56 diagonal"
+        }
+      ],
+      "missing_arms": [
+        "straight heading FACE_LEFT"
+      ]
+    },
+    {
+      "id": "gates.lua:284",
+      "lines": [
+        284,
+        289,
+        291,
+        295,
+        298
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if",
+        "if"
+      ],
+      "function": "M.flight_px",
+      "anchor": "if self:has_guy() then",
+      "condition": "self:has_guy() ; straight(heading) ; step ~= M.UNIT_STEP ; los_num ; los_add",
+      "semantic": "How far a fired weapon flies per axis: a hero adds strength/23 + dexterity/31 to the range, every caster adds level/3, straight headings scale range by 309/256 and step by 362/256 (except a 1 px/tick bolt), then a volley's multiplier and an additive bonus apply; los-1 steps move.",
+      "arms": [
+        {
+          "when": "hero",
+          "observable": "range + str/23 + dex/31 (str 46 dex 31 rock: 84 straight)"
+        },
+        {
+          "when": "straight heading, step>1",
+          "observable": "range*309/256, step*362/256 (rock L1: 56)"
+        },
+        {
+          "when": "straight heading, step 1",
+          "observable": "range scaled, step stays 1 (WARP ring 21)"
+        },
+        {
+          "when": "diagonal",
+          "observable": "unscaled (rock L1: 35)"
+        },
+        {
+          "when": "los_num/los_den",
+          "observable": "range * num/den (elf 3/2: 84)"
+        },
+        {
+          "when": "los_add",
+          "observable": "range + add"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_bot_gates_lib.cpp",
+          "test": "BotGatesLib.flight_px_matches_the_engine"
+        },
+        {
+          "file": "tests/unit/test_bot_gates_lib.cpp",
+          "test": "BotGatesLib.in_flight_takes_the_elf_multiplier_and_the_mage_add"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "gates.lua:307",
+      "lines": [
+        307
+      ],
+      "kinds": [
+        ""
+      ],
+      "function": "M.in_flight",
+      "anchor": "function M.in_flight(self, target, step, los, los_num, los_den, los_add)",
+      "condition": "og.max(gap_x, gap_y) <= reach",
+      "semantic": "A target is within a fired weapon's flight when the edge-to-edge gap on the DOMINANT axis is at most the reach along the heading to it (flight_px, gates.lua:284), inclusive; it is not a corner-to-corner or Manhattan distance. The elf multiplier and the mage's ring add flow through flight_px.",
+      "arms": [
+        {
+          "when": "level-1 rock, gap 56 straight right",
+          "observable": "true"
+        },
+        {
+          "when": "gap 57",
+          "observable": "false"
+        },
+        {
+          "when": "diagonal gap 35,35",
+          "observable": "true"
+        },
+        {
+          "when": "diagonal gap 36,36",
+          "observable": "false"
+        },
+        {
+          "when": "elf 3/2 multiplier, foe at 84 px gap",
+          "observable": "elf84 true where rock84 false"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_bot_gates_lib.cpp",
+          "test": "BotGatesLib.in_flight_measures_the_edge_gap"
+        },
+        {
+          "file": "tests/unit/test_bot_gates_lib.cpp",
+          "test": "BotGatesLib.in_flight_takes_the_elf_multiplier_and_the_mage_add"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "gates.lua:320",
+      "lines": [
+        320,
+        321,
+        323,
+        328,
+        331
+      ],
+      "kinds": [
+        "for",
+        "if",
+        "if",
+        "if",
+        "and"
+      ],
+      "function": "M.ring_pays",
+      "anchor": "for i = 1, #foes do",
+      "condition": "in_flight ; not faces ; in_ring >= 2 ; in_ring == 1 and unfaced",
+      "semantic": "A ring cast (one bolt on all eight headings) pays over a single bolt only when two or more living foes are in its flight, or exactly one that the caster does not already face.",
+      "arms": [
+        {
+          "when": "one faced foe in flight",
+          "observable": "false"
+        },
+        {
+          "when": "one foe behind",
+          "observable": "true"
+        },
+        {
+          "when": "two foes in flight",
+          "observable": "true"
+        },
+        {
+          "when": "second foe past the flight",
+          "observable": "false (one faced)"
+        },
+        {
+          "when": "no foe",
+          "observable": "false"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_bot_gates_lib.cpp",
+          "test": "BotGatesLib.ring_pays_two_in_or_one_unfaced"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "gates.lua:335",
+      "lines": [
+        335
+      ],
+      "kinds": [
+        ""
+      ],
+      "function": "M.blast_reach",
+      "anchor": "function M.blast_reach(level)",
+      "condition": "15 + og.clamp(level * 4, 16, 96)",
+      "semantic": "An explosion's reach is 15 + 4*level clamped to 16..96, so 31 px at levels 1-4, rising 4 px a level, capped 111 px from level 24 (the explosion's own find_in_range).",
+      "arms": [
+        {
+          "when": "level 1 / 4",
+          "observable": "31"
+        },
+        {
+          "when": "level 5",
+          "observable": "35"
+        },
+        {
+          "when": "level 24 / 30",
+          "observable": "111"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_bot_gates_lib.cpp",
+          "test": "BotGatesLib.blast_reach_is_the_explosions"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "gates.lua:345",
+      "lines": [
+        345,
+        346,
+        350,
+        354,
+        355
+      ],
+      "kinds": [
+        "if",
+        "and",
+        "if",
+        "for",
+        "if"
+      ],
+      "function": "M.blast_clear",
+      "anchor": "if check_self and centre ~= self",
+      "condition": "check_self and centre ~= self and dist <= reach ; centre ~= self ; centre:distance_to_ob(ally) <= reach",
+      "semantic": "A blast cast is clear when no living ally of the CASTER stands within the blast's reach of its centre (the centre's own friends do not count), and, if asked, the caster itself is outside it.",
+      "arms": [
+        {
+          "when": "caster's ally within reach of centre",
+          "observable": "false"
+        },
+        {
+          "when": "only the foe's friend near the centre",
+          "observable": "true"
+        },
+        {
+          "when": "check_self and caster within reach",
+          "observable": "false"
+        },
+        {
+          "when": "blast on self, ally in reach",
+          "observable": "false"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_bot_gates_lib.cpp",
+          "test": "BotGatesLib.blast_clear_sees_the_casters_allies_around_a_foe"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "gates.lua:369",
+      "lines": [
+        369,
+        371,
+        376,
+        378,
+        379,
+        380,
+        381,
+        383
+      ],
+      "kinds": [
+        "if",
+        "else",
+        "for",
+        "if",
+        "and",
+        "and",
+        "and",
+        "or"
+      ],
+      "function": "M.owned",
+      "anchor": "if order == C.ORDER_WEAPON then",
+      "condition": "order == ORDER_WEAPON ; ob and order and family and not dead and owner == self ; first or ob",
+      "semantic": "A caster's own live summons are counted by order AND family (family numbers collide across orders), weapons from the weapon list and everything else from the object list; dead ones and others' do not count.",
+      "arms": [
+        {
+          "when": "weapon order",
+          "observable": "weaplist scanned (druid circle)"
+        },
+        {
+          "when": "FX family 7 vs living family 7",
+          "observable": "only the FX blade counted"
+        },
+        {
+          "when": "dead or another's",
+          "observable": "not counted"
+        },
+        {
+          "when": "none",
+          "observable": "count 0"
+        },
+        {
+          "when": "none: first",
+          "observable": "first nil"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_bot_gates_lib.cpp",
+          "test": "BotGatesLib.owned_tests_the_order"
+        }
+      ],
+      "missing_arms": [
+        "none: first"
+      ]
+    },
+    {
+      "id": "gates.lua:392",
+      "lines": [
+        392,
+        394,
+        395,
+        396,
+        397
+      ],
+      "kinds": [
+        "for",
+        "if",
+        "and",
+        "and",
+        "and"
+      ],
+      "function": "M.owned_phantom",
+      "anchor": "for i = 1, #obs do",
+      "condition": "ob and LIVING and not dead and owner == self and max_hp == 1",
+      "semantic": "A phantom (SUMMON IMAGE) is a live living the caster owns whose max_hp is 1.",
+      "arms": [
+        {
+          "when": "owned living with max_hp 400",
+          "observable": "nil"
+        },
+        {
+          "when": "owned living max_hp 1",
+          "observable": "that walker"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_bot_gates_lib.cpp",
+          "test": "BotGatesLib.owned_phantom_wants_max_hp_one"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "gates.lua:408",
+      "lines": [
+        408,
+        411
+      ],
+      "kinds": [
+        "if",
+        "if"
+      ],
+      "function": "M.corpse_underfoot",
+      "anchor": "if not blood or blood:floor() ~= self:floor() then",
+      "condition": "not blood or blood:floor() ~= self:floor() ; distance_to_ob_center(blood) <= reach_sq",
+      "semantic": "A corpse is underfoot when the nearest blood stain (the finder never answers beyond ~28 px of centre) is on the caster's floor and within the squared centre distance asked (inclusive).",
+      "arms": [
+        {
+          "when": "no stain within the finder",
+          "observable": "nil"
+        },
+        {
+          "when": "stain on another floor",
+          "observable": "nil"
+        },
+        {
+          "when": "stain at squared distance == reach_sq",
+          "observable": "the stain"
+        },
+        {
+          "when": "beyond reach_sq",
+          "observable": "nil"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_bot_gates_lib.cpp",
+          "test": "BotGatesLib.corpse_underfoot_is_capped_by_the_finder"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "gates.lua:425",
+      "lines": [
+        425,
+        429,
+        430,
+        431,
+        432
+      ],
+      "kinds": [
+        "for",
+        "if",
+        "and",
+        "and",
+        "and"
+      ],
+      "function": "foe_meeting",
+      "anchor": "for i = 1, #foes do",
+      "condition": "ax <= fx+fw and ax+aw >= fx and ay <= fy+fh and ay+ah >= fy",
+      "semantic": "Two bodies collide as the engine's collide() sees them: both boxes shrunk 1 px each side, compared inclusively; the first such foe in list order.",
+      "arms": [
+        {
+          "when": "shrunk boxes touch on an edge",
+          "observable": "met"
+        },
+        {
+          "when": "1 px further apart",
+          "observable": "not met"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_bot_gates_lib.cpp",
+          "test": "BotGatesLib.ahead_blocked_by_foe_mirrors_collide"
+        },
+        {
+          "file": "tests/unit/test_bot_gates_lib.cpp",
+          "test": "BotGatesLib.rush_strikes_walks_the_charge_path"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "gates.lua:445",
+      "lines": [
+        445
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "M.ahead_blocked_by_foe",
+      "anchor": "if d < 0 or d > 7 then",
+      "condition": "d < 0 or d > 7",
+      "semantic": "A foe blocks the caster's front when its box meets the caster's box moved one pixel along curdir (DISARM's probe), same floor, within reach; a caster parked on the curdir -1 sentinel (after FIRE ARROWS / WHIRLWIND) has no front.",
+      "arms": [
+        {
+          "when": "curdir -1",
+          "observable": "nil"
+        },
+        {
+          "when": "foe meeting the 1 px step",
+          "observable": "that foe"
+        },
+        {
+          "when": "foe upstairs",
+          "observable": "nil"
+        },
+        {
+          "when": "foe beyond reach",
+          "observable": "nil"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_bot_gates_lib.cpp",
+          "test": "BotGatesLib.ahead_blocked_by_foe_mirrors_collide"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "gates.lua:468",
+      "lines": [
+        468,
+        474,
+        481,
+        485,
+        491
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "for",
+        "if",
+        "if"
+      ],
+      "function": "M.rush_strikes",
+      "anchor": "if self:s_forward_blocked(true) then",
+      "condition": "s_forward_blocked(true) ; ux == 0 and uy == 0 ; for k ; f ; not og.quiet_passable",
+      "semantic": "CHARGE's rush (nine walksteps along the truncated aim) strikes the first living foe its path meets; it strikes nobody when its 1 px front is already blocked (PATH BLOCKED, Gameplay Fixes U, asked quietly), when it has no heading, or when a wall, ally, door or generator stops it earlier. Asking draws nothing and changes nothing.",
+      "arms": [
+        {
+          "when": "front blocked (wall or foe pressed 1 px into it)",
+          "observable": "nil"
+        },
+        {
+          "when": "aim truncates to (0,0)",
+          "observable": "nil"
+        },
+        {
+          "when": "foe on step k<=9",
+          "observable": "that foe (nearer of two)"
+        },
+        {
+          "when": "wall at step 5 before foe at step 9",
+          "observable": "nil"
+        },
+        {
+          "when": "open path, foe beyond 9 steps",
+          "observable": "nil"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_bot_gates_lib.cpp",
+          "test": "BotGatesLib.rush_strikes_walks_the_charge_path"
+        },
+        {
+          "file": "tests/unit/test_bot_gates_lib.cpp",
+          "test": "BotGatesLib.rush_strikes_stops_at_a_wall"
+        },
+        {
+          "file": "tests/unit/test_bot_gates_lib.cpp",
+          "test": "BotGatesLib.pad_clear_and_the_front_probe_draw_nothing"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "gates.lua:516",
+      "lines": [
+        516,
+        519
+      ],
+      "kinds": [
+        "if",
+        "if"
+      ],
+      "function": "M.can_pay",
+      "anchor": "if shifted then",
+      "condition": "shifted ; price == 0",
+      "semantic": "A bot can pay a slot when its magic covers the alternate's own price while shifted, or the slot's price when unshifted or when the alternate has no price of its own (alternate_cost 0).",
+      "arms": [
+        {
+          "when": "shifted, alternate priced (SUPERNOVA 10)",
+          "observable": "mp >= 10"
+        },
+        {
+          "when": "shifted, alternate unpriced (TELEPORT MARKER)",
+          "observable": "mp >= slot price 15"
+        },
+        {
+          "when": "unshifted",
+          "observable": "mp >= slot price"
+        },
+        {
+          "when": "alternate not in play (New Specials off)",
+          "observable": "slot price"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_bot_gates_lib.cpp",
+          "test": "BotGatesLib.can_pay_falls_back_to_the_slot_price_when_the_alternate_has_none"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "gates.lua:527",
+      "lines": [
+        527
+      ],
+      "kinds": [
+        "and"
+      ],
+      "function": "M.resting",
+      "anchor": "return self:special_rest_slot() == slot and self:special_rest_left() > 0",
+      "condition": "special_rest_slot() == slot and special_rest_left() > 0",
+      "semantic": "A slot is resting when the walker's rest clock is on that slot and still running.",
+      "arms": [
+        {
+          "when": "rest on slot 2, left>0",
+          "observable": "resting(2) true, resting(1) false"
+        },
+        {
+          "when": "rest left 0",
+          "observable": "false"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_bot_gates_lib.cpp",
+          "test": "BotGatesLib.resting_reads_the_slot_and_the_clock"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "gates.lua:535",
+      "lines": [
+        535,
+        539
+      ],
+      "kinds": [
+        "if",
+        "if"
+      ],
+      "function": "M.marker_pays",
+      "anchor": "if self:has_guy() and self:g_intelligence() < int_req then",
+      "condition": "has_guy and g_intelligence < int_req ; count > 0 ; spare/2 >= next price",
+      "semantic": "TELEPORT MARKER pays for a bot only when no marker of its own stands, a hero has the INT the cast asks, and half the magic left after the slot's price still covers the next slot's price.",
+      "arms": [
+        {
+          "when": "hero INT < req",
+          "observable": "false"
+        },
+        {
+          "when": "own live marker stands",
+          "observable": "false; another's or a spent one -> true"
+        },
+        {
+          "when": "(mp - price)/2 >= next price",
+          "observable": "true; one short false"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_bot_gates_lib.cpp",
+          "test": "BotGatesLib.marker_pays_once_and_only_when_funded"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "gates.lua:554",
+      "lines": [
+        554
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "M.with_classic",
+      "anchor": "if not gf.on() then",
+      "condition": "not gf.on()",
+      "semantic": "A family whose classic gate acquires a foe always runs that classic gate first (same draws, same foe on both settings); with Gameplay Fixes off its answer stands, with it on the fixed rule decides, seeing the classic answer.",
+      "arms": [
+        {
+          "when": "Gameplay Fixes off",
+          "observable": "classic answer, fixed never called"
+        },
+        {
+          "when": "Gameplay Fixes on",
+          "observable": "fixed(self, classic_answer) answer; rng stream identical to off"
+        }
+      ],
+      "setting": "both",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_bot_gates_lib.cpp",
+          "test": "BotGatesLib.with_classic_calls_classic_first_on_both_values"
+        }
+      ],
+      "missing_arms": []
+    }
+  ],
+  "other": []
+}

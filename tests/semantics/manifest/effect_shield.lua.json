@@ -1,0 +1,231 @@
+{
+  "path": "packs/core/lib/effect_shield.lua",
+  "rules": [
+    {
+      "id": "effect_shield.lua:28",
+      "lines": [
+        28
+      ],
+      "kinds": [
+        "for"
+      ],
+      "function": "guard_tail",
+      "anchor": "for i = 1, #weapons do",
+      "condition": "for each foe weapon within weapon_range",
+      "semantic": "A magic shield (range = its size) or boomerang (twice its size) destroys every foe weapon inside its guard radius each tick, each costing the guard the weapon's damage in hp. Unlike the hook blade, it destroys scenery weapons too.",
+      "arms": [
+        {
+          "when": "foe weapon in range",
+          "observable": "weapon dead; guard hp -= weapon damage"
+        },
+        {
+          "when": "none",
+          "observable": "unchanged"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_effect_more_paths.cpp",
+          "test": "EffectMorePaths.effect_magic_shield_absorbs_hostile_weapon_and_strikes_foe"
+        },
+        {
+          "file": "tests/integration/test_effect_more_paths.cpp",
+          "test": "EffectMorePaths.effect_boomerang_orbit_absorbs_hostile_weapon_and_strikes_foe"
+        },
+        {
+          "parity": "shield_projectile_absorb_scen99",
+          "fact": "",
+          "note": "WeaponFamilyCount(FAMILY_ARROW 1 1) reads the absorbed arrow"
+        },
+        {
+          "file": "tests/integration/test_effect_act.cpp",
+          "test": "EffectAct.magic_shield_orbit_step_and_ageing"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "effect_shield.lua:37",
+      "lines": [
+        37
+      ],
+      "kinds": [
+        "for"
+      ],
+      "function": "guard_tail",
+      "anchor": "for i = 1, #foes do",
+      "condition": "for each foe within sizex",
+      "semantic": "A guard strikes every foe inside its body radius each tick, paying the foe's own damage in hp per foe, and survives its own strike (dead reset to 0 after each attack).",
+      "arms": [
+        {
+          "when": "foe in range",
+          "observable": "guard attacks it (foe hp drops); guard hp -= foe damage; guard dead flag 0"
+        },
+        {
+          "when": "none",
+          "observable": "unchanged"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_effect_more_paths.cpp",
+          "test": "EffectMorePaths.effect_magic_shield_absorbs_hostile_weapon_and_strikes_foe"
+        },
+        {
+          "file": "tests/integration/test_effect_more_paths.cpp",
+          "test": "EffectMorePaths.effect_batch3_guard_dies_when_collisions_drain_its_hitpoints"
+        },
+        {
+          "file": "tests/integration/test_effect_act.cpp",
+          "test": "EffectAct.magic_shield_orbit_step_and_ageing"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "effect_shield.lua:47",
+      "lines": [
+        47,
+        52
+      ],
+      "kinds": [
+        "if",
+        "if"
+      ],
+      "function": "guard_tail",
+      "anchor": "if self.hp > 0 then",
+      "condition": "self.hp > 0 (age) / self.hp <= 0 or expired",
+      "semantic": "A guard dies when its hp is spent or its lifetime has run out; it ages only while it still has hp, and it expires on the act AFTER its count passes 0 (lifetime read before the decrement < 0), i.e. it lives lifetime+1 acts.",
+      "arms": [
+        {
+          "when": "hp > 0 and old lifetime >= 0",
+          "observable": "lifetime -1, alive",
+          "asserted": true
+        },
+        {
+          "when": "hp > 0 and old lifetime < 0",
+          "observable": "dead",
+          "asserted": false
+        },
+        {
+          "when": "hp <= 0",
+          "observable": "dead without ageing",
+          "asserted": true
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_effect_act.cpp",
+          "test": "EffectAct.magic_shield_orbit_step_and_ageing"
+        },
+        {
+          "file": "tests/integration/test_effect_more_paths.cpp",
+          "test": "EffectMorePaths.effect_batch3_guard_dies_when_collisions_drain_its_hitpoints"
+        }
+      ],
+      "missing_arms": [
+        "hp > 0 and old lifetime < 0"
+      ],
+      "note": [
+        "Ageing arm (lifetime 100 -> 99, alive; lifetime 5 -> 4) and hp<=0 arm (dies without ageing, lifetime stays 0) asserted; the expiry arm (hp > 0, old lifetime < 0 -> dead; note the off-by-one: a shield set to lifetime 0 lives one more act) is unasserted."
+      ]
+    },
+    {
+      "id": "effect_shield.lua:61",
+      "lines": [
+        61
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "magic_shield_on_act",
+      "anchor": "if not owner or owner:dead() ~= 0 then",
+      "condition": "not owner or owner:dead() ~= 0",
+      "semantic": "A magic shield dies with its caster; while the caster lives it orbits him on the 16-step radius-24 circle, one step per drawcycle.",
+      "arms": [
+        {
+          "when": "owner dead/gone",
+          "observable": "shield dead"
+        },
+        {
+          "when": "owner alive",
+          "observable": "centre = owner centre + ORBIT[drawcycle % 16]"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_effect_act.cpp",
+          "test": "EffectAct.magic_shield_no_owner"
+        },
+        {
+          "file": "tests/integration/test_effect_act.cpp",
+          "test": "EffectAct.magic_shield_orbit_step_and_ageing"
+        },
+        {
+          "file": "tests/unit/test_pack_lua_paths.cpp",
+          "test": "PackLuaShield.the_orbit_is_the_sixteen_step_circle_from_due_north"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "effect_shield.lua:82",
+      "lines": [
+        82,
+        83,
+        84
+      ],
+      "kinds": [
+        "if",
+        "or",
+        "or"
+      ],
+      "function": "boomerang_on_act",
+      "anchor": "if not owner",
+      "condition": "not owner or owner dead or drawcycle > 253",
+      "semantic": "A boomerang dies with its thrower and at drawcycle 254 (Zardus's 2002 cap so the byte counter cannot wrap it back onto its owner); until then it spirals out at (drawcycle+4)/48 of the 24-px circle.",
+      "arms": [
+        {
+          "when": "owner gone/dead",
+          "observable": "dead"
+        },
+        {
+          "when": "drawcycle > 253",
+          "observable": "dead"
+        },
+        {
+          "when": "else",
+          "observable": "orbit offset scaled (dc+4)/48 then guard"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_effect_act.cpp",
+          "test": "EffectAct.boomerang_expired"
+        },
+        {
+          "file": "tests/integration/test_effect_act.cpp",
+          "test": "EffectAct.boomerang_orbit_radius_scales_with_drawcycle"
+        },
+        {
+          "file": "tests/integration/test_effect_act.cpp",
+          "test": "EffectAct.boomerang_spirals_outward_as_the_sim_ticks"
+        }
+      ],
+      "missing_arms": [
+        "owner gone/dead"
+      ]
+    }
+  ],
+  "other": []
+}

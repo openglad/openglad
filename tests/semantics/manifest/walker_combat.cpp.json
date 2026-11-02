@@ -1,0 +1,1610 @@
+{
+  "path": "src/gameplay/walker_combat.cpp",
+  "rules": [
+    {
+      "id": "walker_combat.cpp:67",
+      "lines": [
+        67
+      ],
+      "kinds": [
+        "ternary"
+      ],
+      "function": "exp_from_action",
+      "anchor": "(target != nullptr && target->stats() != nullptr) ? target->stats()->level() : 0;",
+      "condition": "target && target->stats() ? target level : 0",
+      "semantic": "XP for an action scales with the target's level; an action with no target counts as against a level-0 target.",
+      "arms": [
+        {
+          "when": "target present",
+          "observable": "compute_xp_from_action(..., target level, ...)"
+        },
+        {
+          "when": "no target",
+          "observable": "target level 0"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_combat.cpp",
+          "test": "WalkerCombat.attack_rewards_single_credit_weapon_hit",
+          "note": "owner exp delta == compute_xp_from_attack(weapon level - TARGET level, dealt): the target-present adapter arm"
+        },
+        {
+          "file": "tests/integration/test_walker_more.cpp",
+          "test": "WalkerMore.walker_friendliness_and_a_hostile_attack_lands_its_damage",
+          "note": "exp == 18 after a melee hit on a level-1 target"
+        }
+      ],
+      "missing_arms": [
+        "no target"
+      ],
+      "note": [
+        "tests/integration/test_combat_math.cpp tests the pure compute_xp_from_action only and never reaches this adapter."
+      ]
+    },
+    {
+      "id": "walker_combat.cpp:90",
+      "lines": [
+        90
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "award_score",
+      "anchor": "if (!(current_game && current_game->world && is_valid_score_team(team_num)))",
+      "condition": "current_game && world && team < SCORE_TEAM_COUNT",
+      "semantic": "Team score only accrues to a real score team; a hit by a walker whose team index is out of range scores nothing (and emits no ScoreChange).",
+      "arms": [
+        {
+          "when": "valid team",
+          "observable": "m_score[team] += points; ScoreChange(team, points) event"
+        },
+        {
+          "when": "team >= SCORE_TEAM_COUNT",
+          "observable": "no score, no event"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_combat.cpp",
+          "test": "WalkerCombat.attack_rewards_single_credit_weapon_hit",
+          "note": "valid team: m_score delta == dealt + level, ScoreChange event for the team"
+        },
+        {
+          "file": "tests/integration/test_walker_combat.cpp",
+          "test": "WalkerCombat.attack_ignores_out_of_range_team_score_index",
+          "note": "team 250: total team score unchanged; the no-event half is not asserted"
+        }
+      ],
+      "missing_arms": [],
+      "note": [
+        "Sub-part convention (file-wide): an arm whose primary observable is asserted counts as asserted and leaves missing_arms; any field of its compound observable that no cited test reads is listed in assertion.unasserted_subparts, and a row with unasserted_subparts is never 'asserted' (at best 'partial')."
+      ]
+    },
+    {
+      "id": "walker_combat.cpp:100",
+      "lines": [
+        100
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "walker::do_heal_effects",
+      "anchor": "if(healer)",
+      "condition": "healer",
+      "semantic": "A heal shows its amount (colour 56) to the healed walker, and also to the healer when there is one.",
+      "arms": [
+        {
+          "when": "healer present",
+          "observable": "healer and target each get a DamageNumber(amount,56)"
+        },
+        {
+          "when": "no healer",
+          "observable": "target only"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_script_bindings_props.cpp",
+          "test": "ScriptBindingPropsTest.heal_clamped_adds_marks_then_clamps",
+          "note": "nil healer -> do_heal_effects(nullptr, self, 30): exactly 1 marker on the target, value 30"
+        },
+        {
+          "file": "tests/unit/test_script_bindings_props.cpp",
+          "test": "ScriptBindingPropsTest.heal_clamped_with_source_marks_both",
+          "note": "healer present: healer 1 marker, target 1 marker"
+        },
+        {
+          "file": "tests/integration/test_walker_combat.cpp",
+          "test": "WalkerCombat.batch6_attack_friendly_team_death_messages_and_clamps",
+          "note": "self-heal: +2 numbers"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "walker_combat.cpp:118",
+      "lines": [
+        118
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "walker::do_hit_effects",
+      "anchor": "if(attacker)",
+      "condition": "attacker",
+      "semantic": "Every hit shows its damage to the victim (red) and to the credited attacker (orange) when there is one.",
+      "arms": [
+        {
+          "when": "attacker",
+          "observable": "attacker->damage_numbers +1 (colour 235) and target +1 (RED)"
+        },
+        {
+          "when": "no attacker",
+          "observable": "target +1 only"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_game_server_coverage.cpp",
+          "test": "GameServerCoverage.step_lifts_every_owner_damage_numbers_and_drains_every_list",
+          "note": "do_hit_effects(control, foe, 7): lines 1563-1566 assert one damage number on each walker's list; lines 1603-1617 assert the lifted wire copies: attacker copy value 7 colour 235, target copy value 7 colour RED, both anchored at the target's centre. Colour and value are read from the decoded DamageNumber events, not from the in-memory lists, which the lift drains."
+        }
+      ],
+      "missing_arms": [
+        "no attacker"
+      ],
+      "note": [
+        "Spot-check claimed colour/value are never read; re-read the test: they are, on the decoded events at lines 1603-1617. Status and missing arm unchanged."
+      ]
+    },
+    {
+      "id": "walker_combat.cpp:175",
+      "lines": [
+        132,
+        175,
+        179
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
+      ],
+      "function": "walker::do_hit_effects",
+      "anchor": "if (target->stats()->hitpoints() < 0)",
+      "condition": "tempdamage (trimmed by overkill) > 0; target is Living",
+      "semantic": "A hit that actually took hit points flashes the victim; a living victim also recoils away from the hitter (recoil 1.0 at the hitter->victim angle); a zero-damage hit neither flashes nor recoils.",
+      "arms": [
+        {
+          "when": "damage > 0, living",
+          "observable": "hurt_flash true, hit_recoil 1.0, recoil angle atan2(victim-hitter)"
+        },
+        {
+          "when": "damage > 0, non-living",
+          "observable": "hurt_flash only"
+        },
+        {
+          "when": "damage 0",
+          "observable": "no flash, no recoil"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_combat.cpp",
+          "test": "WalkerCombat.batch5_heal_and_hit_effect_variants",
+          "note": "damage>0 living: hurt_flash true, hit_recoil > 0"
+        },
+        {
+          "file": "tests/integration/test_walker_combat.cpp",
+          "test": "WalkerCombat.effect_helpers_and_recoil_branches",
+          "note": "hit_recoil > 0"
+        }
+      ],
+      "missing_arms": [
+        "damage > 0, non-living",
+        "damage 0"
+      ],
+      "note": [
+        "Sub-part convention (file-wide): an arm whose primary observable is asserted counts as asserted and leaves missing_arms; any field of its compound observable that no cited test reads is listed in assertion.unasserted_subparts, and a row with unasserted_subparts is never 'asserted' (at best 'partial')."
+      ]
+    },
+    {
+      "id": "walker_combat.cpp:139",
+      "lines": [
+        135,
+        138,
+        139,
+        142,
+        159,
+        163
+      ],
+      "kinds": [
+        "if",
+        "ternary",
+        "if",
+        "if",
+        "if",
+        "else"
+      ],
+      "function": "walker::do_hit_effects",
+      "anchor": "if (current_game != nullptr && current_game->world != nullptr)",
+      "condition": "order != FX || efd->creates_hit_effect; attacker == this",
+      "semantic": "Every hit spawns a hit flash (FAMILY_HIT fx, team of the hitter, on the victim's floor, random ani 1..3 from the cosmetic stream) except a hit dealt by an effect whose family says creates_hit_effect=false (boomerang, marker, chain, ghost scare); a melee hit's flash is centred on the victim, a projectile's halfway between the projectile and the victim's centre.",
+      "arms": [
+        {
+          "when": "non-FX hitter or FX with creates_hit_effect",
+          "observable": "one FAMILY_HIT added to oblist"
+        },
+        {
+          "when": "FX with creates_hit_effect=false",
+          "observable": "no FAMILY_HIT"
+        },
+        {
+          "when": "melee (attacker==this)",
+          "observable": "flash centred on target"
+        },
+        {
+          "when": "projectile",
+          "observable": "flash at midpoint"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": [
+        "non-FX hitter or FX with creates_hit_effect",
+        "FX with creates_hit_effect=false",
+        "melee (attacker==this)",
+        "projectile"
+      ],
+      "note": [
+        "NOT credited: tests/unit/test_kit_elemental.cpp KitElemental.rekindle_heals_and_refuses_at_full and tests/unit/test_kit_faerie.cpp KitFaerie.hasten_ally_or_self_by_shift count a FAMILY_HIT spawned by the kits' own Lua, not by walker::do_hit_effects."
+      ]
+    },
+    {
+      "id": "walker_combat.cpp:199",
+      "lines": [
+        199
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "walker::do_combat_damage",
+      "anchor": "if (target->stats()->query_bit_flags(BIT_INVINCIBLE) ||",
+      "condition": "BIT_INVINCIBLE || invulnerable_left != 0",
+      "semantic": "No damage sink pierces a ward: an invincible or invulnerable target takes no damage from any path (attack, turn undead's scripted damage, a level on_damage gate that grants invulnerability mid-hit).",
+      "arms": [
+        {
+          "when": "warded",
+          "observable": "hp unchanged, no hit effects"
+        },
+        {
+          "when": "not warded",
+          "observable": "damage applied"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_mode_tick.cpp",
+          "test": "ModeTick.damage_gate_granting_a_ward_mid_hit_lands_no_damage",
+          "note": "warded: hp unchanged; bare control: damage lands"
+        },
+        {
+          "file": "tests/integration/test_walker_combat.cpp",
+          "test": "WalkerCombat.batch5_do_combat_damage_target_myguy_stats",
+          "note": "unwarded direct sink: hp -7"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "walker_combat.cpp:204",
+      "lines": [
+        204
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "walker::do_combat_damage",
+      "anchor": "if (attacker && attacker->myguy && target->query_order() == Order::Living)  // hit a living",
+      "condition": "attacker && attacker->myguy && target is Living",
+      "semantic": "A hero's record counts the damage he deals to living things only (total_damage, scen_damage); damage to generators, doors and objects is not recorded.",
+      "arms": [
+        {
+          "when": "hero hits living",
+          "observable": "total_damage and scen_damage += damage"
+        },
+        {
+          "when": "hero hits non-living",
+          "observable": "unchanged"
+        },
+        {
+          "when": "attacker without myguy",
+          "observable": "nothing recorded"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_combat.cpp",
+          "test": "WalkerCombat.batch5_do_combat_damage_target_myguy_stats",
+          "note": "hero hits living: scen_damage +7"
+        },
+        {
+          "file": "tests/integration/test_walker_more.cpp",
+          "test": "WalkerMore.walker_friendliness_and_a_hostile_attack_lands_its_damage",
+          "note": "scen_damage == the damage dealt"
+        }
+      ],
+      "missing_arms": [
+        "hero hits non-living",
+        "attacker without myguy"
+      ],
+      "note": [
+        "Sub-part convention (file-wide): an arm whose primary observable is asserted counts as asserted and leaves missing_arms; any field of its compound observable that no cited test reads is listed in assertion.unasserted_subparts, and a row with unasserted_subparts is never 'asserted' (at best 'partial')."
+      ]
+    },
+    {
+      "id": "walker_combat.cpp:220",
+      "lines": [
+        216,
+        220
+      ],
+      "kinds": [
+        "if",
+        "if"
+      ],
+      "function": "walker::do_combat_damage",
+      "anchor": "if (target->stats()->hitpoints() < 0)",
+      "condition": "tempdamage (+ negative hp) > 0",
+      "semantic": "A hit that takes real hit points delays the victim's HP regeneration by 50 ticks; overkill below 0 hp does not count as damage taken; a 0-damage hit does not delay regen.",
+      "arms": [
+        {
+          "when": "damage > 0",
+          "observable": "regen_delay == 50"
+        },
+        {
+          "when": "damage 0",
+          "observable": "regen_delay unchanged"
+        },
+        {
+          "when": "overkill",
+          "observable": "damage counted = hp lost down to 0"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_combat.cpp",
+          "test": "WalkerCombat.batch5_do_combat_damage_target_myguy_stats",
+          "note": "damage 7 -> regen_delay 50"
+        },
+        {
+          "file": "tests/integration/test_walker_more.cpp",
+          "test": "WalkerMore.walker_friendliness_and_a_hostile_attack_lands_its_damage",
+          "note": "regen_delay 50 after a landed blow"
+        }
+      ],
+      "missing_arms": [
+        "damage 0",
+        "overkill"
+      ]
+    },
+    {
+      "id": "walker_combat.cpp:226",
+      "lines": [
+        223,
+        226
+      ],
+      "kinds": [
+        "if",
+        "if"
+      ],
+      "function": "walker::do_combat_damage",
+      "anchor": "if(target->myguy != nullptr)",
+      "condition": "target->myguy; scen_min_hp > hp",
+      "semantic": "A hero's record tracks damage taken this scenario (overkill trimmed) and the lowest HP he reached.",
+      "arms": [
+        {
+          "when": "victim is a hero",
+          "observable": "scen_damage_taken += trimmed damage; scen_min_hp = min(scen_min_hp, hp)"
+        },
+        {
+          "when": "not a hero",
+          "observable": "nothing"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_combat.cpp",
+          "test": "WalkerCombat.batch5_do_combat_damage_target_myguy_stats",
+          "note": "victim has myguy: line 1581 ASSERT_FLOAT_EQ(taken_before + 7.0f, victim->myguy->scen_damage_taken) on an untrimmed hit"
+        }
+      ],
+      "missing_arms": [
+        "not a hero"
+      ],
+      "note": [
+        "Sub-part convention (file-wide): an arm whose primary observable is asserted counts as asserted and leaves missing_arms; any field of its compound observable that no cited test reads is listed in assertion.unasserted_subparts, and a row with unasserted_subparts is never 'asserted' (at best 'partial')."
+      ]
+    },
+    {
+      "id": "walker_combat.cpp:247",
+      "lines": [
+        243,
+        247
+      ],
+      "kinds": [
+        "if",
+        "if"
+      ],
+      "function": "walker::attack",
+      "anchor": "if (target && target->dead())",
+      "condition": "target dead; is_friendly(target) || target is Treasure",
+      "semantic": "Nobody can strike a dead walker, a friend (same team at the head of both owner chains) or a treasure: such an attack does nothing and reports failure.",
+      "arms": [
+        {
+          "when": "dead target",
+          "observable": "0; nothing changes"
+        },
+        {
+          "when": "friendly (incl. own summon/weapon chain)",
+          "observable": "0; no damage, no message"
+        },
+        {
+          "when": "treasure",
+          "observable": "0"
+        },
+        {
+          "when": "else",
+          "observable": "continue"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_combat.cpp",
+          "test": "WalkerCombat.round8_attack_early_return_guards",
+          "note": "dead, friendly, treasure: attack returns 0"
+        },
+        {
+          "file": "tests/integration/test_walker_combat.cpp",
+          "test": "WalkerCombat.walker_attack_friendly_fails",
+          "note": "friendly: false, hp unchanged"
+        },
+        {
+          "file": "tests/integration/test_walker_combat.cpp",
+          "test": "WalkerCombat.batch6_attack_friendly_team_death_messages_and_clamps",
+          "note": "own-chain summon: false, alive, hp 1, no toast"
+        },
+        {
+          "file": "tests/integration/test_walker_combat.cpp",
+          "test": "WalkerCombat.walker_attack_basic",
+          "note": "treasure: false; hostile living: hit lands"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "walker_combat.cpp:250",
+      "lines": [
+        250
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "walker::attack",
+      "anchor": "if (target->stats()->query_bit_flags(BIT_INVINCIBLE) ||",
+      "condition": "BIT_INVINCIBLE || invulnerable_left || hidden()",
+      "semantic": "A target that is invincible, under an invulnerability potion, or hidden (a burrowed New Specials skeleton) cannot be attacked: no damage, no retaliation, no score.",
+      "arms": [
+        {
+          "when": "invincible/invulnerable",
+          "observable": "0; hp unchanged"
+        },
+        {
+          "when": "hidden (KIT_HIDDEN)",
+          "observable": "0; hp unchanged"
+        },
+        {
+          "when": "else",
+          "observable": "hit proceeds"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_combat.cpp",
+          "test": "WalkerCombat.round8_attack_early_return_guards",
+          "note": "invincible, invulnerable: attack returns 0"
+        },
+        {
+          "file": "tests/integration/test_walker_combat.cpp",
+          "test": "WalkerCombat.walker_attack_invulnerable",
+          "note": "invulnerable: false"
+        },
+        {
+          "file": "tests/unit/test_kit_seams_small.cpp",
+          "test": "KitSeamsSmall.hidden_walker_cannot_be_attacked",
+          "note": "hidden: false, hp 20 unchanged, alive; revealed: hp drops"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "walker_combat.cpp:254",
+      "lines": [
+        254,
+        256
+      ],
+      "kinds": [
+        "if",
+        "else"
+      ],
+      "function": "walker::attack",
+      "anchor": "if (order() != Order::Living && owner())",
+      "condition": "order != Living && owner()",
+      "semantic": "A weapon or effect with an owner hits on its owner's behalf: hit/shot counters and the damage record go to the owner; a living (even a summon) is its own attacker.",
+      "arms": [
+        {
+          "when": "weapon/fx with owner",
+          "observable": "attacker = owner: owner->myguy total_hits++, scen_damage += dmg"
+        },
+        {
+          "when": "living or ownerless",
+          "observable": "attacker = this"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_combat.cpp",
+          "test": "WalkerCombat.walker_attack_weapon_owner_chain_and_nonliving_target",
+          "note": "knife with owner: the OWNER's total_shots/scen_shots refunded -> attacker == owner"
+        },
+        {
+          "file": "tests/integration/test_walker_more.cpp",
+          "test": "WalkerMore.walker_friendliness_and_a_hostile_attack_lands_its_damage",
+          "note": "living melee striker: its own myguy scen_hits/total_hits 1, scen_damage == dealt -> attacker == this"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "walker_combat.cpp:261",
+      "lines": [
+        261
+      ],
+      "kinds": [
+        "while"
+      ],
+      "function": "walker::attack",
+      "anchor": "while (headguy->owner() && (headguy->owner() != headguy) && !headguy->charmed_head() )",
+      "condition": "while owner && owner != self && !charmed_head()",
+      "semantic": "Credit for a hit climbs the owner chain to its head (weapon -> summon -> caster); with Gameplay Fixes on a charmed walker heads its own chain, so its blows score for the colour it now wears; classic climbs through the charm to the original owner.",
+      "arms": [
+        {
+          "when": "fixes off",
+          "observable": "headguy = top of chain (original owner)"
+        },
+        {
+          "when": "fixes on, charm_left > 0",
+          "observable": "headguy = the charmed walker"
+        }
+      ],
+      "setting": "both",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_gameplay_fixes_charm.cpp",
+          "test": "GameplayFixesCharm.a_charmed_tent_troop_fights_for_its_charmer",
+          "note": "fixes on: the troop's blow on green pays m_score[red] += dmg + level, i.e. headguy = the charmed troop"
+        },
+        {
+          "file": "tests/unit/test_gameplay_fixes_charm.cpp",
+          "test": "GameplayFixesCharm.a_charmed_summon_of_an_enemy_caster_fights_for_its_charmer",
+          "note": "fixes on: credit to the summon itself"
+        }
+      ],
+      "missing_arms": [
+        "fixes off"
+      ]
+    },
+    {
+      "id": "walker_combat.cpp:268",
+      "lines": [
+        268
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "walker::attack",
+      "anchor": "if (headguy->myguy != nullptr ||",
+      "condition": "headguy->myguy || headguy team == my_team",
+      "semantic": "Team score is paid only for blows whose chain head is a saved hero or sits on the player's team; other NPC fights deal damage but score nothing.",
+      "arms": [
+        {
+          "when": "head is a hero or on my_team",
+          "observable": "getscore: score awarded in the hit/kill arms"
+        },
+        {
+          "when": "else",
+          "observable": "no score"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_combat.cpp",
+          "test": "WalkerCombat.attack_rewards_single_credit_weapon_hit",
+          "note": "hero head: score paid"
+        },
+        {
+          "file": "tests/integration/test_walker_combat.cpp",
+          "test": "WalkerCombat.company_kill_credit_is_directional_for_every_team_pair",
+          "note": "hero head: m_score > 0"
+        }
+      ],
+      "missing_arms": [
+        "else"
+      ]
+    },
+    {
+      "id": "walker_combat.cpp:277",
+      "lines": [
+        275,
+        277,
+        279
+      ],
+      "kinds": [
+        "switch",
+        "case",
+        "if"
+      ],
+      "function": "walker::attack",
+      "anchor": "switch (targetorder) // generally going to be livings..",
+      "condition": "switch(targetorder) case Living; attacker->myguy",
+      "semantic": "Hitting a living counts as a hit on the credited hero's record (total_hits, scen_hits).",
+      "arms": [
+        {
+          "when": "living target, hero attacker",
+          "observable": "total_hits++, scen_hits++"
+        },
+        {
+          "when": "no hero",
+          "observable": "nothing"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_more.cpp",
+          "test": "WalkerMore.walker_friendliness_and_a_hostile_attack_lands_its_damage",
+          "note": "hero attacker: scen_hits 1 and total_hits 1"
+        }
+      ],
+      "missing_arms": [
+        "no hero"
+      ]
+    },
+    {
+      "id": "walker_combat.cpp:285",
+      "lines": [
+        285,
+        288
+      ],
+      "kinds": [
+        "if",
+        "if"
+      ],
+      "function": "walker::attack",
+      "anchor": "if (stats_->query_bit_flags(BIT_MAGICAL))",
+      "condition": "BIT_MAGICAL && fd",
+      "semantic": "Magical attacks are scaled by the victim family's magic_damage_modifier (slimes take double, barbarians half); non-magical attacks are unscaled.",
+      "arms": [
+        {
+          "when": "magical vs slime",
+          "observable": "damage x2"
+        },
+        {
+          "when": "magical vs barbarian",
+          "observable": "x0.5"
+        },
+        {
+          "when": "non-magical or unregistered family",
+          "observable": "x1"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_combat.cpp",
+          "test": "WalkerCombat.walker_attack_slime_magic_bonus",
+          "note": "x2 vs slime; non-magical control unscaled"
+        },
+        {
+          "file": "tests/integration/test_walker_combat.cpp",
+          "test": "WalkerCombat.walker_attack_barbarian_magic_resistance",
+          "note": "x0.5 vs barbarian; non-magical control"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "walker_combat.cpp:295",
+      "lines": [
+        292,
+        295
+      ],
+      "kinds": [
+        "default",
+        "if"
+      ],
+      "function": "walker::attack",
+      "anchor": "if (attacker->myguy)",
+      "anchor_index": 1,
+      "condition": "default (non-living target); attacker->myguy",
+      "semantic": "Hitting a non-living (generator, door, object) is not a shot on the hero's accuracy record: the shot counted at fire time is taken back (total_shots--, scen_shots--).",
+      "arms": [
+        {
+          "when": "non-living target, hero",
+          "observable": "total_shots and scen_shots -1"
+        },
+        {
+          "when": "no hero",
+          "observable": "nothing"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_combat.cpp",
+          "test": "WalkerCombat.walker_attack_weapon_owner_chain_and_nonliving_target",
+          "note": "hero owner: total_shots and scen_shots 5 -> 4"
+        }
+      ],
+      "missing_arms": [
+        "no hero"
+      ]
+    },
+    {
+      "id": "walker_combat.cpp:304",
+      "lines": [
+        304
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "walker::attack",
+      "anchor": "if (tempdamage < 0)",
+      "condition": "tempdamage < 0",
+      "semantic": "Armour can absorb a whole blow but never heals: damage after reduction is floored at 0.",
+      "arms": [
+        {
+          "when": "reduction exceeds damage",
+          "observable": "0 damage applied"
+        },
+        {
+          "when": "else",
+          "observable": "post-reduction damage"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_combat.cpp",
+          "test": "WalkerCombat.walker_attack_weapon_owner_chain_and_nonliving_target",
+          "note": "post-reduction damage lands exactly"
+        }
+      ],
+      "missing_arms": [
+        "reduction exceeds damage"
+      ]
+    },
+    {
+      "id": "walker_combat.cpp:315",
+      "lines": [
+        315
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "walker::attack",
+      "anchor": "if (gated_damage < 0)",
+      "condition": "gated_damage < 0 (level on_damage returned false)",
+      "semantic": "A scripted level's on_damage hook can cancel a hit outright (false): no damage, no retaliation, no attacker stamp, no kill check; nil keeps the amount, a number replaces it (>= 0).",
+      "arms": [
+        {
+          "when": "false",
+          "observable": "attack returns 0; hp unchanged; last_attacker_id 0"
+        },
+        {
+          "when": "nil/true/non-number",
+          "observable": "authored amount"
+        },
+        {
+          "when": "number",
+          "observable": "replaced, clamped >= 0, NaN -> 0"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_mode_tick.cpp",
+          "test": "ModeTick.damage_gate_false_cancels_the_hit",
+          "note": "false: hp unchanged, last_attacker_id 0"
+        },
+        {
+          "file": "tests/unit/test_mode_tick.cpp",
+          "test": "ModeTick.damage_gate_false_spares_a_zero_hp_target",
+          "note": "false: no kill check"
+        },
+        {
+          "file": "tests/unit/test_mode_tick.cpp",
+          "test": "ModeTick.damage_gate_nil_keeps_authored_amount",
+          "note": "nil: authored amount"
+        },
+        {
+          "file": "tests/unit/test_mode_tick.cpp",
+          "test": "ModeTick.damage_gate_true_keeps_authored_amount",
+          "note": "true: authored amount"
+        },
+        {
+          "file": "tests/unit/test_mode_tick.cpp",
+          "test": "ModeTick.damage_gate_non_number_return_keeps_amount",
+          "note": "table: authored amount"
+        },
+        {
+          "file": "tests/unit/test_mode_tick.cpp",
+          "test": "ModeTick.damage_gate_number_replaces_amount",
+          "note": "5 replaces"
+        },
+        {
+          "file": "tests/unit/test_mode_tick.cpp",
+          "test": "ModeTick.damage_gate_negative_replacement_clamps_to_zero",
+          "note": "-3 -> 0"
+        },
+        {
+          "file": "tests/unit/test_mode_tick.cpp",
+          "test": "ModeTick.damage_gate_nan_replacement_is_treated_as_zero",
+          "note": "NaN -> 0"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "walker_combat.cpp:323",
+      "lines": [
+        323
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "walker::attack",
+      "anchor": "if (tempdamage_i > 0) target->note_attacker(credit, current_game->world->tick_count_);",
+      "condition": "tempdamage_i > 0",
+      "semantic": "Only a blow that lands positive damage stamps the victim's last attacker (the topmost living on the hitter's chain, used for kill attribution in modes); a 0-damage blow leaves the previous stamp.",
+      "arms": [
+        {
+          "when": "damage > 0",
+          "observable": "last_attacker_id = credit_head id, tick stamped"
+        },
+        {
+          "when": "damage 0",
+          "observable": "unchanged"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_mode_tick.cpp",
+          "test": "ModeTick.damage_gate_negative_replacement_clamps_to_zero",
+          "note": "landed 0-damage blow: last_attacker_id 0"
+        },
+        {
+          "file": "tests/unit/test_mode_tick.cpp",
+          "test": "ModeTick.weapon_kill_attributes_to_owner_chain_root",
+          "note": "positive arm: on_entity_death killer == the thrower"
+        }
+      ],
+      "missing_arms": [],
+      "note": [
+        "Sub-part convention (file-wide): an arm whose primary observable is asserted counts as asserted and leaves missing_arms; any field of its compound observable that no cited test reads is listed in assertion.unasserted_subparts, and a row with unasserted_subparts is never 'asserted' (at best 'partial')."
+      ]
+    },
+    {
+      "id": "walker_combat.cpp:332",
+      "lines": [
+        332,
+        336,
+        339,
+        342,
+        345
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "else",
+        "if",
+        "if"
+      ],
+      "function": "walker::attack",
+      "anchor": "if (order() != Order::Living && owner())",
+      "condition": "order != Living && owner() / else melee; headguy->myguy / myguy; getscore",
+      "semantic": "The victim turns on whoever is behind the blow: a weapon's or effect's owner is made to target the victim and the victim retaliates against the owner (the chain head's hero gets the attack XP); in melee the victim retaliates against the striker, and a striking hero gets attack XP and, if the blow scores, team score += damage + victim level.",
+      "arms": [
+        {
+          "when": "weapon/fx with owner",
+          "observable": "owner->foe()==target; target foe == owner (hit_response); headguy myguy exp += attack xp"
+        },
+        {
+          "when": "melee, hero striker",
+          "observable": "target retaliates vs striker; exp += attack xp; if getscore m_score[team] += dmg+level"
+        },
+        {
+          "when": "melee, NPC striker",
+          "observable": "retaliation only"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_stats_unit.cpp",
+          "test": "StatsUnit.hit_response_guard_shields_non_living_targets",
+          "note": "melee: hero->attack(foe) -> line 1133 foe->foe()==hero; knife arm: line 1151 EXPECT_EQ(gen, hero->foe()), the owner targets the victim"
+        },
+        {
+          "file": "tests/integration/test_walker_combat.cpp",
+          "test": "WalkerCombat.attack_rewards_single_credit_weapon_hit",
+          "note": "owner arm: line 1850 headguy exp += attack xp exactly once"
+        },
+        {
+          "file": "tests/integration/test_walker_combat.cpp",
+          "test": "WalkerCombat.attack_rewards_single_credit_melee_kill",
+          "note": "melee hero: attack xp + scored dmg+level"
+        },
+        {
+          "file": "tests/integration/test_walker_more.cpp",
+          "test": "WalkerMore.walker_friendliness_and_a_hostile_attack_lands_its_damage",
+          "note": "melee hero: exp 18"
+        }
+      ],
+      "missing_arms": [
+        "melee, NPC striker"
+      ],
+      "note": [
+        "Dropped tests/integration/test_stats_commands.cpp StatsCommands.stats_hit_response_all_families: it calls statistics::hit_response directly and never reaches walker::attack. Sub-part convention (file-wide): an arm whose primary observable is asserted counts as asserted and leaves missing_arms; any field of its compound observable that no cited test reads is listed in assertion.unasserted_subparts, and a row with unasserted_subparts is never 'asserted' (at best 'partial')."
+      ]
+    },
+    {
+      "id": "walker_combat.cpp:355",
+      "lines": [
+        351,
+        355,
+        357
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
+      ],
+      "function": "walker::attack",
+      "anchor": "if (order() == Order::Weapon)",
+      "condition": "order == Weapon; hp <= 0; !BIT_IMMORTAL",
+      "semantic": "A projectile is worn by what it hits: it loses hit points equal to the damage it dealt and 1 damage per hit; at <= 0 hp it dies (unless immortal, which still runs its death effect); then its family's on_hit_target hook runs (e.g. faerie sprinkle freezes).",
+      "arms": [
+        {
+          "when": "weapon hp > dmg",
+          "observable": "survives with hp -= dmg, damage -1"
+        },
+        {
+          "when": "hp <= 0 mortal",
+          "observable": "dead, death() ran"
+        },
+        {
+          "when": "hp <= 0 BIT_IMMORTAL",
+          "observable": "not dead, death() ran"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_combat.cpp",
+          "test": "WalkerCombat.batch6_attack_branches_enemy_and_weapon_paths",
+          "note": "mortal arm: weapon->dead()==1 at <= 0 hp"
+        }
+      ],
+      "missing_arms": [
+        "weapon hp > dmg",
+        "hp <= 0 BIT_IMMORTAL"
+      ]
+    },
+    {
+      "id": "walker_combat.cpp:368",
+      "lines": [
+        368,
+        370,
+        373
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
+      ],
+      "function": "walker::attack",
+      "anchor": "if (owner() && targetorder != Order::Weapon && playerteam != target->team_num())",
+      "condition": "owner() && target not Weapon && playerteam != target team; getscore; order != Weapon && headguy->myguy",
+      "semantic": "An owned hitter (a projectile or a summoned living) striking any non-weapon of another team than its chain head scores for the hitter's team (damage + victim level, generators included); a summoned living's blow also gives its chain head's hero the attack XP (a projectile's XP was paid in the owner arm).",
+      "arms": [
+        {
+          "when": "owned weapon, getscore",
+          "observable": "m_score[weapon team] += dmg+level once"
+        },
+        {
+          "when": "owned summon living, head is hero",
+          "observable": "head exp += attack xp (in addition to the summon's own if it had a myguy)"
+        },
+        {
+          "when": "target is a weapon or same team as head",
+          "observable": "nothing"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_combat.cpp",
+          "test": "WalkerCombat.attack_rewards_single_credit_weapon_hit",
+          "note": "owned weapon: m_score delta == dealt + level, exactly once - this arm is the only award_score on the weapon path"
+        }
+      ],
+      "missing_arms": [
+        "owned summon living, head is hero",
+        "target is a weapon or same team as head"
+      ]
+    },
+    {
+      "id": "walker_combat.cpp:382",
+      "lines": [
+        382
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "walker::attack",
+      "anchor": "if (target->stats()->hitpoints() <= 0)",
+      "condition": "target hp <= 0",
+      "semantic": "Any landed blow (even 0 damage) on a target at or below 0 hp kills it; only a cancelled blow (on_damage false) spares it.",
+      "arms": [
+        {
+          "when": "hp <= 0 after the blow",
+          "observable": "kill block: death(), dead"
+        },
+        {
+          "when": "hp > 0",
+          "observable": "no kill"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_mode_tick.cpp",
+          "test": "ModeTick.damage_gate_zero_still_kills_a_zero_hp_target",
+          "note": "0-damage blow on 0 hp: dead"
+        },
+        {
+          "file": "tests/integration/test_walker_combat.cpp",
+          "test": "WalkerCombat.attack_rewards_single_credit_melee_kill",
+          "note": "lethal blow: dead"
+        },
+        {
+          "file": "tests/unit/test_mode_tick.cpp",
+          "test": "ModeTick.damage_gate_huge_replacement_clamps_to_short_max",
+          "note": "hp > 0 after the blow: dead()==0"
+        },
+        {
+          "file": "tests/unit/test_mode_tick.cpp",
+          "test": "ModeTick.damage_gate_nan_replacement_is_treated_as_zero",
+          "note": "hp > 0: not dead"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "walker_combat.cpp:396",
+      "lines": [
+        391,
+        396
+      ],
+      "kinds": [
+        "if",
+        "if"
+      ],
+      "function": "walker::attack",
+      "anchor": "if (targetorder == Order::Living &&",
+      "condition": "target Living && KIT_WARD; !target->dead() after death()",
+      "semantic": "A REASSEMBLE-warded walker struck down stands back up (at a quarter hp) instead of dying: no death message, no 'All foes defeated!', no kill credit, no blood, no cry, no on_kill; a ward that cannot take (its death already ran once) leaves it dead and the kill counts in full.",
+      "arms": [
+        {
+          "when": "ward takes",
+          "observable": "attack returns 1; target alive at max/4; no messages/kill/blood"
+        },
+        {
+          "when": "ward cannot take",
+          "observable": "set_dead(0) then the normal kill block"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.warded_death_tells_nobody_and_counts_no_kill",
+          "note": "ward takes: alive at 15, no DIED/all-foes/kill/blood; stale ward: dead, told, counted"
+        },
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.warded_victim_is_not_a_kill"
+        },
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.warded_skeleton_stands_back_up_at_a_quarter"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "walker_combat.cpp:403",
+      "lines": [
+        403
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "walker::attack",
+      "anchor": "if (targetorder == Order::Living)",
+      "condition": "targetorder == Living",
+      "semantic": "Only a living's death is announced, credited and splattered; a destroyed generator, door or object just dies (death() runs) with no message, kill, blood or cry.",
+      "arms": [
+        {
+          "when": "living",
+          "observable": "messages/credit/blood/cry"
+        },
+        {
+          "when": "non-living",
+          "observable": "set_dead + death() only"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_combat.cpp",
+          "test": "WalkerCombat.walker_attack_basic",
+          "note": "living kill: scen_kills +1, level_kills, FAMILY_BLOOD +1"
+        },
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.warded_death_tells_nobody_and_counts_no_kill",
+          "note": "unwarded control: DIED told, kills +1, blood +1"
+        }
+      ],
+      "missing_arms": [
+        "non-living"
+      ],
+      "note": [
+        "Sub-part convention (file-wide): an arm whose primary observable is asserted counts as asserted and leaves missing_arms; any field of its compound observable that no cited test reads is listed in assertion.unasserted_subparts, and a row with unasserted_subparts is never 'asserted' (at best 'partial')."
+      ]
+    },
+    {
+      "id": "walker_combat.cpp:405",
+      "lines": [
+        405
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "walker::attack",
+      "anchor": "if (playerteam > -1)",
+      "condition": "playerteam > -1",
+      "semantic": "Death announcements and kill credit apply whenever the killer has a team (always).",
+      "arms": [
+        {
+          "when": "always",
+          "observable": "enters the kill/announce arms"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_combat.cpp",
+          "test": "WalkerCombat.attack_rewards_single_credit_melee_kill",
+          "note": "kill arm entered: kills/scen_kills/level_kills +1"
+        },
+        {
+          "file": "tests/integration/test_walker_combat.cpp",
+          "test": "WalkerCombat.named_ally_death_is_not_announced_as_enemy_death",
+          "note": "announce arm entered"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "walker_combat.cpp:409",
+      "lines": [
+        407,
+        409,
+        422
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
+      ],
+      "function": "walker::attack",
+      "anchor": "if (playerteam != target->team_num())",
+      "condition": "playerteam != target team; headguy->myguy; getscore",
+      "semantic": "Killing a living of another team than the killer's chain head credits the head's hero with kill XP (kill XP only; the hit's attack XP was paid once already), kills+1, scen_kills+1, level_kills += victim level; a scoring kill adds damage + 10 x victim level to the killer's team score.",
+      "arms": [
+        {
+          "when": "head is hero",
+          "observable": "exp += kill xp; kills/scen_kills/level_kills incremented"
+        },
+        {
+          "when": "getscore",
+          "observable": "m_score[team] += dmg + 10*level"
+        },
+        {
+          "when": "NPC head, no getscore",
+          "observable": "no credit"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_combat.cpp",
+          "test": "WalkerCombat.attack_rewards_single_credit_melee_kill",
+          "note": "hero head: kill xp once, kills/scen_kills/level_kills; score dmg + 10*level"
+        },
+        {
+          "file": "tests/integration/test_walker_combat.cpp",
+          "test": "WalkerCombat.company_kill_credit_is_directional_for_every_team_pair"
+        }
+      ],
+      "missing_arms": [
+        "NPC head, no getscore"
+      ]
+    },
+    {
+      "id": "walker_combat.cpp:435",
+      "lines": [
+        435,
+        439
+      ],
+      "kinds": [
+        "if",
+        "ternary"
+      ],
+      "function": "walker::attack",
+      "anchor": "if (target->stats()->name.size() && !(target->lifetime())",
+      "condition": "victim named && !lifetime && !owner; my_team != victim team",
+      "semantic": "The death of a named, unsummoned NPC killed by another team is announced: 'ENEMY DEATH: NAME DIED!' when the victim is not on the player's team, plain 'NAME DIED!' when it is (#189); unnamed or summoned victims get no toast in this arm.",
+      "arms": [
+        {
+          "when": "named, not player team",
+          "observable": "'ENEMY DEATH: X DIED!'"
+        },
+        {
+          "when": "named, player team",
+          "observable": "'X DIED!'"
+        },
+        {
+          "when": "unnamed / summoned / timed",
+          "observable": "no notification"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_combat.cpp",
+          "test": "WalkerCombat.named_ally_death_is_not_announced_as_enemy_death",
+          "note": "named player-team: \"Commander DIED!\"; named third team: \"ENEMY DEATH: DIRK DIED!\""
+        },
+        {
+          "file": "tests/integration/test_walker_combat.cpp",
+          "test": "WalkerCombat.batch6_attack_friendly_team_death_messages_and_clamps",
+          "note": "unnamed victim: no toast"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "walker_combat.cpp:452",
+      "lines": [
+        452
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "walker::attack",
+      "anchor": "if(!mode_owned &&",
+      "condition": "!mode_owned && remaining_foes(this) == 1",
+      "semantic": "On a classic-completion level, killing the last foe announces 'All foes defeated!'; a scripted game mode that owns its win channel (TYPE_SCRIPTED, mode active) never shows it; a scripted map whose mode failed to start falls back to the toast.",
+      "arms": [
+        {
+          "when": "classic level, last foe",
+          "observable": "notification 'All foes defeated!'"
+        },
+        {
+          "when": "foes remain",
+          "observable": "none"
+        },
+        {
+          "when": "mode-owned",
+          "observable": "none"
+        },
+        {
+          "when": "scripted map, mode init failed",
+          "observable": "toast as classic"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_modes_onslaught.cpp",
+          "test": "ModesOnslaught.momentary_wipe_emits_no_classic_foes_toast",
+          "note": "mode-owned: 0"
+        },
+        {
+          "file": "tests/unit/test_modes_onslaught.cpp",
+          "test": "ModesOnslaught.classic_worlds_keep_the_foes_toast",
+          "note": "classic last foe: 1"
+        },
+        {
+          "file": "tests/unit/test_modes_onslaught.cpp",
+          "test": "ModesOnslaught.demoted_scripted_worlds_keep_the_foes_toast",
+          "note": "demoted: 1"
+        },
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.warded_death_tells_nobody_and_counts_no_kill",
+          "note": "classic last foe: all_foes 1"
+        }
+      ],
+      "missing_arms": [
+        "foes remain"
+      ]
+    },
+    {
+      "id": "walker_combat.cpp:462",
+      "lines": [
+        459,
+        462,
+        465,
+        467,
+        469,
+        472
+      ],
+      "kinds": [
+        "else",
+        "if",
+        "else if",
+        "else if",
+        "else",
+        "ternary"
+      ],
+      "function": "walker::attack",
+      "anchor": "if ( (target->owner() || target->lifetime()) // summoned?",
+      "anchor_index": 1,
+      "condition": "else (killer's head on the victim's team): summoned+named / named / myguy name / family death_message / 'SOMEONE DIED'",
+      "semantic": "A living killed by its own team's chain is announced without credit: 'NAME Dispelled!' for a named summon or timed walker, 'NAME DIED!' for a named NPC, 'NAME Died!' for a hero, else the family's death message (e.g. 'SOLDIER SLAIN'), else 'SOMEONE DIED'.",
+      "arms": [
+        {
+          "when": "named summon",
+          "observable": "'X Dispelled!'"
+        },
+        {
+          "when": "named NPC",
+          "observable": "'X DIED!'"
+        },
+        {
+          "when": "hero",
+          "observable": "'X Died!'"
+        },
+        {
+          "when": "registered family",
+          "observable": "fd->death_message"
+        },
+        {
+          "when": "unknown family",
+          "observable": "'SOMEONE DIED'"
+        }
+      ],
+      "setting": "none",
+      "status": "none",
+      "tests": [],
+      "missing_arms": [
+        "named summon",
+        "named NPC",
+        "hero",
+        "registered family",
+        "unknown family"
+      ],
+      "note": [
+        "batch6_attack_friendly_team_death_messages_and_clamps states this arm is not reached by a hostile killer; no test reaches it."
+      ]
+    },
+    {
+      "id": "walker_combat.cpp:481",
+      "lines": [
+        481
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "walker::attack",
+      "anchor": "if (blood)",
+      "condition": "blood (living killed)",
+      "semantic": "A living's death leaves a blood stain (FAMILY_BLOOD weapon) on its spot and floor, in the victim's team, walk-over (ignore), growing.",
+      "arms": [
+        {
+          "when": "living killed",
+          "observable": "FAMILY_BLOOD +1 at victim xpos/ypos, floor, team"
+        },
+        {
+          "when": "add_ob failed",
+          "observable": "no stain"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_combat.cpp",
+          "test": "WalkerCombat.walker_attack_basic",
+          "note": "count_family_in_weaplist(FAMILY_BLOOD) before+1, lines 184-193"
+        }
+      ],
+      "missing_arms": [
+        "add_ob failed"
+      ]
+    },
+    {
+      "id": "walker_combat.cpp:490",
+      "lines": [
+        490,
+        492,
+        494
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "else"
+      ],
+      "function": "walker::attack",
+      "anchor": "if (targetorder == Order::Living && positional_sound_visible(this, SOUND_DIE1))",
+      "condition": "target Living && positional_sound_visible; rng.next(2)",
+      "semantic": "A living's death plays one of two death cries chosen by a world-RNG coin (DIE1 on 1, DIE2 on 0); in the parity harness the cry (and its RNG draw) happens only when the old game's on-screen test says it is heard; in production it always draws.",
+      "arms": [
+        {
+          "when": "rng 1",
+          "observable": "SOUND_DIE1 event"
+        },
+        {
+          "when": "rng 0",
+          "observable": "SOUND_DIE2 event"
+        },
+        {
+          "when": "harness says not visible",
+          "observable": "no event, no draw"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": [
+        "rng 1",
+        "rng 0",
+        "harness says not visible"
+      ]
+    },
+    {
+      "id": "walker_combat.cpp:503",
+      "lines": [
+        503
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "walker::attack",
+      "anchor": "if (targetorder == Order::Living && target->dead() &&",
+      "condition": "target Living && target->dead() && credit",
+      "semantic": "The killer's family hears of a kill (on_kill hook, e.g. skeleton LEGION raising the dead) only after death() left the corpse, only if the victim stayed dead, and only if a living heads the hitter's chain.",
+      "arms": [
+        {
+          "when": "kill stands, living credit",
+          "observable": "on_kill(credit family, credit, target) runs"
+        },
+        {
+          "when": "victim got back up / no living credit / non-living",
+          "observable": "no on_kill"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_seams_small.cpp",
+          "test": "KitSeamsSmall.on_kill_fires_for_melee_projectile_and_explosion_kills_of_a_declaring_family",
+          "note": "melee/knife/explosion kills logged with death_called; door, riser, orphan knife and non-declaring family not"
+        },
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.warded_victim_is_not_a_kill"
+        }
+      ],
+      "missing_arms": []
+    }
+  ],
+  "other": [
+    {
+      "id": "walker_combat.cpp:42",
+      "lines": [
+        42,
+        45
+      ],
+      "kinds": [
+        "if",
+        "if"
+      ],
+      "kind": "test-only",
+      "anchor": "if (IRandom* override_rng = gameplay_rng_override())",
+      "note": "combat RNG source: a test override when installed, else world.rng_; no world aborts"
+    },
+    {
+      "id": "walker_combat.cpp:54",
+      "lines": [
+        54
+      ],
+      "kinds": [
+        "if"
+      ],
+      "kind": "plumbing",
+      "anchor": "if (current_game && current_game->positional_sound_visible &&",
+      "note": "positional_sound_visible: context callback installed only by the parity runner (emulates the old game's on_screen() gate on the death cry); production leaves it null so this answers true. See walker_combat.cpp:490"
+    }
+  ]
+}

@@ -1,0 +1,1755 @@
+{
+  "path": "src/gameplay/sim_input_handler.cpp",
+  "rules": [
+    {
+      "id": "sim_input_handler.cpp:41",
+      "lines": [
+        41,
+        43,
+        44,
+        45,
+        46,
+        48,
+        49,
+        50,
+        51
+      ],
+      "kinds": [
+        "switch",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case"
+      ],
+      "function": "special_failure_message",
+      "anchor": "switch (why)",
+      "condition": "switch (why)",
+      "semantic": "A failed player special voices its reason only when the player can act on it (NOT ENOUGH MP, unavailable, disabled, the script's refusal); engine states (dead, statless, non-living, no failure) stay silent.",
+      "arms": [
+        {
+          "when": "NoMP/Unavailable/Disabled/ScriptDeclined",
+          "observable": "the reason string is emitted as a seat notification + SOUND_CLANG"
+        },
+        {
+          "when": "None/Dead/NoStats/NotLiving",
+          "observable": "no event"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_sim_input_unit.cpp",
+          "test": "SimInputUnit.sim_input_failed_special_cue_is_seat_addressed_and_throttled"
+        },
+        {
+          "file": "tests/integration/test_sim_input_unit.cpp",
+          "test": "SimInputUnit.sim_input_specials_disabled_and_frozen_cues"
+        },
+        {
+          "file": "tests/integration/test_sim_input_unit.cpp",
+          "test": "SimInputUnit.intelligence_refusals_use_one_private_cue"
+        }
+      ],
+      "missing_arms": [
+        "None/Dead/NoStats/NotLiving"
+      ]
+    },
+    {
+      "id": "sim_input_handler.cpp:64",
+      "lines": [
+        64
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "emit_throttled_cue",
+      "anchor": "if (message == nullptr || debounce.cue_delay > 0)",
+      "condition": "message == nullptr || cue_delay > 0",
+      "semantic": "A seat hears at most one failure cue per throttle window (kSimCueThrottleTicks); a mashed key does not flood the feed.",
+      "arms": [
+        {
+          "when": "throttle warm",
+          "observable": "no event (cue dropped inside the kSimCueThrottleTicks window)"
+        },
+        {
+          "when": "no message (message == nullptr: None/Dead/NoStats/NotLiving failure)",
+          "observable": "no event"
+        },
+        {
+          "when": "cold",
+          "observable": "CLANG + notification, throttle re-armed"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_sim_input_unit.cpp",
+          "test": "SimInputUnit.sim_input_failed_special_cue_is_seat_addressed_and_throttled"
+        },
+        {
+          "file": "tests/integration/test_sim_input_unit.cpp",
+          "test": "SimInputUnit.sim_input_cue_throttle_drains_while_the_seat_is_dead"
+        }
+      ],
+      "missing_arms": [
+        "no message (message == nullptr: None/Dead/NoStats/NotLiving failure)"
+      ],
+      "note": [
+        "Compound observables split into separate arms (fixer policy): an arm is asserted only when a cited test pins its whole observable. Warm arm: sim_input_failed_special_cue_is_seat_addressed_and_throttled ASSERT_EQ(1, count_cue) on every frame 1..kSimCueThrottleTicks-1 and ASSERT_EQ(2) across 10 held frames. The nullptr sub-case is reached by no test (same gap as sim_input_handler.cpp:41 silent arm)."
+      ]
+    },
+    {
+      "id": "sim_input_handler.cpp:85",
+      "lines": [
+        85,
+        87
+      ],
+      "kinds": [
+        "if",
+        "if"
+      ],
+      "function": "player_cast_special",
+      "anchor": "if (control->special(&why, &reason))",
+      "condition": "control->special() / ScriptDeclined && !press_edge",
+      "semantic": "A successful cast says nothing; a script refusal on the HELD repeat (the family still on its own cooldown) stays silent, the running special being the answer; any other failure is voiced.",
+      "arms": [
+        {
+          "when": "cast ok",
+          "observable": "returns true, no cue"
+        },
+        {
+          "when": "script declined on hold",
+          "observable": "returns false, no cue"
+        },
+        {
+          "when": "other failure",
+          "observable": "cue via special_failure_message"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_sim_input_unit.cpp",
+          "test": "SimInputUnit.sim_input_successful_cast_is_never_called_a_failure"
+        },
+        {
+          "file": "tests/integration/test_sim_input_unit.cpp",
+          "test": "SimInputUnit.sim_input_declined_cast_explains_blocked_path_on_a_press"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "sim_input_handler.cpp:108",
+      "lines": [
+        108,
+        110,
+        112,
+        114,
+        115,
+        121,
+        124
+      ],
+      "kinds": [
+        "switch",
+        "case",
+        "ternary",
+        "case",
+        "if",
+        "case",
+        "if"
+      ],
+      "function": "sim_arm_belt_entry",
+      "anchor": "switch (refusal)",
+      "condition": "switch (validate_cast refusal) / entry.alt ? 1 : 0 / press_edge",
+      "semantic": "New Ability Select belt: a valid belt key sets the slot and the shift from the entry; a slot the hero's level has not opened refuses with 'LEVEL N NEEDED', an empty or malformed key with 'NO ABILITY THERE', voiced only on the press (not the hold).",
+      "arms": [
+        {
+          "when": "None",
+          "observable": "current_special=entry.slot, shifter_down=entry.alt, true"
+        },
+        {
+          "when": "Locked, press",
+          "observable": "cue 'LEVEL N NEEDED', false"
+        },
+        {
+          "when": "Locked, hold",
+          "observable": "false, silent"
+        },
+        {
+          "when": "NothingThere, press",
+          "observable": "cue 'NO ABILITY THERE', false"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_sim_input_handler.cpp",
+          "test": "SimInputHandler.belt_cast_sets_slot_and_alt_and_casts"
+        },
+        {
+          "file": "tests/integration/test_sim_input_handler.cpp",
+          "test": "SimInputHandler.locked_slot_is_refused_with_a_cue_and_no_cast"
+        },
+        {
+          "file": "tests/integration/test_sim_input_handler.cpp",
+          "test": "SimInputHandler.cast_nothing_voices_no_ability_there"
+        },
+        {
+          "file": "tests/integration/test_sim_input_handler.cpp",
+          "test": "SimInputHandler.malformed_byte_is_refused_like_cast_nothing"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "sim_input_handler.cpp:137",
+      "lines": [
+        137
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "sim_find_next_control",
+      "anchor": "if (w && !w->dead() && !w->dormant() && !w->hidden() &&",
+      "condition": "alive && awake && visible && unpossessed && Living && unseated && myguy && team && seat_may_claim",
+      "semantic": "A seat that needs a body takes first a player character (a hero with a company record) of its own team that is alive, awake, visible, unpossessed and not held by another seat (and, with Gameplay Fixes on, not a walker our side charmed).",
+      "arms": [
+        {
+          "when": "such a hero exists",
+          "observable": "that hero returned (first in oblist)"
+        },
+        {
+          "when": "none",
+          "observable": "second pass"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_sim_input_handler.cpp",
+          "test": "SimInputHandler.sim_find_next_control_player_first"
+        },
+        {
+          "file": "tests/unit/test_gameplay_fixes_seats.cpp",
+          "test": "GameplayFixesSeats.a_seat_skips_a_walker_our_side_charmed"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "sim_input_handler.cpp:154",
+      "lines": [
+        154
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "sim_find_next_control",
+      "anchor": "if (w && !w->dead() && !w->dormant() && !w->hidden() &&",
+      "condition": "same filter without myguy",
+      "semantic": "With no player character left, a seat takes any eligible member of its own team; it never takes a walker of another team (the 2002 'ANYONE' pass is gone).",
+      "arms": [
+        {
+          "when": "teammate exists",
+          "observable": "returned"
+        },
+        {
+          "when": "none",
+          "observable": "nullptr, TRACE sim_input 'found no one'"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_sim_input_handler.cpp",
+          "test": "SimInputHandler.sim_find_next_control_team_fallback"
+        },
+        {
+          "file": "tests/integration/test_sim_input_handler.cpp",
+          "test": "SimInputHandler.sim_find_next_control_none"
+        },
+        {
+          "file": "tests/integration/test_sim_input_handler.cpp",
+          "test": "SimInputHandler.sim_find_next_control_never_claims_another_team"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "sim_input_handler.cpp:182",
+      "lines": [
+        182,
+        186,
+        192,
+        199,
+        203,
+        206,
+        211,
+        217
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if",
+        "else",
+        "if",
+        "if",
+        "if"
+      ],
+      "function": "sim_cycle_next_character",
+      "anchor": "if (!reverse)",
+      "condition": "!reverse / current not found / pred(w)",
+      "semantic": "Switch Character cycles through eligible bodies in object-list order after the current one, wrapping to the start; Shift cycles backward. A current body not in the list yields nothing.",
+      "arms": [
+        {
+          "when": "forward",
+          "observable": "first eligible after current, else from the start"
+        },
+        {
+          "when": "reverse",
+          "observable": "first eligible before current, else from the end"
+        },
+        {
+          "when": "current missing",
+          "observable": "nullptr"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_sim_input_handler.cpp",
+          "test": "SimInputHandler.sim_input_switch_char_wraparound_forward_and_reverse"
+        },
+        {
+          "file": "tests/integration/test_sim_input_handler.cpp",
+          "test": "SimInputHandler.sim_input_switch_char_forward_and_reverse_paths"
+        }
+      ],
+      "missing_arms": [
+        "current missing"
+      ]
+    },
+    {
+      "id": "sim_input_handler.cpp:241",
+      "lines": [
+        241
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "sim_advance_current_special",
+      "anchor": "if (special_index < 0 || special_index > (NUM_SPECIALS - 1)",
+      "condition": "index out of range || name missing/NONE || !slot_open(level)",
+      "semantic": "Switch Special steps to the next special and wraps to slot 1 past the last slot, at an unnamed (NONE) slot, or at a slot the hero's level has not opened.",
+      "arms": [
+        {
+          "when": "next slot named and open",
+          "observable": "current_special + 1"
+        },
+        {
+          "when": "next slot locked by level",
+          "observable": "current_special 1"
+        },
+        {
+          "when": "next slot unnamed / NONE (incl. a slot the New Specials setting hides)",
+          "observable": "current_special 1"
+        },
+        {
+          "when": "past the end (index > NUM_SPECIALS-1) or negative",
+          "observable": "current_special 1"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_sim_input_handler.cpp",
+          "test": "SimInputHandler.sim_input_switch_special_wraps_and_debounces",
+          "note": "[locked: ASSERT_EQ(1, current_special) at level 1]"
+        },
+        {
+          "file": "tests/integration/test_sim_input_handler.cpp",
+          "test": "SimInputHandler.sim_input_switch_special_valid_advance_and_shift_yell_default_branch",
+          "note": "[advance: ASSERT_EQ(2)]"
+        },
+        {
+          "file": "tests/integration/test_view_input_paths.cpp",
+          "test": "ViewInputPaths.view_input_special_switch_cycles_the_current_special",
+          "note": "[advance 1->2, locked slot 3 at level 4 wraps to 1]"
+        },
+        {
+          "file": "tests/integration/test_sim_input_unit.cpp",
+          "test": "SimInputUnit.sim_input_r11_switch_special_yell_and_action_default",
+          "note": "[skeleton NONE slot 2 wraps to 1]"
+        },
+        {
+          "file": "tests/integration/test_coverage_misc.cpp",
+          "test": "CoverageMisc.final_r16_sim_input_switch_special_and_yell",
+          "note": "[soldier NONE slot 5 at level 20 wraps to 1]"
+        },
+        {
+          "file": "tests/unit/test_specials_view.cpp",
+          "test": "SpecialsView.cycle_skips_hidden_new_kit_slots",
+          "note": "[hidden slot reads as NONE: {1,1,1,1} off, {2,3,4,1} on]"
+        },
+        {
+          "file": "tests/unit/test_kit_captain.cpp",
+          "test": "KitCaptain.fresh_captain_has_howl_and_eat_corpse_from_level_1",
+          "note": "[level-locked cycles 121/1231/12341]"
+        },
+        {
+          "file": "tests/unit/test_kit_faerie.cpp",
+          "test": "KitFaerie.four_slots_open_at_levels_1_4_7_10_and_none_when_off",
+          "note": "[level-locked cycles]"
+        }
+      ],
+      "missing_arms": [
+        "past the end (index > NUM_SPECIALS-1) or negative"
+      ],
+      "note": [
+        "Compound observables split into separate arms (fixer policy): an arm is asserted only when a cited test pins its whole observable. No test cycles from slot 5 of a family with five named specials at level 13+ (index 6), nor from a negative current_special."
+      ]
+    },
+    {
+      "id": "sim_input_handler.cpp:251",
+      "lines": [
+        251
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "sim_switch_control",
+      "anchor": "if (control.user() == player_num)",
+      "condition": "control.user() == player_num",
+      "semantic": "Switching away from a hero hands it back to its AI (its own act type restored, unseated).",
+      "arms": [
+        {
+          "when": "our seat holds it",
+          "observable": "restore_act_type, user -1"
+        },
+        {
+          "when": "not ours",
+          "observable": "untouched"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_sim_input_unit.cpp",
+          "test": "SimInputUnit.sim_input_switch_char_on_the_claim_tick_cycles_from_the_claimed_hero"
+        }
+      ],
+      "missing_arms": [
+        "not ours"
+      ]
+    },
+    {
+      "id": "sim_input_handler.cpp:265",
+      "lines": [
+        265
+      ],
+      "kinds": [
+        ""
+      ],
+      "function": "sim_switch_control filter",
+      "anchor": "return !w->dead() && !w->dormant() && !w->hidden() &&",
+      "condition": "!dead && !dormant && !hidden && !possessed && Living && friendly && same team && real_team 255 && unseated && control_claim_allowed",
+      "semantic": "Switch Character never hands a seat a dead, dormant, hidden, possessed, charmed (real team set), foreign-team or other-seat body, nor one the ownership policy refuses.",
+      "arms": [
+        {
+          "when": "eligible",
+          "observable": "may be selected"
+        },
+        {
+          "when": "any disqualifier",
+          "observable": "skipped"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_sim_input_handler.cpp",
+          "test": "SimInputHandler.sim_input_switch_char_skips_ineligible_candidates_then_selects_valid"
+        },
+        {
+          "file": "tests/integration/test_sim_input_unit.cpp",
+          "test": "SimInputUnit.sim_input_switch_char_skips_dormant_and_dead_allies"
+        },
+        {
+          "file": "tests/integration/test_sim_input_unit.cpp",
+          "test": "SimInputUnit.sim_control_owner_locked_switch_char_skips_foreign_hero"
+        },
+        {
+          "file": "tests/unit/test_kit_possession.cpp",
+          "test": "KitPossession.claim_scans_refuse_linked_walkers"
+        },
+        {
+          "file": "tests/unit/test_kit_possession.cpp",
+          "test": "KitPossession.claim_scans_refuse_a_hidden_unlinked_walker"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "sim_input_handler.cpp:277",
+      "lines": [
+        277
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "sim_claim_control",
+      "anchor": "if (!og::sim::control_claim_allowed(level, &control, player_num))",
+      "condition": "!control_claim_allowed",
+      "semantic": "A seat may only take a body the ownership policy allows (owner-locked networked games keep each machine on its own heroes); a claim takes it under the seat's keys and clears its commands except a forced fright and charm.",
+      "arms": [
+        {
+          "when": "refused",
+          "observable": "false, untouched"
+        },
+        {
+          "when": "allowed",
+          "observable": "act_type ACT_CONTROL, user=seat, clear_command_for_control_switch"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_sim_input_unit.cpp",
+          "test": "SimInputUnit.sim_control_owner_locked_refused_supplied_control_is_not_claimed"
+        },
+        {
+          "file": "tests/integration/test_sim_input_unit.cpp",
+          "test": "SimInputUnit.sim_control_owner_locked_allowed_supplied_control_is_claimed"
+        },
+        {
+          "file": "tests/unit/test_stats_fright.cpp",
+          "test": "StatsFright.switch_and_claim_preserve_fright_and_hygiene"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "sim_input_handler.cpp:301",
+      "lines": [
+        301
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "sim_process_player_input",
+      "anchor": "if (debounce.cue_delay > 0)",
+      "condition": "debounce.cue_delay > 0",
+      "semantic": "The failure-cue throttle cools one tick per input tick even while the seat's hero is dead or respawning.",
+      "arms": [
+        {
+          "when": "warm",
+          "observable": "cue_delay -1"
+        },
+        {
+          "when": "cold",
+          "observable": "stays 0"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_sim_input_unit.cpp",
+          "test": "SimInputUnit.sim_input_cue_throttle_drains_while_the_seat_is_dead"
+        }
+      ],
+      "missing_arms": [
+        "cold"
+      ]
+    },
+    {
+      "id": "sim_input_handler.cpp:312",
+      "lines": [
+        312,
+        315
+      ],
+      "kinds": [
+        "if",
+        "if"
+      ],
+      "function": "sim_process_player_input",
+      "anchor": "if (control != before_redirect)",
+      "condition": "control != before_redirect / control && stats",
+      "semantic": "New Specials possession: a seat whose ghost rides a body is moved to drive the body (and back to the ghost on release); the tick the seat moves is spent on the move, so a Special still held from the possessing cast casts nothing on the host.",
+      "arms": [
+        {
+          "when": "redirected",
+          "observable": "new_control = host (or rider), control_hp reported, nothing else processed"
+        },
+        {
+          "when": "not redirected",
+          "observable": "continues"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_possession.cpp",
+          "test": "KitPossession.seat_redirect_follows_host_then_returns"
+        },
+        {
+          "file": "tests/unit/test_kit_possession.cpp",
+          "test": "KitPossession.possess_redirect_tick_consumes_the_rest_of_the_input"
+        },
+        {
+          "file": "tests/unit/test_kit_possession.cpp",
+          "test": "KitPossession.seat_follows_the_ghost_out_of_a_dying_host"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "sim_input_handler.cpp:325",
+      "lines": [
+        325,
+        327
+      ],
+      "kinds": [
+        "if",
+        "if"
+      ],
+      "function": "sim_process_player_input",
+      "anchor": "if (control && control->user() == -1)",
+      "condition": "control && user()==-1 / !sim_claim_control",
+      "semantic": "A supplied unseated control is claimed this tick; if the ownership policy refuses it the seat is treated as having no control (#333).",
+      "arms": [
+        {
+          "when": "allowed",
+          "observable": "claimed (ACT_CONTROL, user=seat)"
+        },
+        {
+          "when": "refused",
+          "observable": "control=nullptr, then the reacquire verdict"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_sim_input_unit.cpp",
+          "test": "SimInputUnit.sim_control_owner_locked_refused_supplied_control_is_not_claimed"
+        },
+        {
+          "file": "tests/integration/test_sim_input_unit.cpp",
+          "test": "SimInputUnit.sim_control_owner_locked_allowed_supplied_control_is_claimed"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "sim_input_handler.cpp:336",
+      "lines": [
+        336,
+        342
+      ],
+      "kinds": [
+        "if",
+        "if"
+      ],
+      "function": "sim_process_player_input",
+      "anchor": "if (!control || control->dead())",
+      "condition": "!control || dead / respawn_retains_player_control",
+      "semantic": "A seat whose hero is dead but due to respawn keeps that exact hero (it does not jump to a teammate and miss the countdown).",
+      "arms": [
+        {
+          "when": "respawning",
+          "observable": "new_control = the corpse, return"
+        },
+        {
+          "when": "not respawning",
+          "observable": "reacquire (sim_input_handler.cpp:352)"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_sim_input_handler.cpp",
+          "test": "SimInputHandler.respawning_dead_hero_does_not_switch_to_teammate"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "sim_input_handler.cpp:352",
+      "lines": [
+        352,
+        354
+      ],
+      "kinds": [
+        "if",
+        "if"
+      ],
+      "function": "sim_process_player_input",
+      "anchor": "if (og::sim::sim_reacquire_apply(level, my_team, player_num, control, result))",
+      "condition": "sim_reacquire_apply(...) / control->user() == -1",
+      "semantic": "With no live control the seat takes the policy's verdict: follow (spectate, no end-game), end the game (company wiped), or claim the next eligible body, which is seated at once.",
+      "arms": [
+        {
+          "when": "Follow",
+          "observable": "null seat, no endgame"
+        },
+        {
+          "when": "EndGame",
+          "observable": "result endgame fields"
+        },
+        {
+          "when": "Claimed",
+          "observable": "user=seat, ACT_CONTROL, control_hp reported"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_sim_input_handler.cpp",
+          "test": "SimInputHandler.sim_input_endgame_when_no_control"
+        },
+        {
+          "file": "tests/integration/test_sim_input_handler.cpp",
+          "test": "SimInputHandler.sim_input_dead_control_reassigns_to_next_alive"
+        },
+        {
+          "file": "tests/integration/test_sim_input_unit.cpp",
+          "test": "SimInputUnit.sim_control_owner_locked_death_reacquire_follows_not_claims"
+        },
+        {
+          "file": "tests/integration/test_sim_input_unit.cpp",
+          "test": "SimInputUnit.sim_control_owner_locked_death_reacquire_endgame_on_wipe"
+        },
+        {
+          "file": "tests/integration/test_sim_input_unit.cpp",
+          "test": "SimInputUnit.sim_control_owner_locked_death_reacquire_claims_same_machine"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "sim_input_handler.cpp:362",
+      "lines": [
+        362,
+        365
+      ],
+      "kinds": [
+        "if",
+        "if"
+      ],
+      "function": "sim_process_player_input",
+      "anchor": "if (control && control->bonus_rounds())",
+      "condition": "bonus_rounds() / lastx||lasty",
+      "semantic": "A seated hero with banked bonus rounds spends one per input tick on repeating its last step (if it was moving).",
+      "arms": [
+        {
+          "when": "rounds, moving",
+          "observable": "bonus -1, walk() repeats last vector"
+        },
+        {
+          "when": "rounds, standing",
+          "observable": "bonus -1, no move"
+        },
+        {
+          "when": "none",
+          "observable": "nothing"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_sim_input_handler.cpp",
+          "test": "SimInputHandler.sim_input_bonus_rounds_walks_when_last_vector_nonzero"
+        },
+        {
+          "file": "tests/integration/test_sim_input_handler.cpp",
+          "test": "SimInputHandler.sim_input_bonus_round_repeat_fire_and_walkstep_all_land_in_one_tick"
+        },
+        {
+          "file": "tests/integration/test_sim_input_handler.cpp",
+          "test": "SimInputHandler.sim_input_held_direction_walksteps_and_advances_one_stepsize"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "sim_input_handler.cpp:370",
+      "lines": [
+        370,
+        372
+      ],
+      "kinds": [
+        "if",
+        "else if"
+      ],
+      "function": "sim_process_player_input",
+      "anchor": "if (!pi.was_pressed(InputAction::SwitchChar))",
+      "condition": "!pressed(SwitchChar) / !changedchar && !held(Cheat)",
+      "semantic": "Switch Character fires once per press (debounced until the key is released) and not while the Cheat key is held (Cheat+Switch changes team instead).",
+      "arms": [
+        {
+          "when": "press, debounce clear, no cheat",
+          "observable": "switch runs, changedchar=1"
+        },
+        {
+          "when": "held through",
+          "observable": "nothing"
+        },
+        {
+          "when": "released",
+          "observable": "debounce cleared"
+        },
+        {
+          "when": "cheat held",
+          "observable": "nothing"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_sim_input_handler.cpp",
+          "test": "SimInputHandler.sim_input_cheat_gates_and_command_queue_skip_movement_block"
+        },
+        {
+          "file": "tests/integration/test_sim_input_handler.cpp",
+          "test": "SimInputHandler.sim_input_switch_char_forward_and_reverse_paths"
+        },
+        {
+          "file": "tests/integration/test_view_input_paths.cpp",
+          "test": "ViewInputPaths.view_input_switch_control_forward_and_reverse"
+        }
+      ],
+      "missing_arms": [
+        "held through"
+      ]
+    },
+    {
+      "id": "sim_input_handler.cpp:381",
+      "lines": [
+        381,
+        383
+      ],
+      "kinds": [
+        "if",
+        "if"
+      ],
+      "function": "sim_process_player_input",
+      "anchor": "if (control->possess_link() != 0 && !control->hidden())",
+      "condition": "possess_link() != 0 && !hidden() / release_possession rider",
+      "semantic": "New Specials: Switch Character inside a possessed body lets the body go; the seat returns to the ghost where it stands, and the next press cycles heroes as usual.",
+      "arms": [
+        {
+          "when": "in a possessed host",
+          "observable": "release, control = rider, return"
+        },
+        {
+          "when": "otherwise",
+          "observable": "cycle (sim_input_handler.cpp:398)"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_possession.cpp",
+          "test": "KitPossession.charmed_host_released_by_switch_character"
+        },
+        {
+          "file": "tests/unit/test_kit_possession.cpp",
+          "test": "KitPossession.seat_redirect_follows_host_then_returns"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "sim_input_handler.cpp:402",
+      "lines": [
+        402
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "sim_process_player_input",
+      "anchor": "if (!control)",
+      "condition": "!control after sim_switch_control",
+      "semantic": "With no one else to switch to, the seat keeps its hero and is told 'NO ONE TO SWITCH TO' (#223).",
+      "arms": [
+        {
+          "when": "no candidate",
+          "observable": "control = anchor, re-claimed, cue 'NO ONE TO SWITCH TO'"
+        },
+        {
+          "when": "candidate",
+          "observable": "new hero"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_sim_input_unit.cpp",
+          "test": "SimInputUnit.sim_input_switch_char_on_a_dead_entry_cycles_from_the_claimed_hero"
+        },
+        {
+          "file": "tests/integration/test_sim_input_unit.cpp",
+          "test": "SimInputUnit.sim_input_switch_char_skips_dormant_and_dead_allies"
+        },
+        {
+          "file": "tests/integration/test_sim_input_unit.cpp",
+          "test": "SimInputUnit.sim_input_switch_char_on_the_claim_tick_cycles_from_the_claimed_hero"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "sim_input_handler.cpp:419",
+      "lines": [
+        419
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "sim_process_player_input",
+      "anchor": "if (control->user() == -1)",
+      "condition": "control->user() == -1 after switch",
+      "semantic": "The hero switched to is taken under the seat's keys in the same tick (it does not take one more AI act).",
+      "arms": [
+        {
+          "when": "new hero unseated",
+          "observable": "claimed: user=seat, ACT_CONTROL"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_sim_input_unit.cpp",
+          "test": "SimInputUnit.sim_input_switch_char_claims_the_new_hero_in_the_same_call"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "sim_input_handler.cpp:428",
+      "lines": [
+        428,
+        430,
+        432,
+        435
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "else if"
+      ],
+      "function": "sim_process_player_input",
+      "anchor": "if (control->hidden())",
+      "condition": "control->hidden() / user()==player_num / pressed(Special) / held(Special)",
+      "semantic": "New Specials: a hidden hero (dug in, or a ghost riding a body) answers only Special (press or hold; a second press brings a dug-in hero up) and Switch Character: no walking, firing, yelling or special cycling.",
+      "arms": [
+        {
+          "when": "hidden, press",
+          "observable": "cast (press edge)"
+        },
+        {
+          "when": "hidden, hold",
+          "observable": "cast (repeat)"
+        },
+        {
+          "when": "hidden, other keys",
+          "observable": "ignored, return"
+        },
+        {
+          "when": "visible",
+          "observable": "continues"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_seams_hidden.cpp",
+          "test": "KitSeams.hidden_control_reads_only_special_and_switch"
+        },
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.seated_hero_digs_in_where_it_stands"
+        }
+      ],
+      "missing_arms": [
+        "hidden, hold"
+      ]
+    },
+    {
+      "id": "sim_input_handler.cpp:444",
+      "lines": [
+        444,
+        447
+      ],
+      "kinds": [
+        "if",
+        "if"
+      ],
+      "function": "sim_process_player_input",
+      "anchor": "if (!pi.was_pressed(InputAction::SwitchSpecial))",
+      "condition": "!pressed(SwitchSpecial) / pressed && !changedspec",
+      "semantic": "Switch Special advances once per press (debounced until released).",
+      "arms": [
+        {
+          "when": "press",
+          "observable": "advance (sim_input_handler.cpp:241)"
+        },
+        {
+          "when": "held",
+          "observable": "nothing"
+        },
+        {
+          "when": "released",
+          "observable": "debounce cleared"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_sim_input_handler.cpp",
+          "test": "SimInputHandler.sim_input_switch_special_wraps_and_debounces"
+        },
+        {
+          "file": "tests/integration/test_view_input_paths.cpp",
+          "test": "ViewInputPaths.view_input_special_switch_cycles_the_current_special"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "sim_input_handler.cpp:456",
+      "lines": [
+        456
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "sim_process_player_input",
+      "anchor": "if (control->yo_delay() > 0)",
+      "condition": "yo_delay() > 0",
+      "semantic": "The Yell cooldown counts down once per input tick.",
+      "arms": [
+        {
+          "when": "> 0",
+          "observable": "-1"
+        },
+        {
+          "when": "0",
+          "observable": "stays"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_sim_input_handler.cpp",
+          "test": "SimInputHandler.sim_input_switch_char_no_candidate_keeps_old_control_and_ticks"
+        },
+        {
+          "file": "tests/integration/test_sim_input_handler.cpp",
+          "test": "SimInputHandler.sim_input_yell_sets_follow_and_notification"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "sim_input_handler.cpp:460",
+      "lines": [
+        460,
+        467
+      ],
+      "kinds": [
+        "if",
+        "if"
+      ],
+      "function": "sim_process_player_input",
+      "anchor": "if (pi.was_pressed(InputAction::Yell) && !control->yo_delay()",
+      "condition": "pressed(Yell) && !yo_delay && !Shift && !Cheat / Living && not seated && same team && !leader",
+      "semantic": "Yell (Yo!) recruits every unseated teammate of order Living that has no leader: it follows the hero (leader set, foe dropped, a forced 100-step follow); the filter has NO dead/dormant/hidden check, so a dead, dormant or hidden teammate is recruited too (classic quirk, old game view.cpp:626-629 identical). The hero cannot yell again for 30 ticks.",
+      "arms": [
+        {
+          "when": "yell: leader, cooldown and cue",
+          "observable": "Living same-team unled unseated allies get leader=hero; yo_delay 30; SOUND_YO and Yo! notification (result + sim events)"
+        },
+        {
+          "when": "yell: foe dropped and forced follow",
+          "observable": "recruited allies foe null and COMMAND_FOLLOW x100 forced onto the queue"
+        },
+        {
+          "when": "on cooldown / Shift / Cheat",
+          "observable": "nothing"
+        },
+        {
+          "when": "ally already led or seated (ACT_CONTROL) or other team or order not Living",
+          "observable": "untouched"
+        },
+        {
+          "when": "dead, dormant or hidden teammate with no leader",
+          "observable": "still recruited: leader=hero, foe null, COMMAND_FOLLOW x100 queued on the corpse/dormant/hidden body (classic quirk)"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_sim_input_handler.cpp",
+          "test": "SimInputHandler.sim_input_yell_sets_follow_and_notification"
+        },
+        {
+          "file": "tests/integration/test_sim_input_handler.cpp",
+          "test": "SimInputHandler.sim_input_yell_within_cooldown_emits_nothing"
+        },
+        {
+          "file": "tests/integration/test_sim_input_handler.cpp",
+          "test": "SimInputHandler.sim_input_cheat_gates_and_command_queue_skip_movement_block"
+        },
+        {
+          "file": "tests/integration/test_sim_input_handler.cpp",
+          "test": "SimInputHandler.sim_input_shift_yell_summon_and_release"
+        }
+      ],
+      "missing_arms": [
+        "yell: foe dropped and forced follow",
+        "ally already led or seated (ACT_CONTROL) or other team or order not Living",
+        "dead, dormant or hidden teammate with no leader"
+      ],
+      "note": [
+        "Compound observables split into separate arms (fixer policy): an arm is asserted only when a cited test pins its whole observable. Leader/cooldown/cue: sim_input_yell_sets_follow_and_notification. Cooldown: sim_input_yell_within_cooldown_emits_nothing (log 0, notify empty, play_sound -1). Cheat: sim_input_cheat_gates_and_command_queue_skip_movement_block (notify_text empty). Shift: sim_input_shift_yell_summon_and_release ASSERT_EQ(1u, log.size()) with the only event SUMMONING DEFENSE! (no Yo!, no SOUND_YO)."
+      ]
+    },
+    {
+      "id": "sim_input_handler.cpp:492",
+      "lines": [
+        492,
+        495,
+        497,
+        501,
+        513,
+        517,
+        531
+      ],
+      "kinds": [
+        "if",
+        "switch",
+        "case",
+        "if",
+        "case",
+        "if",
+        "default"
+      ],
+      "function": "sim_process_player_input",
+      "anchor": "if (pi.is_held(InputAction::Shift) && pi.was_pressed(InputAction::Yell)",
+      "condition": "held(Shift) && pressed(Yell) && !Cheat / switch (control->action())",
+      "semantic": "Shift+Yell toggles Summon Defense: on, every same-team friendly object (no order filter, the hero itself included) follows the hero (leader set, foe dropped, ACTION_FOLLOW) and 'SUMMONING DEFENSE!'; pressed again, every unseated living teammate returns to normal and 'RELEASING MEN!'; any other action on the hero is just reset.",
+      "arms": [
+        {
+          "when": "hero action 0: follow and notification",
+          "observable": "friendly team-mates (hero included) ACTION_FOLLOW; notification SUMMONING DEFENSE! (result + sim event), no sound"
+        },
+        {
+          "when": "hero action 0: leader set and foe dropped",
+          "observable": "friendly team-mates leader=hero, foe null"
+        },
+        {
+          "when": "hero ACTION_FOLLOW",
+          "observable": "teammates action 0; hero action 0; RELEASING MEN!"
+        },
+        {
+          "when": "other action",
+          "observable": "hero action 0, no notification"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_sim_input_handler.cpp",
+          "test": "SimInputHandler.sim_input_shift_yell_summon_and_release"
+        },
+        {
+          "file": "tests/integration/test_sim_input_handler.cpp",
+          "test": "SimInputHandler.sim_input_yell_movement_and_idle_animate_branches"
+        },
+        {
+          "file": "tests/integration/test_view_input_paths.cpp",
+          "test": "ViewInputPaths.view_input_yell_and_shift_yell_team_actions"
+        },
+        {
+          "file": "tests/integration/test_sim_input_handler.cpp",
+          "test": "SimInputHandler.shift_yell_still_summons_on_a_belt_tick"
+        }
+      ],
+      "missing_arms": [
+        "hero action 0: leader set and foe dropped"
+      ],
+      "note": [
+        "Compound observables split into separate arms (fixer policy): an arm is asserted only when a cited test pins its whole observable. Summon follow/notification: sim_input_shift_yell_summon_and_release (notify_text, ally ACTION_FOLLOW, single Notification event) and view_input_yell_and_shift_yell_team_actions (control and ally ACTION_FOLLOW). The Shift+Yell leader/foe writes are asserted by no test (the leader asserts in those files belong to the plain-yell branch, row :460)."
+      ]
+    },
+    {
+      "id": "sim_input_handler.cpp:538",
+      "lines": [
+        538
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "sim_process_player_input",
+      "anchor": "if (control->user() != player_num)",
+      "condition": "control->user() != player_num",
+      "semantic": "A seat never drives a hero another seat (or the AI) holds: input past this point is dropped.",
+      "arms": [
+        {
+          "when": "not ours",
+          "observable": "return, no move/fire"
+        },
+        {
+          "when": "ours",
+          "observable": "continues"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_sim_input_handler.cpp",
+          "test": "SimInputHandler.sim_input_frozen_and_user_mismatch_drop_movement_and_cue"
+        },
+        {
+          "file": "tests/integration/test_sim_input_handler.cpp",
+          "test": "SimInputHandler.sim_input_yell_movement_and_idle_animate_branches"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "sim_input_handler.cpp:544",
+      "lines": [
+        544
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "sim_process_player_input",
+      "anchor": "if (control->ani_type() != ANI_WALK)",
+      "condition": "ani_type() != ANI_WALK",
+      "semantic": "A seated hero mid-animation advances its animation from the input tick as well as its act (the classic double-speed player animation).",
+      "arms": [
+        {
+          "when": "animating",
+          "observable": "animate() once here (and again in living::act)"
+        },
+        {
+          "when": "walking",
+          "observable": "nothing"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": [
+        "animating",
+        "walking"
+      ]
+    },
+    {
+      "id": "sim_input_handler.cpp:548",
+      "lines": [
+        548
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "sim_process_player_input",
+      "anchor": "if (control != oldcontrol)",
+      "condition": "control != oldcontrol",
+      "semantic": "A seat that changed body this tick clears the new body's commands, except a leading forced fright and charm.",
+      "arms": [
+        {
+          "when": "changed",
+          "observable": "clear_command_for_control_switch"
+        },
+        {
+          "when": "same",
+          "observable": "commands kept"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_sim_input_handler.cpp",
+          "test": "SimInputHandler.sim_input_assigns_unowned_control_and_clears_commands"
+        },
+        {
+          "file": "tests/unit/test_stats_fright.cpp",
+          "test": "StatsFright.switch_and_claim_preserve_fright_and_hygiene"
+        }
+      ],
+      "missing_arms": [
+        "same"
+      ]
+    },
+    {
+      "id": "sim_input_handler.cpp:551",
+      "lines": [
+        551,
+        553,
+        558
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
+      ],
+      "function": "sim_process_player_input",
+      "anchor": "if (control->dead() || control->stats()->frozen_delay())",
+      "condition": "dead || frozen_delay / frozen_delay / pressed(Special)||pressed(Fire)",
+      "semantic": "A frozen seated hero ignores every key; pressing Special or Fire says 'FROZEN!'; each input tick thaws it by one and the 1 -> 0 thaw writes the freeze-immunity window.",
+      "arms": [
+        {
+          "when": "frozen, Special/Fire press",
+          "observable": "cue FROZEN! (throttled)"
+        },
+        {
+          "when": "frozen",
+          "observable": "player_thaw_tick: -1, or -kFreezeThawImmunityTicks at 1"
+        },
+        {
+          "when": "dead",
+          "observable": "return"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_sim_input_unit.cpp",
+          "test": "SimInputUnit.sim_input_specials_disabled_and_frozen_cues"
+        },
+        {
+          "file": "tests/integration/test_sim_input_handler.cpp",
+          "test": "SimInputHandler.sim_input_frozen_and_user_mismatch_drop_movement_and_cue"
+        },
+        {
+          "file": "tests/unit/test_stats_fright.cpp",
+          "test": "StatsFright.sim_player_thaw_immunity_window"
+        }
+      ],
+      "missing_arms": [
+        "dead"
+      ]
+    },
+    {
+      "id": "sim_input_handler.cpp:569",
+      "lines": [
+        569
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "sim_process_player_input",
+      "anchor": "if (control->stats()->commands.empty())",
+      "condition": "commands.empty()",
+      "semantic": "While a hero carries out a queued action (a shove, a fright, a special's command) the seat's movement, fire and special keys are ignored.",
+      "arms": [
+        {
+          "when": "queue empty",
+          "observable": "keys processed"
+        },
+        {
+          "when": "queued work: no walk",
+          "observable": "held direction does not walkstep (xpos, lastx unchanged)"
+        },
+        {
+          "when": "queued work: no fire",
+          "observable": "Fire press does not init_fire (ani_type stays ANI_WALK, busy 0)"
+        },
+        {
+          "when": "queued work: no cast",
+          "observable": "Special press does not cast (MP, effects, cues unchanged)"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_sim_input_handler.cpp",
+          "test": "SimInputHandler.sim_input_fire_press_attacks_and_a_queued_command_suppresses_it"
+        },
+        {
+          "file": "tests/integration/test_sim_input_handler.cpp",
+          "test": "SimInputHandler.sim_input_cheat_gates_and_command_queue_skip_movement_block"
+        }
+      ],
+      "missing_arms": [
+        "queued work: no cast"
+      ],
+      "note": [
+        "Compound observables split into separate arms (fixer policy): an arm is asserted only when a cited test pins its whole observable. No walk: sim_input_cheat_gates_and_command_queue_skip_movement_block (lastx 0, xpos unchanged). No fire: sim_input_fire_press_attacks_and_a_queued_command_suppresses_it (ANI_WALK, busy 0); that test presses Special too but asserts nothing about MP or the event log."
+      ]
+    },
+    {
+      "id": "sim_input_handler.cpp:578",
+      "lines": [
+        578,
+        583,
+        584
+      ],
+      "kinds": [
+        "if",
+        "else",
+        "ternary"
+      ],
+      "function": "sim_process_player_input",
+      "anchor": "if (pi.belt_cast != 0 &&",
+      "condition": "belt_cast != 0 && Special / else shifter = held(Shift) ? 1 : 0",
+      "semantic": "On a belt tick the slot and shift come from the belt entry and the physical Shift key means nothing; on a classic tick the Shift key sets the shift (alternate) for the cast.",
+      "arms": [
+        {
+          "when": "belt byte + Special",
+          "observable": "sim_arm_belt_entry decides slot/shift"
+        },
+        {
+          "when": "classic, Shift held",
+          "observable": "shifter_down 1"
+        },
+        {
+          "when": "classic, Shift up",
+          "observable": "shifter_down 0"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_sim_input_handler.cpp",
+          "test": "SimInputHandler.belt_cast_zero_runs_todays_shift_rule"
+        },
+        {
+          "file": "tests/integration/test_sim_input_handler.cpp",
+          "test": "SimInputHandler.belt_hold_does_not_read_the_physical_shift"
+        },
+        {
+          "file": "tests/integration/test_sim_input_handler.cpp",
+          "test": "SimInputHandler.sim_input_republishes_held_shift_as_shifter_down"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "sim_input_handler.cpp:586",
+      "lines": [
+        586
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "sim_process_player_input",
+      "anchor": "if (pi.was_pressed(InputAction::Special) && !belt_refused)",
+      "condition": "pressed(Special) && !belt_refused",
+      "semantic": "Pressing Special casts the current special once; a belt refusal casts nothing (never the stale slot).",
+      "arms": [
+        {
+          "when": "press, not refused",
+          "observable": "player_cast_special(press)"
+        },
+        {
+          "when": "refused or no press",
+          "observable": "no cast"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_sim_input_handler.cpp",
+          "test": "SimInputHandler.locked_slot_is_refused_with_a_cue_and_no_cast"
+        },
+        {
+          "file": "tests/integration/test_sim_input_unit.cpp",
+          "test": "SimInputUnit.sim_input_one_press_is_one_cast_for_an_unlatched_special"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "sim_input_handler.cpp:597",
+      "lines": [
+        597
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "sim_process_player_input",
+      "anchor": "if (cast && !control->stats()->commands.empty() &&",
+      "condition": "cast && queued commands && enemy_freeze > 0 && caster hostile to my_team",
+      "semantic": "A seated caster on a side the running FREEZE TIME freezes is told 'SPECIALS FROZEN' when its cast left work queued that the act freeze will strand; an inline cast or a failed one is not.",
+      "arms": [
+        {
+          "when": "stranded queue",
+          "observable": "cue SPECIALS FROZEN, cast unchanged"
+        },
+        {
+          "when": "inline cast (queue empty after cast)",
+          "observable": "no cue"
+        },
+        {
+          "when": "no enemy freeze",
+          "observable": "no cue"
+        },
+        {
+          "when": "caster friendly to my_team",
+          "observable": "no cue"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_sim_input_unit.cpp",
+          "test": "SimInputUnit.sim_input_enemy_freeze_cue_marks_a_stranded_command_queue"
+        },
+        {
+          "file": "tests/integration/test_sim_input_unit.cpp",
+          "test": "SimInputUnit.sim_input_enemy_freeze_stays_quiet_for_an_inline_cast"
+        }
+      ],
+      "missing_arms": [
+        "caster friendly to my_team"
+      ],
+      "note": [
+        "Compound observables split into separate arms (fixer policy): an arm is asserted only when a cited test pins its whole observable. Inline cast: sim_input_enemy_freeze_stays_quiet_for_an_inline_cast (count_seat_lines 0, count_clang 0). No freeze: the clean twin in sim_input_enemy_freeze_cue_marks_a_stranded_command_queue (same queued RUSH, count_seat_lines 0). No test runs enemy_freeze with a my_team-friendly caster."
+      ]
+    },
+    {
+      "id": "sim_input_handler.cpp:608",
+      "lines": [
+        608,
+        632
+      ],
+      "kinds": [
+        "if",
+        "if"
+      ],
+      "function": "sim_process_player_input",
+      "anchor": "if (control->hidden())",
+      "condition": "control->hidden() after a press cast / after a held cast",
+      "semantic": "New Specials: a cast that hides its caster (a ghost entering a body, a skeleton digging in) ends the seat's input for that tick: no step and no fire after it.",
+      "arms": [
+        {
+          "when": "hidden after cast",
+          "observable": "return; lastx 0, ani WALK"
+        },
+        {
+          "when": "visible",
+          "observable": "continues to fire/move"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_seams_hidden.cpp",
+          "test": "KitSeams.a_cast_that_hides_its_caster_ends_the_tick"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "sim_input_handler.cpp:615",
+      "lines": [
+        615,
+        651
+      ],
+      "kinds": [
+        "if",
+        "if"
+      ],
+      "function": "sim_process_player_input",
+      "anchor": "if (pi.was_pressed(InputAction::Fire))",
+      "condition": "pressed(Fire) / held(Fire)",
+      "semantic": "Fire attacks on the press and keeps attacking while held.",
+      "arms": [
+        {
+          "when": "press or hold",
+          "observable": "init_fire (ANI_ATTACK, busy)"
+        },
+        {
+          "when": "neither",
+          "observable": "no attack"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_sim_input_handler.cpp",
+          "test": "SimInputHandler.sim_input_fire_press_attacks_and_a_queued_command_suppresses_it"
+        },
+        {
+          "file": "tests/integration/test_sim_input_unit.cpp",
+          "test": "SimInputUnit.sim_input_r11_animate_movement_and_bit_animate_paths"
+        }
+      ],
+      "missing_arms": [
+        "neither"
+      ]
+    },
+    {
+      "id": "sim_input_handler.cpp:625",
+      "lines": [
+        625
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "sim_process_player_input",
+      "anchor": "if (pi.is_held(InputAction::Special) &&",
+      "condition": "held(Special) && !pressed(Special) && !belt_refused",
+      "semantic": "Holding Special recasts once per tick from the tick after the press; one tap is one cast (#228).",
+      "arms": [
+        {
+          "when": "held, not the press tick",
+          "observable": "player_cast_special(repeat)"
+        },
+        {
+          "when": "press tick",
+          "observable": "no second cast"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_sim_input_unit.cpp",
+          "test": "SimInputUnit.sim_input_one_press_is_one_cast_for_an_unlatched_special"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "sim_input_handler.cpp:641",
+      "lines": [
+        641,
+        645
+      ],
+      "kinds": [
+        "if",
+        "else if"
+      ],
+      "function": "sim_process_player_input",
+      "anchor": "if (walkx != 0 || walky != 0)",
+      "condition": "walkx || walky / BIT_ANIMATE",
+      "semantic": "A direction key walks the hero one stepsize (walkstep); standing still, an always-animate hero still cycles its frames.",
+      "arms": [
+        {
+          "when": "direction",
+          "observable": "walkstep: xpos += stepsize, lastx set"
+        },
+        {
+          "when": "idle, BIT_ANIMATE",
+          "observable": "cycle +1, frame set"
+        },
+        {
+          "when": "idle",
+          "observable": "nothing"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_sim_input_handler.cpp",
+          "test": "SimInputHandler.sim_input_held_direction_walksteps_and_advances_one_stepsize"
+        },
+        {
+          "file": "tests/integration/test_sim_input_handler.cpp",
+          "test": "SimInputHandler.sim_input_yell_movement_and_idle_animate_branches"
+        }
+      ],
+      "missing_arms": [
+        "idle"
+      ]
+    }
+  ],
+  "other": [
+    {
+      "id": "sim_input_handler.cpp:134",
+      "lines": [
+        134,
+        151
+      ],
+      "kinds": [
+        "for",
+        "for"
+      ],
+      "kind": "loop",
+      "anchor": "for (auto& uptr : level.oblist)",
+      "note": "oblist scans of sim_find_next_control; the rules are sim_input_handler.cpp:137 and :154"
+    },
+    {
+      "id": "sim_input_handler.cpp:189",
+      "lines": [
+        189,
+        196,
+        208,
+        214
+      ],
+      "kinds": [
+        "for",
+        "for",
+        "for",
+        "for"
+      ],
+      "kind": "loop",
+      "anchor": "for (auto e = std::next(mine); e != oblist.end(); ++e)",
+      "note": "the four list scans of sim_cycle_next_character; rule at sim_input_handler.cpp:182"
+    },
+    {
+      "id": "sim_input_handler.cpp:464",
+      "lines": [
+        464,
+        498,
+        514
+      ],
+      "kinds": [
+        "for",
+        "for",
+        "for"
+      ],
+      "kind": "loop",
+      "anchor": "for (auto& uptr : level.oblist)",
+      "note": "oblist scans of Yell / Summon Defense / Release Men; rules at sim_input_handler.cpp:460 and :492"
+    }
+  ]
+}

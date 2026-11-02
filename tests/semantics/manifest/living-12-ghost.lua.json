@@ -1,0 +1,187 @@
+{
+  "path": "packs/core/families/living-12-ghost.lua",
+  "rules": [
+    {
+      "id": "living-12-ghost.lua:16",
+      "lines": [
+        16
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "no_living_foe_in_reach",
+      "anchor": "if foes[i]:order() == C.ORDER_LIVING then",
+      "condition": "if foes[i]:order() == C.ORDER_LIVING then return false",
+      "semantic": "Only a LIVING foe counts as a scare target: a generator (tent) inside the scare radius does not make the scare worth casting.",
+      "arms": [
+        {
+          "when": "a living foe in scare_radius(L)",
+          "observable": "helper false (scare allowed)"
+        },
+        {
+          "when": "only generators / nobody",
+          "observable": "helper true (scare refused when fixes on)"
+        }
+      ],
+      "setting": "fixes-on",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_special_scenes.cpp",
+          "test": "GameplayFixes.scare_at_nobody_is_refused_and_starts_no_rest",
+          "note": "living-foe arm: with the setting on the second press, the foe within 52 px, makes the scare carrier and the foe flees; nobody half: NO FOE IN RANGE and the pool stays at 120"
+        },
+        {
+          "parity": "ghost_scare_no_foe_fixes_scen99",
+          "fact": "WalkerOfOrderFamilyCount(FAMILY_GHOST_SCARE,FX,0,0) (nobody half only)"
+        }
+      ],
+      "missing_arms": [
+        "only generators / nobody"
+      ]
+    },
+    {
+      "id": "living-12-ghost.lua:30",
+      "lines": [
+        30
+      ],
+      "kinds": [
+        ""
+      ],
+      "function": "fixed_scare (ai: scare_gate(wail_gate(with_classic(foe_within(130), fixed_scare))))",
+      "anchor": "return G.foes_within(self, 1, og.scare_radius(self.level), true)",
+      "condition": "return G.foes_within(self, 1, og.scare_radius(self.level), true)",
+      "semantic": "Gameplay Fixes: a ghost bot's SCARE pays only with a living foe inside the level's scare radius (the classic gate wanted any foe within 130 px, which the fright only reaches from level 8); the classic foe search still runs for its draws and SCARE is cast unshifted.",
+      "arms": [
+        {
+          "when": "fixes off",
+          "observable": "classic foe_within(130) answer"
+        },
+        {
+          "when": "fixes on, living foe inside scare radius",
+          "observable": "true, shifter 0"
+        },
+        {
+          "when": "fixes on, foe within 130 but outside radius",
+          "observable": "false"
+        }
+      ],
+      "setting": "both",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_bot_gates_kits.cpp",
+          "test": "GameplayFixesBots.ghost_scare_wants_a_living_foe_inside_the_scare_radius",
+          "note": "fixes off true at 100 px; fixes on false at 100 px, true at 60 px, false for a tent at 40"
+        }
+      ],
+      "missing_arms": [
+        "fixes on, living foe inside scare radius"
+      ]
+    },
+    {
+      "id": "living-12-ghost.lua:34",
+      "lines": [
+        34
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "do_special",
+      "anchor": "if gf.on() and no_living_foe_in_reach(self) then",
+      "condition": "if gf.on() and no_living_foe_in_reach(self) then return false, \"NO FOE IN RANGE\"",
+      "semantic": "Classic: SCARE summons its fright carrier and spends its MP even with nobody to frighten. Gameplay Fixes: a scare with no living foe inside the scare radius is refused for free.",
+      "arms": [
+        {
+          "when": "fixes off, nobody near",
+          "observable": "cast true, one GHOST_SCARE fx, MP charged"
+        },
+        {
+          "when": "fixes on, nobody near",
+          "observable": "cast false, no GHOST_SCARE, MP unchanged"
+        },
+        {
+          "when": "living foe near",
+          "observable": "scare summoned on both values"
+        }
+      ],
+      "setting": "both",
+      "status": "asserted",
+      "tests": [
+        {
+          "parity": "ghost_scare_no_foe_scen99",
+          "fact": "WalkerOfOrderFamilyCount(FAMILY_GHOST_SCARE,FX,1,1) (fixes off, nobody: the carrier)"
+        },
+        {
+          "parity": "ghost_scare_no_foe_fixes_scen99",
+          "fact": "WalkerOfOrderFamilyCount(FAMILY_GHOST_SCARE,FX,0,0) (fixes on, nobody: no carrier)"
+        },
+        {
+          "file": "tests/integration/test_special_scenes.cpp",
+          "test": "GameplayFixes.scare_at_nobody_is_refused_and_starts_no_rest",
+          "note": "off: the carrier appears at nobody and pool_at(13, 90) = MP charged; on: says NO FOE IN RANGE, pool_at(13, 120) = MP unchanged; on, foe arrived within 52 px: the carrier appears at frame >= 94 and the foe is force-walked"
+        },
+        {
+          "file": "tests/unit/test_kit_ghost.cpp",
+          "test": "KitGhost.wail_costs_50_and_is_scare_when_off",
+          "note": "fixes off, living foe 40 px: ever_made(GHOST_SCARE) == 1 and MP 70"
+        },
+        {
+          "parity": "effect_ghost_scare_emission_scen99",
+          "fact": "WalkerPositionMoved(FAMILY_SOLDIER,240,0) (fixes off, living foe: the scare shoves it)"
+        }
+      ],
+      "missing_arms": []
+    }
+  ],
+  "other": [
+    {
+      "id": "living-12-ghost.lua:15",
+      "lines": [
+        15
+      ],
+      "kinds": [
+        "for"
+      ],
+      "kind": "loop",
+      "anchor": "for i = 1, #foes do",
+      "note": "scans foes in scare radius; rule row living-12-ghost.lua:16"
+    },
+    {
+      "id": "living-12-ghost.lua:39",
+      "lines": [
+        39
+      ],
+      "kinds": [
+        "if"
+      ],
+      "kind": "defensive",
+      "anchor": "if not scare then",
+      "note": "og.summon failure for the scare carrier: 'COULD NOT CREATE SCARE'."
+    },
+    {
+      "id": "living-12-ghost.lua:64",
+      "lines": [
+        64
+      ],
+      "kinds": [
+        "and"
+      ],
+      "kind": "dead",
+      "anchor": "{ id = \"possess\", name = \"POSSESS\", mp_cost = 50, new_kit = true, cast = kg.possess, ai = kg.ai_possess, detail = \"Enter a foe and drive it, with its weapon and",
+      "note": "not a branch (prose 'and' in a detail/description string)"
+    },
+    {
+      "id": "living-12-ghost.lua:82",
+      "lines": [
+        82
+      ],
+      "kinds": [
+        "and"
+      ],
+      "kind": "dead",
+      "anchor": "description = \"Ghosts can pass through walls, trees, and anything else that gets in the way. Their chilling touch can bring death quickly at close range.\",",
+      "note": "not a branch (prose 'and' in a detail/description string)"
+    }
+  ]
+}

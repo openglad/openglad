@@ -1,0 +1,510 @@
+{
+  "path": "src/gameplay/belt.cpp",
+  "rules": [
+    {
+      "id": "belt.cpp:45",
+      "lines": [
+        45
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "decode_well_formed",
+      "anchor": "if ((byte & (kZeroBits | kItemBit)) != 0 || slot < kFirstSpecial ||",
+      "condition": "(byte & (kZeroBits | kItemBit)) != 0 || slot < kFirstSpecial || slot > kLastSpecial",
+      "semantic": "A belt byte names a special only when it is slot 1..5 plus an optional alternate bit and nothing else; slot 0/6/7, the item bit or any high bit means 'not a special'.",
+      "arms": [
+        {
+          "when": "well-formed (slot 1..5, bits 4-7 clear)",
+          "observable": "Entry{slot, alt} returned; decode_stored/validate_cast accept it"
+        },
+        {
+          "when": "slot 0,6,7 or item bit or bits 4-6 set",
+          "observable": "nullopt; validate_cast -> Refusal::NothingThere"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_belt.cpp",
+          "test": "Belt.decode_rejects_slot_0_6_7_item_bit_and_junk"
+        },
+        {
+          "file": "tests/unit/test_belt.cpp",
+          "test": "Belt.encode_decode_round_trip_every_entry"
+        },
+        {
+          "file": "tests/unit/test_belt.cpp",
+          "test": "Belt.validate_cast_refuses_every_malformed_byte_as_nothing_there"
+        },
+        {
+          "file": "tests/unit/test_belt.cpp",
+          "test": "Belt.validate_cast_refuses_locked_unnamed_hidden_and_sentinel"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "belt.cpp:120",
+      "lines": [
+        74,
+        75,
+        118,
+        120,
+        122,
+        124,
+        128,
+        130
+      ],
+      "kinds": [
+        "for",
+        "if",
+        "for",
+        "if",
+        "if",
+        "else if",
+        "if",
+        "if"
+      ],
+      "function": "default_layout / lowest_free",
+      "anchor": "for (int b = from; b < to; ++b)",
+      "condition": "!entry.alt -> lowest_free(0,3); else if primary placed && shifted twin free -> primary+3; b<0 -> lowest_free(3,6); b>=0 -> place",
+      "semantic": "Default belt: primaries take keys 1-3 in catalog order; an alternate sits on SHIFT + its primary's key; anything that did not fit goes to the lowest free shifted key; more than six abilities leaves the rest on the bench.",
+      "arms": [
+        {
+          "when": "primary, plain key free",
+          "observable": "layout[0..2] holds it"
+        },
+        {
+          "when": "alternate whose primary is on key k and k+3 free",
+          "observable": "layout[k+3] holds it"
+        },
+        {
+          "when": "no preferred spot",
+          "observable": "lowest free of layout[3..5]"
+        },
+        {
+          "when": "belt full",
+          "observable": "entry absent from layout, present in bench()"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_belt.cpp",
+          "test": "Belt.default_layout_matches_the_table"
+        },
+        {
+          "file": "tests/unit/test_belt.cpp",
+          "test": "Belt.a_ten_entry_pack_benches_four_and_null_has_nothing"
+        },
+        {
+          "file": "tests/unit/test_belt.cpp",
+          "test": "Belt.default_layout_ignores_level"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "belt.cpp:90",
+      "lines": [
+        86,
+        87,
+        90,
+        95
+      ],
+      "kinds": [
+        "for",
+        "for",
+        "if",
+        "if"
+      ],
+      "function": "catalog",
+      "anchor": "for (int slot = kFirstSpecial; slot <= kLastSpecial; ++slot) {",
+      "condition": "!is_named(name) / repeat",
+      "semantic": "A class's ability catalog is every named, in-play special and alternate in slot order (primary before alternate), each distinct ability name listed once (the cleric's alternate TURN UNDEAD duplicate is dropped); unnamed or setting-hidden entries are not abilities.",
+      "arms": [
+        {
+          "when": "entry unnamed ('none') or hidden by New Specials off",
+          "observable": "absent from catalog()"
+        },
+        {
+          "when": "name already seen at an earlier slot",
+          "observable": "absent (cleric second TURN UNDEAD)"
+        },
+        {
+          "when": "named, first occurrence",
+          "observable": "present in slot order"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_belt.cpp",
+          "test": "Belt.catalog_lists_every_named_in_play_entry_in_slot_order"
+        },
+        {
+          "file": "tests/unit/test_belt.cpp",
+          "test": "Belt.catalog_drops_the_clerics_second_turn_undead"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "belt.cpp:144",
+      "lines": [
+        142,
+        144,
+        146,
+        147
+      ],
+      "kinds": [
+        "for",
+        "if",
+        "else if",
+        "if"
+      ],
+      "function": "resolve",
+      "anchor": "for (std::size_t b = 0; b < layout.size(); ++b) {",
+      "condition": "byte == kDefaultByte / decode_stored(byte) && in catalog",
+      "semantic": "A stored belt key means: 0 = 'the default ability for this key', an explicit entry = that ability if the class still has it under the current setting, anything else (FF empty, an item byte, an entry not in the catalog) = an empty key; the stored byte is never rewritten.",
+      "arms": [
+        {
+          "when": "byte 0",
+          "observable": "layout[b] == default_layout[b]"
+        },
+        {
+          "when": "explicit entry in catalog",
+          "observable": "layout[b].entry == entry, Castable"
+        },
+        {
+          "when": "FF / item / entry hidden by setting or not in catalog",
+          "observable": "layout[b].state == Empty, entry nullopt"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_belt.cpp",
+          "test": "Belt.resolve_zero_is_default_ff_is_empty_explicit_is_explicit"
+        },
+        {
+          "file": "tests/unit/test_belt.cpp",
+          "test": "Belt.resolve_hides_an_entry_the_setting_hides_without_rewriting_the_byte"
+        },
+        {
+          "file": "tests/unit/test_belt.cpp",
+          "test": "Belt.default_layout_matches_the_table"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "belt.cpp:151",
+      "lines": [
+        151
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "resolve",
+      "anchor": "if (layout[b].entry && !slot_open(fd, layout[b].entry->slot, level))",
+      "condition": "layout[b].entry && !slot_open(fd, slot, level)",
+      "semantic": "An ability on the belt whose slot the hero's level has not opened yet shows as Locked (with the level it opens at) rather than vanishing.",
+      "arms": [
+        {
+          "when": "level < slot_open_level",
+          "observable": "state Locked, opens_at = open level"
+        },
+        {
+          "when": "level >= open level",
+          "observable": "state Castable"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_belt.cpp",
+          "test": "Belt.resolve_marks_locked_with_opens_at"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "belt.cpp:165",
+      "lines": [
+        161,
+        165
+      ],
+      "kinds": [
+        "for",
+        "if"
+      ],
+      "function": "bench",
+      "anchor": "for (const Entry& entry : catalog(fd, new_specials)) {",
+      "condition": "!on_belt",
+      "semantic": "The bench is exactly the class's catalog minus whatever is on the belt.",
+      "arms": [
+        {
+          "when": "entry on belt",
+          "observable": "absent from bench()"
+        },
+        {
+          "when": "entry not on belt",
+          "observable": "present in catalog order"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_belt.cpp",
+          "test": "Belt.bench_is_catalog_minus_belt"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "belt.cpp:174",
+      "lines": [
+        174
+      ],
+      "kinds": [
+        "ternary"
+      ],
+      "function": "encode",
+      "anchor": "(entry.alt ? kAltBit : 0));",
+      "condition": "entry.alt ? kAltBit : 0",
+      "semantic": "An alternate is encoded as its slot with the alternate bit; encode/decode round-trip every entry.",
+      "arms": [
+        {
+          "when": "alt",
+          "observable": "byte = slot|0x08"
+        },
+        {
+          "when": "primary",
+          "observable": "byte = slot"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_belt.cpp",
+          "test": "Belt.encode_decode_round_trip_every_entry"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "belt.cpp:179",
+      "lines": [
+        179
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "normalize_stored",
+      "anchor": "if (stored == kDefaultByte || stored == kEmptyByte ||",
+      "condition": "stored == default || == empty || item bit || well-formed",
+      "semantic": "A save's belt byte that is junk is read as 'default'; default, empty, item and well-formed entry bytes are kept as written.",
+      "arms": [
+        {
+          "when": "0, FF, item bit, well-formed",
+          "observable": "returned unchanged"
+        },
+        {
+          "when": "junk (e.g. 0x06, 0x70)",
+          "observable": "returns kDefaultByte"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_belt.cpp",
+          "test": "Belt.normalize_stored_maps_junk_to_default_and_keeps_empty_item_and_explicit"
+        },
+        {
+          "file": "tests/integration/test_save_data_versions.cpp",
+          "test": "SaveDataVersions.v21_belt_reader_normalises_junk_to_default"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "belt.cpp:192",
+      "lines": [
+        192
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "cast_byte",
+      "anchor": "if (resolved.state == SlotState::Empty || !resolved.entry)",
+      "condition": "resolved.state == Empty || !resolved.entry",
+      "semantic": "Pressing an empty belt key sends 'cast nothing'; a Locked key still sends its entry so the sim can refuse it with the opens-at message.",
+      "arms": [
+        {
+          "when": "Empty",
+          "observable": "kCastNothing"
+        },
+        {
+          "when": "Castable or Locked",
+          "observable": "encode(entry)"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_belt.cpp",
+          "test": "Belt.cast_byte_and_slot_index"
+        },
+        {
+          "file": "tests/unit/test_belt_input.cpp",
+          "test": "BeltInput.empty_slot_latches_cast_nothing"
+        },
+        {
+          "file": "tests/unit/test_belt_input.cpp",
+          "test": "BeltInput.locked_slot_latches_its_entry"
+        },
+        {
+          "file": "tests/unit/test_belt.cpp",
+          "test": "Belt.resolve_hides_an_entry_the_setting_hides_without_rewriting_the_byte"
+        },
+        {
+          "file": "tests/unit/test_belt.cpp",
+          "test": "Belt.resolve_marks_locked_with_opens_at"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "belt.cpp:199",
+      "lines": [
+        199
+      ],
+      "kinds": [
+        "ternary"
+      ],
+      "function": "slot_index",
+      "anchor": "return (key - 1) + (shift ? kPlainSlots : 0);",
+      "condition": "shift ? kPlainSlots : 0",
+      "semantic": "SPEC key k reaches belt position k-1, or k+2 with SHIFT held.",
+      "arms": [
+        {
+          "when": "no shift",
+          "observable": "key-1"
+        },
+        {
+          "when": "shift",
+          "observable": "key+2"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_belt.cpp",
+          "test": "Belt.cast_byte_and_slot_index"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "belt.cpp:204",
+      "lines": [
+        204,
+        209
+      ],
+      "kinds": [
+        "ternary",
+        "ternary"
+      ],
+      "function": "bytes_for",
+      "anchor": "return stored != nullptr ? *stored : default_bytes();",
+      "condition": "stored != nullptr / w.myguy != nullptr",
+      "semantic": "A walker with no hero record (a bot, a summon) uses the all-default belt; a hero uses its saved belt.",
+      "arms": [
+        {
+          "when": "no guy",
+          "observable": "default_bytes() (six zeros)"
+        },
+        {
+          "when": "guy",
+          "observable": "guy->belt"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_belt.cpp",
+          "test": "Belt.bytes_for_walker_without_guy_is_default"
+        },
+        {
+          "file": "tests/unit/test_belt.cpp",
+          "test": "Belt.bytes_for_walker_reads_the_guys_belt_or_the_default"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "belt.cpp:217",
+      "lines": [
+        217,
+        219,
+        220,
+        224
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if"
+      ],
+      "function": "validate_cast",
+      "anchor": "if (!entry || !is_named(entry_name(fd, *entry, new_specials)))",
+      "condition": "!entry || !is_named(...) ; !slot_open(...) ; opens_at/out != nullptr",
+      "semantic": "A belt cast is refused NOTHING THERE when the byte names no ability the class has under the current setting, refused LOCKED (reporting the opening level) when the hero's level has not opened the slot, and otherwise accepted.",
+      "arms": [
+        {
+          "when": "malformed, unnamed or setting-hidden",
+          "observable": "Refusal::NothingThere"
+        },
+        {
+          "when": "named but slot not open",
+          "observable": "Refusal::Locked, *opens_at = open level"
+        },
+        {
+          "when": "ok",
+          "observable": "Refusal::None, *out = entry"
+        },
+        {
+          "when": "out/opens_at null",
+          "observable": "no write (defensive)"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_belt.cpp",
+          "test": "Belt.validate_cast_refuses_every_malformed_byte_as_nothing_there"
+        },
+        {
+          "file": "tests/unit/test_belt.cpp",
+          "test": "Belt.validate_cast_refuses_locked_unnamed_hidden_and_sentinel"
+        }
+      ],
+      "missing_arms": []
+    }
+  ],
+  "other": []
+}

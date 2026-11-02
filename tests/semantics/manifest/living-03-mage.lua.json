@@ -1,0 +1,1404 @@
+{
+  "path": "packs/core/families/living-03-mage.lua",
+  "rules": [
+    {
+      "id": "living-03-mage.lua:29",
+      "lines": [
+        29
+      ],
+      "kinds": [
+        "or"
+      ],
+      "function": "freeze_wanted (bot FREEZE TIME cue)",
+      "anchor": "return engaged >= 3 or hurt",
+      "condition": "engaged >= 3 or hurt",
+      "semantic": "Gameplay Fixes bot FREEZE TIME is wanted when the mage's allies are in a fight worth stopping time for: three or more living foes within a blow of allies (each foe counted once however many allies it touches), or an ally at blows that is under a quarter of its health. Distance to the mage itself is not consulted.",
+      "arms": [
+        {
+          "when": "3+ distinct foes at blows with allies",
+          "observable": "true"
+        },
+        {
+          "when": "an ally at blows below 1/4 hp",
+          "observable": "true"
+        },
+        {
+          "when": "2 foes at blows, allies healthy",
+          "observable": "false"
+        },
+        {
+          "when": "crowd at the mage only, no ally engaged",
+          "observable": "false"
+        }
+      ],
+      "setting": "fixes-on",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_gameplay_fixes_bots.cpp",
+          "test": "GameplayFixesBots.mage_freeze_time_waits_for_three_foes_at_blows_with_allies_with_the_setting_on",
+          "note": "3 foes at blows -> EXPECT_TRUE; third foe a pixel out -> EXPECT_FALSE"
+        },
+        {
+          "file": "tests/unit/test_gameplay_fixes_bots.cpp",
+          "test": "GameplayFixesBots.mage_freeze_time_leaves_a_crowd_at_the_mage_to_teleport_with_the_setting_on",
+          "note": "4 foes at the mage, no ally engaged -> EXPECT_FALSE"
+        },
+        {
+          "file": "tests/unit/test_gameplay_fixes_bots.cpp",
+          "test": "GameplayFixesBots.mage_freeze_time_counts_foes_once_and_takes_a_dying_ally_as_the_cue_with_the_setting_on",
+          "note": "ally at 99/400 at blows -> EXPECT_TRUE; two shared foes -> EXPECT_FALSE"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-03-mage.lua:49",
+      "lines": [
+        49,
+        51,
+        58
+      ],
+      "kinds": [
+        "if",
+        "or",
+        "and"
+      ],
+      "function": "fixed_gate (bot TELEPORT, slot 1)",
+      "anchor": "if slot == 1 then",
+      "condition": "slot == 1; yes = foe_count < 1 or foe_count > 3; return yes and not lc.mid_teleport(self)",
+      "semantic": "Bot TELEPORT keeps the classic rule with the setting on: teleport away when no foe is within 110 px or more than three are (swamped); Gameplay Fixes adds: never while already mid-teleport (the cast would refuse SPECIAL BUSY).",
+      "arms": [
+        {
+          "when": "0 foes within 110",
+          "observable": "true"
+        },
+        {
+          "when": "1-3 foes",
+          "observable": "false"
+        },
+        {
+          "when": "4+ foes",
+          "observable": "true"
+        },
+        {
+          "when": "mid-teleport (ANI_TELE_OUT/IN)",
+          "observable": "false"
+        }
+      ],
+      "setting": "fixes-on",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_gameplay_fixes_bots.cpp",
+          "test": "GameplayFixesBots.mage_teleport_keeps_the_classic_rule_on_both_values",
+          "note": "alone true, one foe false, four foes true, both setting values"
+        },
+        {
+          "file": "tests/unit/test_gameplay_fixes_bots.cpp",
+          "test": "GameplayFixesBots.a_busy_bot_never_rolls_a_busy_cast_with_the_setting_on",
+          "note": "classic_row MAGE TELEPORT: ANI_TELE_OUT -> EXPECT_FALSE(gate(mage,1,1))"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-03-mage.lua:52",
+      "lines": [
+        52,
+        53,
+        55
+      ],
+      "kinds": [
+        "and",
+        "if",
+        "else"
+      ],
+      "function": "fixed_gate (bot TELEPORT MARKER arm)",
+      "anchor": "local mark = foe_count < 1 and G.marker_pays(self, FX_MARKER, 2, t.marker_int_req)",
+      "condition": "mark = foe_count < 1 and G.marker_pays(...); if mark and not lc.is_busy(self) -> shifter 1 else 0",
+      "semantic": "Gameplay Fixes bot mage drops a TELEPORT MARKER (the Shift arm) only when nobody is within 110 px, it has no marker of its own standing, a hero has the 75 INT, half the pool left after the price still covers WARP SPACE, and it is not busy; otherwise TELEPORT is unshifted. The engine's Shift coin is still drawn first and then overwritten.",
+      "arms": [
+        {
+          "when": "alone, no own marker, pool ok, not busy",
+          "observable": "shifter_down == 1 after check_special()"
+        },
+        {
+          "when": "own marker standing or a foe near or busy",
+          "observable": "shifter_down == 0"
+        }
+      ],
+      "setting": "fixes-on",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_gameplay_fixes_bots.cpp",
+          "test": "GameplayFixesBots.mage_marker_is_placed_once_where_the_mage_will_return",
+          "note": "alone funded -> shifter 1; own marker standing -> 0; 130 MP -> 0; four foes -> 0"
+        },
+        {
+          "file": "tests/unit/test_gameplay_fixes_bots.cpp",
+          "test": "GameplayFixesBots.a_busy_bot_never_rolls_a_busy_cast_with_the_setting_on",
+          "note": "busy 3, alone -> EXPECT_EQ(0, shifter_down())"
+        },
+        {
+          "parity": "mage_bot_marker_home_fixes_scen99",
+          "fact": "",
+          "note": "WalkerOfOrderFamilyCount(MARKER FX 1 1): the alone bot marks"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-03-mage.lua:60",
+      "lines": [
+        60
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "fixed_gate (bot WARP SPACE, slot 2)",
+      "anchor": "if slot == 2 then",
+      "condition": "slot == 2 -> G.ring_pays(self, UNIT_STEP, 7, add)",
+      "semantic": "Gameplay Fixes bot WARP SPACE (8 fireballs crawling 1 px a tick, range 7 + the spare-pool add/3) pays for two living foes inside that point-blank ring or one the mage does not face.",
+      "arms": [
+        {
+          "when": "two foes in ring",
+          "observable": "true"
+        },
+        {
+          "when": "one faced foe",
+          "observable": "false"
+        },
+        {
+          "when": "one unfaced foe",
+          "observable": "true"
+        }
+      ],
+      "setting": "fixes-on",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_gameplay_fixes_bots.cpp",
+          "test": "GameplayFixesBots.mage_warp_space_wants_a_crowd_or_a_foe_behind_in_its_point_blank_ring",
+          "note": "two towers -> true; one faced -> false; one unfaced -> true"
+        },
+        {
+          "parity": "mage_bot_warp_two_at_blows_fixes_scen99",
+          "fact": "",
+          "note": "fireballs 3  one tower dead"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-03-mage.lua:65",
+      "lines": [
+        65
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "fixed_gate (bot FREEZE TIME, slot 3)",
+      "anchor": "if slot == 3 then",
+      "condition": "slot == 3 -> freeze_wanted(self)",
+      "semantic": "Bot FREEZE TIME with the setting on uses the allies'-fight cue (:29), not the classic alone/swamped rule.",
+      "arms": [
+        {
+          "when": "slot 3",
+          "observable": "answer of :29"
+        }
+      ],
+      "setting": "fixes-on",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_gameplay_fixes_bots.cpp",
+          "test": "GameplayFixesBots.mage_freeze_time_waits_for_three_foes_at_blows_with_allies_with_the_setting_on"
+        },
+        {
+          "file": "tests/unit/test_gameplay_fixes_bots.cpp",
+          "test": "GameplayFixesBots.mage_freeze_time_leaves_a_crowd_at_the_mage_to_teleport_with_the_setting_on"
+        },
+        {
+          "file": "tests/unit/test_gameplay_fixes_bots.cpp",
+          "test": "GameplayFixesBots.mage_freeze_time_counts_foes_once_and_takes_a_dying_ally_as_the_cue_with_the_setting_on"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-03-mage.lua:68",
+      "lines": [
+        68,
+        70,
+        71
+      ],
+      "kinds": [
+        "if",
+        "and",
+        "and"
+      ],
+      "function": "fixed_gate (bot ENERGY WAVE, slot 4)",
+      "anchor": "if slot == 4 then",
+      "condition": "foe = nearest living foe within 110; faced = foe ~= nil and G.faces; return faced and G.pad_clear(self)",
+      "semantic": "Gameplay Fixes bot ENERGY WAVE wants its nearest living foe within 110 px faced along the fire heading, and the fireball's pad clear (the wave rides a fired bolt).",
+      "arms": [
+        {
+          "when": "faced foe within 110, pad clear",
+          "observable": "true"
+        },
+        {
+          "when": "no foe / unfaced",
+          "observable": "false"
+        },
+        {
+          "when": "pad on a wall or a body on it",
+          "observable": "false"
+        }
+      ],
+      "setting": "fixes-on",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_gameplay_fixes_bots.cpp",
+          "test": "GameplayFixesBots.mage_energy_wave_wants_a_faced_foe_within_110",
+          "note": "faced at 60 px -> true; unfaced -> false; faced at 111 px -> false"
+        },
+        {
+          "file": "tests/unit/test_gameplay_fixes_bots.cpp",
+          "test": "GameplayFixesBots.mage_energy_wave_refuses_a_pad_on_a_wall",
+          "note": "wall under the pad -> false"
+        },
+        {
+          "parity": "mage_bot_wave_pad_body_fixes_scen99",
+          "fact": "",
+          "note": "body on the pad: EventKindExactly(play_sound 0) and the line-71 mutation flips it 0 -> 1"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-03-mage.lua:77",
+      "lines": [
+        77
+      ],
+      "kinds": [
+        ""
+      ],
+      "function": "fixed_gate (bot HEARTBURST, slot 5 and unmapped)",
+      "anchor": "return in_reach >= 1",
+      "condition": "in_reach >= 1",
+      "semantic": "Gameplay Fixes bot HEARTBURST wants at least one foe inside its own reach (80 + 2*level px), the same finder the cast uses.",
+      "arms": [
+        {
+          "when": "foe within 80+2L",
+          "observable": "true"
+        },
+        {
+          "when": "none",
+          "observable": "false"
+        }
+      ],
+      "setting": "fixes-on",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_gameplay_fixes_bots.cpp",
+          "test": "GameplayFixesBots.mage_heartburst_wants_a_foe_in_its_own_reach_with_the_setting_on",
+          "note": "106 px true, 107/120 px false, 60 px true"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-03-mage.lua:83",
+      "lines": [
+        83,
+        87
+      ],
+      "kinds": [
+        "if",
+        "or"
+      ],
+      "function": "check_special_ai",
+      "anchor": "if gf.on() then",
+      "condition": "if gf.on() -> fixed_gate; else foe_count < 1 or foe_count > 3",
+      "semantic": "Classic mage bot casts ANY slot only when alone (no foe within 110 px) or swamped (more than three): the TELEPORT rule applied to every slot. Gameplay Fixes dispatches to the per-slot gate. Both wrapped by gate_with_rest(…, 3): a resting FREEZE TIME is never picked.",
+      "arms": [
+        {
+          "when": "off, 0 or 4+ foes",
+          "observable": "true on every slot"
+        },
+        {
+          "when": "off, 1-3 foes",
+          "observable": "false"
+        },
+        {
+          "when": "on",
+          "observable": "fixed_gate(slot)"
+        }
+      ],
+      "setting": "both",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_gameplay_fixes_bots.cpp",
+          "test": "GameplayFixesBots.mage_teleport_keeps_the_classic_rule_on_both_values",
+          "note": "off: slot 1 alone true, one foe false, four foes true"
+        },
+        {
+          "file": "tests/unit/test_gameplay_fixes_bots.cpp",
+          "test": "GameplayFixesBots.mage_warp_space_wants_a_crowd_or_a_foe_behind_in_its_point_blank_ring",
+          "note": "off, slot 2: alone true, 1-2 foes false"
+        },
+        {
+          "file": "tests/unit/test_gameplay_fixes_bots.cpp",
+          "test": "GameplayFixesBots.mage_freeze_time_leaves_a_crowd_at_the_mage_to_teleport_with_the_setting_on",
+          "note": "off, slot 3: four foes true"
+        },
+        {
+          "file": "tests/unit/test_gameplay_fixes_bots.cpp",
+          "test": "GameplayFixesBots.mage_energy_wave_wants_a_faced_foe_within_110",
+          "note": "off, slot 4: one foe false, nobody within 110 true"
+        },
+        {
+          "file": "tests/unit/test_gameplay_fixes_bots.cpp",
+          "test": "GameplayFixesBots.mage_heartburst_wants_a_foe_in_its_own_reach_with_the_setting_on",
+          "note": "off, slot 5: 120 px true, 60/107 px false"
+        },
+        {
+          "file": "tests/unit/test_kit_rests.cpp",
+          "test": "KitRests.bot_gates_hold_a_resting_special",
+          "note": "gate_with_rest: slot 3 false while resting"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-03-mage.lua:94",
+      "lines": [
+        94,
+        97
+      ],
+      "kinds": [
+        "if",
+        "else"
+      ],
+      "function": "hit_response",
+      "anchor": "if self:has_guy() then",
+      "condition": "self:has_guy() -> threshold 3/5 max_hp else 3/8",
+      "semantic": "A struck mage teleports to safety below a health threshold: 3/5 of max hp for a hero (has a guy), 3/8 for a bot ('enemy mages are braver').",
+      "arms": [
+        {
+          "when": "hero, hp < 0.6 max",
+          "observable": "teleport arm"
+        },
+        {
+          "when": "bot, 0.375 max <= hp < 0.6 max",
+          "observable": "no teleport: retarget arm"
+        },
+        {
+          "when": "bot, hp < 0.375 max",
+          "observable": "teleport arm"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_stats_hit_response_teleport.cpp",
+          "test": "StatsHitResponseTeleport.stats_hit_response_mage_and_archmage_teleport_branches",
+          "note": "hero hp 10/100 -> EXPECT_EQ(ANI_TELE_OUT)"
+        },
+        {
+          "file": "tests/integration/test_stats_hit_response_teleport.cpp",
+          "test": "StatsHitResponseTeleport.a_mage_struck_again_mid_teleport_casts_nothing",
+          "note": "bot hp 100/400 = 1/4 -> ASSERT_EQ(ANI_TELE_OUT) on the first hit"
+        }
+      ],
+      "missing_arms": [
+        "bot, 0.375 max <= hp < 0.6 max"
+      ]
+    },
+    {
+      "id": "living-03-mage.lua:105",
+      "lines": [
+        105,
+        106,
+        107
+      ],
+      "kinds": [
+        "for",
+        "if",
+        "and"
+      ],
+      "function": "hit_response",
+      "anchor": "for i = 0, (self.level + 2) // 3 do",
+      "condition": "for i = 0, (level+2)//3: i < NUM_SPECIALS and magicpoints >= special_cost(i)",
+      "semantic": "The struck mage may only escape-teleport if it can afford TELEPORT (15 MP); the possible-specials scan is by level tier and MP. (Only possible[1] is consumed; level >= 1 always reaches slot 1.)",
+      "arms": [
+        {
+          "when": "MP >= 15",
+          "observable": "possible[1] -> teleport arm eligible"
+        },
+        {
+          "when": "MP < 15",
+          "observable": "no teleport even below threshold: retarget arm"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_stats_hit_response_teleport.cpp",
+          "test": "StatsHitResponseTeleport.a_mage_struck_again_mid_teleport_casts_nothing",
+          "note": "bot MP 100, TELEPORT price 15: first hit ANI_TELE_OUT and MP 85"
+        }
+      ],
+      "missing_arms": [
+        "MP < 15"
+      ]
+    },
+    {
+      "id": "living-03-mage.lua:112",
+      "lines": [
+        112,
+        119
+      ],
+      "kinds": [
+        "if",
+        "else"
+      ],
+      "function": "hit_response",
+      "anchor": "if self.hp < threshold and possible[1] then",
+      "condition": "self.hp < threshold and possible[1] / else",
+      "semantic": "Below the threshold with 15 MP a struck mage forces TELEPORT (slot 1, shifter 0 so never the marker, busy forced to 0) and does not retarget; otherwise a hit from a new attacker makes the mage and the attacker target each other and resets distances to 15000.",
+      "arms": [
+        {
+          "when": "below threshold, can pay",
+          "observable": "current_special 1, shifter 0, busy 0, ani_type ANI_TELE_OUT, MP -15, foe unchanged"
+        },
+        {
+          "when": "else, new attacker",
+          "observable": "mage.foe == attacker AND attacker.foe == mage; distances 15000"
+        },
+        {
+          "when": "else, same foe",
+          "observable": "nothing changes"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_stats_hit_response_teleport.cpp",
+          "test": "StatsHitResponseTeleport.stats_hit_response_mage_and_archmage_teleport_branches",
+          "note": "teleport arm: ANI_TELE_OUT, foe nullptr, busy 0; new-attacker arm: foe swap, distances 15000"
+        },
+        {
+          "file": "tests/integration/test_stats_hit_response_teleport.cpp",
+          "test": "StatsHitResponseTeleport.a_mage_struck_again_mid_teleport_casts_nothing",
+          "note": "teleport arm: MP 85, current_special 1, shifter 0, busy 0, foe nullptr"
+        }
+      ],
+      "missing_arms": [
+        "else, same foe"
+      ]
+    },
+    {
+      "id": "living-03-mage.lua:118",
+      "lines": [
+        118
+      ],
+      "kinds": [
+        "or"
+      ],
+      "function": "hit_response",
+      "anchor": "local _ = lc.mid_teleport(self) or self:special()  -- struck mid-teleport: no second cast",
+      "condition": "lc.mid_teleport(self) or self:special()",
+      "semantic": "A mage struck again while already mid-teleport casts nothing (no second TELEPORT, no MP spent, no refusal message).",
+      "arms": [
+        {
+          "when": "mid-teleport",
+          "observable": "no special(); MP unchanged; no refusal recorded"
+        },
+        {
+          "when": "not",
+          "observable": "special() TELEPORT"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_stats_hit_response_teleport.cpp",
+          "test": "StatsHitResponseTeleport.a_mage_struck_again_mid_teleport_casts_nothing",
+          "note": "mid-teleport: trace_count(special)==0, no SPECIAL BUSY, MP 85 unchanged; not: first hit traces slot=1 shift=0 and ANI_TELE_OUT"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-03-mage.lua:121",
+      "lines": [
+        121
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "hit_response",
+      "anchor": "if self:foe() ~= foe then",
+      "condition": "self:foe() ~= foe",
+      "semantic": "Same rule as :112 else-arm: only a NEW attacker retargets the mage and the attacker onto each other.",
+      "arms": [
+        {
+          "when": "new",
+          "observable": "foe swap + distances 15000"
+        },
+        {
+          "when": "same",
+          "observable": "no change"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_stats_hit_response_teleport.cpp",
+          "test": "StatsHitResponseTeleport.stats_hit_response_mage_and_archmage_teleport_branches",
+          "note": "new attacker: mage2.foe == foe, foe.foe == mage2, distances 15000"
+        }
+      ],
+      "missing_arms": [
+        "same"
+      ]
+    },
+    {
+      "id": "living-03-mage.lua:139",
+      "lines": [
+        139
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "teleport (TELEPORT / MARKER cast)",
+      "anchor": "if lc.mid_teleport(self) then",
+      "condition": "lc.mid_teleport(self)",
+      "semantic": "TELEPORT and TELEPORT MARKER refuse 'SPECIAL BUSY' while the mage is mid-teleport (ANI_TELE_OUT/IN).",
+      "arms": [
+        {
+          "when": "mid-teleport",
+          "observable": "false 'SPECIAL BUSY'; MP unchanged"
+        },
+        {
+          "when": "not",
+          "observable": "continue"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.mage_teleport_drives_simulation",
+          "note": "not mid-teleport: special() true, ANI_TELE_OUT"
+        }
+      ],
+      "missing_arms": [
+        "mid-teleport"
+      ]
+    },
+    {
+      "id": "living-03-mage.lua:142",
+      "lines": [
+        142
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "teleport",
+      "anchor": "if self:shifter_down() == 0 then",
+      "condition": "self:shifter_down() == 0",
+      "semantic": "Unshifted TELEPORT plays SOUND_TELEPORT and starts the tele-out animation; the engine's handle_teleport then moves the mage to a random spot (or to its marker). Shifted is the marker path.",
+      "arms": [
+        {
+          "when": "unshifted",
+          "observable": "true; ani_type ANI_TELE_OUT; SOUND_TELEPORT; after the animation xpos/ypos changed"
+        },
+        {
+          "when": "shifted",
+          "observable": "marker path"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.mage_teleport_drives_simulation",
+          "note": "unshifted: special() true, ANI_TELE_OUT, position changed after the animation"
+        },
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.mage_marker_recast_replaces_the_owned_marker",
+          "note": "shifted: marker path places one live marker"
+        }
+      ],
+      "missing_arms": [
+        "unshifted"
+      ]
+    },
+    {
+      "id": "living-03-mage.lua:149",
+      "lines": [
+        149
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "teleport (marker)",
+      "anchor": "if lc.is_busy(self) then",
+      "condition": "lc.is_busy(self)",
+      "semantic": "Placing a TELEPORT MARKER refuses 'SPECIAL BUSY' while busy > 0.",
+      "arms": [
+        {
+          "when": "busy > 0",
+          "observable": "false 'SPECIAL BUSY'; no marker"
+        },
+        {
+          "when": "not busy",
+          "observable": "continue"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.mage_marker_recast_replaces_the_owned_marker",
+          "note": "not busy: busy 0, shifter 1 -> special() true, one live marker"
+        }
+      ],
+      "missing_arms": [
+        "busy > 0"
+      ]
+    },
+    {
+      "id": "living-03-mage.lua:153",
+      "lines": [
+        153
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "teleport (marker)",
+      "anchor": "if self:has_guy() and self:g_intelligence() < t.marker_int_req then",
+      "condition": "self:has_guy() and self:g_intelligence() < marker_int_req (75)",
+      "semantic": "Only a hero needs 75 INT to place a TELEPORT MARKER (refused '75 INT REQUIRED', free, no notification); bots place markers freely.",
+      "arms": [
+        {
+          "when": "hero INT < 75",
+          "observable": "false '75 INT REQUIRED'; no events"
+        },
+        {
+          "when": "hero INT >= 75 or bot",
+          "observable": "marker placed"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_pack_lua_paths.cpp",
+          "test": "PackLuaMage.the_marker_flow_talks_only_to_the_casting_seat",
+          "note": "hero INT 10: reason \"75 INT REQUIRED\", zero events; INT 200: \"Teleport Marker Placed\""
+        },
+        {
+          "file": "tests/integration/test_sim_input_unit.cpp",
+          "test": "SimInputUnit.intelligence_refusals_use_one_private_cue",
+          "note": "mage slot 1 INT 10: one \"75 INT REQUIRED\" cue, MP 9000 unchanged"
+        },
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.mage_marker_recast_replaces_the_owned_marker",
+          "note": "hero INT 120: one live marker"
+        },
+        {
+          "parity": "mage_bot_marker_home_fixes_scen99",
+          "fact": "",
+          "note": "bot  no guy: WalkerOfOrderFamilyCount(MARKER FX 1 1)"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-03-mage.lua:158",
+      "lines": [
+        158,
+        160,
+        161,
+        162,
+        163,
+        164
+      ],
+      "kinds": [
+        "for",
+        "if",
+        "and",
+        "and",
+        "and",
+        "and"
+      ],
+      "function": "teleport (marker)",
+      "anchor": "for i = 1, #obs do",
+      "condition": "for each ob: ob and order FX and family MARKER and owner == self and not dead",
+      "semantic": "A mage keeps at most one marker: placing a new one first kills its own live marker (another mage's marker, a dead one or a non-marker FX is untouched) and adds 8 busy for the removal.",
+      "arms": [
+        {
+          "when": "own live marker exists",
+          "observable": "old marker dead; one live marker remains; busy +8 extra (total 16)"
+        },
+        {
+          "when": "none / only others' markers",
+          "observable": "others untouched; busy +8"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.mage_marker_recast_replaces_the_owned_marker",
+          "note": "own marker: old dead, one live, busy 16"
+        }
+      ],
+      "missing_arms": [
+        "none / only others' markers"
+      ]
+    },
+    {
+      "id": "living-03-mage.lua:167",
+      "lines": [
+        167,
+        168
+      ],
+      "kinds": [
+        "if",
+        "and"
+      ],
+      "function": "teleport (marker removal notice)",
+      "anchor": "if (self.team == 0 or self:has_guy())",
+      "condition": "(self.team == 0 or self:has_guy()) and self:user() ~= -1",
+      "semantic": "The '(Old Marker Removed)' notice goes only to a seated caster (user ~= -1) on the player team or a hero, addressed to that caster's seat. Same rule as :191.",
+      "arms": [
+        {
+          "when": "seated team-0 / hero",
+          "observable": "one notification targeted at the caster"
+        },
+        {
+          "when": "unseated bot",
+          "observable": "no notification"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_pack_lua_paths.cpp",
+          "test": "PackLuaMage.the_marker_flow_talks_only_to_the_casting_seat",
+          "note": "seated hero user 1: \"(Old Marker Removed)\" targeted at seat 1"
+        }
+      ],
+      "missing_arms": [
+        "unseated bot"
+      ]
+    },
+    {
+      "id": "living-03-mage.lua:185",
+      "lines": [
+        185,
+        187
+      ],
+      "kinds": [
+        "if",
+        "else"
+      ],
+      "function": "teleport (marker)",
+      "anchor": "if self:has_guy() then",
+      "condition": "self:has_guy() -> lifetime = INT // 33 else level // 4 + 1",
+      "semantic": "A marker's number of uses is INT/33 for a hero, level/4 + 1 for a bot.",
+      "arms": [
+        {
+          "when": "hero",
+          "observable": "marker.lifetime == INT // 33"
+        },
+        {
+          "when": "bot",
+          "observable": "marker.lifetime == level // 4 + 1"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.mage_marker_recast_replaces_the_owned_marker",
+          "note": "hero INT 120: lifetime 120/33"
+        }
+      ],
+      "missing_arms": [
+        "bot"
+      ]
+    },
+    {
+      "id": "living-03-mage.lua:191",
+      "lines": [
+        191,
+        192
+      ],
+      "kinds": [
+        "if",
+        "and"
+      ],
+      "function": "teleport (marker placed notice)",
+      "anchor": "if (self.team == 0 or self:has_guy())",
+      "condition": "(self.team == 0 or self:has_guy()) and self:user() ~= -1",
+      "semantic": "Same rule as :167: 'Teleport Marker Placed' and '(N Uses)' go only to the seated caster's seat.",
+      "arms": [
+        {
+          "when": "seated team-0/hero",
+          "observable": "two notifications to the caster"
+        },
+        {
+          "when": "bot",
+          "observable": "none"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_pack_lua_paths.cpp",
+          "test": "PackLuaMage.the_marker_flow_talks_only_to_the_casting_seat",
+          "note": "seated hero: \"Teleport Marker Placed\" and \"(N Uses)\" targeted at seat 1"
+        }
+      ],
+      "missing_arms": [
+        "bot"
+      ]
+    },
+    {
+      "id": "living-03-mage.lua:208",
+      "lines": [
+        208,
+        214
+      ],
+      "kinds": [
+        "if",
+        "else"
+      ],
+      "function": "starburst (WARP SPACE, slot 2)",
+      "anchor": "if dmg_bonus > 0 then",
+      "condition": "dmg_bonus > 0 (spare MP after cost) else 0",
+      "semantic": "WARP SPACE spends spare magic: with MP left after its 60 price each fireball gains damage min(spare/15, 40) and range +that/3, and the mage pays that bonus once more; with no spare the bolts are plain.",
+      "arms": [
+        {
+          "when": "spare > 0",
+          "observable": "MP -= min(spare/15,40) extra; every bolt damage += bonus, lineofsight += bonus/3"
+        },
+        {
+          "when": "spare <= 0",
+          "observable": "bonus 0; bolts base"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": [
+        "spare > 0",
+        "spare <= 0"
+      ]
+    },
+    {
+      "id": "living-03-mage.lua:220",
+      "lines": [
+        220,
+        221,
+        222
+      ],
+      "kinds": [
+        "for",
+        "for",
+        "if"
+      ],
+      "function": "starburst",
+      "anchor": "for i = -1, 1 do",
+      "condition": "for i,j in -1..1: i ~= 0 or j ~= 0",
+      "semantic": "WARP SPACE fires one fireball along each of the 8 compass headings (never the null heading) and restores the mage's facing afterwards; weapon costs are pre-refunded (8 x wc).",
+      "arms": [
+        {
+          "when": "8 headings",
+          "observable": "8 FIREBALL weapons, one per (i,j) != (0,0) (asserted: count only); lastx/lasty restored to trunc(original) (executed-only: no test reads the mage's facing after the cast)"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.mage_warp_starburst_drives_simulation",
+          "note": "fbs_before + 8: the count part of the arm only"
+        },
+        {
+          "parity": "mage_starburst_ring_scen99",
+          "fact": "",
+          "note": "NW soldier and SW tower die  NE orc hit: per-heading reach"
+        }
+      ],
+      "missing_arms": [
+        "8 headings"
+      ]
+    },
+    {
+      "id": "living-03-mage.lua:226",
+      "lines": [
+        226
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "starburst",
+      "anchor": "if bolt then",
+      "condition": "if bolt",
+      "semantic": "A WARP SPACE bolt whose pad is blocked is simply missing; the cast still succeeds and the other headings fire.",
+      "arms": [
+        {
+          "when": "pad blocked on one heading",
+          "observable": "7 fireballs; special() true"
+        },
+        {
+          "when": "all clear",
+          "observable": "8"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.mage_warp_starburst_drives_simulation",
+          "note": "all clear: 8 fireballs"
+        }
+      ],
+      "missing_arms": [
+        "pad blocked on one heading"
+      ]
+    },
+    {
+      "id": "living-03-mage.lua:231",
+      "lines": [
+        231,
+        235
+      ],
+      "kinds": [
+        "if",
+        "if"
+      ],
+      "function": "starburst",
+      "anchor": "if bolt:lastx() ~= 0.0 then",
+      "condition": "bolt:lastx() ~= 0.0 / bolt:lasty() ~= 0.0",
+      "semantic": "WARP SPACE fireballs crawl: each non-zero velocity component is normalised to +-1, so a bolt moves exactly 1 px per tick per axis (the ring is point-blank).",
+      "arms": [
+        {
+          "when": "component non-zero",
+          "observable": "lastx/lasty == +-1"
+        },
+        {
+          "when": "component zero",
+          "observable": "stays 0"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": [
+        "component non-zero",
+        "component zero"
+      ]
+    },
+    {
+      "id": "living-03-mage.lua:255",
+      "lines": [
+        255,
+        260
+      ],
+      "kinds": [
+        "if",
+        "else"
+      ],
+      "function": "freeze_time (FREEZE TIME, slot 3)",
+      "anchor": "if self.team == og.u8(og.my_team()) then",
+      "condition": "self.team == u8(my_team) / else",
+      "semantic": "A mage on the local player's team stops time for everyone else: world enemy_freeze += 20 + 11*level, palette 1 (EVENT_SET_PALETTE). Any other mage grants its own side bonus rounds instead: min(5 + 2*level, 50) to itself and every friend on the map, with a 'TIME IS FROZEN! (N rounds)' notice. Wrapped by with_rest: 360-tick rest on both setting values.",
+      "arms": [
+        {
+          "when": "caster team == my_team",
+          "observable": "enemy_freeze +20+11L (L4: 64); palette event"
+        },
+        {
+          "when": "other team",
+          "observable": "bonus_rounds += min(5+2L,50) on caster and all friends; notification; enemy_freeze unchanged"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.mage_freeze_time_drives_simulation",
+          "note": "on-team: enemy_freeze 64"
+        },
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.mage_freeze_time_off_team_grants_bonus_rounds_not_a_global_stop",
+          "note": "off-team: enemy_freeze 0, caster and ally bonus exact, foe unchanged"
+        },
+        {
+          "file": "tests/unit/test_pack_lua_paths.cpp",
+          "test": "PackLuaMage.an_enemy_freeze_time_banks_bonus_rounds_for_its_own_side",
+          "note": "off-team notification \"TIME IS FROZEN! (15 rounds)\""
+        },
+        {
+          "file": "tests/unit/test_pack_lua_paths.cpp",
+          "test": "PackLuaMage.an_enemy_freeze_time_is_capped_at_fifty_rounds",
+          "note": "cap 50"
+        },
+        {
+          "file": "tests/unit/test_kit_rests.cpp",
+          "test": "KitRests.freeze_time_rests_thirty_seconds",
+          "note": "with_rest: \"FREEZE TIME IN 30S\", bank unchanged"
+        }
+      ],
+      "missing_arms": [
+        "caster team == my_team"
+      ]
+    },
+    {
+      "id": "living-03-mage.lua:269",
+      "lines": [
+        269
+      ],
+      "kinds": [
+        "for"
+      ],
+      "function": "freeze_time",
+      "anchor": "for i = 1, #friends do",
+      "condition": "for each friend within 30000",
+      "semantic": "Off-team FREEZE TIME bonus rounds go to every friend of the caster anywhere on the map (30000 px).",
+      "arms": [
+        {
+          "when": "each friend",
+          "observable": "bonus_rounds += rounds"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_pack_lua_paths.cpp",
+          "test": "PackLuaMage.an_enemy_freeze_time_banks_bonus_rounds_for_its_own_side",
+          "note": "ally 15, foe 0"
+        },
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.mage_freeze_time_off_team_grants_bonus_rounds_not_a_global_stop",
+          "note": "ally 4+17, enemy unchanged"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-03-mage.lua:281",
+      "lines": [
+        281
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "energy_wave (ENERGY WAVE, slot 4)",
+      "anchor": "if not bolt then",
+      "condition": "not bolt",
+      "semantic": "ENERGY WAVE rides a fired fireball: if the fireball cannot be fired the cast fails 'COULD NOT FIRE'; otherwise a WAVE weapon owned by the mage, at the mage's level, takes the bolt's place and heading and the bolt is removed.",
+      "arms": [
+        {
+          "when": "fire ok",
+          "observable": "one WAVE in weaplist, owner mage, level == mage level, lastx/lasty == bolt's; the fireball dead"
+        },
+        {
+          "when": "fire nil",
+          "observable": "false 'COULD NOT FIRE'; no wave"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.mage_energy_wave_drives_simulation",
+          "note": "fire ok: one WAVE, owner, level - the heading copy and the fireball's death are not read"
+        },
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.mage_wave_is_one_and_heartburst_is_one_per_foe",
+          "note": "one WAVE per cast"
+        }
+      ],
+      "missing_arms": [
+        "fire ok",
+        "fire nil"
+      ]
+    },
+    {
+      "id": "living-03-mage.lua:304",
+      "lines": [
+        304
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "heartburst (HEARTBURST, slot 5/unmapped)",
+      "anchor": "if foe_count == 0 then",
+      "condition": "foe_count == 0",
+      "semantic": "HEARTBURST with no foe inside 80 + 2*level px is refused free 'NO FOE IN RANGE'.",
+      "arms": [
+        {
+          "when": "no foe",
+          "observable": "false 'NO FOE IN RANGE'; MP unchanged; no explosion"
+        },
+        {
+          "when": "foes",
+          "observable": "one explosion per foe (:316)"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.mage_heartburst_drives_simulation",
+          "note": "foes: one explosion per foe"
+        },
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.mage_wave_is_one_and_heartburst_is_one_per_foe",
+          "note": "two foes: +2 explosions"
+        }
+      ],
+      "missing_arms": [
+        "no foe"
+      ]
+    },
+    {
+      "id": "living-03-mage.lua:310",
+      "lines": [
+        310
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "heartburst",
+      "anchor": "if self:has_guy() then",
+      "condition": "self:has_guy()",
+      "semantic": "A hero's HEARTBURST counts one shot per foe it bursts in total_shots and scen_shots (accuracy stats); bots keep no stats.",
+      "arms": [
+        {
+          "when": "hero",
+          "observable": "total_shots += foe_count, scen_shots += foe_count"
+        },
+        {
+          "when": "bot",
+          "observable": "no guy stats"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": [
+        "hero",
+        "bot"
+      ]
+    },
+    {
+      "id": "living-03-mage.lua:316",
+      "lines": [
+        316
+      ],
+      "kinds": [
+        "for"
+      ],
+      "function": "heartburst",
+      "anchor": "for i = 1, #foes do",
+      "condition": "for each foe in reach",
+      "semantic": "HEARTBURST detonates one magical explosion on each foe in reach (on the foe's floor), each dealing an equal share of half the spare pool (trunc(min(spare/2,cap)/foe_count)); the mage pays each share from its MP, takes 5 busy, and its own blast marker skip_exit=100 spares the caster.",
+      "arms": [
+        {
+          "when": "n foes",
+          "observable": "n EXPLOSION fx with damage == share, BIT_MAGICAL, skip_exit 100, centred on each foe; MP -= n*share; busy +5; n SOUND_EXPLODE"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.mage_heartburst_drives_simulation",
+          "note": "count 1, MP 900, busy 5"
+        },
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.mage_wave_is_one_and_heartburst_is_one_per_foe",
+          "note": "count 2, MP 600, busy 5"
+        }
+      ],
+      "missing_arms": [
+        "n foes"
+      ]
+    },
+    {
+      "id": "living-03-mage.lua:408",
+      "lines": [
+        408
+      ],
+      "kinds": [
+        ""
+      ],
+      "function": "family table (check_special_ai wiring)",
+      "anchor": "check_special_ai = lc.gate_with_rest(check_special_ai, 3),",
+      "condition": "check_special_ai = lc.gate_with_rest(check_special_ai, 3)",
+      "semantic": "A bot mage never chooses FREEZE TIME (slot 3) while its 360-tick freeze_rest is still running, on both Gameplay Fixes / New Specials values; its other slots stay free during the rest, and slot 3 is free again once the rest ends. Bot-side twin of the cast-side with_rest on FREEZE TIME (living-03-mage.lua:255); the gate mechanism itself lives in packs/core/lib/living_common.lua (other chunk).",
+      "arms": [
+        {
+          "when": "slot 3, rest running",
+          "observable": "check_special_ai returns false"
+        },
+        {
+          "when": "other slot, rest running",
+          "observable": "the slot's own gate answers (true in the test's staging)"
+        },
+        {
+          "when": "slot 3, rest elapsed",
+          "observable": "the slot's own gate answers again (true)"
+        }
+      ],
+      "setting": "both",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_rests.cpp",
+          "test": "KitRests.bot_gates_hold_a_resting_special",
+          "note": "mage rows: EXPECT_FALSE(gate slot 3) while resting, EXPECT_TRUE(other slot), EXPECT_TRUE(gate slot 3) after 360 ticks; New Specials 1/0 and Gameplay Fixes on"
+        }
+      ],
+      "missing_arms": []
+    }
+  ],
+  "other": [
+    {
+      "id": "living-03-mage.lua:179",
+      "lines": [
+        179
+      ],
+      "kinds": [
+        "if"
+      ],
+      "kind": "defensive",
+      "anchor": "if not marker then",
+      "note": "og.add_ob returned nil (object cap): 'COULD NOT CREATE MARKER'. No rule."
+    },
+    {
+      "id": "living-03-mage.lua:271",
+      "lines": [
+        271
+      ],
+      "kinds": [
+        "if"
+      ],
+      "kind": "defensive",
+      "anchor": "if w then",
+      "note": "nil entry guard in the friends list."
+    },
+    {
+      "id": "living-03-mage.lua:285",
+      "lines": [
+        285
+      ],
+      "kinds": [
+        "if"
+      ],
+      "kind": "defensive",
+      "anchor": "if not wave then",
+      "note": "og.add_ob('weapon', WAVE) nil: 'COULD NOT CREATE WAVE' (object cap)."
+    },
+    {
+      "id": "living-03-mage.lua:319",
+      "lines": [
+        319
+      ],
+      "kinds": [
+        "if"
+      ],
+      "kind": "defensive",
+      "anchor": "if not burst then",
+      "note": "og.summon fx nil (object cap): 'COULD NOT MAKE EXPLOSION' mid-loop. No rule."
+    },
+    {
+      "id": "living-03-mage.lua:357",
+      "lines": [
+        357
+      ],
+      "kinds": [
+        "and"
+      ],
+      "kind": "dead",
+      "anchor": "{ id = \"freeze_time\", name = \"FREEZE TIME\", mp_cost = 500, cast = lc.with_rest(freeze_time, 3, \"freeze_rest\", \"FREEZE TIME\"), detail = \"Freeze all but your team",
+      "note": "not a branch ('and' in the FREEZE TIME detail string)"
+    },
+    {
+      "id": "living-03-mage.lua:358",
+      "lines": [
+        358
+      ],
+      "kinds": [
+        "and"
+      ],
+      "kind": "dead",
+      "anchor": "{ id = \"energy_wave\", name = \"ENERGY WAVE\", mp_cost = 70,  cast = energy_wave, detail = \"Send a growing ripple of energy through walls and foes.\", icon = \"icons",
+      "note": "not a branch ('and' in the ENERGY WAVE detail string)"
+    },
+    {
+      "id": "living-03-mage.lua:360",
+      "lines": [
+        360
+      ],
+      "kinds": [
+        "and"
+      ],
+      "kind": "dead",
+      "anchor": "default_cast = heartburst,  -- case 5 and every unmapped slot",
+      "note": "not a branch ('and' in the default_cast comment)"
+    },
+    {
+      "id": "living-03-mage.lua:377",
+      "lines": [
+        377
+      ],
+      "kinds": [
+        "and"
+      ],
+      "kind": "dead",
+      "anchor": "description = \"Mages are slow, can't stand much damage, and are horrible at hand-to-hand combat, but their magical fireballs pack a big punch.\",",
+      "note": "not a branch ('and'/'but' in the description string)"
+    }
+  ]
+}

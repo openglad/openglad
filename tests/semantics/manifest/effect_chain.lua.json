@@ -1,0 +1,524 @@
+{
+  "path": "packs/core/lib/effect_chain.lua",
+  "rules": [
+    {
+      "id": "effect_chain.lua:20",
+      "lines": [
+        20,
+        21,
+        22
+      ],
+      "kinds": [
+        "if",
+        "or",
+        "or"
+      ],
+      "function": "on_act (core:chain)",
+      "anchor": "if not leader",
+      "condition": "not leader or lineofsight < 1 or not owner",
+      "semantic": "A chain-lightning bolt that has lost its target, flown out its life (lineofsight) or lost its caster fizzles at once without striking.",
+      "arms": [
+        {
+          "when": "leader nil",
+          "observable": "bolt dead, no explosion"
+        },
+        {
+          "when": "lineofsight < 1",
+          "observable": "bolt dead, position unchanged"
+        },
+        {
+          "when": "owner nil",
+          "observable": "bolt dead"
+        },
+        {
+          "when": "all present",
+          "observable": "homes or strikes"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_effect_chain_and_door.cpp",
+          "test": "EffectChainAndDoor.effect_chain_early_exit_and_movement_branches",
+          "note": "lineofsight 0: dead, x unchanged; no owner: dead; all present: steps a full stepsize"
+        },
+        {
+          "file": "tests/integration/test_effect_more_paths.cpp",
+          "test": "EffectMorePaths.effect_batch4_chain_guard_ownerless_and_non_myguy_foe_scan",
+          "note": "ownerless: dead, lineofsight unchanged"
+        }
+      ],
+      "missing_arms": [
+        "leader nil"
+      ],
+      "note": [
+        "The no-leader bolt in effect_chain_early_exit_and_movement_branches also has no owner, so the owner test kills it: the leader-nil arm is never isolated, and no test asserts that no explosion follows."
+      ]
+    },
+    {
+      "id": "effect_chain.lua:28",
+      "lines": [
+        28
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "on_act (core:chain)",
+      "anchor": "if hits(self:xpos(), self:ypos(), self:sizex(), self:sizey(),",
+      "condition": "hits(self box, leader box)",
+      "semantic": "A chain bolt strikes when its box touches its target's box: it leaves an explosion with its own damage, team and level on its floor, gives the struck foe 3 rounds of immunity from further bolts (skip_exit +3), plays the explode sound and dies.",
+      "arms": [
+        {
+          "when": "boxes overlap",
+          "observable": "one FAMILY_EXPLOSION centred on the bolt with damage == bolt damage, owner == bolt owner, ANI_EXPLODE; leader skip_exit += 3; bolt dead"
+        },
+        {
+          "when": "no overlap",
+          "observable": "bolt moves toward the leader (effect_chain.lua:104)"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_effect_chain_and_door.cpp",
+          "test": "EffectChainAndDoor.effect_chain_hits_leader_spawns_explosion_and_secondary_chains_and_door_open_spawns_fx"
+        },
+        {
+          "file": "tests/integration/test_effect_more_paths.cpp",
+          "test": "EffectMorePaths.effect_chain_lightning_hits_leader_and_spawns_explosion"
+        },
+        {
+          "file": "tests/integration/test_effect_chain_and_door.cpp",
+          "test": "EffectChainAndDoor.effect_chain_early_exit_and_movement_branches",
+          "note": "no overlap: the bolt steps toward the leader"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "effect_chain.lua:31",
+      "lines": [
+        31
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "on_act (core:chain)",
+      "anchor": "if not blast then",
+      "condition": "not blast",
+      "semantic": "A chain bolt striking in a full world simply dies: no explosion, no immunity on the target, no forks.",
+      "arms": [
+        {
+          "when": "world full",
+          "observable": "bolt dead; leader skip_exit unchanged; no new chain"
+        },
+        {
+          "when": "blast spawned",
+          "observable": "strike proceeds"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_effect_more_paths.cpp",
+          "test": "EffectMorePaths.effect_chain_lightning_hits_leader_and_spawns_explosion",
+          "note": "blast spawned: the strike proceeds, skip_exit +3, bolt dead"
+        }
+      ],
+      "missing_arms": [
+        "world full"
+      ],
+      "note": [
+        "Status was none, but every strike test reaches the line."
+      ]
+    },
+    {
+      "id": "effect_chain.lua:55",
+      "lines": [
+        55,
+        59
+      ],
+      "kinds": [
+        "if",
+        "else"
+      ],
+      "function": "on_act (core:chain)",
+      "anchor": "if self:owner():has_guy() then",
+      "condition": "self:owner():has_guy()",
+      "semantic": "Forks look for foes within 240 px plus half the caster's Intelligence when the caster is a hero (has a guy), else 240 + 5 px per bolt level.",
+      "arms": [
+        {
+          "when": "owner has a guy",
+          "observable": "fork scan radius = 240 + g_intelligence // 2"
+        },
+        {
+          "when": "owner without a guy",
+          "observable": "radius = 240 + bolt level * 5"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": [
+        "owner has a guy",
+        "owner without a guy"
+      ]
+    },
+    {
+      "id": "effect_chain.lua:65",
+      "lines": [
+        65
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "on_act (core:chain)",
+      "anchor": "if foe_count ~= 0 and fork_damage > t.fork_min_damage then",
+      "condition": "foe_count ~= 0 and fork_damage > t.fork_min_damage",
+      "semantic": "A struck bolt forks only when there is a foe in reach and its children would carry more than 20 damage (half its own, truncated): weak bolts end the chain. The fork budget draws one RNG only when forking.",
+      "arms": [
+        {
+          "when": "foes in reach and trunc(damage*0.5) > 20",
+          "observable": "child bolts of damage trunc(damage/2)"
+        },
+        {
+          "when": "foes in reach and fork damage > 20: fork budget draw",
+          "observable": "one rand0(owner level) draw; up to that +1 children (needs owner level > 1 to pin)"
+        },
+        {
+          "when": "no foe in reach",
+          "observable": "no draw, no child"
+        },
+        {
+          "when": "child damage <= 20 (bolt damage <= 41)",
+          "observable": "no draw, no child"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_effect_chain_and_door.cpp",
+          "test": "EffectChainAndDoor.effect_chain_hits_leader_spawns_explosion_and_secondary_chains_and_door_open_spawns_fx",
+          "note": "ASSERT_EQ(1u, bolts.size()), EXPECT_FLOAT_EQ(50.0f, bolts[0]->damage()) from bolt damage 100"
+        },
+        {
+          "file": "tests/integration/test_effect_more_paths.cpp",
+          "test": "EffectMorePaths.effect_batch4_chain_guard_ownerless_and_non_myguy_foe_scan",
+          "note": "EXPECT_EQ(1, fork_count), EXPECT_FLOAT_EQ(35.0f, bolt->damage()) from 70"
+        }
+      ],
+      "missing_arms": [
+        "foes in reach and fork damage > 20: fork budget draw",
+        "no foe in reach",
+        "child damage <= 20 (bolt damage <= 41)"
+      ],
+      "note": [
+        "Ledger correction: the earlier no-foe citation was wrong (foe_count == 1 there). A mutation forks_left = 1 passes every test, and no test reads the RNG state."
+      ]
+    },
+    {
+      "id": "effect_chain.lua:70",
+      "lines": [
+        70
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "on_act (core:chain)",
+      "anchor": "if forks_left <= 0 then",
+      "condition": "forks_left <= 0",
+      "semantic": "The fork budget (1..owner level) is spent per same-floor foe considered in list order, INCLUDING the struck leader and any immune foe: those use up a fork without receiving a bolt.",
+      "arms": [
+        {
+          "when": "budget left",
+          "observable": "consider this foe"
+        },
+        {
+          "when": "budget spent",
+          "observable": "stop: no more children"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_effect_chain_and_door.cpp",
+          "test": "EffectChainAndDoor.effect_chain_hits_leader_spawns_explosion_and_secondary_chains_and_door_open_spawns_fx",
+          "note": "budget 1 at owner level 1: foe2, first in list, gets the only bolt; foe3 and the leader after it get none"
+        }
+      ],
+      "missing_arms": [],
+      "note": [
+        "Upgraded from executed-only with an empty where. The leader consuming a fork slot (line 91 runs for the skipped leader) is not asserted; see effect_chain.lua:77."
+      ]
+    },
+    {
+      "id": "effect_chain.lua:76",
+      "lines": [
+        76
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "on_act (core:chain)",
+      "anchor": "if w:floor() == self:floor() then",
+      "condition": "w:floor() == self:floor()",
+      "semantic": "Chain lightning never forks to a foe on another floor, and such foes do not use up the fork budget.",
+      "arms": [
+        {
+          "when": "same floor",
+          "observable": "eligible (effect_chain.lua:77) and consumes a fork"
+        },
+        {
+          "when": "other floor",
+          "observable": "skipped, no fork consumed"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_effect_chain_and_door.cpp",
+          "test": "EffectChainAndDoor.effect_chain_hits_leader_spawns_explosion_and_secondary_chains_and_door_open_spawns_fx",
+          "note": "same floor: foe2 gets a bolt and spends the only fork, foe3 gets none"
+        }
+      ],
+      "missing_arms": [
+        "other floor"
+      ],
+      "note": [
+        "Status was none, but the fork tests reach the line on floor 0."
+      ]
+    },
+    {
+      "id": "effect_chain.lua:77",
+      "lines": [
+        77
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "on_act (core:chain)",
+      "anchor": "if w ~= self:leader() and w:skip_exit() < 1 then",
+      "condition": "w ~= self:leader() and w:skip_exit() < 1",
+      "semantic": "A fork never re-targets the foe just struck nor a foe struck in the last three rounds (skip_exit immunity).",
+      "arms": [
+        {
+          "when": "other foe with skip_exit 0",
+          "observable": "child bolt: owner = caster, leader = w, BIT_MAGICAL, damage = fork damage, team, centred on the bolt"
+        },
+        {
+          "when": "other foe with skip_exit 0 (level, floor)",
+          "observable": "child level == bolt level; child floor == bolt floor"
+        },
+        {
+          "when": "w is the leader (its skip_exit already raised by +3)",
+          "observable": "no child"
+        },
+        {
+          "when": "non-leader foe with skip_exit >= 1",
+          "observable": "no child"
+        },
+        {
+          "when": "skipped foe (leader or skip_exit >= 1)",
+          "observable": "the fork budget is still spent (a later eligible foe loses its bolt when the budget was 1)"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_effect_more_paths.cpp",
+          "test": "EffectMorePaths.effect_batch4_chain_guard_ownerless_and_non_myguy_foe_scan",
+          "note": "child owner, leader, damage 35, team, BIT_MAGICAL, centre asserted"
+        },
+        {
+          "file": "tests/integration/test_effect_chain_and_door.cpp",
+          "test": "EffectChainAndDoor.effect_chain_hits_leader_spawns_explosion_and_secondary_chains_and_door_open_spawns_fx",
+          "note": "child leader foe2, damage 50, owner"
+        },
+        {
+          "file": "tests/integration/test_effect_more_paths.cpp",
+          "test": "EffectMorePaths.effect_chain_lightning_hits_leader_and_spawns_explosion",
+          "note": "EXPECT_EQ(0, fork_count): the only foe in range is the leader, which gets no child"
+        }
+      ],
+      "missing_arms": [
+        "other foe with skip_exit 0 (level, floor)",
+        "non-leader foe with skip_exit >= 1",
+        "skipped foe (leader or skip_exit >= 1)"
+      ],
+      "note": [
+        "Arm 1 names level and floor and no test asserts either on a child bolt. Arm 2: dropping either half of `w ~= self:leader() and w:skip_exit() < 1` passes every test (the only skipped foe is the leader, which also carries skip_exit 3), and the fork slot spent on a skipped foe is never observed."
+      ]
+    },
+    {
+      "id": "effect_chain.lua:79",
+      "lines": [
+        79
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "on_act (core:chain)",
+      "anchor": "if not bolt then",
+      "condition": "not bolt",
+      "semantic": "A fork that cannot be created (world full) abandons the rest of the forks; the bolt itself returns WITHOUT dying this tick.",
+      "arms": [
+        {
+          "when": "world full mid-fork",
+          "observable": "no more children; the striking bolt is not marked dead in this tick (it already spawned the blast)"
+        },
+        {
+          "when": "spawned",
+          "observable": "child configured"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_effect_more_paths.cpp",
+          "test": "EffectMorePaths.effect_batch4_chain_guard_ownerless_and_non_myguy_foe_scan",
+          "note": "spawned: child configured"
+        }
+      ],
+      "missing_arms": [
+        "world full mid-fork"
+      ],
+      "note": [
+        "Status was none, but the fork tests reach the line."
+      ]
+    },
+    {
+      "id": "effect_chain.lua:104",
+      "lines": [
+        104,
+        125
+      ],
+      "kinds": [
+        "if",
+        "else"
+      ],
+      "function": "on_act (core:chain)",
+      "anchor": "if distance > og.fmul(self:stepsize(), 2) then",
+      "condition": "distance > stepsize*2 / else",
+      "semantic": "A homing chain bolt steps toward its target's corner at up to stepsize per axis, burning one tick of its life; once within two steps of the target's centre it snaps onto the target (and strikes next tick).",
+      "arms": [
+        {
+          "when": "centre distance > 2*stepsize",
+          "observable": "lineofsight -1; worldx/worldy move by the per-axis step"
+        },
+        {
+          "when": "within 2*stepsize",
+          "observable": "center_on(leader): bolt centre == leader centre"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_effect_chain_and_door.cpp",
+          "test": "EffectChainAndDoor.effect_chain_early_exit_and_movement_branches"
+        },
+        {
+          "file": "tests/integration/test_effect_more_paths.cpp",
+          "test": "EffectMorePaths.effect_batch3_chain_snap_to_leader_and_effect_death_guard"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "effect_chain.lua:106",
+      "lines": [
+        106,
+        108,
+        111,
+        113
+      ],
+      "kinds": [
+        "if",
+        "elseif",
+        "if",
+        "elseif"
+      ],
+      "function": "on_act (core:chain)",
+      "anchor": "if leader:xpos() > self:xpos() then",
+      "condition": "leader:xpos() >/< self:xpos(); leader:ypos() >/< self:ypos()",
+      "semantic": "Each axis of a homing step moves at most stepsize toward the target and never past it; an aligned axis does not move; the bolt faces the direction it flies.",
+      "arms": [
+        {
+          "when": "target right/below",
+          "observable": "+min(step, gap)"
+        },
+        {
+          "when": "target left/above",
+          "observable": "-min(step, gap)"
+        },
+        {
+          "when": "aligned",
+          "observable": "0 on that axis"
+        },
+        {
+          "when": "any",
+          "observable": "curdir = facing(trunc xd, trunc yd); frame = ani[curdir][0]"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_effect_more_paths.cpp",
+          "test": "EffectMorePaths.effect_batch6_chain_small_delta_else_branches",
+          "note": "right gap 6 < step 10 closes exactly; below 50 clamps to 10"
+        },
+        {
+          "file": "tests/integration/test_effect_chain_and_door.cpp",
+          "test": "EffectChainAndDoor.effect_chain_movement_axis_delta_branches",
+          "note": "aligned x: no x move"
+        },
+        {
+          "file": "tests/integration/test_effect_more_paths.cpp",
+          "test": "EffectMorePaths.effect_batch4_chain_movement_negative_delta_branch",
+          "note": "left/above 80 px: exactly -4 each"
+        }
+      ],
+      "missing_arms": [
+        "any"
+      ],
+      "note": [
+        "Left/above is pinned only when the gap exceeds the step; og.max(gap, -step) -> -step survives. No test reads curdir or frame after a homing step."
+      ]
+    }
+  ],
+  "other": [
+    {
+      "id": "effect_chain.lua:68",
+      "lines": [
+        68
+      ],
+      "kinds": [
+        "for"
+      ],
+      "kind": "loop",
+      "anchor": "for i = 1, #foes do",
+      "note": "iterates the fork scan; rules at effect_chain.lua:70, :76, :77"
+    },
+    {
+      "id": "effect_chain.lua:120",
+      "lines": [
+        120
+      ],
+      "kinds": [
+        "if"
+      ],
+      "kind": "defensive",
+      "anchor": "if frame ~= nil then",
+      "note": "og.ani_frame nil = the C++ `if (ani)` guard; skips set_frame on a family without an animation table"
+    }
+  ]
+}

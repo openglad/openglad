@@ -1,0 +1,1002 @@
+{
+  "path": "src/gameplay/smooth.cpp",
+  "rules": [
+    {
+      "id": "smooth.cpp:287",
+      "lines": [
+        287,
+        291,
+        294
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
+      ],
+      "function": "smoother::query_x_y",
+      "anchor": "if (mygrid_span_.empty())",
+      "condition": "no grid / x,y < 0 / x >= maxx or y >= maxy",
+      "semantic": "Off the map, or before a map is bound, the terrain reads as plain grass (PIX_GRASS1), so edge tiles smooth as if grass lay beyond and a forestwalker at the edge is not 'in trees' off-map.",
+      "arms": [
+        {
+          "when": "no grid",
+          "observable": "PIX_GRASS1"
+        },
+        {
+          "when": "negative coordinate",
+          "observable": "PIX_GRASS1"
+        },
+        {
+          "when": "beyond width/height",
+          "observable": "PIX_GRASS1"
+        },
+        {
+          "when": "inside",
+          "observable": "the stored tile"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_smooth_ops.cpp",
+          "test": "SmoothOps.smooth_query_x_y_no_grid"
+        },
+        {
+          "file": "tests/integration/test_smooth_unit.cpp",
+          "test": "SmoothUnit.smooth_r11_out_of_range_neighbours_read_as_grass_and_writes_are_clamped"
+        },
+        {
+          "file": "tests/integration/test_smooth_ops.cpp",
+          "test": "SmoothOps.smooth_query_x_y_with_grid"
+        },
+        {
+          "file": "tests/integration/test_smooth_matrix.cpp",
+          "test": "SmoothMatrix.smooth_query_helpers_and_grass_water_corner_branches"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "smooth.cpp:313",
+      "lines": [
+        313,
+        316,
+        319,
+        322
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if"
+      ],
+      "function": "smoother::surrounds",
+      "anchor": "if (query_genre_x_y(x, y-1) == whatgenre) // above",
+      "condition": "neighbour genre == whatgenre (up/right/down/left)",
+      "semantic": "A tile's 'around' mask counts which of its four neighbours share its terrain genre: up 1, right 2, down 4, left 8.",
+      "arms": [
+        {
+          "when": "each matching neighbour",
+          "observable": "its bit set"
+        },
+        {
+          "when": "none",
+          "observable": "0"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_smoother.cpp",
+          "test": "Smoother.surrounds_bitmask_counts_neighbors"
+        },
+        {
+          "file": "tests/integration/test_smoother.cpp",
+          "test": "Smoother.smooth_writes_the_exact_tile_for_every_genre_and_around_mask"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "smooth.cpp:349",
+      "lines": [
+        347,
+        349,
+        350,
+        353,
+        356,
+        359,
+        362
+      ],
+      "kinds": [
+        "switch",
+        "case",
+        "if",
+        "else if",
+        "else if",
+        "else if",
+        "else"
+      ],
+      "function": "smoother::smooth",
+      "anchor": "switch (here) // switch on genre",
+      "condition": "case TYPE_GRASS: water on 5 of the corner-side cells",
+      "semantic": "Grass with water wrapped around one corner (the corner plus its two sides and the two adjacent diagonals) becomes the matching grass/water shoreline corner; otherwise it becomes one of four plain grass variants at random. The autotiler runs in the level editor and the mapgen tools (builders.cpp:138, level_editor.cpp), never in a sim tick; only query_x_y/query_genre_x_y feed the sim (forestwalk, effects).",
+      "arms": [
+        {
+          "when": "water around LL",
+          "observable": "PIX_GRASSWATER_LL"
+        },
+        {
+          "when": "UR",
+          "observable": "PIX_GRASSWATER_UR"
+        },
+        {
+          "when": "UL",
+          "observable": "PIX_GRASSWATER_UL"
+        },
+        {
+          "when": "LR",
+          "observable": "PIX_GRASSWATER_LR"
+        },
+        {
+          "when": "else",
+          "observable": "grass_variants[next(4)]"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_smoother.cpp",
+          "test": "Smoother.smooth_writes_the_exact_tile_for_every_genre_and_around_mask"
+        },
+        {
+          "file": "tests/integration/test_smooth_matrix.cpp",
+          "test": "SmoothMatrix.smooth_query_helpers_and_grass_water_corner_branches"
+        },
+        {
+          "file": "tests/integration/test_coverage_misc.cpp",
+          "test": "CoverageMisc.final_r16_smooth_targeted_grass_and_dark_variants"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "smooth.cpp:366",
+      "lines": [
+        365,
+        366,
+        399,
+        403,
+        407,
+        409,
+        411,
+        414,
+        417,
+        420,
+        423,
+        426,
+        428,
+        430,
+        432,
+        435,
+        440,
+        444,
+        446,
+        448,
+        451,
+        453,
+        455,
+        458,
+        460,
+        462,
+        465,
+        467,
+        469,
+        472
+      ],
+      "kinds": [
+        "case",
+        "if",
+        "else if",
+        "else if",
+        "else if",
+        "if",
+        "else",
+        "else if",
+        "if",
+        "else if",
+        "if",
+        "else if",
+        "else if",
+        "if",
+        "else",
+        "else if",
+        "else if",
+        "else if",
+        "if",
+        "else",
+        "else if",
+        "if",
+        "else",
+        "else if",
+        "if",
+        "else",
+        "else if",
+        "if",
+        "else",
+        "else"
+      ],
+      "function": "smoother::smooth",
+      "anchor": "case TYPE_GRASS_DARK:  // Shadowed grass",
+      "condition": "case TYPE_GRASS_DARK: around mask arms",
+      "semantic": "Without a shadow caster in play, dark grass picks its piece from which neighbours are also dark grass (mask), plain grass beside an open edge giving the LL/UR fade pieces; anything else is PIX_GRASS_DARK_1.",
+      "arms": [
+        {
+          "when": "TO_AROUND / top middle / left middle / top left",
+          "observable": "grass_dark_variants[next(4)]"
+        },
+        {
+          "when": "right middle / centre vertical",
+          "observable": "grass_dark_right[next(2)]"
+        },
+        {
+          "when": "bottom middle / middle thin",
+          "observable": "grass_dark_bottom[next(2)] or RUBBLE"
+        },
+        {
+          "when": "top right / right thin / top alone, grass beside",
+          "observable": "PIX_GRASS_DARK_LL else B2/B1"
+        },
+        {
+          "when": "bottom left / left alone / bottom alone, grass beside",
+          "observable": "PIX_GRASS_DARK_UR else B1"
+        },
+        {
+          "when": "bottom right",
+          "observable": "PIX_GRASS_DARK_BR"
+        },
+        {
+          "when": "other",
+          "observable": "PIX_GRASS_DARK_1"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_smooth_matrix.cpp",
+          "test": "SmoothMatrix.grass_dark_grass_wall_and_cobble_masks_each_select_their_exact_tile"
+        },
+        {
+          "file": "tests/integration/test_smooth_more_branches.cpp",
+          "test": "SmoothMoreBranches.smooth_round9_dark_grass_single_neighbor_branch_pairs"
+        },
+        {
+          "file": "tests/integration/test_smooth_unit.cpp",
+          "test": "SmoothUnit.dark_grass_top_middle_draws_a_dark_variant"
+        },
+        {
+          "file": "tests/integration/test_smooth_ops.cpp",
+          "test": "SmoothOps.smooth_dark_grass_round7_branch_matrix_338_448"
+        },
+        {
+          "file": "tests/integration/test_smooth_more_branches.cpp",
+          "test": "SmoothMoreBranches.dark_grass_and_wall_clusters_select_their_exact_piece"
+        }
+      ],
+      "missing_arms": [
+        "top right / right thin / top alone, grass beside",
+        "bottom left / left alone / bottom alone, grass beside"
+      ]
+    },
+    {
+      "id": "smooth.cpp:370",
+      "lines": [
+        370,
+        377,
+        380,
+        382,
+        383,
+        384,
+        385,
+        386,
+        388,
+        391,
+        396
+      ],
+      "kinds": [
+        "else if",
+        "else if",
+        "switch",
+        "case",
+        "case",
+        "case",
+        "case",
+        "case",
+        "if",
+        "default",
+        "else if"
+      ],
+      "function": "smoother::smooth",
+      "anchor": "else if ( (left == TYPE_TREES || left == TYPE_WALL)",
+      "condition": "case TYPE_GRASS_DARK: trees/walls left+down (not upright) / upleft+up / up+right",
+      "semantic": "Dark grass is the shadow trees and walls cast: with a shadow caster to its left and below it is a right-edge piece; under a caster (upleft and up) it is a bottom piece if lighter ground (grass, water, trees, dirt, cobble) lies below, with a 1-in-20 rubble tile, else plain dark; with casters up and right it is the UR corner.",
+      "arms": [
+        {
+          "when": "left & down casters, upright open",
+          "observable": "grass_dark_right[next(2)]"
+        },
+        {
+          "when": "upleft & up casters, light ground below",
+          "observable": "grass_dark_bottom[next(2)], PIX_GRASS_RUBBLE on next(20)==0"
+        },
+        {
+          "when": "upleft & up casters, dark below",
+          "observable": "grass_dark_variants[next(4)]"
+        },
+        {
+          "when": "up & right casters",
+          "observable": "PIX_GRASS_DARK_UR"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_smooth_more_branches.cpp",
+          "test": "SmoothMoreBranches.dark_grass_and_wall_clusters_select_their_exact_piece"
+        },
+        {
+          "file": "tests/integration/test_smooth_more_branches.cpp",
+          "test": "SmoothMoreBranches.dark_grass_under_trees_over_more_shadow_stays_plain_dark"
+        },
+        {
+          "file": "tests/integration/test_coverage_misc.cpp",
+          "test": "CoverageMisc.coverage_r17_smooth_grass_water_and_dark_variants"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "smooth.cpp:475",
+      "lines": [
+        475
+      ],
+      "kinds": [
+        "case"
+      ],
+      "function": "smoother::smooth",
+      "anchor": "case TYPE_CARPET:",
+      "condition": "case TYPE_CARPET",
+      "semantic": "Carpet pieces follow a fixed table by the carpet-neighbour mask.",
+      "arms": [
+        {
+          "when": "mask 0..15",
+          "observable": "carpet_by_surround[mask]"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_smoother.cpp",
+          "test": "Smoother.smooth_writes_the_exact_tile_for_every_genre_and_around_mask"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "smooth.cpp:478",
+      "lines": [
+        478
+      ],
+      "kinds": [
+        "case"
+      ],
+      "function": "smoother::smooth",
+      "anchor": "case TYPE_GRASS_LIGHT:",
+      "condition": "case TYPE_GRASS_LIGHT",
+      "semantic": "Light grass pieces follow a fixed table by mask.",
+      "arms": [
+        {
+          "when": "mask 0..15",
+          "observable": "grass_light_by_surround[mask]"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_smoother.cpp",
+          "test": "Smoother.smooth_writes_the_exact_tile_for_every_genre_and_around_mask"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "smooth.cpp:482",
+      "lines": [
+        481,
+        482,
+        487,
+        489,
+        491,
+        494,
+        496,
+        498
+      ],
+      "kinds": [
+        "case",
+        "if",
+        "if",
+        "else if",
+        "else",
+        "if",
+        "else if",
+        "else"
+      ],
+      "function": "smoother::smooth",
+      "anchor": "case TYPE_WALL:",
+      "condition": "case TYPE_WALL, arrow slit / up genre / uppix",
+      "semantic": "An arrow-slit wall re-skins its sill to the ground above it: grass, dark grass, stone pavement or wood floor; with no matching sill it keeps its own tile.",
+      "arms": [
+        {
+          "when": "grass above",
+          "observable": "PIX_WALL_ARROW_GRASS"
+        },
+        {
+          "when": "dark grass",
+          "observable": "PIX_WALL_ARROW_GRASS_DARK"
+        },
+        {
+          "when": "pavement",
+          "observable": "PIX_WALL4"
+        },
+        {
+          "when": "wood floor",
+          "observable": "PIX_WALL_ARROW_FLOOR"
+        },
+        {
+          "when": "other",
+          "observable": "unchanged"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_smoother.cpp",
+          "test": "Smoother.smooth_writes_the_exact_tile_for_every_genre_and_around_mask"
+        },
+        {
+          "file": "tests/integration/test_smooth_unit.cpp",
+          "test": "SmoothUnit.arrow_slit_with_no_matching_sill_keeps_its_own_tile"
+        },
+        {
+          "file": "tests/integration/test_smooth_coverage.cpp",
+          "test": "SmoothCoverage.smooth_wall_arrow_slit_branches"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "smooth.cpp:505",
+      "lines": [
+        503,
+        505,
+        507,
+        510,
+        513,
+        514,
+        515,
+        517,
+        520,
+        521,
+        522,
+        524,
+        527,
+        530,
+        531,
+        533,
+        536,
+        537,
+        538,
+        540,
+        543,
+        544,
+        545,
+        547,
+        549,
+        552,
+        554,
+        556,
+        560
+      ],
+      "kinds": [
+        "else",
+        "switch",
+        "case",
+        "case",
+        "case",
+        "case",
+        "if",
+        "else",
+        "case",
+        "case",
+        "if",
+        "else",
+        "case",
+        "case",
+        "if",
+        "else",
+        "case",
+        "case",
+        "if",
+        "else",
+        "case",
+        "case",
+        "if",
+        "if",
+        "else",
+        "else",
+        "if",
+        "else",
+        "default"
+      ],
+      "function": "smoother::smooth",
+      "anchor": "else // we're not an arrow slit ...",
+      "condition": "wall mask switch / genre two below / genre below-left",
+      "semantic": "A plain wall picks its piece from its wall-neighbour mask and whether the wall continues two tiles down (a face vs a top) and below-left: side end, lower-left/right bases, vertical runs, middle base (1-in-10 cracked), top-right corners and horizontal pipes, and the surrounded cases; any other mask (0, 2, 8, 10) keeps the tile it has.",
+      "arms": [
+        {
+          "when": "1",
+          "observable": "PIX_WALLSIDE_C"
+        },
+        {
+          "when": "3",
+          "observable": "PIX_WALLSIDE_L"
+        },
+        {
+          "when": "4,5,6,7",
+          "observable": "PIX_WALL2 if wall two below else PIX_WALL_LL"
+        },
+        {
+          "when": "9",
+          "observable": "PIX_WALLSIDE_R"
+        },
+        {
+          "when": "11",
+          "observable": "PIX_WALLSIDE_CRACK_C1 on next(10)==0 else PIX_WALLSIDE1"
+        },
+        {
+          "when": "12,14",
+          "observable": "PIX_WALL3 / PIX_H_WALL1"
+        },
+        {
+          "when": "13,15",
+          "observable": "WALL3/WALL2 or H_WALL1/WALL_LL by two-below and below-left"
+        },
+        {
+          "when": "0,2,8,10",
+          "observable": "unchanged"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_smooth_more_branches.cpp",
+          "test": "SmoothMoreBranches.smooth_wall_vertical_and_base_cases"
+        },
+        {
+          "file": "tests/integration/test_smooth_coverage.cpp",
+          "test": "SmoothCoverage.smooth_round14_wall_case11_and_case15_branch_matrix"
+        },
+        {
+          "file": "tests/integration/test_smooth_matrix.cpp",
+          "test": "SmoothMatrix.grass_dark_grass_wall_and_cobble_masks_each_select_their_exact_tile"
+        },
+        {
+          "file": "tests/integration/test_smooth_unit.cpp",
+          "test": "SmoothUnit.smooth_r12_light_grass_wall_tree_dirt_and_cobble_variant_selection"
+        },
+        {
+          "file": "tests/integration/test_smooth_more_branches.cpp",
+          "test": "SmoothMoreBranches.dark_grass_and_wall_clusters_select_their_exact_piece"
+        }
+      ],
+      "missing_arms": [
+        "11"
+      ]
+    },
+    {
+      "id": "smooth.cpp:567",
+      "lines": [
+        566,
+        567,
+        576,
+        578,
+        580,
+        582,
+        584,
+        586,
+        588,
+        590,
+        592
+      ],
+      "kinds": [
+        "case",
+        "if",
+        "else if",
+        "else if",
+        "else if",
+        "else if",
+        "else if",
+        "else if",
+        "else if",
+        "else if",
+        "else"
+      ],
+      "function": "smoother::smooth",
+      "anchor": "case TYPE_WATER:",
+      "condition": "case TYPE_WATER masks",
+      "semantic": "Water with water on both sides along a line or on three-four sides is open water (3 variants); water at a corner of a lake is the matching water/grass corner; water with a single water neighbour is a shoreline piece (2 variants); lone water keeps its tile.",
+      "arms": [
+        {
+          "when": "around/hor/ver/three sides",
+          "observable": "water_variants[next(3)]"
+        },
+        {
+          "when": "UP|RIGHT",
+          "observable": "WATERGRASS_LL"
+        },
+        {
+          "when": "UP|LEFT",
+          "observable": "LR"
+        },
+        {
+          "when": "DOWN|RIGHT",
+          "observable": "UL"
+        },
+        {
+          "when": "DOWN|LEFT",
+          "observable": "UR"
+        },
+        {
+          "when": "single neighbour",
+          "observable": "watergrass_up/down/left/right[next(2)]"
+        },
+        {
+          "when": "alone",
+          "observable": "unchanged"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_smooth_matrix.cpp",
+          "test": "SmoothMatrix.water_tree_dirt_and_dark_dirt_masks_each_select_their_exact_tile"
+        },
+        {
+          "file": "tests/integration/test_smooth_more_branches.cpp",
+          "test": "SmoothMoreBranches.water_shoreline_pairs_take_their_second_entry_under_rng_1"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "smooth.cpp:597",
+      "lines": [
+        596,
+        597,
+        599,
+        601,
+        603,
+        606,
+        608,
+        610,
+        612,
+        614,
+        616,
+        618,
+        620,
+        622,
+        624,
+        626,
+        628,
+        630,
+        632,
+        634
+      ],
+      "kinds": [
+        "case",
+        "if",
+        "if",
+        "else if",
+        "else",
+        "else if",
+        "else if",
+        "else if",
+        "else if",
+        "else if",
+        "else if",
+        "else if",
+        "else if",
+        "else if",
+        "else if",
+        "else if",
+        "else if",
+        "else if",
+        "else if",
+        "else"
+      ],
+      "function": "smoother::smooth",
+      "anchor": "case TYPE_TREES:",
+      "condition": "case TYPE_TREES masks / diagonals when surrounded",
+      "semantic": "Trees pick canopy pieces from the tree mask: fully surrounded trees are a right or left edge if a diagonal on that side is open, else the middle; top rows are tops, bottoms (and every thin/odd case) trunks, vertical pipes the middle-top, side columns the left/right middles.",
+      "arms": [
+        {
+          "when": "around, right diagonal open",
+          "observable": "PIX_TREE_MR"
+        },
+        {
+          "when": "around, left diagonal open",
+          "observable": "PIX_TREE_ML"
+        },
+        {
+          "when": "around, closed",
+          "observable": "PIX_TREE_M1"
+        },
+        {
+          "when": "L|R|D, L|D, D|R, D",
+          "observable": "PIX_TREE_T1"
+        },
+        {
+          "when": "U|D|L",
+          "observable": "PIX_TREE_MR"
+        },
+        {
+          "when": "D|R|U",
+          "observable": "PIX_TREE_ML"
+        },
+        {
+          "when": "D|U",
+          "observable": "PIX_TREE_MT"
+        },
+        {
+          "when": "all others",
+          "observable": "PIX_TREE_B1"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_smooth_matrix.cpp",
+          "test": "SmoothMatrix.water_tree_dirt_and_dark_dirt_masks_each_select_their_exact_tile"
+        },
+        {
+          "file": "tests/integration/test_smooth_more_branches.cpp",
+          "test": "SmoothMoreBranches.smooth_tree_dirt_dark_dirt_mask_ladders"
+        },
+        {
+          "file": "tests/integration/test_smooth_coverage.cpp",
+          "test": "SmoothCoverage.smooth_round11_water_diagonals_and_tree_to_around_edges"
+        },
+        {
+          "file": "tests/integration/test_coverage_misc.cpp",
+          "test": "CoverageMisc.coverage_r18_smooth_targeted_mask_branches"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "smooth.cpp:637",
+      "lines": [
+        637
+      ],
+      "kinds": [
+        "case"
+      ],
+      "function": "smoother::smooth",
+      "anchor": "case TYPE_DIRT:",
+      "condition": "case TYPE_DIRT",
+      "semantic": "Dirt takes a dirt/grass corner piece where two adjacent sides are dirt, else plain dirt (table by mask).",
+      "arms": [
+        {
+          "when": "mask",
+          "observable": "dirt_by_surround[mask]"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_smooth_matrix.cpp",
+          "test": "SmoothMatrix.targets_tree_dirt_dark_dirt_large_mask_blocks"
+        },
+        {
+          "file": "tests/integration/test_smooth_matrix.cpp",
+          "test": "SmoothMatrix.water_tree_dirt_and_dark_dirt_masks_each_select_their_exact_tile"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "smooth.cpp:640",
+      "lines": [
+        640
+      ],
+      "kinds": [
+        "case"
+      ],
+      "function": "smoother::smooth",
+      "anchor": "case TYPE_DIRT_DARK:",
+      "condition": "case TYPE_DIRT_DARK",
+      "semantic": "Dark dirt does the same with its own table.",
+      "arms": [
+        {
+          "when": "mask",
+          "observable": "dirt_dark_by_surround[mask]"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_smooth_matrix.cpp",
+          "test": "SmoothMatrix.targets_tree_dirt_dark_dirt_large_mask_blocks"
+        },
+        {
+          "file": "tests/integration/test_smooth_matrix.cpp",
+          "test": "SmoothMatrix.water_tree_dirt_and_dark_dirt_masks_each_select_their_exact_tile"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "smooth.cpp:643",
+      "lines": [
+        643
+      ],
+      "kinds": [
+        "case"
+      ],
+      "function": "smoother::smooth",
+      "anchor": "case TYPE_COBBLE: // cobblestone",
+      "condition": "case TYPE_COBBLE",
+      "semantic": "Cobblestone becomes one of four variants at random.",
+      "arms": [
+        {
+          "when": "cobble",
+          "observable": "cobble_variants[next(4)]"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_smoother.cpp",
+          "test": "Smoother.smooth_cobble_walks_every_variant_the_rng_indexes"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "smooth.cpp:646",
+      "lines": [
+        646,
+        647
+      ],
+      "kinds": [
+        "case",
+        "default"
+      ],
+      "function": "smoother::smooth",
+      "anchor": "case TYPE_UNKNOWN:  // don't change these ..",
+      "condition": "case TYPE_UNKNOWN / default",
+      "semantic": "Terrain with no smoothing rule (unknown, pavement, floors, Z-axis tiles, snow, lava, marsh, ash) is left exactly as painted.",
+      "arms": [
+        {
+          "when": "no rule",
+          "observable": "tile unchanged"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_smooth_more_branches.cpp",
+          "test": "SmoothMoreBranches.smooth_wall_water_tree_unknown_and_setxy_guard_paths"
+        }
+      ],
+      "missing_arms": [
+        "no rule"
+      ]
+    }
+  ],
+  "other": [
+    {
+      "id": "smooth.cpp:33",
+      "lines": [
+        33
+      ],
+      "kinds": [
+        "for"
+      ],
+      "kind": "plumbing",
+      "anchor": "for (auto& v : table) v = TYPE_UNKNOWN;",
+      "note": "constexpr table fill: every PIX id starts TYPE_UNKNOWN; the mapping itself is asserted by test_smoother.cpp Smoother.query_genre_maps_known_tiles"
+    },
+    {
+      "id": "smooth.cpp:278",
+      "lines": [
+        278
+      ],
+      "kinds": [
+        "if"
+      ],
+      "kind": "test-only",
+      "anchor": "if (IRandom* override_rng = gameplay_rng_override())",
+      "note": "next_random prefers the gameplay RNG override (test seam / GameContext rng) over the bound world rng; no game semantic"
+    },
+    {
+      "id": "smooth.cpp:304",
+      "lines": [
+        304
+      ],
+      "kinds": [
+        "if"
+      ],
+      "kind": "defensive",
+      "anchor": "if (basetype < 0 || basetype >= PIX_MAX)",
+      "note": "a stored byte outside 0..PIX_MAX-1 has no genre (TYPE_UNKNOWN) instead of indexing past the table"
+    },
+    {
+      "id": "smooth.cpp:660",
+      "lines": [
+        660
+      ],
+      "kinds": [
+        "if"
+      ],
+      "kind": "defensive",
+      "anchor": "if (mygrid_span_.empty())",
+      "note": "smooth() with no bound grid returns 0 (asserted SmoothUnit.smooth_without_a_target_returns_zero_and_reset_clears_it)"
+    },
+    {
+      "id": "smooth.cpp:664",
+      "lines": [
+        664,
+        665
+      ],
+      "kinds": [
+        "for",
+        "for"
+      ],
+      "kind": "loop",
+      "anchor": "for (x=0; x < maxx; x++)",
+      "note": "whole-map pass of smooth(x,y) column by column; rules at smooth.cpp:349..646"
+    },
+    {
+      "id": "smooth.cpp:673",
+      "lines": [
+        673,
+        681,
+        684
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
+      ],
+      "kind": "defensive",
+      "anchor": "if (mygrid_span_.empty())",
+      "note": "set_x_y ignores writes with no grid or outside the map (OOB guard, issue #12); asserted SmoothCoverage.set_x_y_rejects_out_of_bounds_writes"
+    }
+  ]
+}

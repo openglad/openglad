@@ -1,0 +1,111 @@
+{
+  "path": "packs/core/families/living-14-orc.lua",
+  "rules": [
+    {
+      "id": "living-14-orc.lua:22",
+      "lines": [
+        22,
+        23
+      ],
+      "kinds": [
+        "if",
+        "and"
+      ],
+      "function": "fixed_gate (ai: orc.howl_gate(with_classic(foe_within(130), fixed_gate)))",
+      "anchor": "if slot == 1 then",
+      "condition": "if slot == 1 then return not busy and G.targets_within(self, 1, yell_radius(L)) ... return classic_answer",
+      "semantic": "Classic: an orc bot HOWLs (and tries EAT CORPSE) whenever a foe is within 130 px. Gameplay Fixes: HOWL wants the orc not busy and a body the yell can stun (a living foe or a generator) inside the yell's own radius; the classic foe search still runs first for its draws.",
+      "arms": [
+        {
+          "when": "fixes off",
+          "observable": "foe_within(130) answer"
+        },
+        {
+          "when": "fixes on, busy",
+          "observable": "false"
+        },
+        {
+          "when": "fixes on, target inside yell radius",
+          "observable": "true"
+        },
+        {
+          "when": "fixes on, foe within 130 but outside the yell",
+          "observable": "false"
+        },
+        {
+          "when": "other slot (unreachable for a 2-slot orc)",
+          "observable": "classic answer"
+        }
+      ],
+      "setting": "both",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_gameplay_fixes_bots.cpp",
+          "test": "GameplayFixesBots.orc_howl_wants_a_target_inside_the_yell",
+          "note": "fixes off: false with no foe within 130, true for a tent at 100; fixes on: tower 160/180 px true, 181 px false, tent true"
+        },
+        {
+          "file": "tests/unit/test_gameplay_fixes_bots.cpp",
+          "test": "GameplayFixesBots.a_busy_bot_never_rolls_a_busy_cast_with_the_setting_on",
+          "note": "classic_row(orc, 1, false, \"ORC HOWL\", busy, idle): fixes on, busy => false, idle => true"
+        }
+      ],
+      "missing_arms": [
+        "other slot (unreachable for a 2-slot orc)"
+      ]
+    },
+    {
+      "id": "living-14-orc.lua:25",
+      "lines": [
+        25,
+        26
+      ],
+      "kinds": [
+        "if",
+        "and"
+      ],
+      "function": "fixed_gate",
+      "anchor": "if slot == 2 then",
+      "condition": "if slot == 2 then return G.hp_below(self, 3, 5) and G.corpse_underfoot(self, 24) ~= nil",
+      "semantic": "Gameplay Fixes: an orc bot EATs a corpse when it is below 60% health with a stain under it (within the meal's squared reach 24), whatever the foes are doing; classic asked only for a foe within 130 and let the meal itself refuse.",
+      "arms": [
+        {
+          "when": "hp >= 60%",
+          "observable": "false"
+        },
+        {
+          "when": "hurt, no stain underfoot",
+          "observable": "false"
+        },
+        {
+          "when": "hurt, stain underfoot",
+          "observable": "true even with no foe"
+        }
+      ],
+      "setting": "fixes-on",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_gameplay_fixes_bots.cpp",
+          "test": "GameplayFixesBots.orc_eats_when_hurt_on_a_corpse_whatever_the_foe"
+        }
+      ],
+      "missing_arms": []
+    }
+  ],
+  "other": [
+    {
+      "id": "living-14-orc.lua:73",
+      "lines": [
+        73
+      ],
+      "kinds": [
+        "and"
+      ],
+      "kind": "dead",
+      "anchor": "description = \"Orcs are a basic 'grunt'; strong and hard to hurt, they don't do much more than inflict pain. Orcs can't attack at range.\",",
+      "note": "not a branch (description string)"
+    }
+  ]
+}

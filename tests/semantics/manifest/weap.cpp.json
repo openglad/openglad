@@ -1,0 +1,464 @@
+{
+  "path": "src/gameplay/weap.cpp",
+  "rules": [
+    {
+      "id": "weap.cpp:62",
+      "lines": [
+        62,
+        64,
+        66,
+        69
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if"
+      ],
+      "function": "weap::act",
+      "anchor": "if (foe() && foe()->dead())",
+      "condition": "foe dead -> null; leader dead -> null; owner dead -> null; !owner -> owner = this",
+      "semantic": "A weapon forgets dead foes and leaders, and a weapon whose owner died (or never had one) owns itself, so its hits are credited to itself.",
+      "arms": [
+        {
+          "when": "dead foe/leader/owner",
+          "observable": "pointer cleared"
+        },
+        {
+          "when": "no owner after that",
+          "observable": "owner()==this"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_weap_behavior.cpp",
+          "test": "WeapBehavior.weap_act_clears_dead_refs_and_defaults_owner_and_tree_lineofsight"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "weap.cpp:75",
+      "lines": [
+        75
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "weap::act",
+      "anchor": "if (ani_type() != ANI_WALK)",
+      "condition": "ani_type() != ANI_WALK",
+      "semantic": "A weapon still playing a non-walk animation finishes it before doing anything else that tick.",
+      "arms": [
+        {
+          "when": "non-walk animation",
+          "observable": "animate() only; returns its result"
+        },
+        {
+          "when": "walk",
+          "observable": "act body"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_weap_behavior.cpp",
+          "test": "WeapBehavior.weap_act_sit_with_non_skipping_family_and_act_animate_shortcut"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "weap.cpp:85",
+      "lines": [
+        85,
+        87
+      ],
+      "kinds": [
+        "if",
+        "if"
+      ],
+      "function": "weap::act",
+      "anchor": "if (current_game->world->mysmoother.query_genre_x_y(xpos(), ypos()) == TYPE_TREES",
+      "condition": "genre(xpos,ypos)==TYPE_TREES || decor_conceals_at(floor, x/16, y/16); lineofsight() > 0",
+      "semantic": "A projectile flying through trees or concealing shrub loses one tick of range per tick (never below 0). The tree test keeps the classic quirk of passing pixel coordinates as grid coordinates.",
+      "arms": [
+        {
+          "when": "over a tree cell (by the quirk) or concealing decor, range left",
+          "observable": "lineofsight-1"
+        },
+        {
+          "when": "range 0",
+          "observable": "unchanged"
+        },
+        {
+          "when": "open ground",
+          "observable": "unchanged"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_weap_behavior.cpp",
+          "test": "WeapBehavior.weap_act_clears_dead_refs_and_defaults_owner_and_tree_lineofsight"
+        },
+        {
+          "file": "tests/unit/test_decor.cpp",
+          "test": "Decor.shrub_conceals_for_living_and_weapon_but_bones_does_not"
+        }
+      ],
+      "missing_arms": [
+        "range 0"
+      ]
+    },
+    {
+      "id": "weap.cpp:90",
+      "lines": [
+        90,
+        93,
+        111,
+        126,
+        152
+      ],
+      "kinds": [
+        "switch",
+        "case",
+        "case",
+        "case",
+        "default"
+      ],
+      "function": "weap::act",
+      "anchor": "switch (act_type())",
+      "condition": "switch (act_type()): ACT_CONTROL / ACT_GENERATE / ACT_GUARD / default",
+      "semantic": "A weapon in a living-only act mode does nothing: ACT_CONTROL returns at once, ACT_GENERATE and ACT_GUARD fall through to 'did nothing', and an unknown act notifies 'No act type set for weapon'.",
+      "arms": [
+        {
+          "when": "ACT_CONTROL: return",
+          "observable": "act() true"
+        },
+        {
+          "when": "ACT_CONTROL: no move",
+          "observable": "position unchanged"
+        },
+        {
+          "when": "ACT_GENERATE/ACT_GUARD",
+          "observable": "act() false"
+        },
+        {
+          "when": "unknown act: return",
+          "observable": "act() false"
+        },
+        {
+          "when": "unknown act: notification",
+          "observable": "Notification 'No act type set for weapon'"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_weap_behavior.cpp",
+          "test": "WeapBehavior.weap_act_control_generate_guard_and_default_paths",
+          "note": "ACT_CONTROL act() true; ACT_GENERATE/ACT_GUARD act() false; unknown act act() false"
+        }
+      ],
+      "missing_arms": [
+        "ACT_CONTROL: no move",
+        "unknown act: notification"
+      ]
+    },
+    {
+      "id": "weap.cpp:98",
+      "lines": [
+        98,
+        101
+      ],
+      "kinds": [
+        "case",
+        "if"
+      ],
+      "function": "weap::act",
+      "anchor": "case ACT_SIT: // for things like trees",
+      "condition": "ACT_SIT: !wfd || !wfd->skip_sit_notify",
+      "semantic": "Sitting scenery (trees, blood, doors and other skip-notify families) sits silently; any other sitting weapon reports 'Weapon sitting' (HUD standard time).",
+      "arms": [
+        {
+          "when": "skip_sit_notify family",
+          "observable": "no event, act() true"
+        },
+        {
+          "when": "other",
+          "observable": "one Notification 'Weapon sitting', a=0 b=0"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_weap_behavior.cpp",
+          "test": "WeapBehavior.weap_act_sit_tree"
+        },
+        {
+          "file": "tests/integration/test_weap_behavior.cpp",
+          "test": "WeapBehavior.weap_notices_carry_no_family_in_a_or_team_in_b"
+        },
+        {
+          "file": "tests/integration/test_weap_behavior.cpp",
+          "test": "WeapBehavior.weap_act_sit_with_non_skipping_family_and_act_animate_shortcut",
+          "note": "knife: one Notification \"Weapon sitting\", a=0, b=0"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "weap.cpp:119",
+      "lines": [
+        119
+      ],
+      "kinds": [
+        "case"
+      ],
+      "function": "weap::act",
+      "anchor": "case ACT_FIRE:",
+      "condition": "ACT_FIRE",
+      "semantic": "A fired weapon flies: it spends one point of range per tick and dies when range runs out.",
+      "arms": [
+        {
+          "when": "range left: range spent",
+          "observable": "lineofsight-1"
+        },
+        {
+          "when": "range left: moves",
+          "observable": "moves (act_fire steps the weapon along lastx/lasty)"
+        },
+        {
+          "when": "range 0",
+          "observable": "dead"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_weap_behavior.cpp",
+          "test": "WeapBehavior.weap_act_fire",
+          "note": "range-spent arm: lineofsight 5 -> 4; range-0 arm: dead()==1"
+        }
+      ],
+      "missing_arms": [
+        "range left: moves"
+      ]
+    },
+    {
+      "id": "weap.cpp:132",
+      "lines": [
+        132
+      ],
+      "kinds": [
+        "case"
+      ],
+      "function": "weap::act",
+      "anchor": "case ACT_DIE:",
+      "condition": "ACT_DIE",
+      "semantic": "A weapon told to die is marked dead that tick.",
+      "arms": [
+        {
+          "when": "ACT_DIE",
+          "observable": "dead()==1, act() true"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_weap_behavior.cpp",
+          "test": "WeapBehavior.weap_act_die"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "weap.cpp:138",
+      "lines": [
+        138
+      ],
+      "kinds": [
+        "case"
+      ],
+      "function": "weap::act",
+      "anchor": "case ACT_RANDOM:",
+      "condition": "ACT_RANDOM",
+      "semantic": "A weapon in random-walk mode does not walk; it reports 'Weapon <family> doing act random?'.",
+      "arms": [
+        {
+          "when": "ACT_RANDOM",
+          "observable": "one Notification with the family number; act() true"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_weap_behavior.cpp",
+          "test": "WeapBehavior.weap_act_random"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "weap.cpp:170",
+      "lines": [
+        170
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "weap::death",
+      "anchor": "if (death_called())  // Make sure we don't get multiple deaths",
+      "condition": "death_called()",
+      "semantic": "A weapon's death effects (explosions, transforms, door opening) run exactly once.",
+      "arms": [
+        {
+          "when": "first death()",
+          "observable": "weapon_on_death hook runs, returns 1"
+        },
+        {
+          "when": "second: return",
+          "observable": "returns 0"
+        },
+        {
+          "when": "second: nothing runs",
+          "observable": "weapon_on_death hook not run again"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_weap_behavior.cpp",
+          "test": "WeapBehavior.weap_death_is_idempotent",
+          "note": "first call returns 1, second returns 0"
+        },
+        {
+          "file": "tests/integration/test_weap_behavior.cpp",
+          "test": "WeapBehavior.weap_death_fire_arrow_exploding",
+          "note": "first death runs the hook: one explosion"
+        }
+      ],
+      "missing_arms": [
+        "second: nothing runs"
+      ]
+    },
+    {
+      "id": "weap.cpp:194",
+      "lines": [
+        194,
+        196,
+        199
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "else"
+      ],
+      "function": "weap::animate",
+      "anchor": "if (auto hook_result = og::script::hooks::weapon_on_animate(wfd, this))",
+      "condition": "hook_result = weapon_on_animate(); !*hook_result -> death(); else default",
+      "semantic": "A weapon family with its own animation script drives its frames; when the script says the weapon is finished (false), the weapon dies; families without a script use the default facing-row animation.",
+      "arms": [
+        {
+          "when": "hook returns false",
+          "observable": "death() run (death_called 1)"
+        },
+        {
+          "when": "hook true",
+          "observable": "script's frame"
+        },
+        {
+          "when": "no hook",
+          "observable": "default animation"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_weap_behavior.cpp",
+          "test": "WeapBehavior.weapon_animate_clamps_out_of_range_facing_and_cycle_to_row_zero",
+          "note": "hook-true arm: tree/glow callbacks write the script frame; no-hook arm: arrow default frame"
+        },
+        {
+          "file": "tests/integration/test_weap_behavior.cpp",
+          "test": "WeapBehavior.weap_animate_knife",
+          "note": "no-hook default arm"
+        }
+      ],
+      "missing_arms": [
+        "hook returns false"
+      ]
+    },
+    {
+      "id": "weap.cpp:206",
+      "lines": [
+        206,
+        211,
+        212,
+        215,
+        217,
+        220,
+        224
+      ],
+      "kinds": [
+        "if",
+        "ternary",
+        "if",
+        "while",
+        "if",
+        "if",
+        "if"
+      ],
+      "function": "weap::animate",
+      "anchor": "if (dir_index < 0 || dir_index >= NUM_FACINGS)",
+      "condition": "dir_index out of facings -> 0; row exists; sequence length; cycle out of range -> 0; sentinel wrap",
+      "semantic": "The default weapon animation plays the row of its facing, frame by frame, wrapping at the end; an out-of-range facing plays row 0 and an out-of-range frame restarts the row (snapshot hardening).",
+      "arms": [
+        {
+          "when": "valid facing/cycle",
+          "observable": "frame=seq[cycle]; cycle+1 (wrap at -1)"
+        },
+        {
+          "when": "facing out of range",
+          "observable": "row 0"
+        },
+        {
+          "when": "cycle out of range",
+          "observable": "frame seq[0]"
+        },
+        {
+          "when": "no row / empty row",
+          "observable": "frame unchanged"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_weap_behavior.cpp",
+          "test": "WeapBehavior.weapon_animate_clamps_out_of_range_facing_and_cycle_to_row_zero"
+        },
+        {
+          "file": "tests/integration/test_weap_behavior.cpp",
+          "test": "WeapBehavior.weap_animate_knife"
+        }
+      ],
+      "missing_arms": [
+        "no row / empty row"
+      ]
+    }
+  ],
+  "other": []
+}

@@ -1,0 +1,2222 @@
+{
+  "path": "src/gameplay/respawn/respawn.cpp",
+  "rules": [
+    {
+      "id": "respawn.cpp:51",
+      "lines": [
+        51,
+        54
+      ],
+      "kinds": [
+        "if",
+        "if"
+      ],
+      "function": "ensure_obmap_registration",
+      "anchor": "if (world.myobmap == nullptr || w == nullptr || w->ignore() || w->dead() ||",
+      "condition": "world.myobmap == nullptr || w == nullptr || w->ignore() || w->dead() || w->dormant() || w->hidden(); walker_to_pos.find(w) == end",
+      "semantic": "A walker brought back by a respawn (revived in place on its own tile, or a fresh AI replacement) is put back into the collision map so it blocks and is bumped like any live body; a dead, hidden, ignored or not-yet-woken (dormant) walker is never put into it.",
+      "arms": [
+        {
+          "when": "revived walker not in the obmap (revived on its own tile, setxy no-op)",
+          "observable": "after the fire, world.myobmap->walker_to_pos contains the walker; a second walker probing that spot via respawn_spot_clear gets false"
+        },
+        {
+          "when": "walker already registered",
+          "observable": "no double registration: walker_to_pos size unchanged"
+        },
+        {
+          "when": "walker dead/hidden/dormant/ignored",
+          "observable": "walker_to_pos does not contain it"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": [
+        "revived walker not in the obmap (revived on its own tile, setxy no-op)",
+        "walker already registered",
+        "walker dead/hidden/dormant/ignored"
+      ]
+    },
+    {
+      "id": "respawn.cpp:67",
+      "lines": [
+        67,
+        76
+      ],
+      "kinds": [
+        "if",
+        "if"
+      ],
+      "function": "spawn_spot_blocked_by",
+      "anchor": "if (other == nullptr || other == w || other->dead() || other->hidden())",
+      "condition": "other == nullptr || other == w || other->dead() || other->hidden(); !blocking (Living | Generator | Weapon of DOOR/TREE/BOULDER/declares_blocks_placement)",
+      "semantic": "A spawn or respawn spot is taken only by a live, visible body that occupies space: a living, a generator, a door, a tree, a boulder or a weapon family a pack declares as a placement blocker; treasure (food, flags, gems), other weapons, dead or hidden walkers and the walker itself never block, and the test is an exact box overlap.",
+      "arms": [
+        {
+          "when": "live living overlapping the box",
+          "observable": "respawn_spot_clear == false"
+        },
+        {
+          "when": "generator overlapping",
+          "observable": "false"
+        },
+        {
+          "when": "door / tree / boulder overlapping",
+          "observable": "false"
+        },
+        {
+          "when": "weapon family with blocks_placement=true overlapping",
+          "observable": "false"
+        },
+        {
+          "when": "treasure (drumstick) overlapping",
+          "observable": "true and the drumstick is NOT eaten (still alive, hero hp unchanged)"
+        },
+        {
+          "when": "dead or hidden living overlapping",
+          "observable": "true"
+        },
+        {
+          "when": "box only touches (edge-adjacent)",
+          "observable": "true"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_respawn_engine.cpp",
+          "test": "RespawnEngine.spawn_probe_rejects_doors_and_cross_bucket_blockers",
+          "note": "door false, cross-bucket living false"
+        },
+        {
+          "file": "tests/unit/test_quiet_probe.cpp",
+          "test": "QuietProbe.body_spot_clear_asks_the_placement_rule_with_the_bodys_box",
+          "note": "living false, tent generator false, drumstick true with food dead-state unchanged, touching the orc's right side true"
+        }
+      ],
+      "missing_arms": [
+        "door / tree / boulder overlapping [door asserted; tree and boulder not]",
+        "weapon family with blocks_placement=true overlapping",
+        "dead or hidden living overlapping"
+      ]
+    },
+    {
+      "id": "respawn.cpp:86",
+      "lines": [
+        86,
+        103
+      ],
+      "kinds": [
+        "if",
+        "if"
+      ],
+      "function": "spawn_spot_clear",
+      "anchor": "if (!world.query_grid_passable(x, y, w))",
+      "condition": "!world.query_grid_passable(x, y, w); spawn_spot_blocked_by(other, w, x, y) over every obmap bucket the box spans",
+      "semantic": "A spawn spot with no floor channel (floor < 0, the walker's own grid floor and floor-0 buckets) is clear only when the ground under the walker's box is passable for that walker AND no blocking body overlaps it, including bodies registered only in a neighbouring 32px bucket the box straddles. Probing never eats treasure and never grows the obmap.",
+      "arms": [
+        {
+          "when": "ground impassable (wall/water/off map)",
+          "observable": "respawn_spot_clear(...,-1) == false"
+        },
+        {
+          "when": "blocker in a second bucket the box straddles",
+          "observable": "false"
+        },
+        {
+          "when": "open ground, no blocker",
+          "observable": "true; obmap pos_to_walker size unchanged"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_respawn_engine.cpp",
+          "test": "RespawnEngine.spawn_probe_rejects_doors_and_cross_bucket_blockers"
+        },
+        {
+          "file": "tests/unit/test_respawn_engine.cpp",
+          "test": "RespawnEngine.exported_probes_hold_null_and_impassable_guards"
+        },
+        {
+          "file": "tests/unit/test_respawn_engine.cpp",
+          "test": "RespawnEngine.spawn_probes_make_no_empty_pile"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "respawn.cpp:118",
+      "lines": [
+        118
+      ],
+      "kinds": [
+        ""
+      ],
+      "function": "revive_player_walker",
+      "anchor": "w->set_dead(0);",
+      "condition": "unconditional on the revive path (stats() != nullptr guards the stats part)",
+      "semantic": "A revived hero stands up alive at full hitpoints with its queued orders, foe and leader cleared and its controller binding restored (death_called reset so the death hooks can fire again next time).",
+      "arms": [
+        {
+          "when": "revived",
+          "observable": "dead()==0 and stats()->hitpoints == max_hitpoints"
+        },
+        {
+          "when": "revived",
+          "observable": "stats()->commands.empty()"
+        },
+        {
+          "when": "revived",
+          "observable": "foe()==nullptr and leader()==nullptr"
+        },
+        {
+          "when": "revived",
+          "observable": "stats()->controller == the walker (user/act_type preserved, player keeps control)"
+        },
+        {
+          "when": "revived",
+          "observable": "death_called()==0; a second kill fires the death hooks/score again"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_respawn_engine.cpp",
+          "test": "RespawnEngine.player_corpse_revives_in_place_with_control_preserved",
+          "note": "ASSERT_EQ alive, hp==max, foe/leader null, commands empty, user 0, ACT_CONTROL"
+        }
+      ],
+      "missing_arms": [
+        "revived [observable: stats()->controller == the walker; the test asserts user/act_type only, never controller()]",
+        "revived [observable: death_called()==0; a second kill fires the death hooks/score again]"
+      ]
+    },
+    {
+      "id": "respawn.cpp:134",
+      "lines": [
+        134,
+        136
+      ],
+      "kinds": [
+        "if",
+        "if"
+      ],
+      "function": "revive_player_walker",
+      "anchor": "if (w->real_team_num() != 255)",
+      "condition": "w->real_team_num() != 255 -> set_team_num(real_team); team >= 0 && team < 4 -> set_team_num(team)",
+      "semantic": "Respawn breaks charm: a revived player rejoins its true team (the recorded real team, any byte including FFA/mutant band bytes 16-31), and when the caller names a score team 0-3 that team wins; real_team is cleared to 255 and charm_left to 0.",
+      "arms": [
+        {
+          "when": "charmed corpse, true team 0-3",
+          "observable": "after revive team_num == true team, real_team_num == 255, charm_left == 0"
+        },
+        {
+          "when": "charmed corpse, true team is a band byte (20)",
+          "observable": "team_num == 20 (the team<4 arm does not run), real_team_num 255, charm_left 0"
+        },
+        {
+          "when": "uncharmed corpse",
+          "observable": "team_num == entry team"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_respawn_engine.cpp",
+          "test": "RespawnEngine.charmed_corpse_respawns_on_its_true_team",
+          "note": "team 0, real 255"
+        },
+        {
+          "file": "tests/unit/test_respawn_engine.cpp",
+          "test": "RespawnEngine.charmed_band_byte_corpse_respawns_on_its_true_team",
+          "note": "team 20, real 255, charm_left 0"
+        },
+        {
+          "file": "tests/unit/test_respawn_engine.cpp",
+          "test": "RespawnEngine.win_latch_flush_breaks_charm_onto_true_team",
+          "note": "team 0, real 255, charm_left 0 via the flush revive"
+        }
+      ],
+      "missing_arms": [
+        "uncharmed corpse"
+      ]
+    },
+    {
+      "id": "respawn.cpp:141",
+      "lines": [
+        141,
+        146
+      ],
+      "kinds": [
+        "if",
+        "if"
+      ],
+      "function": "revive_player_walker",
+      "anchor": "if (w->user() != -1)",
+      "condition": "w->user() != -1 && another live Living with the same user() and ACT_CONTROL exists",
+      "semantic": "If the player switched to another body while dead, the revived body does not steal the seat back: it joins the AI pool (user -1, ACT_RANDOM) and the player's current body keeps control.",
+      "arms": [
+        {
+          "when": "another live controlled walker holds the same user",
+          "observable": "revived walker user()==-1, act_type()==ACT_RANDOM; other keeps user and ACT_CONTROL"
+        },
+        {
+          "when": "no conflict",
+          "observable": "revived walker keeps user() and ACT_CONTROL"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_respawn_engine.cpp",
+          "test": "RespawnEngine.user_conflict_demotes_revived_walker_to_ai"
+        },
+        {
+          "file": "tests/unit/test_respawn_engine.cpp",
+          "test": "RespawnEngine.player_corpse_revives_in_place_with_control_preserved"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "respawn.cpp:163",
+      "lines": [
+        163
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "already_scheduled",
+      "anchor": "if (entry.walker_entity_id == entity_id)",
+      "condition": "entry.walker_entity_id == entity_id",
+      "semantic": "A corpse has at most one pending respawn: scheduling it again (Lua og.respawn_schedule twice, or the classic per-tick scan) is refused while its entry is pending, and 'pending' is reported per corpse.",
+      "arms": [
+        {
+          "when": "corpse already queued",
+          "observable": "og.respawn_schedule returns false; queue size unchanged; og.respawn_pending true"
+        },
+        {
+          "when": "not queued",
+          "observable": "schedule succeeds; respawn_pending false before"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_mode_bindings.cpp",
+          "test": "ModeBindings.respawn_schedule_pending_and_counts",
+          "note": "queued\\t1, dupe\\t0, pending\\t1, not_pending\\t0, queue size 1"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "respawn.cpp:184",
+      "lines": [
+        184,
+        189
+      ],
+      "kinds": [
+        "if",
+        "if"
+      ],
+      "function": "live_duplicate_exists",
+      "anchor": "if (corpse->myguy == nullptr)",
+      "condition": "corpse->myguy == nullptr -> false; other live walker with same (guy id, owner_player_index, owner_save_slot)",
+      "semantic": "A hero whose character is already walking again (a cleric resurrect, a save merge, another door) is never revived or rescheduled; character identity is the guy id together with its owning player and save slot, so another player's same-numbered guy does not count. AI walkers (no guy) never have duplicates.",
+      "arms": [
+        {
+          "when": "live walker with the same guy triple",
+          "observable": "schedule refused / fire cancels revive: corpse stays dead, duplicate alive, stain scrubbed"
+        },
+        {
+          "when": "same guy id, different owner_player_index",
+          "observable": "revive proceeds: corpse alive"
+        },
+        {
+          "when": "AI corpse (no guy)",
+          "observable": "never treated as duplicated: replacement fielded"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_respawn_engine.cpp",
+          "test": "RespawnEngine.live_duplicate_character_cancels_the_revive"
+        },
+        {
+          "file": "tests/unit/test_respawn_engine.cpp",
+          "test": "RespawnEngine.fire_time_live_duplicate_cancels_the_revive"
+        },
+        {
+          "file": "tests/unit/test_respawn_engine.cpp",
+          "test": "RespawnEngine.same_guy_id_under_a_different_owner_does_not_block_revive"
+        },
+        {
+          "file": "tests/unit/test_classic_respawn.cpp",
+          "test": "ClassicRespawn.live_duplicate_hero_corpse_is_never_rescheduled"
+        },
+        {
+          "file": "tests/unit/test_respawn_engine.cpp",
+          "test": "RespawnEngine.ai_respawn_spawns_fresh_walker_of_same_family_level_team",
+          "note": "AI corpse with no guy: ASSERT_TRUE(schedule) through respawn_schedule_corpse's live_duplicate_exists check, then fresh replacement ASSERT_NE nullptr; the AI-corpse arm"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "respawn.cpp:207",
+      "lines": [
+        207,
+        291
+      ],
+      "kinds": [
+        "if",
+        "if"
+      ],
+      "function": "stain_matches_corpse_identity / scrub_corpse_drops_in",
+      "anchor": "if (corpse->myguy == nullptr)",
+      "condition": "corpse->myguy == nullptr ? stain->myguy == nullptr : same_guy_identity(stain->myguy, corpse->myguy)",
+      "semantic": "A respawn only clears its own corpse's bloodstain: a player's stain pairs by its copied guy identity, and an AI corpse only ever clears a guy-less (AI) stain, so a bot's respawn never removes a nearby queued player's corpse and vice versa. (Same rule as respawn.cpp:223 and respawn.cpp:250.)",
+      "arms": [
+        {
+          "when": "player corpse fires, nearby teammate stain with different guy id",
+          "observable": "teammate stain survives; own stain dead"
+        },
+        {
+          "when": "AI corpse scheduled/fired next to a player stain",
+          "observable": "player stain survives"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_respawn_engine.cpp",
+          "test": "RespawnEngine.nearby_player_respawns_scrub_only_their_own_stain"
+        }
+      ],
+      "missing_arms": [
+        "AI corpse scheduled/fired next to a player stain [fire half]"
+      ]
+    },
+    {
+      "id": "respawn.cpp:223",
+      "lines": [
+        220,
+        223
+      ],
+      "kinds": [
+        "for",
+        "if"
+      ],
+      "function": "stain_belongs_to_pending_respawn",
+      "anchor": "for (const RespawnEntry& entry : world.respawn.respawn_queue)",
+      "condition": "queued corpse resolves by id AND stain identity/team/floor/exact position match it",
+      "semantic": "A mode's positional corpse scrub (og.respawn_scrub_stains_at) never removes the stain of a fighter whose respawn is still pending, player or AI; only an exact corpse location with the same identity, team and floor is protected.",
+      "arms": [
+        {
+          "when": "stain is a pending corpse's (same identity, team, floor, exact corner)",
+          "observable": "stain survives the scrub"
+        },
+        {
+          "when": "same identity, other floor or other position",
+          "observable": "stain scrubbed"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_respawn_engine.cpp",
+          "test": "RespawnEngine.positional_scrub_preserves_pending_ai_stains"
+        },
+        {
+          "file": "tests/unit/test_respawn_engine.cpp",
+          "test": "RespawnEngine.positional_scrub_preserves_only_pending_player_stains"
+        },
+        {
+          "file": "tests/unit/test_respawn_engine.cpp",
+          "test": "RespawnEngine.positional_scrub_matches_pending_stain_location"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "respawn.cpp:250",
+      "lines": [
+        247,
+        250,
+        303
+      ],
+      "kinds": [
+        "for",
+        "if",
+        "if"
+      ],
+      "function": "stain_belongs_to_another_corpse / scrub_corpse_drops_in",
+      "anchor": "for (const auto& uptr : world.oblist)",
+      "condition": "another dead Living (not the firing corpse) with matching identity/team/floor/exact corner",
+      "semantic": "When a respawn fires and clears its corpse's stain, a neighbouring dead fighter's stain is kept for that fighter's own countdown, whether the neighbour is already queued or fell this very tick (before the mode could schedule it).",
+      "arms": [
+        {
+          "when": "neighbour pending in queue",
+          "observable": "neighbour stain survives the first fire"
+        },
+        {
+          "when": "neighbour died this tick, not yet queued",
+          "observable": "neighbour stain survives respawn_run_timers"
+        },
+        {
+          "when": "firing corpse's own stain",
+          "observable": "scrubbed"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_respawn_engine.cpp",
+          "test": "RespawnEngine.ai_fire_does_not_consume_an_adjacent_pending_ai_stain"
+        },
+        {
+          "file": "tests/unit/test_respawn_engine.cpp",
+          "test": "RespawnEngine.ai_fire_leaves_the_stain_of_a_neighbor_that_died_this_tick"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "respawn.cpp:278",
+      "lines": [
+        275,
+        278
+      ],
+      "kinds": [
+        "for",
+        "if"
+      ],
+      "function": "scrub_corpse_drops_in",
+      "anchor": "for (const auto& uptr : list)",
+      "condition": "skip unless live Treasure of FAMILY_LIFE_GEM (or FAMILY_STAIN when scrub==All) on the corpse's team and floor",
+      "semantic": "Scheduling a respawn immediately removes the corpse's LIFE_GEM (so respawn cycles cannot farm the time-limit tiebreaker) but leaves its bloodstain for the countdown (visible corpse, cleric raises); firing (or cancelling) removes both. Only drops on the corpse's own team and floor are touched.",
+      "arms": [
+        {
+          "when": "schedule (LifeGemOnly)",
+          "observable": "life gem dead immediately; stain still alive"
+        },
+        {
+          "when": "fire (All)",
+          "observable": "stain dead"
+        },
+        {
+          "when": "drop on another floor",
+          "observable": "survives"
+        },
+        {
+          "when": "drop on another team",
+          "observable": "survives"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_respawn_engine.cpp",
+          "test": "RespawnEngine.scheduling_scrubs_the_corpse_life_gem",
+          "note": "gem count 0 after schedule"
+        },
+        {
+          "file": "tests/unit/test_respawn_engine.cpp",
+          "test": "RespawnEngine.player_corpse_stain_survives_until_the_respawn_fires",
+          "note": "stain 1 after schedule, 0 after fire"
+        },
+        {
+          "file": "tests/unit/test_respawn_engine.cpp",
+          "test": "RespawnEngine.ai_corpse_stain_survives_until_the_respawn_fires"
+        },
+        {
+          "file": "tests/unit/test_respawn_engine.cpp",
+          "test": "RespawnEngine.respawn_fire_scrubs_only_the_corpses_floor"
+        }
+      ],
+      "missing_arms": [
+        "drop on another team"
+      ]
+    },
+    {
+      "id": "respawn.cpp:315",
+      "lines": [
+        315
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "scrub_corpse_drops_in",
+      "anchor": "if (dx + dy <= 8)",
+      "condition": "|center dx| + |center dy| <= 8",
+      "semantic": "A corpse's drops are recognised by position: the stain shares the corpse's corner and the gem is centred on it, so anything whose centre is within 8px (Manhattan) of the corpse's centre is that corpse's drop; a matching drop further away is left alone.",
+      "arms": [
+        {
+          "when": "drop centre within 8px",
+          "observable": "drop dead after fire"
+        },
+        {
+          "when": "matching-identity drop centre 9+px away",
+          "observable": "drop survives"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_respawn_engine.cpp",
+          "test": "RespawnEngine.player_corpse_stain_survives_until_the_respawn_fires",
+          "note": "corner stain, centre delta 0, dead after the fire"
+        },
+        {
+          "file": "tests/unit/test_respawn_engine.cpp",
+          "test": "RespawnEngine.scheduling_scrubs_the_corpse_life_gem",
+          "note": "center_on'd gem within 8px dead after schedule"
+        }
+      ],
+      "missing_arms": [
+        "matching-identity drop centre 9+px away"
+      ]
+    },
+    {
+      "id": "respawn.cpp:330",
+      "lines": [
+        330,
+        335,
+        356
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
+      ],
+      "function": "schedule_respawn",
+      "anchor": "if (respawn.respawn_queue.size() >= static_cast<std::size_t>(kRespawnMaxQueueEntries))",
+      "condition": "queue.size() >= kRespawnMaxQueueEntries; victim = first kind==1; victim == end -> return; after evict-fire size still >= cap -> pop_back",
+      "semantic": "The respawn queue is capped (the snapshot serializer's limit). A new corpse at the cap evicts the OLDEST queued bot, firing it immediately (its replacement is fielded now instead of later) so the roster never shrinks; if only players are queued the newcomer is refused (players are never evicted for anyone). If the evicted bot's fire was blocked and re-queued itself, that retry is dropped instead of the newcomer. In a scripted mode the eviction fire never dispatches on_respawn (see respawn.cpp:423: only the timer fire does).",
+      "arms": [
+        {
+          "when": "cap reached, an AI entry exists",
+          "observable": "oldest AI entry gone; newcomer queued; size == cap"
+        },
+        {
+          "when": "cap reached, all player entries",
+          "observable": "newcomer not queued (respawn_schedule_corpse returns false); no kind-1 entry"
+        },
+        {
+          "when": "evicted bot's fire blocked (retry appended)",
+          "observable": "retry dropped, newcomer is queue.back(); cap holds"
+        },
+        {
+          "when": "evicted bot fire succeeds",
+          "observable": "a fresh walker of the evicted family is alive at its recorded spot this tick"
+        },
+        {
+          "when": "scripted world, cap eviction fires a bot",
+          "observable": "on_respawn log count 0 (eviction fire calls classic_fire_respawn directly, no hook); replacement alive at its entry spot"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_respawn_engine.cpp",
+          "test": "RespawnEngine.queue_cap_evicts_oldest_ai_entry_for_a_player",
+          "note": "size==cap, player queued, oldest AI evicted"
+        },
+        {
+          "file": "tests/unit/test_respawn_engine.cpp",
+          "test": "RespawnEngine.queue_full_of_players_drops_incoming_ai_entry",
+          "note": "size==cap, no kind-1 entry"
+        },
+        {
+          "file": "tests/unit/test_classic_respawn.cpp",
+          "test": "ClassicRespawn.full_queue_blocked_evict_keeps_the_incoming_corpse",
+          "note": "size==cap, back()==incoming corpse, crafted==cap-1"
+        }
+      ],
+      "missing_arms": [
+        "cap reached, all player entries [return value: respawn_schedule_corpse returns false is cast to (void), not asserted]",
+        "evicted bot fire succeeds",
+        "scripted world, cap eviction fires a bot"
+      ]
+    },
+    {
+      "id": "respawn.cpp:364",
+      "lines": [
+        364,
+        371
+      ],
+      "kinds": [
+        "ternary",
+        "ternary"
+      ],
+      "function": "schedule_respawn",
+      "anchor": "entry.kind = (corpse->myguy != nullptr) ? 0 : 1;",
+      "condition": "kind = myguy ? 0 : 1; team = real_team != 255 ? real_team : team_num; level = stats ? level : 1 (clamped 1..255)",
+      "semantic": "A queued respawn remembers whether the dead was a hero (revived as the same walker) or a bot (replaced by a fresh walker), its TRUE team (charm is broken by death), its family and its level.",
+      "arms": [
+        {
+          "when": "hero corpse",
+          "observable": "entry.kind == 0, entry.walker_entity_id == corpse id"
+        },
+        {
+          "when": "bot corpse",
+          "observable": "entry.kind == 1, family and level copied; replacement has that level"
+        },
+        {
+          "when": "charmed corpse",
+          "observable": "entry.team == real team"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_respawn_engine.cpp",
+          "test": "RespawnEngine.player_corpse_revives_in_place_with_control_preserved",
+          "note": "kind 0, walker_entity_id"
+        },
+        {
+          "file": "tests/unit/test_respawn_engine.cpp",
+          "test": "RespawnEngine.ai_respawn_spawns_fresh_walker_of_same_family_level_team",
+          "note": "kind 1, family, level 2, team 1; replacement level 2"
+        }
+      ],
+      "missing_arms": [
+        "charmed corpse"
+      ]
+    },
+    {
+      "id": "respawn.cpp:378",
+      "lines": [
+        378,
+        384
+      ],
+      "kinds": [
+        "if",
+        "else"
+      ],
+      "function": "schedule_respawn",
+      "anchor": "if (corpse->spawn_x() >= 0 && corpse->spawn_y() >= 0)",
+      "condition": "corpse->spawn_x() >= 0 && corpse->spawn_y() >= 0",
+      "semantic": "A respawn goes back to the walker's recorded (level-authored or inherited) spawn point and floor when it has one, else to where it fell.",
+      "arms": [
+        {
+          "when": "spawn point set",
+          "observable": "entry.x/y/floor == spawn point"
+        },
+        {
+          "when": "no spawn point",
+          "observable": "entry.x/y == death position, entry.floor == corpse floor"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_classic_respawn.cpp",
+          "test": "ClassicRespawn.hero_scheduled_on_death_and_revives_at_spawn_point",
+          "note": "entry x/y 128, floor 0"
+        },
+        {
+          "file": "tests/unit/test_classic_respawn.cpp",
+          "test": "ClassicRespawn.entry_records_death_position_without_a_spawn_point",
+          "note": "entry x/y 320"
+        }
+      ],
+      "missing_arms": [
+        "no spawn point [entry.floor == corpse floor not asserted]"
+      ]
+    },
+    {
+      "id": "respawn.cpp:415",
+      "lines": [
+        415
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "respawn_run_timers",
+      "anchor": "if (entry.ticks_left > 0)",
+      "condition": "entry.ticks_left > 0 after the flat 1/tick decrement",
+      "semantic": "A respawn waits exactly its delay: the countdown drops by one per tick and the entry fires on the tick it reaches zero (a fresh corpse scheduled this tick waits its full delay).",
+      "arms": [
+        {
+          "when": "ticks_left still > 0",
+          "observable": "corpse still dead, entry still queued"
+        },
+        {
+          "when": "reaches 0",
+          "observable": "corpse revived / replacement fielded, entry gone"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_respawn_engine.cpp",
+          "test": "RespawnEngine.player_corpse_revives_in_place_with_control_preserved",
+          "note": "dead after 5 of 6 ticks, alive at 6, queue empty"
+        },
+        {
+          "file": "tests/unit/test_respawn_engine.cpp",
+          "test": "RespawnEngine.nearby_player_respawns_scrub_only_their_own_stain",
+          "note": "second corpse still dead and respawn_pending_for true while ticks remain"
+        },
+        {
+          "file": "tests/unit/test_classic_respawn.cpp",
+          "test": "ClassicRespawn.hero_scheduled_on_death_and_revives_at_spawn_point",
+          "note": "dead after 11 of 12, alive at 12, queue empty"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "respawn.cpp:423",
+      "lines": [
+        423,
+        425,
+        428
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "else"
+      ],
+      "function": "respawn_run_timers",
+      "anchor": "if (scripted)",
+      "condition": "scripted = mode_scripted_active(world); revived != nullptr -> level_respawn hook",
+      "semantic": "In a scripted mode a fired respawn calls the level's on_respawn hook with the revived walker (alive, at its recorded spot) so the mode can place it; a fire that revived nothing (blocked bot spot, duplicate hero, stale entry) calls no hook. Classic respawn modes never call Lua. This timer fire is the ONLY place on_respawn is dispatched: the cap-eviction fire in schedule_respawn (respawn.cpp:330, lines 342-348) and every fire in respawn_flush_revive_all (respawn.cpp:810, lines 790-791) call classic_fire_respawn directly, so a mode that repositions fighters in on_respawn never sees an evicted bot or a match-end flush.",
+      "arms": [
+        {
+          "when": "scripted, revive succeeded",
+          "observable": "trace/log 'respawn\\t224\\t224\\t0' from on_respawn"
+        },
+        {
+          "when": "scripted, fire revived nothing",
+          "observable": "on_respawn not called (log count 0)"
+        },
+        {
+          "when": "classic mode",
+          "observable": "no Lua dispatch; revive happens"
+        },
+        {
+          "when": "scripted, fire via eviction or win flush (not the timer)",
+          "observable": "on_respawn not called (log count 0) — see respawn.cpp:330/:810"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_mode_tick.cpp",
+          "test": "ModeTick.respawn_fires_in_place_and_dispatches_hook",
+          "note": "respawn\\t224\\t224\\t0 logged"
+        }
+      ],
+      "missing_arms": [
+        "scripted, fire revived nothing",
+        "classic mode [no-Lua-dispatch half: no test registers an on_respawn hook on a classic world]",
+        "scripted, fire via eviction or win flush (not the timer)"
+      ]
+    },
+    {
+      "id": "respawn.cpp:438",
+      "lines": [
+        438
+      ],
+      "kinds": [
+        ""
+      ],
+      "function": "classic_respawn_active",
+      "anchor": "return !mode_scripted_active(world) &&",
+      "condition": "!mode_scripted_active(world) && respawn_mode in [Heroes, TeamOneHeroes]",
+      "semantic": "The difficulty-submenu respawn modes (1 Heroes, 2 Everyone, 3 Team 1 Heroes) run only on worlds not owned by an active scripted mode; a scripted map whose mode failed activation falls back to them; mode 0 is off.",
+      "arms": [
+        {
+          "when": "mode 0",
+          "observable": "classic_respawn_active false; dead hero stays dead"
+        },
+        {
+          "when": "mode 1-3, classic world",
+          "observable": "true"
+        },
+        {
+          "when": "scripted world, mode active",
+          "observable": "false even with respawn_mode 2; no classic scheduling"
+        },
+        {
+          "when": "scripted world, mode failed activation",
+          "observable": "true"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_classic_respawn.cpp",
+          "test": "ClassicRespawn.predicate_and_suppression_truth_table"
+        },
+        {
+          "file": "tests/unit/test_classic_respawn.cpp",
+          "test": "ClassicRespawn.scripted_active_worlds_ignore_respawn_mode",
+          "note": "predicate false, queue empty, bot stays dead"
+        }
+      ],
+      "missing_arms": [
+        "mode 0 [dead hero stays dead half]"
+      ]
+    },
+    {
+      "id": "respawn.cpp:446",
+      "lines": [
+        446,
+        459,
+        465
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
+      ],
+      "function": "respawn_retains_player_control",
+      "anchor": "if (control == nullptr || !control->dead() || control->myguy == nullptr ||",
+      "condition": "dead Living hero; scripted: !win_latched && already_scheduled && !live_duplicate; classic: active && (mode != TeamOneHeroes || team == 0) && !live_duplicate",
+      "semantic": "A dead hero keeps its player's seat (the client is not handed another body) while a respawn will bring it back: in a scripted mode only while its entry is pending and the match is undecided; in classic respawn modes whenever the mode respawns that hero (mode 3 only team 0) and its character is not walking elsewhere.",
+      "arms": [
+        {
+          "when": "not a dead hero (alive, AI, non-living)",
+          "observable": "false"
+        },
+        {
+          "when": "scripted, queued, undecided",
+          "observable": "true"
+        },
+        {
+          "when": "scripted, not yet queued",
+          "observable": "false"
+        },
+        {
+          "when": "scripted, match decided",
+          "observable": "false"
+        },
+        {
+          "when": "classic mode 3, team 1 hero",
+          "observable": "false"
+        },
+        {
+          "when": "classic mode 3, team 0 hero",
+          "observable": "true"
+        },
+        {
+          "when": "classic, live duplicate exists",
+          "observable": "false"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_respawn_engine.cpp",
+          "test": "RespawnEngine.retains_player_control_through_pending_scripted_entry"
+        },
+        {
+          "file": "tests/unit/test_classic_respawn.cpp",
+          "test": "ClassicRespawn.team_one_heroes_mode_filters_corpses_and_control_retention"
+        }
+      ],
+      "missing_arms": [
+        "not a dead hero (alive, AI, non-living) [AI asserted; alive hero, non-living and nullptr not]",
+        "classic, live duplicate exists"
+      ]
+    },
+    {
+      "id": "respawn.cpp:477",
+      "lines": [
+        477,
+        479
+      ],
+      "kinds": [
+        "if",
+        "if"
+      ],
+      "function": "respawn_suppress_team_wipe_endgame",
+      "anchor": "if (mode_scripted_active(world) && !world.mode.win_latched)",
+      "condition": "scripted && !win_latched -> true; !classic_active -> false; mode != TeamOneHeroes || wiped_team < 0 || wiped_team == 0",
+      "semantic": "A team being wiped out does not end the level while respawns can bring it back: always during an undecided scripted match; in classic modes 1 and 2 for every team; in mode 3 only for team 0 (another team's wipe stays terminal).",
+      "arms": [
+        {
+          "when": "scripted undecided",
+          "observable": "true; world.ending stays 0 after a full wipe"
+        },
+        {
+          "when": "scripted decided",
+          "observable": "false"
+        },
+        {
+          "when": "classic off",
+          "observable": "false"
+        },
+        {
+          "when": "mode 1/2",
+          "observable": "true"
+        },
+        {
+          "when": "mode 3, wiped team 0 or unspecified",
+          "observable": "true"
+        },
+        {
+          "when": "mode 3, wiped team 1",
+          "observable": "false"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_classic_respawn.cpp",
+          "test": "ClassicRespawn.predicate_and_suppression_truth_table"
+        },
+        {
+          "file": "tests/unit/test_respawn_engine.cpp",
+          "test": "RespawnEngine.team_wipe_suppression_tracks_match_lifecycle"
+        }
+      ],
+      "missing_arms": [
+        "scripted undecided [world.ending stays 0 after a full wipe half]"
+      ]
+    },
+    {
+      "id": "respawn.cpp:496",
+      "lines": [
+        496,
+        512
+      ],
+      "kinds": [
+        "if",
+        "if"
+      ],
+      "function": "classic_spot_clear",
+      "anchor": "if (!world.query_grid_passable(x, y, w, floor))",
+      "condition": "!world.query_grid_passable(x, y, w, floor); spawn_spot_blocked_by over the floor-keyed buckets",
+      "semantic": "A respawn target on an explicit floor is clear only when that floor's ground is passable for the walker and no blocking body on THAT floor overlaps the box (same blocker rule as respawn.cpp:67).",
+      "arms": [
+        {
+          "when": "blocked by a living on the target spot",
+          "observable": "hero revives in place, not at home"
+        },
+        {
+          "when": "home on floor 1 with grass",
+          "observable": "hero revives on floor 1 at the spawn point"
+        },
+        {
+          "when": "off-grid target",
+          "observable": "respawn_spot_clear(...,0) false"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_classic_respawn.cpp",
+          "test": "ClassicRespawn.hero_revives_in_place_when_spawn_point_is_blocked"
+        },
+        {
+          "file": "tests/unit/test_classic_respawn.cpp",
+          "test": "ClassicRespawn.hero_revives_across_floors_at_its_spawn_floor"
+        },
+        {
+          "file": "tests/unit/test_respawn_engine.cpp",
+          "test": "RespawnEngine.exported_probes_hold_null_and_impassable_guards"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "respawn.cpp:529",
+      "lines": [
+        529,
+        532
+      ],
+      "kinds": [
+        "if",
+        "if"
+      ],
+      "function": "classic_fire_player_respawn",
+      "anchor": "if (w == nullptr || !w->dead() || w->query_order() != Order::Living)",
+      "condition": "w == nullptr || !w->dead() || not Living -> no-op; scrub All; live_duplicate_exists -> no revive",
+      "semantic": "A hero's respawn fire is a no-op if the body is gone or already alive again (a cleric beat the timer: no second heal) but the entry is still consumed; before reviving it always clears the corpse's stain and gem, and if the character walks again elsewhere the revive is cancelled (the stain is still cleared).",
+      "arms": [
+        {
+          "when": "corpse already alive at fire",
+          "observable": "hp unchanged (no re-heal), queue empty"
+        },
+        {
+          "when": "live duplicate at fire",
+          "observable": "corpse still dead, duplicate alive, stain count 0, queue empty"
+        },
+        {
+          "when": "normal",
+          "observable": "corpse alive, stain count 0"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_respawn_engine.cpp",
+          "test": "RespawnEngine.fired_entry_for_an_already_live_walker_is_a_no_op",
+          "note": "alive, queue empty"
+        },
+        {
+          "file": "tests/unit/test_respawn_engine.cpp",
+          "test": "RespawnEngine.fire_time_live_duplicate_cancels_the_revive"
+        },
+        {
+          "file": "tests/unit/test_respawn_engine.cpp",
+          "test": "RespawnEngine.player_corpse_stain_survives_until_the_respawn_fires"
+        }
+      ],
+      "missing_arms": [
+        "corpse already alive at fire [hp unchanged (no re-heal) half]"
+      ]
+    },
+    {
+      "id": "respawn.cpp:535",
+      "lines": [
+        535
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "classic_fire_player_respawn",
+      "anchor": "if (w->spawn_x() >= 0 && w->spawn_y() >= 0 &&",
+      "condition": "spawn point set && classic_spot_clear(spawn point, spawn floor)",
+      "semantic": "A revived hero goes home to its spawn point (and spawn floor) when that spot is clear, otherwise it stands up where it fell; no random teleport.",
+      "arms": [
+        {
+          "when": "home clear",
+          "observable": "xpos/ypos == spawn point, floor == spawn floor"
+        },
+        {
+          "when": "home blocked",
+          "observable": "xpos/ypos == death spot"
+        },
+        {
+          "when": "no spawn point",
+          "observable": "death spot"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_classic_respawn.cpp",
+          "test": "ClassicRespawn.hero_scheduled_on_death_and_revives_at_spawn_point"
+        },
+        {
+          "file": "tests/unit/test_classic_respawn.cpp",
+          "test": "ClassicRespawn.hero_revives_in_place_when_spawn_point_is_blocked"
+        },
+        {
+          "file": "tests/unit/test_classic_respawn.cpp",
+          "test": "ClassicRespawn.entry_records_death_position_without_a_spawn_point"
+        },
+        {
+          "file": "tests/unit/test_classic_respawn.cpp",
+          "test": "ClassicRespawn.hero_revives_across_floors_at_its_spawn_floor"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "respawn.cpp:561",
+      "lines": [
+        561,
+        578
+      ],
+      "kinds": [
+        "if",
+        "if"
+      ],
+      "function": "classic_fire_ai_respawn",
+      "anchor": "if (entry.x >= 0 && entry.y >= 0 &&",
+      "condition": "entry.x >= 0 && entry.y >= 0 && classic_spot_clear(entry spot); corpse != nullptr && corpse->dead() && Living -> scrub + retire",
+      "semantic": "A bot's respawn fields a FRESH walker of the same family, team (uncharmed) and level at its recorded spot when clear; the replacement inherits that spot as its own spawn point; the old body (if still dead) loses its stain and is retired; an entry naming a live walker never retires it.",
+      "arms": [
+        {
+          "when": "spot clear",
+          "observable": "new entity id alive at (entry.x,entry.y), level/team match, real_team 255, spawn_x/y == entry spot"
+        },
+        {
+          "when": "old corpse still dead",
+          "observable": "find_by_id(old) == nullptr, body in dead_list, stain dead"
+        },
+        {
+          "when": "entry id is a live walker",
+          "observable": "that walker stays alive and indexed; replacement still fielded"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_classic_respawn.cpp",
+          "test": "ClassicRespawn.mode2_respawns_fresh_ai_walker_at_authored_spot"
+        },
+        {
+          "file": "tests/unit/test_respawn_engine.cpp",
+          "test": "RespawnEngine.ai_corpse_stain_survives_until_the_respawn_fires"
+        },
+        {
+          "file": "tests/unit/test_respawn_engine.cpp",
+          "test": "RespawnEngine.fired_entry_for_a_live_walker_id_does_not_retire_it"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "respawn.cpp:587",
+      "lines": [
+        587
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "classic_fire_ai_respawn",
+      "anchor": "if (entry.x >= 0 && entry.y >= 0 &&",
+      "condition": "blocked: entry.x >= 0 && entry.y >= 0 && queue.size() < cap -> re-enqueue with kClassicBlockedRetryTicks",
+      "semantic": "A bot whose respawn spot is occupied does not teleport: its probe body is withdrawn and the respawn retries on a short fixed cadence until the spot clears; if the queue is full the retry is lost.",
+      "arms": [
+        {
+          "when": "blocked, queue has room",
+          "observable": "no new walker; queue has 1 entry kind 1 with 0 < ticks_left <= kClassicBlockedRetryTicks; after the blocker moves, replacement appears at the spot"
+        },
+        {
+          "when": "blocked, queue full",
+          "observable": "retry not queued (see respawn.cpp:330 arm)"
+        },
+        {
+          "when": "entry spot negative",
+          "observable": "no retry (unreachable in practice: corpses never stand at negative coords)"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_classic_respawn.cpp",
+          "test": "ClassicRespawn.mode2_blocked_ai_respawn_retries_until_clear"
+        }
+      ],
+      "missing_arms": [
+        "blocked, queue full [unreachable: every caller erases the fired entry before firing]",
+        "entry spot negative"
+      ]
+    },
+    {
+      "id": "respawn.cpp:600",
+      "lines": [
+        600
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "classic_fire_respawn",
+      "anchor": "if (entry.kind == 0)",
+      "condition": "entry.kind == 0",
+      "semantic": "Heroes are revived as the same walker (same entity id, keeps its guy and seat); bots are replaced by a fresh walker.",
+      "arms": [
+        {
+          "when": "kind 0",
+          "observable": "same entity id alive"
+        },
+        {
+          "when": "kind 1",
+          "observable": "different entity id alive"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_respawn_engine.cpp",
+          "test": "RespawnEngine.player_corpse_revives_in_place_with_control_preserved"
+        },
+        {
+          "file": "tests/unit/test_respawn_engine.cpp",
+          "test": "RespawnEngine.ai_respawn_spawns_fresh_walker_of_same_family_level_team"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "respawn.cpp:616",
+      "lines": [
+        616,
+        628,
+        630,
+        632,
+        644
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if",
+        "if"
+      ],
+      "function": "classic_respawn_corpse_eligible / classic_run_death_scan",
+      "anchor": "if (w == nullptr || !w->dead() || w->query_order() != Order::Living)",
+      "condition": "dead Living; hero_eligible = myguy && (mode != 3 || true team == 0); ai_eligible = mode == 2 && !myguy && owner == nullptr && spawn_x >= 0; not already scheduled; no live duplicate",
+      "semantic": "Which corpses the classic respawn modes bring back: mode 1 every dead hero; mode 3 only Team 1 (internal team 0) heroes, judged by true team; mode 2 heroes plus ownerless bots that have a level-authored (or inherited) spawn point. Summons, generator spawns and runtime spawns without a placement stay dead; a corpse is scheduled once, and never while its character walks again.",
+      "arms": [
+        {
+          "when": "mode 1 hero",
+          "observable": "queued kind 0"
+        },
+        {
+          "when": "mode 1 authored bot",
+          "observable": "not queued"
+        },
+        {
+          "when": "mode 2 authored ownerless bot",
+          "observable": "queued kind 1 at spawn point"
+        },
+        {
+          "when": "mode 2 bot with owner",
+          "observable": "not queued"
+        },
+        {
+          "when": "mode 2 bot without spawn point",
+          "observable": "not queued, and it no longer holds the extermination win"
+        },
+        {
+          "when": "mode 3 team 1 hero / team 0 AI",
+          "observable": "not queued; team 0 hero queued"
+        },
+        {
+          "when": "live duplicate",
+          "observable": "never re-queued"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_classic_respawn.cpp",
+          "test": "ClassicRespawn.team_one_heroes_mode_filters_corpses_and_control_retention"
+        },
+        {
+          "file": "tests/unit/test_classic_respawn.cpp",
+          "test": "ClassicRespawn.mode1_does_not_respawn_unowned_ai_even_when_authored"
+        },
+        {
+          "file": "tests/unit/test_classic_respawn.cpp",
+          "test": "ClassicRespawn.generator_owned_and_summoned_walkers_never_respawn"
+        },
+        {
+          "file": "tests/unit/test_classic_respawn.cpp",
+          "test": "ClassicRespawn.runtime_spawns_without_authored_placement_never_respawn"
+        },
+        {
+          "file": "tests/unit/test_classic_respawn.cpp",
+          "test": "ClassicRespawn.live_duplicate_hero_corpse_is_never_rescheduled"
+        },
+        {
+          "file": "tests/unit/test_classic_respawn.cpp",
+          "test": "ClassicRespawn.hero_scheduled_on_death_and_revives_at_spawn_point",
+          "note": "mode 1 hero queued, kind 0"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "respawn.cpp:663",
+      "lines": [
+        663,
+        674,
+        681
+      ],
+      "kinds": [
+        "if",
+        "ternary",
+        "if"
+      ],
+      "function": "classic_respawn_run_tick",
+      "anchor": "if (!classic_respawn_active(world))",
+      "condition": "!classic_respawn_active -> return; delay = requested in [kClassicMin, kClassicMax] ? requested : kRespawnDefaultTicks; world.game_ended -> flush",
+      "semantic": "The classic respawn delay is the lobby's requested value when it lies in the allowed range, else the default; on the tick the level ends every pending hero is revived at once (so the roster never saves a mid-respawn corpse) and pending bot entries are dropped.",
+      "arms": [
+        {
+          "when": "requested 24",
+          "observable": "entry.ticks_left 24"
+        },
+        {
+          "when": "requested 0 / 6 / 2000",
+          "observable": "kRespawnDefaultTicks"
+        },
+        {
+          "when": "level ended this tick",
+          "observable": "pending heroes alive, queue empty, no bot replacement"
+        },
+        {
+          "when": "engine inactive",
+          "observable": "nothing scheduled"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_classic_respawn.cpp",
+          "test": "ClassicRespawn.requested_delay_resolution_clamps_out_of_range_values"
+        },
+        {
+          "file": "tests/unit/test_classic_respawn.cpp",
+          "test": "ClassicRespawn.end_of_level_revives_pending_heroes_and_clears_queue"
+        },
+        {
+          "file": "tests/unit/test_classic_respawn.cpp",
+          "test": "ClassicRespawn.end_driven_completion_flushes_and_drops_pending_ai"
+        },
+        {
+          "file": "tests/unit/test_classic_respawn.cpp",
+          "test": "ClassicRespawn.timeout_end_shape_flushes_pending_heroes"
+        },
+        {
+          "file": "tests/unit/test_classic_respawn.cpp",
+          "test": "ClassicRespawn.scripted_active_worlds_ignore_respawn_mode",
+          "note": "engine inactive: classic_respawn_active false, kill + tick(8), ASSERT_TRUE(respawn_queue.empty()); the engine-inactive arm"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "respawn.cpp:712",
+      "lines": [
+        695,
+        710,
+        712
+      ],
+      "kinds": [
+        "if",
+        "for",
+        "if"
+      ],
+      "function": "classic_respawn_flush_pending",
+      "anchor": "if (!classic_respawn_active(world))",
+      "condition": "!classic_respawn_active -> return; for swapped-out entries: kind == 0 -> fire",
+      "semantic": "At level end (including the synchronous exit-accept path) the death scan runs first so a hero who died on the winning tick is caught, then every pending hero is revived and every pending bot entry is dropped; running it twice changes nothing.",
+      "arms": [
+        {
+          "when": "hero queued",
+          "observable": "alive after flush"
+        },
+        {
+          "when": "hero dead but unscanned",
+          "observable": "alive after flush"
+        },
+        {
+          "when": "bot queued",
+          "observable": "no replacement, queue empty"
+        },
+        {
+          "when": "second call",
+          "observable": "queue still empty"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_classic_respawn.cpp",
+          "test": "ClassicRespawn.flush_pending_covers_the_synchronous_exit_accept_shape"
+        },
+        {
+          "file": "tests/unit/test_classic_respawn.cpp",
+          "test": "ClassicRespawn.same_tick_mutual_kill_still_revives_the_hero"
+        },
+        {
+          "file": "tests/unit/test_classic_respawn.cpp",
+          "test": "ClassicRespawn.end_driven_completion_flushes_and_drops_pending_ai"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "respawn.cpp:725",
+      "lines": [
+        719,
+        723,
+        725,
+        729,
+        734,
+        737,
+        742
+      ],
+      "kinds": [
+        "if",
+        "for",
+        "if",
+        "if",
+        "for",
+        "if",
+        "if"
+      ],
+      "function": "classic_respawn_pending_hostile_foe",
+      "anchor": "if (!classic_respawn_active(world))",
+      "condition": "active; queued kind 1 (mode 2) or kind 0 on a team != my_team; or an eligible corpse this tick on a hostile team",
+      "semantic": "Under classic respawn the level is not won by extermination while a hostile fighter is coming back: a queued enemy bot (mode 2 only), a queued enemy hero, or an enemy corpse that died this very tick and will be queued. Hostility is the strict team-colour rule (team != my_team), unchanged by seat/allied mode. Corpses that will never respawn do not hold the win.",
+      "arms": [
+        {
+          "when": "engine off",
+          "observable": "false"
+        },
+        {
+          "when": "queued hostile AI, mode 2",
+          "observable": "true; game_ended stays false"
+        },
+        {
+          "when": "queued hostile AI, mode 1 or 3",
+          "observable": "false"
+        },
+        {
+          "when": "queued own-team hero",
+          "observable": "false"
+        },
+        {
+          "when": "queued other-team hero",
+          "observable": "true"
+        },
+        {
+          "when": "hostile eligible corpse this tick",
+          "observable": "true (level not ended on the kill tick)"
+        },
+        {
+          "when": "hostile corpse without spawn point",
+          "observable": "false; level ends"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_classic_respawn.cpp",
+          "test": "ClassicRespawn.pending_hostile_foe_truth_table"
+        },
+        {
+          "file": "tests/unit/test_classic_respawn.cpp",
+          "test": "ClassicRespawn.mode2_pending_hostile_ai_blocks_extermination_win"
+        },
+        {
+          "file": "tests/unit/test_classic_respawn.cpp",
+          "test": "ClassicRespawn.runtime_spawns_without_authored_placement_never_respawn"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "respawn.cpp:766",
+      "lines": [
+        766,
+        772
+      ],
+      "kinds": [
+        "if",
+        "if"
+      ],
+      "function": "respawn_scan_anchors",
+      "anchor": "if (w == nullptr || w->query_order() != Order::Special ||",
+      "condition": "Order::Special && FAMILY_RESERVED_TEAM; is_score_team(team) && anchor_count[team] < kRespawnMaxAnchorsPerTeam",
+      "semantic": "A scripted mode's respawn anchors per team are the level's team start markers (consumed/dead ones included), in list order, teams 0-3 only, up to the per-team cap; markers of other teams and extras beyond the cap are ignored.",
+      "arms": [
+        {
+          "when": "marker on team 1 and team 2",
+          "observable": "anchor_count[1]==1, anchor_count[2]==1"
+        },
+        {
+          "when": "marker on team 5",
+          "observable": "ignored"
+        },
+        {
+          "when": "more than kRespawnMaxAnchorsPerTeam markers on one team",
+          "observable": "anchor_count == cap, first cap markers in list order"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_mode_tick.cpp",
+          "test": "ModeTick.stage_init_activates_without_a_tick",
+          "note": "anchor_count[1]==1, [2]==1"
+        },
+        {
+          "file": "tests/unit/test_mode_bindings.cpp",
+          "test": "ModeBindings.respawn_anchors_read_back_and_validate",
+          "note": "counts 2/1/0, anchor(0,1)==192,96"
+        }
+      ],
+      "missing_arms": [
+        "marker on team 5",
+        "more than kRespawnMaxAnchorsPerTeam markers on one team"
+      ]
+    },
+    {
+      "id": "respawn.cpp:810",
+      "lines": [
+        790,
+        798,
+        801,
+        805,
+        810
+      ],
+      "kinds": [
+        "for",
+        "for",
+        "if",
+        "if",
+        "ternary"
+      ],
+      "function": "respawn_flush_revive_all",
+      "anchor": "for (const RespawnEntry& entry : pending)",
+      "condition": "fire every queued entry; then for every dead Living with a guy: scrub, skip live duplicate, team = is_score_team(raw) ? raw : 0, revive",
+      "semantic": "When a scripted match is decided every queued respawn fires at once (heroes revived, bots REPLACED with fresh walkers) and every other dead hero is revived in place on its true team, so the roster merge never sees a corpse; a hero whose character walks again is not revived but its stain is cleared. The flush never dispatches on_respawn, and any blocked-bot retry it pushes is dropped by the trailing clear (line 792).",
+      "arms": [
+        {
+          "when": "queued hero",
+          "observable": "alive after mode_declare_winner + tick, stain gone"
+        },
+        {
+          "when": "unqueued dead hero",
+          "observable": "alive, stain gone"
+        },
+        {
+          "when": "unqueued hero with live duplicate",
+          "observable": "stays dead, stain gone"
+        },
+        {
+          "when": "charmed hero true team 0-3",
+          "observable": "team_num == true team"
+        },
+        {
+          "when": "queued bot",
+          "observable": "fresh replacement fielded (not asserted)"
+        },
+        {
+          "when": "unqueued dead FFA/mutant hero, true band byte 16-31",
+          "observable": "revived with team_num 0 (see suspect)"
+        },
+        {
+          "when": "scripted mode, after mode_declare_winner + tick, queued entries present",
+          "observable": "on_respawn log count 0 even for the queued entries (flush calls classic_fire_respawn directly)"
+        },
+        {
+          "when": "queued bot whose spot is blocked during the flush",
+          "observable": "its re-queued retry is dropped by the clear(): respawn_queue empty after the flush"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_respawn_engine.cpp",
+          "test": "RespawnEngine.win_latch_flush_revives_all_player_corpses"
+        },
+        {
+          "file": "tests/unit/test_respawn_engine.cpp",
+          "test": "RespawnEngine.win_latch_flush_revives_an_unqueued_player_and_scrubs_stain"
+        },
+        {
+          "file": "tests/unit/test_respawn_engine.cpp",
+          "test": "RespawnEngine.win_latch_flush_scrubs_an_unqueued_duplicate_corpse"
+        }
+      ],
+      "missing_arms": [
+        "charmed hero true team 0-3",
+        "queued bot",
+        "unqueued dead FFA/mutant hero, true band byte 16-31",
+        "scripted mode, after mode_declare_winner + tick, queued entries present",
+        "queued bot whose spot is blocked during the flush"
+      ]
+    },
+    {
+      "id": "respawn.cpp:819",
+      "lines": [
+        819,
+        822,
+        824,
+        827,
+        833
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if",
+        "if"
+      ],
+      "function": "respawn_schedule_corpse",
+      "anchor": "if (corpse == nullptr || !corpse->dead() ||",
+      "condition": "not a dead Living -> false; already scheduled -> false; live duplicate -> false; not queued after schedule (cap of players) -> false; ticks_override > 0 -> ticks_left = min(override, 65535)",
+      "semantic": "og.respawn_schedule (the scripted modes' respawn request) accepts only a dead living body not already pending and whose character is not walking again; it reports failure when the queue is full of heroes; an explicit delay replaces the default.",
+      "arms": [
+        {
+          "when": "live walker",
+          "observable": "returns false"
+        },
+        {
+          "when": "already pending",
+          "observable": "false"
+        },
+        {
+          "when": "live duplicate hero",
+          "observable": "false"
+        },
+        {
+          "when": "queue full of heroes",
+          "observable": "false"
+        },
+        {
+          "when": "override 25",
+          "observable": "true, entry.ticks_left 25"
+        },
+        {
+          "when": "override 0",
+          "observable": "true, entry.ticks_left == respawn_ticks"
+        },
+        {
+          "when": "override 70000",
+          "observable": "ticks_left 65535"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_mode_bindings.cpp",
+          "test": "ModeBindings.respawn_schedule_pending_and_counts",
+          "note": "live_refused\\t0, dupe\\t0, override 25 -> ticks_left 25"
+        },
+        {
+          "file": "tests/unit/test_respawn_engine.cpp",
+          "test": "RespawnEngine.live_duplicate_character_cancels_the_revive",
+          "note": "EXPECT_FALSE schedule"
+        },
+        {
+          "file": "tests/unit/test_respawn_engine.cpp",
+          "test": "RespawnEngine.player_corpse_revives_in_place_with_control_preserved",
+          "note": "override 0: ASSERT_TRUE schedule, ticks_left 6 == respawn_ticks"
+        }
+      ],
+      "missing_arms": [
+        "queue full of heroes",
+        "override 70000"
+      ]
+    },
+    {
+      "id": "respawn.cpp:854",
+      "lines": [
+        852,
+        854
+      ],
+      "kinds": [
+        "for",
+        "if"
+      ],
+      "function": "respawn_pending_count",
+      "anchor": "for (const RespawnEntry& entry : world.respawn.respawn_queue)",
+      "condition": "entry.team == team",
+      "semantic": "og.respawn_pending_count(team) counts the queued respawns of that true team (heroes and bots).",
+      "arms": [
+        {
+          "when": "one queued team-1 corpse",
+          "observable": "count(1)==1, count(0)==0"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_mode_bindings.cpp",
+          "test": "ModeBindings.respawn_schedule_pending_and_counts"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "respawn.cpp:865",
+      "lines": [
+        863,
+        865
+      ],
+      "kinds": [
+        "if",
+        "if"
+      ],
+      "function": "respawn_spot_clear",
+      "anchor": "if (w == nullptr)",
+      "condition": "w == nullptr -> false; floor < 0 -> spawn_spot_clear else classic_spot_clear",
+      "semantic": "The exported spawn probe (og.spawn_spot_clear) asks the walker's own floor when no floor is given, and the named floor otherwise; a null walker is never clear.",
+      "arms": [
+        {
+          "when": "null walker",
+          "observable": "false"
+        },
+        {
+          "when": "floor -1",
+          "observable": "same-floor probe result"
+        },
+        {
+          "when": "floor 0/1",
+          "observable": "floor-keyed probe result"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_respawn_engine.cpp",
+          "test": "RespawnEngine.exported_probes_hold_null_and_impassable_guards",
+          "note": "null false; off-grid false at floor -1 and floor 0"
+        },
+        {
+          "file": "tests/unit/test_respawn_engine.cpp",
+          "test": "RespawnEngine.spawn_probes_make_no_empty_pile",
+          "note": "clear spot true at floor -1 and floor 0"
+        },
+        {
+          "file": "tests/unit/test_respawn_engine.cpp",
+          "test": "RespawnEngine.spawn_probe_rejects_doors_and_cross_bucket_blockers",
+          "note": "floor -1 door/cross-bucket false, clear true"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "respawn.cpp:879",
+      "lines": [
+        879,
+        903,
+        919
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if"
+      ],
+      "function": "make_body_probe / body_ground_clear / body_spot_clear",
+      "anchor": "if (data == nullptr)",
+      "condition": "configure_existing_entity(order, family) == nullptr -> false",
+      "semantic": "Asking whether a body of a family fits somewhere answers no for a family the loader cannot make.",
+      "arms": [
+        {
+          "when": "unknown / out-of-range family",
+          "observable": "body_spot_clear and body_ground_clear false"
+        },
+        {
+          "when": "known family",
+          "observable": "the probe proceeds"
+        },
+        {
+          "when": "Lua og.body_spot_near with an out-of-range family",
+          "observable": "returns nil, no host error"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_quiet_probe.cpp",
+          "test": "QuietProbe.body_spot_clear_asks_the_placement_rule_with_the_bodys_box",
+          "note": "known family SKELETON: the probe proceeds to true/false answers"
+        },
+        {
+          "file": "tests/unit/test_respawn_engine.cpp",
+          "test": "RespawnEngine.body_ground_clear_asks_the_grid_with_the_bodys_own_flags",
+          "note": "known SOLDIER/FAERIE families answer the grid"
+        }
+      ],
+      "missing_arms": [
+        "unknown / out-of-range family",
+        "Lua og.body_spot_near with an out-of-range family"
+      ]
+    },
+    {
+      "id": "respawn.cpp:921",
+      "lines": [
+        921,
+        924
+      ],
+      "kinds": [
+        "if",
+        "if"
+      ],
+      "function": "body_spot_clear",
+      "anchor": "if (!probe_ground_clear(world, probe, x, y, floor))",
+      "condition": "!probe_ground_clear -> false; !respawn_spot_clear -> false; dormant_occupies_spot -> false",
+      "semantic": "A body of a family fits at a spot only when the ground takes that family's box and movement flags (a flyer fits over water, a walker does not), no blocking body overlaps it, and no delayed spawn that has not yet entered the world is waiting there; nothing is drawn and nothing is filed.",
+      "arms": [
+        {
+          "when": "water, walker family",
+          "observable": "false; body_ground_clear false"
+        },
+        {
+          "when": "water, flyer family",
+          "observable": "body_ground_clear true"
+        },
+        {
+          "when": "living on the spot",
+          "observable": "body_spot_clear false, body_ground_clear true"
+        },
+        {
+          "when": "dormant spawn on the spot",
+          "observable": "false"
+        },
+        {
+          "when": "open grass/drumstick",
+          "observable": "true; rng state unchanged"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_respawn_engine.cpp",
+          "test": "RespawnEngine.body_ground_clear_asks_the_grid_with_the_bodys_own_flags"
+        },
+        {
+          "file": "tests/unit/test_quiet_probe.cpp",
+          "test": "QuietProbe.body_spot_clear_asks_the_placement_rule_with_the_bodys_box"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "respawn.cpp:933",
+      "lines": [
+        933,
+        941,
+        943,
+        947
+      ],
+      "kinds": [
+        "if",
+        "for",
+        "for",
+        "if"
+      ],
+      "function": "body_spot_near",
+      "anchor": "if (body_spot_clear(world, order, family, x, y, floor))",
+      "condition": "corner clear -> it; else rings r=1..radius in order (-1,0),(1,0),(0,-1),(0,1),(-1,-1),(1,-1),(-1,1),(1,1)",
+      "semantic": "Placing a body near a spot takes the spot itself when it fits, else the nearest pixel ring position that fits, trying left, right, up, down, then the four diagonals at each distance; if nothing fits within the radius it answers no and leaves the outputs alone.",
+      "arms": [
+        {
+          "when": "corner clear",
+          "observable": "out = corner"
+        },
+        {
+          "when": "tie left/right",
+          "observable": "left wins"
+        },
+        {
+          "when": "only vertical clears",
+          "observable": "(0,-r)"
+        },
+        {
+          "when": "boxed in",
+          "observable": "false, outputs unchanged"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_quiet_probe.cpp",
+          "test": "QuietProbe.body_spot_near_tries_the_corner_then_the_ring_in_order"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "respawn.cpp:969",
+      "lines": [
+        969,
+        976,
+        980,
+        986
+      ],
+      "kinds": [
+        "if",
+        "if",
+        "if",
+        "if"
+      ],
+      "function": "respawn_scrub_stains_at",
+      "anchor": "if (fx == nullptr || fx->dead() ||",
+      "condition": "live Treasure STAIN or LIFE_GEM; floor >= 0 && fx floor != floor -> skip; centre distance > 8 -> skip; stain of a pending respawn -> skip",
+      "semantic": "A mode can clear a corpse's drops by position (og.respawn_scrub_stains_at): every live bloodstain and life gem whose centre is within 8px of a 16px body at that corner, on that floor (any floor when none is given), of any team, is removed, except a stain that belongs to a still-pending respawn.",
+      "arms": [
+        {
+          "when": "stain at the corner, not pending",
+          "observable": "stain dead"
+        },
+        {
+          "when": "pending corpse's stain nearby",
+          "observable": "survives"
+        },
+        {
+          "when": "same identity on another floor",
+          "observable": "scrubbed only when that floor is named"
+        },
+        {
+          "when": "drop 9+px away",
+          "observable": "survives"
+        },
+        {
+          "when": "life gem at the corner",
+          "observable": "dead"
+        },
+        {
+          "when": "floor -1",
+          "observable": "drops on every floor scrubbed"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_respawn_engine.cpp",
+          "test": "RespawnEngine.positional_scrub_preserves_pending_ai_stains"
+        },
+        {
+          "file": "tests/unit/test_respawn_engine.cpp",
+          "test": "RespawnEngine.positional_scrub_preserves_only_pending_player_stains"
+        },
+        {
+          "file": "tests/unit/test_respawn_engine.cpp",
+          "test": "RespawnEngine.positional_scrub_matches_pending_stain_location"
+        }
+      ],
+      "missing_arms": [
+        "life gem at the corner",
+        "floor -1"
+      ]
+    }
+  ],
+  "other": [
+    {
+      "id": "respawn.cpp:88",
+      "lines": [
+        88,
+        99
+      ],
+      "kinds": [
+        "if",
+        "if"
+      ],
+      "kind": "defensive",
+      "anchor": "if (world.myobmap == nullptr)",
+      "note": "null obmap (no world map yet) answers clear; a bucket with no pile is skipped (find_list miss, #417 makes no node)"
+    },
+    {
+      "id": "respawn.cpp:93",
+      "lines": [
+        93,
+        95,
+        101
+      ],
+      "kinds": [
+        "for",
+        "for",
+        "for"
+      ],
+      "kind": "loop",
+      "anchor": "for (int bx = x; bx < x + w->sizex() + kBucket; bx += kBucket)",
+      "note": "bucket sweep over the spawn box and pile iteration; the rule is respawn.cpp:86 / respawn.cpp:67"
+    },
+    {
+      "id": "respawn.cpp:120",
+      "lines": [
+        120
+      ],
+      "kinds": [
+        "if"
+      ],
+      "kind": "defensive",
+      "anchor": "if (w->stats() != nullptr)",
+      "note": "stats() null guard in revive_player_walker (the stats part of the revive is skipped for a walker without stats); the revive rule itself is row respawn.cpp:118"
+    },
+    {
+      "id": "respawn.cpp:143",
+      "lines": [
+        143
+      ],
+      "kinds": [
+        "for"
+      ],
+      "kind": "loop",
+      "anchor": "for (const auto& uptr : world.oblist)",
+      "note": "oblist scan for a conflicting controller; rule is respawn.cpp:141"
+    },
+    {
+      "id": "respawn.cpp:161",
+      "lines": [
+        161
+      ],
+      "kinds": [
+        "for"
+      ],
+      "kind": "loop",
+      "anchor": "for (const auto& entry : respawn.respawn_queue)",
+      "note": "queue scan; rule respawn.cpp:163"
+    },
+    {
+      "id": "respawn.cpp:186",
+      "lines": [
+        186
+      ],
+      "kinds": [
+        "for"
+      ],
+      "kind": "loop",
+      "anchor": "for (const auto& uptr : world.oblist)",
+      "note": "oblist scan; rule respawn.cpp:184"
+    },
+    {
+      "id": "respawn.cpp:407",
+      "lines": [
+        407
+      ],
+      "kinds": [
+        "if"
+      ],
+      "kind": "plumbing",
+      "anchor": "if (respawn.respawn_queue.empty())",
+      "note": "empty-queue early return in respawn_run_timers (no observable difference)"
+    },
+    {
+      "id": "respawn.cpp:411",
+      "lines": [
+        411
+      ],
+      "kinds": [
+        "for"
+      ],
+      "kind": "loop",
+      "anchor": "for (std::size_t i = 0; i < respawn.respawn_queue.size();)",
+      "note": "queue walk with in-place erase; rules respawn.cpp:415 and respawn.cpp:423"
+    },
+    {
+      "id": "respawn.cpp:498",
+      "lines": [
+        498,
+        508
+      ],
+      "kinds": [
+        "if",
+        "if"
+      ],
+      "kind": "defensive",
+      "anchor": "if (world.myobmap == nullptr)",
+      "note": "null obmap answers clear; empty bucket skipped"
+    },
+    {
+      "id": "respawn.cpp:502",
+      "lines": [
+        502,
+        504,
+        510
+      ],
+      "kinds": [
+        "for",
+        "for",
+        "for"
+      ],
+      "kind": "loop",
+      "anchor": "for (int bx = x; bx < x + w->sizex() + kBucket; bx += kBucket)",
+      "note": "floor-keyed bucket sweep; rule respawn.cpp:496"
+    },
+    {
+      "id": "respawn.cpp:554",
+      "lines": [
+        554,
+        558
+      ],
+      "kinds": [
+        "if",
+        "if"
+      ],
+      "kind": "defensive",
+      "anchor": "if (w == nullptr)",
+      "note": "add_ob failure (no loader data for the family) and null stats guards in classic_fire_ai_respawn"
+    },
+    {
+      "id": "respawn.cpp:641",
+      "lines": [
+        641
+      ],
+      "kinds": [
+        "for"
+      ],
+      "kind": "loop",
+      "anchor": "for (const auto& uptr : world.oblist)",
+      "note": "oblist death scan; rule respawn.cpp:616"
+    },
+    {
+      "id": "respawn.cpp:761",
+      "lines": [
+        761,
+        763
+      ],
+      "kinds": [
+        "for",
+        "for"
+      ],
+      "kind": "loop",
+      "anchor": "for (int t = 0; t < 4; ++t)",
+      "note": "anchor array reset and oblist scan; rule respawn.cpp:766"
+    },
+    {
+      "id": "respawn.cpp:844",
+      "lines": [
+        844
+      ],
+      "kinds": [
+        "if"
+      ],
+      "kind": "defensive",
+      "anchor": "if (w == nullptr)",
+      "note": "null walker guard in respawn_pending_for (asserted by exported_probes_hold_null_and_impassable_guards)"
+    },
+    {
+      "id": "respawn.cpp:966",
+      "lines": [
+        966
+      ],
+      "kinds": [
+        "for"
+      ],
+      "kind": "loop",
+      "anchor": "for (const auto& uptr : list)",
+      "note": "fxlist/oblist walk in respawn_scrub_stains_at; rules respawn.cpp:969"
+    }
+  ]
+}

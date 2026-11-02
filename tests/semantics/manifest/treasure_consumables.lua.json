@@ -1,0 +1,240 @@
+{
+  "path": "packs/core/lib/treasure_consumables.lua",
+  "rules": [
+    {
+      "id": "treasure_consumables.lua:9",
+      "lines": [
+        9
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "notify_potion_consume",
+      "anchor": "if eater:user() ~= -1 then",
+      "condition": "eater:user() ~= -1",
+      "semantic": "A potion's \"Potion of <X>(<level>)!\" line goes only to a seated eater's own view; a bot eats silently; the potion is consumed either way.",
+      "arms": [
+        {
+          "when": "seated eater",
+          "observable": "one Notification addressed to that seat, potion dead"
+        },
+        {
+          "when": "bot eater",
+          "observable": "no notification, potion dead"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "parity": "treasure_magic_potion_pickup_scen99",
+          "fact": "EventKindAtLeast(notification,1) (seated eater)"
+        },
+        {
+          "parity": "treasure_invis_potion_pickup_scen99",
+          "fact": "EventKindAtLeast(notification,1) (seated eater)"
+        },
+        {
+          "file": "tests/integration/test_treasure_eat.cpp",
+          "test": "TreasureEat.magic_potion",
+          "note": "seated eater: potion dead"
+        }
+      ],
+      "missing_arms": [
+        "bot eater"
+      ]
+    },
+    {
+      "id": "treasure_consumables.lua:18",
+      "lines": [
+        18
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "drumstick_on_eat",
+      "anchor": "if eater.hp >= eater.max_hp then",
+      "condition": "eater.hp >= eater.max_hp",
+      "semantic": "A drumstick is left untouched by an eater at full health (no heal, no sound, stays alive).",
+      "arms": [
+        {
+          "when": "full hp",
+          "observable": "drumstick alive, no SOUND_EAT"
+        },
+        {
+          "when": "wounded",
+          "observable": "heal base + rand0(base), dead, SOUND_EAT"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "parity": "treasure_drumstick_fullhp_noconsume_scen99",
+          "fact": "WalkerOfTeamAlive + EventKindExactly(play_sound,0) (full hp: alive, no SOUND_EAT)"
+        },
+        {
+          "file": "tests/integration/test_treasure_eat.cpp",
+          "test": "TreasureEat.drumstick_full_hp",
+          "note": "hp unchanged, drumstick not dead"
+        },
+        {
+          "file": "tests/integration/test_treasure_eat.cpp",
+          "test": "TreasureEat.drumstick",
+          "note": "wounded: hp in the base + rand0(base) band 60..69"
+        },
+        {
+          "parity": "treasure_drumstick_pickup_scen99",
+          "fact": "WalkerHpRangeAtFinalTick (wounded: healed band)"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "treasure_consumables.lua:27",
+      "lines": [
+        27
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "drumstick_on_eat",
+      "anchor": "if eater.hp > eater.max_hp then",
+      "condition": "eater.hp > eater.max_hp",
+      "semantic": "A drumstick heals no higher than max hp.",
+      "arms": [
+        {
+          "when": "heal exceeds wound",
+          "observable": "hp == max_hp"
+        },
+        {
+          "when": "heal within wound",
+          "observable": "hp + amount"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_treasure_eat.cpp",
+          "test": "TreasureEat.drumstick",
+          "note": "heal within wound: 50/100 + 10..19 -> 60..69, the clamp never fires"
+        }
+      ],
+      "missing_arms": [
+        "heal exceeds wound"
+      ]
+    },
+    {
+      "id": "treasure_consumables.lua:38",
+      "lines": [
+        38
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "magic_potion_on_eat",
+      "anchor": "if eater.magicpoints < eater.max_magicpoints then",
+      "condition": "eater.magicpoints < eater.max_magicpoints",
+      "semantic": "A mana potion first tops the pool up to max (never lowers an overfilled pool), then overfills it by mana_overfill_per_level * level.",
+      "arms": [
+        {
+          "when": "below max",
+          "observable": "mp = max + 50*level"
+        },
+        {
+          "when": "already above max",
+          "observable": "mp + 50*level (no reset down)"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": [
+        "below max",
+        "already above max"
+      ]
+    },
+    {
+      "id": "treasure_consumables.lua:50",
+      "lines": [
+        50
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "flight_potion_on_eat",
+      "anchor": "if not eater:s_query_bit_flags(C.BIT_FLYING) then",
+      "condition": "not BIT_FLYING",
+      "semantic": "A natural flyer gains nothing from a flight potion and leaves it on the ground; anyone else gains duration_per_level*level flight ticks and consumes it.",
+      "arms": [
+        {
+          "when": "flyer",
+          "observable": "flight_left 0, potion alive, no notice"
+        },
+        {
+          "when": "walker",
+          "observable": "flight_left += d*L, consumed"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "parity": "treasure_flight_potion_flier_noconsume_scen99",
+          "fact": "WalkerOfTeamAlive + EventKindExactly(notification,0) (flyer)"
+        },
+        {
+          "file": "tests/unit/test_pack_lua_paths.cpp",
+          "test": "PackLuaTreasure.a_potion_that_cannot_help_its_eater_is_left_untouched",
+          "note": "flyer: flight_left 0, potion alive"
+        },
+        {
+          "file": "tests/integration/test_treasure_eat.cpp",
+          "test": "TreasureEat.flight_potion",
+          "note": "walker: flight_left > 0, potion dead; the exact d*L amount is not pinned"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "treasure_consumables.lua:60",
+      "lines": [
+        60
+      ],
+      "kinds": [
+        "if"
+      ],
+      "function": "invulnerable_potion_on_eat",
+      "anchor": "if not eater:s_query_bit_flags(C.BIT_INVINCIBLE) then",
+      "condition": "not BIT_INVINCIBLE",
+      "semantic": "An already-invincible walker gains nothing from an invulnerability potion and leaves it; anyone else gains duration_per_level*level ticks and consumes it.",
+      "arms": [
+        {
+          "when": "invincible",
+          "observable": "invulnerable_left 0, potion alive"
+        },
+        {
+          "when": "other",
+          "observable": "invulnerable_left > 0, consumed"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_pack_lua_paths.cpp",
+          "test": "PackLuaTreasure.a_potion_that_cannot_help_its_eater_is_left_untouched",
+          "note": "invincible: invulnerable_left 0, potion alive"
+        },
+        {
+          "file": "tests/integration/test_treasure_eat.cpp",
+          "test": "TreasureEat.invulnerable_potion",
+          "note": "other: invulnerable_left > 0, potion dead"
+        }
+      ],
+      "missing_arms": []
+    }
+  ],
+  "other": []
+}
