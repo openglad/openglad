@@ -364,7 +364,10 @@ protected:
 } // namespace
 
 // gameplay_context.cpp:116. The straightness bias of a path step aims at the
-// goal point when the solve has one, and at the walker's foe otherwise.
+// goal point when the solve has one, and at the walker's foe otherwise. The
+// goal (2,7) and the foe (12,12) share neither coordinate, so a target that
+// took either coordinate from the wrong source would lie off the walked line
+// and every step would pay a penalty.
 TEST_F(SemPathing, path_steps_are_biased_toward_the_goal_point_when_set_else_the_foe)
 {
     walker* a = actor_at(2, 2, 0);
@@ -372,28 +375,31 @@ TEST_F(SemPathing, path_steps_are_biased_toward_the_goal_point_when_set_else_the
     ASSERT_NE(nullptr, a);
     ASSERT_NE(nullptr, foe);
     foe->set_team_num(1);
-    foe->setxy(12 * GRID_SIZE, 2 * GRID_SIZE);
+    foe->setxy(12 * GRID_SIZE, 12 * GRID_SIZE);
     (void)world().myobmap->remove(foe);
     a->set_foe(foe);
 
     // Goal arm first, so a foe solve that wrongly read the goal would see a
     // stale one.
     float cost = 0.0f;
-    const std::vector<Cell> south = solve_to(a, 2, 12, 0, cost);
-    EXPECT_EQ(column(2, 2, 12, 0), south)
+    const std::vector<Cell> south = solve_to(a, 2, 7, 0, cost);
+    EXPECT_EQ(column(2, 2, 7, 0), south)
         << "goal point set: the path runs straight down to the goal";
-    EXPECT_FLOAT_EQ(10.0f, cost)
+    EXPECT_FLOAT_EQ(5.0f, cost)
         << "goal point set: every step lies on the goal line, so no step pays "
            "a straightness penalty (aimed at the foe, each would)";
 
     std::vector<PathState> path;
     cost = -1.0f;
-    pathing().solve_for(a, cell_state(2, 2, 0), cell_state(12, 2, 0), path, cost);
-    EXPECT_EQ(row(2, 2, 12, 0), cells(path))
-        << "no goal: the path runs straight east to the foe";
-    EXPECT_FLOAT_EQ(10.0f, cost)
+    pathing().solve_for(a, cell_state(2, 2, 0), cell_state(12, 12, 0), path, cost);
+    std::vector<Cell> diagonal;
+    for (int k = 2; k <= 12; ++k)
+        diagonal.push_back({k, k, 0});
+    EXPECT_EQ(diagonal, cells(path))
+        << "no goal: the path runs straight down the diagonal to the foe";
+    EXPECT_FLOAT_EQ(10.0f * kDiag, cost)
         << "no goal: every step lies on the foe line, so no step pays a "
-           "straightness penalty (aimed at the old goal, each would)";
+           "straightness penalty (aimed at the old goal on either axis, each would)";
 }
 
 // gameplay_context.cpp:95. The A* estimate adds one cell (16) per floor of
