@@ -20,6 +20,7 @@
 #include <openglad/core/pixdefs.h>
 #include <openglad/core/sound_ids.h>
 #include <openglad/gameplay/event.h>
+#include <openglad/gameplay/families/family_string_ids.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/guy.h>
@@ -66,6 +67,26 @@ PathState cell_state(int cx, int cy, int floor = 0)
     return reinterpret_cast<PathState>(static_cast<intptr_t>(
         static_cast<intptr_t>(floor) * FLOOR_STRIDE + cy * MAP_WIDTH + cx));
 }
+
+// A sim-RNG spy for turn undead: answers `roll_bound - 1` to the roll of
+// bound `roll_bound` (so every resistance draw loses) and 0 to the rest,
+// and records every bound.
+class RollSpy : public IRandom
+{
+public:
+    explicit RollSpy(std::uint32_t roll_bound) : roll_(roll_bound) {}
+    std::uint32_t next(std::uint32_t max_exclusive) override
+    {
+        bounds.push_back(max_exclusive);
+        if (max_exclusive == 0)
+            return 0;
+        return max_exclusive == roll_ ? roll_ - 1 : 0;
+    }
+    std::vector<std::uint32_t> bounds;
+
+private:
+    std::uint32_t roll_;
+};
 
 // A walker whose walk() answers from a script and records every attempt,
 // and whose facing() can be forced (walkstep's fallback switch reads it).
@@ -812,6 +833,599 @@ TEST_F(SemWalker4, a_walker_centers_on_a_stair_node_and_waits_on_a_multifloor_ma
     EXPECT_TRUE(orc->path_to_foe.empty()) << "single-floor map: node erased";
     EXPECT_EQ(160, orc->xpos()) << "single-floor map: no move";
     EXPECT_EQ(128, orc->ypos());
+}
+
+// ---------------------------------------------------------------------------
+// walker_specials.cpp: the blink and its landing probe
+// ---------------------------------------------------------------------------
+
+class Blink : public SemWalker4 {
+protected:
+    // Boulders everywhere but the grass cell (20, 20) = px (320, 320).
+    void boulder_arena(int floor_count = 1)
+    {
+        fresh_world(floor_count);
+        paint_all(PIX_BOULDER_1);
+        tile(20, 20, PIX_GRASS1);
+    }
+
+    // Floor 1's grid: all `pix`, with `hole` at cell (20, 20).
+    void floor1_grid(unsigned char pix, unsigned char hole)
+    {
+        const int gw = world().grid.w;
+        const int gh = world().grid.h;
+        const std::size_t n = static_cast<std::size_t>(gw) * static_cast<std::size_t>(gh);
+        auto* buf = new unsigned char[n];
+        std::fill(buf, buf + n, pix);
+        buf[static_cast<std::size_t>(20 + 20 * gw)] = hole;
+        world().grid_for_floor(1) = PixieData(1, static_cast<unsigned char>(gw),
+                                              static_cast<unsigned char>(gh), buf);
+        world().smoother_for_floor(1).set_target(world().grid_for_floor(1));
+    }
+
+    walker* mage_at(short x, short y)
+    {
+        walker* m = living_at(FAMILY_MAGE, 0, x, y);
+        if (m != nullptr)
+            m->set_user(-1);
+        return m;
+    }
+
+    walker* marker_for(walker* owner, short x, short y, short life)
+    {
+        walker* m = world().add_ob(Order::FX, FAMILY_MARKER);
+        if (m == nullptr)
+            return nullptr;
+        m->set_owner(owner);
+        m->set_dead(0);
+        place(m, x, y);
+        m->set_lifetime(life);
+        return m;
+    }
+
+    walker* thing_at(Order order, int family, short x, short y)
+    {
+        walker* t = world().add_ob(order, family);
+        if (t == nullptr)
+            return nullptr;
+        t->set_team_num(1);
+        return place(t, x, y);
+    }
+
+    int count_text(const std::string& text) const { return count_notifications(text); }
+};
+
+// walker_specials.cpp:60. What a body on the landing spot does to a blink.
+TEST_F(Blink, a_blink_lands_only_where_no_solid_body_stands)
+{
+    struct Case
+    {
+        const char* arm;
+        bool lands;
+    };
+    // (b) a potion alone: allowed, and not eaten by the probe.
+    {
+        boulder_arena();
+        walker* mage = mage_at(96, 96);
+        walker* mark = marker_for(mage, 320, 320, 5);
+        walker* loot = thing_at(Order::Treasure, FAMILY_FLIGHT_POTION, 320, 320);
+        ASSERT_TRUE(mage && mark && loot);
+        world().rng_.state_ = 42u;
+        EXPECT_TRUE(mage->teleport()) << "a treasure overlaps: landing allowed";
+        EXPECT_EQ(320, mage->xpos()) << "a treasure overlaps: lands on the marker";
+        EXPECT_EQ(320, mage->ypos());
+        EXPECT_EQ(4, static_cast<int>(mark->lifetime()));
+        EXPECT_EQ(0, static_cast<int>(loot->dead())) << "a treasure overlaps: the probe eats nothing";
+        EXPECT_EQ(0, static_cast<int>(mage->flight_left())) << "a treasure overlaps: no flight drunk";
+    }
+    // (c) generators and solid scenery refuse the landing.
+    const int bone_wall = og::families::resolve_family_string_id(Order::Weapon, "core:bone_wall");
+    ASSERT_GE(bone_wall, 0);
+    const struct { const char* arm; Order order; int family; } blockers[] = {
+        {"a generator (tent)", Order::Generator, FAMILY_TENT},
+        {"a door weapon", Order::Weapon, FAMILY_DOOR},
+        {"a tree weapon", Order::Weapon, FAMILY_TREE},
+        {"a boulder weapon", Order::Weapon, FAMILY_BOULDER},
+        {"a weapon declaring blocks_placement (bone wall)", Order::Weapon, bone_wall},
+    };
+    for (const auto& b : blockers)
+    {
+        boulder_arena();
+        walker* mage = mage_at(96, 96);
+        walker* mark = marker_for(mage, 320, 320, 5);
+        walker* body = thing_at(b.order, b.family, 320, 320);
+        ASSERT_TRUE(mage && mark && body) << b.arm;
+        world().rng_.state_ = 42u;
+        EXPECT_FALSE(mage->teleport()) << b.arm << " overlaps: landing refused";
+        EXPECT_EQ(96, mage->xpos()) << b.arm << " overlaps: caster stays";
+        EXPECT_EQ(96, mage->ypos()) << b.arm;
+        EXPECT_EQ(5, static_cast<int>(mark->lifetime())) << b.arm << ": no use spent";
+    }
+    // (d) a corpse in the pile, and a hidden walker forced into it.
+    for (int hidden = 0; hidden < 2; ++hidden)
+    {
+        const char* arm = hidden ? "a hidden walker overlaps" : "a dead walker overlaps";
+        boulder_arena();
+        walker* mage = mage_at(96, 96);
+        walker* mark = marker_for(mage, 320, 320, 5);
+        walker* body = living_at(hidden ? FAMILY_SKELETON : FAMILY_SOLDIER, 1, 320, 320);
+        ASSERT_TRUE(mage && mark && body) << arm;
+        if (hidden)
+            body->set_hidden(true);
+        else
+            body->set_dead(1);
+        world().myobmap->add(body, 320, 320);
+        const std::list<walker*>* pile = world().myobmap->find_list(320, 320, 0);
+        ASSERT_NE(nullptr, pile);
+        ASSERT_EQ(1, std::count(pile->begin(), pile->end(), body)) << arm << ": in the pile";
+        world().rng_.state_ = 42u;
+        EXPECT_TRUE(mage->teleport()) << arm << ": landing allowed";
+        EXPECT_EQ(320, mage->xpos()) << arm << ": the caster lands on it";
+        EXPECT_EQ(320, mage->ypos()) << arm;
+        EXPECT_EQ(4, static_cast<int>(mark->lifetime())) << arm;
+    }
+}
+
+// walker_specials.cpp:74. Two height-bounded bodies whose heights overlap
+// block the landing.
+TEST_F(Blink, a_height_overlapping_body_blocks_a_blink)
+{
+    boulder_arena();
+    walker* mage = mage_at(96, 96);
+    walker* mark = marker_for(mage, 320, 320, 10);
+    walker* body = living_at(FAMILY_SOLDIER, 1, 320, 320);
+    ASSERT_TRUE(mage && mark && body);
+    body->set_sizez(8);
+    body->set_worldz(4.0f);
+    mage->set_sizez(8);
+    mage->set_worldz(0.0f);
+    world().rng_.state_ = 5u;
+    EXPECT_FALSE(mage->teleport()) << "both bounded and height-overlapping: refused";
+    EXPECT_EQ(96, mage->xpos()) << "both bounded and height-overlapping: caster stays";
+    EXPECT_EQ(96, mage->ypos());
+    EXPECT_EQ(10, static_cast<int>(mark->lifetime()));
+}
+
+// walker_specials.cpp:98. A permanent flyer may land over water; a walker
+// on a flight potion may not, and keeps its flight ticks.
+TEST_F(Blink, a_permanent_flyer_lands_over_water_but_transient_flight_does_not)
+{
+    fresh_world();
+    paint_all(PIX_WATER1);
+    walker* mage = mage_at(32, 32);
+    walker* mark = marker_for(mage, 320, 320, 5);
+    ASSERT_TRUE(mage && mark);
+    mage->stats()->set_bit_flags(BIT_FLYING, 1);
+    mage->set_flight_left(0);
+    world().rng_.state_ = 42u;
+    EXPECT_TRUE(mage->teleport()) << "permanently BIT_FLYING over water: landing allowed";
+    EXPECT_EQ(320, mage->xpos());
+    EXPECT_EQ(320, mage->ypos());
+    EXPECT_EQ(4, static_cast<int>(mark->lifetime()));
+
+    fresh_world();
+    paint_all(PIX_WATER1);
+    mage = mage_at(32, 32);
+    mark = marker_for(mage, 320, 320, 5);
+    ASSERT_TRUE(mage && mark);
+    mage->stats()->set_bit_flags(BIT_FLYING, 0);
+    mage->set_flight_left(200);
+    world().rng_.state_ = 42u;
+    EXPECT_FALSE(mage->teleport()) << "transient flight over water: refused everywhere";
+    EXPECT_EQ(32, mage->xpos());
+    EXPECT_EQ(32, mage->ypos());
+    EXPECT_EQ(5, static_cast<int>(mark->lifetime()));
+    EXPECT_EQ(200, static_cast<int>(mage->flight_left())) << "the probe restores flight_left";
+}
+
+// walker_specials.cpp:108. A same-floor landing is probed at the caster's
+// own height; another floor's at that floor's ground.
+TEST_F(Blink, a_landing_is_probed_at_the_casters_height_on_its_floor_and_at_ground_elsewhere)
+{
+    boulder_arena();
+    walker* mage = mage_at(96, 96);
+    walker* mark = marker_for(mage, 320, 320, 5);
+    walker* body = living_at(FAMILY_SOLDIER, 1, 320, 320);
+    ASSERT_TRUE(mage && mark && body);
+    body->set_sizez(8);
+    body->set_worldz(0.0f);
+    mage->set_sizez(8);
+    mage->set_worldz(40.0f);
+    world().rng_.state_ = 5u;
+    EXPECT_TRUE(mage->teleport()) << "same floor, caster hovering at 40: the grounded body does not block";
+    EXPECT_EQ(320, mage->xpos());
+    EXPECT_EQ(320, mage->ypos());
+    EXPECT_EQ(4, static_cast<int>(mark->lifetime()));
+
+    boulder_arena(2);
+    ASSERT_EQ(2, world().floor_count());
+    floor1_grid(PIX_BOULDER_1, PIX_GRASS1);
+    mage = mage_at(96, 96);
+    mark = marker_for(mage, 0, 0, 5);
+    body = living_at(FAMILY_SOLDIER, 1, 0, 0);
+    ASSERT_TRUE(mage && mark && body);
+    body->change_floor(1);
+    body->setxy(320, 320);
+    mark->change_floor(1);
+    mark->setxy(320, 320);
+    body->set_sizez(8);
+    body->set_worldz(0.0f);
+    mage->set_sizez(8);
+    mage->set_worldz(40.0f);
+    ASSERT_EQ(1, static_cast<int>(body->floor()));
+    ASSERT_EQ(1, static_cast<int>(mark->floor()));
+    world().rng_.state_ = 42u;
+    EXPECT_FALSE(mage->teleport()) << "other floor: probed at z 0, the grounded body blocks";
+    EXPECT_EQ(0, static_cast<int>(mage->floor()));
+    EXPECT_EQ(96, mage->xpos());
+    EXPECT_EQ(96, mage->ypos());
+    EXPECT_EQ(5, static_cast<int>(mark->lifetime()));
+}
+
+// walker_specials.cpp:254. A self-teleport stamps the tick before probing,
+// whether the blink lands or not.
+TEST_F(Blink, a_blink_stamps_the_self_teleport_tick_even_when_it_fails)
+{
+    boulder_arena();
+    tile(20, 20, PIX_BOULDER_1);  // nowhere to land
+    walker* mage = mage_at(96, 96);
+    ASSERT_NE(nullptr, mage);
+    world().tick_count_ = 77;
+    world().rng_.state_ = 42u;
+    EXPECT_FALSE(mage->teleport());
+    EXPECT_EQ(77u, mage->last_self_teleport_tick()) << "teleport() called: stamped though it failed";
+
+    fresh_world();
+    mage = mage_at(96, 96);
+    ASSERT_NE(nullptr, mage);
+    world().tick_count_ = 78;
+    world().rng_.state_ = 42u;
+    EXPECT_TRUE(mage->teleport());
+    EXPECT_EQ(78u, mage->last_self_teleport_tick()) << "teleport() called: stamped";
+}
+
+// walker_specials.cpp:262. A blink ignores markers owned by others.
+TEST_F(Blink, a_blink_ignores_another_casters_marker)
+{
+    walker* a = mage_at(96, 96);
+    walker* b = mage_at(400, 400);
+    ASSERT_TRUE(a && b);
+    walker* mark = marker_for(b, 320, 320, 5);
+    ASSERT_NE(nullptr, mark);
+    world().rng_.state_ = state_where_draws_are({64u, 64u}, {5u, 7u});
+    EXPECT_TRUE(a->teleport());
+    EXPECT_EQ(5 * GRID_SIZE, a->xpos()) << "only another mage's marker: the random blink's cell";
+    EXPECT_EQ(7 * GRID_SIZE, a->ypos());
+    EXPECT_EQ(5, static_cast<int>(mark->lifetime())) << "only another mage's marker: its uses untouched";
+    EXPECT_EQ(0, static_cast<int>(mark->dead()));
+}
+
+// walker_specials.cpp:290. A marker trip spends one use; the last use kills
+// the marker through death().
+TEST_F(Blink, a_marker_trip_spends_one_use_and_the_last_use_kills_it)
+{
+    walker* mage = mage_at(20, 20);
+    walker* mark = marker_for(mage, 140, 140, 5);
+    ASSERT_TRUE(mage && mark);
+    EXPECT_TRUE(mage->teleport());
+    EXPECT_EQ(4, static_cast<int>(mark->lifetime())) << "uses left: lifetime - 1";
+    EXPECT_EQ(0, static_cast<int>(mark->dead())) << "uses left: alive";
+    EXPECT_EQ(0, static_cast<int>(mark->death_called())) << "uses left: no death()";
+
+    fresh_world();
+    mage = mage_at(20, 20);
+    mark = marker_for(mage, 140, 140, 1);
+    ASSERT_TRUE(mage && mark);
+    EXPECT_TRUE(mage->teleport());
+    EXPECT_EQ(1, static_cast<int>(mark->dead())) << "lifetime reaches 0: dead";
+    EXPECT_EQ(1, static_cast<int>(mark->death_called())) << "lifetime reaches 0: death() run";
+}
+
+// walker_specials.cpp:299. Only a far blocked marker tells the player.
+TEST_F(Blink, a_near_blocked_marker_tells_the_player_nothing)
+{
+    walker* mage = mage_at(96, 96);
+    walker* mark = marker_for(mage, 100, 100, 5);
+    walker* body = living_at(FAMILY_SOLDIER, 1, 100, 100);
+    ASSERT_TRUE(mage && mark && body);
+    mage->set_user(2);
+    events().clear();
+    world().rng_.state_ = 7u;
+    mage->teleport();
+    EXPECT_EQ(0, count_text("Marker is Blocked!")) << "near marker: no notification";
+    EXPECT_EQ(5, static_cast<int>(mark->lifetime())) << "near marker: never used";
+
+    // The far twin of the same blocked marker does tell the player.
+    fresh_world();
+    mage = mage_at(96, 96);
+    mark = marker_for(mage, 320, 320, 5);
+    body = living_at(FAMILY_SOLDIER, 1, 320, 320);
+    ASSERT_TRUE(mage && mark && body);
+    mage->set_user(2);
+    events().clear();
+    world().rng_.state_ = 7u;
+    mage->teleport();
+    EXPECT_EQ(1, count_text("Marker is Blocked!")) << "player caster, far blocked marker";
+}
+
+// walker_specials.cpp:352. The short escape hop stamps the tick too.
+TEST_F(Blink, a_ranged_hop_stamps_the_self_teleport_tick_even_when_it_fails)
+{
+    walker* sk = living_at(FAMILY_SKELETON, 1, 200, 200);
+    ASSERT_NE(nullptr, sk);
+    world().tick_count_ = 55;
+    world().rng_.state_ = 42u;
+    EXPECT_TRUE(sk->teleport_ranged(40));
+    EXPECT_EQ(55u, sk->last_self_teleport_tick()) << "teleport_ranged called: stamped";
+
+    fresh_world();
+    paint_all(PIX_BOULDER_1);
+    sk = living_at(FAMILY_SKELETON, 1, 200, 200);
+    ASSERT_NE(nullptr, sk);
+    world().tick_count_ = 56;
+    world().rng_.state_ = 42u;
+    EXPECT_FALSE(sk->teleport_ranged(40));
+    EXPECT_EQ(56u, sk->last_self_teleport_tick()) << "teleport_ranged called: stamped though it failed";
+}
+
+// ---------------------------------------------------------------------------
+// walker_specials.cpp: walker::special
+// ---------------------------------------------------------------------------
+
+// walker_specials.cpp:210 and :228. A family with no special hook is
+// refused for nothing, with the default reason, traced.
+TEST_F(SemWalker4, a_family_with_no_special_hook_is_refused_free_with_the_default_reason)
+{
+    walker* w = living_at(FAMILY_SOLDIER, 0, 96, 96);
+    ASSERT_NE(nullptr, w);
+    w->set_order_family(Order::Living, static_cast<char>(120));
+    w->set_current_special(1);
+    w->set_shifter_down(0);
+    w->stats()->set_special_cost(1, 10);
+    w->stats()->set_magicpoints(100.0f);
+    walker::SpecialFailure why = walker::SpecialFailure::None;
+    std::string reason;
+    EXPECT_FALSE(w->special(&why, &reason));
+    EXPECT_EQ(walker::SpecialFailure::ScriptDeclined, why) << "no hook for the family: declined";
+    EXPECT_EQ("NO SPECIAL AVAILABLE", reason) << "no hook / empty reason: the default reason";
+    EXPECT_FLOAT_EQ(100.0f, w->stats()->magicpoints()) << "no hook for the family: MP unchanged";
+    // (The census TRACE line is a no-op in og_gameplay as unit groups link
+    // it, without -DTESTING; the returned reason is the same expression.)
+}
+
+// ---------------------------------------------------------------------------
+// walker_specials.cpp: walker::turn_undead
+// ---------------------------------------------------------------------------
+
+class TurnUndead : public SemWalker4 {
+protected:
+    static constexpr std::int32_t kRange = 64;
+    static constexpr std::uint32_t kRoll = static_cast<std::uint32_t>(kRange * 40);
+};
+
+// walker_specials.cpp:410. A warded undead in the ring is never rolled for.
+TEST_F(TurnUndead, a_warded_undead_draws_no_roll_and_survives)
+{
+    world().gameplay_fixes = 0;
+    walker* cleric = living_at(FAMILY_CLERIC, 0, 200, 200);
+    walker* warded = living_at(FAMILY_SKELETON, 1, 216, 200);
+    walker* bare = living_at(FAMILY_SKELETON, 1, 200, 216);
+    ASSERT_TRUE(cleric && warded && bare);
+    warded->stats()->set_level(7);   // its roll would be bound 70
+    bare->stats()->set_level(1);     // bound 10
+    warded->set_invulnerable_left(50);
+    RollSpy spy(kRoll);
+    std::int32_t killed = 0;
+    {
+        ScopedSimRandom scope(&spy);
+        killed = cleric->turn_undead(kRange, 4);
+    }
+    EXPECT_EQ(1, killed) << "only the unwarded undead is turned";
+    EXPECT_EQ(1, static_cast<int>(bare->dead()));
+    EXPECT_EQ(0, static_cast<int>(warded->dead())) << "warded undead: survives";
+    EXPECT_FLOAT_EQ(400.0f, warded->stats()->hitpoints()) << "warded undead: untouched";
+    EXPECT_EQ(0, std::count(spy.bounds.begin(), spy.bounds.end(), 70u)) << "warded undead: no draws";
+    EXPECT_EQ(1, std::count(spy.bounds.begin(), spy.bounds.end(), 10u)) << "turnable: its roll";
+    EXPECT_EQ(1, std::count(spy.bounds.begin(), spy.bounds.end(), kRoll)) << "one turnable foe, one power roll";
+}
+
+// walker_specials.cpp:418. A scripted level whose mode failed to start
+// turns undead the classic way: a pre-kill with no attribution and no
+// death(); an active mode routes the kill through death().
+TEST_F(TurnUndead, a_scripted_level_whose_mode_failed_turns_undead_the_classic_way)
+{
+    for (int active = 0; active < 2; ++active)
+    {
+        fresh_world();
+        world().gameplay_fixes = 0;
+        world().type = GameWorld::TYPE_SCRIPTED;
+        world().mode.init_attempted = true;
+        world().mode.active = active != 0;
+        walker* cleric = living_at(FAMILY_CLERIC, 0, 200, 264);
+        walker* sk = living_at(FAMILY_SKELETON, 1, 216, 264);
+        ASSERT_TRUE(cleric && sk);
+        sk->stats()->set_level(1);
+        RollSpy spy(kRoll);
+        std::int32_t killed = 0;
+        {
+            ScopedSimRandom scope(&spy);
+            killed = cleric->turn_undead(kRange, 4);
+        }
+        EXPECT_EQ(1, killed);
+        EXPECT_EQ(1, static_cast<int>(sk->dead()));
+        if (active == 0)
+        {
+            EXPECT_EQ(0, static_cast<int>(sk->death_called()))
+                << "scripted level whose mode init failed: classic pre-kill, no death()";
+            EXPECT_EQ(0u, sk->last_attacker_id())
+                << "scripted level whose mode init failed: no attribution stamp";
+        }
+        else
+        {
+            EXPECT_EQ(1, static_cast<int>(sk->death_called())) << "scripted, mode active: death() run";
+            EXPECT_EQ(cleric->entity_id(), sk->last_attacker_id()) << "scripted, mode active: stamped";
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// weap.cpp
+// ---------------------------------------------------------------------------
+
+class Weap : public SemWalker4 {
+protected:
+    walker* knife_at(short x, short y)
+    {
+        walker* k = world().add_ob(Order::Weapon, FAMILY_KNIFE);
+        if (k == nullptr)
+            return nullptr;
+        k->set_team_num(0);
+        k->set_dead(0);
+        k->set_death_called(0);
+        k->set_ani_type(ANI_WALK);  // else act() goes straight to animate()
+        return place(k, x, y, 8, 8);
+    }
+
+    int count_fx(int family) const
+    {
+        int n = 0;
+        for (const auto& u : tw_->world().oblist)
+            if (u && u->query_order() == Order::FX && u->family() == family && !u->dead())
+                ++n;
+        for (const auto& u : tw_->world().fxlist)
+            if (u && u->query_order() == Order::FX && u->family() == family && !u->dead())
+                ++n;
+        return n;
+    }
+};
+
+// weap.cpp:85. A shot over trees loses range per tick, never below zero.
+TEST_F(Weap, a_shot_over_trees_spends_range_but_never_below_zero)
+{
+    tile(0, 0, PIX_TREE_M1);
+    walker* k = knife_at(0, 0);
+    ASSERT_NE(nullptr, k);
+    k->set_act_type(ACT_SIT);
+    k->set_lineofsight(3);
+    k->act();
+    EXPECT_EQ(2, static_cast<int>(k->lineofsight())) << "over a tree cell, range left: -1";
+    k->set_ani_type(ANI_WALK);
+    k->set_lineofsight(0);
+    k->act();
+    EXPECT_EQ(0, static_cast<int>(k->lineofsight())) << "range 0: unchanged";
+}
+
+// weap.cpp:90. A weapon in a living-only act mode does nothing.
+TEST_F(Weap, a_weapon_in_control_or_an_unknown_act_does_nothing)
+{
+    walker* k = knife_at(100, 100);
+    ASSERT_NE(nullptr, k);
+    k->set_act_type(ACT_CONTROL);
+    k->set_lastx(1.0f);
+    k->set_lasty(0.0f);
+    k->set_curdir(static_cast<signed char>(FACE_RIGHT));
+    EXPECT_TRUE(k->act()) << "ACT_CONTROL: returns at once";
+    EXPECT_EQ(100, k->xpos()) << "ACT_CONTROL: no move";
+    EXPECT_EQ(100, k->ypos()) << "ACT_CONTROL: no move";
+
+    events().clear();
+    k->set_act_type(123);
+    EXPECT_FALSE(k->act()) << "unknown act: false";
+    EXPECT_EQ(1, count_notifications("No act type set for weapon")) << "unknown act: notification";
+    EXPECT_EQ(1, count_all_notifications()) << "unknown act: nothing else said";
+    EXPECT_EQ(100, k->xpos());
+    EXPECT_EQ(100, k->ypos());
+}
+
+// weap.cpp:119. A fired weapon with range left flies one step along its
+// heading.
+TEST_F(Weap, a_fired_weapon_with_range_left_moves_along_its_heading)
+{
+    walker* k = knife_at(100, 100);
+    ASSERT_NE(nullptr, k);
+    k->set_act_type(ACT_FIRE);
+    const float step = k->stepsize();
+    ASSERT_GE(step, 1.0f);
+    k->set_lastx(step);
+    k->set_lasty(0.0f);
+    k->set_curdir(static_cast<signed char>(FACE_RIGHT));
+    k->set_lineofsight(5);
+    EXPECT_TRUE(k->act());
+    EXPECT_EQ(4, static_cast<int>(k->lineofsight()));
+    EXPECT_EQ(100 + static_cast<int>(step), k->xpos()) << "range left: moves one stepsize";
+    EXPECT_EQ(100, k->ypos()) << "range left: along the heading only";
+    EXPECT_EQ(0, static_cast<int>(k->dead()));
+}
+
+// weap.cpp:170. A weapon's death effects run once: the second death()
+// runs nothing.
+TEST_F(Weap, a_second_weapon_death_runs_no_effect)
+{
+    walker* archer = living_at(FAMILY_ARCHER, 0, 400, 400);
+    walker* arrow = world().add_ob(Order::Weapon, FAMILY_FIRE_ARROW);
+    ASSERT_TRUE(archer && arrow);
+    place(arrow, 200, 200, 8, 8);
+    arrow->set_owner(archer);
+    arrow->set_skip_exit(1);  // armed: explodes on death
+    arrow->set_damage(7.0f);
+    arrow->set_dead(1);
+    events().clear();
+    const int before = count_fx(FAMILY_EXPLOSION);
+    EXPECT_TRUE(arrow->death()) << "first death() runs the hook";
+    EXPECT_EQ(before + 1, count_fx(FAMILY_EXPLOSION)) << "first death(): one explosion";
+    EXPECT_EQ(1, count_sounds(SOUND_EXPLODE));
+    EXPECT_FALSE(arrow->death()) << "second: returns 0";
+    EXPECT_EQ(before + 1, count_fx(FAMILY_EXPLOSION)) << "second: nothing runs (no explosion)";
+    EXPECT_EQ(1, count_sounds(SOUND_EXPLODE)) << "second: nothing runs (no sound)";
+}
+
+// weap.cpp:194. A weapon whose animation script says it is finished dies.
+TEST_F(Weap, a_weapon_whose_animation_script_finishes_dies)
+{
+    walker* c = world().add_ob(Order::Weapon, FAMILY_CIRCLE_PROTECTION);
+    ASSERT_NE(nullptr, c);
+    place(c, 200, 200);
+    c->set_owner(nullptr);
+    c->set_dead(0);
+    c->set_death_called(0);
+    EXPECT_TRUE(c->animate()) << "hook returns false: death() ran and returned 1";
+    EXPECT_EQ(1, static_cast<int>(c->death_called())) << "hook returns false: death() run";
+    EXPECT_EQ(1, static_cast<int>(c->dead()));
+    EXPECT_FALSE(c->animate()) << "a second finish: death() already ran, returns 0";
+}
+
+// weap.cpp:206. The default animation leaves the frame alone when its facing
+// has no row, or the row is empty.
+TEST_F(Weap, the_default_animation_leaves_the_frame_on_a_missing_or_empty_row)
+{
+    walker* a = world().add_ob(Order::Weapon, FAMILY_ARROW);
+    ASSERT_NE(nullptr, a);
+    place(a, 200, 200);
+    static const signed char empty_row[] = {-1};
+    static const signed char one_row[] = {2, -1};
+    static const signed char* rows[8] = {empty_row, one_row, one_row, one_row,
+                                         one_row, one_row, one_row, one_row};
+    a->ani = rows;
+    a->ani_count = 8;
+    a->set_frame(1);
+    ASSERT_EQ(1, static_cast<int>(a->frame()));
+    a->set_curdir(0);
+    a->set_cycle(0);
+    EXPECT_TRUE(a->animate());
+    EXPECT_EQ(1, static_cast<int>(a->frame())) << "empty row: frame unchanged";
+    EXPECT_EQ(0, static_cast<int>(a->cycle())) << "empty row: cycle unchanged";
+
+    a->ani_count = 2;  // facing 5 is a real facing past the table
+    a->set_curdir(5);
+    a->set_cycle(0);
+    EXPECT_TRUE(a->animate());
+    EXPECT_EQ(1, static_cast<int>(a->frame())) << "no row: frame unchanged";
+    EXPECT_EQ(0, static_cast<int>(a->cycle())) << "no row: cycle unchanged";
+
+    a->set_curdir(1);  // control: a real one-frame row is played
+    a->set_cycle(0);
+    EXPECT_TRUE(a->animate());
+    EXPECT_EQ(2, static_cast<int>(a->frame())) << "valid facing: the row's frame";
 }
 
 } // namespace
