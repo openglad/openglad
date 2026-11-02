@@ -1203,31 +1203,9 @@ protected:
     static constexpr std::uint32_t kRoll = static_cast<std::uint32_t>(kRange * 40);
 };
 
-// walker_specials.cpp:410. A warded undead in the ring is never rolled for.
-TEST_F(TurnUndead, a_warded_undead_draws_no_roll_and_survives)
-{
-    world().gameplay_fixes = 0;
-    walker* cleric = living_at(FAMILY_CLERIC, 0, 200, 200);
-    walker* warded = living_at(FAMILY_SKELETON, 1, 216, 200);
-    walker* bare = living_at(FAMILY_SKELETON, 1, 200, 216);
-    ASSERT_TRUE(cleric && warded && bare);
-    warded->stats()->set_level(7);   // its roll would be bound 70
-    bare->stats()->set_level(1);     // bound 10
-    warded->set_invulnerable_left(50);
-    RollSpy spy(kRoll);
-    std::int32_t killed = 0;
-    {
-        ScopedSimRandom scope(&spy);
-        killed = cleric->turn_undead(kRange, 4);
-    }
-    EXPECT_EQ(1, killed) << "only the unwarded undead is turned";
-    EXPECT_EQ(1, static_cast<int>(bare->dead()));
-    EXPECT_EQ(0, static_cast<int>(warded->dead())) << "warded undead: survives";
-    EXPECT_FLOAT_EQ(400.0f, warded->stats()->hitpoints()) << "warded undead: untouched";
-    EXPECT_EQ(0, std::count(spy.bounds.begin(), spy.bounds.end(), 70u)) << "warded undead: no draws";
-    EXPECT_EQ(1, std::count(spy.bounds.begin(), spy.bounds.end(), 10u)) << "turnable: its roll";
-    EXPECT_EQ(1, std::count(spy.bounds.begin(), spy.bounds.end(), kRoll)) << "one turnable foe, one power roll";
-}
+// walker_specials.cpp:410 (a warded undead draws no roll) is deferred:
+// the old game turns a warded skeleton or ghost with the Gameplay Fixes
+// setting off, so its classic arm is not pinned here (#474).
 
 // walker_specials.cpp:418. A scripted level whose mode failed to start
 // turns undead the classic way: a pre-kill with no attribution and no
