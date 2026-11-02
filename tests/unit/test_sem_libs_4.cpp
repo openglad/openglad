@@ -1232,8 +1232,9 @@ TEST(SemWeaponAnimate, a_protection_ring_dies_with_its_owner_or_its_hitpoints)
 
 // weapon_animate.lua:90. A glow on its pulse row (type 2) advances frame by
 // frame with the type kept, and the row end restarts the pulse at cycle 0.
-// Break: `self:set_cycle(og.i8(c))` in weapon_animate_step -> `self:set_cycle(0)`
-// (the cycle never advances: frame 1 twice).
+// Break: weapon_animate.lua:93 `if weapon_animate_step(self) then` ->
+// `if weapon_animate_step(self) or true then` (every step restarts the pulse:
+// cycle 0 where the mid-row step reads 1).
 TEST(SemWeaponAnimate, a_glow_pulses_frame_by_frame_and_restarts_at_the_row_end)
 {
     og::test::ScopedHookFailureGuard guard;
