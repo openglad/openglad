@@ -21,14 +21,16 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_pack_lua_paths.cpp",
           "test": "PackLuaKnifeBack.a_blade_whose_thrower_died_simply_expires"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "alive"
+      ]
     },
     {
       "id": "effect_knife_back.lua:17",
@@ -51,14 +53,16 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_pack_lua_paths.cpp",
           "test": "PackLuaKnifeBack.a_blade_that_reaches_its_thrower_returns_the_shot"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "distance > 10"
+      ]
     },
     {
       "id": "effect_knife_back.lua:19",
@@ -88,14 +92,12 @@
       ],
       "setting": "none",
       "status": "executed-only",
-      "tests": [
-        {
-          "parity": "weapon_knife_emission_scen99",
-          "fact": "",
-          "note": "byte-compare; its trajectory fact covers the outbound weaplist throw  NOT the FX return"
-        }
-      ],
-      "missing_arms": []
+      "tests": [],
+      "missing_arms": [
+        "thrower right/below",
+        "thrower left/above",
+        "aligned"
+      ]
     },
     {
       "id": "effect_knife_back.lua:32",
@@ -117,9 +119,12 @@
         }
       ],
       "setting": "none",
-      "status": "none",
+      "status": "executed-only",
       "tests": [],
-      "missing_arms": []
+      "missing_arms": [
+        "probe spawn failed",
+        "probe spawned"
+      ]
     },
     {
       "id": "effect_knife_back.lua:45",
@@ -141,9 +146,12 @@
         }
       ],
       "setting": "none",
-      "status": "none",
+      "status": "executed-only",
       "tests": [],
-      "missing_arms": []
+      "missing_arms": [
+        "an object in the next step",
+        "clear"
+      ]
     }
   ],
   "other": []

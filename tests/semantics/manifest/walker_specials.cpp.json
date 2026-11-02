@@ -823,7 +823,8 @@
         333
       ],
       "function": "walker::teleport",
-      "anchor": "do",
+      "anchor": "} while (keep_going > 0 &&",
+      "anchor_index": 1,
       "condition": "do { draw } while (keep_going > 0 && !teleport_landing_clear(...)); if (keep_going > 0)",
       "semantic": "With no usable marker the blink draws random grid cells (x then y, one each per attempt) until one is clear, up to 200 attempts; it lands on the cell's pixel origin, or fails and leaves the caster where it was.",
       "arms": [

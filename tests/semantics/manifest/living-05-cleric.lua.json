@@ -28,13 +28,19 @@
       "status": "asserted",
       "tests": [
         {
-          "file": "tests/unit/test_pack_lua_paths.cpp",
-          "test": "PackLuaCleric.int_refusals_return_reasons_without_emitting_notifications",
-          "note": "'60 INT REQUIRED'"
+          "file": "tests/unit/test_gameplay_fixes_cleric_unit.cpp",
+          "test": "GameplayFixesClericBot.turns_with_an_undead_foe_in_reach",
+          "note": "bot arm: a guy-less bot cleric, setting on, skeleton at 50 px: EXPECT_EQ(1, shift) on slots 2 and 3, so the bot never lacks"
         },
         {
           "file": "tests/unit/test_gameplay_fixes_cleric_unit.cpp",
-          "test": "GameplayFixesClericBot.raises_when_its_hero_lacks_the_int_to_turn"
+          "test": "GameplayFixesClericBot.raises_when_its_hero_lacks_the_int_to_turn",
+          "note": "INT 40 setting on: shift 0 and the cast refuses '60 INT REQUIRED' with busy 5; INT 60: shift 1"
+        },
+        {
+          "file": "tests/unit/test_pack_lua_paths.cpp",
+          "test": "PackLuaCleric.int_refusals_return_reasons_without_emitting_notifications",
+          "note": "hero INT 10: '60 INT REQUIRED', busy 5, zero events"
         }
       ],
       "missing_arms": []
@@ -59,18 +65,17 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
-          "file": "tests/integration/test_family_cleric.cpp",
-          "test": "FamilyCleric.check_ai_default_and_do_special_busy_returns"
-        },
-        {
-          "file": "tests/unit/test_bot_gates_casters.cpp",
-          "test": "GameplayFixesBots.cleric_turn_undead_waits_while_busy_with_the_setting_on"
+          "file": "tests/unit/test_pack_lua_paths.cpp",
+          "test": "PackLuaCleric.int_refusals_return_reasons_without_emitting_notifications",
+          "note": "'not' arm: busy 0 hero INT 10 slot 2 shift 1 gets past the busy check to '60 INT REQUIRED'"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "busy > 0"
+      ]
     },
     {
       "id": "living-05-cleric.lua:33",
@@ -96,13 +101,21 @@
       "tests": [
         {
           "file": "tests/unit/test_pack_lua_paths.cpp",
-          "test": "PackLuaCleric.int_refusals_return_reasons_without_emitting_notifications"
+          "test": "PackLuaCleric.int_refusals_return_reasons_without_emitting_notifications",
+          "note": "INT 10, slot 2 shift 1: reason '60 INT REQUIRED', busy 5.0, zero events"
+        },
+        {
+          "file": "tests/integration/test_sim_input_unit.cpp",
+          "test": "SimInputUnit.intelligence_refusals_use_one_private_cue",
+          "note": "Case{FAMILY_CLERIC, 2, '60 INT REQUIRED'}: one private cue, MP stays 9000"
+        },
+        {
+          "file": "tests/integration/test_family_cleric.cpp",
+          "test": "FamilyCleric.r15_turn_undead_destroys_a_hostile_undead_in_range",
+          "note": "else arm: INT 90 hero turns, skeleton dead, exp 3"
         }
       ],
-      "missing_arms": [],
-      "note": [
-        "tests/integration/test_sim_input_unit.cpp: (60 INT REQUIRED case table)"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living-05-cleric.lua:41",
@@ -137,23 +150,27 @@
       "tests": [
         {
           "file": "tests/integration/test_gameplay_fixes_cleric.cpp",
-          "test": "GameplayFixesCleric.turn_undead_refuses_without_undead_when_on"
+          "test": "GameplayFixesCleric.turn_undead_reaches_sixty_px_when_on",
+          "note": "no foe in reach, off: 'NO FOE IN RANGE', MP unchanged, skeleton alive; undead in reach, on: true, skeleton dead, SOUND_HEAL 1, MP -20"
         },
         {
           "file": "tests/integration/test_gameplay_fixes_cleric.cpp",
-          "test": "GameplayFixesCleric.turn_undead_reaches_sixty_px_when_on"
+          "test": "GameplayFixesCleric.turn_undead_refuses_without_undead_when_on",
+          "note": "living foe only, on: 'NO UNDEAD IN RANGE', no sound, MP unchanged"
         },
         {
           "file": "tests/integration/test_walker_specials.cpp",
-          "test": "WalkerSpecials.turn_undead_without_undead_is_refused_with_gameplay_fixes_on"
+          "test": "WalkerSpecials.turn_undead_without_undead_is_refused_with_gameplay_fixes_on",
+          "note": "living foe only, off: true, one SOUND_HEAL, MP -20, orc alive; on: 'NO UNDEAD IN RANGE', MP unchanged"
         },
         {
           "file": "tests/integration/test_family_cleric.cpp",
-          "test": "FamilyCleric.r14_raise_skeleton_then_ghost_then_turn_undead_with_no_foes"
+          "test": "FamilyCleric.r15_turn_undead_destroys_a_hostile_undead_in_range",
+          "note": "undead in reach: true, skeleton dead, living breather alive"
         },
         {
           "parity": "cleric_turn_no_undead_scen99",
-          "fact": "_fixes_scen99, cleric_turn_undead_reach_scen99 / _fixes_scen99"
+          "fact": "_fixes_scen99 (SOUND_HEAL count facts), cleric_turn_undead_reach_scen99 / _fixes_scen99 (skeletons alive vs turned)"
         }
       ],
       "missing_arms": []
@@ -183,19 +200,27 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/integration/test_family_cleric.cpp",
           "test": "FamilyCleric.r15_turn_undead_destroys_a_hostile_undead_in_range",
-          "note": "EXPECT_EQ(3u, exp)"
+          "note": "hero n>0: EXPECT_EQ(3u, exp)"
+        },
+        {
+          "file": "tests/integration/test_family_behaviors.cpp",
+          "test": "FamilyBehaviors.cleric_turn_undead_special2_and_3_grant_three_exp_per_kill",
+          "note": "hero n>0: ASSERT_EQ(exp+3) on slots 2 and 3"
+        },
+        {
+          "file": "tests/integration/test_special_scenes.cpp",
+          "test": "GameplayFixes.turn_undead_reaches_60_px",
+          "note": "scene e1_turn_reach, on side: tell 'turned 2 undead.' on screen, checked by check_side EXPECT_GE(tell_frames[i], 0)"
         }
       ],
-      "missing_arms": [],
-      "note": [
-        "hero n>0 notice asserted: tests/integration/test_special_scenes.cpp: 'turned 2 undead.' scene (line ~3712, said(f, \"turned 2 undead\"))",
-        "hero n==0 classic success arm (setting off, living foe in classic reach or every undead roll lost): no test asserts exp unchanged + no notice; GameplayFixesCleric.turn_undead_refuses_without_undead_when_on stages the orc OUTSIDE classic reach so the off run is the NO FOE IN RANGE refusal, not this arm",
-        "bot arm: executed-only"
+      "missing_arms": [
+        "hero, n == 0 (classic no-undead success)",
+        "bot"
       ]
     },
     {
@@ -270,11 +295,23 @@
       "tests": [
         {
           "file": "tests/unit/test_pack_lua_paths.cpp",
-          "test": "PackLuaCleric.corpse_refusals_distinguish_absence_blockage_and_range"
+          "test": "PackLuaCleric.corpse_refusals_distinguish_absence_blockage_and_range",
+          "note": "setting off: 'NO CORPSE NEARBY', 'CORPSE IS BLOCKED', 'CORPSE TOO FAR', each MP unchanged and zero events; then the raise succeeds"
         },
         {
           "file": "tests/unit/test_gameplay_fixes_cleric_unit.cpp",
-          "test": "GameplayFixesClericRaise.refusals_spend_nothing_on_both_values"
+          "test": "GameplayFixesClericRaise.refusals_spend_nothing_on_both_values",
+          "note": "fixes 0: the three reasons, MP 0, busy 0, zero events, zero draws"
+        },
+        {
+          "file": "tests/unit/test_gameplay_fixes_cleric_unit.cpp",
+          "test": "GameplayFixesClericRaise.a_blocked_near_stain_does_not_hide_a_usable_far_one",
+          "note": "fixes 0: nearest stain blocked while a farther one is usable -> 'CORPSE IS BLOCKED', the far stain untouched"
+        },
+        {
+          "file": "tests/unit/test_gameplay_fixes_cleric_unit.cpp",
+          "test": "GameplayFixesClericRaise.the_fixed_probe_eats_nothing",
+          "note": "fixes 0: the risen body at the stain corner (200,200) for slots 2, 3, 4"
         },
         {
           "parity": "cleric_raise_blocked_corpse_scen99",
@@ -282,7 +319,8 @@
         },
         {
           "parity": "undead_no_corpse_raise_scen99",
-          "fact": ""
+          "fact": "",
+          "note": "(no raised skeleton)   (no living skeleton  team 0 at 2)"
         }
       ],
       "missing_arms": []
@@ -311,7 +349,13 @@
       "tests": [
         {
           "file": "tests/integration/test_family_cleric.cpp",
-          "test": "FamilyCleric.r11_heal_and_mace_paths"
+          "test": "FamilyCleric.r11_heal_and_mace_paths",
+          "note": "unshifted: ally hp rises, MP falls"
+        },
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.cleric_mystic_mace_low_int_and_success_paths",
+          "note": "shifted: exactly one FAMILY_MAGIC_SHIELD owned by the cleric, lifetime 350, MP 250, busy 5"
         }
       ],
       "missing_arms": []
@@ -340,7 +384,8 @@
       "tests": [
         {
           "file": "tests/integration/test_family_cleric.cpp",
-          "test": "FamilyCleric.heal_refusal_distinguishes_absent_and_healthy_allies"
+          "test": "FamilyCleric.heal_refusal_distinguishes_absent_and_healthy_allies",
+          "note": "lone cleric: 'NO ALLY IN RANGE', MP 3 unchanged; with a hurt ally the loop heals it to 45"
         }
       ],
       "missing_arms": []
@@ -369,16 +414,19 @@
       "status": "asserted",
       "tests": [
         {
-          "file": "tests/unit/test_pack_lua_paths.cpp",
-          "test": "PackLuaCleric.a_heal_restores_a_wounded_friend_and_spends_magic"
+          "file": "tests/integration/test_family_cleric.cpp",
+          "test": "FamilyCleric.heal_refusal_distinguishes_absent_and_healthy_allies",
+          "note": "full ally skipped: 'NO ALLY NEEDS HEALING', hp 100; hurt ally: hp 40 -> 45, MP 3 -> 1"
         },
         {
-          "file": "tests/integration/test_family_cleric.cpp",
-          "test": "FamilyCleric.heal_refusal_distinguishes_absent_and_healthy_allies"
+          "file": "tests/unit/test_pack_lua_paths.cpp",
+          "test": "PackLuaCleric.a_heal_restores_a_wounded_friend_and_spends_magic",
+          "note": "EXPECT_GT hp, EXPECT_LT MP"
         },
         {
           "parity": "special_cleric_heal_ally_scen99",
-          "fact": ""
+          "fact": "",
+          "note": "WalkerHpRangeAtFinalTick big orc 413 HP; SOUND_HEAL count"
         }
       ],
       "missing_arms": []
@@ -483,7 +531,12 @@
         {
           "file": "tests/integration/test_gameplay_fixes_cleric.cpp",
           "test": "GameplayFixesCleric.heal_reward_and_number_are_what_landed",
-          "note": "39 vs 895 exp"
+          "note": "hero: exp delta 895 off / 39 on"
+        },
+        {
+          "file": "tests/integration/test_family_cleric.cpp",
+          "test": "FamilyCleric.heal_refusal_distinguishes_absent_and_healthy_allies",
+          "note": "bot arm: a guy-less cleric's heal returns true and lands 45 hp under ScopedHookFailureGuard count 0; without the has_guy gate g_exp raises 'walker has no guy record' and the cast fails"
         }
       ],
       "missing_arms": []
@@ -500,7 +553,11 @@
       "arms": [
         {
           "when": "nobody healed",
-          "observable": "false reason; MP unchanged; no sound"
+          "observable": "false reason; MP unchanged"
+        },
+        {
+          "when": "nobody healed (silence)",
+          "observable": "no SOUND_HEAL"
         },
         {
           "when": "someone healed",
@@ -508,14 +565,22 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/integration/test_family_cleric.cpp",
-          "test": "FamilyCleric.heal_refusal_distinguishes_absent_and_healthy_allies"
+          "test": "FamilyCleric.heal_refusal_distinguishes_absent_and_healthy_allies",
+          "note": "nobody-healed arm: ASSERT_FALSE + EXPECT_EQ(\"NO ALLY NEEDS HEALING\", reason) + MP 3 unchanged + ally hp 100 unchanged; someone-healed arm: true, ally 45 hp"
+        },
+        {
+          "file": "tests/integration/test_family_cleric.cpp",
+          "test": "FamilyCleric.zero_strength_heal_explains_why_a_wounded_ally_was_not_healed",
+          "note": "nobody-healed arm via the zero-strength break: EXPECT_EQ(\"HEAL TOO WEAK\", reason), MP 3 and ally 40 hp unchanged"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "nobody healed (silence)"
+      ]
     },
     {
       "id": "living-05-cleric.lua:127",
@@ -538,19 +603,26 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
+      "status": "partial",
       "tests": [
         {
-          "file": "tests/integration/test_family_cleric.cpp",
-          "test": "FamilyCleric.r14_lines_110_132_160_heal_plural_and_mystic_mace_branches",
-          "note": "ASSERT_TRUE(do_special) only, notice never read"
+          "file": "tests/integration/test_game_loop.cpp",
+          "test": "GameLoop.zz_capture_cleric_low_magic_heal",
+          "note": "EXPECT_EQ(\"Cleric healed 1 man!\", clinic.heal_line)"
+        },
+        {
+          "file": "tests/integration/test_special_scenes.cpp",
+          "test": "GameplayFixes.heal_stops_at_full_health",
+          "note": "scene j_heal_cap: says(\"Cleric healed 1 man!\") on both sides, checked by check_side EXPECT_GE"
+        },
+        {
+          "file": "tests/unit/test_concept_levels.cpp",
+          "test": "ConceptCampaignTest.clinic_rig_heals_a_thin_pool_patient_through_the_engine",
+          "note": "EXPECT_EQ(1, count_text(lines, \"Cleric healed 1 man!\"))"
         }
       ],
-      "missing_arms": [],
-      "note": [
-        "1-man arm asserted: tests/integration/test_game_loop.cpp:7941 (EXPECT_EQ(\"Cleric healed 1 man!\", clinic.heal_line))",
-        "1-man arm asserted: tests/integration/test_special_scenes.cpp:4059/4069 (says(\"Cleric healed 1 man!\") in on_shows/off_shows, checked by check_side EXPECT_GE(tell_frames[i], 0))",
-        "1-man arm asserted: tests/unit/test_concept_levels.cpp:714 (count_text)"
+      "missing_arms": [
+        "N>1"
       ]
     },
     {
@@ -573,9 +645,27 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": []
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_concept_levels.cpp",
+          "test": "ConceptCampaignTest.clinic_rig_heals_a_thin_pool_patient_through_the_engine",
+          "note": "team-0 bot cleric 'Clinic': EXPECT_EQ(1, count_text(lines, \"Cleric healed 1 man!\"))"
+        },
+        {
+          "file": "tests/integration/test_game_loop.cpp",
+          "test": "GameLoop.zz_capture_cleric_low_magic_heal",
+          "note": "EXPECT_EQ(\"Cleric healed 1 man!\", clinic.heal_line)"
+        },
+        {
+          "file": "tests/integration/test_special_scenes.cpp",
+          "test": "GameplayFixes.heal_stops_at_full_health",
+          "note": "hero cleric: 'Cleric healed 1 man!' on screen"
+        }
+      ],
+      "missing_arms": [
+        "enemy bot"
+      ]
     },
     {
       "id": "living-05-cleric.lua:139",
@@ -588,8 +678,12 @@
       "semantic": "MYSTIC MACE refuses 'SPECIAL BUSY' while busy > 0.",
       "arms": [
         {
-          "when": "busy",
-          "observable": "false 'SPECIAL BUSY'; no shield fx"
+          "when": "busy (refused)",
+          "observable": "false; MP unchanged"
+        },
+        {
+          "when": "busy (reason, no fx)",
+          "observable": "reason 'SPECIAL BUSY'; no shield fx"
         },
         {
           "when": "not",
@@ -597,14 +691,22 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.cleric_mystic_mace_low_int_and_success_paths",
+          "note": "'not' arm: busy 0 -> one MAGIC_SHIELD summoned, busy 5"
+        },
+        {
           "file": "tests/integration/test_family_cleric.cpp",
-          "test": "FamilyCleric.check_ai_default_and_do_special_busy_returns"
+          "test": "FamilyCleric.r15_the_slot_price_is_the_floor_of_a_heal",
+          "note": "busy (refused) arm: a guy-less cleric with a world, busy 1, slot 1 shift 1: ASSERT_TRUE(!do_special) + EXPECT_FLOAT_EQ(1.0f, magicpoints); without busy this bot would summon the mace, so the false is the busy refusal"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "busy (reason, no fx)"
+      ]
     },
     {
       "id": "living-05-cleric.lua:142",
@@ -650,8 +752,12 @@
       "semantic": "A hero's MYSTIC MACE counts one shot in total_shots and scen_shots.",
       "arms": [
         {
-          "when": "hero",
-          "observable": "total_shots+1, scen_shots+1"
+          "when": "hero (scen_shots)",
+          "observable": "scen_shots+1"
+        },
+        {
+          "when": "hero (total_shots)",
+          "observable": "total_shots+1"
         },
         {
           "when": "bot",
@@ -659,9 +765,22 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": []
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_family_cleric.cpp",
+          "test": "FamilyCleric.r14_lines_110_132_160_heal_plural_and_mystic_mace_branches",
+          "note": "hero (scen_shots) arm: ASSERT_EQ(shots_before_mace + 1, cleric->myguy->scen_shots) at :839 after a hero mace"
+        },
+        {
+          "file": "tests/unit/test_bot_gates_casters.cpp",
+          "test": "GameplayFixesBots.cleric_shoved_heals_with_the_setting_on",
+          "note": "bot arm, fixes 0: a guy-less bot cleric's mace cast summons EXPECT_EQ(1, maces); with the has_guy gate gone g_total_shots raises and no mace appears"
+        }
+      ],
+      "missing_arms": [
+        "hero (total_shots)"
+      ]
     },
     {
       "id": "living-05-cleric.lua:174",
@@ -688,17 +807,22 @@
         {
           "file": "tests/integration/test_family_cleric.cpp",
           "test": "FamilyCleric.r15_turn_undead_destroys_a_hostile_undead_in_range",
-          "note": "shifted arm: slot 2, shifter 1, skeleton dead, breather alive, exp 3"
+          "note": "shifted: slot 2 shift 1, skeleton dead, breather alive, exp 3"
         },
         {
           "file": "tests/unit/test_pack_lua_paths.cpp",
           "test": "PackLuaCleric.int_refusals_return_reasons_without_emitting_notifications",
-          "note": "shifted arm: slot 2 shift 1 -> '60 INT REQUIRED', the turn path's own refusal"
+          "note": "shifted: '60 INT REQUIRED', the turn path's own refusal"
+        },
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.family_special_sweep_outcomes_with_gameplay_fixes_on",
+          "note": "bit 3, slot 2 shifted: reason 'NO UNDEAD IN RANGE', only do_turn_undead says it"
         },
         {
           "file": "tests/integration/test_family_cleric.cpp",
           "test": "FamilyCleric.r11_turn_and_raise_paths",
-          "note": "unshifted raise arm; its shifted calls only assert false with no undead and no blood, which does not distinguish the arm"
+          "note": "unshifted: skeleton at the blood, owner, team 0, stain dead, exp 45"
         }
       ],
       "missing_arms": []
@@ -719,26 +843,35 @@
         },
         {
           "when": "corpse",
-          "observable": "one living SKELETON team==cleric team, owner cleric, level in 1..L, at (sx,sy); stain dead"
+          "observable": "one living SKELETON team==cleric team, owner cleric, at (sx,sy); stain dead"
+        },
+        {
+          "when": "corpse (risen level)",
+          "observable": "skeleton level in 1..L"
         }
       ],
       "setting": "both",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
+          "file": "tests/unit/test_gameplay_fixes_cleric_unit.cpp",
+          "test": "GameplayFixesClericRaise.refusals_spend_nothing_on_both_values",
+          "note": "no corpse, slot 2: 'NO CORPSE NEARBY', MP 0 spent"
+        },
+        {
           "file": "tests/unit/test_pack_lua_paths.cpp",
-          "test": "PackLuaCleric.a_skeleton_rises_from_a_bloodstain_in_reach"
+          "test": "PackLuaCleric.corpse_refusals_distinguish_absence_blockage_and_range",
+          "note": "no corpse: reasons, MP unchanged"
         },
         {
           "file": "tests/integration/test_family_cleric.cpp",
-          "test": "FamilyCleric.r15_raise_and_resurrect_consume_blood_and_pay_their_own_exp"
-        },
-        {
-          "parity": "cleric_raise_skeleton_scen99",
-          "fact": ""
+          "test": "FamilyCleric.r11_turn_and_raise_paths",
+          "note": "corpse arm: EXPECT stain dead, risen owner == cleric, team 0, xpos/ypos == the bloodstain's"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "corpse (risen level)"
+      ]
     },
     {
       "id": "living-05-cleric.lua:194",
@@ -764,7 +897,13 @@
       "tests": [
         {
           "file": "tests/integration/test_family_cleric.cpp",
-          "test": "FamilyCleric.r15_raise_and_resurrect_consume_blood_and_pay_their_own_exp"
+          "test": "FamilyCleric.r15_raise_and_resurrect_consume_blood_and_pay_their_own_exp",
+          "note": "hero: exp 0 -> 45"
+        },
+        {
+          "file": "tests/unit/test_gameplay_fixes_cleric_unit.cpp",
+          "test": "GameplayFixesClericRaise.the_fixed_probe_eats_nothing",
+          "note": "bot arm: a guy-less cleric's slot-2 raise returns true and the skeleton stands, under ScopedHookFailureGuard count 0; g_exp on a guy-less walker raises"
         }
       ],
       "missing_arms": []
@@ -789,18 +928,25 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
+      "status": "asserted",
       "tests": [
+        {
+          "file": "tests/integration/test_family_behaviors.cpp",
+          "test": "FamilyBehaviors.cleric_turn_undead_special2_and_3_grant_three_exp_per_kill",
+          "note": "shifted: slot 3 shift 1, the skeleton is destroyed and exp +3, which only TURN UNDEAD does"
+        },
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.family_special_sweep_outcomes_with_gameplay_fixes_on",
+          "note": "shifted: bit 5, slot 3 shifted, reason 'NO UNDEAD IN RANGE', MP unchanged"
+        },
         {
           "file": "tests/integration/test_family_cleric.cpp",
           "test": "FamilyCleric.r12_ghost_raise_and_resurrect_penalty_paths",
-          "note": "ghost raised, owner, team, blood dead, exp 61"
+          "note": "unshifted: ghost raised, owner, team 0, blood dead, exp 61"
         }
       ],
-      "missing_arms": [],
-      "note": [
-        "shifted arm executed-only: the same test's 'Case 3: shifter_down turn-undead busy fail' asserts only false + exp unchanged while busy, which a raise would also give"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living-05-cleric.lua:209",
@@ -825,16 +971,24 @@
       "status": "asserted",
       "tests": [
         {
-          "file": "tests/unit/test_pack_lua_paths.cpp",
-          "test": "PackLuaCleric.a_ghost_rises_from_a_bloodstain_in_reach"
+          "file": "tests/unit/test_gameplay_fixes_cleric_unit.cpp",
+          "test": "GameplayFixesClericRaise.refusals_spend_nothing_on_both_values",
+          "note": "no corpse, slot 3: reason, MP 0 spent"
         },
         {
           "file": "tests/integration/test_family_cleric.cpp",
-          "test": "FamilyCleric.r12_ghost_raise_and_resurrect_penalty_paths"
+          "test": "FamilyCleric.r12_ghost_raise_and_resurrect_penalty_paths",
+          "note": "corpse: one ghost, owner cleric, team 0, stain dead"
+        },
+        {
+          "file": "tests/unit/test_pack_lua_paths.cpp",
+          "test": "PackLuaCleric.a_ghost_rises_from_a_bloodstain_in_reach",
+          "note": "one ghost"
         },
         {
           "parity": "cleric_raise_ghost_scen99",
-          "fact": ""
+          "fact": "",
+          "note": "team-0 alive 3 with the ghost"
         }
       ],
       "missing_arms": []
@@ -864,7 +1018,12 @@
         {
           "file": "tests/integration/test_family_cleric.cpp",
           "test": "FamilyCleric.r12_ghost_raise_and_resurrect_penalty_paths",
-          "note": "exp 61"
+          "note": "hero: exp 1 -> 61"
+        },
+        {
+          "file": "tests/unit/test_gameplay_fixes_cleric_unit.cpp",
+          "test": "GameplayFixesClericRaise.the_fixed_probe_eats_nothing",
+          "note": "bot arm: a guy-less cleric's slot-3 raise returns true and the ghost stands, guard count 0"
         }
       ],
       "missing_arms": []
@@ -919,31 +1078,45 @@
         },
         {
           "when": "hostile stain",
-          "observable": "one GHOST team == cleric team, owner cleric, lifetime 200; no live corpse family"
+          "observable": "one GHOST team == cleric team, owner cleric; no live corpse family"
+        },
+        {
+          "when": "hostile stain (lifetime)",
+          "observable": "ghost lifetime 200"
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
-          "file": "tests/unit/test_pack_lua_paths.cpp",
-          "test": "PackLuaCleric.resurrecting_a_friendly_corpse_restores_its_family"
-        },
-        {
           "file": "tests/integration/test_family_cleric.cpp",
-          "test": "FamilyCleric.r14_resurrect_revives_friendly_blood_and_enslaves_hostile_blood"
+          "test": "FamilyCleric.r11_resurrect_friendly_and_hostile_paths",
+          "note": "friendly: soldier back, team 0, hp 50 of the transferred 100, stain dead"
         },
         {
-          "file": "tests/integration/test_walker_specials.cpp",
-          "test": "WalkerSpecials.cleric_resurrect_raises_an_enemy_corpse_as_a_ghost"
+          "file": "tests/unit/test_pack_lua_paths.cpp",
+          "test": "PackLuaCleric.resurrecting_a_friendly_corpse_restores_its_family",
+          "note": "friendly: archer back on team 1, hp <= max/2"
         },
         {
           "parity": "cleric_resurrect_friendly_scen99",
           "fact": "",
           "note": "family  60 120 hp  alive count"
+        },
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.cleric_resurrect_raises_an_enemy_corpse_as_a_ghost",
+          "note": "hostile arm: ASSERT ghosts+1, soldiers unchanged, EXPECT ghost team == cleric team, owner == cleric, stain dead"
+        },
+        {
+          "file": "tests/integration/test_family_cleric.cpp",
+          "test": "FamilyCleric.r14_resurrect_revives_friendly_blood_and_enslaves_hostile_blood",
+          "note": "hostile arm: ghost exists, owner == cleric, 0 live orcs"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "hostile stain (lifetime)"
+      ]
     },
     {
       "id": "living-05-cleric.lua:256",
@@ -976,37 +1149,41 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/integration/test_family_cleric.cpp",
           "test": "FamilyCleric.r15_raise_and_resurrect_consume_blood_and_pay_their_own_exp",
-          "note": ">= arm: exp 105, penalty 100, EXPECT_EQ(95u, exp)"
+          "note": "exp >= loss: 105 - 100 + 90 = 95"
         },
         {
           "file": "tests/integration/test_family_cleric.cpp",
           "test": "FamilyCleric.r14_resurrect_revives_friendly_blood_and_enslaves_hostile_blood",
-          "note": "floor arm: exp 1, EXPECT_EQ(90u, exp)"
+          "note": "exp < loss: exp 1 -> 90"
         },
         {
           "file": "tests/integration/test_family_cleric.cpp",
           "test": "FamilyCleric.r12_ghost_raise_and_resurrect_penalty_paths",
-          "note": "floor arm: exp 61 < 100, EXPECT_EQ(90u, exp)"
+          "note": "exp < loss: 61 -> 90"
         },
         {
           "file": "tests/integration/test_family_cleric.cpp",
           "test": "FamilyCleric.r11_resurrect_friendly_and_hostile_paths",
-          "note": "floor arm: exp 0, EXPECT_EQ(90u, exp)"
+          "note": "exp < loss: 0 -> 90"
         },
         {
           "file": "tests/integration/test_family_behaviors.cpp",
           "test": "FamilyBehaviors.cleric_resurrect_penalty_underflow_clamps_to_zero",
-          "note": "floor arm: exp 0, ASSERT_EQ(90u, exp)"
+          "note": "exp < loss: ASSERT_EQ(90u, exp)"
+        },
+        {
+          "file": "tests/unit/test_gameplay_fixes_cleric_unit.cpp",
+          "test": "GameplayFixesClericRaise.the_fixed_probe_eats_nothing",
+          "note": "bot arm: a guy-less cleric's friendly RESURRECT ({4, team 0, ELF}) returns true and the elf stands, guard count 0"
         }
       ],
-      "missing_arms": [],
-      "note": [
-        "NOTE: negative-wrap arm unasserted and likely unreachable; bot arm has no guy to read"
+      "missing_arms": [
+        "loss negative"
       ]
     },
     {
@@ -1034,7 +1211,17 @@
         {
           "file": "tests/integration/test_family_cleric.cpp",
           "test": "FamilyCleric.r12_ghost_raise_and_resurrect_penalty_paths",
-          "note": "180 after hostile"
+          "note": "hero: 90 -> 180 after the hostile resurrect"
+        },
+        {
+          "file": "tests/integration/test_family_cleric.cpp",
+          "test": "FamilyCleric.r15_raise_and_resurrect_consume_blood_and_pay_their_own_exp",
+          "note": "hero: 95 -> 185"
+        },
+        {
+          "file": "tests/unit/test_gameplay_fixes_cleric_unit.cpp",
+          "test": "GameplayFixesClericRaise.the_fixed_probe_eats_nothing",
+          "note": "bot arm: guy-less RESURRECT of a foe's and a friend's stain returns true, guard count 0"
         }
       ],
       "missing_arms": []
@@ -1092,7 +1279,8 @@
       "tests": [
         {
           "file": "tests/unit/test_bot_gates_casters.cpp",
-          "test": "GameplayFixesBots.cleric_mace_wants_a_foe_at_its_orbit_and_no_mace_out"
+          "test": "GameplayFixesBots.cleric_mace_wants_a_foe_at_its_orbit_and_no_mace_out",
+          "note": "setting on, foe at 40 px, no mace: MP 24 of 50 -> false; 50 -> true"
         }
       ],
       "missing_arms": []
@@ -1117,8 +1305,14 @@
         }
       ],
       "setting": "fixes-on",
-      "status": "executed-only",
-      "tests": [],
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_bot_gates_casters.cpp",
+          "test": "GameplayFixesBots.cleric_mace_wants_a_foe_at_its_orbit_and_no_mace_out",
+          "note": "setting on, foe at 40 px, MP 50/50: a guy with INT 49 -> EXPECT_FALSE; INT 50 -> EXPECT_TRUE; the guy-less bot before it -> true"
+        }
+      ],
       "missing_arms": []
     },
     {
@@ -1195,16 +1389,21 @@
         {
           "file": "tests/unit/test_bot_gates_casters.cpp",
           "test": "GameplayFixesBots.cleric_heal_wants_a_hurt_ally_within_60",
-          "note": "setting off, ally in reach: EXPECT_TRUE + shifter 0, the 'ally within 60' arm"
+          "note": "off, a full-health ally at 32 px: true, shifter 0"
+        },
+        {
+          "file": "tests/unit/test_bot_gates_casters.cpp",
+          "test": "GameplayFixesBots.cleric_mace_wants_a_foe_at_its_orbit_and_no_mace_out",
+          "note": "off, alone, MP 50/50: true shifter 1 with no foe; MP 24/50: false; on: the wanted rules"
         },
         {
           "file": "tests/integration/test_family_cleric.cpp",
           "test": "FamilyCleric.r11_check_ai_and_heal_fail_paths",
-          "note": "no-ally arms: MP 10/100 false; MP 60/100 true with shifter 1"
+          "note": "off, no ally: MP 10/100 false; 60/100 true shifter 1"
         },
         {
           "parity": "cleric_bot_mace_alone_scen99",
-          "fact": "cleric_bot_mace_alone_fixes_scen99"
+          "fact": "cleric_bot_mace_alone_fixes_scen99 (mace summoned alone off, none on)"
         }
       ],
       "missing_arms": []
@@ -1242,15 +1441,32 @@
         {
           "file": "tests/unit/test_gameplay_fixes_cleric_unit.cpp",
           "test": "GameplayFixesClericBot.turns_with_an_undead_foe_in_reach",
-          "note": "/ raises_with_nothing_to_turn_in_reach / the_coin_is_drawn_and_then_overridden / raises_when_its_hero_lacks_the_int_to_turn"
+          "note": "undead in reach: shift 1 on; off: the coin's 0 kept"
+        },
+        {
+          "file": "tests/unit/test_gameplay_fixes_cleric_unit.cpp",
+          "test": "GameplayFixesClericBot.raises_with_nothing_to_turn_in_reach",
+          "note": "no undead / warded: shift 0 on; off: the coin's 1 kept"
+        },
+        {
+          "file": "tests/unit/test_gameplay_fixes_cleric_unit.cpp",
+          "test": "GameplayFixesClericBot.raises_when_its_hero_lacks_the_int_to_turn",
+          "note": "lacks INT: shift 0 on"
+        },
+        {
+          "file": "tests/unit/test_gameplay_fixes_cleric_unit.cpp",
+          "test": "GameplayFixesClericBot.leaves_the_resurrect_shift_and_maces_a_foe_in_orbit",
+          "note": "slot 4 shift untouched, true"
+        },
+        {
+          "file": "tests/unit/test_gameplay_fixes_cleric_unit.cpp",
+          "test": "GameplayFixesClericBot.the_coin_is_drawn_and_then_overridden",
+          "note": "one coin drawn, then overridden on"
         },
         {
           "file": "tests/unit/test_bot_gates_casters.cpp",
-          "test": "GameplayFixesBots.cleric_turn_undead_waits_while_busy_with_the_setting_on"
-        },
-        {
-          "parity": "cleric_bot_raise_or_turn_scen99",
-          "fact": "_fixes_scen99"
+          "test": "GameplayFixesBots.cleric_turn_undead_waits_while_busy_with_the_setting_on",
+          "note": "busy: shift 0, false; off: true, coin kept"
         }
       ],
       "missing_arms": []
@@ -1331,15 +1547,17 @@
       "tests": [
         {
           "file": "tests/unit/test_bot_gates_casters.cpp",
-          "test": "GameplayFixesBots.cleric_resurrect_wants_a_friendly_corpse_within_30"
+          "test": "GameplayFixesBots.cleric_resurrect_wants_a_friendly_corpse_within_30",
+          "note": "friendly 10 px: true; hostile: false; friendly 31 px (none): false"
         },
         {
           "file": "tests/unit/test_bot_gates_casters.cpp",
-          "test": "GameplayFixesBots.cleric_resurrect_wants_a_friendly_corpse_it_can_raise"
+          "test": "GameplayFixesBots.cleric_resurrect_wants_a_friendly_corpse_it_can_raise",
+          "note": "boxed friendly stain: false; open side: true"
         },
         {
           "parity": "cleric_bot_resurrect_foe_stain_scen99",
-          "fact": "_fixes_scen99"
+          "fact": "_fixes_scen99 (ghost rises off, none on)"
         }
       ],
       "missing_arms": []
@@ -1368,11 +1586,8 @@
       "tests": [
         {
           "file": "tests/unit/test_bot_gates_casters.cpp",
-          "test": "GameplayFixesBots.cleric_shoved_heals_with_the_setting_on"
-        },
-        {
-          "file": "tests/integration/test_family_cleric.cpp",
-          "test": "FamilyCleric.r12_shoved_ai_and_turn_undead_guard_paths"
+          "test": "GameplayFixesBots.cleric_shoved_heals_with_the_setting_on",
+          "note": "off: one MAGIC_SHIELD, ally hp unchanged; on: zero maces, ally hp rises, shifter 0"
         }
       ],
       "missing_arms": []

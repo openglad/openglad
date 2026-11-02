@@ -29,7 +29,8 @@
       "tests": [
         {
           "file": "tests/unit/test_kit_thief.cpp",
-          "test": "KitThief.fourth_mine_is_refused"
+          "test": "KitThief.fourth_mine_is_refused",
+          "note": "refusal reason MINE LIMIT REACHED, mp unchanged, mine count; another thief's mine does not count; a spent mine frees its place; laying asserted"
         }
       ],
       "missing_arms": []
@@ -54,14 +55,17 @@
         }
       ],
       "setting": "new-specials",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_kit_thief.cpp",
-          "test": "KitThief.bot_steps_right_off_a_mine_when_the_flee_roll_is_still"
+          "test": "KitThief.bot_steps_right_off_a_mine_when_the_flee_roll_is_still",
+          "note": "still roll: com1 1, com2 0"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "otherwise"
+      ]
     },
     {
       "id": "kit_thief.lua:48",
@@ -87,7 +91,13 @@
       "tests": [
         {
           "file": "tests/unit/test_kit_thief.cpp",
-          "test": "KitThief.mine_costs_double_and_is_a_bomb_when_off"
+          "test": "KitThief.mine_costs_double_and_is_a_bomb_when_off",
+          "note": "hero block: total_shots 4->5, scen_shots 2->3"
+        },
+        {
+          "file": "tests/unit/test_kit_thief.cpp",
+          "test": "KitThief.mine_costs_double_and_is_a_bomb_when_off",
+          "note": "guyless thief block: cast true + 1 mine + ScopedHookFailureGuard 0; the g_* bindings raise 'walker has no guy record' on a guyless walker, so dropping the has_guy guard fails this cast"
         }
       ],
       "missing_arms": []
@@ -112,18 +122,22 @@
         }
       ],
       "setting": "new-specials",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_kit_thief.cpp",
-          "test": "KitThief.bot_steps_right_off_a_mine_when_the_flee_roll_is_still"
+          "test": "KitThief.bot_steps_right_off_a_mine_when_the_flee_roll_is_still",
+          "note": "bot: front command COMMAND_WALK count 20"
         },
         {
           "file": "tests/unit/test_kit_thief.cpp",
-          "test": "KitThief.bot_thief_lays_a_mine_through_act"
+          "test": "KitThief.ai_mine_fires_for_a_hunter_past_the_blast_when_mana_allows",
+          "note": "bot: front command COMMAND_WALK"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "seated"
+      ]
     },
     {
       "id": "kit_thief.lua:72",
@@ -149,11 +163,8 @@
       "tests": [
         {
           "file": "tests/unit/test_kit_thief.cpp",
-          "test": "KitThief.mine_costs_double_and_is_a_bomb_when_off"
-        },
-        {
-          "file": "tests/unit/test_kit_thief.cpp",
-          "test": "KitThief.mine_is_named_and_priced_only_with_the_setting_on"
+          "test": "KitThief.mine_costs_double_and_is_a_bomb_when_off",
+          "note": "shifted: 1 mine, mp 200->130; unshifted: 1 bomb, mp 130->95; setting off shifted: bomb at 35"
         }
       ],
       "missing_arms": []

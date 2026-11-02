@@ -25,11 +25,13 @@
       "tests": [
         {
           "file": "tests/unit/test_kit_thief.cpp",
-          "test": "KitThief.ai_off_answers_the_classic_gate"
+          "test": "KitThief.ai_off_answers_the_classic_gate",
+          "note": "new_specials 0 and fixes 0: classic yes/no answers"
         },
         {
           "file": "tests/unit/test_bot_gates_casters.cpp",
-          "test": "GameplayFixesBots.thief_mine_waits_for_a_hunter_past_the_blast"
+          "test": "GameplayFixesBots.thief_mine_waits_for_a_hunter_past_the_blast",
+          "note": "kit_gate with new_specials on: MINE gate answers and shifter 1"
         }
       ],
       "missing_arms": []
@@ -74,7 +76,8 @@
       "tests": [
         {
           "file": "tests/unit/test_bot_gates_casters.cpp",
-          "test": "GameplayFixesBots.thief_mine_waits_for_a_hunter_past_the_blast"
+          "test": "GameplayFixesBots.thief_mine_waits_for_a_hunter_past_the_blast",
+          "note": "every arm: hunter true/shifter 1, no hunter and inside blast shifter 0, three mines, 60 MP, ally in blast"
         },
         {
           "file": "tests/unit/test_kit_thief.cpp",
@@ -112,15 +115,12 @@
       "tests": [
         {
           "file": "tests/unit/test_bot_gates_casters.cpp",
-          "test": "GameplayFixesBots.thief_bomb_wants_a_foe_inside_its_blast_and_no_ally"
+          "test": "GameplayFixesBots.thief_bomb_wants_a_foe_inside_its_blast_and_no_ally",
+          "note": "30/31 px true shifter 0; 32 and 140 px false; ally in blast false"
         },
         {
           "parity": "thief_bot_bomb_far_fixes_scen99",
           "fact": "WalkerOfOrderFamilyCount(FAMILY_BOMB,0,0)"
-        },
-        {
-          "parity": "thief_bot_bomb_ally_fixes_scen99",
-          "fact": "WalkerHpRangeAtFinalTick(FAMILY_ORC,14000,14000)"
         }
       ],
       "missing_arms": []
@@ -163,15 +163,22 @@
       "tests": [
         {
           "file": "tests/integration/test_family_behaviors.cpp",
-          "test": "FamilyBehaviors.thief_batch3_check_special_ai_matrix"
+          "test": "FamilyBehaviors.thief_batch3_check_special_ai_matrix",
+          "note": "foe 50 px false, 20 px true, no foe with 2 foes false, 3 foes true"
         },
         {
           "file": "tests/unit/test_pack_lua_paths.cpp",
-          "test": "PackLuaThief.the_bomb_ai_allows_a_foe_outside_the_refusal_band"
+          "test": "PackLuaThief.the_bomb_ai_allows_a_foe_outside_the_refusal_band",
+          "note": "4 px true, 60 px false"
+        },
+        {
+          "file": "tests/unit/test_bot_gates_casters.cpp",
+          "test": "GameplayFixesBots.thief_bomb_wants_a_foe_inside_its_blast_and_no_ally",
+          "note": "gate(thief,1,0) true at 30 and 32 px and at 140 px: the >=130 arm"
         },
         {
           "parity": "thief_bot_bomb_far_scen99",
-          "fact": "WalkerOfOrderFamilyCount(FAMILY_BOMB,1,1)"
+          "fact": "WalkerOfOrderFamilyCount(FAMILY_BOMB,1,1) (foe 180 px: bomb dropped)"
         }
       ],
       "missing_arms": []
@@ -201,7 +208,8 @@
       "tests": [
         {
           "file": "tests/unit/test_gameplay_fixes_bots.cpp",
-          "test": "GameplayFixesBots.a_busy_bot_never_rolls_a_busy_cast_with_the_setting_on"
+          "test": "GameplayFixesBots.a_busy_bot_never_rolls_a_busy_cast_with_the_setting_on",
+          "note": "THIEF TAUNT and THIEF CHARM rows: slot 3 idle true, busy 3 false with the setting on"
         }
       ],
       "missing_arms": []
@@ -240,19 +248,27 @@
       "tests": [
         {
           "file": "tests/unit/test_gameplay_fixes_thief_unit.cpp",
-          "test": "GameplayFixesThiefBot.taunts_a_foe_it_cannot_charm"
+          "test": "GameplayFixesThiefBot.charms_an_equal_level_foe_in_reach",
+          "note": "true, shift 1"
         },
         {
           "file": "tests/unit/test_gameplay_fixes_thief_unit.cpp",
-          "test": "GameplayFixesThiefBot.charms_an_equal_level_foe_in_reach"
+          "test": "GameplayFixesThiefBot.taunts_a_foe_it_cannot_charm",
+          "note": "true, shift 0"
         },
         {
           "file": "tests/unit/test_gameplay_fixes_thief_unit.cpp",
           "test": "GameplayFixesThiefBot.taunts_a_seated_hero_and_a_charmed_foe"
         },
         {
+          "file": "tests/unit/test_gameplay_fixes_thief_unit.cpp",
+          "test": "GameplayFixesThiefBot.taunts_a_foe_beyond_charm_reach",
+          "note": "nobody in reach: false"
+        },
+        {
           "file": "tests/unit/test_bot_gates_casters.cpp",
-          "test": "GameplayFixesBots.thief_taunt_wants_a_foe_and_an_ally_in_reach"
+          "test": "GameplayFixesBots.thief_taunt_wants_a_foe_and_an_ally_in_reach",
+          "note": "no ally false; tent only false"
         },
         {
           "parity": "thief_bot_charm_or_taunt_fixes_scen99",
@@ -290,7 +306,8 @@
       "tests": [
         {
           "file": "tests/integration/test_family_behaviors.cpp",
-          "test": "FamilyBehaviors.thief_batch3_check_special_ai_matrix"
+          "test": "FamilyBehaviors.thief_batch3_check_special_ai_matrix",
+          "note": "shifter 0: no foe false, foe true; shifter 1: 30 px false, 15 px true"
         }
       ],
       "missing_arms": []
@@ -320,11 +337,21 @@
         {
           "file": "tests/integration/test_family_behaviors.cpp",
           "test": "FamilyBehaviors.thief_batch3_check_special_ai_matrix",
-          "note": "non-1/non-3 pass"
+          "note": "fixes off, slot 2 true"
         },
         {
           "parity": "thief_bot_cloud_alone_scen99",
-          "fact": "WalkerOfOrderFamilyCount(FAMILY_CLOUD,1,1)"
+          "fact": "WalkerOfOrderFamilyCount(FAMILY_CLOUD,1,1) (fixes off, slot 4 alone: cloud cast)"
+        },
+        {
+          "file": "tests/unit/test_bot_gates_casters.cpp",
+          "test": "GameplayFixesBots.thief_cloak_wants_a_hunter_and_no_cloak_left",
+          "note": "fixes on, slot 2: cloaked false where classic true"
+        },
+        {
+          "file": "tests/unit/test_bot_gates_casters.cpp",
+          "test": "GameplayFixesBots.thief_poison_cloud_wants_two_foes_at_blows_and_no_cloud",
+          "note": "fixes on, slot 4 alone false where classic true"
         }
       ],
       "missing_arms": []
@@ -358,7 +385,8 @@
       "tests": [
         {
           "file": "tests/unit/test_bot_gates_casters.cpp",
-          "test": "GameplayFixesBots.thief_cloak_wants_a_hunter_and_no_cloak_left"
+          "test": "GameplayFixesBots.thief_cloak_wants_a_hunter_and_no_cloak_left",
+          "note": "cloaked false; hunter at 100/130 px true; nobody hunting / 131 px / alone false"
         }
       ],
       "missing_arms": []
@@ -394,8 +422,14 @@
       "status": "asserted",
       "tests": [
         {
+          "file": "tests/unit/test_gameplay_fixes_bots.cpp",
+          "test": "GameplayFixesBots.a_busy_bot_never_rolls_a_busy_cast_with_the_setting_on",
+          "note": "THIEF POISON CLOUD row: busy 3 false with the setting on"
+        },
+        {
           "file": "tests/unit/test_bot_gates_casters.cpp",
-          "test": "GameplayFixesBots.thief_poison_cloud_wants_two_foes_at_blows_and_no_cloud"
+          "test": "GameplayFixesBots.thief_poison_cloud_wants_two_foes_at_blows_and_no_cloud",
+          "note": "own cloud false; one foe at blows false; two true"
         },
         {
           "parity": "thief_bot_cloud_alone_fixes_scen99",
@@ -424,9 +458,12 @@
         }
       ],
       "setting": "none",
-      "status": "none",
+      "status": "executed-only",
       "tests": [],
-      "missing_arms": []
+      "missing_arms": [
+        "hero",
+        "monster"
+      ]
     },
     {
       "id": "living-11-thief.lua:130",
@@ -453,14 +490,13 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
-      "tests": [
-        {
-          "parity": "thief_ai_bomb_flee_scen99",
-          "fact": "WalkerDiedByFinal(FAMILY_THIEF)+WalkerPositionMoved(FAMILY_SOLDIER,146,166) (AI flee arm only, as flee-path consequences)"
-        }
-      ],
-      "missing_arms": []
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": [
+        "AI thief",
+        "AI, both draws 1 (still)",
+        "player thief"
+      ]
     },
     {
       "id": "living-11-thief.lua:151",
@@ -485,18 +521,24 @@
       "status": "asserted",
       "tests": [
         {
-          "file": "tests/integration/test_family_behaviors.cpp",
-          "test": "FamilyBehaviors.thief_batch3_special_taunt_charm_and_poison_paths"
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.thief_taunt_drives_simulation",
+          "note": "shifter 0: EXPECT_FLOAT_EQ busy 2, foe retargeted"
+        },
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.thief_charm_drives_simulation",
+          "note": "shifter 1: busy 10, team switch"
         },
         {
           "file": "tests/integration/test_family_behaviors.cpp",
           "test": "FamilyBehaviors.family_batch4_soldier_orc_thief_edge_callbacks",
-          "note": "busy +10 exact"
+          "note": "charm busy +10 exact"
         },
         {
-          "file": "tests/integration/test_walker_specials.cpp",
-          "test": "WalkerSpecials.thief_taunt_drives_simulation",
-          "note": "busy == 2 exact"
+          "file": "tests/integration/test_special_scenes.cpp",
+          "test": "GameplayFixes.a_thief_bot_taunts_instead_of_a_doomed_charm",
+          "note": "scene c_thief_bot_shift: on side shows 'Nyah Nyah', off side shows 'failed to charm'"
         }
       ],
       "missing_arms": []
@@ -525,7 +567,13 @@
       "tests": [
         {
           "file": "tests/integration/test_family_behaviors.cpp",
-          "test": "FamilyBehaviors.thief_batch3_special_taunt_charm_and_poison_paths"
+          "test": "FamilyBehaviors.thief_batch3_special_taunt_charm_and_poison_paths",
+          "note": "busy 1: do_special false"
+        },
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.thief_taunt_drives_simulation",
+          "note": "busy 0: taunt proceeds, foe retargeted, busy 2"
         }
       ],
       "missing_arms": []
@@ -566,7 +614,13 @@
         },
         {
           "file": "tests/integration/test_gameplay_fixes_thief.cpp",
-          "test": "GameplayFixesThief.taunt_refuses_with_no_foe_when_on"
+          "test": "GameplayFixesThief.taunt_refuses_with_no_foe_when_on",
+          "note": "off: ok, 1 notification, busy 2, MP -100; on: false, NO FOE IN RANGE, 0 notifications, nothing spent"
+        },
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.thief_taunt_drives_simulation",
+          "note": "foe in reach: taunt proceeds"
         }
       ],
       "missing_arms": []
@@ -591,14 +645,17 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
-          "parity": "thief_taunt_matched_levels_scen99",
-          "fact": "WalkerHpRangeAtFinalTick(FAMILY_MEDIUM_SLIME,7200,7200)"
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.thief_taunt_drives_simulation",
+          "note": "floor stream, rolls 0>=0: EXPECT_EQ foe->foe()==thief and leader==thief"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "thief roll < foe roll"
+      ]
     },
     {
       "id": "living-11-thief.lua:173",
@@ -620,15 +677,17 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/integration/test_walker_specials.cpp",
           "test": "WalkerSpecials.thief_taunt_drives_simulation",
-          "note": "bot arm: COMMAND_FOLLOW count 10"
+          "note": "bot foe: one COMMAND_FOLLOW, count 10"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "ACT_CONTROL foe"
+      ]
     },
     {
       "id": "living-11-thief.lua:186",
@@ -654,7 +713,13 @@
       "tests": [
         {
           "file": "tests/integration/test_family_behaviors.cpp",
-          "test": "FamilyBehaviors.thief_batch3_special_taunt_charm_and_poison_paths"
+          "test": "FamilyBehaviors.thief_batch3_special_taunt_charm_and_poison_paths",
+          "note": "busy 1: charm do_special false"
+        },
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.thief_charm_drives_simulation",
+          "note": "idle: charm lands, team switch, busy 10"
         }
       ],
       "missing_arms": []
@@ -684,7 +749,12 @@
         {
           "file": "tests/integration/test_family_behaviors.cpp",
           "test": "FamilyBehaviors.thief_batch3_special_taunt_charm_and_poison_paths",
-          "note": "'charm should fail with no targets'"
+          "note": "'charm should fail with no targets': do_special false"
+        },
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.thief_charm_drives_simulation",
+          "note": "foe in reach: charm lands"
         }
       ],
       "missing_arms": []
@@ -717,20 +787,14 @@
       "status": "asserted",
       "tests": [
         {
-          "parity": "thief_charm_nearest_scen99",
-          "fact": "WalkerHpRangeAtFinalTick(FAMILY_ORC,7500,7500)"
-        },
-        {
-          "parity": "thief_charm_nearest_fixes_scen99",
-          "fact": "WalkerHpRangeAtFinalTick(FAMILY_ORC,12900,12900)"
+          "file": "tests/integration/test_gameplay_fixes_thief.cpp",
+          "test": "GameplayFixesThief.charm_takes_the_nearest_foe_when_on",
+          "note": "off: first in list charmed; on: nearest charmed, team/real_team/charm_left"
         },
         {
           "file": "tests/integration/test_gameplay_fixes_thief.cpp",
-          "test": "GameplayFixesThief.charm_takes_the_nearest_foe_when_on"
-        },
-        {
-          "file": "tests/integration/test_gameplay_fixes_thief.cpp",
-          "test": "GameplayFixesThief.charm_skips_a_seated_hero_when_on"
+          "test": "GameplayFixesThief.charm_skips_a_seated_hero_when_on",
+          "note": "on, none charmable: false, 'NO VALID TARGET'"
         }
       ],
       "missing_arms": []
@@ -759,15 +823,17 @@
       "tests": [
         {
           "file": "tests/integration/test_gameplay_fixes_thief.cpp",
-          "test": "GameplayFixesThief.charm_skips_a_seated_hero_when_on"
+          "test": "GameplayFixesThief.charm_skips_a_seated_hero_when_on",
+          "note": "seated hero skipped: 'NO VALID TARGET', team unchanged"
         },
         {
           "file": "tests/integration/test_gameplay_fixes_thief.cpp",
-          "test": "GameplayFixesThief.charm_takes_the_npc_beside_a_seated_hero_when_on"
+          "test": "GameplayFixesThief.charm_takes_the_npc_beside_a_seated_hero_when_on",
+          "note": "hero skipped, orc charmed"
         },
         {
           "parity": "thief_bot_charm_hero_scen99",
-          "fact": "WalkerOfTeamAlive(0,0,0)"
+          "fact": "WalkerOfTeamAlive(0,0,0) (classic: hero charmable, charmed)"
         }
       ],
       "missing_arms": []
@@ -797,28 +863,36 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/integration/test_family_behaviors.cpp",
           "test": "FamilyBehaviors.family_batch4_soldier_orc_thief_edge_callbacks",
-          "note": "charm arm: team, real_team, charm_left 275"
+          "note": "charm arm: team, real_team, charm_left 275, busy +10"
         },
         {
           "file": "tests/integration/test_family_behaviors.cpp",
           "test": "FamilyBehaviors.thief_batch3_special_taunt_charm_and_poison_paths",
-          "note": "resist arm: foe->foe()==thief"
+          "note": "level 1 vs 10 resist: foe->foe()==thief"
+        },
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.thief_charm_drives_simulation",
+          "note": "charm arm: team, real_team, charm_left 200"
         },
         {
           "parity": "thief_charm_opponent_scen99",
-          "fact": "WalkerOfTeamAlive(1,0,0)"
+          "fact": "WalkerOfTeamAlive(1,0,0) (victim team switched)"
         },
         {
           "file": "tests/integration/test_gameplay_fixes_thief.cpp",
-          "test": "GameplayFixesThief.charm_draws_once_on_both_values"
+          "test": "GameplayFixesThief.charm_draws_once_on_both_values",
+          "note": "exactly one orc charmed"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "rand(20)==0"
+      ]
     },
     {
       "id": "living-11-thief.lua:224",
@@ -845,15 +919,18 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/integration/test_walker_specials.cpp",
           "test": "WalkerSpecials.thief_charm_drives_simulation",
-          "note": "foe()==nullptr arm"
+          "note": "thief has no foe: EXPECT_EQ(nullptr, foe->foe())"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "target was thief's foe",
+        "thief had another foe X"
+      ]
     },
     {
       "id": "living-11-thief.lua:239",
@@ -880,7 +957,12 @@
         {
           "file": "tests/integration/test_gameplay_fixes_thief.cpp",
           "test": "GameplayFixesThief.charm_skips_a_seated_hero_when_on",
-          "note": "NO VALID TARGET"
+          "note": "none handled: false, 'NO VALID TARGET'"
+        },
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.thief_charm_drives_simulation",
+          "note": "one handled: special() true, charm landed"
         }
       ],
       "missing_arms": []
@@ -911,16 +993,12 @@
         {
           "file": "tests/integration/test_special_scenes.cpp",
           "test": "GameplayFixes.a_thief_bot_taunts_instead_of_a_doomed_charm",
-          "note": "scene c_thief_bot_shift, off_shows 'Thief failed to charm!': resisted arm text"
+          "note": "scene c_thief_bot_shift, off_shows 'failed to charm': resisted arm text"
         },
         {
           "file": "tests/integration/test_special_scenes.cpp",
           "test": "GameplayFixes.a_driven_hero_resists_a_bot_charm",
-          "note": "scene m1_hero_resists_charm, off_shows 'Thief charmed an opponent!': charmed arm text"
-        },
-        {
-          "parity": "thief_charm_nearest_scen99",
-          "fact": "EventKindExactly(notification,1) (count only, not the text)"
+          "note": "scene m1_hero_resists_charm, off_shows 'charmed an opponent': charmed arm text"
         }
       ],
       "missing_arms": []
@@ -949,16 +1027,13 @@
       "tests": [
         {
           "file": "tests/integration/test_family_behaviors.cpp",
-          "test": "FamilyBehaviors.thief_batch3_special_taunt_charm_and_poison_paths"
-        },
-        {
-          "parity": "effect_cloud_emission_scen99",
-          "fact": "WalkerOfTeamAlive(0,2,2)"
+          "test": "FamilyBehaviors.thief_batch3_special_taunt_charm_and_poison_paths",
+          "note": "busy 1: poison cloud do_special false"
         },
         {
           "file": "tests/integration/test_walker_specials.cpp",
           "test": "WalkerSpecials.thief_poison_cloud_drives_simulation",
-          "note": "lifetime 52, damage 4, busy 5"
+          "note": "idle: one FAMILY_CLOUD, owner thief, lifetime 52, damage 4, busy 5"
         }
       ],
       "missing_arms": []

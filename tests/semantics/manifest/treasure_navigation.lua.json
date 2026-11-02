@@ -23,9 +23,9 @@
       "setting": "none",
       "status": "executed-only",
       "tests": [],
-      "missing_arms": [],
-      "note": [
-        "(event kinds asserted by parity rows; no test asserts the pad's prompt TEXT - test_script_hooks emits its own string through the binding)"
+      "missing_arms": [
+        "withdraw",
+        "exit"
       ]
     },
     {
@@ -48,8 +48,19 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_runtime_coverage_paths.cpp",
+          "test": "RuntimeCoveragePaths.treasure_navigation_early_returns_and_withdraw_decline",
+          "note": "in_act, ACT_CONTROL, skip 0: skip_exit stays 0"
+        },
+        {
+          "file": "tests/integration/test_runtime_coverage_paths.cpp",
+          "test": "RuntimeCoveragePaths.treasure_exit_and_teleporter_navigation_paths",
+          "note": "outside act: skip_exit 10, RequestExitConfirmation a 2 b 0"
+        }
+      ],
       "missing_arms": []
     },
     {
@@ -79,15 +90,22 @@
       "status": "asserted",
       "tests": [
         {
+          "file": "tests/integration/test_runtime_coverage_paths.cpp",
+          "test": "RuntimeCoveragePaths.treasure_navigation_early_returns_and_withdraw_decline",
+          "note": "act_type 0: skip_exit stays 0"
+        },
+        {
           "file": "tests/unit/test_sim_world_headless.cpp",
           "test": "SimWorldHeadless.exit_with_foes_alive_says_foes_remain",
-          "note": "throttle arm"
+          "note": "throttled re-eat swallowed; controlled eater answered with the toast"
+        },
+        {
+          "file": "tests/integration/test_runtime_coverage_paths.cpp",
+          "test": "RuntimeCoveragePaths.treasure_exit_and_teleporter_navigation_paths",
+          "note": "controlled: skip_exit == 10"
         }
       ],
-      "missing_arms": [],
-      "note": [
-        "(non-control eater arm not asserted)"
-      ]
+      "missing_arms": []
     },
     {
       "id": "treasure_navigation.lua:44",
@@ -115,11 +133,17 @@
       "tests": [
         {
           "parity": "treasure_exit_open_prompt_scen99",
-          "fact": "EventKindAtLeast(request_exit_confirmation,1) + EventKindExactly(notification,0)"
+          "fact": "EventKindAtLeast(request_exit_confirmation,1) + EventKindExactly(withdraw_to_level,0) + EventKindExactly(notification,0)"
+        },
+        {
+          "file": "tests/integration/test_runtime_coverage_paths.cpp",
+          "test": "RuntimeCoveragePaths.treasure_exit_and_teleporter_navigation_paths",
+          "note": "level_done 1: prompt a 2 b 0, no WithdrawToLevel"
         },
         {
           "file": "tests/unit/test_sim_world_headless.cpp",
-          "test": "SimWorldHeadless.exit_with_foes_alive_says_foes_remain"
+          "test": "SimWorldHeadless.exit_with_foes_alive_says_foes_remain",
+          "note": "foes: falls through to the toast; cleared: prompt"
         }
       ],
       "missing_arms": []
@@ -146,9 +170,9 @@
       "setting": "none",
       "status": "executed-only",
       "tests": [],
-      "missing_arms": [],
-      "note": [
-        "(tests/integration/test_runtime_coverage_paths.cpp builds 'Withdraw to Level 4?' events by hand; the pad's fallback is not asserted)"
+      "missing_arms": [
+        "no title",
+        "title"
       ]
     },
     {
@@ -172,14 +196,11 @@
       ],
       "setting": "none",
       "status": "executed-only",
-      "tests": [
-        {
-          "file": "tests/unit/test_script_hooks.cpp",
-          "test": "ScriptBindingTest.exit_flow_bindings_read_and_write_progression",
-          "note": "asserts only the binding"
-        }
-      ],
-      "missing_arms": []
+      "tests": [],
+      "missing_arms": [
+        "flag set, foes alive",
+        "flag clear, foes alive"
+      ]
     },
     {
       "id": "treasure_navigation.lua:60",
@@ -213,8 +234,14 @@
           "fact": "EventKindExactly(withdraw_to_level,1)"
         },
         {
+          "file": "tests/integration/test_runtime_coverage_paths.cpp",
+          "test": "RuntimeCoveragePaths.treasure_navigation_early_returns_and_withdraw_decline",
+          "note": "withdraw_requested true, prompt b 1, WithdrawToLevel a 3"
+        },
+        {
           "file": "tests/unit/test_sim_world_headless.cpp",
-          "test": "SimWorldHeadless.replay_of_a_completed_level_cannot_withdraw"
+          "test": "SimWorldHeadless.replay_of_a_completed_level_cannot_withdraw",
+          "note": "replay: 0 prompts, 1 toast, withdraw_requested false"
         }
       ],
       "missing_arms": []
@@ -239,7 +266,8 @@
       "tests": [
         {
           "file": "tests/unit/test_sim_world_headless.cpp",
-          "test": "SimWorldHeadless.exit_with_foes_alive_says_foes_remain"
+          "test": "SimWorldHeadless.exit_with_foes_alive_says_foes_remain",
+          "note": "1 Foes remain toast, 0 prompts"
         }
       ],
       "missing_arms": []
@@ -274,8 +302,24 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_runtime_coverage_paths.cpp",
+          "test": "RuntimeCoveragePaths.treasure_navigation_early_returns_and_withdraw_decline",
+          "note": "skip_exit 5: stays 5; 200 px away: stays 0"
+        },
+        {
+          "file": "tests/integration/test_runtime_coverage_paths.cpp",
+          "test": "RuntimeCoveragePaths.treasure_exit_and_teleporter_navigation_paths",
+          "note": "centre with skip 1: skip_exit == 8; 3 px off with skip 0: skip_exit >= 20 and leader set"
+        },
+        {
+          "file": "tests/unit/test_gameplay_fixes_walk.cpp",
+          "test": "GameplayFixesWalk.a_walk_that_eats_a_teleporter_does_not_shove_the_ally_it_left",
+          "note": "warp: centred on pad B at 592,592"
+        }
+      ],
       "missing_arms": []
     },
     {
@@ -304,21 +348,22 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
-          "parity": "treasure_teleporter_pickup_scen99",
-          "fact": "EventKindExactly(request_exit_confirmation,0) (no-partner arm)"
+          "file": "tests/integration/test_runtime_coverage_paths.cpp",
+          "test": "RuntimeCoveragePaths.treasure_exit_and_teleporter_navigation_paths",
+          "note": "first use: tele_1->leader() == tele_2"
         },
         {
           "file": "tests/unit/test_gameplay_fixes_walk.cpp",
           "test": "GameplayFixesWalk.a_walk_that_eats_a_teleporter_does_not_shove_the_ally_it_left",
-          "note": "warp to partner"
+          "note": "first use: warped onto the partner"
         }
       ],
-      "missing_arms": [],
-      "note": [
-        "(leader-cache arm not asserted)"
+      "missing_arms": [
+        "cached",
+        "no partner"
       ]
     },
     {
@@ -341,9 +386,17 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": []
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_gameplay_fixes_walk.cpp",
+          "test": "GameplayFixesWalk.a_walk_that_eats_a_teleporter_does_not_shove_the_ally_it_left",
+          "note": "clear: centred on partner 592,592"
+        }
+      ],
+      "missing_arms": [
+        "blocked"
+      ]
     }
   ],
   "other": [

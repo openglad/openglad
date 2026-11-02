@@ -26,14 +26,11 @@
       ],
       "setting": "none",
       "status": "executed-only",
-      "tests": [
-        {
-          "file": "tests/unit/test_astar.cpp",
-          "test": "AStar.solve_is_deterministic_across_repeats",
-          "note": "determinism only, not tie order"
-        }
-      ],
-      "missing_arms": []
+      "tests": [],
+      "missing_arms": [
+        "tie with an existing run",
+        "relaxed node now cheaper than predecessor"
+      ]
     },
     {
       "id": "astar.cpp:178",
@@ -159,6 +156,11 @@
         {
           "file": "tests/unit/test_astar.cpp",
           "test": "AStar.impassable_edges_are_ignored"
+        },
+        {
+          "file": "tests/unit/test_astar.cpp",
+          "test": "AStar.adjacent_step_collapses_to_two_node_path",
+          "note": "finite edges considered: Solved"
         }
       ],
       "missing_arms": []
@@ -194,15 +196,19 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_astar.cpp",
-          "test": "AStar.prefers_cheaper_detour_over_expensive_direct_cell",
-          "note": "open-relax arm"
+          "test": "AStar.straight_line_open_grid_is_optimal",
+          "note": "unseen children pushed: Solved with the optimal path"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "open, strictly cheaper",
+        "closed, strictly cheaper",
+        "not cheaper"
+      ]
     }
   ],
   "other": [

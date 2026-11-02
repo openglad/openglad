@@ -61,7 +61,11 @@
       "arms": [
         {
           "when": "cardinal, misaligned, direct blocked, slide possible",
-          "observable": "position moves -1px/pixel along the perpendicular axis (y for a horizontal hop, x for vertical), up to min(stepsize,mis); no walkstep; walker ends aligned and later passes the corner"
+          "observable": "position moves -1px/pixel along the perpendicular axis (y for a horizontal hop, x for vertical), up to min(stepsize,mis); no walkstep this tick"
+        },
+        {
+          "when": "cardinal, misaligned, direct blocked, slide possible: consequence",
+          "observable": "the walker ends aligned and later passes the one-lane corner (chaser closes on a target beyond the corner)"
         },
         {
           "when": "slide blocked at first pixel",
@@ -73,8 +77,19 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_forest_pathing.cpp",
+          "test": "SingleFloorPathing.misaligned_walker_aligns_into_a_one_lane_tree_gap",
+          "note": "consequence arm: EXPECT_LT(best chase distance, 4*GRID_SIZE) to a target beyond the corner, EXPECT_LE(reentries, 10); per-pixel slide, budget and no-walkstep are not read"
+        },
+        {
+          "file": "tests/unit/test_zaxis.cpp",
+          "test": "ZAxis.misaligned_walker_aligns_and_turns_a_one_lane_corner",
+          "note": "consequence arm: EXPECT_LT(best chase distance, 4*GRID_SIZE) to a target beyond the corner"
+        }
+      ],
       "missing_arms": [
         "cardinal, misaligned, direct blocked, slide possible",
         "slide blocked at first pixel",
@@ -100,7 +115,11 @@
         },
         {
           "when": "center on stair cell",
-          "observable": "no move this tick; node kept until floor changes, then floor()==node floor"
+          "observable": "no move this tick; node kept (not erased) until the floor changes"
+        },
+        {
+          "when": "center on stair cell: consequence",
+          "observable": "the walker later stands on the node's floor (floor()==node floor)"
         },
         {
           "when": "single-floor map",
@@ -108,8 +127,19 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_zaxis.cpp",
+          "test": "ZAxis.cross_floor_ai_chases_foe_through_stair",
+          "note": "consequence arm: EXPECT_EQ(1, max floor reached); the 16x16 skeleton's corner and center share the stair cell, so the center-off nudge is not exercised; the hold-and-keep-node tick is not read, and the floor change itself is apply_z_motion's"
+        },
+        {
+          "file": "tests/unit/test_zaxis.cpp",
+          "test": "ZAxis.cross_floor_ai_chases_MOVING_foe_through_stair",
+          "note": "consequence arm: EXPECT_GE(first_cross_tick, 0) and EXPECT_LT(first_cross_tick, 40)"
+        }
+      ],
       "missing_arms": [
         "center off the stair cell",
         "center on stair cell",

@@ -23,7 +23,9 @@
       "setting": "none",
       "status": "none",
       "tests": [],
-      "missing_arms": []
+      "missing_arms": [
+        "owner nil"
+      ]
     },
     {
       "id": "weapon_knife.lua:18",
@@ -49,7 +51,7 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/integration/test_weap_behavior.cpp",
@@ -60,7 +62,9 @@
           "test": "WeapBehavior.weap_death_knife_non_soldier"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "thrower died, owner defaulted to the knife itself (family 0)"
+      ]
     }
   ],
   "other": [

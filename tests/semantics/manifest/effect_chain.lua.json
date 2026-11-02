@@ -31,18 +31,25 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/integration/test_effect_chain_and_door.cpp",
-          "test": "EffectChainAndDoor.effect_chain_early_exit_and_movement_branches"
+          "test": "EffectChainAndDoor.effect_chain_early_exit_and_movement_branches",
+          "note": "lineofsight 0: dead, x unchanged; no owner: dead; all present: steps a full stepsize"
         },
         {
           "file": "tests/integration/test_effect_more_paths.cpp",
-          "test": "EffectMorePaths.effect_batch4_chain_guard_ownerless_and_non_myguy_foe_scan"
+          "test": "EffectMorePaths.effect_batch4_chain_guard_ownerless_and_non_myguy_foe_scan",
+          "note": "ownerless: dead, lineofsight unchanged"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "leader nil"
+      ],
+      "note": [
+        "The no-leader bolt in effect_chain_early_exit_and_movement_branches also has no owner, so the owner test kills it: the leader-nil arm is never isolated, and no test asserts that no explosion follows."
+      ]
     },
     {
       "id": "effect_chain.lua:28",
@@ -73,6 +80,11 @@
         {
           "file": "tests/integration/test_effect_more_paths.cpp",
           "test": "EffectMorePaths.effect_chain_lightning_hits_leader_and_spawns_explosion"
+        },
+        {
+          "file": "tests/integration/test_effect_chain_and_door.cpp",
+          "test": "EffectChainAndDoor.effect_chain_early_exit_and_movement_branches",
+          "note": "no overlap: the bolt steps toward the leader"
         }
       ],
       "missing_arms": []
@@ -97,9 +109,20 @@
         }
       ],
       "setting": "none",
-      "status": "none",
-      "tests": [],
-      "missing_arms": []
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_effect_more_paths.cpp",
+          "test": "EffectMorePaths.effect_chain_lightning_hits_leader_and_spawns_explosion",
+          "note": "blast spawned: the strike proceeds, skip_exit +3, bolt dead"
+        }
+      ],
+      "missing_arms": [
+        "world full"
+      ],
+      "note": [
+        "Status was none, but every strike test reaches the line."
+      ]
     },
     {
       "id": "effect_chain.lua:55",
@@ -123,14 +146,11 @@
       ],
       "setting": "none",
       "status": "executed-only",
-      "tests": [
-        {
-          "file": "tests/integration/test_effect_more_paths.cpp",
-          "test": "EffectMorePaths.effect_batch4_chain_guard_ownerless_and_non_myguy_foe_scan",
-          "note": "reaches the non-guy arm; radius not pinned"
-        }
-      ],
-      "missing_arms": []
+      "tests": [],
+      "missing_arms": [
+        "owner has a guy",
+        "owner without a guy"
+      ]
     },
     {
       "id": "effect_chain.lua:65",
@@ -145,12 +165,12 @@
         {
           "when": "foes in reach and trunc(damage*0.5) > 20",
           "observable": "rand0(owner level)+1 drawn; child bolts of damage trunc(damage/2)",
-          "asserted": true
+          "asserted": false
         },
         {
           "when": "no foe in reach",
           "observable": "no draw, no child",
-          "asserted": true
+          "asserted": false
         },
         {
           "when": "child damage <= 20 (bolt damage <= 41)",
@@ -160,26 +180,14 @@
       ],
       "setting": "none",
       "status": "executed-only",
-      "tests": [
-        {
-          "file": "tests/integration/test_effect_chain_and_door.cpp",
-          "test": "EffectChainAndDoor.effect_chain_hits_leader_spawns_explosion_and_secondary_chains_and_door_open_spawns_fx",
-          "note": "forking arm: exactly one FAMILY_CHAIN child, damage 50.0 = trunc(100*0.5), leader foe2"
-        },
-        {
-          "file": "tests/integration/test_effect_more_paths.cpp",
-          "test": "EffectMorePaths.effect_batch4_chain_guard_ownerless_and_non_myguy_foe_scan",
-          "note": "forking arm: fork_count 1, child damage 35.0 = trunc(70*0.5)"
-        },
-        {
-          "file": "tests/integration/test_effect_more_paths.cpp",
-          "test": "EffectMorePaths.effect_chain_lightning_hits_leader_and_spawns_explosion",
-          "note": "no-foe arm: fork_count 0 with no second foe in reach"
-        }
+      "tests": [],
+      "missing_arms": [
+        "foes in reach and trunc(damage*0.5) > 20",
+        "no foe in reach",
+        "child damage <= 20 (bolt damage <= 41)"
       ],
-      "missing_arms": [],
       "note": [
-        "Forking arm and no-foe arm asserted; the weak-child arm (fork damage <= 20 -> no draw, no child) is unasserted."
+        "Ledger correction: the earlier no-foe citation was wrong (foe_count == 1 there). A mutation forks_left = 1 passes every test, and no test reads the RNG state."
       ]
     },
     {
@@ -202,9 +210,18 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": []
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_effect_chain_and_door.cpp",
+          "test": "EffectChainAndDoor.effect_chain_hits_leader_spawns_explosion_and_secondary_chains_and_door_open_spawns_fx",
+          "note": "budget 1 at owner level 1: foe2, first in list, gets the only bolt; foe3 and the leader after it get none"
+        }
+      ],
+      "missing_arms": [],
+      "note": [
+        "Upgraded from executed-only with an empty where. The leader consuming a fork slot (line 91 runs for the skipped leader) is not asserted; see effect_chain.lua:77."
+      ]
     },
     {
       "id": "effect_chain.lua:76",
@@ -226,9 +243,20 @@
         }
       ],
       "setting": "none",
-      "status": "none",
-      "tests": [],
-      "missing_arms": []
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_effect_chain_and_door.cpp",
+          "test": "EffectChainAndDoor.effect_chain_hits_leader_spawns_explosion_and_secondary_chains_and_door_open_spawns_fx",
+          "note": "same floor: foe2 gets a bolt and spends the only fork, foe3 gets none"
+        }
+      ],
+      "missing_arms": [
+        "other floor"
+      ],
+      "note": [
+        "Status was none, but the fork tests reach the line on floor 0."
+      ]
     },
     {
       "id": "effect_chain.lua:77",
@@ -250,15 +278,15 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
-      "tests": [
-        {
-          "file": "tests/integration/test_effect_chain_and_door.cpp",
-          "test": "EffectChainAndDoor.effect_chain_hits_leader_spawns_explosion_and_secondary_chains_and_door_open_spawns_fx",
-          "note": "child leader == foe2, damage 50, owner"
-        }
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": [
+        "other foe with skip_exit 0",
+        "w is the leader or skip_exit >= 1"
       ],
-      "missing_arms": []
+      "note": [
+        "Arm 1 names level and floor and no test asserts either on a child bolt. Arm 2: dropping either half of `w ~= self:leader() and w:skip_exit() < 1` passes every test (the only skipped foe is the leader, which also carries skip_exit 3), and the fork slot spent on a skipped foe is never observed."
+      ]
     },
     {
       "id": "effect_chain.lua:79",
@@ -280,9 +308,20 @@
         }
       ],
       "setting": "none",
-      "status": "none",
-      "tests": [],
-      "missing_arms": []
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_effect_more_paths.cpp",
+          "test": "EffectMorePaths.effect_batch4_chain_guard_ownerless_and_non_myguy_foe_scan",
+          "note": "spawned: child configured"
+        }
+      ],
+      "missing_arms": [
+        "world full mid-fork"
+      ],
+      "note": [
+        "Status was none, but the fork tests reach the line."
+      ]
     },
     {
       "id": "effect_chain.lua:104",
@@ -349,22 +388,31 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
+          "file": "tests/integration/test_effect_more_paths.cpp",
+          "test": "EffectMorePaths.effect_batch6_chain_small_delta_else_branches",
+          "note": "right gap 6 < step 10 closes exactly; below 50 clamps to 10"
+        },
+        {
           "file": "tests/integration/test_effect_chain_and_door.cpp",
-          "test": "EffectChainAndDoor.effect_chain_movement_axis_delta_branches"
+          "test": "EffectChainAndDoor.effect_chain_movement_axis_delta_branches",
+          "note": "aligned x: no x move"
         },
         {
           "file": "tests/integration/test_effect_more_paths.cpp",
-          "test": "EffectMorePaths.effect_batch4_chain_movement_negative_delta_branch"
-        },
-        {
-          "file": "tests/integration/test_effect_more_paths.cpp",
-          "test": "EffectMorePaths.effect_batch6_chain_small_delta_else_branches"
+          "test": "EffectMorePaths.effect_batch4_chain_movement_negative_delta_branch",
+          "note": "left/above 80 px: exactly -4 each"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "target left/above",
+        "any"
+      ],
+      "note": [
+        "Left/above is pinned only when the gap exceeds the step; og.max(gap, -step) -> -step survives. No test reads curdir or frame after a homing step."
+      ]
     }
   ],
   "other": [

@@ -13,7 +13,11 @@
       "semantic": "A damage number's position crosses the wire clamped to 0..65535 (negative/NaN to 0, huge saturates).",
       "arms": [
         {
-          "when": "<=0 or NaN",
+          "when": "<=0",
+          "observable": "decoded 0"
+        },
+        {
+          "when": "NaN",
           "observable": "decoded 0"
         },
         {
@@ -40,7 +44,7 @@
         }
       ],
       "missing_arms": [
-        "<=0 or NaN"
+        "NaN"
       ]
     },
     {

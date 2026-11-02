@@ -32,6 +32,11 @@
         {
           "file": "tests/unit/test_kit_captain.cpp",
           "test": "KitCaptain.knife_fan_throws_three"
+        },
+        {
+          "file": "tests/unit/test_bot_gates_kits.cpp",
+          "test": "GameplayFixesBots.captain_fan_wants_two_foes_on_its_three_lines",
+          "note": "curdir DOWN with aim (0,-1): the fan reads curdir and goes down, gate false; curdir UP: true"
         }
       ],
       "missing_arms": []
@@ -65,11 +70,13 @@
       "tests": [
         {
           "file": "tests/unit/test_kit_captain.cpp",
-          "test": "KitCaptain.hook_reels_the_foe_to_the_captains_feet"
+          "test": "KitCaptain.hook_reels_the_foe_to_the_captains_feet",
+          "note": "side +1: foe ends at x 218 = 200+16+2; side 0: y 200"
         },
         {
           "file": "tests/unit/test_kit_captain.cpp",
-          "test": "KitCaptain.reel_never_hauls_a_foe_past_the_captain"
+          "test": "KitCaptain.hook_reels_a_foe_in_from_the_west",
+          "note": "side -1: path ends at 182 = 200-16-2"
         }
       ],
       "missing_arms": []
@@ -104,20 +111,22 @@
       "tests": [
         {
           "file": "tests/unit/test_kit_captain.cpp",
-          "test": "KitCaptain.hook_reels_the_foe_to_the_captains_feet"
+          "test": "KitCaptain.hook_reels_the_foe_to_the_captains_feet",
+          "note": "nearest clear spot east: 218"
         },
         {
           "file": "tests/unit/test_kit_captain.cpp",
-          "test": "KitCaptain.hook_reels_a_foe_in_from_the_west"
+          "test": "KitCaptain.hook_reels_a_foe_in_from_the_west",
+          "note": "nearest clear spot west: 182"
         },
         {
           "file": "tests/unit/test_kit_captain.cpp",
-          "test": "KitCaptain.reel_never_hauls_a_foe_past_the_captain"
+          "test": "KitCaptain.reel_never_hauls_a_foe_past_the_captain",
+          "note": "all eight spots fenced: foe left at 220, blade dead"
         }
       ],
-      "missing_arms": [],
-      "note": [
-        "unasserted: tie between equidistant ring spots -> first clockwise from straight up"
+      "missing_arms": [
+        "tie"
       ]
     },
     {
@@ -138,7 +147,15 @@
           "observable": "that banner (rally point; old one struck by a new plant)"
         },
         {
-          "when": "none / dead / another's",
+          "when": "none",
+          "observable": "nil (warband grunts GOTO the captain; first plant strikes nothing)"
+        },
+        {
+          "when": "dead banner of his",
+          "observable": "nil"
+        },
+        {
+          "when": "another captain's live banner",
           "observable": "nil"
         }
       ],
@@ -147,20 +164,23 @@
       "tests": [
         {
           "file": "tests/unit/test_kit_captain.cpp",
-          "test": "KitCaptain.second_banner_strikes_the_first_quietly"
+          "test": "KitCaptain.second_banner_strikes_the_first_quietly",
+          "note": "own live banner found and struck"
         },
         {
           "file": "tests/unit/test_kit_captain.cpp",
-          "test": "KitCaptain.ai_banner_plants_among_friends_and_calls_the_warband_when_pressed"
+          "test": "KitCaptain.warband_arrives_from_the_nearest_edge_fearless_and_runs_to_the_banner",
+          "note": "own banner: grunts GOTO its centre; no banner: com1 == captain xpos"
         },
         {
           "file": "tests/unit/test_kit_captain.cpp",
-          "test": "KitCaptain.warband_arrives_from_the_nearest_edge_fearless_and_runs_to_the_banner"
+          "test": "KitCaptain.ai_banner_plants_among_friends_and_calls_the_warband_when_pressed",
+          "note": "banner stands: gate holds"
         }
       ],
-      "missing_arms": [],
-      "note": [
-        "unasserted: another captain's live banner is not this captain's standing banner"
+      "missing_arms": [
+        "dead banner of his",
+        "another captain's live banner"
       ]
     },
     {
@@ -182,7 +202,11 @@
           "observable": "counted"
         },
         {
-          "when": "a wild orc / dead grunt",
+          "when": "a wild orc (not his)",
+          "observable": "not counted"
+        },
+        {
+          "when": "a dead grunt",
           "observable": "not counted"
         }
       ],
@@ -191,16 +215,23 @@
       "tests": [
         {
           "file": "tests/unit/test_kit_captain.cpp",
-          "test": "KitCaptain.warband_arrives_from_the_nearest_edge_fearless_and_runs_to_the_banner"
+          "test": "KitCaptain.warband_arrives_from_the_nearest_edge_fearless_and_runs_to_the_banner",
+          "note": "own grunts count toward the cap: top-up to 6, then WARBAND ALREADY HERE"
         },
         {
           "file": "tests/unit/test_kit_captain.cpp",
-          "test": "KitCaptain.ai_banner_plants_among_friends_and_calls_the_warband_when_pressed"
+          "test": "KitCaptain.ai_banner_plants_among_friends_and_calls_the_warband_when_pressed",
+          "note": "a live grunt: hold"
+        },
+        {
+          "file": "tests/unit/test_kit_captain.cpp",
+          "test": "KitCaptain.grunts_turn_to_the_new_banner",
+          "note": "own grunts re-pointed"
         }
       ],
-      "missing_arms": [],
-      "note": [
-        "unasserted: a wild orc (not owned) or a dead grunt is not counted"
+      "missing_arms": [
+        "a wild orc (not his)",
+        "a dead grunt"
       ]
     },
     {
@@ -236,8 +267,7 @@
       "id": "kit_captain.lua:155",
       "lines": [
         155,
-        166,
-        171
+        166
       ],
       "function": "knife_fan",
       "anchor": "if lc.is_busy(self) then",
@@ -265,9 +295,8 @@
           "test": "KitCaptain.knife_fan_throws_three"
         }
       ],
-      "missing_arms": [],
-      "note": [
-        "unasserted: point-blank blocked-pad melee arm"
+      "missing_arms": [
+        "idle, a body touching the facing side (point-blank)"
       ]
     },
     {
@@ -332,6 +361,11 @@
         {
           "file": "tests/unit/test_kit_captain.cpp",
           "test": "KitCaptain.hook_reels_the_foe_to_the_captains_feet"
+        },
+        {
+          "file": "tests/unit/test_kit_captain.cpp",
+          "test": "KitCaptain.a_late_snag_still_reels_home",
+          "note": "blade->lifetime() == kHookReelMax at the snag"
         }
       ],
       "missing_arms": []
@@ -354,7 +388,11 @@
         },
         {
           "when": "first plant",
-          "observable": "banner weapon on the corpse, corpse dead, SOUND_ROAR + notification"
+          "observable": "banner weapon on the corpse (owner, team, hp, lifetime, ACT_SIT), corpse dead, 'raises a war banner!' notification"
+        },
+        {
+          "when": "first plant: sound",
+          "observable": "SOUND_ROAR emitted"
         },
         {
           "when": "second plant",
@@ -362,7 +400,7 @@
         }
       ],
       "setting": "new-specials",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_kit_captain.cpp",
@@ -381,7 +419,9 @@
           "test": "KitCaptain.refused_second_plant_keeps_the_first"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "first plant: sound"
+      ]
     },
     {
       "id": "kit_captain.lua:266",
@@ -400,19 +440,25 @@
           "observable": "skipped"
         },
         {
-          "when": "tile touching or clear",
+          "when": "tile clear of the box",
           "observable": "used"
+        },
+        {
+          "when": "tile exactly touching an edge of the box",
+          "observable": "used (touching is clear)"
         }
       ],
       "setting": "new-specials",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_kit_captain.cpp",
           "test": "KitCaptain.warband_arrives_from_the_nearest_edge_fearless_and_runs_to_the_banner"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "tile exactly touching an edge of the box"
+      ]
     },
     {
       "id": "kit_captain.lua:288",
@@ -455,6 +501,10 @@
         {
           "when": "count reached",
           "observable": "scan stops adding"
+        },
+        {
+          "when": "equal gaps",
+          "observable": "side chosen in west, east, north, south order (first minimum kept)"
         }
       ],
       "setting": "new-specials",
@@ -465,9 +515,8 @@
           "test": "KitCaptain.warband_arrives_from_the_nearest_edge_fearless_and_runs_to_the_banner"
         }
       ],
-      "missing_arms": [],
-      "note": [
-        "unasserted: equal gaps tie to west, east, north, south order"
+      "missing_arms": [
+        "equal gaps"
       ]
     },
     {
@@ -505,7 +554,7 @@
         }
       ],
       "setting": "new-specials",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_kit_captain.cpp",
@@ -514,13 +563,11 @@
         {
           "file": "tests/unit/test_kit_captain.cpp",
           "test": "KitCaptain.warband_has_its_own_price_and_a_short_pool_is_refused"
-        },
-        {
-          "file": "tests/unit/test_kit_captain.cpp",
-          "test": "KitCaptain.warband_dies_with_the_captain"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "no banner"
+      ]
     },
     {
       "id": "kit_captain.lua:357",
@@ -635,6 +682,10 @@
         {
           "file": "tests/unit/test_kit_captain.cpp",
           "test": "KitCaptain.ai_eat_fires_when_hurt_on_a_corpse"
+        },
+        {
+          "file": "tests/unit/test_kit_captain.cpp",
+          "test": "KitCaptain.ai_off_answers_the_classic_gate"
         }
       ],
       "missing_arms": []
@@ -665,14 +716,16 @@
         }
       ],
       "setting": "new-specials",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_bot_gates_kits.cpp",
           "test": "GameplayFixesBots.captain_fan_wants_two_foes_on_its_three_lines"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "foe past flight"
+      ]
     },
     {
       "id": "kit_captain.lua:435",
@@ -811,7 +864,9 @@
           "test": "GameplayFixesBots.captain_banner_wants_a_foe_near_the_flag"
         }
       ],
-      "missing_arms": [],
+      "missing_arms": [
+        "two friendly tents within 96, corpse, foe at 100, no banner"
+      ],
       "note": [
         "unasserted: two friendly generators/tents (non-living) within 96 count as 'friends around' for the plant arm (suspect)"
       ]

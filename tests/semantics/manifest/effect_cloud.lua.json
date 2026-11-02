@@ -22,22 +22,17 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/integration/test_effect_act.cpp",
-          "test": "EffectAct.cloud_ages_and_queues_its_drift_walk"
-        },
-        {
-          "file": "tests/integration/test_effect_act.cpp",
-          "test": "EffectAct.cloud_expired"
-        },
-        {
-          "file": "tests/unit/test_pack_lua_paths.cpp",
-          "test": "PackLuaCloud.an_expired_cloud_dies_on_the_next_act"
+          "test": "EffectAct.cloud_ages_and_queues_its_drift_walk",
+          "note": "lifetime 50 -> 49, walk queued"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "lifetime <= 0"
+      ]
     },
     {
       "id": "effect_cloud.lua:24",
@@ -64,9 +59,16 @@
         }
       ],
       "setting": "none",
-      "status": "none",
+      "status": "executed-only",
       "tests": [],
-      "missing_arms": []
+      "missing_arms": [
+        "lifetime (after ageing) < 8",
+        "lifetime >= 8 and invisibility_left > 0",
+        "lifetime >= 8 and invisibility 0"
+      ],
+      "note": [
+        "Status was none, but every live-cloud act reaches the fade lines; no test reads invisibility_left."
+      ]
     },
     {
       "id": "effect_cloud.lua:34",
@@ -102,6 +104,10 @@
         {
           "file": "tests/unit/test_pack_lua_paths.cpp",
           "test": "PackLuaCloud.a_foe_in_range_but_outside_the_cloud_box_is_unharmed"
+        },
+        {
+          "parity": "effect_cloud_poison_scen99",
+          "fact": "WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 1300, 1500) (ten acts of level damage on the covered foe) and WalkerHpRangeAtFinalTick(FAMILY_THIEF, 7400, 7600) (the caster inside its own cloud)"
         }
       ],
       "missing_arms": []
@@ -163,14 +169,11 @@
       ],
       "setting": "none",
       "status": "executed-only",
-      "tests": [
-        {
-          "file": "tests/integration/test_effect_act.cpp",
-          "test": "EffectAct.cloud_wedged_against_wall_keeps_moving",
-          "note": "reaches the wedge arm, but its only outcome check EXPECT_GE(moved_after, 0) is vacuous: neither arm is asserted"
-        }
-      ],
-      "missing_arms": []
+      "tests": [],
+      "missing_arms": [
+        "moved on either axis or turned",
+        "no move and no turn"
+      ]
     },
     {
       "id": "effect_cloud.lua:58",
@@ -193,9 +196,20 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": []
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_effect_more_paths.cpp",
+          "test": "EffectMorePaths.effect_cloud_queues_walk_then_executes_the_drift_step",
+          "note": "non-zero roll: queued WALK direction (+1,+1), count 4, from scripted draws 2,2,4"
+        }
+      ],
+      "missing_arms": [
+        "both rolls 0"
+      ],
+      "note": [
+        "Status was executed-only with an empty where; the non-zero arm is asserted by the scripted queue test."
+      ]
     }
   ],
   "other": []

@@ -23,14 +23,22 @@
         }
       ],
       "setting": "new-specials",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_kit_possession.cpp",
-          "test": "KitPossession.undead_seat_and_linked_hosts_refuse"
+          "test": "KitPossession.undead_seat_and_linked_hosts_refuse",
+          "note": "rider==host, non-living rider and host, charmed rider, already-linked rider: reason and no writes"
+        },
+        {
+          "file": "tests/unit/test_kit_possession.cpp",
+          "test": "KitPossession.possess_moves_the_seat_tag_hides_the_rider_and_flips_the_host",
+          "note": "valid rider continues"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "rider is host / not living / dead / hidden / dormant / already linked / charmed"
+      ]
     },
     {
       "id": "possession.cpp:125",
@@ -52,14 +60,17 @@
         }
       ],
       "setting": "new-specials",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_kit_possession.cpp",
-          "test": "KitPossession.undead_seat_and_linked_hosts_refuse"
+          "test": "KitPossession.undead_seat_and_linked_hosts_refuse",
+          "note": "hidden and dead host refused; continues for the free orc"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "host dead/hidden/dormant"
+      ]
     },
     {
       "id": "possession.cpp:127",
@@ -282,6 +293,11 @@
         {
           "file": "tests/unit/test_kit_possession.cpp",
           "test": "KitPossession.charmed_host_released_by_the_countdown"
+        },
+        {
+          "file": "tests/unit/test_kit_possession.cpp",
+          "test": "KitPossession.hidden_rider_death_releases_the_host",
+          "note": "called from the rider side: host link/ticks 0, team kOrcTeam"
         }
       ],
       "missing_arms": []
@@ -308,7 +324,10 @@
       "setting": "new-specials",
       "status": "executed-only",
       "tests": [],
-      "missing_arms": []
+      "missing_arms": [
+        "rider gone",
+        "rider present"
+      ]
     },
     {
       "id": "possession.cpp:204",
@@ -335,14 +354,18 @@
         }
       ],
       "setting": "new-specials",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_kit_possession.cpp",
-          "test": "KitPossession.host_tick_counts_down_follows_and_releases_at_zero"
+          "test": "KitPossession.host_tick_counts_down_follows_and_releases_at_zero",
+          "note": "seat-driven arm; rider centred on host, visible, one GHOST_SCARE burst"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "bot",
+        "any"
+      ]
     },
     {
       "id": "possession.cpp:223",
@@ -364,14 +387,17 @@
         }
       ],
       "setting": "new-specials",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_kit_possession.cpp",
-          "test": "KitPossession.host_death_releases_with_half_overkill"
+          "test": "KitPossession.host_death_releases_with_half_overkill",
+          "note": "cast-out notification on host death"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "timer/switch release"
+      ]
     },
     {
       "id": "possession.cpp:226",
@@ -432,18 +458,22 @@
         }
       ],
       "setting": "new-specials",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_kit_possession.cpp",
-          "test": "KitPossession.rider_gone_from_the_world_unlinks_the_host"
+          "test": "KitPossession.rider_gone_from_the_world_unlinks_the_host",
+          "note": "rider missing: link/ticks 0, team kGhostTeam"
         },
         {
           "file": "tests/unit/test_kit_possession.cpp",
-          "test": "KitPossession.rider_dies_mid_possession_on_a_mirror"
+          "test": "KitPossession.host_tick_counts_down_follows_and_releases_at_zero",
+          "note": "unlinked arm: a tick on a free walker leaves link 0; rider-alive arm: follow + countdown"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "rider missing or dead"
+      ]
     },
     {
       "id": "possession.cpp:263",
@@ -503,22 +533,32 @@
         }
       ],
       "setting": "new-specials",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_kit_skeleton.cpp",
-          "test": "KitSkeleton.warded_skeleton_stands_back_up_at_a_quarter"
+          "test": "KitSkeleton.warded_skeleton_stands_back_up_at_a_quarter",
+          "note": "dead 0, hp max/4, ward cleared"
         },
         {
           "file": "tests/unit/test_kit_skeleton.cpp",
-          "test": "KitSkeleton.unwarded_death_is_final"
+          "test": "KitSkeleton.warded_death_tells_nobody_and_counts_no_kill",
+          "note": "\"reassembles!\" notification, no kill counted"
         },
         {
           "file": "tests/unit/test_kit_skeleton.cpp",
-          "test": "KitSkeleton.warded_victim_is_not_a_kill"
+          "test": "KitSkeleton.warded_victim_is_not_a_kill",
+          "note": "no raise"
+        },
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.unwarded_death_is_final",
+          "note": "unwarded arm"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "warded"
+      ]
     },
     {
       "id": "possession.cpp:289",
@@ -551,7 +591,7 @@
         }
       ],
       "setting": "new-specials",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_kit_possession.cpp",
@@ -559,10 +599,13 @@
         },
         {
           "file": "tests/unit/test_kit_possession.cpp",
-          "test": "KitPossession.host_death_releases_with_half_overkill"
+          "test": "KitPossession.host_death_releases_with_half_overkill",
+          "note": "hp<0 overkill and hp>=0 clean arms"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "unlinked"
+      ]
     },
     {
       "id": "possession.cpp:312",
@@ -585,14 +628,16 @@
         }
       ],
       "setting": "new-specials",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_kit_possession.cpp",
           "test": "KitPossession.seat_redirect_follows_host_then_returns"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "host dead or tagged otherwise"
+      ]
     },
     {
       "id": "possession.cpp:326",
@@ -620,18 +665,21 @@
         }
       ],
       "setting": "new-specials",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_kit_possession.cpp",
-          "test": "KitPossession.seat_follows_the_ghost_out_of_a_dying_host"
+          "test": "KitPossession.seat_follows_the_ghost_out_of_a_dying_host",
+          "note": "setting-on arm and setting-off arm"
         },
         {
           "file": "tests/unit/test_kit_possession.cpp",
           "test": "KitPossession.seat_redirect_passes_an_earlier_hero_corpse"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "control still tagged"
+      ]
     }
   ],
   "other": [

@@ -31,22 +31,26 @@
         }
       ],
       "setting": "new-specials",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_kit_elemental.cpp",
-          "test": "KitElemental.embers_burn_crossers_then_die"
+          "test": "KitElemental.embers_burn_crossers_then_die",
+          "note": "overlapping crosser and giant burn"
         },
         {
           "file": "tests/unit/test_kit_elemental.cpp",
-          "test": "KitElemental.every_core_living_box_fits_the_burn_search"
-        },
-        {
-          "file": "tests/unit/test_kit_elemental.cpp",
-          "test": "KitElemental.immolate_drains_two_per_tick_burns_contact_melee_most_and_lays_embers"
+          "test": "KitElemental.immolate_drains_two_per_tick_burns_contact_melee_most_and_lays_embers",
+          "note": "touching foes burn; far foe 120 px, in reach but clear, untouched"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "generator/weapon foe",
+        "other floor"
+      ],
+      "note": [
+        "Removed KitElemental.every_core_living_box_fits_the_burn_search: it checks loader box sizes and never runs foes_touching."
+      ]
     },
     {
       "id": "effect_ember.lua:41",
@@ -68,14 +72,17 @@
         }
       ],
       "setting": "new-specials",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_kit_elemental.cpp",
-          "test": "KitElemental.embers_burn_crossers_then_die"
+          "test": "KitElemental.embers_burn_crossers_then_die",
+          "note": "lifetime > 0: frame and pulse run"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "lifetime reaches 0"
+      ]
     },
     {
       "id": "effect_ember.lua:46",
@@ -97,15 +104,17 @@
         }
       ],
       "setting": "new-specials",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_kit_elemental.cpp",
           "test": "KitElemental.embers_burn_crossers_then_die",
-          "note": "frame 0 then 1"
+          "note": "frame 1 at 9 left"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "otherwise"
+      ]
     },
     {
       "id": "effect_ember.lua:49",
@@ -133,7 +142,7 @@
         {
           "file": "tests/unit/test_kit_elemental.cpp",
           "test": "KitElemental.embers_burn_crossers_then_die",
-          "note": "perturbation ember_pulse 999 goes red"
+          "note": "acts at 39, 38, 37 burn nothing and 36 burns once: lost_one_hit_of after four acts"
         }
       ],
       "missing_arms": []

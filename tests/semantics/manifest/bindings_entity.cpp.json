@@ -30,15 +30,23 @@
       "tests": [
         {
           "file": "tests/unit/test_script_bindings_errors.cpp",
-          "test": "ScriptBindingErrorTest.guy_accessors_refuse_an_entity_without_a_guy"
+          "test": "ScriptBindingErrorTest.guy_accessors_refuse_an_entity_without_a_guy",
+          "note": "myguy==nullptr arm: 'no guy record'"
         },
         {
           "file": "tests/unit/test_script_hooks.cpp",
-          "test": "ScriptBindingTest.guy_rows_round_trip_and_myguy_moves_between_walkers"
+          "test": "ScriptBindingTest.guy_rows_round_trip_and_myguy_moves_between_walkers",
+          "note": "walker-with-myguy arm: g_* getters read 11..17 back"
         },
         {
           "file": "tests/unit/test_script_hooks.cpp",
-          "test": "ScriptHooksTest.level_up_guy_handle_is_dispatch_scoped"
+          "test": "ScriptHooksTest.level_up_guy_handle_is_dispatch_scoped",
+          "note": "guy-handle arm, stale half: 'stale guy handle'"
+        },
+        {
+          "file": "tests/integration/test_guy.cpp",
+          "test": "Guy.upgrade_to_level_different_families",
+          "note": "guy-handle arm, live half: the mage's level_up hook calls og.apply_level_up(guy, ...) which resolves the handle through guy_arg; EXPECT_EQ(20, mage.strength) / EXPECT_EQ(80, mage.intelligence) proves the handle resolved to THAT guy record"
         }
       ],
       "missing_arms": []
@@ -60,7 +68,7 @@
         {
           "when": "'living'",
           "observable": "og.add_ob('living',f):order() == ORDER_LIVING",
-          "status": "executed-only"
+          "status": "asserted"
         },
         {
           "when": "'weapon'",
@@ -70,12 +78,12 @@
         {
           "when": "'treasure'",
           "observable": "order() == ORDER_TREASURE",
-          "status": "executed-only"
+          "status": "none"
         },
         {
           "when": "'generator'",
           "observable": "order() == ORDER_GENERATOR",
-          "status": "executed-only"
+          "status": "none"
         },
         {
           "when": "'fx' or 'effect'",
@@ -89,27 +97,43 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_script_hooks.cpp",
           "test": "ScriptBindingTest.world_query_rows_read_the_live_world",
-          "note": "partial, per arm: 'weapon' asserted via :"
+          "note": "'weapon': og.add_weap_ob('weapon',0):order() == ORDER_WEAPON logged and EXPECT_EQ'd"
         },
         {
           "file": "tests/unit/test_script_bindings_errors.cpp",
           "test": "ScriptBindingErrorTest.unknown_string_selectors_are_named_in_the_error",
-          "note": "unknown-word arm asserted via :"
+          "note": "unknown arm: \"unknown order 'vehicle'\""
         },
         {
           "file": "tests/unit/test_script_bindings_errors.cpp",
-          "test": "ScriptBindingErrorTest.an_erroring_hook_does_not_report_success"
+          "test": "ScriptBindingErrorTest.an_erroring_hook_does_not_report_success",
+          "note": "unknown arm: error + EXPECT_EQ(obs_before, oblist.size())"
+        },
+        {
+          "parity": "archmage_summon_elemental_scen99",
+          "fact": "",
+          "note": "fact WalkerFamilyCount(FAMILY_FIREELEMENTAL 1 1) ('living': living-17-archmage.lua:445 og.add_ob(\"living\"  LIVING_ELEMENTAL); the predicate matches the walker's family symbol resolved in the LIVING order)"
+        },
+        {
+          "file": "tests/integration/test_weap_behavior.cpp",
+          "test": "WeapBehavior.weap_death_knife_soldier_owner",
+          "note": "'fx' spelling only: weapon_knife.lua og.add_ob(\"fx\", FX_KNIFE_BACK); collect_entities(Order::FX, FAMILY_KNIFE_BACK) grows by exactly one"
+        },
+        {
+          "parity": "weapon_door_unlock_chain_scen99",
+          "fact": "",
+          "note": "fact EffectFamilyCount(FAMILY_DOOR_OPEN 1 1) ('fx' spelling only: weapon_door.lua og.add_weap_ob(\"fx\"  FX_DOOR_OPEN); predicate resolves the family symbol in the FX order)"
         }
       ],
-      "missing_arms": [],
-      "note": [
-        "'living' arm: executed by many add_ob callers, :order() not checked directly",
-        "'treasure', 'generator', 'fx'/'effect' arms: executed-only (no test calls og.add_ob with these words and checks :order())"
+      "missing_arms": [
+        "'treasure'",
+        "'generator'",
+        "'fx' or 'effect'"
       ]
     },
     {
@@ -137,7 +161,7 @@
         {
           "when": "'fx'",
           "observable": "og.find_in_range('fx', r, self) returns effects in range",
-          "status": "executed-only"
+          "status": "none"
         },
         {
           "when": "unknown",
@@ -146,28 +170,48 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
+      "status": "partial",
       "tests": [
+        {
+          "parity": "shield_projectile_absorb_scen99",
+          "fact": ""
+        },
+        {
+          "parity": "boomerang_projectile_absorb_scen99",
+          "fact": ""
+        },
+        {
+          "parity": "kMut_guard_projectile_absorb_scen99",
+          "fact": "",
+          "note": "and  fact WeaponFamilyCount(FAMILY_ARROW 1 1) ('weap': effect_shield.lua:27 find_foe_weapons_in_range(\"weap\") finds and destroys the hostile arrow in range); canary  ('weap'->'ob') flips it to 2  pinning that 'ob' never sees an in-flight arrow"
+        },
+        {
+          "parity": "effect_shield_absorb_scen99",
+          "fact": "",
+          "note": "fact WalkerHpRangeAtFinalTick(FAMILY_TOWER1 4800 5000) ('ob': effect_shield.lua:36 find_foes_in_range(\"ob\") finds the body in range)"
+        },
+        {
+          "file": "tests/integration/test_family_behaviors.cpp",
+          "test": "FamilyBehaviors.druid_round6_protection_existing_circle_and_blocked_faerie_paths",
+          "note": "'weap': druid protection_circle's og.find_in_range(\"weap\",100,friend) finds the parked circle; ASSERT_GT top-up hp and ASSERT_EQ(1, live circles)"
+        },
         {
           "file": "tests/unit/test_script_bindings_errors.cpp",
           "test": "ScriptBindingErrorTest.unknown_string_selectors_are_named_in_the_error",
-          "note": "partial, per arm: unknown arm asserted via :"
+          "note": "unknown: \"unknown list selector 'corpses'\""
         }
       ],
-      "missing_arms": [],
-      "note": [
-        "'ob' vs 'weap' distinction asserted via parity: guard_projectile_absorb_scen99 / WeaponFamilyCount(FAMILY_ARROW,1,1) through canary kMut_guard_projectile_absorb_scen99 ('weap'->'ob' in effect_shield.lua:27)",
-        "'fx' arm: none asserted (no test and no pack calls find_*_in_range(\"fx\")); executed-only at best"
+      "missing_arms": [
+        "'fx'"
       ]
     },
     {
       "id": "bindings_entity.cpp:286",
       "lines": [
-        286,
         289
       ],
       "function": "m_alternate_down",
-      "anchor": "w->shifter_down() != 0 &&",
+      "anchor": "lua_pushboolean(L, down ? 1 : 0);",
       "condition": "w->shifter_down() != 0 && og::sim::alternate_in_play(fd, current_special, session_new_specials())",
       "semantic": "A cast takes its Shift (alternate) branch only when the shift is held AND the current slot's alternate is in play this session; with New Specials off, a slot whose alternate is a new-kit alternate behaves as if Shift were not held, while a classic alternate still answers to Shift.",
       "arms": [
@@ -193,13 +237,11 @@
       "tests": [
         {
           "file": "tests/unit/test_specials_view.cpp",
-          "test": "KitLuaTest.match_setting_and_alternate_down_follow_the_setting"
+          "test": "KitLuaTest.match_setting_and_alternate_down_follow_the_setting",
+          "note": "all four arms: unshifted false, classic slot 3 true at both settings, new-kit slot 1 true on / false off"
         }
       ],
-      "missing_arms": [],
-      "note": [
-        "tests/unit/test_kit_thief.cpp (mutation 'if self:alternate_down() then' -> 'if false then')"
-      ]
+      "missing_arms": []
     },
     {
       "id": "bindings_entity.cpp:432",
@@ -223,14 +265,17 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_script_hooks.cpp",
-          "test": "SpecialsDispatchTest.nested_casts_preserve_each_reason_and_success_clears_it"
+          "test": "SpecialsDispatchTest.nested_casts_preserve_each_reason_and_success_clears_it",
+          "note": "refused arm: Lua self:special() on the refusing 'charge' slot returns false,'INNER REFUSAL', propagated; EXPECT_EQ reason and magic 500 unchanged"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "cast succeeded"
+      ]
     },
     {
       "id": "bindings_entity.cpp:544",
@@ -256,11 +301,13 @@
       "tests": [
         {
           "file": "tests/unit/test_script_bindings_props.cpp",
-          "test": "ScriptBindingPropsTest.heal_clamped_adds_marks_then_clamps"
+          "test": "ScriptBindingPropsTest.heal_clamped_adds_marks_then_clamps",
+          "note": "clamp arm: hp == 25 checked in-chunk + marker value 30"
         },
         {
           "file": "tests/unit/test_script_bindings_props.cpp",
-          "test": "ScriptBindingPropsTest.heal_clamped_without_clamp_is_a_float_add"
+          "test": "ScriptBindingPropsTest.heal_clamped_without_clamp_is_a_float_add",
+          "note": "no-clamp arm: 40.25 exactly"
         },
         {
           "file": "tests/unit/test_script_bindings_props.cpp",
@@ -297,7 +344,8 @@
       "tests": [
         {
           "file": "tests/unit/test_mode_bindings.cpp",
-          "test": "ModeBindings.front_command_reader_and_teleport_stamp"
+          "test": "ModeBindings.front_command_reader_and_teleport_stamp",
+          "note": "empty -> 0, after GOTO -> 15"
         }
       ],
       "missing_arms": []
@@ -322,17 +370,16 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_modes_ctf.cpp",
           "test": "ModesCtf.mode_core_probe_helpers_answer_exactly",
-          "note": "empty arm via pcall log 'refresh_empty 0'"
+          "note": "empty arm: modes_pack_fixture.h:302 pcall(s_refresh_front) logs 'refresh_empty 0', EXPECT_TRUE(vm_logged(...))"
         }
       ],
-      "missing_arms": [],
-      "note": [
-        "tests/unit/test_modes_ctf.cpp (refresh-in-place, comment at 2133)"
+      "missing_arms": [
+        "queue non-empty"
       ]
     },
     {
@@ -359,17 +406,11 @@
       "tests": [
         {
           "file": "tests/unit/test_quiet_probe.cpp",
-          "test": "QuietProbe.the_lua_doors_answer_what_the_engine_answers"
-        },
-        {
-          "file": "tests/unit/test_quiet_probe.cpp",
-          "test": "QuietProbe.a_door_is_neither_opened_nor_announced_by_a_quiet_probe"
+          "test": "QuietProbe.the_lua_doors_answer_what_the_engine_answers",
+          "note": "quiet arm: s_forward_blocked(true) == 1 and busy stays idle; loud arm: s_forward_blocked() == 1 and busy (the loud probe's world side effect fires); the two arms of THIS branch are discriminated by the side effect"
         }
       ],
-      "missing_arms": [],
-      "note": [
-        "tests/unit/test_bot_gates_lib.cpp (planted loud-probe RED, ~953)"
-      ]
+      "missing_arms": []
     },
     {
       "id": "bindings_entity.cpp:885",
@@ -403,12 +444,18 @@
       "tests": [
         {
           "file": "tests/unit/test_kit_seams_small.cpp",
-          "test": "KitSeamsSmall.fearless_bit_and_rally_radius_block_the_flee_walk"
+          "test": "KitSeamsSmall.fearless_bit_and_rally_radius_block_the_flee_walk",
+          "note": "rally arm through the binding: commands stay empty inside the live banner's radius; banner-dead arm: queues_a_flee_walk; fearless()==false with new_specials 0 asserted on the gate itself"
+        },
+        {
+          "file": "tests/unit/test_kit_ghost.cpp",
+          "test": "KitGhost.wail_spares_a_fearless_foe",
+          "note": "KIT_FEARLESS arm through the binding: effect_wail.lua s_force_fright leaves the marked orc with no commands; the unmarked orc is frightened"
         },
         {
           "file": "tests/unit/test_script_hooks.cpp",
           "test": "ScriptBindingTest.s_force_fright_merges_into_a_forced_walk",
-          "note": "not-fearless arm"
+          "note": "not-fearless arm: one merged forced COMMAND_WALK, count 100"
         }
       ],
       "missing_arms": []
@@ -445,18 +492,27 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_script_bindings_props.cpp",
-          "test": "ScriptBindingPropsTest.summon_configured_option_type_errors"
+          "test": "ScriptBindingPropsTest.summon_configured_option_type_errors",
+          "note": "type-error arm: the four error texts only"
         },
         {
           "file": "tests/unit/test_script_bindings_props.cpp",
-          "test": "ScriptBindingPropsTest.summon_configured_empty_options_is_bare_summon"
+          "test": "ScriptBindingPropsTest.summon_configured_empty_options_is_bare_summon",
+          "note": "absent arm: every field equals a bare og.summon's"
+        },
+        {
+          "file": "tests/unit/test_script_bindings_props.cpp",
+          "test": "ScriptBindingPropsTest.summon_configured_matches_the_corpus_sequence",
+          "note": "present-right-type arm: each option's value lands"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "ani_type/lifetime not integer, hp_add/damage_add not number"
+      ]
     },
     {
       "id": "bindings_entity.cpp:1082",
@@ -482,13 +538,16 @@
       "tests": [
         {
           "file": "tests/unit/test_script_bindings_props.cpp",
-          "test": "ScriptBindingPropsTest.summon_configured_unknown_key_summons_nothing"
+          "test": "ScriptBindingPropsTest.summon_configured_unknown_key_summons_nothing",
+          "note": "unknown-key arm: error text + allowed list + oblist unchanged"
+        },
+        {
+          "file": "tests/unit/test_script_bindings_props.cpp",
+          "test": "ScriptBindingPropsTest.summon_configured_matches_the_corpus_sequence",
+          "note": "all-recognized arm: the summon proceeds and returns a configured body"
         }
       ],
-      "missing_arms": [],
-      "note": [
-        "tests/unit/test_mode_bindings.cpp (unknown option key)"
-      ]
+      "missing_arms": []
     },
     {
       "id": "bindings_entity.cpp:1089",
@@ -514,7 +573,13 @@
       "tests": [
         {
           "file": "tests/unit/test_script_bindings_props.cpp",
-          "test": "ScriptBindingPropsTest.summon_configured_failed_summon_returns_nil"
+          "test": "ScriptBindingPropsTest.summon_configured_failed_summon_returns_nil",
+          "note": "failed arm: nil returned, checked in-chunk under expect_ran_clean"
+        },
+        {
+          "file": "tests/unit/test_script_bindings_props.cpp",
+          "test": "ScriptBindingPropsTest.summon_configured_matches_the_corpus_sequence",
+          "note": "succeeded arm: a handle whose fields are read back"
         }
       ],
       "missing_arms": []
@@ -563,11 +628,13 @@
       "tests": [
         {
           "file": "tests/unit/test_script_bindings_props.cpp",
-          "test": "ScriptBindingPropsTest.summon_configured_matches_the_corpus_sequence"
+          "test": "ScriptBindingPropsTest.summon_configured_matches_the_corpus_sequence",
+          "note": "ani_type, lifetime, hp_add, max_hp_from_hp truthy, damage_add each equal the spelled-out og.summon + setter twin"
         },
         {
           "file": "tests/unit/test_script_bindings_props.cpp",
-          "test": "ScriptBindingPropsTest.summon_configured_false_max_hp_applies_nothing"
+          "test": "ScriptBindingPropsTest.summon_configured_false_max_hp_applies_nothing",
+          "note": "max_hp_from_hp false arm"
         }
       ],
       "missing_arms": []
@@ -605,7 +672,8 @@
       "tests": [
         {
           "file": "tests/unit/test_script_bindings_props.cpp",
-          "test": "ScriptBindingPropsTest.an_explicit_floor_probes_that_floor_not_the_probers"
+          "test": "ScriptBindingPropsTest.an_explicit_floor_probes_that_floor_not_the_probers",
+          "note": "grid/both triples 1,0,1 and object 1,0"
         }
       ],
       "missing_arms": []
@@ -640,9 +708,11 @@
       "setting": "none",
       "status": "executed-only",
       "tests": [],
-      "missing_arms": [],
-      "note": [
-        "no test calls og.query_genre directly; door orientation reached by door-opening integration/parity runs without a facing assertion found"
+      "missing_arms": [
+        "floor omitted",
+        "floor given",
+        "door: tile above is TYPE_WALL",
+        "door: tile above not wall"
       ]
     },
     {
@@ -670,18 +740,22 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_script_bindings_errors.cpp",
-          "test": "ScriptBindingErrorTest.a_nonpositive_cosmetic_rand_bound_is_refused"
+          "test": "ScriptBindingErrorTest.a_nonpositive_cosmetic_rand_bound_is_refused",
+          "note": "n <= 0 arm: 0 and -4"
         },
         {
           "file": "tests/unit/test_script_bindings_math.cpp",
-          "test": "ScriptBindingMathTest.rand_bounds_above_int32_max_are_refused"
+          "test": "ScriptBindingMathTest.rand_bounds_above_int32_max_are_refused",
+          "note": "n > INT32_MAX arm: 2^31 and 2^32 errors; rng_.state_ unchanged"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "1 <= n <= INT32_MAX"
+      ]
     },
     {
       "id": "bindings_entity.cpp:1286",
@@ -705,10 +779,9 @@
       "setting": "none",
       "status": "executed-only",
       "tests": [],
-      "missing_arms": [],
-      "note": [
-        "parity: elf-spread / path-cadence rows draw through this (byte-compare dumps), but no fact or unit test asserts which stream a cosmetic_rand call drew from",
-        "tests/unit/test_sim_entity.cpp tests the C++ cosmetic_rng_override pattern, not this binding"
+      "missing_arms": [
+        "override installed",
+        "no override"
       ]
     },
     {
@@ -751,11 +824,13 @@
       "tests": [
         {
           "file": "tests/unit/test_script_hooks.cpp",
-          "test": "ScriptBindingTest.emit_notification_addresses_a_single_seat"
+          "test": "ScriptBindingTest.emit_notification_addresses_a_single_seat",
+          "note": "omitted, nil, walker user 4, index 2, negative"
         },
         {
           "file": "tests/unit/test_script_hooks.cpp",
-          "test": "ScriptBindingTest.emit_notification_refuses_a_seat_that_cannot_exist"
+          "test": "ScriptBindingTest.emit_notification_refuses_a_seat_that_cannot_exist",
+          "note": "15 kept; 16, 65535, 65536 broadcast"
         },
         {
           "file": "tests/unit/test_script_hooks.cpp",
@@ -816,7 +891,7 @@
         {
           "file": "tests/unit/test_script_bindings_props.cpp",
           "test": "ScriptBindingPropsTest.family_flag_answers_each_flag_from_the_descriptor",
-          "note": "is_undead, leaves_bloodspot, is_stationary"
+          "note": "is_undead, leaves_bloodspot, is_stationary against the descriptors"
         },
         {
           "file": "tests/unit/test_script_bindings_errors.cpp",
@@ -824,7 +899,8 @@
         },
         {
           "file": "tests/unit/test_script_bindings_errors.cpp",
-          "test": "ScriptBindingErrorTest.unknown_string_selectors_are_named_in_the_error"
+          "test": "ScriptBindingErrorTest.unknown_string_selectors_are_named_in_the_error",
+          "note": "\"unknown flag 'is_purple'\", \"only 'living' supported\""
         },
         {
           "file": "tests/integration/test_weap_behavior.cpp",
@@ -833,7 +909,7 @@
         {
           "file": "tests/integration/test_weap_behavior.cpp",
           "test": "WeapBehavior.weap_death_knife_non_soldier",
-          "note": "has_returning_weapon both values, indirectly through weapon_knife.lua:18's knife_back gate: knife_back spawned / not spawned"
+          "note": "has_returning_weapon true/false through weapon_knife.lua:18's gate: exactly one / zero core:knife_back"
         }
       ],
       "missing_arms": []
@@ -861,17 +937,10 @@
       ],
       "setting": "none",
       "status": "executed-only",
-      "tests": [
-        {
-          "file": "tests/unit/test_pack_lua_paths.cpp",
-          "test": "PackLuaSlime.a_veteran_split_halves_the_experience_across_both_bodies",
-          "note": "witnesses level == 3; its EXPECT_EQ(30000u, myguy->exp) observes the g_set_exp that living-08-slime.lua:118-123 calls right after g_upgrade_to_level, not this binding's default"
-        }
-      ],
-      "missing_arms": [],
-      "note": [
-        "exp-threshold half of the default arm: none",
-        "false arm: none (no pack passes false)"
+      "tests": [],
+      "missing_arms": [
+        "third arg omitted (default)",
+        "third arg false"
       ]
     },
     {
@@ -904,22 +973,21 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_script_bindings_errors.cpp",
           "test": "ScriptBindingErrorTest.unknown_string_selectors_are_named_in_the_error",
-          "note": "unknown arm asserted"
+          "note": "unknown arm: \"unknown action 'befriend'\""
         },
         {
-          "file": "tests/integration/test_family_behaviors.cpp",
-          "test": "FamilyBehaviors.cleric_turn_undead_success_with_undead_targets",
-          "note": "turn_undead path executed, kill asserted not the exp"
+          "file": "tests/integration/test_family_orc.cpp",
+          "test": "FamilyOrc.r15_eating_a_corpse_heals_by_its_level_and_consumes_it",
+          "note": "'eat_corpse' name only: EXPECT_EQ(20u, myguy->exp) through orc_specials.lua:79"
         }
       ],
-      "missing_arms": [],
-      "note": [
-        "attack/kill are unused by packs (C++ callers only)"
+      "missing_arms": [
+        "each of the 10 names"
       ]
     },
     {
@@ -957,26 +1025,31 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_script_bindings_props.cpp",
-          "test": "ScriptBindingPropsTest.tuning_serves_every_value_kind"
+          "test": "ScriptBindingPropsTest.tuning_serves_every_value_kind",
+          "note": "declared arm: integer/float/boolean/string kinds, absent key nil"
         },
         {
           "file": "tests/unit/test_script_bindings_props.cpp",
-          "test": "ScriptBindingPropsTest.tuning_undeclared_family_is_empty_and_frozen"
+          "test": "ScriptBindingPropsTest.tuning_undeclared_family_is_empty_and_frozen",
+          "note": "declared-none arm"
         },
         {
           "file": "tests/unit/test_script_bindings_props.cpp",
-          "test": "ScriptBindingPropsTest.tuning_views_reject_writes"
+          "test": "ScriptBindingPropsTest.tuning_views_reject_writes",
+          "note": "write arm, new and existing key"
         },
         {
           "file": "tests/unit/test_script_bindings_props.cpp",
           "test": "ScriptBindingPropsTest.tuning_is_keyed_per_order_and_family"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "cached view present"
+      ]
     },
     {
       "id": "bindings_entity.cpp:1714",
@@ -1011,7 +1084,8 @@
       "tests": [
         {
           "file": "tests/unit/test_script_hooks.cpp",
-          "test": "ScriptBindingTest.ani_frame_and_ani_row_read_the_animation_table"
+          "test": "ScriptBindingTest.ani_frame_and_ani_row_read_the_animation_table",
+          "note": "row -1 nil, row 4 >= ani_count 4 nil, rows 0/1 indexed"
         },
         {
           "file": "tests/unit/test_script_hooks.cpp",
@@ -1050,7 +1124,7 @@
         {
           "file": "tests/unit/test_script_hooks.cpp",
           "test": "ScriptBindingTest.ani_frame_and_ani_row_read_the_animation_table",
-          "note": "kUnterminated row -> nil"
+          "note": "sentinel at 3 -> #r == 3; kUnterminated row -> nil"
         }
       ],
       "missing_arms": []
@@ -1080,14 +1154,17 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_script_hooks.cpp",
-          "test": "ScriptBindingTest.ani_frame_and_ani_row_read_the_animation_table"
+          "test": "ScriptBindingTest.ani_frame_and_ani_row_read_the_animation_table",
+          "note": "frames 5,7; sentinel -1; index 4 > len, null row, malformed row nil"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "index > len or < 0 / null row / malformed"
+      ]
     },
     {
       "id": "bindings_entity.cpp:1759",
@@ -1118,7 +1195,8 @@
       "tests": [
         {
           "file": "tests/unit/test_script_hooks.cpp",
-          "test": "ScriptBindingTest.ani_frame_and_ani_row_read_the_animation_table"
+          "test": "ScriptBindingTest.ani_frame_and_ani_row_read_the_animation_table",
+          "note": "{5,6,7}; empty row #t == 0; null/malformed/past ani_count nil"
         }
       ],
       "missing_arms": []
@@ -1150,27 +1228,25 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_script_hooks.cpp",
           "test": "ScriptBindingTest.award_score_credits_the_team_and_emits_score_change",
-          "note": "in-table arm and team 9 only"
+          "note": "in-table arm: m_score[1] == 300 + two ScoreChange{1,250},{1,50}; team 9 arm: no score, no third event"
         }
       ],
-      "missing_arms": [],
-      "note": [
-        "team >= 256 wrap arm: none"
+      "missing_arms": [
+        "team >= 256 (Lua integer)"
       ]
     },
     {
       "id": "bindings_entity.cpp:1798",
       "lines": [
-        1798,
         1807
       ],
       "function": "og_world_can_exit_whenever / og_level_completed",
-      "anchor": "L, (world_arg(L)->type & GameWorld::TYPE_CAN_EXIT_WHENEVER) != 0 ? 1",
+      "anchor": "lua_pushboolean(L, world->completed_levels.count(level) > 0 ? 1 : 0);",
       "condition": "(type & TYPE_CAN_EXIT_WHENEVER) != 0 / completed_levels.count(level) > 0",
       "semantic": "The exit pad may be used before the level's foes are cleared only on a level flagged can-exit-whenever; a campaign level counts as completed only if it is in the save's completed set.",
       "arms": [
@@ -1182,7 +1258,7 @@
         {
           "when": "flag clear",
           "observable": "false",
-          "status": "none"
+          "status": "asserted"
         },
         {
           "when": "level in completed set",
@@ -1196,18 +1272,20 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_script_hooks.cpp",
           "test": "ScriptBindingTest.exit_flow_bindings_read_and_write_progression",
-          "note": "asserts can_exit_whenever true, level_completed true and false"
+          "note": "flag set -> true; level_completed(3) true, (4) false"
+        },
+        {
+          "file": "tests/unit/test_sim_world_headless.cpp",
+          "test": "SimWorldHeadless.exit_with_foes_alive_says_foes_remain",
+          "note": "flag-clear arm: world.type defaults to 0 (game_world.h:183) and treasure_navigation.lua:58 can_exit_now = foes_left == 0 or og.world_can_exit_whenever(); with foes alive EXPECT_EQ(0, exit_prompts()) proves the binding answered false, and the withdraw leg proves level_completed(2) true/false"
         }
       ],
-      "missing_arms": [],
-      "note": [
-        "can_exit_whenever false arm: none"
-      ]
+      "missing_arms": []
     },
     {
       "id": "bindings_entity.cpp:1871",
@@ -1266,7 +1344,8 @@
       "tests": [
         {
           "file": "tests/unit/test_campaign_hooks.cpp",
-          "test": "CampaignHooksTest.campaign_var_reads_world_values"
+          "test": "CampaignHooksTest.campaign_var_reads_world_values",
+          "note": "3, -2, missing 0"
         }
       ],
       "missing_arms": []
@@ -1295,7 +1374,13 @@
       "tests": [
         {
           "file": "tests/unit/test_campaign_hooks.cpp",
-          "test": "CampaignHooksTest.campaign_bindings_error_outside_campaign_dispatch"
+          "test": "CampaignHooksTest.campaign_bindings_error_outside_campaign_dispatch",
+          "note": "outside arm: all 14 og.campaign_* names error with 'campaign-hook only'"
+        },
+        {
+          "file": "tests/unit/test_campaign_hooks.cpp",
+          "test": "CampaignHooksTest.provider_bindings_happy_path",
+          "note": "inside arm: the bindings proceed and answer provider values inside a campaign hook"
         }
       ],
       "missing_arms": []
@@ -1337,7 +1422,28 @@
       "tests": [
         {
           "file": "tests/unit/test_campaign_hooks.cpp",
-          "test": "CampaignHooksTest.campaign_bindings_error_with_no_provider"
+          "test": "CampaignHooksTest.campaign_bindings_error_with_no_provider",
+          "note": "all 14 names: pcall false + 'no campaign provider installed'"
+        },
+        {
+          "file": "tests/unit/test_campaign_hooks.cpp",
+          "test": "CampaignHooksTest.provider_bindings_happy_path",
+          "note": "installed arm: state_get/set, gold, spend, grant, team, level_completed, current_level, scenario_title answer the provider's values"
+        },
+        {
+          "file": "tests/unit/test_campaign_hooks.cpp",
+          "test": "CampaignHooksTest.match_bindings_round_trip",
+          "note": "installed arm: match_get/match_set/is_host"
+        },
+        {
+          "file": "tests/unit/test_campaign_hooks.cpp",
+          "test": "CampaignHooksTest.campaign_my_team_provider_answer_and_clamp",
+          "note": "installed arm: my_team"
+        },
+        {
+          "file": "tests/unit/test_campaign_hooks.cpp",
+          "test": "CampaignHooksTest.campaign_random_provider_answer_and_bounds",
+          "note": "installed arm: random"
         }
       ],
       "missing_arms": []
@@ -1366,7 +1472,13 @@
       "tests": [
         {
           "file": "tests/unit/test_campaign_hooks.cpp",
-          "test": "CampaignHooksTest.state_set_bounds_rejection_raises_before_mutation"
+          "test": "CampaignHooksTest.state_set_bounds_rejection_raises_before_mutation",
+          "note": "bad key: pcall false, message names [a-z0-9_], keys_offered == ['big'] so the provider never saw 'BadKey'; valid key 'big' reached the provider"
+        },
+        {
+          "file": "tests/unit/test_campaign_hooks.cpp",
+          "test": "CampaignHooksTest.provider_bindings_happy_path",
+          "note": "valid key 'delve' stored: store['delve'] == 3"
         }
       ],
       "missing_arms": []
@@ -1399,10 +1511,18 @@
       "tests": [
         {
           "file": "tests/unit/test_campaign_hooks.cpp",
-          "test": "CampaignHooksTest.state_set_bounds_rejection_raises_before_mutation"
+          "test": "CampaignHooksTest.state_set_bounds_rejection_raises_before_mutation",
+          "note": "3000000000: pcall false, message contains 'int32', provider not offered 'wide'"
+        },
+        {
+          "file": "tests/unit/test_campaign_hooks.cpp",
+          "test": "CampaignHooksTest.provider_bindings_happy_path",
+          "note": "in-range value 3 stored"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "< INT32_MIN (e.g. -3000000000)"
+      ]
     },
     {
       "id": "bindings_entity.cpp:1953",
@@ -1428,7 +1548,13 @@
       "tests": [
         {
           "file": "tests/unit/test_campaign_hooks.cpp",
-          "test": "CampaignHooksTest.state_set_bounds_rejection_raises_before_mutation"
+          "test": "CampaignHooksTest.state_set_bounds_rejection_raises_before_mutation",
+          "note": "store refuses 5000: pcall false, message 'rejected 'big'', store empty"
+        },
+        {
+          "file": "tests/unit/test_campaign_hooks.cpp",
+          "test": "CampaignHooksTest.provider_bindings_happy_path",
+          "note": "store accepts: store['delve'] == 3, call returned normally"
         }
       ],
       "missing_arms": []
@@ -1458,7 +1584,8 @@
       "tests": [
         {
           "file": "tests/unit/test_campaign_hooks.cpp",
-          "test": "CampaignHooksTest.negative_gold_amounts_never_reach_the_provider"
+          "test": "CampaignHooksTest.negative_gold_amounts_never_reach_the_provider",
+          "note": "spend(-1)/grant(-1): pcall false + 'negative amount', spends == [40], grants == [10], gold 70"
         }
       ],
       "missing_arms": []
@@ -1471,15 +1598,15 @@
       "function": "og_campaign_spend_gold",
       "anchor": "lua_pushboolean(L, p.gold_spend(amount) ? 1 : 0);",
       "condition": "p.gold_spend(amount) ? 1 : 0",
-      "semantic": "A variable-priced campaign purchase succeeds only when the company can afford it; an unaffordable spend answers false and debits nothing.",
+      "semantic": "The binding answers the provider's boolean verbatim: og.campaign_spend_gold(n) is true exactly when the installed gold_spend provider answered true, false when it answered false. The affordability rule (amount > gold refused, nothing debited) and the infinite_gold branch (answers true, skips the debit) are the PROVIDER's (src/resources/campaign_state_providers.cpp:220-235), outside this chunk.",
       "arms": [
         {
-          "when": "amount <= gold",
-          "observable": "true, gold reduced by amount"
+          "when": "provider answers true",
+          "observable": "Lua true"
         },
         {
-          "when": "amount > gold",
-          "observable": "false, gold unchanged"
+          "when": "provider answers false",
+          "observable": "Lua false"
         }
       ],
       "setting": "none",
@@ -1487,7 +1614,13 @@
       "tests": [
         {
           "file": "tests/unit/test_campaign_hooks.cpp",
-          "test": "CampaignHooksTest.provider_bindings_happy_path"
+          "test": "CampaignHooksTest.provider_bindings_happy_path",
+          "note": "stub provider: spend(60) -> 'spend true', spend(1000) -> 'broke false'; pass-through of both booleans"
+        },
+        {
+          "file": "tests/unit/test_campaign_state_providers.cpp",
+          "test": "CampaignStateProviders.gold_spend_rules",
+          "note": "PROVIDER-side rules, outside this chunk: affordable 60 debits to 40, 41 > 40 refused undebited, -1 refused, 0 affordable, infinite_gold answers true and skips the debit"
         }
       ],
       "missing_arms": []
@@ -1512,15 +1645,12 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
-      "tests": [
-        {
-          "file": "tests/unit/test_westlands_fire.cpp",
-          "test": "WestlandsFireCamp.the_fire_says_when_nobody_will_march",
-          "note": "INDIRECT only: fronts.lua:74 reads team[i].deployed to count standing swords; no test reads og.campaign_team()[i].deployed directly, and provider_bindings_happy_path logs no 'deployed' line"
-        }
-      ],
-      "missing_arms": []
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": [
+        "hero deployed",
+        "hero benched"
+      ]
     },
     {
       "id": "bindings_entity.cpp:2063",
@@ -1546,7 +1676,8 @@
       "tests": [
         {
           "file": "tests/unit/test_campaign_hooks.cpp",
-          "test": "CampaignHooksTest.provider_bindings_happy_path"
+          "test": "CampaignHooksTest.provider_bindings_happy_path",
+          "note": "'done5 true', 'done6 false'"
         }
       ],
       "missing_arms": []
@@ -1570,6 +1701,10 @@
         {
           "when": "unknown or retired name",
           "observable": "Lua error 'unknown setting' (unknown name asserted; retired names team_count/strip_troops through the binding UNASSERTED)"
+        },
+        {
+          "when": "og.campaign_match_set with an unknown or retired name (no known_match_setting() check on the set path)",
+          "observable": "no Lua error: the binding answers the provider's false (a real provider refuses and writes nothing)"
         }
       ],
       "setting": "none",
@@ -1577,15 +1712,18 @@
       "tests": [
         {
           "file": "tests/unit/test_campaign_hooks.cpp",
-          "test": "CampaignHooksTest.match_bindings_round_trip"
+          "test": "CampaignHooksTest.match_bindings_round_trip",
+          "note": "vocabulary name: 'get0 5'; unknown get: 'getunk false' + 'unknown setting'; unknown set: 'unk false', no raise"
         },
         {
           "file": "tests/unit/test_campaign_state_providers.cpp",
           "test": "CampaignStateProviders.bot_knob_names_are_in_the_campaign_vocabulary",
-          "note": "retired names absent from the list"
+          "note": "lines 422-426: provider match_set('strip_troops', 2) answers false and ctf_strip_scenario_troops stays 0; the provider half of the set-path arm"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "retired name (team_count / strip_troops) through og.campaign_match_get (unknown name is asserted: getunk false + unknown setting)"
+      ]
     },
     {
       "id": "bindings_entity.cpp:2136",
@@ -1615,10 +1753,18 @@
       "tests": [
         {
           "file": "tests/unit/test_campaign_hooks.cpp",
-          "test": "CampaignHooksTest.a_match_value_past_int32_never_reaches_the_provider"
+          "test": "CampaignHooksTest.a_match_value_past_int32_never_reaches_the_provider",
+          "note": "3000000000: pcall false + 'value out of int32 range', writes size 1; legal 7 -> true"
+        },
+        {
+          "file": "tests/unit/test_campaign_hooks.cpp",
+          "test": "CampaignHooksTest.match_bindings_round_trip",
+          "note": "in-range: provider's true ('set true') and false ('set2 false') returned"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "< INT32_MIN (e.g. -3000000000)"
+      ]
     },
     {
       "id": "bindings_entity.cpp:2159",
@@ -1644,7 +1790,8 @@
       "tests": [
         {
           "file": "tests/unit/test_campaign_hooks.cpp",
-          "test": "CampaignHooksTest.match_bindings_round_trip"
+          "test": "CampaignHooksTest.match_bindings_round_trip",
+          "note": "'host true', then 'host2 false'"
         }
       ],
       "missing_arms": []
@@ -1677,7 +1824,8 @@
       "tests": [
         {
           "file": "tests/unit/test_campaign_hooks.cpp",
-          "test": "CampaignHooksTest.campaign_my_team_provider_answer_and_clamp"
+          "test": "CampaignHooksTest.campaign_my_team_provider_answer_and_clamp",
+          "note": "2 -> 2, 1 -> 1, 9 -> 3, -4 -> 0"
         }
       ],
       "missing_arms": []
@@ -1711,7 +1859,8 @@
       "tests": [
         {
           "file": "tests/unit/test_campaign_hooks.cpp",
-          "test": "CampaignHooksTest.campaign_random_provider_answer_and_bounds"
+          "test": "CampaignHooksTest.campaign_random_provider_answer_and_bounds",
+          "note": "1 -> 1, 39 -> 39; 0 and -5 refused with 'n must be >= 1'; 3000000000 refused with 'int32'; asked == [1, 39]"
         }
       ],
       "missing_arms": []
@@ -1745,7 +1894,13 @@
       "tests": [
         {
           "file": "tests/unit/test_script_bindings_math.cpp",
-          "test": "ScriptBindingMathTest.non_numbers_and_nan_are_refused"
+          "test": "ScriptBindingMathTest.non_numbers_and_nan_are_refused",
+          "note": "strings/nil/table: 'number expected'; NaN: 'NaN'"
+        },
+        {
+          "file": "tests/unit/test_script_bindings_math.cpp",
+          "test": "ScriptBindingMathTest.max_min_follow_std_semantics_exactly",
+          "note": "integer and finite float arguments accepted, hook ran clean"
         }
       ],
       "missing_arms": []
@@ -1767,6 +1922,10 @@
         {
           "when": "n > 0",
           "observable": "same value and stream advance as og.rand(n)"
+        },
+        {
+          "when": "no active world, any n",
+          "observable": "Lua error 'no active world' even for n <= 0"
         }
       ],
       "setting": "none",
@@ -1774,11 +1933,18 @@
       "tests": [
         {
           "file": "tests/unit/test_script_bindings_math.cpp",
-          "test": "ScriptBindingMathTest.rand0_zero_and_negative_do_not_advance_the_stream"
+          "test": "ScriptBindingMathTest.rand0_zero_and_negative_do_not_advance_the_stream",
+          "note": "rand0(0) and rand0(-12) == 0, rng_.state_ unchanged"
         },
         {
           "file": "tests/unit/test_script_bindings_math.cpp",
-          "test": "ScriptBindingMathTest.rand0_positive_is_og_rand_verbatim"
+          "test": "ScriptBindingMathTest.rand0_positive_is_og_rand_verbatim",
+          "note": "rand0(1000) == rand(1000) on the same seed, same post-state, state advanced"
+        },
+        {
+          "file": "tests/unit/test_script_bindings_math.cpp",
+          "test": "ScriptBindingMathTest.rand0_requires_an_active_world",
+          "note": "og.rand0(0) with world nullptr errors with 'no active world'"
         }
       ],
       "missing_arms": []
@@ -1807,11 +1973,13 @@
       "tests": [
         {
           "file": "tests/unit/test_script_bindings_math.cpp",
-          "test": "ScriptBindingMathTest.rand_bounds_above_int32_max_are_refused"
+          "test": "ScriptBindingMathTest.rand_bounds_above_int32_max_are_refused",
+          "note": "2^31, 2^32, 2^32+5, maxinteger refused with 'og.rand0: n out of range', state unchanged"
         },
         {
           "file": "tests/unit/test_script_bindings_math.cpp",
-          "test": "ScriptBindingMathTest.rand_bounds_up_to_int32_max_draw_unchanged"
+          "test": "ScriptBindingMathTest.rand_bounds_up_to_int32_max_draw_unchanged",
+          "note": "rand0(2147483647) draws SimRandom's value, post-state matches"
         }
       ],
       "missing_arms": []
@@ -1993,7 +2161,6 @@
       "id": "bindings_entity.cpp:2531",
       "lines": [
         2531,
-        2538,
         2544,
         2549
       ],
@@ -2075,10 +2242,13 @@
         {
           "file": "tests/unit/test_mode_bindings.cpp",
           "test": "ModeBindings.end_level_latches_and_validates",
-          "note": "asserts the refusals error and the valid arm latches; not that a refusal leaves the latch unarmed"
+          "note": "valid arm: win_latched, win_ending 0, win_next_level 43"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "ending 2",
+        "next_level -2"
+      ]
     },
     {
       "id": "bindings_entity.cpp:2592",
@@ -2102,29 +2272,39 @@
         {
           "when": "4..15, 32+, <0",
           "observable": "Lua error naming both ranges"
+        },
+        {
+          "when": "og.declare_winner with a negative team (the separate `team < 0 ||` guard at 2592)",
+          "observable": "Lua error, mode.winner_team still -1, win_latched still false"
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_mode_bindings.cpp",
-          "test": "ModeBindings.declare_winner_records_team_and_validates"
+          "test": "ModeBindings.declare_winner_records_team_and_validates",
+          "note": "declare_winner(2): winner_team 2, latched; pcall(4) false"
         },
         {
           "file": "tests/unit/test_mode_bindings.cpp",
-          "test": "ModeBindings.declare_winner_accepts_band_rejects_gap_and_beyond"
+          "test": "ModeBindings.declare_winner_accepts_band_rejects_gap_and_beyond",
+          "note": "declare_winner(31) winner 31; pcall 4/15/32/255 false"
         },
         {
           "file": "tests/unit/test_mode_bindings.cpp",
-          "test": "ModeBindings.team_color_name_matches_engine_table"
+          "test": "ModeBindings.team_color_name_matches_engine_table",
+          "note": "0..3 -> RED GREEN BLUE YELLOW; pcall(-1) false"
         },
         {
           "file": "tests/unit/test_mode_bindings.cpp",
-          "test": "ModeBindings.team_color_name_band_names_and_edges"
+          "test": "ModeBindings.team_color_name_band_names_and_edges",
+          "note": "16..31 band names; pcall 4/15/32 false"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "og.declare_winner with a negative team (the separate `team < 0 ||` guard at 2592)"
+      ]
     },
     {
       "id": "bindings_entity.cpp:2614",
@@ -2144,6 +2324,10 @@
         {
           "when": "<0 or >=64",
           "observable": "Lua error 'mode var index out of range'"
+        },
+        {
+          "when": "og.mode_set with i < 0 (the `i < 0 ||` guard at 2628)",
+          "observable": "Lua error 'mode var index out of range', no var written"
         }
       ],
       "setting": "none",
@@ -2152,10 +2336,13 @@
         {
           "file": "tests/unit/test_mode_bindings.cpp",
           "test": "ModeBindings.mode_get_set_roundtrip_and_index_errors",
-          "note": "round-trip of 7/-3 and index errors asserted; int32 truncation not"
+          "note": "round-trip 7/-3, vars[0]==7, vars[63]==-3; mode_get(-1), mode_get(64), mode_set(64,1) refused, 'out of range' text"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "og.mode_set truncates v to int32 (a value past int32 written and read back)",
+        "og.mode_set with i < 0 (the `i < 0 ||` guard at 2628)"
+      ]
     },
     {
       "id": "bindings_entity.cpp:2645",
@@ -2181,7 +2368,13 @@
       "tests": [
         {
           "file": "tests/unit/test_mode_bindings.cpp",
-          "test": "ModeBindings.set_mode_name_clamps_to_eleven_bytes"
+          "test": "ModeBindings.set_mode_name_clamps_to_eleven_bytes",
+          "note": "'ONSLAUGHTXYZ99' -> 'ONSLAUGHTXY'"
+        },
+        {
+          "file": "tests/unit/test_modes_soccer.cpp",
+          "test": "ModesSoccer.init_activates_anchor_teams_and_spawns_ball",
+          "note": "short name: mode.name STREQ 'SOCCER', stored whole"
         }
       ],
       "missing_arms": []
@@ -2204,24 +2397,35 @@
         {
           "when": "other",
           "observable": "Lua error 'slot out of range'"
+        },
+        {
+          "when": "og.set_hud_line with slot < 0",
+          "observable": "Lua error 'slot out of range', no line written"
+        },
+        {
+          "when": "og.clear_hud_line with slot >= 4",
+          "observable": "Lua error 'slot out of range', no line cleared"
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_mode_bindings.cpp",
-          "test": "ModeBindings.hud_lines_write_clamp_clear_and_validate"
+          "test": "ModeBindings.hud_lines_write_clamp_clear_and_validate",
+          "note": "slot 3 written, slot 0 cleared; set_hud_line(4,'x') and clear_hud_line(-1) refused"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "og.set_hud_line with slot < 0",
+        "og.clear_hud_line with slot >= 4"
+      ]
     },
     {
       "id": "bindings_entity.cpp:2665",
       "lines": [
         2665,
-        2667,
-        2677
+        2667
       ],
       "function": "og_set_hud_line",
       "anchor": "if (!lua_isnoneornil(L, 3)) {",
@@ -2243,21 +2447,29 @@
         {
           "when": "text > 25 bytes",
           "observable": "first 25 bytes kept"
+        },
+        {
+          "when": "negative team (the `t < 0 ||` guard)",
+          "observable": "error and slot unchanged"
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_mode_bindings.cpp",
-          "test": "ModeBindings.hud_lines_write_clamp_clear_and_validate"
+          "test": "ModeBindings.hud_lines_write_clamp_clear_and_validate",
+          "note": "no team -> 255; 31-char text clamped to 25"
         },
         {
           "file": "tests/unit/test_mode_bindings.cpp",
-          "test": "ModeBindings.hud_line_accepts_band_tint_keeps_nil_default"
+          "test": "ModeBindings.hud_line_accepts_band_tint_keeps_nil_default",
+          "note": "team 16 stored; 4/15/32 refused and slot 2 untouched: empty text, team 255"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "negative team (the `t < 0 ||` guard)"
+      ]
     },
     {
       "id": "bindings_entity.cpp:2702",
@@ -2291,21 +2503,39 @@
         {
           "when": "entity + bad team",
           "observable": "error, slot unchanged"
+        },
+        {
+          "when": "entity nil + any team, even invalid",
+          "observable": "no error, slot reset to ModeBeacon{} (entity 0, team 255)"
+        },
+        {
+          "when": "slot < 0",
+          "observable": "error, no slot written"
+        },
+        {
+          "when": "entity + negative team (the `t < 0 ||` guard)",
+          "observable": "error, slot unchanged"
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_mode_bindings.cpp",
-          "test": "ModeBindings.beacons_set_clear_and_validate"
+          "test": "ModeBindings.beacons_set_clear_and_validate",
+          "note": "slot 4 refused; beacons[0]={id,1}; team 7 refused leaving slot 0 {id,1}; set_beacon(1,obs) then set_beacon(1,nil) -> {0,255}"
         },
         {
           "file": "tests/unit/test_mode_bindings.cpp",
-          "test": "ModeBindings.beacon_accepts_band_team_rejects_gap_and_beyond"
+          "test": "ModeBindings.beacon_accepts_band_team_rejects_gap_and_beyond",
+          "note": "band 31 stored; 15/40 refused, slot 1 left {0,255}"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "entity nil + an invalid team (e.g. set_beacon(1, nil, 7)) answers no error and resets (nil with no team is asserted: {0,255})",
+        "slot < 0",
+        "entity + negative team (the `t < 0 ||` guard)"
+      ]
     },
     {
       "id": "bindings_entity.cpp:2741",
@@ -2396,11 +2626,18 @@
       "tests": [
         {
           "file": "tests/unit/test_mode_bindings.cpp",
-          "test": "ModeBindings.camera_view_style_maps_to_byte_and_rejects_bad_opts"
+          "test": "ModeBindings.camera_view_style_maps_to_byte_and_rejects_bad_opts",
+          "note": "'inset' -> kCameraStyleInset; 'docked' and 'styel' messages; style=7 and opts='inset' refused; cameras[0] keeps {id, inset}"
         },
         {
           "file": "tests/unit/test_mode_bindings.cpp",
-          "test": "ModeBindings.an_explicit_auto_style_takes_a_slot_back_off_inset"
+          "test": "ModeBindings.an_explicit_auto_style_takes_a_slot_back_off_inset",
+          "note": "style 'auto' overwrites inset, entity kept"
+        },
+        {
+          "file": "tests/unit/test_mode_bindings.cpp",
+          "test": "ModeBindings.camera_view_sets_slot_zero_and_rejects_out_of_range_slots",
+          "note": "no opts -> kCameraStyleAuto"
         }
       ],
       "missing_arms": []
@@ -2425,25 +2662,34 @@
         {
           "when": "other",
           "observable": "Lua error 'team N out of range [0, 3]'"
+        },
+        {
+          "when": "team < 0 through og.team_score / og.respawn_pending_count / og.respawn_anchor_count",
+          "observable": "Lua error 'team -1 out of range [0, 3]'"
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_mode_bindings.cpp",
-          "test": "ModeBindings.team_score_reads_award_scores_counter"
+          "test": "ModeBindings.team_score_reads_award_scores_counter",
+          "note": "team 2 -> 1234, 1240; team_score(4) refused"
         },
         {
           "file": "tests/unit/test_mode_bindings.cpp",
-          "test": "ModeBindings.respawn_schedule_pending_and_counts"
+          "test": "ModeBindings.respawn_schedule_pending_and_counts",
+          "note": "respawn_pending_count(1)==1, (0)==0; (4) refused"
         },
         {
           "file": "tests/unit/test_mode_bindings.cpp",
-          "test": "ModeBindings.respawn_anchors_read_back_and_validate"
+          "test": "ModeBindings.respawn_anchors_read_back_and_validate",
+          "note": "anchor_count 2/1/0; anchor_count(5) refused; respawn_anchor(5,0) and (-1,0) refused with 'team 5/-1 out of range [0, 3]'"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "team < 0 through og.team_score / og.respawn_pending_count / og.respawn_anchor_count"
+      ]
     },
     {
       "id": "bindings_entity.cpp:2813",
@@ -2531,31 +2777,33 @@
       "tests": [
         {
           "file": "tests/unit/test_mode_bindings.cpp",
-          "test": "ModeBindings.match_setting_reads_all_six_knobs"
+          "test": "ModeBindings.match_setting_reads_all_six_knobs",
+          "note": "team_count 3, score_limit 5, respawn_ticks 90, strip_troops 1, respawn_mode 1, time_limit 7200; 'bogus' refused"
         },
         {
           "file": "tests/unit/test_mode_bindings.cpp",
-          "test": "ModeBindings.match_setting_reads_the_eight_per_team_bot_knobs"
+          "test": "ModeBindings.match_setting_reads_the_eight_per_team_bot_knobs",
+          "note": "fill_1..4 = 0 2 1 9, map_units_1..4 = 3 0 9 1; 'fill_5' refused"
         },
         {
           "file": "tests/unit/test_mode_bindings.cpp",
-          "test": "ModeBindings.match_setting_reads_back_matched_sentinel_raw"
+          "test": "ModeBindings.match_setting_reads_back_matched_sentinel_raw",
+          "note": "strip_troops raw 3"
         },
         {
           "file": "tests/unit/test_gameplay_fixes_lib.cpp",
-          "test": "GameplayFixesLua.match_setting_reads_the_world_flag_and_draws_nothing"
+          "test": "GameplayFixesLua.match_setting_reads_the_world_flag_and_draws_nothing",
+          "note": "gameplay_fixes 0 and 1 read back, new_specials set opposite"
         },
         {
           "file": "tests/unit/test_specials_view.cpp",
-          "test": "KitLuaTest.match_setting_and_alternate_down_follow_the_setting"
-        },
-        {
-          "file": "tests/unit/test_modes_ctf.cpp",
-          "test": "ModesCtf.mode_core_probe_helpers_answer_exactly",
-          "note": "difficulty only at the default 100; a constant-100 binding passes"
+          "test": "KitLuaTest.match_setting_and_alternate_down_follow_the_setting",
+          "note": "new_specials 0 and 1 read back"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "difficulty"
+      ]
     },
     {
       "id": "bindings_entity.cpp:2970",
@@ -2586,10 +2834,14 @@
       "tests": [
         {
           "file": "tests/unit/test_mode_bindings.cpp",
-          "test": "ModeBindings.respawn_schedule_pending_and_counts"
+          "test": "ModeBindings.respawn_schedule_pending_and_counts",
+          "note": "respawn_schedule(corpse,25) -> respawn_queue[0].ticks_left == 25; pcall(corpse,0) refused"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "no ticks",
+        "ticks > 65535 (e.g. 65536) (ticks 0 is asserted refused)"
+      ]
     },
     {
       "id": "bindings_entity.cpp:2989",
@@ -2615,7 +2867,8 @@
       "tests": [
         {
           "file": "tests/unit/test_mode_bindings.cpp",
-          "test": "ModeBindings.respawn_schedule_pending_and_counts"
+          "test": "ModeBindings.respawn_schedule_pending_and_counts",
+          "note": "pending(corpse) 1, pending(live) 0"
         }
       ],
       "missing_arms": []
@@ -2637,17 +2890,24 @@
         {
           "when": "i out of range",
           "observable": "Lua error 'index out of range'"
+        },
+        {
+          "when": "i < 0 (the `i < 0 ||` guard)",
+          "observable": "Lua error 'index out of range'"
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_mode_bindings.cpp",
-          "test": "ModeBindings.respawn_anchors_read_back_and_validate"
+          "test": "ModeBindings.respawn_anchors_read_back_and_validate",
+          "note": "respawn_anchor(0,1) == 192, 96; respawn_anchor(0,2) refused"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "i < 0 (the `i < 0 ||` guard)"
+      ]
     },
     {
       "id": "bindings_entity.cpp:3057",
@@ -2679,10 +2939,13 @@
         {
           "file": "tests/unit/test_mode_bindings.cpp",
           "test": "ModeBindings.spawn_spot_clear_probes_without_eating",
-          "note": "open/blocked/no-eat asserted; explicit floor only at the prober's own floor 0, so an implementation ignoring the floor argument passes"
+          "note": "open spot with a loose enemy knife + silver bar -> 1; body at 320,320 -> 0"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "spot open: nothing eaten (a drop on the spot survives with treasure hooks registered) (the true answer is asserted: open 1)",
+        "explicit floor different from the prober's"
+      ]
     },
     {
       "id": "bindings_entity.cpp:3074",
@@ -2713,10 +2976,13 @@
         {
           "file": "tests/unit/test_mode_bindings.cpp",
           "test": "ModeBindings.scrub_corpse_stain_kills_nearby_drops",
-          "note": "asserts floor-omitted and other-position arms only"
+          "note": "stain at 160,160 floor 0 dies on scrub(160,160); far stain at 400,400 survives"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "floor omitted: a drop at x,y on a floor other than 0 also dies (floor-0 stain killed by scrub(160,160) is asserted)",
+        "floor given"
+      ]
     },
     {
       "id": "bindings_entity.cpp:3086",
@@ -2742,7 +3008,8 @@
       "tests": [
         {
           "file": "tests/unit/test_mode_bindings.cpp",
-          "test": "ModeBindings.set_act_type_refuses_control_and_restores"
+          "test": "ModeBindings.set_act_type_refuses_control_and_restores",
+          "note": "ACT_GUARD written, restore -> 0; ACT_CONTROL refused, act still 0"
         }
       ],
       "missing_arms": []
@@ -2771,11 +3038,8 @@
       "tests": [
         {
           "file": "tests/unit/test_quiet_probe.cpp",
-          "test": "QuietProbe.the_lua_doors_answer_what_the_engine_answers"
-        },
-        {
-          "file": "tests/unit/test_quiet_probe.cpp",
-          "test": "QuietProbe.every_blocker_answers_like_the_loud_probe_and_changes_nothing"
+          "test": "QuietProbe.the_lua_doors_answer_what_the_engine_answers",
+          "note": "og.quiet_passable(100,100) 1, (150,160) H_WALL 0"
         }
       ],
       "missing_arms": []
@@ -2804,11 +3068,8 @@
       "tests": [
         {
           "file": "tests/unit/test_quiet_probe.cpp",
-          "test": "QuietProbe.the_lua_doors_answer_what_the_engine_answers"
-        },
-        {
-          "file": "tests/unit/test_quiet_probe.cpp",
-          "test": "QuietProbe.body_spot_near_tries_the_corner_then_the_ring_in_order"
+          "test": "QuietProbe.the_lua_doors_answer_what_the_engine_answers",
+          "note": "'600,600' found; r0 at an occupied spot -> nil"
         }
       ],
       "missing_arms": []
@@ -2841,10 +3102,18 @@
       "tests": [
         {
           "file": "tests/unit/test_quiet_probe.cpp",
-          "test": "QuietProbe.the_lua_doors_answer_what_the_engine_answers"
+          "test": "QuietProbe.the_lua_doors_answer_what_the_engine_answers",
+          "note": "nil -> current weapon; knife family id; 256 refused"
+        },
+        {
+          "file": "tests/unit/test_quiet_probe.cpp",
+          "test": "QuietProbe.fire_pad_clear_takes_a_weapon_family",
+          "note": "fire_arrow family id probed: 'fire_arrow' 0, 'answer' terrain"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "weapon_family < -1 (e.g. -2) (256 is asserted refused)"
+      ]
     },
     {
       "id": "bindings_entity.cpp:3207",
@@ -2870,15 +3139,18 @@
       "tests": [
         {
           "file": "tests/unit/test_quiet_probe.cpp",
-          "test": "QuietProbe.fire_pad_clear_matches_fires_own_pad"
+          "test": "QuietProbe.fire_pad_clear_takes_a_weapon_family",
+          "note": "Lua self:fire_pad_clear() 1 on the arrow's clear pad; (fire_arrow) 0 at the wall"
         },
         {
           "file": "tests/unit/test_quiet_probe.cpp",
-          "test": "QuietProbe.fire_pad_clear_takes_a_weapon_family"
+          "test": "QuietProbe.fire_pad_answer_names_what_the_pad_holds",
+          "note": "Lua 'clear' 1 for open/ally/tree tile, 0 for wall/edge/enemy/generator"
         },
         {
           "file": "tests/unit/test_quiet_probe.cpp",
-          "test": "QuietProbe.the_lua_doors_answer_what_the_engine_answers"
+          "test": "QuietProbe.the_lua_doors_answer_what_the_engine_answers",
+          "note": "orc on the knife pad -> 0"
         }
       ],
       "missing_arms": []
@@ -2933,11 +3205,7 @@
       "lines": [
         3727,
         3728,
-        3825,
-        3829,
-        3830,
-        3831,
-        3832
+        3825
       ],
       "function": "is_unfenced / install_entity_bindings_into_og",
       "anchor": "for (const char* n : kUnfencedWorldFuncs) {",
@@ -2963,15 +3231,13 @@
         {
           "file": "tests/unit/test_campaign_hooks.cpp",
           "test": "CampaignHooksTest.fence_walk_everything_outside_the_allowlist_errors",
-          "note": "maxok 2 inside a campaign hook"
-        },
-        {
-          "file": "tests/unit/test_campaign_hooks.cpp",
-          "test": "CampaignHooksTest.fence_walk_everything_outside_the_allowlist_errors",
-          "note": "og.combat.yell_radius ~= nil: existence only, not a call"
+          "note": "maxok 2 inside a campaign hook; every non-allowlisted world name errors with 'campaign hooks', i.e. is wrapped by load_fenced_call"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "helper name called at a pack chunk's top level / load time (campaign-hook side asserted: maxok 2)",
+        "og.combat.* called in a campaign hook or at a pack chunk's top level"
+      ]
     },
     {
       "id": "bindings_entity.cpp:3748",
@@ -2997,11 +3263,18 @@
       "tests": [
         {
           "file": "tests/unit/test_campaign_hooks.cpp",
-          "test": "CampaignHooksTest.fence_walk_everything_outside_the_allowlist_errors"
+          "test": "CampaignHooksTest.fence_walk_everything_outside_the_allowlist_errors",
+          "note": "every fenced name in picker_menu errors with 'campaign hooks'"
         },
         {
           "file": "tests/unit/test_campaign_hooks.cpp",
-          "test": "CampaignHooksTest.zone_dispatch_is_fenced_and_brackets_cleanly"
+          "test": "CampaignHooksTest.zone_dispatch_is_fenced_and_brackets_cleanly",
+          "note": "og.rand in base_camp errors with 'campaign hooks'"
+        },
+        {
+          "file": "tests/unit/test_script_bindings_math.cpp",
+          "test": "ScriptBindingMathTest.rand0_positive_is_og_rand_verbatim",
+          "note": "normal dispatch: fenced og.rand(1000) runs the real binding, value logged and rng state advanced"
         }
       ],
       "missing_arms": []
@@ -3030,15 +3303,23 @@
       "tests": [
         {
           "file": "tests/unit/test_classpack_lua_decl.cpp",
-          "test": "LuaFamilyDeclTest.the_world_api_is_closed_during_a_declaration"
+          "test": "LuaFamilyDeclTest.the_world_api_is_closed_during_a_declaration",
+          "note": "og.rand/oblist/my_team/add_ob at declaration: 'the world API is dispatch-time only'"
         },
         {
           "file": "tests/unit/test_classpack_lua_bind.cpp",
-          "test": "LuaFamilyBindTest.the_world_api_is_closed_during_the_bind_replay"
+          "test": "LuaFamilyBindTest.the_world_api_is_closed_during_the_bind_replay",
+          "note": "og.rand at bind replay: same message"
         },
         {
           "file": "tests/unit/test_mode_bindings.cpp",
-          "test": "ModeBindings.camera_view_is_fenced_at_pack_top_level"
+          "test": "ModeBindings.camera_view_is_fenced_at_pack_top_level",
+          "note": "message + cameras[0] untouched"
+        },
+        {
+          "file": "tests/unit/test_script_bindings_math.cpp",
+          "test": "ScriptBindingMathTest.rand0_positive_is_og_rand_verbatim",
+          "note": "dispatch arm: the real og.rand runs"
         }
       ],
       "missing_arms": []
@@ -3099,13 +3380,11 @@
         417,
         441,
         447,
-        458,
         497,
         576,
         590,
         600,
         620,
-        757,
         809,
         1214,
         1230,

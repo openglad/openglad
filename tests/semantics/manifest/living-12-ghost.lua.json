@@ -21,15 +21,21 @@
         }
       ],
       "setting": "fixes-on",
-      "status": "executed-only",
+      "status": "partial",
       "tests": [
         {
+          "file": "tests/integration/test_special_scenes.cpp",
+          "test": "GameplayFixes.scare_at_nobody_is_refused_and_starts_no_rest",
+          "note": "living-foe arm: with the setting on the second press, the foe within 52 px, makes the scare carrier and the foe flees; nobody half: NO FOE IN RANGE and the pool stays at 120"
+        },
+        {
           "parity": "ghost_scare_no_foe_fixes_scen99",
-          "fact": "",
-          "note": "covers the 'nobody' arm only"
+          "fact": "WalkerOfOrderFamilyCount(FAMILY_GHOST_SCARE,FX,0,0) (nobody half only)"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "only generators / nobody"
+      ]
     },
     {
       "id": "living-12-ghost.lua:30",
@@ -55,14 +61,17 @@
         }
       ],
       "setting": "both",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_bot_gates_kits.cpp",
-          "test": "GameplayFixesBots.ghost_scare_wants_a_living_foe_inside_the_scare_radius"
+          "test": "GameplayFixesBots.ghost_scare_wants_a_living_foe_inside_the_scare_radius",
+          "note": "fixes off true at 100 px; fixes on false at 100 px, true at 60 px, false for a tent at 40"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "fixes on, living foe inside scare radius"
+      ]
     },
     {
       "id": "living-12-ghost.lua:34",
@@ -92,15 +101,25 @@
       "tests": [
         {
           "parity": "ghost_scare_no_foe_scen99",
-          "fact": "WalkerOfOrderFamilyCount(FAMILY_GHOST_SCARE,FX,1,1)"
+          "fact": "WalkerOfOrderFamilyCount(FAMILY_GHOST_SCARE,FX,1,1) (fixes off, nobody: the carrier)"
         },
         {
           "parity": "ghost_scare_no_foe_fixes_scen99",
-          "fact": "WalkerOfOrderFamilyCount(FAMILY_GHOST_SCARE,FX,0,0)"
+          "fact": "WalkerOfOrderFamilyCount(FAMILY_GHOST_SCARE,FX,0,0) (fixes on, nobody: no carrier)"
+        },
+        {
+          "file": "tests/integration/test_special_scenes.cpp",
+          "test": "GameplayFixes.scare_at_nobody_is_refused_and_starts_no_rest",
+          "note": "off: the carrier appears at nobody and pool_at(13, 90) = MP charged; on: says NO FOE IN RANGE, pool_at(13, 120) = MP unchanged; on, foe arrived within 52 px: the carrier appears at frame >= 94 and the foe is force-walked"
+        },
+        {
+          "file": "tests/unit/test_kit_ghost.cpp",
+          "test": "KitGhost.wail_costs_50_and_is_scare_when_off",
+          "note": "fixes off, living foe 40 px: ever_made(GHOST_SCARE) == 1 and MP 70"
         },
         {
           "parity": "effect_ghost_scare_emission_scen99",
-          "fact": "WalkerPositionMoved(FAMILY_SOLDIER,240,0)"
+          "fact": "WalkerPositionMoved(FAMILY_SOLDIER,240,0) (fixes off, living foe: the scare shoves it)"
         }
       ],
       "missing_arms": []

@@ -29,17 +29,11 @@
       ],
       "setting": "none",
       "status": "executed-only",
-      "tests": [
-        {
-          "file": "tests/unit/test_script_host.cpp",
-          "test": "PackScriptRegistry.unregister_removes_one_packs_chunks_and_bumps_the_gen",
-          "note": "append arm only"
-        }
-      ],
-      "missing_arms": [],
-      "note": [
-        "replace-in-place arm: not asserted",
-        "UNASSERTED: replace-in-place arm of register_pack_script/register_pack_family_chunk (PackLibTest.registry_roundtrip_order_and_generation covers the separate pack_lib registry)"
+      "tests": [],
+      "missing_arms": [
+        "same pack+name",
+        "new",
+        "any"
       ]
     },
     {
@@ -66,7 +60,8 @@
       "tests": [
         {
           "file": "tests/unit/test_script_host.cpp",
-          "test": "PackFamilyChunkRegistry.unregister_removes_one_packs_chunks"
+          "test": "PackFamilyChunkRegistry.unregister_removes_one_packs_chunks",
+          "note": "present: size 1, [0] pack.b, generation moved; absent: size unchanged, generation unchanged"
         }
       ],
       "missing_arms": []

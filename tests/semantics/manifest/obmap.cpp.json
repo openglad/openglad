@@ -334,7 +334,8 @@
         525
       ],
       "function": "ob_pass_check",
-      "anchor": "else",
+      "anchor": "if(collide(x,y,oxsize,oysize,x2,y2,xsize2,ysize2))",
+      "anchor_index": 1,
       "condition": "collide(...) ; else if (!quiet) set_collide_ob(nullptr)",
       "semantic": "Boxes interact only when they overlap after each is shrunk by 1px on every side (edge contact is not a collision); a loud probe that shares a cell with a body without overlapping it forgets the mover's remembered collision partner (collide_ob cleared); a quiet probe keeps it.",
       "arms": [
@@ -561,7 +562,8 @@
         467
       ],
       "function": "ob_pass_check",
-      "anchor": "else",
+      "anchor": "if (!(ob->skip_exit()) && (ob->user() != -1))",
+      "anchor_index": 1,
       "condition": "locked door; !skip_exit && user != -1",
       "semantic": "A locked door blocks; a player-controlled walker bumping it is told 'Key N needed!' at most once per 10-tick cooldown; NPCs are never told.",
       "arms": [
@@ -605,7 +607,8 @@
         520
       ],
       "function": "ob_pass_check",
-      "anchor": "else",
+      "anchor": "if (!quiet)",
+      "anchor_index": 1,
       "condition": "else (body); !quiet -> collide(w); BIT_NO_COLLIDE",
       "semantic": "Any other overlapping thing (a living, a generator, a tree/obstacle weapon, an enemy weapon that did not miss) blocks the step; a loud probe records the collision (collide(): melee swing at an enemy, collide_ob set); a no-collide walker (ghost etc.) records it but passes.",
       "arms": [

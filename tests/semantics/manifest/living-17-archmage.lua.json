@@ -4,11 +4,7 @@
     {
       "id": "living-17-archmage.lua:35",
       "lines": [
-        31,
-        34,
-        35,
-        37,
-        39
+        31
       ],
       "function": "on_fire_weapon",
       "anchor": "local function on_fire_weapon(self, weapon)",
@@ -25,7 +21,7 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/integration/test_family_behaviors.cpp",
@@ -33,7 +29,9 @@
           "note": "uncapped arm only, at 1000 MP; the control archmage at weapon_cost MP pins zero drain"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "MP after cost > 1000"
+      ]
     },
     {
       "id": "living-17-archmage.lua:46",
@@ -61,18 +59,17 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/integration/test_family_behaviors.cpp",
-          "test": "FamilyBehaviors.archmage_periodic_view_all"
-        },
-        {
-          "file": "tests/integration/test_family_behaviors.cpp",
-          "test": "FamilyBehaviors.archmage_on_act_low_level_periodic_gate"
+          "test": "FamilyBehaviors.archmage_on_act_low_level_periodic_gate",
+          "note": "level 20: drawcycle 1 unchanged, drawcycle 20 increments"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "level >= 40"
+      ]
     },
     {
       "id": "living-17-archmage.lua:62",
@@ -103,7 +100,8 @@
         },
         {
           "file": "tests/unit/test_gameplay_fixes_bots.cpp",
-          "test": "GameplayFixesBots.archmage_summon_wants_a_foe_and_the_pool_for_an_elemental_with_the_setting_on"
+          "test": "GameplayFixesBots.archmage_summon_wants_a_foe_and_the_pool_for_an_elemental_with_the_setting_on",
+          "note": "shift_after 0 at spare 100/499, 1 at spare 500/600"
         }
       ],
       "missing_arms": []
@@ -129,15 +127,17 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
+      "status": "partial",
       "tests": [
         {
-          "file": "tests/unit/test_gameplay_fixes_bots.cpp",
-          "test": "GameplayFixesArchmageHit.a_struck_bot_with_no_target_in_reach_casts_nothing",
-          "note": "indirect"
+          "file": "tests/unit/test_pack_lua_paths.cpp",
+          "test": "PackLuaArchmage.a_struck_archmage_answers_with_chain_lightning",
+          "note": "level 4, 9000 MP: slot 2 unlocked and affordable is cast, one CHAIN"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "unaffordable / locked"
+      ]
     },
     {
       "id": "living-17-archmage.lua:87",
@@ -164,15 +164,23 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
+      "status": "partial",
       "tests": [
         {
-          "file": "tests/integration/test_family_behaviors.cpp",
-          "test": "FamilyBehaviors.archmage_hit_response_threshold_and_retarget_branches",
-          "note": "monster low-hp arm"
+          "file": "tests/integration/test_stats_hit_response_teleport.cpp",
+          "test": "StatsHitResponseTeleport.an_archmage_struck_again_mid_teleport_casts_nothing",
+          "note": "bot at 100/400 hp teleports: ANI_TELE_OUT"
+        },
+        {
+          "file": "tests/unit/test_gameplay_fixes_bots.cpp",
+          "test": "GameplayFixesArchmageHit.a_struck_bot_below_the_threshold_still_teleports",
+          "note": "bot at 100/400 hp teleports on both values"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "hero, hp < 0.6 max",
+        "monster at 0.5 max"
+      ]
     },
     {
       "id": "living-17-archmage.lua:99",
@@ -204,15 +212,23 @@
       "tests": [
         {
           "file": "tests/integration/test_family_behaviors.cpp",
-          "test": "FamilyBehaviors.archmage_hit_response_threshold_and_retarget_branches"
+          "test": "FamilyBehaviors.archmage_hit_response_threshold_and_retarget_branches",
+          "note": "current_special 1, shifter 0; retarget when healthy"
         },
         {
           "file": "tests/unit/test_gameplay_fixes_bots.cpp",
-          "test": "GameplayFixesArchmageHit.a_struck_bot_below_the_threshold_still_teleports"
+          "test": "GameplayFixesArchmageHit.a_struck_bot_below_the_threshold_still_teleports",
+          "note": "rand(3)!=0: ANI_TELE_OUT, slot 1, MP 1090; rand(3)==0: classic summons / fixed bursts"
         },
         {
           "file": "tests/integration/test_stats_hit_response_teleport.cpp",
-          "test": "StatsHitResponseTeleport.stats_hit_response_mage_and_archmage_teleport_branches"
+          "test": "StatsHitResponseTeleport.stats_hit_response_mage_and_archmage_teleport_branches",
+          "note": "rand(3)==1 teleports; rand(3)==0 retargets"
+        },
+        {
+          "file": "tests/unit/test_gameplay_fixes_bots.cpp",
+          "test": "GameplayFixesArchmageHit.a_struck_bot_bursts_once_and_never_summons",
+          "note": "healthy: rng_state == state_after(coin0,{2}), so no rand(3) drawn"
         }
       ],
       "missing_arms": []
@@ -266,7 +282,7 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/integration/test_family_behaviors.cpp",
@@ -277,7 +293,9 @@
           "test": "PackLuaArchmage.a_struck_archmage_answers_with_chain_lightning"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "same attacker"
+      ]
     },
     {
       "id": "living-17-archmage.lua:112",
@@ -309,7 +327,7 @@
         }
       ],
       "setting": "both",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_gameplay_fixes_bots.cpp",
@@ -328,7 +346,9 @@
           "fact": "WalkerOfOrderFamilyCount(FAMILY_EXPLOSION,FX,1,1)"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "fixes on, slot 2 unaffordable"
+      ]
     },
     {
       "id": "living-17-archmage.lua:127",
@@ -356,14 +376,18 @@
         }
       ],
       "setting": "fixes-off",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
-          "parity": "archmage_hit_stale_shift_scen99",
-          "fact": "WalkerFamilyCount(FAMILY_SKELETON,1,1)"
+          "file": "tests/unit/test_gameplay_fixes_bots.cpp",
+          "test": "GameplayFixesArchmageHit.a_struck_bot_with_no_target_in_reach_casts_nothing",
+          "note": "fixes off, orc at 300 px: no summon, no explosion, MP 1100"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "slot 3 affordable, summon succeeds",
+        "summon fails"
+      ]
     },
     {
       "id": "living-17-archmage.lua:136",
@@ -402,20 +426,15 @@
         }
       ],
       "setting": "fixes-off",
-      "status": "asserted",
-      "tests": [
-        {
-          "file": "tests/unit/test_pack_lua_paths.cpp",
-          "test": "PackLuaArchmage.a_struck_archmage_answers_with_chain_lightning",
-          "note": "one CHAIN"
-        },
-        {
-          "file": "tests/unit/test_pack_lua_paths.cpp",
-          "test": "PackLuaArchmage.a_struck_archmage_answers_with_heartburst",
-          "note": ">=1 EXPLOSION, shifter 0"
-        }
-      ],
-      "missing_arms": []
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": [
+        "rand(2)!=0, chain ok, mp>=10",
+        "rand(2)!=0, chain ok, mp<10",
+        "rand(2)!=0, chain fails",
+        "rand(2)==0, burst ok, mp>=10",
+        "burst fails"
+      ]
     },
     {
       "id": "living-17-archmage.lua:168",
@@ -458,7 +477,7 @@
         }
       ],
       "setting": "both",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_gameplay_fixes_bots.cpp",
@@ -467,9 +486,16 @@
         {
           "file": "tests/unit/test_gameplay_fixes_bots.cpp",
           "test": "GameplayFixesBots.archmage_marker_is_placed_once_where_the_archmage_will_return"
+        },
+        {
+          "file": "tests/unit/test_gameplay_fixes_bots.cpp",
+          "test": "GameplayFixesBots.a_busy_bot_never_rolls_a_busy_cast_with_the_setting_on",
+          "note": "ARCHMAGE TELEPORT held by ANI_TELE_OUT: false with the setting on"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        ">3 foes"
+      ]
     },
     {
       "id": "living-17-archmage.lua:190",
@@ -516,14 +542,21 @@
         }
       ],
       "setting": "both",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_gameplay_fixes_bots.cpp",
           "test": "GameplayFixesBots.archmage_burst_or_chain_takes_the_arm_with_a_target_with_the_setting_on"
+        },
+        {
+          "file": "tests/unit/test_gameplay_fixes_bots.cpp",
+          "test": "GameplayFixesBots.a_busy_bot_never_rolls_a_busy_cast_with_the_setting_on",
+          "note": "ARCHMAGE HEARTBURST held by busy: false with the setting on"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "coin chain, only burst target"
+      ]
     },
     {
       "id": "living-17-archmage.lua:227",
@@ -596,6 +629,11 @@
           "test": "GameplayFixesBots.archmage_summon_image_wants_two_hunters_not_yet_at_blows_and_a_pool_left"
         },
         {
+          "file": "tests/unit/test_gameplay_fixes_bots.cpp",
+          "test": "GameplayFixesBots.a_busy_bot_never_rolls_a_busy_cast_with_the_setting_on",
+          "note": "ARCHMAGE SUMMON ELEMENTAL held by busy"
+        },
+        {
           "parity": "archmage_bot_summon_no_foe_fixes_scen99",
           "fact": "WalkerFamilyCount(FAMILY_ELF,0,0)"
         },
@@ -642,6 +680,11 @@
           "test": "GameplayFixesBots.archmage_mind_control_wants_a_charmable_foe_in_reach"
         },
         {
+          "file": "tests/unit/test_gameplay_fixes_bots.cpp",
+          "test": "GameplayFixesBots.a_busy_bot_never_rolls_a_busy_cast_with_the_setting_on",
+          "note": "ARCHMAGE MIND CONTROL held by busy"
+        },
+        {
           "parity": "archmage_bot_mind_control_hero_fixes_scen99",
           "fact": "WalkerOfTeamAlive(0,1,1)"
         }
@@ -673,18 +716,18 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
-          "file": "tests/integration/test_family_behaviors.cpp",
-          "test": "FamilyBehaviors.archmage_handle_teleport_and_special_guards"
-        },
-        {
-          "parity": "special_archmage_scen123",
-          "fact": "WalkerPositionMoved(FAMILY_ARCHMAGE,240,880)"
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.archmage_teleport_drives_simulation",
+          "note": "shifter 1: marker placed"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "mid teleport",
+        "shifter 0"
+      ]
     },
     {
       "id": "living-17-archmage.lua:291",
@@ -715,11 +758,22 @@
       "tests": [
         {
           "file": "tests/integration/test_walker_specials.cpp",
-          "test": "WalkerSpecials.archmage_marker_needs_75_int_then_chain_and_summon_are_one_each"
+          "test": "WalkerSpecials.archmage_marker_needs_75_int_then_chain_and_summon_are_one_each",
+          "note": "int 20: false, no marker, MP and busy unchanged; int 220: placed"
         },
         {
           "file": "tests/integration/test_family_behaviors.cpp",
-          "test": "FamilyBehaviors.archmage_handle_teleport_and_special_guards"
+          "test": "FamilyBehaviors.archmage_handle_teleport_and_special_guards",
+          "note": "busy: false"
+        },
+        {
+          "file": "tests/integration/test_sim_input_unit.cpp",
+          "test": "SimInputUnit.intelligence_refusals_use_one_private_cue",
+          "note": "FAMILY_ARCHMAGE slot 1: reason \"75 INT REQUIRED\", MP 9000 unchanged"
+        },
+        {
+          "parity": "archmage_teleport_marker_scen99",
+          "fact": "WalkerOfTeamAlive(0,2,2) (monster caster: the marker stands)"
         }
       ],
       "missing_arms": []
@@ -748,19 +802,22 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_pack_lua_paths.cpp",
-          "test": "PackLuaArchmage.a_second_teleport_marker_retires_the_first"
+          "test": "PackLuaArchmage.a_second_teleport_marker_retires_the_first",
+          "note": "old marker dead, one marker, \"Old Marker Removed\""
         },
         {
           "file": "tests/integration/test_walker_specials.cpp",
           "test": "WalkerSpecials.archmage_marker_needs_75_int_then_chain_and_summon_are_one_each",
-          "note": "busy 16"
+          "note": "busy 16, one live marker"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "none / someone else's marker"
+      ]
     },
     {
       "id": "living-17-archmage.lua:310",
@@ -783,19 +840,21 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_pack_lua_paths.cpp",
           "test": "PackLuaArchmage.a_second_teleport_marker_retires_the_first",
-          "note": "targets"
+          "note": "team 0, seat 3: every line targets seat 3"
         },
         {
           "parity": "archmage_teleport_marker_scen99",
           "fact": "EventKindAtLeast(notification,4)"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "enemy monster"
+      ]
     },
     {
       "id": "living-17-archmage.lua:325",
@@ -818,7 +877,7 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/integration/test_walker_specials.cpp",
@@ -831,7 +890,9 @@
           "note": "lifetime 6"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "monster level L"
+      ]
     },
     {
       "id": "living-17-archmage.lua:344",
@@ -857,7 +918,13 @@
       "tests": [
         {
           "file": "tests/integration/test_family_behaviors.cpp",
-          "test": "FamilyBehaviors.archmage_special_case2_case3_case4_guard_branches"
+          "test": "FamilyBehaviors.archmage_special_case2_case3_case4_guard_branches",
+          "note": "busy: false"
+        },
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.archmage_heartburst_drives_simulation",
+          "note": "idle: proceeds"
         }
       ],
       "missing_arms": []
@@ -890,14 +957,12 @@
       ],
       "setting": "none",
       "status": "executed-only",
-      "tests": [
-        {
-          "file": "tests/integration/test_walker_specials.cpp",
-          "test": "WalkerSpecials.archmage_chain_lightning_spawns_one_leashed_bolt",
-          "note": "in-range only"
-        }
-      ],
-      "missing_arms": []
+      "tests": [],
+      "missing_arms": [
+        "burst",
+        "chain, monster",
+        "chain, hero"
+      ]
     },
     {
       "id": "living-17-archmage.lua:361",
@@ -919,14 +984,17 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
-          "file": "tests/integration/test_family_behaviors.cpp",
-          "test": "FamilyBehaviors.archmage_special_case2_case3_case4_guard_branches"
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.archmage_heartburst_drives_simulation",
+          "note": "foes: cast"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "no foe"
+      ]
     },
     {
       "id": "living-17-archmage.lua:364",
@@ -948,24 +1016,17 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
-        {
-          "parity": "effect_heartburst_multitarget_scen99",
-          "fact": "EventKindAtLeast(play_sound,6)+WalkerHpRangeAtFinalTick(FAMILY_SOLDIER,0,9000) (one explosion per in-range foe)"
-        },
-        {
-          "file": "tests/integration/test_walker_specials.cpp",
-          "test": "WalkerSpecials.archmage_heartburst_drives_simulation",
-          "note": "MP 1400, busy 5"
-        },
         {
           "file": "tests/integration/test_walker_specials.cpp",
           "test": "WalkerSpecials.archmage_chain_lightning_spawns_one_leashed_bolt",
-          "note": "damage 600, MP 1200"
+          "note": "damage 600, MP 1200, busy 5, one CHAIN"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "burst, N foes"
+      ]
     },
     {
       "id": "living-17-archmage.lua:369",
@@ -992,9 +1053,13 @@
         }
       ],
       "setting": "none",
-      "status": "none",
+      "status": "executed-only",
       "tests": [],
-      "missing_arms": []
+      "missing_arms": [
+        "hero burst on N",
+        "hero chain",
+        "monster"
+      ]
     },
     {
       "id": "living-17-archmage.lua:419",
@@ -1017,7 +1082,7 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/integration/test_walker_specials.cpp",
@@ -1025,7 +1090,9 @@
           "note": "nearest"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "only other-floor foes in reach"
+      ]
     },
     {
       "id": "living-17-archmage.lua:432",
@@ -1047,9 +1114,22 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": []
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.archmage_summon_image_drives_simulation",
+          "note": "idle: proceeds, one phantom"
+        },
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.archmage_true_summon_places_one_owned_fire_elemental",
+          "note": "idle: proceeds, one elemental"
+        }
+      ],
+      "missing_arms": [
+        "busy"
+      ]
     },
     {
       "id": "living-17-archmage.lua:435",
@@ -1071,26 +1151,20 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/integration/test_walker_specials.cpp",
           "test": "WalkerSpecials.archmage_true_summon_places_one_owned_fire_elemental"
         },
         {
-          "file": "tests/integration/test_walker_specials.cpp",
-          "test": "WalkerSpecials.archmage_summon_image_drives_simulation"
-        },
-        {
           "parity": "archmage_summon_elemental_scen99",
           "fact": "WalkerFamilyCount(FAMILY_FIREELEMENTAL,1,1)"
-        },
-        {
-          "parity": "archmage_summon_image_phantom_scen99",
-          "fact": "WalkerHpRangeAtFinalTick(FAMILY_ELF,0,100)"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "no shift"
+      ]
     },
     {
       "id": "living-17-archmage.lua:438",
@@ -1116,7 +1190,23 @@
       "tests": [
         {
           "file": "tests/integration/test_family_behaviors.cpp",
-          "test": "FamilyBehaviors.archmage_special_case2_case3_case4_guard_branches"
+          "test": "FamilyBehaviors.archmage_special_case2_case3_case4_guard_branches",
+          "note": "int 120: false"
+        },
+        {
+          "file": "tests/integration/test_sim_input_unit.cpp",
+          "test": "SimInputUnit.intelligence_refusals_use_one_private_cue",
+          "note": "FAMILY_ARCHMAGE slot 3: reason \"150 INT REQUIRED\", MP 9000 unchanged"
+        },
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.archmage_true_summon_places_one_owned_fire_elemental",
+          "note": "int 220: proceeds"
+        },
+        {
+          "file": "tests/unit/test_pack_lua_paths.cpp",
+          "test": "PackLuaArchmage.a_placed_true_summon_pays_half_the_spare_pool_on_both_values",
+          "note": "monster: proceeds"
         }
       ],
       "missing_arms": []
@@ -1198,19 +1288,13 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
-      "tests": [
-        {
-          "file": "tests/integration/test_walker_specials.cpp",
-          "test": "WalkerSpecials.archmage_true_summon_places_one_owned_fire_elemental",
-          "note": "owner, team, lifetime 680 at L8"
-        },
-        {
-          "file": "tests/unit/test_pack_lua_paths.cpp",
-          "test": "PackLuaArchmage.a_true_summon_with_nowhere_to_stand_is_cancelled"
-        }
-      ],
-      "missing_arms": []
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": [
+        "NW cell free",
+        "west column blocked, N free",
+        "all blocked"
+      ]
     },
     {
       "id": "living-17-archmage.lua:492",
@@ -1309,19 +1393,12 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
-      "tests": [
-        {
-          "file": "tests/unit/test_pack_lua_paths.cpp",
-          "test": "PackLuaArchmage.the_illusion_summoned_widens_with_the_magic_behind_it",
-          "note": "name, owner, team, hp 0"
-        },
-        {
-          "file": "tests/integration/test_walker_specials.cpp",
-          "test": "WalkerSpecials.archmage_summon_image_drives_simulation"
-        }
-      ],
-      "missing_arms": []
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": [
+        "free cell",
+        "no free cell"
+      ]
     },
     {
       "id": "living-17-archmage.lua:611",
@@ -1348,15 +1425,18 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
-          "file": "tests/integration/test_family_behaviors.cpp",
-          "test": "FamilyBehaviors.archmage_special_case2_case3_case4_guard_branches",
-          "note": "no-foe arm"
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.archmage_mind_control_drives_simulation",
+          "note": "foe in reach: proceeds"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "busy",
+        "no foe in reach"
+      ]
     },
     {
       "id": "living-17-archmage.lua:628",
@@ -1378,15 +1458,17 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/integration/test_walker_specials.cpp",
           "test": "WalkerSpecials.archmage_mind_control_stats_name_path",
-          "note": "3 controlled, MP 60"
+          "note": "spare 80, 3 controlled, MP 60"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "spare 0"
+      ]
     },
     {
       "id": "living-17-archmage.lua:633",
@@ -1408,11 +1490,12 @@
         }
       ],
       "setting": "both",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_gameplay_fixes_bots.cpp",
-          "test": "GameplayFixesBots.mind_control_skips_a_seated_hero_with_the_setting_on"
+          "test": "GameplayFixesBots.mind_control_skips_a_seated_hero_with_the_setting_on",
+          "note": "charmable: taken; seated hero with fixes: skipped"
         },
         {
           "parity": "archmage_bot_mind_control_hero_scen99",
@@ -1423,7 +1506,9 @@
           "fact": "WalkerOfTeamAlive(0,1,1)"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "already charmed / generator / (fixes) seated hero"
+      ]
     },
     {
       "id": "living-17-archmage.lua:640",
@@ -1452,26 +1537,36 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_pack_lua_paths.cpp",
-          "test": "PackLuaArchmage.an_undominated_victim_goes_berserk_rather_than_joining"
+          "test": "PackLuaArchmage.an_undominated_victim_goes_berserk_rather_than_joining",
+          "note": "higher level: berserk team 5, real_team 2"
         },
         {
           "file": "tests/unit/test_pack_lua_paths.cpp",
-          "test": "PackLuaArchmage.a_higher_level_berserk_lasts_25_ticks"
+          "test": "PackLuaArchmage.a_higher_level_berserk_lasts_25_ticks",
+          "note": "charm_left 25"
+        },
+        {
+          "file": "tests/unit/test_pack_lua_paths.cpp",
+          "test": "PackLuaArchmage.the_berserk_draw_count_is_one_on_both_values",
+          "note": "no rand(20) draw for a higher-level foe"
         },
         {
           "file": "tests/integration/test_walker_specials.cpp",
-          "test": "WalkerSpecials.archmage_mind_control_drives_simulation"
+          "test": "WalkerSpecials.archmage_mind_control_drives_simulation",
+          "note": "control: team, real_team, foe nullptr, charm 26"
         },
         {
           "parity": "archmage_mind_control_team_flip_scen99",
           "fact": "WalkerOfTeamAlive(1,0,0)"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "rand(20)==0"
+      ]
     },
     {
       "id": "living-17-archmage.lua:649",
@@ -1542,11 +1637,17 @@
       "tests": [
         {
           "file": "tests/unit/test_gameplay_fixes_bots.cpp",
-          "test": "GameplayFixesBots.mind_control_skips_a_seated_hero_with_the_setting_on"
+          "test": "GameplayFixesBots.mind_control_skips_a_seated_hero_with_the_setting_on",
+          "note": "reason NO VALID TARGET, MP unchanged"
         },
         {
           "parity": "archmage_bot_mind_control_hero_fixes_scen99",
           "fact": "EventKindExactly(notification,0)"
+        },
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.archmage_mind_control_stats_name_path",
+          "note": "\"ARCH-NPC has controlled 3 men\", busy 10"
         }
       ],
       "missing_arms": []
@@ -1575,15 +1676,18 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/integration/test_walker_specials.cpp",
           "test": "WalkerSpecials.archmage_mind_control_stats_name_path",
-          "note": "MP 60 after 3"
+          "note": "3 controlled, spare 80: MP 60"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "1 controlled",
+        "spare 0"
+      ]
     }
   ],
   "other": [

@@ -43,10 +43,7 @@
     {
       "id": "gates.lua:69",
       "lines": [
-        69,
-        70,
-        108,
-        109
+        69
       ],
       "function": "M.foes_within / M.allies_within",
       "anchor": "function M.foes_within(self, n, range, floor_only)",
@@ -69,6 +66,11 @@
           "file": "tests/unit/test_bot_gates_lib.cpp",
           "test": "BotGatesLib.targets_within_counts_a_generator",
           "note": "f1_40 true, f2_40 false 'the tent is not a living foe'"
+        },
+        {
+          "file": "tests/unit/test_bot_gates_lib.cpp",
+          "test": "BotGatesLib.allies_hurt_ally_and_ally_at_blows",
+          "note": "w1_40 true, w2_40 false with a friendly tent at 10 px, w2_100 true"
         }
       ],
       "missing_arms": []
@@ -76,9 +78,7 @@
     {
       "id": "gates.lua:75",
       "lines": [
-        75,
-        76,
-        77
+        75
       ],
       "function": "M.targets_within",
       "anchor": "function M.targets_within(self, n, range)",
@@ -198,10 +198,6 @@
         {
           "file": "tests/unit/test_bot_gates_lib.cpp",
           "test": "BotGatesLib.at_blows_gap_five_in_six_out"
-        },
-        {
-          "file": "tests/unit/test_bot_gates_lib.cpp",
-          "test": "BotGatesLib.gap_is_negative_where_boxes_overlap"
         }
       ],
       "missing_arms": []
@@ -375,9 +371,7 @@
     {
       "id": "gates.lua:213",
       "lines": [
-        213,
-        214,
-        215
+        213
       ],
       "function": "M.hp_below",
       "anchor": "function M.hp_below(w, num, den)",
@@ -407,12 +401,7 @@
     {
       "id": "gates.lua:222",
       "lines": [
-        217,
-        218,
-        222,
-        223,
-        224,
-        225
+        217
       ],
       "function": "M.centre / M.heading_to",
       "anchor": "function M.centre(w)",
@@ -441,9 +430,7 @@
     {
       "id": "gates.lua:232",
       "lines": [
-        232,
-        233,
-        234
+        232
       ],
       "function": "M.fire_heading",
       "anchor": "function M.fire_heading(self)",
@@ -590,7 +577,11 @@
       "semantic": "A fired weapon's flight is longer on the four straight headings than on diagonals (the engine's 309/256 range and 362/256 step scaling apply only there).",
       "arms": [
         {
-          "when": "straight heading",
+          "when": "straight heading FACE_UP / FACE_RIGHT / FACE_DOWN",
+          "observable": "scaled flight (los*309/256, step*362/256)"
+        },
+        {
+          "when": "straight heading FACE_LEFT",
           "observable": "scaled flight"
         },
         {
@@ -599,14 +590,22 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_bot_gates_lib.cpp",
-          "test": "BotGatesLib.flight_px_matches_the_engine"
+          "test": "BotGatesLib.flight_px_matches_the_engine",
+          "note": "FACE_RIGHT/FACE_UP straight, FACE_UP_RIGHT/FACE_DOWN_LEFT/FACE_UP_LEFT diagonal"
+        },
+        {
+          "file": "tests/unit/test_bot_gates_kits.cpp",
+          "test": "GameplayFixesBots.elemental_starburst_wants_a_crowd_or_a_foe_behind",
+          "note": "a 60 px gap straight below is inside the meteor ring only with FACE_DOWN scaled: 89 straight vs 56 diagonal"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "straight heading FACE_LEFT"
+      ]
     },
     {
       "id": "gates.lua:284",
@@ -664,12 +663,7 @@
     {
       "id": "gates.lua:307",
       "lines": [
-        307,
-        308,
-        309,
-        310,
-        311,
-        312
+        307
       ],
       "function": "M.in_flight",
       "anchor": "function M.in_flight(self, target, step, los, los_num, los_den, los_add)",
@@ -707,10 +701,6 @@
         {
           "file": "tests/unit/test_bot_gates_lib.cpp",
           "test": "BotGatesLib.in_flight_takes_the_elf_multiplier_and_the_mage_add"
-        },
-        {
-          "file": "tests/unit/test_bot_gates_lib.cpp",
-          "test": "BotGatesLib.flight_px_matches_the_engine"
         }
       ],
       "missing_arms": []
@@ -763,9 +753,7 @@
     {
       "id": "gates.lua:335",
       "lines": [
-        335,
-        336,
-        337
+        335
       ],
       "function": "M.blast_reach",
       "anchor": "function M.blast_reach(level)",
@@ -832,10 +820,6 @@
         {
           "file": "tests/unit/test_bot_gates_lib.cpp",
           "test": "BotGatesLib.blast_clear_sees_the_casters_allies_around_a_foe"
-        },
-        {
-          "file": "tests/unit/test_bot_gates_lib.cpp",
-          "test": "BotGatesLib.blast_reach_is_the_explosions"
         }
       ],
       "missing_arms": []
@@ -871,18 +855,24 @@
         },
         {
           "when": "none",
-          "observable": "count 0, first nil"
+          "observable": "count 0"
+        },
+        {
+          "when": "none: first",
+          "observable": "first nil"
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_bot_gates_lib.cpp",
           "test": "BotGatesLib.owned_tests_the_order"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "none: first"
+      ]
     },
     {
       "id": "gates.lua:392",

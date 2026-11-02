@@ -21,22 +21,22 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_stats_fright.cpp",
-          "test": "StatsFright.frozen_delay_masked_getter_and_raw"
+          "test": "StatsFright.frozen_delay_masked_getter_and_raw",
+          "note": ">=0: frozen_delay()==raw==7; <0: frozen_delay()==0 while raw==-5, and through the 12-tick climb"
         },
         {
           "file": "tests/unit/test_stats_fright.cpp",
-          "test": "StatsFright.sim_player_thaw_immunity_window"
-        },
-        {
-          "file": "tests/unit/test_silliness_battery.cpp",
-          "test": "SillinessBattery.sprinkle_player_victim_immunity_gives_actable_windows"
+          "test": "StatsFright.sim_player_thaw_immunity_window",
+          "note": ">=0: tick 1 frozen swallows input, shifter_down 0; <0: raw == -12 after the thaw, input reaches the movement branch on tick 3"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "raw frozen_delay < 0 (thaw immunity phase)"
+      ]
     }
   ],
   "other": [

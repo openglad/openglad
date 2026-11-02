@@ -30,15 +30,17 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/integration/test_weap_behavior.cpp",
-          "test": "WeapBehavior.weapon_family_rock_death_bounce_matrix",
-          "note": "only the do_bounce==0 arm asserted; lineofsight 0 and collide_ob arms not"
+          "test": "WeapBehavior.weapon_family_rock_death_bounce_matrix"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "lineofsight 0",
+        "collide_ob set (hit a walker)"
+      ]
     },
     {
       "id": "weapon_rock.lua:17",
@@ -75,14 +77,18 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/integration/test_weap_behavior.cpp",
           "test": "WeapBehavior.weapon_family_rock_death_bounce_matrix"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "X-flip cell open",
+        "Y-flip cell open",
+        "both-flip cell open"
+      ]
     }
   ],
   "other": []

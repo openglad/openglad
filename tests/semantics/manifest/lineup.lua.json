@@ -138,7 +138,7 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_modes_tdm.cpp",
@@ -149,7 +149,9 @@
           "test": "ModesTdm.matched_census_weakest_reference_and_heart_value_rank"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "guyless/dead/team>=4"
+      ]
     },
     {
       "id": "lineup.lua:312",
@@ -179,6 +181,10 @@
       "setting": "none",
       "status": "asserted",
       "tests": [
+        {
+          "file": "tests/unit/test_modes_tdm.cpp",
+          "test": "ModesTdm.matched_census_single_team_sum_ignores_guyless_livings"
+        },
         {
           "file": "tests/unit/test_modes_tdm.cpp",
           "test": "ModesTdm.matched_census_weakest_reference_and_heart_value_rank"
@@ -255,18 +261,16 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
-        {
-          "file": "tests/unit/test_staged_report.cpp",
-          "test": "ScenarioStagedReport.banked_fill_codes_decode_per_team"
-        },
         {
           "file": "tests/unit/test_modes_tdm.cpp",
           "test": "ModesTdm.lineup_fill_target_percent_table_and_knobbed_spawns"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "same code"
+      ]
     },
     {
       "id": "lineup.lua:431",
@@ -298,6 +302,14 @@
         {
           "file": "tests/unit/test_modes_tdm.cpp",
           "test": "ModesTdm.matched_power_metric_and_solver_arms"
+        },
+        {
+          "file": "tests/unit/test_modes_tdm.cpp",
+          "test": "ModesTdm.matched_solo_fresh_squad_fields_an_even_rival"
+        },
+        {
+          "file": "tests/unit/test_modes_tdm.cpp",
+          "test": "ModesTdm.matched_spawn_bots_legacy_arm_is_unchanged"
         }
       ],
       "missing_arms": []
@@ -373,7 +385,7 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_staged_rules.cpp",
@@ -382,13 +394,12 @@
         {
           "file": "tests/unit/test_staged_rules.cpp",
           "test": "StagedRules.onslaught_domain_and_generator_fills"
-        },
-        {
-          "file": "tests/unit/test_staged_report.cpp",
-          "test": "ScenarioStagedReport.dormant_walkers_are_excluded_from_the_census"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "hero",
+        "team>=4"
+      ]
     },
     {
       "id": "lineup.lua:544",
@@ -413,14 +424,11 @@
       ],
       "setting": "none",
       "status": "executed-only",
-      "tests": [
-        {
-          "file": "tests/unit/test_modes_soccer.cpp",
-          "test": "ModesSoccer.camped_anchors_cannot_stall_a_respawn",
-          "note": "within 48 px, but not the cell order)"
-        }
-      ],
-      "missing_arms": []
+      "tests": [],
+      "missing_arms": [
+        "r=1 i=0..3",
+        "r=2 i=1"
+      ]
     },
     {
       "id": "lineup.lua:563",
@@ -449,14 +457,16 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_modes_tdm.cpp",
           "test": "ModesTdm.dead_hero_revives_at_team_anchor_with_cursor_rotation"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "team >= 4"
+      ]
     },
     {
       "id": "lineup.lua:576",
@@ -481,14 +491,16 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_modes_soccer.cpp",
           "test": "ModesSoccer.camped_anchors_cannot_stall_a_respawn"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "negative coords"
+      ]
     },
     {
       "id": "lineup.lua:606",
@@ -510,11 +522,11 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
+      "status": "none",
       "tests": [],
-      "missing_arms": [],
-      "note": [
-        "(ClassicLineupTest.blocked_anchor_falls_back_to_the_teleport_draw exercises lineup_stage's own placer, not this one)"
+      "missing_arms": [
+        "allow_teleport",
+        "respawn"
       ]
     },
     {
@@ -546,6 +558,10 @@
         {
           "file": "tests/unit/test_modes_tdm.cpp",
           "test": "ModesTdm.matched_size_latch_truncates_every_spawn_arm"
+        },
+        {
+          "file": "tests/unit/test_modes_tdm.cpp",
+          "test": "ModesTdm.matched_spawn_bots_legacy_arm_is_unchanged"
         }
       ],
       "missing_arms": []
@@ -624,14 +640,16 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_modes_ctf.cpp",
           "test": "ModesCtf.blocked_anchor_bot_fill_falls_back_to_flag_home"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "nil"
+      ]
     },
     {
       "id": "lineup.lua:737",
@@ -704,6 +722,14 @@
         {
           "file": "tests/unit/test_staged_rules.cpp",
           "test": "StagedRules.basketball_allies_fill_the_room_left"
+        },
+        {
+          "file": "tests/unit/test_staged_rules.cpp",
+          "test": "StagedRules.basketball_caps_the_squad_beside_the_troops"
+        },
+        {
+          "file": "tests/unit/test_staged_rules.cpp",
+          "test": "StagedRules.staged_world_strong_fields_h_plus_one_on_ball_modes"
         }
       ],
       "missing_arms": []

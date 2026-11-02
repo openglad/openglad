@@ -198,13 +198,17 @@
         {
           "file": "tests/unit/test_gameplay_fixes_lib.cpp",
           "test": "GameplayFixesLua.gf_pad_blocked_by_terrain_is_the_grid_half_only_with_the_fixes"
+        },
+        {
+          "file": "tests/integration/test_gameplay_fixes_elf.cpp",
+          "test": "GameplayFixesElf.a_volley_at_a_wall_spends_nothing_with_the_setting_on"
+        },
+        {
+          "file": "tests/integration/test_gameplay_fixes_druid.cpp",
+          "test": "GameplayFixesDruid.a_cast_at_terrain_spends_nothing_with_the_setting_on"
         }
       ],
-      "missing_arms": [],
-      "note": [
-        "tests/integration/test_gameplay_fixes_elf.cpp (pad tests)",
-        "tests/integration/test_gameplay_fixes_druid.cpp (pad tests)"
-      ]
+      "missing_arms": []
     }
   ],
   "other": [

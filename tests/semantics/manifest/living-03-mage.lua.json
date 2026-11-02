@@ -33,27 +33,18 @@
       "tests": [
         {
           "file": "tests/unit/test_gameplay_fixes_bots.cpp",
-          "test": "GameplayFixesBots.mage_freeze_time_waits_for_three_foes_at_blows_with_allies_with_the_setting_on"
+          "test": "GameplayFixesBots.mage_freeze_time_waits_for_three_foes_at_blows_with_allies_with_the_setting_on",
+          "note": "3 foes at blows -> EXPECT_TRUE; third foe a pixel out -> EXPECT_FALSE"
         },
         {
           "file": "tests/unit/test_gameplay_fixes_bots.cpp",
-          "test": "GameplayFixesBots.mage_freeze_time_leaves_a_crowd_at_the_mage_to_teleport_with_the_setting_on"
+          "test": "GameplayFixesBots.mage_freeze_time_leaves_a_crowd_at_the_mage_to_teleport_with_the_setting_on",
+          "note": "4 foes at the mage, no ally engaged -> EXPECT_FALSE"
         },
         {
           "file": "tests/unit/test_gameplay_fixes_bots.cpp",
-          "test": "GameplayFixesBots.mage_freeze_time_counts_foes_once_and_takes_a_dying_ally_as_the_cue_with_the_setting_on"
-        },
-        {
-          "parity": "mage_bot_freeze_engaged_fixes_scen99",
-          "fact": ""
-        },
-        {
-          "parity": "mage_bot_freeze_alone_fixes_scen99",
-          "fact": ""
-        },
-        {
-          "parity": "mage_bot_freeze_no_foe_fixes_scen99",
-          "fact": ""
+          "test": "GameplayFixesBots.mage_freeze_time_counts_foes_once_and_takes_a_dying_ally_as_the_cue_with_the_setting_on",
+          "note": "ally at 99/400 at blows -> EXPECT_TRUE; two shared foes -> EXPECT_FALSE"
         }
       ],
       "missing_arms": []
@@ -93,12 +84,12 @@
         {
           "file": "tests/unit/test_gameplay_fixes_bots.cpp",
           "test": "GameplayFixesBots.mage_teleport_keeps_the_classic_rule_on_both_values",
-          "note": "0 / 1-3 / 4+ foe arms and the Shift rewrite"
+          "note": "alone true, one foe false, four foes true, both setting values"
         },
         {
           "file": "tests/unit/test_gameplay_fixes_bots.cpp",
           "test": "GameplayFixesBots.a_busy_bot_never_rolls_a_busy_cast_with_the_setting_on",
-          "note": "mid-teleport arm: classic_row(mage, 1, true, \"MAGE TELEPORT\", teleporting, walking) with ANI_TELE_OUT: EXPECT_FALSE with the setting on, EXPECT_EQ(classic) with it off"
+          "note": "classic_row MAGE TELEPORT: ANI_TELE_OUT -> EXPECT_FALSE(gate(mage,1,1))"
         }
       ],
       "missing_arms": []
@@ -129,11 +120,18 @@
       "tests": [
         {
           "file": "tests/unit/test_gameplay_fixes_bots.cpp",
-          "test": "GameplayFixesBots.mage_marker_is_placed_once_where_the_mage_will_return"
+          "test": "GameplayFixesBots.mage_marker_is_placed_once_where_the_mage_will_return",
+          "note": "alone funded -> shifter 1; own marker standing -> 0; 130 MP -> 0; four foes -> 0"
+        },
+        {
+          "file": "tests/unit/test_gameplay_fixes_bots.cpp",
+          "test": "GameplayFixesBots.a_busy_bot_never_rolls_a_busy_cast_with_the_setting_on",
+          "note": "busy 3, alone -> EXPECT_EQ(0, shifter_down())"
         },
         {
           "parity": "mage_bot_marker_home_fixes_scen99",
-          "fact": ""
+          "fact": "",
+          "note": "WalkerOfOrderFamilyCount(MARKER FX 1 1): the alone bot marks"
         }
       ],
       "missing_arms": []
@@ -166,11 +164,13 @@
       "tests": [
         {
           "file": "tests/unit/test_gameplay_fixes_bots.cpp",
-          "test": "GameplayFixesBots.mage_warp_space_wants_a_crowd_or_a_foe_behind_in_its_point_blank_ring"
+          "test": "GameplayFixesBots.mage_warp_space_wants_a_crowd_or_a_foe_behind_in_its_point_blank_ring",
+          "note": "two towers -> true; one faced -> false; one unfaced -> true"
         },
         {
           "parity": "mage_bot_warp_two_at_blows_fixes_scen99",
-          "fact": ""
+          "fact": "",
+          "note": "fireballs 3  one tower dead"
         }
       ],
       "missing_arms": []
@@ -238,15 +238,18 @@
       "tests": [
         {
           "file": "tests/unit/test_gameplay_fixes_bots.cpp",
-          "test": "GameplayFixesBots.mage_energy_wave_wants_a_faced_foe_within_110"
+          "test": "GameplayFixesBots.mage_energy_wave_wants_a_faced_foe_within_110",
+          "note": "faced at 60 px -> true; unfaced -> false; faced at 111 px -> false"
         },
         {
           "file": "tests/unit/test_gameplay_fixes_bots.cpp",
-          "test": "GameplayFixesBots.mage_energy_wave_refuses_a_pad_on_a_wall"
+          "test": "GameplayFixesBots.mage_energy_wave_refuses_a_pad_on_a_wall",
+          "note": "wall under the pad -> false"
         },
         {
           "parity": "mage_bot_wave_pad_body_fixes_scen99",
-          "fact": ""
+          "fact": "",
+          "note": "body on the pad: EventKindExactly(play_sound 0) and the line-71 mutation flips it 0 -> 1"
         }
       ],
       "missing_arms": []
@@ -275,11 +278,8 @@
       "tests": [
         {
           "file": "tests/unit/test_gameplay_fixes_bots.cpp",
-          "test": "GameplayFixesBots.mage_heartburst_wants_a_foe_in_its_own_reach_with_the_setting_on"
-        },
-        {
-          "parity": "mage_bot_heartburst_fixes_scen99",
-          "fact": ""
+          "test": "GameplayFixesBots.mage_heartburst_wants_a_foe_in_its_own_reach_with_the_setting_on",
+          "note": "106 px true, 107/120 px false, 60 px true"
         }
       ],
       "missing_arms": []
@@ -313,40 +313,33 @@
       "tests": [
         {
           "file": "tests/unit/test_gameplay_fixes_bots.cpp",
-          "test": "GameplayFixesBots.mage_teleport_keeps_the_classic_rule_on_both_values"
+          "test": "GameplayFixesBots.mage_teleport_keeps_the_classic_rule_on_both_values",
+          "note": "off: slot 1 alone true, one foe false, four foes true"
+        },
+        {
+          "file": "tests/unit/test_gameplay_fixes_bots.cpp",
+          "test": "GameplayFixesBots.mage_warp_space_wants_a_crowd_or_a_foe_behind_in_its_point_blank_ring",
+          "note": "off, slot 2: alone true, 1-2 foes false"
+        },
+        {
+          "file": "tests/unit/test_gameplay_fixes_bots.cpp",
+          "test": "GameplayFixesBots.mage_freeze_time_leaves_a_crowd_at_the_mage_to_teleport_with_the_setting_on",
+          "note": "off, slot 3: four foes true"
+        },
+        {
+          "file": "tests/unit/test_gameplay_fixes_bots.cpp",
+          "test": "GameplayFixesBots.mage_energy_wave_wants_a_faced_foe_within_110",
+          "note": "off, slot 4: one foe false, nobody within 110 true"
+        },
+        {
+          "file": "tests/unit/test_gameplay_fixes_bots.cpp",
+          "test": "GameplayFixesBots.mage_heartburst_wants_a_foe_in_its_own_reach_with_the_setting_on",
+          "note": "off, slot 5: 120 px true, 60/107 px false"
         },
         {
           "file": "tests/unit/test_kit_rests.cpp",
-          "test": "KitRests.bot_gates_hold_a_resting_special"
-        },
-        {
-          "parity": "mage_bot_freeze_alone_scen99",
-          "fact": ""
-        },
-        {
-          "parity": "mage_bot_freeze_engaged_scen99",
-          "fact": ""
-        },
-        {
-          "parity": "mage_bot_freeze_no_foe_scen99",
-          "fact": ""
-        },
-        {
-          "parity": "mage_bot_heartburst_scen99",
-          "fact": ""
-        },
-        {
-          "parity": "mage_bot_marker_home_scen99",
-          "fact": ""
-        },
-        {
-          "parity": "mage_bot_warp_two_at_blows_scen99",
-          "fact": ""
-        },
-        {
-          "parity": "mage_bot_wave_pad_body_scen99",
-          "fact": "",
-          "note": "classic twins"
+          "test": "KitRests.bot_gates_hold_a_resting_special",
+          "note": "gate_with_rest: slot 3 false while resting"
         }
       ],
       "missing_arms": []
@@ -376,15 +369,22 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/integration/test_stats_hit_response_teleport.cpp",
           "test": "StatsHitResponseTeleport.stats_hit_response_mage_and_archmage_teleport_branches",
-          "note": "hero 10/100 and full-hp controls only; the 3/8 bot threshold is never discriminated"
+          "note": "hero hp 10/100 -> EXPECT_EQ(ANI_TELE_OUT)"
+        },
+        {
+          "file": "tests/integration/test_stats_hit_response_teleport.cpp",
+          "test": "StatsHitResponseTeleport.a_mage_struck_again_mid_teleport_casts_nothing",
+          "note": "bot hp 100/400 = 1/4 -> ASSERT_EQ(ANI_TELE_OUT) on the first hit"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "bot, 0.375 max <= hp < 0.6 max"
+      ]
     },
     {
       "id": "living-03-mage.lua:105",
@@ -408,9 +408,17 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": []
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_stats_hit_response_teleport.cpp",
+          "test": "StatsHitResponseTeleport.a_mage_struck_again_mid_teleport_casts_nothing",
+          "note": "bot MP 100, TELEPORT price 15: first hit ANI_TELE_OUT and MP 85"
+        }
+      ],
+      "missing_arms": [
+        "MP < 15"
+      ]
     },
     {
       "id": "living-03-mage.lua:112",
@@ -437,15 +445,22 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/integration/test_stats_hit_response_teleport.cpp",
           "test": "StatsHitResponseTeleport.stats_hit_response_mage_and_archmage_teleport_branches",
-          "note": "teleport arm and new-attacker arm asserted; same-foe 'nothing changes' arm executed-only"
+          "note": "teleport arm: ANI_TELE_OUT, foe nullptr, busy 0; new-attacker arm: foe swap, distances 15000"
+        },
+        {
+          "file": "tests/integration/test_stats_hit_response_teleport.cpp",
+          "test": "StatsHitResponseTeleport.a_mage_struck_again_mid_teleport_casts_nothing",
+          "note": "teleport arm: MP 85, current_special 1, shifter 0, busy 0, foe nullptr"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "else, same foe"
+      ]
     },
     {
       "id": "living-03-mage.lua:118",
@@ -471,7 +486,8 @@
       "tests": [
         {
           "file": "tests/integration/test_stats_hit_response_teleport.cpp",
-          "test": "StatsHitResponseTeleport.a_mage_struck_again_mid_teleport_casts_nothing"
+          "test": "StatsHitResponseTeleport.a_mage_struck_again_mid_teleport_casts_nothing",
+          "note": "mid-teleport: trace_count(special)==0, no SPECIAL BUSY, MP 85 unchanged; not: first hit traces slot=1 shift=0 and ANI_TELE_OUT"
         }
       ],
       "missing_arms": []
@@ -496,17 +512,16 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/integration/test_stats_hit_response_teleport.cpp",
           "test": "StatsHitResponseTeleport.stats_hit_response_mage_and_archmage_teleport_branches",
-          "note": "new-attacker arm"
+          "note": "new attacker: mage2.foe == foe, foe.foe == mage2, distances 15000"
         }
       ],
-      "missing_arms": [],
-      "note": [
-        "same-foe arm: none asserts that a repeat hit leaves foe/distances alone"
+      "missing_arms": [
+        "same"
       ]
     },
     {
@@ -529,15 +544,17 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
-          "file": "tests/integration/test_stats_hit_response_teleport.cpp",
-          "test": "StatsHitResponseTeleport.a_mage_struck_again_mid_teleport_casts_nothing",
-          "note": "refusal reason"
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.mage_teleport_drives_simulation",
+          "note": "not mid-teleport: special() true, ANI_TELE_OUT"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "mid-teleport"
+      ]
     },
     {
       "id": "living-03-mage.lua:142",
@@ -559,18 +576,22 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/integration/test_walker_specials.cpp",
-          "test": "WalkerSpecials.mage_teleport_drives_simulation"
+          "test": "WalkerSpecials.mage_teleport_drives_simulation",
+          "note": "unshifted: special() true, ANI_TELE_OUT, position changed after the animation"
         },
         {
           "file": "tests/integration/test_walker_specials.cpp",
-          "test": "WalkerSpecials.teleport_marker_lands_centered_and_spends_a_use"
+          "test": "WalkerSpecials.mage_marker_recast_replaces_the_owned_marker",
+          "note": "shifted: marker path places one live marker"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "unshifted"
+      ]
     },
     {
       "id": "living-03-mage.lua:149",
@@ -592,9 +613,17 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": []
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.mage_marker_recast_replaces_the_owned_marker",
+          "note": "not busy: busy 0, shifter 1 -> special() true, one live marker"
+        }
+      ],
+      "missing_arms": [
+        "busy > 0"
+      ]
     },
     {
       "id": "living-03-mage.lua:153",
@@ -620,13 +649,26 @@
       "tests": [
         {
           "file": "tests/unit/test_pack_lua_paths.cpp",
-          "test": "PackLuaMage.the_marker_flow_talks_only_to_the_casting_seat"
+          "test": "PackLuaMage.the_marker_flow_talks_only_to_the_casting_seat",
+          "note": "hero INT 10: reason \"75 INT REQUIRED\", zero events; INT 200: \"Teleport Marker Placed\""
+        },
+        {
+          "file": "tests/integration/test_sim_input_unit.cpp",
+          "test": "SimInputUnit.intelligence_refusals_use_one_private_cue",
+          "note": "mage slot 1 INT 10: one \"75 INT REQUIRED\" cue, MP 9000 unchanged"
+        },
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.mage_marker_recast_replaces_the_owned_marker",
+          "note": "hero INT 120: one live marker"
+        },
+        {
+          "parity": "mage_bot_marker_home_fixes_scen99",
+          "fact": "",
+          "note": "bot  no guy: WalkerOfOrderFamilyCount(MARKER FX 1 1)"
         }
       ],
-      "missing_arms": [],
-      "note": [
-        "tests/integration/test_sim_input_unit.cpp: (75 INT REQUIRED case table)"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living-03-mage.lua:158",
@@ -653,23 +695,17 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/integration/test_walker_specials.cpp",
           "test": "WalkerSpecials.mage_marker_recast_replaces_the_owned_marker",
-          "note": "busy 16, one live marker"
-        },
-        {
-          "file": "tests/unit/test_pack_lua_paths.cpp",
-          "test": "PackLuaArchmage.a_second_teleport_marker_retires_the_first"
-        },
-        {
-          "parity": "mage_teleport_marker_scen99",
-          "fact": ""
+          "note": "own marker: old dead, one live, busy 16"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "none / only others' markers"
+      ]
     },
     {
       "id": "living-03-mage.lua:167",
@@ -692,14 +728,17 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_pack_lua_paths.cpp",
-          "test": "PackLuaMage.the_marker_flow_talks_only_to_the_casting_seat"
+          "test": "PackLuaMage.the_marker_flow_talks_only_to_the_casting_seat",
+          "note": "seated hero user 1: \"(Old Marker Removed)\" targeted at seat 1"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "unseated bot"
+      ]
     },
     {
       "id": "living-03-mage.lua:185",
@@ -722,15 +761,17 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/integration/test_walker_specials.cpp",
           "test": "WalkerSpecials.mage_marker_recast_replaces_the_owned_marker",
-          "note": "hero arm: 120/33 asserted"
+          "note": "hero INT 120: lifetime 120/33"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "bot"
+      ]
     },
     {
       "id": "living-03-mage.lua:191",
@@ -753,14 +794,17 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_pack_lua_paths.cpp",
-          "test": "PackLuaMage.the_marker_flow_talks_only_to_the_casting_seat"
+          "test": "PackLuaMage.the_marker_flow_talks_only_to_the_casting_seat",
+          "note": "seated hero: \"Teleport Marker Placed\" and \"(N Uses)\" targeted at seat 1"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "bot"
+      ]
     },
     {
       "id": "living-03-mage.lua:208",
@@ -784,19 +828,11 @@
       ],
       "setting": "none",
       "status": "executed-only",
-      "tests": [
-        {
-          "file": "tests/integration/test_walker_specials.cpp",
-          "test": "WalkerSpecials.mage_warp_starburst_drives_simulation",
-          "note": "count only"
-        },
-        {
-          "parity": "mage_starburst_ring_scen99",
-          "fact": "",
-          "note": "kills hp  not the bonus arithmetic"
-        }
-      ],
-      "missing_arms": []
+      "tests": [],
+      "missing_arms": [
+        "spare > 0",
+        "spare <= 0"
+      ]
     },
     {
       "id": "living-03-mage.lua:220",
@@ -816,20 +852,22 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/integration/test_walker_specials.cpp",
           "test": "WalkerSpecials.mage_warp_starburst_drives_simulation",
-          "note": "fbs_before + 8 only; facing restore not asserted"
+          "note": "fbs_before + 8: the count part of the arm only"
         },
         {
           "parity": "mage_starburst_ring_scen99",
           "fact": "",
-          "note": "NW SW NE kills"
+          "note": "NW soldier and SW tower die  NE orc hit: per-heading reach"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "8 headings"
+      ]
     },
     {
       "id": "living-03-mage.lua:226",
@@ -851,9 +889,17 @@
         }
       ],
       "setting": "none",
-      "status": "none",
-      "tests": [],
-      "missing_arms": []
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.mage_warp_starburst_drives_simulation",
+          "note": "all clear: 8 fireballs"
+        }
+      ],
+      "missing_arms": [
+        "pad blocked on one heading"
+      ]
     },
     {
       "id": "living-03-mage.lua:231",
@@ -878,7 +924,10 @@
       "setting": "none",
       "status": "executed-only",
       "tests": [],
-      "missing_arms": []
+      "missing_arms": [
+        "component non-zero",
+        "component zero"
+      ]
     },
     {
       "id": "living-03-mage.lua:255",
@@ -901,36 +950,37 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/integration/test_walker_specials.cpp",
           "test": "WalkerSpecials.mage_freeze_time_drives_simulation",
-          "note": "64"
+          "note": "on-team: enemy_freeze 64"
         },
         {
           "file": "tests/integration/test_walker_specials.cpp",
-          "test": "WalkerSpecials.mage_freeze_time_off_team_grants_bonus_rounds_not_a_global_stop"
+          "test": "WalkerSpecials.mage_freeze_time_off_team_grants_bonus_rounds_not_a_global_stop",
+          "note": "off-team: enemy_freeze 0, caster and ally bonus exact, foe unchanged"
         },
         {
           "file": "tests/unit/test_pack_lua_paths.cpp",
           "test": "PackLuaMage.an_enemy_freeze_time_banks_bonus_rounds_for_its_own_side",
-          "note": "/ an_enemy_freeze_time_is_capped_at_fifty_rounds"
+          "note": "off-team notification \"TIME IS FROZEN! (15 rounds)\""
+        },
+        {
+          "file": "tests/unit/test_pack_lua_paths.cpp",
+          "test": "PackLuaMage.an_enemy_freeze_time_is_capped_at_fifty_rounds",
+          "note": "cap 50"
         },
         {
           "file": "tests/unit/test_kit_rests.cpp",
-          "test": "KitRests.freeze_time_rests_thirty_seconds"
-        },
-        {
-          "parity": "enemy_freeze_mage_scen99",
-          "fact": ""
-        },
-        {
-          "parity": "mage_freeze_time_offteam_scen99",
-          "fact": ""
+          "test": "KitRests.freeze_time_rests_thirty_seconds",
+          "note": "with_rest: \"FREEZE TIME IN 30S\", bank unchanged"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "caster team == my_team"
+      ]
     },
     {
       "id": "living-03-mage.lua:269",
@@ -952,7 +1002,13 @@
       "tests": [
         {
           "file": "tests/unit/test_pack_lua_paths.cpp",
-          "test": "PackLuaMage.an_enemy_freeze_time_banks_bonus_rounds_for_its_own_side"
+          "test": "PackLuaMage.an_enemy_freeze_time_banks_bonus_rounds_for_its_own_side",
+          "note": "ally 15, foe 0"
+        },
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.mage_freeze_time_off_team_grants_bonus_rounds_not_a_global_stop",
+          "note": "ally 4+17, enemy unchanged"
         }
       ],
       "missing_arms": []
@@ -977,19 +1033,23 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/integration/test_walker_specials.cpp",
           "test": "WalkerSpecials.mage_energy_wave_drives_simulation",
-          "note": "success arm asserted: count, owner, level"
+          "note": "fire ok: one WAVE, owner, level - the heading copy and the fireball's death are not read"
         },
         {
-          "file": "tests/unit/test_pack_lua_paths.cpp",
-          "test": "PackLuaWeaponWave.an_energy_wave_promotes_through_its_three_stages"
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.mage_wave_is_one_and_heartburst_is_one_per_foe",
+          "note": "one WAVE per cast"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "fire ok",
+        "fire nil"
+      ]
     },
     {
       "id": "living-03-mage.lua:304",
@@ -1011,9 +1071,22 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": []
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.mage_heartburst_drives_simulation",
+          "note": "foes: one explosion per foe"
+        },
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.mage_wave_is_one_and_heartburst_is_one_per_foe",
+          "note": "two foes: +2 explosions"
+        }
+      ],
+      "missing_arms": [
+        "no foe"
+      ]
     },
     {
       "id": "living-03-mage.lua:310",
@@ -1036,14 +1109,11 @@
       ],
       "setting": "none",
       "status": "executed-only",
-      "tests": [
-        {
-          "file": "tests/integration/test_walker_specials.cpp",
-          "test": "WalkerSpecials.mage_wave_is_one_and_heartburst_is_one_per_foe",
-          "note": "reaches the hero arm but asserts only the explosion count (+2), MP debit (600) and busy (5); it never reads total_shots/scen_shots. No test in tests/ asserts HEARTBURST shot stats."
-        }
-      ],
-      "missing_arms": []
+      "tests": [],
+      "missing_arms": [
+        "hero",
+        "bot"
+      ]
     },
     {
       "id": "living-03-mage.lua:316",
@@ -1061,19 +1131,22 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/integration/test_walker_specials.cpp",
           "test": "WalkerSpecials.mage_heartburst_drives_simulation",
-          "note": "count, MP 900, busy 5"
+          "note": "count 1, MP 900, busy 5"
         },
         {
-          "parity": "mage_heartburst_multitarget_scen99",
-          "fact": "effect_heartburst_multitarget_scen99"
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.mage_wave_is_one_and_heartburst_is_one_per_foe",
+          "note": "count 2, MP 600, busy 5"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "n foes"
+      ]
     },
     {
       "id": "living-03-mage.lua:408",
@@ -1104,7 +1177,7 @@
         {
           "file": "tests/unit/test_kit_rests.cpp",
           "test": "KitRests.bot_gates_hold_a_resting_special",
-          "note": "rows 'mage FREEZE TIME', 'mage FREEZE TIME, setting off', 'mage FREEZE TIME, Gameplay Fixes on': gate false while resting, other slots true, free after the 360-tick rest"
+          "note": "mage rows: EXPECT_FALSE(gate slot 3) while resting, EXPECT_TRUE(other slot), EXPECT_TRUE(gate slot 3) after 360 ticks; New Specials 1/0 and Gameplay Fixes on"
         }
       ],
       "missing_arms": []

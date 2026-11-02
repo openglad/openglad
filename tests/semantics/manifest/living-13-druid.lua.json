@@ -21,14 +21,22 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
-          "file": "tests/integration/test_family_behaviors.cpp",
-          "test": "FamilyBehaviors.druid_batch3_special_branches"
+          "file": "tests/integration/test_gameplay_fixes_druid.cpp",
+          "test": "GameplayFixesDruid.an_open_tree_costs_its_price_on_both_values",
+          "note": "idle: special() true, one tree, MP 85"
+        },
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.druid_grow_tree_drives_simulation",
+          "note": "idle: one tree owned by the druid, ANI_GROW"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "busy"
+      ]
     },
     {
       "id": "living-13-druid.lua:16",
@@ -45,23 +53,36 @@
           "observable": "false 'COULD NOT FIRE', MP unchanged"
         },
         {
-          "when": "fixes off or pad clear",
-          "observable": "fire attempted"
+          "when": "pad clear of terrain (either setting value: pad_blocked_by_terrain is false)",
+          "observable": "fire attempted and the cast proceeds (bolt, then tree/faerie)"
+        },
+        {
+          "when": "fixes off, pad on terrain",
+          "observable": "fire() attempted there (the waver drawn: rng_.state_ advances) and fails: false 'COULD NOT FIRE'"
         }
       ],
       "setting": "fixes-on",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/integration/test_gameplay_fixes_druid.cpp",
-          "test": "GameplayFixesDruid.a_cast_at_terrain_spends_nothing_with_the_setting_on"
+          "test": "GameplayFixesDruid.a_cast_at_terrain_spends_nothing_with_the_setting_on",
+          "note": "fixes on, wall / tree crown: false 'COULD NOT FIRE', MP unchanged, rng and entity count unchanged"
         },
         {
           "file": "tests/integration/test_gameplay_fixes_druid.cpp",
-          "test": "GameplayFixesDruid.a_cast_at_the_map_edge_spends_nothing"
+          "test": "GameplayFixesDruid.a_cast_at_the_map_edge_spends_nothing",
+          "note": "fixes on, map edge: same"
+        },
+        {
+          "file": "tests/integration/test_gameplay_fixes_druid.cpp",
+          "test": "GameplayFixesDruid.an_open_tree_costs_its_price_on_both_values",
+          "note": "pad clear, both values: tree made, MP 85"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "fixes off, pad on terrain"
+      ]
     },
     {
       "id": "living-13-druid.lua:22",
@@ -91,6 +112,11 @@
       "status": "asserted",
       "tests": [
         {
+          "file": "tests/integration/test_gameplay_fixes_druid.cpp",
+          "test": "GameplayFixesDruid.a_blocked_tree_costs_the_swing",
+          "note": "no bolt: off MP 23 = refund kept, on MP 19, reason 'COULD NOT FIRE', no tree"
+        },
+        {
           "parity": "druid_tree_blocked_scen99",
           "fact": "WalkerHpRangeAtFinalTick(FAMILY_TOWER1,8600,8600)"
         },
@@ -100,11 +126,8 @@
         },
         {
           "file": "tests/integration/test_gameplay_fixes_druid.cpp",
-          "test": "GameplayFixesDruid.a_blocked_tree_costs_the_swing"
-        },
-        {
-          "file": "tests/integration/test_gameplay_fixes_druid.cpp",
-          "test": "GameplayFixesDruid.a_blocked_faerie_costs_the_swing"
+          "test": "GameplayFixesDruid.an_open_tree_costs_its_price_on_both_values",
+          "note": "bolt fired: tree path, one tree"
         }
       ],
       "missing_arms": []
@@ -129,14 +152,17 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
-          "file": "tests/integration/test_family_behaviors.cpp",
-          "test": "FamilyBehaviors.druid_batch3_special_branches"
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.druid_summon_faerie_drives_simulation",
+          "note": "idle: one faerie, owner and team"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "busy"
+      ]
     },
     {
       "id": "living-13-druid.lua:45",
@@ -153,23 +179,36 @@
           "observable": "false 'COULD NOT FIRE', MP unchanged"
         },
         {
-          "when": "fixes off or pad clear",
-          "observable": "fire attempted"
+          "when": "pad clear of terrain (either setting value: pad_blocked_by_terrain is false)",
+          "observable": "fire attempted and the cast proceeds (bolt, then tree/faerie)"
+        },
+        {
+          "when": "fixes off, pad on terrain",
+          "observable": "fire() attempted there (the waver drawn: rng_.state_ advances) and fails: false 'COULD NOT FIRE'"
         }
       ],
       "setting": "fixes-on",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/integration/test_gameplay_fixes_druid.cpp",
-          "test": "GameplayFixesDruid.a_cast_at_terrain_spends_nothing_with_the_setting_on"
+          "test": "GameplayFixesDruid.a_cast_at_terrain_spends_nothing_with_the_setting_on",
+          "note": "fixes on, wall / tree crown: false 'COULD NOT FIRE', MP unchanged, rng and entity count unchanged"
         },
         {
           "file": "tests/integration/test_gameplay_fixes_druid.cpp",
-          "test": "GameplayFixesDruid.a_cast_at_the_map_edge_spends_nothing"
+          "test": "GameplayFixesDruid.a_cast_at_the_map_edge_spends_nothing",
+          "note": "fixes on, map edge: same"
+        },
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.druid_summon_faerie_drives_simulation",
+          "note": "pad clear: ASSERT_TRUE(special()) and ASSERT_EQ(faerie_before + 1, FAMILY_FAERIE count) = fire attempted and succeeded"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "fixes off, pad on terrain"
+      ]
     },
     {
       "id": "living-13-druid.lua:51",
@@ -199,20 +238,14 @@
       "status": "asserted",
       "tests": [
         {
-          "parity": "druid_tree_blocked_scen99",
-          "fact": "WalkerHpRangeAtFinalTick(FAMILY_TOWER1,8600,8600)"
-        },
-        {
-          "parity": "druid_tree_blocked_fixes_scen99",
-          "fact": "WalkerHpRangeAtFinalTick(FAMILY_TOWER1,9600,9600)"
-        },
-        {
           "file": "tests/integration/test_gameplay_fixes_druid.cpp",
-          "test": "GameplayFixesDruid.a_blocked_tree_costs_the_swing"
+          "test": "GameplayFixesDruid.a_blocked_faerie_costs_the_swing",
+          "note": "no bolt: off MP 100 = refund kept, on MP 100 - weapon_cost, reason 'COULD NOT FIRE', no faerie"
         },
         {
-          "file": "tests/integration/test_gameplay_fixes_druid.cpp",
-          "test": "GameplayFixesDruid.a_blocked_faerie_costs_the_swing"
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.druid_summon_faerie_drives_simulation",
+          "note": "bolt fired: faerie path, one faerie"
         }
       ],
       "missing_arms": []
@@ -237,19 +270,12 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
-      "tests": [
-        {
-          "file": "tests/unit/test_pack_lua_paths.cpp",
-          "test": "PackLuaDruid.a_faerie_summoned_into_a_wall_is_cancelled",
-          "note": "blocked arm"
-        },
-        {
-          "parity": "summon_lifetime_faerie_scen99",
-          "fact": "WalkerDiedByFinal(FAMILY_FAERIE) (passable arm: the summoned faerie lives, then expires on its lifetime)"
-        }
-      ],
-      "missing_arms": []
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": [
+        "spot passable",
+        "blocked"
+      ]
     },
     {
       "id": "living-13-druid.lua:78",
@@ -271,14 +297,22 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/integration/test_family_behaviors.cpp",
-          "test": "FamilyBehaviors.druid_batch3_special_branches"
+          "test": "FamilyBehaviors.druid_batch3_special_branches",
+          "note": "idle: view_all += 50"
+        },
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.druid_reveal_drives_simulation",
+          "note": "idle: view_all 40, busy 4 x fire_frequency"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "busy"
+      ]
     },
     {
       "id": "living-13-druid.lua:88",
@@ -300,14 +334,22 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/integration/test_family_behaviors.cpp",
-          "test": "FamilyBehaviors.druid_batch3_special_branches"
+          "test": "FamilyBehaviors.druid_batch3_special_branches",
+          "note": "idle: the ally's circle is spawned"
+        },
+        {
+          "file": "tests/unit/test_pack_lua_paths.cpp",
+          "test": "PackLuaDruid.one_ally_receives_one_circle_and_caster_receives_none",
+          "note": "idle: one circle owned by the ally"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "busy"
+      ]
     },
     {
       "id": "living-13-druid.lua:92",
@@ -333,11 +375,13 @@
       "tests": [
         {
           "file": "tests/unit/test_pack_lua_paths.cpp",
-          "test": "PackLuaDruid.a_lone_druid_cannot_cast_circle_of_protection"
+          "test": "PackLuaDruid.a_lone_druid_cannot_cast_circle_of_protection",
+          "note": "no ally: false, 0 circles, MP unchanged"
         },
         {
           "file": "tests/unit/test_pack_lua_paths.cpp",
-          "test": "PackLuaDruid.one_ally_receives_one_circle_and_caster_receives_none"
+          "test": "PackLuaDruid.one_ally_receives_one_circle_and_caster_receives_none",
+          "note": "ally: one circle on the ally"
         }
       ],
       "missing_arms": []
@@ -358,23 +402,35 @@
           "observable": "top-up arm"
         },
         {
-          "when": "only someone else's circle / other weapons",
+          "when": "only someone else's circle in range",
+          "observable": "new circle arm"
+        },
+        {
+          "when": "only the friend's own non-circle weapons in range",
           "observable": "new circle arm"
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
-          "parity": "druid_protection_refresh_scen99",
-          "fact": "WeaponFamilyCount(FAMILY_CIRCLE_PROTECTION,1,1)"
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.druid_protection_tops_up_an_existing_circle",
+          "note": "own circle: one live ring on the protected ally, existing hp = 5 + fresh; someone else's circle within 100 px: the bare ally gets rings_on_bare == 1"
         },
         {
           "file": "tests/unit/test_pack_lua_paths.cpp",
-          "test": "PackLuaDruid.each_circle_of_protection_cast_shields_every_friend_in_range"
+          "test": "PackLuaDruid.each_circle_of_protection_cast_shields_every_friend_in_range",
+          "note": "two friends 16 px apart: 2 circles after the first cast, the second friend not fooled by the first's ring; still 2 after the recast"
+        },
+        {
+          "parity": "druid_protection_refresh_scen99",
+          "fact": "WeaponFamilyCount(FAMILY_CIRCLE_PROTECTION,1,1) (own circle: topped up, not stacked)"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "only the friend's own non-circle weapons in range"
+      ]
     },
     {
       "id": "living-13-druid.lua:117",
@@ -400,6 +456,16 @@
       "status": "asserted",
       "tests": [
         {
+          "file": "tests/unit/test_pack_lua_paths.cpp",
+          "test": "PackLuaDruid.one_ally_receives_one_circle_and_caster_receives_none",
+          "note": "no circle: one new circle owned by the friend"
+        },
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.druid_protection_tops_up_an_existing_circle",
+          "note": "circle exists: one live ring, the fresh one dead, existing hp == 5 + fresh hp; the bare ally gets a new ring"
+        },
+        {
           "parity": "druid_protection_refresh_scen99",
           "fact": "WeaponFamilyCount(FAMILY_CIRCLE_PROTECTION,1,1)"
         },
@@ -407,10 +473,6 @@
           "file": "tests/integration/test_family_behaviors.cpp",
           "test": "FamilyBehaviors.druid_batch3_special_branches",
           "note": "hp rose"
-        },
-        {
-          "file": "tests/integration/test_walker_specials.cpp",
-          "test": "WalkerSpecials.druid_protection_tops_up_an_existing_circle"
         }
       ],
       "missing_arms": []
@@ -435,9 +497,12 @@
         }
       ],
       "setting": "none",
-      "status": "none",
+      "status": "executed-only",
       "tests": [],
-      "missing_arms": []
+      "missing_arms": [
+        "hero",
+        "monster"
+      ]
     },
     {
       "id": "living-13-druid.lua:143",
@@ -462,9 +527,9 @@
       "setting": "none",
       "status": "executed-only",
       "tests": [],
-      "missing_arms": [],
-      "note": [
-        "parity goldens contain the text (weapon_circle_protection_follow_scen99, effect_protection_emit_scen99) but no fact asserts it"
+      "missing_arms": [
+        "1 friend",
+        "N>1"
       ]
     },
     {
@@ -487,9 +552,12 @@
         }
       ],
       "setting": "none",
-      "status": "none",
+      "status": "executed-only",
       "tests": [],
-      "missing_arms": []
+      "missing_arms": [
+        "team 0 or hero",
+        "enemy monster druid"
+      ]
     },
     {
       "id": "living-13-druid.lua:158",
@@ -513,6 +581,26 @@
       "setting": "both",
       "status": "asserted",
       "tests": [
+        {
+          "file": "tests/unit/test_bot_gates_casters.cpp",
+          "test": "GameplayFixesBots.druid_tree_wants_a_faced_foe_closing_but_not_touching",
+          "note": "fixes off: true alone and with the foe behind"
+        },
+        {
+          "file": "tests/unit/test_bot_gates_casters.cpp",
+          "test": "GameplayFixesBots.druid_faerie_wants_a_foe_near_and_no_faerie_out",
+          "note": "fixes off: true alone and with a faerie out"
+        },
+        {
+          "file": "tests/unit/test_bot_gates_casters.cpp",
+          "test": "GameplayFixesBots.druid_reveal_is_never_cast_by_a_bot",
+          "note": "fixes off: slot 3 true"
+        },
+        {
+          "file": "tests/unit/test_bot_gates_casters.cpp",
+          "test": "GameplayFixesBots.druid_protection_wants_an_ally_under_blows_without_a_fresh_circle",
+          "note": "fixes off: true with an idle ally; fixes on: gated"
+        },
         {
           "parity": "druid_bot_tree_behind_scen99",
           "fact": "WeaponFamilyCount(FAMILY_TREE,1,1)"
@@ -552,7 +640,8 @@
       "tests": [
         {
           "file": "tests/unit/test_gameplay_fixes_bots.cpp",
-          "test": "GameplayFixesBots.a_busy_bot_never_rolls_a_busy_cast_with_the_setting_on"
+          "test": "GameplayFixesBots.a_busy_bot_never_rolls_a_busy_cast_with_the_setting_on",
+          "note": "druid rows GROW TREE, SUMMON FAERIE, PROTECTION: idle true, busy 3 false with the setting on"
         }
       ],
       "missing_arms": []

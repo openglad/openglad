@@ -22,14 +22,11 @@
       ],
       "setting": "none",
       "status": "executed-only",
-      "tests": [
-        {
-          "file": "tests/unit/test_zaxis.cpp",
-          "test": "ZAxis.cross_floor_ai_chases_foe_through_stair",
-          "note": "end-to-end only"
-        }
-      ],
-      "missing_arms": []
+      "tests": [],
+      "missing_arms": [
+        "same floor",
+        "different floors"
+      ]
     },
     {
       "id": "gameplay_context.cpp:116",
@@ -52,14 +49,11 @@
       ],
       "setting": "none",
       "status": "executed-only",
-      "tests": [
-        {
-          "file": "tests/integration/test_walker_pathing.cpp",
-          "test": "WalkerPathing.direct_solver_returns_expected_route_and_cost",
-          "note": "tolerance 0.001 absorbs the bias"
-        }
-      ],
-      "missing_arms": []
+      "tests": [],
+      "missing_arms": [
+        "goal point set (solve_for_point)",
+        "no goal"
+      ]
     },
     {
       "id": "gameplay_context.cpp:128",
@@ -83,7 +77,10 @@
       "setting": "none",
       "status": "executed-only",
       "tests": [],
-      "missing_arms": []
+      "missing_arms": [
+        "floor_count>1",
+        "single floor"
+      ]
     },
     {
       "id": "gameplay_context.cpp:147",
@@ -108,9 +105,14 @@
       "status": "asserted",
       "tests": [
         {
-          "file": "tests/unit/test_forest_pathing.cpp",
-          "test": "SingleFloorPathing.astar_never_emits_diagonals_past_blocked_flanks",
-          "note": "detour + chase"
+          "file": "tests/unit/test_decor.cpp",
+          "test": "Decor.grounder_routes_around_decor_boulder_strip_flyer_crosses",
+          "note": "no grounder path node on an impassable boulder cell; non-empty detour path through passable cells"
+        },
+        {
+          "file": "tests/unit/test_new_tiles.cpp",
+          "test": "NewTiles.grounder_routes_around_lava_strip_flyer_crosses",
+          "note": "same on lava"
         }
       ],
       "missing_arms": []
@@ -140,13 +142,12 @@
       ],
       "setting": "none",
       "status": "executed-only",
-      "tests": [
-        {
-          "file": "tests/unit/test_zaxis.cpp",
-          "test": "ZAxis.cross_floor_ai_MOVING_foe_air_unreachable_still_climbs_toward_stair"
-        }
-      ],
-      "missing_arms": []
+      "tests": [],
+      "missing_arms": [
+        "non-flyer, air cell",
+        "flyer",
+        "single-floor"
+      ]
     },
     {
       "id": "gameplay_context.cpp:181",
@@ -175,18 +176,32 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_forest_pathing.cpp",
-          "test": "SingleFloorPathing.astar_never_emits_diagonals_past_blocked_flanks"
+          "test": "SingleFloorPathing.astar_never_emits_diagonals_past_blocked_flanks",
+          "note": "blocked-flank arm"
         },
         {
           "file": "tests/unit/test_zaxis.cpp",
-          "test": "ZAxis.multifloor_astar_never_emits_diagonals_past_blocked_flanks"
+          "test": "ZAxis.multifloor_astar_never_emits_diagonals_past_blocked_flanks",
+          "note": "blocked-flank arm"
+        },
+        {
+          "file": "tests/integration/test_game_context.cpp",
+          "test": "GameContext.pathfinding_state_supports_move_construction_and_assignment",
+          "note": "(32,32)->(64,64) is two diagonal hops with open flanks, path size and cost 2*sqrt2 exact"
+        },
+        {
+          "file": "tests/integration/test_walker_pathing.cpp",
+          "test": "WalkerPathing.direct_solver_returns_expected_route_and_cost",
+          "note": "open-flank diagonal arm: path (32,32),(48,48),(64,64)"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "non-flyer, flank is air"
+      ]
     },
     {
       "id": "gameplay_context.cpp:208",
@@ -214,15 +229,22 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
+      "status": "partial",
       "tests": [
+        {
+          "file": "tests/integration/test_game_context.cpp",
+          "test": "GameContext.pathfinding_state_supports_move_construction_and_assignment",
+          "note": "empty orthogonal: three steps cost exactly 3; empty diagonal: exactly 2*sqrt2"
+        },
         {
           "file": "tests/integration/test_walker_pathing.cpp",
           "test": "WalkerPathing.direct_solver_returns_expected_route_and_cost",
-          "note": "empty diagonal arm"
+          "note": "empty diagonal: 2*sqrt2 within 0.001"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "cell occupied"
+      ]
     },
     {
       "id": "gameplay_context.cpp:235",
@@ -255,22 +277,14 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
-      "tests": [
-        {
-          "file": "tests/unit/test_zaxis.cpp",
-          "test": "ZAxis.cross_floor_ai_chases_foe_through_stair"
-        },
-        {
-          "file": "tests/unit/test_zaxis.cpp",
-          "test": "ZAxis.flyer_with_cross_floor_foe_shadows_it_and_never_parks_on_stair"
-        },
-        {
-          "file": "tests/unit/test_zaxis.cpp",
-          "test": "ZAxis.path_toward_stair_answers_only_when_a_stair_leads_that_way"
-        }
-      ],
-      "missing_arms": []
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": [
+        "UP stair, floor above exists and passable",
+        "DOWN stair, f>0",
+        "top floor UP / ground DOWN / blocked destination",
+        "flyer"
+      ]
     }
   ],
   "other": [

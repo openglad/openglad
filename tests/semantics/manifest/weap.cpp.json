@@ -87,7 +87,7 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/integration/test_weap_behavior.cpp",
@@ -98,7 +98,9 @@
           "test": "Decor.shrub_conceals_for_living_and_weapon_but_bones_does_not"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "range 0"
+      ]
     },
     {
       "id": "weap.cpp:90",
@@ -128,15 +130,18 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/integration/test_weap_behavior.cpp",
           "test": "WeapBehavior.weap_act_control_generate_guard_and_default_paths",
-          "note": "returns only"
+          "note": "ACT_GENERATE/ACT_GUARD arm: act() returns false"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "ACT_CONTROL",
+        "unknown act"
+      ]
     },
     {
       "id": "weap.cpp:98",
@@ -168,6 +173,11 @@
         {
           "file": "tests/integration/test_weap_behavior.cpp",
           "test": "WeapBehavior.weap_notices_carry_no_family_in_a_or_team_in_b"
+        },
+        {
+          "file": "tests/integration/test_weap_behavior.cpp",
+          "test": "WeapBehavior.weap_act_sit_with_non_skipping_family_and_act_animate_shortcut",
+          "note": "knife: one Notification \"Weapon sitting\", a=0, b=0"
         }
       ],
       "missing_arms": []
@@ -192,14 +202,16 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/integration/test_weap_behavior.cpp",
           "test": "WeapBehavior.weap_act_fire"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "range left"
+      ]
     },
     {
       "id": "weap.cpp:132",
@@ -271,14 +283,22 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/integration/test_weap_behavior.cpp",
-          "test": "WeapBehavior.weap_death_is_idempotent"
+          "test": "WeapBehavior.weap_death_is_idempotent",
+          "note": "return values"
+        },
+        {
+          "file": "tests/integration/test_weap_behavior.cpp",
+          "test": "WeapBehavior.weap_death_fire_arrow_exploding",
+          "note": "first death runs the hook: one explosion"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "second"
+      ]
     },
     {
       "id": "weap.cpp:194",
@@ -306,15 +326,22 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/integration/test_weap_behavior.cpp",
-          "test": "WeapBehavior.weapon_family_animate_callbacks_and_sprinkle_hit_paths",
-          "note": "circle without owner dies"
+          "test": "WeapBehavior.weapon_animate_clamps_out_of_range_facing_and_cycle_to_row_zero",
+          "note": "hook-true arm: tree/glow callbacks write the script frame; no-hook arm: arrow default frame"
+        },
+        {
+          "file": "tests/integration/test_weap_behavior.cpp",
+          "test": "WeapBehavior.weap_animate_knife",
+          "note": "no-hook default arm"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "hook returns false"
+      ]
     },
     {
       "id": "weap.cpp:206",
@@ -350,7 +377,7 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/integration/test_weap_behavior.cpp",
@@ -361,7 +388,9 @@
           "test": "WeapBehavior.weap_animate_knife"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "no row / empty row"
+      ]
     }
   ],
   "other": []

@@ -25,39 +25,41 @@
         }
       ],
       "setting": "both",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/integration/test_walker_specials.cpp",
-          "test": "WalkerSpecials.soldier_charge_drives_simulation"
+          "test": "WalkerSpecials.soldier_charge_drives_simulation",
+          "note": "clear: true, +1 command RUSH count 3 com1 1 com2 0"
         },
         {
           "file": "tests/integration/test_family_behaviors.cpp",
           "test": "FamilyBehaviors.special_soldier_charge",
-          "note": "MP -cost, has_commands after a clear-path charge"
-        },
-        {
-          "file": "tests/unit/test_pack_lua_paths.cpp",
-          "test": "PackLuaSoldier.an_unblocked_charge_queues_a_rush_command"
+          "note": "clear: MP -special_cost(1)"
         },
         {
           "file": "tests/integration/test_gameplay_fixes_soldier.cpp",
-          "test": "GameplayFixesSoldier.reporter_charge_refused_by_a_foe_in_front_swings_only_with_the_setting_off"
+          "test": "GameplayFixesSoldier.reporter_charge_refused_by_a_foe_in_front_swings_only_with_the_setting_off",
+          "note": "blocked by a foe: PATH BLOCKED both values; off busy 6, foe hp 381, SOUND_CLANG, MP 498 = knife only; on foe 400, MP 500, no sound"
         },
         {
           "file": "tests/integration/test_gameplay_fixes_soldier.cpp",
-          "test": "GameplayFixesSoldier.a_wall_in_front_was_always_free_and_an_ally_is_left_alone"
+          "test": "GameplayFixesSoldier.a_wall_in_front_was_always_free_and_an_ally_is_left_alone",
+          "note": "wall/ally: PATH BLOCKED, MP 500"
         },
         {
           "file": "tests/integration/test_gameplay_fixes_soldier.cpp",
-          "test": "GameplayFixesSoldier.the_probe_eats_nothing_and_opens_no_door_with_the_setting_on"
+          "test": "GameplayFixesSoldier.the_probe_eats_nothing_and_opens_no_door_with_the_setting_on",
+          "note": "on: drumstick not eaten, door not opened"
         },
         {
           "parity": "soldier_charge_front_foe_scen99",
-          "fact": "soldier_charge_front_foe_fixes_scen99, soldier_charge_ally_scen99 (+_fixes)"
+          "fact": "soldier_charge_front_foe_fixes_scen99 (tower hp 93 vs 112, sound counts 8 vs 7)"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "path ahead clear"
+      ]
     },
     {
       "id": "living-00-soldier.lua:43",
@@ -87,18 +89,18 @@
         }
       ],
       "setting": "both",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/integration/test_gameplay_fixes_special_busy.cpp",
-          "test": "GameplayFixesSpecialBusy.whirlwind_after_a_shot"
-        },
-        {
-          "file": "tests/integration/test_gameplay_fixes_special_busy.cpp",
-          "test": "GameplayFixesSpecialBusy.positive_and_zero_busy_are_unchanged"
+          "test": "GameplayFixesSpecialBusy.whirlwind_after_a_shot",
+          "note": "busy<0 off: 200/200 refusals SPECIAL BUSY, MP unchanged; busy 0 both values: first cast true; busy<0 on: cast true, MP -120, busy > 7"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "busy > 0 (both values)",
+        "busy < 0, setting on"
+      ]
     },
     {
       "id": "living-00-soldier.lua:49",
@@ -124,23 +126,31 @@
         }
       ],
       "setting": "both",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/integration/test_gameplay_fixes_soldier.cpp",
-          "test": "GameplayFixesSoldier.whirlwind_refuses_with_no_foe_when_on"
+          "test": "GameplayFixesSoldier.whirlwind_refuses_with_no_foe_when_on",
+          "note": "on: NO FOE IN RANGE, MP/busy/queue/sound/rest unchanged; off: true, busy 8, 8 queued, MP -120"
         },
         {
           "file": "tests/integration/test_walker_specials.cpp",
           "test": "WalkerSpecials.soldier_whirlwind_drives_simulation",
-          "note": "setting off: busy 8, 8 walks"
+          "note": "off: busy 8, 8 WALK orders"
+        },
+        {
+          "file": "tests/integration/test_gameplay_fixes_soldier.cpp",
+          "test": "GameplayFixesSoldier.whirlwind_with_a_foe_spins_on_both_values",
+          "note": "a foe in ring: cast on both values"
         },
         {
           "parity": "soldier_whirlwind_no_foe_scen99",
-          "fact": "soldier_whirlwind_no_foe_fixes_scen99"
+          "fact": "soldier_whirlwind_no_foe_fixes_scen99 (foe hp 103 vs 85)"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "no foe in ring, setting off"
+      ]
     },
     {
       "id": "living-00-soldier.lua:67",
@@ -166,19 +176,18 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
-          "file": "tests/integration/test_gameplay_fixes_soldier.cpp",
-          "test": "GameplayFixesSoldier.whirlwind_with_a_foe_spins_on_both_values",
-          "note": "busy 8, foe command count +1"
-        },
-        {
           "parity": "soldier_whirlwind_ring_scen99",
-          "fact": ""
+          "fact": "",
+          "note": "east faerie hp 55 and pushed to x 176: struck and shoved"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "foe outside ring",
+        "two foes"
+      ]
     },
     {
       "id": "living-00-soldier.lua:79",
@@ -204,18 +213,17 @@
         }
       ],
       "setting": "both",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/integration/test_gameplay_fixes_special_busy.cpp",
-          "test": "GameplayFixesSpecialBusy.disarm_after_a_shot"
-        },
-        {
-          "parity": "soldier_disarm_resisted_busy_scen99",
-          "fact": "_fixes_scen99"
+          "test": "GameplayFixesSpecialBusy.disarm_after_a_shot",
+          "note": "busy<0 off: SPECIAL BUSY, MP unchanged, foe busy 0; on: cast true, foe busy 60, MP -150"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "busy > 0"
+      ]
     },
     {
       "id": "living-00-soldier.lua:83",
@@ -241,12 +249,13 @@
       "tests": [
         {
           "file": "tests/integration/test_family_cleric.cpp",
-          "test": "FamilySoldier.disarm_refusal_explains_facing_with_a_foe_already_in_range"
+          "test": "FamilySoldier.disarm_refusal_explains_facing_with_a_foe_already_in_range",
+          "note": "FACE FOE AT CLOSE RANGE, MP 500, foe busy 0; then facing the foe: success"
         },
         {
           "file": "tests/integration/test_walker_specials.cpp",
           "test": "WalkerSpecials.soldier_disarm_busies_the_foe_it_disarms",
-          "note": "nothing-in-front refusal"
+          "note": "nothing in front: false, MP and busy unchanged"
         }
       ],
       "missing_arms": []
@@ -276,21 +285,17 @@
         {
           "file": "tests/integration/test_walker_specials.cpp",
           "test": "WalkerSpecials.soldier_disarm_busies_the_foe_it_disarms",
-          "note": "won arm: L4 vs L1, +24"
-        },
-        {
-          "parity": "soldier_disarm_matched_levels_scen99",
-          "fact": "Fighter Disarmed notification (won arm)"
+          "note": "won arm: L4 vs L1, foe busy 24"
         },
         {
           "file": "tests/integration/test_gameplay_fixes_soldier.cpp",
           "test": "GameplayFixesSoldier.disarm_notice_needs_a_win",
-          "note": "lost arm, both settings: SequenceRandom {0,3}, L4 vs L4 -> 0>=3 false; off: cast true, foe_busy 0, 150 MP, 1 notice; on: false 'DISARM RESISTED', 75 MP, caster busy 5, 0 notices, 0 sounds"
+          "note": "lost arm: off true, foe_busy 0, 150 MP, 1 notice; on DISARM RESISTED, 75 MP, busy 5, 0 notices, 0 sounds"
         },
         {
           "file": "tests/integration/test_gameplay_fixes_soldier.cpp",
-          "test": "GameplayFixesSoldier.a_resisted_disarm_pays_half_the_slots_own_price",
-          "note": "won roll, resisted by the :99 penalty<=0 arm"
+          "test": "GameplayFixesSoldier.disarm_never_speeds_up_a_higher_foe",
+          "note": "won roll vs lower foe: busy 18 both values"
         }
       ],
       "missing_arms": []
@@ -323,11 +328,12 @@
       "tests": [
         {
           "file": "tests/integration/test_gameplay_fixes_soldier.cpp",
-          "test": "GameplayFixesSoldier.disarm_never_speeds_up_a_higher_foe"
+          "test": "GameplayFixesSoldier.disarm_never_speeds_up_a_higher_foe",
+          "note": "penalty -12 off: foe busy -12, notice; on: foe busy 0, DISARM RESISTED; penalty 18 both: foe busy 18, notice"
         },
         {
           "parity": "soldier_disarm_higher_foe_scen99",
-          "fact": "soldier_disarm_higher_foe_fixes_scen99"
+          "fact": "soldier_disarm_higher_foe_fixes_scen99 (notification 1 vs 0)"
         }
       ],
       "missing_arms": []
@@ -361,12 +367,18 @@
       "tests": [
         {
           "file": "tests/integration/test_gameplay_fixes_soldier.cpp",
-          "test": "GameplayFixesSoldier.disarm_with_nobody_in_reach_is_free"
+          "test": "GameplayFixesSoldier.disarm_with_nobody_in_reach_is_free",
+          "note": "off NO FOE IN RANGE, on NO ONE TO DISARM, MP and busy 0"
+        },
+        {
+          "file": "tests/integration/test_gameplay_fixes_soldier.cpp",
+          "test": "GameplayFixesSoldier.disarm_never_speeds_up_a_higher_foe",
+          "note": "some foe in reach: continues to the roll"
         }
       ],
       "missing_arms": [],
       "note": [
-        "tests/integration/test_special_scenes.cpp: the NO ONE TO DISARM scene (says(\"NO ONE TO DISARM\"), ~line 3363)"
+        "tests/integration/test_special_scenes.cpp: scene a2_disarm_nobody (says NO FOE IN RANGE off / NO ONE TO DISARM on, pool 250 kept)"
       ]
     },
     {
@@ -393,22 +405,31 @@
         }
       ],
       "setting": "both",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/integration/test_gameplay_fixes_soldier.cpp",
-          "test": "GameplayFixesSoldier.a_resisted_disarm_pays_half_the_slots_own_price"
+          "test": "GameplayFixesSoldier.a_resisted_disarm_pays_half_the_slots_own_price",
+          "note": "on: DISARM RESISTED, half the slot price 75/150, busy 5"
         },
         {
           "file": "tests/integration/test_gameplay_fixes_soldier.cpp",
-          "test": "GameplayFixesSoldier.disarm_notice_needs_a_win"
+          "test": "GameplayFixesSoldier.disarm_notice_needs_a_win",
+          "note": "on: RESISTED, 75 MP, busy 5, 0 notices, 0 sounds; off lost roll: true, 1 notice, 150 MP"
+        },
+        {
+          "file": "tests/integration/test_gameplay_fixes_soldier.cpp",
+          "test": "GameplayFixesSoldier.disarm_never_speeds_up_a_higher_foe",
+          "note": "at least one disarmed: true, notice"
         },
         {
           "parity": "soldier_disarm_resisted_price_scen99",
-          "fact": "_fixes_scen99"
+          "fact": "_fixes_scen99 (boomerang count 0 vs 1, notice 1 vs 0)"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "all resisted, setting off"
+      ]
     },
     {
       "id": "living-00-soldier.lua:127",
@@ -430,17 +451,21 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/integration/test_gameplay_fixes_soldier.cpp",
           "test": "GameplayFixesSoldier.disarm_notice_needs_a_win",
-          "note": "hero arm only: make_soldier is team 1 with a guy; pins the classic lost-roll notice: off.notices == 1, foe_busy 0; on.notices == 0"
+          "note": "team 1 soldier with a guy: off.notices == 1"
+        },
+        {
+          "file": "tests/integration/test_gameplay_fixes_soldier.cpp",
+          "test": "GameplayFixesSoldier.disarm_never_speeds_up_a_higher_foe",
+          "note": "guy soldier: 1 notice per success"
         }
       ],
-      "missing_arms": [],
-      "note": [
-        "enemy-bot (silent) arm: none"
+      "missing_arms": [
+        "enemy bot (team!=0, no guy)"
       ]
     },
     {
@@ -463,9 +488,17 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": []
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_family_behaviors.cpp",
+          "test": "FamilyBehaviors.soldier_weapons_left_limits_fire",
+          "note": "living soldier: weapons_left 1 -> 0, then refused with refund"
+        }
+      ],
+      "missing_arms": [
+        "non-living order"
+      ]
     },
     {
       "id": "living-00-soldier.lua:141",
@@ -491,12 +524,13 @@
       "tests": [
         {
           "file": "tests/integration/test_family_behaviors.cpp",
-          "test": "FamilyBehaviors.soldier_weapons_left_limits_fire"
+          "test": "FamilyBehaviors.soldier_weapons_left_limits_fire",
+          "note": ">0: blade out, weapons_left 0; <=0: nullptr, MP refunded"
         },
         {
           "file": "tests/integration/test_family_behaviors.cpp",
           "test": "FamilyBehaviors.soldier_batch3_special_ai_and_fire_callback_paths",
-          "note": "weapons_left<=0: false, weapon dead, MP refunded; >0: true, weapons_left 2->1"
+          "note": "<=0: false, weapon dead, MP up; >0: true, weapons_left 2 -> 1"
         }
       ],
       "missing_arms": []
@@ -521,18 +555,17 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/integration/test_family_behaviors.cpp",
-          "test": "FamilyBehaviors.soldier_weapons_left_on_create"
-        },
-        {
-          "file": "tests/integration/test_family_behaviors.cpp",
-          "test": "FamilyBehaviors.set_difficulty_soldier_weapons_left"
+          "test": "FamilyBehaviors.soldier_weapons_left_on_create",
+          "note": "L5 -> 3"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "other order"
+      ]
     },
     {
       "id": "living-00-soldier.lua:181",
@@ -563,21 +596,25 @@
       "tests": [
         {
           "file": "tests/unit/test_bot_gates_fighters.cpp",
-          "test": "GameplayFixesBots.soldier_charge_wants_a_foe_in_the_rush"
+          "test": "GameplayFixesBots.soldier_charge_wants_a_foe_in_the_rush",
+          "note": "window closed 19/76 px: false; rush meets foe: true; no heading / lastx 1 / heading down / past the rush: false"
+        },
+        {
+          "file": "tests/unit/test_bot_gates_fighters.cpp",
+          "test": "GameplayFixesBots.soldier_charge_refuses_a_wall_in_front",
+          "note": "/ _a_touching_foe / _an_ally_in_front / _a_wall_between_the_soldier_and_its_foe / _a_door_in_the_rush_path (false)"
         },
         {
           "parity": "soldier_bot_charge_door_fixes_scen99",
-          "fact": ""
+          "fact": "0)"
         },
         {
           "parity": "soldier_bot_charge_unaimed_fixes_scen99",
-          "fact": ""
+          "fact": "0)",
+          "note": "(sound counts 3"
         }
       ],
-      "missing_arms": [],
-      "note": [
-        "tests/unit/test_bot_gates_fighters.cpp: soldier_charge_refuses_a_wall_in_front / _a_touching_foe / _an_ally_in_front / _a_wall_between_the_soldier_and_its_foe / _a_door_in_the_rush_path"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living-00-soldier.lua:187",
@@ -608,11 +645,13 @@
       "tests": [
         {
           "file": "tests/unit/test_bot_gates_fighters.cpp",
-          "test": "GameplayFixesBots.soldier_boomerang_wants_a_foe_inside_the_orbit_and_no_blade_out"
+          "test": "GameplayFixesBots.soldier_boomerang_wants_a_foe_inside_the_orbit_and_no_blade_out",
+          "note": "40 px true, 60 px false, own blade out false"
         },
         {
           "parity": "soldier_bot_boomerang_far_fixes_scen99",
-          "fact": ""
+          "fact": "",
+          "note": "no boomerang"
         }
       ],
       "missing_arms": []
@@ -646,19 +685,23 @@
       "tests": [
         {
           "file": "tests/unit/test_bot_gates_fighters.cpp",
-          "test": "GameplayFixesBots.soldier_whirlwind_wants_two_targets_inside_the_spin"
+          "test": "GameplayFixesBots.soldier_whirlwind_wants_two_targets_inside_the_spin",
+          "note": "one false, two true, tent counts"
         },
         {
           "file": "tests/unit/test_bot_gates_fighters.cpp",
-          "test": "GameplayFixesBots.soldier_whirlwind_waits_out_its_busy"
+          "test": "GameplayFixesBots.soldier_whirlwind_waits_out_its_busy",
+          "note": "busy 3 false, -0.5 true"
         },
         {
           "file": "tests/unit/test_bot_gates_fighters.cpp",
-          "test": "GameplayFixesBots.soldier_disarm_waits_out_its_busy"
+          "test": "GameplayFixesBots.soldier_disarm_waits_out_its_busy",
+          "note": "slot 4 busy 3 false"
         },
         {
           "parity": "soldier_bot_whirlwind_one_foe_fixes_scen99",
-          "fact": ""
+          "fact": "",
+          "note": "tower dead"
         }
       ],
       "missing_arms": []
@@ -691,11 +734,13 @@
       "tests": [
         {
           "file": "tests/unit/test_bot_gates_fighters.cpp",
-          "test": "GameplayFixesBots.soldier_disarm_wants_a_foe_blocking_its_front"
+          "test": "GameplayFixesBots.soldier_disarm_wants_a_foe_blocking_its_front",
+          "note": "L1 foe in front true; L11 false; 1 px gap / beside / curdir -1 false"
         },
         {
           "parity": "soldier_bot_disarm_front_fixes_scen99",
-          "fact": ""
+          "fact": "",
+          "note": "one sound  no knife"
         }
       ],
       "missing_arms": []
@@ -724,40 +769,36 @@
         }
       ],
       "setting": "both",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/integration/test_family_behaviors.cpp",
           "test": "FamilyBehaviors.soldier_batch3_special_ai_and_fire_callback_paths",
-          "note": "setting off: pass in 20-75, fail too far, fail with no foe, pass after finding a near foe"
+          "note": "off: true at 40 px, false at 200 px, false with no foe, true after finding a foe at 50 px"
+        },
+        {
+          "file": "tests/unit/test_bot_gates_fighters.cpp",
+          "test": "GameplayFixesBots.soldier_charge_wants_a_foe_in_the_rush",
+          "note": "off: true 40/50/70 px, false 19 and 76 px; on: the fixed answers"
+        },
+        {
+          "file": "tests/unit/test_bot_gates_fighters.cpp",
+          "test": "GameplayFixesBots.soldier_boomerang_wants_a_foe_inside_the_orbit_and_no_blade_out",
+          "note": "/ soldier_whirlwind_wants_two_targets_inside_the_spin / soldier_disarm_waits_out_its_busy (off: true for slots 2, 3, 4 in the window)"
         },
         {
           "parity": "soldier_bot_boomerang_far_scen99",
           "fact": ""
         },
         {
-          "parity": "soldier_bot_charge_door_scen99",
-          "fact": ""
-        },
-        {
-          "parity": "soldier_bot_charge_unaimed_scen99",
-          "fact": ""
-        },
-        {
-          "parity": "soldier_bot_disarm_front_scen99",
-          "fact": ""
-        },
-        {
           "parity": "soldier_bot_whirlwind_one_foe_scen99",
-          "fact": ""
-        },
-        {
-          "parity": "soldier_bot_refused_roll_acts_scen99",
           "fact": "",
-          "note": "classic twins; the setting-on arm is asserted by the fixed rows :181 :187 :191 :195 and their _fixes_scen99 twins"
+          "note": "classic twins"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "setting on"
+      ]
     }
   ],
   "other": [

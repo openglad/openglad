@@ -21,12 +21,11 @@
         }
       ],
       "setting": "new-specials",
-      "status": "executed-only",
+      "status": "asserted",
       "tests": [
         {
-          "file": "tests/unit/test_kit_elemental.cpp",
-          "test": "KitElemental.immolation_clock_reads_what_the_mana_buys",
-          "note": "); the unregistered arm is not asserted"
+          "file": "tests/unit/test_specials_view.cpp",
+          "test": "KitLuaTest.kit_marker_spawns_finds_ages_and_dispatches_by_role"
         }
       ],
       "missing_arms": []
@@ -65,9 +64,15 @@
         {
           "file": "tests/unit/test_kit_ghost.cpp",
           "test": "KitGhost.phase_doubles_speed_blocks_attacks_and_expires_clean"
+        },
+        {
+          "file": "tests/unit/test_specials_view.cpp",
+          "test": "KitLuaTest.kit_marker_spawns_finds_ages_and_dispatches_by_role"
         }
       ],
-      "missing_arms": [],
+      "missing_arms": [
+        "another role / owner / dead"
+      ],
       "note": [
         "unasserted: a dead veil -> PHASE casts again; another owner's marker never answers"
       ]

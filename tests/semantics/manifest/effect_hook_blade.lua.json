@@ -25,7 +25,8 @@
       "tests": [
         {
           "file": "tests/unit/test_kit_captain.cpp",
-          "test": "KitCaptain.hook_spirals_out_and_back"
+          "test": "KitCaptain.hook_spirals_out_and_back",
+          "note": "worldx/worldy every tick 1..48 against hook_offset_at, widest 60"
         }
       ],
       "missing_arms": []
@@ -55,7 +56,7 @@
         }
       ],
       "setting": "new-specials",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_kit_captain.cpp",
@@ -64,9 +65,15 @@
         {
           "file": "tests/unit/test_kit_captain.cpp",
           "test": "KitCaptain.a_late_snag_still_reels_home"
+        },
+        {
+          "file": "tests/unit/test_kit_captain.cpp",
+          "test": "KitCaptain.hook_spirals_out_and_back"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "generator or other floor"
+      ]
     },
     {
       "id": "effect_hook_blade.lua:62",
@@ -97,6 +104,10 @@
         {
           "file": "tests/unit/test_kit_captain.cpp",
           "test": "KitCaptain.reel_never_hauls_a_foe_past_the_captain"
+        },
+        {
+          "file": "tests/unit/test_kit_captain.cpp",
+          "test": "KitCaptain.hook_reels_the_foe_to_the_captains_feet"
         }
       ],
       "missing_arms": []
@@ -164,7 +175,7 @@
         }
       ],
       "setting": "new-specials",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_kit_captain.cpp",
@@ -175,7 +186,9 @@
           "test": "KitCaptain.reel_never_hauls_a_foe_past_the_captain"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "ring spot within one step"
+      ]
     },
     {
       "id": "effect_hook_blade.lua:105",
@@ -202,6 +215,10 @@
         {
           "file": "tests/unit/test_kit_captain.cpp",
           "test": "KitCaptain.reel_stops_at_a_wall"
+        },
+        {
+          "file": "tests/unit/test_kit_captain.cpp",
+          "test": "KitCaptain.hook_reels_the_foe_to_the_captains_feet"
         }
       ],
       "missing_arms": []
@@ -231,6 +248,10 @@
         {
           "file": "tests/unit/test_kit_captain.cpp",
           "test": "KitCaptain.hook_blade_dies_with_its_captain"
+        },
+        {
+          "file": "tests/unit/test_kit_captain.cpp",
+          "test": "KitCaptain.hook_spirals_out_and_back"
         }
       ],
       "missing_arms": []
@@ -288,15 +309,24 @@
         }
       ],
       "setting": "new-specials",
-      "status": "executed-only",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_kit_captain.cpp",
-          "test": "KitCaptain.hook_reels_the_foe_to_the_captains_feet",
-          "note": "reel arm reached; the no-guard-while-reeling consequence is not asserted"
+          "test": "KitCaptain.hook_spirals_out_and_back"
+        },
+        {
+          "file": "tests/unit/test_kit_captain.cpp",
+          "test": "KitCaptain.hook_eats_incoming_projectiles"
+        },
+        {
+          "file": "tests/unit/test_kit_captain.cpp",
+          "test": "KitCaptain.hook_reels_the_foe_to_the_captains_feet"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "on the hook"
+      ]
     },
     {
       "id": "effect_hook_blade.lua:153",
@@ -351,15 +381,20 @@
         }
       ],
       "setting": "new-specials",
-      "status": "executed-only",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_kit_captain.cpp",
-          "test": "KitCaptain.hook_eats_incoming_projectiles",
-          "note": "if it drains to 0; verify"
+          "test": "KitCaptain.hook_eats_incoming_projectiles"
+        },
+        {
+          "file": "tests/unit/test_kit_captain.cpp",
+          "test": "KitCaptain.hook_reels_the_foe_to_the_captains_feet"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "hp <= 0 after the guard"
+      ]
     },
     {
       "id": "effect_hook_blade.lua:166",
@@ -390,11 +425,15 @@
       "tests": [
         {
           "file": "tests/unit/test_kit_captain.cpp",
+          "test": "KitCaptain.hook_reels_the_foe_to_the_captains_feet"
+        },
+        {
+          "file": "tests/unit/test_kit_captain.cpp",
           "test": "KitCaptain.hook_kills_a_dying_foe_without_reeling_it"
         },
         {
           "file": "tests/unit/test_kit_captain.cpp",
-          "test": "KitCaptain.hook_reels_the_foe_to_the_captains_feet"
+          "test": "KitCaptain.hook_spirals_out_and_back"
         }
       ],
       "missing_arms": []

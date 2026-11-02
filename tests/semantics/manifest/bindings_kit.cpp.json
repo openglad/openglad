@@ -30,18 +30,22 @@
         }
       ],
       "setting": "new-specials",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_specials_view.cpp",
-          "test": "KitLuaTest.kit_state_bindings_read_and_write_the_walker"
+          "test": "KitLuaTest.kit_state_bindings_read_and_write_the_walker",
+          "note": "HIDDEN requested free: hidden, kit_state 3, out of obmap; HIDDEN cleared: set_kit_state(0) reveals, back in obmap"
         },
         {
           "file": "tests/unit/test_specials_view.cpp",
-          "test": "KitLuaTest.set_kit_state_cannot_hide_a_possessed_body"
+          "test": "KitLuaTest.set_kit_state_cannot_hide_a_possessed_body",
+          "note": "possessed: not hidden, kit_state == KIT_FEARLESS, still in obmap; then free: hidden + both bits"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "HIDDEN unchanged"
+      ]
     },
     {
       "id": "bindings_kit.cpp:70",
@@ -71,23 +75,37 @@
       "status": "asserted",
       "tests": [
         {
-          "file": "tests/unit/test_script_bindings_props.cpp",
-          "test": "ScriptBindingPropsTest.kit_last_attacker_id_and_init_fire"
+          "file": "tests/unit/test_specials_view.cpp",
+          "test": "KitLuaTest.kit_state_bindings_read_and_write_the_walker",
+          "note": "m_hidden: Lua checks self:hidden() false then true"
         },
         {
           "file": "tests/unit/test_script_bindings_props.cpp",
-          "test": "ScriptBindingPropsTest.kit_fearless_answers_the_kit_mark"
+          "test": "ScriptBindingPropsTest.kit_last_attacker_id_and_init_fire",
+          "note": "init_fire 'fire\\t1\\t0'"
         },
         {
           "file": "tests/unit/test_script_bindings_props.cpp",
-          "test": "ScriptBindingPropsTest.kit_alternate_cost_and_blocks_placement_read_the_family"
+          "test": "ScriptBindingPropsTest.kit_fearless_answers_the_kit_mark",
+          "note": "'fearless\\t0' / 'fearless\\t1'"
+        },
+        {
+          "file": "tests/unit/test_script_bindings_props.cpp",
+          "test": "ScriptBindingPropsTest.kit_alternate_cost_and_blocks_placement_read_the_family",
+          "note": "'solid\\t0\\t0\\t1'"
+        },
+        {
+          "file": "tests/unit/test_script_bindings_props.cpp",
+          "test": "ScriptBindingPropsTest.kit_line_clear_is_blocked_by_a_wall_and_by_floors",
+          "note": "'line\\t0\\t1\\t0'"
+        },
+        {
+          "file": "tests/unit/test_script_bindings_props.cpp",
+          "test": "ScriptBindingPropsTest.kit_swap_places_trades_spots_and_floors_and_eats_nothing",
+          "note": "'same\\t0', 'swap\\t1', 'hidden\\t0'"
         }
       ],
-      "missing_arms": [],
-      "note": [
-        "tests/unit/test_script_bindings_props.cpp: og.line_clear test near line 1110 (wall / clear / cross-floor)",
-        "tests/unit/test_script_bindings_props.cpp: og.swap_places test near line 1052 (same walker, hidden, ok)"
-      ]
+      "missing_arms": []
     },
     {
       "id": "bindings_kit.cpp:80",
@@ -119,7 +137,13 @@
       "tests": [
         {
           "file": "tests/unit/test_script_bindings_props.cpp",
-          "test": "ScriptBindingPropsTest.kit_set_hidden_refuses_a_non_integer"
+          "test": "ScriptBindingPropsTest.kit_set_hidden_refuses_a_non_integer",
+          "note": "boolean true; integer 0 -> false; 'x' and 0.5 -> error text, hidden unchanged"
+        },
+        {
+          "file": "tests/unit/test_specials_view.cpp",
+          "test": "KitLuaTest.kit_state_bindings_read_and_write_the_walker",
+          "note": "boolean false clears; integer 1 hides"
         }
       ],
       "missing_arms": []
@@ -156,7 +180,8 @@
       "tests": [
         {
           "file": "tests/unit/test_script_bindings_props.cpp",
-          "test": "ScriptBindingPropsTest.kit_alternate_cost_and_blocks_placement_read_the_family"
+          "test": "ScriptBindingPropsTest.kit_alternate_cost_and_blocks_placement_read_the_family",
+          "note": "on 'alt\\t0\\t77\\t40', off 'alt\\t0\\t0\\t40', slots 6 and -1 -> 'alternate_cost index out of range'"
         }
       ],
       "missing_arms": []
@@ -181,17 +206,16 @@
         }
       ],
       "setting": "new-specials",
-      "status": "executed-only",
+      "status": "partial",
       "tests": [
         {
-          "file": "tests/unit/test_script_bindings_errors.cpp",
-          "test": "ScriptBindingErrorTest.world_bindings_refuse_when_no_world_is_active",
-          "note": "asserts only og.oblist/og.living_count; the kit verbs' kit_world guard is not asserted"
+          "file": "tests/unit/test_script_bindings_props.cpp",
+          "test": "ScriptBindingPropsTest.kit_map_size_answers_pixel_bounds_and_floors",
+          "note": "world arm: verb runs, 'size\\t1234\\t567\\t3'"
         }
       ],
-      "missing_arms": [],
-      "note": [
-        "UNASSERTED: kit verbs refusing when no world is active (kit_world guard)"
+      "missing_arms": [
+        "no world"
       ]
     },
     {
@@ -225,7 +249,8 @@
       "tests": [
         {
           "file": "tests/unit/test_script_bindings_props.cpp",
-          "test": "ScriptBindingPropsTest.kit_possess_and_release_hand_back_the_engine_answer"
+          "test": "ScriptBindingPropsTest.kit_possess_and_release_hand_back_the_engine_answer",
+          "note": "40000 and -1 -> 'og.possess: ticks out of range'; dead host -> false, string reason 1..24 chars, no links; live foe -> true and nil second value, links both ways, possess_ticks 30, rider hidden, host on rider team"
         }
       ],
       "missing_arms": []

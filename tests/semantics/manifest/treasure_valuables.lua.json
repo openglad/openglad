@@ -21,18 +21,28 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
-          "parity": "treasure_gold_bar_pickup_scen99",
-          "fact": "score fact"
+          "parity": "treasure_gold_bar_team_reject_scen99",
+          "fact": "ScoreDelta(1,0,0) + WalkerOfTeamAlive (team-1 bot: no score, bar alive)"
         },
         {
-          "parity": "treasure_gold_bar_team_reject_scen99",
-          "fact": "ScoreDelta(1,0,0)+WalkerOfTeamAlive"
+          "parity": "treasure_gold_bar_pickup_scen99",
+          "fact": "score fact (team-0 leg of the accept arm)"
+        },
+        {
+          "file": "tests/integration/test_treasure_eat.cpp",
+          "test": "TreasureEat.gold_bar",
+          "note": "team-0 leg: score rises, bar dead, ScoreChange"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "team 0 / hero"
+      ],
+      "note": [
+        "(the hero leg of \"team 0 / hero\" - a non-zero-team eater with a guy - is asserted nowhere: dropping \"or eater:has_guy()\" keeps every test green)"
+      ]
     },
     {
       "id": "treasure_valuables.lua:27",
@@ -57,14 +67,14 @@
       "status": "executed-only",
       "tests": [
         {
-          "parity": "treasure_silver_bar_pickup_scen99",
-          "fact": "",
-          "note": "accept arm"
+          "file": "tests/integration/test_treasure_eat.cpp",
+          "test": "TreasureEat.silver_bar",
+          "note": "score rises + bar dead, and parity treasure_silver_bar_pickup_scen99 EventKindAtLeast(play_sound,1); the hero leg and the reject arm are asserted nowhere)"
         }
       ],
-      "missing_arms": [],
-      "note": [
-        "(reject arm not asserted for silver)"
+      "missing_arms": [
+        "team 0 / hero",
+        "team-1 bot"
       ]
     },
     {
@@ -91,15 +101,16 @@
       "tests": [
         {
           "parity": "treasure_life_gem_enemy_reject_scen99",
-          "fact": "WalkerOfTeamAlive"
+          "fact": "WalkerOfTeamAlive + ScoreDelta(0,0,0) (other team)"
         },
         {
           "parity": "treasure_life_gem_pickup_scen99",
-          "fact": "WalkerOfOrderFamilyCount(FLASH)"
+          "fact": "WalkerOfOrderFamilyCount(FLASH) (own team: flash)"
         },
         {
           "file": "tests/integration/test_treasure_eat.cpp",
-          "test": "TreasureEat.life_gem"
+          "test": "TreasureEat.life_gem",
+          "note": "own team: score rises, gem dead"
         }
       ],
       "missing_arms": []
@@ -128,11 +139,12 @@
       "tests": [
         {
           "file": "tests/unit/test_pack_lua_paths.cpp",
-          "test": "PackLuaTreasure.a_key_already_held_is_a_silent_no_op"
+          "test": "PackLuaTreasure.a_key_already_held_is_a_silent_no_op",
+          "note": "new key: keys == 4, one message; held: mask unchanged, no second message"
         },
         {
           "parity": "treasure_key_pickup_scen99",
-          "fact": "WalkerKeysApplied"
+          "fact": "EventKindAtLeast(notification,1)"
         }
       ],
       "missing_arms": []
@@ -160,7 +172,10 @@
       "setting": "none",
       "status": "executed-only",
       "tests": [],
-      "missing_arms": []
+      "missing_arms": [
+        "hero",
+        "guyless"
+      ]
     },
     {
       "id": "treasure_valuables.lua:73",
@@ -186,11 +201,12 @@
       "tests": [
         {
           "parity": "treasure_key_team1_silent_scen99",
-          "fact": "EventKindExactly(notification,0)"
+          "fact": "EventKindExactly(notification,0) + EventKindExactly(play_sound,0) (team 1)"
         },
         {
           "file": "tests/unit/test_pack_lua_paths.cpp",
-          "test": "PackLuaTreasure.a_key_already_held_is_a_silent_no_op"
+          "test": "PackLuaTreasure.a_key_already_held_is_a_silent_no_op",
+          "note": "team 0: one broadcast, target -1; team 2 monster: keys bit set, no message"
         }
       ],
       "missing_arms": []

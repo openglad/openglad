@@ -21,15 +21,22 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_staged_rules.cpp",
-          "test": "StagedRules.dormant_troops_are_uncensused_like_the_staged_report",
-          "note": "asserts the MODE census, not this classic one"
+          "test": "ClassicLineupTest.traded_units_become_a_fair_squad_at_their_centroid",
+          "note": "live awake units counted: all 5 members within 48 px of their centroid (400,576)"
+        },
+        {
+          "file": "tests/unit/test_staged_rules.cpp",
+          "test": "ClassicLineupTest.fill_strong_spawns_a_solved_squad_on_a_marker_team",
+          "note": "live marker counted: members within 48 px of it"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "dead or dormant"
+      ]
     },
     {
       "id": "lineup_stage.lua:66",
@@ -51,12 +58,22 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_staged_rules.cpp",
+          "test": "ClassicLineupTest.traded_units_become_a_fair_squad_at_their_centroid",
+          "note": "team 0..3 arm: team 1 row updated, squad at its units centroid"
+        },
+        {
+          "file": "tests/unit/test_staged_rules.cpp",
           "test": "ClassicLineupTest.blocked_anchor_falls_back_to_the_teleport_draw",
-          "note": "and hostile_crowd_pushes_the_siteless_squad_clear spawn team-4 wildlife but assert nothing that depends on the skip"
+          "note": "team>=4 arm: 25 team-4 wildlife troops in the census; without the skip teams[5] is nil and row.units raises, so EXPECT errors().empty() and EXPECT_EQ(5, marked_bots_on(1)) are the skip's observable"
+        },
+        {
+          "file": "tests/unit/test_staged_rules.cpp",
+          "test": "ClassicLineupTest.hostile_crowd_pushes_the_siteless_squad_clear",
+          "note": "team>=4 arm: 49 team-4 wildlife; same errors().empty() + 5 bots asserts"
         }
       ],
       "missing_arms": []
@@ -87,7 +104,7 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_staged_rules.cpp",
@@ -95,7 +112,10 @@
           "note": "single marker: members within 48 px of it"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "second marker",
+        "other specials"
+      ]
     },
     {
       "id": "lineup_stage.lua:76",
@@ -123,7 +143,7 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_staged_rules.cpp",
@@ -131,7 +151,10 @@
           "note": "units centroid"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "troop with guy",
+        "weapon/fx/treasure"
+      ]
     },
     {
       "id": "lineup_stage.lua:99",
@@ -157,22 +180,22 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_staged_rules.cpp",
-          "test": "ClassicLineupTest.traded_units_become_a_fair_squad_at_their_centroid"
+          "test": "ClassicLineupTest.traded_units_become_a_fair_squad_at_their_centroid",
+          "note": "units arm"
         },
         {
           "file": "tests/unit/test_staged_rules.cpp",
-          "test": "ClassicLineupTest.fill_strong_spawns_a_solved_squad_on_a_marker_team"
-        },
-        {
-          "file": "tests/unit/test_staged_rules.cpp",
-          "test": "ClassicLineupTest.explicit_fair_fields_a_safe_squad_on_unauthored_ground"
+          "test": "ClassicLineupTest.fill_strong_spawns_a_solved_squad_on_a_marker_team",
+          "note": "marker arm"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "neither"
+      ]
     },
     {
       "id": "lineup_stage.lua:118",
@@ -200,14 +223,12 @@
       ],
       "setting": "none",
       "status": "executed-only",
-      "tests": [
-        {
-          "file": "tests/unit/test_staged_rules.cpp",
-          "test": "ClassicLineupTest.hostile_crowd_pushes_the_siteless_squad_clear",
-          "note": "roster + marker teams present; asserts non-adjacency only, not the farthest placement"
-        }
-      ],
-      "missing_arms": []
+      "tests": [],
+      "missing_arms": [
+        "bodies > 0",
+        "no bodies, marker",
+        "nothing"
+      ]
     },
     {
       "id": "lineup_stage.lua:137",
@@ -231,7 +252,7 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_staged_rules.cpp",
@@ -243,7 +264,9 @@
           "test": "ClassicLineupTest.hostile_crowd_pushes_the_siteless_squad_clear"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "own team / dead / dormant / non-troop"
+      ]
     },
     {
       "id": "lineup_stage.lua:158",
@@ -266,18 +289,22 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_staged_rules.cpp",
-          "test": "ClassicLineupTest.hostile_crowd_pushes_the_siteless_squad_clear"
+          "test": "ClassicLineupTest.hostile_crowd_pushes_the_siteless_squad_clear",
+          "note": "refused arm"
         },
         {
           "file": "tests/unit/test_staged_rules.cpp",
-          "test": "ClassicLineupTest.explicit_fair_fields_a_safe_squad_on_unauthored_ground"
+          "test": "ClassicLineupTest.explicit_fair_fields_a_safe_squad_on_unauthored_ground",
+          "note": "refused arm"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "two tiles away on either axis"
+      ]
     },
     {
       "id": "lineup_stage.lua:179",
@@ -302,7 +329,10 @@
       "setting": "none",
       "status": "executed-only",
       "tests": [],
-      "missing_arms": []
+      "missing_arms": [
+        "entity farther right/down",
+        "otherwise"
+      ]
     },
     {
       "id": "lineup_stage.lua:200",
@@ -324,15 +354,12 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
-      "tests": [
-        {
-          "file": "tests/unit/test_staged_rules.cpp",
-          "test": "ClassicLineupTest.explicit_fill_on_a_wholly_empty_map_still_fields",
-          "note": "5 bots fielded"
-        }
-      ],
-      "missing_arms": []
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": [
+        "no centroids",
+        "centroids"
+      ]
     },
     {
       "id": "lineup_stage.lua:216",
@@ -357,7 +384,10 @@
       "setting": "none",
       "status": "executed-only",
       "tests": [],
-      "missing_arms": []
+      "missing_arms": [
+        "first centroid",
+        "nearer centroid"
+      ]
     },
     {
       "id": "lineup_stage.lua:222",
@@ -390,14 +420,13 @@
       ],
       "setting": "none",
       "status": "executed-only",
-      "tests": [
-        {
-          "file": "tests/unit/test_staged_rules.cpp",
-          "test": "ClassicLineupTest.explicit_fair_fields_a_safe_squad_on_unauthored_ground",
-          "note": "determinism + safety asserted; farthest-ness not"
-        }
-      ],
-      "missing_arms": []
+      "tests": [],
+      "missing_arms": [
+        "better score, safe, clear",
+        "better score but hostile-adjacent or blocked",
+        "equal score later",
+        "no admissible cell"
+      ]
     },
     {
       "id": "lineup_stage.lua:247",
@@ -434,19 +463,23 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_staged_rules.cpp",
-          "test": "ClassicLineupTest.traded_units_become_a_fair_squad_at_their_centroid",
-          "note": "5 within ring"
+          "test": "ClassicLineupTest.blocked_anchor_falls_back_to_the_teleport_draw",
+          "note": "all-blocked arm: >3 tiles, passable, distinct"
         },
         {
           "file": "tests/unit/test_staged_rules.cpp",
-          "test": "ClassicLineupTest.placement_is_deterministic_for_a_seed"
+          "test": "ClassicLineupTest.hostile_crowd_pushes_the_siteless_squad_clear",
+          "note": "site-less hostile-adjacent cells skipped: no member adjacent"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "anchor clear",
+        "anchor taken, ring cell clear"
+      ]
     },
     {
       "id": "lineup_stage.lua:270",
@@ -468,9 +501,17 @@
         }
       ],
       "setting": "none",
-      "status": "none",
-      "tests": [],
-      "missing_arms": []
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_staged_rules.cpp",
+          "test": "ClassicLineupTest.blocked_anchor_falls_back_to_the_teleport_draw",
+          "note": "true arm: members teleported >3 tiles, passable, distinct"
+        }
+      ],
+      "missing_arms": [
+        "allow_teleport false"
+      ]
     },
     {
       "id": "lineup_stage.lua:273",
@@ -492,14 +533,17 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_staged_rules.cpp",
-          "test": "ClassicLineupTest.blocked_anchor_falls_back_to_the_teleport_draw"
+          "test": "ClassicLineupTest.blocked_anchor_falls_back_to_the_teleport_draw",
+          "note": "sited arm"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "site-less squad"
+      ]
     },
     {
       "id": "lineup_stage.lua:278",
@@ -531,20 +575,18 @@
       ],
       "setting": "none",
       "status": "executed-only",
-      "tests": [
-        {
-          "file": "tests/unit/test_staged_rules.cpp",
-          "test": "ClassicLineupTest.explicit_fill_on_a_wholly_empty_map_still_fields",
-          "note": "empty hostiles: first landing wins; count only"
-        }
-      ],
-      "missing_arms": []
+      "tests": [],
+      "missing_arms": [
+        "a landing safe",
+        "landing unsafe",
+        "all eight unsafe",
+        "all eight teleports fail"
+      ]
     },
     {
       "id": "lineup_stage.lua:295",
       "lines": [
         295,
-        298,
         325
       ],
       "function": "classic_wants_squad",
@@ -566,12 +608,12 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_staged_rules.cpp",
           "test": "ClassicLineupTest.default_none_keeps_a_ships_empty_team_empty",
-          "note": "NONE arm"
+          "note": "NONE arm: marked_bots_on(1)==0, team 1 fact 0"
         },
         {
           "file": "tests/unit/test_staged_rules.cpp",
@@ -581,12 +623,11 @@
         {
           "file": "tests/unit/test_staged_rules.cpp",
           "test": "ClassicLineupTest.fill_strong_spawns_a_solved_squad_on_a_marker_team",
-          "note": "fields arm"
+          "note": "fields arm: 5 bots, vars[4]==3000"
         }
       ],
-      "missing_arms": [],
-      "note": [
-        "roster arm: none"
+      "missing_arms": [
+        "knob set, roster on team"
       ]
     },
     {
@@ -619,11 +660,18 @@
       "tests": [
         {
           "file": "tests/unit/test_staged_rules.cpp",
-          "test": "ClassicLineupTest.all_default_stage_is_a_byte_noop_on_gladiator"
+          "test": "ClassicLineupTest.all_default_stage_is_a_byte_noop_on_gladiator",
+          "note": "all-default arm: snapshot bytes + rng_.state_ equal"
         },
         {
           "file": "tests/unit/test_staged_rules.cpp",
-          "test": "ClassicLineupTest.gladiator_map_units_off_strips_one_team"
+          "test": "ClassicLineupTest.gladiator_map_units_off_strips_one_team",
+          "note": "box arm"
+        },
+        {
+          "file": "tests/unit/test_staged_rules.cpp",
+          "test": "ClassicLineupTest.fill_strong_spawns_a_solved_squad_on_a_marker_team",
+          "note": "wheel arm: 5 bots fielded, fact banked"
         }
       ],
       "missing_arms": []
@@ -648,15 +696,22 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
+      "status": "partial",
       "tests": [
+        {
+          "file": "tests/unit/test_staged_rules.cpp",
+          "test": "ClassicLineupTest.hostile_crowd_pushes_the_siteless_squad_clear",
+          "note": "site-less arm: safety rule applies, no member hostile-adjacent"
+        },
         {
           "file": "tests/unit/test_staged_rules.cpp",
           "test": "ClassicLineupTest.explicit_fair_fields_a_safe_squad_on_unauthored_ground",
           "note": "site-less arm safe"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "sited"
+      ]
     },
     {
       "id": "lineup_stage.lua:339",
@@ -679,13 +734,11 @@
       ],
       "setting": "none",
       "status": "executed-only",
-      "tests": [
-        {
-          "file": "tests/unit/test_staged_rules.cpp",
-          "test": "ClassicLineupTest.placement_is_deterministic_for_a_seed"
-        }
-      ],
-      "missing_arms": []
+      "tests": [],
+      "missing_arms": [
+        "first member",
+        "later members"
+      ]
     }
   ],
   "other": [

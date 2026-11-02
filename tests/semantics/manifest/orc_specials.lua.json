@@ -25,7 +25,18 @@
       "tests": [
         {
           "file": "tests/unit/test_kit_captain.cpp",
-          "test": "KitCaptain.captain_howl_refuses_while_busy"
+          "test": "KitCaptain.captain_howl_refuses_while_busy",
+          "note": "busy 3: SPECIAL BUSY, 0 MP"
+        },
+        {
+          "file": "tests/unit/test_kit_captain.cpp",
+          "test": "KitCaptain.promoted_orc_keeps_howl_and_eat_corpse",
+          "note": "busy 0: howl ok, 25 MP, foe frozen"
+        },
+        {
+          "file": "tests/integration/test_family_orc.cpp",
+          "test": "FamilyOrc.r15_howl_freezes_foes_in_radius_and_spares_the_horde",
+          "note": "busy 0: howl ok, busy 2, roar"
         }
       ],
       "missing_arms": []
@@ -54,18 +65,25 @@
         }
       ],
       "setting": "both",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "parity": "orc_howl_no_foe_scen99",
-          "fact": "EventKindExactly(play_sound,1)"
+          "fact": "EventKindExactly(play_sound,1) (fixes off, no foe: the roar)"
         },
         {
           "parity": "orc_howl_no_foe_fixes_scen99",
-          "fact": "EventKindExactly(play_sound,0)"
+          "fact": "EventKindExactly(play_sound,0) (fixes on, no foe: refused, no roar)"
+        },
+        {
+          "file": "tests/integration/test_family_orc.cpp",
+          "test": "FamilyOrc.r15_howl_freezes_foes_in_radius_and_spares_the_horde",
+          "note": "foe in range, fixes OFF leg only"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "foe in range"
+      ]
     },
     {
       "id": "orc_specials.lua:31",
@@ -92,24 +110,17 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/integration/test_family_orc.cpp",
-          "test": "FamilyOrc.r15_howl_freezes_foes_in_radius_and_spares_the_horde"
-        },
-        {
-          "parity": "orc_yell_zero_constitution_scen99",
-          "fact": "WalkerHpRangeAtFinalTick"
-        },
-        {
-          "parity": "orc_yell_stun_hold_scen99",
-          "fact": "WalkerPositionMoved"
+          "test": "FamilyOrc.r15_howl_freezes_foes_in_radius_and_spares_the_horde",
+          "note": "hero foe con 0, orc level 0: frozen_delay exactly 10"
         }
       ],
-      "missing_arms": [],
-      "note": [
-        "tests/unit/test_kit_captain.cpp (constitution-0 guy arms, ~line 507)"
+      "missing_arms": [
+        "guyless foe",
+        "stun negative"
       ]
     },
     {
@@ -146,11 +157,12 @@
       "tests": [
         {
           "file": "tests/unit/test_kit_captain.cpp",
-          "test": "KitCaptain.captain_eats_a_corpse_when_hurt"
+          "test": "KitCaptain.captain_eats_a_corpse_when_hurt",
+          "note": "ALREADY AT FULL HEALTH; NO CORPSE NEARBY; NO CORPSE IN RANGE with 0 MP; in reach ok, hp 65, stain dead"
         },
         {
           "parity": "orc_eat_corpse_scen99",
-          "fact": "EventKindAtLeast(notification,1)"
+          "fact": "EventKindAtLeast(notification,1) + WalkerHpRangeAtFinalTick (orc eats in reach)"
         }
       ],
       "missing_arms": []
@@ -179,7 +191,18 @@
       "tests": [
         {
           "file": "tests/unit/test_kit_captain.cpp",
-          "test": "KitCaptain.captain_eats_a_corpse_when_hurt"
+          "test": "KitCaptain.captain_eats_a_corpse_when_hurt",
+          "note": "hero: exp > 0"
+        },
+        {
+          "file": "tests/integration/test_family_orc.cpp",
+          "test": "FamilyOrc.r15_eating_a_corpse_heals_by_its_level_and_consumes_it",
+          "note": "hero: exp == 20"
+        },
+        {
+          "file": "tests/unit/test_kit_captain.cpp",
+          "test": "KitCaptain.promoted_orc_keeps_howl_and_eat_corpse",
+          "note": "guyless: eat ok, hp 65, ScopedHookFailureGuard 0; g_exp raises on a guyless walker, so a dropped has_guy guard fails this cast"
         }
       ],
       "missing_arms": []
@@ -208,7 +231,8 @@
       "tests": [
         {
           "file": "tests/unit/test_kit_captain.cpp",
-          "test": "KitCaptain.captain_eats_a_corpse_when_hurt"
+          "test": "KitCaptain.captain_eats_a_corpse_when_hurt",
+          "note": "195 + 15 -> 200 clamped; 50 + 15 -> 65 unclamped"
         }
       ],
       "missing_arms": []

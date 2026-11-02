@@ -114,6 +114,10 @@
         {
           "file": "tests/unit/test_kit_skeleton.cpp",
           "test": "KitSkeleton.dig_in_on_floor_one_stays_on_floor_one"
+        },
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.dig_in_hides_regens_and_pops_when_a_foe_steps_close"
         }
       ],
       "missing_arms": []
@@ -180,16 +184,15 @@
         }
       ],
       "setting": "new-specials",
-      "status": "executed-only",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_kit_skeleton.cpp",
           "test": "KitSkeleton.dig_in_sinks_four_ticks_then_hides_at_frame_27_without_tunnelling"
         }
       ],
-      "missing_arms": [],
-      "note": [
-        "(arms 1-2 asserted; the animation-taken-over arm is not)"
+      "missing_arms": [
+        "ani_type changed mid-sink (e.g. set ANI_ATTACK)"
       ]
     },
     {
@@ -217,6 +220,10 @@
         {
           "file": "tests/unit/test_kit_skeleton.cpp",
           "test": "KitSkeleton.a_body_possessed_mid_sink_stays_up"
+        },
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.dig_in_sinks_four_ticks_then_hides_at_frame_27_without_tunnelling"
         }
       ],
       "missing_arms": []
@@ -255,6 +262,10 @@
         {
           "file": "tests/unit/test_kit_skeleton.cpp",
           "test": "KitSkeleton.second_press_pops_up_free_and_costs_nothing"
+        },
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.dig_in_hides_regens_and_pops_when_a_foe_steps_close"
         }
       ],
       "missing_arms": []
@@ -279,14 +290,16 @@
         }
       ],
       "setting": "new-specials",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_kit_skeleton.cpp",
           "test": "KitSkeleton.dig_in_hides_regens_and_pops_when_a_foe_steps_close"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "regen pulse"
+      ]
     },
     {
       "id": "kit_skeleton.lua:197",
@@ -434,6 +447,10 @@
         {
           "file": "tests/unit/test_kit_skeleton.cpp",
           "test": "KitSkeleton.possessed_body_cannot_dig_in"
+        },
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.dig_in_sinks_four_ticks_then_hides_at_frame_27_without_tunnelling"
         }
       ],
       "missing_arms": []
@@ -463,6 +480,10 @@
         {
           "file": "tests/unit/test_kit_skeleton.cpp",
           "test": "KitSkeleton.possessed_body_cannot_dig_in"
+        },
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.dig_in_sinks_four_ticks_then_hides_at_frame_27_without_tunnelling"
         }
       ],
       "missing_arms": []
@@ -602,7 +623,7 @@
         }
       ],
       "setting": "new-specials",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_kit_skeleton.cpp",
@@ -613,7 +634,9 @@
           "test": "KitSkeleton.bone_wall_refuses_on_a_door"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        ">=1"
+      ]
     },
     {
       "id": "kit_skeleton.lua:370",
@@ -668,6 +691,10 @@
         {
           "file": "tests/unit/test_kit_skeleton.cpp",
           "test": "KitSkeleton.bone_storm_refuses_with_no_wall"
+        },
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.bone_storm_bursts_from_every_wall_only"
         }
       ],
       "missing_arms": []
@@ -728,6 +755,10 @@
         {
           "file": "tests/unit/test_kit_skeleton.cpp",
           "test": "KitSkeleton.other_specials_wait_for_the_dig"
+        },
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.bone_wall_stands_three_segments_blocks_foes_passes_allies_and_landings"
         }
       ],
       "missing_arms": []
@@ -819,6 +850,10 @@
         {
           "file": "tests/unit/test_kit_skeleton.cpp",
           "test": "KitSkeleton.a_ward_bought_again_at_once_keeps_its_own_clock"
+        },
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.warded_skeleton_stands_back_up_at_a_quarter"
         }
       ],
       "missing_arms": []
@@ -923,14 +958,16 @@
         }
       ],
       "setting": "new-specials",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_kit_skeleton.cpp",
           "test": "KitSkeleton.ward_fades_when_the_mana_runs_dry"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "pulse, mp<drain"
+      ]
     },
     {
       "id": "kit_skeleton.lua:521",
@@ -1098,7 +1135,7 @@
         }
       ],
       "setting": "new-specials",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_kit_skeleton.cpp",
@@ -1117,7 +1154,9 @@
           "test": "KitSkeleton.legion_leaves_half_its_kills_down"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "heads"
+      ]
     },
     {
       "id": "kit_skeleton.lua:676",
@@ -1189,17 +1228,18 @@
         }
       ],
       "setting": "new-specials",
-      "status": "executed-only",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_kit_skeleton.cpp",
           "test": "KitSkeleton.ai_reassemble_fires_when_hurt_and_legion_when_crowded"
+        },
+        {
+          "file": "tests/unit/test_bot_gates_kits.cpp",
+          "test": "GameplayFixesBots.skeleton_legion_counts_only_foes_that_can_rise"
         }
       ],
-      "missing_arms": [],
-      "note": [
-        "(count and window arms asserted; the undead-exclusion arm is not)"
-      ]
+      "missing_arms": []
     },
     {
       "id": "kit_skeleton.lua:649",
@@ -1226,6 +1266,10 @@
         {
           "file": "tests/unit/test_kit_skeleton.cpp",
           "test": "KitSkeleton.ai_off_answers_the_classic_gate"
+        },
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.ai_dig_in_fires_when_hurt_and_outnumbered"
         }
       ],
       "missing_arms": []
@@ -1297,9 +1341,16 @@
         }
       ],
       "setting": "new-specials",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": []
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.ai_dig_in_fires_when_hurt_and_outnumbered"
+        }
+      ],
+      "missing_arms": [
+        "ani TELE_IN or TELE_OUT"
+      ]
     },
     {
       "id": "kit_skeleton.lua:673",
@@ -1356,17 +1407,18 @@
         }
       ],
       "setting": "new-specials",
-      "status": "executed-only",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_kit_skeleton.cpp",
           "test": "KitSkeleton.ai_wall_fires_when_hurt_with_a_foe_close_and_storms_a_crowd"
+        },
+        {
+          "file": "tests/unit/test_bot_gates_kits.cpp",
+          "test": "GameplayFixesBots.skeleton_wall_rises_across_the_foes_line"
         }
       ],
-      "missing_arms": [],
-      "note": [
-        "(healthy / no-foe / true arms asserted; the foe-behind fan arm is not)"
-      ]
+      "missing_arms": []
     },
     {
       "id": "kit_skeleton.lua:706",

@@ -25,26 +25,31 @@
         }
       ],
       "setting": "both",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/integration/test_gameplay_fixes_elf.cpp",
-          "test": "GameplayFixesElf.a_volley_at_a_wall_spends_nothing_with_the_setting_on"
+          "test": "GameplayFixesElf.a_volley_at_a_wall_spends_nothing_with_the_setting_on",
+          "note": "on: COULD NOT FIRE, MP 600, rng/lists unchanged, 0 rocks; off: COULD NOT FIRE, 600+(refund-1)wc"
         },
         {
           "file": "tests/integration/test_gameplay_fixes_elf.cpp",
-          "test": "GameplayFixesElf.a_volley_at_the_map_edge_spends_nothing"
+          "test": "GameplayFixesElf.a_volley_at_the_map_edge_spends_nothing",
+          "note": "same at the map edge"
         },
         {
           "file": "tests/integration/test_gameplay_fixes_elf.cpp",
-          "test": "GameplayFixesElf.a_tree_crown_on_the_pad_lets_the_rocks_fly"
+          "test": "GameplayFixesElf.a_tree_crown_on_the_pad_lets_the_rocks_fly",
+          "note": "crown: true, 2 rocks, MP 590"
         },
         {
           "parity": "elf_rocks_blocked_scen99",
           "fact": "_fixes_scen99, elf_rocks_edge_pad_scen99 / _fixes_scen99"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "pad on wall/edge, setting on"
+      ]
     },
     {
       "id": "living-01-elf.lua:25",
@@ -75,7 +80,18 @@
       "tests": [
         {
           "file": "tests/integration/test_gameplay_fixes_elf.cpp",
-          "test": "GameplayFixesElf.a_blocked_volley_costs_one_swing"
+          "test": "GameplayFixesElf.a_blocked_volley_costs_one_swing",
+          "note": "slot 1, foe on pad: off 600+wc, on 600-wc, COULD NOT FIRE, 0 rocks"
+        },
+        {
+          "file": "tests/integration/test_gameplay_fixes_elf.cpp",
+          "test": "GameplayFixesElf.volleys_refund_exactly_the_rocks_fired",
+          "note": "slot 1 first fire ok: 2 rocks"
+        },
+        {
+          "parity": "elf_rocks_pair_scen99",
+          "fact": "",
+          "note": "WeaponSpeed 890-920: the spread-scaled pair"
         }
       ],
       "missing_arms": []
@@ -109,12 +125,18 @@
       "tests": [
         {
           "file": "tests/integration/test_gameplay_fixes_elf.cpp",
-          "test": "GameplayFixesElf.rocks_take_back_the_second_rock_that_never_flew"
+          "test": "GameplayFixesElf.rocks_take_back_the_second_rock_that_never_flew",
+          "note": "false, 1 rock, MP 0 off / -wc on"
+        },
+        {
+          "file": "tests/integration/test_gameplay_fixes_elf.cpp",
+          "test": "GameplayFixesElf.volleys_refund_exactly_the_rocks_fired",
+          "note": "slot 1 both fired: true, 2 rocks"
         },
         {
           "parity": "elf_rocks_pair_scen99",
           "fact": "",
-          "note": "two rocks  both connect"
+          "note": "two rocks  speed fact reads the spread"
         }
       ],
       "missing_arms": []
@@ -144,7 +166,12 @@
         {
           "file": "tests/integration/test_gameplay_fixes_elf.cpp",
           "test": "GameplayFixesElf.a_volley_at_a_wall_spends_nothing_with_the_setting_on",
-          "note": "iterates slots"
+          "note": "slots 2-4"
+        },
+        {
+          "file": "tests/integration/test_gameplay_fixes_elf.cpp",
+          "test": "GameplayFixesElf.a_volley_at_the_map_edge_spends_nothing",
+          "note": "slots 2-4"
         },
         {
           "parity": "elf_rocks_blocked_fixes_scen99",
@@ -177,11 +204,12 @@
       "tests": [
         {
           "file": "tests/integration/test_gameplay_fixes_elf.cpp",
-          "test": "GameplayFixesElf.volleys_refund_exactly_the_rocks_fired"
+          "test": "GameplayFixesElf.volleys_refund_exactly_the_rocks_fired",
+          "note": "slots 2-4: off price-(refund-rocks)wc, on exact price"
         },
         {
           "parity": "elf_volley_refund_scen99",
-          "fact": "elf_volley_refund_fixes_scen99"
+          "fact": "elf_volley_refund_fixes_scen99 (7 vs 6 sounds, 1 vs 0 rocks)"
         }
       ],
       "missing_arms": []
@@ -202,27 +230,11 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
-      "tests": [
-        {
-          "file": "tests/integration/test_walker_specials.cpp",
-          "test": "WalkerSpecials.elf_bouncing_rocks_drives_simulation",
-          "note": "/ elf_lots_of_rocks / elf_mega_rocks"
-        },
-        {
-          "file": "tests/integration/test_walker_specials.cpp",
-          "test": "WalkerSpecials.elf_rock_barrage_level4_deterministic_spread"
-        },
-        {
-          "parity": "elf_mega_rocks_volley_scen99",
-          "fact": ""
-        },
-        {
-          "parity": "weapon_rock_bounce_edge_scen99",
-          "fact": ""
-        }
-      ],
-      "missing_arms": []
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": [
+        "each release"
+      ]
     },
     {
       "id": "living-01-elf.lua:67",
@@ -249,15 +261,22 @@
         }
       ],
       "setting": "both",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/integration/test_gameplay_fixes_elf.cpp",
           "test": "GameplayFixesElf.a_blocked_volley_costs_one_swing",
-          "note": "i=1 for each slot"
+          "note": "i=1 each slot: off 0 rocks, full refund kept; on MP 600-wc"
+        },
+        {
+          "file": "tests/integration/test_gameplay_fixes_elf.cpp",
+          "test": "GameplayFixesElf.volleys_refund_exactly_the_rocks_fired",
+          "note": "all fire: true"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "i-th fire nil, on"
+      ]
     },
     {
       "id": "living-01-elf.lua:97",
@@ -288,22 +307,27 @@
         }
       ],
       "setting": "fixes-on",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_bot_gates_fighters.cpp",
-          "test": "GameplayFixesBots.elf_rocks_want_the_nearest_foe_faced_inside_the_flight"
+          "test": "GameplayFixesBots.elf_rocks_want_the_nearest_foe_faced_inside_the_flight",
+          "note": "56 px true, 57 false, aimed up false, diagonal 35 true / 36 false"
         },
         {
           "file": "tests/unit/test_bot_gates_fighters.cpp",
-          "test": "GameplayFixesBots.elf_bouncing_rocks_reach_half_again"
+          "test": "GameplayFixesBots.elf_bouncing_rocks_reach_half_again",
+          "note": "84/85 px, 55/56 diagonal"
         },
         {
           "parity": "elf_bot_rocks_far_fixes_scen99",
-          "fact": ""
+          "fact": "",
+          "note": "beyond flight: no rock"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "no living foe"
+      ]
     },
     {
       "id": "living-01-elf.lua:101",
@@ -329,7 +353,13 @@
       "tests": [
         {
           "file": "tests/unit/test_bot_gates_fighters.cpp",
-          "test": "GameplayFixesBots.elf_lots_of_rocks_wants_two_foes_in_flight"
+          "test": "GameplayFixesBots.elf_rocks_want_the_nearest_foe_faced_inside_the_flight",
+          "note": "count 1: true once faced in flight"
+        },
+        {
+          "file": "tests/unit/test_bot_gates_fighters.cpp",
+          "test": "GameplayFixesBots.elf_lots_of_rocks_wants_two_foes_in_flight",
+          "note": "count 2: one foe false, two true"
         }
       ],
       "missing_arms": []
@@ -359,11 +389,13 @@
       "tests": [
         {
           "file": "tests/unit/test_bot_gates_fighters.cpp",
-          "test": "GameplayFixesBots.elf_lots_of_rocks_wants_two_foes_in_flight"
+          "test": "GameplayFixesBots.elf_lots_of_rocks_wants_two_foes_in_flight",
+          "note": "two true, second 1 px out false"
         },
         {
           "file": "tests/unit/test_bot_gates_fighters.cpp",
-          "test": "GameplayFixesBots.elf_mega_rocks_wants_two_foes_in_flight"
+          "test": "GameplayFixesBots.elf_mega_rocks_wants_two_foes_in_flight",
+          "note": "same, 148 px"
         }
       ],
       "missing_arms": []
@@ -388,20 +420,22 @@
         }
       ],
       "setting": "both",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_bot_gates_fighters.cpp",
           "test": "GameplayFixesBots.elf_rocks_want_the_nearest_foe_faced_inside_the_flight",
-          "note": "and the other elf_* gate tests in that file (each asserts the setting-off twin true)"
+          "note": "and the other elf_* gate tests (off: true with foes out of flight / unfaced; on: pad and volley decide)"
         },
         {
           "parity": "elf_bot_rocks_far_scen99",
           "fact": "",
-          "note": "classic twin"
+          "note": "classic twin: 2 rocks at an unreachable foe"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "setting off"
+      ]
     },
     {
       "id": "living-01-elf.lua:122",
@@ -423,9 +457,22 @@
         }
       ],
       "setting": "fixes-on",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": []
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_bot_gates_fighters.cpp",
+          "test": "GameplayFixesBots.elf_bouncing_rocks_reach_half_again",
+          "note": "slot 2 flight differs from slot 1"
+        },
+        {
+          "file": "tests/unit/test_bot_gates_fighters.cpp",
+          "test": "GameplayFixesBots.elf_mega_rocks_wants_two_foes_in_flight",
+          "note": "slot 4 flight differs from slot 3"
+        }
+      ],
+      "missing_arms": [
+        "slot outside 1..4"
+      ]
     },
     {
       "id": "living-01-elf.lua:123",
@@ -455,17 +502,31 @@
       "tests": [
         {
           "file": "tests/unit/test_bot_gates_fighters.cpp",
-          "test": "GameplayFixesBots.elf_rocks_refuse_a_pad_on_a_wall"
+          "test": "GameplayFixesBots.elf_rocks_refuse_a_pad_on_a_wall",
+          "note": "false"
+        },
+        {
+          "file": "tests/unit/test_bot_gates_fighters.cpp",
+          "test": "GameplayFixesBots.elf_rocks_refuse_a_pad_off_the_map",
+          "note": "false; 1 px lower true"
+        },
+        {
+          "file": "tests/unit/test_bot_gates_fighters.cpp",
+          "test": "GameplayFixesBots.elf_rocks_refuse_a_foe_on_the_pad",
+          "note": "false; off the pad true"
+        },
+        {
+          "file": "tests/unit/test_bot_gates_fighters.cpp",
+          "test": "GameplayFixesBots.elf_rocks_an_ally_on_the_pad_is_not_in_the_way",
+          "note": "ally true; same body as foe false"
         },
         {
           "parity": "elf_bot_rocks_blocked_fixes_scen99",
-          "fact": ""
+          "fact": "",
+          "note": "no rock  tower untouched"
         }
       ],
-      "missing_arms": [],
-      "note": [
-        "tests/unit/test_bot_gates_fighters.cpp: elf_rocks_refuse_a_foe_on_the_pad / elf_rocks_an_ally_on_the_pad_is_not_in_the_way / elf_rocks_refuse_a_pad_off_the_map"
-      ]
+      "missing_arms": []
     }
   ],
   "other": [

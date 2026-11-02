@@ -27,14 +27,15 @@
       ],
       "setting": "none",
       "status": "executed-only",
-      "tests": [
-        {
-          "file": "tests/unit/test_bot_gates_fighters.cpp",
-          "test": "GameplayFixesBots.soldier_charge_wants_a_foe_in_the_rush",
-          "note": "classic answer inside the window; the acquisition side effect is not asserted"
-        }
+      "tests": [],
+      "missing_arms": [
+        "walker has a foe",
+        "no foe, a foe is findable",
+        "no foe and none findable"
       ],
-      "missing_arms": []
+      "note": [
+        "No test asserts the foe after a gate call, and no test calls the classic soldier gate with nobody findable."
+      ]
     },
     {
       "id": "ai.lua:36",
@@ -60,20 +61,26 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_bot_gates_fighters.cpp",
           "test": "GameplayFixesBots.soldier_charge_wants_a_foe_in_the_rush",
-          "note": "19 px false, 76 px false, inside true"
+          "note": "gate(soldier,1,0): 40, 50, 70 px true; 19 and 76 px false"
         },
         {
           "file": "tests/unit/test_bot_gates_fighters.cpp",
           "test": "GameplayFixesBots.soldier_whirlwind_wants_two_targets_inside_the_spin",
-          "note": "14 px false"
+          "note": "30, 44, 47 px classic true"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "distance <= near (incl. exactly 20)",
+        "distance >= far (incl. exactly 75)"
+      ],
+      "note": [
+        "Both closed edges are named in the arms (exactly 20 and exactly 75) and no test stands a foe at 20 or 75: a mutation to distance <= far or distance >= near survives (19/76 are one past the edge)."
+      ]
     }
   ],
   "other": []

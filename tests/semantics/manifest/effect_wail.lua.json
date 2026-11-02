@@ -21,7 +21,7 @@
         }
       ],
       "setting": "new-specials",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_kit_ghost.cpp",
@@ -32,7 +32,9 @@
           "test": "KitGhost.wail_hops_foe_to_foe_and_frights_each_once"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "spawned"
+      ]
     },
     {
       "id": "effect_wail.lua:47",
@@ -104,12 +106,12 @@
         {
           "when": "monster",
           "observable": "forced fright of scare_duration(L)/4 directed sign(foe-ghost); no draw",
-          "asserted": true
+          "asserted": false
         },
         {
           "when": "hero",
           "observable": "rand0(con) subtracted",
-          "asserted": true
+          "asserted": false
         },
         {
           "when": "fright <= 0",
@@ -119,26 +121,14 @@
       ],
       "setting": "new-specials",
       "status": "executed-only",
-      "tests": [
-        {
-          "file": "tests/unit/test_kit_ghost.cpp",
-          "test": "KitGhost.wail_hops_foe_to_foe_and_frights_each_once",
-          "note": "monster arm: forced fright commandcount 62, skip_exit 3"
-        },
-        {
-          "file": "tests/unit/test_kit_ghost.cpp",
-          "test": "KitGhost.wail_bolt_homes_forks_only_where_it_may_and_fades",
-          "note": "hero arm: hero frightened and rng_.state_ advanced by the constitution roll"
-        },
-        {
-          "file": "tests/unit/test_kit_ghost.cpp",
-          "test": "KitGhost.wail_spares_a_fearless_foe",
-          "note": "fearless path, not this arm"
-        }
+      "tests": [],
+      "missing_arms": [
+        "monster",
+        "hero",
+        "fright <= 0"
       ],
-      "missing_arms": [],
       "note": [
-        "Monster and hero (constitution draw) arms asserted; the full-resist arm (fright <= 0: no command, skip_exit still +3) is unasserted. wail_spares_a_fearless_foe asserts no-command + skip_exit 3 but through KIT_FEARLESS, not through fright <= 0."
+        "Re-audited: the monster arm's flee direction sign(foe-ghost) and its no-draw claim are not asserted (only commandcount 62 and skip_exit 3); the hero arm asserts only that rng_.state_ moved, not that the roll shortens the fright; the full-resist arm is unasserted (wail_spares_a_fearless_foe goes through KIT_FEARLESS, not fright <= 0)."
       ]
     },
     {
@@ -161,21 +151,14 @@
         }
       ],
       "setting": "new-specials",
-      "status": "asserted",
-      "tests": [
-        {
-          "file": "tests/unit/test_kit_ghost.cpp",
-          "test": "KitGhost.wail_hops_foe_to_foe_and_frights_each_once"
-        },
-        {
-          "file": "tests/unit/test_kit_ghost.cpp",
-          "test": "KitGhost.wail_bolt_homes_forks_only_where_it_may_and_fades",
-          "note": "hops 0 bolt: 'no hops left: no fork', 2 bolts total"
-        }
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": [
+        "hops 0",
+        "hops >= 1"
       ],
-      "missing_arms": [],
       "note": [
-        "The no-fork outcome of hops 0 is asserted; that it makes no rand0 draw is not pinned (rng_.state_ not compared)."
+        "The no-fork outcome of hops 0 is asserted; neither arm's RNG claim (no draw at hops 0, one budget draw at hops >= 1) is pinned (rng_.state_ never compared)."
       ]
     },
     {
@@ -203,14 +186,21 @@
         }
       ],
       "setting": "new-specials",
-      "status": "executed-only",
+      "status": "partial",
       "tests": [
+        {
+          "file": "tests/unit/test_kit_ghost.cpp",
+          "test": "KitGhost.wail_forks_within_reach_of_the_struck_foe"
+        },
         {
           "file": "tests/unit/test_kit_ghost.cpp",
           "test": "KitGhost.wail_hops_foe_to_foe_and_frights_each_once"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "ineligible",
+        "budget spent"
+      ]
     },
     {
       "id": "effect_wail.lua:115",
@@ -239,14 +229,13 @@
         }
       ],
       "setting": "new-specials",
-      "status": "asserted",
-      "tests": [
-        {
-          "file": "tests/unit/test_kit_ghost.cpp",
-          "test": "KitGhost.wail_bolt_homes_forks_only_where_it_may_and_fades"
-        }
-      ],
-      "missing_arms": []
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": [
+        "target right/below",
+        "target left/above",
+        "aligned"
+      ]
     },
     {
       "id": "effect_wail.lua:139",
@@ -273,14 +262,16 @@
         }
       ],
       "setting": "new-specials",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_kit_ghost.cpp",
           "test": "KitGhost.wail_bolt_homes_forks_only_where_it_may_and_fades"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "lineofsight < 1"
+      ]
     },
     {
       "id": "effect_wail.lua:147",

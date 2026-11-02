@@ -31,18 +31,21 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_campaign_hooks.cpp",
           "test": "CampaignHooksTest.bad_vars_are_load_errors",
-          "note": "uppercase, 33 chars, non-string"
+          "note": "uppercase 'BadName' refused; 34-char name refused"
+        },
+        {
+          "file": "tests/unit/test_campaign_hooks.cpp",
+          "test": "CampaignHooksTest.registration_happy_path_serves_picker_and_vars",
+          "note": "valid arm: 'delve_counted', 'watch_paid' accepted and served"
         }
       ],
-      "missing_arms": [],
-      "note": [
-        "tests/unit/test_campaign_state_providers.cpp: state_set('BAD KEY') refused",
-        "UNASSERTED: empty-name arm (name.empty(), line 37); the valid arm is implied by the many campaign tests that set vars"
+      "missing_arms": [
+        "empty"
       ]
     },
     {
@@ -66,11 +69,14 @@
       ],
       "setting": "none",
       "status": "asserted",
-      "tests": [],
-      "missing_arms": [],
-      "note": [
-        "tests/unit/test_campaign_hooks.cpp: assign chip dispatch test near line 1171-1192 (EXPECT_TRUE/EXPECT_FALSE campaign_assign_set, then false after clear)"
-      ]
+      "tests": [
+        {
+          "file": "tests/unit/test_campaign_hooks.cpp",
+          "test": "CampaignHooksTest.assign_set_forwards_to_the_provider_and_refuses_without_one",
+          "note": "provider: true for (3,2), false for (4,7); after clear: false"
+        }
+      ],
+      "missing_arms": []
     }
   ],
   "other": []

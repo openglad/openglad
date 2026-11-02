@@ -26,7 +26,7 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/integration/test_weap_behavior.cpp",
@@ -37,7 +37,9 @@
           "test": "WeapBehavior.weapon_animate_clamps_out_of_range_facing_and_cycle_to_row_zero"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "mid-row"
+      ]
     },
     {
       "id": "weapon_animate.lua:77",
@@ -69,19 +71,22 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/integration/test_weap_behavior.cpp",
-          "test": "WeapBehavior.weapon_family_animate_callbacks_and_sprinkle_hit_paths",
-          "note": "no-owner arm and centre arm"
+          "test": "WeapBehavior.weapon_family_animate_callbacks_and_sprinkle_hit_paths"
         },
         {
           "parity": "weapon_circle_protection_follow_scen99",
-          "fact": "WeaponSpeed(FAMILY_CIRCLE_PROTECTION) floor (ring tracks moving owner)"
+          "fact": "",
+          "note": "WeaponSpeed(FAMILY_CIRCLE_PROTECTION  400  700) floor: ring tracks the moving owner"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "owner dead",
+        "ring hp <= 0"
+      ]
     },
     {
       "id": "weapon_animate.lua:90",
@@ -108,7 +113,7 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/integration/test_weap_behavior.cpp",
@@ -119,7 +124,9 @@
           "test": "WeapBehavior.weapon_animate_clamps_out_of_range_facing_and_cycle_to_row_zero"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "ani_type 0..2 mid-row"
+      ]
     },
     {
       "id": "weapon_animate.lua:99",
@@ -141,20 +148,16 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/integration/test_weap_behavior.cpp",
-          "test": "WeapBehavior.weapon_family_animate_callbacks_and_sprinkle_hit_paths",
-          "note": "lifetime 0 -> dead"
-        },
-        {
-          "file": "tests/integration/test_weap_behavior.cpp",
-          "test": "WeapBehavior.weapon_animate_clamps_out_of_range_facing_and_cycle_to_row_zero",
-          "note": "decrement"
+          "test": "WeapBehavior.weapon_family_animate_callbacks_and_sprinkle_hit_paths"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "lifetime >= 1 before the animate"
+      ]
     },
     {
       "id": "weapon_animate.lua:111",
@@ -180,8 +183,7 @@
       "tests": [
         {
           "file": "tests/integration/test_weap_behavior.cpp",
-          "test": "WeapBehavior.weapon_family_animate_callbacks_and_sprinkle_hit_paths",
-          "note": "treasure target unchanged"
+          "test": "WeapBehavior.weapon_family_animate_callbacks_and_sprinkle_hit_paths"
         }
       ],
       "missing_arms": []
@@ -206,20 +208,16 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/integration/test_weap_behavior.cpp",
-          "test": "WeapBehavior.weapon_family_animate_callbacks_and_sprinkle_hit_paths",
-          "note": "no-guy arm: rng state 1, level 6 -> 42"
-        },
-        {
-          "file": "tests/unit/test_combat_softcap.cpp",
-          "test": "CombatSoftcap.sprinkle_roll_mapping",
-          "note": "curve only"
+          "test": "WeapBehavior.weapon_family_animate_callbacks_and_sprinkle_hit_paths"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "target has a guy"
+      ]
     },
     {
       "id": "weapon_animate.lua:120",
@@ -249,8 +247,7 @@
         },
         {
           "file": "tests/unit/test_kit_faerie.cpp",
-          "test": "KitFaerie.glimmer_fires_eight_sprinkles_and_prepays",
-          "note": "mark set"
+          "test": "KitFaerie.glimmer_fires_eight_sprinkles_and_prepays"
         }
       ],
       "missing_arms": []
@@ -258,13 +255,11 @@
     {
       "id": "weapon_animate.lua:128",
       "lines": [
-        124,
         125,
-        127,
         128
       ],
       "function": "sprinkle_on_hit_target",
-      "anchor": "local refresh_gated = owner.level >= SPRINKLE_REFRESH_OWNER_LEVEL",
+      "anchor": "and target:s_frozen_delay() > SPRINKLE_REFRESH_FLOOR",
       "condition": "not refresh_gated (owner.level >= 21 and target frozen > 10) and not thaw_immune (raw frozen_delay < 0)",
       "semantic": "A sprinkle hit re-sets the victim's freeze to the new roll, except (a) a level-21+ faerie never replaces a freeze still above 10 ticks (so it cannot chain a victim forever), and (b) nobody can be re-frozen during the 12-tick thaw-immunity window after a controlled hero thaws. The RNG roll is drawn on every living hit regardless.",
       "arms": [
@@ -286,22 +281,20 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_silliness_battery.cpp",
-          "test": "SillinessBattery.sprinkle_player_victim_immunity_gives_actable_windows"
+          "test": "SillinessBattery.sprinkle_refresh_gate_level_boundary_and_immunity"
         },
         {
           "file": "tests/unit/test_silliness_battery.cpp",
           "test": "SillinessBattery.sprinkle_ai_victim_gate_window_and_escape"
-        },
-        {
-          "file": "tests/unit/test_silliness_battery.cpp",
-          "test": "SillinessBattery.sprinkle_player_victim_sub_gate_cadence_residual"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "owner level >= 21 and frozen_delay <= 10"
+      ]
     }
   ],
   "other": [

@@ -58,15 +58,16 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/integration/test_weap_behavior.cpp",
-          "test": "WeapBehavior.weap_death_boulder_exploding",
-          "note": "ownerless boulder executes the arm but asserts neither owner nor level"
+          "test": "WeapBehavior.weap_death_fire_arrow_exploding"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "owner nil or dead"
+      ]
     }
   ],
   "other": [

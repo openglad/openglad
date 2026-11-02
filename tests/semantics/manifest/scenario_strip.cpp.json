@@ -37,19 +37,22 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_scenario_strip.cpp",
-          "test": "ScenarioStripClassic.removes_authored_livings_and_generators"
+          "test": "ScenarioStripClassic.removes_authored_livings_and_generators",
+          "note": "authored removed, count 4; roster hero kept"
         },
         {
           "file": "tests/unit/test_scenario_strip.cpp",
-          "test": "ScenarioStripClassic.protected_npcs_survive"
+          "test": "ScenarioStripClassic.protected_npcs_survive",
+          "note": "protected living and generator kept"
         },
         {
           "file": "tests/unit/test_scenario_strip.cpp",
-          "test": "ScenarioStripClassic.no_troops_removes_nothing"
+          "test": "ScenarioStripClassic.no_troops_removes_nothing",
+          "note": "returns 0, living count unchanged"
         },
         {
           "file": "tests/unit/test_scenario_strip.cpp",
@@ -60,7 +63,9 @@
           "test": "ScenarioStripClassic.scripted_maps_are_left_to_their_mode_script"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "non-living order (weapon/treasure/fx)"
+      ]
     },
     {
       "id": "scenario_strip.cpp:40",
@@ -94,11 +99,13 @@
       "tests": [
         {
           "file": "tests/unit/test_scenario_strip.cpp",
-          "test": "ScenarioStripClassic.cross_references_into_removed_walkers_are_cleared"
+          "test": "ScenarioStripClassic.cross_references_into_removed_walkers_are_cleared",
+          "note": "foe/leader/owner/collide_ob/controller all nullptr"
         },
         {
           "file": "tests/unit/test_scenario_strip.cpp",
-          "test": "ScenarioStripClassic.strip_clears_references_held_by_effects_weapons_and_corpses"
+          "test": "ScenarioStripClassic.strip_clears_references_held_by_effects_weapons_and_corpses",
+          "note": "fx/weapon/corpse refs cleared; kept_fx->owner()==survivor"
         }
       ],
       "missing_arms": []
@@ -120,14 +127,11 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
-      "tests": [
-        {
-          "file": "tests/unit/test_scenario_strip.cpp",
-          "test": "ScenarioStripClassic.removal_leaves_no_corpse_for_classic_respawn"
-        }
-      ],
-      "missing_arms": []
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": [
+        "strip"
+      ]
     }
   ],
   "other": []

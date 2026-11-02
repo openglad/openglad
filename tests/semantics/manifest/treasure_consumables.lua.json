@@ -21,25 +21,24 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "parity": "treasure_magic_potion_pickup_scen99",
-          "fact": "EventKindAtLeast(notification,1)"
+          "fact": "EventKindAtLeast(notification,1) (seated eater)"
         },
         {
           "parity": "treasure_invis_potion_pickup_scen99",
-          "fact": "EventKindAtLeast(notification,1)"
+          "fact": "EventKindAtLeast(notification,1) (seated eater)"
         },
         {
           "file": "tests/integration/test_treasure_eat.cpp",
           "test": "TreasureEat.magic_potion",
-          "note": "potion consumed"
+          "note": "seated eater: potion dead"
         }
       ],
-      "missing_arms": [],
-      "note": [
-        "(bot-silent arm: no test asserts zero notifications)"
+      "missing_arms": [
+        "bot eater"
       ]
     },
     {
@@ -66,15 +65,21 @@
       "tests": [
         {
           "parity": "treasure_drumstick_fullhp_noconsume_scen99",
-          "fact": "WalkerOfTeamAlive"
+          "fact": "WalkerOfTeamAlive + EventKindExactly(play_sound,0) (full hp: alive, no SOUND_EAT)"
         },
         {
           "file": "tests/integration/test_treasure_eat.cpp",
-          "test": "TreasureEat.drumstick_full_hp"
+          "test": "TreasureEat.drumstick_full_hp",
+          "note": "hp unchanged, drumstick not dead"
+        },
+        {
+          "file": "tests/integration/test_treasure_eat.cpp",
+          "test": "TreasureEat.drumstick",
+          "note": "wounded: hp in the base + rand0(base) band 60..69"
         },
         {
           "parity": "treasure_drumstick_pickup_scen99",
-          "fact": "WalkerHpRangeAtFinalTick"
+          "fact": "WalkerHpRangeAtFinalTick (wounded: healed band)"
         }
       ],
       "missing_arms": []
@@ -99,15 +104,17 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/integration/test_treasure_eat.cpp",
           "test": "TreasureEat.drumstick",
-          "note": "asserts a 60..69 band only"
+          "note": "heal within wound: 50/100 + 10..19 -> 60..69, the clamp never fires"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "heal exceeds wound"
+      ]
     },
     {
       "id": "treasure_consumables.lua:38",
@@ -130,13 +137,11 @@
       ],
       "setting": "none",
       "status": "executed-only",
-      "tests": [
-        {
-          "parity": "treasure_magic_potion_overfill_scen99",
-          "fact": "WalkerPositionMoved (below-max arm only)"
-        }
-      ],
-      "missing_arms": []
+      "tests": [],
+      "missing_arms": [
+        "below max",
+        "already above max"
+      ]
     },
     {
       "id": "treasure_consumables.lua:50",
@@ -162,15 +167,17 @@
       "tests": [
         {
           "parity": "treasure_flight_potion_flier_noconsume_scen99",
-          "fact": "WalkerOfTeamAlive"
+          "fact": "WalkerOfTeamAlive + EventKindExactly(notification,0) (flyer)"
         },
         {
           "file": "tests/unit/test_pack_lua_paths.cpp",
-          "test": "PackLuaTreasure.a_potion_that_cannot_help_its_eater_is_left_untouched"
+          "test": "PackLuaTreasure.a_potion_that_cannot_help_its_eater_is_left_untouched",
+          "note": "flyer: flight_left 0, potion alive"
         },
         {
           "file": "tests/integration/test_treasure_eat.cpp",
-          "test": "TreasureEat.flight_potion"
+          "test": "TreasureEat.flight_potion",
+          "note": "walker: flight_left > 0, potion dead; the exact d*L amount is not pinned"
         }
       ],
       "missing_arms": []
@@ -199,11 +206,13 @@
       "tests": [
         {
           "file": "tests/unit/test_pack_lua_paths.cpp",
-          "test": "PackLuaTreasure.a_potion_that_cannot_help_its_eater_is_left_untouched"
+          "test": "PackLuaTreasure.a_potion_that_cannot_help_its_eater_is_left_untouched",
+          "note": "invincible: invulnerable_left 0, potion alive"
         },
         {
           "file": "tests/integration/test_treasure_eat.cpp",
-          "test": "TreasureEat.invulnerable_potion"
+          "test": "TreasureEat.invulnerable_potion",
+          "note": "other: invulnerable_left > 0, potion dead"
         }
       ],
       "missing_arms": []

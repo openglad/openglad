@@ -26,7 +26,7 @@
         }
       ],
       "setting": "new-specials",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_kit_ghost.cpp",
@@ -37,7 +37,9 @@
           "test": "KitGhost.a_full_world_refuses_the_casts_that_need_an_entity"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "foe in radius"
+      ]
     },
     {
       "id": "kit_ghost.lua:52",
@@ -204,6 +206,10 @@
           "file": "tests/unit/test_kit_ghost.cpp",
           "test": "KitGhost.empty_siphon_still_spends",
           "note": "empty touch: EXPECT_FLOAT_EQ(0.0f, ghost->busy()); resisted touch: busy == fire_frequency"
+        },
+        {
+          "file": "tests/unit/test_kit_ghost.cpp",
+          "test": "KitGhost.phase_doubles_speed_blocks_attacks_and_expires_clean"
         }
       ],
       "missing_arms": []
@@ -256,6 +262,10 @@
         {
           "file": "tests/unit/test_gameplay_fixes_bots.cpp",
           "test": "GameplayFixesBots.a_busy_bot_never_rolls_a_busy_cast_with_the_setting_on"
+        },
+        {
+          "file": "tests/unit/test_kit_ghost.cpp",
+          "test": "KitGhost.ai_off_answers_the_classic_gate"
         }
       ],
       "missing_arms": []
@@ -380,7 +390,7 @@
         }
       ],
       "setting": "new-specials",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_kit_ghost.cpp",
@@ -395,7 +405,9 @@
           "test": "KitGhost.possess_reads_a_heros_constitution_and_passes_engine_refusals"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "taken"
+      ]
     },
     {
       "id": "kit_ghost.lua:276",
@@ -441,6 +453,10 @@
         {
           "file": "tests/unit/test_kit_ghost.cpp",
           "test": "KitGhost.bot_ghost_possesses_an_adjacent_bot_foe_only"
+        },
+        {
+          "file": "tests/unit/test_kit_ghost.cpp",
+          "test": "KitGhost.ai_off_answers_the_classic_gate"
         }
       ],
       "missing_arms": []

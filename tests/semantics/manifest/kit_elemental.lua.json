@@ -21,7 +21,7 @@
         }
       ],
       "setting": "new-specials",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_kit_elemental.cpp",
@@ -32,7 +32,9 @@
           "test": "KitElemental.second_press_ends_it_free_after_the_latch"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "not burning"
+      ]
     },
     {
       "id": "kit_elemental.lua:66",
@@ -64,10 +66,6 @@
         {
           "file": "tests/unit/test_kit_elemental.cpp",
           "test": "KitElemental.immolate_drains_two_per_tick_burns_contact_melee_most_and_lays_embers"
-        },
-        {
-          "file": "tests/unit/test_kit_elemental.cpp",
-          "test": "KitElemental.every_core_living_box_fits_the_burn_search"
         }
       ],
       "missing_arms": []
@@ -112,9 +110,15 @@
         {
           "file": "tests/unit/test_kit_elemental.cpp",
           "test": "KitElemental.embers_burn_crossers_then_die"
+        },
+        {
+          "file": "tests/unit/test_kit_elemental.cpp",
+          "test": "KitElemental.immolate_drains_two_per_tick_burns_contact_melee_most_and_lays_embers"
         }
       ],
-      "missing_arms": [],
+      "missing_arms": [
+        "own ember on spot but other floor"
+      ],
       "note": [
         "unasserted: own ember on the spot but on another floor -> a new ember"
       ]
@@ -171,6 +175,10 @@
         {
           "file": "tests/unit/test_kit_elemental.cpp",
           "test": "KitElemental.dying_while_immolating_still_fires_the_parting_starburst"
+        },
+        {
+          "file": "tests/unit/test_kit_elemental.cpp",
+          "test": "KitElemental.immolate_drains_two_per_tick_burns_contact_melee_most_and_lays_embers"
         }
       ],
       "missing_arms": []
@@ -201,7 +209,7 @@
         }
       ],
       "setting": "new-specials",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_kit_elemental.cpp",
@@ -212,7 +220,9 @@
           "test": "KitElemental.meteor_rain_finds_the_nearest_foe_and_stops_with_its_caster"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "lifetime % 6 == 0"
+      ]
     },
     {
       "id": "kit_elemental.lua:197",
@@ -241,6 +251,14 @@
         {
           "file": "tests/unit/test_kit_elemental.cpp",
           "test": "KitElemental.a_burning_elemental_casts_nothing_else_for_free"
+        },
+        {
+          "file": "tests/unit/test_kit_elemental.cpp",
+          "test": "KitElemental.meteor_rain_strikes_the_target_area_every_six_ticks"
+        },
+        {
+          "file": "tests/unit/test_kit_elemental.cpp",
+          "test": "KitElemental.rekindle_heals_and_refuses_at_full"
         }
       ],
       "missing_arms": []
@@ -275,6 +293,10 @@
         {
           "file": "tests/unit/test_kit_elemental.cpp",
           "test": "KitElemental.second_press_ends_it_free_after_the_latch"
+        },
+        {
+          "file": "tests/unit/test_kit_elemental.cpp",
+          "test": "KitElemental.immolate_drains_two_per_tick_burns_contact_melee_most_and_lays_embers"
         }
       ],
       "missing_arms": []
@@ -349,6 +371,10 @@
         {
           "file": "tests/unit/test_kit_elemental.cpp",
           "test": "KitElemental.meteor_rain_passes_over_a_dead_foe"
+        },
+        {
+          "file": "tests/unit/test_kit_elemental.cpp",
+          "test": "KitElemental.meteor_rain_strikes_the_target_area_every_six_ticks"
         }
       ],
       "missing_arms": []
@@ -373,14 +399,16 @@
         }
       ],
       "setting": "new-specials",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_kit_elemental.cpp",
           "test": "KitElemental.rekindle_heals_and_refuses_at_full"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "hurt"
+      ]
     },
     {
       "id": "kit_elemental.lua:306",
@@ -489,6 +517,10 @@
         {
           "file": "tests/unit/test_bot_gates_kits.cpp",
           "test": "GameplayFixesBots.elemental_immolate_lights_at_blows_and_quenches_alone"
+        },
+        {
+          "file": "tests/unit/test_kit_elemental.cpp",
+          "test": "KitElemental.ai_off_answers_the_classic_gate"
         }
       ],
       "missing_arms": []
@@ -563,9 +595,17 @@
         {
           "file": "tests/unit/test_kit_elemental.cpp",
           "test": "KitElemental.ai_meteor_fires_with_the_ally_clear"
+        },
+        {
+          "file": "tests/unit/test_kit_elemental.cpp",
+          "test": "KitElemental.ai_off_answers_the_classic_gate"
         }
       ],
-      "missing_arms": [],
+      "missing_arms": [
+        "a friendly generator (team-0 FAMILY_TOWER1 tent) with top-left inside the 71 px box of the target, two foes clustered",
+        "one living foe plus an ENEMY tent within 60 of the target",
+        "a living ally inside the box but on another floor"
+      ],
       "note": [
         "unasserted: friendly tent inside the strike box does not hold the rain",
         "unasserted: enemy tent counted toward the cluster",
@@ -616,6 +656,10 @@
         {
           "file": "tests/unit/test_bot_gates_kits.cpp",
           "test": "GameplayFixesBots.elemental_rekindle_is_not_forced_on_a_pool_that_cannot_pay_it"
+        },
+        {
+          "file": "tests/unit/test_kit_elemental.cpp",
+          "test": "KitElemental.ai_off_answers_the_classic_gate"
         }
       ],
       "missing_arms": []

@@ -2239,7 +2239,6 @@
       "id": "stats.cpp:1253",
       "lines": [
         1235,
-        1238,
         1253,
         1256,
         1263
@@ -2325,51 +2324,6 @@
       "missing_arms": [
         "foe and rng(300)==0"
       ]
-    },
-    {
-      "id": "stats.cpp:1387",
-      "lines": [
-        1313,
-        1315,
-        1387,
-        1395
-      ],
-      "function": "statistics::walk_to_foe",
-      "anchor": "const bool flyer = multifloor &&",
-      "condition": "flyer = multifloor && (BIT_FLYING || flight_left); cross_floor = multifloor && !flyer && foe floor != mine; else if (!flyer || foe->floor() == floor()) { find_path_to_foe(); if (cross_floor && path.empty()) path_toward_stair(foe floor); }",
-      "semantic": "A far (>= 100 px) foe on an uncrowded map is reached by A*; a ground walker that cannot path to a foe on another floor routes to the nearest stair toward it; a flyer never paths to a foe on another floor (it cannot change floors) and instead shadows the foe's 2D position from its own floor.",
-      "arms": [
-        {
-          "when": "same floor, far foe",
-          "observable": "path_to_foe non-empty toward foe"
-        },
-        {
-          "when": "ground walker, cross-floor, foe cell unreachable",
-          "observable": "path ends at a stair toward foe's floor"
-        },
-        {
-          "when": "flyer, cross-floor",
-          "observable": "no path; fallback walk shadows foe x/y; never parks on a stair"
-        }
-      ],
-      "setting": "none",
-      "status": "asserted",
-      "tests": [
-        {
-          "file": "tests/unit/test_zaxis.cpp",
-          "test": "ZAxis.flyer_with_cross_floor_foe_shadows_it_and_never_parks_on_stair"
-        },
-        {
-          "file": "tests/unit/test_zaxis.cpp",
-          "test": "ZAxis.cross_floor_ai_MOVING_foe_air_unreachable_still_climbs_toward_stair"
-        },
-        {
-          "file": "tests/integration/test_stats_more_paths.cpp",
-          "test": "StatsMorePaths.stats_walk_to_foe_short_circuit_and_path_branches",
-          "note": "same-floor A*"
-        }
-      ],
-      "missing_arms": []
     },
     {
       "id": "stats.cpp:1330",
@@ -2489,6 +2443,49 @@
         {
           "parity": "walk_to_foe_adopts_near_foe_scen99",
           "fact": "its facts (canary on this line)"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "stats.cpp:1387",
+      "lines": [
+        1387,
+        1395
+      ],
+      "function": "statistics::walk_to_foe",
+      "anchor": "else if (!flyer || foe->floor() == controller_->floor())",
+      "condition": "flyer = multifloor && (BIT_FLYING || flight_left); cross_floor = multifloor && !flyer && foe floor != mine; else if (!flyer || foe->floor() == floor()) { find_path_to_foe(); if (cross_floor && path.empty()) path_toward_stair(foe floor); }",
+      "semantic": "A far (>= 100 px) foe on an uncrowded map is reached by A*; a ground walker that cannot path to a foe on another floor routes to the nearest stair toward it; a flyer never paths to a foe on another floor (it cannot change floors) and instead shadows the foe's 2D position from its own floor.",
+      "arms": [
+        {
+          "when": "same floor, far foe",
+          "observable": "path_to_foe non-empty toward foe"
+        },
+        {
+          "when": "ground walker, cross-floor, foe cell unreachable",
+          "observable": "path ends at a stair toward foe's floor"
+        },
+        {
+          "when": "flyer, cross-floor",
+          "observable": "no path; fallback walk shadows foe x/y; never parks on a stair"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_zaxis.cpp",
+          "test": "ZAxis.flyer_with_cross_floor_foe_shadows_it_and_never_parks_on_stair"
+        },
+        {
+          "file": "tests/unit/test_zaxis.cpp",
+          "test": "ZAxis.cross_floor_ai_MOVING_foe_air_unreachable_still_climbs_toward_stair"
+        },
+        {
+          "file": "tests/integration/test_stats_more_paths.cpp",
+          "test": "StatsMorePaths.stats_walk_to_foe_short_circuit_and_path_branches",
+          "note": "same-floor A*"
         }
       ],
       "missing_arms": []

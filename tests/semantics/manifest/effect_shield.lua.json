@@ -33,7 +33,12 @@
         },
         {
           "parity": "shield_projectile_absorb_scen99",
-          "fact": ""
+          "fact": "",
+          "note": "WeaponFamilyCount(FAMILY_ARROW 1 1) reads the absorbed arrow"
+        },
+        {
+          "file": "tests/integration/test_effect_act.cpp",
+          "test": "EffectAct.magic_shield_orbit_step_and_ageing"
         }
       ],
       "missing_arms": []
@@ -67,6 +72,10 @@
         {
           "file": "tests/integration/test_effect_more_paths.cpp",
           "test": "EffectMorePaths.effect_batch3_guard_dies_when_collisions_drain_its_hitpoints"
+        },
+        {
+          "file": "tests/integration/test_effect_act.cpp",
+          "test": "EffectAct.magic_shield_orbit_step_and_ageing"
         }
       ],
       "missing_arms": []
@@ -99,7 +108,7 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/integration/test_effect_act.cpp",
@@ -110,7 +119,9 @@
           "test": "EffectMorePaths.effect_batch3_guard_dies_when_collisions_drain_its_hitpoints"
         }
       ],
-      "missing_arms": [],
+      "missing_arms": [
+        "hp > 0 and old lifetime < 0"
+      ],
       "note": [
         "Ageing arm (lifetime 100 -> 99, alive; lifetime 5 -> 4) and hp<=0 arm (dies without ageing, lifetime stays 0) asserted; the expiry arm (hp > 0, old lifetime < 0 -> dead; note the off-by-one: a shield set to lifetime 0 lives one more act) is unasserted."
       ]
@@ -178,7 +189,7 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/integration/test_effect_act.cpp",
@@ -193,7 +204,9 @@
           "test": "EffectAct.boomerang_spirals_outward_as_the_sim_ticks"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "owner gone/dead"
+      ]
     }
   ],
   "other": []

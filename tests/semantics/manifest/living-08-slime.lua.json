@@ -25,15 +25,18 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_pack_lua_paths.cpp",
           "test": "PackLuaSlime.a_veteran_split_halves_the_experience_across_both_bodies",
-          "note": "level 3 at 30000 exp"
+          "note": "exp 60000 -> exp/2 30000 -> EXPECT_EQ level 3 on both halves: the level-3 arm only"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "exp < 8000",
+        "exp in [8000,18000)"
+      ]
     },
     {
       "id": "living-08-slime.lua:43",
@@ -55,19 +58,21 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "parity": "ai_slime_split_scen99",
-          "fact": "WalkerFamilyCount(FAMILY_SLIME,0,0)+WalkerFamilyCount(FAMILY_SMALL_SLIME,2,2) (true arm)"
+          "fact": "WalkerFamilyCount(FAMILY_SLIME,0,0)+WalkerFamilyCount(FAMILY_SMALL_SLIME,2,2) (true arm: the AI split happened)"
         },
         {
           "file": "tests/integration/test_family_behaviors.cpp",
           "test": "FamilyBehaviors.check_special_slime_capacity",
-          "note": "true arm only"
+          "note": "ASSERT_TRUE(check_special()) far below MAXOBS: true arm"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "living_count >= MAXOBS"
+      ]
     },
     {
       "id": "living-08-slime.lua:60",
@@ -89,14 +94,17 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_pack_lua_paths.cpp",
-          "test": "PackLuaSlime.a_split_carries_the_name_and_the_player_character_across"
+          "test": "PackLuaSlime.a_split_carries_the_name_and_the_player_character_across",
+          "note": "named parent BLOBBY: EXPECT_EQ child name == parent name"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "parent unnamed"
+      ]
     },
     {
       "id": "living-08-slime.lua:65",
@@ -118,19 +126,17 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_pack_lua_paths.cpp",
-          "test": "PackLuaSlime.a_split_carries_the_name_and_the_player_character_across"
-        },
-        {
-          "file": "tests/unit/test_pack_lua_paths.cpp",
-          "test": "PackLuaSlime.a_dying_medium_slime_leaves_a_small_one",
-          "note": "no-guy arm, team/level only"
+          "test": "PackLuaSlime.a_split_carries_the_name_and_the_player_character_across",
+          "note": "EXPECT_EQ(nullptr, slime->myguy), EXPECT_NE(nullptr, child->myguy)"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "no guy"
+      ]
     },
     {
       "id": "living-08-slime.lua:82",
@@ -194,18 +200,22 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_pack_lua_paths.cpp",
-          "test": "PackLuaSlime.a_low_experience_split_strips_the_offspring_to_a_monster"
+          "test": "PackLuaSlime.a_low_experience_split_strips_the_offspring_to_a_monster",
+          "note": "sibling myguy nullptr, name SLIME, parent keeps myguy"
         },
         {
           "file": "tests/unit/test_pack_lua_paths.cpp",
-          "test": "PackLuaSlime.a_veteran_split_halves_the_experience_across_both_bodies"
+          "test": "PackLuaSlime.a_veteran_split_halves_the_experience_across_both_bodies",
+          "note": "both exp 30000, both level 3"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "monster slime (no guy)"
+      ]
     },
     {
       "id": "living-08-slime.lua:136",
@@ -232,15 +242,11 @@
       "tests": [
         {
           "parity": "special_small_slime_1_scen99",
-          "fact": "WalkerFamilyCount(FAMILY_MEDIUM_SLIME,1,1)"
-        },
-        {
-          "parity": "special_medium_slime_1_scen99",
-          "fact": "WalkerFamilyCount(FAMILY_MEDIUM_SLIME,0,0)"
+          "fact": "WalkerFamilyCount(FAMILY_SMALL_SLIME,0,0)+WalkerFamilyCount(FAMILY_MEDIUM_SLIME,1,1) (grow arm)"
         },
         {
           "parity": "slime_grow_blocked_scen99",
-          "fact": "WalkerFamilyCount(FAMILY_MEDIUM_SLIME,0,0)+WalkerPositionMoved(102,102)"
+          "fact": "WalkerFamilyCount(FAMILY_SMALL_SLIME,1,1)+WalkerFamilyCount(FAMILY_MEDIUM_SLIME,0,0)+WalkerPositionMoved(FAMILY_SMALL_SLIME,102,102) (blocked arm: family unchanged, the 10-step walk landing tile)"
         }
       ],
       "missing_arms": []

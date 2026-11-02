@@ -27,14 +27,12 @@
       ],
       "setting": "none",
       "status": "executed-only",
-      "tests": [
-        {
-          "file": "tests/unit/test_respawn_engine.cpp",
-          "test": "RespawnEngine.player_corpse_revives_in_place_with_control_preserved",
-          "note": "revive in place executes it but never asserts the obmap entry"
-        }
-      ],
-      "missing_arms": []
+      "tests": [],
+      "missing_arms": [
+        "revived walker not in the obmap (revived on its own tile, setxy no-op)",
+        "walker already registered",
+        "walker dead/hidden/dormant/ignored"
+      ]
     },
     {
       "id": "respawn.cpp:67",
@@ -77,20 +75,24 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_respawn_engine.cpp",
           "test": "RespawnEngine.spawn_probe_rejects_doors_and_cross_bucket_blockers",
-          "note": "door, living"
+          "note": "door false, cross-bucket living false"
         },
         {
           "file": "tests/unit/test_quiet_probe.cpp",
           "test": "QuietProbe.body_spot_clear_asks_the_placement_rule_with_the_bodys_box",
-          "note": "living, tent generator, drumstick not blocking/not eaten, edge-adjacent"
+          "note": "living false, tent generator false, drumstick true with food dead-state unchanged, touching the orc's right side true"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "door / tree / boulder overlapping [door asserted; tree and boulder not]",
+        "weapon family with blocks_placement=true overlapping",
+        "dead or hidden living overlapping"
+      ]
     },
     {
       "id": "respawn.cpp:86",
@@ -137,16 +139,10 @@
     {
       "id": "respawn.cpp:118",
       "lines": [
-        117,
-        118,
-        123,
-        124,
-        125,
-        127,
-        128
+        118
       ],
       "function": "revive_player_walker",
-      "anchor": "{",
+      "anchor": "w->set_dead(0);",
       "condition": "unconditional on the revive path (stats() != nullptr guards the stats part)",
       "semantic": "A revived hero stands up alive at full hitpoints with its queued orders, foe and leader cleared and its controller binding restored (death_called reset so the death hooks can fire again next time).",
       "arms": [
@@ -172,15 +168,18 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_respawn_engine.cpp",
           "test": "RespawnEngine.player_corpse_revives_in_place_with_control_preserved",
-          "note": "lines 251-258 ASSERT_EQ hp, foe, leader, commands, user, act_type"
+          "note": "ASSERT_EQ alive, hp==max, foe/leader null, commands empty, user 0, ACT_CONTROL"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "revived [observable: stats()->controller == the walker; the test asserts user/act_type only, never controller()]",
+        "revived [observable: death_called()==0; a second kill fires the death hooks/score again]"
+      ]
     },
     {
       "id": "respawn.cpp:134",
@@ -207,22 +206,27 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_respawn_engine.cpp",
-          "test": "RespawnEngine.charmed_corpse_respawns_on_its_true_team"
+          "test": "RespawnEngine.charmed_corpse_respawns_on_its_true_team",
+          "note": "team 0, real 255"
         },
         {
           "file": "tests/unit/test_respawn_engine.cpp",
-          "test": "RespawnEngine.charmed_band_byte_corpse_respawns_on_its_true_team"
+          "test": "RespawnEngine.charmed_band_byte_corpse_respawns_on_its_true_team",
+          "note": "team 20, real 255, charm_left 0"
         },
         {
           "file": "tests/unit/test_respawn_engine.cpp",
-          "test": "RespawnEngine.win_latch_flush_breaks_charm_onto_true_team"
+          "test": "RespawnEngine.win_latch_flush_breaks_charm_onto_true_team",
+          "note": "team 0, real 255, charm_left 0 via the flush revive"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "uncharmed corpse"
+      ]
     },
     {
       "id": "respawn.cpp:141",
@@ -283,11 +287,7 @@
         {
           "file": "tests/unit/test_mode_bindings.cpp",
           "test": "ModeBindings.respawn_schedule_pending_and_counts",
-          "note": "dupe\\t0, pending\\t1, not_pending\\t0"
-        },
-        {
-          "file": "tests/unit/test_respawn_engine.cpp",
-          "test": "RespawnEngine.retains_player_control_through_pending_scripted_entry"
+          "note": "queued\\t1, dupe\\t0, pending\\t1, not_pending\\t0, queue size 1"
         }
       ],
       "missing_arms": []
@@ -359,18 +359,16 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_respawn_engine.cpp",
           "test": "RespawnEngine.nearby_player_respawns_scrub_only_their_own_stain"
-        },
-        {
-          "file": "tests/unit/test_respawn_engine.cpp",
-          "test": "RespawnEngine.ai_scheduling_leaves_both_nearby_stains"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "AI corpse scheduled/fired next to a player stain [fire half]"
+      ]
     },
     {
       "id": "respawn.cpp:223",
@@ -478,11 +476,17 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_respawn_engine.cpp",
-          "test": "RespawnEngine.scheduling_scrubs_the_corpse_life_gem"
+          "test": "RespawnEngine.scheduling_scrubs_the_corpse_life_gem",
+          "note": "gem count 0 after schedule"
+        },
+        {
+          "file": "tests/unit/test_respawn_engine.cpp",
+          "test": "RespawnEngine.player_corpse_stain_survives_until_the_respawn_fires",
+          "note": "stain 1 after schedule, 0 after fire"
         },
         {
           "file": "tests/unit/test_respawn_engine.cpp",
@@ -490,14 +494,12 @@
         },
         {
           "file": "tests/unit/test_respawn_engine.cpp",
-          "test": "RespawnEngine.player_corpse_stain_survives_until_the_respawn_fires"
-        },
-        {
-          "file": "tests/unit/test_respawn_engine.cpp",
           "test": "RespawnEngine.respawn_fire_scrubs_only_the_corpses_floor"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "drop on another team"
+      ]
     },
     {
       "id": "respawn.cpp:315",
@@ -519,15 +521,22 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_respawn_engine.cpp",
+          "test": "RespawnEngine.player_corpse_stain_survives_until_the_respawn_fires",
+          "note": "corner stain, centre delta 0, dead after the fire"
+        },
+        {
+          "file": "tests/unit/test_respawn_engine.cpp",
           "test": "RespawnEngine.scheduling_scrubs_the_corpse_life_gem",
-          "note": "inside arm only"
+          "note": "center_on'd gem within 8px dead after schedule"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "matching-identity drop centre 9+px away"
+      ]
     },
     {
       "id": "respawn.cpp:330",
@@ -563,28 +572,34 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_respawn_engine.cpp",
-          "test": "RespawnEngine.queue_cap_evicts_oldest_ai_entry_for_a_player"
+          "test": "RespawnEngine.queue_cap_evicts_oldest_ai_entry_for_a_player",
+          "note": "size==cap, player queued, oldest AI evicted"
         },
         {
           "file": "tests/unit/test_respawn_engine.cpp",
-          "test": "RespawnEngine.queue_full_of_players_drops_incoming_ai_entry"
+          "test": "RespawnEngine.queue_full_of_players_drops_incoming_ai_entry",
+          "note": "size==cap, no kind-1 entry"
         },
         {
           "file": "tests/unit/test_classic_respawn.cpp",
-          "test": "ClassicRespawn.full_queue_blocked_evict_keeps_the_incoming_corpse"
+          "test": "ClassicRespawn.full_queue_blocked_evict_keeps_the_incoming_corpse",
+          "note": "size==cap, back()==incoming corpse, crafted==cap-1"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "cap reached, all player entries [return value: respawn_schedule_corpse returns false is cast to (void), not asserted]",
+        "evicted bot fire succeeds",
+        "scripted world, cap eviction fires a bot"
+      ]
     },
     {
       "id": "respawn.cpp:364",
       "lines": [
         364,
-        367,
         371
       ],
       "function": "schedule_respawn",
@@ -606,22 +621,22 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_respawn_engine.cpp",
-          "test": "RespawnEngine.player_corpse_revives_in_place_with_control_preserved"
+          "test": "RespawnEngine.player_corpse_revives_in_place_with_control_preserved",
+          "note": "kind 0, walker_entity_id"
         },
         {
           "file": "tests/unit/test_respawn_engine.cpp",
-          "test": "RespawnEngine.ai_respawn_spawns_fresh_walker_of_same_family_level_team"
-        },
-        {
-          "file": "tests/unit/test_respawn_engine.cpp",
-          "test": "RespawnEngine.charmed_corpse_respawns_on_its_true_team"
+          "test": "RespawnEngine.ai_respawn_spawns_fresh_walker_of_same_family_level_team",
+          "note": "kind 1, family, level 2, team 1; replacement level 2"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "charmed corpse"
+      ]
     },
     {
       "id": "respawn.cpp:378",
@@ -644,18 +659,22 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_classic_respawn.cpp",
-          "test": "ClassicRespawn.hero_scheduled_on_death_and_revives_at_spawn_point"
+          "test": "ClassicRespawn.hero_scheduled_on_death_and_revives_at_spawn_point",
+          "note": "entry x/y 128, floor 0"
         },
         {
           "file": "tests/unit/test_classic_respawn.cpp",
-          "test": "ClassicRespawn.entry_records_death_position_without_a_spawn_point"
+          "test": "ClassicRespawn.entry_records_death_position_without_a_spawn_point",
+          "note": "entry x/y 320"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "no spawn point [entry.floor == corpse floor not asserted]"
+      ]
     },
     {
       "id": "respawn.cpp:415",
@@ -682,12 +701,17 @@
         {
           "file": "tests/unit/test_respawn_engine.cpp",
           "test": "RespawnEngine.player_corpse_revives_in_place_with_control_preserved",
-          "note": "dead after 5 of 6 ticks, alive at 6"
+          "note": "dead after 5 of 6 ticks, alive at 6, queue empty"
+        },
+        {
+          "file": "tests/unit/test_respawn_engine.cpp",
+          "test": "RespawnEngine.nearby_player_respawns_scrub_only_their_own_stain",
+          "note": "second corpse still dead and respawn_pending_for true while ticks remain"
         },
         {
           "file": "tests/unit/test_classic_respawn.cpp",
           "test": "ClassicRespawn.hero_scheduled_on_death_and_revives_at_spawn_point",
-          "note": "dead after 11 of 12, alive at 12"
+          "note": "dead after 11 of 12, alive at 12, queue empty"
         }
       ],
       "missing_arms": []
@@ -722,16 +746,18 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_mode_tick.cpp",
-          "test": "ModeTick.respawn_fires_in_place_and_dispatches_hook"
+          "test": "ModeTick.respawn_fires_in_place_and_dispatches_hook",
+          "note": "respawn\\t224\\t224\\t0 logged"
         }
       ],
-      "missing_arms": [],
-      "note": [
-        "tests/unit/test_modes_ctf.cpp / test_modes_tdm.cpp (on_respawn placed at anchor 0)"
+      "missing_arms": [
+        "scripted, fire revived nothing",
+        "classic mode [no-Lua-dispatch half: no test registers an on_respawn hook on a classic world]",
+        "scripted, fire via eviction or win flush (not the timer)"
       ]
     },
     {
@@ -762,7 +788,7 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_classic_respawn.cpp",
@@ -770,10 +796,13 @@
         },
         {
           "file": "tests/unit/test_classic_respawn.cpp",
-          "test": "ClassicRespawn.scripted_active_worlds_ignore_respawn_mode"
+          "test": "ClassicRespawn.scripted_active_worlds_ignore_respawn_mode",
+          "note": "predicate false, queue empty, bot stays dead"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "mode 0 [dead hero stays dead half]"
+      ]
     },
     {
       "id": "respawn.cpp:446",
@@ -817,7 +846,7 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_respawn_engine.cpp",
@@ -826,20 +855,18 @@
         {
           "file": "tests/unit/test_classic_respawn.cpp",
           "test": "ClassicRespawn.team_one_heroes_mode_filters_corpses_and_control_retention"
-        },
-        {
-          "file": "tests/unit/test_classic_respawn.cpp",
-          "test": "ClassicRespawn.server_reclaims_control_after_classic_revive"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "not a dead hero (alive, AI, non-living) [AI asserted; alive hero, non-living and nullptr not]",
+        "classic, live duplicate exists"
+      ]
     },
     {
       "id": "respawn.cpp:477",
       "lines": [
         477,
-        479,
-        484
+        479
       ],
       "function": "respawn_suppress_team_wipe_endgame",
       "anchor": "if (mode_scripted_active(world) && !world.mode.win_latched)",
@@ -872,7 +899,7 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_classic_respawn.cpp",
@@ -881,14 +908,11 @@
         {
           "file": "tests/unit/test_respawn_engine.cpp",
           "test": "RespawnEngine.team_wipe_suppression_tracks_match_lifecycle"
-        },
-        {
-          "file": "tests/unit/test_classic_respawn.cpp",
-          "test": "ClassicRespawn.server_reclaims_control_after_classic_revive",
-          "note": "ending == 0"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "scripted undecided [world.ending stays 0 after a full wipe half]"
+      ]
     },
     {
       "id": "respawn.cpp:496",
@@ -936,7 +960,6 @@
       "id": "respawn.cpp:529",
       "lines": [
         529,
-        531,
         532
       ],
       "function": "classic_fire_player_respawn",
@@ -958,11 +981,12 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_respawn_engine.cpp",
-          "test": "RespawnEngine.fired_entry_for_an_already_live_walker_is_a_no_op"
+          "test": "RespawnEngine.fired_entry_for_an_already_live_walker_is_a_no_op",
+          "note": "alive, queue empty"
         },
         {
           "file": "tests/unit/test_respawn_engine.cpp",
@@ -973,7 +997,9 @@
           "test": "RespawnEngine.player_corpse_stain_survives_until_the_respawn_fires"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "corpse already alive at fire [hp unchanged (no re-heal) half]"
+      ]
     },
     {
       "id": "respawn.cpp:535",
@@ -1086,18 +1112,17 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_classic_respawn.cpp",
           "test": "ClassicRespawn.mode2_blocked_ai_respawn_retries_until_clear"
-        },
-        {
-          "file": "tests/unit/test_classic_respawn.cpp",
-          "test": "ClassicRespawn.full_queue_blocked_evict_keeps_the_incoming_corpse"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "blocked, queue full [unreachable: every caller erases the fired entry before firing]",
+        "entry spot negative"
+      ]
     },
     {
       "id": "respawn.cpp:600",
@@ -1197,6 +1222,11 @@
         {
           "file": "tests/unit/test_classic_respawn.cpp",
           "test": "ClassicRespawn.live_duplicate_hero_corpse_is_never_rescheduled"
+        },
+        {
+          "file": "tests/unit/test_classic_respawn.cpp",
+          "test": "ClassicRespawn.hero_scheduled_on_death_and_revives_at_spawn_point",
+          "note": "mode 1 hero queued, kind 0"
         }
       ],
       "missing_arms": []
@@ -1387,18 +1417,23 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_mode_tick.cpp",
-          "test": "ModeTick.stage_init_activates_without_a_tick"
+          "test": "ModeTick.stage_init_activates_without_a_tick",
+          "note": "anchor_count[1]==1, [2]==1"
         },
         {
           "file": "tests/unit/test_mode_bindings.cpp",
-          "test": "ModeBindings.respawn_anchors_read_back_and_validate"
+          "test": "ModeBindings.respawn_anchors_read_back_and_validate",
+          "note": "counts 2/1/0, anchor(0,1)==192,96"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "marker on team 5",
+        "more than kRespawnMaxAnchorsPerTeam markers on one team"
+      ]
     },
     {
       "id": "respawn.cpp:810",
@@ -1448,7 +1483,7 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_respawn_engine.cpp",
@@ -1461,13 +1496,15 @@
         {
           "file": "tests/unit/test_respawn_engine.cpp",
           "test": "RespawnEngine.win_latch_flush_scrubs_an_unqueued_duplicate_corpse"
-        },
-        {
-          "file": "tests/unit/test_respawn_engine.cpp",
-          "test": "RespawnEngine.win_latch_flush_breaks_charm_onto_true_team"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "queued bot",
+        "unqueued dead FFA/mutant hero, true band byte 16-31",
+        "scripted mode, after mode_declare_winner + tick, queued entries present",
+        "charmed hero true team 0-3",
+        "queued bot whose spot is blocked during the flush"
+      ]
     },
     {
       "id": "respawn.cpp:819",
@@ -1513,19 +1550,28 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_mode_bindings.cpp",
           "test": "ModeBindings.respawn_schedule_pending_and_counts",
-          "note": "live_refused, dupe, override 25"
+          "note": "live_refused\\t0, dupe\\t0, override 25 -> ticks_left 25"
         },
         {
           "file": "tests/unit/test_respawn_engine.cpp",
-          "test": "RespawnEngine.live_duplicate_character_cancels_the_revive"
+          "test": "RespawnEngine.live_duplicate_character_cancels_the_revive",
+          "note": "EXPECT_FALSE schedule"
+        },
+        {
+          "file": "tests/unit/test_respawn_engine.cpp",
+          "test": "RespawnEngine.player_corpse_revives_in_place_with_control_preserved",
+          "note": "override 0: ASSERT_TRUE schedule, ticks_left 6 == respawn_ticks"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "queue full of heroes",
+        "override 70000"
+      ]
     },
     {
       "id": "respawn.cpp:854",
@@ -1582,7 +1628,18 @@
       "tests": [
         {
           "file": "tests/unit/test_respawn_engine.cpp",
-          "test": "RespawnEngine.exported_probes_hold_null_and_impassable_guards"
+          "test": "RespawnEngine.exported_probes_hold_null_and_impassable_guards",
+          "note": "null false; off-grid false at floor -1 and floor 0"
+        },
+        {
+          "file": "tests/unit/test_respawn_engine.cpp",
+          "test": "RespawnEngine.spawn_probes_make_no_empty_pile",
+          "note": "clear spot true at floor -1 and floor 0"
+        },
+        {
+          "file": "tests/unit/test_respawn_engine.cpp",
+          "test": "RespawnEngine.spawn_probe_rejects_doors_and_cross_bucket_blockers",
+          "note": "floor -1 door/cross-bucket false, clear true"
         }
       ],
       "missing_arms": []
@@ -1613,11 +1670,22 @@
         }
       ],
       "setting": "none",
-      "status": "none",
-      "tests": [],
-      "missing_arms": [],
-      "note": [
-        "no test: test_quiet_probe.cpp's pad_bad refusal is self:fire_pad_clear(256), not a body probe; og.body_spot_near (src/gameplay/script/bindings_entity.cpp:3165-3178) reads family with luaL_checkinteger and has NO range check, so a bad family does reach this C++ arm and answers nil, unasserted"
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_quiet_probe.cpp",
+          "test": "QuietProbe.body_spot_clear_asks_the_placement_rule_with_the_bodys_box",
+          "note": "known family SKELETON: the probe proceeds to true/false answers"
+        },
+        {
+          "file": "tests/unit/test_respawn_engine.cpp",
+          "test": "RespawnEngine.body_ground_clear_asks_the_grid_with_the_bodys_own_flags",
+          "note": "known SOLDIER/FAERIE families answer the grid"
+        }
+      ],
+      "missing_arms": [
+        "unknown / out-of-range family",
+        "Lua og.body_spot_near with an out-of-range family"
       ]
     },
     {
@@ -1745,7 +1813,7 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_respawn_engine.cpp",
@@ -1760,7 +1828,10 @@
           "test": "RespawnEngine.positional_scrub_matches_pending_stain_location"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "life gem at the corner",
+        "floor -1"
+      ]
     }
   ],
   "other": [

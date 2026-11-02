@@ -340,6 +340,11 @@
         {
           "file": "tests/unit/test_sim_control_policy.cpp",
           "test": "SimControlPolicy.policy_off_matches_legacy_over_random_worlds"
+        },
+        {
+          "file": "tests/unit/test_sim_control_policy.cpp",
+          "test": "SimControlPolicy.owner_locked_follow_when_only_foreign_heroes_remain",
+          "note": "owner-locked arm: the legacy scan returns the foreign hero, the owned scan does not: verdict Follow, reacquired nullptr"
         }
       ],
       "missing_arms": []
@@ -371,26 +376,27 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_sim_control_policy.cpp",
-          "test": "SimControlPolicy.owner_locked_permissive_map_matches_legacy_over_random_worlds"
+          "test": "SimControlPolicy.owner_locked_permissive_map_matches_legacy_over_random_worlds",
+          "note": "hero-first and troop arms, EXPECT_EQ against the legacy scan over 150 random worlds"
         },
         {
           "file": "tests/unit/test_sim_control_policy.cpp",
-          "test": "SimControlPolicy.owner_locked_reacquire_claims_troop_for_deployed_machines"
+          "test": "SimControlPolicy.owner_locked_reacquire_claims_troop_for_deployed_machines",
+          "note": "troop arm; nullptr once the troop dies"
         },
         {
-          "file": "tests/unit/test_kit_possession.cpp",
-          "test": "KitPossession.claim_scans_refuse_linked_walkers"
-        },
-        {
-          "file": "tests/unit/test_gameplay_fixes_seats.cpp",
-          "test": "GameplayFixesSeats.a_seat_skips_a_walker_our_side_charmed"
+          "file": "tests/unit/test_sim_control_policy.cpp",
+          "test": "SimControlPolicy.owner_locked_follow_when_only_foreign_heroes_remain",
+          "note": "nullptr for players 0/1: reacquired nullptr"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "none"
+      ]
     },
     {
       "id": "sim_control_policy.cpp:280",
@@ -422,7 +428,7 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_sim_control_policy.cpp",
@@ -437,7 +443,9 @@
           "test": "SimControlPolicy.net_r1_allied_claimed_teammate_shape_yields_endgame_verdict"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "owner-locked, legacy pool non-empty"
+      ]
     },
     {
       "id": "sim_control_policy.cpp:308",
@@ -502,15 +510,18 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_sim_control_policy.cpp",
           "test": "SimControlPolicy.next_follow_target_without_a_current_target_restarts_at_the_first_hero",
-          "note": "preferred arm"
+          "note": "preferred arm: troop first, hero_a returned"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "only anonymous troops",
+        "no visible living"
+      ]
     },
     {
       "id": "sim_control_policy.cpp:361",
@@ -536,9 +547,9 @@
       "setting": "none",
       "status": "executed-only",
       "tests": [],
-      "missing_arms": [],
-      "note": [
-        "tests/integration/test_game_loop.cpp (compares view target against default_follow_target_id itself: tautological, asserts nothing about the rule)"
+      "missing_arms": [
+        "some controlled id alive",
+        "all 0 or dead"
       ]
     },
     {
@@ -576,16 +587,22 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_sim_control_policy.cpp",
-          "test": "SimControlPolicy.next_follow_target_without_a_current_target_restarts_at_the_first_hero"
+          "test": "SimControlPolicy.next_follow_target_without_a_current_target_restarts_at_the_first_hero",
+          "note": "no-current arm"
+        },
+        {
+          "file": "tests/integration/test_game_loop.cpp",
+          "test": "GameLoop.display_view_follow_engages_cycles_and_never_stamps_user_tags",
+          "note": "another-preferred arm forward a->b->c->a and Shift-reverse a->c; no-preferred-but-living arm: all heroes dead -> the troop"
         }
       ],
-      "missing_arms": [],
-      "note": [
-        "tests/integration/test_game_loop.cpp (heroes a,b,c forward/reverse cycle)"
+      "missing_arms": [
+        "nobody else, current visible",
+        "nobody else, current gone"
       ]
     }
   ],

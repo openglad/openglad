@@ -25,20 +25,21 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_kit_skeleton.cpp",
-          "test": "KitSkeleton.tunnel_and_level_up_stay_classic"
+          "test": "KitSkeleton.tunnel_and_level_up_stay_classic",
+          "note": "TELE_IN -> SPECIAL BUSY, mp 50 unchanged; ANI_WALK -> TUNNEL ok"
         },
         {
           "file": "tests/unit/test_kit_skeleton.cpp",
-          "test": "KitSkeleton.possessed_body_cannot_dig_in"
+          "test": "KitSkeleton.possessed_body_cannot_dig_in",
+          "note": "TELE_IN -> DIG IN SPECIAL BUSY"
         }
       ],
-      "missing_arms": [],
-      "note": [
-        "(TELE_IN arm asserted; TELE_OUT arm only via TUNNEL's classic twin)"
+      "missing_arms": [
+        "TELE_OUT"
       ]
     },
     {
@@ -74,7 +75,8 @@
       "tests": [
         {
           "file": "tests/unit/test_kit_rests.cpp",
-          "test": "KitRests.orc_howl_rests_ten_seconds"
+          "test": "KitRests.orc_howl_rests_ten_seconds",
+          "note": "expect_rested: refusal HOWL IN 10S free, rest 120 on slot 1, recast after rest"
         },
         {
           "file": "tests/unit/test_kit_rests.cpp",
@@ -82,11 +84,18 @@
         },
         {
           "file": "tests/unit/test_kit_rests.cpp",
-          "test": "KitRests.the_clock_is_on_the_walker"
+          "test": "KitRests.with_the_setting_off_the_classic_specials_rest_too",
+          "note": "refusal free, rest_left/rest_slot set"
         },
         {
           "file": "tests/unit/test_kit_rests.cpp",
-          "test": "KitRests.with_the_setting_off_the_classic_specials_rest_too"
+          "test": "KitRests.the_clock_is_on_the_walker",
+          "note": "rest on another slot: EAT CORPSE reason carries no rest refusal"
+        },
+        {
+          "file": "tests/unit/test_gameplay_fixes_bots.cpp",
+          "test": "GameplayFixesBots.mind_control_skips_a_seated_hero_with_the_setting_on",
+          "note": "cast refused NO VALID TARGET -> special_rest_left stays 0"
         }
       ],
       "missing_arms": []
@@ -121,7 +130,8 @@
       "tests": [
         {
           "file": "tests/unit/test_kit_rests.cpp",
-          "test": "KitRests.bot_gates_hold_a_resting_special"
+          "test": "KitRests.bot_gates_hold_a_resting_special",
+          "note": "held while resting, other slot answers, free after the rest"
         }
       ],
       "missing_arms": []

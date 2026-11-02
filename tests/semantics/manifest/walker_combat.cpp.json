@@ -74,8 +74,9 @@
           "note": "team 250: total team score unchanged; the no-event half is not asserted"
         }
       ],
-      "missing_arms": [
-        "team >= SCORE_TEAM_COUNT"
+      "missing_arms": [],
+      "note": [
+        "Sub-part convention (file-wide): an arm whose primary observable is asserted counts as asserted and leaves missing_arms; any field of its compound observable that no cited test reads is listed in assertion.unasserted_subparts, and a row with unasserted_subparts is never 'asserted' (at best 'partial')."
       ]
     },
     {
@@ -143,11 +144,14 @@
         {
           "file": "tests/unit/test_game_server_coverage.cpp",
           "test": "GameServerCoverage.step_lifts_every_owner_damage_numbers_and_drains_every_list",
-          "note": "do_hit_effects(control, foe, 7): attacker 1 number colour 235 value 7, target 1 number RED value 7"
+          "note": "do_hit_effects(control, foe, 7): lines 1563-1566 assert one damage number on each walker's list; lines 1603-1617 assert the lifted wire copies: attacker copy value 7 colour 235, target copy value 7 colour RED, both anchored at the target's centre. Colour and value are read from the decoded DamageNumber events, not from the in-memory lists, which the lift drains."
         }
       ],
       "missing_arms": [
         "no attacker"
+      ],
+      "note": [
+        "Spot-check claimed colour/value are never read; re-read the test: they are, on the decoded events at lines 1603-1617. Status and missing arm unchanged."
       ]
     },
     {
@@ -192,6 +196,9 @@
       "missing_arms": [
         "damage > 0, non-living",
         "damage 0"
+      ],
+      "note": [
+        "Sub-part convention (file-wide): an arm whose primary observable is asserted counts as asserted and leaves missing_arms; any field of its compound observable that no cited test reads is listed in assertion.unasserted_subparts, and a row with unasserted_subparts is never 'asserted' (at best 'partial')."
       ]
     },
     {
@@ -314,6 +321,9 @@
       "missing_arms": [
         "hero hits non-living",
         "attacker without myguy"
+      ],
+      "note": [
+        "Sub-part convention (file-wide): an arm whose primary observable is asserted counts as asserted and leaves missing_arms; any field of its compound observable that no cited test reads is listed in assertion.unasserted_subparts, and a row with unasserted_subparts is never 'asserted' (at best 'partial')."
       ]
     },
     {
@@ -380,11 +390,19 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_combat.cpp",
+          "test": "WalkerCombat.batch5_do_combat_damage_target_myguy_stats",
+          "note": "victim has myguy: line 1581 ASSERT_FLOAT_EQ(taken_before + 7.0f, victim->myguy->scen_damage_taken) on an untrimmed hit"
+        }
+      ],
       "missing_arms": [
-        "victim is a hero",
         "not a hero"
+      ],
+      "note": [
+        "Sub-part convention (file-wide): an arm whose primary observable is asserted counts as asserted and leaves missing_arms; any field of its compound observable that no cited test reads is listed in assertion.unasserted_subparts, and a row with unasserted_subparts is never 'asserted' (at best 'partial')."
       ]
     },
     {
@@ -676,7 +694,8 @@
         295
       ],
       "function": "walker::attack",
-      "anchor": "default:",
+      "anchor": "if (attacker->myguy)",
+      "anchor_index": 1,
       "condition": "default (non-living target); attacker->myguy",
       "semantic": "Hitting a non-living (generator, door, object) is not a shot on the hero's accuracy record: the shot counted at fire time is taken back (total_shots--, scen_shots--).",
       "arms": [
@@ -871,12 +890,12 @@
         {
           "file": "tests/integration/test_stats_unit.cpp",
           "test": "StatsUnit.hit_response_guard_shields_non_living_targets",
-          "note": "melee: hero->attack(foe) -> foe->foe()==hero; knife arm: hero->foe()==gen, the owner targets the victim"
+          "note": "melee: hero->attack(foe) -> line 1133 foe->foe()==hero; knife arm: line 1151 EXPECT_EQ(gen, hero->foe()), the owner targets the victim"
         },
         {
           "file": "tests/integration/test_walker_combat.cpp",
           "test": "WalkerCombat.attack_rewards_single_credit_weapon_hit",
-          "note": "owner arm: owner exp += attack xp exactly once"
+          "note": "owner arm: line 1850 headguy exp += attack xp exactly once"
         },
         {
           "file": "tests/integration/test_walker_combat.cpp",
@@ -890,11 +909,10 @@
         }
       ],
       "missing_arms": [
-        "weapon/fx with owner",
         "melee, NPC striker"
       ],
       "note": [
-        "Dropped tests/integration/test_stats_commands.cpp StatsCommands.stats_hit_response_all_families: it calls statistics::hit_response directly and never reaches walker::attack."
+        "Dropped tests/integration/test_stats_commands.cpp StatsCommands.stats_hit_response_all_families: it calls statistics::hit_response directly and never reaches walker::attack. Sub-part convention (file-wide): an arm whose primary observable is asserted counts as asserted and leaves missing_arms; any field of its compound observable that no cited test reads is listed in assertion.unasserted_subparts, and a row with unasserted_subparts is never 'asserted' (at best 'partial')."
       ]
     },
     {
@@ -1094,6 +1112,9 @@
       ],
       "missing_arms": [
         "non-living"
+      ],
+      "note": [
+        "Sub-part convention (file-wide): an arm whose primary observable is asserted counts as asserted and leaves missing_arms; any field of its compound observable that no cited test reads is listed in assertion.unasserted_subparts, and a row with unasserted_subparts is never 'asserted' (at best 'partial')."
       ]
     },
     {
@@ -1275,7 +1296,8 @@
         472
       ],
       "function": "walker::attack",
-      "anchor": "else",
+      "anchor": "if ( (target->owner() || target->lifetime()) // summoned?",
+      "anchor_index": 1,
       "condition": "else (killer's head on the victim's team): summoned+named / named / myguy name / family death_message / 'SOMEONE DIED'",
       "semantic": "A living killed by its own team's chain is announced without credit: 'NAME Dispelled!' for a named summon or timed walker, 'NAME DIED!' for a named NPC, 'NAME Died!' for a hero, else the family's death message (e.g. 'SOLDIER SLAIN'), else 'SOMEONE DIED'.",
       "arms": [

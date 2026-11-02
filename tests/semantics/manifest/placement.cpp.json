@@ -49,7 +49,11 @@
           "observable": "false, nothing moves"
         },
         {
-          "when": "either dead/dormant/hidden",
+          "when": "either hidden",
+          "observable": "false, nothing moves"
+        },
+        {
+          "when": "either dead or dormant",
           "observable": "false, nothing moves"
         },
         {
@@ -67,7 +71,7 @@
         }
       ],
       "missing_arms": [
-        "either dead/dormant/hidden"
+        "either dead or dormant"
       ]
     }
   ],

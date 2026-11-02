@@ -248,31 +248,39 @@
       "semantic": "The first time a scripted match is ended, every queued respawn fires and eligible player corpses revive before the result is recorded; ending it again (last write wins on ending/next_level) does not re-flush.",
       "arms": [
         {
-          "when": "first arming",
-          "observable": "queued respawns fired, dead heroes alive, win_ending/next_level stored"
+          "when": "first arming: result recorded",
+          "observable": "win_latched true, win_ending/win_next_level stored (game_ended, ending, next_level asserted from them)"
         },
         {
-          "when": "re-arming",
-          "observable": "no flush (a hero killed after the first end stays dead), new ending/next_level overwrite"
+          "when": "first arming: respawn flush",
+          "observable": "queued respawns fired, dead heroes alive"
+        },
+        {
+          "when": "re-arming: last write wins",
+          "observable": "new ending/next_level overwrite the earlier ones"
+        },
+        {
+          "when": "re-arming: no re-flush",
+          "observable": "a hero killed after the first end stays dead"
         }
       ],
       "setting": "none",
-      "status": "executed-only",
+      "status": "partial",
       "tests": [
-        {
-          "file": "tests/unit/test_mode_bindings.cpp",
-          "test": "ModeBindings.end_level_latches_and_validates",
-          "note": "stored ending/next_level, last write wins - the non-flush half of both arms"
-        },
         {
           "file": "tests/unit/test_mode_tick.cpp",
           "test": "ModeTick.end_level_loss_shape_reasserts",
-          "note": "stored 1/-1 only"
+          "note": "first arming: ending 1 / next_level -1 game_ended, re-asserted next tick"
+        },
+        {
+          "file": "tests/unit/test_mode_bindings.cpp",
+          "test": "ModeBindings.end_level_latches_and_validates",
+          "note": "end_level(1,-1) then end_level(0,43): win_latched, win_ending 0, win_next_level 43 - last write wins"
         }
       ],
       "missing_arms": [
-        "first arming",
-        "re-arming"
+        "first arming: respawn flush",
+        "re-arming: no re-flush"
       ]
     },
     {
@@ -331,7 +339,15 @@
           "observable": "winner_is_player true, next_level = id+1"
         },
         {
-          "when": "none (bots only, dead hero, ally team)",
+          "when": "bots only (no myguy walker on the winning team)",
+          "observable": "winner_is_player false, next_level = id"
+        },
+        {
+          "when": "hero on the winning team is dead (flush could not revive it)",
+          "observable": "winner_is_player false, next_level = id"
+        },
+        {
+          "when": "live hero only on an ally team (different team_num)",
           "observable": "winner_is_player false, next_level = id"
         }
       ],
@@ -340,15 +356,33 @@
       "tests": [
         {
           "file": "tests/unit/test_mode_tick.cpp",
-          "test": "ModeTick.declare_winner_is_one_shot_and_reasserted_every_tick"
+          "test": "ModeTick.declare_winner_is_one_shot_and_reasserted_every_tick",
+          "note": "live myguy: winner_is_player true, next_level 43"
+        },
+        {
+          "file": "tests/unit/test_mode_tick.cpp",
+          "test": "ModeTick.latch_arming_revives_player_corpses_before_winner_check",
+          "note": "revived myguy: winner_is_player true, next_level 43"
         },
         {
           "file": "tests/unit/test_mode_bindings.cpp",
-          "test": "ModeBindings.declare_winner_records_team_and_validates"
+          "test": "ModeBindings.declare_winner_records_team_and_validates",
+          "note": "bots only: EXPECT_FALSE(winner_is_player), EXPECT_EQ(id, win_next_level)"
+        },
+        {
+          "file": "tests/unit/test_mode_bindings.cpp",
+          "test": "ModeBindings.declare_winner_accepts_band_rejects_gap_and_beyond",
+          "note": "bots only on band 31: same two EXPECTs"
+        },
+        {
+          "file": "tests/unit/test_modes_tdm.cpp",
+          "test": "ModesTdm.bot_only_win_is_rematch_shape",
+          "note": "bots only"
         }
       ],
       "missing_arms": [
-        "none (bots only, dead hero, ally team)"
+        "hero on the winning team is dead (flush could not revive it)",
+        "live hero only on an ally team (different team_num)"
       ]
     },
     {

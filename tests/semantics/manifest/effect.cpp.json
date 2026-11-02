@@ -97,7 +97,11 @@
         },
         {
           "when": "walk row",
-          "observable": "dead()==1, death() hook runs, act returns 0"
+          "observable": "dead()==1, act returns 0"
+        },
+        {
+          "when": "walk row: death hook",
+          "observable": "the death() hook runs (its on_death effect is observable)"
         }
       ],
       "setting": "none",
@@ -114,7 +118,7 @@
         }
       ],
       "missing_arms": [
-        "walk row"
+        "walk row: death hook"
       ]
     },
     {
@@ -173,7 +177,11 @@
         },
         {
           "when": "again",
-          "observable": "returns 0, no second hook"
+          "observable": "returns 0"
+        },
+        {
+          "when": "again: no second hook",
+          "observable": "the on_death hook does not run a second time (no second effect)"
         }
       ],
       "setting": "none",
@@ -182,7 +190,7 @@
         {
           "file": "tests/integration/test_effect_more_paths.cpp",
           "test": "EffectMorePaths.effect_round9_death_called_guard_returns_false_on_second_call",
-          "note": "return values only"
+          "note": "again arm: second death() returns false; first returns true; no hook effect is read"
         },
         {
           "file": "tests/integration/test_effect_death_more.cpp",
@@ -191,7 +199,7 @@
         }
       ],
       "missing_arms": [
-        "again"
+        "again: no second hook"
       ]
     },
     {

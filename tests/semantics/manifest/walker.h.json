@@ -22,18 +22,10 @@
       ],
       "setting": "none",
       "status": "executed-only",
-      "tests": [
-        {
-          "file": "tests/unit/test_modes_onslaught.cpp",
-          "test": "ModesOnslaught.a_tent_troops_kill_pays_its_colour",
-          "note": "living arm asserted: :"
-        }
-      ],
-      "missing_arms": [],
-      "note": [
-        "living arm: tests/unit/test_kit_elemental.cpp (last_attacker_id == striker)",
-        "living arm: tests/unit/test_gameplay_fixes_charm.cpp (troop stamp)",
-        "null arm: no test found that hits with an owner chain holding no living and asserts last_attacker_id()==0 (test_mode_tick.cpp damage_gate_* assert 0 for zero/cancelled damage, which is the caller's tempdamage_i>0 gate, not this guard)"
+      "tests": [],
+      "missing_arms": [
+        "credit head is a living",
+        "no living on the attacker's owner chain (who==nullptr)"
       ]
     }
   ],

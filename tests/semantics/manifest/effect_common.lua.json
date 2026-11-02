@@ -28,30 +28,30 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
-          "file": "tests/integration/test_effect_act.cpp",
-          "test": "EffectAct.hits_overlap2"
+          "file": "tests/unit/test_pack_lua_paths.cpp",
+          "test": "PackLuaCloud.a_foe_in_range_but_outside_the_cloud_box_is_unharmed",
+          "note": "left and up placements one px clear: false on x and on y"
         },
         {
-          "file": "tests/integration/test_effect_act.cpp",
-          "test": "EffectAct.hits_no_overlap"
+          "file": "tests/unit/test_kit_elemental.cpp",
+          "test": "KitElemental.immolate_drains_two_per_tick_burns_contact_melee_most_and_lays_embers",
+          "note": "far foe 120 px right: separated on x"
         },
         {
-          "file": "tests/integration/test_effect_act.cpp",
-          "test": "EffectAct.hits_contained2"
-        },
-        {
-          "file": "tests/integration/test_effect_more_paths.cpp",
-          "test": "EffectMorePaths.effect_round11_hits_edge_touches"
-        },
-        {
-          "file": "tests/integration/test_effect_more_paths.cpp",
-          "test": "EffectMorePaths.effect_round10_hits_overlap_and_axis_reject_paths"
+          "file": "tests/unit/test_pack_lua_paths.cpp",
+          "test": "PackLuaCloud.a_cloud_damages_the_foe_it_covers_and_spares_its_own_team",
+          "note": "overlap: true"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "overlap or edge-touch on both axes"
+      ],
+      "note": [
+        "The five cited hits tests (EffectAct.hits_overlap2 / hits_no_overlap / hits_contained2, EffectMorePaths.effect_round10_* / effect_round11_hits_edge_touches) call the C++ hits() in src/gameplay/effect.cpp, not this Lua function, so they were removed. Edge-touch inclusivity of the Lua copy is unasserted."
+      ]
     }
   ],
   "other": []

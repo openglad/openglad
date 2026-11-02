@@ -35,8 +35,7 @@
       "tests": [
         {
           "file": "tests/unit/test_kit_thief.cpp",
-          "test": "KitThief.flying_foe_does_not_trip_a_mine",
-          "note": "flight_left 30 and floor 1 arms"
+          "test": "KitThief.flying_foe_does_not_trip_a_mine"
         },
         {
           "file": "tests/unit/test_kit_thief.cpp",
@@ -70,6 +69,10 @@
         {
           "file": "tests/unit/test_kit_thief.cpp",
           "test": "KitThief.mines_chain_on_their_own_next_tick"
+        },
+        {
+          "file": "tests/unit/test_kit_thief.cpp",
+          "test": "KitThief.mine_is_laid_invisible_and_waits"
         }
       ],
       "missing_arms": []
@@ -156,15 +159,16 @@
         }
       ],
       "setting": "new-specials",
-      "status": "executed-only",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_kit_thief.cpp",
-          "test": "KitThief.high_level_mine_leaves_a_puff",
-          "note": "spawned arm"
+          "test": "KitThief.high_level_mine_leaves_a_puff"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "world full"
+      ]
     },
     {
       "id": "effect_mine.lua:87",
@@ -220,14 +224,24 @@
         }
       ],
       "setting": "new-specials",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_kit_thief.cpp",
           "test": "KitThief.mine_expires_quietly"
+        },
+        {
+          "file": "tests/unit/test_kit_thief.cpp",
+          "test": "KitThief.mines_chain_on_their_own_next_tick"
+        },
+        {
+          "file": "tests/unit/test_kit_thief.cpp",
+          "test": "KitThief.high_level_mine_leaves_a_puff"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "hp < 0"
+      ]
     },
     {
       "id": "effect_mine.lua:107",

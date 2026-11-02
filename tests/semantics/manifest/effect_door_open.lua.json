@@ -23,23 +23,21 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_pack_lua_paths.cpp",
           "test": "PackLuaEffectDoorOpen.a_finished_opening_settles_into_an_ignored_copy",
-          "note": "settle arm only"
+          "note": "settle arm"
         },
         {
           "file": "tests/integration/test_effect_chain_and_door.cpp",
           "test": "EffectChainAndDoor.effect_chain_hits_leader_spawns_explosion_and_secondary_chains_and_door_open_spawns_fx",
-          "note": "settle arm only, lines 165-174"
+          "note": "settle arm"
         }
       ],
-      "missing_arms": [],
-      "note": [
-        "parity: effect_door_open_emission / EffectFamilyCount(FAMILY_DOOR_OPEN,1,1) (does not distinguish the arms)",
-        "Only the settle arm is asserted (both tests set ANI_WALK before acting); the still-animating arm (on_act false, door_open alive) is unasserted, and parity effect_door_open_emission's EffectFamilyCount 1,1 does not distinguish it."
+      "missing_arms": [
+        "still animating (ani_type ~= WALK)"
       ]
     },
     {
@@ -55,7 +53,7 @@
         {
           "when": "copy spawned",
           "observable": "one FAMILY_DOOR_OPEN on fxlist: same worldx/worldy/floor/curdir, ignore 1, ANI_WALK; original dead",
-          "asserted": true
+          "asserted": false
         },
         {
           "when": "fxlist full",
@@ -65,19 +63,13 @@
       ],
       "setting": "none",
       "status": "executed-only",
-      "tests": [
-        {
-          "file": "tests/integration/test_effect_chain_and_door.cpp",
-          "test": "EffectChainAndDoor.effect_chain_hits_leader_spawns_explosion_and_secondary_chains_and_door_open_spawns_fx"
-        },
-        {
-          "file": "tests/unit/test_pack_lua_paths.cpp",
-          "test": "PackLuaEffectDoorOpen.a_finished_opening_settles_into_an_ignored_copy"
-        }
+      "tests": [],
+      "missing_arms": [
+        "copy spawned",
+        "fxlist full"
       ],
-      "missing_arms": [],
       "note": [
-        "The spawn-copy arm is asserted; the fxlist-full arm (on_act true, original NOT dead, retries next tick) is unasserted."
+        "Arm 1 names the floor and no test runs a door_open off floor 0 or reads the copy floor."
       ]
     }
   ],

@@ -34,7 +34,13 @@
       "tests": [
         {
           "file": "tests/integration/test_family_behaviors.cpp",
-          "test": "FamilyBehaviors.check_special_skeleton_tunnel"
+          "test": "FamilyBehaviors.check_special_skeleton_tunnel",
+          "note": "off mid-teleport no foe true; on mid-teleport false; on arrived true; foe near false on both"
+        },
+        {
+          "file": "tests/unit/test_gameplay_fixes_bots.cpp",
+          "test": "GameplayFixesBots.a_busy_bot_never_rolls_a_busy_cast_with_the_setting_on",
+          "note": "classic_row SKELETON TUNNEL: walking true on both values, ANI_TELE_OUT false on, true off"
         }
       ],
       "missing_arms": []
@@ -62,21 +68,19 @@
       "status": "asserted",
       "tests": [
         {
-          "file": "tests/integration/test_walker_specials.cpp",
-          "test": "WalkerSpecials.skeleton_tunnel_drives_simulation"
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.tunnel_and_level_up_stay_classic",
+          "note": "ANI_TELE_IN: reason \"SPECIAL BUSY\", MP 50 unchanged; ANI_WALK: cast ok, ANI_TELE_OUT"
         },
         {
           "file": "tests/integration/test_walker_specials.cpp",
-          "test": "WalkerSpecials.family_special_sweep_outcomes_are_pinned",
-          "note": "mid-teleport case table"
+          "test": "WalkerSpecials.skeleton_tunnel_drives_simulation",
+          "note": "ANI_TELE_OUT, position changed"
         },
         {
           "parity": "skeleton_tunnel_displacement_scen99",
-          "fact": ""
-        },
-        {
-          "parity": "special_skeleton_1_scen99",
-          "fact": ""
+          "fact": "",
+          "note": "lands at exactly (172 286)  inside the level-10 180 px range"
         }
       ],
       "missing_arms": []

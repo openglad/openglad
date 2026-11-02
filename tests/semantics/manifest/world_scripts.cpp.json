@@ -66,8 +66,13 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
+        {
+          "file": "tests/unit/test_script_hooks.cpp",
+          "test": "ScriptBindingTest.world_query_rows_read_the_live_world",
+          "note": "live tracked arm: spawn:collide(gen) / spawn:collide_ob() == gen logged and asserted"
+        },
         {
           "file": "tests/unit/test_script_bindings_props.cpp",
           "test": "ScriptBindingPropsTest.stale_handles_raise_the_same_error_text"
@@ -77,7 +82,9 @@
           "test": "LevelScriptsTest.nested_dispatch_keeps_outer_handles_alive"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "og.is_alive on a stale handle"
+      ]
     },
     {
       "id": "world_scripts.cpp:192",
@@ -138,7 +145,12 @@
         {
           "file": "tests/unit/test_script_host.cpp",
           "test": "PackLibTest.exports_are_frozen_shallow_views",
-          "note": "lines 3765-3768 assert the nested write c.inner.x = 5 succeeds"
+          "note": "writes to fresh/existing keys raise; nested c.inner.x = 5 succeeds"
+        },
+        {
+          "file": "tests/unit/test_script_bindings_props.cpp",
+          "test": "ScriptBindingPropsTest.tuning_views_reject_writes",
+          "note": "same push_frozen_view_of_top via og.tuning; asserts the text 'attempt to modify a read-only table' for new and existing keys"
         },
         {
           "file": "tests/unit/test_script_host.cpp",
@@ -184,6 +196,11 @@
       "tests": [
         {
           "file": "tests/unit/test_script_host.cpp",
+          "test": "PackLibTest.module_returning_nothing_is_an_error",
+          "note": "'module returned no exports' and 'failed to load'"
+        },
+        {
+          "file": "tests/unit/test_script_host.cpp",
           "test": "PackLibTest.failures_latch_and_do_not_rerun"
         },
         {
@@ -192,17 +209,16 @@
         },
         {
           "file": "tests/unit/test_script_host.cpp",
-          "test": "PackLibTest.on_demand_load_inside_the_eager_pass_settles_once"
+          "test": "PackLibTest.qualified_use_shares_the_memoized_export",
+          "note": "one compile, both users see the same export"
         },
         {
           "file": "tests/unit/test_script_host.cpp",
-          "test": "ScriptHostSecurity.a_precompiled_binary_chunk_is_refused_not_run"
+          "test": "PackLibTest.qualified_use_keeps_the_callee_packs_resolution_root",
+          "note": "core:match's og.use('helper') resolves core's helper, n == 42, not the caller's"
         }
       ],
-      "missing_arms": [],
-      "note": [
-        "gap: module-in-module cross-pack resolution unasserted (PackLibTest.resolution_is_pack_relative covers scripts only)"
-      ]
+      "missing_arms": []
     },
     {
       "id": "world_scripts.cpp:565",
@@ -262,11 +278,20 @@
         },
         {
           "file": "tests/unit/test_script_host.cpp",
+          "test": "PackLibTest.qualified_use_refuses_malformed_names"
+        },
+        {
+          "file": "tests/unit/test_script_host.cpp",
+          "test": "PackLibTest.qualified_use_names_an_unknown_pack"
+        },
+        {
+          "file": "tests/unit/test_script_host.cpp",
           "test": "PackLibTest.dependency_cycles_are_detected"
         },
         {
           "file": "tests/unit/test_script_host.cpp",
-          "test": "PackLibTest.resolution_is_pack_relative"
+          "test": "PackLibTest.resolution_is_pack_relative",
+          "note": "missing module text and ok arm"
         },
         {
           "file": "tests/unit/test_script_host.cpp",
@@ -301,17 +326,22 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_script_hooks.cpp",
           "test": "ScriptBindingTest.world_query_rows_read_the_live_world",
-          "note": "(logs spawn:collide_ob() == gen, asserts vm_log()[4] == \"collide\\ttrue\\ttrue\") — tracked-id arm"
+          "note": "spawn:collide_ob() == gen logged true"
+        },
+        {
+          "file": "tests/unit/test_script_bindings_props.cpp",
+          "test": "ScriptBindingPropsTest.kit_possess_and_release_hand_back_the_engine_answer",
+          "note": "og.release_possession(self) == self logged 1"
         }
       ],
-      "missing_arms": [],
-      "note": [
-        "tests/unit/test_script_bindings_props.cpp: possession test logs og.release_possession(self) == self and 1 or 0, asserts \"release\\t1\" — tracked-id arm"
+      "missing_arms": [
+        "handles to different walkers",
+        "untracked walker, same gen"
       ]
     },
     {
@@ -387,7 +417,13 @@
       "tests": [
         {
           "file": "tests/unit/test_campaign_hooks.cpp",
-          "test": "CampaignHooksTest.fence_walk_everything_outside_the_allowlist_errors"
+          "test": "CampaignHooksTest.fence_walk_everything_outside_the_allowlist_errors",
+          "note": "pcall of register_hooks/register_level_hooks/register_campaign_hooks inside picker_menu errors with a message containing 'campaign hooks'; NOFENCE/WRONGMSG asserted absent"
+        },
+        {
+          "file": "tests/unit/test_script_hooks.cpp",
+          "test": "ScriptHooksTest.register_hooks_load_error_vocabulary",
+          "note": "load-time control registers do_special and it dispatches"
         }
       ],
       "missing_arms": []
@@ -455,18 +491,22 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
-          "file": "tests/unit/test_level_scripts.cpp",
-          "test": "LevelScriptsTest.a_family_chunk_registers_level_hooks_in_the_real_pass"
+          "file": "tests/unit/test_campaign_hooks.cpp",
+          "test": "CampaignHooksTest.the_declaration_pass_bows_out_of_behaviour_registrars",
+          "note": "og.register_hooks for test.campaign:newguy, declared in the same chunk: DeclareResult ok and the family after it harvested"
         },
         {
-          "file": "tests/unit/test_campaign_hooks.cpp",
-          "test": "CampaignHooksTest.declare_mode_registrar_is_a_silent_noop"
+          "file": "tests/unit/test_level_scripts.cpp",
+          "test": "LevelScriptsTest.a_family_chunk_registers_level_hooks_in_the_real_pass",
+          "note": "bind replay arm, og.register_level_hooks only: kinds bit set and on_load fires exactly once"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "bind replay"
+      ]
     },
     {
       "id": "world_scripts.cpp:835",
@@ -493,6 +533,11 @@
         {
           "file": "tests/unit/test_script_hooks.cpp",
           "test": "ScriptHooksTest.unknown_family_is_a_load_error"
+        },
+        {
+          "file": "tests/unit/test_script_hooks.cpp",
+          "test": "ScriptHooksTest.register_hooks_load_error_vocabulary",
+          "note": "known-family control registers"
         }
       ],
       "missing_arms": []
@@ -536,14 +581,17 @@
           "test": "SpecialsDispatchTest.cross_chunk_collision_reports_and_last_wins"
         },
         {
-          "file": "tests/unit/test_script_hooks.cpp",
-          "test": "ScriptHooksTest.bind_pass_accepts_a_declaration_that_keeps_its_id"
+          "file": "tests/unit/test_classpack_lua_bind.cpp",
+          "test": "LuaFamilyBindTest.a_second_override_of_one_hook_is_still_reported",
+          "note": "two scripts register on_death: 'duplicate hook registration'"
+        },
+        {
+          "file": "tests/unit/test_classpack_lua_bind.cpp",
+          "test": "LuaFamilyBindTest.register_hooks_overrides_a_declaration_quietly",
+          "note": "no load error; override logs 'override'"
         }
       ],
-      "missing_arms": [],
-      "note": [
-        "tests/unit/test_classpack_lua_bind.cpp (duplicate hook registration)"
-      ]
+      "missing_arms": []
     },
     {
       "id": "world_scripts.cpp:898",
@@ -634,7 +682,7 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_script_hooks.cpp",
@@ -657,7 +705,9 @@
           "test": "SpecialsByIdTest.a_slot_number_beside_its_id_is_still_a_load_error"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "default only"
+      ]
     },
     {
       "id": "world_scripts.cpp:994",
@@ -786,12 +836,25 @@
       ],
       "setting": "none",
       "status": "asserted",
-      "tests": [],
-      "missing_arms": [],
-      "note": [
-        "tests/unit/test_script_bindings_math.cpp (og.rand(0), og.rand(-7), og.rand(2147483648), og.rand(2147483647) draws)",
-        "tests/unit/test_script_bindings_errors.cpp ('no active world')"
-      ]
+      "tests": [
+        {
+          "file": "tests/unit/test_script_bindings_math.cpp",
+          "test": "ScriptBindingMathTest.rand_refuses_a_non_positive_bound"
+        },
+        {
+          "file": "tests/unit/test_script_bindings_math.cpp",
+          "test": "ScriptBindingMathTest.rand_bounds_above_int32_max_are_refused"
+        },
+        {
+          "file": "tests/unit/test_script_bindings_math.cpp",
+          "test": "ScriptBindingMathTest.rand_bounds_up_to_int32_max_draw_unchanged"
+        },
+        {
+          "file": "tests/unit/test_script_bindings_math.cpp",
+          "test": "ScriptBindingMathTest.rand_requires_an_active_world"
+        }
+      ],
+      "missing_arms": []
     },
     {
       "id": "world_scripts.cpp:1057",
@@ -817,26 +880,23 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_script_hooks.cpp",
           "test": "ScriptBindingTest.world_query_rows_read_the_live_world",
-          "note": "(line 1391 logs og.is_alive(spawn); asserts 'alive\\ttrue') — live arm only"
+          "note": "logs og.is_alive(spawn); asserts 'alive\\ttrue'"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "dead walker still resolvable",
+        "stale handle"
+      ]
     },
     {
       "id": "world_scripts.cpp:1062",
       "lines": [
-        1062,
-        1063,
-        1064,
-        1065,
-        1066,
-        1067,
-        1068
+        1062
       ],
       "function": "og_entity_id",
       "anchor": "int og_entity_id(lua_State* L)",
@@ -853,20 +913,26 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
-          "file": "tests/unit/test_quiet_probe.cpp",
-          "test": "QuietProbe.the_lua_doors_answer_what_the_engine_answers",
-          "note": "(blood ids compared against near_id/far_id) — tracked arm"
+          "file": "tests/unit/test_level_scripts.cpp",
+          "test": "LevelScriptsTest.spawn_and_death_hooks_with_per_entity_override",
+          "note": "og.entity_id(ent) logged == soldier->entity_id()"
         },
         {
-          "file": "tests/unit/test_script_hooks.cpp",
-          "test": "ScriptBindingTest.world_query_rows_read_the_live_world",
-          "note": "(tostring 'entity#N') — tracked arm"
+          "file": "tests/unit/test_level_scripts.cpp",
+          "test": "LevelScriptsTest.generator_customize_spawn_dispatches",
+          "note": "both ids compared to entity_id()"
+        },
+        {
+          "file": "tests/unit/test_quiet_probe.cpp",
+          "test": "QuietProbe.the_lua_doors_answer_what_the_engine_answers"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "untracked walker (never added to the world)"
+      ]
     },
     {
       "id": "world_scripts.cpp:1081",
@@ -893,6 +959,11 @@
         {
           "file": "tests/unit/test_level_scripts.cpp",
           "test": "LevelScriptsTest.wildcard_level_hooks_fire_for_any_level"
+        },
+        {
+          "file": "tests/unit/test_level_scripts.cpp",
+          "test": "LevelScriptsTest.a_family_chunk_registers_level_hooks_in_the_real_pass",
+          "note": "wildcard is not a level-42 registration"
         },
         {
           "file": "tests/unit/test_level_scripts.cpp",
@@ -933,6 +1004,11 @@
         {
           "file": "tests/unit/test_level_scripts.cpp",
           "test": "LevelScriptsTest.level_and_entity_hook_registration_rejections"
+        },
+        {
+          "file": "tests/unit/test_level_scripts.cpp",
+          "test": "LevelScriptsTest.a_family_chunk_registers_level_hooks_in_the_real_pass",
+          "note": "kinds bitmask == on_load bit"
         }
       ],
       "missing_arms": []
@@ -1020,6 +1096,11 @@
         {
           "file": "tests/unit/test_campaign_hooks.cpp",
           "test": "CampaignHooksTest.declare_mode_still_rejects_a_bad_registration"
+        },
+        {
+          "file": "tests/unit/test_campaign_hooks.cpp",
+          "test": "CampaignHooksTest.the_registrar_refuses_mis_shaped_books_by_name",
+          "note": "positional entry: '(got a number key)'"
         }
       ],
       "missing_arms": []
@@ -1112,11 +1193,12 @@
       "tests": [
         {
           "file": "tests/unit/test_campaign_hooks.cpp",
-          "test": "CampaignHooksTest.lineup_presets_key_is_gone"
+          "test": "CampaignHooksTest.lineup_registration_rejections",
+          "note": "default_fill, lineup.power = 7, lineup = {} each with its text"
         },
         {
           "file": "tests/unit/test_campaign_hooks.cpp",
-          "test": "CampaignHooksTest.lineup_power_alone_is_the_whole_table"
+          "test": "CampaignHooksTest.lineup_presets_key_is_gone"
         },
         {
           "file": "tests/unit/test_campaign_hooks.cpp",
@@ -1198,7 +1280,13 @@
       "tests": [
         {
           "file": "tests/unit/test_campaign_hooks.cpp",
-          "test": "CampaignHooksTest.bad_vars_are_load_errors"
+          "test": "CampaignHooksTest.bad_vars_are_load_errors",
+          "note": "33 chars -> '1-32 chars', uppercase -> '[a-z0-9_]', picker not registered"
+        },
+        {
+          "file": "tests/unit/test_campaign_hooks.cpp",
+          "test": "CampaignHooksTest.registration_happy_path_serves_picker_and_vars",
+          "note": "valid names listed"
         }
       ],
       "missing_arms": []
@@ -1230,7 +1318,12 @@
         {
           "file": "tests/unit/test_campaign_hooks.cpp",
           "test": "CampaignHooksTest.bad_vars_are_load_errors",
-          "note": "errors_contain 'found a non-array key' and \"'vars' must be an ARRAY\""
+          "note": "'found a non-array key' and \"'vars' must be an ARRAY\""
+        },
+        {
+          "file": "tests/unit/test_campaign_hooks.cpp",
+          "test": "CampaignHooksTest.registration_happy_path_serves_picker_and_vars",
+          "note": "array vars register"
         }
       ],
       "missing_arms": []
@@ -1259,11 +1352,17 @@
       "tests": [
         {
           "file": "tests/unit/test_campaign_hooks.cpp",
-          "test": "CampaignHooksTest.declare_mode_registrar_is_a_silent_noop"
+          "test": "CampaignHooksTest.declare_mode_registrar_is_a_silent_noop",
+          "note": "DeclareResult ok"
         },
         {
           "file": "tests/unit/test_campaign_hooks.cpp",
           "test": "CampaignHooksTest.declare_mode_still_rejects_a_bad_registration"
+        },
+        {
+          "file": "tests/unit/test_campaign_hooks.cpp",
+          "test": "CampaignHooksTest.registration_happy_path_serves_picker_and_vars",
+          "note": "world pass installs"
         }
       ],
       "missing_arms": []
@@ -1293,8 +1392,13 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
+        {
+          "file": "tests/unit/test_campaign_hooks.cpp",
+          "test": "CampaignHooksTest.registration_happy_path_serves_picker_and_vars",
+          "note": "first registration installs"
+        },
         {
           "file": "tests/unit/test_campaign_hooks.cpp",
           "test": "CampaignHooksTest.duplicate_registration_conflicts_and_reports_once"
@@ -1304,9 +1408,8 @@
           "test": "CampaignHooksTest.a_conflicted_book_cannot_poison_the_default"
         }
       ],
-      "missing_arms": [],
-      "note": [
-        "UNASSERTED arm: 'third+ registration => conflict source unchanged' (both cited tests register exactly two books)"
+      "missing_arms": [
+        "third+ registration"
       ]
     },
     {
@@ -1353,7 +1456,11 @@
         },
         {
           "file": "tests/unit/test_campaign_hooks.cpp",
-          "test": "CampaignHooksTest.lineup_alone_is_a_whole_registration"
+          "test": "CampaignHooksTest.match_knobs_absent_answers_defaults_and_false"
+        },
+        {
+          "file": "tests/unit/test_campaign_hooks.cpp",
+          "test": "CampaignHooksTest.no_lineup_hook_means_no_lineup"
         },
         {
           "file": "tests/unit/test_campaign_hooks.cpp",
@@ -1382,8 +1489,19 @@
         }
       ],
       "setting": "none",
-      "status": "none",
-      "tests": [],
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_campaign_hooks.cpp",
+          "test": "CampaignHooksTest.fence_walk_everything_outside_the_allowlist_errors",
+          "note": "register_default_lineup is in the og walk and not allowlisted: pcall inside picker_menu must fail with a message containing 'campaign hooks', else WRONGMSG/NOFENCE fails the test"
+        },
+        {
+          "file": "tests/unit/test_campaign_hooks.cpp",
+          "test": "CampaignHooksTest.default_lineup_prices_with_no_campaign_book",
+          "note": "load-time arm"
+        }
+      ],
       "missing_arms": []
     },
     {
@@ -1413,14 +1531,22 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_campaign_hooks.cpp",
-          "test": "CampaignHooksTest.default_lineup_registration_rejections"
+          "test": "CampaignHooksTest.default_lineup_registration_rejections",
+          "note": "{[1]=\"x\"} -> 'the only key is \\'power\\''; {powr=fn} -> 'unknown key \\'powr\\''"
+        },
+        {
+          "file": "tests/unit/test_campaign_hooks.cpp",
+          "test": "CampaignHooksTest.default_lineup_prices_with_no_campaign_book",
+          "note": "only power proceeds"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "misspelled key 'powr'"
+      ]
     },
     {
       "id": "world_scripts.cpp:1484",
@@ -1452,6 +1578,11 @@
         {
           "file": "tests/unit/test_campaign_hooks.cpp",
           "test": "CampaignHooksTest.default_lineup_registration_rejections"
+        },
+        {
+          "file": "tests/unit/test_campaign_hooks.cpp",
+          "test": "CampaignHooksTest.default_lineup_prices_with_no_campaign_book",
+          "note": "power function proceeds and prices 34"
         }
       ],
       "missing_arms": []
@@ -1484,7 +1615,8 @@
       "tests": [
         {
           "file": "tests/unit/test_campaign_hooks.cpp",
-          "test": "CampaignHooksTest.the_declaration_pass_bows_out_of_behaviour_registrars"
+          "test": "CampaignHooksTest.the_declaration_pass_bows_out_of_behaviour_registrars",
+          "note": "DeclareResult ok, pass ran past the registrar"
         },
         {
           "file": "tests/unit/test_campaign_hooks.cpp",
@@ -1521,8 +1653,7 @@
       "tests": [
         {
           "file": "tests/unit/test_script_bindings_math.cpp",
-          "test": "ScriptBindingMathTest.family_id_refuses_an_unknown_order",
-          "note": "expect_errored_with \"og.family_id: unknown order 'lifing'\"; control arm og.family_id('living','core:soldier') resolves"
+          "test": "ScriptBindingMathTest.family_id_refuses_an_unknown_order"
         }
       ],
       "missing_arms": []
@@ -1551,8 +1682,12 @@
       "tests": [
         {
           "file": "tests/unit/test_classpack_lua_decl.cpp",
-          "test": "LuaFamilyDeclTest.family_id_defers_during_a_declaration",
-          "note": "assert(ref) truthy; numeric use errors, EXPECT_FALSE(used.ok)"
+          "test": "LuaFamilyDeclTest.family_id_defers_during_a_declaration"
+        },
+        {
+          "file": "tests/unit/test_script_bindings_math.cpp",
+          "test": "ScriptBindingMathTest.family_id_refuses_an_unknown_order",
+          "note": "world-pass control logs FAMILY_SOLDIER"
         }
       ],
       "missing_arms": []
@@ -1578,11 +1713,16 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": [],
-      "note": [
-        "tests/unit/test_script_bindings_math.cpp: control arm asserts og.family_id('living','core:soldier') == FAMILY_SOLDIER (known arm only); no test found asserting the nil arm"
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_script_bindings_math.cpp",
+          "test": "ScriptBindingMathTest.family_id_refuses_an_unknown_order",
+          "note": "control: og.family_id('living','core:soldier') logs FAMILY_SOLDIER"
+        }
+      ],
+      "missing_arms": [
+        "unknown family string"
       ]
     },
     {
@@ -1630,35 +1770,39 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_classpack_lua_bind.cpp",
-          "test": "LuaFamilyBindTest.an_unhandled_castable_special_warns_unless_declared"
+          "test": "LuaFamilyBindTest.an_unhandled_castable_special_warns_unless_declared",
+          "note": "declared arm: pack error text"
         },
         {
           "file": "tests/unit/test_classpack_lua_bind.cpp",
-          "test": "LuaFamilyBindTest.cast_false_is_a_handler_and_silences_the_rule"
-        },
-        {
-          "file": "tests/unit/test_classpack_lua_bind.cpp",
-          "test": "LuaFamilyBindTest.a_default_cast_answers_every_slot"
-        },
-        {
-          "file": "tests/unit/test_script_hooks.cpp",
-          "test": "SpecialsByIdTest.castable_slot_with_no_handler_warns_after_load"
-        },
-        {
-          "file": "tests/unit/test_script_hooks.cpp",
-          "test": "SpecialsByIdTest.a_default_answers_for_every_castable_slot"
+          "test": "LuaFamilyBindTest.cast_false_is_a_handler_and_silences_the_rule",
+          "note": "function/false entries not reported; WHIRLWIND/DISARM reported"
         },
         {
           "file": "tests/unit/test_classpack_lua_bind.cpp",
           "test": "LuaFamilyBindTest.a_default_cast_answers_every_slot",
-          "note": "implicit for the no-hook-table arm: every load_errors(...).empty() check in  while other core families carry castable specials and no table, e.g."
+          "note": "default: no load error"
+        },
+        {
+          "file": "tests/unit/test_script_hooks.cpp",
+          "test": "SpecialsByIdTest.castable_slot_with_no_handler_warns_after_load",
+          "note": "undeclared arm: stderr 'spend 9 MP and do nothing'; handled FLARE BURST absent"
+        },
+        {
+          "file": "tests/unit/test_script_hooks.cpp",
+          "test": "SpecialsByIdTest.a_default_answers_for_every_castable_slot",
+          "note": "default: no 'has no handler' on stderr"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "family has no Lua hook table (C++-only family, or its chunk registered nothing)",
+        "do_special is a plain function",
+        "slot name is kSpecialNameNone"
+      ]
     },
     {
       "id": "world_scripts.cpp:1765",
@@ -1687,14 +1831,22 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_script_host.cpp",
-          "test": "PackLibTest.modules_load_eagerly_in_order_before_scripts"
+          "test": "PackLibTest.modules_load_eagerly_in_order_before_scripts",
+          "note": "each module runs once, in order, before the script"
+        },
+        {
+          "file": "tests/unit/test_script_host.cpp",
+          "test": "PackLibTest.on_demand_load_inside_the_eager_pass_settles_once",
+          "note": "'late' loaded on demand by 'early', eager pass skips it via the memoized export: log has it once"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "module already settled"
+      ]
     },
     {
       "id": "world_scripts.cpp:1785",
@@ -1722,13 +1874,25 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": [],
-      "note": [
-        "tests/unit/test_classpack_lua_install.cpp (asserts pack_declaration_failed latch, not the skip)",
-        "tests/unit/test_classpack_lua_decl.cpp: pack_declaration_failed checks (latch only)"
-      ]
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_classpack_lua_install.cpp",
+          "test": "LuaPackInstall.a_pack_whose_declaration_fails_installs_nothing",
+          "note": "declaration failed: a fresh WorldScripts records no host error for the rejected chunk"
+        },
+        {
+          "file": "tests/unit/test_classpack_lua_bind.cpp",
+          "test": "LuaFamilyBindTest.a_default_cast_answers_every_slot",
+          "note": "bind ok: has_hook DoSpecial and dispatch answers"
+        },
+        {
+          "file": "tests/unit/test_classpack_lua_bind.cpp",
+          "test": "LuaFamilyBindTest.the_world_api_is_closed_during_the_bind_replay",
+          "note": "bind fails: error 'the world API is dispatch-time only' latched"
+        }
+      ],
+      "missing_arms": []
     },
     {
       "id": "world_scripts.cpp:1802",
@@ -1756,7 +1920,7 @@
         {
           "file": "tests/unit/test_script_host.cpp",
           "test": "ScriptHostPackTest.a_chunk_that_fails_to_compile_is_recorded_not_silent",
-          "note": "error recorded, message contains 'syntax error'"
+          "note": "error recorded with 'syntax error'; the healthy sibling chunk's do_special registered"
         }
       ],
       "missing_arms": []
@@ -1786,22 +1950,21 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_level_scripts.cpp",
           "test": "LevelScriptsTest.spawn_and_death_hooks_with_per_entity_override",
-          "note": "world arm: fixture sets current_game->world and vm_log() is read from world.scripts(); dispatch through the shared VM would leave it empty"
+          "note": "world arm"
         },
         {
           "file": "tests/unit/test_campaign_hooks.cpp",
           "test": "CampaignHooksTest.registration_happy_path_serves_picker_and_vars",
-          "note": "no-world stale-rebuild arm: no current_game; each register_script bumps the generation and the new book is served through hooks::campaign_picker_registered()"
+          "note": "no-world stale-rebuild arm"
         }
       ],
-      "missing_arms": [],
-      "note": [
-        "UNASSERTED arm: 'no world, fresh => cached VM reused' has no direct assertion"
+      "missing_arms": [
+        "no world, fresh"
       ]
     },
     {
@@ -1830,15 +1993,18 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_script_hooks.cpp",
           "test": "ScriptHooksTest.erroring_hook_is_latched_loudly",
-          "note": "count 1 then 2, where, message"
+          "note": "count 1 then 2, where 'hook:on_death', message 'boom'"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "repeat of same error",
+        "new error"
+      ]
     },
     {
       "id": "world_scripts.cpp:1961",
@@ -1929,7 +2095,7 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_script_hooks.cpp",
@@ -1937,22 +2103,25 @@
         },
         {
           "file": "tests/unit/test_script_hooks.cpp",
-          "test": "ScriptHooksTest.healthy_hook_leaves_the_failure_latch_clear"
+          "test": "ScriptHooksTest.healthy_hook_leaves_the_failure_latch_clear",
+          "note": "returns true -> true"
         },
         {
           "file": "tests/unit/test_living_act_flow_unit.cpp",
-          "test": "LivingActFlow.the_hit_response_draws_no_ordinary_act_after_a_gates_no",
-          "note": "nil/false arm: the shipped druid check_special_ai returns false when busy with the setting on; asserts the rng(3) is not drawn"
+          "test": "LivingActFlow.the_hit_response_draws_no_ordinary_act_after_a_gates_no"
         },
         {
           "file": "tests/unit/test_living_act_flow_unit.cpp",
-          "test": "LivingActFlow.a_roll_the_gate_refuses_takes_the_ordinary_act_with_the_setting_on",
-          "note": "gate false -> no cast, mp unchanged"
+          "test": "LivingActFlow.a_roll_the_gate_refuses_takes_the_ordinary_act_with_the_setting_on"
+        },
+        {
+          "file": "tests/unit/test_script_hooks.cpp",
+          "test": "ScriptHooksTest.on_melee_hit_reports_ran_and_latches_its_own_failures",
+          "note": "void hook ran -> true"
         }
       ],
-      "missing_arms": [],
-      "note": [
-        "UNASSERTED arm: truthiness coercion of a non-boolean return (0, '') => true"
+      "missing_arms": [
+        "result hook returns any other value"
       ]
     },
     {
@@ -2000,6 +2169,11 @@
       "tests": [
         {
           "file": "tests/unit/test_script_hooks.cpp",
+          "test": "SpecialsDispatchTest.table_selects_by_current_special",
+          "note": "true -> success; false,'TEST REFUSAL' -> reason"
+        },
+        {
+          "file": "tests/unit/test_script_hooks.cpp",
           "test": "SpecialsDispatchTest.malformed_cast_results_are_errors_and_do_not_charge"
         },
         {
@@ -2045,7 +2219,8 @@
         },
         {
           "file": "tests/unit/test_script_hooks.cpp",
-          "test": "ScriptHooksTest.an_unclaimed_family_has_no_behavior"
+          "test": "ScriptHooksTest.an_unclaimed_family_has_no_behavior",
+          "note": "control: registered hooks answer"
         }
       ],
       "missing_arms": []
@@ -2083,11 +2258,20 @@
       "tests": [
         {
           "file": "tests/unit/test_script_hooks.cpp",
+          "test": "ScriptHooksTest.register_hooks_load_error_vocabulary",
+          "note": "no do_special hook: hooks::do_special(soldier) has no value"
+        },
+        {
+          "file": "tests/unit/test_script_hooks.cpp",
           "test": "SpecialsDispatchTest.unmatched_index_without_default_is_a_noop_true"
         },
         {
           "file": "tests/unit/test_script_hooks.cpp",
           "test": "SpecialsDispatchTest.null_self_selects_the_default_entry"
+        },
+        {
+          "file": "tests/unit/test_script_hooks.cpp",
+          "test": "SpecialsDispatchTest.table_selects_by_current_special"
         }
       ],
       "missing_arms": []
@@ -2133,15 +2317,18 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_script_hooks.cpp",
           "test": "ScriptHooksTest.an_unclaimed_family_has_no_behavior",
-          "note": "EXPECT_FALSE on every wrapper with a null descriptor"
+          "note": "null descriptor: EXPECT_FALSE on 21 of the 22 wrappers, failure latch 0; present: do_special, on_shoved, weapon_on_death, effect_on_act answer"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "descriptor null",
+        "descriptor present"
+      ]
     },
     {
       "id": "world_scripts.cpp:2243",
@@ -2187,6 +2374,11 @@
         {
           "file": "tests/unit/test_script_hooks.cpp",
           "test": "ScriptHooksTest.healthy_hook_leaves_the_failure_latch_clear"
+        },
+        {
+          "file": "tests/unit/test_campaign_packs.cpp",
+          "test": "ExampleClassPack.its_hooks_run_when_the_engine_dispatches_them",
+          "note": "on_fire_weapon answers false: ASSERT_TRUE(has_value) + EXPECT_FALSE(*blocked) and ani_type stays ANI_WALK; then true"
         }
       ],
       "missing_arms": [],
@@ -2221,16 +2413,11 @@
       ],
       "setting": "none",
       "status": "executed-only",
-      "tests": [
-        {
-          "file": "tests/unit/test_script_hooks.cpp",
-          "test": "ScriptHooksTest.level_up_guy_handle_is_dispatch_scoped",
-          "note": "handle scoping, not the default-skip"
-        }
-      ],
-      "missing_arms": [],
-      "note": [
-        "tests/unit/test_script_hooks.cpp: an_unclaimed_family_has_no_behavior (null arm only)"
+      "tests": [],
+      "missing_arms": [
+        "hook ran",
+        "no hook",
+        "hook errored"
       ]
     },
     {
@@ -2242,11 +2429,7 @@
         2316,
         2336,
         2346,
-        2381,
-        2427,
-        2428,
-        2429,
-        2430
+        2381
       ],
       "function": "hooks::on_act_living / on_shoved / on_create / customize_weapon / on_melee_hit / on_kill / weapon_on_hit_target / generator_customize_spawn",
       "anchor": "if (try_script_hook(Order::Living, fd->family_id, FamilyHook::OnActLiving,",
@@ -2267,21 +2450,28 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_script_hooks.cpp",
-          "test": "ScriptHooksTest.on_melee_hit_reports_ran_and_latches_its_own_failures"
+          "test": "ScriptHooksTest.on_melee_hit_reports_ran_and_latches_its_own_failures",
+          "note": "on_melee_hit: ran -> true with log; errored -> false, latched"
+        },
+        {
+          "file": "tests/unit/test_script_hooks.cpp",
+          "test": "ScriptHooksTest.an_unclaimed_family_has_no_behavior",
+          "note": "on_shoved ran -> true in the control"
         },
         {
           "file": "tests/unit/test_level_scripts.cpp",
           "test": "LevelScriptsTest.generator_customize_spawn_dispatches",
-          "note": "EXPECT_TRUE(ran); EXPECT_EQ(123, spawn->lifetime()); log line with both entity ids"
+          "note": "ran -> true, lifetime 123, log"
         }
       ],
-      "missing_arms": [],
-      "note": [
-        "tests/unit/test_script_hooks.cpp: an_unclaimed_family_has_no_behavior (on_shoved true arm)"
+      "missing_arms": [
+        "hook ran",
+        "no hook",
+        "hook errored"
       ]
     },
     {
@@ -2308,7 +2498,7 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_mode_tick.cpp",
@@ -2319,7 +2509,9 @@
           "test": "ModeTick.act_override_false_falls_through_to_default_act"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "errors / absent"
+      ]
     },
     {
       "id": "world_scripts.cpp:2448",
@@ -2390,7 +2582,7 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_level_scripts.cpp",
@@ -2405,7 +2597,9 @@
           "test": "LevelScriptsTest.hooks_for_another_level_do_not_fire"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "exact hook for this level"
+      ]
     },
     {
       "id": "world_scripts.cpp:2487",
@@ -2485,6 +2679,11 @@
         {
           "file": "tests/unit/test_level_scripts.cpp",
           "test": "LevelScriptsTest.run_pending_level_on_load_dispatches_once_untensed"
+        },
+        {
+          "file": "tests/unit/test_level_scripts.cpp",
+          "test": "LevelScriptsTest.other_level_hooks_do_not_fire",
+          "note": "absent arm: on_load registered for level 43 only, world 42 ticks, vm_log empty"
         }
       ],
       "missing_arms": []
@@ -2517,7 +2716,7 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_mode_tick.cpp",
@@ -2536,7 +2735,9 @@
           "test": "ModeTick.per_entity_death_hook_receives_killer_args"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "fresh stamp, killer swept"
+      ]
     },
     {
       "id": "world_scripts.cpp:2553",
@@ -2609,6 +2810,11 @@
         {
           "file": "tests/unit/test_level_scripts.cpp",
           "test": "LevelScriptsTest.generator_deaths_dispatch_entity_death"
+        },
+        {
+          "file": "tests/unit/test_level_scripts.cpp",
+          "test": "LevelScriptsTest.no_level_hooks_means_no_vm_activity",
+          "note": "not-registered arm: a death with no level hooks logs exactly the family line, ASSERT_EQ(1u, vm_log().size())"
         }
       ],
       "missing_arms": []
@@ -2644,6 +2850,11 @@
         {
           "file": "tests/unit/test_level_scripts.cpp",
           "test": "LevelScriptsTest.fx_spawns_do_not_fire_entity_spawn"
+        },
+        {
+          "file": "tests/unit/test_level_scripts.cpp",
+          "test": "LevelScriptsTest.no_level_hooks_means_no_vm_activity",
+          "note": "not-registered arm: add_ob soldier with no on_entity_spawn, then death leaves exactly one log line"
         }
       ],
       "missing_arms": []
@@ -2682,6 +2893,16 @@
         {
           "file": "tests/unit/test_mode_tick.cpp",
           "test": "ModeTick.stage_init_failed_shape_defaults_and_stays_classic"
+        },
+        {
+          "file": "tests/unit/test_mode_tick.cpp",
+          "test": "ModeTick.stage_init_activates_without_a_tick",
+          "note": "init ok arm: mode.active true"
+        },
+        {
+          "file": "tests/unit/test_mode_tick.cpp",
+          "test": "ModeTick.scripted_bit_plus_hooks_activates_once",
+          "note": "init ok arm: mode.active true"
         }
       ],
       "missing_arms": []
@@ -2707,7 +2928,7 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_mode_tick.cpp",
@@ -2718,16 +2939,10 @@
           "file": "tests/unit/test_mode_tick.cpp",
           "test": "ModeTick.stage_init_activates_without_a_tick",
           "note": "logged 'mode_tick\\t1'"
-        },
-        {
-          "file": "tests/unit/test_mode_tick.cpp",
-          "test": "ModeTick.run_tick_refuses_failed_init_world_when_called_directly",
-          "note": "log_count('mode_tick') == 0 on a failed-init world; that is the caller's mode.active gate, not the absent-hook arm here"
         }
       ],
-      "missing_arms": [],
-      "note": [
-        "UNASSERTED arm: 'absent hook => nothing' is executed by the inert-dispatcher tests in test_level_scripts.cpp but its outcome (no log, no error) is not asserted for level_mode_tick specifically"
+      "missing_arms": [
+        "absent"
       ]
     },
     {
@@ -2761,6 +2976,11 @@
         {
           "file": "tests/unit/test_mode_tick.cpp",
           "test": "ModeTick.respawn_fires_in_place_and_dispatches_hook"
+        },
+        {
+          "file": "tests/unit/test_respawn_engine.cpp",
+          "test": "RespawnEngine.player_corpse_revives_in_place_with_control_preserved",
+          "note": "absent arm: scripted world with no pack Lua, no on_respawn; ASSERT_EQ(320, runner->xpos()/ypos()) 'engine default: revive in place'"
         }
       ],
       "missing_arms": []
@@ -2829,7 +3049,7 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_level_scripts.cpp",
@@ -2845,7 +3065,9 @@
           "note": "counts lineup_stage log lines"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "hook registered and raises"
+      ]
     },
     {
       "id": "world_scripts.cpp:2700",
@@ -2877,6 +3099,11 @@
         {
           "file": "tests/unit/test_mode_tick.cpp",
           "test": "ModeTick.damage_gate_classic_path_untouched_without_hook"
+        },
+        {
+          "file": "tests/unit/test_mode_tick.cpp",
+          "test": "ModeTick.damage_gate_nil_keeps_authored_amount",
+          "note": "registered-for-this-level arm: EXPECT_TRUE(logged('gate\\t'))"
         }
       ],
       "missing_arms": []
@@ -3008,7 +3235,7 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_campaign_hooks.cpp",
@@ -3027,7 +3254,9 @@
           "test": "CampaignHooksTest.match_knobs_dispatch_is_fenced_and_brackets_cleanly"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "nested dispatch (entry_depth>0 or fence already up)"
+      ]
     },
     {
       "id": "world_scripts.cpp:2794",
@@ -3158,10 +3387,6 @@
         {
           "file": "tests/unit/test_campaign_hooks.cpp",
           "test": "CampaignHooksTest.match_knobs_absent_answers_defaults_and_false"
-        },
-        {
-          "file": "tests/unit/test_campaign_hooks.cpp",
-          "test": "CampaignHooksTest.lineup_alone_is_a_whole_registration"
         },
         {
           "file": "tests/unit/test_campaign_hooks.cpp",
@@ -3318,7 +3543,7 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_campaign_hooks.cpp",
@@ -3329,9 +3554,21 @@
           "file": "tests/unit/test_campaign_hooks.cpp",
           "test": "CampaignHooksTest.zone_bounds_and_malformed_shapes_fall_to_default",
           "note": "{23}"
+        },
+        {
+          "file": "tests/unit/test_campaign_hooks.cpp",
+          "test": "CampaignHooksTest.page_parse_happy_path",
+          "note": "all well-typed arm: label/note/level/cost/replay copied, absent fields default"
+        },
+        {
+          "file": "tests/unit/test_westlands_fire.cpp",
+          "test": "WestlandsFireCamp.provisions_stack_to_the_cap_and_retire",
+          "note": "done copied: rows[spent].done true after the third tier"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "id missing, non-string or empty"
+      ]
     },
     {
       "id": "world_scripts.cpp:2994",
@@ -3621,7 +3858,7 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_campaign_hooks.cpp",
@@ -3633,7 +3870,9 @@
           "test": "CampaignHooksTest.zone_parse_happy_path"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "empty/non-string label"
+      ]
     },
     {
       "id": "world_scripts.cpp:3236",
@@ -3703,7 +3942,7 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_campaign_hooks.cpp",
@@ -3711,7 +3950,9 @@
           "note": "{11,36,37}"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "nil"
+      ]
     },
     {
       "id": "world_scripts.cpp:3303",
@@ -3750,7 +3991,7 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_campaign_hooks.cpp",
@@ -3758,7 +3999,9 @@
           "note": "{23,38,39,'action rows in total'}"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "nil"
+      ]
     },
     {
       "id": "world_scripts.cpp:3349",
@@ -3802,7 +4045,7 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_campaign_hooks.cpp",
@@ -3810,7 +4053,9 @@
           "note": "{12,26,40,41,42}"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "nil"
+      ]
     },
     {
       "id": "world_scripts.cpp:3405",
@@ -4088,10 +4333,6 @@
         {
           "file": "tests/unit/test_campaign_hooks.cpp",
           "test": "CampaignHooksTest.match_knobs_refuses_mis_shaped_answers_by_name"
-        },
-        {
-          "file": "tests/unit/test_campaign_hooks.cpp",
-          "test": "CampaignHooksTest.match_knobs_key_typo_gets_did_you_mean"
         }
       ],
       "missing_arms": []
@@ -4131,6 +4372,11 @@
         {
           "file": "tests/unit/test_campaign_hooks.cpp",
           "test": "CampaignHooksTest.match_knobs_empty_table_answers_every_default"
+        },
+        {
+          "file": "tests/unit/test_match_setup_session.cpp",
+          "test": "MatchSetupSessionTest.match_knobs_shape_the_steps",
+          "note": "boolean arm: teams=false -> team_lines empty; score=false -> no 'score' row; score=false+time=false -> RULES rows empty"
         }
       ],
       "missing_arms": []
@@ -4369,7 +4615,7 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_campaign_hooks.cpp",
@@ -4380,7 +4626,9 @@
           "test": "CampaignHooksTest.action_result_level_parse_and_bounds"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "returns nil / non-table"
+      ]
     },
     {
       "id": "world_scripts.cpp:3820",
@@ -4504,7 +4752,7 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_campaign_hooks.cpp",
@@ -4527,7 +4775,9 @@
           "test": "CampaignHooksTest.default_lineup_power_that_errors_answers_false"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "error"
+      ]
     },
     {
       "id": "world_scripts.cpp:3950",

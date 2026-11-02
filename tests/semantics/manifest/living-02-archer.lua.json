@@ -21,18 +21,22 @@
         }
       ],
       "setting": "both",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/integration/test_gameplay_fixes_special_busy.cpp",
-          "test": "GameplayFixesSpecialBusy.archer_specials_after_a_shot"
+          "test": "GameplayFixesSpecialBusy.archer_specials_after_a_shot",
+          "note": "slot 2 busy<0 off: SPECIAL BUSY, MP and busy unchanged; on: cast true, MP < pool, busy > 0"
         },
         {
           "file": "tests/integration/test_walker_specials.cpp",
-          "test": "WalkerSpecials.archer_barrage_drives_simulation"
+          "test": "WalkerSpecials.archer_barrage_drives_simulation",
+          "note": "busy 0: 3 arrows, busy == 2*fire_frequency"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "busy < 0 setting on / busy == 0"
+      ]
     },
     {
       "id": "living-02-archer.lua:43",
@@ -58,7 +62,13 @@
       "tests": [
         {
           "file": "tests/integration/test_gameplay_fixes_special_busy.cpp",
-          "test": "GameplayFixesSpecialBusy.archer_specials_after_a_shot"
+          "test": "GameplayFixesSpecialBusy.archer_specials_after_a_shot",
+          "note": "slot 3 busy<0 off: SPECIAL BUSY; on: fires"
+        },
+        {
+          "file": "tests/integration/test_gameplay_fixes_special_busy.cpp",
+          "test": "GameplayFixesSpecialBusy.positive_and_zero_busy_are_unchanged",
+          "note": "slot 3: busy 0 casts, busy 0.25 SPECIAL BUSY, both values"
         }
       ],
       "missing_arms": []
@@ -83,19 +93,12 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
-      "tests": [
-        {
-          "file": "tests/integration/test_walker_specials.cpp",
-          "test": "WalkerSpecials.archer_exploding_bolt_drives_simulation",
-          "note": "count + skip_exit"
-        },
-        {
-          "parity": "weapon_fire_arrow_explode_damage_scen99",
-          "fact": ""
-        }
-      ],
-      "missing_arms": []
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": [
+        "fire ok",
+        "fire nil (pad blocked)"
+      ]
     },
     {
       "id": "living-02-archer.lua:67",
@@ -118,19 +121,11 @@
       ],
       "setting": "none",
       "status": "executed-only",
-      "tests": [
-        {
-          "file": "tests/integration/test_stats_hit_response_more.cpp",
-          "test": "StatsHitResponseMore.statistics_hit_response_archer_runs_away_and_queues_walk",
-          "note": "foe==attacker and 15000 asserted; queue cleared at line 100 before the hit, so the clear is not proven"
-        },
-        {
-          "file": "tests/integration/test_family_behaviors.cpp",
-          "test": "FamilyBehaviors.hit_response_archer_flees",
-          "note": "same: clear_command at line 1047 before the hit"
-        }
-      ],
-      "missing_arms": []
+      "tests": [],
+      "missing_arms": [
+        "new attacker",
+        "same foe"
+      ]
     },
     {
       "id": "living-02-archer.lua:74",
@@ -157,11 +152,12 @@
         {
           "file": "tests/integration/test_stats_hit_response_more.cpp",
           "test": "StatsHitResponseMore.statistics_hit_response_archer_runs_away_and_queues_walk",
-          "note": "both arms"
+          "note": "within 64: one forced WALK 8 (-1,0); at 200 px: no command"
         },
         {
           "parity": "archer_hit_response_backpedal_scen99",
-          "fact": "position + hp facts"
+          "fact": "",
+          "note": "archer pushed to x 220  hp 26"
         }
       ],
       "missing_arms": []
@@ -194,18 +190,22 @@
         }
       ],
       "setting": "fixes-on",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_bot_gates_fighters.cpp",
-          "test": "GameplayFixesBots.archer_fire_arrows_want_a_crowd_or_a_foe_behind"
+          "test": "GameplayFixesBots.archer_fire_arrows_want_a_crowd_or_a_foe_behind",
+          "note": "one faced false, one behind true, two in flight true"
         },
         {
           "parity": "archer_bot_ring_one_foe_fixes_scen99",
-          "fact": ""
+          "fact": "",
+          "note": "no fire arrows"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "none"
+      ]
     },
     {
       "id": "living-02-archer.lua:105",
@@ -231,7 +231,8 @@
       "tests": [
         {
           "file": "tests/unit/test_gameplay_fixes_bots.cpp",
-          "test": "GameplayFixesBots.a_busy_bot_never_rolls_a_busy_cast_with_the_setting_on"
+          "test": "GameplayFixesBots.a_busy_bot_never_rolls_a_busy_cast_with_the_setting_on",
+          "note": "archer slots 2/3: idle true, busy 3 false, setting on"
         }
       ],
       "missing_arms": []
@@ -266,14 +267,22 @@
         }
       ],
       "setting": "fixes-on",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_bot_gates_fighters.cpp",
-          "test": "GameplayFixesBots.archer_barrage_wants_its_foe_faced_in_flight"
+          "test": "GameplayFixesBots.archer_barrage_wants_its_foe_faced_in_flight",
+          "note": "faced true, aimed away false, tent foe false"
+        },
+        {
+          "file": "tests/unit/test_bot_gates_fighters.cpp",
+          "test": "GameplayFixesBots.archer_exploding_bolt_wants_a_foe_past_its_own_blast_with_no_ally_in_it",
+          "note": "170 px gap past the flight: false"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "no foe / dead foe"
+      ]
     },
     {
       "id": "living-02-archer.lua:118",
@@ -299,7 +308,13 @@
       "tests": [
         {
           "file": "tests/unit/test_bot_gates_fighters.cpp",
-          "test": "GameplayFixesBots.archer_barrage_wants_its_foe_faced_in_flight"
+          "test": "GameplayFixesBots.archer_barrage_wants_its_foe_faced_in_flight",
+          "note": "slot 2 true once faced in flight"
+        },
+        {
+          "file": "tests/unit/test_bot_gates_fighters.cpp",
+          "test": "GameplayFixesBots.archer_exploding_bolt_wants_a_foe_past_its_own_blast_with_no_ally_in_it",
+          "note": "slot 3 asks the blast: false with the archer or an ally inside"
         }
       ],
       "missing_arms": []
@@ -332,15 +347,18 @@
       "tests": [
         {
           "file": "tests/unit/test_bot_gates_fighters.cpp",
-          "test": "GameplayFixesBots.archer_exploding_bolt_wants_a_foe_past_its_own_blast_with_no_ally_in_it"
+          "test": "GameplayFixesBots.archer_exploding_bolt_wants_a_foe_past_its_own_blast_with_no_ally_in_it",
+          "note": "own blast false, ally false, foe friend true"
         },
         {
           "file": "tests/unit/test_bot_gates_fighters.cpp",
-          "test": "GameplayFixesBots.archer_exploding_bolt_asks_the_fire_arrows_own_pad"
+          "test": "GameplayFixesBots.archer_exploding_bolt_asks_the_fire_arrows_own_pad",
+          "note": "fire-arrow pad on wall / crown false; open true"
         },
         {
           "parity": "archer_bot_bolt_at_blows_fixes_scen99",
-          "fact": ""
+          "fact": "",
+          "note": "archer lives"
         }
       ],
       "missing_arms": []
@@ -372,13 +390,23 @@
       "status": "asserted",
       "tests": [
         {
+          "file": "tests/unit/test_bot_gates_fighters.cpp",
+          "test": "GameplayFixesBots.archer_fire_arrows_want_a_crowd_or_a_foe_behind",
+          "note": "/ archer_barrage_wants_its_foe_faced_in_flight (off: true with a foe within 130)"
+        },
+        {
+          "file": "tests/unit/test_bot_gates_fighters.cpp",
+          "test": "GameplayFixesBots.archer_exploding_bolt_wants_a_foe_past_its_own_blast_with_no_ally_in_it",
+          "note": "off: false at 160/170 px gap, past 130; on: the fixed answer"
+        },
+        {
           "parity": "archer_bot_ring_one_foe_scen99",
           "fact": ""
         },
         {
           "parity": "archer_bot_bolt_at_blows_scen99",
           "fact": "",
-          "note": "classic twins"
+          "note": "(6 fire arrows)   (archer dead)"
         }
       ],
       "missing_arms": []

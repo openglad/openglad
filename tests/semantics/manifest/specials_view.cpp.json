@@ -98,7 +98,11 @@
       "semantic": "A special or alternate that is out of play has no name ('none'), which is what hides it from the HUD, the belt catalog and bot rolls.",
       "arms": [
         {
-          "when": "out of play / bad slot",
+          "when": "out of play",
+          "observable": "kSpecialNameNone"
+        },
+        {
+          "when": "bad slot / null descriptor",
           "observable": "kSpecialNameNone"
         },
         {
@@ -125,7 +129,7 @@
         }
       ],
       "missing_arms": [
-        "out of play / bad slot"
+        "bad slot / null descriptor"
       ]
     },
     {
@@ -292,7 +296,7 @@
         }
       ],
       "missing_arms": [
-        "no stats => kSpecialCostDisabled (defensive)"
+        "no stats"
       ]
     },
     {

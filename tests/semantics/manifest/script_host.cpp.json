@@ -28,22 +28,17 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_script_host.cpp",
           "test": "ScriptBudget.allocation_cap_trips_deterministically",
           "note": "over-cap arm: run_chunk false, errors non-empty, memory_used <= memory_limit, eval 2+2 == 4 afterwards"
-        },
-        {
-          "file": "tests/unit/test_script_host.cpp",
-          "test": "ScriptHostBasics.identical_programs_produce_identical_hosts",
-          "note": "memory_used equal across hosts; not a per-arm assertion"
         }
       ],
-      "missing_arms": [],
-      "note": [
-        "UNASSERTED: within-cap arm (memory_used grows after an allocation) and free arm (nsize 0: memory_used drops back, line 35)"
+      "missing_arms": [
+        "allocation within cap",
+        "free (nsize 0)"
       ]
     },
     {
@@ -70,7 +65,8 @@
       "tests": [
         {
           "file": "tests/unit/test_script_host.cpp",
-          "test": "ScriptBudget.infinite_loop_trips_instruction_budget"
+          "test": "ScriptBudget.infinite_loop_trips_instruction_budget",
+          "note": "spent: false + 'instruction budget' in message; left: eval_integer('1 + 1') == 2 afterwards"
         },
         {
           "file": "tests/unit/test_script_host.cpp",
@@ -104,24 +100,21 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_script_host.cpp",
-          "test": "ScriptArith.div_mod_guard_zero_and_overflow"
-        },
-        {
-          "file": "tests/unit/test_script_host.cpp",
-          "test": "ScriptArith.div_mod_match_cpp_truncation_semantics"
+          "test": "ScriptArith.div_mod_match_cpp_truncation_semantics",
+          "note": "otherwise arm: og.div == C++ a/b over 13 cases"
         },
         {
           "file": "tests/unit/test_script_host.cpp",
           "test": "ScriptArith.div_differs_from_lua_floor_division_for_negatives"
         }
       ],
-      "missing_arms": [],
-      "note": [
-        "note: the zero/overflow arms are asserted as nullopt plus errors() non-empty; the exact message text is not pinned"
+      "missing_arms": [
+        "b == 0",
+        "INT64_MIN / -1"
       ]
     },
     {
@@ -149,20 +142,21 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_script_host.cpp",
-          "test": "ScriptArith.div_mod_guard_zero_and_overflow"
+          "test": "ScriptArith.div_mod_match_cpp_truncation_semantics",
+          "note": "otherwise arm: og.mod == C++ a%b over 13 cases"
         },
         {
           "file": "tests/unit/test_script_host.cpp",
-          "test": "ScriptArith.div_mod_match_cpp_truncation_semantics"
+          "test": "ScriptArith.div_differs_from_lua_floor_division_for_negatives"
         }
       ],
-      "missing_arms": [],
-      "note": [
-        "note: the zero/overflow arms are asserted as nullopt plus errors() non-empty; the exact message text is not pinned"
+      "missing_arms": [
+        "b == 0",
+        "INT64_MIN, -1"
       ]
     },
     {
@@ -185,14 +179,17 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_script_host.cpp",
-          "test": "ScriptArith.narrowing_matches_cpp_modular_semantics"
+          "test": "ScriptArith.narrowing_matches_cpp_modular_semantics",
+          "note": "in-range arm: og.trunc(3.9)==3, (-3.9)==-3, (-0.5)==0"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "|x| >= 2^63 or NaN"
+      ]
     },
     {
       "id": "script_host.cpp:185",
@@ -233,11 +230,13 @@
       "tests": [
         {
           "file": "tests/unit/test_script_host.cpp",
-          "test": "ScriptSandbox.tostring_is_address_free"
+          "test": "ScriptSandbox.tostring_is_address_free",
+          "note": "'table', 'function', '42', __tostring 'X'"
         },
         {
           "file": "tests/unit/test_script_host.cpp",
-          "test": "ScriptSandbox.a_tostring_metamethod_returning_a_non_string_is_an_error"
+          "test": "ScriptSandbox.a_tostring_metamethod_returning_a_non_string_is_an_error",
+          "note": "string answer 'ok'; non-string answer: nullopt + ''__tostring' must return a string'"
         }
       ],
       "missing_arms": []
@@ -267,7 +266,8 @@
       "tests": [
         {
           "file": "tests/unit/test_script_host.cpp",
-          "test": "ScriptSandbox.print_and_og_log_capture_lines_in_order"
+          "test": "ScriptSandbox.print_and_og_log_capture_lines_in_order",
+          "note": "one arg 'beta'; several 'alpha\\t1', 'gamma\\ttable'"
         }
       ],
       "missing_arms": [],
@@ -299,11 +299,13 @@
       "tests": [
         {
           "file": "tests/unit/test_script_host.cpp",
-          "test": "ScriptLogStore.log_keeps_the_most_recent_lines_and_counts_the_rest"
+          "test": "ScriptLogStore.log_keeps_the_most_recent_lines_and_counts_the_rest",
+          "note": "size==cap, front==kExtra, back==newest, dropped==kExtra"
         },
         {
           "file": "tests/unit/test_script_host.cpp",
-          "test": "ScriptLogStore.an_unfilled_log_drops_nothing"
+          "test": "ScriptLogStore.an_unfilled_log_drops_nothing",
+          "note": "size 2, dropped 0"
         }
       ],
       "missing_arms": []
@@ -328,18 +330,16 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_script_host.cpp",
           "test": "ScriptHostBasics.syntax_and_runtime_errors_are_recorded",
-          "note": "string arm only"
+          "note": "string arm: message contains 'boom' and 'stack traceback'"
         }
       ],
-      "missing_arms": [],
-      "note": [
-        "non-string arm: no test found",
-        "UNASSERTED: non-string error object arm (error({}))"
+      "missing_arms": [
+        "non-string error value"
       ]
     },
     {
@@ -367,22 +367,21 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_script_host.cpp",
-          "test": "ScriptSandbox.chunks_are_write_isolated_but_share_root"
-        },
-        {
-          "file": "tests/unit/test_script_host.cpp",
-          "test": "ScriptSandbox.chunks_with_same_env_key_share_state"
+          "test": "ScriptSandbox.chunks_with_same_env_key_share_state",
+          "note": "key seen before: '15'; key new: packY reads 'nil'"
         },
         {
           "file": "tests/unit/test_script_host.cpp",
           "test": "PackLibTest.module_environments_are_isolated"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "empty key"
+      ]
     },
     {
       "id": "script_host.cpp:404",
@@ -462,23 +461,26 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_script_host.cpp",
+          "test": "ScriptBudget.infinite_loop_trips_instruction_budget",
+          "note": "outermost arm: the next outermost entry gets a fresh budget, eval 1+1 == 2 after a trip"
+        },
+        {
+          "file": "tests/unit/test_script_host.cpp",
           "test": "ScriptCoverage.recorder_is_inert_when_disabled",
-          "note": "coverage arm asserted"
+          "note": "coverage-disabled arm: line_hits() and function_records() empty"
         },
         {
           "file": "tests/unit/test_script_host.cpp",
           "test": "ScriptCoverage.records_the_lines_a_chunk_actually_ran",
-          "note": "coverage arm asserted"
+          "note": "coverage-enabled arm: exact recorded line list"
         }
       ],
-      "missing_arms": [],
-      "note": [
-        "nested-entry budget sharing: no test found",
-        "UNASSERTED: nested-entry budget sharing arm"
+      "missing_arms": [
+        "nested entry"
       ]
     },
     {
@@ -538,22 +540,22 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_script_host.cpp",
-          "test": "ScriptHostSecurity.a_precompiled_binary_chunk_is_refused_not_run"
+          "test": "ScriptHostSecurity.a_precompiled_binary_chunk_is_refused_not_run",
+          "note": "bytecode arm: false, where == chunk, 'binary chunk'; valid text arm: textual run_chunk true, errors empty"
         },
         {
           "file": "tests/unit/test_script_host.cpp",
-          "test": "ScriptHostBasics.syntax_and_runtime_errors_are_recorded"
-        },
-        {
-          "file": "tests/unit/test_script_host.cpp",
-          "test": "PackLibTest.module_chunks_are_text_only"
+          "test": "PackLibTest.module_chunks_are_text_only",
+          "note": "bytecode never executed: no 'attempt to call'"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "syntax error"
+      ]
     },
     {
       "id": "script_host.cpp:530",
@@ -583,7 +585,23 @@
       "tests": [
         {
           "file": "tests/unit/test_script_host.cpp",
-          "test": "ScriptHostBasics.an_eval_that_does_not_compile_yields_no_value_and_one_error"
+          "test": "ScriptHostBasics.an_eval_that_does_not_compile_yields_no_value_and_one_error",
+          "note": "compile failure: nullopt for number/boolean/string, one record where=='eval', count 3"
+        },
+        {
+          "file": "tests/unit/test_script_host.cpp",
+          "test": "ScriptArith.div_mod_guard_zero_and_overflow",
+          "note": "runtime failure: eval_integer nullopt"
+        },
+        {
+          "file": "tests/unit/test_script_host.cpp",
+          "test": "ScriptSandbox.a_tostring_metamethod_returning_a_non_string_is_an_error",
+          "note": "runtime failure: eval_string nullopt, exactly one error"
+        },
+        {
+          "file": "tests/unit/test_script_host.cpp",
+          "test": "ScriptHostBasics.eval_coercions_are_strict",
+          "note": "success: values"
         }
       ],
       "missing_arms": []
@@ -622,17 +640,17 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_script_host.cpp",
           "test": "ScriptHostBasics.eval_coercions_are_strict",
-          "note": "integer-refuses-float asserted; number-refuses-string and string-refuses-number not asserted"
+          "note": "eval_integer('1.5') nullopt; eval_integer('7 * 6') == 42; eval_string(\"'x' .. 'y'\") == 'xy'"
         }
       ],
-      "missing_arms": [],
-      "note": [
-        "UNASSERTED: number-refuses-string and string-refuses-number arms"
+      "missing_arms": [
+        "eval_number of 'x'",
+        "eval_string of 42"
       ]
     },
     {
@@ -666,15 +684,18 @@
       "tests": [
         {
           "file": "tests/unit/test_script_host.cpp",
-          "test": "ScriptSandbox.a_dotted_path_through_a_non_table_is_absent"
+          "test": "ScriptSandbox.allowed_symbols_present",
+          "note": "true arm"
         },
         {
           "file": "tests/unit/test_script_host.cpp",
-          "test": "ScriptSandbox.banned_symbols_absent"
+          "test": "ScriptSandbox.banned_symbols_absent",
+          "note": "leaf nil arm, e.g. io, string.dump"
         },
         {
           "file": "tests/unit/test_script_host.cpp",
-          "test": "ScriptSandbox.allowed_symbols_present"
+          "test": "ScriptSandbox.a_dotted_path_through_a_non_table_is_absent",
+          "note": "intermediate non-table arm"
         }
       ],
       "missing_arms": []

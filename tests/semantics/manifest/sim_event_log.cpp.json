@@ -28,11 +28,28 @@
       "tests": [
         {
           "file": "tests/unit/test_sim_event_log.cpp",
-          "test": "SimEventLog.suppress_guard_blocks_pushes_and_restores_state"
+          "test": "SimEventLog.suppress_guard_blocks_pushes_and_restores_state",
+          "note": "suppressed: push_sound/push_notification/push all dropped; restored: recorded"
         },
         {
           "file": "tests/unit/test_sim_entity.cpp",
-          "test": "SimEntity.suppressed_event_log_drops_text_events"
+          "test": "SimEntity.suppressed_event_log_drops_text_events",
+          "note": "push_with_text dropped while suppressed; then text, kind, tick, a, b"
+        },
+        {
+          "file": "tests/unit/test_sim_event_log.cpp",
+          "test": "SimEventLog.push_sound",
+          "note": "kind, a, tick, target_player -1 and 6"
+        },
+        {
+          "file": "tests/unit/test_sim_event_log.cpp",
+          "test": "SimEventLog.push_notification",
+          "note": "kind, text, tick"
+        },
+        {
+          "file": "tests/unit/test_sim_event_log.cpp",
+          "test": "SimEventLog.tick_tracking",
+          "note": "tick stamps"
         }
       ],
       "missing_arms": []
@@ -57,13 +74,15 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": [],
-      "note": [
-        "tests/unit/test_staged_rules.cpp: dst_events.append(stage.take_events()) near line 2375 (adoption flow; tick-preserve and suppression-ignore arms not asserted directly)",
-        "UNASSERTED: append keeps each event's original tick, and append ignores suppression"
-      ]
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_game_server_coverage.cpp",
+          "test": "GameServerCoverage.sim_event_log_append_preserves_event_stamps",
+          "note": "non-empty: appended behind the live event under a suppress guard, tick 1 kept, text and a kept; empty: size stays 2"
+        }
+      ],
+      "missing_arms": []
     }
   ],
   "other": []

@@ -21,9 +21,17 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": []
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.barbarian_hurl_boulder_drives_simulation",
+          "note": "idle: special() true, one boulder owned by the thrower"
+        }
+      ],
+      "missing_arms": [
+        "busy"
+      ]
     },
     {
       "id": "living-16-barbarian.lua:21",
@@ -46,14 +54,11 @@
       ],
       "setting": "none",
       "status": "executed-only",
-      "tests": [
-        {
-          "parity": "barbarian_bot_boulder_pad_body_scen99",
-          "fact": "",
-          "note": "reaches the no-shot arm; its facts (EventKindExactly(play_sound 1)  WalkerHpRangeAtFinalTick(TOWER1 10400 10400)  WeaponFamilyCount(HAMMER 0 0)) assert the classic melee blow  not the absence of a boulder (no FAMILY_BOULDER count fact)"
-        }
-      ],
-      "missing_arms": []
+      "tests": [],
+      "missing_arms": [
+        "shot fired",
+        "no shot"
+      ]
     },
     {
       "id": "living-16-barbarian.lua:35",
@@ -77,13 +82,11 @@
       ],
       "setting": "none",
       "status": "executed-only",
-      "tests": [
-        {
-          "parity": "barbarian_boulder_impact_scen99",
-          "fact": "WalkerHpRangeAtFinalTick(FAMILY_ELF,4600,4600) (monster damage, indirectly)"
-        }
-      ],
-      "missing_arms": []
+      "tests": [],
+      "missing_arms": [
+        "hero (strength 14)",
+        "monster level L"
+      ]
     },
     {
       "id": "living-16-barbarian.lua:48",
@@ -110,15 +113,18 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_pack_lua_paths.cpp",
           "test": "PackLuaBarbarian.a_zero_step_summon_is_floored_to_one",
-          "note": "floor arm only"
+          "note": "floor: level 0 => stepsize 1"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "computed > 15 (monster level 8+, hero strength 105+)",
+        "in range"
+      ]
     },
     {
       "id": "living-16-barbarian.lua:54",
@@ -147,15 +153,18 @@
         }
       ],
       "setting": "none",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_pack_lua_paths.cpp",
           "test": "PackLuaBarbarian.a_zero_step_summon_is_floored_to_one",
-          "note": "positive arms"
+          "note": "component > 0: lastx and lasty both +1 after the floor"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "component < 0",
+        "component 0"
+      ]
     },
     {
       "id": "living-16-barbarian.lua:65",
@@ -182,19 +191,22 @@
       "tests": [
         {
           "file": "tests/integration/test_walker_specials.cpp",
-          "test": "WalkerSpecials.barbarian_hurl_boulder_drives_simulation"
+          "test": "WalkerSpecials.barbarian_hurl_boulder_drives_simulation",
+          "note": "slot 1: skip_exit 0, busy 6"
         },
         {
           "file": "tests/integration/test_walker_specials.cpp",
-          "test": "WalkerSpecials.barbarian_exploding_boulder_drives_simulation"
+          "test": "WalkerSpecials.barbarian_exploding_boulder_drives_simulation",
+          "note": "slot 2: skip_exit 5000, busy 11"
+        },
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.npc_orc_eats_a_corpse_and_npc_barbarian_arms_its_boulder",
+          "note": "slot 2, no guy: skip_exit 5000, busy 11"
         },
         {
           "parity": "barbarian_boulder_impact_scen99",
-          "fact": "WalkerAliveAtFinal(FAMILY_ELF,3)"
-        },
-        {
-          "file": "tests/integration/test_walker_specials.cpp",
-          "test": "WalkerSpecials.npc_orc_eats_a_corpse_and_npc_barbarian_arms_its_boulder"
+          "fact": "WalkerAliveAtFinal(FAMILY_ELF,3) (slot 1: no blast)"
         }
       ],
       "missing_arms": []
@@ -224,19 +236,27 @@
         }
       ],
       "setting": "fixes-on",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_bot_gates_fighters.cpp",
           "test": "GameplayFixesBots.barbarian_boulder_wants_a_faced_foe_inside_its_short_flight",
-          "note": "hero 24 px"
+          "note": "monster level 1: 16 px gap true, 17 false; level 5: 70 px true; hero strength 14: a 20 px gap true where the monster says false"
         },
         {
           "parity": "barbarian_bot_boulder_far_fixes_scen99",
           "fact": "WeaponFamilyCount(FAMILY_BOULDER,0,0) (16 px)"
+        },
+        {
+          "file": "tests/integration/test_family_behaviors.cpp",
+          "test": "FamilyBehaviors.check_special_default_families_with_new_specials_on",
+          "note": "level 1: 16 px true, 17 false"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "hero strength 14",
+        "monster level 8+"
+      ]
     },
     {
       "id": "living-16-barbarian.lua:93",
@@ -271,7 +291,13 @@
       "tests": [
         {
           "file": "tests/unit/test_bot_gates_fighters.cpp",
-          "test": "GameplayFixesBots.barbarian_boulder_wants_a_faced_foe_inside_its_short_flight"
+          "test": "GameplayFixesBots.barbarian_boulder_wants_a_faced_foe_inside_its_short_flight",
+          "note": "behind => false, 17 px gap => false, faced in flight => true"
+        },
+        {
+          "file": "tests/integration/test_family_behaviors.cpp",
+          "test": "FamilyBehaviors.check_special_default_families_with_new_specials_on",
+          "note": "alone => false; faced 16 px => true; 17 px => false"
         }
       ],
       "missing_arms": []
@@ -298,6 +324,21 @@
       "setting": "both",
       "status": "asserted",
       "tests": [
+        {
+          "file": "tests/unit/test_bot_gates_fighters.cpp",
+          "test": "GameplayFixesBots.barbarian_boulder_wants_a_faced_foe_inside_its_short_flight",
+          "note": "fixes off: true on every staging"
+        },
+        {
+          "file": "tests/unit/test_bot_gates_fighters.cpp",
+          "test": "GameplayFixesBots.barbarian_exploding_boulder_wants_a_cluster_with_no_ally_in_it",
+          "note": "fixes off: slot 2 true on every staging"
+        },
+        {
+          "file": "tests/integration/test_family_behaviors.cpp",
+          "test": "FamilyBehaviors.check_special_default_families",
+          "note": "fixes off: true"
+        },
         {
           "parity": "barbarian_bot_boulder_far_scen99",
           "fact": "WeaponFamilyCount(FAMILY_BOULDER,1,1)"
@@ -336,12 +377,18 @@
       "status": "asserted",
       "tests": [
         {
+          "file": "tests/unit/test_gameplay_fixes_bots.cpp",
+          "test": "GameplayFixesBots.a_busy_bot_never_rolls_a_busy_cast_with_the_setting_on",
+          "note": "barbarian slots 1 and 2: busy 3 => false, idle => true"
+        },
+        {
           "file": "tests/unit/test_bot_gates_fighters.cpp",
-          "test": "GameplayFixesBots.barbarian_boulder_refuses_a_pad_on_a_wall"
+          "test": "GameplayFixesBots.barbarian_boulder_refuses_a_pad_on_a_wall",
+          "note": "wall on the pad => false on both slots; open grass => true"
         },
         {
           "parity": "barbarian_bot_boulder_pad_body_fixes_scen99",
-          "fact": "WalkerHpRangeAtFinalTick(FAMILY_TOWER1,13000,13000)"
+          "fact": "EventKindExactly(play_sound,0) + WalkerHpRangeAtFinalTick(FAMILY_TOWER1,13000,13000) (body on the pad: no cast)"
         }
       ],
       "missing_arms": []
@@ -352,8 +399,7 @@
         117,
         119,
         126,
-        130,
-        132
+        130
       ],
       "function": "check_special_ai",
       "anchor": "if slot == 2 then",
@@ -386,18 +432,26 @@
         }
       ],
       "setting": "fixes-on",
-      "status": "asserted",
+      "status": "partial",
       "tests": [
         {
           "file": "tests/unit/test_bot_gates_fighters.cpp",
-          "test": "GameplayFixesBots.barbarian_exploding_boulder_wants_a_cluster_with_no_ally_in_it"
+          "test": "GameplayFixesBots.barbarian_exploding_boulder_wants_a_cluster_with_no_ally_in_it",
+          "note": "slot 1 target true; slot 2 lone false, ally in blast false, self in blast false, clear cluster true"
+        },
+        {
+          "file": "tests/unit/test_bot_gates_fighters.cpp",
+          "test": "GameplayFixesBots.barbarian_boulder_wants_a_faced_foe_inside_its_short_flight",
+          "note": "slot 1 none: 17 px / behind => false"
         },
         {
           "parity": "barbarian_bot_explode_lone_fixes_scen99",
           "fact": "WalkerOfOrderFamilyCount(FAMILY_EXPLOSION,FX,0,0)"
         }
       ],
-      "missing_arms": []
+      "missing_arms": [
+        "slot 2, no target"
+      ]
     }
   ],
   "other": [
