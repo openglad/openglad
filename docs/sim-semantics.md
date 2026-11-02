@@ -68,9 +68,14 @@ number per line.)
 - `id` names the row; it keeps the line it was first written at and does not
   change when the row moves.
 - `lines` are the branch lines the row covers (a rule whose condition spans
-  an `if` and its `else if` covers both).
-- `anchor` is the source text of the first line, trimmed. It is how the
-  check finds the row again after an edit above it.
+  an `if` and its `else if` covers both). Only branch lines: the opening
+  brace of a function or a statement between two arms is not listed.
+- `anchor` is the trimmed source text of the row's first line that says
+  something of its own: the `if (...)` rather than a bare `else` or
+  `default:` before it. When that is not the first of `lines`, the row also
+  has `anchor_index`, the position of the anchor line in `lines` (0 is the
+  default and is not written). The anchor is how the check finds the row
+  again after an edit.
 - `condition` is the rule in words; `semantic` says what it decides; `arms`
   list each outcome and how a test sees it.
 - `setting` is `none`, `fixes-off`, `fixes-on`, `both` or `new-specials`:
@@ -122,8 +127,9 @@ Add a row to that file's manifest:
   decision), add the line to that rule's `lines` and its arm to `arms`,
   with the test that asserts the new arm.
 
-Set `anchor` to the trimmed text of the row's first line. Then run the
-check.
+Set `anchor` to the trimmed text of the row's first line (or of its first
+line that is not a bare `else`, with `anchor_index` pointing at it). Then
+run the check.
 
 ## Running the check
 
@@ -149,14 +155,30 @@ check_manifest: FAIL: 159 files, 4678 candidate lines, 1504 rule rows, 448 other
 ### Moving rows: --fix
 
 Editing a file moves the lines below the edit. The check notices because a
-row's first line no longer holds its anchor; it finds the anchor elsewhere
-in the file (preferring an occurrence below a line that names the row's
-function, then the one nearest the old line) and reports the drift. `--fix`
-shifts every line of the row by the same amount and rewrites the manifest
-file; running it twice changes nothing the second time. A row whose anchor
-is a bare `else`, `default:` or `end` says nothing about where it belongs,
-so it moves with the preceding anchored row of the same function, and is
-reported when that does not land it back on its text.
+row's anchor line no longer holds its anchor, and finds the anchor
+elsewhere in the file. The same text often appears more than once (two
+`if (target)` a few lines apart), so the check takes, in this order: the
+occurrence inside the row's function (the nearest function definition above
+it has the row's function name); one below the row before it, because an
+edit never reorders lines; and the one nearest where the row would be had
+it moved as far as the row before it did. A row whose anchor is a bare
+`else`, `default:` or `end` says nothing about where it belongs, so it
+moves with the row before it in the same function (or, failing that, in
+the file), and only when that lands it on a line that reads exactly its
+anchor.
+
+The anchors found cut the file into stretches. Between two anchors, the
+branch lines the rows claim are matched in order with the branch lines the
+file now has there, whenever there are as many of each: an edit between
+two arms of one rule then moves the lower arm and leaves the upper one.
+When a stretch gained or lost a branch line, its lines move with the
+anchor above them, and the check reports what is left uncovered.
+
+Without `--fix` every row that moved is a `drift` error naming the line
+its anchor now sits on. `--fix` writes the new lines into the manifest
+file; running it twice changes nothing the second time. What `--fix`
+cannot place stays red: an edit that adds or removes a branch always
+needs a row written or a line moved by hand.
 
 `--fix` only ever writes files in `tests/semantics/manifest/`. It never
 touches the simulation, never changes a status and never adds a row.
@@ -167,9 +189,9 @@ touches the simulation, never changes a status and never adds a row.
 |---|---|---|
 | `uncovered` | a branch line no row claims | add a row, or add the line to the rule it belongs to |
 | `double-claimed` | two rows claim the same line | give the line to one of them |
-| `drift` | a row's anchor moved to another line | run `--fix` |
+| `drift` | a row's anchor, or a line below it, moved | run `--fix` |
 | `lost anchor` | the anchor text is nowhere in the file | the condition was rewritten: update `anchor` and `lines` by hand, and check the rule still says what the code does |
-| `unanchored` | a bare `else` / `default:` row is no longer on its text and nothing carried it | point its `lines` at the line by hand |
+| `unanchored` | a bare `else` / `default:` row is no longer on its text and no row before it carried it there | point its `lines` at the line by hand |
 | `out of range` | a row names a line past the end of the file | the file shrank: fix the row's `lines` |
 | `missing file` | an in-scope C++ file is gone | a rename: update `SCOPE_CPP` and the manifest's `path` |
 | `stray manifest` | a manifest file describes a file outside the scope | delete it, or move its rows to the file's new name |

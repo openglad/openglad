@@ -9,15 +9,23 @@ manifest file per source file into <manifest_dir>:
 
     {"path": ..., "rules": [...], "other": [...]}
 
-rows sorted by first line.  A rule row keeps id, lines, function, anchor,
-condition, semantic, arms, setting, status, tests, missing_arms, issue (when
-the review gave one) and note (free text that cites no test).  An other row
-keeps id, lines, kind, function (when the review gave one), anchor and note.
+rows sorted by first line.  `lines` keeps only the branch lines the
+check's grep sees, plus the anchor line (the review sometimes lists the
+function's opening brace or a statement between two arms as well).  A rule
+row keeps id, lines, function, anchor, anchor_index (when not 0), condition,
+semantic, arms, setting, status, tests, missing_arms, issue (when the review
+gave one) and note (free text that cites no test).  An other row keeps id,
+lines, kind, function (when the review gave one), anchor, anchor_index and
+note.
 
-`anchor` is the trimmed source text of the row's first line in the tree at
---repo (default: this script's repository), which is what check_manifest.py
-anchors on.  The review's own words for the condition, a paraphrase that is
-often not literal source text, are kept as `condition`.
+`anchor` is the trimmed source text of one of the row's lines in the tree
+at --repo (default: this script's repository), which is what
+check_manifest.py anchors on: the first line that is a branch line with text
+of its own (not a bare `else`, `{`, `default:`), else the first line with
+text of its own, else the first line.  When that is not lines[0] the row
+also carries `anchor_index`, the position of the anchor line in `lines`.
+The review's own words for the condition, a paraphrase that is often not
+literal source text, are kept as `condition`.
 
 Test citations are normalised from the review's free text:
     "tests/unit/x.cpp: TEST_F(Suite, name) (remark)"
@@ -130,10 +138,42 @@ def normalise_where(where: list[str]) -> tuple[list[dict], list[str]]:
     return tests, notes
 
 
-def first_line_anchor(src: list[str], line: int) -> str:
+def line_text(src: list[str], line: int) -> str:
     if 1 <= line <= len(src):
         return src[line - 1].strip()[:ANCHOR_MAX]
     return ""
+
+
+def pick_anchor(path: str, src: list[str], lines: list[int]) -> tuple[str, int]:
+    """(anchor text, index into lines) for a row: the first of its lines that
+    is a candidate branch line with text of its own, else the first line with
+    text of its own, else the first line.  A row the review starts on a bare
+    `{` or `else` is so anchored on the branch that names it."""
+    def own(n: int) -> bool:
+        return not cm.is_generic(line_text(src, n))
+
+    for pred in (lambda n: own(n) and 1 <= n <= len(src) and cm.is_candidate(path, src[n - 1]),
+                 own):
+        for k, n in enumerate(lines):
+            if pred(n):
+                return line_text(src, n), k
+    return line_text(src, lines[0]), 0
+
+
+def branch_lines(path: str, src: list[str], lines: list[int]) -> tuple[list[int], dict]:
+    """The row's lines as the manifest keeps them, and its anchor fields.
+
+    The review sometimes lists context lines with a row (the function's
+    opening brace, a statement between two arms).  The manifest keeps only
+    the branch lines the grep sees, plus the anchor line, so that every line
+    below a row's anchor is a branch line; check_manifest.py --fix relies on
+    that to re-place an arm an edit has moved."""
+    anchor, k = pick_anchor(path, src, lines)
+    at = lines[k]
+    kept = [n for n in lines
+            if n == at or (1 <= n <= len(src) and cm.is_candidate(path, src[n - 1]))]
+    k = kept.index(at)
+    return kept, {"anchor": anchor, **({"anchor_index": k} if k else {})}
 
 
 def line_list(row: dict) -> list[int]:
@@ -147,19 +187,19 @@ def line_list(row: dict) -> list[int]:
     return lines
 
 
-def rule_row(row: dict, src: list[str]) -> dict:
+def rule_row(row: dict, path: str, src: list[str]) -> dict:
     a = row.get("assertion", {})
     tests, notes = normalise_where(list(a.get("where", [])))
     if a.get("note"):
         notes.append(str(a["note"]))
     for arm in a.get("unasserted_arms", []) or []:
         notes.append(f"unasserted: {arm}")
-    lines = line_list(row)
+    lines, anchor = branch_lines(path, src, line_list(row))
     out: dict = {
         "id": row["id"],
         "lines": lines,
         "function": row.get("function", ""),
-        "anchor": first_line_anchor(src, lines[0]),
+        **anchor,
         "condition": str(row.get("condition", "")).strip(),
         "semantic": row.get("semantic", ""),
         "arms": row.get("arms", []),
@@ -176,12 +216,12 @@ def rule_row(row: dict, src: list[str]) -> dict:
     return out
 
 
-def other_row(row: dict, src: list[str]) -> dict:
-    lines = line_list(row)
+def other_row(row: dict, path: str, src: list[str]) -> dict:
+    lines, anchor = branch_lines(path, src, line_list(row))
     out: dict = {"id": row["id"], "lines": lines, "kind": row["kind"]}
     if row.get("function"):
         out["function"] = row["function"]
-    out["anchor"] = first_line_anchor(src, lines[0])
+    out.update(anchor)
     out["note"] = row.get("note", "")
     return out
 
@@ -206,6 +246,9 @@ def generate(repo: str, review_dir: str, manifest_dir: str) -> int:
         if rid in seen:
             print(f"gen_manifest: row id {rid} appears twice", file=sys.stderr)
             return 2
+        if not line_list(row):
+            print(f"gen_manifest: row {rid}: no lines and no line number in its id", file=sys.stderr)
+            return 2
         seen[rid] = path
         by_path.setdefault(path, []).append(row)
 
@@ -218,9 +261,9 @@ def generate(repo: str, review_dir: str, manifest_dir: str) -> int:
         rules, other = [], []
         for row in by_path[path]:
             if row.get("kind") == "rule":
-                rules.append(rule_row(row, src))
+                rules.append(rule_row(row, path, src))
             else:
-                other.append(other_row(row, src))
+                other.append(other_row(row, path, src))
         rules.sort(key=lambda r: (r["lines"][0], r["id"]))
         other.sort(key=lambda r: (r["lines"][0], r["id"]))
         name = cm.manifest_name(path, clashes)

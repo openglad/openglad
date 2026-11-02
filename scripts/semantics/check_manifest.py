@@ -22,16 +22,21 @@ The check passes (exit 0) only when all of these hold:
   R3  every rule row's status is "asserted", or "deferred" with an issue
       number (deferred rows are printed as notices, not errors).
 
-Anchoring.  Each row carries `anchor`, the trimmed source text of its first
-line.  When the first line no longer contains the anchor (whitespace
-collapsed), the check searches the file for it, preferring an occurrence
-below a line that names the row's function, then the occurrence nearest
-the old line.  Without --fix that is a drift error naming the line the
-anchor now sits on; with --fix every line of the row moves by the same
-delta and the manifest file is rewritten.  A row whose anchor is generic
-(a bare `else`, `default:`, `end`, ...) is located only through its lines:
-it moves with the preceding anchored row of the same function, and is
-reported when that does not put it back on its text.
+Anchoring.  Each row carries `anchor`, the trimmed source text of its
+anchor line, lines[anchor_index] (anchor_index defaults to 0).  When that
+line no longer contains the anchor (whitespace collapsed), or contains it
+only above the row before it, the check searches the file, ranking the
+hits: inside the row's function first, then not above the row before it,
+then nearest the line the row would sit on had it moved as far as the row
+before it.  A row whose anchor is generic (a bare `else`, `default:`,
+`end`, ...) is located only through its lines: it moves with the row before
+it in its function, else in the file, and must land on a line that reads
+exactly its anchor.  The located anchors then cut the file into stretches;
+inside each, the old branch lines the rows claim are paired in order with
+the branch lines there now when the counts agree, else they move with the
+anchor above them.  Without --fix every row that moved is a drift error
+naming where its anchor now sits; with --fix the new lines are written to
+the manifest file.  Whatever --fix cannot place, R1 reports.
 
 Exit codes: 0 clean, 1 violations found, 2 the check cannot run (no
 manifest directory, unreadable JSON, a malformed row).
@@ -43,6 +48,7 @@ library only; Python 3.10+.
 from __future__ import annotations
 
 import argparse
+import bisect
 import contextlib
 import glob
 import io
@@ -206,6 +212,7 @@ class Row:
     data: dict
     delta: int = 0
     located: bool = True
+    new_lines: list[int] = field(default_factory=list)
 
     @property
     def id(self) -> str:
@@ -222,6 +229,11 @@ class Row:
     @property
     def function(self) -> str | None:
         return self.data.get("function")
+
+    @property
+    def anchor_line(self) -> int:
+        """The line the anchor sits on: lines[anchor_index] (default the first)."""
+        return self.lines[int(self.data.get("anchor_index", 0))]
 
 
 def load_manifests(repo: str) -> tuple[dict[str, tuple[str, dict]], list[str]]:
@@ -268,6 +280,9 @@ def validate_manifest(data: object) -> str | None:
                 return f'row {row["id"]}: "lines" must be a non-empty list of line numbers'
             if not isinstance(row.get("anchor", ""), str):
                 return f'row {row["id"]}: "anchor" is not a string'
+            k = row.get("anchor_index", 0)
+            if isinstance(k, bool) or not isinstance(k, int) or not 0 <= k < len(lines):
+                return f'row {row["id"]}: "anchor_index" must index "lines"'
     for row in data["rules"]:
         if row.get("status") not in RULE_STATUSES:
             return f'rule row {row["id"]}: status {row.get("status")!r} is not one of {", ".join(RULE_STATUSES)}'
@@ -283,64 +298,178 @@ def validate_manifest(data: object) -> str | None:
 # Anchoring
 # --------------------------------------------------------------------------
 
-def find_anchor(row: Row, src: list[str]) -> int | None:
-    """Line where the row's anchor sits now, or None."""
+CPP_HEADER_RX = re.compile(r"^(?![\s#/{}*])(?!(?:if|else|for|while|switch|return|do|case)\b)"
+                           r"[^;(]*?\b(\w+)\s*\(")
+LUA_HEADER_RX = re.compile(r"^\s*(?:local\s+)?function\s+([\w.:]+)\s*\("
+                           r"|^\s*(?:local\s+)?([\w.]+)\s*=\s*function\b"
+                           r"|^\s*\[?\"?(\w+)\"?\]?\s*=\s*function\b")
+
+
+def header_token(path: str, text: str) -> str | None:
+    """The function name a definition line opens, or None when the line is
+    not one.  C++: a line at column 0 (not a comment, preprocessor line,
+    brace or statement keyword) whose first parenthesis follows a name and
+    which does not end in ';'.  Lua: `function a.b(`, `name = function`."""
+    if path.endswith(".lua"):
+        m = LUA_HEADER_RX.match(text)
+        if not m:
+            return None
+        name = next(g for g in m.groups() if g)
+        return re.split(r"[.:]", name)[-1]
+    if text.rstrip().endswith(";"):
+        return None
+    m = CPP_HEADER_RX.match(text)
+    return m.group(1) if m else None
+
+
+def enclosing_functions(path: str, src: list[str]) -> list[str | None]:
+    """For every line (1-based; index 0 unused) the name of the nearest
+    function definition at or above it."""
+    out: list[str | None] = [None]
+    current: str | None = None
+    for text in src:
+        tok = header_token(path, text)
+        if tok:
+            current = tok
+        out.append(current)
+    return out
+
+
+def find_anchor(row: Row, src: list[str], hint: int | None = None, floor: int = 0,
+                enclosing: list[str | None] | None = None) -> int | None:
+    """Line where the row's anchor sits now, or None.
+
+    An anchor text can repeat in a file (two `if (target)` a few lines
+    apart), so the hits are ranked, best first:
+      1. inside the row's function (the nearest definition above the hit
+         names it);
+      2. not above `floor`, the line below the preceding located row's
+         anchor (an edit never reorders lines, so rows keep their order);
+      3. nearest the line the row would sit on had it moved by `hint`, the
+         shift of the preceding located row (an insert above both moves
+         both by the same amount)."""
     want = norm(row.anchor)
     hits = [i for i, t in enumerate(src, 1) if want in norm(t)]
     if not hits:
         return None
-    first = row.lines[0]
+    first = row.anchor_line
+    predicted = first + (hint or 0)
     tok = function_token(row.function)
-    named = set()
-    if tok:
-        rx = re.compile(r"\b" + re.escape(tok) + r"\b")
-        named = {i for i, t in enumerate(src, 1) if rx.search(t)}
+    if enclosing is None:
+        enclosing = enclosing_functions(row.path, src)
 
     def owned(i: int) -> bool:
-        return any(n <= i for n in named)
+        return tok is not None and enclosing[i] == tok
 
-    return min(hits, key=lambda i: (not owned(i), abs(i - first), i))
+    return min(hits, key=lambda i: (not owned(i), i < floor, abs(i - predicted), i))
 
 
 def line_reads(src: list[str], line: int, anchor: str) -> bool:
-    return 1 <= line <= len(src) and norm(anchor) in norm(src[line - 1])
+    """Does `line` still read `anchor`?  A generic anchor (`else`, `{`, an
+    empty line) must be the whole line; any other anchor a substring."""
+    if not 1 <= line <= len(src):
+        return False
+    if is_generic(anchor):
+        return norm(src[line - 1]) == norm(anchor)
+    return norm(anchor) in norm(src[line - 1])
 
 
 def anchor_file(rows: list[Row], src: list[str]) -> list[tuple[str, Row, int | None]]:
-    """Locate every row of one file.  Sets row.delta / row.located and returns
-    the findings: ("drift", row, new_line), ("lost", row, None),
-    ("unanchored", row, None)."""
+    """Locate every row of one file and work out where its lines sit now.
+
+    Pass 1 finds each row's anchor line, in order of the old anchor lines
+    (row.delta, row.located).  Pass 2 re-points every line of every located
+    row: a line at or above the row's anchor moves with the anchor; a line
+    below it moves with the nearest located anchor at or above it, of any
+    row, so an insert between two arms of one row moves the lower arm only
+    (row.new_lines).  Returns the findings: ("drift", row, new anchor line)
+    for a row whose lines changed, ("lost", row, None), ("unanchored", row,
+    None)."""
     findings: list[tuple[str, Row, int | None]] = []
-    ordered = sorted(rows, key=lambda r: (r.lines[0], r.id))
+    ordered = sorted(rows, key=lambda r: (r.anchor_line, r.lines[0], r.id))
+    enclosing = enclosing_functions(rows[0].path, src) if rows else []
     last_by_function: dict[str | None, Row] = {}
     last_any: Row | None = None
     for row in ordered:
+        # The lowest line this row's anchor may sit on now: below the row
+        # before it (on the same line only when it shared that row's line).
+        floor = 0
+        if last_any is not None:
+            floor = last_any.anchor_line + last_any.delta
+            floor += 1 if row.anchor_line > last_any.anchor_line else 0
         if is_generic(row.anchor):
-            if row.function:
-                carrier = last_by_function.get(row.function)
+            # Carried by the preceding located row of its function, else by
+            # the preceding located row of the file; it must land on its
+            # own text and not above the row before it.
+            carriers = [c for c in (last_by_function.get(row.function) if row.function else None,
+                                    last_any) if c is not None]
+            for carrier in carriers or [None]:
+                row.delta = carrier.delta if carrier is not None else 0
+                at = row.anchor_line + row.delta
+                if line_reads(src, at, row.anchor) and at >= floor:
+                    break
             else:
-                carrier = last_any
-            row.delta = carrier.delta if carrier is not None else 0
-            if not line_reads(src, row.lines[0] + row.delta, row.anchor):
                 row.delta = 0
                 row.located = False
                 findings.append(("unanchored", row, None))
-            elif row.delta:
-                findings.append(("drift", row, row.lines[0] + row.delta))
-            continue
-        if line_reads(src, row.lines[0], row.anchor):
+                continue
+        elif line_reads(src, row.anchor_line, row.anchor) and row.anchor_line >= floor:
             row.delta = 0
         else:
-            found = find_anchor(row, src)
+            # Not on its line, or on its line only by the chance of a twin
+            # that now sits above the row before it.
+            hint = last_any.delta if last_any is not None else None
+            found = find_anchor(row, src, hint, floor, enclosing)
             if found is None:
                 row.located = False
                 findings.append(("lost", row, None))
+                continue
+            row.delta = found - row.anchor_line
+        last_by_function[row.function] = row
+        last_any = row
+
+    # Pass 2: the located anchors cut the file into segments.  Between two
+    # neighbouring anchors (old a..a', new b..b') the old branch lines the
+    # rows claim and the branch lines the file has now are paired in order
+    # when there are as many of each: an edit there added or removed lines
+    # that are not branches, so the k-th branch line is still the k-th.
+    # When the counts differ (a branch was added or removed), a line moves
+    # with its own row's anchor if it sits above it, else with the anchor
+    # that opens its segment; the coverage check then reports whatever is
+    # left uncovered.
+    points = sorted({(r.anchor_line, r.anchor_line + r.delta) for r in rows if r.located})
+    controls = dict(points)
+    olds = [o for o, _ in points]
+    cands = sorted(candidates_of(rows[0].path, src)) if rows else []
+    old_lines = sorted({n for r in rows if r.located for n in r.lines} - set(controls))
+    paired: dict[int, int] = {}
+    bounds = [(0, 0)] + points + [(None, len(src) + 1)]
+    for (a0, b0), (a1, b1) in zip(bounds, bounds[1:]):
+        old_seg = [n for n in old_lines if n > a0 and (a1 is None or n < a1)]
+        new_seg = [c for c in cands if b0 < c < b1 and c not in controls.values()]
+        if old_seg and len(old_seg) == len(new_seg):
+            paired.update(zip(old_seg, new_seg))
+    for row in rows:
+        if not row.located:
+            row.new_lines = list(row.lines)
+            continue
+        new = []
+        for n in row.lines:
+            if n in controls:
+                new.append(controls[n])
+            elif n in paired:
+                new.append(paired[n])
+            elif n <= row.anchor_line:
+                new.append(n + row.delta)
             else:
-                row.delta = found - row.lines[0]
-                findings.append(("drift", row, found))
-        if row.located:
-            last_by_function[row.function] = row
-            last_any = row
+                k = bisect.bisect_right(olds, n) - 1
+                new.append(n + (points[k][1] - points[k][0]))
+        row.new_lines = new
+
+    for row in rows:
+        if row.located and row.new_lines != row.lines:
+            findings.append(("drift", row, row.anchor_line + row.delta))
+    findings.sort(key=lambda f: (f[1].lines[0], f[1].id))
     return findings
 
 
@@ -450,31 +579,35 @@ def run_check(repo: str, fix: bool) -> Report:
         # Anchor.
         for kind, row, where in anchor_file(rows, src):
             if kind == "drift":
-                if fix:
-                    rep.fixed.append(f"fixed: {path}: row {row.id} moved {row.delta:+d} "
-                                     f"(line {row.lines[0]} -> {where})")
+                if row.delta:
+                    what = f"anchor \"{norm(row.anchor)}\" is not on line {row.anchor_line}; it now sits on line {where}"
+                    done = f"moved {row.delta:+d} (line {row.anchor_line} -> {where})"
                 else:
-                    rep.add("drift", f"{path}: row {row.id}: anchor \"{norm(row.anchor)}\" is not on "
-                            f"line {row.lines[0]}; it now sits on line {where} (--fix re-points the row)")
+                    moved = [(a, b) for a, b in zip(row.lines, row.new_lines) if a != b]
+                    span = ", ".join(f"{a} -> {b}" for a, b in moved)
+                    what = f"anchor stays on line {row.anchor_line}, but lines below it moved ({span})"
+                    done = f"lines below the anchor moved ({span})"
+                if fix:
+                    rep.fixed.append(f"fixed: {path}: row {row.id} {done}")
+                else:
+                    rep.add("drift", f"{path}: row {row.id}: {what} (--fix re-points the row)")
             elif kind == "lost":
                 rep.add("lost anchor", f"{path}: row {row.id}: anchor \"{norm(row.anchor)}\" is not on "
-                        f"line {row.lines[0]} and nowhere else in the file")
+                        f"line {row.anchor_line} and nowhere else in the file")
             else:
-                rep.add("unanchored", f"{path}: row {row.id}: line {row.lines[0]} no longer reads "
+                rep.add("unanchored", f"{path}: row {row.id}: line {row.anchor_line} no longer reads "
                         f"\"{norm(row.anchor)}\" and no anchored row of the same function "
                         f"moved to carry it")
-        if fix and mfile is not None and any(r.delta for r in rows):
+        if fix and mfile is not None and any(r.new_lines != r.lines for r in rows):
             for row in rows:
-                if row.delta:
-                    row.data["lines"] = [n + row.delta for n in row.lines]
-                    row.delta = 0
+                if row.new_lines != row.lines:
+                    row.data["lines"] = list(row.new_lines)
             write_fixed(repo, mfile, data)
 
         # R1: coverage.
         claims: dict[int, list[str]] = {}
         for row in rows:
-            for n in row.lines:
-                line = n + row.delta
+            for line in row.new_lines:
                 if line > len(src):
                     rep.add("out of range", f"{path}: row {row.id}: line {line} is past the "
                             f"end of the file ({len(src)} lines)")
@@ -664,6 +797,7 @@ TEST_F(FearlessFixture,
         play(scene);                     \\
     }
 FEARLESS_SCENE(counts_down_to_zero, "c_count")
+TEST_P(FearlessSizes, picks_for_every_size) { }
 """
 
 _FIXTURE_TABLE = """\
@@ -680,7 +814,8 @@ def _fixture_manifest() -> dict:
             {"id": "fearless.cpp:4", "lines": [4], "function": "pick",
              "anchor": "if (a > 3)", "semantic": "s", "arms": [], "setting": "none",
              "status": "asserted",
-             "tests": [{"file": "tests/unit/test_fearless.cpp", "test": "Fearless.picks_one_above_three"}],
+             "tests": [{"file": "tests/unit/test_fearless.cpp", "test": "Fearless.picks_one_above_three"},
+                       {"file": "tests/unit/test_fearless.cpp", "test": "FearlessSizes.picks_for_every_size"}],
              "missing_arms": []},
             {"id": "fearless.cpp:6", "lines": [6], "function": "pick",
              "anchor": "else", "semantic": "s", "arms": [], "setting": "none",
@@ -941,6 +1076,190 @@ def self_test() -> int:
                 + _summary("FAIL", r1="uncovered 1, double-claimed 0, drift 0, lost anchor 0, "
                            "unanchored 1, out of range 0, missing file 0, stray manifest 0, "
                            "duplicate manifest 0", fixed=2)))
+
+        # R1: a row line past the end of the file.
+        m = _fixture_manifest()
+        m["other"][0]["lines"] = [13, 40]
+        root = case("out_of_range", m)
+        expect("R1: a line past the end of the file is red", _run(["--repo", root]),
+               (1, "out of range: src/gameplay/fearless.cpp: row fearless.cpp:13: line 40 is past "
+                "the end of the file (17 lines)\n"
+                + _summary("FAIL", r1="uncovered 0, double-claimed 0, drift 0, lost anchor 0, "
+                           "unanchored 0, out of range 1, missing file 0, stray manifest 0, "
+                           "duplicate manifest 0")))
+
+        # R1: two manifest files describing one source file.
+        root = case("duplicate", _fixture_manifest())
+        with open(os.path.join(root, MANIFEST_DIR, "fearless-copy.json"), "w", encoding="utf-8") as fh:
+            fh.write(dump_manifest(_fixture_manifest()))
+        expect("R1: two manifests for one file are red", _run(["--repo", root]),
+               (1, "duplicate manifest: src/gameplay/fearless.cpp is described by both "
+                "fearless-copy.json and fearless.cpp.json\n"
+                + _summary("FAIL", r1="uncovered 0, double-claimed 0, drift 0, lost anchor 0, "
+                           "unanchored 0, out of range 0, missing file 0, stray manifest 0, "
+                           "duplicate manifest 1")))
+
+        # R2: a test entry that names neither a gtest nor a parity row.
+        m = _fixture_manifest()
+        m["rules"][1]["tests"] = [{"note": "watched it once"}]
+        root = case("note_only", m)
+        expect("R2: a note-only test entry is red", _run(["--repo", root]),
+               (1, "missing test: src/gameplay/fearless.cpp: row fearless.cpp:6: a test entry names "
+                "neither file+test nor parity: {\"note\": \"watched it once\"}\n"
+                + _summary("FAIL", r2="no test 0, missing test 1, missing parity row 0")))
+
+        # Anchoring: twin anchors.  Rows on two identical `if (k)` lines, and
+        # a third row after a non-branch line that quotes the same text.
+        twins_src = ("// twins\nint twin(int k)\n{\n    if (k)\n        k++;\n    if (k)\n"
+                     "        k--;\n    if (j)\n        say(\"if (q)\");\n    if (q)\n"
+                     "        k = 0;\n    return k;\n}\n")
+
+        def twins_manifest() -> dict:
+            def row(line: int, anchor: str) -> dict:
+                return {"id": f"fearless.cpp:{line}", "lines": [line], "function": "twin",
+                        "anchor": anchor, "semantic": "s", "arms": [], "setting": "none",
+                        "status": "asserted",
+                        "tests": [{"file": "tests/unit/test_fearless.cpp",
+                                   "test": "Fearless.picks_one_above_three"}],
+                        "missing_arms": []}
+            return {"path": "src/gameplay/fearless.cpp",
+                    "rules": [row(4, "if (k)"), row(6, "if (k)"), row(8, "if (j)"), row(10, "if (q)")],
+                    "other": []}
+
+        def fixed_lines(root: str) -> list[tuple[str, list[int]]]:
+            with open(os.path.join(root, MANIFEST_DIR, "fearless.cpp.json"), encoding="utf-8") as fh:
+                got = json.load(fh)
+            return [(r["id"], r["lines"]) for r in got["rules"] + got["other"]]
+
+        moved = twins_src.replace("int twin", "// a\n// b\n// c\n// d\n// e\nint twin")
+        root = case("twins_above", twins_manifest(), src=moved)
+        rc, _ = _run(["--repo", root, "--fix"])
+        expect("twins: an insert above both moves each to its own line (the shift of the row before)",
+               (rc, fixed_lines(root)),
+               (0, [("fearless.cpp:4", [9]), ("fearless.cpp:6", [11]),
+                    ("fearless.cpp:8", [13]), ("fearless.cpp:10", [15])]))
+        moved = moved.replace("        k++;\n", "        k++;\n        // f\n        // g\n        // h\n")
+        root = case("twins_between", twins_manifest(), src=moved)
+        rc, _ = _run(["--repo", root, "--fix"])
+        expect("twins: an insert between them never puts the lower row above the upper",
+               (rc, fixed_lines(root)),
+               (0, [("fearless.cpp:4", [9]), ("fearless.cpp:6", [14]),
+                    ("fearless.cpp:8", [16]), ("fearless.cpp:10", [18])]))
+        expect("twins: --fix twice changes nothing", _run(["--repo", root, "--fix"]),
+               (0, _summary("OK", rules=4, other=0, cands=4)))
+
+        # Anchoring: an anchor repeated in another function goes to the row's own.
+        two_funcs = ["int alpha(int k)", "{", "    if (k)", "        k++;", "    return k;", "}",
+                     "", "", "", "", "", "", "", "", "",
+                     "int beta(int k)", "{", "    if (k)", "        k--;", "    return k;", "}"]
+        lone = Row("", "src/gameplay/fearless.cpp", "rules",
+                   {"id": "fearless.cpp:8", "lines": [8], "function": "beta", "anchor": "if (k)"})
+        expect("find_anchor: the occurrence inside the row's function wins over a nearer one",
+               find_anchor(lone, two_funcs), 18)
+
+        # A generic anchor must be the whole line.
+        expect("line_reads: a generic anchor matches only a line that is just it",
+               [line_reads(["} else {"], 1, "{"), line_reads(["  {"], 1, "{"),
+                line_reads(["} else {"], 1, "else"), line_reads(["} else {"], 1, "} else {")],
+               [False, True, False, True])
+
+        # An insert between two arms of one row moves the lower arm only.
+        m = _fixture_manifest()
+        m["rules"][0]["lines"] = [4, 6]
+        del m["rules"][1]
+        between = _FIXTURE_SRC.replace("        return 1;\n", "        return 1;\n        // one\n")
+        root = case("arms", m, src=between)
+        expect("an insert between two arms of one row is repaired arm by arm",
+               _run(["--repo", root, "--fix"]),
+               (0, "fixed: src/gameplay/fearless.cpp: row fearless.cpp:4 lines below the anchor moved "
+                "(6 -> 7)\n"
+                "fixed: src/gameplay/fearless.cpp: row fearless.cpp:12 moved +1 (line 12 -> 13)\n"
+                "fixed: src/gameplay/fearless.cpp: row fearless.cpp:13 moved +1 (line 13 -> 14)\n"
+                + _summary("OK", rules=2, fixed=3)))
+        expect("arm by arm: the lines", fixed_lines(root),
+               [("fearless.cpp:4", [4, 7]), ("fearless.cpp:12", [13]), ("fearless.cpp:13", [14])])
+
+        # A row anchored on its second line (anchor_index) moves by that line.
+        m = _fixture_manifest()
+        m["other"][0]["lines"] = [11, 13]
+        m["other"][0]["anchor_index"] = 1
+        root = case("anchor_index", m, src=_FIXTURE_SRC.replace("int other", "// x\nint other"))
+        rc, _ = _run(["--repo", root, "--fix"])
+        expect("anchor_index: the row moves with the line it is anchored on",
+               (rc, fixed_lines(root)),
+               (0, [("fearless.cpp:4", [4]), ("fearless.cpp:6", [6]),
+                    ("fearless.cpp:12", [13]), ("fearless.cpp:13", [12, 14])]))
+
+        # --fix never writes outside the manifest directory.
+        root = case("guard", _fixture_manifest())
+        outside = os.path.join(root, "src", "gameplay", "fearless.json")
+        try:
+            write_fixed(root, outside, _fixture_manifest())
+            guard = "wrote"
+        except CannotRun as exc:
+            guard = str(exc).replace(root, "<root>")
+        expect("write_fixed refuses a path outside the manifest directory",
+               (guard, os.path.exists(outside)),
+               ("refusing to write <root>/src/gameplay/fearless.json: not in tests/semantics/manifest",
+                False))
+
+        # The generator: context lines dropped, anchor on the branch line,
+        # citations normalised, byte-identical twice, a row with no line refused.
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import gen_manifest  # noqa: PLC0415  (gen_manifest imports this module)
+        root = case("gen", None)
+        review = os.path.join(root, "review")
+        os.makedirs(review)
+        rows = [
+            {"id": "fearless.cpp:3", "path": "src/gameplay/fearless.cpp", "lines": [3, 4, 5, 6],
+             "function": "pick", "kind": "rule", "condition": "a > 3", "semantic": "picks",
+             "arms": [{"when": "a > 3", "observable": "1"}], "setting": "none",
+             "depends_on": [], "stage": {"how": "x", "sketch": "y"}, "suspect": "z",
+             "assertion": {"status": "asserted",
+                           "where": ["tests/unit/test_fearless.cpp: TEST(Fearless, picks_one_above_three) (both arms)",
+                                     "parity: fearless_pick_scen99 / WalkerFamilyCount",
+                                     "GAP: nobody looks at a == 3"]}},
+            {"id": "fearless.cpp:12", "path": "src/gameplay/fearless.cpp", "lines": [12, 13],
+             "kind": "loop", "note": "countdown"},
+            {"id": "fearless.cpp:5", "path": "src/gameplay/fearless.cpp", "lines": [5, 6, 12],
+             "kind": "dead", "note": "starts on a statement, then a bare else"},
+        ]
+        with open(os.path.join(review, "part.json"), "w", encoding="utf-8") as fh:
+            json.dump(rows, fh)
+        outs = []
+        for k in range(2):
+            mdir = os.path.join(root, f"out{k}")
+            with contextlib.redirect_stdout(io.StringIO()):
+                rc = gen_manifest.generate(root, review, mdir)
+            with open(os.path.join(mdir, "fearless.cpp.json"), encoding="utf-8") as fh:
+                outs.append((rc, fh.read()))
+        got = json.loads(outs[0][1])
+        expect("gen: twice gives identical bytes", outs[0], outs[1])
+        expect("gen: the rule row",
+               got["rules"],
+               [{"id": "fearless.cpp:3", "lines": [4, 6], "function": "pick", "anchor": "if (a > 3)",
+                 "condition": "a > 3", "semantic": "picks",
+                 "arms": [{"when": "a > 3", "observable": "1"}], "setting": "none",
+                 "status": "asserted",
+                 "tests": [{"file": "tests/unit/test_fearless.cpp", "test": "Fearless.picks_one_above_three",
+                            "note": "both arms"},
+                           {"parity": "fearless_pick_scen99", "fact": "WalkerFamilyCount"}],
+                 "missing_arms": [], "note": ["GAP: nobody looks at a == 3"]}])
+        expect("gen: the other row", got["other"],
+               [{"id": "fearless.cpp:5", "lines": [6, 12], "kind": "dead",
+                 "anchor": "int c = b ? 4 : 5;", "anchor_index": 1,
+                 "note": "starts on a statement, then a bare else"},
+                {"id": "fearless.cpp:12", "lines": [12, 13], "kind": "loop",
+                 "anchor": "int c = b ? 4 : 5;", "note": "countdown"}])
+        rows[0]["lines"] = []
+        rows[0]["id"] = "fearless.cpp:pick"
+        with open(os.path.join(review, "part.json"), "w", encoding="utf-8") as fh:
+            json.dump(rows, fh)
+        err = io.StringIO()
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(err):
+            rc = gen_manifest.generate(root, review, os.path.join(root, "out2"))
+        expect("gen: a row with no line exits 2 with its own message", (rc, err.getvalue()),
+               (2, "gen_manifest: row fearless.cpp:pick: no lines and no line number in its id\n"))
 
         # Exit 2: no manifest directory, malformed row.
         root = case("no_dir", None)
