@@ -21,6 +21,7 @@
 #include <openglad/core/pixdefs.h>
 #include <openglad/core/terrain_types.h>
 #include <openglad/gameplay/families/family_registry.h>
+#include <openglad/gameplay/families/family_string_ids.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/kit_state.h>
@@ -728,11 +729,19 @@ TEST_F(SemAi3, a_goto_order_walks_to_its_point_without_attacking_and_ends_on_arr
             arrived = true;
         } else {
             ASSERT_EQ(1u, st->commands.size()) << "not there yet: the GOTO stays";
-            EXPECT_GE(s->xpos(), x0) << "never steps away from the point";
-            EXPECT_GE(s->ypos(), y0) << "never steps away from the point";
+            // Open floor, point due down-right: one diagonal step of the
+            // soldier's stepsize (4) per round, straight at the point.
+            ASSERT_FLOAT_EQ(4.0f, s->stepsize());
+            EXPECT_EQ(x0 + 4, s->xpos()) << "arm 'front GOTO(x,y)': one step toward the point";
+            EXPECT_EQ(y0 + 4, s->ypos()) << "arm 'front GOTO(x,y)': one step toward the point";
         }
         EXPECT_EQ(weapons, world().weaplist.size()) << "a GOTO never fires";
         EXPECT_FLOAT_EQ(0.0f, s->busy()) << "a GOTO never swings";
+        if (arrived) {
+            EXPECT_EQ(25, t) << "25 steps of 4 bring (96,96) within 12 px of (200,200)";
+            EXPECT_EQ(196, x0);
+            EXPECT_EQ(196, y0);
+        }
     }
     EXPECT_TRUE(arrived) << "arm 'front GOTO(x,y)': the walker reaches the point";
 }
@@ -1267,7 +1276,10 @@ TEST_F(SemHit, a_fearless_walker_yells_and_recruits_but_does_not_run)
         world().new_specials = static_cast<short>(ns);
         walker* s = hero_at(FAMILY_SOLDIER, 0, 160, 160, 100.0f, false);
         walker* orc = living_at(FAMILY_ORC, 1, 200, 160);
-        walker* banner = weapon_at(21 /* core:war_banner */, 0, 180, 170, 16, 16);
+        const int banner_family =
+            og::families::resolve_family_string_id(Order::Weapon, "core:war_banner");
+        ASSERT_GE(banner_family, 0) << "core:war_banner must resolve, or the banner cases are a no-banner control";
+        walker* banner = weapon_at(banner_family, 0, 180, 170, 16, 16);
         ASSERT_NE(nullptr, s);
         ASSERT_NE(nullptr, orc);
         ASSERT_NE(nullptr, banner);
