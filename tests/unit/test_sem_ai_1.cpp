@@ -28,6 +28,7 @@
 #include <openglad/gameplay/pathfinding_grid.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
+#include <openglad/resources/gparser.h>
 
 #include <algorithm>
 #include <cstddef>
@@ -396,11 +397,14 @@ TEST_F(SemPathing, path_steps_are_biased_toward_the_goal_point_when_set_else_the
 }
 
 // gameplay_context.cpp:95. The A* estimate adds one cell (16) per floor of
-// difference and nothing between states of the same floor. With the start on
-// an up-stair and the near cell east of it crowded (cost 10), the floor term
-// makes climbing at once (cost 11) look better than walking floor 0 to the far
+// difference and nothing between states of the same floor. The planar part is
+// the classic one: pixels (16 per cell) against edge costs of 1 per cell, so
+// the estimate overestimates about 16 times and the search is near-greedy
+// (not admissible, whatever the comment says). With the start on an up-stair
+// and the near cell east of it crowded (cost 10), the floor term makes
+// climbing at once (cost 11) look better than walking floor 0 to the far
 // stair (cost 20); without it the near-greedy search takes the long way.
-TEST_F(SemPathing, the_path_estimate_adds_a_cell_per_floor_between_floors_and_nothing_within_one)
+TEST_F(SemPathing, classic_near_greedy_estimate_adds_a_cell_per_floor_between_floors_and_none_within_one)
 {
     two_floors();
     tile(0, 5, 8, PIX_ZSTAIR_UP);
@@ -844,9 +848,24 @@ protected:
 
 } // namespace
 
-// living.cpp:69. With no banked rounds, or dead, a walker acts once.
-TEST_F(SemLiving, a_walker_with_no_banked_rounds_or_dead_takes_a_single_act)
+// living.cpp:69. Each banked bonus round is one more full act in the same
+// tick, so every per-tick timer also runs once per round (the classic
+// recursion); with no banked rounds, or dead, a walker acts once.
+TEST_F(SemLiving, classic_banked_rounds_run_every_timer_once_per_round_and_no_rounds_or_dead_act_once)
 {
+    walker* banked = still(FAMILY_SOLDIER, 0, 320, 320);
+    ASSERT_NE(nullptr, banked);
+    banked->set_bonus_rounds(3);
+    banked->set_invulnerable_left(10);
+    banked->set_view_all(10);
+    const unsigned char bdc = banked->drawcycle();
+    banked->act();
+    EXPECT_EQ(static_cast<unsigned char>(bdc + 4), banked->drawcycle())
+        << "banked rounds, alive: three extra acts this tick";
+    EXPECT_EQ(6, banked->invulnerable_left()) << "banked rounds: the timer ran once per round";
+    EXPECT_EQ(6, banked->view_all()) << "banked rounds: the timer ran once per round";
+    EXPECT_EQ(0, banked->bonus_rounds()) << "banked rounds: the whole bank is spent";
+
     walker* w = still(FAMILY_SOLDIER, 0, 160, 160);
     ASSERT_NE(nullptr, w);
     w->set_invulnerable_left(10);
@@ -1026,6 +1045,40 @@ TEST_F(SemLiving, classic_regeneration_runs_each_act_and_freeze_time_stops_it_fo
     EXPECT_FLOAT_EQ(100.0f, w->stats()->hitpoints()) << "normal: capped at max";
 }
 
+// living.cpp:147/158, the bonus-rounds arm. The regeneration gate also holds
+// while the walker still has rounds banked. living::act spends a round before
+// it recurses, so in play no frame reaches the gate with rounds left; it does
+// when something inside the act banks a round, here a soldier hook that banks
+// one on the first nested act. Two frames run: the inner one regenerates (no
+// rounds then), the outer one finds the new round banked and does not.
+TEST_F(SemLiving, a_walker_with_rounds_still_banked_does_not_regenerate)
+{
+    og::script::register_pack_script(
+        {"test.sem_ai_1", "bank_a_round.lua",
+         "local armed = true\n"
+         "og.register_hooks('living', 'core:soldier', {\n"
+         "  on_act_living = function(self)\n"
+         "    if armed then\n"
+         "      armed = false\n"
+         "      self:set_bonus_rounds(1)\n"
+         "    end\n"
+         "  end,\n"
+         "})\n"});
+    walker* w = still(FAMILY_SOLDIER, 0, 160, 160);
+    ASSERT_NE(nullptr, w);
+    w->stats()->set_hitpoints(10.0f);
+    w->stats()->set_magicpoints(20.0f);
+    w->stats()->set_heal_per_round(1.0f);
+    w->stats()->set_magic_per_round(2.0f);
+    w->set_bonus_rounds(1);
+    w->act();
+    EXPECT_FLOAT_EQ(11.0f, w->stats()->hitpoints())
+        << "bonus rounds banked: only the frame with none banked regenerated HP";
+    EXPECT_FLOAT_EQ(22.0f, w->stats()->magicpoints())
+        << "bonus rounds banked: only the frame with none banked regenerated MP";
+    EXPECT_EQ(1, w->bonus_rounds()) << "the hook's round is still banked";
+}
+
 // living.cpp:169/173. View-all and invulnerability at 0 stay 0.
 TEST_F(SemLiving, view_all_and_invulnerability_at_zero_stay_zero)
 {
@@ -1056,9 +1109,19 @@ TEST_F(SemLiving, flight_lasts_its_count_of_acts_and_then_stays_zero)
 
 // living.cpp:185/197. A non-flying walker inside impassable terrain loses 1 HP
 // per act (a red 1) and is lent one tick of flight; on open ground, or
-// flying, nothing happens.
+// flying, nothing happens. The scene runs with effects/damage_numbers ON: the
+// old game pushes the red 1 only under that setting (old src/living.cpp:175),
+// the current sim pushes it always and gates the draw instead, so only the ON
+// side is the same in both games.
 TEST_F(SemLiving, a_walker_stuck_in_a_wall_loses_a_point_per_act_and_gets_a_tick_of_flight)
 {
+    struct OverrideRestore
+    {
+        decltype(cfg.overrides) saved = cfg.overrides;
+        ~OverrideRestore() { cfg.overrides = saved; }
+    } restore;
+    cfg.apply_override("effects", "damage_numbers", "on");
+    ASSERT_TRUE(cfg.is_on("effects", "damage_numbers"));
     tile(10, 10, PIX_H_WALL1);
     walker* stuck = still(FAMILY_SOLDIER, 0, 160, 160);
     ASSERT_NE(nullptr, stuck);
