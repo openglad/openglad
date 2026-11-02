@@ -878,3 +878,467 @@ TEST_F(SemAi3, an_attacker_merged_with_its_foe_steps_out_along_its_facing)
     EXPECT_EQ(400, s->ypos()) << "arm 'not coincident': a turn, not a step";
     EXPECT_EQ(FACE_UP, s->enddir()) << "arm 'not coincident': it turns toward the foe";
 }
+
+// stats.cpp:571 (statistics::do_command, ATTACK), a classic quirk the old
+// game shares: a clear shot forces FIRE(rng(5)) in front of the attack and
+// fires now; the round's countdown lands on that FIRE, so with rng(5) <= 1 the
+// FIRE is gone after the round and the ATTACK's own count is never touched.
+TEST_F(SemAi3, classic_an_attack_that_fires_never_counts_down_its_own_rounds)
+{
+    for (const std::uint32_t roll : {0u, 1u}) {
+        SCOPED_TRACE(roll);
+        SetUp();
+        walker* s = living_at(FAMILY_SOLDIER, 0, 50, 50);
+        walker* slime = living_at(FAMILY_SMALL_SLIME, 1, 60, 50);
+        ASSERT_NE(nullptr, s);
+        ASSERT_NE(nullptr, slime);
+        s->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+        s->set_foe(slime);
+        s->set_curdir(static_cast<signed char>(FACE_RIGHT));
+        s->set_enddir(static_cast<char>(FACE_RIGHT));
+        s->set_lastx(s->stepsize());
+        s->set_lasty(0.0f);
+        FixedRandom scripted_source(roll);
+        ScopedSimRandom scripted(&scripted_source);
+        statistics* st = s->stats();
+        st->clear_command();
+        st->add_command(COMMAND_ATTACK, 5, 0, 0);
+        ASSERT_EQ(1, st->do_command());
+        EXPECT_FLOAT_EQ(s->fire_frequency(), s->busy()) << "arm 'fire_check allows': it fired now";
+        EXPECT_EQ(50, s->xpos()) << "shooting does not move the shooter";
+        ASSERT_EQ(1u, st->commands.size()) << "rng(5) <= 1: the forced FIRE is already spent";
+        EXPECT_EQ(COMMAND_ATTACK, st->commands.front().commandtype);
+        EXPECT_EQ(5, st->commands.front().commandcount)
+            << "the attack's count is untouched on a round it fires";
+    }
+}
+
+// stats.cpp:571 (statistics::do_command, ATTACK). A melee-only family at bump
+// range (denial NoRanged) turns to face its foe without moving.
+TEST_F(SemAi3, a_melee_only_attacker_at_bump_range_turns_to_face_its_foe_without_moving)
+{
+    walker* orc = living_at(FAMILY_ORC, 0, 50, 50);
+    walker* soldier = living_at(FAMILY_SOLDIER, 1, 60, 50);
+    ASSERT_NE(nullptr, orc);
+    ASSERT_NE(nullptr, soldier);
+    orc->set_curdir(static_cast<signed char>(FACE_UP));
+    orc->set_enddir(static_cast<char>(FACE_UP));
+    orc->set_foe(soldier);
+    walker::FireCheckDenial denial = walker::FireCheckDenial::None;
+    ASSERT_FALSE(orc->fire_check(1, 0, &denial));
+    ASSERT_EQ(walker::FireCheckDenial::NoRanged, denial);
+    statistics* st = orc->stats();
+    st->clear_command();
+    st->force_command(COMMAND_ATTACK, 5, 0, 0);
+    EXPECT_EQ(1, st->do_command());
+    EXPECT_EQ(50, orc->xpos()) << "arm 'denial NoRanged': no step";
+    EXPECT_EQ(50, orc->ypos()) << "arm 'denial NoRanged': no step";
+    EXPECT_EQ(FACE_RIGHT, orc->curdir()) << "arm 'denial NoRanged': faces the foe";
+    EXPECT_EQ(FACE_RIGHT, orc->enddir()) << "arm 'denial NoRanged': faces the foe";
+}
+
+// stats.cpp:633 (statistics::do_command, UNCHARM / default). UNCHARM and an
+// unknown command are no-ops the countdown consumes: a charmed walker stays
+// charmed (charm ends on its timer alone, #317).
+TEST_F(SemAi3, an_uncharm_order_or_an_unknown_one_is_only_counted_down)
+{
+    for (const int type : {COMMAND_UNCHARM, 999}) {
+        SCOPED_TRACE(type);
+        SetUp();
+        walker* s = living_at(FAMILY_SOLDIER, 1, 160, 160);
+        ASSERT_NE(nullptr, s);
+        s->set_real_team_num(0);  // charmed onto team 1 from team 0
+        statistics* st = s->stats();
+        st->clear_command();
+        st->force_command(type, 3, 0, 0);
+        EXPECT_EQ(1, st->do_command());
+        EXPECT_EQ(1, s->team_num()) << "arm 'UNCHARM or unknown': still charmed";
+        EXPECT_EQ(0, s->real_team_num());
+        ASSERT_EQ(1u, st->commands.size()) << "nothing re-queued behind it";
+        EXPECT_EQ(type, st->commands.front().commandtype);
+        EXPECT_EQ(2, st->commands.front().commandcount);
+        EXPECT_EQ(1, st->do_command());
+        EXPECT_EQ(1, st->do_command());
+        EXPECT_TRUE(st->commands.empty()) << "consumed by the countdown";
+        EXPECT_EQ(1, s->team_num()) << "still charmed after the order ran out";
+        EXPECT_EQ(0, s->real_team_num());
+        EXPECT_EQ(160, s->xpos());
+    }
+}
+
+class SemHit : public SemAi3
+{
+protected:
+    walker* hero_at(int family, unsigned char team, short x, short y, float hp, bool named)
+    {
+        walker* w = living_at(family, team, x, y);
+        if (w == nullptr)
+            return nullptr;
+        if (named) {
+            auto g = std::make_unique<guy>(family);
+            g->name = "Bob";
+            w->set_owned_myguy(std::move(g));
+        }
+        w->stats()->set_max_hitpoints(100.0f);
+        w->stats()->set_hitpoints(hp);
+        w->set_yo_delay(0);
+        w->set_specials_disabled(true);
+        w->stats()->clear_command();
+        return w;
+    }
+};
+
+// stats.cpp:678 (statistics::hit_response). A dead attacker, a dead victim
+// and a player-controlled victim never react: no retarget, no yell, no flee.
+TEST_F(SemHit, a_dead_or_player_controlled_victim_and_a_dead_attacker_draw_no_response)
+{
+    struct Case
+    {
+        const char* name;
+        bool victim_dead, attacker_dead, control;
+    };
+    const Case cases[] = {
+        {"victim dead", true, false, false},
+        {"attacker dead", false, true, false},
+        {"victim ACT_CONTROL", false, false, true},
+    };
+    for (const Case& c : cases) {
+        SCOPED_TRACE(c.name);
+        SetUp();
+        walker* hero = hero_at(FAMILY_SOLDIER, 0, 160, 160, 1.0f, true);
+        walker* orc = living_at(FAMILY_ORC, 1, 176, 160);
+        ASSERT_NE(nullptr, hero);
+        ASSERT_NE(nullptr, orc);
+        if (c.victim_dead)
+            hero->set_dead(1);
+        if (c.attacker_dead)
+            orc->set_dead(1);
+        if (c.control)
+            hero->set_act_type(ACT_CONTROL);
+        hero->stats()->add_command(COMMAND_SEARCH, 7, 0, 0);
+        hero->stats()->hit_response(orc);
+        EXPECT_EQ(nullptr, hero->foe()) << "no retarget";
+        EXPECT_EQ(nullptr, orc->foe()) << "the attacker is not marked";
+        EXPECT_EQ(0, hero->yo_delay()) << "no yell";
+        ASSERT_EQ(1u, hero->stats()->commands.size()) << "the queue is untouched (no flee walk)";
+        EXPECT_EQ(COMMAND_SEARCH, hero->stats()->commands.front().commandtype);
+    }
+    // Control: the same victim, alive and AI-driven, retargets and yells.
+    SetUp();
+    walker* hero = hero_at(FAMILY_SOLDIER, 0, 160, 160, 1.0f, true);
+    walker* orc = living_at(FAMILY_ORC, 1, 176, 160);
+    ASSERT_NE(nullptr, hero);
+    ASSERT_NE(nullptr, orc);
+    hero->stats()->hit_response(orc);
+    EXPECT_EQ(orc, hero->foe());
+    EXPECT_EQ(80, hero->yo_delay()) << "control: an AI victim yells";
+}
+
+// stats.cpp:695 (statistics::hit_response). A family's Lua hit_response hook
+// replaces the default response: a badly hurt mage teleports by its hook and
+// the C++ path's yell and flee never run.
+TEST_F(SemHit, a_family_hit_response_hook_replaces_the_default_yell_and_flee)
+{
+    walker* mage = hero_at(FAMILY_MAGE, 0, 320, 320, 10.0f, true);
+    walker* orc = living_at(FAMILY_ORC, 1, 336, 320);
+    ASSERT_NE(nullptr, mage);
+    ASSERT_NE(nullptr, orc);
+    mage->set_specials_disabled(false);
+    mage->stats()->set_hitpoints(10.0f);  // below the C++ path's 1/2 threshold
+    mage->stats()->hit_response(orc);
+    EXPECT_EQ(0, mage->yo_delay()) << "arm 'hook returns true': no C++ yell";
+    for (const command& c : mage->stats()->commands)
+        EXPECT_FALSE(c.commandtype == COMMAND_WALK && c.commandcount == 16)
+            << "arm 'hook returns true': no C++ flee walk";
+    EXPECT_EQ(1, mage->current_special()) << "the hook's own answer: the teleport slot";
+}
+
+// stats.cpp:699 (statistics::hit_response). Struck, an AI walker whose special
+// is available fires it one time in three: check_special gates BEFORE the
+// rng(3) draw.
+TEST_F(SemHit, a_struck_walker_rolls_for_its_special_only_when_the_special_is_available)
+{
+    // check_special true (shifter roll 0), rng(3) == 1: no special, two draws.
+    {
+        walker* elf = hero_at(FAMILY_ELF, 0, 320, 320, 100.0f, false);
+        walker* foe = living_at(FAMILY_SOLDIER, 1, 325, 320);
+        ASSERT_NE(nullptr, elf);
+        ASSERT_NE(nullptr, foe);
+        elf->set_specials_disabled(false);
+        const float mp = elf->stats()->magicpoints();
+        const std::uint32_t seed = state_where_draws_are({2, 3}, {0, 1});
+        world().rng_.state_ = seed;
+        elf->stats()->hit_response(foe);
+        EXPECT_EQ(advanced(seed, 2), world().rng_.state_)
+            << "arm 'check_special true, rng(3) != 0': the shifter roll and rng(3), nothing else";
+        EXPECT_FLOAT_EQ(mp, elf->stats()->magicpoints()) << "no special cast";
+        EXPECT_EQ(foe, elf->foe()) << "the default response retargets";
+    }
+    // check_special false (specials disabled): no draw at all.
+    {
+        SetUp();
+        walker* elf = hero_at(FAMILY_ELF, 0, 320, 320, 100.0f, false);
+        walker* foe = living_at(FAMILY_SOLDIER, 1, 325, 320);
+        ASSERT_NE(nullptr, elf);
+        ASSERT_NE(nullptr, foe);
+        const float mp = elf->stats()->magicpoints();
+        world().rng_.state_ = 4242u;
+        elf->stats()->hit_response(foe);
+        EXPECT_EQ(4242u, world().rng_.state_) << "arm 'check_special false': no rng(3) draw";
+        EXPECT_FLOAT_EQ(mp, elf->stats()->magicpoints());
+        EXPECT_EQ(foe, elf->foe());
+    }
+    // check_special false (Gameplay Fixes AB: cannot pay): the shifter roll only.
+    {
+        SetUp();
+        world().gameplay_fixes = 1;
+        walker* elf = hero_at(FAMILY_ELF, 0, 320, 320, 100.0f, false);
+        walker* foe = living_at(FAMILY_SOLDIER, 1, 325, 320);
+        ASSERT_NE(nullptr, elf);
+        ASSERT_NE(nullptr, foe);
+        elf->set_specials_disabled(false);
+        elf->stats()->set_magicpoints(0.0f);
+        world().rng_.state_ = 4242u;
+        elf->stats()->hit_response(foe);
+        EXPECT_EQ(advanced(4242u, 1), world().rng_.state_)
+            << "arm 'check_special false' (fixes on, no mana): one draw, no rng(3)";
+        EXPECT_FLOAT_EQ(0.0f, elf->stats()->magicpoints());
+    }
+}
+
+// stats.cpp:701 (statistics::hit_response). A named character flees for help
+// below half its hp; a walker without a guy only below 5/16.
+TEST_F(SemHit, a_named_hero_flees_below_half_hp_and_a_bot_only_below_five_sixteenths)
+{
+    struct Case
+    {
+        const char* name;
+        bool named;
+        float hp;
+        bool yells;
+    };
+    const Case cases[] = {
+        {"named, 40 of 100", true, 40.0f, true},
+        {"bot, 40 of 100", false, 40.0f, false},
+        {"named, 50 of 100 (the boundary)", true, 50.0f, false},
+        {"named, 49 of 100", true, 49.0f, true},
+        {"bot, 31.25 of 100 (the boundary)", false, 31.25f, false},
+        {"bot, 31 of 100", false, 31.0f, true},
+    };
+    for (const Case& c : cases) {
+        SCOPED_TRACE(c.name);
+        SetUp();
+        walker* s = hero_at(FAMILY_SOLDIER, 0, 160, 160, c.hp, c.named);
+        walker* orc = living_at(FAMILY_ORC, 1, 176, 160);
+        ASSERT_NE(nullptr, s);
+        ASSERT_NE(nullptr, orc);
+        s->stats()->hit_response(orc);
+        EXPECT_EQ(orc, s->foe());
+        if (c.yells) {
+            EXPECT_EQ(80, s->yo_delay()) << "yells";
+            ASSERT_EQ(1u, s->stats()->commands.size());
+            const command& w = s->stats()->commands.front();
+            EXPECT_EQ(COMMAND_WALK, w.commandtype) << "runs";
+            EXPECT_EQ(16, w.commandcount);
+            EXPECT_EQ(-1, w.com1) << "away from the attacker";
+            EXPECT_EQ(0, w.com2);
+            EXPECT_TRUE(w.forced);
+        } else {
+            EXPECT_EQ(0, s->yo_delay()) << "holds";
+            EXPECT_TRUE(s->stats()->commands.empty()) << "no flee walk";
+        }
+    }
+}
+
+// stats.cpp:738 (statistics::yell_for_help). A yell recruits every living,
+// non-dormant, non-hidden friend within 160 px (player-controlled heroes too):
+// leader = the yeller, foe = the attacker; one switching onto that foe resets
+// its chase distances to 32000, one already on it keeps them. Anyone else is
+// untouched.
+TEST_F(SemHit, a_yell_recruits_friends_in_range_and_resets_only_a_newly_switched_chase)
+{
+    walker* yeller = hero_at(FAMILY_SOLDIER, 0, 160, 160, 100.0f, false);
+    walker* attacker = living_at(FAMILY_ORC, 1, 180, 160);
+    walker* other_orc = living_at(FAMILY_ORC, 1, 800, 800);
+    ASSERT_NE(nullptr, yeller);
+    ASSERT_NE(nullptr, attacker);
+    ASSERT_NE(nullptr, other_orc);
+
+    const auto distances = [](walker* w, std::uint32_t last, std::int32_t current) {
+        w->stats()->set_last_distance(last);
+        w->stats()->set_current_distance(current);
+    };
+    walker* on_it = living_at(FAMILY_SOLDIER, 0, 130, 160);
+    walker* hero = living_at(FAMILY_SOLDIER, 0, 160, 260);  // 100 px
+    walker* far = living_at(FAMILY_SOLDIER, 0, 160, 360);   // 200 px
+    walker* dormant = living_at(FAMILY_SOLDIER, 0, 160, 210);
+    walker* hidden = living_at(FAMILY_SOLDIER, 0, 110, 160);
+    walker* dead = living_at(FAMILY_SOLDIER, 0, 200, 200);
+    walker* enemy = living_at(FAMILY_SOLDIER, 1, 140, 160);
+    for (walker* w : {on_it, hero, far, dormant, hidden, dead, enemy})
+        ASSERT_NE(nullptr, w);
+    on_it->set_foe(attacker);
+    distances(on_it, 77, 77);
+    hero->set_act_type(ACT_CONTROL);
+    hero->set_foe(other_orc);
+    distances(hero, 55, 55);
+    dormant->set_dormant(true);
+    hidden->set_hidden(true);
+    dead->set_dead(1);
+    for (walker* w : {far, dormant, hidden, dead, enemy}) {
+        w->set_foe(nullptr);
+        w->set_leader(nullptr);
+        distances(w, 55, 55);
+    }
+
+    yeller->stats()->yell_for_help(attacker);
+
+    EXPECT_EQ(yeller, on_it->leader()) << "arm 'ally already on the attacker': led";
+    EXPECT_EQ(attacker, on_it->foe());
+    EXPECT_EQ(77u, on_it->stats()->last_distance()) << "arm 'ally already on the attacker': distances kept";
+    EXPECT_EQ(77, on_it->stats()->current_distance());
+
+    EXPECT_EQ(yeller, hero->leader()) << "arm 'ACT_CONTROL friend': a player's hero is recruited";
+    EXPECT_EQ(attacker, hero->foe());
+    EXPECT_EQ(32000u, hero->stats()->last_distance()) << "arm 'ACT_CONTROL friend': switched, reset";
+    EXPECT_EQ(32000, hero->stats()->current_distance());
+
+    const struct
+    {
+        const char* name;
+        walker* w;
+    } untouched[] = {{"beyond 160 px", far}, {"dormant", dormant}, {"hidden", hidden},
+                     {"dead", dead}, {"an enemy", enemy}};
+    for (const auto& u : untouched) {
+        SCOPED_TRACE(u.name);
+        EXPECT_EQ(nullptr, u.w->leader()) << "arm 'not a recruit': no leader";
+        EXPECT_EQ(nullptr, u.w->foe()) << "arm 'not a recruit': no foe";
+        EXPECT_EQ(55u, u.w->stats()->last_distance());
+        EXPECT_EQ(55, u.w->stats()->current_distance());
+    }
+}
+
+// stats.cpp:750 (statistics::yell_for_help). The yeller flees straight away
+// from its attacker; a coincident attacker gives (0,0), which the forced
+// walk's clamp turns into south-east.
+TEST_F(SemHit, a_yeller_on_top_of_its_attacker_flees_south_east)
+{
+    walker* s = hero_at(FAMILY_SOLDIER, 0, 160, 160, 100.0f, false);
+    walker* orc = living_at(FAMILY_ORC, 1, 160, 160);
+    ASSERT_NE(nullptr, s);
+    ASSERT_NE(nullptr, orc);
+    s->stats()->yell_for_help(orc);
+    ASSERT_EQ(1u, s->stats()->commands.size());
+    const command& w = s->stats()->commands.front();
+    EXPECT_EQ(COMMAND_WALK, w.commandtype);
+    EXPECT_EQ(16, w.commandcount);
+    EXPECT_EQ(1, w.com1) << "arm 'foe coincident': (0,0) clamps to east";
+    EXPECT_EQ(1, w.com2) << "arm 'foe coincident': (0,0) clamps to south";
+    EXPECT_TRUE(w.forced);
+}
+
+// stats.cpp:756 (statistics::yell_for_help). A fearless walker still yells
+// (yo_delay +80) and still recruits, but holds its ground. The KIT_FEARLESS
+// mark counts under both New Specials values; a friendly war banner's rally
+// radius only with New Specials on.
+TEST_F(SemHit, a_fearless_walker_yells_and_recruits_but_does_not_run)
+{
+    for (const int ns : {0, 1}) {
+        SCOPED_TRACE(ns);
+        SetUp();
+        world().new_specials = static_cast<short>(ns);
+        walker* s = hero_at(FAMILY_SOLDIER, 0, 160, 160, 100.0f, false);
+        walker* orc = living_at(FAMILY_ORC, 1, 200, 160);
+        walker* ally = living_at(FAMILY_SOLDIER, 0, 130, 160);
+        ASSERT_NE(nullptr, s);
+        ASSERT_NE(nullptr, orc);
+        ASSERT_NE(nullptr, ally);
+        s->set_kit_state(KIT_FEARLESS);
+        s->set_yo_delay(5);
+        s->stats()->yell_for_help(orc);
+        EXPECT_EQ(85, s->yo_delay()) << "arm 'fearless': still yells";
+        EXPECT_TRUE(s->stats()->commands.empty()) << "arm 'fearless': no flee walk";
+        EXPECT_EQ(s, ally->leader()) << "arm 'fearless': friends still answer";
+        EXPECT_EQ(orc, ally->foe());
+    }
+    for (const int ns : {0, 1}) {
+        SCOPED_TRACE(testing::Message() << "banner, new_specials " << ns);
+        SetUp();
+        world().new_specials = static_cast<short>(ns);
+        walker* s = hero_at(FAMILY_SOLDIER, 0, 160, 160, 100.0f, false);
+        walker* orc = living_at(FAMILY_ORC, 1, 200, 160);
+        walker* banner = weapon_at(21 /* core:war_banner */, 0, 180, 170, 16, 16);
+        ASSERT_NE(nullptr, s);
+        ASSERT_NE(nullptr, orc);
+        ASSERT_NE(nullptr, banner);
+        s->stats()->yell_for_help(orc);
+        EXPECT_EQ(80, s->yo_delay());
+        if (ns == 1) {
+            EXPECT_TRUE(s->stats()->commands.empty()) << "New Specials on: the banner holds it";
+        } else {
+            ASSERT_EQ(1u, s->stats()->commands.size()) << "New Specials off: no banner aura";
+            EXPECT_EQ(COMMAND_WALK, s->stats()->commands.front().commandtype);
+            EXPECT_EQ(-1, s->stats()->commands.front().com1);
+        }
+    }
+}
+
+// stats.cpp:758 (statistics::yell_for_help), a classic quirk the old game
+// shares: only a named character on team 0 announces its yell.
+TEST_F(SemHit, classic_only_a_named_team_zero_hero_announces_its_yell)
+{
+    struct Case
+    {
+        const char* name;
+        unsigned char team;
+        bool named;
+        bool announced;
+    };
+    const Case cases[] = {
+        {"named, team 0", 0, true, true},
+        {"named, team 1", 1, true, false},
+        {"bot, team 0", 0, false, false},
+    };
+    for (const Case& c : cases) {
+        SCOPED_TRACE(c.name);
+        SetUp();
+        walker* s = hero_at(FAMILY_SOLDIER, c.team, 160, 160, 100.0f, c.named);
+        walker* orc = living_at(FAMILY_ORC, 2, 200, 160);
+        ASSERT_NE(nullptr, s);
+        ASSERT_NE(nullptr, orc);
+        events().clear();
+        s->stats()->yell_for_help(orc);
+        const auto notes = notifications();
+        if (c.announced) {
+            ASSERT_EQ(1u, notes.size()) << "arm 'myguy and team 0': announced";
+            EXPECT_EQ("Bob yells for help!", notes[0]->text);
+            EXPECT_EQ(10u, notes[0]->a) << "shown for 10";
+            EXPECT_EQ(-1, notes[0]->target_player) << "to everyone";
+        } else {
+            EXPECT_EQ(0u, notes.size()) << "arm 'no myguy or team != 0': silent";
+        }
+        EXPECT_EQ(80, s->yo_delay()) << "it yelled either way";
+    }
+}
+
+// stats.cpp:798 (statistics::right_blocked). A facing outside 0..7 probes the
+// walker's own spot: free on an empty spot; blocked by a body overlapping it,
+// which the loud probe records and the quiet one does not.
+TEST_F(SemAi3, the_right_probe_of_an_out_of_range_facing_asks_the_walkers_own_spot)
+{
+    walker* s = living_at(FAMILY_SOLDIER, 0, 320, 320);
+    walker* orc = living_at(FAMILY_ORC, 2, 334, 320);  // overlaps the soldier's own box by one pixel
+    ASSERT_NE(nullptr, s);
+    ASSERT_NE(nullptr, orc);
+    s->set_curdir(static_cast<signed char>(127));
+    s->set_collide_ob(nullptr);
+    EXPECT_TRUE(s->stats()->right_blocked(true)) << "quiet: the overlapping body blocks";
+    EXPECT_EQ(nullptr, s->collide_ob()) << "quiet: nothing recorded";
+    EXPECT_TRUE(s->stats()->right_blocked(false)) << "loud: the overlapping body blocks";
+    EXPECT_EQ(orc, s->collide_ob()) << "loud: the body is recorded";
+
+    orc->setxy(600, 600);
+    s->set_collide_ob(nullptr);
+    EXPECT_FALSE(s->stats()->right_blocked(false)) << "an empty spot is free";
+    EXPECT_EQ(nullptr, s->collide_ob());
+}
