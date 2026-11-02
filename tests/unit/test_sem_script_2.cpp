@@ -734,8 +734,11 @@ TEST_F(SemFamilyBind, specials_without_cast_or_ai_bind_no_hook)
     EXPECT_EQ("", none.errors);
     EXPECT_FALSE(none.hooks[0]) << "none: no DoSpecial hook";
     EXPECT_FALSE(none.hooks[1]) << "none: no CheckSpecialAi hook";
+}
 
-    // Control: the same list with a cast and an ai binds both.
+// Control for the row above: the same list with a cast and an ai binds both.
+TEST_F(SemFamilyBind, specials_with_a_cast_and_an_ai_bind_both_hooks)
+{
     const Bound both = declare_install_bind(
         "semboth", "plain",
         "og.family('living', { id = 'semboth:plain', name = 'PLAIN',\n"
