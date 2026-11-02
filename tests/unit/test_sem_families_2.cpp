@@ -750,7 +750,11 @@ TEST(SemCleric, the_heal_notice_counts_one_man_or_several_men)
 }
 
 // :132. An enemy bot cleric's heal lands in silence; the same heal from a
-// player-team cleric is announced once.
+// player-team cleric is announced once. Both heal 50 -> 106 hp for 20 mana.
+//
+// RED (`og.fadd(ally.hp, amount)` -> `og.fadd(ally.hp, amount + 1)` at
+// :104): Expected equality of these values: 106.0f Which is: 106
+// healed_hp[1] Which is: 107 "enemy bot arm: the heal still lands".
 TEST(SemCleric, an_enemy_bot_heal_lands_without_a_notice)
 {
     float healed_hp[2] = {0.0f, 0.0f};
@@ -765,6 +769,8 @@ TEST(SemCleric, an_enemy_bot_heal_lands_without_a_notice)
         ally->stats()->set_hitpoints(50.0f);
         ASSERT_TRUE(cleric->special());
         healed_hp[team] = ally->stats()->hitpoints();
+        EXPECT_FLOAT_EQ(80.0f, cleric->stats()->magicpoints())
+            << "the heal costs base / 2 = 18 plus the slot's 2 on either team";
         EXPECT_EQ(1, f.events_of(og::sim::EventKind::PlaySound,
                                  static_cast<std::uint32_t>(SOUND_HEAL)));
         if (team == 1)
@@ -775,7 +781,9 @@ TEST(SemCleric, an_enemy_bot_heal_lands_without_a_notice)
                 << "team 0 arm (contrast): one notice";
         EXPECT_EQ(0u, f.guard.count()) << f.guard.message();
     }
-    EXPECT_NE(50.0f, healed_hp[1]) << "enemy bot arm: the heal still lands";
+    // 100 mana, level 4, the sim stream pinned at 12345: base = 25 + next(25)
+    // = 25 + 11 = 36, the heal 36 + 4 * 5 = 56 on 50 hp.
+    EXPECT_FLOAT_EQ(106.0f, healed_hp[1]) << "enemy bot arm: the heal still lands";
     EXPECT_FLOAT_EQ(healed_hp[0], healed_hp[1])
         << "enemy bot arm: the same heal as the announced one";
 }
