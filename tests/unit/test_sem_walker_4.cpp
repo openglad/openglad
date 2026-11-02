@@ -24,6 +24,7 @@
 #include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/obmap.h>
+#include <openglad/gameplay/pathfinding_grid.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
 
@@ -57,6 +58,14 @@ public:
 private:
     std::uint32_t answer_;
 };
+
+// The A* path state of grid cell (cx, cy) on `floor` (walker_pathing.cpp's
+// MAKE_STATE, in cells).
+PathState cell_state(int cx, int cy, int floor = 0)
+{
+    return reinterpret_cast<PathState>(static_cast<intptr_t>(
+        static_cast<intptr_t>(floor) * FLOOR_STRIDE + cy * MAP_WIDTH + cx));
+}
 
 // A walker whose walk() answers from a script and records every attempt,
 // and whose facing() can be forced (walkstep's fallback switch reads it).
@@ -637,6 +646,172 @@ TEST_F(SemWalker4, a_turn_heads_a_mobile_walker_one_stepsize_along_each_facing)
         EXPECT_FLOAT_EQ(2.0f * unit[f][0], w->lastx()) << "mobile, facing " << f << ": lastx";
         EXPECT_FLOAT_EQ(2.0f * unit[f][1], w->lasty()) << "mobile, facing " << f << ": lasty";
     }
+}
+
+// ---------------------------------------------------------------------------
+// walker_pathing.cpp: follow_path_to_foe
+// ---------------------------------------------------------------------------
+
+// walker_pathing.cpp:76. With no node left, a path-follower does not move;
+// a node it already stands on is dropped without a step.
+TEST_F(SemWalker4, a_path_follower_with_no_node_left_stands_still)
+{
+    walker* w = living_at(FAMILY_SOLDIER, 0, 32, 32);
+    ASSERT_NE(nullptr, w);
+    w->set_stepsize(2.0f);
+    w->set_curdir(static_cast<signed char>(FACE_RIGHT));
+    w->path_to_foe.clear();
+    w->follow_path_to_foe();
+    EXPECT_EQ(32, w->xpos()) << "path empty: no move";
+    EXPECT_EQ(32, w->ypos()) << "path empty: no move";
+    EXPECT_TRUE(w->path_to_foe.empty());
+
+    w->path_to_foe = {cell_state(2, 2)};  // its own cell
+    w->follow_path_to_foe();
+    EXPECT_TRUE(w->path_to_foe.empty()) << "the reached node is erased";
+    EXPECT_EQ(32, w->xpos()) << "then the path is empty: no move";
+    EXPECT_EQ(32, w->ypos()) << "then the path is empty: no move";
+}
+
+// walker_pathing.cpp:109. The convex-corner alignment assist.
+class CornerAssist : public SemWalker4 {
+protected:
+    // Walls on row 9 everywhere and on row 11 except column 10: the one-lane
+    // gap at (10, 11) beside the corridor row 10.
+    void corridor()
+    {
+        for (int x = 0; x < world().grid.w; ++x)
+        {
+            tile(x, 9, PIX_H_WALL1);
+            if (x != 10)
+                tile(x, 11, PIX_H_WALL1);
+        }
+    }
+
+    walker* chaser(short x, short y, int dir)
+    {
+        walker* w = living_at(FAMILY_ORC, 1, x, y);
+        if (w == nullptr)
+            return nullptr;
+        w->set_stepsize(2.0f);
+        w->set_curdir(static_cast<signed char>(dir));
+        return w;
+    }
+};
+
+TEST_F(CornerAssist, a_misaligned_walker_slides_into_alignment_at_a_blocked_corner)
+{
+    corridor();
+    walker* w = chaser(160, 174, FACE_LEFT);  // 14 px below row 10's top
+    ASSERT_NE(nullptr, w);
+    w->path_to_foe = {cell_state(9, 10)};  // cardinal west; direct step hits (9, 11)
+    ASSERT_FALSE(world().query_passable(158.0f, 174.0f, w)) << "the direct step is blocked";
+    w->follow_path_to_foe();
+    EXPECT_EQ(160, w->xpos()) << "slide possible: no walkstep this tick";
+    EXPECT_EQ(172, w->ypos()) << "slide possible: min(stepsize 2, mis 14) px up";
+    EXPECT_EQ(1u, w->path_to_foe.size()) << "slide possible: the node is kept";
+    for (int i = 0; i < 6; ++i)
+        w->follow_path_to_foe();
+    EXPECT_EQ(160, w->xpos());
+    EXPECT_EQ(160, w->ypos()) << "seven slides of 2 px: aligned";
+    w->follow_path_to_foe();
+    EXPECT_EQ(158, w->xpos()) << "aligned: the normal step west";
+    EXPECT_EQ(160, w->ypos());
+}
+
+TEST_F(CornerAssist, a_slide_blocked_at_its_first_pixel_falls_back_to_the_normal_step)
+{
+    corridor();
+    walker* w = chaser(160, 174, FACE_LEFT);
+    walker* post = world().add_ob(Order::Generator, FAMILY_TENT);
+    ASSERT_TRUE(w && post);
+    post->set_team_num(1);
+    place(post, 160, 159);  // meets the chaser one pixel up, not where it stands
+    ASSERT_TRUE(world().query_passable(160.0f, 174.0f, w));
+    ASSERT_FALSE(world().query_passable(160.0f, 173.0f, w));
+    w->path_to_foe = {cell_state(9, 10)};
+    w->follow_path_to_foe();
+    // walkstep(-1, 0): the full and baby steps west hit the wall at (9, 11),
+    // so the NPC fallback for LEFT steps DOWN one stepsize.
+    EXPECT_EQ(160, w->xpos()) << "slide blocked at first pixel: normal walkstep fallback";
+    EXPECT_EQ(176, w->ypos()) << "slide blocked at first pixel: not 173 (no slide), the NPC sidestep";
+    EXPECT_EQ(FACE_LEFT, static_cast<int>(w->curdir()));
+    EXPECT_EQ(1u, w->path_to_foe.size());
+}
+
+TEST_F(CornerAssist, an_aligned_or_open_or_diagonal_hop_takes_the_normal_step)
+{
+    corridor();
+    walker* w = chaser(160, 160, FACE_LEFT);
+    ASSERT_NE(nullptr, w);
+    w->path_to_foe = {cell_state(9, 10)};
+    w->follow_path_to_foe();
+    EXPECT_EQ(158, w->xpos()) << "aligned (mis 0): walkstep(-1, 0)";
+    EXPECT_EQ(160, w->ypos());
+
+    // Open grass: misaligned, but the direct step passes.
+    fresh_world();
+    w = chaser(160, 165, FACE_LEFT);
+    ASSERT_NE(nullptr, w);
+    w->path_to_foe = {cell_state(9, 10)};
+    w->follow_path_to_foe();
+    EXPECT_EQ(158, w->xpos()) << "direct step passable: walkstep(-1, 0)";
+    EXPECT_EQ(165, w->ypos()) << "direct step passable: no slide";
+
+    // A diagonal hop is never assisted.
+    fresh_world();
+    w = chaser(160, 165, FACE_UP_LEFT);
+    ASSERT_NE(nullptr, w);
+    w->path_to_foe = {cell_state(9, 9)};
+    w->follow_path_to_foe();
+    EXPECT_EQ(158, w->xpos()) << "diagonal hop: walkstep(-1, -1)";
+    EXPECT_EQ(163, w->ypos()) << "diagonal hop: walkstep(-1, -1)";
+}
+
+// walker_pathing.cpp:153. On a multi-floor map a reached node on another
+// floor is the stair: the walker nudges its CENTER over the stair cell and
+// then waits with the node kept; a single-floor map consumes the node.
+TEST_F(SemWalker4, a_walker_centers_on_a_stair_node_and_waits_on_a_multifloor_map)
+{
+    fresh_world(2);
+    ASSERT_EQ(2, world().floor_count());
+    tile(10, 8, PIX_ZSTAIR_UP);
+    // A 32x32 body whose corner is on the stair cell but whose center is not.
+    walker* big = living_at(FAMILY_ORC, 1, 160, 128);
+    ASSERT_NE(nullptr, big);
+    place(big, 160, 128, 32, 32);
+    ASSERT_EQ(32, big->sizex());
+    big->set_stepsize(2.0f);
+    big->set_curdir(static_cast<signed char>(FACE_UP_LEFT));
+    big->path_to_foe = {cell_state(10, 8, 1)};
+    big->follow_path_to_foe();
+    EXPECT_EQ(158, big->xpos()) << "center off the stair cell: walkstep toward its center";
+    EXPECT_EQ(126, big->ypos()) << "center off the stair cell: walkstep(-1, -1)";
+    EXPECT_EQ(1u, big->path_to_foe.size()) << "center off the stair cell: node kept";
+    EXPECT_EQ(0, static_cast<int>(big->floor()));
+
+    fresh_world(2);
+    tile(10, 8, PIX_ZSTAIR_UP);
+    walker* orc = living_at(FAMILY_ORC, 1, 160, 128);
+    ASSERT_NE(nullptr, orc);
+    orc->set_stepsize(2.0f);
+    orc->set_curdir(static_cast<signed char>(FACE_UP_LEFT));
+    orc->path_to_foe = {cell_state(10, 8, 1)};
+    orc->follow_path_to_foe();
+    EXPECT_EQ(160, orc->xpos()) << "center on stair cell: no move";
+    EXPECT_EQ(128, orc->ypos()) << "center on stair cell: no move";
+    EXPECT_EQ(1u, orc->path_to_foe.size()) << "center on stair cell: node kept for the floor change";
+
+    fresh_world(1);
+    orc = living_at(FAMILY_ORC, 1, 160, 128);
+    ASSERT_NE(nullptr, orc);
+    orc->set_stepsize(2.0f);
+    orc->set_curdir(static_cast<signed char>(FACE_UP_LEFT));
+    orc->path_to_foe = {cell_state(10, 8, 1)};
+    orc->follow_path_to_foe();
+    EXPECT_TRUE(orc->path_to_foe.empty()) << "single-floor map: node erased";
+    EXPECT_EQ(160, orc->xpos()) << "single-floor map: no move";
+    EXPECT_EQ(128, orc->ypos());
 }
 
 } // namespace
