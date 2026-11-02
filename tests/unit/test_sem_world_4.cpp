@@ -963,7 +963,10 @@ TEST(SemSimInput, a_hero_carrying_out_a_queued_action_does_not_cast)
         seat.press(InputAction::Special);
         seat.run();
         EXPECT_FLOAT_EQ(2.0f, orc->busy()) << "control: the empty queue casts HOWL";
-        EXPECT_LT(orc->stats()->magicpoints(), 500.0f) << "control: HOWL is paid for";
+        const unsigned short howl_cost = orc->stats()->special_cost(1);
+        EXPECT_EQ(25, howl_cost) << "control: the orc's HOWL costs 25";
+        EXPECT_FLOAT_EQ(500.0f - howl_cost, orc->stats()->magicpoints())
+            << "control: HOWL is paid for, exactly its cost";
     }
 }
 
