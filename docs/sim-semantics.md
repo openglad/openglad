@@ -44,6 +44,7 @@ line order. A rule row:
 {
   "id": "treasure_navigation.lua:60",
   "lines": [60, 74],
+  "kinds": ["and", "if"],
   "function": "exit_on_eat",
   "anchor": "and not og.level_completed(og.current_scenario())",
   "condition": "level_completed(dest) and not level_completed(current) ; if can_withdraw",
@@ -62,14 +63,20 @@ line order. A rule row:
 }
 ```
 
-(The real row cites one more parity row; the generator writes `lines` one
-number per line.)
+(The real row cites one more parity row; the generator writes `lines` and
+`kinds` one entry per line.)
 
 - `id` names the row; it keeps the line it was first written at and does not
   change when the row moves.
 - `lines` are the branch lines the row covers (a rule whose condition spans
   an `if` and its `else if` covers both). Only branch lines: the opening
   brace of a function or a statement between two arms is not listed.
+- `kinds` says, for each of `lines`, which branch the grep saw there: the
+  keyword it matched (`if`, `else if`, `else`, `switch`, `case`, `default`,
+  `while`, `for`, `do`, or `ternary`; in Lua `if`, `elseif`, `else`,
+  `while`, `for`, `repeat`, `until`, `and`, `or`), or `""` for an anchor
+  line that is no branch line. It is how the check tells that a line a row
+  claims has become a different branch.
 - `anchor` is the trimmed source text of the row's first line that says
   something of its own: the `if (...)` rather than a bare `else` or
   `default:` before it. When that is not the first of `lines`, the row also
@@ -89,7 +96,7 @@ number per line.)
   saying which arm it asserts. A row-level `note` list holds remarks that
   cite no test, such as an arm nothing asserts yet.
 
-An other row is `{"id", "lines", "kind", "anchor", "note"}` (and `function`
+An other row is `{"id", "lines", "kinds", "kind", "anchor", "note"}` (and `function`
 when it has one), `kind` one of `plumbing`, `defensive`, `loop`, `dead`,
 `test-only`.
 
@@ -128,8 +135,9 @@ Add a row to that file's manifest:
   with the test that asserts the new arm.
 
 Set `anchor` to the trimmed text of the row's first line (or of its first
-line that is not a bare `else`, with `anchor_index` pointing at it). Then
-run the check.
+line that is not a bare `else`, with `anchor_index` pointing at it). Leave
+`kinds` out and run `--fix`, which writes them from the lines the row
+claims; then run the check.
 
 ## Running the check
 
@@ -147,7 +155,7 @@ row missing a field). The output ends with the counts:
 
 ```
 check_manifest: FAIL: 159 files, 4678 candidate lines, 1504 rule rows, 448 other rows
-  R1 uncovered 0, double-claimed 0, drift 0, lost anchor 0, unanchored 0, ...
+  R1 uncovered 0, double-claimed 0, stale line 0, missing kinds 0, drift 0, ...
   R2 no test 0, missing test 0, missing parity row 0
   R3 not asserted 3 (partial 1, executed-only 2, none 0), deferred 2 (without issue 0)
 ```
@@ -158,10 +166,14 @@ Editing a file moves the lines below the edit. The check notices because a
 row's anchor line no longer holds its anchor, and finds the anchor
 elsewhere in the file. The same text often appears more than once (two
 `if (target)` a few lines apart), so the check takes, in this order: the
-occurrence inside the row's function (the nearest function definition above
-it has the row's function name); one below the row before it, because an
-edit never reorders lines; and the one nearest where the row would be had
-it moved as far as the row before it did. A row whose anchor is a bare
+occurrence inside the row's function (a function definition above it, not
+yet closed by another at the same depth, has a name the row's `function`
+mentions); one below the row before it, because an edit never reorders
+lines; and the one nearest where the row would be had it moved as far as
+the row before it did. When the line the row would be on is inside its
+function and no occurrence is, the condition was rewritten in place, and
+the row is reported lost rather than moved onto a twin in another
+function. A row whose anchor is a bare
 `else`, `default:` or `end` says nothing about where it belongs, so it
 moves with the row before it in the same function (or, failing that, in
 the file), and only when that lands it on a line that reads exactly its
@@ -169,16 +181,29 @@ anchor.
 
 The anchors found cut the file into stretches. Between two anchors, the
 branch lines the rows claim are matched in order with the branch lines the
-file now has there, whenever there are as many of each: an edit between
-two arms of one rule then moves the lower arm and leaves the upper one.
-When a stretch gained or lost a branch line, its lines move with the
-anchor above them, and the check reports what is left uncovered.
+file now has there, whenever there are as many of each, and each match
+only between two branches of the same kind: an edit between two arms of
+one rule then moves the lower arm and leaves the upper one, while an
+`else` deleted and an `if` added in the same stretch leaves the `if`
+uncovered instead of handing it the `else`'s place. When a stretch gained
+or lost a branch line, or the kinds do not match, its lines move with the
+anchor above them, and the check reports what does not fit: the new
+branch as `uncovered`, the line a removed arm leaves behind as `stale
+line`.
 
 Without `--fix` every row that moved is a `drift` error naming the line
 its anchor now sits on. `--fix` writes the new lines into the manifest
-file; running it twice changes nothing the second time. What `--fix`
-cannot place stays red: an edit that adds or removes a branch always
-needs a row written or a line moved by hand.
+file and prints a `fixed:` line for every row it moved; read them, since a
+moved line is only matched by position and kind, never by its text.
+Running it twice changes nothing the second time. What `--fix` cannot place
+stays red: an edit that adds or removes a branch always needs a row written
+or a line moved by hand.
+
+The check stores text only for a row's anchor line. A line below the
+anchor is known by its position and its kind, so a rewrite that keeps the
+kind (`case 3:` becoming `case 4:`, `if (a)` becoming `if (b)` on an arm's
+line) passes unseen; one that changes it (`else` becoming `else if (x)`) is
+a `stale line`.
 
 `--fix` only ever writes files in `tests/semantics/manifest/`. It never
 touches the simulation, never changes a status and never adds a row.
@@ -189,15 +214,17 @@ touches the simulation, never changes a status and never adds a row.
 |---|---|---|
 | `uncovered` | a branch line no row claims | add a row, or add the line to the rule it belongs to |
 | `double-claimed` | two rows claim the same line | give the line to one of them |
-| `drift` | a row's anchor, or a line below it, moved | run `--fix` |
-| `lost anchor` | the anchor text is nowhere in the file | the condition was rewritten: update `anchor` and `lines` by hand, and check the rule still says what the code does |
+| `stale line` | a line a row claims is no longer the branch its `kinds` says (an arm was deleted, or rewritten into another kind of branch) | move the line out of the row, or update the row's `lines`, `kinds` and `arms` to the code |
+| `missing kinds` | a row has no `kinds` | run `--fix`, which writes them |
+| `drift` | a row's anchor, or a line below it, moved | run `--fix` and read the `fixed:` lines it prints: each says where a row went, and a line matched by position may have landed on a different branch of the same kind |
+| `lost anchor` | the anchor text is nowhere in the file, or only in other functions | the condition was rewritten: update `anchor` and `lines` by hand, and check the rule still says what the code does |
 | `unanchored` | a bare `else` / `default:` row is no longer on its text and no row before it carried it there | point its `lines` at the line by hand |
 | `out of range` | a row names a line past the end of the file | the file shrank: fix the row's `lines` |
 | `missing file` | an in-scope C++ file is gone | a rename: update `SCOPE_CPP` and the manifest's `path` |
 | `stray manifest` | a manifest file describes a file outside the scope | delete it, or move its rows to the file's new name |
 | `duplicate manifest` | two manifest files describe one source file | merge them |
 | `no test` | a rule row cites no test | cite the test that asserts it, or write one |
-| `missing test` | the cited file has no `TEST`, `TEST_F` or `TEST_P` of that name (a test stamped out by a file-local macro counts) | the test was renamed or removed: cite the current name |
+| `missing test` | the cited file has no `TEST`, `TEST_F` or `TEST_P` of that name outside comments and `#if 0` (a test stamped out by a file-local macro counts) | the test was renamed or removed: cite the current name |
 | `missing parity row` | the cited parity row is not in `tests/parity/scenario_table.h` | cite the row id as the table spells it |
 | `not asserted` | the rule's status is `partial`, `executed-only` or `none` | write the tests for the missing arms, then set `asserted` |
 | `deferred without issue` | `deferred` needs an `issue` | file the issue and add its number |

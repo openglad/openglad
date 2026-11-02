@@ -2073,8 +2073,9 @@ set_tests_properties(lint_scenario_facts_selftest PROPERTIES
 # simulation source file; docs/sim-semantics.md) gives every branch point in
 # src/gameplay and the class-pack Lua a row: a rule with the tests that assert
 # each of its arms, or a note saying why the branch is plumbing. The check
-# fails on a branch line no row covers, a line two rows claim, a row whose
-# anchor drifted, a cited TEST or parity row that does not exist, and a rule
+# fails on a branch line no row covers, a line two rows claim, a claimed line
+# that is no longer the branch the row recorded, a row whose anchor drifted,
+# a cited TEST or parity row that does not exist, and a rule
 # row that is not asserted (or deferred to an issue). Its self-test builds
 # small trees in a temp dir and pins every verdict and count exactly.
 if(Python3_Interpreter_FOUND)

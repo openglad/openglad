@@ -12,11 +12,16 @@ manifest file per source file into <manifest_dir>:
 rows sorted by first line.  `lines` keeps only the branch lines the
 check's grep sees, plus the anchor line (the review sometimes lists the
 function's opening brace or a statement between two arms as well).  A rule
-row keeps id, lines, function, anchor, anchor_index (when not 0), condition,
-semantic, arms, setting, status, tests, missing_arms, issue (when the review
-gave one) and note (free text that cites no test).  An other row keeps id,
-lines, kind, function (when the review gave one), anchor, anchor_index and
-note.
+row keeps id, lines, kinds, function, anchor, anchor_index (when not 0),
+condition, semantic, arms, setting, status, tests, missing_arms, issue (when
+the review gave one) and note (free text that cites no test).  An other row
+keeps id, lines, kinds, kind, function (when the review gave one), anchor,
+anchor_index and note.
+
+`kinds` holds, for each of `lines`, the branch keyword the grep matched
+there ("if", "else", "case", "ternary", Lua's "elseif", "and", ...; "" for
+an anchor line that is no branch line), so that the check can tell when a
+line a row claims has become a different branch.
 
 `anchor` is the trimmed source text of one of the row's lines in the tree
 at --repo (default: this script's repository), which is what
@@ -173,7 +178,8 @@ def branch_lines(path: str, src: list[str], lines: list[int]) -> tuple[list[int]
     kept = [n for n in lines
             if n == at or (1 <= n <= len(src) and cm.is_candidate(path, src[n - 1]))]
     k = kept.index(at)
-    return kept, {"anchor": anchor, **({"anchor_index": k} if k else {})}
+    kinds = [cm.branch_kind(path, src[n - 1]) if 1 <= n <= len(src) else "" for n in kept]
+    return kept, {"kinds": kinds, "anchor": anchor, **({"anchor_index": k} if k else {})}
 
 
 def line_list(row: dict) -> list[int]:
@@ -198,6 +204,7 @@ def rule_row(row: dict, path: str, src: list[str]) -> dict:
     out: dict = {
         "id": row["id"],
         "lines": lines,
+        "kinds": anchor.pop("kinds"),
         "function": row.get("function", ""),
         **anchor,
         "condition": str(row.get("condition", "")).strip(),
@@ -218,7 +225,7 @@ def rule_row(row: dict, path: str, src: list[str]) -> dict:
 
 def other_row(row: dict, path: str, src: list[str]) -> dict:
     lines, anchor = branch_lines(path, src, line_list(row))
-    out: dict = {"id": row["id"], "lines": lines, "kind": row["kind"]}
+    out: dict = {"id": row["id"], "lines": lines, "kinds": anchor.pop("kinds"), "kind": row["kind"]}
     if row.get("function"):
         out["function"] = row["function"]
     out.update(anchor)
