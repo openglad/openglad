@@ -981,3 +981,252 @@ TEST_F(SemWalker1, every_launch_by_a_player_counts_as_a_shot)
     EXPECT_EQ(4u, live_weapons());
     EXPECT_EQ(3, elf->myguy->total_shots) << "another walker's shot is not ours";
 }
+
+// ---------------------------------------------------------------------------
+// walker.cpp:665 walker::fire (the launch sound)
+// ---------------------------------------------------------------------------
+
+// A launch makes its weapon's sound, the old game's per-family table: an
+// arrow the bow, a fireball the blast, anything else the fwip. A generator
+// spawn runs the same line with the SPAWNED LIVING as the weapon, so its
+// family number is looked up among the weapons: a tower's mage (3) sounds as
+// the fireball (3), a tent's skeleton (4) as the tree (4, fwip), and a
+// family number with no weapon at all fwips. The old game compares the
+// spawn's family against the same weapon constants (openglad-master
+// src/walker.cpp:835-853), so the collision is classic. Every launch here is
+// on screen (see the file comment and #468).
+// RED (planted): `get_weapon_family_descriptor(weapon->family())` ->
+// `(weapon->family() + 1)`.
+TEST_F(SemWalker1, classic_a_launch_sounds_by_its_weapon_family_number_spawns_included)
+{
+    struct Shot
+    {
+        const char* name;
+        int shooter;
+        int weapon;
+        std::uint32_t sound;
+    };
+    const Shot shots[] = {
+        {"archer's arrow", FAMILY_ARCHER, FAMILY_ARROW, SOUND_BOW},
+        {"mage's fireball", FAMILY_MAGE, FAMILY_FIREBALL, SOUND_BLAST},
+        {"elf's rock", FAMILY_ELF, FAMILY_ROCK, SOUND_FWIP},
+        {"soldier's knife", FAMILY_SOLDIER, FAMILY_KNIFE, SOUND_FWIP},
+    };
+    for (const Shot& s : shots) {
+        SCOPED_TRACE(s.name);
+        fresh_world();
+        walker* w = living_at(s.shooter, 1, 320, 320);
+        ASSERT_NE(nullptr, w);
+        w->set_current_weapon(static_cast<unsigned short>(s.weapon));
+        face(w, FACE_RIGHT, 1.0f, 0.0f);
+        ASSERT_NE(nullptr, w->fire());
+        EXPECT_EQ(1u, count_sound(s.sound)) << "weapon descriptor present: its sound";
+        EXPECT_EQ(1u, sounds().size()) << "one launch, one sound";
+    }
+
+    struct Spawn
+    {
+        const char* name;
+        int generator;
+        std::uint32_t sound;
+    };
+    const Spawn spawns[] = {
+        {"tower's mage = fireball slot", FAMILY_TOWER, SOUND_BLAST},
+        {"tent's skeleton = tree slot", FAMILY_TENT, SOUND_FWIP},
+    };
+    for (const Spawn& s : spawns) {
+        SCOPED_TRACE(s.name);
+        fresh_world();
+        walker* g = generator_at(s.generator, 1, 320, 320);
+        ASSERT_NE(nullptr, g);
+        face(g, FACE_RIGHT, 1.0f, 0.0f);
+        ASSERT_NE(nullptr, g->fire());
+        EXPECT_EQ(std::vector<std::uint32_t>{s.sound}, sounds())
+            << "generator spawn: the weapon slot of the spawn's number";
+    }
+
+    // The null-descriptor fwip is not reachable with the core pack: every
+    // living family number that exists also names a weapon slot.
+    for (int f = 0; f < 256; ++f) {
+        if (get_family_descriptor(f) != nullptr) {
+            EXPECT_NE(nullptr, get_weapon_family_descriptor(f)) << "living family " << f;
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// walker.cpp:667 walker::fire (a generator with no descriptor)
+// ---------------------------------------------------------------------------
+
+// A generator family with no generator descriptor spawns its living as
+// add_ob made it: no level roll (the spawn's level and hp are a hand-made
+// one's), no lifetime, no entry animation, and it keeps its owner.
+// RED (planted): `get_generator_family_descriptor(family())` ->
+// `get_generator_family_descriptor(FAMILY_TENT)`.
+TEST_F(SemWalker1, a_generator_with_no_descriptor_spawns_its_living_as_made)
+{
+    int bare = -1;
+    for (int f = 0; f < 64; ++f) {
+        if (get_generator_family_descriptor(f) == nullptr) {
+            bare = f;
+            break;
+        }
+    }
+    ASSERT_NE(-1, bare) << "premise: a generator family number with no descriptor";
+
+    walker* hand = world().add_ob(Order::Living, FAMILY_SKELETON);
+    ASSERT_NE(nullptr, hand);
+    const int hand_level = hand->stats()->level();
+    const float hand_hp = hand->stats()->max_hitpoints();
+    const int hand_ani = hand->ani_type();
+    ASSERT_EQ(ANI_SKEL_GROW, hand_ani) << "premise: a skeleton is made growing";
+    hand->set_dead(1);
+
+    walker* g = generator_at(FAMILY_TENT, 1, 320, 320, 9);
+    ASSERT_NE(nullptr, g);
+    ASSERT_EQ(FAMILY_SKELETON, static_cast<int>(g->default_weapon()));
+    g->set_order_family(Order::Generator, static_cast<char>(bare));
+    face(g, FACE_RIGHT, 1.0f, 0.0f);
+    walker* spawn = g->fire();
+    ASSERT_NE(nullptr, spawn);
+    EXPECT_EQ(hand_level, spawn->stats()->level()) << "no descriptor: no level roll";
+    EXPECT_FLOAT_EQ(hand_hp, spawn->stats()->max_hitpoints()) << "no descriptor: no rescale";
+    EXPECT_EQ(0, spawn->lifetime()) << "no descriptor: no lifetime";
+    EXPECT_EQ(hand_ani, static_cast<int>(spawn->ani_type()))
+        << "no descriptor: the family's own entry animation (a skeleton grows)";
+    EXPECT_EQ(g, spawn->owner()) << "no descriptor: the owner stays";
+}
+
+// ---------------------------------------------------------------------------
+// walker.cpp:672 / :674 walker::fire (entry animation and lifetime)
+// ---------------------------------------------------------------------------
+
+// A tent's and a treehouse's spawns enter as their family is made (a
+// skeleton grows, an elf walks); a tower's teleport in. A tent's spawns are
+// temporary, 800 + 11 * generator level ticks; tower and treehouse spawns
+// are permanent (lifetime 0). The old game's switch does the same.
+// RED (planted): the spawn_ani_type test made `if (true)` setting ANI_TELE_IN;
+// `if (gfd->has_lifetime)` -> `if (true)`.
+TEST_F(SemWalker1, a_tent_spawn_walks_in_for_a_while_and_tower_and_treehouse_spawns_stay)
+{
+    struct Case
+    {
+        const char* name;
+        int generator;
+        int ani;
+        int lifetime;
+    };
+    const Case cases[] = {
+        {"tent", FAMILY_TENT, ANI_SKEL_GROW, 800 + 4 * 11},
+        {"tower", FAMILY_TOWER, ANI_TELE_IN, 0},
+        {"treehouse", FAMILY_TREEHOUSE, ANI_WALK, 0},
+    };
+    for (const Case& c : cases) {
+        SCOPED_TRACE(c.name);
+        fresh_world();
+        walker* g = generator_at(c.generator, 3, 160, 128, 4);
+        ASSERT_NE(nullptr, g);
+        face(g, FACE_RIGHT, 1.0f, 0.0f);
+        walker* spawn = g->fire();
+        ASSERT_NE(nullptr, spawn);
+        EXPECT_EQ(c.ani, static_cast<int>(spawn->ani_type())) << "entry animation";
+        EXPECT_EQ(c.lifetime, spawn->lifetime()) << "lifetime";
+    }
+}
+
+// ---------------------------------------------------------------------------
+// walker.cpp:771 walker::compute_outline
+// ---------------------------------------------------------------------------
+
+// The outline steps from the one shown. An invulnerable walker with nothing
+// else keeps the invulnerable outline. A named walker shows the name outline
+// only to a viewer on another team, never with no viewer, and keeps it while
+// nothing else is on. A flight outline whose flight ran out stays while only
+// the name is left and the viewer is a teammate. Two statuses blink. The
+// same chain in the old game's walker::draw.
+// RED (planted): INVULNERABLE branch `if (flight_left())` -> `|| true`; NAMED
+// branch `else if (flight_left())` -> `|| true`; FLYING branch `else if
+// (invulnerable_left())` -> `|| true`; a `!viewer_control` NAMED arm added to
+// the last branch.
+TEST_F(SemWalker1, a_walkers_outline_steps_through_its_statuses_and_names_only_to_enemies)
+{
+    walker* subject = plain_at(Order::Living, FAMILY_SOLDIER, 2, 100, 100);
+    walker* enemy = plain_at(Order::Living, FAMILY_SOLDIER, 1, 200, 100);
+    walker* mate = plain_at(Order::Living, FAMILY_SOLDIER, 2, 300, 100);
+    const auto reset = [&](unsigned char outline) {
+        subject->set_outline(outline);
+        subject->set_invulnerable_left(0);
+        subject->set_flight_left(0);
+        subject->set_invisibility_left(0);
+        subject->stats()->set_bit_flags(BIT_NAMED, 0);
+    };
+
+    reset(OUTLINE_INVULNERABLE);
+    subject->set_invulnerable_left(5);
+    subject->compute_outline(enemy);
+    EXPECT_EQ(OUTLINE_INVULNERABLE, subject->outline()) << "invulnerable alone stays invulnerable";
+
+    reset(0);
+    subject->stats()->set_bit_flags(BIT_NAMED, 1);
+    subject->compute_outline(enemy);
+    EXPECT_EQ(OUTLINE_NAMED, subject->outline()) << "from none, named, enemy viewer: named";
+    subject->set_outline(0);
+    subject->compute_outline(nullptr);
+    EXPECT_EQ(0, subject->outline()) << "no viewer: never named";
+    subject->set_outline(0);
+    subject->compute_outline(mate);
+    EXPECT_EQ(0, subject->outline()) << "teammate viewer: never named";
+
+    reset(OUTLINE_NAMED);
+    subject->stats()->set_bit_flags(BIT_NAMED, 1);
+    subject->compute_outline(enemy);
+    EXPECT_EQ(OUTLINE_NAMED, subject->outline()) << "named alone stays named (enemy viewer)";
+    subject->compute_outline(mate);
+    EXPECT_EQ(OUTLINE_NAMED, subject->outline()) << "named alone stays named (teammate viewer)";
+
+    reset(OUTLINE_FLYING);
+    subject->stats()->set_bit_flags(BIT_NAMED, 1);
+    subject->compute_outline(mate);
+    EXPECT_EQ(OUTLINE_FLYING, subject->outline())
+        << "flight run out, only the name left, teammate viewer: stays flying";
+
+    reset(0);
+    subject->set_flight_left(9);
+    subject->set_invulnerable_left(9);
+    std::vector<int> blink;
+    for (int i = 0; i < 4; ++i) {
+        subject->compute_outline(enemy);
+        blink.push_back(subject->outline());
+    }
+    EXPECT_EQ((std::vector<int>{OUTLINE_FLYING, OUTLINE_INVULNERABLE, OUTLINE_FLYING,
+                                OUTLINE_INVULNERABLE}),
+              blink)
+        << "flying and invulnerable blink";
+}
+
+// ---------------------------------------------------------------------------
+// walker.cpp:839 walker::compute_outline (the networked teammate marker)
+// ---------------------------------------------------------------------------
+
+// The team-colour marker for another human on your team, in networked play
+// only, is never put on a bot or on an enemy human.
+// RED (planted): the marker's `user() != -1` dropped; its
+// `team_num() == viewer_control->team_num()` -> `!=`.
+TEST_F(SemWalker1, the_networked_teammate_marker_skips_bots_and_enemies)
+{
+    walker* viewer = plain_at(Order::Living, FAMILY_SOLDIER, 0, 100, 100);
+    viewer->set_user(0);
+    walker* bot = plain_at(Order::Living, FAMILY_SOLDIER, 0, 200, 100);
+    bot->set_user(-1);
+    walker* foe = plain_at(Order::Living, FAMILY_SOLDIER, 1, 300, 100);
+    foe->set_user(1);
+    walker* mate = plain_at(Order::Living, FAMILY_SOLDIER, 0, 400, 100);
+    mate->set_user(2);
+
+    bot->compute_outline(viewer, true);
+    EXPECT_EQ(0, bot->outline()) << "a bot teammate: no marker";
+    foe->compute_outline(viewer, true);
+    EXPECT_EQ(0, foe->outline()) << "an enemy human: no marker";
+    mate->compute_outline(viewer, true);
+    EXPECT_EQ(mate->query_team_color(), mate->outline()) << "control: a human teammate is marked";
+}
