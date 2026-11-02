@@ -535,19 +535,29 @@ TEST_F(SemAi2, a_seated_walker_ignores_its_action_and_a_passing_action_lets_the_
 // living::act: the ACT_RANDOM bot
 // ---------------------------------------------------------------------------
 
-// living.cpp:369. A rolled slot whose name is NONE (here the probe family's
-// slot 2, a new-kit slot hidden with New Specials off) folds to slot 1 on
-// both values of Gameplay Fixes; a slot out of the table's range (a
-// level-400 bot's roll of 130 wraps the char to -126, reachable only with
-// the setting off, whose bound is (level + 2) / 3) folds to slot 1 too. The
-// control: a named slot rolled (slot 3, HEAL) stays. Old game (7ff1654a
-// living.cpp:350-367): the same fold on the NONE name.
+// living.cpp:369. A rolled slot whose name is NONE folds to slot 1 on both
+// values of Gameplay Fixes. The probe family declares slot 2 by the name
+// NONE with a price the bot can pay (5 MP), so check_special's own
+// unaffordable-slot fallback (living.cpp:608) cannot do the fold for it: only
+// the NONE rule does. A slot out of the table's range (a level-400 bot's roll
+// of 130 wraps the char to -126, reachable only with the setting off, whose
+// bound is (level + 2) / 3) folds to slot 1 too. The control: a named slot
+// rolled (slot 3, HEAL) stays. Old game (7ff1654a living.cpp:350-367): the
+// same fold on the NONE name.
+inline constexpr const char* kNoneSlotDecl =
+    "og.family('living', { id = 'kitprobe:golem', wire_id = 18,\n"
+    "  specials = {\n"
+    "    { id = 'bomb', name = 'DROP BOMB', mp_cost = 35 },\n"
+    "    { id = 'none', name = 'NONE', mp_cost = 5 },\n"
+    "    { id = 'heal', name = 'HEAL', mp_cost = 2 },\n"
+    "  } })\n";
+
 TEST_F(SemAi2, a_bot_that_rolls_an_unnamed_or_out_of_range_slot_casts_slot_one)
 {
-    og::test::ProbeFamily probe;
+    og::test::ProbeFamily probe(kNoneSlotDecl);
     ASSERT_EQ(1, probe.installed());
     const FamilyDescriptor* fd = og::test::ProbeFamily::fd();
-    ASSERT_STREQ("NONE", og::sim::special_name(fd, 2, 0)) << "slot 2 is new-kit: hidden";
+    ASSERT_STREQ("NONE", og::sim::special_name(fd, 2, 0));
     ASSERT_STREQ("HEAL", og::sim::special_name(fd, 3, 0));
     for (short fixes : {short{0}, short{1}}) {
         SCOPED_TRACE("gameplay_fixes " + std::to_string(fixes));
@@ -559,6 +569,9 @@ TEST_F(SemAi2, a_bot_that_rolls_an_unnamed_or_out_of_range_slot_casts_slot_one)
             living* bot = living_at(FAMILY_GOLEM, 1, 320, 320);
             ASSERT_NE(nullptr, bot);
             bot->stats()->set_level(7);
+            ASSERT_GE(bot->stats()->magicpoints(),
+                      static_cast<float>(og::sim::cast_cost(*bot, 2, false)))
+                << "slot 2 is affordable: check_special keeps it";
             world().rng_.state_ = state_where({{5, 0}, {3, roll}});
             (void)bot->act();
             if (roll == 1)
