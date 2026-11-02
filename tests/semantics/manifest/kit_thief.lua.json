@@ -1,0 +1,182 @@
+{
+  "path": "packs/core/lib/kit_thief.lua",
+  "rules": [
+    {
+      "id": "kit_thief.lua:16",
+      "lines": [
+        16,
+        17,
+        18,
+        19,
+        40
+      ],
+      "function": "live_mines / mine",
+      "anchor": "if ob:order() == C.ORDER_FX",
+      "condition": "order==FX and family==MINE and dead==0 and owner==self ; found and count >= mine_cap",
+      "semantic": "A thief may keep at most mine_cap (3) live mines of its own; another thief's mines and dead mines do not count; the fourth is refused for free.",
+      "arms": [
+        {
+          "when": "3 own live mines",
+          "observable": "refused 'MINE LIMIT REACHED', mp unchanged, still 3 mines"
+        },
+        {
+          "when": "fewer",
+          "observable": "mine laid"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_thief.cpp",
+          "test": "KitThief.fourth_mine_is_refused"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_thief.lua:31",
+      "lines": [
+        31
+      ],
+      "function": "step_off",
+      "anchor": "if flee_dx == 0 and flee_dy == 0 then",
+      "condition": "flee_dx == 0 and flee_dy == 0",
+      "semantic": "A flee roll that lands still steps the thief right (+1,0) so it always leaves its mine.",
+      "arms": [
+        {
+          "when": "both draws 0 (next(3)==1 twice)",
+          "observable": "walk dx 1 dy 0"
+        },
+        {
+          "when": "otherwise",
+          "observable": "walk the rolled step"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_thief.cpp",
+          "test": "KitThief.bot_steps_right_off_a_mine_when_the_flee_roll_is_still"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_thief.lua:48",
+      "lines": [
+        48
+      ],
+      "function": "mine",
+      "anchor": "if self:has_guy() then",
+      "condition": "self:has_guy()",
+      "semantic": "Laying a mine counts as a shot for a roster hero (total_shots and scen_shots +1); a bot keeps no tally.",
+      "arms": [
+        {
+          "when": "hero",
+          "observable": "total_shots+1, scen_shots+1"
+        },
+        {
+          "when": "bot",
+          "observable": "no guy touched"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_thief.cpp",
+          "test": "KitThief.mine_costs_double_and_is_a_bomb_when_off"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_thief.lua:62",
+      "lines": [
+        62
+      ],
+      "function": "mine",
+      "anchor": "if self:user() == -1 then",
+      "condition": "self:user() == -1",
+      "semantic": "A bot thief steps off a mine it just laid (a forced 20-step walk, the bomb's flee); a seated thief is left where it is.",
+      "arms": [
+        {
+          "when": "bot",
+          "observable": "COMMAND_WALK 20 queued"
+        },
+        {
+          "when": "seated",
+          "observable": "no command queued"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_thief.cpp",
+          "test": "KitThief.bot_steps_right_off_a_mine_when_the_flee_roll_is_still"
+        },
+        {
+          "file": "tests/unit/test_kit_thief.cpp",
+          "test": "KitThief.bot_thief_lays_a_mine_through_act"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_thief.lua:72",
+      "lines": [
+        72
+      ],
+      "function": "M.bomb_or_mine",
+      "anchor": "if self:alternate_down() then",
+      "condition": "self:alternate_down()",
+      "semantic": "DROP BOMB with the shifter down and New Specials on lays a MINE; otherwise it is the classic bomb.",
+      "arms": [
+        {
+          "when": "alternate down",
+          "observable": "mine fx, double cost"
+        },
+        {
+          "when": "not",
+          "observable": "classic bomb weapon"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_thief.cpp",
+          "test": "KitThief.mine_costs_double_and_is_a_bomb_when_off"
+        },
+        {
+          "file": "tests/unit/test_kit_thief.cpp",
+          "test": "KitThief.mine_is_named_and_priced_only_with_the_setting_on"
+        }
+      ],
+      "missing_arms": []
+    }
+  ],
+  "other": [
+    {
+      "id": "kit_thief.lua:14",
+      "lines": [
+        14
+      ],
+      "kind": "loop",
+      "anchor": "for i = 1, #obs do",
+      "note": "live_mines oblist scan; rule in kit_thief.lua:16"
+    },
+    {
+      "id": "kit_thief.lua:44",
+      "lines": [
+        44
+      ],
+      "kind": "defensive",
+      "anchor": "if not laid then",
+      "note": "add_ob mine nil (world full): 'COULD NOT CREATE MINE'"
+    }
+  ]
+}

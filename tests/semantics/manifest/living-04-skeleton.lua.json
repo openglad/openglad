@@ -1,0 +1,96 @@
+{
+  "path": "packs/core/families/living-04-skeleton.lua",
+  "rules": [
+    {
+      "id": "living-04-skeleton.lua:20",
+      "lines": [
+        20,
+        21
+      ],
+      "function": "check_special_ai (TUNNEL bot gate)",
+      "anchor": "local held = gf.on() and lc.mid_teleport(self)",
+      "condition": "held = gf.on() and lc.mid_teleport(self); return foe_count < 1 and not held",
+      "semantic": "A bot skeleton tunnels only when no foe is within 80 px ('away from anybody'). Gameplay Fixes (fix W, #371): never while already mid-teleport (a freshly spawned skeleton is in ANI_TELE_IN), where the cast refuses SPECIAL BUSY.",
+      "arms": [
+        {
+          "when": "no foe within 80, not teleporting",
+          "observable": "true (both)"
+        },
+        {
+          "when": "foe within 80",
+          "observable": "false"
+        },
+        {
+          "when": "mid-teleport, no foe, setting off",
+          "observable": "true"
+        },
+        {
+          "when": "mid-teleport, setting on",
+          "observable": "false"
+        }
+      ],
+      "setting": "both",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_family_behaviors.cpp",
+          "test": "FamilyBehaviors.check_special_skeleton_tunnel"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-04-skeleton.lua:28",
+      "lines": [
+        28
+      ],
+      "function": "do_special (TUNNEL, slot 1 and unmapped)",
+      "anchor": "if lc.mid_teleport(self) then",
+      "condition": "lc.mid_teleport(self)",
+      "semantic": "TUNNEL refuses 'SPECIAL BUSY' mid-teleport; otherwise it starts tele-out and handle_teleport hops the skeleton to a random spot within 18*level px (teleport_ranged).",
+      "arms": [
+        {
+          "when": "mid-teleport",
+          "observable": "false 'SPECIAL BUSY'; MP unchanged"
+        },
+        {
+          "when": "not",
+          "observable": "true; ani_type ANI_TELE_OUT; after the animation position changed by <= 18*level"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.skeleton_tunnel_drives_simulation"
+        },
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.family_special_sweep_outcomes_are_pinned",
+          "note": "mid-teleport case table"
+        },
+        {
+          "parity": "skeleton_tunnel_displacement_scen99",
+          "fact": ""
+        },
+        {
+          "parity": "special_skeleton_1_scen99",
+          "fact": ""
+        }
+      ],
+      "missing_arms": []
+    }
+  ],
+  "other": [
+    {
+      "id": "living-04-skeleton.lua:50",
+      "lines": [
+        50
+      ],
+      "kind": "dead",
+      "anchor": "{ id = \"dig_in\",     name = \"DIG IN\",     mp_cost = 15, new_kit = true, cast = ks.dig_in, ai = ks.ai_dig_in, detail = \"Sink into the floor, unseen and mending, ",
+      "note": "not a branch ('while' in the DIG IN detail string)"
+    }
+  ]
+}

@@ -1,0 +1,811 @@
+{
+  "path": "src/gameplay/walker_movement.cpp",
+  "rules": [
+    {
+      "id": "walker_movement.cpp:51",
+      "lines": [
+        46,
+        51,
+        53
+      ],
+      "function": "walker::setxy",
+      "anchor": "if (map != nullptr)",
+      "condition": "map && !ignore && !dormant && !hidden",
+      "semantic": "Only tangible walkers are in the collision map: repositioning a normal walker re-buckets it at the new spot; repositioning an ignored (blood, walk-over), dormant (delayed spawn) or hidden (burrowed) walker removes it instead, so it blocks nothing and is found by nothing until it becomes tangible again (set_dormant(false)/set_hidden(false) re-register).",
+      "arms": [
+        {
+          "when": "tangible",
+          "observable": "walker_to_pos has it at the new cells; old cell pile no longer holds it"
+        },
+        {
+          "when": "ignore",
+          "observable": "removed: walker_to_pos.count==0, position still updated"
+        },
+        {
+          "when": "dormant",
+          "observable": "stays unregistered"
+        },
+        {
+          "when": "hidden",
+          "observable": "stays unregistered"
+        },
+        {
+          "when": "no world map",
+          "observable": "position only"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_movement.cpp",
+          "test": "WalkerMovement.walker_setxy_moves_obmap_registration",
+          "note": "tangible: re-bucketed, old cell empty; ignore: removed, position updated"
+        },
+        {
+          "file": "tests/integration/test_walker_movement_unit.cpp",
+          "test": "WalkerMovementUnit.walker_movement_r11_move_worldmove_setxy_and_setworldxy",
+          "note": "ignore: walker_to_pos.count == 0"
+        },
+        {
+          "file": "tests/unit/test_npc_scenario_flags.cpp",
+          "test": "NpcScenarioFlags.repositioning_a_dormant_walker_keeps_it_unregistered",
+          "note": "dormant"
+        },
+        {
+          "file": "tests/unit/test_kit_seams_hidden.cpp",
+          "test": "KitSeams.hidden_walker_is_inert_and_skipped_by_every_finder",
+          "note": "setxy and setworldxy leave a hidden walker out of walker_to_pos"
+        }
+      ],
+      "missing_arms": [
+        "no world map"
+      ]
+    },
+    {
+      "id": "walker_movement.cpp:73",
+      "lines": [
+        70,
+        73,
+        75
+      ],
+      "function": "walker::setworldxy",
+      "anchor": "if (map != nullptr)",
+      "condition": "map && !ignore && !dormant && !hidden",
+      "semantic": "Same tangibility rule as walker_movement.cpp:51 for sub-pixel moves: the collision map uses the truncated pixel position.",
+      "arms": [
+        {
+          "when": "tangible",
+          "observable": "registered at (short)x,(short)y"
+        },
+        {
+          "when": "ignore/dormant/hidden",
+          "observable": "removed / not re-registered"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_movement_unit.cpp",
+          "test": "WalkerMovementUnit.walker_movement_r11_move_worldmove_setxy_and_setworldxy",
+          "note": "ignore: setworldxy keeps it out of walker_to_pos"
+        },
+        {
+          "file": "tests/unit/test_npc_scenario_flags.cpp",
+          "test": "NpcScenarioFlags.repositioning_a_dormant_walker_keeps_it_unregistered",
+          "note": "dormant"
+        },
+        {
+          "file": "tests/unit/test_kit_seams_hidden.cpp",
+          "test": "KitSeams.hidden_walker_is_inert_and_skipped_by_every_finder",
+          "note": "setxy and setworldxy leave a hidden walker out of walker_to_pos"
+        }
+      ],
+      "missing_arms": [
+        "tangible"
+      ]
+    },
+    {
+      "id": "walker_movement.cpp:97",
+      "lines": [
+        97,
+        99,
+        101,
+        107,
+        109,
+        111,
+        113,
+        115,
+        119,
+        121,
+        123,
+        125,
+        127
+      ],
+      "function": "walker::facing",
+      "anchor": "if (!x)",
+      "condition": "x==0 ? (y>0 DOWN : UP) : slope=1000y/x vs +-2414/+-414",
+      "semantic": "A movement or aim vector maps to one of eight facings in 45-degree sectors whose borders sit at 22.5 degrees (slope 0.414) and 67.5 degrees (2.414), integer slope 1000*y/x; a pure vertical vector faces down if y>0 else up, so (0,0) faces UP.",
+      "arms": [
+        {
+          "when": "x==0,y>0",
+          "observable": "FACE_DOWN"
+        },
+        {
+          "when": "x==0,y<=0",
+          "observable": "FACE_UP"
+        },
+        {
+          "when": "x>0 by slope",
+          "observable": "DOWN/DOWN_RIGHT/RIGHT/UP_RIGHT/UP"
+        },
+        {
+          "when": "x<0 by slope",
+          "observable": "UP/UP_LEFT/LEFT/DOWN_LEFT/DOWN"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_movement.cpp",
+          "test": "WalkerMovement.walker_facing_all_16_vectors"
+        },
+        {
+          "file": "tests/integration/test_walker_movement.cpp",
+          "test": "WalkerMovement.walker_facing_threshold_boundaries_round6"
+        },
+        {
+          "file": "tests/integration/test_walker_movement_unit.cpp",
+          "test": "WalkerMovementUnit.walker_movement_facing_thresholds"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "walker_movement.cpp:138",
+      "lines": [
+        138
+      ],
+      "function": "walker::shove",
+      "anchor": "if (x || y || target)",
+      "condition": "x || y || target (log only)",
+      "semantic": "Only livings can be shoved: shoving anything else refuses (-1) and logs the misuse.",
+      "arms": [
+        {
+          "when": "non-living",
+          "observable": "returns -1 (logs when given a target or delta)"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.no_magic",
+          "note": "1406 ASSERT_EQ(-1, w->walker::shove(nullptr,0,0)) and shove(w,1,0)"
+        },
+        {
+          "file": "tests/integration/test_walker_movement_unit.cpp",
+          "test": "WalkerMovementUnit.walker_movement_r12_walkstep_npc_and_user_slide_paths",
+          "note": "shove returns -1 and the target does not move"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "walker_movement.cpp:164",
+      "lines": [
+        161,
+        164
+      ],
+      "function": "walker::walkstep",
+      "anchor": "if (order() == Order::Living)",
+      "condition": "Living && fd->is_stationary",
+      "semantic": "A stationary living (tower) never moves: a step only turns it to face the step direction (curdir and enddir), records the unscaled step as its heading, and reports success.",
+      "arms": [
+        {
+          "when": "stationary family",
+          "observable": "position unchanged; curdir==enddir==facing(x,y); lastx/lasty == x,y; returns true"
+        },
+        {
+          "when": "else",
+          "observable": "normal step"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_movement.cpp",
+          "test": "WalkerMovement.stationary_family_walk_and_turn_branches",
+          "note": "walkstep true, raw lastx/lasty"
+        },
+        {
+          "file": "tests/integration/test_walker_movement_unit.cpp",
+          "test": "WalkerMovementUnit.walker_movement_r12_stationary_slope_and_animate_paths",
+          "note": "true; raw lastx/lasty; curdir and enddir FACE_RIGHT; position unchanged"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "walker_movement.cpp:176",
+      "lines": [
+        176,
+        179
+      ],
+      "function": "walker::walkstep",
+      "anchor": "if (!returnvalue) // couldn't walk this direction ..",
+      "condition": "!walk(full step) -> walk(1x unit step) -> !",
+      "semantic": "A blocked step is retried as a one-unit baby step (x,y as given, e.g. 1px) before any fallback; only if both fail does the walker try its NPC sidestep or player wall-slide.",
+      "arms": [
+        {
+          "when": "full step passes",
+          "observable": "moved by stepsize; true"
+        },
+        {
+          "when": "full blocked, baby passes",
+          "observable": "moved by (x,y); true"
+        },
+        {
+          "when": "both blocked",
+          "observable": "NPC/user fallback"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_movement.cpp",
+          "test": "WalkerMovement.walker_walkstep_cardinals",
+          "note": "full step passes: moved by stepsize, true"
+        },
+        {
+          "file": "tests/integration/test_walker_movement.cpp",
+          "test": "WalkerMovement.user_blocked_step_tries_full_then_baby_step_before_sliding",
+          "note": "both blocked: full step then the one-unit baby step, then fallback"
+        },
+        {
+          "file": "tests/integration/test_walker_movement.cpp",
+          "test": "WalkerMovement.round6_scripted_walkstep_switch_coverage",
+          "note": "both blocked: exact attempt sequence"
+        }
+      ],
+      "missing_arms": [
+        "full blocked, baby passes"
+      ]
+    },
+    {
+      "id": "walker_movement.cpp:183",
+      "lines": [
+        181,
+        183,
+        185,
+        189,
+        193,
+        197,
+        202,
+        208,
+        214,
+        220,
+        226
+      ],
+      "function": "walker::walkstep",
+      "anchor": "if (user() == -1) // means we are an npc",
+      "condition": "user() == -1; switch facing(x,y)",
+      "semantic": "A blocked NPC sidesteps: on a cardinal it turns 90 degrees (UP->LEFT, RIGHT->UP, DOWN->RIGHT, LEFT->DOWN) and walks one full stepsize that way; on a diagonal it walks the vertical component then the horizontal one separately; it reports success if any component moved and keeps its original facing.",
+      "arms": [
+        {
+          "when": "cardinal",
+          "observable": "one stepsize along the rotated direction; result = that walk"
+        },
+        {
+          "when": "diagonal",
+          "observable": "vertical then horizontal component walks; result ret1||ret2"
+        },
+        {
+          "when": "invalid facing",
+          "observable": "no move; false"
+        },
+        {
+          "when": "always",
+          "observable": "curdir restored to the pre-step value"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_movement.cpp",
+          "test": "WalkerMovement.npc_blocked_step_fallback_arms_and_the_user_slide",
+          "note": "all four cardinals and two diagonals: positions, return, curdir restored"
+        },
+        {
+          "file": "tests/integration/test_walker_movement.cpp",
+          "test": "WalkerMovement.round6_scripted_walkstep_switch_coverage",
+          "note": "all eight arms: attempt deltas/facings, ret1||ret2, curdir restored"
+        },
+        {
+          "file": "tests/integration/test_walker_movement_unit.cpp",
+          "test": "WalkerMovementUnit.walker_movement_r14_npc_fallback_denials_and_one_success"
+        }
+      ],
+      "missing_arms": [
+        "invalid facing"
+      ]
+    },
+    {
+      "id": "walker_movement.cpp:242",
+      "lines": [
+        232,
+        242,
+        244,
+        245,
+        246,
+        247,
+        249,
+        253,
+        257,
+        261,
+        265,
+        271,
+        274,
+        276,
+        281
+      ],
+      "function": "walker::walkstep (user slide)",
+      "anchor": "else // we're a user",
+      "condition": "user != -1; switch myfacing; dx||dy; for i < (int)step; passable(y+dy) / passable(x+dx)",
+      "semantic": "A blocked player slides along walls only on diagonals: for each whole unit of stepsize it tries one pixel along the vertical axis and one along the horizontal axis independently, keeping whichever moves are free; a blocked cardinal does not slide. The slide always reports failure.",
+      "arms": [
+        {
+          "when": "cardinal",
+          "observable": "no slide; false"
+        },
+        {
+          "when": "diagonal, one axis free",
+          "observable": "slides 1px per stepsize unit on that axis; false"
+        },
+        {
+          "when": "diagonal, both blocked",
+          "observable": "no move; false"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_movement.cpp",
+          "test": "WalkerMovement.walker_walkstep_user_slide_cardinal_break_path_round5",
+          "note": "cardinal: no slide, false"
+        },
+        {
+          "file": "tests/integration/test_walker_movement.cpp",
+          "test": "WalkerMovement.walker_walkstep_user_slide_sets_vertical_and_horizontal_dirs",
+          "note": "one axis free: 2px per stepsize 2, false"
+        },
+        {
+          "file": "tests/integration/test_walker_movement.cpp",
+          "test": "WalkerMovement.walker_walkstep_user_slide_diagonal_switch_cases_round6",
+          "note": "both axes blocked in the corner: no move, false"
+        },
+        {
+          "file": "tests/integration/test_walker_movement_unit.cpp",
+          "test": "WalkerMovementUnit.walker_movement_r14_user_slide_axes_and_turn_default"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "walker_movement.cpp:286",
+      "lines": [
+        286,
+        288,
+        290,
+        293,
+        295,
+        297,
+        300
+      ],
+      "function": "walker::walkstep (user slide)",
+      "anchor": "if (!gotup && gotover)  // moved horizontally",
+      "condition": "!gotup && gotover / gotup && !gotover; dx>0; dy<0; gotup||gotover",
+      "semantic": "While sliding, the player's walk frame advances one cycle per pixel step and is drawn facing the axis actually moved (right/left or up/down) when only one axis moved; facing itself is restored to the pre-step direction afterwards.",
+      "arms": [
+        {
+          "when": "only horizontal moved",
+          "observable": "frame picked with FACE_RIGHT/LEFT"
+        },
+        {
+          "when": "only vertical moved",
+          "observable": "frame picked with FACE_UP/DOWN"
+        },
+        {
+          "when": "both moved",
+          "observable": "frame of the original diagonal"
+        },
+        {
+          "when": "moved anything",
+          "observable": "cycle = stored cycle + 1, frame updated"
+        },
+        {
+          "when": "after loop",
+          "observable": "curdir == oldcurdir"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": [
+        "only horizontal moved",
+        "only vertical moved",
+        "both moved",
+        "moved anything",
+        "after loop"
+      ]
+    },
+    {
+      "id": "walker_movement.cpp:326",
+      "lines": [
+        323,
+        326
+      ],
+      "function": "walker::walk",
+      "anchor": "if (order() == Order::Living)",
+      "condition": "Living && fd->is_stationary",
+      "semantic": "A stationary living's walk only sets its facing (same rule as walker_movement.cpp:164) and succeeds.",
+      "arms": [
+        {
+          "when": "stationary",
+          "observable": "curdir = facing(x,y); no move; true"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": [
+        "stationary"
+      ],
+      "note": [
+        "Dropped tests/integration/test_walker_movement.cpp WalkerMovement.stationary_family_walk_and_turn_branches: its w is a living (guy_create_walker_owned), so w->walk(1,1) dispatches to living::walk and never reaches this line; and it asserts only the return value."
+      ]
+    },
+    {
+      "id": "walker_movement.cpp:333",
+      "lines": [
+        333
+      ],
+      "function": "walker::walk",
+      "anchor": "if (x == 0.0f && y == 0.0f)",
+      "condition": "x == 0 && y == 0",
+      "semantic": "A zero step succeeds without moving or turning.",
+      "arms": [
+        {
+          "when": "(0,0)",
+          "observable": "true; position, curdir, cycle unchanged"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_movement.cpp",
+          "test": "WalkerMovement.round9_user_cardinal_slide_break_and_offmap_guards",
+          "note": "lines 730-743: non-living walker.walk(0,0) true, curdir and cycle unchanged"
+        },
+        {
+          "file": "tests/integration/test_walker_movement_unit.cpp",
+          "test": "WalkerMovementUnit.walker_movement_r11_walk_turn_and_angles",
+          "note": "base walker walk(0,0): true, position and curdir unchanged"
+        }
+      ],
+      "missing_arms": [],
+      "note": [
+        "NOT credited: WalkerMovement.walker_walkstep_zero uses a living (living::walk)."
+      ]
+    },
+    {
+      "id": "walker_movement.cpp:339",
+      "lines": [
+        339,
+        375
+      ],
+      "function": "walker::walk (base; living::walk overrides for livings)",
+      "anchor": "if (curdir() == dir)  // if continue direction",
+      "condition": "curdir() == dir",
+      "semantic": "A non-living walker (weapon/effect) moving in a new direction first turns to it (curdir snaps, cycle 0, frame reset) without moving that call and reports success; only a step in the direction it already faces moves it.",
+      "arms": [
+        {
+          "when": "same direction",
+          "observable": "move attempt (off-map/passable rules)"
+        },
+        {
+          "when": "new direction",
+          "observable": "curdir=dir, cycle 0, position unchanged, true"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_movement_unit.cpp",
+          "test": "WalkerMovementUnit.walker_movement_r11_walk_turn_and_angles",
+          "note": "new direction: curdir adopted, cycle 0, position unchanged, true"
+        },
+        {
+          "file": "tests/integration/test_walker_movement_unit.cpp",
+          "test": "WalkerMovementUnit.walker_movement_walk_and_walkstep_edge_paths",
+          "note": "same direction: aligned walk moves +1"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "walker_movement.cpp:342",
+      "lines": [
+        342
+      ],
+      "function": "walker::walk",
+      "anchor": "if (x + xpos() < 0 ||",
+      "condition": "off map (x<0, x>=grid.w*GRID_SIZE, y<0, y>=grid.h*GRID_SIZE)",
+      "semantic": "Nothing walks off the map: a step whose top-left would leave the grid fails without moving.",
+      "arms": [
+        {
+          "when": "off map",
+          "observable": "false; position unchanged"
+        },
+        {
+          "when": "on map",
+          "observable": "passability check"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_movement_unit.cpp",
+          "test": "WalkerMovementUnit.walker_movement_walk_and_walkstep_edge_paths",
+          "note": "base walker off the west edge: false, position unchanged, cycle 0; on map: moves"
+        }
+      ],
+      "missing_arms": [],
+      "note": [
+        "Dropped WalkerMovement.round9_user_cardinal_slide_break_and_offmap_guards and WalkerMovement.npc_blocked_step_fallback_arms_and_the_user_slide: both walk a living (make_guy), so they exercise living::walk's own off-map check, not this line."
+      ]
+    },
+    {
+      "id": "walker_movement.cpp:353",
+      "lines": [
+        353,
+        363,
+        367
+      ],
+      "function": "walker::walk",
+      "anchor": "if (current_game->world->query_passable(xpos() + x, ypos() + y, this))",
+      "condition": "query_passable(x+dx,y+dy); else BIT_ANIMATE",
+      "semantic": "A passable step moves the walker (sub-pixel kept) and advances its walk frame; a blocked step does not move, and advances the frame only for walkers flagged to animate regardless.",
+      "arms": [
+        {
+          "when": "passable",
+          "observable": "moved by (x,y); cycle+1; true"
+        },
+        {
+          "when": "blocked, BIT_ANIMATE",
+          "observable": "no move; cycle+1; false"
+        },
+        {
+          "when": "blocked",
+          "observable": "no move; cycle unchanged; false"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_movement_unit.cpp",
+          "test": "WalkerMovementUnit.walker_movement_walk_and_walkstep_edge_paths",
+          "note": "passable: moved by the delta, cycle 1, true"
+        },
+        {
+          "file": "tests/integration/test_walker_movement_unit.cpp",
+          "test": "WalkerMovementUnit.walker_movement_r12_stationary_slope_and_animate_paths",
+          "note": "wall: no BIT_ANIMATE -> cycle 0, false; BIT_ANIMATE -> cycle 1, false; no move"
+        },
+        {
+          "file": "tests/integration/test_walker_movement_unit.cpp",
+          "test": "WalkerMovementUnit.walker_movement_r11_walk_turn_and_angles",
+          "note": "BIT_ANIMATE blocked: cycle 1, no move"
+        }
+      ],
+      "missing_arms": [],
+      "note": [
+        "Dropped WalkerMovement.round9_blocked_animate_angle_and_turn_default_paths: its walker is a living (make_guy) so walk() is living::walk, not this line."
+      ]
+    },
+    {
+      "id": "walker_movement.cpp:387",
+      "lines": [
+        387,
+        389,
+        391,
+        393,
+        395,
+        397,
+        399,
+        401,
+        403,
+        405
+      ],
+      "function": "walker::get_current_angle",
+      "anchor": "switch (curdir())",
+      "condition": "switch curdir",
+      "semantic": "A walker's facing maps to a screen angle (UP -pi/2, clockwise in 45-degree steps, RIGHT 0); an invalid facing reads as 0. Note UP_LEFT is 5pi/4, not -3pi/4.",
+      "arms": [
+        {
+          "when": "each facing",
+          "observable": "its angle"
+        },
+        {
+          "when": "invalid",
+          "observable": "0"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_movement.cpp",
+          "test": "WalkerMovement.walker_get_current_angle_all_direction_cases"
+        },
+        {
+          "file": "tests/integration/test_walker_movement.cpp",
+          "test": "WalkerMovement.round9_blocked_animate_angle_and_turn_default_paths",
+          "note": "invalid -> 0"
+        },
+        {
+          "file": "tests/integration/test_walker_movement_unit.cpp",
+          "test": "WalkerMovementUnit.walker_movement_r11_walk_turn_and_angles"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "walker_movement.cpp:424",
+      "lines": [
+        424,
+        426
+      ],
+      "function": "walker::turn",
+      "anchor": "if ( ( (distance >= -4) && (distance < 0) ) || (distance >= 4) )",
+      "condition": "(distance in [-4,-1]) || distance >= 4",
+      "semantic": "Turning rotates one 45-degree step per call the short way round; a half-turn (4 steps either way) goes clockwise (+1).",
+      "arms": [
+        {
+          "when": "target clockwise within 4 (incl. exactly 4)",
+          "observable": "curdir+1 mod 8"
+        },
+        {
+          "when": "else",
+          "observable": "curdir-1 mod 8"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_movement.cpp",
+          "test": "WalkerMovement.walker_turn_to_all_targets"
+        },
+        {
+          "file": "tests/integration/test_walker_movement.cpp",
+          "test": "WalkerMovement.walker_turn_from_all_starts"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "walker_movement.cpp:436",
+      "lines": [
+        436,
+        438,
+        440,
+        444,
+        448,
+        452,
+        456,
+        460,
+        464,
+        468,
+        472
+      ],
+      "function": "walker::turn",
+      "anchor": "if (!stationary)",
+      "condition": "!stationary; switch curdir",
+      "semantic": "After a turn a mobile walker's heading (lastx/lasty, used to repeat walks and aim weapons) is one stepsize along the new facing; a stationary living keeps its old heading; an invalid facing heads up.",
+      "arms": [
+        {
+          "when": "mobile, facing F",
+          "observable": "lastx/lasty = stepsize * unit(F)"
+        },
+        {
+          "when": "stationary",
+          "observable": "lastx/lasty unchanged"
+        },
+        {
+          "when": "invalid facing",
+          "observable": "(0,-stepsize)"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_movement_unit.cpp",
+          "test": "WalkerMovementUnit.walker_movement_turn_stationary_and_normal",
+          "note": "stationary: lastx/lasty unchanged; mobile UP_RIGHT only"
+        },
+        {
+          "file": "tests/integration/test_walker_movement_unit.cpp",
+          "test": "WalkerMovementUnit.walker_movement_r11_walk_turn_and_angles",
+          "note": "stationary tower keeps 5,6"
+        },
+        {
+          "file": "tests/integration/test_walker_movement.cpp",
+          "test": "WalkerMovement.round9_blocked_animate_angle_and_turn_default_paths",
+          "note": "invalid facing -> (0, -stepsize)"
+        },
+        {
+          "file": "tests/integration/test_walker_movement_unit.cpp",
+          "test": "WalkerMovementUnit.walker_movement_r14_user_slide_axes_and_turn_default",
+          "note": "invalid facing -> (0, -2)"
+        }
+      ],
+      "missing_arms": [
+        "mobile, facing F"
+      ]
+    },
+    {
+      "id": "walker_movement.cpp:501",
+      "lines": [
+        501
+      ],
+      "function": "walker::face_delta",
+      "anchor": "const float scale = (stepsize() == 0.0f) ? 1.0f : stepsize();",
+      "condition": "stepsize() == 0 ? 1 : stepsize()",
+      "semantic": "Snap-facing a foe (guard-standoff fix) points curdir and enddir at it and sets the firing heading to the foe delta scaled by stepsize; a stationary shooter (stepsize 0) gets the unscaled delta so its heading still points at the foe instead of reading as UP (#350).",
+      "arms": [
+        {
+          "when": "stepsize 0",
+          "observable": "lastx/lasty == delta"
+        },
+        {
+          "when": "stepsize s",
+          "observable": "lastx/lasty == delta*s"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_core_more.cpp",
+          "test": "WalkerCoreMore.face_delta_stepsize_zero_keeps_a_unit_heading_toward_the_foe",
+          "note": "stepsize 0: lastx -1, lasty 1; stepsize 4: -4, 4"
+        },
+        {
+          "file": "tests/integration/test_coverage_misc.cpp",
+          "test": "CoverageMisc.coverage_r18_walker_act_decay_cleanup_and_guard_branches",
+          "note": "946-950 (lastx == 8 * stepsize)"
+        },
+        {
+          "parity": "kMut_tower_snap_face_heading_scen99",
+          "fact": "WalkerHpRangeAtFinalTick(FAMILY_MEDIUM_SLIME,7500,7500)",
+          "note": "scenario_table.h:8282  pins line 501"
+        }
+      ],
+      "missing_arms": []
+    }
+  ],
+  "other": []
+}

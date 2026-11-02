@@ -1,0 +1,731 @@
+{
+  "path": "src/gameplay/script/script_host.cpp",
+  "rules": [
+    {
+      "id": "script_host.cpp:40",
+      "lines": [
+        33,
+        35,
+        40,
+        43
+      ],
+      "function": "capped_alloc",
+      "anchor": "const size_t old_size = (ptr != nullptr) ? osize : 0;",
+      "condition": "nsize == 0 ; nsize > old_size && used + (nsize-old_size) > cap ; np != nullptr",
+      "semantic": "A pack script has a fixed memory budget: a script that tries to grow past the cap fails with a deterministic 'not enough memory' error (recorded, the hook reports failure) and the VM stays within its limit; frees return memory to the budget.",
+      "arms": [
+        {
+          "when": "allocation would exceed memory_bytes",
+          "observable": "run_chunk returns false, errors() non-empty, memory_used() <= memory_limit(), host still evaluates afterwards"
+        },
+        {
+          "when": "allocation within cap",
+          "observable": "chunk runs, memory_used() grows"
+        },
+        {
+          "when": "free (nsize 0)",
+          "observable": "memory_used() drops back"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [
+        {
+          "file": "tests/unit/test_script_host.cpp",
+          "test": "ScriptBudget.allocation_cap_trips_deterministically",
+          "note": "over-cap arm: run_chunk false, errors non-empty, memory_used <= memory_limit, eval 2+2 == 4 afterwards"
+        },
+        {
+          "file": "tests/unit/test_script_host.cpp",
+          "test": "ScriptHostBasics.identical_programs_produce_identical_hosts",
+          "note": "memory_used equal across hosts; not a per-arm assertion"
+        }
+      ],
+      "missing_arms": [],
+      "note": [
+        "UNASSERTED: within-cap arm (memory_used grows after an allocation) and free arm (nsize 0: memory_used drops back, line 35)"
+      ]
+    },
+    {
+      "id": "script_host.cpp:65",
+      "lines": [
+        65
+      ],
+      "function": "budget_hook",
+      "anchor": "if (impl->instructions_remaining <= 0)",
+      "condition": "impl->instructions_remaining <= 0",
+      "semantic": "Every outermost script entry has a fixed instruction budget (checked every 4096 instructions); a runaway script is stopped with 'instruction budget exceeded' instead of hanging the sim, and the next entry gets a fresh budget.",
+      "arms": [
+        {
+          "when": "budget spent",
+          "observable": "run_chunk false, error message contains 'instruction budget exceeded'"
+        },
+        {
+          "when": "budget left",
+          "observable": "chunk completes; a following eval returns its value"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_script_host.cpp",
+          "test": "ScriptBudget.infinite_loop_trips_instruction_budget"
+        },
+        {
+          "file": "tests/unit/test_script_host.cpp",
+          "test": "PackLibTest.modules_are_budget_metered"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "script_host.cpp:102",
+      "lines": [
+        102,
+        104
+      ],
+      "function": "og_div",
+      "anchor": "if (b == 0)",
+      "condition": "b == 0 ; a == INT64_MIN && b == -1",
+      "semantic": "og.div is C++ integer division (truncates toward zero, not Lua floor division) so pack Lua matches the classic C++ arithmetic; dividing by zero or the one overflowing case is a script error, never a crash or a silent value.",
+      "arms": [
+        {
+          "when": "b == 0",
+          "observable": "eval yields nullopt, error 'og.div: division by zero'"
+        },
+        {
+          "when": "INT64_MIN / -1",
+          "observable": "nullopt, 'og.div: overflow'"
+        },
+        {
+          "when": "otherwise",
+          "observable": "a/b with C truncation (og.div(-7,2) == -3)"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_script_host.cpp",
+          "test": "ScriptArith.div_mod_guard_zero_and_overflow"
+        },
+        {
+          "file": "tests/unit/test_script_host.cpp",
+          "test": "ScriptArith.div_mod_match_cpp_truncation_semantics"
+        },
+        {
+          "file": "tests/unit/test_script_host.cpp",
+          "test": "ScriptArith.div_differs_from_lua_floor_division_for_negatives"
+        }
+      ],
+      "missing_arms": [],
+      "note": [
+        "note: the zero/overflow arms are asserted as nullopt plus errors() non-empty; the exact message text is not pinned"
+      ]
+    },
+    {
+      "id": "script_host.cpp:114",
+      "lines": [
+        114,
+        116
+      ],
+      "function": "og_mod",
+      "anchor": "if (b == 0)",
+      "condition": "b == 0 ; a == INT64_MIN && b == -1",
+      "semantic": "og.mod is the C++ remainder (sign of the dividend); zero divisor and INT64_MIN % -1 are script errors. Same rule as script_host.cpp:102.",
+      "arms": [
+        {
+          "when": "b == 0",
+          "observable": "nullopt + 'og.mod: division by zero'"
+        },
+        {
+          "when": "INT64_MIN, -1",
+          "observable": "nullopt + 'og.mod: overflow'"
+        },
+        {
+          "when": "otherwise",
+          "observable": "a%b C remainder (og.mod(-7,2) == -1)"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_script_host.cpp",
+          "test": "ScriptArith.div_mod_guard_zero_and_overflow"
+        },
+        {
+          "file": "tests/unit/test_script_host.cpp",
+          "test": "ScriptArith.div_mod_match_cpp_truncation_semantics"
+        }
+      ],
+      "missing_arms": [],
+      "note": [
+        "note: the zero/overflow arms are asserted as nullopt plus errors() non-empty; the exact message text is not pinned"
+      ]
+    },
+    {
+      "id": "script_host.cpp:173",
+      "lines": [
+        173
+      ],
+      "function": "og_trunc",
+      "anchor": "if (!(std::fabs(x) < 9223372036854775808.0))",
+      "condition": "!(fabs(x) < 2^63)",
+      "semantic": "og.trunc converts a float to an integer by C truncation; a value whose truncation does not fit int64 (or NaN) is a script error rather than undefined behaviour.",
+      "arms": [
+        {
+          "when": "|x| >= 2^63 or NaN",
+          "observable": "nullopt + 'og.trunc: value out of integer range'"
+        },
+        {
+          "when": "in range",
+          "observable": "trunc toward zero (og.trunc(-3.9) == -3)"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_script_host.cpp",
+          "test": "ScriptArith.narrowing_matches_cpp_modular_semantics"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "script_host.cpp:185",
+      "lines": [
+        185,
+        186,
+        190,
+        191,
+        192,
+        193,
+        194,
+        197
+      ],
+      "function": "push_det_tostring",
+      "anchor": "if (luaL_callmeta(L, idx, \"__tostring\")) {",
+      "condition": "luaL_callmeta(__tostring) ; !lua_isstring ; switch lua_type",
+      "semantic": "Script stringification is identical on every peer: tables/functions without __tostring print as their type name only (no addresses), scalars print normally, a __tostring metamethod is honoured but must return a string (else a script error). This is what keeps og.log output and anything derived from it deterministic across network peers.",
+      "arms": [
+        {
+          "when": "__tostring returns string",
+          "observable": "its result"
+        },
+        {
+          "when": "__tostring returns non-string",
+          "observable": "script error ''__tostring' must return a string'"
+        },
+        {
+          "when": "nil/boolean/number/string",
+          "observable": "normal Lua text ('42')"
+        },
+        {
+          "when": "table/function/userdata, no metamethod",
+          "observable": "the type name ('table', 'function')"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_script_host.cpp",
+          "test": "ScriptSandbox.tostring_is_address_free"
+        },
+        {
+          "file": "tests/unit/test_script_host.cpp",
+          "test": "ScriptSandbox.a_tostring_metamethod_returning_a_non_string_is_an_error"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "script_host.cpp:215",
+      "lines": [
+        215,
+        219
+      ],
+      "function": "og_log",
+      "anchor": "for (int i = 1; i <= n; i++) {",
+      "condition": "for i in 1..n ; i > 1",
+      "semantic": "og.log / print joins all its arguments with a TAB, deterministically stringified, into one log line and one TRACE('script', ...) line.",
+      "arms": [
+        {
+          "when": "one arg",
+          "observable": "line == that value"
+        },
+        {
+          "when": "several args",
+          "observable": "values joined by '\\t'"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_script_host.cpp",
+          "test": "ScriptSandbox.print_and_og_log_capture_lines_in_order"
+        }
+      ],
+      "missing_arms": [],
+      "note": [
+        "tests/unit/test_script_bindings_props.cpp: many tests assert 'name\\tvalue' log lines"
+      ]
+    },
+    {
+      "id": "script_host.cpp:231",
+      "lines": [
+        231
+      ],
+      "function": "og_log",
+      "anchor": "if (impl->log_lines.size() > kMaxStoredScriptLogLines) {",
+      "condition": "log_lines.size() > kMaxStoredScriptLogLines",
+      "semantic": "The stored script log keeps only the most recent kMaxStoredScriptLogLines lines (oldest evicted, eviction counted); the TRACE line fires for every call regardless.",
+      "arms": [
+        {
+          "when": "over cap",
+          "observable": "log().size()==cap, log().front() is the (n-cap)th line, dropped_log_line_count()==n-cap"
+        },
+        {
+          "when": "under cap",
+          "observable": "nothing dropped, count 0"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_script_host.cpp",
+          "test": "ScriptLogStore.log_keeps_the_most_recent_lines_and_counts_the_rest"
+        },
+        {
+          "file": "tests/unit/test_script_host.cpp",
+          "test": "ScriptLogStore.an_unfilled_log_drops_nothing"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "script_host.cpp:340",
+      "lines": [
+        340
+      ],
+      "function": "traceback_handler",
+      "anchor": "luaL_traceback(L, L, msg != nullptr ? msg : \"(non-string error)\", 1);",
+      "condition": "msg != nullptr ? msg : \"(non-string error)\"",
+      "semantic": "A script error always records a message with a traceback; an error raised with a non-string value (error({})) is recorded as '(non-string error)' plus traceback rather than an empty or crashing record.",
+      "arms": [
+        {
+          "when": "string error",
+          "observable": "errors().back().message starts with the message and contains 'stack traceback'"
+        },
+        {
+          "when": "non-string error value",
+          "observable": "message starts with '(non-string error)'"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [
+        {
+          "file": "tests/unit/test_script_host.cpp",
+          "test": "ScriptHostBasics.syntax_and_runtime_errors_are_recorded",
+          "note": "string arm only"
+        }
+      ],
+      "missing_arms": [],
+      "note": [
+        "non-string arm: no test found",
+        "UNASSERTED: non-string error object arm (error({}))"
+      ]
+    },
+    {
+      "id": "script_host.cpp:374",
+      "lines": [
+        374,
+        380
+      ],
+      "function": "ScriptHost::Impl::push_environment",
+      "anchor": "if (env_key.empty()) {",
+      "condition": "env_key.empty() ; rawget(cache, key) == LUA_TTABLE",
+      "semantic": "Each pack chunk runs in its own global environment over a shared read-only root; chunks registered under the same env key (one pack) share one environment, so a global set by one chunk is visible to the other, while an empty key gives a fresh isolated environment.",
+      "arms": [
+        {
+          "when": "empty key",
+          "observable": "writes invisible to other chunks (leak == nil)"
+        },
+        {
+          "when": "key seen before",
+          "observable": "same env: a global from chunk A readable in chunk B"
+        },
+        {
+          "when": "key new",
+          "observable": "fresh env created and cached"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_script_host.cpp",
+          "test": "ScriptSandbox.chunks_are_write_isolated_but_share_root"
+        },
+        {
+          "file": "tests/unit/test_script_host.cpp",
+          "test": "ScriptSandbox.chunks_with_same_env_key_share_state"
+        },
+        {
+          "file": "tests/unit/test_script_host.cpp",
+          "test": "PackLibTest.module_environments_are_isolated"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "script_host.cpp:404",
+      "lines": [
+        404,
+        405,
+        410
+      ],
+      "function": "ScriptHost::Impl::record_error",
+      "anchor": "for (ScriptError& e : errors) {",
+      "condition": "e.where == w && e.message == m ; errors.size() >= kMaxStoredScriptErrors",
+      "semantic": "A script error repeated every tick is stored once with a count (identity = where + message); distinct errors are stored up to a cap, keeping the FIRST ones and counting the rest as dropped; the TRACE('script_error') fires every time.",
+      "arms": [
+        {
+          "when": "same where+message",
+          "observable": "errors().size() unchanged, that record's count++"
+        },
+        {
+          "when": "new error, under cap",
+          "observable": "appended with count 1"
+        },
+        {
+          "when": "new error, at cap",
+          "observable": "not stored, dropped_error_count()++"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_script_host.cpp",
+          "test": "ScriptErrorStore.repeated_identical_error_collapses_into_one_record"
+        },
+        {
+          "file": "tests/unit/test_script_host.cpp",
+          "test": "ScriptErrorStore.distinct_errors_are_capped_with_the_first_ones_kept"
+        },
+        {
+          "file": "tests/unit/test_script_host.cpp",
+          "test": "ScriptErrorStore.distinct_where_and_message_are_both_part_of_identity"
+        },
+        {
+          "file": "tests/unit/test_script_bindings_errors.cpp",
+          "test": "ScriptBindingErrorTest.a_hook_failing_every_tick_records_one_error"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "script_host.cpp:426",
+      "lines": [
+        426,
+        431,
+        434,
+        440
+      ],
+      "function": "ScriptHost::Impl::protected_call",
+      "anchor": "if (outermost) {",
+      "condition": "outermost = entry_depth == 0 ; coverage::enabled()",
+      "semantic": "The instruction budget is per OUTERMOST host entry: a script call made from inside another script call (a hook that triggers another hook) shares the outer budget rather than getting a fresh one; with the coverage recorder on the same hook also records lines, with it off the hook is the bare budget hook (parity byte-exact).",
+      "arms": [
+        {
+          "when": "outermost entry",
+          "observable": "budget reset to instructions_per_call, hook installed, removed after"
+        },
+        {
+          "when": "nested entry",
+          "observable": "budget NOT reset: a nested runaway trips on the outer budget"
+        },
+        {
+          "when": "coverage enabled",
+          "observable": "lines recorded for the chunk (coverage dump)"
+        },
+        {
+          "when": "coverage disabled",
+          "observable": "no hit recorded; Lua denominator unchanged"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [
+        {
+          "file": "tests/unit/test_script_host.cpp",
+          "test": "ScriptCoverage.recorder_is_inert_when_disabled",
+          "note": "coverage arm asserted"
+        },
+        {
+          "file": "tests/unit/test_script_host.cpp",
+          "test": "ScriptCoverage.records_the_lines_a_chunk_actually_ran",
+          "note": "coverage arm asserted"
+        }
+      ],
+      "missing_arms": [],
+      "note": [
+        "nested-entry budget sharing: no test found",
+        "UNASSERTED: nested-entry budget sharing arm"
+      ]
+    },
+    {
+      "id": "script_host.cpp:443",
+      "lines": [
+        443
+      ],
+      "function": "ScriptHost::Impl::protected_call",
+      "anchor": "if (rc != LUA_OK) {",
+      "condition": "rc != LUA_OK",
+      "semantic": "A script that errors at run time never propagates into the engine: the call reports failure (the engine then falls back to its default behaviour for that hook) and the error is recorded.",
+      "arms": [
+        {
+          "when": "Lua error",
+          "observable": "returns false, errors() gains a record with where == chunk/hook name"
+        },
+        {
+          "when": "success",
+          "observable": "returns true, results on stack"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_script_host.cpp",
+          "test": "ScriptHostBasics.syntax_and_runtime_errors_are_recorded"
+        },
+        {
+          "file": "tests/unit/test_script_bindings_errors.cpp",
+          "test": "ScriptBindingErrorTest.an_erroring_hook_does_not_report_success"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "script_host.cpp:495",
+      "lines": [
+        495
+      ],
+      "function": "ScriptHost::run_chunk",
+      "anchor": "if (luaL_loadbufferx(L, source.data(), source.size(), name.c_str(),",
+      "condition": "luaL_loadbufferx(..., \"t\") != LUA_OK",
+      "semantic": "Pack scripts load as TEXT only: a syntax error or a precompiled bytecode chunk is a load error (recorded under the chunk name, chunk not run), never executed.",
+      "arms": [
+        {
+          "when": "syntax error",
+          "observable": "run_chunk false, errors() record with where == chunk name, no traceback"
+        },
+        {
+          "when": "bytecode chunk",
+          "observable": "false, error mentions binary/text mode, nothing ran"
+        },
+        {
+          "when": "valid text",
+          "observable": "chunk runs in its env"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_script_host.cpp",
+          "test": "ScriptHostSecurity.a_precompiled_binary_chunk_is_refused_not_run"
+        },
+        {
+          "file": "tests/unit/test_script_host.cpp",
+          "test": "ScriptHostBasics.syntax_and_runtime_errors_are_recorded"
+        },
+        {
+          "file": "tests/unit/test_script_host.cpp",
+          "test": "PackLibTest.module_chunks_are_text_only"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "script_host.cpp:530",
+      "lines": [
+        530,
+        552,
+        564,
+        576,
+        586
+      ],
+      "function": "eval_push / eval_*",
+      "anchor": "if (luaL_loadbufferx(L, src.data(), src.size(), \"=eval\", \"t\") !=",
+      "condition": "luaL_loadbufferx(\"return (expr)\") != LUA_OK ; !eval_push(...)",
+      "semantic": "An expression that does not compile or errors yields NO value (nullopt) and one 'eval' error, never a default 0/false/''.",
+      "arms": [
+        {
+          "when": "compile/runtime failure",
+          "observable": "nullopt for eval_integer/number/boolean/string, one error where=='eval'"
+        },
+        {
+          "when": "success",
+          "observable": "the value"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_script_host.cpp",
+          "test": "ScriptHostBasics.an_eval_that_does_not_compile_yields_no_value_and_one_error"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "script_host.cpp:555",
+      "lines": [
+        555,
+        567,
+        589
+      ],
+      "function": "eval_integer / eval_number / eval_string",
+      "anchor": "if (lua_isinteger(L, -1))",
+      "condition": "lua_isinteger ; lua_isnumber ; lua_type == LUA_TSTRING",
+      "semantic": "Eval coercions are strict: an integer read refuses a float, a string read refuses a number, a number read refuses a non-numeric value (answer nullopt, no error recorded); eval_boolean is Lua truthiness and always answers.",
+      "arms": [
+        {
+          "when": "eval_integer of 1.5",
+          "observable": "nullopt"
+        },
+        {
+          "when": "eval_integer of 7*6",
+          "observable": "42"
+        },
+        {
+          "when": "eval_number of 'x'",
+          "observable": "nullopt"
+        },
+        {
+          "when": "eval_string of 42",
+          "observable": "nullopt (no number->string coercion)"
+        },
+        {
+          "when": "eval_string of 'xy'",
+          "observable": "'xy'"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [
+        {
+          "file": "tests/unit/test_script_host.cpp",
+          "test": "ScriptHostBasics.eval_coercions_are_strict",
+          "note": "integer-refuses-float asserted; number-refuses-string and string-refuses-number not asserted"
+        }
+      ],
+      "missing_arms": [],
+      "note": [
+        "UNASSERTED: number-refuses-string and string-refuses-number arms"
+      ]
+    },
+    {
+      "id": "script_host.cpp:603",
+      "lines": [
+        603,
+        606,
+        608,
+        614
+      ],
+      "function": "ScriptHost::sandbox_has",
+      "anchor": "while (start <= dotted_path.size()) {",
+      "condition": "while start <= size ; dot == npos ; !lua_istable",
+      "semantic": "sandbox_has('a.b.c') answers whether the dotted name exists in the sandbox root, walking tables only; a path through a non-table is absent.",
+      "arms": [
+        {
+          "when": "every segment a table, leaf non-nil",
+          "observable": "true"
+        },
+        {
+          "when": "leaf nil",
+          "observable": "false"
+        },
+        {
+          "when": "intermediate non-table",
+          "observable": "false"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_script_host.cpp",
+          "test": "ScriptSandbox.a_dotted_path_through_a_non_table_is_absent"
+        },
+        {
+          "file": "tests/unit/test_script_host.cpp",
+          "test": "ScriptSandbox.banned_symbols_absent"
+        },
+        {
+          "file": "tests/unit/test_script_host.cpp",
+          "test": "ScriptSandbox.allowed_symbols_present"
+        }
+      ],
+      "missing_arms": []
+    }
+  ],
+  "other": [
+    {
+      "id": "script_host.cpp:76",
+      "lines": [
+        76
+      ],
+      "kind": "test-only",
+      "anchor": "if (ar->event == LUA_HOOKLINE) {",
+      "note": "budget_and_coverage_hook: line events go to the coverage recorder, count events to the budget; only installed when the coverage recorder is enabled (coverage builds). Recorder behaviour asserted by TEST(ScriptCoverage, records_the_lines_a_chunk_actually_ran)."
+    },
+    {
+      "id": "script_host.cpp:265",
+      "lines": [
+        265
+      ],
+      "kind": "loop",
+      "anchor": "for (size_t i = 0; i < count; i++) {",
+      "note": "copy_allowed: iterates the whitelist of base/math names into the sandbox root; the rule (exactly these names visible) is asserted by TEST(ScriptSandbox, banned_symbols_absent)/allowed_symbols_present."
+    },
+    {
+      "id": "script_host.cpp:352",
+      "lines": [
+        352
+      ],
+      "kind": "defensive",
+      "anchor": "if (L != nullptr)",
+      "note": "Impl destructor null guard before lua_close."
+    },
+    {
+      "id": "script_host.cpp:394",
+      "lines": [
+        394,
+        395
+      ],
+      "kind": "defensive",
+      "anchor": "const char* w = (where != nullptr) ? where : \"?\";",
+      "note": "record_error null-string substitutes ('?' / '(unknown error)'); reached only by a null where or a Lua error object lua_tostring cannot convert (already turned into text by traceback_handler)."
+    },
+    {
+      "id": "script_host.cpp:462",
+      "lines": [
+        462
+      ],
+      "kind": "defensive",
+      "anchor": "if (impl_->L == nullptr)",
+      "note": "lua_newstate failure -> throw bad_alloc; unreachable short of an allocator failure at VM creation."
+    }
+  ]
+}

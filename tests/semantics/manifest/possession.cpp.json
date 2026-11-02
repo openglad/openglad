@@ -1,0 +1,675 @@
+{
+  "path": "src/gameplay/possession.cpp",
+  "rules": [
+    {
+      "id": "possession.cpp:116",
+      "lines": [
+        116,
+        118,
+        123
+      ],
+      "function": "possess",
+      "anchor": "if (&rider == &host || !is_living(rider) || !is_living(host))",
+      "condition": "&rider==&host || !living; rider dead/hidden/dormant/linked; rider.real_team_num() != kNoTeam",
+      "semantic": "POSSESS needs a free rider: a visible, awake, living walker that is not already riding, not charmed, and not the host itself; otherwise 'CANNOT POSSESS' and nothing changes.",
+      "arms": [
+        {
+          "when": "rider is host / not living / dead / hidden / dormant / already linked / charmed",
+          "observable": "{false,'CANNOT POSSESS'}; no link, rider visible, teams unchanged"
+        },
+        {
+          "when": "valid rider",
+          "observable": "continues"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_possession.cpp",
+          "test": "KitPossession.undead_seat_and_linked_hosts_refuse"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "possession.cpp:125",
+      "lines": [
+        125
+      ],
+      "function": "possess",
+      "anchor": "if (host.dead() || host.hidden() || host.dormant())",
+      "condition": "host.dead() || hidden() || dormant()",
+      "semantic": "A dead, hidden or dormant body cannot be possessed ('NO HOST IN REACH').",
+      "arms": [
+        {
+          "when": "host dead/hidden/dormant",
+          "observable": "refused 'NO HOST IN REACH'"
+        },
+        {
+          "when": "else",
+          "observable": "continues"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_possession.cpp",
+          "test": "KitPossession.undead_seat_and_linked_hosts_refuse"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "possession.cpp:127",
+      "lines": [
+        127
+      ],
+      "function": "possess",
+      "anchor": "if (host.possess_link() != 0)",
+      "condition": "host.possess_link() != 0",
+      "semantic": "A body already possessed cannot be taken by a second ghost ('ALREADY POSSESSED').",
+      "arms": [
+        {
+          "when": "linked host",
+          "observable": "refused; original link intact"
+        },
+        {
+          "when": "free",
+          "observable": "continues"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_possession.cpp",
+          "test": "KitPossession.undead_seat_and_linked_hosts_refuse"
+        },
+        {
+          "file": "tests/unit/test_kit_possession.cpp",
+          "test": "KitPossession.two_ghosts_reach_for_one_host_in_one_tick"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "possession.cpp:129",
+      "lines": [
+        129
+      ],
+      "function": "possess",
+      "anchor": "if (is_undead(host))",
+      "condition": "is_undead(host)",
+      "semantic": "Undead bodies resist possession ('UNDEAD RESIST').",
+      "arms": [
+        {
+          "when": "undead host",
+          "observable": "refused"
+        },
+        {
+          "when": "living family",
+          "observable": "continues"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_possession.cpp",
+          "test": "KitPossession.undead_seat_and_linked_hosts_refuse"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "possession.cpp:132",
+      "lines": [
+        132
+      ],
+      "function": "possess / seat_driven",
+      "anchor": "if (seat_driven(host))",
+      "condition": "seat_driven(host): user() != -1 || act_type()==ACT_CONTROL",
+      "semantic": "A body a seat drives is a hero and is never possessed ('HERO RESISTS').",
+      "arms": [
+        {
+          "when": "host has a user tag or ACT_CONTROL",
+          "observable": "refused"
+        },
+        {
+          "when": "bot",
+          "observable": "continues"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_possession.cpp",
+          "test": "KitPossession.undead_seat_and_linked_hosts_refuse"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "possession.cpp:135",
+      "lines": [
+        135
+      ],
+      "function": "possess",
+      "anchor": "if (host.real_team_num() != kNoTeam)",
+      "condition": "host.real_team_num() != kNoTeam",
+      "semantic": "A charmed body cannot be possessed ('HOST IS CHARMED'): its true team already waits on its real_team_num.",
+      "arms": [
+        {
+          "when": "charmed host",
+          "observable": "refused"
+        },
+        {
+          "when": "uncharmed",
+          "observable": "possession links"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_possession.cpp",
+          "test": "KitPossession.undead_seat_and_linked_hosts_refuse"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "possession.cpp:154",
+      "lines": [
+        154
+      ],
+      "function": "possess",
+      "anchor": "if (rider.user() != -1)",
+      "condition": "rider.user() != -1",
+      "semantic": "When a player's ghost possesses, the player's seat tag MOVES to the host (host ACT_CONTROL, rider untagged); a bot ghost moves no tag. The host fights for the rider's team, the rider hides at its centre.",
+      "arms": [
+        {
+          "when": "player rider",
+          "observable": "host.user()==seat, ACT_CONTROL; rider user -1"
+        },
+        {
+          "when": "bot rider",
+          "observable": "host user -1, not ACT_CONTROL"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_possession.cpp",
+          "test": "KitPossession.possess_moves_the_seat_tag_hides_the_rider_and_flips_the_host"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "possession.cpp:170",
+      "lines": [
+        170
+      ],
+      "function": "release_possession",
+      "anchor": "if (either_side.possess_link() == 0)",
+      "condition": "either_side.possess_link() == 0",
+      "semantic": "Releasing a walker that is not possessed or riding does nothing.",
+      "arms": [
+        {
+          "when": "unlinked",
+          "observable": "nullptr, nothing changes"
+        },
+        {
+          "when": "linked",
+          "observable": "release"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_possession.cpp",
+          "test": "KitPossession.host_tick_counts_down_follows_and_releases_at_zero"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "possession.cpp:182",
+      "lines": [
+        179,
+        180,
+        182,
+        185,
+        186,
+        192,
+        194
+      ],
+      "function": "release_possession",
+      "anchor": "walker* const rider = from_rider ? &either_side : partner;",
+      "condition": "from_rider = either_side.hidden(); host != nullptr; original != kNoTeam; host->real_team_num() != kNoTeam",
+      "semantic": "When a possession ends the host goes home to its own team; if the host was charmed while possessed, its true team is written into the charm's record and the charm runs on (its expiry brings the host home). The hidden side is always the rider.",
+      "arms": [
+        {
+          "when": "uncharmed host",
+          "observable": "host.team_num()==original team; links/ticks 0"
+        },
+        {
+          "when": "host charmed meanwhile",
+          "observable": "host keeps the charmer's team; real_team_num()==original; after charm expiry team==original"
+        },
+        {
+          "when": "called from the rider or the host",
+          "observable": "same result"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_possession.cpp",
+          "test": "KitPossession.host_tick_counts_down_follows_and_releases_at_zero"
+        },
+        {
+          "file": "tests/unit/test_kit_possession.cpp",
+          "test": "KitPossession.thief_charm_on_a_possessed_host_does_not_corrupt_release"
+        },
+        {
+          "file": "tests/unit/test_kit_possession.cpp",
+          "test": "KitPossession.charmed_host_released_by_the_countdown"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "possession.cpp:201",
+      "lines": [
+        201
+      ],
+      "function": "release_possession",
+      "anchor": "if (rider == nullptr)",
+      "condition": "rider == nullptr",
+      "semantic": "If the rider has left the world, releasing the host only unlinks it (no reveal, no burst).",
+      "arms": [
+        {
+          "when": "rider gone",
+          "observable": "host unlinked; returns nullptr; no FAMILY_GHOST_SCARE spawned"
+        },
+        {
+          "when": "rider present",
+          "observable": "reveal"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": []
+    },
+    {
+      "id": "possession.cpp:204",
+      "lines": [
+        204,
+        210
+      ],
+      "function": "release_possession",
+      "anchor": "if (host != nullptr)",
+      "condition": "host != nullptr; host->user() != -1",
+      "semantic": "On release the ghost reappears at the host's centre and floor, and a seat driving the host goes back to the ghost.",
+      "arms": [
+        {
+          "when": "host driven by a seat",
+          "observable": "rider.user()==seat, ACT_CONTROL; host untagged"
+        },
+        {
+          "when": "bot",
+          "observable": "no tag moves"
+        },
+        {
+          "when": "any",
+          "observable": "rider centred on host, same floor, visible, scare burst spawned"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_possession.cpp",
+          "test": "KitPossession.host_tick_counts_down_follows_and_releases_at_zero"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "possession.cpp:223",
+      "lines": [
+        223
+      ],
+      "function": "release_possession",
+      "anchor": "if (host != nullptr && host->dead())",
+      "condition": "host != nullptr && host->dead()",
+      "semantic": "A ghost thrown out of a dying body announces '<name> is cast out'.",
+      "arms": [
+        {
+          "when": "host dead",
+          "observable": "notification 'X is cast out'"
+        },
+        {
+          "when": "timer/switch release",
+          "observable": "no such notification"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_possession.cpp",
+          "test": "KitPossession.host_death_releases_with_half_overkill"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "possession.cpp:226",
+      "lines": [
+        226,
+        230
+      ],
+      "function": "release_possession",
+      "anchor": "if (overkill > 0 && !rider->dead())",
+      "condition": "overkill > 0 && !rider->dead(); hp <= 0",
+      "semantic": "A ghost cast out of a killed body takes half the killing blow's overkill, and dies if that empties it.",
+      "arms": [
+        {
+          "when": "overkill>0",
+          "observable": "rider hp -= overkill/2"
+        },
+        {
+          "when": "that drops hp<=0",
+          "observable": "rider dead, death() run"
+        },
+        {
+          "when": "no overkill",
+          "observable": "rider hp unchanged"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_possession.cpp",
+          "test": "KitPossession.host_death_releases_with_half_overkill"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "possession.cpp:241",
+      "lines": [
+        241,
+        244
+      ],
+      "function": "possession_host_tick",
+      "anchor": "if (host.possess_link() == 0)",
+      "condition": "host.possess_link()==0; rider == nullptr || rider->dead()",
+      "semantic": "If the rider is gone or dead without its death releasing the host, the host just drops the link and keeps fighting on the team it has (the seat keeps driving it).",
+      "arms": [
+        {
+          "when": "unlinked host",
+          "observable": "nothing"
+        },
+        {
+          "when": "rider missing or dead",
+          "observable": "host link/ticks 0; team unchanged (rider's team)"
+        },
+        {
+          "when": "rider alive",
+          "observable": "follow + countdown"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_possession.cpp",
+          "test": "KitPossession.rider_gone_from_the_world_unlinks_the_host"
+        },
+        {
+          "file": "tests/unit/test_kit_possession.cpp",
+          "test": "KitPossession.rider_dies_mid_possession_on_a_mirror"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "possession.cpp:263",
+      "lines": [
+        263,
+        267
+      ],
+      "function": "possession_host_tick",
+      "anchor": "if (host.possess_ticks() > 0)",
+      "condition": "possess_ticks() > 0; == 0 after decrement",
+      "semantic": "A timed possession counts down one per host act and releases at zero; a possession of 0 ticks is permanent. Meanwhile the hidden rider follows the host's position and floor.",
+      "arms": [
+        {
+          "when": "ticks>1",
+          "observable": "ticks-1"
+        },
+        {
+          "when": "ticks 1",
+          "observable": "release this tick"
+        },
+        {
+          "when": "ticks 0",
+          "observable": "never released by the timer"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_possession.cpp",
+          "test": "KitPossession.host_tick_counts_down_follows_and_releases_at_zero"
+        },
+        {
+          "file": "tests/unit/test_kit_possession.cpp",
+          "test": "KitPossession.permanent_possession_never_counts_down"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "possession.cpp:274",
+      "lines": [
+        274
+      ],
+      "function": "kit_on_death",
+      "anchor": "if ((self.kit_state() & KIT_WARD) != 0 && self.stats() != nullptr)",
+      "condition": "(kit_state & KIT_WARD) && stats",
+      "semantic": "A skeleton under REASSEMBLE's ward does not die: the ward is used up, it stands back up at a quarter of max hp playing the teleport-in animation, its orders cleared, and the blow counts no kill; it announces '<name> reassembles!'.",
+      "arms": [
+        {
+          "when": "warded",
+          "observable": "dead()==0, hp==max/4, KIT_WARD cleared, ani ANI_TELE_IN, notification, killer gets no kill"
+        },
+        {
+          "when": "unwarded",
+          "observable": "death proceeds (possession checks)"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.warded_skeleton_stands_back_up_at_a_quarter"
+        },
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.unwarded_death_is_final"
+        },
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.warded_victim_is_not_a_kill"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "possession.cpp:289",
+      "lines": [
+        289,
+        291,
+        299,
+        300
+      ],
+      "function": "kit_on_death",
+      "anchor": "if (self.possess_link() == 0)",
+      "condition": "possess_link()==0; hidden(); hp<0 ? -hp : 0",
+      "semantic": "Death ends a possession: a rider dying while it rides frees the host (no overkill passed); a host dying frees the rider, passing the overkill (negative hp) to it.",
+      "arms": [
+        {
+          "when": "unlinked",
+          "observable": "no possession effect"
+        },
+        {
+          "when": "hidden rider dies",
+          "observable": "host freed and home, rider revealed as corpse"
+        },
+        {
+          "when": "host dies with hp<0",
+          "observable": "release with overkill -hp"
+        },
+        {
+          "when": "host dies hp>=0",
+          "observable": "release with 0"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_possession.cpp",
+          "test": "KitPossession.hidden_rider_death_releases_the_host"
+        },
+        {
+          "file": "tests/unit/test_kit_possession.cpp",
+          "test": "KitPossession.host_death_releases_with_half_overkill"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "possession.cpp:312",
+      "lines": [
+        312,
+        315
+      ],
+      "function": "possession_seat_redirect",
+      "anchor": "if (control->hidden() && control->possess_link() != 0)",
+      "condition": "control->hidden() && possess_link(); host alive && host->user()==player_num",
+      "semantic": "A seat whose hero rides a body drives that body, provided the body is alive and wears the seat's tag.",
+      "arms": [
+        {
+          "when": "hero rides a live body tagged for this seat",
+          "observable": "control = host"
+        },
+        {
+          "when": "host dead or tagged otherwise",
+          "observable": "control unchanged"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_possession.cpp",
+          "test": "KitPossession.seat_redirect_follows_host_then_returns"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "possession.cpp:326",
+      "lines": [
+        326,
+        329,
+        332
+      ],
+      "function": "possession_seat_redirect",
+      "anchor": "if (world.new_specials == 0 || control->user() != -1 ||",
+      "condition": "new_specials==0 || control->user()!=-1 || not Living -> return; scan for live Living with user()==player_num",
+      "semantic": "With New Specials on, after a release moved the seat's tag back to the hero, a seat still pointing at the untagged body follows its tag to the living hero (skipping an earlier dead hero that keeps a stale tag); classic worlds never run this scan.",
+      "arms": [
+        {
+          "when": "setting on, control untagged living",
+          "observable": "control = first live Living tagged for the seat"
+        },
+        {
+          "when": "setting off",
+          "observable": "control unchanged (classic claim)"
+        },
+        {
+          "when": "control still tagged",
+          "observable": "unchanged"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_possession.cpp",
+          "test": "KitPossession.seat_follows_the_ghost_out_of_a_dying_host"
+        },
+        {
+          "file": "tests/unit/test_kit_possession.cpp",
+          "test": "KitPossession.seat_redirect_passes_an_earlier_hero_corpse"
+        }
+      ],
+      "missing_arms": []
+    }
+  ],
+  "other": [
+    {
+      "id": "possession.cpp:65",
+      "lines": [
+        65
+      ],
+      "kind": "plumbing",
+      "anchor": "(fd != nullptr && fd->name != nullptr) ? fd->name : \"SOMEONE\";",
+      "note": "display-name fallback 'SOMEONE' for notification text"
+    },
+    {
+      "id": "possession.cpp:71",
+      "lines": [
+        71
+      ],
+      "kind": "defensive",
+      "anchor": "if (current_game != nullptr)",
+      "note": "no gameplay context: notification dropped"
+    },
+    {
+      "id": "possession.cpp:94",
+      "lines": [
+        94
+      ],
+      "kind": "defensive",
+      "anchor": "if (fx == nullptr)",
+      "note": "add_ob refused (world full): no exit burst"
+    },
+    {
+      "id": "possession.cpp:308",
+      "lines": [
+        308
+      ],
+      "kind": "defensive",
+      "anchor": "if (control == nullptr)",
+      "note": "null seat walker"
+    }
+  ]
+}

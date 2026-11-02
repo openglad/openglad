@@ -1,0 +1,589 @@
+{
+  "path": "packs/core/lib/kit_ghost.lua",
+  "rules": [
+    {
+      "id": "kit_ghost.lua:30",
+      "lines": [
+        30,
+        34
+      ],
+      "function": "wail",
+      "anchor": "if not foe then",
+      "condition": "not foe ; not bolt",
+      "semantic": "WAIL needs a living foe on the ghost's floor inside the scare radius (50+10/level): it launches a homing wail at the nearest; with none it refuses NO FOE TO WAIL AT; a full world refuses COULD NOT CREATE WAIL.",
+      "arms": [
+        {
+          "when": "foe in radius",
+          "observable": "core:wail FX with lifetime wail_hops, SOUND_FWIP"
+        },
+        {
+          "when": "none",
+          "observable": "'NO FOE TO WAIL AT'"
+        },
+        {
+          "when": "world full",
+          "observable": "'COULD NOT CREATE WAIL'"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_ghost.cpp",
+          "test": "KitGhost.wail_hops_foe_to_foe_and_frights_each_once"
+        },
+        {
+          "file": "tests/unit/test_kit_ghost.cpp",
+          "test": "KitGhost.a_full_world_refuses_the_casts_that_need_an_entity"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_ghost.lua:52",
+      "lines": [
+        52
+      ],
+      "function": "M.scare_or_wail",
+      "anchor": "if self:alternate_down() then",
+      "condition": "self:alternate_down()",
+      "semantic": "Slot 1 is the classic SCARE unshifted and WAIL (50 MP) shifted when New Specials puts it in play; both share one scare_rest and each refuses in its own name; SCARE rests with New Specials off too.",
+      "arms": [
+        {
+          "when": "shift, New Specials on",
+          "observable": "WAIL"
+        },
+        {
+          "when": "no shift or setting off",
+          "observable": "SCARE"
+        },
+        {
+          "when": "rest running",
+          "observable": "'SCARE' / 'WAIL' resting refusal"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_ghost.cpp",
+          "test": "KitGhost.wail_costs_50_and_is_scare_when_off"
+        },
+        {
+          "file": "tests/unit/test_kit_rests.cpp",
+          "test": "KitRests.scare_and_wail_share_an_eight_second_rest"
+        },
+        {
+          "file": "tests/unit/test_kit_rests.cpp",
+          "test": "KitRests.with_the_setting_off_the_classic_specials_rest_too"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_ghost.lua:74",
+      "lines": [
+        74,
+        77,
+        82,
+        83,
+        84
+      ],
+      "function": "wail_pays",
+      "anchor": "if #near ~= 1 then",
+      "condition": "#near ~= 1 ; not can_pay(1,true) ; far[i] ~= struck ; distance <= 120",
+      "semantic": "WAIL pays where a chain does: exactly one living foe inside the scare radius (a crowd is SCARE's), the 50 WAIL costs in hand, and a second living foe within a hop (120 px) of that one.",
+      "arms": [
+        {
+          "when": "one foe + another within 120 of it, 50 MP",
+          "observable": "true"
+        },
+        {
+          "when": "two or more in radius",
+          "observable": "false"
+        },
+        {
+          "when": "40 MP",
+          "observable": "false"
+        },
+        {
+          "when": "lone foe",
+          "observable": "false"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_bot_gates_kits.cpp",
+          "test": "GameplayFixesBots.ghost_wail_takes_a_chain_and_scare_takes_a_crowd"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_ghost.lua:99",
+      "lines": [
+        99,
+        102
+      ],
+      "function": "M.wail_gate",
+      "anchor": "if og.match_setting(\"new_specials\") == 0 then",
+      "condition": "new_specials == 0 ; wail_pays",
+      "semantic": "A bot ghost's slot 1 is two specials: WAIL (shift 1) where it pays, else SCARE (shift 0) on the SCARE gate's answer; the SCARE gate is always asked first for its draw; with New Specials off the SCARE answer stands and the engine's coin is untouched.",
+      "arms": [
+        {
+          "when": "off",
+          "observable": "scare answer, shifter_down unchanged"
+        },
+        {
+          "when": "chain",
+          "observable": "true, shift 1 (on both Gameplay Fixes values)"
+        },
+        {
+          "when": "crowd / lone / 40 MP",
+          "observable": "scare answer, shift 0"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_bot_gates_kits.cpp",
+          "test": "GameplayFixesBots.ghost_wail_takes_a_chain_and_scare_takes_a_crowd"
+        },
+        {
+          "file": "tests/unit/test_bot_gates_kits.cpp",
+          "test": "GameplayFixesBots.ghost_scare_wants_a_living_foe_inside_the_scare_radius"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_ghost.lua:120",
+      "lines": [
+        120,
+        123,
+        128,
+        144
+      ],
+      "function": "M.siphon",
+      "anchor": "if phased(self) then",
+      "condition": "phased ; is_busy ; not foe ; heal > 0",
+      "semantic": "SIPHON touches the nearest living foe within siphon_reach with its own damage and heals the ghost half the damage dealt (truncated, never past max). A touch that finds a foe costs one attack pause (busy += fire_frequency), even when it deals 0; an empty touch spends the mana but adds NO pause (it returns before set_busy). A phased or busy ghost refuses.",
+      "arms": [
+        {
+          "when": "phased",
+          "observable": "false, 'PHASED'"
+        },
+        {
+          "when": "busy",
+          "observable": "false, 'SPECIAL BUSY'"
+        },
+        {
+          "when": "no foe within siphon_reach",
+          "observable": "true, MP spent, notification \"<name>'s touch finds nothing\", busy unchanged (0)"
+        },
+        {
+          "when": "foe touched, dealt d > 1",
+          "observable": "ghost hp += trunc(d/2) clamped to max, foe hp -= d, busy += fire_frequency"
+        },
+        {
+          "when": "foe touched, dealt 0 or 1 (resisted)",
+          "observable": "no heal, MP spent, busy += fire_frequency even when dealt 0"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_ghost.cpp",
+          "test": "KitGhost.siphon_heals_half_of_damage_dealt_never_above_max"
+        },
+        {
+          "file": "tests/unit/test_kit_ghost.cpp",
+          "test": "KitGhost.empty_siphon_still_spends",
+          "note": "empty touch: EXPECT_FLOAT_EQ(0.0f, ghost->busy()); resisted touch: busy == fire_frequency"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_ghost.lua:153",
+      "lines": [
+        153,
+        156,
+        161,
+        165
+      ],
+      "function": "M.ai_siphon",
+      "anchor": "if og.match_setting(\"new_specials\") == 0 then",
+      "condition": "off ; phased ; busy ; hp >= 0.8 max",
+      "semantic": "A bot ghost siphons when under 80 % health with a living foe within 24 on its floor, never phased or busy.",
+      "arms": [
+        {
+          "when": "off",
+          "observable": "true"
+        },
+        {
+          "when": "phased",
+          "observable": "false"
+        },
+        {
+          "when": "busy",
+          "observable": "false"
+        },
+        {
+          "when": "hp >= 80%",
+          "observable": "false"
+        },
+        {
+          "when": "hurt, foe touching",
+          "observable": "true"
+        },
+        {
+          "when": "no foe within 24",
+          "observable": "false"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_ghost.cpp",
+          "test": "KitGhost.ai_siphon_fires_when_hurt_and_a_foe_is_touching"
+        },
+        {
+          "file": "tests/unit/test_gameplay_fixes_bots.cpp",
+          "test": "GameplayFixesBots.a_busy_bot_never_rolls_a_busy_cast_with_the_setting_on"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_ghost.lua:180",
+      "lines": [
+        180,
+        183,
+        186,
+        189
+      ],
+      "function": "host_refusal",
+      "anchor": "if og.family_flag(\"living\", foe:family(), \"is_undead\") then",
+      "condition": "is_undead ; seat_driven ; possess_link ~= 0 ; real_team_num ~= 255",
+      "semantic": "POSSESS can never take an undead, a player-driven hero, a host already possessed or a charmed host; each refusal is named and free.",
+      "arms": [
+        {
+          "when": "undead",
+          "observable": "'UNDEAD RESIST'"
+        },
+        {
+          "when": "seat-driven",
+          "observable": "'HERO RESISTS'"
+        },
+        {
+          "when": "linked",
+          "observable": "'ALREADY POSSESSED'"
+        },
+        {
+          "when": "charmed",
+          "observable": "'HOST IS CHARMED'"
+        },
+        {
+          "when": "else",
+          "observable": "nil"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_ghost.cpp",
+          "test": "KitGhost.possess_refusals_spend_nothing_and_draw_nothing"
+        },
+        {
+          "file": "tests/unit/test_kit_possession.cpp",
+          "test": "KitPossession.undead_seat_and_linked_hosts_refuse"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_ghost.lua:205",
+      "lines": [
+        205
+      ],
+      "function": "possess_ticks",
+      "anchor": "if gap < 0 then",
+      "condition": "gap < 0",
+      "semantic": "A possession lasts possess_base ticks on an equal-level host, growing with ln(1+level gap) to possess_cap; a host that out-levels the ghost gets only possess_min; never 0.",
+      "arms": [
+        {
+          "when": "ghost below host",
+          "observable": "possess_min (120)"
+        },
+        {
+          "when": "gap g",
+          "observable": "base + scale*ln100[g]/100, capped"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_ghost.cpp",
+          "test": "KitGhost.duration_follows_the_log_curve_and_caps_at_a_minute"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_ghost.lua:214",
+      "lines": [
+        214,
+        219,
+        224,
+        228,
+        232,
+        234,
+        243,
+        259
+      ],
+      "function": "M.possess",
+      "anchor": "if phased(self) then",
+      "condition": "phased ; real_team_num ~= 255 ; not foe ; refusal ; has_guy (else) ; con_roll > level_roll ; not ok",
+      "semantic": "POSSESS rides the nearest living foe in reach: phased/charmed ghosts and unreachable or refused hosts are refused free; otherwise a resist roll (level roll then constitution roll; a hero's constitution, else hp/30) decides: resisted spends the mana and the host strikes back at once; taken, the engine moves the seat, hides the ghost and counts the ride down; an engine refusal passes through.",
+      "arms": [
+        {
+          "when": "phased",
+          "observable": "'PHASED'"
+        },
+        {
+          "when": "charmed ghost",
+          "observable": "'CANNOT POSSESS'"
+        },
+        {
+          "when": "no host",
+          "observable": "'NO HOST IN REACH'"
+        },
+        {
+          "when": "resisted",
+          "observable": "true, MP spent once, foe:foe()==ghost, ghost hit, 'resisted!' notification, possess_link 0"
+        },
+        {
+          "when": "taken",
+          "observable": "host possess_link set, ghost hidden, scare burst picture, SOUND_FWIP"
+        },
+        {
+          "when": "engine refusal",
+          "observable": "false with its reason"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_ghost.cpp",
+          "test": "KitGhost.possess_resist_roll_uses_howl_order"
+        },
+        {
+          "file": "tests/unit/test_kit_ghost.cpp",
+          "test": "KitGhost.possess_refusals_spend_nothing_and_draw_nothing"
+        },
+        {
+          "file": "tests/unit/test_kit_ghost.cpp",
+          "test": "KitGhost.possess_reads_a_heros_constitution_and_passes_engine_refusals"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_ghost.lua:276",
+      "lines": [
+        276,
+        279,
+        283,
+        286
+      ],
+      "function": "M.ai_possess",
+      "anchor": "if og.match_setting(\"new_specials\") == 0 then",
+      "condition": "off ; phased or charmed ; not foe(24) ; host_refusal",
+      "semantic": "A bot ghost possesses a living foe within 24 on its floor that it may take and that does not out-level it; never phased or charmed.",
+      "arms": [
+        {
+          "when": "off",
+          "observable": "true"
+        },
+        {
+          "when": "phased / charmed",
+          "observable": "false"
+        },
+        {
+          "when": "no foe within 24",
+          "observable": "false"
+        },
+        {
+          "when": "refused host",
+          "observable": "false"
+        },
+        {
+          "when": "ghost.level >= host.level",
+          "observable": "true; host higher -> false"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_ghost.cpp",
+          "test": "KitGhost.ai_possess_fires_when_a_weaker_bot_foe_is_touching"
+        },
+        {
+          "file": "tests/unit/test_kit_ghost.cpp",
+          "test": "KitGhost.bot_ghost_possesses_an_adjacent_bot_foe_only"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_ghost.lua:314",
+      "lines": [
+        314,
+        323
+      ],
+      "function": "veil",
+      "anchor": "if not owner then",
+      "condition": "not owner ; lifetime <= 0",
+      "semantic": "PHASE's veil keeps the ghost busy (>= 2) and spectral for phase_ticks, then restores it: phantom and no-collide off, back in the obmap, invulnerability and speed bonus cleared; an orphan veil dies at once.",
+      "arms": [
+        {
+          "when": "owner gone",
+          "observable": "marker dead"
+        },
+        {
+          "when": "ticking",
+          "observable": "owner busy >= 2"
+        },
+        {
+          "when": "expired",
+          "observable": "BIT_PHANTOM/NO_COLLIDE 0, ignore 0, invulnerable_left 0, speed_bonus 0"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_ghost.cpp",
+          "test": "KitGhost.phase_doubles_speed_blocks_attacks_and_expires_clean"
+        },
+        {
+          "file": "tests/unit/test_kit_ghost.cpp",
+          "test": "KitGhost.phase_is_not_in_play_when_off_and_an_orphan_veil_dies"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_ghost.lua:333",
+      "lines": [
+        333,
+        338
+      ],
+      "function": "M.phase",
+      "anchor": "if km.find(self, km.PHASE_VEIL) then",
+      "condition": "km.find(PHASE_VEIL) ; not marker",
+      "semantic": "PHASE refuses ALREADY PHASED while its veil stands (and COULD NOT PHASE in a full world); otherwise the ghost becomes invulnerable, twice as fast, phantom, out of collisions and too busy to swing for phase_ticks.",
+      "arms": [
+        {
+          "when": "veil stands",
+          "observable": "'ALREADY PHASED'"
+        },
+        {
+          "when": "world full",
+          "observable": "'COULD NOT PHASE'"
+        },
+        {
+          "when": "cast",
+          "observable": "invulnerable_left = speed_bonus_left = 48, BIT_PHANTOM, BIT_NO_COLLIDE, busy >= 2"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_ghost.cpp",
+          "test": "KitGhost.phase_doubles_speed_blocks_attacks_and_expires_clean"
+        },
+        {
+          "file": "tests/unit/test_kit_ghost.cpp",
+          "test": "KitGhost.a_full_world_refuses_the_casts_that_need_an_entity"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_ghost.lua:359",
+      "lines": [
+        359,
+        363,
+        368,
+        371,
+        376
+      ],
+      "function": "M.ai_phase",
+      "anchor": "if og.match_setting(\"new_specials\") == 0 then",
+      "condition": "off ; hp >= 0.3 max ; veil stands ; no foe within 48 ; G.resting(SCARE) ; not foes_within(scare_radius)",
+      "semantic": "A bot ghost phases below 30 % health with a living foe within 48 on its floor, not already phased, and only while SCARE rests (SCARE is the cheaper answer to a foe at hand).",
+      "arms": [
+        {
+          "when": "off",
+          "observable": "true"
+        },
+        {
+          "when": "hp >= 30%",
+          "observable": "false"
+        },
+        {
+          "when": "veil stands",
+          "observable": "false"
+        },
+        {
+          "when": "no foe within 48",
+          "observable": "false"
+        },
+        {
+          "when": "SCARE resting",
+          "observable": "true"
+        },
+        {
+          "when": "SCARE ready",
+          "observable": "false"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_ghost.cpp",
+          "test": "KitGhost.ai_phase_fires_when_low_and_a_foe_is_close"
+        },
+        {
+          "file": "tests/unit/test_bot_gates_kits.cpp",
+          "test": "GameplayFixesBots.ghost_phase_defers_to_a_scare_it_could_cast"
+        }
+      ],
+      "missing_arms": []
+    }
+  ],
+  "other": [
+    {
+      "id": "kit_ghost.lua:265",
+      "lines": [
+        265
+      ],
+      "kind": "defensive",
+      "anchor": "if burst then",
+      "note": "add_ob nil (world full): the entrance scare burst picture is skipped"
+    }
+  ]
+}

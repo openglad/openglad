@@ -1,0 +1,228 @@
+{
+  "path": "src/gameplay/astar.cpp",
+  "rules": [
+    {
+      "id": "astar.cpp:85",
+      "lines": [
+        85,
+        87,
+        108,
+        116,
+        120
+      ],
+      "function": "OpenQueue::push / update",
+      "anchor": "while (true)",
+      "condition": "push: insert before first strictly greater cost; update: hop to head if below predecessor, then slide right past cheaper",
+      "semantic": "Among equally cheap frontier cells the one found first is expanded first (insertion-order ties, MicroPather's queue); so equal-cost routes always resolve the same way and match the old game's paths.",
+      "arms": [
+        {
+          "when": "tie with an existing run",
+          "observable": "new node goes after the run"
+        },
+        {
+          "when": "relaxed node now cheaper than predecessor",
+          "observable": "moves to the head then to the front of its cost run"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [
+        {
+          "file": "tests/unit/test_astar.cpp",
+          "test": "AStar.solve_is_deterministic_across_repeats",
+          "note": "determinism only, not tie order"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "astar.cpp:178",
+      "lines": [
+        178,
+        181,
+        194
+      ],
+      "function": "AStar::Impl::reconstruct",
+      "anchor": "for (Node* it = goal; it->parent != nullptr; it = it->parent)",
+      "condition": "count < 3",
+      "semantic": "A found route always begins at the start and ends at the goal; a one-step route collapses to just those two states.",
+      "arms": [
+        {
+          "when": "goal one step away (or start)",
+          "observable": "path size 2 [start,end]"
+        },
+        {
+          "when": "longer",
+          "observable": "[start, intermediates..., end]"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_astar.cpp",
+          "test": "AStar.adjacent_step_collapses_to_two_node_path"
+        },
+        {
+          "file": "tests/unit/test_astar.cpp",
+          "test": "AStar.straight_line_open_grid_is_optimal"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "astar.cpp:232",
+      "lines": [
+        232
+      ],
+      "function": "AStar::solve",
+      "anchor": "if (start == end)",
+      "condition": "start == end",
+      "semantic": "Asking for a route to where you already stand returns no path (StartEndSame).",
+      "arms": [
+        {
+          "when": "start==end",
+          "observable": "StartEndSame, empty path, cost 0"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_astar.cpp",
+          "test": "AStar.start_equals_end_yields_empty_path"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "astar.cpp:247",
+      "lines": [
+        247,
+        251
+      ],
+      "function": "AStar::solve",
+      "anchor": "while (!open.empty())",
+      "condition": "while (!open.empty()); node->state == end",
+      "semantic": "The search stops at the first time the goal is popped and returns its accumulated cost; if the frontier empties first there is no route.",
+      "arms": [
+        {
+          "when": "goal popped",
+          "observable": "Solved, cost = g(goal)"
+        },
+        {
+          "when": "frontier exhausted",
+          "observable": "NoSolution, empty path"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_astar.cpp",
+          "test": "AStar.returned_cost_matches_summed_edge_costs"
+        },
+        {
+          "file": "tests/unit/test_astar.cpp",
+          "test": "AStar.no_solution_when_goal_is_walled_off"
+        },
+        {
+          "file": "tests/unit/test_astar.cpp",
+          "test": "AStar.no_solution_when_start_is_boxed_in"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "astar.cpp:263",
+      "lines": [
+        263,
+        265
+      ],
+      "function": "AStar::solve",
+      "anchor": "for (const StateCost& edge : impl_->neighbors)",
+      "condition": "edge.cost == kImpassableCost",
+      "semantic": "An edge marked impassable is never taken.",
+      "arms": [
+        {
+          "when": "impassable edge",
+          "observable": "ignored"
+        },
+        {
+          "when": "finite",
+          "observable": "considered"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_astar.cpp",
+          "test": "AStar.impassable_edges_are_ignored"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "astar.cpp:271",
+      "lines": [
+        271,
+        276,
+        285,
+        289
+      ],
+      "function": "AStar::solve",
+      "anchor": "if (child->in_open || child->in_closed)",
+      "condition": "child in open/closed: relax only if strictly cheaper; update queue only if open; else first visit push",
+      "semantic": "A frontier cell is re-parented only by a strictly cheaper route; a cell already expanded gets the cheaper cost/parent but is never re-expanded (MicroPather behaviour, kept for byte-identical paths).",
+      "arms": [
+        {
+          "when": "open, strictly cheaper",
+          "observable": "parent/cost updated, queue reordered"
+        },
+        {
+          "when": "closed, strictly cheaper",
+          "observable": "parent/cost updated, NOT reopened"
+        },
+        {
+          "when": "not cheaper",
+          "observable": "unchanged"
+        },
+        {
+          "when": "unseen",
+          "observable": "pushed"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [
+        {
+          "file": "tests/unit/test_astar.cpp",
+          "test": "AStar.prefers_cheaper_detour_over_expensive_direct_cell",
+          "note": "open-relax arm"
+        }
+      ],
+      "missing_arms": []
+    }
+  ],
+  "other": [
+    {
+      "id": "astar.cpp:51",
+      "lines": [
+        51
+      ],
+      "kind": "plumbing",
+      "anchor": "if (node.cost_from_start < FLT_MAX && node.est_to_goal < FLT_MAX)",
+      "note": "f=g+h, infinity when either component is unreachable"
+    },
+    {
+      "id": "astar.cpp:163",
+      "lines": [
+        163
+      ],
+      "kind": "plumbing",
+      "anchor": "if (inserted)",
+      "note": "node created on first visit"
+    }
+  ]
+}

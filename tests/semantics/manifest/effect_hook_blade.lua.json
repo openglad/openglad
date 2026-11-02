@@ -1,0 +1,423 @@
+{
+  "path": "packs/core/lib/effect_hook_blade.lua",
+  "rules": [
+    {
+      "id": "effect_hook_blade.lua:20",
+      "lines": [
+        20
+      ],
+      "function": "hook_radius",
+      "anchor": "if age <= turn then",
+      "condition": "age <= turn",
+      "semantic": "The captain's HOOK BLADE spirals out 2 px a tick from 12 px to 60 px over 24 ticks, then back in at the same pace to 12 px at tick 48.",
+      "arms": [
+        {
+          "when": "age <= 24",
+          "observable": "radius = 12 + 2*age"
+        },
+        {
+          "when": "age > 24",
+          "observable": "radius = 60 - 2*(age-24)"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_captain.cpp",
+          "test": "KitCaptain.hook_spirals_out_and_back"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "effect_hook_blade.lua:50",
+      "lines": [
+        50,
+        51
+      ],
+      "function": "touched_foe",
+      "anchor": "if living and same_floor then",
+      "condition": "living and same_floor; hits(blade box grown 4 px, foe box)",
+      "semantic": "The blade snags the first living foe on its floor whose box touches the blade's box grown 4 px each side (so a foe cannot slip between two orbit steps); generators and other-floor foes are never snagged.",
+      "arms": [
+        {
+          "when": "living foe on the floor touching the grown box",
+          "observable": "returned -> kc.snag"
+        },
+        {
+          "when": "generator or other floor",
+          "observable": "skipped"
+        },
+        {
+          "when": "none touching",
+          "observable": "nil: the blade keeps spinning"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_captain.cpp",
+          "test": "KitCaptain.hook_reels_the_foe_to_the_captains_feet"
+        },
+        {
+          "file": "tests/unit/test_kit_captain.cpp",
+          "test": "KitCaptain.a_late_snag_still_reels_home"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "effect_hook_blade.lua:62",
+      "lines": [
+        62
+      ],
+      "function": "reel_axis",
+      "anchor": "if to > from then",
+      "condition": "to > from",
+      "semantic": "A reel step moves the snagged foe at most hook_reel_step px per axis toward the spot centred on the captain, never past it.",
+      "arms": [
+        {
+          "when": "target ahead",
+          "observable": "from + min(step, gap)"
+        },
+        {
+          "when": "target behind or equal",
+          "observable": "from - min(step, gap) (0 when equal)"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_captain.cpp",
+          "test": "KitCaptain.hook_reels_a_foe_in_from_the_west"
+        },
+        {
+          "file": "tests/unit/test_kit_captain.cpp",
+          "test": "KitCaptain.reel_never_hauls_a_foe_past_the_captain"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "effect_hook_blade.lua:77",
+      "lines": [
+        77
+      ],
+      "function": "reel",
+      "anchor": "if not foe or foe:floor() ~= owner:floor() then",
+      "condition": "not foe or foe:floor() ~= owner:floor()",
+      "semantic": "A reel ends where the foe stands when the snagged foe has died (effect::act let go of it) or the captain is on another floor.",
+      "arms": [
+        {
+          "when": "foe gone/dead",
+          "observable": "blade dead; foe not moved"
+        },
+        {
+          "when": "captain changed floor",
+          "observable": "blade dead; foe position unchanged"
+        },
+        {
+          "when": "else",
+          "observable": "reel step"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_captain.cpp",
+          "test": "KitCaptain.reel_ends_when_the_foe_falls_or_the_captain_leaves_the_floor"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "effect_hook_blade.lua:92",
+      "lines": [
+        92,
+        94,
+        97
+      ],
+      "function": "reel",
+      "anchor": "if at_feet then",
+      "condition": "at_feet / rx ~= nil / max(dx,dy) <= step",
+      "semantic": "When the reel step would bring the foe against the captain (his box grown 2 px) the foe is set down on the clear ring spot beside him, but only if that spot is no further than one reel step from where the foe is; otherwise (or with no ring spot) the foe stays put; either way the reel ends.",
+      "arms": [
+        {
+          "when": "ring spot within one step",
+          "observable": "foe:setxy(ring spot); blade centred on the foe; blade dead"
+        },
+        {
+          "when": "ring spot farther than a step",
+          "observable": "foe not moved; blade dead"
+        },
+        {
+          "when": "no ring spot",
+          "observable": "foe not moved; blade dead"
+        },
+        {
+          "when": "not yet at feet",
+          "observable": "normal step (effect_hook_blade.lua:105)"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_captain.cpp",
+          "test": "KitCaptain.hook_reels_the_foe_to_the_captains_feet"
+        },
+        {
+          "file": "tests/unit/test_kit_captain.cpp",
+          "test": "KitCaptain.reel_never_hauls_a_foe_past_the_captain"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "effect_hook_blade.lua:105",
+      "lines": [
+        105
+      ],
+      "function": "reel",
+      "anchor": "if not og.spawn_spot_clear(foe, nx, ny) then",
+      "condition": "not og.spawn_spot_clear(foe, nx, ny)",
+      "semantic": "A reel step that would put the foe into a wall or another walker ends the reel where the foe stands.",
+      "arms": [
+        {
+          "when": "step blocked",
+          "observable": "foe position unchanged; blade dead"
+        },
+        {
+          "when": "step clear",
+          "observable": "foe:setxy(nx,ny); blade rides it"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_captain.cpp",
+          "test": "KitCaptain.reel_stops_at_a_wall"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "effect_hook_blade.lua:119",
+      "lines": [
+        119
+      ],
+      "function": "M.on_act (core:hook_blade)",
+      "anchor": "if not owner or owner:dead() ~= 0 then",
+      "condition": "not owner or owner:dead() ~= 0",
+      "semantic": "The hook blade dies with its captain.",
+      "arms": [
+        {
+          "when": "captain dead/gone",
+          "observable": "blade dead at once"
+        },
+        {
+          "when": "alive",
+          "observable": "continues"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_captain.cpp",
+          "test": "KitCaptain.hook_blade_dies_with_its_captain"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "effect_hook_blade.lua:128",
+      "lines": [
+        128
+      ],
+      "function": "M.on_act (core:hook_blade)",
+      "anchor": "if lifetime < 1 then",
+      "condition": "lifetime < 1",
+      "semantic": "The blade's lifetime counts the spiral (48 ticks) and, once a foe is snagged, the reel instead (reset by kit_captain.snag), so a late snag is never cut short; at 0 the blade retires.",
+      "arms": [
+        {
+          "when": "lifetime < 1",
+          "observable": "blade dead"
+        },
+        {
+          "when": "else",
+          "observable": "lifetime -1 then spiral or reel"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_captain.cpp",
+          "test": "KitCaptain.hook_spirals_out_and_back"
+        },
+        {
+          "file": "tests/unit/test_kit_captain.cpp",
+          "test": "KitCaptain.a_late_snag_still_reels_home"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "effect_hook_blade.lua:135",
+      "lines": [
+        135
+      ],
+      "function": "M.on_act (core:hook_blade)",
+      "anchor": "if self:lineofsight() > 0 then",
+      "condition": "self:lineofsight() > 0",
+      "semantic": "A blade with a foe on the hook (lineofsight 1, set by snag) reels instead of spinning: it no longer guards against shots nor snags another foe.",
+      "arms": [
+        {
+          "when": "on the hook",
+          "observable": "reel(); no projectile eating, no new snag"
+        },
+        {
+          "when": "spinning",
+          "observable": "orbit + guard + snag"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "executed-only",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_captain.cpp",
+          "test": "KitCaptain.hook_reels_the_foe_to_the_captains_feet",
+          "note": "reel arm reached; the no-guard-while-reeling consequence is not asserted"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "effect_hook_blade.lua:153",
+      "lines": [
+        153
+      ],
+      "function": "M.on_act (core:hook_blade)",
+      "anchor": "if not weapon:blocks_placement() then",
+      "condition": "not weapon:blocks_placement()",
+      "semantic": "While it spins, the hook blade cuts down foe shots within twice its size, each costing it the shot's damage in hp; solid scenery weapons (bone wall, war banner: blocks_placement) are passed by, never destroyed.",
+      "arms": [
+        {
+          "when": "foe projectile in range",
+          "observable": "weapon dead; blade hp -= weapon damage"
+        },
+        {
+          "when": "foe bone wall / banner in range",
+          "observable": "untouched; blade hp unchanged"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_captain.cpp",
+          "test": "KitCaptain.hook_eats_incoming_projectiles"
+        },
+        {
+          "file": "tests/unit/test_kit_captain.cpp",
+          "test": "KitCaptain.hook_guard_passes_scenery_by"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "effect_hook_blade.lua:160",
+      "lines": [
+        160
+      ],
+      "function": "M.on_act (core:hook_blade)",
+      "anchor": "if self.hp <= 0 then",
+      "condition": "self.hp <= 0",
+      "semantic": "A hook blade that has eaten shots worth its 30 hp breaks and snags nothing that tick.",
+      "arms": [
+        {
+          "when": "hp <= 0 after the guard",
+          "observable": "blade dead; no snag even if a foe touches"
+        },
+        {
+          "when": "hp > 0",
+          "observable": "snag check"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "executed-only",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_captain.cpp",
+          "test": "KitCaptain.hook_eats_incoming_projectiles",
+          "note": "if it drains to 0; verify"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "effect_hook_blade.lua:166",
+      "lines": [
+        166,
+        167
+      ],
+      "function": "M.on_act (core:hook_blade)",
+      "anchor": "if foe then",
+      "condition": "if foe / not kc.snag(self, owner, foe)",
+      "semantic": "A spinning blade that touches a foe snags it (kit_captain.snag: lineofsight 1, leader, reel lifetime); a snag the kit refuses (e.g. the blow killed the foe) retires the blade without reeling.",
+      "arms": [
+        {
+          "when": "touched foe, snag accepted",
+          "observable": "blade leader == foe, lineofsight 1"
+        },
+        {
+          "when": "snag refused (foe dies of the blow)",
+          "observable": "blade dead; foe not moved"
+        },
+        {
+          "when": "no foe",
+          "observable": "keep spinning"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_captain.cpp",
+          "test": "KitCaptain.hook_kills_a_dying_foe_without_reeling_it"
+        },
+        {
+          "file": "tests/unit/test_kit_captain.cpp",
+          "test": "KitCaptain.hook_reels_the_foe_to_the_captains_feet"
+        }
+      ],
+      "missing_arms": []
+    }
+  ],
+  "other": [
+    {
+      "id": "effect_hook_blade.lua:46",
+      "lines": [
+        46
+      ],
+      "kind": "loop",
+      "anchor": "for i = 1, #foes do",
+      "note": "scan of foes within 64; rule at effect_hook_blade.lua:50"
+    },
+    {
+      "id": "effect_hook_blade.lua:151",
+      "lines": [
+        151
+      ],
+      "kind": "loop",
+      "anchor": "for i = 1, #weapons do",
+      "note": "iterates foe weapons in range; rule at effect_hook_blade.lua:153"
+    }
+  ]
+}

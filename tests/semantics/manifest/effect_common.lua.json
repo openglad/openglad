@@ -1,0 +1,58 @@
+{
+  "path": "packs/core/lib/effect_common.lua",
+  "rules": [
+    {
+      "id": "effect_common.lua:13",
+      "lines": [
+        13,
+        17,
+        21,
+        25
+      ],
+      "function": "M.hits",
+      "anchor": "if x > x2right then",
+      "condition": "x > x2+xs2 / x+xs < x2 / y > y2+ys2 / y+ys < y2",
+      "semantic": "Effects touch when their axis-aligned boxes overlap or merely share an edge (inclusive bounds): a box exactly one pixel past the other's edge does not touch.",
+      "arms": [
+        {
+          "when": "overlap or edge-touch on both axes",
+          "observable": "true"
+        },
+        {
+          "when": "separated on x",
+          "observable": "false"
+        },
+        {
+          "when": "separated on y",
+          "observable": "false"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_effect_act.cpp",
+          "test": "EffectAct.hits_overlap2"
+        },
+        {
+          "file": "tests/integration/test_effect_act.cpp",
+          "test": "EffectAct.hits_no_overlap"
+        },
+        {
+          "file": "tests/integration/test_effect_act.cpp",
+          "test": "EffectAct.hits_contained2"
+        },
+        {
+          "file": "tests/integration/test_effect_more_paths.cpp",
+          "test": "EffectMorePaths.effect_round11_hits_edge_touches"
+        },
+        {
+          "file": "tests/integration/test_effect_more_paths.cpp",
+          "test": "EffectMorePaths.effect_round10_hits_overlap_and_axis_reject_paths"
+        }
+      ],
+      "missing_arms": []
+    }
+  ],
+  "other": []
+}

@@ -1,0 +1,237 @@
+{
+  "path": "packs/core/lib/orc_specials.lua",
+  "rules": [
+    {
+      "id": "orc_specials.lua:14",
+      "lines": [
+        14
+      ],
+      "function": "M.yell",
+      "anchor": "if lc.is_busy(self) then",
+      "condition": "lc.is_busy(self)  (busy > 0)",
+      "semantic": "An orc (or captain) that is busy (> 0) cannot howl; the refusal is free.",
+      "arms": [
+        {
+          "when": "busy > 0",
+          "observable": "refused 'SPECIAL BUSY'"
+        },
+        {
+          "when": "busy <= 0",
+          "observable": "howl"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_captain.cpp",
+          "test": "KitCaptain.captain_howl_refuses_while_busy"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "orc_specials.lua:20",
+      "lines": [
+        20
+      ],
+      "function": "M.yell",
+      "anchor": "if gf.on() and #foes == 0 then",
+      "condition": "gf.on() and #foes == 0",
+      "semantic": "Classic: HOWL with nobody in reach still costs its price, 2 busy and roars. Gameplay Fixes: a howl that would stun nobody is refused for free (NO FOE IN RANGE).",
+      "arms": [
+        {
+          "when": "fixes off, no foe",
+          "observable": "SOUND_ROAR emitted, busy +2"
+        },
+        {
+          "when": "fixes on, no foe",
+          "observable": "refused, no sound, nothing spent"
+        },
+        {
+          "when": "foe in range",
+          "observable": "howl either way"
+        }
+      ],
+      "setting": "both",
+      "status": "asserted",
+      "tests": [
+        {
+          "parity": "orc_howl_no_foe_scen99",
+          "fact": "EventKindExactly(play_sound,1)"
+        },
+        {
+          "parity": "orc_howl_no_foe_fixes_scen99",
+          "fact": "EventKindExactly(play_sound,0)"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "orc_specials.lua:31",
+      "lines": [
+        31,
+        33
+      ],
+      "function": "M.yell",
+      "anchor": "if foe:has_guy() then",
+      "condition": "foe:has_guy()",
+      "semantic": "HOWL stuns every foe in 160+20*level px for max(0, yell_stun_base + rand(level*10) - rand(con*10)) ticks of frozen_delay, where con is a hero's constitution, or for a guyless foe its hp/30 (trunc); a zero con draws nothing.",
+      "arms": [
+        {
+          "when": "hero foe",
+          "observable": "con = guy constitution (con 0: stun 10 + level roll)"
+        },
+        {
+          "when": "guyless foe",
+          "observable": "con = trunc(hp/30)"
+        },
+        {
+          "when": "stun negative",
+          "observable": "clamped to 0"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_family_orc.cpp",
+          "test": "FamilyOrc.r15_howl_freezes_foes_in_radius_and_spares_the_horde"
+        },
+        {
+          "parity": "orc_yell_zero_constitution_scen99",
+          "fact": "WalkerHpRangeAtFinalTick"
+        },
+        {
+          "parity": "orc_yell_stun_hold_scen99",
+          "fact": "WalkerPositionMoved"
+        }
+      ],
+      "missing_arms": [],
+      "note": [
+        "tests/unit/test_kit_captain.cpp (constitution-0 guy arms, ~line 507)"
+      ]
+    },
+    {
+      "id": "orc_specials.lua:59",
+      "lines": [
+        59,
+        65,
+        69
+      ],
+      "function": "M.eat_corpse",
+      "anchor": "if self.hp >= self.max_hp then",
+      "condition": "hp >= max_hp ; not corpse ; dist > corpse_eat_range",
+      "semantic": "EAT CORPSE refuses at full health, with no bloodstain anywhere, or with the nearest stain out of reach (24 squared px) - each refusal free.",
+      "arms": [
+        {
+          "when": "full hp",
+          "observable": "'ALREADY AT FULL HEALTH'"
+        },
+        {
+          "when": "no stain",
+          "observable": "'NO CORPSE NEARBY'"
+        },
+        {
+          "when": "stain beyond reach",
+          "observable": "'NO CORPSE IN RANGE', mp 0 spent"
+        },
+        {
+          "when": "stain in reach",
+          "observable": "eat"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_captain.cpp",
+          "test": "KitCaptain.captain_eats_a_corpse_when_hurt"
+        },
+        {
+          "parity": "orc_eat_corpse_scen99",
+          "fact": "EventKindAtLeast(notification,1)"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "orc_specials.lua:77",
+      "lines": [
+        77
+      ],
+      "function": "M.eat_corpse",
+      "anchor": "if self:has_guy() then",
+      "condition": "self:has_guy()",
+      "semantic": "Eating a corpse heals corpse level * 5, pays a hero EXP_EAT_CORPSE experience, notifies \"<name> ate a corpse.\" and consumes the stain.",
+      "arms": [
+        {
+          "when": "hero",
+          "observable": "exp rises"
+        },
+        {
+          "when": "bot",
+          "observable": "no exp"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_captain.cpp",
+          "test": "KitCaptain.captain_eats_a_corpse_when_hurt"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "orc_specials.lua:86",
+      "lines": [
+        86
+      ],
+      "function": "M.eat_corpse",
+      "anchor": "if self.hp > self.max_hp then",
+      "condition": "self.hp > self.max_hp",
+      "semantic": "A corpse meal larger than the wound tops up to max hp, no further (clamped after exp and notice).",
+      "arms": [
+        {
+          "when": "overheal",
+          "observable": "hp == max"
+        },
+        {
+          "when": "within",
+          "observable": "hp + level*5"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_captain.cpp",
+          "test": "KitCaptain.captain_eats_a_corpse_when_hurt"
+        }
+      ],
+      "missing_arms": []
+    }
+  ],
+  "other": [
+    {
+      "id": "orc_specials.lua:27",
+      "lines": [
+        27
+      ],
+      "kind": "loop",
+      "anchor": "for i = 1, #foes do",
+      "note": "stun loop over foes in yell_radius; rule in orc_specials.lua:31"
+    },
+    {
+      "id": "orc_specials.lua:29",
+      "lines": [
+        29
+      ],
+      "kind": "defensive",
+      "anchor": "if foe then",
+      "note": "nil foe guard inside the foe list"
+    }
+  ]
+}

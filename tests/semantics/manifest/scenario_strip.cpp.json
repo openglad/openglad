@@ -1,0 +1,134 @@
+{
+  "path": "src/gameplay/scenario_strip.cpp",
+  "rules": [
+    {
+      "id": "scenario_strip.cpp:20",
+      "lines": [
+        20,
+        23,
+        60,
+        63,
+        66
+      ],
+      "function": "is_authored_troop / classic_strip_authored_troops",
+      "anchor": "if (w == nullptr || w->myguy != nullptr)",
+      "condition": "w == nullptr || w->myguy != nullptr ; order != Living && != Generator ; !save_all_protected ; doomed.empty()",
+      "semantic": "With TROOPS: OWN (any strip request >= 1) on a classic (non-scripted) map, every map-authored living and generator is removed at the level's first tick; roster heroes (those with a guy record) and protected named NPCs stay; weapons, effects and treasure are untouched. A map with no authored troops changes nothing.",
+      "arms": [
+        {
+          "when": "roster hero (myguy set)",
+          "observable": "kept"
+        },
+        {
+          "when": "authored living/generator",
+          "observable": "removed; returned count includes it"
+        },
+        {
+          "when": "protected NPC (npc_flags bit 2)",
+          "observable": "kept"
+        },
+        {
+          "when": "non-living order (weapon/treasure/fx)",
+          "observable": "kept"
+        },
+        {
+          "when": "no authored troops",
+          "observable": "returns 0, world unchanged"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_scenario_strip.cpp",
+          "test": "ScenarioStripClassic.removes_authored_livings_and_generators"
+        },
+        {
+          "file": "tests/unit/test_scenario_strip.cpp",
+          "test": "ScenarioStripClassic.protected_npcs_survive"
+        },
+        {
+          "file": "tests/unit/test_scenario_strip.cpp",
+          "test": "ScenarioStripClassic.no_troops_removes_nothing"
+        },
+        {
+          "file": "tests/unit/test_scenario_strip.cpp",
+          "test": "ScenarioStripClassic.tick_latches_the_sweep_once_on_a_classic_map"
+        },
+        {
+          "file": "tests/unit/test_scenario_strip.cpp",
+          "test": "ScenarioStripClassic.scripted_maps_are_left_to_their_mode_script"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "scenario_strip.cpp:40",
+      "lines": [
+        40,
+        42,
+        44,
+        46,
+        48,
+        69,
+        71,
+        73,
+        75
+      ],
+      "function": "clear_refs_into",
+      "anchor": "if (is_doomed(ob->foe()))",
+      "condition": "is_doomed(foe/leader/owner/collide_ob/stats->controller)",
+      "semantic": "When troops are stripped, every surviving walker, effect, weapon and corpse forgets any foe, leader, owner, collision partner or controller that pointed at a removed walker (no dangling target); references to survivors are kept.",
+      "arms": [
+        {
+          "when": "ref into removed",
+          "observable": "set to nullptr"
+        },
+        {
+          "when": "ref to survivor",
+          "observable": "unchanged"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_scenario_strip.cpp",
+          "test": "ScenarioStripClassic.cross_references_into_removed_walkers_are_cleared"
+        },
+        {
+          "file": "tests/unit/test_scenario_strip.cpp",
+          "test": "ScenarioStripClassic.strip_clears_references_held_by_effects_weapons_and_corpses"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "scenario_strip.cpp:79",
+      "lines": [
+        79,
+        81
+      ],
+      "function": "classic_strip_authored_troops",
+      "anchor": "for (walker* const victim : doomed)",
+      "condition": "for victim ; world.myobmap != nullptr",
+      "semantic": "A stripped troop leaves no corpse (not moved to dead_list, so classic respawn cannot revive it) and leaves the collision table.",
+      "arms": [
+        {
+          "when": "strip",
+          "observable": "dead_list size unchanged, victim absent from obmap and oblist"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_scenario_strip.cpp",
+          "test": "ScenarioStripClassic.removal_leaves_no_corpse_for_classic_respawn"
+        }
+      ],
+      "missing_arms": []
+    }
+  ],
+  "other": []
+}

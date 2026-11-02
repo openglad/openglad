@@ -1,0 +1,305 @@
+{
+  "path": "packs/core/families/living-08-slime.lua",
+  "rules": [
+    {
+      "id": "living-08-slime.lua:23",
+      "lines": [
+        23
+      ],
+      "function": "calculate_level",
+      "anchor": "while acc <= experience do",
+      "condition": "while acc <= experience do",
+      "semantic": "A slime character's level after a high-experience split is the highest level whose cumulative experience requirement (sum over k=2..L of 8000+2000(k-1)+4000(k-2), uint32) does not exceed the experience held; level 1 below 8000.",
+      "arms": [
+        {
+          "when": "exp < 8000",
+          "observable": "level 1"
+        },
+        {
+          "when": "exp in [8000,18000)",
+          "observable": "level 2"
+        },
+        {
+          "when": "exp=30000 (calc_exp(3)=18000 <= 30000 < calc_exp(4)=34000)",
+          "observable": "level 3"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_pack_lua_paths.cpp",
+          "test": "PackLuaSlime.a_veteran_split_halves_the_experience_across_both_bodies",
+          "note": "level 3 at 30000 exp"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-08-slime.lua:43",
+      "lines": [
+        43
+      ],
+      "function": "slime_check_special_ai",
+      "anchor": "return og.living_count() < C.MAXOBS",
+      "condition": "return og.living_count() < C.MAXOBS",
+      "semantic": "A big slime bot only SPLITs while the world's head-count is under MAXOBS (room for the extra body); small and medium slimes have no AI gate (GROW is always rolled).",
+      "arms": [
+        {
+          "when": "living_count < MAXOBS",
+          "observable": "gate true; AI split happens"
+        },
+        {
+          "when": "living_count >= MAXOBS",
+          "observable": "gate false; no split"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "parity": "ai_slime_split_scen99",
+          "fact": "WalkerFamilyCount(FAMILY_SLIME,0,0)+WalkerFamilyCount(FAMILY_SMALL_SLIME,2,2) (true arm)"
+        },
+        {
+          "file": "tests/integration/test_family_behaviors.cpp",
+          "test": "FamilyBehaviors.check_special_slime_capacity",
+          "note": "true arm only"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-08-slime.lua:60",
+      "lines": [
+        60
+      ],
+      "function": "split_on_death",
+      "anchor": "if #self:s_name() > 0 then",
+      "condition": "if #self:s_name() > 0 then",
+      "semantic": "When a NAMED slime dies and splits, the dying slime takes the offspring's freshly drawn name (sic, classic direction); an unnamed slime keeps no name.",
+      "arms": [
+        {
+          "when": "parent has a name",
+          "observable": "parent's stats name == child's name (child keeps its own random name)"
+        },
+        {
+          "when": "parent unnamed",
+          "observable": "parent name stays empty"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_pack_lua_paths.cpp",
+          "test": "PackLuaSlime.a_split_carries_the_name_and_the_player_character_across"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-08-slime.lua:65",
+      "lines": [
+        65
+      ],
+      "function": "split_on_death",
+      "anchor": "if self:has_guy() then",
+      "condition": "if self:has_guy() then",
+      "semantic": "A dying slime that carries a player character hands the character to its offspring (the roster entry survives the split).",
+      "arms": [
+        {
+          "when": "parent has a guy",
+          "observable": "parent->myguy == nullptr, child->myguy == the character"
+        },
+        {
+          "when": "no guy",
+          "observable": "child has no guy"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_pack_lua_paths.cpp",
+          "test": "PackLuaSlime.a_split_carries_the_name_and_the_player_character_across"
+        },
+        {
+          "file": "tests/unit/test_pack_lua_paths.cpp",
+          "test": "PackLuaSlime.a_dying_medium_slime_leaves_a_small_one",
+          "note": "no-guy arm, team/level only"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-08-slime.lua:82",
+      "lines": [
+        82
+      ],
+      "function": "slime_on_ani_complete",
+      "anchor": "if self:ani_type() ~= C.ANI_SLIME_SPLIT then",
+      "condition": "if self:ani_type() ~= C.ANI_SLIME_SPLIT then",
+      "semantic": "A big slime fissions only when its SPLIT animation completes; any other animation wrap is ignored.",
+      "arms": [
+        {
+          "when": "ani_type != ANI_SLIME_SPLIT",
+          "observable": "hook returns false, no SMALL_SLIME created"
+        },
+        {
+          "when": "ani_type == ANI_SLIME_SPLIT",
+          "observable": "parent becomes SMALL_SLIME shifted (-10,+10), a second SMALL_SLIME at parent+(12,-12), both same team/foe/leader, ani_type ANI_WALK"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_pack_lua_paths.cpp",
+          "test": "PackLuaSlime.the_split_hook_ignores_other_animations"
+        },
+        {
+          "file": "tests/unit/test_pack_lua_paths.cpp",
+          "test": "PackLuaSlime.a_completed_split_animation_leaves_two_small_slimes"
+        },
+        {
+          "parity": "special_slime_1_scen99",
+          "fact": "WalkerFamilyCount(FAMILY_SMALL_SLIME,2,2)"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-08-slime.lua:106",
+      "lines": [
+        106,
+        111
+      ],
+      "function": "slime_on_ani_complete",
+      "anchor": "if child:has_guy() and child:g_exp() < exp_needed then",
+      "condition": "if child:has_guy() and child:g_exp() < exp_needed ... elseif child:has_guy()",
+      "semantic": "A hired slime that splits can only sustain a second character if it holds at least 1000 x level experience: below that the sibling is stripped to a plain monster named SLIME at level calculate_level(exp/2); at or above it both halves keep a character, each levelled to calculate_level(exp/2) holding exp/2.",
+      "arms": [
+        {
+          "when": "monster slime (no guy)",
+          "observable": "neither arm: sibling just copies stats"
+        },
+        {
+          "when": "guy, exp < 1000*level",
+          "observable": "sibling myguy == nullptr, name 'SLIME', parent keeps its character"
+        },
+        {
+          "when": "guy, exp >= 1000*level",
+          "observable": "both myguy exp == exp/2, both myguy level == calculate_level(exp/2)"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_pack_lua_paths.cpp",
+          "test": "PackLuaSlime.a_low_experience_split_strips_the_offspring_to_a_monster"
+        },
+        {
+          "file": "tests/unit/test_pack_lua_paths.cpp",
+          "test": "PackLuaSlime.a_veteran_split_halves_the_experience_across_both_bodies"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-08-slime.lua:136",
+      "lines": [
+        136,
+        138
+      ],
+      "function": "grow_into",
+      "anchor": "if self:spaces_clear() > 7 then",
+      "condition": "if self:spaces_clear() > 7 then ... else",
+      "semantic": "A small or medium slime GROWs into the next size only when all eight neighbouring probe boxes are free; otherwise the cast fails with NO ROOM TO GROW and the slime wanders 10 steps in a random direction (two og.rand(3) draws, y first).",
+      "arms": [
+        {
+          "when": "all 8 probes clear",
+          "observable": "family becomes MEDIUM (from small) or SLIME (from medium); cast true"
+        },
+        {
+          "when": "any probe blocked",
+          "observable": "family unchanged, cast false 'NO ROOM TO GROW', COMMAND_WALK 10 queued, walker ends on a moved tile"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "parity": "special_small_slime_1_scen99",
+          "fact": "WalkerFamilyCount(FAMILY_MEDIUM_SLIME,1,1)"
+        },
+        {
+          "parity": "special_medium_slime_1_scen99",
+          "fact": "WalkerFamilyCount(FAMILY_MEDIUM_SLIME,0,0)"
+        },
+        {
+          "parity": "slime_grow_blocked_scen99",
+          "fact": "WalkerFamilyCount(FAMILY_MEDIUM_SLIME,0,0)+WalkerPositionMoved(102,102)"
+        }
+      ],
+      "missing_arms": []
+    }
+  ],
+  "other": [
+    {
+      "id": "living-08-slime.lua:51",
+      "lines": [
+        51
+      ],
+      "kind": "defensive",
+      "anchor": "if not child then",
+      "note": "add_ob failure (object cap) on death split: the dying slime simply dies with no offspring; null guard."
+    },
+    {
+      "id": "living-08-slime.lua:95",
+      "lines": [
+        95
+      ],
+      "kind": "defensive",
+      "anchor": "if not child then",
+      "note": "add_ob failure on split: parent already transformed into a small slime, no sibling; object-cap guard."
+    },
+    {
+      "id": "living-08-slime.lua:103",
+      "lines": [
+        103
+      ],
+      "kind": "dead",
+      "anchor": "if exp_needed < 0 then",
+      "note": "exp_needed = 1000*level is negative only for level < 0, unreachable (level >= 1 engine invariant); uint32-cast mirror."
+    },
+    {
+      "id": "living-08-slime.lua:194",
+      "lines": [
+        194
+      ],
+      "kind": "dead",
+      "anchor": "description = \"Slimes are patches of ooze which grow and split into two smaller slimes, overwhelming the enemy. Their nebulous nature makes them more susceptibl",
+      "note": "not a branch (description string containing 'and')"
+    },
+    {
+      "id": "living-08-slime.lua:242",
+      "lines": [
+        242
+      ],
+      "kind": "dead",
+      "anchor": "description = \"Slimes are patches of ooze which grow and split into two smaller slimes, overwhelming the enemy. Their nebulous nature makes them more susceptibl",
+      "note": "not a branch (description string containing 'and')"
+    },
+    {
+      "id": "living-08-slime.lua:286",
+      "lines": [
+        286
+      ],
+      "kind": "dead",
+      "anchor": "description = \"Slimes are patches of ooze which grow and split into two smaller slimes, overwhelming the enemy. Their nebulous nature makes them more susceptibl",
+      "note": "not a branch (description string containing 'and')"
+    }
+  ]
+}

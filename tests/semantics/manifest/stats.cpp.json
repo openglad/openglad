@@ -1,0 +1,3092 @@
+{
+  "path": "src/gameplay/stats.cpp",
+  "rules": [
+    {
+      "id": "stats.cpp:174",
+      "lines": [
+        174,
+        180
+      ],
+      "function": "statistics::clear_command_for_control_switch",
+      "anchor": "while (keep_end != commands.end() && keep_end->forced",
+      "condition": "while (keep_end != end && keep_end->forced && keep_end->commandtype == COMMAND_WALK) ... if (preserved > 0) TRACE",
+      "semantic": "Switching control onto (or claiming) a character keeps the leading run of externally forced walks (fright, knockback, yell-flee, shove) and erases everything queued behind it; the weapon resets to default and the leader clears; charm (real_team_num) is untouched. With no forced front it is the plain clear_command.",
+      "arms": [
+        {
+          "when": "queue front is a run of forced COMMAND_WALK entries",
+          "observable": "those entries survive (count, com1, com2 unchanged), later entries erased; trace 'stats' 'selective clear preserved N forced entries'; current_weapon == default_weapon; leader == nullptr; team_num/real_team_num unchanged"
+        },
+        {
+          "when": "no forced walk at front (incl. a forced non-walk, or an unforced walk)",
+          "observable": "queue empty after the call; no trace"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_stats_fright.cpp",
+          "test": "StatsFright.selective_clear_preserves_forced_run_keeps_hygiene_and_charm"
+        },
+        {
+          "file": "tests/unit/test_stats_fright.cpp",
+          "test": "StatsFright.selective_clear_without_forced_front_wipes_queue"
+        },
+        {
+          "file": "tests/unit/test_stats_fright.cpp",
+          "test": "StatsFright.switch_and_claim_preserve_fright_and_hygiene"
+        },
+        {
+          "file": "tests/unit/test_stats_fright.cpp",
+          "test": "StatsFright.claim_path_no_longer_uncharms"
+        }
+      ],
+      "missing_arms": [
+        "no forced walk at front (incl. a forced non-walk, or an unforced walk)"
+      ]
+    },
+    {
+      "id": "stats.cpp:199",
+      "lines": [
+        199,
+        201
+      ],
+      "function": "statistics::player_thaw_tick",
+      "anchor": "if (cur > 1)",
+      "condition": "if (cur > 1) ... else if (cur == 1)",
+      "semantic": "A frozen player-controlled hero thaws one tick at a time; on the last frozen tick it enters a thaw-immunity window (raw frozen_delay = -kFreezeThawImmunityTicks) during which it can act but cannot be refrozen; AI walkers thaw straight to 0.",
+      "arms": [
+        {
+          "when": "masked frozen_delay > 1",
+          "observable": "frozen_delay() decreases by exactly 1"
+        },
+        {
+          "when": "masked frozen_delay == 1",
+          "observable": "raw frozen delay == -kFreezeThawImmunityTicks, masked getter 0; trace 'stats' 'thaw immunity: wrote -N on the 1->0 transition'; a freeze applied next tick is refused"
+        },
+        {
+          "when": "masked frozen_delay <= 0 (caller guards)",
+          "observable": "no change"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_stats_fright.cpp",
+          "test": "StatsFright.player_thaw_tick_writes_immunity_on_last_tick"
+        },
+        {
+          "file": "tests/unit/test_stats_fright.cpp",
+          "test": "StatsFright.sim_player_thaw_immunity_window"
+        },
+        {
+          "file": "tests/unit/test_stats_fright.cpp",
+          "test": "StatsFright.living_act_climbs_immunity_and_ai_drain_thaws_to_zero"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "stats.cpp:213",
+      "lines": [
+        213
+      ],
+      "function": "statistics::add_command",
+      "anchor": "if (whatcommand == COMMAND_DIE)",
+      "condition": "if (whatcommand == COMMAND_DIE)",
+      "semantic": "Queuing a DIE order marks the walker for deletion immediately instead of queueing anything.",
+      "arms": [
+        {
+          "when": "COMMAND_DIE",
+          "observable": "delete_me() == 1, queue unchanged"
+        },
+        {
+          "when": "any other command",
+          "observable": "appended to the back of the queue"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_stats_coverage.cpp",
+          "test": "StatsCoverage.stats_set_and_try_command_random_walk_paths",
+          "note": "arm 2: commands.back() is the appended WALK"
+        }
+      ],
+      "missing_arms": [
+        "COMMAND_DIE"
+      ]
+    },
+    {
+      "id": "stats.cpp:227",
+      "lines": [
+        227,
+        229,
+        231,
+        233,
+        235,
+        237
+      ],
+      "function": "statistics::add_command",
+      "anchor": "if (whatcommand == COMMAND_WALK)",
+      "condition": "if (whatcommand == COMMAND_WALK) { clamp info1/info2 to [-1,1]; if (!info1 && !info2) info1 = info2 = 1; }",
+      "semantic": "A queued walk is always a unit step in one of the 8 directions: deltas are clamped to -1..1 and a (0,0) walk becomes a down-right (1,1) walk. Same rule as stats.cpp:252 (force_command) and stats.cpp:298 (force_fright merge). Consequence: a random walk that rolls (0,0) walks south-east, so random walks are biased toward SE (see stats.cpp:352).",
+      "arms": [
+        {
+          "when": "info > 1",
+          "observable": "com == 1"
+        },
+        {
+          "when": "info < -1",
+          "observable": "com == -1"
+        },
+        {
+          "when": "both deltas 0",
+          "observable": "com1 == com2 == 1"
+        },
+        {
+          "when": "non-walk command",
+          "observable": "com1/com2 stored raw"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_stats_more_paths.cpp",
+          "test": "StatsMorePaths.stats_add_and_force_command_walk_clamp_and_zero_fallback"
+        },
+        {
+          "file": "tests/integration/test_stats_unit.cpp",
+          "test": "StatsUnit.stats_r14_lines_122_133_135_155_161_add_force_walk_clamps"
+        },
+        {
+          "file": "tests/integration/test_stats_more_paths.cpp",
+          "test": "StatsMorePaths.stats_round12_add_command_walk_clamps_and_follow_shortcuts",
+          "note": "add_command(WALK,2,0,0) -> com1 == com2 == 1"
+        },
+        {
+          "file": "tests/unit/test_kit_captain.cpp",
+          "test": "KitCaptain.grunts_turn_to_the_new_banner",
+          "note": "s_add_command(COMMAND_GOTO,200,cx,cy) -> com1 == new_cx, com2 == new_cy: a non-walk command keeps raw pixel values"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "stats.cpp:252",
+      "lines": [
+        252,
+        254,
+        256,
+        258,
+        260,
+        262
+      ],
+      "function": "statistics::force_command",
+      "anchor": "if (whatcommand == COMMAND_WALK)",
+      "condition": "if (whatcommand == COMMAND_WALK) { clamp; zero -> (1,1) }",
+      "semantic": "A forced (prepended) walk obeys the same unit-step rule as add_command (stats.cpp:227) and is the only producer of the 'forced' flag (fright/knockback/flee/shove).",
+      "arms": [
+        {
+          "when": "walk with out-of-range deltas",
+          "observable": "front com1/com2 clamped to -1..1, forced == true"
+        },
+        {
+          "when": "walk (0,0)",
+          "observable": "front (1,1)"
+        },
+        {
+          "when": "non-walk",
+          "observable": "raw com values at front, forced == true"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_stats_commands.cpp",
+          "test": "StatsCommands.stats_force_command_prepends_a_clamped_forced_walk"
+        },
+        {
+          "file": "tests/unit/test_stats_fright.cpp",
+          "test": "StatsFright.forced_flag_set_only_by_force_command"
+        },
+        {
+          "file": "tests/integration/test_stats_extended.cpp",
+          "test": "StatsExtended.statistics_force_command_walk_clamps"
+        },
+        {
+          "file": "tests/integration/test_stats_more_paths.cpp",
+          "test": "StatsMorePaths.stats_do_command_set_reset_weapon_and_search_without_foe",
+          "note": "non-walk raw com: force_command(SET_WEAPON,1,FAMILY_BOMB,0) -> current_weapon()==FAMILY_BOMB, unclamped"
+        },
+        {
+          "file": "tests/integration/test_stats_extended.cpp",
+          "test": "StatsExtended.do_command_attack_that_can_shoot_forces_a_fire_command_and_fires",
+          "note": "non-walk: forced FIRE front with EXPECT_TRUE(fired.forced)"
+        },
+        {
+          "file": "tests/integration/test_living_combat.cpp",
+          "test": "LivingCombat.living_act_guard_wakes_and_fires_only_when_a_foe_is_in_sight",
+          "note": "set_command(COMMAND_FIRE,...,xdist,ydist) -> force_command keeps com1 == 20 raw"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "stats.cpp:294",
+      "lines": [
+        294,
+        309
+      ],
+      "function": "statistics::force_fright",
+      "anchor": "if (!commands.empty() && commands.front().forced",
+      "condition": "if (!commands.empty() && front.forced && front.commandtype == COMMAND_WALK) { if (iterations > front.commandcount) front.commandcount = iterations; ... }",
+      "semantic": "Overlapping scares (ghost scare, banner fright) never stack end to end: a scare landing on a walker already in a forced walk merges into it, keeping the longer remaining count and re-pointing the flee to the new direction; otherwise the scare is prepended as a fresh forced walk.",
+      "arms": [
+        {
+          "when": "front is a forced walk, new count larger",
+          "observable": "queue size unchanged; front.commandcount == new count; com = clamped new direction; trace 'stats' 'force_fright merged'"
+        },
+        {
+          "when": "front is a forced walk, new count smaller or equal",
+          "observable": "front.commandcount unchanged; direction re-pointed"
+        },
+        {
+          "when": "front not a forced walk / queue empty",
+          "observable": "a new forced walk prepended (queue grows by 1)"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_stats_fright.cpp",
+          "test": "StatsFright.force_fright_merges_max_remaining_and_repoints"
+        },
+        {
+          "file": "tests/unit/test_stats_fright.cpp",
+          "test": "StatsFright.force_fright_falls_through_to_legacy_prepend"
+        },
+        {
+          "file": "tests/integration/test_stats_more_paths.cpp",
+          "test": "StatsMorePaths.force_fright_clamps_a_merged_direction_to_the_unit_square"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "stats.cpp:298",
+      "lines": [
+        298,
+        300,
+        302,
+        304,
+        306
+      ],
+      "function": "statistics::force_fright",
+      "anchor": "if (info1 > 1)",
+      "condition": "clamp info1/info2 to [-1,1]; zero -> (1,1)",
+      "semantic": "The merged fright direction obeys the unit-step walk rule (same as stats.cpp:227).",
+      "arms": [
+        {
+          "when": "delta out of range",
+          "observable": "front com clamped to -1/+1"
+        },
+        {
+          "when": "both 0",
+          "observable": "front (1,1)"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_stats_more_paths.cpp",
+          "test": "StatsMorePaths.force_fright_clamps_a_merged_direction_to_the_unit_square"
+        },
+        {
+          "file": "tests/unit/test_stats_fright.cpp",
+          "test": "StatsFright.force_fright_merges_max_remaining_and_repoints",
+          "note": "(0,0) merge -> (1,1)"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "stats.cpp:352",
+      "lines": [
+        352,
+        354
+      ],
+      "function": "statistics::set_command(whatcommand, iterations)",
+      "anchor": "if (whatcommand == COMMAND_RANDOM_WALK)",
+      "condition": "if (whatcommand == COMMAND_RANDOM_WALK) ... else ...",
+      "semantic": "A RANDOM_WALK order becomes a forced walk in a random direction (two rng(3)-1 draws; a (0,0) roll becomes SE per stats.cpp:227); any other order is forced with zero arguments.",
+      "arms": [
+        {
+          "when": "COMMAND_RANDOM_WALK",
+          "observable": "front is COMMAND_WALK with com = (rng(3)-1, rng(3)-1) clamped; two rng draws consumed"
+        },
+        {
+          "when": "other command",
+          "observable": "front is that command with com1 = com2 = 0"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": [
+        "COMMAND_RANDOM_WALK",
+        "other command"
+      ]
+    },
+    {
+      "id": "stats.cpp:398",
+      "lines": [
+        398
+      ],
+      "function": "statistics::do_command",
+      "anchor": "if (commands.empty())",
+      "condition": "if (commands.empty()) return 0;",
+      "semantic": "A walker with no queued orders does nothing in do_command and returns 0, which tells living::act / walker::act to fall through to its own AI think.",
+      "arms": [
+        {
+          "when": "queue empty",
+          "observable": "do_command() == 0, position unchanged"
+        },
+        {
+          "when": "queue non-empty",
+          "observable": "the front command runs"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_stats_coverage.cpp",
+          "test": "StatsCoverage.stats_round6_walk_clamp_extremes_and_empty_queue_paths",
+          "note": "empty queue -> do_command()==0"
+        },
+        {
+          "file": "tests/integration/test_stats_commands.cpp",
+          "test": "StatsCommands.stats_do_command_walk_steps_once_and_counts_down",
+          "note": "non-empty: the front WALK runs"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "stats.cpp:409",
+      "lines": [
+        409
+      ],
+      "function": "statistics::do_command",
+      "anchor": "case COMMAND_WALK:",
+      "condition": "case COMMAND_WALK",
+      "semantic": "A WALK order takes one step (walkstep, which may turn instead of moving if not facing that way) in its stored direction per round.",
+      "arms": [
+        {
+          "when": "front WALK(dx,dy)",
+          "observable": "position moves by (dx,dy)*stepsize when facing matches; commandcount decremented by 1"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_stats_commands.cpp",
+          "test": "StatsCommands.stats_do_command_walk_steps_once_and_counts_down"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "stats.cpp:412",
+      "lines": [
+        412,
+        413,
+        418
+      ],
+      "function": "statistics::do_command",
+      "anchor": "case COMMAND_FIRE:",
+      "condition": "case COMMAND_FIRE: if (!(order == Living)) break; if (!fire_check(com1, com2)) { count = 0; result = 0; } else init_fire(com1, com2)",
+      "semantic": "A FIRE order only fires for a living walker whose fire_check allows the shot in (com1,com2); a refused shot cancels the order and reports 0 so the AI thinks again this tick.",
+      "arms": [
+        {
+          "when": "controller not Living",
+          "observable": "no weapon spawned; command still counted down"
+        },
+        {
+          "when": "fire_check refuses",
+          "observable": "do_command() == 0, command popped, no weapon"
+        },
+        {
+          "when": "fire_check allows",
+          "observable": "init_fire: weapon spawned or busy charged (fire_frequency), do_command()==1"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_stats_extended.cpp",
+          "test": "StatsExtended.do_command_fire_denied_by_fire_check_returns_0_and_drops_the_command"
+        },
+        {
+          "file": "tests/integration/test_stats_extended.cpp",
+          "test": "StatsExtended.do_command_fire_that_passes_fire_check_starts_the_shot_and_returns_1"
+        },
+        {
+          "file": "tests/integration/test_stats_more_paths.cpp",
+          "test": "StatsMorePaths.stats_round13_die_and_non_living_fire_command_branches"
+        },
+        {
+          "file": "tests/integration/test_stats_commands.cpp",
+          "test": "StatsCommands.stats_do_command_fire_denied_without_foe_and_spends_busy_when_allowed"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "stats.cpp:426",
+      "lines": [
+        426,
+        427,
+        429
+      ],
+      "function": "statistics::do_command",
+      "anchor": "case COMMAND_DIE:  // debugging, not currently used",
+      "condition": "case COMMAND_DIE: if (!dead()) Log(...); if (commandcount < 2) set_delete_me(1)",
+      "semantic": "A queued DIE order (debug, unused by the game) deletes the walker on its last iteration; earlier iterations only count down.",
+      "arms": [
+        {
+          "when": "commandcount < 2",
+          "observable": "delete_me() == 1"
+        },
+        {
+          "when": "commandcount >= 2",
+          "observable": "delete_me() == 0, count decremented"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_stats_commands.cpp",
+          "test": "StatsCommands.stats_do_command_die_sets_delete_me"
+        },
+        {
+          "file": "tests/integration/test_stats_more_paths.cpp",
+          "test": "StatsMorePaths.stats_do_command_die_and_multido_paths"
+        },
+        {
+          "file": "tests/integration/test_stats_coverage.cpp",
+          "test": "StatsCoverage.follow_gives_up_for_a_foe_or_no_leader_and_die_marks_delete_me",
+          "note": "count 5 -> delete_me()==0; count 1 -> 1"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "stats.cpp:432",
+      "lines": [
+        432,
+        433,
+        440,
+        443
+      ],
+      "function": "statistics::do_command",
+      "anchor": "case COMMAND_FOLLOW:   // follow the leader",
+      "condition": "case COMMAND_FOLLOW: if (foe()) { count = 0; leader = null; result 0 } if (!leader()) { leader = find_follow_leader(); if (!leader()) { count = 0; result 0 } }",
+      "semantic": "A follower drops a FOLLOW order the moment it has a foe (fighting beats following) and when no leader can be found (find_follow_leader: the view's controlled hero); otherwise it adopts the found leader.",
+      "arms": [
+        {
+          "when": "has foe",
+          "observable": "do_command()==0, leader()==nullptr, FOLLOW popped, no step"
+        },
+        {
+          "when": "no leader and find_follow_leader returns null",
+          "observable": "do_command()==0, FOLLOW popped"
+        },
+        {
+          "when": "no leader, one found",
+          "observable": "leader() == the controlled hero; follower steps toward it"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_stats_coverage.cpp",
+          "test": "StatsCoverage.follow_gives_up_for_a_foe_or_no_leader_and_die_marks_delete_me"
+        },
+        {
+          "file": "tests/integration/test_stats_navigation.cpp",
+          "test": "StatsNavigation.follow_picks_the_view_leader_and_steps_one_normalized_unit"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "stats.cpp:452",
+      "lines": [
+        452,
+        455
+      ],
+      "function": "statistics::do_command",
+      "anchor": "if(controller_->leader())",
+      "condition": "if (leader()) { if (distance_to_ob(leader) < 60) { leader = null; result 1; break; } ... }",
+      "semantic": "A follower stops (and lets go of the leader) when within 60 px of it, so followers never crowd onto the leader.",
+      "arms": [
+        {
+          "when": "distance < 60",
+          "observable": "no step, leader()==nullptr, do_command()==1"
+        },
+        {
+          "when": "distance >= 60",
+          "observable": "one unit step toward the leader"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_stats_more_paths.cpp",
+          "test": "StatsMorePaths.follow_walks_one_unit_step_toward_the_leader_and_drops_it_inside_60px"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "stats.cpp:463",
+      "lines": [
+        463,
+        465,
+        467,
+        469
+      ],
+      "function": "statistics::do_command",
+      "anchor": "if (abs(newx) > abs(3*newy))",
+      "condition": "if (abs(newx) > abs(3*newy)) newy = 0; if (abs(newy) > abs(3*newx)) newx = 0; normalise",
+      "semantic": "Follow direction snaps to an axis when one delta dominates 3:1, otherwise diagonal; each axis is a unit step. Same 3:1 snap as COMMAND_ATTACK (stats.cpp:561), direct_walk (stats.cpp:1149), right_walk (stats.cpp:978), direct_walk_to_point (stats.cpp:1496).",
+      "arms": [
+        {
+          "when": "|dx| > 3|dy|",
+          "observable": "step (sign dx, 0)"
+        },
+        {
+          "when": "|dy| > 3|dx|",
+          "observable": "step (0, sign dy)"
+        },
+        {
+          "when": "otherwise",
+          "observable": "diagonal step (sign dx, sign dy)"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_stats_navigation.cpp",
+          "test": "StatsNavigation.follow_picks_the_view_leader_and_steps_one_normalized_unit",
+          "note": "cases A diagonal, B x-major, C y-major up"
+        },
+        {
+          "file": "tests/integration/test_stats_more_paths.cpp",
+          "test": "StatsMorePaths.follow_walks_one_unit_step_toward_the_leader_and_drops_it_inside_60px",
+          "note": "x axis"
+        },
+        {
+          "file": "tests/integration/test_stats_more_paths.cpp",
+          "test": "StatsMorePaths.stats_round11_follow_force_walk_and_right_walk_distance_branches",
+          "note": "300/40 x axis"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "stats.cpp:474",
+      "lines": [
+        474
+      ],
+      "function": "statistics::do_command",
+      "anchor": "if (commands.front().commandcount < 2)",
+      "condition": "if (commands.front().commandcount < 2) leader = null",
+      "semantic": "On the last iteration of a FOLLOW order the follower lets go of its leader.",
+      "arms": [
+        {
+          "when": "count < 2",
+          "observable": "leader()==nullptr after the step"
+        },
+        {
+          "when": "count >= 2",
+          "observable": "leader kept"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_stats_navigation.cpp",
+          "test": "StatsNavigation.follow_picks_the_view_leader_and_steps_one_normalized_unit",
+          "note": "case E rounds=1: leader()==nullptr after the step; case A rounds=2: leader kept"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "stats.cpp:479",
+      "lines": [
+        479
+      ],
+      "function": "statistics::do_command",
+      "anchor": "case COMMAND_QUICK_FIRE:",
+      "condition": "case COMMAND_QUICK_FIRE",
+      "semantic": "A QUICK_FIRE order steps and fires in the same round (no fire_check).",
+      "arms": [
+        {
+          "when": "front QUICK_FIRE(dx,dy)",
+          "observable": "one step along (dx,dy) and exactly one weapon spawned that tick"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_stats_commands.cpp",
+          "test": "StatsCommands.stats_do_command_quick_fire_walks_and_fires_in_one_tick"
+        },
+        {
+          "file": "tests/integration/test_stats_more_paths.cpp",
+          "test": "StatsMorePaths.stats_round14_quickfire_multido_rush_and_walk_to_foe_melee_short_circuit"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "stats.cpp:483",
+      "lines": [
+        483,
+        485,
+        489
+      ],
+      "function": "statistics::do_command",
+      "anchor": "case COMMAND_MULTIDO: // Lets you do <com1> commands in one round",
+      "condition": "case COMMAND_MULTIDO: repeats = com1 > 0 ? com1 : 0; pop MULTIDO; for (i < repeats && !empty) do_command(); return 1",
+      "semantic": "MULTIDO(n) consumes itself and immediately runs the next n queued commands in the same round (each with its own countdown); n <= 0 runs none; it stops early when the queue empties.",
+      "arms": [
+        {
+          "when": "com1 = n > 0, queue has >= n entries",
+          "observable": "n commands executed this tick (e.g. 2 walks = 2 steps), do_command()==1"
+        },
+        {
+          "when": "com1 <= 0",
+          "observable": "MULTIDO popped, nothing else run"
+        },
+        {
+          "when": "queue shorter than n",
+          "observable": "runs what is there, no crash"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_stats_more_paths.cpp",
+          "test": "StatsMorePaths.multido_runs_the_next_two_queued_commands_in_one_round",
+          "note": "arm 1: two walks, xpos == x0 + 2*step"
+        },
+        {
+          "file": "tests/integration/test_stats_more_paths.cpp",
+          "test": "StatsMorePaths.stats_round14_quickfire_multido_rush_and_walk_to_foe_melee_short_circuit",
+          "note": "arm 3: MULTIDO(2) with nothing behind it returns 1, queue empty"
+        }
+      ],
+      "missing_arms": [
+        "com1 <= 0"
+      ]
+    },
+    {
+      "id": "stats.cpp:494",
+      "lines": [
+        493,
+        494
+      ],
+      "function": "statistics::do_command",
+      "anchor": "case COMMAND_RUSH:    // Fighter's special",
+      "condition": "case COMMAND_RUSH: if (query_order() == Order::Living) { walkstep x3; ... }",
+      "semantic": "A fighter's rush (charge special) moves a living walker three steps per round in its rush direction; a non-living holder of the order does nothing.",
+      "arms": [
+        {
+          "when": "Living",
+          "observable": "position advances 3*stepsize along (com1,com2) when unblocked"
+        },
+        {
+          "when": "not Living",
+          "observable": "no movement, count decremented (executed-only: no test asserts this arm; a rush on a non-living body is never staged)"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_stats_commands.cpp",
+          "test": "StatsCommands.stats_do_command_rush_takes_three_steps_and_shoves_the_collider",
+          "note": "Living: xpos == x0 + 3*step"
+        },
+        {
+          "file": "tests/integration/test_stats_more_paths.cpp",
+          "test": "StatsMorePaths.stats_round14_quickfire_multido_rush_and_walk_to_foe_melee_short_circuit",
+          "note": "Living: xpos == rush_x + 3*step"
+        },
+        {
+          "parity": "soldier_charge_displacement_scen99",
+          "fact": "",
+          "note": "WalkerPositionMoved(FAMILY_SOLDIER  184  0): the three-step rush displacement"
+        }
+      ],
+      "missing_arms": [
+        "not Living"
+      ]
+    },
+    {
+      "id": "stats.cpp:505",
+      "lines": [
+        505
+      ],
+      "function": "statistics::do_command",
+      "anchor": "if (controller_->collide_ob() // We hit someone",
+      "condition": "if (collide_ob() && (session_gameplay_fixes() == 0 || (!is_friendly(collide_ob()) && step_meets(*controller_, com1*step, com2*step, *collide_ob()))))",
+      "semantic": "Classic: a rush calls attack on whatever body collide_ob names after the three steps, wipes its orders and shoves it 4 steps along the rush, allies included and including a stale body met on an earlier step; an ally takes no damage (attack refuses a friend after its damage draw) but still loses its orders to the forced WALK. Gameplay Fixes Z: the rush strikes only a non-friendly body that its LAST step actually meets; an ally or a body left over from an earlier step (wall-stopped rush, fix X) keeps its orders, is not shoved and no damage draw is spent.",
+      "arms": [
+        {
+          "when": "fixes off, collide_ob is a foe",
+          "observable": "target hp drops (attack), target queue == [forced WALK(4, com1, com2)]"
+        },
+        {
+          "when": "fixes off, collide_ob is an ally",
+          "observable": "ally hp unchanged (walker::attack refuses a friendly target after its damage draw: exactly one combat rng draw consumed), yet its queue is still cleared and replaced by forced WALK(4, com1, com2)"
+        },
+        {
+          "when": "fixes on, foe the last step meets",
+          "observable": "same strike: hp drop, queue replaced by forced WALK 4"
+        },
+        {
+          "when": "fixes on, collider is friendly",
+          "observable": "ally keeps its queue, no shove, hp unchanged, no damage draw"
+        },
+        {
+          "when": "fixes on, collide_ob stale (wall stopped the rush, last step meets nothing)",
+          "observable": "the stale body keeps its queue and hp"
+        },
+        {
+          "when": "no collide_ob",
+          "observable": "nothing struck"
+        }
+      ],
+      "setting": "both",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_gameplay_fixes_walk.cpp",
+          "test": "GameplayFixesWalk.a_rush_into_an_ally_erases_no_orders_with_the_setting_on"
+        },
+        {
+          "file": "tests/unit/test_gameplay_fixes_walk.cpp",
+          "test": "GameplayFixesWalk.a_rush_into_a_foe_still_strikes_it"
+        },
+        {
+          "file": "tests/unit/test_gameplay_fixes_walk.cpp",
+          "test": "GameplayFixesWalk.a_wall_stopped_rush_strikes_no_stale_body"
+        },
+        {
+          "file": "tests/integration/test_stats_commands.cpp",
+          "test": "StatsCommands.stats_do_command_rush_with_the_setting_on_leaves_a_parked_collider_alone"
+        },
+        {
+          "parity": "soldier_charge_ally_scen99",
+          "fact": "soldier_charge_ally_fixes_scen99 facts"
+        },
+        {
+          "parity": "soldier_charge_front_foe_scen99",
+          "fact": "soldier_charge_front_foe_fixes_scen99 facts"
+        },
+        {
+          "file": "tests/integration/test_stats_more_paths.cpp",
+          "test": "StatsMorePaths.stats_round14_quickfire_multido_rush_and_walk_to_foe_melee_short_circuit",
+          "note": "no collide_ob: the parked target's queue stays empty; fixes-off foe: hp drops, queue == [forced WALK 4,1,0]"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "stats.cpp:523",
+      "lines": [
+        523,
+        526
+      ],
+      "function": "statistics::do_command",
+      "anchor": "case COMMAND_SET_WEAPON: // set weapon to specified type",
+      "condition": "case COMMAND_SET_WEAPON / case COMMAND_RESET_WEAPON",
+      "semantic": "SET_WEAPON swaps the walker's current weapon type to com1 for as long as it holds; RESET_WEAPON restores the family default.",
+      "arms": [
+        {
+          "when": "SET_WEAPON(w)",
+          "observable": "current_weapon() == w"
+        },
+        {
+          "when": "RESET_WEAPON",
+          "observable": "current_weapon() == default_weapon()"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_stats_more_paths.cpp",
+          "test": "StatsMorePaths.stats_do_command_set_reset_weapon_and_search_without_foe"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "stats.cpp:530",
+      "lines": [
+        529,
+        530,
+        532
+      ],
+      "function": "statistics::do_command",
+      "anchor": "case COMMAND_SEARCH: // use right-hand rule to find foe",
+      "condition": "case COMMAND_SEARCH: if (foe() && !foe()->dead()) walk_to_foe(); else commandcount = 0",
+      "semantic": "A SEARCH order hunts the held foe (walk_to_foe) while it lives; with no foe or a dead foe the order is abandoned that round.",
+      "arms": [
+        {
+          "when": "live foe",
+          "observable": "walk_to_foe runs (position/path changes, see stats.cpp:1284ff)"
+        },
+        {
+          "when": "no foe / dead foe",
+          "observable": "SEARCH popped this round, no movement"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_stats_commands.cpp",
+          "test": "StatsCommands.stats_do_command_search_without_a_live_foe_abandons_the_order"
+        },
+        {
+          "file": "tests/integration/test_stats_unit.cpp",
+          "test": "StatsUnit.stats_r12_command_and_hit_response_branches",
+          "note": "live foe 54 px: SEARCH replaced by a single COMMAND_ATTACK via walk_to_foe; dead foe: popped"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "stats.cpp:537",
+      "lines": [
+        537
+      ],
+      "function": "statistics::do_command",
+      "anchor": "case COMMAND_GOTO: // walk toward a fixed map position",
+      "condition": "case COMMAND_GOTO: walk_to_point(com1, com2)",
+      "semantic": "A GOTO order (mode directors: CTF, soccer, onslaught, captain kit) walks toward a fixed map point and never attacks on the way; see stats.cpp:1617 for arrival.",
+      "arms": [
+        {
+          "when": "front GOTO(x,y)",
+          "observable": "walker moves toward (x,y); no weapon fired; command completes within 12 px of the point"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": [
+        "front GOTO(x,y)"
+      ]
+    },
+    {
+      "id": "stats.cpp:541",
+      "lines": [
+        540,
+        541,
+        544,
+        546,
+        547
+      ],
+      "function": "statistics::do_command",
+      "anchor": "case COMMAND_RIGHT_WALK: // right-hand-walk ONLY",
+      "condition": "case COMMAND_RIGHT_WALK: if (foe()) { d = distance; if (d > 120 && d < 240) right_walk(); else if (!direct_walk()) right_walk(); }",
+      "semantic": "RIGHT_WALK wall-follows (right hand) when the foe is at middle range (120..240 px exclusive); nearer or farther it tries the straight line first and falls back to wall-following only when blocked; with no foe the order idles.",
+      "arms": [
+        {
+          "when": "no foe",
+          "observable": "no movement; count decremented (executed-only: no test asserts this arm)"
+        },
+        {
+          "when": "120 < d < 240",
+          "observable": "right_walk path (enddir/turn/queued walk as per stats.cpp:972)"
+        },
+        {
+          "when": "d <= 120 or d >= 240, direct line open",
+          "observable": "direct step toward foe"
+        },
+        {
+          "when": "d <= 120 or d >= 240, direct blocked",
+          "observable": "right_walk"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_stats_commands.cpp",
+          "test": "StatsCommands.stats_do_command_right_walk_distance_gate_picks_the_walker",
+          "note": "150 px: right_walk steps north; 20 px: direct_walk aims enddir FACE_DOWN"
+        },
+        {
+          "file": "tests/integration/test_stats_unit.cpp",
+          "test": "StatsUnit.right_walk_command_falls_back_to_wall_following_when_the_direct_step_is_blocked",
+          "note": "34 px, direct blocked: right_walk's left turn"
+        },
+        {
+          "file": "tests/integration/test_stats_more_paths.cpp",
+          "test": "StatsMorePaths.stats_round11_follow_force_walk_and_right_walk_distance_branches",
+          "note": "in band 150 px and out of band 20 px"
+        }
+      ],
+      "missing_arms": [
+        "no foe"
+      ]
+    },
+    {
+      "id": "stats.cpp:552",
+      "lines": [
+        551,
+        552
+      ],
+      "function": "statistics::do_command",
+      "anchor": "case COMMAND_ATTACK: // attack a nearby, set foe",
+      "condition": "case COMMAND_ATTACK: if (!foe() || foe()->dead()) { count = 0; result = 1; break; }",
+      "semantic": "An ATTACK order ends as soon as the walker has no foe or its foe is dead.",
+      "arms": [
+        {
+          "when": "no or dead foe",
+          "observable": "ATTACK popped, no movement, do_command()==1 (only the no-foe half is asserted; the dead-foe half is executed-only)"
+        },
+        {
+          "when": "live foe",
+          "observable": "approach/attack logic stats.cpp:561ff"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_stats_commands.cpp",
+          "test": "StatsCommands.stats_do_command_attack_without_foe_pops_and_faces_a_foe_it_cannot_shoot",
+          "note": "no-foe half of arm 1; live-foe arm 2: Facing denial faces the foe"
+        },
+        {
+          "file": "tests/integration/test_stats_extended.cpp",
+          "test": "StatsExtended.do_command_attack_that_can_shoot_forces_a_fire_command_and_fires",
+          "note": "arm 2: live foe -> forced FIRE"
+        }
+      ],
+      "missing_arms": [
+        "no or dead foe"
+      ]
+    },
+    {
+      "id": "stats.cpp:561",
+      "lines": [
+        561,
+        563,
+        565,
+        566,
+        567,
+        568
+      ],
+      "function": "statistics::do_command",
+      "anchor": "if (abs(deltax) > abs(3*deltay))",
+      "condition": "3:1 axis snap of (foe - self), then sign()",
+      "semantic": "The attacker aims at the foe along an 8-way direction: axis when one delta dominates 3:1, else diagonal (same snap as stats.cpp:463).",
+      "arms": [
+        {
+          "when": "|dx|>3|dy|",
+          "observable": "aim (sign dx,0)"
+        },
+        {
+          "when": "|dy|>3|dx|",
+          "observable": "aim (0,sign dy)"
+        },
+        {
+          "when": "otherwise",
+          "observable": "diagonal"
+        },
+        {
+          "when": "dx==dy==0",
+          "observable": "(0,0): clinch arm stats.cpp:591"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_stats_unit.cpp",
+          "test": "StatsUnit.stats_attack_and_follow_step_toward_their_target_and_blocked_probes_read_their_own_cells",
+          "note": "x-major: foe 256 px east -> xpos 64->65, ypos 64"
+        },
+        {
+          "file": "tests/integration/test_stats_extended.cpp",
+          "test": "StatsExtended.do_command_attack_that_can_shoot_forces_a_fire_command_and_fires",
+          "note": "x-major: forced FIRE com (1,0)"
+        }
+      ],
+      "missing_arms": [
+        "|dy|>3|dx|",
+        "otherwise",
+        "dx==dy==0"
+      ]
+    },
+    {
+      "id": "stats.cpp:571",
+      "lines": [
+        571,
+        606,
+        623,
+        626
+      ],
+      "function": "statistics::do_command",
+      "anchor": "if (!controller_->fire_check(deltax, deltay, &denial))",
+      "condition": "if (!fire_check(dx,dy,&denial)) { ... else if (denial == Facing || denial == NoRanged) face_delta(dx,dy); else walkstep(dx,dy); } else { force_command(COMMAND_FIRE, rng(5), dx, dy); init_fire(dx, dy); }",
+      "semantic": "An attacking walker shoots when the shot is clear (queues a FIRE of rng(5) rounds in front and fires now); when the only reason it cannot is its orientation (a thrower facing off the foe, or a melee-only family at bump range) it turns to face the foe without moving (guard-standoff fix, always on); when the foe is out of range, behind a wall or it lacks mana it walks one step toward the foe.",
+      "arms": [
+        {
+          "when": "fire_check allows",
+          "observable": "after do_command: init_fire ran (busy == fire_frequency, weapon spawned); if rng(5) >= 2 the front is FIRE(rng(5)-1, dx, dy, forced) with ATTACK(count unchanged) behind it; if rng(5) <= 1 the FIRE is already popped by the tail decrement (stats.cpp:653) and ATTACK is front with its count untouched"
+        },
+        {
+          "when": "denial Facing or NoRanged",
+          "observable": "position unchanged; curdir == enddir == facing(dx,dy)"
+        },
+        {
+          "when": "denial OutOfRange / WallBlocked / NoMagic / NoFoe",
+          "observable": "one walkstep toward the foe (position or facing changes toward it)"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_stats_extended.cpp",
+          "test": "StatsExtended.do_command_attack_faces_an_in_reach_foe_without_walking",
+          "note": "Facing half of arm 2"
+        },
+        {
+          "file": "tests/integration/test_stats_extended.cpp",
+          "test": "StatsExtended.do_command_attack_that_can_shoot_forces_a_fire_command_and_fires",
+          "note": "arm 1, rng(5)==3 sub-case only"
+        },
+        {
+          "file": "tests/integration/test_stats_commands.cpp",
+          "test": "StatsCommands.stats_do_command_attack_without_foe_pops_and_faces_a_foe_it_cannot_shoot",
+          "note": "Facing half of arm 2"
+        },
+        {
+          "file": "tests/unit/test_melee_standoff.cpp",
+          "test": "MeleeStandoff.facing_denial_snaps_to_face_the_foe_in_one_tick",
+          "note": "Facing half of arm 2"
+        },
+        {
+          "file": "tests/integration/test_stats_unit.cpp",
+          "test": "StatsUnit.stats_attack_and_follow_step_toward_their_target_and_blocked_probes_read_their_own_cells",
+          "note": "arm 3: OutOfRange steps xpos 64->65"
+        },
+        {
+          "file": "tests/unit/test_melee_standoff.cpp",
+          "test": "MeleeStandoff.out_of_range_denial_still_walks_toward_the_foe",
+          "note": "arm 3: xpos grows over 6 ticks"
+        }
+      ],
+      "missing_arms": [
+        "fire_check allows",
+        "denial Facing or NoRanged"
+      ]
+    },
+    {
+      "id": "stats.cpp:591",
+      "lines": [
+        591
+      ],
+      "function": "statistics::do_command",
+      "anchor": "if (deltax == 0 && deltay == 0)",
+      "condition": "if (deltax == 0 && deltay == 0) { facing_step_delta(curdir, stepx, stepy); walkstep(stepx, stepy); }",
+      "semantic": "An attacker standing exactly on its foe (a pass-through left the bodies merged) steps out along its own facing to break the clinch, deterministically and without RNG (always on).",
+      "arms": [
+        {
+          "when": "foe coincident and fire_check denies",
+          "observable": "walker moves one step along curdir (xpos/ypos change by facing_step_delta(curdir)*stepsize); no rng draw"
+        },
+        {
+          "when": "not coincident",
+          "observable": "stats.cpp:571 arms"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": [
+        "foe coincident and fire_check denies",
+        "not coincident"
+      ]
+    },
+    {
+      "id": "stats.cpp:633",
+      "lines": [
+        633,
+        647
+      ],
+      "function": "statistics::do_command",
+      "anchor": "case COMMAND_UNCHARM:",
+      "condition": "case COMMAND_UNCHARM: break; default: break;",
+      "semantic": "UNCHARM (its body commented out since #317: charm ends only on charm_left) and unknown command types are no-ops that are simply consumed by the countdown.",
+      "arms": [
+        {
+          "when": "UNCHARM or unknown type",
+          "observable": "do_command()==1, team unchanged, count decremented/popped"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": [
+        "UNCHARM or unknown type"
+      ]
+    },
+    {
+      "id": "stats.cpp:653",
+      "lines": [
+        653,
+        657
+      ],
+      "function": "statistics::do_command",
+      "anchor": "if(!commands.empty())",
+      "condition": "if (!commands.empty()) { front.commandcount--; if (front.commandcount < 1) { pop_front } }",
+      "semantic": "Every round spends one iteration of whatever command is at the FRONT after the switch ran (which may be a command the switch just forced, e.g. ATTACK's FIRE); a command reaching 0 is removed.",
+      "arms": [
+        {
+          "when": "count > 1",
+          "observable": "count decremented, stays queued"
+        },
+        {
+          "when": "count <= 1 (incl. zeroed by the case)",
+          "observable": "popped"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_stats_commands.cpp",
+          "test": "StatsCommands.stats_do_command_walk_steps_once_and_counts_down"
+        },
+        {
+          "file": "tests/integration/test_stats_extended.cpp",
+          "test": "StatsExtended.do_command_unhandled_type_only_runs_the_decrement_tail"
+        },
+        {
+          "file": "tests/integration/test_stats_extended.cpp",
+          "test": "StatsExtended.do_command_attack_that_can_shoot_forces_a_fire_command_and_fires",
+          "note": "the tail decrements the forced FIRE, ATTACK count stays 5"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "stats.cpp:678",
+      "lines": [
+        678,
+        681,
+        684
+      ],
+      "function": "statistics::hit_response",
+      "anchor": "if (who->dead() || controller_->dead())",
+      "condition": "if (who->dead() || controller_->dead()) return; if (act_type() == ACT_CONTROL) return; if (query_order() != Order::Living) return;",
+      "semantic": "Only a living, AI-driven, alive walker reacts to being hit: a dead attacker or dead victim, a player-controlled hero (ACT_CONTROL) and non-living targets (weapons, treasure, effects) never retarget, special or yell.",
+      "arms": [
+        {
+          "when": "attacker or victim dead",
+          "observable": "foe() unchanged, yo_delay unchanged, queue unchanged"
+        },
+        {
+          "when": "victim ACT_CONTROL",
+          "observable": "foe() unchanged, no yell (yo_delay 0)"
+        },
+        {
+          "when": "victim not Living",
+          "observable": "no change"
+        },
+        {
+          "when": "alive AI living",
+          "observable": "continues to the family hook / default response"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_stats_unit.cpp",
+          "test": "StatsUnit.stats_r14_hit_response_gates_and_direct_walk_and_blocked_defaults",
+          "note": "ACT_CONTROL"
+        },
+        {
+          "file": "tests/integration/test_stats_unit.cpp",
+          "test": "StatsUnit.hit_response_guard_shields_non_living_targets"
+        },
+        {
+          "file": "tests/integration/test_stats_more_paths.cpp",
+          "test": "StatsMorePaths.stats_set_command_die_and_hit_response_early_returns"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "stats.cpp:689",
+      "lines": [
+        689,
+        691
+      ],
+      "function": "statistics::hit_response",
+      "anchor": "if (who->query_order() == Order::Weapon && who->owner())",
+      "condition": "if (who->query_order() == Order::Weapon && who->owner()) foe = who->owner(); else foe = who;",
+      "semantic": "A walker hit by a projectile or melee weapon retaliates against the weapon's owner, not the weapon; an ownerless weapon or a body is itself the foe.",
+      "arms": [
+        {
+          "when": "weapon with owner",
+          "observable": "foe() == owner; owner->foe() == victim"
+        },
+        {
+          "when": "anything else",
+          "observable": "foe() == who"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_stats_unit.cpp",
+          "test": "StatsUnit.stats_r14_hit_response_gates_and_direct_walk_and_blocked_defaults"
+        },
+        {
+          "file": "tests/integration/test_stats_more_paths.cpp",
+          "test": "StatsMorePaths.stats_set_command_die_and_hit_response_early_returns",
+          "note": "positive control: living attacker -> foe()==attacker, attacker->foe()==target"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "stats.cpp:695",
+      "lines": [
+        695
+      ],
+      "function": "statistics::hit_response",
+      "anchor": "if (og::script::hooks::hit_response(fd, this, foe))",
+      "condition": "if (og::script::hooks::hit_response(fd, this, foe)) return;",
+      "semantic": "A family's Lua hit_response hook (archer runs, mage/archmage teleport, cleric, etc. in packs/core/families/*.lua) replaces the default retaliate-and-flee response entirely when it reports handled.",
+      "arms": [
+        {
+          "when": "hook returns true",
+          "observable": "default arm skipped: no special roll, no retarget/yell by the C++ path; hook's own effect (e.g. archer walk-away command, mage teleport)"
+        },
+        {
+          "when": "no hook or hook returns false",
+          "observable": "default response stats.cpp:699ff"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_stats_commands.cpp",
+          "test": "StatsCommands.stats_hit_response_all_families"
+        },
+        {
+          "file": "tests/integration/test_stats_hit_response_more.cpp",
+          "test": "StatsHitResponseMore.statistics_hit_response_archer_runs_away_and_queues_walk"
+        },
+        {
+          "file": "tests/integration/test_stats_hit_response_teleport.cpp",
+          "test": "StatsHitResponseTeleport.stats_hit_response_mage_and_archmage_teleport_branches"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "stats.cpp:699",
+      "lines": [
+        699
+      ],
+      "function": "statistics::hit_response",
+      "anchor": "if (controller_->check_special() && !rng(3) )",
+      "condition": "if (controller_->check_special() && !rng(3)) controller_->special();",
+      "semantic": "When struck, an AI walker whose special is available fires it one time in three (check_special gates before the rng draw).",
+      "arms": [
+        {
+          "when": "check_special true and rng(3)==0",
+          "observable": "special() runs: its effect/mana drop observable (e.g. magicpoints down by special cost)"
+        },
+        {
+          "when": "check_special true, rng(3)!=0",
+          "observable": "no special; one rng draw consumed"
+        },
+        {
+          "when": "check_special false",
+          "observable": "no special, no rng draw"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_stats_commands.cpp",
+          "test": "StatsCommands.stats_hit_response_default_arm_special_gate_opens_when_rng3_is_zero",
+          "note": "leg B: rng(3)==0 -> trace walker \"special: family=\" (special() entered); legs A/C/E assert special() NOT entered, but no leg asserts the rng draw count"
+        }
+      ],
+      "missing_arms": [
+        "check_special true, rng(3)!=0",
+        "check_special false"
+      ]
+    },
+    {
+      "id": "stats.cpp:701",
+      "lines": [
+        701,
+        703
+      ],
+      "function": "statistics::hit_response",
+      "anchor": "if (controller_->myguy) // are we a player's character?",
+      "condition": "if (controller_->myguy) threshold = 5*max_hp/10; else threshold = 5*max_hp/16;",
+      "semantic": "A player's named character (has a guy record) flees for help below 50 percent hp; an enemy/bot without a guy is braver and flees below 5/16.",
+      "arms": [
+        {
+          "when": "has myguy, hp in [5/16, 1/2) of max",
+          "observable": "yells: yo_delay +80, forced WALK 16 away"
+        },
+        {
+          "when": "no myguy, same hp",
+          "observable": "no yell"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": [
+        "has myguy, hp in [5/16, 1/2) of max",
+        "no myguy, same hp"
+      ]
+    },
+    {
+      "id": "stats.cpp:707",
+      "lines": [
+        707
+      ],
+      "function": "statistics::hit_response",
+      "anchor": "if (controller_->foe() != foe) // we're attacked by a new enemy",
+      "condition": "if (controller_->foe() != foe) { clear_command(); set_foe(foe); foe->set_foe(controller_); distances = 32000; }",
+      "semantic": "A walker struck by a new attacker drops its orders and targets the attacker, and the attacker is made to target it back; the chase distance memory resets. Retargeting runs before the yell so the yell's flee walk survives.",
+      "arms": [
+        {
+          "when": "new attacker",
+          "observable": "queue cleared, foe()==attacker, attacker->foe()==victim, last/current distance 32000"
+        },
+        {
+          "when": "same attacker again",
+          "observable": "queue and distances untouched"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_stats_extended.cpp",
+          "test": "StatsExtended.hit_response_from_a_new_attacker_retargets_both_ways_and_clears_commands"
+        },
+        {
+          "file": "tests/integration/test_stats_hit_response_more.cpp",
+          "test": "StatsHitResponseMore.wounded_world_member_recruits_allies_and_keeps_its_escape"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "stats.cpp:717",
+      "lines": [
+        717
+      ],
+      "function": "statistics::hit_response",
+      "anchor": "if ( (hitpoints_ < threshold)",
+      "condition": "if (hitpoints_ < threshold && !controller_->yo_delay()) yell_for_help(foe);",
+      "semantic": "A badly hurt walker yells for help and runs, but at most once per yell cooldown (yo_delay, +80 per yell).",
+      "arms": [
+        {
+          "when": "hp < threshold, yo_delay 0",
+          "observable": "yell: yo_delay == 80, forced WALK(16) away, allies retargeted"
+        },
+        {
+          "when": "hp < threshold, yo_delay > 0",
+          "observable": "no yell: yo_delay unchanged, no flee walk"
+        },
+        {
+          "when": "hp >= threshold",
+          "observable": "no yell"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_stats_more_paths.cpp",
+          "test": "StatsMorePaths.hit_response_yells_once_below_half_hp_and_retargets_both_bodies",
+          "note": "yell arm and hp>=threshold control"
+        },
+        {
+          "file": "tests/integration/test_stats_unit.cpp",
+          "test": "StatsUnit.stats_r14_hit_response_gates_and_direct_walk_and_blocked_defaults",
+          "note": "healthy no-yell, then hp 1 yell"
+        },
+        {
+          "file": "tests/integration/test_stats_hit_response_more.cpp",
+          "test": "StatsHitResponseMore.wounded_world_member_recruits_allies_and_keeps_its_escape",
+          "note": "cooldown arm: second hit with yo_delay 80 -> yo_delay stays 80, retained WALK(7,1,0) not replaced, ally not recruited"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "stats.cpp:738",
+      "lines": [
+        738
+      ],
+      "function": "statistics::yell_for_help",
+      "anchor": "if (foe != w->foe())",
+      "condition": "w->set_leader(controller_); if (foe != w->foe()) { distances = 32000 } w->set_foe(foe);",
+      "semantic": "A yell recruits every living, non-dormant, non-hidden friendly walker within 160 px of the yeller (find_friends_in_range has no act_type gate, so player-controlled heroes are recruited too): each gets the yeller as leader and the yeller's attacker as foe; one newly switched onto that foe resets its chase distance memory to 32000, one already on it keeps it.",
+      "arms": [
+        {
+          "when": "AI ally within 160 px on another foe",
+          "observable": "ally foe()==attacker, leader()==yeller, last/current distance 32000"
+        },
+        {
+          "when": "ally already on the attacker",
+          "observable": "foe/leader set, distances unchanged"
+        },
+        {
+          "when": "player-controlled (ACT_CONTROL) friendly hero within 160 px",
+          "observable": "hero leader()==yeller, foe()==attacker, distances 32000 if it was on another foe (the ACT_CONTROL exclusion is commented out)"
+        },
+        {
+          "when": "friend beyond 160 px, or dead/dormant/hidden, or a foe",
+          "observable": "leader/foe/distances unchanged"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_stats_commands.cpp",
+          "test": "StatsCommands.stats_yell_for_help_flees_and_recruits_friends",
+          "note": "arm 1: ally foe/leader/32000"
+        },
+        {
+          "file": "tests/integration/test_stats_hit_response_more.cpp",
+          "test": "StatsHitResponseMore.wounded_world_member_recruits_allies_and_keeps_its_escape",
+          "note": "arm 1: ally foe/leader/32000"
+        }
+      ],
+      "missing_arms": [
+        "ally already on the attacker",
+        "player-controlled (ACT_CONTROL) friendly hero within 160 px",
+        "friend beyond 160 px, or dead/dormant/hidden, or a foe"
+      ]
+    },
+    {
+      "id": "stats.cpp:750",
+      "lines": [
+        750,
+        753
+      ],
+      "function": "statistics::yell_for_help",
+      "anchor": "if (deltax)",
+      "condition": "deltax = -(foe.x - x); if (deltax) deltax = sign; same for y",
+      "semantic": "The yeller flees directly away from its attacker on each axis (8-way, no 3:1 snap; same row/column gives a pure axis flee; coincident gives (0,0) which the walk clamp turns into SE).",
+      "arms": [
+        {
+          "when": "foe east",
+          "observable": "flee com1 -1"
+        },
+        {
+          "when": "foe same row",
+          "observable": "com2 0"
+        },
+        {
+          "when": "foe coincident",
+          "observable": "flee (1,1) via the clamp (executed-only: no test asserts this arm)"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_stats_commands.cpp",
+          "test": "StatsCommands.stats_yell_for_help_flees_and_recruits_friends",
+          "note": "foe east same row: com1 -1, com2 0"
+        },
+        {
+          "file": "tests/integration/test_stats_unit.cpp",
+          "test": "StatsUnit.stats_direct_walk_steps_toward_the_foe_and_hit_response_retargets_and_yells",
+          "note": "foe east same row: com1 -1, com2 0"
+        },
+        {
+          "file": "tests/integration/test_stats_hit_response_more.cpp",
+          "test": "StatsHitResponseMore.wounded_world_member_recruits_allies_and_keeps_its_escape",
+          "note": "foe south-east: com1 -1, com2 -1"
+        }
+      ],
+      "missing_arms": [
+        "foe coincident"
+      ]
+    },
+    {
+      "id": "stats.cpp:756",
+      "lines": [
+        756
+      ],
+      "function": "statistics::yell_for_help",
+      "anchor": "if (!og::sim::fearless(*controller_)) force_command(COMMAND_WALK, 16, deltax, deltay);  // rallied walkers hold",
+      "condition": "if (!og::sim::fearless(*controller_)) force_command(COMMAND_WALK, 16, dx, dy);",
+      "semantic": "A fearless walker (KIT_FEARLESS mark, or inside a friendly captain banner's rally radius with New Specials on) still yells and recruits but holds its ground instead of running.",
+      "arms": [
+        {
+          "when": "fearless",
+          "observable": "no forced WALK queued; yo_delay +80 and allies still recruited"
+        },
+        {
+          "when": "not fearless",
+          "observable": "forced WALK(16) away"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_seams_small.cpp",
+          "test": "KitSeamsSmall.fearless_bit_and_rally_radius_block_the_flee_walk"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "stats.cpp:758",
+      "lines": [
+        758,
+        761
+      ],
+      "function": "statistics::yell_for_help",
+      "anchor": "if (controller_->myguy && (controller_->team_num() == 0) )",
+      "condition": "if (controller_->myguy && team_num() == 0) { if (sim_events) push_notification(\"<name> yells for help!\", 10); }",
+      "semantic": "Only a named character on team 0 (the first player team) announces its yell as an on-screen notification; other teams' heroes and bots yell silently.",
+      "arms": [
+        {
+          "when": "myguy and team 0",
+          "observable": "sim event log has notification '<name> yells for help!' (duration 10)"
+        },
+        {
+          "when": "no myguy or team != 0",
+          "observable": "no notification"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": [
+        "myguy and team 0",
+        "no myguy or team != 0"
+      ]
+    },
+    {
+      "id": "stats.cpp:798",
+      "lines": [
+        798,
+        800,
+        804,
+        808,
+        812,
+        816,
+        820,
+        824,
+        828,
+        832
+      ],
+      "function": "statistics::right_blocked",
+      "anchor": "switch (controller_->curdir())",
+      "condition": "switch (controller_->curdir()) { case FACE_*: ... default: ... }",
+      "semantic": "The right probe asks whether the walker's own box moved one pixel (CHECK_STEP_SIZE) 90 degrees clockwise of the facing (UP->E, UR->SE, R->S, DR->SW, D->W, DL->NW, L->N, UL->NE) is impassable (grid, bodies, doors via query_passable; quiet when the caller asks). An out-of-range facing falls through with xdelta=ydelta=0 and probes the walker's own spot: usually 'not blocked', but the loud probe still runs there and can report a body coincident with the walker (and set collide_ob).",
+      "arms": [
+        {
+          "when": "each of the 8 facings",
+          "observable": "returns true exactly when the cell at the 90 degrees clockwise of the facing (UP->E, UR->SE, R->S, DR->SW, D->W, DL->NW, L->N, UL->NE) offset holds a wall/body; false otherwise"
+        },
+        {
+          "when": "facing outside 0..7",
+          "observable": "probe of the walker's own cell: false on an empty spot; true (and collide_ob set when loud) if another body overlaps the walker's spot"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_stats_extended.cpp",
+          "test": "StatsExtended.blocked_probes_pin_every_facing_offset_of_all_four_tables"
+        },
+        {
+          "file": "tests/integration/test_stats_commands.cpp",
+          "test": "StatsCommands.stats_blocked_helpers_probe_the_exact_cell_for_every_facing"
+        },
+        {
+          "file": "tests/integration/test_stats_right_walk_direct_walk.cpp",
+          "test": "StatsRightWalkDirectWalk.blocked_probe_tables_resolve_each_facings_exact_cell"
+        },
+        {
+          "file": "tests/integration/test_stats_unit.cpp",
+          "test": "StatsUnit.stats_r14_hit_response_gates_and_direct_walk_and_blocked_defaults",
+          "note": "default arm"
+        },
+        {
+          "file": "tests/unit/test_quiet_probe.cpp",
+          "test": "QuietProbe.every_blocker_answers_like_the_loud_probe_and_changes_nothing"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "stats.cpp:849",
+      "lines": [
+        849,
+        851,
+        853,
+        856,
+        858,
+        860,
+        862,
+        864,
+        866,
+        868
+      ],
+      "function": "statistics::right_forward_blocked",
+      "anchor": "switch (controller_->curdir())",
+      "condition": "switch (controller_->curdir()) { case FACE_*: ... default: ... }",
+      "semantic": "The right-front probe asks whether the walker's own box moved one pixel (CHECK_STEP_SIZE) 45 degrees clockwise of the facing (UP->NE, UR->E, R->SE, DR->S, D->SW, DL->W, L->NW, UL->N) is impassable (grid, bodies, doors via query_passable; quiet when the caller asks). An out-of-range facing returns false without any probe (default: break; return false; query_passable is not called, so a loud probe has no side effect).",
+      "arms": [
+        {
+          "when": "each of the 8 facings",
+          "observable": "returns true exactly when the cell at the 45 degrees clockwise of the facing (UP->NE, UR->E, R->SE, DR->S, D->SW, DL->W, L->NW, UL->N) offset holds a wall/body; false otherwise"
+        },
+        {
+          "when": "facing outside 0..7",
+          "observable": "false, and query_passable is never called (no collide_ob set, no door/body side effect even when loud)"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_stats_extended.cpp",
+          "test": "StatsExtended.blocked_probes_pin_every_facing_offset_of_all_four_tables"
+        },
+        {
+          "file": "tests/integration/test_stats_commands.cpp",
+          "test": "StatsCommands.stats_blocked_helpers_probe_the_exact_cell_for_every_facing"
+        },
+        {
+          "file": "tests/integration/test_stats_right_walk_direct_walk.cpp",
+          "test": "StatsRightWalkDirectWalk.blocked_probe_tables_resolve_each_facings_exact_cell"
+        },
+        {
+          "file": "tests/integration/test_stats_unit.cpp",
+          "test": "StatsUnit.stats_r14_hit_response_gates_and_direct_walk_and_blocked_defaults",
+          "note": "default arm"
+        },
+        {
+          "file": "tests/unit/test_quiet_probe.cpp",
+          "test": "QuietProbe.every_blocker_answers_like_the_loud_probe_and_changes_nothing"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "stats.cpp:882",
+      "lines": [
+        882,
+        884,
+        886,
+        889,
+        891,
+        893,
+        895,
+        898,
+        900,
+        902
+      ],
+      "function": "statistics::right_back_blocked",
+      "anchor": "switch (controller_->curdir())",
+      "condition": "switch (controller_->curdir()) { case FACE_*: ... default: ... }",
+      "semantic": "The right-back probe asks whether the walker's own box moved one pixel (CHECK_STEP_SIZE) 135 degrees clockwise of the facing (UP->SE, UR->S, R->SW, DR->W, D->NW, DL->N, L->NE, UL->E) is impassable (grid, bodies, doors via query_passable; quiet when the caller asks). An out-of-range facing returns false without any probe (default: break; return false; query_passable is not called, so a loud probe has no side effect).",
+      "arms": [
+        {
+          "when": "each of the 8 facings",
+          "observable": "returns true exactly when the cell at the 135 degrees clockwise of the facing (UP->SE, UR->S, R->SW, DR->W, D->NW, DL->N, L->NE, UL->E) offset holds a wall/body; false otherwise"
+        },
+        {
+          "when": "facing outside 0..7",
+          "observable": "false, and query_passable is never called (no collide_ob set, no door/body side effect even when loud)"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_stats_extended.cpp",
+          "test": "StatsExtended.blocked_probes_pin_every_facing_offset_of_all_four_tables"
+        },
+        {
+          "file": "tests/integration/test_stats_commands.cpp",
+          "test": "StatsCommands.stats_blocked_helpers_probe_the_exact_cell_for_every_facing"
+        },
+        {
+          "file": "tests/integration/test_stats_right_walk_direct_walk.cpp",
+          "test": "StatsRightWalkDirectWalk.blocked_probe_tables_resolve_each_facings_exact_cell"
+        },
+        {
+          "file": "tests/integration/test_stats_unit.cpp",
+          "test": "StatsUnit.stats_r14_hit_response_gates_and_direct_walk_and_blocked_defaults",
+          "note": "default arm"
+        },
+        {
+          "file": "tests/unit/test_quiet_probe.cpp",
+          "test": "QuietProbe.every_blocker_answers_like_the_loud_probe_and_changes_nothing"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "stats.cpp:916",
+      "lines": [
+        916,
+        918,
+        922,
+        926,
+        930,
+        934,
+        938,
+        942,
+        946,
+        950
+      ],
+      "function": "statistics::forward_blocked",
+      "anchor": "switch (controller_->curdir())",
+      "condition": "switch (controller_->curdir()) { case FACE_*: ... default: ... }",
+      "semantic": "The forward probe asks whether the walker's own box moved one pixel (CHECK_STEP_SIZE) along the facing is impassable (grid, bodies, doors via query_passable; quiet when the caller asks). An out-of-range facing falls through with xdelta=ydelta=0 and probes the walker's own spot: usually 'not blocked', but the loud probe still runs there and can report a body coincident with the walker (and set collide_ob).",
+      "arms": [
+        {
+          "when": "each of the 8 facings",
+          "observable": "returns true exactly when the cell at the along the facing offset holds a wall/body; false otherwise"
+        },
+        {
+          "when": "facing outside 0..7",
+          "observable": "probe of the walker's own cell: false on an empty spot; true (and collide_ob set when loud) if another body overlaps the walker's spot"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_stats_extended.cpp",
+          "test": "StatsExtended.blocked_probes_pin_every_facing_offset_of_all_four_tables"
+        },
+        {
+          "file": "tests/integration/test_stats_commands.cpp",
+          "test": "StatsCommands.stats_blocked_helpers_probe_the_exact_cell_for_every_facing"
+        },
+        {
+          "file": "tests/integration/test_stats_right_walk_direct_walk.cpp",
+          "test": "StatsRightWalkDirectWalk.blocked_probe_tables_resolve_each_facings_exact_cell"
+        },
+        {
+          "file": "tests/integration/test_stats_unit.cpp",
+          "test": "StatsUnit.stats_r14_hit_response_gates_and_direct_walk_and_blocked_defaults",
+          "note": "default arm"
+        },
+        {
+          "file": "tests/unit/test_quiet_probe.cpp",
+          "test": "QuietProbe.every_blocker_answers_like_the_loud_probe_and_changes_nothing"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "stats.cpp:972",
+      "lines": [
+        972,
+        974,
+        989,
+        995,
+        1000,
+        1044,
+        1046
+      ],
+      "function": "statistics::right_walk",
+      "anchor": "if (path_probe(Side::Right, quiet) || path_probe(Side::RightFront, quiet) )",
+      "condition": "quiet = gameplay_fixes != 0; if (probe(Right) || probe(RightFront)) { if (!probe(Front)) step along last move; else turn left } else if (probe(Front)) turn left; else if (probe(RightBack)) turn right + queue 1 walk; else if (!direct_walk()) step along curdir;",
+      "semantic": "Right-hand wall following: with a wall on the right (or right-front) the walker keeps going straight while the front is open and turns left (90 deg) when it is not; with nothing on the right but a blocked front it turns left; with only the right-back blocked (it just passed a corner) it turns right and queues one step along the new heading; in open space it walks straight at its foe (direct_walk) and, failing that, along its facing. Classic: the four probes are the walker's own step moved one pixel and act like steps (eat a potion, open a door, bump-swing a body, leave collide_ob for a stale shove). Gameplay Fixes Y: the probes are quiet and change nothing, except a melee-only bot's own foe in a probe's way is still bumped (stats.cpp:1113).",
+      "arms": [
+        {
+          "when": "right or right-front blocked, front open",
+          "observable": "one walkstep along the snapped last movement (stats.cpp:978)"
+        },
+        {
+          "when": "right/right-front blocked, front blocked",
+          "observable": "enddir == (enddir+6)%8, turn() toward it; no movement"
+        },
+        {
+          "when": "right open, front blocked",
+          "observable": "same left turn"
+        },
+        {
+          "when": "only right-back blocked",
+          "observable": "enddir == (enddir+2)%8 and back of queue gains COMMAND_WALK(1) along it (stats.cpp:1003)"
+        },
+        {
+          "when": "nothing blocked, direct_walk succeeds",
+          "observable": "step toward foe or ATTACK queued"
+        },
+        {
+          "when": "nothing blocked, direct_walk fails",
+          "observable": "walkstep along curdir (stats.cpp:1048)"
+        },
+        {
+          "when": "fixes off, a probe overlaps a potion/door/body",
+          "observable": "potion consumed / door opened / body bumped (collide_ob set, swing)"
+        },
+        {
+          "when": "fixes on, same",
+          "observable": "potion still present, door shut, no swing, collide_ob untouched"
+        }
+      ],
+      "setting": "both",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_gameplay_fixes_walk.cpp",
+          "test": "GameplayFixesWalk.a_right_walk_side_probe_eats_nothing_and_swings_at_nobody",
+          "note": "fixes off/on: potion eaten/stands, bump swing/none, collide_ob"
+        },
+        {
+          "file": "tests/unit/test_gameplay_fixes_walk.cpp",
+          "test": "GameplayFixesWalk.a_side_probe_does_not_swing_at_a_body_it_is_not_fighting_with_the_setting_on"
+        },
+        {
+          "file": "tests/integration/test_stats_unit.cpp",
+          "test": "StatsUnit.stats_r11_right_walk_branch_matrix",
+          "note": "forward step, both left turns, right-back WALK(1), curdir fallback with no foe"
+        },
+        {
+          "file": "tests/integration/test_stats_right_walk_direct_walk.cpp",
+          "test": "StatsRightWalkDirectWalk.right_walk_normalizes_the_forward_step_and_turns_left_when_blocked"
+        },
+        {
+          "parity": "orc_right_walk_potion_scen99",
+          "fact": "potion count 0 (classic: eaten)"
+        },
+        {
+          "parity": "orc_right_walk_potion_fixes_scen99",
+          "fact": "potion count 1 (fixes: stands)"
+        }
+      ],
+      "missing_arms": [
+        "nothing blocked, direct_walk succeeds"
+      ]
+    },
+    {
+      "id": "stats.cpp:978",
+      "lines": [
+        978,
+        980,
+        982,
+        984
+      ],
+      "function": "statistics::right_walk",
+      "anchor": "if (std::fabs(xdelta) > std::fabs(3 * ydelta))",
+      "condition": "3:1 snap and unit-normalise of (lastx, lasty)",
+      "semantic": "While hugging a wall the walker keeps going in the direction it last moved, snapped to an axis when one component dominates 3:1 (same snap as stats.cpp:463).",
+      "arms": [
+        {
+          "when": "|lastx|>3|lasty|",
+          "observable": "step (sign lastx, 0)"
+        },
+        {
+          "when": "|lasty|>3|lastx|",
+          "observable": "step (0, sign lasty)"
+        },
+        {
+          "when": "else",
+          "observable": "diagonal"
+        },
+        {
+          "when": "last move (0,0)",
+          "observable": "walkstep(0,0): no move"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_stats_right_walk_direct_walk.cpp",
+          "test": "StatsRightWalkDirectWalk.right_walk_normalizes_the_forward_step_and_turns_left_when_blocked",
+          "note": "x-major, y-major and diagonal snaps"
+        }
+      ],
+      "missing_arms": [
+        "last move (0,0)"
+      ]
+    },
+    {
+      "id": "stats.cpp:1003",
+      "lines": [
+        1003,
+        1005,
+        1009,
+        1013,
+        1017,
+        1021,
+        1025,
+        1029,
+        1033,
+        1037
+      ],
+      "function": "statistics::right_walk",
+      "anchor": "switch (controller_->enddir())",
+      "condition": "switch (controller_->enddir()) after enddir = (enddir+2)%8",
+      "semantic": "Turning right around a corner queues one unit walk along the new heading (8-way table identical to facing_step_delta, stats.cpp:1443).",
+      "arms": [
+        {
+          "when": "each new enddir 0..7",
+          "observable": "back command COMMAND_WALK(1) with com equal to that heading's unit vector"
+        },
+        {
+          "when": "out-of-range enddir",
+          "observable": "COMMAND_WALK(1,0,0) clamped to (1,1)"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_stats_right_walk_direct_walk.cpp",
+          "test": "StatsRightWalkDirectWalk.stats_right_walk_turn_right_adds_walk_command_all_enddirs"
+        },
+        {
+          "file": "tests/integration/test_stats_more_paths.cpp",
+          "test": "StatsMorePaths.stats_right_walk_round8_negative_enddir_default_switch_path"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "stats.cpp:1048",
+      "lines": [
+        1048,
+        1050,
+        1054,
+        1058,
+        1062,
+        1066,
+        1070,
+        1074,
+        1078,
+        1082
+      ],
+      "function": "statistics::right_walk",
+      "anchor": "switch (controller_->curdir())",
+      "condition": "switch (controller_->curdir()) when !direct_walk()",
+      "semantic": "In open space with no straight route to the foe, the walker ambles one step along its current facing.",
+      "arms": [
+        {
+          "when": "each curdir",
+          "observable": "lastx/lasty == that facing's unit vector * stepsize"
+        },
+        {
+          "when": "out-of-range curdir",
+          "observable": "walkstep(0,0) (executed-only: no test asserts this arm)"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_stats_more_paths.cpp",
+          "test": "StatsMorePaths.right_walk_with_nothing_blocked_steps_the_unit_vector_of_its_facing",
+          "note": "8 facings: lastx/lasty"
+        },
+        {
+          "file": "tests/integration/test_stats_commands.cpp",
+          "test": "StatsCommands.stats_right_walk_steps_along_curdir_when_direct_walk_fails",
+          "note": "8 facings: position"
+        },
+        {
+          "file": "tests/integration/test_stats_unit.cpp",
+          "test": "StatsUnit.stats_r11_right_walk_branch_matrix",
+          "note": "case 5: 8 facings: position"
+        }
+      ],
+      "missing_arms": [
+        "out-of-range curdir"
+      ]
+    },
+    {
+      "id": "stats.cpp:1113",
+      "lines": [
+        1113,
+        1116,
+        1121
+      ],
+      "function": "statistics::path_probe",
+      "anchor": "if (!quiet || !blocked)",
+      "condition": "if (!quiet || !blocked) return blocked; if (!foe || foe->dead() || foe->floor() != floor() || !BIT_NO_RANGED || is_friendly(foe)) return blocked; if (step_meets(...foe)) collide(foe);",
+      "semantic": "Gameplay Fixes Y, the bump: with quiet probes, a melee-only bot (BIT_NO_RANGED: orc, ghost, slime...) whose own live, hostile, same-floor foe stands in a blocked probe's box still runs into it (collide: a swing along its heading) - that is how such bots fight; any other body a quiet probe meets is left alone. Off (loud probes), the probe itself does the bump for every body.",
+      "arms": [
+        {
+          "when": "loud (fixes off) or probe clear",
+          "observable": "returns the probe answer; no extra collide"
+        },
+        {
+          "when": "quiet, blocked, BIT_NO_RANGED bot, live hostile same-floor foe in the probe box",
+          "observable": "collide_ob == foe, busy == the family's fire delay (7 for the orc, 6 for the soldier), ani_type == ANI_ATTACK, foe hp unchanged at that instant (the blow lands on later animate ticks), no rng draw"
+        },
+        {
+          "when": "quiet, blocked, any gate fails (no foe, dead, other floor, has ranged, friendly, foe not in the box)",
+          "observable": "no collide; foe hp unchanged"
+        }
+      ],
+      "setting": "fixes-on",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_gameplay_fixes_walk.cpp",
+          "test": "GameplayFixesWalk.a_melee_bot_bumps_the_foe_a_quiet_probe_finds",
+          "note": "bump arm (OwnFoe), fixes-off loud arm, gates: ranged bot and foe-not-in-box"
+        },
+        {
+          "file": "tests/unit/test_gameplay_fixes_walk.cpp",
+          "test": "GameplayFixesWalk.a_side_probe_does_not_swing_at_a_body_it_is_not_fighting_with_the_setting_on"
+        }
+      ],
+      "missing_arms": [
+        "quiet, blocked, any gate fails (no foe, dead, other floor, has ranged, friendly, foe not in the box)"
+      ]
+    },
+    {
+      "id": "stats.cpp:1140",
+      "lines": [
+        1140
+      ],
+      "function": "statistics::direct_walk",
+      "anchor": "if (!foe)",
+      "condition": "if (!foe) return 0;",
+      "semantic": "With no foe there is no straight-line chase: direct_walk reports failure and does not move (callers then wall-follow).",
+      "arms": [
+        {
+          "when": "no foe",
+          "observable": "returns 0; position unchanged"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_stats_unit.cpp",
+          "test": "StatsUnit.stats_r11_direct_walk_and_walk_to_foe_tail_branches"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "stats.cpp:1154",
+      "lines": [
+        1149,
+        1151,
+        1154
+      ],
+      "function": "statistics::direct_walk",
+      "anchor": "if (std::fabs(xdelta) > std::fabs(3 * ydelta))",
+      "condition": "3:1 snap of (foe - self); if (fire_check((short)dx, (short)dy)) { clear_command(); turn(facing(dx,dy)); add_command(COMMAND_ATTACK, 30+rng(25), 0, 0); return 1; }",
+      "semantic": "A chasing walker that can already land a shot on its foe along the (3:1-snapped, raw pixel) delta stops chasing: it wipes its orders, turns toward the foe and starts an ATTACK lasting 30+rng(25) rounds.",
+      "arms": [
+        {
+          "when": "fire_check passes",
+          "observable": "queue == [COMMAND_ATTACK(30+rng(25))]; returns 1; curdir moved toward facing(dx,dy)"
+        },
+        {
+          "when": "fire_check fails",
+          "observable": "continues to the step ladder stats.cpp:1174"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_stats_unit.cpp",
+          "test": "StatsUnit.stats_direct_walk_steps_toward_the_foe_and_hit_response_retargets_and_yells",
+          "note": "fire_check fails (foe 256 px east): steps xpos 65, has_commands false"
+        }
+      ],
+      "missing_arms": [
+        "fire_check passes"
+      ]
+    },
+    {
+      "id": "stats.cpp:1174",
+      "lines": [
+        1162,
+        1164,
+        1174,
+        1176,
+        1178,
+        1185,
+        1187,
+        1196,
+        1198,
+        1208,
+        1210
+      ],
+      "function": "statistics::direct_walk",
+      "anchor": "if (xdelta != 0.0f)",
+      "condition": "normalise; if (!grid_passable(diag)) { if (!grid_passable(x only)) { if (!grid_passable(y only)) return 0; else { if (dy == 0) return 0; walkstep(0,dy); return 1 } } else { if (dx == 0) return 0; walkstep(dx,0); return 1 } } else { if (dx==0 && dy==0) return 0; walkstep(dx,dy); return 1 }",
+      "semantic": "The straight-line chase takes the diagonal unit step toward the foe when the GRID allows it (bodies are not checked here), else slides along x, else along y; it fails (returns 0, no move) when every straight move is walled or the foe is exactly on top of it.",
+      "arms": [
+        {
+          "when": "diagonal grid-open, delta non-zero",
+          "observable": "walkstep(dx,dy); returns 1"
+        },
+        {
+          "when": "diagonal walled, x-only open, dx != 0",
+          "observable": "walkstep(dx,0) (executed-only: no test asserts the slide's position change)"
+        },
+        {
+          "when": "diagonal walled, x-only open, dx == 0",
+          "observable": "returns 0 (y step equals the walled diagonal)"
+        },
+        {
+          "when": "diagonal and x walled, y-only open, dy != 0",
+          "observable": "walkstep(0,dy) (executed-only: no test asserts the slide's position change)"
+        },
+        {
+          "when": "y-only open but dy == 0",
+          "observable": "returns 0"
+        },
+        {
+          "when": "all walled",
+          "observable": "returns 0, no move"
+        },
+        {
+          "when": "foe coincident",
+          "observable": "returns 0"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_stats_right_walk_direct_walk.cpp",
+          "test": "StatsRightWalkDirectWalk.stats_direct_walk_grid_passability_branches",
+          "note": "return-0 arms: all walled, x walled + dy==0, diagonal walled + dx==0, coincident"
+        },
+        {
+          "file": "tests/integration/test_stats_unit.cpp",
+          "test": "StatsUnit.stats_r14_hit_response_gates_and_direct_walk_and_blocked_defaults",
+          "note": "open step: xpos 97; coincident: returns 0, xpos 96"
+        },
+        {
+          "file": "tests/integration/test_stats_unit.cpp",
+          "test": "StatsUnit.stats_direct_walk_steps_toward_the_foe_and_hit_response_retargets_and_yells",
+          "note": "open step: xpos 65, ypos 64"
+        }
+      ],
+      "missing_arms": [
+        "diagonal walled, x-only open, dx != 0",
+        "diagonal and x walled, y-only open, dy != 0"
+      ]
+    },
+    {
+      "id": "stats.cpp:1253",
+      "lines": [
+        1235,
+        1238,
+        1253,
+        1256,
+        1263
+      ],
+      "function": "statistics::path_toward_stair",
+      "anchor": "if (foe_floor == myfloor)",
+      "condition": "if (foe_floor == myfloor) return false; want = foe_floor > myfloor ? PIX_ZSTAIR_UP : PIX_ZSTAIR_DOWN; nearest (Manhattan in cells, first in row-major order on ties); if none return false; find_path_to_point(stair); return !path.empty()",
+      "semantic": "A ground walker whose foe is on another floor and unreachable heads for the nearest Z-stair leading toward the foe (an up-stair if the foe is above, a down-stair if below) and climbs; with no such stair on its floor it gives up on the stair route.",
+      "arms": [
+        {
+          "when": "same floor",
+          "observable": "false, path_to_foe empty"
+        },
+        {
+          "when": "foe above, no up-stair",
+          "observable": "false"
+        },
+        {
+          "when": "foe above, up-stairs present",
+          "observable": "true; path_to_foe ends at the NEAREST up-stair cell"
+        },
+        {
+          "when": "foe below, down-stair present",
+          "observable": "true; path ends at a down-stair (executed-only: no test asserts this arm (ZAxis tests exercise only same floor, none and up-stair))"
+        },
+        {
+          "when": "stair present but A* finds no route",
+          "observable": "false"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_zaxis.cpp",
+          "test": "ZAxis.path_toward_stair_answers_only_when_a_stair_leads_that_way",
+          "note": "same floor -> false/empty; no up-stair -> false/empty"
+        }
+      ],
+      "missing_arms": [
+        "foe above, up-stairs present",
+        "foe below, down-stair present",
+        "stair present but A* finds no route"
+      ]
+    },
+    {
+      "id": "stats.cpp:1284",
+      "lines": [
+        1284
+      ],
+      "function": "statistics::walk_to_foe",
+      "anchor": "if (!foe || !rng(300) ) //random just to be sure this gets reset sometime",
+      "condition": "if (!foe || !rng(300)) { last_distance = current_distance = 15000; return 0; }",
+      "semantic": "A chase with no foe resets the 'closest ever' memory; independently, one chase tick in 300 (random) also resets it and skips the move, so a bot stuck behind its best-ever distance eventually retries the straight line.",
+      "arms": [
+        {
+          "when": "no foe",
+          "observable": "returns 0; last/current distance 15000; no move; no rng draw"
+        },
+        {
+          "when": "foe and rng(300)==0",
+          "observable": "returns 0; distances 15000; no move"
+        },
+        {
+          "when": "foe and rng(300)!=0",
+          "observable": "chase continues"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_stats_commands.cpp",
+          "test": "StatsCommands.stats_walk_to_foe_no_foe_resets_distances",
+          "note": "no-foe arm"
+        },
+        {
+          "file": "tests/integration/test_stats_unit.cpp",
+          "test": "StatsUnit.stats_r11_direct_walk_and_walk_to_foe_tail_branches",
+          "note": "rng(300)!=0 (state 1): chase continues into the ATTACK short-circuit"
+        }
+      ],
+      "missing_arms": [
+        "foe and rng(300)==0"
+      ]
+    },
+    {
+      "id": "stats.cpp:1387",
+      "lines": [
+        1313,
+        1315,
+        1387,
+        1395
+      ],
+      "function": "statistics::walk_to_foe",
+      "anchor": "const bool flyer = multifloor &&",
+      "condition": "flyer = multifloor && (BIT_FLYING || flight_left); cross_floor = multifloor && !flyer && foe floor != mine; else if (!flyer || foe->floor() == floor()) { find_path_to_foe(); if (cross_floor && path.empty()) path_toward_stair(foe floor); }",
+      "semantic": "A far (>= 100 px) foe on an uncrowded map is reached by A*; a ground walker that cannot path to a foe on another floor routes to the nearest stair toward it; a flyer never paths to a foe on another floor (it cannot change floors) and instead shadows the foe's 2D position from its own floor.",
+      "arms": [
+        {
+          "when": "same floor, far foe",
+          "observable": "path_to_foe non-empty toward foe"
+        },
+        {
+          "when": "ground walker, cross-floor, foe cell unreachable",
+          "observable": "path ends at a stair toward foe's floor"
+        },
+        {
+          "when": "flyer, cross-floor",
+          "observable": "no path; fallback walk shadows foe x/y; never parks on a stair"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_zaxis.cpp",
+          "test": "ZAxis.flyer_with_cross_floor_foe_shadows_it_and_never_parks_on_stair"
+        },
+        {
+          "file": "tests/unit/test_zaxis.cpp",
+          "test": "ZAxis.cross_floor_ai_MOVING_foe_air_unreachable_still_climbs_toward_stair"
+        },
+        {
+          "file": "tests/integration/test_stats_more_paths.cpp",
+          "test": "StatsMorePaths.stats_walk_to_foe_short_circuit_and_path_branches",
+          "note": "same-floor A*"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "stats.cpp:1330",
+      "lines": [
+        1330
+      ],
+      "function": "statistics::walk_to_foe",
+      "anchor": "if(controller_->path_check_counter() <= 0 || need_cross_floor_path)",
+      "condition": "path_check_counter--; if (counter <= 0 || (cross_floor && path_to_foe.empty())) { counter = 5 + rng(10); path.clear(); ... }",
+      "semantic": "A chaser re-plans only every 5-14 ticks (random cadence); between re-plans it keeps following its path or the fallback walk. Exception: a ground walker whose foe is on another floor re-plans every tick until it has a path (so it heads for the stairs at once).",
+      "arms": [
+        {
+          "when": "counter reaches 0",
+          "observable": "counter reset to 5..14 (one rng(10) draw), path recomputed"
+        },
+        {
+          "when": "counter > 0, same floor",
+          "observable": "no re-plan; tempdistance stays 9999999 (see stats.cpp:1410)"
+        },
+        {
+          "when": "counter > 0, cross-floor and empty path",
+          "observable": "re-plan now"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_stats_unit.cpp",
+          "test": "StatsUnit.stats_r11_path_check_counter_roll_is_seed_deterministic",
+          "note": "counter 0 -> reset to 11 (seed 1) / 12 (seed 2)"
+        },
+        {
+          "file": "tests/integration/test_stats_unit.cpp",
+          "test": "StatsUnit.stats_r14_hit_response_gates_and_direct_walk_and_blocked_defaults",
+          "note": "counter 5 -> 4: no reset on a same-floor throttled tick"
+        }
+      ],
+      "missing_arms": [
+        "counter > 0, cross-floor and empty path"
+      ]
+    },
+    {
+      "id": "stats.cpp:1351",
+      "lines": [
+        1351,
+        1356,
+        1380,
+        1383
+      ],
+      "function": "statistics::walk_to_foe",
+      "anchor": "if (!cross_floor &&",
+      "condition": "if (!cross_floor && (tempdistance < 100 || obmap.size() > 200)) { foes = find_foes_in_range(100); if (howmany > 0) { clear; ... ATTACK(30+rng(25),1,1); init_fire(); return 1 } else { if (!empty) front.count = 0 } }",
+      "semantic": "On a re-plan tick, a same-floor chaser whose foe is within 100 px (Manhattan), or any chaser on a crowded map (more than 200 objects, dead included), skips A*: if any foe is within 100 px it wipes its orders, turns to the foe and starts an ATTACK of 30+rng(25) rounds and fires; if no foe is that close it abandons its current order (front count zeroed) and falls through to the direct/right-hand walk.",
+      "arms": [
+        {
+          "when": "foe within 100 px (any foe in range)",
+          "observable": "queue == [ATTACK(30+rng(25),1,1)], turned toward foe, init_fire run, returns 1"
+        },
+        {
+          "when": "crowded map, no foe within 100",
+          "observable": "front command count 0 (popped on do_command tail); no A* path; fallback walk this tick"
+        },
+        {
+          "when": "held foe within 100 but dead / none hostile in range",
+          "observable": "front count 0"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_stats_unit.cpp",
+          "test": "StatsUnit.stats_r11_direct_walk_and_walk_to_foe_tail_branches",
+          "note": "live foe within 100: queue == [ATTACK]; dead held foe: front count 0"
+        },
+        {
+          "file": "tests/integration/test_stats_unit.cpp",
+          "test": "StatsUnit.walk_to_foe_adopts_a_strictly_nearer_foe_and_keeps_the_held_one_otherwise",
+          "note": "queue == [ATTACK]"
+        }
+      ],
+      "missing_arms": [
+        "crowded map, no foe within 100"
+      ]
+    },
+    {
+      "id": "stats.cpp:1368",
+      "lines": [
+        1368
+      ],
+      "function": "statistics::walk_to_foe",
+      "anchor": "if (near_foe &&",
+      "condition": "if (near_foe && distance_to_ob(near_foe) < tempdistance) { set_foe(near_foe); aim at it }",
+      "semantic": "#320: at the melee short-circuit a chaser switches to a foe strictly nearer than the one it holds (Manhattan) and aims its turn/attack at it; an equal or farther result, or null (all in reach cloaked), keeps the held foe.",
+      "arms": [
+        {
+          "when": "strictly nearer foe found",
+          "observable": "foe() == nearer foe; curdir turns toward it"
+        },
+        {
+          "when": "equal/farther",
+          "observable": "foe() unchanged"
+        },
+        {
+          "when": "null (cloaked)",
+          "observable": "foe() unchanged"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_stats_unit.cpp",
+          "test": "StatsUnit.walk_to_foe_adopts_a_strictly_nearer_foe_and_keeps_the_held_one_otherwise"
+        },
+        {
+          "parity": "walk_to_foe_adopts_near_foe_scen99",
+          "fact": "its facts (canary on this line)"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "stats.cpp:1410",
+      "lines": [
+        1405,
+        1410,
+        1414,
+        1419
+      ],
+      "function": "statistics::walk_to_foe",
+      "anchor": "if(controller_->path_to_foe.size() > 0)",
+      "condition": "if (path.size() > 0) { follow_path_to_foe(); last_distance = dist } else if (tempdistance < last_distance()) { last_distance = tempdistance; if (!direct_walk()) right_walk(); } else right_walk();",
+      "semantic": "A chaser with a path follows it; without one it charges straight at the foe only when it is closer than it has ever been (a re-plan tick that measured a new best distance), otherwise it wall-follows. Because tempdistance is only measured on re-plan ticks (9999999 otherwise), every throttled tick with no path is a right-hand-walk tick.",
+      "arms": [
+        {
+          "when": "path non-empty",
+          "observable": "position advances along path; last_distance == current Manhattan distance"
+        },
+        {
+          "when": "no path, re-plan tick, new best distance",
+          "observable": "direct step toward foe (or ATTACK), last_distance updated; right_walk if direct fails"
+        },
+        {
+          "when": "no path, not a new best (incl. every throttled tick)",
+          "observable": "right_walk behaviour"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_stats_more_paths.cpp",
+          "test": "StatsMorePaths.stats_walk_to_foe_short_circuit_and_path_branches",
+          "note": "path arm: path front (48,48), back (128,128), xpos/ypos > 32"
+        }
+      ],
+      "missing_arms": [
+        "no path, re-plan tick, new best distance",
+        "no path, not a new best (incl. every throttled tick)"
+      ]
+    },
+    {
+      "id": "stats.cpp:1426",
+      "lines": [
+        1426
+      ],
+      "function": "statistics::walk_to_foe",
+      "anchor": "if (!cross_floor && tempdistance < 30 && !commands.empty())",
+      "condition": "if (!cross_floor && tempdistance < 30 && !commands.empty()) front.commandcount = 0;",
+      "semantic": "A same-floor chaser within 30 px of its foe (measured on a re-plan tick) ends its current order; a cross-floor chase never ends on 2D proximity.",
+      "arms": [
+        {
+          "when": "same floor, re-plan tick, dist < 30",
+          "observable": "front command count 0"
+        },
+        {
+          "when": "cross-floor, dist < 30",
+          "observable": "front count unchanged"
+        },
+        {
+          "when": "throttled tick",
+          "observable": "never fires (tempdistance 9999999)"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": [
+        "same floor, re-plan tick, dist < 30",
+        "cross-floor, dist < 30",
+        "throttled tick"
+      ]
+    },
+    {
+      "id": "stats.cpp:1443",
+      "lines": [
+        1443,
+        1445,
+        1449,
+        1453,
+        1457,
+        1461,
+        1465,
+        1469,
+        1473,
+        1477
+      ],
+      "function": "facing_step_delta",
+      "anchor": "switch (dir)",
+      "condition": "switch (dir) { case FACE_*: unit vector; default: (0,0) }",
+      "semantic": "Each of the 8 facings maps to its unit step (UP (0,-1), UR (1,-1), R (1,0), DR (1,1), D (0,1), DL (-1,1), L (-1,0), UL (-1,-1)); an invalid facing maps to no step. Used by the clinch breaker (stats.cpp:591), path_probe's box (stats.cpp:1113) and right_walk_to_point (stats.cpp:1579, 1587); same table as right_walk's inline switches (stats.cpp:1003, 1048).",
+      "arms": [
+        {
+          "when": "each facing 0..7",
+          "observable": "step equals that unit vector (observable through right_walk_to_point's turn-right queued WALK com1/com2, or the clinch step)"
+        },
+        {
+          "when": "invalid facing",
+          "observable": "(0,0)"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": [
+        "each facing 0..7",
+        "invalid facing"
+      ]
+    },
+    {
+      "id": "stats.cpp:1496",
+      "lines": [
+        1496,
+        1498,
+        1501,
+        1503
+      ],
+      "function": "statistics::direct_walk_to_point",
+      "anchor": "if (std::fabs(xdelta) > std::fabs(3 * ydelta))",
+      "condition": "3:1 snap then unit-normalise of (x - self, y - self)",
+      "semantic": "A walk toward a map point aims 8-way with the same 3:1 axis snap as the foe chase (stats.cpp:1149).",
+      "arms": [
+        {
+          "when": "|dx|>3|dy|",
+          "observable": "x-only step"
+        },
+        {
+          "when": "|dy|>3|dx|",
+          "observable": "y-only step (executed-only: no test asserts this arm)"
+        },
+        {
+          "when": "else",
+          "observable": "diagonal (executed-only: no test asserts this arm)"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_stats_more_paths.cpp",
+          "test": "StatsMorePaths.direct_walk_to_point_at_the_destination_issues_no_step",
+          "note": "x-only arm: point 3 steps east -> xpos +step, ypos unchanged"
+        }
+      ],
+      "missing_arms": [
+        "|dy|>3|dx|",
+        "else"
+      ]
+    },
+    {
+      "id": "stats.cpp:1509",
+      "lines": [
+        1509,
+        1511,
+        1513,
+        1518,
+        1520,
+        1526,
+        1528,
+        1534,
+        1536
+      ],
+      "function": "statistics::direct_walk_to_point",
+      "anchor": "if (!current_game->world->query_grid_passable(controlx + xdeltastep, controly + ydeltastep, controller_))",
+      "condition": "same grid-passability ladder as direct_walk without the fire_check",
+      "semantic": "A walk toward a point takes the diagonal unit step when the grid allows, else the x slide, else the y slide, and fails when walled or already there; it never attacks (same ladder as stats.cpp:1174).",
+      "arms": [
+        {
+          "when": "diagonal open",
+          "observable": "walkstep(dx,dy), returns 1"
+        },
+        {
+          "when": "x-only open, dx!=0",
+          "observable": "walkstep(dx,0)"
+        },
+        {
+          "when": "x-only open, dx==0",
+          "observable": "returns 0"
+        },
+        {
+          "when": "y-only open, dy!=0",
+          "observable": "walkstep(0,dy)"
+        },
+        {
+          "when": "y-only open, dy==0",
+          "observable": "returns 0"
+        },
+        {
+          "when": "all walled",
+          "observable": "returns 0"
+        },
+        {
+          "when": "at the point",
+          "observable": "returns 0, no move"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_stats_more_paths.cpp",
+          "test": "StatsMorePaths.direct_walk_to_point_at_the_destination_issues_no_step",
+          "note": "at-point: returns false, no move; open straight step: returns true, xpos +step"
+        }
+      ],
+      "missing_arms": [
+        "x-only open, dx!=0",
+        "x-only open, dx==0",
+        "y-only open, dy!=0",
+        "y-only open, dy==0",
+        "all walled"
+      ]
+    },
+    {
+      "id": "stats.cpp:1552",
+      "lines": [
+        1552,
+        1554,
+        1568,
+        1574,
+        1579,
+        1585,
+        1587
+      ],
+      "function": "statistics::right_walk_to_point",
+      "anchor": "if (right_blocked(quiet) || right_forward_blocked(quiet))",
+      "condition": "quiet = gameplay_fixes != 0; if (right_blocked(q) || right_forward_blocked(q)) { if (!forward_blocked(q)) step along last move; else turn left } else if (forward_blocked(q)) turn left; else if (right_back_blocked(q)) { turn right; queue WALK(1) } else if (!direct_walk_to_point) step along curdir",
+      "semantic": "Wall following toward a map point: identical right-hand rule to right_walk (stats.cpp:972) but the open-space arm steps toward the point and never attacks. Classic: loud probes (eat/open/bump like steps). Gameplay Fixes Y: quiet probes; unlike right_walk there is no melee-foe bump here (position goals never attack).",
+      "arms": [
+        {
+          "when": "right/right-front blocked, front open",
+          "observable": "step along snapped last movement"
+        },
+        {
+          "when": "right/right-front blocked, front blocked",
+          "observable": "enddir (enddir+6)%8, turn"
+        },
+        {
+          "when": "front blocked only",
+          "observable": "left turn"
+        },
+        {
+          "when": "right-back blocked only",
+          "observable": "enddir (enddir+2)%8, back WALK(1) along facing_step_delta(enddir)"
+        },
+        {
+          "when": "open, direct_walk_to_point succeeds",
+          "observable": "step toward the point"
+        },
+        {
+          "when": "open, direct fails",
+          "observable": "walkstep along curdir"
+        },
+        {
+          "when": "fixes on, probe box over a potion",
+          "observable": "potion stays; fixes off: eaten"
+        }
+      ],
+      "setting": "both",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_gameplay_fixes_walk.cpp",
+          "test": "GameplayFixesWalk.right_walk_to_point_probes_quietly",
+          "note": "right blocked + front open: ypos 320-step; fixes off/on: potion eaten/stands, bump/none"
+        }
+      ],
+      "missing_arms": [
+        "right/right-front blocked, front blocked",
+        "front blocked only",
+        "right-back blocked only",
+        "open, direct_walk_to_point succeeds",
+        "open, direct fails"
+      ]
+    },
+    {
+      "id": "stats.cpp:1558",
+      "lines": [
+        1558,
+        1560,
+        1562,
+        1564
+      ],
+      "function": "statistics::right_walk_to_point",
+      "anchor": "if (std::fabs(xdelta) > std::fabs(3 * ydelta))",
+      "condition": "3:1 snap and normalise of (lastx, lasty)",
+      "semantic": "Same as stats.cpp:978: hugging a wall keeps the last movement direction.",
+      "arms": [
+        {
+          "when": "|lastx|>3|lasty|",
+          "observable": "x step"
+        },
+        {
+          "when": "|lasty|>3|lastx|",
+          "observable": "y step"
+        },
+        {
+          "when": "else",
+          "observable": "diagonal"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_gameplay_fixes_walk.cpp",
+          "test": "GameplayFixesWalk.right_walk_to_point_probes_quietly",
+          "note": "lastx 0, lasty -step: y step, ypos 320-step"
+        }
+      ],
+      "missing_arms": [
+        "|lastx|>3|lasty|",
+        "else"
+      ]
+    },
+    {
+      "id": "stats.cpp:1606",
+      "lines": [
+        1606
+      ],
+      "function": "statistics::walk_to_point",
+      "anchor": "if (!rng(300)) // random just to be sure this gets reset sometime",
+      "condition": "if (!rng(300)) { distances = 15000; return 0; }",
+      "semantic": "One GOTO tick in 300 (random) skips the move and resets the closest-ever memory (same rule as stats.cpp:1284); the order still counts down.",
+      "arms": [
+        {
+          "when": "rng(300)==0",
+          "observable": "no movement, last/current distance 15000"
+        },
+        {
+          "when": "else",
+          "observable": "walk continues"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_modes_ctf.cpp",
+          "test": "ModesCtf.carrier_runs_home_distance_shrinks_each_cadence_then_captures",
+          "note": "rng(300)!=0 arm: the GOTO walk makes progress every cadence window"
+        }
+      ],
+      "missing_arms": [
+        "rng(300)==0"
+      ]
+    },
+    {
+      "id": "stats.cpp:1617",
+      "lines": [
+        1617,
+        1620
+      ],
+      "function": "statistics::walk_to_point",
+      "anchor": "if (tempdistance < GOTO_ARRIVAL_DISTANCE)",
+      "condition": "if (tempdistance < 12) { path.clear(); if (!empty) front.count = 0; return 1 }",
+      "semantic": "A position goal is reached within 12 px (Manhattan, less than a tile so the walker overlaps anything standing on the goal cell, e.g. a flag); arrival clears the path and ends the active GOTO.",
+      "arms": [
+        {
+          "when": "distance < 12",
+          "observable": "no step, path_to_foe empty, GOTO popped by the tail"
+        },
+        {
+          "when": "distance >= 12",
+          "observable": "keeps walking"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_modes_ctf.cpp",
+          "test": "ModesCtf.carrier_runs_home_distance_shrinks_each_cadence_then_captures",
+          "note": "distance >= 12 arm: the GOTO walk keeps closing on the goal"
+        }
+      ],
+      "missing_arms": [
+        "distance < 12"
+      ]
+    },
+    {
+      "id": "stats.cpp:1628",
+      "lines": [
+        1628,
+        1635
+      ],
+      "function": "statistics::walk_to_point",
+      "anchor": "if (controller_->path_check_counter() <= 0)",
+      "condition": "counter--; if (counter <= 0) { counter = 5+rng(10); path.clear(); if (dist >= 100 && obmap && obmap.size() <= 200) find_path_to_point(x,y) }",
+      "semantic": "A GOTO re-plans every 5-14 ticks, and only a far (>= 100 px) goal on an uncrowded map (<= 200 objects) gets an A* route; near or crowded goals use the direct/right-hand walk.",
+      "arms": [
+        {
+          "when": "re-plan tick, far, uncrowded",
+          "observable": "path_to_foe non-empty, ends at the goal cell"
+        },
+        {
+          "when": "re-plan tick, near or crowded",
+          "observable": "path_to_foe empty"
+        },
+        {
+          "when": "not a re-plan tick",
+          "observable": "path untouched"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": [
+        "re-plan tick, far, uncrowded",
+        "re-plan tick, near or crowded",
+        "not a re-plan tick"
+      ]
+    },
+    {
+      "id": "stats.cpp:1648",
+      "lines": [
+        1643,
+        1648,
+        1652,
+        1657
+      ],
+      "function": "statistics::walk_to_point",
+      "anchor": "if (controller_->path_to_foe.size() > 0)",
+      "condition": "if (path.size()) { follow; last = dist } else if (dist < last_distance()) { last = dist; if (!direct_walk_to_point) right_walk_to_point } else right_walk_to_point",
+      "semantic": "A GOTO follows its A* path when it has one; otherwise it walks straight at the goal whenever it is closer than ever before (distance measured every tick here, unlike walk_to_foe), and wall-follows when it is not or when the straight step is blocked.",
+      "arms": [
+        {
+          "when": "path non-empty",
+          "observable": "position follows path; last_distance == Manhattan distance to the goal"
+        },
+        {
+          "when": "no path, new best distance, straight open",
+          "observable": "direct step toward the goal"
+        },
+        {
+          "when": "no path, new best, straight walled",
+          "observable": "right_walk_to_point behaviour"
+        },
+        {
+          "when": "no path, not a new best",
+          "observable": "right_walk_to_point"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": [
+        "path non-empty",
+        "no path, new best distance, straight open",
+        "no path, new best, straight walled",
+        "no path, not a new best"
+      ]
+    }
+  ],
+  "other": [
+    {
+      "id": "stats.cpp:61",
+      "lines": [
+        61,
+        67,
+        95,
+        100
+      ],
+      "kind": "defensive",
+      "anchor": "if (someguy)",
+      "note": "statistics constructor null-controller guard: defaults (Order::Living, FAMILY_SOLDIER, no controller id) and a Log line; no game rule"
+    },
+    {
+      "id": "stats.cpp:85",
+      "lines": [
+        85
+      ],
+      "kind": "loop",
+      "anchor": "for (i=0; i < NUM_SPECIALS; i++)",
+      "note": "constructor zeroes special_cost_ for every special slot; initialisation"
+    },
+    {
+      "id": "stats.cpp:119",
+      "lines": [
+        119,
+        120,
+        129,
+        131
+      ],
+      "kind": "plumbing",
+      "anchor": "walker* dirty_owner = owner_ != nullptr ? owner_ : controller_;",
+      "note": "dirty-bit bookkeeping for snapshot replication (owner falls back to controller; null guard)"
+    },
+    {
+      "id": "stats.cpp:219",
+      "lines": [
+        219,
+        361
+      ],
+      "kind": "dead",
+      "anchor": "if (whatcommand == COMMAND_FOLLOW)",
+      "note": "Log-only branches (FOLLOW 'following', set_command DIE log line); no sim effect"
+    },
+    {
+      "id": "stats.cpp:389",
+      "lines": [
+        389
+      ],
+      "kind": "defensive",
+      "anchor": "if (!controller_) // allow dead controllers for now",
+      "note": "do_command with no controller returns 0 (null guard)"
+    },
+    {
+      "id": "stats.cpp:407",
+      "lines": [
+        407
+      ],
+      "kind": "plumbing",
+      "anchor": "switch (commandtype)",
+      "note": "command-type dispatch switch; each case has its own rule row (stats.cpp:409, 412, 426, 432, 479, 483, 493, 505, 523, 529, 537, 540, 551, 571, 591, 633)"
+    },
+    {
+      "id": "stats.cpp:635",
+      "lines": [
+        635,
+        640
+      ],
+      "kind": "dead",
+      "anchor": "if (commandcount > 1)",
+      "note": "not a branch: inside a commented-out block of COMMAND_UNCHARM"
+    },
+    {
+      "id": "stats.cpp:676",
+      "lines": [
+        676
+      ],
+      "kind": "defensive",
+      "anchor": "if (!who || !controller_)",
+      "note": "hit_response null attacker / null controller guard"
+    },
+    {
+      "id": "stats.cpp:735",
+      "lines": [
+        735
+      ],
+      "kind": "loop",
+      "anchor": "for(auto* w : helplist)",
+      "note": "iterates allies within 160 px from find_friends_in_range; see stats.cpp:738"
+    },
+    {
+      "id": "stats.cpp:779",
+      "lines": [
+        779,
+        783
+      ],
+      "kind": "plumbing",
+      "anchor": "if (newvalue)",
+      "note": "set_bit_flags sets or clears the given mask and marks the snapshot dirty bit; flag semantics live with the flag readers"
+    },
+    {
+      "id": "stats.cpp:1106",
+      "lines": [
+        1106,
+        1108,
+        1109,
+        1110,
+        1111
+      ],
+      "kind": "plumbing",
+      "anchor": "switch (side)",
+      "note": "path_probe dispatches Side to the four probe tables (stats.cpp:798, 849, 882, 916); Front is the default"
+    },
+    {
+      "id": "stats.cpp:1231",
+      "lines": [
+        1231,
+        1243
+      ],
+      "kind": "defensive",
+      "anchor": "if (!current_game || !current_game->world)",
+      "note": "path_toward_stair: no world / invalid grid for our floor -> false"
+    },
+    {
+      "id": "stats.cpp:1250",
+      "lines": [
+        1250,
+        1251
+      ],
+      "kind": "loop",
+      "anchor": "for (int y = 0; y < g.h; ++y)",
+      "note": "row-major grid scan for stair tiles; see stats.cpp:1253"
+    },
+    {
+      "id": "stats.cpp:1337",
+      "lines": [
+        1337
+      ],
+      "kind": "test-only",
+      "anchor": "const std::uint32_t cadence = (cosmetic_rng_override() != nullptr)",
+      "note": "cadence draw goes to the parity harness's cosmetic libc-rand override when installed (matches master's dual RNG stream); production always draws rng(10). See stats.cpp:1330"
+    }
+  ]
+}

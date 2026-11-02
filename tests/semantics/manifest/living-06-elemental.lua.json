@@ -1,0 +1,246 @@
+{
+  "path": "packs/core/families/living-06-elemental.lua",
+  "rules": [
+    {
+      "id": "living-06-elemental.lua:15",
+      "lines": [
+        15,
+        16,
+        17
+      ],
+      "function": "do_special (STARBURST, classic slot 1 via ke.starburst)",
+      "anchor": "for i = -1, 1 do",
+      "condition": "for i,j in -1..1: i ~= 0 or j ~= 0",
+      "semantic": "STARBURST fires one meteor along each of the 8 compass headings (weapon costs pre-refunded, 8 x wc) and restores the elemental's facing.",
+      "arms": [
+        {
+          "when": "cast",
+          "observable": "8 METEOR weapons (asserted: count); lastx/lasty restored (executed-only: no test reads facing after the cast)"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.fire_elemental_starburst_drives_simulation",
+          "note": "meteors_before + 8 only; facing restore not asserted"
+        },
+        {
+          "file": "tests/unit/test_kit_elemental.cpp",
+          "test": "KitElemental.dying_elemental_always_fires_slot_one",
+          "note": "8 meteors"
+        },
+        {
+          "parity": "fireelemental_starburst_ring_scen99",
+          "fact": ""
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-06-elemental.lua:105",
+      "lines": [
+        34,
+        105
+      ],
+      "function": "STARBURST bot gate (G.with_classic(ai.foe_within(130), fixed_starburst))",
+      "anchor": "return G.ring_pays(self, 7, 9)",
+      "condition": "classic: foe within 130; fixed: G.ring_pays(self, 7, 9)",
+      "semantic": "Classic bot elemental casts STARBURST with an acquired foe within 130 px. Gameplay Fixes: the classic search still runs, then the ring must pay: two living foes inside the meteor flight (7 x 9) or one the elemental does not face.",
+      "arms": [
+        {
+          "when": "off, foe within 130",
+          "observable": "true"
+        },
+        {
+          "when": "on, one faced foe",
+          "observable": "false"
+        },
+        {
+          "when": "on, one unfaced or two in flight",
+          "observable": "true"
+        }
+      ],
+      "setting": "both",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_bot_gates_kits.cpp",
+          "test": "GameplayFixesBots.elemental_starburst_wants_a_crowd_or_a_foe_behind"
+        },
+        {
+          "file": "tests/unit/test_kit_elemental.cpp",
+          "test": "KitElemental.ai_off_answers_the_classic_gate"
+        },
+        {
+          "parity": "elemental_bot_starburst_one_foe_scen99",
+          "fact": "_fixes_scen99"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-06-elemental.lua:36",
+      "lines": [
+        36,
+        37,
+        38,
+        39,
+        40,
+        41,
+        42,
+        43,
+        44,
+        45,
+        46,
+        47,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54
+      ],
+      "function": "on_death",
+      "anchor": "",
+      "condition": "(no branch) on_death: set slot 1 shift 0, end channel, un-kill, refund slot-1 cost, special(), re-kill, restore slot/shift",
+      "semantic": "A dying elemental ALWAYS fires a free parting STARBURST (slot 1 unshifted) whatever slot or Shift it was parked on: the slot-1 cost is refunded first so net MP is unchanged, a burning IMMOLATE channel is put out, the body is un-killed for the cast and re-killed, and current_special/shifter_down are restored so the body dies as it was.",
+      "arms": [
+        {
+          "when": "elemental dies on slot 1",
+          "observable": "8 meteors spawned, MP unchanged, dead==1"
+        },
+        {
+          "when": "elemental dies parked on another slot / Shift",
+          "observable": "8 meteors (not that slot's effect, e.g. no explosion), current_special and shifter_down restored, MP unchanged, dead==1"
+        },
+        {
+          "when": "elemental dies while IMMOLATE is burning",
+          "observable": "channel ended and the parting starburst still fires"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_elemental.cpp",
+          "test": "KitElemental.dying_elemental_always_fires_slot_one",
+          "note": "line 1007: slot 4 Shift 1, death() -> 8 meteors, no explosion, current_special 4 and shifter 1 restored, MP 100.0 unchanged, dead"
+        },
+        {
+          "file": "tests/unit/test_kit_elemental.cpp",
+          "test": "KitElemental.dying_while_immolating_still_fires_the_parting_starburst",
+          "note": "line 659"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-06-elemental.lua:65",
+      "lines": [
+        65,
+        67,
+        68
+      ],
+      "function": "on_act_living (summoned toll eligibility)",
+      "anchor": "if self:lifetime() ~= 0 then",
+      "condition": "self:lifetime() ~= 0 / owner and owner:dead() == 0 / self.hp < self.max_hp",
+      "semantic": "Only a summoned elemental (finite lifetime) with a living owner and missing health takes the toll from its summoner; a natural (lifetime 0) or full-health elemental, or one whose owner is gone/dead, takes nothing and burns no lifetime.",
+      "arms": [
+        {
+          "when": "lifetime 0",
+          "observable": "owner hp/mp unchanged; elemental lifetime 0"
+        },
+        {
+          "when": "owner nil or dead",
+          "observable": "defensive: the engine has already killed the summon (living::act owner check)"
+        },
+        {
+          "when": "full hp",
+          "observable": "nothing changes"
+        },
+        {
+          "when": "summoned, hurt, owner alive",
+          "observable": "payment (:71)"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_elemental.cpp",
+          "test": "KitElemental.classic_level_up_and_summoned_toll_are_unchanged",
+          "note": "only the eligible arm"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-06-elemental.lua:71",
+      "lines": [
+        71,
+        76,
+        81,
+        84
+      ],
+      "function": "on_act_living (toll payment)",
+      "anchor": "if owner.hp >= og.fdiv(owner.max_hp, 3.0) then",
+      "condition": "owner.hp >= owner.max_hp/3 -> pay 1 hp; paid and owner.mp >= 3 -> pay 3 mp; paid == 2 -> heal 1 else lifetime - 1",
+      "semantic": "A hurt summoned elemental takes 1 HP (if its owner is at or above a third of max health) and then 3 MP from its owner to heal 1 HP per tick; if the owner cannot pay both, the elemental loses one EXTRA tick of lifetime (on top of the engine's per-act lifetime tick) instead -- and an owner who paid the HP but not the MP still loses that HP (classic quirk).",
+      "arms": [
+        {
+          "when": "owner hp >= max/3 and mp >= 3",
+          "observable": "owner hp -1, mp -3; elemental hp +1; lifetime unchanged"
+        },
+        {
+          "when": "owner hp >= max/3, mp < 3",
+          "observable": "owner hp -1 (lost), mp unchanged; elemental lifetime -1"
+        },
+        {
+          "when": "owner hp < max/3",
+          "observable": "owner untouched; lifetime -1"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_elemental.cpp",
+          "test": "KitElemental.classic_level_up_and_summoned_toll_are_unchanged",
+          "note": "both-paid and mana-short arms; owner hp loss in the mana-short arm NOT asserted"
+        },
+        {
+          "file": "tests/unit/test_pack_lua_paths.cpp",
+          "test": "PackLuaFireElemental.an_owner_too_weak_to_pay_costs_the_summon_lifetime",
+          "note": "hp<max/3 arm, EXPECT_LT on lifetime"
+        }
+      ],
+      "missing_arms": [],
+      "note": [
+        "mana-short arm's lost owner HP (the classic quirk this row states) is not asserted; the other observables are"
+      ]
+    }
+  ],
+  "other": [
+    {
+      "id": "living-06-elemental.lua:106",
+      "lines": [
+        106
+      ],
+      "kind": "dead",
+      "anchor": "{ id = \"immolate\",  name = \"IMMOLATE\",    mp_cost = 30, new_kit = true, cast = ke.immolate,    ai = ke.ai_immolate, detail = \"Burn whatever touches you and leav",
+      "note": "not a branch ('while' in the IMMOLATE detail string)"
+    },
+    {
+      "id": "living-06-elemental.lua:126",
+      "lines": [
+        126
+      ],
+      "kind": "dead",
+      "anchor": "description = \"Strong and quick, fire elementals can expel flaming meteors in all directions to decimate enemies.\",",
+      "note": "not a branch ('and' in the description string)"
+    }
+  ]
+}

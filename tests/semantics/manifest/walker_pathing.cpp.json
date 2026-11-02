@@ -1,0 +1,145 @@
+{
+  "path": "src/gameplay/walker_pathing.cpp",
+  "rules": [
+    {
+      "id": "walker_pathing.cpp:76",
+      "lines": [
+        76,
+        79,
+        81
+      ],
+      "function": "follow_path_to_foe",
+      "anchor": "if (dx != 0 || dy != 0)",
+      "condition": "dx != 0 || dy != 0 ; normalize signs",
+      "semantic": "A path-follower drops every node whose grid cell its top-left corner already occupies, then takes one walk step (sign of the remaining delta per axis, possibly diagonal) toward the first unreached node; one step per tick.",
+      "arms": [
+        {
+          "when": "first node not reached",
+          "observable": "one walkstep of stepsize toward it; path size unchanged"
+        },
+        {
+          "when": "node reached (same aligned cell)",
+          "observable": "node erased; loop continues to next node"
+        },
+        {
+          "when": "path empty",
+          "observable": "no move"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_pathing.cpp",
+          "test": "WalkerPathing.find_path_to_foe_routes_east_and_each_follow_walks_one_stepsize"
+        },
+        {
+          "file": "tests/integration/test_walker_pathing.cpp",
+          "test": "WalkerPathing.round10_follow_path_node_erase_and_normalize_paths"
+        }
+      ],
+      "missing_arms": [
+        "path empty"
+      ]
+    },
+    {
+      "id": "walker_pathing.cpp:109",
+      "lines": [
+        109,
+        115,
+        121,
+        124,
+        125,
+        126,
+        128,
+        134
+      ],
+      "function": "follow_path_to_foe",
+      "anchor": "if ((dx == 0) != (dy == 0) && current_game != nullptr &&",
+      "condition": "cardinal hop && world ; mis > 0 && direct step blocked ; budget clamp ; slide dir ternaries ; per-pixel passable ; slid",
+      "semantic": "Convex-corner alignment assist: when the next hop is cardinal, the body is misaligned perpendicular to it, and the direct step is blocked, the walker slides back toward exact grid alignment (one checked pixel at a time, at most stepsize and at most the misalignment) instead of stepping, so it turns one-lane corners instead of oscillating forever; if not even one pixel of slide is possible it falls back to the normal step.",
+      "arms": [
+        {
+          "when": "cardinal, misaligned, direct blocked, slide possible",
+          "observable": "position moves -1px/pixel along the perpendicular axis (y for a horizontal hop, x for vertical), up to min(stepsize,mis); no walkstep; walker ends aligned and later passes the corner"
+        },
+        {
+          "when": "slide blocked at first pixel",
+          "observable": "normal walkstep fallback"
+        },
+        {
+          "when": "aligned (mis 0) or direct step passable or diagonal hop",
+          "observable": "normal walkstep(dx,dy)"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": [
+        "cardinal, misaligned, direct blocked, slide possible",
+        "slide blocked at first pixel",
+        "aligned (mis 0) or direct step passable or diagonal hop"
+      ]
+    },
+    {
+      "id": "walker_pathing.cpp:153",
+      "lines": [
+        153,
+        159,
+        161,
+        163
+      ],
+      "function": "follow_path_to_foe",
+      "anchor": "if (multifloor && GET_STATE_FLOOR(state) != floor())",
+      "condition": "multifloor && node floor != floor() ; sdx||sdy ; normalize",
+      "semantic": "On a multi-floor map, a reached path node on another floor is the Z-stair: the walker nudges until its CENTER is over the stair cell and then waits (does not consume the node) for the floor change, so sized walkers do not deadlock at the stair edge; single-floor maps never do this.",
+      "arms": [
+        {
+          "when": "center off the stair cell",
+          "observable": "walkstep toward stair cell center; node kept"
+        },
+        {
+          "when": "center on stair cell",
+          "observable": "no move this tick; node kept until floor changes, then floor()==node floor"
+        },
+        {
+          "when": "single-floor map",
+          "observable": "node erased normally"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": [
+        "center off the stair cell",
+        "center on stair cell",
+        "single-floor map"
+      ]
+    }
+  ],
+  "other": [
+    {
+      "id": "walker_pathing.cpp:30",
+      "lines": [
+        30,
+        34,
+        48,
+        52
+      ],
+      "kind": "defensive",
+      "function": "find_path_to_foe / find_path_to_point",
+      "anchor": "if (foe() == nullptr || current_game == nullptr)",
+      "note": "No foe / no game / no pathfinding state: no path solved. Null guards."
+    },
+    {
+      "id": "walker_pathing.cpp:69",
+      "lines": [
+        69
+      ],
+      "kind": "loop",
+      "function": "follow_path_to_foe",
+      "anchor": "while (!path_to_foe.empty())",
+      "note": "Consumes reached nodes; body rules at walker_pathing.cpp:76, :109, :153."
+    }
+  ]
+}

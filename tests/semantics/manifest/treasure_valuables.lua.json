@@ -1,0 +1,210 @@
+{
+  "path": "packs/core/lib/treasure_valuables.lua",
+  "rules": [
+    {
+      "id": "treasure_valuables.lua:16",
+      "lines": [
+        16
+      ],
+      "function": "gold_bar_on_eat",
+      "anchor": "if eater.team == 0 or eater:has_guy() then",
+      "condition": "eater.team == 0 or eater:has_guy()",
+      "semantic": "Only team 0 or a roster hero can cash a gold bar: it banks score_per_level*level for the eater's team and is consumed with SOUND_MONEY; a guyless monster leaves it.",
+      "arms": [
+        {
+          "when": "team 0 / hero",
+          "observable": "m_score += 200*L, bar dead, money sound"
+        },
+        {
+          "when": "team-1 bot",
+          "observable": "no score, bar alive"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "parity": "treasure_gold_bar_pickup_scen99",
+          "fact": "score fact"
+        },
+        {
+          "parity": "treasure_gold_bar_team_reject_scen99",
+          "fact": "ScoreDelta(1,0,0)+WalkerOfTeamAlive"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "treasure_valuables.lua:27",
+      "lines": [
+        27
+      ],
+      "function": "silver_bar_on_eat",
+      "anchor": "if eater.team == 0 or eater:has_guy() then",
+      "condition": "eater.team == 0 or eater:has_guy()",
+      "semantic": "Same rule as treasure_valuables.lua:16 for the silver bar (its own smaller score_per_level).",
+      "arms": [
+        {
+          "when": "team 0 / hero",
+          "observable": "score, dead, sound"
+        },
+        {
+          "when": "team-1 bot",
+          "observable": "bar stays"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [
+        {
+          "parity": "treasure_silver_bar_pickup_scen99",
+          "fact": "",
+          "note": "accept arm"
+        }
+      ],
+      "missing_arms": [],
+      "note": [
+        "(reject arm not asserted for silver)"
+      ]
+    },
+    {
+      "id": "treasure_valuables.lua:40",
+      "lines": [
+        40
+      ],
+      "function": "life_gem_on_eat",
+      "anchor": "if eater.team ~= self.team then",
+      "condition": "eater.team ~= self.team",
+      "semantic": "A life gem (a fallen character's banked hp) can be claimed only by its own team: it banks trunc(max(hp,0)) score, flashes and dies; another team walks over it.",
+      "arms": [
+        {
+          "when": "other team",
+          "observable": "gem alive, no score"
+        },
+        {
+          "when": "own team",
+          "observable": "score += hp, flash, gem dead"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "parity": "treasure_life_gem_enemy_reject_scen99",
+          "fact": "WalkerOfTeamAlive"
+        },
+        {
+          "parity": "treasure_life_gem_pickup_scen99",
+          "fact": "WalkerOfOrderFamilyCount(FLASH)"
+        },
+        {
+          "file": "tests/integration/test_treasure_eat.cpp",
+          "test": "TreasureEat.life_gem"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "treasure_valuables.lua:64",
+      "lines": [
+        64
+      ],
+      "function": "key_on_eat",
+      "anchor": "if (eater:keys() & key_mask) == 0 then  -- just got it?",
+      "condition": "(eater:keys() & key_mask) == 0",
+      "semantic": "A key sets bit 1<<clamp(level,0,30) on the eater's own key mask; touching a key it already holds is silent (no message, mask unchanged).",
+      "arms": [
+        {
+          "when": "new key",
+          "observable": "keys |= bit, message"
+        },
+        {
+          "when": "already held",
+          "observable": "nothing"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_pack_lua_paths.cpp",
+          "test": "PackLuaTreasure.a_key_already_held_is_a_silent_no_op"
+        },
+        {
+          "parity": "treasure_key_pickup_scen99",
+          "fact": "WalkerKeysApplied"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "treasure_valuables.lua:67",
+      "lines": [
+        67,
+        69
+      ],
+      "function": "key_on_eat",
+      "anchor": "if eater:has_guy() then",
+      "condition": "eater:has_guy()",
+      "semantic": "The key pickup line names a hero by its character name and anyone else by its stats name.",
+      "arms": [
+        {
+          "when": "hero",
+          "observable": "'<guy name> picks up key N'"
+        },
+        {
+          "when": "guyless",
+          "observable": "'<s_name> picks up key N'"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": []
+    },
+    {
+      "id": "treasure_valuables.lua:73",
+      "lines": [
+        73
+      ],
+      "function": "key_on_eat",
+      "anchor": "if eater.team == 0 then  -- only show players picking up keys",
+      "condition": "eater.team == 0",
+      "semantic": "Only team-0 key pickups are announced (a broadcast, never seat-addressed) with SOUND_MONEY; other teams pick keys up silently.",
+      "arms": [
+        {
+          "when": "team 0",
+          "observable": "1 broadcast notification target -1, money sound"
+        },
+        {
+          "when": "team 1",
+          "observable": "no notification, no sound, key bit still set"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "parity": "treasure_key_team1_silent_scen99",
+          "fact": "EventKindExactly(notification,0)"
+        },
+        {
+          "file": "tests/unit/test_pack_lua_paths.cpp",
+          "test": "PackLuaTreasure.a_key_already_held_is_a_silent_no_op"
+        }
+      ],
+      "missing_arms": []
+    }
+  ],
+  "other": [
+    {
+      "id": "treasure_valuables.lua:47",
+      "lines": [
+        47
+      ],
+      "kind": "defensive",
+      "anchor": "if flash then",
+      "note": "add_ob flash nil guard"
+    }
+  ]
+}

@@ -1,0 +1,441 @@
+{
+  "path": "packs/core/families/living-16-barbarian.lua",
+  "rules": [
+    {
+      "id": "living-16-barbarian.lua:16",
+      "lines": [
+        16
+      ],
+      "function": "do_special",
+      "anchor": "if lc.is_busy(self) then",
+      "condition": "if lc.is_busy(self) then return false, \"SPECIAL BUSY\"",
+      "semantic": "A busy barbarian cannot throw a boulder.",
+      "arms": [
+        {
+          "when": "busy",
+          "observable": "false, no boulder"
+        },
+        {
+          "when": "idle",
+          "observable": "throw"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": []
+    },
+    {
+      "id": "living-16-barbarian.lua:21",
+      "lines": [
+        21
+      ],
+      "function": "do_special",
+      "anchor": "if not shot then",
+      "condition": "if not shot then return false, \"COULD NOT FIRE\"",
+      "semantic": "A boulder rides on the barbarian's hammer shot: if the hammer cannot be fired (blocked pad, no MP) there is no boulder. With a body on the pad the classic fire() lands a melee blow instead.",
+      "arms": [
+        {
+          "when": "shot fired",
+          "observable": "boulder made at the shot, shot dead"
+        },
+        {
+          "when": "no shot",
+          "observable": "false 'COULD NOT FIRE', no boulder"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [
+        {
+          "parity": "barbarian_bot_boulder_pad_body_scen99",
+          "fact": "",
+          "note": "reaches the no-shot arm; its facts (EventKindExactly(play_sound 1)  WalkerHpRangeAtFinalTick(TOWER1 10400 10400)  WeaponFamilyCount(HAMMER 0 0)) assert the classic melee blow  not the absence of a boulder (no FAMILY_BOULDER count fact)"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-16-barbarian.lua:35",
+      "lines": [
+        35,
+        43
+      ],
+      "function": "do_special",
+      "anchor": "if self:has_guy() then",
+      "condition": "if self:has_guy() then stepsize = 1 + strength//7; damage += strength/5 else stepsize = 2*level; damage += level",
+      "semantic": "A hero's boulder rolls at 1 + strength/7 px a step and hits for strength/5 extra; a monster's rolls at 2 px per level and hits for its level extra.",
+      "arms": [
+        {
+          "when": "hero (strength 14)",
+          "observable": "stepsize 3, damage = base + 2.8"
+        },
+        {
+          "when": "monster level L",
+          "observable": "stepsize 2L (then clamped), damage = base + L"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [
+        {
+          "parity": "barbarian_boulder_impact_scen99",
+          "fact": "WalkerHpRangeAtFinalTick(FAMILY_ELF,4600,4600) (monster damage, indirectly)"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-16-barbarian.lua:48",
+      "lines": [
+        48,
+        51
+      ],
+      "function": "do_special",
+      "anchor": "if boulder:stepsize() < 1 then",
+      "condition": "if stepsize < 1 then 1; if stepsize > 15 then 15",
+      "semantic": "A boulder's speed is held to 1..15 px a step.",
+      "arms": [
+        {
+          "when": "computed < 1",
+          "observable": "stepsize 1"
+        },
+        {
+          "when": "computed > 15 (monster level 8+, hero strength 105+)",
+          "observable": "stepsize 15"
+        },
+        {
+          "when": "in range",
+          "observable": "unchanged"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_pack_lua_paths.cpp",
+          "test": "PackLuaBarbarian.a_zero_step_summon_is_floored_to_one",
+          "note": "floor arm only"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-16-barbarian.lua:54",
+      "lines": [
+        54,
+        56,
+        59,
+        61
+      ],
+      "function": "do_special",
+      "anchor": "if boulder:lasty() > 0 then",
+      "condition": "if lasty > 0 then stepsize elseif < 0 then -stepsize (same for lastx)",
+      "semantic": "The boulder leaves along the shot's heading at its own speed: each nonzero heading component becomes +/- stepsize, a zero component stays zero.",
+      "arms": [
+        {
+          "when": "component > 0",
+          "observable": "+stepsize"
+        },
+        {
+          "when": "component < 0",
+          "observable": "-stepsize"
+        },
+        {
+          "when": "component 0",
+          "observable": "0"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_pack_lua_paths.cpp",
+          "test": "PackLuaBarbarian.a_zero_step_summon_is_floored_to_one",
+          "note": "positive arms"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-16-barbarian.lua:65",
+      "lines": [
+        65,
+        67
+      ],
+      "function": "do_special",
+      "anchor": "if self:current_special() == 2 then",
+      "condition": "if self:current_special() == 2 then skip_exit 5000 else 0",
+      "semantic": "Slot 2 throws the EXPLODING boulder (legacy skip_exit 5000 = explode on impact); slot 1's boulder just stops where it lands. Busy += 1 + 5 x slot.",
+      "arms": [
+        {
+          "when": "slot 1",
+          "observable": "skip_exit 0, busy +6"
+        },
+        {
+          "when": "slot 2",
+          "observable": "skip_exit 5000, busy +11"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.barbarian_hurl_boulder_drives_simulation"
+        },
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.barbarian_exploding_boulder_drives_simulation"
+        },
+        {
+          "parity": "barbarian_boulder_impact_scen99",
+          "fact": "WalkerAliveAtFinal(FAMILY_ELF,3)"
+        },
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.npc_orc_eats_a_corpse_and_npc_barbarian_arms_its_boulder"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-16-barbarian.lua:79",
+      "lines": [
+        79,
+        81
+      ],
+      "function": "boulder_reach",
+      "anchor": "if self:has_guy() then",
+      "condition": "if self:has_guy() then step = 1 + strength//7 else step = 2*level",
+      "semantic": "The bot gate measures a boulder's flight with the same speed rule the throw uses (hero by strength, monster by level), clamped 1..15, times 8 steps.",
+      "arms": [
+        {
+          "when": "hero strength 14",
+          "observable": "reach 24"
+        },
+        {
+          "when": "monster level 1",
+          "observable": "reach 16"
+        },
+        {
+          "when": "monster level 8+",
+          "observable": "reach 120"
+        }
+      ],
+      "setting": "fixes-on",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_bot_gates_fighters.cpp",
+          "test": "GameplayFixesBots.barbarian_boulder_wants_a_faced_foe_inside_its_short_flight",
+          "note": "hero 24 px"
+        },
+        {
+          "parity": "barbarian_bot_boulder_far_fixes_scen99",
+          "fact": "WeaponFamilyCount(FAMILY_BOULDER,0,0) (16 px)"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-16-barbarian.lua:93",
+      "lines": [
+        93,
+        97
+      ],
+      "function": "boulder_target",
+      "anchor": "if not f or not G.faces(self, f) then",
+      "condition": "if not f or not G.faces(self, f) then nil; if max(gap_x, gap_y) > reach then nil",
+      "semantic": "A boulder target is the nearest living foe on the barbarian's floor that it faces and whose larger edge gap is within the boulder's flight.",
+      "arms": [
+        {
+          "when": "no living foe in 2*reach+64",
+          "observable": "nil"
+        },
+        {
+          "when": "foe not faced",
+          "observable": "nil"
+        },
+        {
+          "when": "gap > reach",
+          "observable": "nil"
+        },
+        {
+          "when": "faced and in flight",
+          "observable": "the foe"
+        }
+      ],
+      "setting": "fixes-on",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_bot_gates_fighters.cpp",
+          "test": "GameplayFixesBots.barbarian_boulder_wants_a_faced_foe_inside_its_short_flight"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-16-barbarian.lua:109",
+      "lines": [
+        109
+      ],
+      "function": "check_special_ai",
+      "anchor": "if not gf.on() then",
+      "condition": "if not gf.on() then return true",
+      "semantic": "Classic: the barbarian has no bot gate and throws at nothing.",
+      "arms": [
+        {
+          "when": "fixes off",
+          "observable": "true"
+        },
+        {
+          "when": "fixes on",
+          "observable": "gated"
+        }
+      ],
+      "setting": "both",
+      "status": "asserted",
+      "tests": [
+        {
+          "parity": "barbarian_bot_boulder_far_scen99",
+          "fact": "WeaponFamilyCount(FAMILY_BOULDER,1,1)"
+        },
+        {
+          "parity": "barbarian_bot_explode_lone_scen99",
+          "fact": "WalkerOfOrderFamilyCount(FAMILY_EXPLOSION,FX,1,1)"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-16-barbarian.lua:113",
+      "lines": [
+        113
+      ],
+      "function": "check_special_ai",
+      "anchor": "if lc.is_busy(self) or not G.pad_clear(self) then",
+      "condition": "if lc.is_busy(self) or not G.pad_clear(self) then return false",
+      "semantic": "Gameplay Fixes: a busy barbarian, or one whose hammer pad is blocked (wall or body), does not roll a throw.",
+      "arms": [
+        {
+          "when": "busy",
+          "observable": "false"
+        },
+        {
+          "when": "pad on wall/body",
+          "observable": "false"
+        },
+        {
+          "when": "idle, pad clear",
+          "observable": "slot gate"
+        }
+      ],
+      "setting": "fixes-on",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_bot_gates_fighters.cpp",
+          "test": "GameplayFixesBots.barbarian_boulder_refuses_a_pad_on_a_wall"
+        },
+        {
+          "parity": "barbarian_bot_boulder_pad_body_fixes_scen99",
+          "fact": "WalkerHpRangeAtFinalTick(FAMILY_TOWER1,13000,13000)"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-16-barbarian.lua:117",
+      "lines": [
+        117,
+        119,
+        126,
+        130,
+        132
+      ],
+      "function": "check_special_ai",
+      "anchor": "if slot == 2 then",
+      "condition": "if slot == 2 then target; count foes within blast of it; return near >= 2 and blast_clear(...) ... return boulder_target(self) ~= nil",
+      "semantic": "Gameplay Fixes: HURL BOULDER wants a boulder target; EXPLODING BOULDER wants that target plus a second living foe inside the blast around it, and neither the barbarian nor an ally inside the blast.",
+      "arms": [
+        {
+          "when": "slot 1, target",
+          "observable": "true"
+        },
+        {
+          "when": "slot 1, none",
+          "observable": "false"
+        },
+        {
+          "when": "slot 2, no target",
+          "observable": "false"
+        },
+        {
+          "when": "slot 2, lone target",
+          "observable": "false"
+        },
+        {
+          "when": "slot 2, cluster but ally/self in blast",
+          "observable": "false"
+        },
+        {
+          "when": "slot 2, cluster, clear",
+          "observable": "true"
+        }
+      ],
+      "setting": "fixes-on",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_bot_gates_fighters.cpp",
+          "test": "GameplayFixesBots.barbarian_exploding_boulder_wants_a_cluster_with_no_ally_in_it"
+        },
+        {
+          "parity": "barbarian_bot_explode_lone_fixes_scen99",
+          "fact": "WalkerOfOrderFamilyCount(FAMILY_EXPLOSION,FX,0,0)"
+        }
+      ],
+      "missing_arms": []
+    }
+  ],
+  "other": [
+    {
+      "id": "living-16-barbarian.lua:25",
+      "lines": [
+        25
+      ],
+      "kind": "defensive",
+      "anchor": "if not boulder then",
+      "note": "add_ob failure for the boulder: 'COULD NOT CREATE BOULDER'."
+    },
+    {
+      "id": "living-16-barbarian.lua:125",
+      "lines": [
+        125
+      ],
+      "kind": "loop",
+      "anchor": "for i = 1, #foes do",
+      "note": "counts living foes near the boulder target; rule row living-16-barbarian.lua:117"
+    },
+    {
+      "id": "living-16-barbarian.lua:153",
+      "lines": [
+        153
+      ],
+      "kind": "dead",
+      "anchor": "{ id = \"exploding_boulder\", name = \"EXPLODING BOULDER\", mp_cost = 30, detail = \"Hurl a boulder so hard that it explodes and hits foes all around.\", icon = \"icon",
+      "note": "not a branch (prose 'and' in a detail/description string)"
+    },
+    {
+      "id": "living-16-barbarian.lua:171",
+      "lines": [
+        171
+      ],
+      "kind": "dead",
+      "anchor": "description = \"Barbarians are powerful and resist some magic damage, but have more will than skill. They are tough, tending to bash their way through trouble wi",
+      "note": "not a branch (prose 'and' in a detail/description string)"
+    }
+  ]
+}

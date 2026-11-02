@@ -1,0 +1,138 @@
+{
+  "path": "packs/core/lib/corpses.lua",
+  "rules": [
+    {
+      "id": "corpses.lua:26",
+      "lines": [
+        26,
+        29
+      ],
+      "function": "body_for",
+      "anchor": "if body ~= nil then",
+      "condition": "body ~= nil / self:is_friendly(blood)",
+      "semantic": "With Gameplay Fixes on, the room a raise needs is measured for the body that will actually rise: RAISE SKELETON / RAISE GHOST probe their own family; RESURRECT probes the corpse's old family when the stain is friendly and a ghost when it is a foe's.",
+      "arms": [
+        {
+          "when": "body given (raise skeleton/ghost)",
+          "observable": "the probed family is the given one (a ghost-sized gap suffices for RAISE GHOST)"
+        },
+        {
+          "when": "RESURRECT on a friendly stain",
+          "observable": "probed family = blood:s_old_family(); a risen body of that family"
+        },
+        {
+          "when": "RESURRECT on a foe stain",
+          "observable": "probed family = core:ghost"
+        }
+      ],
+      "setting": "fixes-on",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_gameplay_fixes_cleric_unit.cpp",
+          "test": "GameplayFixesClericRaise.resurrect_takes_the_nearest_usable_stain_whatever_its_team"
+        },
+        {
+          "file": "tests/unit/test_pack_lua_paths.cpp",
+          "test": "PackLuaCleric.resurrecting_a_friendly_corpse_restores_its_family"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "corpses.lua:45",
+      "lines": [
+        45
+      ],
+      "function": "M.raise_spot",
+      "anchor": "if #stains == 0 then",
+      "condition": "#stains == 0",
+      "semantic": "With Gameplay Fixes on, a raise with no stain within the finder's own cap (squared centre distance < 800 on the caster's floor) refuses NO CORPSE NEARBY and spends nothing.",
+      "arms": [
+        {
+          "when": "no stain in reach",
+          "observable": "returns nil, \"NO CORPSE NEARBY\"; no mana spent, no draw"
+        },
+        {
+          "when": "some stain",
+          "observable": "continues to range/room scan"
+        }
+      ],
+      "setting": "fixes-on",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_pack_lua_paths.cpp",
+          "test": "PackLuaCleric.corpse_refusals_distinguish_absence_blockage_and_range"
+        },
+        {
+          "file": "tests/unit/test_gameplay_fixes_cleric_unit.cpp",
+          "test": "GameplayFixesClericRaise.refusals_spend_nothing_on_both_values"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "corpses.lua:51",
+      "lines": [
+        51,
+        54,
+        60
+      ],
+      "function": "M.raise_spot",
+      "anchor": "if self:distance_to_ob(blood) < range then",
+      "condition": "distance_to_ob(blood) < range / sx ~= nil / blocked",
+      "semantic": "With Gameplay Fixes on, a raise takes the NEAREST stain inside the cast's Manhattan range that has room for the risen body within 16 px of the corpse corner; a blocked near stain never hides a usable far one; when none qualifies the refusal names a blocked corpse before a far one (CORPSE IS BLOCKED before CORPSE TOO FAR).",
+      "arms": [
+        {
+          "when": "first in-range stain with a body spot",
+          "observable": "returns that stain + (sx,sy); the risen body stands at (sx,sy) (within NUDGE=16 px of the corner)"
+        },
+        {
+          "when": "in-range stains all blocked",
+          "observable": "nil, \"CORPSE IS BLOCKED\""
+        },
+        {
+          "when": "stains exist but none in range",
+          "observable": "nil, \"CORPSE TOO FAR\""
+        }
+      ],
+      "setting": "fixes-on",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_gameplay_fixes_cleric_unit.cpp",
+          "test": "GameplayFixesClericRaise.a_blocked_near_stain_does_not_hide_a_usable_far_one"
+        },
+        {
+          "file": "tests/unit/test_gameplay_fixes_cleric_unit.cpp",
+          "test": "GameplayFixesClericRaise.reporter_elf_against_a_wall_is_raised_with_the_setting_on"
+        },
+        {
+          "file": "tests/unit/test_gameplay_fixes_cleric_unit.cpp",
+          "test": "GameplayFixesClericRaise.reporter_one_tile_corridor"
+        },
+        {
+          "file": "tests/unit/test_gameplay_fixes_cleric_unit.cpp",
+          "test": "GameplayFixesClericRaise.caster_standing_on_the_corpse"
+        },
+        {
+          "file": "tests/unit/test_pack_lua_paths.cpp",
+          "test": "PackLuaCleric.corpse_refusals_distinguish_absence_blockage_and_range"
+        }
+      ],
+      "missing_arms": []
+    }
+  ],
+  "other": [
+    {
+      "id": "corpses.lua:49",
+      "lines": [
+        49
+      ],
+      "kind": "loop",
+      "anchor": "for i = 1, #stains do",
+      "note": "iterates stains nearest first; the rule is corpses.lua:51"
+    }
+  ]
+}

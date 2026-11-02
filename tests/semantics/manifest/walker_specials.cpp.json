@@ -1,0 +1,1398 @@
+{
+  "path": "src/gameplay/walker_specials.cpp",
+  "rules": [
+    {
+      "id": "walker_specials.cpp:60",
+      "lines": [
+        60,
+        69
+      ],
+      "function": "teleport_spot_blocked_by",
+      "anchor": "if (other == nullptr || other == self || other->dead() || other->hidden())",
+      "condition": "other == nullptr || other == self || other->dead() || other->hidden(); !blocking (Living|Generator|Weapon door/tree/boulder/declares_blocks_placement)",
+      "semantic": "A blink lands only where no solid body stands: a live visible living, a generator, or solid scenery (door, tree, boulder, any weapon that declares it blocks placement) blocks the landing; treasure, FX, corpses, hidden walkers and the caster itself never do.",
+      "arms": [
+        {
+          "when": "a live living overlaps the landing box",
+          "observable": "teleport() returns false (or marker refused) and the caster's x/y is unchanged"
+        },
+        {
+          "when": "a treasure (potion) overlaps the landing box",
+          "observable": "landing is allowed; the treasure is NOT eaten (loot->dead()==0) by the probe"
+        },
+        {
+          "when": "a generator (tent/tower) or door/tree/boulder weapon overlaps",
+          "observable": "landing refused, caster stays"
+        },
+        {
+          "when": "a dead or hidden walker (corpse, dug-in skeleton, possession rider) overlaps",
+          "observable": "landing allowed, caster lands on it"
+        },
+        {
+          "when": "an FX (marker, scare burst) overlaps",
+          "observable": "landing allowed"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_specials_unit.cpp",
+          "test": "WalkerSpecialsUnit.teleport_blocked_marker_denied_without_probe_eat",
+          "note": "live soldier on the sole clear cell: teleport() false, mage stays at (96,96), marker lifetime 5"
+        },
+        {
+          "file": "tests/integration/test_walker_specials_unit.cpp",
+          "test": "WalkerSpecialsUnit.teleport_probe_keeps_no_collide_and_height_gate",
+          "note": "the mage's own live FAMILY_MARKER FX sits 16x16 on the landing box at (320,320) and the blink lands there: an FX does not block"
+        }
+      ],
+      "missing_arms": [
+        "a treasure (potion) overlaps the landing box",
+        "a generator (tent/tower) or door/tree/boulder weapon overlaps",
+        "a dead or hidden walker (corpse, dug-in skeleton, possession rider) overlaps"
+      ]
+    },
+    {
+      "id": "walker_specials.cpp:74",
+      "lines": [
+        74,
+        79
+      ],
+      "function": "teleport_spot_blocked_by",
+      "anchor": "if (self->sizez() > 0 && other->sizez() > 0)",
+      "condition": "self->sizez() > 0 && other->sizez() > 0; sz2 <= oz1 || oz2 <= self_z",
+      "semantic": "Bodies separated in height never block a landing: a hoverer above the landing spot does not stop a grounded blink; a height of 0 means full height and always overlaps.",
+      "arms": [
+        {
+          "when": "both bounded and height-disjoint",
+          "observable": "landing allowed"
+        },
+        {
+          "when": "both bounded and height-overlapping",
+          "observable": "landing refused"
+        },
+        {
+          "when": "either sizez()==0 (full height)",
+          "observable": "overlap is decided by x/y alone: refused"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_specials_unit.cpp",
+          "test": "WalkerSpecialsUnit.teleport_probe_keeps_no_collide_and_height_gate"
+        }
+      ],
+      "missing_arms": [
+        "both bounded and height-overlapping"
+      ]
+    },
+    {
+      "id": "walker_specials.cpp:98",
+      "lines": [
+        98
+      ],
+      "function": "teleport_landing_clear",
+      "anchor": "if (!grid_ok)",
+      "condition": "!grid_ok (query_grid_passable with flight_left masked to 0)",
+      "semantic": "A blink lands only on ground the caster could stand on without transient flight: a flight potion or stuck-rule flight never blesses trees, boulders, water or lava as a landing, while permanent flyers/forestwalkers/ethereals keep their landing rights; the probe restores flight_left.",
+      "arms": [
+        {
+          "when": "cell impassable under ground rules, caster has flight_left>0",
+          "observable": "refused; flight_left unchanged after the call"
+        },
+        {
+          "when": "cell passable",
+          "observable": "continues to the occupancy probe"
+        },
+        {
+          "when": "caster permanently BIT_FLYING over water/trees",
+          "observable": "landing allowed"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_specials_unit.cpp",
+          "test": "WalkerSpecialsUnit.teleport_never_lands_on_obstacles_despite_flight",
+          "note": "flight_left 200 restored after every probe, landings only on the grass row"
+        },
+        {
+          "file": "tests/integration/test_walker_specials_unit.cpp",
+          "test": "WalkerSpecialsUnit.teleport_marker_over_boulder_denied_despite_flight",
+          "note": "marker on a boulder refused despite flight 50"
+        },
+        {
+          "file": "tests/integration/test_walker_specials_unit.cpp",
+          "test": "WalkerSpecialsUnit.teleport_blocked_marker_denied_without_probe_eat",
+          "note": "passable cell: the occupancy probe then refuses on the soldier"
+        }
+      ],
+      "missing_arms": [
+        "caster permanently BIT_FLYING over water/trees"
+      ]
+    },
+    {
+      "id": "walker_specials.cpp:104",
+      "lines": [
+        104
+      ],
+      "function": "teleport_landing_clear",
+      "anchor": "if (self->stats() != nullptr &&",
+      "condition": "self->stats() && query_bit_flags(BIT_NO_COLLIDE)",
+      "semantic": "A walker that collides with nothing (BIT_NO_COLLIDE) may blink onto occupied ground, as it may walk through bodies.",
+      "arms": [
+        {
+          "when": "caster has BIT_NO_COLLIDE, landing occupied by a living",
+          "observable": "teleport() true, caster at the landing spot"
+        },
+        {
+          "when": "no flag",
+          "observable": "occupant refuses the landing"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_specials_unit.cpp",
+          "test": "WalkerSpecialsUnit.teleport_probe_keeps_no_collide_and_height_gate",
+          "note": "NO_COLLIDE mage lands on the soldier at (320,320); unflagged full-height mage refused, x 96"
+        },
+        {
+          "file": "tests/integration/test_walker_specials_unit.cpp",
+          "test": "WalkerSpecialsUnit.teleport_blocked_marker_denied_without_probe_eat",
+          "note": "unflagged mage refused by the occupant"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "walker_specials.cpp:108",
+      "lines": [
+        108
+      ],
+      "function": "teleport_landing_clear",
+      "anchor": "(target_floor == self->floor()) ? self->worldz() : 0.0f;",
+      "condition": "target_floor == self->floor() ? self->worldz() : 0.0f",
+      "semantic": "A landing on the caster's own floor is probed at the caster's current height; a landing on another floor is probed at ground height of that floor.",
+      "arms": [
+        {
+          "when": "same floor, caster hovering at worldz 40 with sizez 8",
+          "observable": "a grounded bounded occupant does not block"
+        },
+        {
+          "when": "other floor",
+          "observable": "probed at z 0: a grounded occupant there blocks"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": [
+        "same floor, caster hovering at worldz 40 with sizez 8",
+        "other floor"
+      ]
+    },
+    {
+      "id": "walker_specials.cpp:135",
+      "lines": [
+        135
+      ],
+      "function": "turnable",
+      "anchor": "const auto* target_fd = w ? get_family_descriptor(w->family()) : nullptr;",
+      "condition": "w && target_fd && target_fd->is_undead && !(BIT_INVINCIBLE || invulnerable_left()!=0)",
+      "semantic": "TURN UNDEAD can only turn an undead family (skeleton, ghost, any pack family declaring is_undead) that is not warded: an undead carrying BIT_INVINCIBLE or an invulnerability potion is never turned, counted, or used to justify the cast. The kill loop, the Gameplay Fixes refusal and the cleric bot gate share this one test.",
+      "arms": [
+        {
+          "when": "undead, unwarded",
+          "observable": "counted by undead_foes_in_range and eligible for the turn roll"
+        },
+        {
+          "when": "undead with invulnerable_left>0 or BIT_INVINCIBLE",
+          "observable": "not counted; never killed by turn_undead whatever the roll (hp unchanged, dead()==0)"
+        },
+        {
+          "when": "living (non-undead) foe",
+          "observable": "not counted, never turned"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_gameplay_fixes_engine.cpp",
+          "test": "GameplayFixesEngine.undead_foes_in_range_counts_what_turn_undead_could_turn",
+          "note": "unwarded skeleton counted; warded ghost/skeleton, orc, tower not counted"
+        },
+        {
+          "file": "tests/integration/test_walker_specials_unit.cpp",
+          "test": "WalkerSpecialsUnit.walker_specials_r11_turn_undead_paths",
+          "note": "unwarded skeleton turned; orc never turned"
+        },
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.turn_undead_destroys_undead_foes_and_spares_the_living",
+          "note": "orc untouched"
+        },
+        {
+          "file": "tests/unit/test_gameplay_fixes_cleric_unit.cpp",
+          "test": "GameplayFixesClericBot.raises_with_nothing_to_turn_in_reach",
+          "note": "warded skeleton does not justify the bot's turn"
+        }
+      ],
+      "missing_arms": [
+        "undead with invulnerable_left>0 or BIT_INVINCIBLE"
+      ]
+    },
+    {
+      "id": "walker_specials.cpp:162",
+      "lines": [
+        162
+      ],
+      "function": "walker::special",
+      "anchor": "if (specials_disabled())",
+      "condition": "specials_disabled()",
+      "semantic": "A placed NPC whose scenario flag disables specials never casts, from any caller (input, AI, hit response, script), and pays nothing.",
+      "arms": [
+        {
+          "when": "specials disabled",
+          "observable": "special() false, why=Disabled, reason 'SPECIALS DISABLED', MP unchanged, no 'special' trace"
+        },
+        {
+          "when": "enabled",
+          "observable": "continues"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_specials_unit.cpp",
+          "test": "WalkerSpecialsUnit.special_reports_why_it_refused",
+          "note": "false, why=Disabled"
+        },
+        {
+          "file": "tests/integration/test_sim_input_unit.cpp",
+          "test": "SimInputUnit.sim_input_specials_disabled_and_frozen_cues",
+          "note": "reason cue SPECIALS DISABLED from special()'s reason"
+        },
+        {
+          "file": "tests/integration/test_walker_specials_unit.cpp",
+          "test": "WalkerSpecialsUnit.out_of_range_special_is_cast_as_special_one",
+          "note": "enabled walker continues and casts"
+        }
+      ],
+      "missing_arms": [
+        "specials disabled"
+      ]
+    },
+    {
+      "id": "walker_specials.cpp:168",
+      "lines": [
+        168
+      ],
+      "function": "walker::special",
+      "anchor": "if (dead())",
+      "condition": "dead()",
+      "semantic": "A dead walker cannot cast.",
+      "arms": [
+        {
+          "when": "dead",
+          "observable": "false, why=Dead, 'CANNOT CAST WHILE DEAD', MP unchanged"
+        },
+        {
+          "when": "alive",
+          "observable": "continues"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_specials_unit.cpp",
+          "test": "WalkerSpecialsUnit.walker_specials_r11_special_and_teleport_paths",
+          "note": "false, why=Dead"
+        },
+        {
+          "file": "tests/integration/test_walker_specials_unit.cpp",
+          "test": "WalkerSpecialsUnit.special_reports_why_it_refused",
+          "note": "false, why=Dead"
+        },
+        {
+          "file": "tests/integration/test_walker_specials_unit.cpp",
+          "test": "WalkerSpecialsUnit.out_of_range_special_is_cast_as_special_one",
+          "note": "live walker continues and casts"
+        }
+      ],
+      "missing_arms": [
+        "dead"
+      ]
+    },
+    {
+      "id": "walker_specials.cpp:182",
+      "lines": [
+        182
+      ],
+      "function": "walker::special",
+      "anchor": "if (special_index < 0 || special_index >= NUM_SPECIALS)",
+      "condition": "special_index < 0 || special_index >= NUM_SPECIALS",
+      "semantic": "An out-of-range selected special (from a snapshot or the Lua setter) is cast as special 1 and pays special 1's price; current_special is rewritten to 1.",
+      "arms": [
+        {
+          "when": "index out of range",
+          "observable": "current_special()==1 after, MP drops by special 1's cost"
+        },
+        {
+          "when": "in range",
+          "observable": "slot kept"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_specials_unit.cpp",
+          "test": "WalkerSpecialsUnit.out_of_range_special_is_cast_as_special_one"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "walker_specials.cpp:195",
+      "lines": [
+        195
+      ],
+      "function": "walker::special",
+      "anchor": "if (cast_price >= kSpecialCostDisabled)",
+      "condition": "cast_price >= kSpecialCostDisabled",
+      "semantic": "A slot that is not in play (undeclared by the family, or hidden by the New Specials setting) refuses as 'NO SPECIAL AVAILABLE' whatever the mana pool, before the MP test.",
+      "arms": [
+        {
+          "when": "slot priced at the disabled sentinel",
+          "observable": "false, why=Unavailable, MP unchanged even with MP 500"
+        },
+        {
+          "when": "priced slot",
+          "observable": "continues to the MP test"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.family_with_no_special_spends_no_magic",
+          "note": "golem: Unavailable, reason NO SPECIAL AVAILABLE, MP unchanged even with a pool past the sentinel"
+        },
+        {
+          "file": "tests/unit/test_kit_skeleton.cpp",
+          "test": "KitSkeleton.dig_in_off_twin_is_not_cast",
+          "note": "new_specials=0 -> Unavailable, MP 500 unchanged"
+        },
+        {
+          "file": "tests/integration/test_walker_specials_unit.cpp",
+          "test": "WalkerSpecialsUnit.walker_specials_r11_special_and_teleport_paths",
+          "note": "weapon slot: why=Unavailable"
+        },
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.no_magic",
+          "note": "priced slot continues to the MP gate: NoMP"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "walker_specials.cpp:197",
+      "lines": [
+        197,
+        200
+      ],
+      "function": "walker::special",
+      "anchor": "if (stats_->magicpoints() < cast_price)",
+      "condition": "stats_->magicpoints() < cast_price",
+      "semantic": "A caster with less mana than the slot's price refuses with 'NOT ENOUGH MP' and pays nothing; the refusal is traced as 'refused ... reason=NOT ENOUGH MP'.",
+      "arms": [
+        {
+          "when": "MP < price",
+          "observable": "false, why=NoMP, MP unchanged, TRACE special 'reason=NOT ENOUGH MP'"
+        },
+        {
+          "when": "MP >= price",
+          "observable": "continues"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.no_magic",
+          "note": "MP 49 < 50: NoMP, MP 49 unchanged"
+        },
+        {
+          "file": "tests/integration/test_walker_specials_unit.cpp",
+          "test": "WalkerSpecialsUnit.special_reports_why_it_refused",
+          "note": "why=NoMP"
+        },
+        {
+          "file": "tests/integration/test_walker_specials_unit.cpp",
+          "test": "WalkerSpecialsUnit.out_of_range_special_is_cast_as_special_one",
+          "note": "MP 500 >= 15 continues and casts"
+        }
+      ],
+      "missing_arms": [
+        "MP < price"
+      ]
+    },
+    {
+      "id": "walker_specials.cpp:203",
+      "lines": [
+        203
+      ],
+      "function": "walker::special",
+      "anchor": "if (query_order() != Order::Living)",
+      "condition": "query_order() != Order::Living",
+      "semantic": "Only livings have specials: a weapon/treasure/FX with a priced slot and mana still refuses.",
+      "arms": [
+        {
+          "when": "non-living",
+          "observable": "false, why=NotLiving"
+        },
+        {
+          "when": "living",
+          "observable": "dispatches to the family hook"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_specials_unit.cpp",
+          "test": "WalkerSpecialsUnit.special_reports_why_it_refused",
+          "note": "arrow priced 0: NotLiving"
+        },
+        {
+          "file": "tests/integration/test_walker_specials_unit.cpp",
+          "test": "WalkerSpecialsUnit.out_of_range_special_is_cast_as_special_one",
+          "note": "living dispatches and casts"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "walker_specials.cpp:210",
+      "lines": [
+        210,
+        214
+      ],
+      "function": "walker::special",
+      "anchor": "if (auto hook_result = og::script::hooks::do_special(fd, this, &decline_reason))",
+      "condition": "hook_result = do_special(...); did_special = hook_result->succeeded()",
+      "semantic": "A cast is charged its price exactly once and only when the family script reports success; a declined cast (or a family with no special hook) costs nothing.",
+      "arms": [
+        {
+          "when": "hook succeeded",
+          "observable": "MP decreases by cast_price exactly once; returns true"
+        },
+        {
+          "when": "hook declined",
+          "observable": "MP unchanged; why=ScriptDeclined with the script's reason"
+        },
+        {
+          "when": "no hook for the family",
+          "observable": "MP unchanged; declined 'NO SPECIAL AVAILABLE'"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_specials_unit.cpp",
+          "test": "WalkerSpecialsUnit.out_of_range_special_is_cast_as_special_one",
+          "note": "500 -> 485 after a 15 cast"
+        },
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.success_returns_true_and_spends_mp"
+        },
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.turn_undead_without_undead_is_refused_with_gameplay_fixes_on",
+          "note": "declined: ScriptDeclined, reason NO UNDEAD IN RANGE, MP unchanged"
+        },
+        {
+          "file": "tests/unit/test_gameplay_fixes_cleric_unit.cpp",
+          "test": "GameplayFixesClericRaise.refusals_spend_nothing_on_both_values"
+        }
+      ],
+      "missing_arms": [
+        "no hook for the family"
+      ]
+    },
+    {
+      "id": "walker_specials.cpp:221",
+      "lines": [
+        221
+      ],
+      "function": "walker::special",
+      "anchor": "if (current_game != nullptr && current_game->world != nullptr &&",
+      "condition": "world->enemy_freeze > kEnemyFreezeBankCap",
+      "semantic": "The world's FREEZE TIME bank never exceeds its cap (300 ticks): chain-casting at the cap still spends mana but cannot extend the freeze.",
+      "arms": [
+        {
+          "when": "bank above cap after a special",
+          "observable": "enemy_freeze == kEnemyFreezeBankCap, TRACE walker 'enemy_freeze bank clamped'"
+        },
+        {
+          "when": "at or below",
+          "observable": "unchanged"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_stats_fright.cpp",
+          "test": "StatsFright.walker_special_clamps_enemy_freeze_bank",
+          "note": "L30 cast: bank == kEnemyFreezeBankCap; its 152 below-cap check is on a cast refused at the MP gate, which returns before this line"
+        },
+        {
+          "file": "tests/unit/test_silliness_battery.cpp",
+          "test": "SillinessBattery.mage_freeze_bank_capped_under_chain_casting",
+          "note": "bank == 300 after every cast"
+        },
+        {
+          "file": "tests/unit/test_silliness_battery.cpp",
+          "test": "SillinessBattery.mage_freeze_single_cast_spectacle_preserved",
+          "note": "below cap: L20 240, L14 174 unchanged"
+        }
+      ],
+      "missing_arms": [
+        "bank above cap after a special"
+      ]
+    },
+    {
+      "id": "walker_specials.cpp:228",
+      "lines": [
+        228,
+        231,
+        232,
+        234
+      ],
+      "function": "walker::special",
+      "anchor": "if (!did_special)",
+      "condition": "!did_special; decline_reason.empty() ? 'NO SPECIAL AVAILABLE' : decline_reason",
+      "semantic": "Every refused cast is traced once with its reason (the level-play census reads it) and returned as ScriptDeclined; a refusal with no reason text reads 'NO SPECIAL AVAILABLE'. A charged cast traces 'cast id=... price=' instead.",
+      "arms": [
+        {
+          "when": "script refused with reason R",
+          "observable": "TRACE special 'refused ... reason=R'; why=ScriptDeclined; reason==R"
+        },
+        {
+          "when": "refused with empty reason / no hook",
+          "observable": "reason 'NO SPECIAL AVAILABLE'"
+        },
+        {
+          "when": "cast",
+          "observable": "TRACE special 'cast id=' with price"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.turn_undead_without_undead_is_refused_with_gameplay_fixes_on",
+          "note": "script reason: why ScriptDeclined, reason NO UNDEAD IN RANGE; no trace check"
+        },
+        {
+          "file": "tests/integration/test_sim_input_handler.cpp",
+          "test": "SimInputHandler.belt_cast_sets_slot_and_alt_and_casts",
+          "note": "trace cast id=<id> family=<f> slot=1 shift=1"
+        },
+        {
+          "file": "tests/integration/test_level_play.cpp",
+          "test": "TryxianLevelPlay.bots_fire_varying_specials_at_somebody",
+          "note": "every special trace line must sscanf as cast ... price=%u or refused ... reason=, ADD_FAILURE otherwise; crew casts >= 40"
+        }
+      ],
+      "missing_arms": [
+        "script refused with reason R",
+        "refused with empty reason / no hook"
+      ]
+    },
+    {
+      "id": "walker_specials.cpp:254",
+      "lines": [
+        254
+      ],
+      "function": "walker::teleport",
+      "anchor": "if (current_game != nullptr && current_game->world != nullptr)",
+      "condition": "current_game && world (stamp last_self_teleport_tick)",
+      "semantic": "A self-teleport marks the caster with the current tick before any probing, so same-tick rules (CTF flag drop) can tell a blink from walking. Same rule as walker_specials.cpp:352.",
+      "arms": [
+        {
+          "when": "teleport() called",
+          "observable": "last_self_teleport_tick()==world tick_count_ even if the blink fails"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": [
+        "teleport() called"
+      ]
+    },
+    {
+      "id": "walker_specials.cpp:262",
+      "lines": [
+        259,
+        262
+      ],
+      "function": "walker::teleport",
+      "anchor": "for(auto& uptr : current_game->world->oblist)",
+      "condition": "ob FX && FAMILY_MARKER && ob->owner()==this && !ob->dead()",
+      "semantic": "A blink first seeks the caster's OWN live teleport marker; markers owned by others, and spent (dead) markers, are ignored.",
+      "arms": [
+        {
+          "when": "own live marker exists",
+          "observable": "marker path tried"
+        },
+        {
+          "when": "only another mage's marker",
+          "observable": "random blink; that marker's lifetime unchanged"
+        },
+        {
+          "when": "own marker dead",
+          "observable": "random blink"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.teleport_marker_lands_centered_and_spends_a_use",
+          "note": "own live marker taken"
+        },
+        {
+          "file": "tests/integration/test_walker_specials_unit.cpp",
+          "test": "WalkerSpecialsUnit.walker_specials_r11_special_and_teleport_paths",
+          "note": "own marker spent/dead -> lands on the LCG-drawn cell"
+        }
+      ],
+      "missing_arms": [
+        "only another mage's marker"
+      ]
+    },
+    {
+      "id": "walker_specials.cpp:277",
+      "lines": [
+        277,
+        297
+      ],
+      "function": "walker::teleport",
+      "anchor": "if ((distance > 64) &&",
+      "condition": "(distance > 64) && teleport_landing_clear(landx, landy, marker_floor)",
+      "semantic": "A marker more than 64 px away whose spot is clear takes the caster there: centred on the marker, onto the marker's floor, ending any fall cascade; a marker within 64 px or with a blocked spot is skipped and the random blink runs instead.",
+      "arms": [
+        {
+          "when": "far + clear",
+          "observable": "true; caster centred on marker (marker.x+marker.sizex/2-self.sizex/2); floor()==marker floor; fall_stories reset"
+        },
+        {
+          "when": "within 64 px",
+          "observable": "marker lifetime unchanged; random blink"
+        },
+        {
+          "when": "far but blocked",
+          "observable": "marker lifetime unchanged; random blink (or false if nothing clear)"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.teleport_marker_lands_centered_and_spends_a_use",
+          "note": "far+clear: centred"
+        },
+        {
+          "file": "tests/integration/test_walker_specials_unit.cpp",
+          "test": "WalkerSpecialsUnit.walker_specials_r11_special_and_teleport_paths",
+          "note": "far+clear: centred"
+        },
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.teleport_ignores_a_marker_within_64_px",
+          "note": "near: lifetime 5, random blink not on it"
+        },
+        {
+          "file": "tests/integration/test_walker_specials_unit.cpp",
+          "test": "WalkerSpecialsUnit.teleport_blocked_marker_denied_without_probe_eat",
+          "note": "far blocked: lifetime 5, false, x/y unchanged"
+        }
+      ],
+      "missing_arms": [
+        "far + clear"
+      ]
+    },
+    {
+      "id": "walker_specials.cpp:290",
+      "lines": [
+        290
+      ],
+      "function": "walker::teleport",
+      "anchor": "if (ob->lifetime() < 1)",
+      "condition": "ob->lifetime() < 1",
+      "semantic": "Each marker trip spends one use; the marker dies when its uses run out.",
+      "arms": [
+        {
+          "when": "lifetime reaches 0",
+          "observable": "marker dead(), death() run"
+        },
+        {
+          "when": "uses left",
+          "observable": "marker alive with lifetime-1"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.teleport_marker_lands_centered_and_spends_a_use",
+          "note": "lifetime 1 -> 0, dead()==1; death() not observed"
+        },
+        {
+          "file": "tests/integration/test_walker_specials_unit.cpp",
+          "test": "WalkerSpecialsUnit.walker_specials_r11_special_and_teleport_paths",
+          "note": "one-life marker dead()==1"
+        }
+      ],
+      "missing_arms": [
+        "lifetime reaches 0",
+        "uses left"
+      ]
+    },
+    {
+      "id": "walker_specials.cpp:299",
+      "lines": [
+        299
+      ],
+      "function": "walker::teleport",
+      "anchor": "if (user() != -1 && (distance > 64) ) // only tell players",
+      "condition": "user() != -1 && (distance > 64)",
+      "semantic": "Only a player-driven caster is told 'Marker is Blocked!', and only for a far marker; AI casters and near markers say nothing.",
+      "arms": [
+        {
+          "when": "player caster, far blocked marker",
+          "observable": "one Notification 'Marker is Blocked!' addressed to user()"
+        },
+        {
+          "when": "AI caster",
+          "observable": "no notification"
+        },
+        {
+          "when": "near marker",
+          "observable": "no notification"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_specials_unit.cpp",
+          "test": "WalkerSpecialsUnit.blocked_marker_notice_goes_only_to_the_casting_player"
+        }
+      ],
+      "missing_arms": [
+        "near marker"
+      ]
+    },
+    {
+      "id": "walker_specials.cpp:318",
+      "lines": [
+        318,
+        330,
+        333
+      ],
+      "function": "walker::teleport",
+      "anchor": "do",
+      "condition": "do { draw } while (keep_going > 0 && !teleport_landing_clear(...)); if (keep_going > 0)",
+      "semantic": "With no usable marker the blink draws random grid cells (x then y, one each per attempt) until one is clear, up to 200 attempts; it lands on the cell's pixel origin, or fails and leaves the caster where it was.",
+      "arms": [
+        {
+          "when": "a clear cell drawn within the budget",
+          "observable": "true; x,y == drawn cell*GRID_SIZE; RNG advanced by exactly 2 draws per attempt on single-floor"
+        },
+        {
+          "when": "no clear cell in 200 attempts",
+          "observable": "false; caster x/y/floor unchanged"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_specials_unit.cpp",
+          "test": "WalkerSpecialsUnit.walker_specials_r11_special_and_teleport_paths",
+          "note": "lands on the drawn cell, exactly two draws"
+        },
+        {
+          "file": "tests/integration/test_walker_specials_unit.cpp",
+          "test": "WalkerSpecialsUnit.teleport_single_floor_rng_stream_is_legacy_shaped"
+        },
+        {
+          "file": "tests/integration/test_walker_specials_unit.cpp",
+          "test": "WalkerSpecialsUnit.teleport_blocked_marker_denied_without_probe_eat",
+          "note": "no clear cell: false, x/y unchanged"
+        }
+      ],
+      "missing_arms": [
+        "no clear cell in 200 attempts"
+      ]
+    },
+    {
+      "id": "walker_specials.cpp:327",
+      "lines": [
+        327
+      ],
+      "function": "walker::teleport",
+      "anchor": "if (floors > 1)",
+      "condition": "floors > 1",
+      "semantic": "On stacked-floor levels the random blink also draws a floor uniformly per attempt; single-floor levels draw no floor, keeping the classic RNG stream.",
+      "arms": [
+        {
+          "when": "floor_count>1",
+          "observable": "3 draws/attempt; can land on any floor"
+        },
+        {
+          "when": "single floor",
+          "observable": "2 draws/attempt; floor unchanged"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_specials_unit.cpp",
+          "test": "WalkerSpecialsUnit.teleport_reaches_all_floors_on_multifloor_levels",
+          "note": "lands on floors 1 and 2"
+        },
+        {
+          "file": "tests/integration/test_walker_specials_unit.cpp",
+          "test": "WalkerSpecialsUnit.teleport_single_floor_rng_stream_is_legacy_shaped",
+          "note": "2 draws, floor 0"
+        }
+      ],
+      "missing_arms": [
+        "floor_count>1"
+      ]
+    },
+    {
+      "id": "walker_specials.cpp:352",
+      "lines": [
+        352
+      ],
+      "function": "walker::teleport_ranged",
+      "anchor": "if (current_game != nullptr && current_game->world != nullptr)",
+      "condition": "current_game && world (stamp last_self_teleport_tick)",
+      "semantic": "Same rule as walker_specials.cpp:254: the short escape hop also stamps the self-teleport tick before probing.",
+      "arms": [
+        {
+          "when": "teleport_ranged called",
+          "observable": "last_self_teleport_tick()==tick_count_"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": [
+        "teleport_ranged called"
+      ]
+    },
+    {
+      "id": "walker_specials.cpp:362",
+      "lines": [
+        362,
+        368
+      ],
+      "function": "walker::teleport_ranged",
+      "anchor": "while(!teleport_landing_clear(*current_game->world, this, newx, newy, floor()) && keep_going)",
+      "condition": "while(!teleport_landing_clear(..., floor()) && keep_going); if (keep_going)",
+      "semantic": "The escape hop lands within +/-range px of the caster on its own floor at the first clear random spot, trying the first draw plus up to 200 more; with none it fails and stays put.",
+      "arms": [
+        {
+          "when": "clear spot found",
+          "observable": "true; |dx|,|dy| <= range; floor unchanged; draws next(2r)-r+pos per axis"
+        },
+        {
+          "when": "none in budget",
+          "observable": "false; position unchanged"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_specials_unit.cpp",
+          "test": "WalkerSpecialsUnit.teleport_ranged_stays_on_floor_and_off_obstacles"
+        },
+        {
+          "file": "tests/integration/test_walker_specials_unit.cpp",
+          "test": "WalkerSpecialsUnit.walker_specials_r11_special_and_teleport_paths"
+        }
+      ],
+      "missing_arms": [
+        "none in budget"
+      ]
+    },
+    {
+      "id": "walker_specials.cpp:387",
+      "lines": [
+        387
+      ],
+      "function": "walker::turn_undead",
+      "anchor": "if (!targets)",
+      "condition": "!targets",
+      "semantic": "TURN UNDEAD with no foe at all in reach answers -1 ('nobody'), distinct from 0 ('nobody turned'); on both settings.",
+      "arms": [
+        {
+          "when": "no foe in range",
+          "observable": "-1; RNG untouched"
+        },
+        {
+          "when": "foes in range",
+          "observable": "continues"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_specials_unit.cpp",
+          "test": "WalkerSpecialsUnit.walker_specials_r11_turn_undead_paths",
+          "note": "-1 with nobody; foes in range continue: 1/0"
+        },
+        {
+          "file": "tests/unit/test_gameplay_fixes_engine.cpp",
+          "test": "GameplayFixesEngine.turn_undead_refuses_a_ring_without_undead_when_on",
+          "note": "-1 with nobody, RNG not checked after that call"
+        }
+      ],
+      "missing_arms": [
+        "no foe in range"
+      ]
+    },
+    {
+      "id": "walker_specials.cpp:391",
+      "lines": [
+        391,
+        396,
+        397,
+        398
+      ],
+      "function": "walker::turn_undead",
+      "anchor": "if (fixes)",
+      "condition": "fixes && !any turnable foe",
+      "semantic": "Gameplay Fixes: a ring with foes but nothing turnable is refused before any roll (-2), so the cast spends nothing. Classic: the same ring rolls nothing but answers 0 and the cast is paid.",
+      "arms": [
+        {
+          "when": "fixes on, no turnable foe",
+          "observable": "-2; RNG state unchanged"
+        },
+        {
+          "when": "fixes off, no turnable foe",
+          "observable": "0; RNG unchanged"
+        },
+        {
+          "when": "a turnable foe present",
+          "observable": "proceeds to the rolls"
+        }
+      ],
+      "setting": "both",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_gameplay_fixes_engine.cpp",
+          "test": "GameplayFixesEngine.turn_undead_refuses_a_ring_without_undead_when_on",
+          "note": "on: -2, off: 0, RNG 99 unchanged on both"
+        },
+        {
+          "file": "tests/unit/test_gameplay_fixes_engine.cpp",
+          "test": "GameplayFixesEngine.turn_undead_roll_bound_is_classic_on_both_values",
+          "note": "skeleton present, fixes on: exactly two draws"
+        },
+        {
+          "file": "tests/integration/test_walker_specials_unit.cpp",
+          "test": "WalkerSpecialsUnit.walker_specials_r11_turn_undead_paths",
+          "note": "skeleton present, fixes off: rolls, 1/0"
+        },
+        {
+          "parity": "cleric_turn_undead_reach_fixes_scen99",
+          "fact": "",
+          "note": "WalkerDiedByFinal(FAMILY_SKELETON) with the setting on"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "walker_specials.cpp:405",
+      "lines": [
+        405
+      ],
+      "function": "walker::turn_undead",
+      "anchor": "const auto roll_bound = fixes ? static_cast<std::uint32_t>(power * 160)",
+      "condition": "fixes ? power*160 : range*40",
+      "semantic": "The turning roll's strength is the classic 160 per caster level: classic computes it from the classic reach (range*40 with range=4*level); with Gameplay Fixes the reach may be wider but the strength stays power*160, so a wider ring never changes who resists.",
+      "arms": [
+        {
+          "when": "fixes off",
+          "observable": "bound = range*40"
+        },
+        {
+          "when": "fixes on",
+          "observable": "bound = power*160"
+        }
+      ],
+      "setting": "both",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_gameplay_fixes_engine.cpp",
+          "test": "GameplayFixesEngine.turn_undead_roll_bound_is_classic_on_both_values"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "walker_specials.cpp:410",
+      "lines": [
+        410
+      ],
+      "function": "walker::turn_undead",
+      "anchor": "if (turnable(w))",
+      "condition": "turnable(w)",
+      "semantic": "Inside the ring only turnable foes are rolled for: living foes and warded undead are never turned and draw no roll. Same predicate as walker_specials.cpp:135.",
+      "arms": [
+        {
+          "when": "turnable",
+          "observable": "roll drawn"
+        },
+        {
+          "when": "living foe",
+          "observable": "no draws for it; it survives"
+        },
+        {
+          "when": "warded undead",
+          "observable": "no draws; survives"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_gameplay_fixes_engine.cpp",
+          "test": "GameplayFixesEngine.turn_undead_roll_bound_is_classic_on_both_values",
+          "note": "turnable: two draws"
+        },
+        {
+          "file": "tests/unit/test_gameplay_fixes_engine.cpp",
+          "test": "GameplayFixesEngine.turn_undead_refuses_a_ring_without_undead_when_on",
+          "note": "living orc only, fixes off: 0, RNG unchanged"
+        },
+        {
+          "file": "tests/integration/test_walker_specials_unit.cpp",
+          "test": "WalkerSpecialsUnit.walker_specials_r11_turn_undead_paths",
+          "note": "orc survives"
+        }
+      ],
+      "missing_arms": [
+        "warded undead"
+      ]
+    },
+    {
+      "id": "walker_specials.cpp:412",
+      "lines": [
+        412
+      ],
+      "function": "walker::turn_undead",
+      "anchor": "if (current_game->world->rng_.next(roll_bound) > current_game->world->rng_.next(static_cast<std::uint32_t>(w->stats()->level()*10)) )",
+      "condition": "rng.next(roll_bound) > rng.next(level*10)",
+      "semantic": "Each turnable undead resists unless the caster's roll beats the victim's level roll (bound vs level*10, caster drawn first); a won roll destroys it instantly and counts it.",
+      "arms": [
+        {
+          "when": "caster roll > victim roll",
+          "observable": "victim dead, hp 0, count+1"
+        },
+        {
+          "when": "otherwise",
+          "observable": "victim untouched, count unchanged"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_specials_unit.cpp",
+          "test": "WalkerSpecialsUnit.walker_specials_r11_turn_undead_paths",
+          "note": "state 1 wins: 1, dead; state 0 loses: 0, not dead"
+        },
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.turn_undead_destroys_undead_foes_and_spares_the_living",
+          "note": "win: dead, hp 0, count 2; lose: not dead"
+        },
+        {
+          "parity": "cleric_turn_undead_scen99",
+          "fact": "",
+          "note": "WalkerDiedByFinal(FAMILY_SKELETON)  WalkerOfTeamAlive(1 0 0)"
+        }
+      ],
+      "missing_arms": [
+        "otherwise"
+      ]
+    },
+    {
+      "id": "walker_specials.cpp:418",
+      "lines": [
+        418
+      ],
+      "function": "walker::turn_undead",
+      "anchor": "if (scripted_mode)",
+      "condition": "(world->type & TYPE_SCRIPTED) && !(mode.init_attempted && !mode.active)",
+      "semantic": "In a scripted match a turned undead is a real kill: it goes through the level damage gate, stamps the kill on the caster's chain head and runs death() (mode hooks score it). In a classic world (or a scripted level whose mode failed to start) it is the classic pre-kill: dead, hp 0, a bloodspot via attack(), no attribution stamp, no death() call (the engine reaps it).",
+      "arms": [
+        {
+          "when": "scripted, mode active",
+          "observable": "gate dispatched; on kill death_called()==1 and last_attacker_id()==credit head"
+        },
+        {
+          "when": "classic world",
+          "observable": "dead()==1, death_called()==0, last_attacker_id()==0"
+        },
+        {
+          "when": "scripted level whose mode init failed",
+          "observable": "classic pre-kill arm"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_modes_tdm.cpp",
+          "test": "ModesTdm.turn_undead_kill_scores_the_frag_and_schedules_the_corpse",
+          "note": "scripted active: death_called, last_attacker_id == cleric"
+        },
+        {
+          "file": "tests/unit/test_modes_tdm.cpp",
+          "test": "ModesTdm.classic_worlds_keep_the_legacy_turn_undead_prekill",
+          "note": "classic: dead, death_called 0, last_attacker_id 0"
+        },
+        {
+          "file": "tests/unit/test_modes_onslaught.cpp",
+          "test": "ModesOnslaught.turn_undead_replacement_at_lethal_still_destroys"
+        }
+      ],
+      "missing_arms": [
+        "scripted level whose mode init failed"
+      ]
+    },
+    {
+      "id": "walker_specials.cpp:436",
+      "lines": [
+        436,
+        439,
+        441
+      ],
+      "function": "walker::turn_undead",
+      "anchor": "if (gated < 0)",
+      "condition": "gated < 0; gated < lethal; gated > 0 && credit != nullptr",
+      "semantic": "In a scripted match the level's damage gate decides a turn: a cancel spares the victim; a replacement below the victim's hp is ordinary damage (hp drops by it, a positive amount stamps the attacker's chain head, the victim retaliates) and never a kill; a replacement at or above hp destroys and credits the chain head (a charmed caster heads its own chain with fixes on).",
+      "arms": [
+        {
+          "when": "gated<0",
+          "observable": "victim hp unchanged, last_attacker_id 0, not counted"
+        },
+        {
+          "when": "0<=gated<lethal",
+          "observable": "hp -= gated; stamp iff gated>0; not dead; not counted"
+        },
+        {
+          "when": "gated>=lethal",
+          "observable": "dead, death_called 1, hp 0, stamped, counted"
+        }
+      ],
+      "setting": "both",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_modes_onslaught.cpp",
+          "test": "ModesOnslaught.turn_undead_gate_cancel_spares_the_victim"
+        },
+        {
+          "file": "tests/unit/test_modes_onslaught.cpp",
+          "test": "ModesOnslaught.turn_undead_partial_replacement_damages_not_kills"
+        },
+        {
+          "file": "tests/unit/test_modes_onslaught.cpp",
+          "test": "ModesOnslaught.turn_undead_zero_replacement_leaves_victim_untouched"
+        },
+        {
+          "file": "tests/unit/test_modes_onslaught.cpp",
+          "test": "ModesOnslaught.turn_undead_replacement_at_lethal_still_destroys"
+        },
+        {
+          "file": "tests/unit/test_modes_onslaught.cpp",
+          "test": "ModesOnslaught.turn_undead_partial_hit_credits_the_owner_chain_root"
+        },
+        {
+          "file": "tests/unit/test_modes_onslaught.cpp",
+          "test": "ModesOnslaught.turn_undead_partial_hit_by_a_charmed_caster_credits_the_caster"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "walker_specials.cpp:473",
+      "lines": [
+        473,
+        474
+      ],
+      "function": "walker::undead_foes_in_range",
+      "anchor": "for (auto* w : foes)",
+      "condition": "for foes: if turnable(w)",
+      "semantic": "The cleric's question 'how many foes here could TURN UNDEAD turn' counts only turnable foes in reach and draws nothing (bot gate, Lua walker:undead_foes_in_range).",
+      "arms": [
+        {
+          "when": "undead unwarded foe in reach",
+          "observable": "counted"
+        },
+        {
+          "when": "warded, living, generator, ally, out of reach",
+          "observable": "not counted"
+        },
+        {
+          "when": "any",
+          "observable": "RNG state unchanged"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_gameplay_fixes_engine.cpp",
+          "test": "GameplayFixesEngine.undead_foes_in_range_counts_what_turn_undead_could_turn"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "walker_specials.cpp:502",
+      "lines": [
+        502
+      ],
+      "function": "walker::charmed_head",
+      "anchor": "return og::sim::session_gameplay_fixes() != 0 && charm_left() > 0;",
+      "condition": "session_gameplay_fixes() != 0 && charm_left() > 0",
+      "semantic": "Gameplay Fixes AD (#412): while a charm runs, a charmed walker heads its own owner chain (credit, friendliness and alliance follow its own colour); with the setting off the owner climbs pass through it to its tent/summoner as in the classic game.",
+      "arms": [
+        {
+          "when": "fixes on, charm_left>0",
+          "observable": "chain climbs stop at the walker"
+        },
+        {
+          "when": "fixes off or no charm",
+          "observable": "climb continues to the owner"
+        }
+      ],
+      "setting": "both",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_gameplay_fixes_charm.cpp",
+          "test": "GameplayFixesCharm.a_charmed_tent_troop_fights_for_its_charmer"
+        },
+        {
+          "file": "tests/unit/test_gameplay_fixes_charm.cpp",
+          "test": "GameplayFixesCharm.an_uncharmed_tent_troop_answers_for_its_tent_on_both_values"
+        },
+        {
+          "parity": "thief_charm_tent_troop_fixes_scen99",
+          "fact": "",
+          "note": "WalkerHpRangeAtFinalTick(FAMILY_THIEF 7500 7500)  LevelDoneEquals(2)"
+        }
+      ],
+      "missing_arms": []
+    }
+  ],
+  "other": [
+    {
+      "id": "walker_specials.cpp:100",
+      "lines": [
+        100
+      ],
+      "kind": "defensive",
+      "anchor": "if (world.myobmap == nullptr)",
+      "note": "myobmap == nullptr: no collision table, grid probe alone decides (headless/test worlds)"
+    },
+    {
+      "id": "walker_specials.cpp:112",
+      "lines": [
+        112,
+        114,
+        117,
+        118,
+        120
+      ],
+      "kind": "loop",
+      "anchor": "for (std::int32_t bx = x; bx < x + self->sizex() + kBucket; bx += kBucket)",
+      "note": "obmap bucket scan over every 32 px bucket the landing box spans; per-candidate test is the rule at walker_specials.cpp:60 and :74; pile==nullptr (117) is an empty-bucket skip"
+    },
+    {
+      "id": "walker_specials.cpp:147",
+      "lines": [
+        147,
+        149,
+        153,
+        155
+      ],
+      "kind": "plumbing",
+      "anchor": "if (why)",
+      "note": "SpecialFailure/reason out-param writes (null-checked); the reasons themselves are the rule rows below"
+    },
+    {
+      "id": "walker_specials.cpp:175",
+      "lines": [
+        175
+      ],
+      "kind": "defensive",
+      "anchor": "if (!stats_)",
+      "note": "walker without stats: SpecialFailure::NoStats ('SPECIAL UNAVAILABLE'); no real walker reaches it (tests/integration/test_walker_specials.cpp no_stats_guard)"
+    },
+    {
+      "id": "walker_specials.cpp:309",
+      "lines": [
+        309
+      ],
+      "kind": "defensive",
+      "anchor": "if (!current_game || !current_game->world || !current_game->world->grid.valid() ||",
+      "note": "no world/grid/pixel extents: random blink refused (return 0) instead of looping"
+    },
+    {
+      "id": "walker_specials.cpp:408",
+      "lines": [
+        408
+      ],
+      "kind": "loop",
+      "anchor": "for(auto* w : deadlist)",
+      "note": "iteration over the foes in reach; per-foe rules at walker_specials.cpp:410, :412, :418, :436"
+    }
+  ]
+}

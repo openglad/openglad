@@ -1,0 +1,77 @@
+{
+  "path": "src/gameplay/game_world_weather.cpp",
+  "rules": [
+    {
+      "id": "game_world_weather.cpp:52",
+      "lines": [
+        48,
+        52
+      ],
+      "function": "GameWorld::roll_weather",
+      "anchor": "if (t == PIX_SNOW1 || t == PIX_SNOW2)",
+      "condition": "t == PIX_SNOW1 || t == PIX_SNOW2 ... if (snow_tiles >= og::kSnowWeatherTileThreshold) weather_ = WeatherKind::Snow",
+      "semantic": "A level whose grids (all floors counted together) hold at least kSnowWeatherTileThreshold snow tiles (PIX_SNOW1/PIX_SNOW2) always snows; below that the hash roll of (level id, nonce, roll sequence) stands. The override runs after the roll so the roll sequence advances either way and the sim RNG is never touched.",
+      "arms": [
+        {
+          "when": "snow tiles >= threshold (one floor or summed over floors)",
+          "observable": "world.weather() == WeatherKind::Snow; trace 'game' 'weather roll=<Snow>'"
+        },
+        {
+          "when": "snow tiles < threshold",
+          "observable": "world.weather() == og::roll_weather_kind(seed) (the base roll); roll sequence still bumped; rng_.state_ unchanged"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_weather.cpp",
+          "test": "Weather.snowy_grid_overrides_any_base_roll_to_snow"
+        },
+        {
+          "file": "tests/unit/test_weather.cpp",
+          "test": "Weather.below_threshold_snow_count_keeps_the_base_roll"
+        },
+        {
+          "file": "tests/unit/test_weather.cpp",
+          "test": "Weather.snow_tiles_count_jointly_across_floors"
+        },
+        {
+          "file": "tests/unit/test_weather.cpp",
+          "test": "Weather.override_still_consumes_the_roll_sequence"
+        },
+        {
+          "file": "tests/unit/test_weather.cpp",
+          "test": "Weather.world_roll_leaves_sim_rng_state_untouched"
+        },
+        {
+          "file": "tests/unit/test_weather.cpp",
+          "test": "Weather.world_reroll_walks_fresh_outcomes_within_a_session",
+          "note": "no snow grid: base roll per seq and EXPECT_EQ(4u, weather_roll_sequence()) after four rolls - the below-threshold sequence bump"
+        }
+      ],
+      "missing_arms": []
+    }
+  ],
+  "other": [
+    {
+      "id": "game_world_weather.cpp:37",
+      "lines": [
+        37,
+        44
+      ],
+      "kind": "loop",
+      "anchor": "for (int f = 0;",
+      "note": "floor and cell iteration with an early stop once the threshold is reached; see game_world_weather.cpp:52"
+    },
+    {
+      "id": "game_world_weather.cpp:41",
+      "lines": [
+        41
+      ],
+      "kind": "defensive",
+      "anchor": "if (!g.valid())",
+      "note": "a floor with no allocated grid contributes no snow tiles (null-grid guard)"
+    }
+  ]
+}

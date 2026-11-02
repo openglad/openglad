@@ -1,0 +1,41 @@
+{
+  "path": "include/openglad/gameplay/walker.h",
+  "rules": [
+    {
+      "id": "walker.h:500",
+      "lines": [
+        500
+      ],
+      "function": "walker::note_attacker",
+      "anchor": "if (who == nullptr)",
+      "condition": "who == nullptr",
+      "semantic": "A hit is credited (kill-attribution stamp: id, team, tick) to the topmost LIVING on the attacker's owner chain (credit_head); when no living is on the chain (an orphaned weapon whose thrower is gone, a scripted ball fx), no stamp is written, so a death from that hit reads as an environment death and Lua on_kill / mode scoring pays nobody. walker_combat.cpp:323 passes credit_head() unchecked and relies on this guard; walker_specials.cpp:441-448 (turn undead) checks credit itself on the partial-damage arm but not on the lethal arm (also relies on this guard).",
+      "arms": [
+        {
+          "when": "credit head is a living",
+          "observable": "target->last_attacker_id()==credit->entity_id(), last_attacker_team()==credit team, last_attacker_tick()==world tick"
+        },
+        {
+          "when": "no living on the attacker's owner chain (who==nullptr)",
+          "observable": "target->last_attacker_id() stays 0 / previous value, last_attacker_team stays -1; hp still drops; on death no killer passed to on_entity_death"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [
+        {
+          "file": "tests/unit/test_modes_onslaught.cpp",
+          "test": "ModesOnslaught.a_tent_troops_kill_pays_its_colour",
+          "note": "living arm asserted: :"
+        }
+      ],
+      "missing_arms": [],
+      "note": [
+        "living arm: tests/unit/test_kit_elemental.cpp (last_attacker_id == striker)",
+        "living arm: tests/unit/test_gameplay_fixes_charm.cpp (troop stamp)",
+        "null arm: no test found that hits with an owner chain holding no living and asserts last_attacker_id()==0 (test_mode_tick.cpp damage_gate_* assert 0 for zero/cancelled damage, which is the caller's tempdamage_i>0 gate, not this guard)"
+      ]
+    }
+  ],
+  "other": []
+}

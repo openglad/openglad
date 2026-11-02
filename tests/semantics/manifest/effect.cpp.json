@@ -1,0 +1,260 @@
+{
+  "path": "src/gameplay/effect.cpp",
+  "rules": [
+    {
+      "id": "effect.cpp:57",
+      "lines": [
+        57,
+        59,
+        61
+      ],
+      "function": "effect::act",
+      "anchor": "if (foe() && foe()->dead())",
+      "condition": "foe()/leader()/owner() && ->dead()",
+      "semantic": "An effect forgets a foe, leader or owner that has died at the start of its tick, so a dead caster no longer steers, owns or credits it.",
+      "arms": [
+        {
+          "when": "ref dead",
+          "observable": "foe()/leader()/owner() == nullptr after act"
+        },
+        {
+          "when": "ref alive",
+          "observable": "pointer kept"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_effect_extended.cpp",
+          "test": "EffectExtended.effect_ctor_defaults_and_owner_pointer_cleanup_in_act"
+        }
+      ],
+      "missing_arms": [
+        "ref alive"
+      ]
+    },
+    {
+      "id": "effect.cpp:72",
+      "lines": [
+        72,
+        74
+      ],
+      "function": "effect::act",
+      "anchor": "if (auto hook_result = og::script::hooks::effect_on_act(efd, this))",
+      "condition": "effect_on_act hook present ; *hook_result",
+      "semantic": "An effect family's Lua on_act owns its tick when it returns true; returning false (or no hook) hands the tick to the default: finish the playing animation, then die.",
+      "arms": [
+        {
+          "when": "on_act -> true",
+          "observable": "act returns 1, effect alive, no animate"
+        },
+        {
+          "when": "on_act -> false",
+          "observable": "falls to animate/die"
+        },
+        {
+          "when": "no hook",
+          "observable": "default animate/die"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_effect_act.cpp",
+          "test": "EffectAct.magic_shield_orbit_step_and_ageing",
+          "note": "true arm: act returns 1, dead()==0, hook moved the shield"
+        },
+        {
+          "file": "tests/integration/test_effect_act.cpp",
+          "test": "EffectAct.explosion_act_advances_drawcycle_animates_then_dies",
+          "note": "no-hook arm: animates then dies"
+        },
+        {
+          "file": "tests/integration/test_effect_more_paths.cpp",
+          "test": "EffectMorePaths.effect_round8_default_act_death_path",
+          "note": "no-hook arm: returns 0, dead"
+        }
+      ],
+      "missing_arms": [
+        "on_act -> false"
+      ]
+    },
+    {
+      "id": "effect.cpp:80",
+      "lines": [
+        80
+      ],
+      "function": "effect::act",
+      "anchor": "if (ani_type() != ANI_WALK)",
+      "condition": "ani_type() != ANI_WALK",
+      "semantic": "A default effect plays its animation row through to the end and dies on the tick after it returns to the walk row (its death hook fires then).",
+      "arms": [
+        {
+          "when": "animating (non-walk row)",
+          "observable": "act returns animate(); frame advances; alive"
+        },
+        {
+          "when": "walk row",
+          "observable": "dead()==1, death() hook runs, act returns 0"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_effect_act.cpp",
+          "test": "EffectAct.explosion_act_advances_drawcycle_animates_then_dies"
+        },
+        {
+          "file": "tests/integration/test_effect_more_paths.cpp",
+          "test": "EffectMorePaths.effect_round8_default_act_death_path",
+          "note": "walk row: returns 0, dead()==1; FLASH has no on_death so the hook running is unobserved"
+        }
+      ],
+      "missing_arms": [
+        "walk row"
+      ]
+    },
+    {
+      "id": "effect.cpp:132",
+      "lines": [
+        132,
+        134,
+        138,
+        140
+      ],
+      "function": "effect::animate",
+      "anchor": "if (efd && efd->loops_animation)",
+      "condition": "efd->loops_animation ; seq[c] == -1",
+      "semantic": "A looping effect (magic shield, boomerang orbit etc., loops_animation=true) wraps its animation forever and stays on its row; a non-looping effect drops to the walk row when its sequence ends, which makes the next act kill it.",
+      "arms": [
+        {
+          "when": "looping, end of sequence",
+          "observable": "cycle 0, ani_type unchanged"
+        },
+        {
+          "when": "non-looping, end of sequence",
+          "observable": "ani_type ANI_WALK (dies next act)"
+        },
+        {
+          "when": "mid sequence",
+          "observable": "cycle+1, frame = seq[c]"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_effect_act.cpp",
+          "test": "EffectAct.effect_animate_magic_shield_loops_without_resetting_ani_type"
+        },
+        {
+          "file": "tests/integration/test_effect_act.cpp",
+          "test": "EffectAct.effect_animate_explosion_reads_the_row_and_ends_at_the_sentinel"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "effect.cpp:155",
+      "lines": [
+        155
+      ],
+      "function": "effect::death",
+      "anchor": "if (death_called())",
+      "condition": "death_called()",
+      "semantic": "An effect's death consequence (explosion blast, scare) happens exactly once however many times death() is reached.",
+      "arms": [
+        {
+          "when": "first",
+          "observable": "returns 1, on_death hook runs"
+        },
+        {
+          "when": "again",
+          "observable": "returns 0, no second hook"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_effect_more_paths.cpp",
+          "test": "EffectMorePaths.effect_round9_death_called_guard_returns_false_on_second_call",
+          "note": "return values only"
+        },
+        {
+          "file": "tests/integration/test_effect_death_more.cpp",
+          "test": "EffectDeathMore.effect_death_bomb_spawns_explosion_with_owner_and_damage",
+          "note": "first arm: returns 1 and the hook spawned the blast"
+        }
+      ],
+      "missing_arms": [
+        "again"
+      ]
+    },
+    {
+      "id": "effect.cpp:173",
+      "lines": [
+        173,
+        177,
+        181,
+        185
+      ],
+      "function": "hits",
+      "anchor": "if (x > x2right)",
+      "condition": "x > x2+xsize2 ; x+xsize < x2 ; y > y2+ysize2 ; y+ysize < y2",
+      "semantic": "Two boxes hit when they overlap on both axes, edges inclusive (touching edges count as a hit).",
+      "arms": [
+        {
+          "when": "separated on either axis",
+          "observable": "0"
+        },
+        {
+          "when": "overlap or edge-touch",
+          "observable": "1"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_effect_extended.cpp",
+          "test": "EffectExtended.hits_exact_touching"
+        },
+        {
+          "file": "tests/integration/test_effect_more_paths.cpp",
+          "test": "EffectMorePaths.effect_round11_hits_edge_touches"
+        },
+        {
+          "file": "tests/integration/test_effect_more_paths.cpp",
+          "test": "EffectMorePaths.effect_round10_hits_overlap_and_axis_reject_paths"
+        }
+      ],
+      "missing_arms": [],
+      "note": [
+        "tests/integration/test_effect_extended.cpp: TEST(EffectExtended, hits_no_overlap_right/below/left/above)"
+      ]
+    }
+  ],
+  "other": [
+    {
+      "id": "effect.cpp:91",
+      "lines": [
+        91,
+        99,
+        102,
+        110,
+        116,
+        120,
+        122,
+        126
+      ],
+      "kind": "defensive",
+      "function": "effect::animate",
+      "anchor": "if (!ani)",
+      "note": "Null ani table, facing/type/row/cycle bounds against untrusted snapshot values, sequence-length scan loop (120) and malformed sequence guards. Hardening only; pinned by tests/integration/test_effect_act.cpp: TEST(EffectAct, effect_animate_handles_malicious_indices_safely). Row-out-of-range falls back to the walk row."
+    }
+  ]
+}

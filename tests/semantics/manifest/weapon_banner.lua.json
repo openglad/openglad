@@ -1,0 +1,209 @@
+{
+  "path": "packs/core/lib/weapon_banner.lua",
+  "rules": [
+    {
+      "id": "weapon_banner.lua:15",
+      "lines": [
+        15
+      ],
+      "function": "pulse (on_animate)",
+      "anchor": "if w:floor() == self:floor() then",
+      "condition": "w:floor() == self:floor()",
+      "semantic": "On each banner pulse every ally (any living family, captain included) within banner_radius on the banner's own floor heals banner_regen, capped at max hp; an ally on another floor at the same x/y gets nothing.",
+      "arms": [
+        {
+          "when": "ally in radius, same floor",
+          "observable": "ally hp += banner_regen (clamped to max)"
+        },
+        {
+          "when": "ally in radius, other floor",
+          "observable": "ally hp unchanged"
+        },
+        {
+          "when": "ally out of radius",
+          "observable": "ally hp unchanged"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "executed-only",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_captain.cpp",
+          "test": "KitCaptain.banner_regens_allies_and_frights_lower_foes",
+          "note": "same-floor and out-of-radius arms asserted; other-floor arm not"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "weapon_banner.lua:24",
+      "lines": [
+        22,
+        23,
+        24
+      ],
+      "function": "pulse (on_animate)",
+      "anchor": "local living = w:order() == C.ORDER_LIVING",
+      "condition": "w:order() == ORDER_LIVING and w.level < self.level",
+      "semantic": "On each pulse every LIVING foe within banner_radius whose level is below the banner's is frightened away from it (fright walk pointing away on each axis); a foe of the banner's level or higher, a generator, or a fearless (rallied) foe holds its ground.",
+      "arms": [
+        {
+          "when": "living foe, level < banner level, not fearless",
+          "observable": "foe gets a fright command; com1 = sign(foe.x - banner.x), com2 = sign(foe.y - banner.y)"
+        },
+        {
+          "when": "living foe, level >= banner level",
+          "observable": "no command queued"
+        },
+        {
+          "when": "generator foe",
+          "observable": "no fright (order gate)"
+        },
+        {
+          "when": "fearless foe (inside its own banner's rally_radius)",
+          "observable": "no command (s_force_fright skips via og::sim::fearless)"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_captain.cpp",
+          "test": "KitCaptain.banner_regens_allies_and_frights_lower_foes",
+          "note": "weaker frightened east, stronger holds"
+        },
+        {
+          "file": "tests/unit/test_kit_captain.cpp",
+          "test": "KitCaptain.rallied_walker_does_not_flee_when_hit",
+          "note": "fearless"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "weapon_banner.lua:39",
+      "lines": [
+        39
+      ],
+      "function": "on_animate",
+      "anchor": "if og.mod(og.world_tick(), t.banner_pulse) == 0 then",
+      "condition": "og.mod(og.world_tick(), t.banner_pulse) == 0",
+      "semantic": "A banner's aura pulses only on world ticks that are multiples of banner_pulse (8); between pulses it heals and frightens nothing, but it still counts down its lifetime every tick.",
+      "arms": [
+        {
+          "when": "tick % banner_pulse == 0",
+          "observable": "heal/fright applied (see :15, :24)"
+        },
+        {
+          "when": "otherwise",
+          "observable": "ally hp unchanged, no fright command; lifetime still -1"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_captain.cpp",
+          "test": "KitCaptain.banner_regens_allies_and_frights_lower_foes",
+          "note": "tick 801 nothing, tick 808 pulse"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "weapon_banner.lua:43",
+      "lines": [
+        43
+      ],
+      "function": "on_animate",
+      "anchor": "if lifetime < 1 then",
+      "condition": "lifetime < 1 (read before decrement)",
+      "semantic": "A war banner stands for its lifetime and then falls by itself, announcing 'The banner falls.' with an explosion sound (a banner with lifetime 1 survives one more act).",
+      "arms": [
+        {
+          "when": "lifetime >= 1",
+          "observable": "lifetime -1, dead 0"
+        },
+        {
+          "when": "lifetime < 1",
+          "observable": "dead 1, death() runs: flash fx spawned, SOUND_EXPLODE, notification 'The banner falls.'"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_captain.cpp",
+          "test": "KitCaptain.banner_falls_when_its_time_is_up"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "weapon_banner.lua:63",
+      "lines": [
+        63
+      ],
+      "function": "on_death",
+      "anchor": "if self:leader() then",
+      "condition": "self:leader() (set by kit_captain when its own captain plants a new banner)",
+      "semantic": "A banner struck by its captain planting a new one comes down quietly (a flash only); a banner chopped down by foes or worn out falls loudly: explosion sound and 'The banner falls.'.",
+      "arms": [
+        {
+          "when": "leader set (replaced by new banner)",
+          "observable": "one flash fx where it stood; 0 SOUND_EXPLODE; no 'The banner falls.' notification"
+        },
+        {
+          "when": "no leader (chopped / expired)",
+          "observable": "flash fx, 1 SOUND_EXPLODE, notification 'The banner falls.'"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_captain.cpp",
+          "test": "KitCaptain.second_banner_strikes_the_first_quietly"
+        },
+        {
+          "file": "tests/unit/test_kit_captain.cpp",
+          "test": "KitCaptain.banner_falls_when_its_time_is_up"
+        },
+        {
+          "file": "tests/unit/test_kit_captain.cpp",
+          "test": "KitCaptain.banner_is_chopped_by_foes_and_passes_allies"
+        }
+      ],
+      "missing_arms": []
+    }
+  ],
+  "other": [
+    {
+      "id": "weapon_banner.lua:13",
+      "lines": [
+        13
+      ],
+      "kind": "loop",
+      "anchor": "for i = 1, #friends do",
+      "note": "Iterates allies in banner_radius; rule in weapon_banner.lua:15."
+    },
+    {
+      "id": "weapon_banner.lua:20",
+      "lines": [
+        20
+      ],
+      "kind": "loop",
+      "anchor": "for i = 1, #foes do",
+      "note": "Iterates foes in banner_radius; rule in weapon_banner.lua:24."
+    },
+    {
+      "id": "weapon_banner.lua:58",
+      "lines": [
+        58
+      ],
+      "kind": "defensive",
+      "anchor": "if flash then",
+      "note": "add_ob('fx', core:flash) failure guard: no flash if the fx cannot be created."
+    }
+  ]
+}

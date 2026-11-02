@@ -1,0 +1,77 @@
+{
+  "path": "src/gameplay/script/campaign_hooks.cpp",
+  "rules": [
+    {
+      "id": "campaign_hooks.cpp:37",
+      "lines": [
+        37,
+        39,
+        42
+      ],
+      "function": "valid_campaign_var_name",
+      "anchor": "if (name.empty() || name.size() > static_cast<std::size_t>(kCampaignVarNameMax))",
+      "condition": "name.empty() || size > kCampaignVarNameMax ; for c ; !ok",
+      "semantic": "A campaign decision variable name is 1-32 characters of lowercase letters, digits and underscore; anything else is refused everywhere names are accepted (campaign hook vars, og.campaign_var writes, save and replay readers).",
+      "arms": [
+        {
+          "when": "empty",
+          "observable": "refused"
+        },
+        {
+          "when": "33+ chars",
+          "observable": "refused ('1-32 chars')"
+        },
+        {
+          "when": "uppercase / other char",
+          "observable": "refused ('[a-z0-9_]')"
+        },
+        {
+          "when": "valid",
+          "observable": "accepted"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [
+        {
+          "file": "tests/unit/test_campaign_hooks.cpp",
+          "test": "CampaignHooksTest.bad_vars_are_load_errors",
+          "note": "uppercase, 33 chars, non-string"
+        }
+      ],
+      "missing_arms": [],
+      "note": [
+        "tests/unit/test_campaign_state_providers.cpp: state_set('BAD KEY') refused",
+        "UNASSERTED: empty-name arm (name.empty(), line 37); the valid arm is implied by the many campaign tests that set vars"
+      ]
+    },
+    {
+      "id": "campaign_hooks.cpp:60",
+      "lines": [
+        60
+      ],
+      "function": "campaign_assign_set",
+      "anchor": "if (!g_campaign_providers.assign_set)",
+      "condition": "!g_campaign_providers.assign_set",
+      "semantic": "Assigning a hero to a campaign set fails cleanly (false, nothing written) when no campaign save surface is installed; otherwise the provider's bounded answer is returned.",
+      "arms": [
+        {
+          "when": "no provider",
+          "observable": "false"
+        },
+        {
+          "when": "provider",
+          "observable": "provider's answer (true for an occupied slot, false out of range)"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [],
+      "missing_arms": [],
+      "note": [
+        "tests/unit/test_campaign_hooks.cpp: assign chip dispatch test near line 1171-1192 (EXPECT_TRUE/EXPECT_FALSE campaign_assign_set, then false after clear)"
+      ]
+    }
+  ],
+  "other": []
+}

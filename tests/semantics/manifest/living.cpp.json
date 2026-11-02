@@ -1,0 +1,2189 @@
+{
+  "path": "src/gameplay/living.cpp",
+  "rules": [
+    {
+      "id": "living.cpp:66",
+      "lines": [
+        66
+      ],
+      "function": "living::act",
+      "anchor": "if (bonus_rounds() > 50)",
+      "condition": "bonus_rounds() > 50",
+      "semantic": "A walker never banks more than 50 extra act rounds: any surplus is discarded at the start of its act, not carried over.",
+      "arms": [
+        {
+          "when": "bonus_rounds > 50",
+          "observable": "one act() runs exactly 51 rounds (drawcycle advances by 51) and bonus_rounds ends 0"
+        },
+        {
+          "when": "bonus_rounds <= 50",
+          "observable": "every banked round runs (drawcycle +N+1)"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_living_unit.cpp",
+          "test": "LivingUnit.act_runs_at_most_fifty_bonus_rounds_per_call"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living.cpp:69",
+      "lines": [
+        69
+      ],
+      "function": "living::act",
+      "anchor": "if (bonus_rounds() > 0 && !dead())",
+      "condition": "bonus_rounds() > 0 && !dead()",
+      "semantic": "A living walker with banked bonus rounds (granted by an enemy-team mage's FREEZE TIME to its allies) takes one full extra act per banked round, all in the same tick; every per-tick timer (invulnerability, invisibility, flight, charm, speed bonus, rests, lunge) therefore also runs down once per round. A dead walker takes none.",
+      "arms": [
+        {
+          "when": "banked rounds, alive",
+          "observable": "act() recurses once per round; drawcycle and every countdown advance N+1 times this tick; bonus_rounds ends 0"
+        },
+        {
+          "when": "no rounds or dead",
+          "observable": "a single act"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": [
+        "banked rounds, alive",
+        "no rounds or dead"
+      ]
+    },
+    {
+      "id": "living.cpp:74",
+      "lines": [
+        74,
+        84
+      ],
+      "function": "living::act",
+      "anchor": "if (dead())",
+      "condition": "dead()  /  dead() after apply_z_motion()",
+      "semantic": "A dead walker does nothing in its act; a walker that dies falling down a pit (apply_z_motion) stops acting that same tick.",
+      "arms": [
+        {
+          "when": "dead on entry",
+          "observable": "act() returns 0, no timer or drawcycle change"
+        },
+        {
+          "when": "pit death in apply_z_motion",
+          "observable": "act() returns 0 the tick it falls; no AI command queued"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": [
+        "dead on entry",
+        "pit death in apply_z_motion"
+      ],
+      "note": [
+        "unasserted: pit death in apply_z_motion: no cited test asserts act() returns 0 the tick the walker falls, nor that no command is queued"
+      ]
+    },
+    {
+      "id": "living.cpp:94",
+      "lines": [
+        94
+      ],
+      "function": "living::act",
+      "anchor": "if (foe() && (foe()->dead() || foe()->hidden() || (current_game->world->rng_.next(static_cast<std::uint32_t>(foe()->invisibility_left() > 0 ? foe()->invisibilit",
+      "condition": "foe() && (foe()->dead() || foe()->hidden() || rng.next(max(0,foe invis)/20) > 0)",
+      "semantic": "A walker forgets a foe that is dead or hidden (dug in / riding a body), and loses track of a cloaked foe with a chance that grows with the foe's remaining invisibility (a roll of next(invis/20) above 0); a negative cloak counter is treated as no cloak.",
+      "arms": [
+        {
+          "when": "foe dead",
+          "observable": "foe cleared"
+        },
+        {
+          "when": "foe hidden",
+          "observable": "foe cleared, no RNG drawn"
+        },
+        {
+          "when": "foe invisible, roll > 0",
+          "observable": "foe cleared; one rng draw"
+        },
+        {
+          "when": "foe invisible < 20 or roll 0 / negative counter",
+          "observable": "foe kept; next(0) draws nothing"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_sim_world_headless.cpp",
+          "test": "SimWorldHeadless.negative_invisibility_does_not_break_the_foe_lock"
+        },
+        {
+          "file": "tests/unit/test_sim_world_headless.cpp",
+          "test": "SimWorldHeadless.foe_lock_unchanged_for_non_negative_invisibility"
+        },
+        {
+          "file": "tests/integration/test_coverage_misc.cpp",
+          "test": "CoverageMisc.coverage_r19_living_act_random_acquires_a_foe_and_queues_a_command"
+        }
+      ],
+      "missing_arms": [
+        "foe hidden"
+      ]
+    },
+    {
+      "id": "living.cpp:96",
+      "lines": [
+        96
+      ],
+      "function": "living::act",
+      "anchor": "if (is_friendly(foe()))",
+      "condition": "is_friendly(foe())",
+      "semantic": "A walker never keeps a friend as its foe: a foe that became friendly (charmed onto our side, or we were charmed onto its side) is dropped.",
+      "arms": [
+        {
+          "when": "foe now friendly",
+          "observable": "foe cleared"
+        },
+        {
+          "when": "foe hostile",
+          "observable": "foe kept"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": [
+        "foe now friendly",
+        "foe hostile"
+      ]
+    },
+    {
+      "id": "living.cpp:98",
+      "lines": [
+        98
+      ],
+      "function": "living::act",
+      "anchor": "if (leader() && leader()->dead())",
+      "condition": "leader() && leader()->dead()",
+      "semantic": "A follower whose leader has died forgets the leader (so a later Yell can recruit it again).",
+      "arms": [
+        {
+          "when": "leader dead",
+          "observable": "leader cleared"
+        },
+        {
+          "when": "leader alive",
+          "observable": "leader kept"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": [
+        "leader dead",
+        "leader alive"
+      ]
+    },
+    {
+      "id": "living.cpp:100",
+      "lines": [
+        100
+      ],
+      "function": "living::act",
+      "anchor": "if (owner() && owner()->dead())",
+      "condition": "owner() && owner()->dead()",
+      "semantic": "A summoned or owned living dies when its owner dies.",
+      "arms": [
+        {
+          "when": "owner dead",
+          "observable": "summon dead()==1, death() run, act returns 0"
+        },
+        {
+          "when": "owner alive",
+          "observable": "continues"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": [
+        "owner dead",
+        "owner alive"
+      ]
+    },
+    {
+      "id": "living.cpp:109",
+      "lines": [
+        109,
+        111,
+        119
+      ],
+      "function": "living::act",
+      "anchor": "if (lifetime())",
+      "condition": "lifetime() / !owner() || owner()->dead() / remaining_lifetime < 1",
+      "semantic": "A walker with a lifetime (a summon) dies if it has no owner, otherwise its lifetime counts down one per act and it dies when it reaches 0. A lifetime of 0 means permanent.",
+      "arms": [
+        {
+          "when": "lifetime set, no owner",
+          "observable": "dies at once"
+        },
+        {
+          "when": "lifetime counts to 0",
+          "observable": "dies on the act its lifetime reaches 0 (lifetime 1 dies on the next act)"
+        },
+        {
+          "when": "lifetime > 1",
+          "observable": "lifetime decreases by 1"
+        },
+        {
+          "when": "lifetime 0",
+          "observable": "never expires"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_living_combat.cpp",
+          "test": "LivingCombat.living_act_lifetime_expiry_with_owner"
+        },
+        {
+          "parity": "summon_lifetime_decrement_faerie_scen99",
+          "fact": "WalkerDiedByFinal(FAMILY_FAERIE)"
+        },
+        {
+          "parity": "summon_lifetime_faerie_scen99",
+          "fact": "WalkerDiedByFinal(FAMILY_FAERIE)"
+        }
+      ],
+      "missing_arms": [
+        "lifetime set, no owner",
+        "lifetime > 1",
+        "lifetime 0"
+      ],
+      "note": [
+        "unasserted: lifetime > 1: no test asserts the one-per-act decrement (cited tests start at lifetime 1)",
+        "unasserted: lifetime 0: no test asserts a permanent (lifetime 0) walker never expires"
+      ]
+    },
+    {
+      "id": "living.cpp:131",
+      "lines": [
+        131
+      ],
+      "function": "living::act",
+      "anchor": "if (stats_->frozen_delay_raw() < 0)",
+      "condition": "stats_->frozen_delay_raw() < 0",
+      "semantic": "After a seated hero thaws it is immune to a new freeze for a short window; that negative phase climbs back toward 0 by one per act, even if the seat has switched away.",
+      "arms": [
+        {
+          "when": "raw frozen_delay negative",
+          "observable": "raw +1 per act until 0; frozen_delay() reads 0 throughout"
+        },
+        {
+          "when": "0 or positive",
+          "observable": "unchanged here"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_stats_fright.cpp",
+          "test": "StatsFright.living_act_climbs_immunity_and_ai_drain_thaws_to_zero"
+        }
+      ],
+      "missing_arms": [
+        "raw frozen_delay negative"
+      ]
+    },
+    {
+      "id": "living.cpp:147",
+      "lines": [
+        147,
+        158
+      ],
+      "function": "living::act",
+      "anchor": "bool frozen = current_game->world->enemy_freeze || bonus_rounds();",
+      "condition": "frozen = enemy_freeze || bonus_rounds()",
+      "semantic": "HP and MP regeneration stop for every walker while a FREEZE TIME bank (world.enemy_freeze) runs, and for a walker while it still has banked bonus rounds; HP regen also waits out regen_delay after damage.",
+      "arms": [
+        {
+          "when": "enemy_freeze > 0",
+          "observable": "hitpoints and magicpoints unchanged after act"
+        },
+        {
+          "when": "bonus rounds banked",
+          "observable": "no regen on the rounds that still have rounds banked"
+        },
+        {
+          "when": "normal",
+          "observable": "+per_round each act, +1 extra each max_delay acts, capped at max"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": [
+        "enemy_freeze > 0",
+        "bonus rounds banked",
+        "normal"
+      ]
+    },
+    {
+      "id": "living.cpp:169",
+      "lines": [
+        169
+      ],
+      "function": "living::act",
+      "anchor": "if (view_all() > 0)",
+      "condition": "view_all() > 0",
+      "semantic": "A view-all (see everything) bonus lasts its count of acts.",
+      "arms": [
+        {
+          "when": "view_all > 0",
+          "observable": "decrements by 1"
+        },
+        {
+          "when": "0",
+          "observable": "stays 0"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_living_combat.cpp",
+          "test": "LivingCombat.living_act_timers_charm_and_recoil_clamps"
+        }
+      ],
+      "missing_arms": [
+        "0"
+      ],
+      "note": [
+        "unasserted: 0: view_all stays 0 (only the 1 -> 0 decrement is asserted)"
+      ]
+    },
+    {
+      "id": "living.cpp:173",
+      "lines": [
+        173
+      ],
+      "function": "living::act",
+      "anchor": "if (invulnerable_left() > 0)",
+      "condition": "invulnerable_left() > 0",
+      "semantic": "Invulnerability lasts its count of acts.",
+      "arms": [
+        {
+          "when": "> 0",
+          "observable": "decrements by 1"
+        },
+        {
+          "when": "0",
+          "observable": "stays 0"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_living_combat.cpp",
+          "test": "LivingCombat.living_act_timers_charm_and_recoil_clamps"
+        }
+      ],
+      "missing_arms": [
+        "0"
+      ],
+      "note": [
+        "unasserted: 0: invulnerable_left stays 0 (only the 1 -> 0 decrement is asserted)"
+      ]
+    },
+    {
+      "id": "living.cpp:177",
+      "lines": [
+        177,
+        179
+      ],
+      "function": "living::act",
+      "anchor": "if (invisibility_left() > 0)",
+      "condition": "invisibility_left() > 0 / else set_outline(0)",
+      "semantic": "Invisibility lasts its count of acts and keeps its outline while it lasts; once it is out the outline is cleared.",
+      "arms": [
+        {
+          "when": "invisibility > 0",
+          "observable": "invisibility -1, outline unchanged"
+        },
+        {
+          "when": "invisibility 0",
+          "observable": "outline set to 0"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_living_combat.cpp",
+          "test": "LivingCombat.living_act_invisibility_skip_exit_and_action_command_paths"
+        },
+        {
+          "file": "tests/integration/test_living_combat.cpp",
+          "test": "LivingCombat.living_round8_dead_outline_forestwalk_and_offmap_walk_paths"
+        },
+        {
+          "file": "tests/integration/test_living_combat.cpp",
+          "test": "LivingCombat.living_act_timers_charm_and_recoil_clamps"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living.cpp:183",
+      "lines": [
+        183
+      ],
+      "function": "living::act",
+      "anchor": "if (flight_left() > 0)",
+      "condition": "flight_left() > 0",
+      "semantic": "Flight (potion or spell) lasts its count of acts.",
+      "arms": [
+        {
+          "when": "flight > 0",
+          "observable": "decrements by 1"
+        },
+        {
+          "when": "0",
+          "observable": "stays 0"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": [
+        "flight > 0",
+        "0"
+      ]
+    },
+    {
+      "id": "living.cpp:185",
+      "lines": [
+        185,
+        197
+      ],
+      "function": "living::act",
+      "anchor": "if (!current_game->world->query_grid_passable(xpos(), ypos(), this) && !flight_left())",
+      "condition": "!query_grid_passable(x,y) && !flight_left() / hitpoints <= 0",
+      "semantic": "A non-flying walker standing inside impassable terrain (a wall, water, trees without forestwalk) loses 1 HP per act (a red '1' damage number) and is given one tick of flight so it can step out; at 0 HP it dies.",
+      "arms": [
+        {
+          "when": "inside impassable, no flight",
+          "observable": "hp -1, flight_left becomes 1 (then decremented next act), a DamageNumber(1, RED) pushed"
+        },
+        {
+          "when": "hp reaches 0",
+          "observable": "dead()==1, death() run"
+        },
+        {
+          "when": "passable or flying",
+          "observable": "nothing"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": [
+        "inside impassable, no flight",
+        "hp reaches 0",
+        "passable or flying"
+      ],
+      "note": [
+        "unasserted: inside impassable, no flight, hp > 1: the 1-HP loss, flight_left 1 and the red DamageNumber(1) (only the lethal arm at 1 HP is asserted)"
+      ]
+    },
+    {
+      "id": "living.cpp:205",
+      "lines": [
+        205,
+        207,
+        211
+      ],
+      "function": "living::act",
+      "anchor": "if (charm_left() > 1)",
+      "condition": "charm_left() > 1 / else / real_team_num() != 255",
+      "semantic": "Charm lasts its timer; when it runs out the walker goes back to its real team (real_team_num is cleared to 255). A walker that was never charmed keeps its team.",
+      "arms": [
+        {
+          "when": "charm_left > 1",
+          "observable": "charm -1, team unchanged"
+        },
+        {
+          "when": "charm_left <= 1, real team set",
+          "observable": "charm 0, team_num = real_team_num, real_team_num 255"
+        },
+        {
+          "when": "never charmed",
+          "observable": "charm 0, team unchanged"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_possession.cpp",
+          "test": "KitPossession.charm_expiry_and_release_in_the_same_act"
+        },
+        {
+          "file": "tests/unit/test_silliness_battery.cpp",
+          "test": "SillinessBattery.thief_charm_ceiling_and_natural_expiry"
+        }
+      ],
+      "missing_arms": [
+        "charm_left > 1",
+        "never charmed"
+      ],
+      "note": [
+        "unasserted: never charmed: team unchanged and charm stays 0"
+      ]
+    },
+    {
+      "id": "living.cpp:218",
+      "lines": [
+        218,
+        254
+      ],
+      "function": "living::act",
+      "anchor": "if ( stats_->query_bit_flags(BIT_FORESTWALK) &&",
+      "condition": "BIT_FORESTWALK && any corner on TYPE_TREES (floor-0 smoother) or a concealing decor cell on own floor",
+      "semantic": "A forestwalker (elf, druid...) that has any corner of its box in trees or in concealing decor (a SHRUB) moves at a forest pace; out of the trees its step is reset to its normal stepsize every act.",
+      "arms": [
+        {
+          "when": "forestwalker, a corner in trees or shrub",
+          "observable": "forest arm (see living.cpp:243 and :237)"
+        },
+        {
+          "when": "otherwise",
+          "observable": "stepsize = normal_stepsize()"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": [
+        "forestwalker, a corner in trees or shrub",
+        "otherwise"
+      ]
+    },
+    {
+      "id": "living.cpp:237",
+      "lines": [
+        237
+      ],
+      "function": "living::act",
+      "anchor": "if (stats_->magicpoints() > 0.0f && stats_->current_magic_delay() == 0)",
+      "condition": "magicpoints() > 0 && current_magic_delay() == 0",
+      "semantic": "Walking in the forest costs a forestwalker one MP each time its magic-regen delay is at 0.",
+      "arms": [
+        {
+          "when": "in forest, MP > 0, delay 0",
+          "observable": "magicpoints -1"
+        },
+        {
+          "when": "MP 0 or delay running",
+          "observable": "MP unchanged by the forest"
+        }
+      ],
+      "setting": "none",
+      "status": "none",
+      "tests": [],
+      "missing_arms": [
+        "in forest, MP > 0, delay 0",
+        "MP 0 or delay running"
+      ]
+    },
+    {
+      "id": "living.cpp:243",
+      "lines": [
+        243,
+        245,
+        247,
+        250
+      ],
+      "function": "living::act",
+      "anchor": "if (myguy)",
+      "condition": "myguy ? 4 - dex/10 : 4 - level/2 ; temp<0 -> 0 ; next < 1 -> 1",
+      "semantic": "In the forest a forestwalker's step shrinks by 4 - dexterity/10 (a player character) or 4 - level/2 (an NPC), never by a negative amount and never below 1 px.",
+      "arms": [
+        {
+          "when": "player guy",
+          "observable": "stepsize -= max(0, 4 - dex/10)"
+        },
+        {
+          "when": "NPC",
+          "observable": "stepsize -= max(0, 4 - level/2)"
+        },
+        {
+          "when": "result < 1",
+          "observable": "stepsize = 1"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": [
+        "player guy",
+        "NPC",
+        "result < 1"
+      ]
+    },
+    {
+      "id": "living.cpp:258",
+      "lines": [
+        258
+      ],
+      "function": "living::act",
+      "anchor": "if (speed_bonus_left() > 0) // 2002 said `> 1`: N ticks gave N-1 and the field stuck at 1, so \"not hastened\" (== 0) was never true again",
+      "condition": "speed_bonus_left() > 0",
+      "semantic": "A speed bonus of N ticks gives N ticks of extra step (stepsize + speed_bonus) and then ends at 0.",
+      "arms": [
+        {
+          "when": "> 0",
+          "observable": "speed_bonus_left -1, stepsize += speed_bonus"
+        },
+        {
+          "when": "0",
+          "observable": "normal stepsize"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_living_unit.cpp",
+          "test": "LivingUnit.speed_bonus_counts_down_to_zero_and_rides_every_tick"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living.cpp:264",
+      "lines": [
+        264
+      ],
+      "function": "living::act",
+      "anchor": "if (special_rest_left() > 0) set_special_rest_left(special_rest_left() - 1);",
+      "condition": "special_rest_left() > 0",
+      "semantic": "A special's rest between casts (FREEZE TIME, HOWL, SCARE, MIND CONTROL...) counts down one per act.",
+      "arms": [
+        {
+          "when": "> 0",
+          "observable": "-1"
+        },
+        {
+          "when": "0",
+          "observable": "stays"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_rests.cpp",
+          "test": "KitRests.freeze_time_rests_thirty_seconds"
+        }
+      ],
+      "missing_arms": [
+        "0"
+      ]
+    },
+    {
+      "id": "living.cpp:265",
+      "lines": [
+        265,
+        268
+      ],
+      "function": "living::act",
+      "anchor": "if(attack_lunge() > 0.0f)",
+      "condition": "attack_lunge() > 0 / next_lunge < 0",
+      "semantic": "An attack lunge (sprite offset) eases back by 0.4 per act and stops at 0.",
+      "arms": [
+        {
+          "when": "> 0",
+          "observable": "-0.4, clamped at 0"
+        },
+        {
+          "when": "0",
+          "observable": "stays"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": [
+        "> 0",
+        "0"
+      ],
+      "note": [
+        "unasserted: 0: attack_lunge stays 0 (the decrement and the clamp are asserted)"
+      ]
+    },
+    {
+      "id": "living.cpp:273",
+      "lines": [
+        273,
+        276
+      ],
+      "function": "living::act",
+      "anchor": "if(hit_recoil() > 0.0f)",
+      "condition": "hit_recoil() > 0 / next_recoil < 0",
+      "semantic": "A hit recoil (sprite offset) eases back by 0.6 per act and stops at 0.",
+      "arms": [
+        {
+          "when": "> 0",
+          "observable": "-0.6, clamped at 0"
+        },
+        {
+          "when": "0",
+          "observable": "stays"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": [
+        "> 0",
+        "0"
+      ],
+      "note": [
+        "unasserted: > 0.6: the -0.6 decrement itself (living_act_timers_charm_and_recoil_clamps starts at 0.3 and asserts only the clamp to 0)",
+        "unasserted: 0: stays 0"
+      ]
+    },
+    {
+      "id": "living.cpp:289",
+      "lines": [
+        289
+      ],
+      "function": "living::act",
+      "anchor": "if (og::script::hooks::on_act_override(fd, this))",
+      "condition": "og::script::hooks::on_act_override(fd, this)",
+      "semantic": "A family (or mode) Lua on_act_override that returns true owns the walker's act for that tick: none of the animate/frozen/command/AI steps run.",
+      "arms": [
+        {
+          "when": "hook returns true",
+          "observable": "act returns 1; frozen_delay not drained"
+        },
+        {
+          "when": "false or no hook",
+          "observable": "falls through to the default act"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_mode_tick.cpp",
+          "test": "ModeTick.act_override_false_falls_through_to_default_act"
+        }
+      ],
+      "missing_arms": [
+        "hook returns true"
+      ]
+    },
+    {
+      "id": "living.cpp:294",
+      "lines": [
+        294
+      ],
+      "function": "living::act",
+      "anchor": "if (ani_type() != ANI_WALK)",
+      "condition": "ani_type() != ANI_WALK",
+      "semantic": "A walker in the middle of an animation (attack, cast, death...) finishes it before it does anything else: no frozen drain, busy drain, turn, command or AI that tick.",
+      "arms": [
+        {
+          "when": "animating",
+          "observable": "animate() result returned; busy, commands and frozen unchanged"
+        },
+        {
+          "when": "walking",
+          "observable": "continues"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": [
+        "animating",
+        "walking"
+      ]
+    },
+    {
+      "id": "living.cpp:298",
+      "lines": [
+        298
+      ],
+      "function": "living::act",
+      "anchor": "if (stats_->frozen_delay())",
+      "condition": "stats_->frozen_delay()",
+      "semantic": "A frozen walker spends its act thawing by one and does nothing else.",
+      "arms": [
+        {
+          "when": "frozen > 0",
+          "observable": "frozen -1, act returns 1, no AI"
+        },
+        {
+          "when": "0 (or immune phase)",
+          "observable": "continues"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": [
+        "frozen > 0",
+        "0 (or immune phase)"
+      ]
+    },
+    {
+      "id": "living.cpp:304",
+      "lines": [
+        304
+      ],
+      "function": "living::act",
+      "anchor": "if (busy() > 0.0f)",
+      "condition": "busy() > 0.0f",
+      "semantic": "The firing delay (busy) counts down by one per act.",
+      "arms": [
+        {
+          "when": "busy > 0",
+          "observable": "busy -1 (may go a fraction below 0)"
+        },
+        {
+          "when": "0 or less",
+          "observable": "unchanged"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_gameplay_fixes_special_busy.cpp",
+          "test": "GameplayFixesSpecialBusy.whirlwind_after_a_shot"
+        }
+      ],
+      "missing_arms": [
+        "busy > 0"
+      ]
+    },
+    {
+      "id": "living.cpp:309",
+      "lines": [
+        309
+      ],
+      "function": "living::act",
+      "anchor": "if (curdir() != enddir() && query_order() == Order::Living)",
+      "condition": "curdir() != enddir() && query_order() == Order::Living",
+      "semantic": "A walker not yet facing where it wants to go spends its act turning one notch toward it.",
+      "arms": [
+        {
+          "when": "curdir != enddir",
+          "observable": "turn() result returned, no command/AI run"
+        },
+        {
+          "when": "aligned",
+          "observable": "continues"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": [
+        "curdir != enddir",
+        "aligned"
+      ]
+    },
+    {
+      "id": "living.cpp:314",
+      "lines": [
+        314,
+        317
+      ],
+      "function": "living::act",
+      "anchor": "if (stats_->has_commands())",
+      "condition": "stats_->has_commands() / temp",
+      "semantic": "A walker with queued commands carries them out before its AI; a command step that does something ends the act.",
+      "arms": [
+        {
+          "when": "command ran (nonzero)",
+          "observable": "act returns 1, AI not consulted"
+        },
+        {
+          "when": "command returned 0 or none queued",
+          "observable": "continues to action/AI"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": [
+        "command ran (nonzero)",
+        "command returned 0 or none queued"
+      ]
+    },
+    {
+      "id": "living.cpp:321",
+      "lines": [
+        321
+      ],
+      "function": "living::act",
+      "anchor": "if (skip_exit() > 0)",
+      "condition": "skip_exit() > 0",
+      "semantic": "The exit-pad skip counter counts down one per act.",
+      "arms": [
+        {
+          "when": "> 0",
+          "observable": "-1"
+        },
+        {
+          "when": "0",
+          "observable": "stays"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_living_combat.cpp",
+          "test": "LivingCombat.living_act_invisibility_skip_exit_and_action_command_paths"
+        }
+      ],
+      "missing_arms": [
+        "0"
+      ]
+    },
+    {
+      "id": "living.cpp:325",
+      "lines": [
+        325,
+        328
+      ],
+      "function": "living::act",
+      "anchor": "if (action() && (user() == -1) )",
+      "condition": "action() && user() == -1 / temp",
+      "semantic": "An AI (unseated) walker with an action order (ACTION_FOLLOW from Summon Defense) runs that order first; if the order acted, the AI does not also run. A seated hero ignores its action.",
+      "arms": [
+        {
+          "when": "AI with action, order acted",
+          "observable": "act returns do_action's value; act-type AI skipped (rng untouched)"
+        },
+        {
+          "when": "seated or no action or order passed",
+          "observable": "continues to the act-type switch"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_living_unit.cpp",
+          "test": "LivingUnit.follow_ally_spends_its_act_on_the_follow_command_not_its_ai"
+        }
+      ],
+      "missing_arms": [
+        "seated or no action or order passed"
+      ]
+    },
+    {
+      "id": "living.cpp:332",
+      "lines": [
+        332,
+        335
+      ],
+      "function": "living::act",
+      "anchor": "switch (act_type())",
+      "condition": "switch (act_type()) case ACT_CONTROL",
+      "semantic": "A seated hero (ACT_CONTROL) has no AI: its act ends after the timers and commands; the seat's input drives it.",
+      "arms": [
+        {
+          "when": "ACT_CONTROL",
+          "observable": "returns 1, nothing queued"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": [
+        "ACT_CONTROL"
+      ]
+    },
+    {
+      "id": "living.cpp:349",
+      "lines": [
+        349
+      ],
+      "function": "living::act",
+      "anchor": "case ACT_GUARD:",
+      "condition": "case ACT_GUARD",
+      "semantic": "A guard runs its guard logic (wake on sight, hold post); see walker act_guard rows.",
+      "arms": [
+        {
+          "when": "ACT_GUARD",
+          "observable": "act_guard() called, then act returns 0"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_living_combat.cpp",
+          "test": "LivingCombat.living_act_guard_wakes_and_fires_only_when_a_foe_is_in_sight"
+        },
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.act_guard_and_low_magic_act_random_pin_what_they_queue"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living.cpp:354",
+      "lines": [
+        354
+      ],
+      "function": "living::act",
+      "anchor": "case ACT_DIE:",
+      "condition": "case ACT_DIE",
+      "semantic": "A walker set to the die act type dies on its next act.",
+      "arms": [
+        {
+          "when": "ACT_DIE",
+          "observable": "dead()==1, returns 1"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_living_unit.cpp",
+          "test": "LivingUnit.living_r11_collide_and_act_type_switches"
+        },
+        {
+          "file": "tests/integration/test_living_unit.cpp",
+          "test": "LivingUnit.living_r14_lines_155_190_196_212_219_226_235_245_259_266_270_303_308"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living.cpp:360",
+      "lines": [
+        360,
+        362
+      ],
+      "function": "living::act",
+      "anchor": "case ACT_RANDOM:",
+      "condition": "case ACT_RANDOM / !rng.next(5)",
+      "semantic": "An ordinary bot considers its special one act in five; the other four it takes the ordinary act.",
+      "arms": [
+        {
+          "when": "roll 0 (1 in 5)",
+          "observable": "special consideration (living.cpp:365)"
+        },
+        {
+          "when": "roll 1-4",
+          "observable": "ordinary act (living.cpp:397)"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_living_combat.cpp",
+          "test": "LivingCombat.living_round7_act_random_and_do_action_targeted_branches"
+        },
+        {
+          "file": "tests/unit/test_living_act_flow_unit.cpp",
+          "test": "LivingActFlow.a_roll_the_gate_refuses_takes_the_ordinary_act_with_the_setting_on"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living.cpp:365",
+      "lines": [
+        365,
+        391
+      ],
+      "function": "living::act",
+      "anchor": "if (stats_->magicpoints() >= og::sim::cast_cost(*this, 1, false))",
+      "condition": "magicpoints() >= cast_cost(slot 1) / else act_random(); return 1",
+      "semantic": "A bot considers a special only when it can pay for its slot 1; otherwise the special roll is spent on act_random (seek and fire).",
+      "arms": [
+        {
+          "when": "MP >= slot-1 cost",
+          "observable": "slot roll (living.cpp:368)"
+        },
+        {
+          "when": "cannot pay slot 1",
+          "observable": "act_random runs, returns 1, no special"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_living_act_flow_unit.cpp",
+          "test": "LivingActFlow.the_act_path_never_reaches_an_unaffordable_slot"
+        },
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.act_guard_and_low_magic_act_random_pin_what_they_queue"
+        },
+        {
+          "file": "tests/unit/test_living_act_flow_unit.cpp",
+          "test": "LivingActFlow.a_roll_the_gate_refuses_takes_the_ordinary_act_with_the_setting_on"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living.cpp:369",
+      "lines": [
+        368,
+        369
+      ],
+      "function": "living::act",
+      "anchor": "set_current_special(static_cast<char>(current_game->world->rng_.next(static_cast<std::uint32_t>(og::sim::bot_slot_roll_bound(special_fd, stats_->level(), curren",
+      "condition": "slot > 4 && fixes==0 || slot < 1 || slot >= FD_NUM_SPECIALS || !fd || name == NONE",
+      "semantic": "A bot rolls a slot uniformly from the slots its level opens (bot_slot_roll_bound); classic folds any roll above slot 4 and any unnamed slot to slot 1; with Gameplay Fixes on, slots 5+ that are named and open stay (the bound never passes the last named slot).",
+      "arms": [
+        {
+          "when": "fixes off, roll > 4",
+          "observable": "current_special 1"
+        },
+        {
+          "when": "fixes on, roll 5+ named",
+          "observable": "current_special stays (e.g. archmage HEARTBURST)"
+        },
+        {
+          "when": "NONE / out of range / no descriptor",
+          "observable": "current_special 1 on both"
+        }
+      ],
+      "setting": "both",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_bots.cpp",
+          "test": "KitBots.bot_roll_is_identical_with_gameplay_fixes_off"
+        },
+        {
+          "file": "tests/unit/test_kit_bots.cpp",
+          "test": "KitBots.a_level_sixteen_mage_rolls_heartburst_when_on"
+        }
+      ],
+      "missing_arms": [
+        "NONE / out of range / no descriptor"
+      ]
+    },
+    {
+      "id": "living.cpp:376",
+      "lines": [
+        376,
+        378,
+        381
+      ],
+      "function": "living::act",
+      "anchor": "if (check_special() )",
+      "condition": "check_special() / special()",
+      "semantic": "A bot that rolled a slot casts it only if its gate (check_special) says yes; a gate refusal is traced 'special held'; a successful cast is the bot's act.",
+      "arms": [
+        {
+          "when": "gate yes, cast succeeds",
+          "observable": "act returns 1"
+        },
+        {
+          "when": "gate yes, cast fails",
+          "observable": "falls to living.cpp:385"
+        },
+        {
+          "when": "gate no",
+          "observable": "TRACE special 'held id=...', falls to living.cpp:385"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_living_act_flow_unit.cpp",
+          "test": "LivingActFlow.a_cast_that_refuses_after_the_gates_yes_takes_the_ordinary_act_with_the_setting_on"
+        },
+        {
+          "file": "tests/unit/test_living_act_flow_unit.cpp",
+          "test": "LivingActFlow.a_roll_the_gate_refuses_takes_the_ordinary_act_with_the_setting_on"
+        }
+      ],
+      "missing_arms": [
+        "gate no"
+      ]
+    },
+    {
+      "id": "living.cpp:385",
+      "lines": [
+        385
+      ],
+      "function": "living::act",
+      "anchor": "if (og::sim::session_gameplay_fixes() == 0)",
+      "condition": "og::sim::session_gameplay_fixes() == 0",
+      "semantic": "Classic: a special roll that the gate or the cast refused is still the bot's whole act (it stands still). Gameplay Fixes W: the refused roll is not the act; the bot takes the ordinary act the coin would have given it (seek, fire, search).",
+      "arms": [
+        {
+          "when": "fixes off, roll refused",
+          "observable": "act returns 0, no command queued"
+        },
+        {
+          "when": "fixes on, roll refused",
+          "observable": "continues to the 1-in-5 act_random / 4-in-5 search arm; a command is queued"
+        }
+      ],
+      "setting": "both",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_living_act_flow_unit.cpp",
+          "test": "LivingActFlow.a_roll_the_gate_refuses_takes_the_ordinary_act_with_the_setting_on"
+        },
+        {
+          "file": "tests/unit/test_living_act_flow_unit.cpp",
+          "test": "LivingActFlow.a_cast_that_refuses_after_the_gates_yes_takes_the_ordinary_act_with_the_setting_on"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living.cpp:397",
+      "lines": [
+        397,
+        399
+      ],
+      "function": "living::act",
+      "anchor": "if (!current_game->world->rng_.next(5) ) //1 in 5 to do act_random() function",
+      "condition": "!rng.next(5) / else",
+      "semantic": "On its ordinary act a bot runs act_random (seek and fire) one time in five and the seek/search routine four times in five.",
+      "arms": [
+        {
+          "when": "roll 0",
+          "observable": "act_random(); act returns 0"
+        },
+        {
+          "when": "roll 1-4",
+          "observable": "seek arm living.cpp:401, returns 1"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_living_combat.cpp",
+          "test": "LivingCombat.living_round7_act_random_and_do_action_targeted_branches"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living.cpp:401",
+      "lines": [
+        401,
+        405,
+        415,
+        417
+      ],
+      "function": "living::act",
+      "anchor": "if (!foe())",
+      "condition": "!foe() / foe() / !rng.next(2) / else",
+      "semantic": "Seeking: a bot without a foe looks for a near one; with a foe it snaps its facing to the nearest even (orthogonal) direction and searches for it for 300 steps; with none near it either finds the nearest foe anywhere (half the time) or wanders 20 steps.",
+      "arms": [
+        {
+          "when": "foe (found or held)",
+          "observable": "curdir=enddir=(enddir/2)*2, COMMAND_SEARCH x300"
+        },
+        {
+          "when": "no foe, coin 0",
+          "observable": "foe = find_nearest_foe (no command this act)"
+        },
+        {
+          "when": "no foe, coin 1",
+          "observable": "random walk x20 (COMMAND_WALK)"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_living_combat.cpp",
+          "test": "LivingCombat.living_round7_act_random_and_do_action_targeted_branches"
+        },
+        {
+          "file": "tests/integration/test_coverage_misc.cpp",
+          "test": "CoverageMisc.coverage_r19_living_act_random_acquires_a_foe_and_queues_a_command"
+        }
+      ],
+      "missing_arms": [
+        "no foe, coin 0"
+      ],
+      "note": [
+        "unasserted: no foe, coin 0: foe = find_nearest_foe with no command queued this act"
+      ]
+    },
+    {
+      "id": "living.cpp:424",
+      "lines": [
+        424
+      ],
+      "function": "living::act",
+      "anchor": "default:",
+      "condition": "default",
+      "semantic": "A walker with no known act type does nothing.",
+      "arms": [
+        {
+          "when": "unknown act type",
+          "observable": "returns 0, nothing queued"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": [
+        "unknown act type"
+      ]
+    },
+    {
+      "id": "living.cpp:437",
+      "lines": [
+        437,
+        441
+      ],
+      "function": "living::shove",
+      "anchor": "if (target && !target->dead() && (query_order()==Order::Living) &&  //we are alive",
+      "condition": "target alive && we are Living && is_friendly(target) / rng.next(3) && target not ACT_CONTROL",
+      "semantic": "A walker only shoves a living ally; two times in three the ally is shoved, never a seated hero (the rng(3) draw happens even for a seat).",
+      "arms": [
+        {
+          "when": "ally, roll 1-2, not a seat",
+          "observable": "shove proceeds (living.cpp:458)"
+        },
+        {
+          "when": "roll 0 or a seat",
+          "observable": "returns 0, target queue untouched, one rng draw"
+        },
+        {
+          "when": "foe or dead",
+          "observable": "returns 0, no draw"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_living_combat.cpp",
+          "test": "LivingCombat.living_shove_injects_walk_only_when_the_baby_step_is_passable"
+        },
+        {
+          "file": "tests/integration/test_living_funcs.cpp",
+          "test": "LivingFuncs.living_shove_force_queues_walk_on_passable_step_and_refuses_blocked_step"
+        }
+      ],
+      "missing_arms": [
+        "roll 0 or a seat",
+        "foe or dead"
+      ]
+    },
+    {
+      "id": "living.cpp:458",
+      "lines": [
+        458
+      ],
+      "function": "living::shove",
+      "anchor": "if (!current_game->world->query_grid_passable(",
+      "condition": "!query_grid_passable(target + (x,y))",
+      "semantic": "A shove never steals an ally's orders when the step it would inject is blocked by terrain (the 2026-07-10 livelock fix): the ally keeps its own search.",
+      "arms": [
+        {
+          "when": "injected step terrain-blocked",
+          "observable": "returns 0, target queue untouched"
+        },
+        {
+          "when": "passable",
+          "observable": "queue cleared, on_shoved hook, COMMAND_WALK x4 (x,y) forced, returns 1"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_living_combat.cpp",
+          "test": "LivingCombat.living_shove_injects_walk_only_when_the_baby_step_is_passable"
+        },
+        {
+          "file": "tests/integration/test_living_funcs.cpp",
+          "test": "LivingFuncs.living_shove_force_queues_walk_on_passable_step_and_refuses_blocked_step"
+        }
+      ],
+      "missing_arms": [
+        "passable"
+      ]
+    },
+    {
+      "id": "living.cpp:488",
+      "lines": [
+        488,
+        540,
+        549
+      ],
+      "function": "living::walk",
+      "anchor": "if (curdir() == dir)  // if continue direction",
+      "condition": "curdir() == dir / else / act_type != ACT_CONTROL || has_commands()",
+      "semantic": "A walker steps only when already facing the step's direction; otherwise the walk just records the new facing and turns one notch (a seated hero walking by keys does not turn here, its act turns it, so it never turns twice in one tick).",
+      "arms": [
+        {
+          "when": "facing matches",
+          "observable": "step attempted (living.cpp:491)"
+        },
+        {
+          "when": "facing differs, AI or command-driven",
+          "observable": "enddir set, turn() one notch, no move, returns 1"
+        },
+        {
+          "when": "facing differs, seated hero without commands",
+          "observable": "enddir set only, no turn"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_living_combat.cpp",
+          "test": "LivingCombat.living_walk_moves_on_matched_facing_and_only_turns_otherwise"
+        },
+        {
+          "file": "tests/integration/test_living_funcs.cpp",
+          "test": "LivingFuncs.living_walk_moves_on_matching_facing_turns_otherwise_and_refuses_off_map"
+        }
+      ],
+      "missing_arms": [
+        "facing differs, AI or command-driven",
+        "facing differs, seated hero without commands"
+      ]
+    },
+    {
+      "id": "living.cpp:491",
+      "lines": [
+        491
+      ],
+      "function": "living::walk",
+      "anchor": "if (x + xpos() < 0 ||",
+      "condition": "target outside the map",
+      "semantic": "A walk never leaves the map.",
+      "arms": [
+        {
+          "when": "step off map",
+          "observable": "returns 0, position unchanged"
+        },
+        {
+          "when": "in map",
+          "observable": "continues"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_living_funcs.cpp",
+          "test": "LivingFuncs.living_walk_moves_on_matching_facing_turns_otherwise_and_refuses_off_map"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living.cpp:503",
+      "lines": [
+        503,
+        515
+      ],
+      "function": "living::walk",
+      "anchor": "if (current_game->world->query_passable(xpos() + x, ypos() + y, this)",
+      "condition": "query_passable at x+dx, ceil, floor",
+      "semantic": "A step moves only if the destination is passable at its exact, rounded-up and rounded-down offsets (so a fractional step cannot clip a corner into trees or walls); the walk-cycle frame advances on a move.",
+      "arms": [
+        {
+          "when": "all three passable",
+          "observable": "worldmove, cycle +1, walk frame set, returns 1"
+        },
+        {
+          "when": "any blocked",
+          "observable": "shove/animate arm, returns 0"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": [
+        "all three passable",
+        "any blocked"
+      ]
+    },
+    {
+      "id": "living.cpp:523",
+      "lines": [
+        523,
+        526
+      ],
+      "function": "living::walk",
+      "anchor": "if (collide_ob() && !collide_ob()->dead()",
+      "condition": "collide_ob alive && (fixes==0 || step_meets(this,x,y,collide_ob)) / Living && friendly",
+      "semantic": "A refused step shoves a living ally in the way. Classic: the ally named by collide_ob, which can be stale (the last body any probe touched, however far, or one left behind across a teleporter). Gameplay Fixes X: only a body this very step met is shoved.",
+      "arms": [
+        {
+          "when": "fixes off, stale collide_ob ally",
+          "observable": "shove draws rng(3) and may steal the far ally's orders"
+        },
+        {
+          "when": "fixes on, step did not meet it",
+          "observable": "no shove, no draw, ally keeps its order"
+        },
+        {
+          "when": "step meets an ally (both)",
+          "observable": "shove (living.cpp:437)"
+        },
+        {
+          "when": "collide_ob a foe or non-living",
+          "observable": "no shove"
+        }
+      ],
+      "setting": "both",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_gameplay_fixes_walk.cpp",
+          "test": "GameplayFixesWalk.a_walk_that_eats_a_teleporter_does_not_shove_the_ally_it_left"
+        },
+        {
+          "file": "tests/unit/test_gameplay_fixes_walk.cpp",
+          "test": "GameplayFixesWalk.a_grid_stopped_fallback_does_not_shove_the_ally_the_full_step_met"
+        },
+        {
+          "file": "tests/unit/test_gameplay_fixes_walk.cpp",
+          "test": "GameplayFixesWalk.a_body_the_step_meets_is_still_shoved"
+        }
+      ],
+      "missing_arms": [
+        "collide_ob a foe or non-living"
+      ]
+    },
+    {
+      "id": "living.cpp:531",
+      "lines": [
+        531
+      ],
+      "function": "living::walk",
+      "anchor": "if (stats_->query_bit_flags(BIT_ANIMATE) )  // animate regardless..",
+      "condition": "BIT_ANIMATE",
+      "semantic": "A walker flagged always-animate (e.g. slime) cycles its walk frames even when its step is blocked.",
+      "arms": [
+        {
+          "when": "blocked, BIT_ANIMATE",
+          "observable": "cycle +1, frame updated, returns 0"
+        },
+        {
+          "when": "blocked, not flagged",
+          "observable": "cycle unchanged"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": [
+        "blocked, BIT_ANIMATE",
+        "blocked, not flagged"
+      ]
+    },
+    {
+      "id": "living.cpp:558",
+      "lines": [
+        558,
+        560
+      ],
+      "function": "walkerIsAutoAttackable",
+      "anchor": "if (order == Order::Living || order == Order::Generator)",
+      "condition": "order Living/Generator / order Weapon -> descriptor is_auto_attackable",
+      "semantic": "Walking into a living or a generator starts an attack; a weapon-order object (a door, a barrel) only if its family says it is auto-attackable; treasure and effects never.",
+      "arms": [
+        {
+          "when": "Living or Generator",
+          "observable": "true"
+        },
+        {
+          "when": "Weapon with is_auto_attackable",
+          "observable": "true (door)"
+        },
+        {
+          "when": "other weapon (knife)",
+          "observable": "false"
+        },
+        {
+          "when": "treasure/FX",
+          "observable": "false"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_living_funcs.cpp",
+          "test": "LivingFuncs.walkerIsAutoAttackable_true_for_every_living_family_and_order_discriminators"
+        },
+        {
+          "file": "tests/integration/test_living_combat.cpp",
+          "test": "LivingCombat.living_act_command_execution_and_autoattackable_edges"
+        }
+      ],
+      "missing_arms": [
+        "treasure/FX"
+      ]
+    },
+    {
+      "id": "living.cpp:572",
+      "lines": [
+        572
+      ],
+      "function": "living::collide",
+      "anchor": "if ( ob && walkerIsAutoAttackable(ob) && (is_friendly(ob) == 0)",
+      "condition": "ob auto-attackable && hostile && both alive",
+      "semantic": "A walker that bumps a live hostile (living, generator or auto-attackable weapon) swings at it; bumping an ally only records it as the collision body.",
+      "arms": [
+        {
+          "when": "hostile auto-attackable",
+          "observable": "collide_ob set, init_fire (ANI_ATTACK, busy set)"
+        },
+        {
+          "when": "ally / non-attackable / dead",
+          "observable": "collide_ob set, no attack"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_living_unit.cpp",
+          "test": "LivingUnit.living_r11_collide_and_act_type_switches"
+        }
+      ],
+      "missing_arms": [
+        "ally / non-attackable / dead"
+      ]
+    },
+    {
+      "id": "living.cpp:601",
+      "lines": [
+        601
+      ],
+      "function": "living::check_special",
+      "anchor": "if (specials_disabled())",
+      "condition": "specials_disabled()",
+      "semantic": "A placed NPC with specials disabled by the scenario never decides to use a special.",
+      "arms": [
+        {
+          "when": "disabled",
+          "observable": "false, no rng drawn"
+        },
+        {
+          "when": "enabled",
+          "observable": "continues"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_living_funcs.cpp",
+          "test": "LivingFuncs.living_check_special_gates_disabled_flag_then_downgrades_unaffordable"
+        },
+        {
+          "file": "tests/integration/test_living_combat.cpp",
+          "test": "LivingCombat.living_check_special_denies_disabled_specials_and_falls_back_to_special_one"
+        }
+      ],
+      "missing_arms": [
+        "disabled"
+      ]
+    },
+    {
+      "id": "living.cpp:606",
+      "lines": [
+        606,
+        611
+      ],
+      "function": "living::check_special",
+      "anchor": "if (shifter_down() != 0 && og::sim::cannot_afford_priced_alternate(*this, static_cast<int>(current_special()))) set_shifter_down(0);",
+      "condition": "shifter_down && cannot_afford_priced_alternate(slot)",
+      "semantic": "New Specials: a bot that tossed the Shift coin but cannot pay its slot's PRICED alternate (e.g. MINE) casts the plain slot instead; checked again after any fall-back to slot 1. Never with New Specials off.",
+      "arms": [
+        {
+          "when": "new specials on, priced alternate unaffordable",
+          "observable": "shifter_down 0"
+        },
+        {
+          "when": "affordable or unpriced alternate or setting off",
+          "observable": "shift stays as tossed"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_bots.cpp",
+          "test": "KitBots.unaffordable_priced_alternate_drops_the_shift_only_when_priced"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living.cpp:608",
+      "lines": [
+        608
+      ],
+      "function": "living::check_special",
+      "anchor": "if (stats_->magicpoints() < og::sim::cast_cost(*this, static_cast<int>(current_special()), shifter_down() != 0))",
+      "condition": "magicpoints < cast_cost(slot, shift)",
+      "semantic": "A bot that cannot pay for the slot it rolled falls back to its slot 1.",
+      "arms": [
+        {
+          "when": "cannot pay",
+          "observable": "current_special 1"
+        },
+        {
+          "when": "can pay",
+          "observable": "slot kept"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_living_funcs.cpp",
+          "test": "LivingFuncs.living_check_special_gates_disabled_flag_then_downgrades_unaffordable"
+        },
+        {
+          "file": "tests/unit/test_kit_bots.cpp",
+          "test": "KitBots.unaffordable_priced_alternate_drops_the_shift_only_when_priced"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living.cpp:615",
+      "lines": [
+        615
+      ],
+      "function": "living::check_special",
+      "anchor": "if (hook_result.has_value() && !*hook_result)",
+      "condition": "hook_result has value && !*hook_result",
+      "semantic": "The family's Lua bot gate (check_special_ai) can refuse the cast (no foe in reach, nothing to heal...); without a gate a bot always may.",
+      "arms": [
+        {
+          "when": "gate says no",
+          "observable": "false"
+        },
+        {
+          "when": "gate says yes or no gate",
+          "observable": "continues"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_living_act_flow_unit.cpp",
+          "test": "LivingActFlow.the_hit_response_draws_no_ordinary_act_after_a_gates_no"
+        },
+        {
+          "file": "tests/unit/test_kit_bots.cpp",
+          "test": "KitBots.unaffordable_priced_alternate_drops_the_shift_only_when_priced"
+        },
+        {
+          "file": "tests/unit/test_living_act_flow_unit.cpp",
+          "test": "LivingActFlow.the_act_path_never_reaches_an_unaffordable_slot"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living.cpp:623",
+      "lines": [
+        623
+      ],
+      "function": "living::check_special",
+      "anchor": "if (og::sim::session_gameplay_fixes() != 0 &&",
+      "condition": "fixes != 0 && magicpoints < cast_cost(slot, shift)",
+      "semantic": "Gameplay Fixes AB: a gate's yes the bot cannot pay for (the slot-1 fall-back's own price, or the Shift arm the gate chose) is a no; classic said yes and the hit-response cast was then refused NOT ENOUGH MP.",
+      "arms": [
+        {
+          "when": "fixes on, unaffordable",
+          "observable": "false"
+        },
+        {
+          "when": "fixes off",
+          "observable": "true"
+        }
+      ],
+      "setting": "both",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_living_act_flow_unit.cpp",
+          "test": "LivingActFlow.a_struck_bot_that_cannot_pay_its_slot_holds_with_the_setting_on"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living.cpp:638",
+      "lines": [
+        638,
+        642
+      ],
+      "function": "living::set_difficulty",
+      "anchor": "if (og::script::hooks::set_difficulty(fd, this, whatlevel))",
+      "condition": "hooks::set_difficulty(fd,this,level)",
+      "semantic": "A placed walker's level scales its stats: by its family's Lua coefficients when it has a set_difficulty hook, else by the default +11*L^2 HP and MP, +4*L damage, +2*L^2 armor.",
+      "arms": [
+        {
+          "when": "hook",
+          "observable": "family coefficients applied"
+        },
+        {
+          "when": "no hook (ghost)",
+          "observable": "default formula"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_living_funcs.cpp",
+          "test": "LivingFuncs.living_set_difficulty_soldier_applies_lua_coefficients_exactly"
+        },
+        {
+          "file": "tests/integration/test_living_funcs.cpp",
+          "test": "LivingFuncs.living_set_difficulty_raises_max_hp_for_every_family_and_tops_up"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living.cpp:652",
+      "lines": [
+        652,
+        659
+      ],
+      "function": "living::set_difficulty",
+      "anchor": "if (team_num() != 0)  // hostile/neutral teams: legacy path, untouched",
+      "condition": "team_num() != 0 / myguy == nullptr && dif1 != 100",
+      "semantic": "The difficulty percent scales max HP, max MP and damage of every placed walker, foes and placed team-0 NPCs alike (A12a); only a walker carrying a player character is exempt. At 100% team-0 NPCs skip the multiply (bit-exactness).",
+      "arms": [
+        {
+          "when": "team != 0",
+          "observable": "x dif/100"
+        },
+        {
+          "when": "team 0, no guy, dif != 100",
+          "observable": "x dif/100"
+        },
+        {
+          "when": "player character or 100%",
+          "observable": "unchanged"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_difficulty_scaling.cpp",
+          "test": "DifficultyScaling.placed_team0_npcs_scale_with_difficulty"
+        },
+        {
+          "file": "tests/unit/test_difficulty_scaling.cpp",
+          "test": "DifficultyScaling.player_characters_stay_exempt_from_difficulty"
+        },
+        {
+          "file": "tests/unit/test_difficulty_scaling.cpp",
+          "test": "DifficultyScaling.hostile_team_legacy_scaling_unchanged"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living.cpp:683",
+      "lines": [
+        683,
+        689,
+        700
+      ],
+      "function": "living::set_difficulty",
+      "anchor": "while (stats_->current_heal_delay() > REGEN)",
+      "condition": "while heal_delay > REGEN / heal_delay > 1 / max_heal_delay < 2",
+      "semantic": "A placed walker's HP regeneration rate comes from its level: whole points per tick from 4*L^2/REGEN, and the remainder as one extra point every REGEN/(rem+1) ticks, never faster than every 2 ticks; regeneration starts with an empty delay.",
+      "arms": [
+        {
+          "when": "4L^2 > REGEN",
+          "observable": "heal_per_round += quotient (the loop runs while the delay exceeds REGEN)"
+        },
+        {
+          "when": "remainder > 1",
+          "observable": "max_heal_delay = REGEN/(rem+1)"
+        },
+        {
+          "when": "delay < 2",
+          "observable": "clamped to 2"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": [
+        "4L^2 > REGEN",
+        "remainder > 1",
+        "delay < 2"
+      ],
+      "note": [
+        "unasserted: remainder > 1: max_heal_delay = REGEN/(rem+1) exact value",
+        "unasserted: delay < 2: clamped to 2"
+      ]
+    },
+    {
+      "id": "living.cpp:709",
+      "lines": [
+        709,
+        715,
+        726
+      ],
+      "function": "living::set_difficulty",
+      "anchor": "while (stats_->current_magic_delay() > REGEN)",
+      "condition": "while magic_delay > REGEN / magic_delay > 1 / max_magic_delay < 2",
+      "semantic": "A placed walker's MP regeneration rate comes from its level the same way, from 30*L^2.",
+      "arms": [
+        {
+          "when": "30L^2 > REGEN",
+          "observable": "magic_per_round += quotient"
+        },
+        {
+          "when": "remainder > 1",
+          "observable": "max_magic_delay = REGEN/(rem+1)"
+        },
+        {
+          "when": "delay < 2",
+          "observable": "clamped to 2"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": [
+        "30L^2 > REGEN",
+        "remainder > 1",
+        "delay < 2"
+      ],
+      "note": [
+        "unasserted: remainder > 1: max_magic_delay = REGEN/(rem+1) exact value",
+        "unasserted: delay < 2: clamped to 2"
+      ]
+    },
+    {
+      "id": "living.cpp:737",
+      "lines": [
+        737,
+        739
+      ],
+      "function": "living::act_random",
+      "anchor": "if (!current_game->world->rng_.next(80) || (!foe()))",
+      "condition": "!rng.next(80) || !foe() / !foe()",
+      "semantic": "act_random retargets to a near foe one time in 80 (or whenever it has none); with no foe near it wanders 40 steps.",
+      "arms": [
+        {
+          "when": "no foe held, roll any",
+          "observable": "foe = find_near_foe; a foe in range is latched, curdir/enddir turn toward it and a command is queued"
+        },
+        {
+          "when": "roll 0 (next(80)==0) with a foe already held",
+          "observable": "foe replaced by find_near_foe result"
+        },
+        {
+          "when": "still no foe after the search",
+          "observable": "one COMMAND_WALK queued with count 40 (try_command COMMAND_RANDOM_WALK), act_random returns 1, foe stays null"
+        },
+        {
+          "when": "foe held, roll 1-79",
+          "observable": "foe unchanged, continues to the fire/search logic (living.cpp:746)"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.act_guard_and_low_magic_act_random_pin_what_they_queue"
+        }
+      ],
+      "missing_arms": [
+        "no foe held, roll any",
+        "roll 0 (next(80)==0) with a foe already held",
+        "foe held, roll 1-79"
+      ],
+      "note": [
+        "unasserted: roll 0 (next(80)==0) with a foe already held: foe re-acquired by find_near_foe"
+      ]
+    },
+    {
+      "id": "living.cpp:746",
+      "lines": [
+        746,
+        749,
+        755
+      ],
+      "function": "living::act_random",
+      "anchor": "if (abs(xdist) < lineofsight() * GRID_SIZE &&",
+      "condition": "foe within lineofsight box / fire_check",
+      "semantic": "act_random: a foe inside the line-of-sight box is fired at if a shot can reach it (COMMAND_FIRE for a random 0-23 count); a blocked shot turns toward the foe. Either way out of a shot, it searches 200 steps.",
+      "arms": [
+        {
+          "when": "in range, shot clear",
+          "observable": "init_fire, COMMAND_FIRE(dx,dy), returns 1"
+        },
+        {
+          "when": "in range, blocked",
+          "observable": "turn toward foe, COMMAND_SEARCH x200"
+        },
+        {
+          "when": "out of range",
+          "observable": "COMMAND_SEARCH x200"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": [
+        "in range, shot clear",
+        "in range, blocked",
+        "out of range"
+      ],
+      "note": [
+        "unasserted: out of range: COMMAND_SEARCH x200 with the foe outside the line-of-sight box (the cited test only drives in-range foes; its x200 search is the BIT_NO_RANGED blocked arm)"
+      ]
+    },
+    {
+      "id": "living.cpp:772",
+      "lines": [
+        772,
+        774,
+        775,
+        778,
+        780,
+        788
+      ],
+      "function": "living::do_action",
+      "anchor": "switch (action())",
+      "condition": "switch(action) ACTION_FOLLOW / foe() / !leader() / leader()->foe() / default",
+      "semantic": "An ally on Follow (Summon Defense) fights its own foe if it has one; otherwise it follows the nearest player hero and takes up that hero's foe; with no foe anywhere it queues a 5-step follow. Unknown actions do nothing.",
+      "arms": [
+        {
+          "when": "has a foe",
+          "observable": "returns 0 (AI continues)"
+        },
+        {
+          "when": "no player hero",
+          "observable": "returns 0"
+        },
+        {
+          "when": "hero has a foe",
+          "observable": "foe = hero's foe, returns 0"
+        },
+        {
+          "when": "hero idle",
+          "observable": "COMMAND_FOLLOW x5 forced, returns 1"
+        },
+        {
+          "when": "other action",
+          "observable": "returns 0"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/integration/test_living_combat.cpp",
+          "test": "LivingCombat.living_walk_and_do_action_edge_branches"
+        },
+        {
+          "file": "tests/integration/test_living_combat.cpp",
+          "test": "LivingCombat.living_do_action_follow_leader_null_and_command_paths"
+        },
+        {
+          "file": "tests/integration/test_living_unit.cpp",
+          "test": "LivingUnit.follow_ally_spends_its_act_on_the_follow_command_not_its_ai"
+        },
+        {
+          "file": "tests/integration/test_living_combat.cpp",
+          "test": "LivingCombat.living_round7_act_random_and_do_action_targeted_branches"
+        },
+        {
+          "file": "tests/integration/test_living_unit.cpp",
+          "test": "LivingUnit.living_r11_act_owner_dead_and_action_follow"
+        }
+      ],
+      "missing_arms": [
+        "hero idle"
+      ]
+    }
+  ],
+  "other": [
+    {
+      "id": "living.cpp:138",
+      "lines": [
+        138
+      ],
+      "kind": "dead",
+      "anchor": "if (ignore)",
+      "note": "not a branch: `if (ignore)` inside a commented-out block"
+    },
+    {
+      "id": "living.cpp:342",
+      "lines": [
+        342
+      ],
+      "kind": "defensive",
+      "anchor": "case ACT_FIRE:",
+      "note": "ACT_FIRE on a living is an impossible state (weapons act through weap::act); logs and returns 1."
+    },
+    {
+      "id": "living.cpp:583",
+      "lines": [
+        583
+      ],
+      "kind": "defensive",
+      "anchor": "if (newob == nullptr) return nullptr;",
+      "note": "add_ob failure (list full / bad family) returns nullptr from do_summon."
+    },
+    {
+      "id": "living.cpp:769",
+      "lines": [
+        769
+      ],
+      "kind": "defensive",
+      "anchor": "if (!action())",
+      "note": "do_action is only called with action() set; the guard returns 0 for direct callers."
+    }
+  ]
+}

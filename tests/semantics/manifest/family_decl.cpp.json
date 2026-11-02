@@ -1,0 +1,2630 @@
+{
+  "path": "src/gameplay/script/family_decl.cpp",
+  "rules": [
+    {
+      "id": "family_decl.cpp:82",
+      "lines": [
+        82,
+        91
+      ],
+      "function": "push_family_ref",
+      "anchor": "if (luaL_newmetatable(L, kFamilyRefMeta)) {",
+      "condition": "luaL_newmetatable(L, kFamilyRefMeta) / for event in kBlocked",
+      "semantic": "During the declaration pass og.family_id answers a truthy placeholder: `assert(og.family_id(...))` passes, but indexing, assigning into, calling, tostring, concatenating, length, arithmetic (+ - * / % ^ // unary -) or ORDERING comparison (<, <=) on it raises 'a family byte cannot be READ while families are being declared'. Equality (==) is NOT blocked (kBlocked has no __eq): `ref == 1` is silently false, not an error. The metatable is built once per VM and is locked (__metatable = false).",
+      "arms": [
+        {
+          "when": "placeholder only tested for truth",
+          "observable": "chunk loads, DeclareResult.ok == true",
+          "asserted": true
+        },
+        {
+          "when": "placeholder used in arithmetic / index / call / tostring / concat / # / < / <=",
+          "observable": "DeclareResult.ok == false (asserted for `ref + 1` only); error contains 'cannot be READ while families are being declared' (asserted nowhere)",
+          "asserted": false
+        },
+        {
+          "when": "placeholder compared with ==",
+          "observable": "no error; comparison yields false (chunk loads)",
+          "asserted": false
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_classpack_lua_decl.cpp",
+          "test": "LuaFamilyDeclTest.family_id_defers_during_a_declaration",
+          "note": "truth arm ok, and EXPECT_FALSE(used.ok) for `ref + 1`; the error text and the other blocked events are asserted nowhere: no test contains 'cannot be READ'"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "family_decl.cpp:116",
+      "lines": [
+        116
+      ],
+      "function": "Harvest::fail",
+      "anchor": "if (err.empty())",
+      "condition": "err.empty()",
+      "semantic": "The declaration walk stops at the first failure in reading order (fields before strict keys), so that is the error a modder sees. The err.empty() guard itself is defensive: every caller stops at its first fail() (|| chains in harvest_living/weapon/effect/treasure/generator, break in harvest_specials/harvest_anim_set, ok && guards in harvest_costs and the default_cast/check_keys tail), so fail() is never called twice.",
+      "arms": [
+        {
+          "when": "first failure",
+          "observable": "err set to that message"
+        },
+        {
+          "when": "later failure (unreachable: no path calls fail() twice)",
+          "observable": "err unchanged; reader still returns false"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": []
+    },
+    {
+      "id": "family_decl.cpp:133",
+      "lines": [
+        133
+      ],
+      "function": "type_name_of",
+      "anchor": "if (is_og_nil(L, idx))",
+      "condition": "is_og_nil(L, idx)",
+      "semantic": "A diagnostic names og.NIL as 'og.NIL', never as Lua's 'userdata'.",
+      "arms": [
+        {
+          "when": "value is og.NIL",
+          "observable": "error says 'got og.NIL'"
+        },
+        {
+          "when": "any other value",
+          "observable": "error says the Lua type name"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_classpack_lua_decl.cpp",
+          "test": "LuaFamilyDeclTest.og_nil_is_reported_as_og_NIL_and_never_as_absence"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "family_decl.cpp:142",
+      "lines": [
+        142
+      ],
+      "function": "Harvest::take_string",
+      "anchor": "if (lua_type(L, -1) != LUA_TSTRING) {",
+      "condition": "lua_type(L, -1) != LUA_TSTRING",
+      "semantic": "A string field takes only a Lua string; a number is NOT coerced (name = 12 is an error).",
+      "arms": [
+        {
+          "when": "string",
+          "observable": "value copied verbatim"
+        },
+        {
+          "when": "number/other",
+          "observable": "error '<path>: expected a string, got <type>'"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_classpack_lua_decl.cpp",
+          "test": "LuaFamilyDeclTest.a_wrong_scalar_type_names_the_path_and_what_arrived"
+        },
+        {
+          "file": "tests/unit/test_classpack_lua_decl.cpp",
+          "test": "LuaFamilyDeclTest.a_field_of_the_wrong_type_names_the_field"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "family_decl.cpp:156",
+      "lines": [
+        156,
+        163
+      ],
+      "function": "Harvest::take_int",
+      "anchor": "if (!lua_isinteger(L, -1)) {",
+      "condition": "!lua_isinteger(L,-1) / v out of int32 range",
+      "semantic": "A whole-number field takes only a Lua integer inside int32; 1.5, '1' and 9999999999 are refused.",
+      "arms": [
+        {
+          "when": "integer in range",
+          "observable": "value stored"
+        },
+        {
+          "when": "float or string",
+          "observable": "'expected a whole number, got <type>'"
+        },
+        {
+          "when": "integer outside int32",
+          "observable": "'<v> is out of range'"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_classpack_lua_decl.cpp",
+          "test": "LuaFamilyDeclTest.a_wrong_scalar_type_names_the_path_and_what_arrived"
+        },
+        {
+          "file": "tests/unit/test_classpack_lua_decl.cpp",
+          "test": "LuaFamilyDeclTest.a_special_level_opens_its_slot_early_and_no_later"
+        },
+        {
+          "file": "tests/unit/test_classpack_lua_decl.cpp",
+          "test": "LuaFamilyDeclTest.radar_colour_takes_two_names_or_a_palette_index"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "family_decl.cpp:171",
+      "lines": [
+        171
+      ],
+      "function": "Harvest::take_number",
+      "anchor": "if (lua_type(L, -1) != LUA_TNUMBER) {",
+      "condition": "lua_type(L,-1) != LUA_TNUMBER",
+      "semantic": "A number field takes an integer or float, nothing else (no string coercion).",
+      "arms": [
+        {
+          "when": "number",
+          "observable": "stored as float"
+        },
+        {
+          "when": "other",
+          "observable": "'expected a number, got <type>'"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_classpack_lua_decl.cpp",
+          "test": "LuaFamilyDeclTest.each_non_living_order_reports_a_bad_hp_under_its_own_name"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "family_decl.cpp:185",
+      "lines": [
+        185
+      ],
+      "function": "Harvest::take_bool",
+      "anchor": "if (lua_type(L, -1) != LUA_TBOOLEAN) {",
+      "condition": "lua_type(L,-1) != LUA_TBOOLEAN",
+      "semantic": "A flag field takes only true/false; 0 or 1 is an error (0 is truthy in Lua).",
+      "arms": [
+        {
+          "when": "boolean",
+          "observable": "stored"
+        },
+        {
+          "when": "other",
+          "observable": "'expected true or false, got <type>'"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_classpack_lua_decl.cpp",
+          "test": "LuaFamilyDeclTest.a_field_of_the_wrong_type_names_the_field",
+          "note": "leaves_bloodspot = 1 -> 'expected true or false, got number', lines 531-533"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "family_decl.cpp:198",
+      "lines": [
+        198,
+        204,
+        207
+      ],
+      "function": "Harvest::take_string_list",
+      "anchor": "if (lua_type(L, -1) != LUA_TTABLE) {",
+      "condition": "lua_type != LUA_TTABLE / for i<=n / !take_string(item)",
+      "semantic": "A list-of-strings field is a Lua array whose every element is a string; the failing element is named by index. The list is walked 1..#t and never key-checked, so a NAMED key inside a list is silently dropped: the one place in the format where a misspelled key is not a load error.",
+      "arms": [
+        {
+          "when": "table of strings",
+          "observable": "vector in order"
+        },
+        {
+          "when": "not a table",
+          "observable": "'expected a list, got <type>'"
+        },
+        {
+          "when": "element i not a string",
+          "observable": "'<path>[i]: expected a string, got <type>'"
+        },
+        {
+          "when": "named key inside a list, e.g. names = { 'Lothar', Gunther = 'x' }",
+          "observable": "ok == true, names->size() == 1, no error",
+          "asserted": false
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_classpack_lua_decl.cpp",
+          "test": "LuaFamilyDeclTest.a_wrong_scalar_type_names_the_path_and_what_arrived",
+          "note": "element arm: names = { 'Lothar', 7 } -> 'names[2]: expected a string, got number'"
+        },
+        {
+          "file": "tests/unit/test_classpack_lua_decl.cpp",
+          "test": "LuaFamilyDeclTest.a_field_of_the_wrong_type_names_the_field",
+          "note": "not-a-table arm: names = 'Lothar' -> 'names: expected a list, got string', line 527"
+        },
+        {
+          "file": "tests/unit/test_classpack_lua_decl.cpp",
+          "test": "LuaFamilyDeclTest.the_pack_header_is_strict_too",
+          "note": "authors = 'Fable' -> 'expected a list, got string', line 797"
+        }
+      ],
+      "missing_arms": [],
+      "note": [
+        "named-key-in-list arm: none"
+      ]
+    },
+    {
+      "id": "family_decl.cpp:226",
+      "lines": [
+        226
+      ],
+      "function": "has_field",
+      "anchor": "if (lua_isnil(L, -1)) {",
+      "condition": "lua_isnil(L,-1)",
+      "semantic": "A declaration is sparse: a key not spelled leaves the slot's current value untouched (absent, not zero).",
+      "arms": [
+        {
+          "when": "key absent",
+          "observable": "optional stays unset / slot keeps its value"
+        },
+        {
+          "when": "key present",
+          "observable": "reader runs"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_classpack_lua_decl.cpp",
+          "test": "LuaFamilyDeclTest.omitted_hp_stays_unset"
+        },
+        {
+          "file": "tests/unit/test_classpack_lua_decl.cpp",
+          "test": "LuaFamilyDeclTest.og_nil_is_the_present_null_and_absence_is_not"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "family_decl.cpp:237",
+      "lines": [
+        237
+      ],
+      "function": "reject_og_nil",
+      "anchor": "if (!is_og_nil(h.L, -1))",
+      "condition": "!is_og_nil(h.L,-1)",
+      "semantic": "og.NIL ('explicitly none') is refused on any field that has no null reading.",
+      "arms": [
+        {
+          "when": "og.NIL on a plain field",
+          "observable": "error 'og.NIL means \"explicitly none\"... leave the key out instead'"
+        },
+        {
+          "when": "other value",
+          "observable": "normal reader"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_classpack_lua_decl.cpp",
+          "test": "LuaFamilyDeclTest.og_nil_where_no_null_can_be_read_is_a_load_error"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "family_decl.cpp:317",
+      "lines": [
+        317,
+        320
+      ],
+      "function": "opt_nullable",
+      "anchor": "if (!has_field(h.L, tbl, key))",
+      "condition": "!has_field / is_og_nil",
+      "semantic": "The present-null fields (short_name, promotes_to, death_message, sprite, description) have three readings: absent (leave alone), og.NIL (explicitly none) and a string.",
+      "arms": [
+        {
+          "when": "absent",
+          "observable": "present=false"
+        },
+        {
+          "when": "og.NIL",
+          "observable": "present=true,is_null=true"
+        },
+        {
+          "when": "string",
+          "observable": "present=true,value=string"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_classpack_lua_decl.cpp",
+          "test": "LuaFamilyDeclTest.og_nil_is_the_present_null_and_absence_is_not"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "family_decl.cpp:334",
+      "lines": [
+        334,
+        336,
+        341
+      ],
+      "function": "opt_wire_id",
+      "anchor": "if (!has_field(h.L, tbl, \"wire_id\"))",
+      "condition": "!has_field / lua_isinteger / LUA_TSTRING",
+      "semantic": "wire_id is an integer (stored as its decimal text) or the string \"auto\" (left for the installer's auto-id pass); anything else is a load error.",
+      "arms": [
+        {
+          "when": "absent",
+          "observable": "wire_id empty"
+        },
+        {
+          "when": "integer",
+          "observable": "decimal text"
+        },
+        {
+          "when": "string",
+          "observable": "verbatim, e.g. 'auto'"
+        },
+        {
+          "when": "other",
+          "observable": "'expected a number 0..255 or \"auto\"'"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_classpack_lua_decl.cpp",
+          "test": "LuaFamilyDeclTest.wire_id_auto_is_a_string_the_installer_reads",
+          "note": "string arm"
+        },
+        {
+          "file": "tests/unit/test_classpack_lua_decl.cpp",
+          "test": "LuaFamilyDeclTest.a_field_of_the_wrong_type_names_the_field",
+          "note": "wire_id = {} -> 'expected a number 0..255 or \"auto\", got table', lines 528-530"
+        },
+        {
+          "file": "tests/unit/test_classpack_lua_decl.cpp",
+          "test": "LuaFamilyDeclTest.a_full_living_declaration_lands_every_block",
+          "note": "integer arm: EXPECT_EQ(\"61\", e.wire_id), line 174"
+        },
+        {
+          "file": "tests/unit/test_classpack_lua_decl.cpp",
+          "test": "LuaFamilyDeclTest.one_chunk_may_declare_many_families",
+          "note": "integer arm: EXPECT_EQ(\"63\", ...), line 401"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "family_decl.cpp:396",
+      "lines": [
+        378,
+        388,
+        396,
+        398,
+        404
+      ],
+      "function": "did_you_mean",
+      "anchor": "const size_t cost = (a[i - 1] == b[j - 1]) ? 0u : 1u;",
+      "condition": "d > budget / best tie-break / best == nullptr",
+      "semantic": "An unknown key gets a suggestion: for each KNOWN key the budget is half that known key's length, clamped to [1,3] (min(3, max(1, known.size()/2))), evaluated per candidate; the known key with the smallest edit distance within its own budget wins, ties broken alphabetically (strcmp); no suggestion when no known key is within its budget. E.g. 'nmae' finds 'name' (distance 2, budget 2), 'hp' does not find 'id' (distance 2, budget 1).",
+      "arms": [
+        {
+          "when": "a key within budget",
+          "observable": "' (did you mean '<key>'?)' appended"
+        },
+        {
+          "when": "tie",
+          "observable": "alphabetically first wins"
+        },
+        {
+          "when": "none within budget",
+          "observable": "no suggestion text"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_classpack_lua_decl.cpp",
+          "test": "LuaFamilyDeclTest.a_wrong_word_gets_no_suggestion"
+        },
+        {
+          "file": "tests/unit/test_classpack_lua_decl.cpp",
+          "test": "LuaFamilyDeclTest.a_tied_key_suggestion_is_settled_alphabetically"
+        },
+        {
+          "file": "tests/unit/test_classpack_lua_decl.cpp",
+          "test": "LuaFamilyDeclTest.unknown_keys_inside_the_named_blocks_are_errors"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "family_decl.cpp:416",
+      "lines": [
+        416,
+        418,
+        422,
+        424
+      ],
+      "function": "check_keys",
+      "anchor": "while (lua_next(L, tbl) != 0) {",
+      "condition": "while lua_next / non-string key / known match / !ok",
+      "semantic": "Strict keys: any string key a block does not know stops the pack (with a suggestion); `ext` is always accepted and ignored; non-string (array) keys are not key-checked.",
+      "arms": [
+        {
+          "when": "known key or 'ext'",
+          "observable": "accepted"
+        },
+        {
+          "when": "unknown string key",
+          "observable": "'<where>: unknown key '<k>''"
+        },
+        {
+          "when": "integer key",
+          "observable": "skipped"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_classpack_lua_decl.cpp",
+          "test": "LuaFamilyDeclTest.an_unknown_top_level_key_is_a_load_error"
+        },
+        {
+          "file": "tests/unit/test_classpack_lua_decl.cpp",
+          "test": "LuaFamilyDeclTest.ext_is_reserved_and_ignored"
+        },
+        {
+          "file": "tests/unit/test_classpack_lua_decl.cpp",
+          "test": "LuaFamilyDeclTest.unknown_keys_inside_the_named_blocks_are_errors"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "family_decl.cpp:442",
+      "lines": [
+        442,
+        445,
+        447,
+        449,
+        457
+      ],
+      "function": "take_radar_color",
+      "anchor": "if (lua_type(h.L, -1) == LUA_TSTRING) {",
+      "condition": "string 'none'/'team'/else / int",
+      "semantic": "radar_color is a palette index or one of two names: 'none' (no blip) and 'team' (the entity's team colour); other names and non-integers are refused.",
+      "arms": [
+        {
+          "when": "'none'",
+          "observable": "kRadarColorNone"
+        },
+        {
+          "when": "'team'",
+          "observable": "kRadarColorTeam"
+        },
+        {
+          "when": "other string",
+          "observable": "'unknown radar colour'"
+        },
+        {
+          "when": "integer",
+          "observable": "index stored"
+        },
+        {
+          "when": "float",
+          "observable": "'expected a whole number'"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_classpack_lua_decl.cpp",
+          "test": "LuaFamilyDeclTest.radar_colour_takes_two_names_or_a_palette_index"
+        },
+        {
+          "file": "tests/unit/test_classpack_lua_decl.cpp",
+          "test": "LuaFamilyDeclTest.a_full_living_declaration_lands_every_block"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "family_decl.cpp:501",
+      "lines": [
+        490,
+        493,
+        501,
+        502,
+        509,
+        510,
+        514,
+        518,
+        519,
+        523,
+        529
+      ],
+      "function": "harvest_tuning",
+      "anchor": "if (!has_field(h.L, tbl, \"tuning\"))",
+      "condition": "tuning absent/not table/key not string/switch value type",
+      "semantic": "tuning is a table of NAMED scalars; each value keeps the author's Lua subtype (integer 5, number 5.0, string, boolean) and the pairs are sorted by key so every peer harvests the same vector; positional keys and table/function values are refused.",
+      "arms": [
+        {
+          "when": "absent",
+          "observable": "no tuning"
+        },
+        {
+          "when": "not a table",
+          "observable": "'expected a table of named values'"
+        },
+        {
+          "when": "non-string key",
+          "observable": "'keys must be names'"
+        },
+        {
+          "when": "boolean/string",
+          "observable": "kind Boolean/String"
+        },
+        {
+          "when": "integer",
+          "observable": "kind Integer"
+        },
+        {
+          "when": "float",
+          "observable": "kind Number"
+        },
+        {
+          "when": "other value",
+          "observable": "'a tuning value is a number, a string or a boolean'"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_classpack_lua_decl.cpp",
+          "test": "LuaFamilyDeclTest.tuning_harvests_in_a_content_determined_order"
+        },
+        {
+          "file": "tests/unit/test_classpack_lua_decl.cpp",
+          "test": "LuaFamilyDeclTest.tuning_must_be_a_table_of_named_scalars"
+        },
+        {
+          "file": "tests/unit/test_classpack_lua_decl.cpp",
+          "test": "LuaFamilyDeclTest.a_full_living_declaration_lands_every_block"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "family_decl.cpp:552",
+      "lines": [
+        552,
+        554,
+        557
+      ],
+      "function": "is_special_id",
+      "anchor": "if (id.empty())",
+      "condition": "empty / each char in [a-z0-9_]",
+      "semantic": "A special id is non-empty lowercase letters, digits and underscores.",
+      "arms": [
+        {
+          "when": "valid",
+          "observable": "accepted"
+        },
+        {
+          "when": "empty or other char",
+          "observable": "'a special id is lowercase letters, digits and underscores'"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_classpack_lua_decl.cpp",
+          "test": "LuaFamilyDeclTest.special_ids_are_unique_and_never_the_catch_all"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "family_decl.cpp:579",
+      "lines": [
+        579,
+        581,
+        592,
+        594,
+        596,
+        598
+      ],
+      "function": "harvest_special",
+      "anchor": "if (!has_field(L, tbl, \"id\"))",
+      "condition": "!has_field id/name/mp_cost",
+      "semantic": "A special must declare id, name (the HUD string) and mp_cost.",
+      "arms": [
+        {
+          "when": "missing id",
+          "observable": "'a special needs an id'"
+        },
+        {
+          "when": "missing name",
+          "observable": "'needs a name (the HUD string)'"
+        },
+        {
+          "when": "missing mp_cost",
+          "observable": "'needs an mp_cost'"
+        },
+        {
+          "when": "wrong type",
+          "observable": "typed-reader error"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_classpack_lua_decl.cpp",
+          "test": "LuaFamilyDeclTest.a_special_needs_its_three_required_fields"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "family_decl.cpp:587",
+      "lines": [
+        583,
+        587
+      ],
+      "function": "harvest_special",
+      "anchor": "if (!is_special_id(out.id))",
+      "condition": "!is_special_id / id == \"default\"",
+      "semantic": "'default' is reserved as the specials table's catch-all key and cannot name a special.",
+      "arms": [
+        {
+          "when": "id 'default'",
+          "observable": "'default' is reserved'"
+        },
+        {
+          "when": "malformed id",
+          "observable": "lowercase rule error"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_classpack_lua_decl.cpp",
+          "test": "LuaFamilyDeclTest.special_ids_are_unique_and_never_the_catch_all"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "family_decl.cpp:603",
+      "lines": [
+        603,
+        609
+      ],
+      "function": "harvest_special",
+      "anchor": "if (out.mp_cost >= static_cast<std::int32_t>(kSpecialCostDisabled))",
+      "condition": "mp_cost >= kSpecialCostDisabled / < 0",
+      "semantic": "A special's price is 0..4999: 5000+ is the registry's 'no special here' marker (leave the special out instead), negative magic is refused.",
+      "arms": [
+        {
+          "when": "0..4999",
+          "observable": "stored"
+        },
+        {
+          "when": ">=5000",
+          "observable": "'5000 and up is the registry's own \"disabled\" marker'"
+        },
+        {
+          "when": "<0",
+          "observable": "'cannot cost negative magic'"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_classpack_lua_decl.cpp",
+          "test": "LuaFamilyDeclTest.the_disabled_sentinel_is_refused_by_name"
+        },
+        {
+          "file": "tests/unit/test_classpack_lua_decl.cpp",
+          "test": "LuaFamilyDeclTest.a_negative_special_cost_is_a_load_error"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "family_decl.cpp:617",
+      "lines": [
+        612,
+        617,
+        618,
+        620
+      ],
+      "function": "harvest_special",
+      "anchor": "if (has_field(L, tbl, \"slot\") && !h.take_int(named + \".slot\", out.slot))",
+      "condition": "has slot && !take_int / has level / level < 1",
+      "semantic": "An explicit slot or level is a whole number, and a level opens a slot at level 1 at the earliest (an explicit 0 is refused, not read as absent).",
+      "arms": [
+        {
+          "when": "slot non-integer",
+          "observable": "'.slot: expected a whole number'"
+        },
+        {
+          "when": "level non-integer",
+          "observable": "'.level: expected a whole number'"
+        },
+        {
+          "when": "level <1",
+          "observable": "'a slot opens at level 1 at the earliest'"
+        },
+        {
+          "when": "level >=1",
+          "observable": "entry.level stored"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_classpack_lua_decl.cpp",
+          "test": "LuaFamilyDeclTest.a_special_level_opens_its_slot_early_and_no_later"
+        },
+        {
+          "file": "tests/unit/test_classpack_lua_decl.cpp",
+          "test": "LuaFamilyDeclTest.a_special_entry_is_type_checked_field_by_field"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "family_decl.cpp:624",
+      "lines": [
+        624,
+        625,
+        650,
+        652
+      ],
+      "function": "harvest_special",
+      "anchor": "if (has_field(L, tbl, \"alternate\")) {",
+      "condition": "has alternate / not table / !ok / !alt_name",
+      "semantic": "An alternate (the Shift arm of a slot) is a table with a name and only the keys name, mp_cost, new_kit, detail, icon; it has no level of its own.",
+      "arms": [
+        {
+          "when": "absent",
+          "observable": "no alternate"
+        },
+        {
+          "when": "not a table",
+          "observable": "'alternate takes a table'"
+        },
+        {
+          "when": "no name",
+          "observable": "'alternate: needs a name'"
+        },
+        {
+          "when": "unknown key",
+          "observable": "'alternate: unknown key'"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_classpack_lua_decl.cpp",
+          "test": "LuaFamilyDeclTest.alternate_takes_a_named_table"
+        },
+        {
+          "file": "tests/unit/test_classpack_lua_decl.cpp",
+          "test": "LuaFamilyDeclTest.a_special_level_opens_its_slot_early_and_no_later"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "family_decl.cpp:654",
+      "lines": [
+        654,
+        660
+      ],
+      "function": "harvest_special",
+      "anchor": "if (alt_cost && *alt_cost >= static_cast<std::int32_t>(kSpecialCostDisabled))",
+      "condition": "alt_cost >= kSpecialCostDisabled / alt_cost < 0",
+      "semantic": "An alternate's own price follows the primary's bounds (0..4999); with no price it costs 0 (falls back on the slot's price at cast time, per walker::alternate_cost).",
+      "arms": [
+        {
+          "when": "absent",
+          "observable": "alternate_cost=0",
+          "asserted": true
+        },
+        {
+          "when": ">=5000",
+          "observable": "'alternate.mp_cost 5000 ... either castable or left out'",
+          "asserted": true
+        },
+        {
+          "when": "<0",
+          "observable": "'cannot cost negative magic'",
+          "asserted": true
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_specials_view.cpp",
+          "test": "SpecialsView.declaration_keys_reject_junk",
+          "note": "5000 / -1 refusals at 398-406; stored prices EXPECT_EQ(70/90, alternate_cost) and absent -> EXPECT_EQ(0, list[2].alternate_cost) at 419-424"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "family_decl.cpp:671",
+      "lines": [
+        671,
+        675,
+        679
+      ],
+      "function": "harvest_special",
+      "anchor": "if (!opt_bool(h, tbl, named, \"new_kit\", new_kit))",
+      "condition": "!opt_bool new_kit / !opt_string detail / !opt_string icon",
+      "semantic": "new_kit = true puts a slot behind the New Specials setting (default false); detail is the DETAILS page prose (absent = none); icon names the ability picture (absent = generic tile).",
+      "arms": [
+        {
+          "when": "new_kit true",
+          "observable": "entry.new_kit = true"
+        },
+        {
+          "when": "new_kit absent",
+          "observable": "false"
+        },
+        {
+          "when": "new_kit non-bool",
+          "observable": "error naming new_kit"
+        },
+        {
+          "when": "detail/icon given",
+          "observable": "stored verbatim"
+        },
+        {
+          "when": "absent",
+          "observable": "none / empty"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_classpack_lua_decl.cpp",
+          "test": "LuaFamilyDeclTest.a_special_entry_is_type_checked_field_by_field"
+        },
+        {
+          "file": "tests/unit/test_classpack_lua_decl.cpp",
+          "test": "LuaFamilyDeclTest.a_special_and_its_alternate_name_their_icons"
+        }
+      ],
+      "missing_arms": [],
+      "note": [
+        "tests/unit/test_specials_view.cpp: new_kit refusal block"
+      ]
+    },
+    {
+      "id": "family_decl.cpp:682",
+      "lines": [
+        682,
+        683,
+        685,
+        687,
+        697
+      ],
+      "function": "harvest_special",
+      "anchor": "for (const char* key : {\"cast\", \"ai\"}) {",
+      "condition": "for key in {cast, ai}: has_field / key == ai / ok",
+      "semantic": "A special's cast is a function or `false` (the charged no-op: spends MP, does nothing); its ai is a function; anything else is a load error. Seeing either records that the family uses per-slot behaviour.",
+      "arms": [
+        {
+          "when": "cast function or false",
+          "observable": "accepted; behavior.any_cast",
+          "asserted": true
+        },
+        {
+          "when": "cast true/number",
+          "observable": "'cast: expected a function'",
+          "asserted": true
+        },
+        {
+          "when": "ai function",
+          "observable": "accepted; behavior.any_ai",
+          "asserted": true
+        },
+        {
+          "when": "ai non-function",
+          "observable": "'ai: expected a function'",
+          "asserted": false
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_classpack_lua_decl.cpp",
+          "test": "LuaFamilyDeclTest.a_cast_is_a_function_or_the_explicit_no_op",
+          "note": "cast arms"
+        },
+        {
+          "file": "tests/unit/test_classpack_lua_decl.cpp",
+          "test": "LuaFamilyDeclTest.a_tied_key_suggestion_is_settled_alphabetically",
+          "note": "only proves an ai FUNCTION loads"
+        }
+      ],
+      "missing_arms": [],
+      "note": [
+        "ai non-function arm: none (no test contains 'ai: expected a function')"
+      ]
+    },
+    {
+      "id": "family_decl.cpp:716",
+      "lines": [
+        713,
+        716
+      ],
+      "function": "harvest_specials",
+      "anchor": "if (!has_field(h.L, tbl, \"specials\"))",
+      "condition": "!has_field specials / not table",
+      "semantic": "specials, when present, is a list.",
+      "arms": [
+        {
+          "when": "absent",
+          "observable": "specials unset (slot untouched)"
+        },
+        {
+          "when": "not a table",
+          "observable": "'.specials: expected a list'"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_classpack_lua_decl.cpp",
+          "test": "LuaFamilyDeclTest.a_specials_block_that_is_not_a_list_of_tables_says_which"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "family_decl.cpp:733",
+      "lines": [
+        733
+      ],
+      "function": "harvest_specials",
+      "anchor": "if (lua_type(L, -1) != LUA_TTABLE) {",
+      "condition": "entry not a table",
+      "semantic": "Every specials entry is a table.",
+      "arms": [
+        {
+          "when": "table",
+          "observable": "harvested"
+        },
+        {
+          "when": "other",
+          "observable": "'specials[i]: expected a table'"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_classpack_lua_decl.cpp",
+          "test": "LuaFamilyDeclTest.a_specials_block_that_is_not_a_list_of_tables_says_which"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "family_decl.cpp:745",
+      "lines": [
+        744,
+        745,
+        750
+      ],
+      "function": "harvest_specials",
+      "anchor": "for (const og::data::ClasspackSpecialEntry& seen : entries) {",
+      "condition": "seen.id == entry.id",
+      "semantic": "Special ids are unique within a family.",
+      "arms": [
+        {
+          "when": "unique",
+          "observable": "accepted"
+        },
+        {
+          "when": "repeat",
+          "observable": "'already used by an earlier special of this family'"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_classpack_lua_decl.cpp",
+          "test": "LuaFamilyDeclTest.special_ids_are_unique_and_never_the_catch_all"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "family_decl.cpp:752",
+      "lines": [
+        752
+      ],
+      "function": "harvest_specials",
+      "anchor": "if (entry.slot == 0)",
+      "condition": "entry.slot == 0",
+      "semantic": "A special with no slot key, or an explicit slot = 0, takes the slot after the previous entry's (array position, with holes left by explicit slots).",
+      "arms": [
+        {
+          "when": "no slot key, or an explicit slot = 0",
+          "observable": "slot = previous + 1"
+        },
+        {
+          "when": "slot given",
+          "observable": "kept"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_classpack_lua_decl.cpp",
+          "test": "LuaFamilyDeclTest.a_special_level_opens_its_slot_early_and_no_later"
+        },
+        {
+          "file": "tests/unit/test_classpack_lua_decl.cpp",
+          "test": "LuaFamilyDeclTest.a_special_entry_is_type_checked_field_by_field"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "family_decl.cpp:754",
+      "lines": [
+        754,
+        760
+      ],
+      "function": "harvest_specials",
+      "anchor": "if (entry.slot < 1 || entry.slot > og::data::kMaxSpecialSlot) {",
+      "condition": "slot outside 1..kMaxSpecialSlot / slot <= previous",
+      "semantic": "A family has slots 1..5 and its specials are listed in strictly increasing slot order.",
+      "arms": [
+        {
+          "when": "slot >= 6 (kMaxSpecialSlot = 5, classpack_data.h:167) or negative; an explicit slot = 0 never reaches here, line 752 turns it into an auto-slot",
+          "observable": "'slot N does not exist (a family has slots 1..5)'"
+        },
+        {
+          "when": "slot <= previous",
+          "observable": "'must be greater than the previous entry's slot'"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_classpack_lua_decl.cpp",
+          "test": "LuaFamilyDeclTest.slots_run_forward_and_stop_at_five"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "family_decl.cpp:768",
+      "lines": [
+        768,
+        776,
+        777
+      ],
+      "function": "harvest_specials",
+      "anchor": "if (entry.level > default_opens_at) {",
+      "condition": "level > 3*slot-2 / opens_at ternary / opens_at < previous_opens_at",
+      "semantic": "Slot N opens at level 3N-2 by default; `level` may open it earlier, never later, and the open slots must stay a run from slot 1 (the cycle key stops at the first locked slot).",
+      "arms": [
+        {
+          "when": "level > default",
+          "observable": "'level can open a slot earlier, never later'"
+        },
+        {
+          "when": "no level",
+          "observable": "opens at 3N-2"
+        },
+        {
+          "when": "opens before previous slot",
+          "observable": "'the open slots must be a run from slot 1'"
+        },
+        {
+          "when": "ok",
+          "observable": "accepted"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_classpack_lua_decl.cpp",
+          "test": "LuaFamilyDeclTest.a_special_level_opens_its_slot_early_and_no_later"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "family_decl.cpp:792",
+      "lines": [
+        792,
+        797
+      ],
+      "function": "harvest_specials",
+      "anchor": "if (ok && has_field(L, list, \"default_cast\")) {",
+      "condition": "has default_cast / !is_fn",
+      "semantic": "specials.default_cast is the any-slot cast handler and must be a function.",
+      "arms": [
+        {
+          "when": "function",
+          "observable": "behavior.any_cast"
+        },
+        {
+          "when": "other",
+          "observable": "'specials.default_cast: expected a function'"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_classpack_lua_decl.cpp",
+          "test": "LuaFamilyDeclTest.a_cast_is_a_function_or_the_explicit_no_op"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "family_decl.cpp:804",
+      "lines": [
+        804,
+        807
+      ],
+      "function": "harvest_specials",
+      "anchor": "if (ok)",
+      "condition": "ok -> check_keys(list,{default_cast}) / !ok",
+      "semantic": "The specials list has exactly one named key, default_cast; a typo like default_case stops the pack where it is written.",
+      "arms": [
+        {
+          "when": "only default_cast",
+          "observable": "accepted"
+        },
+        {
+          "when": "other named key",
+          "observable": "unknown key with suggestion"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_classpack_lua_decl.cpp",
+          "test": "LuaFamilyDeclTest.a_misspelled_default_cast_is_caught_where_it_is_written"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "family_decl.cpp:830",
+      "lines": [
+        828,
+        830,
+        835
+      ],
+      "function": "check_hook_types",
+      "anchor": "for (size_t i = 0; i < oi->hook_count; i++) {",
+      "condition": "for hooks / !has_field / !is_fn",
+      "semantic": "An inline hook (on_death = ..., etc.) declared on a family must be a function.",
+      "arms": [
+        {
+          "when": "absent",
+          "observable": "skipped"
+        },
+        {
+          "when": "function",
+          "observable": "accepted (dropped; bound later)"
+        },
+        {
+          "when": "other",
+          "observable": "'<hook>: a hook is a function'"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_classpack_lua_decl.cpp",
+          "test": "LuaFamilyDeclTest.an_inline_hook_of_the_wrong_type_is_a_load_error"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "family_decl.cpp:850",
+      "lines": [
+        850,
+        858
+      ],
+      "function": "req_int/req_number",
+      "anchor": "if (!has_field(h.L, tbl, key))",
+      "condition": "!has_field",
+      "semantic": "Every member of a stats/combat block (and costs.hire) is required once the block appears: no silent 0-armor class.",
+      "arms": [
+        {
+          "when": "member present",
+          "observable": "read"
+        },
+        {
+          "when": "missing",
+          "observable": "'missing '<key>''"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_classpack_lua_decl.cpp",
+          "test": "LuaFamilyDeclTest.a_named_block_must_spell_every_member"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "family_decl.cpp:872",
+      "lines": [
+        870,
+        872
+      ],
+      "function": "open_block",
+      "anchor": "if (!has_field(h.L, tbl, key))",
+      "condition": "!has_field / is table",
+      "semantic": "A named block (stats, combat, costs, costs.train) is a table or absent.",
+      "arms": [
+        {
+          "when": "absent",
+          "observable": "Absent: slot untouched"
+        },
+        {
+          "when": "table",
+          "observable": "Present"
+        },
+        {
+          "when": "other",
+          "observable": "'<key>: expected a table'"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_classpack_lua_decl.cpp",
+          "test": "LuaFamilyDeclTest.a_block_that_is_not_a_table_says_so"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "family_decl.cpp:884",
+      "lines": [
+        884,
+        905,
+        915,
+        930
+      ],
+      "function": "harvest_stats/harvest_combat",
+      "anchor": "if (state != BlockState::Present)",
+      "condition": "state != Present / !ok",
+      "semantic": "An absent stats/combat block leaves the slot's stats alone; a present one is key-checked first (so a misspelling reads 'unknown key ... did you mean') and then must spell every member.",
+      "arms": [
+        {
+          "when": "absent",
+          "observable": "out unset, ok"
+        },
+        {
+          "when": "bad",
+          "observable": "false"
+        },
+        {
+          "when": "present & complete",
+          "observable": "out filled"
+        },
+        {
+          "when": "misspelled",
+          "observable": "unknown key reported before missing"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_classpack_lua_decl.cpp",
+          "test": "LuaFamilyDeclTest.a_full_living_declaration_lands_every_block"
+        },
+        {
+          "file": "tests/unit/test_classpack_lua_decl.cpp",
+          "test": "LuaFamilyDeclTest.unknown_keys_inside_the_named_blocks_are_errors"
+        },
+        {
+          "file": "tests/unit/test_classpack_lua_decl.cpp",
+          "test": "LuaFamilyDeclTest.a_named_block_must_spell_every_member"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "family_decl.cpp:949",
+      "lines": [
+        942,
+        949,
+        952,
+        966,
+        969,
+        970,
+        973,
+        977,
+        981,
+        986
+      ],
+      "function": "harvest_costs",
+      "anchor": "if (state != BlockState::Present)",
+      "condition": "state / ok / train Present / members loop / value.has_value",
+      "semantic": "costs.hire is required; costs.train is optional and so is each of its axes, an unpriced axis costs 0.",
+      "arms": [
+        {
+          "when": "no costs",
+          "observable": "unset"
+        },
+        {
+          "when": "hire missing",
+          "observable": "'missing 'hire''"
+        },
+        {
+          "when": "train absent",
+          "observable": "costs.train unset"
+        },
+        {
+          "when": "train axis absent",
+          "observable": "axis 0"
+        },
+        {
+          "when": "train axis given",
+          "observable": "stored"
+        },
+        {
+          "when": "unknown axis",
+          "observable": "unknown key"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_classpack_lua_decl.cpp",
+          "test": "LuaFamilyDeclTest.costs_train_is_strict_about_its_axes"
+        },
+        {
+          "file": "tests/unit/test_classpack_lua_decl.cpp",
+          "test": "LuaFamilyDeclTest.a_full_living_declaration_lands_every_block"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "family_decl.cpp:1050",
+      "lines": [
+        1050,
+        1058
+      ],
+      "function": "harvest_living",
+      "anchor": "if (behavior.any_ai && has_field(h.L, tbl, \"check_special_ai\")) {",
+      "condition": "any_ai && check_special_ai / any_cast && do_special",
+      "semantic": "A family answers a question one way: per-slot ai and a family-level check_special_ai together, or per-slot cast/default_cast and a family-level do_special together, stop the pack.",
+      "arms": [
+        {
+          "when": "both ai forms",
+          "observable": "'two answers to the same question'"
+        },
+        {
+          "when": "both cast forms",
+          "observable": "'both answer the cast'"
+        },
+        {
+          "when": "one form",
+          "observable": "accepted"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_classpack_lua_decl.cpp",
+          "test": "LuaFamilyDeclTest.mixing_the_two_spellings_of_one_hook_is_an_error"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "family_decl.cpp:1067",
+      "lines": [
+        1067,
+        1109,
+        1137,
+        1162,
+        1188
+      ],
+      "function": "harvest_living / harvest_weapon / harvest_effect / harvest_treasure / harvest_generator",
+      "anchor": "for (const char* k :",
+      "condition": "for k in {<order's key list>} keys.push_back(k); append_hook_keys(oi, keys); check_keys(...)",
+      "semantic": "Each order accepts its OWN key vocabulary on top of the common keys (id, wire_id, name, sprite, animation, tuning, glyph*, radar_color, radar_jitter, radar_ping) and its own hook names: a key legal on one order is an 'unknown key' load error on another. living adds short_name, stats, combat, costs, specials, default_weapon, flags, init_ani_type, init_max_magicpoints, leaves_bloodspot, magic_damage_modifier, is_stationary, has_returning_weapon, is_undead, promotes_to, promotion_level_req, death_message, ai_line_of_sight, description, names, playable, playable_order; weapon adds fire_sound, skip_sit_notify, is_auto_attackable, flags, init_lifetime, init_ani_type, vz, gravity, sizez, can_drop_floors, hp, rally_radius, blocks_placement; effect adds loops_animation, creates_hit_effect, flags, radar_landmark, hp; treasure adds init_ignore, init_frame, radar_landmark, hp; generator adds default_weapon, has_lifetime, spawn_ani_type, clear_owner, editor_label, hp. So radar_landmark is effect/treasure only, rally_radius/blocks_placement weapon only, playable/stats/combat/costs/specials living only, init_ignore/init_frame treasure only, editor_label/spawn_ani_type/clear_owner generator only, and hp is NOT a living key (living hp lives in the combat block, with melee_damage, stepsize, fire_delay, fire_mp_cost).",
+      "arms": [
+        {
+          "when": "living declares a weapon/effect/treasure/generator-only key (e.g. radar_landmark, rally_radius, init_frame, editor_label, hp)",
+          "observable": "DeclareResult.ok == false, error contains \"unknown key '<k>'\" (radar_landmark case asserted)",
+          "asserted": true
+        },
+        {
+          "when": "weapon declares a living/treasure/generator-only key (e.g. playable, stats, radar_landmark, init_frame, editor_label)",
+          "observable": "!ok, \"unknown key '<k>'\"",
+          "asserted": false
+        },
+        {
+          "when": "effect declares a non-effect key (e.g. rally_radius, init_frame, playable, editor_label)",
+          "observable": "!ok, \"unknown key '<k>'\"; radar_landmark accepted and harvested",
+          "asserted": false
+        },
+        {
+          "when": "treasure declares a non-treasure key (e.g. flags, loops_animation, rally_radius, editor_label)",
+          "observable": "!ok, \"unknown key '<k>'\"; radar_landmark accepted and harvested",
+          "asserted": false
+        },
+        {
+          "when": "generator declares a non-generator key (e.g. flags, radar_landmark, playable, init_frame)",
+          "observable": "!ok, \"unknown key '<k>'\"",
+          "asserted": false
+        },
+        {
+          "when": "each order declares its own key",
+          "observable": "ok, field harvested into the order's entry",
+          "asserted": true
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_mode_bindings.cpp",
+          "test": "ModeBindings.radar_landmark_declares_on_treasure_and_fx_only",
+          "note": "radar_landmark accepted on treasure and effect, refused on living"
+        },
+        {
+          "file": "tests/unit/test_classpack_lua_decl.cpp",
+          "test": "LuaFamilyDeclTest.every_order_declares",
+          "note": "own-key acceptance"
+        }
+      ],
+      "missing_arms": [],
+      "note": [
+        "every other cross-order refusal: none"
+      ]
+    },
+    {
+      "id": "family_decl.cpp:1103",
+      "lines": [
+        1103
+      ],
+      "function": "harvest_weapon",
+      "anchor": "if (e.rally_radius && *e.rally_radius < 0)",
+      "condition": "e.rally_radius && *e.rally_radius < 0",
+      "semantic": "A weapon's rally radius is 0 (no rally) or positive; a negative radius is a load error.",
+      "arms": [
+        {
+          "when": "absent/>=0",
+          "observable": "accepted, value stored",
+          "asserted": true
+        },
+        {
+          "when": "<0",
+          "observable": "!ok, error contains 'rally_radius' (the exact 'cannot be negative (0 = no rally)' text is not asserted)",
+          "asserted": true
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_specials_view.cpp",
+          "test": "SpecialsView.declaration_keys_reject_junk",
+          "note": "rally_radius = -4 -> !ok, error contains 'rally_radius'; rally_radius = 96 -> ok, EXPECT_EQ(96, rally_radius)"
+        }
+      ],
+      "missing_arms": [],
+      "note": [
+        "the 0 boundary and the exact message text: none"
+      ]
+    },
+    {
+      "id": "family_decl.cpp:1208",
+      "lines": [
+        1202,
+        1206,
+        1208
+      ],
+      "function": "harvest_entry",
+      "anchor": "if (!has_field(h.L, tbl, \"id\"))",
+      "condition": "!has id / !take_string / no ':'",
+      "semantic": "Every declaration needs a string id of the form <pack>:<family>.",
+      "arms": [
+        {
+          "when": "missing",
+          "observable": "'a declaration needs an id'"
+        },
+        {
+          "when": "non-string",
+          "observable": "'.id: expected a string' naming the order"
+        },
+        {
+          "when": "no colon",
+          "observable": "'a family id is <pack>:<family>'"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_classpack_lua_decl.cpp",
+          "test": "LuaFamilyDeclTest.a_declaration_needs_a_qualified_id"
+        },
+        {
+          "file": "tests/unit/test_classpack_lua_decl.cpp",
+          "test": "LuaFamilyDeclTest.an_id_that_is_not_a_string_names_the_order_it_was_declaring"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "family_decl.cpp:1213",
+      "lines": [
+        1213,
+        1214,
+        1217,
+        1222,
+        1225,
+        1230,
+        1233,
+        1238,
+        1241,
+        1246,
+        1249
+      ],
+      "function": "harvest_entry",
+      "anchor": "switch (oi->order) {",
+      "condition": "switch (oi->order)",
+      "semantic": "Each order (living, weapon, fx/effect, treasure, generator) harvests into its own list with its own key set, and every successful declaration is recorded as Lua-declared provenance.",
+      "arms": [
+        {
+          "when": "living",
+          "observable": "out.living += entry"
+        },
+        {
+          "when": "weapon",
+          "observable": "out.weapons"
+        },
+        {
+          "when": "fx/effect",
+          "observable": "out.effects"
+        },
+        {
+          "when": "treasure",
+          "observable": "out.treasures"
+        },
+        {
+          "when": "generator",
+          "observable": "out.generators"
+        },
+        {
+          "when": "any reader failure",
+          "observable": "no entry, error"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_classpack_lua_decl.cpp",
+          "test": "LuaFamilyDeclTest.every_order_declares"
+        },
+        {
+          "file": "tests/unit/test_classpack_lua_decl.cpp",
+          "test": "LuaFamilyDeclTest.one_chunk_may_declare_many_families"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "family_decl.cpp:1292",
+      "lines": [
+        1274,
+        1277,
+        1279,
+        1287,
+        1292,
+        1295,
+        1301,
+        1304,
+        1308,
+        1312
+      ],
+      "function": "harvest_anim_set",
+      "anchor": "if (!opt_int(h, tbl, where, \"rows\", out.rows) ||",
+      "condition": "rows/keys / frames missing / not table / row false / row not table / frames ints",
+      "semantic": "og.anims declares named frame tables: rows is optional, frames is required and is a list whose rows are lists of whole frame indices or `false` for a null row.",
+      "arms": [
+        {
+          "when": "frames missing",
+          "observable": "'needs a frames list'"
+        },
+        {
+          "when": "frames not table",
+          "observable": "'expected a list of rows'"
+        },
+        {
+          "when": "row false",
+          "observable": "row.is_null"
+        },
+        {
+          "when": "row other",
+          "observable": "'a frame row is a list of frame indices, or false'"
+        },
+        {
+          "when": "frame non-int",
+          "observable": "whole-number error"
+        },
+        {
+          "when": "ok",
+          "observable": "rows harvested in order"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_classpack_lua_decl.cpp",
+          "test": "LuaFamilyDeclTest.an_anim_set_harvests_rows_holes_and_frames"
+        },
+        {
+          "file": "tests/unit/test_classpack_lua_decl.cpp",
+          "test": "LuaFamilyDeclTest.a_malformed_anim_set_is_a_load_error"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "family_decl.cpp:1343",
+      "lines": [
+        1331,
+        1337,
+        1339,
+        1341,
+        1343,
+        1347,
+        1348
+      ],
+      "function": "harvest_pack_header",
+      "anchor": "if (!opt_string(h, tbl, where, \"id\", id) ||",
+      "condition": "opt readers / has_value / joined.empty",
+      "semantic": "og.pack sets the pack id, version, title and authors; the last header wins per field; authors join as one 'A, B' line.",
+      "arms": [
+        {
+          "when": "field given",
+          "observable": "manifest field set"
+        },
+        {
+          "when": "absent",
+          "observable": "previous value kept"
+        },
+        {
+          "when": "authors list",
+          "observable": "joined with ', '"
+        },
+        {
+          "when": "bad type / unknown key",
+          "observable": "error"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_classpack_lua_decl.cpp",
+          "test": "LuaFamilyDeclTest.the_pack_header_fills_the_manifest_scalars"
+        },
+        {
+          "file": "tests/unit/test_classpack_lua_decl.cpp",
+          "test": "LuaFamilyDeclTest.the_pack_header_is_strict_too"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "family_decl.cpp:1406",
+      "lines": [
+        1385,
+        1406
+      ],
+      "function": "push_declared_set/take_declared_hook",
+      "anchor": "if (lua_istable(L, -1))",
+      "condition": "declared set is table",
+      "semantic": "og.register_hooks may override a hook an og.family declaration bound exactly once without a duplicate report; the second override of the same hook is reported.",
+      "arms": [
+        {
+          "when": "first override of declared hook",
+          "observable": "no duplicate warning"
+        },
+        {
+          "when": "second override",
+          "observable": "duplicate reported"
+        },
+        {
+          "when": "no declaration",
+          "observable": "take returns false"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_classpack_lua_bind.cpp",
+          "test": "LuaFamilyBindTest.register_hooks_overrides_a_declaration_quietly"
+        },
+        {
+          "file": "tests/unit/test_classpack_lua_bind.cpp",
+          "test": "LuaFamilyBindTest.a_second_override_of_one_hook_is_still_reported"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "family_decl.cpp:1454",
+      "lines": [
+        1451,
+        1454
+      ],
+      "function": "per_special_ai",
+      "anchor": "(self != nullptr) ? static_cast<lua_Integer>(self->current_special())",
+      "condition": "self ? current_special : 0 / slot fn missing",
+      "semantic": "Per-slot ai sugar asks only the function declared for the special currently selected; a slot with none (or no walker) answers true, as if no hook existed.",
+      "arms": [
+        {
+          "when": "slot has ai",
+          "observable": "that fn's result",
+          "asserted": true
+        },
+        {
+          "when": "slot has no ai",
+          "observable": "true, no other slot's fn called",
+          "asserted": true
+        },
+        {
+          "when": "nil self",
+          "observable": "slot 0 -> true",
+          "asserted": true
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_classpack_lua_bind.cpp",
+          "test": "LuaFamilyBindTest.per_slot_ai_answers_for_the_slot_being_cast"
+        },
+        {
+          "file": "tests/unit/test_classpack_lua_bind.cpp",
+          "test": "LuaFamilyBindTest.per_entry_ai_lowers_to_one_family_level_hook",
+          "note": "nil-self arm: check_special_ai(fd, nullptr) -> has_value, true, lines 387-390"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "family_decl.cpp:1475",
+      "lines": [
+        1475
+      ],
+      "function": "bind_one_hook",
+      "anchor": "if (occupied)",
+      "condition": "occupied",
+      "semantic": "Two declarations of the same hook for one family report a duplicate and the later one wins.",
+      "arms": [
+        {
+          "when": "slot empty",
+          "observable": "bound silently"
+        },
+        {
+          "when": "slot occupied",
+          "observable": "duplicate reported, later fn installed"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_classpack_lua_bind.cpp",
+          "test": "LuaFamilyBindTest.two_declarations_of_one_hook_report_and_the_later_wins"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "family_decl.cpp:1518",
+      "lines": [
+        1513,
+        1515,
+        1518
+      ],
+      "function": "bind_specials",
+      "anchor": "if (lua_istable(L, entry))",
+      "condition": "entry is table / id == nullptr",
+      "semantic": "A chunk that hands the bind pass a specials entry without an id (it branched on the declare-time placeholder) is a load error, never a silently uncast special.",
+      "arms": [
+        {
+          "when": "entry has id",
+          "observable": "joined"
+        },
+        {
+          "when": "no id",
+          "observable": "raise 'has no id in the bind pass'"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [],
+      "missing_arms": [],
+      "note": [
+        "tests/unit/test_script_hooks.cpp: grep 'no id in the bind pass'"
+      ]
+    },
+    {
+      "id": "family_decl.cpp:1535",
+      "lines": [
+        1535
+      ],
+      "function": "bind_specials",
+      "anchor": "if (slot < 0) {",
+      "condition": "slot < 0",
+      "semantic": "A cast joins its special by declared id; an id the installed family lacks is a load error naming the ids it has.",
+      "arms": [
+        {
+          "when": "id found",
+          "observable": "slot index"
+        },
+        {
+          "when": "not found",
+          "observable": "raise 'names no slot ... (declared ids: ...)'"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_classpack_lua_bind.cpp",
+          "test": "LuaFamilyBindTest.a_special_id_the_family_lacks_names_the_ids_it_has"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "family_decl.cpp:1544",
+      "lines": [
+        1544,
+        1551,
+        1558
+      ],
+      "function": "bind_specials",
+      "anchor": "if (lua_isfunction(L, -1)) {",
+      "condition": "cast is function / cast == false / else",
+      "semantic": "Each slot's cast lands on the slot its id names; `cast = false` is stored as a handler so the default_cast does not catch it and the unhandled-special warning stays silent; no cast leaves the slot to default_cast.",
+      "arms": [
+        {
+          "when": "function",
+          "observable": "casts[slot]=fn"
+        },
+        {
+          "when": "false",
+          "observable": "casts[slot]=false (charged no-op)"
+        },
+        {
+          "when": "absent",
+          "observable": "unhandled -> default_cast or warning"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_classpack_lua_bind.cpp",
+          "test": "LuaFamilyBindTest.a_cast_lands_on_the_slot_its_id_names"
+        },
+        {
+          "file": "tests/unit/test_classpack_lua_bind.cpp",
+          "test": "LuaFamilyBindTest.cast_false_is_a_handler_and_silences_the_rule"
+        },
+        {
+          "file": "tests/unit/test_classpack_lua_bind.cpp",
+          "test": "LuaFamilyBindTest.cast_false_beats_the_default_for_its_own_slot"
+        },
+        {
+          "file": "tests/unit/test_classpack_lua_bind.cpp",
+          "test": "LuaFamilyBindTest.an_unhandled_castable_special_warns_unless_declared"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "family_decl.cpp:1562",
+      "lines": [
+        1562,
+        1570
+      ],
+      "function": "bind_specials",
+      "anchor": "if (lua_isfunction(L, -1)) {",
+      "condition": "ai is function",
+      "semantic": "A per-entry ai function is filed under its slot.",
+      "arms": [
+        {
+          "when": "function",
+          "observable": "ais[slot]=fn"
+        },
+        {
+          "when": "absent",
+          "observable": "none"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_classpack_lua_bind.cpp",
+          "test": "LuaFamilyBindTest.per_slot_ai_answers_for_the_slot_being_cast"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "family_decl.cpp:1577",
+      "lines": [
+        1577,
+        1583
+      ],
+      "function": "bind_specials",
+      "anchor": "if (lua_isfunction(L, -1)) {",
+      "condition": "default_cast is function",
+      "semantic": "specials.default_cast answers every slot not otherwise handled.",
+      "arms": [
+        {
+          "when": "function",
+          "observable": "casts.default=fn"
+        },
+        {
+          "when": "absent",
+          "observable": "none"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_classpack_lua_bind.cpp",
+          "test": "LuaFamilyBindTest.a_default_cast_answers_every_slot"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "family_decl.cpp:1587",
+      "lines": [
+        1587,
+        1594
+      ],
+      "function": "bind_specials",
+      "anchor": "if (ai_count > 0) {",
+      "condition": "ai_count > 0 / cast_count > 0",
+      "semantic": "Per-slot ai and casts lower into ONE family-level check_special_ai / do_special hook, bound only if any were declared.",
+      "arms": [
+        {
+          "when": "any ai",
+          "observable": "CheckSpecialAi bound"
+        },
+        {
+          "when": "any cast/default",
+          "observable": "DoSpecial bound"
+        },
+        {
+          "when": "none",
+          "observable": "no hook bound"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_classpack_lua_bind.cpp",
+          "test": "LuaFamilyBindTest.per_entry_ai_lowers_to_one_family_level_hook"
+        },
+        {
+          "file": "tests/unit/test_classpack_lua_bind.cpp",
+          "test": "LuaFamilyBindTest.a_cast_lands_on_the_slot_its_id_names"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "family_decl.cpp:1616",
+      "lines": [
+        1609,
+        1616
+      ],
+      "function": "bind_family",
+      "anchor": "if (id == nullptr)",
+      "condition": "id == nullptr / family_id < 0",
+      "semantic": "The bind pass needs the same id and an installed family: a dropped id or a family the install never created is a load error, not hooks bound into a void.",
+      "arms": [
+        {
+          "when": "no id",
+          "observable": "'a declaration needs an id'"
+        },
+        {
+          "when": "not installed",
+          "observable": "'no such family is installed'"
+        },
+        {
+          "when": "ok",
+          "observable": "bound"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_script_hooks.cpp",
+          "test": "ScriptHooksTest.bind_pass_refuses_a_declaration_that_drops_its_id"
+        },
+        {
+          "file": "tests/unit/test_classpack_lua_bind.cpp",
+          "test": "LuaFamilyBindTest.binding_a_family_nothing_installed_is_a_load_error"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "family_decl.cpp:1634",
+      "lines": [
+        1631,
+        1634,
+        1641
+      ],
+      "function": "bind_family",
+      "anchor": "for (size_t i = 0; i < oi->hook_count; i++) {",
+      "condition": "for hooks / !lua_isfunction / order == Living",
+      "semantic": "Inline hook functions on a declaration bind in every world VM; only living families bind specials.",
+      "arms": [
+        {
+          "when": "hook function",
+          "observable": "bound and dispatched"
+        },
+        {
+          "when": "absent",
+          "observable": "skipped"
+        },
+        {
+          "when": "living",
+          "observable": "specials bound"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_classpack_lua_bind.cpp",
+          "test": "LuaFamilyBindTest.an_inline_hook_binds_and_dispatches"
+        },
+        {
+          "file": "tests/unit/test_classpack_lua_bind.cpp",
+          "test": "LuaFamilyBindTest.binding_never_writes_to_the_registry"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "family_decl.cpp:1663",
+      "lines": [
+        1663
+      ],
+      "function": "require_families_chunk",
+      "anchor": "if (st != nullptr && st->current_chunk == ChunkKind::Family)",
+      "condition": "current_chunk == Family",
+      "semantic": "og.family/og.anims/og.pack only work from packs/<id>/families/*.lua; anywhere else (including lib modules) is a load error.",
+      "arms": [
+        {
+          "when": "families chunk",
+          "observable": "proceeds"
+        },
+        {
+          "when": "other chunk",
+          "observable": "raise 'only a packs/<id>/families/*.lua chunk may declare'"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_classpack_lua_bind.cpp",
+          "test": "LuaFamilyBindTest.declaring_outside_families_is_a_load_error"
+        },
+        {
+          "file": "tests/unit/test_classpack_lua_bind.cpp",
+          "test": "LuaFamilyBindTest.anims_and_pack_headers_are_families_only_too"
+        },
+        {
+          "file": "tests/unit/test_classpack_lua_bind.cpp",
+          "test": "LuaFamilyBindTest.declaring_inside_a_lib_module_is_a_load_error"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "family_decl.cpp:1675",
+      "lines": [
+        1675,
+        1676,
+        1700,
+        1701,
+        1716
+      ],
+      "function": "og_family / og_anims / og_pack",
+      "anchor": "{",
+      "condition": "luaL_checkstring(L,1); luaL_checktype(L,2,LUA_TTABLE) / luaL_checklstring; luaL_checktype / luaL_checktype(L,1,LUA_TTABLE)",
+      "semantic": "og.family(order, table) and og.anims(name, table) take a string then a table, og.pack(table) a table; a wrong-shaped call is a Lua 'bad argument' load error. A number order coerces to its text (og.family(5, {...}) -> order '5') and falls into the unknown-order arm of family_decl.cpp:1681.",
+      "arms": [
+        {
+          "when": "og.family('living', 'x') or og.family('living')",
+          "observable": "!ok, error contains 'bad argument #2' and 'table expected'"
+        },
+        {
+          "when": "og.family(5, {...})",
+          "observable": "!ok, \"unknown order '5'\""
+        },
+        {
+          "when": "og.anims('x', 3)",
+          "observable": "!ok, 'bad argument #2', 'table expected'"
+        },
+        {
+          "when": "og.pack(7)",
+          "observable": "!ok, 'bad argument #1', 'table expected'"
+        },
+        {
+          "when": "right shape",
+          "observable": "proceeds"
+        }
+      ],
+      "setting": "none",
+      "status": "none",
+      "tests": [],
+      "missing_arms": [],
+      "note": [
+        "the 'bad argument' assertions at test_classpack_lua_decl.cpp:884-886 are for og.register_level_hooks, not these"
+      ]
+    },
+    {
+      "id": "family_decl.cpp:1681",
+      "lines": [
+        1681
+      ],
+      "function": "og_family",
+      "anchor": "if (oi == nullptr)",
+      "condition": "oi == nullptr",
+      "semantic": "og.family's order is one of living, weapon, treasure, generator, fx/effect.",
+      "arms": [
+        {
+          "when": "known",
+          "observable": "proceeds"
+        },
+        {
+          "when": "unknown",
+          "observable": "'unknown order ... (living, weapon, effect, treasure, generator)'"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_classpack_lua_decl.cpp",
+          "test": "LuaFamilyDeclTest.an_unknown_order_names_the_five_that_exist"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "family_decl.cpp:1684",
+      "lines": [
+        1684,
+        1706,
+        1721
+      ],
+      "function": "og_family/og_anims/og_pack",
+      "anchor": "if (st->mode != VmMode::Declare) {",
+      "condition": "st->mode != VmMode::Declare",
+      "semantic": "Declaration data installs once from the declaration pass; in a world VM the same og.family call binds behaviour only and og.anims/og.pack do nothing.",
+      "arms": [
+        {
+          "when": "declare VM",
+          "observable": "harvest data",
+          "asserted": true
+        },
+        {
+          "when": "world VM",
+          "observable": "bind_family / no-op (bind asserted; og.anims/og.pack no-op in the world VM asserted nowhere)",
+          "asserted": false
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_classpack_lua_bind.cpp",
+          "test": "LuaFamilyBindTest.binding_never_writes_to_the_registry"
+        }
+      ],
+      "missing_arms": [],
+      "note": [
+        "world-VM og.anims/og.pack no-op arm: executed-only"
+      ]
+    },
+    {
+      "id": "family_decl.cpp:1783",
+      "lines": [
+        1783
+      ],
+      "function": "lua_declared_family_pack",
+      "anchor": "return hit == map.end() ? nullptr : &hit->second;",
+      "condition": "hit == end",
+      "semantic": "The installer remembers which pack declared each (order, family byte) in Lua; unknown slots answer none.",
+      "arms": [
+        {
+          "when": "declared",
+          "observable": "pack id"
+        },
+        {
+          "when": "not declared",
+          "observable": "nullptr"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [],
+      "missing_arms": [],
+      "note": [
+        "tests/unit/test_classpack_lua_install.cpp (lua_declared_family_pack)"
+      ]
+    },
+    {
+      "id": "family_decl.cpp:1801",
+      "lines": [
+        1795,
+        1796,
+        1801
+      ],
+      "function": "declare_pack_families",
+      "anchor": "for (const PackScript& chunk : pack_family_chunks()) {",
+      "condition": "any chunk for pack",
+      "semantic": "A pack with no family chunks is declared ok without starting a VM.",
+      "arms": [
+        {
+          "when": "no chunks",
+          "observable": "{ok, ''}, data untouched"
+        },
+        {
+          "when": "chunks",
+          "observable": "VM pass"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_classpack_lua_decl.cpp",
+          "test": "LuaFamilyDeclTest.a_pack_with_no_family_chunks_costs_nothing"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "family_decl.cpp:1828",
+      "lines": [
+        1825,
+        1826,
+        1828,
+        1834
+      ],
+      "function": "declare_pack_families",
+      "anchor": "for (const PackScript& chunk : pack_family_chunks()) {",
+      "condition": "chunk for pack / run ok / errors.empty",
+      "semantic": "One family file that fails rejects the whole pack (no half packs); the error is the last recorded error, or 'chunk <name> failed to load' when none was recorded.",
+      "arms": [
+        {
+          "when": "all chunks ok",
+          "observable": "ok",
+          "asserted": true
+        },
+        {
+          "when": "a chunk fails",
+          "observable": "ok=false, later chunks not run",
+          "asserted": true
+        },
+        {
+          "when": "no error recorded",
+          "observable": "\"chunk '<name>' failed to load\"",
+          "asserted": false
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_classpack_lua_decl.cpp",
+          "test": "LuaFamilyDeclTest.one_bad_chunk_rejects_the_whole_pack",
+          "note": "ok=false, v3:never not harvested"
+        },
+        {
+          "file": "tests/unit/test_classpack_lua_decl.cpp",
+          "test": "LuaFamilyDeclTest.a_chunk_that_does_not_compile_is_named",
+          "note": "error names the chunk; whether via fallback text unasserted"
+        }
+      ],
+      "missing_arms": [],
+      "note": [
+        "fallback \"chunk '<name>' failed to load\" arm: executed-only"
+      ]
+    }
+  ],
+  "other": [
+    {
+      "id": "family_decl.cpp:249",
+      "lines": [
+        249,
+        251,
+        254
+      ],
+      "kind": "plumbing",
+      "anchor": "if (!has_field(h.L, tbl, key))",
+      "note": "opt_field: composes has_field (226), reject_og_nil (237) and the typed reader; see those rows"
+    },
+    {
+      "id": "family_decl.cpp:302",
+      "lines": [
+        302,
+        304,
+        307
+      ],
+      "kind": "plumbing",
+      "anchor": "if (!has_field(h.L, tbl, key))",
+      "note": "opt_string_list: composes has_field, reject_og_nil and take_string_list (198)"
+    },
+    {
+      "id": "family_decl.cpp:371",
+      "lines": [
+        371,
+        373,
+        376
+      ],
+      "kind": "loop",
+      "anchor": "for (size_t j = 0; j <= b.size(); j++)",
+      "note": "did_you_mean: Levenshtein rolling-row loops; the rule is did_you_mean row family_decl.cpp:396"
+    },
+    {
+      "id": "family_decl.cpp:466",
+      "lines": [
+        466,
+        474
+      ],
+      "kind": "plumbing",
+      "anchor": "if (!opt_string(h, tbl, where, \"glyph\", p.glyph) ||",
+      "note": "harvest_presentation: chain of optional readers; radar_color presence then take_radar_color (442)"
+    },
+    {
+      "id": "family_decl.cpp:729",
+      "lines": [
+        729,
+        742
+      ],
+      "kind": "loop",
+      "anchor": "for (lua_Integer i = 1; ok && i <= n; i++) {",
+      "note": "harvest_specials entry loop and its failure break; rules in rows 733, 745, 752, 754, 768"
+    },
+    {
+      "id": "family_decl.cpp:818",
+      "lines": [
+        818
+      ],
+      "kind": "loop",
+      "anchor": "for (size_t i = 0; i < oi->hook_count; i++)",
+      "note": "append_hook_keys: iteration over the order's hook names"
+    },
+    {
+      "id": "family_decl.cpp:1002",
+      "lines": [
+        1002
+      ],
+      "kind": "loop",
+      "anchor": "for (const char* k :",
+      "note": "append_common_keys: iteration"
+    },
+    {
+      "id": "family_decl.cpp:1017",
+      "lines": [
+        1017
+      ],
+      "kind": "plumbing",
+      "anchor": "if (!opt_wire_id(h, tbl, where, e.wire_id) ||",
+      "note": "harvest_living: chain of field readers, each rule in its own row"
+    },
+    {
+      "id": "family_decl.cpp:1082",
+      "lines": [
+        1082
+      ],
+      "kind": "plumbing",
+      "anchor": "if (!opt_wire_id(h, tbl, where, e.wire_id) ||",
+      "note": "harvest_weapon: chain of field readers"
+    },
+    {
+      "id": "family_decl.cpp:1121",
+      "lines": [
+        1121
+      ],
+      "kind": "plumbing",
+      "anchor": "if (!opt_wire_id(h, tbl, where, e.wire_id) ||",
+      "note": "harvest_effect: chain of field readers (radar_landmark accepted on fx; ModeBindings.radar_landmark_declares_on_treasure_and_fx_only)"
+    },
+    {
+      "id": "family_decl.cpp:1147",
+      "lines": [
+        1147
+      ],
+      "kind": "plumbing",
+      "anchor": "if (!opt_wire_id(h, tbl, where, e.wire_id) ||",
+      "note": "harvest_treasure: chain of field readers"
+    },
+    {
+      "id": "family_decl.cpp:1172",
+      "lines": [
+        1172
+      ],
+      "kind": "plumbing",
+      "anchor": "if (!opt_wire_id(h, tbl, where, e.wire_id) ||",
+      "note": "harvest_generator: chain of field readers"
+    },
+    {
+      "id": "family_decl.cpp:1254",
+      "lines": [
+        1254
+      ],
+      "kind": "defensive",
+      "anchor": "default:",
+      "note": "harvest_entry default: unreachable through og.family — find_order (world_scripts.cpp:98) only yields the five orders"
+    },
+    {
+      "id": "family_decl.cpp:1431",
+      "lines": [
+        1431
+      ],
+      "kind": "plumbing",
+      "anchor": "if (lua_istable(L, -1))",
+      "note": "push_family_hook_table: create-on-demand of the per-family hook table"
+    },
+    {
+      "id": "family_decl.cpp:1478",
+      "lines": [
+        1478,
+        1545,
+        1563,
+        1578
+      ],
+      "kind": "test-only",
+      "anchor": "if (coverage::enabled())",
+      "note": "coverage::enabled() — Lua coverage-gate hook registration only"
+    },
+    {
+      "id": "family_decl.cpp:1483",
+      "lines": [
+        1483
+      ],
+      "kind": "defensive",
+      "anchor": "if (st->owner != nullptr)",
+      "note": "st->owner null in a hostless VM; note_hook bookkeeping"
+    },
+    {
+      "id": "family_decl.cpp:1496",
+      "lines": [
+        1496
+      ],
+      "kind": "plumbing",
+      "anchor": "if (!lua_istable(L, -1)) {",
+      "note": "bind_specials: family without a specials list binds no casts"
+    },
+    {
+      "id": "family_decl.cpp:1510",
+      "lines": [
+        1510
+      ],
+      "kind": "loop",
+      "anchor": "for (lua_Integer i = 1; i <= n; i++) {",
+      "note": "bind_specials entry loop; rules in rows 1518, 1535, 1544, 1562"
+    },
+    {
+      "id": "family_decl.cpp:1694",
+      "lines": [
+        1694,
+        1710,
+        1724
+      ],
+      "kind": "plumbing",
+      "anchor": "if (!harvest_entry(h, oi, 2, *st->harvest))",
+      "note": "harvest failure -> one lua error at the call site (raise_harvest_error); asserted indirectly by every expect_rejected test"
+    }
+  ]
+}

@@ -1,0 +1,175 @@
+{
+  "path": "packs/core/lib/effect_ghost_scare.lua",
+  "rules": [
+    {
+      "id": "effect_ghost_scare.lua:16",
+      "lines": [
+        16
+      ],
+      "function": "on_act (core:ghost_scare)",
+      "anchor": "if owner then",
+      "condition": "if owner",
+      "semantic": "A ghost's scare cloud rides its caster for its whole life (re-centred each tick); without an owner it stays where it is; either way it then animates and expires by the default effect path.",
+      "arms": [
+        {
+          "when": "owner present",
+          "observable": "cloud centre == owner centre after the act"
+        },
+        {
+          "when": "no owner",
+          "observable": "position unchanged"
+        },
+        {
+          "when": "both",
+          "observable": "on_act returns false (default animate/die)"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_effect_act.cpp",
+          "test": "EffectAct.ghost_scare_rides_its_caster_then_expires"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "effect_ghost_scare.lua:28",
+      "lines": [
+        28
+      ],
+      "function": "on_death (core:ghost_scare)",
+      "anchor": "if not owner or owner:dead() ~= 0 then",
+      "condition": "not owner or owner:dead() ~= 0",
+      "semantic": "A scare whose ghost has died (or is gone) expires harmlessly: nobody is frightened.",
+      "arms": [
+        {
+          "when": "owner dead/missing",
+          "observable": "no forced commands on foes; returns false"
+        },
+        {
+          "when": "owner alive",
+          "observable": "fright applied"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": []
+    },
+    {
+      "id": "effect_ghost_scare.lua:37",
+      "lines": [
+        37
+      ],
+      "function": "on_death (core:ghost_scare)",
+      "anchor": "if foe_count < 1 then",
+      "condition": "foe_count < 1",
+      "semantic": "A scare with no foe within the caster's scare radius (50 + 10 per level, capped at 250 px) does nothing and draws nothing.",
+      "arms": [
+        {
+          "when": "no foe in radius",
+          "observable": "returns false; RNG untouched",
+          "asserted": false
+        },
+        {
+          "when": "foes in radius",
+          "observable": "loop over them",
+          "asserted": true
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [
+        {
+          "file": "tests/integration/test_effect_act.cpp",
+          "test": "EffectAct.effect_death_ghost_scare_frights_only_foes_in_radius",
+          "note": "foes-in-radius arm: in-range foe frightened, ally and 200 px foe not"
+        },
+        {
+          "parity": "ghost_scare_no_foe_scen99",
+          "fact": "WalkerOfOrderFamilyCount(FAMILY_GHOST_SCARE,FX,1,1) (about the cast summoning a carrier; at tick 22 the carrier is alive, its on_death never runs: does NOT assert this arm)"
+        }
+      ],
+      "missing_arms": [],
+      "note": [
+        "The no-foe arm (on_death returns false, rng_.state_ untouched) is unasserted."
+      ]
+    },
+    {
+      "id": "effect_ghost_scare.lua:43",
+      "lines": [
+        43
+      ],
+      "function": "on_death (core:ghost_scare)",
+      "anchor": "if foe and foe:order() == C.ORDER_LIVING then",
+      "condition": "foe and foe:order() == C.ORDER_LIVING",
+      "semantic": "A scare frightens living foes only (never a generator or a weapon), each fleeing directly away from the cloud (sign of dx, dy).",
+      "arms": [
+        {
+          "when": "living foe in radius",
+          "observable": "s_force_fright(duration, sign(foe-cloud)) : a forced WALK command at the queue front with that direction"
+        },
+        {
+          "when": "non-living foe (generator)",
+          "observable": "untouched"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_effect_death_more.cpp",
+          "test": "EffectDeathMore.effect_death_ghost_scare_forces_walk_commands_on_foes",
+          "note": "direction, forced WALK, L5 = 125"
+        },
+        {
+          "parity": "effect_ghost_scare_emission_scen99",
+          "fact": "WalkerPositionMoved soldier past x=240"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "effect_ghost_scare.lua:50",
+      "lines": [
+        50,
+        54
+      ],
+      "function": "on_death (core:ghost_scare)",
+      "anchor": "if foe:has_guy() then",
+      "condition": "foe:has_guy() / fright > 0",
+      "semantic": "A hero resists a scare by a constitution roll (rand0(con) ticks off the fright, one draw per hero, none for monsters); a hero who resists it entirely (fright <= 0) does not flee at all.",
+      "arms": [
+        {
+          "when": "monster foe",
+          "observable": "fright = scare_duration(level) (L5: 125), no draw"
+        },
+        {
+          "when": "hero foe",
+          "observable": "one rand0(constitution) draw; fright reduced by it"
+        },
+        {
+          "when": "fright <= 0 after the roll",
+          "observable": "no command queued"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": []
+    }
+  ],
+  "other": [
+    {
+      "id": "effect_ghost_scare.lua:41",
+      "lines": [
+        41
+      ],
+      "kind": "loop",
+      "anchor": "for i = 1, #foes do",
+      "note": "iterates the scare's foe list; rules at effect_ghost_scare.lua:43, :50, :54"
+    }
+  ]
+}

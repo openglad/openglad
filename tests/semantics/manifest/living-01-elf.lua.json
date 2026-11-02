@@ -1,0 +1,509 @@
+{
+  "path": "packs/core/families/living-01-elf.lua",
+  "rules": [
+    {
+      "id": "living-01-elf.lua:19",
+      "lines": [
+        19
+      ],
+      "function": "some_rocks (ROCKS, slot 1)",
+      "anchor": "if gf.pad_blocked_by_terrain(self) then",
+      "condition": "gf.pad_blocked_by_terrain(self)",
+      "semantic": "Gameplay Fixes AC: when the rock's launch pad is refused by terrain (wall face, map edge; not a tree crown, not water) the volley is refused 'COULD NOT FIRE' before any refund or swing: it costs nothing. Classic: the cast refunds 2 weapon costs, fire() fails and the one swing is still paid. A body on the pad is not 'terrain' and keeps the paid swing (fixes H/I). Same rule as :54.",
+      "arms": [
+        {
+          "when": "pad on wall/edge, setting on",
+          "observable": "special() false 'COULD NOT FIRE'; MP unchanged (special cost not charged); no rock; busy unchanged"
+        },
+        {
+          "when": "pad on wall/edge, setting off",
+          "observable": "special() false 'COULD NOT FIRE'; MP net reflects the refund + swing (see :25)"
+        },
+        {
+          "when": "pad on tree crown",
+          "observable": "rocks fly (forestwalk)"
+        }
+      ],
+      "setting": "both",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_gameplay_fixes_elf.cpp",
+          "test": "GameplayFixesElf.a_volley_at_a_wall_spends_nothing_with_the_setting_on"
+        },
+        {
+          "file": "tests/integration/test_gameplay_fixes_elf.cpp",
+          "test": "GameplayFixesElf.a_volley_at_the_map_edge_spends_nothing"
+        },
+        {
+          "file": "tests/integration/test_gameplay_fixes_elf.cpp",
+          "test": "GameplayFixesElf.a_tree_crown_on_the_pad_lets_the_rocks_fly"
+        },
+        {
+          "parity": "elf_rocks_blocked_scen99",
+          "fact": "_fixes_scen99, elf_rocks_edge_pad_scen99 / _fixes_scen99"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-01-elf.lua:25",
+      "lines": [
+        25,
+        26
+      ],
+      "function": "some_rocks",
+      "anchor": "if not rock then",
+      "condition": "not rock (first fire failed) / if gf.on()",
+      "semantic": "ROCKS pre-refunds two weapon costs so its two rocks are free beyond the slot price; if the first rock cannot be fired the cast fails 'COULD NOT FIRE'. Classic keeps the 2-rock refund even though none flew (net MP gain over the swing); Gameplay Fixes takes both back.",
+      "arms": [
+        {
+          "when": "first fire nil, setting off",
+          "observable": "false 'COULD NOT FIRE'; MP = start + 2*wc - (one swing wc)"
+        },
+        {
+          "when": "first fire nil, setting on",
+          "observable": "false; MP = start - one swing (take_back 2)"
+        },
+        {
+          "when": "first fire ok",
+          "observable": "spread multiplier applied; second fire"
+        }
+      ],
+      "setting": "both",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_gameplay_fixes_elf.cpp",
+          "test": "GameplayFixesElf.a_blocked_volley_costs_one_swing"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-01-elf.lua:36",
+      "lines": [
+        36,
+        37
+      ],
+      "function": "some_rocks",
+      "anchor": "if not rock then",
+      "condition": "not rock (second fire failed) / if gf.on()",
+      "semantic": "If the first rock flew but the second cannot, ROCKS reports 'COULD NOT FIRE' (one rock in the air). Classic keeps the refund for the second rock; Gameplay Fixes takes one weapon cost back.",
+      "arms": [
+        {
+          "when": "second fire nil, setting off",
+          "observable": "false; 1 rock in flight; MP net 0 relative to the 2-rock refund minus swings"
+        },
+        {
+          "when": "second fire nil, setting on",
+          "observable": "false; 1 rock; MP -wc relative to off"
+        },
+        {
+          "when": "both fired",
+          "observable": "true; 2 rocks, each lastx/lasty scaled by 0.8..1.2 cosmetic spread"
+        }
+      ],
+      "setting": "both",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_gameplay_fixes_elf.cpp",
+          "test": "GameplayFixesElf.rocks_take_back_the_second_rock_that_never_flew"
+        },
+        {
+          "parity": "elf_rocks_pair_scen99",
+          "fact": "",
+          "note": "two rocks  both connect"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-01-elf.lua:54",
+      "lines": [
+        54
+      ],
+      "function": "bounce_volley (BOUNCING/LOTS OF/MEGA ROCKS)",
+      "anchor": "if gf.pad_blocked_by_terrain(self) then",
+      "condition": "gf.pad_blocked_by_terrain(self)",
+      "semantic": "Same rule as :19 for the bouncing volleys: a terrain-blocked pad refuses free with the setting on.",
+      "arms": [
+        {
+          "when": "terrain pad, on",
+          "observable": "false 'COULD NOT FIRE'; MP unchanged; no rocks"
+        },
+        {
+          "when": "terrain pad, off",
+          "observable": "false; classic refund/swing arithmetic"
+        }
+      ],
+      "setting": "both",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_gameplay_fixes_elf.cpp",
+          "test": "GameplayFixesElf.a_volley_at_a_wall_spends_nothing_with_the_setting_on",
+          "note": "iterates slots"
+        },
+        {
+          "parity": "elf_rocks_blocked_fixes_scen99",
+          "fact": ""
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-01-elf.lua:58",
+      "lines": [
+        58
+      ],
+      "function": "bounce_volley",
+      "anchor": "if gf.on() then",
+      "condition": "if gf.on() then refund = count",
+      "semantic": "Classic bouncing volleys refund cost_mult weapon costs (3/4/5) while firing only count rocks (2/3/4): each volley over-refunds one rock (net MP gain). Gameplay Fixes refunds exactly the rocks that fly.",
+      "arms": [
+        {
+          "when": "setting off",
+          "observable": "MP after cast = start - slot cost + cost_mult*wc - count*wc (i.e. +1 wc extra)"
+        },
+        {
+          "when": "setting on",
+          "observable": "MP after = start - slot cost (refund == rocks fired)"
+        }
+      ],
+      "setting": "both",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_gameplay_fixes_elf.cpp",
+          "test": "GameplayFixesElf.volleys_refund_exactly_the_rocks_fired"
+        },
+        {
+          "parity": "elf_volley_refund_scen99",
+          "fact": "elf_volley_refund_fixes_scen99"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-01-elf.lua:65",
+      "lines": [
+        65
+      ],
+      "function": "bounce_volley",
+      "anchor": "for i = 1, count do",
+      "condition": "for i = 1, count",
+      "semantic": "A bouncing volley releases `count` rocks (2/3/4 for slots 2/3/4 and any unmapped slot), each with do_bounce set and line of sight multiplied by los_num/2 (x1.5, x2, x2.5), each with an independent 0.8-1.2 cosmetic speed spread.",
+      "arms": [
+        {
+          "when": "each release",
+          "observable": "rock in weaplist with do_bounce==1 and lineofsight == base*los_num//2"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.elf_bouncing_rocks_drives_simulation",
+          "note": "/ elf_lots_of_rocks / elf_mega_rocks"
+        },
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.elf_rock_barrage_level4_deterministic_spread"
+        },
+        {
+          "parity": "elf_mega_rocks_volley_scen99",
+          "fact": ""
+        },
+        {
+          "parity": "weapon_rock_bounce_edge_scen99",
+          "fact": ""
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-01-elf.lua:67",
+      "lines": [
+        67,
+        68
+      ],
+      "function": "bounce_volley",
+      "anchor": "if not rock then",
+      "condition": "not rock / if gf.on() then take_back(count - i + 1)",
+      "semantic": "When a volley's i-th rock cannot be fired the cast stops 'COULD NOT FIRE' with the earlier rocks still flying. Classic keeps the whole refund; Gameplay Fixes takes back the count-i+1 rocks that never flew.",
+      "arms": [
+        {
+          "when": "i-th fire nil, off",
+          "observable": "false; i-1 rocks; MP keeps full refund"
+        },
+        {
+          "when": "i-th fire nil, on",
+          "observable": "false; i-1 rocks; MP -= (count-i+1)*wc"
+        },
+        {
+          "when": "all fire",
+          "observable": "true"
+        }
+      ],
+      "setting": "both",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_gameplay_fixes_elf.cpp",
+          "test": "GameplayFixesElf.a_blocked_volley_costs_one_swing",
+          "note": "i=1 for each slot"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-01-elf.lua:97",
+      "lines": [
+        97,
+        98
+      ],
+      "function": "volley (fixed bot gate helper)",
+      "anchor": "if not foe or not G.faces(self, foe)",
+      "condition": "not foe or not G.faces(self, foe) or not G.in_flight(self, foe, 5, 8, los_num, 2)",
+      "semantic": "Gameplay Fixes bot elf: a volley needs its nearest living foe (within 320 px) faced along the elf's heading and inside the rock's flight (step 5 x range 8, multiplied by los_num/2 for bouncing volleys).",
+      "arms": [
+        {
+          "when": "no living foe",
+          "observable": "false"
+        },
+        {
+          "when": "foe not faced",
+          "observable": "false"
+        },
+        {
+          "when": "foe beyond flight",
+          "observable": "false"
+        },
+        {
+          "when": "faced and in flight",
+          "observable": "continue (true for 1-foe volleys)"
+        }
+      ],
+      "setting": "fixes-on",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_bot_gates_fighters.cpp",
+          "test": "GameplayFixesBots.elf_rocks_want_the_nearest_foe_faced_inside_the_flight"
+        },
+        {
+          "file": "tests/unit/test_bot_gates_fighters.cpp",
+          "test": "GameplayFixesBots.elf_bouncing_rocks_reach_half_again"
+        },
+        {
+          "parity": "elf_bot_rocks_far_fixes_scen99",
+          "fact": ""
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-01-elf.lua:101",
+      "lines": [
+        101
+      ],
+      "function": "volley",
+      "anchor": "if count_needed < 2 then",
+      "condition": "count_needed < 2",
+      "semantic": "ROCKS and BOUNCING ROCKS need only the one faced foe; LOTS OF ROCKS and MEGA ROCKS also need a second living foe.",
+      "arms": [
+        {
+          "when": "count_needed 1",
+          "observable": "true once the faced foe is in flight"
+        },
+        {
+          "when": "count_needed 2",
+          "observable": "counts foes in flight (:106)"
+        }
+      ],
+      "setting": "fixes-on",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_bot_gates_fighters.cpp",
+          "test": "GameplayFixesBots.elf_lots_of_rocks_wants_two_foes_in_flight"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-01-elf.lua:106",
+      "lines": [
+        106,
+        107
+      ],
+      "function": "volley",
+      "anchor": "for i = 1, #foes do",
+      "condition": "for each living foe within 320: G.in_flight(...) -> n+1; return n >= count_needed",
+      "semantic": "LOTS OF ROCKS / MEGA ROCKS (bot, fixes on) want at least two living foes inside the volley's flight from the elf, in any direction (only the nearest must be faced).",
+      "arms": [
+        {
+          "when": "two foes in flight (one faced)",
+          "observable": "true"
+        },
+        {
+          "when": "one foe in flight",
+          "observable": "false"
+        }
+      ],
+      "setting": "fixes-on",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_bot_gates_fighters.cpp",
+          "test": "GameplayFixesBots.elf_lots_of_rocks_wants_two_foes_in_flight"
+        },
+        {
+          "file": "tests/unit/test_bot_gates_fighters.cpp",
+          "test": "GameplayFixesBots.elf_mega_rocks_wants_two_foes_in_flight"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-01-elf.lua:119",
+      "lines": [
+        119
+      ],
+      "function": "check_special_ai",
+      "anchor": "if not gf.on() then",
+      "condition": "not gf.on() -> true",
+      "semantic": "Classic elf bot has no special gate: it casts whichever slot it rolled at any time, even with no foe (throws at nothing). Gameplay Fixes adds the pad and volley gates.",
+      "arms": [
+        {
+          "when": "setting off",
+          "observable": "check_special() true with no foe anywhere"
+        },
+        {
+          "when": "setting on",
+          "observable": "pad_clear and volley gate decide"
+        }
+      ],
+      "setting": "both",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_bot_gates_fighters.cpp",
+          "test": "GameplayFixesBots.elf_rocks_want_the_nearest_foe_faced_inside_the_flight",
+          "note": "and the other elf_* gate tests in that file (each asserts the setting-off twin true)"
+        },
+        {
+          "parity": "elf_bot_rocks_far_scen99",
+          "fact": "",
+          "note": "classic twin"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-01-elf.lua:122",
+      "lines": [
+        122
+      ],
+      "function": "check_special_ai",
+      "anchor": "local v = VOLLEYS[self:current_special()] or VOLLEYS[4]",
+      "condition": "VOLLEYS[self:current_special()] or VOLLEYS[4]",
+      "semantic": "Each elf slot maps to its volley shape (foes needed, range multiplier): 1:(1,x1) 2:(1,x1.5) 3:(2,x2) 4 and any unmapped slot:(2,x2.5), matching default_cast.",
+      "arms": [
+        {
+          "when": "slot 1-4",
+          "observable": "its own shape"
+        },
+        {
+          "when": "slot outside 1..4",
+          "observable": "MEGA ROCKS shape"
+        }
+      ],
+      "setting": "fixes-on",
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": []
+    },
+    {
+      "id": "living-01-elf.lua:123",
+      "lines": [
+        123
+      ],
+      "function": "check_special_ai",
+      "anchor": "return G.pad_clear(self) and volley(self, v[1], v[2])",
+      "condition": "G.pad_clear(self) and volley(...)",
+      "semantic": "Gameplay Fixes bot elf never casts when its rock's launch pad is blocked (wall, edge, or a foe body on the pad) even with a foe in flight; an ally on the pad does not block.",
+      "arms": [
+        {
+          "when": "pad blocked by wall / off map",
+          "observable": "false"
+        },
+        {
+          "when": "foe on pad",
+          "observable": "false"
+        },
+        {
+          "when": "ally on pad",
+          "observable": "pad clear -> volley decides"
+        }
+      ],
+      "setting": "fixes-on",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_bot_gates_fighters.cpp",
+          "test": "GameplayFixesBots.elf_rocks_refuse_a_pad_on_a_wall"
+        },
+        {
+          "parity": "elf_bot_rocks_blocked_fixes_scen99",
+          "fact": ""
+        }
+      ],
+      "missing_arms": [],
+      "note": [
+        "tests/unit/test_bot_gates_fighters.cpp: elf_rocks_refuse_a_foe_on_the_pad / elf_rocks_an_ally_on_the_pad_is_not_in_the_way / elf_rocks_refuse_a_pad_off_the_map"
+      ]
+    }
+  ],
+  "other": [
+    {
+      "id": "living-01-elf.lua:143",
+      "lines": [
+        143
+      ],
+      "kind": "dead",
+      "anchor": "{ id = \"bouncing_rocks\", name = \"BOUNCING ROCKS\", mp_cost = 20, cast = bounce_volley(3, 2, 3), detail = \"Like #1, but these rocks bounce off walls and other bar",
+      "note": "not a branch ('and' in the BOUNCING ROCKS detail string)"
+    },
+    {
+      "id": "living-01-elf.lua:146",
+      "lines": [
+        146
+      ],
+      "kind": "dead",
+      "anchor": "{ id = \"mega_rocks\",     name = \"MEGA ROCKS\",     mp_cost = 40, detail = \"This giant handful of rocks bounces far away and packs a big punch.\", icon = \"icons/me",
+      "note": "not a branch ('and' in the MEGA ROCKS detail string)"
+    },
+    {
+      "id": "living-01-elf.lua:148",
+      "lines": [
+        148
+      ],
+      "kind": "dead",
+      "anchor": "default_cast = bounce_volley(5, 4, 5),  -- case 4 and every unmapped slot",
+      "note": "not a branch ('and' in a comment on default_cast)"
+    },
+    {
+      "id": "living-01-elf.lua:165",
+      "lines": [
+        165
+      ],
+      "kind": "dead",
+      "anchor": "description = \"Elves are small and weak, but are harder to hit than most classes. Alone of all the classes, elves possess the 'ForestWalk' ability.\",",
+      "note": "not a branch ('and' in the description string)"
+    }
+  ]
+}

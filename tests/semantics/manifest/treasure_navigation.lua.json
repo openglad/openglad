@@ -1,0 +1,360 @@
+{
+  "path": "packs/core/lib/treasure_navigation.lua",
+  "rules": [
+    {
+      "id": "treasure_navigation.lua:23",
+      "lines": [
+        23
+      ],
+      "function": "format_exit_prompt",
+      "anchor": "if is_withdraw then",
+      "condition": "is_withdraw",
+      "semantic": "The exit pad's prompt reads \"Withdraw to <name>?\" on the withdraw path and \"Exit to <name>?\" otherwise.",
+      "arms": [
+        {
+          "when": "withdraw",
+          "observable": "text 'Withdraw to X?' b=1"
+        },
+        {
+          "when": "exit",
+          "observable": "text 'Exit to X?' b=0"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": [],
+      "note": [
+        "(event kinds asserted by parity rows; no test asserts the pad's prompt TEXT - test_script_hooks emits its own string through the binding)"
+      ]
+    },
+    {
+      "id": "treasure_navigation.lua:34",
+      "lines": [
+        34
+      ],
+      "function": "exit_on_eat",
+      "anchor": "if eater:in_act() then",
+      "condition": "eater:in_act()",
+      "semantic": "An exit pad ignores an eater that touches it from inside its own act (re-entrant touch).",
+      "arms": [
+        {
+          "when": "in_act",
+          "observable": "nothing: no skip_exit set, no event"
+        },
+        {
+          "when": "outside act",
+          "observable": "pad proceeds"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": []
+    },
+    {
+      "id": "treasure_navigation.lua:37",
+      "lines": [
+        37
+      ],
+      "function": "exit_on_eat",
+      "anchor": "if eater:act_type() ~= C.ACT_CONTROL or eater:skip_exit() > 1 then",
+      "condition": "act_type ~= ACT_CONTROL or skip_exit > 1",
+      "semantic": "Only a player-controlled walker triggers an exit pad, and at most once per skip_exit throttle (10 ticks) while it stands there.",
+      "arms": [
+        {
+          "when": "bot/guard eater",
+          "observable": "no event"
+        },
+        {
+          "when": "skip_exit > 1",
+          "observable": "swallowed"
+        },
+        {
+          "when": "controlled, not throttled",
+          "observable": "skip_exit = 10, pad answers"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sim_world_headless.cpp",
+          "test": "SimWorldHeadless.exit_with_foes_alive_says_foes_remain",
+          "note": "throttle arm"
+        }
+      ],
+      "missing_arms": [],
+      "note": [
+        "(non-control eater arm not asserted)"
+      ]
+    },
+    {
+      "id": "treasure_navigation.lua:44",
+      "lines": [
+        44,
+        46,
+        65
+      ],
+      "function": "exit_on_eat",
+      "anchor": "if og.level_done() == 0 then",
+      "condition": "level_done()==0 ; can_exit_now",
+      "semantic": "With every foe gone the exit pad offers the plain \"Exit to <name>?\" prompt for its destination (checked before the withdraw path).",
+      "arms": [
+        {
+          "when": "no foes",
+          "observable": "RequestExitConfirmation b=0, no withdraw, no 'Foes remain!'"
+        },
+        {
+          "when": "foes",
+          "observable": "falls through"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "parity": "treasure_exit_open_prompt_scen99",
+          "fact": "EventKindAtLeast(request_exit_confirmation,1) + EventKindExactly(notification,0)"
+        },
+        {
+          "file": "tests/unit/test_sim_world_headless.cpp",
+          "test": "SimWorldHeadless.exit_with_foes_alive_says_foes_remain"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "treasure_navigation.lua:51",
+      "lines": [
+        51
+      ],
+      "function": "exit_on_eat",
+      "anchor": "if exit_name == \"none\" then",
+      "condition": "exit_name == \"none\"",
+      "semantic": "An exit to a scenario with no readable title is named \"Level <N>\".",
+      "arms": [
+        {
+          "when": "no title",
+          "observable": "prompt text 'Exit to Level N?'"
+        },
+        {
+          "when": "title",
+          "observable": "prompt uses title"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": [],
+      "note": [
+        "(tests/integration/test_runtime_coverage_paths.cpp builds 'Withdraw to Level 4?' events by hand; the pad's fallback is not asserted)"
+      ]
+    },
+    {
+      "id": "treasure_navigation.lua:58",
+      "lines": [
+        58
+      ],
+      "function": "exit_on_eat",
+      "anchor": "local can_exit_now = foes_left == 0 or og.world_can_exit_whenever()",
+      "condition": "foes_left == 0 or og.world_can_exit_whenever()",
+      "semantic": "A scenario flagged CAN_EXIT_WHENEVER lets the player exit with foes still standing, with the normal Exit prompt (not Withdraw).",
+      "arms": [
+        {
+          "when": "flag set, foes alive",
+          "observable": "RequestExitConfirmation b=0 text 'Exit to'"
+        },
+        {
+          "when": "flag clear, foes alive",
+          "observable": "no exit prompt"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [
+        {
+          "file": "tests/unit/test_script_hooks.cpp",
+          "test": "ScriptBindingTest.exit_flow_bindings_read_and_write_progression",
+          "note": "asserts only the binding"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "treasure_navigation.lua:60",
+      "lines": [
+        60,
+        74
+      ],
+      "function": "exit_on_eat",
+      "anchor": "and not og.level_completed(og.current_scenario())",
+      "condition": "level_completed(dest) and not level_completed(current) ; if can_withdraw",
+      "semantic": "With foes still alive, an exit to an already completed level withdraws: it sets the withdraw request, prompts \"Withdraw to <name>?\" (b=1) and emits WithdrawToLevel - but never from a replay of an already completed level.",
+      "arms": [
+        {
+          "when": "dest done, current not",
+          "observable": "withdraw_requested, RequestExitConfirmation b=1, WithdrawToLevel"
+        },
+        {
+          "when": "current also done (replay)",
+          "observable": "no withdraw; 'Foes remain!'"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "parity": "level_withdraw_scen99",
+          "fact": "EventKindAtLeast(withdraw_to_level,1)"
+        },
+        {
+          "parity": "treasure_exit_pickup_scen99",
+          "fact": "EventKindExactly(withdraw_to_level,1)"
+        },
+        {
+          "file": "tests/unit/test_sim_world_headless.cpp",
+          "test": "SimWorldHeadless.replay_of_a_completed_level_cannot_withdraw"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "treasure_navigation.lua:79",
+      "lines": [
+        79
+      ],
+      "function": "exit_on_eat",
+      "anchor": "else",
+      "condition": "else (neither)",
+      "semantic": "Foes alive and the destination unearned: the pad tells the eater \"Foes remain!\" (30-tick toast to its seat), throttled by skip_exit.",
+      "arms": [
+        {
+          "when": "neither path",
+          "observable": "one 'Foes remain!' notification, no prompt"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sim_world_headless.cpp",
+          "test": "SimWorldHeadless.exit_with_foes_alive_says_foes_remain"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "treasure_navigation.lua:91",
+      "lines": [
+        91,
+        96,
+        99
+      ],
+      "function": "teleporter_on_eat",
+      "anchor": "if eater:skip_exit() > 1 then",
+      "condition": "skip_exit > 1 ; dist > 21 ; dist < 4 and skip_exit ~= 0",
+      "semantic": "A warp pad fires only for an eater not throttled (skip_exit <= 1) and within 21 px of the pad's centre; an eater standing at the very centre (< 4 px) with a pending skip is held (skip_exit = 8) instead of warped back.",
+      "arms": [
+        {
+          "when": "skip_exit > 1",
+          "observable": "nothing"
+        },
+        {
+          "when": "dist > 21",
+          "observable": "nothing"
+        },
+        {
+          "when": "dist < 4 and skip_exit 1",
+          "observable": "skip_exit = 8, no warp"
+        },
+        {
+          "when": "otherwise",
+          "observable": "skip_exit += 20, warp"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": []
+    },
+    {
+      "id": "treasure_navigation.lua:106",
+      "lines": [
+        106,
+        108,
+        111
+      ],
+      "function": "teleporter_on_eat",
+      "anchor": "if not self:leader() then",
+      "condition": "not self:leader() ; not target",
+      "semantic": "A warp pad remembers the partner it found (leader) and warps to it every time; with no partner pad of the same group, the eater only gets the skip_exit bump (which still throttles a co-located exit pad).",
+      "arms": [
+        {
+          "when": "first use",
+          "observable": "find_teleport_target, leader set"
+        },
+        {
+          "when": "cached",
+          "observable": "leader reused"
+        },
+        {
+          "when": "no partner",
+          "observable": "skip_exit bumped, no move"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "parity": "treasure_teleporter_pickup_scen99",
+          "fact": "EventKindExactly(request_exit_confirmation,0) (no-partner arm)"
+        },
+        {
+          "file": "tests/unit/test_gameplay_fixes_walk.cpp",
+          "test": "GameplayFixesWalk.a_walk_that_eats_a_teleporter_does_not_shove_the_ally_it_left",
+          "note": "warp to partner"
+        }
+      ],
+      "missing_arms": [],
+      "note": [
+        "(leader-cache arm not asserted)"
+      ]
+    },
+    {
+      "id": "treasure_navigation.lua:116",
+      "lines": [
+        116
+      ],
+      "function": "teleporter_on_eat",
+      "anchor": "if not og.query_passable(eater:xpos(), eater:ypos(), eater) then",
+      "condition": "not og.query_passable(...)",
+      "semantic": "A warp whose destination is blocked bounces the eater back onto the departure pad (no flash).",
+      "arms": [
+        {
+          "when": "blocked",
+          "observable": "eater centred on departure pad, no FX_FLASH"
+        },
+        {
+          "when": "clear",
+          "observable": "eater on partner, flash at departure"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": []
+    }
+  ],
+  "other": [
+    {
+      "id": "treasure_navigation.lua:122",
+      "lines": [
+        122
+      ],
+      "kind": "defensive",
+      "anchor": "if flash then",
+      "note": "add_ob flash nil guard"
+    }
+  ]
+}

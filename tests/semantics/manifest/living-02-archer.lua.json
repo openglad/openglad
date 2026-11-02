@@ -1,0 +1,407 @@
+{
+  "path": "packs/core/families/living-02-archer.lua",
+  "rules": [
+    {
+      "id": "living-02-archer.lua:29",
+      "lines": [
+        29
+      ],
+      "function": "flurry (BARRAGE, slot 2)",
+      "anchor": "if gf.special_busy(self) then",
+      "condition": "gf.special_busy(self)",
+      "semantic": "BARRAGE is refused 'SPECIAL BUSY' while busy (classic busy ~= 0, fixed busy > 0; fix S). On success it refunds 3 weapon costs, fires three arrows along the heading and adds 2 x fire_frequency busy. Same rule as living-00-soldier.lua:43.",
+      "arms": [
+        {
+          "when": "busy",
+          "observable": "false 'SPECIAL BUSY'"
+        },
+        {
+          "when": "busy < 0 setting on / busy == 0",
+          "observable": "3 arrows in weaplist; busy += 2*fire_frequency; MP net = -cost(2) + 3wc - swings"
+        }
+      ],
+      "setting": "both",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_gameplay_fixes_special_busy.cpp",
+          "test": "GameplayFixesSpecialBusy.archer_specials_after_a_shot"
+        },
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.archer_barrage_drives_simulation"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-02-archer.lua:43",
+      "lines": [
+        43
+      ],
+      "function": "exploding_shot (EXPLODING BOLT, slot 3 + unmapped)",
+      "anchor": "if gf.special_busy(self) then",
+      "condition": "gf.special_busy(self)",
+      "semantic": "EXPLODING BOLT refused 'SPECIAL BUSY' while busy; classic ~= 0, fixed > 0 (fix S). Same rule as :29.",
+      "arms": [
+        {
+          "when": "busy",
+          "observable": "false 'SPECIAL BUSY'"
+        },
+        {
+          "when": "not busy",
+          "observable": "fires (see :51)"
+        }
+      ],
+      "setting": "both",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_gameplay_fixes_special_busy.cpp",
+          "test": "GameplayFixesSpecialBusy.archer_specials_after_a_shot"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-02-archer.lua:51",
+      "lines": [
+        51
+      ],
+      "function": "exploding_shot",
+      "anchor": "if not arrow then",
+      "condition": "not arrow",
+      "semantic": "The exploding bolt is one fire arrow with skip_exit=5000 (the 'explodes on contact' mark), hp 500 and damage x2; if the fire arrow cannot be fired the cast fails 'COULD NOT FIRE' and the archer keeps its ordinary weapon either way.",
+      "arms": [
+        {
+          "when": "fire ok",
+          "observable": "one FIRE_ARROW in weaplist, skip_exit 5000, hp 500, damage 2x base; current_weapon restored"
+        },
+        {
+          "when": "fire nil (pad blocked)",
+          "observable": "false 'COULD NOT FIRE'; current_weapon restored"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.archer_exploding_bolt_drives_simulation",
+          "note": "count + skip_exit"
+        },
+        {
+          "parity": "weapon_fire_arrow_explode_damage_scen99",
+          "fact": ""
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-02-archer.lua:67",
+      "lines": [
+        67
+      ],
+      "function": "hit_response",
+      "anchor": "if not self:foe() or self:foe() ~= foe then",
+      "condition": "not self:foe() or self:foe() ~= foe",
+      "semantic": "An archer struck by a new attacker (or with no foe) switches its foe to the attacker, clears its command queue and resets its pursuit distances to 15000; a repeat hit from its current foe keeps its orders.",
+      "arms": [
+        {
+          "when": "new attacker",
+          "observable": "foe == attacker (asserted); current/last distance 15000 (asserted); commands cleared (executed-only: both cited tests clear_command() BEFORE hit_response)"
+        },
+        {
+          "when": "same foe",
+          "observable": "commands kept (executed-only)"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [
+        {
+          "file": "tests/integration/test_stats_hit_response_more.cpp",
+          "test": "StatsHitResponseMore.statistics_hit_response_archer_runs_away_and_queues_walk",
+          "note": "foe==attacker and 15000 asserted; queue cleared at line 100 before the hit, so the clear is not proven"
+        },
+        {
+          "file": "tests/integration/test_family_behaviors.cpp",
+          "test": "FamilyBehaviors.hit_response_archer_flees",
+          "note": "same: clear_command at line 1047 before the hit"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-02-archer.lua:74",
+      "lines": [
+        74
+      ],
+      "function": "hit_response",
+      "anchor": "if distance < og.tuning(self).melee_backpedal_range then",
+      "condition": "distance < melee_backpedal_range (64)",
+      "semantic": "An archer hit from inside 64 px backpedals: a forced 8-step WALK directly away from the attacker (sign of archer-attacker per axis, int16-narrowed).",
+      "arms": [
+        {
+          "when": "attacker within 64",
+          "observable": "forced COMMAND_WALK 8 (sign dx, sign dy) away"
+        },
+        {
+          "when": "attacker >= 64",
+          "observable": "no backpedal"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_stats_hit_response_more.cpp",
+          "test": "StatsHitResponseMore.statistics_hit_response_archer_runs_away_and_queues_walk",
+          "note": "both arms"
+        },
+        {
+          "parity": "archer_hit_response_backpedal_scen99",
+          "fact": "position + hp facts"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-02-archer.lua:101",
+      "lines": [
+        101
+      ],
+      "function": "fixed (bot gate, FIRE ARROWS)",
+      "anchor": "if slot == 1 then",
+      "condition": "slot == 1 -> G.ring_pays(self, 8, 12)",
+      "semantic": "Gameplay Fixes bot FIRE ARROWS (the 8-way ring) pays for two living foes inside the fire arrow's flight (step 8 x range 12) or one the archer does not face (one faced foe is what an ordinary arrow would hit). The classic gate (foe within 130) still runs first for its draws and foe assignment, but its answer is ignored.",
+      "arms": [
+        {
+          "when": "two foes in flight",
+          "observable": "true"
+        },
+        {
+          "when": "one foe, faced",
+          "observable": "false"
+        },
+        {
+          "when": "one foe, behind/unfaced",
+          "observable": "true"
+        },
+        {
+          "when": "none",
+          "observable": "false"
+        }
+      ],
+      "setting": "fixes-on",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_bot_gates_fighters.cpp",
+          "test": "GameplayFixesBots.archer_fire_arrows_want_a_crowd_or_a_foe_behind"
+        },
+        {
+          "parity": "archer_bot_ring_one_foe_fixes_scen99",
+          "fact": ""
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-02-archer.lua:105",
+      "lines": [
+        105
+      ],
+      "function": "fixed",
+      "anchor": "if gf.special_busy(self) then",
+      "condition": "gf.special_busy(self) -> false",
+      "semantic": "Gameplay Fixes bot archer never picks BARRAGE or EXPLODING BOLT while busy (the casts would refuse SPECIAL BUSY).",
+      "arms": [
+        {
+          "when": "busy > 0, slot 2/3",
+          "observable": "false"
+        },
+        {
+          "when": "not busy",
+          "observable": "foe checks follow"
+        }
+      ],
+      "setting": "fixes-on",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_gameplay_fixes_bots.cpp",
+          "test": "GameplayFixesBots.a_busy_bot_never_rolls_a_busy_cast_with_the_setting_on"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-02-archer.lua:109",
+      "lines": [
+        109,
+        112,
+        115
+      ],
+      "function": "fixed (BARRAGE/EXPLODING BOLT)",
+      "anchor": "if not f or f:dead() ~= 0 then",
+      "condition": "not f or f:dead() ~= 0 / not G.living(f) or not G.faces(self, f) / not G.in_flight(self, f, 8, 12)",
+      "semantic": "Gameplay Fixes bot BARRAGE and EXPLODING BOLT want the archer's own current foe alive, a living-order body, faced along the heading, and inside the fire arrow's flight (8 x 12).",
+      "arms": [
+        {
+          "when": "no foe / dead foe",
+          "observable": "false"
+        },
+        {
+          "when": "foe not living order (a tent) or not faced",
+          "observable": "false"
+        },
+        {
+          "when": "foe beyond flight",
+          "observable": "false"
+        },
+        {
+          "when": "all hold",
+          "observable": "slot 2 true; slot 3 asks the blast (:121)"
+        }
+      ],
+      "setting": "fixes-on",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_bot_gates_fighters.cpp",
+          "test": "GameplayFixesBots.archer_barrage_wants_its_foe_faced_in_flight"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-02-archer.lua:118",
+      "lines": [
+        118
+      ],
+      "function": "fixed",
+      "anchor": "if slot == 2 then",
+      "condition": "slot == 2 -> true",
+      "semantic": "BARRAGE needs nothing beyond the faced foe in flight.",
+      "arms": [
+        {
+          "when": "slot 2",
+          "observable": "true after :109 checks"
+        },
+        {
+          "when": "slot 3+",
+          "observable": "blast check"
+        }
+      ],
+      "setting": "fixes-on",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_bot_gates_fighters.cpp",
+          "test": "GameplayFixesBots.archer_barrage_wants_its_foe_faced_in_flight"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-02-archer.lua:121",
+      "lines": [
+        121
+      ],
+      "function": "fixed (EXPLODING BOLT)",
+      "anchor": "return G.blast_clear(self, f, G.blast_reach(self.level), true) and G.pad_clear(self, WEAPON_FIRE_ARROW)",
+      "condition": "G.blast_clear(self, f, G.blast_reach(level), true) and G.pad_clear(self, WEAPON_FIRE_ARROW)",
+      "semantic": "Gameplay Fixes bot EXPLODING BOLT also wants no archer (check_self) and no ally inside the blast around its foe, and the FIRE ARROW's own launch pad clear.",
+      "arms": [
+        {
+          "when": "ally in blast or archer inside its own blast",
+          "observable": "false"
+        },
+        {
+          "when": "fire-arrow pad blocked",
+          "observable": "false"
+        },
+        {
+          "when": "clear",
+          "observable": "true"
+        }
+      ],
+      "setting": "fixes-on",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_bot_gates_fighters.cpp",
+          "test": "GameplayFixesBots.archer_exploding_bolt_wants_a_foe_past_its_own_blast_with_no_ally_in_it"
+        },
+        {
+          "file": "tests/unit/test_bot_gates_fighters.cpp",
+          "test": "GameplayFixesBots.archer_exploding_bolt_asks_the_fire_arrows_own_pad"
+        },
+        {
+          "parity": "archer_bot_bolt_at_blows_fixes_scen99",
+          "fact": ""
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-02-archer.lua:179",
+      "lines": [
+        179
+      ],
+      "function": "check_special_ai (G.with_classic(ai.foe_within(130), fixed))",
+      "anchor": "check_special_ai = G.with_classic(ai.foe_within(130), fixed),  -- fixed per-tick AI gate",
+      "condition": "classic: acquired foe within 130 px",
+      "semantic": "Classic archer bot casts any slot when its acquired/found foe is within 130 px (about 6 squares). With the setting on the classic search still runs (draws, foe assignment) but fixed() decides and ignores its answer.",
+      "arms": [
+        {
+          "when": "off, foe within 130",
+          "observable": "true"
+        },
+        {
+          "when": "off, none",
+          "observable": "false"
+        },
+        {
+          "when": "on",
+          "observable": "fixed() answer"
+        }
+      ],
+      "setting": "both",
+      "status": "asserted",
+      "tests": [
+        {
+          "parity": "archer_bot_ring_one_foe_scen99",
+          "fact": ""
+        },
+        {
+          "parity": "archer_bot_bolt_at_blows_scen99",
+          "fact": "",
+          "note": "classic twins"
+        }
+      ],
+      "missing_arms": []
+    }
+  ],
+  "other": [
+    {
+      "id": "living-02-archer.lua:140",
+      "lines": [
+        140
+      ],
+      "kind": "dead",
+      "anchor": "default_cast = exploding_shot,  -- slot 3 and every unmapped slot (slot 4 is undeclared)",
+      "note": "not a branch ('and' in the default_cast comment)"
+    },
+    {
+      "id": "living-02-archer.lua:157",
+      "lines": [
+        157
+      ],
+      "kind": "dead",
+      "anchor": "description = \"Archers are fleet of foot, and their arrows have a long range. Although they're not as strong as other fighters, they can be a good squad backbon",
+      "note": "not a branch ('and' in the description string)"
+    }
+  ]
+}

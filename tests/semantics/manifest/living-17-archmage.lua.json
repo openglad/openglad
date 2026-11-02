@@ -1,0 +1,1713 @@
+{
+  "path": "packs/core/families/living-17-archmage.lua",
+  "rules": [
+    {
+      "id": "living-17-archmage.lua:35",
+      "lines": [
+        31,
+        34,
+        35,
+        37,
+        39
+      ],
+      "function": "on_fire_weapon",
+      "anchor": "local function on_fire_weapon(self, weapon)",
+      "condition": "extra = og.min(og.fdiv(magicpoints, 20), C.SHOT_DRAIN_CAP); magicpoints -= extra; weapon.damage += extra",
+      "semantic": "Every weapon an archmage fires drains a twentieth of the MP it has left after the shot's cost, capped at SHOT_DRAIN_CAP (50, so the cap binds only above 1000 MP), and adds the drained amount to that shot's damage.",
+      "arms": [
+        {
+          "when": "MP after cost <= 1000",
+          "observable": "MP == M - weapon_cost - (M - weapon_cost)/20; shot damage == base + (M - weapon_cost)/20"
+        },
+        {
+          "when": "MP after cost > 1000",
+          "observable": "MP == M - weapon_cost - 50; shot damage == base + 50"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_family_behaviors.cpp",
+          "test": "FamilyBehaviors.archmage_weapon_damage_boost",
+          "note": "uncapped arm only, at 1000 MP; the control archmage at weapon_cost MP pins zero drain"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-17-archmage.lua:46",
+      "lines": [
+        46,
+        48,
+        52
+      ],
+      "function": "on_act_living",
+      "anchor": "if self.level >= 40 then",
+      "condition": "if self.level >= 40 then period = 1 else period = 40 - level; if og.mod(drawcycle, period) == 0 then view_all + 1",
+      "semantic": "An archmage's magical sight (view_all) grows by one every (40 - level) ticks of its own act counter, every tick from level 40.",
+      "arms": [
+        {
+          "when": "level >= 40",
+          "observable": "view_all +1 every act"
+        },
+        {
+          "when": "level L < 40, drawcycle % (40-L) == 0",
+          "observable": "view_all +1"
+        },
+        {
+          "when": "otherwise",
+          "observable": "unchanged"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_family_behaviors.cpp",
+          "test": "FamilyBehaviors.archmage_periodic_view_all"
+        },
+        {
+          "file": "tests/integration/test_family_behaviors.cpp",
+          "test": "FamilyBehaviors.archmage_on_act_low_level_periodic_gate"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-17-archmage.lua:62",
+      "lines": [
+        62,
+        64
+      ],
+      "function": "summon_shift",
+      "anchor": "if lc.spare_mp(self, 3) >= self:s_special_cost(3) then",
+      "condition": "if lc.spare_mp(self, 3) >= self:s_special_cost(3) then shifter 1 else 0",
+      "semantic": "Gameplay Fixes: a bot archmage picks SUMMON ELEMENTAL only when the pool left after the slot-3 price still covers that price again (1000+ MP for the 500 slot); otherwise SUMMON IMAGE.",
+      "arms": [
+        {
+          "when": "spare >= cost(3)",
+          "observable": "shifter_down 1 (elemental)"
+        },
+        {
+          "when": "spare < cost(3)",
+          "observable": "shifter_down 0 (image)"
+        }
+      ],
+      "setting": "fixes-on",
+      "status": "asserted",
+      "tests": [
+        {
+          "parity": "archmage_hit_stale_shift_fixes_scen99",
+          "fact": "WalkerFamilyCount(FAMILY_FIREELEMENTAL,1,1)"
+        },
+        {
+          "file": "tests/unit/test_gameplay_fixes_bots.cpp",
+          "test": "GameplayFixesBots.archmage_summon_wants_a_foe_and_the_pool_for_an_elemental_with_the_setting_on"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-17-archmage.lua:80",
+      "lines": [
+        80,
+        81
+      ],
+      "function": "hit_response",
+      "anchor": "if i < C.NUM_SPECIALS",
+      "condition": "if i < C.NUM_SPECIALS and self.magicpoints >= self:s_special_cost(i)",
+      "semantic": "A struck archmage can only answer with a special its level unlocks ((L+2)/3 slots) and its MP covers.",
+      "arms": [
+        {
+          "when": "slot unlocked and affordable",
+          "observable": "possible[i]=1: may be cast"
+        },
+        {
+          "when": "unaffordable / locked",
+          "observable": "never cast by the response"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [
+        {
+          "file": "tests/unit/test_gameplay_fixes_bots.cpp",
+          "test": "GameplayFixesArchmageHit.a_struck_bot_with_no_target_in_reach_casts_nothing",
+          "note": "indirect"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-17-archmage.lua:87",
+      "lines": [
+        87,
+        91
+      ],
+      "function": "hit_response",
+      "anchor": "if self:has_guy() then",
+      "condition": "if self:has_guy() then threshold = 3/5 max_hp else 3/8 max_hp",
+      "semantic": "A struck hero archmage flees (teleports) below 60% health; a monster archmage is braver and waits until 3/8.",
+      "arms": [
+        {
+          "when": "hero, hp < 0.6 max",
+          "observable": "teleport eligible"
+        },
+        {
+          "when": "monster, hp < 0.375 max",
+          "observable": "teleport eligible"
+        },
+        {
+          "when": "monster at 0.5 max",
+          "observable": "no teleport; fights"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [
+        {
+          "file": "tests/integration/test_family_behaviors.cpp",
+          "test": "FamilyBehaviors.archmage_hit_response_threshold_and_retarget_branches",
+          "note": "monster low-hp arm"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-17-archmage.lua:99",
+      "lines": [
+        99,
+        100,
+        105
+      ],
+      "function": "hit_response",
+      "anchor": "if self.hp < threshold and possible[1]",
+      "condition": "if self.hp < threshold and possible[1] and og.rand(3) ~= 0 then (teleport) else (fight back)",
+      "semantic": "A struck archmage under its flee threshold teleports away two times in three (rand(3) drawn only when hurt and TELEPORT affordable); otherwise it turns on its attacker.",
+      "arms": [
+        {
+          "when": "hurt, affordable, rand(3)!=0",
+          "observable": "current_special 1, shifter 0, teleport cast (ANI_TELE_OUT)"
+        },
+        {
+          "when": "hurt, rand(3)==0",
+          "observable": "fight-back arm"
+        },
+        {
+          "when": "healthy",
+          "observable": "fight-back arm, no draw"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_family_behaviors.cpp",
+          "test": "FamilyBehaviors.archmage_hit_response_threshold_and_retarget_branches"
+        },
+        {
+          "file": "tests/unit/test_gameplay_fixes_bots.cpp",
+          "test": "GameplayFixesArchmageHit.a_struck_bot_below_the_threshold_still_teleports"
+        },
+        {
+          "file": "tests/integration/test_stats_hit_response_teleport.cpp",
+          "test": "StatsHitResponseTeleport.stats_hit_response_mage_and_archmage_teleport_branches"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-17-archmage.lua:104",
+      "lines": [
+        104
+      ],
+      "function": "hit_response",
+      "anchor": "local _ = lc.mid_teleport(self) or self:special()  -- struck mid-teleport: no second cast",
+      "condition": "local _ = lc.mid_teleport(self) or self:special()",
+      "semantic": "An archmage struck again while already mid-teleport casts nothing more (no second teleport).",
+      "arms": [
+        {
+          "when": "mid teleport",
+          "observable": "no special(); MP unchanged"
+        },
+        {
+          "when": "not teleporting",
+          "observable": "teleport cast"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_stats_hit_response_teleport.cpp",
+          "test": "StatsHitResponseTeleport.an_archmage_struck_again_mid_teleport_casts_nothing"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-17-archmage.lua:106",
+      "lines": [
+        106
+      ],
+      "function": "hit_response",
+      "anchor": "if self:foe() ~= foe then",
+      "condition": "if self:foe() ~= foe then foe both ways, distances 15000",
+      "semantic": "A struck archmage that is not already fighting its attacker takes the attacker as its foe, and the attacker takes it back; its range memory resets.",
+      "arms": [
+        {
+          "when": "new attacker",
+          "observable": "arch->foe()==attacker, attacker->foe()==arch, current/last distance 15000"
+        },
+        {
+          "when": "same attacker",
+          "observable": "unchanged"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_family_behaviors.cpp",
+          "test": "FamilyBehaviors.archmage_hit_response_threshold_and_retarget_branches"
+        },
+        {
+          "file": "tests/unit/test_pack_lua_paths.cpp",
+          "test": "PackLuaArchmage.a_struck_archmage_answers_with_chain_lightning"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-17-archmage.lua:112",
+      "lines": [
+        112,
+        117,
+        120
+      ],
+      "function": "hit_response",
+      "anchor": "if gf.on() and not self:seat_driven() then",
+      "condition": "if gf.on() and not self:seat_driven() then if possible[2] then shifter=rand(2); current_special=2; if ai_burst_or_chain(self) then special() end end return",
+      "semantic": "Gameplay Fixes: a struck bot archmage answers only with HEARTBURST or CHAIN LIGHTNING, chosen by the slot-2 gate (coin drawn first as classic did), at most once; it never summons from the hit response. A seat-driven archmage keeps the classic response.",
+      "arms": [
+        {
+          "when": "fixes on, bot, slot 2 affordable, target in reach",
+          "observable": "exactly one EXPLOSION or CHAIN, no summon"
+        },
+        {
+          "when": "fixes on, bot, no target in either radius",
+          "observable": "nothing cast"
+        },
+        {
+          "when": "fixes on, slot 2 unaffordable",
+          "observable": "nothing cast"
+        },
+        {
+          "when": "seat-driven or fixes off",
+          "observable": "classic arms (living-17-archmage.lua:127, :136)"
+        }
+      ],
+      "setting": "both",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_gameplay_fixes_bots.cpp",
+          "test": "GameplayFixesArchmageHit.a_struck_bot_bursts_once_and_never_summons"
+        },
+        {
+          "file": "tests/unit/test_gameplay_fixes_bots.cpp",
+          "test": "GameplayFixesArchmageHit.a_struck_bot_with_no_target_in_reach_casts_nothing"
+        },
+        {
+          "file": "tests/unit/test_gameplay_fixes_bots.cpp",
+          "test": "GameplayFixesArchmageHit.a_seated_archmage_keeps_its_shift_key"
+        },
+        {
+          "parity": "archmage_bot_struck_fixes_scen99",
+          "fact": "WalkerOfOrderFamilyCount(FAMILY_EXPLOSION,FX,1,1)"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-17-archmage.lua:127",
+      "lines": [
+        127,
+        129,
+        131
+      ],
+      "function": "hit_response",
+      "anchor": "if foe_count ~= 0 then",
+      "condition": "if foe_count ~= 0 then if possible[3] then current_special=3; if special() then return",
+      "semantic": "Classic: a struck archmage with a foe within 200 px first tries SUMMON (slot 3) with whatever Shift was left over (stale coin: image or elemental), and stops there if it worked.",
+      "arms": [
+        {
+          "when": "no foe in 200",
+          "observable": "nothing cast"
+        },
+        {
+          "when": "slot 3 affordable, summon succeeds",
+          "observable": "one phantom/elemental, return"
+        },
+        {
+          "when": "summon fails",
+          "observable": "falls to slot 2"
+        }
+      ],
+      "setting": "fixes-off",
+      "status": "asserted",
+      "tests": [
+        {
+          "parity": "archmage_hit_stale_shift_scen99",
+          "fact": "WalkerFamilyCount(FAMILY_SKELETON,1,1)"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-17-archmage.lua:136",
+      "lines": [
+        136,
+        139,
+        142,
+        144,
+        153,
+        154
+      ],
+      "function": "hit_response",
+      "anchor": "if possible[2] then",
+      "condition": "if possible[2] then if rand(2)~=0 then shifter 1 (chain) special(); if ok and mp>=cost(1) then busy=0 special() ... else shifter 0 (burst) special(); if ok and mp>=cost(1) then busy=0 special()",
+      "semantic": "Classic: failing a summon, a struck archmage casts CHAIN LIGHTNING half the time (else HEARTBURST), and if that worked and it can still afford a TELEPORT it casts AGAIN at once - but slot 2 is still selected, so the 'then leave' follow-up is a second heartburst, not a teleport. A failed chain falls through to heartburst.",
+      "arms": [
+        {
+          "when": "rand(2)!=0, chain ok, mp>=10",
+          "observable": "one CHAIN plus one heartburst EXPLOSION per foe, no teleport"
+        },
+        {
+          "when": "rand(2)!=0, chain ok, mp<10",
+          "observable": "one CHAIN only"
+        },
+        {
+          "when": "rand(2)!=0, chain fails",
+          "observable": "heartburst attempt"
+        },
+        {
+          "when": "rand(2)==0, burst ok, mp>=10",
+          "observable": "two heartburst casts"
+        },
+        {
+          "when": "burst fails",
+          "observable": "nothing"
+        }
+      ],
+      "setting": "fixes-off",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_pack_lua_paths.cpp",
+          "test": "PackLuaArchmage.a_struck_archmage_answers_with_chain_lightning",
+          "note": "one CHAIN"
+        },
+        {
+          "file": "tests/unit/test_pack_lua_paths.cpp",
+          "test": "PackLuaArchmage.a_struck_archmage_answers_with_heartburst",
+          "note": ">=1 EXPLOSION, shifter 0"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-17-archmage.lua:168",
+      "lines": [
+        168,
+        176,
+        177,
+        179,
+        182,
+        183
+      ],
+      "function": "ai_teleport",
+      "anchor": "if not gf.on() then",
+      "condition": "if not gf.on() then true; mark = foe_count<1 and marker_pays; if mark and not busy then shifter 1 else 0; return (foe_count<1 or foe_count>3) and not mid_teleport",
+      "semantic": "Classic: a bot archmage teleports on every TELEPORT roll. Gameplay Fixes: it teleports (the mage's rule) only when nobody is within 110 px or more than three foes are, never mid-teleport; with nobody near it plants a TELEPORT MARKER instead (Shift 1) when it has no marker standing, a hero has 75 INT, the pool after the price still covers HEARTBURST, and it is not busy.",
+      "arms": [
+        {
+          "when": "fixes off",
+          "observable": "true"
+        },
+        {
+          "when": "1..3 foes in 110",
+          "observable": "false"
+        },
+        {
+          "when": "0 foes, marker pays, idle",
+          "observable": "true, shifter 1 (marker)"
+        },
+        {
+          "when": "0 foes, marker does not pay",
+          "observable": "true, shifter 0"
+        },
+        {
+          "when": ">3 foes",
+          "observable": "true, shifter 0"
+        },
+        {
+          "when": "mid teleport",
+          "observable": "false"
+        }
+      ],
+      "setting": "both",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_gameplay_fixes_bots.cpp",
+          "test": "GameplayFixesBots.archmage_teleport_takes_the_mage_rule_with_the_setting_on"
+        },
+        {
+          "file": "tests/unit/test_gameplay_fixes_bots.cpp",
+          "test": "GameplayFixesBots.archmage_marker_is_placed_once_where_the_archmage_will_return"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-17-archmage.lua:190",
+      "lines": [
+        190,
+        194,
+        202,
+        203,
+        209,
+        212
+      ],
+      "function": "ai_burst_or_chain",
+      "anchor": "if not gf.on() then",
+      "condition": "if not gf.on() true; busy false; if shifter then (in_chain>=1 true else shifter 0, in_burst>=1) else (in_burst true; in_chain -> shifter 1 true; false)",
+      "semantic": "Gameplay Fixes: a bot's slot-2 cast keeps the coin's arm when that arm has a foe in its radius (heartburst 80+2L, chain 200+5L+2L), swaps to the other arm when only it has one, and is refused when neither has a foe or the archmage is busy.",
+      "arms": [
+        {
+          "when": "fixes off",
+          "observable": "true"
+        },
+        {
+          "when": "busy",
+          "observable": "false"
+        },
+        {
+          "when": "coin chain, foe in chain radius",
+          "observable": "true, shifter 1"
+        },
+        {
+          "when": "coin chain, only burst target",
+          "observable": "true, shifter 0"
+        },
+        {
+          "when": "coin burst, foe in burst radius",
+          "observable": "true, shifter 0"
+        },
+        {
+          "when": "coin burst, only chain target",
+          "observable": "true, shifter 1"
+        },
+        {
+          "when": "no foe in either",
+          "observable": "false"
+        }
+      ],
+      "setting": "both",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_gameplay_fixes_bots.cpp",
+          "test": "GameplayFixesBots.archmage_burst_or_chain_takes_the_arm_with_a_target_with_the_setting_on"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-17-archmage.lua:227",
+      "lines": [
+        227,
+        231,
+        235,
+        239,
+        241,
+        244,
+        247,
+        250,
+        253
+      ],
+      "function": "ai_summon",
+      "anchor": "if not gf.on() then",
+      "condition": "if not gf.on() true; busy false; summon_shift; if shifter then foes_within(200) ... hurt / owned_phantom / foes_at_blows / spare < cost(2) -> false; return #hunters(200) >= 2",
+      "semantic": "Gameplay Fixes: a bot's SUMMON ELEMENTAL (pool-chosen) wants a living foe within 200 px; its SUMMON IMAGE is a decoy cast before blows land: two or more foes within 200 px hunting it, none at blows yet, its health above the flee threshold (60% hero, 3/8 monster), no phantom of its own standing, and a pool after the 500 that still covers HEARTBURST.",
+      "arms": [
+        {
+          "when": "fixes off",
+          "observable": "true"
+        },
+        {
+          "when": "busy",
+          "observable": "false"
+        },
+        {
+          "when": "elemental arm, foe in 200",
+          "observable": "true"
+        },
+        {
+          "when": "elemental arm, nobody",
+          "observable": "false"
+        },
+        {
+          "when": "image, hurt below threshold",
+          "observable": "false"
+        },
+        {
+          "when": "image, own phantom alive",
+          "observable": "false"
+        },
+        {
+          "when": "image, a foe at blows",
+          "observable": "false"
+        },
+        {
+          "when": "image, spare < 80",
+          "observable": "false"
+        },
+        {
+          "when": "image, <2 hunters",
+          "observable": "false"
+        },
+        {
+          "when": "image, >=2 hunters, all clear",
+          "observable": "true"
+        }
+      ],
+      "setting": "both",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_gameplay_fixes_bots.cpp",
+          "test": "GameplayFixesBots.archmage_summon_wants_a_foe_and_the_pool_for_an_elemental_with_the_setting_on"
+        },
+        {
+          "file": "tests/unit/test_gameplay_fixes_bots.cpp",
+          "test": "GameplayFixesBots.archmage_summon_image_wants_two_hunters_not_yet_at_blows_and_a_pool_left"
+        },
+        {
+          "parity": "archmage_bot_summon_no_foe_fixes_scen99",
+          "fact": "WalkerFamilyCount(FAMILY_ELF,0,0)"
+        },
+        {
+          "parity": "archmage_bot_image_one_foe_fixes_scen99",
+          "fact": "WalkerFamilyCount(FAMILY_ELF,0,0)"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-17-archmage.lua:263",
+      "lines": [
+        263,
+        267
+      ],
+      "function": "ai_mind_control",
+      "anchor": "if not gf.on() then",
+      "condition": "if not gf.on() true; busy false; return nearest_charmable(self, foes in 80+4L, self.level) ~= nil",
+      "semantic": "Gameplay Fixes: MIND CONTROL wants a foe it can take inside its reach: never charmed, not a seated hero, not above the archmage's level (the rest gate wraps it on both values).",
+      "arms": [
+        {
+          "when": "fixes off",
+          "observable": "true"
+        },
+        {
+          "when": "busy",
+          "observable": "false"
+        },
+        {
+          "when": "charmable foe <= level in reach",
+          "observable": "true"
+        },
+        {
+          "when": "only higher-level / charmed / seated foes",
+          "observable": "false"
+        }
+      ],
+      "setting": "both",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_gameplay_fixes_bots.cpp",
+          "test": "GameplayFixesBots.archmage_mind_control_wants_a_charmable_foe_in_reach"
+        },
+        {
+          "parity": "archmage_bot_mind_control_hero_fixes_scen99",
+          "fact": "WalkerOfTeamAlive(0,1,1)"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-17-archmage.lua:281",
+      "lines": [
+        281,
+        284
+      ],
+      "function": "teleport",
+      "anchor": "if lc.mid_teleport(self) then",
+      "condition": "if lc.mid_teleport(self) then SPECIAL BUSY; if shifter_down == 0 then (teleport out)",
+      "semantic": "TELEPORT unshifted sends the archmage out (ANI_TELE_OUT, teleport sound) unless it is already teleporting; Shift places/replaces a marker instead.",
+      "arms": [
+        {
+          "when": "mid teleport",
+          "observable": "false 'SPECIAL BUSY'"
+        },
+        {
+          "when": "shifter 0",
+          "observable": "true, ani_type ANI_TELE_OUT, cycle 0, SOUND_TELEPORT"
+        },
+        {
+          "when": "shifter 1",
+          "observable": "marker path"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_family_behaviors.cpp",
+          "test": "FamilyBehaviors.archmage_handle_teleport_and_special_guards"
+        },
+        {
+          "parity": "special_archmage_scen123",
+          "fact": "WalkerPositionMoved(FAMILY_ARCHMAGE,240,880)"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-17-archmage.lua:291",
+      "lines": [
+        291,
+        294
+      ],
+      "function": "teleport (marker)",
+      "anchor": "if lc.is_busy(self) then",
+      "condition": "if lc.is_busy(self) then SPECIAL BUSY; if has_guy and int < 75 then 75 INT REQUIRED",
+      "semantic": "Placing a TELEPORT MARKER refuses a busy archmage and a hero with under 75 intelligence (monsters have no INT requirement), at no cost.",
+      "arms": [
+        {
+          "when": "busy",
+          "observable": "false"
+        },
+        {
+          "when": "hero int < 75",
+          "observable": "false '75 INT REQUIRED', MP and busy unchanged"
+        },
+        {
+          "when": "monster or int >= 75",
+          "observable": "marker placed"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.archmage_marker_needs_75_int_then_chain_and_summon_are_one_each"
+        },
+        {
+          "file": "tests/integration/test_family_behaviors.cpp",
+          "test": "FamilyBehaviors.archmage_handle_teleport_and_special_guards"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-17-archmage.lua:303",
+      "lines": [
+        303,
+        304,
+        305,
+        306,
+        307
+      ],
+      "function": "teleport (marker)",
+      "anchor": "if ob",
+      "condition": "if ob and ob:order()==FX and family==FX_MARKER and owner==self and dead()==0 then retire it, busy +8, break",
+      "semantic": "An archmage has at most one marker: placing a new one retires its own previous live marker (and only its own), costing 8 extra busy ticks.",
+      "arms": [
+        {
+          "when": "own live marker exists",
+          "observable": "old marker dead, '(Old Marker Removed)', busy +16 total, one live marker"
+        },
+        {
+          "when": "none / someone else's marker",
+          "observable": "new marker only, busy +8"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_pack_lua_paths.cpp",
+          "test": "PackLuaArchmage.a_second_teleport_marker_retires_the_first"
+        },
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.archmage_marker_needs_75_int_then_chain_and_summon_are_one_each",
+          "note": "busy 16"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-17-archmage.lua:310",
+      "lines": [
+        310,
+        331
+      ],
+      "function": "teleport (marker)",
+      "anchor": "if self.team == 0 or self:has_guy() then",
+      "condition": "if self.team == 0 or self:has_guy() then og.emit_notification(...)",
+      "semantic": "Marker messages ('(Old Marker Removed)', 'Teleport Marker Placed', '(N Uses)') are told only on the player's side or for a hero, addressed to the caster; unlike the mage they are not gated on user() (any team-0 bot also announces).",
+      "arms": [
+        {
+          "when": "team 0 or hero",
+          "observable": "notifications emitted targeted at the caster"
+        },
+        {
+          "when": "enemy monster",
+          "observable": "silent"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_pack_lua_paths.cpp",
+          "test": "PackLuaArchmage.a_second_teleport_marker_retires_the_first",
+          "note": "targets"
+        },
+        {
+          "parity": "archmage_teleport_marker_scen99",
+          "fact": "EventKindAtLeast(notification,4)"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-17-archmage.lua:325",
+      "lines": [
+        325,
+        327
+      ],
+      "function": "teleport (marker)",
+      "anchor": "if self:has_guy() then",
+      "condition": "if has_guy then lifetime = int // 33 else level // 4 + 1",
+      "semantic": "A marker's number of uses is a hero's intelligence / 33, a monster's level / 4 + 1.",
+      "arms": [
+        {
+          "when": "hero int 220",
+          "observable": "lifetime 6"
+        },
+        {
+          "when": "monster level L",
+          "observable": "lifetime L/4+1"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.archmage_marker_needs_75_int_then_chain_and_summon_are_one_each",
+          "note": "hero 220/33"
+        },
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.archmage_teleport_drives_simulation",
+          "note": "lifetime 6"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-17-archmage.lua:344",
+      "lines": [
+        344
+      ],
+      "function": "burst_or_chain",
+      "anchor": "if lc.is_busy(self) then",
+      "condition": "if lc.is_busy(self) then SPECIAL BUSY",
+      "semantic": "A busy archmage cannot cast HEARTBURST / CHAIN LIGHTNING.",
+      "arms": [
+        {
+          "when": "busy",
+          "observable": "false"
+        },
+        {
+          "when": "idle",
+          "observable": "proceeds"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_family_behaviors.cpp",
+          "test": "FamilyBehaviors.archmage_special_case2_case3_case4_guard_branches"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-17-archmage.lua:349",
+      "lines": [
+        349,
+        350,
+        353,
+        356
+      ],
+      "function": "burst_or_chain",
+      "anchor": "if self:shifter_down() ~= 0 then",
+      "condition": "if shifter then (has_guy: 200 + int//2 else 200 + 5L) else 80; + 2L",
+      "semantic": "HEARTBURST reaches foes within 80 + 2L px; CHAIN LIGHTNING acquires within 200 + Int/2 + 2L for a hero, 200 + 5L + 2L for a monster.",
+      "arms": [
+        {
+          "when": "burst",
+          "observable": "foe at 80+2L hit, at 81+2L not"
+        },
+        {
+          "when": "chain, monster",
+          "observable": "acquire within 200+7L"
+        },
+        {
+          "when": "chain, hero",
+          "observable": "acquire within 200+Int/2+2L"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.archmage_chain_lightning_spawns_one_leashed_bolt",
+          "note": "in-range only"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-17-archmage.lua:361",
+      "lines": [
+        361
+      ],
+      "function": "burst_or_chain",
+      "anchor": "if foe_count == 0 then",
+      "condition": "if foe_count == 0 then NO FOE IN RANGE",
+      "semantic": "HEARTBURST / CHAIN with no foe in reach fail free.",
+      "arms": [
+        {
+          "when": "no foe",
+          "observable": "false, MP unchanged"
+        },
+        {
+          "when": "foes",
+          "observable": "cast"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_family_behaviors.cpp",
+          "test": "FamilyBehaviors.archmage_special_case2_case3_case4_guard_branches"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-17-archmage.lua:364",
+      "lines": [
+        364
+      ],
+      "function": "burst_or_chain",
+      "anchor": "if self:shifter_down() == 0 then",
+      "condition": "if self:shifter_down() == 0 then (heartburst) else (chain)",
+      "semantic": "HEARTBURST splits its MP pool evenly over every foe in reach, one magical explosion centred on each (on that foe's floor), spending the pool share per foe; CHAIN LIGHTNING spends the pool once on a single bolt.",
+      "arms": [
+        {
+          "when": "burst, N foes",
+          "observable": "N FAMILY_EXPLOSION each damage pool/N, MP -= pool, busy +5"
+        },
+        {
+          "when": "chain",
+          "observable": "one FAMILY_CHAIN with damage pool, MP -= pool, busy +5"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "parity": "effect_heartburst_multitarget_scen99",
+          "fact": "EventKindAtLeast(play_sound,6)+WalkerHpRangeAtFinalTick(FAMILY_SOLDIER,0,9000) (one explosion per in-range foe)"
+        },
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.archmage_heartburst_drives_simulation",
+          "note": "MP 1400, busy 5"
+        },
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.archmage_chain_lightning_spawns_one_leashed_bolt",
+          "note": "damage 600, MP 1200"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-17-archmage.lua:369",
+      "lines": [
+        369,
+        399
+      ],
+      "function": "burst_or_chain",
+      "anchor": "if self:has_guy() then",
+      "condition": "if self:has_guy() then shots += foe_count (burst) / += 1 (chain)",
+      "semantic": "A hero's HEARTBURST counts one shot per foe it bursts; its CHAIN LIGHTNING counts one shot however many it hits (accuracy can exceed 100%).",
+      "arms": [
+        {
+          "when": "hero burst on N",
+          "observable": "total_shots/scen_shots += N"
+        },
+        {
+          "when": "hero chain",
+          "observable": "+= 1"
+        },
+        {
+          "when": "monster",
+          "observable": "no tally"
+        }
+      ],
+      "setting": "none",
+      "status": "none",
+      "tests": [],
+      "missing_arms": []
+    },
+    {
+      "id": "living-17-archmage.lua:419",
+      "lines": [
+        419,
+        421
+      ],
+      "function": "burst_or_chain",
+      "anchor": "if foe:floor() == self:floor() then",
+      "condition": "if foe:floor() == self:floor() then if best_dist > dist then leader = foe",
+      "semantic": "CHAIN LIGHTNING's first strike is the nearest foe (centre distance) on the archmage's own floor; it cannot arc through floors.",
+      "arms": [
+        {
+          "when": "same-floor foes",
+          "observable": "bolt->leader() == nearest same-floor foe"
+        },
+        {
+          "when": "only other-floor foes in reach",
+          "observable": "bolt has no leader, MP still spent"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.archmage_chain_lightning_spawns_one_leashed_bolt",
+          "note": "nearest"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-17-archmage.lua:432",
+      "lines": [
+        432
+      ],
+      "function": "summon_image",
+      "anchor": "if lc.is_busy(self) then",
+      "condition": "if lc.is_busy(self) then SPECIAL BUSY",
+      "semantic": "A busy archmage cannot summon.",
+      "arms": [
+        {
+          "when": "busy",
+          "observable": "false, nothing summoned"
+        },
+        {
+          "when": "idle",
+          "observable": "proceeds"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": []
+    },
+    {
+      "id": "living-17-archmage.lua:435",
+      "lines": [
+        435
+      ],
+      "function": "summon_image",
+      "anchor": "if self:shifter_down() ~= 0 then",
+      "condition": "if self:shifter_down() ~= 0 then (true summon: elemental) else (illusion)",
+      "semantic": "SUMMON with Shift calls a real fire elemental; unshifted it conjures a one-hit-point phantom of a random class.",
+      "arms": [
+        {
+          "when": "shift",
+          "observable": "FAMILY_FIREELEMENTAL appears, summoned, owner archmage"
+        },
+        {
+          "when": "no shift",
+          "observable": "a phantom (FAMILY by tier) with hp 0, max_hp 1, name 'Phantom'"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.archmage_true_summon_places_one_owned_fire_elemental"
+        },
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.archmage_summon_image_drives_simulation"
+        },
+        {
+          "parity": "archmage_summon_elemental_scen99",
+          "fact": "WalkerFamilyCount(FAMILY_FIREELEMENTAL,1,1)"
+        },
+        {
+          "parity": "archmage_summon_image_phantom_scen99",
+          "fact": "WalkerHpRangeAtFinalTick(FAMILY_ELF,0,100)"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-17-archmage.lua:438",
+      "lines": [
+        438
+      ],
+      "function": "summon_image",
+      "anchor": "if self:has_guy() and self:g_intelligence() < t.summon_int_req then",
+      "condition": "if has_guy and int < summon_int_req (150) then '150 INT REQUIRED'",
+      "semantic": "A hero needs 150 intelligence for the true summon; monsters do not.",
+      "arms": [
+        {
+          "when": "hero int < 150",
+          "observable": "false '150 INT REQUIRED', MP unchanged"
+        },
+        {
+          "when": "int >= 150 or monster",
+          "observable": "proceeds"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_family_behaviors.cpp",
+          "test": "FamilyBehaviors.archmage_special_case2_case3_case4_guard_branches"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-17-archmage.lua:441",
+      "lines": [
+        441,
+        479
+      ],
+      "function": "summon_image",
+      "anchor": "if not gf.on() then",
+      "condition": "if not gf.on() then halve_mp_surcharge (before placement) ... if gf.on() then halve_mp_surcharge (after placement)",
+      "semantic": "The true summon also takes half the MP left after its price. Classic: taken before the elemental is placed, so a summon with nowhere to stand still pays it. Gameplay Fixes: taken only once the elemental stands.",
+      "arms": [
+        {
+          "when": "fixes off, no room",
+          "observable": "false, MP halved anyway"
+        },
+        {
+          "when": "fixes on, no room",
+          "observable": "false, MP unchanged"
+        },
+        {
+          "when": "placed, either value",
+          "observable": "MP pays half the spare pool"
+        }
+      ],
+      "setting": "both",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_pack_lua_paths.cpp",
+          "test": "PackLuaArchmage.a_true_summon_with_nowhere_to_stand_is_cancelled"
+        },
+        {
+          "file": "tests/unit/test_pack_lua_paths.cpp",
+          "test": "PackLuaArchmage.a_true_summon_with_nowhere_to_stand_costs_nothing_with_gameplay_fixes"
+        },
+        {
+          "file": "tests/unit/test_pack_lua_paths.cpp",
+          "test": "PackLuaArchmage.a_placed_true_summon_pays_half_the_spare_pool_on_both_values"
+        },
+        {
+          "parity": "archmage_summon_no_room_scen99",
+          "fact": "WalkerHpRangeAtFinalTick(FAMILY_TOWER1,3900,3900)"
+        },
+        {
+          "parity": "archmage_summon_no_room_fixes_scen99",
+          "fact": "WalkerHpRangeAtFinalTick(FAMILY_TOWER1,700,700)"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-17-archmage.lua:459",
+      "lines": [
+        459,
+        460,
+        463,
+        475
+      ],
+      "function": "summon_image (elemental)",
+      "anchor": "if not ((i == 0 and j == 0)",
+      "condition": "if not ((i==0 and j==0) or placed) then if query_passable(testx,testy) then place ... if not placed then dead, NO ROOM TO SUMMON",
+      "semantic": "The elemental stands in the first passable of the eight neighbouring body-sized cells, scanned column by column from the west (i outer -1..1, j inner -1..1, skipping the caster's own cell); it is level (L+1)/2, the caster's team, owned, with elemental_lifetime(L). With no free cell the summon is cancelled.",
+      "arms": [
+        {
+          "when": "NW cell free",
+          "observable": "elemental at (x-(w+1), y-(h+1))"
+        },
+        {
+          "when": "west column blocked, N free",
+          "observable": "elemental at (x, y-(h+1))"
+        },
+        {
+          "when": "all blocked",
+          "observable": "no elemental, false 'NO ROOM TO SUMMON'"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.archmage_true_summon_places_one_owned_fire_elemental",
+          "note": "owner, team, lifetime 680 at L8"
+        },
+        {
+          "file": "tests/unit/test_pack_lua_paths.cpp",
+          "test": "PackLuaArchmage.a_true_summon_with_nowhere_to_stand_is_cancelled"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-17-archmage.lua:492",
+      "lines": [
+        492,
+        494,
+        496,
+        498,
+        500,
+        505,
+        507,
+        509,
+        511,
+        513,
+        515,
+        520,
+        522,
+        524,
+        526,
+        528,
+        530,
+        532,
+        534,
+        540,
+        542,
+        544,
+        546,
+        548,
+        550,
+        552,
+        554,
+        556,
+        558
+      ],
+      "function": "summon_image (illusion)",
+      "anchor": "if mp_pool < 100 then",
+      "condition": "if mp_pool < 100 elf elseif < 250 rand(3) elseif < 500 rand(5) elseif < 1000 rand(7) else rand(9)",
+      "semantic": "The phantom's class widens with the magic left after the 500 price: under 100 always an elf (no draw); under 250 elf/soldier/archer; under 500 adds orc/skeleton; under 1000 adds druid/cleric; 1000+ adds elemental and orc captain; one rand draw for every tier but the first.",
+      "arms": [
+        {
+          "when": "spare < 100",
+          "observable": "FAMILY_ELF, rng state unchanged"
+        },
+        {
+          "when": "100..249",
+          "observable": "one of ELF/SOLDIER/ARCHER by rand(3)"
+        },
+        {
+          "when": "250..499",
+          "observable": "rand(5) over +ORC/SKELETON"
+        },
+        {
+          "when": "500..999",
+          "observable": "rand(7) over +DRUID/CLERIC"
+        },
+        {
+          "when": ">= 1000",
+          "observable": "rand(9) over +ELEMENTAL/ORC_CAPTAIN"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.archmage_illusion_family_follows_the_magic_pool_tier",
+          "note": "table over tiers, rng state 4242 unchanged at tier 0"
+        },
+        {
+          "file": "tests/unit/test_pack_lua_paths.cpp",
+          "test": "PackLuaArchmage.the_illusion_summoned_widens_with_the_magic_behind_it"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-17-archmage.lua:577",
+      "lines": [
+        577,
+        578,
+        581,
+        600
+      ],
+      "function": "summon_image (illusion)",
+      "anchor": "if not ((i == 0 and j == 0)",
+      "condition": "if not ((i==0 and j==0) or placed) then if query_passable then place phantom ... if not placed then dead, NO ROOM TO SUMMON",
+      "semantic": "The phantom stands in the first free neighbouring cell (same scan order as the elemental) as a level (L+2)/3, caster-team, owned decoy with image_lifetime(L), 1 max hp and 0 hp, no armour, magical, named 'Phantom', sharing the caster's foe; with no free cell the summon is cancelled.",
+      "arms": [
+        {
+          "when": "free cell",
+          "observable": "phantom placed: owner, team, name 'Phantom', hp 0, max_hp 1, foe == caster's foe, busy +15"
+        },
+        {
+          "when": "no free cell",
+          "observable": "no phantom, false 'NO ROOM TO SUMMON'"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_pack_lua_paths.cpp",
+          "test": "PackLuaArchmage.the_illusion_summoned_widens_with_the_magic_behind_it",
+          "note": "name, owner, team, hp 0"
+        },
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.archmage_summon_image_drives_simulation"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-17-archmage.lua:611",
+      "lines": [
+        611,
+        620
+      ],
+      "function": "mind_control",
+      "anchor": "if lc.is_busy(self) then",
+      "condition": "if lc.is_busy(self) then SPECIAL BUSY; if foe_count < 1 then NO FOE IN RANGE",
+      "semantic": "MIND CONTROL refuses a busy archmage and needs a foe within 80 + 4L px; both refusals are free.",
+      "arms": [
+        {
+          "when": "busy",
+          "observable": "false"
+        },
+        {
+          "when": "no foe in reach",
+          "observable": "false 'NO FOE IN RANGE'"
+        },
+        {
+          "when": "foe in reach",
+          "observable": "proceeds"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_family_behaviors.cpp",
+          "test": "FamilyBehaviors.archmage_special_case2_case3_case4_guard_branches",
+          "note": "no-foe arm"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-17-archmage.lua:628",
+      "lines": [
+        628
+      ],
+      "function": "mind_control",
+      "anchor": "if budget < 10 then",
+      "condition": "if budget < 10 then break",
+      "semantic": "MIND CONTROL takes foes while its budget lasts: the first is covered by the base price, each further one costs 10 MP of the spare pool; when the budget is gone the rest are left alone.",
+      "arms": [
+        {
+          "when": "spare >= 10k",
+          "observable": "up to k+1 foes controlled"
+        },
+        {
+          "when": "spare 0",
+          "observable": "exactly one foe"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.archmage_mind_control_stats_name_path",
+          "note": "3 controlled, MP 60"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-17-archmage.lua:633",
+      "lines": [
+        633
+      ],
+      "function": "mind_control",
+      "anchor": "if gf.charmable(foe, fixes) and foe:charm_left() <= 10 then",
+      "condition": "if gf.charmable(foe, fixes) and foe:charm_left() <= 10 then",
+      "semantic": "MIND CONTROL takes only never-charmed living foes with no charm running (and, with Gameplay Fixes, not a seated hero); others are skipped without spending budget.",
+      "arms": [
+        {
+          "when": "charmable, charm_left <= 10",
+          "observable": "controlled or berserk"
+        },
+        {
+          "when": "already charmed / generator / (fixes) seated hero",
+          "observable": "skipped"
+        }
+      ],
+      "setting": "both",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_gameplay_fixes_bots.cpp",
+          "test": "GameplayFixesBots.mind_control_skips_a_seated_hero_with_the_setting_on"
+        },
+        {
+          "parity": "archmage_bot_mind_control_hero_scen99",
+          "fact": "WalkerOfTeamAlive(0,0,0)"
+        },
+        {
+          "parity": "archmage_bot_mind_control_hero_fixes_scen99",
+          "fact": "WalkerOfTeamAlive(0,1,1)"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-17-archmage.lua:640",
+      "lines": [
+        640,
+        642,
+        645,
+        655
+      ],
+      "function": "mind_control",
+      "anchor": "if level_edge < 0 then",
+      "condition": "if level_edge < 0 then confused else confused = rand(20)==0; if confused then berserk else control",
+      "semantic": "A foe above the archmage's level always resists (no draw) and an equal/lower one resists 1 in 20; a resisting foe goes berserk onto a random team (rand(8)) for charm_duration(edge) ticks; a controlled foe joins the archmage's team with no foe, for charm_duration(edge) ticks. Either way its real team is remembered.",
+      "arms": [
+        {
+          "when": "foe higher level",
+          "observable": "berserk, no rand(20) draw, charm_left 25"
+        },
+        {
+          "when": "rand(20)==0",
+          "observable": "berserk"
+        },
+        {
+          "when": "control",
+          "observable": "team == caster team, foe()==nullptr, real_team == old team, charm_left == charm_duration(edge)"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_pack_lua_paths.cpp",
+          "test": "PackLuaArchmage.an_undominated_victim_goes_berserk_rather_than_joining"
+        },
+        {
+          "file": "tests/unit/test_pack_lua_paths.cpp",
+          "test": "PackLuaArchmage.a_higher_level_berserk_lasts_25_ticks"
+        },
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.archmage_mind_control_drives_simulation"
+        },
+        {
+          "parity": "archmage_mind_control_team_flip_scen99",
+          "fact": "WalkerOfTeamAlive(1,0,0)"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-17-archmage.lua:649",
+      "lines": [
+        649
+      ],
+      "function": "mind_control",
+      "anchor": "if gf.on() and colour == self.team then",
+      "condition": "if gf.on() and colour == self.team then colour = (colour + 1) % 8",
+      "semantic": "Classic: a berserk foe's random colour can land on the archmage's own team, handing it over anyway. Gameplay Fixes: berserk always means someone else's side (own colour becomes the next one, 7 wraps to 0).",
+      "arms": [
+        {
+          "when": "fixes off, roll == caster team",
+          "observable": "foe joins caster team"
+        },
+        {
+          "when": "fixes on, roll == caster team",
+          "observable": "foe team = roll+1 mod 8"
+        },
+        {
+          "when": "roll != caster team",
+          "observable": "foe team = roll on both values"
+        }
+      ],
+      "setting": "both",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_pack_lua_paths.cpp",
+          "test": "PackLuaArchmage.an_undominated_victim_never_joins_the_caster"
+        },
+        {
+          "file": "tests/unit/test_pack_lua_paths.cpp",
+          "test": "PackLuaArchmage.the_berserk_draw_count_is_one_on_both_values"
+        },
+        {
+          "parity": "archmage_mind_control_berserk_scen99",
+          "fact": "WalkerOfTeamAlive(0,2,2)"
+        },
+        {
+          "parity": "archmage_mind_control_berserk_fixes_scen99",
+          "fact": "WalkerOfTeamAlive(1,1,1)"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-17-archmage.lua:665",
+      "lines": [
+        665
+      ],
+      "function": "mind_control",
+      "anchor": "if controlled == 0 then",
+      "condition": "if controlled == 0 then NO VALID TARGET",
+      "semantic": "MIND CONTROL with foes in reach but none it can take fails free.",
+      "arms": [
+        {
+          "when": "none taken",
+          "observable": "false 'NO VALID TARGET', no notification"
+        },
+        {
+          "when": "some taken",
+          "observable": "'<name> has controlled N men', busy +10"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_gameplay_fixes_bots.cpp",
+          "test": "GameplayFixesBots.mind_control_skips_a_seated_hero_with_the_setting_on"
+        },
+        {
+          "parity": "archmage_bot_mind_control_hero_fixes_scen99",
+          "fact": "EventKindExactly(notification,0)"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-17-archmage.lua:673",
+      "lines": [
+        673
+      ],
+      "function": "mind_control",
+      "anchor": "if mp_after_base_cost > 0 and controlled > 1 then",
+      "condition": "if mp_after_base_cost > 0 and controlled > 1 then spend min((controlled-1)*10, spare)",
+      "semantic": "Each foe controlled beyond the first costs 10 MP more, never more than the pool left after the base price.",
+      "arms": [
+        {
+          "when": "1 controlled",
+          "observable": "only base price"
+        },
+        {
+          "when": "3 controlled, spare 200",
+          "observable": "MP -= base + 20"
+        },
+        {
+          "when": "spare 0",
+          "observable": "no extra charge"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.archmage_mind_control_stats_name_path",
+          "note": "MP 60 after 3"
+        }
+      ],
+      "missing_arms": []
+    }
+  ],
+  "other": [
+    {
+      "id": "living-17-archmage.lua:79",
+      "lines": [
+        79
+      ],
+      "kind": "loop",
+      "anchor": "for i = 0, (self.level + 2) // 3 do",
+      "note": "builds the hit response's possible[] table over slots 0..(L+2)/3; rule row living-17-archmage.lua:80"
+    },
+    {
+      "id": "living-17-archmage.lua:301",
+      "lines": [
+        301
+      ],
+      "kind": "loop",
+      "anchor": "for i = 1, #obs do",
+      "note": "oblist scan for this caster's live marker; rule row living-17-archmage.lua:303"
+    },
+    {
+      "id": "living-17-archmage.lua:319",
+      "lines": [
+        319
+      ],
+      "kind": "defensive",
+      "anchor": "if not marker then",
+      "note": "add_ob failure for the marker: 'COULD NOT CREATE MARKER' (old marker already retired)."
+    },
+    {
+      "id": "living-17-archmage.lua:375",
+      "lines": [
+        375
+      ],
+      "kind": "loop",
+      "anchor": "for i = 1, #foes do",
+      "note": "one explosion per foe; rule row living-17-archmage.lua:364"
+    },
+    {
+      "id": "living-17-archmage.lua:378",
+      "lines": [
+        378
+      ],
+      "kind": "defensive",
+      "anchor": "if not burst then",
+      "note": "og.summon failure mid-burst: 'COULD NOT MAKE EXPLOSION' (earlier explosions stand, their MP spent)."
+    },
+    {
+      "id": "living-17-archmage.lua:406",
+      "lines": [
+        406
+      ],
+      "kind": "defensive",
+      "anchor": "if not bolt then",
+      "note": "og.summon failure for the chain bolt: 'COULD NOT CREATE CHAIN' (busy already added)."
+    },
+    {
+      "id": "living-17-archmage.lua:415",
+      "lines": [
+        415
+      ],
+      "kind": "loop",
+      "anchor": "for i = 1, #foes do",
+      "note": "first-strike search over the foes; rule row living-17-archmage.lua:419"
+    },
+    {
+      "id": "living-17-archmage.lua:446",
+      "lines": [
+        446
+      ],
+      "kind": "defensive",
+      "anchor": "if not elemental then",
+      "note": "add_ob failure for the elemental: 'COULD NOT SUMMON' (classic surcharge already taken)."
+    },
+    {
+      "id": "living-17-archmage.lua:457",
+      "lines": [
+        457,
+        458
+      ],
+      "kind": "loop",
+      "anchor": "for i = -1, 1 do",
+      "note": "3x3 placement scan around the caster; rule row living-17-archmage.lua:459"
+    },
+    {
+      "id": "living-17-archmage.lua:502",
+      "lines": [
+        502,
+        517,
+        536,
+        560
+      ],
+      "kind": "dead",
+      "anchor": "else  -- C++ default (unreachable)",
+      "note": "C++ switch default arms: og.rand(n) returns 0..n-1, so tier_roll never exceeds the listed cases"
+    },
+    {
+      "id": "living-17-archmage.lua:566",
+      "lines": [
+        566
+      ],
+      "kind": "defensive",
+      "anchor": "if not phantom then",
+      "note": "add_ob failure for the phantom: 'COULD NOT MAKE ILLUSION'."
+    },
+    {
+      "id": "living-17-archmage.lua:575",
+      "lines": [
+        575,
+        576
+      ],
+      "kind": "loop",
+      "anchor": "for i = -1, 1 do",
+      "note": "3x3 placement scan for the phantom; rule row living-17-archmage.lua:577"
+    },
+    {
+      "id": "living-17-archmage.lua:627",
+      "lines": [
+        627
+      ],
+      "kind": "loop",
+      "anchor": "for i = 1, #foes do",
+      "note": "foe iteration under the MP budget; rule rows living-17-archmage.lua:628, :633, :640"
+    }
+  ]
+}

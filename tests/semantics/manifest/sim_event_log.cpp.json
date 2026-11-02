@@ -1,0 +1,70 @@
+{
+  "path": "src/gameplay/sim_event_log.cpp",
+  "rules": [
+    {
+      "id": "sim_event_log.cpp:17",
+      "lines": [
+        17,
+        31,
+        46,
+        60
+      ],
+      "function": "SimEventLog::push / push_with_text / push_notification / push_sound",
+      "anchor": "if (suppressed_)",
+      "condition": "suppressed_",
+      "semantic": "While a snapshot is being replayed silently (apply_snapshot's guard), the sim emits no sounds, notifications, palette or text events; outside the guard every push is recorded with the current tick; the guard restores the previous state.",
+      "arms": [
+        {
+          "when": "suppressed",
+          "observable": "log stays empty for all four push kinds"
+        },
+        {
+          "when": "not suppressed",
+          "observable": "event recorded with tick, kind, payload, text, target_player"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sim_event_log.cpp",
+          "test": "SimEventLog.suppress_guard_blocks_pushes_and_restores_state"
+        },
+        {
+          "file": "tests/unit/test_sim_entity.cpp",
+          "test": "SimEntity.suppressed_event_log_drops_text_events"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "sim_event_log.cpp:76",
+      "lines": [
+        76
+      ],
+      "function": "SimEventLog::append",
+      "anchor": "if (events.empty())",
+      "condition": "events.empty()",
+      "semantic": "Adopting a staged lobby's queued events appends them behind whatever is queued with their own tick stamps (never restamped) and ignores suppression; an empty batch changes nothing.",
+      "arms": [
+        {
+          "when": "non-empty",
+          "observable": "events appended in order, original tick kept, even while suppressed"
+        },
+        {
+          "when": "empty",
+          "observable": "log unchanged"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": [],
+      "note": [
+        "tests/unit/test_staged_rules.cpp: dst_events.append(stage.take_events()) near line 2375 (adoption flow; tick-preserve and suppression-ignore arms not asserted directly)",
+        "UNASSERTED: append keeps each event's original tick, and append ignores suppression"
+      ]
+    }
+  ],
+  "other": []
+}

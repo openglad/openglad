@@ -1,0 +1,1061 @@
+{
+  "path": "packs/core/families/living-11-thief.lua",
+  "rules": [
+    {
+      "id": "living-11-thief.lua:16",
+      "lines": [
+        16
+      ],
+      "function": "check_special_ai",
+      "anchor": "if gf.on() or og.match_setting(\"new_specials\") ~= 0 then",
+      "condition": "if gf.on() or og.match_setting(\"new_specials\") ~= 0 then",
+      "semantic": "With either Gameplay Fixes or New Specials on, a thief bot's DROP BOMB roll is judged by blast geometry (reach by level, no ally in the blast) before any classic rule; with both off the classic distance gate alone decides.",
+      "arms": [
+        {
+          "when": "both settings off",
+          "observable": "classic gate (thief.lua:45)"
+        },
+        {
+          "when": "fixes or new_specials on",
+          "observable": "blast reach/clear computed; MINE gate (new specials) then fixed bomb gate (fixes)"
+        }
+      ],
+      "setting": "both",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_thief.cpp",
+          "test": "KitThief.ai_off_answers_the_classic_gate"
+        },
+        {
+          "file": "tests/unit/test_bot_gates_casters.cpp",
+          "test": "GameplayFixesBots.thief_mine_waits_for_a_hunter_past_the_blast"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-11-thief.lua:19",
+      "lines": [
+        19,
+        26,
+        27,
+        28,
+        29
+      ],
+      "function": "check_special_ai",
+      "anchor": "if og.match_setting(\"new_specials\") ~= 0 then",
+      "condition": "if og.match_setting(\"new_specials\") ~= 0 then ... if clear and hunter and distance > reach and mines < 3 and G.can_pay(self,1,true)",
+      "semantic": "New Specials: a thief bot lays a MINE (Shift 1) only when a foe within 130 px is hunting it from beyond the bomb's blast, it has fewer than three mines down, no ally is in the blast, and it can pay the mine's 70; otherwise Shift goes to 0 and the bomb rule decides.",
+      "arms": [
+        {
+          "when": "all hold",
+          "observable": "gate true, shifter_down == 1"
+        },
+        {
+          "when": "no hunter / hunter inside blast",
+          "observable": "shifter_down 0, falls to bomb gate"
+        },
+        {
+          "when": "3 mines down",
+          "observable": "shifter 0"
+        },
+        {
+          "when": "MP < 70",
+          "observable": "shifter 0"
+        },
+        {
+          "when": "ally in blast",
+          "observable": "shifter 0"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_bot_gates_casters.cpp",
+          "test": "GameplayFixesBots.thief_mine_waits_for_a_hunter_past_the_blast"
+        },
+        {
+          "file": "tests/unit/test_kit_thief.cpp",
+          "test": "KitThief.ai_mine_fires_for_a_hunter_past_the_blast_when_mana_allows"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-11-thief.lua:35",
+      "lines": [
+        35,
+        40
+      ],
+      "function": "check_special_ai",
+      "anchor": "if gf.on() then",
+      "condition": "if gf.on() then ... return G.foes_within(self, 1, reach, true) and clear",
+      "semantic": "Gameplay Fixes: a thief bot drops a bomb only with a living foe inside the bomb's blast reach and no ally in it; the Shift is forced to 0 (bomb).",
+      "arms": [
+        {
+          "when": "foe inside blast, no ally",
+          "observable": "true, shifter 0"
+        },
+        {
+          "when": "no foe inside blast",
+          "observable": "false"
+        },
+        {
+          "when": "ally in blast",
+          "observable": "false"
+        }
+      ],
+      "setting": "fixes-on",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_bot_gates_casters.cpp",
+          "test": "GameplayFixesBots.thief_bomb_wants_a_foe_inside_its_blast_and_no_ally"
+        },
+        {
+          "parity": "thief_bot_bomb_far_fixes_scen99",
+          "fact": "WalkerOfOrderFamilyCount(FAMILY_BOMB,0,0)"
+        },
+        {
+          "parity": "thief_bot_bomb_ally_fixes_scen99",
+          "fact": "WalkerHpRangeAtFinalTick(FAMILY_ORC,14000,14000)"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-11-thief.lua:45",
+      "lines": [
+        45,
+        48,
+        51
+      ],
+      "function": "check_special_ai",
+      "anchor": "if foe then",
+      "condition": "if foe then ... if distance < 130 and distance > 35 then return false ... else return foe_count >= 3",
+      "semantic": "Classic thief bomb gate: with a foe, the bomb is refused only while the foe is 36..129 px away (point blank or 130+ px both bomb); with no foe it bombs when three or more foes stand within 110 px.",
+      "arms": [
+        {
+          "when": "foe at 36..129 px",
+          "observable": "false"
+        },
+        {
+          "when": "foe <= 35 px",
+          "observable": "true"
+        },
+        {
+          "when": "foe >= 130 px",
+          "observable": "true (classic bombs a far foe)"
+        },
+        {
+          "when": "no foe, >=3 foes in 110",
+          "observable": "true"
+        },
+        {
+          "when": "no foe, <3 foes",
+          "observable": "false"
+        }
+      ],
+      "setting": "fixes-off",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_family_behaviors.cpp",
+          "test": "FamilyBehaviors.thief_batch3_check_special_ai_matrix"
+        },
+        {
+          "file": "tests/unit/test_pack_lua_paths.cpp",
+          "test": "PackLuaThief.the_bomb_ai_allows_a_foe_outside_the_refusal_band"
+        },
+        {
+          "parity": "thief_bot_bomb_far_scen99",
+          "fact": "WalkerOfOrderFamilyCount(FAMILY_BOMB,1,1)"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-11-thief.lua:58",
+      "lines": [
+        58,
+        60
+      ],
+      "function": "check_special_ai",
+      "anchor": "if gf.on() then",
+      "condition": "if gf.on() then if lc.is_busy(self) then return false",
+      "semantic": "Gameplay Fixes: a busy thief bot never rolls TAUNT/CHARM (the casts refuse a busy thief).",
+      "arms": [
+        {
+          "when": "busy",
+          "observable": "false"
+        },
+        {
+          "when": "not busy",
+          "observable": "goes on to charm-or-taunt choice"
+        }
+      ],
+      "setting": "fixes-on",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_gameplay_fixes_bots.cpp",
+          "test": "GameplayFixesBots.a_busy_bot_never_rolls_a_busy_cast_with_the_setting_on"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-11-thief.lua:67",
+      "lines": [
+        67,
+        69,
+        75
+      ],
+      "function": "check_special_ai",
+      "anchor": "if gf.nearest_charmable(self, foes, self.level) then",
+      "condition": "if gf.nearest_charmable(self, foes, self.level) then ... else ... if not G.foes_within(...) then return false end return G.allies_within(...)",
+      "semantic": "Gameplay Fixes: a thief bot CHARMs (Shift 1) only a never-charmed, non-seated living foe at or below its level inside charm reach (16+4L); otherwise it TAUNTs (Shift 0), and only with a living foe inside taunt reach (80+4L) AND an ally there too.",
+      "arms": [
+        {
+          "when": "charmable foe in charm reach",
+          "observable": "true, shifter 1"
+        },
+        {
+          "when": "none charmable, foe and ally in taunt reach",
+          "observable": "true, shifter 0"
+        },
+        {
+          "when": "none charmable, no foe in taunt reach",
+          "observable": "false"
+        },
+        {
+          "when": "foe but no ally",
+          "observable": "false"
+        }
+      ],
+      "setting": "fixes-on",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_gameplay_fixes_thief_unit.cpp",
+          "test": "GameplayFixesThiefBot.taunts_a_foe_it_cannot_charm"
+        },
+        {
+          "file": "tests/unit/test_gameplay_fixes_thief_unit.cpp",
+          "test": "GameplayFixesThiefBot.charms_an_equal_level_foe_in_reach"
+        },
+        {
+          "file": "tests/unit/test_gameplay_fixes_thief_unit.cpp",
+          "test": "GameplayFixesThiefBot.taunts_a_seated_hero_and_a_charmed_foe"
+        },
+        {
+          "file": "tests/unit/test_bot_gates_casters.cpp",
+          "test": "GameplayFixesBots.thief_taunt_wants_a_foe_and_an_ally_in_reach"
+        },
+        {
+          "parity": "thief_bot_charm_or_taunt_fixes_scen99",
+          "fact": "WalkerOfTeamAlive(1,2,2)"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-11-thief.lua:82",
+      "lines": [
+        82,
+        84
+      ],
+      "function": "check_special_ai",
+      "anchor": "if self:shifter_down() == 0 then",
+      "condition": "if self:shifter_down() == 0 then range = taunt ... else range = charm",
+      "semantic": "Classic: a thief bot casts slot 3 whenever at least one foe is in the reach of the arm the engine coin chose (taunt 80+4L, charm 16+4L).",
+      "arms": [
+        {
+          "when": "shifter 0, foe within 80+4L",
+          "observable": "true"
+        },
+        {
+          "when": "shifter 1, foe within 16+4L",
+          "observable": "true"
+        },
+        {
+          "when": "no foe in the arm's reach",
+          "observable": "false"
+        }
+      ],
+      "setting": "fixes-off",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_family_behaviors.cpp",
+          "test": "FamilyBehaviors.thief_batch3_check_special_ai_matrix"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-11-thief.lua:89",
+      "lines": [
+        89
+      ],
+      "function": "check_special_ai",
+      "anchor": "elseif gf.on() then",
+      "condition": "elseif gf.on() then ... return true -- default",
+      "semantic": "Classic: CLOAK and POISON CLOUD have no bot gate (cast on every roll); with Gameplay Fixes each asks for its payoff.",
+      "arms": [
+        {
+          "when": "fixes off, slot 2 or 4",
+          "observable": "true"
+        },
+        {
+          "when": "fixes on",
+          "observable": "slot 2 -> cloak gate, else cloud gate"
+        }
+      ],
+      "setting": "both",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_family_behaviors.cpp",
+          "test": "FamilyBehaviors.thief_batch3_check_special_ai_matrix",
+          "note": "non-1/non-3 pass"
+        },
+        {
+          "parity": "thief_bot_cloud_alone_scen99",
+          "fact": "WalkerOfOrderFamilyCount(FAMILY_CLOUD,1,1)"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-11-thief.lua:90",
+      "lines": [
+        90,
+        93
+      ],
+      "function": "check_special_ai",
+      "anchor": "if self:current_special() == 2 then",
+      "condition": "if self:current_special() == 2 then if self:invisibility_left() ~= 0 then return false end return G.hunted_by(self,130) ~= nil",
+      "semantic": "Gameplay Fixes: a thief bot CLOAKs only when no cloak is left on it and a foe within 130 px is hunting it.",
+      "arms": [
+        {
+          "when": "still cloaked",
+          "observable": "false"
+        },
+        {
+          "when": "uncloaked, hunted",
+          "observable": "true"
+        },
+        {
+          "when": "uncloaked, nobody hunting",
+          "observable": "false"
+        }
+      ],
+      "setting": "fixes-on",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_bot_gates_casters.cpp",
+          "test": "GameplayFixesBots.thief_cloak_wants_a_hunter_and_no_cloak_left"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-11-thief.lua:100",
+      "lines": [
+        100
+      ],
+      "function": "check_special_ai",
+      "anchor": "if lc.is_busy(self) or G.owned(self, C.ORDER_FX, FX_CLOUD) > 0 then",
+      "condition": "if lc.is_busy(self) or G.owned(self, C.ORDER_FX, FX_CLOUD) > 0 then return false end return #G.foes_at_blows(self) >= 2",
+      "semantic": "Gameplay Fixes: a thief bot releases POISON CLOUD only when not busy, with no cloud of its own alive, and two or more living foes at blows with it.",
+      "arms": [
+        {
+          "when": "busy",
+          "observable": "false"
+        },
+        {
+          "when": "own cloud alive",
+          "observable": "false"
+        },
+        {
+          "when": "<2 foes at blows",
+          "observable": "false"
+        },
+        {
+          "when": ">=2 at blows, free",
+          "observable": "true"
+        }
+      ],
+      "setting": "fixes-on",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_bot_gates_casters.cpp",
+          "test": "GameplayFixesBots.thief_poison_cloud_wants_two_foes_at_blows_and_no_cloud"
+        },
+        {
+          "parity": "thief_bot_cloud_alone_fixes_scen99",
+          "fact": "WalkerOfOrderFamilyCount(FAMILY_CLOUD,0,0)"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-11-thief.lua:118",
+      "lines": [
+        118
+      ],
+      "function": "drop_bomb",
+      "anchor": "if self:has_guy() then",
+      "condition": "if self:has_guy() then",
+      "semantic": "A hero's bomb counts as one shot in its total and scenario shot tallies (accuracy stats); a monster thief keeps no tally.",
+      "arms": [
+        {
+          "when": "hero",
+          "observable": "myguy total_shots and scen_shots +1"
+        },
+        {
+          "when": "monster",
+          "observable": "no guy, nothing counted"
+        }
+      ],
+      "setting": "none",
+      "status": "none",
+      "tests": [],
+      "missing_arms": []
+    },
+    {
+      "id": "living-11-thief.lua:130",
+      "lines": [
+        130,
+        133
+      ],
+      "function": "drop_bomb",
+      "anchor": "if self:user() == -1 then",
+      "condition": "if self:user() == -1 then ... if flee_dx == 0 and flee_dy == 0 then flee_dx = 1",
+      "semantic": "An AI thief flees its own freshly armed bomb: it is forced to walk 20 steps along a random direction (two og.rand(3) draws, x first); a still roll becomes a step right. A player-driven thief is not moved.",
+      "arms": [
+        {
+          "when": "AI thief",
+          "observable": "front command COMMAND_WALK count 20 with (dx,dy) from the two og.rand(3)-1 draws; thief walks away and the bomb's blast does not reach it"
+        },
+        {
+          "when": "AI, both draws 1 (still)",
+          "observable": "command (1,0) count 20: steps right"
+        },
+        {
+          "when": "player thief",
+          "observable": "no command queued"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "parity": "thief_ai_bomb_flee_scen99",
+          "fact": "WalkerDiedByFinal(FAMILY_THIEF)+WalkerPositionMoved(FAMILY_SOLDIER,146,166) (AI flee arm only, as flee-path consequences)"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-11-thief.lua:151",
+      "lines": [
+        151
+      ],
+      "function": "taunt_or_charm",
+      "anchor": "if self:shifter_down() == 0 then",
+      "condition": "if self:shifter_down() == 0 then",
+      "semantic": "THIEF slot 3 is TAUNT unshifted and CHARM OPPONENT with Shift held.",
+      "arms": [
+        {
+          "when": "shifter 0",
+          "observable": "taunt: 'Nyah Nyah!' notification, busy +2"
+        },
+        {
+          "when": "shifter 1",
+          "observable": "charm path: busy +10 and charm/fail notification"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_family_behaviors.cpp",
+          "test": "FamilyBehaviors.thief_batch3_special_taunt_charm_and_poison_paths"
+        },
+        {
+          "file": "tests/integration/test_family_behaviors.cpp",
+          "test": "FamilyBehaviors.family_batch4_soldier_orc_thief_edge_callbacks",
+          "note": "busy +10 exact"
+        },
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.thief_taunt_drives_simulation",
+          "note": "busy == 2 exact"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-11-thief.lua:153",
+      "lines": [
+        153
+      ],
+      "function": "taunt_or_charm",
+      "anchor": "if lc.is_busy(self) then",
+      "condition": "if lc.is_busy(self) then return false, \"SPECIAL BUSY\"",
+      "semantic": "A busy thief cannot taunt.",
+      "arms": [
+        {
+          "when": "busy",
+          "observable": "cast false 'SPECIAL BUSY', no notification"
+        },
+        {
+          "when": "idle",
+          "observable": "taunt proceeds"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_family_behaviors.cpp",
+          "test": "FamilyBehaviors.thief_batch3_special_taunt_charm_and_poison_paths"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-11-thief.lua:158",
+      "lines": [
+        158
+      ],
+      "function": "taunt_or_charm",
+      "anchor": "if gf.on() and #foes == 0 then",
+      "condition": "if gf.on() and #foes == 0 then return false, \"NO FOE IN RANGE\"",
+      "semantic": "Classic: a taunt with nobody in reach still shouts and costs its 100 MP. Gameplay Fixes: a taunt nobody hears is refused for free.",
+      "arms": [
+        {
+          "when": "fixes off, no foe",
+          "observable": "cast true, 'Nyah Nyah!' notification, MP charged"
+        },
+        {
+          "when": "fixes on, no foe",
+          "observable": "cast false 'NO FOE IN RANGE', no notification, MP unchanged"
+        },
+        {
+          "when": "foe in reach",
+          "observable": "taunt proceeds"
+        }
+      ],
+      "setting": "both",
+      "status": "asserted",
+      "tests": [
+        {
+          "parity": "thief_taunt_no_foe_scen99",
+          "fact": "EventKindExactly(notification,1)"
+        },
+        {
+          "parity": "thief_taunt_no_foe_fixes_scen99",
+          "fact": "EventKindExactly(notification,0)"
+        },
+        {
+          "file": "tests/integration/test_gameplay_fixes_thief.cpp",
+          "test": "GameplayFixesThief.taunt_refuses_with_no_foe_when_on"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-11-thief.lua:169",
+      "lines": [
+        169
+      ],
+      "function": "taunt_or_charm",
+      "anchor": "if my_roll >= foe_roll then",
+      "condition": "if my_roll >= foe_roll then",
+      "semantic": "A taunt takes each foe in reach whose level roll (rand(foe level)) does not beat the thief's (rand(thief level), drawn first): a taunted foe targets the thief and follows it as leader.",
+      "arms": [
+        {
+          "when": "thief roll >= foe roll",
+          "observable": "foe->foe() == thief, foe->leader() == thief"
+        },
+        {
+          "when": "thief roll < foe roll",
+          "observable": "foe untouched"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "parity": "thief_taunt_matched_levels_scen99",
+          "fact": "WalkerHpRangeAtFinalTick(FAMILY_MEDIUM_SLIME,7200,7200)"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-11-thief.lua:173",
+      "lines": [
+        173
+      ],
+      "function": "taunt_or_charm",
+      "anchor": "if foe:act_type() ~= C.ACT_CONTROL then",
+      "condition": "if foe:act_type() ~= C.ACT_CONTROL then",
+      "semantic": "A taunted bot is also forced to FOLLOW the thief for 10+rand(L) steps; a player-controlled foe (ACT_CONTROL) only has its target and leader changed, its movement stays the player's.",
+      "arms": [
+        {
+          "when": "bot foe",
+          "observable": "front command COMMAND_FOLLOW, count 10..10+L-1"
+        },
+        {
+          "when": "ACT_CONTROL foe",
+          "observable": "no command queued"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.thief_taunt_drives_simulation",
+          "note": "bot arm: COMMAND_FOLLOW count 10"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-11-thief.lua:186",
+      "lines": [
+        186
+      ],
+      "function": "taunt_or_charm",
+      "anchor": "if lc.is_busy(self) then",
+      "condition": "if lc.is_busy(self) then return false, \"SPECIAL BUSY\" (charm)",
+      "semantic": "A busy thief cannot charm.",
+      "arms": [
+        {
+          "when": "busy",
+          "observable": "false 'SPECIAL BUSY'"
+        },
+        {
+          "when": "idle",
+          "observable": "proceeds"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_family_behaviors.cpp",
+          "test": "FamilyBehaviors.thief_batch3_special_taunt_charm_and_poison_paths"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-11-thief.lua:191",
+      "lines": [
+        191
+      ],
+      "function": "taunt_or_charm",
+      "anchor": "if foe_count < 1 then",
+      "condition": "if foe_count < 1 then return false, \"NO FOE IN RANGE\"",
+      "semantic": "CHARM needs a foe (living or generator) within 16+4L px; with none the cast fails free on both values.",
+      "arms": [
+        {
+          "when": "no foe in charm reach",
+          "observable": "false 'NO FOE IN RANGE'"
+        },
+        {
+          "when": "foe in reach",
+          "observable": "proceeds"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_family_behaviors.cpp",
+          "test": "FamilyBehaviors.thief_batch3_special_taunt_charm_and_poison_paths",
+          "note": "'charm should fail with no targets'"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-11-thief.lua:196",
+      "lines": [
+        196,
+        201
+      ],
+      "function": "taunt_or_charm",
+      "anchor": "if fixes then",
+      "condition": "if fixes then candidates = {nearest_charmable(self, foes, nil)}",
+      "semantic": "Classic: CHARM takes the first charmable foe in list order. Gameplay Fixes: it takes the nearest charmable foe (any level), and a seated hero is never charmable.",
+      "arms": [
+        {
+          "when": "fixes off",
+          "observable": "first charmable in oblist order is charmed"
+        },
+        {
+          "when": "fixes on, a charmable foe",
+          "observable": "nearest charmable is the target"
+        },
+        {
+          "when": "fixes on, none charmable",
+          "observable": "candidates empty -> 'NO VALID TARGET'"
+        }
+      ],
+      "setting": "both",
+      "status": "asserted",
+      "tests": [
+        {
+          "parity": "thief_charm_nearest_scen99",
+          "fact": "WalkerHpRangeAtFinalTick(FAMILY_ORC,7500,7500)"
+        },
+        {
+          "parity": "thief_charm_nearest_fixes_scen99",
+          "fact": "WalkerHpRangeAtFinalTick(FAMILY_ORC,12900,12900)"
+        },
+        {
+          "file": "tests/integration/test_gameplay_fixes_thief.cpp",
+          "test": "GameplayFixesThief.charm_takes_the_nearest_foe_when_on"
+        },
+        {
+          "file": "tests/integration/test_gameplay_fixes_thief.cpp",
+          "test": "GameplayFixesThief.charm_skips_a_seated_hero_when_on"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-11-thief.lua:214",
+      "lines": [
+        214
+      ],
+      "function": "taunt_or_charm",
+      "anchor": "if gf.charmable(target, fixes) then",
+      "condition": "if gf.charmable(target, fixes) then",
+      "semantic": "Only a never-charmed (real_team 255) living-order foe can be charmed (a tent cannot); with Gameplay Fixes a seated hero also cannot. An uncharmable foe is skipped.",
+      "arms": [
+        {
+          "when": "charmable",
+          "observable": "handled (charm or resist)"
+        },
+        {
+          "when": "already charmed / generator / (fixes) seated hero",
+          "observable": "skipped; if none handled -> 'NO VALID TARGET'"
+        }
+      ],
+      "setting": "both",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_gameplay_fixes_thief.cpp",
+          "test": "GameplayFixesThief.charm_skips_a_seated_hero_when_on"
+        },
+        {
+          "file": "tests/integration/test_gameplay_fixes_thief.cpp",
+          "test": "GameplayFixesThief.charm_takes_the_npc_beside_a_seated_hero_when_on"
+        },
+        {
+          "parity": "thief_bot_charm_hero_scen99",
+          "fact": "WalkerOfTeamAlive(0,0,0)"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-11-thief.lua:216",
+      "lines": [
+        216,
+        221
+      ],
+      "function": "taunt_or_charm",
+      "anchor": "if level_diff < 0 or og.rand(20) == 0 then",
+      "condition": "if level_diff < 0 or og.rand(20) == 0 then (resist) else (charm)",
+      "semantic": "A foe above the thief's level always resists a charm (no draw); an equal or lower foe resists 1 time in 20. A resisted charm gives the foe a free attack on the thief; a charm flips the foe to the thief's team for a soft-kneed 75+25x(level diff) ticks, remembering its real team.",
+      "arms": [
+        {
+          "when": "foe level > thief",
+          "observable": "no rand draw; foe->foe()==thief, attack lands, 'Thief failed to charm!'"
+        },
+        {
+          "when": "rand(20)==0",
+          "observable": "same resist"
+        },
+        {
+          "when": "charm",
+          "observable": "foe team==thief team, real_team_num==old team, charm_left==soften(75+25*diff), 'Thief charmed an opponent!'"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_family_behaviors.cpp",
+          "test": "FamilyBehaviors.family_batch4_soldier_orc_thief_edge_callbacks",
+          "note": "charm arm: team, real_team, charm_left 275"
+        },
+        {
+          "file": "tests/integration/test_family_behaviors.cpp",
+          "test": "FamilyBehaviors.thief_batch3_special_taunt_charm_and_poison_paths",
+          "note": "resist arm: foe->foe()==thief"
+        },
+        {
+          "parity": "thief_charm_opponent_scen99",
+          "fact": "WalkerOfTeamAlive(1,0,0)"
+        },
+        {
+          "file": "tests/integration/test_gameplay_fixes_thief.cpp",
+          "test": "GameplayFixesThief.charm_draws_once_on_both_values"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-11-thief.lua:224",
+      "lines": [
+        224,
+        226
+      ],
+      "function": "taunt_or_charm",
+      "anchor": "if self:foe() == target then",
+      "condition": "if self:foe() == target then target:set_foe(nil) else target:set_foe(self:foe())",
+      "semantic": "A charmed foe drops its quarry: if it was the thief's own target it gets no foe (picks anew); otherwise it takes the thief's current target.",
+      "arms": [
+        {
+          "when": "target was thief's foe",
+          "observable": "target->foe() == nullptr"
+        },
+        {
+          "when": "thief had another foe X",
+          "observable": "target->foe() == X"
+        },
+        {
+          "when": "thief had no foe",
+          "observable": "target->foe() == nullptr"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.thief_charm_drives_simulation",
+          "note": "foe()==nullptr arm"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-11-thief.lua:239",
+      "lines": [
+        239
+      ],
+      "function": "taunt_or_charm",
+      "anchor": "if handled == 0 then",
+      "condition": "if handled == 0 then return false, \"NO VALID TARGET\"",
+      "semantic": "A charm with foes in reach but none charmable fails free with 'NO VALID TARGET'.",
+      "arms": [
+        {
+          "when": "none handled",
+          "observable": "false"
+        },
+        {
+          "when": "one handled",
+          "observable": "true"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_gameplay_fixes_thief.cpp",
+          "test": "GameplayFixesThief.charm_skips_a_seated_hero_when_on",
+          "note": "NO VALID TARGET"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-11-thief.lua:243",
+      "lines": [
+        243,
+        246
+      ],
+      "function": "taunt_or_charm",
+      "anchor": "if resisted ~= 0 then",
+      "condition": "if resisted ~= 0 then 'failed to charm!' else 'charmed an opponent!'",
+      "semantic": "The charm's notification says whether it took or was resisted.",
+      "arms": [
+        {
+          "when": "resisted",
+          "observable": "notification '<name> failed to charm!'"
+        },
+        {
+          "when": "charmed",
+          "observable": "notification '<name> charmed an opponent!'"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_special_scenes.cpp",
+          "test": "GameplayFixes.a_thief_bot_taunts_instead_of_a_doomed_charm",
+          "note": "scene c_thief_bot_shift, off_shows 'Thief failed to charm!': resisted arm text"
+        },
+        {
+          "file": "tests/integration/test_special_scenes.cpp",
+          "test": "GameplayFixes.a_driven_hero_resists_a_bot_charm",
+          "note": "scene m1_hero_resists_charm, off_shows 'Thief charmed an opponent!': charmed arm text"
+        },
+        {
+          "parity": "thief_charm_nearest_scen99",
+          "fact": "EventKindExactly(notification,1) (count only, not the text)"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "living-11-thief.lua:257",
+      "lines": [
+        257
+      ],
+      "function": "poison_cloud",
+      "anchor": "if lc.is_busy(self) then",
+      "condition": "if lc.is_busy(self) then return false, \"SPECIAL BUSY\"",
+      "semantic": "A busy thief cannot release POISON CLOUD.",
+      "arms": [
+        {
+          "when": "busy",
+          "observable": "false, no FAMILY_CLOUD"
+        },
+        {
+          "when": "idle",
+          "observable": "cloud summoned: lifetime 40+3L, invisibility 10, damage = level, busy +5"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_family_behaviors.cpp",
+          "test": "FamilyBehaviors.thief_batch3_special_taunt_charm_and_poison_paths"
+        },
+        {
+          "parity": "effect_cloud_emission_scen99",
+          "fact": "WalkerOfTeamAlive(0,2,2)"
+        },
+        {
+          "file": "tests/integration/test_walker_specials.cpp",
+          "test": "WalkerSpecials.thief_poison_cloud_drives_simulation",
+          "note": "lifetime 52, damage 4, busy 5"
+        }
+      ],
+      "missing_arms": []
+    }
+  ],
+  "other": [
+    {
+      "id": "living-11-thief.lua:15",
+      "lines": [
+        15,
+        56
+      ],
+      "kind": "plumbing",
+      "anchor": "if self:current_special() == 1 then",
+      "note": "slot dispatch of check_special_ai (slot 1 bomb/mine, slot 3 taunt/charm, else cloak/cloud); see living-11-thief.lua:16, :45, :58, :82, :89"
+    },
+    {
+      "id": "living-11-thief.lua:114",
+      "lines": [
+        114
+      ],
+      "kind": "defensive",
+      "anchor": "if not bomb then",
+      "note": "add_ob failure creating the bomb (object cap): cast fails 'COULD NOT CREATE BOMB'."
+    },
+    {
+      "id": "living-11-thief.lua:162",
+      "lines": [
+        162
+      ],
+      "kind": "loop",
+      "anchor": "for i = 1, #foes do",
+      "note": "iterates foes in taunt reach; rule rows living-11-thief.lua:169 and :173"
+    },
+    {
+      "id": "living-11-thief.lua:207",
+      "lines": [
+        207,
+        208
+      ],
+      "kind": "loop",
+      "anchor": "for i = 1, #candidates do",
+      "note": "candidate loop stops after the first handled target (one charm per cast); rule rows living-11-thief.lua:214, :216, :224"
+    },
+    {
+      "id": "living-11-thief.lua:262",
+      "lines": [
+        262
+      ],
+      "kind": "defensive",
+      "anchor": "if not cloud then",
+      "note": "og.summon failure for the cloud (object cap): 'COULD NOT CREATE CLOUD'."
+    },
+    {
+      "id": "living-11-thief.lua:289",
+      "lines": [
+        289
+      ],
+      "kind": "dead",
+      "anchor": "{ id = \"drop_bomb\",    name = \"DROP BOMB\",    mp_cost = 35,  alternate = { name = \"MINE\", mp_cost = 70, new_kit = true, detail = \"Waits unseen for a foe.\", icon",
+      "note": "not a branch (descriptor table / description string; 'or'/'and' in identifiers or prose)"
+    },
+    {
+      "id": "living-11-thief.lua:291",
+      "lines": [
+        291
+      ],
+      "kind": "dead",
+      "anchor": "{ id = \"taunt_enemy\",  name = \"TAUNT ENEMY\",  mp_cost = 100, alternate = { name = \"CHARM OPPONENT\", detail = \"One foe fights for you.\", icon = \"icons/charm_oppo",
+      "note": "not a branch (descriptor table / description string; 'or'/'and' in identifiers or prose)"
+    },
+    {
+      "id": "living-11-thief.lua:292",
+      "lines": [
+        292
+      ],
+      "kind": "dead",
+      "anchor": "{ id = \"poison_cloud\", name = \"POISON CLOUD\", mp_cost = 150, detail = \"Release a cloud of poisonous gas to roam at will and sicken your foes.\", icon = \"icons/po",
+      "note": "not a branch (descriptor table / description string; 'or'/'and' in identifiers or prose)"
+    },
+    {
+      "id": "living-11-thief.lua:293",
+      "lines": [
+        293
+      ],
+      "kind": "dead",
+      "anchor": "default_cast = poison_cloud,  -- case 4 and every unmapped slot",
+      "note": "not a branch (descriptor table / description string; 'or'/'and' in identifiers or prose)"
+    },
+    {
+      "id": "living-11-thief.lua:310",
+      "lines": [
+        310
+      ],
+      "kind": "dead",
+      "anchor": "description = \"Thieves are fast, though not so potent as the soldier. Thieves can throw small blades rapidly and damage whole groups of enemies with their bombs",
+      "note": "not a branch (descriptor table / description string; 'or'/'and' in identifiers or prose)"
+    }
+  ]
+}

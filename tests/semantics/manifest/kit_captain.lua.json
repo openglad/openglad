@@ -1,0 +1,849 @@
+{
+  "path": "packs/core/lib/kit_captain.lua",
+  "rules": [
+    {
+      "id": "kit_captain.lua:25",
+      "lines": [
+        25,
+        30,
+        31
+      ],
+      "function": "facing_index",
+      "anchor": "if dir >= 0 then",
+      "condition": "dir >= 0 ; DIR_X[i] == sx and DIR_Y[i] == sy",
+      "semantic": "The captain's knife fan flies along his facing; a captain parked on the curdir -1 sentinel (after a whirlwind/volley) fans along the signs of his aim, and with no aim at all he fans downward.",
+      "arms": [
+        {
+          "when": "curdir 0..7",
+          "observable": "fan centred on curdir"
+        },
+        {
+          "when": "curdir -1, aim west",
+          "observable": "fan flies west"
+        },
+        {
+          "when": "curdir -1, aim (0,0)",
+          "observable": "fan flies down"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_captain.cpp",
+          "test": "KitCaptain.knife_fan_throws_three"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_captain.lua:41",
+      "lines": [
+        41,
+        44
+      ],
+      "function": "ring_coord",
+      "anchor": "if side > 0 then",
+      "condition": "side > 0 ; side < 0",
+      "semantic": "A spot in the ring round an anchor puts the mover 2 px beyond the anchor's edge on that side, or level with it on the middle axis.",
+      "arms": [
+        {
+          "when": "side +1",
+          "observable": "anchor_pos + anchor_size + 2"
+        },
+        {
+          "when": "side -1",
+          "observable": "anchor_pos - mover_size - 2"
+        },
+        {
+          "when": "side 0",
+          "observable": "anchor_pos"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_captain.cpp",
+          "test": "KitCaptain.hook_reels_the_foe_to_the_captains_feet"
+        },
+        {
+          "file": "tests/unit/test_kit_captain.cpp",
+          "test": "KitCaptain.reel_never_hauls_a_foe_past_the_captain"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_captain.lua:58",
+      "lines": [
+        58,
+        62,
+        63
+      ],
+      "function": "M.ring_spot",
+      "anchor": "for i = 1, 8 do",
+      "condition": "for i = 1, 8 ; best_x == nil or d < best_d ; closer and og.spawn_spot_clear",
+      "semantic": "A hooked foe is set down on the clear ring spot beside the captain nearest the point it is reeled from (ties: first clockwise from straight up); a probe never eats or picks anything up; no clear spot -> nil (the reel stops).",
+      "arms": [
+        {
+          "when": "several clear spots",
+          "observable": "the nearest to (near_x, near_y)"
+        },
+        {
+          "when": "tie",
+          "observable": "first clockwise from up"
+        },
+        {
+          "when": "all eight spots occupied",
+          "observable": "nil"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_captain.cpp",
+          "test": "KitCaptain.hook_reels_the_foe_to_the_captains_feet"
+        },
+        {
+          "file": "tests/unit/test_kit_captain.cpp",
+          "test": "KitCaptain.hook_reels_a_foe_in_from_the_west"
+        },
+        {
+          "file": "tests/unit/test_kit_captain.cpp",
+          "test": "KitCaptain.reel_never_hauls_a_foe_past_the_captain"
+        }
+      ],
+      "missing_arms": [],
+      "note": [
+        "unasserted: tie between equidistant ring spots -> first clockwise from straight up"
+      ]
+    },
+    {
+      "id": "kit_captain.lua:81",
+      "lines": [
+        81,
+        83,
+        84,
+        85
+      ],
+      "function": "live_banner",
+      "anchor": "for i = 1, #weaps do",
+      "condition": "family == WAR_BANNER and dead == 0 and owner == self",
+      "semantic": "The captain's standing banner is his own live war banner (a fallen one or another captain's does not count).",
+      "arms": [
+        {
+          "when": "own live banner",
+          "observable": "that banner (rally point; old one struck by a new plant)"
+        },
+        {
+          "when": "none / dead / another's",
+          "observable": "nil"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_captain.cpp",
+          "test": "KitCaptain.second_banner_strikes_the_first_quietly"
+        },
+        {
+          "file": "tests/unit/test_kit_captain.cpp",
+          "test": "KitCaptain.ai_banner_plants_among_friends_and_calls_the_warband_when_pressed"
+        },
+        {
+          "file": "tests/unit/test_kit_captain.cpp",
+          "test": "KitCaptain.warband_arrives_from_the_nearest_edge_fearless_and_runs_to_the_banner"
+        }
+      ],
+      "missing_arms": [],
+      "note": [
+        "unasserted: another captain's live banner is not this captain's standing banner"
+      ]
+    },
+    {
+      "id": "kit_captain.lua:96",
+      "lines": [
+        96,
+        98,
+        99,
+        100,
+        101
+      ],
+      "function": "own_grunts",
+      "anchor": "for i = 1, #obs do",
+      "condition": "LIVING and family == LIVING_ORC and dead == 0 and owner == self",
+      "semantic": "The captain's warband is the live orcs he summoned; other orcs and dead grunts do not count toward the cap or the 'no grunt left' gate.",
+      "arms": [
+        {
+          "when": "own live grunts",
+          "observable": "counted"
+        },
+        {
+          "when": "a wild orc / dead grunt",
+          "observable": "not counted"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_captain.cpp",
+          "test": "KitCaptain.warband_arrives_from_the_nearest_edge_fearless_and_runs_to_the_banner"
+        },
+        {
+          "file": "tests/unit/test_kit_captain.cpp",
+          "test": "KitCaptain.ai_banner_plants_among_friends_and_calls_the_warband_when_pressed"
+        }
+      ],
+      "missing_arms": [],
+      "note": [
+        "unasserted: a wild orc (not owned) or a dead grunt is not counted"
+      ]
+    },
+    {
+      "id": "kit_captain.lua:131",
+      "lines": [
+        131
+      ],
+      "function": "hook_blade",
+      "anchor": "if live_blade(self) then",
+      "condition": "live_blade(self)",
+      "semantic": "A captain can have only one hook blade out: a second cast is refused BLADE ALREADY OUT, free.",
+      "arms": [
+        {
+          "when": "blade out",
+          "observable": "false, 'BLADE ALREADY OUT', 0 MP"
+        },
+        {
+          "when": "no blade",
+          "observable": "a core:hook_blade FX summoned, SOUND_FWIP"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_captain.cpp",
+          "test": "KitCaptain.hook_spirals_out_and_back"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_captain.lua:155",
+      "lines": [
+        155,
+        166,
+        171
+      ],
+      "function": "knife_fan",
+      "anchor": "if lc.is_busy(self) then",
+      "condition": "lc.is_busy(self) ; for spread = -1, 1",
+      "semantic": "KNIFE FAN throws three plain knives (the facing and one point either side) for its own price only, and refuses a busy captain for free. A knife whose launch pad a live body blocks becomes a melee attack() on that body instead (walker::fire() melee arm; the return is unchecked at line 171), and the fan goes on.",
+      "arms": [
+        {
+          "when": "busy",
+          "observable": "'SPECIAL BUSY', 0 MP"
+        },
+        {
+          "when": "idle",
+          "observable": "3 new knives, mp_spent 30, aim restored exactly"
+        },
+        {
+          "when": "idle, a body touching the facing side (point-blank)",
+          "observable": "2 new knives in weaplist; a melee attack() is resolved on the touching body (walker::fire() melee arm, walker.cpp:606-635): if attack() returns true (a living foe, not invincible, not cancelled by a level on_damage hook) a SOUND_CLANG event and an hp drop of the rolled amount (base-damage jitter minus random(armor), walker_combat.cpp get_base_damage/compute_damage_reduction; may be 0); if it returns false (friendly, dead, invincible, treasure, gate-cancelled) no CLANG and no hp change. Certain either way: the shot is consumed (weapon dead, not in weaplist), the attacker's myguy total_shots/scen_shots +1, and the MP already charged is not refunded; mp_spent still 30"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_captain.cpp",
+          "test": "KitCaptain.knife_fan_throws_three"
+        }
+      ],
+      "missing_arms": [],
+      "note": [
+        "unasserted: point-blank blocked-pad melee arm"
+      ]
+    },
+    {
+      "id": "kit_captain.lua:179",
+      "lines": [
+        179
+      ],
+      "function": "M.hook_or_fan",
+      "anchor": "if self:shifter_down() ~= 0 then",
+      "condition": "self:shifter_down() ~= 0",
+      "semantic": "Slot 3 is HOOK BLADE unshifted and KNIFE FAN with Shift held.",
+      "arms": [
+        {
+          "when": "shift",
+          "observable": "knife fan"
+        },
+        {
+          "when": "no shift",
+          "observable": "hook blade"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_captain.cpp",
+          "test": "KitCaptain.knife_fan_throws_three"
+        },
+        {
+          "file": "tests/unit/test_kit_captain.cpp",
+          "test": "KitCaptain.hook_spirals_out_and_back"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_captain.lua:195",
+      "lines": [
+        195
+      ],
+      "function": "M.snag",
+      "anchor": "if foe:dead() ~= 0 then",
+      "condition": "foe:dead() ~= 0",
+      "semantic": "The hook blade cuts the foe it catches; a foe the cut kills is not reeled (the blade goes), a survivor is hooked: frozen for reel+stun ticks, made to target the captain, and reeled in.",
+      "arms": [
+        {
+          "when": "cut kills",
+          "observable": "returns false, no frozen stun, blade dies (the cut is a rolled attack(): the kill arm is staged with a foe at 1 hp, or a pinned rng_.state_)"
+        },
+        {
+          "when": "survives",
+          "observable": "leader=foe, lineofsight 1, foe frozen hook_reel_max+hook_stun, foe:foe()==captain, SOUND_CLANG, blade.lifetime == tuning hook_reel_max (the reel budget)"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_captain.cpp",
+          "test": "KitCaptain.hook_kills_a_dying_foe_without_reeling_it"
+        },
+        {
+          "file": "tests/unit/test_kit_captain.cpp",
+          "test": "KitCaptain.hook_reels_the_foe_to_the_captains_feet"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_captain.lua:212",
+      "lines": [
+        212,
+        235,
+        246
+      ],
+      "function": "war_banner",
+      "anchor": "if not corpse then",
+      "condition": "not corpse ; old ; for i = 1, #grunts",
+      "semantic": "WAR BANNER needs a corpse under the captain (his floor, within reach) and uses it up; planting a second strikes his first quietly and turns his marching grunts to the new banner.",
+      "arms": [
+        {
+          "when": "no corpse / other floor / out of reach",
+          "observable": "'NO CORPSE TO PLANT ON', free"
+        },
+        {
+          "when": "first plant",
+          "observable": "banner weapon on the corpse, corpse dead, SOUND_ROAR + notification"
+        },
+        {
+          "when": "second plant",
+          "observable": "old banner dead without boom; each grunt's command = COMMAND_GOTO to the new banner centre"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_captain.cpp",
+          "test": "KitCaptain.banner_needs_a_corpse_and_consumes_it"
+        },
+        {
+          "file": "tests/unit/test_kit_captain.cpp",
+          "test": "KitCaptain.second_banner_strikes_the_first_quietly"
+        },
+        {
+          "file": "tests/unit/test_kit_captain.cpp",
+          "test": "KitCaptain.grunts_turn_to_the_new_banner"
+        },
+        {
+          "file": "tests/unit/test_kit_captain.cpp",
+          "test": "KitCaptain.refused_second_plant_keeps_the_first"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_captain.lua:266",
+      "lines": [
+        266,
+        269,
+        272
+      ],
+      "function": "on_the_captain",
+      "anchor": "if sx + w <= x then",
+      "condition": "sx + w <= x ; sx >= x + w ; sy + h <= y ; sy < y + h",
+      "semantic": "A warband grunt is never summoned overlapping its captain (touching edges is clear).",
+      "arms": [
+        {
+          "when": "tile overlapping the captain's box",
+          "observable": "skipped"
+        },
+        {
+          "when": "tile touching or clear",
+          "observable": "used"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_captain.cpp",
+          "test": "KitCaptain.warband_arrives_from_the_nearest_edge_fearless_and_runs_to_the_banner"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_captain.lua:288",
+      "lines": [
+        288,
+        289,
+        294,
+        298,
+        300,
+        302,
+        304,
+        308,
+        309
+      ],
+      "function": "edge_spots",
+      "anchor": "for i = 2, 4 do",
+      "condition": "gaps[i] < gaps[side] ; side == 1/2/3/else ; room and not on_the_captain ; spawn_spot_clear",
+      "semantic": "The warband comes in on the map edge nearest the captain (ties to west, east, north, south order), scanning inward a tile at a time along his row or column for clear ground, up to the count wanted.",
+      "arms": [
+        {
+          "when": "west nearest",
+          "observable": "x = 0,16,..."
+        },
+        {
+          "when": "east nearest",
+          "observable": "x from pixmax-16 inward (first fit 512-4*16 when blocked)"
+        },
+        {
+          "when": "north",
+          "observable": "y = 0,..."
+        },
+        {
+          "when": "south",
+          "observable": "y from pixmax-16 inward"
+        },
+        {
+          "when": "blocked tile",
+          "observable": "skipped"
+        },
+        {
+          "when": "count reached",
+          "observable": "scan stops adding"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_captain.cpp",
+          "test": "KitCaptain.warband_arrives_from_the_nearest_edge_fearless_and_runs_to_the_banner"
+        }
+      ],
+      "missing_arms": [],
+      "note": [
+        "unasserted: equal gaps tie to west, east, north, south order"
+      ]
+    },
+    {
+      "id": "kit_captain.lua:320",
+      "lines": [
+        320,
+        327,
+        334,
+        338
+      ],
+      "function": "warband",
+      "anchor": "if here >= t.warband_cap then",
+      "condition": "here >= warband_cap ; #spots == 0 ; rally ; for i = 1, #spots, 2",
+      "semantic": "WARBAND summons warband_base (+1 per 3 levels above 10) fearless grunts of a third the captain's level (min 1), never past the cap, who run to his standing banner's centre or else to him; a full warband or a walled edge is refused for free.",
+      "arms": [
+        {
+          "when": "cap reached",
+          "observable": "'WARBAND ALREADY HERE', 0 MP"
+        },
+        {
+          "when": "no clear edge tile",
+          "observable": "'NO ROOM AT THE EDGE', 0 MP"
+        },
+        {
+          "when": "banner stands",
+          "observable": "grunts' COMMAND_GOTO = banner centre"
+        },
+        {
+          "when": "no banner",
+          "observable": "COMMAND_GOTO = captain xy"
+        },
+        {
+          "when": "each spot",
+          "observable": "one LIVING_ORC, team, level max(1,lvl/3), KIT_FEARLESS, leader captain, lifetime warband_lifetime"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_captain.cpp",
+          "test": "KitCaptain.warband_arrives_from_the_nearest_edge_fearless_and_runs_to_the_banner"
+        },
+        {
+          "file": "tests/unit/test_kit_captain.cpp",
+          "test": "KitCaptain.warband_has_its_own_price_and_a_short_pool_is_refused"
+        },
+        {
+          "file": "tests/unit/test_kit_captain.cpp",
+          "test": "KitCaptain.warband_dies_with_the_captain"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_captain.lua:357",
+      "lines": [
+        357
+      ],
+      "function": "M.banner_or_warband",
+      "anchor": "if self:shifter_down() ~= 0 then",
+      "condition": "self:shifter_down() ~= 0",
+      "semantic": "Slot 4 is WAR BANNER unshifted and WARBAND with Shift held (separate prices 80 / 120).",
+      "arms": [
+        {
+          "when": "shift",
+          "observable": "warband"
+        },
+        {
+          "when": "no shift",
+          "observable": "war banner"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_captain.cpp",
+          "test": "KitCaptain.warband_has_its_own_price_and_a_short_pool_is_refused"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_captain.lua:376",
+      "lines": [
+        376,
+        383
+      ],
+      "function": "M.ai_howl",
+      "anchor": "if og.match_setting(\"new_specials\") == 0 then",
+      "condition": "match_setting(new_specials) == 0 ; lc.is_busy(self)",
+      "semantic": "A bot captain howls when a body the yell can stun (living foe or generator) is inside 160+20/level px and he is not busy; the orc's classic within-130 foe search runs first for its draw; HOWL has no alternate so the coin is left alone. With New Specials off the gate answers true without drawing.",
+      "arms": [
+        {
+          "when": "New Specials off",
+          "observable": "true, no draw, no foe"
+        },
+        {
+          "when": "busy",
+          "observable": "false"
+        },
+        {
+          "when": "target inside yell",
+          "observable": "true (tower at 160, tent at 100, edge 180 at L1 in)"
+        },
+        {
+          "when": "181 px",
+          "observable": "false"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_captain.cpp",
+          "test": "KitCaptain.ai_howl_fires_when_a_foe_is_near"
+        },
+        {
+          "file": "tests/unit/test_kit_captain.cpp",
+          "test": "KitCaptain.ai_off_answers_the_classic_gate"
+        },
+        {
+          "file": "tests/unit/test_bot_gates_kits.cpp",
+          "test": "GameplayFixesBots.captain_howl_wants_a_target_inside_the_yell"
+        },
+        {
+          "file": "tests/unit/test_gameplay_fixes_bots.cpp",
+          "test": "GameplayFixesBots.a_busy_bot_never_rolls_a_busy_cast_with_the_setting_on"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_captain.lua:393",
+      "lines": [
+        393,
+        399
+      ],
+      "function": "M.ai_eat",
+      "anchor": "if og.match_setting(\"new_specials\") == 0 then",
+      "condition": "new_specials off ; not hurt (hp*5 < max*3)",
+      "semantic": "A bot captain eats only below 60 % health (whole-number compare; exactly 60 % is not hurt) and standing on a corpse (squared centre distance <= 24).",
+      "arms": [
+        {
+          "when": "off",
+          "observable": "true"
+        },
+        {
+          "when": "not below 60%",
+          "observable": "false"
+        },
+        {
+          "when": "hurt, no corpse within 24 sq",
+          "observable": "false"
+        },
+        {
+          "when": "hurt on corpse",
+          "observable": "true"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_captain.cpp",
+          "test": "KitCaptain.ai_eat_fires_when_hurt_on_a_corpse"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_captain.lua:420",
+      "lines": [
+        420,
+        421,
+        422
+      ],
+      "function": "foes_in_fan",
+      "anchor": "for i = 1, #foes do",
+      "condition": "fan_covers(facing_index) ; in_flight(knife 5,7)",
+      "semantic": "The knife fan's foes are living foes on its floor on its three lines (along facing_index, curdir first) and inside a knife's flight.",
+      "arms": [
+        {
+          "when": "foe on a line inside flight",
+          "observable": "counted"
+        },
+        {
+          "when": "foe behind / off-line",
+          "observable": "not counted"
+        },
+        {
+          "when": "foe past flight",
+          "observable": "not counted"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_bot_gates_kits.cpp",
+          "test": "GameplayFixesBots.captain_fan_wants_two_foes_on_its_three_lines"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_captain.lua:435",
+      "lines": [
+        435,
+        438,
+        439,
+        440,
+        448
+      ],
+      "function": "M.ai_hook",
+      "anchor": "if og.match_setting(\"new_specials\") == 0 then",
+      "condition": "new_specials off ; foes_within(60) ; not live_blade ; can_pay(3,false) ; not busy and foes_in_fan >= 2",
+      "semantic": "A bot captain hooks (shift 0) a living foe within the blade's 60 px reach when no blade is out and he can pay 40; else fans (shift 1) when two living foes stand on the fan's lines within knife flight and he is not busy; else holds. Off: true, coin untouched.",
+      "arms": [
+        {
+          "when": "off",
+          "observable": "true, shifter_down unchanged (9)"
+        },
+        {
+          "when": "foe at 50/60 px, no blade, 40 MP",
+          "observable": "true, shift 0"
+        },
+        {
+          "when": "61 px",
+          "observable": "false"
+        },
+        {
+          "when": "35 MP",
+          "observable": "hook refused -> fan if crowd"
+        },
+        {
+          "when": "blade out, one foe",
+          "observable": "false"
+        },
+        {
+          "when": "two on the lines",
+          "observable": "true, shift 1"
+        },
+        {
+          "when": "busy",
+          "observable": "false, coin stands"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_captain.cpp",
+          "test": "KitCaptain.ai_hook_fires_when_a_foe_is_near_and_fans_into_a_crowd"
+        },
+        {
+          "file": "tests/unit/test_bot_gates_kits.cpp",
+          "test": "GameplayFixesBots.captain_hook_wants_a_foe_at_the_blades_reach_and_the_price"
+        },
+        {
+          "file": "tests/unit/test_bot_gates_kits.cpp",
+          "test": "GameplayFixesBots.captain_fan_wants_two_foes_on_its_three_lines"
+        },
+        {
+          "file": "tests/unit/test_gameplay_fixes_bots.cpp",
+          "test": "GameplayFixesBots.a_busy_bot_never_rolls_a_busy_cast_with_the_setting_on"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "kit_captain.lua:459",
+      "lines": [
+        459,
+        463,
+        464,
+        468,
+        473,
+        474
+      ],
+      "function": "M.ai_banner",
+      "anchor": "if og.match_setting(\"new_specials\") == 0 then",
+      "condition": "new_specials off ; allies >= 2 and corpse_underfoot(1024) ; foes_within(1,120) ; not live_banner ; pressed and live_grunts == 0 and can_pay(4,true)",
+      "semantic": "A bot captain plants a banner (shift 0) on a corpse with two or more friends within 96, a living foe within 120 and no banner of his standing; else calls the warband (shift 1) when two living foes press within 120, no grunt of his lives, and he can pay WARBAND's 120; else holds.",
+      "arms": [
+        {
+          "when": "off",
+          "observable": "true"
+        },
+        {
+          "when": "2 allies + corpse + foe at 100, no banner",
+          "observable": "true, shift 0"
+        },
+        {
+          "when": "one ally",
+          "observable": "no plant"
+        },
+        {
+          "when": "foe at 121",
+          "observable": "no plant"
+        },
+        {
+          "when": "banner stands",
+          "observable": "no plant"
+        },
+        {
+          "when": "2 foes pressing, no grunt, 120 MP",
+          "observable": "true, shift 1"
+        },
+        {
+          "when": "119 MP",
+          "observable": "false, no shift written"
+        },
+        {
+          "when": "grunt alive",
+          "observable": "false"
+        },
+        {
+          "when": "two friendly tents within 96, corpse, foe at 100, no banner",
+          "observable": "true, shift 0 (raw find_friends_in_range count; unasserted; suspect)"
+        }
+      ],
+      "setting": "new-specials",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_kit_captain.cpp",
+          "test": "KitCaptain.ai_banner_plants_among_friends_and_calls_the_warband_when_pressed"
+        },
+        {
+          "file": "tests/unit/test_kit_captain.cpp",
+          "test": "KitCaptain.ai_banner_holds_the_warband_it_cannot_pay"
+        },
+        {
+          "file": "tests/unit/test_kit_captain.cpp",
+          "test": "KitCaptain.bot_captain_calls_the_warband_only_when_it_can_pay"
+        },
+        {
+          "file": "tests/unit/test_bot_gates_kits.cpp",
+          "test": "GameplayFixesBots.captain_banner_wants_a_foe_near_the_flag"
+        }
+      ],
+      "missing_arms": [],
+      "note": [
+        "unasserted: two friendly generators/tents (non-living) within 96 count as 'friends around' for the plant arm (suspect)"
+      ]
+    }
+  ],
+  "other": [
+    {
+      "id": "kit_captain.lua:144",
+      "lines": [
+        144
+      ],
+      "kind": "defensive",
+      "anchor": "if not blade then",
+      "note": "summon_configured nil (world full): 'COULD NOT MAKE A BLADE'"
+    },
+    {
+      "id": "kit_captain.lua:219",
+      "lines": [
+        219
+      ],
+      "kind": "defensive",
+      "anchor": "if not banner then",
+      "note": "add_weap_ob nil (world full): 'COULD NOT RAISE BANNER'"
+    },
+    {
+      "id": "kit_captain.lua:342",
+      "lines": [
+        342
+      ],
+      "kind": "defensive",
+      "anchor": "if grunt then",
+      "note": "do_summon nil (world full): that grunt is skipped"
+    }
+  ]
+}

@@ -1,0 +1,202 @@
+{
+  "path": "packs/core/lib/effect_cloud.lua",
+  "rules": [
+    {
+      "id": "effect_cloud.lua:17",
+      "lines": [
+        17,
+        19
+      ],
+      "function": "on_act (core:cloud)",
+      "anchor": "if self:lifetime() > 0 then",
+      "condition": "self:lifetime() > 0 / else",
+      "semantic": "A poison cloud ages one tick per act and vanishes on the act after its lifetime reaches 0 (without acting further that tick).",
+      "arms": [
+        {
+          "when": "lifetime > 0",
+          "observable": "lifetime -1, cloud acts (damage + drift)"
+        },
+        {
+          "when": "lifetime <= 0",
+          "observable": "dead == 1, no damage or drift that tick, lifetime unchanged"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_effect_act.cpp",
+          "test": "EffectAct.cloud_ages_and_queues_its_drift_walk"
+        },
+        {
+          "file": "tests/integration/test_effect_act.cpp",
+          "test": "EffectAct.cloud_expired"
+        },
+        {
+          "file": "tests/unit/test_pack_lua_paths.cpp",
+          "test": "PackLuaCloud.an_expired_cloud_dies_on_the_next_act"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "effect_cloud.lua:24",
+      "lines": [
+        24,
+        27
+      ],
+      "function": "on_act (core:cloud)",
+      "anchor": "if self:lifetime() < 8 then",
+      "condition": "lifetime < 8 / invisibility_left > 0",
+      "semantic": "A cloud fades out over its last 8 ticks: each such tick adds 3 to its invisibility and every tick spends 1, so it thins by a net 2 a tick as it expires; a fresh cloud's starting invisibility drains 1 a tick.",
+      "arms": [
+        {
+          "when": "lifetime (after ageing) < 8",
+          "observable": "invisibility_left net +2 per act"
+        },
+        {
+          "when": "lifetime >= 8 and invisibility_left > 0",
+          "observable": "invisibility_left -1"
+        },
+        {
+          "when": "lifetime >= 8 and invisibility 0",
+          "observable": "unchanged at 0"
+        }
+      ],
+      "setting": "none",
+      "status": "none",
+      "tests": [],
+      "missing_arms": []
+    },
+    {
+      "id": "effect_cloud.lua:34",
+      "lines": [
+        34,
+        36
+      ],
+      "function": "on_act (core:cloud)",
+      "anchor": "for i = 1, #foes do",
+      "condition": "for foes in range sizex; hits(cloud box, foe box)",
+      "semantic": "A cloud hurts every foe whose box overlaps its own, each tick; friends stand in it unharmed, and a foe merely near (in the finder's range) but outside the box is unharmed.",
+      "arms": [
+        {
+          "when": "foe box overlaps cloud box",
+          "observable": "attack(foe): foe hp drops by the cloud's damage"
+        },
+        {
+          "when": "foe in range but not overlapping",
+          "observable": "hp unchanged"
+        },
+        {
+          "when": "friend inside",
+          "observable": "never in the foe list: hp unchanged"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_pack_lua_paths.cpp",
+          "test": "PackLuaCloud.a_cloud_damages_the_foe_it_covers_and_spares_its_own_team"
+        },
+        {
+          "file": "tests/unit/test_pack_lua_paths.cpp",
+          "test": "PackLuaCloud.a_foe_in_range_but_outside_the_cloud_box_is_unharmed"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "effect_cloud.lua:43",
+      "lines": [
+        43,
+        66
+      ],
+      "function": "on_act (core:cloud)",
+      "anchor": "if self:s_has_commands() then",
+      "condition": "self:s_has_commands() / else",
+      "semantic": "A cloud drifts by queued random walks: with a walk queued it executes one step; with none it queues a new walk of rand(20) steps in a random non-zero direction (draw order xd, yd, count).",
+      "arms": [
+        {
+          "when": "queue empty",
+          "observable": "one WALK command queued (count in 0..19, dir non-zero), position unchanged this tick"
+        },
+        {
+          "when": "queue non-empty",
+          "observable": "s_do_command: one step taken"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/integration/test_effect_act.cpp",
+          "test": "EffectAct.cloud_ages_and_queues_its_drift_walk"
+        },
+        {
+          "file": "tests/integration/test_effect_more_paths.cpp",
+          "test": "EffectMorePaths.effect_cloud_queues_walk_then_executes_the_drift_step"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "effect_cloud.lua:53",
+      "lines": [
+        53,
+        54,
+        55
+      ],
+      "function": "on_act (core:cloud)",
+      "anchor": "if self:xpos() == held_x then",
+      "condition": "xpos unchanged and ypos unchanged and curdir unchanged after s_do_command",
+      "semantic": "A cloud wedged against a wall (its step moved nothing and did not even turn it) drops its stuck walk and picks a fresh random direction, so it never freezes in place (#233); a cloud that slid, moved or turned keeps its walk and draws nothing.",
+      "arms": [
+        {
+          "when": "moved on either axis or turned",
+          "observable": "queue kept, no RNG draw"
+        },
+        {
+          "when": "no move and no turn",
+          "observable": "queue cleared and a new random WALK queued (3 draws minimum)"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [
+        {
+          "file": "tests/integration/test_effect_act.cpp",
+          "test": "EffectAct.cloud_wedged_against_wall_keeps_moving",
+          "note": "reaches the wedge arm, but its only outcome check EXPECT_GE(moved_after, 0) is vacuous: neither arm is asserted"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "effect_cloud.lua:58",
+      "lines": [
+        58,
+        70
+      ],
+      "function": "on_act (core:cloud)",
+      "anchor": "while xd == 0 and yd == 0 do",
+      "condition": "while xd == 0 and yd == 0",
+      "semantic": "A cloud's drift direction is never the zero step: the two -1..1 rolls are redrawn together until at least one is non-zero.",
+      "arms": [
+        {
+          "when": "both rolls 0",
+          "observable": "redraw both (2 more draws)"
+        },
+        {
+          "when": "any non-zero",
+          "observable": "queue WALK with that direction"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": []
+    }
+  ],
+  "other": []
+}

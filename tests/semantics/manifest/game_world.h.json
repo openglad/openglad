@@ -1,0 +1,161 @@
+{
+  "path": "include/openglad/gameplay/game_world.h",
+  "rules": [
+    {
+      "id": "game_world.h:62",
+      "lines": [
+        62,
+        63
+      ],
+      "function": "SimRandom::next",
+      "anchor": "if (max_exclusive == 0) return 0;",
+      "condition": "max_exclusive == 0 ; sim_random_override()",
+      "semantic": "The sim RNG is a glibc-constant LCG; asking for a draw with bound 0 answers 0 and does NOT advance the stream (so a guarded draw costs nothing); a test override, when installed, answers instead of the world stream.",
+      "arms": [
+        {
+          "when": "bound 0",
+          "observable": "returns 0, state_ unchanged"
+        },
+        {
+          "when": "override installed",
+          "observable": "override's answer, state_ unchanged"
+        },
+        {
+          "when": "normal",
+          "observable": "state_ = state_*1103515245+12345, returns (state_>>16) % bound"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [
+        {
+          "file": "tests/unit/test_sim_entity.cpp",
+          "test": "SimEntity.sim_random_lcg_arithmetic_is_pinned",
+          "note": "normal arm: the LCG step and draw against literal 1103515245/12345 arithmetic"
+        },
+        {
+          "file": "tests/unit/test_sim_world_headless.cpp",
+          "test": "SimWorldHeadless.sim_random_zero_max_returns_zero",
+          "note": "bound-0 arm: next(0)==0 only; state_ unchanged is NOT asserted"
+        },
+        {
+          "file": "tests/unit/test_sim_world_headless.cpp",
+          "test": "SimWorldHeadless.sim_random_override_steers_generator_death_scatter_in_a_unit_group",
+          "note": "override arm: EXPECT_EQ(rng_bound::kPin, end_state) — the override answers ahead of the LCG step, so the world stream never advances"
+        }
+      ],
+      "missing_arms": [],
+      "note": [
+        "UNASSERTED: bound 0 leaves state_ unchanged (no test reads state_ after next(0)). Note og.rand0 (bindings_entity.cpp:2250) answers 0 itself without calling next, so TEST_F(ScriptBindingMathTest, rand0_zero_and_negative_do_not_advance_the_stream) does not reach line 62; rand_bounds_up_to_int32_max_draw_unchanged compares og.rand to a SimRandom probe and pins no formula."
+      ]
+    },
+    {
+      "id": "game_world.h:251",
+      "lines": [
+        251,
+        257,
+        263,
+        269,
+        293
+      ],
+      "function": "grid_for_floor / decor_for_floor / smoother_for_floor",
+      "anchor": "? extra_floors_[static_cast<std::size_t>(floor - 1)].grid",
+      "condition": "valid_floor(floor) ? extra_floors_[floor-1].X : floor0 X",
+      "semantic": "Every per-floor lookup with a floor index outside 1..extra floors (including negative or too-large indices from a hostile snapshot/save) falls back to floor 0's grid, decor and smoother, so an untrusted floor can never index out of bounds.",
+      "arms": [
+        {
+          "when": "floor 1..N",
+          "observable": "that stacked floor's data (distinct buffer)"
+        },
+        {
+          "when": "floor 0, negative, or > N",
+          "observable": "floor 0's members (&grid_for_floor(99) == &grid)"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [],
+      "missing_arms": [],
+      "note": [
+        "tests/unit/test_zaxis.cpp (in-range floors only)",
+        "out-of-range fallback: no assertion found",
+        "UNASSERTED: out-of-range floor falls back to floor 0"
+      ]
+    },
+    {
+      "id": "game_world.h:282",
+      "lines": [
+        282,
+        284,
+        288
+      ],
+      "function": "decor_conceals_at",
+      "anchor": "if (!dec.valid())",
+      "condition": "!dec.valid() ; grid_x/y out of bounds ; d < DECOR_MAX && kDecorRegistry[d].conceals",
+      "semantic": "A walker is concealed by decor only on a cell whose decor id is registered as concealing (shrub); a level without a decor plane, an off-map cell or a non-concealing decor (bones, boulder) never conceals.",
+      "arms": [
+        {
+          "when": "no decor plane",
+          "observable": "false"
+        },
+        {
+          "when": "off map",
+          "observable": "false"
+        },
+        {
+          "when": "shrub cell",
+          "observable": "true"
+        },
+        {
+          "when": "other/empty decor",
+          "observable": "false"
+        },
+        {
+          "when": "decor id >= DECOR_MAX (hostile or future-version decor plane)",
+          "observable": "false, and no out-of-bounds read of kDecorRegistry"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [
+        {
+          "file": "tests/unit/test_decor.cpp",
+          "test": "Decor.shrub_conceals_for_living_and_weapon_but_bones_does_not",
+          "note": "no plane, OOB -1 and 500, shrub true, boulder false, empty false"
+        }
+      ],
+      "missing_arms": [],
+      "note": [
+        "UNASSERTED: decor byte >= DECOR_MAX (line 288)"
+      ]
+    }
+  ],
+  "other": [
+    {
+      "id": "game_world.h:314",
+      "lines": [
+        314,
+        316,
+        318,
+        320,
+        323
+      ],
+      "kind": "defensive",
+      "anchor": "if (grid.valid() ? !mysmoother.targets(grid) : mysmoother.has_target())",
+      "note": "smoothers_in_sync: invariant oracle (every floor's smoother targets its own grid and the world's RNG); no game rule, read by tests (test_level_editor_issue12_wall_crash.cpp asserts true after create/resize/load). The false arms are not directly asserted."
+    },
+    {
+      "id": "game_world.h:335",
+      "lines": [
+        335,
+        337,
+        339,
+        342,
+        344
+      ],
+      "kind": "plumbing",
+      "anchor": "if (grid.valid())",
+      "note": "rebind_smoothers: re-targets each floor's smoother at its grid (or resets it when the grid is gone) and the world RNG after a world handoff (level_runtime_data.cpp:310,625); oracle smoothers_in_sync, asserted in TEST(Issue12EditorWallCrash, floor_smoothers_follow_the_live_world_rng_across_a_level_load)."
+    }
+  ]
+}

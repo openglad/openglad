@@ -1,0 +1,540 @@
+{
+  "path": "src/gameplay/mode/mode_tick.cpp",
+  "rules": [
+    {
+      "id": "mode_tick.cpp:39",
+      "lines": [
+        39,
+        41,
+        43,
+        44,
+        45,
+        46
+      ],
+      "function": "team_color_name",
+      "anchor": "if (kFfaTeamBase <= team && team < kFfaTeamBase + kFfaTeamCount)",
+      "condition": "FFA band 16..31 -> band name; switch team 0/1/2/default",
+      "semantic": "Teams 0-3 are named RED, GREEN, BLUE, YELLOW; FFA fighter teams 16-31 take the sixteen band names; any other team number reads YELLOW.",
+      "arms": [
+        {
+          "when": "16..31",
+          "observable": "kFfaBandNames[team-16]"
+        },
+        {
+          "when": "0",
+          "observable": "RED"
+        },
+        {
+          "when": "1",
+          "observable": "GREEN"
+        },
+        {
+          "when": "2",
+          "observable": "BLUE"
+        },
+        {
+          "when": "3 or any other",
+          "observable": "YELLOW"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_mode_tick.cpp",
+          "test": "ModeTick.team_color_name_pins_the_sixteen_band_names"
+        },
+        {
+          "file": "tests/unit/test_mode_bindings.cpp",
+          "test": "ModeBindings.team_color_name_band_names_and_edges"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "mode_tick.cpp:52",
+      "lines": [
+        52
+      ],
+      "function": "is_scoring_identity",
+      "anchor": "return t < SCORE_TEAM_COUNT ||",
+      "condition": "t < SCORE_TEAM_COUNT || FFA band",
+      "semantic": "Only teams 0-3 and FFA fighter teams 16-31 can score; every other team number is not a scoring side.",
+      "arms": [
+        {
+          "when": "0..3 or 16..31",
+          "observable": "true"
+        },
+        {
+          "when": "4..15, 32+",
+          "observable": "false"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_mode_tick.cpp",
+          "test": "ModeTick.is_scoring_identity_truth_table"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "mode_tick.cpp:58",
+      "lines": [
+        58
+      ],
+      "function": "team_ramp_base",
+      "anchor": "if (kFfaTeamBase <= team && team < kFfaTeamBase + kFfaTeamCount)",
+      "condition": "FFA band",
+      "semantic": "An FFA fighter team paints with its band's palette ramp; any other team uses the classic team*16+40 ramp.",
+      "arms": [
+        {
+          "when": "16..31",
+          "observable": "kFfaRampBases[team-16]"
+        },
+        {
+          "when": "else",
+          "observable": "team*16+40"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_mode_tick.cpp",
+          "test": "ModeTick.team_ramp_base_pins_the_band_table"
+        },
+        {
+          "file": "tests/unit/test_mode_tick.cpp",
+          "test": "ModeTick.team_ramp_base_keeps_the_classic_formula_off_band"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "mode_tick.cpp:65",
+      "lines": [
+        65
+      ],
+      "function": "mode_scripted_active",
+      "anchor": "return (world.type & GameWorld::TYPE_SCRIPTED) != 0 && world.mode.active;",
+      "condition": "(world.type & TYPE_SCRIPTED) != 0 && world.mode.active",
+      "semantic": "A level plays by its scripted mode rules only when it is flagged scripted AND its on_mode_init succeeded; otherwise classic completion rules apply.",
+      "arms": [
+        {
+          "when": "scripted bit and active",
+          "observable": "true (classic completion fork skipped)"
+        },
+        {
+          "when": "either missing",
+          "observable": "false"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_classic_respawn.cpp",
+          "test": "ClassicRespawn.predicate_and_suppression_truth_table"
+        },
+        {
+          "file": "tests/unit/test_respawn_engine.cpp",
+          "test": "RespawnEngine.team_wipe_suppression_tracks_match_lifecycle"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "mode_tick.cpp:77",
+      "lines": [
+        74,
+        77,
+        83
+      ],
+      "function": "authored_team_mask",
+      "anchor": "for (const auto& uptr : world.oblist)",
+      "condition": "Order::Special && FAMILY_RESERVED_TEAM ; team < SCORE_TEAM_COUNT",
+      "semantic": "The level's authored teams are the teams 0-3 that have a team start marker placed, counting markers already consumed (dead) by player placement, so the mask never depends on how many seats deployed.",
+      "arms": [
+        {
+          "when": "live team-start marker team t<4",
+          "observable": "bit t set"
+        },
+        {
+          "when": "consumed (dead) marker",
+          "observable": "bit still set"
+        },
+        {
+          "when": "marker team >=4 or non-marker walker",
+          "observable": "no bit"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_mode_bindings.cpp",
+          "test": "ModeBindings.team_masks_follow_markers_and_requested_count"
+        },
+        {
+          "file": "tests/unit/test_mode_bindings.cpp",
+          "test": "ModeBindings.matched_troops_request_feeds_no_mask"
+        }
+      ],
+      "missing_arms": [
+        "consumed (dead) marker",
+        "marker team >=4 or non-marker walker"
+      ]
+    },
+    {
+      "id": "mode_tick.cpp:97",
+      "lines": [
+        97,
+        101,
+        105
+      ],
+      "function": "effective_team_mask",
+      "anchor": "if (requested <= 0)",
+      "condition": "requested <= 0 ; clamp(requested,2,4) ; (authored & bit) == 0",
+      "semantic": "With no team count requested (Auto) every authored team plays; a requested count N (clamped to 2..4) activates the first N authored teams in index order, skipping unauthored team numbers.",
+      "arms": [
+        {
+          "when": "requested <= 0",
+          "observable": "authored mask"
+        },
+        {
+          "when": "requested 2..4",
+          "observable": "first N authored bits ({0,2,3},2 -> 0b0101)"
+        },
+        {
+          "when": "requested 1",
+          "observable": "clamped to 2 teams"
+        },
+        {
+          "when": "requested > 4",
+          "observable": "clamped to 4"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_mode_bindings.cpp",
+          "test": "ModeBindings.team_masks_follow_markers_and_requested_count"
+        },
+        {
+          "file": "tests/unit/test_mode_bindings.cpp",
+          "test": "ModeBindings.matched_troops_request_feeds_no_mask"
+        },
+        {
+          "file": "tests/unit/test_lobby_server.cpp",
+          "test": "LobbyState.ctf_team_domain_uses_authored_order_and_safe_fallback"
+        }
+      ],
+      "missing_arms": [
+        "requested 1"
+      ]
+    },
+    {
+      "id": "mode_tick.cpp:119",
+      "lines": [
+        119
+      ],
+      "function": "mode_end_level",
+      "anchor": "if (!world.mode.win_latched)",
+      "condition": "!world.mode.win_latched",
+      "semantic": "The first time a scripted match is ended, every queued respawn fires and eligible player corpses revive before the result is recorded; ending it again (last write wins on ending/next_level) does not re-flush.",
+      "arms": [
+        {
+          "when": "first arming",
+          "observable": "queued respawns fired, dead heroes alive, win_ending/next_level stored"
+        },
+        {
+          "when": "re-arming",
+          "observable": "no flush (a hero killed after the first end stays dead), new ending/next_level overwrite"
+        }
+      ],
+      "setting": "none",
+      "status": "executed-only",
+      "tests": [
+        {
+          "file": "tests/unit/test_mode_bindings.cpp",
+          "test": "ModeBindings.end_level_latches_and_validates",
+          "note": "stored ending/next_level, last write wins - the non-flush half of both arms"
+        },
+        {
+          "file": "tests/unit/test_mode_tick.cpp",
+          "test": "ModeTick.end_level_loss_shape_reasserts",
+          "note": "stored 1/-1 only"
+        }
+      ],
+      "missing_arms": [
+        "first arming",
+        "re-arming"
+      ]
+    },
+    {
+      "id": "mode_tick.cpp:128",
+      "lines": [
+        128
+      ],
+      "function": "mode_declare_winner",
+      "anchor": "if (!world.mode.win_latched)",
+      "condition": "!world.mode.win_latched",
+      "semantic": "Same rule as mode_tick.cpp:119: declaring a winner first flushes respawns and revives player corpses (only on first arming), so a just-revived hero counts for the winner check.",
+      "arms": [
+        {
+          "when": "first arming",
+          "observable": "corpses revived before winner_is_player computed"
+        },
+        {
+          "when": "already latched",
+          "observable": "no flush"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_mode_tick.cpp",
+          "test": "ModeTick.latch_arming_revives_player_corpses_before_winner_check"
+        },
+        {
+          "file": "tests/unit/test_respawn_engine.cpp",
+          "test": "RespawnEngine.win_latch_flush_revives_all_player_corpses"
+        },
+        {
+          "file": "tests/unit/test_respawn_engine.cpp",
+          "test": "RespawnEngine.win_latch_flush_breaks_charm_onto_true_team"
+        }
+      ],
+      "missing_arms": [
+        "already latched"
+      ]
+    },
+    {
+      "id": "mode_tick.cpp:139",
+      "lines": [
+        136,
+        139,
+        151
+      ],
+      "function": "mode_declare_winner",
+      "anchor": "for (const auto& uptr : world.oblist)",
+      "condition": "!dead && Order::Living && team_num == team && myguy ; winner_is_player ? id+1 : id",
+      "semantic": "A declared winner is the player's win when any live hero (myguy) wears exactly that team number (not merely an ally of it); a player win advances to the next level, otherwise the level replays.",
+      "arms": [
+        {
+          "when": "live myguy on winning team",
+          "observable": "winner_is_player true, next_level = id+1"
+        },
+        {
+          "when": "none (bots only, dead hero, ally team)",
+          "observable": "winner_is_player false, next_level = id"
+        }
+      ],
+      "setting": "none",
+      "status": "partial",
+      "tests": [
+        {
+          "file": "tests/unit/test_mode_tick.cpp",
+          "test": "ModeTick.declare_winner_is_one_shot_and_reasserted_every_tick"
+        },
+        {
+          "file": "tests/unit/test_mode_bindings.cpp",
+          "test": "ModeBindings.declare_winner_records_team_and_validates"
+        }
+      ],
+      "missing_arms": [
+        "none (bots only, dead hero, ally team)"
+      ]
+    },
+    {
+      "id": "mode_tick.cpp:171",
+      "lines": [
+        171
+      ],
+      "function": "mode_stage_init",
+      "anchor": "if (world.mode.init_attempted)",
+      "condition": "world.mode.init_attempted",
+      "semantic": "A scripted mode's on_mode_init runs at most once per level, whether staged or lazily armed on the first tick.",
+      "arms": [
+        {
+          "when": "already attempted",
+          "observable": "no second on_mode_init call (log count 1)"
+        },
+        {
+          "when": "first",
+          "observable": "init runs, init_attempted true"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_mode_tick.cpp",
+          "test": "ModeTick.staged_init_parity_with_ticked_init"
+        },
+        {
+          "file": "tests/unit/test_mode_tick.cpp",
+          "test": "ModeTick.scripted_bit_plus_hooks_activates_once"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "mode_tick.cpp:181",
+      "lines": [
+        181
+      ],
+      "function": "mode_stage_init",
+      "anchor": "(requested > 0) ? static_cast<std::uint16_t>(requested)",
+      "condition": "requested > 0 ? requested : kRespawnDefaultTicks",
+      "semantic": "A mode's respawn delay is the lobby's requested delay when one was set, else the engine default.",
+      "arms": [
+        {
+          "when": "requested > 0",
+          "observable": "respawn.respawn_ticks == requested"
+        },
+        {
+          "when": "0",
+          "observable": "kRespawnDefaultTicks"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_mode_tick.cpp",
+          "test": "ModeTick.stage_init_activates_without_a_tick"
+        },
+        {
+          "file": "tests/unit/test_mode_tick.cpp",
+          "test": "ModeTick.stage_init_failed_shape_defaults_and_stays_classic"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "mode_tick.cpp:184",
+      "lines": [
+        184
+      ],
+      "function": "mode_stage_init",
+      "anchor": "if (og::script::hooks::level_mode_init(&world))",
+      "condition": "level_mode_init(&world)",
+      "semantic": "A mode becomes active only if its on_mode_init succeeds; a missing or erroring init leaves the level on classic completion rules.",
+      "arms": [
+        {
+          "when": "init ok",
+          "observable": "mode.active true"
+        },
+        {
+          "when": "missing/error",
+          "observable": "mode.active false, classic win rules"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_mode_tick.cpp",
+          "test": "ModeTick.stage_init_activates_without_a_tick"
+        },
+        {
+          "file": "tests/unit/test_mode_tick.cpp",
+          "test": "ModeTick.scripted_bit_plus_hooks_activates_once"
+        },
+        {
+          "file": "tests/unit/test_mode_tick.cpp",
+          "test": "ModeTick.erroring_mode_init_falls_classic_next_tick"
+        },
+        {
+          "file": "tests/unit/test_mode_tick.cpp",
+          "test": "ModeTick.scripted_bit_without_hooks_falls_classic_next_tick"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "mode_tick.cpp:193",
+      "lines": [
+        193,
+        196,
+        199
+      ],
+      "function": "mode_run_tick",
+      "anchor": "if (!world.mode.active && !world.mode.init_attempted)",
+      "condition": "!active && !init_attempted ; !active",
+      "semantic": "An un-staged scripted level arms its mode lazily on the first tick; a failed init owns that tick (no Lua tick runs) and the level falls to classic rules; a world whose init already failed never runs mode phases.",
+      "arms": [
+        {
+          "when": "first tick, init fails",
+          "observable": "returns, no on_mode_tick log"
+        },
+        {
+          "when": "first tick, init ok",
+          "observable": "continues to timers + on_mode_tick same tick"
+        },
+        {
+          "when": "init failed earlier",
+          "observable": "returns, no on_mode_tick"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_mode_tick.cpp",
+          "test": "ModeTick.run_tick_refuses_failed_init_world_when_called_directly"
+        },
+        {
+          "file": "tests/unit/test_mode_tick.cpp",
+          "test": "ModeTick.scripted_bit_plus_hooks_activates_once"
+        }
+      ],
+      "missing_arms": []
+    },
+    {
+      "id": "mode_tick.cpp:204",
+      "lines": [
+        204,
+        223
+      ],
+      "function": "mode_run_tick",
+      "anchor": "if (world.mode.win_latched)",
+      "condition": "world.mode.win_latched (before and after on_mode_tick)",
+      "semantic": "Once a scripted match is decided it stays decided: the end shape (game_ended, ending, next_level) is re-asserted every tick and no more respawn timers or Lua mode ticks run; a win declared inside this tick's on_mode_tick takes effect the same tick.",
+      "arms": [
+        {
+          "when": "latched at entry",
+          "observable": "game_ended true, ending/next_level from latch, on_mode_tick not logged again"
+        },
+        {
+          "when": "latched during on_mode_tick",
+          "observable": "game_ended true the same tick"
+        },
+        {
+          "when": "not latched",
+          "observable": "game_ended false"
+        }
+      ],
+      "setting": "none",
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_mode_tick.cpp",
+          "test": "ModeTick.declare_winner_is_one_shot_and_reasserted_every_tick"
+        },
+        {
+          "file": "tests/unit/test_mode_tick.cpp",
+          "test": "ModeTick.end_level_loss_shape_reasserts"
+        }
+      ],
+      "missing_arms": []
+    }
+  ],
+  "other": []
+}
