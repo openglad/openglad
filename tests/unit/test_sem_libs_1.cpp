@@ -736,7 +736,7 @@ TEST(SemLibsChain, a_fork_skips_the_struck_and_the_immune_but_they_spend_the_bud
         EXPECT_EQ(1, f->floor()) << "arm '(level, floor)': the bolt's floor";
         EXPECT_EQ(owner, f->owner());
         EXPECT_EQ(0, f->team_num());
-        EXPECT_EQ(1, f->stats()->query_bit_flags(BIT_MAGICAL) != 0 ? 1 : 0);
+        EXPECT_NE(0, f->stats()->query_bit_flags(BIT_MAGICAL)) << "a fork is magical";
         EXPECT_FLOAT_EQ(50.0f, f->damage());
         EXPECT_EQ(bx, f->xpos()) << "centred on the bolt (same box)";
         EXPECT_EQ(by, f->ypos());
