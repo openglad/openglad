@@ -890,7 +890,7 @@ TEST(SemRespawn, a_revived_walker_rejoins_the_collision_map_and_an_absent_one_ne
     arena.fx.tick(6);
     ASSERT_FALSE(runner->dead());
     ASSERT_EQ(320, runner->xpos()) << "revived in place";
-    EXPECT_EQ(1u, world.myobmap->walker_to_pos.count(runner))
+    ASSERT_EQ(1u, world.myobmap->walker_to_pos.count(runner))
         << "revived in place: back in the map";
     EXPECT_FALSE(og::sim::respawn_spot_clear(world, arena.enemy, 320, 320, 0))
         << "revived in place: it blocks the spot";
@@ -963,8 +963,15 @@ TEST(SemRespawn, trees_boulders_and_declared_blockers_take_a_spot_and_dead_or_hi
     walker* hidden = place(Order::Living, FAMILY_SOLDIER, 192, 256);
     ASSERT_TRUE(tree && boulder && wall && knife && corpse && hidden);
     ASSERT_TRUE(og::sim::declares_blocks_placement(*wall));
+    // Both stay in the collision map: set_dead alone leaves the corpse there
+    // (as on the tick it falls), and set_hidden takes a walker out, so the
+    // hidden one is put back by hand: the probe's own guard is what must
+    // pass over it.
     corpse->set_dead(1);
     hidden->set_hidden(true);
+    world.myobmap->add(hidden, hidden->xpos(), hidden->ypos());
+    ASSERT_EQ(1u, world.myobmap->walker_to_pos.count(corpse));
+    ASSERT_EQ(1u, world.myobmap->walker_to_pos.count(hidden));
 
     for (int floor : {-1, 0}) {
         SCOPED_TRACE(floor < 0 ? "anchor probe" : "floor-explicit probe");
@@ -1122,8 +1129,7 @@ TEST(SemRespawn, a_drop_more_than_eight_pixels_from_the_corpse_is_not_its_drop)
     const walker* s8 = arena.world().find_by_id(id8);
     const walker* s9 = arena.world().find_by_id(id9);
     EXPECT_TRUE(s8 == nullptr || s8->dead()) << "centre 8px away: scrubbed";
-    ASSERT_NE(nullptr, s9);
-    EXPECT_FALSE(s9->dead()) << "centre 9px away: survives";
+    EXPECT_TRUE(s9 != nullptr && !s9->dead()) << "centre 9px away: survives";
     EXPECT_EQ(1, live_stains(arena.world(), 0, 0, runner->myguy))
         << "only the 9px drop is left";
 }
