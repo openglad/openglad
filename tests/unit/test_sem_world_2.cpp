@@ -513,7 +513,10 @@ TEST(SemWorld, a_no_collide_sleeper_wakes_in_place_on_a_held_spot)
         }
         else
         {
-            EXPECT_FALSE(sleeper->xpos() == 160 && sleeper->ypos() == 160)
+            // The first clear ring-1 cell in scan order (one tile up and left).
+            EXPECT_EQ(144, sleeper->xpos())
+                << "control: a colliding waker is moved off the held spot";
+            EXPECT_EQ(144, sleeper->ypos())
                 << "control: a colliding waker is moved off the held spot";
         }
     }
@@ -1035,7 +1038,8 @@ TEST(SemWorld, the_landing_probe_never_eats_the_treasure_on_the_spot)
 // ---------------------------------------------------------------------------
 
 // Links to live walkers survive the end-of-tick cleanup untouched. (The
-// controller arm is deferred: the old game never cleared a dead controller.)
+// controller arm and the fxlist drop are deferred: the old game cleans only
+// oblist and weaplist links and never a dead controller.)
 TEST(SemWorld, links_to_live_walkers_survive_the_stale_link_cleanup)
 {
     TestGameWorld tw;
@@ -1066,10 +1070,11 @@ TEST(SemWorld, links_to_live_walkers_survive_the_stale_link_cleanup)
         EXPECT_EQ(orc, w->collide_ob()) << list << ": link alive, collide_ob kept";
     }
 
-    // Control: the same links to a dead walker are dropped.
+    // Control: the same links to a dead walker are dropped from oblist and
+    // weaplist walkers, which the old game cleans too. (fxlist links to the
+    // dead are not pinned: the old game never cleans fxlist.)
     TickWalker* corpse = push_tick_walker(world.oblist, Order::Living, FAMILY_ORC, 1, 340, 340);
-    for (walker* w : {static_cast<walker*>(soldier), static_cast<walker*>(knife),
-                      static_cast<walker*>(spark)})
+    for (walker* w : {static_cast<walker*>(soldier), static_cast<walker*>(knife)})
     {
         w->set_foe(corpse);
         w->set_leader(corpse);
@@ -1078,13 +1083,13 @@ TEST(SemWorld, links_to_live_walkers_survive_the_stale_link_cleanup)
     }
     corpse->set_dead(1);
     world.tick();
-    for (walker* w : {static_cast<walker*>(soldier), static_cast<walker*>(knife),
-                      static_cast<walker*>(spark)})
+    for (walker* w : {static_cast<walker*>(soldier), static_cast<walker*>(knife)})
     {
-        EXPECT_EQ(nullptr, w->foe());
-        EXPECT_EQ(nullptr, w->leader());
-        EXPECT_EQ(nullptr, w->owner());
-        EXPECT_EQ(nullptr, w->collide_ob());
+        const char* list = w == soldier ? "oblist" : "weaplist";
+        EXPECT_EQ(nullptr, w->foe()) << list << ": link dead, foe dropped";
+        EXPECT_EQ(nullptr, w->leader()) << list << ": link dead, leader dropped";
+        EXPECT_EQ(nullptr, w->owner()) << list << ": link dead, owner dropped";
+        EXPECT_EQ(nullptr, w->collide_ob()) << list << ": link dead, collide_ob dropped";
     }
 }
 
