@@ -925,9 +925,9 @@
           "note": "946-950 (lastx == 8 * stepsize)"
         },
         {
-          "parity": "kMut_tower_snap_face_heading_scen99",
+          "parity": "tower_snap_face_heading_scen99",
           "fact": "WalkerHpRangeAtFinalTick(FAMILY_MEDIUM_SLIME,7500,7500)",
-          "note": "scenario_table.h:8282  pins line 501"
+          "note": "stepsize 0 arm: the stationary tower's snap-faced heading points at the slime; its canary at scenario_table.h:8282 reverts line 501"
         }
       ],
       "missing_arms": []
