@@ -417,7 +417,8 @@ TEST_F(SemFearless, a_weapon_without_a_rally_radius_rallies_nobody)
     ASSERT_TRUE(hero && knife);
     ASSERT_EQ(0, hero->distance_to_ob_center(knife));
     EXPECT_FALSE(og::sim::fearless(*hero))
-        << "rally_radius <= 0 arm: a friendly knife at distance 0 is no banner";    tw.world().new_specials = 0;
+        << "rally_radius <= 0 arm: a friendly knife at distance 0 is no banner";
+    tw.world().new_specials = 0;
     EXPECT_FALSE(og::sim::fearless(*hero))
         << "New Specials off: the knife rallies nobody either";
 }
