@@ -34,18 +34,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_script_host.cpp",
           "test": "ScriptBudget.allocation_cap_trips_deterministically",
           "note": "over-cap arm: run_chunk false, errors non-empty, memory_used <= memory_limit, eval 2+2 == 4 afterwards"
+        },
+        {
+          "file": "tests/unit/test_sem_script_2.cpp",
+          "test": "SemScriptHost.memory_within_the_cap_is_counted_and_a_free_returns_it"
         }
       ],
-      "missing_arms": [
-        "allocation within cap",
-        "free (nsize 0)"
-      ]
+      "missing_arms": []
     },
     {
       "id": "script_host.cpp:65",
@@ -113,7 +114,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_script_host.cpp",
@@ -123,12 +124,13 @@
         {
           "file": "tests/unit/test_script_host.cpp",
           "test": "ScriptArith.div_differs_from_lua_floor_division_for_negatives"
+        },
+        {
+          "file": "tests/unit/test_sem_script_2.cpp",
+          "test": "SemScriptHost.og_div_by_zero_and_its_overflow_are_script_errors"
         }
       ],
-      "missing_arms": [
-        "b == 0",
-        "INT64_MIN / -1"
-      ]
+      "missing_arms": []
     },
     {
       "id": "script_host.cpp:114",
@@ -159,7 +161,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_script_host.cpp",
@@ -169,12 +171,13 @@
         {
           "file": "tests/unit/test_script_host.cpp",
           "test": "ScriptArith.div_differs_from_lua_floor_division_for_negatives"
+        },
+        {
+          "file": "tests/unit/test_sem_script_2.cpp",
+          "test": "SemScriptHost.og_mod_by_zero_and_its_overflow_are_script_errors"
         }
       ],
-      "missing_arms": [
-        "b == 0",
-        "INT64_MIN, -1"
-      ]
+      "missing_arms": []
     },
     {
       "id": "script_host.cpp:173",
@@ -199,17 +202,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_script_host.cpp",
           "test": "ScriptArith.narrowing_matches_cpp_modular_semantics",
           "note": "in-range arm: og.trunc(3.9)==3, (-3.9)==-3, (-0.5)==0"
+        },
+        {
+          "file": "tests/unit/test_sem_script_2.cpp",
+          "test": "SemScriptHost.og_trunc_out_of_integer_range_is_a_script_error"
         }
       ],
-      "missing_arms": [
-        "|x| >= 2^63 or NaN"
-      ]
+      "missing_arms": []
     },
     {
       "id": "script_host.cpp:185",
@@ -370,17 +375,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_script_host.cpp",
           "test": "ScriptHostBasics.syntax_and_runtime_errors_are_recorded",
           "note": "string arm: message contains 'boom' and 'stack traceback'"
+        },
+        {
+          "file": "tests/unit/test_sem_script_2.cpp",
+          "test": "SemScriptHost.a_non_string_error_is_recorded_as_non_string_error"
         }
       ],
-      "missing_arms": [
-        "non-string error value"
-      ]
+      "missing_arms": []
     },
     {
       "id": "script_host.cpp:374",
@@ -411,7 +418,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_script_host.cpp",
@@ -421,11 +428,13 @@
         {
           "file": "tests/unit/test_script_host.cpp",
           "test": "PackLibTest.module_environments_are_isolated"
+        },
+        {
+          "file": "tests/unit/test_sem_script_2.cpp",
+          "test": "SemScriptHost.chunks_with_no_env_key_get_isolated_environments"
         }
       ],
-      "missing_arms": [
-        "empty key"
-      ]
+      "missing_arms": []
     },
     {
       "id": "script_host.cpp:404",
@@ -516,7 +525,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_script_host.cpp",
@@ -532,11 +541,13 @@
           "file": "tests/unit/test_script_host.cpp",
           "test": "ScriptCoverage.records_the_lines_a_chunk_actually_ran",
           "note": "coverage-enabled arm: exact recorded line list"
+        },
+        {
+          "file": "tests/unit/test_sem_script_2.cpp",
+          "test": "SemScriptHost.a_nested_script_entry_shares_the_outer_instruction_budget"
         }
       ],
-      "missing_arms": [
-        "nested entry"
-      ]
+      "missing_arms": []
     },
     {
       "id": "script_host.cpp:443",
@@ -601,7 +612,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_script_host.cpp",
@@ -612,11 +623,13 @@
           "file": "tests/unit/test_script_host.cpp",
           "test": "PackLibTest.module_chunks_are_text_only",
           "note": "bytecode never executed: no 'attempt to call'"
+        },
+        {
+          "file": "tests/unit/test_sem_script_2.cpp",
+          "test": "SemScriptHost.a_chunk_with_a_syntax_error_is_recorded_and_never_runs"
         }
       ],
-      "missing_arms": [
-        "syntax error"
-      ]
+      "missing_arms": []
     },
     {
       "id": "script_host.cpp:530",
@@ -713,18 +726,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_script_host.cpp",
           "test": "ScriptHostBasics.eval_coercions_are_strict",
           "note": "eval_integer('1.5') nullopt; eval_integer('7 * 6') == 42; eval_string(\"'x' .. 'y'\") == 'xy'"
+        },
+        {
+          "file": "tests/unit/test_sem_script_2.cpp",
+          "test": "SemScriptHost.eval_number_and_eval_string_refuse_the_wrong_type"
         }
       ],
-      "missing_arms": [
-        "eval_number of 'x'",
-        "eval_string of 42"
-      ]
+      "missing_arms": []
     },
     {
       "id": "script_host.cpp:603",

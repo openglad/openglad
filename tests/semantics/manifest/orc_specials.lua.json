@@ -71,7 +71,7 @@
         }
       ],
       "setting": "both",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "parity": "orc_howl_no_foe_scen99",
@@ -85,11 +85,13 @@
           "file": "tests/integration/test_family_orc.cpp",
           "test": "FamilyOrc.r15_howl_freezes_foes_in_radius_and_spares_the_horde",
           "note": "foe in range, fixes OFF leg only"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_4.cpp",
+          "test": "SemOrcHowl.a_howl_with_a_foe_in_reach_goes_off_with_fixes_on_or_off"
         }
       ],
-      "missing_arms": [
-        "foe in range"
-      ]
+      "missing_arms": []
     },
     {
       "id": "orc_specials.lua:31",
@@ -120,17 +122,23 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "unreachable",
       "tests": [
         {
           "file": "tests/integration/test_family_orc.cpp",
           "test": "FamilyOrc.r15_howl_freezes_foes_in_radius_and_spares_the_horde",
           "note": "hero foe con 0, orc level 0: frozen_delay exactly 10"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_4.cpp",
+          "test": "SemOrcHowl.a_guyless_foe_resists_a_howl_by_a_thirtieth_of_its_hitpoints"
         }
       ],
       "missing_arms": [
-        "guyless foe",
         "stun negative"
+      ],
+      "note": [
+        "unreachable (stun-negative arm; the guyless arm is asserted by the named test): add_frozen_stun's stun_total floors a negative add at 0 (include/openglad/core/combat_math.h:312), so removing og.max(0, ...) changes no state; candidate for a defensive-guard note"
       ]
     },
     {

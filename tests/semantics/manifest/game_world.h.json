@@ -81,7 +81,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_mapgen_builders.cpp",
@@ -92,11 +92,13 @@
           "file": "tests/unit/test_decor_format.cpp",
           "test": "DecorFormatTest.v11_round_trip_multifloor_planes_and_presence_flags",
           "note": "in-range decor_for_floor(1) invalid while floors 0 and 2 valid"
+        },
+        {
+          "file": "tests/unit/test_sem_world_1.cpp",
+          "test": "SemWorld.a_floor_index_outside_the_stacked_floors_reads_floor_zero"
         }
       ],
-      "missing_arms": [
-        "floor 0, negative, or > N"
-      ]
+      "missing_arms": []
     },
     {
       "id": "game_world.h:282",
@@ -135,17 +137,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_decor.cpp",
           "test": "Decor.shrub_conceals_for_living_and_weapon_but_bones_does_not",
           "note": "no plane false; OOB -1 and 500 false; shrub true; boulder and empty false"
+        },
+        {
+          "file": "tests/unit/test_sem_world_1.cpp",
+          "test": "SemWorld.a_decor_id_past_the_registry_never_conceals"
         }
       ],
-      "missing_arms": [
-        "decor id >= DECOR_MAX (hostile or future-version decor plane)"
-      ]
+      "missing_arms": []
     }
   ],
   "other": [

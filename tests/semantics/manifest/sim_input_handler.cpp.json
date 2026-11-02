@@ -40,7 +40,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "unreachable",
       "tests": [
         {
           "file": "tests/integration/test_sim_input_unit.cpp",
@@ -53,10 +53,17 @@
         {
           "file": "tests/integration/test_sim_input_unit.cpp",
           "test": "SimInputUnit.intelligence_refusals_use_one_private_cue"
+        },
+        {
+          "file": "tests/unit/test_sem_world_4.cpp",
+          "test": "SemSimInput.a_special_that_fails_on_a_non_living_body_stays_silent"
         }
       ],
       "missing_arms": [
-        "None/Dead/NoStats/NotLiving"
+        "None/Dead/NoStats (NotLiving asserted)"
+      ],
+      "note": [
+        "unreachable: Dead (the entry check at :336 returns or replaces a dead control), NoStats (every walker constructor builds stats_), None (walker::special never fails with None); the NotLiving sub-case is asserted"
       ]
     },
     {
@@ -86,7 +93,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_sim_input_unit.cpp",
@@ -95,11 +102,13 @@
         {
           "file": "tests/integration/test_sim_input_unit.cpp",
           "test": "SimInputUnit.sim_input_cue_throttle_drains_while_the_seat_is_dead"
+        },
+        {
+          "file": "tests/unit/test_sem_world_4.cpp",
+          "test": "SemSimInput.a_special_that_fails_on_a_non_living_body_stays_silent"
         }
       ],
-      "missing_arms": [
-        "no message (message == nullptr: None/Dead/NoStats/NotLiving failure)"
-      ],
+      "missing_arms": [],
       "note": [
         "Compound observables split into separate arms (fixer policy): an arm is asserted only when a cited test pins its whole observable. Warm arm: sim_input_failed_special_cue_is_seat_addressed_and_throttled ASSERT_EQ(1, count_cue) on every frame 1..kSimCueThrottleTicks-1 and ASSERT_EQ(2) across 10 held frames. The nullptr sub-case is reached by no test (same gap as sim_input_handler.cpp:41 silent arm)."
       ]
@@ -327,7 +336,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_sim_input_handler.cpp",
@@ -336,11 +345,13 @@
         {
           "file": "tests/integration/test_sim_input_handler.cpp",
           "test": "SimInputHandler.sim_input_switch_char_forward_and_reverse_paths"
+        },
+        {
+          "file": "tests/unit/test_sem_world_4.cpp",
+          "test": "SemSimInput.switch_character_from_a_body_outside_the_list_finds_nobody"
         }
       ],
-      "missing_arms": [
-        "current missing"
-      ]
+      "missing_arms": []
     },
     {
       "id": "sim_input_handler.cpp:241",
@@ -373,7 +384,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_sim_input_handler.cpp",
@@ -414,11 +425,13 @@
           "file": "tests/unit/test_kit_faerie.cpp",
           "test": "KitFaerie.four_slots_open_at_levels_1_4_7_10_and_none_when_off",
           "note": "[level-locked cycles]"
+        },
+        {
+          "file": "tests/unit/test_sem_world_4.cpp",
+          "test": "SemSimInput.switch_special_past_the_last_slot_wraps_to_slot_one"
         }
       ],
-      "missing_arms": [
-        "past the end (index > NUM_SPECIALS-1) or negative"
-      ],
+      "missing_arms": [],
       "note": [
         "Compound observables split into separate arms (fixer policy): an arm is asserted only when a cited test pins its whole observable. No test cycles from slot 5 of a family with five named specials at level 13+ (index 6), nor from a negative current_special."
       ]
@@ -446,16 +459,18 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_sim_input_unit.cpp",
           "test": "SimInputUnit.sim_input_switch_char_on_the_claim_tick_cycles_from_the_claimed_hero"
+        },
+        {
+          "file": "tests/unit/test_sem_world_4.cpp",
+          "test": "SemSimInput.switching_away_from_another_seats_body_leaves_it_seated"
         }
       ],
-      "missing_arms": [
-        "not ours"
-      ]
+      "missing_arms": []
     },
     {
       "id": "sim_input_handler.cpp:265",
@@ -568,16 +583,18 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_sim_input_unit.cpp",
           "test": "SimInputUnit.sim_input_cue_throttle_drains_while_the_seat_is_dead"
+        },
+        {
+          "file": "tests/unit/test_sem_world_4.cpp",
+          "test": "SemSimInput.a_cold_cue_throttle_stays_cold"
         }
       ],
-      "missing_arms": [
-        "cold"
-      ]
+      "missing_arms": []
     },
     {
       "id": "sim_input_handler.cpp:312",
@@ -826,7 +843,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_sim_input_handler.cpp",
@@ -839,11 +856,13 @@
         {
           "file": "tests/integration/test_view_input_paths.cpp",
           "test": "ViewInputPaths.view_input_switch_control_forward_and_reverse"
+        },
+        {
+          "file": "tests/unit/test_sem_world_4.cpp",
+          "test": "SemSimInput.switch_character_held_down_switches_once"
         }
       ],
-      "missing_arms": [
-        "held through"
-      ]
+      "missing_arms": []
     },
     {
       "id": "sim_input_handler.cpp:381",
@@ -988,7 +1007,7 @@
         }
       ],
       "setting": "new-specials",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_kit_seams_hidden.cpp",
@@ -997,11 +1016,13 @@
         {
           "file": "tests/unit/test_kit_skeleton.cpp",
           "test": "KitSkeleton.seated_hero_digs_in_where_it_stands"
+        },
+        {
+          "file": "tests/unit/test_sem_world_4.cpp",
+          "test": "SemSimInput.a_hidden_hero_holding_special_casts_on_the_repeat"
         }
       ],
-      "missing_arms": [
-        "hidden, hold"
-      ]
+      "missing_arms": []
     },
     {
       "id": "sim_input_handler.cpp:444",
@@ -1118,7 +1139,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_sim_input_handler.cpp",
@@ -1135,13 +1156,13 @@
         {
           "file": "tests/integration/test_sim_input_handler.cpp",
           "test": "SimInputHandler.sim_input_shift_yell_summon_and_release"
+        },
+        {
+          "file": "tests/unit/test_sem_world_4.cpp",
+          "test": "SemSimInput.yell_recruits_unled_teammates_and_classic_recruits_the_dead_dormant_and_hidden"
         }
       ],
-      "missing_arms": [
-        "yell: foe dropped and forced follow",
-        "ally already led or seated (ACT_CONTROL) or other team or order not Living",
-        "dead, dormant or hidden teammate with no leader"
-      ],
+      "missing_arms": [],
       "note": [
         "Compound observables split into separate arms (fixer policy): an arm is asserted only when a cited test pins its whole observable. Leader/cooldown/cue: sim_input_yell_sets_follow_and_notification. Cooldown: sim_input_yell_within_cooldown_emits_nothing (log 0, notify empty, play_sound -1). Cheat: sim_input_cheat_gates_and_command_queue_skip_movement_block (notify_text empty). Shift: sim_input_shift_yell_summon_and_release ASSERT_EQ(1u, log.size()) with the only event SUMMONING DEFENSE! (no Yo!, no SOUND_YO)."
       ]
@@ -1189,7 +1210,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_sim_input_handler.cpp",
@@ -1206,11 +1227,13 @@
         {
           "file": "tests/integration/test_sim_input_handler.cpp",
           "test": "SimInputHandler.shift_yell_still_summons_on_a_belt_tick"
+        },
+        {
+          "file": "tests/unit/test_sem_world_4.cpp",
+          "test": "SemSimInput.summon_defense_sets_the_leader_and_drops_the_foe_classic_including_the_hero"
         }
       ],
-      "missing_arms": [
-        "hero action 0: leader set and foe dropped"
-      ],
+      "missing_arms": [],
       "note": [
         "Compound observables split into separate arms (fixer policy): an arm is asserted only when a cited test pins its whole observable. Summon follow/notification: sim_input_shift_yell_summon_and_release (notify_text, ally ACTION_FOLLOW, single Notification event) and view_input_yell_and_shift_yell_team_actions (control and ally ACTION_FOLLOW). The Shift+Yell leader/foe writes are asserted by no test (the leader asserts in those files belong to the plain-yell branch, row :460)."
       ]
@@ -1274,12 +1297,14 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": [
-        "animating",
-        "walking"
-      ]
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sem_world_4.cpp",
+          "test": "SemSimInput.a_seated_hero_mid_attack_animates_in_the_input_tick"
+        }
+      ],
+      "missing_arms": []
     },
     {
       "id": "sim_input_handler.cpp:548",
@@ -1304,7 +1329,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_sim_input_handler.cpp",
@@ -1313,11 +1338,13 @@
         {
           "file": "tests/unit/test_stats_fright.cpp",
           "test": "StatsFright.switch_and_claim_preserve_fright_and_hygiene"
+        },
+        {
+          "file": "tests/unit/test_sem_world_4.cpp",
+          "test": "SemSimInput.a_seat_that_keeps_its_body_keeps_its_queued_commands"
         }
       ],
-      "missing_arms": [
-        "same"
-      ]
+      "missing_arms": []
     },
     {
       "id": "sim_input_handler.cpp:551",
@@ -1350,7 +1377,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "unreachable",
       "tests": [
         {
           "file": "tests/integration/test_sim_input_unit.cpp",
@@ -1367,6 +1394,9 @@
       ],
       "missing_arms": [
         "dead"
+      ],
+      "note": [
+        "unreachable: a dead control never reaches :551; the check at :336 returns (respawn retains it) or replaces it, and nothing between (bonus-round walk, switch filter skips the dead, yell, the attack row's fire at :544) kills the seat's own walker"
       ]
     },
     {
@@ -1400,7 +1430,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_sim_input_handler.cpp",
@@ -1409,11 +1439,13 @@
         {
           "file": "tests/integration/test_sim_input_handler.cpp",
           "test": "SimInputHandler.sim_input_cheat_gates_and_command_queue_skip_movement_block"
+        },
+        {
+          "file": "tests/unit/test_sem_world_4.cpp",
+          "test": "SemSimInput.a_hero_carrying_out_a_queued_action_does_not_cast"
         }
       ],
-      "missing_arms": [
-        "queued work: no cast"
-      ],
+      "missing_arms": [],
       "note": [
         "Compound observables split into separate arms (fixer policy): an arm is asserted only when a cited test pins its whole observable. No walk: sim_input_cheat_gates_and_command_queue_skip_movement_block (lastx 0, xpos unchanged). No fire: sim_input_fire_press_attacks_and_a_queued_command_suppresses_it (ANI_WALK, busy 0); that test presses Special too but asserts nothing about MP or the event log."
       ]
@@ -1533,7 +1565,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_sim_input_unit.cpp",
@@ -1542,11 +1574,13 @@
         {
           "file": "tests/integration/test_sim_input_unit.cpp",
           "test": "SimInputUnit.sim_input_enemy_freeze_stays_quiet_for_an_inline_cast"
+        },
+        {
+          "file": "tests/unit/test_sem_world_4.cpp",
+          "test": "SemSimInput.a_friendly_caster_during_an_enemy_freeze_is_not_told_specials_frozen"
         }
       ],
-      "missing_arms": [
-        "caster friendly to my_team"
-      ],
+      "missing_arms": [],
       "note": [
         "Compound observables split into separate arms (fixer policy): an arm is asserted only when a cited test pins its whole observable. Inline cast: sim_input_enemy_freeze_stays_quiet_for_an_inline_cast (count_seat_lines 0, count_clang 0). No freeze: the clean twin in sim_input_enemy_freeze_cue_marks_a_stranded_command_queue (same queued RUSH, count_seat_lines 0). No test runs enemy_freeze with a my_team-friendly caster."
       ]
@@ -1610,7 +1644,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_sim_input_handler.cpp",
@@ -1619,11 +1653,13 @@
         {
           "file": "tests/integration/test_sim_input_unit.cpp",
           "test": "SimInputUnit.sim_input_r11_animate_movement_and_bit_animate_paths"
+        },
+        {
+          "file": "tests/unit/test_sem_world_4.cpp",
+          "test": "SemSimInput.no_fire_key_means_no_attack"
         }
       ],
-      "missing_arms": [
-        "neither"
-      ]
+      "missing_arms": []
     },
     {
       "id": "sim_input_handler.cpp:625",
@@ -1686,7 +1722,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_sim_input_handler.cpp",
@@ -1695,11 +1731,13 @@
         {
           "file": "tests/integration/test_sim_input_handler.cpp",
           "test": "SimInputHandler.sim_input_yell_movement_and_idle_animate_branches"
+        },
+        {
+          "file": "tests/unit/test_sem_world_4.cpp",
+          "test": "SemSimInput.an_idle_hero_that_does_not_always_animate_stands_still"
         }
       ],
-      "missing_arms": [
-        "idle"
-      ]
+      "missing_arms": []
     }
   ],
   "other": [

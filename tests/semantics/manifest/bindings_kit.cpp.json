@@ -34,7 +34,7 @@
         }
       ],
       "setting": "new-specials",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_specials_view.cpp",
@@ -45,11 +45,13 @@
           "file": "tests/unit/test_specials_view.cpp",
           "test": "KitLuaTest.set_kit_state_cannot_hide_a_possessed_body",
           "note": "possessed: not hidden, kit_state == KIT_FEARLESS, still in obmap; then free: hidden + both bits"
+        },
+        {
+          "file": "tests/unit/test_sem_script_2.cpp",
+          "test": "SemKitBindings.set_kit_state_with_hidden_unchanged_replaces_the_other_bits"
         }
       ],
-      "missing_arms": [
-        "HIDDEN unchanged"
-      ]
+      "missing_arms": []
     },
     {
       "id": "bindings_kit.cpp:70",
@@ -229,17 +231,19 @@
         }
       ],
       "setting": "new-specials",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_script_bindings_props.cpp",
           "test": "ScriptBindingPropsTest.kit_map_size_answers_pixel_bounds_and_floors",
           "note": "world arm: verb runs, 'size\\t1234\\t567\\t3'"
+        },
+        {
+          "file": "tests/unit/test_sem_script_2.cpp",
+          "test": "SemKitBindings.kit_world_verbs_refuse_to_run_with_no_active_world"
         }
       ],
-      "missing_arms": [
-        "no world"
-      ]
+      "missing_arms": []
     },
     {
       "id": "bindings_kit.cpp:169",

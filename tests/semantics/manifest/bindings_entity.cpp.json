@@ -108,7 +108,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_script_hooks.cpp",
@@ -139,13 +139,13 @@
           "parity": "weapon_door_unlock_chain_scen99",
           "fact": "",
           "note": "fact EffectFamilyCount(FAMILY_DOOR_OPEN 1 1) ('fx' spelling only: weapon_door.lua og.add_weap_ob(\"fx\"  FX_DOOR_OPEN); predicate resolves the family symbol in the FX order)"
+        },
+        {
+          "file": "tests/unit/test_sem_script_1.cpp",
+          "test": "SemScriptEntity.the_order_words_treasure_generator_and_effect_make_those_orders"
         }
       ],
-      "missing_arms": [
-        "'treasure'",
-        "'generator'",
-        "'fx' or 'effect'"
-      ]
+      "missing_arms": []
     },
     {
       "id": "bindings_entity.cpp:149",
@@ -186,7 +186,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "parity": "shield_projectile_absorb_scen99",
@@ -211,11 +211,13 @@
           "file": "tests/unit/test_script_bindings_errors.cpp",
           "test": "ScriptBindingErrorTest.unknown_string_selectors_are_named_in_the_error",
           "note": "unknown: \"unknown list selector 'corpses'\""
+        },
+        {
+          "file": "tests/unit/test_sem_script_1.cpp",
+          "test": "SemScriptEntity.a_range_scan_of_fx_reads_the_effect_list_only"
         }
       ],
-      "missing_arms": [
-        "'fx'"
-      ]
+      "missing_arms": []
     },
     {
       "id": "bindings_entity.cpp:286",
@@ -285,17 +287,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_script_hooks.cpp",
           "test": "SpecialsDispatchTest.nested_casts_preserve_each_reason_and_success_clears_it",
           "note": "refused arm: Lua self:special() on the refusing 'charge' slot returns false,'INNER REFUSAL', propagated; EXPECT_EQ reason and magic 500 unchanged"
+        },
+        {
+          "file": "tests/unit/test_sem_script_1.cpp",
+          "test": "SemScriptEntity.a_lua_cast_that_succeeds_answers_true_and_nil"
         }
       ],
-      "missing_arms": [
-        "cast succeeded"
-      ]
+      "missing_arms": []
     },
     {
       "id": "bindings_entity.cpp:544",
@@ -399,17 +403,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_modes_ctf.cpp",
           "test": "ModesCtf.mode_core_probe_helpers_answer_exactly",
           "note": "empty arm: modes_pack_fixture.h:302 pcall(s_refresh_front) logs 'refresh_empty 0', EXPECT_TRUE(vm_logged(...))"
+        },
+        {
+          "file": "tests/unit/test_sem_script_1.cpp",
+          "test": "SemScriptEntity.refreshing_the_head_order_rewrites_lease_and_payload_in_place"
         }
       ],
-      "missing_arms": [
-        "queue non-empty"
-      ]
+      "missing_arms": []
     },
     {
       "id": "bindings_entity.cpp:850",
@@ -538,7 +544,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_script_bindings_props.cpp",
@@ -554,11 +560,13 @@
           "file": "tests/unit/test_script_bindings_props.cpp",
           "test": "ScriptBindingPropsTest.summon_configured_matches_the_corpus_sequence",
           "note": "present-right-type arm: each option's value lands"
+        },
+        {
+          "file": "tests/unit/test_sem_script_1.cpp",
+          "test": "SemScriptEntity.a_wrongly_typed_summon_option_summons_nothing"
         }
       ],
-      "missing_arms": [
-        "ani_type/lifetime not integer, hp_add/damage_add not number"
-      ]
+      "missing_arms": []
     },
     {
       "id": "bindings_entity.cpp:1082",
@@ -776,13 +784,25 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": [
-        "floor omitted",
-        "floor given",
-        "door: tile above is TYPE_WALL",
-        "door: tile above not wall"
+      "status": "deferred",
+      "tests": [
+        {
+          "file": "tests/unit/test_sem_script_1.cpp",
+          "test": "SemScriptEntity.a_terrain_lookup_reads_floor_zero_unless_a_floor_is_named"
+        },
+        {
+          "file": "tests/unit/test_sem_script_1.cpp",
+          "test": "SemScriptEntity.classic_a_door_with_no_wall_above_turns_itself_up_not_the_opening"
+        },
+        {
+          "file": "tests/unit/test_pack_lua_paths.cpp",
+          "test": "PackLuaWeaponDoor.a_door_under_a_wall_opens_sideways"
+        }
+      ],
+      "missing_arms": [],
+      "issue": "#457",
+      "note": [
+        "all four arms asserted (wall-above arm by the existing PackLuaWeaponDoor test); deferred on #457, the door reads floor 0's terrain on any floor"
       ]
     },
     {
@@ -814,7 +834,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_script_bindings_errors.cpp",
@@ -825,11 +845,13 @@
           "file": "tests/unit/test_script_bindings_math.cpp",
           "test": "ScriptBindingMathTest.rand_bounds_above_int32_max_are_refused",
           "note": "n > INT32_MAX arm: 2^31 and 2^32 errors; rng_.state_ unchanged"
+        },
+        {
+          "file": "tests/unit/test_sem_script_1.cpp",
+          "test": "SemScriptEntity.a_cosmetic_roll_in_range_draws_one_step_of_the_sim_stream"
         }
       ],
-      "missing_arms": [
-        "1 <= n <= INT32_MAX"
-      ]
+      "missing_arms": []
     },
     {
       "id": "bindings_entity.cpp:1286",
@@ -854,12 +876,18 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": [
-        "override installed",
-        "no override"
-      ]
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sem_script_1.cpp",
+          "test": "SemScriptEntity.a_cosmetic_roll_in_range_draws_one_step_of_the_sim_stream"
+        },
+        {
+          "file": "tests/unit/test_sem_script_1.cpp",
+          "test": "SemScriptEntity.a_cosmetic_roll_reads_the_installed_cosmetic_stream_and_leaves_the_sim_alone"
+        }
+      ],
+      "missing_arms": []
     },
     {
       "id": "bindings_entity.cpp:1383",
@@ -1033,12 +1061,14 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": [
-        "third arg omitted (default)",
-        "third arg false"
-      ]
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sem_script_1.cpp",
+          "test": "SemScriptEntity.a_scripted_promotion_sets_experience_unless_told_not_to"
+        }
+      ],
+      "missing_arms": []
     },
     {
       "id": "bindings_entity.cpp:1570",
@@ -1083,7 +1113,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_script_bindings_errors.cpp",
@@ -1094,11 +1124,13 @@
           "file": "tests/integration/test_family_orc.cpp",
           "test": "FamilyOrc.r15_eating_a_corpse_heals_by_its_level_and_consumes_it",
           "note": "'eat_corpse' name only: EXPECT_EQ(20u, myguy->exp) through orc_specials.lua:79"
+        },
+        {
+          "file": "tests/unit/test_sem_script_1.cpp",
+          "test": "SemScriptEntity.each_named_deed_answers_its_own_experience_amount"
         }
       ],
-      "missing_arms": [
-        "each of the 10 names"
-      ]
+      "missing_arms": []
     },
     {
       "id": "bindings_entity.cpp:1662",
@@ -1145,7 +1177,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_script_bindings_props.cpp",
@@ -1165,11 +1197,13 @@
         {
           "file": "tests/unit/test_script_bindings_props.cpp",
           "test": "ScriptBindingPropsTest.tuning_is_keyed_per_order_and_family"
+        },
+        {
+          "file": "tests/unit/test_sem_script_1.cpp",
+          "test": "SemScriptEntity.a_family_tuning_view_is_one_cached_table_per_generation"
         }
       ],
-      "missing_arms": [
-        "cached view present"
-      ]
+      "missing_arms": []
     },
     {
       "id": "bindings_entity.cpp:1714",
@@ -1286,17 +1320,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_script_hooks.cpp",
           "test": "ScriptBindingTest.ani_frame_and_ani_row_read_the_animation_table",
           "note": "frames 5,7; sentinel -1; index 4 > len, null row, malformed row nil"
+        },
+        {
+          "file": "tests/unit/test_sem_script_1.cpp",
+          "test": "SemScriptEntity.a_negative_animation_frame_index_reads_nil"
         }
       ],
-      "missing_arms": [
-        "index > len or < 0 / null row / malformed"
-      ]
+      "missing_arms": []
     },
     {
       "id": "bindings_entity.cpp:1759",
@@ -1367,7 +1403,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "deferred",
       "tests": [
         {
           "file": "tests/unit/test_script_hooks.cpp",
@@ -1377,6 +1413,10 @@
       ],
       "missing_arms": [
         "team >= 256 (Lua integer)"
+      ],
+      "issue": "#454",
+      "note": [
+        "the only missing arm is the bug (team narrowed to a byte before the guard); not pinned as correct"
       ]
     },
     {
@@ -1680,7 +1720,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_campaign_hooks.cpp",
@@ -1691,11 +1731,13 @@
           "file": "tests/unit/test_campaign_hooks.cpp",
           "test": "CampaignHooksTest.provider_bindings_happy_path",
           "note": "in-range value 3 stored"
+        },
+        {
+          "file": "tests/unit/test_sem_script_1.cpp",
+          "test": "SemScriptCampaign.a_campaign_value_below_int32_never_reaches_the_store"
         }
       ],
-      "missing_arms": [
-        "< INT32_MIN (e.g. -3000000000)"
-      ]
+      "missing_arms": []
     },
     {
       "id": "bindings_entity.cpp:1953",
@@ -1831,12 +1873,14 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": [
-        "hero deployed",
-        "hero benched"
-      ]
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sem_script_1.cpp",
+          "test": "SemScriptCampaign.each_roster_row_says_whether_the_hero_marches_tonight"
+        }
+      ],
+      "missing_arms": []
     },
     {
       "id": "bindings_entity.cpp:2063",
@@ -1902,7 +1946,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_campaign_hooks.cpp",
@@ -1913,11 +1957,13 @@
           "file": "tests/unit/test_campaign_state_providers.cpp",
           "test": "CampaignStateProviders.bot_knob_names_are_in_the_campaign_vocabulary",
           "note": "lines 422-426: provider match_set('strip_troops', 2) answers false and ctf_strip_scenario_troops stays 0; the provider half of the set-path arm"
+        },
+        {
+          "file": "tests/unit/test_sem_script_1.cpp",
+          "test": "SemScriptCampaign.the_retired_match_knobs_are_unknown_to_campaign_scripts"
         }
       ],
-      "missing_arms": [
-        "retired name (team_count / strip_troops) through og.campaign_match_get (unknown name is asserted: getunk false + unknown setting)"
-      ]
+      "missing_arms": []
     },
     {
       "id": "bindings_entity.cpp:2136",
@@ -1946,7 +1992,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_campaign_hooks.cpp",
@@ -1957,11 +2003,13 @@
           "file": "tests/unit/test_campaign_hooks.cpp",
           "test": "CampaignHooksTest.match_bindings_round_trip",
           "note": "in-range: provider's true ('set true') and false ('set2 false') returned"
+        },
+        {
+          "file": "tests/unit/test_sem_script_1.cpp",
+          "test": "SemScriptCampaign.a_match_value_below_int32_never_reaches_the_provider"
         }
       ],
-      "missing_arms": [
-        "< INT32_MIN (e.g. -3000000000)"
-      ]
+      "missing_arms": []
     },
     {
       "id": "bindings_entity.cpp:2159",
@@ -2482,18 +2530,23 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_mode_bindings.cpp",
           "test": "ModeBindings.end_level_latches_and_validates",
           "note": "valid arm: win_latched, win_ending 0, win_next_level 43"
+        },
+        {
+          "file": "tests/unit/test_sem_script_1.cpp",
+          "test": "SemScriptMode.an_ending_other_than_win_or_loss_is_refused_and_never_latches"
+        },
+        {
+          "file": "tests/unit/test_sem_script_1.cpp",
+          "test": "SemScriptMode.a_next_level_outside_minus_one_to_32767_is_refused_and_never_latches"
         }
       ],
-      "missing_arms": [
-        "ending 2",
-        "next_level -2"
-      ]
+      "missing_arms": []
     },
     {
       "id": "bindings_entity.cpp:2592",
@@ -2528,7 +2581,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_mode_bindings.cpp",
@@ -2549,11 +2602,13 @@
           "file": "tests/unit/test_mode_bindings.cpp",
           "test": "ModeBindings.team_color_name_band_names_and_edges",
           "note": "16..31 band names; pcall 4/15/32 false"
+        },
+        {
+          "file": "tests/unit/test_sem_script_1.cpp",
+          "test": "SemScriptMode.a_negative_winner_team_is_refused_and_nothing_latches"
         }
       ],
-      "missing_arms": [
-        "og.declare_winner with a negative team (the separate `team < 0 ||` guard at 2592)"
-      ]
+      "missing_arms": []
     },
     {
       "id": "bindings_entity.cpp:2614",
@@ -2584,18 +2639,23 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_mode_bindings.cpp",
           "test": "ModeBindings.mode_get_set_roundtrip_and_index_errors",
           "note": "round-trip 7/-3, vars[0]==7, vars[63]==-3; mode_get(-1), mode_get(64), mode_set(64,1) refused, 'out of range' text"
+        },
+        {
+          "file": "tests/unit/test_sem_script_1.cpp",
+          "test": "SemScriptMode.a_mode_var_write_truncates_to_int32"
+        },
+        {
+          "file": "tests/unit/test_sem_script_1.cpp",
+          "test": "SemScriptMode.a_negative_mode_var_write_is_refused_and_writes_nothing"
         }
       ],
-      "missing_arms": [
-        "og.mode_set truncates v to int32 (a value past int32 written and read back)",
-        "og.mode_set with i < 0 (the `i < 0 ||` guard at 2628)"
-      ]
+      "missing_arms": []
     },
     {
       "id": "bindings_entity.cpp:2645",
@@ -2668,18 +2728,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_mode_bindings.cpp",
           "test": "ModeBindings.hud_lines_write_clamp_clear_and_validate",
           "note": "slot 3 written, slot 0 cleared; set_hud_line(4,'x') and clear_hud_line(-1) refused"
+        },
+        {
+          "file": "tests/unit/test_sem_script_1.cpp",
+          "test": "SemScriptMode.hud_slots_below_zero_and_past_three_are_refused_and_write_nothing"
         }
       ],
-      "missing_arms": [
-        "og.set_hud_line with slot < 0",
-        "og.clear_hud_line with slot >= 4"
-      ]
+      "missing_arms": []
     },
     {
       "id": "bindings_entity.cpp:2665",
@@ -2718,7 +2779,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_mode_bindings.cpp",
@@ -2729,11 +2790,13 @@
           "file": "tests/unit/test_mode_bindings.cpp",
           "test": "ModeBindings.hud_line_accepts_band_tint_keeps_nil_default",
           "note": "team 16 stored; 4/15/32 refused and slot 2 untouched: empty text, team 255"
+        },
+        {
+          "file": "tests/unit/test_sem_script_1.cpp",
+          "test": "SemScriptMode.a_negative_hud_tint_is_refused_without_half_writing_the_line"
         }
       ],
-      "missing_arms": [
-        "negative team (the `t < 0 ||` guard)"
-      ]
+      "missing_arms": []
     },
     {
       "id": "bindings_entity.cpp:2702",
@@ -2788,7 +2851,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_mode_bindings.cpp",
@@ -2799,13 +2862,21 @@
           "file": "tests/unit/test_mode_bindings.cpp",
           "test": "ModeBindings.beacon_accepts_band_team_rejects_gap_and_beyond",
           "note": "band 31 stored; 15/40 refused, slot 1 left {0,255}"
+        },
+        {
+          "file": "tests/unit/test_sem_script_1.cpp",
+          "test": "SemScriptMode.a_nil_beacon_clears_the_slot_whatever_team_rides_along"
+        },
+        {
+          "file": "tests/unit/test_sem_script_1.cpp",
+          "test": "SemScriptMode.a_negative_beacon_slot_is_refused_and_writes_nothing"
+        },
+        {
+          "file": "tests/unit/test_sem_script_1.cpp",
+          "test": "SemScriptMode.a_negative_beacon_tint_is_refused_and_the_slot_kept"
         }
       ],
-      "missing_arms": [
-        "entity nil + an invalid team (e.g. set_beacon(1, nil, 7)) answers no error and resets (nil with no team is asserted: {0,255})",
-        "slot < 0",
-        "entity + negative team (the `t < 0 ||` guard)"
-      ]
+      "missing_arms": []
     },
     {
       "id": "bindings_entity.cpp:2741",
@@ -2959,7 +3030,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_mode_bindings.cpp",
@@ -2975,11 +3046,13 @@
           "file": "tests/unit/test_mode_bindings.cpp",
           "test": "ModeBindings.respawn_anchors_read_back_and_validate",
           "note": "anchor_count 2/1/0; anchor_count(5) refused; respawn_anchor(5,0) and (-1,0) refused with 'team 5/-1 out of range [0, 3]'"
+        },
+        {
+          "file": "tests/unit/test_sem_script_1.cpp",
+          "test": "SemScriptMode.score_and_respawn_queries_refuse_a_negative_team"
         }
       ],
-      "missing_arms": [
-        "team < 0 through og.team_score / og.respawn_pending_count / og.respawn_anchor_count"
-      ]
+      "missing_arms": []
     },
     {
       "id": "bindings_entity.cpp:2813",
@@ -3086,7 +3159,7 @@
         }
       ],
       "setting": "both",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_mode_bindings.cpp",
@@ -3112,10 +3185,15 @@
           "file": "tests/unit/test_specials_view.cpp",
           "test": "KitLuaTest.match_setting_and_alternate_down_follow_the_setting",
           "note": "new_specials 0 and 1 read back"
+        },
+        {
+          "file": "tests/unit/test_sem_script_1.cpp",
+          "test": "SemScriptMode.the_sim_reads_the_difficulty_setting_at_its_live_value"
         }
       ],
-      "missing_arms": [
-        "difficulty"
+      "missing_arms": [],
+      "note": [
+        "unreachable: triage says the retired team_count/strip_troops reads are always 0 in play (every writer zeroes them); the missing difficulty arm IS asserted (200 and 50, fixes 0 and 1)"
       ]
     },
     {
@@ -3147,18 +3225,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_mode_bindings.cpp",
           "test": "ModeBindings.respawn_schedule_pending_and_counts",
           "note": "respawn_schedule(corpse,25) -> respawn_queue[0].ticks_left == 25; pcall(corpse,0) refused"
+        },
+        {
+          "file": "tests/unit/test_sem_script_1.cpp",
+          "test": "SemScriptMode.a_respawn_with_no_delay_uses_the_match_delay_and_65536_is_refused"
         }
       ],
-      "missing_arms": [
-        "no ticks",
-        "ticks > 65535 (e.g. 65536) (ticks 0 is asserted refused)"
-      ]
+      "missing_arms": []
     },
     {
       "id": "bindings_entity.cpp:2989",
@@ -3220,17 +3299,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_mode_bindings.cpp",
           "test": "ModeBindings.respawn_anchors_read_back_and_validate",
           "note": "respawn_anchor(0,1) == 192, 96; respawn_anchor(0,2) refused"
+        },
+        {
+          "file": "tests/unit/test_sem_script_1.cpp",
+          "test": "SemScriptMode.a_negative_respawn_anchor_index_is_refused"
         }
       ],
-      "missing_arms": [
-        "i < 0 (the `i < 0 ||` guard)"
-      ]
+      "missing_arms": []
     },
     {
       "id": "bindings_entity.cpp:3057",
@@ -3261,18 +3342,23 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_mode_bindings.cpp",
           "test": "ModeBindings.spawn_spot_clear_probes_without_eating",
           "note": "open spot with a loose enemy knife + silver bar -> 1; body at 320,320 -> 0"
+        },
+        {
+          "file": "tests/unit/test_sem_script_1.cpp",
+          "test": "SemScriptMode.the_spawn_spot_probe_eats_nothing_on_the_spot"
+        },
+        {
+          "file": "tests/unit/test_sem_script_1.cpp",
+          "test": "SemScriptMode.the_spawn_spot_probe_answers_for_the_floor_it_names"
         }
       ],
-      "missing_arms": [
-        "spot open: nothing eaten (a drop on the spot survives with treasure hooks registered) (the true answer is asserted: open 1)",
-        "explicit floor different from the prober's"
-      ]
+      "missing_arms": []
     },
     {
       "id": "bindings_entity.cpp:3074",
@@ -3301,18 +3387,23 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_mode_bindings.cpp",
           "test": "ModeBindings.scrub_corpse_stain_kills_nearby_drops",
           "note": "stain at 160,160 floor 0 dies on scrub(160,160); far stain at 400,400 survives"
+        },
+        {
+          "file": "tests/unit/test_sem_script_1.cpp",
+          "test": "SemScriptMode.a_stain_scrub_with_no_floor_kills_drops_on_every_floor"
+        },
+        {
+          "file": "tests/unit/test_sem_script_1.cpp",
+          "test": "SemScriptMode.a_stain_scrub_on_a_named_floor_spares_other_floors"
         }
       ],
-      "missing_arms": [
-        "floor omitted: a drop at x,y on a floor other than 0 also dies (floor-0 stain killed by scrub(160,160) is asserted)",
-        "floor given"
-      ]
+      "missing_arms": []
     },
     {
       "id": "bindings_entity.cpp:3086",
@@ -3440,7 +3531,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_quiet_probe.cpp",
@@ -3451,11 +3542,13 @@
           "file": "tests/unit/test_quiet_probe.cpp",
           "test": "QuietProbe.fire_pad_clear_takes_a_weapon_family",
           "note": "fire_arrow family id probed: 'fire_arrow' 0, 'answer' terrain"
+        },
+        {
+          "file": "tests/unit/test_sem_script_1.cpp",
+          "test": "SemScriptEntity.a_pad_probe_refuses_a_weapon_family_below_minus_one"
         }
       ],
-      "missing_arms": [
-        "weapon_family < -1 (e.g. -2) (256 is asserted refused)"
-      ]
+      "missing_arms": []
     },
     {
       "id": "bindings_entity.cpp:3207",
@@ -3583,18 +3676,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_campaign_hooks.cpp",
           "test": "CampaignHooksTest.fence_walk_everything_outside_the_allowlist_errors",
           "note": "maxok 2 inside a campaign hook; every non-allowlisted world name errors with 'campaign hooks', i.e. is wrapped by load_fenced_call"
+        },
+        {
+          "file": "tests/unit/test_sem_script_1.cpp",
+          "test": "SemScriptCampaign.pure_helpers_and_combat_formulas_answer_outside_dispatch"
         }
       ],
-      "missing_arms": [
-        "helper name called at a pack chunk's top level / load time (campaign-hook side asserted: maxok 2)",
-        "og.combat.* called in a campaign hook or at a pack chunk's top level"
-      ]
+      "missing_arms": []
     },
     {
       "id": "bindings_entity.cpp:3748",

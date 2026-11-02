@@ -76,7 +76,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_script_hooks.cpp",
@@ -90,11 +90,13 @@
         {
           "file": "tests/unit/test_level_scripts.cpp",
           "test": "LevelScriptsTest.nested_dispatch_keeps_outer_handles_alive"
+        },
+        {
+          "file": "tests/unit/test_sem_script_3.cpp",
+          "test": "SemScript3.is_alive_answers_false_for_a_stale_handle_without_an_error"
         }
       ],
-      "missing_arms": [
-        "og.is_alive on a stale handle"
-      ]
+      "missing_arms": []
     },
     {
       "id": "world_scripts.cpp:192",
@@ -369,18 +371,23 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_script_hooks.cpp",
           "test": "ScriptBindingTest.world_query_rows_read_the_live_world",
           "note": "spawn:collide_ob() == gen logged true"
+        },
+        {
+          "file": "tests/unit/test_sem_script_3.cpp",
+          "test": "SemScript3.handles_to_different_tracked_walkers_are_unequal"
+        },
+        {
+          "file": "tests/unit/test_sem_script_3.cpp",
+          "test": "SemScript3.untracked_handles_compare_by_identity_within_a_dispatch"
         }
       ],
-      "missing_arms": [
-        "handles to different walkers",
-        "untracked walker, same gen"
-      ],
+      "missing_arms": [],
       "note": [
         "The previously cited ScriptBindingPropsTest.kit_possess_and_release_hand_back_the_engine_answer compares og.release_possession(self) == nil (test_script_bindings_props.cpp:1305), not == self; a userdata-vs-nil comparison never calls __eq, so it neither reaches nor asserts walker_eq and was dropped."
       ]
@@ -583,7 +590,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_campaign_hooks.cpp",
@@ -594,11 +601,13 @@
           "file": "tests/unit/test_level_scripts.cpp",
           "test": "LevelScriptsTest.a_family_chunk_registers_level_hooks_in_the_real_pass",
           "note": "bind replay arm, og.register_level_hooks only: kinds bit set and on_load fires exactly once"
+        },
+        {
+          "file": "tests/unit/test_sem_script_3.cpp",
+          "test": "SemScript3.a_family_chunk_registers_hooks_for_its_own_family_in_the_bind_replay"
         }
       ],
-      "missing_arms": [
-        "bind replay"
-      ],
+      "missing_arms": [],
       "note": [
         "partially: the declare-VM arm asserts 'no host error' (DeclareResult ok, later family harvested); 'no hook installed' is not read for og.register_hooks (the test's install control is og.register_default_lineup). The bind-replay citation covers og.register_level_hooks only, so the bind-replay arm stays missing for og.register_hooks."
       ]
@@ -805,7 +814,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_script_hooks.cpp",
@@ -826,11 +835,13 @@
         {
           "file": "tests/unit/test_script_hooks.cpp",
           "test": "SpecialsByIdTest.a_slot_number_beside_its_id_is_still_a_load_error"
+        },
+        {
+          "file": "tests/unit/test_sem_script_3.cpp",
+          "test": "SemScript3.a_specials_table_with_only_a_default_registers"
         }
       ],
-      "missing_arms": [
-        "default only"
-      ]
+      "missing_arms": []
     },
     {
       "id": "world_scripts.cpp:994",
@@ -1030,18 +1041,23 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_script_hooks.cpp",
           "test": "ScriptBindingTest.world_query_rows_read_the_live_world",
           "note": "logs og.is_alive(spawn); asserts 'alive\\ttrue'"
+        },
+        {
+          "file": "tests/unit/test_sem_script_3.cpp",
+          "test": "SemScript3.is_alive_answers_false_for_a_dead_walker_it_can_still_resolve"
+        },
+        {
+          "file": "tests/unit/test_sem_script_3.cpp",
+          "test": "SemScript3.is_alive_answers_false_for_a_stale_handle_without_an_error"
         }
       ],
-      "missing_arms": [
-        "dead walker still resolvable",
-        "stale handle"
-      ]
+      "missing_arms": []
     },
     {
       "id": "world_scripts.cpp:1062",
@@ -1066,7 +1082,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_level_scripts.cpp",
@@ -1081,11 +1097,13 @@
         {
           "file": "tests/unit/test_quiet_probe.cpp",
           "test": "QuietProbe.the_lua_doors_answer_what_the_engine_answers"
+        },
+        {
+          "file": "tests/unit/test_sem_script_3.cpp",
+          "test": "SemScript3.entity_id_is_zero_for_an_untracked_walker"
         }
       ],
-      "missing_arms": [
-        "untracked walker (never added to the world)"
-      ]
+      "missing_arms": []
     },
     {
       "id": "world_scripts.cpp:1081",
@@ -1556,7 +1574,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "unreachable",
       "tests": [
         {
           "file": "tests/unit/test_campaign_hooks.cpp",
@@ -1568,7 +1586,7 @@
         "declaration pass"
       ],
       "note": [
-        "declaration pass: only DeclareResult ok (no error) is asserted, which holds whether or not the early return exists; no test asserts that the declare pass installed no campaign book (contrast :1492, where the_declaration_pass_bows_out_of_behaviour_registrars asserts campaign_lineup_registered() FALSE after the declaration)."
+        "seam wanted: the declaration VM is discarded after declare_pack_families, so whether its og.register_campaign_hooks bowed out is unobservable (DeclareResult ok is already pinned) | triage: No observable outcome. The registration writes only to the declaration VM's own registry and state (campaign_hooks_ref, campaign_registered), and that VM is thrown away after declare_pack_families, so the no-op and a registration behave the same (DeclareResult ok is already pinned). Mark it unobserv"
       ]
     },
     {
@@ -1600,7 +1618,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_campaign_hooks.cpp",
@@ -1614,11 +1632,13 @@
         {
           "file": "tests/unit/test_campaign_hooks.cpp",
           "test": "CampaignHooksTest.a_conflicted_book_cannot_poison_the_default"
+        },
+        {
+          "file": "tests/unit/test_sem_script_3.cpp",
+          "test": "SemScript3.a_third_campaign_registration_keeps_the_first_conflicting_source"
         }
       ],
-      "missing_arms": [
-        "third+ registration"
-      ]
+      "missing_arms": []
     },
     {
       "id": "world_scripts.cpp:1389",
@@ -1763,7 +1783,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_campaign_hooks.cpp",
@@ -1774,11 +1794,13 @@
           "file": "tests/unit/test_campaign_hooks.cpp",
           "test": "CampaignHooksTest.default_lineup_prices_with_no_campaign_book",
           "note": "only power proceeds"
+        },
+        {
+          "file": "tests/unit/test_sem_script_3.cpp",
+          "test": "SemScript3.a_misspelled_default_lineup_key_suggests_power"
         }
       ],
-      "missing_arms": [
-        "misspelled key 'powr'"
-      ],
+      "missing_arms": [],
       "note": [
         "misspelled key: 'unknown key 'powr'' is asserted, but the arm's did-you-mean 'power' hint (did_you_mean() appended to the same message) is never read for og.register_default_lineup; the other registrars' did-you-mean tests do not reach this call site."
       ]
@@ -1965,17 +1987,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_script_bindings_math.cpp",
           "test": "ScriptBindingMathTest.family_id_refuses_an_unknown_order",
           "note": "control: og.family_id('living','core:soldier') logs FAMILY_SOLDIER"
+        },
+        {
+          "file": "tests/unit/test_sem_script_3.cpp",
+          "test": "SemScript3.family_id_is_nil_for_an_unknown_family"
         }
       ],
-      "missing_arms": [
-        "unknown family string"
-      ]
+      "missing_arms": []
     },
     {
       "id": "world_scripts.cpp:1597",
@@ -2030,7 +2054,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_classpack_lua_bind.cpp",
@@ -2056,13 +2080,21 @@
           "file": "tests/unit/test_script_hooks.cpp",
           "test": "SpecialsByIdTest.a_default_answers_for_every_castable_slot",
           "note": "default: no 'has no handler' on stderr"
+        },
+        {
+          "file": "tests/unit/test_sem_script_3.cpp",
+          "test": "SemScript3.a_family_with_no_hook_table_is_never_reported_unhandled"
+        },
+        {
+          "file": "tests/unit/test_sem_script_3.cpp",
+          "test": "SemScript3.a_plain_do_special_function_counts_as_handling_every_slot"
+        },
+        {
+          "file": "tests/unit/test_sem_script_3.cpp",
+          "test": "SemScript3.a_disabled_none_slot_is_never_reported_unhandled"
         }
       ],
-      "missing_arms": [
-        "family has no Lua hook table (C++-only family, or its chunk registered nothing)",
-        "do_special is a plain function",
-        "slot name is kSpecialNameNone"
-      ]
+      "missing_arms": []
     },
     {
       "id": "world_scripts.cpp:1765",
@@ -2097,7 +2129,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_script_host.cpp",
@@ -2108,11 +2140,13 @@
           "file": "tests/unit/test_script_host.cpp",
           "test": "PackLibTest.on_demand_load_inside_the_eager_pass_settles_once",
           "note": "export pushed but status None: 'late' was loaded on demand by 'early', its export is memoized with nil status, the eager pass pops it and skips: log size 3"
+        },
+        {
+          "file": "tests/unit/test_sem_script_3.cpp",
+          "test": "SemScript3.a_module_that_failed_on_demand_is_not_loaded_a_second_time"
         }
       ],
-      "missing_arms": [
-        "module already settled"
-      ],
+      "missing_arms": [],
       "note": [
         "'module already settled' is the lib_status != None arm (status 'failed' or 'loading'; a successful load leaves status nil, which is the third arm). No test pins that a module latched failed on demand inside the eager pass is not re-run by the eager loop."
       ]
@@ -2148,7 +2182,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_classpack_lua_install.cpp",
@@ -2164,11 +2198,13 @@
           "file": "tests/unit/test_classpack_lua_bind.cpp",
           "test": "LuaFamilyBindTest.the_world_api_is_closed_during_the_bind_replay",
           "note": "bind fails: error 'the world API is dispatch-time only' latched"
+        },
+        {
+          "file": "tests/unit/test_sem_script_3.cpp",
+          "test": "SemScript3.a_family_chunk_that_fails_to_bind_is_logged_once_and_latched"
         }
       ],
-      "missing_arms": [
-        "bind fails"
-      ],
+      "missing_arms": [],
       "note": [
         "bind fails: the latched host error ('the world API is dispatch-time only') is asserted, but run_chunk writes it; the branch's own effect, LogError 'class pack ... family chunk ... failed to bind', is read by no test (no test anywhere captures 'failed to bind'). Same convention as :1802 and :1900."
       ]
@@ -2198,17 +2234,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_script_host.cpp",
           "test": "ScriptHostPackTest.a_chunk_that_fails_to_compile_is_recorded_not_silent",
           "note": "chunk ok: healthy sibling's do_special registered; chunk fails: host error record only, lines 732-736"
+        },
+        {
+          "file": "tests/unit/test_sem_script_3.cpp",
+          "test": "SemScript3.a_script_chunk_that_fails_registers_nothing_and_is_logged"
         }
       ],
-      "missing_arms": [
-        "chunk fails"
-      ],
+      "missing_arms": [],
       "note": [
         "chunk ok asserted (sibling b_healthy.lua's do_special has_hook TRUE). chunk fails only half asserted: the host error record ('a_broken', 'syntax error') is asserted, but it is written by run_chunk, not this branch; the branch's own effect, LogError 'class pack ... chunk ... failed to load', is read by no test, and no test asserts that a family the failing chunk would have bound (e.g. a chunk that registers core:soldier hooks and then errors at top level) answers has_hook FALSE."
       ]
@@ -2296,18 +2334,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_script_hooks.cpp",
           "test": "ScriptHooksTest.erroring_hook_is_latched_loudly",
           "note": "count 1 then 2, where 'hook:on_death', message 'boom'"
+        },
+        {
+          "file": "tests/unit/test_sem_script_3.cpp",
+          "test": "SemScript3.a_repeated_hook_error_logs_once_and_a_new_error_logs_again"
         }
       ],
-      "missing_arms": [
-        "repeat of same error",
-        "new error"
-      ]
+      "missing_arms": []
     },
     {
       "id": "world_scripts.cpp:1961",
@@ -2408,7 +2447,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_script_hooks.cpp",
@@ -2431,11 +2470,13 @@
           "file": "tests/unit/test_script_hooks.cpp",
           "test": "ScriptHooksTest.on_melee_hit_reports_ran_and_latches_its_own_failures",
           "note": "void hook ran -> true"
+        },
+        {
+          "file": "tests/unit/test_sem_script_3.cpp",
+          "test": "SemScript3.a_result_hook_answer_is_lua_truthiness"
         }
       ],
-      "missing_arms": [
-        "result hook returns any other value"
-      ],
+      "missing_arms": [],
       "note": [
         "'returns true' is asserted (healthy_hook_leaves_the_failure_latch_clear); the missing arm is the Lua-truthiness half: a non-boolean truthy return (0, '', a table) coerced to true is never asserted."
       ]
@@ -2690,18 +2731,23 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_script_hooks.cpp",
           "test": "ScriptHooksTest.an_unclaimed_family_has_no_behavior",
           "note": "null descriptor: EXPECT_FALSE on 21 of the 22 wrappers, failure latch 0; present: do_special, on_shoved, weapon_on_death, effect_on_act answer"
+        },
+        {
+          "file": "tests/unit/test_sem_script_3.cpp",
+          "test": "SemScript3.a_null_descriptor_or_null_stats_has_no_script_behaviour"
+        },
+        {
+          "file": "tests/unit/test_sem_script_3.cpp",
+          "test": "SemScript3.every_hook_wrapper_reaches_the_hook_of_a_family_with_a_descriptor"
         }
       ],
-      "missing_arms": [
-        "descriptor null",
-        "descriptor present"
-      ],
+      "missing_arms": [],
       "note": [
         "per wrapper (22 sites): descriptor null asserted for 21 (an_unclaimed_family_has_no_behavior, EXPECT_FALSE each, failure latch 0); never for on_kill, and hit_response's stats == nullptr half is never called with a real descriptor. Descriptor present asserted only for do_special, on_shoved, weapon_on_death, effect_on_act in the cited test. Status partial because each arm is asserted for some wrappers; both arms stay in missing_arms because neither holds for every wrapper (see stage.sketch)."
       ]
@@ -2806,15 +2852,27 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
+      "status": "deferred",
+      "tests": [
+        {
+          "file": "tests/unit/test_sem_script_3.cpp",
+          "test": "SemScript3.a_set_difficulty_hook_that_runs_replaces_the_default_scaling"
+        },
+        {
+          "file": "tests/unit/test_sem_script_3.cpp",
+          "test": "SemScript3.a_level_up_hook_that_runs_replaces_the_default_gains"
+        },
+        {
+          "file": "tests/unit/test_sem_script_3.cpp",
+          "test": "SemScript3.a_hit_response_hook_that_runs_replaces_attack_the_attacker"
+        }
+      ],
       "missing_arms": [
-        "hook ran",
-        "no hook",
         "hook errored"
       ],
+      "issue": "#463",
       "note": [
-        "level_up_guy_handle_is_dispatch_scoped does assert the level_up wrapper's own return (ran -> true, errored -> false with the latch), but every arm's observable is the CALLER's choice between hook and C++ default, which no test reads for any of the three; hit_response and set_difficulty are never asserted even at the wrapper."
+        "hook-ran and no-hook arms asserted for all three callers; the errored arm (default runs on top of the partial hook) is bug #463 and is not pinned"
       ]
     },
     {
@@ -2856,7 +2914,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_script_hooks.cpp",
@@ -2872,13 +2930,21 @@
           "file": "tests/unit/test_level_scripts.cpp",
           "test": "LevelScriptsTest.generator_customize_spawn_dispatches",
           "note": "ran -> true, lifetime 123, log"
+        },
+        {
+          "file": "tests/unit/test_sem_script_3.cpp",
+          "test": "SemScript3.a_notification_hook_that_runs_answers_true_with_its_side_effects"
+        },
+        {
+          "file": "tests/unit/test_sem_script_3.cpp",
+          "test": "SemScript3.a_notification_with_no_hook_of_its_kind_answers_false"
+        },
+        {
+          "file": "tests/unit/test_sem_script_3.cpp",
+          "test": "SemScript3.a_notification_hook_that_errors_answers_false_and_latches"
         }
       ],
-      "missing_arms": [
-        "hook ran",
-        "no hook",
-        "hook errored"
-      ],
+      "missing_arms": [],
       "note": [
         "tests/unit/test_campaign_packs.cpp: on_create for a pack wisp family (line 388: ASSERT_TRUE(hooks::on_create(fd, wisp)), then magicpoints < 100 and >= 84, ani_type ANI_WALK: hook ran -> true with Lua side effects)",
         "per wrapper: hook ran asserted for on_melee_hit, on_shoved, generator_customize_spawn, on_create; not for on_act_living, customize_weapon, on_kill, weapon_on_hit_target. hook errored asserted for on_melee_hit only. no hook (real descriptor, no hook of that kind) asserted for none. All three arms stay in missing_arms because none holds for every wrapper."
@@ -2911,7 +2977,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_mode_tick.cpp",
@@ -2920,11 +2986,13 @@
         {
           "file": "tests/unit/test_mode_tick.cpp",
           "test": "ModeTick.act_override_false_falls_through_to_default_act"
+        },
+        {
+          "file": "tests/unit/test_sem_script_3.cpp",
+          "test": "SemScript3.an_erroring_or_absent_act_override_falls_through_to_the_default_act"
         }
       ],
-      "missing_arms": [
-        "errors / absent"
-      ]
+      "missing_arms": []
     },
     {
       "id": "world_scripts.cpp:2448",
@@ -3004,7 +3072,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_level_scripts.cpp",
@@ -3017,11 +3085,13 @@
         {
           "file": "tests/unit/test_level_scripts.cpp",
           "test": "LevelScriptsTest.hooks_for_another_level_do_not_fire"
+        },
+        {
+          "file": "tests/unit/test_sem_script_3.cpp",
+          "test": "SemScript3.a_levels_own_hook_takes_precedence_over_the_wildcard"
         }
       ],
-      "missing_arms": [
-        "exact hook for this level"
-      ]
+      "missing_arms": []
     },
     {
       "id": "world_scripts.cpp:2487",
@@ -3156,7 +3226,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_mode_tick.cpp",
@@ -3173,11 +3243,17 @@
         {
           "file": "tests/unit/test_mode_tick.cpp",
           "test": "ModeTick.per_entity_death_hook_receives_killer_args"
+        },
+        {
+          "file": "tests/unit/test_sem_script_3.cpp",
+          "test": "SemScript3.a_swept_killer_passes_nil_but_keeps_the_stamped_team"
+        },
+        {
+          "file": "tests/unit/test_sem_script_3.cpp",
+          "test": "SemScript3.a_stamp_exactly_at_the_attribution_window_still_credits_the_killer"
         }
       ],
-      "missing_arms": [
-        "fresh stamp, killer swept"
-      ]
+      "missing_arms": []
     },
     {
       "id": "world_scripts.cpp:2553",
@@ -3392,7 +3468,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_mode_tick.cpp",
@@ -3403,11 +3479,13 @@
           "file": "tests/unit/test_mode_tick.cpp",
           "test": "ModeTick.stage_init_activates_without_a_tick",
           "note": "logged 'mode_tick\\t1'"
+        },
+        {
+          "file": "tests/unit/test_sem_script_3.cpp",
+          "test": "SemScript3.an_active_mode_without_on_mode_tick_runs_no_mode_tick"
         }
       ],
-      "missing_arms": [
-        "absent"
-      ]
+      "missing_arms": []
     },
     {
       "id": "world_scripts.cpp:2667",
@@ -3523,7 +3601,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_level_scripts.cpp",
@@ -3537,11 +3615,13 @@
           "file": "tests/unit/test_match_stage.cpp",
           "test": "LineupStageLazyArm.refused_mode_world_runs_the_step_once",
           "note": "counts lineup_stage log lines"
+        },
+        {
+          "file": "tests/unit/test_sem_script_3.cpp",
+          "test": "SemScript3.a_lineup_stage_hook_that_raises_still_reports_it_ran"
         }
       ],
-      "missing_arms": [
-        "hook registered and raises"
-      ]
+      "missing_arms": []
     },
     {
       "id": "world_scripts.cpp:2700",
@@ -3725,7 +3805,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "unreachable",
       "tests": [
         {
           "file": "tests/unit/test_campaign_hooks.cpp",
@@ -3746,6 +3826,9 @@
       ],
       "missing_arms": [
         "nested dispatch (entry_depth>0 or fence already up)"
+      ],
+      "note": [
+        "unreachable: the refuse-when-nested arm sits behind an assert on the same condition (ci-test builds keep asserts), and no campaign hook is dispatched from inside another Lua entry"
       ]
     },
     {
@@ -4086,7 +4169,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_campaign_hooks.cpp",
@@ -4107,12 +4190,13 @@
           "file": "tests/unit/test_westlands_fire.cpp",
           "test": "WestlandsFireCamp.provisions_stack_to_the_cap_and_retire",
           "note": "done copied: rows[spent].done true after the third tier"
+        },
+        {
+          "file": "tests/unit/test_sem_script_3.cpp",
+          "test": "SemScript3.a_page_entry_id_must_be_a_non_empty_string"
         }
       ],
-      "missing_arms": [
-        "id non-string (e.g. id = 5)",
-        "id empty string"
-      ]
+      "missing_arms": []
     },
     {
       "id": "world_scripts.cpp:2994",
@@ -4461,7 +4545,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_campaign_hooks.cpp",
@@ -4471,11 +4555,13 @@
         {
           "file": "tests/unit/test_campaign_hooks.cpp",
           "test": "CampaignHooksTest.zone_parse_happy_path"
+        },
+        {
+          "file": "tests/unit/test_sem_script_3.cpp",
+          "test": "SemScript3.a_non_string_assign_label_rejects_the_zone"
         }
       ],
-      "missing_arms": [
-        "non-string label"
-      ]
+      "missing_arms": []
     },
     {
       "id": "world_scripts.cpp:3236",
@@ -4683,17 +4769,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_campaign_hooks.cpp",
           "test": "CampaignHooksTest.zone_bounds_and_malformed_shapes_fall_to_default",
           "note": "{12,26,40,41,42}"
+        },
+        {
+          "file": "tests/unit/test_sem_script_3.cpp",
+          "test": "SemScript3.a_readout_without_items_is_accepted_and_shows_none"
         }
       ],
-      "missing_arms": [
-        "nil"
-      ]
+      "missing_arms": []
     },
     {
       "id": "world_scripts.cpp:3405",
@@ -5523,7 +5611,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_campaign_hooks.cpp",
@@ -5544,11 +5632,13 @@
         {
           "file": "tests/unit/test_campaign_hooks.cpp",
           "test": "CampaignHooksTest.default_lineup_power_that_errors_answers_false"
+        },
+        {
+          "file": "tests/unit/test_sem_script_3.cpp",
+          "test": "SemScript3.a_pricer_error_is_recorded_under_the_pricer_that_raised_it"
         }
       ],
-      "missing_arms": [
-        "error (which pricer)"
-      ],
+      "missing_arms": [],
       "note": [
         "error arm asserted by lineup_power_that_errors_answers_false / default_lineup_power_that_errors_answers_false (EXPECT_FALSE, power==12345, EXPECT_FALSE(vm_errors().empty())); no test reads errors()[i].where for either label"
       ]

@@ -64,16 +64,18 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_weap_behavior.cpp",
           "test": "WeapBehavior.weap_death_fire_arrow_exploding"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_5.cpp",
+          "test": "SemLibsProjectiles.an_explosion_whose_shooter_is_dead_or_gone_is_credited_to_the_projectile"
         }
       ],
-      "missing_arms": [
-        "owner nil or dead"
-      ]
+      "missing_arms": []
     }
   ],
   "other": [

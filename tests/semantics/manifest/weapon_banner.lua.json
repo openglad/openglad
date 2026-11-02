@@ -28,16 +28,18 @@
         }
       ],
       "setting": "new-specials",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_kit_captain.cpp",
           "test": "KitCaptain.banner_regens_allies_and_frights_lower_foes"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_5.cpp",
+          "test": "SemLibsBanner.a_banner_heals_only_the_allies_on_its_own_floor"
         }
       ],
-      "missing_arms": [
-        "ally in radius, other floor"
-      ]
+      "missing_arms": []
     },
     {
       "id": "weapon_banner.lua:24",
@@ -70,16 +72,21 @@
         }
       ],
       "setting": "new-specials",
-      "status": "partial",
+      "status": "deferred",
       "tests": [
         {
           "file": "tests/unit/test_kit_captain.cpp",
           "test": "KitCaptain.banner_regens_allies_and_frights_lower_foes"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_5.cpp",
+          "test": "SemLibsBanner.a_banner_frightens_no_generator_and_no_foe_rallied_by_its_own_banner"
         }
       ],
-      "missing_arms": [
-        "generator foe",
-        "fearless foe (inside its own banner's rally_radius)"
+      "missing_arms": [],
+      "issue": "#475",
+      "note": [
+        "triage bug #475 (the fright is not floor-gated); the generator and fearless arms are asserted, the floor behaviour is not pinned"
       ]
     },
     {

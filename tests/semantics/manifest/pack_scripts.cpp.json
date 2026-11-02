@@ -34,13 +34,18 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": [
-        "same pack+name",
-        "new",
-        "any"
-      ]
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sem_script_2.cpp",
+          "test": "SemPackScripts.a_pack_script_registered_twice_replaces_in_place"
+        },
+        {
+          "file": "tests/unit/test_sem_script_2.cpp",
+          "test": "SemPackScripts.a_family_chunk_registered_twice_replaces_in_place"
+        }
+      ],
+      "missing_arms": []
     },
     {
       "id": "pack_scripts.cpp:135",

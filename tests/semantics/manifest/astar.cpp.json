@@ -32,12 +32,18 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": [
-        "tie with an existing run",
-        "relaxed node now cheaper than predecessor"
-      ]
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sem_ai_1.cpp",
+          "test": "SemAStar.equally_cheap_frontier_cells_expand_in_the_order_they_were_found"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_1.cpp",
+          "test": "SemAStar.a_relaxed_frontier_cell_moves_to_the_front_of_its_new_cost_run"
+        }
+      ],
+      "missing_arms": []
     },
     {
       "id": "astar.cpp:178",
@@ -225,19 +231,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_astar.cpp",
           "test": "AStar.straight_line_open_grid_is_optimal",
           "note": "unseen children pushed: Solved with the optimal path"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_1.cpp",
+          "test": "SemAStar.a_cell_is_reparented_only_by_a_strictly_cheaper_route_and_never_reopened"
         }
       ],
-      "missing_arms": [
-        "open, strictly cheaper",
-        "closed, strictly cheaper",
-        "not cheaper"
-      ]
+      "missing_arms": []
     }
   ],
   "other": [

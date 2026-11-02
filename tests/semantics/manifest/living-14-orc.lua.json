@@ -38,7 +38,7 @@
         }
       ],
       "setting": "both",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_gameplay_fixes_bots.cpp",
@@ -49,11 +49,13 @@
           "file": "tests/unit/test_gameplay_fixes_bots.cpp",
           "test": "GameplayFixesBots.a_busy_bot_never_rolls_a_busy_cast_with_the_setting_on",
           "note": "classic_row(orc, 1, false, \"ORC HOWL\", busy, idle): fixes on, busy => false, idle => true"
+        },
+        {
+          "file": "tests/unit/test_sem_families_3.cpp",
+          "test": "SemOrc.the_fixed_gate_leaves_any_other_slot_to_the_classic_answer"
         }
       ],
-      "missing_arms": [
-        "other slot (unreachable for a 2-slot orc)"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living-14-orc.lua:25",

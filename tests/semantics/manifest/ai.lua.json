@@ -30,13 +30,22 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": [
-        "walker has a foe",
-        "no foe, a foe is findable",
-        "no foe and none findable"
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sem_libs_1.cpp",
+          "test": "SemLibsAi.a_classic_window_gate_keeps_the_nearest_foe_it_finds"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_1.cpp",
+          "test": "SemLibsAi.a_classic_window_gate_with_nobody_to_find_stays_closed"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_1.cpp",
+          "test": "SemLibsAi.a_classic_window_gate_answers_by_the_foe_it_already_holds"
+        }
       ],
+      "missing_arms": [],
       "note": [
         "No test asserts the foe after a gate call, and no test calls the classic soldier gate with nobody findable."
       ]
@@ -76,7 +85,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_bot_gates_fighters.cpp",
@@ -87,12 +96,13 @@
           "file": "tests/unit/test_bot_gates_fighters.cpp",
           "test": "GameplayFixesBots.soldier_whirlwind_wants_two_targets_inside_the_spin",
           "note": "30, 44, 47 px classic true"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_1.cpp",
+          "test": "SemLibsAi.the_classic_soldier_window_is_open_strictly_between_20_and_75_px"
         }
       ],
-      "missing_arms": [
-        "distance exactly near (20)",
-        "distance exactly far (75)"
-      ],
+      "missing_arms": [],
       "note": [
         "Both closed edges are named in the arms (exactly 20 and exactly 75) and no test stands a foe at 20 or 75: a mutation to distance <= far or distance >= near survives (19/76 are one past the edge)."
       ]

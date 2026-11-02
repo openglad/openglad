@@ -118,7 +118,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_effect_act.cpp",
@@ -127,11 +127,13 @@
         {
           "file": "tests/integration/test_effect_more_paths.cpp",
           "test": "EffectMorePaths.effect_batch3_guard_dies_when_collisions_drain_its_hitpoints"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_2.cpp",
+          "test": "SemShield.classic_a_guard_expires_on_the_act_after_its_count_passes_zero"
         }
       ],
-      "missing_arms": [
-        "hp > 0 and old lifetime < 0"
-      ],
+      "missing_arms": [],
       "note": [
         "Ageing arm (lifetime 100 -> 99, alive; lifetime 5 -> 4) and hp<=0 arm (dies without ageing, lifetime stays 0) asserted; the expiry arm (hp > 0, old lifetime < 0 -> dead; note the off-by-one: a shield set to lifetime 0 lives one more act) is unasserted."
       ]
@@ -207,7 +209,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_effect_act.cpp",
@@ -220,11 +222,13 @@
         {
           "file": "tests/integration/test_effect_act.cpp",
           "test": "EffectAct.boomerang_spirals_outward_as_the_sim_ticks"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_2.cpp",
+          "test": "SemShield.classic_a_boomerang_dies_with_its_thrower"
         }
       ],
-      "missing_arms": [
-        "owner gone/dead"
-      ]
+      "missing_arms": []
     }
   ],
   "other": []

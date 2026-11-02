@@ -34,7 +34,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_pack_lua_paths.cpp",
@@ -50,11 +50,13 @@
           "file": "tests/unit/test_pack_lua_paths.cpp",
           "test": "PackLuaCloud.a_cloud_damages_the_foe_it_covers_and_spares_its_own_team",
           "note": "overlap: true"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_1.cpp",
+          "test": "SemLibsEffectCommon.a_box_that_only_shares_an_edge_still_touches"
         }
       ],
-      "missing_arms": [
-        "overlap or edge-touch on both axes"
-      ],
+      "missing_arms": [],
       "note": [
         "The five cited hits tests (EffectAct.hits_overlap2 / hits_no_overlap / hits_contained2, EffectMorePaths.effect_round10_* / effect_round11_hits_edge_touches) call the C++ hits() in src/gameplay/effect.cpp, not this Lua function, so they were removed. Edge-touch inclusivity of the Lua copy is unasserted."
       ]

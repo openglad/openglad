@@ -108,16 +108,18 @@
         }
       ],
       "setting": "new-specials",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_kit_thief.cpp",
           "test": "KitThief.mine_expires_quietly"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_2.cpp",
+          "test": "SemMine.an_expired_mine_goes_with_hp_minus_one_and_no_blast"
         }
       ],
-      "missing_arms": [
-        "lifetime reaches 0"
-      ]
+      "missing_arms": []
     },
     {
       "id": "effect_mine.lua:53",
@@ -178,16 +180,18 @@
         }
       ],
       "setting": "new-specials",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_kit_thief.cpp",
           "test": "KitThief.high_level_mine_leaves_a_puff"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_2.cpp",
+          "test": "SemMine.a_full_world_skips_the_mines_puff_but_not_its_blast"
         }
       ],
-      "missing_arms": [
-        "world full"
-      ]
+      "missing_arms": []
     },
     {
       "id": "effect_mine.lua:87",
@@ -222,16 +226,18 @@
         }
       ],
       "setting": "new-specials",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_kit_thief.cpp",
           "test": "KitThief.mines_chain_on_their_own_next_tick"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_2.cpp",
+          "test": "SemMine.a_blast_lights_only_live_mines_of_its_team_nearby"
         }
       ],
-      "missing_arms": [
-        "foe-team mine / farther / dead / not a mine"
-      ]
+      "missing_arms": []
     },
     {
       "id": "effect_mine.lua:101",
@@ -256,7 +262,7 @@
         }
       ],
       "setting": "new-specials",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_kit_thief.cpp",
@@ -269,11 +275,13 @@
         {
           "file": "tests/unit/test_kit_thief.cpp",
           "test": "KitThief.high_level_mine_leaves_a_puff"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_2.cpp",
+          "test": "SemMine.an_expired_mine_lights_no_neighbour"
         }
       ],
-      "missing_arms": [
-        "hp < 0"
-      ]
+      "missing_arms": []
     },
     {
       "id": "effect_mine.lua:107",

@@ -503,12 +503,14 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": [
-        "hero",
-        "monster"
-      ]
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sem_families_3.cpp",
+          "test": "SemThief.a_heros_bomb_counts_one_shot_and_a_monster_keeps_no_tally"
+        }
+      ],
+      "missing_arms": []
     },
     {
       "id": "living-11-thief.lua:130",
@@ -539,13 +541,14 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": [
-        "AI thief",
-        "AI, both draws 1 (still)",
-        "player thief"
-      ]
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sem_families_3.cpp",
+          "test": "SemThief.an_ai_thief_flees_its_own_bomb_and_a_player_thief_does_not"
+        }
+      ],
+      "missing_arms": []
     },
     {
       "id": "living-11-thief.lua:151",
@@ -706,17 +709,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_specials.cpp",
           "test": "WalkerSpecials.thief_taunt_drives_simulation",
           "note": "floor stream, rolls 0>=0: EXPECT_EQ foe->foe()==thief and leader==thief"
+        },
+        {
+          "file": "tests/unit/test_sem_families_3.cpp",
+          "test": "SemThief.a_taunt_takes_only_the_foes_whose_roll_does_not_beat_the_thiefs"
         }
       ],
-      "missing_arms": [
-        "thief roll < foe roll"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living-11-thief.lua:173",
@@ -741,17 +746,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_specials.cpp",
           "test": "WalkerSpecials.thief_taunt_drives_simulation",
           "note": "bot foe: one COMMAND_FOLLOW, count 10"
+        },
+        {
+          "file": "tests/unit/test_sem_families_3.cpp",
+          "test": "SemThief.a_taunted_player_foe_keeps_its_own_movement"
         }
       ],
-      "missing_arms": [
-        "ACT_CONTROL foe"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living-11-thief.lua:186",
@@ -944,7 +951,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_family_behaviors.cpp",
@@ -969,11 +976,13 @@
           "file": "tests/integration/test_gameplay_fixes_thief.cpp",
           "test": "GameplayFixesThief.charm_draws_once_on_both_values",
           "note": "exactly one orc charmed"
+        },
+        {
+          "file": "tests/unit/test_sem_families_3.cpp",
+          "test": "SemThief.an_equal_level_foe_resists_a_charm_one_time_in_twenty"
         }
       ],
-      "missing_arms": [
-        "rand(20)==0"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living-11-thief.lua:224",
@@ -1004,18 +1013,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_specials.cpp",
           "test": "WalkerSpecials.thief_charm_drives_simulation",
           "note": "thief has no foe: EXPECT_EQ(nullptr, foe->foe())"
+        },
+        {
+          "file": "tests/unit/test_sem_families_3.cpp",
+          "test": "SemThief.a_charmed_foe_takes_the_thiefs_target_unless_it_was_that_target"
         }
       ],
-      "missing_arms": [
-        "target was thief's foe",
-        "thief had another foe X"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living-11-thief.lua:239",

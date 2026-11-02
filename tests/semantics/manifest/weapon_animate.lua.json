@@ -30,7 +30,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_weap_behavior.cpp",
@@ -39,11 +39,13 @@
         {
           "file": "tests/integration/test_weap_behavior.cpp",
           "test": "WeapBehavior.weapon_animate_clamps_out_of_range_facing_and_cycle_to_row_zero"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_4.cpp",
+          "test": "SemWeaponAnimate.a_tree_or_blood_plays_its_sway_once_then_stands_still"
         }
       ],
-      "missing_arms": [
-        "mid-row"
-      ]
+      "missing_arms": []
     },
     {
       "id": "weapon_animate.lua:77",
@@ -80,7 +82,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_weap_behavior.cpp",
@@ -90,12 +92,13 @@
           "parity": "weapon_circle_protection_follow_scen99",
           "fact": "",
           "note": "WeaponSpeed(FAMILY_CIRCLE_PROTECTION  400  700) floor: ring tracks the moving owner"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_4.cpp",
+          "test": "SemWeaponAnimate.a_protection_ring_dies_with_its_owner_or_its_hitpoints"
         }
       ],
-      "missing_arms": [
-        "owner dead",
-        "ring hp <= 0"
-      ]
+      "missing_arms": []
     },
     {
       "id": "weapon_animate.lua:90",
@@ -126,7 +129,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_weap_behavior.cpp",
@@ -135,11 +138,13 @@
         {
           "file": "tests/integration/test_weap_behavior.cpp",
           "test": "WeapBehavior.weapon_animate_clamps_out_of_range_facing_and_cycle_to_row_zero"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_4.cpp",
+          "test": "SemWeaponAnimate.a_glow_pulses_frame_by_frame_and_restarts_at_the_row_end"
         }
       ],
-      "missing_arms": [
-        "ani_type 0..2 mid-row"
-      ]
+      "missing_arms": []
     },
     {
       "id": "weapon_animate.lua:99",
@@ -164,16 +169,18 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_weap_behavior.cpp",
           "test": "WeapBehavior.weapon_family_animate_callbacks_and_sprinkle_hit_paths"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_4.cpp",
+          "test": "SemWeaponAnimate.a_glow_with_lifetime_n_shows_for_n_plus_one_animates"
         }
       ],
-      "missing_arms": [
-        "lifetime >= 1 before the animate"
-      ]
+      "missing_arms": []
     },
     {
       "id": "weapon_animate.lua:111",
@@ -230,16 +237,18 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_weap_behavior.cpp",
           "test": "WeapBehavior.weapon_family_animate_callbacks_and_sprinkle_hit_paths"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_4.cpp",
+          "test": "SemWeaponAnimate.a_heros_constitution_shortens_a_sprinkle_freeze"
         }
       ],
-      "missing_arms": [
-        "target has a guy"
-      ]
+      "missing_arms": []
     },
     {
       "id": "weapon_animate.lua:120",
@@ -310,7 +319,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_silliness_battery.cpp",
@@ -319,11 +328,13 @@
         {
           "file": "tests/unit/test_silliness_battery.cpp",
           "test": "SillinessBattery.sprinkle_ai_victim_gate_window_and_escape"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_4.cpp",
+          "test": "SemWeaponAnimate.a_high_level_sprinkle_refreshes_a_freeze_at_the_ten_tick_floor"
         }
       ],
-      "missing_arms": [
-        "owner level >= 21 and frozen_delay <= 10"
-      ]
+      "missing_arms": []
     }
   ],
   "other": [

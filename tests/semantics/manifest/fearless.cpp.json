@@ -58,7 +58,7 @@
         }
       ],
       "setting": "new-specials",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_kit_seams_small.cpp",
@@ -73,13 +73,21 @@
         {
           "file": "tests/unit/test_script_bindings_props.cpp",
           "test": "ScriptBindingPropsTest.kit_fearless_answers_the_kit_mark"
+        },
+        {
+          "file": "tests/unit/test_sem_world_1.cpp",
+          "test": "SemFearless.a_banner_is_not_made_fearless_by_its_own_aura"
+        },
+        {
+          "file": "tests/unit/test_sem_world_1.cpp",
+          "test": "SemFearless.a_weapon_without_a_rally_radius_rallies_nobody"
+        },
+        {
+          "file": "tests/unit/test_sem_world_1.cpp",
+          "test": "SemFearless.the_rally_radius_is_inclusive_at_exactly_r"
         }
       ],
-      "missing_arms": [
-        "the walker is itself the rally weapon (rally == &w)",
-        "weapon on weaplist whose family rally_radius <= 0",
-        "distance^2 exactly r^2"
-      ]
+      "missing_arms": []
     }
   ],
   "other": []

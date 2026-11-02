@@ -56,7 +56,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_living_unit.cpp",
@@ -65,11 +65,13 @@
         {
           "file": "tests/integration/test_living_combat.cpp",
           "test": "LivingCombat.living_act_bonus_rounds_and_dead_gate"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_1.cpp",
+          "test": "SemLiving.classic_banked_rounds_run_every_timer_once_per_round_and_no_rounds_or_dead_act_once"
         }
       ],
-      "missing_arms": [
-        "no rounds or dead"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living.cpp:74",
@@ -96,7 +98,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_living_combat.cpp",
@@ -109,11 +111,13 @@
         {
           "file": "tests/integration/test_living_unit.cpp",
           "test": "LivingUnit.living_r11_act_owner_dead_and_action_follow"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_1.cpp",
+          "test": "SemLiving.a_dead_walker_does_nothing_and_a_pit_death_ends_the_act_at_once"
         }
       ],
-      "missing_arms": [
-        "pit death in apply_z_motion"
-      ],
+      "missing_arms": [],
       "note": [
         "unasserted: pit death in apply_z_motion: no cited test asserts act() returns 0 the tick the walker falls, nor that no command is queued"
       ]
@@ -149,7 +153,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_sim_world_headless.cpp",
@@ -162,11 +166,13 @@
         {
           "file": "tests/integration/test_coverage_misc.cpp",
           "test": "CoverageMisc.coverage_r19_living_act_random_acquires_a_foe_and_queues_a_command"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_1.cpp",
+          "test": "SemLiving.a_walker_forgets_a_hidden_foe_without_rolling_for_its_cloak"
         }
       ],
-      "missing_arms": [
-        "foe hidden"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living.cpp:96",
@@ -191,12 +197,14 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": [
-        "foe now friendly",
-        "foe hostile"
-      ]
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sem_ai_1.cpp",
+          "test": "SemLiving.a_walker_drops_a_foe_that_turned_friendly_and_keeps_a_hostile_one"
+        }
+      ],
+      "missing_arms": []
     },
     {
       "id": "living.cpp:98",
@@ -221,12 +229,14 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": [
-        "leader dead",
-        "leader alive"
-      ]
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sem_ai_1.cpp",
+          "test": "SemLiving.a_follower_forgets_a_dead_leader_and_keeps_a_live_one"
+        }
+      ],
+      "missing_arms": []
     },
     {
       "id": "living.cpp:100",
@@ -251,7 +261,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_living_combat.cpp",
@@ -260,11 +270,13 @@
         {
           "file": "tests/integration/test_living_unit.cpp",
           "test": "LivingUnit.living_r11_act_owner_dead_and_action_follow"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_1.cpp",
+          "test": "SemLiving.an_owned_living_goes_on_acting_while_its_owner_lives"
         }
       ],
-      "missing_arms": [
-        "owner alive"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living.cpp:109",
@@ -301,7 +313,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_living_combat.cpp",
@@ -318,12 +330,13 @@
         {
           "parity": "summon_lifetime_faerie_scen99",
           "fact": "WalkerDiedByFinal(FAMILY_FAERIE)"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_1.cpp",
+          "test": "SemLiving.a_lifetime_counts_down_one_per_act_and_zero_means_permanent"
         }
       ],
-      "missing_arms": [
-        "lifetime > 1",
-        "lifetime 0"
-      ],
+      "missing_arms": [],
       "note": [
         "unasserted: lifetime > 1: no test asserts the one-per-act decrement (cited tests start at lifetime 1)",
         "unasserted: lifetime 0: no test asserts a permanent (lifetime 0) walker never expires"
@@ -388,13 +401,18 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": [
-        "enemy_freeze > 0",
-        "bonus rounds banked",
-        "normal"
-      ]
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sem_ai_1.cpp",
+          "test": "SemLiving.classic_regeneration_runs_each_act_and_freeze_time_stops_it_for_every_side"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_1.cpp",
+          "test": "SemLiving.a_walker_with_rounds_still_banked_does_not_regenerate"
+        }
+      ],
+      "missing_arms": []
     },
     {
       "id": "living.cpp:169",
@@ -419,16 +437,18 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_living_combat.cpp",
           "test": "LivingCombat.living_act_timers_charm_and_recoil_clamps"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_1.cpp",
+          "test": "SemLiving.view_all_and_invulnerability_at_zero_stay_zero"
         }
       ],
-      "missing_arms": [
-        "0"
-      ],
+      "missing_arms": [],
       "note": [
         "unasserted: 0: view_all stays 0 (only the 1 -> 0 decrement is asserted)"
       ]
@@ -456,16 +476,18 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_living_combat.cpp",
           "test": "LivingCombat.living_act_timers_charm_and_recoil_clamps"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_1.cpp",
+          "test": "SemLiving.view_all_and_invulnerability_at_zero_stay_zero"
         }
       ],
-      "missing_arms": [
-        "0"
-      ],
+      "missing_arms": [],
       "note": [
         "unasserted: 0: invulnerable_left stays 0 (only the 1 -> 0 decrement is asserted)"
       ]
@@ -535,12 +557,14 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": [
-        "flight > 0",
-        "0"
-      ]
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sem_ai_1.cpp",
+          "test": "SemLiving.flight_lasts_its_count_of_acts_and_then_stays_zero"
+        }
+      ],
+      "missing_arms": []
     },
     {
       "id": "living.cpp:185",
@@ -571,17 +595,18 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_living_combat.cpp",
           "test": "LivingCombat.living_act_nonpassable_tile_damage_kills"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_1.cpp",
+          "test": "SemLiving.a_walker_stuck_in_a_wall_loses_a_point_per_act_and_gets_a_tick_of_flight"
         }
       ],
-      "missing_arms": [
-        "inside impassable, no flight",
-        "passable or flying"
-      ],
+      "missing_arms": [],
       "note": [
         "unasserted: inside impassable, no flight, hp > 1: the 1-HP loss, flight_left 1 and the red DamageNumber(1) (only the lethal arm at 1 HP is asserted)"
       ]
@@ -617,7 +642,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_kit_possession.cpp",
@@ -626,12 +651,13 @@
         {
           "file": "tests/unit/test_silliness_battery.cpp",
           "test": "SillinessBattery.thief_charm_ceiling_and_natural_expiry"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_1.cpp",
+          "test": "SemLiving.charm_counts_down_without_touching_the_team_and_an_uncharmed_walker_keeps_its_team"
         }
       ],
-      "missing_arms": [
-        "charm_left > 1",
-        "never charmed"
-      ],
+      "missing_arms": [],
       "note": [
         "unasserted: never charmed: team unchanged and charm stays 0"
       ]
@@ -697,16 +723,18 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_decor.cpp",
           "test": "Decor.shrub_conceals_for_living_and_weapon_but_bones_does_not"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_1.cpp",
+          "test": "SemLiving.the_forest_charges_magic_only_with_magic_in_hand_and_the_delay_at_zero"
         }
       ],
-      "missing_arms": [
-        "MP 0 or delay running"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living.cpp:243",
@@ -741,12 +769,17 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": [
-        "player guy",
-        "NPC",
-        "result < 1"
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sem_ai_2.cpp",
+          "test": "SemAi2.a_forestwalker_in_the_trees_steps_shorter_by_its_dexterity_or_level"
+        }
+      ],
+      "missing_arms": [],
+      "issue": "#462",
+      "note": [
+        "the three arms are asserted for one act from the normal step; the compounding across acts (and the hastened forestwalker's unbounded speed-up) is the bug #462, not pinned"
       ]
     },
     {
@@ -804,16 +837,18 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_kit_rests.cpp",
           "test": "KitRests.freeze_time_rests_thirty_seconds"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_2.cpp",
+          "test": "SemAi2.a_specials_rest_counts_down_one_per_act_and_stops_at_zero"
         }
       ],
-      "missing_arms": [
-        "0"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living.cpp:265",
@@ -844,17 +879,18 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_living_combat.cpp",
           "test": "LivingCombat.living_act_timers_charm_and_recoil_clamps"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_2.cpp",
+          "test": "SemAi2.an_attack_lunge_eases_back_by_four_tenths_per_act_and_stops_at_zero"
         }
       ],
-      "missing_arms": [
-        "> 0.4",
-        "0"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living.cpp:273",
@@ -885,17 +921,18 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_living_combat.cpp",
           "test": "LivingCombat.living_act_timers_charm_and_recoil_clamps"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_2.cpp",
+          "test": "SemAi2.a_hit_recoil_eases_back_by_six_tenths_per_act_and_stops_at_zero"
         }
       ],
-      "missing_arms": [
-        "> 0.6",
-        "0"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living.cpp:289",
@@ -956,12 +993,14 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": [
-        "animating",
-        "walking"
-      ]
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sem_ai_2.cpp",
+          "test": "SemAi2.a_walker_mid_animation_finishes_it_before_anything_else"
+        }
+      ],
+      "missing_arms": []
     },
     {
       "id": "living.cpp:298",
@@ -986,7 +1025,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_stats_fright.cpp",
@@ -995,11 +1034,13 @@
         {
           "file": "tests/unit/test_mode_tick.cpp",
           "test": "ModeTick.act_override_false_falls_through_to_default_act"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_2.cpp",
+          "test": "SemAi2.a_frozen_walker_spends_its_act_thawing_and_nothing_else"
         }
       ],
-      "missing_arms": [
-        "0 (or immune phase)"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living.cpp:304",
@@ -1056,12 +1097,14 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": [
-        "curdir != enddir",
-        "aligned"
-      ]
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sem_ai_2.cpp",
+          "test": "SemAi2.a_walker_not_facing_its_goal_spends_its_act_turning_one_notch"
+        }
+      ],
+      "missing_arms": []
     },
     {
       "id": "living.cpp:314",
@@ -1092,7 +1135,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_living_combat.cpp",
@@ -1101,11 +1144,13 @@
         {
           "file": "tests/integration/test_living_unit.cpp",
           "test": "LivingUnit.follow_ally_spends_its_act_on_the_follow_command_not_its_ai"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_2.cpp",
+          "test": "SemAi2.a_command_step_that_does_nothing_lets_the_act_go_on"
         }
       ],
-      "missing_arms": [
-        "command returned 0"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living.cpp:321",
@@ -1130,16 +1175,18 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_living_combat.cpp",
           "test": "LivingCombat.living_act_invisibility_skip_exit_and_action_command_paths"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_2.cpp",
+          "test": "SemAi2.the_exit_skip_counter_counts_down_and_stops_at_zero"
         }
       ],
-      "missing_arms": [
-        "0"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living.cpp:325",
@@ -1170,16 +1217,18 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_living_unit.cpp",
           "test": "LivingUnit.follow_ally_spends_its_act_on_the_follow_command_not_its_ai"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_2.cpp",
+          "test": "SemAi2.a_seated_walker_ignores_its_action_and_a_passing_action_lets_the_act_go_on"
         }
       ],
-      "missing_arms": [
-        "seated, or do_action returned 0"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living.cpp:332",
@@ -1386,7 +1435,7 @@
         }
       ],
       "setting": "both",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_kit_bots.cpp",
@@ -1395,11 +1444,13 @@
         {
           "file": "tests/unit/test_kit_bots.cpp",
           "test": "KitBots.a_level_sixteen_mage_rolls_heartburst_when_on"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_2.cpp",
+          "test": "SemAi2.a_bot_that_rolls_an_unnamed_or_out_of_range_slot_casts_slot_one"
         }
       ],
-      "missing_arms": [
-        "NONE / out of range / no descriptor"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living.cpp:376",
@@ -1548,7 +1599,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_living_combat.cpp",
@@ -1557,11 +1608,13 @@
         {
           "file": "tests/integration/test_coverage_misc.cpp",
           "test": "CoverageMisc.coverage_r19_living_act_random_acquires_a_foe_and_queues_a_command"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_2.cpp",
+          "test": "SemAi2.a_bot_with_no_foe_near_takes_the_nearest_foe_anywhere_on_the_coins_zero"
         }
       ],
-      "missing_arms": [
-        "no foe, coin 0"
-      ],
+      "missing_arms": [],
       "note": [
         "unasserted: no foe, coin 0: foe = find_nearest_foe with no command queued this act"
       ]
@@ -1623,7 +1676,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_living_combat.cpp",
@@ -1632,12 +1685,13 @@
         {
           "file": "tests/integration/test_living_funcs.cpp",
           "test": "LivingFuncs.living_shove_force_queues_walk_on_passable_step_and_refuses_blocked_step"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_2.cpp",
+          "test": "SemAi2.a_shove_needs_a_living_ally_that_is_not_a_seat_and_a_nonzero_roll"
         }
       ],
-      "missing_arms": [
-        "roll 0 or a seat",
-        "foe or dead"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living.cpp:458",
@@ -1706,7 +1760,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_living_combat.cpp",
@@ -1715,11 +1769,13 @@
         {
           "file": "tests/integration/test_living_funcs.cpp",
           "test": "LivingFuncs.living_walk_moves_on_matching_facing_turns_otherwise_and_refuses_off_map"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_2.cpp",
+          "test": "SemAi2.a_walk_off_the_facing_turns_one_notch_but_a_seated_hero_only_records_it"
         }
       ],
-      "missing_arms": [
-        "facing differs, seated hero without commands"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living.cpp:491",
@@ -1778,7 +1834,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_living_combat.cpp",
@@ -1787,11 +1843,13 @@
         {
           "file": "tests/integration/test_living_funcs.cpp",
           "test": "LivingFuncs.living_walk_moves_on_matching_facing_turns_otherwise_and_refuses_off_map"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_2.cpp",
+          "test": "SemAi2.a_step_moves_only_when_its_exact_and_rounded_offsets_are_passable"
         }
       ],
-      "missing_arms": [
-        "any blocked"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living.cpp:523",
@@ -1826,7 +1884,7 @@
         }
       ],
       "setting": "both",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_gameplay_fixes_walk.cpp",
@@ -1839,11 +1897,13 @@
         {
           "file": "tests/unit/test_gameplay_fixes_walk.cpp",
           "test": "GameplayFixesWalk.a_body_the_step_meets_is_still_shoved"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_2.cpp",
+          "test": "SemAi2.a_refused_step_shoves_no_foe_and_no_non_living_body"
         }
       ],
-      "missing_arms": [
-        "collide_ob a foe or non-living"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living.cpp:531",
@@ -1868,12 +1928,14 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": [
-        "blocked, BIT_ANIMATE",
-        "blocked, not flagged"
-      ]
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sem_ai_2.cpp",
+          "test": "SemAi2.an_always_animate_walker_cycles_its_frames_on_a_refused_step"
+        }
+      ],
+      "missing_arms": []
     },
     {
       "id": "living.cpp:558",
@@ -2246,13 +2308,14 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": [
-        "4L^2 > REGEN",
-        "remainder > 1",
-        "delay < 2"
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sem_ai_2.cpp",
+          "test": "SemAi2.hp_regeneration_rate_comes_from_the_level_with_the_classic_off_by_one"
+        }
       ],
+      "missing_arms": [],
       "note": [
         "unasserted: remainder > 1: max_heal_delay = REGEN/(rem+1) exact value",
         "unasserted: delay < 2: clamped to 2"
@@ -2289,13 +2352,14 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": [
-        "30L^2 > REGEN",
-        "remainder > 1",
-        "delay < 2"
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sem_ai_2.cpp",
+          "test": "SemAi2.mp_regeneration_rate_comes_from_the_level_with_the_classic_off_by_one"
+        }
       ],
+      "missing_arms": [],
       "note": [
         "unasserted: remainder > 1: max_magic_delay = REGEN/(rem+1) exact value",
         "unasserted: delay < 2: clamped to 2"
@@ -2334,7 +2398,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_specials.cpp",
@@ -2343,12 +2407,13 @@
         {
           "file": "tests/integration/test_living_combat.cpp",
           "test": "LivingCombat.living_round7_act_random_and_do_action_targeted_branches"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_2.cpp",
+          "test": "SemAi2Randomer.act_random_retargets_to_a_near_foe_one_time_in_eighty_or_when_it_has_none"
         }
       ],
-      "missing_arms": [
-        "no foe held, roll any",
-        "roll 0 (next(80)==0) with a foe already held"
-      ],
+      "missing_arms": [],
       "note": [
         "unasserted: roll 0 (next(80)==0) with a foe already held: foe re-acquired by find_near_foe"
       ]
@@ -2384,16 +2449,18 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_living_combat.cpp",
           "test": "LivingCombat.living_round7_act_random_and_do_action_targeted_branches"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_2.cpp",
+          "test": "SemAi2Randomer.act_random_fires_at_a_foe_in_sight_and_searches_for_one_out_of_it"
         }
       ],
-      "missing_arms": [
-        "out of range"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living.cpp:772",

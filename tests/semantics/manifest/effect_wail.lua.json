@@ -24,7 +24,7 @@
         }
       ],
       "setting": "new-specials",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_kit_ghost.cpp",
@@ -33,11 +33,13 @@
         {
           "file": "tests/unit/test_kit_ghost.cpp",
           "test": "KitGhost.wail_hops_foe_to_foe_and_frights_each_once"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_2.cpp",
+          "test": "SemWail.a_wail_bolt_carries_its_ghosts_team_level_and_floor_and_no_damage"
         }
       ],
-      "missing_arms": [
-        "spawned"
-      ]
+      "missing_arms": []
     },
     {
       "id": "effect_wail.lua:47",
@@ -133,13 +135,14 @@
         }
       ],
       "setting": "new-specials",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": [
-        "monster",
-        "hero",
-        "fright <= 0"
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sem_libs_2.cpp",
+          "test": "SemWail.a_wailed_foe_flees_from_the_ghost_less_a_heros_constitution_roll"
+        }
       ],
+      "missing_arms": [],
       "note": [
         "Re-audited: the monster arm's flee direction sign(foe-ghost) and its no-draw claim are not asserted (only commandcount 62 and skip_exit 3); the hero arm asserts only that rng_.state_ moved, not that the roll shortens the fright; the full-resist arm is unasserted (wail_spares_a_fearless_foe goes through KIT_FEARLESS, not fright <= 0)."
       ]
@@ -167,12 +170,14 @@
         }
       ],
       "setting": "new-specials",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": [
-        "hops 0",
-        "hops >= 1"
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sem_libs_2.cpp",
+          "test": "SemWail.a_bolt_with_no_hops_left_forks_no_further_and_draws_no_budget"
+        }
       ],
+      "missing_arms": [],
       "note": [
         "The no-fork outcome of hops 0 is asserted; neither arm's RNG claim (no draw at hops 0, one budget draw at hops >= 1) is pinned (rng_.state_ never compared)."
       ]
@@ -206,7 +211,7 @@
         }
       ],
       "setting": "new-specials",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_kit_ghost.cpp",
@@ -215,12 +220,13 @@
         {
           "file": "tests/unit/test_kit_ghost.cpp",
           "test": "KitGhost.wail_hops_foe_to_foe_and_frights_each_once"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_2.cpp",
+          "test": "SemWail.a_wail_forks_to_at_most_its_budget_and_skipped_foes_keep_it"
         }
       ],
-      "missing_arms": [
-        "ineligible",
-        "budget spent"
-      ]
+      "missing_arms": []
     },
     {
       "id": "effect_wail.lua:115",
@@ -255,13 +261,14 @@
         }
       ],
       "setting": "new-specials",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": [
-        "target right/below",
-        "target left/above",
-        "aligned"
-      ]
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sem_libs_2.cpp",
+          "test": "SemWail.a_wail_puff_homes_at_most_six_px_per_axis_and_never_overshoots"
+        }
+      ],
+      "missing_arms": []
     },
     {
       "id": "effect_wail.lua:139",
@@ -292,16 +299,18 @@
         }
       ],
       "setting": "new-specials",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_kit_ghost.cpp",
           "test": "KitGhost.wail_bolt_homes_forks_only_where_it_may_and_fades"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_2.cpp",
+          "test": "SemWail.a_wail_bolt_that_flies_out_its_life_fades_without_a_fright"
         }
       ],
-      "missing_arms": [
-        "lineofsight < 1"
-      ]
+      "missing_arms": []
     },
     {
       "id": "effect_wail.lua:147",

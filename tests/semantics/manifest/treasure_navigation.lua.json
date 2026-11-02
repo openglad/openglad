@@ -24,12 +24,14 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": [
-        "withdraw",
-        "exit"
-      ]
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sem_libs_4.cpp",
+          "test": "SemExitPad.the_prompt_reads_withdraw_on_the_withdraw_path_and_exit_otherwise"
+        }
+      ],
+      "missing_arms": []
     },
     {
       "id": "treasure_navigation.lua:34",
@@ -185,12 +187,14 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": [
-        "no title",
-        "title"
-      ]
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sem_libs_4.cpp",
+          "test": "SemExitPad.an_exit_with_no_title_is_named_by_its_level_number"
+        }
+      ],
+      "missing_arms": []
     },
     {
       "id": "treasure_navigation.lua:58",
@@ -215,12 +219,14 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": [
-        "flag set, foes alive",
-        "flag clear, foes alive"
-      ]
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sem_libs_4.cpp",
+          "test": "SemExitPad.a_can_exit_whenever_level_offers_the_exit_with_foes_standing"
+        }
+      ],
+      "missing_arms": []
     },
     {
       "id": "treasure_navigation.lua:60",
@@ -385,7 +391,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_runtime_coverage_paths.cpp",
@@ -396,12 +402,13 @@
           "file": "tests/unit/test_gameplay_fixes_walk.cpp",
           "test": "GameplayFixesWalk.a_walk_that_eats_a_teleporter_does_not_shove_the_ally_it_left",
           "note": "first use: warped onto the partner"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_4.cpp",
+          "test": "SemWarpPad.a_warp_pad_keeps_its_remembered_partner_classic_and_a_lone_pad_only_throttles"
         }
       ],
-      "missing_arms": [
-        "cached",
-        "no partner"
-      ]
+      "missing_arms": []
     },
     {
       "id": "treasure_navigation.lua:116",
@@ -426,17 +433,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_gameplay_fixes_walk.cpp",
           "test": "GameplayFixesWalk.a_walk_that_eats_a_teleporter_does_not_shove_the_ally_it_left",
           "note": "clear: centred on partner 592,592"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_4.cpp",
+          "test": "SemWarpPad.a_blocked_warp_bounces_back_onto_the_departure_pad"
         }
       ],
-      "missing_arms": [
-        "blocked"
-      ]
+      "missing_arms": []
     }
   ],
   "other": [

@@ -33,18 +33,23 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_classpack_lua_decl.cpp",
           "test": "LuaFamilyDeclTest.family_id_defers_during_a_declaration",
           "note": "truth arm ok, and EXPECT_FALSE(used.ok) for `ref + 1`; the error text and the other blocked events are asserted nowhere: no test contains 'cannot be READ'"
+        },
+        {
+          "file": "tests/unit/test_sem_script_2.cpp",
+          "test": "SemFamilyDecl.a_declare_time_family_ref_refuses_every_use_but_truth"
+        },
+        {
+          "file": "tests/unit/test_sem_script_2.cpp",
+          "test": "SemFamilyDecl.a_declare_time_family_ref_compares_equal_only_to_itself"
         }
       ],
-      "missing_arms": [
-        "placeholder used in arithmetic / index / call / tostring / concat / # / < / <=",
-        "placeholder compared with =="
-      ]
+      "missing_arms": []
     },
     {
       "id": "family_decl.cpp:116",
@@ -69,7 +74,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "unreachable",
       "tests": [
         {
           "file": "tests/unit/test_classpack_lua_decl.cpp",
@@ -84,6 +89,9 @@
       ],
       "missing_arms": [
         "later failure (unreachable: no path calls fail() twice)"
+      ],
+      "note": [
+        "unreachable: every caller of Harvest::fail stops at its first failure (|| chains, break, ok && guards), so the err.empty() guard never sees a second call; arm 1 is already asserted"
       ]
     },
     {
@@ -311,7 +319,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "deferred",
       "tests": [
         {
           "file": "tests/unit/test_classpack_lua_decl.cpp",
@@ -336,6 +344,10 @@
       ],
       "missing_arms": [
         "named key inside a list, e.g. names = { 'Lothar', Gunther = 'x' }"
+      ],
+      "issue": "#469",
+      "note": [
+        "bug #469: a named key inside a string list is silently dropped; not pinned as correct; the other arms are already asserted by test_classpack_lua_decl.cpp"
       ]
     },
     {
@@ -488,7 +500,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_classpack_lua_decl.cpp",
@@ -509,12 +521,13 @@
           "file": "tests/unit/test_classpack_lua_decl.cpp",
           "test": "LuaFamilyDeclTest.one_chunk_may_declare_many_families",
           "note": "integer arm: EXPECT_EQ(\"63\", ...), line 401"
+        },
+        {
+          "file": "tests/unit/test_sem_script_2.cpp",
+          "test": "SemFamilyDecl.wire_id_is_empty_when_absent_and_any_integer_lands_as_text"
         }
       ],
-      "missing_arms": [
-        "absent",
-        "integer outside 0..255 (e.g. 300 or -1)"
-      ]
+      "missing_arms": []
     },
     {
       "id": "family_decl.cpp:396",
@@ -1188,7 +1201,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_classpack_lua_decl.cpp",
@@ -1204,11 +1217,13 @@
           "file": "tests/unit/test_classpack_lua_decl.cpp",
           "test": "LuaFamilyDeclTest.mixing_the_two_spellings_of_one_hook_is_an_error",
           "note": "behavior flags: an entry ai -> any_ai, read back as 'two answers to the same question'; an entry cast function -> any_cast, read back as 'both answer the cast'"
+        },
+        {
+          "file": "tests/unit/test_sem_script_2.cpp",
+          "test": "SemFamilyDecl.a_special_ai_that_is_not_a_function_is_a_load_error"
         }
       ],
-      "missing_arms": [
-        "ai non-function"
-      ]
+      "missing_arms": []
     },
     {
       "id": "family_decl.cpp:716",
@@ -1235,16 +1250,18 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_classpack_lua_decl.cpp",
           "test": "LuaFamilyDeclTest.a_specials_block_that_is_not_a_list_of_tables_says_which"
+        },
+        {
+          "file": "tests/unit/test_sem_script_2.cpp",
+          "test": "SemFamilyDecl.an_absent_specials_list_stays_unset"
         }
       ],
-      "missing_arms": [
-        "absent"
-      ]
+      "missing_arms": []
     },
     {
       "id": "family_decl.cpp:733",
@@ -1346,7 +1363,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_classpack_lua_decl.cpp",
@@ -1355,11 +1372,13 @@
         {
           "file": "tests/unit/test_classpack_lua_decl.cpp",
           "test": "LuaFamilyDeclTest.a_special_entry_is_type_checked_field_by_field"
+        },
+        {
+          "file": "tests/unit/test_sem_script_2.cpp",
+          "test": "SemFamilyDecl.an_explicit_slot_zero_takes_the_next_slot"
         }
       ],
-      "missing_arms": [
-        "explicit slot = 0"
-      ]
+      "missing_arms": []
     },
     {
       "id": "family_decl.cpp:754",
@@ -1390,16 +1409,18 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_classpack_lua_decl.cpp",
           "test": "LuaFamilyDeclTest.slots_run_forward_and_stop_at_five"
+        },
+        {
+          "file": "tests/unit/test_sem_script_2.cpp",
+          "test": "SemFamilyDecl.a_negative_special_slot_does_not_exist"
         }
       ],
-      "missing_arms": [
-        "slot negative (an explicit slot = 0 never reaches here, line 752 turns it into an auto-slot)"
-      ]
+      "missing_arms": []
     },
     {
       "id": "family_decl.cpp:768",
@@ -1700,7 +1721,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_classpack_lua_decl.cpp",
@@ -1723,12 +1744,13 @@
           "file": "tests/unit/test_classpack_install.cpp",
           "test": "ClasspackInstall.a_specials_list_rewrites_every_slot",
           "note": "absent (stats) through the installer: base_stats[Strength] stays 12"
+        },
+        {
+          "file": "tests/unit/test_sem_script_2.cpp",
+          "test": "SemFamilyDecl.an_absent_combat_block_stays_unset_and_a_bad_one_is_refused"
         }
       ],
-      "missing_arms": [
-        "absent (combat)",
-        "bad (combat)"
-      ]
+      "missing_arms": []
     },
     {
       "id": "family_decl.cpp:949",
@@ -1787,7 +1809,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_classpack_lua_decl.cpp",
@@ -1801,12 +1823,13 @@
           "file": "tests/unit/test_classpack_lua_decl.cpp",
           "test": "LuaFamilyDeclTest.a_named_block_must_spell_every_member",
           "note": "hire missing; train = { armor = 1 } -> strength 0"
+        },
+        {
+          "file": "tests/unit/test_sem_script_2.cpp",
+          "test": "SemFamilyDecl.absent_costs_and_absent_train_stay_unset"
         }
       ],
-      "missing_arms": [
-        "no costs",
-        "train absent"
-      ]
+      "missing_arms": []
     },
     {
       "id": "family_decl.cpp:1050",
@@ -1910,7 +1933,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_mode_bindings.cpp",
@@ -1926,15 +1949,29 @@
           "file": "tests/unit/test_classpack_lua_decl.cpp",
           "test": "LuaFamilyDeclTest.every_order_declares",
           "note": "own-key arm: each order accepts its own key, one entry per order list"
+        },
+        {
+          "file": "tests/unit/test_sem_script_2.cpp",
+          "test": "SemFamilyDecl.a_living_refuses_keys_of_the_other_orders"
+        },
+        {
+          "file": "tests/unit/test_sem_script_2.cpp",
+          "test": "SemFamilyDecl.a_weapon_refuses_keys_of_the_other_orders"
+        },
+        {
+          "file": "tests/unit/test_sem_script_2.cpp",
+          "test": "SemFamilyDecl.an_effect_refuses_keys_of_the_other_orders"
+        },
+        {
+          "file": "tests/unit/test_sem_script_2.cpp",
+          "test": "SemFamilyDecl.a_treasure_refuses_keys_of_the_other_orders"
+        },
+        {
+          "file": "tests/unit/test_sem_script_2.cpp",
+          "test": "SemFamilyDecl.a_generator_refuses_keys_of_the_other_orders"
         }
       ],
-      "missing_arms": [
-        "living declares a weapon/effect/treasure/generator-only key (e.g. radar_landmark, rally_radius, init_frame, editor_label, hp)",
-        "weapon declares a living/treasure/generator-only key (e.g. playable, stats, radar_landmark, init_frame, editor_label)",
-        "effect declares a non-effect key (e.g. rally_radius, init_frame, playable, editor_label)",
-        "treasure declares a non-treasure key (e.g. flags, loops_animation, rally_radius, editor_label)",
-        "generator declares a non-generator key (e.g. flags, radar_landmark, playable, init_frame)"
-      ]
+      "missing_arms": []
     },
     {
       "id": "family_decl.cpp:1103",
@@ -2079,7 +2116,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_classpack_lua_decl.cpp",
@@ -2090,11 +2127,13 @@
           "file": "tests/unit/test_classpack_lua_decl.cpp",
           "test": "LuaFamilyDeclTest.one_chunk_may_declare_many_families",
           "note": "three living entries"
+        },
+        {
+          "file": "tests/unit/test_sem_script_2.cpp",
+          "test": "SemFamilyDecl.a_failed_harvest_leaves_no_entry_and_no_provenance"
         }
       ],
-      "missing_arms": [
-        "any reader failure"
-      ]
+      "missing_arms": []
     },
     {
       "id": "family_decl.cpp:1292",
@@ -2209,7 +2248,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_classpack_lua_decl.cpp",
@@ -2220,11 +2259,13 @@
           "file": "tests/unit/test_classpack_lua_decl.cpp",
           "test": "LuaFamilyDeclTest.the_pack_header_is_strict_too",
           "note": "unknown key titel, authors not a list"
+        },
+        {
+          "file": "tests/unit/test_sem_script_2.cpp",
+          "test": "SemFamilyDecl.a_later_pack_header_keeps_the_fields_it_leaves_out"
         }
       ],
-      "missing_arms": [
-        "absent"
-      ]
+      "missing_arms": []
     },
     {
       "id": "family_decl.cpp:1406",
@@ -2608,7 +2649,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_classpack_lua_bind.cpp",
@@ -2624,11 +2665,17 @@
           "file": "tests/unit/test_script_hooks.cpp",
           "test": "ScriptHooksTest.bind_pass_binds_a_specials_list_both_passes_agree_on",
           "note": "cast -> cast_bound true; no ai -> ai_bound false"
+        },
+        {
+          "file": "tests/unit/test_sem_script_2.cpp",
+          "test": "SemFamilyBind.specials_without_cast_or_ai_bind_no_hook"
+        },
+        {
+          "file": "tests/unit/test_sem_script_2.cpp",
+          "test": "SemFamilyBind.specials_with_a_cast_and_an_ai_bind_both_hooks"
         }
       ],
-      "missing_arms": [
-        "none"
-      ]
+      "missing_arms": []
     },
     {
       "id": "family_decl.cpp:1616",
@@ -2713,7 +2760,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_classpack_lua_bind.cpp",
@@ -2724,11 +2771,13 @@
           "file": "tests/unit/test_classpack_lua_bind.cpp",
           "test": "LuaFamilyBindTest.a_default_cast_answers_every_slot",
           "note": "living: specials bound, has_hook DoSpecial"
+        },
+        {
+          "file": "tests/unit/test_sem_script_2.cpp",
+          "test": "SemFamilyBind.a_hook_the_declaration_leaves_out_stays_unbound"
         }
       ],
-      "missing_arms": [
-        "absent"
-      ]
+      "missing_arms": []
     },
     {
       "id": "family_decl.cpp:1663",
@@ -2810,20 +2859,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_classpack_lua_decl.cpp",
           "test": "LuaFamilyDeclTest.every_order_declares",
           "note": "right shape: og.family(string, table) proceeds, ASSERT_TRUE ok; og.anims/og.pack right shape: an_anim_set_harvests_rows_holes_and_frames, the_pack_header_fills_the_manifest_scalars"
+        },
+        {
+          "file": "tests/unit/test_sem_script_2.cpp",
+          "test": "SemFamilyDecl.og_family_anims_and_pack_refuse_a_wrong_shaped_call"
         }
       ],
-      "missing_arms": [
-        "og.family('living', 'x') or og.family('living')",
-        "og.family(5, {...})",
-        "og.anims('x', 3)",
-        "og.pack(7)"
-      ]
+      "missing_arms": []
     },
     {
       "id": "family_decl.cpp:1681",
@@ -2891,7 +2939,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_classpack_lua_decl.cpp",
@@ -2917,11 +2965,13 @@
           "file": "tests/unit/test_classpack_lua_bind.cpp",
           "test": "LuaFamilyBindTest.an_inline_hook_binds_and_dispatches",
           "note": "world VM og.family binds"
+        },
+        {
+          "file": "tests/unit/test_sem_script_2.cpp",
+          "test": "SemFamilyBind.og_anims_and_og_pack_do_nothing_in_a_world_vm"
         }
       ],
-      "missing_arms": [
-        "world VM"
-      ]
+      "missing_arms": []
     },
     {
       "id": "family_decl.cpp:1783",
@@ -3038,7 +3088,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "unreachable",
       "tests": [
         {
           "file": "tests/unit/test_classpack_lua_decl.cpp",
@@ -3058,6 +3108,9 @@
       ],
       "missing_arms": [
         "no error recorded"
+      ],
+      "note": [
+        "unreachable: ScriptHost::run_chunk records an error before every false return and the pass breaks at the first failure, so the \"chunk '<name>' failed to load\" fallback never fires; needs a seam (a run_chunk that fails without recording) or a defensive reclassification"
       ]
     }
   ],

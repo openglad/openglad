@@ -68,17 +68,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_script_bindings_props.cpp",
           "test": "ScriptBindingPropsTest.kit_swap_places_trades_spots_and_floors_and_eats_nothing",
           "note": "self -> false; ok -> positions/floors exchanged, 1 obmap entry each, food not eaten; hidden -> false, nothing moves"
+        },
+        {
+          "file": "tests/unit/test_sem_world_3.cpp",
+          "test": "SemPlacement.a_dead_or_dormant_walker_never_swaps_places"
         }
       ],
-      "missing_arms": [
-        "either dead or dormant"
-      ]
+      "missing_arms": []
     }
   ],
   "other": [

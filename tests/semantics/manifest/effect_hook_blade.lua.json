@@ -63,7 +63,7 @@
         }
       ],
       "setting": "new-specials",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_kit_captain.cpp",
@@ -76,11 +76,13 @@
         {
           "file": "tests/unit/test_kit_captain.cpp",
           "test": "KitCaptain.hook_spirals_out_and_back"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_2.cpp",
+          "test": "SemHookBlade.the_blade_snags_living_foes_on_its_floor_never_a_generator_or_another_floor"
         }
       ],
-      "missing_arms": [
-        "generator or other floor"
-      ]
+      "missing_arms": []
     },
     {
       "id": "effect_hook_blade.lua:62",
@@ -193,7 +195,7 @@
         }
       ],
       "setting": "new-specials",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_kit_captain.cpp",
@@ -202,11 +204,13 @@
         {
           "file": "tests/unit/test_kit_captain.cpp",
           "test": "KitCaptain.reel_never_hauls_a_foe_past_the_captain"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_2.cpp",
+          "test": "SemHookBlade.the_last_reel_step_sets_the_foe_down_beside_the_captain_with_the_blade_on_it"
         }
       ],
-      "missing_arms": [
-        "ring spot within one step"
-      ]
+      "missing_arms": []
     },
     {
       "id": "effect_hook_blade.lua:105",
@@ -339,7 +343,7 @@
         }
       ],
       "setting": "new-specials",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_kit_captain.cpp",
@@ -352,11 +356,13 @@
         {
           "file": "tests/unit/test_kit_captain.cpp",
           "test": "KitCaptain.hook_reels_the_foe_to_the_captains_feet"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_2.cpp",
+          "test": "SemHookBlade.a_blade_with_a_foe_on_the_hook_neither_guards_nor_snags_another"
         }
       ],
-      "missing_arms": [
-        "on the hook"
-      ]
+      "missing_arms": []
     },
     {
       "id": "effect_hook_blade.lua:153",
@@ -417,7 +423,7 @@
         }
       ],
       "setting": "new-specials",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_kit_captain.cpp",
@@ -426,11 +432,13 @@
         {
           "file": "tests/unit/test_kit_captain.cpp",
           "test": "KitCaptain.hook_reels_the_foe_to_the_captains_feet"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_2.cpp",
+          "test": "SemHookBlade.a_blade_broken_by_a_shot_snags_nothing_that_tick"
         }
       ],
-      "missing_arms": [
-        "hp <= 0 after the guard"
-      ]
+      "missing_arms": []
     },
     {
       "id": "effect_hook_blade.lua:166",

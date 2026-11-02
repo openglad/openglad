@@ -30,7 +30,7 @@
         }
       ],
       "setting": "fixes-on",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_gameplay_fixes_cleric_unit.cpp",
@@ -41,11 +41,13 @@
           "file": "tests/unit/test_gameplay_fixes_cleric_unit.cpp",
           "test": "GameplayFixesClericRaise.a_blocked_near_stain_does_not_hide_a_usable_far_one",
           "note": "RESURRECT over friendly soldier stains: the near one is refused because a soldier does not fit where an ethereal ghost would, so the old family is what is probed"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_1.cpp",
+          "test": "SemLibsCorpses.resurrect_measures_a_foe_stain_for_the_ghost_it_will_raise"
         }
       ],
-      "missing_arms": [
-        "RESURRECT on a foe stain"
-      ],
+      "missing_arms": [],
       "note": [
         "Removed tests/unit/test_pack_lua_paths.cpp PackLuaCleric.resurrecting_a_friendly_corpse_restores_its_family: it runs with gameplay_fixes 0 (TestGameWorld default), so it takes the classic nearby_corpse path and never reaches corpses.lua."
       ]

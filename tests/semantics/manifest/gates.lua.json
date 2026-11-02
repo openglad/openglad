@@ -660,7 +660,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_bot_gates_lib.cpp",
@@ -671,11 +671,13 @@
           "file": "tests/unit/test_bot_gates_kits.cpp",
           "test": "GameplayFixesBots.elemental_starburst_wants_a_crowd_or_a_foe_behind",
           "note": "a 60 px gap straight below is inside the meteor ring only with FACE_DOWN scaled: 89 straight vs 56 diagonal"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_2.cpp",
+          "test": "SemGatesProbe.a_shot_flies_further_on_all_four_straight_headings_than_on_a_diagonal"
         }
       ],
-      "missing_arms": [
-        "straight heading FACE_LEFT"
-      ]
+      "missing_arms": []
     },
     {
       "id": "gates.lua:284",
@@ -970,16 +972,18 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_bot_gates_lib.cpp",
           "test": "BotGatesLib.owned_tests_the_order"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_2.cpp",
+          "test": "SemGatesProbe.owned_answers_zero_and_no_first_when_the_caster_owns_none"
         }
       ],
-      "missing_arms": [
-        "none: first"
-      ]
+      "missing_arms": []
     },
     {
       "id": "gates.lua:392",

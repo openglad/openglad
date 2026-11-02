@@ -26,17 +26,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_more.cpp",
           "test": "WalkerMore.walker_base_hooks_and_set_difficulty_scaling",
           "note": "difficulty>0 arm: world.difficulty=200 -> EXPECT_FLOAT_EQ 140 max_hitpoints / 60 mp / 18 damage on a team-1 subject; read through walker::set_difficulty, which calls the same query_difficulty_percent()"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_1.cpp",
+          "test": "SemWalker1.an_unset_difficulty_or_no_world_means_one_hundred_percent"
         }
       ],
-      "missing_arms": [
-        "world.difficulty <= 0 or no world"
-      ],
+      "missing_arms": [],
       "note": [
         "GAP: the <=0 / no-world fallback (100 percent) arm is asserted nowhere"
       ]
@@ -68,7 +70,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_core_more.cpp",
@@ -79,11 +81,13 @@
           "file": "tests/unit/test_sim_world_headless.cpp",
           "test": "SimWorldHeadless.generator_rate_default_keeps_rng_stream_identical",
           "note": "run(0)==run(100) on the per-tick rng_.state_ vector = <=0 arm"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_1.cpp",
+          "test": "SemWalker1.a_wild_generator_rate_runs_as_the_nearest_bound"
         }
       ],
-      "missing_arms": [
-        "generator_rate < 25 or > 400"
-      ],
+      "missing_arms": [],
       "note": [
         "GAP: the clamp arm (<25 / >400) is asserted nowhere; tests/unit/test_lobby_server.cpp clamps the LOBBY value (3/5000/0), not this sim clamp; tests/unit/test_modes_onslaught.cpp runs generator_rate 1000 but asserts only digest determinism"
       ]
@@ -129,7 +133,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_unit.cpp",
@@ -145,13 +149,13 @@
           "file": "tests/integration/test_walker_core_more.cpp",
           "test": "WalkerCoreMore.walker_act_generate_zero_vector_and_hp_cap_paths",
           "note": "non-living fall-through: a generator's init_fire sets enddir FACE_RIGHT and starts ANI_ATTACK with busy += fire_frequency, no turn"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_1.cpp",
+          "test": "SemWalker1.classic_a_living_facing_away_or_mid_turn_turns_instead_of_firing"
         }
       ],
-      "missing_arms": [
-        "living, requested facing != curdir, not ACT_CONTROL",
-        "living, requested facing == curdir but enddir != curdir (walk turn pending), ACT_CONTROL",
-        "living, requested facing == curdir but enddir != curdir (walk turn pending), not ACT_CONTROL"
-      ],
+      "missing_arms": [],
       "note": [
         "GAP: arm 2 (bot turn) is asserted ONLY by its return value everywhere (test_walker_combat.cpp:1973-1976 ASSERT_TRUE(r); test_walker_core_more.cpp:556): curdir advanced one step, no weapon and busy unchanged are never read",
         "GAP: arm 1 in test_walker_more.cpp:375, test_walker_combat.cpp:1969, test_walker_core_more.cpp:550/764 and test_coverage_misc is asserted by its return value only; only test_walker_unit reads enddir/curdir/busy",
@@ -239,7 +243,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_unit.cpp",
@@ -250,12 +254,13 @@
           "file": "tests/integration/test_walker_more.cpp",
           "test": "WalkerMore.walker_init_fire_and_fire_check_gate_branches",
           "note": "ANI_WALK arm: ANI_ATTACK, busy == fire_frequency"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_1.cpp",
+          "test": "SemWalker1.a_walker_in_another_animation_fires_at_once_and_pays_the_delay_either_way"
         }
       ],
-      "missing_arms": [
-        "ani_type != ANI_WALK and fire() succeeds",
-        "ani_type != ANI_WALK and fire() fails (mp < weapon_cost)"
-      ],
+      "missing_arms": [],
       "note": [
         "GAP: in the ANI_WALK arm 'no weapon in weaplist yet' and the mp-starved completion (no weapon ever, busy still charged) are not asserted",
         "GAP: the non-walk success arm (weapon appears this call) is asserted nowhere; the non-walk refusal is asserted only by !r (test_walker_combat.cpp:1997-2001, test_walker_core_more.cpp:574, test_coverage_misc.cpp:1240): busy == fire_frequency after the refusal is never read"
@@ -365,23 +370,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_stats_commands.cpp",
           "test": "StatsCommands.stats_do_command_quick_fire_walks_and_fires_in_one_tick",
           "note": "FACE_RIGHT arm through COMMAND_QUICK_FIRE -> fire(): EXPECT_FLOAT_EQ(arrow->stepsize(), arrow->lastx()) and EXPECT_FLOAT_EQ(-1.0f, arrow->lasty()), the waver under FixedRandom(1)"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_1.cpp",
+          "test": "SemWalker1.a_shot_flies_along_the_facing_with_its_waver_across_or_along_the_diagonal"
         }
       ],
-      "missing_arms": [
-        "FACE_LEFT",
-        "FACE_UP",
-        "FACE_DOWN",
-        "FACE_UP_RIGHT",
-        "FACE_UP_LEFT",
-        "FACE_DOWN_RIGHT",
-        "FACE_DOWN_LEFT"
-      ],
+      "missing_arms": [],
       "note": [
         "GAP: FACE_DOWN through fire() has only its forward component read (tests/integration/test_walker_movement.cpp TEST(WalkerMovement, walker_create_weapon_mage): ASSERT_FLOAT_EQ(stepsize, lasty); the lastx waver is unread); FACE_LEFT, FACE_UP and the four diagonals are never read off a fire()-launched weapon (only set_weapon_heading's twin table, walker.cpp:707, is asserted for all 8)"
       ]
@@ -413,17 +414,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_delayed_spawn_wake.cpp",
           "test": "DelayedSpawnWake.generator_pad_dormant_walker_survives",
           "note": "dormant arm: no spawn ever placed overlapping the dormant orc, the orc still exists, dormant, not dead; clear-pad generator half: spawned_livings > 0"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_1.cpp",
+          "test": "SemWalker1.a_livings_shot_flies_over_a_dormant_walker"
         }
       ],
-      "missing_arms": [
-        "living shooter (even over a dormant walker)"
-      ],
+      "missing_arms": [],
       "note": [
         "GAP: the living-shooter half of arm 2 (a living's projectile is NOT discarded over a dormant cell) is asserted nowhere"
       ]
@@ -461,7 +464,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "unreachable",
       "tests": [
         {
           "file": "tests/unit/test_quiet_probe.cpp",
@@ -477,6 +480,7 @@
         "pad blocked by a dead body"
       ],
       "note": [
+        "unreachable: a dead body never holds a pad (query_object_passable and ob_pass_check skip dead walkers, obmap.cpp:379); the only blocker that dies inside the probe is a keyed door, and a fresh weapon or generator spawn carries no keys",
         "GAP: arm 2's dead-body half (collide_ob dead -> no attack) is asserted nowhere; only the wall half is"
       ]
     },
@@ -511,13 +515,14 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": [
-        "attack succeeds, living",
-        "attack succeeds, generator",
-        "attack refused (friend/invulnerable)"
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sem_walker_1.cpp",
+          "test": "SemWalker1.a_landed_blow_clangs_and_a_living_attacker_lunges_and_runs_its_hook"
+        }
       ],
+      "missing_arms": [],
       "note": [
         "GAP: no test asserts attack_lunge == 1.0 / lunge angle or an on_melee_hit dispatch after a landed fire() melee, nor the generator (clang, no lunge) or refused (no clang) arms"
       ]
@@ -553,14 +558,14 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": [
-        "has myguy, pad blocked by a live LIVING body (hit lands or attack refused)",
-        "has myguy, pad blocked by a hostile live non-living body (generator / weapon / effect) that passes attack()'s guards",
-        "has myguy, pad blocked by a treasure or a friendly / invulnerable / invincible / hidden non-living body",
-        "no myguy"
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sem_walker_1.cpp",
+          "test": "SemWalker1.a_players_swing_at_a_body_counts_as_a_shot_except_a_generator_it_hits"
+        }
       ],
+      "missing_arms": [],
       "note": [
         "GAP: no test reads total_shots/scen_shots after a fire() melee swing"
       ]
@@ -590,7 +595,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_unit.cpp",
@@ -601,11 +606,13 @@
           "file": "tests/integration/test_walker_unit.cpp",
           "test": "WalkerUnit.fire_with_an_unbuildable_weapon_spends_no_magic",
           "note": "flag-clear arm: knife launches, weaplist +1"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_1.cpp",
+          "test": "SemWalker1.a_melee_only_walker_pays_for_a_shot_it_never_launches"
         }
       ],
-      "missing_arms": [
-        "BIT_NO_RANGED and pad clear"
-      ],
+      "missing_arms": [],
       "note": [
         "GAP: the BIT_NO_RANGED arm is asserted only by fire() == nullptr; the mp charge, the discarded weapon and total_shots unchanged are never read"
       ]
@@ -684,12 +691,14 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": [
-        "myguy and ranged launch",
-        "no myguy"
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sem_walker_1.cpp",
+          "test": "SemWalker1.every_launch_by_a_player_counts_as_a_shot"
+        }
       ],
+      "missing_arms": [],
       "note": [
         "GAP: no test reads total_shots/scen_shots after a ranged fire() (test_family_cleric.cpp:839 counts the cleric mace, which increments scen_shots in Lua, living-05-cleric.lua:147-148, not here)"
       ]
@@ -721,15 +730,18 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": [
-        "weapon descriptor present",
-        "no descriptor",
-        "generator spawn (weapon is a living)"
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sem_walker_1.cpp",
+          "test": "SemWalker1.classic_a_launch_sounds_by_its_weapon_family_number_spawns_included"
+        }
       ],
+      "missing_arms": [],
+      "issue": "#468",
       "note": [
-        "GAP: no test reads the sound id of a fire()-emitted PlaySound event"
+        "GAP: no test reads the sound id of a fire()-emitted PlaySound event",
+        "divergence #468 (every positional sound emitted off screen) not pinned; sound ids asserted with an on-screen visibility test; the null-descriptor fwip is unreachable with the core pack (every living family number has a weapon slot)"
       ]
     },
     {
@@ -761,7 +773,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "unreachable",
       "tests": [
         {
           "file": "tests/unit/test_difficulty_scaling.cpp",
@@ -778,6 +790,7 @@
         "generator without descriptor"
       ],
       "note": [
+        "current: a generator with no descriptor spawns as add_ob made it (no level roll, no lifetime); the old game's fire() switch default treats any unknown generator as a tent (lifetime 800+11L, level roll, set_difficulty); test not written | triage: Unreachable. require_core_families_installed throws when any core generator slot is undeclared (family_registry.cpp:115-140 at e12043db). A mod generator slot gets graphics only through its own descriptor (gloader.cpp:686-693), so create_walker_owned refuses a descriptor-less slot ('No valid graphic",
         "GAP: a single roll is checked, so 'both ends 1 and gen level are reachable' is not pinned; the no-descriptor arm is asserted nowhere (every core generator family has a descriptor, so it needs a pack generator family without one)"
       ]
     },
@@ -804,7 +817,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_core_more.cpp",
@@ -815,11 +828,13 @@
           "file": "tests/integration/test_walker_unit.cpp",
           "test": "WalkerUnit.walker_r15_generator_fire_and_heading_branches",
           "note": "tower spawn ani_type == ANI_TELE_IN"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_1.cpp",
+          "test": "SemWalker1.a_tent_spawn_walks_in_for_a_while_and_tower_and_treehouse_spawns_stay"
         }
       ],
-      "missing_arms": [
-        "unset (tent)"
-      ],
+      "missing_arms": [],
       "note": [
         "GAP: the tent (spawn_ani_type unset) arm's ani_type is never read"
       ]
@@ -847,17 +862,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_gameplay_fixes_charm.cpp",
           "test": "GameplayFixesCharm.a_charmed_tent_troop_fights_for_its_charmer",
           "note": "has_lifetime arm: CharmScene's level-1 FAMILY_TENT tent->fire() spawn, ASSERT_EQ(811, troop->lifetime()) = 800 + 11 x level"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_1.cpp",
+          "test": "SemWalker1.a_tent_spawn_walks_in_for_a_while_and_tower_and_treehouse_spawns_stay"
         }
       ],
-      "missing_arms": [
-        "no lifetime (tower, treehouse)"
-      ],
+      "missing_arms": [],
       "note": [
         "GAP: the no-lifetime arm (tower/treehouse spawn lifetime 0) is never read; test_walker_core_more's tent check is lifetime() >= 800 only"
       ]
@@ -1125,7 +1142,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_core_more.cpp",
@@ -1166,15 +1183,13 @@
           "file": "tests/integration/test_walker_movement.cpp",
           "test": "WalkerMovement.walker_draw_with_invisibility",
           "note": "lines 478-500: from 0+invis -> team colour; team colour holds; -> FLYING; FLYING+invis -> team colour; team colour+invuln -> INV"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_1.cpp",
+          "test": "SemWalker1.a_walkers_outline_steps_through_its_statuses_and_names_only_to_enemies"
         }
       ],
-      "missing_arms": [
-        "outline INVULNERABLE, not flying, not named-shown, not invisible",
-        "other (0), named enemy viewer",
-        "no viewer",
-        "outline NAMED, only BIT_NAMED (no invisibility, invulnerability or flight), any viewer",
-        "outline FLYING, flight expired, only BIT_NAMED, same-team viewer"
-      ],
+      "missing_arms": [],
       "note": [
         "tests/integration/test_walker_death.cpp: TEST(WalkerDeath, walker_compute_outline_flying / _invisible / _invulnerable) (from 0: FLYING / team colour 40 / INV)",
         "GAP: unasserted: INVULNERABLE with nothing else stays INVULNERABLE; from 0 the NAMED (enemy viewer) sub-arm; the no-viewer half of 'named never chosen' (only the same-team half is pinned); NAMED-only stays NAMED; FLYING-expired+NAMED with a same-team viewer stays FLYING"
@@ -1207,7 +1222,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_core_more.cpp",
@@ -1218,11 +1233,13 @@
           "file": "tests/integration/test_walker_unit.cpp",
           "test": "WalkerUnit.walker_r11_fire_query_next_to_and_outline_branches",
           "note": "block 4: same-team user 0, mark false -> 0, mark true -> team colour"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_1.cpp",
+          "test": "SemWalker1.the_networked_teammate_marker_skips_bots_and_enemies"
         }
       ],
-      "missing_arms": [
-        "bot / enemy"
-      ],
+      "missing_arms": [],
       "note": [
         "GAP: the bot (user() == -1) and enemy-team halves of arm 2 are never run with mark_player_controls = true"
       ]
@@ -1262,17 +1279,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_coverage_misc.cpp",
           "test": "CoverageMisc.coverage_r18_walker_act_decay_cleanup_and_guard_branches",
           "note": "plain walker: dead foe, leader and owner -> all three null after one act()"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_1.cpp",
+          "test": "SemWalker1.a_walker_keeps_its_living_foe_leader_and_owner"
         }
       ],
-      "missing_arms": [
-        "alive"
-      ],
+      "missing_arms": [],
       "note": [
         "NOTE: walker::act is shadowed by living::act (living.cpp:61, no call back into walker::act), weap::act, effect::act and treasure::act; only a plain `walker` object (Order::Generator in play; the r11/r14/r15/WalkerFixture/MovementFixture test fixtures build plain walkers) runs this code. Tests whose actor is a loader-built living (make_guy / make_living / create_living / world.add_ob(Order::Living)) exercise living.cpp's twin, not this row.",
         "GAP: the 'alive -> links kept' arm is never read back after act()"
@@ -1301,12 +1320,14 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": [
-        "animating",
-        "walking"
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sem_walker_1.cpp",
+          "test": "SemWalker1.an_animating_walker_only_advances_its_animation"
+        }
       ],
+      "missing_arms": [],
       "note": [
         "GAP: no test asserts busy/frozen_delay/command queue untouched while a plain walker animates",
         "NOTE: walker::act is shadowed by living::act (living.cpp:61, no call back into walker::act), weap::act, effect::act and treasure::act; only a plain `walker` object (Order::Generator in play; the r11/r14/r15/WalkerFixture/MovementFixture test fixtures build plain walkers) runs this code. Tests whose actor is a loader-built living (make_guy / make_living / create_living / world.add_ob(Order::Living)) exercise living.cpp's twin, not this row."
@@ -1376,7 +1397,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_unit.cpp",
@@ -1387,11 +1408,13 @@
           "file": "tests/integration/test_walker_unit.cpp",
           "test": "WalkerUnit.walker_r14_lines_518_557_563_602_607_outline_and_act_counters",
           "note": "busy 1 -> 0"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_1.cpp",
+          "test": "SemWalker1.classic_the_fire_delay_drains_only_while_positive_and_is_not_clamped"
         }
       ],
-      "missing_arms": [
-        "busy <= 0"
-      ],
+      "missing_arms": [],
       "note": [
         "NOTE: walker::act is shadowed by living::act (living.cpp:61, no call back into walker::act), weap::act, effect::act and treasure::act; only a plain `walker` object (Order::Generator in play; the r11/r14/r15/WalkerFixture/MovementFixture test fixtures build plain walkers) runs this code. Tests whose actor is a loader-built living (make_guy / make_living / create_living / world.add_ob(Order::Living)) exercise living.cpp's twin, not this row.",
         "GAP: the busy <= 0 arm (no change) is never read after an act()"
@@ -1422,17 +1445,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_unit.cpp",
           "test": "WalkerUnit.walker_r11_act_and_animate_extra_cases",
           "note": "no-command arm: after clear_command() an unfrozen act decays lunge 1.0 -> 0.6 and recoil 1.0 -> 0.4"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_1.cpp",
+          "test": "SemWalker1.an_order_that_runs_takes_the_whole_tick"
         }
       ],
-      "missing_arms": [
-        "command ran and returned nonzero"
-      ],
+      "missing_arms": [],
       "note": [
         "NOTE: walker::act is shadowed by living::act (living.cpp:61, no call back into walker::act), weap::act, effect::act and treasure::act; only a plain `walker` object (Order::Generator in play; the r11/r14/r15/WalkerFixture/MovementFixture test fixtures build plain walkers) runs this code. Tests whose actor is a loader-built living (make_guy / make_living / create_living / world.add_ob(Order::Living)) exercise living.cpp's twin, not this row.",
         "GAP: the command-consumed arm is asserted nowhere. test_walker_core_more.cpp walker_round13_act_command_short_circuit_and_switch_paths_625_707 asserts only ASSERT_TRUE(actor->act()) after queuing COMMAND_WALK with lunge/recoil 1.0 (return value only; decay-skipped and act_type-arm-skipped are unasserted), and its actor is world.add_ob(Order::Living), i.e. living::act at living.cpp:314, so it does not reach this line at all"
@@ -1538,7 +1563,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_unit.cpp",
@@ -1559,12 +1584,13 @@
           "file": "tests/integration/test_walker_unit.cpp",
           "test": "WalkerUnit.walker_reset_compute_outline_and_act_paths",
           "note": "ACT_DIE on a plain walker: dead() == 1"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_1.cpp",
+          "test": "SemWalker1.a_controlled_or_unknown_act_type_does_nothing_on_its_own"
         }
       ],
-      "missing_arms": [
-        "ACT_CONTROL",
-        "unknown"
-      ],
+      "missing_arms": [],
       "note": [
         "NOTE: walker::act is shadowed by living::act (living.cpp:61, no call back into walker::act), weap::act, effect::act and treasure::act; only a plain `walker` object (Order::Generator in play; the r11/r14/r15/WalkerFixture/MovementFixture test fixtures build plain walkers) runs this code. Tests whose actor is a loader-built living (make_guy / make_living / create_living / world.add_ob(Order::Living)) exercise living.cpp's twin, not this row.",
         "GAP: ACT_CONTROL is asserted only by its return value (r11 :740, coverage_r18); the unknown-act-type arm is never run on a plain walker (test_walker_core_more.cpp round13 sets 99 on a living)"
@@ -1601,7 +1627,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_unit.cpp",
@@ -1612,11 +1638,13 @@
           "file": "tests/integration/test_walker_core_more.cpp",
           "test": "WalkerCoreMore.walker_round7b_base_act_guard_random_and_death_paths",
           "note": "generator, rng {0,1,7}: next(20) != 0 routes to walker::act_random -> COMMAND_FIRE with the foe delta 16/0, enddir FACE_RIGHT, ANI_ATTACK"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_1.cpp",
+          "test": "SemWalker1.a_roaming_walker_that_casts_on_its_wander_tick_does_not_wander"
         }
       ],
-      "missing_arms": [
-        "rng(4)==0 and rng(20)==0, special succeeds"
-      ],
+      "missing_arms": [],
       "note": [
         "NOTE: walker::act is shadowed by living::act (living.cpp:61, no call back into walker::act), weap::act, effect::act and treasure::act; only a plain `walker` object (Order::Generator in play; the r11/r14/r15/WalkerFixture/MovementFixture test fixtures build plain walkers) runs this code. Tests whose actor is a loader-built living (make_guy / make_living / create_living / world.add_ob(Order::Living)) exercise living.cpp's twin, not this row.",
         "GAP: the special-succeeds arm is asserted nowhere"
@@ -1653,7 +1681,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_core_more.cpp",
@@ -1669,11 +1697,13 @@
           "file": "tests/integration/test_walker_core_more.cpp",
           "test": "WalkerCoreMore.walker_round16_act_random_no_foe_far_search_fallback_path",
           "note": "no foe anywhere: ASSERT_TRUE(act()) and foe() == nullptr; the 'no command queued' component, the one that tells idling apart from the SEARCH arms, is never read, so the arm stays missing"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_1.cpp",
+          "test": "SemWalker1.a_roaming_walker_with_nobody_to_hunt_idles"
         }
       ],
-      "missing_arms": [
-        "no foe anywhere"
-      ],
+      "missing_arms": [],
       "note": [
         "NOTE: walker::act is shadowed by living::act (living.cpp:61, no call back into walker::act), weap::act, effect::act and treasure::act; only a plain `walker` object (Order::Generator in play; the r11/r14/r15/WalkerFixture/MovementFixture test fixtures build plain walkers) runs this code. Tests whose actor is a loader-built living (make_guy / make_living / create_living / world.add_ob(Order::Living)) exercise living.cpp's twin, not this row.",
         "GAP: 'no foe anywhere' is asserted only by foe() == nullptr and the return value (round16); the empty command queue (stats()->commands.empty()) is never read, and that is the component that distinguishes this arm from the two COMMAND_SEARCH arms. The nearest-of-two choice belongs to find_nearest_foe and is not asserted here either"
@@ -1842,7 +1872,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_specials.cpp",
@@ -1863,11 +1893,13 @@
           "file": "tests/integration/test_walker_core_more.cpp",
           "test": "WalkerCoreMore.walker_round18_animate_teleport_and_skelgrow_completion_paths",
           "note": "mage: ANI_TELE_IN"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_1.cpp",
+          "test": "SemWalker1.a_refused_teleport_leaves_the_walker_walking_where_it_stood"
         }
       ],
-      "missing_arms": [
-        "handler present but returns false (teleport refused / no spot)"
-      ],
+      "missing_arms": [],
       "note": [
         "tests/integration/test_family_behaviors.cpp: TEST(FamilyBehaviors, mage_handle_teleport / skeleton_handle_teleport) (ANI_TELE_IN)",
         "GAP: a handler that returns false (teleport refused / no spot) is asserted nowhere"
@@ -1902,7 +1934,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "parity": "special_slime_1_scen99",
@@ -1916,11 +1948,13 @@
           "file": "tests/integration/test_walker_unit.cpp",
           "test": "WalkerUnit.walker_r14_lines_769_771_817_823_827_834_teleport_and_ani_complete_paths",
           "note": "no-hook half: a soldier completing SKEL_GROW reaches on_ani_complete with no hook -> returns true, ANI_WALK, cycle 0"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_1.cpp",
+          "test": "SemWalker1.an_animation_the_hook_declines_returns_the_walker_to_walking"
         }
       ],
-      "missing_arms": [
-        "hook registered but declines (returns false)"
-      ],
+      "missing_arms": [],
       "note": [
         "GAP: the 'hook declines' half (a registered on_ani_complete that returns false) is asserted nowhere; tests/unit/test_script_hooks.cpp:1454 asserts only on_ani_complete(none) is nullopt, not the walker outcome"
       ]
@@ -1958,7 +1992,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_sim_input_handler.cpp",
@@ -1969,11 +2003,17 @@
           "file": "tests/integration/test_sim_input_unit.cpp",
           "test": "SimInputUnit.sim_input_r11_animate_movement_and_bit_animate_paths",
           "note": "wrap arm: 3-frame row, cycle 0 -> 1 -> 2 -> 0 at the sentinel"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_1.cpp",
+          "test": "SemWalker1.the_walk_frame_helper_leaves_a_walker_without_a_walk_row_alone"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_1.cpp",
+          "test": "SemWalker1.classic_a_walk_step_during_an_attack_uses_the_walk_row"
         }
       ],
-      "missing_arms": [
-        "no animation table / facing out of range / null row (defensive)"
-      ],
+      "missing_arms": [],
       "note": [
         "GAP: the defensive arm (no table / facing out of range / null row -> false, cycle and frame untouched) is asserted nowhere; the walk-during-ANI_ATTACK interaction in the semantic is unasserted"
       ]
@@ -2083,7 +2123,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "unreachable",
       "tests": [
         {
           "file": "tests/integration/test_walker_more.cpp",
@@ -2100,6 +2140,7 @@
         "non-living shooter"
       ],
       "note": [
+        "unreachable: create_weapon sends generators down their own path and only livings and generators call fire()/fire_check(); no stock path has a weapon, effect or treasure create a shot, so the non-living arm of finalize_weapon_profile is never reached",
         "GAP: the non-living arm (no hook) is asserted nowhere"
       ]
     },
@@ -2130,7 +2171,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_modes_soccer.cpp",
@@ -2146,11 +2187,13 @@
           "file": "tests/unit/test_modes_soccer.cpp",
           "test": "ModesSoccer.recovery_range_matches_every_ranged_core_class_profile",
           "note": "plain families: prospective == actual reach; hooked: 0"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_2.cpp",
+          "test": "SemWalker2.a_family_with_no_descriptor_has_no_predictable_reach"
         }
       ],
-      "missing_arms": [
-        "no family descriptor"
-      ],
+      "missing_arms": [],
       "note": [
         "GAP: the no-descriptor half of arm 1 is asserted nowhere (the every-class test asserts every core family HAS a descriptor)"
       ]
@@ -2230,18 +2273,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_modes_water_stationarity.cpp",
           "test": "ModesWaterRealCampaign.the_shoreline_veto_bends_for_flight_and_refuses_unreachable_objectives",
           "note": "flight_left 60 -> EXPECT_TRUE(can_approach_weapon_range) across the bay, lines 1042-1043; BIT_ETHEREAL -> EXPECT_TRUE, 1050-1051; plain walker -> ASSERT_FALSE, 1038/1045"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_2.cpp",
+          "test": "SemWalker2.water_stops_a_planned_approach_except_for_fliers_and_swimmers"
         }
       ],
-      "missing_arms": [
-        "BIT_FLYING family flag",
-        "swimming"
-      ],
+      "missing_arms": [],
       "note": [
         "GAP: the BIT_FLYING family-flag half of the flying arm and the BIT_SWIMMING arm are asserted nowhere"
       ]
@@ -2279,7 +2323,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_modes_soccer.cpp",
@@ -2300,11 +2344,13 @@
           "file": "tests/unit/test_modes_soccer.cpp",
           "test": "ModesSoccer.recovery_range_probe_never_touches_the_world_obmap",
           "note": "archer cardinal 154; obmap untouched"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_2.cpp",
+          "test": "SemWalker2.only_a_living_in_a_world_has_a_predictable_reach"
         }
       ],
-      "missing_arms": [
-        "non-living / no stats / no world"
-      ],
+      "missing_arms": [],
       "note": [
         "GAP: the non-living arm (query_order() != Living -> false) and its defensive twins (stats_ null, no world) are asserted nowhere"
       ]
@@ -2356,21 +2402,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_modes_water_stationarity.cpp",
           "test": "ModesWaterRealCampaign.the_shoreline_veto_bends_for_flight_and_refuses_unreachable_objectives",
           "note": "dead ball -> EXPECT_FALSE; ball one floor up -> EXPECT_FALSE; each restored -> true, which is the 'otherwise' arm"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_2.cpp",
+          "test": "SemWalker2.a_bot_plans_no_shot_at_an_absent_dormant_or_hidden_objective"
         }
       ],
-      "missing_arms": [
-        "objective null",
-        "objective dormant",
-        "objective hidden",
-        "self not living",
-        "no world (defensive)"
-      ],
+      "missing_arms": [],
       "note": [
         "GAP: the null-objective, dormant, hidden, self-not-living and no-world disqualifiers are asserted nowhere"
       ]
@@ -2404,13 +2448,14 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": [
-        "|dx| > 3|dy|",
-        "|dy| > 3|dx|",
-        "else"
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sem_walker_2.cpp",
+          "test": "SemWalker2.a_planned_approach_goes_straight_past_three_to_one_and_diagonal_otherwise"
+        }
       ],
+      "missing_arms": [],
       "note": [
         "GAP: no test isolates the 3:1 straight-vs-diagonal approach choice; the soccer/water tests assert only end-to-end true/false on approaches whose axis is not controlled"
       ]
@@ -2446,7 +2491,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_modes_soccer.cpp",
@@ -2457,12 +2502,13 @@
           "file": "tests/unit/test_modes_soccer.cpp",
           "test": "ModesSoccer.recovery_range_distinguishes_invalid_from_valid_zero_profiles",
           "note": "unbuildable profile -> false"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_2.cpp",
+          "test": "SemWalker2.a_planned_shot_uses_the_cardinal_or_diagonal_profile_of_its_heading"
         }
       ],
-      "missing_arms": [
-        "cardinal heading",
-        "diagonal heading"
-      ],
+      "missing_arms": [],
       "note": [
         "GAP: which reach (cardinal vs diagonal) is compared on a given heading is asserted nowhere"
       ]
@@ -2571,7 +2617,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_modes_water_stationarity.cpp",
@@ -2582,11 +2628,13 @@
           "file": "tests/unit/test_modes_water_stationarity.cpp",
           "test": "ModesWaterRealCampaign.causeway_recovery_selects_reachable_archer_and_shoots_from_dry_land",
           "note": "EXPECT_FALSE for the knife carrier = veto"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_2.cpp",
+          "test": "SemWalker2.a_planned_approach_creeps_one_pixel_to_the_shoreline"
         }
       ],
-      "missing_arms": [
-        "full step wet, one-pixel step dry"
-      ]
+      "missing_arms": []
     },
     {
       "id": "walker.cpp:1386",
@@ -2619,7 +2667,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_core_more.cpp",
@@ -2642,12 +2690,13 @@
           "file": "tests/integration/test_walker_more.cpp",
           "test": "WalkerMore.walker_create_weapon_myguy_branch_vs_level_branch_and_cardinal_scaling",
           "note": "living arm: owner == shooter and team asserted only"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_2.cpp",
+          "test": "SemWalker2.a_living_shoots_its_current_weapon_scaled_by_its_heading"
         }
       ],
-      "missing_arms": [
-        "living/other: order and family",
-        "living/other: heading"
-      ]
+      "missing_arms": []
     },
     {
       "id": "walker.cpp:1416",
@@ -2698,7 +2747,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "unreachable",
       "tests": [
         {
           "file": "tests/integration/test_walker_core_more.cpp",
@@ -2719,6 +2768,9 @@
       "missing_arms": [
         "lastx<0",
         "lastx==0"
+      ],
+      "note": [
+        "unreachable: nothing in src/, packs/ or campaigns/ calls walker::query_next_to (tests only); the lastx<0 and lastx==0 probes have no game observable"
       ]
     },
     {
@@ -2748,7 +2800,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_core_more.cpp",
@@ -2774,11 +2826,13 @@
           "file": "tests/integration/test_walker_core_more.cpp",
           "test": "WalkerCoreMore.walker_round7b_base_act_guard_random_and_death_paths",
           "note": "generator with BIT_NO_RANGED: ASSERT_TRUE(fire_check(16,0)) -- return arm"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_2.cpp",
+          "test": "SemWalker2.a_generator_always_passes_fire_check_without_building_a_probe"
         }
       ],
-      "missing_arms": [
-        "generator: no probe weapon, denial None"
-      ]
+      "missing_arms": []
     },
     {
       "id": "walker.cpp:1467",
@@ -2840,7 +2894,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_modes_soccer.cpp",
@@ -2851,11 +2905,13 @@
           "file": "tests/integration/test_walker_combat.cpp",
           "test": "WalkerCombat.walker_fire_check_all_dirs",
           "note": "foe within reach reaches the Facing gate"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_2.cpp",
+          "test": "SemWalker2.a_foe_beyond_reach_is_out_of_range_before_any_other_denial"
         }
       ],
-      "missing_arms": [
-        "foe beyond reach, shooter NO_RANGED or mana-short"
-      ]
+      "missing_arms": []
     },
     {
       "id": "walker.cpp:1489",
@@ -2884,7 +2940,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_more.cpp",
@@ -2895,11 +2951,13 @@
           "file": "tests/integration/test_walker_core_more.cpp",
           "test": "WalkerCoreMore.walker_round17_query_next_to_and_fire_check_early_branches",
           "note": "BIT_NO_RANGED: ASSERT_TRUE(!fire_check(1,0)) -- return arm"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_2.cpp",
+          "test": "SemWalker2.a_no_ranged_shooter_is_denied_no_ranged_with_its_foe_in_reach"
         }
       ],
-      "missing_arms": [
-        "NO_RANGED set, foe in reach: denial"
-      ]
+      "missing_arms": []
     },
     {
       "id": "walker.cpp:1496",
@@ -2928,17 +2986,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_more.cpp",
           "test": "WalkerMore.walker_init_fire_and_fire_check_gate_branches",
           "note": "(weapon_cost 9999 / mp 0: ASSERT_TRUE(!fire_check(1,0)); affordable arm continues to the facing denial and the positive control). No test anywhere asserts FireCheckDenial::NoMagic."
+        },
+        {
+          "file": "tests/unit/test_sem_walker_2.cpp",
+          "test": "SemWalker2.a_shot_costing_more_than_the_magic_left_is_denied_no_magic"
         }
       ],
-      "missing_arms": [
-        "weapon_cost > mp: denial"
-      ]
+      "missing_arms": []
     },
     {
       "id": "walker.cpp:1504",
@@ -3056,17 +3116,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_modes_soccer.cpp",
           "test": "ModesSoccer.fire_check_targets_only_live_hostile_ignored_foes",
           "note": "eligible ball true; friendly/dead/dormant/other-floor -> RayMiss; ordinary enemy true"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_2.cpp",
+          "test": "SemWalker2.a_hidden_ignored_foe_is_not_hit_by_the_fire_check_ray"
         }
       ],
-      "missing_arms": [
-        "foe ignored but hidden"
-      ]
+      "missing_arms": []
     },
     {
       "id": "walker.cpp:1544",
@@ -3142,7 +3204,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_core_more.cpp",
@@ -3157,12 +3219,13 @@
           "file": "tests/integration/test_walker_core_more.cpp",
           "test": "WalkerCoreMore.walker_act_generate_zero_vector_and_hp_cap_paths",
           "note": "a successful roll fires init_fire"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_2.cpp",
+          "test": "SemWalker2.a_failed_emission_roll_still_draws_twice_and_a_full_world_draws_none"
         }
       ],
-      "missing_arms": [
-        "roll fails: RNG",
-        "living_count >= MAXOBS"
-      ]
+      "missing_arms": []
     },
     {
       "id": "walker.cpp:1584",
@@ -3187,17 +3250,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_core_more.cpp",
           "test": "WalkerCoreMore.walker_act_generate_zero_vector_and_hp_cap_paths",
           "note": "zero vector -> lastx 1, lasty 0, FACE_RIGHT"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_2.cpp",
+          "test": "SemWalker2.a_generator_emits_in_the_direction_it_rolled"
         }
       ],
-      "missing_arms": [
-        "any non-zero axis"
-      ]
+      "missing_arms": []
     },
     {
       "id": "walker.cpp:1590",
@@ -3271,13 +3336,14 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": [
-        "vz or worldz non-zero",
-        "worldz would go below 0",
-        "flat weapon"
-      ]
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sem_walker_2.cpp",
+          "test": "SemWalker2.a_lobbed_rock_arcs_lands_and_then_stays_on_the_ground"
+        }
+      ],
+      "missing_arms": []
     },
     {
       "id": "walker.cpp:1615",
@@ -3326,19 +3392,23 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_zaxis.cpp",
           "test": "ZAxis.a_projectile_over_air_drops_a_floor_and_dies_on_the_lowest_one",
           "note": "KNIFE faller floor 1->0 alive, diver dead on floor 0, solid-ground flier control floor 0 alive; the faller's worldz was already 0, so the reset is not observed"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_2.cpp",
+          "test": "SemWalker2.only_a_droppable_shot_falls_through_air_and_lands_at_height_0"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_2.cpp",
+          "test": "SemWalker2.a_single_floor_level_drops_no_shot_through_an_air_tile"
         }
       ],
-      "missing_arms": [
-        "droppable weapon centre over air, floor > 0: worldz",
-        "non-droppable family over air",
-        "single-floor level"
-      ]
+      "missing_arms": []
     },
     {
       "id": "walker.cpp:1642",
@@ -3367,7 +3437,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_combat.cpp",
@@ -3391,11 +3461,13 @@
         {
           "parity": "weapon_knife_emission_scen99",
           "fact": "WeaponSpeed(FAMILY_KNIFE,600,800) (an in-range projectile walks each tick)"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_2.cpp",
+          "test": "SemWalker2.a_spent_projectile_dies_without_taking_its_step"
         }
       ],
-      "missing_arms": [
-        "lineofsight was 0: no walk"
-      ]
+      "missing_arms": []
     },
     {
       "id": "walker.cpp:1647",
@@ -3430,7 +3502,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_more.cpp",
@@ -3441,12 +3513,13 @@
           "file": "tests/integration/test_walker_combat.cpp",
           "test": "WalkerCombat.walker_act_with_commands",
           "note": "NO_COLLIDE projectile overlapping a target attacks it; immortal one hits again"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_2.cpp",
+          "test": "SemWalker2.a_shot_stopped_by_a_wall_or_a_corpse_strikes_nothing"
         }
       ],
-      "missing_arms": [
-        "walk blocked by a wall",
-        "walk blocked by a dead body"
-      ]
+      "missing_arms": []
     },
     {
       "id": "walker.cpp:1654",
@@ -3519,7 +3592,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_core_more.cpp",
@@ -3535,12 +3608,13 @@
           "file": "tests/integration/test_walker_combat.cpp",
           "test": "WalkerCombat.walker_act_with_commands",
           "note": "living ACT_GUARD in an empty world: ASSERT_EQ(nullptr, foe()) and ASSERT_FALSE(has_commands()) -- no-foe command arm; act_guard's return value is dropped by the act() switch, so it is not an observable"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_2.cpp",
+          "test": "SemWalker2.a_guard_draws_once_for_its_fire_command_and_never_without_a_foe"
         }
       ],
-      "missing_arms": [
-        "a foe exists anywhere: RNG",
-        "no foe: RNG"
-      ]
+      "missing_arms": []
     },
     {
       "id": "walker.cpp:1688",
@@ -3649,7 +3723,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_combat.cpp",
@@ -3660,11 +3734,13 @@
           "file": "tests/integration/test_walker_combat.cpp",
           "test": "WalkerCombat.walker_act_with_commands",
           "note": "base ACT_RANDOM generator acquires its foe"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_2.cpp",
+          "test": "SemWalker2.a_wandering_walker_keeps_its_foe_unless_the_one_in_seventy_roll_hits"
         }
       ],
-      "missing_arms": [
-        "otherwise"
-      ]
+      "missing_arms": []
     },
     {
       "id": "walker.cpp:1738",
@@ -3689,12 +3765,14 @@
         }
       ],
       "setting": "none",
-      "status": "none",
-      "tests": [],
-      "missing_arms": [
-        "no hostile exists",
-        "foe exists"
-      ]
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sem_walker_2.cpp",
+          "test": "SemWalker2.a_wandering_walker_with_no_foe_queues_a_twenty_tick_random_walk"
+        }
+      ],
+      "missing_arms": []
     },
     {
       "id": "walker.cpp:1745",
@@ -3721,17 +3799,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_core_more.cpp",
           "test": "WalkerCoreMore.walker_round7b_base_act_guard_random_and_death_paths",
           "note": "base generator in range: COMMAND_FIRE com1 16 com2 0, enddir FACE_RIGHT, ANI_ATTACK"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_2.cpp",
+          "test": "SemWalker2.a_wandering_walker_steps_toward_a_foe_outside_its_firing_box"
         }
       ],
-      "missing_arms": [
-        "in box but fire_check false / out of box"
-      ]
+      "missing_arms": []
     },
     {
       "id": "walker.cpp:1758",
@@ -3762,12 +3842,14 @@
         }
       ],
       "setting": "none",
-      "status": "none",
-      "tests": [],
-      "missing_arms": [
-        "foe east/west/aligned",
-        "foe south/north/aligned"
-      ]
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sem_walker_2.cpp",
+          "test": "SemWalker2.a_wandering_walker_steps_toward_a_foe_outside_its_firing_box"
+        }
+      ],
+      "missing_arms": []
     },
     {
       "id": "walker.cpp:1783",
@@ -3802,7 +3884,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_combat.cpp",
@@ -3813,11 +3895,13 @@
           "file": "tests/integration/test_walker_specials.cpp",
           "test": "WalkerSpecials.small_slime_grow_drives_simulation",
           "note": "grow gate on spaces_clear"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_2.cpp",
+          "test": "SemWalker2.a_neighbour_spot_blocked_by_a_wall_or_a_body_is_not_clear"
         }
       ],
-      "missing_arms": [
-        "neighbour blocked by wall or body"
-      ]
+      "missing_arms": []
     },
     {
       "id": "walker.cpp:1818",
@@ -3858,7 +3942,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_combat.cpp",
@@ -3869,14 +3953,13 @@
           "file": "tests/integration/test_walker_combat.cpp",
           "test": "WalkerCombat.walker_transfer_stats_with_guy",
           "note": "b->myguy != nullptr only"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_2.cpp",
+          "test": "SemWalker2.transferred_stats_copy_the_character_halve_magic_regen_and_keep_the_freeze"
         }
       ],
-      "missing_arms": [
-        "source has myguy: fresh copy",
-        "no myguy",
-        "always: magic_per_round",
-        "always: frozen_delay"
-      ]
+      "missing_arms": []
     },
     {
       "id": "walker.cpp:1838",
@@ -3911,19 +3994,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_combat.cpp",
           "test": "WalkerCombat.walker_transform_to_same_order",
           "note": "same-order act_type kept"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_2.cpp",
+          "test": "SemWalker2.a_transform_keeps_the_centre_resets_the_flags_and_takes_a_new_orders_act"
         }
       ],
-      "missing_arms": [
-        "different order",
-        "always: centre",
-        "always: bit flags"
-      ]
+      "missing_arms": []
     },
     {
       "id": "walker.cpp:1895",
@@ -4115,7 +4198,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_unit.cpp",
@@ -4151,13 +4234,21 @@
           "file": "tests/unit/test_npc_scenario_flags.cpp",
           "test": "SaveAllScoping.foreign_color_company_hero_death_does_not_fail_mission",
           "note": "0"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_2.cpp",
+          "test": "SemWalker2.a_mission_losing_death_leaves_no_corpse_and_any_other_leaves_one"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_2.cpp",
+          "test": "SemWalker2.a_named_team_0_death_off_a_save_all_level_is_an_ordinary_death"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_2.cpp",
+          "test": "SemWalker2.a_mission_losing_death_skips_the_level_death_hook_and_any_other_runs_it"
         }
       ],
-      "missing_arms": [
-        "protected death on SAVE_ALL level: corpse suppressed",
-        "unnamed, summoned, charmed foe, foreign colour, or unflagged when flags exist: corpse",
-        "non-SAVE_ALL level"
-      ],
+      "missing_arms": [],
       "note": [
         "Compound arm split (fixer policy): each sub-observable is its own arm so an unpinned tail is a visible gap. No test kills a named team-0 walker on a non-SAVE_ALL level and asserts zero EndGame; no test checks the corpse is absent on the mission-loss path or present on the exempt path."
       ]
@@ -4252,7 +4343,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "deferred",
       "tests": [
         {
           "file": "tests/unit/test_sim_world_headless.cpp",
@@ -4283,8 +4374,9 @@
       "missing_arms": [
         "generator dies: sound"
       ],
+      "issue": "#445",
       "note": [
-        "Compound arm split (fixer policy): each sub-observable is its own arm so an unpinned tail is a visible gap. No test counts SOUND_EXPLODE on a generator death (grep: SOUND_EXPLODE appears only in test_kit_captain.cpp, a different path)."
+        "divergence: generator death emits 4 SOUND_EXPLODE through the unconditional emit_sound; the old game played them only when the generator was on_screen() (current game has emit_positional_sound for exactly that, unused here)"
       ]
     },
     {
@@ -4322,7 +4414,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_npc_scenario_flags.cpp",
@@ -4332,12 +4424,13 @@
         {
           "file": "tests/unit/test_npc_scenario_flags.cpp",
           "test": "NpcScenarioFlags.repositioning_a_dormant_walker_keeps_it_unregistered"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_2.cpp",
+          "test": "SemWalker2.waking_an_ignored_walker_keeps_it_out_and_a_repeat_changes_nothing"
         }
       ],
-      "missing_arms": [
-        "wake, ignored",
-        "same value"
-      ]
+      "missing_arms": []
     },
     {
       "id": "walker.cpp:2104",
@@ -4376,7 +4469,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_zaxis.cpp",
@@ -4392,13 +4485,13 @@
           "file": "tests/unit/test_kit_seams_hidden.cpp",
           "test": "KitSeams.hidden_walker_is_inert_and_skipped_by_every_finder",
           "note": "hidden: EXPECT_FALSE(in_obmap) after change_floor(1), change_floor(0)"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_2.cpp",
+          "test": "SemWalker2.a_floor_change_lands_at_height_0_leaves_the_old_floor_and_same_floor_is_a_no_op"
         }
       ],
-      "missing_arms": [
-        "different floor, visible: worldz",
-        "different floor, visible: leaves old floor",
-        "same floor"
-      ],
+      "missing_arms": [],
       "note": [
         "Compound arm split (fixer policy): each sub-observable is its own arm so an unpinned tail is a visible gap. No test reads worldz() after change_floor, none checks the walker is gone from the old floor's buckets, none calls change_floor with the current floor. The ignored sub-case of arm 4 is not separately exercised."
       ]
@@ -4576,7 +4669,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_zaxis.cpp",
@@ -4592,12 +4685,13 @@
           "file": "tests/unit/test_zaxis.cpp",
           "test": "ZAxis.fall_caps_at_50pct",
           "note": "5 stories: hp 50%"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_3.cpp",
+          "test": "SemWalker3.a_fall_costs_fifteen_percent_of_max_hp_per_story_past_the_first"
         }
       ],
-      "missing_arms": [
-        "otherwise, 3-4 stories",
-        "otherwise: sound"
-      ],
+      "missing_arms": [],
       "note": [
         "Compound arm split (fixer policy): each sub-observable is its own arm so an unpinned tail is a visible gap. No test drops 3 or 4 stories; no test reads SOUND_CLANG from the fall settle."
       ]
@@ -4627,12 +4721,14 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": [
-        "character falls 2 stories",
-        "no myguy"
-      ]
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sem_walker_3.cpp",
+          "test": "SemWalker3.a_characters_fall_damage_counts_in_its_scenario_record"
+        }
+      ],
+      "missing_arms": []
     },
     {
       "id": "walker.cpp:2232",
@@ -4661,7 +4757,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_zaxis.cpp",
@@ -4677,11 +4773,13 @@
           "file": "tests/unit/test_zaxis.cpp",
           "test": "ZAxis.fall_caps_at_50pct",
           "note": "full hp survives: EXPECT_FALSE(dead())"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_3.cpp",
+          "test": "SemWalker3.a_lethal_fall_credits_no_score_and_no_kill"
         }
       ],
-      "missing_arms": [
-        "hp <= 0 after damage: attribution"
-      ],
+      "missing_arms": [],
       "note": [
         "Compound arm split (fixer policy): each sub-observable is its own arm so an unpinned tail is a visible gap. knockback_off_ledge_kill only claims no kill credit in a comment; no test checks a score/kill counter or the 'fall lethal' trace."
       ]
@@ -4709,17 +4807,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_zaxis.cpp",
           "test": "ZAxis.walker_falls_through_air",
           "note": "2+ floors: the air rule runs"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_3.cpp",
+          "test": "SemWalker3.a_single_floor_level_has_no_vertical_motion"
         }
       ],
-      "missing_arms": [
-        "one floor"
-      ]
+      "missing_arms": []
     },
     {
       "id": "walker.cpp:2252",
@@ -4744,17 +4844,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_zaxis.cpp",
           "test": "ZAxis.walker_falls_through_air",
           "note": "alive: the rules run"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_3.cpp",
+          "test": "SemWalker3.a_corpse_or_an_ignored_walker_never_falls"
         }
       ],
-      "missing_arms": [
-        "dead or ignored over air"
-      ]
+      "missing_arms": []
     },
     {
       "id": "walker.cpp:2255",
@@ -4779,7 +4881,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_zaxis.cpp",
@@ -4790,11 +4892,13 @@
           "file": "tests/unit/test_zaxis.cpp",
           "test": "ZAxis.stair_with_no_clear_arrival_within_radius_denied_until_clear",
           "note": "re-probes after the denial cooldown"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_3.cpp",
+          "test": "SemWalker3.a_running_z_cooldown_holds_the_walker_on_its_floor"
         }
       ],
-      "missing_arms": [
-        "cooldown running"
-      ]
+      "missing_arms": []
     },
     {
       "id": "walker.cpp:2271",
@@ -4922,7 +5026,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_zaxis.cpp",
@@ -4932,12 +5036,13 @@
           "file": "tests/unit/test_zaxis.cpp",
           "test": "ZAxis.leaving_the_stair_cell_rearms_the_transition",
           "note": "down"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_3.cpp",
+          "test": "SemWalker3.a_stair_with_no_floor_beyond_it_does_nothing_and_flyers_ignore_stairs"
         }
       ],
-      "missing_arms": [
-        "UP on top floor / DOWN on floor 0",
-        "flyer"
-      ]
+      "missing_arms": []
     },
     {
       "id": "walker.cpp:2313",
@@ -4972,7 +5077,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_zaxis.cpp",
@@ -4996,11 +5101,13 @@
         {
           "file": "tests/unit/test_zaxis.cpp",
           "test": "ZAxis.running_over_stair_with_walled_destination_never_lands_in_walls"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_3.cpp",
+          "test": "SemWalker3.a_denied_stair_climb_retries_after_six_ticks"
         }
       ],
-      "missing_arms": [
-        "nothing clear: cooldown length"
-      ],
+      "missing_arms": [],
       "note": [
         "Compound arm split (fixer policy): each sub-observable is its own arm so an unpinned tail is a visible gap. stair_with_no_clear_arrival_within_radius_denied_until_clear pins floor 0 for 20 ticks, then floor 1 within 8 probes after clearing; the exact 6-tick cooldown is not read."
       ]
@@ -5096,7 +5203,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_zaxis.cpp",
@@ -5117,12 +5224,13 @@
           "file": "tests/unit/test_zaxis.cpp",
           "test": "ZAxis.air_fall_with_no_clear_landing_hovers_instead_of_falling",
           "note": "floor 1 held and alive for 30 ticks"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_3.cpp",
+          "test": "SemWalker3.a_fall_lands_in_place_and_paces_two_ticks_and_a_hover_six"
         }
       ],
-      "missing_arms": [
-        "straight down clear: position",
-        "cooldown lengths"
-      ],
+      "missing_arms": [],
       "note": [
         "Compound arm split (fixer policy): each sub-observable is its own arm so an unpinned tail is a visible gap. No straight-down fall test reads xpos/ypos after landing; no test reads z_cooldown after a fall."
       ]
@@ -5258,17 +5366,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_more.cpp",
           "test": "WalkerMore.walker_round6_friendliness_null_dead_owner_chain_and_allied_modes",
           "note": "'dead target should be unfriendly' on two fresh same-colour walkers, so the guard is what answers 0; 'same-team walkers should be friendly' 1 / 'different teams should be hostile' 0 for the both-alive arm"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_3.cpp",
+          "test": "SemWalker3.nothing_is_friendly_with_a_corpse_either_way"
         }
       ],
-      "missing_arms": [
-        "either dead"
-      ]
+      "missing_arms": []
     },
     {
       "id": "walker.cpp:2479",
@@ -5438,7 +5548,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_picker_common.cpp",
@@ -5449,11 +5559,13 @@
           "file": "tests/integration/test_walker_specials.cpp",
           "test": "WalkerSpecials.archmage_mind_control_stats_name_path",
           "note": "EXPECT_EQ 'ARCH-NPC has controlled 3 men': stats name for a guy-less caster"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_3.cpp",
+          "test": "SemWalker3.a_nameless_walker_is_called_by_the_callers_fallback"
         }
       ],
-      "missing_arms": [
-        "neither"
-      ]
+      "missing_arms": []
     },
     {
       "id": "walker.cpp:2566",
@@ -5542,7 +5654,7 @@
         }
       ],
       "setting": "new-specials",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_kit_seams_hidden.cpp",
@@ -5562,13 +5674,13 @@
         {
           "file": "tests/unit/test_world_snapshot.cpp",
           "test": "WorldSnapshot.hidden_bit_apply_keeps_the_mirror_obmap_in_step"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_3.cpp",
+          "test": "SemWalker3.hiding_drops_the_outline_and_a_repeat_or_dormant_reveal_changes_nothing"
         }
       ],
-      "missing_arms": [
-        "hide",
-        "reveal, dormant",
-        "same value"
-      ]
+      "missing_arms": []
     },
     {
       "id": "walker.cpp:2586",
@@ -5595,7 +5707,7 @@
         }
       ],
       "setting": "new-specials",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_kit_possession.cpp",
@@ -5605,11 +5717,13 @@
         {
           "file": "tests/unit/test_specials_view.cpp",
           "test": "KitLuaTest.set_kit_state_cannot_hide_a_possessed_body"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_3.cpp",
+          "test": "SemWalker3.a_possession_link_to_a_gone_walker_does_not_stop_a_hide"
         }
       ],
-      "missing_arms": [
-        "partner gone or not hidden"
-      ]
+      "missing_arms": []
     },
     {
       "id": "walker.cpp:2617",
@@ -5814,7 +5928,7 @@
         }
       ],
       "setting": "both",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_modes_onslaught.cpp",
@@ -5833,11 +5947,13 @@
           "file": "tests/unit/test_gameplay_fixes_charm.cpp",
           "test": "GameplayFixesCharm.a_charmed_summon_of_an_enemy_caster_fights_for_its_charmer",
           "note": "last_attacker_id == the summon with fixes 1"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_3.cpp",
+          "test": "SemWalker3.a_blow_with_no_living_on_its_chain_is_credited_to_nobody"
         }
       ],
-      "missing_arms": [
-        "no living on chain"
-      ]
+      "missing_arms": []
     }
   ],
   "other": [

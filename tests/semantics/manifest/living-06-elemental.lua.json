@@ -24,7 +24,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_specials.cpp",
@@ -40,11 +40,13 @@
           "parity": "fireelemental_starburst_ring_scen99",
           "fact": "",
           "note": "east and west orcs hit"
+        },
+        {
+          "file": "tests/unit/test_sem_families_2.cpp",
+          "test": "SemElemental.starburst_fires_all_eight_headings_and_restores_the_facing"
         }
       ],
-      "missing_arms": [
-        "cast"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living-06-elemental.lua:105",
@@ -115,7 +117,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_kit_elemental.cpp",
@@ -126,11 +128,13 @@
           "file": "tests/unit/test_kit_elemental.cpp",
           "test": "KitElemental.dying_while_immolating_still_fires_the_parting_starburst",
           "note": "channel off, 8 meteors, slot 2 restored"
+        },
+        {
+          "file": "tests/unit/test_sem_families_2.cpp",
+          "test": "SemElemental.an_elemental_dying_on_slot_one_fires_a_free_starburst_and_stays_dead"
         }
       ],
-      "missing_arms": [
-        "elemental dies on slot 1"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living-06-elemental.lua:65",
@@ -167,19 +171,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_kit_elemental.cpp",
           "test": "KitElemental.classic_level_up_and_summoned_toll_are_unchanged",
           "note": "eligible arm: summoned, hurt, owner alive -> toll paid"
+        },
+        {
+          "file": "tests/unit/test_sem_families_2.cpp",
+          "test": "SemElemental.only_a_hurt_summoned_elemental_with_a_living_owner_takes_the_toll"
         }
       ],
-      "missing_arms": [
-        "lifetime 0",
-        "owner nil or dead",
-        "full hp"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living-06-elemental.lua:71",
@@ -214,18 +218,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_kit_elemental.cpp",
           "test": "KitElemental.classic_level_up_and_summoned_toll_are_unchanged",
           "note": "both paid: elemental 51, owner 99/7, lifetime 10"
+        },
+        {
+          "file": "tests/unit/test_sem_families_2.cpp",
+          "test": "SemElemental.classic_an_owner_who_cannot_pay_both_costs_the_elemental_a_tick"
         }
       ],
-      "missing_arms": [
-        "owner hp >= max/3, mp < 3",
-        "owner hp < max/3"
-      ]
+      "missing_arms": []
     }
   ],
   "other": [

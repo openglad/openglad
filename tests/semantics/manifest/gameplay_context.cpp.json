@@ -24,12 +24,14 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": [
-        "same floor",
-        "different floors"
-      ]
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sem_ai_1.cpp",
+          "test": "SemPathing.classic_near_greedy_estimate_adds_a_cell_per_floor_between_floors_and_none_within_one"
+        }
+      ],
+      "missing_arms": []
     },
     {
       "id": "gameplay_context.cpp:116",
@@ -54,12 +56,14 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": [
-        "goal point set (solve_for_point)",
-        "no goal"
-      ]
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sem_ai_1.cpp",
+          "test": "SemPathing.path_steps_are_biased_toward_the_goal_point_when_set_else_the_foe"
+        }
+      ],
+      "missing_arms": []
     },
     {
       "id": "gameplay_context.cpp:128",
@@ -84,12 +88,14 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": [
-        "floor_count>1",
-        "single floor"
-      ]
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sem_ai_1.cpp",
+          "test": "SemPathing.pathing_plans_on_the_states_floor_when_stacked_and_on_floor_0_otherwise"
+        }
+      ],
+      "missing_arms": []
     },
     {
       "id": "gameplay_context.cpp:147",
@@ -156,13 +162,14 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": [
-        "non-flyer, air cell",
-        "flyer",
-        "single-floor"
-      ]
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sem_ai_1.cpp",
+          "test": "SemPathing.a_non_flyer_never_plans_a_step_onto_air_on_stacked_levels"
+        }
+      ],
+      "missing_arms": []
     },
     {
       "id": "gameplay_context.cpp:181",
@@ -197,7 +204,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_forest_pathing.cpp",
@@ -218,11 +225,13 @@
           "file": "tests/integration/test_walker_pathing.cpp",
           "test": "WalkerPathing.direct_solver_returns_expected_route_and_cost",
           "note": "open-flank diagonal arm: path (32,32),(48,48),(64,64)"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_1.cpp",
+          "test": "SemPathing.a_non_flyer_never_plans_a_diagonal_past_an_air_flank"
         }
       ],
-      "missing_arms": [
-        "non-flyer, flank is air"
-      ]
+      "missing_arms": []
     },
     {
       "id": "gameplay_context.cpp:208",
@@ -255,7 +264,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_game_context.cpp",
@@ -266,11 +275,13 @@
           "file": "tests/integration/test_walker_pathing.cpp",
           "test": "WalkerPathing.direct_solver_returns_expected_route_and_cost",
           "note": "empty diagonal: 2*sqrt2 within 0.001"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_1.cpp",
+          "test": "SemPathing.a_cell_holding_a_body_costs_ten_to_path_through"
         }
       ],
-      "missing_arms": [
-        "cell occupied"
-      ]
+      "missing_arms": []
     },
     {
       "id": "gameplay_context.cpp:235",
@@ -309,14 +320,14 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": [
-        "UP stair, floor above exists and passable",
-        "DOWN stair, f>0",
-        "top floor UP / ground DOWN / blocked destination",
-        "flyer"
-      ]
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sem_ai_1.cpp",
+          "test": "SemPathing.a_non_flyer_plans_floor_changes_only_through_stairs_to_a_real_open_floor"
+        }
+      ],
+      "missing_arms": []
     }
   ],
   "other": [

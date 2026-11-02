@@ -36,7 +36,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_campaign_hooks.cpp",
@@ -47,11 +47,17 @@
           "file": "tests/unit/test_campaign_hooks.cpp",
           "test": "CampaignHooksTest.registration_happy_path_serves_picker_and_vars",
           "note": "valid arm: 'delve_counted', 'watch_paid' accepted and served"
+        },
+        {
+          "file": "tests/unit/test_sem_script_2.cpp",
+          "test": "SemCampaignHooks.an_empty_campaign_var_name_is_refused"
+        },
+        {
+          "file": "tests/unit/test_sem_script_2.cpp",
+          "test": "SemCampaignHooks.register_campaign_hooks_refuses_an_empty_var_name"
         }
       ],
-      "missing_arms": [
-        "empty"
-      ]
+      "missing_arms": []
     },
     {
       "id": "campaign_hooks.cpp:60",

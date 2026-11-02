@@ -24,7 +24,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_stats_fright.cpp",
@@ -35,11 +35,13 @@
           "file": "tests/unit/test_stats_fright.cpp",
           "test": "StatsFright.sim_player_thaw_immunity_window",
           "note": ">=0: tick 1 frozen swallows input, shifter_down 0; <0: raw == -12 after the thaw, input reaches the movement branch on tick 3"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_1.cpp",
+          "test": "SemWalker1.a_thawing_walker_reads_as_unfrozen_in_the_snapshot"
         }
       ],
-      "missing_arms": [
-        "raw frozen_delay < 0 (thaw immunity phase)"
-      ]
+      "missing_arms": []
     }
   ],
   "other": [

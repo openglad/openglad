@@ -206,16 +206,18 @@
         }
       ],
       "setting": "new-specials",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_kit_skeleton.cpp",
           "test": "KitSkeleton.dig_in_sinks_four_ticks_then_hides_at_frame_27_without_tunnelling"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_3.cpp",
+          "test": "SemLibsSkeleton.a_sinking_skeleton_whose_animation_is_taken_over_goes_under_at_once"
         }
       ],
-      "missing_arms": [
-        "ani_type changed mid-sink (e.g. set ANI_ATTACK)"
-      ]
+      "missing_arms": []
     },
     {
       "id": "kit_skeleton.lua:170",
@@ -322,16 +324,18 @@
         }
       ],
       "setting": "new-specials",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_kit_skeleton.cpp",
           "test": "KitSkeleton.dig_in_hides_regens_and_pops_when_a_foe_steps_close"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_3.cpp",
+          "test": "SemLibsSkeleton.a_buried_skeletons_regen_pulse_never_heals_past_its_maximum"
         }
       ],
-      "missing_arms": [
-        "regen pulse"
-      ]
+      "missing_arms": []
     },
     {
       "id": "kit_skeleton.lua:197",
@@ -694,7 +698,7 @@
         }
       ],
       "setting": "new-specials",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_kit_skeleton.cpp",
@@ -703,11 +707,13 @@
         {
           "file": "tests/unit/test_kit_skeleton.cpp",
           "test": "KitSkeleton.bone_wall_refuses_on_a_door"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_3.cpp",
+          "test": "SemLibsSkeleton.a_bone_wall_clangs_once_when_it_stands_and_never_when_refused"
         }
       ],
-      "missing_arms": [
-        ">=1"
-      ]
+      "missing_arms": []
     },
     {
       "id": "kit_skeleton.lua:370",
@@ -1068,16 +1074,18 @@
         }
       ],
       "setting": "new-specials",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_kit_skeleton.cpp",
           "test": "KitSkeleton.ward_fades_when_the_mana_runs_dry"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_3.cpp",
+          "test": "SemLibsSkeleton.an_armed_ward_fades_on_a_pulse_it_cannot_pay"
         }
       ],
-      "missing_arms": [
-        "pulse, mp<drain"
-      ]
+      "missing_arms": []
     },
     {
       "id": "kit_skeleton.lua:521",
@@ -1266,7 +1274,7 @@
         }
       ],
       "setting": "new-specials",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_kit_skeleton.cpp",
@@ -1283,11 +1291,13 @@
         {
           "file": "tests/unit/test_kit_skeleton.cpp",
           "test": "KitSkeleton.legion_leaves_half_its_kills_down"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_3.cpp",
+          "test": "SemLibsSkeleton.a_legion_kill_of_a_level_1_foe_rises_at_level_1"
         }
       ],
-      "missing_arms": [
-        "heads"
-      ]
+      "missing_arms": []
     },
     {
       "id": "kit_skeleton.lua:676",
@@ -1498,16 +1508,18 @@
         }
       ],
       "setting": "new-specials",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_kit_skeleton.cpp",
           "test": "KitSkeleton.ai_dig_in_fires_when_hurt_and_outnumbered"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_3.cpp",
+          "test": "SemLibsSkeleton.a_bot_skeleton_mid_teleport_never_picks_dig_in"
         }
       ],
-      "missing_arms": [
-        "ani TELE_IN or TELE_OUT"
-      ]
+      "missing_arms": []
     },
     {
       "id": "kit_skeleton.lua:673",

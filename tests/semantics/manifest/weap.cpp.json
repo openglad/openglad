@@ -100,7 +100,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_weap_behavior.cpp",
@@ -109,11 +109,13 @@
         {
           "file": "tests/unit/test_decor.cpp",
           "test": "Decor.shrub_conceals_for_living_and_weapon_but_bones_does_not"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_4.cpp",
+          "test": "Weap.a_shot_over_trees_spends_range_but_never_below_zero"
         }
       ],
-      "missing_arms": [
-        "range 0"
-      ]
+      "missing_arms": []
     },
     {
       "id": "weap.cpp:90",
@@ -158,18 +160,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_weap_behavior.cpp",
           "test": "WeapBehavior.weap_act_control_generate_guard_and_default_paths",
           "note": "ACT_CONTROL act() true; ACT_GENERATE/ACT_GUARD act() false; unknown act act() false"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_4.cpp",
+          "test": "Weap.a_weapon_in_control_or_an_unknown_act_does_nothing"
         }
       ],
-      "missing_arms": [
-        "ACT_CONTROL: no move",
-        "unknown act: notification"
-      ]
+      "missing_arms": []
     },
     {
       "id": "weap.cpp:98",
@@ -241,17 +244,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_weap_behavior.cpp",
           "test": "WeapBehavior.weap_act_fire",
           "note": "range-spent arm: lineofsight 5 -> 4; range-0 arm: dead()==1"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_4.cpp",
+          "test": "Weap.a_fired_weapon_with_range_left_moves_along_its_heading"
         }
       ],
-      "missing_arms": [
-        "range left: moves"
-      ]
+      "missing_arms": []
     },
     {
       "id": "weap.cpp:132",
@@ -336,7 +341,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_weap_behavior.cpp",
@@ -347,11 +352,13 @@
           "file": "tests/integration/test_weap_behavior.cpp",
           "test": "WeapBehavior.weap_death_fire_arrow_exploding",
           "note": "first death runs the hook: one explosion"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_4.cpp",
+          "test": "Weap.a_second_weapon_death_runs_no_effect"
         }
       ],
-      "missing_arms": [
-        "second: nothing runs"
-      ]
+      "missing_arms": []
     },
     {
       "id": "weap.cpp:194",
@@ -384,7 +391,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_weap_behavior.cpp",
@@ -395,11 +402,13 @@
           "file": "tests/integration/test_weap_behavior.cpp",
           "test": "WeapBehavior.weap_animate_knife",
           "note": "no-hook default arm"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_4.cpp",
+          "test": "Weap.a_weapon_whose_animation_script_finishes_dies"
         }
       ],
-      "missing_arms": [
-        "hook returns false"
-      ]
+      "missing_arms": []
     },
     {
       "id": "weap.cpp:206",
@@ -444,7 +453,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_weap_behavior.cpp",
@@ -453,11 +462,13 @@
         {
           "file": "tests/integration/test_weap_behavior.cpp",
           "test": "WeapBehavior.weap_animate_knife"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_4.cpp",
+          "test": "Weap.the_default_animation_leaves_the_frame_on_a_missing_or_empty_row"
         }
       ],
-      "missing_arms": [
-        "no row / empty row"
-      ]
+      "missing_arms": []
     }
   ],
   "other": []

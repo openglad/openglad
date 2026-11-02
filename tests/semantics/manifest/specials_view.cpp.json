@@ -122,7 +122,7 @@
         }
       ],
       "setting": "new-specials",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_specials_view.cpp",
@@ -137,11 +137,13 @@
           "file": "tests/unit/test_specials_view.cpp",
           "test": "SpecialsView.alternate_cost_gates_only_when_shifted_and_in_play",
           "note": "alternate_name(fd,2,0)==NONE"
+        },
+        {
+          "file": "tests/unit/test_sem_world_4.cpp",
+          "test": "SemSpecialsView.a_bad_slot_or_no_descriptor_has_no_special_name"
         }
       ],
-      "missing_arms": [
-        "bad slot / null descriptor"
-      ]
+      "missing_arms": []
     },
     {
       "id": "specials_view.cpp:69",
@@ -304,7 +306,7 @@
         }
       ],
       "setting": "new-specials",
-      "status": "partial",
+      "status": "unreachable",
       "tests": [
         {
           "file": "tests/unit/test_specials_view.cpp",
@@ -327,6 +329,9 @@
       ],
       "missing_arms": [
         "no stats"
+      ],
+      "note": [
+        "unreachable: cast_cost's no-stats guard; every walker constructor builds stats_ and only the destructors reset it"
       ]
     },
     {

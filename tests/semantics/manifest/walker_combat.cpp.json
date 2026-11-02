@@ -24,7 +24,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_combat.cpp",
@@ -35,11 +35,13 @@
           "file": "tests/integration/test_walker_more.cpp",
           "test": "WalkerMore.walker_friendliness_and_a_hostile_attack_lands_its_damage",
           "note": "exp == 18 after a melee hit on a level-1 target"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_3.cpp",
+          "test": "SemWalker3.experience_for_an_action_without_a_target_counts_a_level_zero_target"
         }
       ],
-      "missing_arms": [
-        "no target"
-      ],
+      "missing_arms": [],
       "note": [
         "tests/integration/test_combat_math.cpp tests the pure compute_xp_from_action only and never reaches this adapter."
       ]
@@ -67,7 +69,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_combat.cpp",
@@ -78,6 +80,10 @@
           "file": "tests/integration/test_walker_combat.cpp",
           "test": "WalkerCombat.attack_ignores_out_of_range_team_score_index",
           "note": "team 250: total team score unchanged; the no-event half is not asserted"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_3.cpp",
+          "test": "SemWalker3.a_blow_from_an_out_of_range_team_scores_nothing_and_emits_no_event"
         }
       ],
       "missing_arms": [],
@@ -151,17 +157,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_game_server_coverage.cpp",
           "test": "GameServerCoverage.step_lifts_every_owner_damage_numbers_and_drains_every_list",
           "note": "do_hit_effects(control, foe, 7): lines 1563-1566 assert one damage number on each walker's list; lines 1603-1617 assert the lifted wire copies: attacker copy value 7 colour 235, target copy value 7 colour RED, both anchored at the target's centre. Colour and value are read from the decoded DamageNumber events, not from the in-memory lists, which the lift drains."
+        },
+        {
+          "file": "tests/unit/test_sem_walker_3.cpp",
+          "test": "SemWalker3.a_hit_with_no_attacker_shows_its_number_to_the_victim_only"
         }
       ],
-      "missing_arms": [
-        "no attacker"
-      ],
+      "missing_arms": [],
       "note": [
         "Spot-check claimed colour/value are never read; re-read the test: they are, on the decoded events at lines 1603-1617. Status and missing arm unchanged."
       ]
@@ -197,7 +205,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_combat.cpp",
@@ -208,12 +216,13 @@
           "file": "tests/integration/test_walker_combat.cpp",
           "test": "WalkerCombat.effect_helpers_and_recoil_branches",
           "note": "hit_recoil > 0"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_3.cpp",
+          "test": "SemWalker3.a_damaging_hit_flashes_and_a_living_victim_recoils_away"
         }
       ],
-      "missing_arms": [
-        "damage > 0, non-living",
-        "damage 0"
-      ],
+      "missing_arms": [],
       "note": [
         "Sub-part convention (file-wide): an arm whose primary observable is asserted counts as asserted and leaves missing_arms; any field of its compound observable that no cited test reads is listed in assertion.unasserted_subparts, and a row with unasserted_subparts is never 'asserted' (at best 'partial')."
       ]
@@ -259,14 +268,14 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": [
-        "non-FX hitter or FX with creates_hit_effect",
-        "FX with creates_hit_effect=false",
-        "melee (attacker==this)",
-        "projectile"
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sem_walker_3.cpp",
+          "test": "SemWalker3.every_hit_spawns_a_hit_flash_except_from_a_quiet_effect"
+        }
       ],
+      "missing_arms": [],
       "note": [
         "NOT credited: tests/unit/test_kit_elemental.cpp KitElemental.rekindle_heals_and_refuses_at_full and tests/unit/test_kit_faerie.cpp KitFaerie.hasten_ally_or_self_by_shift count a FAMILY_HIT spawned by the kits' own Lua, not by walker::do_hit_effects."
       ]
@@ -336,7 +345,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_combat.cpp",
@@ -347,12 +356,13 @@
           "file": "tests/integration/test_walker_more.cpp",
           "test": "WalkerMore.walker_friendliness_and_a_hostile_attack_lands_its_damage",
           "note": "scen_damage == the damage dealt"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_3.cpp",
+          "test": "SemWalker3.a_heros_damage_record_counts_living_victims_only"
         }
       ],
-      "missing_arms": [
-        "hero hits non-living",
-        "attacker without myguy"
-      ],
+      "missing_arms": [],
       "note": [
         "Sub-part convention (file-wide): an arm whose primary observable is asserted counts as asserted and leaves missing_arms; any field of its compound observable that no cited test reads is listed in assertion.unasserted_subparts, and a row with unasserted_subparts is never 'asserted' (at best 'partial')."
       ]
@@ -386,7 +396,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_combat.cpp",
@@ -397,12 +407,13 @@
           "file": "tests/integration/test_walker_more.cpp",
           "test": "WalkerMore.walker_friendliness_and_a_hostile_attack_lands_its_damage",
           "note": "regen_delay 50 after a landed blow"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_3.cpp",
+          "test": "SemWalker3.a_zero_hit_leaves_regen_alone_and_overkill_counts_only_the_hp_lost"
         }
       ],
-      "missing_arms": [
-        "damage 0",
-        "overkill"
-      ]
+      "missing_arms": []
     },
     {
       "id": "walker_combat.cpp:226",
@@ -429,17 +440,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_combat.cpp",
           "test": "WalkerCombat.batch5_do_combat_damage_target_myguy_stats",
           "note": "victim has myguy: line 1581 ASSERT_FLOAT_EQ(taken_before + 7.0f, victim->myguy->scen_damage_taken) on an untrimmed hit"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_3.cpp",
+          "test": "SemWalker3.a_hero_victims_record_keeps_its_lowest_hp"
         }
       ],
-      "missing_arms": [
-        "not a hero"
-      ],
+      "missing_arms": [],
       "note": [
         "Sub-part convention (file-wide): an arm whose primary observable is asserted counts as asserted and leaves missing_arms; any field of its compound observable that no cited test reads is listed in assertion.unasserted_subparts, and a row with unasserted_subparts is never 'asserted' (at best 'partial')."
       ]
@@ -612,7 +625,7 @@
         }
       ],
       "setting": "both",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_gameplay_fixes_charm.cpp",
@@ -623,11 +636,17 @@
           "file": "tests/unit/test_gameplay_fixes_charm.cpp",
           "test": "GameplayFixesCharm.a_charmed_summon_of_an_enemy_caster_fights_for_its_charmer",
           "note": "fixes on: credit to the summon itself"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_3.cpp",
+          "test": "SemWalker3.classic_credit_for_a_charmed_troops_blow_climbs_to_its_original_owner"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_3.cpp",
+          "test": "SemWalker3.classic_credit_for_a_blow_climbs_past_a_dead_thrower"
         }
       ],
-      "missing_arms": [
-        "fixes off"
-      ]
+      "missing_arms": []
     },
     {
       "id": "walker_combat.cpp:268",
@@ -652,7 +671,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_combat.cpp",
@@ -663,11 +682,13 @@
           "file": "tests/integration/test_walker_combat.cpp",
           "test": "WalkerCombat.company_kill_credit_is_directional_for_every_team_pair",
           "note": "hero head: m_score > 0"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_3.cpp",
+          "test": "SemWalker3.an_npc_fight_off_the_players_team_scores_nothing"
         }
       ],
-      "missing_arms": [
-        "else"
-      ]
+      "missing_arms": []
     },
     {
       "id": "walker_combat.cpp:277",
@@ -696,17 +717,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_more.cpp",
           "test": "WalkerMore.walker_friendliness_and_a_hostile_attack_lands_its_damage",
           "note": "hero attacker: scen_hits 1 and total_hits 1"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_3.cpp",
+          "test": "SemWalker3.a_hit_by_a_walker_with_no_record_credits_no_hit"
         }
       ],
-      "missing_arms": [
-        "no hero"
-      ]
+      "missing_arms": []
     },
     {
       "id": "walker_combat.cpp:285",
@@ -778,17 +801,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_combat.cpp",
           "test": "WalkerCombat.walker_attack_weapon_owner_chain_and_nonliving_target",
           "note": "hero owner: total_shots and scen_shots 5 -> 4"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_3.cpp",
+          "test": "SemWalker3.a_non_living_hit_by_a_walker_with_no_record_refunds_no_shot"
         }
       ],
-      "missing_arms": [
-        "no hero"
-      ]
+      "missing_arms": []
     },
     {
       "id": "walker_combat.cpp:304",
@@ -813,7 +838,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "unreachable",
       "tests": [
         {
           "file": "tests/integration/test_walker_combat.cpp",
@@ -823,6 +848,9 @@
       ],
       "missing_arms": [
         "reduction exceeds damage"
+      ],
+      "note": [
+        "unreachable: the tempdamage < 0 clamp is observably redundant; the only negative case (base damage < 0.25) is mapped to 0 by damage_to_hit_points before the gate, and tempdamage is not read again, so no test can tell the clamp from its absence"
       ]
     },
     {
@@ -920,7 +948,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_mode_tick.cpp",
@@ -931,6 +959,10 @@
           "file": "tests/unit/test_mode_tick.cpp",
           "test": "ModeTick.weapon_kill_attributes_to_owner_chain_root",
           "note": "positive arm: on_entity_death killer == the thrower"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_3.cpp",
+          "test": "SemWalker3.a_zero_damage_blow_keeps_the_earlier_attacker_stamp"
         }
       ],
       "missing_arms": [],
@@ -973,7 +1005,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_stats_unit.cpp",
@@ -994,11 +1026,13 @@
           "file": "tests/integration/test_walker_more.cpp",
           "test": "WalkerMore.walker_friendliness_and_a_hostile_attack_lands_its_damage",
           "note": "melee hero: exp 18"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_3.cpp",
+          "test": "SemWalker3.the_victim_turns_on_whoever_is_behind_the_blow"
         }
       ],
-      "missing_arms": [
-        "melee, NPC striker"
-      ],
+      "missing_arms": [],
       "note": [
         "Dropped tests/integration/test_stats_commands.cpp StatsCommands.stats_hit_response_all_families: it calls statistics::hit_response directly and never reaches walker::attack. Sub-part convention (file-wide): an arm whose primary observable is asserted counts as asserted and leaves missing_arms; any field of its compound observable that no cited test reads is listed in assertion.unasserted_subparts, and a row with unasserted_subparts is never 'asserted' (at best 'partial')."
       ]
@@ -1034,18 +1068,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_combat.cpp",
           "test": "WalkerCombat.batch6_attack_branches_enemy_and_weapon_paths",
           "note": "mortal arm: weapon->dead()==1 at <= 0 hp"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_3.cpp",
+          "test": "SemWalker3.a_projectile_is_worn_by_what_it_hits"
         }
       ],
-      "missing_arms": [
-        "weapon hp > dmg",
-        "hp <= 0 BIT_IMMORTAL"
-      ]
+      "missing_arms": []
     },
     {
       "id": "walker_combat.cpp:368",
@@ -1078,18 +1113,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_combat.cpp",
           "test": "WalkerCombat.attack_rewards_single_credit_weapon_hit",
           "note": "owned weapon: m_score delta == dealt + level, exactly once - this arm is the only award_score on the weapon path"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_3.cpp",
+          "test": "SemWalker3.a_summons_blow_pays_its_heros_experience_and_a_weapon_victim_scores_nothing"
         }
       ],
-      "missing_arms": [
-        "owned summon living, head is hero",
-        "target is a weapon or same team as head"
-      ]
+      "missing_arms": []
     },
     {
       "id": "walker_combat.cpp:382",
@@ -1205,7 +1241,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_combat.cpp",
@@ -1216,11 +1252,13 @@
           "file": "tests/unit/test_kit_skeleton.cpp",
           "test": "KitSkeleton.warded_death_tells_nobody_and_counts_no_kill",
           "note": "unwarded control: DIED told, kills +1, blood +1"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_3.cpp",
+          "test": "SemWalker3.a_destroyed_generator_dies_without_credit_blood_or_cry"
         }
       ],
-      "missing_arms": [
-        "non-living"
-      ],
+      "missing_arms": [],
       "note": [
         "Sub-part convention (file-wide): an arm whose primary observable is asserted counts as asserted and leaves missing_arms; any field of its compound observable that no cited test reads is listed in assertion.unasserted_subparts, and a row with unasserted_subparts is never 'asserted' (at best 'partial')."
       ]
@@ -1290,7 +1328,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "deferred",
       "tests": [
         {
           "file": "tests/integration/test_walker_combat.cpp",
@@ -1300,10 +1338,18 @@
         {
           "file": "tests/integration/test_walker_combat.cpp",
           "test": "WalkerCombat.company_kill_credit_is_directional_for_every_team_pair"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_3.cpp",
+          "test": "SemWalker3.an_npc_kill_off_the_players_team_credits_no_score"
         }
       ],
       "missing_arms": [
-        "NPC head, no getscore"
+        "head is hero"
+      ],
+      "issue": "#440",
+      "note": [
+        "divergence #440: a hero's killing blow pays attack xp once (current) vs twice (old game); the NPC-head arm is asserted, the hero xp arm is not pinned"
       ]
     },
     {
@@ -1381,7 +1427,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_modes_onslaught.cpp",
@@ -1402,11 +1448,13 @@
           "file": "tests/unit/test_kit_skeleton.cpp",
           "test": "KitSkeleton.warded_death_tells_nobody_and_counts_no_kill",
           "note": "classic last foe: all_foes 1"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_4.cpp",
+          "test": "SemWalker4.all_foes_defeated_is_announced_only_on_the_last_foe"
         }
       ],
-      "missing_arms": [
-        "foes remain"
-      ]
+      "missing_arms": []
     },
     {
       "id": "walker_combat.cpp:462",
@@ -1454,15 +1502,14 @@
         }
       ],
       "setting": "none",
-      "status": "none",
-      "tests": [],
-      "missing_arms": [
-        "named summon",
-        "named NPC",
-        "hero",
-        "registered family",
-        "unknown family"
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sem_walker_4.cpp",
+          "test": "SameTeamDeath.a_same_team_death_is_announced_without_credit_classic"
+        }
       ],
+      "missing_arms": [],
       "note": [
         "batch6_attack_friendly_team_death_messages_and_clamps states this arm is not reached by a hostile killer; no test reaches it."
       ]
@@ -1490,17 +1537,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_combat.cpp",
           "test": "WalkerCombat.walker_attack_basic",
           "note": "count_family_in_weaplist(FAMILY_BLOOD) before+1, lines 184-193"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_4.cpp",
+          "test": "SemWalker4.a_living_death_leaves_a_blood_stain_unless_none_can_be_made"
         }
       ],
-      "missing_arms": [
-        "add_ob failed"
-      ]
+      "missing_arms": []
     },
     {
       "id": "walker_combat.cpp:490",
@@ -1533,13 +1582,14 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": [
-        "rng 1",
-        "rng 0",
-        "harness says not visible"
-      ]
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sem_walker_4.cpp",
+          "test": "SemWalker4.a_death_cries_die1_or_die2_by_a_coin_unless_unheard"
+        }
+      ],
+      "missing_arms": []
     },
     {
       "id": "walker_combat.cpp:503",

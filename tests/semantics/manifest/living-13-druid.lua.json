@@ -24,7 +24,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_gameplay_fixes_druid.cpp",
@@ -35,11 +35,13 @@
           "file": "tests/integration/test_walker_specials.cpp",
           "test": "WalkerSpecials.druid_grow_tree_drives_simulation",
           "note": "idle: one tree owned by the druid, ANI_GROW"
+        },
+        {
+          "file": "tests/unit/test_sem_families_3.cpp",
+          "test": "SemDruid.a_busy_druid_casts_none_of_its_four_specials"
         }
       ],
-      "missing_arms": [
-        "busy"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living-13-druid.lua:16",
@@ -68,7 +70,7 @@
         }
       ],
       "setting": "fixes-on",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_gameplay_fixes_druid.cpp",
@@ -84,11 +86,13 @@
           "file": "tests/integration/test_gameplay_fixes_druid.cpp",
           "test": "GameplayFixesDruid.an_open_tree_costs_its_price_on_both_values",
           "note": "pad clear, both values: tree made, MP 85"
+        },
+        {
+          "file": "tests/unit/test_sem_families_3.cpp",
+          "test": "SemDruid.a_classic_cast_into_a_wall_attempts_the_bolt_and_fails_there"
         }
       ],
-      "missing_arms": [
-        "fixes off, pad on terrain"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living-13-druid.lua:22",
@@ -165,17 +169,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_specials.cpp",
           "test": "WalkerSpecials.druid_summon_faerie_drives_simulation",
           "note": "idle: one faerie, owner and team"
+        },
+        {
+          "file": "tests/unit/test_sem_families_3.cpp",
+          "test": "SemDruid.a_busy_druid_casts_none_of_its_four_specials"
         }
       ],
-      "missing_arms": [
-        "busy"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living-13-druid.lua:45",
@@ -204,7 +210,7 @@
         }
       ],
       "setting": "fixes-on",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_gameplay_fixes_druid.cpp",
@@ -220,11 +226,13 @@
           "file": "tests/integration/test_walker_specials.cpp",
           "test": "WalkerSpecials.druid_summon_faerie_drives_simulation",
           "note": "pad clear: ASSERT_TRUE(special()) and ASSERT_EQ(faerie_before + 1, FAMILY_FAERIE count) = fire attempted and succeeded"
+        },
+        {
+          "file": "tests/unit/test_sem_families_3.cpp",
+          "test": "SemDruid.a_classic_cast_into_a_wall_attempts_the_bolt_and_fails_there"
         }
       ],
-      "missing_arms": [
-        "fixes off, pad on terrain"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living-13-druid.lua:51",
@@ -293,12 +301,18 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": [
-        "spot passable",
-        "blocked"
-      ]
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sem_families_3.cpp",
+          "test": "SemDruid.a_faerie_summoned_on_open_ground_lives_for_its_lifetime"
+        },
+        {
+          "file": "tests/unit/test_sem_families_3.cpp",
+          "test": "SemDruid.a_faerie_summoned_onto_a_body_is_cancelled"
+        }
+      ],
+      "missing_arms": []
     },
     {
       "id": "living-13-druid.lua:78",
@@ -323,7 +337,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_family_behaviors.cpp",
@@ -334,11 +348,13 @@
           "file": "tests/integration/test_walker_specials.cpp",
           "test": "WalkerSpecials.druid_reveal_drives_simulation",
           "note": "idle: view_all 40, busy 4 x fire_frequency"
+        },
+        {
+          "file": "tests/unit/test_sem_families_3.cpp",
+          "test": "SemDruid.a_busy_druid_casts_none_of_its_four_specials"
         }
       ],
-      "missing_arms": [
-        "busy"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living-13-druid.lua:88",
@@ -363,7 +379,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_family_behaviors.cpp",
@@ -374,11 +390,13 @@
           "file": "tests/unit/test_pack_lua_paths.cpp",
           "test": "PackLuaDruid.one_ally_receives_one_circle_and_caster_receives_none",
           "note": "idle: one circle owned by the ally"
+        },
+        {
+          "file": "tests/unit/test_sem_families_3.cpp",
+          "test": "SemDruid.a_busy_druid_casts_none_of_its_four_specials"
         }
       ],
-      "missing_arms": [
-        "busy"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living-13-druid.lua:92",
@@ -447,7 +465,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_specials.cpp",
@@ -462,11 +480,13 @@
         {
           "parity": "druid_protection_refresh_scen99",
           "fact": "WeaponFamilyCount(FAMILY_CIRCLE_PROTECTION,1,1) (own circle: topped up, not stacked)"
+        },
+        {
+          "file": "tests/unit/test_sem_families_3.cpp",
+          "test": "SemDruid.a_friends_own_knife_is_not_mistaken_for_its_ring"
         }
       ],
-      "missing_arms": [
-        "only the friend's own non-circle weapons in range"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living-13-druid.lua:117",
@@ -540,12 +560,14 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": [
-        "hero",
-        "monster"
-      ]
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sem_families_3.cpp",
+          "test": "SemDruid.a_hero_druid_earns_experience_per_friend_protected"
+        }
+      ],
+      "missing_arms": []
     },
     {
       "id": "living-13-druid.lua:143",
@@ -572,12 +594,14 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": [
-        "1 friend",
-        "N>1"
-      ]
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sem_families_3.cpp",
+          "test": "SemDruid.the_protection_message_counts_the_friends_singular_for_one"
+        }
+      ],
+      "missing_arms": []
     },
     {
       "id": "living-13-druid.lua:148",
@@ -602,12 +626,14 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": [
-        "team 0 or hero",
-        "enemy monster druid"
-      ]
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sem_families_3.cpp",
+          "test": "SemDruid.only_the_home_team_or_a_hero_druid_announces_protection"
+        }
+      ],
+      "missing_arms": []
     },
     {
       "id": "living-13-druid.lua:158",

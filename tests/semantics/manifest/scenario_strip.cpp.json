@@ -44,7 +44,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_scenario_strip.cpp",
@@ -68,11 +68,13 @@
         {
           "file": "tests/unit/test_scenario_strip.cpp",
           "test": "ScenarioStripClassic.scripted_maps_are_left_to_their_mode_script"
+        },
+        {
+          "file": "tests/unit/test_sem_world_4.cpp",
+          "test": "SemScenarioStrip.the_troop_strip_leaves_weapons_effects_and_treasure_alone"
         }
       ],
-      "missing_arms": [
-        "non-living order (weapon/treasure/fx)"
-      ]
+      "missing_arms": []
     },
     {
       "id": "scenario_strip.cpp:40",
@@ -149,11 +151,14 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": [
-        "strip"
-      ]
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sem_world_4.cpp",
+          "test": "SemScenarioStrip.a_stripped_troop_leaves_the_collision_table_and_no_corpse"
+        }
+      ],
+      "missing_arms": []
     }
   ],
   "other": []

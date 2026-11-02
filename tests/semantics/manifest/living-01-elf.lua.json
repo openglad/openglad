@@ -32,7 +32,7 @@
         }
       ],
       "setting": "both",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_gameplay_fixes_elf.cpp",
@@ -52,11 +52,13 @@
         {
           "parity": "elf_rocks_blocked_scen99",
           "fact": "_fixes_scen99, elf_rocks_edge_pad_scen99 / _fixes_scen99"
+        },
+        {
+          "file": "tests/unit/test_sem_families_1.cpp",
+          "test": "SemElf.a_volley_at_a_wall_leaves_the_elf_rested_with_the_setting_on"
         }
       ],
-      "missing_arms": [
-        "pad on wall/edge, setting on: busy"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living-01-elf.lua:25",
@@ -258,7 +260,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_specials.cpp",
@@ -269,11 +271,13 @@
           "file": "tests/integration/test_gameplay_fixes_elf.cpp",
           "test": "GameplayFixesElf.volleys_refund_exactly_the_rocks_fired",
           "note": "count_rocks == 2/3/4 for slots 2-4"
+        },
+        {
+          "file": "tests/unit/test_sem_families_1.cpp",
+          "test": "SemElf.bouncing_volleys_throw_bouncing_rocks_with_the_slots_longer_sight"
         }
       ],
-      "missing_arms": [
-        "each release: rock shape"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living-01-elf.lua:67",
@@ -308,7 +312,7 @@
         }
       ],
       "setting": "both",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_gameplay_fixes_elf.cpp",
@@ -319,11 +323,13 @@
           "file": "tests/integration/test_gameplay_fixes_elf.cpp",
           "test": "GameplayFixesElf.volleys_refund_exactly_the_rocks_fired",
           "note": "all fire: true"
+        },
+        {
+          "file": "tests/unit/test_sem_families_1.cpp",
+          "test": "SemElf.a_volley_that_runs_dry_takes_back_only_the_rocks_that_never_flew"
         }
       ],
-      "missing_arms": [
-        "later fire nil (i>1), on"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living-01-elf.lua:97",
@@ -358,7 +364,7 @@
         }
       ],
       "setting": "fixes-on",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_bot_gates_fighters.cpp",
@@ -374,11 +380,13 @@
           "parity": "elf_bot_rocks_far_fixes_scen99",
           "fact": "",
           "note": "beyond flight: no rock"
+        },
+        {
+          "file": "tests/unit/test_sem_families_1.cpp",
+          "test": "SemElf.the_elf_bot_gate_with_no_living_foe_never_throws"
         }
       ],
-      "missing_arms": [
-        "no living foe"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living-01-elf.lua:101",
@@ -519,7 +527,7 @@
         }
       ],
       "setting": "fixes-on",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_bot_gates_fighters.cpp",
@@ -530,11 +538,13 @@
           "file": "tests/unit/test_bot_gates_fighters.cpp",
           "test": "GameplayFixesBots.elf_mega_rocks_wants_two_foes_in_flight",
           "note": "slot 4 flight differs from slot 3"
+        },
+        {
+          "file": "tests/unit/test_sem_families_1.cpp",
+          "test": "SemElf.an_unmapped_elf_slot_aims_like_mega_rocks"
         }
       ],
-      "missing_arms": [
-        "slot outside 1..4"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living-01-elf.lua:123",

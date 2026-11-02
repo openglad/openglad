@@ -24,16 +24,18 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_pack_lua_paths.cpp",
           "test": "PackLuaKnifeBack.a_blade_whose_thrower_died_simply_expires"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_2.cpp",
+          "test": "SemKnifeBack.a_returning_knife_flies_home_until_it_is_within_10_px"
         }
       ],
-      "missing_arms": [
-        "alive"
-      ]
+      "missing_arms": []
     },
     {
       "id": "effect_knife_back.lua:17",
@@ -60,16 +62,18 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_pack_lua_paths.cpp",
           "test": "PackLuaKnifeBack.a_blade_that_reaches_its_thrower_returns_the_shot"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_2.cpp",
+          "test": "SemKnifeBack.a_returning_knife_flies_home_until_it_is_within_10_px"
         }
       ],
-      "missing_arms": [
-        "distance > 10"
-      ]
+      "missing_arms": []
     },
     {
       "id": "effect_knife_back.lua:19",
@@ -104,13 +108,14 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": [
-        "thrower right/below",
-        "thrower left/above",
-        "aligned"
-      ]
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sem_libs_2.cpp",
+          "test": "SemKnifeBack.a_returning_knife_steps_at_most_its_stepsize_per_axis_and_never_overshoots"
+        }
+      ],
+      "missing_arms": []
     },
     {
       "id": "effect_knife_back.lua:32",
@@ -135,12 +140,14 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": [
-        "probe spawn failed",
-        "probe spawned"
-      ]
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sem_libs_2.cpp",
+          "test": "SemKnifeBack.a_returning_knife_that_cannot_make_its_probe_drops_without_a_refund"
+        }
+      ],
+      "missing_arms": []
     },
     {
       "id": "effect_knife_back.lua:45",
@@ -165,12 +172,14 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": [
-        "an object in the next step",
-        "clear"
-      ]
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sem_libs_2.cpp",
+          "test": "SemKnifeBack.a_returning_knife_cuts_what_it_passes_and_quarters_its_damage"
+        }
+      ],
+      "missing_arms": []
     }
   ],
   "other": []

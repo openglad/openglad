@@ -38,7 +38,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_specials_unit.cpp",
@@ -49,13 +49,13 @@
           "file": "tests/integration/test_walker_specials_unit.cpp",
           "test": "WalkerSpecialsUnit.teleport_probe_keeps_no_collide_and_height_gate",
           "note": "the mage's own live FAMILY_MARKER FX sits 16x16 on the landing box at (320,320) and the blink lands there: an FX does not block"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_4.cpp",
+          "test": "Blink.a_blink_lands_only_where_no_solid_body_stands"
         }
       ],
-      "missing_arms": [
-        "a treasure (potion) overlaps the landing box",
-        "a generator (tent/tower) or door/tree/boulder weapon overlaps",
-        "a dead or hidden walker (corpse, dug-in skeleton, possession rider) overlaps"
-      ]
+      "missing_arms": []
     },
     {
       "id": "walker_specials.cpp:74",
@@ -86,16 +86,18 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_specials_unit.cpp",
           "test": "WalkerSpecialsUnit.teleport_probe_keeps_no_collide_and_height_gate"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_4.cpp",
+          "test": "Blink.a_height_overlapping_body_blocks_a_blink"
         }
       ],
-      "missing_arms": [
-        "both bounded and height-overlapping"
-      ]
+      "missing_arms": []
     },
     {
       "id": "walker_specials.cpp:98",
@@ -124,7 +126,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_specials_unit.cpp",
@@ -140,11 +142,13 @@
           "file": "tests/integration/test_walker_specials_unit.cpp",
           "test": "WalkerSpecialsUnit.teleport_blocked_marker_denied_without_probe_eat",
           "note": "passable cell: the occupancy probe then refuses on the soldier"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_4.cpp",
+          "test": "Blink.a_permanent_flyer_lands_over_water_but_transient_flight_does_not"
         }
       ],
-      "missing_arms": [
-        "caster permanently BIT_FLYING over water/trees"
-      ]
+      "missing_arms": []
     },
     {
       "id": "walker_specials.cpp:104",
@@ -207,12 +211,14 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": [
-        "same floor, caster hovering at worldz 40 with sizez 8",
-        "other floor"
-      ]
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sem_walker_4.cpp",
+          "test": "Blink.a_landing_is_probed_at_the_casters_height_on_its_floor_and_at_ground_elsewhere"
+        }
+      ],
+      "missing_arms": []
     },
     {
       "id": "walker_specials.cpp:135",
@@ -544,7 +550,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_specials_unit.cpp",
@@ -563,11 +569,13 @@
         {
           "file": "tests/unit/test_gameplay_fixes_cleric_unit.cpp",
           "test": "GameplayFixesClericRaise.refusals_spend_nothing_on_both_values"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_4.cpp",
+          "test": "SemWalker4.a_family_with_no_special_hook_is_refused_free_with_the_default_reason"
         }
       ],
-      "missing_arms": [
-        "no hook for the family"
-      ]
+      "missing_arms": []
     },
     {
       "id": "walker_specials.cpp:221",
@@ -645,7 +653,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_specials.cpp",
@@ -661,11 +669,13 @@
           "file": "tests/integration/test_level_play.cpp",
           "test": "TryxianLevelPlay.bots_fire_varying_specials_at_somebody",
           "note": "every special trace line must sscanf as cast ... price=%u or refused ... reason=, ADD_FAILURE otherwise; crew casts >= 40"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_4.cpp",
+          "test": "SemWalker4.a_family_with_no_special_hook_is_refused_free_with_the_default_reason"
         }
       ],
-      "missing_arms": [
-        "refused with empty reason / no hook"
-      ]
+      "missing_arms": []
     },
     {
       "id": "walker_specials.cpp:254",
@@ -686,11 +696,14 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": [
-        "teleport() called"
-      ]
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sem_walker_4.cpp",
+          "test": "Blink.a_blink_stamps_the_self_teleport_tick_even_when_it_fails"
+        }
+      ],
+      "missing_arms": []
     },
     {
       "id": "walker_specials.cpp:262",
@@ -721,7 +734,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_specials.cpp",
@@ -732,11 +745,13 @@
           "file": "tests/integration/test_walker_specials_unit.cpp",
           "test": "WalkerSpecialsUnit.walker_specials_r11_special_and_teleport_paths",
           "note": "own marker spent/dead -> lands on the LCG-drawn cell"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_4.cpp",
+          "test": "Blink.a_blink_ignores_another_casters_marker"
         }
       ],
-      "missing_arms": [
-        "only another mage's marker"
-      ]
+      "missing_arms": []
     },
     {
       "id": "walker_specials.cpp:277",
@@ -815,7 +830,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_specials.cpp",
@@ -826,11 +841,13 @@
           "file": "tests/integration/test_walker_specials_unit.cpp",
           "test": "WalkerSpecialsUnit.walker_specials_r11_special_and_teleport_paths",
           "note": "one-life marker dead()==1"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_4.cpp",
+          "test": "Blink.a_marker_trip_spends_one_use_and_the_last_use_kills_it"
         }
       ],
-      "missing_arms": [
-        "uses left"
-      ]
+      "missing_arms": []
     },
     {
       "id": "walker_specials.cpp:299",
@@ -859,16 +876,18 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_specials_unit.cpp",
           "test": "WalkerSpecialsUnit.blocked_marker_notice_goes_only_to_the_casting_player"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_4.cpp",
+          "test": "Blink.a_near_blocked_marker_tells_the_player_nothing"
         }
       ],
-      "missing_arms": [
-        "near marker"
-      ]
+      "missing_arms": []
     },
     {
       "id": "walker_specials.cpp:318",
@@ -974,11 +993,14 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": [
-        "teleport_ranged called"
-      ]
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sem_walker_4.cpp",
+          "test": "Blink.a_ranged_hop_stamps_the_self_teleport_tick_even_when_it_fails"
+        }
+      ],
+      "missing_arms": []
     },
     {
       "id": "walker_specials.cpp:362",
@@ -1183,7 +1205,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "deferred",
       "tests": [
         {
           "file": "tests/unit/test_gameplay_fixes_engine.cpp",
@@ -1203,6 +1225,10 @@
       ],
       "missing_arms": [
         "warded undead"
+      ],
+      "issue": "#474",
+      "note": [
+        "the old game turns a warded (invulnerable/invincible) undead with Gameplay Fixes off; the current game skips it, so the classic arm is not pinned"
       ]
     },
     {
@@ -1275,7 +1301,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_modes_tdm.cpp",
@@ -1290,11 +1316,13 @@
         {
           "file": "tests/unit/test_modes_onslaught.cpp",
           "test": "ModesOnslaught.turn_undead_replacement_at_lethal_still_destroys"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_4.cpp",
+          "test": "TurnUndead.a_scripted_level_whose_mode_failed_turns_undead_the_classic_way"
         }
       ],
-      "missing_arms": [
-        "scripted level whose mode init failed"
-      ]
+      "missing_arms": []
     },
     {
       "id": "walker_specials.cpp:436",

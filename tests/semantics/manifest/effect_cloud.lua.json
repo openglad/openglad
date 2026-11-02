@@ -30,7 +30,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_effect_act.cpp",
@@ -41,11 +41,13 @@
           "file": "tests/integration/test_effect_act.cpp",
           "test": "EffectAct.cloud_expired",
           "note": "lifetime 0: ASSERT_EQ(1, dead), EXPECT_EQ(0, lifetime); no foe and no queue check, so the no-damage, no-drift half is not asserted"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_1.cpp",
+          "test": "SemLibsCloud.an_expired_cloud_vanishes_without_acting_that_tick"
         }
       ],
-      "missing_arms": [
-        "lifetime <= 0 (no action)"
-      ]
+      "missing_arms": []
     },
     {
       "id": "effect_cloud.lua:24",
@@ -76,13 +78,14 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": [
-        "lifetime (after ageing) < 8",
-        "lifetime >= 8 and invisibility_left > 0",
-        "lifetime >= 8 and invisibility 0"
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sem_libs_1.cpp",
+          "test": "SemLibsCloud.a_cloud_fades_out_over_its_last_eight_ticks"
+        }
       ],
+      "missing_arms": [],
       "note": [
         "Status was none, but every live-cloud act reaches the fade lines; no test reads invisibility_left."
       ]
@@ -202,17 +205,24 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "deferred",
       "tests": [
         {
           "file": "tests/integration/test_effect_more_paths.cpp",
           "test": "EffectMorePaths.effect_cloud_queues_walk_then_executes_the_drift_step",
           "note": "moving arm: the queued walk is kept, commandcount 4 -> 3; no draw count is read"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_1.cpp",
+          "test": "SemLibsCloud.a_cloud_that_moved_or_turned_keeps_its_walk_and_draws_nothing"
         }
       ],
       "missing_arms": [
-        "moved on either axis or turned (RNG)",
         "no move and no turn"
+      ],
+      "issue": "#486",
+      "note": [
+        "divergence: the wedged-cloud re-roll (#233, 28f8168a / PR #245) is not in the old game at 7ff1654a, whose cloud only calls do_command; the moved/turned no-draw arm is asserted, the wedge arm is not pinned"
       ]
     },
     {
@@ -240,17 +250,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_effect_more_paths.cpp",
           "test": "EffectMorePaths.effect_cloud_queues_walk_then_executes_the_drift_step",
           "note": "non-zero roll: queued WALK direction (+1,+1), count 4, from scripted draws 2,2,4"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_1.cpp",
+          "test": "SemLibsCloud.a_cloud_never_drifts_by_the_zero_step"
         }
       ],
-      "missing_arms": [
-        "both rolls 0"
-      ],
+      "missing_arms": [],
       "note": [
         "Status was executed-only with an empty where; the non-zero arm is asserted by the scripted queue test."
       ]

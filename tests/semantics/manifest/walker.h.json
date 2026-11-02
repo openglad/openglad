@@ -24,12 +24,14 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": [
-        "credit head is a living",
-        "no living on the attacker's owner chain (who==nullptr)"
-      ]
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sem_walker_1.cpp",
+          "test": "SemWalker1.a_hit_is_credited_to_the_living_at_the_top_of_the_owner_chain"
+        }
+      ],
+      "missing_arms": []
     }
   ],
   "other": []

@@ -28,17 +28,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_effect_act.cpp",
           "test": "EffectAct.ghost_scare_rides_its_caster_then_expires",
           "note": "centred on the moved caster; dead after the act, the default path"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_1.cpp",
+          "test": "SemLibsGhostScare.a_scare_without_its_ghost_stays_where_it_is"
         }
       ],
-      "missing_arms": [
-        "no owner"
-      ]
+      "missing_arms": []
     },
     {
       "id": "effect_ghost_scare.lua:28",
@@ -63,7 +65,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_effect_act.cpp",
@@ -73,11 +75,13 @@
           "file": "tests/integration/test_effect_death_more.cpp",
           "test": "EffectDeathMore.effect_death_ghost_scare_forces_walk_commands_on_foes",
           "note": "owner alive: forced WALK of 125"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_1.cpp",
+          "test": "SemLibsGhostScare.a_scare_whose_ghost_is_gone_frightens_nobody"
         }
       ],
-      "missing_arms": [
-        "owner dead/missing"
-      ],
+      "missing_arms": [],
       "note": [
         "Status was executed-only with an empty where; the owner-alive arm is asserted."
       ]
@@ -107,17 +111,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_effect_act.cpp",
           "test": "EffectAct.effect_death_ghost_scare_frights_only_foes_in_radius",
           "note": "foes in radius: frightened"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_1.cpp",
+          "test": "SemLibsGhostScare.a_scare_with_no_foe_in_its_radius_does_nothing_and_draws_nothing"
         }
       ],
-      "missing_arms": [
-        "no foe in radius"
-      ],
+      "missing_arms": [],
       "note": [
         "Removed parity ghost_scare_no_foe_scen99: by its own note the carrier is alive at the final tick and on_death never runs."
       ]
@@ -145,7 +151,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_effect_death_more.cpp",
@@ -155,11 +161,13 @@
         {
           "parity": "effect_ghost_scare_emission_scen99",
           "fact": "WalkerPositionMoved(FAMILY_SOLDIER, 240, 0)"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_2.cpp",
+          "test": "SemGhostScare.a_scare_frightens_living_foes_never_a_generator"
         }
       ],
-      "missing_arms": [
-        "non-living foe (generator)"
-      ]
+      "missing_arms": []
     },
     {
       "id": "effect_ghost_scare.lua:50",
@@ -194,19 +202,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_effect_death_more.cpp",
           "test": "EffectDeathMore.effect_death_ghost_scare_forces_walk_commands_on_foes",
           "note": "two guy-less foes: EXPECT_EQ(125, front.commandcount)"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_2.cpp",
+          "test": "SemGhostScare.a_hero_resists_a_scare_by_a_constitution_roll_a_monster_never_rolls"
         }
       ],
-      "missing_arms": [
-        "monster foe (RNG)",
-        "hero foe",
-        "fright <= 0 after the roll"
-      ]
+      "missing_arms": []
     }
   ],
   "other": [

@@ -425,7 +425,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_sim_control_policy.cpp",
@@ -441,10 +441,16 @@
           "file": "tests/unit/test_sim_control_policy.cpp",
           "test": "SimControlPolicy.owner_locked_follow_when_only_foreign_heroes_remain",
           "note": "nullptr for players 0/1: reacquired nullptr"
+        },
+        {
+          "file": "tests/integration/test_sem_traces.cpp",
+          "test": "SemTraces.an_owner_locked_seat_with_no_claimable_walker_traces_it_and_follows"
         }
       ],
-      "missing_arms": [
-        "none: trace"
+      "missing_arms": [],
+      "issue": "TBD",
+      "note": [
+        "the only missing arm is a TRACE; og_gameplay is compiled without -DTESTING, so TRACE is ((void)0) in every og_unit_* binary; it needs an integration-group (og_game_test) test"
       ]
     },
     {
@@ -486,7 +492,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_sim_control_policy.cpp",
@@ -499,10 +505,16 @@
         {
           "file": "tests/unit/test_sim_control_policy.cpp",
           "test": "SimControlPolicy.net_r1_allied_claimed_teammate_shape_yields_endgame_verdict"
+        },
+        {
+          "file": "tests/integration/test_sem_traces.cpp",
+          "test": "SemTraces.an_owner_locked_seat_with_no_claimable_walker_traces_it_and_follows"
         }
       ],
-      "missing_arms": [
-        "owner-locked, legacy pool non-empty: trace"
+      "missing_arms": [],
+      "issue": "TBD",
+      "note": [
+        "the only missing arm is a TRACE ('reacquire follow for player %d'); compiled out of og_gameplay in unit binaries; needs an integration-group test"
       ]
     },
     {
@@ -580,18 +592,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_sim_control_policy.cpp",
           "test": "SimControlPolicy.next_follow_target_without_a_current_target_restarts_at_the_first_hero",
           "note": "preferred arm: troop first, hero_a returned"
+        },
+        {
+          "file": "tests/unit/test_sem_world_4.cpp",
+          "test": "SemControlPolicy.a_spectator_with_no_hero_to_watch_starts_on_the_first_visible_troop"
         }
       ],
-      "missing_arms": [
-        "only anonymous troops",
-        "no visible living"
-      ]
+      "missing_arms": []
     },
     {
       "id": "sim_control_policy.cpp:361",
@@ -620,12 +633,14 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": [
-        "some controlled id alive",
-        "all 0 or dead"
-      ]
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sem_world_4.cpp",
+          "test": "SemControlPolicy.a_seatless_view_follows_the_lowest_player_with_a_live_walker"
+        }
+      ],
+      "missing_arms": []
     },
     {
       "id": "sim_control_policy.cpp:376",
@@ -668,7 +683,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_sim_control_policy.cpp",
@@ -679,12 +694,13 @@
           "file": "tests/integration/test_game_loop.cpp",
           "test": "GameLoop.display_view_follow_engages_cycles_and_never_stamps_user_tags",
           "note": "another-preferred arm forward a->b->c->a and Shift-reverse a->c; no-preferred-but-living arm: all heroes dead -> the troop"
+        },
+        {
+          "file": "tests/unit/test_sem_world_4.cpp",
+          "test": "SemControlPolicy.switch_character_with_nobody_else_keeps_the_visible_target_or_drops_it"
         }
       ],
-      "missing_arms": [
-        "nobody else, current visible",
-        "nobody else, current gone"
-      ]
+      "missing_arms": []
     }
   ],
   "other": []

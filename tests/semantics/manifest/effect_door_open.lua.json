@@ -26,7 +26,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_pack_lua_paths.cpp",
@@ -37,11 +37,13 @@
           "file": "tests/integration/test_effect_chain_and_door.cpp",
           "test": "EffectChainAndDoor.effect_chain_hits_leader_spawns_explosion_and_secondary_chains_and_door_open_spawns_fx",
           "note": "settle arm"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_1.cpp",
+          "test": "SemLibsDoorOpen.an_opening_door_plays_its_animation_before_it_settles"
         }
       ],
-      "missing_arms": [
-        "still animating (ani_type ~= WALK)"
-      ]
+      "missing_arms": []
     },
     {
       "id": "effect_door_open.lua:27",
@@ -71,7 +73,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "unreachable",
       "tests": [
         {
           "file": "tests/unit/test_pack_lua_paths.cpp",
@@ -82,14 +84,17 @@
           "file": "tests/integration/test_effect_chain_and_door.cpp",
           "test": "EffectChainAndDoor.effect_chain_hits_leader_spawns_explosion_and_secondary_chains_and_door_open_spawns_fx",
           "note": "worldx/worldy, ignore, curdir, ANI_WALK, original dead; floor not"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_1.cpp",
+          "test": "SemLibsDoorOpen.a_settled_door_stays_on_the_floor_it_opened_on"
         }
       ],
       "missing_arms": [
-        "copy spawned (floor)",
         "fxlist full"
       ],
       "note": [
-        "Arm 1 names the floor and no test runs a door_open off floor 0 or reads the copy floor."
+        "divergence: with no copy made the current door returns true and stays alive (retries); the old game breaks to the default path and the door dies (dead = 1; death()); reachable only through a failing entity factory; the copy's floor arm is asserted | triage: Unreachable in play: GameWorld::add_ob returns nullptr only when the entity factory fails (no factory or unknown family), and the world has no object cap. The old game has no defined behaviour there either (an unchecked dereference for the bomb, death for the door). Mark all three arms unreachable,"
       ]
     }
   ],

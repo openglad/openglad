@@ -34,18 +34,23 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_game_world_entity_ids.cpp",
           "test": "GameWorldEntityIdsFixture.an_owner_loop_is_cut_and_legal_chains_survive",
           "note": "loop a<->b: a->owner()==nullptr, b->owner()==a; legal pet->a chain survives"
+        },
+        {
+          "file": "tests/unit/test_sem_world_1.cpp",
+          "test": "SemWorld.a_self_owner_or_no_owner_survives_the_owner_chain_guard"
+        },
+        {
+          "file": "tests/unit/test_sem_world_1.cpp",
+          "test": "SemWorld.an_owner_that_left_the_world_is_cut_before_a_foe_scan"
         }
       ],
-      "missing_arms": [
-        "owner is null or self",
-        "owner chain reaches an owner not in oblist/fxlist/weaplist/dead_list"
-      ]
+      "missing_arms": []
     },
     {
       "id": "game_world.cpp:592",
@@ -70,17 +75,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_screen_extended.cpp",
           "test": "ScreenExtended.screen_add_ob_living",
           "note": "'add_ob(Living, ...) increments living_count': living_before + 1"
+        },
+        {
+          "file": "tests/unit/test_sem_world_1.cpp",
+          "test": "SemWorld.only_a_living_added_to_the_object_list_counts_as_living"
         }
       ],
-      "missing_arms": [
-        "add_ob(Order::Generator/Treasure/FX/Weapon), add_fx_ob, add_weap_ob"
-      ]
+      "missing_arms": []
     },
     {
       "id": "game_world.cpp:600",
@@ -155,7 +162,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_screen_extended.cpp",
@@ -181,13 +188,13 @@
           "file": "tests/unit/test_level_scripts.cpp",
           "test": "LevelScriptsTest.spawn_and_death_hooks_with_per_entity_override",
           "note": "Living: vm_log().back() == 'spawn\\t<id>'; the count is not pinned"
+        },
+        {
+          "file": "tests/unit/test_sem_world_1.cpp",
+          "test": "SemAddOb.add_ob_files_weapons_apart_and_only_livings_fire_the_spawn_hook"
         }
       ],
-      "missing_arms": [
-        "Order::Weapon",
-        "Order::Living",
-        "Order::FX/Treasure"
-      ]
+      "missing_arms": []
     },
     {
       "id": "game_world.cpp:640",
@@ -230,7 +237,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_game_world_entity_ids.cpp",
@@ -251,10 +258,16 @@
           "file": "tests/integration/test_level_data_unit.cpp",
           "test": "LevelDataUnit.level_data_r11_basic_construction_remove_and_helpers",
           "note": "remove_ob(&dummy) == 0"
+        },
+        {
+          "file": "tests/unit/test_sem_world_1.cpp",
+          "test": "SemWorld.removing_a_living_never_drops_the_living_census_below_zero"
         }
       ],
-      "missing_arms": [
-        "living_count already 0"
+      "missing_arms": [],
+      "issue": "TBD",
+      "note": [
+        "classic LevelData::remove_ob decrements numobs for any Living before the list search (can go to -1, and counts a Living found in weaplist/fxlist or in no list); the current game decrements only on an oblist hit and clamps at 0, so the zero-floor arm is not pinned"
       ]
     },
     {
@@ -369,7 +382,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_level_data_coverage.cpp",
@@ -380,11 +393,13 @@
           "file": "tests/integration/test_level_data_unit.cpp",
           "test": "LevelDataUnit.level_data_r11_query_grid_passable_terrain_branches",
           "note": "grid invalid branch false"
+        },
+        {
+          "file": "tests/unit/test_sem_world_1.cpp",
+          "test": "SemWorld.an_ethereal_walker_passes_a_floor_with_no_grid"
         }
       ],
-      "missing_arms": [
-        "grid missing, ethereal"
-      ]
+      "missing_arms": []
     },
     {
       "id": "game_world.cpp:709",
@@ -411,17 +426,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_movement_unit.cpp",
           "test": "WalkerMovementUnit.walker_movement_r12_stationary_slope_and_animate_paths",
           "note": "16x16 mover at (64,64), PIX_WALL2 at cell (5,4): walk(1,0) refused, xpos stays 64; the 65..81 box overhangs into cell 5"
+        },
+        {
+          "file": "tests/unit/test_sem_world_1.cpp",
+          "test": "SemWorld.a_box_ending_on_a_cell_boundary_does_not_touch_the_next_cell"
         }
       ],
-      "missing_arms": [
-        "16x16 walker at (16,16), wall at cell (2,1)"
-      ]
+      "missing_arms": []
     },
     {
       "id": "game_world.cpp:722",
@@ -596,7 +613,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_level_data_coverage.cpp",
@@ -607,11 +624,13 @@
           "file": "tests/integration/test_level_data_coverage.cpp",
           "test": "LevelDataCoverage.level_data_round13_grid_passability_tree_wall_water_and_object_guards",
           "note": "PIX_PATH_4 true"
+        },
+        {
+          "file": "tests/unit/test_sem_world_1.cpp",
+          "test": "SemWorld.every_ground_tile_is_open_to_a_plain_walker"
         }
       ],
-      "missing_arms": [
-        "any ground byte under the box"
-      ]
+      "missing_arms": []
     },
     {
       "id": "game_world.cpp:803",
@@ -660,7 +679,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_level_data_coverage.cpp",
@@ -684,11 +703,13 @@
           "file": "tests/unit/test_quiet_probe.cpp",
           "test": "QuietProbe.fire_pad_answer_names_what_the_pad_holds",
           "note": "'tree tile, arrow': an arrow's pad on PIX_TREE_M1 answers Terrain, a rock's Clear"
+        },
+        {
+          "file": "tests/unit/test_sem_world_1.cpp",
+          "test": "SemWorld.tree_crowns_pass_forestwalkers_and_flyers_only"
         }
       ],
-      "missing_arms": [
-        "flight_left()>0"
-      ]
+      "missing_arms": []
     },
     {
       "id": "game_world.cpp:813",
@@ -725,7 +746,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_level_data_coverage.cpp",
@@ -741,12 +762,13 @@
           "file": "tests/integration/test_level_data_coverage.cpp",
           "test": "LevelDataCoverage.level_data_round13_grid_passability_tree_wall_water_and_object_guards",
           "note": "plain false, weapon true"
+        },
+        {
+          "file": "tests/unit/test_sem_world_1.cpp",
+          "test": "SemWorld.a_tree_trunk_passes_weapons_forestwalkers_and_flyers"
         }
       ],
-      "missing_arms": [
-        "forestwalk",
-        "flying / flight_left"
-      ]
+      "missing_arms": []
     },
     {
       "id": "game_world.cpp:824",
@@ -775,7 +797,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_level_data_coverage.cpp",
@@ -806,11 +828,13 @@
           "file": "tests/unit/test_quiet_probe.cpp",
           "test": "QuietProbe.fire_pad_answer_names_what_the_pad_holds",
           "note": "'wall': rock pad on PIX_H_WALL1 answers Terrain"
+        },
+        {
+          "file": "tests/unit/test_sem_world_1.cpp",
+          "test": "SemWorld.solid_walls_stop_everything_not_ethereal"
         }
       ],
-      "missing_arms": [
-        "any non-ethereal walker or weapon"
-      ]
+      "missing_arms": []
     },
     {
       "id": "game_world.cpp:835",
@@ -1045,7 +1069,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_level_data_coverage.cpp",
@@ -1061,12 +1085,13 @@
           "file": "tests/integration/test_mass_coverage.cpp",
           "test": "MassCoverage.screen_query_grid_passable_reads_the_tile_under_the_walker",
           "note": "plain living false on PIX_WALLSIDE_L"
+        },
+        {
+          "file": "tests/unit/test_sem_world_1.cpp",
+          "test": "SemWorld.low_obstacles_stop_ground_walkers_and_pass_weapons_and_flyers"
         }
       ],
-      "missing_arms": [
-        "flying / flight_left",
-        "plain / swimmer / forestwalk living"
-      ]
+      "missing_arms": []
     },
     {
       "id": "game_world.cpp:919",
@@ -1101,17 +1126,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_zaxis.cpp",
           "test": "ZAxis.running_over_stair_with_walled_destination_never_lands_in_walls",
           "note": "ASSERT_TRUE(query_grid_passable) every tick while a plain soldier crosses a PIX_ZSTAIR_UP cell on floor 0"
+        },
+        {
+          "file": "tests/unit/test_sem_world_1.cpp",
+          "test": "SemWorld.the_multi_floor_tiles_are_walkable_at_the_grid_layer"
         }
       ],
-      "missing_arms": [
-        "any of the 8 bytes, plain soldier"
-      ]
+      "missing_arms": []
     },
     {
       "id": "game_world.cpp:933",
@@ -1294,7 +1321,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "unreachable",
       "tests": [
         {
           "file": "tests/unit/test_decor.cpp",
@@ -1310,12 +1337,17 @@
           "file": "tests/integration/test_level_data_coverage.cpp",
           "test": "LevelDataCoverage.swimming_grants_water_passage_but_not_obstacle_passage",
           "note": "DECOR_NONE plane: water answers unchanged; DECOR_TORCH1 blocks a swimmer"
+        },
+        {
+          "file": "tests/unit/test_sem_world_1.cpp",
+          "test": "SemWorld.a_mismatched_decor_plane_or_unknown_decor_id_is_ignored"
         }
       ],
       "missing_arms": [
-        "no decor plane / size mismatch",
-        "DECOR_NONE or id >= DECOR_MAX",
         "BlocksAll"
+      ],
+      "note": [
+        "unreachable: no kDecorRegistry entry uses DecorPassability::BlocksAll (decordefs.h 'reserved (no v1 user)'), and the registry is constexpr; the size-mismatch and id >= DECOR_MAX arms are asserted"
       ]
     },
     {
@@ -1341,7 +1373,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_level_data_coverage.cpp",
@@ -1352,11 +1384,13 @@
           "file": "tests/integration/test_mass_coverage.cpp",
           "test": "MassCoverage.screen_query_object_passable_reads_obmap_occupancy",
           "note": "live walker vs a living blocker at the spot: false"
+        },
+        {
+          "file": "tests/unit/test_sem_world_1.cpp",
+          "test": "SemWorld.a_dead_walker_never_collides"
         }
       ],
-      "missing_arms": [
-        "dead walker on an occupied spot"
-      ]
+      "missing_arms": []
     },
     {
       "id": "game_world.cpp:1043",
@@ -1413,7 +1447,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_kit_faerie.cpp",
@@ -1434,12 +1468,17 @@
           "file": "tests/unit/test_forest_pathing.cpp",
           "test": "GuardFacing.guard_faces_foe_across_water",
           "note": "PIX_WATER1 band: the guard faces and wakes"
+        },
+        {
+          "file": "tests/unit/test_sem_world_1.cpp",
+          "test": "SemWorld.crowns_walls_and_arrow_walls_block_sight"
+        },
+        {
+          "file": "tests/unit/test_sem_world_1.cpp",
+          "test": "SemWorld.trunks_water_lava_and_low_obstacles_do_not_block_sight"
         }
       ],
-      "missing_arms": [
-        "crown/wall/arrow-wall byte between two walkers",
-        "water, lava, boulder, column, TREE_B1, unknown byte between"
-      ]
+      "missing_arms": []
     },
     {
       "id": "game_world.cpp:1072",
@@ -1488,7 +1527,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_script_bindings_props.cpp",
@@ -1503,11 +1542,13 @@
         {
           "file": "tests/unit/test_kit_faerie.cpp",
           "test": "KitFaerie.swap_trades_places_only_in_line_of_sight"
+        },
+        {
+          "file": "tests/unit/test_sem_world_1.cpp",
+          "test": "SemWorld.walkers_in_the_same_or_adjacent_cells_always_see_each_other"
         }
       ],
-      "missing_arms": [
-        "same or adjacent cell"
-      ]
+      "missing_arms": []
     },
     {
       "id": "game_world.cpp:1122",
@@ -1538,7 +1579,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_game_world_entity_ids.cpp",
@@ -1554,12 +1595,13 @@
           "file": "tests/unit/test_zaxis.cpp",
           "test": "ZAxis.collision_is_floor_separated",
           "note": "set_floor_count(2) -> ASSERT_EQ(2, floor_count())"
+        },
+        {
+          "file": "tests/unit/test_sem_world_1.cpp",
+          "test": "SemWorld.shrinking_the_floor_count_drops_the_upper_floors"
         }
       ],
-      "missing_arms": [
-        "count smaller than current",
-        "count larger"
-      ]
+      "missing_arms": []
     },
     {
       "id": "game_world.cpp:1146",
@@ -1606,7 +1648,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_level_data_coverage.cpp",
@@ -1616,13 +1658,21 @@
         {
           "file": "tests/unit/test_zaxis.cpp",
           "test": "ZAxis.find_near_foe_probes_the_searchers_floor"
+        },
+        {
+          "file": "tests/unit/test_sem_world_1.cpp",
+          "test": "SemWorld.the_quick_foe_search_answers_the_first_foe_in_spiral_order"
+        },
+        {
+          "file": "tests/unit/test_sem_world_1.cpp",
+          "test": "SemWorld.the_quick_foe_search_falls_back_when_the_spiral_is_exhausted"
+        },
+        {
+          "file": "tests/unit/test_sem_world_1.cpp",
+          "test": "SemWorld.the_quick_foe_search_without_an_obmap_answers_the_nearest"
         }
       ],
-      "missing_arms": [
-        "foe in a pile the spiral reaches first",
-        "no foe in 10 legs",
-        "no obmap"
-      ]
+      "missing_arms": []
     },
     {
       "id": "game_world.cpp:1192",
@@ -1669,7 +1719,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_sim_world_headless.cpp",
@@ -1680,15 +1730,21 @@
           "file": "tests/unit/test_sim_world_headless.cpp",
           "test": "SimWorldHeadless.foe_search_unchanged_for_non_negative_invisibility",
           "note": "uncloaked near_found; cloak 300 asserted for find_nearest_foe only, near_found never asserted"
+        },
+        {
+          "file": "tests/unit/test_sem_world_1.cpp",
+          "test": "SemWorld.the_quick_foe_search_acquires_a_hostile_generator"
+        },
+        {
+          "file": "tests/unit/test_sem_world_1.cpp",
+          "test": "SemWorld.the_quick_foe_search_skips_friends_corpses_and_weapons"
+        },
+        {
+          "file": "tests/unit/test_sem_world_1.cpp",
+          "test": "SemWorld.the_quick_foe_search_skips_a_cloaked_foe_that_wins_its_roll"
         }
       ],
-      "missing_arms": [
-        "hostile Generator",
-        "friendly walker",
-        "dead walker",
-        "hostile weapon in pile",
-        "cloak 300, roll non-zero"
-      ]
+      "missing_arms": []
     },
     {
       "id": "game_world.cpp:1236",
@@ -1737,7 +1793,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_level_data_coverage.cpp",
@@ -1763,12 +1819,17 @@
           "file": "tests/unit/test_sim_world_headless.cpp",
           "test": "SimWorldHeadless.foe_search_unchanged_for_non_negative_invisibility",
           "note": "cloak 300 non-zero roll -> not found, one draw"
+        },
+        {
+          "file": "tests/unit/test_sem_world_1.cpp",
+          "test": "SemWorld.the_full_foe_scan_breaks_a_tie_by_list_order"
+        },
+        {
+          "file": "tests/unit/test_sem_world_1.cpp",
+          "test": "SemWorld.the_full_foe_scan_finds_a_foe_on_another_floor"
         }
       ],
-      "missing_arms": [
-        "equal distance",
-        "foe on another floor"
-      ]
+      "missing_arms": []
     },
     {
       "id": "game_world.cpp:1270",
@@ -1803,7 +1864,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "deferred",
       "tests": [
         {
           "file": "tests/unit/test_quiet_probe.cpp",
@@ -1814,11 +1875,18 @@
           "file": "tests/integration/test_level_data_coverage.cpp",
           "test": "LevelDataCoverage.level_data_round14_find_helper_exclusion_branches",
           "note": "only stain dead -> nullptr"
+        },
+        {
+          "file": "tests/unit/test_sem_world_1.cpp",
+          "test": "SemWorld.the_corpse_finder_reaches_only_under_squared_distance_800"
         }
       ],
       "missing_arms": [
-        "squared distance 841",
         "stain on another floor within 2D reach"
+      ],
+      "issue": "#456",
+      "note": [
+        "the floor-blind arm is bug #456 (triage) and is not pinned; the reach arm (841 and exactly 800 out, 784 in) is asserted"
       ]
     },
     {
@@ -1858,7 +1926,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_level_data_coverage.cpp",
@@ -1874,12 +1942,17 @@
           "file": "tests/integration/test_level_data_coverage.cpp",
           "test": "LevelDataCoverage.level_data_round5_find_helpers_contiguous_block_paths",
           "note": "only user()==-1 walkers -> nullptr"
+        },
+        {
+          "file": "tests/unit/test_sem_world_1.cpp",
+          "test": "SemWorld.classic_the_player_finder_takes_a_dead_hero_with_its_seat"
+        },
+        {
+          "file": "tests/unit/test_sem_world_1.cpp",
+          "test": "SemWorld.the_player_finder_skips_a_dormant_seat_walker"
         }
       ],
-      "missing_arms": [
-        "hidden or dormant player",
-        "dead hero corpse with its seat tag"
-      ]
+      "missing_arms": []
     },
     {
       "id": "game_world.cpp:1325",
@@ -1908,7 +1981,7 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_level_data_coverage.cpp",
@@ -1919,13 +1992,13 @@
           "file": "tests/unit/test_kit_seams_hidden.cpp",
           "test": "KitSeams.hidden_walker_is_inert_and_skipped_by_every_finder",
           "note": "hidden excluded only"
+        },
+        {
+          "file": "tests/unit/test_sem_world_1.cpp",
+          "test": "SemWorld.find_in_range_is_inclusive_counts_the_searcher_and_skips_the_inert"
         }
       ],
-      "missing_arms": [
-        "walker at exactly range",
-        "dead/dormant/hidden",
-        "searcher itself"
-      ]
+      "missing_arms": []
     },
     {
       "id": "game_world.cpp:1349",
@@ -1954,7 +2027,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_level_data_coverage.cpp",
@@ -1965,12 +2038,13 @@
           "file": "tests/unit/test_kit_seams_hidden.cpp",
           "test": "KitSeams.hidden_walker_is_inert_and_skipped_by_every_finder",
           "note": "living orc included"
+        },
+        {
+          "file": "tests/unit/test_sem_world_1.cpp",
+          "test": "SemWorld.find_foes_in_range_keeps_hostile_livings_and_generators_only"
         }
       ],
-      "missing_arms": [
-        "hostile living/generator in range",
-        "friendly / dead / weapon"
-      ]
+      "missing_arms": []
     },
     {
       "id": "game_world.cpp:1377",
@@ -1999,7 +2073,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_level_data_coverage.cpp",
@@ -2015,11 +2089,13 @@
           "file": "tests/integration/test_level_data_coverage.cpp",
           "test": "LevelDataCoverage.level_data_round14_find_helper_exclusion_branches",
           "note": "exact list"
+        },
+        {
+          "file": "tests/unit/test_sem_world_1.cpp",
+          "test": "SemWorld.find_foe_weapons_in_range_leaves_out_a_hostile_living"
         }
       ],
-      "missing_arms": [
-        "hostile living"
-      ]
+      "missing_arms": []
     },
     {
       "id": "game_world.cpp:1404",
@@ -2052,7 +2128,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_level_data_coverage.cpp",
@@ -2063,11 +2139,13 @@
           "file": "tests/integration/test_level_data_coverage.cpp",
           "test": "LevelDataCoverage.level_data_range_helpers_positive_selection_paths",
           "note": "exact list"
+        },
+        {
+          "file": "tests/unit/test_sem_world_2.cpp",
+          "test": "SemWorld.the_ally_finder_returns_friendly_livings_never_generators_or_weapons"
         }
       ],
-      "missing_arms": [
-        "friendly generator/weapon"
-      ]
+      "missing_arms": []
     },
     {
       "id": "game_world.cpp:1441",
@@ -2098,11 +2176,14 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": [
-        "any cell"
-      ]
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sem_world_2.cpp",
+          "test": "SemWorld.a_new_blank_level_is_forty_by_sixty_grass_one_draw_per_cell"
+        }
+      ],
+      "missing_arms": []
     },
     {
       "id": "game_world.cpp:1458",
@@ -2145,16 +2226,18 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_level_data_coverage.cpp",
           "test": "LevelDataCoverage.level_data_round17_grid_resize_campaign_wrappers_and_delete_object_hooks"
+        },
+        {
+          "file": "tests/unit/test_sem_world_2.cpp",
+          "test": "SemWorld.a_resize_below_three_or_above_255_leaves_the_level_unchanged"
         }
       ],
-      "missing_arms": [
-        "size 2 or 256"
-      ]
+      "missing_arms": []
     },
     {
       "id": "game_world.cpp:1516",
@@ -2224,7 +2307,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_game_world_entity_ids.cpp",
@@ -2237,11 +2320,13 @@
         {
           "file": "tests/integration/test_screen_extended.cpp",
           "test": "ScreenExtended.screen_damage_tile_various"
+        },
+        {
+          "file": "tests/unit/test_sem_world_2.cpp",
+          "test": "SemWorld.a_blast_on_a_level_with_no_grid_damages_no_tile"
         }
       ],
-      "missing_arms": [
-        "no grid"
-      ]
+      "missing_arms": []
     },
     {
       "id": "game_world.cpp:1633",
@@ -2312,7 +2397,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_screen_extended.cpp",
@@ -2323,11 +2408,13 @@
           "file": "tests/unit/test_game_world_entity_ids.cpp",
           "test": "GameWorldEntityIdsFixture.damage_tile_rejects_negative_pixels_before_dividing",
           "note": "GRASS1 chars"
+        },
+        {
+          "file": "tests/unit/test_sem_world_2.cpp",
+          "test": "SemWorld.a_blast_chars_each_plain_grass_variant_and_nothing_else"
         }
       ],
-      "missing_arms": [
-        "GRASS1..4"
-      ]
+      "missing_arms": []
     },
     {
       "id": "game_world.cpp:1673",
@@ -2360,7 +2447,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_level_data_coverage.cpp",
@@ -2369,12 +2456,13 @@
         {
           "file": "tests/integration/test_level_data_coverage.cpp",
           "test": "LevelDataCoverage.level_data_batch2_misc_uncovered_paths_smoke"
+        },
+        {
+          "file": "tests/unit/test_sem_world_2.cpp",
+          "test": "SemWorld.the_foe_count_skips_generators_and_counts_dormant_and_hidden_foes"
         }
       ],
-      "missing_arms": [
-        "hostile generator",
-        "dormant hostile"
-      ]
+      "missing_arms": []
     },
     {
       "id": "game_world.cpp:1708",
@@ -2445,7 +2533,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_sim_world.cpp",
@@ -2456,11 +2544,13 @@
           "file": "tests/integration/test_runtime_coverage_paths.cpp",
           "test": "RuntimeCoveragePaths.sim_world_freeze_countdown_is_hud_state_and_weap_cleanup",
           "note": "11 -> 10 -> 9, no TIME LEFT notification"
+        },
+        {
+          "file": "tests/unit/test_sem_world_2.cpp",
+          "test": "SemWorld.freeze_time_counts_down_and_only_its_last_tick_restores_the_palette"
         }
       ],
-      "missing_arms": [
-        "freeze 0"
-      ]
+      "missing_arms": []
     },
     {
       "id": "game_world.cpp:1757",
@@ -2495,7 +2585,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_delayed_spawn_wake.cpp",
@@ -2516,11 +2606,17 @@
           "file": "tests/unit/test_npc_scenario_flags.cpp",
           "test": "NpcScenarioFlags.dormant_walker_hidden_until_spawn_tick_then_enters_world",
           "note": "count_fx(FAMILY_FLASH) >= 1 after the wake"
+        },
+        {
+          "file": "tests/unit/test_sem_world_2.cpp",
+          "test": "SemWorld.a_no_collide_sleeper_wakes_in_place_on_a_held_spot"
+        },
+        {
+          "file": "tests/unit/test_sem_world_2.cpp",
+          "test": "SemWorld.a_wake_flashes_once_on_the_wakers_floor"
         }
       ],
-      "missing_arms": [
-        "BIT_NO_COLLIDE, spot blocked"
-      ]
+      "missing_arms": []
     },
     {
       "id": "game_world.cpp:1781",
@@ -2555,7 +2651,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_mode_tick.cpp",
@@ -2565,11 +2661,13 @@
           "file": "tests/integration/test_sim_world.cpp",
           "test": "SimWorld.r15_normal_tick_cleanup_and_dead_entity_removal",
           "note": "no withdraw: ally, enemy and live weapon all act"
+        },
+        {
+          "file": "tests/unit/test_sem_world_2.cpp",
+          "test": "SemWorld.a_withdraw_raised_in_the_object_phase_ends_the_tick"
         }
       ],
-      "missing_arms": [
-        "withdraw raised mid object phase"
-      ]
+      "missing_arms": []
     },
     {
       "id": "game_world.cpp:1789",
@@ -2608,7 +2706,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_sim_world_headless.cpp",
@@ -2629,11 +2727,21 @@
           "file": "tests/unit/test_kit_seams_hidden.cpp",
           "test": "KitSeams.hidden_walker_is_inert_and_skipped_by_every_finder",
           "note": "hidden orc does not act, but level_done 0 is not discriminating: a visible hostile far_orc also holds the level"
+        },
+        {
+          "file": "tests/unit/test_sem_world_2.cpp",
+          "test": "SemWorld.a_hidden_friend_does_not_act_or_hold_the_level"
+        },
+        {
+          "file": "tests/unit/test_sem_world_2.cpp",
+          "test": "SemWorld.a_hidden_foe_holds_the_level_without_acting"
+        },
+        {
+          "file": "tests/unit/test_sem_world_2.cpp",
+          "test": "SemWorld.a_sleeper_acts_first_on_the_tick_it_wakes"
         }
       ],
-      "missing_arms": [
-        "hidden friendly"
-      ]
+      "missing_arms": []
     },
     {
       "id": "game_world.cpp:1802",
@@ -2676,7 +2784,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "deferred",
       "tests": [
         {
           "file": "tests/integration/test_sim_world.cpp",
@@ -2695,11 +2803,16 @@
         {
           "parity": "enemy_freeze_mage_scen99",
           "fact": "WalkerPositionMoved(FAMILY_ARCHER, 200, 120)"
+        },
+        {
+          "file": "tests/unit/test_sem_world_2.cpp",
+          "test": "SemWorld.freeze_time_stops_hostile_generators_but_not_effects_or_treasures"
         }
       ],
-      "missing_arms": [
-        "freeze, hostile Generator",
-        "freeze, effect/treasure in oblist"
+      "missing_arms": [],
+      "issue": "#461",
+      "note": [
+        "divergence #461: the freeze act gate reads is_friendly_to_team(my_team) where the old game reads team_num == 0; the generator and effect/treasure arms (my_team 0, team-1 walkers, where both agree) are asserted"
       ]
     },
     {
@@ -2741,7 +2854,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_sim_world_headless.cpp",
@@ -2759,12 +2872,17 @@
           "file": "tests/integration/test_runtime_coverage_paths.cpp",
           "test": "RuntimeCoveragePaths.sim_world_batch5_game_end_paths",
           "note": "live hostile keeps level_done 0"
+        },
+        {
+          "file": "tests/unit/test_sem_world_2.cpp",
+          "test": "SemWorld.a_foe_that_dies_in_its_own_act_does_not_hold_the_level"
+        },
+        {
+          "file": "tests/unit/test_sem_world_2.cpp",
+          "test": "SemWorld.hostile_generators_alone_never_hold_the_level_open"
         }
       ],
-      "missing_arms": [
-        "hostile Living dies in its act",
-        "only hostile generators"
-      ]
+      "missing_arms": []
     },
     {
       "id": "game_world.cpp:1816",
@@ -2793,13 +2911,14 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": [
-        "no foe, no leader, hostile exists",
-        "has leader",
-        "no hostile"
-      ]
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sem_world_2.cpp",
+          "test": "SemWorld.a_walker_without_foe_or_leader_is_handed_the_nearest_foe"
+        }
+      ],
+      "missing_arms": []
     },
     {
       "id": "game_world.cpp:1858",
@@ -2832,17 +2951,18 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_sim_world_headless.cpp",
           "test": "SimWorldHeadless.hostile_living_in_the_weapon_list_holds_the_level_open"
+        },
+        {
+          "file": "tests/unit/test_sem_world_2.cpp",
+          "test": "SemWorld.live_missiles_act_through_freeze_time_and_dead_ones_never"
         }
       ],
-      "missing_arms": [
-        "live missile",
-        "dead weapon"
-      ]
+      "missing_arms": []
     },
     {
       "id": "game_world.cpp:1877",
@@ -2877,7 +2997,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_runtime_coverage_paths.cpp",
@@ -2893,11 +3013,13 @@
           "file": "tests/integration/test_sim_world.cpp",
           "test": "SimWorld.r15_freeze_tick_and_level_done_paths",
           "note": "exit + frozen foe stays 0"
+        },
+        {
+          "file": "tests/unit/test_sem_world_2.cpp",
+          "test": "SemWorld.a_dead_exit_pad_does_not_keep_a_cleared_level_waiting"
         }
       ],
-      "missing_arms": [
-        "dead exit"
-      ]
+      "missing_arms": []
     },
     {
       "id": "game_world.cpp:1892",
@@ -2936,7 +3058,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_mode_tick.cpp",
@@ -2952,11 +3074,17 @@
           "file": "tests/unit/test_mode_tick.cpp",
           "test": "ModeTick.declare_winner_is_one_shot_and_reasserted_every_tick",
           "note": "game_ended on the winner tick"
+        },
+        {
+          "file": "tests/unit/test_sem_world_2.cpp",
+          "test": "SemWorld.an_active_mode_owns_completion_and_kill_all_never_fires"
+        },
+        {
+          "file": "tests/unit/test_sem_world_2.cpp",
+          "test": "SemWorld.a_mode_win_ends_the_tick_before_the_dead_sweep"
         }
       ],
-      "missing_arms": [
-        "scripted, mode active"
-      ]
+      "missing_arms": []
     },
     {
       "id": "game_world.cpp:1933",
@@ -3044,7 +3172,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_match_stage.cpp",
@@ -3057,11 +3185,13 @@
         {
           "file": "tests/unit/test_match_stage.cpp",
           "test": "MatchStageTest.adopted_world_does_not_re_run_the_lineup_stage"
+        },
+        {
+          "file": "tests/unit/test_sem_world_2.cpp",
+          "test": "SemWorld.a_lineup_step_that_fields_nobody_lets_tick_one_complete"
         }
       ],
-      "missing_arms": [
-        "unstaged, hook fields nothing"
-      ]
+      "missing_arms": []
     },
     {
       "id": "game_world.cpp:1961",
@@ -3223,7 +3353,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_sim_world.cpp",
@@ -3233,11 +3363,20 @@
         {
           "file": "tests/integration/test_runtime_coverage_paths.cpp",
           "test": "RuntimeCoveragePaths.sim_world_batch6_cleanup_and_erase_paths_with_hostiles_present"
+        },
+        {
+          "file": "tests/unit/test_sem_world_2.cpp",
+          "test": "SemWorld.links_to_live_walkers_survive_the_stale_link_cleanup"
+        },
+        {
+          "file": "tests/unit/test_sem_world_2.cpp",
+          "test": "SemWorld.a_stats_controller_that_died_is_dropped_at_the_end_of_the_tick"
         }
       ],
-      "missing_arms": [
-        "controller dead",
-        "link alive"
+      "missing_arms": [],
+      "issue": "TBD",
+      "note": [
+        "divergence: the old game cleans foe/leader/owner/collide_ob links to the dead in oblist and weaplist only; the current game also clears a dead stats->controller and cleans fxlist links. Neither extra arm is pinned; the alive-link arm (all three lists) and the dead-link arm (oblist, weaplist) are asserted"
       ]
     },
     {
@@ -3269,18 +3408,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_runtime_coverage_paths.cpp",
           "test": "RuntimeCoveragePaths.sim_world_batch6_cleanup_and_erase_paths_with_hostiles_present",
           "note": "myguy-less corpse to dead_list, living_count"
+        },
+        {
+          "file": "tests/unit/test_sem_world_2.cpp",
+          "test": "SemWorld.hero_corpses_and_corpses_awaiting_respawn_stay_in_the_world"
         }
       ],
-      "missing_arms": [
-        "dead hero with myguy",
-        "dead with pending respawn"
-      ]
+      "missing_arms": []
     },
     {
       "id": "game_world.cpp:2046",
@@ -3385,7 +3525,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_match_stage.cpp",
@@ -3396,11 +3536,13 @@
           "file": "tests/unit/test_match_stage.cpp",
           "test": "LineupStageLazyArm.a_step_that_fields_fighters_holds_the_level_open",
           "note": "hook ran and its fielded orc counts"
+        },
+        {
+          "file": "tests/unit/test_sem_world_2.cpp",
+          "test": "SemWorld.the_lineup_step_never_runs_where_a_mode_owns_the_level"
         }
       ],
-      "missing_arms": [
-        "mode active"
-      ]
+      "missing_arms": []
     },
     {
       "id": "game_world.cpp:2104",
@@ -3443,7 +3585,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_kit_seams_small.cpp",
@@ -3458,15 +3600,13 @@
         {
           "file": "tests/unit/test_zaxis.cpp",
           "test": "ZAxis.stair_up_into_occupied_cell_lands_beside_the_blocker"
+        },
+        {
+          "file": "tests/unit/test_sem_world_2.cpp",
+          "test": "SemWorld.only_bodies_generators_and_solid_scenery_block_an_arrival"
         }
       ],
-      "missing_arms": [
-        "overlapping live Living/Generator",
-        "overlapping door/tree/boulder weapon",
-        "plain missile / treasure",
-        "dead or hidden",
-        "touching edges only"
-      ]
+      "missing_arms": []
     },
     {
       "id": "game_world.cpp:2128",
@@ -3497,7 +3637,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_zaxis.cpp",
@@ -3508,11 +3648,13 @@
           "file": "tests/unit/test_kit_seams_hidden.cpp",
           "test": "KitSeams.landing_probes_ignore_a_hidden_walker",
           "note": "floor_landing_clear false with a live orc on the spot"
+        },
+        {
+          "file": "tests/unit/test_sem_world_2.cpp",
+          "test": "SemWorld.the_landing_probe_never_eats_the_treasure_on_the_spot"
         }
       ],
-      "missing_arms": [
-        "treasure overlaps"
-      ]
+      "missing_arms": []
     },
     {
       "id": "game_world.cpp:2175",
@@ -3539,7 +3681,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_delayed_spawn_wake.cpp",
@@ -3550,11 +3692,13 @@
           "file": "tests/unit/test_delayed_spawn_wake.cpp",
           "test": "DelayedSpawnWake.generator_pad_dormant_walker_survives",
           "note": "no spawn placed on the dormant footprint"
+        },
+        {
+          "file": "tests/unit/test_sem_world_2.cpp",
+          "test": "SemWorld.only_a_live_sleeper_on_the_same_floor_reserves_a_spot"
         }
       ],
-      "missing_arms": [
-        "dormant on another floor / dead / awake"
-      ]
+      "missing_arms": []
     },
     {
       "id": "game_world.cpp:2220",
@@ -3579,7 +3723,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_delayed_spawn_wake.cpp",
@@ -3589,11 +3733,13 @@
         {
           "file": "tests/unit/test_delayed_spawn_wake.cpp",
           "test": "DelayedSpawnWake.blocked_wake_defers_then_completes"
+        },
+        {
+          "file": "tests/unit/test_sem_world_2.cpp",
+          "test": "SemWorld.a_missile_on_a_sleepers_spot_does_not_block_the_wake"
         }
       ],
-      "missing_arms": [
-        "missile on the spot"
-      ]
+      "missing_arms": []
     },
     {
       "id": "game_world.cpp:2235",
@@ -3640,7 +3786,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_delayed_spawn_wake.cpp",
@@ -3651,11 +3797,13 @@
           "file": "tests/unit/test_delayed_spawn_wake.cpp",
           "test": "DelayedSpawnWake.an_edge_wake_skips_off_grid_and_still_dormant_cells",
           "note": "exact xy; off-grid and dormant-reserved skipped"
+        },
+        {
+          "file": "tests/unit/test_sem_world_2.cpp",
+          "test": "SemWorld.a_sleeper_walled_in_beyond_four_rings_stays_put"
         }
       ],
-      "missing_arms": [
-        "all within 4 rings blocked"
-      ]
+      "missing_arms": []
     },
     {
       "id": "game_world.cpp:2276",
@@ -3686,7 +3834,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_npc_scenario_flags.cpp",
@@ -3702,11 +3850,13 @@
           "file": "tests/unit/test_npc_scenario_flags.cpp",
           "test": "SaveAllScoping.foreign_color_company_hero_death_does_not_fail_mission",
           "note": "none flagged -> false"
+        },
+        {
+          "file": "tests/unit/test_sem_world_2.cpp",
+          "test": "SemWorld.a_dead_protected_npc_still_scopes_the_save_all_rule"
         }
       ],
-      "missing_arms": [
-        "only a flagged NPC already in dead_list"
-      ]
+      "missing_arms": []
     },
     {
       "id": "game_world.cpp:2302",
@@ -3801,18 +3951,19 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_modes_soccer.cpp",
           "test": "ModesSoccer.slain_bot_leaves_a_raisable_corpse_until_respawn",
           "note": "find_by_id(corpse_id)==nullptr after the fire only"
+        },
+        {
+          "file": "tests/unit/test_sem_world_2.cpp",
+          "test": "SemWorld.retiring_a_held_corpse_files_it_dead_exactly_once"
         }
       ],
-      "missing_arms": [
-        "corpse in oblist",
-        "not in oblist"
-      ]
+      "missing_arms": []
     },
     {
       "id": "game_world.cpp:2362",

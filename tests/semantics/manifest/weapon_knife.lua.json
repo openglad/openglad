@@ -24,10 +24,13 @@
         }
       ],
       "setting": "none",
-      "status": "none",
+      "status": "unreachable",
       "tests": [],
       "missing_arms": [
         "owner nil"
+      ],
+      "note": [
+        "unreachable: weap::act re-owns a null or dead owner's knife to itself before it can die (weap.cpp:66-70); classic divergence on the unreached arm: the old game (weap.cpp:143-145 at 7ff1654a) spawns a knife_back for a NULL owner, the current Lua returns false"
       ]
     },
     {
@@ -57,7 +60,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_weap_behavior.cpp",
@@ -66,11 +69,13 @@
         {
           "file": "tests/integration/test_weap_behavior.cpp",
           "test": "WeapBehavior.weap_death_knife_non_soldier"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_5.cpp",
+          "test": "SemLibsKnife.a_classic_orphaned_knife_returns_owned_by_itself"
         }
       ],
-      "missing_arms": [
-        "thrower died, owner defaulted to the knife itself (family 0)"
-      ]
+      "missing_arms": []
     }
   ],
   "other": [

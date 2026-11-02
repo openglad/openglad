@@ -121,7 +121,7 @@
         }
       ],
       "setting": "new-specials",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_kit_captain.cpp",
@@ -137,11 +137,13 @@
           "file": "tests/unit/test_kit_captain.cpp",
           "test": "KitCaptain.reel_never_hauls_a_foe_past_the_captain",
           "note": "all eight spots fenced: foe left at 220, blade dead"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_2.cpp",
+          "test": "SemGatesProbe.a_reeled_foe_takes_the_first_clockwise_of_two_equally_near_ring_spots"
         }
       ],
-      "missing_arms": [
-        "tie"
-      ]
+      "missing_arms": []
     },
     {
       "id": "kit_captain.lua:81",
@@ -180,7 +182,7 @@
         }
       ],
       "setting": "new-specials",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_kit_captain.cpp",
@@ -196,12 +198,13 @@
           "file": "tests/unit/test_kit_captain.cpp",
           "test": "KitCaptain.ai_banner_plants_among_friends_and_calls_the_warband_when_pressed",
           "note": "banner stands: gate holds"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_2.cpp",
+          "test": "SemCaptain.the_captains_banner_is_his_own_standing_one"
         }
       ],
-      "missing_arms": [
-        "dead banner of his",
-        "another captain's live banner"
-      ]
+      "missing_arms": []
     },
     {
       "id": "kit_captain.lua:96",
@@ -238,7 +241,7 @@
         }
       ],
       "setting": "new-specials",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_kit_captain.cpp",
@@ -254,12 +257,13 @@
           "file": "tests/unit/test_kit_captain.cpp",
           "test": "KitCaptain.grunts_turn_to_the_new_banner",
           "note": "own grunts re-pointed"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_2.cpp",
+          "test": "SemCaptain.the_warband_counts_only_his_own_live_grunts"
         }
       ],
-      "missing_arms": [
-        "a wild orc (not his)",
-        "a dead grunt"
-      ]
+      "missing_arms": []
     },
     {
       "id": "kit_captain.lua:131",
@@ -322,16 +326,18 @@
         }
       ],
       "setting": "new-specials",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_kit_captain.cpp",
           "test": "KitCaptain.knife_fan_throws_three"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_3.cpp",
+          "test": "SemLibsCaptain.a_knife_fan_point_blank_strikes_the_body_on_its_pad_and_throws_the_other_two"
         }
       ],
-      "missing_arms": [
-        "idle, a body touching the facing side (point-blank)"
-      ]
+      "missing_arms": []
     },
     {
       "id": "kit_captain.lua:179",
@@ -445,7 +451,7 @@
         }
       ],
       "setting": "new-specials",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_kit_captain.cpp",
@@ -462,11 +468,13 @@
         {
           "file": "tests/unit/test_kit_captain.cpp",
           "test": "KitCaptain.refused_second_plant_keeps_the_first"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_3.cpp",
+          "test": "SemLibsCaptain.planting_a_war_banner_roars_once_and_stands_it_on_the_corpse"
         }
       ],
-      "missing_arms": [
-        "first plant: sound"
-      ]
+      "missing_arms": []
     },
     {
       "id": "kit_captain.lua:266",
@@ -499,16 +507,18 @@
         }
       ],
       "setting": "new-specials",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_kit_captain.cpp",
           "test": "KitCaptain.warband_arrives_from_the_nearest_edge_fearless_and_runs_to_the_banner"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_3.cpp",
+          "test": "SemLibsCaptain.a_warband_tile_touching_the_captains_edge_is_clear_ground"
         }
       ],
-      "missing_arms": [
-        "tile exactly touching an edge of the box"
-      ]
+      "missing_arms": []
     },
     {
       "id": "kit_captain.lua:288",
@@ -569,16 +579,18 @@
         }
       ],
       "setting": "new-specials",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_kit_captain.cpp",
           "test": "KitCaptain.warband_arrives_from_the_nearest_edge_fearless_and_runs_to_the_banner"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_3.cpp",
+          "test": "SemLibsCaptain.a_warband_with_equal_edge_gaps_comes_in_west_east_north_south_order"
         }
       ],
-      "missing_arms": [
-        "equal gaps"
-      ]
+      "missing_arms": []
     },
     {
       "id": "kit_captain.lua:320",
@@ -621,7 +633,7 @@
         }
       ],
       "setting": "new-specials",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_kit_captain.cpp",
@@ -630,11 +642,13 @@
         {
           "file": "tests/unit/test_kit_captain.cpp",
           "test": "KitCaptain.warband_has_its_own_price_and_a_short_pool_is_refused"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_3.cpp",
+          "test": "SemLibsCaptain.a_warband_with_no_banner_runs_to_the_captains_spot"
         }
       ],
-      "missing_arms": [
-        "no banner"
-      ]
+      "missing_arms": []
     },
     {
       "id": "kit_captain.lua:357",
@@ -799,16 +813,18 @@
         }
       ],
       "setting": "new-specials",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_bot_gates_kits.cpp",
           "test": "GameplayFixesBots.captain_fan_wants_two_foes_on_its_three_lines"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_3.cpp",
+          "test": "SemLibsCaptainGates.a_bot_captain_counts_no_foe_past_the_knives_flight"
         }
       ],
-      "missing_arms": [
-        "foe past flight"
-      ]
+      "missing_arms": []
     },
     {
       "id": "kit_captain.lua:435",
@@ -943,7 +959,7 @@
         }
       ],
       "setting": "new-specials",
-      "status": "partial",
+      "status": "deferred",
       "tests": [
         {
           "file": "tests/unit/test_kit_captain.cpp",
@@ -960,12 +976,18 @@
         {
           "file": "tests/unit/test_bot_gates_kits.cpp",
           "test": "GameplayFixesBots.captain_banner_wants_a_foe_near_the_flag"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_3.cpp",
+          "test": "SemLibsCaptainGates.a_bot_captain_counts_no_tent_among_the_friends_round_a_banner"
         }
       ],
       "missing_arms": [
-        "two friendly tents within 96, corpse, foe at 100, no banner"
+        "two living friends on another floor within 96 count as 'friends around' (the bug's arm, not pinned)"
       ],
+      "issue": "#475",
       "note": [
+        "triaged bug #475: the friend count has no floor filter; the tents arm (find_friends_in_range is Living-only: tents are no friends) is asserted",
         "unasserted: two friendly generators/tents (non-living) within 96 count as 'friends around' for the plant arm (suspect)"
       ]
     }

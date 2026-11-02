@@ -28,7 +28,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_kit_skeleton.cpp",
@@ -39,11 +39,13 @@
           "file": "tests/unit/test_kit_skeleton.cpp",
           "test": "KitSkeleton.possessed_body_cannot_dig_in",
           "note": "TELE_IN -> DIG IN SPECIAL BUSY"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_4.cpp",
+          "test": "SemTeleportGuard.a_walker_going_out_of_a_teleport_is_mid_teleport"
         }
       ],
-      "missing_arms": [
-        "TELE_OUT"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living_common.lua:68",

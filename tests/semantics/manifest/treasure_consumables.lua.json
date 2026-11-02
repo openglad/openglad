@@ -24,7 +24,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "parity": "treasure_magic_potion_pickup_scen99",
@@ -38,11 +38,13 @@
           "file": "tests/integration/test_treasure_eat.cpp",
           "test": "TreasureEat.magic_potion",
           "note": "seated eater: potion dead"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_4.cpp",
+          "test": "SemTreasureConsumables.a_bot_drinks_a_potion_silently_a_seated_eater_is_told"
         }
       ],
-      "missing_arms": [
-        "bot eater"
-      ]
+      "missing_arms": []
     },
     {
       "id": "treasure_consumables.lua:18",
@@ -113,17 +115,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_treasure_eat.cpp",
           "test": "TreasureEat.drumstick",
           "note": "heal within wound: 50/100 + 10..19 -> 60..69, the clamp never fires"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_4.cpp",
+          "test": "SemTreasureConsumables.a_drumstick_heals_no_higher_than_max_hp"
         }
       ],
-      "missing_arms": [
-        "heal exceeds wound"
-      ]
+      "missing_arms": []
     },
     {
       "id": "treasure_consumables.lua:38",
@@ -148,12 +152,14 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": [
-        "below max",
-        "already above max"
-      ]
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sem_libs_4.cpp",
+          "test": "SemTreasureConsumables.a_mana_potion_tops_up_then_overfills_and_never_lowers_a_pool"
+        }
+      ],
+      "missing_arms": []
     },
     {
       "id": "treasure_consumables.lua:50",

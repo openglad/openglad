@@ -32,7 +32,7 @@
         }
       ],
       "setting": "new-specials",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_kit_possession.cpp",
@@ -43,11 +43,13 @@
           "file": "tests/unit/test_kit_possession.cpp",
           "test": "KitPossession.possess_moves_the_seat_tag_hides_the_rider_and_flips_the_host",
           "note": "valid rider continues"
+        },
+        {
+          "file": "tests/unit/test_sem_world_3.cpp",
+          "test": "SemPossession.a_dead_hidden_or_dormant_rider_cannot_possess"
         }
       ],
-      "missing_arms": [
-        "rider dead / hidden / dormant"
-      ]
+      "missing_arms": []
     },
     {
       "id": "possession.cpp:125",
@@ -76,17 +78,19 @@
         }
       ],
       "setting": "new-specials",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_kit_possession.cpp",
           "test": "KitPossession.undead_seat_and_linked_hosts_refuse",
           "note": "hidden and dead host refused; continues for the free orc"
+        },
+        {
+          "file": "tests/unit/test_sem_world_3.cpp",
+          "test": "SemPossession.a_dormant_body_is_no_host_in_reach"
         }
       ],
-      "missing_arms": [
-        "host dormant"
-      ]
+      "missing_arms": []
     },
     {
       "id": "possession.cpp:127",
@@ -279,17 +283,19 @@
         }
       ],
       "setting": "new-specials",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_kit_possession.cpp",
           "test": "KitPossession.host_tick_counts_down_follows_and_releases_at_zero",
           "note": "unlinked: EXPECT_EQ(nullptr, release_possession); linked arm: full release asserted"
+        },
+        {
+          "file": "tests/unit/test_sem_world_3.cpp",
+          "test": "SemPossession.releasing_an_unlinked_walker_changes_nothing"
         }
       ],
-      "missing_arms": [
-        "unlinked: nothing changes"
-      ]
+      "missing_arms": []
     },
     {
       "id": "possession.cpp:182",
@@ -375,12 +381,14 @@
         }
       ],
       "setting": "new-specials",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": [
-        "rider gone",
-        "rider present"
-      ]
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sem_world_3.cpp",
+          "test": "SemPossession.a_release_with_the_rider_gone_only_unlinks_the_host"
+        }
+      ],
+      "missing_arms": []
     },
     {
       "id": "possession.cpp:204",
@@ -415,18 +423,19 @@
         }
       ],
       "setting": "new-specials",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_kit_possession.cpp",
           "test": "KitPossession.host_tick_counts_down_follows_and_releases_at_zero",
           "note": "seat-driven arm; rider centred on host, visible, one GHOST_SCARE burst"
+        },
+        {
+          "file": "tests/unit/test_sem_world_3.cpp",
+          "test": "SemPossession.a_released_rider_takes_the_hosts_floor_and_a_bot_moves_no_tag"
         }
       ],
-      "missing_arms": [
-        "bot",
-        "any: floor"
-      ]
+      "missing_arms": []
     },
     {
       "id": "possession.cpp:223",
@@ -451,17 +460,19 @@
         }
       ],
       "setting": "new-specials",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_kit_possession.cpp",
           "test": "KitPossession.host_death_releases_with_half_overkill",
           "note": "cast-out notification on host death"
+        },
+        {
+          "file": "tests/unit/test_sem_world_3.cpp",
+          "test": "SemPossession.only_a_dying_host_casts_its_rider_out_aloud"
         }
       ],
-      "missing_arms": [
-        "timer/switch release"
-      ]
+      "missing_arms": []
     },
     {
       "id": "possession.cpp:226",
@@ -534,7 +545,7 @@
         }
       ],
       "setting": "new-specials",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_kit_possession.cpp",
@@ -545,11 +556,13 @@
           "file": "tests/unit/test_kit_possession.cpp",
           "test": "KitPossession.host_tick_counts_down_follows_and_releases_at_zero",
           "note": "unlinked arm: a tick on a free walker leaves link 0; rider-alive arm: follow + countdown"
+        },
+        {
+          "file": "tests/unit/test_sem_world_3.cpp",
+          "test": "SemPossession.a_host_whose_rider_is_dead_just_drops_the_link"
         }
       ],
-      "missing_arms": [
-        "rider dead (no death() run)"
-      ]
+      "missing_arms": []
     },
     {
       "id": "possession.cpp:263",
@@ -620,7 +633,7 @@
         }
       ],
       "setting": "new-specials",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_kit_skeleton.cpp",
@@ -641,11 +654,13 @@
           "file": "tests/unit/test_kit_skeleton.cpp",
           "test": "KitSkeleton.unwarded_death_is_final",
           "note": "unwarded arm"
+        },
+        {
+          "file": "tests/unit/test_sem_world_3.cpp",
+          "test": "SemPossession.a_warded_skeleton_stands_up_on_the_teleport_in_row"
         }
       ],
-      "missing_arms": [
-        "warded: animation"
-      ]
+      "missing_arms": []
     },
     {
       "id": "possession.cpp:289",
@@ -684,7 +699,7 @@
         }
       ],
       "setting": "new-specials",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_kit_possession.cpp",
@@ -694,11 +709,13 @@
           "file": "tests/unit/test_kit_possession.cpp",
           "test": "KitPossession.host_death_releases_with_half_overkill",
           "note": "hp<0 overkill and hp>=0 clean arms"
+        },
+        {
+          "file": "tests/unit/test_sem_world_3.cpp",
+          "test": "SemPossession.an_unlinked_death_touches_no_possession"
         }
       ],
-      "missing_arms": [
-        "unlinked"
-      ]
+      "missing_arms": []
     },
     {
       "id": "possession.cpp:312",
@@ -725,16 +742,18 @@
         }
       ],
       "setting": "new-specials",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_kit_possession.cpp",
           "test": "KitPossession.seat_redirect_follows_host_then_returns"
+        },
+        {
+          "file": "tests/unit/test_sem_world_3.cpp",
+          "test": "SemPossession.the_seat_drives_a_ridden_body_only_if_alive_and_tagged_for_it"
         }
       ],
-      "missing_arms": [
-        "host dead or tagged otherwise"
-      ]
+      "missing_arms": []
     },
     {
       "id": "possession.cpp:326",
@@ -767,7 +786,7 @@
         }
       ],
       "setting": "new-specials",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_kit_possession.cpp",
@@ -777,11 +796,13 @@
         {
           "file": "tests/unit/test_kit_possession.cpp",
           "test": "KitPossession.seat_redirect_passes_an_earlier_hero_corpse"
+        },
+        {
+          "file": "tests/unit/test_sem_world_3.cpp",
+          "test": "SemPossession.a_seat_on_a_still_tagged_body_keeps_it"
         }
       ],
-      "missing_arms": [
-        "control still tagged"
-      ]
+      "missing_arms": []
     }
   ],
   "other": [

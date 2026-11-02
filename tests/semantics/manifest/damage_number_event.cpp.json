@@ -34,7 +34,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_damage_number_events.cpp",
@@ -45,11 +45,13 @@
           "file": "tests/unit/test_damage_number_events.cpp",
           "test": "DamageNumberEvent.encode_decode_pins_every_field",
           "note": "1234/567 in range"
+        },
+        {
+          "file": "tests/unit/test_sem_world_1.cpp",
+          "test": "SemDamageNumber.a_nan_or_zero_coordinate_crosses_as_zero_and_fractions_truncate"
         }
       ],
-      "missing_arms": [
-        "NaN"
-      ]
+      "missing_arms": []
     },
     {
       "id": "damage_number_event.cpp:27",
@@ -170,17 +172,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_damage_number_events.cpp",
           "test": "DamageNumberEvent.lift_budget_caps_the_tick_and_seat_bound_owners_are_lifted_first",
           "note": "seat-first ordering, exact 512 budget, every list drained"
+        },
+        {
+          "file": "tests/unit/test_sem_world_1.cpp",
+          "test": "SemDamageNumber.a_walker_without_an_entity_id_is_never_lifted_but_is_drained"
         }
       ],
-      "missing_arms": [
-        "entity_id 0"
-      ]
+      "missing_arms": []
     },
     {
       "id": "damage_number_event.cpp:131",
@@ -219,17 +223,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_damage_number_events.cpp",
           "test": "DamageNumberEvent.apply_drops_unknown_owner_and_caps_list",
           "note": "unknown owner not counted / nothing pushed; cap 64 with oldest dropped; known owner counted"
+        },
+        {
+          "file": "tests/unit/test_sem_world_1.cpp",
+          "test": "SemDamageNumber.a_mirror_ignores_events_of_any_other_kind"
         }
       ],
-      "missing_arms": [
-        "other event kind"
-      ]
+      "missing_arms": []
     }
   ],
   "other": []

@@ -264,7 +264,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_smooth_matrix.cpp",
@@ -285,12 +285,17 @@
         {
           "file": "tests/integration/test_smooth_more_branches.cpp",
           "test": "SmoothMoreBranches.dark_grass_and_wall_clusters_select_their_exact_piece"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_3.cpp",
+          "test": "SemSmooth.dark_grass_open_to_the_right_or_top_fades_to_ll_only_beside_plain_grass"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_3.cpp",
+          "test": "SemSmooth.dark_grass_open_to_the_left_or_bottom_fades_to_ur_only_beside_plain_grass"
         }
       ],
-      "missing_arms": [
-        "top right / right thin / top alone, grass beside",
-        "bottom left / left alone / bottom alone, grass beside"
-      ]
+      "missing_arms": []
     },
     {
       "id": "smooth.cpp:370",
@@ -585,7 +590,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_smooth_more_branches.cpp",
@@ -606,11 +611,17 @@
         {
           "file": "tests/integration/test_smooth_more_branches.cpp",
           "test": "SmoothMoreBranches.dark_grass_and_wall_clusters_select_their_exact_piece"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_3.cpp",
+          "test": "SemSmooth.a_wall_middle_base_is_plain_wallside_unless_the_one_in_ten_roll_cracks_it"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_3.cpp",
+          "test": "SemSmooth.classic_a_wall_with_only_side_neighbours_keeps_its_painted_tile"
         }
       ],
-      "missing_arms": [
-        "11"
-      ]
+      "missing_arms": []
     },
     {
       "id": "smooth.cpp:567",
@@ -907,16 +918,18 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_smooth_more_branches.cpp",
           "test": "SmoothMoreBranches.smooth_wall_water_tree_unknown_and_setxy_guard_paths"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_3.cpp",
+          "test": "SemSmooth.terrain_with_no_smoothing_rule_is_left_exactly_as_painted"
         }
       ],
-      "missing_arms": [
-        "no rule"
-      ]
+      "missing_arms": []
     }
   ],
   "other": [

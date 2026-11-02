@@ -76,16 +76,18 @@
         }
       ],
       "setting": "new-specials",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_kit_faerie.cpp",
           "test": "KitFaerie.hasten_ally_or_self_by_shift"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_3.cpp",
+          "test": "SemLibsFaerie.hasten_skips_an_ally_on_another_floor"
         }
       ],
-      "missing_arms": [
-        "ally on another floor"
-      ],
+      "missing_arms": [],
       "note": [
         "unasserted: the nearer ally on another floor is skipped"
       ]
@@ -131,7 +133,7 @@
         }
       ],
       "setting": "new-specials",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_kit_faerie.cpp",
@@ -140,11 +142,13 @@
         {
           "file": "tests/unit/test_kit_faerie.cpp",
           "test": "KitFaerie.wish_with_no_fallen_ally_refuses_and_spends_nothing"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_3.cpp",
+          "test": "SemLibsFaerie.wish_never_raises_a_fallen_ally_on_another_floor"
         }
       ],
-      "missing_arms": [
-        "other floor"
-      ],
+      "missing_arms": [],
       "note": [
         "unasserted: a friendly stain on another floor is never raised"
       ]
@@ -212,16 +216,18 @@
         }
       ],
       "setting": "new-specials",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_kit_faerie.cpp",
           "test": "KitFaerie.wish_raises_the_nearest_fallen_ally_at_full_and_heals_the_party_then_pops"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_3.cpp",
+          "test": "SemLibsFaerie.wish_shows_no_heal_number_over_an_ally_already_whole"
         }
       ],
-      "missing_arms": [
-        "ally whole"
-      ]
+      "missing_arms": []
     },
     {
       "id": "kit_faerie.lua:150",
@@ -470,7 +476,7 @@
         }
       ],
       "setting": "new-specials",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_kit_faerie.cpp",
@@ -479,13 +485,19 @@
         {
           "file": "tests/unit/test_kit_faerie.cpp",
           "test": "KitFaerie.glimmer_sprinkle_freezes_a_quarter"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_3.cpp",
+          "test": "SemLibsFaerie.a_glimmer_point_blank_strikes_the_body_on_its_pad_and_fires_the_other_seven"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_3.cpp",
+          "test": "SemLibsFaerie.a_glimmer_hands_back_a_fractional_aim_truncated_toward_zero"
         }
       ],
-      "missing_arms": [
-        "idle, a fractional aim (lastx 2.83 after a diagonal walk)",
-        "idle, a body touching one side (point-blank)"
-      ],
+      "missing_arms": [],
       "note": [
+        "unreachable: the faerie's stepsize is 4, so a diagonal aim (~2.8) truncates to 2, never 0, and fire() truncates the aim to short anyway; the point-blank arm is asserted",
         "unasserted: aim restored truncated (the test uses lastx=1, lasty=0 so truncation is invisible)",
         "unasserted: point-blank blocked-pad melee arm"
       ]
@@ -659,7 +671,7 @@
         }
       ],
       "setting": "new-specials",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_kit_faerie.cpp",
@@ -681,11 +693,13 @@
           "file": "tests/unit/test_gameplay_fixes_bots.cpp",
           "test": "GameplayFixesBots.a_busy_bot_never_rolls_a_busy_cast_with_the_setting_on",
           "note": "the resting arm: line 1234 kit_row(f, 1, \"FAERIE BLINK\", resting, idle) with resting = busy fire_frequency+1 -> false at both fixes values, and lines 1235-1238 busy == fire_frequency -> true; the hold is the hop rest, not lc.is_busy"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_3.cpp",
+          "test": "SemLibsFaerie.a_hurt_bot_faerie_blinks_from_a_foe_within_30_on_another_floor"
         }
       ],
-      "missing_arms": [
-        "hurt faerie, the only foe within 30 px is on another floor"
-      ],
+      "missing_arms": [],
       "note": [
         "unasserted: a foe on ANOTHER floor within 30 px makes a hurt faerie blink (foes_within floor_only=false; see suspect)"
       ]

@@ -28,16 +28,18 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_effect_extended.cpp",
           "test": "EffectExtended.effect_ctor_defaults_and_owner_pointer_cleanup_in_act"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_1.cpp",
+          "test": "SemWalker1.an_effect_keeps_its_living_foe_leader_and_owner"
         }
       ],
-      "missing_arms": [
-        "ref alive"
-      ]
+      "missing_arms": []
     },
     {
       "id": "effect.cpp:72",
@@ -68,7 +70,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_effect_act.cpp",
@@ -84,11 +86,17 @@
           "file": "tests/integration/test_effect_more_paths.cpp",
           "test": "EffectMorePaths.effect_round8_default_act_death_path",
           "note": "no-hook arm: returns 0, dead"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_1.cpp",
+          "test": "SemWalker1.an_effect_whose_on_act_declines_animates_then_dies"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_1.cpp",
+          "test": "SemWalker1.an_effect_whose_on_act_claims_the_tick_neither_animates_nor_dies"
         }
       ],
-      "missing_arms": [
-        "on_act -> false"
-      ]
+      "missing_arms": []
     },
     {
       "id": "effect.cpp:80",
@@ -117,7 +125,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_effect_act.cpp",
@@ -127,11 +135,13 @@
           "file": "tests/integration/test_effect_more_paths.cpp",
           "test": "EffectMorePaths.effect_round8_default_act_death_path",
           "note": "walk row: returns 0, dead()==1; FLASH has no on_death so the hook running is unobserved"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_1.cpp",
+          "test": "SemWalker1.a_default_effect_on_its_walk_row_dies_and_runs_its_death_hook"
         }
       ],
-      "missing_arms": [
-        "walk row: death hook"
-      ]
+      "missing_arms": []
     },
     {
       "id": "effect.cpp:132",
@@ -206,7 +216,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_effect_more_paths.cpp",
@@ -217,11 +227,13 @@
           "file": "tests/integration/test_effect_death_more.cpp",
           "test": "EffectDeathMore.effect_death_bomb_spawns_explosion_with_owner_and_damage",
           "note": "first arm: returns 1 and the hook spawned the blast"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_1.cpp",
+          "test": "SemWalker1.an_effect_dies_only_once_however_often_death_runs"
         }
       ],
-      "missing_arms": [
-        "again: no second hook"
-      ]
+      "missing_arms": []
     },
     {
       "id": "effect.cpp:173",

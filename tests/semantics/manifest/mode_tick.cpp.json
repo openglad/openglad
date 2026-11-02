@@ -194,7 +194,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_mode_bindings.cpp",
@@ -203,12 +203,13 @@
         {
           "file": "tests/unit/test_mode_bindings.cpp",
           "test": "ModeBindings.matched_troops_request_feeds_no_mask"
+        },
+        {
+          "file": "tests/unit/test_sem_world_2.cpp",
+          "test": "SemWorld.the_authored_team_mask_counts_consumed_markers_and_only_markers"
         }
       ],
-      "missing_arms": [
-        "consumed (dead) marker",
-        "marker team >=4 or non-marker walker"
-      ]
+      "missing_arms": []
     },
     {
       "id": "mode_tick.cpp:97",
@@ -245,7 +246,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_mode_bindings.cpp",
@@ -258,11 +259,13 @@
         {
           "file": "tests/unit/test_lobby_server.cpp",
           "test": "LobbyState.ctf_team_domain_uses_authored_order_and_safe_fallback"
+        },
+        {
+          "file": "tests/unit/test_sem_world_2.cpp",
+          "test": "SemWorld.a_one_team_request_is_clamped_to_two_teams"
         }
       ],
-      "missing_arms": [
-        "requested 1"
-      ]
+      "missing_arms": []
     },
     {
       "id": "mode_tick.cpp:119",
@@ -295,7 +298,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_mode_tick.cpp",
@@ -306,12 +309,13 @@
           "file": "tests/unit/test_mode_bindings.cpp",
           "test": "ModeBindings.end_level_latches_and_validates",
           "note": "end_level(1,-1) then end_level(0,43): win_latched, win_ending 0, win_next_level 43 - last write wins"
+        },
+        {
+          "file": "tests/unit/test_sem_world_2.cpp",
+          "test": "SemWorld.ending_a_match_flushes_respawns_once_and_never_again"
         }
       ],
-      "missing_arms": [
-        "first arming: respawn flush",
-        "re-arming: no re-flush"
-      ]
+      "missing_arms": []
     },
     {
       "id": "mode_tick.cpp:128",
@@ -336,7 +340,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_mode_tick.cpp",
@@ -349,11 +353,13 @@
         {
           "file": "tests/unit/test_respawn_engine.cpp",
           "test": "RespawnEngine.win_latch_flush_breaks_charm_onto_true_team"
+        },
+        {
+          "file": "tests/unit/test_sem_world_2.cpp",
+          "test": "SemWorld.a_winner_declared_after_the_latch_revives_nobody"
         }
       ],
-      "missing_arms": [
-        "already latched"
-      ]
+      "missing_arms": []
     },
     {
       "id": "mode_tick.cpp:139",
@@ -390,7 +396,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_mode_tick.cpp",
@@ -416,12 +422,13 @@
           "file": "tests/unit/test_modes_tdm.cpp",
           "test": "ModesTdm.bot_only_win_is_rematch_shape",
           "note": "bots only"
+        },
+        {
+          "file": "tests/unit/test_sem_world_3.cpp",
+          "test": "SemMode.a_declared_winner_is_the_players_only_with_a_live_hero_on_that_team"
         }
       ],
-      "missing_arms": [
-        "hero on the winning team is dead (flush could not revive it)",
-        "live hero only on an ally team (different team_num)"
-      ]
+      "missing_arms": []
     },
     {
       "id": "mode_tick.cpp:171",

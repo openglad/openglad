@@ -71,17 +71,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_pack_lua_paths.cpp",
           "test": "PackLuaCleric.int_refusals_return_reasons_without_emitting_notifications",
           "note": "'not' arm: busy 0 hero INT 10 slot 2 shift 1 gets past the busy check to '60 INT REQUIRED'"
+        },
+        {
+          "file": "tests/unit/test_sem_families_2.cpp",
+          "test": "SemCleric.turn_undead_is_refused_for_free_while_busy"
         }
       ],
-      "missing_arms": [
-        "busy > 0"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living-05-cleric.lua:33",
@@ -217,7 +219,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_family_cleric.cpp",
@@ -233,11 +235,15 @@
           "file": "tests/integration/test_special_scenes.cpp",
           "test": "GameplayFixes.turn_undead_reaches_60_px",
           "note": "scene e1_turn_reach, on side: tell 'turned 2 undead.' on screen, checked by check_side EXPECT_GE(tell_frames[i], 0)"
+        },
+        {
+          "file": "tests/unit/test_sem_families_2.cpp",
+          "test": "SemCleric.only_a_hero_who_turned_an_undead_is_rewarded_and_announced"
         }
       ],
-      "missing_arms": [
-        "hero, n == 0 (classic no-undead success)",
-        "bot"
+      "missing_arms": [],
+      "note": [
+        "unreachable: the inner 'team == 0 or has_guy()' notice test sits inside 'if has_guy()', so its false arm never runs (same nesting in the old game, walker.cpp:2868); the hero n==0 and bot arms are asserted"
       ]
     },
     {
@@ -612,7 +618,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_family_cleric.cpp",
@@ -623,11 +629,13 @@
           "file": "tests/integration/test_family_cleric.cpp",
           "test": "FamilyCleric.zero_strength_heal_explains_why_a_wounded_ally_was_not_healed",
           "note": "nobody-healed arm via the zero-strength break: EXPECT_EQ(\"HEAL TOO WEAK\", reason), MP 3 and ally 40 hp unchanged"
+        },
+        {
+          "file": "tests/unit/test_sem_families_2.cpp",
+          "test": "SemCleric.a_refused_heal_is_silent"
         }
       ],
-      "missing_arms": [
-        "nobody healed (silence)"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living-05-cleric.lua:127",
@@ -654,7 +662,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_game_loop.cpp",
@@ -670,11 +678,13 @@
           "file": "tests/unit/test_concept_levels.cpp",
           "test": "ConceptCampaignTest.clinic_rig_heals_a_thin_pool_patient_through_the_engine",
           "note": "EXPECT_EQ(1, count_text(lines, \"Cleric healed 1 man!\"))"
+        },
+        {
+          "file": "tests/unit/test_sem_families_2.cpp",
+          "test": "SemCleric.the_heal_notice_counts_one_man_or_several_men"
         }
       ],
-      "missing_arms": [
-        "N>1"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living-05-cleric.lua:132",
@@ -699,7 +709,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_concept_levels.cpp",
@@ -715,11 +725,13 @@
           "file": "tests/integration/test_special_scenes.cpp",
           "test": "GameplayFixes.heal_stops_at_full_health",
           "note": "hero cleric: 'Cleric healed 1 man!' on screen"
+        },
+        {
+          "file": "tests/unit/test_sem_families_2.cpp",
+          "test": "SemCleric.an_enemy_bot_heal_lands_without_a_notice"
         }
       ],
-      "missing_arms": [
-        "enemy bot"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living-05-cleric.lua:139",
@@ -748,7 +760,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_specials.cpp",
@@ -759,11 +771,13 @@
           "file": "tests/integration/test_family_cleric.cpp",
           "test": "FamilyCleric.r15_the_slot_price_is_the_floor_of_a_heal",
           "note": "busy (refused) arm: a guy-less cleric with a world, busy 1, slot 1 shift 1: ASSERT_TRUE(!do_special) + EXPECT_FLOAT_EQ(1.0f, magicpoints); without busy this bot would summon the mace, so the false is the busy refusal"
+        },
+        {
+          "file": "tests/unit/test_sem_families_2.cpp",
+          "test": "SemCleric.mystic_mace_is_refused_while_busy_and_summons_nothing"
         }
       ],
-      "missing_arms": [
-        "busy (reason, no fx)"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living-05-cleric.lua:142",
@@ -828,7 +842,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_family_cleric.cpp",
@@ -839,11 +853,13 @@
           "file": "tests/unit/test_bot_gates_casters.cpp",
           "test": "GameplayFixesBots.cleric_shoved_heals_with_the_setting_on",
           "note": "bot arm, fixes 0: a guy-less bot cleric's mace cast summons EXPECT_EQ(1, maces); with the has_guy gate gone g_total_shots raises and no mace appears"
+        },
+        {
+          "file": "tests/unit/test_sem_families_2.cpp",
+          "test": "SemCleric.a_hero_mystic_mace_counts_one_shot"
         }
       ],
-      "missing_arms": [
-        "hero (total_shots)"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living-05-cleric.lua:174",
@@ -920,7 +936,7 @@
         }
       ],
       "setting": "both",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_gameplay_fixes_cleric_unit.cpp",
@@ -936,11 +952,13 @@
           "file": "tests/integration/test_family_cleric.cpp",
           "test": "FamilyCleric.r11_turn_and_raise_paths",
           "note": "corpse arm: EXPECT stain dead, risen owner == cleric, team 0, xpos/ypos == the bloodstain's"
+        },
+        {
+          "file": "tests/unit/test_sem_families_2.cpp",
+          "test": "SemCleric.a_raised_skeleton_rises_at_one_to_the_cleric_level"
         }
       ],
-      "missing_arms": [
-        "corpse (risen level)"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living-05-cleric.lua:194",
@@ -1174,7 +1192,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_family_cleric.cpp",
@@ -1200,11 +1218,13 @@
           "file": "tests/integration/test_family_cleric.cpp",
           "test": "FamilyCleric.r14_resurrect_revives_friendly_blood_and_enslaves_hostile_blood",
           "note": "hostile arm: ghost exists, owner == cleric, 0 live orcs"
+        },
+        {
+          "file": "tests/unit/test_sem_families_2.cpp",
+          "test": "SemCleric.a_foe_corpse_resurrects_as_a_two_hundred_tick_ghost"
         }
       ],
-      "missing_arms": [
-        "hostile stain (lifetime)"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living-05-cleric.lua:256",
@@ -1243,7 +1263,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_family_cleric.cpp",
@@ -1274,11 +1294,13 @@
           "file": "tests/unit/test_gameplay_fixes_cleric_unit.cpp",
           "test": "GameplayFixesClericRaise.the_fixed_probe_eats_nothing",
           "note": "bot arm: a guy-less cleric's friendly RESURRECT ({4, team 0, ELF}) returns true and the elf stands, guard count 0"
+        },
+        {
+          "file": "tests/unit/test_sem_families_2.cpp",
+          "test": "SemCleric.a_resurrect_penalty_past_a_short_wraps_back_to_its_unsigned_value"
         }
       ],
-      "missing_arms": [
-        "loss negative"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living-05-cleric.lua:283",

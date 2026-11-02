@@ -160,7 +160,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_modes_tdm.cpp",
@@ -169,11 +169,13 @@
         {
           "file": "tests/unit/test_modes_tdm.cpp",
           "test": "ModesTdm.matched_census_weakest_reference_and_heart_value_rank"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_4.cpp",
+          "test": "SemLineup.the_power_census_counts_only_live_heroes_on_score_teams"
         }
       ],
-      "missing_arms": [
-        "guyless/dead/team>=4"
-      ]
+      "missing_arms": []
     },
     {
       "id": "lineup.lua:312",
@@ -298,16 +300,18 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_modes_tdm.cpp",
           "test": "ModesTdm.lineup_fill_target_percent_table_and_knobbed_spawns"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_4.cpp",
+          "test": "SemLineup.re_banking_the_same_fill_code_leaves_the_announced_slot_alone"
         }
       ],
-      "missing_arms": [
-        "same code"
-      ]
+      "missing_arms": []
     },
     {
       "id": "lineup.lua:431",
@@ -438,7 +442,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_staged_rules.cpp",
@@ -447,12 +451,13 @@
         {
           "file": "tests/unit/test_staged_rules.cpp",
           "test": "StagedRules.onslaught_domain_and_generator_fills"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_4.cpp",
+          "test": "SemLineup.the_staging_census_counts_heroes_npcs_and_generators_on_score_teams_only"
         }
       ],
-      "missing_arms": [
-        "hero",
-        "team>=4"
-      ]
+      "missing_arms": []
     },
     {
       "id": "lineup.lua:544",
@@ -481,12 +486,14 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": [
-        "r=1 i=0..3",
-        "r=2 i=1"
-      ]
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sem_libs_4.cpp",
+          "test": "SemLineup.a_ring_walks_clockwise_from_due_north"
+        }
+      ],
+      "missing_arms": []
     },
     {
       "id": "lineup.lua:563",
@@ -521,16 +528,18 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_modes_tdm.cpp",
           "test": "ModesTdm.dead_hero_revives_at_team_anchor_with_cursor_rotation"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_4.cpp",
+          "test": "SemLineup.a_team_off_the_score_range_gets_no_anchor"
         }
       ],
-      "missing_arms": [
-        "team >= 4"
-      ]
+      "missing_arms": []
     },
     {
       "id": "lineup.lua:576",
@@ -561,7 +570,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "unreachable",
       "tests": [
         {
           "file": "tests/unit/test_modes_soccer.cpp",
@@ -570,6 +579,9 @@
       ],
       "missing_arms": [
         "negative coords"
+      ],
+      "note": [
+        "unreachable: query_grid_passable refuses x<0 or y<0 first (src/gameplay/game_world.cpp:689), so the px>=0/py>=0 guard is redundant and no test can tell it from its removal; candidate for a defensive-guard row"
       ]
     },
     {
@@ -595,12 +607,14 @@
         }
       ],
       "setting": "none",
-      "status": "none",
-      "tests": [],
-      "missing_arms": [
-        "allow_teleport",
-        "respawn"
-      ]
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sem_libs_4.cpp",
+          "test": "SemLineup.a_walled_in_anchor_fails_a_respawn_and_teleports_an_init_placement"
+        }
+      ],
+      "missing_arms": []
     },
     {
       "id": "lineup.lua:619",
@@ -727,16 +741,18 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_modes_ctf.cpp",
           "test": "ModesCtf.blocked_anchor_bot_fill_falls_back_to_flag_home"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_4.cpp",
+          "test": "SemLineup.a_squad_with_no_placer_stands_on_the_anchors_in_member_order"
         }
       ],
-      "missing_arms": [
-        "nil"
-      ]
+      "missing_arms": []
     },
     {
       "id": "lineup.lua:737",

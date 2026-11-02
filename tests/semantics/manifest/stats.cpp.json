@@ -26,7 +26,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_stats_fright.cpp",
@@ -43,11 +43,13 @@
         {
           "file": "tests/unit/test_stats_fright.cpp",
           "test": "StatsFright.claim_path_no_longer_uncharms"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_3.cpp",
+          "test": "SemAi3.a_control_switch_keeps_only_a_leading_run_of_forced_walks"
         }
       ],
-      "missing_arms": [
-        "no forced walk at front (incl. a forced non-walk, or an unforced walk)"
-      ]
+      "missing_arms": []
     },
     {
       "id": "stats.cpp:199",
@@ -118,17 +120,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_stats_coverage.cpp",
           "test": "StatsCoverage.stats_set_and_try_command_random_walk_paths",
           "note": "arm 2: commands.back() is the appended WALK"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_3.cpp",
+          "test": "SemAi3.queuing_a_die_order_marks_the_walker_for_deletion_and_queues_nothing"
         }
       ],
-      "missing_arms": [
-        "COMMAND_DIE"
-      ]
+      "missing_arms": []
     },
     {
       "id": "stats.cpp:227",
@@ -379,12 +383,14 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": [
-        "COMMAND_RANDOM_WALK",
-        "other command"
-      ]
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sem_ai_3.cpp",
+          "test": "SemAi3.a_random_walk_order_becomes_a_forced_walk_in_a_rolled_direction"
+        }
+      ],
+      "missing_arms": []
     },
     {
       "id": "stats.cpp:398",
@@ -778,7 +784,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_stats_more_paths.cpp",
@@ -789,11 +795,13 @@
           "file": "tests/integration/test_stats_more_paths.cpp",
           "test": "StatsMorePaths.stats_round14_quickfire_multido_rush_and_walk_to_foe_melee_short_circuit",
           "note": "arm 3: MULTIDO(2) with nothing behind it returns 1, queue empty"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_3.cpp",
+          "test": "SemAi3.a_multido_of_zero_or_less_consumes_itself_and_runs_nothing"
         }
       ],
-      "missing_arms": [
-        "com1 <= 0"
-      ]
+      "missing_arms": []
     },
     {
       "id": "stats.cpp:494",
@@ -820,7 +828,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_stats_commands.cpp",
@@ -836,11 +844,13 @@
           "parity": "soldier_charge_displacement_scen99",
           "fact": "",
           "note": "WalkerPositionMoved(FAMILY_SOLDIER  184  0): the three-step rush displacement"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_3.cpp",
+          "test": "SemAi3.a_rush_order_on_a_non_living_body_does_nothing_but_count_down"
         }
       ],
-      "missing_arms": [
-        "not Living"
-      ]
+      "missing_arms": []
     },
     {
       "id": "stats.cpp:505",
@@ -1009,11 +1019,14 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": [
-        "front GOTO(x,y)"
-      ]
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sem_ai_3.cpp",
+          "test": "SemAi3.a_goto_order_walks_to_its_point_without_attacking_and_ends_on_arrival"
+        }
+      ],
+      "missing_arms": []
     },
     {
       "id": "stats.cpp:541",
@@ -1054,7 +1067,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_stats_commands.cpp",
@@ -1070,11 +1083,13 @@
           "file": "tests/integration/test_stats_more_paths.cpp",
           "test": "StatsMorePaths.stats_round11_follow_force_walk_and_right_walk_distance_branches",
           "note": "in band 150 px and out of band 20 px"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_3.cpp",
+          "test": "SemAi3.a_right_walk_order_without_a_foe_idles"
         }
       ],
-      "missing_arms": [
-        "no foe"
-      ]
+      "missing_arms": []
     },
     {
       "id": "stats.cpp:552",
@@ -1101,7 +1116,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_stats_commands.cpp",
@@ -1112,11 +1127,13 @@
           "file": "tests/integration/test_stats_extended.cpp",
           "test": "StatsExtended.do_command_attack_that_can_shoot_forces_a_fire_command_and_fires",
           "note": "arm 2: live foe -> forced FIRE"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_3.cpp",
+          "test": "SemAi3.an_attack_order_on_a_dead_foe_ends_at_once"
         }
       ],
-      "missing_arms": [
-        "no or dead foe"
-      ]
+      "missing_arms": []
     },
     {
       "id": "stats.cpp:561",
@@ -1159,7 +1176,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_stats_unit.cpp",
@@ -1170,13 +1187,17 @@
           "file": "tests/integration/test_stats_extended.cpp",
           "test": "StatsExtended.do_command_attack_that_can_shoot_forces_a_fire_command_and_fires",
           "note": "x-major: forced FIRE com (1,0)"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_3.cpp",
+          "test": "SemAi3.an_attacker_out_of_range_steps_toward_its_foe_on_the_snapped_direction"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_3.cpp",
+          "test": "SemAi3.an_attacker_merged_with_its_foe_steps_out_along_its_facing"
         }
       ],
-      "missing_arms": [
-        "|dy|>3|dx|",
-        "otherwise",
-        "dx==dy==0"
-      ]
+      "missing_arms": []
     },
     {
       "id": "stats.cpp:571",
@@ -1211,7 +1232,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_stats_extended.cpp",
@@ -1242,12 +1263,17 @@
           "file": "tests/unit/test_melee_standoff.cpp",
           "test": "MeleeStandoff.out_of_range_denial_still_walks_toward_the_foe",
           "note": "arm 3: xpos grows over 6 ticks"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_3.cpp",
+          "test": "SemAi3.classic_an_attack_that_fires_never_counts_down_its_own_rounds"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_3.cpp",
+          "test": "SemAi3.a_melee_only_attacker_at_bump_range_turns_to_face_its_foe_without_moving"
         }
       ],
-      "missing_arms": [
-        "fire_check allows",
-        "denial Facing or NoRanged"
-      ]
+      "missing_arms": []
     },
     {
       "id": "stats.cpp:591",
@@ -1272,12 +1298,14 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": [
-        "foe coincident and fire_check denies",
-        "not coincident"
-      ]
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sem_ai_3.cpp",
+          "test": "SemAi3.an_attacker_merged_with_its_foe_steps_out_along_its_facing"
+        }
+      ],
+      "missing_arms": []
     },
     {
       "id": "stats.cpp:633",
@@ -1300,11 +1328,14 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": [
-        "UNCHARM or unknown type"
-      ]
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sem_ai_3.cpp",
+          "test": "SemAi3.an_uncharm_order_or_an_unknown_one_is_only_counted_down"
+        }
+      ],
+      "missing_arms": []
     },
     {
       "id": "stats.cpp:653",
@@ -1384,7 +1415,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_stats_unit.cpp",
@@ -1398,12 +1429,13 @@
         {
           "file": "tests/integration/test_stats_more_paths.cpp",
           "test": "StatsMorePaths.stats_set_command_die_and_hit_response_early_returns"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_3.cpp",
+          "test": "SemHit.a_dead_or_player_controlled_victim_and_a_dead_attacker_draw_no_response"
         }
       ],
-      "missing_arms": [
-        "attacker or victim dead",
-        "victim ACT_CONTROL"
-      ]
+      "missing_arms": []
     },
     {
       "id": "stats.cpp:689",
@@ -1467,7 +1499,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_stats_commands.cpp",
@@ -1480,11 +1512,13 @@
         {
           "file": "tests/integration/test_stats_hit_response_teleport.cpp",
           "test": "StatsHitResponseTeleport.stats_hit_response_mage_and_archmage_teleport_branches"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_3.cpp",
+          "test": "SemHit.a_family_hit_response_hook_replaces_the_default_yell_and_flee"
         }
       ],
-      "missing_arms": [
-        "hook returns true"
-      ]
+      "missing_arms": []
     },
     {
       "id": "stats.cpp:699",
@@ -1513,18 +1547,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_stats_commands.cpp",
           "test": "StatsCommands.stats_hit_response_default_arm_special_gate_opens_when_rng3_is_zero",
           "note": "leg B: rng(3)==0 -> trace walker \"special: family=\" (special() entered); legs A/C/E assert special() NOT entered, but no leg asserts the rng draw count"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_3.cpp",
+          "test": "SemHit.a_struck_walker_rolls_for_its_special_only_when_the_special_is_available"
         }
       ],
-      "missing_arms": [
-        "check_special true, rng(3)!=0",
-        "check_special false"
-      ]
+      "missing_arms": []
     },
     {
       "id": "stats.cpp:701",
@@ -1551,12 +1586,14 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": [
-        "has myguy, hp in [5/16, 1/2) of max",
-        "no myguy, same hp"
-      ]
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sem_ai_3.cpp",
+          "test": "SemHit.a_named_hero_flees_below_half_hp_and_a_bot_only_below_five_sixteenths"
+        }
+      ],
+      "missing_arms": []
     },
     {
       "id": "stats.cpp:707",
@@ -1672,7 +1709,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_stats_commands.cpp",
@@ -1683,13 +1720,13 @@
           "file": "tests/integration/test_stats_hit_response_more.cpp",
           "test": "StatsHitResponseMore.wounded_world_member_recruits_allies_and_keeps_its_escape",
           "note": "arm 1: ally foe/leader/32000"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_3.cpp",
+          "test": "SemHit.a_yell_recruits_friends_in_range_and_resets_only_a_newly_switched_chase"
         }
       ],
-      "missing_arms": [
-        "ally already on the attacker",
-        "player-controlled (ACT_CONTROL) friendly hero within 160 px",
-        "friend beyond 160 px, or dead/dormant/hidden, or a foe"
-      ]
+      "missing_arms": []
     },
     {
       "id": "stats.cpp:750",
@@ -1720,7 +1757,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_stats_commands.cpp",
@@ -1736,11 +1773,13 @@
           "file": "tests/integration/test_stats_hit_response_more.cpp",
           "test": "StatsHitResponseMore.wounded_world_member_recruits_allies_and_keeps_its_escape",
           "note": "foe south-east: com1 -1, com2 -1"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_3.cpp",
+          "test": "SemHit.a_yeller_on_top_of_its_attacker_flees_south_east"
         }
       ],
-      "missing_arms": [
-        "foe coincident"
-      ]
+      "missing_arms": []
     },
     {
       "id": "stats.cpp:756",
@@ -1765,16 +1804,18 @@
         }
       ],
       "setting": "new-specials",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_kit_seams_small.cpp",
           "test": "KitSeamsSmall.fearless_bit_and_rally_radius_block_the_flee_walk"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_3.cpp",
+          "test": "SemHit.a_fearless_walker_yells_and_recruits_but_does_not_run"
         }
       ],
-      "missing_arms": [
-        "fearless"
-      ]
+      "missing_arms": []
     },
     {
       "id": "stats.cpp:758",
@@ -1801,12 +1842,14 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": [
-        "myguy and team 0",
-        "no myguy or team != 0"
-      ]
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sem_ai_3.cpp",
+          "test": "SemHit.classic_only_a_named_team_zero_hero_announces_its_yell"
+        }
+      ],
+      "missing_arms": []
     },
     {
       "id": "stats.cpp:798",
@@ -1849,7 +1892,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_stats_extended.cpp",
@@ -1867,11 +1910,13 @@
           "file": "tests/integration/test_stats_unit.cpp",
           "test": "StatsUnit.stats_r14_hit_response_gates_and_direct_walk_and_blocked_defaults",
           "note": "default arm"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_3.cpp",
+          "test": "SemAi3.the_right_probe_of_an_out_of_range_facing_asks_the_walkers_own_spot"
         }
       ],
-      "missing_arms": [
-        "facing outside 0..7"
-      ]
+      "missing_arms": []
     },
     {
       "id": "stats.cpp:849",
@@ -1914,7 +1959,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_stats_extended.cpp",
@@ -1937,11 +1982,13 @@
           "file": "tests/integration/test_stats_unit.cpp",
           "test": "StatsUnit.stats_r11_clear_command_and_blocked_direction_defaults",
           "note": "default arm: curdir 127 -> false on open ground"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_4.cpp",
+          "test": "SemAi4.an_out_of_range_facing_leaves_the_right_front_and_right_back_probes_unasked"
         }
       ],
-      "missing_arms": [
-        "facing outside 0..7"
-      ]
+      "missing_arms": []
     },
     {
       "id": "stats.cpp:882",
@@ -1984,7 +2031,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_stats_extended.cpp",
@@ -2007,11 +2054,13 @@
           "file": "tests/integration/test_stats_unit.cpp",
           "test": "StatsUnit.stats_r11_clear_command_and_blocked_direction_defaults",
           "note": "default arm: curdir 127 -> false on open ground"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_4.cpp",
+          "test": "SemAi4.an_out_of_range_facing_leaves_the_right_front_and_right_back_probes_unasked"
         }
       ],
-      "missing_arms": [
-        "facing outside 0..7"
-      ]
+      "missing_arms": []
     },
     {
       "id": "stats.cpp:916",
@@ -2054,7 +2103,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_stats_extended.cpp",
@@ -2076,11 +2125,13 @@
         {
           "file": "tests/unit/test_quiet_probe.cpp",
           "test": "QuietProbe.every_blocker_answers_like_the_loud_probe_and_changes_nothing"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_4.cpp",
+          "test": "SemAi4.an_out_of_range_facing_makes_the_front_probe_ask_the_walkers_own_spot"
         }
       ],
-      "missing_arms": [
-        "facing outside 0..7"
-      ]
+      "missing_arms": []
     },
     {
       "id": "stats.cpp:972",
@@ -2141,7 +2192,7 @@
         }
       ],
       "setting": "both",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_gameplay_fixes_walk.cpp",
@@ -2168,13 +2219,17 @@
         {
           "parity": "orc_right_walk_potion_fixes_scen99",
           "fact": "potion count 1 (fixes: stands)"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_4.cpp",
+          "test": "SemAi4.a_right_walker_in_open_space_steps_straight_at_its_foe"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_4.cpp",
+          "test": "SemAi4.a_right_walk_side_probe_opens_a_door_only_with_the_setting_off"
         }
       ],
-      "missing_arms": [
-        "nothing blocked, direct_walk succeeds",
-        "fixes off, a probe overlaps a potion/door/body",
-        "fixes on, same"
-      ]
+      "missing_arms": []
     },
     {
       "id": "stats.cpp:978",
@@ -2213,17 +2268,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_stats_right_walk_direct_walk.cpp",
           "test": "StatsRightWalkDirectWalk.right_walk_normalizes_the_forward_step_and_turns_left_when_blocked",
           "note": "x-major, y-major and diagonal snaps"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_4.cpp",
+          "test": "SemAi4.classic_a_wall_hugger_that_never_moved_stands_still_for_a_tick"
         }
       ],
-      "missing_arms": [
-        "last move (0,0)"
-      ]
+      "missing_arms": []
     },
     {
       "id": "stats.cpp:1003",
@@ -2320,7 +2377,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_stats_more_paths.cpp",
@@ -2336,11 +2393,13 @@
           "file": "tests/integration/test_stats_unit.cpp",
           "test": "StatsUnit.stats_r11_right_walk_branch_matrix",
           "note": "case 5: 8 facings: position"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_4.cpp",
+          "test": "SemAi4.a_right_walker_with_no_facing_ambles_nowhere"
         }
       ],
-      "missing_arms": [
-        "out-of-range curdir"
-      ]
+      "missing_arms": []
     },
     {
       "id": "stats.cpp:1113",
@@ -2373,7 +2432,7 @@
         }
       ],
       "setting": "fixes-on",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_gameplay_fixes_walk.cpp",
@@ -2383,11 +2442,13 @@
         {
           "file": "tests/unit/test_gameplay_fixes_walk.cpp",
           "test": "GameplayFixesWalk.a_side_probe_does_not_swing_at_a_body_it_is_not_fighting_with_the_setting_on"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_4.cpp",
+          "test": "SemAi4.a_quiet_probe_bumps_only_a_live_hostile_foe_on_the_bots_floor"
         }
       ],
-      "missing_arms": [
-        "quiet, blocked, any gate fails (no foe, dead, other floor, has ranged, friendly, foe not in the box)"
-      ]
+      "missing_arms": []
     },
     {
       "id": "stats.cpp:1140",
@@ -2444,17 +2505,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_stats_unit.cpp",
           "test": "StatsUnit.stats_direct_walk_steps_toward_the_foe_and_hit_response_retargets_and_yells",
           "note": "fire_check fails (foe 256 px east): steps xpos 65, has_commands false"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_4.cpp",
+          "test": "SemAi4.a_chaser_that_can_land_a_shot_stops_and_attacks"
         }
       ],
-      "missing_arms": [
-        "fire_check passes"
-      ]
+      "missing_arms": []
     },
     {
       "id": "stats.cpp:1174",
@@ -2519,7 +2582,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_stats_right_walk_direct_walk.cpp",
@@ -2535,12 +2598,13 @@
           "file": "tests/integration/test_stats_unit.cpp",
           "test": "StatsUnit.stats_direct_walk_steps_toward_the_foe_and_hit_response_retargets_and_yells",
           "note": "open step: xpos 65, ypos 64"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_4.cpp",
+          "test": "SemAi4.a_straight_chase_slides_along_the_open_axis_when_the_diagonal_is_walled"
         }
       ],
-      "missing_arms": [
-        "diagonal walled, x-only open, dx != 0",
-        "diagonal and x walled, y-only open, dy != 0"
-      ]
+      "missing_arms": []
     },
     {
       "id": "stats.cpp:1253",
@@ -2583,19 +2647,27 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_zaxis.cpp",
           "test": "ZAxis.path_toward_stair_answers_only_when_a_stair_leads_that_way",
           "note": "same floor -> false/empty; no up-stair -> false/empty"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_4.cpp",
+          "test": "SemAi4.a_walker_heads_for_the_nearest_up_stair_when_its_foe_is_above"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_4.cpp",
+          "test": "SemAi4.a_walker_heads_for_a_down_stair_when_its_foe_is_below"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_4.cpp",
+          "test": "SemAi4.a_stair_with_no_route_to_it_gives_no_stair_route"
         }
       ],
-      "missing_arms": [
-        "foe above, up-stairs present",
-        "foe below, down-stair present",
-        "stair present but A* finds no route"
-      ]
+      "missing_arms": []
     },
     {
       "id": "stats.cpp:1284",
@@ -2624,7 +2696,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_stats_commands.cpp",
@@ -2635,12 +2707,13 @@
           "file": "tests/integration/test_stats_unit.cpp",
           "test": "StatsUnit.stats_r11_direct_walk_and_walk_to_foe_tail_branches",
           "note": "rng(300)!=0 (state 1): chase continues into the ATTACK short-circuit"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_4.cpp",
+          "test": "SemAi4.a_chase_with_no_foe_or_the_one_in_300_draw_resets_its_memory_and_stands"
         }
       ],
-      "missing_arms": [
-        "no foe",
-        "foe and rng(300)==0"
-      ]
+      "missing_arms": []
     },
     {
       "id": "stats.cpp:1330",
@@ -2669,7 +2742,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_stats_unit.cpp",
@@ -2685,11 +2758,13 @@
           "file": "tests/integration/test_stats_more_paths.cpp",
           "test": "StatsMorePaths.stats_walk_to_foe_short_circuit_and_path_branches",
           "note": "counter 0, distant foe: 'path recomputed' half -- path_to_foe front (48,48), back (128,128)"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_4.cpp",
+          "test": "SemAi4.a_chaser_whose_foe_is_on_another_floor_replans_at_once"
         }
       ],
-      "missing_arms": [
-        "counter > 0, cross-floor and empty path"
-      ]
+      "missing_arms": []
     },
     {
       "id": "stats.cpp:1351",
@@ -2724,7 +2799,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_stats_unit.cpp",
@@ -2735,12 +2810,17 @@
           "file": "tests/integration/test_stats_unit.cpp",
           "test": "StatsUnit.walk_to_foe_adopts_a_strictly_nearer_foe_and_keeps_the_held_one_otherwise",
           "note": "queue == [ATTACK]"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_4.cpp",
+          "test": "SemAi4.a_chaser_within_100_px_of_a_foe_attacks_it_instead_of_pathing"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_4.cpp",
+          "test": "SemAi4.a_crowded_map_skips_pathing_and_ends_the_order_when_no_foe_is_near"
         }
       ],
-      "missing_arms": [
-        "foe within 100 px (any foe in range)",
-        "crowded map, no foe within 100"
-      ]
+      "missing_arms": []
     },
     {
       "id": "stats.cpp:1368",
@@ -2769,7 +2849,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_stats_unit.cpp",
@@ -2778,11 +2858,13 @@
         {
           "parity": "walk_to_foe_adopts_near_foe_scen99",
           "fact": "its facts (canary on this line)"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_4.cpp",
+          "test": "SemAi4.a_chaser_switches_to_a_strictly_nearer_foe_and_turns_to_it"
         }
       ],
-      "missing_arms": [
-        "strictly nearer foe found"
-      ]
+      "missing_arms": []
     },
     {
       "id": "stats.cpp:1387",
@@ -2864,7 +2946,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_stats_more_paths.cpp",
@@ -2875,12 +2957,13 @@
           "file": "tests/integration/test_stats_unit.cpp",
           "test": "StatsUnit.stats_r14_hit_response_gates_and_direct_walk_and_blocked_defaults",
           "note": "tail: no path, path_check_counter 5 -> 4 (throttled, tempdistance 9999999), last_distance 10: right_walk closes on the foe, xpos 97 -> 98"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_4.cpp",
+          "test": "SemAi4.a_chaser_follows_its_path_or_charges_when_closer_than_ever"
         }
       ],
-      "missing_arms": [
-        "path non-empty",
-        "no path, re-plan tick, new best distance"
-      ]
+      "missing_arms": []
     },
     {
       "id": "stats.cpp:1426",
@@ -2909,13 +2992,14 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": [
-        "same floor, re-plan tick, dist < 30",
-        "cross-floor, dist < 30",
-        "throttled tick"
-      ]
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sem_ai_4.cpp",
+          "test": "SemAi4.a_chaser_within_30_px_ends_its_order_only_on_a_replan_tick_on_its_floor"
+        }
+      ],
+      "missing_arms": []
     },
     {
       "id": "stats.cpp:1443",
@@ -2958,12 +3042,18 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": [
-        "each facing 0..7",
-        "invalid facing"
-      ]
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sem_ai_4.cpp",
+          "test": "SemAi4.a_point_walker_that_passed_a_corner_turns_right_and_queues_one_step_along_its_new_heading"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_4.cpp",
+          "test": "SemAi4.an_invalid_facing_maps_to_no_step"
+        }
+      ],
+      "missing_arms": []
     },
     {
       "id": "stats.cpp:1496",
@@ -2998,18 +3088,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_stats_more_paths.cpp",
           "test": "StatsMorePaths.direct_walk_to_point_at_the_destination_issues_no_step",
           "note": "x-only arm: point 3 steps east -> xpos +step, ypos unchanged"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_4.cpp",
+          "test": "SemAi4.a_walk_to_a_point_aims_eight_ways_with_the_three_to_one_snap"
         }
       ],
-      "missing_arms": [
-        "|dy|>3|dx|",
-        "else"
-      ]
+      "missing_arms": []
     },
     {
       "id": "stats.cpp:1509",
@@ -3070,21 +3161,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_stats_more_paths.cpp",
           "test": "StatsMorePaths.direct_walk_to_point_at_the_destination_issues_no_step",
           "note": "at-point: returns false, no move; open straight step: returns true, xpos +step"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_4.cpp",
+          "test": "SemAi4.a_walk_to_a_point_slides_along_an_open_axis_and_fails_when_walled"
         }
       ],
-      "missing_arms": [
-        "x-only open, dx!=0",
-        "x-only open, dx==0",
-        "y-only open, dy!=0",
-        "y-only open, dy==0",
-        "all walled"
-      ]
+      "missing_arms": []
     },
     {
       "id": "stats.cpp:1552",
@@ -3141,21 +3230,23 @@
         }
       ],
       "setting": "both",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_gameplay_fixes_walk.cpp",
           "test": "GameplayFixesWalk.right_walk_to_point_probes_quietly",
           "note": "right blocked + front open: ypos 320-step; fixes off/on: potion eaten/stands, bump/none"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_4.cpp",
+          "test": "SemAi4.a_point_walker_follows_the_right_hand_rule_and_steps_at_its_point_in_the_open"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_4.cpp",
+          "test": "SemAi4.a_point_walker_that_passed_a_corner_turns_right_and_queues_one_step_along_its_new_heading"
         }
       ],
-      "missing_arms": [
-        "right/right-front blocked, front blocked",
-        "front blocked only",
-        "right-back blocked only",
-        "open, direct_walk_to_point succeeds",
-        "open, direct fails"
-      ]
+      "missing_arms": []
     },
     {
       "id": "stats.cpp:1558",
@@ -3190,18 +3281,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_gameplay_fixes_walk.cpp",
           "test": "GameplayFixesWalk.right_walk_to_point_probes_quietly",
           "note": "lastx 0, lasty -step: y step, ypos 320-step"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_4.cpp",
+          "test": "SemAi4.a_point_walker_hugging_a_wall_keeps_its_last_direction"
         }
       ],
-      "missing_arms": [
-        "|lastx|>3|lasty|",
-        "else"
-      ]
+      "missing_arms": []
     },
     {
       "id": "stats.cpp:1606",
@@ -3226,17 +3318,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_modes_ctf.cpp",
           "test": "ModesCtf.carrier_runs_home_distance_shrinks_each_cadence_then_captures",
           "note": "rng(300)!=0 arm: the GOTO walk makes progress every cadence window"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_4.cpp",
+          "test": "SemAi4.a_point_walk_skips_one_tick_in_300_and_resets_its_memory"
         }
       ],
-      "missing_arms": [
-        "rng(300)==0"
-      ]
+      "missing_arms": []
     },
     {
       "id": "stats.cpp:1617",
@@ -3263,17 +3357,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_modes_ctf.cpp",
           "test": "ModesCtf.carrier_runs_home_distance_shrinks_each_cadence_then_captures",
           "note": "distance >= 12 arm: the GOTO walk keeps closing on the goal"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_4.cpp",
+          "test": "SemAi4.a_point_goal_is_reached_within_12_px"
         }
       ],
-      "missing_arms": [
-        "distance < 12"
-      ]
+      "missing_arms": []
     },
     {
       "id": "stats.cpp:1628",
@@ -3304,13 +3400,14 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": [
-        "re-plan tick, far, uncrowded",
-        "re-plan tick, near or crowded",
-        "not a re-plan tick"
-      ]
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sem_ai_4.cpp",
+          "test": "SemAi4.a_point_walk_replans_on_its_cadence_and_paths_only_far_uncrowded_goals"
+        }
+      ],
+      "missing_arms": []
     },
     {
       "id": "stats.cpp:1648",
@@ -3349,14 +3446,14 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": [
-        "path non-empty",
-        "no path, new best distance, straight open",
-        "no path, new best, straight walled",
-        "no path, not a new best"
-      ]
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sem_ai_4.cpp",
+          "test": "SemAi4.a_point_walk_follows_its_path_or_charges_or_hugs_the_wall"
+        }
+      ],
+      "missing_arms": []
     }
   ],
   "other": [

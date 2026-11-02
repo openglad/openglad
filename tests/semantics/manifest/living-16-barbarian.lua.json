@@ -24,17 +24,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_specials.cpp",
           "test": "WalkerSpecials.barbarian_hurl_boulder_drives_simulation",
           "note": "idle: special() true, one boulder owned by the thrower"
+        },
+        {
+          "file": "tests/unit/test_sem_families_3.cpp",
+          "test": "SemBarbarian.a_busy_barbarian_throws_no_boulder"
         }
       ],
-      "missing_arms": [
-        "busy"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living-16-barbarian.lua:21",
@@ -59,12 +61,14 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": [
-        "shot fired",
-        "no shot"
-      ]
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sem_families_3.cpp",
+          "test": "SemBarbarian.a_boulder_is_made_only_from_a_hammer_that_flew"
+        }
+      ],
+      "missing_arms": []
     },
     {
       "id": "living-16-barbarian.lua:35",
@@ -91,12 +95,14 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": [
-        "hero (strength 14)",
-        "monster level L"
-      ]
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sem_families_3.cpp",
+          "test": "SemBoulder.a_heros_boulder_goes_by_strength_and_a_monsters_by_level"
+        }
+      ],
+      "missing_arms": []
     },
     {
       "id": "living-16-barbarian.lua:48",
@@ -127,18 +133,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_pack_lua_paths.cpp",
           "test": "PackLuaBarbarian.a_zero_step_summon_is_floored_to_one",
           "note": "floor: level 0 => stepsize 1"
+        },
+        {
+          "file": "tests/unit/test_sem_families_3.cpp",
+          "test": "SemBoulder.a_boulders_speed_is_held_to_fifteen"
         }
       ],
-      "missing_arms": [
-        "computed > 15 (monster level 8+, hero strength 105+)",
-        "in range"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living-16-barbarian.lua:54",
@@ -173,18 +180,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_pack_lua_paths.cpp",
           "test": "PackLuaBarbarian.a_zero_step_summon_is_floored_to_one",
           "note": "component > 0: lastx and lasty both +1 after the floor"
+        },
+        {
+          "file": "tests/unit/test_sem_families_3.cpp",
+          "test": "SemBoulder.a_boulder_keeps_the_sign_of_each_heading_component"
         }
       ],
-      "missing_arms": [
-        "component < 0",
-        "component 0"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living-16-barbarian.lua:65",
@@ -264,7 +272,7 @@
         }
       ],
       "setting": "fixes-on",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_bot_gates_fighters.cpp",
@@ -279,12 +287,13 @@
           "file": "tests/integration/test_family_behaviors.cpp",
           "test": "FamilyBehaviors.check_special_default_families_with_new_specials_on",
           "note": "level 1: 16 px true, 17 false"
+        },
+        {
+          "file": "tests/unit/test_sem_families_3.cpp",
+          "test": "SemBarbarian.the_boulder_gate_measures_the_flight_with_the_throws_own_speed"
         }
       ],
-      "missing_arms": [
-        "hero strength 14",
-        "monster level 8+"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living-16-barbarian.lua:93",
@@ -476,7 +485,7 @@
         }
       ],
       "setting": "fixes-on",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_bot_gates_fighters.cpp",
@@ -491,11 +500,13 @@
         {
           "parity": "barbarian_bot_explode_lone_fixes_scen99",
           "fact": "WalkerOfOrderFamilyCount(FAMILY_EXPLOSION,FX,0,0)"
+        },
+        {
+          "file": "tests/unit/test_sem_families_3.cpp",
+          "test": "SemBarbarian.an_exploding_boulder_gate_with_no_boulder_target_refuses"
         }
       ],
-      "missing_arms": [
-        "slot 2, no target"
-      ]
+      "missing_arms": []
     }
   ],
   "other": [

@@ -28,7 +28,7 @@
         }
       ],
       "setting": "both",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_gameplay_fixes_special_busy.cpp",
@@ -39,11 +39,13 @@
           "file": "tests/integration/test_walker_specials.cpp",
           "test": "WalkerSpecials.archer_barrage_drives_simulation",
           "note": "busy 0: 3 arrows, busy == 2*fire_frequency"
+        },
+        {
+          "file": "tests/unit/test_sem_families_1.cpp",
+          "test": "SemArcher.a_barrage_costs_exactly_the_slots_price"
         }
       ],
-      "missing_arms": [
-        "busy < 0 setting on / busy == 0: exact MP"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living-02-archer.lua:43",
@@ -114,7 +116,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_specials.cpp",
@@ -125,12 +127,13 @@
           "file": "tests/unit/test_bot_gates_fighters.cpp",
           "test": "GameplayFixesBots.archer_exploding_bolt_asks_the_fire_arrows_own_pad",
           "note": "pad blocked: succeeded() false, reason 'COULD NOT FIRE'; wall gone: succeeded() true"
+        },
+        {
+          "file": "tests/unit/test_sem_families_1.cpp",
+          "test": "SemArcher.an_exploding_bolt_is_a_buffed_fire_arrow_and_the_archer_keeps_its_bow"
         }
       ],
-      "missing_arms": [
-        "fire ok: arrow buffs",
-        "either outcome: weapon restored"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living-02-archer.lua:67",
@@ -159,18 +162,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_stats_hit_response_more.cpp",
           "test": "StatsHitResponseMore.statistics_hit_response_archer_runs_away_and_queues_walk",
           "note": "EXPECT_EQ foe == attacker, last_distance 15000, current_distance 15000; queue cleared before the hit, so the clear is unproven"
+        },
+        {
+          "file": "tests/unit/test_sem_families_1.cpp",
+          "test": "SemArcher.a_new_attacker_clears_the_archers_orders_and_a_repeat_hit_keeps_them"
         }
       ],
-      "missing_arms": [
-        "new attacker: queue",
-        "same foe"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living-02-archer.lua:74",
@@ -241,7 +245,7 @@
         }
       ],
       "setting": "fixes-on",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_bot_gates_fighters.cpp",
@@ -252,11 +256,13 @@
           "parity": "archer_bot_ring_one_foe_fixes_scen99",
           "fact": "",
           "note": "no fire arrows"
+        },
+        {
+          "file": "tests/unit/test_sem_families_1.cpp",
+          "test": "SemArcher.the_archer_ring_gate_with_no_foe_never_fires"
         }
       ],
-      "missing_arms": [
-        "none"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living-02-archer.lua:105",
@@ -326,7 +332,7 @@
         }
       ],
       "setting": "fixes-on",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_bot_gates_fighters.cpp",
@@ -337,11 +343,13 @@
           "file": "tests/unit/test_bot_gates_fighters.cpp",
           "test": "GameplayFixesBots.archer_exploding_bolt_wants_a_foe_past_its_own_blast_with_no_ally_in_it",
           "note": "170 px gap past the flight: false"
+        },
+        {
+          "file": "tests/unit/test_sem_families_1.cpp",
+          "test": "SemArcher.the_archer_line_gates_want_a_living_current_foe"
         }
       ],
-      "missing_arms": [
-        "no foe / dead foe"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living-02-archer.lua:118",

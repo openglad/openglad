@@ -30,7 +30,7 @@
         }
       ],
       "setting": "new-specials",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_kit_ghost.cpp",
@@ -39,11 +39,13 @@
         {
           "file": "tests/unit/test_kit_ghost.cpp",
           "test": "KitGhost.a_full_world_refuses_the_casts_that_need_an_entity"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_3.cpp",
+          "test": "SemLibsGhost.a_wail_launch_plays_one_fwip_and_its_refusals_none"
         }
       ],
-      "missing_arms": [
-        "foe in radius"
-      ]
+      "missing_arms": []
     },
     {
       "id": "kit_ghost.lua:52",
@@ -439,7 +441,7 @@
         }
       ],
       "setting": "new-specials",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_kit_ghost.cpp",
@@ -452,11 +454,13 @@
         {
           "file": "tests/unit/test_kit_ghost.cpp",
           "test": "KitGhost.possess_reads_a_heros_constitution_and_passes_engine_refusals"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_3.cpp",
+          "test": "SemLibsGhost.a_possession_that_lands_plays_one_fwip_and_a_resisted_one_none"
         }
       ],
-      "missing_arms": [
-        "taken"
-      ]
+      "missing_arms": []
     },
     {
       "id": "kit_ghost.lua:276",

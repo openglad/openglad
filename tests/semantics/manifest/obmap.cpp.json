@@ -36,17 +36,18 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_zaxis.cpp",
           "test": "ZAxis.collision_is_floor_separated"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_2.cpp",
+          "test": "SemAi2.collision_piles_clamp_the_floor_to_zero_through_one_hundred_twenty"
         }
       ],
-      "missing_arms": [
-        "floor < 0",
-        "floor > 120"
-      ]
+      "missing_arms": []
     },
     {
       "id": "obmap.cpp:134",
@@ -71,17 +72,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_quiet_probe.cpp",
           "test": "QuietProbe.every_blocker_answers_like_the_loud_probe_and_changes_nothing",
           "note": "no-block arm: open/drumstick cases return passable; block answer 0 asserted but not the stop-at-first-cell side effects"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_2.cpp",
+          "test": "SemAi2.a_blocked_probe_stops_at_the_first_blocking_cell_and_eats_nothing_beyond_it"
         }
       ],
-      "missing_arms": [
-        "some cell blocks"
-      ]
+      "missing_arms": []
     },
     {
       "id": "obmap.cpp:222",
@@ -106,12 +109,14 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": [
-        "x<0 or y<0",
-        "on map"
-      ]
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sem_ai_2.cpp",
+          "test": "SemAi2.a_walker_at_negative_coordinates_is_not_in_the_collision_map"
+        }
+      ],
+      "missing_arms": []
     },
     {
       "id": "obmap.cpp:290",
@@ -188,18 +193,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_zaxis.cpp",
           "test": "ZAxis.find_near_foe_probes_the_searchers_floor",
           "note": "in-range arm: obmap_get_list(.., ob->floor()=1) finds the floor-1 foe, not the floor-0 one"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_2.cpp",
+          "test": "SemAi2.pile_lookups_clamp_the_floor_like_registration_does"
         }
       ],
-      "missing_arms": [
-        "floor<0",
-        "floor>120"
-      ]
+      "missing_arms": []
     },
     {
       "id": "obmap.cpp:379",
@@ -230,17 +236,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_quiet_probe.cpp",
           "test": "QuietProbe.every_blocker_answers_like_the_loud_probe_and_changes_nothing",
           "note": "w == ob: the 'open' case's own pile holds the prober and it passes; alive other: 'enemy living' blocks"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_2.cpp",
+          "test": "SemAi2.a_dead_walker_never_blocks_a_probe"
         }
       ],
-      "missing_arms": [
-        "w dead"
-      ]
+      "missing_arms": []
     },
     {
       "id": "obmap.cpp:385",
@@ -311,17 +319,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_quiet_probe.cpp",
           "test": "QuietProbe.an_enemy_weapon_in_flight_passes_a_quiet_probe_without_a_draw",
           "note": "roll 0..3: loud false + exactly one draw; quiet: pass + no draw"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_2.cpp",
+          "test": "SemAi2.hostile_projectiles_pass_each_other_on_a_roll_of_four_to_nine"
         }
       ],
-      "missing_arms": [
-        "roll 4..9"
-      ]
+      "missing_arms": []
     },
     {
       "id": "obmap.cpp:392",
@@ -346,17 +356,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_quiet_probe.cpp",
           "test": "QuietProbe.every_blocker_answers_like_the_loud_probe_and_changes_nothing",
           "note": "living over treasure: loud drumstick probe passes and changes state - eaten"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_2.cpp",
+          "test": "SemAi2.a_projectile_passes_over_treasure_and_eats_none"
         }
       ],
-      "missing_arms": [
-        "weapon over treasure"
-      ]
+      "missing_arms": []
     },
     {
       "id": "obmap.cpp:412",
@@ -437,17 +449,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_zaxis.cpp",
           "test": "ZAxis.cylinder_zoverlap_lets_high_projectile_pass",
           "note": "both sized: disjoint passes, overlap collides"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_3.cpp",
+          "test": "SemAi3.a_thing_of_height_zero_is_full_height_and_a_high_knife_still_meets_it"
         }
       ],
-      "missing_arms": [
-        "either sizez 0"
-      ]
+      "missing_arms": []
     },
     {
       "id": "obmap.cpp:414",
@@ -643,7 +657,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_quiet_probe.cpp",
@@ -654,12 +668,13 @@
           "file": "tests/integration/test_living_combat.cpp",
           "test": "LivingCombat.obmap_query_list_door_unlock_and_lock_branches",
           "note": "seat arm: blocked, skip_exit >= 10"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_3.cpp",
+          "test": "SemAi3.a_locked_door_tells_a_seat_once_per_cooldown_and_never_tells_an_npc"
         }
       ],
-      "missing_arms": [
-        "cooldown running",
-        "NPC (user -1)"
-      ]
+      "missing_arms": []
     },
     {
       "id": "obmap.cpp:520",
@@ -693,18 +708,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_quiet_probe.cpp",
           "test": "QuietProbe.every_blocker_answers_like_the_loud_probe_and_changes_nothing",
           "note": "quiet arm: quiet answer == loud answer, WorldState unchanged"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_3.cpp",
+          "test": "SemAi3.a_body_blocks_a_normal_mover_and_a_no_collide_mover_records_it_and_passes"
         }
       ],
-      "missing_arms": [
-        "normal mover",
-        "BIT_NO_COLLIDE mover"
-      ]
+      "missing_arms": []
     },
     {
       "id": "obmap.cpp:496",
@@ -735,18 +751,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_quiet_probe.cpp",
           "test": "QuietProbe.every_blocker_answers_like_the_loud_probe_and_changes_nothing",
           "note": "not overlapping now: 'enemy living' at 335 does not overlap the prober at 320; the step to 321 collides"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_3.cpp",
+          "test": "SemAi3.two_overlapping_livings_may_step_apart_but_not_closer"
         }
       ],
-      "missing_arms": [
-        "already overlapping, step separates",
-        "already overlapping, step does not separate"
-      ]
+      "missing_arms": []
     },
     {
       "id": "obmap.cpp:554",

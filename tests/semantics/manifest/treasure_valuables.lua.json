@@ -24,7 +24,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "parity": "treasure_gold_bar_team_reject_scen99",
@@ -38,11 +38,13 @@
           "file": "tests/integration/test_treasure_eat.cpp",
           "test": "TreasureEat.gold_bar",
           "note": "team-0 leg: score rises, bar dead, ScoreChange"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_4.cpp",
+          "test": "SemValuables.a_hero_of_any_team_cashes_a_gold_bar"
         }
       ],
-      "missing_arms": [
-        "team 0 / hero"
-      ],
+      "missing_arms": [],
       "note": [
         "(the hero leg of \"team 0 / hero\" - a non-zero-team eater with a guy - is asserted nowhere: dropping \"or eater:has_guy()\" keeps every test green)"
       ]
@@ -70,18 +72,19 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_treasure_eat.cpp",
           "test": "TreasureEat.silver_bar",
           "note": "score rises + bar dead, and parity treasure_silver_bar_pickup_scen99 EventKindAtLeast(play_sound,1); the hero leg and the reject arm are asserted nowhere)"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_4.cpp",
+          "test": "SemValuables.a_hero_cashes_a_silver_bar_a_guyless_monster_leaves_it"
         }
       ],
-      "missing_arms": [
-        "team 0 / hero",
-        "team-1 bot"
-      ]
+      "missing_arms": []
     },
     {
       "id": "treasure_valuables.lua:40",
@@ -186,12 +189,14 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": [
-        "hero",
-        "guyless"
-      ]
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sem_libs_4.cpp",
+          "test": "SemValuables.the_key_line_names_a_hero_by_its_guy_and_others_by_their_stats_name"
+        }
+      ],
+      "missing_arms": []
     },
     {
       "id": "treasure_valuables.lua:73",

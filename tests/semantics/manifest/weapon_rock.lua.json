@@ -34,17 +34,22 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_weap_behavior.cpp",
           "test": "WeapBehavior.weapon_family_rock_death_bounce_matrix"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_5.cpp",
+          "test": "SemLibsRock.a_bouncing_rock_out_of_range_dies_without_bouncing"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_5.cpp",
+          "test": "SemLibsRock.a_bouncing_rock_that_hit_a_walker_dies_without_bouncing"
         }
       ],
-      "missing_arms": [
-        "lineofsight 0",
-        "collide_ob set (hit a walker)"
-      ]
+      "missing_arms": []
     },
     {
       "id": "weapon_rock.lua:17",
@@ -87,18 +92,26 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_weap_behavior.cpp",
           "test": "WeapBehavior.weapon_family_rock_death_bounce_matrix"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_5.cpp",
+          "test": "SemLibsRock.a_rock_bouncing_off_x_moves_to_the_x_flip_cell_and_lives"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_5.cpp",
+          "test": "SemLibsRock.a_rock_bouncing_off_y_moves_to_the_y_flip_cell_and_lives"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_5.cpp",
+          "test": "SemLibsRock.a_rock_bouncing_off_both_axes_moves_to_the_corner_cell_and_lives"
         }
       ],
-      "missing_arms": [
-        "X-flip cell open",
-        "Y-flip cell open",
-        "both-flip cell open"
-      ]
+      "missing_arms": []
     }
   ],
   "other": []

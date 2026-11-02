@@ -24,7 +24,7 @@
         }
       ],
       "setting": "fixes-on",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_special_scenes.cpp",
@@ -34,11 +34,13 @@
         {
           "parity": "ghost_scare_no_foe_fixes_scen99",
           "fact": "WalkerOfOrderFamilyCount(FAMILY_GHOST_SCARE,FX,0,0) (nobody half only)"
+        },
+        {
+          "file": "tests/unit/test_sem_families_3.cpp",
+          "test": "SemGhost.a_generator_alone_in_the_scare_radius_does_not_let_a_scare_through"
         }
       ],
-      "missing_arms": [
-        "only generators / nobody"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living-12-ghost.lua:30",
@@ -67,17 +69,19 @@
         }
       ],
       "setting": "both",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_bot_gates_kits.cpp",
           "test": "GameplayFixesBots.ghost_scare_wants_a_living_foe_inside_the_scare_radius",
           "note": "fixes off true at 100 px; fixes on false at 100 px, true at 60 px, false for a tent at 40"
+        },
+        {
+          "file": "tests/unit/test_sem_families_3.cpp",
+          "test": "SemGhost.a_fixed_scare_gate_says_yes_and_casts_unshifted"
         }
       ],
-      "missing_arms": [
-        "fixes on, living foe inside scare radius"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living-12-ghost.lua:34",

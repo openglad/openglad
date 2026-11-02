@@ -404,7 +404,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_stats_hit_response_teleport.cpp",
@@ -415,11 +415,13 @@
           "file": "tests/integration/test_stats_hit_response_teleport.cpp",
           "test": "StatsHitResponseTeleport.a_mage_struck_again_mid_teleport_casts_nothing",
           "note": "bot hp 100/400 = 1/4 -> ASSERT_EQ(ANI_TELE_OUT) on the first hit"
+        },
+        {
+          "file": "tests/unit/test_sem_families_1.cpp",
+          "test": "SemMage.a_bot_mage_flees_only_below_three_eighths_and_a_hero_below_three_fifths"
         }
       ],
-      "missing_arms": [
-        "bot, 0.375 max <= hp < 0.6 max"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living-03-mage.lua:105",
@@ -448,17 +450,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_stats_hit_response_teleport.cpp",
           "test": "StatsHitResponseTeleport.a_mage_struck_again_mid_teleport_casts_nothing",
           "note": "bot MP 100, TELEPORT price 15: first hit ANI_TELE_OUT and MP 85"
+        },
+        {
+          "file": "tests/unit/test_sem_families_1.cpp",
+          "test": "SemMage.a_struck_mage_that_cannot_pay_for_teleport_retargets_instead"
         }
       ],
-      "missing_arms": [
-        "MP < 15"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living-03-mage.lua:112",
@@ -489,7 +493,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_stats_hit_response_teleport.cpp",
@@ -500,11 +504,13 @@
           "file": "tests/integration/test_stats_hit_response_teleport.cpp",
           "test": "StatsHitResponseTeleport.a_mage_struck_again_mid_teleport_casts_nothing",
           "note": "teleport arm: MP 85, current_special 1, shifter 0, busy 0, foe nullptr"
+        },
+        {
+          "file": "tests/unit/test_sem_families_1.cpp",
+          "test": "SemMage.a_repeat_hit_from_the_same_foe_leaves_the_mages_pursuit_alone"
         }
       ],
-      "missing_arms": [
-        "else, same foe"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living-03-mage.lua:118",
@@ -562,17 +568,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_stats_hit_response_teleport.cpp",
           "test": "StatsHitResponseTeleport.stats_hit_response_mage_and_archmage_teleport_branches",
           "note": "new attacker: mage2.foe == foe, foe.foe == mage2, distances 15000"
+        },
+        {
+          "file": "tests/unit/test_sem_families_1.cpp",
+          "test": "SemMage.a_repeat_hit_from_the_same_foe_leaves_the_mages_pursuit_alone"
         }
       ],
-      "missing_arms": [
-        "same"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living-03-mage.lua:139",
@@ -597,17 +605,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_specials.cpp",
           "test": "WalkerSpecials.mage_teleport_drives_simulation",
           "note": "not mid-teleport: special() true, ANI_TELE_OUT"
+        },
+        {
+          "file": "tests/unit/test_sem_families_1.cpp",
+          "test": "SemMage.a_mage_mid_teleport_cannot_teleport_again"
         }
       ],
-      "missing_arms": [
-        "mid-teleport"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living-03-mage.lua:142",
@@ -632,7 +642,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_specials.cpp",
@@ -643,11 +653,13 @@
           "file": "tests/integration/test_walker_specials.cpp",
           "test": "WalkerSpecials.mage_marker_recast_replaces_the_owned_marker",
           "note": "shifted: marker path places one live marker"
+        },
+        {
+          "file": "tests/unit/test_sem_families_1.cpp",
+          "test": "SemMage.an_unshifted_teleport_plays_the_teleport_sound_and_starts_the_fade_out"
         }
       ],
-      "missing_arms": [
-        "unshifted"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living-03-mage.lua:149",
@@ -672,17 +684,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_specials.cpp",
           "test": "WalkerSpecials.mage_marker_recast_replaces_the_owned_marker",
           "note": "not busy: busy 0, shifter 1 -> special() true, one live marker"
+        },
+        {
+          "file": "tests/unit/test_sem_families_1.cpp",
+          "test": "SemMage.a_busy_mage_cannot_lay_a_marker"
         }
       ],
-      "missing_arms": [
-        "busy > 0"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living-03-mage.lua:153",
@@ -765,17 +779,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_specials.cpp",
           "test": "WalkerSpecials.mage_marker_recast_replaces_the_owned_marker",
           "note": "own marker: old dead, one live, busy 16"
+        },
+        {
+          "file": "tests/unit/test_sem_families_1.cpp",
+          "test": "SemMage.laying_a_first_marker_leaves_every_other_mark_alone"
         }
       ],
-      "missing_arms": [
-        "none / only others' markers"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living-03-mage.lua:167",
@@ -802,17 +818,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_pack_lua_paths.cpp",
           "test": "PackLuaMage.the_marker_flow_talks_only_to_the_casting_seat",
           "note": "seated hero user 1: \"(Old Marker Removed)\" targeted at seat 1"
+        },
+        {
+          "file": "tests/unit/test_sem_families_1.cpp",
+          "test": "SemMage.an_unseated_mage_retires_its_marker_without_a_notice"
         }
       ],
-      "missing_arms": [
-        "unseated bot"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living-03-mage.lua:185",
@@ -839,17 +857,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_specials.cpp",
           "test": "WalkerSpecials.mage_marker_recast_replaces_the_owned_marker",
           "note": "hero INT 120: lifetime 120/33"
+        },
+        {
+          "file": "tests/unit/test_sem_families_2.cpp",
+          "test": "SemMage.a_bot_marker_holds_a_quarter_of_the_level_plus_one_uses"
         }
       ],
-      "missing_arms": [
-        "bot"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living-03-mage.lua:191",
@@ -876,17 +896,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_pack_lua_paths.cpp",
           "test": "PackLuaMage.the_marker_flow_talks_only_to_the_casting_seat",
           "note": "seated hero: \"Teleport Marker Placed\" and \"(N Uses)\" targeted at seat 1"
+        },
+        {
+          "file": "tests/unit/test_sem_families_2.cpp",
+          "test": "SemMage.a_bot_placing_a_marker_announces_nothing"
         }
       ],
-      "missing_arms": [
-        "bot"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living-03-mage.lua:208",
@@ -913,12 +935,14 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": [
-        "spare > 0",
-        "spare <= 0"
-      ]
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sem_families_2.cpp",
+          "test": "SemMage.warp_space_puts_the_spare_magic_into_every_bolt"
+        }
+      ],
+      "missing_arms": []
     },
     {
       "id": "living-03-mage.lua:220",
@@ -943,7 +967,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_specials.cpp",
@@ -954,11 +978,13 @@
           "parity": "mage_starburst_ring_scen99",
           "fact": "",
           "note": "NW soldier and SW tower die  NE orc hit: per-heading reach"
+        },
+        {
+          "file": "tests/unit/test_sem_families_2.cpp",
+          "test": "SemMage.warp_space_fires_all_eight_headings_and_restores_the_facing"
         }
       ],
-      "missing_arms": [
-        "8 headings"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living-03-mage.lua:226",
@@ -983,17 +1009,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_specials.cpp",
           "test": "WalkerSpecials.mage_warp_starburst_drives_simulation",
           "note": "all clear: 8 fireballs"
+        },
+        {
+          "file": "tests/unit/test_sem_families_2.cpp",
+          "test": "SemMage.a_warp_space_bolt_with_a_walled_pad_is_missing_and_the_cast_stands"
         }
       ],
-      "missing_arms": [
-        "pad blocked on one heading"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living-03-mage.lua:231",
@@ -1020,12 +1048,14 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": [
-        "component non-zero",
-        "component zero"
-      ]
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sem_families_2.cpp",
+          "test": "SemMage.warp_space_bolts_crawl_one_pixel_per_axis"
+        }
+      ],
+      "missing_arms": []
     },
     {
       "id": "living-03-mage.lua:255",
@@ -1052,7 +1082,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "deferred",
       "tests": [
         {
           "file": "tests/integration/test_walker_specials.cpp",
@@ -1078,10 +1108,18 @@
           "file": "tests/unit/test_kit_rests.cpp",
           "test": "KitRests.freeze_time_rests_thirty_seconds",
           "note": "with_rest: \"FREEZE TIME IN 30S\", bank unchanged"
+        },
+        {
+          "file": "tests/unit/test_sem_families_2.cpp",
+          "test": "SemMage.a_player_team_freeze_time_banks_the_stop_and_asks_for_the_blue_palette"
         }
       ],
       "missing_arms": [
         "caster team == my_team"
+      ],
+      "issue": "#477",
+      "note": [
+        "classic divergence: old game takes the global stop on team_num==0||myguy, current on team==my_team; test pins only the agreeing case (team 0, my_team 0)"
       ]
     },
     {
@@ -1141,7 +1179,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_specials.cpp",
@@ -1152,12 +1190,13 @@
           "file": "tests/integration/test_walker_specials.cpp",
           "test": "WalkerSpecials.mage_wave_is_one_and_heartburst_is_one_per_foe",
           "note": "one WAVE per cast"
+        },
+        {
+          "file": "tests/unit/test_sem_families_2.cpp",
+          "test": "SemMage.energy_wave_replaces_its_fireball_and_fails_when_none_fires"
         }
       ],
-      "missing_arms": [
-        "fire ok",
-        "fire nil"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living-03-mage.lua:304",
@@ -1182,7 +1221,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_specials.cpp",
@@ -1193,11 +1232,13 @@
           "file": "tests/integration/test_walker_specials.cpp",
           "test": "WalkerSpecials.mage_wave_is_one_and_heartburst_is_one_per_foe",
           "note": "two foes: +2 explosions"
+        },
+        {
+          "file": "tests/unit/test_sem_families_2.cpp",
+          "test": "SemMage.heartburst_with_no_foe_in_reach_is_refused_for_free"
         }
       ],
-      "missing_arms": [
-        "no foe"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living-03-mage.lua:310",
@@ -1222,12 +1263,14 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": [
-        "hero",
-        "bot"
-      ]
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sem_families_2.cpp",
+          "test": "SemMage.a_hero_heartburst_counts_one_shot_per_foe"
+        }
+      ],
+      "missing_arms": []
     },
     {
       "id": "living-03-mage.lua:316",
@@ -1248,7 +1291,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_specials.cpp",
@@ -1259,11 +1302,13 @@
           "file": "tests/integration/test_walker_specials.cpp",
           "test": "WalkerSpecials.mage_wave_is_one_and_heartburst_is_one_per_foe",
           "note": "count 2, MP 600, busy 5"
+        },
+        {
+          "file": "tests/unit/test_sem_families_2.cpp",
+          "test": "SemMage.heartburst_bursts_each_foe_for_an_equal_share_of_half_the_spare_pool"
         }
       ],
-      "missing_arms": [
-        "n foes"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living-03-mage.lua:408",

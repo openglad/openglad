@@ -26,7 +26,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_guy_calcs.cpp",
@@ -45,11 +45,13 @@
           "file": "tests/integration/test_guy_extended.cpp",
           "test": "GuyExtended.guy_query_heart_value_all_families",
           "note": "delta 0 half only"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_1.cpp",
+          "test": "SemGuy.a_stat_trained_on_a_family_that_prices_it_at_zero_adds_nothing_to_its_worth"
         }
       ],
-      "missing_arms": [
-        "delta <= 0 or stat_cost <= 0"
-      ]
+      "missing_arms": []
     },
     {
       "id": "guy.cpp:205",
@@ -290,14 +292,14 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": [
-        "has foe, distance < N",
-        "has foe, distance >= N",
-        "no foe, find_near_foe finds one within N",
-        "no foe, none found"
-      ]
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sem_ai_1.cpp",
+          "test": "SemGuy.classic_foe_within_gate_measures_only_the_held_foe_and_acquires_only_when_foeless"
+        }
+      ],
+      "missing_arms": []
     },
     {
       "id": "guy.cpp:449",
@@ -396,17 +398,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_guy_extended.cpp",
           "test": "GuyExtended.guy_update_derived_stats_clamps_speed_and_regen_delays",
           "note": "clamped arm: stepsize==normal_stepsize==12 at dex 3000"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_1.cpp",
+          "test": "SemGuy.a_heros_step_below_the_cap_is_its_family_step_plus_dex_over_54"
         }
       ],
-      "missing_arms": [
-        "<= 12"
-      ]
+      "missing_arms": []
     },
     {
       "id": "guy.cpp:525",
@@ -431,17 +435,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_guy_extended.cpp",
           "test": "GuyExtended.guy_update_derived_stats_clamps_speed_and_regen_delays",
           "note": "clamped arm: fire_frequency==1 at dex 3000"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_1.cpp",
+          "test": "SemGuy.a_heros_fire_delay_above_the_floor_is_its_family_delay_minus_dex_over_47"
         }
       ],
-      "missing_arms": [
-        "else"
-      ]
+      "missing_arms": []
     },
     {
       "id": "guy.cpp:541",
@@ -478,7 +484,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_guy_extended.cpp",
@@ -489,12 +495,13 @@
           "file": "tests/integration/test_guy_extended.cpp",
           "test": "GuyExtended.guy_update_derived_stats_clamps_speed_and_regen_delays",
           "note": "4520: heal_per_round 1, max_heal_delay 7"
+        },
+        {
+          "file": "tests/unit/test_sem_ai_1.cpp",
+          "test": "SemGuy.a_heros_heal_delay_keeps_regen_for_a_remainder_of_one_and_never_drops_below_two"
         }
       ],
-      "missing_arms": [
-        "remainder <= 1",
-        "computed delay < 2"
-      ]
+      "missing_arms": []
     },
     {
       "id": "guy.cpp:565",

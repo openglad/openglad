@@ -40,7 +40,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_movement.cpp",
@@ -61,11 +61,13 @@
           "file": "tests/unit/test_kit_seams_hidden.cpp",
           "test": "KitSeams.hidden_walker_is_inert_and_skipped_by_every_finder",
           "note": "setxy and setworldxy leave a hidden walker out of walker_to_pos"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_4.cpp",
+          "test": "SemWalker4.setxy_without_a_world_map_only_repositions"
         }
       ],
-      "missing_arms": [
-        "no world map"
-      ]
+      "missing_arms": []
     },
     {
       "id": "walker_movement.cpp:73",
@@ -94,7 +96,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_movement_unit.cpp",
@@ -110,11 +112,13 @@
           "file": "tests/unit/test_kit_seams_hidden.cpp",
           "test": "KitSeams.hidden_walker_is_inert_and_skipped_by_every_finder",
           "note": "setxy and setworldxy leave a hidden walker out of walker_to_pos"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_4.cpp",
+          "test": "SemWalker4.setworldxy_rebuckets_a_tangible_walker_at_the_truncated_pixel"
         }
       ],
-      "missing_arms": [
-        "tangible"
-      ]
+      "missing_arms": []
     },
     {
       "id": "walker_movement.cpp:97",
@@ -291,7 +295,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_movement.cpp",
@@ -307,11 +311,13 @@
           "file": "tests/integration/test_walker_movement.cpp",
           "test": "WalkerMovement.round6_scripted_walkstep_switch_coverage",
           "note": "both blocked: exact attempt sequence"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_4.cpp",
+          "test": "SemWalker4.a_blocked_full_step_is_retried_as_a_baby_step"
         }
       ],
-      "missing_arms": [
-        "full blocked, baby passes"
-      ]
+      "missing_arms": []
     },
     {
       "id": "walker_movement.cpp:183",
@@ -364,7 +370,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_movement.cpp",
@@ -379,11 +385,13 @@
         {
           "file": "tests/integration/test_walker_movement_unit.cpp",
           "test": "WalkerMovementUnit.walker_movement_r14_npc_fallback_denials_and_one_success"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_4.cpp",
+          "test": "SemWalker4.an_npc_with_an_invalid_facing_makes_no_fallback_move"
         }
       ],
-      "missing_arms": [
-        "invalid facing"
-      ]
+      "missing_arms": []
     },
     {
       "id": "walker_movement.cpp:242",
@@ -511,15 +519,14 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": [
-        "only horizontal moved",
-        "only vertical moved",
-        "both moved",
-        "moved anything",
-        "after loop"
-      ]
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sem_walker_4.cpp",
+          "test": "SemWalker4.a_player_slide_draws_the_moved_axis_one_cycle_on_classic"
+        }
+      ],
+      "missing_arms": []
     },
     {
       "id": "walker_movement.cpp:326",
@@ -542,11 +549,14 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": [
-        "stationary"
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sem_walker_4.cpp",
+          "test": "SemWalker4.a_stationary_living_walk_only_sets_its_facing"
+        }
       ],
+      "missing_arms": [],
       "note": [
         "Dropped tests/integration/test_walker_movement.cpp WalkerMovement.stationary_family_walk_and_turn_branches: its w is a living (guy_create_walker_owned), so w->walk(1,1) dispatches to living::walk and never reaches this line; and it asserts only the return value."
       ]
@@ -862,7 +872,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_movement_unit.cpp",
@@ -883,11 +893,13 @@
           "file": "tests/integration/test_walker_movement_unit.cpp",
           "test": "WalkerMovementUnit.walker_movement_r14_user_slide_axes_and_turn_default",
           "note": "invalid facing -> (0, -2)"
+        },
+        {
+          "file": "tests/unit/test_sem_walker_4.cpp",
+          "test": "SemWalker4.a_turn_heads_a_mobile_walker_one_stepsize_along_each_facing"
         }
       ],
-      "missing_arms": [
-        "mobile, facing F"
-      ]
+      "missing_arms": []
     },
     {
       "id": "walker_movement.cpp:501",

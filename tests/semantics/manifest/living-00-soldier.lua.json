@@ -32,7 +32,7 @@
         }
       ],
       "setting": "both",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_walker_specials.cpp",
@@ -62,11 +62,13 @@
         {
           "parity": "soldier_charge_front_foe_scen99",
           "fact": "soldier_charge_front_foe_fixes_scen99 (tower hp 93 vs 112, sound counts 8 vs 7)"
+        },
+        {
+          "file": "tests/unit/test_sem_families_1.cpp",
+          "test": "SemSoldier.a_clear_charge_queues_its_rush_and_plays_the_charge_sound"
         }
       ],
-      "missing_arms": [
-        "path ahead clear: sound"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living-00-soldier.lua:43",
@@ -111,7 +113,7 @@
         }
       ],
       "setting": "both",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_gameplay_fixes_special_busy.cpp",
@@ -122,13 +124,17 @@
           "file": "tests/integration/test_family_behaviors.cpp",
           "test": "FamilyBehaviors.soldier_batch3_special_ai_and_fire_callback_paths",
           "note": "busy>0 off: whirlwind busy 1, no foe, do_special false; without the busy the classic spin would cast; reason, MP and queue unread"
+        },
+        {
+          "file": "tests/unit/test_sem_families_1.cpp",
+          "test": "SemSoldier.a_busy_soldier_is_refused_whirlwind_for_free"
+        },
+        {
+          "file": "tests/unit/test_sem_families_1.cpp",
+          "test": "SemSoldier.a_whirlwind_after_a_shot_spins_with_the_setting_on"
         }
       ],
-      "missing_arms": [
-        "busy > 0, setting on",
-        "busy > 0: refusal details",
-        "busy < 0, setting on: walk orders"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living-00-soldier.lua:49",
@@ -161,7 +167,7 @@
         }
       ],
       "setting": "both",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_gameplay_fixes_soldier.cpp",
@@ -181,11 +187,13 @@
         {
           "parity": "soldier_whirlwind_no_foe_scen99",
           "fact": "soldier_whirlwind_no_foe_fixes_scen99 (foe hp 103 vs 85)"
+        },
+        {
+          "file": "tests/unit/test_sem_families_1.cpp",
+          "test": "SemSoldier.a_classic_whirlwind_with_no_foe_spins_through_the_eight_compass_points"
         }
       ],
-      "missing_arms": [
-        "no foe in ring, setting off: spin shape"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living-00-soldier.lua:67",
@@ -214,18 +222,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "parity": "soldier_whirlwind_ring_scen99",
           "fact": "",
           "note": "east faerie hp 55 and pushed to x 176: struck and shoved"
+        },
+        {
+          "file": "tests/unit/test_sem_families_1.cpp",
+          "test": "SemSoldier.whirlwind_strikes_and_shoves_every_foe_in_its_ring_and_nobody_outside"
         }
       ],
-      "missing_arms": [
-        "foe outside ring",
-        "two foes"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living-00-soldier.lua:79",
@@ -254,17 +263,19 @@
         }
       ],
       "setting": "both",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_gameplay_fixes_special_busy.cpp",
           "test": "GameplayFixesSpecialBusy.disarm_after_a_shot",
           "note": "busy<0 off: SPECIAL BUSY, MP unchanged, foe busy 0; on: cast true, foe busy 60, MP -150"
+        },
+        {
+          "file": "tests/unit/test_sem_families_1.cpp",
+          "test": "SemSoldier.a_busy_soldier_is_refused_disarm_for_free"
         }
       ],
-      "missing_arms": [
-        "busy > 0"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living-00-soldier.lua:83",
@@ -466,7 +477,7 @@
         }
       ],
       "setting": "both",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_gameplay_fixes_soldier.cpp",
@@ -486,11 +497,13 @@
         {
           "parity": "soldier_disarm_resisted_price_scen99",
           "fact": "_fixes_scen99 (boomerang count 0 vs 1, notice 1 vs 0)"
+        },
+        {
+          "file": "tests/unit/test_sem_families_1.cpp",
+          "test": "SemSoldier.a_resisted_classic_disarm_still_pays_its_recovery_and_plays_the_charge_sound"
         }
       ],
-      "missing_arms": [
-        "all resisted, setting off: recovery and sound"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living-00-soldier.lua:127",
@@ -515,7 +528,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_gameplay_fixes_soldier.cpp",
@@ -526,11 +539,13 @@
           "file": "tests/integration/test_gameplay_fixes_soldier.cpp",
           "test": "GameplayFixesSoldier.disarm_never_speeds_up_a_higher_foe",
           "note": "guy soldier: 1 notice per success"
+        },
+        {
+          "file": "tests/unit/test_sem_families_1.cpp",
+          "test": "SemSoldier.only_the_player_team_or_a_hero_is_told_of_a_disarm"
         }
       ],
-      "missing_arms": [
-        "enemy bot (team!=0, no guy)"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living-00-soldier.lua:136",
@@ -555,17 +570,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_family_behaviors.cpp",
           "test": "FamilyBehaviors.soldier_weapons_left_limits_fire",
           "note": "living soldier: weapons_left 1 -> 0, then refused with refund"
+        },
+        {
+          "file": "tests/unit/test_sem_families_1.cpp",
+          "test": "SemSoldier.the_blade_limit_binds_only_a_living_soldier"
         }
       ],
-      "missing_arms": [
-        "non-living order"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living-00-soldier.lua:141",
@@ -628,17 +645,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_family_behaviors.cpp",
           "test": "FamilyBehaviors.soldier_weapons_left_on_create",
           "note": "L5 -> 3"
+        },
+        {
+          "file": "tests/unit/test_sem_families_1.cpp",
+          "test": "SemSoldier.on_create_arms_only_a_living_soldier_with_blades"
         }
       ],
-      "missing_arms": [
-        "other order"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living-00-soldier.lua:181",
@@ -864,7 +883,7 @@
         }
       ],
       "setting": "both",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_family_behaviors.cpp",
@@ -889,11 +908,13 @@
           "parity": "soldier_bot_whirlwind_one_foe_scen99",
           "fact": "",
           "note": "classic twins"
+        },
+        {
+          "file": "tests/unit/test_sem_families_1.cpp",
+          "test": "SemSoldier.the_soldier_bot_gate_acquires_its_foe_on_both_values"
         }
       ],
-      "missing_arms": [
-        "setting on: foe acquisition"
-      ]
+      "missing_arms": []
     }
   ],
   "other": [

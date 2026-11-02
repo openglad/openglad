@@ -24,7 +24,7 @@
         }
       ],
       "setting": "new-specials",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_kit_elemental.cpp",
@@ -33,11 +33,13 @@
         {
           "file": "tests/unit/test_kit_elemental.cpp",
           "test": "KitElemental.second_press_ends_it_free_after_the_latch"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_3.cpp",
+          "test": "SemLibsElemental.ending_immolate_on_an_elemental_that_is_not_burning_changes_no_kit_bit"
         }
       ],
-      "missing_arms": [
-        "not burning"
-      ]
+      "missing_arms": []
     },
     {
       "id": "kit_elemental.lua:66",
@@ -118,7 +120,7 @@
         }
       ],
       "setting": "new-specials",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_kit_elemental.cpp",
@@ -131,11 +133,13 @@
         {
           "file": "tests/unit/test_kit_elemental.cpp",
           "test": "KitElemental.immolate_drains_two_per_tick_burns_contact_melee_most_and_lays_embers"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_3.cpp",
+          "test": "SemLibsElemental.a_burning_elementals_own_ember_on_another_floor_does_not_count_as_underfoot"
         }
       ],
-      "missing_arms": [
-        "own ember on spot but other floor"
-      ],
+      "missing_arms": [],
       "note": [
         "unasserted: own ember on the spot but on another floor -> a new ember"
       ]
@@ -237,7 +241,7 @@
         }
       ],
       "setting": "new-specials",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_kit_elemental.cpp",
@@ -246,11 +250,13 @@
         {
           "file": "tests/unit/test_kit_elemental.cpp",
           "test": "KitElemental.meteor_rain_finds_the_nearest_foe_and_stops_with_its_caster"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_3.cpp",
+          "test": "SemLibsElemental.every_meteor_rain_strike_plays_one_explosion_sound"
         }
       ],
-      "missing_arms": [
-        "lifetime % 6 == 0"
-      ]
+      "missing_arms": []
     },
     {
       "id": "kit_elemental.lua:197",
@@ -449,16 +455,18 @@
         }
       ],
       "setting": "new-specials",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_kit_elemental.cpp",
           "test": "KitElemental.rekindle_heals_and_refuses_at_full"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_3.cpp",
+          "test": "SemLibsElemental.a_rekindle_heal_plays_one_heal_sound_and_the_refusal_none"
         }
       ],
-      "missing_arms": [
-        "hurt"
-      ]
+      "missing_arms": []
     },
     {
       "id": "kit_elemental.lua:306",
@@ -649,7 +657,7 @@
         }
       ],
       "setting": "new-specials",
-      "status": "partial",
+      "status": "deferred",
       "tests": [
         {
           "file": "tests/unit/test_kit_elemental.cpp",
@@ -670,14 +678,19 @@
         {
           "file": "tests/unit/test_kit_elemental.cpp",
           "test": "KitElemental.ai_off_answers_the_classic_gate"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_3.cpp",
+          "test": "SemLibsElemental.a_friendly_tent_in_the_strike_box_does_not_hold_a_bot_meteor_rain"
         }
       ],
       "missing_arms": [
-        "a friendly generator (team-0 FAMILY_TOWER1 tent) with top-left inside the 71 px box of the target, two foes clustered",
         "one living foe plus an ENEMY tent within 60 of the target",
         "a living ally inside the box but on another floor"
       ],
+      "issue": "#487",
       "note": [
+        "not #458 (burning() unasked): the ally scan and the foe cluster ignore floors, though the rain only hits its own floor (effect_bomb.lua:63-67), so an ally on another floor holds it; the cluster also counts an enemy tent (raw find_foes_in_range, unlike G.living_foes everywhere else)",
         "unasserted: friendly tent inside the strike box does not hold the rain",
         "unasserted: enemy tent counted toward the cluster",
         "unasserted: ally on another floor holds the rain"

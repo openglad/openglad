@@ -65,17 +65,19 @@
         }
       ],
       "setting": "new-specials",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_kit_thief.cpp",
           "test": "KitThief.bot_steps_right_off_a_mine_when_the_flee_roll_is_still",
           "note": "still roll: com1 1, com2 0"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_3.cpp",
+          "test": "SemLibsThief.a_bot_thief_walks_off_its_mine_on_the_step_it_rolled"
         }
       ],
-      "missing_arms": [
-        "otherwise"
-      ]
+      "missing_arms": []
     },
     {
       "id": "kit_thief.lua:48",
@@ -138,7 +140,7 @@
         }
       ],
       "setting": "new-specials",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_kit_thief.cpp",
@@ -149,11 +151,13 @@
           "file": "tests/unit/test_kit_thief.cpp",
           "test": "KitThief.ai_mine_fires_for_a_hunter_past_the_blast_when_mana_allows",
           "note": "bot: front command COMMAND_WALK"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_3.cpp",
+          "test": "SemLibsThief.a_seated_thief_lays_a_mine_without_stepping_off_it"
         }
       ],
-      "missing_arms": [
-        "seated"
-      ]
+      "missing_arms": []
     },
     {
       "id": "kit_thief.lua:72",

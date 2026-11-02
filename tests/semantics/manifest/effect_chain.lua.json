@@ -36,7 +36,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_effect_chain_and_door.cpp",
@@ -47,11 +47,13 @@
           "file": "tests/integration/test_effect_more_paths.cpp",
           "test": "EffectMorePaths.effect_batch4_chain_guard_ownerless_and_non_myguy_foe_scan",
           "note": "ownerless: dead, lineofsight unchanged"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_1.cpp",
+          "test": "SemLibsChain.a_bolt_that_has_lost_its_target_fizzles_without_striking"
         }
       ],
-      "missing_arms": [
-        "leader nil"
-      ],
+      "missing_arms": [],
       "note": [
         "The no-leader bolt in effect_chain_early_exit_and_movement_branches also has no owner, so the owner test kills it: the leader-nil arm is never isolated, and no test asserts that no explosion follows."
       ]
@@ -120,17 +122,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_effect_more_paths.cpp",
           "test": "EffectMorePaths.effect_chain_lightning_hits_leader_and_spawns_explosion",
           "note": "blast spawned: the strike proceeds, skip_exit +3, bolt dead"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_1.cpp",
+          "test": "SemLibsChain.a_bolt_striking_in_a_full_world_dies_without_a_blast_or_forks"
         }
       ],
-      "missing_arms": [
-        "world full"
-      ],
+      "missing_arms": [],
       "note": [
         "Status was none, but every strike test reaches the line."
       ]
@@ -160,12 +164,14 @@
         }
       ],
       "setting": "none",
-      "status": "executed-only",
-      "tests": [],
-      "missing_arms": [
-        "owner has a guy",
-        "owner without a guy"
-      ]
+      "status": "asserted",
+      "tests": [
+        {
+          "file": "tests/unit/test_sem_libs_1.cpp",
+          "test": "SemLibsChain.a_heros_forks_reach_240_plus_half_int_a_bots_240_plus_5_a_level"
+        }
+      ],
+      "missing_arms": []
     },
     {
       "id": "effect_chain.lua:65",
@@ -198,7 +204,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_effect_chain_and_door.cpp",
@@ -209,13 +215,13 @@
           "file": "tests/integration/test_effect_more_paths.cpp",
           "test": "EffectMorePaths.effect_batch4_chain_guard_ownerless_and_non_myguy_foe_scan",
           "note": "EXPECT_EQ(1, fork_count), EXPECT_FLOAT_EQ(35.0f, bolt->damage()) from 70"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_1.cpp",
+          "test": "SemLibsChain.a_strike_forks_only_with_a_foe_in_reach_and_children_over_20"
         }
       ],
-      "missing_arms": [
-        "foes in reach and fork damage > 20: fork budget draw",
-        "no foe in reach",
-        "child damage <= 20 (bolt damage <= 41)"
-      ],
+      "missing_arms": [],
       "note": [
         "Ledger correction: the earlier no-foe citation was wrong (foe_count == 1 there). A mutation forks_left = 1 passes every test, and no test reads the RNG state."
       ]
@@ -279,17 +285,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_effect_chain_and_door.cpp",
           "test": "EffectChainAndDoor.effect_chain_hits_leader_spawns_explosion_and_secondary_chains_and_door_open_spawns_fx",
           "note": "same floor: foe2 gets a bolt and spends the only fork, foe3 gets none"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_1.cpp",
+          "test": "SemLibsChain.chain_lightning_never_forks_to_another_floor_nor_spends_a_fork_there"
         }
       ],
-      "missing_arms": [
-        "other floor"
-      ],
+      "missing_arms": [],
       "note": [
         "Status was none, but the fork tests reach the line on floor 0."
       ]
@@ -329,7 +337,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_effect_more_paths.cpp",
@@ -345,13 +353,13 @@
           "file": "tests/integration/test_effect_more_paths.cpp",
           "test": "EffectMorePaths.effect_chain_lightning_hits_leader_and_spawns_explosion",
           "note": "EXPECT_EQ(0, fork_count): the only foe in range is the leader, which gets no child"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_1.cpp",
+          "test": "SemLibsChain.a_fork_skips_the_struck_and_the_immune_but_they_spend_the_budget"
         }
       ],
-      "missing_arms": [
-        "other foe with skip_exit 0 (level, floor)",
-        "non-leader foe with skip_exit >= 1",
-        "skipped foe (leader or skip_exit >= 1)"
-      ],
+      "missing_arms": [],
       "note": [
         "Arm 1 names level and floor and no test asserts either on a child bolt. Arm 2: dropping either half of `w ~= self:leader() and w:skip_exit() < 1` passes every test (the only skipped foe is the leader, which also carries skip_exit 3), and the fork slot spent on a skipped foe is never observed."
       ]
@@ -379,7 +387,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "unreachable",
       "tests": [
         {
           "file": "tests/integration/test_effect_more_paths.cpp",
@@ -391,7 +399,7 @@
         "world full mid-fork"
       ],
       "note": [
-        "Status was none, but the fork tests reach the line."
+        "unreachable: GameWorld::add_ob returns nullptr only when the entity factory fails, never in play (triage); a test could reach it only by swapping the factory as test_kit_ghost does, and the arm it would pin (the bolt left alive, Lua true vs the old game's return 0) is the triaged suspect | triage: Unreachable in play: GameWorld::add_ob returns nullptr only when the entity factory fails (no factory or unknown family), and the world has no object cap. The old game has no defined behaviour there either (an unchecked dereference for the bomb, death for the door). Mark all three arms unreachable,"
       ]
     },
     {
@@ -469,7 +477,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/integration/test_effect_more_paths.cpp",
@@ -485,11 +493,13 @@
           "file": "tests/integration/test_effect_more_paths.cpp",
           "test": "EffectMorePaths.effect_batch4_chain_movement_negative_delta_branch",
           "note": "left/above 80 px: exactly -4 each"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_1.cpp",
+          "test": "SemLibsChain.a_homing_bolt_faces_the_way_it_flies"
         }
       ],
-      "missing_arms": [
-        "any"
-      ],
+      "missing_arms": [],
       "note": [
         "Left/above is pinned only when the gap exceeds the step; og.max(gap, -step) -> -step survives. No test reads curdir or frame after a homing step."
       ]

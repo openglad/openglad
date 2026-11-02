@@ -36,7 +36,7 @@
         }
       ],
       "setting": "new-specials",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_kit_elemental.cpp",
@@ -47,12 +47,13 @@
           "file": "tests/unit/test_kit_elemental.cpp",
           "test": "KitElemental.immolate_drains_two_per_tick_burns_contact_melee_most_and_lays_embers",
           "note": "touching foes burn; far foe 120 px, in reach but clear, untouched"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_1.cpp",
+          "test": "SemLibsEmber.an_ember_burns_only_living_foes_on_its_own_floor"
         }
       ],
-      "missing_arms": [
-        "generator/weapon foe",
-        "other floor"
-      ],
+      "missing_arms": [],
       "note": [
         "Removed KitElemental.every_core_living_box_fits_the_burn_search: it checks loader box sizes and never runs foes_touching."
       ]
@@ -84,7 +85,7 @@
         }
       ],
       "setting": "new-specials",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_kit_elemental.cpp",
@@ -95,11 +96,13 @@
           "file": "tests/unit/test_kit_elemental.cpp",
           "test": "KitElemental.embers_burn_crossers_then_die",
           "note": "dead after exactly 40 acts from lifetime 40: EXPECT_EQ(40, acts)"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_1.cpp",
+          "test": "SemLibsEmber.an_ember_goes_out_on_its_last_act_without_burning"
         }
       ],
-      "missing_arms": [
-        "lifetime reaches 0 (no burn)"
-      ]
+      "missing_arms": []
     },
     {
       "id": "effect_ember.lua:46",
@@ -124,17 +127,19 @@
         }
       ],
       "setting": "new-specials",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_kit_elemental.cpp",
           "test": "KitElemental.embers_burn_crossers_then_die",
           "note": "frame 1 at 9 left"
+        },
+        {
+          "file": "tests/unit/test_sem_libs_1.cpp",
+          "test": "SemLibsEmber.an_ember_shows_its_dying_frame_only_in_its_last_nine_ticks"
         }
       ],
-      "missing_arms": [
-        "otherwise"
-      ]
+      "missing_arms": []
     },
     {
       "id": "effect_ember.lua:49",

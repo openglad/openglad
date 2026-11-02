@@ -28,18 +28,19 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_pack_lua_paths.cpp",
           "test": "PackLuaSlime.a_veteran_split_halves_the_experience_across_both_bodies",
           "note": "exp 60000 -> exp/2 30000 -> EXPECT_EQ level 3 on both halves: the level-3 arm only"
+        },
+        {
+          "file": "tests/unit/test_sem_families_2.cpp",
+          "test": "SemSlime.a_veteran_split_levels_both_halves_on_the_experience_ladder"
         }
       ],
-      "missing_arms": [
-        "exp < 8000",
-        "exp in [8000,18000)"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living-08-slime.lua:43",
@@ -64,7 +65,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "parity": "ai_slime_split_scen99",
@@ -74,11 +75,13 @@
           "file": "tests/integration/test_family_behaviors.cpp",
           "test": "FamilyBehaviors.check_special_slime_capacity",
           "note": "ASSERT_TRUE(check_special()) far below MAXOBS: true arm"
+        },
+        {
+          "file": "tests/unit/test_sem_families_2.cpp",
+          "test": "SemSlime.a_big_slime_never_splits_in_a_full_world"
         }
       ],
-      "missing_arms": [
-        "living_count >= MAXOBS"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living-08-slime.lua:60",
@@ -103,16 +106,23 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "unreachable",
       "tests": [
         {
           "file": "tests/unit/test_pack_lua_paths.cpp",
           "test": "PackLuaSlime.a_split_carries_the_name_and_the_player_character_across",
           "note": "named parent BLOBBY: EXPECT_EQ child name == parent name"
+        },
+        {
+          "file": "tests/unit/test_sem_families_2.cpp",
+          "test": "SemSlime.classic_a_dying_slime_ends_unnamed_named_or_not"
         }
       ],
       "missing_arms": [
         "parent unnamed"
+      ],
+      "note": [
+        "no teeth possible: a fresh offspring is always unnamed in both games, so the unnamed arm's outcome (name stays empty) equals the copy's; the planted 'if true' stays green. The named arm is pinned (classic: the name is blanked)"
       ]
     },
     {
@@ -138,16 +148,23 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "unreachable",
       "tests": [
         {
           "file": "tests/unit/test_pack_lua_paths.cpp",
           "test": "PackLuaSlime.a_split_carries_the_name_and_the_player_character_across",
           "note": "EXPECT_EQ(nullptr, slime->myguy), EXPECT_NE(nullptr, child->myguy)"
+        },
+        {
+          "file": "tests/unit/test_sem_families_2.cpp",
+          "test": "SemSlime.a_slime_without_a_character_leaves_an_offspring_without_one"
         }
       ],
       "missing_arms": [
         "no guy"
+      ],
+      "note": [
+        "no teeth possible: walker::move_myguy_to with no guy is a no-op, so dropping the has_guy gate changes nothing; the planted 'if true' stays green"
       ]
     },
     {
@@ -219,7 +236,7 @@
         }
       ],
       "setting": "none",
-      "status": "partial",
+      "status": "asserted",
       "tests": [
         {
           "file": "tests/unit/test_pack_lua_paths.cpp",
@@ -230,11 +247,17 @@
           "file": "tests/unit/test_pack_lua_paths.cpp",
           "test": "PackLuaSlime.a_veteran_split_halves_the_experience_across_both_bodies",
           "note": "both exp 30000, both level 3"
+        },
+        {
+          "file": "tests/unit/test_sem_families_3.cpp",
+          "test": "SemSlime.a_monster_slime_split_copies_its_level_and_makes_no_character"
+        },
+        {
+          "file": "tests/unit/test_sem_families_3.cpp",
+          "test": "SemSlime.a_slime_split_at_exactly_one_thousand_per_level_keeps_both_characters"
         }
       ],
-      "missing_arms": [
-        "monster slime (no guy)"
-      ]
+      "missing_arms": []
     },
     {
       "id": "living-08-slime.lua:136",
