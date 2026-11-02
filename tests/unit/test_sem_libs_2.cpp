@@ -1225,7 +1225,8 @@ TEST(SemMine, a_blast_lights_only_live_mines_of_its_team_nearby)
     ASSERT_LE(first->distance_to_ob(near), 24);
     ASSERT_LE(first->distance_to_ob(fallen), 24);
     fallen->set_dead(1);
-    walker* shield = s.tw.world().add_fx_ob(Order::FX, FAMILY_MAGIC_SHIELD);
+    // On the object list, where the chain scans (og.oblist()).
+    walker* shield = s.tw.world().add_ob(Order::FX, FAMILY_MAGIC_SHIELD);
     ASSERT_NE(nullptr, shield);
     shield->set_team_num(kThiefTeam);
     shield->setxy(static_cast<short>(first->xpos() + 8), first->ypos());
@@ -1563,6 +1564,7 @@ TEST(SemWail, a_wail_puff_homes_at_most_six_px_per_axis_and_never_overshoots)
         {281, 268, 3, 6, "target right/below: +3 (the gap) on x, +6 on y"},
         {304, 308, -6, -6, "target left/above: -6, -6"},
         {304, 290, -6, -2, "target left/above: -6, and -2 (the gap) on y"},
+        {286, 310, -2, -6, "target left/above: -2 (the gap) on x, -6 on y"},
         {264, 288, 6, 0, "aligned y: y does not move"},
         {284, 268, 0, 6, "aligned x: x does not move"},
     };
