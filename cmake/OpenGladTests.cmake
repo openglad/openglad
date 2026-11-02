@@ -1486,6 +1486,12 @@ og_add_filtered_test(og_unit_basketball og_unit_basketball
 # of its slices get it, never the binary's own entry alone.
 set(OG_PARITY_TESTS og_test_parity og_test_parity_gates)
 set(OG_MODES_WATER_TESTS og_unit_modes_water og_unit_modes_water_band)
+# The semantic test batches (docs/sim-semantics.md): one unit binary each,
+# registered in their own files so the batches never edit this one.
+foreach(og_sem_area walker ai world script families libs)
+    include(${CMAKE_SOURCE_DIR}/cmake/semantics/${og_sem_area}.cmake)
+endforeach()
+
 set(OG_UNIT_DATA_TESTS og_unit_data og_unit_data_campaigns og_unit_data_westlands)
 
 # The picker and menu UI suites include the live networking menu/client
