@@ -1304,3 +1304,30 @@ TEST(SemWorld, find_foe_weapons_in_range_leaves_out_a_hostile_living)
         << "hostile-living arm: only the knife (got " << got.size() << ")";
     EXPECT_EQ(1, n);
 }
+
+// game_world.cpp:640 remove_ob. Removing a Living from the object list lowers
+// the living census, but never below zero: a census already at 0 stays 0, and
+// the walker still leaves the list (return 1). This arm is the current game's
+// own rule, pinned against the current game: the old game's sim never takes
+// this path (its LevelData::remove_ob decrements numobs for any Living before
+// the list search and has no floor), so there is no classic oracle for it.
+//
+// RED (`living_count > 0` dropped at game_world.cpp:660): Expected equality
+// of these values: 0 world.living_count Which is: -1.
+TEST(SemWorld, removing_a_living_never_drops_the_living_census_below_zero)
+{
+    TestGameWorld tw;
+    open_field(tw);
+    GameWorld& world = tw.world();
+    walker* soldier = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, soldier);
+    const std::uint32_t id = soldier->entity_id();
+    ASSERT_TRUE(in_list(world.oblist, soldier)) << "staging: a Living in the object list";
+    const std::size_t listed = world.oblist.size();
+    world.living_count = 0;
+
+    EXPECT_EQ(1, world.remove_ob(soldier)) << "census at 0: the walker is still removed";
+    EXPECT_EQ(0, world.living_count) << "census at 0: it stays 0";
+    EXPECT_EQ(nullptr, world.find_by_id(id)) << "census at 0: the walker left the id index";
+    EXPECT_EQ(listed - 1, world.oblist.size()) << "census at 0: one fewer in the object list";
+}

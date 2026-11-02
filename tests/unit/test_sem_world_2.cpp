@@ -1093,6 +1093,55 @@ TEST(SemWorld, links_to_live_walkers_survive_the_stale_link_cleanup)
     }
 }
 
+// game_world.cpp:1993 tick (stale link cleanup), the stats controller arm.
+// A walker's stats controller that is dead is dropped at the end of the tick
+// in every list; a live one is kept. The divergence the review suspected
+// here (the old game never clears a controller, nor cleans fxlist links) was
+// refuted in triage: no player sees a difference, since a controller in the
+// old game is the walker itself and fxlist walkers never act in either game.
+// The rule is pinned as the classic one: nobody is driven by a corpse into
+// the next tick.
+//
+// RED (`stats->controller()->dead()` -> `!stats->controller()->dead()` at
+// game_world.cpp:2005): Expected equality of these values: orc
+// w->stats()->controller() Which is: NULL (the kept arm; the dead arm keeps
+// the corpse).
+TEST(SemWorld, a_stats_controller_that_died_is_dropped_at_the_end_of_the_tick)
+{
+    TestGameWorld tw;
+    GameWorld& world = tw.world();
+    world.my_team = 0;
+    TickWalker* soldier = push_tick_walker(world.oblist, Order::Living, FAMILY_SOLDIER, 0, 100, 100);
+    TickWalker* orc = push_tick_walker(world.oblist, Order::Living, FAMILY_ORC, 1, 300, 300);
+    TickWalker* knife = push_tick_walker(world.weaplist, Order::Weapon, FAMILY_KNIFE, 0, 50, 50);
+    TickWalker* spark = push_tick_walker(world.fxlist, Order::FX, FAMILY_EXPLOSION, 0, 60, 60);
+    const std::array<walker*, 3> drivers = {soldier, knife, spark};
+    for (walker* w : drivers)
+    {
+        ASSERT_NE(nullptr, w->stats()) << "staging: every walker has stats";
+        w->stats()->set_controller(orc);
+    }
+    world.tick();
+    ASSERT_FALSE(world.game_ended) << "staging: the cleanup runs on unfinished ticks";
+    for (walker* w : drivers)
+    {
+        const char* list = w == soldier ? "oblist" : (w == knife ? "weaplist" : "fxlist");
+        EXPECT_EQ(orc, w->stats()->controller()) << list << ": controller alive, kept";
+    }
+
+    TickWalker* corpse = push_tick_walker(world.oblist, Order::Living, FAMILY_ORC, 1, 340, 340);
+    for (walker* w : drivers)
+        w->stats()->set_controller(corpse);
+    corpse->set_dead(1);
+    world.tick();
+    ASSERT_FALSE(world.game_ended) << "staging: the cleanup runs on unfinished ticks";
+    for (walker* w : drivers)
+    {
+        const char* list = w == soldier ? "oblist" : (w == knife ? "weaplist" : "fxlist");
+        EXPECT_EQ(nullptr, w->stats()->controller()) << list << ": controller dead, dropped";
+    }
+}
+
 // ---------------------------------------------------------------------------
 // game_world.cpp:2029 tick (dead sweep)
 // ---------------------------------------------------------------------------
