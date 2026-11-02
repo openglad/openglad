@@ -19,13 +19,16 @@ The check passes (exit 0) only when all of these hold:
       LUA_BRANCH below, comment lines skipped); the in-scope files are
       SCOPE_CPP plus every Lua file under packs/.
   R2  every rule row cites at least one test (a row deferred with an issue
-      number is exempt: the issue is its pointer), every gtest citation
+      number is exempt: the issue is its pointer; so is an unreachable row
+      with its reason), every gtest citation
       names a TEST / TEST_F / TEST_P that exists in the cited file outside
       comments and `#if 0` regions and is not disabled (a DISABLED_ suite
       or test name never counts), and every
       parity citation names a row id in tests/parity/scenario_table.h.
-  R3  every rule row's status is "asserted", or "deferred" with an issue
-      number (deferred rows are printed as notices, not errors).
+  R3  every rule row's status is "asserted", "deferred" with an issue
+      number, or "unreachable" with a non-empty "note" saying why no test
+      can reach the arms its missing_arms lists (deferred and unreachable
+      rows are printed as notices, not errors).
 
 Anchoring.  Each row carries `anchor`, the trimmed source text of its
 anchor line, lines[anchor_index] (anchor_index defaults to 0).  When that
@@ -130,7 +133,7 @@ COMMENT_PREFIXES = ("//", "--", "*")
 MANIFEST_DIR = "tests/semantics/manifest"
 SCENARIO_TABLE = "tests/parity/scenario_table.h"
 
-RULE_STATUSES = ("asserted", "partial", "executed-only", "none", "deferred")
+RULE_STATUSES = ("asserted", "partial", "executed-only", "none", "deferred", "unreachable")
 OTHER_KINDS = ("plumbing", "defensive", "dead", "test-only", "loop")
 
 # Anchors with no identifying text of their own: after removing braces,
@@ -672,7 +675,7 @@ ERROR_KINDS = (
     "uncovered", "double-claimed", "stale line", "missing kinds", "drift", "lost anchor",
     "unanchored",
     "no test", "missing test", "disabled test", "missing parity row", "not asserted",
-    "deferred without issue",
+    "deferred without issue", "unreachable without reason",
 )
 
 
@@ -795,7 +798,8 @@ def run_check(repo: str, fix: bool) -> Report:
             status = d["status"]
             status_counts[status] += 1
             deferred_with_issue = status == "deferred" and issue_number(d.get("issue")) is not None
-            if not d["tests"] and not deferred_with_issue:
+            unreachable_why = reason_of(d.get("note")) if status == "unreachable" else None
+            if not d["tests"] and not deferred_with_issue and not unreachable_why:
                 rep.add("no test", f"{path}: row {row.id}: a rule row cites no test")
             for t in d["tests"]:
                 if "parity" in t:
@@ -821,6 +825,12 @@ def run_check(repo: str, fix: bool) -> Report:
                 else:
                     rep.notices.append(f"deferred: {path}: row {row.id}: issue #{issue_number(issue)}")
                 continue
+            if status == "unreachable":
+                if unreachable_why is None:
+                    rep.add("unreachable without reason", f"{path}: row {row.id}")
+                else:
+                    rep.notices.append(f"unreachable: {path}: row {row.id}: {unreachable_why}")
+                continue
             rep.add("not asserted", f"{path}: row {row.id}: status {status}")
 
     rep.counts = {
@@ -828,6 +838,15 @@ def run_check(repo: str, fix: bool) -> Report:
         **{f"status {s}": status_counts[s] for s in RULE_STATUSES},
     }
     return rep
+
+
+def reason_of(note: object) -> str | None:
+    """The reason an unreachable row gives: its note when that is a
+    non-blank string, else the first non-blank string of its note list."""
+    for text in (note if isinstance(note, list) else [note]):
+        if isinstance(text, str) and text.strip():
+            return norm(text)
+    return None
 
 
 def issue_number(issue: object) -> int | None:
@@ -860,7 +879,8 @@ def render(rep: Report) -> tuple[str, int]:
     out.extend(rep.notices)
     c = rep.counts
     n = {k: len(rep.errors.get(k, [])) for k in ERROR_KINDS}
-    not_asserted = c["rules"] - c["status asserted"] - c["status deferred"]
+    not_asserted = (c["rules"] - c["status asserted"] - c["status deferred"]
+                    - c["status unreachable"])
     verdict = "FAIL" if any(n.values()) else "OK"
     out.append(
         f"check_manifest: {verdict}: {c['files']} files, {c['candidates']} candidate lines, "
@@ -877,7 +897,8 @@ def render(rep: Report) -> tuple[str, int]:
     out.append(
         f"  R3 not asserted {not_asserted} (partial {c['status partial']}, "
         f"executed-only {c['status executed-only']}, none {c['status none']}), "
-        f"deferred {c['status deferred']} (without issue {n['deferred without issue']})")
+        f"deferred {c['status deferred']} (without issue {n['deferred without issue']}), "
+        f"unreachable {c['status unreachable']} (without reason {n['unreachable without reason']})")
     if rep.fixed:
         out.append(f"  fixed {len(rep.fixed)} rows")
     return "\n".join(out) + "\n", (1 if verdict == "FAIL" else 0)
@@ -1051,7 +1072,7 @@ def _summary(verdict: str, files: int = len(SCOPE_CPP), rules: int = 3, other: i
              r3: str = "", fixed: int = 0) -> str:
     r1 = r1 or _r1()
     r2 = r2 or "no test 0, missing test 0, disabled test 0, missing parity row 0"
-    r3 = r3 or "not asserted 0 (partial 0, executed-only 0, none 0), deferred 0 (without issue 0)"
+    r3 = r3 or "not asserted 0 (partial 0, executed-only 0, none 0), deferred 0 (without issue 0), unreachable 0 (without reason 0)"
     text = (f"check_manifest: {verdict}: {files} files, {cands} candidate lines, "
             f"{rules} rule rows, {other} other rows\n  R1 {r1}\n  R2 {r2}\n  R3 {r3}\n")
     if fixed:
@@ -1183,7 +1204,7 @@ def self_test() -> int:
         expect("R3: partial is red", _run(["--repo", root]),
                (1, "not asserted: src/gameplay/fearless.cpp: row fearless.cpp:4: status partial\n"
                 + _summary("FAIL", r3="not asserted 1 (partial 1, executed-only 0, none 0), "
-                           "deferred 0 (without issue 0)")))
+                           "deferred 0 (without issue 0), unreachable 0 (without reason 0)")))
         m = _fixture_manifest()
         m["rules"][2]["status"] = "deferred"
         m["rules"][2]["issue"] = 451
@@ -1191,14 +1212,14 @@ def self_test() -> int:
         expect("R3: deferred with an issue is a notice only", _run(["--repo", root]),
                (0, "deferred: src/gameplay/fearless.cpp: row fearless.cpp:12: issue #451\n"
                 + _summary("OK", r3="not asserted 0 (partial 0, executed-only 0, none 0), "
-                           "deferred 1 (without issue 0)")))
+                           "deferred 1 (without issue 0), unreachable 0 (without reason 0)")))
         del m["rules"][2]["issue"]
         root = case("deferred_bare", m)
         expect("R3: deferred without an issue is red", _run(["--repo", root]),
                (1, "deferred without issue: src/gameplay/fearless.cpp: row fearless.cpp:12: "
                 "status deferred needs an issue number\n"
                 + _summary("FAIL", r3="not asserted 0 (partial 0, executed-only 0, none 0), "
-                           "deferred 1 (without issue 1)")))
+                           "deferred 1 (without issue 1), unreachable 0 (without reason 0)")))
         # R2: a row deferred with an issue may cite no test; without an issue
         # it is red twice (no test, and deferred without issue).
         m = _fixture_manifest()
@@ -1209,7 +1230,7 @@ def self_test() -> int:
         expect("R2: deferred with an issue needs no test", _run(["--repo", root]),
                (0, "deferred: src/gameplay/fearless.cpp: row fearless.cpp:12: issue #462\n"
                 + _summary("OK", r3="not asserted 0 (partial 0, executed-only 0, none 0), "
-                           "deferred 1 (without issue 0)")))
+                           "deferred 1 (without issue 0), unreachable 0 (without reason 0)")))
         del m["rules"][2]["issue"]
         root = case("deferred_bare_no_test", m)
         expect("R2: deferred without an issue still needs a test", _run(["--repo", root]),
@@ -1218,7 +1239,49 @@ def self_test() -> int:
                 "status deferred needs an issue number\n"
                 + _summary("FAIL", r2="no test 1, missing test 0, disabled test 0, missing parity row 0",
                            r3="not asserted 0 (partial 0, executed-only 0, none 0), "
-                           "deferred 1 (without issue 1)")))
+                           "deferred 1 (without issue 1), unreachable 0 (without reason 0)")))
+        # R2/R3: an unreachable row with its reason needs no test and is a
+        # notice; without a reason (no note, a blank one, an empty list) it
+        # is red, and red twice when it also cites no test.
+        m = _fixture_manifest()
+        m["rules"][2]["status"] = "unreachable"
+        m["rules"][2]["tests"] = []
+        m["rules"][2]["missing_arms"] = ["b false"]
+        m["rules"][2]["note"] = ["  b is   always true:\nevery caller passes it", "GAP: x"]
+        root = case("unreachable", m)
+        expect("R3: unreachable with a reason is a notice only", _run(["--repo", root]),
+               (0, "unreachable: src/gameplay/fearless.cpp: row fearless.cpp:12: "
+                "b is always true: every caller passes it\n"
+                + _summary("OK", r3="not asserted 0 (partial 0, executed-only 0, none 0), "
+                           "deferred 0 (without issue 0), unreachable 1 (without reason 0)")))
+        m["rules"][2]["note"] = "the only caller is a test"
+        m["rules"][2]["tests"] = [{"file": "tests/unit/test_fearless.cpp", "test": "FearlessScenes.counts_down_to_zero"}]
+        root = case("unreachable_str", m)
+        expect("R3: unreachable with a string reason and a test", _run(["--repo", root]),
+               (0, "unreachable: src/gameplay/fearless.cpp: row fearless.cpp:12: the only caller is a test\n"
+                + _summary("OK", r3="not asserted 0 (partial 0, executed-only 0, none 0), "
+                           "deferred 0 (without issue 0), unreachable 1 (without reason 0)")))
+        for label, note in (("no note", None), ("a blank note", "  "), ("an empty note list", [])):
+            if note is None:
+                m["rules"][2].pop("note", None)
+            else:
+                m["rules"][2]["note"] = note
+            root = case("unreachable_bare_" + label.replace(" ", "_"), m)
+            expect(f"R3: unreachable with {label} is red", _run(["--repo", root]),
+                   (1, "unreachable without reason: src/gameplay/fearless.cpp: row fearless.cpp:12\n"
+                    + _summary("FAIL", r3="not asserted 0 (partial 0, executed-only 0, none 0), "
+                               "deferred 0 (without issue 0), unreachable 1 (without reason 1)")))
+        m["rules"][2]["tests"] = []
+        m["rules"][2]["note"] = ["", " "]
+        m["rules"][1]["status"] = "partial"
+        root = case("unreachable_bare_no_test", m)
+        expect("R2: unreachable without a reason still needs a test", _run(["--repo", root]),
+               (1, "no test: src/gameplay/fearless.cpp: row fearless.cpp:12: a rule row cites no test\n"
+                "not asserted: src/gameplay/fearless.cpp: row fearless.cpp:6: status partial\n"
+                "unreachable without reason: src/gameplay/fearless.cpp: row fearless.cpp:12\n"
+                + _summary("FAIL", r2="no test 1, missing test 0, disabled test 0, missing parity row 0",
+                           r3="not asserted 1 (partial 1, executed-only 0, none 0), "
+                           "deferred 0 (without issue 0), unreachable 1 (without reason 1)")))
         # R2: a DISABLED_ test never counts, even though the file defines it.
         disabled_tests = (_FIXTURE_TESTS + "TEST(Fearless, DISABLED_skipped) { }\n"
                           + "TEST(DISABLED_FearlessOff, skipped) { }\n")
@@ -1565,6 +1628,30 @@ def self_test() -> int:
                  "note": "starts on a statement, then a bare else"},
                 {"id": "fearless.cpp:12", "lines": [12, 13], "kinds": ["ternary", "while"], "kind": "loop",
                  "anchor": "int c = b ? 4 : 5;", "note": "countdown"}])
+        # An unreachable row: status and reason pass through, the reason
+        # first in note, and no issue even when the review gave one.
+        root = case("gen_unreachable", None)
+        ureview = os.path.join(root, "review")
+        os.makedirs(ureview)
+        with open(os.path.join(ureview, "part.json"), "w", encoding="utf-8") as fh:
+            json.dump([{"id": "fearless.cpp:12", "path": "src/gameplay/fearless.cpp", "lines": [12],
+                        "function": "other", "kind": "rule", "condition": "b", "semantic": "counts",
+                        "arms": [{"when": "b", "observable": "4"}, {"when": "!b", "observable": "5"}],
+                        "setting": "none",
+                        "assertion": {"status": "unreachable", "issue": 999,
+                                      "where": ["GAP: nobody passes b false"],
+                                      "missing_arms": ["!b"],
+                                      "note": "every caller passes b true"}}], fh)
+        with contextlib.redirect_stdout(io.StringIO()):
+            rc = gen_manifest.generate(root, ureview, os.path.join(root, "out"))
+        with open(os.path.join(root, "out", "fearless.cpp.json"), encoding="utf-8") as fh:
+            got = json.load(fh)
+        expect("gen: an unreachable row keeps its reason and no issue", (rc, got["rules"]),
+               (0, [{"id": "fearless.cpp:12", "lines": [12], "kinds": ["ternary"], "function": "other",
+                     "anchor": "int c = b ? 4 : 5;", "condition": "b", "semantic": "counts",
+                     "arms": [{"when": "b", "observable": "4"}, {"when": "!b", "observable": "5"}],
+                     "setting": "none", "status": "unreachable", "tests": [], "missing_arms": ["!b"],
+                     "note": ["every caller passes b true", "GAP: nobody passes b false"]}]))
         rows[0]["lines"] = []
         rows[0]["id"] = "fearless.cpp:pick"
         with open(os.path.join(review, "part.json"), "w", encoding="utf-8") as fh:
@@ -1586,7 +1673,7 @@ def self_test() -> int:
         expect("a malformed row exits 2", _run(["--repo", root]),
                (2, "check_manifest: cannot run: tests/semantics/manifest/fearless.cpp.json: rule row "
                 "fearless.cpp:4: status 'great' is not one of asserted, partial, executed-only, none, "
-                "deferred\n"))
+                "deferred, unreachable\n"))
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 

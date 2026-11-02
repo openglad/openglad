@@ -19,13 +19,15 @@ and of every class-pack Lua file under `packs/`.
 1. Every branch line in an in-scope file belongs to exactly one row.
 2. A **rule** row cites at least one test, and every test it cites exists
    and is not disabled. A row deferred with an issue number may cite none:
-   the issue is its pointer.
+   the issue is its pointer. So may an unreachable row, whose note says why
+   no test can reach it.
 3. A rule row's status is `asserted`: every arm's outcome is checked by an
    `EXPECT_*` / `ASSERT_*` on the outcome itself, or by a parity fact that
    reads it. Reaching the line is not asserting it. A row may instead be
    `deferred` with an issue number, for instance when the current game
    differs from the old game and the difference is filed rather than
-   pinned.
+   pinned, or `unreachable` with a note saying why no test can reach the
+   arms it still lists as missing.
 4. An **other** row (plumbing, a defensive guard, a loop, a dead hit of the
    grep, a test-only path) carries a note and no tests.
 
@@ -91,12 +93,24 @@ line order. A rule row:
   which value of Gameplay Fixes or New Specials the arms depend on. A row
   that depends on a setting is asserted under each value.
 - `status` is `asserted`, `partial` (some arms are), `executed-only` (tests
-  reach the line and assert none of its arms), `none` (nothing reaches it)
-  or `deferred` (with `"issue": 451`). A deferred row needs its issue; with
-  one it may cite no test, which is how a classic-path row whose current
-  game differs from the old game is recorded: no test pins the difference,
-  the issue tracks it. A deferred row without an issue is red twice, as
-  `no test` (when it cites none) and as `deferred without issue`.
+  reach the line and assert none of its arms), `none` (nothing reaches it),
+  `deferred` (with `"issue": 451`) or `unreachable` (with a `note`). A
+  deferred row needs its issue; with one it may cite no test, which is how a
+  classic-path row whose current game differs from the old game is
+  recorded: no test pins the difference, the issue tracks it. A deferred row
+  without an issue is red twice, as `no test` (when it cites none) and as
+  `deferred without issue`.
+- `unreachable` says that no test can reach the arms the row still lists in
+  `missing_arms`: a defensive guard no caller can trip, a `switch` default
+  no value reaches, a function nothing but tests calls. It is allowed only
+  when the reviewer of the tests written for that file confirmed the arm is
+  dead, and the maintainer may still ask for the code to be removed
+  instead. The row's `note` says why the arm cannot be reached (the check
+  prints the first entry of the list); with that note the row may cite no
+  test and stays green. Without a note, or with an empty one, it is red as
+  `unreachable without reason`, and also as `no test` when it cites none.
+  An unreachable row carries no `issue`: there is nothing to fix, only
+  code that cannot run.
 - `tests` cite a GoogleTest as `{"file", "test": "Suite.name"}` or a parity
   row as `{"parity": "<row id>", "fact": "..."}`; either may carry a `note`
   saying which arm it asserts. A row-level `note` list holds remarks that
@@ -163,7 +177,7 @@ row missing a field). The output ends with the counts:
 check_manifest: FAIL: 159 files, 4678 candidate lines, 1504 rule rows, 448 other rows
   R1 uncovered 0, double-claimed 0, stale line 0, missing kinds 0, drift 0, ...
   R2 no test 0, missing test 0, disabled test 0, missing parity row 0
-  R3 not asserted 3 (partial 1, executed-only 2, none 0), deferred 2 (without issue 0)
+  R3 not asserted 3 (partial 1, executed-only 2, none 0), deferred 2 (without issue 0), unreachable 1 (without reason 0)
 ```
 
 ### Moving rows: --fix
@@ -229,12 +243,15 @@ touches the simulation, never changes a status and never adds a row.
 | `missing file` | an in-scope C++ file is gone | a rename: update `SCOPE_CPP` and the manifest's `path` |
 | `stray manifest` | a manifest file describes a file outside the scope | delete it, or move its rows to the file's new name |
 | `duplicate manifest` | two manifest files describe one source file | merge them |
-| `no test` | a rule row cites no test, and is not deferred with an issue | cite the test that asserts it, or write one |
+| `no test` | a rule row cites no test, and is neither deferred with an issue nor unreachable with a reason | cite the test that asserts it, or write one |
 | `missing test` | the cited file has no `TEST`, `TEST_F` or `TEST_P` of that name outside comments and `#if 0` (a test stamped out by a file-local macro counts) | the test was renamed or removed: cite the current name |
 | `disabled test` | the cited test's suite or name starts with `DISABLED_`, so gtest never runs it (a disabled test never satisfies a citation) | enable the test, or cite one that runs |
 | `missing parity row` | the cited parity row is not in `tests/parity/scenario_table.h` | cite the row id as the table spells it |
 | `not asserted` | the rule's status is `partial`, `executed-only` or `none` | write the tests for the missing arms, then set `asserted` |
 | `deferred without issue` | `deferred` needs an `issue` | file the issue and add its number |
+| `unreachable without reason` | an `unreachable` row has no `note`, or an empty one | write in `note` why no test can reach the arm, or write the test and set the status the tests earn |
 
 A `deferred: ... issue #N` line is a notice, not an error: the row waits on
-that issue and the check stays green.
+that issue and the check stays green. An `unreachable: ... <reason>` line is
+a notice too: it prints the row's reason, so that a reader can judge whether
+the arm is really dead.
