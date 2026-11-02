@@ -1231,6 +1231,32 @@ TEST(SemLibsFaerie, a_glimmer_point_blank_strikes_the_body_on_its_pad_and_fires_
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
+// kit_faerie.lua:257 glimmer, the idle fractional-aim arm. The aim is
+// parked in int temps (og.trunc, C truncation toward zero) while the eight
+// shots overwrite it, so a fractional heading such as (2.83, -2.83) comes
+// back as (2, -2) after the burst, and the burst itself is unchanged.
+TEST(SemLibsFaerie, a_glimmer_hands_back_a_fractional_aim_truncated_toward_zero)
+{
+    og::test::ScopedHookFailureGuard guard;
+    TestGameWorld tw;
+    grass_field(tw.world(), 32);
+    tw.world().new_specials = 1;
+    living* f = faerie::add_faerie(tw, 4, 100.0f);
+    ASSERT_TRUE(f != nullptr);
+    f->set_lastx(2.83f);
+    f->set_lasty(-2.83f);
+    f->set_busy(0.0f);
+    tw.world().rng_.state_ = 777u;
+    const Cast c = cast(f, 2, false);
+    EXPECT_TRUE(c.ok) << "idle: GLIMMER casts";
+    EXPECT_EQ(8, listed(tw.world(), Order::Weapon, FAMILY_SPRINKLE))
+        << "idle: eight sprinkles";
+    EXPECT_FLOAT_EQ(2.0f, f->lastx()) << "idle: lastx 2.83 truncates to 2";
+    EXPECT_FLOAT_EQ(-2.0f, f->lasty()) << "idle: lasty -2.83 truncates to -2";
+    EXPECT_FLOAT_EQ(60.0f, f->stats()->magicpoints()) << "GLIMMER's 40";
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
 // kit_faerie.lua:354 M.ai_blink, the other-floor arm (triaged a test gap:
 // the cornered check asks foes_within with floor_only false, like the
 // other flee gates). A hurt bot faerie whose only foe within 30 px stands
