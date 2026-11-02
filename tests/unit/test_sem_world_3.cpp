@@ -680,11 +680,14 @@ TEST(SemPossession, a_released_rider_takes_the_hosts_floor_and_a_bot_moves_no_ta
         SCOPED_TRACE(ns ? "new specials on" : "new specials off");
         {
             PossessionScene s(ns);
+            const auto bot_act = s.ghost->act_type();
+            ASSERT_NE(ACT_CONTROL, bot_act) << "control: the bot ghost is not driven";
             ASSERT_TRUE(og::sim::possess(s.world(), *s.ghost, *s.orc, 1).ok);
             og::sim::possession_host_tick(s.world(), *dynamic_cast<living*>(s.orc));
             ASSERT_EQ(0u, s.orc->possess_link()) << "the countdown released it";
             EXPECT_EQ(-1, s.ghost->user()) << "bot: no tag on the ghost";
-            EXPECT_NE(ACT_CONTROL, s.ghost->act_type()) << "bot: not driven";
+            EXPECT_EQ(bot_act, s.ghost->act_type())
+                << "bot: not driven (act type as before the possess)";
             EXPECT_EQ(-1, s.orc->user()) << "bot: no tag on the host";
         }
         {
@@ -1052,7 +1055,9 @@ TEST(SemRespawn, a_respawn_fire_scrubs_only_a_stain_of_its_own_identity)
     g74.id = 74;
     {
         RespawnArena arena;
-        walker* bot = arena.fx.spawn_living(FAMILY_SOLDIER, 0, 224, 224);
+        // An archer: the arena's own runner is a live team-0 soldier, so the
+        // replacement is found by a family nobody else on the field has.
+        walker* bot = arena.fx.spawn_living(FAMILY_ARCHER, 0, 224, 224);
         ASSERT_NE(nullptr, bot);
         const std::uint32_t bot_id = bot->entity_id();
         ASSERT_NE(nullptr, orphan_stain(arena.world(), 0, 0, 224, 224, &g74));
@@ -1060,8 +1065,10 @@ TEST(SemRespawn, a_respawn_fire_scrubs_only_a_stain_of_its_own_identity)
         ASSERT_EQ(1, live_stains(arena.world(), 0, 0, nullptr));
         ASSERT_TRUE(arena.schedule(bot, 2));
         arena.fx.tick(2);
-        EXPECT_NE(nullptr, find_alive_with(arena.world(), FAMILY_SOLDIER, 0, bot_id))
+        EXPECT_EQ(1, count_alive_with(arena.world(), FAMILY_ARCHER))
             << "the bot's replacement is fielded";
+        EXPECT_NE(nullptr, find_alive_with(arena.world(), FAMILY_ARCHER, 0, bot_id))
+            << "the bot's replacement is a fresh team-0 archer";
         EXPECT_EQ(0, live_stains(arena.world(), 0, 0, nullptr))
             << "AI fire: its own guy-less stain is scrubbed";
         EXPECT_EQ(1, live_stains(arena.world(), 0, 0, &g74))
@@ -1376,6 +1383,7 @@ TEST(SemRespawn, an_undecided_scripted_match_survives_a_team_wipe)
         server_transport->accept_connections();
         auto client = server_transport->create_client_transport();
         og::sim::GameServer server(arena.world(), arena.fx.events, *server_transport);
+        server.set_wall_clock_ms_source([] { return std::uint64_t{0}; });
         server.connect_client(client->local_peer_id());
         server.bind_player(client->local_peer_id(), 0u, 0);
         ASSERT_EQ(runner, server.player_control(0));

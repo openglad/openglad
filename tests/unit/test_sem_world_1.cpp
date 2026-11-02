@@ -395,6 +395,11 @@ TEST_F(SemFearless, a_banner_is_not_made_fearless_by_its_own_aura)
     ASSERT_TRUE(og::sim::fearless(*hero)) << "control: the hero is rallied";
     EXPECT_FALSE(og::sim::fearless(*banner))
         << "self arm: the banner skips itself (distance 0 would count)";
+    tw.world().new_specials = 0;
+    EXPECT_FALSE(og::sim::fearless(*hero))
+        << "New Specials off: the same banner rallies nobody";
+    EXPECT_FALSE(og::sim::fearless(*banner))
+        << "New Specials off: the banner is not fearless either";
 }
 
 // fearless.cpp:41. A friendly weapon whose family declares no rally radius
@@ -412,7 +417,9 @@ TEST_F(SemFearless, a_weapon_without_a_rally_radius_rallies_nobody)
     ASSERT_TRUE(hero && knife);
     ASSERT_EQ(0, hero->distance_to_ob_center(knife));
     EXPECT_FALSE(og::sim::fearless(*hero))
-        << "rally_radius <= 0 arm: a friendly knife at distance 0 is no banner";
+        << "rally_radius <= 0 arm: a friendly knife at distance 0 is no banner";    tw.world().new_specials = 0;
+    EXPECT_FALSE(og::sim::fearless(*hero))
+        << "New Specials off: the knife rallies nobody either";
 }
 
 // fearless.cpp:46. The rally radius is inclusive: a walker at exactly r
