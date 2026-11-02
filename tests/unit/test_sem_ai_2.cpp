@@ -19,11 +19,13 @@
 
 #include "../test_family_hook_dispatch.h"
 #include "../test_game_world_fixture.h"
+#include "../test_sim_random_scope.h"
 #include "kit_probe_family.h"
 #include "unit_pack_store_guard.h"
 
 #include <openglad/core/constants.h>
 #include <openglad/core/pixdefs.h>
+#include <openglad/gameplay/families/specials_view.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/living.h>
@@ -35,8 +37,10 @@
 #include <cstddef>
 #include <cstdint>
 #include <initializer_list>
+#include <list>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace {
 
@@ -76,6 +80,23 @@ struct Draw
         (void)probe.next(b);
     return probe.state_;
 }
+
+// The sim stream, steered through ScopedSimRandom: the glibc LCG SimRandom
+// runs (an installed override would recurse through SimRandom::next, so the
+// step is inlined), recording every bound asked.
+class BoundRecorder : public IRandom
+{
+public:
+    explicit BoundRecorder(std::uint32_t seed) : state(seed) {}
+    std::uint32_t next(std::uint32_t bound) override
+    {
+        bounds.push_back(bound);
+        state = state * 1103515245u + 12345u;
+        return (state >> 16) % bound;
+    }
+    std::uint32_t state;
+    std::vector<std::uint32_t> bounds;
+};
 
 // The front of a walker's command queue.
 struct Front
@@ -508,4 +529,638 @@ TEST_F(SemAi2, a_seated_walker_ignores_its_action_and_a_passing_action_lets_the_
     EXPECT_EQ(nullptr, ally2->leader()) << "passing: no leader taken";
     EXPECT_EQ(0u, ally2->stats()->commands.size()) << "passing: no follow queued";
     EXPECT_EQ(1, ally2->dead()) << "passing: the act-type switch ran";
+}
+
+// ---------------------------------------------------------------------------
+// living::act: the ACT_RANDOM bot
+// ---------------------------------------------------------------------------
+
+// living.cpp:369. A rolled slot whose name is NONE (here the probe family's
+// slot 2, a new-kit slot hidden with New Specials off) folds to slot 1 on
+// both values of Gameplay Fixes; a slot out of the table's range (a
+// level-400 bot's roll of 130 wraps the char to -126, reachable only with
+// the setting off, whose bound is (level + 2) / 3) folds to slot 1 too. The
+// control: a named slot rolled (slot 3, HEAL) stays. Old game (7ff1654a
+// living.cpp:350-367): the same fold on the NONE name.
+TEST_F(SemAi2, a_bot_that_rolls_an_unnamed_or_out_of_range_slot_casts_slot_one)
+{
+    og::test::ProbeFamily probe;
+    ASSERT_EQ(1, probe.installed());
+    const FamilyDescriptor* fd = og::test::ProbeFamily::fd();
+    ASSERT_STREQ("NONE", og::sim::special_name(fd, 2, 0)) << "slot 2 is new-kit: hidden";
+    ASSERT_STREQ("HEAL", og::sim::special_name(fd, 3, 0));
+    for (short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE("gameplay_fixes " + std::to_string(fixes));
+        ASSERT_EQ(3, og::sim::bot_slot_roll_bound(fd, 7, 0, fixes));
+        for (std::uint32_t roll : {1u, 2u}) {
+            SCOPED_TRACE("roll " + std::to_string(roll));
+            fresh_world(fixes);
+            world().new_specials = 0;
+            living* bot = living_at(FAMILY_GOLEM, 1, 320, 320);
+            ASSERT_NE(nullptr, bot);
+            bot->stats()->set_level(7);
+            world().rng_.state_ = state_where({{5, 0}, {3, roll}});
+            (void)bot->act();
+            if (roll == 1)
+                EXPECT_EQ(1, bot->current_special()) << "NONE: folded to slot 1";
+            else
+                EXPECT_EQ(3, bot->current_special()) << "control: a named slot stays";
+        }
+    }
+    // Out of range: setting off, level 400, bound 134, roll 129 -> slot 130.
+    fresh_world(0);
+    world().new_specials = 0;
+    living* bot = living_at(FAMILY_GOLEM, 1, 320, 320);
+    ASSERT_NE(nullptr, bot);
+    bot->stats()->set_level(400);
+    ASSERT_EQ(134, og::sim::bot_slot_roll_bound(fd, 400, 0, 0));
+    world().rng_.state_ = state_where({{5, 0}, {134, 129}});
+    (void)bot->act();
+    EXPECT_EQ(1, bot->current_special()) << "out of range: folded to slot 1";
+}
+
+// living.cpp:401. Seeking, with no foe near and none held: half the time
+// (the coin's 0) the bot takes the nearest foe anywhere and queues nothing
+// this act. The near search must miss for this arm to exist: it falls back
+// to the nearest-anywhere scan itself, so the foe here is cloaked
+// (invisibility 40: each look is a next(2) and a nonzero hides it). The
+// soldier stands at the map corner, so the near spiral leaves the map after
+// three empty piles and asks the full scan, which the cloak hides (1); then
+// the coin (0) and the second full scan sees it (0).
+// Old game (7ff1654a living.cpp:388-401, screen.cpp:992-1100): the same
+// spiral, its fallback, and find_far_foe, the same scan.
+TEST_F(SemAi2, a_bot_with_no_foe_near_takes_the_nearest_foe_anywhere_on_the_coins_zero)
+{
+    living* s = living_at(FAMILY_SOLDIER, 0, 16, 16);
+    living* orc = living_at(FAMILY_ORC, 1, 900, 900);
+    ASSERT_TRUE(s && orc);
+    orc->set_invisibility_left(40);
+    const std::uint32_t start =
+        state_where({{5, kNonZero}, {5, kNonZero}, {2, 1}, {2, 0}, {2, 0}});
+    world().rng_.state_ = start;
+
+    EXPECT_TRUE(s->act());
+
+    EXPECT_EQ(orc, s->foe()) << "coin 0: the nearest foe anywhere is taken";
+    EXPECT_EQ(0u, s->stats()->commands.size()) << "coin 0: no command this act";
+    EXPECT_EQ(state_after(start, {5, 5, 2, 2, 2}), world().rng_.state_)
+        << "the special roll, the seek roll, the hidden look, the coin, the seen look";
+}
+
+// living.cpp:437. A walker shoves only a living ally, and only two times in
+// three (rng(3) != 0), never a seated hero (ACT_CONTROL: the draw is still
+// made). A foe or a dead ally is refused before any draw.
+TEST_F(SemAi2, a_shove_needs_a_living_ally_that_is_not_a_seat_and_a_nonzero_roll)
+{
+    living* s = living_at(FAMILY_SOLDIER, 0, 320, 320);
+    living* ally = living_at(FAMILY_SOLDIER, 0, 336, 320);
+    living* orc = living_at(FAMILY_ORC, 1, 320, 400);
+    ASSERT_TRUE(s && ally && orc);
+    const auto ready = [](walker* t) {
+        t->stats()->clear_command();
+        t->stats()->add_command(COMMAND_SEARCH, 10, 0, 0);
+    };
+    const auto search_kept = [](const walker* t) {
+        const Front f = front_of(t);
+        return f.size == 1 && f.type == COMMAND_SEARCH && f.count == 10;
+    };
+
+    // The control: an ally, a nonzero roll: the shove proceeds.
+    ready(ally);
+    std::uint32_t st = state_where({{3, kNonZero}});
+    world().rng_.state_ = st;
+    EXPECT_EQ(1, s->shove(ally, 1, 0)) << "ally, roll 1-2: shoved";
+    EXPECT_EQ(COMMAND_WALK, front_of(ally).type);
+
+    // Roll 0: refused, one draw, the ally's queue untouched.
+    ready(ally);
+    st = state_where({{3, 0}});
+    world().rng_.state_ = st;
+    EXPECT_EQ(0, s->shove(ally, 1, 0)) << "roll 0: refused";
+    EXPECT_TRUE(search_kept(ally)) << "roll 0: the ally keeps its search";
+    EXPECT_EQ(state_after(st, {3}), world().rng_.state_) << "roll 0: one draw";
+
+    // A seat: refused on a nonzero roll, the draw still made.
+    ready(ally);
+    ally->set_act_type(ACT_CONTROL);
+    st = state_where({{3, kNonZero}});
+    world().rng_.state_ = st;
+    EXPECT_EQ(0, s->shove(ally, 1, 0)) << "a seat: refused";
+    EXPECT_TRUE(search_kept(ally)) << "a seat: its queue untouched";
+    EXPECT_EQ(state_after(st, {3}), world().rng_.state_) << "a seat: one draw";
+    ally->set_act_type(ACT_RANDOM);
+
+    // A foe: refused, no draw.
+    ready(orc);
+    world().rng_.state_ = st;
+    EXPECT_EQ(0, s->shove(orc, 1, 0)) << "a foe: refused";
+    EXPECT_TRUE(search_kept(orc)) << "a foe: its queue untouched";
+    EXPECT_EQ(st, world().rng_.state_) << "a foe: no draw";
+
+    // A dead ally: refused, no draw.
+    ready(ally);
+    ally->set_dead(1);
+    EXPECT_EQ(0, s->shove(ally, 1, 0)) << "dead: refused";
+    EXPECT_TRUE(search_kept(ally)) << "dead: its queue untouched";
+    EXPECT_EQ(st, world().rng_.state_) << "dead: no draw";
+}
+
+// ---------------------------------------------------------------------------
+// living::walk
+// ---------------------------------------------------------------------------
+
+// living.cpp:488. A walk in a direction the walker does not face records the
+// new facing and turns one notch, without moving; a seated hero (ACT_CONTROL)
+// with no commands only records it (its act turns it), and with a command
+// queued it turns here like a bot.
+TEST_F(SemAi2, a_walk_off_the_facing_turns_one_notch_but_a_seated_hero_only_records_it)
+{
+    struct Case
+    {
+        const char* name;
+        int act_type;
+        bool command;
+        int want_curdir;
+    };
+    const Case cases[] = {
+        {"AI", ACT_RANDOM, false, FACE_UP_RIGHT},
+        {"seated, no commands", ACT_CONTROL, false, FACE_UP},
+        {"seated, a command queued", ACT_CONTROL, true, FACE_UP_RIGHT},
+    };
+    for (const Case& c : cases) {
+        SCOPED_TRACE(c.name);
+        fresh_world();
+        living* s = living_at(FAMILY_SOLDIER, 0, 320, 320);
+        ASSERT_NE(nullptr, s);
+        s->set_act_type(static_cast<char>(c.act_type));
+        face(s, FACE_UP);
+        if (c.command)
+            s->stats()->add_command(COMMAND_SEARCH, 10, 0, 0);
+        EXPECT_TRUE(s->walk(1.0f, 0.0f));
+        EXPECT_EQ(FACE_RIGHT, s->enddir()) << "the new facing is recorded";
+        EXPECT_EQ(c.want_curdir, s->curdir());
+        EXPECT_EQ(320, s->xpos()) << "no step";
+    }
+}
+
+// living.cpp:503. A step moves only when the destination is passable at its
+// exact, rounded-up and rounded-down offsets: a wall the step meets refuses
+// it (returns 0, no move, the walk cycle stands), and so does a wall only
+// the rounded-up offset meets (a fractional step right against it). The
+// control: on open grass the step moves and the cycle advances.
+TEST_F(SemAi2, a_step_moves_only_when_its_exact_and_rounded_offsets_are_passable)
+{
+    // GRID_SIZE 16: a 16 px soldier at x 304 fills cell 19 exactly; x 305
+    // reaches into cell 20.
+    living* s = living_at(FAMILY_SOLDIER, 0, 304, 96);
+    ASSERT_NE(nullptr, s);
+    s->set_cycle(0);
+    EXPECT_TRUE(s->walk(1.0f, 0.0f)) << "control: open grass";
+    EXPECT_EQ(305, s->xpos());
+    EXPECT_EQ(1, s->cycle()) << "control: the walk cycle advances";
+
+    fresh_world();
+    tile(20, 6, PIX_H_WALL1);
+    tile(20, 7, PIX_H_WALL1);
+    s = living_at(FAMILY_SOLDIER, 0, 304, 96);
+    ASSERT_NE(nullptr, s);
+    s->set_cycle(0);
+    EXPECT_FALSE(s->walk(1.0f, 0.0f)) << "blocked: refused";
+    EXPECT_FLOAT_EQ(304.0f, s->worldx()) << "blocked: no move";
+    EXPECT_EQ(0, s->cycle()) << "blocked: the cycle stands";
+
+    // A 1.5 px step from x 303: the exact offset (304.5, read as 304) and the
+    // rounded-down one (304) stay in cell 19; only the rounded-up one (305)
+    // reaches the wall. (A step under 1 px faces up or down, facing() reads
+    // whole pixels, so it would only turn the walker.)
+    s->setxy(303, 96);
+    s->set_cycle(0);
+    ASSERT_EQ(FACE_RIGHT, s->facing(1, 0));
+    EXPECT_FALSE(s->walk(1.5f, 0.0f)) << "only the rounded-up offset meets the wall: refused";
+    EXPECT_FLOAT_EQ(303.0f, s->worldx()) << "1.5 px step: no move";
+    EXPECT_EQ(0, s->cycle());
+}
+
+// living.cpp:523. A refused step shoves only a LIVING ALLY: when the body
+// the step met is a friendly generator (not living) or a foe, nothing is
+// shoved and nothing is drawn, on both values of Gameplay Fixes.
+TEST_F(SemAi2, a_refused_step_shoves_no_foe_and_no_non_living_body)
+{
+    for (short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE("gameplay_fixes " + std::to_string(fixes));
+        // A friendly tent in the way.
+        fresh_world(fixes);
+        walker* tent = place(world().add_ob(Order::Generator, FAMILY_TENT), 319, 96);
+        ASSERT_NE(nullptr, tent);
+        tent->set_team_num(0);
+        living* s = living_at(FAMILY_SOLDIER, 0, 304, 96);
+        ASSERT_NE(nullptr, s);
+        world().rng_.state_ = 4242u;
+        EXPECT_FALSE(s->walk(1.0f, 0.0f)) << "the tent blocks";
+        EXPECT_EQ(tent, s->collide_ob()) << "the step met the tent";
+        EXPECT_EQ(4242u, world().rng_.state_) << "non-living: no shove, no draw";
+        EXPECT_EQ(0u, tent->stats()->commands.size()) << "non-living: no walk injected";
+
+        // A foe in the way.
+        fresh_world(fixes);
+        living* foe = living_at(FAMILY_SOLDIER, 0, 319, 96);
+        living* orc = living_at(FAMILY_ORC, 1, 304, 96);
+        ASSERT_TRUE(foe && orc);
+        foe->stats()->add_command(COMMAND_SEARCH, 10, 0, 0);
+        world().rng_.state_ = 4242u;
+        EXPECT_FALSE(orc->walk(1.0f, 0.0f)) << "the foe blocks";
+        EXPECT_EQ(foe, orc->collide_ob()) << "the step met the foe";
+        EXPECT_EQ(4242u, world().rng_.state_) << "a foe: no shove, no draw";
+        const Front f = front_of(foe);
+        EXPECT_EQ(COMMAND_SEARCH, f.type) << "a foe: it keeps its search";
+        EXPECT_EQ(10, f.count);
+    }
+}
+
+// living.cpp:531. A walker flagged always-animate cycles its walk frames
+// even when its step is refused; an unflagged one does not.
+TEST_F(SemAi2, an_always_animate_walker_cycles_its_frames_on_a_refused_step)
+{
+    for (bool flagged : {true, false}) {
+        SCOPED_TRACE(flagged ? "BIT_ANIMATE" : "not flagged");
+        fresh_world();
+        tile(20, 6, PIX_H_WALL1);
+        tile(20, 7, PIX_H_WALL1);
+        living* s = living_at(FAMILY_SOLDIER, 0, 304, 96);
+        ASSERT_NE(nullptr, s);
+        s->stats()->set_bit_flags(BIT_ANIMATE, flagged ? 1 : 0);
+        s->set_cycle(0);
+        EXPECT_FALSE(s->walk(1.0f, 0.0f));
+        EXPECT_EQ(304, s->xpos());
+        EXPECT_EQ(flagged ? 1 : 0, s->cycle());
+    }
+}
+
+// ---------------------------------------------------------------------------
+// living::set_difficulty: the regeneration rates (classic, off by one)
+// ---------------------------------------------------------------------------
+
+// living.cpp:683. A placed walker's HP regeneration: whole points per tick
+// from 4*L^2/REGEN (the loop runs while the remainder EXCEEDS REGEN, so a
+// remainder of exactly REGEN is not folded: level 100 gets 9 whole points,
+// not 10 -- the classic off-by-one, pinned), the remainder r > 1 as one
+// extra point every REGEN/(r+1) ticks, never faster than every 2.
+// Old game (7ff1654a living.cpp:1270-1293): the same arithmetic.
+TEST_F(SemAi2, hp_regeneration_rate_comes_from_the_level_with_the_classic_off_by_one)
+{
+    static_assert(REGEN == 4000);
+    struct Case
+    {
+        short level;
+        float per_round;
+        int max_delay;
+    };
+    const Case cases[] = {
+        {0, 0.0f, 4000},    // 0: no fraction, the delay stays REGEN
+        {1, 0.0f, 800},     // 4: 4000 / 5
+        {23, 0.0f, 2},      // 2116: 4000 / 2117 = 1, clamped to 2
+        {32, 1.0f, 41},     // 4096: one whole point, 96 left: 4000 / 97
+        {100, 9.0f, 2},     // 40000: nine whole, 4000 left (not folded): 4000 / 4001 = 0 -> 2
+    };
+    for (const Case& c : cases) {
+        SCOPED_TRACE("level " + std::to_string(c.level));
+        living* s = living_at(FAMILY_SOLDIER, 1, 320, 320);
+        ASSERT_NE(nullptr, s);
+        s->stats()->set_heal_per_round(0.0f);
+        s->set_difficulty(static_cast<std::uint32_t>(c.level));
+        EXPECT_FLOAT_EQ(c.per_round, s->stats()->heal_per_round());
+        EXPECT_EQ(c.max_delay, s->stats()->max_heal_delay());
+        EXPECT_EQ(0, s->stats()->current_heal_delay()) << "regeneration starts with an empty delay";
+    }
+}
+
+// living.cpp:709. The same for MP, from 30*L^2: level 20 (12000) gets two
+// whole points and a remainder of exactly REGEN (classic, pinned).
+TEST_F(SemAi2, mp_regeneration_rate_comes_from_the_level_with_the_classic_off_by_one)
+{
+    struct Case
+    {
+        short level;
+        float per_round;
+        int max_delay;
+    };
+    const Case cases[] = {
+        {0, 0.0f, 4000},    // 0
+        {1, 0.0f, 129},     // 30: 4000 / 31
+        {9, 0.0f, 2},       // 2430: 4000 / 2431 = 1, clamped to 2
+        {12, 1.0f, 12},     // 4320: one whole point, 320 left: 4000 / 321
+        {20, 2.0f, 2},      // 12000: two whole, 4000 left (not folded) -> 0 -> 2
+    };
+    for (const Case& c : cases) {
+        SCOPED_TRACE("level " + std::to_string(c.level));
+        living* s = living_at(FAMILY_SOLDIER, 1, 320, 320);
+        ASSERT_NE(nullptr, s);
+        s->stats()->set_magic_per_round(0.0f);
+        s->set_difficulty(static_cast<std::uint32_t>(c.level));
+        EXPECT_FLOAT_EQ(c.per_round, s->stats()->magic_per_round());
+        EXPECT_EQ(c.max_delay, s->stats()->max_magic_delay());
+        EXPECT_EQ(0, s->stats()->current_magic_delay()) << "regeneration starts with an empty delay";
+    }
+}
+
+// ---------------------------------------------------------------------------
+// living::act_random (protected: reached through act, whose ACT_RANDOM arm
+// calls it when the special roll is not 0 and the second 1-in-5 is)
+// ---------------------------------------------------------------------------
+
+class SemAi2Randomer : public SemAi2 {
+protected:
+    // A soldier bot at (480,480) facing up, sight 10 cells (160 px).
+    living* randomer()
+    {
+        living* s = living_at(FAMILY_SOLDIER, 0, 480, 480);
+        if (s == nullptr)
+            return nullptr;
+        s->set_lineofsight(10);
+        face(s, FACE_UP);
+        return s;
+    }
+
+    // The state from which act() takes act_random() and its 1-in-80 is `roll`.
+    static std::uint32_t into_act_random(std::uint32_t roll)
+    {
+        return state_where({{5, kNonZero}, {5, 0}, {80, roll}});
+    }
+};
+
+// living.cpp:737. act_random retargets to a near foe one time in 80 (or
+// whenever it holds none). With none held it takes the near one; with a far
+// foe held, the roll's 0 swaps it for the near one and any other roll keeps
+// it. Old game (7ff1654a living.cpp:1370-1374): the same.
+TEST_F(SemAi2Randomer, act_random_retargets_to_a_near_foe_one_time_in_eighty_or_when_it_has_none)
+{
+    struct Case
+    {
+        const char* name;
+        bool hold_far;
+        std::uint32_t roll80;
+        bool want_near;
+    };
+    const Case cases[] = {
+        {"no foe held, roll 37: the near foe is taken", false, 37, true},
+        {"far foe held, roll 0: swapped for the near foe", true, 0, true},
+        {"far foe held, roll 37: kept", true, 37, false},
+    };
+    for (const Case& c : cases) {
+        SCOPED_TRACE(c.name);
+        fresh_world();
+        living* s = randomer();
+        living* near_orc = living_at(FAMILY_ORC, 1, 512, 480);
+        living* far_orc = living_at(FAMILY_ORC, 1, 900, 480);
+        ASSERT_TRUE(s && near_orc && far_orc);
+        if (c.hold_far)
+            s->set_foe(far_orc);
+        world().rng_.state_ = into_act_random(c.roll80);
+        (void)s->act();
+        EXPECT_EQ(c.want_near ? near_orc : far_orc, s->foe());
+    }
+}
+
+// living.cpp:746. With a foe inside the sight box and a clear shot the bot
+// fires (init_fire's attack row and busy, COMMAND_FIRE with the deltas and a
+// 0-23 count); a foe outside the box gets a 200-step search and no turn.
+TEST_F(SemAi2Randomer, act_random_fires_at_a_foe_in_sight_and_searches_for_one_out_of_it)
+{
+    // In sight (32 px east, sight 160 px), the shot clear.
+    living* s = randomer();
+    living* orc = living_at(FAMILY_ORC, 1, 512, 480);
+    ASSERT_TRUE(s && orc);
+    face(s, FACE_RIGHT);
+    s->set_lastx(1.0f);  // fire_check aims the shot along lastx/lasty
+    s->set_lasty(0.0f);
+    s->set_foe(orc);
+    const std::uint32_t start = into_act_random(kNonZero);
+    og::sim::SimRandom replay(start);
+    (void)replay.next(5);
+    (void)replay.next(5);
+    (void)replay.next(80);
+    (void)replay.next(4);
+    const int count = static_cast<int>(replay.next(24));
+    BoundRecorder rec(start);
+    {
+        ScopedSimRandom steer(&rec);
+        (void)s->act();  // act_random's own return is not act's on this path
+    }
+    // The two 1-in-5s, the 1-in-80, the knife's waver (fire_check's
+    // set_weapon_heading: next(knife step / 2 + 1)) and the shot count.
+    EXPECT_EQ((std::vector<std::uint32_t>{5, 5, 80, 4, 24}), rec.bounds);
+    EXPECT_EQ(orc, s->foe());
+    EXPECT_EQ(ANI_ATTACK, s->ani_type()) << "in sight, clear: init_fire starts the attack row";
+    EXPECT_FLOAT_EQ(s->fire_frequency(), s->busy()) << "in sight, clear: busy is the fire delay";
+    Front f = front_of(s);
+    EXPECT_EQ(1u, f.size);
+    EXPECT_EQ(COMMAND_FIRE, f.type);
+    EXPECT_EQ(count, f.count) << "the count is the next(24) draw";
+    EXPECT_EQ(32, f.com1);
+    EXPECT_EQ(0, f.com2);
+    EXPECT_EQ(replay.state_, rec.state) << "five draws, no more";
+
+    // Out of sight (420 px east, sight 160 px): a search, no turn.
+    fresh_world();
+    s = randomer();
+    orc = living_at(FAMILY_ORC, 1, 900, 480);
+    ASSERT_TRUE(s && orc);
+    s->set_foe(orc);
+    world().rng_.state_ = start;
+    (void)s->act();
+    EXPECT_EQ(FACE_UP, s->curdir()) << "out of sight: no turn";
+    f = front_of(s);
+    EXPECT_EQ(1u, f.size);
+    EXPECT_EQ(COMMAND_SEARCH, f.type) << "out of sight: a search";
+    EXPECT_EQ(200, f.count);
+    EXPECT_EQ(state_after(start, {5, 5, 80}), world().rng_.state_) << "out of sight: no fire draw";
+}
+
+// ---------------------------------------------------------------------------
+// obmap: the collision piles (OBRES 32 px cells; one band of 256 columns per
+// floor)
+// ---------------------------------------------------------------------------
+
+// obmap.cpp:49. A walker's floor picks its pile band: walkers on different
+// floors never block each other, floors below 0 collide as floor 0 and
+// floors above 120 as floor 120. set_floor is the raw setter (change_floor
+// clamps upstream), and the obmap registers a body when it is placed, so
+// each floor is set before the position.
+TEST_F(SemAi2, collision_piles_clamp_the_floor_to_zero_through_one_hundred_twenty)
+{
+    world().set_floor_count(2);
+    struct Case
+    {
+        const char* name;
+        short prober_floor;
+        short body_floor;
+        bool passable;
+    };
+    const Case cases[] = {
+        {"same floor: blocked", 0, 0, false},
+        {"different floors: passable", 1, 0, true},
+        {"floor -2 shares floor 0's pile", -2, 0, false},
+        {"floor 121 shares floor 120's pile", 121, 120, false},
+        {"floor 125 does not share floor 0's", 125, 0, true},
+    };
+    for (const Case& c : cases) {
+        SCOPED_TRACE(c.name);
+        fresh_world();
+        world().set_floor_count(2);
+        walker* a = world().add_ob(Order::Living, FAMILY_SOLDIER);
+        walker* b = world().add_ob(Order::Living, FAMILY_SOLDIER);
+        ASSERT_TRUE(a && b);
+        b->set_team_num(1);
+        a->set_floor(c.prober_floor);
+        b->set_floor(c.body_floor);
+        place(a, 300, 300);
+        place(b, 100, 100);
+        EXPECT_EQ(c.passable, world().query_object_passable(100, 100, a));
+    }
+}
+
+// obmap.cpp:134. A probe whose box spans several 32 px cells scans them
+// column by column and stops at the first cell that blocks: food in a later
+// cell is not eaten on a blocked probe; food in an earlier cell is.
+TEST_F(SemAi2, a_blocked_probe_stops_at_the_first_blocking_cell_and_eats_nothing_beyond_it)
+{
+    // The probe box: x 24..40, y 100..116 (cells x 0 and 1, row 3).
+    for (bool food_first : {false, true}) {
+        SCOPED_TRACE(food_first ? "food in cell 0, the orc in cell 1"
+                                : "the orc in cell 0, food in cell 1");
+        fresh_world();
+        living* s = living_at(FAMILY_SOLDIER, 0, 400, 400);
+        ASSERT_NE(nullptr, s);
+        s->stats()->set_hitpoints(100.0f);  // hungry
+        walker* orc = living_at(FAMILY_ORC, 1, food_first ? 38 : 10, 100);
+        walker* food = treasure_at(FAMILY_DRUMSTICK, food_first ? 20 : 34, 104, 8, 8);
+        ASSERT_TRUE(orc && food);
+        food->stats()->set_level(1);
+        ASSERT_EQ(food_first ? 0 : 1, obmap::hash(food->xpos()));
+        ASSERT_EQ(food_first ? 1 : 0, obmap::hash(orc->xpos()));
+        ASSERT_EQ(obmap::hash(static_cast<short>(orc->xpos() + orc->sizex())),
+                  obmap::hash(orc->xpos())) << "the orc fills one column";
+        world().rng_.state_ = 31337u;
+        og::sim::SimRandom roll(31337u);
+        const float healed = 100.0f + 10.0f + static_cast<float>(roll.next(10));
+
+        EXPECT_FALSE(world().query_object_passable(24, 100, s)) << "the orc blocks";
+
+        if (food_first) {
+            EXPECT_EQ(1, food->dead()) << "food in the cell before the block: eaten";
+            EXPECT_FLOAT_EQ(healed, s->stats()->hitpoints());
+        } else {
+            EXPECT_EQ(0, food->dead()) << "food beyond the block: not eaten";
+            EXPECT_FLOAT_EQ(100.0f, s->stats()->hitpoints());
+            EXPECT_EQ(31337u, world().rng_.state_) << "no eat roll";
+        }
+    }
+}
+
+// obmap.cpp:222. A walker placed at negative coordinates is not registered:
+// nothing bumps into it. Moved onto the map it is registered in every cell
+// its box covers, and blocks there.
+TEST_F(SemAi2, a_walker_at_negative_coordinates_is_not_in_the_collision_map)
+{
+    walker* a = world().add_ob(Order::Living, FAMILY_SOLDIER);
+    living* b = living_at(FAMILY_ORC, 1, 200, 200);
+    ASSERT_TRUE(a && b);
+    a->set_sizex(16);
+    a->set_sizey(16);
+    a->setxy(-8, 40);
+    EXPECT_EQ(0u, world().myobmap->walker_to_pos.count(a)) << "x < 0: not registered";
+    EXPECT_TRUE(world().query_object_passable(0, 40, b)) << "x < 0: it blocks nothing";
+    a->setxy(40, -8);
+    EXPECT_EQ(0u, world().myobmap->walker_to_pos.count(a)) << "y < 0: not registered";
+    EXPECT_TRUE(world().query_object_passable(40, 0, b)) << "y < 0: it blocks nothing";
+
+    // On the map: x 24..40 covers columns 0 and 1, y 40..56 row 1 only.
+    a->setxy(24, 40);
+    ASSERT_EQ(1u, world().myobmap->walker_to_pos.count(a));
+    EXPECT_EQ(2u, world().myobmap->walker_to_pos.at(a).size()) << "on the map: both covered cells";
+    EXPECT_FALSE(world().query_object_passable(38, 40, b)) << "it blocks a probe in column 1 alone";
+    EXPECT_FALSE(world().query_object_passable(10, 40, b)) << "and one in column 0 alone";
+}
+
+// obmap.cpp:306. Pile lookups by (x, y, floor) clamp the floor as a walker's
+// registration does: floor -3 reads floor 0's pile, floor 200 reads floor
+// 120's.
+TEST_F(SemAi2, pile_lookups_clamp_the_floor_like_registration_does)
+{
+    world().set_floor_count(2);
+    walker* low = world().add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* high = world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_TRUE(low && high);
+    low->set_floor(0);
+    high->set_floor(120);
+    place(low, 100, 100);
+    place(high, 100, 100);
+    const auto holds = [](const std::list<walker*>* pile, const walker* w) {
+        return pile != nullptr && std::find(pile->begin(), pile->end(), w) != pile->end();
+    };
+    const std::list<walker*>* below = world().myobmap->find_list(100, 100, -3);
+    EXPECT_TRUE(holds(below, low)) << "floor -3: floor 0's pile";
+    EXPECT_FALSE(holds(below, high));
+    const std::list<walker*>* above = world().myobmap->find_list(100, 100, 200);
+    EXPECT_TRUE(holds(above, high)) << "floor 200: floor 120's pile";
+    EXPECT_FALSE(holds(above, low));
+    EXPECT_TRUE(holds(world().myobmap->find_list(100, 100, 0), low)) << "in range: its own pile";
+    EXPECT_TRUE(holds(&world().myobmap->obmap_get_list(100, 100, -3), low))
+        << "obmap_get_list clamps the same way";
+}
+
+// obmap.cpp:379. A dead walker never blocks, is never met (no collide()).
+TEST_F(SemAi2, a_dead_walker_never_blocks_a_probe)
+{
+    living* a = living_at(FAMILY_SOLDIER, 0, 100, 100);
+    living* b = living_at(FAMILY_ORC, 1, 114, 100);
+    ASSERT_TRUE(a && b);
+    EXPECT_FALSE(world().query_object_passable(101, 100, a)) << "control: alive, it blocks";
+    EXPECT_EQ(b, a->collide_ob());
+    a->set_collide_ob(nullptr);
+    b->set_dead(1);  // still registered in the obmap
+    ASSERT_EQ(1u, world().myobmap->walker_to_pos.count(b));
+    EXPECT_TRUE(world().query_object_passable(101, 100, a)) << "dead: passed through";
+    EXPECT_EQ(nullptr, a->collide_ob()) << "dead: not met";
+}
+
+// obmap.cpp:389. Two hostile projectiles meeting fly through each other when
+// the loud probe's roll is 4..9 (one draw); 0..3 they collide (pinned in
+// QuietProbe).
+TEST_F(SemAi2, hostile_projectiles_pass_each_other_on_a_roll_of_four_to_nine)
+{
+    living* archer = living_at(FAMILY_ELF, 1, 200, 200);
+    ASSERT_NE(nullptr, archer);
+    walker* rock = weapon_at(FAMILY_ROCK, 1, 300, 300);
+    walker* arrow = weapon_at(FAMILY_ARROW, 2, 302, 300);
+    ASSERT_TRUE(rock && arrow);
+    rock->set_owner(archer);
+    for (std::uint32_t want : {4u, 9u}) {
+        SCOPED_TRACE("roll " + std::to_string(want));
+        const std::uint32_t st = state_where({{10, want}});
+        world().rng_.state_ = st;
+        EXPECT_TRUE(world().query_passable(300.0f, 300.0f, rock)) << "a miss: they pass";
+        EXPECT_EQ(state_after(st, {10}), world().rng_.state_) << "one roll";
+        EXPECT_EQ(0, arrow->dead());
+        EXPECT_EQ(0, rock->dead());
+    }
+}
+
+// obmap.cpp:392. A projectile never hits or eats treasure: a hurt arrow over
+// a drumstick passes it and the food stays.
+TEST_F(SemAi2, a_projectile_passes_over_treasure_and_eats_none)
+{
+    walker* arrow = weapon_at(FAMILY_ARROW, 1, 320, 320);
+    ASSERT_NE(nullptr, arrow);
+    arrow->stats()->set_max_hitpoints(10.0f);
+    arrow->stats()->set_hitpoints(5.0f);  // "hungry", should food apply to it
+    walker* food = treasure_at(FAMILY_DRUMSTICK, 322, 322, 8, 8);
+    ASSERT_NE(nullptr, food);
+    food->stats()->set_level(1);
+    world().rng_.state_ = 999u;
+    EXPECT_TRUE(world().query_passable(321.0f, 320.0f, arrow)) << "the food never blocks";
+    EXPECT_EQ(0, food->dead()) << "weapon over treasure: not eaten";
+    EXPECT_FLOAT_EQ(5.0f, arrow->stats()->hitpoints());
+    EXPECT_EQ(999u, world().rng_.state_) << "no eat roll";
+    EXPECT_EQ(nullptr, arrow->collide_ob());
 }
