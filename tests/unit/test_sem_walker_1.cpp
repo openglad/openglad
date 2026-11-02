@@ -196,6 +196,12 @@ protected:
         return n;
     }
 
+    std::size_t count_sound(std::uint32_t id) const
+    {
+        const auto all = sounds();
+        return static_cast<std::size_t>(std::count(all.begin(), all.end(), id));
+    }
+
     std::vector<std::uint32_t> sounds() const
     {
         std::vector<std::uint32_t> out;
@@ -572,4 +578,406 @@ TEST_F(SemWalker1, a_wild_generator_rate_runs_as_the_nearest_bound)
     // are the clamp and not a rate that does nothing.
     EXPECT_NE(r400.rng, r300.rng) << "400 and 300 differ";
     EXPECT_NE(r25.rng, r50.rng) << "25 and 50 differ";
+}
+
+// ---------------------------------------------------------------------------
+// walker.cpp:481 walker::init_fire (turn before firing)
+// ---------------------------------------------------------------------------
+
+// A living that faces away from the shot turns instead of shooting: a player
+// does not fire that call, a bot turns one step. enddir is overwritten only
+// when the shot's direction differs from curdir, so a walk turn still pending
+// (enddir != curdir) blocks a shot in the direction the walker already faces,
+// and the bot then turns toward the WALK direction, away from the shot. The
+// old game's init_fire has the same shape (openglad-master src/walker.cpp:669).
+// A generator does not turn. No call here launches a weapon or pays the delay.
+// RED (planted): `if (facing(xdir, ydir) != curdir())` -> `if (true)` (the
+// pending turn no longer blocks); `return turn(enddir());` -> `return 0;`.
+TEST_F(SemWalker1, classic_a_living_facing_away_or_mid_turn_turns_instead_of_firing)
+{
+    struct Out
+    {
+        bool fired;
+        int curdir;
+        int enddir;
+        std::size_t weapons;
+        float busy;
+        int ani;
+    };
+    const auto shoot = [&](short act, int curdir, int enddir, short dx, short dy) {
+        fresh_world();
+        walker* s = living_at(FAMILY_SOLDIER, 0, 320, 320);
+        s->set_act_type(act);
+        s->set_curdir(static_cast<signed char>(curdir));
+        s->set_enddir(static_cast<char>(enddir));
+        s->set_fire_frequency(6.0f);
+        const bool fired = s->init_fire(dx, dy);
+        return Out{fired, s->curdir(), s->enddir(), live_weapons(), s->busy(),
+                   s->ani_type()};
+    };
+
+    // Requested facing differs from curdir.
+    Out o = shoot(ACT_CONTROL, FACE_UP, FACE_UP, 1, 0);
+    EXPECT_FALSE(o.fired) << "player, facing away: no shot this call";
+    EXPECT_EQ(FACE_UP, o.curdir) << "player, facing away: no turn";
+    EXPECT_EQ(FACE_RIGHT, o.enddir) << "player, facing away: enddir = the shot";
+    EXPECT_EQ(0u, o.weapons);
+    EXPECT_FLOAT_EQ(0.0f, o.busy);
+    o = shoot(ACT_RANDOM, FACE_UP, FACE_UP, 1, 0);
+    EXPECT_EQ(FACE_UP_RIGHT, o.curdir) << "bot, facing away: one step toward the shot";
+    EXPECT_EQ(FACE_RIGHT, o.enddir);
+    EXPECT_EQ(0u, o.weapons) << "bot, facing away: no weapon";
+    EXPECT_FLOAT_EQ(0.0f, o.busy) << "bot, facing away: the delay is not paid";
+    EXPECT_EQ(ANI_WALK, o.ani);
+
+    // Facing the shot already, a walk turn to the left still pending.
+    o = shoot(ACT_CONTROL, FACE_UP, FACE_LEFT, 0, -1);
+    EXPECT_FALSE(o.fired) << "player, turn pending: no shot";
+    EXPECT_EQ(FACE_UP, o.curdir);
+    EXPECT_EQ(FACE_LEFT, o.enddir) << "player, turn pending: enddir keeps the walk";
+    EXPECT_EQ(0u, o.weapons);
+    EXPECT_FLOAT_EQ(0.0f, o.busy);
+    o = shoot(ACT_RANDOM, FACE_UP, FACE_LEFT, 0, -1);
+    EXPECT_EQ(FACE_UP_LEFT, o.curdir)
+        << "bot, turn pending: one step toward the walk, away from the shot";
+    EXPECT_EQ(FACE_LEFT, o.enddir);
+    EXPECT_EQ(0u, o.weapons) << "bot, turn pending: no weapon";
+    EXPECT_FLOAT_EQ(0.0f, o.busy);
+    EXPECT_EQ(ANI_WALK, o.ani);
+
+    // A generator fires in any direction: no turn, straight to the swing.
+    fresh_world();
+    walker* tent = generator_at(FAMILY_TENT, 1, 320, 320);
+    ASSERT_NE(nullptr, tent);
+    tent->set_curdir(static_cast<signed char>(FACE_UP));
+    tent->set_enddir(static_cast<char>(FACE_UP));
+    tent->set_fire_frequency(6.0f);
+    EXPECT_TRUE(tent->init_fire(1, 0));
+    EXPECT_EQ(ANI_ATTACK, static_cast<int>(tent->ani_type())) << "generator: no turn";
+    EXPECT_FLOAT_EQ(6.0f, tent->busy());
+}
+
+// ---------------------------------------------------------------------------
+// walker.cpp:501 walker::init_fire (walk row swings, any other row fires now)
+// ---------------------------------------------------------------------------
+
+// Past the busy gate the full delay is paid first. A walker in another
+// animation than walking fires at once: a weapon this call; a refused shot (no
+// magic) still costs the delay and spends nothing.
+// RED (planted): `if (ani_type() == ANI_WALK)` -> `if (true)` (every walker
+// swings first, no weapon this call).
+TEST_F(SemWalker1, a_walker_in_another_animation_fires_at_once_and_pays_the_delay_either_way)
+{
+    walker* elf = living_at(FAMILY_ELF, 1, 320, 320);
+    ASSERT_NE(nullptr, elf);
+    elf->set_current_weapon(FAMILY_ROCK);
+    face(elf, FACE_RIGHT, 1.0f, 0.0f);
+    elf->set_fire_frequency(7.0f);
+    elf->set_ani_type(ANI_TELE_IN);
+    elf->stats()->set_weapon_cost(20);
+    elf->stats()->set_magicpoints(100.0f);
+    EXPECT_TRUE(elf->init_fire(1, 0));
+    EXPECT_EQ(1u, live_weapons()) << "not walking, shot paid for: a weapon this call";
+    EXPECT_FLOAT_EQ(7.0f, elf->busy()) << "the delay is paid";
+    EXPECT_FLOAT_EQ(80.0f, elf->stats()->magicpoints());
+
+    fresh_world();
+    elf = living_at(FAMILY_ELF, 1, 320, 320);
+    elf->set_current_weapon(FAMILY_ROCK);
+    face(elf, FACE_RIGHT, 1.0f, 0.0f);
+    elf->set_fire_frequency(7.0f);
+    elf->set_ani_type(ANI_ATTACK);
+    elf->stats()->set_weapon_cost(20);
+    elf->stats()->set_magicpoints(0.0f);
+    EXPECT_FALSE(elf->init_fire(1, 0)) << "not walking, no magic: refused";
+    EXPECT_EQ(0u, live_weapons()) << "refused: no weapon";
+    EXPECT_FLOAT_EQ(7.0f, elf->busy()) << "refused: the delay is paid all the same";
+    EXPECT_FLOAT_EQ(0.0f, elf->stats()->magicpoints());
+}
+
+// ---------------------------------------------------------------------------
+// walker.cpp:543 walker::fire (heading per facing, with the waver)
+// ---------------------------------------------------------------------------
+
+// A shot flies along the shooter's facing at the weapon's stepsize with a
+// random waver w = rng(h+1) - h/2, h = stepsize/2: cardinal shots waver on
+// the cross axis, the diagonals by a fixed pattern per diagonal. The same
+// switch in the old game's walker::fire.
+// RED (planted): FACE_UP_LEFT's `-stepsize() - waver` -> `- stepsize() + waver`;
+// FACE_DOWN's `set_lastx(waver)` -> `set_lastx(-waver)`.
+TEST_F(SemWalker1, a_shot_flies_along_the_facing_with_its_waver_across_or_along_the_diagonal)
+{
+    const struct Facing
+    {
+        int face;
+        float dx;
+        float dy;
+    } facings[] = {
+        {FACE_UP, 0.0f, -1.0f},       {FACE_UP_RIGHT, 1.0f, -1.0f},
+        {FACE_RIGHT, 1.0f, 0.0f},     {FACE_DOWN_RIGHT, 1.0f, 1.0f},
+        {FACE_DOWN, 0.0f, 1.0f},      {FACE_DOWN_LEFT, -1.0f, 1.0f},
+        {FACE_LEFT, -1.0f, 0.0f},     {FACE_UP_LEFT, -1.0f, -1.0f},
+    };
+    for (const Facing& f : facings) {
+        SCOPED_TRACE(std::format("facing {}", f.face));
+        fresh_world();
+        walker* elf = living_at(FAMILY_ELF, 1, 320, 320);
+        ASSERT_NE(nullptr, elf);
+        elf->set_current_weapon(FAMILY_ROCK);
+        face(elf, f.face, f.dx, f.dy);
+
+        // A stream position whose waver is not zero, so every sign shows.
+        walker* probe = elf->create_weapon();
+        ASSERT_NE(nullptr, probe);
+        const float step = probe->stepsize();
+        probe->set_dead(1);
+        const signed char h = static_cast<signed char>(std::clamp(step / 2, 0.0f, 127.0f));
+        signed char waver = 0;
+        std::uint32_t seed = 1;
+        for (; seed < 1000; ++seed) {
+            og::sim::SimRandom r(seed);
+            waver = static_cast<signed char>(
+                r.next(static_cast<std::uint32_t>(h + 1)) - static_cast<std::uint32_t>(h / 2));
+            if (waver != 0)
+                break;
+        }
+        ASSERT_NE(0, waver);
+        world().rng_.state_ = seed;
+        const float w = static_cast<float>(waver);
+
+        walker* rock = elf->fire();
+        ASSERT_NE(nullptr, rock);
+        float hx = 0.0f;
+        float hy = 0.0f;
+        switch (f.face) {
+        case FACE_RIGHT: hx = step; hy = w; break;
+        case FACE_LEFT: hx = -step; hy = w; break;
+        case FACE_UP: hx = w; hy = -step; break;
+        case FACE_DOWN: hx = w; hy = step; break;
+        case FACE_UP_RIGHT: hx = step + w; hy = -step + w; break;
+        case FACE_UP_LEFT: hx = -step - w; hy = -step + w; break;
+        case FACE_DOWN_RIGHT: hx = step - w; hy = step + w; break;
+        case FACE_DOWN_LEFT: hx = -step + w; hy = step + w; break;
+        default: FAIL() << "not a facing";
+        }
+        EXPECT_FLOAT_EQ(hx, rock->lastx()) << "x heading, waver " << static_cast<int>(waver);
+        EXPECT_FLOAT_EQ(hy, rock->lasty()) << "y heading, waver " << static_cast<int>(waver);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// walker.cpp:598 walker::fire (a dormant cell stops spawns, not shots)
+// ---------------------------------------------------------------------------
+
+// A living's shot flies over a delayed-spawn (dormant) walker that has not
+// entered the world: the projectile launches, the dormant walker is left
+// untouched.
+// RED (planted): the discard's `query_order() == Order::Generator &&` dropped.
+TEST_F(SemWalker1, a_livings_shot_flies_over_a_dormant_walker)
+{
+    walker* elf = living_at(FAMILY_ELF, 1, 320, 320);
+    ASSERT_NE(nullptr, elf);
+    elf->set_current_weapon(FAMILY_ROCK);
+    face(elf, FACE_RIGHT, 1.0f, 0.0f);
+    walker* lurker = living_at(FAMILY_ORC, 2, 336, 316, 24, 24);
+    ASSERT_NE(nullptr, lurker);
+    lurker->set_spawn_delay(60000);
+    lurker->set_dormant(true);
+    ASSERT_TRUE(world().dormant_occupies_spot(lurker) == false);
+
+    walker* rock = elf->fire();
+    ASSERT_NE(nullptr, rock) << "the shot launches over the dormant cell";
+    EXPECT_TRUE(world().dormant_occupies_spot(rock)) << "premise: the pad is on the dormant walker";
+    EXPECT_EQ(0, rock->dead());
+    EXPECT_EQ(1u, live_weapons());
+    EXPECT_TRUE(lurker->dormant());
+    EXPECT_EQ(0, lurker->dead());
+    EXPECT_FLOAT_EQ(400.0f, lurker->stats()->hitpoints());
+}
+
+// ---------------------------------------------------------------------------
+// walker.cpp:611 walker::fire (a landed blow: clang, lunge, on_melee_hit)
+// ---------------------------------------------------------------------------
+
+// A landed melee blow clangs; a living attacker also lunges along its facing
+// and its family's on_melee_hit runs on the victim. A generator's landed blow
+// clangs but neither lunges nor runs the hook. A refused blow (an ally on the
+// pad) is silent and still.
+// RED (planted): `if (query_order() == Order::Living)` (the lunge) ->
+// `if (true)`; `if (order() == Order::Living)` (the hook) -> `if (true)`.
+TEST_F(SemWalker1, a_landed_blow_clangs_and_a_living_attacker_lunges_and_runs_its_hook)
+{
+    const std::string hooks =
+        "og.register_hooks('living', 'core:soldier', {\n"
+        "  on_melee_hit = function(self, target) og.log('melee hit') end,\n"
+        "})\n";
+
+    register_test_hooks(hooks);
+    walker* soldier = living_at(FAMILY_SOLDIER, 0, 320, 320);
+    ASSERT_NE(nullptr, soldier);
+    face(soldier, FACE_RIGHT, 1.0f, 0.0f);
+    walker* orc = living_at(FAMILY_ORC, 1, 337, 320);
+    ASSERT_NE(nullptr, orc);
+    mark_log();
+    EXPECT_EQ(nullptr, soldier->fire());
+    EXPECT_EQ(1u, count_sound(SOUND_CLANG)) << "living, landed: one clang";
+    EXPECT_FLOAT_EQ(1.0f, soldier->attack_lunge()) << "living, landed: a full lunge";
+    EXPECT_FLOAT_EQ(soldier->get_current_angle(), soldier->attack_lunge_angle())
+        << "living, landed: along its facing";
+    EXPECT_EQ(std::vector<std::string>{"melee hit"}, log_since_mark())
+        << "living, landed: on_melee_hit ran once";
+
+    // Refused: an invulnerable foe on the pad. (An ally never holds a
+    // weapon's pad: the weapon passes over its own side.)
+    fresh_world();
+    register_test_hooks(hooks);
+    soldier = living_at(FAMILY_SOLDIER, 0, 320, 320);
+    face(soldier, FACE_RIGHT, 1.0f, 0.0f);
+    walker* warded = living_at(FAMILY_ORC, 1, 337, 320);
+    ASSERT_NE(nullptr, warded);
+    warded->set_invulnerable_left(10);
+    mark_log();
+    EXPECT_EQ(nullptr, soldier->fire());
+    EXPECT_FLOAT_EQ(400.0f, warded->stats()->hitpoints()) << "refused: no damage";
+    EXPECT_TRUE(sounds().empty()) << "refused: no clang";
+    EXPECT_FLOAT_EQ(0.0f, soldier->attack_lunge()) << "refused: no lunge";
+    EXPECT_TRUE(log_since_mark().empty()) << "refused: no hook";
+
+    // A generator whose pad a foe holds strikes it: a clang only. (A tent is
+    // family 0, the soldier's number, so a hook dispatched for it would run
+    // the soldier's on_melee_hit.)
+    fresh_world();
+    register_test_hooks(hooks);
+    walker* tent = generator_at(FAMILY_TENT, 1, 320, 320);
+    ASSERT_NE(nullptr, tent);
+    face(tent, FACE_RIGHT, 1.0f, 0.0f);
+    walker* foe = living_at(FAMILY_SOLDIER, 0,
+                            static_cast<short>(320 + tent->sizex() + 1), 320);
+    ASSERT_NE(nullptr, foe);
+    tent->set_damage(5.0f);
+    mark_log();
+    EXPECT_EQ(nullptr, tent->fire());
+    EXPECT_EQ(1u, count_sound(SOUND_CLANG)) << "generator, landed: one clang";
+    EXPECT_FLOAT_EQ(0.0f, tent->attack_lunge()) << "generator: no lunge";
+    EXPECT_TRUE(log_since_mark().empty()) << "generator: no on_melee_hit";
+}
+
+// ---------------------------------------------------------------------------
+// walker.cpp:628 walker::fire (a player's swing counts as a shot)
+// ---------------------------------------------------------------------------
+
+// A player guy's swing at a live body counts as a shot, landed or refused. A
+// hostile non-living body (a generator) that attack() accepts has already
+// been un-counted inside attack(), so that swing nets 0; one attack() refuses
+// before that (an invulnerable one) nets +1. (A friendly body or a treasure
+// never holds a weapon's pad: ob_pass_check lets the weapon over them.) A walker with no guy records
+// nothing and still lands the blow. The old game counts the same way.
+// RED (planted): the melee arm's `if (myguy)` -> `if (myguy && false)`.
+TEST_F(SemWalker1, a_players_swing_at_a_body_counts_as_a_shot_except_a_generator_it_hits)
+{
+    struct Case
+    {
+        const char* name;
+        int expect;  // total_shots and scen_shots after the swing
+    };
+    const auto swing = [&](const std::string& kind) {
+        fresh_world();
+        walker* s = living_at(FAMILY_SOLDIER, 0, 320, 320);
+        face(s, FACE_RIGHT, 1.0f, 0.0f);
+        s->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+        if (kind == "enemy living") {
+            living_at(FAMILY_ORC, 1, 337, 320);
+        } else if (kind == "invulnerable enemy living") {
+            living_at(FAMILY_ORC, 1, 337, 320)->set_invulnerable_left(10);
+        } else if (kind == "enemy generator") {
+            generator_at(FAMILY_TENT, 1, 337, 320);
+        } else if (kind == "invulnerable enemy generator") {
+            generator_at(FAMILY_TENT, 1, 337, 320)->set_invulnerable_left(10);
+        } else if (kind == "wall") {
+            tile(21, 20, PIX_H_WALL1);
+        }
+        EXPECT_EQ(nullptr, s->fire());
+        return std::pair<int, int>{s->myguy->total_shots, s->myguy->scen_shots};
+    };
+    const Case cases[] = {
+        {"enemy living", 1},
+        {"invulnerable enemy living", 1},
+        {"enemy generator", 0},
+        {"invulnerable enemy generator", 1},
+        {"wall", 0},
+    };
+    for (const Case& c : cases) {
+        SCOPED_TRACE(c.name);
+        const auto [total, scen] = swing(c.name);
+        EXPECT_EQ(c.expect, total) << "total_shots";
+        EXPECT_EQ(c.expect, scen) << "scen_shots";
+    }
+
+    // No guy: nothing to count, and the blow lands.
+    fresh_world();
+    walker* s = living_at(FAMILY_SOLDIER, 0, 320, 320);
+    face(s, FACE_RIGHT, 1.0f, 0.0f);
+    walker* orc = living_at(FAMILY_ORC, 1, 337, 320);
+    EXPECT_EQ(nullptr, s->fire());
+    EXPECT_EQ(nullptr, s->myguy) << "no guy: none is made";
+    EXPECT_EQ(s->entity_id(), orc->last_attacker_id()) << "no guy: the blow lands";
+}
+
+// ---------------------------------------------------------------------------
+// walker.cpp:637 walker::fire (melee-only families)
+// ---------------------------------------------------------------------------
+
+// A melee-only family (BIT_NO_RANGED) never launches: with a clear pad the
+// weapon is discarded, the cost is already paid, and no shot is counted. The
+// old game charges first too.
+// RED (planted): `else if (stats_->query_bit_flags(BIT_NO_RANGED))` -> `&& false`.
+TEST_F(SemWalker1, a_melee_only_walker_pays_for_a_shot_it_never_launches)
+{
+    walker* orc = living_at(FAMILY_ORC, 1, 320, 320);
+    ASSERT_NE(nullptr, orc);
+    ASSERT_TRUE(orc->stats()->query_bit_flags(BIT_NO_RANGED)) << "premise: the orc is melee-only";
+    face(orc, FACE_RIGHT, 1.0f, 0.0f);
+    orc->set_owned_myguy(std::make_unique<guy>(FAMILY_ORC));
+    orc->stats()->set_weapon_cost(5);
+    orc->stats()->set_magicpoints(20.0f);
+    EXPECT_EQ(nullptr, orc->fire());
+    EXPECT_EQ(0u, live_weapons()) << "melee-only: the weapon is discarded";
+    EXPECT_FLOAT_EQ(15.0f, orc->stats()->magicpoints()) << "melee-only: the cost is paid";
+    EXPECT_EQ(0, orc->myguy->total_shots) << "melee-only: no shot counted";
+    EXPECT_EQ(0, orc->myguy->scen_shots);
+
+    orc->stats()->set_bit_flags(BIT_NO_RANGED, 0);
+    EXPECT_NE(nullptr, orc->fire()) << "flag clear: the shot launches";
+    EXPECT_EQ(1u, live_weapons());
+    EXPECT_FLOAT_EQ(10.0f, orc->stats()->magicpoints());
+    EXPECT_EQ(1, orc->myguy->total_shots);
+}
+
+// ---------------------------------------------------------------------------
+// walker.cpp:655 walker::fire (a player's launch counts as a shot)
+// ---------------------------------------------------------------------------
+
+// Every ranged launch by a player guy counts once in total_shots and
+// scen_shots; a bot with no guy launches the same and records nothing.
+// RED (planted): the ranged arm's `if (myguy)` -> `if (myguy && false)`.
+TEST_F(SemWalker1, every_launch_by_a_player_counts_as_a_shot)
+{
+    walker* elf = living_at(FAMILY_ELF, 0, 320, 320);
+    ASSERT_NE(nullptr, elf);
+    elf->set_current_weapon(FAMILY_ROCK);
+    face(elf, FACE_RIGHT, 1.0f, 0.0f);
+    elf->set_owned_myguy(std::make_unique<guy>(FAMILY_ELF));
+    for (int i = 0; i < 3; ++i)
+        ASSERT_NE(nullptr, elf->fire());
+    EXPECT_EQ(3, elf->myguy->total_shots);
+    EXPECT_EQ(3, elf->myguy->scen_shots);
+    EXPECT_EQ(3u, live_weapons());
+
+    walker* bot = living_at(FAMILY_ELF, 1, 320, 600);
+    bot->set_current_weapon(FAMILY_ROCK);
+    face(bot, FACE_RIGHT, 1.0f, 0.0f);
+    ASSERT_NE(nullptr, bot->fire());
+    EXPECT_EQ(nullptr, bot->myguy) << "no guy: nothing recorded";
+    EXPECT_EQ(4u, live_weapons());
+    EXPECT_EQ(3, elf->myguy->total_shots) << "another walker's shot is not ours";
 }
