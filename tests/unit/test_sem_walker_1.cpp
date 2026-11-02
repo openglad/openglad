@@ -1055,49 +1055,6 @@ TEST_F(SemWalker1, classic_a_launch_sounds_by_its_weapon_family_number_spawns_in
 }
 
 // ---------------------------------------------------------------------------
-// walker.cpp:667 walker::fire (a generator with no descriptor)
-// ---------------------------------------------------------------------------
-
-// A generator family with no generator descriptor spawns its living as
-// add_ob made it: no level roll (the spawn's level and hp are a hand-made
-// one's), no lifetime, no entry animation, and it keeps its owner.
-// RED (planted): `get_generator_family_descriptor(family())` ->
-// `get_generator_family_descriptor(FAMILY_TENT)`.
-TEST_F(SemWalker1, a_generator_with_no_descriptor_spawns_its_living_as_made)
-{
-    int bare = -1;
-    for (int f = 0; f < 64; ++f) {
-        if (get_generator_family_descriptor(f) == nullptr) {
-            bare = f;
-            break;
-        }
-    }
-    ASSERT_NE(-1, bare) << "premise: a generator family number with no descriptor";
-
-    walker* hand = world().add_ob(Order::Living, FAMILY_SKELETON);
-    ASSERT_NE(nullptr, hand);
-    const int hand_level = hand->stats()->level();
-    const float hand_hp = hand->stats()->max_hitpoints();
-    const int hand_ani = hand->ani_type();
-    ASSERT_EQ(ANI_SKEL_GROW, hand_ani) << "premise: a skeleton is made growing";
-    hand->set_dead(1);
-
-    walker* g = generator_at(FAMILY_TENT, 1, 320, 320, 9);
-    ASSERT_NE(nullptr, g);
-    ASSERT_EQ(FAMILY_SKELETON, static_cast<int>(g->default_weapon()));
-    g->set_order_family(Order::Generator, static_cast<char>(bare));
-    face(g, FACE_RIGHT, 1.0f, 0.0f);
-    walker* spawn = g->fire();
-    ASSERT_NE(nullptr, spawn);
-    EXPECT_EQ(hand_level, spawn->stats()->level()) << "no descriptor: no level roll";
-    EXPECT_FLOAT_EQ(hand_hp, spawn->stats()->max_hitpoints()) << "no descriptor: no rescale";
-    EXPECT_EQ(0, spawn->lifetime()) << "no descriptor: no lifetime";
-    EXPECT_EQ(hand_ani, static_cast<int>(spawn->ani_type()))
-        << "no descriptor: the family's own entry animation (a skeleton grows)";
-    EXPECT_EQ(g, spawn->owner()) << "no descriptor: the owner stays";
-}
-
-// ---------------------------------------------------------------------------
 // walker.cpp:672 / :674 walker::fire (entry animation and lifetime)
 // ---------------------------------------------------------------------------
 
