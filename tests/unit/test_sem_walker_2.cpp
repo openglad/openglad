@@ -924,3 +924,369 @@ TEST_F(SemWalker2, a_shot_stopped_by_a_wall_or_a_corpse_strikes_nothing)
         EXPECT_EQ(nullptr, arrow->collide_ob()) << "a dead body in the path: nothing met";
     }
 }
+
+// ---------------------------------------------------------------------------
+// act_guard and act_random (walker.cpp:1674-1763)
+// ---------------------------------------------------------------------------
+
+// walker.cpp:1674/1722. A guard with a foe anywhere queues its fire command
+// on exactly one rng(30) draw; with no foe it draws nothing.
+TEST_F(SemWalker2, a_guard_draws_once_for_its_fire_command_and_never_without_a_foe)
+{
+    walker* guard = living_at(FAMILY_ORC, 1, 160, 160);
+    ASSERT_NE(nullptr, guard);
+    guard->set_act_type(ACT_GUARD);
+    guard->set_guard_hold_post(true);
+    guard->stats()->clear_command();
+
+    const std::uint32_t s = 4242u;
+    world().rng_.state_ = s;
+    EXPECT_FALSE(WalkerActs::guard(*guard)) << "no foe: act_guard reports nothing to do";
+    EXPECT_EQ(s, world().rng_.state_) << "no foe: RNG: no draw";
+    EXPECT_FALSE(guard->stats()->has_commands()) << "no foe: no command queued";
+    EXPECT_EQ(nullptr, guard->foe());
+
+    walker* foe = living_at(FAMILY_SOLDIER, 0, 800, 800);
+    ASSERT_NE(nullptr, foe);
+    world().rng_.state_ = s;
+    EXPECT_TRUE(WalkerActs::guard(*guard));
+    EXPECT_EQ(state_after(s, {30}), world().rng_.state_)
+        << "a foe exists anywhere: RNG: exactly one rng(30) draw";
+    EXPECT_EQ(foe, guard->foe());
+    const Front f = front_of(guard);
+    EXPECT_EQ(COMMAND_FIRE, f.type);
+    EXPECT_EQ(640, f.com1);
+    EXPECT_EQ(640, f.com2);
+}
+
+// walker.cpp:1736. A plain walker's act_random re-picks the nearest foe only
+// when its 1-in-70 roll hits 0 (or it has none); otherwise it keeps its foe.
+TEST_F(SemWalker2, a_wandering_walker_keeps_its_foe_unless_the_one_in_seventy_roll_hits)
+{
+    for (std::uint32_t roll : {5u, 0u}) {
+        SCOPED_TRACE("rng(70) = " + std::to_string(roll));
+        fresh_world();
+        walker* tower = generator_at(FAMILY_TOWER, 1, 320, 320);
+        walker* near = living_at(FAMILY_ORC, 0, 368, 320);
+        walker* far = living_at(FAMILY_ORC, 0, 416, 320);
+        ASSERT_TRUE(tower && near && far);
+        tower->set_act_type(ACT_RANDOM);
+        tower->set_foe(far);
+        world().rng_.state_ = state_where({{70, roll}});
+        WalkerActs::random(*tower);
+        if (roll != 0)
+            EXPECT_EQ(far, tower->foe()) << "otherwise: the preset (far) foe is kept";
+        else
+            EXPECT_EQ(near, tower->foe()) << "roll hits 0: the nearest foe is picked";
+    }
+}
+
+// walker.cpp:1738. With no hostile anywhere a plain walker wanders: a
+// COMMAND_WALK of 20 in a random direction (two rng(3)), foe stays null;
+// with a hostile in sight it fires instead.
+TEST_F(SemWalker2, a_wandering_walker_with_no_foe_queues_a_twenty_tick_random_walk)
+{
+    walker* tower = generator_at(FAMILY_TOWER, 1, 320, 320);
+    ASSERT_NE(nullptr, tower);
+    tower->set_act_type(ACT_RANDOM);
+    tower->stats()->clear_command();
+    const std::uint32_t s = state_where({{70, kAny}, {3, 2}, {3, 2}});
+    world().rng_.state_ = s;
+    WalkerActs::random(*tower);
+    const Front f = front_of(tower);
+    EXPECT_EQ(nullptr, tower->foe()) << "no hostile exists: foe stays null";
+    EXPECT_EQ(1u, f.size) << "no hostile exists: one command queued";
+    EXPECT_EQ(COMMAND_WALK, f.type) << "no hostile exists: a walk";
+    EXPECT_EQ(20, f.count) << "no hostile exists: of 20 ticks";
+    EXPECT_EQ(1, f.com1) << "no hostile exists: direction rng(3)-1";
+    EXPECT_EQ(1, f.com2) << "no hostile exists: direction rng(3)-1";
+    EXPECT_EQ(state_after(s, {70, 3, 3}), world().rng_.state_);
+
+    walker* orc = living_at(FAMILY_ORC, 0, 352, 320);
+    ASSERT_NE(nullptr, orc);
+    tower->stats()->clear_command();
+    tower->set_busy(0.0f);
+    tower->set_lineofsight(4);  // a 64 px firing box: the orc is inside it
+    WalkerActs::random(*tower);
+    const Front g = front_of(tower);
+    EXPECT_EQ(orc, tower->foe()) << "foe exists: acquired";
+    EXPECT_EQ(COMMAND_FIRE, g.type) << "foe exists: the approach/fire logic runs, no wander";
+    EXPECT_EQ(32, g.com1);
+    EXPECT_EQ(0, g.com2);
+}
+
+// walker.cpp:1745-1763. A plain walker whose foe is outside its firing box
+// does not fire: it steps one unit toward the foe on each axis (+1 / -1 /
+// 0 when aligned), scaled by its stepsize.
+TEST_F(SemWalker2, a_wandering_walker_steps_toward_a_foe_outside_its_firing_box)
+{
+    struct Case { short dx, dy; float lastx, lasty; const char* what; };
+    const Case cases[] = {
+        {200, -200, 2.0f, -2.0f, "foe east and north"},
+        {-200, 200, -2.0f, 2.0f, "foe west and south"},
+        {0, 200, 0.0f, 2.0f, "foe aligned on x, south"},
+        {200, 0, 2.0f, 0.0f, "foe east, aligned on y"},
+        {0, -200, 0.0f, -2.0f, "foe aligned on x, north"},
+        {-200, 0, -2.0f, 0.0f, "foe west, aligned on y"},
+    };
+    for (const Case& c : cases) {
+        SCOPED_TRACE(c.what);
+        fresh_world();
+        walker* tower = generator_at(FAMILY_TOWER, 1, 480, 480);
+        walker* orc = living_at(FAMILY_ORC, 0, static_cast<short>(480 + c.dx),
+                                static_cast<short>(480 + c.dy));
+        ASSERT_TRUE(tower && orc);
+        tower->set_act_type(ACT_RANDOM);
+        tower->set_stepsize(2.0f);
+        tower->set_lineofsight(2);  // a 32 px firing box
+        tower->set_foe(orc);
+        tower->stats()->clear_command();
+        world().rng_.state_ = state_where({{70, 5}});
+        WalkerActs::random(*tower);
+        EXPECT_FALSE(tower->stats()->has_commands())
+            << c.what << ": out of the box: no COMMAND_FIRE";
+        EXPECT_EQ(ANI_WALK, tower->ani_type()) << c.what << ": out of the box: no init_fire";
+        EXPECT_FLOAT_EQ(c.lastx, tower->lastx()) << c.what << ": x step";
+        EXPECT_FLOAT_EQ(c.lasty, tower->lasty()) << c.what << ": y step";
+    }
+}
+
+// ---------------------------------------------------------------------------
+// spaces_clear, transfer_stats, transform_to (walker.cpp:1783-1876)
+// ---------------------------------------------------------------------------
+
+// walker.cpp:1783/1784. A neighbour spot blocked by a wall or by a body is
+// not clear.
+TEST_F(SemWalker2, a_neighbour_spot_blocked_by_a_wall_or_a_body_is_not_clear)
+{
+    walker* soldier = living_at(FAMILY_SOLDIER, 0, 160, 160);
+    ASSERT_NE(nullptr, soldier);
+    ASSERT_EQ(8, soldier->spaces_clear()) << "control: open grass";
+    tile(11, 10, PIX_H_WALL1);  // the east neighbour (176,160)
+    EXPECT_EQ(7, soldier->spaces_clear()) << "neighbour blocked by a wall";
+    tile(11, 10, PIX_GRASS1);
+    ASSERT_EQ(8, soldier->spaces_clear());
+    walker* orc = living_at(FAMILY_ORC, 1, 160, 176);  // the south neighbour
+    ASSERT_NE(nullptr, orc);
+    EXPECT_EQ(7, soldier->spaces_clear()) << "neighbour blocked by a body";
+}
+
+// walker.cpp:1818 transfer_stats. The receiver gets its own copy of the
+// character, half the magic regeneration and the raw freeze timer (thaw
+// immunity included); a source with no character gives none.
+TEST_F(SemWalker2, transferred_stats_copy_the_character_halve_magic_regen_and_keep_the_freeze)
+{
+    walker* a = living_at(FAMILY_SOLDIER, 0, 160, 160);
+    walker* b = living_at(FAMILY_ORC, 0, 320, 160);
+    ASSERT_TRUE(a && b);
+    auto ann = std::make_unique<guy>(FAMILY_SOLDIER);
+    ann->name = "Ann";
+    ann->strength = 33;
+    a->set_owned_myguy(std::move(ann));
+    a->stats()->set_magic_per_round(4.0f);
+    a->stats()->set_frozen_delay(-12);
+    ASSERT_EQ(nullptr, b->myguy);
+
+    a->transfer_stats(b);
+    ASSERT_NE(nullptr, b->myguy) << "source has myguy: present";
+    EXPECT_NE(a->myguy, b->myguy) << "source has myguy: a fresh copy, not an alias";
+    EXPECT_EQ("Ann", b->myguy->name) << "source has myguy: same name";
+    EXPECT_EQ(33, b->myguy->strength) << "source has myguy: same stats";
+    EXPECT_FLOAT_EQ(2.0f, b->stats()->magic_per_round()) << "always: magic_per_round halved";
+    EXPECT_EQ(-12, b->stats()->frozen_delay_raw())
+        << "always: the raw frozen_delay (thaw immunity) transfers";
+
+    walker* c = living_at(FAMILY_SOLDIER, 0, 160, 320);
+    walker* d = living_at(FAMILY_ORC, 0, 320, 320);
+    ASSERT_TRUE(c && d);
+    ASSERT_EQ(nullptr, c->myguy);
+    c->transfer_stats(d);
+    EXPECT_EQ(nullptr, d->myguy) << "no myguy: newob keeps none";
+}
+
+// walker.cpp:1838-1876 transform_to. A transform into another order takes
+// that order's act type; every transform keeps the walker's centre and
+// clears the flags the old body carried.
+TEST_F(SemWalker2, a_transform_keeps_the_centre_resets_the_flags_and_takes_a_new_orders_act)
+{
+    walker* fresh_knife = world().add_ob(Order::Weapon, FAMILY_KNIFE);
+    walker* fresh_archer = world().add_ob(Order::Living, FAMILY_ARCHER);
+    ASSERT_TRUE(fresh_knife && fresh_archer);
+    const char knife_act = fresh_knife->act_type();
+    const std::int32_t archer_flags = fresh_archer->stats()->bit_flags();
+    ASSERT_NE(ACT_CONTROL, knife_act);
+    ASSERT_EQ(0, archer_flags & BIT_FLYING);
+    fresh_knife->set_dead(1);
+
+    walker* soldier = place(living_at(FAMILY_SOLDIER, 0, 160, 160), 160, 160, 10, 10);
+    ASSERT_NE(nullptr, soldier);
+    soldier->set_act_type(ACT_CONTROL);
+    soldier->transform_to(Order::Weapon, FAMILY_KNIFE);
+    EXPECT_EQ(knife_act, soldier->act_type())
+        << "different order: act_type from the new order's configuration";
+    ASSERT_NE(10, soldier->sizex()) << "the knife body is a different size";
+    ASSERT_NE(10, soldier->sizey());
+    EXPECT_EQ(165, soldier->xpos() + soldier->sizex() / 2) << "always: centre x kept";
+    EXPECT_EQ(165, soldier->ypos() + soldier->sizey() / 2) << "always: centre y kept";
+
+    walker* flier = living_at(FAMILY_SOLDIER, 0, 320, 320);
+    ASSERT_NE(nullptr, flier);
+    flier->stats()->set_bit_flags(BIT_FLYING, 1);
+    flier->transform_to(Order::Living, FAMILY_ARCHER);
+    EXPECT_EQ(archer_flags, flier->stats()->bit_flags())
+        << "always: bit flags are the new family's, the old BIT_FLYING is gone";
+}
+
+// ---------------------------------------------------------------------------
+// death (walker.cpp:1950)
+// ---------------------------------------------------------------------------
+
+// walker.cpp:1936-1950. On a SAVE_ALL level a protected character's death
+// ends the mission and leaves no corpse; every other death (unnamed,
+// summoned, charmed, another colour, unflagged when flags exist) leaves its
+// ordinary corpse; off SAVE_ALL a named team-0 death is just a death.
+TEST_F(SemWalker2, a_mission_losing_death_leaves_no_corpse_and_any_other_leaves_one)
+{
+    auto kill = [](walker* w) {
+        w->set_dead(1);
+        w->death();
+    };
+    auto stains = [this] { return count_live(world().fxlist, Order::Treasure, FAMILY_STAIN); };
+    auto losses = [this] {
+        return count_events(og::sim::EventKind::EndGame,
+                            static_cast<std::uint32_t>(SCEN_TYPE_SAVE_ALL));
+    };
+
+    world().type = SCEN_TYPE_SAVE_ALL;
+    {
+        walker* hero = living_at(FAMILY_SOLDIER, 0, 160, 160);
+        ASSERT_NE(nullptr, hero);
+        hero->stats()->name = "Ranger-King";
+        const int before = stains();
+        kill(hero);
+        ASSERT_EQ(1, losses()) << "protected death: the mission fails";
+        EXPECT_EQ(before, stains()) << "protected death on SAVE_ALL level: corpse suppressed";
+    }
+    struct Case { const char* what; std::string name; unsigned char team; unsigned char real_team; bool summoned; };
+    const Case cases[] = {
+        {"unnamed", "", 0, 255, false},
+        {"summoned", "Phantom", 0, 255, true},
+        {"charmed foe", "Grunt", 0, 1, false},
+        {"foreign colour", "Yellow", 1, 255, false},
+    };
+    int x = 200;
+    for (const Case& c : cases) {
+        SCOPED_TRACE(c.what);
+        walker* w = living_at(FAMILY_SOLDIER, c.team, static_cast<short>(x), 400);
+        x += 40;
+        ASSERT_NE(nullptr, w);
+        w->stats()->name = c.name;
+        w->set_real_team_num(c.real_team);
+        w->set_summoned(c.summoned);
+        const int before = stains();
+        kill(w);
+        EXPECT_EQ(1, losses()) << c.what << ": no EndGame";
+        EXPECT_EQ(before + 1, stains()) << c.what << ": corpse";
+    }
+    {
+        walker* flagged = living_at(FAMILY_THIEF, 0, 600, 600);
+        walker* named = living_at(FAMILY_SOLDIER, 0, 640, 600);
+        ASSERT_TRUE(flagged && named);
+        flagged->set_save_all_protected(true);
+        ASSERT_TRUE(world().has_save_all_protected());
+        named->stats()->name = "Unflagged";
+        const int before = stains();
+        kill(named);
+        EXPECT_EQ(1, losses()) << "unflagged when flags exist: no EndGame";
+        EXPECT_EQ(before + 1, stains()) << "unflagged when flags exist: corpse";
+    }
+}
+
+TEST_F(SemWalker2, a_named_team_0_death_off_a_save_all_level_is_an_ordinary_death)
+{
+    world().type = 0;
+    walker* hero = living_at(FAMILY_SOLDIER, 0, 160, 160);
+    ASSERT_NE(nullptr, hero);
+    hero->stats()->name = "Ranger-King";
+    const int before = count_live(world().fxlist, Order::Treasure, FAMILY_STAIN);
+    hero->set_dead(1);
+    hero->death();
+    EXPECT_EQ(0, count_events(og::sim::EventKind::EndGame,
+                              static_cast<std::uint32_t>(SCEN_TYPE_SAVE_ALL)))
+        << "non-SAVE_ALL level: never EndGame";
+    EXPECT_EQ(before + 1, count_live(world().fxlist, Order::Treasure, FAMILY_STAIN))
+        << "non-SAVE_ALL level: the ordinary corpse";
+}
+
+// ---------------------------------------------------------------------------
+// set_dormant and change_floor (walker.cpp:2087-2112)
+// ---------------------------------------------------------------------------
+
+// walker.cpp:2078-2089. Waking an ignored walker leaves it out of the
+// obmap; setting the dormancy it already has changes nothing, so an awake
+// hidden walker told to wake stays out of the obmap too.
+TEST_F(SemWalker2, waking_an_ignored_walker_keeps_it_out_and_a_repeat_changes_nothing)
+{
+    walker* probe = living_at(FAMILY_ORC, 1, 400, 400);
+    walker* s = living_at(FAMILY_SOLDIER, 0, 160, 160);
+    ASSERT_TRUE(probe && s);
+    ASSERT_TRUE(registered(s));
+    s->set_dormant(true);
+    ASSERT_FALSE(registered(s));
+    s->set_ignore(1);
+    s->set_dormant(false);
+    EXPECT_FALSE(s->dormant());
+    EXPECT_FALSE(registered(s)) << "wake, ignored: stays absent from the obmap";
+    EXPECT_TRUE(world().query_object_passable(160, 160, probe))
+        << "wake, ignored: its spot does not block";
+
+    walker* t = living_at(FAMILY_SOLDIER, 0, 240, 160);
+    ASSERT_TRUE(t && registered(t));
+    const auto entry = world().myobmap->walker_to_pos.find(t)->second;
+    t->set_dormant(false);
+    ASSERT_TRUE(registered(t));
+    EXPECT_EQ(entry, world().myobmap->walker_to_pos.find(t)->second)
+        << "same value (awake): the registration is unchanged";
+    t->set_hidden(true);
+    ASSERT_FALSE(registered(t));
+    t->set_dormant(false);
+    EXPECT_FALSE(registered(t)) << "same value (awake, hidden): no re-registration";
+    t->set_hidden(false);
+    t->set_dormant(true);
+    t->set_dormant(true);
+    EXPECT_FALSE(registered(t)) << "same value (dormant): still absent";
+    EXPECT_TRUE(t->dormant());
+}
+
+// walker.cpp:2104/2112 change_floor. A move to another floor lands at height
+// 0 and leaves the old floor's collision table; a "move" to the same floor
+// changes nothing.
+TEST_F(SemWalker2, a_floor_change_lands_at_height_0_leaves_the_old_floor_and_same_floor_is_a_no_op)
+{
+    world().set_floor_count(2);
+    walker* probe0 = living_at(FAMILY_ORC, 1, 400, 400);
+    walker* probe1 = living_at(FAMILY_ORC, 1, 400, 400);
+    walker* s = living_at(FAMILY_SOLDIER, 0, 160, 160);
+    ASSERT_TRUE(probe0 && probe1 && s);
+    probe1->change_floor(1);
+    ASSERT_EQ(1, probe1->floor());
+    ASSERT_FALSE(world().query_object_passable(160, 160, probe0)) << "control: blocks floor 0";
+
+    s->set_worldz(12.0f);
+    s->change_floor(1);
+    EXPECT_EQ(1, s->floor());
+    EXPECT_EQ(0.0f, s->worldz()) << "different floor, visible: worldz 0 on arrival";
+    EXPECT_TRUE(world().query_object_passable(160, 160, probe0))
+        << "different floor, visible: leaves the old floor";
+    EXPECT_FALSE(world().query_object_passable(160, 160, probe1))
+        << "different floor, visible: collides on the new floor";
+
+    s->set_worldz(12.0f);
+    const auto entry = world().myobmap->walker_to_pos.find(s)->second;
+    s->change_floor(1);
+    EXPECT_EQ(1, s->floor());
+    EXPECT_EQ(12.0f, s->worldz()) << "same floor: worldz untouched";
+    ASSERT_TRUE(registered(s));
+    EXPECT_EQ(entry, world().myobmap->walker_to_pos.find(s)->second)
+        << "same floor: registration unchanged";
+}
