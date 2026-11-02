@@ -1652,6 +1652,50 @@ def self_test() -> int:
                      "arms": [{"when": "b", "observable": "4"}, {"when": "!b", "observable": "5"}],
                      "setting": "none", "status": "unreachable", "tests": [], "missing_arms": ["!b"],
                      "note": ["every caller passes b true", "GAP: nobody passes b false"]}]))
+        # Citation shapes: "<path>: Suite.name" and "<path>: TEST*(Suite, name)",
+        # with or without a remark after the name, and several joined by "; ".
+        f1 = "tests/unit/test_sem_walker_1.cpp"
+        f2 = "tests/integration/test_fearless.cpp"
+        for label, where, want in [
+            ("Suite.name", [f"{f1}: SemWalker1.a_hit_is_credited"],
+             ([{"file": f1, "test": "SemWalker1.a_hit_is_credited"}], [])),
+            ("Suite.name with a remark", [f"{f1}: SemWalker1.a_hit_is_credited (both settings)"],
+             ([{"file": f1, "test": "SemWalker1.a_hit_is_credited", "note": "both settings"}], [])),
+            ("TEST", [f"{f1}: TEST(SemWalker1, a_hit)"],
+             ([{"file": f1, "test": "SemWalker1.a_hit"}], [])),
+            ("TEST_F with a remark", [f"{f1}: TEST_F(WalkerFixture, a_hit) (both settings)"],
+             ([{"file": f1, "test": "WalkerFixture.a_hit", "note": "both settings"}], [])),
+            ("TEST_P", [f"{f1}: TEST_P(WalkerParam, a_hit)"],
+             ([{"file": f1, "test": "WalkerParam.a_hit"}], [])),
+            ("several joined by '; '",
+             [f"{f1}: SemWalker1.one (classic); {f2}: TEST_F(Fearless, two); {f2}: Fearless.three"],
+             ([{"file": f1, "test": "SemWalker1.one", "note": "classic"},
+               {"file": f2, "test": "Fearless.two"},
+               {"file": f2, "test": "Fearless.three"}], [])),
+            ("an unparseable string still lands in note",
+             [f"{f1}: many tests assert the log lines; see SemWalker1"],
+             ([], [f"{f1}: many tests assert the log lines; see SemWalker1"])),
+            ("a GAP naming Suite.name stays a note",
+             [f"GAP: {f1}: SemWalker1.a_hit reads only the hp"],
+             ([], [f"GAP: {f1}: SemWalker1.a_hit reads only the hp"])),
+        ]:
+            expect(f"gen: citation {label}", gen_manifest.normalise_where(where), want)
+        # The same through the generator: an asserted row cited the new way has tests.
+        root2 = case("gen_dotted", None)
+        dreview = os.path.join(root2, "review")
+        os.makedirs(dreview)
+        with open(os.path.join(dreview, "part.json"), "w", encoding="utf-8") as fh:
+            json.dump([{"id": "fearless.cpp:12", "path": "src/gameplay/fearless.cpp", "lines": [12],
+                        "function": "other", "kind": "rule", "condition": "b", "semantic": "counts",
+                        "arms": [{"when": "b", "observable": "4"}], "setting": "none",
+                        "assertion": {"status": "asserted",
+                                      "where": [f"{f1}: SemWalker1.b_counts_four (both settings)"]}}], fh)
+        with contextlib.redirect_stdout(io.StringIO()):
+            rc = gen_manifest.generate(root2, dreview, os.path.join(root2, "out"))
+        with open(os.path.join(root2, "out", "fearless.cpp.json"), encoding="utf-8") as fh:
+            got = json.load(fh)
+        expect("gen: a Suite.name citation becomes the row's test", (rc, got["rules"][0]["tests"]),
+               (0, [{"file": f1, "test": "SemWalker1.b_counts_four", "note": "both settings"}]))
         rows[0]["lines"] = []
         rows[0]["id"] = "fearless.cpp:pick"
         with open(os.path.join(review, "part.json"), "w", encoding="utf-8") as fh:
