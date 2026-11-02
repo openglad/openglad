@@ -14,7 +14,9 @@ check's grep sees, plus the anchor line (the review sometimes lists the
 function's opening brace or a statement between two arms as well).  A rule
 row keeps id, lines, kinds, function, anchor, anchor_index (when not 0),
 condition, semantic, arms, setting, status, tests, missing_arms, issue (when
-the review gave one) and note (free text that cites no test).  An other row
+the review gave one) and note (free text that cites no test).  A row the
+review marks "unreachable" (assertion.status) keeps its reason,
+assertion.note, as the first entry of note, and never carries an issue.  An other row
 keeps id, lines, kinds, kind, function (when the review gave one), anchor,
 anchor_index and note.
 
@@ -195,9 +197,11 @@ def line_list(row: dict) -> list[int]:
 
 def rule_row(row: dict, path: str, src: list[str]) -> dict:
     a = row.get("assertion", {})
+    status = a.get("status", "none")
     tests, notes = normalise_where(list(a.get("where", [])))
     if a.get("note"):
-        notes.append(str(a["note"]))
+        # An unreachable row's note is its reason; the check reads the first.
+        notes.insert(0 if status == "unreachable" else len(notes), str(a["note"]))
     for arm in a.get("unasserted_arms", []) or []:
         notes.append(f"unasserted: {arm}")
     lines, anchor = branch_lines(path, src, line_list(row))
@@ -211,12 +215,12 @@ def rule_row(row: dict, path: str, src: list[str]) -> dict:
         "semantic": row.get("semantic", ""),
         "arms": row.get("arms", []),
         "setting": row.get("setting", "none"),
-        "status": a.get("status", "none"),
+        "status": status,
         "tests": tests,
         "missing_arms": list(a.get("missing_arms", []) or []),
     }
     issue = a.get("issue", row.get("issue"))
-    if issue is not None:
+    if issue is not None and status != "unreachable":
         out["issue"] = issue
     if notes:
         out["note"] = notes
