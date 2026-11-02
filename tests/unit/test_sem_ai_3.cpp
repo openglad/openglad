@@ -1276,9 +1276,11 @@ TEST_F(SemHit, a_fearless_walker_yells_and_recruits_but_does_not_run)
         if (ns == 1) {
             EXPECT_TRUE(s->stats()->commands.empty()) << "New Specials on: the banner holds it";
         } else {
-            ASSERT_EQ(1u, s->stats()->commands.size()) << "New Specials off: no banner aura";
-            EXPECT_EQ(COMMAND_WALK, s->stats()->commands.front().commandtype);
-            EXPECT_EQ(-1, s->stats()->commands.front().com1);
+            EXPECT_EQ(1u, s->stats()->commands.size()) << "New Specials off: no banner aura";
+            if (!s->stats()->commands.empty()) {
+                EXPECT_EQ(COMMAND_WALK, s->stats()->commands.front().commandtype);
+                EXPECT_EQ(-1, s->stats()->commands.front().com1);
+            }
         }
     }
 }
