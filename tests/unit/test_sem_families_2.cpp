@@ -543,3 +543,355 @@ TEST(SemMage, heartburst_bursts_each_foe_for_an_equal_share_of_half_the_spare_po
         << "n foes arm: one explosion sound per burst";
     EXPECT_EQ(0u, f.guard.count()) << f.guard.message();
 }
+
+// ---------------------------------------------------------------------------
+// living-05-cleric.lua
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// A bloodstain (Order::Treasure FAMILY_STAIN, filed in fxlist where
+// find_nearest_blood looks) on the first passable spot east, south, west or
+// north of the caster that is inside `reach`.
+walker* stain_in_reach(Field& f, walker* caster, unsigned char team,
+                       char old_family, std::int32_t reach, short level = 1)
+{
+    walker* stain = f.world().add_fx_ob(Order::Treasure, FAMILY_STAIN);
+    if (stain == nullptr)
+        return nullptr;
+    stain->set_team_num(team);
+    stain->set_real_team_num(team);
+    stain->stats()->set_old_family(old_family);
+    stain->stats()->set_level(level);
+    stain->set_dead(0);
+    for (std::int32_t d = 1; d < reach; d++) {
+        const std::int32_t ring[4][2] = {{d, 0}, {0, d}, {-d, 0}, {0, -d}};
+        for (const auto& o : ring) {
+            const float x = static_cast<float>(caster->xpos() + o[0]);
+            const float y = static_cast<float>(caster->ypos() + o[1]);
+            stain->setxy(x, y);
+            if (caster->distance_to_ob(stain) < reach &&
+                f.world().query_passable(x, y, stain))
+                return stain;
+        }
+    }
+    ADD_FAILURE() << "no passable stain spot within " << reach;
+    return nullptr;
+}
+
+// A cleric whose first TURN UNDEAD roll beats a level-0 undead: the roll is
+// next(range*40) > next(0), and next(0) answers 0 without a draw.
+void pin_turn_roll_to_land(Field& f, std::uint32_t bound)
+{
+    f.world().rng_ = og::sim::SimRandom(state_where_draws_are({bound}, {1u}));
+}
+
+}  // namespace
+
+// :29. TURN UNDEAD (Shift on slots 2 and 3) refuses SPECIAL BUSY while busy,
+// for free; the same rig not busy turns the undead.
+TEST(SemCleric, turn_undead_is_refused_for_free_while_busy)
+{
+    for (int slot : {2, 3}) {
+        Field f;
+        walker* cleric = f.caster(FAMILY_CLERIC, 0, 160, 160, 10, 500.0f, slot);
+        ASSERT_NE(nullptr, cleric);
+        give_character(cleric, FAMILY_CLERIC, 100);
+        cleric->set_shifter_down(1);
+        cleric->set_busy(3);
+        walker* undead = f.living_at(FAMILY_SKELETON, 2, 172, 160, 0);
+        ASSERT_NE(nullptr, undead);
+        const std::uint32_t undead_id = undead->entity_id();
+        pin_turn_roll_to_land(f, 40u * 40u);
+
+        Failure why = Failure::None;
+        std::string reason;
+        EXPECT_FALSE(cleric->special(&why, &reason)) << "busy arm, slot " << slot;
+        EXPECT_EQ(Failure::ScriptDeclined, why);
+        EXPECT_EQ("SPECIAL BUSY", reason) << "busy arm, slot " << slot << ": its reason";
+        EXPECT_FLOAT_EQ(500.0f, cleric->stats()->magicpoints())
+            << "busy arm, slot " << slot << ": free";
+        EXPECT_FLOAT_EQ(3.0f, cleric->busy()) << "busy arm: busy untouched";
+        EXPECT_EQ(0, undead->dead()) << "busy arm, slot " << slot << ": undead untouched";
+        EXPECT_EQ(0u, cleric->myguy->exp) << "busy arm: no experience";
+
+        cleric->set_busy(0);
+        ASSERT_TRUE(cleric->special(&why, &reason))
+            << "control, slot " << slot << ": not busy, the turn lands (" << reason << ")";
+        walker* after = f.world().find_by_id(undead_id);
+        ASSERT_NE(nullptr, after);
+        EXPECT_EQ(1, after->dead()) << "control: the undead is turned";
+        EXPECT_EQ(0u, f.guard.count()) << f.guard.message();
+    }
+}
+
+// :47 the two arms the hero n>0 tests leave: a hero whose classic turn finds
+// foes but no undead succeeds and earns nothing, says nothing; a bot that
+// turns an undead earns nothing and says nothing.
+TEST(SemCleric, only_a_hero_who_turned_an_undead_is_rewarded_and_announced)
+{
+    {   // hero, n == 0 (the classic success with nothing turned)
+        Field f(0);
+        walker* cleric = f.caster(FAMILY_CLERIC, 0, 160, 160, 10, 500.0f, 2);
+        ASSERT_NE(nullptr, cleric);
+        give_character(cleric, FAMILY_CLERIC, 100);
+        cleric->myguy->name = "Tuck";
+        cleric->set_shifter_down(1);
+        walker* orc = f.living_at(FAMILY_ORC, 2, 180, 160, 1);
+        ASSERT_NE(nullptr, orc);
+        Failure why = Failure::None;
+        std::string reason;
+        ASSERT_TRUE(cleric->special(&why, &reason))
+            << "hero n==0 arm: the classic turn succeeds (" << reason << ")";
+        EXPECT_EQ(0u, cleric->myguy->exp) << "hero n==0 arm: no experience";
+        EXPECT_EQ(0, f.notifications("turned")) << "hero n==0 arm: no notice";
+        EXPECT_EQ(1, f.events_of(og::sim::EventKind::PlaySound,
+                                 static_cast<std::uint32_t>(SOUND_HEAL)))
+            << "hero n==0 arm: the cast still sounds";
+        EXPECT_EQ(0, orc->dead()) << "hero n==0 arm: the living orc is not turned";
+        EXPECT_EQ(0u, f.guard.count()) << f.guard.message();
+    }
+    for (unsigned char team : {static_cast<unsigned char>(0),
+                               static_cast<unsigned char>(1)}) {
+        // bot: a player-team bot (the inner team test would pass) and a
+        // foreign one
+        Field f(0);
+        walker* cleric = f.caster(FAMILY_CLERIC, team, 160, 160, 10, 500.0f, 2);
+        ASSERT_NE(nullptr, cleric);
+        cleric->set_shifter_down(1);
+        walker* undead = f.living_at(FAMILY_SKELETON, 2, 172, 160, 0);
+        ASSERT_NE(nullptr, undead);
+        pin_turn_roll_to_land(f, 40u * 40u);
+        Failure why = Failure::None;
+        std::string reason;
+        ASSERT_TRUE(cleric->special(&why, &reason))
+            << "bot arm (team " << int(team) << "): the turn lands (" << reason << ")";
+        EXPECT_EQ(1, undead->dead()) << "bot arm: the undead is turned";
+        EXPECT_EQ(0, f.notifications("turned"))
+            << "bot arm (team " << int(team) << "): no notice";
+        EXPECT_EQ(nullptr, cleric->myguy) << "bot arm: no character to reward";
+        EXPECT_EQ(0u, f.guard.count()) << "bot arm (team " << int(team) << "): "
+                                       << f.guard.message();
+    }
+}
+
+// :123 the silence half. A refused HEAL makes no sound and no notice, for
+// both refusals: every ally already whole, and a heal too weak to land.
+TEST(SemCleric, a_refused_heal_is_silent)
+{
+    {   // nobody needs it
+        Field f;
+        walker* cleric = f.caster(FAMILY_CLERIC, 0, 160, 160, 1, 3.0f, 1);
+        ASSERT_NE(nullptr, cleric);
+        walker* ally = f.living_at(FAMILY_SOLDIER, 0, 180, 160);
+        ASSERT_NE(nullptr, ally);
+        Failure why = Failure::None;
+        std::string reason;
+        ASSERT_FALSE(cleric->special(&why, &reason));
+        EXPECT_EQ("NO ALLY NEEDS HEALING", reason);
+        EXPECT_FLOAT_EQ(3.0f, cleric->stats()->magicpoints());
+        EXPECT_EQ(0, f.events_of(og::sim::EventKind::PlaySound,
+                                 static_cast<std::uint32_t>(SOUND_HEAL)))
+            << "nobody healed (silence) arm: no heal sound";
+        EXPECT_EQ(0, f.all_notifications())
+            << "nobody healed (silence) arm: no notice";
+        EXPECT_EQ(0u, f.guard.count()) << f.guard.message();
+    }
+    {   // too weak: level 0, trunc(3)/4 == 0 and no level bonus
+        Field f;
+        walker* cleric = f.caster(FAMILY_CLERIC, 0, 160, 160, 0, 3.0f, 1);
+        ASSERT_NE(nullptr, cleric);
+        walker* ally = f.living_at(FAMILY_SOLDIER, 0, 180, 160);
+        ASSERT_NE(nullptr, ally);
+        ally->stats()->set_hitpoints(40.0f);
+        Failure why = Failure::None;
+        std::string reason;
+        ASSERT_FALSE(cleric->special(&why, &reason));
+        EXPECT_EQ("HEAL TOO WEAK", reason);
+        EXPECT_FLOAT_EQ(40.0f, ally->stats()->hitpoints());
+        EXPECT_EQ(0, f.events_of(og::sim::EventKind::PlaySound,
+                                 static_cast<std::uint32_t>(SOUND_HEAL)))
+            << "too weak (silence) arm: no heal sound";
+        EXPECT_EQ(0, f.all_notifications()) << "too weak (silence) arm: no notice";
+        EXPECT_EQ(0u, f.guard.count()) << f.guard.message();
+    }
+}
+
+// :127. The heal notice counts the men: "1 man!" for one, "N men!" for more.
+TEST(SemCleric, the_heal_notice_counts_one_man_or_several_men)
+{
+    {
+        Field f;
+        walker* cleric = f.caster(FAMILY_CLERIC, 0, 160, 160, 4, 100.0f, 1);
+        ASSERT_NE(nullptr, cleric);
+        walker* a = f.living_at(FAMILY_SOLDIER, 0, 180, 160);
+        walker* b = f.living_at(FAMILY_SOLDIER, 0, 160, 180);
+        ASSERT_TRUE(a && b);
+        a->stats()->set_hitpoints(20.0f);
+        b->stats()->set_hitpoints(30.0f);
+        ASSERT_TRUE(cleric->special());
+        EXPECT_EQ(1, f.notifications("Cleric healed 2 men!")) << "N>1 arm";
+        EXPECT_EQ(0, f.notifications("Cleric healed 1 man!")) << "N>1 arm: not the singular";
+        EXPECT_EQ(0u, f.guard.count()) << f.guard.message();
+    }
+    {
+        Field f;
+        walker* cleric = f.caster(FAMILY_CLERIC, 0, 160, 160, 4, 100.0f, 1);
+        ASSERT_NE(nullptr, cleric);
+        walker* a = f.living_at(FAMILY_SOLDIER, 0, 180, 160);
+        walker* b = f.living_at(FAMILY_SOLDIER, 0, 160, 180);
+        ASSERT_TRUE(a && b);
+        a->stats()->set_hitpoints(20.0f);  // b is whole
+        ASSERT_TRUE(cleric->special());
+        EXPECT_EQ(1, f.notifications("Cleric healed 1 man!")) << "1 arm";
+        EXPECT_EQ(0, f.notifications("men!")) << "1 arm: not the plural";
+        EXPECT_EQ(0u, f.guard.count()) << f.guard.message();
+    }
+}
+
+// :132. An enemy bot cleric's heal lands in silence; the same heal from a
+// player-team cleric is announced once.
+TEST(SemCleric, an_enemy_bot_heal_lands_without_a_notice)
+{
+    float healed_hp[2] = {0.0f, 0.0f};
+    for (unsigned char team : {static_cast<unsigned char>(1),
+                               static_cast<unsigned char>(0)}) {
+        Field f;
+        walker* cleric = f.caster(FAMILY_CLERIC, team, 160, 160, 4, 100.0f, 1);
+        ASSERT_NE(nullptr, cleric);
+        walker* ally = f.living_at(FAMILY_SOLDIER, team, 180, 160);
+        ASSERT_NE(nullptr, ally);
+        ally->stats()->set_max_hitpoints(400.0f);
+        ally->stats()->set_hitpoints(50.0f);
+        ASSERT_TRUE(cleric->special());
+        healed_hp[team] = ally->stats()->hitpoints();
+        EXPECT_EQ(1, f.events_of(og::sim::EventKind::PlaySound,
+                                 static_cast<std::uint32_t>(SOUND_HEAL)));
+        if (team == 1)
+            EXPECT_EQ(0, f.notifications("Cleric healed"))
+                << "enemy bot arm: no notice";
+        else
+            EXPECT_EQ(1, f.notifications("Cleric healed 1 man!"))
+                << "team 0 arm (contrast): one notice";
+        EXPECT_EQ(0u, f.guard.count()) << f.guard.message();
+    }
+    EXPECT_NE(50.0f, healed_hp[1]) << "enemy bot arm: the heal still lands";
+    EXPECT_FLOAT_EQ(healed_hp[0], healed_hp[1])
+        << "enemy bot arm: the same heal as the announced one";
+}
+
+// :139 the reason and the missing mace. MYSTIC MACE refuses SPECIAL BUSY
+// while busy, summons nothing and counts no shot; not busy it summons one.
+TEST(SemCleric, mystic_mace_is_refused_while_busy_and_summons_nothing)
+{
+    Field f;
+    walker* cleric = f.caster(FAMILY_CLERIC, 0, 160, 160, 8, 500.0f, 1);
+    ASSERT_NE(nullptr, cleric);
+    give_character(cleric, FAMILY_CLERIC, 120);
+    cleric->set_shifter_down(1);
+    cleric->set_busy(2);
+    Failure why = Failure::None;
+    std::string reason;
+    EXPECT_FALSE(cleric->special(&why, &reason));
+    EXPECT_EQ(Failure::ScriptDeclined, why);
+    EXPECT_EQ("SPECIAL BUSY", reason) << "busy (reason) arm";
+    EXPECT_FLOAT_EQ(500.0f, cleric->stats()->magicpoints());
+    EXPECT_FLOAT_EQ(2.0f, cleric->busy());
+    EXPECT_EQ(0u, f.live(Order::FX, FAMILY_MAGIC_SHIELD).size())
+        << "busy (no fx) arm: no mace";
+    EXPECT_EQ(0u, cleric->myguy->scen_shots) << "busy arm: no shot counted";
+
+    cleric->set_busy(0);
+    ASSERT_TRUE(cleric->special(&why, &reason)) << reason;
+    EXPECT_EQ(1u, f.live(Order::FX, FAMILY_MAGIC_SHIELD).size())
+        << "control: not busy, one mace";
+    EXPECT_EQ(0u, f.guard.count()) << f.guard.message();
+}
+
+// :146. A hero's MYSTIC MACE counts one shot in total_shots and scen_shots.
+TEST(SemCleric, a_hero_mystic_mace_counts_one_shot)
+{
+    Field f;
+    walker* cleric = f.caster(FAMILY_CLERIC, 0, 160, 160, 8, 500.0f, 1);
+    ASSERT_NE(nullptr, cleric);
+    give_character(cleric, FAMILY_CLERIC, 120);
+    cleric->myguy->total_shots = 7;
+    cleric->myguy->scen_shots = 4;
+    cleric->set_shifter_down(1);
+    ASSERT_TRUE(cleric->special());
+    EXPECT_EQ(8u, cleric->myguy->total_shots) << "hero (total_shots) arm";
+    EXPECT_EQ(5u, cleric->myguy->scen_shots) << "hero (scen_shots) arm";
+    EXPECT_EQ(0u, f.guard.count()) << f.guard.message();
+}
+
+// :179 the risen level, on both setting values: rand0(cleric level) + 1,
+// so 1..L. The world stream is scripted so the one rand0(4) answers k.
+TEST(SemCleric, a_raised_skeleton_rises_at_one_to_the_cleric_level)
+{
+    for (short fixes : {static_cast<short>(0), static_cast<short>(1)}) {
+        for (const auto& [draw, level] : {std::pair<std::uint32_t, int>{0, 1},
+                                          std::pair<std::uint32_t, int>{2, 3},
+                                          std::pair<std::uint32_t, int>{3, 4}}) {
+            FixedRandom scripted(draw);
+            ScopedSimRandom scoped(&scripted);
+            Field f(fixes);
+            walker* cleric = f.caster(FAMILY_CLERIC, 0, 80, 80, 4, 200.0f, 2);
+            ASSERT_NE(nullptr, cleric);
+            walker* stain = stain_in_reach(f, cleric, 1, FAMILY_ORC, 60);
+            ASSERT_NE(nullptr, stain);
+            Failure why = Failure::None;
+            std::string reason;
+            ASSERT_TRUE(cleric->special(&why, &reason))
+                << "fixes " << fixes << ": " << reason;
+            const auto risen = f.live(Order::Living, FAMILY_SKELETON);
+            ASSERT_EQ(1u, risen.size());
+            EXPECT_EQ(level, risen[0]->stats()->level())
+                << "corpse (risen level) arm, fixes " << fixes << ": rand0(4) = "
+                << draw << " rises at level " << level;
+            EXPECT_EQ(cleric, risen[0]->owner());
+            EXPECT_EQ(0u, f.guard.count()) << f.guard.message();
+        }
+    }
+}
+
+// :239 the hostile arm's lifetime: a foe's corpse rises as a 200-tick ghost.
+TEST(SemCleric, a_foe_corpse_resurrects_as_a_two_hundred_tick_ghost)
+{
+    Field f;
+    walker* cleric = f.caster(FAMILY_CLERIC, 0, 80, 80, 10, 300.0f, 4);
+    ASSERT_NE(nullptr, cleric);
+    walker* stain = stain_in_reach(f, cleric, 1, FAMILY_ORC, 30);
+    ASSERT_NE(nullptr, stain);
+    ASSERT_TRUE(cleric->special());
+    const auto ghosts = f.live(Order::Living, FAMILY_GHOST);
+    ASSERT_EQ(1u, ghosts.size());
+    EXPECT_EQ(200, ghosts[0]->lifetime()) << "hostile stain (lifetime) arm";
+    EXPECT_EQ(0, static_cast<int>(ghosts[0]->team_num()));
+    EXPECT_EQ(cleric, ghosts[0]->owner());
+    EXPECT_EQ(0u, f.live(Order::Living, FAMILY_ORC).size());
+    EXPECT_EQ(0u, f.guard.count()) << f.guard.message();
+}
+
+// :256 the wrapped penalty. The penalty is level^2 * 100 stored in a short
+// and read back unsigned: a level-19 friend costs 36100 (the short is
+// -29436; +65536 restores it), floored at zero, then the 90 reward.
+TEST(SemCleric, a_resurrect_penalty_past_a_short_wraps_back_to_its_unsigned_value)
+{
+    for (const auto& [exp_before, exp_after] : {std::pair<unsigned, unsigned>{40000, 3990},
+                                                std::pair<unsigned, unsigned>{1000, 90}}) {
+        Field f;
+        walker* cleric = f.caster(FAMILY_CLERIC, 0, 80, 80, 10, 300.0f, 4);
+        ASSERT_NE(nullptr, cleric);
+        give_character(cleric, FAMILY_CLERIC, 100);
+        cleric->myguy->exp = exp_before;
+        walker* stain = stain_in_reach(f, cleric, 0, FAMILY_SOLDIER, 30, 19);
+        ASSERT_NE(nullptr, stain);
+        stain->stats()->set_max_hitpoints(100.0f);
+        ASSERT_TRUE(cleric->special());
+        ASSERT_EQ(1u, f.live(Order::Living, FAMILY_SOLDIER).size())
+            << "the friend is back";
+        EXPECT_EQ(exp_after, cleric->myguy->exp)
+            << "loss negative arm: exp " << exp_before << " pays 36100, floored at 0, +90";
+        EXPECT_EQ(0u, f.guard.count()) << f.guard.message();
+    }
+}
