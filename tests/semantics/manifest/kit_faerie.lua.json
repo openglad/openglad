@@ -871,18 +871,16 @@
       "lines": [
         21,
         32,
-        273,
         315
       ],
       "kinds": [
-        "if",
         "if",
         "if",
         "if"
       ],
       "kind": "defensive",
       "anchor": "if flash then",
-      "note": "og.add_ob (lines 21, 32) and add_ob('living') (315) nil when the world is full: flash and hit spark skipped, WISH refuses COULD NOT RESURRECT. Line 273 (glimmer's `if shot`) is NOT only a world-full guard: walker::fire() (src/gameplay/walker.cpp:517-690) answers nil for magicpoints < weapon_cost, create_weapon nil, a pad blocked by a live body (the MELEE arm: attack(collide_ob) + SOUND_CLANG, weapon dead, cost already charged), BIT_NO_RANGED, and an on_fire_weapon hook answering false. The blocked-pad melee arm is a game rule and is carried as an arm of kit_faerie.lua:257."
+      "note": "og.add_ob (lines 21, 32) and add_ob('living') (315) nil when the world is full: flash and hit spark skipped, WISH refuses COULD NOT RESURRECT. Line 273 (glimmer's `if shot`) belongs to rule row kit_faerie.lua:257, not here: it is not only a world-full guard, since walker::fire() (src/gameplay/walker.cpp:517-690) answers nil for magicpoints < weapon_cost, create_weapon nil, a pad blocked by a live body (the MELEE arm: attack(collide_ob) + SOUND_CLANG, weapon dead, cost already charged), BIT_NO_RANGED, and an on_fire_weapon hook answering false; the blocked-pad melee arm is a game rule of glimmer."
     }
   ]
 }

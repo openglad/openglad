@@ -18,9 +18,11 @@ The check passes (exit 0) only when all of these hold:
       candidate line is a line the review's grep matches (CPP_BRANCH /
       LUA_BRANCH below, comment lines skipped); the in-scope files are
       SCOPE_CPP plus every Lua file under packs/.
-  R2  every rule row cites at least one test, every gtest citation names
-      a TEST / TEST_F / TEST_P that exists in the cited file outside
-      comments and `#if 0` regions, and every
+  R2  every rule row cites at least one test (a row deferred with an issue
+      number is exempt: the issue is its pointer), every gtest citation
+      names a TEST / TEST_F / TEST_P that exists in the cited file outside
+      comments and `#if 0` regions and is not disabled (a DISABLED_ suite
+      or test name never counts), and every
       parity citation names a row id in tests/parity/scenario_table.h.
   R3  every rule row's status is "asserted", or "deferred" with an issue
       number (deferred rows are printed as notices, not errors).
@@ -604,7 +606,8 @@ def tests_defined(text: str) -> set[str]:
     """Every Suite.name a test file defines: TEST/TEST_F/TEST_P written out,
     plus the ones a file-local macro stamps out (#define SCENE(test_name, ...)
     whose body holds TEST_F(Suite, test_name), invoked as SCENE(name, ...)).
-    Comments and `#if 0` regions are stripped first."""
+    Comments and `#if 0` regions are stripped first, and a disabled test
+    (DISABLED_ suite or name) is left out: gtest never runs it."""
     text = strip_comments(text)
     names = {f"{a}.{b}" for a, b in TEST_DEF_RX.findall(text)}
     for m in MACRO_DEF_RX.finditer(text):
@@ -617,7 +620,13 @@ def tests_defined(text: str) -> set[str]:
                 args = [a.strip() for a in call.group(1).split(",")]
                 if len(args) > k and re.fullmatch(r"\w+", args[k]):
                     names.add(f"{suite}.{args[k]}")
-    return names
+    return {n for n in names if not is_disabled(n)}
+
+
+def is_disabled(test: str) -> bool:
+    """True when gtest skips Suite.name: either part starts with DISABLED_."""
+    suite, _, name = test.partition(".")
+    return suite.startswith("DISABLED_") or name.startswith("DISABLED_")
 
 
 def parity_row_ids(repo: str) -> set[str]:
@@ -662,7 +671,7 @@ ERROR_KINDS = (
     "missing file", "stray manifest", "duplicate manifest", "out of range",
     "uncovered", "double-claimed", "stale line", "missing kinds", "drift", "lost anchor",
     "unanchored",
-    "no test", "missing test", "missing parity row", "not asserted",
+    "no test", "missing test", "disabled test", "missing parity row", "not asserted",
     "deferred without issue",
 )
 
@@ -785,13 +794,16 @@ def run_check(repo: str, fix: bool) -> Report:
             d = row.data
             status = d["status"]
             status_counts[status] += 1
-            if not d["tests"]:
+            deferred_with_issue = status == "deferred" and issue_number(d.get("issue")) is not None
+            if not d["tests"] and not deferred_with_issue:
                 rep.add("no test", f"{path}: row {row.id}: a rule row cites no test")
             for t in d["tests"]:
                 if "parity" in t:
                     if str(t["parity"]) not in parity_ids:
                         rep.add("missing parity row", f"{path}: row {row.id}: parity row "
                                 f"\"{t['parity']}\" is not in {SCENARIO_TABLE}")
+                elif "file" in t and "test" in t and is_disabled(str(t["test"])):
+                    rep.add("disabled test", f"{path}: row {row.id} cites {t['file']} {t['test']}")
                 elif "file" in t and "test" in t:
                     why = test_exists(repo, str(t["file"]), str(t["test"]), test_cache)
                     if why:
@@ -861,7 +873,7 @@ def render(rep: Report) -> tuple[str, int]:
         f"stray manifest {n['stray manifest']}, duplicate manifest {n['duplicate manifest']}")
     out.append(
         f"  R2 no test {n['no test']}, missing test {n['missing test']}, "
-        f"missing parity row {n['missing parity row']}")
+        f"disabled test {n['disabled test']}, missing parity row {n['missing parity row']}")
     out.append(
         f"  R3 not asserted {not_asserted} (partial {c['status partial']}, "
         f"executed-only {c['status executed-only']}, none {c['status none']}), "
@@ -1038,7 +1050,7 @@ def _r1(**counts: int) -> str:
 def _summary(verdict: str, files: int = len(SCOPE_CPP), rules: int = 3, other: int = 1, cands: int = 4, r1: str = "", r2: str = "",
              r3: str = "", fixed: int = 0) -> str:
     r1 = r1 or _r1()
-    r2 = r2 or "no test 0, missing test 0, missing parity row 0"
+    r2 = r2 or "no test 0, missing test 0, disabled test 0, missing parity row 0"
     r3 = r3 or "not asserted 0 (partial 0, executed-only 0, none 0), deferred 0 (without issue 0)"
     text = (f"check_manifest: {verdict}: {files} files, {cands} candidate lines, "
             f"{rules} rule rows, {other} other rows\n  R1 {r1}\n  R2 {r2}\n  R3 {r3}\n")
@@ -1162,7 +1174,7 @@ def self_test() -> int:
                 "tests/unit/test_fearless.cpp has no TEST FearlessScenes.scene\n"
                 "missing parity row: src/gameplay/fearless.cpp: row fearless.cpp:12: parity row "
                 "\"no_such_scen99\" is not in tests/parity/scenario_table.h\n"
-                + _summary("FAIL", r2="no test 1, missing test 3, missing parity row 1")))
+                + _summary("FAIL", r2="no test 1, missing test 3, disabled test 0, missing parity row 1")))
 
         # R3: partial is red; deferred with an issue is a notice; without one is red.
         m = _fixture_manifest()
@@ -1187,6 +1199,42 @@ def self_test() -> int:
                 "status deferred needs an issue number\n"
                 + _summary("FAIL", r3="not asserted 0 (partial 0, executed-only 0, none 0), "
                            "deferred 1 (without issue 1)")))
+        # R2: a row deferred with an issue may cite no test; without an issue
+        # it is red twice (no test, and deferred without issue).
+        m = _fixture_manifest()
+        m["rules"][2]["status"] = "deferred"
+        m["rules"][2]["issue"] = "#462"
+        m["rules"][2]["tests"] = []
+        root = case("deferred_no_test", m)
+        expect("R2: deferred with an issue needs no test", _run(["--repo", root]),
+               (0, "deferred: src/gameplay/fearless.cpp: row fearless.cpp:12: issue #462\n"
+                + _summary("OK", r3="not asserted 0 (partial 0, executed-only 0, none 0), "
+                           "deferred 1 (without issue 0)")))
+        del m["rules"][2]["issue"]
+        root = case("deferred_bare_no_test", m)
+        expect("R2: deferred without an issue still needs a test", _run(["--repo", root]),
+               (1, "no test: src/gameplay/fearless.cpp: row fearless.cpp:12: a rule row cites no test\n"
+                "deferred without issue: src/gameplay/fearless.cpp: row fearless.cpp:12: "
+                "status deferred needs an issue number\n"
+                + _summary("FAIL", r2="no test 1, missing test 0, disabled test 0, missing parity row 0",
+                           r3="not asserted 0 (partial 0, executed-only 0, none 0), "
+                           "deferred 1 (without issue 1)")))
+        # R2: a DISABLED_ test never counts, even though the file defines it.
+        disabled_tests = (_FIXTURE_TESTS + "TEST(Fearless, DISABLED_skipped) { }\n"
+                          + "TEST(DISABLED_FearlessOff, skipped) { }\n")
+        m = _fixture_manifest()
+        m["rules"][0]["tests"] = [
+            {"file": "tests/unit/test_fearless.cpp", "test": "Fearless.DISABLED_skipped"},
+            {"file": "tests/unit/test_fearless.cpp", "test": "DISABLED_FearlessOff.skipped"}]
+        root = case("disabled", m, tests=disabled_tests)
+        expect("R2: a DISABLED_ test is red", _run(["--repo", root]),
+               (1, "disabled test: src/gameplay/fearless.cpp: row fearless.cpp:4 cites "
+                "tests/unit/test_fearless.cpp Fearless.DISABLED_skipped\n"
+                "disabled test: src/gameplay/fearless.cpp: row fearless.cpp:4 cites "
+                "tests/unit/test_fearless.cpp DISABLED_FearlessOff.skipped\n"
+                + _summary("FAIL", r2="no test 0, missing test 0, disabled test 2, missing parity row 0")))
+        expect("tests_defined: DISABLED_ names are left out",
+               sorted(tests_defined(disabled_tests) - tests_defined(_FIXTURE_TESTS)), [])
 
         # Drift: two lines inserted above pick(), one more inside other().
         drifted = _FIXTURE_SRC.replace("int pick(int a)", "#include <x>\n\nint pick(int a)").replace(
@@ -1278,7 +1326,7 @@ def self_test() -> int:
         expect("R2: a note-only test entry is red", _run(["--repo", root]),
                (1, "missing test: src/gameplay/fearless.cpp: row fearless.cpp:6: a test entry names "
                 "neither file+test nor parity: {\"note\": \"watched it once\"}\n"
-                + _summary("FAIL", r2="no test 0, missing test 1, missing parity row 0")))
+                + _summary("FAIL", r2="no test 0, missing test 1, disabled test 0, missing parity row 0")))
 
         # Anchoring: twin anchors.  Rows on two identical `if (k)` lines, and
         # a third row after a non-branch line that quotes the same text.
@@ -1451,7 +1499,7 @@ def self_test() -> int:
                (1, "".join(f"missing test: src/gameplay/fearless.cpp: row fearless.cpp:4: "
                            f"tests/unit/test_fearless.cpp has no TEST Fearless.{n}\n"
                            for n in ("commented_out", "blocked_out", "compiled_out"))
-                + _summary("FAIL", r2="no test 0, missing test 3, missing parity row 0")))
+                + _summary("FAIL", r2="no test 0, missing test 3, disabled test 0, missing parity row 0")))
         expect("strip_comments: #if 0 nests and ends at its #else",
                strip_comments("a\n#if 0\n#ifdef X\nb\n#endif\nc\n#else\nd\n#endif\ne").split("\n"),
                ["a", "", "", "", "", "", "", "d", "#endif", "e"])

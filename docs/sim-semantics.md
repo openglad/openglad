@@ -17,7 +17,9 @@ and of every class-pack Lua file under `packs/`.
 ## The rule
 
 1. Every branch line in an in-scope file belongs to exactly one row.
-2. A **rule** row cites at least one test, and every test it cites exists.
+2. A **rule** row cites at least one test, and every test it cites exists
+   and is not disabled. A row deferred with an issue number may cite none:
+   the issue is its pointer.
 3. A rule row's status is `asserted`: every arm's outcome is checked by an
    `EXPECT_*` / `ASSERT_*` on the outcome itself, or by a parity fact that
    reads it. Reaching the line is not asserting it. A row may instead be
@@ -90,7 +92,11 @@ line order. A rule row:
   that depends on a setting is asserted under each value.
 - `status` is `asserted`, `partial` (some arms are), `executed-only` (tests
   reach the line and assert none of its arms), `none` (nothing reaches it)
-  or `deferred` (with `"issue": 451`).
+  or `deferred` (with `"issue": 451`). A deferred row needs its issue; with
+  one it may cite no test, which is how a classic-path row whose current
+  game differs from the old game is recorded: no test pins the difference,
+  the issue tracks it. A deferred row without an issue is red twice, as
+  `no test` (when it cites none) and as `deferred without issue`.
 - `tests` cite a GoogleTest as `{"file", "test": "Suite.name"}` or a parity
   row as `{"parity": "<row id>", "fact": "..."}`; either may carry a `note`
   saying which arm it asserts. A row-level `note` list holds remarks that
@@ -156,7 +162,7 @@ row missing a field). The output ends with the counts:
 ```
 check_manifest: FAIL: 159 files, 4678 candidate lines, 1504 rule rows, 448 other rows
   R1 uncovered 0, double-claimed 0, stale line 0, missing kinds 0, drift 0, ...
-  R2 no test 0, missing test 0, missing parity row 0
+  R2 no test 0, missing test 0, disabled test 0, missing parity row 0
   R3 not asserted 3 (partial 1, executed-only 2, none 0), deferred 2 (without issue 0)
 ```
 
@@ -223,8 +229,9 @@ touches the simulation, never changes a status and never adds a row.
 | `missing file` | an in-scope C++ file is gone | a rename: update `SCOPE_CPP` and the manifest's `path` |
 | `stray manifest` | a manifest file describes a file outside the scope | delete it, or move its rows to the file's new name |
 | `duplicate manifest` | two manifest files describe one source file | merge them |
-| `no test` | a rule row cites no test | cite the test that asserts it, or write one |
+| `no test` | a rule row cites no test, and is not deferred with an issue | cite the test that asserts it, or write one |
 | `missing test` | the cited file has no `TEST`, `TEST_F` or `TEST_P` of that name outside comments and `#if 0` (a test stamped out by a file-local macro counts) | the test was renamed or removed: cite the current name |
+| `disabled test` | the cited test's suite or name starts with `DISABLED_`, so gtest never runs it (a disabled test never satisfies a citation) | enable the test, or cite one that runs |
 | `missing parity row` | the cited parity row is not in `tests/parity/scenario_table.h` | cite the row id as the table spells it |
 | `not asserted` | the rule's status is `partial`, `executed-only` or `none` | write the tests for the missing arms, then set `asserted` |
 | `deferred without issue` | `deferred` needs an `issue` | file the issue and add its number |

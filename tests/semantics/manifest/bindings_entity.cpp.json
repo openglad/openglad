@@ -190,16 +190,12 @@
       "tests": [
         {
           "parity": "shield_projectile_absorb_scen99",
-          "fact": ""
+          "fact": "WeaponFamilyCount(FAMILY_ARROW,1,1)"
         },
         {
           "parity": "boomerang_projectile_absorb_scen99",
-          "fact": ""
-        },
-        {
-          "parity": "kMut_guard_projectile_absorb_scen99",
-          "fact": "",
-          "note": "and  fact WeaponFamilyCount(FAMILY_ARROW 1 1) ('weap': effect_shield.lua:27 find_foe_weapons_in_range(\"weap\") finds and destroys the hostile arrow in range); canary  ('weap'->'ob') flips it to 2  pinning that 'ob' never sees an in-flight arrow"
+          "fact": "WeaponFamilyCount(FAMILY_ARROW,1,1)",
+          "note": "'weap' arm: effect_shield.lua:27 find_foe_weapons_in_range(\"weap\") finds and destroys the hostile arrow in range; the guard_projectile_absorb canary that rewrites line 27 to 'ob' flips the count to 2 and so pins that 'ob' never sees an in-flight arrow"
         },
         {
           "parity": "effect_shield_absorb_scen99",

@@ -6083,18 +6083,16 @@
       "note": "clears the caller's decline-reason buffer before dispatch"
     },
     {
-      "id": "world_scripts.cpp:2528",
+      "id": "world_scripts.cpp:2536",
       "lines": [
-        2528,
         2536
       ],
       "kinds": [
-        "if",
         "ternary"
       ],
       "kind": "defensive",
-      "anchor": "if (self == nullptr || pack_lua_absent())",
-      "note": "self==nullptr half of 2528 (null entity guard) and the 2536 current_game/world null ternary; the pack_lua_absent() half of 2528 is rule row world_scripts.cpp:2448"
+      "anchor": "(current_game != nullptr) ? current_game->world : nullptr;",
+      "note": "the 2536 current_game/world null ternary. Line 2528 (`self == nullptr || pack_lua_absent()`) belongs to rule row world_scripts.cpp:2448: its pack_lua_absent() half is that rule applied to deaths, and its self==nullptr half is the null entity guard on the same line."
     },
     {
       "id": "world_scripts.cpp:2586",
