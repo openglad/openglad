@@ -941,7 +941,7 @@ TEST(SemWorld, shrinking_the_floor_count_drops_the_upper_floors)
 
 // game_world.cpp:1146 (spiral order). The quick search answers the first foe
 // in spiral order, not the nearest: from (320,320) the spiral reaches the
-// pile at (352,352) on its second probe, before (288,320) on its fourth.
+// pile at (352,352) on its second probe, before (288,320) on its fifth.
 TEST(SemWorld, the_quick_foe_search_answers_the_first_foe_in_spiral_order)
 {
     TestGameWorld tw;
@@ -995,7 +995,7 @@ TEST(SemWorld, the_quick_foe_search_without_an_obmap_answers_the_nearest)
 namespace {
 
 // The quick-search candidate stage: searcher at (320,320), a hostile orc Z
-// at (288,320) (spiral probe 4), and the candidate in the first probe's pile
+// at (288,320) (spiral probe 5), and the candidate in the first probe's pile
 // (352,320).
 struct NearFoeStage
 {
