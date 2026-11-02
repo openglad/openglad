@@ -818,3 +818,180 @@ TEST_F(SemBarbarian, a_boulder_is_made_only_from_a_hammer_that_flew)
     EXPECT_EQ(std::string("COULD NOT FIRE"), reason) << "no-shot arm";
     EXPECT_EQ(0u, any(Order::Weapon, FAMILY_BOULDER).size()) << "no-shot arm: no boulder";
 }
+
+namespace {
+
+// One HURL BOULDER's results: the boulder (nullptr when none) and the
+// hammer it rode on (spent, still in the weapon list until the tick).
+struct Throw
+{
+    walker* boulder = nullptr;
+    walker* hammer = nullptr;
+};
+
+}  // namespace
+
+class SemBoulder : public SemBarbarian
+{
+protected:
+    // The boulder weapon's own damage, read off a freshly made one.
+    float boulder_base_damage()
+    {
+        fresh_world();
+        walker* b = world().add_ob(Order::Weapon, FAMILY_BOULDER);
+        return b != nullptr ? b->damage() : -1.0f;
+    }
+
+    // One HURL BOULDER from a fresh world: the barbarian at (160, 160)
+    // facing `dir`, of `level`, a hero of `strength` when strength > 0.
+    Throw hurl(int level, short strength, float lx, float ly, int dir)
+    {
+        fresh_world();
+        Throw t;
+        living* barb = body(add(FAMILY_BARBARIAN, 0, 160, 160, level, 500.0f), 16, 16);
+        if (barb == nullptr)
+            return t;
+        barb->set_user(0);
+        barb->set_act_type(ACT_CONTROL);
+        if (strength > 0)
+        {
+            make_hero(barb, FAMILY_BARBARIAN);
+            barb->myguy->strength = strength;
+        }
+        face(barb, lx, ly, dir);
+        std::string reason;
+        if (!cast(barb, 1, 0, &reason))
+        {
+            ADD_FAILURE() << "the throw refused: " << reason;
+            return t;
+        }
+        const std::vector<walker*> boulders = live(Order::Weapon, FAMILY_BOULDER);
+        const std::vector<walker*> hammers = any(Order::Weapon, FAMILY_HAMMER);
+        if (boulders.size() == 1)
+            t.boulder = boulders[0];
+        if (hammers.size() == 1)
+            t.hammer = hammers[0];
+        return t;
+    }
+};
+
+// living-16-barbarian.lua:35-43. A hero's boulder rolls at 1 + strength / 7
+// px a step and hits for strength / 5 extra (strength 21: 4 px, +4.2); a
+// monster's rolls at 2 px per level and hits for its level extra (level 3:
+// 6 px, +3). As the old game's walker::special.
+TEST_F(SemBoulder, a_heros_boulder_goes_by_strength_and_a_monsters_by_level)
+{
+    const float base = boulder_base_damage();
+    ASSERT_GE(base, 0.0f) << "a boulder can be made";
+    const Throw hero = hurl(1, 21, 1.0f, 0.0f, FACE_RIGHT);
+    ASSERT_NE(nullptr, hero.boulder);
+    EXPECT_FLOAT_EQ(4.0f, hero.boulder->stepsize()) << "hero arm: 1 + 21 / 7";
+    EXPECT_FLOAT_EQ(base + 21.0f / 5.0f, hero.boulder->damage()) << "hero arm: + strength / 5";
+    const Throw monster = hurl(3, 0, 1.0f, 0.0f, FACE_RIGHT);
+    ASSERT_NE(nullptr, monster.boulder);
+    EXPECT_FLOAT_EQ(6.0f, monster.boulder->stepsize()) << "monster arm: 2 x level 3";
+    EXPECT_FLOAT_EQ(base + 3.0f, monster.boulder->damage()) << "monster arm: + level";
+}
+
+// living-16-barbarian.lua:48-51. A boulder's speed is held to 1 .. 15: a
+// level-10 monster's 20 is cut to 15; a level-3 monster's 6 stands. The
+// heading's x is rebuilt from the held speed.
+TEST_F(SemBoulder, a_boulders_speed_is_held_to_fifteen)
+{
+    const Throw fast = hurl(10, 0, 1.0f, 0.0f, FACE_RIGHT);
+    ASSERT_NE(nullptr, fast.boulder);
+    EXPECT_FLOAT_EQ(15.0f, fast.boulder->stepsize()) << "computed > 15 arm: 20 held to 15";
+    EXPECT_FLOAT_EQ(15.0f, fast.boulder->lastx()) << "computed > 15 arm: x from the held speed";
+    const Throw mid = hurl(3, 0, 1.0f, 0.0f, FACE_RIGHT);
+    ASSERT_NE(nullptr, mid.boulder);
+    EXPECT_FLOAT_EQ(6.0f, mid.boulder->stepsize()) << "in-range arm: 6 stands";
+    EXPECT_FLOAT_EQ(6.0f, mid.boulder->lastx()) << "in-range arm: x from it";
+}
+
+// living-16-barbarian.lua:54-61. The boulder leaves along the hammer's
+// heading at its own speed: a positive component becomes +stepsize, a
+// negative one -stepsize, a zero one stays zero. A level-2 monster (4 px).
+// The hammer's waver is the sim stream's draw: answered so the waver is 0
+// (the cross component of a cardinal throw is then 0) or its most negative.
+TEST_F(SemBoulder, a_boulder_keeps_the_sign_of_each_heading_component)
+{
+    // The waver is rand(w + 1) - w / 2 with w = hammer stepsize / 2.
+    const Throw probe = hurl(2, 0, -1.0f, 0.0f, FACE_LEFT);
+    ASSERT_NE(nullptr, probe.hammer);
+    const auto w = static_cast<std::uint32_t>(probe.hammer->stepsize() / 2.0f);
+    ASSERT_GE(w, 2u) << "precondition: the hammer can waver";
+    {
+        ConstRandom still(w / 2);
+        ScopedSimRandom scope(&still);
+        const Throw left = hurl(2, 0, -1.0f, 0.0f, FACE_LEFT);
+        ASSERT_TRUE(left.boulder && left.hammer);
+        ASSERT_FLOAT_EQ(0.0f, left.hammer->lasty()) << "precondition: no waver";
+        EXPECT_FLOAT_EQ(-4.0f, left.boulder->lastx()) << "component < 0 arm";
+        EXPECT_FLOAT_EQ(0.0f, left.boulder->lasty()) << "component 0 arm";
+        const Throw up_left = hurl(2, 0, -1.0f, -1.0f, FACE_UP_LEFT);
+        ASSERT_NE(nullptr, up_left.boulder);
+        EXPECT_FLOAT_EQ(-4.0f, up_left.boulder->lastx()) << "component < 0 arm (x)";
+        EXPECT_FLOAT_EQ(-4.0f, up_left.boulder->lasty()) << "component < 0 arm (y)";
+    }
+    {
+        ConstRandom low(0);
+        ScopedSimRandom scope(&low);
+        const Throw right = hurl(2, 0, 1.0f, 0.0f, FACE_RIGHT);
+        ASSERT_TRUE(right.boulder && right.hammer);
+        ASSERT_LT(right.hammer->lasty(), 0.0f) << "precondition: the waver leans up";
+        EXPECT_FLOAT_EQ(4.0f, right.boulder->lastx()) << "component > 0 arm";
+        EXPECT_FLOAT_EQ(-4.0f, right.boulder->lasty()) << "component < 0 arm: a small lean is a full step";
+    }
+}
+
+// living-16-barbarian.lua:79-81. With the setting on the HURL BOULDER gate
+// measures the flight with the throw's own speed, clamped 1 .. 15, times 8
+// steps: a hero of strength 14 reaches exactly 24 px, a monster of level 8
+// (16 held to 15) and of level 10 (20 held to 15) exactly 120.
+TEST_F(SemBarbarian, the_boulder_gate_measures_the_flight_with_the_throws_own_speed)
+{
+    // The tower is 25 x 29 above a 16 x 16 barbarian at (200, 200): a gap
+    // of g px puts it at y = 200 - 29 - g.
+    auto gap_at = [](int g) { return 171 - g; };
+    living* barb = body(add(FAMILY_BARBARIAN, 1, 200, 200, 1, 100.0f), 16, 16);
+    living* foe = body(add(FAMILY_TOWER1, 2, 195, gap_at(24), 1), 25, 29);
+    ASSERT_TRUE(barb && foe);
+    face(barb, 0.0f, -1.0f, FACE_UP);
+    make_hero(barb, FAMILY_BARBARIAN);
+    barb->myguy->strength = 14;
+    EXPECT_TRUE(gate(barb, 1, 1)) << "hero strength 14 arm: a 24 px gap is inside";
+    foe->setxy(195, gap_at(25));
+    EXPECT_FALSE(gate(barb, 1, 1)) << "hero strength 14 arm: 25 px is past it";
+
+    barb->clear_myguy();
+    for (const int level : {8, 10})
+    {
+        barb->stats()->set_level(static_cast<short>(level));
+        foe->setxy(195, gap_at(120));
+        EXPECT_TRUE(gate(barb, 1, 1)) << "monster level " << level << " arm: 120 px is inside";
+        foe->setxy(195, gap_at(121));
+        EXPECT_FALSE(gate(barb, 1, 1)) << "monster level " << level << " arm: 121 px is past it";
+    }
+}
+
+// living-16-barbarian.lua:117-119. With the setting on EXPLODING BOULDER
+// without a boulder target refuses, whatever cluster there is: a level-4
+// barbarian (64 px of flight) facing UP with a two-tower cluster behind it,
+// or ahead past its flight. The classic gate says yes to both.
+TEST_F(SemBarbarian, an_exploding_boulder_gate_with_no_boulder_target_refuses)
+{
+    living* barb = body(add(FAMILY_BARBARIAN, 1, 200, 200, 4, 200.0f), 16, 16);
+    living* a = body(add(FAMILY_TOWER1, 2, 195, 256, 1), 25, 29);  // 40 px below
+    living* b = body(add(FAMILY_TOWER1, 2, 215, 256, 1), 25, 29);
+    ASSERT_TRUE(barb && a && b);
+    face(barb, 0.0f, -1.0f, FACE_UP);
+    EXPECT_TRUE(gate(barb, 2, 0)) << "the classic answer";
+    EXPECT_FALSE(gate(barb, 2, 1)) << "slot 2, no target arm: the cluster is behind";
+    a->setxy(195, 101);  // 70 px above: past the 64 px flight
+    b->setxy(215, 101);
+    EXPECT_TRUE(gate(barb, 2, 0)) << "the classic answer";
+    EXPECT_FALSE(gate(barb, 2, 1)) << "slot 2, no target arm: the cluster is past the flight";
+    a->setxy(195, 131);  // 40 px above: inside it
+    b->setxy(215, 131);
+    EXPECT_TRUE(gate(barb, 2, 1)) << "control: the same cluster inside the flight";
+}
