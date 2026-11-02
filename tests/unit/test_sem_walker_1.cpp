@@ -1230,3 +1230,329 @@ TEST_F(SemWalker1, the_networked_teammate_marker_skips_bots_and_enemies)
     mate->compute_outline(viewer, true);
     EXPECT_EQ(mate->query_team_color(), mate->outline()) << "control: a human teammate is marked";
 }
+
+// ---------------------------------------------------------------------------
+// walker.cpp:853 walker::act (live links kept)
+// ---------------------------------------------------------------------------
+
+// A walker keeps a foe, leader and owner that are alive at the start of its
+// tick, and forgets only the one that died.
+// RED (planted): walker::act's three guards reduced to `if (foe())` etc.
+TEST_F(SemWalker1, a_walker_keeps_its_living_foe_leader_and_owner)
+{
+    walker* gen = plain_at(Order::Generator, FAMILY_TENT, 1, 96, 96);
+    walker* foe = plain_at(Order::Living, FAMILY_ORC, 0, 200, 96);
+    walker* leader = plain_at(Order::Living, FAMILY_ORC, 1, 300, 96);
+    walker* owner = plain_at(Order::Living, FAMILY_ORC, 1, 400, 96);
+    gen->set_act_type(ACT_CONTROL);
+    gen->set_foe(foe);
+    gen->set_leader(leader);
+    gen->set_owner(owner);
+    ASSERT_TRUE(gen->act());
+    EXPECT_EQ(foe, gen->foe()) << "alive: the foe is kept";
+    EXPECT_EQ(leader, gen->leader()) << "alive: the leader is kept";
+    EXPECT_EQ(owner, gen->owner()) << "alive: the owner is kept";
+
+    leader->set_dead(1);
+    ASSERT_TRUE(gen->act());
+    EXPECT_EQ(nullptr, gen->leader()) << "dead: the leader is forgotten";
+    EXPECT_EQ(foe, gen->foe()) << "the live foe beside it is kept";
+    EXPECT_EQ(owner, gen->owner()) << "the live owner beside it is kept";
+}
+
+// ---------------------------------------------------------------------------
+// walker.cpp:863 walker::act (an animation owns the tick)
+// ---------------------------------------------------------------------------
+
+// While a walker plays a non-walk animation the tick only advances it: the
+// freeze timer, the fire delay and the order queue stay as they are. Back on
+// the walk row the tick reaches the freeze check (one freeze tick burned).
+// RED (planted): `if (ani_type() != ANI_WALK)` -> `if (false)`; and, apart,
+// -> `if (ani_type() == ANI_WALK)`.
+TEST_F(SemWalker1, an_animating_walker_only_advances_its_animation)
+{
+    walker* gen = plain_at(Order::Generator, FAMILY_TENT, 1, 96, 96);
+    gen->set_act_type(ACT_CONTROL);
+    gen->set_ani_type(ANI_ATTACK);
+    gen->set_cycle(0);
+    gen->set_busy(5.0f);
+    gen->stats()->set_frozen_delay(3);
+    gen->stats()->add_command(COMMAND_WALK, 4, 1, 0);
+    EXPECT_TRUE(gen->act());
+    EXPECT_EQ(1, static_cast<int>(gen->cycle())) << "animating: the row advanced";
+    EXPECT_EQ(3, gen->stats()->frozen_delay()) << "animating: no freeze tick";
+    EXPECT_FLOAT_EQ(5.0f, gen->busy()) << "animating: no busy drain";
+    EXPECT_EQ(1u, gen->stats()->commands.size()) << "animating: the order waits";
+    EXPECT_EQ(4, gen->stats()->commands.front().commandcount);
+
+    gen->set_ani_type(ANI_WALK);
+    gen->set_cycle(0);
+    gen->stats()->set_frozen_delay(3);
+    EXPECT_TRUE(gen->act());
+    EXPECT_EQ(2, gen->stats()->frozen_delay()) << "walking: the freeze check runs";
+    EXPECT_EQ(0, static_cast<int>(gen->cycle())) << "walking: no animation step";
+    EXPECT_FLOAT_EQ(5.0f, gen->busy()) << "walking, frozen: no busy drain yet";
+    EXPECT_EQ(4, gen->stats()->commands.front().commandcount);
+}
+
+// ---------------------------------------------------------------------------
+// walker.cpp:873 walker::act (the fire delay drains, unclamped)
+// ---------------------------------------------------------------------------
+
+// The fire delay drains by one per free tick only while it is above zero: a
+// zero stays zero, and a fractional negative is left exactly as it is (no
+// clamp; every gate tests busy > 0, so it acts as zero). The old game drains
+// its float busy the same way.
+// RED (planted): `if (busy() > 0.0f)` -> `if (busy() > -1.0f)`.
+TEST_F(SemWalker1, classic_the_fire_delay_drains_only_while_positive_and_is_not_clamped)
+{
+    walker* gen = plain_at(Order::Generator, FAMILY_TENT, 1, 96, 96);
+    gen->set_act_type(ACT_CONTROL);
+    gen->set_busy(3.0f);
+    EXPECT_TRUE(gen->act());
+    EXPECT_FLOAT_EQ(2.0f, gen->busy()) << "positive: one per tick";
+    gen->set_busy(0.0f);
+    EXPECT_TRUE(gen->act());
+    EXPECT_FLOAT_EQ(0.0f, gen->busy()) << "zero stays zero";
+    gen->set_busy(-0.5f);
+    EXPECT_TRUE(gen->act());
+    EXPECT_FLOAT_EQ(-0.5f, gen->busy()) << "a negative is neither drained nor clamped";
+}
+
+// ---------------------------------------------------------------------------
+// walker.cpp:888 walker::act (an order that runs takes the tick)
+// ---------------------------------------------------------------------------
+
+// A queued order runs before the walker's own behaviour, and when it took the
+// tick nothing else happens: the lunge and recoil do not decay and the act
+// type does not run (an ACT_DIE walker stays alive). With no order the tick
+// goes on to both (the control).
+// RED (planted): `if (temp) return 1;` -> `if (temp && false)`.
+TEST_F(SemWalker1, an_order_that_runs_takes_the_whole_tick)
+{
+    walker* gen = plain_at(Order::Generator, FAMILY_TENT, 1, 96, 96);
+    gen->set_act_type(ACT_DIE);
+    gen->set_attack_lunge(1.0f);
+    gen->set_hit_recoil(1.0f);
+    gen->stats()->force_command(COMMAND_WALK, 2, 1, 0);
+    EXPECT_TRUE(gen->act());
+    EXPECT_FLOAT_EQ(1.0f, gen->attack_lunge()) << "order ran: no lunge decay";
+    EXPECT_FLOAT_EQ(1.0f, gen->hit_recoil()) << "order ran: no recoil decay";
+    EXPECT_EQ(0, gen->dead()) << "order ran: the act type did not run";
+
+    gen->stats()->clear_command();
+    EXPECT_TRUE(gen->act());
+    EXPECT_FLOAT_EQ(0.6f, gen->attack_lunge()) << "no order: the lunge decays";
+    EXPECT_FLOAT_EQ(0.4f, gen->hit_recoil()) << "no order: the recoil decays";
+    EXPECT_EQ(1, gen->dead()) << "no order: ACT_DIE runs";
+}
+
+// ---------------------------------------------------------------------------
+// walker.cpp:911 walker::act (ACT_CONTROL and an unknown act type)
+// ---------------------------------------------------------------------------
+
+// A player-controlled walker does nothing on its own tick: no order, no move,
+// no draw from the stream. An act type the switch does not know does nothing
+// and reports it did nothing.
+// RED (planted): ACT_CONTROL's `return 1;` -> `act_generate(); return 1;`;
+// the default's `return 0;` -> `return 1;`.
+TEST_F(SemWalker1, a_controlled_or_unknown_act_type_does_nothing_on_its_own)
+{
+    walker* gen = plain_at(Order::Generator, FAMILY_TENT, 1, 96, 96);
+    gen->stats()->set_level(50);
+    gen->stats()->set_hitpoints(10.0f);
+    gen->stats()->set_max_hitpoints(20.0f);
+    world().rng_.state_ = 2u;  // an ACT_GENERATE tick here would spawn
+
+    gen->set_act_type(ACT_CONTROL);
+    EXPECT_TRUE(gen->act());
+    EXPECT_EQ(2u, world().rng_.state_) << "ACT_CONTROL: no draw";
+    EXPECT_TRUE(gen->stats()->commands.empty()) << "ACT_CONTROL: no order";
+    EXPECT_EQ(96, gen->xpos());
+    EXPECT_EQ(96, gen->ypos());
+    EXPECT_FLOAT_EQ(10.0f, gen->stats()->hitpoints());
+    EXPECT_EQ(ANI_WALK, static_cast<int>(gen->ani_type()));
+
+    gen->set_act_type(99);
+    EXPECT_FALSE(gen->act()) << "unknown act type: nothing done";
+    EXPECT_EQ(2u, world().rng_.state_) << "unknown: no draw";
+    EXPECT_TRUE(gen->stats()->commands.empty());
+    EXPECT_EQ(96, gen->xpos());
+    EXPECT_EQ(96, gen->ypos());
+    EXPECT_FLOAT_EQ(10.0f, gen->stats()->hitpoints());
+    EXPECT_EQ(0, gen->dead());
+}
+
+// ---------------------------------------------------------------------------
+// walker.cpp:946 walker::act (ACT_RANDOM: the special first)
+// ---------------------------------------------------------------------------
+
+// On the 1-in-80 tick a roaming walker tries its current special first; when
+// it goes off, the price is paid and no wander is queued.
+// RED (planted): `if (!special())` -> `if (!special() || true)`.
+TEST_F(SemWalker1, a_roaming_walker_that_casts_on_its_wander_tick_does_not_wander)
+{
+    register_test_hooks(
+        "og.register_hooks('living', 'core:soldier', {\n"
+        "  do_special = function(self) og.log('special'); return true end,\n"
+        "})\n");
+    walker* w = plain_at(Order::Living, FAMILY_SOLDIER, 1, 96, 96);
+    w->set_act_type(ACT_RANDOM);
+    w->set_current_special(1);
+    w->stats()->set_special_cost(1, 7);
+    w->stats()->set_max_magicpoints(600.0f);
+    w->stats()->set_magicpoints(600.0f);
+    const unsigned short price = og::sim::cast_cost(*w, 1, false);
+    ASSERT_EQ(7, price) << "premise: slot 1 costs what it was stamped";
+    world().rng_.state_ = 189u;  // next(4) == 0, next(20) == 0
+    mark_log();
+    EXPECT_TRUE(w->act());
+    EXPECT_EQ(std::vector<std::string>{"special"}, log_since_mark()) << "the special went off";
+    EXPECT_FLOAT_EQ(593.0f, w->stats()->magicpoints()) << "its price is paid";
+    EXPECT_TRUE(w->stats()->commands.empty()) << "and no wander is queued";
+}
+
+// ---------------------------------------------------------------------------
+// walker.cpp:959 walker::act (ACT_RANDOM: nobody to hunt)
+// ---------------------------------------------------------------------------
+
+// On the other three ticks in four a roaming walker with no foe looks for the
+// nearest one; with nobody on the level it has none and queues nothing.
+// RED (planted): `if (foe())` before the search -> `if (true)`.
+TEST_F(SemWalker1, a_roaming_walker_with_nobody_to_hunt_idles)
+{
+    walker* tower = generator_at(FAMILY_TOWER, 1, 100, 100);
+    ASSERT_NE(nullptr, tower);
+    tower->set_act_type(ACT_RANDOM);
+    tower->set_ani_type(ANI_WALK);
+    tower->stats()->clear_command();
+    world().rng_.state_ = 1u;  // next(4) != 0
+    EXPECT_TRUE(tower->act());
+    EXPECT_EQ(nullptr, tower->foe()) << "no foe on the level";
+    EXPECT_TRUE(tower->stats()->commands.empty()) << "no foe: no search queued";
+}
+
+// ---------------------------------------------------------------------------
+// walker.cpp:1097 walker::animate (teleport refused)
+// ---------------------------------------------------------------------------
+
+// When a teleport-out finishes and the family's teleport handler refuses
+// (no spot), the walker stops where it is and walks.
+// RED (planted): `handle_teleport(fd, this).value_or(false)` -> `.has_value()`.
+TEST_F(SemWalker1, a_refused_teleport_leaves_the_walker_walking_where_it_stood)
+{
+    register_test_hooks(
+        "og.register_hooks('living', 'core:soldier', {\n"
+        "  handle_teleport = function(self) og.log('teleport'); return false end,\n"
+        "})\n");
+    walker* w = plain_at(Order::Living, FAMILY_SOLDIER, 1, 96, 96);
+    w->set_ani_type(ANI_TELE_OUT);
+    w->set_curdir(static_cast<signed char>(FACE_RIGHT));
+    w->set_cycle(5);  // past the end of the row
+    mark_log();
+    EXPECT_FALSE(w->animate());
+    EXPECT_EQ(std::vector<std::string>{"teleport"}, log_since_mark()) << "the handler ran";
+    EXPECT_EQ(ANI_WALK, static_cast<int>(w->ani_type())) << "refused: back to walking";
+    EXPECT_EQ(0, static_cast<int>(w->cycle()));
+    EXPECT_EQ(96, w->xpos()) << "refused: not moved";
+    EXPECT_EQ(96, w->ypos());
+}
+
+// ---------------------------------------------------------------------------
+// walker.cpp:1107 walker::animate (on_ani_complete declines)
+// ---------------------------------------------------------------------------
+
+// A finished animation offered to on_ani_complete that the hook does not
+// claim returns the walker to walking.
+// RED (planted): `on_ani_complete(fd2, this).value_or(false)` -> `.has_value()`.
+TEST_F(SemWalker1, an_animation_the_hook_declines_returns_the_walker_to_walking)
+{
+    register_test_hooks(
+        "og.register_hooks('living', 'core:soldier', {\n"
+        "  on_ani_complete = function(self) og.log('complete'); return false end,\n"
+        "})\n");
+    walker* w = plain_at(Order::Living, FAMILY_SOLDIER, 1, 96, 96);
+    w->set_ani_type(ANI_SLIME_SPLIT);
+    w->set_curdir(static_cast<signed char>(FACE_RIGHT));
+    w->set_cycle(5);
+    mark_log();
+    EXPECT_TRUE(w->animate());
+    EXPECT_EQ(std::vector<std::string>{"complete"}, log_since_mark()) << "the hook was offered it";
+    EXPECT_EQ(ANI_WALK, static_cast<int>(w->ani_type())) << "declined: back to walking";
+    EXPECT_EQ(0, static_cast<int>(w->cycle()));
+    EXPECT_EQ(FAMILY_SOLDIER, w->family());
+}
+
+// ---------------------------------------------------------------------------
+// walker.cpp:1122 walker::set_frame_from_current_walk_animation
+// ---------------------------------------------------------------------------
+
+namespace {
+// Walk rows (0..7) three frames {1, 2, 3}; attack rows (8..15) two {5, 6};
+// row 2 (FACE_RIGHT's walk row) absent in the holed variant.
+signed char** walk_attack_table(bool hole_at_right)
+{
+    static std::array<std::array<signed char, 4>, 64> seqs{};
+    static std::array<signed char*, 64> rows{};
+    for (std::size_t i = 0; i < rows.size(); ++i) {
+        if (i < 8)
+            seqs[i] = {1, 2, 3, -1};
+        else
+            seqs[i] = {5, 6, -1, -1};
+        rows[i] = seqs[i].data();
+    }
+    if (hole_at_right)
+        rows[FACE_RIGHT] = nullptr;
+    return rows.data();
+}
+}  // namespace
+
+// With no table, a facing outside the eight or no walk row for the facing,
+// the helper answers false and leaves cycle and frame alone.
+// RED (planted): `if (!ani) return false;` -> `return true;` (first guard);
+// `dir_index >= NUM_FACINGS` -> `dir_index >= 64`; `if (!seq) return false;`
+// -> `return true;`.
+TEST_F(SemWalker1, the_walk_frame_helper_leaves_a_walker_without_a_walk_row_alone)
+{
+    walker* w = living_at(FAMILY_SOLDIER, 1, 96, 96);
+    ASSERT_NE(nullptr, w);
+    const auto arm = [&](const char* name, signed char** table, signed char curdir) {
+        SCOPED_TRACE(name);
+        w->ani = table;
+        w->set_curdir(curdir);
+        w->set_cycle(1);
+        ASSERT_EQ(1, w->set_frame(4)) << "premise: frame 4 exists";
+        EXPECT_FALSE(w->set_frame_from_current_walk_animation());
+        EXPECT_EQ(1, static_cast<int>(w->cycle())) << "cycle untouched";
+        EXPECT_EQ(4, w->frame()) << "frame untouched";
+    };
+    const auto own = w->ani;
+    arm("no table", nullptr, static_cast<signed char>(FACE_RIGHT));
+    arm("facing out of range", walk_attack_table(false), 9);
+    arm("no walk row", walk_attack_table(true), static_cast<signed char>(FACE_RIGHT));
+    w->ani = own;
+}
+
+// Walking during an attack swing advances and wraps the cycle against the
+// WALK row of the facing, not the attack row: the frame is the walk row's.
+// The old game indexes ani[curdir][cycle] the same way (openglad-master
+// src/walker.cpp:466-468).
+// RED (planted): the helper reading `ani[dir_index + ani_type() * NUM_FACINGS]`.
+TEST_F(SemWalker1, classic_a_walk_step_during_an_attack_uses_the_walk_row)
+{
+    walker* w = living_at(FAMILY_SOLDIER, 1, 96, 96);
+    ASSERT_NE(nullptr, w);
+    const auto own = w->ani;
+    w->ani = walk_attack_table(false);
+    w->set_curdir(static_cast<signed char>(FACE_RIGHT));
+    w->set_ani_type(ANI_ATTACK);
+    w->set_cycle(2);  // past the attack row's two frames, inside the walk row's three
+    EXPECT_TRUE(w->set_frame_from_current_walk_animation());
+    EXPECT_EQ(2, static_cast<int>(w->cycle())) << "inside the walk row: kept";
+    EXPECT_EQ(3, w->frame()) << "the walk row's third frame";
+    w->set_cycle(3);
+    EXPECT_TRUE(w->set_frame_from_current_walk_animation());
+    EXPECT_EQ(0, static_cast<int>(w->cycle())) << "off the walk row's end: wraps";
+    EXPECT_EQ(1, w->frame()) << "the walk row's first frame";
+    w->ani = own;
+}
