@@ -304,7 +304,11 @@ at ordinary campaign levels when ghosts, orcs, or thieves stack casts.
 Any change to §3 should re-run the Westlands, Long Season, and Tower
 calibration suites and their playtest sweeps. A curve change that moves an
 identity knee also requires the same review. Current calibration thresholds
-must not be raised merely because a new run performs better.
+must not be raised merely because a new run performs better. (On
+2026-11-02 the survivor thresholds were deleted from the calibration
+suites: the semantic tests under `tests/unit/test_sem_*.cpp` assert the
+mechanisms, and the measuring modes and the playtest sweeps remain for
+balance work.)
 
 ## 6. Verification
 

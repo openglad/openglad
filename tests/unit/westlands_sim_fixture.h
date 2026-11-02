@@ -9,8 +9,9 @@
  * fixture produce bit-identical simulations for the same level/seed/crew,
  * so CI pins measured here hold for the playtest harness too.
  *
- * Used by test_melee_standoff.cpp (the L2 wedge pin) and
- * test_westlands_calibration.cpp (the F4 curve floors).
+ * Used by test_melee_standoff.cpp (the L2 wedge pin) and the campaign
+ * calibration suites (test_westlands_calibration.cpp and its Long Season,
+ * Imaginations and Tower siblings: the curve-level battle sanity).
  *
  * Copyright (C) 1995-2002  FSGames. Ported by Sean Ford and Yan Shosh
  *
@@ -254,6 +255,72 @@ inline short calibration_setting(const char* name)
 {
     const char* v = std::getenv(name);
     return (v != nullptr && v[0] == '0') ? 0 : 1;
+}
+
+// What a curve battle did: the battle-sanity halves the calibration suites
+// assert, and the survivor count their measurement modes print.
+struct CurveBattle
+{
+    int alive = -1;          // crew members still standing at the end
+    float crew_taken = 0.0f; // hit points the crew lost to the level
+    float crew_dealt = 0.0f; // hit points the crew took off the level
+    int host_alive = 0;      // non-crew livings the level fields at deploy
+};
+
+// Every living that is not on the crew's team: the garrisons and ambush
+// posts the level fields against it (asleep wave spawns included).
+inline int host_count(GameWorld& world)
+{
+    int n = 0;
+    for (const auto& uptr : world.oblist)
+    {
+        const walker* const w = uptr.get();
+        if (w != nullptr && !w->dead() &&
+            w->query_order() == Order::Living && w->team_num() != 0)
+            ++n;
+    }
+    return n;
+}
+
+// Loads `level_id` of the mounted campaign on `seed`, deploys the 8-unit
+// mixed fresh team (4 soldiers, elf, archer, cleric, barbarian, the
+// playtest harness's representative full-lobby roster) at `crew_level` and
+// runs `ticks` ticks. alive stays -1 when the level does not load or the
+// crew does not deploy whole.
+inline CurveBattle mixed_crew_battle(int level_id, int crew_level,
+                                     std::uint32_t seed, int ticks)
+{
+    CurveBattle out;
+    LoadedWestlandsLevel fx(level_id, seed);
+    if (!fx.loaded)
+        return out;
+    GameWorld& world = fx.world();
+    world.new_specials = calibration_setting("OG_CALIBRATION_NEW_SPECIALS");
+    world.gameplay_fixes = calibration_setting("OG_CALIBRATION_GAMEPLAY_FIXES");
+    std::vector<walker*> crew = deploy_crew(
+        fx.level, world, {FAMILY_SOLDIER, FAMILY_SOLDIER, FAMILY_SOLDIER,
+                          FAMILY_SOLDIER, FAMILY_ELF, FAMILY_ARCHER,
+                          FAMILY_CLERIC, FAMILY_BARBARIAN},
+        crew_level);
+    if (crew.size() != 8u)
+        return out;
+    out.host_alive = host_count(world);
+    for (int t = 0; t < ticks; ++t)
+        world.tick();
+    out.alive = 0;
+    for (walker* w : crew)
+    {
+        if (w == nullptr)
+            continue;
+        if (!w->dead())
+            ++out.alive;
+        if (w->myguy != nullptr)
+        {
+            out.crew_taken += w->myguy->scen_damage_taken;
+            out.crew_dealt += w->myguy->scen_damage;
+        }
+    }
+    return out;
 }
 
 } // namespace westlands_fixture
