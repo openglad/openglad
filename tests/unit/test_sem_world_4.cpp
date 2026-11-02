@@ -806,6 +806,9 @@ TEST(SemSimInput, yell_recruits_unled_teammates_and_classic_recruits_the_dead_do
                 corpse && sleeper && ghost && food);
     food->setxy(456, 200);
     food->set_team_num(0);
+    // The loader gives treasure ACT_CONTROL, which the act-type term would
+    // also skip; an act type of its own leaves only the order term.
+    food->set_act_type(ACT_GUARD);
     recruit->set_foe(orc);
     led->set_leader(other_leader);
     led->set_foe(orc);
