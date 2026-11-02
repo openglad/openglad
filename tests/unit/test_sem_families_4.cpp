@@ -766,7 +766,7 @@ TEST_F(SemArchmage, a_busy_archmage_cannot_heartburst_or_chain)
     EXPECT_EQ(0, live_fx(FAMILY_CHAIN));
 }
 
-// :349 burst and monster-chain arms (the hero arm stays on #453). At level 1
+// :349 burst and monster-chain arms (the hero arm is the next test). At level 1
 // HEARTBURST reaches 80 + 2 = 82 px (Manhattan, top-left corners): a foe at
 // 82 px is burst, at 83 px it is "NO FOE IN RANGE" and costs nothing. A
 // monster's CHAIN reaches 200 + 5 + 2 = 207 px: 207 is struck, 208 is not.
@@ -791,6 +791,39 @@ TEST_F(SemArchmage, heartburst_reaches_80_plus_2l_and_a_monsters_chain_200_plus_
         const Cast c = cast(a, 2, k.shift);
         EXPECT_EQ(k.hits, c.ok) << k.what;
         EXPECT_EQ(k.hits ? 1 : 0, live_fx(k.family)) << k.what;
+        if (k.hits) {
+            EXPECT_FLOAT_EQ(1400.0f, a->stats()->magicpoints()) << k.what << ": the 600 pool";
+        } else {
+            EXPECT_EQ("NO FOE IN RANGE", c.reason) << k.what;
+            EXPECT_FLOAT_EQ(2000.0f, a->stats()->magicpoints()) << k.what << ": free";
+        }
+    }
+}
+
+// :349 hero-chain arm. A hero's CHAIN reaches 200 + Int/2 + 2L: level 1,
+// Int 100, so 200 + 50 + 2 = 252 px. A foe at 252 px is struck (one chain,
+// the 600 pool spent); at 253 px the cast is "NO FOE IN RANGE" and free.
+// The level term of a monster's radius (5L) is not in a hero's. The old game
+// (walker.cpp:3348): `generic = 200+myguy->intelligence/2`, scanned at
+// `generic+2*stats->level`. (#453 is the bot gate's radius, not this cast.)
+//
+// RED (`self:g_intelligence() // 2` -> `self:g_intelligence() // 2 + 1` at
+// :352): Expected equality of these values: k.hits Which is: false c.ok
+// Which is: true "hero chain at 253 ()".
+TEST_F(SemArchmage, a_heros_chain_reaches_200_plus_half_its_intelligence_plus_2l)
+{
+    struct Case { short dx; bool hits; const char* what; };
+    for (const Case k : {Case{252, true, "hero chain at 252"},
+                         Case{253, false, "hero chain at 253"}}) {
+        fresh_world();
+        living* a = arch(1, 200, 200, 1, 2000.0f);
+        ASSERT_NE(nullptr, orc(2, static_cast<short>(200 + k.dx), 200));
+        ASSERT_NE(nullptr, a);
+        give_character(a, 100);
+        a->stats()->set_special_cost(2, 0);
+        const Cast c = cast(a, 2, 1);
+        EXPECT_EQ(k.hits, c.ok) << k.what << " (" << c.reason << ")";
+        EXPECT_EQ(k.hits ? 1 : 0, live_fx(FAMILY_CHAIN)) << k.what;
         if (k.hits) {
             EXPECT_FLOAT_EQ(1400.0f, a->stats()->magicpoints()) << k.what << ": the 600 pool";
         } else {
