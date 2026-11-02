@@ -23,6 +23,8 @@
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/obmap.h>
+#include <openglad/gameplay/script/pack_scripts.h>
+#include <openglad/gameplay/script/script_host.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
 
@@ -503,7 +505,8 @@ TEST_F(SemWalker2, a_planned_approach_creeps_one_pixel_to_the_shoreline)
 
 // walker.cpp:1386 create_weapon. A living's shot is an Order::Weapon of its
 // current_weapon family; the shooter's heading picks the profile: cardinal
-// headings get the circular scaling (stepsize x 362/256), diagonals do not.
+// headings get the circular scaling (stepsize x 362/256, line of sight x
+// 309/256 in integer math, as the old game's create_weapon), diagonals do not.
 TEST_F(SemWalker2, a_living_shoots_its_current_weapon_scaled_by_its_heading)
 {
     walker* archer = living_at(FAMILY_ARCHER, 2, 160, 160);
@@ -533,8 +536,8 @@ TEST_F(SemWalker2, a_living_shoots_its_current_weapon_scaled_by_its_heading)
 
     EXPECT_FLOAT_EQ(diag->stepsize() * 362.0f / 256.0f, east->stepsize())
         << "heading: a cardinal heading scales the stepsize by 362/256";
-    EXPECT_LT(diag->lineofsight(), east->lineofsight())
-        << "heading: and stretches the line of sight";
+    EXPECT_EQ(diag->lineofsight() * 309 / 256, east->lineofsight())
+        << "heading: and stretches the line of sight by 309/256 (integer)";
     east->set_dead(1);
     diag->set_dead(1);
     knife->set_dead(1);
@@ -1216,6 +1219,47 @@ TEST_F(SemWalker2, a_named_team_0_death_off_a_save_all_level_is_an_ordinary_deat
         << "non-SAVE_ALL level: never EndGame";
     EXPECT_EQ(before + 1, count_live(world().fxlist, Order::Treasure, FAMILY_STAIN))
         << "non-SAVE_ALL level: the ordinary corpse";
+}
+
+// walker.cpp:1950-1963, the hook half. The mission-losing death returns
+// before the level's on_entity_death runs; an ordinary death on the same
+// SAVE_ALL level reaches it.
+TEST_F(SemWalker2, a_mission_losing_death_skips_the_level_death_hook_and_any_other_runs_it)
+{
+    constexpr std::int32_t kLevel = 4242;
+    og::script::register_pack_script(
+        {"test.sem.level", "sem_level.lua",
+         "og.register_level_hooks(4242, {\n"
+         "  on_entity_death = function(ent) og.log('level death', og.entity_id(ent)) end,\n"
+         "})\n"});
+    fresh_world();
+    world().id = kLevel;
+    world().type = SCEN_TYPE_SAVE_ALL;
+    world().tick();  // the on_load transition arms the level hooks
+    auto deaths = [this](std::uint32_t id) {
+        const std::string line = "level death\t" + std::to_string(id);
+        const auto& log = world().scripts().host().log();
+        return static_cast<int>(std::count(log.begin(), log.end(), line));
+    };
+
+    walker* hero = living_at(FAMILY_SOLDIER, 0, 160, 160);
+    walker* grunt = living_at(FAMILY_SOLDIER, 0, 400, 400);
+    ASSERT_TRUE(hero && grunt);
+    hero->stats()->name = "Ranger-King";
+    grunt->stats()->name = "";
+    const std::uint32_t hero_id = hero->entity_id();
+    const std::uint32_t grunt_id = grunt->entity_id();
+
+    grunt->set_dead(1);
+    grunt->death();
+    EXPECT_EQ(1, deaths(grunt_id)) << "ordinary death on a SAVE_ALL level: level_entity_death runs";
+
+    hero->set_dead(1);
+    hero->death();
+    ASSERT_EQ(1, count_events(og::sim::EventKind::EndGame,
+                              static_cast<std::uint32_t>(SCEN_TYPE_SAVE_ALL)))
+        << "protected death: the mission fails";
+    EXPECT_EQ(0, deaths(hero_id)) << "protected death: level_entity_death not called";
 }
 
 // ---------------------------------------------------------------------------
