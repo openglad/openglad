@@ -32,6 +32,7 @@
 #include <openglad/core/sound_ids.h>
 #include <openglad/gameplay/effect.h>
 #include <openglad/gameplay/event.h>
+#include <openglad/gameplay/families/family_descriptor.h>
 #include <openglad/gameplay/families/family_registries.h>
 #include <openglad/gameplay/families/specials_view.h>
 #include <openglad/gameplay/game_world.h>
@@ -1045,12 +1046,40 @@ TEST_F(SemWalker1, classic_a_launch_sounds_by_its_weapon_family_number_spawns_in
             << "generator spawn: the weapon slot of the spawn's number";
     }
 
-    // The null-descriptor fwip is not reachable with the core pack: every
-    // living family number that exists also names a weapon slot.
-    for (int f = 0; f < 256; ++f) {
+    // The core pack never reaches the null-descriptor fwip (every living
+    // family number names a weapon slot); a pack living family at a free
+    // slot does. A soldier's descriptor copied to a mod slot no weapon
+    // family holds, and a tower set to spawn it: the spawn sounds
+    // FWIP. The pack-store guard drops the slot again.
+    for (int f = 0; f < NUM_FAMILIES; ++f) {
         if (get_family_descriptor(f) != nullptr) {
             EXPECT_NE(nullptr, get_weapon_family_descriptor(f)) << "living family " << f;
         }
+    }
+    {
+        SCOPED_TRACE("pack living at a free slot: no weapon descriptor");
+        // The first mod living slot no weapon family holds (the core weapon
+        // span runs past the living one); below 128, as create_weapon
+        // narrows the number through a char.
+        int kModLiving = -1;
+        for (int f = NUM_FAMILIES; f < 128 && kModLiving < 0; ++f)
+            if (get_family_descriptor(f) == nullptr && get_weapon_family_descriptor(f) == nullptr)
+                kModLiving = f;
+        ASSERT_LE(NUM_FAMILIES, kModLiving) << "a free living slot with no weapon";
+        FamilyDescriptor mod = *get_family_descriptor(FAMILY_SOLDIER);
+        mod.family_id = kModLiving;
+        ASSERT_TRUE(set_family_descriptor(kModLiving, mod));
+        fresh_world();
+        walker* g = generator_at(FAMILY_TOWER, 1, 320, 320);
+        ASSERT_NE(nullptr, g);
+        g->set_default_weapon(static_cast<unsigned short>(kModLiving));
+        face(g, FACE_RIGHT, 1.0f, 0.0f);
+        walker* spawn = g->fire();
+        ASSERT_NE(nullptr, spawn);
+        EXPECT_EQ(kModLiving, static_cast<int>(spawn->family())) << "the pack family spawned";
+        EXPECT_EQ(std::vector<std::uint32_t>{SOUND_FWIP}, sounds())
+            << "no weapon descriptor at the spawn's number: FWIP";
+        reset_family_registry_mod_slots();
     }
 }
 
