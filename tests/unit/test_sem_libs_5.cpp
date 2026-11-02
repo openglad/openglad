@@ -37,6 +37,7 @@
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/lobby_state.h>
 #include <openglad/gameplay/mode/mode_state.h>
+#include <openglad/gameplay/script/script_host.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/weap.h>
@@ -471,4 +472,616 @@ TEST(SemLibsRock, a_rock_bouncing_off_both_axes_moves_to_the_corner_cell_and_liv
 }
 
 // ======================================================== lineup_stage.lua
-// (the lineup rules follow)
+
+namespace {
+
+constexpr std::int32_t kBotMarkBit = 65536;  // lineup.lua BOT_MARK_BIT
+
+loader& lineup_loader()
+{
+    static loader instance{EntityFactory{}};
+    return instance;
+}
+
+// A mode-less world wired to the real loader (test_staged_rules.cpp's
+// ClassicWorld): GameWorld::tick's classic branch runs the shipped lineup
+// stage at tick 1, and run_lineup_stage_step() runs the same step by itself.
+struct LineupWorld : TestGameWorld
+{
+    LineupWorld() : TestGameWorld(9800)
+    {
+        loader* gl = &lineup_loader();
+        world().entity_factory = [gl](Order order, std::int32_t family) {
+            return gl->create_walker_owned(order, family);
+        };
+        world().entity_configurator = [gl](walker& entity, Order order,
+                                           std::int32_t family) -> const PixieData* {
+            gl->set_walker(&entity, order, family);
+            return gl->graphics_for(entity.query_order(), entity.family());
+        };
+        world().entity_derived_stats = [gl](walker* entity, Order order,
+                                            std::int32_t family) {
+            if (entity != nullptr)
+                gl->set_derived_stats(entity, order, family);
+        };
+    }
+
+    walker* thing(Order order, int family, int team, int x, int y)
+    {
+        walker* w = world().add_ob(order, family);
+        if (w == nullptr)
+            return nullptr;
+        w->setxy(static_cast<short>(x), static_cast<short>(y));
+        w->set_team_num(static_cast<unsigned char>(team));
+        return w;
+    }
+
+    // A sitting authored living (team 4 = wildlife: hostile to all, in no
+    // team's census).
+    walker* npc(int family, int team, int x, int y)
+    {
+        walker* w = thing(Order::Living, family, team, x, y);
+        if (w == nullptr)
+            return nullptr;
+        w->set_real_team_num(255);
+        w->set_act_type(ACT_SIT);
+        return w;
+    }
+
+    // A deployed roster fighter (carries a guy).
+    walker* hero(int team, int x, int y, int guy_id = 100)
+    {
+        walker* w = npc(FAMILY_SOLDIER, team, x, y);
+        if (w == nullptr)
+            return nullptr;
+        w->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+        w->myguy->id = guy_id;
+        return w;
+    }
+
+    walker* marker(int team, int x, int y)
+    {
+        return thing(Order::Special, FAMILY_RESERVED_TEAM, team, x, y);
+    }
+
+    void fill(int team, std::int16_t code)
+    {
+        world().ctf_requested_fill[static_cast<std::size_t>(team)] = code;
+    }
+
+    void wall(int tx, int ty)
+    {
+        paint_tile(world(), tx, ty, PIX_H_WALL1);
+    }
+};
+
+// The FILL squad on `team` (bot-marked, guy-less live livings), in spawn
+// order: core:soldier, archer, elf, mage, thief (lineup.BOT_SQUAD).
+std::vector<walker*> squad_on(GameWorld& world, int team)
+{
+    std::vector<walker*> out;
+    for (const auto& entry : world.oblist) {
+        walker* w = entry.get();
+        if (w == nullptr || w->dead() || w->query_order() != Order::Living ||
+            w->myguy != nullptr || w->team_num() != static_cast<unsigned char>(team))
+            continue;
+        if ((w->stats()->bit_flags() & kBotMarkBit) != 0)
+            out.push_back(w);
+    }
+    return out;
+}
+
+using Cell = std::pair<int, int>;
+
+Cell cell_of(const walker* w)
+{
+    return {static_cast<int>(w->xpos()), static_cast<int>(w->ypos())};
+}
+
+std::vector<Cell> cells_of(const std::vector<walker*>& ws)
+{
+    std::vector<Cell> out;
+    for (const walker* w : ws)
+        out.push_back(cell_of(w));
+    return out;
+}
+
+// The first member's cell, or (-99,-99) when the squad did not field.
+Cell first_member(GameWorld& world, int team)
+{
+    const auto s = squad_on(world, team);
+    if (s.empty() || s.front()->family() != FAMILY_SOLDIER)
+        return {-99, -99};
+    return cell_of(s.front());
+}
+
+// The applied FILL code banked for `team` in the lineup-facts slot
+// (mode var 4; ones digit is the announce latch, then two digits a team).
+int fact_code(std::int32_t slot_value, int team)
+{
+    std::int64_t facts = static_cast<std::int64_t>(slot_value) / 10;
+    for (int t = 0; t < team; ++t)
+        facts /= 100;
+    return static_cast<int>(facts % 100);
+}
+
+// A scripted sim stream: answers `vals` in order, then `fill` forever, and
+// counts every draw. walker::teleport draws next(grid.w) then next(grid.h),
+// so each pair below is one landing tile.
+class ScriptedDraws : public IRandom
+{
+public:
+    ScriptedDraws(std::vector<std::uint32_t> vals, std::uint32_t fill)
+        : vals_(std::move(vals)), fill_(fill)
+    {
+    }
+    std::uint32_t next(std::uint32_t max_exclusive) override
+    {
+        ++calls;
+        if (max_exclusive == 0)
+            return 0;
+        const std::uint32_t v = idx_ < vals_.size() ? vals_[idx_++] : fill_;
+        if (v >= max_exclusive)
+            ++out_of_range;
+        return v % max_exclusive;
+    }
+    int calls = 0;
+    int out_of_range = 0;
+
+private:
+    std::vector<std::uint32_t> vals_;
+    std::size_t idx_ = 0;
+    std::uint32_t fill_;
+};
+
+std::vector<std::uint32_t> landings(const std::vector<Cell>& tiles)
+{
+    std::vector<std::uint32_t> out;
+    for (const auto& [tx, ty] : tiles) {
+        out.push_back(static_cast<std::uint32_t>(tx));
+        out.push_back(static_cast<std::uint32_t>(ty));
+    }
+    return out;
+}
+
+class SemLineupStage : public ::testing::Test
+{
+protected:
+    og::test::ScopedCampaignMountState mount_restore_;
+
+    void SetUp() override
+    {
+        restore_default_campaigns();
+        restore_default_settings();
+        ASSERT_EQ(CampaignPackageIoError::None,
+                  mount_campaign_package_with_error("gladiator"));
+    }
+};
+
+// The lattice scene the site-less rows share: a roster hero on team 0 at
+// (96,96) (team 0's centroid) and a team-2 start marker at (480,96) (team
+// 2's), team 1 authors nothing. The scan reaches (480+96, 96+96) = (576,192)
+// on a 32 px lattice; the score is the squared distance to the NEARER
+// centroid, maximal (192^2 + 96^2 = 46080) at (288,0) and (288,192) alike,
+// and the row-major first, (288,0), wins.
+void lattice_scene(LineupWorld& fx, bool with_marker = true)
+{
+    fx.hero(0, 96, 96);
+    if (with_marker)
+        fx.marker(2, 480, 96);
+    fx.fill(1, og::sim::kFillStrong);
+}
+
+}  // namespace
+
+// lineup_stage.lua:64. The census skips dead and dormant walkers: three
+// team-1 soldiers whose centroid snaps to (112,96) anchor the squad there
+// when awake, but dormant or dead they are no units, and the squad anchors
+// at the team's start marker (320,480).
+TEST_F(SemLineupStage, the_census_counts_only_live_awake_walkers)
+{
+    for (const char* mode : {"awake", "dormant", "dead"}) {
+        SCOPED_TRACE(mode);
+        LineupWorld fx;
+        fx.marker(1, 320, 480);
+        for (const auto& [x, y] : {Cell{96, 96}, Cell{128, 96}, Cell{112, 128}}) {
+            walker* s = fx.npc(FAMILY_SOLDIER, 1, x, y);
+            ASSERT_NE(nullptr, s);
+            if (std::string(mode) == "dormant") {
+                s->set_spawn_delay(100);  // a delayed spawn, asleep at tick 1
+                s->set_dormant(true);
+            }
+            if (std::string(mode) == "dead")
+                s->set_dead(1);
+        }
+        fx.fill(1, og::sim::kFillStrong);
+        fx.world().tick();
+        const Cell want = std::string(mode) == "awake" ? Cell{112, 96} : Cell{320, 480};
+        EXPECT_EQ(want, first_member(fx.world(), 1))
+            << (std::string(mode) == "awake"
+                    ? "arm: live and not dormant -> counted, anchor at the units' centroid"
+                    : "arm: dead or dormant -> ignored, anchor at the marker");
+        EXPECT_TRUE(fx.world().scripts().host().errors().empty());
+    }
+}
+
+// lineup_stage.lua:69. A team's start marker is its FIRST live marker in
+// list order: markers at (320,480) then (560,800) anchor at (320,480).
+TEST_F(SemLineupStage, the_first_start_marker_of_a_team_anchors_its_squad)
+{
+    LineupWorld fx;
+    fx.marker(1, 320, 480);
+    fx.marker(1, 560, 800);
+    fx.fill(1, og::sim::kFillStrong);
+    fx.world().tick();
+    const auto squad = squad_on(fx.world(), 1);
+    ASSERT_EQ(5u, squad.size());
+    EXPECT_EQ((Cell{320, 480}), cell_of(squad.front()))
+        << "arm: first marker -> the anchor";
+    for (const walker* w : squad)
+        EXPECT_GT(std::abs(w->xpos() - 560) + std::abs(w->ypos() - 800), 48)
+            << "arm: second marker -> ignored (member at " << w->xpos() << ","
+            << w->ypos() << ")";
+    EXPECT_TRUE(fx.world().scripts().host().errors().empty());
+}
+
+// lineup_stage.lua:76. Only livings and generators are troops: a team-1
+// stain (treasure) and a team-1 marker effect standing at (96,96)/(128,96)
+// are not authored units, so the squad anchors at the team's marker, not
+// at their centroid.
+TEST_F(SemLineupStage, items_and_effects_on_a_team_are_not_its_units)
+{
+    LineupWorld fx;
+    fx.marker(1, 320, 480);
+    ASSERT_NE(nullptr, fx.thing(Order::Treasure, FAMILY_STAIN, 1, 96, 96));
+    ASSERT_NE(nullptr, fx.thing(Order::FX, FAMILY_MARKER, 1, 128, 96));
+    fx.fill(1, og::sim::kFillStrong);
+    fx.world().tick();
+    EXPECT_EQ((Cell{320, 480}), first_member(fx.world(), 1))
+        << "arm: weapon/fx/treasure -> not counted";
+    EXPECT_EQ(5u, squad_on(fx.world(), 1).size());
+    EXPECT_TRUE(fx.world().scripts().host().errors().empty());
+}
+
+// lineup_stage.lua:77 and :295. A troop carrying a guy is the team's
+// roster, and a turned wheel on a team with a roster fighter fields nothing
+// and banks nothing (allies are a match-mode rule). The scene gives the
+// squad seam a reason to field on team 0 if the classic gate let it: team
+// 0's level-1 hero is far weaker than team 2's level-9 hero, so the
+// allies' gap is positive. Team 1's marker beside it fields five and
+// banks STRONG (3).
+TEST_F(SemLineupStage, a_team_with_a_deployed_fighter_fields_no_squad)
+{
+    LineupWorld fx;
+    walker* weak = fx.hero(0, 96, 96, 100);
+    walker* strong = fx.hero(2, 480, 96, 101);
+    ASSERT_TRUE(weak && strong);
+    strong->stats()->set_level(9);
+    strong->stats()->set_max_hitpoints(2000.0f);
+    strong->stats()->set_hitpoints(2000.0f);
+    fx.marker(1, 320, 480);
+    fx.fill(0, og::sim::kFillStrong);
+    fx.fill(1, og::sim::kFillStrong);
+    fx.world().tick();
+    EXPECT_EQ(0u, squad_on(fx.world(), 0).size())
+        << "arm: knob set, roster on team -> no squad";
+    EXPECT_EQ(0, fact_code(fx.world().mode.vars[4], 0))
+        << "arm: knob set, roster on team -> no fact banked";
+    EXPECT_EQ(5u, squad_on(fx.world(), 1).size()) << "control: the marker team fields";
+    EXPECT_EQ(3000, fx.world().mode.vars[4]) << "only team 1 banks (STRONG)";
+    EXPECT_TRUE(fx.world().scripts().host().errors().empty());
+}
+
+// lineup_stage.lua:99, :118, :216, :222, :339 on the lattice scene. A team
+// with no units and no marker is site-less; the existing teams' centroids
+// are the roster hero's (bodies) and the team-2 marker's (no bodies); the
+// cell score is the distance to the NEARER of them; the best cell is the
+// row-major first of the tied maxima, (288,0); the first member takes it,
+// and every later member rings around that same anchor: (304,0), (288,16),
+// (272,0), then (320,0) (the north cells are off the map).
+TEST_F(SemLineupStage, a_siteless_squad_anchors_farthest_from_every_team_and_rings_there)
+{
+    LineupWorld fx;
+    lattice_scene(fx);
+    fx.world().tick();
+    const auto squad = squad_on(fx.world(), 1);
+    ASSERT_EQ(5u, squad.size());
+    ASSERT_EQ(FAMILY_SOLDIER, static_cast<int>(squad.front()->family()));
+    EXPECT_EQ((Cell{288, 0}), cell_of(squad.front()))
+        << "arms: neither units nor marker -> farthest region; bodies and marker "
+           "centroids; nearer-centroid score; first of the tied best cells";
+    EXPECT_EQ((std::vector<Cell>{{288, 0}, {304, 0}, {288, 16}, {272, 0}, {320, 0}}),
+              cells_of(squad))
+        << "arm: later members reuse the first member's anchor";
+    EXPECT_TRUE(fx.world().scripts().host().errors().empty());
+}
+
+// lineup_stage.lua:118, the nothing arm (and the marker arm by contrast).
+// Drop the team-2 marker: only the hero's centroid exists (teams 1-3 have
+// nothing and add none), the scan reaches (192,192), and the first of the
+// four equally far corners, (0,0), is the anchor.
+TEST_F(SemLineupStage, a_team_with_nothing_adds_no_centroid)
+{
+    LineupWorld fx;
+    lattice_scene(fx, /*with_marker=*/false);
+    fx.world().tick();
+    EXPECT_EQ((Cell{0, 0}), first_member(fx.world(), 1))
+        << "arm: nothing -> no centroid";
+    EXPECT_TRUE(fx.world().scripts().host().errors().empty());
+}
+
+// lineup_stage.lua:222. The best-scoring cell is skipped when the probing
+// member cannot stand there (a wall on (288,0)) or it is next to a hostile
+// (wildlife at (304,16)); the other best cell, (288,192), wins instead.
+TEST_F(SemLineupStage, a_blocked_or_hostile_adjacent_best_cell_is_passed_over)
+{
+    for (const bool hostile : {false, true}) {
+        SCOPED_TRACE(hostile ? "hostile-adjacent" : "blocked");
+        LineupWorld fx;
+        lattice_scene(fx);
+        if (hostile) {
+            ASSERT_NE(nullptr, fx.npc(FAMILY_SOLDIER, 4, 304, 16));
+        } else {
+            fx.wall(18, 0);
+        }
+        fx.world().tick();
+        EXPECT_EQ((Cell{288, 192}), first_member(fx.world(), 1))
+            << "arm: better score but hostile-adjacent or blocked -> skipped";
+        EXPECT_TRUE(fx.world().scripts().host().errors().empty());
+    }
+}
+
+// lineup_stage.lua:222, the no-admissible-cell arm. Every lattice cell the
+// scan reaches is walled, so the scan answers (-1,-1) and each member takes
+// the bounded safe teleport draw: one scripted landing each, far from the
+// hero, exactly where the draw put it (ten draws, nothing else drawn).
+TEST_F(SemLineupStage, with_no_admissible_cell_the_siteless_squad_teleports)
+{
+    LineupWorld fx;
+    lattice_scene(fx);
+    for (int tx = 0; tx <= 36; tx += 2)
+        for (int ty = 0; ty <= 12; ty += 2)
+            fx.wall(tx, ty);
+    const std::vector<Cell> tiles = {{21, 21}, {23, 21}, {25, 21}, {27, 21}, {29, 21}};
+    ScriptedDraws draws(landings(tiles), 0);
+    {
+        ScopedSimRandom scope(&draws);
+        ASSERT_TRUE(fx.world().run_lineup_stage_step());
+    }
+    EXPECT_EQ((std::vector<Cell>{{336, 336}, {368, 336}, {400, 336}, {432, 336}, {464, 336}}),
+              cells_of(squad_on(fx.world(), 1)))
+        << "arm: no admissible cell -> (-1,-1) -> the safe teleport";
+    EXPECT_EQ(10, draws.calls) << "one landing (two draws) per member";
+    EXPECT_EQ(0, draws.out_of_range);
+    EXPECT_TRUE(fx.world().scripts().host().errors().empty());
+}
+
+// lineup_stage.lua:137. A site-less squad's hostiles are LIVE, AWAKE
+// LIVINGS AND GENERATORS of other teams: a dormant or a dead team-2 soldier,
+// or a team-2 stain, at (16,16) next to the best cell (0,0) does not refuse
+// it; an awake wildlife soldier there does (the anchor moves to (192,0)).
+// (The own-team exclusion cannot be staged: a team-1 troop is a census unit
+// and makes team 1 sited; see the report.)
+TEST_F(SemLineupStage, a_dormant_or_dead_walker_or_an_item_is_no_hostile)
+{
+    struct Case {
+        const char* what;
+        Cell want;
+    };
+    for (const Case c : {Case{"dormant team-2 soldier", {0, 0}},
+                         Case{"dead team-2 soldier", {0, 0}},
+                         Case{"team-2 stain", {0, 0}},
+                         Case{"awake wildlife (control)", {192, 0}}}) {
+        SCOPED_TRACE(c.what);
+        LineupWorld fx;
+        lattice_scene(fx, /*with_marker=*/false);
+        const std::string what = c.what;
+        walker* w = nullptr;
+        if (what == "team-2 stain")
+            w = fx.thing(Order::Treasure, FAMILY_STAIN, 2, 16, 16);
+        else
+            w = fx.npc(FAMILY_SOLDIER, what.find("wildlife") != std::string::npos ? 4 : 2,
+                       16, 16);
+        ASSERT_NE(nullptr, w);
+        if (what.find("dormant") != std::string::npos) {
+            w->set_spawn_delay(100);  // a delayed spawn, asleep at tick 1
+            w->set_dormant(true);
+        }
+        if (what.find("dead") != std::string::npos)
+            w->set_dead(1);
+        fx.world().tick();
+        EXPECT_EQ(c.want, first_member(fx.world(), 1))
+            << "arm: own team / dead / dormant / non-troop -> not a hostile";
+        EXPECT_TRUE(fx.world().scripts().host().errors().empty());
+    }
+}
+
+// lineup_stage.lua:158. A cell is hostile-adjacent only within one tile on
+// BOTH axes: wildlife two tiles right of (0,0), or two tiles below it,
+// leaves (0,0) the anchor; one tile diagonally, (16,16), refuses it.
+TEST_F(SemLineupStage, a_hostile_two_tiles_away_does_not_refuse_a_cell)
+{
+    for (const auto& [where, want] : {std::pair{Cell{32, 0}, Cell{0, 0}},
+                                      std::pair{Cell{0, 32}, Cell{0, 0}},
+                                      std::pair{Cell{16, 16}, Cell{192, 0}}}) {
+        SCOPED_TRACE(::testing::Message() << "wildlife at " << where.first << ","
+                                          << where.second);
+        LineupWorld fx;
+        lattice_scene(fx, /*with_marker=*/false);
+        ASSERT_NE(nullptr, fx.npc(FAMILY_SOLDIER, 4, where.first, where.second));
+        fx.world().tick();
+        EXPECT_EQ(want, first_member(fx.world(), 1))
+            << "arm: two tiles away on either axis -> allowed; within one -> refused";
+        EXPECT_TRUE(fx.world().scripts().host().errors().empty());
+    }
+}
+
+// lineup_stage.lua:179. The scan reaches only the authored extent plus six
+// tiles: on a 100x100-tile field with the hero at (64,64) the anchor is
+// (160,160), the far corner of (0..160)^2, never the open ground beyond;
+// one wildlife soldier at (1200,1200) widens the reach to (1296,1296) and
+// the anchor goes to (1280,1280).
+TEST_F(SemLineupStage, the_siteless_scan_reaches_only_the_authored_extent)
+{
+    for (const bool far_walker : {false, true}) {
+        SCOPED_TRACE(far_walker ? "widened" : "authored extent");
+        LineupWorld fx;
+        fx.world().resize_grid(100, 100);
+        fx.hero(0, 64, 64);
+        if (far_walker) {
+            ASSERT_NE(nullptr, fx.npc(FAMILY_SOLDIER, 4, 1200, 1200));
+        }
+        fx.fill(1, og::sim::kFillStrong);
+        fx.world().tick();
+        EXPECT_EQ((far_walker ? Cell{1280, 1280} : Cell{160, 160}),
+                  first_member(fx.world(), 1))
+            << (far_walker ? "arm: entity farther right/down -> reach widened"
+                           : "arm: otherwise -> reach unchanged (max x/y + 96)");
+        EXPECT_TRUE(fx.world().scripts().host().errors().empty());
+    }
+}
+
+// lineup_stage.lua:200. With no team anywhere there is no region to flee:
+// every member takes the safe teleport draw, one scripted landing each.
+TEST_F(SemLineupStage, a_map_with_no_team_scatters_the_siteless_squad_by_teleport)
+{
+    LineupWorld fx;
+    fx.fill(1, og::sim::kFillStrong);
+    const std::vector<Cell> tiles = {{5, 5}, {10, 5}, {15, 5}, {20, 5}, {25, 5}};
+    ScriptedDraws draws(landings(tiles), 0);
+    {
+        ScopedSimRandom scope(&draws);
+        ASSERT_TRUE(fx.world().run_lineup_stage_step());
+    }
+    EXPECT_EQ((std::vector<Cell>{{80, 80}, {160, 80}, {240, 80}, {320, 80}, {400, 80}}),
+              cells_of(squad_on(fx.world(), 1)))
+        << "arm: no centroids -> (-1,-1) -> members teleport";
+    EXPECT_EQ(10, draws.calls);
+    EXPECT_EQ(0, draws.out_of_range);
+    EXPECT_TRUE(fx.world().scripts().host().errors().empty());
+}
+
+// lineup_stage.lua:247. A sited member takes the anchor tile when it is
+// clear; the next ones take the first clear ring cell, clockwise from due
+// north: (320,464), (336,480), (320,496), (304,480) round the marker.
+TEST_F(SemLineupStage, a_sited_member_takes_the_anchor_then_the_ring_in_order)
+{
+    LineupWorld fx;
+    fx.hero(0, 96, 96);
+    fx.marker(1, 320, 480);
+    fx.fill(1, og::sim::kFillWeak);
+    fx.world().tick();
+    const auto squad = squad_on(fx.world(), 1);
+    ASSERT_EQ(5u, squad.size());
+    EXPECT_EQ((Cell{320, 480}), cell_of(squad.front())) << "arm: anchor clear -> anchor";
+    EXPECT_EQ((std::vector<Cell>{{320, 480}, {320, 464}, {336, 480}, {320, 496}, {304, 480}}),
+              cells_of(squad))
+        << "arm: anchor taken, ring cell clear -> first clear ring cell";
+    EXPECT_TRUE(fx.world().scripts().host().errors().empty());
+}
+
+// lineup_stage.lua:329. Only a site-less squad avoids hostiles: a sited
+// squad takes its marker tile and ring even beside a team-2 soldier at
+// (336,496).
+TEST_F(SemLineupStage, a_sited_squad_may_spawn_beside_a_hostile)
+{
+    LineupWorld fx;
+    fx.hero(0, 96, 96);
+    fx.marker(1, 320, 480);
+    ASSERT_NE(nullptr, fx.npc(FAMILY_SOLDIER, 2, 336, 496));
+    fx.fill(1, og::sim::kFillWeak);
+    fx.world().tick();
+    EXPECT_EQ((std::vector<Cell>{{320, 480}, {320, 464}, {336, 480}, {320, 496}, {304, 480}}),
+              cells_of(squad_on(fx.world(), 1)))
+        << "arm: sited -> plain anchor/ring, no hostile check";
+    EXPECT_TRUE(fx.world().scripts().host().errors().empty());
+}
+
+namespace {
+
+// The safe-teleport scene: no team anywhere (so every member teleports),
+// one wildlife soldier at tile (10,10) = (160,160); its own tile and its
+// eight neighbours are hostile-adjacent.
+LineupWorld* wildlife_scene(LineupWorld& fx)
+{
+    fx.npc(FAMILY_SOLDIER, 4, 160, 160);
+    fx.fill(1, og::sim::kFillStrong);
+    return &fx;
+}
+
+// Safe landings for members 2..5.
+const std::vector<Cell> kSafeTail = {{24, 20}, {28, 20}, {32, 20}, {36, 20}};
+const std::vector<Cell> kSafeTailPx = {{384, 320}, {448, 320}, {512, 320}, {576, 320}};
+
+}  // namespace
+
+// lineup_stage.lua:273 and :278. A site-less member that has to teleport
+// re-draws an unsafe landing (tile (11,11), next to the wildlife) and keeps
+// the first safe one (tile (20,20)), then stops drawing: twelve draws for
+// the squad, two landings for the first member and one for each other.
+TEST_F(SemLineupStage, a_siteless_member_redraws_an_unsafe_landing_and_keeps_the_first_safe_one)
+{
+    LineupWorld fx;
+    wildlife_scene(fx);
+    std::vector<Cell> tiles = {{11, 11}, {20, 20}};
+    tiles.insert(tiles.end(), kSafeTail.begin(), kSafeTail.end());
+    ScriptedDraws draws(landings(tiles), 0);
+    {
+        ScopedSimRandom scope(&draws);
+        ASSERT_TRUE(fx.world().run_lineup_stage_step());
+    }
+    std::vector<Cell> want = {{320, 320}};
+    want.insert(want.end(), kSafeTailPx.begin(), kSafeTailPx.end());
+    EXPECT_EQ(want, cells_of(squad_on(fx.world(), 1)))
+        << "arms: site-less squad -> bounded re-probe; landing unsafe -> draw "
+           "again; a landing safe -> stay there";
+    EXPECT_EQ(12, draws.calls) << "arm: a landing safe -> stop drawing";
+    EXPECT_EQ(0, draws.out_of_range);
+    EXPECT_TRUE(fx.world().scripts().host().errors().empty());
+}
+
+// lineup_stage.lua:278. When all eight landings are unsafe the last one
+// stands: the first member draws the wildlife's eight neighbours and stays
+// on the eighth, tile (11,11) = (176,176).
+TEST_F(SemLineupStage, a_siteless_member_with_eight_unsafe_landings_stays_on_the_last)
+{
+    LineupWorld fx;
+    wildlife_scene(fx);
+    std::vector<Cell> tiles = {{9, 9},  {10, 9},  {11, 9},  {9, 10},
+                               {11, 10}, {9, 11}, {10, 11}, {11, 11}};
+    tiles.insert(tiles.end(), kSafeTail.begin(), kSafeTail.end());
+    ScriptedDraws draws(landings(tiles), 0);
+    {
+        ScopedSimRandom scope(&draws);
+        ASSERT_TRUE(fx.world().run_lineup_stage_step());
+    }
+    std::vector<Cell> want = {{176, 176}};
+    want.insert(want.end(), kSafeTailPx.begin(), kSafeTailPx.end());
+    EXPECT_EQ(want, cells_of(squad_on(fx.world(), 1)))
+        << "arm: all eight unsafe -> member at the last landing";
+    EXPECT_EQ(24, draws.calls) << "eight landings, then one each";
+    EXPECT_EQ(0, draws.out_of_range);
+    EXPECT_TRUE(fx.world().scripts().host().errors().empty());
+}
+
+// lineup_stage.lua:278. When every teleport fails (a fully walled map: 200
+// refused attempts a draw, eight draws a member) the member is not moved
+// from where it was spawned, (0,0).
+TEST_F(SemLineupStage, a_siteless_member_whose_teleports_all_fail_stays_where_it_spawned)
+{
+    LineupWorld fx;
+    std::fill_n(fx.world().grid.data.get(),
+                static_cast<std::size_t>(fx.world().grid.w) * fx.world().grid.h,
+                static_cast<std::uint8_t>(PIX_H_WALL1));
+    fx.fill(1, og::sim::kFillStrong);
+    ScriptedDraws draws({}, 3);  // every landing tile (3,3): a wall
+    {
+        ScopedSimRandom scope(&draws);
+        ASSERT_TRUE(fx.world().run_lineup_stage_step());
+    }
+    EXPECT_EQ((std::vector<Cell>{{0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}}),
+              cells_of(squad_on(fx.world(), 1)))
+        << "arm: all eight teleports fail -> member not moved";
+    EXPECT_EQ(5 * 8 * 200 * 2, draws.calls);
+    EXPECT_TRUE(fx.world().scripts().host().errors().empty());
+}
