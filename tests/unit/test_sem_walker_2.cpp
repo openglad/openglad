@@ -539,3 +539,388 @@ TEST_F(SemWalker2, a_living_shoots_its_current_weapon_scaled_by_its_heading)
     diag->set_dead(1);
     knife->set_dead(1);
 }
+
+// ---------------------------------------------------------------------------
+// fire_check: the gates a shot passes before it flies (walker.cpp:1452-1535)
+// ---------------------------------------------------------------------------
+
+// walker.cpp:1452. A generator's fire_check always passes, and it builds no
+// probe: no weapon and no troop is created, and the denial is None.
+TEST_F(SemWalker2, a_generator_always_passes_fire_check_without_building_a_probe)
+{
+    walker* tower = generator_at(FAMILY_TOWER, 1, 320, 320);
+    ASSERT_NE(nullptr, tower);
+    ASSERT_EQ(nullptr, tower->foe()) << "no foe anywhere";
+    const std::size_t obs_before = world().oblist.size();
+    const std::size_t weapons_before = world().weaplist.size();
+    const std::size_t fx_before = world().fxlist.size();
+    Denial why = Denial::NoFoe;
+    EXPECT_TRUE(tower->fire_check(0, 0, &why)) << "generator: always passes";
+    EXPECT_EQ(Denial::None, why) << "generator: denial None";
+    EXPECT_EQ(obs_before, world().oblist.size()) << "generator: no troop built";
+    EXPECT_EQ(weapons_before, world().weaplist.size()) << "generator: no probe weapon";
+    EXPECT_EQ(fx_before, world().fxlist.size());
+}
+
+// walker.cpp:1482. The reach gate runs first: a foe beyond reach is
+// OutOfRange even for a shooter that may not shoot at all or cannot pay.
+TEST_F(SemWalker2, a_foe_beyond_reach_is_out_of_range_before_any_other_denial)
+{
+    walker* archer = living_at(FAMILY_ARCHER, 0, 160, 160);
+    ASSERT_NE(nullptr, archer);
+    archer->set_current_weapon(FAMILY_KNIFE);
+    archer->stats()->set_weapon_cost(0);
+    archer->face_delta(1, 0);
+    const std::int32_t reach = real_reach(archer, 1.0f, 0.0f);
+    walker* orc = living_at(FAMILY_ORC, 1, static_cast<short>(160 + reach + 40), 160);
+    ASSERT_NE(nullptr, orc);
+    archer->set_foe(orc);
+
+    Denial why = Denial::None;
+    archer->stats()->set_bit_flags(BIT_NO_RANGED, 1);
+    EXPECT_FALSE(archer->fire_check(1, 0, &why));
+    EXPECT_EQ(Denial::OutOfRange, why)
+        << "foe beyond reach, shooter NO_RANGED: OutOfRange wins";
+    archer->stats()->set_bit_flags(BIT_NO_RANGED, 0);
+
+    archer->stats()->set_weapon_cost(9999);
+    archer->stats()->set_magicpoints(0.0f);
+    why = Denial::None;
+    EXPECT_FALSE(archer->fire_check(1, 0, &why));
+    EXPECT_EQ(Denial::OutOfRange, why)
+        << "foe beyond reach, shooter mana-short: OutOfRange wins";
+}
+
+// walker.cpp:1489. A NO_RANGED shooter with its foe in reach and faced is
+// denied with NoRanged.
+TEST_F(SemWalker2, a_no_ranged_shooter_is_denied_no_ranged_with_its_foe_in_reach)
+{
+    walker* archer = living_at(FAMILY_ARCHER, 0, 160, 160);
+    walker* orc = living_at(FAMILY_ORC, 1, 184, 160);
+    ASSERT_TRUE(archer && orc);
+    archer->set_current_weapon(FAMILY_KNIFE);
+    archer->stats()->set_weapon_cost(0);
+    archer->face_delta(1, 0);
+    archer->set_foe(orc);
+    Denial why = Denial::NoFoe;
+    ASSERT_TRUE(archer->fire_check(1, 0, &why)) << "control: the shot is good";
+    ASSERT_EQ(Denial::None, why);
+
+    archer->stats()->set_bit_flags(BIT_NO_RANGED, 1);
+    why = Denial::None;
+    EXPECT_FALSE(archer->fire_check(1, 0, &why));
+    EXPECT_EQ(Denial::NoRanged, why) << "NO_RANGED set, foe in reach: denial NoRanged";
+}
+
+// walker.cpp:1496. A shooter whose weapon costs more than its magic is
+// denied with NoMagic; exactly enough magic pays.
+TEST_F(SemWalker2, a_shot_costing_more_than_the_magic_left_is_denied_no_magic)
+{
+    walker* archer = living_at(FAMILY_ARCHER, 0, 160, 160);
+    walker* orc = living_at(FAMILY_ORC, 1, 184, 160);
+    ASSERT_TRUE(archer && orc);
+    archer->set_current_weapon(FAMILY_KNIFE);
+    archer->face_delta(1, 0);
+    archer->set_foe(orc);
+    archer->stats()->set_weapon_cost(7);
+
+    archer->stats()->set_magicpoints(6.0f);
+    Denial why = Denial::None;
+    EXPECT_FALSE(archer->fire_check(1, 0, &why));
+    EXPECT_EQ(Denial::NoMagic, why) << "weapon_cost > mp: denial NoMagic";
+
+    archer->stats()->set_magicpoints(7.0f);
+    why = Denial::NoFoe;
+    EXPECT_TRUE(archer->fire_check(1, 0, &why)) << "weapon_cost == mp: affordable";
+    EXPECT_EQ(Denial::None, why);
+}
+
+// walker.cpp:1518/1535. An ignored foe (out of the obmap) can still be named
+// as the objective of a shot, but not while it is hidden: the ray then
+// misses it.
+TEST_F(SemWalker2, a_hidden_ignored_foe_is_not_hit_by_the_fire_check_ray)
+{
+    walker* archer = living_at(FAMILY_ARCHER, 0, 160, 160);
+    walker* orc = living_at(FAMILY_ORC, 1, 184, 160);
+    ASSERT_TRUE(archer && orc);
+    archer->set_current_weapon(FAMILY_KNIFE);
+    archer->stats()->set_weapon_cost(0);
+    archer->face_delta(1, 0);
+    orc->set_ignore(1);
+    world().myobmap->remove(orc);
+    ASSERT_FALSE(registered(orc));
+    archer->set_foe(orc);
+    Denial why = Denial::NoFoe;
+    ASSERT_TRUE(archer->fire_check(1, 0, &why))
+        << "control: the ignored, visible, hostile foe is hit by its box";
+    ASSERT_EQ(Denial::None, why);
+
+    orc->set_hidden(true);
+    ASSERT_TRUE(orc->hidden());
+    ASSERT_FALSE(registered(orc));
+    why = Denial::None;
+    EXPECT_FALSE(archer->fire_check(1, 0, &why)) << "foe ignored but hidden: no hit";
+    EXPECT_EQ(Denial::RayMiss, why) << "foe ignored but hidden: RayMiss";
+}
+
+// ---------------------------------------------------------------------------
+// act_generate (walker.cpp:1578-1584)
+// ---------------------------------------------------------------------------
+
+// walker.cpp:1578. A generator's emission roll draws twice even when it
+// fails, and emits nothing; at the object cap it draws nothing at all.
+TEST_F(SemWalker2, a_failed_emission_roll_still_draws_twice_and_a_full_world_draws_none)
+{
+    walker* tower = generator_at(FAMILY_TOWER, 1, 320, 320);
+    ASSERT_NE(nullptr, tower);
+    tower->stats()->set_max_hitpoints(300.0f);
+    tower->stats()->set_hitpoints(100.0f);
+    tower->set_busy(0.0f);
+    ASSERT_EQ(ANI_WALK, tower->ani_type());
+    const auto n = static_cast<std::uint32_t>(world().living_count);
+    ASSERT_LT(world().living_count, MAXOBS);
+
+    // Roll fails: next(9) == 0 can never beat next(300 + 8n).
+    const std::uint32_t fail = state_where({{9, 0}, {300 + 8 * n, kAny}});
+    world().rng_.state_ = fail;
+    WalkerActs::generate(*tower);
+    EXPECT_EQ(state_after(fail, {9, 300 + 8 * n}), world().rng_.state_)
+        << "roll fails: RNG: exactly the two draws are consumed";
+    EXPECT_EQ(ANI_WALK, tower->ani_type()) << "roll fails: nothing emitted";
+    EXPECT_FLOAT_EQ(100.0f, tower->stats()->hitpoints()) << "roll fails: no regen";
+
+    // Control: a roll that succeeds emits (init_fire) and regenerates.
+    const std::uint32_t win =
+        state_where({{9, 8}, {300 + 8 * n, 0}, {3, 0}, {3, 1}});
+    world().rng_.state_ = win;
+    WalkerActs::generate(*tower);
+    EXPECT_EQ(ANI_ATTACK, tower->ani_type()) << "control: the roll succeeds and fires";
+    EXPECT_FLOAT_EQ(101.0f, tower->stats()->hitpoints()) << "control: +1 hp";
+
+    // living_count >= MAXOBS: no draws, nothing emitted.
+    tower->set_ani_type(ANI_WALK);
+    tower->set_busy(0.0f);
+    const int saved = world().living_count;
+    world().living_count = MAXOBS;
+    world().rng_.state_ = win;
+    for (int i = 0; i < 20; ++i)
+        WalkerActs::generate(*tower);
+    world().living_count = saved;
+    EXPECT_EQ(win, world().rng_.state_) << "living_count >= MAXOBS: no draws at all";
+    EXPECT_EQ(ANI_WALK, tower->ani_type()) << "living_count >= MAXOBS: nothing emitted";
+    EXPECT_FLOAT_EQ(101.0f, tower->stats()->hitpoints());
+}
+
+// walker.cpp:1584. A generator emits in the direction it rolled; only the
+// (0,0) roll falls back to facing right.
+TEST_F(SemWalker2, a_generator_emits_in_the_direction_it_rolled)
+{
+    struct Case { std::uint32_t dx_draw, dy_draw; float lastx, lasty; const char* what; };
+    const Case cases[] = {
+        {0, 2, 1.0f, -1.0f, "any non-zero axis: rolled (1,-1)"},
+        {2, 1, -1.0f, 0.0f, "any non-zero axis: rolled (-1,0)"},
+        {1, 0, 0.0f, 1.0f, "any non-zero axis: rolled (0,1)"},
+        {1, 1, 1.0f, 0.0f, "both axes rolled 0: falls back to (1,0)"},
+    };
+    for (const Case& c : cases) {
+        SCOPED_TRACE(c.what);
+        fresh_world();
+        walker* tower = generator_at(FAMILY_TOWER, 1, 320, 320);
+        ASSERT_NE(nullptr, tower);
+        tower->set_busy(0.0f);
+        const auto n = static_cast<std::uint32_t>(world().living_count);
+        world().rng_.state_ =
+            state_where({{9, 8}, {300 + 8 * n, 0}, {3, c.dx_draw}, {3, c.dy_draw}});
+        WalkerActs::generate(*tower);
+        EXPECT_FLOAT_EQ(c.lastx, tower->lastx()) << c.what;
+        EXPECT_FLOAT_EQ(c.lasty, tower->lasty()) << c.what;
+        EXPECT_EQ(ANI_ATTACK, tower->ani_type());
+    }
+}
+
+// ---------------------------------------------------------------------------
+// act_fire: a projectile's flight (walker.cpp:1604-1650)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// Floor 1 of a two-floor world: grass of floor 0's size, `pix` at (tx,ty).
+void floor1_grid(GameWorld& w, int tx, int ty, unsigned char pix)
+{
+    const int gw = w.grid.w;
+    const int gh = w.grid.h;
+    auto* buf = new unsigned char[static_cast<std::size_t>(gw) * static_cast<std::size_t>(gh)];
+    std::fill(buf, buf + static_cast<std::size_t>(gw) * static_cast<std::size_t>(gh),
+              static_cast<unsigned char>(PIX_GRASS1));
+    buf[tx + ty * gw] = pix;
+    w.grid_for_floor(1) = PixieData(1, static_cast<unsigned char>(gw),
+                                    static_cast<unsigned char>(gh), buf);
+    w.smoother_for_floor(1).set_target(w.grid_for_floor(1));
+}
+
+}  // namespace
+
+// A projectile of `family` at (x,y) on `floor`, flying east one step a tick.
+walker* SemWalker2_shot(GameWorld& w, int family, short x, short y, short floor)
+{
+    walker* shot = w.add_ob(Order::Weapon, family);
+    if (shot == nullptr)
+        return nullptr;
+    shot->set_team_num(1);
+    shot->set_floor(floor);
+    shot->setxy(x, y);
+    shot->set_act_type(ACT_FIRE);
+    shot->set_curdir(static_cast<signed char>(FACE_RIGHT));
+    shot->set_lastx(4.0f);
+    shot->set_lasty(0.0f);
+    shot->set_lineofsight(40);
+    shot->set_collide_ob(nullptr);
+    return shot;
+}
+
+// walker.cpp:1604/1609. A lobbed projectile climbs by vz and loses gravity
+// each tick; when it would sink below the ground it lands (height 0, no
+// fall); a projectile at rest on the ground stays there.
+TEST_F(SemWalker2, a_lobbed_rock_arcs_lands_and_then_stays_on_the_ground)
+{
+    walker* rock = SemWalker2_shot(world(), FAMILY_ROCK, 160, 160, 0);
+    ASSERT_NE(nullptr, rock);
+    const WeaponFamilyDescriptor* wfd = get_weapon_family_descriptor(FAMILY_ROCK);
+    ASSERT_NE(nullptr, wfd);
+    ASSERT_FLOAT_EQ(0.09f, wfd->gravity) << "the core rock's gravity";
+    rock->set_worldz(0.0f);
+    rock->set_vz(0.7f);  // the rock's launch speed (weapon-01-rock.lua vz)
+    float z = 0.0f;
+    float v = 0.7f;
+    int landed_at = -1;
+    for (int tick = 1; tick <= 20; ++tick) {
+        WalkerActs::fire(*rock);
+        ASSERT_FALSE(rock->dead()) << "tick " << tick;
+        if (landed_at < 0) {
+            z = z + v;
+            v = v - wfd->gravity;
+            if (z < 0.0f) {
+                z = 0.0f;
+                v = 0.0f;
+                landed_at = tick;
+                EXPECT_EQ(0.0f, rock->worldz())
+                    << "worldz would go below 0: landed at height 0, tick " << tick;
+                EXPECT_EQ(0.0f, rock->vz())
+                    << "worldz would go below 0: vz zeroed, tick " << tick;
+            } else {
+                EXPECT_EQ(z, rock->worldz())
+                    << "vz or worldz non-zero: worldz += vz, tick " << tick;
+                EXPECT_EQ(v, rock->vz())
+                    << "vz or worldz non-zero: vz -= gravity, tick " << tick;
+            }
+        } else {
+            EXPECT_EQ(0.0f, rock->worldz()) << "flat weapon: stays on the ground, tick " << tick;
+            EXPECT_EQ(0.0f, rock->vz()) << "flat weapon: no gravity at rest, tick " << tick;
+        }
+    }
+    EXPECT_EQ(17, landed_at) << "the 0.7 / 0.09 arc lands on its 17th tick";
+}
+
+// walker.cpp:1615-1630. Only a projectile that can drop floors falls through
+// an air hole, landing at height 0 on the floor below; one that cannot
+// flies on; a single-floor level never drops anything.
+TEST_F(SemWalker2, only_a_droppable_shot_falls_through_air_and_lands_at_height_0)
+{
+    world().set_floor_count(2);
+    // A knife (can_drop_floors) on floor 1 centred over an air cell.
+    {
+        walker* knife = SemWalker2_shot(world(), FAMILY_KNIFE, 160, 160, 1);
+        ASSERT_NE(nullptr, knife);
+        ASSERT_TRUE(get_weapon_family_descriptor(FAMILY_KNIFE)->can_drop_floors);
+        floor1_grid(world(), (160 + knife->sizex() / 2) / GRID_SIZE,
+                    (160 + knife->sizey() / 2) / GRID_SIZE, PIX_AIR);
+        knife->set_vz(0.35f);
+        knife->set_worldz(0.0f);
+        WalkerActs::fire(*knife);
+        EXPECT_EQ(0, knife->floor()) << "droppable over air, floor 1: drops to floor 0";
+        EXPECT_FALSE(knife->dead());
+        EXPECT_EQ(0.0f, knife->worldz())
+            << "droppable over air, floor > 0: worldz reset to 0 (was 0.35 after the climb)";
+        knife->set_dead(1);
+    }
+    // An arrow (cannot drop floors) over the same kind of hole.
+    {
+        walker* arrow = SemWalker2_shot(world(), FAMILY_ARROW, 320, 320, 1);
+        ASSERT_NE(nullptr, arrow);
+        ASSERT_FALSE(get_weapon_family_descriptor(FAMILY_ARROW)->can_drop_floors);
+        floor1_grid(world(), (320 + arrow->sizex() / 2) / GRID_SIZE,
+                    (320 + arrow->sizey() / 2) / GRID_SIZE, PIX_AIR);
+        WalkerActs::fire(*arrow);
+        EXPECT_EQ(1, arrow->floor()) << "non-droppable family over air: stays on floor 1";
+        EXPECT_FALSE(arrow->dead()) << "non-droppable family over air: flies on";
+    }
+}
+
+TEST_F(SemWalker2, a_single_floor_level_drops_no_shot_through_an_air_tile)
+{
+    ASSERT_EQ(1, world().floor_count());
+    walker* knife = SemWalker2_shot(world(), FAMILY_KNIFE, 160, 160, 0);
+    ASSERT_NE(nullptr, knife);
+    tile((160 + knife->sizex() / 2) / GRID_SIZE, (160 + knife->sizey() / 2) / GRID_SIZE, PIX_AIR);
+    WalkerActs::fire(*knife);
+    EXPECT_FALSE(knife->dead()) << "single-floor level: a knife over air on floor 0 lives";
+    EXPECT_EQ(0, knife->floor()) << "single-floor level: no floor change";
+}
+
+// walker.cpp:1642. A projectile whose range has run out dies where it is:
+// its last act does not walk.
+TEST_F(SemWalker2, a_spent_projectile_dies_without_taking_its_step)
+{
+    walker* knife = SemWalker2_shot(world(), FAMILY_KNIFE, 160, 160, 0);
+    ASSERT_NE(nullptr, knife);
+    knife->set_lineofsight(1);
+    WalkerActs::fire(*knife);
+    ASSERT_FALSE(knife->dead()) << "control: range 1 left, the knife flies";
+    ASSERT_EQ(164, knife->xpos()) << "control: it walked its 4 px";
+    ASSERT_EQ(0, knife->lineofsight());
+
+    WalkerActs::fire(*knife);
+    EXPECT_TRUE(knife->dead()) << "lineofsight was 0: dead";
+    EXPECT_EQ(164, knife->xpos()) << "lineofsight was 0: no walk";
+    EXPECT_EQ(160, knife->ypos());
+}
+
+// walker.cpp:1647/1650. A shot stopped by a wall hurts nobody, not even a
+// body standing in the wall's own step; a corpse in the path neither stops
+// the shot nor is struck by it (a walk never meets a dead body, so the
+// attack's own dead-target guard is a second line behind the obmap's).
+TEST_F(SemWalker2, a_shot_stopped_by_a_wall_or_a_corpse_strikes_nothing)
+{
+    {
+        walker* orc = living_at(FAMILY_ORC, 0, 176, 160);
+        ASSERT_NE(nullptr, orc);
+        tile(11, 10, PIX_H_WALL1);  // x 176..191: the orc stands in the wall cell
+        walker* arrow = SemWalker2_shot(world(), FAMILY_ARROW,
+                                        0, 160, 0);
+        ASSERT_NE(nullptr, arrow);
+        arrow->setxy(static_cast<short>(176 - arrow->sizex()), short{160});
+        WalkerActs::fire(*arrow);
+        EXPECT_TRUE(arrow->dead()) << "walk blocked by a wall: the arrow breaks";
+        EXPECT_FLOAT_EQ(400.0f, orc->stats()->hitpoints())
+            << "walk blocked by a wall: no attack";
+        EXPECT_EQ(nullptr, arrow->collide_ob());
+    }
+    {
+        fresh_world();
+        walker* corpse = living_at(FAMILY_ORC, 0, 176, 160);
+        ASSERT_NE(nullptr, corpse);
+        corpse->stats()->set_hitpoints(30.0f);
+        corpse->set_dead(1);
+        ASSERT_TRUE(registered(corpse)) << "the body still stands in the obmap";
+        walker* arrow = SemWalker2_shot(world(), FAMILY_ARROW, 0, 160, 0);
+        ASSERT_NE(nullptr, arrow);
+        arrow->setxy(static_cast<short>(176 - arrow->sizex()), short{160});
+        const short x_before = arrow->xpos();
+        WalkerActs::fire(*arrow);
+        EXPECT_FLOAT_EQ(30.0f, corpse->stats()->hitpoints())
+            << "a dead body in the path: no attack";
+        EXPECT_FALSE(arrow->dead()) << "a dead body in the path: it does not stop the shot";
+        EXPECT_EQ(x_before + 4, arrow->xpos()) << "a dead body in the path: the shot steps through";
+        EXPECT_EQ(nullptr, arrow->collide_ob()) << "a dead body in the path: nothing met";
+    }
+}
