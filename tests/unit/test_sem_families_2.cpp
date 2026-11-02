@@ -895,3 +895,272 @@ TEST(SemCleric, a_resurrect_penalty_past_a_short_wraps_back_to_its_unsigned_valu
         EXPECT_EQ(0u, f.guard.count()) << f.guard.message();
     }
 }
+
+// ---------------------------------------------------------------------------
+// living-06-elemental.lua
+// ---------------------------------------------------------------------------
+
+// :15. STARBURST fires one meteor along each of the eight headings and the
+// elemental's facing comes back afterwards (C truncation of the int temps).
+TEST(SemElemental, starburst_fires_all_eight_headings_and_restores_the_facing)
+{
+    for (short new_specials : {static_cast<short>(0), static_cast<short>(1)}) {
+        MidpointRandom midpoint;
+        ScopedSimRandom scoped(&midpoint);  // zero waver: the sign is the heading
+        Field f;
+        f.world().new_specials = new_specials;
+        walker* e = f.caster(FAMILY_FIREELEMENTAL, 0, 160, 160, 5, 100.0f, 1);
+        ASSERT_NE(nullptr, e);
+        e->set_lastx(-3.7f);
+        e->set_lasty(1.2f);
+        Failure why = Failure::None;
+        std::string reason;
+        ASSERT_TRUE(e->special(&why, &reason)) << reason;
+        const auto meteors = f.live(Order::Weapon, FAMILY_METEOR);
+        ASSERT_EQ(8u, meteors.size());
+        EXPECT_EQ(kEightHeadings, headings(meteors))
+            << "cast arm: one meteor per heading (new_specials " << new_specials << ")";
+        EXPECT_FLOAT_EQ(-3.0f, e->lastx()) << "cast arm: the facing x is restored";
+        EXPECT_FLOAT_EQ(1.0f, e->lasty()) << "cast arm: the facing y is restored";
+        EXPECT_FLOAT_EQ(50.0f, e->stats()->magicpoints())
+            << "cast arm: the weapon costs are pre-refunded; only the price is paid";
+        EXPECT_EQ(0u, f.guard.count()) << f.guard.message();
+    }
+}
+
+// :36 the slot-1 arm. An elemental dying on slot 1 fires its free parting
+// starburst and is dead again afterwards, still on slot 1 unshifted.
+TEST(SemElemental, an_elemental_dying_on_slot_one_fires_a_free_starburst_and_stays_dead)
+{
+    for (short new_specials : {static_cast<short>(0), static_cast<short>(1)}) {
+        Field f;
+        f.world().new_specials = new_specials;
+        walker* e = f.caster(FAMILY_FIREELEMENTAL, 0, 160, 160, 5, 100.0f, 1);
+        ASSERT_NE(nullptr, e);
+        e->stats()->set_hitpoints(-3.0f);
+        e->set_dead(1);
+        e->death();
+        EXPECT_EQ(8u, f.live(Order::Weapon, FAMILY_METEOR).size())
+            << "slot 1 arm (new_specials " << new_specials << "): the parting ring";
+        EXPECT_FLOAT_EQ(100.0f, e->stats()->magicpoints())
+            << "slot 1 arm: the parting shot is free";
+        EXPECT_EQ(1, e->dead()) << "slot 1 arm: the body is re-killed";
+        EXPECT_EQ(1, e->current_special()) << "slot 1 arm: still on slot 1";
+        EXPECT_EQ(0, e->shifter_down()) << "slot 1 arm: still unshifted";
+        EXPECT_EQ(0u, f.guard.count()) << f.guard.message();
+    }
+}
+
+namespace {
+
+struct TollRig {
+    Field f;
+    walker* e = nullptr;
+    walker* owner = nullptr;
+    const FamilyDescriptor* fd = nullptr;
+
+    TollRig()
+    {
+        fd = get_family_descriptor(FAMILY_FIREELEMENTAL);
+        e = f.living_at(FAMILY_FIREELEMENTAL, 0, 160, 160);
+        owner = f.living_at(FAMILY_MAGE, 0, 200, 160);
+        if (e == nullptr || owner == nullptr)
+            return;
+        owner->stats()->set_max_hitpoints(90.0f);
+        owner->stats()->set_hitpoints(90.0f);
+        owner->stats()->set_magicpoints(10.0f);
+        e->set_owner(owner);
+        e->set_lifetime(10);
+        e->stats()->set_hitpoints(50.0f);
+    }
+};
+
+}  // namespace
+
+// :65. Only a summoned (finite lifetime), hurt elemental with a living owner
+// takes the toll; a natural one, a whole one, or one whose owner is dead or
+// gone takes nothing and burns no lifetime.
+TEST(SemElemental, only_a_hurt_summoned_elemental_with_a_living_owner_takes_the_toll)
+{
+    {   // lifetime 0
+        TollRig r;
+        ASSERT_TRUE(r.e && r.owner && r.fd);
+        r.e->set_lifetime(0);
+        og::test::on_act_living(*r.fd, dynamic_cast<living*>(r.e));
+        EXPECT_FLOAT_EQ(90.0f, r.owner->stats()->hitpoints()) << "lifetime 0 arm";
+        EXPECT_FLOAT_EQ(10.0f, r.owner->stats()->magicpoints()) << "lifetime 0 arm";
+        EXPECT_FLOAT_EQ(50.0f, r.e->stats()->hitpoints()) << "lifetime 0 arm";
+        EXPECT_EQ(0, r.e->lifetime()) << "lifetime 0 arm";
+        EXPECT_EQ(0u, r.f.guard.count()) << r.f.guard.message();
+    }
+    {   // owner dead
+        TollRig r;
+        ASSERT_TRUE(r.e && r.owner && r.fd);
+        r.owner->set_dead(1);
+        og::test::on_act_living(*r.fd, dynamic_cast<living*>(r.e));
+        EXPECT_FLOAT_EQ(90.0f, r.owner->stats()->hitpoints()) << "owner dead arm";
+        EXPECT_FLOAT_EQ(10.0f, r.owner->stats()->magicpoints()) << "owner dead arm";
+        EXPECT_FLOAT_EQ(50.0f, r.e->stats()->hitpoints()) << "owner dead arm";
+        EXPECT_EQ(10, r.e->lifetime()) << "owner dead arm: no lifetime burned";
+        EXPECT_EQ(0u, r.f.guard.count()) << r.f.guard.message();
+    }
+    {   // no owner
+        TollRig r;
+        ASSERT_TRUE(r.e && r.owner && r.fd);
+        r.e->set_owner(nullptr);
+        og::test::on_act_living(*r.fd, dynamic_cast<living*>(r.e));
+        EXPECT_FLOAT_EQ(50.0f, r.e->stats()->hitpoints()) << "owner nil arm";
+        EXPECT_EQ(10, r.e->lifetime()) << "owner nil arm: no lifetime burned";
+        EXPECT_EQ(0u, r.f.guard.count()) << "owner nil arm: " << r.f.guard.message();
+    }
+    {   // full health
+        TollRig r;
+        ASSERT_TRUE(r.e && r.owner && r.fd);
+        r.e->stats()->set_hitpoints(100.0f);
+        og::test::on_act_living(*r.fd, dynamic_cast<living*>(r.e));
+        EXPECT_FLOAT_EQ(90.0f, r.owner->stats()->hitpoints()) << "full hp arm";
+        EXPECT_FLOAT_EQ(10.0f, r.owner->stats()->magicpoints()) << "full hp arm";
+        EXPECT_FLOAT_EQ(100.0f, r.e->stats()->hitpoints()) << "full hp arm";
+        EXPECT_EQ(10, r.e->lifetime()) << "full hp arm: no lifetime burned";
+        EXPECT_EQ(0u, r.f.guard.count()) << r.f.guard.message();
+    }
+}
+
+// :71 the two unpaid arms (classic, living.cpp:82-101 at 7ff1654a). An
+// owner who can pay the HP but not the MP still loses the HP and the
+// elemental burns a tick of lifetime instead of healing; an owner under a
+// third of its health pays nothing and the elemental burns the tick.
+TEST(SemElemental, classic_an_owner_who_cannot_pay_both_costs_the_elemental_a_tick)
+{
+    {   // owner hp >= max/3, mp < 3
+        TollRig r;
+        ASSERT_TRUE(r.e && r.owner && r.fd);
+        r.owner->stats()->set_hitpoints(60.0f);
+        r.owner->stats()->set_magicpoints(2.0f);
+        og::test::on_act_living(*r.fd, dynamic_cast<living*>(r.e));
+        EXPECT_FLOAT_EQ(59.0f, r.owner->stats()->hitpoints())
+            << "hp-only arm: the owner loses the HP anyway";
+        EXPECT_FLOAT_EQ(2.0f, r.owner->stats()->magicpoints()) << "hp-only arm";
+        EXPECT_FLOAT_EQ(50.0f, r.e->stats()->hitpoints()) << "hp-only arm: no heal";
+        EXPECT_EQ(9, r.e->lifetime()) << "hp-only arm: one tick burned";
+        EXPECT_EQ(0u, r.f.guard.count()) << r.f.guard.message();
+    }
+    {   // owner hp < max/3
+        TollRig r;
+        ASSERT_TRUE(r.e && r.owner && r.fd);
+        r.owner->stats()->set_hitpoints(20.0f);
+        r.owner->stats()->set_magicpoints(10.0f);
+        og::test::on_act_living(*r.fd, dynamic_cast<living*>(r.e));
+        EXPECT_FLOAT_EQ(20.0f, r.owner->stats()->hitpoints()) << "weak owner arm: untouched";
+        EXPECT_FLOAT_EQ(10.0f, r.owner->stats()->magicpoints()) << "weak owner arm: untouched";
+        EXPECT_FLOAT_EQ(50.0f, r.e->stats()->hitpoints()) << "weak owner arm: no heal";
+        EXPECT_EQ(9, r.e->lifetime()) << "weak owner arm: one tick burned";
+        EXPECT_EQ(0u, r.f.guard.count()) << r.f.guard.message();
+    }
+}
+
+// ---------------------------------------------------------------------------
+// living-08-slime.lua
+// ---------------------------------------------------------------------------
+
+// :23. A veteran split re-levels both halves from half the experience on the
+// guy.cpp ladder (step 6000L - 2000: level 2 at 10000, level 3 at 26000).
+TEST(SemSlime, a_veteran_split_levels_both_halves_on_the_experience_ladder)
+{
+    const FamilyDescriptor& desc = describe_family(FAMILY_SLIME);
+    for (const auto& [exp_held, level] : {std::pair<unsigned, int>{2000, 1},
+                                          std::pair<unsigned, int>{19998, 1},
+                                          std::pair<unsigned, int>{20000, 2},
+                                          std::pair<unsigned, int>{51998, 2},
+                                          std::pair<unsigned, int>{52000, 3}}) {
+        Field f;
+        walker* slime = f.living_at(FAMILY_SLIME, 0, 160, 160, 1);  // threshold 1000
+        ASSERT_NE(nullptr, slime);
+        slime->set_ani_type(static_cast<char>(ANI_SLIME_SPLIT));
+        auto character = std::make_unique<guy>(FAMILY_SLIME);
+        character->exp = exp_held;
+        character->teamnum = 0;
+        slime->set_owned_myguy(std::move(character));
+
+        const std::optional<bool> handled =
+            og::script::hooks::on_ani_complete(&desc, slime);
+        ASSERT_TRUE(handled.has_value());
+        ASSERT_TRUE(*handled);
+        walker* sibling = nullptr;
+        for (walker* ob : f.live(Order::Living, FAMILY_SMALL_SLIME))
+            if (ob != slime)
+                sibling = ob;
+        ASSERT_NE(nullptr, sibling);
+        ASSERT_NE(nullptr, slime->myguy);
+        ASSERT_NE(nullptr, sibling->myguy);
+        const char* arm = level == 1 ? "below 10000 arm" :
+                          level == 2 ? "[10000, 26000) arm" : "26000 arm";
+        EXPECT_EQ(level, static_cast<int>(slime->myguy->level))
+            << arm << ": " << exp_held / 2 << " experience";
+        EXPECT_EQ(level, static_cast<int>(sibling->myguy->level))
+            << arm << ": " << exp_held / 2 << " experience";
+        EXPECT_EQ(0u, f.guard.count()) << f.guard.message();
+    }
+}
+
+// :43 the full-world arm. A big slime bot splits only while the world's
+// head-count leaves room for the extra body.
+TEST(SemSlime, a_big_slime_never_splits_in_a_full_world)
+{
+    const FamilyDescriptor& desc = describe_family(FAMILY_SLIME);
+    Field f;
+    walker* slime = f.caster(FAMILY_SLIME, 2, 160, 160, 3, 1000.0f, 1);
+    ASSERT_NE(nullptr, slime);
+    living* body = dynamic_cast<living*>(slime);
+    ASSERT_NE(nullptr, body);
+    f.world().living_count = MAXOBS;
+    EXPECT_FALSE(og::test::check_special_ai(desc, body))
+        << "living_count >= MAXOBS arm: no split";
+    f.world().living_count = MAXOBS - 1;
+    EXPECT_TRUE(og::test::check_special_ai(desc, body))
+        << "control: one place left, the split is allowed";
+    EXPECT_EQ(0u, f.guard.count()) << f.guard.message();
+}
+
+// :60. The dying slime takes its offspring's name when it has one of its
+// own (sic, the old game's strcpy direction). A fresh offspring is always
+// unnamed (stats.cpp name[0] = 0 in the old game; nothing names an add_ob
+// living in either game), so a NAMED dying slime ends blank and an unnamed
+// one stays blank. Classic, pinned on purpose.
+TEST(SemSlime, classic_a_dying_slime_ends_unnamed_named_or_not)
+{
+    const FamilyDescriptor& desc = describe_family(FAMILY_SLIME);
+    for (const char* name : {"", "BLOBBY"}) {
+        Field f;
+        walker* slime = f.living_at(FAMILY_SLIME, 2, 160, 160, 3);
+        ASSERT_NE(nullptr, slime);
+        slime->stats()->name = name;
+        slime->stats()->set_hitpoints(1.0f);
+        ASSERT_TRUE(og::test::on_death(desc, slime));
+        const auto children = f.live(Order::Living, FAMILY_MEDIUM_SLIME);
+        ASSERT_EQ(1u, children.size());
+        EXPECT_EQ(std::string(), std::string(children[0]->stats()->name))
+            << "the offspring is born unnamed";
+        EXPECT_EQ(std::string(), std::string(slime->stats()->name))
+            << (*name ? "parent named arm: the name is replaced by the offspring's blank"
+                      : "parent unnamed arm: the dying slime stays unnamed");
+        EXPECT_EQ(0u, f.guard.count()) << f.guard.message();
+    }
+}
+
+// :65 the no-guy arm. A slime without a character leaves an offspring
+// without one.
+TEST(SemSlime, a_slime_without_a_character_leaves_an_offspring_without_one)
+{
+    const FamilyDescriptor& desc = describe_family(FAMILY_MEDIUM_SLIME);
+    Field f;
+    walker* slime = f.living_at(FAMILY_MEDIUM_SLIME, 2, 160, 160, 6);
+    ASSERT_NE(nullptr, slime);
+    ASSERT_EQ(nullptr, slime->myguy);
+    ASSERT_TRUE(og::test::on_death(desc, slime));
+    const auto children = f.live(Order::Living, FAMILY_SMALL_SLIME);
+    ASSERT_EQ(1u, children.size());
+    EXPECT_EQ(nullptr, children[0]->myguy) << "no guy arm: the offspring has none";
+    EXPECT_EQ(nullptr, slime->myguy) << "no guy arm: nor does the parent";
+    EXPECT_EQ(0u, f.guard.count()) << f.guard.message();
+}
