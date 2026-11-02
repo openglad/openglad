@@ -1,258 +1,183 @@
 # Simulation semantics
 
-Every branch point in the simulation is a game rule or a piece of plumbing,
-and the **semantics manifest** says which, line by line. A rule names what it
-decides, the outcome of each of its arms, and the tests that assert those
-outcomes; plumbing says in one note why there is nothing to assert. The
-manifest is checked on every CI run, so "every rule in the game has a
-deterministic test that asserts it" is a fact the check proves, not a claim,
-and it stays true when the simulation changes: a new `if` in `src/gameplay`
-is red until someone says what it decides and how a test sees it.
+Every branch point in the simulation is either a game rule or plumbing, and
+the code says which, in a comment right above the branch. A rule says what
+the branch decides and names the tests that assert it; plumbing says in one
+line why there is nothing to assert. The test names and bodies are the
+detailed spec: the comment says what is decided, the tests say how each
+outcome looks.
 
-The first manifest came from a review of the whole simulation: every
+A check runs on every CI build, so "every rule in the game has a
+deterministic test that asserts it" is a fact the check proves, not a claim.
+It stays true when the simulation changes: a new `if` in `src/gameplay` is
+red until someone writes what it decides and which test sees it.
+
+The rules were first written by a review of the whole simulation: every
 candidate branch line of the C++ in `src/gameplay` and its public headers
 (networking, snapshot serialization, mapgen and the lobby are out of scope)
 and of every class-pack Lua file under `packs/`.
 
 ## The rule
 
-1. Every branch line in an in-scope file belongs to exactly one row.
-2. A **rule** row cites at least one test, and every test it cites exists
-   and is not disabled. A row deferred with an issue number may cite none:
-   the issue is its pointer. So may an unreachable row, whose note says why
-   no test can reach it.
-3. A rule row's status is `asserted`: every arm's outcome is checked by an
-   `EXPECT_*` / `ASSERT_*` on the outcome itself, or by a parity fact that
-   reads it. Reaching the line is not asserting it. A row may instead be
-   `deferred` with an issue number, for instance when the current game
-   differs from the old game and the difference is filed rather than
-   pinned, or `unreachable` with a note saying why no test can reach the
-   arms it still lists as missing.
-4. An **other** row (plumbing, a defensive guard, a loop, a dead hit of the
-   grep, a test-only path) carries a note and no tests.
+1. Every branch line of an in-scope file is covered by exactly one
+   semantics comment.
+2. A `rule:` comment names at least one test, and every test it names exists
+   and is not disabled. Instead of a test it may name an issue
+   (`deferred: #N`), for instance when the current game differs from the
+   old game and the difference is filed rather than pinned, or say why no
+   test can reach the branch (`unreachable:`).
+3. A `plumbing:` comment (a null guard, a container walk, determinism
+   plumbing, a test-only path) says why and names no test.
 
-## Where it lives
+## The comment
 
-| what | where |
-|---|---|
-| the manifest | `tests/semantics/manifest/<basename>.json`, one file per source file (`walker.cpp.json`, `living-03-mage.lua.json`; when two in-scope files share a basename, the parent directory is prefixed: `script-foo.cpp.json`) |
-| the check | `scripts/semantics/check_manifest.py` |
-| the in-scope file list and the branch grep | `SCOPE_CPP`, `SCOPE_LUA_GLOB`, `CPP_BRANCH` and `LUA_BRANCH` at the top of the check, the only place they are spelled |
-| the generator | `scripts/semantics/gen_manifest.py`, which built the first manifest from the review's files |
-| the tests the review added | `tests/unit/test_sem_<area>_<n>.cpp`, one unit binary each (`og_unit_sem_<area>_<n>`), registered in `cmake/semantics/<area>.cmake`; the areas are walker, ai, world, script, families and libs |
-| ctest | `semantics_manifest_check` (the check on the tree) and `semantics_manifest_selftest` |
+C++ uses `//`, Lua uses `--`; the words are the same.
 
-A manifest file is `{"path": ..., "rules": [...], "other": [...]}`, rows in
-line order. A rule row:
-
-```json
-{
-  "id": "treasure_navigation.lua:60",
-  "lines": [60, 74],
-  "kinds": ["and", "if"],
-  "function": "exit_on_eat",
-  "anchor": "and not og.level_completed(og.current_scenario())",
-  "condition": "level_completed(dest) and not level_completed(current) ; if can_withdraw",
-  "semantic": "With foes still alive, an exit to an already completed level withdraws ... but never from a replay of an already completed level.",
-  "arms": [
-    {"when": "dest done, current not", "observable": "withdraw_requested, RequestExitConfirmation b=1, WithdrawToLevel"},
-    {"when": "current also done (replay)", "observable": "no withdraw; 'Foes remain!'"}
-  ],
-  "setting": "none",
-  "status": "asserted",
-  "tests": [
-    {"parity": "level_withdraw_scen99", "fact": "EventKindAtLeast(withdraw_to_level,1)"},
-    {"file": "tests/unit/test_sim_world_headless.cpp", "test": "SimWorldHeadless.replay_of_a_completed_level_cannot_withdraw"}
-  ],
-  "missing_arms": []
-}
+```cpp
+    // rule: A weapon still playing a non-walk animation finishes it before
+    //   doing anything else that tick.
+    // tests: WeapBehavior.weap_act_sit_with_non_skipping_family_and_act_animate_shortcut
+    if (ani_type() != ANI_WALK)
+        return animate();
 ```
 
-(The real row cites one more parity row; the generator writes `lines` and
-`kinds` one entry per line.)
+```lua
+  -- rule: Gameplay Fixes: a druid bot never casts REVEAL (it only changes a
+  --   viewscreen's radar).
+  -- tests: GameplayFixesBots.druid_reveal_is_never_cast_by_a_bot
+  if slot == 3 then
+```
 
-- `id` names the row; it keeps the line it was first written at and does not
-  change when the row moves.
-- `lines` are the branch lines the row covers (a rule whose condition spans
-  an `if` and its `else if` covers both). Only branch lines: the opening
-  brace of a function or a statement between two arms is not listed.
-- `kinds` says, for each of `lines`, which branch the grep saw there: the
-  keyword it matched (`if`, `else if`, `else`, `switch`, `case`, `default`,
-  `while`, `for`, `do`, or `ternary`; in Lua `if`, `elseif`, `else`,
-  `while`, `for`, `repeat`, `until`, `and`, `or`), or `""` for an anchor
-  line that is no branch line. It is how the check tells that a line a row
-  claims has become a different branch.
-- `anchor` is the trimmed source text of the row's first line that says
-  something of its own: the `if (...)` rather than a bare `else` or
-  `default:` before it. When that is not the first of `lines`, the row also
-  has `anchor_index`, the position of the anchor line in `lines` (0 is the
-  default and is not written). The anchor is how the check finds the row
-  again after an edit.
-- `condition` is the rule in words; `semantic` says what it decides; `arms`
-  list each outcome and how a test sees it.
-- `setting` is `none`, `fixes-off`, `fixes-on`, `both` or `new-specials`:
-  which value of Gameplay Fixes or New Specials the arms depend on. A row
-  that depends on a setting is asserted under each value.
-- `status` is `asserted`, `partial` (some arms are), `executed-only` (tests
-  reach the line and assert none of its arms), `none` (nothing reaches it),
-  `deferred` (with `"issue": "#451"`) or `unreachable` (with a `note`). A
-  deferred row needs its issue; with one it may cite no test, which is how a
-  classic-path row whose current game differs from the old game is
-  recorded: no test pins the difference, the issue tracks it. A deferred row
-  without an issue is red twice, as `no test` (when it cites none) and as
-  `deferred without issue`.
-- `unreachable` says that no test can reach the arms the row still lists in
-  `missing_arms`: a defensive guard no caller can trip, a `switch` default
-  no value reaches, a function nothing but tests calls. It is allowed only
-  when the reviewer of the tests written for that file confirmed the arm is
-  dead, and the maintainer may still ask for the code to be removed
-  instead. The row's `note` says why the arm cannot be reached (the check
-  prints the first entry of the list); with that note the row may cite no
-  test and stays green. Without a note, or with an empty one, it is red as
-  `unreachable without reason`, and also as `no test` when it cites none.
-  An unreachable row carries no `issue`: there is nothing to fix, only
-  code that cannot run.
-- `tests` cite a GoogleTest as `{"file", "test": "Suite.name"}` or a parity
-  row as `{"parity": "<row id>", "fact": "..."}`; either may carry a `note`
-  saying which arm it asserts. A row-level `note` list holds remarks that
-  cite no test, such as an arm nothing asserts yet.
+The lines of a block:
 
-An other row is `{"id", "lines", "kinds", "kind", "anchor", "note"}` (and `function`
-when it has one), `kind` one of `plumbing`, `defensive`, `loop`, `dead`,
-`test-only`.
+| line | says |
+|---|---|
+| `rule: <text>` | what the branch decides; it starts the block |
+| `  <text>` | continues the line above it: two or more spaces after the comment marker |
+| `tests: A.b, C.d, parity:<row>` | the tests that assert the rule, comma-separated; a GoogleTest as `Suite.name`, a parity row as `parity:<row id>` from `tests/parity/scenario_table.h`; as many `tests:` lines as needed |
+| `deferred: #<issue> <why>` | the behaviour is not pinned and the issue tracks it |
+| `unreachable: <why>` | no test can reach the branch, and why |
+| `plumbing: <why>` | no rule here; the block is this line (and its continuations) alone |
+
+A rule block is `rule:`, then its `tests:` lines, then at most one
+`deferred:` or `unreachable:`. It sits on the lines immediately above the
+statement, at the statement's indentation, with no blank line or other
+comment between. A rule that spans several statements has a block above
+each; the later ones say they are part of the rule above and name the same
+tests.
+
+### What a block covers
+
+A block covers the statement right below it:
+
+- its first line and every continuation line (a condition, an argument
+  list or an expression wrapped over several lines, so a ternary or a Lua
+  `and` / `or` on a continuation line belongs to the block above the
+  statement); in C++, the body of an `if`, `else`, `for`, `while` or `do`
+  when it is one plain statement without braces;
+- for an `if`: every `else if` and `else` of the chain at the same
+  indentation, including a `} else if` line and a `}` line followed by
+  `else`; in Lua every `elseif` and `else` before the chain's `end`;
+- for a `switch`: every `case` and `default` label of that switch (not of a
+  switch nested inside it);
+- for a `do`: its closing `} while (...)`; for a Lua `repeat`: its `until`;
+- for a `while` or `for` loop: its head only;
+- for a `#define`: every line its backslashes continue.
+
+It never covers a body: a branch inside a body has its own block.
+
+A `case` or `default` label that is a rule of its own has its block above
+the label, at the label's indentation, and the switch's block then no longer
+covers it. An `else`, `else if` or `elseif` arm that is a rule of its own
+cannot have a block above it (that would sit inside the previous arm), so
+its block starts as a trailing comment on the arm's line, and its further
+lines follow right after that line, indented deeper than the arm:
+
+```cpp
+    } else if (a < 0) {  // rule: A negative count halves the step.
+        // tests: Walker.a_negative_count_halves_the_step
+        step /= 2;
+```
+
+When the arm's line already has a comment, the block follows it:
+`} else {  // an old note // rule: ...`. A trailing block anywhere but on an
+`else` arm is an error.
+
+A rule that does not sit on a branch line (a ternary wrapped so that its `?`
+and `:` fall on different lines, a gate function whose whole body is a
+comparison) is written as an ordinary comment; the check does not read it.
 
 ## What counts as a branch line
 
-The check uses the review's grep exactly. A C++ line is a candidate when it
-starts with `if`, `else if`, `else`, `switch`, `case`, `default`, `while`,
-`for` or `do` (optionally after a closing `}`), or holds a `? ... :` ternary.
-A Lua line is a candidate when it starts with `if`, `elseif`, `else`,
-`while`, `for`, `repeat` or `until`, or holds the word `and` or `or`
-anywhere. Lines whose trimmed text starts with `//`, `--` or `*` are
-skipped. The grep is deliberately blunt: it catches `and` inside a Lua
-string, a `?:` in a format string, a `for` that only walks a list. Those
-lines still need a row, usually `dead` or `loop` with a one-line note, so
-the check never has to guess what a line means.
+A C++ line is a candidate when it starts with `if`, `else if`, `else`,
+`switch`, `case`, `default`, `while`, `for` or `do` (optionally after a
+closing `}`), or holds a `? ... :` ternary. A Lua line is a candidate when
+it starts with `if`, `elseif`, `else`, `while`, `for`, `repeat` or
+`until`, or holds the word `and` or `or`.
+
+This is the review's grep with one change: it runs on the code after every
+comment and every string and character literal is blanked out. An `and`
+inside a Lua string, a `?:` inside a format string and an `if` inside a
+comment are no longer branch lines. That retired 42 of the 48 lines the
+review had marked as dead hits of its grep (the six left are real branches
+that decide nothing, such as a log-only `if` or a `switch` default no roll
+reaches, and their `plumbing:` line says so), and four other plumbing lines.
+The grep is otherwise as blunt as before: a `for` that only walks a list is a
+candidate and needs its `plumbing:` line, so the check never has to guess
+what a line means.
 
 ## Adding a branch
 
-When you add an `if`, a `case`, a ternary or a Lua `and`/`or` to an
+When you add an `if`, a `case`, a ternary or a Lua `and` / `or` to an
 in-scope file, the check reports it:
 
 ```
 uncovered: src/gameplay/walker.cpp:812: if (stats->frozen_delay > 0)
 ```
 
-Add a row to that file's manifest:
+- If the branch decides something a player could see, write the test
+  first, then a `rule:` block above the branch naming it.
+- If it is plumbing, write a `plumbing:` line saying why.
+- If it is a new arm of an existing rule (an `else if` of the same
+  decision), it is already covered by the chain's block: extend the rule's
+  text if it no longer says everything, and add the test for the new arm to
+  its `tests:`.
 
-- If the branch decides something a player could see, write a rule row:
-  the condition, what it decides, every arm with its outcome, the setting
-  it depends on, and the tests that assert each arm. Write the tests first;
-  the row is `asserted` only when every arm is asserted.
-- If it is plumbing (a null guard, a container walk, determinism plumbing,
-  a test-only path), write an other row with a note that says so.
-- If the line extends an existing rule (a new `else if` of the same
-  decision), add the line to that rule's `lines` and its arm to `arms`,
-  with the test that asserts the new arm.
-
-Set `anchor` to the trimmed text of the row's first line (or of its first
-line that is not a bare `else`, with `anchor_index` pointing at it). Leave
-`kinds` out and run `--fix`, which writes them from the lines the row
-claims; then run the check.
+Moving code moves its comments with it; there is nothing to re-point.
 
 ## Running the check
 
 ```bash
-python3 scripts/semantics/check_manifest.py            # check the tree
-python3 scripts/semantics/check_manifest.py --fix      # re-point moved rows, then check
-python3 scripts/semantics/check_manifest.py --report /tmp/semantics.txt
-python3 scripts/semantics/check_manifest.py --self-test
-ctest -R semantics_manifest                            # both, from a build directory
+python3 scripts/semantics/check_semantics.py            # check the tree
+python3 scripts/semantics/check_semantics.py --report /tmp/semantics.txt
+python3 scripts/semantics/check_semantics.py --self-test
+ctest -R semantics_                                     # both, from a build directory
 ```
+
+The in-scope file list and the branch grep live at the top of the check
+(`SCOPE_CPP`, `SCOPE_LUA_GLOB`, `CPP_BRANCH`, `LUA_BRANCH`), the only place
+they are spelled. The tests the review added are
+`tests/unit/test_sem_<area>_<n>.cpp`, one unit binary each
+(`og_unit_sem_<area>_<n>`), registered in `cmake/semantics/<area>.cmake`.
 
 Exit 0 means every rule holds; 1 means the output lists violations; 2 means
-the check could not run (no manifest directory, a file that is not JSON, a
-row missing a field). The output ends with the counts:
+the check could not run (an in-scope file or the parity table is missing).
+`deferred:` and `unreachable:` lines are printed as notices, not errors, so
+a reader can judge them. The output ends with the counts:
 
 ```
-check_manifest: FAIL: 159 files, 4678 candidate lines, 1504 rule rows, 448 other rows
-  R1 uncovered 0, double-claimed 0, stale line 0, missing kinds 0, drift 0, ...
-  R2 no test 0, missing test 0, disabled test 0, missing parity row 0
-  R3 not asserted 3 (partial 1, executed-only 2, none 0), deferred 2 (without issue 0), unreachable 1 (without reason 0)
+check_semantics: OK: 159 files, 4635 candidate lines, 3150 rule comments, 677 plumbing comments | uncovered 0, double-covered 0, stray 0, no tests 0, missing test 0, disabled test 0, missing parity row 0, malformed 0 | deferred 17, unreachable 24
 ```
-
-### Moving rows: --fix
-
-Editing a file moves the lines below the edit. The check notices because a
-row's anchor line no longer holds its anchor, and finds the anchor
-elsewhere in the file. The same text often appears more than once (two
-`if (target)` a few lines apart), so the check takes, in this order: the
-occurrence inside the row's function (a function definition above it, not
-yet closed by another at the same depth, has a name the row's `function`
-mentions); one below the row before it, because an edit never reorders
-lines; and the one nearest where the row would be had it moved as far as
-the row before it did. When the line the row would be on is inside its
-function and no occurrence is, the condition was rewritten in place, and
-the row is reported lost rather than moved onto a twin in another
-function. A row whose anchor is a bare
-`else`, `default:` or `end` says nothing about where it belongs, so it
-moves with the row before it in the same function (or, failing that, in
-the file), and only when that lands it on a line that reads exactly its
-anchor.
-
-The anchors found cut the file into stretches. Between two anchors, the
-branch lines the rows claim are matched in order with the branch lines the
-file now has there, whenever there are as many of each, and each match
-only between two branches of the same kind: an edit between two arms of
-one rule then moves the lower arm and leaves the upper one, while an
-`else` deleted and an `if` added in the same stretch leaves the `if`
-uncovered instead of handing it the `else`'s place. When a stretch gained
-or lost a branch line, or the kinds do not match, its lines move with the
-anchor above them, and the check reports what does not fit: the new
-branch as `uncovered`, the line a removed arm leaves behind as `stale
-line`.
-
-Without `--fix` every row that moved is a `drift` error naming the line
-its anchor now sits on. `--fix` writes the new lines into the manifest
-file and prints a `fixed:` line for every row it moved; read them, since a
-moved line is only matched by position and kind, never by its text.
-Running it twice changes nothing the second time. What `--fix` cannot place
-stays red: an edit that adds or removes a branch always needs a row written
-or a line moved by hand.
-
-The check stores text only for a row's anchor line. A line below the
-anchor is known by its position and its kind, so a rewrite that keeps the
-kind (`case 3:` becoming `case 4:`, `if (a)` becoming `if (b)` on an arm's
-line) passes unseen; one that changes it (`else` becoming `else if (x)`) is
-a `stale line`.
-
-`--fix` only ever writes files in `tests/semantics/manifest/`. It never
-touches the simulation, never changes a status and never adds a row.
 
 ### What each error means
 
 | error | meaning | what to do |
 |---|---|---|
-| `uncovered` | a branch line no row claims | add a row, or add the line to the rule it belongs to |
-| `double-claimed` | two rows claim the same line | give the line to one of them |
-| `stale line` | a line a row claims is no longer the branch its `kinds` says (an arm was deleted, or rewritten into another kind of branch) | move the line out of the row, or update the row's `lines`, `kinds` and `arms` to the code |
-| `missing kinds` | a row has no `kinds` | run `--fix`, which writes them |
-| `drift` | a row's anchor, or a line below it, moved | run `--fix` and read the `fixed:` lines it prints: each says where a row went, and a line matched by position may have landed on a different branch of the same kind |
-| `lost anchor` | the anchor text is nowhere in the file, or only in other functions | the condition was rewritten: update `anchor` and `lines` by hand, and check the rule still says what the code does |
-| `unanchored` | a bare `else` / `default:` row is no longer on its text and no row before it carried it there | point its `lines` at the line by hand |
-| `out of range` | a row names a line past the end of the file | the file shrank: fix the row's `lines` |
-| `missing file` | an in-scope C++ file is gone | a rename: update `SCOPE_CPP` and the manifest's `path` |
-| `stray manifest` | a manifest file describes a file outside the scope | delete it, or move its rows to the file's new name |
-| `duplicate manifest` | two manifest files describe one source file | merge them |
-| `no test` | a rule row cites no test, and is neither deferred with an issue nor unreachable with a reason | cite the test that asserts it, or write one |
-| `missing test` | the cited file has no `TEST`, `TEST_F` or `TEST_P` of that name outside comments and `#if 0` (a test stamped out by a file-local macro counts) | the test was renamed or removed: cite the current name |
-| `disabled test` | the cited test's suite or name starts with `DISABLED_`, so gtest never runs it (a disabled test never satisfies a citation) | enable the test, or cite one that runs |
-| `missing parity row` | the cited parity row is not in `tests/parity/scenario_table.h` | cite the row id as the table spells it |
-| `not asserted` | the rule's status is `partial`, `executed-only` or `none` | write the tests for the missing arms, then set `asserted` |
-| `deferred without issue` | `deferred` needs an `issue` | file the issue and add its number |
-| `unreachable without reason` | an `unreachable` row has no `note`, or an empty one | write in `note` why no test can reach the arm, or write the test and set the status the tests earn |
-
-A `deferred: ... issue #N` line is a notice, not an error: the row waits on
-that issue and the check stays green. An `unreachable: ... <reason>` line is
-a notice too: it prints the row's reason, so that a reader can judge whether
-the arm is really dead.
+| `uncovered` | a branch line no block covers | write its `rule:` or `plumbing:` block |
+| `double-covered` | two blocks cover one line (two trailing blocks on one arm) | keep one |
+| `stray` | a block that covers no branch line: above a statement that is no branch, cut off from its statement by a blank line or another comment, inside a statement's continuation lines, above an `else` arm, or trailing anywhere but an `else` arm | move it to the branch it describes, or delete it if the branch is gone |
+| `no tests` | a `rule:` with no `tests:`, `deferred:` or `unreachable:` | name the test that asserts it, or write one |
+| `missing test` | no `TEST`, `TEST_F` or `TEST_P` under `tests/` defines that `Suite.name` outside comments and `#if 0` (a test a file-local macro stamps out counts) | the test was renamed or removed: name the current one |
+| `disabled test` | the test's suite or name starts with `DISABLED_`, so it never runs | enable it, or name one that runs |
+| `missing parity row` | the `parity:` row is not in `tests/parity/scenario_table.h` | spell the row id as the table does |
+| `malformed` | the block breaks the grammar: an unknown keyword (`test:`), keywords out of order, a plain comment inside the block, a `deferred:` without `#<issue>`, an `unreachable:` or `plumbing:` without a reason, a `plumbing:` block with tests, a line not at the statement's indentation, a `tests:` line outside a block, a test name that is neither `Suite.name` nor `parity:<row>` | fix the block |
