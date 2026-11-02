@@ -274,8 +274,9 @@ run clears the foes. The defense contract remains team-0 alive at tick
 The same bracket on the original build (`b1412cab`) measured 11/11/9
 mixed-roster defenders at curve. The cheap CI census at tick 600 changes
 from 8/8/8 to 7/8/8, so its measured minimum moves from 8 to 7. The
-separate `ashfall_fair_holds_defense_band_at_curve` test now checks the
-3000-tick defense contract on all three seeds. The table below preserves
+separate `ashfall_fair_holds_defense_band_at_curve` test checked the
+3000-tick defense contract on all three seeds (deleted 2026-11-02 with the
+survivor pins; see the update below). The table below preserves
 the original shipped measurements.
 
 ### Update (2026-10-17, Gameplay Fixes)
@@ -311,6 +312,23 @@ defense band measured unchanged. The 6000-tick bracket sweeps
 (`scripts/longseason_playtest.sh`) were not re-run for this update; the
 F4 rows below keep their 2026-07-09 evidence.
 
+### Update (2026-11-02, survivor pins deleted)
+
+The CI test no longer asserts survivor counts. Its per-level floors,
+asserted on seed 42 at tick 600, and the Ashfall Fair defense band (team
+0 at four or more standing at tick 3000 on seeds 42, 1337 and 2025)
+pinned one chaotic trajectory each: on the three Westlands rows measured
+over a hundred seeds the unchanged game missed its own band on 5 to 28
+of them, and the four campaign calibration suites were re-pinned eight
+times. The maintainer deleted them on 2026-11-02, once the semantic
+tests in `tests/unit/test_sem_*.cpp` asserted every game rule directly.
+`LongSeasonCalibration.curve_levels_load_field_an_army_and_fight_at_600_ticks`
+now asserts, per level on seed 42, that the level loads and deploys the
+whole crew, fields an army, and that the crew takes and deals damage.
+`LONGSEASON_CALIBRATION_MEASURE=1` still prints the three-seed survivor
+counts. The floors in the tables above and below are the measurements of
+their day; the win/hold gates live in `scripts/longseason_playtest.sh`.
+
 ### F4 CALIBRATION TABLE (measured 2026-07-09 — the contract as shipped)
 
 Method: scripts/longseason_playtest.sh (openglad_text --protocol; since
@@ -327,7 +345,8 @@ fixes); package + mapgen expectations + test pins moved in lockstep each
 batch. CI pins the cheap invariant in
 tests/unit/test_longseason_calibration.cpp (LongSeasonCalibration:
 8-mixed crew at curve, seed 42, >= floor alive at tick 600; floors are
-measured minima across the three pinned seeds — no dead slack).
+measured minima across the three pinned seeds — no dead slack). The floor
+assertion was deleted on 2026-11-02; see the update above.
 
 | lvl | title | gate | crew | verdict | evidence (8-mixed @curve unless noted) |
 |-----|-------|------|------|---------|----------------------------------------|

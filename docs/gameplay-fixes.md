@@ -979,6 +979,11 @@ and P) and six from the second bugs batch:
 
 ## Balance
 
+**Update (2026-11-02):** the suites no longer assert survivor counts;
+the floors and ceilings named below were deleted (ruling 16 of the
+[rulings](#rulings-2026-11-01)), and the tables stay as the measurements
+they were.
+
 All four calibration suites were measured on both values of the setting,
 and on both values of New Specials, with their own seeds (42, 1337 and
 2025). Each cell is the crew's survivors at tick 600 for the three seeds.
@@ -1743,7 +1748,27 @@ taken, and what the game does today.
 16. **Calibration dips.** A Long Season or Imaginations level that falls
     under its floor is eased in its builder; a Westlands level is reported
     with the bisect and the three seeds for the maintainer's word; nothing
-    is re-pinned lower. Default: so.
+    is re-pinned lower. Default: so. **Update (2026-11-02):** the maintainer
+    deleted the survivor pins instead. The four calibration suites
+    (`tests/unit/test_westlands_calibration.cpp`,
+    `test_longseason_calibration.cpp`, `test_imaginations_calibration.cpp`,
+    `test_tower_calibration.cpp`) held one chaotic trajectory, seed 42,
+    against survivor floors and ceilings cut from itself; on the three rows
+    measured over a hundred seeds the unchanged game misses its own band on
+    5 to 28 of them (Westlands 9 on 5, Westlands 11 on 24, Westlands 5 on 28
+    in the T to W pass), so the suites went red on nearly every simulation
+    change and were re-pinned eight times since July. A lottery is not a
+    rule; the semantic tests (`tests/unit/test_sem_*.cpp`) now assert every
+    game rule directly. Gone: every floor and ceiling, and Long Season's
+    Ashfall Fair defense band (team 0 at four or more standing at tick 3000
+    on three seeds, the same kind of survivor count). Asserted exactly on
+    every row of all four suites, as the Westlands suite already did: the
+    level loads and deploys the whole crew, it fields an army (on the Tower,
+    at least a third of the generator's foe count), and the crew takes and
+    deals damage. The measuring modes (`WESTLANDS_CALIBRATION_MEASURE=1` and
+    its siblings) stay as tools: they assert nothing and run only when
+    asked. The two Westlands lines this ruling was asked about go with the
+    pins; no level was eased and none is re-pinned.
 17. **The new pairs of recordings.** The far shove across a teleporter
     cannot be staged in an arena, so the unit tests and the level-play
     count stand for it. Each proposed pair (the near stale shove, the
