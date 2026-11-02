@@ -543,7 +543,12 @@ TEST_F(SemAi2, a_seated_walker_ignores_its_action_and_a_passing_action_lets_the_
 // of 130 wraps the char to -126, reachable only with the setting off, whose
 // bound is (level + 2) / 3) folds to slot 1 too. The control: a named slot
 // rolled (slot 3, HEAL) stays. Old game (7ff1654a living.cpp:350-367): the
-// same fold on the NONE name.
+// same fold on the NONE name only. The range guard (current_special() < 1 or
+// >= NUM_SPECIALS) is the current game's: the old game has none, so its
+// level-400 roll indexes special_name[family][-126] out of bounds (undefined
+// behaviour), and the out-of-range fold has no classic oracle. The third
+// sub-arm, a family with no descriptor, is not staged: every mounted family
+// has one.
 inline constexpr const char* kNoneSlotDecl =
     "og.family('living', { id = 'kitprobe:golem', wire_id = 18,\n"
     "  specials = {\n"

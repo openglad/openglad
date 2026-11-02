@@ -860,7 +860,8 @@ TEST_F(SemAi4, a_crowded_map_skips_pathing_and_ends_the_order_when_no_foe_is_nea
 // circuit adopts the nearer orc and aims at it: RIGHT to DOWN_RIGHT, then
 // init_fire on to DOWN. Control: the second orc 280 px south (beyond the
 // held one): the held foe stays and the aim is east (turn(RIGHT) from RIGHT
-// steps to UP_RIGHT, init_fire back toward enddir: RIGHT).
+// steps to UP_RIGHT; init_fire then turns toward enddir, still DOWN, one
+// clockwise step from UP_RIGHT: RIGHT).
 TEST_F(SemAi4, a_chaser_switches_to_a_strictly_nearer_foe_and_turns_to_it)
 {
     const std::uint32_t s = state_where({{300, kNonZero}, {10, kAny}, {25, kAny}});
@@ -931,7 +932,9 @@ TEST_F(SemAi4, a_chaser_follows_its_path_or_charges_when_closer_than_ever)
 }
 
 // stats.cpp:1426 (triaged a classic quirk: on one floor the line is reached
-// only when find_foes_in_range finds no hostile in 100 px). Three arms:
+// only when find_foes_in_range finds no hostile in 100 px). Three arms; (a)
+// and (c) match the old game (7ff1654a stats.cpp:1340), (b) is the current
+// game's multifloor guard (the old game has no !cross_floor term):
 //  (a) same floor, re-plan tick, no orders queued, the held foe an ignored
 //      hostile object 20 px east (a mode's attack objective, the soccer
 //      ball's shape): find_foes_in_range counts only livings and generators,
@@ -942,7 +945,7 @@ TEST_F(SemAi4, a_chaser_follows_its_path_or_charges_when_closer_than_ever)
 //      re-plan tick: the order stands (count 9).
 //  (c) same floor, throttled tick (counter 5), a friendly held foe 20 px
 //      east, SEARCH(9): tempdistance is unmeasured, the order stands.
-TEST_F(SemAi4, classic_a_chaser_within_30_px_ends_its_order_only_on_a_replan_tick_on_its_floor)
+TEST_F(SemAi4, a_chaser_within_30_px_ends_its_order_only_on_a_replan_tick_on_its_floor)
 {
     const std::uint32_t s = state_where({{300, kNonZero}, {10, kAny}, {4, kAny}, {25, 5}});
     {
