@@ -545,6 +545,47 @@ TEST_F(SemArchmageClassicSlot2, classic_a_struck_archmage_heartbursts_twice_and_
     EXPECT_EQ(1u, miss.rng) << "the coin is the one draw";
 }
 
+// :136 the chain-fails arm (rand(2) != 0). A failed CHAIN LIGHTNING falls
+// through to a HEARTBURST attempt: the shift is released and slot 2 is cast
+// again. The one way to stage a failed chain is the current game's
+// per-placed-NPC "specials disabled" flag (level files v10, npc_flags bit 0;
+// walker::special refuses every cast before charging anything), so this is
+// pinned as a current-game rule: the old game has no such flag. The other
+// way a chain fails, og.summon answering nil (COULD NOT CREATE CHAIN), needs
+// a failing entity factory and is unreachable here; the old game
+// dereferences the null chain there.
+//
+// The fall-through is seen in the walker's state: the coin fell on the
+// chain (shift down), and the archmage ends with the shift released and
+// slot 2 selected, having cast nothing and spent nothing.
+//
+// RED (`self:set_shifter_down(0)` -> `self:set_shifter_down(1)` at
+// living-17-archmage.lua:151): Expected equality of these values: 0
+// a->shifter_down() Which is: 1.
+TEST_F(SemArchmageClassicSlot2, classic_a_struck_archmage_whose_chain_fails_falls_through_to_a_heartburst_attempt)
+{
+    fresh_world();
+    living* a = arch(1, 200, 200, 4, 1000.0f);
+    living* o = orc(2, 230, 200);
+    ASSERT_TRUE(a && o);
+    o->stats()->set_max_hitpoints(900.0f);
+    o->stats()->set_hitpoints(900.0f);
+    a->set_specials_disabled(true);
+    a->set_shifter_down(0);
+    a->set_current_special(0);
+    world().gameplay_fixes = 0;
+    const std::uint32_t seed = state_where_next_is(2, 1);
+    world().rng_.state_ = seed;
+    hit(a, o);
+    EXPECT_EQ(0, a->shifter_down()) << "chain fails: the shift is released for the heartburst";
+    EXPECT_EQ(2, static_cast<int>(a->current_special())) << "chain fails: slot 2 again";
+    EXPECT_EQ(0u, live(Order::FX, FAMILY_CHAIN).size()) << "chain fails: no CHAIN";
+    EXPECT_EQ(0u, live(Order::FX, FAMILY_EXPLOSION).size()) << "the heartburst is refused too";
+    EXPECT_FLOAT_EQ(1000.0f, a->stats()->magicpoints()) << "nothing is charged";
+    EXPECT_EQ(state_after(seed, {2}), world().rng_.state_) << "one draw: the coin";
+    EXPECT_FLOAT_EQ(900.0f, o->stats()->hitpoints()) << "the orc is untouched";
+}
+
 // ---------------------------------------------------------------------------
 // The bot gates (:168, :190)
 // ---------------------------------------------------------------------------
