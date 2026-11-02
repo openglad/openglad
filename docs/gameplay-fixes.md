@@ -1489,7 +1489,9 @@ part of Y that put the crews a little ahead of the game without Y (317 and
 standard error, and the two lines measured over a hundred seeds read no
 hotter than they did on the first build. No level was eased, and no floor,
 ceiling or seed changed in any calibration test in this work (the four
-calibration test files are untouched since PR #404). The two Westlands
+calibration test files are untouched since PR #404; on 2026-11-02 the
+floors and ceilings were then deleted from all four under ruling 16's
+update). The two Westlands
 lines go to the maintainer with the three seeds and the fixes that moved
 them (ruling 16 of the [rulings](#rulings-2026-11-01)).
 

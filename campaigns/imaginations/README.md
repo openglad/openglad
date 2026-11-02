@@ -177,7 +177,7 @@ save's level-1 crew (crew power 1 in the longseason README's terms).
 
 | level | crew power entering | calibration floor (8-mixed, tick 600, min over seeds 42/1337/2025) |
 |-------|---------------------|--------------------------------------------------------------------|
-| 1 | 1 | 7 (measured 8/7/8 on 2026-08-11; pinned in tests/unit/test_imaginations_calibration.cpp) |
+| 1 | 1 | 7 (measured 8/7/8 on 2026-08-11; was pinned in tests/unit/test_imaginations_calibration.cpp) |
 | 2 | 1 | 8 (measured 8/8/8 on 2026-10-26; only the four tick-0 faeries are awake by tick 600) |
 | 3 | 1 | 6 (measured 8/8/6 on 2026-10-26; the first gust wakes at 300) |
 
