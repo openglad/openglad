@@ -552,7 +552,10 @@ TEST_F(SemDruid, a_classic_cast_into_a_wall_attempts_the_bolt_and_fails_there)
         EXPECT_FALSE(cast(druid, c.slot, 0, &reason)) << "fixes off, pad on terrain, slot " << c.slot;
         EXPECT_EQ(std::string("COULD NOT FIRE"), reason) << "slot " << c.slot;
         EXPECT_FLOAT_EQ(c.mp, druid->stats()->magicpoints()) << "refund and swing cancel, slot " << c.slot;
-        EXPECT_NE(4242u, world().rng_.state_) << "fixes off: fire() was attempted (the waver drawn), slot " << c.slot;
+        // fire() draws exactly one number before the pad check: the waver in
+        // set_weapon_heading (walker.cpp), one glibc LCG step from 4242.
+        EXPECT_EQ(4242u * 1103515245u + 12345u, world().rng_.state_)
+            << "fixes off: fire() was attempted (one waver draw), slot " << c.slot;
         EXPECT_EQ(0, count(Order::Weapon, FAMILY_TREE)) << "slot " << c.slot;
         EXPECT_EQ(0, count(Order::Living, FAMILY_FAERIE)) << "slot " << c.slot;
     }
