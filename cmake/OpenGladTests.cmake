@@ -1171,11 +1171,19 @@ og_add_unit_group(og_unit_westlands_fire FILES
 )
 
 # The Imaginations dream-log campaign (campaigns/imaginations): its level
-# sims (the castle gate, the ghost tent, the asteroid's spikes and stairs)
-# and the dream-log book. Its own group beside og_unit_data so those sims
-# keep their own time budget under the instrumented lanes.
+# sims and the dream-log book, in their own groups beside og_unit_data so
+# those sims keep their own time budget under the instrumented lanes. Every
+# test loads a world and parses the class-pack Lua, which ASan makes slow,
+# so the campaign is split in two binaries of about equal weight:
+# og_unit_imaginations holds the isle and the Castle of Gold (the castle
+# gate, the ghost tent), og_unit_imaginations_asteroid holds the Asteroid
+# Castle (its spikes and stairs, the Big One) and the dream-log book.
 og_add_unit_group(og_unit_imaginations FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_imaginations_levels.cpp
+)
+
+og_add_unit_group(og_unit_imaginations_asteroid FILES
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_imaginations_asteroid.cpp
     ${CMAKE_SOURCE_DIR}/tests/unit/test_imaginations_dream_log.cpp
 )
 
@@ -2294,7 +2302,7 @@ set(OG_ASAN_SHARD1
     og_test_level ${OG_PARITY_TESTS} mutation_canary_plan_cli
     og_test_menu_ui og_test_special_scenes og_test_view og_test_curses
     og_unit_basketball og_unit_families og_unit_modes og_unit_stage
-    og_unit_westlands_fire openglad_demo_restart
+    og_unit_imaginations_asteroid og_unit_westlands_fire openglad_demo_restart
 )
 set(OG_ASAN_SHARD2
     og_unit_sim ${OG_UNIT_DATA_TESTS} og_test_matchup og_test_picker_network
