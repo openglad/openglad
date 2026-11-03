@@ -311,8 +311,8 @@ local function teleport(self)
     marker.lifetime = self.level // 4 + 1
   end
   marker.ani_type = C.ANI_SPIN
-  -- rule: Same rule as above: 'Teleport Marker Placed' and '(N Uses)' go only to the seated caster's
-  --   seat.
+  -- rule: Same rule as above: 'Teleport Marker Placed' and '(N Uses)' go only to the seated
+  --   caster's seat.
   -- tests: PackLuaMage.the_marker_flow_talks_only_to_the_casting_seat
   -- tests: SemMage.a_bot_placing_a_marker_announces_nothing
   if (self.team == 0 or self:has_guy())

@@ -10,8 +10,8 @@ local LIVING_FAERIE = assert(og.family_id("living", "core:faerie"))
 local WEAP_CIRCLE_PROTECTION = assert(og.family_id("weapon", "core:circle_protection"))
 
 local function plant_tree(self)
-  -- rule: A busy druid cannot cast GROW TREE (same rule as the other three druid casts:
-  --   here/below).
+  -- rule: A busy druid cannot cast GROW TREE (the other three druid casts
+  --   share the rule, each in its own function).
   -- tests: GameplayFixesDruid.an_open_tree_costs_its_price_on_both_values
   -- tests: WalkerSpecials.druid_grow_tree_drives_simulation
   -- tests: SemDruid.a_busy_druid_casts_none_of_its_four_specials
@@ -19,8 +19,8 @@ local function plant_tree(self)
     return false, "SPECIAL BUSY"
   end
   -- rule: Gameplay Fixes: a druid aiming its bolt into terrain (wall/map edge on the fire pad) is
-  --   refused before anything is paid (same rule in plant_tree here and summon_faerie below). Classic:
-  --   the cast goes on to fire() and fails there.
+  --   refused before anything is paid (the same rule as in summon_faerie below). Classic: the
+  --   cast goes on to fire() and fails there.
   -- tests: GameplayFixesDruid.a_cast_at_terrain_spends_nothing_with_the_setting_on
   -- tests: GameplayFixesDruid.a_cast_at_the_map_edge_spends_nothing
   -- tests: GameplayFixesDruid.an_open_tree_costs_its_price_on_both_values
@@ -63,16 +63,16 @@ local function plant_tree(self)
 end
 
 local function summon_faerie(self)
-  -- rule: A busy druid cannot cast SUMMON FAERIE (same rule as the other three druid casts:
-  --   above/here/below).
+  -- rule: A busy druid cannot cast SUMMON FAERIE (the other three druid casts
+  --   share the rule, each in its own function).
   -- tests: WalkerSpecials.druid_summon_faerie_drives_simulation
   -- tests: SemDruid.a_busy_druid_casts_none_of_its_four_specials
   if lc.is_busy(self) then
     return false, "SPECIAL BUSY"
   end
   -- rule: Gameplay Fixes: a druid aiming its bolt into terrain (wall/map edge on the fire pad) is
-  --   refused before anything is paid (same rule in plant_tree above and summon_faerie here). Classic:
-  --   the cast goes on to fire() and fails there.
+  --   refused before anything is paid (the same rule as in plant_tree above). Classic: the cast
+  --   goes on to fire() and fails there.
   -- tests: GameplayFixesDruid.a_cast_at_terrain_spends_nothing_with_the_setting_on
   -- tests: GameplayFixesDruid.a_cast_at_the_map_edge_spends_nothing
   -- tests: WalkerSpecials.druid_summon_faerie_drives_simulation
@@ -123,8 +123,8 @@ local function summon_faerie(self)
 end
 
 local function reveal_items(self)
-  -- rule: A busy druid cannot cast REVEAL (same rule as the other three druid casts:
-  --   above/here/below).
+  -- rule: A busy druid cannot cast REVEAL (the other three druid casts
+  --   share the rule, each in its own function).
   -- tests: FamilyBehaviors.druid_batch3_special_branches
   -- tests: WalkerSpecials.druid_reveal_drives_simulation
   -- tests: SemDruid.a_busy_druid_casts_none_of_its_four_specials
@@ -138,8 +138,8 @@ local function reveal_items(self)
 end
 
 local function protection_circle(self)
-  -- rule: A busy druid cannot cast PROTECTION (same rule as the other three druid casts:
-  --   above/here).
+  -- rule: A busy druid cannot cast PROTECTION (the other three druid casts
+  --   share the rule, each in its own function).
   -- tests: FamilyBehaviors.druid_batch3_special_branches
   -- tests: PackLuaDruid.one_ally_receives_one_circle_and_caster_receives_none
   -- tests: SemDruid.a_busy_druid_casts_none_of_its_four_specials

@@ -79,8 +79,8 @@ end
 -- therefore `* 4 // 2`.
 local function bounce_volley(cost_mult, count, los_num)
   return function(self)
-    -- rule: Same rule as above for the bouncing volleys: a terrain-blocked pad refuses free with the
-    --   setting on.
+    -- rule: Same rule as above for the bouncing volleys: a terrain-blocked pad refuses free with
+    --   the setting on.
     -- tests: GameplayFixesElf.a_volley_at_a_wall_spends_nothing_with_the_setting_on
     -- tests: GameplayFixesElf.a_volley_at_the_map_edge_spends_nothing
     -- tests: parity:elf_rocks_blocked_fixes_scen99
