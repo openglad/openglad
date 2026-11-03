@@ -27,6 +27,12 @@ end
 
 local function wail(self)
   local foe = nearest_foe(self, og.scare_radius(self.level))
+  -- rule: WAIL needs a living foe on the ghost's floor inside the scare radius (50+10/level): it
+  --   launches a homing wail at the nearest; with none it refuses NO FOE TO WAIL AT; a full world
+  --   refuses COULD NOT CREATE WAIL.
+  -- tests: KitGhost.wail_hops_foe_to_foe_and_frights_each_once
+  -- tests: KitGhost.a_full_world_refuses_the_casts_that_need_an_entity
+  -- tests: SemLibsGhost.a_wail_launch_plays_one_fwip_and_its_refusals_none
   if not foe then
     return false, "NO FOE TO WAIL AT"
   end
@@ -49,6 +55,12 @@ function M.scare_or_wail(classic)
   local rested_scare = lc.with_rest(classic, SCARE_SLOT, "scare_rest", "SCARE")
   local rested_wail = lc.with_rest(wail, SCARE_SLOT, "scare_rest", "WAIL")
   return function(self)
+    -- rule: Slot 1 is the classic SCARE unshifted and WAIL (50 MP) shifted when New Specials puts
+    --   it in play; both share one scare_rest and each refuses in its own name; SCARE rests with
+    --   New Specials off too.
+    -- tests: KitGhost.wail_costs_50_and_is_scare_when_off
+    -- tests: KitRests.scare_and_wail_share_an_eight_second_rest
+    -- tests: KitRests.with_the_setting_off_the_classic_specials_rest_too
     if self:alternate_down() then
       return rested_wail(self)
     end
@@ -71,6 +83,10 @@ local WAIL_HOP_REACH = 120
 local function wail_pays(self)
   local radius = og.scare_radius(self.level)
   local near = G.living_foes(self, radius, true)
+  -- rule: WAIL pays where a chain does: exactly one living foe inside the scare radius (a crowd is
+  --   SCARE's), the 50 WAIL costs in hand, and a second living foe within a hop (120 px) of that
+  --   one.
+  -- tests: GameplayFixesBots.ghost_wail_takes_a_chain_and_scare_takes_a_crowd
   if #near ~= 1 then
     return false
   end
@@ -80,7 +96,15 @@ local function wail_pays(self)
   local struck = near[1]
   local far = G.living_foes(self, radius + WAIL_HOP_REACH, true)
   for i = 1, #far do
+    -- rule: WAIL pays where a chain does: exactly one living foe inside the scare radius (a crowd
+    --   is SCARE's), the 50 WAIL costs in hand, and a second living foe within a hop (120 px) of
+    --   that one.
+    -- tests: GameplayFixesBots.ghost_wail_takes_a_chain_and_scare_takes_a_crowd
     if far[i] ~= struck then
+      -- rule: WAIL pays where a chain does: exactly one living foe inside the scare radius (a crowd
+      --   is SCARE's), the 50 WAIL costs in hand, and a second living foe within a hop (120 px) of
+      --   that one.
+      -- tests: GameplayFixesBots.ghost_wail_takes_a_chain_and_scare_takes_a_crowd
       if far[i]:distance_to_ob(struck) <= WAIL_HOP_REACH then
         return true
       end
@@ -96,6 +120,11 @@ end
 function M.wail_gate(scare)
   return function(self)
     local answer = scare(self)
+    -- rule: A bot ghost's slot 1 is two specials: WAIL (shift 1) where it pays, else SCARE (shift
+    --   0) on the SCARE gate's answer; the SCARE gate is always asked first for its draw; with New
+    --   Specials off the SCARE answer stands and the engine's coin is untouched.
+    -- tests: GameplayFixesBots.ghost_wail_takes_a_chain_and_scare_takes_a_crowd
+    -- tests: GameplayFixesBots.ghost_scare_wants_a_living_foe_inside_the_scare_radius
     if og.match_setting("new_specials") == 0 then
       return answer
     end
@@ -117,6 +146,13 @@ end
 
 function M.siphon(self)
   -- A phased ghost is held busy too; it hears why it cannot touch.
+  -- rule: SIPHON touches the nearest living foe within siphon_reach with its own damage and heals
+  --   the ghost half the damage dealt (truncated, never past max). A touch that finds a foe costs
+  --   one attack pause (busy += fire_frequency), even when it deals 0; an empty touch spends the
+  --   mana but adds NO pause (it returns before set_busy). A phased or busy ghost refuses.
+  -- tests: KitGhost.siphon_heals_half_of_damage_dealt_never_above_max
+  -- tests: KitGhost.empty_siphon_still_spends
+  -- tests: KitGhost.phase_doubles_speed_blocks_attacks_and_expires_clean
   if phased(self) then
     return false, "PHASED"
   end
@@ -150,6 +186,11 @@ function M.siphon(self)
 end
 
 function M.ai_siphon(self)
+  -- rule: A bot ghost siphons when under 80 % health with a living foe within 24 on its floor,
+  --   never phased or busy.
+  -- tests: KitGhost.ai_siphon_fires_when_hurt_and_a_foe_is_touching
+  -- tests: GameplayFixesBots.a_busy_bot_never_rolls_a_busy_cast_with_the_setting_on
+  -- tests: KitGhost.ai_off_answers_the_classic_gate
   if og.match_setting("new_specials") == 0 then
     return true
   end
@@ -177,6 +218,10 @@ end
 
 -- Why a foe cannot be taken at all, or nil when it can.
 local function host_refusal(foe)
+  -- rule: POSSESS can never take an undead, a player-driven hero, a host already possessed or a
+  --   charmed host; each refusal is named and free.
+  -- tests: KitGhost.possess_refusals_spend_nothing_and_draw_nothing
+  -- tests: KitPossession.undead_seat_and_linked_hosts_refuse
   if og.family_flag("living", foe:family(), "is_undead") then
     return "UNDEAD RESIST"
   end
@@ -202,6 +247,9 @@ local LN100 = { 0, 69, 110, 139, 161, 179, 195, 208, 220, 230, 240, 248, 256,
 -- Never 0 (the engine's "for good"): every ride ends.
 local function possess_ticks(self, foe, t)
   local gap = self.level - foe.level
+  -- rule: A possession lasts possess_base ticks on an equal-level host, growing with ln(1+level
+  --   gap) to possess_cap; a host that out-levels the ghost gets only possess_min; never 0.
+  -- tests: KitGhost.duration_follows_the_log_curve_and_caps_at_a_minute
   if gap < 0 then
     return t.possess_min
   end
@@ -211,6 +259,15 @@ local function possess_ticks(self, foe, t)
 end
 
 function M.possess(self)
+  -- rule: POSSESS rides the nearest living foe in reach: phased/charmed ghosts and unreachable or
+  --   refused hosts are refused free; otherwise a resist roll (level roll then constitution roll; a
+  --   hero's constitution, else hp/30) decides: resisted spends the mana and the host strikes back
+  --   at once; taken, the engine moves the seat, hides the ghost and counts the ride down; an
+  --   engine refusal passes through.
+  -- tests: KitGhost.possess_resist_roll_uses_howl_order
+  -- tests: KitGhost.possess_refusals_spend_nothing_and_draw_nothing
+  -- tests: KitGhost.possess_reads_a_heros_constitution_and_passes_engine_refusals
+  -- tests: SemLibsGhost.a_possession_that_lands_plays_one_fwip_and_a_resisted_one_none
   if phased(self) then
     return false, "PHASED"
   end
@@ -262,6 +319,7 @@ function M.possess(self)
   -- The entrance, as the release's exit: an ownerless scare burst is a
   -- picture only (the scare frightens foes for a live owner alone).
   local burst = og.add_ob("fx", FX_GHOST_SCARE)
+  -- plumbing: add_ob nil (world full): the entrance scare burst picture is skipped
   if burst then
     burst.ani_type = C.ANI_SCARE
     burst.team = foe.team
@@ -273,6 +331,11 @@ function M.possess(self)
 end
 
 function M.ai_possess(self)
+  -- rule: A bot ghost possesses a living foe within 24 on its floor that it may take and that does
+  --   not out-level it; never phased or charmed.
+  -- tests: KitGhost.ai_possess_fires_when_a_weaker_bot_foe_is_touching
+  -- tests: KitGhost.bot_ghost_possesses_an_adjacent_bot_foe_only
+  -- tests: KitGhost.ai_off_answers_the_classic_gate
   if og.match_setting("new_specials") == 0 then
     return true
   end
@@ -311,6 +374,11 @@ end
 -- count down, and end the phase at zero.
 local function veil(marker)
   local owner = marker:owner()
+  -- rule: PHASE's veil keeps the ghost busy (>= 2) and spectral for phase_ticks, then restores it:
+  --   phantom and no-collide off, back in the obmap, invulnerability and speed bonus cleared; an
+  --   orphan veil dies at once.
+  -- tests: KitGhost.phase_doubles_speed_blocks_attacks_and_expires_clean
+  -- tests: KitGhost.phase_is_not_in_play_when_off_and_an_orphan_veil_dies
   if not owner then
     marker.dead = 1
     marker:death()
@@ -330,6 +398,11 @@ end
 km.register(km.PHASE_VEIL, veil)
 
 function M.phase(self)
+  -- rule: PHASE refuses ALREADY PHASED while its veil stands (and COULD NOT PHASE in a full world);
+  --   otherwise the ghost becomes invulnerable, twice as fast, phantom, out of collisions and too
+  --   busy to swing for phase_ticks.
+  -- tests: KitGhost.phase_doubles_speed_blocks_attacks_and_expires_clean
+  -- tests: KitGhost.a_full_world_refuses_the_casts_that_need_an_entity
   if km.find(self, km.PHASE_VEIL) then
     return false, "ALREADY PHASED"
   end
@@ -356,6 +429,10 @@ function M.phase(self)
 end
 
 function M.ai_phase(self)
+  -- rule: A bot ghost phases below 30 % health with a living foe within 48 on its floor, not
+  --   already phased, and only while SCARE rests (SCARE is the cheaper answer to a foe at hand).
+  -- tests: KitGhost.ai_phase_fires_when_low_and_a_foe_is_close
+  -- tests: GameplayFixesBots.ghost_phase_defers_to_a_scare_it_could_cast
   if og.match_setting("new_specials") == 0 then
     return true
   end

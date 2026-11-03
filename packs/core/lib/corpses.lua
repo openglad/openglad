@@ -23,6 +23,12 @@ local LIVING_GHOST = assert(og.family_id("living", "core:ghost"))
 -- (body nil) the corpse's own family when the stain is friendly and a ghost
 -- otherwise, the branch resurrect itself takes.
 local function body_for(self, blood, body)
+  -- rule: With Gameplay Fixes on, the room a raise needs is measured for the body that will
+  --   actually rise: RAISE SKELETON / RAISE GHOST probe their own family; RESURRECT probes the
+  --   corpse's old family when the stain is friendly and a ghost when it is a foe's.
+  -- tests: GameplayFixesClericRaise.reporter_elf_against_a_wall_is_raised_with_the_setting_on
+  -- tests: GameplayFixesClericRaise.a_blocked_near_stain_does_not_hide_a_usable_far_one
+  -- tests: SemLibsCorpses.resurrect_measures_a_foe_stain_for_the_ghost_it_will_raise
   if body ~= nil then
     return body
   end
@@ -42,21 +48,49 @@ end
 -- corpse before a far one before none.
 function M.raise_spot(self, range, body)
   local stains = og.blood_in_reach(self)
+  -- rule: With Gameplay Fixes on, a raise with no stain within the finder's own cap (squared centre
+  --   distance < 800 on the caster's floor) refuses NO CORPSE NEARBY and spends nothing.
+  -- tests: GameplayFixesClericRaise.refusals_spend_nothing_on_both_values
+  -- tests: GameplayFixesClericRaise.a_blocked_near_stain_does_not_hide_a_usable_far_one
   if #stains == 0 then
     return nil, "NO CORPSE NEARBY"
   end
   local blocked = false
+  -- plumbing: iterates stains nearest first; the rule is below
   for i = 1, #stains do
     local blood = stains[i]
+    -- rule: With Gameplay Fixes on, a raise takes the NEAREST stain inside the cast's Manhattan
+    --   range that has room for the risen body within 16 px of the corpse corner; a blocked near
+    --   stain never hides a usable far one; when none qualifies the refusal names a blocked corpse
+    --   before a far one (CORPSE IS BLOCKED before CORPSE TOO FAR).
+    -- tests: GameplayFixesClericRaise.a_blocked_near_stain_does_not_hide_a_usable_far_one
+    -- tests: GameplayFixesClericRaise.reporter_elf_against_a_wall_is_raised_with_the_setting_on
+    -- tests: GameplayFixesClericRaise.reporter_one_tile_corridor
+    -- tests: GameplayFixesClericRaise.caster_standing_on_the_corpse
+    -- tests: GameplayFixesClericRaise.refusals_spend_nothing_on_both_values
     if self:distance_to_ob(blood) < range then
       local fam = body_for(self, blood, body)
       local sx, sy = og.body_spot_near("living", fam, blood:xpos(), blood:ypos(), blood:floor(), M.NUDGE)
+      -- rule: With Gameplay Fixes on, a raise takes the NEAREST stain inside the cast's Manhattan
+      --   range that has room for the risen body within 16 px of the corpse corner.
+      -- tests: GameplayFixesClericRaise.a_blocked_near_stain_does_not_hide_a_usable_far_one
+      -- tests: GameplayFixesClericRaise.reporter_elf_against_a_wall_is_raised_with_the_setting_on
+      -- tests: GameplayFixesClericRaise.reporter_one_tile_corridor
+      -- tests: GameplayFixesClericRaise.caster_standing_on_the_corpse
+      -- tests: GameplayFixesClericRaise.refusals_spend_nothing_on_both_values
       if sx ~= nil then
         return blood, nil, sx, sy
       end
       blocked = true
     end
   end
+  -- rule: With Gameplay Fixes on, a raise takes the NEAREST stain inside the cast's Manhattan range
+  --   that has room for the risen body within 16 px of the corpse corner.
+  -- tests: GameplayFixesClericRaise.a_blocked_near_stain_does_not_hide_a_usable_far_one
+  -- tests: GameplayFixesClericRaise.reporter_elf_against_a_wall_is_raised_with_the_setting_on
+  -- tests: GameplayFixesClericRaise.reporter_one_tile_corridor
+  -- tests: GameplayFixesClericRaise.caster_standing_on_the_corpse
+  -- tests: GameplayFixesClericRaise.refusals_spend_nothing_on_both_values
   if blocked then
     return nil, "CORPSE IS BLOCKED"
   end

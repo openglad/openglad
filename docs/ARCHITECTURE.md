@@ -1074,10 +1074,12 @@ All native test binaries use real GoogleTest (`<gtest/gtest.h>`).
 - No SDL initialization; pure logic only
 
 **Simulation semantics** ([sim-semantics.md](sim-semantics.md)):
-- `tests/semantics/manifest/` gives every branch line of the simulation a row:
-  a rule with the tests that assert each arm, or a note saying it is plumbing
-- The `semantics_manifest_check` CTest entry fails on an uncovered branch
-  line, a cited test that does not exist, or a rule that is not asserted
+- Every branch line of the simulation carries a comment above it: a
+  `rule:` naming the tests that assert it, or a `plumbing:` line saying why
+  there is nothing to assert
+- The `semantics_check` CTest entry (`scripts/semantics/check_semantics.py`)
+  fails on an uncovered branch line, a comment that covers no branch, or a
+  cited test that does not exist
 
 ### UI/Menu Testing Pattern
 

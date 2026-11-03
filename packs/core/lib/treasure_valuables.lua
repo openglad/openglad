@@ -13,6 +13,10 @@ local FX_FLASH = assert(og.family_id("fx", "core:flash"))
 -- gold_bar_on_eat: banks score_per_level*level for the eater's team. Only
 -- team 0 or a roster character (myguy) can cash a bar in.
 local function gold_bar_on_eat(self, eater)
+  -- rule: Only team 0 or a roster hero can cash a gold bar: it banks score_per_level*level for the
+  --   eater's team and is consumed with SOUND_MONEY; a guyless monster leaves it.
+  -- tests: parity:treasure_gold_bar_team_reject_scen99, parity:treasure_gold_bar_pickup_scen99
+  -- tests: TreasureEat.gold_bar, SemValuables.a_hero_of_any_team_cashes_a_gold_bar
   if eater.team == 0 or eater:has_guy() then
     og.award_score(eater.team,
                    og.tuning(self).score_per_level * self.level)
@@ -24,6 +28,10 @@ end
 
 -- silver_bar_on_eat: same shape, its own (smaller) score_per_level.
 local function silver_bar_on_eat(self, eater)
+  -- rule: Same rule as above for the silver bar (its own smaller
+  --   score_per_level).
+  -- tests: TreasureEat.silver_bar
+  -- tests: SemValuables.a_hero_cashes_a_silver_bar_a_guyless_monster_leaves_it
   if eater.team == 0 or eater:has_guy() then
     og.award_score(eater.team,
                    og.tuning(self).score_per_level * self.level)
@@ -37,6 +45,10 @@ end
 -- xp" is a dead character's banked hitpoints, claimable only by the gem's
 -- own team. The flash pops where the gem sat, on the same floor.
 local function life_gem_on_eat(self, eater)
+  -- rule: A life gem (a fallen character's banked hp) can be claimed only by its own team: it banks
+  --   trunc(max(hp,0)) score, flashes and dies; another team walks over it.
+  -- tests: parity:treasure_life_gem_enemy_reject_scen99, parity:treasure_life_gem_pickup_scen99
+  -- tests: TreasureEat.life_gem
   if eater.team ~= self.team then
     return true  -- only our team can get these
   end
@@ -44,6 +56,7 @@ local function life_gem_on_eat(self, eater)
   -- shim kept: hp is a C++ float; the score credit is its int truncation.
   og.award_score(eater.team, og.trunc(hp))
   local flash = og.add_ob("fx", FX_FLASH)
+  -- plumbing: add_ob flash nil guard
   if flash then
     flash.ani_type = C.ANI_EXPAND_8
     flash:set_floor(self:floor())  -- flash where the gem sat
@@ -61,15 +74,25 @@ local function key_on_eat(self, eater)
   -- key_level_mask(): 1u << clamp(level, 0, 30) (key_mask.h).
   local shift = og.clamp(level, 0, 30)
   local key_mask = 1 << shift
+  -- rule: A key sets bit 1<<clamp(level,0,30) on the eater's own key mask; touching a key it
+  --   already holds is silent (no message, mask unchanged).
+  -- tests: PackLuaTreasure.a_key_already_held_is_a_silent_no_op, parity:treasure_key_pickup_scen99
   if (eater:keys() & key_mask) == 0 then  -- just got it?
     eater:set_keys(eater:keys() | key_mask)  -- ie, 2, 4, 8, 16...
     local who
+    -- rule: The key pickup line names a hero by its character name and anyone else by its stats
+    --   name.
+    -- tests: SemValuables.the_key_line_names_a_hero_by_its_guy_and_others_by_their_stats_name
     if eater:has_guy() then
       who = eater:g_name()
     else
       who = eater:s_name()
     end
     local message = string.format("%s picks up key %d", who, level)
+    -- rule: Only team-0 key pickups are announced (a broadcast, never seat-addressed) with
+    --   SOUND_MONEY; other teams pick keys up silently.
+    -- tests: parity:treasure_key_team1_silent_scen99
+    -- tests: PackLuaTreasure.a_key_already_held_is_a_silent_no_op
     if eater.team == 0 then  -- only show players picking up keys
       -- Broadcast on purpose: keys are per-walker, so "Gorik picks up key 3"
       -- is the only way the rest of the party learns who can open that door.

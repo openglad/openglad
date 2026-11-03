@@ -2077,32 +2077,32 @@ set_tests_properties(lint_scenario_facts_selftest PROPERTIES
     TIMEOUT 60
 )
 
-# The simulation semantics manifest (tests/semantics/manifest, one file per
-# simulation source file; docs/sim-semantics.md) gives every branch point in
-# src/gameplay and the class-pack Lua a row: a rule with the tests that assert
-# each of its arms, or a note saying why the branch is plumbing. The check
-# fails on a branch line no row covers, a line two rows claim, a claimed line
-# that is no longer the branch the row recorded, a row whose anchor drifted,
-# a cited TEST or parity row that does not exist, and a rule
-# row that is not asserted (or deferred to an issue). Its self-test builds
-# small trees in a temp dir and pins every verdict and count exactly.
+# Every branch point in src/gameplay and the class-pack Lua carries a
+# semantics comment above it (docs/sim-semantics.md): a rule naming the tests
+# that assert it, or a plumbing line saying why there is nothing to assert.
+# The check fails on a branch line no comment covers, a line two comments
+# cover, a comment that covers no branch, a cited TEST or parity row that does
+# not exist or is disabled, a rule that names no test (and is neither
+# deferred to an issue nor unreachable with a reason), and a comment that
+# breaks the grammar. Its self-test builds small trees in a temp dir and pins
+# every verdict and count exactly.
 if(Python3_Interpreter_FOUND)
-    add_test(NAME semantics_manifest_selftest
+    add_test(NAME semantics_selftest
         COMMAND ${CMAKE_COMMAND} -E env
             PYTHONDONTWRITEBYTECODE=1
             ${Python3_EXECUTABLE}
-            ${CMAKE_SOURCE_DIR}/scripts/semantics/check_manifest.py
+            ${CMAKE_SOURCE_DIR}/scripts/semantics/check_semantics.py
             --self-test
     )
-    add_test(NAME semantics_manifest_check
+    add_test(NAME semantics_check
         COMMAND ${CMAKE_COMMAND} -E env
             PYTHONDONTWRITEBYTECODE=1
             ${Python3_EXECUTABLE}
-            ${CMAKE_SOURCE_DIR}/scripts/semantics/check_manifest.py
+            ${CMAKE_SOURCE_DIR}/scripts/semantics/check_semantics.py
             --repo ${CMAKE_SOURCE_DIR}
     )
 else()
-    foreach(_og_sem_test semantics_manifest_selftest semantics_manifest_check)
+    foreach(_og_sem_test semantics_selftest semantics_check)
         add_test(NAME ${_og_sem_test}
             COMMAND ${CMAKE_COMMAND} -E echo
                 "${_og_sem_test}: this check needs a Python 3 interpreter and none was found at configure time. Install Python 3 and reconfigure."
@@ -2112,7 +2112,7 @@ else()
         )
     endforeach()
 endif()
-set_tests_properties(semantics_manifest_selftest semantics_manifest_check PROPERTIES
+set_tests_properties(semantics_selftest semantics_check PROPERTIES
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
     TIMEOUT 60
 )

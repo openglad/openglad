@@ -17,6 +17,11 @@ local M = {}
 -- on_act always answers true never counts down. nil when the world is full.
 function M.launch(owner, from, foe, hops)
   local bolt = og.add_ob("fx", FX_WAIL)
+  -- rule: A WAIL (or a wail fork) that cannot get an entity (full world) does not launch; the cast
+  --   is refused.
+  -- tests: KitGhost.a_full_world_refuses_the_casts_that_need_an_entity
+  -- tests: KitGhost.wail_hops_foe_to_foe_and_frights_each_once
+  -- tests: SemWail.a_wail_bolt_carries_its_ghosts_team_level_and_floor_and_no_damage
   if not bolt then
     return nil
   end
@@ -44,6 +49,11 @@ end
 -- wail_fork_px of the one it just frightened, not that one, and not wailed
 -- at in the last three rounds.
 local function is_fork_target(self, leader, foe)
+  -- rule: A wail hops only to another living foe on the struck bolt's floor within 120 px of the
+  --   foe it just frightened and not wailed at in the last three rounds.
+  -- tests: KitGhost.wail_bolt_homes_forks_only_where_it_may_and_fades
+  -- tests: KitGhost.wail_forks_within_reach_of_the_struck_foe
+  -- tests: KitGhost.wail_hops_foe_to_foe_and_frights_each_once
   if foe == leader then
     return false
   end
@@ -66,6 +76,10 @@ local function strike(self, leader, owner)
   -- resist, drawn only for a hero.
   local fright = og.div(og.scare_duration(owner.level),
                         og.tuning(self).wail_fright_divisor)
+  -- rule: A wailed foe flees away from the ghost for a quarter of the scare's duration, less a
+  --   constitution roll for a hero (one draw, heroes only); a hero who resists fully does not flee;
+  --   either way it gains 3 rounds of wail immunity.
+  -- tests: SemWail.a_wailed_foe_flees_from_the_ghost_less_a_heros_constitution_roll
   if leader:has_guy() then
     local con_roll = og.rand0(leader:g_constitution())
     fright = fright - con_roll
@@ -79,6 +93,9 @@ local function strike(self, leader, owner)
   leader:set_skip_exit(leader:skip_exit() + 3)
 
   local hops = self:lifetime()
+  -- rule: A wail bolt with no hops left frightens its foe and forks no further: the chain ends
+  --   after wail_hops (3) hops; no fork RNG draw is made then.
+  -- tests: SemWail.a_bolt_with_no_hops_left_forks_no_further_and_draws_no_budget
   if hops < 1 then
     return
   end
@@ -90,8 +107,14 @@ local function strike(self, leader, owner)
   -- One draw: the fork budget rolls off the ghost's level (the chain's
   -- shape), drawn even when no other foe is in reach.
   local forks_left = og.rand0(owner.level) + 1
+  -- plumbing: iterates the fork scan; rules below
   for i = 1, #foes do
     local foe = foes[i]
+    -- rule: A wail forks to at most rand0(ghost level)+1 eligible foes in list order; ineligible
+    --   foes do NOT use up the budget (unlike chain lightning, effect_chain.lua).
+    -- tests: KitGhost.wail_forks_within_reach_of_the_struck_foe
+    -- tests: KitGhost.wail_hops_foe_to_foe_and_frights_each_once
+    -- tests: SemWail.a_wail_forks_to_at_most_its_budget_and_skipped_foes_keep_it
     if forks_left <= 0 then
       break
     end
@@ -112,6 +135,9 @@ local function home_on(self, leader)
   local tx = leader:xpos() + og.div(leader:sizex() - self:sizex(), 2)
   local ty = leader:ypos() + og.div(leader:sizey() - self:sizey(), 2)
   local xd, yd = 0, 0
+  -- rule: A wail puff steers its centre onto its foe's centre, at most 6 px per axis per tick,
+  --   never overshooting, facing where it flies.
+  -- tests: SemWail.a_wail_puff_homes_at_most_six_px_per_axis_and_never_overshoots
   if tx > self:xpos() then
     xd = og.min(self:stepsize(), tx - self:xpos())
   elseif tx < self:xpos() then
@@ -136,6 +162,10 @@ end
 local function on_act(self)
   local leader = self:leader()
   local owner = self:owner()
+  -- rule: A wail bolt whose foe or ghost is gone, that flew out its 60-tick life, or whose foe has
+  --   gone hidden (invisible) fades without a fright.
+  -- tests: KitGhost.wail_bolt_homes_forks_only_where_it_may_and_fades
+  -- tests: SemWail.a_wail_bolt_that_flies_out_its_life_fades_without_a_fright
   if not leader or not owner then
     return die(self)
   end
@@ -144,6 +174,10 @@ local function on_act(self)
   end
   local cx = self:xpos() + og.div(self:sizex(), 2)
   local cy = self:ypos() + og.div(self:sizey(), 2)
+  -- rule: Only the puff's 8x8 core strikes, not its 48x40 frame: the wail frightens its foe when it
+  --   is seen to touch.
+  -- tests: KitGhost.wail_strikes_from_its_core_not_its_cloud
+  -- tests: KitGhost.wail_cycles_the_small_sparkle_frames
   if hits(cx - 4, cy - 4, 8, 8,
           leader:xpos(), leader:ypos(), leader:sizex(), leader:sizey()) then
     strike(self, leader, owner)

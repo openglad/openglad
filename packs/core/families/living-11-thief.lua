@@ -12,10 +12,23 @@ local FX_MINE = assert(og.family_id("fx", "core:mine"))
 local gf = og.use("gameplay_fixes")
 local G = og.use("gates")
 local function check_special_ai(self)
+  -- plumbing: slot dispatch of check_special_ai (slot 1 bomb/mine, slot 3 taunt/charm, else
+  --   cloak/cloud); see below
   if self:current_special() == 1 then
+    -- rule: With either Gameplay Fixes or New Specials on, a thief bot's DROP BOMB roll is judged
+    --   by blast geometry (reach by level, no ally in the blast) before any classic rule; with both
+    --   off the classic distance gate alone decides.
+    -- tests: KitThief.ai_off_answers_the_classic_gate
+    -- tests: GameplayFixesBots.thief_mine_waits_for_a_hunter_past_the_blast
     if gf.on() or og.match_setting("new_specials") ~= 0 then
       local reach = G.blast_reach(self.level)
       local clear = G.blast_clear(self, self, reach, false)
+      -- rule: New Specials: a thief bot lays a MINE (Shift 1) only when a foe within 130 px is
+      --   hunting it from beyond the bomb's blast, it has fewer than three mines down, no ally is
+      --   in the blast, and it can pay the mine's 70; otherwise Shift goes to 0 and the bomb rule
+      --   decides.
+      -- tests: GameplayFixesBots.thief_mine_waits_for_a_hunter_past_the_blast
+      -- tests: KitThief.ai_mine_fires_for_a_hunter_past_the_blast_when_mana_allows
       if og.match_setting("new_specials") ~= 0 then
         -- New Specials: a MINE pays where a foe will walk: a foe past the
         -- blast and within 130 px that is hunting the thief, fewer than
@@ -23,6 +36,11 @@ local function check_special_ai(self)
         -- Never the coin.
         local hunter = G.hunted_by(self, 130)
         local mines = G.owned(self, C.ORDER_FX, FX_MINE)
+        -- rule: New Specials: a thief bot lays a MINE (Shift 1) only when a foe within 130 px is
+        --   hunting it from beyond the bomb's blast, it has fewer than three mines down, no ally is
+        --   in the blast, and it can pay the mine's 70.
+        -- tests: GameplayFixesBots.thief_mine_waits_for_a_hunter_past_the_blast
+        -- tests: KitThief.ai_mine_fires_for_a_hunter_past_the_blast_when_mana_allows
         if clear and hunter
             and self:distance_to_ob(hunter) > reach
             and mines < 3
@@ -32,19 +50,40 @@ local function check_special_ai(self)
         end
         self:set_shifter_down(0)
       end
+      -- rule: Gameplay Fixes: a thief bot drops a bomb only with a living foe inside the bomb's
+      --   blast reach and no ally in it; the Shift is forced to 0 (bomb).
+      -- tests: GameplayFixesBots.thief_bomb_wants_a_foe_inside_its_blast_and_no_ally
+      -- tests: parity:thief_bot_bomb_far_fixes_scen99
       if gf.on() then
         -- Gameplay Fixes: a bomb pays with a foe inside its blast and no
         -- ally in it; the Shift is 0 whenever the setting is on (a MINE
         -- not in play is cast as the bomb anyway).
         self:set_shifter_down(0)
+        -- rule: Gameplay Fixes: a thief bot drops a bomb only with a living foe inside the bomb's
+        --   blast reach and no ally in it; the Shift is forced to 0 (bomb).
+        -- tests: GameplayFixesBots.thief_bomb_wants_a_foe_inside_its_blast_and_no_ally
+        -- tests: parity:thief_bot_bomb_far_fixes_scen99
         return G.foes_within(self, 1, reach, true) and clear
       end
     end
     -- Drop-bomb AI uses this fixed per-tick range.
     local foe = self:foe()
+    -- rule: Classic thief bomb gate: with a foe, the bomb is refused only while the foe is 36..129
+    --   px away (point blank or 130+ px both bomb); with no foe it bombs when three or more foes
+    --   stand within 110 px.
+    -- tests: FamilyBehaviors.thief_batch3_check_special_ai_matrix
+    -- tests: PackLuaThief.the_bomb_ai_allows_a_foe_outside_the_refusal_band
+    -- tests: GameplayFixesBots.thief_bomb_wants_a_foe_inside_its_blast_and_no_ally
+    -- tests: parity:thief_bot_bomb_far_scen99
     if foe then
       local distance = self:distance_to_ob(foe)
       -- about 6 squares max, 2 min
+      -- rule: Classic thief bomb gate: with a foe, the bomb is refused only while the foe is
+      --   36..129 px away (point blank or 130+ px both bomb).
+      -- tests: FamilyBehaviors.thief_batch3_check_special_ai_matrix
+      -- tests: PackLuaThief.the_bomb_ai_allows_a_foe_outside_the_refusal_band
+      -- tests: GameplayFixesBots.thief_bomb_wants_a_foe_inside_its_blast_and_no_ally
+      -- tests: parity:thief_bot_bomb_far_scen99
       if distance < 130 and distance > 35 then
         return false
       end
@@ -55,8 +94,14 @@ local function check_special_ai(self)
     return true -- fallthrough for foe case when distance is acceptable
   elseif self:current_special() == 3 then
     local t = og.tuning(self)
+    -- rule: Gameplay Fixes: a busy thief bot never rolls TAUNT/CHARM (the casts refuse a busy
+    --   thief).
+    -- tests: GameplayFixesBots.a_busy_bot_never_rolls_a_busy_cast_with_the_setting_on
     if gf.on() then
       -- TAUNT and CHARM refuse a busy thief (the casts' guard).
+      -- rule: Gameplay Fixes: a busy thief bot never rolls TAUNT/CHARM (the casts refuse a busy
+      --   thief).
+      -- tests: GameplayFixesBots.a_busy_bot_never_rolls_a_busy_cast_with_the_setting_on
       if lc.is_busy(self) then
         return false
       end
@@ -64,6 +109,15 @@ local function check_special_ai(self)
       -- charm reach, else TAUNT; the coin is drawn either way.
       local reach = t.charm_range_base + t.charm_range_per_level * self.level
       local foes = og.find_foes_in_range("ob", reach, self)
+      -- rule: Gameplay Fixes: a thief bot CHARMs (Shift 1) only a never-charmed, non-seated living
+      --   foe at or below its level inside charm reach (16+4L); otherwise it TAUNTs (Shift 0), and
+      --   only with a living foe inside taunt reach (80+4L) AND an ally there too.
+      -- tests: GameplayFixesThiefBot.charms_an_equal_level_foe_in_reach
+      -- tests: GameplayFixesThiefBot.taunts_a_foe_it_cannot_charm
+      -- tests: GameplayFixesThiefBot.taunts_a_seated_hero_and_a_charmed_foe
+      -- tests: GameplayFixesThiefBot.taunts_a_foe_beyond_charm_reach
+      -- tests: GameplayFixesBots.thief_taunt_wants_a_foe_and_an_ally_in_reach
+      -- tests: parity:thief_bot_charm_or_taunt_fixes_scen99
       if gf.nearest_charmable(self, foes, self.level) then
         self:set_shifter_down(1)
       else
@@ -72,6 +126,14 @@ local function check_special_ai(self)
         -- there too: foes pulled onto a thief nobody backs is the thief's
         -- own danger, bought for 100. A tent cannot follow the thief.
         reach = t.taunt_range_base + t.taunt_range_per_level * self.level
+        -- rule: Gameplay Fixes: a thief bot CHARMs (Shift 1) only a never-charmed, non-seated
+        --   living foe at or below its level inside charm reach (16+4L).
+        -- tests: GameplayFixesThiefBot.charms_an_equal_level_foe_in_reach
+        -- tests: GameplayFixesThiefBot.taunts_a_foe_it_cannot_charm
+        -- tests: GameplayFixesThiefBot.taunts_a_seated_hero_and_a_charmed_foe
+        -- tests: GameplayFixesThiefBot.taunts_a_foe_beyond_charm_reach
+        -- tests: GameplayFixesBots.thief_taunt_wants_a_foe_and_an_ally_in_reach
+        -- tests: parity:thief_bot_charm_or_taunt_fixes_scen99
         if not G.foes_within(self, 1, reach, false) then
           return false
         end
@@ -79,6 +141,9 @@ local function check_special_ai(self)
       end
     end
     local range
+    -- rule: Classic: a thief bot casts slot 3 whenever at least one foe is in the reach of the arm
+    --   the engine coin chose (taunt 80+4L, charm 16+4L).
+    -- tests: FamilyBehaviors.thief_batch3_check_special_ai_matrix
     if self:shifter_down() == 0 then
       range = t.taunt_range_base + t.taunt_range_per_level * self.level
     else
@@ -86,10 +151,21 @@ local function check_special_ai(self)
     end
     local _, foe_count = og.find_foes_in_range("ob", range, self)
     return foe_count >= 1
-  elseif gf.on() then
+  elseif gf.on() then  -- rule: Classic: CLOAK and POISON CLOUD have no bot gate (cast on every
+    --   roll); with Gameplay Fixes each asks for its payoff.
+    -- tests: FamilyBehaviors.thief_batch3_check_special_ai_matrix
+    -- tests: parity:thief_bot_cloud_alone_scen99
+    -- tests: GameplayFixesBots.thief_cloak_wants_a_hunter_and_no_cloak_left
+    -- tests: GameplayFixesBots.thief_poison_cloud_wants_two_foes_at_blows_and_no_cloud
+    -- rule: Gameplay Fixes: a thief bot CLOAKs only when no cloak is left on it and a foe within
+    --   130 px is hunting it.
+    -- tests: GameplayFixesBots.thief_cloak_wants_a_hunter_and_no_cloak_left
     if self:current_special() == 2 then
       -- Gameplay Fixes: CLOAK wants a foe hunting the thief and no cloak
       -- left.
+      -- rule: Gameplay Fixes: a thief bot CLOAKs only when no cloak is left on it and a foe within
+      --   130 px is hunting it.
+      -- tests: GameplayFixesBots.thief_cloak_wants_a_hunter_and_no_cloak_left
       if self:invisibility_left() ~= 0 then
         return false
       end
@@ -97,6 +173,11 @@ local function check_special_ai(self)
     end
     -- Gameplay Fixes: POISON CLOUD wants two living foes at blows and no
     -- cloud of the thief's alive, and the thief not busy (the cast's guard).
+    -- rule: Gameplay Fixes: a thief bot releases POISON CLOUD only when not busy, with no cloud of
+    --   its own alive, and two or more living foes at blows with it.
+    -- tests: GameplayFixesBots.a_busy_bot_never_rolls_a_busy_cast_with_the_setting_on
+    -- tests: GameplayFixesBots.thief_poison_cloud_wants_two_foes_at_blows_and_no_cloud
+    -- tests: parity:thief_bot_cloud_alone_fixes_scen99
     if lc.is_busy(self) or G.owned(self, C.ORDER_FX, FX_CLOUD) > 0 then
       return false
     end
@@ -111,10 +192,14 @@ end
 
 local function drop_bomb(self)
   local bomb = og.add_ob("fx", FX_BOMB)
+  -- plumbing: add_ob failure creating the bomb (object cap): cast fails 'COULD NOT CREATE BOMB'.
   if not bomb then
     return false, "COULD NOT CREATE BOMB"
   end
   bomb.ani_type = C.ANI_BOMB
+  -- rule: A hero's bomb counts as one shot in its total and scenario shot tallies (accuracy stats);
+  --   a monster thief keeps no tally.
+  -- tests: SemThief.a_heros_bomb_counts_one_shot_and_a_monster_keeps_no_tally
   if self:has_guy() then
     self:g_set_total_shots(self:g_total_shots() + 1)
     self:g_set_scen_shots(self:g_scen_shots() + 1)
@@ -127,9 +212,16 @@ local function drop_bomb(self)
                - bomb:sizey() // 2)
   bomb:set_owner(self)
   -- An AI thief flees its own armed bomb.
+  -- rule: An AI thief flees its own freshly armed bomb: it is forced to walk 20 steps along a
+  --   random direction (two og.rand(3) draws, x first); a still roll becomes a step right. A
+  --   player-driven thief is not moved.
+  -- tests: SemThief.an_ai_thief_flees_its_own_bomb_and_a_player_thief_does_not
   if self:user() == -1 then
     local flee_dx = og.rand(3) - 1
     local flee_dy = og.rand(3) - 1
+    -- rule: An AI thief flees its own freshly armed bomb: it is forced to walk 20 steps along a
+    --   random direction (two og.rand(3) draws, x first); a still roll becomes a step right.
+    -- tests: SemThief.an_ai_thief_flees_its_own_bomb_and_a_player_thief_does_not
     if flee_dx == 0 and flee_dy == 0 then
       flee_dx = 1
     end
@@ -148,17 +240,31 @@ end
 
 local function taunt_or_charm(self)
   local t = og.tuning(self)
+  -- rule: THIEF slot 3 is TAUNT unshifted and CHARM OPPONENT with Shift held.
+  -- tests: WalkerSpecials.thief_taunt_drives_simulation
+  -- tests: WalkerSpecials.thief_charm_drives_simulation
+  -- tests: FamilyBehaviors.family_batch4_soldier_orc_thief_edge_callbacks
+  -- tests: GameplayFixes.a_thief_bot_taunts_instead_of_a_doomed_charm
   if self:shifter_down() == 0 then
     -- normal taunt
+    -- rule: A busy thief cannot taunt.
+    -- tests: FamilyBehaviors.thief_batch3_special_taunt_charm_and_poison_paths
+    -- tests: WalkerSpecials.thief_taunt_drives_simulation
     if lc.is_busy(self) then
       return false, "SPECIAL BUSY"
     end
     local foes = og.foes_in_range(
       self, t.taunt_range_base + t.taunt_range_per_level * self.level)
+    -- rule: Classic: a taunt with nobody in reach still shouts and costs its 100 MP. Gameplay
+    --   Fixes: a taunt nobody hears is refused for free.
+    -- tests: parity:thief_taunt_no_foe_scen99, parity:thief_taunt_no_foe_fixes_scen99
+    -- tests: GameplayFixesThief.taunt_refuses_with_no_foe_when_on
+    -- tests: WalkerSpecials.thief_taunt_drives_simulation
     if gf.on() and #foes == 0 then
       -- Gameplay Fixes: a taunt nobody hears costs nothing.
       return false, "NO FOE IN RANGE"
     end
+    -- plumbing: iterates foes in taunt reach; rule rows below
     for i = 1, #foes do
       local foe = foes[i]
       -- Two RNG draws in one C++ expression; drawn left (self) first.
@@ -166,10 +272,20 @@ local function taunt_or_charm(self)
       -- is the loud tripwire if that ever breaks.)
       local my_roll = og.rand(self.level)
       local foe_roll = og.rand(foe.level)
+      -- rule: A taunt takes each foe in reach whose level roll (rand(foe level)) does not beat the
+      --   thief's (rand(thief level), drawn first): a taunted foe targets the thief and follows it
+      --   as leader.
+      -- tests: WalkerSpecials.thief_taunt_drives_simulation
+      -- tests: SemThief.a_taunt_takes_only_the_foes_whose_roll_does_not_beat_the_thiefs
       if my_roll >= foe_roll then
         foe:set_foe(self)
         -- "A hack, yeah": taunted foes also follow the thief as leader.
         foe:set_leader(self)
+        -- rule: A taunted bot is also forced to FOLLOW the thief for 10+rand(L) steps; a
+        --   player-controlled foe (ACT_CONTROL) only has its target and leader changed, its
+        --   movement stays the player's.
+        -- tests: WalkerSpecials.thief_taunt_drives_simulation
+        -- tests: SemThief.a_taunted_player_foe_keeps_its_own_movement
         if foe:act_type() ~= C.ACT_CONTROL then
           foe:s_force_command(C.COMMAND_FOLLOW,
                               10 + og.rand(self.level), 0, 0)
@@ -183,36 +299,68 @@ local function taunt_or_charm(self)
     return true
   end
   -- charm opponent
+  -- rule: A busy thief cannot charm.
+  -- tests: FamilyBehaviors.thief_batch3_special_taunt_charm_and_poison_paths
+  -- tests: WalkerSpecials.thief_charm_drives_simulation
   if lc.is_busy(self) then
     return false, "SPECIAL BUSY"
   end
   local foes, foe_count = og.find_foes_in_range(
     "ob", t.charm_range_base + t.charm_range_per_level * self.level, self)
+  -- rule: CHARM needs a foe (living or generator) within 16+4L px; with none the cast fails free on
+  --   both values.
+  -- tests: FamilyBehaviors.thief_batch3_special_taunt_charm_and_poison_paths
+  -- tests: WalkerSpecials.thief_charm_drives_simulation
   if foe_count < 1 then
     return false, "NO FOE IN RANGE"
   end
   local fixes = gf.on()
   local candidates = foes
+  -- rule: Classic: CHARM takes the first charmable foe in list order. Gameplay Fixes: it takes the
+  --   nearest charmable foe (any level), and a seated hero is never charmable.
+  -- tests: GameplayFixesThief.charm_takes_the_nearest_foe_when_on
+  -- tests: GameplayFixesThief.charm_skips_a_seated_hero_when_on
   if fixes then
     -- Gameplay Fixes: the nearest foe the thief can take, not the first
     -- in list order.
     candidates = {}
     local nearest = gf.nearest_charmable(self, foes, nil)
+    -- rule: Classic: CHARM takes the first charmable foe in list order.
+    -- tests: GameplayFixesThief.charm_takes_the_nearest_foe_when_on
+    -- tests: GameplayFixesThief.charm_skips_a_seated_hero_when_on
     if nearest then
       candidates[1] = nearest
     end
   end
   local handled = 0
   local resisted = 0
+  -- plumbing: candidate loop stops after the first handled target (one charm per cast); rule rows
+  --   below
   for i = 1, #candidates do
+    -- plumbing: candidate loop stops after the first handled target (one charm per cast); rule rows
+    --   below
     if handled ~= 0 then
       break
     end
     local target = candidates[i]
     -- The old charm_left <= 10 gate was disabled; real_team_num is the
     -- remaining charm-history gate.
+    -- rule: Only a never-charmed (real_team 255) living-order foe can be charmed (a tent cannot);
+    --   with Gameplay Fixes a seated hero also cannot. An uncharmable foe is skipped.
+    -- tests: GameplayFixesThief.charm_skips_a_seated_hero_when_on
+    -- tests: GameplayFixesThief.charm_takes_the_npc_beside_a_seated_hero_when_on
+    -- tests: parity:thief_bot_charm_hero_scen99
     if gf.charmable(target, fixes) then
       local level_diff = self.level - target.level
+      -- rule: A foe above the thief's level always resists a charm (no draw); an equal or lower foe
+      --   resists 1 time in 20. A resisted charm gives the foe a free attack on the thief; a charm
+      --   flips the foe to the thief's team for a soft-kneed 75+25x(level diff) ticks, remembering
+      --   its real team.
+      -- tests: FamilyBehaviors.family_batch4_soldier_orc_thief_edge_callbacks
+      -- tests: FamilyBehaviors.thief_batch3_special_taunt_charm_and_poison_paths
+      -- tests: WalkerSpecials.thief_charm_drives_simulation, parity:thief_charm_opponent_scen99
+      -- tests: GameplayFixesThief.charm_draws_once_on_both_values
+      -- tests: SemThief.an_equal_level_foe_resists_a_charm_one_time_in_twenty
       if level_diff < 0 or og.rand(20) == 0 then
         -- A resisted charm gives the enemy a free attack.
         target:set_foe(self)
@@ -221,6 +369,10 @@ local function taunt_or_charm(self)
       else
         target:set_real_team_num(target.team)
         target.team = self.team
+        -- rule: A charmed foe drops its quarry: if it was the thief's own target it gets no foe
+        --   (picks anew); otherwise it takes the thief's current target.
+        -- tests: WalkerSpecials.thief_charm_drives_simulation
+        -- tests: SemThief.a_charmed_foe_takes_the_thiefs_target_unless_it_was_that_target
         if self:foe() == target then
           target:set_foe(nil)
         else
@@ -236,10 +388,16 @@ local function taunt_or_charm(self)
       handled = handled + 1
     end
   end
+  -- rule: A charm with foes in reach but none charmable fails free with 'NO VALID TARGET'.
+  -- tests: GameplayFixesThief.charm_skips_a_seated_hero_when_on
+  -- tests: WalkerSpecials.thief_charm_drives_simulation
   if handled == 0 then
     return false, "NO VALID TARGET"
   end
   local message
+  -- rule: The charm's notification says whether it took or was resisted.
+  -- tests: GameplayFixes.a_thief_bot_taunts_instead_of_a_doomed_charm
+  -- tests: GameplayFixes.a_driven_hero_resists_a_bot_charm
   if resisted ~= 0 then
     message = og.entity_display_name(self, "Thief")
                 .. " failed to charm!"
@@ -254,11 +412,15 @@ local function taunt_or_charm(self)
 end
 
 local function poison_cloud(self)
+  -- rule: A busy thief cannot release POISON CLOUD.
+  -- tests: FamilyBehaviors.thief_batch3_special_taunt_charm_and_poison_paths
+  -- tests: WalkerSpecials.thief_poison_cloud_drives_simulation
   if lc.is_busy(self) then
     return false, "SPECIAL BUSY"
   end
   local t = og.tuning(self)
   local cloud = og.summon(self, "fx", FX_CLOUD)
+  -- plumbing: og.summon failure for the cloud (object cap): 'COULD NOT CREATE CLOUD'.
   if not cloud then
     return false, "COULD NOT CREATE CLOUD"
   end

@@ -19,10 +19,28 @@ local CORPSE_EAT_REACH_SQ = 24
 -- it, whatever the foes are doing (the classic gate let the meal refuse).
 local function fixed_gate(self, classic_answer)
   local slot = self:current_special()
+  -- rule: Classic: an orc bot HOWLs (and tries EAT CORPSE) whenever a foe is within 130 px.
+  --   Gameplay Fixes: HOWL wants the orc not busy and a body the yell can stun (a living foe or a
+  --   generator) inside the yell's own radius; the classic foe search still runs first for its
+  --   draws.
+  -- tests: GameplayFixesBots.orc_howl_wants_a_target_inside_the_yell
+  -- tests: GameplayFixesBots.a_busy_bot_never_rolls_a_busy_cast_with_the_setting_on
+  -- tests: SemOrc.the_fixed_gate_leaves_any_other_slot_to_the_classic_answer
   if slot == 1 then
+    -- rule: Classic: an orc bot HOWLs (and tries EAT CORPSE) whenever a foe is within 130 px.
+    -- tests: GameplayFixesBots.orc_howl_wants_a_target_inside_the_yell
+    -- tests: GameplayFixesBots.a_busy_bot_never_rolls_a_busy_cast_with_the_setting_on
+    -- tests: SemOrc.the_fixed_gate_leaves_any_other_slot_to_the_classic_answer
     return not lc.is_busy(self) and G.targets_within(self, 1, og.combat.yell_radius(self.level))
   end
+  -- rule: Gameplay Fixes: an orc bot EATs a corpse when it is below 60% health with a stain under
+  --   it (within the meal's squared reach 24), whatever the foes are doing; classic asked only for
+  --   a foe within 130 and let the meal itself refuse.
+  -- tests: GameplayFixesBots.orc_eats_when_hurt_on_a_corpse_whatever_the_foe
   if slot == 2 then
+    -- rule: Gameplay Fixes: an orc bot EATs a corpse when it is below 60% health with a stain under
+    --   it (within the meal's squared reach 24), whatever the foes are doing.
+    -- tests: GameplayFixesBots.orc_eats_when_hurt_on_a_corpse_whatever_the_foe
     return G.hp_below(self, 3, 5) and G.corpse_underfoot(self, CORPSE_EAT_REACH_SQ) ~= nil
   end
   return classic_answer

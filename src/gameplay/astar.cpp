@@ -48,6 +48,7 @@ struct Node
 // the very back of the open list (where the sentinel also lives).
 float calc_total_cost(const Node& node)
 {
+    // plumbing: f=g+h, infinity when either component is unreachable
     if (node.cost_from_start < FLT_MAX && node.est_to_goal < FLT_MAX)
         return node.cost_from_start + node.est_to_goal;
     return FLT_MAX;
@@ -82,8 +83,17 @@ public:
         // The sentinel's FLT_MAX guarantees this terminates; callers never push
         // a node whose total_cost is FLT_MAX (impassable edges are filtered).
         Node* iter = sentinel_.next;
+        // rule: Among equally cheap frontier cells the one found first is expanded first
+        //   (insertion-order ties, MicroPather's queue); so equal-cost routes always resolve the
+        //   same way and match the old game's paths.
+        // tests: SemAStar.equally_cheap_frontier_cells_expand_in_the_order_they_were_found
+        // tests: SemAStar.a_relaxed_frontier_cell_moves_to_the_front_of_its_new_cost_run
         while (true)
         {
+            // rule: Among equally cheap frontier cells the one found first is expanded first
+            //   (insertion-order ties, MicroPather's queue).
+            // tests: SemAStar.equally_cheap_frontier_cells_expand_in_the_order_they_were_found
+            // tests: SemAStar.a_relaxed_frontier_cell_moves_to_the_front_of_its_new_cost_run
             if (node->total_cost < iter->total_cost)
             {
                 link_before(iter, node);
@@ -105,6 +115,10 @@ public:
     void update(Node* node)
     {
         // Lowered below its predecessor: hop to the front of the list.
+        // rule: Among equally cheap frontier cells the one found first is expanded first
+        //   (insertion-order ties, MicroPather's queue).
+        // tests: SemAStar.equally_cheap_frontier_cells_expand_in_the_order_they_were_found
+        // tests: SemAStar.a_relaxed_frontier_cell_moves_to_the_front_of_its_new_cost_run
         if (node->prev != &sentinel_ && node->total_cost < node->prev->total_cost)
         {
             unlink(node);
@@ -113,10 +127,18 @@ public:
 
         // Now too cheap to sit where it is no longer; slide right to the front
         // of the run of nodes that share its (or a lower) cost.
+        // rule: Among equally cheap frontier cells the one found first is expanded first
+        //   (insertion-order ties, MicroPather's queue).
+        // tests: SemAStar.equally_cheap_frontier_cells_expand_in_the_order_they_were_found
+        // tests: SemAStar.a_relaxed_frontier_cell_moves_to_the_front_of_its_new_cost_run
         if (node->total_cost > node->next->total_cost)
         {
             Node* iter = node->next;
             unlink(node);
+            // rule: Among equally cheap frontier cells the one found first is expanded first
+            //   (insertion-order ties, MicroPather's queue).
+            // tests: SemAStar.equally_cheap_frontier_cells_expand_in_the_order_they_were_found
+            // tests: SemAStar.a_relaxed_frontier_cell_moves_to_the_front_of_its_new_cost_run
             while (node->total_cost > iter->total_cost)
                 iter = iter->next;
             link_before(iter, node);
@@ -160,6 +182,7 @@ struct AStar::Impl
     Node* node_for(State state)
     {
         auto [it, inserted] = nodes.try_emplace(state);
+        // plumbing: node created on first visit
         if (inserted)
             it->second.state = state;
         return &it->second;
@@ -175,9 +198,17 @@ struct AStar::Impl
                             std::vector<State>& path)
     {
         int count = 1;
+        // rule: A found route always begins at the start and ends at the goal; a one-step route
+        //   collapses to just those two states.
+        // tests: AStar.adjacent_step_collapses_to_two_node_path
+        // tests: AStar.straight_line_open_grid_is_optimal
         for (Node* it = goal; it->parent != nullptr; it = it->parent)
             ++count;
 
+        // rule: A found route always begins at the start and ends at the goal; a one-step route
+        //   collapses to just those two states.
+        // tests: AStar.adjacent_step_collapses_to_two_node_path
+        // tests: AStar.straight_line_open_grid_is_optimal
         if (count < 3)
         {
             path.resize(2);
@@ -191,6 +222,10 @@ struct AStar::Impl
         path[static_cast<std::size_t>(count) - 1] = end;
 
         int index = count - 2;
+        // rule: A found route always begins at the start and ends at the goal; a one-step route
+        //   collapses to just those two states.
+        // tests: AStar.adjacent_step_collapses_to_two_node_path
+        // tests: AStar.straight_line_open_grid_is_optimal
         for (Node* it = goal->parent; it->parent != nullptr; it = it->parent)
         {
             path[static_cast<std::size_t>(index)] = it->state;
@@ -229,6 +264,8 @@ SolveResult AStar::solve(State start,
     path.clear();
     cost = 0.0f;
 
+    // rule: Asking for a route to where you already stand returns no path (StartEndSame).
+    // tests: AStar.start_equals_end_yields_empty_path
     if (start == end)
         return SolveResult::StartEndSame;
 
@@ -244,10 +281,19 @@ SolveResult AStar::solve(State start,
     start_node->parent = nullptr;
     open.push(start_node);
 
+    // rule: The search stops at the first time the goal is popped and returns its accumulated cost;
+    //   if the frontier empties first there is no route.
+    // tests: AStar.returned_cost_matches_summed_edge_costs
+    // tests: AStar.no_solution_when_goal_is_walled_off, AStar.no_solution_when_start_is_boxed_in
     while (!open.empty())
     {
         Node* node = open.pop();
 
+        // rule: The search stops at the first time the goal is popped and returns its accumulated
+        //   cost; if the frontier empties first there is no route.
+        // tests: AStar.returned_cost_matches_summed_edge_costs
+        // tests: AStar.no_solution_when_goal_is_walled_off
+        // tests: AStar.no_solution_when_start_is_boxed_in
         if (node->state == end)
         {
             Impl::reconstruct(node, start, end, path);
@@ -260,19 +306,32 @@ SolveResult AStar::solve(State start,
         impl_->neighbors.clear();
         impl_->graph.adjacent_cost(node->state, impl_->neighbors);
 
+        // rule: An edge marked impassable is never taken.
+        // tests: AStar.impassable_edges_are_ignored, AStar.adjacent_step_collapses_to_two_node_path
         for (const StateCost& edge : impl_->neighbors)
         {
+            // rule: An edge marked impassable is never taken.
+            // tests: AStar.impassable_edges_are_ignored
+            // tests: AStar.adjacent_step_collapses_to_two_node_path
             if (edge.cost == kImpassableCost)
                 continue;
 
             Node* child = impl_->node_for(edge.state);
             const float new_cost = node->cost_from_start + edge.cost;
 
+            // rule: A frontier cell is re-parented only by a strictly cheaper route; a cell already
+            //   expanded gets the cheaper cost/parent but is never re-expanded (MicroPather
+            //   behaviour, kept for byte-identical paths).
+            // tests: AStar.straight_line_open_grid_is_optimal
+            // tests: SemAStar.a_cell_is_reparented_only_by_a_strictly_cheaper_route_and_never_reopened
             if (child->in_open || child->in_closed)
             {
                 // Relax only on a strict improvement. A closed node that
                 // improves has its cost/parent corrected but is intentionally
                 // not re-opened -- matching the algorithm being replaced.
+                // rule: A frontier cell is re-parented only by a strictly cheaper route.
+                // tests: AStar.straight_line_open_grid_is_optimal
+                // tests: SemAStar.a_cell_is_reparented_only_by_a_strictly_cheaper_route_and_never_reopened
                 if (new_cost < child->cost_from_start)
                 {
                     child->parent = node;
@@ -282,6 +341,9 @@ SolveResult AStar::solve(State start,
                     // a pure function of (state, end) within one solve, so the
                     // stored value is bit-identical to a recomputation.
                     child->total_cost = calc_total_cost(*child);
+                    // rule: A frontier cell is re-parented only by a strictly cheaper route.
+                    // tests: AStar.straight_line_open_grid_is_optimal
+                    // tests: SemAStar.a_cell_is_reparented_only_by_a_strictly_cheaper_route_and_never_reopened
                     if (child->in_open)
                         open.update(child);
                 }

@@ -16,6 +16,10 @@ end
 -- (walker::turn_undead).
 function M.turn_range(self, t)
   local reach = t.turn_undead_range_per_level * self.level
+  -- rule: TURN UNDEAD reaches 4 px per cleric level; with Gameplay Fixes on it never reaches less
+  --   than turn_undead_range_min (60 px). The roll strength is unchanged.
+  -- tests: GameplayFixesLua.gf_turn_range_has_a_floor_only_when_on
+  -- tests: GameplayFixesCleric.turn_undead_reaches_sixty_px_when_on
   if not M.on() then
     return reach
   end
@@ -35,6 +39,9 @@ end
 -- a player is driving (Possess's "HERO RESISTS" rule, walker:seat_driven).
 -- `fixes` is the caller's one read of the setting, so a loop asks it once.
 function M.charmable(foe, fixes)
+  -- rule: A charm can take a foe that is not already charmed and is a living body; with Gameplay
+  --   Fixes on, never a hero a player is driving (HERO RESISTS).
+  -- tests: GameplayFixesLua.gf_charmable_skips_a_seated_hero_only_with_the_fixes
   if foe:real_team_num() ~= 255 then
     return false
   end
@@ -54,14 +61,25 @@ end
 function M.nearest_charmable(self, foes, max_level)
   local best = nil
   local best_dist = 0
+  -- plumbing: scan for the nearest charmable foe; rules below
   for i = 1, #foes do
     local foe = foes[i]
     local eligible = M.charmable(foe, true)
+    -- rule: With Gameplay Fixes on, the thief's and archmage's charms pick the nearest charmable
+    --   foe (distance_to_ob), ties to the first in the list, and only one at or below the caster's
+    --   level where a level cap applies (a higher level always resists). Draws nothing.
+    -- tests: GameplayFixesLua.gf_nearest_charmable_takes_the_nearest_eligible_foe
+    -- tests: parity:thief_charm_nearest_fixes_scen99
     if eligible and max_level ~= nil then
       eligible = foe.level <= max_level
     end
     if eligible then
       local dist = self:distance_to_ob(foe)
+      -- rule: With Gameplay Fixes on, the thief's and archmage's charms pick the nearest charmable
+      --   foe (distance_to_ob), ties to the first in the list, and only one at or below the
+      --   caster's level where a level cap applies (a higher level always resists).
+      -- tests: GameplayFixesLua.gf_nearest_charmable_takes_the_nearest_eligible_foe
+      -- tests: parity:thief_charm_nearest_fixes_scen99
       if best == nil or dist < best_dist then
         best = foe
         best_dist = dist
@@ -79,6 +97,13 @@ end
 -- setting on, busy at or below zero is not busy, as for every other
 -- special. Draws nothing.
 function M.special_busy(self)
+  -- rule: The soldier's WHIRLWIND/DISARM and the archer's BARRAGE/EXPLODING BOLT refuse SPECIAL
+  --   BUSY while busy. Classic: any non-zero busy refuses, so a hero whose fractional fire delay
+  --   left busy a hair below zero is refused forever. Fixed: busy at or below zero is not busy.
+  -- tests: GameplayFixesSpecialBusy.whirlwind_after_a_shot
+  -- tests: GameplayFixesSpecialBusy.disarm_after_a_shot
+  -- tests: GameplayFixesSpecialBusy.archer_specials_after_a_shot
+  -- tests: GameplayFixesSpecialBusy.positive_and_zero_busy_are_unchanged
   if M.on() then
     return self:busy() > 0
   end
@@ -93,6 +118,13 @@ end
 -- blow: that swing is the cast's own (walker:fire_pad_answer, the same pad
 -- and rules as fire(), asked quietly). Draws nothing.
 function M.pad_blocked_by_terrain(self)
+  -- rule: With Gameplay Fixes on (AC), an elf or druid volley/bolt whose launch pad is refused by
+  --   terrain (a wall face, the map edge, a tree crown for a non-forest weapon; never water) is
+  --   refused before the refund and the swing; a body on the pad does not count (fixes H/I keep
+  --   that paid blow). Classic: the cast swings at nothing and still pays.
+  -- tests: GameplayFixesLua.gf_pad_blocked_by_terrain_is_the_grid_half_only_with_the_fixes
+  -- tests: GameplayFixesElf.a_volley_at_a_wall_spends_nothing_with_the_setting_on
+  -- tests: GameplayFixesDruid.a_cast_at_terrain_spends_nothing_with_the_setting_on
   return M.on() and self:fire_pad_answer() == "terrain"
 end
 

@@ -53,6 +53,11 @@ struct Best {
 
     void offer(const char* label, int ticks, int candidate_rank) noexcept
     {
+        // rule: The seat's HUD timer shows the running effect that ends soonest; a tie goes to the
+        //   fixed order POSSESS, PHASE, DIG IN, REASSEMBLE, IMMOLATE, LEGION, SUMMONED, CHARMED,
+        //   STUNNED, INVISIBLE, INVINCIBLE, FLYING, HASTE.
+        // tests: TimedEffects.the_soonest_ending_effect_is_shown
+        // tests: TimedEffects.a_tie_goes_to_the_table_order
         if (timer.label == nullptr || ticks < timer.ticks ||
             (ticks == timer.ticks && candidate_rank < rank)) {
             timer = SeatTimer{label, ticks};
@@ -63,7 +68,22 @@ struct Best {
 
 const MarkerLabel* label_for_role(char role) noexcept
 {
+    // rule: A kit marker counts toward a walker's timer only if it is a live core:kit_marker FX
+    //   owned by that walker with time left and a known role (PHASE, DIG IN, REASSEMBLE, IMMOLATE,
+    //   LEGION); a running phase veil means the walker's invulnerability and speed fields are the
+    //   phase, not potions.
+    // tests: TimedEffects.only_the_walkers_own_running_markers_count
+    // tests: TimedEffects.phase_owns_its_fields
+    // tests: TimedEffects.each_running_effect_answers_its_label_and_clock
+    // tests: TimedEffectsLua.the_marker_roles_reach_lua_with_the_engines_numbers
     for (const MarkerLabel& m : kMarkerLabels) {
+        // rule: A kit marker counts toward a walker's timer only if it is a live core:kit_marker FX
+        //   owned by that walker with time left and a known role (PHASE, DIG IN, REASSEMBLE,
+        //   IMMOLATE, LEGION).
+        // tests: TimedEffects.only_the_walkers_own_running_markers_count
+        // tests: TimedEffects.phase_owns_its_fields
+        // tests: TimedEffects.each_running_effect_answers_its_label_and_clock
+        // tests: TimedEffectsLua.the_marker_roles_reach_lua_with_the_engines_numbers
         if (static_cast<char>(m.role) == role)
             return &m;
     }
@@ -81,10 +101,17 @@ SeatTimer seat_timer(const GameWorld& world, const walker& control) noexcept
 
     // The kit's own effects exist only with the New Specials setting on;
     // with it off they are skipped, so a staged one cannot leak.
+    // rule: Kit timers (possession, kit markers) are shown only with New Specials on; with it off a
+    //   staged kit marker cannot leak into the HUD, while the classic timers always show.
+    // tests: TimedEffects.classic_timers_show_with_the_setting_off_and_kit_timers_do_not
     if (world.new_specials != 0)
     {
         // The host carries the possession's clock; the rider is the hidden
         // one.
+        // rule: During a possession, the visible host body shows the POSSESS countdown; the hidden
+        //   rider does not.
+        // tests: TimedEffects.each_running_effect_answers_its_label_and_clock
+        // tests: TimedEffects.only_the_walkers_own_running_markers_count
         if (control.possess_link() != 0 && !control.hidden() &&
             control.possess_ticks() > 0)
             best.offer("POSSESS", control.possess_ticks(), 0);
@@ -93,21 +120,70 @@ SeatTimer seat_timer(const GameWorld& world, const walker& control) noexcept
         // turns up: most walkers own no running effect at all, and the text
         // client asks this for every living each tick.
         int marker_family = -2;  // -2: not resolved yet
+        // rule: A kit marker counts toward a walker's timer only if it is a live core:kit_marker FX
+        //   owned by that walker with time left and a known role (PHASE, DIG IN, REASSEMBLE,
+        //   IMMOLATE, LEGION).
+        // tests: TimedEffects.only_the_walkers_own_running_markers_count
+        // tests: TimedEffects.phase_owns_its_fields
+        // tests: TimedEffects.each_running_effect_answers_its_label_and_clock
+        // tests: TimedEffectsLua.the_marker_roles_reach_lua_with_the_engines_numbers
         for (const auto& entry : world.oblist) {
             const walker* ob = entry.get();
+            // rule: A kit marker counts toward a walker's timer only if it is a live
+            //   core:kit_marker FX owned by that walker with time left and a known role (PHASE, DIG
+            //   IN, REASSEMBLE, IMMOLATE, LEGION).
+            // tests: TimedEffects.only_the_walkers_own_running_markers_count
+            // tests: TimedEffects.phase_owns_its_fields
+            // tests: TimedEffects.each_running_effect_answers_its_label_and_clock
+            // tests: TimedEffectsLua.the_marker_roles_reach_lua_with_the_engines_numbers
             if (ob == nullptr || ob->dead() || ob->order() != Order::FX)
                 continue;
+            // rule: A kit marker counts toward a walker's timer only if it is a live
+            //   core:kit_marker FX owned by that walker with time left and a known role (PHASE, DIG
+            //   IN, REASSEMBLE, IMMOLATE, LEGION).
+            // tests: TimedEffects.only_the_walkers_own_running_markers_count
+            // tests: TimedEffects.phase_owns_its_fields
+            // tests: TimedEffects.each_running_effect_answers_its_label_and_clock
+            // tests: TimedEffectsLua.the_marker_roles_reach_lua_with_the_engines_numbers
             if (ob->owner() != &control || ob->lifetime() <= 0)
                 continue;
+            // rule: A kit marker counts toward a walker's timer only if it is a live
+            //   core:kit_marker FX owned by that walker with time left and a known role (PHASE, DIG
+            //   IN, REASSEMBLE, IMMOLATE, LEGION).
+            // tests: TimedEffects.only_the_walkers_own_running_markers_count
+            // tests: TimedEffects.phase_owns_its_fields
+            // tests: TimedEffects.each_running_effect_answers_its_label_and_clock
+            // tests: TimedEffectsLua.the_marker_roles_reach_lua_with_the_engines_numbers
             if (marker_family == -2)
                 marker_family = og::families::resolve_family_string_id(
                     Order::FX, "core:kit_marker");
+            // rule: A kit marker counts toward a walker's timer only if it is a live
+            //   core:kit_marker FX owned by that walker with time left and a known role (PHASE, DIG
+            //   IN, REASSEMBLE, IMMOLATE, LEGION).
+            // tests: TimedEffects.only_the_walkers_own_running_markers_count
+            // tests: TimedEffects.phase_owns_its_fields
+            // tests: TimedEffects.each_running_effect_answers_its_label_and_clock
+            // tests: TimedEffectsLua.the_marker_roles_reach_lua_with_the_engines_numbers
             if (static_cast<int>(static_cast<unsigned char>(ob->family())) !=
                 marker_family)
                 continue;
             const MarkerLabel* m = label_for_role(ob->ani_type());
+            // rule: A kit marker counts toward a walker's timer only if it is a live
+            //   core:kit_marker FX owned by that walker with time left and a known role (PHASE, DIG
+            //   IN, REASSEMBLE, IMMOLATE, LEGION).
+            // tests: TimedEffects.only_the_walkers_own_running_markers_count
+            // tests: TimedEffects.phase_owns_its_fields
+            // tests: TimedEffects.each_running_effect_answers_its_label_and_clock
+            // tests: TimedEffectsLua.the_marker_roles_reach_lua_with_the_engines_numbers
             if (m == nullptr)
                 continue;
+            // rule: A kit marker counts toward a walker's timer only if it is a live
+            //   core:kit_marker FX owned by that walker with time left and a known role (PHASE, DIG
+            //   IN, REASSEMBLE, IMMOLATE, LEGION).
+            // tests: TimedEffects.only_the_walkers_own_running_markers_count
+            // tests: TimedEffects.phase_owns_its_fields
+            // tests: TimedEffects.each_running_effect_answers_its_label_and_clock
+            // tests: TimedEffectsLua.the_marker_roles_reach_lua_with_the_engines_numbers
             if (m->role == MARKER_PHASE_VEIL)
                 phased = true;
             best.offer(m->label, ob->lifetime(), m->rank);
@@ -116,6 +192,13 @@ SeatTimer seat_timer(const GameWorld& world, const walker& control) noexcept
 
     // The classic timers, shown with the setting off too. A summoned body
     // the seat drives dies when its own lifetime runs out.
+    // rule: Classic timers shown on the HUD: SUMMONED (own lifetime), CHARMED, STUNNED, INVISIBLE,
+    //   INVINCIBLE (unless phased), FLYING (only above 1, since 1 is the hover hold over
+    //   unstandable ground), HASTE (down to its last tick, unless phased).
+    // tests: TimedEffects.each_running_effect_answers_its_label_and_clock
+    // tests: TimedEffects.flight_hover_tick_is_not_shown
+    // tests: TimedEffects.haste_last_tick_is_shown_and_zero_is_not
+    // tests: TimedEffects.phase_owns_its_fields
     if (control.lifetime() > 0)
         best.offer("SUMMONED", control.lifetime(), kRankSummoned);
     if (control.charm_left() > 0)

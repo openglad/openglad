@@ -48,7 +48,7 @@ hook table is a load error.
 
 ## S3 — Comments
 
-Three kinds of comment are admissible:
+Four kinds of comment are admissible:
 
 1. **RNG-order records.** Eval-order records (the core pack's `FLAGGED`
    convention: where the classic C++ made two draws in one expression, the
@@ -65,6 +65,12 @@ Three kinds of comment are admissible:
    `-- Copyright (C) 1995-2002 FSGames; ported by Sean Ford and Yan Shosh.`
    Keep established wording where it remains accurate; do not turn heritage
    comments into file-path archaeology or a change log.
+4. **Semantics comments.** The `-- rule:` block above a branch (what it
+   decides, then `-- tests:` naming the tests that assert it) or the
+   `-- plumbing:` line saying why it decides nothing
+   ([sim-semantics.md](sim-semantics.md)). Every branch line of pack Lua
+   carries one, and `scripts/semantics/check_semantics.py` holds them to the
+   code: they move with the branch, and a branch without one is red.
 
 Obsolete source-path narration (`-- transliterated from family_orc.cpp`)
 cites deleted native sources, while line-by-line narration merely restates

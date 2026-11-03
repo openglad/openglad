@@ -497,6 +497,15 @@ class walker : public og::sim::SimEntity
 		}
 		void note_attacker(const walker* who, std::uint32_t tick) noexcept
 		{
+			// rule: A hit is credited (kill-attribution stamp: id, team, tick) to the topmost
+			//   LIVING on the attacker's owner chain (credit_head); when no living is on the chain
+			//   (an orphaned weapon whose thrower is gone, a scripted ball fx), no stamp is
+			//   written, so a death from that hit reads as an environment death and Lua on_kill /
+			//   mode scoring pays nobody. walker_combat.cpp passes credit_head() unchecked and
+			//   relies on this guard; walker_specials.cpp (turn undead) checks credit
+			//   itself on the partial-damage arm but not on the lethal arm (also relies on this
+			//   guard).
+			// tests: SemWalker1.a_hit_is_credited_to_the_living_at_the_top_of_the_owner_chain
 			if (who == nullptr)
 				return;
 			last_attacker_id_ = who->entity_id();
