@@ -62,36 +62,68 @@ The lines of a block:
 A rule block is `rule:`, then its `tests:` lines, then at most one
 `deferred:` or `unreachable:`. It sits on the lines immediately above the
 statement, at the statement's indentation, with no blank line or other
-comment between. A rule that spans several statements has a block above
-each; the later ones say they are part of the rule above and name the same
-tests.
+comment between. A rule that spans several statements written one after
+another needs one block: it covers its whole paragraph (below). When the
+statements of one rule are apart (a blank line between them, or one inside
+the body of another), each paragraph has its own block, and each says the
+rule.
 
 ### What a block covers
 
-A block covers the statement right below it:
+A block covers the paragraph right below it: the statement under it and
+every following statement that starts at the same indentation, up to the
+first of
+
+- a blank line;
+- a line indented less than the statement (the `}` or `end` that closes
+  the enclosing block counts);
+- the next block at that indentation or less;
+- an arm of a statement that started before the block (the next `case` of
+  the switch the paragraph sits in).
+
+Plain comments and deeper lines (bodies, continuation lines) do not end it.
+
+```cpp
+    // rule: A frozen or dead walker does not act; a busy one waits.
+    // tests: Walker.a_frozen_walker_skips_its_turn, Walker.a_busy_walker_waits
+    if (frozen())
+        return;
+    if (busy() > 0)       // the same rule: same paragraph
+        return;
+
+    // rule: ...          // a blank line ended it: a new block
+    if (dead())
+```
+
+Of every statement in the paragraph, the block covers:
 
 - its first line and every continuation line (a condition, an argument
   list or an expression wrapped over several lines, so a ternary or a Lua
-  `and` / `or` on a continuation line belongs to the block above the
-  statement); in C++, the body of an `if`, `else`, `for`, `while` or `do`
-  when it is one plain statement without braces;
+  `and` / `or` on a continuation line belongs to the block); in C++, the
+  body of an `if`, `else`, `for`, `while` or `do` when it is one plain
+  statement without braces;
 - for an `if`: every `else if` and `else` of the chain at the same
   indentation, including a `} else if` line and a `}` line followed by
-  `else`; in Lua every `elseif` and `else` before the chain's `end`;
+  `else`, also past a blank line inside a body; in Lua every `elseif` and
+  `else` before the chain's `end`;
 - for a `switch`: every `case` and `default` label of that switch (not of a
   switch nested inside it);
 - for a `do`: its closing `} while (...)`; for a Lua `repeat`: its `until`;
 - for a `while` or `for` loop: its head only;
 - for a `#define`: every line its backslashes continue.
 
-It never covers a body: a branch inside a body has its own block.
+It never covers a body: a branch inside a body has its own block, and that
+block's paragraph is its own. A nested block takes over the statements
+below it inside the body; the outer block's paragraph goes on after the
+body ends.
 
 A `case` or `default` label that is a rule of its own has its block above
-the label, at the label's indentation, and the switch's block then no longer
-covers it. An `else`, `else if` or `elseif` arm that is a rule of its own
-cannot have a block above it (that would sit inside the previous arm), so
-its block starts as a trailing comment on the arm's line, and its further
-lines follow right after that line, indented deeper than the arm:
+the label, at the label's indentation; that block covers the label alone,
+and the switch's block then no longer covers it. An `else`, `else if` or
+`elseif` arm that is a rule of its own cannot have a block above it (that
+would sit inside the previous arm), so its block starts as a trailing
+comment on the arm's first or last line, and its further lines follow right
+after that line, indented deeper than the arm:
 
 ```cpp
     } else if (a < 0) {  // rule: A negative count halves the step.
@@ -100,28 +132,37 @@ lines follow right after that line, indented deeper than the arm:
 ```
 
 When the arm's line already has a comment, the block follows it:
-`} else {  // an old note // rule: ...`. A trailing block anywhere but on an
-`else` arm is an error.
+`} else {  // an old note // rule: ...`. A trailing block anywhere but on
+the first or last line of an `else` arm is an error.
 
-A rule that does not sit on a branch line (a ternary wrapped so that its `?`
-and `:` fall on different lines, a gate function whose whole body is a
-comparison) is written as an ordinary comment; the check does not read it.
+A rule that does not sit on a branch line (a gate function whose whole body
+is one comparison, a family-table field that names a gate) still gets a
+`rule:` block with its `tests:`: a rule block that names tests may sit above
+any statement, and the check reads its tests like any other. A `plumbing:`
+block, or a rule naming no test, above a paragraph with no branch line is
+stray.
 
 ## What counts as a branch line
 
 A C++ line is a candidate when it starts with `if`, `else if`, `else`,
 `switch`, `case`, `default`, `while`, `for` or `do` (optionally after a
-closing `}`), or holds a `? ... :` ternary. A Lua line is a candidate when
+closing `}`), or holds a `?` (a ternary; any `?` left once strings and
+comments are blanked, so a ternary wrapped with its `:` on a later line is a
+candidate on its `?` line). A Lua line is a candidate when
 it starts with `if`, `elseif`, `else`, `while`, `for`, `repeat` or
 `until`, or holds the word `and` or `or`.
 
-This is the review's grep with one change: it runs on the code after every
-comment and every string and character literal is blanked out. An `and`
-inside a Lua string, a `?:` inside a format string and an `if` inside a
-comment are no longer branch lines. That retired 42 of the 48 lines the
-review had marked as dead hits of its grep (the six left are real branches
-that decide nothing, such as a log-only `if` or a `switch` default no roll
-reaches, and their `plumbing:` line says so), and four other plumbing lines.
+This is the review's grep with two changes. First, it runs on the code
+after every comment and every string and character literal is blanked out.
+An `and` inside a Lua string, a `?:` inside a format string and an `if`
+inside a comment are no longer branch lines. That retired 42 of the 48 lines
+the review had marked as dead hits of its grep (the six left are real
+branches that decide nothing, such as a log-only `if` or a `switch` default
+no roll reaches, and their `plumbing:` line says so), and four other
+plumbing lines. Second, the review's `? ... :` pattern needed both halves of
+a ternary on one line; any `?` now counts, which added 38 lines (a wrapped
+ternary such as `return valid_floor(floor)` / `? extra_floors_[...]` /
+`: grid;`).
 The grep is otherwise as blunt as before: a `for` that only walks a list is a
 candidate and needs its `plumbing:` line, so the check never has to guess
 what a line means.
@@ -175,7 +216,7 @@ check_semantics: OK: 159 files, 4635 candidate lines, 3150 rule comments, 677 pl
 |---|---|---|
 | `uncovered` | a branch line no block covers | write its `rule:` or `plumbing:` block |
 | `double-covered` | two blocks cover one line (two trailing blocks on one arm) | keep one |
-| `stray` | a block that covers no branch line: above a statement that is no branch, cut off from its statement by a blank line or another comment, inside a statement's continuation lines, above an `else` arm, or trailing anywhere but an `else` arm | move it to the branch it describes, or delete it if the branch is gone |
+| `stray` | a block that covers no branch line: a `plumbing:` block or a rule naming no test above a paragraph with no branch, cut off from its statement by a blank line or another comment, inside a statement's continuation lines, above an `else` arm, or trailing anywhere but the first or last line of an `else` arm | move it to the branch it describes, or delete it if the branch is gone |
 | `no tests` | a `rule:` with no `tests:`, `deferred:` or `unreachable:` | name the test that asserts it, or write one |
 | `missing test` | no `TEST`, `TEST_F` or `TEST_P` under `tests/` defines that `Suite.name` outside comments and `#if 0` (a test a file-local macro stamps out counts) | the test was renamed or removed: name the current one |
 | `disabled test` | the test's suite or name starts with `DISABLED_`, so it never runs | enable it, or name one that runs |

@@ -23,38 +23,57 @@ A rule block is `rule:` (and its continuation lines), then one or more
 sits on the lines immediately above the statement it covers, at that
 statement's indentation, with no blank line between.
 
-Scope.  A block above a statement covers its head (the first line and every
-continuation line: a condition, an argument list or an expression wrapped
-over several lines) and, for a compound statement, its arms:
+Scope.  A block above a statement covers its PARAGRAPH: that statement and
+every following statement that starts at the same indentation, until a blank
+line, a line indented less (a closing `}` or `end` of the enclosing block
+included), the first line of another block at that indentation or less, or an
+arm of a statement outside the paragraph (the next `case` of an enclosing
+switch).  Plain comments and deeper lines are stepped over.  Of every
+statement in the paragraph the block covers the head (the first line and
+every continuation line: a condition, an argument list or an expression
+wrapped over several lines) and, for a compound statement, its arms:
 
   * an `if`: every `else if` / `else` of the chain at the same indentation
-    (`} else if` and a `}` line followed by `else` included); Lua: every
-    `elseif` / `else` before the chain's `end`;
+    (`} else if` and a `}` line followed by `else` included, also past a blank
+    line inside a body); Lua: every `elseif` / `else` before the chain's `end`;
   * a `switch`: every `case` / `default` label of that switch (not of a
     switch nested inside it);
   * a `do`: its closing `} while (...)`; Lua `repeat`: its `until`;
   * a `while` / `for` loop: its head only;
   * a `#define`: every backslash-continued line of the macro.
 
-The bodies are not covered: a branch inside a body has its own block.  A
-trailing block (`} else if (x) {  // rule: ...`, its further lines on the
-comment lines right after the arm's line, indented deeper than the arm)
-covers the arm it sits on, and that arm then leaves the scope of the block
-above the chain.  On a statement's first line a trailing block covers what a
-block above it would.
+The bodies are not covered: a branch inside a body has its own block, whose
+paragraph is its own (a nested block takes over the statements below it in
+the body, and the outer paragraph runs on after the body).  A block above a
+`case` / `default` label covers that label alone, and the switch's block then
+no longer covers it.  A trailing block (`} else if (x) {  // rule: ...`, on
+the arm's first or last line, its further lines on the comment lines right
+after it, indented deeper than the arm) covers the arm it sits on, and that
+arm then leaves the scope of the block above the chain.  A trailing block
+anywhere but on the first or last line of an `else` / `else if` / `elseif`
+arm is stray.
+
+A `rule:` block that names tests may sit above any statement, a branch or
+not (a gate function whose whole body is one comparison, a family-table
+field), so that its tests are checked; a plumbing block, or a rule naming no
+test, above a paragraph with no branch line is stray.
 
 Candidate lines are the lines the review's grep matches, CPP_BRANCH and
 LUA_BRANCH below, applied to the code with every comment and every string
 and character literal blanked out: an `and` inside a Lua string or a `?:`
-inside a format string is not a branch.
+inside a format string is not a branch.  In C++ any `?` left in the blanked
+code is a ternary, so a ternary whose `?` and `:` sit on different lines is
+a candidate on its `?` line.
 
 The check passes (exit 0) only when:
 
   R1  every candidate line is covered by exactly one block ("uncovered",
       "double-covered"), and every block covers at least one candidate line
-      ("stray": a block above a statement that is not a branch, a block
-      separated from its statement by a blank line or another comment, a
-      block above an arm of a chain);
+      ("stray": a plumbing block or a rule block naming no test above a
+      paragraph with no branch line, a block separated from its statement by
+      a blank line or another comment, a block above an arm of a chain or
+      inside a continuation, a trailing block off an else arm's first or
+      last line);
   R2  every rule block cites a test or says why it cannot ("no tests"), every
       gtest it cites (Suite.name) is defined by a TEST / TEST_F / TEST_P in a
       file under tests/, outside comments and `#if 0`, and is not disabled
@@ -139,8 +158,10 @@ SCOPE_CPP: tuple[str, ...] = (
 )
 SCOPE_LUA_GLOB = "packs/**/*.lua"
 
+# Any `?` left in the blanked code is a ternary, also when its `:` sits on a
+# later line (a `?:` inside a string or comment is blanked away first).
 CPP_BRANCH = re.compile(
-    r"^\s*(\}\s*)?(if|else if|else|switch|case|default|while|for|do)\b|\?[^?:]*:")
+    r"^\s*(\}\s*)?(if|else if|else|switch|case|default|while|for|do)\b|\?")
 LUA_BRANCH = re.compile(
     r"^\s*(if|elseif|else|while|for|repeat|until)\b|\b(and|or)\b")
 
@@ -955,6 +976,56 @@ def show(src: Source, i: int) -> str:
     return f"{src.path}:{i + 1}: {src.lines[i].strip()}"
 
 
+NEUTRAL_CPP_RX = re.compile(r"[{}()\[\];,\s]*")
+NEUTRAL_LUA_RX = re.compile(r"(end\b|[{}()\[\];,\s])*")
+
+
+def paragraph(src: Source, t: int, block_starts: set[int]) -> list[int]:
+    """The statements a block above line t covers: t itself and every statement
+    after it that starts at t's indentation, until a blank line, a line
+    indented less than t (a closing brace or `end` included), the first line
+    of another block at t's indentation or less, or an arm of a statement
+    outside the paragraph (the next `case` of an enclosing switch).  Lines
+    indented deeper (bodies, continuations) and plain comments are stepped
+    over; a block among them takes over the statements of its own
+    paragraph, and the bodies are never the outer block's."""
+    w = width(src.indent(t))
+    stmts = [t]
+    neutral = NEUTRAL_LUA_RX if src.lua else NEUTRAL_CPP_RX
+    j = t + 1
+    while j < src.n:
+        if src.is_blank(j):
+            break
+        if j in block_starts and width(src.indent(j)) <= w:
+            break
+        if not src.has_code(j):
+            j += 1
+            continue
+        code = src.code[j].strip()
+        if not src.lua and code.startswith("#"):
+            j += 1
+            continue
+        ind = width(src.indent(j))
+        if ind < w:
+            break
+        if ind > w or neutral.fullmatch(code):
+            j += 1
+            continue
+        role = src.role.get(j)
+        if role is None:
+            j += 1
+            continue
+        if role[1] in stmts:
+            j += 1
+            continue
+        if role[0] == "head" and role[1] == j:
+            stmts.append(j)
+            j += 1
+            continue
+        break
+    return stmts
+
+
 def place_blocks(src: Source, blocks: list[Block], rep: Report) -> None:
     """Attach every block to what it covers; stray and misindented blocks are
     reported here."""
@@ -968,6 +1039,12 @@ def place_blocks(src: Source, blocks: list[Block], rep: Report) -> None:
                 rep.add("stray", f"{show(src, b.first)} -- a trailing block belongs on an "
                         f"`else` / `else if` / `elseif` arm; anything else takes its block "
                         f"on the lines above it")
+                continue
+            arm0 = src.arms[s][k][0]
+            ctl = (src._lua_head(arm0) if src.lua else src._cpp_head(arm0))
+            if b.first not in (ctl[0], ctl[-1]):
+                rep.add("stray", f"{show(src, b.first)} -- a trailing block sits on the arm's "
+                        f"first or last line, not inside its condition")
                 continue
             arm_w = width(src.indent(src.arms[s][k][0]))
             for line, _ in b.entries[1:]:
@@ -1010,14 +1087,18 @@ def place_blocks(src: Source, blocks: list[Block], rep: Report) -> None:
                     f"(line {nxt + 1} continues the one at line {role[1] + 1})")
             continue
         above.append(b)
+    starts = {b.first for b in blocks if not b.trailing}
     for b in above:
-        s = b.target
-        lines = list(src.heads.get(s, [s]))
-        for k, arm in enumerate(src.arms.get(s, [])):
-            if (s, k) not in carved:
-                lines.extend(arm)
+        lines: list[int] = []
+        for s in paragraph(src, b.target, starts):
+            lines.extend(src.heads.get(s, [s]))
+            for k, arm in enumerate(src.arms.get(s, [])):
+                if (s, k) not in carved:
+                    lines.extend(arm)
         b.covers = lines
     for b in blocks:
+        if b.kind == "rule" and test_entries(b) and not b.trailing and b.target is not None:
+            continue   # a rule that names its tests may sit above any statement
         if b.covers and not any(i in src.cands for i in b.covers):
             b.covers = []
             what = show(src, b.target) if b.target is not None else show(src, b.first)
@@ -1644,6 +1725,145 @@ local function f(a)
 end
 """}, 0, _sum(files=2, cands=2, rules=2))
 
+
+_case("a block covers its paragraph: the statement below it and its siblings at the same "
+      "indentation", {"src/a.cpp": """\
+void f(int a, int b)
+{
+    // rule: r
+    // tests: S.t
+    if (a)
+        g();
+    // a plain comment does not end the paragraph
+    int c = b ? 1 : 2;
+    if (b)
+        h();
+}
+"""}, 0, _sum(cands=3, rules=1))
+
+_case("a blank line ends the paragraph", {"src/a.cpp": """\
+void f(int a, int b)
+{
+    // rule: r
+    // tests: S.t
+    if (a)
+        g();
+
+    if (b)
+        h();
+}
+"""}, 1, "uncovered: src/a.cpp:8: if (b)\n" + _sum(cands=2, rules=1, uncovered=1))
+
+_case("a dedent ends the paragraph", {"src/a.cpp": """\
+void f(int a, int b)
+{
+    {
+        // rule: r
+        // tests: S.t
+        if (a)
+            g();
+    }
+    if (b)
+        h();
+}
+"""}, 1, "uncovered: src/a.cpp:9: if (b)\n" + _sum(cands=2, rules=1, uncovered=1))
+
+_case("a nested block takes over the statements of its own paragraph; the outer block's "
+      "paragraph runs on past the body", {"src/a.cpp": """\
+void f(int a, int b, int c)
+{
+    // rule: outer
+    // tests: S.t
+    if (a) {
+        // rule: inner
+        // tests: S.u
+        if (b)
+            g();
+        if (c)
+            h();
+    } else if (c) {
+        k();
+    }
+    while (a--)
+        g();
+}
+"""}, 0, _sum(cands=5, rules=2))
+
+_case("the next block at the same indentation ends the paragraph", {"src/a.cpp": """\
+void f(int a, int b)
+{
+    // rule: r
+    // tests: S.t
+    if (a)
+        g();
+    // plumbing: p
+    if (b)
+        h();
+    for (;;)
+        g();
+}
+"""}, 0, _sum(cands=3, rules=1, plumbing=1))
+
+_case("a rule that names its tests may sit above any statement; one without tests, or "
+      "plumbing, may not", {"src/a.cpp": """\
+bool f(int a, int b)
+{
+    // rule: a gate whose whole body is a comparison: both must hold
+    // tests: S.t
+    return a > 0 && b > 0;
+}
+bool g(int a, int b)
+{
+    // rule: no tests here
+    return a > 0 && b > 0;
+}
+"""}, 1, "stray: src/a.cpp:9: the block covers no branch line (it sits above return a > 0 "
+   "&& b > 0;)\n"
+   "no tests: src/a.cpp:9: the rule cites no test (add `tests:`, or `deferred: #<issue> ...` "
+   "/ `unreachable: ...`)\n" + _sum(rules=2, stray=1, no_tests=1))
+
+_case("a ternary wrapped so its ? and : sit on different lines is a candidate",
+      {"src/a.cpp": """\
+int f(int a)
+{
+    // rule: a non-zero a picks one
+    // tests: S.t
+    const int x = a
+        ? 1
+        : 2;
+    const int y = a
+        ? 3
+        : 4;
+    return x + y;
+}
+"""}, 0, _sum(cands=2, rules=1))
+
+_case("a wrapped ternary with no block is uncovered", {"src/a.cpp": """\
+int f(int a)
+{
+    return a
+        ? 1
+        : 2;
+}
+"""}, 1, "uncovered: src/a.cpp:4: ? 1\n" + _sum(cands=1, uncovered=1))
+
+_case("a trailing block sits on the arm's first or last line, not inside its condition",
+      {"src/a.cpp": """\
+void f(int a, int b)
+{
+    // rule: r
+    // tests: S.t
+    if (a) {
+        g();
+    } else if (b &&
+               b > 1 &&  // rule: q
+               // tests: S.u
+               b < 9) {
+        h();
+    }
+}
+"""}, 1, "stray: src/a.cpp:8: b > 1 &&  // rule: q -- a trailing block sits on the arm's "
+   "first or last line, not inside its condition\n" + _sum(cands=2, rules=2, stray=1))
 
 def self_test() -> int:
     t0 = time.monotonic()
