@@ -77,8 +77,9 @@ const MarkerLabel* label_for_role(char role) noexcept
     // tests: TimedEffects.each_running_effect_answers_its_label_and_clock
     // tests: TimedEffectsLua.the_marker_roles_reach_lua_with_the_engines_numbers
     for (const MarkerLabel& m : kMarkerLabels) {
-        // rule: Part of the rule above that begins "A kit marker counts toward a walker's timer
-        //   only ..."
+        // rule: A kit marker counts toward a walker's timer only if it is a live core:kit_marker FX
+        //   owned by that walker with time left and a known role (PHASE, DIG IN, REASSEMBLE,
+        //   IMMOLATE, LEGION).
         // tests: TimedEffects.only_the_walkers_own_running_markers_count
         // tests: TimedEffects.phase_owns_its_fields
         // tests: TimedEffects.each_running_effect_answers_its_label_and_clock
@@ -119,32 +120,36 @@ SeatTimer seat_timer(const GameWorld& world, const walker& control) noexcept
         // turns up: most walkers own no running effect at all, and the text
         // client asks this for every living each tick.
         int marker_family = -2;  // -2: not resolved yet
-        // rule: Part of the rule above that begins "A kit marker counts toward a walker's timer
-        //   only ..."
+        // rule: A kit marker counts toward a walker's timer only if it is a live core:kit_marker FX
+        //   owned by that walker with time left and a known role (PHASE, DIG IN, REASSEMBLE,
+        //   IMMOLATE, LEGION).
         // tests: TimedEffects.only_the_walkers_own_running_markers_count
         // tests: TimedEffects.phase_owns_its_fields
         // tests: TimedEffects.each_running_effect_answers_its_label_and_clock
         // tests: TimedEffectsLua.the_marker_roles_reach_lua_with_the_engines_numbers
         for (const auto& entry : world.oblist) {
             const walker* ob = entry.get();
-            // rule: Part of the rule above that begins "A kit marker counts toward a walker's timer
-            //   only ..."
+            // rule: A kit marker counts toward a walker's timer only if it is a live
+            //   core:kit_marker FX owned by that walker with time left and a known role (PHASE, DIG
+            //   IN, REASSEMBLE, IMMOLATE, LEGION).
             // tests: TimedEffects.only_the_walkers_own_running_markers_count
             // tests: TimedEffects.phase_owns_its_fields
             // tests: TimedEffects.each_running_effect_answers_its_label_and_clock
             // tests: TimedEffectsLua.the_marker_roles_reach_lua_with_the_engines_numbers
             if (ob == nullptr || ob->dead() || ob->order() != Order::FX)
                 continue;
-            // rule: Part of the rule above that begins "A kit marker counts toward a walker's timer
-            //   only ..."
+            // rule: A kit marker counts toward a walker's timer only if it is a live
+            //   core:kit_marker FX owned by that walker with time left and a known role (PHASE, DIG
+            //   IN, REASSEMBLE, IMMOLATE, LEGION).
             // tests: TimedEffects.only_the_walkers_own_running_markers_count
             // tests: TimedEffects.phase_owns_its_fields
             // tests: TimedEffects.each_running_effect_answers_its_label_and_clock
             // tests: TimedEffectsLua.the_marker_roles_reach_lua_with_the_engines_numbers
             if (ob->owner() != &control || ob->lifetime() <= 0)
                 continue;
-            // rule: Part of the rule above that begins "A kit marker counts toward a walker's timer
-            //   only ..."
+            // rule: A kit marker counts toward a walker's timer only if it is a live
+            //   core:kit_marker FX owned by that walker with time left and a known role (PHASE, DIG
+            //   IN, REASSEMBLE, IMMOLATE, LEGION).
             // tests: TimedEffects.only_the_walkers_own_running_markers_count
             // tests: TimedEffects.phase_owns_its_fields
             // tests: TimedEffects.each_running_effect_answers_its_label_and_clock
@@ -152,8 +157,9 @@ SeatTimer seat_timer(const GameWorld& world, const walker& control) noexcept
             if (marker_family == -2)
                 marker_family = og::families::resolve_family_string_id(
                     Order::FX, "core:kit_marker");
-            // rule: Part of the rule above that begins "A kit marker counts toward a walker's timer
-            //   only ..."
+            // rule: A kit marker counts toward a walker's timer only if it is a live
+            //   core:kit_marker FX owned by that walker with time left and a known role (PHASE, DIG
+            //   IN, REASSEMBLE, IMMOLATE, LEGION).
             // tests: TimedEffects.only_the_walkers_own_running_markers_count
             // tests: TimedEffects.phase_owns_its_fields
             // tests: TimedEffects.each_running_effect_answers_its_label_and_clock
@@ -162,16 +168,18 @@ SeatTimer seat_timer(const GameWorld& world, const walker& control) noexcept
                 marker_family)
                 continue;
             const MarkerLabel* m = label_for_role(ob->ani_type());
-            // rule: Part of the rule above that begins "A kit marker counts toward a walker's timer
-            //   only ..."
+            // rule: A kit marker counts toward a walker's timer only if it is a live
+            //   core:kit_marker FX owned by that walker with time left and a known role (PHASE, DIG
+            //   IN, REASSEMBLE, IMMOLATE, LEGION).
             // tests: TimedEffects.only_the_walkers_own_running_markers_count
             // tests: TimedEffects.phase_owns_its_fields
             // tests: TimedEffects.each_running_effect_answers_its_label_and_clock
             // tests: TimedEffectsLua.the_marker_roles_reach_lua_with_the_engines_numbers
             if (m == nullptr)
                 continue;
-            // rule: Part of the rule above that begins "A kit marker counts toward a walker's timer
-            //   only ..."
+            // rule: A kit marker counts toward a walker's timer only if it is a live
+            //   core:kit_marker FX owned by that walker with time left and a known role (PHASE, DIG
+            //   IN, REASSEMBLE, IMMOLATE, LEGION).
             // tests: TimedEffects.only_the_walkers_own_running_markers_count
             // tests: TimedEffects.phase_owns_its_fields
             // tests: TimedEffects.each_running_effect_answers_its_label_and_clock
@@ -193,55 +201,19 @@ SeatTimer seat_timer(const GameWorld& world, const walker& control) noexcept
     // tests: TimedEffects.phase_owns_its_fields
     if (control.lifetime() > 0)
         best.offer("SUMMONED", control.lifetime(), kRankSummoned);
-    // rule: Part of the rule above that begins "Classic timers shown on the HUD: SUMMONED (own
-    //   lifetime), ..."
-    // tests: TimedEffects.each_running_effect_answers_its_label_and_clock
-    // tests: TimedEffects.flight_hover_tick_is_not_shown
-    // tests: TimedEffects.haste_last_tick_is_shown_and_zero_is_not
-    // tests: TimedEffects.phase_owns_its_fields
     if (control.charm_left() > 0)
         best.offer("CHARMED", control.charm_left(), kRankCharmed);
-    // rule: Part of the rule above that begins "Classic timers shown on the HUD: SUMMONED (own
-    //   lifetime), ..."
-    // tests: TimedEffects.each_running_effect_answers_its_label_and_clock
-    // tests: TimedEffects.flight_hover_tick_is_not_shown
-    // tests: TimedEffects.haste_last_tick_is_shown_and_zero_is_not
-    // tests: TimedEffects.phase_owns_its_fields
     if (control.stats() != nullptr && control.stats()->frozen_delay() > 0)
         best.offer("STUNNED", control.stats()->frozen_delay(), kRankStunned);
-    // rule: Part of the rule above that begins "Classic timers shown on the HUD: SUMMONED (own
-    //   lifetime), ..."
-    // tests: TimedEffects.each_running_effect_answers_its_label_and_clock
-    // tests: TimedEffects.flight_hover_tick_is_not_shown
-    // tests: TimedEffects.haste_last_tick_is_shown_and_zero_is_not
-    // tests: TimedEffects.phase_owns_its_fields
     if (control.invisibility_left() > 0)
         best.offer("INVISIBLE", control.invisibility_left(), kRankInvisible);
-    // rule: Part of the rule above that begins "Classic timers shown on the HUD: SUMMONED (own
-    //   lifetime), ..."
-    // tests: TimedEffects.each_running_effect_answers_its_label_and_clock
-    // tests: TimedEffects.flight_hover_tick_is_not_shown
-    // tests: TimedEffects.haste_last_tick_is_shown_and_zero_is_not
-    // tests: TimedEffects.phase_owns_its_fields
     if (!phased && control.invulnerable_left() > 0)
         best.offer("INVINCIBLE", control.invulnerable_left(), kRankInvincible);
     // A walker stuck over ground it cannot stand on is held at 1 every
     // tick, so 1 is not a flight that is ending.
-    // rule: Part of the rule above that begins "Classic timers shown on the HUD: SUMMONED (own
-    //   lifetime), ..."
-    // tests: TimedEffects.each_running_effect_answers_its_label_and_clock
-    // tests: TimedEffects.flight_hover_tick_is_not_shown
-    // tests: TimedEffects.haste_last_tick_is_shown_and_zero_is_not
-    // tests: TimedEffects.phase_owns_its_fields
     if (control.flight_left() > 1)
         best.offer("FLYING", control.flight_left(), kRankFlying);
     // The speed bonus counts down to 0, one tick of speed for each.
-    // rule: Part of the rule above that begins "Classic timers shown on the HUD: SUMMONED (own
-    //   lifetime), ..."
-    // tests: TimedEffects.each_running_effect_answers_its_label_and_clock
-    // tests: TimedEffects.flight_hover_tick_is_not_shown
-    // tests: TimedEffects.haste_last_tick_is_shown_and_zero_is_not
-    // tests: TimedEffects.phase_owns_its_fields
     if (!phased && control.speed_bonus_left() > 0)
         best.offer("HASTE", control.speed_bonus_left(), kRankHaste);
     return best.timer;

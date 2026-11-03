@@ -70,7 +70,7 @@ void walker::follow_path_to_foe()
         current_game->world != nullptr &&
         current_game->world->floor_count() > 1;
 
-    // plumbing: Consumes reached nodes; body rules at walker_pathing.cpp:76, :109, :153.
+    // plumbing: Consumes reached nodes; body rules below.
     while (!path_to_foe.empty())
     {
         auto node = path_to_foe.begin();
@@ -87,15 +87,17 @@ void walker::follow_path_to_foe()
         if (dx != 0 || dy != 0)
         {
             // Normalize the deltas so walkstep can use them as stepsize factors.
-            // rule: Part of the rule above that begins "A path-follower drops every node whose grid
-            //   cell its ..."
+            // rule: A path-follower drops every node whose grid cell its top-left corner already
+            //   occupies, then takes one walk step (sign of the remaining delta per axis, possibly
+            //   diagonal) toward the first unreached node.
             // tests: WalkerPathing.find_path_to_foe_routes_east_and_each_follow_walks_one_stepsize
             // tests: WalkerPathing.round10_follow_path_node_erase_and_normalize_paths
             // tests: SemWalker4.a_path_follower_with_no_node_left_stands_still
             if (dx != 0)
                 dx /= abs(dx);
-            // rule: Part of the rule above that begins "A path-follower drops every node whose grid
-            //   cell its ..."
+            // rule: A path-follower drops every node whose grid cell its top-left corner already
+            //   occupies, then takes one walk step (sign of the remaining delta per axis, possibly
+            //   diagonal) toward the first unreached node.
             // tests: WalkerPathing.find_path_to_foe_routes_east_and_each_follow_walks_one_stepsize
             // tests: WalkerPathing.round10_follow_path_node_erase_and_normalize_paths
             // tests: SemWalker4.a_path_follower_with_no_node_left_stands_still
@@ -141,24 +143,22 @@ void walker::follow_path_to_foe()
             if ((dx == 0) != (dy == 0) && current_game != nullptr &&
                 current_game->world != nullptr)
             {
-                const int mis = (dx != 0)
-                    ? ypos() - ALIGN_TO_GRID(ypos())
-                    : xpos() - ALIGN_TO_GRID(xpos());
-                // rule: Part of the rule above that begins "Convex-corner alignment assist: when
-                //   the next hop is cardinal, ..."
+                // rule: Convex-corner alignment assist.
                 // tests: SingleFloorPathing.misaligned_walker_aligns_into_a_one_lane_tree_gap
                 // tests: ZAxis.misaligned_walker_aligns_and_turns_a_one_lane_corner
                 // tests: CornerAssist.a_misaligned_walker_slides_into_alignment_at_a_blocked_corner
                 // tests: CornerAssist.a_slide_blocked_at_its_first_pixel_falls_back_to_the_normal_step
                 // tests: CornerAssist.an_aligned_or_open_or_diagonal_hop_takes_the_normal_step
+                const int mis = (dx != 0)
+                    ? ypos() - ALIGN_TO_GRID(ypos())
+                    : xpos() - ALIGN_TO_GRID(xpos());
                 if (mis > 0 &&
                     !current_game->world->query_passable(
                         xpos() + static_cast<float>(dx) * stepsize(),
                         ypos() + static_cast<float>(dy) * stepsize(), this))
                 {
                     int budget = static_cast<int>(stepsize());
-                    // rule: Part of the rule above that begins "Convex-corner alignment assist:
-                    //   when the next hop is cardinal, ..."
+                    // rule: Convex-corner alignment assist.
                     // tests: SingleFloorPathing.misaligned_walker_aligns_into_a_one_lane_tree_gap
                     // tests: ZAxis.misaligned_walker_aligns_and_turns_a_one_lane_corner
                     // tests: CornerAssist.a_misaligned_walker_slides_into_alignment_at_a_blocked_corner
@@ -167,24 +167,21 @@ void walker::follow_path_to_foe()
                     if (budget > mis)
                         budget = mis;
                     bool slid = false;
-                    // rule: Part of the rule above that begins "Convex-corner alignment assist:
-                    //   when the next hop is cardinal, ..."
+                    // rule: Convex-corner alignment assist.
                     // tests: SingleFloorPathing.misaligned_walker_aligns_into_a_one_lane_tree_gap
                     // tests: ZAxis.misaligned_walker_aligns_and_turns_a_one_lane_corner
                     // tests: CornerAssist.a_misaligned_walker_slides_into_alignment_at_a_blocked_corner
                     // tests: CornerAssist.a_slide_blocked_at_its_first_pixel_falls_back_to_the_normal_step
                     // tests: CornerAssist.an_aligned_or_open_or_diagonal_hop_takes_the_normal_step
                     const float sx = (dx != 0) ? 0.0f : -1.0f;
-                    // rule: Part of the rule above that begins "Convex-corner alignment assist:
-                    //   when the next hop is cardinal, ..."
+                    // rule: Convex-corner alignment assist.
                     // tests: SingleFloorPathing.misaligned_walker_aligns_into_a_one_lane_tree_gap
                     // tests: ZAxis.misaligned_walker_aligns_and_turns_a_one_lane_corner
                     // tests: CornerAssist.a_misaligned_walker_slides_into_alignment_at_a_blocked_corner
                     // tests: CornerAssist.a_slide_blocked_at_its_first_pixel_falls_back_to_the_normal_step
                     // tests: CornerAssist.an_aligned_or_open_or_diagonal_hop_takes_the_normal_step
                     const float sy = (dx != 0) ? -1.0f : 0.0f;
-                    // rule: Part of the rule above that begins "Convex-corner alignment assist:
-                    //   when the next hop is cardinal, ..."
+                    // rule: Convex-corner alignment assist.
                     // tests: SingleFloorPathing.misaligned_walker_aligns_into_a_one_lane_tree_gap
                     // tests: ZAxis.misaligned_walker_aligns_and_turns_a_one_lane_corner
                     // tests: CornerAssist.a_misaligned_walker_slides_into_alignment_at_a_blocked_corner
@@ -192,8 +189,7 @@ void walker::follow_path_to_foe()
                     // tests: CornerAssist.an_aligned_or_open_or_diagonal_hop_takes_the_normal_step
                     for (int i = 0; i < budget; i++)
                     {
-                        // rule: Part of the rule above that begins "Convex-corner alignment assist:
-                        //   when the next hop is cardinal, ..."
+                        // rule: Convex-corner alignment assist.
                         // tests: SingleFloorPathing.misaligned_walker_aligns_into_a_one_lane_tree_gap
                         // tests: ZAxis.misaligned_walker_aligns_and_turns_a_one_lane_corner
                         // tests: CornerAssist.a_misaligned_walker_slides_into_alignment_at_a_blocked_corner
@@ -205,8 +201,7 @@ void walker::follow_path_to_foe()
                         worldmove(sx, sy);
                         slid = true;
                     }
-                    // rule: Part of the rule above that begins "Convex-corner alignment assist:
-                    //   when the next hop is cardinal, ..."
+                    // rule: Convex-corner alignment assist.
                     // tests: SingleFloorPathing.misaligned_walker_aligns_into_a_one_lane_tree_gap
                     // tests: ZAxis.misaligned_walker_aligns_and_turns_a_one_lane_corner
                     // tests: CornerAssist.a_misaligned_walker_slides_into_alignment_at_a_blocked_corner
@@ -244,22 +239,19 @@ void walker::follow_path_to_foe()
             const int center_cy = (ypos() + sizey() / 2) / GRID_SIZE;
             int sdx = (GET_STATE_X(state) / GRID_SIZE) - center_cx;
             int sdy = (GET_STATE_Y(state) / GRID_SIZE) - center_cy;
-            // rule: Part of the rule above that begins "On a multi-floor map, a reached path node
-            //   on ..."
+            // rule: On a multi-floor map, a reached path node on another floor is the Z-stair.
             // tests: ZAxis.cross_floor_ai_chases_foe_through_stair
             // tests: ZAxis.cross_floor_ai_chases_MOVING_foe_through_stair
             // tests: SemWalker4.a_walker_centers_on_a_stair_node_and_waits_on_a_multifloor_map
             if (sdx != 0 || sdy != 0)
             {
-                // rule: Part of the rule above that begins "On a multi-floor map, a reached path
-                //   node on ..."
+                // rule: On a multi-floor map, a reached path node on another floor is the Z-stair.
                 // tests: ZAxis.cross_floor_ai_chases_foe_through_stair
                 // tests: ZAxis.cross_floor_ai_chases_MOVING_foe_through_stair
                 // tests: SemWalker4.a_walker_centers_on_a_stair_node_and_waits_on_a_multifloor_map
                 if (sdx != 0)
                     sdx /= abs(sdx);
-                // rule: Part of the rule above that begins "On a multi-floor map, a reached path
-                //   node on ..."
+                // rule: On a multi-floor map, a reached path node on another floor is the Z-stair.
                 // tests: ZAxis.cross_floor_ai_chases_foe_through_stair
                 // tests: ZAxis.cross_floor_ai_chases_MOVING_foe_through_stair
                 // tests: SemWalker4.a_walker_centers_on_a_stair_node_and_waits_on_a_multifloor_map

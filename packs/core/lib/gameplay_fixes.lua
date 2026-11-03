@@ -45,13 +45,9 @@ function M.charmable(foe, fixes)
   if foe:real_team_num() ~= 255 then
     return false
   end
-  -- rule: Part of the rule above that begins "A charm can take a foe that is not ..."
-  -- tests: GameplayFixesLua.gf_charmable_skips_a_seated_hero_only_with_the_fixes
   if foe:order() ~= C.ORDER_LIVING then
     return false
   end
-  -- rule: Part of the rule above that begins "A charm can take a foe that is not ..."
-  -- tests: GameplayFixesLua.gf_charmable_skips_a_seated_hero_only_with_the_fixes
   if not fixes then
     return true
   end
@@ -65,7 +61,7 @@ end
 function M.nearest_charmable(self, foes, max_level)
   local best = nil
   local best_dist = 0
-  -- plumbing: scan for the nearest charmable foe; rules at gameplay_fixes.lua:60, :63
+  -- plumbing: scan for the nearest charmable foe; rules below
   for i = 1, #foes do
     local foe = foes[i]
     local eligible = M.charmable(foe, true)
@@ -77,14 +73,11 @@ function M.nearest_charmable(self, foes, max_level)
     if eligible and max_level ~= nil then
       eligible = foe.level <= max_level
     end
-    -- rule: Part of the rule above that begins "With Gameplay Fixes on, the thief's and archmage's
-    --   charms ..."
-    -- tests: GameplayFixesLua.gf_nearest_charmable_takes_the_nearest_eligible_foe
-    -- tests: parity:thief_charm_nearest_fixes_scen99
     if eligible then
       local dist = self:distance_to_ob(foe)
-      -- rule: Part of the rule above that begins "With Gameplay Fixes on, the thief's and
-      --   archmage's charms ..."
+      -- rule: With Gameplay Fixes on, the thief's and archmage's charms pick the nearest charmable
+      --   foe (distance_to_ob), ties to the first in the list, and only one at or below the
+      --   caster's level where a level cap applies (a higher level always resists).
       -- tests: GameplayFixesLua.gf_nearest_charmable_takes_the_nearest_eligible_foe
       -- tests: parity:thief_charm_nearest_fixes_scen99
       if best == nil or dist < best_dist then

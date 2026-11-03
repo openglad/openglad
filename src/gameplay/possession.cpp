@@ -123,21 +123,11 @@ PossessResult possess(GameWorld& world, walker& rider, walker& host,
     // tests: SemPossession.a_dead_hidden_or_dormant_rider_cannot_possess
     if (&rider == &host || !is_living(rider) || !is_living(host))
         return {false, "CANNOT POSSESS"};
-    // rule: Part of the rule above that begins "POSSESS needs a free rider: a visible, awake,
-    //   living ..."
-    // tests: KitPossession.undead_seat_and_linked_hosts_refuse
-    // tests: KitPossession.possess_moves_the_seat_tag_hides_the_rider_and_flips_the_host
-    // tests: SemPossession.a_dead_hidden_or_dormant_rider_cannot_possess
     if (rider.dead() || rider.hidden() || rider.dormant() ||
         rider.possess_link() != 0)
         return {false, "CANNOT POSSESS"};
     // A charmed rider's real_team_num holds its true team for the charm's
     // expiry (living::act); the possession would overwrite that record.
-    // rule: Part of the rule above that begins "POSSESS needs a free rider: a visible, awake,
-    //   living ..."
-    // tests: KitPossession.undead_seat_and_linked_hosts_refuse
-    // tests: KitPossession.possess_moves_the_seat_tag_hides_the_rider_and_flips_the_host
-    // tests: SemPossession.a_dead_hidden_or_dormant_rider_cannot_possess
     if (rider.real_team_num() != kNoTeam)
         return {false, "CANNOT POSSESS"};
     // rule: A dead, hidden or dormant body cannot be possessed ('NO HOST IN REACH').
@@ -222,30 +212,23 @@ walker* release_possession(GameWorld& world, walker& either_side, int overkill)
     // tests: KitPossession.charmed_host_released_by_the_countdown
     // tests: KitPossession.hidden_rider_death_releases_the_host
     walker* const rider = from_rider ? &either_side : partner;
-    // rule: Part of the rule above that begins "When a possession ends the host goes home to ..."
-    // tests: KitPossession.host_tick_counts_down_follows_and_releases_at_zero
-    // tests: KitPossession.thief_charm_on_a_possessed_host_does_not_corrupt_release
-    // tests: KitPossession.charmed_host_released_by_the_countdown
-    // tests: KitPossession.hidden_rider_death_releases_the_host
     walker* const host = from_rider ? partner : &either_side;
 
-    // rule: Part of the rule above that begins "When a possession ends the host goes home to ..."
+    // rule: When a possession ends the host goes home to its own team.
     // tests: KitPossession.host_tick_counts_down_follows_and_releases_at_zero
     // tests: KitPossession.thief_charm_on_a_possessed_host_does_not_corrupt_release
     // tests: KitPossession.charmed_host_released_by_the_countdown
     // tests: KitPossession.hidden_rider_death_releases_the_host
     if (host != nullptr)
     {
-        // rule: Part of the rule above that begins "When a possession ends the host goes home to
-        //   ..."
+        // rule: When a possession ends the host goes home to its own team.
         // tests: KitPossession.host_tick_counts_down_follows_and_releases_at_zero
         // tests: KitPossession.thief_charm_on_a_possessed_host_does_not_corrupt_release
         // tests: KitPossession.charmed_host_released_by_the_countdown
         // tests: KitPossession.hidden_rider_death_releases_the_host
         const unsigned char original =
             rider != nullptr ? rider->real_team_num() : kNoTeam;
-        // rule: Part of the rule above that begins "When a possession ends the host goes home to
-        //   ..."
+        // rule: When a possession ends the host goes home to its own team.
         // tests: KitPossession.host_tick_counts_down_follows_and_releases_at_zero
         // tests: KitPossession.thief_charm_on_a_possessed_host_does_not_corrupt_release
         // tests: KitPossession.charmed_host_released_by_the_countdown
@@ -256,8 +239,7 @@ walker* release_possession(GameWorld& world, walker& either_side, int overkill)
             // rider's team as the host's real team. Put the true team there
             // and leave the charmer's team on, so the charm's own expiry
             // (living::act) brings the host home.
-            // rule: Part of the rule above that begins "When a possession ends the host goes home
-            //   to ..."
+            // rule: When a possession ends the host goes home to its own team.
             // tests: KitPossession.host_tick_counts_down_follows_and_releases_at_zero
             // tests: KitPossession.thief_charm_on_a_possessed_host_does_not_corrupt_release
             // tests: KitPossession.charmed_host_released_by_the_countdown
@@ -287,8 +269,8 @@ walker* release_possession(GameWorld& world, walker& either_side, int overkill)
         // the reveal below registers the rider at the host's spot.
         rider->center_on(host);
         rider->set_floor(host->floor());
-        // rule: Part of the rule above that begins "On release the ghost reappears at the host's
-        //   centre ..."
+        // rule: On release the ghost reappears at the host's centre and floor, and a seat driving
+        //   the host goes back to the ghost.
         // tests: KitPossession.host_tick_counts_down_follows_and_releases_at_zero
         // tests: SemPossession.a_released_rider_takes_the_hosts_floor_and_a_bot_moves_no_tag
         if (host->user() != -1)
@@ -317,7 +299,8 @@ walker* release_possession(GameWorld& world, walker& either_side, int overkill)
     {
         rider->stats()->set_hitpoints(rider->stats()->hitpoints() -
                                       static_cast<float>(overkill) / 2.0f);
-        // rule: Part of the rule above that begins "A ghost cast out of a killed body takes ..."
+        // rule: A ghost cast out of a killed body takes half the killing blow's overkill, and dies
+        //   if that empties it.
         // tests: KitPossession.host_death_releases_with_half_overkill
         if (rider->stats()->hitpoints() <= 0.0f)
         {
@@ -338,10 +321,6 @@ void possession_host_tick(GameWorld& world, living& host)
     if (host.possess_link() == 0)
         return;
     walker* const rider = world.find_by_id(host.possess_link());
-    // rule: Part of the rule above that begins "If the rider is gone or dead without its ..."
-    // tests: KitPossession.rider_gone_from_the_world_unlinks_the_host
-    // tests: KitPossession.host_tick_counts_down_follows_and_releases_at_zero
-    // tests: SemPossession.a_host_whose_rider_is_dead_just_drops_the_link
     if (rider == nullptr || rider->dead())
     {
         // The rider left the world, or was marked dead without
@@ -369,8 +348,8 @@ void possession_host_tick(GameWorld& world, living& host)
     {
         host.set_possess_ticks(
             static_cast<std::int16_t>(host.possess_ticks() - 1));
-        // rule: Part of the rule above that begins "A timed possession counts down one per host act
-        //   ..."
+        // rule: A timed possession counts down one per host act and releases at zero; a possession
+        //   of 0 ticks is permanent.
         // tests: KitPossession.host_tick_counts_down_follows_and_releases_at_zero
         // tests: KitPossession.permanent_possession_never_counts_down
         if (host.possess_ticks() == 0)
@@ -409,11 +388,6 @@ bool kit_on_death(GameWorld& world, walker& self)
     // tests: SemPossession.an_unlinked_death_touches_no_possession
     if (self.possess_link() == 0)
         return false;
-    // rule: Part of the rule above that begins "Death ends a possession: a rider dying while it
-    //   ..."
-    // tests: KitPossession.hidden_rider_death_releases_the_host
-    // tests: KitPossession.host_death_releases_with_half_overkill
-    // tests: SemPossession.an_unlinked_death_touches_no_possession
     if (self.hidden())
     {
         // A rider dying while it rides (nothing here can hurt a hidden
@@ -422,17 +396,7 @@ bool kit_on_death(GameWorld& world, walker& self)
         release_possession(world, self);
         return false;
     }
-    // rule: Part of the rule above that begins "Death ends a possession: a rider dying while it
-    //   ..."
-    // tests: KitPossession.hidden_rider_death_releases_the_host
-    // tests: KitPossession.host_death_releases_with_half_overkill
-    // tests: SemPossession.an_unlinked_death_touches_no_possession
     const float hp = self.stats() != nullptr ? self.stats()->hitpoints() : 0.0f;
-    // rule: Part of the rule above that begins "Death ends a possession: a rider dying while it
-    //   ..."
-    // tests: KitPossession.hidden_rider_death_releases_the_host
-    // tests: KitPossession.host_death_releases_with_half_overkill
-    // tests: SemPossession.an_unlinked_death_touches_no_possession
     const int overkill = hp < 0.0f ? static_cast<int>(-hp) : 0;
     release_possession(world, self, overkill);
     return false;
@@ -453,7 +417,8 @@ void possession_seat_redirect(GameWorld& world, walker*& control,
     if (control->hidden() && control->possess_link() != 0)
     {
         walker* const host = world.find_by_id(control->possess_link());
-        // rule: Part of the rule above that begins "A seat whose hero rides a body drives that ..."
+        // rule: A seat whose hero rides a body drives that body, provided the body is alive and
+        //   wears the seat's tag.
         // tests: KitPossession.seat_redirect_follows_host_then_returns
         // tests: SemPossession.the_seat_drives_a_ridden_body_only_if_alive_and_tagged_for_it
         if (host != nullptr && !host->dead() && host->user() == player_num)
@@ -476,16 +441,12 @@ void possession_seat_redirect(GameWorld& world, walker*& control,
     if (world.new_specials == 0 || control->user() != -1 ||
         control->query_order() != Order::Living)
         return;
-    // rule: Part of the rule above that begins "With New Specials on, after a release moved the
-    //   ..."
-    // tests: KitPossession.seat_follows_the_ghost_out_of_a_dying_host
-    // tests: KitPossession.seat_redirect_passes_an_earlier_hero_corpse
-    // tests: SemPossession.a_seat_on_a_still_tagged_body_keeps_it
     for (auto& uptr : world.oblist)
     {
         walker* const w = uptr.get();
-        // rule: Part of the rule above that begins "With New Specials on, after a release moved the
-        //   ..."
+        // rule: With New Specials on, after a release moved the seat's tag back to the hero, a seat
+        //   still pointing at the untagged body follows its tag to the living hero (skipping an
+        //   earlier dead hero that keeps a stale tag).
         // tests: KitPossession.seat_follows_the_ghost_out_of_a_dying_host
         // tests: KitPossession.seat_redirect_passes_an_earlier_hero_corpse
         // tests: SemPossession.a_seat_on_a_still_tagged_body_keeps_it

@@ -35,11 +35,6 @@ function M.foe_in_window(near, far)
       self:set_foe(og.find_near_foe(self))
       foe = self:foe()
     end
-    -- rule: Part of the rule above that begins "A classic window gate (the soldier's
-    --   check_special_ai) with no ..."
-    -- tests: SemLibsAi.a_classic_window_gate_keeps_the_nearest_foe_it_finds
-    -- tests: SemLibsAi.a_classic_window_gate_with_nobody_to_find_stays_closed
-    -- tests: SemLibsAi.a_classic_window_gate_answers_by_the_foe_it_already_holds
     if not foe then
       return false
     end

@@ -43,9 +43,6 @@ local function weapon_animate_step(self)
     return true
   end
   local seq_len = #seq
-  -- plumbing: weapon_animate_step: og.ani_row nil (no table, past ani_count, null row, no sentinel)
-  --   or an empty row means 'no such sequence' -> report ended (true), so tree/glow reset to their
-  --   rest state.
   if seq_len <= 0 then
     return true
   end
@@ -78,11 +75,6 @@ local function tree_blood_on_animate(self)
   if self:ani_type() > 1 then
     self:set_ani_type(0)
   end
-  -- rule: Part of the rule above that begins "A tree or blood splat plays its current animation
-  --   ..."
-  -- tests: WeapBehavior.weapon_family_animate_callbacks_and_sprinkle_hit_paths
-  -- tests: WeapBehavior.weapon_animate_clamps_out_of_range_facing_and_cycle_to_row_zero
-  -- tests: SemWeaponAnimate.a_tree_or_blood_plays_its_sway_once_then_stands_still
   if weapon_animate_step(self) then
     self:set_ani_type(0)
     self:set_cycle(0)
@@ -120,11 +112,6 @@ local function glow_on_animate(self)
   if self:ani_type() > 2 then  -- illegal case
     self:set_ani_type(2)       -- pulse case
   end
-  -- rule: Part of the rule above that begins "A glow (the cleric/mage halo effect) loops its pulse
-  --   ..."
-  -- tests: WeapBehavior.weapon_family_animate_callbacks_and_sprinkle_hit_paths
-  -- tests: WeapBehavior.weapon_animate_clamps_out_of_range_facing_and_cycle_to_row_zero
-  -- tests: SemWeaponAnimate.a_glow_pulses_frame_by_frame_and_restarts_at_the_row_end
   if weapon_animate_step(self) then
     self:set_ani_type(2)       -- pulse
     self:set_cycle(0)
@@ -163,8 +150,10 @@ local function sprinkle_on_hit_target(self, target, owner)
   end
   -- The roll is ALWAYS drawn; only the assignment below is gated, so refresh
   -- policy cannot move the RNG stream. og.i16 matches the short result.
-  -- A GLIMMER sprinkle (marked with the quarter-freeze kit bit) freezes for a quarter of the rolled
-  -- time; a plain sprinkle freezes the full roll. The roll is drawn either way.
+  -- rule: A GLIMMER sprinkle (marked with the quarter-freeze kit bit) freezes for a quarter of the
+  --   rolled time; a plain sprinkle freezes the full roll. The roll is drawn either way.
+  -- tests: KitFaerie.glimmer_sprinkle_freezes_a_quarter
+  -- tests: KitFaerie.glimmer_fires_eight_sprinkles_and_prepays
   local roll = og.i16(og.div(og.freeze_duration(owner.level, con), 1 + 3 * og.div(self:kit_state() & C.KIT_QUARTER_FREEZE, C.KIT_QUARTER_FREEZE)))
   -- At owner level 21+, do not replace a freeze still above 10 ticks. This
   -- mirrors the charm refresh floor while leaving lower-level thaw cadence
@@ -180,11 +169,6 @@ local function sprinkle_on_hit_target(self, target, owner)
       and target:s_frozen_delay() > SPRINKLE_REFRESH_FLOOR
   -- Never re-freeze inside the negative thaw-immunity phase.
   local thaw_immune = target:s_frozen_delay_raw() < 0
-  -- rule: Part of the rule above that begins "A sprinkle hit re-sets the victim's freeze to the
-  --   ..."
-  -- tests: SillinessBattery.sprinkle_refresh_gate_level_boundary_and_immunity
-  -- tests: SillinessBattery.sprinkle_ai_victim_gate_window_and_escape
-  -- tests: SemWeaponAnimate.a_high_level_sprinkle_refreshes_a_freeze_at_the_ten_tick_floor
   if not refresh_gated and not thaw_immune then
     target:s_set_frozen_delay(roll)
   end

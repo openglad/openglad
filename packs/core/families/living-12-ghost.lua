@@ -12,7 +12,7 @@ local FX_GHOST_SCARE = assert(og.family_id("fx", "core:ghost_scare"))
 -- refused before it spends anything.
 local function no_living_foe_in_reach(self)
   local foes = og.find_foes_in_range("ob", og.scare_radius(self.level), self)
-  -- plumbing: scans foes in scare radius; rule row living-12-ghost.lua:16
+  -- plumbing: scans foes in scare radius; rule row below
   for i = 1, #foes do
     -- rule: Only a LIVING foe counts as a scare target: a generator (tent) inside the scare radius
     --   does not make the scare worth casting.
@@ -33,9 +33,11 @@ end
 -- kit's (kit_ghost.wail_gate).
 local function fixed_scare(self)
   self:set_shifter_down(0)
-  -- Gameplay Fixes: a ghost bot's SCARE pays only with a living foe inside the level's scare radius
-  -- (the classic gate wanted any foe within 130 px, which the fright only reaches from level 8);
-  -- the classic foe search still runs for its draws and SCARE is cast unshifted.
+  -- rule: Gameplay Fixes: a ghost bot's SCARE pays only with a living foe inside the level's scare
+  --   radius (the classic gate wanted any foe within 130 px, which the fright only reaches from
+  --   level 8); the classic foe search still runs for its draws and SCARE is cast unshifted.
+  -- tests: GameplayFixesBots.ghost_scare_wants_a_living_foe_inside_the_scare_radius
+  -- tests: SemGhost.a_fixed_scare_gate_says_yes_and_casts_unshifted
   return G.foes_within(self, 1, og.scare_radius(self.level), true)
 end
 

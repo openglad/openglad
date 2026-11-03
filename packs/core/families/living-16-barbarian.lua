@@ -62,9 +62,6 @@ local function do_special(self)
   if boulder:stepsize() < 1 then
     boulder:set_stepsize(1)
   end
-  -- rule: Part of the rule above that begins "A boulder's speed is held to 1..15 px a ..."
-  -- tests: PackLuaBarbarian.a_zero_step_summon_is_floored_to_one
-  -- tests: SemBoulder.a_boulders_speed_is_held_to_fifteen
   if boulder:stepsize() > 15 then
     boulder:set_stepsize(15)
   end
@@ -77,10 +74,6 @@ local function do_special(self)
   elseif boulder:lasty() < 0 then
     boulder:set_lasty(-boulder:stepsize())
   end
-  -- rule: Part of the rule above that begins "The boulder leaves along the shot's heading at its
-  --   ..."
-  -- tests: PackLuaBarbarian.a_zero_step_summon_is_floored_to_one
-  -- tests: SemBoulder.a_boulder_keeps_the_sign_of_each_heading_component
   if boulder:lastx() > 0 then
     boulder:set_lastx(boulder:stepsize())
   elseif boulder:lastx() < 0 then
@@ -135,9 +128,6 @@ local function boulder_target(self)
     return nil
   end
   local gap_x, gap_y = G.gap(self, f)
-  -- rule: Part of the rule above that begins "A boulder target is the nearest living foe on ..."
-  -- tests: GameplayFixesBots.barbarian_boulder_wants_a_faced_foe_inside_its_short_flight
-  -- tests: FamilyBehaviors.check_special_default_families_with_new_specials_on
   if og.max(gap_x, gap_y) > reach then
     return nil
   end
@@ -177,8 +167,7 @@ local function check_special_ai(self)
   -- tests: SemBarbarian.an_exploding_boulder_gate_with_no_boulder_target_refuses
   if slot == 2 then
     local f = boulder_target(self)
-    -- rule: Part of the rule above that begins "Gameplay Fixes: HURL BOULDER wants a boulder
-    --   target; EXPLODING ..."
+    -- rule: Gameplay Fixes: HURL BOULDER wants a boulder target.
     -- tests: GameplayFixesBots.barbarian_exploding_boulder_wants_a_cluster_with_no_ally_in_it
     -- tests: GameplayFixesBots.barbarian_boulder_wants_a_faced_foe_inside_its_short_flight
     -- tests: parity:barbarian_bot_explode_lone_fixes_scen99
@@ -189,10 +178,9 @@ local function check_special_ai(self)
     local reach = G.blast_reach(self.level)
     local foes = G.living_foes(self, G.RING_SCAN, true)
     local near = 0
-    -- plumbing: counts living foes near the boulder target; rule row living-16-barbarian.lua:117
+    -- plumbing: counts living foes near the boulder target; rule row above
     for i = 1, #foes do
-      -- rule: Part of the rule above that begins "Gameplay Fixes: HURL BOULDER wants a boulder
-      --   target; EXPLODING ..."
+      -- rule: Gameplay Fixes: HURL BOULDER wants a boulder target.
       -- tests: GameplayFixesBots.barbarian_exploding_boulder_wants_a_cluster_with_no_ally_in_it
       -- tests: GameplayFixesBots.barbarian_boulder_wants_a_faced_foe_inside_its_short_flight
       -- tests: parity:barbarian_bot_explode_lone_fixes_scen99
@@ -201,8 +189,7 @@ local function check_special_ai(self)
         near = near + 1
       end
     end
-    -- rule: Part of the rule above that begins "Gameplay Fixes: HURL BOULDER wants a boulder
-    --   target; EXPLODING ..."
+    -- rule: Gameplay Fixes: HURL BOULDER wants a boulder target.
     -- tests: GameplayFixesBots.barbarian_exploding_boulder_wants_a_cluster_with_no_ally_in_it
     -- tests: GameplayFixesBots.barbarian_boulder_wants_a_faced_foe_inside_its_short_flight
     -- tests: parity:barbarian_bot_explode_lone_fixes_scen99

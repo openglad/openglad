@@ -65,10 +65,6 @@ int m_set_kit_state(lua_State* L)
         w->set_hidden(hide);
     // set_hidden may turn the hide away (a possessed body never hides), so
     // the HIDDEN bit lands as set_hidden left it; the other bits as asked.
-    // rule: Part of the rule above that begins "A kit setting its state bits from Lua goes ..."
-    // tests: KitLuaTest.kit_state_bindings_read_and_write_the_walker
-    // tests: KitLuaTest.set_kit_state_cannot_hide_a_possessed_body
-    // tests: SemKitBindings.set_kit_state_with_hidden_unchanged_replaces_the_other_bits
     const std::uint8_t landed = static_cast<std::uint8_t>(
         (value & ~KIT_HIDDEN) | (w->hidden() ? KIT_HIDDEN : 0));
     w->set_kit_state(landed);
@@ -81,7 +77,7 @@ int m_hidden(lua_State* L)
     // rule: These Lua verbs hand back the engine's own boolean answer unchanged (hidden, attack
     //   start accepted/refused while busy, family declares blocks_placement, fearless, clear sight
     //   line, swap succeeded). The game rules live in the engine functions (walker::init_fire,
-    //   og::sim::fearless (fearless.cpp:27), GameWorld::clear_sight_line, og::sim::swap_places);
+    //   og::sim::fearless (fearless.cpp), GameWorld::clear_sight_line, og::sim::swap_places);
     //   this row is only the true/false mapping.
     // tests: KitLuaTest.kit_state_bindings_read_and_write_the_walker
     // tests: ScriptBindingPropsTest.kit_last_attacker_id_and_init_fire
@@ -108,8 +104,8 @@ int m_set_hidden(lua_State* L)
     } else {
         int is_integer = 0;
         const lua_Integer n = lua_tointegerx(L, 2, &is_integer);
-        // rule: Part of the rule above that begins "walker:set_hidden accepts a boolean or an
-        //   integer (0 = ..."
+        // rule: walker:set_hidden accepts a boolean or an integer (0 = show, nonzero = hide);
+        //   anything else is a script error and changes nothing.
         // tests: ScriptBindingPropsTest.kit_set_hidden_refuses_a_non_integer
         // tests: KitLuaTest.kit_state_bindings_read_and_write_the_walker
         if (is_integer == 0)
@@ -148,8 +144,9 @@ int m_last_attacker_id(lua_State* L)
 // row so the weapon leaves at its end (fire() for a walker with no row).
 int m_init_fire(lua_State* L)
 {
-    // rule: Part of the rule above that begins "These Lua verbs hand back the engine's own boolean
-    //   ..."
+    // rule: These Lua verbs hand back the engine's own boolean answer unchanged (hidden, attack
+    //   start accepted/refused while busy, family declares blocks_placement, fearless, clear sight
+    //   line, swap succeeded).
     // tests: KitLuaTest.kit_state_bindings_read_and_write_the_walker
     // tests: ScriptBindingPropsTest.kit_last_attacker_id_and_init_fire
     // tests: ScriptBindingPropsTest.kit_fearless_answers_the_kit_mark
@@ -165,8 +162,9 @@ int m_init_fire(lua_State* L)
 // shot nor a shield, so a guard that cuts down incoming shots leaves it.
 int m_blocks_placement(lua_State* L)
 {
-    // rule: Part of the rule above that begins "These Lua verbs hand back the engine's own boolean
-    //   ..."
+    // rule: These Lua verbs hand back the engine's own boolean answer unchanged (hidden, attack
+    //   start accepted/refused while busy, family declares blocks_placement, fearless, clear sight
+    //   line, swap succeeded).
     // tests: KitLuaTest.kit_state_bindings_read_and_write_the_walker
     // tests: ScriptBindingPropsTest.kit_last_attacker_id_and_init_fire
     // tests: ScriptBindingPropsTest.kit_fearless_answers_the_kit_mark
@@ -229,18 +227,9 @@ int og_possess(lua_State* L)
         script_raise(L, "og.possess: ticks out of range [0, 32767]");
     const og::sim::PossessResult r = og::sim::possess(
         *world, *rider, *host, static_cast<std::int16_t>(ticks));
-    // rule: Part of the rule above that begins "og.possess(rider, host, ticks): the possession
-    //   length must fit the ..."
-    // tests: ScriptBindingPropsTest.kit_possess_and_release_hand_back_the_engine_answer
     lua_pushboolean(L, r.ok ? 1 : 0);
-    // rule: Part of the rule above that begins "og.possess(rider, host, ticks): the possession
-    //   length must fit the ..."
-    // tests: ScriptBindingPropsTest.kit_possess_and_release_hand_back_the_engine_answer
     if (r.ok)
         return 1;
-    // rule: Part of the rule above that begins "og.possess(rider, host, ticks): the possession
-    //   length must fit the ..."
-    // tests: ScriptBindingPropsTest.kit_possess_and_release_hand_back_the_engine_answer
     lua_pushstring(L, r.reason != nullptr ? r.reason : "");
     return 2;
 }
@@ -262,8 +251,9 @@ int og_fearless(lua_State* L)
 {
     kit_world(L);
     walker* w = resolve_walker(L, 1, /*required=*/true);
-    // rule: Part of the rule above that begins "These Lua verbs hand back the engine's own boolean
-    //   ..."
+    // rule: These Lua verbs hand back the engine's own boolean answer unchanged (hidden, attack
+    //   start accepted/refused while busy, family declares blocks_placement, fearless, clear sight
+    //   line, swap succeeded).
     // tests: KitLuaTest.kit_state_bindings_read_and_write_the_walker
     // tests: ScriptBindingPropsTest.kit_last_attacker_id_and_init_fire
     // tests: ScriptBindingPropsTest.kit_fearless_answers_the_kit_mark
@@ -292,8 +282,9 @@ int og_line_clear(lua_State* L)
     GameWorld* world = kit_world(L);
     walker* first = resolve_walker(L, 1, /*required=*/true);
     walker* second = resolve_walker(L, 2, /*required=*/true);
-    // rule: Part of the rule above that begins "These Lua verbs hand back the engine's own boolean
-    //   ..."
+    // rule: These Lua verbs hand back the engine's own boolean answer unchanged (hidden, attack
+    //   start accepted/refused while busy, family declares blocks_placement, fearless, clear sight
+    //   line, swap succeeded).
     // tests: KitLuaTest.kit_state_bindings_read_and_write_the_walker
     // tests: ScriptBindingPropsTest.kit_last_attacker_id_and_init_fire
     // tests: ScriptBindingPropsTest.kit_fearless_answers_the_kit_mark
@@ -312,8 +303,9 @@ int og_swap_places(lua_State* L)
     GameWorld* world = kit_world(L);
     walker* first = resolve_walker(L, 1, /*required=*/true);
     walker* second = resolve_walker(L, 2, /*required=*/true);
-    // rule: Part of the rule above that begins "These Lua verbs hand back the engine's own boolean
-    //   ..."
+    // rule: These Lua verbs hand back the engine's own boolean answer unchanged (hidden, attack
+    //   start accepted/refused while busy, family declares blocks_placement, fearless, clear sight
+    //   line, swap succeeded).
     // tests: KitLuaTest.kit_state_bindings_read_and_write_the_walker
     // tests: ScriptBindingPropsTest.kit_last_attacker_id_and_init_fire
     // tests: ScriptBindingPropsTest.kit_fearless_answers_the_kit_mark

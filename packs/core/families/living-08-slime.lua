@@ -45,8 +45,10 @@ local function slime_check_special_ai(self)
   -- living_count is the world's maintained head-count (og.living_count
   -- reads the same field the C++ read — an oblist recount would not be
   -- faithful; the counter can legitimately drift, e.g. editor map-resize).
-  -- A big slime bot only SPLITs while the world's head-count is under MAXOBS (room for the extra
-  -- body); small and medium slimes have no AI gate (GROW is always rolled).
+  -- rule: A big slime bot only SPLITs while the world's head-count is under MAXOBS (room for the
+  --   extra body); small and medium slimes have no AI gate (GROW is always rolled).
+  -- tests: parity:ai_slime_split_scen99, FamilyBehaviors.check_special_slime_capacity
+  -- tests: SemSlime.a_big_slime_never_splits_in_a_full_world
   return og.living_count() < C.MAXOBS
 end
 

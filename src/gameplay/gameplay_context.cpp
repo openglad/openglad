@@ -122,9 +122,10 @@ public:
         // otherwise the owner's foe (the classic chase path). The
         // cross-product below penalizes moving away from a straight line to
         // this target.
-        // Path steps that stray from the straight line between the walker and its target (a goal
-        // point when one is set, else its foe) cost a little more, so the AI prefers straight
-        // routes; the classic game biases toward the foe only.
+        // rule: Path steps that stray from the straight line between the walker and its target (a
+        //   goal point when one is set, else its foe) cost a little more, so the AI prefers
+        //   straight routes; the classic game biases toward the foe only.
+        // tests: SemPathing.path_steps_are_biased_toward_the_goal_point_when_set_else_the_foe
         const int target_x = owner_->has_goal
             ? owner_->goal_x
             : owner_->active_walker->foe()->xpos();
@@ -144,16 +145,16 @@ public:
         const bool nonflyer = !(aw->stats()->query_bit_flags(BIT_FLYING) ||
                                 aw->flight_left());
 
-        // plumbing: 8-neighbour expansion (skip self); rules at gameplay_context.cpp:147, :157,
-        //   :181, :208
+        // plumbing: 8-neighbour expansion (skip self); rules below,
+        //   below
         for (int i = -1; i <= 1; i++)
         {
-            // plumbing: 8-neighbour expansion (skip self); rules at gameplay_context.cpp:147, :157,
-            //   :181, :208
+            // plumbing: 8-neighbour expansion (skip self); rules below,
+            //   below
             for (int j = -1; j <= 1; j++)
             {
-                // plumbing: 8-neighbour expansion (skip self); rules at gameplay_context.cpp:147,
-                //   :157, :181, :208
+                // plumbing: 8-neighbour expansion (skip self); rules below,
+                //   below
                 if (i == 0 && j == 0)
                     continue;
 
@@ -219,8 +220,8 @@ public:
                     bool flanks_open = true;
                     const int flank[2][2] = {{x1 + i * GRID_SIZE, y1},
                                              {x1, y1 + j * GRID_SIZE}};
-                    // rule: Part of the rule above that begins "The AI never plans a diagonal step
-                    //   past a ..."
+                    // rule: The AI never plans a diagonal step past a blocked corner: a diagonal
+                    //   needs both orthogonal neighbours open (and, for non-flyers, not air).
                     // tests: SingleFloorPathing.astar_never_emits_diagonals_past_blocked_flanks
                     // tests: ZAxis.multifloor_astar_never_emits_diagonals_past_blocked_flanks
                     // tests: GameContext.pathfinding_state_supports_move_construction_and_assignment
@@ -228,8 +229,9 @@ public:
                     // tests: SemPathing.a_non_flyer_never_plans_a_diagonal_past_an_air_flank
                     for (const auto& fc : flank)
                     {
-                        // rule: Part of the rule above that begins "The AI never plans a diagonal
-                        //   step past a ..."
+                        // rule: The AI never plans a diagonal step past a blocked corner: a
+                        //   diagonal needs both orthogonal neighbours open (and, for non-flyers,
+                        //   not air).
                         // tests: SingleFloorPathing.astar_never_emits_diagonals_past_blocked_flanks
                         // tests: ZAxis.multifloor_astar_never_emits_diagonals_past_blocked_flanks
                         // tests: GameContext.pathfinding_state_supports_move_construction_and_assignment
@@ -248,8 +250,8 @@ public:
                             break;
                         }
                     }
-                    // rule: Part of the rule above that begins "The AI never plans a diagonal step
-                    //   past a ..."
+                    // rule: The AI never plans a diagonal step past a blocked corner: a diagonal
+                    //   needs both orthogonal neighbours open (and, for non-flyers, not air).
                     // tests: SingleFloorPathing.astar_never_emits_diagonals_past_blocked_flanks
                     // tests: ZAxis.multifloor_astar_never_emits_diagonals_past_blocked_flanks
                     // tests: GameContext.pathfinding_state_supports_move_construction_and_assignment
@@ -277,8 +279,9 @@ public:
                 else
                 {
                     // Nothing in the way, cost is 1 for adjacent, sqrt(2) for diagonal
-                    // rule: Part of the rule above that begins "A cell holding any body costs 10 to
-                    //   path ..."
+                    // rule: A cell holding any body costs 10 to path through (the AI prefers going
+                    //   around crowds but will push through); an empty cell costs 1 straight, 1.414
+                    //   diagonal.
                     // tests: GameContext.pathfinding_state_supports_move_construction_and_assignment
                     // tests: WalkerPathing.direct_solver_returns_expected_route_and_cost
                     // tests: SemPathing.a_cell_holding_a_body_costs_ten_to_path_through
@@ -309,16 +312,16 @@ public:
             const int tile = current_game->world->smoother_for_floor(f)
                 .query_x_y(x1 / GRID_SIZE, y1 / GRID_SIZE);
             int tf = -1;
-            // rule: Part of the rule above that begins "On stacked levels a walker that cannot fly
-            //   plans ..."
+            // rule: On stacked levels a walker that cannot fly plans floor changes only through
+            //   stairs.
             // tests: SemPathing.a_non_flyer_plans_floor_changes_only_through_stairs_to_a_real_open_floor
             if (tile == PIX_ZSTAIR_UP &&
                 (f + 1) < current_game->world->floor_count())
                 tf = f + 1;
             else if (tile == PIX_ZSTAIR_DOWN && f > 0)
                 tf = f - 1;
-            // rule: Part of the rule above that begins "On stacked levels a walker that cannot fly
-            //   plans ..."
+            // rule: On stacked levels a walker that cannot fly plans floor changes only through
+            //   stairs.
             // tests: SemPathing.a_non_flyer_plans_floor_changes_only_through_stairs_to_a_real_open_floor
             if (tf >= 0 &&
                 current_game->world->query_grid_passable(
@@ -417,6 +420,7 @@ IRandom* gameplay_rng_override()
     if (g_rng_override_ref != nullptr)
         return *g_rng_override_ref;
 
+    // plumbing: the context's RNG override (tests) when one is installed, else none.
     return (current_game && current_game->rng_override_ref)
         ? *current_game->rng_override_ref
         : nullptr;
@@ -436,6 +440,7 @@ IRandom* cosmetic_rng_override()
     if (g_cosmetic_rng_override_ref != nullptr)
         return *g_cosmetic_rng_override_ref;
 
+    // plumbing: the context's cosmetic RNG override (tests) when one is installed, else none.
     return (current_game && current_game->cosmetic_rng_override_ref)
         ? *current_game->cosmetic_rng_override_ref
         : nullptr;
@@ -458,9 +463,6 @@ IRandom* cosmetic_rng()
     //   cosmetic_rng_follows_the_installed_world).
     if (IRandom* override_rng = cosmetic_rng_override())
         return override_rng;
-    // plumbing: cosmetic_rng: override, else the world's rng_, else nullptr between levels;
-    //   asserted by tests/unit/test_sim_entity.cpp TEST(SimEntity,
-    //   cosmetic_rng_follows_the_installed_world).
     if (current_game != nullptr && current_game->world != nullptr)
         return &current_game->world->rng_;
     return nullptr;
@@ -475,6 +477,7 @@ bool gameplay_world_rng_active()
 
 IRandom* gameplay_session_rng()
 {
+    // plumbing: the session RNG when the context carries one, else none.
     return (current_game != nullptr && current_game->session_rng_ref != nullptr)
         ? *current_game->session_rng_ref
         : nullptr;

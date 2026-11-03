@@ -46,7 +46,7 @@ end
 -- step of the circle is about 24 px) a foe cannot slip between two steps.
 local function touched_foe(self)
   local foes = og.find_foes_in_range("ob", 64, self)
-  -- plumbing: scan of foes within 64; rule at effect_hook_blade.lua:50
+  -- plumbing: scan of foes within 64; rule below
   for i = 1, #foes do
     local w = foes[i]
     local living = w:order() == C.ORDER_LIVING
@@ -58,7 +58,8 @@ local function touched_foe(self)
     -- tests: KitCaptain.a_late_snag_still_reels_home, KitCaptain.hook_spirals_out_and_back
     -- tests: SemHookBlade.the_blade_snags_living_foes_on_its_floor_never_a_generator_or_another_floor
     if living and same_floor then
-      -- rule: Part of the rule above that begins "The blade snags the first living foe on its ..."
+      -- rule: The blade snags the first living foe on its floor whose box touches the blade's box
+      --   grown 4 px each side (so a foe cannot slip between two orbit steps).
       -- tests: KitCaptain.hook_reels_the_foe_to_the_captains_feet
       -- tests: KitCaptain.a_late_snag_still_reels_home, KitCaptain.hook_spirals_out_and_back
       -- tests: SemHookBlade.the_blade_snags_living_foes_on_its_floor_never_a_generator_or_another_floor
@@ -120,15 +121,18 @@ local function reel(self, owner, t)
   -- tests: SemHookBlade.the_last_reel_step_sets_the_foe_down_beside_the_captain_with_the_blade_on_it
   if at_feet then
     local rx, ry = kc.ring_spot(foe, owner, fx, fy)
-    -- rule: Part of the rule above that begins "When the reel step would bring the foe against ..."
+    -- rule: When the reel step would bring the foe against the captain (his box grown 2 px) the foe
+    --   is set down on the clear ring spot beside him, but only if that spot is no further than one
+    --   reel step from where the foe is.
     -- tests: KitCaptain.hook_reels_the_foe_to_the_captains_feet
     -- tests: KitCaptain.reel_never_hauls_a_foe_past_the_captain
     -- tests: SemHookBlade.the_last_reel_step_sets_the_foe_down_beside_the_captain_with_the_blade_on_it
     if rx ~= nil then
       local dx = math.abs(rx - fx)
       local dy = math.abs(ry - fy)
-      -- rule: Part of the rule above that begins "When the reel step would bring the foe against
-      --   ..."
+      -- rule: When the reel step would bring the foe against the captain (his box grown 2 px) the
+      --   foe is set down on the clear ring spot beside him, but only if that spot is no further
+      --   than one reel step from where the foe is.
       -- tests: KitCaptain.hook_reels_the_foe_to_the_captains_feet
       -- tests: KitCaptain.reel_never_hauls_a_foe_past_the_captain
       -- tests: SemHookBlade.the_last_reel_step_sets_the_foe_down_beside_the_captain_with_the_blade_on_it
@@ -200,7 +204,7 @@ function M.on_act(self)
   -- Solid scenery (a bone wall, a war banner) is neither a shot nor a
   -- shield: the blade passes it by, and foes must chop it down.
   local weapons = og.find_foe_weapons_in_range("weap", self:sizex() * 2, self)
-  -- plumbing: iterates foe weapons in range; rule at effect_hook_blade.lua:153
+  -- plumbing: iterates foe weapons in range; rule below
   for i = 1, #weapons do
     local weapon = weapons[i]
     -- rule: While it spins, the hook blade cuts down foe shots within twice its size, each costing
@@ -231,7 +235,7 @@ function M.on_act(self)
   -- tests: KitCaptain.hook_kills_a_dying_foe_without_reeling_it
   -- tests: KitCaptain.hook_spirals_out_and_back
   if foe then
-    -- rule: Part of the rule above that begins "A spinning blade that touches a foe snags it ..."
+    -- rule: A spinning blade that touches a foe snags it (kit_captain.snag.
     -- tests: KitCaptain.hook_reels_the_foe_to_the_captains_feet
     -- tests: KitCaptain.hook_kills_a_dying_foe_without_reeling_it
     -- tests: KitCaptain.hook_spirals_out_and_back

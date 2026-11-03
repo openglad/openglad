@@ -64,16 +64,13 @@ bool weap::act()
 	// tests: WeapBehavior.weap_act_clears_dead_refs_and_defaults_owner_and_tree_lineofsight
 	if (foe() && foe()->dead())
 		set_foe(nullptr);
-	// rule: Part of the rule above that begins "A weapon forgets dead foes and leaders, and a ..."
-	// tests: WeapBehavior.weap_act_clears_dead_refs_and_defaults_owner_and_tree_lineofsight
 	if (leader() && leader()->dead())
 		set_leader(nullptr);
-	// rule: Part of the rule above that begins "A weapon forgets dead foes and leaders, and a ..."
-	// tests: WeapBehavior.weap_act_clears_dead_refs_and_defaults_owner_and_tree_lineofsight
 	if (owner() && owner()->dead())
 		set_owner(nullptr);
 
-	// rule: Part of the rule above that begins "A weapon forgets dead foes and leaders, and a ..."
+	// rule: A weapon forgets dead foes and leaders, and a weapon whose owner died (or never had
+	//   one) owns itself, so its hits are credited to itself.
 	// tests: WeapBehavior.weap_act_clears_dead_refs_and_defaults_owner_and_tree_lineofsight
 	if (!owner())
 		set_owner(this); //to fix cases where our parent died!
@@ -102,8 +99,8 @@ bool weap::act()
 		// tests: Weap.a_shot_over_trees_spends_range_but_never_below_zero
 		if (current_game->world->mysmoother.query_genre_x_y(xpos(), ypos()) == TYPE_TREES
 		    || current_game->world->decor_conceals_at(floor(), xpos() / GRID_SIZE, ypos() / GRID_SIZE))
-			// rule: Part of the rule above that begins "A projectile flying through trees or
-			//   concealing shrub loses ..."
+			// rule: A projectile flying through trees or concealing shrub loses one tick of range
+			//   per tick (never below 0).
 			// tests: WeapBehavior.weap_act_clears_dead_refs_and_defaults_owner_and_tree_lineofsight
 			// tests: Decor.shrub_conceals_for_living_and_weapon_but_bones_does_not
 			// tests: Weap.a_shot_over_trees_spends_range_but_never_below_zero
@@ -131,8 +128,9 @@ bool weap::act()
 		case ACT_SIT: // for things like trees
 			{
 				const auto* wfd = get_weapon_family_descriptor(family());
-				// rule: Part of the rule above that begins "Sitting scenery (trees, blood, doors
-				//   and other skip-notify families) ..."
+				// rule: Sitting scenery (trees, blood, doors and other skip-notify families) sits
+				//   silently; any other sitting weapon reports 'Weapon sitting' (HUD standard
+				//   time).
 				// tests: WeapBehavior.weap_act_sit_tree
 				// tests: WeapBehavior.weap_notices_carry_no_family_in_a_or_team_in_b
 				// tests: WeapBehavior.weap_act_sit_with_non_skipping_family_and_act_animate_shortcut
@@ -248,8 +246,7 @@ bool weap::animate()
 	// tests: WeapBehavior.weap_animate_knife, Weap.a_weapon_whose_animation_script_finishes_dies
 	if (auto hook_result = og::script::hooks::weapon_on_animate(wfd, this))
 	{
-		// rule: Part of the rule above that begins "A weapon family with its own animation script
-		//   drives ..."
+		// rule: A weapon family with its own animation script drives its frames.
 		// tests: WeapBehavior.weapon_animate_clamps_out_of_range_facing_and_cycle_to_row_zero
 		// tests: WeapBehavior.weap_animate_knife
 		// tests: Weap.a_weapon_whose_animation_script_finishes_dies
@@ -273,38 +270,28 @@ bool weap::animate()
 				dir_index = 0;
 			// ani_count>0 (real entities): bound the row; ani_count==0 (test
 			// weapons that assign `ani` directly): legacy direct index.
-			// rule: Part of the rule above that begins "The default weapon animation plays the row
-			//   of its ..."
-			// tests: WeapBehavior.weapon_animate_clamps_out_of_range_facing_and_cycle_to_row_zero
-			// tests: WeapBehavior.weap_animate_knife
-			// tests: Weap.the_default_animation_leaves_the_frame_on_a_missing_or_empty_row
 			const signed char* seq =
 				(ani && (ani_count <= 0 || dir_index < ani_count)) ? ani[dir_index] : nullptr;
-			// rule: Part of the rule above that begins "The default weapon animation plays the row
-			//   of its ..."
-			// tests: WeapBehavior.weapon_animate_clamps_out_of_range_facing_and_cycle_to_row_zero
-			// tests: WeapBehavior.weap_animate_knife
-			// tests: Weap.the_default_animation_leaves_the_frame_on_a_missing_or_empty_row
 			if (seq)
 			{
 				int seq_len = 0;
-				// rule: Part of the rule above that begins "The default weapon animation plays the
-				//   row of its ..."
+				// rule: The default weapon animation plays the row of its facing, frame by frame,
+				//   wrapping at the end.
 				// tests: WeapBehavior.weapon_animate_clamps_out_of_range_facing_and_cycle_to_row_zero
 				// tests: WeapBehavior.weap_animate_knife
 				// tests: Weap.the_default_animation_leaves_the_frame_on_a_missing_or_empty_row
 				while (seq_len < 128 && seq[seq_len] != -1)
 					seq_len++;
-				// rule: Part of the rule above that begins "The default weapon animation plays the
-				//   row of its ..."
+				// rule: The default weapon animation plays the row of its facing, frame by frame,
+				//   wrapping at the end.
 				// tests: WeapBehavior.weapon_animate_clamps_out_of_range_facing_and_cycle_to_row_zero
 				// tests: WeapBehavior.weap_animate_knife
 				// tests: Weap.the_default_animation_leaves_the_frame_on_a_missing_or_empty_row
 				if (seq_len > 0 && seq_len < 128)
 				{
 					int c = static_cast<int>(cycle());
-					// rule: Part of the rule above that begins "The default weapon animation plays
-					//   the row of its ..."
+					// rule: The default weapon animation plays the row of its facing, frame by
+					//   frame, wrapping at the end.
 					// tests: WeapBehavior.weapon_animate_clamps_out_of_range_facing_and_cycle_to_row_zero
 					// tests: WeapBehavior.weap_animate_knife
 					// tests: Weap.the_default_animation_leaves_the_frame_on_a_missing_or_empty_row
@@ -312,8 +299,8 @@ bool weap::animate()
 						c = 0;
 					set_frame(seq[c]);
 					c++;
-					// rule: Part of the rule above that begins "The default weapon animation plays
-					//   the row of its ..."
+					// rule: The default weapon animation plays the row of its facing, frame by
+					//   frame, wrapping at the end.
 					// tests: WeapBehavior.weapon_animate_clamps_out_of_range_facing_and_cycle_to_row_zero
 					// tests: WeapBehavior.weap_animate_knife
 					// tests: Weap.the_default_animation_leaves_the_frame_on_a_missing_or_empty_row

@@ -23,9 +23,6 @@ local function check_special_ai(self)
   -- tests: FamilyBehaviors.check_special_skeleton_tunnel
   -- tests: GameplayFixesBots.a_busy_bot_never_rolls_a_busy_cast_with_the_setting_on
   local held = gf.on() and lc.mid_teleport(self)
-  -- rule: Part of the rule above that begins "A bot skeleton tunnels only when no foe is ..."
-  -- tests: FamilyBehaviors.check_special_skeleton_tunnel
-  -- tests: GameplayFixesBots.a_busy_bot_never_rolls_a_busy_cast_with_the_setting_on
   return foe_count < 1 and not held
 end
 local function level_up(guy, level_diff)

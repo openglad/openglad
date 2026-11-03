@@ -90,8 +90,8 @@ public:
         // tests: SemAStar.a_relaxed_frontier_cell_moves_to_the_front_of_its_new_cost_run
         while (true)
         {
-            // rule: Part of the rule above that begins "Among equally cheap frontier cells the one
-            //   found first ..."
+            // rule: Among equally cheap frontier cells the one found first is expanded first
+            //   (insertion-order ties, MicroPather's queue).
             // tests: SemAStar.equally_cheap_frontier_cells_expand_in_the_order_they_were_found
             // tests: SemAStar.a_relaxed_frontier_cell_moves_to_the_front_of_its_new_cost_run
             if (node->total_cost < iter->total_cost)
@@ -115,8 +115,8 @@ public:
     void update(Node* node)
     {
         // Lowered below its predecessor: hop to the front of the list.
-        // rule: Part of the rule above that begins "Among equally cheap frontier cells the one
-        //   found first ..."
+        // rule: Among equally cheap frontier cells the one found first is expanded first
+        //   (insertion-order ties, MicroPather's queue).
         // tests: SemAStar.equally_cheap_frontier_cells_expand_in_the_order_they_were_found
         // tests: SemAStar.a_relaxed_frontier_cell_moves_to_the_front_of_its_new_cost_run
         if (node->prev != &sentinel_ && node->total_cost < node->prev->total_cost)
@@ -127,16 +127,16 @@ public:
 
         // Now too cheap to sit where it is no longer; slide right to the front
         // of the run of nodes that share its (or a lower) cost.
-        // rule: Part of the rule above that begins "Among equally cheap frontier cells the one
-        //   found first ..."
+        // rule: Among equally cheap frontier cells the one found first is expanded first
+        //   (insertion-order ties, MicroPather's queue).
         // tests: SemAStar.equally_cheap_frontier_cells_expand_in_the_order_they_were_found
         // tests: SemAStar.a_relaxed_frontier_cell_moves_to_the_front_of_its_new_cost_run
         if (node->total_cost > node->next->total_cost)
         {
             Node* iter = node->next;
             unlink(node);
-            // rule: Part of the rule above that begins "Among equally cheap frontier cells the one
-            //   found first ..."
+            // rule: Among equally cheap frontier cells the one found first is expanded first
+            //   (insertion-order ties, MicroPather's queue).
             // tests: SemAStar.equally_cheap_frontier_cells_expand_in_the_order_they_were_found
             // tests: SemAStar.a_relaxed_frontier_cell_moves_to_the_front_of_its_new_cost_run
             while (node->total_cost > iter->total_cost)
@@ -205,8 +205,8 @@ struct AStar::Impl
         for (Node* it = goal; it->parent != nullptr; it = it->parent)
             ++count;
 
-        // rule: Part of the rule above that begins "A found route always begins at the start and
-        //   ..."
+        // rule: A found route always begins at the start and ends at the goal; a one-step route
+        //   collapses to just those two states.
         // tests: AStar.adjacent_step_collapses_to_two_node_path
         // tests: AStar.straight_line_open_grid_is_optimal
         if (count < 3)
@@ -222,8 +222,8 @@ struct AStar::Impl
         path[static_cast<std::size_t>(count) - 1] = end;
 
         int index = count - 2;
-        // rule: Part of the rule above that begins "A found route always begins at the start and
-        //   ..."
+        // rule: A found route always begins at the start and ends at the goal; a one-step route
+        //   collapses to just those two states.
         // tests: AStar.adjacent_step_collapses_to_two_node_path
         // tests: AStar.straight_line_open_grid_is_optimal
         for (Node* it = goal->parent; it->parent != nullptr; it = it->parent)
@@ -289,8 +289,8 @@ SolveResult AStar::solve(State start,
     {
         Node* node = open.pop();
 
-        // rule: Part of the rule above that begins "The search stops at the first time the goal
-        //   ..."
+        // rule: The search stops at the first time the goal is popped and returns its accumulated
+        //   cost; if the frontier empties first there is no route.
         // tests: AStar.returned_cost_matches_summed_edge_costs
         // tests: AStar.no_solution_when_goal_is_walled_off
         // tests: AStar.no_solution_when_start_is_boxed_in
@@ -310,7 +310,7 @@ SolveResult AStar::solve(State start,
         // tests: AStar.impassable_edges_are_ignored, AStar.adjacent_step_collapses_to_two_node_path
         for (const StateCost& edge : impl_->neighbors)
         {
-            // rule: Part of the rule above that begins "An edge marked impassable is never taken."
+            // rule: An edge marked impassable is never taken.
             // tests: AStar.impassable_edges_are_ignored
             // tests: AStar.adjacent_step_collapses_to_two_node_path
             if (edge.cost == kImpassableCost)
@@ -329,8 +329,7 @@ SolveResult AStar::solve(State start,
                 // Relax only on a strict improvement. A closed node that
                 // improves has its cost/parent corrected but is intentionally
                 // not re-opened -- matching the algorithm being replaced.
-                // rule: Part of the rule above that begins "A frontier cell is re-parented only by
-                //   a strictly ..."
+                // rule: A frontier cell is re-parented only by a strictly cheaper route.
                 // tests: AStar.straight_line_open_grid_is_optimal
                 // tests: SemAStar.a_cell_is_reparented_only_by_a_strictly_cheaper_route_and_never_reopened
                 if (new_cost < child->cost_from_start)
@@ -342,8 +341,7 @@ SolveResult AStar::solve(State start,
                     // a pure function of (state, end) within one solve, so the
                     // stored value is bit-identical to a recomputation.
                     child->total_cost = calc_total_cost(*child);
-                    // rule: Part of the rule above that begins "A frontier cell is re-parented only
-                    //   by a strictly ..."
+                    // rule: A frontier cell is re-parented only by a strictly cheaper route.
                     // tests: AStar.straight_line_open_grid_is_optimal
                     // tests: SemAStar.a_cell_is_reparented_only_by_a_strictly_cheaper_route_and_never_reopened
                     if (child->in_open)

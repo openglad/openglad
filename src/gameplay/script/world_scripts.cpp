@@ -118,8 +118,8 @@ const OrderInfo* find_order(const char* name)
     // tests: ScriptHooksTest.order_alias_fx_and_effect_both_resolve
     // tests: ScriptHooksTest.register_hooks_load_error_vocabulary
     for (const auto& oi : kOrders)
-        // rule: Part of the rule above that begins "Pack hooks name their order as living, weapon,
-        //   treasure, ..."
+        // rule: Pack hooks name their order as living, weapon, treasure, generator, fx or its alias
+        //   effect; any other order name is a load error.
         // tests: ScriptHooksTest.order_alias_fx_and_effect_both_resolve
         // tests: ScriptHooksTest.register_hooks_load_error_vocabulary
         if (std::strcmp(oi.name, name) == 0)
@@ -177,11 +177,6 @@ walker* resolve_walker(lua_State* L, int idx, bool required)
         current_game->world != nullptr) {
         w = current_game->world->find_by_id(h->entity_id);
     }
-    // rule: Part of the rule above that begins "A Lua entity handle names a walker by its ..."
-    // tests: ScriptBindingTest.world_query_rows_read_the_live_world
-    // tests: ScriptBindingPropsTest.stale_handles_raise_the_same_error_text
-    // tests: LevelScriptsTest.nested_dispatch_keeps_outer_handles_alive
-    // tests: SemScript3.is_alive_answers_false_for_a_stale_handle_without_an_error
     if (w == nullptr && h->raw != nullptr) {
         // Dying entities (on_death and friends) may already be out of the id
         // index; the handle stays valid for as long as the dispatch that
@@ -190,7 +185,8 @@ walker* resolve_walker(lua_State* L, int idx, bool required)
         // a death hook that spawns) opens a newer generation while its own
         // frame is still running, and its handles must survive that.
         VmState* st = get_vm_state(L);
-        // rule: Part of the rule above that begins "A Lua entity handle names a walker by its ..."
+        // rule: A Lua entity handle names a walker by its entity id for as long as that walker is
+        //   in the world.
         // tests: ScriptBindingTest.world_query_rows_read_the_live_world
         // tests: ScriptBindingPropsTest.stale_handles_raise_the_same_error_text
         // tests: LevelScriptsTest.nested_dispatch_keeps_outer_handles_alive
@@ -200,11 +196,6 @@ walker* resolve_walker(lua_State* L, int idx, bool required)
                 st->live_gens.end())
             w = h->raw;
     }
-    // rule: Part of the rule above that begins "A Lua entity handle names a walker by its ..."
-    // tests: ScriptBindingTest.world_query_rows_read_the_live_world
-    // tests: ScriptBindingPropsTest.stale_handles_raise_the_same_error_text
-    // tests: LevelScriptsTest.nested_dispatch_keeps_outer_handles_alive
-    // tests: SemScript3.is_alive_answers_false_for_a_stale_handle_without_an_error
     if (w == nullptr && required)
         script_raise(L, "stale or dead entity handle");
     return w;
@@ -231,9 +222,6 @@ guy* resolve_guy(lua_State* L, int idx, bool required)
         std::find(st->live_gens.begin(), st->live_gens.end(), h->gen) !=
             st->live_gens.end())
         g = h->raw;
-    // rule: Part of the rule above that begins "A guy (character record) handle is valid only
-    //   inside ..."
-    // tests: ScriptHooksTest.level_up_guy_handle_is_dispatch_scoped
     if (g == nullptr && required)
         script_raise(L, "stale guy handle (guys are dispatch-scoped)");
     return g;
@@ -276,7 +264,7 @@ void pop_dispatch_gen(lua_State* L, std::uint64_t gen)
     // through pcall can skip an inner frame's pop, so do not assume LIFO.
     auto it = std::find(st->live_gens.begin(), st->live_gens.end(), gen);
     // plumbing: pop_dispatch_gen erases the frame's generation wherever it sits (pcall unwinding
-    //   can skip an inner pop); the observable rule is world_scripts.cpp:158
+    //   can skip an inner pop); the observable rule is above
     if (it != st->live_gens.end())
         st->live_gens.erase(it, st->live_gens.end());
 }
@@ -471,10 +459,10 @@ const PackLibModule* find_lib_module(const std::string& pack_id,
                                      const std::string& name)
 {
     // plumbing: lib registry scans (find_lib_module, pack_ships_lib_modules); their observable
-    //   answers are og.use's errors in world_scripts.cpp:565
+    //   answers are og.use's errors below
     for (const PackLibModule& m : pack_lib_modules()) {
         // plumbing: lib registry scans (find_lib_module, pack_ships_lib_modules); their observable
-        //   answers are og.use's errors in world_scripts.cpp:565
+        //   answers are og.use's errors below
         if (m.pack_id == pack_id && m.name == name)
             return &m;
     }
@@ -489,10 +477,10 @@ const PackLibModule* find_lib_module(const std::string& pack_id,
 bool pack_ships_lib_modules(const std::string& pack_id)
 {
     // plumbing: lib registry scans (find_lib_module, pack_ships_lib_modules); their observable
-    //   answers are og.use's errors in world_scripts.cpp:565
+    //   answers are og.use's errors below
     for (const PackLibModule& m : pack_lib_modules()) {
         // plumbing: lib registry scans (find_lib_module, pack_ships_lib_modules); their observable
-        //   answers are og.use's errors in world_scripts.cpp:565
+        //   answers are og.use's errors below
         if (m.pack_id == pack_id)
             return true;
     }
@@ -510,7 +498,7 @@ LibStatus lib_status(lua_State* L, VmState* st, const std::string& key)
     lua_rawget(L, -2);
     LibStatus status = LibStatus::None;
     // plumbing: lib status/export memo table reads and writes (Loading/Failed/None, memoized
-    //   export); observable through og.use rules world_scripts.cpp:579 and :502
+    //   export); observable through og.use rules below
     if (lua_isstring(L, -1))
         status = (std::strcmp(lua_tostring(L, -1), "loading") == 0)
                      ? LibStatus::Loading
@@ -525,7 +513,7 @@ void set_lib_status(lua_State* L, VmState* st, const std::string& key,
     lua_rawgeti(L, LUA_REGISTRYINDEX, st->lib_status_ref);
     lua_pushlstring(L, key.data(), key.size());
     // plumbing: lib status/export memo table reads and writes (Loading/Failed/None, memoized
-    //   export); observable through og.use rules world_scripts.cpp:579 and :502
+    //   export); observable through og.use rules below
     if (status_or_null == nullptr)
         lua_pushnil(L);
     else
@@ -541,7 +529,7 @@ bool push_lib_export(lua_State* L, VmState* st, const std::string& key)
     lua_pushlstring(L, key.data(), key.size());
     lua_rawget(L, -2);
     // plumbing: lib status/export memo table reads and writes (Loading/Failed/None, memoized
-    //   export); observable through og.use rules world_scripts.cpp:579 and :502
+    //   export); observable through og.use rules below
     if (lua_isnil(L, -1)) {
         lua_pop(L, 2);
         return false;
@@ -593,16 +581,14 @@ bool load_pack_lib_module(ScriptHost::Impl& impl, VmState* st,
         // globals (unlike pack scripts, which share the pack environment).
         impl.push_new_environment();
         lua_setupvalue(L, -2, 1);
-        // rule: Part of the rule above that begins "A pack library module loads once: a syntax
-        //   error, ..."
+        // rule: A pack library module loads once.
         // tests: PackLibTest.module_returning_nothing_is_an_error
         // tests: PackLibTest.failures_latch_and_do_not_rerun
         // tests: PackLibTest.modules_load_eagerly_in_order_before_scripts
         // tests: PackLibTest.qualified_use_shares_the_memoized_export
         // tests: PackLibTest.qualified_use_keeps_the_callee_packs_resolution_root
         if (impl.protected_call(m.chunk_name.c_str(), 0, 1)) {
-            // rule: Part of the rule above that begins "A pack library module loads once: a syntax
-            //   error, ..."
+            // rule: A pack library module loads once.
             // tests: PackLibTest.module_returning_nothing_is_an_error
             // tests: PackLibTest.failures_latch_and_do_not_rerun
             // tests: PackLibTest.modules_load_eagerly_in_order_before_scripts
@@ -627,13 +613,6 @@ bool load_pack_lib_module(ScriptHost::Impl& impl, VmState* st,
     }
     st->current_pack = caller_pack;
     st->current_chunk = caller_chunk;
-    // rule: Part of the rule above that begins "A pack library module loads once: a syntax error,
-    //   ..."
-    // tests: PackLibTest.module_returning_nothing_is_an_error
-    // tests: PackLibTest.failures_latch_and_do_not_rerun
-    // tests: PackLibTest.modules_load_eagerly_in_order_before_scripts
-    // tests: PackLibTest.qualified_use_shares_the_memoized_export
-    // tests: PackLibTest.qualified_use_keeps_the_callee_packs_resolution_root
     set_lib_status(L, st, key, ok ? nullptr : "failed");
     return ok;
 }
@@ -675,18 +654,11 @@ int og_use(lua_State* L)
     // not a nested qualification.
     std::string pack = st->current_pack;
     std::string name = spec;
-    // rule: Part of the rule above that begins "og.use is load-time only and resolves a module in
-    //   ..."
-    // tests: PackLibTest.og_use_is_load_time_only
-    // tests: PackLibTest.qualified_use_refuses_malformed_names
-    // tests: PackLibTest.qualified_use_names_an_unknown_pack
-    // tests: PackLibTest.dependency_cycles_are_detected, PackLibTest.resolution_is_pack_relative
-    // tests: PackLibTest.failures_latch_and_do_not_rerun
     if (const char* colon = std::strchr(spec, ':'); colon != nullptr) {
         pack.assign(spec, static_cast<std::size_t>(colon - spec));
         name.assign(colon + 1);
-        // rule: Part of the rule above that begins "og.use is load-time only and resolves a module
-        //   in ..."
+        // rule: og.use is load-time only and resolves a module in the caller's own pack, or in
+        //   another installed pack with 'pack:module'.
         // tests: PackLibTest.og_use_is_load_time_only
         // tests: PackLibTest.qualified_use_refuses_malformed_names
         // tests: PackLibTest.qualified_use_names_an_unknown_pack
@@ -697,8 +669,8 @@ int og_use(lua_State* L)
             name.find(':') != std::string::npos)
             script_raise(L, "og.use: malformed qualified name '%s' "
                             "(expected \"<pack-id>:<module>\")", spec);
-        // rule: Part of the rule above that begins "og.use is load-time only and resolves a module
-        //   in ..."
+        // rule: og.use is load-time only and resolves a module in the caller's own pack, or in
+        //   another installed pack with 'pack:module'.
         // tests: PackLibTest.og_use_is_load_time_only
         // tests: PackLibTest.qualified_use_refuses_malformed_names
         // tests: PackLibTest.qualified_use_names_an_unknown_pack
@@ -712,13 +684,6 @@ int og_use(lua_State* L)
                          pack.c_str(), pack.c_str(), name.c_str());
     }
     const std::string key = pack + "/" + name;
-    // rule: Part of the rule above that begins "og.use is load-time only and resolves a module in
-    //   ..."
-    // tests: PackLibTest.og_use_is_load_time_only
-    // tests: PackLibTest.qualified_use_refuses_malformed_names
-    // tests: PackLibTest.qualified_use_names_an_unknown_pack
-    // tests: PackLibTest.dependency_cycles_are_detected, PackLibTest.resolution_is_pack_relative
-    // tests: PackLibTest.failures_latch_and_do_not_rerun
     switch (lib_status(L, st, key)) {
         case LibStatus::Loading:
             script_raise(L, "og.use: circular dependency on module "
@@ -728,38 +693,17 @@ int og_use(lua_State* L)
         case LibStatus::None:
             break;
     }
-    // rule: Part of the rule above that begins "og.use is load-time only and resolves a module in
-    //   ..."
-    // tests: PackLibTest.og_use_is_load_time_only
-    // tests: PackLibTest.qualified_use_refuses_malformed_names
-    // tests: PackLibTest.qualified_use_names_an_unknown_pack
-    // tests: PackLibTest.dependency_cycles_are_detected, PackLibTest.resolution_is_pack_relative
-    // tests: PackLibTest.failures_latch_and_do_not_rerun
     if (push_lib_export(L, st, key))
         return 1;
     // Not loaded yet: a module (or script) may use a module the eager pass
     // has not reached — load it on demand, in the same deterministic way.
     const PackLibModule* m = find_lib_module(pack, name);
-    // rule: Part of the rule above that begins "og.use is load-time only and resolves a module in
-    //   ..."
-    // tests: PackLibTest.og_use_is_load_time_only
-    // tests: PackLibTest.qualified_use_refuses_malformed_names
-    // tests: PackLibTest.qualified_use_names_an_unknown_pack
-    // tests: PackLibTest.dependency_cycles_are_detected, PackLibTest.resolution_is_pack_relative
-    // tests: PackLibTest.failures_latch_and_do_not_rerun
     if (m == nullptr)
         script_raise(L,
                      "og.use: no module '%s' in pack '%s' (expected "
                      "packs/%s/lib/%s.lua)",
                      name.c_str(), pack.c_str(), pack.c_str(),
                      name.c_str());
-    // rule: Part of the rule above that begins "og.use is load-time only and resolves a module in
-    //   ..."
-    // tests: PackLibTest.og_use_is_load_time_only
-    // tests: PackLibTest.qualified_use_refuses_malformed_names
-    // tests: PackLibTest.qualified_use_names_an_unknown_pack
-    // tests: PackLibTest.dependency_cycles_are_detected, PackLibTest.resolution_is_pack_relative
-    // tests: PackLibTest.failures_latch_and_do_not_rerun
     if (!load_pack_lib_module(*st->host_impl, st, *m))
         script_raise(L, "og.use: module '%s' failed to load", spec);
     push_lib_export(L, st, key);
@@ -815,10 +759,6 @@ int walker_eq(lua_State* L)
         eq = (a->entity_id == b->entity_id);
     else
         eq = (a->raw == b->raw && a->gen == b->gen);
-    // rule: Part of the rule above that begins "Two Lua handles are equal (==) when they name ..."
-    // tests: ScriptBindingTest.world_query_rows_read_the_live_world
-    // tests: SemScript3.handles_to_different_tracked_walkers_are_unequal
-    // tests: SemScript3.untracked_handles_compare_by_identity_within_a_dispatch
     lua_pushboolean(L, eq ? 1 : 0);
     return 1;
 }
@@ -849,7 +789,6 @@ void ensure_handle_metatables(lua_State* L, VmState* st)
         lua_setfield(L, -2, "__index");
     }
     lua_pop(L, 1);
-    // plumbing: handle metatables created once per VM (luaL_newmetatable returns 0 when present)
     if (luaL_newmetatable(L, kGuyMeta)) {
         lua_pushboolean(L, 0);
         lua_setfield(L, -2, "__metatable");
@@ -880,8 +819,6 @@ void report_duplicate_hook(lua_State* L, VmState* st, const char* order_str,
     //   the registrar name when no debug info)
     while (!where.empty() && (where.back() == ' ' || where.back() == ':'))
         where.pop_back();
-    // plumbing: error-location string trimming for duplicate-registration reports ('chunk:line' or
-    //   the registrar name when no debug info)
     if (where.empty()) where = "og.register_hooks";  // no debug info
 
     std::string message = "duplicate hook registration: ";
@@ -926,13 +863,8 @@ int special_slot_for_id(const FamilyDescriptor* fd, const char* id)
     // tests: SpecialsDispatchTest.an_id_key_on_a_family_that_declares_none_says_so
     if (fd == nullptr)
         return -1;
-    // rule: Part of the rule above that begins "A specials-table key names a special by the id ..."
-    // tests: SpecialsByIdTest.a_declared_id_keys_its_own_slot
-    // tests: SpecialsByIdTest.misspelled_id_is_a_load_error_naming_the_real_ids
-    // tests: SpecialsDispatchTest.an_id_key_on_a_family_that_declares_none_says_so
     for (int slot = 0; slot < FD_NUM_SPECIALS; slot++) {
-        // rule: Part of the rule above that begins "A specials-table key names a special by the id
-        //   ..."
+        // rule: A specials-table key names a special by the id the family declares for it.
         // tests: SpecialsByIdTest.a_declared_id_keys_its_own_slot
         // tests: SpecialsByIdTest.misspelled_id_is_a_load_error_naming_the_real_ids
         // tests: SpecialsDispatchTest.an_id_key_on_a_family_that_declares_none_says_so
@@ -950,20 +882,18 @@ int special_slot_for_id(const FamilyDescriptor* fd, const char* id)
 std::string declared_special_ids(const FamilyDescriptor* fd)
 {
     std::string list;
-    // rule: Part of the rule above that begins "A specials-table key names a special by the id ..."
+    // rule: A specials-table key names a special by the id the family declares for it.
     // tests: SpecialsByIdTest.a_declared_id_keys_its_own_slot
     // tests: SpecialsByIdTest.misspelled_id_is_a_load_error_naming_the_real_ids
     // tests: SpecialsDispatchTest.an_id_key_on_a_family_that_declares_none_says_so
     for (int slot = 0; fd != nullptr && slot < FD_NUM_SPECIALS; slot++) {
-        // rule: Part of the rule above that begins "A specials-table key names a special by the id
-        //   ..."
+        // rule: A specials-table key names a special by the id the family declares for it.
         // tests: SpecialsByIdTest.a_declared_id_keys_its_own_slot
         // tests: SpecialsByIdTest.misspelled_id_is_a_load_error_naming_the_real_ids
         // tests: SpecialsDispatchTest.an_id_key_on_a_family_that_declares_none_says_so
         if (fd->special_ids[slot] == nullptr)
             continue;
-        // rule: Part of the rule above that begins "A specials-table key names a special by the id
-        //   ..."
+        // rule: A specials-table key names a special by the id the family declares for it.
         // tests: SpecialsByIdTest.a_declared_id_keys_its_own_slot
         // tests: SpecialsByIdTest.misspelled_id_is_a_load_error_naming_the_real_ids
         // tests: SpecialsDispatchTest.an_id_key_on_a_family_that_declares_none_says_so
@@ -971,7 +901,7 @@ std::string declared_special_ids(const FamilyDescriptor* fd)
             list += ", ";
         list += fd->special_ids[slot];
     }
-    // rule: Part of the rule above that begins "A specials-table key names a special by the id ..."
+    // rule: A specials-table key names a special by the id the family declares for it.
     // tests: SpecialsByIdTest.a_declared_id_keys_its_own_slot
     // tests: SpecialsByIdTest.misspelled_id_is_a_load_error_naming_the_real_ids
     // tests: SpecialsDispatchTest.an_id_key_on_a_family_that_declares_none_says_so
@@ -1025,7 +955,8 @@ int og_register_hooks(lua_State* L)
     // pack is the one that should catch the typo.
     {
         std::vector<const char*> names;
-        // rule: Part of the rule above that begins "A pack's hook table may only use the hook ..."
+        // rule: A pack's hook table may only use the hook names its order defines (plus 'specials'
+        //   for livings).
         // tests: ScriptHooksTest.unknown_hook_name_is_a_load_error
         // tests: ScriptHooksTest.register_hooks_load_error_vocabulary
         // tests: ScriptHooksTest.order_alias_fx_and_effect_both_resolve
@@ -1034,15 +965,16 @@ int og_register_hooks(lua_State* L)
             names.push_back(oi->hooks[i].name);
         names.push_back("specials");
         lua_pushnil(L);
-        // rule: Part of the rule above that begins "A pack's hook table may only use the hook ..."
+        // rule: A pack's hook table may only use the hook names its order defines (plus 'specials'
+        //   for livings).
         // tests: ScriptHooksTest.unknown_hook_name_is_a_load_error
         // tests: ScriptHooksTest.register_hooks_load_error_vocabulary
         // tests: ScriptHooksTest.order_alias_fx_and_effect_both_resolve
         // tests: SpecialsDispatchTest.table_selects_by_current_special
         while (lua_next(L, 3) != 0) {
             lua_pop(L, 1);  // value; the key stays for the next iteration
-            // rule: Part of the rule above that begins "A pack's hook table may only use the hook
-            //   ..."
+            // rule: A pack's hook table may only use the hook names its order defines (plus
+            //   'specials' for livings).
             // tests: ScriptHooksTest.unknown_hook_name_is_a_load_error
             // tests: ScriptHooksTest.register_hooks_load_error_vocabulary
             // tests: ScriptHooksTest.order_alias_fx_and_effect_both_resolve
@@ -1055,16 +987,16 @@ int og_register_hooks(lua_State* L)
             }
             const std::string key = lua_tostring(L, -1);
             bool known = false;
-            // rule: Part of the rule above that begins "A pack's hook table may only use the hook
-            //   ..."
+            // rule: A pack's hook table may only use the hook names its order defines (plus
+            //   'specials' for livings).
             // tests: ScriptHooksTest.unknown_hook_name_is_a_load_error
             // tests: ScriptHooksTest.register_hooks_load_error_vocabulary
             // tests: ScriptHooksTest.order_alias_fx_and_effect_both_resolve
             // tests: SpecialsDispatchTest.table_selects_by_current_special
             for (const char* n : names)
                 known = known || key == n;
-            // rule: Part of the rule above that begins "A pack's hook table may only use the hook
-            //   ..."
+            // rule: A pack's hook table may only use the hook names its order defines (plus
+            //   'specials' for livings).
             // tests: ScriptHooksTest.unknown_hook_name_is_a_load_error
             // tests: ScriptHooksTest.register_hooks_load_error_vocabulary
             // tests: ScriptHooksTest.order_alias_fx_and_effect_both_resolve
@@ -1128,7 +1060,7 @@ int og_register_hooks(lua_State* L)
     // tests: LuaFamilyBindTest.register_hooks_overrides_a_declaration_quietly
     for (size_t i = 0; i < oi->hook_count; i++) {
         lua_getfield(L, 3, oi->hooks[i].name);
-        // rule: Part of the rule above that begins "Each named hook must be a function; when a ..."
+        // rule: Each named hook must be a function.
         // tests: ScriptHooksTest.register_hooks_load_error_vocabulary
         // tests: SpecialsDispatchTest.cross_chunk_collision_reports_and_last_wins
         // tests: LuaFamilyBindTest.a_second_override_of_one_hook_is_still_reported
@@ -1137,7 +1069,7 @@ int og_register_hooks(lua_State* L)
             lua_pop(L, 1);
             continue;
         }
-        // rule: Part of the rule above that begins "Each named hook must be a function; when a ..."
+        // rule: Each named hook must be a function.
         // tests: ScriptHooksTest.register_hooks_load_error_vocabulary
         // tests: SpecialsDispatchTest.cross_chunk_collision_reports_and_last_wins
         // tests: LuaFamilyBindTest.a_second_override_of_one_hook_is_still_reported
@@ -1154,7 +1086,7 @@ int og_register_hooks(lua_State* L)
         // are the accident the warning exists for.
         const bool overriding_declaration =
             take_declared_hook(L, family_tbl_idx, oi->hooks[i].hook);
-        // rule: Part of the rule above that begins "Each named hook must be a function; when a ..."
+        // rule: Each named hook must be a function.
         // tests: ScriptHooksTest.register_hooks_load_error_vocabulary
         // tests: SpecialsDispatchTest.cross_chunk_collision_reports_and_last_wins
         // tests: LuaFamilyBindTest.a_second_override_of_one_hook_is_still_reported
@@ -1162,7 +1094,7 @@ int og_register_hooks(lua_State* L)
         if (occupied && !overriding_declaration)
             report_duplicate_hook(L, st, order_str, family_str,
                                   oi->hooks[i].name);
-        // rule: Part of the rule above that begins "Each named hook must be a function; when a ..."
+        // rule: Each named hook must be a function.
         // tests: ScriptHooksTest.register_hooks_load_error_vocabulary
         // tests: SpecialsDispatchTest.cross_chunk_collision_reports_and_last_wins
         // tests: LuaFamilyBindTest.a_second_override_of_one_hook_is_still_reported
@@ -1196,8 +1128,8 @@ int og_register_hooks(lua_State* L)
     } else {
         const int spec_idx = lua_gettop(L);
         const int family_idx = spec_idx - 1;  // family table pushed above
-        // rule: Part of the rule above that begins "The specials table (one handler per declared
-        //   special, plus ..."
+        // rule: The specials table (one handler per declared special, plus default) is a
+        //   living-only form of do_special.
         // tests: SpecialsDispatchTest.specials_on_a_non_living_order_is_a_load_error
         // tests: ScriptHooksTest.register_hooks_load_error_vocabulary
         // tests: SpecialsDispatchTest.both_forms_in_one_call_is_a_load_error
@@ -1205,8 +1137,8 @@ int og_register_hooks(lua_State* L)
             script_raise(
                 L, "og.register_hooks: 'specials' is a living-order key "
               "(order '%s' has no do_special hook)", order_str);
-        // rule: Part of the rule above that begins "The specials table (one handler per declared
-        //   special, plus ..."
+        // rule: The specials table (one handler per declared special, plus default) is a
+        //   living-only form of do_special.
         // tests: SpecialsDispatchTest.specials_on_a_non_living_order_is_a_load_error
         // tests: ScriptHooksTest.register_hooks_load_error_vocabulary
         // tests: SpecialsDispatchTest.both_forms_in_one_call_is_a_load_error
@@ -1217,8 +1149,8 @@ int og_register_hooks(lua_State* L)
         lua_getfield(L, 3, "do_special");
         const bool has_plain_do_special = !lua_isnil(L, -1);
         lua_pop(L, 1);
-        // rule: Part of the rule above that begins "The specials table (one handler per declared
-        //   special, plus ..."
+        // rule: The specials table (one handler per declared special, plus default) is a
+        //   living-only form of do_special.
         // tests: SpecialsDispatchTest.specials_on_a_non_living_order_is_a_load_error
         // tests: ScriptHooksTest.register_hooks_load_error_vocabulary
         // tests: SpecialsDispatchTest.both_forms_in_one_call_is_a_load_error
@@ -1251,8 +1183,9 @@ int og_register_hooks(lua_State* L)
         // tests: SpecialsByIdTest.a_slot_number_beside_its_id_is_still_a_load_error
         // tests: SemScript3.a_specials_table_with_only_a_default_registers
         while (lua_next(L, spec_idx) != 0) {
-            // rule: Part of the rule above that begins "Specials entries are keyed by declared
-            //   special id or ..."
+            // rule: Specials entries are keyed by declared special id or 'default' only (a slot
+            //   number is refused so reordering a family's specials cannot silently re-point a
+            //   handler), every entry is a function, and an empty table is a load error.
             // tests: SpecialsDispatchTest.a_slot_number_key_is_a_load_error
             // tests: SpecialsDispatchTest.bad_specials_key_is_a_load_error
             // tests: SpecialsDispatchTest.non_function_specials_entry_is_a_load_error
@@ -1271,8 +1204,9 @@ int og_register_hooks(lua_State* L)
             } else if (lua_type(L, -2) == LUA_TSTRING) {
                 // Safe during traversal: the key already IS a string.
                 const std::string key = lua_tostring(L, -2);
-                // rule: Part of the rule above that begins "Specials entries are keyed by declared
-                //   special id or ..."
+                // rule: Specials entries are keyed by declared special id or 'default' only (a slot
+                //   number is refused so reordering a family's specials cannot silently re-point a
+                //   handler), every entry is a function, and an empty table is a load error.
                 // tests: SpecialsDispatchTest.a_slot_number_key_is_a_load_error
                 // tests: SpecialsDispatchTest.bad_specials_key_is_a_load_error
                 // tests: SpecialsDispatchTest.non_function_specials_entry_is_a_load_error
@@ -1283,8 +1217,10 @@ int og_register_hooks(lua_State* L)
                     has_default = true;
                 } else {
                     const int slot = special_slot_for_id(fd, key.c_str());
-                    // rule: Part of the rule above that begins "Specials entries are keyed by
-                    //   declared special id or ..."
+                    // rule: Specials entries are keyed by declared special id or 'default' only (a
+                    //   slot number is refused so reordering a family's specials cannot silently
+                    //   re-point a handler), every entry is a function, and an empty table is a
+                    //   load error.
                     // tests: SpecialsDispatchTest.a_slot_number_key_is_a_load_error
                     // tests: SpecialsDispatchTest.bad_specials_key_is_a_load_error
                     // tests: SpecialsDispatchTest.non_function_specials_entry_is_a_load_error
@@ -1307,8 +1243,9 @@ int og_register_hooks(lua_State* L)
                   "declared special id or 'default' (got a %s key)",
                     luaL_typename(L, -2));
             }
-            // rule: Part of the rule above that begins "Specials entries are keyed by declared
-            //   special id or ..."
+            // rule: Specials entries are keyed by declared special id or 'default' only (a slot
+            //   number is refused so reordering a family's specials cannot silently re-point a
+            //   handler), every entry is a function, and an empty table is a load error.
             // tests: SpecialsDispatchTest.a_slot_number_key_is_a_load_error
             // tests: SpecialsDispatchTest.bad_specials_key_is_a_load_error
             // tests: SpecialsDispatchTest.non_function_specials_entry_is_a_load_error
@@ -1322,14 +1259,6 @@ int og_register_hooks(lua_State* L)
             lua_pop(L, 1);
             entry_count++;
         }
-        // rule: Part of the rule above that begins "Specials entries are keyed by declared special
-        //   id or ..."
-        // tests: SpecialsDispatchTest.a_slot_number_key_is_a_load_error
-        // tests: SpecialsDispatchTest.bad_specials_key_is_a_load_error
-        // tests: SpecialsDispatchTest.non_function_specials_entry_is_a_load_error
-        // tests: SpecialsDispatchTest.empty_specials_table_is_a_load_error
-        // tests: SpecialsByIdTest.a_slot_number_beside_its_id_is_still_a_load_error
-        // tests: SemScript3.a_specials_table_with_only_a_default_registers
         if (entry_count == 0)
             script_raise(
                 L, "og.register_hooks: 'specials' table is empty "
@@ -1357,17 +1286,10 @@ int og_register_hooks(lua_State* L)
         // tests: SpecialsDispatchTest.a_specials_table_over_a_taken_slot_reports_and_wins
         lua_createtable(L, static_cast<int>(keys.size()),
                         has_default ? 1 : 0);
-        // rule: Part of the rule above that begins "The registered specials are a private copy
-        //   (mutating the ..."
-        // tests: SpecialsDispatchTest.table_selects_by_current_special
-        // tests: SpecialsDispatchTest.missing_index_falls_to_default
-        // tests: SpecialsDispatchTest.unmatched_index_without_default_is_a_noop_true
-        // tests: SpecialsDispatchTest.registered_table_is_immune_to_later_mutation
-        // tests: SpecialsDispatchTest.a_specials_table_over_a_taken_slot_reports_and_wins
         for (const SpecialsKey& k : keys) {
             lua_getfield(L, spec_idx, k.id.c_str());
-            // rule: Part of the rule above that begins "The registered specials are a private copy
-            //   (mutating the ..."
+            // rule: The registered specials are a private copy (mutating the caller's table later
+            //   changes nothing).
             // tests: SpecialsDispatchTest.table_selects_by_current_special
             // tests: SpecialsDispatchTest.missing_index_falls_to_default
             // tests: SpecialsDispatchTest.unmatched_index_without_default_is_a_noop_true
@@ -1379,17 +1301,10 @@ int og_register_hooks(lua_State* L)
                            "/do_special[" + std::to_string(k.slot) + "]");
             lua_rawseti(L, -2, k.slot);
         }
-        // rule: Part of the rule above that begins "The registered specials are a private copy
-        //   (mutating the ..."
-        // tests: SpecialsDispatchTest.table_selects_by_current_special
-        // tests: SpecialsDispatchTest.missing_index_falls_to_default
-        // tests: SpecialsDispatchTest.unmatched_index_without_default_is_a_noop_true
-        // tests: SpecialsDispatchTest.registered_table_is_immune_to_later_mutation
-        // tests: SpecialsDispatchTest.a_specials_table_over_a_taken_slot_reports_and_wins
         if (has_default) {
             lua_getfield(L, spec_idx, "default");
-            // rule: Part of the rule above that begins "The registered specials are a private copy
-            //   (mutating the ..."
+            // rule: The registered specials are a private copy (mutating the caller's table later
+            //   changes nothing).
             // tests: SpecialsDispatchTest.table_selects_by_current_special
             // tests: SpecialsDispatchTest.missing_index_falls_to_default
             // tests: SpecialsDispatchTest.unmatched_index_without_default_is_a_noop_true
@@ -1407,13 +1322,6 @@ int og_register_hooks(lua_State* L)
         lua_pop(L, 1);
         const bool overriding_declaration =
             take_declared_hook(L, family_idx, FamilyHook::DoSpecial);
-        // rule: Part of the rule above that begins "The registered specials are a private copy
-        //   (mutating the ..."
-        // tests: SpecialsDispatchTest.table_selects_by_current_special
-        // tests: SpecialsDispatchTest.missing_index_falls_to_default
-        // tests: SpecialsDispatchTest.unmatched_index_without_default_is_a_noop_true
-        // tests: SpecialsDispatchTest.registered_table_is_immune_to_later_mutation
-        // tests: SpecialsDispatchTest.a_specials_table_over_a_taken_slot_reports_and_wins
         if (occupied && !overriding_declaration)
             report_duplicate_hook(L, st, order_str, family_str, "specials");
         lua_rawseti(L, family_idx,
@@ -1461,20 +1369,8 @@ int og_rand(lua_State* L)
     // tests: ScriptBindingMathTest.rand_requires_an_active_world
     if (n <= 0)
         script_raise(L, "og.rand: n must be positive");
-    // rule: Part of the rule above that begins "og.rand(n) draws from the world's deterministic sim
-    //   RNG in ..."
-    // tests: ScriptBindingMathTest.rand_refuses_a_non_positive_bound
-    // tests: ScriptBindingMathTest.rand_bounds_above_int32_max_are_refused
-    // tests: ScriptBindingMathTest.rand_bounds_up_to_int32_max_draw_unchanged
-    // tests: ScriptBindingMathTest.rand_requires_an_active_world
     if (n > kMaxRandBound)
         script_raise(L, "og.rand: n out of range [1, 2147483647]");
-    // rule: Part of the rule above that begins "og.rand(n) draws from the world's deterministic sim
-    //   RNG in ..."
-    // tests: ScriptBindingMathTest.rand_refuses_a_non_positive_bound
-    // tests: ScriptBindingMathTest.rand_bounds_above_int32_max_are_refused
-    // tests: ScriptBindingMathTest.rand_bounds_up_to_int32_max_draw_unchanged
-    // tests: ScriptBindingMathTest.rand_requires_an_active_world
     if (current_game == nullptr || current_game->world == nullptr)
         script_raise(L, "og.rand: no active world");
     lua_pushinteger(L, static_cast<lua_Integer>(
@@ -1497,8 +1393,12 @@ int og_is_alive(lua_State* L)
 }
 
 // og.entity_id(handle) → stable sim entity id (0 for untracked).
-// og.entity_id(handle) answers the sim entity id of the walker, 0 for an untracked (loose/probe)
-// walker.
+// rule: og.entity_id(handle) answers the sim entity id of the walker, 0 for an untracked
+//   (loose/probe) walker.
+// tests: LevelScriptsTest.spawn_and_death_hooks_with_per_entity_override
+// tests: LevelScriptsTest.generator_customize_spawn_dispatches
+// tests: QuietProbe.the_lua_doors_answer_what_the_engine_answers
+// tests: SemScript3.entity_id_is_zero_for_an_untracked_walker
 int og_entity_id(lua_State* L)
 {
     auto* h = static_cast<WalkerHandle*>(
@@ -1551,8 +1451,8 @@ int og_register_level_hooks(lua_State* L)
 {
     // The same campaign fence as og.register_hooks (menu scripts may not
     // rewrite sim hook tables), before any argument check.
-    // rule: Part of the rule above that begins "Campaign (menu) scripts may not rewrite sim hook
-    //   tables: ..."
+    // rule: Campaign (menu) scripts may not rewrite sim hook tables: calling any hook registrar
+    //   from inside a campaign hook is an error, checked before any argument error.
     // tests: CampaignHooksTest.fence_walk_everything_outside_the_allowlist_errors
     // tests: CampaignHooksTest.zone_dispatch_is_fenced_and_brackets_cleanly
     // tests: CampaignHooksTest.match_knobs_dispatch_is_fenced_and_brackets_cleanly
@@ -1567,8 +1467,9 @@ int og_register_level_hooks(lua_State* L)
     // family chunk calling this neither rejects the pack nor registers; the
     // bind replay is where it lands.
     VmState* st = get_vm_state(L);
-    // rule: Part of the rule above that begins "In the declaration pass og.register_hooks and
-    //   og.register_level_hooks validate the ..."
+    // rule: In the declaration pass og.register_hooks and og.register_level_hooks validate the call
+    //   and return without resolving the family or installing anything, so a pack may register
+    //   hooks for a family it declares in the same pass (no 'unknown family' error).
     // tests: CampaignHooksTest.the_declaration_pass_bows_out_of_behaviour_registrars
     // tests: LevelScriptsTest.a_family_chunk_registers_level_hooks_in_the_real_pass
     // tests: SemScript3.a_family_chunk_registers_hooks_for_its_own_family_in_the_bind_replay
@@ -1584,23 +1485,23 @@ int og_register_level_hooks(lua_State* L)
     // tests: LevelScriptsTest.a_family_chunk_registers_level_hooks_in_the_real_pass
     for (const auto& h : kLevelHookNames) {
         lua_getfield(L, 2, h.name);
-        // rule: Part of the rule above that begins "Each level hook (on_load, on_tick,
-        //   on_entity_death, on_entity_spawn, on_mode_init, on_mode_tick, ..."
+        // rule: Each level hook (on_load, on_tick, on_entity_death, on_entity_spawn, on_mode_init,
+        //   on_mode_tick, on_damage, on_respawn, on_lineup_stage) must be a function.
         // tests: LevelScriptsTest.level_and_entity_hook_registration_rejections
         // tests: LevelScriptsTest.a_family_chunk_registers_level_hooks_in_the_real_pass
         if (lua_isnil(L, -1)) {
             lua_pop(L, 1);
             continue;
         }
-        // rule: Part of the rule above that begins "Each level hook (on_load, on_tick,
-        //   on_entity_death, on_entity_spawn, on_mode_init, on_mode_tick, ..."
+        // rule: Each level hook (on_load, on_tick, on_entity_death, on_entity_spawn, on_mode_init,
+        //   on_mode_tick, on_damage, on_respawn, on_lineup_stage) must be a function.
         // tests: LevelScriptsTest.level_and_entity_hook_registration_rejections
         // tests: LevelScriptsTest.a_family_chunk_registers_level_hooks_in_the_real_pass
         if (!lua_isfunction(L, -1))
             script_raise(L, "og.register_level_hooks: '%s' must be a "
                             "function", h.name);
-        // rule: Part of the rule above that begins "Each level hook (on_load, on_tick,
-        //   on_entity_death, on_entity_spawn, on_mode_init, on_mode_tick, ..."
+        // rule: Each level hook (on_load, on_tick, on_entity_death, on_entity_spawn, on_mode_init,
+        //   on_mode_tick, on_damage, on_respawn, on_lineup_stage) must be a function.
         // tests: LevelScriptsTest.level_and_entity_hook_registration_rejections
         // tests: LevelScriptsTest.a_family_chunk_registers_level_hooks_in_the_real_pass
         if (coverage::enabled())
@@ -1611,8 +1512,8 @@ int og_register_level_hooks(lua_State* L)
         registered++;
     }
     lua_pop(L, 1);
-    // rule: Part of the rule above that begins "A registration call that installs no hook at all
-    //   ..."
+    // rule: A registration call that installs no hook at all ({} or only unknown-free nils) is a
+    //   load error ('no valid hooks ...
     // tests: ScriptHooksTest.register_hooks_load_error_vocabulary
     // tests: LevelScriptsTest.level_and_entity_hook_registration_rejections
     // tests: LevelScriptsTest.a_family_chunk_registers_level_hooks_in_the_real_pass
@@ -1643,14 +1544,16 @@ int og_set_entity_hooks(lua_State* L)
     lua_rawgeti(L, LUA_REGISTRYINDEX, st->entity_hooks_ref);
     lua_newtable(L);
     lua_getfield(L, 2, "on_death");
-    // rule: Part of the rule above that begins "A level script may give one tracked entity its ..."
+    // rule: A level script may give one tracked entity its own on_death override (cleared when it
+    //   fires).
     // tests: LevelScriptsTest.level_and_entity_hook_registration_rejections
     // tests: LevelScriptsTest.spawn_and_death_hooks_with_per_entity_override
     // tests: LevelScriptsTest.an_empty_entity_hook_table_still_lets_the_level_hook_fire
     if (!lua_isnil(L, -1) && !lua_isfunction(L, -1))
         script_raise(L, "og.set_entity_hooks: 'on_death' must be a "
                         "function");
-    // rule: Part of the rule above that begins "A level script may give one tracked entity its ..."
+    // rule: A level script may give one tracked entity its own on_death override (cleared when it
+    //   fires).
     // tests: LevelScriptsTest.level_and_entity_hook_registration_rejections
     // tests: LevelScriptsTest.spawn_and_death_hooks_with_per_entity_override
     // tests: LevelScriptsTest.an_empty_entity_hook_table_still_lets_the_level_hook_fire
@@ -1696,8 +1599,6 @@ std::string campaign_caller_source(lua_State* L)
     //   the registrar name when no debug info)
     while (!where.empty() && (where.back() == ' ' || where.back() == ':'))
         where.pop_back();
-    // plumbing: error-location string trimming for duplicate-registration reports ('chunk:line' or
-    //   the registrar name when no debug info)
     if (where.empty()) where = "og.register_campaign_hooks";  // no debug info
     return where;
 }
@@ -1712,8 +1613,8 @@ int og_register_campaign_hooks(lua_State* L)
     VmState* st = get_vm_state(L);
     // Campaign and plan fences first (before any argument check): neither a
     // campaign hook nor a match plan may re-register hooks.
-    // rule: Part of the rule above that begins "Campaign (menu) scripts may not rewrite sim hook
-    //   tables: ..."
+    // rule: Campaign (menu) scripts may not rewrite sim hook tables: calling any hook registrar
+    //   from inside a campaign hook is an error, checked before any argument error.
     // tests: CampaignHooksTest.fence_walk_everything_outside_the_allowlist_errors
     // tests: CampaignHooksTest.zone_dispatch_is_fenced_and_brackets_cleanly
     // tests: CampaignHooksTest.match_knobs_dispatch_is_fenced_and_brackets_cleanly
@@ -1743,8 +1644,9 @@ int og_register_campaign_hooks(lua_State* L)
         // tests: CampaignHooksTest.the_registrar_refuses_mis_shaped_books_by_name
         while (lua_next(L, 1) != 0) {
             lua_pop(L, 1);  // value; the key stays for the next iteration
-            // rule: Part of the rule above that begins "A campaign book's registration may only use
-            //   its known ..."
+            // rule: A campaign book's registration may only use its known keys; a typo or
+            //   non-string key is a load error with a did-you-mean hint, even in the declaration
+            //   pass.
             // tests: CampaignHooksTest.unknown_key_is_a_load_error_with_did_you_mean
             // tests: CampaignHooksTest.base_camp_key_typo_gets_did_you_mean
             // tests: CampaignHooksTest.declare_mode_still_rejects_a_bad_registration
@@ -1757,16 +1659,18 @@ int og_register_campaign_hooks(lua_State* L)
                     luaL_typename(L, -1));
             const std::string key = lua_tostring(L, -1);
             bool known = false;
-            // rule: Part of the rule above that begins "A campaign book's registration may only use
-            //   its known ..."
+            // rule: A campaign book's registration may only use its known keys; a typo or
+            //   non-string key is a load error with a did-you-mean hint, even in the declaration
+            //   pass.
             // tests: CampaignHooksTest.unknown_key_is_a_load_error_with_did_you_mean
             // tests: CampaignHooksTest.base_camp_key_typo_gets_did_you_mean
             // tests: CampaignHooksTest.declare_mode_still_rejects_a_bad_registration
             // tests: CampaignHooksTest.the_registrar_refuses_mis_shaped_books_by_name
             for (const char* n : names)
                 known = known || key == n;
-            // rule: Part of the rule above that begins "A campaign book's registration may only use
-            //   its known ..."
+            // rule: A campaign book's registration may only use its known keys; a typo or
+            //   non-string key is a load error with a did-you-mean hint, even in the declaration
+            //   pass.
             // tests: CampaignHooksTest.unknown_key_is_a_load_error_with_did_you_mean
             // tests: CampaignHooksTest.base_camp_key_typo_gets_did_you_mean
             // tests: CampaignHooksTest.declare_mode_still_rejects_a_bad_registration
@@ -1793,45 +1697,21 @@ int og_register_campaign_hooks(lua_State* L)
             L, "og.register_campaign_hooks: 'picker_menu' must be a function");
     lua_getfield(L, 1, "picker_action");  // abs index 3
     const bool has_action = !lua_isnil(L, 3);
-    // rule: Part of the rule above that begins "Each campaign hook given must be a function (lineup
-    //   ..."
-    // tests: CampaignHooksTest.non_function_hook_is_a_load_error
-    // tests: CampaignHooksTest.non_function_base_camp_is_a_load_error
-    // tests: CampaignHooksTest.neither_hook_function_is_a_load_error
-    // tests: CampaignHooksTest.base_camp_alone_is_a_legal_registration
     if (has_action && !lua_isfunction(L, 3))
         script_raise(L, "og.register_campaign_hooks: 'picker_action' "
                         "must be a function");
     lua_getfield(L, 1, "base_camp");      // abs index 4
     const bool has_zone = !lua_isnil(L, 4);
-    // rule: Part of the rule above that begins "Each campaign hook given must be a function (lineup
-    //   ..."
-    // tests: CampaignHooksTest.non_function_hook_is_a_load_error
-    // tests: CampaignHooksTest.non_function_base_camp_is_a_load_error
-    // tests: CampaignHooksTest.neither_hook_function_is_a_load_error
-    // tests: CampaignHooksTest.base_camp_alone_is_a_legal_registration
     if (has_zone && !lua_isfunction(L, 4))
         script_raise(L, "og.register_campaign_hooks: 'base_camp' "
                         "must be a function");
     lua_getfield(L, 1, "match_knobs");    // abs index 5
     const bool has_knobs = !lua_isnil(L, 5);
-    // rule: Part of the rule above that begins "Each campaign hook given must be a function (lineup
-    //   ..."
-    // tests: CampaignHooksTest.non_function_hook_is_a_load_error
-    // tests: CampaignHooksTest.non_function_base_camp_is_a_load_error
-    // tests: CampaignHooksTest.neither_hook_function_is_a_load_error
-    // tests: CampaignHooksTest.base_camp_alone_is_a_legal_registration
     if (has_knobs && !lua_isfunction(L, 5))
         script_raise(L, "og.register_campaign_hooks: 'match_knobs' "
                         "must be a function");
     lua_getfield(L, 1, "lineup");         // abs index 6
     const bool has_lineup = !lua_isnil(L, 6);
-    // rule: Part of the rule above that begins "Each campaign hook given must be a function (lineup
-    //   ..."
-    // tests: CampaignHooksTest.non_function_hook_is_a_load_error
-    // tests: CampaignHooksTest.non_function_base_camp_is_a_load_error
-    // tests: CampaignHooksTest.neither_hook_function_is_a_load_error
-    // tests: CampaignHooksTest.base_camp_alone_is_a_legal_registration
     if (has_lineup && !lua_istable(L, 6))
         script_raise(L, "og.register_campaign_hooks: 'lineup' must "
                         "be a table of { power }");
@@ -1850,14 +1730,17 @@ int og_register_campaign_hooks(lua_State* L)
         // registering a hook nothing calls.
         static const char* const kLineupKeys[] = {"power"};
         lua_pushnil(L);
-        // rule: Part of the rule above that begins "The lineup hook is a table whose only key ..."
+        // rule: The lineup hook is a table whose only key is power (a function); the retired
+        //   default_fill key and any typo are refused; a lineup table without power is a load
+        //   error.
         // tests: CampaignHooksTest.lineup_registration_rejections
         // tests: CampaignHooksTest.lineup_presets_key_is_gone
         // tests: CampaignHooksTest.lineup_registers_and_prices_a_fighter
         while (lua_next(L, 6) != 0) {
             lua_pop(L, 1);  // value; the key stays for the next iteration
-            // rule: Part of the rule above that begins "The lineup hook is a table whose only key
-            //   ..."
+            // rule: The lineup hook is a table whose only key is power (a function); the retired
+            //   default_fill key and any typo are refused; a lineup table without power is a load
+            //   error.
             // tests: CampaignHooksTest.lineup_registration_rejections
             // tests: CampaignHooksTest.lineup_presets_key_is_gone
             // tests: CampaignHooksTest.lineup_registers_and_prices_a_fighter
@@ -1868,15 +1751,17 @@ int og_register_campaign_hooks(lua_State* L)
                     luaL_typename(L, -1));
             const std::string key = lua_tostring(L, -1);
             bool known = false;
-            // rule: Part of the rule above that begins "The lineup hook is a table whose only key
-            //   ..."
+            // rule: The lineup hook is a table whose only key is power (a function); the retired
+            //   default_fill key and any typo are refused; a lineup table without power is a load
+            //   error.
             // tests: CampaignHooksTest.lineup_registration_rejections
             // tests: CampaignHooksTest.lineup_presets_key_is_gone
             // tests: CampaignHooksTest.lineup_registers_and_prices_a_fighter
             for (const char* n : kLineupKeys)
                 known = known || key == n;
-            // rule: Part of the rule above that begins "The lineup hook is a table whose only key
-            //   ..."
+            // rule: The lineup hook is a table whose only key is power (a function); the retired
+            //   default_fill key and any typo are refused; a lineup table without power is a load
+            //   error.
             // tests: CampaignHooksTest.lineup_registration_rejections
             // tests: CampaignHooksTest.lineup_presets_key_is_gone
             // tests: CampaignHooksTest.lineup_registers_and_prices_a_fighter
@@ -1892,7 +1777,9 @@ int og_register_campaign_hooks(lua_State* L)
         }
         lua_getfield(L, 6, "power");
         has_lineup_power = !lua_isnil(L, -1);
-        // rule: Part of the rule above that begins "The lineup hook is a table whose only key ..."
+        // rule: The lineup hook is a table whose only key is power (a function); the retired
+        //   default_fill key and any typo are refused; a lineup table without power is a load
+        //   error.
         // tests: CampaignHooksTest.lineup_registration_rejections
         // tests: CampaignHooksTest.lineup_presets_key_is_gone
         // tests: CampaignHooksTest.lineup_registers_and_prices_a_fighter
@@ -1900,7 +1787,9 @@ int og_register_campaign_hooks(lua_State* L)
             script_raise(L, "og.register_campaign_hooks: "
                             "'lineup.power' must be a function");
         lua_pop(L, 1);
-        // rule: Part of the rule above that begins "The lineup hook is a table whose only key ..."
+        // rule: The lineup hook is a table whose only key is power (a function); the retired
+        //   default_fill key and any typo are refused; a lineup table without power is a load
+        //   error.
         // tests: CampaignHooksTest.lineup_registration_rejections
         // tests: CampaignHooksTest.lineup_presets_key_is_gone
         // tests: CampaignHooksTest.lineup_registers_and_prices_a_fighter
@@ -1908,8 +1797,7 @@ int og_register_campaign_hooks(lua_State* L)
             script_raise(L, "og.register_campaign_hooks: 'lineup' "
                             "carries no 'power'");
     }
-    // rule: Part of the rule above that begins "Each campaign hook given must be a function (lineup
-    //   ..."
+    // rule: Each campaign hook given must be a function (lineup a table).
     // tests: CampaignHooksTest.non_function_hook_is_a_load_error
     // tests: CampaignHooksTest.non_function_base_camp_is_a_load_error
     // tests: CampaignHooksTest.neither_hook_function_is_a_load_error
@@ -1927,8 +1815,8 @@ int og_register_campaign_hooks(lua_State* L)
     // tests: CampaignHooksTest.bad_vars_are_load_errors
     // tests: CampaignHooksTest.registration_happy_path_serves_picker_and_vars
     if (!lua_isnil(L, -1)) {
-        // rule: Part of the rule above that begins "A campaign book declares its persistent
-        //   campaign variables as ..."
+        // rule: A campaign book declares its persistent campaign variables as an array of at most
+        //   64 lowercase names.
         // tests: CampaignHooksTest.bad_vars_are_load_errors
         // tests: CampaignHooksTest.registration_happy_path_serves_picker_and_vars
         if (!lua_istable(L, -1))
@@ -1936,8 +1824,8 @@ int og_register_campaign_hooks(lua_State* L)
                             "be an array of names");
         const lua_Integer count =
             static_cast<lua_Integer>(lua_rawlen(L, -1));
-        // rule: Part of the rule above that begins "A campaign book declares its persistent
-        //   campaign variables as ..."
+        // rule: A campaign book declares its persistent campaign variables as an array of at most
+        //   64 lowercase names.
         // tests: CampaignHooksTest.bad_vars_are_load_errors
         // tests: CampaignHooksTest.registration_happy_path_serves_picker_and_vars
         if (count > hooks::kCampaignVarsMax)
@@ -1945,14 +1833,14 @@ int og_register_campaign_hooks(lua_State* L)
                 L, "og.register_campaign_hooks: 'vars' names %d variables "
               "(max %d)",
                 static_cast<int>(count), hooks::kCampaignVarsMax);
-        // rule: Part of the rule above that begins "A campaign book declares its persistent
-        //   campaign variables as ..."
+        // rule: A campaign book declares its persistent campaign variables as an array of at most
+        //   64 lowercase names.
         // tests: CampaignHooksTest.bad_vars_are_load_errors
         // tests: CampaignHooksTest.registration_happy_path_serves_picker_and_vars
         for (lua_Integer i = 1; i <= count; i++) {
             lua_rawgeti(L, -1, i);
-            // rule: Part of the rule above that begins "A campaign book declares its persistent
-            //   campaign variables as ..."
+            // rule: A campaign book declares its persistent campaign variables as an array of at
+            //   most 64 lowercase names.
             // tests: CampaignHooksTest.bad_vars_are_load_errors
             // tests: CampaignHooksTest.registration_happy_path_serves_picker_and_vars
             if (lua_type(L, -1) != LUA_TSTRING)
@@ -1984,14 +1872,14 @@ int og_register_campaign_hooks(lua_State* L)
         while (lua_next(L, -2) != 0) {
             lua_pop(L, 1);  // value
             lua_Integer index = 0;
-            // rule: Part of the rule above that begins "The 'vars' list must be a pure array; any
-            //   ..."
+            // rule: The 'vars' list must be a pure array; any hash key (vars={watch_paid=1}) or
+            //   non-integer key is a load error instead of silently registering nothing.
             // tests: CampaignHooksTest.bad_vars_are_load_errors
             // tests: CampaignHooksTest.registration_happy_path_serves_picker_and_vars
             if (lua_type(L, -1) == LUA_TNUMBER && lua_isinteger(L, -1))
                 index = lua_tointeger(L, -1);
-            // rule: Part of the rule above that begins "The 'vars' list must be a pure array; any
-            //   ..."
+            // rule: The 'vars' list must be a pure array; any hash key (vars={watch_paid=1}) or
+            //   non-integer key is a load error instead of silently registering nothing.
             // tests: CampaignHooksTest.bad_vars_are_load_errors
             // tests: CampaignHooksTest.registration_happy_path_serves_picker_and_vars
             if (index < 1 || index > count) {
@@ -2025,8 +1913,8 @@ int og_register_campaign_hooks(lua_State* L)
         // this chunk's unrelated level hooks and make the winner an
         // accident of pack-id sort order). The query side answers "no
         // scripted picker" and reports the conflict once.
-        // rule: Part of the rule above that begins "One campaign, one book: a second registration
-        //   never raises, ..."
+        // rule: One campaign, one book: a second registration never raises, poisons the book (no
+        //   scripted picker), and the first conflicting source is recorded once.
         // tests: CampaignHooksTest.registration_happy_path_serves_picker_and_vars
         // tests: CampaignHooksTest.duplicate_registration_conflicts_and_reports_once
         // tests: CampaignHooksTest.a_conflicted_book_cannot_poison_the_default
@@ -2056,16 +1944,6 @@ int og_register_campaign_hooks(lua_State* L)
             coverage_declare_hook(L, "campaign/picker_menu");
         lua_rawseti(L, -2, kCampaignMenuSlot);
     }
-    // rule: Part of the rule above that begins "Each hook the campaign book supplies (picker_menu,
-    //   picker_action, base_camp, ..."
-    // tests: CampaignHooksTest.registration_happy_path_serves_picker_and_vars
-    // tests: CampaignHooksTest.base_camp_alone_is_a_legal_registration
-    // tests: CampaignHooksTest.zone_unregistered_without_base_camp_hook
-    // tests: CampaignHooksTest.match_knobs_alone_is_a_legal_registration
-    // tests: CampaignHooksTest.match_knobs_absent_answers_defaults_and_false
-    // tests: CampaignHooksTest.no_lineup_hook_means_no_lineup
-    // tests: CampaignHooksTest.match_knobs_and_lineup_coexist_at_their_slots
-    // tests: CampaignHooksTest.state_set_bounds_rejection_raises_before_mutation
     if (has_action) {
         lua_pushvalue(L, 3);
         // plumbing: coverage::enabled() instrumentation of Lua hook declarations for the coverage
@@ -2074,16 +1952,6 @@ int og_register_campaign_hooks(lua_State* L)
             coverage_declare_hook(L, "campaign/picker_action");
         lua_rawseti(L, -2, kCampaignActionSlot);
     }
-    // rule: Part of the rule above that begins "Each hook the campaign book supplies (picker_menu,
-    //   picker_action, base_camp, ..."
-    // tests: CampaignHooksTest.registration_happy_path_serves_picker_and_vars
-    // tests: CampaignHooksTest.base_camp_alone_is_a_legal_registration
-    // tests: CampaignHooksTest.zone_unregistered_without_base_camp_hook
-    // tests: CampaignHooksTest.match_knobs_alone_is_a_legal_registration
-    // tests: CampaignHooksTest.match_knobs_absent_answers_defaults_and_false
-    // tests: CampaignHooksTest.no_lineup_hook_means_no_lineup
-    // tests: CampaignHooksTest.match_knobs_and_lineup_coexist_at_their_slots
-    // tests: CampaignHooksTest.state_set_bounds_rejection_raises_before_mutation
     if (has_zone) {
         lua_pushvalue(L, 4);
         // plumbing: coverage::enabled() instrumentation of Lua hook declarations for the coverage
@@ -2092,16 +1960,6 @@ int og_register_campaign_hooks(lua_State* L)
             coverage_declare_hook(L, "campaign/base_camp");
         lua_rawseti(L, -2, kCampaignZoneSlot);
     }
-    // rule: Part of the rule above that begins "Each hook the campaign book supplies (picker_menu,
-    //   picker_action, base_camp, ..."
-    // tests: CampaignHooksTest.registration_happy_path_serves_picker_and_vars
-    // tests: CampaignHooksTest.base_camp_alone_is_a_legal_registration
-    // tests: CampaignHooksTest.zone_unregistered_without_base_camp_hook
-    // tests: CampaignHooksTest.match_knobs_alone_is_a_legal_registration
-    // tests: CampaignHooksTest.match_knobs_absent_answers_defaults_and_false
-    // tests: CampaignHooksTest.no_lineup_hook_means_no_lineup
-    // tests: CampaignHooksTest.match_knobs_and_lineup_coexist_at_their_slots
-    // tests: CampaignHooksTest.state_set_bounds_rejection_raises_before_mutation
     if (has_knobs) {
         lua_pushvalue(L, 5);
         // plumbing: coverage::enabled() instrumentation of Lua hook declarations for the coverage
@@ -2110,16 +1968,6 @@ int og_register_campaign_hooks(lua_State* L)
             coverage_declare_hook(L, "campaign/match_knobs");
         lua_rawseti(L, -2, kCampaignMatchKnobsSlot);
     }
-    // rule: Part of the rule above that begins "Each hook the campaign book supplies (picker_menu,
-    //   picker_action, base_camp, ..."
-    // tests: CampaignHooksTest.registration_happy_path_serves_picker_and_vars
-    // tests: CampaignHooksTest.base_camp_alone_is_a_legal_registration
-    // tests: CampaignHooksTest.zone_unregistered_without_base_camp_hook
-    // tests: CampaignHooksTest.match_knobs_alone_is_a_legal_registration
-    // tests: CampaignHooksTest.match_knobs_absent_answers_defaults_and_false
-    // tests: CampaignHooksTest.no_lineup_hook_means_no_lineup
-    // tests: CampaignHooksTest.match_knobs_and_lineup_coexist_at_their_slots
-    // tests: CampaignHooksTest.state_set_bounds_rejection_raises_before_mutation
     if (has_lineup_power) {
         lua_getfield(L, 6, "power");
         // plumbing: coverage::enabled() instrumentation of Lua hook declarations for the coverage
@@ -2182,8 +2030,8 @@ int og_register_default_lineup(lua_State* L)
         // tests: SemScript3.a_misspelled_default_lineup_key_suggests_power
         while (lua_next(L, 1) != 0) {
             lua_pop(L, 1);  // value; the key stays for the next iteration
-            // rule: Part of the rule above that begins "The default-lineup table's only key is
-            //   'power'; a non-string ..."
+            // rule: The default-lineup table's only key is 'power'; a non-string key or any other
+            //   name is a load error (with did-you-mean), checked even in the declaration pass.
             // tests: CampaignHooksTest.default_lineup_registration_rejections
             // tests: CampaignHooksTest.default_lineup_prices_with_no_campaign_book
             // tests: SemScript3.a_misspelled_default_lineup_key_suggests_power
@@ -2194,15 +2042,15 @@ int og_register_default_lineup(lua_State* L)
                     luaL_typename(L, -1));
             const std::string key = lua_tostring(L, -1);
             bool known = false;
-            // rule: Part of the rule above that begins "The default-lineup table's only key is
-            //   'power'; a non-string ..."
+            // rule: The default-lineup table's only key is 'power'; a non-string key or any other
+            //   name is a load error (with did-you-mean), checked even in the declaration pass.
             // tests: CampaignHooksTest.default_lineup_registration_rejections
             // tests: CampaignHooksTest.default_lineup_prices_with_no_campaign_book
             // tests: SemScript3.a_misspelled_default_lineup_key_suggests_power
             for (const char* n : kLineupKeys)
                 known = known || key == n;
-            // rule: Part of the rule above that begins "The default-lineup table's only key is
-            //   'power'; a non-string ..."
+            // rule: The default-lineup table's only key is 'power'; a non-string key or any other
+            //   name is a load error (with did-you-mean), checked even in the declaration pass.
             // tests: CampaignHooksTest.default_lineup_registration_rejections
             // tests: CampaignHooksTest.default_lineup_prices_with_no_campaign_book
             // tests: SemScript3.a_misspelled_default_lineup_key_suggests_power
@@ -2223,9 +2071,6 @@ int og_register_default_lineup(lua_State* L)
     if (lua_isnil(L, -1))
         script_raise(L, "og.register_default_lineup: carries no "
                         "'power'");
-    // rule: Part of the rule above that begins "A default lineup must carry a 'power' function."
-    // tests: CampaignHooksTest.default_lineup_registration_rejections
-    // tests: CampaignHooksTest.default_lineup_prices_with_no_campaign_book
     if (!lua_isfunction(L, -1))
         script_raise(L, "og.register_default_lineup: 'power' must be "
                         "a function");
@@ -2310,11 +2155,11 @@ int og_family_id(lua_State* L)
 void warn_unhandled_castable_specials(lua_State* L, const VmState& st)
 {
     lua_rawgeti(L, LUA_REGISTRYINDEX, st.hooks_ref);
-    // plumbing: iterate family slots / special slots; rule in world_scripts.cpp:1597
+    // plumbing: iterate family slots / special slots; rule below
     for (int family_id = 0; family_id < NUM_FAMILY_SLOTS; family_id++) {
         const FamilyDescriptor* fd = get_family_descriptor(family_id);
         // plumbing: no FamilyDescriptor for that slot: nothing to check (the 1560 no-hook-table arm
-        //   is a semantic arm of rule world_scripts.cpp:1597)
+        //   is a semantic arm of rule below)
         if (fd == nullptr)
             continue;
         lua_rawgeti(L, -1, hook_table_key(Order::Living, family_id));
@@ -2337,16 +2182,6 @@ void warn_unhandled_castable_specials(lua_State* L, const VmState& st)
         lua_rawgeti(L, -1, static_cast<lua_Integer>(FamilyHook::DoSpecial));
         // Only the table form can fall through: a plain do_special function
         // is asked about every slot and answers for itself.
-        // rule: Part of the rule above that begins "A castable special nothing handles still spends
-        //   MP and ..."
-        // tests: LuaFamilyBindTest.an_unhandled_castable_special_warns_unless_declared
-        // tests: LuaFamilyBindTest.cast_false_is_a_handler_and_silences_the_rule
-        // tests: LuaFamilyBindTest.a_default_cast_answers_every_slot
-        // tests: SpecialsByIdTest.castable_slot_with_no_handler_warns_after_load
-        // tests: SpecialsByIdTest.a_default_answers_for_every_castable_slot
-        // tests: SemScript3.a_family_with_no_hook_table_is_never_reported_unhandled
-        // tests: SemScript3.a_plain_do_special_function_counts_as_handling_every_slot
-        // tests: SemScript3.a_disabled_none_slot_is_never_reported_unhandled
         if (!lua_istable(L, -1)) {
             lua_pop(L, 2);
             continue;
@@ -2355,16 +2190,6 @@ void warn_unhandled_castable_specials(lua_State* L, const VmState& st)
         lua_rawget(L, -2);
         const bool has_default = lua_isfunction(L, -1);
         lua_pop(L, 1);
-        // rule: Part of the rule above that begins "A castable special nothing handles still spends
-        //   MP and ..."
-        // tests: LuaFamilyBindTest.an_unhandled_castable_special_warns_unless_declared
-        // tests: LuaFamilyBindTest.cast_false_is_a_handler_and_silences_the_rule
-        // tests: LuaFamilyBindTest.a_default_cast_answers_every_slot
-        // tests: SpecialsByIdTest.castable_slot_with_no_handler_warns_after_load
-        // tests: SpecialsByIdTest.a_default_answers_for_every_castable_slot
-        // tests: SemScript3.a_family_with_no_hook_table_is_never_reported_unhandled
-        // tests: SemScript3.a_plain_do_special_function_counts_as_handling_every_slot
-        // tests: SemScript3.a_disabled_none_slot_is_never_reported_unhandled
         if (has_default) {
             lua_pop(L, 2);
             continue;  // a default answers for every slot
@@ -2374,14 +2199,13 @@ void warn_unhandled_castable_specials(lua_State* L, const VmState& st)
         // plumbing: label for the diagnostic message (declared id vs legacy name)
         const char* family_label =
             fd->declared_id != nullptr ? fd->declared_id : fd->name;
-        // plumbing: iterate family slots / special slots; rule in world_scripts.cpp:1597
+        // plumbing: iterate family slots / special slots; rule below
         for (int slot = 1; slot < FD_NUM_SPECIALS; slot++) {
             const char* name = fd->special_names[slot];
             // The name alone decides: a slot's name and cost travel as the
             // kSpecialNameNone / kSpecialCostDisabled pair (packs.cpp
             // install_specials), and a declared cost is always below it.
-            // rule: Part of the rule above that begins "A castable special nothing handles still
-            //   spends MP and ..."
+            // rule: A castable special nothing handles still spends MP and does nothing.
             // tests: LuaFamilyBindTest.an_unhandled_castable_special_warns_unless_declared
             // tests: LuaFamilyBindTest.cast_false_is_a_handler_and_silences_the_rule
             // tests: LuaFamilyBindTest.a_default_cast_answers_every_slot
@@ -2397,8 +2221,7 @@ void warn_unhandled_castable_specials(lua_State* L, const VmState& st)
             // and it is as much an answer as a function.
             const bool handled = lua_isfunction(L, -1) || lua_isboolean(L, -1);
             lua_pop(L, 1);
-            // rule: Part of the rule above that begins "A castable special nothing handles still
-            //   spends MP and ..."
+            // rule: A castable special nothing handles still spends MP and does nothing.
             // tests: LuaFamilyBindTest.an_unhandled_castable_special_warns_unless_declared
             // tests: LuaFamilyBindTest.cast_false_is_a_handler_and_silences_the_rule
             // tests: LuaFamilyBindTest.a_default_cast_answers_every_slot
@@ -2409,8 +2232,7 @@ void warn_unhandled_castable_specials(lua_State* L, const VmState& st)
             // tests: SemScript3.a_disabled_none_slot_is_never_reported_unhandled
             if (handled)
                 continue;
-            // rule: Part of the rule above that begins "A castable special nothing handles still
-            //   spends MP and ..."
+            // rule: A castable special nothing handles still spends MP and does nothing.
             // tests: LuaFamilyBindTest.an_unhandled_castable_special_warns_unless_declared
             // tests: LuaFamilyBindTest.cast_false_is_a_handler_and_silences_the_rule
             // tests: LuaFamilyBindTest.a_default_cast_answers_every_slot
@@ -2597,16 +2419,16 @@ WorldScripts::WorldScripts()
     // tests: SemScript3.a_module_that_failed_on_demand_is_not_loaded_a_second_time
     for (const PackLibModule& m : pack_lib_modules()) {
         const std::string key = m.pack_id + "/" + m.name;
-        // rule: Part of the rule above that begins "Pack lib modules load eagerly in registration
-        //   order before ..."
+        // rule: Pack lib modules load eagerly in registration order before any family or behaviour
+        //   chunk.
         // tests: PackLibTest.modules_load_eagerly_in_order_before_scripts
         // tests: PackLibTest.on_demand_load_inside_the_eager_pass_settles_once
         // tests: SemScript3.a_module_that_failed_on_demand_is_not_loaded_a_second_time
         if (lib_status(L, &detail_->state, key) != LibStatus::None)
             continue;
         bool settled = push_lib_export(L, &detail_->state, key);
-        // rule: Part of the rule above that begins "Pack lib modules load eagerly in registration
-        //   order before ..."
+        // rule: Pack lib modules load eagerly in registration order before any family or behaviour
+        //   chunk.
         // tests: PackLibTest.modules_load_eagerly_in_order_before_scripts
         // tests: PackLibTest.on_demand_load_inside_the_eager_pass_settles_once
         // tests: SemScript3.a_module_that_failed_on_demand_is_not_loaded_a_second_time
@@ -2633,8 +2455,8 @@ WorldScripts::WorldScripts()
         // A pack whose declaration failed installed nothing, so binding
         // against it would report a second, worse error in every VM the
         // process ever builds. The installer already named the casualty.
-        // rule: Part of the rule above that begins "A pack whose declaration failed has its family
-        //   chunks ..."
+        // rule: A pack whose declaration failed has its family chunks skipped in every world VM (no
+        //   second error); a family chunk that fails to bind is logged and registers nothing.
         // tests: LuaPackInstall.a_pack_whose_declaration_fails_installs_nothing
         // tests: LuaFamilyBindTest.a_default_cast_answers_every_slot
         // tests: LuaFamilyBindTest.the_world_api_is_closed_during_the_bind_replay
@@ -2642,8 +2464,8 @@ WorldScripts::WorldScripts()
         if (pack_declaration_failed(fc.pack_id))
             continue;
         detail_->state.current_pack = fc.pack_id;
-        // rule: Part of the rule above that begins "A pack whose declaration failed has its family
-        //   chunks ..."
+        // rule: A pack whose declaration failed has its family chunks skipped in every world VM (no
+        //   second error); a family chunk that fails to bind is logged and registers nothing.
         // tests: LuaPackInstall.a_pack_whose_declaration_fails_installs_nothing
         // tests: LuaFamilyBindTest.a_default_cast_answers_every_slot
         // tests: LuaFamilyBindTest.the_world_api_is_closed_during_the_bind_replay
@@ -2666,8 +2488,8 @@ WorldScripts::WorldScripts()
     // tests: SemScript3.a_script_chunk_that_fails_registers_nothing_and_is_logged
     for (const PackScript& ps : pack_scripts()) {
         detail_->state.current_pack = ps.pack_id;
-        // rule: Part of the rule above that begins "A behaviour script chunk that fails to compile
-        //   or ..."
+        // rule: A behaviour script chunk that fails to compile or errors at top level registers
+        //   nothing; the failure is recorded and logged, other chunks still load.
         // tests: ScriptHostPackTest.a_chunk_that_fails_to_compile_is_recorded_not_silent
         // tests: SemScript3.a_script_chunk_that_fails_registers_nothing_and_is_logged
         if (!host_->run_chunk(ps.chunk_name, ps.source, ps.pack_id)) {
@@ -2677,6 +2499,7 @@ WorldScripts::WorldScripts()
             // already latched the record; this is the operator-facing half,
             // same channel as the duplicate-hook warning above.
             const auto& errs = host_->errors();
+            // plumbing: the log line names the last error, or says there is none.
             LogError("class pack '{}': chunk {} failed to load: {}\n",
                      ps.pack_id, ps.chunk_name,
                      errs.empty() ? "(no error record)"
@@ -2735,10 +2558,6 @@ WorldScripts& active_world_scripts()
     // Picker-side hooks (level_up/promotions) run with no world; a shared
     // instance rebuilt on pack changes serves them.
     static std::unique_ptr<WorldScripts> ui;
-    // rule: Part of the rule above that begins "Hooks run in the live world's VM during a ..."
-    // tests: LevelScriptsTest.spawn_and_death_hooks_with_per_entity_override
-    // tests: CampaignHooksTest.registration_happy_path_serves_picker_and_vars
-    // tests: ScriptHooksTest.erroring_hook_is_latched_loudly
     if (ui == nullptr ||
         ui->built_generation() != pack_scripts_build_generation())
         ui = std::make_unique<WorldScripts>();
@@ -2777,8 +2596,8 @@ void note_hook_failure(const char* where, const ScriptHost::Impl& impl,
     // tests: ScriptHooksTest.erroring_hook_is_latched_loudly
     // tests: SemScript3.a_repeated_hook_error_logs_once_and_a_new_error_logs_again
     for (auto it = impl.errors.rbegin(); it != impl.errors.rend(); ++it) {
-        // rule: Part of the rule above that begins "Every failed hook dispatch is counted and the
-        //   latest ..."
+        // rule: Every failed hook dispatch is counted and the latest failure's where/message kept
+        //   for tests; the operator log line prints once per distinct error.
         // tests: ScriptHooksTest.erroring_hook_is_latched_loudly
         // tests: SemScript3.a_repeated_hook_error_logs_once_and_a_new_error_logs_again
         if (it->where == state.where) {
@@ -2789,10 +2608,6 @@ void note_hook_failure(const char* where, const ScriptHost::Impl& impl,
     // record_error already traced ("script_error") on every occurrence; this
     // is the operator-facing half, once per distinct error so a hook failing
     // every tick cannot drown the log.
-    // rule: Part of the rule above that begins "Every failed hook dispatch is counted and the
-    //   latest ..."
-    // tests: ScriptHooksTest.erroring_hook_is_latched_loudly
-    // tests: SemScript3.a_repeated_hook_error_logs_once_and_a_new_error_logs_again
     if (is_new_error)
         LogError("class pack: family hook {} FAILED — no C++ fallback "
                  "exists, so nothing ran: {}\n",
@@ -2863,8 +2678,7 @@ public:
             // `cast = false` — the declaration's explicit charged no-op. It
             // is a HANDLER, so it beats `default` rather than falling
             // through to it: the slot was written to do nothing, on purpose.
-            // rule: Part of the rule above that begins "A specials table dispatches the caster's
-            //   current special slot; ..."
+            // rule: A specials table dispatches the caster's current special slot.
             // tests: SpecialsDispatchTest.table_selects_by_current_special
             // tests: SpecialsDispatchTest.missing_index_falls_to_default
             // tests: SpecialsDispatchTest.unmatched_index_without_default_is_a_noop_true
@@ -2874,8 +2688,7 @@ public:
                 lua_pop(L_, 4);  // entry + specials + family + hooks root
                 return false;
             }
-            // rule: Part of the rule above that begins "A specials table dispatches the caster's
-            //   current special slot; ..."
+            // rule: A specials table dispatches the caster's current special slot.
             // tests: SpecialsDispatchTest.table_selects_by_current_special
             // tests: SpecialsDispatchTest.missing_index_falls_to_default
             // tests: SpecialsDispatchTest.unmatched_index_without_default_is_a_noop_true
@@ -2886,8 +2699,7 @@ public:
                 lua_pushstring(L_, "default");
                 lua_rawget(L_, -2);
             }
-            // rule: Part of the rule above that begins "A specials table dispatches the caster's
-            //   current special slot; ..."
+            // rule: A specials table dispatches the caster's current special slot.
             // tests: SpecialsDispatchTest.table_selects_by_current_special
             // tests: SpecialsDispatchTest.missing_index_falls_to_default
             // tests: SpecialsDispatchTest.unmatched_index_without_default_is_a_noop_true
@@ -2949,14 +2761,6 @@ public:
             return std::nullopt;
         }
         bool result = true;
-        // rule: Part of the rule above that begins "A hook that errors counts as absent for that
-        //   ..."
-        // tests: ScriptHooksTest.erroring_hook_is_latched_loudly
-        // tests: ScriptHooksTest.healthy_hook_leaves_the_failure_latch_clear
-        // tests: LivingActFlow.the_hit_response_draws_no_ordinary_act_after_a_gates_no
-        // tests: LivingActFlow.a_roll_the_gate_refuses_takes_the_ordinary_act_with_the_setting_on
-        // tests: ScriptHooksTest.on_melee_hit_reports_ran_and_latches_its_own_failures
-        // tests: SemScript3.a_result_hook_answer_is_lua_truthiness
         if (wants_result) {
             result = lua_toboolean(L_, -1) != 0;
             lua_pop(L_, 1);
@@ -3000,8 +2804,8 @@ public:
         const char* contract_error = nullptr;
         std::string reason;
         bool succeeded = false;
-        // rule: Part of the rule above that begins "A special cast must return true, or false plus
-        //   ..."
+        // rule: A special cast must return true, or false plus a printable-ASCII visible reason of
+        //   at most 24 bytes.
         // tests: SpecialsDispatchTest.table_selects_by_current_special
         // tests: SpecialsDispatchTest.malformed_cast_results_are_errors_and_do_not_charge
         // tests: SpecialsDispatchTest.branch_falling_off_the_end_is_a_contract_error
@@ -3012,16 +2816,16 @@ public:
                 "special cast must return true or false, 'reason'";
         } else {
             succeeded = lua_toboolean(L_, -2) != 0;
-            // rule: Part of the rule above that begins "A special cast must return true, or false
-            //   plus ..."
+            // rule: A special cast must return true, or false plus a printable-ASCII visible reason
+            //   of at most 24 bytes.
             // tests: SpecialsDispatchTest.table_selects_by_current_special
             // tests: SpecialsDispatchTest.malformed_cast_results_are_errors_and_do_not_charge
             // tests: SpecialsDispatchTest.branch_falling_off_the_end_is_a_contract_error
             // tests: SpecialsDispatchTest.erroring_branch_latches_like_any_hook_error
             // tests: SpecialsDispatchTest.cast_reason_length_boundary_and_null_descriptor
             if (!succeeded) {
-                // rule: Part of the rule above that begins "A special cast must return true, or
-                //   false plus ..."
+                // rule: A special cast must return true, or false plus a printable-ASCII visible
+                //   reason of at most 24 bytes.
                 // tests: SpecialsDispatchTest.table_selects_by_current_special
                 // tests: SpecialsDispatchTest.malformed_cast_results_are_errors_and_do_not_charge
                 // tests: SpecialsDispatchTest.branch_falling_off_the_end_is_a_contract_error
@@ -3034,8 +2838,8 @@ public:
                     std::size_t length = 0;
                     const char* text = lua_tolstring(L_, -1, &length);
                     const std::string_view candidate(text, length);
-                    // rule: Part of the rule above that begins "A special cast must return true, or
-                    //   false plus ..."
+                    // rule: A special cast must return true, or false plus a printable-ASCII
+                    //   visible reason of at most 24 bytes.
                     // tests: SpecialsDispatchTest.table_selects_by_current_special
                     // tests: SpecialsDispatchTest.malformed_cast_results_are_errors_and_do_not_charge
                     // tests: SpecialsDispatchTest.branch_falling_off_the_end_is_a_contract_error
@@ -3053,8 +2857,8 @@ public:
         }
         lua_pop(L_, 2);
 
-        // rule: Part of the rule above that begins "A special cast must return true, or false plus
-        //   ..."
+        // rule: A special cast must return true, or false plus a printable-ASCII visible reason of
+        //   at most 24 bytes.
         // tests: SpecialsDispatchTest.table_selects_by_current_special
         // tests: SpecialsDispatchTest.malformed_cast_results_are_errors_and_do_not_charge
         // tests: SpecialsDispatchTest.branch_falling_off_the_end_is_a_contract_error
@@ -3071,8 +2875,8 @@ public:
                 *error_reason = "SPECIAL SCRIPT ERROR";
             return std::nullopt;
         }
-        // rule: Part of the rule above that begins "A special cast must return true, or false plus
-        //   ..."
+        // rule: A special cast must return true, or false plus a printable-ASCII visible reason of
+        //   at most 24 bytes.
         // tests: SpecialsDispatchTest.table_selects_by_current_special
         // tests: SpecialsDispatchTest.malformed_cast_results_are_errors_and_do_not_charge
         // tests: SpecialsDispatchTest.branch_falling_off_the_end_is_a_contract_error
@@ -3154,7 +2958,7 @@ std::optional<SpecialResult> try_script_do_special(int family_id, walker* self,
                                                   std::string* error_reason)
 {
     WorldScripts& ws = active_world_scripts();
-    // rule: Same rule as world_scripts.cpp:2134 and :1961 for specials: no do_special hook -> not
+    // rule: Same rule as above for specials: no do_special hook -> not
     //   handled; a table with no entry for the slot and no default -> success with nothing called;
     //   a null caster selects 'default'.
     // tests: ScriptHooksTest.register_hooks_load_error_vocabulary
@@ -3170,12 +2974,6 @@ std::optional<SpecialResult> try_script_do_special(int family_id, walker* self,
         (self != nullptr) ? static_cast<lua_Integer>(self->current_special())
                           : 0;
     HookFrame f(ws);
-    // rule: Part of the rule above that begins "Same rule as world_scripts.cpp:2134 and :1961 for
-    //   specials: no ..."
-    // tests: ScriptHooksTest.register_hooks_load_error_vocabulary
-    // tests: SpecialsDispatchTest.unmatched_index_without_default_is_a_noop_true
-    // tests: SpecialsDispatchTest.null_self_selects_the_default_entry
-    // tests: SpecialsDispatchTest.table_selects_by_current_special
     if (!f.begin_special(family_id, sp))
         return SpecialResult::success();
     f.arg(self);
@@ -3224,15 +3022,15 @@ std::optional<SpecialResult> do_special(const FamilyDescriptor* fd, walker* self
 
 std::optional<bool> check_special_ai(const FamilyDescriptor* fd, living* self)
 {
-    // rule: Part of the rule above that begins "An entity whose family has no descriptor has no
-    //   ..."
+    // rule: An entity whose family has no descriptor has no script behaviour: every family hook
+    //   answers 'not handled' (nullopt/false) and nothing is latched.
     // tests: ScriptHooksTest.an_unclaimed_family_has_no_behavior
     // tests: SemScript3.a_null_descriptor_or_null_stats_has_no_script_behaviour
     // tests: SemScript3.every_hook_wrapper_reaches_the_hook_of_a_family_with_a_descriptor
     if (fd == nullptr)
         return std::nullopt;
-    // rule: Part of the rule above that begins "Result-carrying hooks pass the Lua answer to the
-    //   C++ ..."
+    // rule: Result-carrying hooks pass the Lua answer to the C++ caller, which reads it per its own
+    //   contract.
     // tests: ScriptHooksTest.erroring_hook_is_latched_loudly
     // tests: ScriptHooksTest.healthy_hook_leaves_the_failure_latch_clear
     // tests: ExampleClassPack.its_hooks_run_when_the_engine_dispatches_them
@@ -3245,8 +3043,8 @@ std::optional<bool> check_special_ai(const FamilyDescriptor* fd, living* self)
 
 bool hit_response(const FamilyDescriptor* fd, statistics* stats, walker* who)
 {
-    // rule: Part of the rule above that begins "An entity whose family has no descriptor has no
-    //   ..."
+    // rule: An entity whose family has no descriptor has no script behaviour: every family hook
+    //   answers 'not handled' (nullopt/false) and nothing is latched.
     // tests: ScriptHooksTest.an_unclaimed_family_has_no_behavior
     // tests: SemScript3.a_null_descriptor_or_null_stats_has_no_script_behaviour
     // tests: SemScript3.every_hook_wrapper_reaches_the_hook_of_a_family_with_a_descriptor
@@ -3270,15 +3068,16 @@ bool hit_response(const FamilyDescriptor* fd, statistics* stats, walker* who)
 bool set_difficulty(const FamilyDescriptor* fd, living* self,
                     std::uint32_t level)
 {
-    // rule: Part of the rule above that begins "An entity whose family has no descriptor has no
-    //   ..."
+    // rule: An entity whose family has no descriptor has no script behaviour: every family hook
+    //   answers 'not handled' (nullopt/false) and nothing is latched.
     // tests: ScriptHooksTest.an_unclaimed_family_has_no_behavior
     // tests: SemScript3.a_null_descriptor_or_null_stats_has_no_script_behaviour
     // tests: SemScript3.every_hook_wrapper_reaches_the_hook_of_a_family_with_a_descriptor
     if (fd == nullptr)
         return false;
-    // rule: Part of the rule above that begins "A Lua hit_response / set_difficulty / level_up hook
-    //   that ..."
+    // rule: A Lua hit_response / set_difficulty / level_up hook that RUNS replaces the classic C++
+    //   default (attack-the-attacker special roll, the 11*level^2 HP difficulty formula, default
+    //   level-up gains).
     // tests: SemScript3.a_set_difficulty_hook_that_runs_replaces_the_default_scaling
     // tests: SemScript3.a_level_up_hook_that_runs_replaces_the_default_gains
     // tests: SemScript3.a_hit_response_hook_that_runs_replaces_attack_the_attacker
@@ -3292,15 +3091,16 @@ bool set_difficulty(const FamilyDescriptor* fd, living* self,
 
 bool level_up(const FamilyDescriptor* fd, guy* self, std::int32_t level_diff)
 {
-    // rule: Part of the rule above that begins "An entity whose family has no descriptor has no
-    //   ..."
+    // rule: An entity whose family has no descriptor has no script behaviour: every family hook
+    //   answers 'not handled' (nullopt/false) and nothing is latched.
     // tests: ScriptHooksTest.an_unclaimed_family_has_no_behavior
     // tests: SemScript3.a_null_descriptor_or_null_stats_has_no_script_behaviour
     // tests: SemScript3.every_hook_wrapper_reaches_the_hook_of_a_family_with_a_descriptor
     if (fd == nullptr)
         return false;
-    // rule: Part of the rule above that begins "A Lua hit_response / set_difficulty / level_up hook
-    //   that ..."
+    // rule: A Lua hit_response / set_difficulty / level_up hook that RUNS replaces the classic C++
+    //   default (attack-the-attacker special roll, the 11*level^2 HP difficulty formula, default
+    //   level-up gains).
     // tests: SemScript3.a_set_difficulty_hook_that_runs_replaces_the_default_scaling
     // tests: SemScript3.a_level_up_hook_that_runs_replaces_the_default_gains
     // tests: SemScript3.a_hit_response_hook_that_runs_replaces_attack_the_attacker
@@ -3312,15 +3112,15 @@ bool level_up(const FamilyDescriptor* fd, guy* self, std::int32_t level_diff)
 
 std::optional<bool> on_death(const FamilyDescriptor* fd, walker* self)
 {
-    // rule: Part of the rule above that begins "An entity whose family has no descriptor has no
-    //   ..."
+    // rule: An entity whose family has no descriptor has no script behaviour: every family hook
+    //   answers 'not handled' (nullopt/false) and nothing is latched.
     // tests: ScriptHooksTest.an_unclaimed_family_has_no_behavior
     // tests: SemScript3.a_null_descriptor_or_null_stats_has_no_script_behaviour
     // tests: SemScript3.every_hook_wrapper_reaches_the_hook_of_a_family_with_a_descriptor
     if (fd == nullptr)
         return std::nullopt;
-    // rule: Part of the rule above that begins "Result-carrying hooks pass the Lua answer to the
-    //   C++ ..."
+    // rule: Result-carrying hooks pass the Lua answer to the C++ caller, which reads it per its own
+    //   contract.
     // tests: ScriptHooksTest.erroring_hook_is_latched_loudly
     // tests: ScriptHooksTest.healthy_hook_leaves_the_failure_latch_clear
     // tests: ExampleClassPack.its_hooks_run_when_the_engine_dispatches_them
@@ -3332,8 +3132,8 @@ std::optional<bool> on_death(const FamilyDescriptor* fd, walker* self)
 
 bool on_act_living(const FamilyDescriptor* fd, living* self)
 {
-    // rule: Part of the rule above that begins "An entity whose family has no descriptor has no
-    //   ..."
+    // rule: An entity whose family has no descriptor has no script behaviour: every family hook
+    //   answers 'not handled' (nullopt/false) and nothing is latched.
     // tests: ScriptHooksTest.an_unclaimed_family_has_no_behavior
     // tests: SemScript3.a_null_descriptor_or_null_stats_has_no_script_behaviour
     // tests: SemScript3.every_hook_wrapper_reaches_the_hook_of_a_family_with_a_descriptor
@@ -3356,8 +3156,8 @@ bool on_act_living(const FamilyDescriptor* fd, living* self)
 
 bool on_act_override(const FamilyDescriptor* fd, living* self)
 {
-    // rule: Part of the rule above that begins "An entity whose family has no descriptor has no
-    //   ..."
+    // rule: An entity whose family has no descriptor has no script behaviour: every family hook
+    //   answers 'not handled' (nullopt/false) and nothing is latched.
     // tests: ScriptHooksTest.an_unclaimed_family_has_no_behavior
     // tests: SemScript3.a_null_descriptor_or_null_stats_has_no_script_behaviour
     // tests: SemScript3.every_hook_wrapper_reaches_the_hook_of_a_family_with_a_descriptor
@@ -3378,15 +3178,16 @@ bool on_act_override(const FamilyDescriptor* fd, living* self)
 
 bool on_shoved(const FamilyDescriptor* fd, walker* target)
 {
-    // rule: Part of the rule above that begins "An entity whose family has no descriptor has no
-    //   ..."
+    // rule: An entity whose family has no descriptor has no script behaviour: every family hook
+    //   answers 'not handled' (nullopt/false) and nothing is latched.
     // tests: ScriptHooksTest.an_unclaimed_family_has_no_behavior
     // tests: SemScript3.a_null_descriptor_or_null_stats_has_no_script_behaviour
     // tests: SemScript3.every_hook_wrapper_reaches_the_hook_of_a_family_with_a_descriptor
     if (fd == nullptr)
         return false;
-    // rule: Part of the rule above that begins "Notification hooks (per-tick living act, shoved,
-    //   created, weapon customised ..."
+    // rule: Notification hooks (per-tick living act, shoved, created, weapon customised at fire,
+    //   melee hit landed, kill, weapon hit target, generator customising a fresh spawn) run
+    //   alongside the C++ behaviour.
     // tests: ScriptHooksTest.on_melee_hit_reports_ran_and_latches_its_own_failures
     // tests: ScriptHooksTest.an_unclaimed_family_has_no_behavior
     // tests: LevelScriptsTest.generator_customize_spawn_dispatches
@@ -3402,15 +3203,15 @@ bool on_shoved(const FamilyDescriptor* fd, walker* target)
 std::optional<bool> on_fire_weapon(const FamilyDescriptor* fd, walker* self,
                                    walker* weapon)
 {
-    // rule: Part of the rule above that begins "An entity whose family has no descriptor has no
-    //   ..."
+    // rule: An entity whose family has no descriptor has no script behaviour: every family hook
+    //   answers 'not handled' (nullopt/false) and nothing is latched.
     // tests: ScriptHooksTest.an_unclaimed_family_has_no_behavior
     // tests: SemScript3.a_null_descriptor_or_null_stats_has_no_script_behaviour
     // tests: SemScript3.every_hook_wrapper_reaches_the_hook_of_a_family_with_a_descriptor
     if (fd == nullptr)
         return std::nullopt;
-    // rule: Part of the rule above that begins "Result-carrying hooks pass the Lua answer to the
-    //   C++ ..."
+    // rule: Result-carrying hooks pass the Lua answer to the C++ caller, which reads it per its own
+    //   contract.
     // tests: ScriptHooksTest.erroring_hook_is_latched_loudly
     // tests: ScriptHooksTest.healthy_hook_leaves_the_failure_latch_clear
     // tests: ExampleClassPack.its_hooks_run_when_the_engine_dispatches_them
@@ -3423,15 +3224,15 @@ std::optional<bool> on_fire_weapon(const FamilyDescriptor* fd, walker* self,
 
 std::optional<bool> handle_teleport(const FamilyDescriptor* fd, walker* self)
 {
-    // rule: Part of the rule above that begins "An entity whose family has no descriptor has no
-    //   ..."
+    // rule: An entity whose family has no descriptor has no script behaviour: every family hook
+    //   answers 'not handled' (nullopt/false) and nothing is latched.
     // tests: ScriptHooksTest.an_unclaimed_family_has_no_behavior
     // tests: SemScript3.a_null_descriptor_or_null_stats_has_no_script_behaviour
     // tests: SemScript3.every_hook_wrapper_reaches_the_hook_of_a_family_with_a_descriptor
     if (fd == nullptr)
         return std::nullopt;
-    // rule: Part of the rule above that begins "Result-carrying hooks pass the Lua answer to the
-    //   C++ ..."
+    // rule: Result-carrying hooks pass the Lua answer to the C++ caller, which reads it per its own
+    //   contract.
     // tests: ScriptHooksTest.erroring_hook_is_latched_loudly
     // tests: ScriptHooksTest.healthy_hook_leaves_the_failure_latch_clear
     // tests: ExampleClassPack.its_hooks_run_when_the_engine_dispatches_them
@@ -3443,15 +3244,16 @@ std::optional<bool> handle_teleport(const FamilyDescriptor* fd, walker* self)
 
 bool on_create(const FamilyDescriptor* fd, walker* self)
 {
-    // rule: Part of the rule above that begins "An entity whose family has no descriptor has no
-    //   ..."
+    // rule: An entity whose family has no descriptor has no script behaviour: every family hook
+    //   answers 'not handled' (nullopt/false) and nothing is latched.
     // tests: ScriptHooksTest.an_unclaimed_family_has_no_behavior
     // tests: SemScript3.a_null_descriptor_or_null_stats_has_no_script_behaviour
     // tests: SemScript3.every_hook_wrapper_reaches_the_hook_of_a_family_with_a_descriptor
     if (fd == nullptr)
         return false;
-    // rule: Part of the rule above that begins "Notification hooks (per-tick living act, shoved,
-    //   created, weapon customised ..."
+    // rule: Notification hooks (per-tick living act, shoved, created, weapon customised at fire,
+    //   melee hit landed, kill, weapon hit target, generator customising a fresh spawn) run
+    //   alongside the C++ behaviour.
     // tests: ScriptHooksTest.on_melee_hit_reports_ran_and_latches_its_own_failures
     // tests: ScriptHooksTest.an_unclaimed_family_has_no_behavior
     // tests: LevelScriptsTest.generator_customize_spawn_dispatches
@@ -3466,15 +3268,16 @@ bool on_create(const FamilyDescriptor* fd, walker* self)
 
 bool customize_weapon(const FamilyDescriptor* fd, walker* self, walker* weapon)
 {
-    // rule: Part of the rule above that begins "An entity whose family has no descriptor has no
-    //   ..."
+    // rule: An entity whose family has no descriptor has no script behaviour: every family hook
+    //   answers 'not handled' (nullopt/false) and nothing is latched.
     // tests: ScriptHooksTest.an_unclaimed_family_has_no_behavior
     // tests: SemScript3.a_null_descriptor_or_null_stats_has_no_script_behaviour
     // tests: SemScript3.every_hook_wrapper_reaches_the_hook_of_a_family_with_a_descriptor
     if (fd == nullptr)
         return false;
-    // rule: Part of the rule above that begins "Notification hooks (per-tick living act, shoved,
-    //   created, weapon customised ..."
+    // rule: Notification hooks (per-tick living act, shoved, created, weapon customised at fire,
+    //   melee hit landed, kill, weapon hit target, generator customising a fresh spawn) run
+    //   alongside the C++ behaviour.
     // tests: ScriptHooksTest.on_melee_hit_reports_ran_and_latches_its_own_failures
     // tests: ScriptHooksTest.an_unclaimed_family_has_no_behavior
     // tests: LevelScriptsTest.generator_customize_spawn_dispatches
@@ -3489,15 +3292,15 @@ bool customize_weapon(const FamilyDescriptor* fd, walker* self, walker* weapon)
 
 std::optional<bool> on_ani_complete(const FamilyDescriptor* fd, walker* self)
 {
-    // rule: Part of the rule above that begins "An entity whose family has no descriptor has no
-    //   ..."
+    // rule: An entity whose family has no descriptor has no script behaviour: every family hook
+    //   answers 'not handled' (nullopt/false) and nothing is latched.
     // tests: ScriptHooksTest.an_unclaimed_family_has_no_behavior
     // tests: SemScript3.a_null_descriptor_or_null_stats_has_no_script_behaviour
     // tests: SemScript3.every_hook_wrapper_reaches_the_hook_of_a_family_with_a_descriptor
     if (fd == nullptr)
         return std::nullopt;
-    // rule: Part of the rule above that begins "Result-carrying hooks pass the Lua answer to the
-    //   C++ ..."
+    // rule: Result-carrying hooks pass the Lua answer to the C++ caller, which reads it per its own
+    //   contract.
     // tests: ScriptHooksTest.erroring_hook_is_latched_loudly
     // tests: ScriptHooksTest.healthy_hook_leaves_the_failure_latch_clear
     // tests: ExampleClassPack.its_hooks_run_when_the_engine_dispatches_them
@@ -3509,15 +3312,16 @@ std::optional<bool> on_ani_complete(const FamilyDescriptor* fd, walker* self)
 
 bool on_melee_hit(const FamilyDescriptor* fd, walker* self, walker* target)
 {
-    // rule: Part of the rule above that begins "An entity whose family has no descriptor has no
-    //   ..."
+    // rule: An entity whose family has no descriptor has no script behaviour: every family hook
+    //   answers 'not handled' (nullopt/false) and nothing is latched.
     // tests: ScriptHooksTest.an_unclaimed_family_has_no_behavior
     // tests: SemScript3.a_null_descriptor_or_null_stats_has_no_script_behaviour
     // tests: SemScript3.every_hook_wrapper_reaches_the_hook_of_a_family_with_a_descriptor
     if (fd == nullptr)
         return false;
-    // rule: Part of the rule above that begins "Notification hooks (per-tick living act, shoved,
-    //   created, weapon customised ..."
+    // rule: Notification hooks (per-tick living act, shoved, created, weapon customised at fire,
+    //   melee hit landed, kill, weapon hit target, generator customising a fresh spawn) run
+    //   alongside the C++ behaviour.
     // tests: ScriptHooksTest.on_melee_hit_reports_ran_and_latches_its_own_failures
     // tests: ScriptHooksTest.an_unclaimed_family_has_no_behavior
     // tests: LevelScriptsTest.generator_customize_spawn_dispatches
@@ -3532,15 +3336,16 @@ bool on_melee_hit(const FamilyDescriptor* fd, walker* self, walker* target)
 
 bool on_kill(const FamilyDescriptor* fd, walker* self, walker* victim)
 {
-    // rule: Part of the rule above that begins "An entity whose family has no descriptor has no
-    //   ..."
+    // rule: An entity whose family has no descriptor has no script behaviour: every family hook
+    //   answers 'not handled' (nullopt/false) and nothing is latched.
     // tests: ScriptHooksTest.an_unclaimed_family_has_no_behavior
     // tests: SemScript3.a_null_descriptor_or_null_stats_has_no_script_behaviour
     // tests: SemScript3.every_hook_wrapper_reaches_the_hook_of_a_family_with_a_descriptor
     if (fd == nullptr)
         return false;
-    // rule: Part of the rule above that begins "Notification hooks (per-tick living act, shoved,
-    //   created, weapon customised ..."
+    // rule: Notification hooks (per-tick living act, shoved, created, weapon customised at fire,
+    //   melee hit landed, kill, weapon hit target, generator customising a fresh spawn) run
+    //   alongside the C++ behaviour.
     // tests: ScriptHooksTest.on_melee_hit_reports_ran_and_latches_its_own_failures
     // tests: ScriptHooksTest.an_unclaimed_family_has_no_behavior
     // tests: LevelScriptsTest.generator_customize_spawn_dispatches
@@ -3556,15 +3361,15 @@ bool on_kill(const FamilyDescriptor* fd, walker* self, walker* victim)
 std::optional<bool> weapon_on_death(const WeaponFamilyDescriptor* wfd,
                                     weap* self)
 {
-    // rule: Part of the rule above that begins "An entity whose family has no descriptor has no
-    //   ..."
+    // rule: An entity whose family has no descriptor has no script behaviour: every family hook
+    //   answers 'not handled' (nullopt/false) and nothing is latched.
     // tests: ScriptHooksTest.an_unclaimed_family_has_no_behavior
     // tests: SemScript3.a_null_descriptor_or_null_stats_has_no_script_behaviour
     // tests: SemScript3.every_hook_wrapper_reaches_the_hook_of_a_family_with_a_descriptor
     if (wfd == nullptr)
         return std::nullopt;
-    // rule: Part of the rule above that begins "Result-carrying hooks pass the Lua answer to the
-    //   C++ ..."
+    // rule: Result-carrying hooks pass the Lua answer to the C++ caller, which reads it per its own
+    //   contract.
     // tests: ScriptHooksTest.erroring_hook_is_latched_loudly
     // tests: ScriptHooksTest.healthy_hook_leaves_the_failure_latch_clear
     // tests: ExampleClassPack.its_hooks_run_when_the_engine_dispatches_them
@@ -3578,15 +3383,15 @@ std::optional<bool> weapon_on_death(const WeaponFamilyDescriptor* wfd,
 std::optional<bool> weapon_on_animate(const WeaponFamilyDescriptor* wfd,
                                       weap* self)
 {
-    // rule: Part of the rule above that begins "An entity whose family has no descriptor has no
-    //   ..."
+    // rule: An entity whose family has no descriptor has no script behaviour: every family hook
+    //   answers 'not handled' (nullopt/false) and nothing is latched.
     // tests: ScriptHooksTest.an_unclaimed_family_has_no_behavior
     // tests: SemScript3.a_null_descriptor_or_null_stats_has_no_script_behaviour
     // tests: SemScript3.every_hook_wrapper_reaches_the_hook_of_a_family_with_a_descriptor
     if (wfd == nullptr)
         return std::nullopt;
-    // rule: Part of the rule above that begins "Result-carrying hooks pass the Lua answer to the
-    //   C++ ..."
+    // rule: Result-carrying hooks pass the Lua answer to the C++ caller, which reads it per its own
+    //   contract.
     // tests: ScriptHooksTest.erroring_hook_is_latched_loudly
     // tests: ScriptHooksTest.healthy_hook_leaves_the_failure_latch_clear
     // tests: ExampleClassPack.its_hooks_run_when_the_engine_dispatches_them
@@ -3600,15 +3405,16 @@ std::optional<bool> weapon_on_animate(const WeaponFamilyDescriptor* wfd,
 bool weapon_on_hit_target(const WeaponFamilyDescriptor* wfd, walker* weapon,
                           walker* target, walker* owner)
 {
-    // rule: Part of the rule above that begins "An entity whose family has no descriptor has no
-    //   ..."
+    // rule: An entity whose family has no descriptor has no script behaviour: every family hook
+    //   answers 'not handled' (nullopt/false) and nothing is latched.
     // tests: ScriptHooksTest.an_unclaimed_family_has_no_behavior
     // tests: SemScript3.a_null_descriptor_or_null_stats_has_no_script_behaviour
     // tests: SemScript3.every_hook_wrapper_reaches_the_hook_of_a_family_with_a_descriptor
     if (wfd == nullptr)
         return false;
-    // rule: Part of the rule above that begins "Notification hooks (per-tick living act, shoved,
-    //   created, weapon customised ..."
+    // rule: Notification hooks (per-tick living act, shoved, created, weapon customised at fire,
+    //   melee hit landed, kill, weapon hit target, generator customising a fresh spawn) run
+    //   alongside the C++ behaviour.
     // tests: ScriptHooksTest.on_melee_hit_reports_ran_and_latches_its_own_failures
     // tests: ScriptHooksTest.an_unclaimed_family_has_no_behavior
     // tests: LevelScriptsTest.generator_customize_spawn_dispatches
@@ -3625,15 +3431,15 @@ bool weapon_on_hit_target(const WeaponFamilyDescriptor* wfd, walker* weapon,
 std::optional<bool> effect_on_act(const EffectFamilyDescriptor* efd,
                                   effect* self)
 {
-    // rule: Part of the rule above that begins "An entity whose family has no descriptor has no
-    //   ..."
+    // rule: An entity whose family has no descriptor has no script behaviour: every family hook
+    //   answers 'not handled' (nullopt/false) and nothing is latched.
     // tests: ScriptHooksTest.an_unclaimed_family_has_no_behavior
     // tests: SemScript3.a_null_descriptor_or_null_stats_has_no_script_behaviour
     // tests: SemScript3.every_hook_wrapper_reaches_the_hook_of_a_family_with_a_descriptor
     if (efd == nullptr)
         return std::nullopt;
-    // rule: Part of the rule above that begins "Result-carrying hooks pass the Lua answer to the
-    //   C++ ..."
+    // rule: Result-carrying hooks pass the Lua answer to the C++ caller, which reads it per its own
+    //   contract.
     // tests: ScriptHooksTest.erroring_hook_is_latched_loudly
     // tests: ScriptHooksTest.healthy_hook_leaves_the_failure_latch_clear
     // tests: ExampleClassPack.its_hooks_run_when_the_engine_dispatches_them
@@ -3647,15 +3453,15 @@ std::optional<bool> effect_on_act(const EffectFamilyDescriptor* efd,
 std::optional<bool> effect_on_death(const EffectFamilyDescriptor* efd,
                                     effect* self)
 {
-    // rule: Part of the rule above that begins "An entity whose family has no descriptor has no
-    //   ..."
+    // rule: An entity whose family has no descriptor has no script behaviour: every family hook
+    //   answers 'not handled' (nullopt/false) and nothing is latched.
     // tests: ScriptHooksTest.an_unclaimed_family_has_no_behavior
     // tests: SemScript3.a_null_descriptor_or_null_stats_has_no_script_behaviour
     // tests: SemScript3.every_hook_wrapper_reaches_the_hook_of_a_family_with_a_descriptor
     if (efd == nullptr)
         return std::nullopt;
-    // rule: Part of the rule above that begins "Result-carrying hooks pass the Lua answer to the
-    //   C++ ..."
+    // rule: Result-carrying hooks pass the Lua answer to the C++ caller, which reads it per its own
+    //   contract.
     // tests: ScriptHooksTest.erroring_hook_is_latched_loudly
     // tests: ScriptHooksTest.healthy_hook_leaves_the_failure_latch_clear
     // tests: ExampleClassPack.its_hooks_run_when_the_engine_dispatches_them
@@ -3669,15 +3475,15 @@ std::optional<bool> effect_on_death(const EffectFamilyDescriptor* efd,
 std::optional<bool> treasure_on_eat(const TreasureFamilyDescriptor* tfd,
                                     treasure* self, walker* eater)
 {
-    // rule: Part of the rule above that begins "An entity whose family has no descriptor has no
-    //   ..."
+    // rule: An entity whose family has no descriptor has no script behaviour: every family hook
+    //   answers 'not handled' (nullopt/false) and nothing is latched.
     // tests: ScriptHooksTest.an_unclaimed_family_has_no_behavior
     // tests: SemScript3.a_null_descriptor_or_null_stats_has_no_script_behaviour
     // tests: SemScript3.every_hook_wrapper_reaches_the_hook_of_a_family_with_a_descriptor
     if (tfd == nullptr)
         return std::nullopt;
-    // rule: Part of the rule above that begins "Result-carrying hooks pass the Lua answer to the
-    //   C++ ..."
+    // rule: Result-carrying hooks pass the Lua answer to the C++ caller, which reads it per its own
+    //   contract.
     // tests: ScriptHooksTest.erroring_hook_is_latched_loudly
     // tests: ScriptHooksTest.healthy_hook_leaves_the_failure_latch_clear
     // tests: ExampleClassPack.its_hooks_run_when_the_engine_dispatches_them
@@ -3718,9 +3524,6 @@ VmState* level_vm_state(std::uint32_t kind_bit)
         return nullptr;
     WorldScripts& ws = active_world_scripts();
     VmState* st = get_vm_state(ws.host().impl().L);
-    // rule: Part of the rule above that begins "With no pack Lua at all, or no hook ..."
-    // tests: LevelScriptsTest.no_packs_means_every_level_dispatcher_is_inert
-    // tests: LevelScriptsTest.no_level_hooks_means_no_vm_activity
     if (st == nullptr || (st->level_hook_kinds & kind_bit) == 0)
         return nullptr;
     return st;
@@ -3745,12 +3548,6 @@ bool push_level_hook_fn(lua_State* L, VmState* st, LevelHook kind,
     }
     lua_pop(L, 1);
     lua_rawgeti(L, -1, level_hook_key(kind, -1));
-    // rule: Part of the rule above that begins "A level's own hook takes precedence over the
-    //   wildcard ..."
-    // tests: LevelScriptsTest.wildcard_level_hooks_fire_for_any_level
-    // tests: LevelScriptsTest.other_level_hooks_do_not_fire
-    // tests: LevelScriptsTest.hooks_for_another_level_do_not_fire
-    // tests: SemScript3.a_levels_own_hook_takes_precedence_over_the_wildcard
     if (lua_isfunction(L, -1)) {
         lua_remove(L, -2);
         return true;
@@ -3775,16 +3572,11 @@ std::uint32_t level_hook_kinds_for(int level_id)
     lua_State* L = ws.host().impl().L;
     VmState* st = &vm_state(L);
     std::uint32_t kinds = 0;
-    // rule: Part of the rule above that begins "Diagnostic: which hook kinds a level registers by
-    //   its ..."
-    // tests: LevelScriptsTest.no_level_hooks_means_no_vm_activity
-    // tests: LevelScriptsTest.no_packs_means_every_level_dispatcher_is_inert
-    // tests: LevelScriptsTest.a_family_chunk_registers_level_hooks_in_the_real_pass
     for (const auto& h : kLevelHookNames) {
         lua_rawgeti(L, LUA_REGISTRYINDEX, st->level_hooks_ref);
         lua_rawgeti(L, -1, level_hook_key(h.kind, level_id));
-        // rule: Part of the rule above that begins "Diagnostic: which hook kinds a level registers
-        //   by its ..."
+        // rule: Diagnostic: which hook kinds a level registers by its own id; wildcard
+        //   registrations are deliberately not counted.
         // tests: LevelScriptsTest.no_level_hooks_means_no_vm_activity
         // tests: LevelScriptsTest.no_packs_means_every_level_dispatcher_is_inert
         // tests: LevelScriptsTest.a_family_chunk_registers_level_hooks_in_the_real_pass
@@ -3807,11 +3599,6 @@ void level_load(GameWorld* world)
     if (st == nullptr || world == nullptr)
         return;
     ScriptHost::Impl& impl = st->owner->host().impl();
-    // rule: Part of the rule above that begins "On level start the level's on_load(level_id) runs;
-    //   every tick ..."
-    // tests: LevelScriptsTest.load_and_tick_hooks_fire_in_order
-    // tests: LevelScriptsTest.run_pending_level_on_load_dispatches_once_untensed
-    // tests: LevelScriptsTest.other_level_hooks_do_not_fire
     if (!push_level_hook_fn(impl.L, st, LevelHook::Load, world->id))
         return;
     const std::uint64_t gen = push_dispatch_gen(impl.L);
@@ -3824,16 +3611,16 @@ void level_tick(GameWorld* world)
 {
     VmState* st =
         level_vm_state(1u << static_cast<unsigned>(LevelHook::Tick));
-    // rule: Part of the rule above that begins "On level start the level's on_load(level_id) runs;
-    //   every tick ..."
+    // rule: On level start the level's on_load(level_id) runs; every tick on_tick(level_id,
+    //   level_tick_count) runs; a level without the hook runs nothing.
     // tests: LevelScriptsTest.load_and_tick_hooks_fire_in_order
     // tests: LevelScriptsTest.run_pending_level_on_load_dispatches_once_untensed
     // tests: LevelScriptsTest.other_level_hooks_do_not_fire
     if (st == nullptr || world == nullptr)
         return;
     ScriptHost::Impl& impl = st->owner->host().impl();
-    // rule: Part of the rule above that begins "On level start the level's on_load(level_id) runs;
-    //   every tick ..."
+    // rule: On level start the level's on_load(level_id) runs; every tick on_tick(level_id,
+    //   level_tick_count) runs; a level without the hook runs nothing.
     // tests: LevelScriptsTest.load_and_tick_hooks_fire_in_order
     // tests: LevelScriptsTest.run_pending_level_on_load_dispatches_once_untensed
     // tests: LevelScriptsTest.other_level_hooks_do_not_fire
@@ -3849,7 +3636,8 @@ void level_tick(GameWorld* world)
 
 void level_entity_death(walker* self)
 {
-    // rule: Part of the rule above that begins "With no pack Lua at all, or no hook ..."
+    // rule: With no pack Lua at all, or no hook of this kind registered for any level, the level
+    //   dispatchers do nothing and create no VM (script-less sims stay byte-identical).
     // tests: LevelScriptsTest.no_packs_means_every_level_dispatcher_is_inert
     // tests: LevelScriptsTest.no_level_hooks_means_no_vm_activity
     if (self == nullptr || pack_lua_absent())
@@ -3895,15 +3683,15 @@ void level_entity_death(walker* self)
     if (st->has_entity_hooks && self->entity_id() != 0) {
         lua_rawgeti(L, LUA_REGISTRYINDEX, st->entity_hooks_ref);
         lua_rawgeti(L, -1, static_cast<lua_Integer>(self->entity_id()));
-        // rule: Part of the rule above that begins "An entity's own on_death hook
-        //   (og.set_entity_hooks) fires first and ..."
+        // rule: An entity's own on_death hook (og.set_entity_hooks) fires first and exactly once
+        //   (the entry is consumed).
         // tests: LevelScriptsTest.spawn_and_death_hooks_with_per_entity_override
         // tests: LevelScriptsTest.an_empty_entity_hook_table_still_lets_the_level_hook_fire
         if (lua_istable(L, -1)) {
             lua_rawgeti(L, -1,
                         static_cast<lua_Integer>(LevelHook::EntityDeath));
-            // rule: Part of the rule above that begins "An entity's own on_death hook
-            //   (og.set_entity_hooks) fires first and ..."
+            // rule: An entity's own on_death hook (og.set_entity_hooks) fires first and exactly
+            //   once (the entry is consumed).
             // tests: LevelScriptsTest.spawn_and_death_hooks_with_per_entity_override
             // tests: LevelScriptsTest.an_empty_entity_hook_table_still_lets_the_level_hook_fire
             if (lua_isfunction(L, -1)) {
@@ -3914,8 +3702,8 @@ void level_entity_death(walker* self)
                 lua_remove(L, -2);   // entity_hooks root
                 const std::uint64_t gen = push_dispatch_gen(L);
                 push_walker_handle(L, self, gen);
-                // rule: Part of the rule above that begins "A death is credited to its last
-                //   attacker (owner-chain ..."
+                // rule: A death is credited to its last attacker (owner-chain root, with that
+                //   attacker's team) only if the hit was within 48 ticks.
                 // tests: ModeTick.weapon_kill_attributes_to_owner_chain_root
                 // tests: ModeTick.environment_death_passes_nil_killer
                 // tests: ModeTick.stale_attacker_stamp_reads_as_environment
@@ -3949,8 +3737,8 @@ void level_entity_death(walker* self)
     // plumbing: no current world guard
     if (world == nullptr)
         return;
-    // rule: Part of the rule above that begins "The level-wide on_entity_death(ent, killer,
-    //   killer_team) fires for every living/generator ..."
+    // rule: The level-wide on_entity_death(ent, killer, killer_team) fires for every
+    //   living/generator death on a level that registers it, after the per-entity hook.
     // tests: LevelScriptsTest.spawn_and_death_hooks_with_per_entity_override
     // tests: LevelScriptsTest.generator_deaths_dispatch_entity_death
     // tests: LevelScriptsTest.no_level_hooks_means_no_vm_activity
@@ -3958,8 +3746,8 @@ void level_entity_death(walker* self)
         return;
     const std::uint64_t gen = push_dispatch_gen(L);
     push_walker_handle(L, self, gen);
-    // rule: Part of the rule above that begins "A death is credited to its last attacker
-    //   (owner-chain ..."
+    // rule: A death is credited to its last attacker (owner-chain root, with that attacker's team)
+    //   only if the hit was within 48 ticks.
     // tests: ModeTick.weapon_kill_attributes_to_owner_chain_root
     // tests: ModeTick.environment_death_passes_nil_killer
     // tests: ModeTick.stale_attacker_stamp_reads_as_environment
@@ -3989,16 +3777,16 @@ void level_entity_spawn(walker* spawned)
     // plumbing: current_game null -> world null
     GameWorld* world =
         (current_game != nullptr) ? current_game->world : nullptr;
-    // rule: Part of the rule above that begins "Each living spawned into a level that registers
-    //   on_entity_spawn ..."
+    // rule: Each living spawned into a level that registers on_entity_spawn is passed to it (fx
+    //   spawns are not).
     // tests: LevelScriptsTest.spawn_and_death_hooks_with_per_entity_override
     // tests: LevelScriptsTest.fx_spawns_do_not_fire_entity_spawn
     // tests: LevelScriptsTest.no_level_hooks_means_no_vm_activity
     if (world == nullptr)
         return;
     ScriptHost::Impl& impl = st->owner->host().impl();
-    // rule: Part of the rule above that begins "Each living spawned into a level that registers
-    //   on_entity_spawn ..."
+    // rule: Each living spawned into a level that registers on_entity_spawn is passed to it (fx
+    //   spawns are not).
     // tests: LevelScriptsTest.spawn_and_death_hooks_with_per_entity_override
     // tests: LevelScriptsTest.fx_spawns_do_not_fire_entity_spawn
     // tests: LevelScriptsTest.no_level_hooks_means_no_vm_activity
@@ -4024,12 +3812,6 @@ bool level_mode_init(GameWorld* world)
         return false;
     ScriptHost::Impl& impl = st->owner->host().impl();
     lua_State* L = impl.L;
-    // rule: Part of the rule above that begins "A scripted mode activates only if its on_mode_init
-    //   runs ..."
-    // tests: ModeTick.run_tick_refuses_failed_init_world_when_called_directly
-    // tests: ModeTick.stage_init_failed_shape_defaults_and_stays_classic
-    // tests: ModeTick.stage_init_activates_without_a_tick
-    // tests: ModeTick.scripted_bit_plus_hooks_activates_once
     if (!push_level_hook_fn(L, st, LevelHook::ModeInit, world->id))
         return false;
     const std::uint64_t gen = push_dispatch_gen(L);
@@ -4056,11 +3838,6 @@ void level_mode_tick(GameWorld* world)
     if (st == nullptr || world == nullptr)
         return;
     ScriptHost::Impl& impl = st->owner->host().impl();
-    // rule: Part of the rule above that begins "An active mode's on_mode_tick(level, tick) runs
-    //   each tick on ..."
-    // tests: ModeTick.scripted_bit_plus_hooks_activates_once
-    // tests: ModeTick.stage_init_activates_without_a_tick
-    // tests: SemScript3.an_active_mode_without_on_mode_tick_runs_no_mode_tick
     if (!push_level_hook_fn(impl.L, st, LevelHook::ModeTick, world->id))
         return;
     const std::uint64_t gen = push_dispatch_gen(impl.L);
@@ -4083,11 +3860,6 @@ void level_respawn(GameWorld* world, walker* revived)
     if (st == nullptr || world == nullptr || revived == nullptr)
         return;
     ScriptHost::Impl& impl = st->owner->host().impl();
-    // rule: Part of the rule above that begins "A revived walker is handed to the level's
-    //   on_respawn ..."
-    // tests: ModesCtf.dead_hero_revives_at_team_anchor_with_cursor_rotation
-    // tests: ModeTick.respawn_fires_in_place_and_dispatches_hook
-    // tests: RespawnEngine.player_corpse_revives_in_place_with_control_preserved
     if (!push_level_hook_fn(impl.L, st, LevelHook::Respawn, world->id))
         return;
     const std::uint64_t gen = push_dispatch_gen(impl.L);
@@ -4144,13 +3916,13 @@ short level_damage_gate(walker* target, walker* attacker, short amount)
     //   to gate; returns the authored amount.
     GameWorld* world =
         (current_game != nullptr) ? current_game->world : nullptr;
-    // plumbing: current_game / world null guard in level_damage_gate: no live world means no level
-    //   to gate; returns the authored amount.
     if (world == nullptr)
         return amount;
     ScriptHost::Impl& impl = st->owner->host().impl();
     lua_State* L = impl.L;
-    // rule: Part of the rule above that begins "A hit on a level with no on_damage hook ..."
+    // rule: A hit on a level with no on_damage hook (none registered at all, or only for another
+    //   level id) lands the authored amount untouched - the classic damage path is byte-identical
+    //   when no scripted mode gates damage.
     // tests: ModeTick.damage_gate_classic_path_untouched_without_hook
     // tests: ModeTick.damage_gate_nil_keeps_authored_amount
     if (!push_level_hook_fn(L, st, LevelHook::Damage, world->id))
@@ -4169,7 +3941,7 @@ short level_damage_gate(walker* target, walker* attacker, short amount)
     //   fractions truncated (NaN and negatives land on 0; a 0 replacement is a zero-damage hit
     //   whose death check still runs in walker::attack), and a hook error keeps the authored amount
     //   and records the error. Same gate is consulted by the lethal special path in
-    //   walker_specials.cpp:435, where a replacement below the lethal amount is ordinary damage and
+    //   walker_specials.cpp, where a replacement below the lethal amount is ordinary damage and
     //   never a kill.
     // tests: ModeTick.damage_gate_error_keeps_authored_amount
     // tests: ModeTick.damage_gate_false_cancels_the_hit
@@ -4184,8 +3956,7 @@ short level_damage_gate(walker* target, walker* attacker, short amount)
     // tests: ModeTick.damage_gate_zero_still_kills_a_zero_hp_target
     // tests: ModeTick.damage_gate_granting_a_ward_mid_hit_lands_no_damage
     if (impl.protected_call("level:on_damage", 3, 1)) {
-        // rule: Part of the rule above that begins "The level's on_damage answer decides the hit:
-        //   false cancels ..."
+        // rule: The level's on_damage answer decides the hit.
         // tests: ModeTick.damage_gate_error_keeps_authored_amount
         // tests: ModeTick.damage_gate_false_cancels_the_hit
         // tests: ModeTick.damage_gate_false_spares_a_zero_hp_target
@@ -4200,8 +3971,7 @@ short level_damage_gate(walker* target, walker* attacker, short amount)
         // tests: ModeTick.damage_gate_granting_a_ward_mid_hit_lands_no_damage
         if (lua_isboolean(L, -1)) {
             // false = cancel the hit outright; true = keep the amount.
-            // rule: Part of the rule above that begins "The level's on_damage answer decides the
-            //   hit: false cancels ..."
+            // rule: The level's on_damage answer decides the hit.
             // tests: ModeTick.damage_gate_error_keeps_authored_amount
             // tests: ModeTick.damage_gate_false_cancels_the_hit
             // tests: ModeTick.damage_gate_false_spares_a_zero_hp_target
@@ -4225,8 +3995,7 @@ short level_damage_gate(walker* target, walker* attacker, short amount)
             // behavior (UBSan flags it as float-cast-overflow). Written this
             // way NaN takes the first branch and lands on 0. Every ordinary
             // value behaves exactly as before.
-            // rule: Part of the rule above that begins "The level's on_damage answer decides the
-            //   hit: false cancels ..."
+            // rule: The level's on_damage answer decides the hit.
             // tests: ModeTick.damage_gate_error_keeps_authored_amount
             // tests: ModeTick.damage_gate_false_cancels_the_hit
             // tests: ModeTick.damage_gate_false_spares_a_zero_hp_target
@@ -4287,8 +4056,9 @@ public:
     }
     ~CampaignDispatchScope()
     {
-        // rule: Part of the rule above that begins "Every campaign hook (picker page/action, base
-        //   camp zone, match ..."
+        // rule: Every campaign hook (picker page/action, base camp zone, match knobs, lineup power)
+        //   runs inside the campaign fence - sim bindings such as the RNG and world mutators raise
+        //   - and the fence is only raised at top-level entry.
         // tests: CampaignHooksTest.fence_walk_everything_outside_the_allowlist_errors
         // tests: CampaignHooksTest.lineup_is_fenced_like_every_other_campaign_hook
         // tests: CampaignHooksTest.zone_dispatch_is_fenced_and_brackets_cleanly
@@ -4324,19 +4094,11 @@ VmState* campaign_vm_state()
     WorldScripts& ws = active_world_scripts();
     ScriptHost::Impl& impl = ws.host().impl();
     VmState* st = get_vm_state(impl.L);
-    // rule: Part of the rule above that begins "One campaign, one book: with no pack Lua or ..."
-    // tests: CampaignHooksTest.no_registration_means_no_picker
-    // tests: CampaignHooksTest.registration_happy_path_serves_picker_and_vars
-    // tests: CampaignHooksTest.duplicate_registration_conflicts_and_reports_once
     if (st == nullptr || !st->campaign_registered)
         return nullptr;
-    // rule: Part of the rule above that begins "One campaign, one book: with no pack Lua or ..."
-    // tests: CampaignHooksTest.no_registration_means_no_picker
-    // tests: CampaignHooksTest.registration_happy_path_serves_picker_and_vars
-    // tests: CampaignHooksTest.duplicate_registration_conflicts_and_reports_once
     if (!st->campaign_conflict_source.empty()) {
-        // rule: Part of the rule above that begins "One campaign, one book: with no pack Lua or
-        //   ..."
+        // rule: One campaign, one book: with no pack Lua or no og.register_campaign_hooks there is
+        //   no scripted picker.
         // tests: CampaignHooksTest.no_registration_means_no_picker
         // tests: CampaignHooksTest.registration_happy_path_serves_picker_and_vars
         // tests: CampaignHooksTest.duplicate_registration_conflicts_and_reports_once
@@ -4376,12 +4138,6 @@ VmState* default_lineup_vm_state()
         return nullptr;
     WorldScripts& ws = active_world_scripts();
     VmState* st = get_vm_state(ws.host().impl().L);
-    // rule: Part of the rule above that begins "The shipped pack's default lineup pricer answers
-    //   whenever one ..."
-    // tests: CampaignHooksTest.default_lineup_prices_with_no_campaign_book
-    // tests: CampaignHooksTest.a_conflicted_book_cannot_poison_the_default
-    // tests: CampaignHooksTest.no_book_and_no_default_is_no_metric
-    // tests: LevelScriptsTest.no_packs_means_every_level_dispatcher_is_inert
     if (st == nullptr || st->owner == nullptr ||
         st->default_lineup_power_ref < 0)
         return nullptr;
@@ -4435,20 +4191,10 @@ bool read_string_field(lua_State* L, int idx, const char* key,
     // tests: CampaignHooksTest.page_parse_happy_path
     lua_rawget(L, idx > 0 ? idx : idx - 1);
     present = !lua_isnil(L, -1);
-    // rule: Part of the rule above that begins "Every optional field a campaign script returns
-    //   follows one ..."
-    // tests: CampaignHooksTest.malformed_pages_answer_no_scripted_picker
-    // tests: CampaignHooksTest.zone_bounds_and_malformed_shapes_fall_to_default
-    // tests: CampaignHooksTest.page_parse_happy_path
     if (!present) {
         lua_pop(L, 1);
         return true;
     }
-    // rule: Part of the rule above that begins "Every optional field a campaign script returns
-    //   follows one ..."
-    // tests: CampaignHooksTest.malformed_pages_answer_no_scripted_picker
-    // tests: CampaignHooksTest.zone_bounds_and_malformed_shapes_fall_to_default
-    // tests: CampaignHooksTest.page_parse_happy_path
     if (lua_type(L, -1) != LUA_TSTRING) {
         lua_pop(L, 1);
         return false;
@@ -4466,15 +4212,13 @@ bool read_int_field_opt(lua_State* L, int idx, const char* key, int& out,
                         bool& present)
 {
     lua_pushstring(L, key);
-    // rule: Part of the rule above that begins "Every optional field a campaign script returns
-    //   follows one ..."
+    // rule: Every optional field a campaign script returns follows one discipline.
     // tests: CampaignHooksTest.malformed_pages_answer_no_scripted_picker
     // tests: CampaignHooksTest.zone_bounds_and_malformed_shapes_fall_to_default
     // tests: CampaignHooksTest.page_parse_happy_path
     lua_rawget(L, idx > 0 ? idx : idx - 1);
     present = !lua_isnil(L, -1);
-    // rule: Part of the rule above that begins "Every optional field a campaign script returns
-    //   follows one ..."
+    // rule: Every optional field a campaign script returns follows one discipline.
     // tests: CampaignHooksTest.malformed_pages_answer_no_scripted_picker
     // tests: CampaignHooksTest.zone_bounds_and_malformed_shapes_fall_to_default
     // tests: CampaignHooksTest.page_parse_happy_path
@@ -4482,8 +4226,7 @@ bool read_int_field_opt(lua_State* L, int idx, const char* key, int& out,
         lua_pop(L, 1);
         return true;
     }
-    // rule: Part of the rule above that begins "Every optional field a campaign script returns
-    //   follows one ..."
+    // rule: Every optional field a campaign script returns follows one discipline.
     // tests: CampaignHooksTest.malformed_pages_answer_no_scripted_picker
     // tests: CampaignHooksTest.zone_bounds_and_malformed_shapes_fall_to_default
     // tests: CampaignHooksTest.page_parse_happy_path
@@ -4508,14 +4251,12 @@ bool read_int_field(lua_State* L, int idx, const char* key, int& out)
 bool read_bool_field(lua_State* L, int idx, const char* key, bool& out)
 {
     lua_pushstring(L, key);
-    // rule: Part of the rule above that begins "Every optional field a campaign script returns
-    //   follows one ..."
+    // rule: Every optional field a campaign script returns follows one discipline.
     // tests: CampaignHooksTest.malformed_pages_answer_no_scripted_picker
     // tests: CampaignHooksTest.zone_bounds_and_malformed_shapes_fall_to_default
     // tests: CampaignHooksTest.page_parse_happy_path
     lua_rawget(L, idx > 0 ? idx : idx - 1);
-    // rule: Part of the rule above that begins "Every optional field a campaign script returns
-    //   follows one ..."
+    // rule: Every optional field a campaign script returns follows one discipline.
     // tests: CampaignHooksTest.malformed_pages_answer_no_scripted_picker
     // tests: CampaignHooksTest.zone_bounds_and_malformed_shapes_fall_to_default
     // tests: CampaignHooksTest.page_parse_happy_path
@@ -4523,8 +4264,7 @@ bool read_bool_field(lua_State* L, int idx, const char* key, bool& out)
         lua_pop(L, 1);
         return true;
     }
-    // rule: Part of the rule above that begins "Every optional field a campaign script returns
-    //   follows one ..."
+    // rule: Every optional field a campaign script returns follows one discipline.
     // tests: CampaignHooksTest.malformed_pages_answer_no_scripted_picker
     // tests: CampaignHooksTest.zone_bounds_and_malformed_shapes_fall_to_default
     // tests: CampaignHooksTest.page_parse_happy_path
@@ -4547,16 +4287,10 @@ bool parse_entry_kind(const std::string& s, CampaignPageEntry::Kind& out)
         out = CampaignPageEntry::Kind::Level;
         return true;
     }
-    // rule: Part of the rule above that begins "A picker row (and a zone action row) is ..."
-    // tests: CampaignHooksTest.page_parse_happy_path
-    // tests: CampaignHooksTest.malformed_pages_answer_no_scripted_picker
     if (s == "page") {
         out = CampaignPageEntry::Kind::Page;
         return true;
     }
-    // rule: Part of the rule above that begins "A picker row (and a zone action row) is ..."
-    // tests: CampaignHooksTest.page_parse_happy_path
-    // tests: CampaignHooksTest.malformed_pages_answer_no_scripted_picker
     if (s == "action") {
         out = CampaignPageEntry::Kind::Action;
         return true;
@@ -4585,82 +4319,33 @@ bool read_page_entry(lua_State* L, const std::string& at,
         return false;
     }
     std::string kind;
-    // rule: Part of the rule above that begins "A picker/zone row must carry a non-empty string id
-    //   ..."
-    // tests: CampaignHooksTest.malformed_pages_answer_no_scripted_picker
-    // tests: CampaignHooksTest.zone_bounds_and_malformed_shapes_fall_to_default
-    // tests: CampaignHooksTest.page_parse_happy_path
-    // tests: WestlandsFireCamp.provisions_stack_to_the_cap_and_retire
-    // tests: SemScript3.a_page_entry_id_must_be_a_non_empty_string
     if (!read_string_field(L, -1, "kind", kind, present) || !present ||
         !parse_entry_kind(kind, entry.kind)) {
         bad = at + ".kind must be \"level\", \"page\" or \"action\"";
         return false;
     }
-    // rule: Part of the rule above that begins "A picker/zone row must carry a non-empty string id
-    //   ..."
-    // tests: CampaignHooksTest.malformed_pages_answer_no_scripted_picker
-    // tests: CampaignHooksTest.zone_bounds_and_malformed_shapes_fall_to_default
-    // tests: CampaignHooksTest.page_parse_happy_path
-    // tests: WestlandsFireCamp.provisions_stack_to_the_cap_and_retire
-    // tests: SemScript3.a_page_entry_id_must_be_a_non_empty_string
     if (!read_string_field(L, -1, "label", entry.label, present)) {
         bad = at + ".label is not a string";
         return false;
     }
-    // rule: Part of the rule above that begins "A picker/zone row must carry a non-empty string id
-    //   ..."
-    // tests: CampaignHooksTest.malformed_pages_answer_no_scripted_picker
-    // tests: CampaignHooksTest.zone_bounds_and_malformed_shapes_fall_to_default
-    // tests: CampaignHooksTest.page_parse_happy_path
-    // tests: WestlandsFireCamp.provisions_stack_to_the_cap_and_retire
-    // tests: SemScript3.a_page_entry_id_must_be_a_non_empty_string
     if (!read_string_field(L, -1, "note", entry.note, present)) {
         bad = at + ".note is not a string";
         return false;
     }
-    // rule: Part of the rule above that begins "A picker/zone row must carry a non-empty string id
-    //   ..."
-    // tests: CampaignHooksTest.malformed_pages_answer_no_scripted_picker
-    // tests: CampaignHooksTest.zone_bounds_and_malformed_shapes_fall_to_default
-    // tests: CampaignHooksTest.page_parse_happy_path
-    // tests: WestlandsFireCamp.provisions_stack_to_the_cap_and_retire
-    // tests: SemScript3.a_page_entry_id_must_be_a_non_empty_string
     if (!read_int_field(L, -1, "level", entry.level)) {
         bad = at + ".level is not an integer";
         return false;
     }
-    // rule: Part of the rule above that begins "A picker/zone row must carry a non-empty string id
-    //   ..."
-    // tests: CampaignHooksTest.malformed_pages_answer_no_scripted_picker
-    // tests: CampaignHooksTest.zone_bounds_and_malformed_shapes_fall_to_default
-    // tests: CampaignHooksTest.page_parse_happy_path
-    // tests: WestlandsFireCamp.provisions_stack_to_the_cap_and_retire
-    // tests: SemScript3.a_page_entry_id_must_be_a_non_empty_string
     if (!read_int_field(L, -1, "cost", entry.cost)) {
         bad = at + ".cost is not an integer";
         return false;
     }
-    // rule: Part of the rule above that begins "A picker/zone row must carry a non-empty string id
-    //   ..."
-    // tests: CampaignHooksTest.malformed_pages_answer_no_scripted_picker
-    // tests: CampaignHooksTest.zone_bounds_and_malformed_shapes_fall_to_default
-    // tests: CampaignHooksTest.page_parse_happy_path
-    // tests: WestlandsFireCamp.provisions_stack_to_the_cap_and_retire
-    // tests: SemScript3.a_page_entry_id_must_be_a_non_empty_string
     if (!read_bool_field(L, -1, "done", entry.done)) {
         bad = at + ".done is not a boolean";
         return false;
     }
     // #207: the replay mark (level rows; arm-only-when-cleared is the
     // engine's check, not the script's).
-    // rule: Part of the rule above that begins "A picker/zone row must carry a non-empty string id
-    //   ..."
-    // tests: CampaignHooksTest.malformed_pages_answer_no_scripted_picker
-    // tests: CampaignHooksTest.zone_bounds_and_malformed_shapes_fall_to_default
-    // tests: CampaignHooksTest.page_parse_happy_path
-    // tests: WestlandsFireCamp.provisions_stack_to_the_cap_and_retire
-    // tests: SemScript3.a_page_entry_id_must_be_a_non_empty_string
     if (!read_bool_field(L, -1, "replay", entry.replay)) {
         bad = at + ".replay is not a boolean";
         return false;
@@ -4683,8 +4368,6 @@ bool parse_campaign_page(lua_State* L, ScriptHost::Impl& impl,
                                         luaL_typename(L, -1) +
                                         ", not a page table");
     bool present = false;
-    // rule: Part of the rule above that begins "A picker page must be a table with a ..."
-    // tests: CampaignHooksTest.malformed_pages_answer_no_scripted_picker
     if (!read_string_field(L, -1, "title", out.title, present) || !present)
         return malformed_page(impl, "'title' is missing or not a string");
 
@@ -4696,8 +4379,8 @@ bool parse_campaign_page(lua_State* L, ScriptHost::Impl& impl,
     // tests: CampaignHooksTest.malformed_pages_answer_no_scripted_picker
     // tests: CampaignHooksTest.page_parse_happy_path
     if (!lua_isnil(L, -1)) {
-        // rule: Part of the rule above that begins "A page's text lines are optional; when present
-        //   they ..."
+        // rule: A page's text lines are optional; when present they must be an array of strings,
+        //   and the engine CLIPS (not rejects) past 6 lines.
         // tests: CampaignHooksTest.page_parse_clips_entries_and_lines
         // tests: CampaignHooksTest.malformed_pages_answer_no_scripted_picker
         // tests: CampaignHooksTest.page_parse_happy_path
@@ -4708,15 +4391,15 @@ bool parse_campaign_page(lua_State* L, ScriptHost::Impl& impl,
         const lua_Integer count = std::min<lua_Integer>(
             static_cast<lua_Integer>(lua_rawlen(L, -1)),
             kCampaignPageMaxLines);
-        // rule: Part of the rule above that begins "A page's text lines are optional; when present
-        //   they ..."
+        // rule: A page's text lines are optional; when present they must be an array of strings,
+        //   and the engine CLIPS (not rejects) past 6 lines.
         // tests: CampaignHooksTest.page_parse_clips_entries_and_lines
         // tests: CampaignHooksTest.malformed_pages_answer_no_scripted_picker
         // tests: CampaignHooksTest.page_parse_happy_path
         for (lua_Integer i = 1; i <= count; i++) {
             lua_rawgeti(L, -1, i);
-            // rule: Part of the rule above that begins "A page's text lines are optional; when
-            //   present they ..."
+            // rule: A page's text lines are optional; when present they must be an array of
+            //   strings, and the engine CLIPS (not rejects) past 6 lines.
             // tests: CampaignHooksTest.page_parse_clips_entries_and_lines
             // tests: CampaignHooksTest.malformed_pages_answer_no_scripted_picker
             // tests: CampaignHooksTest.page_parse_happy_path
@@ -4741,8 +4424,8 @@ bool parse_campaign_page(lua_State* L, ScriptHost::Impl& impl,
     // tests: CampaignHooksTest.malformed_pages_answer_no_scripted_picker
     // tests: CampaignHooksTest.page_parse_happy_path
     if (!lua_isnil(L, -1)) {
-        // rule: Part of the rule above that begins "A page's rows are optional; when present they
-        //   must ..."
+        // rule: A page's rows are optional; when present they must be an array of row tables,
+        //   clipped at 24; one malformed row rejects the whole page.
         // tests: CampaignHooksTest.page_parse_clips_entries_and_lines
         // tests: CampaignHooksTest.malformed_pages_answer_no_scripted_picker
         // tests: CampaignHooksTest.page_parse_happy_path
@@ -4753,16 +4436,16 @@ bool parse_campaign_page(lua_State* L, ScriptHost::Impl& impl,
         const lua_Integer count = std::min<lua_Integer>(
             static_cast<lua_Integer>(lua_rawlen(L, -1)),
             kCampaignPageMaxEntries);
-        // rule: Part of the rule above that begins "A page's rows are optional; when present they
-        //   must ..."
+        // rule: A page's rows are optional; when present they must be an array of row tables,
+        //   clipped at 24; one malformed row rejects the whole page.
         // tests: CampaignHooksTest.page_parse_clips_entries_and_lines
         // tests: CampaignHooksTest.malformed_pages_answer_no_scripted_picker
         // tests: CampaignHooksTest.page_parse_happy_path
         for (lua_Integer i = 1; i <= count; i++) {
             const std::string at = "entries[" + std::to_string(i) + "]";
             lua_rawgeti(L, -1, i);
-            // rule: Part of the rule above that begins "A page's rows are optional; when present
-            //   they must ..."
+            // rule: A page's rows are optional; when present they must be an array of row tables,
+            //   clipped at 24; one malformed row rejects the whole page.
             // tests: CampaignHooksTest.page_parse_clips_entries_and_lines
             // tests: CampaignHooksTest.malformed_pages_answer_no_scripted_picker
             // tests: CampaignHooksTest.page_parse_happy_path
@@ -4772,8 +4455,8 @@ bool parse_campaign_page(lua_State* L, ScriptHost::Impl& impl,
             }
             CampaignPageEntry entry;
             std::string bad;
-            // rule: Part of the rule above that begins "A page's rows are optional; when present
-            //   they must ..."
+            // rule: A page's rows are optional; when present they must be an array of row tables,
+            //   clipped at 24; one malformed row rejects the whole page.
             // tests: CampaignHooksTest.page_parse_clips_entries_and_lines
             // tests: CampaignHooksTest.malformed_pages_answer_no_scripted_picker
             // tests: CampaignHooksTest.page_parse_happy_path
@@ -4812,23 +4495,14 @@ bool parse_zone_kind(const std::string& s, CampaignZoneWidget::Kind& out)
         out = CampaignZoneWidget::Kind::Roster;
         return true;
     }
-    // rule: Part of the rule above that begins "A Base Camp zone widget is one of four ..."
-    // tests: CampaignHooksTest.zone_parse_happy_path
-    // tests: CampaignHooksTest.zone_bounds_and_malformed_shapes_fall_to_default
     if (s == "text") {
         out = CampaignZoneWidget::Kind::Text;
         return true;
     }
-    // rule: Part of the rule above that begins "A Base Camp zone widget is one of four ..."
-    // tests: CampaignHooksTest.zone_parse_happy_path
-    // tests: CampaignHooksTest.zone_bounds_and_malformed_shapes_fall_to_default
     if (s == "actions") {
         out = CampaignZoneWidget::Kind::Actions;
         return true;
     }
-    // rule: Part of the rule above that begins "A Base Camp zone widget is one of four ..."
-    // tests: CampaignHooksTest.zone_parse_happy_path
-    // tests: CampaignHooksTest.zone_bounds_and_malformed_shapes_fall_to_default
     if (s == "readout") {
         out = CampaignZoneWidget::Kind::Readout;
         return true;
@@ -4853,35 +4527,24 @@ bool parse_zone_locks(lua_State* L, const std::string& at,
         lua_pop(L, 1);
         return true;
     }
-    // rule: Part of the rule above that begins "Roster locks name heroes by campaign tag 1..255 or
-    //   ..."
-    // tests: CampaignHooksTest.zone_bounds_and_malformed_shapes_fall_to_default
-    // tests: CampaignHooksTest.zone_parse_happy_path
     if (!lua_istable(L, -1)) {
         lua_pop(L, 1);
         bad = at + ".locks is not an array";
         return false;
     }
     const lua_Integer count = static_cast<lua_Integer>(lua_rawlen(L, -1));
-    // rule: Part of the rule above that begins "Roster locks name heroes by campaign tag 1..255 or
-    //   ..."
-    // tests: CampaignHooksTest.zone_bounds_and_malformed_shapes_fall_to_default
-    // tests: CampaignHooksTest.zone_parse_happy_path
     if (count > kCampaignZoneMaxRosterLocks) {
         lua_pop(L, 1);
         bad = at + ".locks lists " + std::to_string(count) + " locks (max " +
               std::to_string(kCampaignZoneMaxRosterLocks) + ")";
         return false;
     }
-    // rule: Part of the rule above that begins "Roster locks name heroes by campaign tag 1..255 or
-    //   ..."
-    // tests: CampaignHooksTest.zone_bounds_and_malformed_shapes_fall_to_default
-    // tests: CampaignHooksTest.zone_parse_happy_path
     for (lua_Integer j = 1; j <= count; j++) {
         const std::string lock_at = at + ".locks[" + std::to_string(j) + "]";
         lua_rawgeti(L, -1, j);
-        // rule: Part of the rule above that begins "Roster locks name heroes by campaign tag 1..255
-        //   or ..."
+        // rule: Roster locks name heroes by campaign tag 1..255 or the untagged state (unset =
+        //   true) - exactly one of the two, never a guy id - at most 24 locks (one per roster
+        //   slot), each with an optional string reason.
         // tests: CampaignHooksTest.zone_bounds_and_malformed_shapes_fall_to_default
         // tests: CampaignHooksTest.zone_parse_happy_path
         if (!lua_istable(L, -1)) {
@@ -4892,8 +4555,9 @@ bool parse_zone_locks(lua_State* L, const std::string& at,
         CampaignRosterLock lock;
         bool tag_present = false;
         int tag = 0;
-        // rule: Part of the rule above that begins "Roster locks name heroes by campaign tag 1..255
-        //   or ..."
+        // rule: Roster locks name heroes by campaign tag 1..255 or the untagged state (unset =
+        //   true) - exactly one of the two, never a guy id - at most 24 locks (one per roster
+        //   slot), each with an optional string reason.
         // tests: CampaignHooksTest.zone_bounds_and_malformed_shapes_fall_to_default
         // tests: CampaignHooksTest.zone_parse_happy_path
         if (!read_int_field_opt(L, -1, "tag", tag, tag_present)) {
@@ -4901,8 +4565,9 @@ bool parse_zone_locks(lua_State* L, const std::string& at,
             bad = lock_at + ".tag is not an integer";
             return false;
         }
-        // rule: Part of the rule above that begins "Roster locks name heroes by campaign tag 1..255
-        //   or ..."
+        // rule: Roster locks name heroes by campaign tag 1..255 or the untagged state (unset =
+        //   true) - exactly one of the two, never a guy id - at most 24 locks (one per roster
+        //   slot), each with an optional string reason.
         // tests: CampaignHooksTest.zone_bounds_and_malformed_shapes_fall_to_default
         // tests: CampaignHooksTest.zone_parse_happy_path
         if (!read_bool_field(L, -1, "unset", lock.unset)) {
@@ -4910,8 +4575,9 @@ bool parse_zone_locks(lua_State* L, const std::string& at,
             bad = lock_at + ".unset is not a boolean";
             return false;
         }
-        // rule: Part of the rule above that begins "Roster locks name heroes by campaign tag 1..255
-        //   or ..."
+        // rule: Roster locks name heroes by campaign tag 1..255 or the untagged state (unset =
+        //   true) - exactly one of the two, never a guy id - at most 24 locks (one per roster
+        //   slot), each with an optional string reason.
         // tests: CampaignHooksTest.zone_bounds_and_malformed_shapes_fall_to_default
         // tests: CampaignHooksTest.zone_parse_happy_path
         if (tag_present == lock.unset) {
@@ -4919,13 +4585,15 @@ bool parse_zone_locks(lua_State* L, const std::string& at,
             bad = lock_at + " needs exactly one of tag / unset = true";
             return false;
         }
-        // rule: Part of the rule above that begins "Roster locks name heroes by campaign tag 1..255
-        //   or ..."
+        // rule: Roster locks name heroes by campaign tag 1..255 or the untagged state (unset =
+        //   true) - exactly one of the two, never a guy id - at most 24 locks (one per roster
+        //   slot), each with an optional string reason.
         // tests: CampaignHooksTest.zone_bounds_and_malformed_shapes_fall_to_default
         // tests: CampaignHooksTest.zone_parse_happy_path
         if (tag_present) {
-            // rule: Part of the rule above that begins "Roster locks name heroes by campaign tag
-            //   1..255 or ..."
+            // rule: Roster locks name heroes by campaign tag 1..255 or the untagged state (unset =
+            //   true) - exactly one of the two, never a guy id - at most 24 locks (one per roster
+            //   slot), each with an optional string reason.
             // tests: CampaignHooksTest.zone_bounds_and_malformed_shapes_fall_to_default
             // tests: CampaignHooksTest.zone_parse_happy_path
             if (tag < 1 || tag > 255) {
@@ -4937,8 +4605,9 @@ bool parse_zone_locks(lua_State* L, const std::string& at,
             lock.tag = tag;
         }
         bool present = false;
-        // rule: Part of the rule above that begins "Roster locks name heroes by campaign tag 1..255
-        //   or ..."
+        // rule: Roster locks name heroes by campaign tag 1..255 or the untagged state (unset =
+        //   true) - exactly one of the two, never a guy id - at most 24 locks (one per roster
+        //   slot), each with an optional string reason.
         // tests: CampaignHooksTest.zone_bounds_and_malformed_shapes_fall_to_default
         // tests: CampaignHooksTest.zone_parse_happy_path
         if (!read_string_field(L, -1, "reason", lock.reason, present)) {
@@ -4971,22 +4640,12 @@ bool parse_zone_assign(lua_State* L, const std::string& at,
         lua_pop(L, 1);
         return true;
     }
-    // rule: Part of the rule above that begins "The roster's optional assign chip writes a campaign
-    //   var ..."
-    // tests: CampaignHooksTest.zone_bounds_and_malformed_shapes_fall_to_default
-    // tests: CampaignHooksTest.zone_parse_happy_path
-    // tests: SemScript3.a_non_string_assign_label_rejects_the_zone
     if (!lua_istable(L, -1)) {
         lua_pop(L, 1);
         bad = at + ".assign is not a table";
         return false;
     }
     bool present = false;
-    // rule: Part of the rule above that begins "The roster's optional assign chip writes a campaign
-    //   var ..."
-    // tests: CampaignHooksTest.zone_bounds_and_malformed_shapes_fall_to_default
-    // tests: CampaignHooksTest.zone_parse_happy_path
-    // tests: SemScript3.a_non_string_assign_label_rejects_the_zone
     if (!read_string_field(L, -1, "key", widget.assign.key, present) ||
         !present || !valid_campaign_var_name(widget.assign.key)) {
         lua_pop(L, 1);
@@ -4996,33 +4655,24 @@ bool parse_zone_assign(lua_State* L, const std::string& at,
     }
     lua_pushstring(L, "labels");
     lua_rawget(L, -2);
-    // rule: Part of the rule above that begins "The roster's optional assign chip writes a campaign
-    //   var ..."
-    // tests: CampaignHooksTest.zone_bounds_and_malformed_shapes_fall_to_default
-    // tests: CampaignHooksTest.zone_parse_happy_path
-    // tests: SemScript3.a_non_string_assign_label_rejects_the_zone
     if (!lua_istable(L, -1) ||
         static_cast<lua_Integer>(lua_rawlen(L, -1)) != 2) {
         lua_pop(L, 2);
         bad = at + ".assign.labels must list exactly 2 labels";
         return false;
     }
-    // rule: Part of the rule above that begins "The roster's optional assign chip writes a campaign
-    //   var ..."
-    // tests: CampaignHooksTest.zone_bounds_and_malformed_shapes_fall_to_default
-    // tests: CampaignHooksTest.zone_parse_happy_path
-    // tests: SemScript3.a_non_string_assign_label_rejects_the_zone
     for (lua_Integer k = 1; k <= 2; k++) {
         lua_rawgeti(L, -1, k);
         std::size_t len = 0;
-        const char* s = lua_type(L, -1) == LUA_TSTRING
-                            ? lua_tolstring(L, -1, &len)
-                            : nullptr;
-        // rule: Part of the rule above that begins "The roster's optional assign chip writes a
-        //   campaign var ..."
+        // rule: The roster's optional assign chip writes a campaign var whose key is a safe id
+        //   ([a-z0-9_], 1-32), toggles between exactly two non-empty labels, and may carry a frozen
+        //   reason.
         // tests: CampaignHooksTest.zone_bounds_and_malformed_shapes_fall_to_default
         // tests: CampaignHooksTest.zone_parse_happy_path
         // tests: SemScript3.a_non_string_assign_label_rejects_the_zone
+        const char* s = lua_type(L, -1) == LUA_TSTRING
+                            ? lua_tolstring(L, -1, &len)
+                            : nullptr;
         if (s == nullptr || len == 0) {
             lua_pop(L, 3);
             bad = at + ".assign.labels[" + std::to_string(k) +
@@ -5033,11 +4683,6 @@ bool parse_zone_assign(lua_State* L, const std::string& at,
         lua_pop(L, 1);
     }
     lua_pop(L, 1);  // labels
-    // rule: Part of the rule above that begins "The roster's optional assign chip writes a campaign
-    //   var ..."
-    // tests: CampaignHooksTest.zone_bounds_and_malformed_shapes_fall_to_default
-    // tests: CampaignHooksTest.zone_parse_happy_path
-    // tests: SemScript3.a_non_string_assign_label_rejects_the_zone
     if (!read_string_field(L, -1, "frozen", widget.assign.frozen, present)) {
         lua_pop(L, 1);
         bad = at + ".assign.frozen is not a string";
@@ -5067,8 +4712,8 @@ bool parse_zone_roster(lua_State* L, const std::string& at,
     // tests: CampaignHooksTest.zone_bounds_and_malformed_shapes_fall_to_default
     // tests: CampaignHooksTest.zone_parse_happy_path
     for (const auto& cap : caps) {
-        // rule: Part of the rule above that begins "The roster widget's five capabilities (deploy,
-        //   train, reorder, team, ..."
+        // rule: The roster widget's five capabilities (deploy, train, reorder, team, hire) are
+        //   booleans the campaign switches on or off.
         // tests: CampaignHooksTest.zone_bounds_and_malformed_shapes_fall_to_default
         // tests: CampaignHooksTest.zone_parse_happy_path
         if (!read_bool_field(L, -1, cap.key, widget.*(cap.member))) {
@@ -5076,10 +4721,6 @@ bool parse_zone_roster(lua_State* L, const std::string& at,
             return false;
         }
     }
-    // rule: Part of the rule above that begins "The roster widget's five capabilities (deploy,
-    //   train, reorder, team, ..."
-    // tests: CampaignHooksTest.zone_bounds_and_malformed_shapes_fall_to_default
-    // tests: CampaignHooksTest.zone_parse_happy_path
     if (!parse_zone_locks(L, at, widget, bad))
         return false;
     return parse_zone_assign(L, at, widget, bad);
@@ -5098,31 +4739,22 @@ bool parse_zone_text(lua_State* L, const std::string& at,
         lua_pop(L, 1);
         return true;
     }
-    // rule: Part of the rule above that begins "A text widget holds at most 6 string lines; ..."
-    // tests: CampaignHooksTest.zone_bounds_and_malformed_shapes_fall_to_default
-    // tests: CampaignPickerSessionTest.terminal_camp_skips_empty_text_and_empty_actions
     if (!lua_istable(L, -1)) {
         lua_pop(L, 1);
         bad = at + ".lines is not an array";
         return false;
     }
     const lua_Integer count = static_cast<lua_Integer>(lua_rawlen(L, -1));
-    // rule: Part of the rule above that begins "A text widget holds at most 6 string lines; ..."
-    // tests: CampaignHooksTest.zone_bounds_and_malformed_shapes_fall_to_default
-    // tests: CampaignPickerSessionTest.terminal_camp_skips_empty_text_and_empty_actions
     if (count > kCampaignZoneMaxTextLines) {
         lua_pop(L, 1);
         bad = at + " lists " + std::to_string(count) + " lines (max " +
               std::to_string(kCampaignZoneMaxTextLines) + ")";
         return false;
     }
-    // rule: Part of the rule above that begins "A text widget holds at most 6 string lines; ..."
-    // tests: CampaignHooksTest.zone_bounds_and_malformed_shapes_fall_to_default
-    // tests: CampaignPickerSessionTest.terminal_camp_skips_empty_text_and_empty_actions
     for (lua_Integer j = 1; j <= count; j++) {
         lua_rawgeti(L, -1, j);
-        // rule: Part of the rule above that begins "A text widget holds at most 6 string lines;
-        //   ..."
+        // rule: A text widget holds at most 6 string lines; unlike a picker page, over-budget is a
+        //   hard rejection (the default zone is shown), never a clip.
         // tests: CampaignHooksTest.zone_bounds_and_malformed_shapes_fall_to_default
         // tests: CampaignPickerSessionTest.terminal_camp_skips_empty_text_and_empty_actions
         if (lua_type(L, -1) != LUA_TSTRING) {
@@ -5157,18 +4789,12 @@ bool parse_zone_actions(lua_State* L, const std::string& at,
         lua_pop(L, 1);
         return true;
     }
-    // rule: Part of the rule above that begins "Action rows are capped at 16 across the WHOLE ..."
-    // tests: CampaignHooksTest.zone_bounds_and_malformed_shapes_fall_to_default
-    // tests: CampaignPickerSessionTest.terminal_camp_skips_empty_text_and_empty_actions
     if (!lua_istable(L, -1)) {
         lua_pop(L, 1);
         bad = at + ".entries is not an array";
         return false;
     }
     const lua_Integer count = static_cast<lua_Integer>(lua_rawlen(L, -1));
-    // rule: Part of the rule above that begins "Action rows are capped at 16 across the WHOLE ..."
-    // tests: CampaignHooksTest.zone_bounds_and_malformed_shapes_fall_to_default
-    // tests: CampaignPickerSessionTest.terminal_camp_skips_empty_text_and_empty_actions
     if (count > kCampaignZoneMaxActionEntries ||
         static_cast<int>(count) + total_entries >
             kCampaignZoneMaxActionEntries) {
@@ -5179,15 +4805,12 @@ bool parse_zone_actions(lua_State* L, const std::string& at,
         return false;
     }
     total_entries += static_cast<int>(count);
-    // rule: Part of the rule above that begins "Action rows are capped at 16 across the WHOLE ..."
-    // tests: CampaignHooksTest.zone_bounds_and_malformed_shapes_fall_to_default
-    // tests: CampaignPickerSessionTest.terminal_camp_skips_empty_text_and_empty_actions
     for (lua_Integer j = 1; j <= count; j++) {
         const std::string entry_at =
             at + ".entries[" + std::to_string(j) + "]";
         lua_rawgeti(L, -1, j);
-        // rule: Part of the rule above that begins "Action rows are capped at 16 across the WHOLE
-        //   ..."
+        // rule: Action rows are capped at 16 across the WHOLE zone (both actions widgets together),
+        //   because the ordinal band behind them only fits 16 rows + pagers.
         // tests: CampaignHooksTest.zone_bounds_and_malformed_shapes_fall_to_default
         // tests: CampaignPickerSessionTest.terminal_camp_skips_empty_text_and_empty_actions
         if (!lua_istable(L, -1)) {
@@ -5196,8 +4819,8 @@ bool parse_zone_actions(lua_State* L, const std::string& at,
             return false;
         }
         CampaignPageEntry entry;
-        // rule: Part of the rule above that begins "Action rows are capped at 16 across the WHOLE
-        //   ..."
+        // rule: Action rows are capped at 16 across the WHOLE zone (both actions widgets together),
+        //   because the ordinal band behind them only fits 16 rows + pagers.
         // tests: CampaignHooksTest.zone_bounds_and_malformed_shapes_fall_to_default
         // tests: CampaignPickerSessionTest.terminal_camp_skips_empty_text_and_empty_actions
         if (!read_page_entry(L, entry_at, entry, bad)) {
@@ -5224,20 +4847,12 @@ bool parse_zone_readout(lua_State* L, const std::string& at,
         lua_pop(L, 1);
         return true;
     }
-    // rule: Part of the rule above that begins "A readout shows at most 3 label/value string pairs;
-    //   ..."
-    // tests: CampaignHooksTest.zone_bounds_and_malformed_shapes_fall_to_default
-    // tests: SemScript3.a_readout_without_items_is_accepted_and_shows_none
     if (!lua_istable(L, -1)) {
         lua_pop(L, 1);
         bad = at + ".items is not an array";
         return false;
     }
     const lua_Integer count = static_cast<lua_Integer>(lua_rawlen(L, -1));
-    // rule: Part of the rule above that begins "A readout shows at most 3 label/value string pairs;
-    //   ..."
-    // tests: CampaignHooksTest.zone_bounds_and_malformed_shapes_fall_to_default
-    // tests: SemScript3.a_readout_without_items_is_accepted_and_shows_none
     if (count > kCampaignZoneMaxReadoutItems) {
         lua_pop(L, 1);
         bad = at + " lists " + std::to_string(count) +
@@ -5245,16 +4860,12 @@ bool parse_zone_readout(lua_State* L, const std::string& at,
               std::to_string(kCampaignZoneMaxReadoutItems) + ")";
         return false;
     }
-    // rule: Part of the rule above that begins "A readout shows at most 3 label/value string pairs;
-    //   ..."
-    // tests: CampaignHooksTest.zone_bounds_and_malformed_shapes_fall_to_default
-    // tests: SemScript3.a_readout_without_items_is_accepted_and_shows_none
     for (lua_Integer j = 1; j <= count; j++) {
         const std::string item_at =
             at + ".items[" + std::to_string(j) + "]";
         lua_rawgeti(L, -1, j);
-        // rule: Part of the rule above that begins "A readout shows at most 3 label/value string
-        //   pairs; ..."
+        // rule: A readout shows at most 3 label/value string pairs; both strings are required per
+        //   item; over-budget rejects the zone.
         // tests: CampaignHooksTest.zone_bounds_and_malformed_shapes_fall_to_default
         // tests: SemScript3.a_readout_without_items_is_accepted_and_shows_none
         if (!lua_istable(L, -1)) {
@@ -5264,8 +4875,8 @@ bool parse_zone_readout(lua_State* L, const std::string& at,
         }
         CampaignZoneWidget::ReadoutItem item;
         bool present = false;
-        // rule: Part of the rule above that begins "A readout shows at most 3 label/value string
-        //   pairs; ..."
+        // rule: A readout shows at most 3 label/value string pairs; both strings are required per
+        //   item; over-budget rejects the zone.
         // tests: CampaignHooksTest.zone_bounds_and_malformed_shapes_fall_to_default
         // tests: SemScript3.a_readout_without_items_is_accepted_and_shows_none
         if (!read_string_field(L, -1, "label", item.label, present) ||
@@ -5274,8 +4885,8 @@ bool parse_zone_readout(lua_State* L, const std::string& at,
             bad = item_at + ".label is missing or not a string";
             return false;
         }
-        // rule: Part of the rule above that begins "A readout shows at most 3 label/value string
-        //   pairs; ..."
+        // rule: A readout shows at most 3 label/value string pairs; both strings are required per
+        //   item; over-budget rejects the zone.
         // tests: CampaignHooksTest.zone_bounds_and_malformed_shapes_fall_to_default
         // tests: SemScript3.a_readout_without_items_is_accepted_and_shows_none
         if (!read_string_field(L, -1, "value", item.value, present) ||
@@ -5308,23 +4919,14 @@ bool parse_zone_widget(lua_State* L, const std::string& at,
                    "\"readout\"";
         return false;
     }
-    // rule: Part of the rule above that begins "Every widget declares a kind and an optional
-    //   integer ..."
-    // tests: CampaignHooksTest.zone_bounds_and_malformed_shapes_fall_to_default
     if (!read_int_field(L, -1, "weight", widget.weight)) {
         bad = at + ".weight is not an integer";
         return false;
     }
-    // rule: Part of the rule above that begins "Every widget declares a kind and an optional
-    //   integer ..."
-    // tests: CampaignHooksTest.zone_bounds_and_malformed_shapes_fall_to_default
     if (widget.weight < 0) {
         bad = at + ".weight is negative";
         return false;
     }
-    // rule: Part of the rule above that begins "Every widget declares a kind and an optional
-    //   integer ..."
-    // tests: CampaignHooksTest.zone_bounds_and_malformed_shapes_fall_to_default
     if (widget.weight > kCampaignZoneMaxWeight) {
         bad = at + ".weight is " + std::to_string(widget.weight) +
               " row units (max " + std::to_string(kCampaignZoneMaxWeight) +
@@ -5332,7 +4934,7 @@ bool parse_zone_widget(lua_State* L, const std::string& at,
         return false;
     }
     // plumbing: switch on widget.kind dispatching to the per-kind parser (rows
-    //   world_scripts.cpp:3236/3262/3303/3349); the trailing return false is unreachable for a
+    //   above/3262/3303/3349); the trailing return false is unreachable for a
     //   valid enum.
     switch (widget.kind) {
     case CampaignZoneWidget::Kind::Roster:
@@ -5365,17 +4967,11 @@ bool parse_campaign_zone(lua_State* L, ScriptHost::Impl& impl,
                                         ", not a zone table");
     lua_pushstring(L, "widgets");
     lua_rawget(L, -2);
-    // rule: Part of the rule above that begins "A Base Camp zone is a table whose widgets ..."
-    // tests: CampaignHooksTest.zone_bounds_and_malformed_shapes_fall_to_default
-    // tests: CampaignHooksTest.zone_parse_happy_path
     if (!lua_istable(L, -1)) {
         lua_pop(L, 1);
         return malformed_zone(impl, "'widgets' is missing or not an array");
     }
     const lua_Integer count = static_cast<lua_Integer>(lua_rawlen(L, -1));
-    // rule: Part of the rule above that begins "A Base Camp zone is a table whose widgets ..."
-    // tests: CampaignHooksTest.zone_bounds_and_malformed_shapes_fall_to_default
-    // tests: CampaignHooksTest.zone_parse_happy_path
     if (count > kCampaignZoneMaxWidgets) {
         lua_pop(L, 1);
         return malformed_zone(
@@ -5387,13 +4983,11 @@ bool parse_campaign_zone(lua_State* L, ScriptHost::Impl& impl,
     int actions_widgets = 0;
     int text_widgets = 0;
     int total_entries = 0;
-    // rule: Part of the rule above that begins "A Base Camp zone is a table whose widgets ..."
-    // tests: CampaignHooksTest.zone_bounds_and_malformed_shapes_fall_to_default
-    // tests: CampaignHooksTest.zone_parse_happy_path
     for (lua_Integer i = 1; i <= count; i++) {
         const std::string at = "widgets[" + std::to_string(i) + "]";
         lua_rawgeti(L, -1, i);
-        // rule: Part of the rule above that begins "A Base Camp zone is a table whose widgets ..."
+        // rule: A Base Camp zone is a table whose widgets array lists at most 6 widget tables; any
+        //   malformed widget rejects the whole zone and the DEFAULT zone renders.
         // tests: CampaignHooksTest.zone_bounds_and_malformed_shapes_fall_to_default
         // tests: CampaignHooksTest.zone_parse_happy_path
         if (!lua_istable(L, -1)) {
@@ -5402,7 +4996,8 @@ bool parse_campaign_zone(lua_State* L, ScriptHost::Impl& impl,
         }
         CampaignZoneWidget widget;
         std::string bad;
-        // rule: Part of the rule above that begins "A Base Camp zone is a table whose widgets ..."
+        // rule: A Base Camp zone is a table whose widgets array lists at most 6 widget tables; any
+        //   malformed widget rejects the whole zone and the DEFAULT zone renders.
         // tests: CampaignHooksTest.zone_bounds_and_malformed_shapes_fall_to_default
         // tests: CampaignHooksTest.zone_parse_happy_path
         if (!parse_zone_widget(L, at, widget, total_entries, bad)) {
@@ -5433,27 +5028,31 @@ bool parse_campaign_zone(lua_State* L, ScriptHost::Impl& impl,
     // Per-kind caps: the roster/readout are singleton hardware (one set of
     // deploy/chip/move-up ordinals, one readout row); actions/text split
     // the remaining band at most two ways each.
-    // rule: Part of the rule above that begins "A zone has exactly one roster, at most one ..."
+    // rule: A zone has exactly one roster, at most one readout, at most two action lists and at
+    //   most two text blocks (singleton ordinals for deploy/chip/move-up and the readout row).
     // tests: CampaignHooksTest.zone_bounds_and_malformed_shapes_fall_to_default
     if (roster_widgets != 1)
         return malformed_zone(
             impl, "declares " + std::to_string(roster_widgets) +
                       " roster widgets (exactly one required)");
-    // rule: Part of the rule above that begins "A zone has exactly one roster, at most one ..."
+    // rule: A zone has exactly one roster, at most one readout, at most two action lists and at
+    //   most two text blocks (singleton ordinals for deploy/chip/move-up and the readout row).
     // tests: CampaignHooksTest.zone_bounds_and_malformed_shapes_fall_to_default
     if (readout_widgets > kCampaignZoneMaxReadoutWidgets)
         return malformed_zone(
             impl, "declares " + std::to_string(readout_widgets) +
                       " readout widgets (max " +
                       std::to_string(kCampaignZoneMaxReadoutWidgets) + ")");
-    // rule: Part of the rule above that begins "A zone has exactly one roster, at most one ..."
+    // rule: A zone has exactly one roster, at most one readout, at most two action lists and at
+    //   most two text blocks (singleton ordinals for deploy/chip/move-up and the readout row).
     // tests: CampaignHooksTest.zone_bounds_and_malformed_shapes_fall_to_default
     if (actions_widgets > kCampaignZoneMaxActionsWidgets)
         return malformed_zone(
             impl, "declares " + std::to_string(actions_widgets) +
                       " actions widgets (max " +
                       std::to_string(kCampaignZoneMaxActionsWidgets) + ")");
-    // rule: Part of the rule above that begins "A zone has exactly one roster, at most one ..."
+    // rule: A zone has exactly one roster, at most one readout, at most two action lists and at
+    //   most two text blocks (singleton ordinals for deploy/chip/move-up and the readout row).
     // tests: CampaignHooksTest.zone_bounds_and_malformed_shapes_fall_to_default
     if (text_widgets > kCampaignZoneMaxTextWidgets)
         return malformed_zone(
@@ -5488,34 +5087,18 @@ bool parse_fill_word(const std::string& word, std::int16_t& out)
         out = og::sim::kFillNone;
         return true;
     }
-    // rule: Part of the rule above that begins "The FILL wheel has exactly five rungs a campaign
-    //   ..."
-    // tests: CampaignHooksTest.match_knobs_accepts_every_wheel_word_and_fill_spelling
-    // tests: CampaignHooksTest.match_knobs_refuses_mis_shaped_answers_by_name
     if (word == "weak") {
         out = og::sim::kFillWeak;
         return true;
     }
-    // rule: Part of the rule above that begins "The FILL wheel has exactly five rungs a campaign
-    //   ..."
-    // tests: CampaignHooksTest.match_knobs_accepts_every_wheel_word_and_fill_spelling
-    // tests: CampaignHooksTest.match_knobs_refuses_mis_shaped_answers_by_name
     if (word == "fair") {
         out = og::sim::kFillFair;
         return true;
     }
-    // rule: Part of the rule above that begins "The FILL wheel has exactly five rungs a campaign
-    //   ..."
-    // tests: CampaignHooksTest.match_knobs_accepts_every_wheel_word_and_fill_spelling
-    // tests: CampaignHooksTest.match_knobs_refuses_mis_shaped_answers_by_name
     if (word == "strong") {
         out = og::sim::kFillStrong;
         return true;
     }
-    // rule: Part of the rule above that begins "The FILL wheel has exactly five rungs a campaign
-    //   ..."
-    // tests: CampaignHooksTest.match_knobs_accepts_every_wheel_word_and_fill_spelling
-    // tests: CampaignHooksTest.match_knobs_refuses_mis_shaped_answers_by_name
     if (word == "brutal") {
         out = og::sim::kFillBrutal;
         return true;
@@ -5538,13 +5121,11 @@ bool parse_knobs_lines(lua_State* L, ScriptHost::Impl& impl,
             impl, "'lines' names " + std::to_string(count) + " lines (max " +
                       std::to_string(kCampaignMatchKnobsMaxLines) + ")");
     }
-    // rule: Part of the rule above that begins "The SETUP wizard's campaign note is at most 2 ..."
-    // tests: CampaignHooksTest.match_knobs_refuses_mis_shaped_answers_by_name
-    // tests: CampaignHooksTest.match_knobs_accepts_every_wheel_word_and_fill_spelling
     for (lua_Integer i = 1; i <= count; i++) {
         lua_rawgeti(L, -1, i);
-        // rule: Part of the rule above that begins "The SETUP wizard's campaign note is at most 2
-        //   ..."
+        // rule: The SETUP wizard's campaign note is at most 2 lines of 1..38 glyphs, given as a
+        //   true array: a hash-keyed or holed table is refused rather than silently read as no
+        //   lines.
         // tests: CampaignHooksTest.match_knobs_refuses_mis_shaped_answers_by_name
         // tests: CampaignHooksTest.match_knobs_accepts_every_wheel_word_and_fill_spelling
         if (lua_type(L, -1) != LUA_TSTRING) {
@@ -5554,8 +5135,9 @@ bool parse_knobs_lines(lua_State* L, ScriptHost::Impl& impl,
         }
         std::size_t len = 0;
         const char* text = lua_tolstring(L, -1, &len);
-        // rule: Part of the rule above that begins "The SETUP wizard's campaign note is at most 2
-        //   ..."
+        // rule: The SETUP wizard's campaign note is at most 2 lines of 1..38 glyphs, given as a
+        //   true array: a hash-keyed or holed table is refused rather than silently read as no
+        //   lines.
         // tests: CampaignHooksTest.match_knobs_refuses_mis_shaped_answers_by_name
         // tests: CampaignHooksTest.match_knobs_accepts_every_wheel_word_and_fill_spelling
         if (len == 0 ||
@@ -5571,20 +5153,19 @@ bool parse_knobs_lines(lua_State* L, ScriptHost::Impl& impl,
         lua_pop(L, 1);
     }
     lua_pushnil(L);
-    // rule: Part of the rule above that begins "The SETUP wizard's campaign note is at most 2 ..."
-    // tests: CampaignHooksTest.match_knobs_refuses_mis_shaped_answers_by_name
-    // tests: CampaignHooksTest.match_knobs_accepts_every_wheel_word_and_fill_spelling
     while (lua_next(L, -2) != 0) {
         lua_pop(L, 1);  // value; the key stays for the next iteration
         lua_Integer index = 0;
-        // rule: Part of the rule above that begins "The SETUP wizard's campaign note is at most 2
-        //   ..."
+        // rule: The SETUP wizard's campaign note is at most 2 lines of 1..38 glyphs, given as a
+        //   true array: a hash-keyed or holed table is refused rather than silently read as no
+        //   lines.
         // tests: CampaignHooksTest.match_knobs_refuses_mis_shaped_answers_by_name
         // tests: CampaignHooksTest.match_knobs_accepts_every_wheel_word_and_fill_spelling
         if (lua_type(L, -1) == LUA_TNUMBER && lua_isinteger(L, -1))
             index = lua_tointeger(L, -1);
-        // rule: Part of the rule above that begins "The SETUP wizard's campaign note is at most 2
-        //   ..."
+        // rule: The SETUP wizard's campaign note is at most 2 lines of 1..38 glyphs, given as a
+        //   true array: a hash-keyed or holed table is refused rather than silently read as no
+        //   lines.
         // tests: CampaignHooksTest.match_knobs_refuses_mis_shaped_answers_by_name
         // tests: CampaignHooksTest.match_knobs_accepts_every_wheel_word_and_fill_spelling
         if (index < 1 || index > count) {
@@ -5615,13 +5196,9 @@ bool parse_campaign_match_knobs(lua_State* L, ScriptHost::Impl& impl,
                                             "time",  "lines", "arena_page",
                                             "deal"};
     lua_pushnil(L);
-    // rule: Part of the rule above that begins "match_knobs answers a table with a closed key
-    //   vocabulary; ..."
-    // tests: CampaignHooksTest.match_knobs_refuses_mis_shaped_answers_by_name
     while (lua_next(L, -2) != 0) {
         lua_pop(L, 1);  // value; the key stays for the next iteration
-        // rule: Part of the rule above that begins "match_knobs answers a table with a closed key
-        //   vocabulary; ..."
+        // rule: match_knobs answers a table with a closed key vocabulary.
         // tests: CampaignHooksTest.match_knobs_refuses_mis_shaped_answers_by_name
         if (lua_type(L, -1) != LUA_TSTRING) {
             const std::string what =
@@ -5631,13 +5208,11 @@ bool parse_campaign_match_knobs(lua_State* L, ScriptHost::Impl& impl,
         }
         const std::string key = lua_tostring(L, -1);
         bool known = false;
-        // rule: Part of the rule above that begins "match_knobs answers a table with a closed key
-        //   vocabulary; ..."
+        // rule: match_knobs answers a table with a closed key vocabulary.
         // tests: CampaignHooksTest.match_knobs_refuses_mis_shaped_answers_by_name
         for (const char* n : kKnobKeys)
             known = known || key == n;
-        // rule: Part of the rule above that begins "match_knobs answers a table with a closed key
-        //   vocabulary; ..."
+        // rule: match_knobs answers a table with a closed key vocabulary.
         // tests: CampaignHooksTest.match_knobs_refuses_mis_shaped_answers_by_name
         if (!known) {
             const std::vector<const char*> names(std::begin(kKnobKeys),
@@ -5662,14 +5237,14 @@ bool parse_campaign_match_knobs(lua_State* L, ScriptHost::Impl& impl,
     for (const auto& flag : flags) {
         lua_pushstring(L, flag.key);
         lua_rawget(L, -2);
-        // rule: Part of the rule above that begins "The wizard's TEAMS, SCORE and TIME rows are
-        //   each ..."
+        // rule: The wizard's TEAMS, SCORE and TIME rows are each shown or hidden by an optional
+        //   boolean; a non-boolean refuses the answer.
         // tests: CampaignHooksTest.match_knobs_refuses_mis_shaped_answers_by_name
         // tests: CampaignHooksTest.match_knobs_empty_table_answers_every_default
         // tests: MatchSetupSessionTest.match_knobs_shape_the_steps
         if (!lua_isnil(L, -1)) {
-            // rule: Part of the rule above that begins "The wizard's TEAMS, SCORE and TIME rows are
-            //   each ..."
+            // rule: The wizard's TEAMS, SCORE and TIME rows are each shown or hidden by an optional
+            //   boolean; a non-boolean refuses the answer.
             // tests: CampaignHooksTest.match_knobs_refuses_mis_shaped_answers_by_name
             // tests: CampaignHooksTest.match_knobs_empty_table_answers_every_default
             // tests: MatchSetupSessionTest.match_knobs_shape_the_steps
@@ -5692,14 +5267,15 @@ bool parse_campaign_match_knobs(lua_State* L, ScriptHost::Impl& impl,
     // tests: CampaignHooksTest.match_knobs_empty_table_answers_every_default
     if (!lua_isnil(L, -1)) {
         bool understood = false;
-        // rule: Part of the rule above that begins "The FILL row is shown as the macro wheel, ..."
+        // rule: The FILL row is shown as the macro wheel, the band picker, or removed (fill =
+        //   false); fill = true and any other word are refused.
         // tests: CampaignHooksTest.match_knobs_accepts_every_wheel_word_and_fill_spelling
         // tests: CampaignHooksTest.match_knobs_refuses_mis_shaped_answers_by_name
         // tests: CampaignHooksTest.match_knobs_empty_table_answers_every_default
         if (lua_type(L, -1) == LUA_TSTRING) {
             const std::string word = lua_tostring(L, -1);
-            // rule: Part of the rule above that begins "The FILL row is shown as the macro wheel,
-            //   ..."
+            // rule: The FILL row is shown as the macro wheel, the band picker, or removed (fill =
+            //   false); fill = true and any other word are refused.
             // tests: CampaignHooksTest.match_knobs_accepts_every_wheel_word_and_fill_spelling
             // tests: CampaignHooksTest.match_knobs_refuses_mis_shaped_answers_by_name
             // tests: CampaignHooksTest.match_knobs_empty_table_answers_every_default
@@ -5716,7 +5292,8 @@ bool parse_campaign_match_knobs(lua_State* L, ScriptHost::Impl& impl,
             out.fill = CampaignFillKnob::Off;
             understood = true;
         }
-        // rule: Part of the rule above that begins "The FILL row is shown as the macro wheel, ..."
+        // rule: The FILL row is shown as the macro wheel, the band picker, or removed (fill =
+        //   false); fill = true and any other word are refused.
         // tests: CampaignHooksTest.match_knobs_accepts_every_wheel_word_and_fill_spelling
         // tests: CampaignHooksTest.match_knobs_refuses_mis_shaped_answers_by_name
         // tests: CampaignHooksTest.match_knobs_empty_table_answers_every_default
@@ -5731,14 +5308,14 @@ bool parse_campaign_match_knobs(lua_State* L, ScriptHost::Impl& impl,
     lua_pushstring(L, "lines");
     lua_rawget(L, -2);
     // rule: The knobs' lines key is optional; when present it must be a table and pass the lines
-    //   rule (world_scripts.cpp:3560).
+    //   rule (above).
     // tests: CampaignHooksTest.match_knobs_empty_table_answers_every_default
     // tests: CampaignHooksTest.match_knobs_refuses_mis_shaped_answers_by_name
     // tests: CampaignHooksTest.match_knobs_alone_is_a_legal_registration
     // tests: CampaignHooksTest.match_knobs_accepts_every_wheel_word_and_fill_spelling
     if (!lua_isnil(L, -1)) {
-        // rule: Part of the rule above that begins "The knobs' lines key is optional; when present
-        //   it ..."
+        // rule: The knobs' lines key is optional; when present it must be a table and pass the
+        //   lines rule (above).
         // tests: CampaignHooksTest.match_knobs_empty_table_answers_every_default
         // tests: CampaignHooksTest.match_knobs_refuses_mis_shaped_answers_by_name
         // tests: CampaignHooksTest.match_knobs_alone_is_a_legal_registration
@@ -5748,8 +5325,8 @@ bool parse_campaign_match_knobs(lua_State* L, ScriptHost::Impl& impl,
             return malformed_knobs(impl,
                                    "'lines' is not an array of strings");
         }
-        // rule: Part of the rule above that begins "The knobs' lines key is optional; when present
-        //   it ..."
+        // rule: The knobs' lines key is optional; when present it must be a table and pass the
+        //   lines rule (above).
         // tests: CampaignHooksTest.match_knobs_empty_table_answers_every_default
         // tests: CampaignHooksTest.match_knobs_refuses_mis_shaped_answers_by_name
         // tests: CampaignHooksTest.match_knobs_alone_is_a_legal_registration
@@ -5768,8 +5345,8 @@ bool parse_campaign_match_knobs(lua_State* L, ScriptHost::Impl& impl,
     // tests: CampaignHooksTest.match_knobs_refuses_mis_shaped_answers_by_name
     // tests: CampaignHooksTest.match_knobs_accepts_every_wheel_word_and_fill_spelling
     if (!lua_isnil(L, -1)) {
-        // rule: Part of the rule above that begins "The campaign may name the arena page the wizard
-        //   ..."
+        // rule: The campaign may name the arena page the wizard opens on as a string ('' means
+        //   none); a non-string refuses.
         // tests: CampaignHooksTest.match_knobs_refuses_mis_shaped_answers_by_name
         // tests: CampaignHooksTest.match_knobs_accepts_every_wheel_word_and_fill_spelling
         if (lua_type(L, -1) != LUA_TSTRING) {
@@ -5792,7 +5369,7 @@ bool parse_campaign_match_knobs(lua_State* L, ScriptHost::Impl& impl,
         std::int16_t code = og::sim::kFillFair;
         const bool word = lua_type(L, -1) == LUA_TSTRING &&
                           parse_fill_word(lua_tostring(L, -1), code);
-        // rule: Part of the rule above that begins "The campaign may fix the bot deal to one ..."
+        // rule: The campaign may fix the bot deal to one wheel rung (see 3531); absent keeps FAIR.
         // tests: CampaignHooksTest.match_knobs_accepts_every_wheel_word_and_fill_spelling
         // tests: CampaignHooksTest.match_knobs_refuses_mis_shaped_answers_by_name
         // tests: CampaignHooksTest.match_knobs_empty_table_answers_every_default
@@ -5818,7 +5395,7 @@ std::vector<std::string> campaign_registered_vars()
 {
     VmState* st = campaign_vm_state();
     // plumbing: `if (st == nullptr) return false/{}` in each public campaign query: the 'no book /
-    //   conflicted book' arm of world_scripts.cpp:2794 surfaced per entry point (asserted there and
+    //   conflicted book' arm of above surfaced per entry point (asserted there and
     //   in action_without_registration_answers_false, no_registration_means_no_picker).
     if (st == nullptr)
         return {};
@@ -5829,14 +5406,13 @@ bool campaign_picker_page(const std::string& page_id, CampaignPage& out)
 {
     VmState* st = campaign_vm_state();
     // plumbing: `if (st == nullptr) return false/{}` in each public campaign query: the 'no book /
-    //   conflicted book' arm of world_scripts.cpp:2794 surfaced per entry point (asserted there and
+    //   conflicted book' arm of above surfaced per entry point (asserted there and
     //   in action_without_registration_answers_false, no_registration_means_no_picker).
     if (st == nullptr)
         return false;
     ScriptHost::Impl& impl = st->owner->host().impl();
     lua_State* L = impl.L;
-    // rule: Part of the rule above that begins "A campaign book serves only the hooks it
-    //   registered: ..."
+    // rule: A campaign book serves only the hooks it registered.
     // tests: CampaignHooksTest.zone_unregistered_without_base_camp_hook
     // tests: CampaignHooksTest.base_camp_alone_is_a_legal_registration
     // tests: CampaignHooksTest.match_knobs_absent_answers_defaults_and_false
@@ -5845,7 +5421,7 @@ bool campaign_picker_page(const std::string& page_id, CampaignPage& out)
         return false;
     CampaignDispatchScope scope(*st, impl);
     // plumbing: Per-dispatcher `if (!scope.armed())` after a CampaignDispatchScope: the
-    //   nested-dispatch refusal arm of world_scripts.cpp:2761 (pop the pushed fn, answer false).
+    //   nested-dispatch refusal arm of above (pop the pushed fn, answer false).
     if (!scope.armed()) {
         lua_pop(L, 1);
         return false;
@@ -5871,14 +5447,13 @@ bool campaign_picker_action(const std::string& entry_id,
 {
     VmState* st = campaign_vm_state();
     // plumbing: `if (st == nullptr) return false/{}` in each public campaign query: the 'no book /
-    //   conflicted book' arm of world_scripts.cpp:2794 surfaced per entry point (asserted there and
+    //   conflicted book' arm of above surfaced per entry point (asserted there and
     //   in action_without_registration_answers_false, no_registration_means_no_picker).
     if (st == nullptr)
         return false;
     ScriptHost::Impl& impl = st->owner->host().impl();
     lua_State* L = impl.L;
-    // rule: Part of the rule above that begins "A campaign book serves only the hooks it
-    //   registered: ..."
+    // rule: A campaign book serves only the hooks it registered.
     // tests: CampaignHooksTest.zone_unregistered_without_base_camp_hook
     // tests: CampaignHooksTest.base_camp_alone_is_a_legal_registration
     // tests: CampaignHooksTest.match_knobs_absent_answers_defaults_and_false
@@ -5887,7 +5462,7 @@ bool campaign_picker_action(const std::string& entry_id,
         return false;
     CampaignDispatchScope scope(*st, impl);
     // plumbing: Per-dispatcher `if (!scope.armed())` after a CampaignDispatchScope: the
-    //   nested-dispatch refusal arm of world_scripts.cpp:2761 (pop the pushed fn, answer false).
+    //   nested-dispatch refusal arm of above (pop the pushed fn, answer false).
     if (!scope.armed()) {
         lua_pop(L, 1);
         return false;
@@ -5907,8 +5482,8 @@ bool campaign_picker_action(const std::string& entry_id,
         out.ok = true;
         // nil (or any non-table) = no toast; a table's optional `message`
         // string is the toast. Raw access: untrusted result value.
-        // rule: Part of the rule above that begins "A picker action always counts as dispatched (a
-        //   spend ..."
+        // rule: A picker action always counts as dispatched (a spend it applied sticks, so the page
+        //   refreshes).
         // tests: CampaignHooksTest.action_dispatch_and_message
         // tests: CampaignHooksTest.action_result_level_parse_and_bounds
         if (lua_istable(L, -1)) {
@@ -5920,14 +5495,14 @@ bool campaign_picker_action(const std::string& entry_id,
             // non-integer — stays the "no level carried" default (-1).
             lua_pushstring(L, "level");
             lua_rawget(L, -2);
-            // rule: Part of the rule above that begins "A picker action always counts as dispatched
-            //   (a spend ..."
+            // rule: A picker action always counts as dispatched (a spend it applied sticks, so the
+            //   page refreshes).
             // tests: CampaignHooksTest.action_dispatch_and_message
             // tests: CampaignHooksTest.action_result_level_parse_and_bounds
             if (lua_isinteger(L, -1)) {
                 const lua_Integer level = lua_tointeger(L, -1);
-                // rule: Part of the rule above that begins "A picker action always counts as
-                //   dispatched (a spend ..."
+                // rule: A picker action always counts as dispatched (a spend it applied sticks, so
+                //   the page refreshes).
                 // tests: CampaignHooksTest.action_dispatch_and_message
                 // tests: CampaignHooksTest.action_result_level_parse_and_bounds
                 if (level >= 0 && level <= 32767)
@@ -5974,15 +5549,10 @@ bool campaign_fighter_power(const LineupPowerRow& row, long long& out)
         lua_State* book_L = st->owner->host().impl().L;
         pushed = push_campaign_hook_fn(book_L, st, kCampaignLineupPowerSlot);
     }
-    // rule: Part of the rule above that begins "A fighter's lineup price comes from the book's
-    //   lineup.power ..."
-    // tests: CampaignHooksTest.a_campaign_lineup_overrides_the_default
-    // tests: CampaignHooksTest.a_book_with_no_lineup_falls_back_to_the_default
-    // tests: CampaignHooksTest.no_book_and_no_default_is_no_metric
     if (!pushed) {
         st = default_lineup_vm_state();
-        // rule: Part of the rule above that begins "A fighter's lineup price comes from the book's
-        //   lineup.power ..."
+        // rule: A fighter's lineup price comes from the book's lineup.power first, and falls
+        //   through to the shipped default when the book has no lineup or is conflicted.
         // tests: CampaignHooksTest.a_campaign_lineup_overrides_the_default
         // tests: CampaignHooksTest.a_book_with_no_lineup_falls_back_to_the_default
         // tests: CampaignHooksTest.no_book_and_no_default_is_no_metric
@@ -5999,7 +5569,7 @@ bool campaign_fighter_power(const LineupPowerRow& row, long long& out)
     lua_State* L = impl.L;
     CampaignDispatchScope scope(*st, impl);
     // plumbing: Per-dispatcher `if (!scope.armed())` after a CampaignDispatchScope: the
-    //   nested-dispatch refusal arm of world_scripts.cpp:2761 (pop the pushed fn, answer false).
+    //   nested-dispatch refusal arm of above (pop the pushed fn, answer false).
     if (!scope.armed()) {
         lua_pop(L, 1);
         return false;
@@ -6047,8 +5617,7 @@ bool campaign_fighter_power(const LineupPowerRow& row, long long& out)
         // range (then truncated toward zero) — a static_cast of NaN or an
         // infinity is undefined and used to render INT64_MIN on the band.
         std::string refusal;
-        // rule: Part of the rule above that begins "A lineup price is a number the pricer actually
-        //   ..."
+        // rule: A lineup price is a number the pricer actually computed.
         // tests: CampaignHooksTest.lineup_power_non_integer_answers
         // tests: CampaignHooksTest.lineup_power_that_errors_answers_false
         // tests: CampaignHooksTest.lineup_power_that_returns_a_non_number_answers_false
@@ -6066,8 +5635,7 @@ bool campaign_fighter_power(const LineupPowerRow& row, long long& out)
             // 2^63 as a double is exactly representable; the open bound on
             // the right keeps the truncation inside LLONG_MAX.
             constexpr lua_Number kInt64Span = 9223372036854775808.0;
-            // rule: Part of the rule above that begins "A lineup price is a number the pricer
-            //   actually ..."
+            // rule: A lineup price is a number the pricer actually computed.
             // tests: CampaignHooksTest.lineup_power_non_integer_answers
             // tests: CampaignHooksTest.lineup_power_that_errors_answers_false
             // tests: CampaignHooksTest.lineup_power_that_returns_a_non_number_answers_false
@@ -6084,8 +5652,7 @@ bool campaign_fighter_power(const LineupPowerRow& row, long long& out)
                     who, value);
             }
         }
-        // rule: Part of the rule above that begins "A lineup price is a number the pricer actually
-        //   ..."
+        // rule: A lineup price is a number the pricer actually computed.
         // tests: CampaignHooksTest.lineup_power_non_integer_answers
         // tests: CampaignHooksTest.lineup_power_that_errors_answers_false
         // tests: CampaignHooksTest.lineup_power_that_returns_a_non_number_answers_false
@@ -6106,14 +5673,13 @@ bool campaign_zone_registered()
 {
     VmState* st = campaign_vm_state();
     // plumbing: `if (st == nullptr) return false/{}` in each public campaign query: the 'no book /
-    //   conflicted book' arm of world_scripts.cpp:2794 surfaced per entry point (asserted there and
+    //   conflicted book' arm of above surfaced per entry point (asserted there and
     //   in action_without_registration_answers_false, no_registration_means_no_picker).
     if (st == nullptr)
         return false;
     ScriptHost::Impl& impl = st->owner->host().impl();
     lua_State* L = impl.L;
-    // rule: Part of the rule above that begins "A campaign book serves only the hooks it
-    //   registered: ..."
+    // rule: A campaign book serves only the hooks it registered.
     // tests: CampaignHooksTest.zone_unregistered_without_base_camp_hook
     // tests: CampaignHooksTest.base_camp_alone_is_a_legal_registration
     // tests: CampaignHooksTest.match_knobs_absent_answers_defaults_and_false
@@ -6128,14 +5694,13 @@ bool campaign_zone(CampaignZone& out)
 {
     VmState* st = campaign_vm_state();
     // plumbing: `if (st == nullptr) return false/{}` in each public campaign query: the 'no book /
-    //   conflicted book' arm of world_scripts.cpp:2794 surfaced per entry point (asserted there and
+    //   conflicted book' arm of above surfaced per entry point (asserted there and
     //   in action_without_registration_answers_false, no_registration_means_no_picker).
     if (st == nullptr)
         return false;
     ScriptHost::Impl& impl = st->owner->host().impl();
     lua_State* L = impl.L;
-    // rule: Part of the rule above that begins "A campaign book serves only the hooks it
-    //   registered: ..."
+    // rule: A campaign book serves only the hooks it registered.
     // tests: CampaignHooksTest.zone_unregistered_without_base_camp_hook
     // tests: CampaignHooksTest.base_camp_alone_is_a_legal_registration
     // tests: CampaignHooksTest.match_knobs_absent_answers_defaults_and_false
@@ -6144,7 +5709,7 @@ bool campaign_zone(CampaignZone& out)
         return false;
     CampaignDispatchScope scope(*st, impl);
     // plumbing: Per-dispatcher `if (!scope.armed())` after a CampaignDispatchScope: the
-    //   nested-dispatch refusal arm of world_scripts.cpp:2761 (pop the pushed fn, answer false).
+    //   nested-dispatch refusal arm of above (pop the pushed fn, answer false).
     if (!scope.armed()) {
         lua_pop(L, 1);
         return false;
@@ -6169,14 +5734,13 @@ bool campaign_match_knobs_registered()
 {
     VmState* st = campaign_vm_state();
     // plumbing: `if (st == nullptr) return false/{}` in each public campaign query: the 'no book /
-    //   conflicted book' arm of world_scripts.cpp:2794 surfaced per entry point (asserted there and
+    //   conflicted book' arm of above surfaced per entry point (asserted there and
     //   in action_without_registration_answers_false, no_registration_means_no_picker).
     if (st == nullptr)
         return false;
     ScriptHost::Impl& impl = st->owner->host().impl();
     lua_State* L = impl.L;
-    // rule: Part of the rule above that begins "A campaign book serves only the hooks it
-    //   registered: ..."
+    // rule: A campaign book serves only the hooks it registered.
     // tests: CampaignHooksTest.zone_unregistered_without_base_camp_hook
     // tests: CampaignHooksTest.base_camp_alone_is_a_legal_registration
     // tests: CampaignHooksTest.match_knobs_absent_answers_defaults_and_false
@@ -6195,14 +5759,13 @@ bool campaign_match_knobs(CampaignMatchKnobs& out)
     out = CampaignMatchKnobs{};
     VmState* st = campaign_vm_state();
     // plumbing: `if (st == nullptr) return false/{}` in each public campaign query: the 'no book /
-    //   conflicted book' arm of world_scripts.cpp:2794 surfaced per entry point (asserted there and
+    //   conflicted book' arm of above surfaced per entry point (asserted there and
     //   in action_without_registration_answers_false, no_registration_means_no_picker).
     if (st == nullptr)
         return false;
     ScriptHost::Impl& impl = st->owner->host().impl();
     lua_State* L = impl.L;
-    // rule: Part of the rule above that begins "A campaign book serves only the hooks it
-    //   registered: ..."
+    // rule: A campaign book serves only the hooks it registered.
     // tests: CampaignHooksTest.zone_unregistered_without_base_camp_hook
     // tests: CampaignHooksTest.base_camp_alone_is_a_legal_registration
     // tests: CampaignHooksTest.match_knobs_absent_answers_defaults_and_false
@@ -6211,7 +5774,7 @@ bool campaign_match_knobs(CampaignMatchKnobs& out)
         return false;
     CampaignDispatchScope scope(*st, impl);
     // plumbing: Per-dispatcher `if (!scope.armed())` after a CampaignDispatchScope: the
-    //   nested-dispatch refusal arm of world_scripts.cpp:2761 (pop the pushed fn, answer false).
+    //   nested-dispatch refusal arm of above (pop the pushed fn, answer false).
     if (!scope.armed()) {
         lua_pop(L, 1);
         return false;
@@ -6224,8 +5787,9 @@ bool campaign_match_knobs(CampaignMatchKnobs& out)
     // tests: CampaignHooksTest.match_knobs_refuses_mis_shaped_answers_by_name
     if (ok) {
         ok = parse_campaign_match_knobs(L, impl, out);
-        // rule: Part of the rule above that begins "On every refusal (no book, no hook, nested,
-        //   hook ..."
+        // rule: On every refusal (no book, no hook, nested, hook error, malformed answer) the knobs
+        //   answer is the defaults, set before the first early return, so a caller never reads a
+        //   previous campaign's knobs.
         // tests: CampaignHooksTest.match_knobs_refuses_mis_shaped_answers_by_name
         if (!ok)
             out = CampaignMatchKnobs{};

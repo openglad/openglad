@@ -40,9 +40,6 @@ bool walker::setxy(short x, short y)
     set_worldx(static_cast<float>(x));
     set_worldy(static_cast<float>(y));
 
-    obmap* map = (current_game && current_game->world)
-        ? current_game->world->myobmap.get()
-        : nullptr;
     // rule: Only tangible walkers are in the collision map: repositioning a normal walker
     //   re-buckets it at the new spot; repositioning an ignored (blood, walk-over), dormant
     //   (delayed spawn) or hidden (burrowed) walker removes it instead, so it blocks nothing and is
@@ -53,13 +50,15 @@ bool walker::setxy(short x, short y)
     // tests: NpcScenarioFlags.repositioning_a_dormant_walker_keeps_it_unregistered
     // tests: KitSeams.hidden_walker_is_inert_and_skipped_by_every_finder
     // tests: SemWalker4.setxy_without_a_world_map_only_repositions
+    obmap* map = (current_game && current_game->world)
+        ? current_game->world->myobmap.get()
+        : nullptr;
     if (map != nullptr)
     {
         // Dormant (delayed-spawn) walkers hold the "never in the obmap"
         // invariant: repositioning one must not re-register it. Waking
         // (walker::set_dormant(false)) is the only re-entry point.
-        // rule: Part of the rule above that begins "Only tangible walkers are in the collision map:
-        //   repositioning ..."
+        // rule: Only tangible walkers are in the collision map.
         // tests: WalkerMovement.walker_setxy_moves_obmap_registration
         // tests: WalkerMovementUnit.walker_movement_r11_move_worldmove_setxy_and_setworldxy
         // tests: NpcScenarioFlags.repositioning_a_dormant_walker_keeps_it_unregistered
@@ -81,20 +80,20 @@ void walker::setworldxy(float x, float y)
     set_worldx(x);
     set_worldy(y);
 
-    obmap* map = (current_game && current_game->world)
-        ? current_game->world->myobmap.get()
-        : nullptr;
-    // rule: Same tangibility rule as walker_movement.cpp:51 for sub-pixel moves: the collision map
+    // rule: Same tangibility rule as above for sub-pixel moves: the collision map
     //   uses the truncated pixel position.
     // tests: WalkerMovementUnit.walker_movement_r11_move_worldmove_setxy_and_setworldxy
     // tests: NpcScenarioFlags.repositioning_a_dormant_walker_keeps_it_unregistered
     // tests: KitSeams.hidden_walker_is_inert_and_skipped_by_every_finder
     // tests: SemWalker4.setworldxy_rebuckets_a_tangible_walker_at_the_truncated_pixel
+    obmap* map = (current_game && current_game->world)
+        ? current_game->world->myobmap.get()
+        : nullptr;
     if (map != nullptr)
     {
         // Same dormancy rule as setxy: never re-register a delayed spawn.
-        // rule: Part of the rule above that begins "Same tangibility rule as walker_movement.cpp:51
-        //   for sub-pixel moves: the ..."
+        // rule: Same tangibility rule as above for sub-pixel moves: the collision
+        //   map uses the truncated pixel position.
         // tests: WalkerMovementUnit.walker_movement_r11_move_worldmove_setxy_and_setworldxy
         // tests: NpcScenarioFlags.repositioning_a_dormant_walker_keeps_it_unregistered
         // tests: KitSeams.hidden_walker_is_inert_and_skipped_by_every_finder
@@ -131,7 +130,9 @@ short walker::facing(short x, short y)
     // tests: WalkerMovementUnit.walker_movement_facing_thresholds
     if (!x)
     {
-        // rule: Part of the rule above that begins "A movement or aim vector maps to one of ..."
+        // rule: A movement or aim vector maps to one of eight facings in 45-degree sectors whose
+        //   borders sit at 22.5 degrees (slope 0.414) and 67.5 degrees (2.414), integer slope
+        //   1000*y/x.
         // tests: WalkerMovement.walker_facing_all_16_vectors
         // tests: WalkerMovement.walker_facing_threshold_boundaries_round6
         // tests: WalkerMovementUnit.walker_movement_facing_thresholds
@@ -143,31 +144,40 @@ short walker::facing(short x, short y)
 
     slope = bigy / x;
 
-    // rule: Part of the rule above that begins "A movement or aim vector maps to one of ..."
+    // rule: A movement or aim vector maps to one of eight facings in 45-degree sectors whose
+    //   borders sit at 22.5 degrees (slope 0.414) and 67.5 degrees (2.414), integer slope 1000*y/x.
     // tests: WalkerMovement.walker_facing_all_16_vectors
     // tests: WalkerMovement.walker_facing_threshold_boundaries_round6
     // tests: WalkerMovementUnit.walker_movement_facing_thresholds
     if (x>0)
     {
-        // rule: Part of the rule above that begins "A movement or aim vector maps to one of ..."
+        // rule: A movement or aim vector maps to one of eight facings in 45-degree sectors whose
+        //   borders sit at 22.5 degrees (slope 0.414) and 67.5 degrees (2.414), integer slope
+        //   1000*y/x.
         // tests: WalkerMovement.walker_facing_all_16_vectors
         // tests: WalkerMovement.walker_facing_threshold_boundaries_round6
         // tests: WalkerMovementUnit.walker_movement_facing_thresholds
         if (slope > 2414)
             return FACE_DOWN;
-        // rule: Part of the rule above that begins "A movement or aim vector maps to one of ..."
+        // rule: A movement or aim vector maps to one of eight facings in 45-degree sectors whose
+        //   borders sit at 22.5 degrees (slope 0.414) and 67.5 degrees (2.414), integer slope
+        //   1000*y/x.
         // tests: WalkerMovement.walker_facing_all_16_vectors
         // tests: WalkerMovement.walker_facing_threshold_boundaries_round6
         // tests: WalkerMovementUnit.walker_movement_facing_thresholds
         if (slope > 414)
             return FACE_DOWN_RIGHT;
-        // rule: Part of the rule above that begins "A movement or aim vector maps to one of ..."
+        // rule: A movement or aim vector maps to one of eight facings in 45-degree sectors whose
+        //   borders sit at 22.5 degrees (slope 0.414) and 67.5 degrees (2.414), integer slope
+        //   1000*y/x.
         // tests: WalkerMovement.walker_facing_all_16_vectors
         // tests: WalkerMovement.walker_facing_threshold_boundaries_round6
         // tests: WalkerMovementUnit.walker_movement_facing_thresholds
         if (slope > -414)
             return FACE_RIGHT;
-        // rule: Part of the rule above that begins "A movement or aim vector maps to one of ..."
+        // rule: A movement or aim vector maps to one of eight facings in 45-degree sectors whose
+        //   borders sit at 22.5 degrees (slope 0.414) and 67.5 degrees (2.414), integer slope
+        //   1000*y/x.
         // tests: WalkerMovement.walker_facing_all_16_vectors
         // tests: WalkerMovement.walker_facing_threshold_boundaries_round6
         // tests: WalkerMovementUnit.walker_movement_facing_thresholds
@@ -177,25 +187,33 @@ short walker::facing(short x, short y)
     }
     else
     {
-        // rule: Part of the rule above that begins "A movement or aim vector maps to one of ..."
+        // rule: A movement or aim vector maps to one of eight facings in 45-degree sectors whose
+        //   borders sit at 22.5 degrees (slope 0.414) and 67.5 degrees (2.414), integer slope
+        //   1000*y/x.
         // tests: WalkerMovement.walker_facing_all_16_vectors
         // tests: WalkerMovement.walker_facing_threshold_boundaries_round6
         // tests: WalkerMovementUnit.walker_movement_facing_thresholds
         if (slope > 2414)
             return FACE_UP;
-        // rule: Part of the rule above that begins "A movement or aim vector maps to one of ..."
+        // rule: A movement or aim vector maps to one of eight facings in 45-degree sectors whose
+        //   borders sit at 22.5 degrees (slope 0.414) and 67.5 degrees (2.414), integer slope
+        //   1000*y/x.
         // tests: WalkerMovement.walker_facing_all_16_vectors
         // tests: WalkerMovement.walker_facing_threshold_boundaries_round6
         // tests: WalkerMovementUnit.walker_movement_facing_thresholds
         if (slope > 414)
             return FACE_UP_LEFT;
-        // rule: Part of the rule above that begins "A movement or aim vector maps to one of ..."
+        // rule: A movement or aim vector maps to one of eight facings in 45-degree sectors whose
+        //   borders sit at 22.5 degrees (slope 0.414) and 67.5 degrees (2.414), integer slope
+        //   1000*y/x.
         // tests: WalkerMovement.walker_facing_all_16_vectors
         // tests: WalkerMovement.walker_facing_threshold_boundaries_round6
         // tests: WalkerMovementUnit.walker_movement_facing_thresholds
         if (slope > -414)
             return FACE_LEFT;
-        // rule: Part of the rule above that begins "A movement or aim vector maps to one of ..."
+        // rule: A movement or aim vector maps to one of eight facings in 45-degree sectors whose
+        //   borders sit at 22.5 degrees (slope 0.414) and 67.5 degrees (2.414), integer slope
+        //   1000*y/x.
         // tests: WalkerMovement.walker_facing_all_16_vectors
         // tests: WalkerMovement.walker_facing_threshold_boundaries_round6
         // tests: WalkerMovementUnit.walker_movement_facing_thresholds
@@ -244,8 +262,7 @@ bool walker::walkstep(float x, float y)
     if (order() == Order::Living)
     {
         const auto* fd = get_family_descriptor(family());
-        // rule: Part of the rule above that begins "A stationary living (tower) never moves: a step
-        //   only ..."
+        // rule: A stationary living (tower) never moves.
         // tests: WalkerMovement.stationary_family_walk_and_turn_branches
         // tests: WalkerMovementUnit.walker_movement_r12_stationary_slope_and_animate_paths
         if (fd && fd->is_stationary)
@@ -269,8 +286,8 @@ bool walker::walkstep(float x, float y)
     if (!returnvalue) // couldn't walk this direction ..
     {
         returnvalue = walk(x*halfstep, y*halfstep); // Now try a baby step
-        // rule: Part of the rule above that begins "A blocked step is retried as a one-unit baby
-        //   ..."
+        // rule: A blocked step is retried as a one-unit baby step (x,y as given, e.g. 1px) before
+        //   any fallback.
         // tests: WalkerMovement.walker_walkstep_cardinals
         // tests: WalkerMovement.user_blocked_step_tries_full_then_baby_step_before_sliding
         // tests: WalkerMovement.round6_scripted_walkstep_switch_coverage
@@ -287,8 +304,8 @@ bool walker::walkstep(float x, float y)
             // tests: SemWalker4.an_npc_with_an_invalid_facing_makes_no_fallback_move
             if (user() == -1) // means we are an npc
             {
-                // rule: Part of the rule above that begins "A blocked NPC sidesteps: on a cardinal
-                //   it turns ..."
+                // rule: A blocked NPC sidesteps: on a cardinal it turns 90 degrees (UP->LEFT,
+                //   RIGHT->UP, DOWN->RIGHT, LEFT->DOWN) and walks one full stepsize that way.
                 // tests: WalkerMovement.npc_blocked_step_fallback_arms_and_the_user_slide
                 // tests: WalkerMovement.round6_scripted_walkstep_switch_coverage
                 // tests: WalkerMovementUnit.walker_movement_r14_npc_fallback_denials_and_one_success
@@ -359,8 +376,7 @@ bool walker::walkstep(float x, float y)
                 bool gotup = false, gotover = false;
                 short dx = 0, dy = 0;
                 
-                // rule: Part of the rule above that begins "A blocked player slides along walls
-                //   only on diagonals: ..."
+                // rule: A blocked player slides along walls only on diagonals.
                 // tests: WalkerMovement.walker_walkstep_user_slide_cardinal_break_path_round5
                 // tests: WalkerMovement.walker_walkstep_user_slide_sets_vertical_and_horizontal_dirs
                 // tests: WalkerMovement.walker_walkstep_user_slide_diagonal_switch_cases_round6
@@ -394,8 +410,7 @@ bool walker::walkstep(float x, float y)
                         break;
                 }
                 
-                // rule: Part of the rule above that begins "A blocked player slides along walls
-                //   only on diagonals: ..."
+                // rule: A blocked player slides along walls only on diagonals.
                 // tests: WalkerMovement.walker_walkstep_user_slide_cardinal_break_path_round5
                 // tests: WalkerMovement.walker_walkstep_user_slide_sets_vertical_and_horizontal_dirs
                 // tests: WalkerMovement.walker_walkstep_user_slide_diagonal_switch_cases_round6
@@ -403,16 +418,14 @@ bool walker::walkstep(float x, float y)
                 if(dx != 0 || dy != 0)
                 {
                     const std::int32_t step_i = static_cast<std::int32_t>(step);
-                    // rule: Part of the rule above that begins "A blocked player slides along walls
-                    //   only on diagonals: ..."
+                    // rule: A blocked player slides along walls only on diagonals.
                     // tests: WalkerMovement.walker_walkstep_user_slide_cardinal_break_path_round5
                     // tests: WalkerMovement.walker_walkstep_user_slide_sets_vertical_and_horizontal_dirs
                     // tests: WalkerMovement.walker_walkstep_user_slide_diagonal_switch_cases_round6
                     // tests: WalkerMovementUnit.walker_movement_r14_user_slide_axes_and_turn_default
                     for (i = 0; i < step_i; i++)
                     {
-                        // rule: Part of the rule above that begins "A blocked player slides along
-                        //   walls only on diagonals: ..."
+                        // rule: A blocked player slides along walls only on diagonals.
                         // tests: WalkerMovement.walker_walkstep_user_slide_cardinal_break_path_round5
                         // tests: WalkerMovement.walker_walkstep_user_slide_sets_vertical_and_horizontal_dirs
                         // tests: WalkerMovement.walker_walkstep_user_slide_diagonal_switch_cases_round6
@@ -422,8 +435,7 @@ bool walker::walkstep(float x, float y)
                             worldmove(0, dy);  // walk without turning ..
                             gotup = true;
                         }
-                        // rule: Part of the rule above that begins "A blocked player slides along
-                        //   walls only on diagonals: ..."
+                        // rule: A blocked player slides along walls only on diagonals.
                         // tests: WalkerMovement.walker_walkstep_user_slide_cardinal_break_path_round5
                         // tests: WalkerMovement.walker_walkstep_user_slide_sets_vertical_and_horizontal_dirs
                         // tests: WalkerMovement.walker_walkstep_user_slide_diagonal_switch_cases_round6
@@ -440,8 +452,9 @@ bool walker::walkstep(float x, float y)
                         // tests: SemWalker4.a_player_slide_draws_the_moved_axis_one_cycle_on_classic
                         if (!gotup && gotover)  // moved horizontally
                         {
-                            // rule: Part of the rule above that begins "While sliding, the player's
-                            //   walk frame advances one cycle ..."
+                            // rule: While sliding, the player's walk frame advances one cycle per
+                            //   pixel step and is drawn facing the axis actually moved (right/left
+                            //   or up/down) when only one axis moved.
                             // tests: SemWalker4.a_player_slide_draws_the_moved_axis_one_cycle_on_classic
                             if(dx > 0)
                                 set_curdir(static_cast<signed char>(FACE_RIGHT));
@@ -450,17 +463,15 @@ bool walker::walkstep(float x, float y)
                         }
                         else if (gotup && !gotover) // moved vertically
                         {
-                            // rule: Part of the rule above that begins "While sliding, the player's
-                            //   walk frame advances one cycle ..."
+                            // rule: While sliding, the player's walk frame advances one cycle per
+                            //   pixel step and is drawn facing the axis actually moved (right/left
+                            //   or up/down) when only one axis moved.
                             // tests: SemWalker4.a_player_slide_draws_the_moved_axis_one_cycle_on_classic
                             if(dy < 0)
                                 set_curdir(static_cast<signed char>(FACE_UP));
                             else
                                 set_curdir(static_cast<signed char>(FACE_DOWN));
                         }
-                        // rule: Part of the rule above that begins "While sliding, the player's
-                        //   walk frame advances one cycle ..."
-                        // tests: SemWalker4.a_player_slide_draws_the_moved_axis_one_cycle_on_classic
                         if (gotup || gotover) // we moved somewhere?
 	                        {
 	                            set_cycle(static_cast<signed char>(mycycle));
@@ -484,14 +495,14 @@ bool walker::walk(float x, float y)
 
     dir = facing(x, y);
 
-    // rule: A stationary living's walk only sets its facing (same rule as walker_movement.cpp:164)
+    // rule: A stationary living's walk only sets its facing (same rule as above)
     //   and succeeds.
     // tests: SemWalker4.a_stationary_living_walk_only_sets_its_facing
     if (order() == Order::Living)
     {
         const auto* fd = get_family_descriptor(family());
-        // rule: Part of the rule above that begins "A stationary living's walk only sets its facing
-        //   (same ..."
+        // rule: A stationary living's walk only sets its facing (same rule as
+        //   above) and succeeds.
         // tests: SemWalker4.a_stationary_living_walk_only_sets_its_facing
         if (fd && fd->is_stationary)
         {
@@ -551,8 +562,7 @@ bool walker::walk(float x, float y)
         {
             //we're not alive
 
-            // rule: Part of the rule above that begins "A passable step moves the walker (sub-pixel
-            //   kept) and ..."
+            // rule: A passable step moves the walker (sub-pixel kept) and advances its walk frame.
             // tests: WalkerMovementUnit.walker_movement_walk_and_walkstep_edge_paths
             // tests: WalkerMovementUnit.walker_movement_r12_stationary_slope_and_animate_paths
             // tests: WalkerMovementUnit.walker_movement_r11_walk_turn_and_angles
@@ -643,8 +653,8 @@ bool walker::turn(short targetdir)
     // tests: SemWalker4.a_turn_heads_a_mobile_walker_one_stepsize_along_each_facing
     if (!stationary)
     {
-        // rule: Part of the rule above that begins "After a turn a mobile walker's heading
-        //   (lastx/lasty, used ..."
+        // rule: After a turn a mobile walker's heading (lastx/lasty, used to repeat walks and aim
+        //   weapons) is one stepsize along the new facing.
         // tests: WalkerMovementUnit.walker_movement_turn_stationary_and_normal
         // tests: WalkerMovementUnit.walker_movement_r11_walk_turn_and_angles
         // tests: WalkerMovement.round9_blocked_animate_angle_and_turn_default_paths

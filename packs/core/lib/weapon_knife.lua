@@ -14,7 +14,7 @@ local function on_death(self)
   local owner = self:owner()
   -- rule: A knife with no owner at all just dies (no returning blade).
   -- unreachable: weap::act re-owns a null or dead owner's knife to itself before it can die
-  --   (weap.cpp:66-70); classic divergence on the unreached arm: the old game (weap.cpp:143-145 at
+  --   (weap.cpp); classic divergence on the unreached arm: the old game (weap.cpp at
   --   7ff1654a) spawns a knife_back for a NULL owner, the current Lua returns false
   if not owner then
     return false  -- no special handling (C++: owner_fd == nullptr)

@@ -171,18 +171,22 @@ void walker::do_hit_effects(walker* attacker, walker* target, short tempdamage)
     if (current_game != nullptr && current_game->world != nullptr)
     {
         // Create hit effect
-        // rule: Part of the rule above that begins "Every hit spawns a hit flash (FAMILY_HIT fx,
-        //   team ..."
+        // rule: Every hit spawns a hit flash (FAMILY_HIT fx, team of the hitter, on the victim's
+        //   floor, random ani 1..3 from the cosmetic stream) except a hit dealt by an effect whose
+        //   family says creates_hit_effect=false (boomerang, marker, chain, ghost scare).
         // tests: SemWalker3.every_hit_spawns_a_hit_flash_except_from_a_quiet_effect
         const auto* efd = (query_order() == Order::FX) ? get_effect_family_descriptor(family()) : nullptr;
-        // rule: Part of the rule above that begins "Every hit spawns a hit flash (FAMILY_HIT fx,
-        //   team ..."
+        // rule: Every hit spawns a hit flash (FAMILY_HIT fx, team of the hitter, on the victim's
+        //   floor, random ani 1..3 from the cosmetic stream) except a hit dealt by an effect whose
+        //   family says creates_hit_effect=false (boomerang, marker, chain, ghost scare).
         // tests: SemWalker3.every_hit_spawns_a_hit_flash_except_from_a_quiet_effect
         if(query_order() != Order::FX || (efd && efd->creates_hit_effect))
         {
             walker* newob = current_game->world->add_ob(Order::FX, FAMILY_HIT);
-            // rule: Part of the rule above that begins "Every hit spawns a hit flash (FAMILY_HIT
-            //   fx, team ..."
+            // rule: Every hit spawns a hit flash (FAMILY_HIT fx, team of the hitter, on the
+            //   victim's floor, random ani 1..3 from the cosmetic stream) except a hit dealt by an
+            //   effect whose family says creates_hit_effect=false (boomerang, marker, chain, ghost
+            //   scare).
             // tests: SemWalker3.every_hit_spawns_a_hit_flash_except_from_a_quiet_effect
             if (newob)
             {
@@ -201,8 +205,10 @@ void walker::do_hit_effects(walker* attacker, walker* target, short tempdamage)
                 // the override or &world->rng_ (gameplay_context.cpp).
                 IRandom* ani_rng = cosmetic_rng();
                 newob->set_ani_type(static_cast<char>(1 + ani_rng->next(3)));
-                // rule: Part of the rule above that begins "Every hit spawns a hit flash
-                //   (FAMILY_HIT fx, team ..."
+                // rule: Every hit spawns a hit flash (FAMILY_HIT fx, team of the hitter, on the
+                //   victim's floor, random ani 1..3 from the cosmetic stream) except a hit dealt by
+                //   an effect whose family says creates_hit_effect=false (boomerang, marker, chain,
+                //   ghost scare).
                 // tests: SemWalker3.every_hit_spawns_a_hit_flash_except_from_a_quiet_effect
                 if(attacker == this)
                 {
@@ -220,8 +226,7 @@ void walker::do_hit_effects(walker* attacker, walker* target, short tempdamage)
         }
     }
 
-    // rule: Part of the rule above that begins "A hit that actually took hit points flashes the
-    //   ..."
+    // rule: A hit that actually took hit points flashes the victim.
     // tests: WalkerCombat.batch5_heal_and_hit_effect_variants
     // tests: WalkerCombat.effect_helpers_and_recoil_branches
     // tests: SemWalker3.a_damaging_hit_flashes_and_a_living_victim_recoils_away
@@ -229,8 +234,7 @@ void walker::do_hit_effects(walker* attacker, walker* target, short tempdamage)
     {
         target->set_hurt_flash(true);
 
-        // rule: Part of the rule above that begins "A hit that actually took hit points flashes the
-        //   ..."
+        // rule: A hit that actually took hit points flashes the victim.
         // tests: WalkerCombat.batch5_heal_and_hit_effect_variants
         // tests: WalkerCombat.effect_helpers_and_recoil_branches
         // tests: SemWalker3.a_damaging_hit_flashes_and_a_living_victim_recoils_away
@@ -290,7 +294,8 @@ void walker::do_combat_damage(walker* attacker, walker* target, short tempdamage
         tempdamage = static_cast<short>(static_cast<float>(tempdamage) + target->stats()->hitpoints());
 
     // Delay HP regeneration
-    // rule: Part of the rule above that begins "A hit that takes real hit points delays the ..."
+    // rule: A hit that takes real hit points delays the victim's HP regeneration by 50 ticks;
+    //   overkill below 0 hp does not count as damage taken; a 0-damage hit does not delay regen.
     // tests: WalkerCombat.batch5_do_combat_damage_target_myguy_stats
     // tests: WalkerMore.walker_friendliness_and_a_hostile_attack_lands_its_damage
     // tests: SemWalker3.a_zero_hit_leaves_regen_alone_and_overkill_counts_only_the_hp_lost
@@ -304,8 +309,8 @@ void walker::do_combat_damage(walker* attacker, walker* target, short tempdamage
     if(target->myguy != nullptr)
     {
         target->myguy->scen_damage_taken += tempdamage;
-        // rule: Part of the rule above that begins "A hero's record tracks damage taken this
-        //   scenario (overkill ..."
+        // rule: A hero's record tracks damage taken this scenario (overkill trimmed) and the lowest
+        //   HP he reached.
         // tests: WalkerCombat.batch5_do_combat_damage_target_myguy_stats
         // tests: SemWalker3.a_hero_victims_record_keeps_its_lowest_hp
         if(target->myguy->scen_min_hp > target->stats()->hitpoints())
@@ -335,8 +340,8 @@ bool walker::attack(walker  *target)
         return 0;
 
     //if ( (targetorder == Order::Living && is_friendly(target) ) ||
-    // rule: Part of the rule above that begins "Nobody can strike a dead walker, a friend (same
-    //   ..."
+    // rule: Nobody can strike a dead walker, a friend (same team at the head of both owner chains)
+    //   or a treasure: such an attack does nothing and reports failure.
     // tests: WalkerCombat.round8_attack_early_return_guards
     // tests: WalkerCombat.walker_attack_friendly_fails
     // tests: WalkerCombat.batch6_attack_friendly_team_death_messages_and_clamps
@@ -397,8 +402,8 @@ bool walker::attack(walker  *target)
     {
         case Order::Living:
             // Hit a living target, so we get credit for a hit
-            // rule: Part of the rule above that begins "Hitting a living counts as a hit on the
-            //   ..."
+            // rule: Hitting a living counts as a hit on the credited hero's record (total_hits,
+            //   scen_hits).
             // tests: WalkerMore.walker_friendliness_and_a_hostile_attack_lands_its_damage
             // tests: SemWalker3.a_hit_by_a_walker_with_no_record_credits_no_hit
             if (attacker->myguy)
@@ -414,8 +419,8 @@ bool walker::attack(walker  *target)
             if (stats_->query_bit_flags(BIT_MAGICAL))
             {
                 const auto* fd = get_family_descriptor(targetfamily);
-                // rule: Part of the rule above that begins "Magical attacks are scaled by the
-                //   victim family's magic_damage_modifier ..."
+                // rule: Magical attacks are scaled by the victim family's magic_damage_modifier
+                //   (slimes take double, barbarians half); non-magical attacks are unscaled.
                 // tests: WalkerCombat.walker_attack_slime_magic_bonus
                 // tests: WalkerCombat.walker_attack_barbarian_magic_resistance
                 if (fd)
@@ -429,8 +434,9 @@ bool walker::attack(walker  *target)
         default:
             // We hit something, but it wasn't living, so don't count
             // as a shot, OR as a hit ..
-            // rule: Part of the rule above that begins "Hitting a non-living (generator, door,
-            //   object) is not a ..."
+            // rule: Hitting a non-living (generator, door, object) is not a shot on the hero's
+            //   accuracy record: the shot counted at fire time is taken back (total_shots--,
+            //   scen_shots--).
             // tests: WalkerCombat.walker_attack_weapon_owner_chain_and_nonliving_target
             // tests: SemWalker3.a_non_living_hit_by_a_walker_with_no_record_refunds_no_shot
             if (attacker->myguy)
@@ -505,8 +511,7 @@ bool walker::attack(walker  *target)
     {
         owner()->set_foe(target);
         target->stats()->hit_response(owner());
-        // rule: Part of the rule above that begins "The victim turns on whoever is behind the blow:
-        //   ..."
+        // rule: The victim turns on whoever is behind the blow.
         // tests: StatsUnit.hit_response_guard_shields_non_living_targets
         // tests: WalkerCombat.attack_rewards_single_credit_weapon_hit
         // tests: WalkerCombat.attack_rewards_single_credit_melee_kill
@@ -518,8 +523,7 @@ bool walker::attack(walker  *target)
     else  //melee combat, set target to hit_response to us
     {
         target->stats()->hit_response(this);
-        // rule: Part of the rule above that begins "The victim turns on whoever is behind the blow:
-        //   ..."
+        // rule: The victim turns on whoever is behind the blow.
         // tests: StatsUnit.hit_response_guard_shields_non_living_targets
         // tests: WalkerCombat.attack_rewards_single_credit_weapon_hit
         // tests: WalkerCombat.attack_rewards_single_credit_melee_kill
@@ -528,8 +532,7 @@ bool walker::attack(walker  *target)
         if (myguy)
         {
             myguy->exp += static_cast<std::uint32_t>(attack_exp);
-            // rule: Part of the rule above that begins "The victim turns on whoever is behind the
-            //   blow: ..."
+            // rule: The victim turns on whoever is behind the blow.
             // tests: StatsUnit.hit_response_guard_shields_non_living_targets
             // tests: WalkerCombat.attack_rewards_single_credit_weapon_hit
             // tests: WalkerCombat.attack_rewards_single_credit_melee_kill
@@ -550,13 +553,12 @@ bool walker::attack(walker  *target)
     {
         stats_->set_hitpoints( stats_->hitpoints() - tempdamage_i);
         set_damage(damage() - 1.0f);
-        // rule: Part of the rule above that begins "A projectile is worn by what it hits: it ..."
+        // rule: A projectile is worn by what it hits.
         // tests: WalkerCombat.batch6_attack_branches_enemy_and_weapon_paths
         // tests: SemWalker3.a_projectile_is_worn_by_what_it_hits
         if (stats_->hitpoints() <= 0)
         {
-            // rule: Part of the rule above that begins "A projectile is worn by what it hits: it
-            //   ..."
+            // rule: A projectile is worn by what it hits.
             // tests: WalkerCombat.batch6_attack_branches_enemy_and_weapon_paths
             // tests: SemWalker3.a_projectile_is_worn_by_what_it_hits
             if (!stats_->query_bit_flags(BIT_IMMORTAL))
@@ -578,15 +580,17 @@ bool walker::attack(walker  *target)
     // tests: SemWalker3.a_summons_blow_pays_its_heros_experience_and_a_weapon_victim_scores_nothing
     if (owner() && targetorder != Order::Weapon && playerteam != target->team_num())
     {
-        // rule: Part of the rule above that begins "An owned hitter (a projectile or a summoned
-        //   living) ..."
+        // rule: An owned hitter (a projectile or a summoned living) striking any non-weapon of
+        //   another team than its chain head scores for the hitter's team (damage + victim level,
+        //   generators included).
         // tests: WalkerCombat.attack_rewards_single_credit_weapon_hit
         // tests: SemWalker3.a_summons_blow_pays_its_heros_experience_and_a_weapon_victim_scores_nothing
         if (getscore)
             award_score(team_num(), static_cast<std::uint32_t>(tempdamage_i)
                                   + static_cast<std::uint32_t>(target->stats()->level()));
-        // rule: Part of the rule above that begins "An owned hitter (a projectile or a summoned
-        //   living) ..."
+        // rule: An owned hitter (a projectile or a summoned living) striking any non-weapon of
+        //   another team than its chain head scores for the hitter's team (damage + victim level,
+        //   generators included).
         // tests: WalkerCombat.attack_rewards_single_credit_weapon_hit
         // tests: SemWalker3.a_summons_blow_pays_its_heros_experience_and_a_weapon_victim_scores_nothing
         if (order() != Order::Weapon && headguy->myguy)
@@ -625,8 +629,8 @@ bool walker::attack(walker  *target)
         {
             target->set_dead(1);
             target->death();
-            // rule: Part of the rule above that begins "A REASSEMBLE-warded walker struck down
-            //   stands back up (at ..."
+            // rule: A REASSEMBLE-warded walker struck down stands back up (at a quarter hp) instead
+            //   of dying.
             // tests: KitSkeleton.warded_death_tells_nobody_and_counts_no_kill
             // tests: KitSkeleton.warded_victim_is_not_a_kill
             // tests: KitSkeleton.warded_skeleton_stands_back_up_at_a_quarter
@@ -662,8 +666,8 @@ bool walker::attack(walker  *target)
                 //   not pinned
                 if (playerteam != target->team_num())
                 {
-                    // rule: Part of the rule above that begins "Killing a living of another team
-                    //   than the killer's ..."
+                    // rule: Killing a living of another team than the killer's chain head credits
+                    //   the head's hero with kill XP (kill XP only.
                     // tests: WalkerCombat.attack_rewards_single_credit_melee_kill
                     // tests: WalkerCombat.company_kill_credit_is_directional_for_every_team_pair
                     // tests: SemWalker3.an_npc_kill_off_the_players_team_credits_no_score
@@ -680,8 +684,8 @@ bool walker::attack(walker  *target)
                     //  myguy->kills++;
                     //  myguy->level_kills += target->stats()->level();
                     //}
-                    // rule: Part of the rule above that begins "Killing a living of another team
-                    //   than the killer's ..."
+                    // rule: Killing a living of another team than the killer's chain head credits
+                    //   the head's hero with kill XP (kill XP only.
                     // tests: WalkerCombat.attack_rewards_single_credit_melee_kill
                     // tests: WalkerCombat.company_kill_credit_is_directional_for_every_team_pair
                     // tests: SemWalker3.an_npc_kill_off_the_players_team_credits_no_score
@@ -707,8 +711,8 @@ bool walker::attack(walker  *target)
                     if (target->stats()->name.size() && !(target->lifetime())
                             && (!target->owner()) ) // do we have an NPC name?
                     {
-                        // rule: Part of the rule above that begins "The death of a named,
-                        //   unsummoned NPC killed by ..."
+                        // rule: The death of a named, unsummoned NPC killed by another team is
+                        //   announced.
                         // tests: WalkerCombat.named_ally_death_is_not_announced_as_enemy_death
                         // tests: WalkerCombat.batch6_attack_friendly_team_death_messages_and_clamps
                         message = (current_game->world->my_team != target->team_num())
@@ -748,8 +752,7 @@ bool walker::attack(walker  *target)
                     // tests: SameTeamDeath.a_same_team_death_is_announced_without_credit_classic
                 {
                     // Alert us of the death
-                    // rule: Part of the rule above that begins "A living killed by its own team's
-                    //   chain is ..."
+                    // rule: A living killed by its own team's chain is announced without credit.
                     // tests: SameTeamDeath.a_same_team_death_is_announced_without_credit_classic
                     if ( (target->owner() || target->lifetime()) // summoned?
                             && (target->stats()->name.size() ) ) // and have name
@@ -761,8 +764,8 @@ bool walker::attack(walker  *target)
                     else
                     {
                         const auto* fd = get_family_descriptor(target->family());
-                        // rule: Part of the rule above that begins "A living killed by its own
-                        //   team's chain is ..."
+                        // rule: A living killed by its own team's chain is announced without
+                        //   credit.
                         // tests: SameTeamDeath.a_same_team_death_is_announced_without_credit_classic
                         message = fd ? fd->death_message : "SOMEONE DIED";
                     }
@@ -792,8 +795,8 @@ bool walker::attack(walker  *target)
         // tests: SemWalker4.a_death_cries_die1_or_die2_by_a_coin_unless_unheard
         if (targetorder == Order::Living && positional_sound_visible(this, SOUND_DIE1))
         {
-            // rule: Part of the rule above that begins "A living's death plays one of two death
-            //   cries ..."
+            // rule: A living's death plays one of two death cries chosen by a world-RNG coin (DIE1
+            //   on 1, DIE2 on 0).
             // tests: SemWalker4.a_death_cries_die1_or_die2_by_a_coin_unless_unheard
             if (current_game->world->rng_.next(2))
                 og::sim::emit_sound(current_game->sim_events, SOUND_DIE1);

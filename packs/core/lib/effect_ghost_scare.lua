@@ -51,7 +51,7 @@ local function on_death(self)
     return false
   end
 
-  -- plumbing: iterates the scare's foe list; rules at effect_ghost_scare.lua:43, :50, :54
+  -- plumbing: iterates the scare's foe list; rules below
   for i = 1, #foes do
     local foe = foes[i]
     -- rule: A scare frightens living foes only (never a generator or a weapon), each fleeing
@@ -75,10 +75,6 @@ local function on_death(self)
         local con_roll = og.rand0(foe:g_constitution())
         fright = fright - con_roll
       end
-      -- rule: Part of the rule above that begins "A hero resists a scare by a constitution roll
-      --   ..."
-      -- tests: EffectDeathMore.effect_death_ghost_scare_forces_walk_commands_on_foes
-      -- tests: SemGhostScare.a_hero_resists_a_scare_by_a_constitution_roll_a_monster_never_rolls
       if fright > 0 then
         foe:s_force_fright(fright, flee_dx, flee_dy)
       end

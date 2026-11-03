@@ -97,8 +97,8 @@ walker  * treasure::find_teleport_target()
 	// Now search the rest of the list ..
 	auto e = mine;
 	e++;
-	// rule: Part of the rule above that begins "A teleporter sends you to the next live teleporter
-	//   ..."
+	// rule: A teleporter sends you to the next live teleporter with the same level number (its
+	//   channel) after it in list order, wrapping to the start; if none matches you go nowhere.
 	// tests: TreasureEat.treasure_find_teleport_target_filters_invalid_candidates_and_wraps
 	// tests: TreasureEat.treasure_find_teleport_target_loop_and_missing_self
 	// tests: TreasureEat.treasure_batch7_explicit_fxlist_teleporter_branches
@@ -106,16 +106,17 @@ walker  * treasure::find_teleport_target()
 	for(; e != ls.end(); e++)
 	{
 	    walker* w = e->get();
-		// rule: Part of the rule above that begins "A teleporter sends you to the next live
-		//   teleporter ..."
+		// rule: A teleporter sends you to the next live teleporter with the same level number (its
+		//   channel) after it in list order, wrapping to the start; if none matches you go nowhere.
 		// tests: TreasureEat.treasure_find_teleport_target_filters_invalid_candidates_and_wraps
 		// tests: TreasureEat.treasure_find_teleport_target_loop_and_missing_self
 		// tests: TreasureEat.treasure_batch7_explicit_fxlist_teleporter_branches
 		// tests: TreasureEat.treasure_round10_find_teleport_target_forward_wrap_and_empty_paths
 		if (w && !w->dead())
 		{
-			// rule: Part of the rule above that begins "A teleporter sends you to the next live
-			//   teleporter ..."
+			// rule: A teleporter sends you to the next live teleporter with the same level number
+			//   (its channel) after it in list order, wrapping to the start; if none matches you go
+			//   nowhere.
 			// tests: TreasureEat.treasure_find_teleport_target_filters_invalid_candidates_and_wraps
 			// tests: TreasureEat.treasure_find_teleport_target_loop_and_missing_self
 			// tests: TreasureEat.treasure_batch7_explicit_fxlist_teleporter_branches
@@ -131,8 +132,8 @@ walker  * treasure::find_teleport_target()
 	}
 
 	// Hit the end of the list, look from top down now ..
-	// rule: Part of the rule above that begins "A teleporter sends you to the next live teleporter
-	//   ..."
+	// rule: A teleporter sends you to the next live teleporter with the same level number (its
+	//   channel) after it in list order, wrapping to the start; if none matches you go nowhere.
 	// tests: TreasureEat.treasure_find_teleport_target_filters_invalid_candidates_and_wraps
 	// tests: TreasureEat.treasure_find_teleport_target_loop_and_missing_self
 	// tests: TreasureEat.treasure_batch7_explicit_fxlist_teleporter_branches
@@ -140,16 +141,17 @@ walker  * treasure::find_teleport_target()
 	for(e = ls.begin(); e != mine; e++)
 	{
 	    walker* w = e->get();
-		// rule: Part of the rule above that begins "A teleporter sends you to the next live
-		//   teleporter ..."
+		// rule: A teleporter sends you to the next live teleporter with the same level number (its
+		//   channel) after it in list order, wrapping to the start; if none matches you go nowhere.
 		// tests: TreasureEat.treasure_find_teleport_target_filters_invalid_candidates_and_wraps
 		// tests: TreasureEat.treasure_find_teleport_target_loop_and_missing_self
 		// tests: TreasureEat.treasure_batch7_explicit_fxlist_teleporter_branches
 		// tests: TreasureEat.treasure_round10_find_teleport_target_forward_wrap_and_empty_paths
 		if (w && !w->dead())
 		{
-			// rule: Part of the rule above that begins "A teleporter sends you to the next live
-			//   teleporter ..."
+			// rule: A teleporter sends you to the next live teleporter with the same level number
+			//   (its channel) after it in list order, wrapping to the start; if none matches you go
+			//   nowhere.
 			// tests: TreasureEat.treasure_find_teleport_target_filters_invalid_candidates_and_wraps
 			// tests: TreasureEat.treasure_find_teleport_target_loop_and_missing_self
 			// tests: TreasureEat.treasure_batch7_explicit_fxlist_teleporter_branches

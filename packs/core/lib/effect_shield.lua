@@ -66,10 +66,6 @@ local function guard_tail(self, weapon_range)
     self.lifetime = lifetime - 1
     expired = lifetime < 0
   end
-  -- rule: Part of the rule above that begins "A guard dies when its hp is spent or ..."
-  -- tests: EffectAct.magic_shield_orbit_step_and_ageing
-  -- tests: EffectMorePaths.effect_batch3_guard_dies_when_collisions_drain_its_hitpoints
-  -- tests: SemShield.classic_a_guard_expires_on_the_act_after_its_count_passes_zero
   if self.hp <= 0 or expired then
     self.dead = 1
     self:death()

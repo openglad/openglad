@@ -43,17 +43,11 @@ bool valid_campaign_var_name(std::string_view name)
     // tests: SemCampaignHooks.register_campaign_hooks_refuses_an_empty_var_name
     if (name.empty() || name.size() > static_cast<std::size_t>(kCampaignVarNameMax))
         return false;
-    // rule: Part of the rule above that begins "A campaign decision variable name is 1-32
-    //   characters of ..."
-    // tests: CampaignHooksTest.bad_vars_are_load_errors
-    // tests: CampaignHooksTest.registration_happy_path_serves_picker_and_vars
-    // tests: SemCampaignHooks.an_empty_campaign_var_name_is_refused
-    // tests: SemCampaignHooks.register_campaign_hooks_refuses_an_empty_var_name
     for (const char c : name) {
         const bool ok = (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') ||
                         c == '_';
-        // rule: Part of the rule above that begins "A campaign decision variable name is 1-32
-        //   characters of ..."
+        // rule: A campaign decision variable name is 1-32 characters of lowercase letters, digits
+        //   and underscore. Here: `!ok`.
         // tests: CampaignHooksTest.bad_vars_are_load_errors
         // tests: CampaignHooksTest.registration_happy_path_serves_picker_and_vars
         // tests: SemCampaignHooks.an_empty_campaign_var_name_is_refused

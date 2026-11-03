@@ -59,8 +59,8 @@ local function facing_of(self)
   --   signs of its last heading, else straight up.
   -- tests: KitSkeleton.bone_wall_follows_the_facing
   if dir >= 0 then
-    -- rule: Part of the rule above that begins "BONE WALL rises across the skeleton's facing: its
-    --   8-way ..."
+    -- rule: BONE WALL rises across the skeleton's facing: its 8-way curdir when it has one, else
+    --   the signs of its last heading, else straight up.
     -- tests: KitSkeleton.bone_wall_follows_the_facing
     if dir < 8 then
       return FACING_X[dir + 1], FACING_Y[dir + 1]
@@ -68,12 +68,9 @@ local function facing_of(self)
   end
   local fx = og.sign(self:lastx())
   local fy = og.sign(self:lasty())
-  -- rule: Part of the rule above that begins "BONE WALL rises across the skeleton's facing: its
-  --   8-way ..."
-  -- tests: KitSkeleton.bone_wall_follows_the_facing
   if fx == 0 then
-    -- rule: Part of the rule above that begins "BONE WALL rises across the skeleton's facing: its
-    --   8-way ..."
+    -- rule: BONE WALL rises across the skeleton's facing: its 8-way curdir when it has one, else
+    --   the signs of its last heading, else straight up.
     -- tests: KitSkeleton.bone_wall_follows_the_facing
     if fy == 0 then
       return 0, -1
@@ -136,17 +133,9 @@ local function walks_over(owner, foe)
   if foe:order() ~= C.ORDER_LIVING then
     return false
   end
-  -- rule: Part of the rule above that begins "Only a foe that walks over the burrow wakes ..."
-  -- tests: KitSkeleton.dig_in_ignores_flyers_and_generators_over_the_burrow
-  -- tests: KitSkeleton.dig_in_on_floor_one_stays_on_floor_one
-  -- tests: KitSkeleton.dig_in_hides_regens_and_pops_when_a_foe_steps_close
   if foe:floor() ~= owner:floor() then
     return false
   end
-  -- rule: Part of the rule above that begins "Only a foe that walks over the burrow wakes ..."
-  -- tests: KitSkeleton.dig_in_ignores_flyers_and_generators_over_the_burrow
-  -- tests: KitSkeleton.dig_in_on_floor_one_stays_on_floor_one
-  -- tests: KitSkeleton.dig_in_hides_regens_and_pops_when_a_foe_steps_close
   if foe:s_query_bit_flags(C.BIT_FLYING) then
     return false
   end
@@ -155,10 +144,11 @@ end
 
 local function foe_on_top(owner, reach)
   local foes = og.find_foes_in_range("ob", reach, owner)
-  -- plumbing: foe_on_top iteration over find_foes_in_range; rule in kit_skeleton.lua:112
+  -- plumbing: foe_on_top iteration over find_foes_in_range; rule above
   for i = 1, #foes do
     local foe = foes[i]
-    -- rule: Part of the rule above that begins "Only a foe that walks over the burrow wakes ..."
+    -- rule: Only a foe that walks over the burrow wakes a buried skeleton. Here:
+    --   `flight_left()==0`.
     -- tests: KitSkeleton.dig_in_ignores_flyers_and_generators_over_the_burrow
     -- tests: KitSkeleton.dig_in_on_floor_one_stays_on_floor_one
     -- tests: KitSkeleton.dig_in_hides_regens_and_pops_when_a_foe_steps_close
@@ -201,8 +191,8 @@ local function sink(marker, owner)
   -- tests: SemLibsSkeleton.a_sinking_skeleton_whose_animation_is_taken_over_goes_under_at_once
   if owner:ani_type() == C.ANI_TELE_IN then
     local step = km.age(marker)
-    -- rule: Part of the rule above that begins "DIG IN sinks over four ticks showing frames 24..27
-    --   ..."
+    -- rule: DIG IN sinks over four ticks showing frames 24..27 while still visible and hittable,
+    --   then goes under (hidden, parked on walk, channel cleared). Here: `step < SINK_TICKS`.
     -- tests: KitSkeleton.dig_in_sinks_four_ticks_then_hides_at_frame_27_without_tunnelling
     -- tests: SemLibsSkeleton.a_sinking_skeleton_whose_animation_is_taken_over_goes_under_at_once
     if step < SINK_TICKS then
@@ -241,8 +231,9 @@ local function buried(marker, owner)
   -- tests: KitSkeleton.second_press_pops_up_free_and_costs_nothing
   -- tests: KitSkeleton.dig_in_hides_regens_and_pops_when_a_foe_steps_close
   if og.mod(left, t.dig_drain_pulse) == 0 then
-    -- rule: Part of the rule above that begins "Staying buried costs dig_drain MP every
-    --   dig_drain_pulse ticks; a ..."
+    -- rule: Staying buried costs dig_drain MP every dig_drain_pulse ticks; a pulse the pool cannot
+    --   pay surfaces the skeleton plainly (no swing), never driving mana below zero. Here:
+    --   `magicpoints < dig_drain`.
     -- tests: KitSkeleton.burrow_surfaces_when_the_mana_runs_dry
     -- tests: KitSkeleton.second_press_pops_up_free_and_costs_nothing
     -- tests: KitSkeleton.dig_in_hides_regens_and_pops_when_a_foe_steps_close
@@ -263,7 +254,7 @@ local function buried(marker, owner)
   end
   local foe = foe_on_top(owner, t.dig_trigger)
   -- rule: A foe stepping within dig_trigger of a buried skeleton makes it pop up under that foe
-  --   (see kit_skeleton.lua:112 for who counts).
+  --   (see above for who counts).
   -- tests: KitSkeleton.dig_in_hides_regens_and_pops_when_a_foe_steps_close
   if foe then
     pop_up(owner, marker, foe)
@@ -316,7 +307,9 @@ function M.dig_in(self)
   -- tests: KitSkeleton.held_special_does_not_pop_the_burrow
   -- tests: KitSkeleton.second_press_pops_up_free_and_costs_nothing
   if burrow_marker then
-    -- rule: Part of the rule above that begins "A second DIG IN press while dug in surfaces ..."
+    -- rule: A second DIG IN press while dug in surfaces the skeleton for free, but presses in the
+    --   first kit_latch ticks are silently refused (DIG IN SETTLING) so a held key does not pop the
+    --   burrow. Here: `km.age(burrow_marker) < kit_latch`.
     -- tests: KitSkeleton.held_special_does_not_pop_the_burrow
     -- tests: KitSkeleton.second_press_pops_up_free_and_costs_nothing
     if km.age(burrow_marker) < t.kit_latch then
@@ -332,7 +325,7 @@ function M.dig_in(self)
     return false, "POSSESSED BODY"
   end
   -- rule: A skeleton mid-teleport (TUNNEL in progress) cannot dig in (same rule as
-  --   living_common.lua:22).
+  --   living_common.lua).
   -- tests: KitSkeleton.possessed_body_cannot_dig_in
   -- tests: KitSkeleton.dig_in_sinks_four_ticks_then_hides_at_frame_27_without_tunnelling
   if lc.mid_teleport(self) then
@@ -418,8 +411,8 @@ local function fell_oldest_walls(self, new_segments)
     -- tests: KitSkeleton.level_thirteen_skeleton_keeps_seven_walls
     -- tests: KitSkeleton.a_chopped_wall_leaves_room_and_only_the_oldest_needed_fall
     for k = 1, #new_segments do
-      -- rule: Part of the rule above that begins "A skeleton keeps at most 3*walls_cap(level) of
-      --   its own ..."
+      -- rule: A skeleton keeps at most 3*walls_cap(level) of its own bone-wall segments standing (2
+      --   walls at L1 ..
       -- tests: KitSkeleton.bone_walls_kept_follow_the_level_curve
       -- tests: KitSkeleton.level_one_skeleton_keeps_two_walls_and_the_oldest_falls_quietly
       -- tests: KitSkeleton.level_thirteen_skeleton_keeps_seven_walls
@@ -430,45 +423,45 @@ local function fell_oldest_walls(self, new_segments)
     end
     return false
   end
-  -- plumbing: fell_oldest_walls outer repeat and weaplist scan; rule in kit_skeleton.lua:309
+  -- plumbing: fell_oldest_walls outer repeat and weaplist scan; rule above
   while true do
     local standing = 0
     local oldest = nil
     local weapons = og.weaplist()
-    -- plumbing: fell_oldest_walls outer repeat and weaplist scan; rule in kit_skeleton.lua:309
+    -- plumbing: fell_oldest_walls outer repeat and weaplist scan; rule above
     for i = 1, #weapons do
       local wall = weapons[i]
-      -- rule: Part of the rule above that begins "A skeleton keeps at most 3*walls_cap(level) of
-      --   its own ..."
+      -- rule: A skeleton keeps at most 3*walls_cap(level) of its own bone-wall segments standing (2
+      --   walls at L1 ..
       -- tests: KitSkeleton.bone_walls_kept_follow_the_level_curve
       -- tests: KitSkeleton.level_one_skeleton_keeps_two_walls_and_the_oldest_falls_quietly
       -- tests: KitSkeleton.level_thirteen_skeleton_keeps_seven_walls
       -- tests: KitSkeleton.a_chopped_wall_leaves_room_and_only_the_oldest_needed_fall
       if wall:family() == WEAP_BONE_WALL then
-        -- rule: Part of the rule above that begins "A skeleton keeps at most 3*walls_cap(level) of
-        --   its own ..."
+        -- rule: A skeleton keeps at most 3*walls_cap(level) of its own bone-wall segments standing
+        --   (2 walls at L1 ..
         -- tests: KitSkeleton.bone_walls_kept_follow_the_level_curve
         -- tests: KitSkeleton.level_one_skeleton_keeps_two_walls_and_the_oldest_falls_quietly
         -- tests: KitSkeleton.level_thirteen_skeleton_keeps_seven_walls
         -- tests: KitSkeleton.a_chopped_wall_leaves_room_and_only_the_oldest_needed_fall
         if wall:dead() == 0 then
-          -- rule: Part of the rule above that begins "A skeleton keeps at most 3*walls_cap(level)
-          --   of its own ..."
+          -- rule: A skeleton keeps at most 3*walls_cap(level) of its own bone-wall segments
+          --   standing (2 walls at L1 ..
           -- tests: KitSkeleton.bone_walls_kept_follow_the_level_curve
           -- tests: KitSkeleton.level_one_skeleton_keeps_two_walls_and_the_oldest_falls_quietly
           -- tests: KitSkeleton.level_thirteen_skeleton_keeps_seven_walls
           -- tests: KitSkeleton.a_chopped_wall_leaves_room_and_only_the_oldest_needed_fall
           if wall:owner() == self then
             standing = standing + 1
-            -- rule: Part of the rule above that begins "A skeleton keeps at most 3*walls_cap(level)
-            --   of its own ..."
+            -- rule: A skeleton keeps at most 3*walls_cap(level) of its own bone-wall segments
+            --   standing (2 walls at L1 ..
             -- tests: KitSkeleton.bone_walls_kept_follow_the_level_curve
             -- tests: KitSkeleton.level_one_skeleton_keeps_two_walls_and_the_oldest_falls_quietly
             -- tests: KitSkeleton.level_thirteen_skeleton_keeps_seven_walls
             -- tests: KitSkeleton.a_chopped_wall_leaves_room_and_only_the_oldest_needed_fall
             if not is_new(wall) then
-              -- rule: Part of the rule above that begins "A skeleton keeps at most
-              --   3*walls_cap(level) of its own ..."
+              -- rule: A skeleton keeps at most 3*walls_cap(level) of its own bone-wall segments
+              --   standing (2 walls at L1 ..
               -- tests: KitSkeleton.bone_walls_kept_follow_the_level_curve
               -- tests: KitSkeleton.level_one_skeleton_keeps_two_walls_and_the_oldest_falls_quietly
               -- tests: KitSkeleton.level_thirteen_skeleton_keeps_seven_walls
@@ -481,8 +474,8 @@ local function fell_oldest_walls(self, new_segments)
         end
       end
     end
-    -- rule: Part of the rule above that begins "A skeleton keeps at most 3*walls_cap(level) of its
-    --   own ..."
+    -- rule: A skeleton keeps at most 3*walls_cap(level) of its own bone-wall segments standing (2
+    --   walls at L1 ..
     -- tests: KitSkeleton.bone_walls_kept_follow_the_level_curve
     -- tests: KitSkeleton.level_one_skeleton_keeps_two_walls_and_the_oldest_falls_quietly
     -- tests: KitSkeleton.level_thirteen_skeleton_keeps_seven_walls
@@ -504,7 +497,7 @@ local function bone_wall(self)
   local cx = self:xpos() + og.div(self:sizex(), 2) + fx * t.wall_gap
   local cy = self:ypos() + og.div(self:sizey(), 2) + fy * t.wall_gap
   local placed = {}
-  -- plumbing: three-segment placement loop; rules in kit_skeleton.lua:275 and :354
+  -- plumbing: three-segment placement loop; rules above and below
   for k = -1, 1 do
     local seg = wall_segment(self, t, cx + px * 16 * k, cy + py * 16 * k)
     -- rule: A bone wall with no segment that fits is refused for free (NO ROOM FOR A WALL); a wall
@@ -516,7 +509,8 @@ local function bone_wall(self)
       placed[#placed + 1] = seg
     end
   end
-  -- rule: Part of the rule above that begins "A bone wall with no segment that fits is ..."
+  -- rule: A bone wall with no segment that fits is refused for free (NO ROOM FOR A WALL); a wall
+  --   with any segment placed is cast, fells old walls, and clangs. Here: `#placed == 0`.
   -- tests: KitSkeleton.bone_wall_stands_three_segments_blocks_foes_passes_allies_and_landings
   -- tests: KitSkeleton.bone_wall_refuses_on_a_door
   -- tests: SemLibsSkeleton.a_bone_wall_clangs_once_when_it_stands_and_never_when_refused
@@ -530,9 +524,9 @@ end
 
 -- Eight bones out of one standing wall, each owned by the skeleton.
 local function wall_burst(self, wall, range)
-  -- plumbing: wall_burst 3x3 direction loops; rule in kit_skeleton.lua:370
+  -- plumbing: wall_burst 3x3 direction loops; rule below
   for i = -1, 1 do
-    -- plumbing: wall_burst 3x3 direction loops; rule in kit_skeleton.lua:370
+    -- plumbing: wall_burst 3x3 direction loops; rule below
     for j = -1, 1 do
       -- rule: BONE STORM bursts eight bones out of each wall segment, one in each of the eight
       --   directions (none straight down at the centre), each owned by the skeleton on its team
@@ -559,7 +553,7 @@ end
 
 local function own_wall_standing(self)
   local weapons = og.weaplist()
-  -- plumbing: own_wall_standing weaplist scan; rule in kit_skeleton.lua:392
+  -- plumbing: own_wall_standing weaplist scan; rule below
   for i = 1, #weapons do
     local wall = weapons[i]
     -- rule: BONE STORM needs a standing wall of THIS skeleton; with none (even if another
@@ -567,13 +561,13 @@ local function own_wall_standing(self)
     -- tests: KitSkeleton.bone_storm_refuses_with_no_wall
     -- tests: KitSkeleton.bone_storm_bursts_from_every_wall_only
     if wall:family() == WEAP_BONE_WALL then
-      -- rule: Part of the rule above that begins "BONE STORM needs a standing wall of THIS
-      --   skeleton; ..."
+      -- rule: BONE STORM needs a standing wall of THIS skeleton; with none (even if another
+      --   skeleton's walls stand) it is refused for free.
       -- tests: KitSkeleton.bone_storm_refuses_with_no_wall
       -- tests: KitSkeleton.bone_storm_bursts_from_every_wall_only
       if wall:dead() == 0 then
-        -- rule: Part of the rule above that begins "BONE STORM needs a standing wall of THIS
-        --   skeleton; ..."
+        -- rule: BONE STORM needs a standing wall of THIS skeleton; with none (even if another
+        --   skeleton's walls stand) it is refused for free.
         -- tests: KitSkeleton.bone_storm_refuses_with_no_wall
         -- tests: KitSkeleton.bone_storm_bursts_from_every_wall_only
         if wall:owner() == self then
@@ -590,8 +584,8 @@ end
 -- itself, and with no wall standing there is nothing to shatter: refused,
 -- and a refusal spends nothing.
 local function bone_storm(self)
-  -- rule: Part of the rule above that begins "BONE STORM needs a standing wall of THIS skeleton;
-  --   ..."
+  -- rule: BONE STORM needs a standing wall of THIS skeleton; with none (even if another skeleton's
+  --   walls stand) it is refused for free.
   -- tests: KitSkeleton.bone_storm_refuses_with_no_wall
   -- tests: KitSkeleton.bone_storm_bursts_from_every_wall_only
   if not own_wall_standing(self) then
@@ -599,19 +593,19 @@ local function bone_storm(self)
   end
   local t = og.tuning(self)
   local weapons = og.weaplist()
-  -- plumbing: bone_storm weaplist scan; rule in kit_skeleton.lua:415
+  -- plumbing: bone_storm weaplist scan; rule below
   for i = 1, #weapons do
     local wall = weapons[i]
     -- rule: BONE STORM shatters every standing wall of this skeleton (wherever it is) and only
     --   those; nothing leaves the skeleton itself.
     -- tests: KitSkeleton.bone_storm_bursts_from_every_wall_only
     if wall:family() == WEAP_BONE_WALL then
-      -- rule: Part of the rule above that begins "BONE STORM shatters every standing wall of this
-      --   skeleton ..."
+      -- rule: BONE STORM shatters every standing wall of this skeleton (wherever it is) and only
+      --   those; nothing leaves the skeleton itself.
       -- tests: KitSkeleton.bone_storm_bursts_from_every_wall_only
       if wall:dead() == 0 then
-        -- rule: Part of the rule above that begins "BONE STORM shatters every standing wall of this
-        --   skeleton ..."
+        -- rule: BONE STORM shatters every standing wall of this skeleton (wherever it is) and only
+        --   those; nothing leaves the skeleton itself.
         -- tests: KitSkeleton.bone_storm_bursts_from_every_wall_only
         if wall:owner() == self then
           wall_burst(self, wall, t.storm_range)
@@ -632,7 +626,7 @@ end
 
 function M.wall_or_storm(self)
   -- rule: While DIG IN is in progress no other skeleton special may be cast (same rule as
-  --   kit_skeleton.lua:544).
+  --   below).
   -- tests: KitSkeleton.other_specials_wait_for_the_dig
   -- tests: KitSkeleton.bone_wall_stands_three_segments_blocks_foes_passes_allies_and_landings
   if digging(self) then
@@ -730,8 +724,8 @@ local function ward_window(marker)
   -- tests: KitSkeleton.ward_fades_when_the_mana_runs_dry
   -- tests: SemLibsSkeleton.an_armed_ward_fades_on_a_pulse_it_cannot_pay
   if og.mod(left, t.ward_drain_pulse) == 0 then
-    -- rule: Part of the rule above that begins "An armed ward costs ward_drain MP every
-    --   ward_drain_pulse ticks ..."
+    -- rule: An armed ward costs ward_drain MP every ward_drain_pulse ticks and fades early when a
+    --   pulse cannot be paid. Here: `magicpoints < ward_drain`.
     -- tests: KitSkeleton.ward_fades_when_the_mana_runs_dry
     -- tests: SemLibsSkeleton.an_armed_ward_fades_on_a_pulse_it_cannot_pay
     if owner.magicpoints < t.ward_drain then
@@ -771,17 +765,13 @@ local function legion_window(marker)
     km.finish(marker)
     return
   end
-  -- rule: Part of the rule above that begins "The LEGION window lasts legion_ticks (300) and closes
-  --   early ..."
-  -- tests: KitSkeleton.legion_raises_melee_bone_and_explosion_kills_within_the_window
-  -- tests: KitSkeleton.legion_needs_a_living_skeleton_and_a_foe
   if not marker:owner() then
     km.finish(marker)
   end
 end
 
 function M.reassemble_or_legion(self)
-  -- rule: Same rule as kit_skeleton.lua:435: no REASSEMBLE/LEGION while DIG IN is in progress.
+  -- rule: Same rule as above: no REASSEMBLE/LEGION while DIG IN is in progress.
   -- tests: KitSkeleton.other_specials_wait_for_the_dig
   if digging(self) then
     return false, "SPECIAL BUSY"
@@ -813,58 +803,23 @@ function M.on_kill(self, victim)
   if og.match_setting("new_specials") == 0 then
     return true
   end
-  -- rule: Part of the rule above that begins "During LEGION, a foe this living skeleton kills
-  --   (melee, ..."
-  -- tests: KitSkeleton.legion_hook_is_inert_when_off
-  -- tests: KitSkeleton.legion_needs_a_living_skeleton_and_a_foe
-  -- tests: KitSkeleton.legion_raises_melee_bone_and_explosion_kills_within_the_window
-  -- tests: KitSkeleton.legion_leaves_half_its_kills_down
-  -- tests: SemLibsSkeleton.a_legion_kill_of_a_level_1_foe_rises_at_level_1
   if self:dead() ~= 0 then
     return true
   end
-  -- rule: Part of the rule above that begins "During LEGION, a foe this living skeleton kills
-  --   (melee, ..."
-  -- tests: KitSkeleton.legion_hook_is_inert_when_off
-  -- tests: KitSkeleton.legion_needs_a_living_skeleton_and_a_foe
-  -- tests: KitSkeleton.legion_raises_melee_bone_and_explosion_kills_within_the_window
-  -- tests: KitSkeleton.legion_leaves_half_its_kills_down
-  -- tests: SemLibsSkeleton.a_legion_kill_of_a_level_1_foe_rises_at_level_1
   if not km.find(self, km.LEGION) then
     return true
   end
   -- A team test, not is_friendly (which calls every dead walker a
   -- stranger): a possessed ally is attackable, and its death hands it back
   -- to this side before the hook runs; it is mourned, not raised.
-  -- rule: Part of the rule above that begins "During LEGION, a foe this living skeleton kills
-  --   (melee, ..."
-  -- tests: KitSkeleton.legion_hook_is_inert_when_off
-  -- tests: KitSkeleton.legion_needs_a_living_skeleton_and_a_foe
-  -- tests: KitSkeleton.legion_raises_melee_bone_and_explosion_kills_within_the_window
-  -- tests: KitSkeleton.legion_leaves_half_its_kills_down
-  -- tests: SemLibsSkeleton.a_legion_kill_of_a_level_1_foe_rises_at_level_1
   if victim.team == self.team then
     return true
   end
-  -- rule: Part of the rule above that begins "During LEGION, a foe this living skeleton kills
-  --   (melee, ..."
-  -- tests: KitSkeleton.legion_hook_is_inert_when_off
-  -- tests: KitSkeleton.legion_needs_a_living_skeleton_and_a_foe
-  -- tests: KitSkeleton.legion_raises_melee_bone_and_explosion_kills_within_the_window
-  -- tests: KitSkeleton.legion_leaves_half_its_kills_down
-  -- tests: SemLibsSkeleton.a_legion_kill_of_a_level_1_foe_rises_at_level_1
   if og.family_flag("living", victim:family(), "is_undead") then
     return true
   end
   -- Half the kills rise: a coin, drawn only for a kill that could rise.
   -- Tails leaves the corpse (and a hero's life gem) where it fell.
-  -- rule: Part of the rule above that begins "During LEGION, a foe this living skeleton kills
-  --   (melee, ..."
-  -- tests: KitSkeleton.legion_hook_is_inert_when_off
-  -- tests: KitSkeleton.legion_needs_a_living_skeleton_and_a_foe
-  -- tests: KitSkeleton.legion_raises_melee_bone_and_explosion_kills_within_the_window
-  -- tests: KitSkeleton.legion_leaves_half_its_kills_down
-  -- tests: SemLibsSkeleton.a_legion_kill_of_a_level_1_foe_rises_at_level_1
   if og.rand(2) == 0 then
     return true
   end
@@ -894,7 +849,7 @@ end
 -- The foe is within STORM_WALL_REACH px of one of this skeleton's
 -- standing wall segments (`weapons` is the weapon list).
 local function at_own_wall(self, foe, weapons)
-  -- plumbing: at_own_wall weapon scan and foes_at_walls foe scan; rule in kit_skeleton.lua:676
+  -- plumbing: at_own_wall weapon scan and foes_at_walls foe scan; rule below
   for i = 1, #weapons do
     local wall = weapons[i]
     -- rule: Once a wall of its own stands, a bot skeleton never raises another; it storms (shift 1)
@@ -902,13 +857,13 @@ local function at_own_wall(self, foe, weapons)
     --   60 px of one of its own standing segments.
     -- tests: KitSkeleton.ai_wall_fires_when_hurt_with_a_foe_close_and_storms_a_crowd
     if wall:family() == WEAP_BONE_WALL then
-      -- rule: Part of the rule above that begins "Once a wall of its own stands, a bot ..."
+      -- rule: Once a wall of its own stands, a bot skeleton never raises another.
       -- tests: KitSkeleton.ai_wall_fires_when_hurt_with_a_foe_close_and_storms_a_crowd
       if wall:dead() == 0 then
-        -- rule: Part of the rule above that begins "Once a wall of its own stands, a bot ..."
+        -- rule: Once a wall of its own stands, a bot skeleton never raises another.
         -- tests: KitSkeleton.ai_wall_fires_when_hurt_with_a_foe_close_and_storms_a_crowd
         if wall:owner() == self then
-          -- rule: Part of the rule above that begins "Once a wall of its own stands, a bot ..."
+          -- rule: Once a wall of its own stands, a bot skeleton never raises another.
           -- tests: KitSkeleton.ai_wall_fires_when_hurt_with_a_foe_close_and_storms_a_crowd
           if wall:distance_to_ob(foe) <= STORM_WALL_REACH then
             return true
@@ -926,9 +881,9 @@ local function foes_at_walls(self)
   local foes = G.living_foes(self, STORM_FOE_SCAN, true)
   local weapons = og.weaplist()
   local n = 0
-  -- plumbing: at_own_wall weapon scan and foes_at_walls foe scan; rule in kit_skeleton.lua:676
+  -- plumbing: at_own_wall weapon scan and foes_at_walls foe scan; rule below
   for i = 1, #foes do
-    -- rule: Part of the rule above that begins "Once a wall of its own stands, a bot ..."
+    -- rule: Once a wall of its own stands, a bot skeleton never raises another.
     -- tests: KitSkeleton.ai_wall_fires_when_hurt_with_a_foe_close_and_storms_a_crowd
     if at_own_wall(self, foes[i], weapons) then
       n = n + 1
@@ -942,7 +897,7 @@ end
 local function foes_that_can_rise(self, range)
   local foes = G.living_foes(self, range, false)
   local n = 0
-  -- plumbing: foes_that_can_rise scan; rule in kit_skeleton.lua:719
+  -- plumbing: foes_that_can_rise scan; rule below
   for i = 1, #foes do
     -- rule: A bot skeleton at or above half health calls LEGION (shift 1) when no window is open
     --   and at least three living foes that could rise (not undead) stand within 100.
@@ -959,7 +914,7 @@ end
 function M.ai_dig_in(self)
   -- rule: With New Specials off DIG IN's bot gate answers true at once with no draw, no shift write
   --   and no foe acquired, so the classic special roll is untouched (same rule as
-  --   kit_skeleton.lua:673, :706).
+  --   below).
   -- tests: KitSkeleton.ai_off_answers_the_classic_gate
   -- tests: KitSkeleton.ai_dig_in_fires_when_hurt_and_outnumbered
   if og.match_setting("new_specials") == 0 then
@@ -980,14 +935,17 @@ function M.ai_dig_in(self)
   if lc.mid_teleport(self) then
     return false
   end
-  -- rule: Part of the rule above that begins "A bot skeleton digs in only when below 60% ..."
+  -- rule: A bot skeleton digs in only when below 60% hp, not possessed, able to stay down
+  --   (dig_min_pool after the price), with two living foes within 80. Here: `not hp_below(6/10)`.
   -- tests: KitSkeleton.ai_dig_in_fires_when_hurt_and_outnumbered
   -- tests: KitSkeleton.bot_skeleton_digs_in_when_outnumbered
   if not G.hp_below(self, 6, 10) then
     return false
   end
   -- A bot that cannot stay down does not dig.
-  -- rule: Part of the rule above that begins "A bot skeleton digs in only when below 60% ..."
+  -- rule: A bot skeleton digs in only when below 60% hp, not possessed, able to stay down
+  --   (dig_min_pool after the price), with two living foes within 80. Here: `spare_mp <
+  --   dig_min_pool`.
   -- tests: KitSkeleton.ai_dig_in_fires_when_hurt_and_outnumbered
   -- tests: KitSkeleton.bot_skeleton_digs_in_when_outnumbered
   if lc.spare_mp(self, DIG_IN_SLOT) < og.tuning(self).dig_min_pool then
@@ -999,20 +957,20 @@ end
 -- A wall when hurt with the nearest foe close and in front, where the wall
 -- rises; the storm once a wall stands and the foes gather at the walls.
 function M.ai_wall(self)
-  -- rule: Same rule as kit_skeleton.lua:649 for BONE WALL's gate.
+  -- rule: Same rule as above for BONE WALL's gate.
   -- tests: KitSkeleton.ai_off_answers_the_classic_gate
   if og.match_setting("new_specials") == 0 then
     return true
   end
-  -- rule: Part of the rule above that begins "Once a wall of its own stands, a bot ..."
+  -- rule: Once a wall of its own stands, a bot skeleton never raises another.
   -- tests: KitSkeleton.ai_wall_fires_when_hurt_with_a_foe_close_and_storms_a_crowd
   if own_wall_standing(self) then
-    -- rule: Part of the rule above that begins "Once a wall of its own stands, a bot ..."
+    -- rule: Once a wall of its own stands, a bot skeleton never raises another.
     -- tests: KitSkeleton.ai_wall_fires_when_hurt_with_a_foe_close_and_storms_a_crowd
     if self.magicpoints < M.STORM_COST then
       return false
     end
-    -- rule: Part of the rule above that begins "Once a wall of its own stands, a bot ..."
+    -- rule: Once a wall of its own stands, a bot skeleton never raises another.
     -- tests: KitSkeleton.ai_wall_fires_when_hurt_with_a_foe_close_and_storms_a_crowd
     if foes_at_walls(self) < 2 then
       return false
@@ -1029,18 +987,12 @@ function M.ai_wall(self)
     return false
   end
   local foe = G.nearest_living_foe(self, WALL_FOE_RANGE, true)
-  -- rule: Part of the rule above that begins "With no wall standing a bot skeleton raises one ..."
-  -- tests: KitSkeleton.ai_wall_fires_when_hurt_with_a_foe_close_and_storms_a_crowd
-  -- tests: GameplayFixesBots.skeleton_wall_rises_across_the_foes_line
   if not foe then
     return false
   end
   -- The wall rises across facing_of (curdir first, as bone_wall places
   -- it), not along the fire heading G.fan_faces reads.
   local fx, fy = facing_of(self)
-  -- rule: Part of the rule above that begins "With no wall standing a bot skeleton raises one ..."
-  -- tests: KitSkeleton.ai_wall_fires_when_hurt_with_a_foe_close_and_storms_a_crowd
-  -- tests: GameplayFixesBots.skeleton_wall_rises_across_the_foes_line
   if not G.fan_covers(self, self:facing(fx, fy), foe) then
     return false
   end
@@ -1051,7 +1003,7 @@ end
 -- The ward when hurt, unwarded and fighting (a living foe within 60); the
 -- legion when healthy and crowded by foes that can rise.
 function M.ai_reassemble(self)
-  -- rule: Same rule as kit_skeleton.lua:649 for REASSEMBLE's gate.
+  -- rule: Same rule as above for REASSEMBLE's gate.
   -- tests: KitSkeleton.ai_off_answers_the_classic_gate
   if og.match_setting("new_specials") == 0 then
     return true
@@ -1060,14 +1012,16 @@ function M.ai_reassemble(self)
   --   (a living foe within 60 on its floor); a hurt skeleton never considers LEGION.
   -- tests: KitSkeleton.ai_reassemble_fires_when_hurt_and_legion_when_crowded
   if G.hp_below(self, 1, 2) then
-    -- rule: Part of the rule above that begins "A bot skeleton below half health picks the ward
-    --   ..."
+    -- rule: A bot skeleton below half health picks the ward (shift 0) only when unwarded and
+    --   fighting (a living foe within 60 on its floor); a hurt skeleton never considers LEGION.
+    --   Here: `warded`.
     -- tests: KitSkeleton.ai_reassemble_fires_when_hurt_and_legion_when_crowded
     if warded(self) then
       return false
     end
-    -- rule: Part of the rule above that begins "A bot skeleton below half health picks the ward
-    --   ..."
+    -- rule: A bot skeleton below half health picks the ward (shift 0) only when unwarded and
+    --   fighting (a living foe within 60 on its floor); a hurt skeleton never considers LEGION.
+    --   Here: `not foes_within(1, 60, floor)`.
     -- tests: KitSkeleton.ai_reassemble_fires_when_hurt_and_legion_when_crowded
     if not G.foes_within(self, 1, REASSEMBLE_FOE_RANGE, true) then
       return false
@@ -1075,13 +1029,17 @@ function M.ai_reassemble(self)
     self:set_shifter_down(0)
     return true
   end
-  -- rule: Part of the rule above that begins "A bot skeleton at or above half health calls ..."
+  -- rule: A bot skeleton at or above half health calls LEGION (shift 1) when no window is open and
+  --   at least three living foes that could rise (not undead) stand within 100. Here:
+  --   `foes_that_can_rise(100) < 3`.
   -- tests: KitSkeleton.ai_reassemble_fires_when_hurt_and_legion_when_crowded
   -- tests: GameplayFixesBots.skeleton_legion_counts_only_foes_that_can_rise
   if km.find(self, km.LEGION) then
     return false
   end
-  -- rule: Part of the rule above that begins "A bot skeleton at or above half health calls ..."
+  -- rule: A bot skeleton at or above half health calls LEGION (shift 1) when no window is open and
+  --   at least three living foes that could rise (not undead) stand within 100. Here: `not
+  --   is_undead`.
   -- tests: KitSkeleton.ai_reassemble_fires_when_hurt_and_legion_when_crowded
   -- tests: GameplayFixesBots.skeleton_legion_counts_only_foes_that_can_rise
   if foes_that_can_rise(self, LEGION_FOES_RANGE) < 3 then

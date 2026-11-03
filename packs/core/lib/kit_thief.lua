@@ -11,7 +11,7 @@ local function live_mines(self)
   local obs = og.oblist()
   local count = 0
   local found = nil
-  -- plumbing: live_mines oblist scan; rule in kit_thief.lua:16
+  -- plumbing: live_mines oblist scan; rule below
   for i = 1, #obs do
     local ob = obs[i]
     -- rule: A thief may keep at most mine_cap (3) live mines of its own; another thief's mines and
@@ -44,7 +44,8 @@ end
 -- MINE: a bomb with no fuse, laid under the thief, seen only by its team.
 local function mine(self)
   local count, found = live_mines(self)
-  -- rule: Part of the rule above that begins "A thief may keep at most mine_cap (3) live ..."
+  -- rule: A thief may keep at most mine_cap (3) live mines of its own; another thief's mines and
+  --   dead mines do not count; the fourth is refused for free. Here: `found and count >= mine_cap`.
   -- tests: KitThief.fourth_mine_is_refused
   if found and count >= og.tuning(found).mine_cap then
     return false, "MINE LIMIT REACHED"

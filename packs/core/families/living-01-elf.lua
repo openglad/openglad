@@ -20,7 +20,7 @@ local function some_rocks(self)
   --   not a tree crown, not water) the volley is refused 'COULD NOT FIRE' before any refund or
   --   swing: it costs nothing. Classic: the cast refunds 2 weapon costs, fire() fails and the one
   --   swing is still paid. A body on the pad is not 'terrain' and keeps the paid swing (fixes H/I).
-  --   Same rule as :54.
+  --   Same rule as below.
   -- tests: GameplayFixesElf.a_volley_at_a_wall_spends_nothing_with_the_setting_on
   -- tests: GameplayFixesElf.a_volley_at_the_map_edge_spends_nothing
   -- tests: GameplayFixesElf.a_tree_crown_on_the_pad_lets_the_rocks_fly
@@ -38,8 +38,8 @@ local function some_rocks(self)
   -- tests: GameplayFixesElf.a_blocked_volley_costs_one_swing
   -- tests: GameplayFixesElf.volleys_refund_exactly_the_rocks_fired, parity:elf_rocks_pair_scen99
   if not rock then
-    -- rule: Part of the rule above that begins "ROCKS pre-refunds two weapon costs so its two rocks
-    --   ..."
+    -- rule: ROCKS pre-refunds two weapon costs so its two rocks are free beyond the slot price; if
+    --   the first rock cannot be fired the cast fails 'COULD NOT FIRE'.
     -- tests: GameplayFixesElf.a_blocked_volley_costs_one_swing
     -- tests: GameplayFixesElf.volleys_refund_exactly_the_rocks_fired, parity:elf_rocks_pair_scen99
     if gf.on() then
@@ -58,7 +58,8 @@ local function some_rocks(self)
   -- tests: GameplayFixesElf.rocks_take_back_the_second_rock_that_never_flew
   -- tests: GameplayFixesElf.volleys_refund_exactly_the_rocks_fired, parity:elf_rocks_pair_scen99
   if not rock then
-    -- rule: Part of the rule above that begins "If the first rock flew but the second cannot, ..."
+    -- rule: If the first rock flew but the second cannot, ROCKS reports 'COULD NOT FIRE' (one rock
+    --   in the air).
     -- tests: GameplayFixesElf.rocks_take_back_the_second_rock_that_never_flew
     -- tests: GameplayFixesElf.volleys_refund_exactly_the_rocks_fired, parity:elf_rocks_pair_scen99
     if gf.on() then
@@ -78,7 +79,7 @@ end
 -- therefore `* 4 // 2`.
 local function bounce_volley(cost_mult, count, los_num)
   return function(self)
-    -- rule: Same rule as :19 for the bouncing volleys: a terrain-blocked pad refuses free with the
+    -- rule: Same rule as above for the bouncing volleys: a terrain-blocked pad refuses free with the
     --   setting on.
     -- tests: GameplayFixesElf.a_volley_at_a_wall_spends_nothing_with_the_setting_on
     -- tests: GameplayFixesElf.a_volley_at_the_map_edge_spends_nothing
@@ -114,8 +115,8 @@ local function bounce_volley(cost_mult, count, los_num)
       -- tests: GameplayFixesElf.volleys_refund_exactly_the_rocks_fired
       -- tests: SemElf.a_volley_that_runs_dry_takes_back_only_the_rocks_that_never_flew
       if not rock then
-        -- rule: Part of the rule above that begins "When a volley's i-th rock cannot be fired the
-        --   ..."
+        -- rule: When a volley's i-th rock cannot be fired the cast stops 'COULD NOT FIRE' with the
+        --   earlier rocks still flying.
         -- tests: GameplayFixesElf.a_blocked_volley_costs_one_swing
         -- tests: GameplayFixesElf.volleys_refund_exactly_the_rocks_fired
         -- tests: SemElf.a_volley_that_runs_dry_takes_back_only_the_rocks_that_never_flew
@@ -173,7 +174,8 @@ local function volley(self, count_needed, los_num)
   -- tests: GameplayFixesBots.elf_lots_of_rocks_wants_two_foes_in_flight
   -- tests: GameplayFixesBots.elf_mega_rocks_wants_two_foes_in_flight
   for i = 1, #foes do
-    -- rule: Part of the rule above that begins "LOTS OF ROCKS / MEGA ROCKS (bot, fixes on) ..."
+    -- rule: LOTS OF ROCKS / MEGA ROCKS (bot, fixes on) want at least two living foes inside the
+    --   volley's flight from the elf, in any direction (only the nearest must be faced).
     -- tests: GameplayFixesBots.elf_lots_of_rocks_wants_two_foes_in_flight
     -- tests: GameplayFixesBots.elf_mega_rocks_wants_two_foes_in_flight
     if G.in_flight(self, foes[i], 5, 8, los_num, 2) then

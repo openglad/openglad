@@ -28,7 +28,7 @@ end
 
 -- silver_bar_on_eat: same shape, its own (smaller) score_per_level.
 local function silver_bar_on_eat(self, eater)
-  -- rule: Same rule as treasure_valuables.lua:16 for the silver bar (its own smaller
+  -- rule: Same rule as above for the silver bar (its own smaller
   --   score_per_level).
   -- tests: TreasureEat.silver_bar
   -- tests: SemValuables.a_hero_cashes_a_silver_bar_a_guyless_monster_leaves_it

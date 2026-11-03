@@ -10,7 +10,7 @@ local M = {}
 -- the family's rally_radius every time a walker would run.
 local function pulse(self, t)
   local friends = og.find_friends_in_range("ob", t.banner_radius, self)
-  -- plumbing: Iterates allies in banner_radius; rule in weapon_banner.lua:15.
+  -- plumbing: Iterates allies in banner_radius; rule below.
   for i = 1, #friends do
     local w = friends[i]
     -- rule: On each banner pulse every ally (any living family, captain included) within
@@ -23,7 +23,7 @@ local function pulse(self, t)
     end
   end
   local foes = og.find_foes_in_range("ob", t.banner_radius, self)
-  -- plumbing: Iterates foes in banner_radius; rule in weapon_banner.lua:24.
+  -- plumbing: Iterates foes in banner_radius; rule below.
   for i = 1, #foes do
     local w = foes[i]
     local living = w:order() == C.ORDER_LIVING

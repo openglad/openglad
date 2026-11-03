@@ -60,14 +60,8 @@ bool effect::act()
 	// tests: SemWalker1.an_effect_keeps_its_living_foe_leader_and_owner
 	if (foe() && foe()->dead())
 		set_foe(nullptr);
-	// rule: Part of the rule above that begins "An effect forgets a foe, leader or owner that ..."
-	// tests: EffectExtended.effect_ctor_defaults_and_owner_pointer_cleanup_in_act
-	// tests: SemWalker1.an_effect_keeps_its_living_foe_leader_and_owner
 	if (leader() && leader()->dead())
 		set_leader(nullptr);
-	// rule: Part of the rule above that begins "An effect forgets a foe, leader or owner that ..."
-	// tests: EffectExtended.effect_ctor_defaults_and_owner_pointer_cleanup_in_act
-	// tests: SemWalker1.an_effect_keeps_its_living_foe_leader_and_owner
 	if (owner() && owner()->dead())
 		set_owner(nullptr);
 
@@ -88,8 +82,9 @@ bool effect::act()
 	// tests: SemWalker1.an_effect_whose_on_act_claims_the_tick_neither_animates_nor_dies
 	if (auto hook_result = og::script::hooks::effect_on_act(efd, this))
 	{
-		// rule: Part of the rule above that begins "An effect family's Lua on_act owns its tick
-		//   when ..."
+		// rule: An effect family's Lua on_act owns its tick when it returns true; returning false
+		//   (or no hook) hands the tick to the default: finish the playing animation, then die.
+		//   Here: `*hook_result`.
 		// tests: EffectAct.magic_shield_orbit_step_and_ageing
 		// tests: EffectAct.explosion_act_advances_drawcycle_animates_then_dies
 		// tests: EffectMorePaths.effect_round8_default_act_death_path
@@ -118,7 +113,7 @@ bool effect::act()
 bool effect::animate()
 {
 	// plumbing: Null ani table, facing/type/row/cycle bounds against untrusted snapshot values,
-	//   sequence-length scan loop (120) and malformed sequence guards.
+	//   sequence-length scan loop and malformed sequence guards.
 	if (!ani)
 		return 0;
 
@@ -128,12 +123,12 @@ bool effect::animate()
 	// past the end of a short animation table (and dereferencing a wild pointer).
 	int dir_index = static_cast<int>(static_cast<unsigned char>(curdir()));
 	// plumbing: Null ani table, facing/type/row/cycle bounds against untrusted snapshot values,
-	//   sequence-length scan loop (120) and malformed sequence guards.
+	//   sequence-length scan loop and malformed sequence guards.
 	if (dir_index < 0 || dir_index >= NUM_FACINGS)
 		dir_index = 0;
 	int type_index = static_cast<int>(ani_type());
 	// plumbing: Null ani table, facing/type/row/cycle bounds against untrusted snapshot values,
-	//   sequence-length scan loop (120) and malformed sequence guards.
+	//   sequence-length scan loop and malformed sequence guards.
 	if (type_index < ANI_WALK)
 		type_index = ANI_WALK;
 
@@ -143,7 +138,7 @@ bool effect::animate()
 	// walk row (always < ani_count for real tables). ani_count == 0 only for
 	// test-built effects that assign `ani` directly (legacy direct-index behavior).
 	// plumbing: Null ani table, facing/type/row/cycle bounds against untrusted snapshot values,
-	//   sequence-length scan loop (120) and malformed sequence guards.
+	//   sequence-length scan loop and malformed sequence guards.
 	if (ani_count > 0 && ani_index >= ani_count)
 	{
 		set_ani_type(ANI_WALK);
@@ -151,23 +146,23 @@ bool effect::animate()
 	}
 	const signed char* seq = ani[ani_index];
 	// plumbing: Null ani table, facing/type/row/cycle bounds against untrusted snapshot values,
-	//   sequence-length scan loop (120) and malformed sequence guards.
+	//   sequence-length scan loop and malformed sequence guards.
 	if (!seq)
 		return 0;
 
 	int seq_len = 0;
 	// plumbing: Null ani table, facing/type/row/cycle bounds against untrusted snapshot values,
-	//   sequence-length scan loop (120) and malformed sequence guards.
+	//   sequence-length scan loop and malformed sequence guards.
 	while (seq_len < 128 && seq[seq_len] != -1)
 		seq_len++;
 	// plumbing: Null ani table, facing/type/row/cycle bounds against untrusted snapshot values,
-	//   sequence-length scan loop (120) and malformed sequence guards.
+	//   sequence-length scan loop and malformed sequence guards.
 	if (seq_len <= 0 || seq_len >= 128)
 		return 0;
 
 	int c = static_cast<int>(cycle());
 	// plumbing: Null ani table, facing/type/row/cycle bounds against untrusted snapshot values,
-	//   sequence-length scan loop (120) and malformed sequence guards.
+	//   sequence-length scan loop and malformed sequence guards.
 	if (c < 0 || c >= seq_len)
 		c = 0;
 	set_frame(seq[c]);
@@ -181,8 +176,8 @@ bool effect::animate()
 	// tests: EffectAct.effect_animate_explosion_reads_the_row_and_ends_at_the_sentinel
 	if (efd && efd->loops_animation)
 	{
-		// rule: Part of the rule above that begins "A looping effect (magic shield, boomerang orbit
-		//   etc., loops_animation=true) ..."
+		// rule: A looping effect (magic shield, boomerang orbit etc., loops_animation=true) wraps
+		//   its animation forever and stays on its row.
 		// tests: EffectAct.effect_animate_magic_shield_loops_without_resetting_ani_type
 		// tests: EffectAct.effect_animate_explosion_reads_the_row_and_ends_at_the_sentinel
 		if (seq[c] == -1)
@@ -191,8 +186,8 @@ bool effect::animate()
 	}
 	else
 	{
-		// rule: Part of the rule above that begins "A looping effect (magic shield, boomerang orbit
-		//   etc., loops_animation=true) ..."
+		// rule: A looping effect (magic shield, boomerang orbit etc., loops_animation=true) wraps
+		//   its animation forever and stays on its row.
 		// tests: EffectAct.effect_animate_magic_shield_loops_without_resetting_ani_type
 		// tests: EffectAct.effect_animate_explosion_reads_the_row_and_ends_at_the_sentinel
 		if (seq[c] == -1)
@@ -241,21 +236,24 @@ short hits(short x,  short y,  short xsize,  short ysize,
 		return 0;
 
 	xright = static_cast<short>(x+xsize);
-	// rule: Part of the rule above that begins "Two boxes hit when they overlap on both axes, ..."
+	// rule: Two boxes hit when they overlap on both axes, edges inclusive (touching edges count as
+	//   a hit). Here: `x+xsize < x2`.
 	// tests: EffectExtended.hits_exact_touching, EffectMorePaths.effect_round11_hits_edge_touches
 	// tests: EffectMorePaths.effect_round10_hits_overlap_and_axis_reject_paths
 	if (xright < x2)
 		return 0;
 
 	y2down = static_cast<short>(y2+ysize2);
-	// rule: Part of the rule above that begins "Two boxes hit when they overlap on both axes, ..."
+	// rule: Two boxes hit when they overlap on both axes, edges inclusive (touching edges count as
+	//   a hit). Here: `y > y2+ysize2`.
 	// tests: EffectExtended.hits_exact_touching, EffectMorePaths.effect_round11_hits_edge_touches
 	// tests: EffectMorePaths.effect_round10_hits_overlap_and_axis_reject_paths
 	if (y > y2down)
 		return 0;
 
 	ydown = static_cast<short>(y+ysize);
-	// rule: Part of the rule above that begins "Two boxes hit when they overlap on both axes, ..."
+	// rule: Two boxes hit when they overlap on both axes, edges inclusive (touching edges count as
+	//   a hit). Here: `y+ysize < y2`.
 	// tests: EffectExtended.hits_exact_touching, EffectMorePaths.effect_round11_hits_edge_touches
 	// tests: EffectMorePaths.effect_round10_hits_overlap_and_axis_reject_paths
 	if (ydown < y2)

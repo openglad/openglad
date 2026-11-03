@@ -60,8 +60,7 @@ local function fixed_gate(self, foe_count)
   -- tests: GameplayFixesBots.a_busy_bot_never_rolls_a_busy_cast_with_the_setting_on
   if slot == 1 then
     local t = og.tuning(self)
-    -- rule: Part of the rule above that begins "Bot TELEPORT keeps the classic rule with the
-    --   setting ..."
+    -- rule: Bot TELEPORT keeps the classic rule with the setting on.
     -- tests: GameplayFixesBots.mage_teleport_keeps_the_classic_rule_on_both_values
     -- tests: GameplayFixesBots.a_busy_bot_never_rolls_a_busy_cast_with_the_setting_on
     local yes = foe_count < 1 or foe_count > 3
@@ -73,18 +72,12 @@ local function fixed_gate(self, foe_count)
     -- tests: GameplayFixesBots.a_busy_bot_never_rolls_a_busy_cast_with_the_setting_on
     -- tests: parity:mage_bot_marker_home_fixes_scen99
     local mark = foe_count < 1 and G.marker_pays(self, FX_MARKER, 2, t.marker_int_req)
-    -- rule: Part of the rule above that begins "Gameplay Fixes bot mage drops a TELEPORT MARKER
-    --   (the ..."
-    -- tests: GameplayFixesBots.mage_marker_is_placed_once_where_the_mage_will_return
-    -- tests: GameplayFixesBots.a_busy_bot_never_rolls_a_busy_cast_with_the_setting_on
-    -- tests: parity:mage_bot_marker_home_fixes_scen99
     if mark and not lc.is_busy(self) then
       self:set_shifter_down(1)
     else
       self:set_shifter_down(0)
     end
-    -- rule: Part of the rule above that begins "Bot TELEPORT keeps the classic rule with the
-    --   setting ..."
+    -- rule: Bot TELEPORT keeps the classic rule with the setting on.
     -- tests: GameplayFixesBots.mage_teleport_keeps_the_classic_rule_on_both_values
     -- tests: GameplayFixesBots.a_busy_bot_never_rolls_a_busy_cast_with_the_setting_on
     return yes and not lc.mid_teleport(self)
@@ -98,7 +91,7 @@ local function fixed_gate(self, foe_count)
     local add = og.min(og.div(lc.spare_mp(self, 2), 15), STARBURST_ADD_CAP) // 3
     return G.ring_pays(self, G.UNIT_STEP, 7, add)
   end
-  -- rule: Bot FREEZE TIME with the setting on uses the allies'-fight cue (:29), not the classic
+  -- rule: Bot FREEZE TIME with the setting on uses the allies'-fight cue (above), not the classic
   --   alone/swamped rule.
   -- tests: GameplayFixesBots.mage_freeze_time_waits_for_three_foes_at_blows_with_allies_with_the_setting_on
   -- tests: GameplayFixesBots.mage_freeze_time_leaves_a_crowd_at_the_mage_to_teleport_with_the_setting_on
@@ -113,14 +106,14 @@ local function fixed_gate(self, foe_count)
   -- tests: parity:mage_bot_wave_pad_body_fixes_scen99
   if slot == 4 then
     local foe = G.nearest_living_foe(self, 110, false)
-    -- rule: Part of the rule above that begins "Gameplay Fixes bot ENERGY WAVE wants its nearest
-    --   living ..."
+    -- rule: Gameplay Fixes bot ENERGY WAVE wants its nearest living foe within 110 px faced along
+    --   the fire heading, and the fireball's pad clear (the wave rides a fired bolt).
     -- tests: GameplayFixesBots.mage_energy_wave_wants_a_faced_foe_within_110
     -- tests: GameplayFixesBots.mage_energy_wave_refuses_a_pad_on_a_wall
     -- tests: parity:mage_bot_wave_pad_body_fixes_scen99
     local faced = foe ~= nil and G.faces(self, foe)
-    -- rule: Part of the rule above that begins "Gameplay Fixes bot ENERGY WAVE wants its nearest
-    --   living ..."
+    -- rule: Gameplay Fixes bot ENERGY WAVE wants its nearest living foe within 110 px faced along
+    --   the fire heading, and the fireball's pad clear (the wave rides a fired bolt).
     -- tests: GameplayFixesBots.mage_energy_wave_wants_a_faced_foe_within_110
     -- tests: GameplayFixesBots.mage_energy_wave_refuses_a_pad_on_a_wall
     -- tests: parity:mage_bot_wave_pad_body_fixes_scen99
@@ -130,8 +123,9 @@ local function fixed_gate(self, foe_count)
   local t = og.tuning(self)
   local _, in_reach = og.find_foes_in_range("ob",
     t.heartburst_range_base + t.heartburst_range_per_level * self.level, self)
-  -- Gameplay Fixes bot HEARTBURST wants at least one foe inside its own reach (80 + 2*level px),
-  -- the same finder the cast uses.
+  -- rule: Gameplay Fixes bot HEARTBURST wants at least one foe inside its own reach (80 + 2*level
+  --   px), the same finder the cast uses.
+  -- tests: GameplayFixesBots.mage_heartburst_wants_a_foe_in_its_own_reach_with_the_setting_on
   return in_reach >= 1
 end
 
@@ -151,13 +145,6 @@ local function check_special_ai(self)
     return fixed_gate(self, foe_count)
   end
   -- TP if away from guys .. or too many enemies!
-  -- rule: Part of the rule above that begins "Classic mage bot casts ANY slot only when alone ..."
-  -- tests: GameplayFixesBots.mage_teleport_keeps_the_classic_rule_on_both_values
-  -- tests: GameplayFixesBots.mage_warp_space_wants_a_crowd_or_a_foe_behind_in_its_point_blank_ring
-  -- tests: GameplayFixesBots.mage_freeze_time_leaves_a_crowd_at_the_mage_to_teleport_with_the_setting_on
-  -- tests: GameplayFixesBots.mage_energy_wave_wants_a_faced_foe_within_110
-  -- tests: GameplayFixesBots.mage_heartburst_wants_a_foe_in_its_own_reach_with_the_setting_on
-  -- tests: KitRests.bot_gates_hold_a_resting_special
   return foe_count < 1 or foe_count > 3
 end
 
@@ -187,8 +174,8 @@ local function hit_response(self, foe)
   -- tests: StatsHitResponseTeleport.a_mage_struck_again_mid_teleport_casts_nothing
   -- tests: SemMage.a_struck_mage_that_cannot_pay_for_teleport_retargets_instead
   for i = 0, (self.level + 2) // 3 do
-    -- rule: Part of the rule above that begins "The struck mage may only escape-teleport if it can
-    --   ..."
+    -- rule: The struck mage may only escape-teleport if it can afford TELEPORT (15 MP); the
+    --   possible-specials scan is by level tier and MP.
     -- tests: StatsHitResponseTeleport.a_mage_struck_again_mid_teleport_casts_nothing
     -- tests: SemMage.a_struck_mage_that_cannot_pay_for_teleport_retargets_instead
     if i < C.NUM_SPECIALS
@@ -215,7 +202,7 @@ local function hit_response(self, foe)
     local _ = lc.mid_teleport(self) or self:special()  -- struck mid-teleport: no second cast
   else
     -- we're hit by a new enemy
-    -- rule: Same rule as :112 else-arm: only a NEW attacker retargets the mage and the attacker
+    -- rule: Same rule as above else-arm: only a NEW attacker retargets the mage and the attacker
     --   onto each other.
     -- tests: StatsHitResponseTeleport.stats_hit_response_mage_and_archmage_teleport_branches
     -- tests: SemMage.a_repeat_hit_from_the_same_foe_leaves_the_mages_pursuit_alone
@@ -282,7 +269,7 @@ local function teleport(self)
   -- tests: SemMage.laying_a_first_marker_leaves_every_other_mark_alone
   for i = 1, #obs do
     local ob = obs[i]
-    -- rule: Part of the rule above that begins "A mage keeps at most one marker: placing a ..."
+    -- rule: A mage keeps at most one marker.
     -- tests: WalkerSpecials.mage_marker_recast_replaces_the_owned_marker
     -- tests: SemMage.laying_a_first_marker_leaves_every_other_mark_alone
     if ob
@@ -293,7 +280,7 @@ local function teleport(self)
       ob.dead = 1
       ob:death()
       -- rule: The '(Old Marker Removed)' notice goes only to a seated caster (user ~= -1) on the
-      --   player team or a hero, addressed to that caster's seat. Same rule as :191.
+      --   player team or a hero, addressed to that caster's seat. Same rule as below.
       -- tests: PackLuaMage.the_marker_flow_talks_only_to_the_casting_seat
       -- tests: SemMage.an_unseated_mage_retires_its_marker_without_a_notice
       if (self.team == 0 or self:has_guy())
@@ -324,7 +311,7 @@ local function teleport(self)
     marker.lifetime = self.level // 4 + 1
   end
   marker.ani_type = C.ANI_SPIN
-  -- rule: Same rule as :167: 'Teleport Marker Placed' and '(N Uses)' go only to the seated caster's
+  -- rule: Same rule as above: 'Teleport Marker Placed' and '(N Uses)' go only to the seated caster's
   --   seat.
   -- tests: PackLuaMage.the_marker_flow_talks_only_to_the_casting_seat
   -- tests: SemMage.a_bot_placing_a_marker_announces_nothing
@@ -366,14 +353,14 @@ local function starburst(self)
   -- tests: WalkerSpecials.mage_warp_starburst_drives_simulation, parity:mage_starburst_ring_scen99
   -- tests: SemMage.warp_space_fires_all_eight_headings_and_restores_the_facing
   for i = -1, 1 do
-    -- rule: Part of the rule above that begins "WARP SPACE fires one fireball along each of the
-    --   ..."
+    -- rule: WARP SPACE fires one fireball along each of the 8 compass headings (never the null
+    --   heading) and restores the mage's facing afterwards.
     -- tests: WalkerSpecials.mage_warp_starburst_drives_simulation
     -- tests: parity:mage_starburst_ring_scen99
     -- tests: SemMage.warp_space_fires_all_eight_headings_and_restores_the_facing
     for j = -1, 1 do
-      -- rule: Part of the rule above that begins "WARP SPACE fires one fireball along each of the
-      --   ..."
+      -- rule: WARP SPACE fires one fireball along each of the 8 compass headings (never the null
+      --   heading) and restores the mage's facing afterwards.
       -- tests: WalkerSpecials.mage_warp_starburst_drives_simulation
       -- tests: parity:mage_starburst_ring_scen99
       -- tests: SemMage.warp_space_fires_all_eight_headings_and_restores_the_facing
@@ -397,9 +384,6 @@ local function starburst(self)
             -- shim kept: lastx is a C++ float: per-op float rounding.
             bolt:set_lastx(og.fdiv(bolt:lastx(), math.abs(bolt:lastx())))
           end
-          -- rule: Part of the rule above that begins "WARP SPACE fireballs crawl: each non-zero
-          --   velocity component is ..."
-          -- tests: SemMage.warp_space_bolts_crawl_one_pixel_per_axis
           if bolt:lasty() ~= 0.0 then
             -- shim kept: lasty is a C++ float: per-op float rounding.
             bolt:set_lasty(og.fdiv(bolt:lasty(), math.abs(bolt:lasty())))
@@ -612,11 +596,12 @@ og.family("living", {
     freeze_rest = 360,
   },
 
-  -- A bot mage never chooses FREEZE TIME (slot 3) while its 360-tick freeze_rest is still running,
-  -- on both Gameplay Fixes / New Specials values; its other slots stay free during the rest, and
-  -- slot 3 is free again once the rest ends. Bot-side twin of the cast-side with_rest on FREEZE
-  -- TIME (living-03-mage.lua:255); the gate mechanism itself lives in
-  -- packs/core/lib/living_common.lua (other chunk).
+  -- rule: A bot mage never chooses FREEZE TIME (slot 3) while its 360-tick freeze_rest is still
+  --   running, on both Gameplay Fixes / New Specials values; its other slots stay free during the
+  --   rest, and slot 3 is free again once the rest ends. Bot-side twin of the cast-side with_rest
+  --   on FREEZE TIME (above); the gate mechanism itself lives in
+  --   packs/core/lib/living_common.lua (other chunk).
+  -- tests: KitRests.bot_gates_hold_a_resting_special
   check_special_ai = lc.gate_with_rest(check_special_ai, 3),
   hit_response = hit_response,
   set_difficulty = set_difficulty,

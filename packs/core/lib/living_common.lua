@@ -81,12 +81,6 @@ function M.with_rest(cast, slot, rest_key, name)
       return false, string.format("%s IN %dS", name, og.timer_seconds(left))
     end
     local ok, why = cast(self)
-    -- rule: Part of the rule above that begins "A rested special refuses "<NAME> IN <N>S" for free
-    --   ..."
-    -- tests: KitRests.orc_howl_rests_ten_seconds, KitRests.freeze_time_rests_thirty_seconds
-    -- tests: KitRests.with_the_setting_off_the_classic_specials_rest_too
-    -- tests: KitRests.the_clock_is_on_the_walker
-    -- tests: GameplayFixesBots.mind_control_skips_a_seated_hero_with_the_setting_on
     if ok then
       self:set_special_rest_left(og.tuning(self)[rest_key])
       self:set_special_rest_slot(slot)

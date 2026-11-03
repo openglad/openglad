@@ -31,9 +31,6 @@ local function on_act(self)
     elseif owner:xpos() < self:xpos() then
       xd = og.max(owner:xpos() - self:xpos(), -self:stepsize())
     end
-    -- rule: Part of the rule above that begins "A returning knife steps at most stepsize per axis
-    --   ..."
-    -- tests: SemKnifeBack.a_returning_knife_steps_at_most_its_stepsize_per_axis_and_never_overshoots
     if owner:ypos() > self:ypos() then
       yd = og.min(self:stepsize(), owner:ypos() - self:ypos())
     elseif owner:ypos() < self:ypos() then

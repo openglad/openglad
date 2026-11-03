@@ -32,8 +32,6 @@ local function on_act(self)
   if self:lifetime() < 8 then
     self:set_invisibility_left(self:invisibility_left() + 3)
   end
-  -- rule: Part of the rule above that begins "A cloud fades out over its last 8 ticks: ..."
-  -- tests: SemLibsCloud.a_cloud_fades_out_over_its_last_eight_ticks
   if self:invisibility_left() > 0 then
     self:set_invisibility_left(self:invisibility_left() - 1)
   end
@@ -48,7 +46,7 @@ local function on_act(self)
   -- tests: parity:effect_cloud_poison_scen99
   for i = 1, #foes do
     local w = foes[i]
-    -- rule: Part of the rule above that begins "A cloud hurts every foe whose box overlaps its ..."
+    -- rule: A cloud hurts every foe whose box overlaps its own, each tick.
     -- tests: PackLuaCloud.a_cloud_damages_the_foe_it_covers_and_spares_its_own_team
     -- tests: PackLuaCloud.a_foe_in_range_but_outside_the_cloud_box_is_unharmed
     -- tests: parity:effect_cloud_poison_scen99
@@ -83,13 +81,14 @@ local function on_act(self)
     --   old game at 7ff1654a, whose cloud only calls do_command; the moved/turned no-draw arm is
     --   asserted, the wedge arm is not pinned
     if self:xpos() == held_x then
-      -- rule: Part of the rule above that begins "A cloud wedged against a wall (its step moved
-      --   ..."
+      -- rule: A cloud wedged against a wall (its step moved nothing and did not even turn it) drops
+      --   its stuck walk and picks a fresh random direction, so it never freezes in place (#233).
       -- tests: EffectMorePaths.effect_cloud_queues_walk_then_executes_the_drift_step
       -- tests: SemLibsCloud.a_cloud_that_moved_or_turned_keeps_its_walk_and_draws_nothing
       if self:ypos() == held_y then
-        -- rule: Part of the rule above that begins "A cloud wedged against a wall (its step moved
-        --   ..."
+        -- rule: A cloud wedged against a wall (its step moved nothing and did not even turn it)
+        --   drops its stuck walk and picks a fresh random direction, so it never freezes in place
+        --   (#233).
         -- tests: EffectMorePaths.effect_cloud_queues_walk_then_executes_the_drift_step
         -- tests: SemLibsCloud.a_cloud_that_moved_or_turned_keeps_its_walk_and_draws_nothing
         if self:curdir() == held_dir then
@@ -111,8 +110,8 @@ local function on_act(self)
     -- Two separate C++ statements, so the draw order is defined: xd then yd,
     -- re-rolled together until the step is non-zero.
     local xd, yd = 0, 0
-    -- rule: Part of the rule above that begins "A cloud's drift direction is never the zero step:
-    --   ..."
+    -- rule: A cloud's drift direction is never the zero step: the two -1..1 rolls are redrawn
+    --   together until at least one is non-zero.
     -- tests: EffectMorePaths.effect_cloud_queues_walk_then_executes_the_drift_step
     -- tests: SemLibsCloud.a_cloud_never_drifts_by_the_zero_step
     while xd == 0 and yd == 0 do

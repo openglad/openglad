@@ -501,8 +501,8 @@ class walker : public og::sim::SimEntity
 			//   LIVING on the attacker's owner chain (credit_head); when no living is on the chain
 			//   (an orphaned weapon whose thrower is gone, a scripted ball fx), no stamp is
 			//   written, so a death from that hit reads as an environment death and Lua on_kill /
-			//   mode scoring pays nobody. walker_combat.cpp:323 passes credit_head() unchecked and
-			//   relies on this guard; walker_specials.cpp:441-448 (turn undead) checks credit
+			//   mode scoring pays nobody. walker_combat.cpp passes credit_head() unchecked and
+			//   relies on this guard; walker_specials.cpp (turn undead) checks credit
 			//   itself on the partial-damage arm but not on the lethal arm (also relies on this
 			//   guard).
 			// tests: SemWalker1.a_hit_is_credited_to_the_living_at_the_top_of_the_owner_chain

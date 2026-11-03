@@ -18,7 +18,7 @@ local function foes_touching(ent, grow)
   local reach = ent:sizex() + ent:sizey() + 2 * LIVING_BOX + 2 * grow
   local foes = og.find_foes_in_range("ob", reach, ent)
   local touching = {}
-  -- plumbing: iterates the foe scan; rule at effect_ember.lua:23
+  -- plumbing: iterates the foe scan; rule below
   for i = 1, #foes do
     local w = foes[i]
     -- rule: IMMOLATE's fire (the embers and the burner's own contact burn) touches only living foes
@@ -66,7 +66,8 @@ local function on_act(self)
   -- tests: KitElemental.embers_burn_crossers_then_die
   if og.mod(self:lifetime(), t.ember_pulse) == 0 then
     local foes = foes_touching(self, 0)
-    -- rule: Part of the rule above that begins "An ember burns each living foe standing on it ..."
+    -- rule: An ember burns each living foe standing on it once every 6 ticks (on lifetimes
+    --   divisible by 6), not every tick.
     -- tests: KitElemental.embers_burn_crossers_then_die
     for i = 1, #foes do
       self:attack(foes[i])

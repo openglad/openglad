@@ -22,11 +22,6 @@ std::uint32_t pack_coordinate(float value)
     // tests: SemDamageNumber.a_nan_or_zero_coordinate_crosses_as_zero_and_fractions_truncate
     if (!(value > 0.0f))
         return 0u;
-    // rule: Part of the rule above that begins "A damage number's position crosses the wire clamped
-    //   to ..."
-    // tests: DamageNumberEvent.coordinates_saturate_at_the_uint16_ceiling
-    // tests: DamageNumberEvent.encode_decode_pins_every_field
-    // tests: SemDamageNumber.a_nan_or_zero_coordinate_crosses_as_zero_and_fractions_truncate
     if (value >= 65535.0f)
         return 65535u;
     return static_cast<std::uint32_t>(value);
@@ -40,9 +35,6 @@ std::uint32_t pack_value_q8(float value)
     if (!(value > 0.0f))
         return 0u;
     const float scaled = std::round(value * 256.0f);
-    // rule: Part of the rule above that begins "A damage number's amount crosses the wire in 1/256
-    //   ..."
-    // tests: DamageNumberEvent.value_quantization_is_exact_for_integers_and_saturates
     if (scaled >= static_cast<float>(kMaxValueQ8))
         return kMaxValueQ8;
     return static_cast<std::uint32_t>(scaled);
@@ -107,8 +99,8 @@ void lift_damage_number_events(
         // tests: SemDamageNumber.a_walker_without_an_entity_id_is_never_lifted_but_is_drained
         for (const walker::DamageNumber& number : entity->damage_numbers)
         {
-            // rule: Part of the rule above that begins "Each tick at most
-            //   kMaxLiftedDamageNumbersPerTick damage numbers are sent ..."
+            // rule: Each tick at most kMaxLiftedDamageNumbersPerTick damage numbers are sent to
+            //   mirrors.
             // tests: DamageNumberEvent.lift_budget_caps_the_tick_and_seat_bound_owners_are_lifted_first
             // tests: SemDamageNumber.a_walker_without_an_entity_id_is_never_lifted_but_is_drained
             if (budget == 0u)
@@ -120,21 +112,20 @@ void lift_damage_number_events(
 
     // Pass 1: the seats. A player's own pane must never lose its numbers to a
     // bystander's when the budget bites, so bound owners spend it first.
-    // rule: Part of the rule above that begins "Each tick at most kMaxLiftedDamageNumbersPerTick
-    //   damage numbers are sent ..."
+    // rule: Each tick at most kMaxLiftedDamageNumbersPerTick damage numbers are sent to mirrors.
     // tests: DamageNumberEvent.lift_budget_caps_the_tick_and_seat_bound_owners_are_lifted_first
     // tests: SemDamageNumber.a_walker_without_an_entity_id_is_never_lifted_but_is_drained
     for (auto& uptr : world.oblist)
     {
         walker* const entity = uptr.get();
-        // rule: Part of the rule above that begins "Each tick at most
-        //   kMaxLiftedDamageNumbersPerTick damage numbers are sent ..."
+        // rule: Each tick at most kMaxLiftedDamageNumbersPerTick damage numbers are sent to
+        //   mirrors.
         // tests: DamageNumberEvent.lift_budget_caps_the_tick_and_seat_bound_owners_are_lifted_first
         // tests: SemDamageNumber.a_walker_without_an_entity_id_is_never_lifted_but_is_drained
         if (entity == nullptr || entity->damage_numbers.empty())
             continue;
-        // rule: Part of the rule above that begins "Each tick at most
-        //   kMaxLiftedDamageNumbersPerTick damage numbers are sent ..."
+        // rule: Each tick at most kMaxLiftedDamageNumbersPerTick damage numbers are sent to
+        //   mirrors.
         // tests: DamageNumberEvent.lift_budget_caps_the_tick_and_seat_bound_owners_are_lifted_first
         // tests: SemDamageNumber.a_walker_without_an_entity_id_is_never_lifted_but_is_drained
         if (entity->entity_id() == 0u || !bound_to_a_seat(entity))
@@ -146,21 +137,20 @@ void lift_damage_number_events(
     // owns, and the render already gates the paint per pane
     // (walker_draw.cpp, "only seen by the people they affect"), so delivery is
     // the only half that was missing.
-    // rule: Part of the rule above that begins "Each tick at most kMaxLiftedDamageNumbersPerTick
-    //   damage numbers are sent ..."
+    // rule: Each tick at most kMaxLiftedDamageNumbersPerTick damage numbers are sent to mirrors.
     // tests: DamageNumberEvent.lift_budget_caps_the_tick_and_seat_bound_owners_are_lifted_first
     // tests: SemDamageNumber.a_walker_without_an_entity_id_is_never_lifted_but_is_drained
     for (auto& uptr : world.oblist)
     {
         walker* const entity = uptr.get();
-        // rule: Part of the rule above that begins "Each tick at most
-        //   kMaxLiftedDamageNumbersPerTick damage numbers are sent ..."
+        // rule: Each tick at most kMaxLiftedDamageNumbersPerTick damage numbers are sent to
+        //   mirrors.
         // tests: DamageNumberEvent.lift_budget_caps_the_tick_and_seat_bound_owners_are_lifted_first
         // tests: SemDamageNumber.a_walker_without_an_entity_id_is_never_lifted_but_is_drained
         if (entity == nullptr || entity->damage_numbers.empty())
             continue;
-        // rule: Part of the rule above that begins "Each tick at most
-        //   kMaxLiftedDamageNumbersPerTick damage numbers are sent ..."
+        // rule: Each tick at most kMaxLiftedDamageNumbersPerTick damage numbers are sent to
+        //   mirrors.
         // tests: DamageNumberEvent.lift_budget_caps_the_tick_and_seat_bound_owners_are_lifted_first
         // tests: SemDamageNumber.a_walker_without_an_entity_id_is_never_lifted_but_is_drained
         if (entity->entity_id() != 0u && !bound_to_a_seat(entity))
@@ -187,16 +177,20 @@ std::size_t apply_damage_number_events(GameWorld& world,
     {
         const std::optional<DecodedDamageNumber> decoded =
             decode_damage_number_event(event);
-        // rule: Part of the rule above that begins "A mirror attaches each received damage number
-        //   to its ..."
+        // rule: A mirror attaches each received damage number to its owner by id, drops (with trace
+        //   'damage_numbers'/'drop unknown owner') a number whose owner it does not know, ignores
+        //   non-damage events, and keeps at most kMaxMirrorDamageNumbers per walker, oldest dropped
+        //   first.
         // tests: DamageNumberEvent.apply_drops_unknown_owner_and_caps_list
         // tests: SemDamageNumber.a_mirror_ignores_events_of_any_other_kind
         if (!decoded.has_value())
             continue;
 
         walker* const owner = world.find_by_id(decoded->owner_entity_id);
-        // rule: Part of the rule above that begins "A mirror attaches each received damage number
-        //   to its ..."
+        // rule: A mirror attaches each received damage number to its owner by id, drops (with trace
+        //   'damage_numbers'/'drop unknown owner') a number whose owner it does not know, ignores
+        //   non-damage events, and keeps at most kMaxMirrorDamageNumbers per walker, oldest dropped
+        //   first.
         // tests: DamageNumberEvent.apply_drops_unknown_owner_and_caps_list
         // tests: SemDamageNumber.a_mirror_ignores_events_of_any_other_kind
         if (owner == nullptr)
@@ -207,8 +201,10 @@ std::size_t apply_damage_number_events(GameWorld& world,
         }
 
         owner->damage_numbers.push_back(decoded->number);
-        // rule: Part of the rule above that begins "A mirror attaches each received damage number
-        //   to its ..."
+        // rule: A mirror attaches each received damage number to its owner by id, drops (with trace
+        //   'damage_numbers'/'drop unknown owner') a number whose owner it does not know, ignores
+        //   non-damage events, and keeps at most kMaxMirrorDamageNumbers per walker, oldest dropped
+        //   first.
         // tests: DamageNumberEvent.apply_drops_unknown_owner_and_caps_list
         // tests: SemDamageNumber.a_mirror_ignores_events_of_any_other_kind
         while (owner->damage_numbers.size() > kMaxMirrorDamageNumbers)

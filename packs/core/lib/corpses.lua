@@ -32,10 +32,6 @@ local function body_for(self, blood, body)
   if body ~= nil then
     return body
   end
-  -- rule: Part of the rule above that begins "With Gameplay Fixes on, the room a raise needs ..."
-  -- tests: GameplayFixesClericRaise.reporter_elf_against_a_wall_is_raised_with_the_setting_on
-  -- tests: GameplayFixesClericRaise.a_blocked_near_stain_does_not_hide_a_usable_far_one
-  -- tests: SemLibsCorpses.resurrect_measures_a_foe_stain_for_the_ghost_it_will_raise
   if self:is_friendly(blood) then
     return blood:s_old_family()
   end
@@ -60,7 +56,7 @@ function M.raise_spot(self, range, body)
     return nil, "NO CORPSE NEARBY"
   end
   local blocked = false
-  -- plumbing: iterates stains nearest first; the rule is corpses.lua:51
+  -- plumbing: iterates stains nearest first; the rule is below
   for i = 1, #stains do
     local blood = stains[i]
     -- rule: With Gameplay Fixes on, a raise takes the NEAREST stain inside the cast's Manhattan
@@ -75,8 +71,8 @@ function M.raise_spot(self, range, body)
     if self:distance_to_ob(blood) < range then
       local fam = body_for(self, blood, body)
       local sx, sy = og.body_spot_near("living", fam, blood:xpos(), blood:ypos(), blood:floor(), M.NUDGE)
-      -- rule: Part of the rule above that begins "With Gameplay Fixes on, a raise takes the NEAREST
-      --   ..."
+      -- rule: With Gameplay Fixes on, a raise takes the NEAREST stain inside the cast's Manhattan
+      --   range that has room for the risen body within 16 px of the corpse corner.
       -- tests: GameplayFixesClericRaise.a_blocked_near_stain_does_not_hide_a_usable_far_one
       -- tests: GameplayFixesClericRaise.reporter_elf_against_a_wall_is_raised_with_the_setting_on
       -- tests: GameplayFixesClericRaise.reporter_one_tile_corridor
@@ -88,8 +84,8 @@ function M.raise_spot(self, range, body)
       blocked = true
     end
   end
-  -- rule: Part of the rule above that begins "With Gameplay Fixes on, a raise takes the NEAREST
-  --   ..."
+  -- rule: With Gameplay Fixes on, a raise takes the NEAREST stain inside the cast's Manhattan range
+  --   that has room for the risen body within 16 px of the corpse corner.
   -- tests: GameplayFixesClericRaise.a_blocked_near_stain_does_not_hide_a_usable_far_one
   -- tests: GameplayFixesClericRaise.reporter_elf_against_a_wall_is_raised_with_the_setting_on
   -- tests: GameplayFixesClericRaise.reporter_one_tile_corridor

@@ -27,8 +27,7 @@ local function fixed_gate(self, classic_answer)
   -- tests: GameplayFixesBots.a_busy_bot_never_rolls_a_busy_cast_with_the_setting_on
   -- tests: SemOrc.the_fixed_gate_leaves_any_other_slot_to_the_classic_answer
   if slot == 1 then
-    -- rule: Part of the rule above that begins "Classic: an orc bot HOWLs (and tries EAT CORPSE)
-    --   ..."
+    -- rule: Classic: an orc bot HOWLs (and tries EAT CORPSE) whenever a foe is within 130 px.
     -- tests: GameplayFixesBots.orc_howl_wants_a_target_inside_the_yell
     -- tests: GameplayFixesBots.a_busy_bot_never_rolls_a_busy_cast_with_the_setting_on
     -- tests: SemOrc.the_fixed_gate_leaves_any_other_slot_to_the_classic_answer
@@ -39,7 +38,8 @@ local function fixed_gate(self, classic_answer)
   --   a foe within 130 and let the meal itself refuse.
   -- tests: GameplayFixesBots.orc_eats_when_hurt_on_a_corpse_whatever_the_foe
   if slot == 2 then
-    -- rule: Part of the rule above that begins "Gameplay Fixes: an orc bot EATs a corpse when ..."
+    -- rule: Gameplay Fixes: an orc bot EATs a corpse when it is below 60% health with a stain under
+    --   it (within the meal's squared reach 24), whatever the foes are doing.
     -- tests: GameplayFixesBots.orc_eats_when_hurt_on_a_corpse_whatever_the_foe
     return G.hp_below(self, 3, 5) and G.corpse_underfoot(self, CORPSE_EAT_REACH_SQ) ~= nil
   end

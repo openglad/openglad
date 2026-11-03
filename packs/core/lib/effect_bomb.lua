@@ -65,7 +65,7 @@ end
 -- shoved away from the centre and struck — the owner at quarter damage,
 -- allies at half, everyone else in full.
 local function explosion_on_death(self)
-  -- rule: Part of the rule above that begins "A bomb (or blast) whose thrower is gone or ..."
+  -- rule: A bomb (or blast) whose thrower is gone or dead becomes its own owner.
   -- tests: EffectMorePaths.effect_batch3_bomb_owner_dead_fallback_path
   -- tests: KitElemental.an_unmarked_ownerless_blast_hits_its_own_colour_in_full
   -- tests: parity:effect_explosion_ally_tier_scen99, parity:effect_explosion_range_scen99
@@ -89,7 +89,7 @@ local function explosion_on_death(self)
     return false
   end
 
-  -- plumbing: iterates the floor-blind finder's result; rules at effect_bomb.lua:66, :70, :79
+  -- plumbing: iterates the floor-blind finder's result; rules below
   for i = 1, #nearby do
     local w = nearby[i]
     -- An explosion never blasts through solid floors: only same-floor

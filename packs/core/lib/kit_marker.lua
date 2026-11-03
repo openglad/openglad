@@ -81,7 +81,7 @@ function M.find(owner, role)
   -- tests: SemLibsMarker.a_kit_marker_answers_only_for_its_live_owner
   for i = 1, #obs do
     local ob = obs[i]
-    -- rule: Part of the rule above that begins "A kit's live marker is found by owner AND ..."
+    -- rule: A kit's live marker is found by owner AND role.
     -- tests: KitElemental.second_press_ends_it_free_after_the_latch
     -- tests: KitGhost.phase_doubles_speed_blocks_attacks_and_expires_clean
     -- tests: KitLuaTest.kit_marker_spawns_finds_ages_and_dispatches_by_role

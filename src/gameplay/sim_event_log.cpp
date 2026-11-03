@@ -34,8 +34,8 @@ void SimEventLog::push(EventKind kind, std::uint32_t a, std::uint32_t b)
 void SimEventLog::push_with_text(EventKind kind, const std::string& text,
                                  std::uint32_t a, std::uint32_t b)
 {
-    // rule: Part of the rule above that begins "While a snapshot is being replayed silently
-    //   (apply_snapshot's guard), ..."
+    // rule: While a snapshot is being replayed silently (apply_snapshot's guard), the sim emits no
+    //   sounds, notifications, palette or text events.
     // tests: SimEventLog.suppress_guard_blocks_pushes_and_restores_state
     // tests: SimEntity.suppressed_event_log_drops_text_events, SimEventLog.push_sound
     // tests: SimEventLog.push_notification, SimEventLog.tick_tracking
@@ -54,8 +54,8 @@ void SimEventLog::push_with_text(EventKind kind, const std::string& text,
 void SimEventLog::push_notification(const std::string& message, std::uint32_t duration,
                                     std::int32_t target_player)
 {
-    // rule: Part of the rule above that begins "While a snapshot is being replayed silently
-    //   (apply_snapshot's guard), ..."
+    // rule: While a snapshot is being replayed silently (apply_snapshot's guard), the sim emits no
+    //   sounds, notifications, palette or text events.
     // tests: SimEventLog.suppress_guard_blocks_pushes_and_restores_state
     // tests: SimEntity.suppressed_event_log_drops_text_events, SimEventLog.push_sound
     // tests: SimEventLog.push_notification, SimEventLog.tick_tracking
@@ -73,8 +73,8 @@ void SimEventLog::push_notification(const std::string& message, std::uint32_t du
 
 void SimEventLog::push_sound(std::uint32_t sound_id, std::int32_t target_player)
 {
-    // rule: Part of the rule above that begins "While a snapshot is being replayed silently
-    //   (apply_snapshot's guard), ..."
+    // rule: While a snapshot is being replayed silently (apply_snapshot's guard), the sim emits no
+    //   sounds, notifications, palette or text events.
     // tests: SimEventLog.suppress_guard_blocks_pushes_and_restores_state
     // tests: SimEntity.suppressed_event_log_drops_text_events, SimEventLog.push_sound
     // tests: SimEventLog.push_notification, SimEventLog.tick_tracking

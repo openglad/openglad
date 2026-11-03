@@ -97,8 +97,7 @@ void push_family_ref(lua_State* L)
             "__mod",      "__pow",      "__unm",  "__idiv",     "__lt",
             "__le",
         };
-        // rule: Part of the rule above that begins "During the declaration pass og.family_id
-        //   answers a truthy placeholder: ..."
+        // rule: During the declaration pass og.family_id answers a truthy placeholder.
         // tests: LuaFamilyDeclTest.family_id_defers_during_a_declaration
         // tests: SemFamilyDecl.a_declare_time_family_ref_refuses_every_use_but_truth
         // tests: SemFamilyDecl.a_declare_time_family_ref_compares_equal_only_to_itself
@@ -197,11 +196,6 @@ bool Harvest::take_int(const std::string& where, std::int32_t& out)
     }
     const lua_Integer v = lua_tointeger(L, -1);
     lua_pop(L, 1);
-    // rule: Part of the rule above that begins "A whole-number field takes only a Lua integer
-    //   inside ..."
-    // tests: LuaFamilyDeclTest.a_wrong_scalar_type_names_the_path_and_what_arrived
-    // tests: LuaFamilyDeclTest.a_special_level_opens_its_slot_early_and_no_later
-    // tests: LuaFamilyDeclTest.radar_colour_takes_two_names_or_a_palette_index
     if (v < -2147483648LL || v > 2147483647LL)
         return fail(where + ": " + std::to_string(v) + " is out of range");
     out = static_cast<std::int32_t>(v);
@@ -257,16 +251,11 @@ bool Harvest::take_string_list(const std::string& where,
         return fail(where + ": expected a list, got " + got);
     }
     const lua_Integer n = luaL_len(L, -1);
-    // rule: Part of the rule above that begins "A list-of-strings field is a Lua array whose every
-    //   ..."
-    // tests: LuaFamilyDeclTest.a_wrong_scalar_type_names_the_path_and_what_arrived
-    // tests: LuaFamilyDeclTest.a_field_of_the_wrong_type_names_the_field
-    // tests: LuaFamilyDeclTest.the_pack_header_is_strict_too
     for (lua_Integer i = 1; i <= n; i++) {
         lua_rawgeti(L, -1, i);
         std::string item;
-        // rule: Part of the rule above that begins "A list-of-strings field is a Lua array whose
-        //   every ..."
+        // rule: A list-of-strings field is a Lua array whose every element is a string; the failing
+        //   element is named by index.
         // tests: LuaFamilyDeclTest.a_wrong_scalar_type_names_the_path_and_what_arrived
         // tests: LuaFamilyDeclTest.a_field_of_the_wrong_type_names_the_field
         // tests: LuaFamilyDeclTest.the_pack_header_is_strict_too
@@ -319,17 +308,13 @@ template <typename T, typename Reader>
 bool opt_field(Harvest& h, int tbl, const std::string& where, const char* key,
                std::optional<T>& out, Reader reader)
 {
-    // plumbing: opt_field: composes has_field (226), reject_og_nil (237) and the typed reader; see
+    // plumbing: opt_field: composes has_field, reject_og_nil and the typed reader; see
     //   those rows
     if (!has_field(h.L, tbl, key))
         return true;
-    // plumbing: opt_field: composes has_field (226), reject_og_nil (237) and the typed reader; see
-    //   those rows
     if (reject_og_nil(h, where + "." + key))
         return false;
     T value{};
-    // plumbing: opt_field: composes has_field (226), reject_og_nil (237) and the typed reader; see
-    //   those rows
     if (!reader(h, where + "." + key, value))
         return false;
     out = value;
@@ -378,14 +363,12 @@ bool opt_string_list(Harvest& h, int tbl, const std::string& where,
                      const char* key,
                      std::optional<std::vector<std::string>>& out)
 {
-    // plumbing: opt_string_list: composes has_field, reject_og_nil and take_string_list (198)
+    // plumbing: opt_string_list: composes has_field, reject_og_nil and take_string_list
     if (!has_field(h.L, tbl, key))
         return true;
-    // plumbing: opt_string_list: composes has_field, reject_og_nil and take_string_list (198)
     if (reject_og_nil(h, where + "." + key))
         return false;
     std::vector<std::string> list;
-    // plumbing: opt_string_list: composes has_field, reject_og_nil and take_string_list (198)
     if (!h.take_string_list(where + "." + key, list))
         return false;
     out = std::move(list);
@@ -402,9 +385,6 @@ bool opt_nullable(Harvest& h, int tbl, const std::string& where,
     if (!has_field(h.L, tbl, key))
         return true;
     out.present = true;
-    // rule: Part of the rule above that begins "The present-null fields (short_name, promotes_to,
-    //   death_message, sprite, description) have ..."
-    // tests: LuaFamilyDeclTest.og_nil_is_the_present_null_and_absence_is_not
     if (is_og_nil(h.L, -1)) {
         out.is_null = true;
         lua_pop(h.L, 1);
@@ -432,25 +412,11 @@ bool opt_wire_id(Harvest& h, int tbl, const std::string& where,
     // tests: SemFamilyDecl.wire_id_is_empty_when_absent_and_any_integer_lands_as_text
     if (!has_field(h.L, tbl, "wire_id"))
         return true;
-    // rule: Part of the rule above that begins "wire_id is an integer (stored as its decimal text)
-    //   ..."
-    // tests: LuaFamilyDeclTest.wire_id_auto_is_a_string_the_installer_reads
-    // tests: LuaFamilyDeclTest.a_field_of_the_wrong_type_names_the_field
-    // tests: LuaFamilyDeclTest.a_full_living_declaration_lands_every_block
-    // tests: LuaFamilyDeclTest.one_chunk_may_declare_many_families
-    // tests: SemFamilyDecl.wire_id_is_empty_when_absent_and_any_integer_lands_as_text
     if (lua_isinteger(h.L, -1)) {
         out = std::to_string(lua_tointeger(h.L, -1));
         lua_pop(h.L, 1);
         return true;
     }
-    // rule: Part of the rule above that begins "wire_id is an integer (stored as its decimal text)
-    //   ..."
-    // tests: LuaFamilyDeclTest.wire_id_auto_is_a_string_the_installer_reads
-    // tests: LuaFamilyDeclTest.a_field_of_the_wrong_type_names_the_field
-    // tests: LuaFamilyDeclTest.a_full_living_declaration_lands_every_block
-    // tests: LuaFamilyDeclTest.one_chunk_may_declare_many_families
-    // tests: SemFamilyDecl.wire_id_is_empty_when_absent_and_any_integer_lands_as_text
     if (lua_type(h.L, -1) == LUA_TSTRING)
         return h.take_string(where + ".wire_id", out);
     const std::string got = type_name_of(h.L, -1);
@@ -482,16 +448,14 @@ std::string did_you_mean(const std::string& bad,
     const auto distance = [](const std::string& a, const std::string& b) {
         std::vector<size_t> row(b.size() + 1);
         // plumbing: did_you_mean: Levenshtein rolling-row loops; the rule is did_you_mean row
-        //   family_decl.cpp:396
+        //   below
         for (size_t j = 0; j <= b.size(); j++)
             row[j] = j;
-        // plumbing: did_you_mean: Levenshtein rolling-row loops; the rule is did_you_mean row
-        //   family_decl.cpp:396
         for (size_t i = 1; i <= a.size(); i++) {
             size_t diagonal = row[0];
             row[0] = i;
             // plumbing: did_you_mean: Levenshtein rolling-row loops; the rule is did_you_mean row
-            //   family_decl.cpp:396
+            //   below
             for (size_t j = 1; j <= b.size(); j++) {
                 const size_t previous = row[j];
                 // rule: An unknown key gets a suggestion: for each KNOWN key the budget is half
@@ -513,8 +477,7 @@ std::string did_you_mean(const std::string& bad,
     };
     const char* best = nullptr;
     size_t best_distance = 0;
-    // rule: Part of the rule above that begins "An unknown key gets a suggestion: for each KNOWN
-    //   ..."
+    // rule: An unknown key gets a suggestion.
     // tests: LuaFamilyDeclTest.a_wrong_word_gets_no_suggestion
     // tests: LuaFamilyDeclTest.a_tied_key_suggestion_is_settled_alphabetically
     // tests: LuaFamilyDeclTest.unknown_keys_inside_the_named_blocks_are_errors
@@ -526,15 +489,13 @@ std::string did_you_mean(const std::string& bad,
         // not find "id" (two characters out of two is a different word).
         const size_t budget =
             std::min<size_t>(3, std::max<size_t>(1, c.size() / 2));
-        // rule: Part of the rule above that begins "An unknown key gets a suggestion: for each
-        //   KNOWN ..."
+        // rule: An unknown key gets a suggestion.
         // tests: LuaFamilyDeclTest.a_wrong_word_gets_no_suggestion
         // tests: LuaFamilyDeclTest.a_tied_key_suggestion_is_settled_alphabetically
         // tests: LuaFamilyDeclTest.unknown_keys_inside_the_named_blocks_are_errors
         if (d > budget)
             continue;
-        // rule: Part of the rule above that begins "An unknown key gets a suggestion: for each
-        //   KNOWN ..."
+        // rule: An unknown key gets a suggestion.
         // tests: LuaFamilyDeclTest.a_wrong_word_gets_no_suggestion
         // tests: LuaFamilyDeclTest.a_tied_key_suggestion_is_settled_alphabetically
         // tests: LuaFamilyDeclTest.unknown_keys_inside_the_named_blocks_are_errors
@@ -544,8 +505,7 @@ std::string did_you_mean(const std::string& bad,
             best_distance = d;
         }
     }
-    // rule: Part of the rule above that begins "An unknown key gets a suggestion: for each KNOWN
-    //   ..."
+    // rule: An unknown key gets a suggestion.
     // tests: LuaFamilyDeclTest.a_wrong_word_gets_no_suggestion
     // tests: LuaFamilyDeclTest.a_tied_key_suggestion_is_settled_alphabetically
     // tests: LuaFamilyDeclTest.unknown_keys_inside_the_named_blocks_are_errors
@@ -569,8 +529,9 @@ bool check_keys(Harvest& h, int tbl, const std::string& where,
     // tests: LuaFamilyDeclTest.a_full_living_declaration_lands_every_block
     while (lua_next(L, tbl) != 0) {
         lua_pop(L, 1);  // value; the key stays for the next iteration
-        // rule: Part of the rule above that begins "Strict keys: any string key a block does not
-        //   ..."
+        // rule: Strict keys: any string key a block does not know stops the pack (with a
+        //   suggestion); `ext` is always accepted and ignored; non-string (array) keys are not
+        //   key-checked.
         // tests: LuaFamilyDeclTest.an_unknown_top_level_key_is_a_load_error
         // tests: LuaFamilyDeclTest.ext_is_reserved_and_ignored
         // tests: LuaFamilyDeclTest.unknown_keys_inside_the_named_blocks_are_errors
@@ -579,16 +540,18 @@ bool check_keys(Harvest& h, int tbl, const std::string& where,
             continue;
         const char* key = lua_tostring(L, -1);
         bool ok = std::strcmp(key, "ext") == 0;
-        // rule: Part of the rule above that begins "Strict keys: any string key a block does not
-        //   ..."
+        // rule: Strict keys: any string key a block does not know stops the pack (with a
+        //   suggestion); `ext` is always accepted and ignored; non-string (array) keys are not
+        //   key-checked.
         // tests: LuaFamilyDeclTest.an_unknown_top_level_key_is_a_load_error
         // tests: LuaFamilyDeclTest.ext_is_reserved_and_ignored
         // tests: LuaFamilyDeclTest.unknown_keys_inside_the_named_blocks_are_errors
         // tests: LuaFamilyDeclTest.a_full_living_declaration_lands_every_block
         for (const char* k : known)
             ok = ok || std::strcmp(k, key) == 0;
-        // rule: Part of the rule above that begins "Strict keys: any string key a block does not
-        //   ..."
+        // rule: Strict keys: any string key a block does not know stops the pack (with a
+        //   suggestion); `ext` is always accepted and ignored; non-string (array) keys are not
+        //   key-checked.
         // tests: LuaFamilyDeclTest.an_unknown_top_level_key_is_a_load_error
         // tests: LuaFamilyDeclTest.ext_is_reserved_and_ignored
         // tests: LuaFamilyDeclTest.unknown_keys_inside_the_named_blocks_are_errors
@@ -618,8 +581,8 @@ bool take_radar_color(Harvest& h, const std::string& where,
     if (lua_type(h.L, -1) == LUA_TSTRING) {
         std::string text;
         (void)h.take_string(where, text);  // a string: cannot fail
-        // rule: Part of the rule above that begins "radar_color is a palette index or one of two
-        //   ..."
+        // rule: radar_color is a palette index or one of two names: 'none' (no blip) and 'team'
+        //   (the entity's team colour); other names and non-integers are refused.
         // tests: LuaFamilyDeclTest.radar_colour_takes_two_names_or_a_palette_index
         // tests: LuaFamilyDeclTest.a_full_living_declaration_lands_every_block
         if (text == og::kRadarColorNoneName)
@@ -634,9 +597,6 @@ bool take_radar_color(Harvest& h, const std::string& where,
         return true;
     }
     std::int32_t value = 0;
-    // rule: Part of the rule above that begins "radar_color is a palette index or one of two ..."
-    // tests: LuaFamilyDeclTest.radar_colour_takes_two_names_or_a_palette_index
-    // tests: LuaFamilyDeclTest.a_full_living_declaration_lands_every_block
     if (!h.take_int(where, value))
         return false;
     out = value;
@@ -647,7 +607,7 @@ bool harvest_presentation(Harvest& h, int tbl, const std::string& where,
                           og::data::ClasspackPresentation& p)
 {
     // plumbing: harvest_presentation: chain of optional readers; radar_color presence then
-    //   take_radar_color (442)
+    //   take_radar_color
     if (!opt_string(h, tbl, where, "glyph", p.glyph) ||
         !opt_string(h, tbl, where, "glyph_ascii", p.glyph_ascii) ||
         !opt_string(h, tbl, where, "glyph_color", p.glyph_color) ||
@@ -656,8 +616,6 @@ bool harvest_presentation(Harvest& h, int tbl, const std::string& where,
         !opt_int(h, tbl, where, "radar_jitter", p.radar_jitter) ||
         !opt_bool(h, tbl, where, "radar_ping", p.radar_ping))
         return false;
-    // plumbing: harvest_presentation: chain of optional readers; radar_color presence then
-    //   take_radar_color (442)
     if (!has_field(h.L, tbl, "radar_color"))
         return true;
     return take_radar_color(h, where + ".radar_color", p.radar_color);
@@ -684,11 +642,6 @@ bool harvest_tuning(Harvest& h, int tbl, const std::string& where,
     if (!has_field(h.L, tbl, "tuning"))
         return true;
     lua_State* L = h.L;
-    // rule: Part of the rule above that begins "tuning is a table of NAMED scalars; each value ..."
-    // tests: LuaFamilyDeclTest.tuning_harvests_in_a_content_determined_order
-    // tests: LuaFamilyDeclTest.tuning_must_be_a_table_of_named_scalars
-    // tests: LuaFamilyDeclTest.a_full_living_declaration_lands_every_block
-    // tests: ClasspackInstall.reinstalling_a_slot_without_tuning_clears_it
     if (lua_type(L, -1) != LUA_TTABLE) {
         const std::string got = type_name_of(L, -1);
         lua_pop(L, 1);
@@ -697,14 +650,8 @@ bool harvest_tuning(Harvest& h, int tbl, const std::string& where,
     }
     const int tuning_tbl = lua_gettop(L);
     lua_pushnil(L);
-    // rule: Part of the rule above that begins "tuning is a table of NAMED scalars; each value ..."
-    // tests: LuaFamilyDeclTest.tuning_harvests_in_a_content_determined_order
-    // tests: LuaFamilyDeclTest.tuning_must_be_a_table_of_named_scalars
-    // tests: LuaFamilyDeclTest.a_full_living_declaration_lands_every_block
-    // tests: ClasspackInstall.reinstalling_a_slot_without_tuning_clears_it
     while (lua_next(L, tuning_tbl) != 0) {
-        // rule: Part of the rule above that begins "tuning is a table of NAMED scalars; each value
-        //   ..."
+        // rule: tuning is a table of NAMED scalars.
         // tests: LuaFamilyDeclTest.tuning_harvests_in_a_content_determined_order
         // tests: LuaFamilyDeclTest.tuning_must_be_a_table_of_named_scalars
         // tests: LuaFamilyDeclTest.a_full_living_declaration_lands_every_block
@@ -716,8 +663,7 @@ bool harvest_tuning(Harvest& h, int tbl, const std::string& where,
         og::data::ClasspackTuningPair pair;
         pair.key = lua_tostring(L, -2);
         const std::string vwhere = where + ".tuning." + pair.key;
-        // rule: Part of the rule above that begins "tuning is a table of NAMED scalars; each value
-        //   ..."
+        // rule: tuning is a table of NAMED scalars.
         // tests: LuaFamilyDeclTest.tuning_harvests_in_a_content_determined_order
         // tests: LuaFamilyDeclTest.tuning_must_be_a_table_of_named_scalars
         // tests: LuaFamilyDeclTest.a_full_living_declaration_lands_every_block
@@ -732,8 +678,7 @@ bool harvest_tuning(Harvest& h, int tbl, const std::string& where,
                 pair.value.string = lua_tostring(L, -1);
                 break;
             case LUA_TNUMBER:
-                // rule: Part of the rule above that begins "tuning is a table of NAMED scalars;
-                //   each value ..."
+                // rule: tuning is a table of NAMED scalars.
                 // tests: LuaFamilyDeclTest.tuning_harvests_in_a_content_determined_order
                 // tests: LuaFamilyDeclTest.tuning_must_be_a_table_of_named_scalars
                 // tests: LuaFamilyDeclTest.a_full_living_declaration_lands_every_block
@@ -776,15 +721,10 @@ bool is_special_id(const std::string& id)
     // tests: LuaFamilyDeclTest.a_special_entry_is_type_checked_field_by_field
     if (id.empty())
         return false;
-    // rule: Part of the rule above that begins "A special id is non-empty lowercase letters, digits
-    //   and ..."
-    // tests: LuaFamilyDeclTest.special_ids_are_unique_and_never_the_catch_all
-    // tests: LuaFamilyDeclTest.a_special_entry_is_type_checked_field_by_field
     for (const char ch : id) {
         const bool ok = (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') ||
                         ch == '_';
-        // rule: Part of the rule above that begins "A special id is non-empty lowercase letters,
-        //   digits and ..."
+        // rule: A special id is non-empty lowercase letters, digits and underscores.
         // tests: LuaFamilyDeclTest.special_ids_are_unique_and_never_the_catch_all
         // tests: LuaFamilyDeclTest.a_special_entry_is_type_checked_field_by_field
         if (!ok)
@@ -814,10 +754,6 @@ bool harvest_special(Harvest& h, int tbl, const std::string& where,
     // tests: LuaFamilyDeclTest.a_special_entry_is_type_checked_field_by_field
     if (!has_field(L, tbl, "id"))
         return h.fail(where + ": a special needs an id");
-    // rule: Part of the rule above that begins "A special must declare id, name (the HUD string)
-    //   ..."
-    // tests: LuaFamilyDeclTest.a_special_needs_its_three_required_fields
-    // tests: LuaFamilyDeclTest.a_special_entry_is_type_checked_field_by_field
     if (!h.take_string(where + ".id", out.id))
         return false;
     // rule: 'default' is reserved as the specials table's catch-all key and cannot name a special.
@@ -826,34 +762,27 @@ bool harvest_special(Harvest& h, int tbl, const std::string& where,
         return h.fail(where + ".id '" + out.id +
                       "': a special id is lowercase letters, digits and "
                       "underscores");
-    // rule: Part of the rule above that begins "'default' is reserved as the specials table's
-    //   catch-all key ..."
-    // tests: LuaFamilyDeclTest.special_ids_are_unique_and_never_the_catch_all
     if (out.id == "default")
         return h.fail(where + ".id: 'default' is reserved — it is the "
                               "specials table's catch-all key, so a special "
                               "could never be handled by name");
     const std::string named = where + " '" + out.id + "'";
-    // rule: Part of the rule above that begins "A special must declare id, name (the HUD string)
-    //   ..."
+    // rule: A special must declare id, name (the HUD string) and mp_cost.
     // tests: LuaFamilyDeclTest.a_special_needs_its_three_required_fields
     // tests: LuaFamilyDeclTest.a_special_entry_is_type_checked_field_by_field
     if (!has_field(L, tbl, "name"))
         return h.fail(named + ": a special needs a name (the HUD string)");
-    // rule: Part of the rule above that begins "A special must declare id, name (the HUD string)
-    //   ..."
+    // rule: A special must declare id, name (the HUD string) and mp_cost.
     // tests: LuaFamilyDeclTest.a_special_needs_its_three_required_fields
     // tests: LuaFamilyDeclTest.a_special_entry_is_type_checked_field_by_field
     if (!h.take_string(named + ".name", out.name))
         return false;
-    // rule: Part of the rule above that begins "A special must declare id, name (the HUD string)
-    //   ..."
+    // rule: A special must declare id, name (the HUD string) and mp_cost.
     // tests: LuaFamilyDeclTest.a_special_needs_its_three_required_fields
     // tests: LuaFamilyDeclTest.a_special_entry_is_type_checked_field_by_field
     if (!has_field(L, tbl, "mp_cost"))
         return h.fail(named + ": a special needs an mp_cost");
-    // rule: Part of the rule above that begins "A special must declare id, name (the HUD string)
-    //   ..."
+    // rule: A special must declare id, name (the HUD string) and mp_cost.
     // tests: LuaFamilyDeclTest.a_special_needs_its_three_required_fields
     // tests: LuaFamilyDeclTest.a_special_entry_is_type_checked_field_by_field
     if (!h.take_int(named + ".mp_cost", out.mp_cost))
@@ -872,11 +801,6 @@ bool harvest_special(Harvest& h, int tbl, const std::string& where,
                       " and up is the registry's own \"disabled\" marker — "
                       "leave the special out of the list instead, which is "
                       "what absence means");
-    // rule: Part of the rule above that begins "A special's price is 0..4999: 5000+ is the
-    //   registry's ..."
-    // tests: LuaFamilyDeclTest.the_disabled_sentinel_is_refused_by_name
-    // tests: LuaFamilyDeclTest.a_negative_special_cost_is_a_load_error
-    // tests: LuaFamilyDeclTest.a_special_entry_is_type_checked_field_by_field
     if (out.mp_cost < 0)
         return h.fail(named + ".mp_cost " + std::to_string(out.mp_cost) +
                       ": a special cannot cost negative magic");
@@ -889,18 +813,15 @@ bool harvest_special(Harvest& h, int tbl, const std::string& where,
     // `level = N` opens the slot early. The lower bound is checked here,
     // while the key is known to be present: the entry stores 0 for "no
     // level given", so an explicit 0 would read as absent further on.
-    // rule: Part of the rule above that begins "An explicit slot or level is a whole number, ..."
-    // tests: LuaFamilyDeclTest.a_special_level_opens_its_slot_early_and_no_later
-    // tests: LuaFamilyDeclTest.a_special_entry_is_type_checked_field_by_field
     if (has_field(L, tbl, "level")) {
-        // rule: Part of the rule above that begins "An explicit slot or level is a whole number,
-        //   ..."
+        // rule: An explicit slot or level is a whole number, and a level opens a slot at level 1 at
+        //   the earliest (an explicit 0 is refused, not read as absent).
         // tests: LuaFamilyDeclTest.a_special_level_opens_its_slot_early_and_no_later
         // tests: LuaFamilyDeclTest.a_special_entry_is_type_checked_field_by_field
         if (!h.take_int(named + ".level", out.level))
             return false;
-        // rule: Part of the rule above that begins "An explicit slot or level is a whole number,
-        //   ..."
+        // rule: An explicit slot or level is a whole number, and a level opens a slot at level 1 at
+        //   the earliest (an explicit 0 is refused, not read as absent).
         // tests: LuaFamilyDeclTest.a_special_level_opens_its_slot_early_and_no_later
         // tests: LuaFamilyDeclTest.a_special_entry_is_type_checked_field_by_field
         if (out.level < 1)
@@ -913,7 +834,8 @@ bool harvest_special(Harvest& h, int tbl, const std::string& where,
     // tests: LuaFamilyDeclTest.a_special_level_opens_its_slot_early_and_no_later
     // tests: ClasspackInstall.a_declaration_installs_the_shipped_soldier_bytes
     if (has_field(L, tbl, "alternate")) {
-        // rule: Part of the rule above that begins "An alternate (the Shift arm of a slot) is ..."
+        // rule: An alternate (the Shift arm of a slot) is a table with a name and only the keys
+        //   name, mp_cost, new_kit, detail, icon; it has no level of its own.
         // tests: LuaFamilyDeclTest.alternate_takes_a_named_table
         // tests: LuaFamilyDeclTest.a_special_level_opens_its_slot_early_and_no_later
         // tests: ClasspackInstall.a_declaration_installs_the_shipped_soldier_bytes
@@ -942,13 +864,15 @@ bool harvest_special(Harvest& h, int tbl, const std::string& where,
                              {"name", "mp_cost", "new_kit", "detail",
                               "icon"});
         lua_pop(L, 1);
-        // rule: Part of the rule above that begins "An alternate (the Shift arm of a slot) is ..."
+        // rule: An alternate (the Shift arm of a slot) is a table with a name and only the keys
+        //   name, mp_cost, new_kit, detail, icon; it has no level of its own.
         // tests: LuaFamilyDeclTest.alternate_takes_a_named_table
         // tests: LuaFamilyDeclTest.a_special_level_opens_its_slot_early_and_no_later
         // tests: ClasspackInstall.a_declaration_installs_the_shipped_soldier_bytes
         if (!ok)
             return false;
-        // rule: Part of the rule above that begins "An alternate (the Shift arm of a slot) is ..."
+        // rule: An alternate (the Shift arm of a slot) is a table with a name and only the keys
+        //   name, mp_cost, new_kit, detail, icon; it has no level of its own.
         // tests: LuaFamilyDeclTest.alternate_takes_a_named_table
         // tests: LuaFamilyDeclTest.a_special_level_opens_its_slot_early_and_no_later
         // tests: ClasspackInstall.a_declaration_installs_the_shipped_soldier_bytes
@@ -963,9 +887,6 @@ bool harvest_special(Harvest& h, int tbl, const std::string& where,
                           " and up is the registry's own \"disabled\" "
                           "marker — an alternate is either castable or "
                           "left out");
-        // rule: Part of the rule above that begins "An alternate's own price follows the primary's
-        //   bounds (0..4999); ..."
-        // tests: SpecialsView.declaration_keys_reject_junk
         if (alt_cost && *alt_cost < 0)
             return h.fail(awhere + ".mp_cost " + std::to_string(*alt_cost) +
                           ": a special cannot cost negative magic");
@@ -987,18 +908,10 @@ bool harvest_special(Harvest& h, int tbl, const std::string& where,
         return false;
     out.new_kit = new_kit.value_or(false);
     // The DETAILS page prose under the special's name (optional).
-    // rule: Part of the rule above that begins "new_kit = true puts a slot behind the New ..."
-    // tests: LuaFamilyDeclTest.a_special_entry_is_type_checked_field_by_field
-    // tests: LuaFamilyDeclTest.a_special_and_its_alternate_name_their_icons
-    // tests: SpecialsView.declaration_keys_reject_junk
     if (!opt_string(h, tbl, named, "detail", out.detail))
         return false;
     // The ability's picture (optional; absent = the generic tile).
     std::optional<std::string> icon;
-    // rule: Part of the rule above that begins "new_kit = true puts a slot behind the New ..."
-    // tests: LuaFamilyDeclTest.a_special_entry_is_type_checked_field_by_field
-    // tests: LuaFamilyDeclTest.a_special_and_its_alternate_name_their_icons
-    // tests: SpecialsView.declaration_keys_reject_junk
     if (!opt_string(h, tbl, named, "icon", icon))
         return false;
     out.icon = icon.value_or(std::string{});
@@ -1010,16 +923,16 @@ bool harvest_special(Harvest& h, int tbl, const std::string& where,
     // tests: LuaFamilyDeclTest.mixing_the_two_spellings_of_one_hook_is_an_error
     // tests: SemFamilyDecl.a_special_ai_that_is_not_a_function_is_a_load_error
     for (const char* key : {"cast", "ai"}) {
-        // rule: Part of the rule above that begins "A special's cast is a function or `false` (the
-        //   ..."
+        // rule: A special's cast is a function or `false` (the charged no-op: spends MP, does
+        //   nothing); its ai is a function; anything else is a load error.
         // tests: LuaFamilyDeclTest.a_cast_is_a_function_or_the_explicit_no_op
         // tests: LuaFamilyDeclTest.a_tied_key_suggestion_is_settled_alphabetically
         // tests: LuaFamilyDeclTest.mixing_the_two_spellings_of_one_hook_is_an_error
         // tests: SemFamilyDecl.a_special_ai_that_is_not_a_function_is_a_load_error
         if (!has_field(L, tbl, key))
             continue;
-        // rule: Part of the rule above that begins "A special's cast is a function or `false` (the
-        //   ..."
+        // rule: A special's cast is a function or `false` (the charged no-op: spends MP, does
+        //   nothing); its ai is a function; anything else is a load error.
         // tests: LuaFamilyDeclTest.a_cast_is_a_function_or_the_explicit_no_op
         // tests: LuaFamilyDeclTest.a_tied_key_suggestion_is_settled_alphabetically
         // tests: LuaFamilyDeclTest.mixing_the_two_spellings_of_one_hook_is_an_error
@@ -1036,8 +949,8 @@ bool harvest_special(Harvest& h, int tbl, const std::string& where,
                          lua_toboolean(L, -1) == 0);
         const std::string got = type_name_of(L, -1);
         lua_pop(L, 1);
-        // rule: Part of the rule above that begins "A special's cast is a function or `false` (the
-        //   ..."
+        // rule: A special's cast is a function or `false` (the charged no-op: spends MP, does
+        //   nothing); its ai is a function; anything else is a load error.
         // tests: LuaFamilyDeclTest.a_cast_is_a_function_or_the_explicit_no_op
         // tests: LuaFamilyDeclTest.a_tied_key_suggestion_is_settled_alphabetically
         // tests: LuaFamilyDeclTest.mixing_the_two_spellings_of_one_hook_is_an_error
@@ -1064,9 +977,6 @@ bool harvest_specials(Harvest& h, int tbl, const std::string& where,
     if (!has_field(h.L, tbl, "specials"))
         return true;
     lua_State* L = h.L;
-    // rule: Part of the rule above that begins "specials, when present, is a list."
-    // tests: LuaFamilyDeclTest.a_specials_block_that_is_not_a_list_of_tables_says_which
-    // tests: SemFamilyDecl.an_absent_specials_list_stays_unset
     if (lua_type(L, -1) != LUA_TTABLE) {
         const std::string got = type_name_of(L, -1);
         lua_pop(L, 1);
@@ -1105,7 +1015,7 @@ bool harvest_specials(Harvest& h, int tbl, const std::string& where,
         // tests: LuaFamilyDeclTest.special_ids_are_unique_and_never_the_catch_all
         // tests: LuaFamilyDeclTest.a_full_living_declaration_lands_every_block
         for (const og::data::ClasspackSpecialEntry& seen : entries) {
-            // rule: Part of the rule above that begins "Special ids are unique within a family."
+            // rule: Special ids are unique within a family.
             // tests: LuaFamilyDeclTest.special_ids_are_unique_and_never_the_catch_all
             // tests: LuaFamilyDeclTest.a_full_living_declaration_lands_every_block
             if (seen.id == entry.id)
@@ -1113,9 +1023,6 @@ bool harvest_specials(Harvest& h, int tbl, const std::string& where,
                             "': already used by an earlier special of this "
                             "family");
         }
-        // rule: Part of the rule above that begins "Special ids are unique within a family."
-        // tests: LuaFamilyDeclTest.special_ids_are_unique_and_never_the_catch_all
-        // tests: LuaFamilyDeclTest.a_full_living_declaration_lands_every_block
         if (!ok)
             break;
         // rule: A special with no slot key, or an explicit slot = 0, takes the slot after the
@@ -1135,10 +1042,6 @@ bool harvest_specials(Harvest& h, int tbl, const std::string& where,
                         std::to_string(og::data::kMaxSpecialSlot) + ")");
             break;
         }
-        // rule: Part of the rule above that begins "A family has slots 1..5 and its specials are
-        //   ..."
-        // tests: LuaFamilyDeclTest.slots_run_forward_and_stop_at_five
-        // tests: SemFamilyDecl.a_negative_special_slot_does_not_exist
         if (entry.slot <= previous_slot) {
             ok = h.fail(ewhere + ": slot " + std::to_string(entry.slot) +
                         " must be greater than the previous entry's slot " +
@@ -1159,13 +1062,7 @@ bool harvest_specials(Harvest& h, int tbl, const std::string& where,
                         "; level can open a slot earlier, never later");
             break;
         }
-        // rule: Part of the rule above that begins "Slot N opens at level 3N-2 by default; `level`
-        //   ..."
-        // tests: LuaFamilyDeclTest.a_special_level_opens_its_slot_early_and_no_later
         const int opens_at = entry.level != 0 ? entry.level : default_opens_at;
-        // rule: Part of the rule above that begins "Slot N opens at level 3N-2 by default; `level`
-        //   ..."
-        // tests: LuaFamilyDeclTest.a_special_level_opens_its_slot_early_and_no_later
         if (opens_at < previous_opens_at) {
             ok = h.fail(ewhere + ": slot " + std::to_string(entry.slot) +
                         " cannot open at level " + std::to_string(opens_at) +
@@ -1189,8 +1086,7 @@ bool harvest_specials(Harvest& h, int tbl, const std::string& where,
         const bool is_fn = lua_isfunction(L, -1);
         const std::string got = type_name_of(L, -1);
         lua_pop(L, 1);
-        // rule: Part of the rule above that begins "specials.default_cast is the any-slot cast
-        //   handler and must be ..."
+        // rule: specials.default_cast is the any-slot cast handler and must be a function.
         // tests: LuaFamilyDeclTest.a_cast_is_a_function_or_the_explicit_no_op
         // tests: LuaFamilyDeclTest.mixing_the_two_spellings_of_one_hook_is_an_error
         if (!is_fn)
@@ -1207,10 +1103,6 @@ bool harvest_specials(Harvest& h, int tbl, const std::string& where,
     if (ok)
         ok = check_keys(h, list, where + ".specials", {"default_cast"});
     lua_pop(L, 1);  // the specials list
-    // rule: Part of the rule above that begins "The specials list has exactly one named key,
-    //   default_cast; ..."
-    // tests: LuaFamilyDeclTest.a_misspelled_default_cast_is_caught_where_it_is_written
-    // tests: LuaFamilyDeclTest.mixing_the_two_spellings_of_one_hook_is_an_error
     if (!ok)
         return false;
     out = std::move(entries);
@@ -1238,8 +1130,7 @@ bool check_hook_types(Harvest& h, int tbl, const std::string& where,
     // tests: LuaFamilyDeclTest.one_chunk_may_declare_many_families
     for (size_t i = 0; i < oi->hook_count; i++) {
         const char* name = oi->hooks[i].name;
-        // rule: Part of the rule above that begins "An inline hook (on_death = ..., etc.) declared
-        //   on ..."
+        // rule: An inline hook (on_death = ..., etc.) declared on a family must be a function.
         // tests: LuaFamilyDeclTest.an_inline_hook_of_the_wrong_type_is_a_load_error
         // tests: LuaFamilyDeclTest.one_chunk_may_declare_many_families
         if (!has_field(L, tbl, name))
@@ -1247,8 +1138,7 @@ bool check_hook_types(Harvest& h, int tbl, const std::string& where,
         const bool is_fn = lua_isfunction(L, -1);
         const std::string got = type_name_of(L, -1);
         lua_pop(L, 1);
-        // rule: Part of the rule above that begins "An inline hook (on_death = ..., etc.) declared
-        //   on ..."
+        // rule: An inline hook (on_death = ..., etc.) declared on a family must be a function.
         // tests: LuaFamilyDeclTest.an_inline_hook_of_the_wrong_type_is_a_load_error
         // tests: LuaFamilyDeclTest.one_chunk_may_declare_many_families
         if (!is_fn)
@@ -1278,8 +1168,8 @@ bool req_int(Harvest& h, int tbl, const std::string& where, const char* key,
 bool req_number(Harvest& h, int tbl, const std::string& where,
                 const char* key, float& out)
 {
-    // rule: Part of the rule above that begins "Every member of a stats/combat block (and
-    //   costs.hire) is ..."
+    // rule: Every member of a stats/combat block (and costs.hire) is required once the block
+    //   appears: no silent 0-armor class.
     // tests: LuaFamilyDeclTest.a_named_block_must_spell_every_member
     // tests: LuaFamilyDeclTest.a_full_living_declaration_lands_every_block
     if (!has_field(h.L, tbl, key))
@@ -1300,11 +1190,6 @@ BlockState open_block(Harvest& h, int tbl, const std::string& where,
     // tests: ClasspackInstall.a_specials_list_rewrites_every_slot
     if (!has_field(h.L, tbl, key))
         return BlockState::Absent;
-    // rule: Part of the rule above that begins "A named block (stats, combat, costs, costs.train)
-    //   is a ..."
-    // tests: LuaFamilyDeclTest.a_block_that_is_not_a_table_says_so
-    // tests: LuaFamilyDeclTest.a_full_living_declaration_lands_every_block
-    // tests: ClasspackInstall.a_specials_list_rewrites_every_slot
     if (lua_type(h.L, -1) == LUA_TTABLE)
         return BlockState::Present;
     const std::string got = type_name_of(h.L, -1);
@@ -1347,14 +1232,6 @@ bool harvest_stats(Harvest& h, int tbl, const std::string& where,
         req_int(h, b, w, "armor", stats.armor) &&
         req_int(h, b, w, "level", stats.level);
     lua_pop(h.L, 1);
-    // rule: Part of the rule above that begins "An absent stats/combat block leaves the slot's
-    //   stats alone; ..."
-    // tests: LuaFamilyDeclTest.a_full_living_declaration_lands_every_block
-    // tests: LuaFamilyDeclTest.unknown_keys_inside_the_named_blocks_are_errors
-    // tests: LuaFamilyDeclTest.a_named_block_must_spell_every_member
-    // tests: LuaFamilyDeclTest.a_block_that_is_not_a_table_says_so
-    // tests: ClasspackInstall.a_specials_list_rewrites_every_slot
-    // tests: SemFamilyDecl.an_absent_combat_block_stays_unset_and_a_bad_one_is_refused
     if (!ok)
         return false;
     out = stats;
@@ -1365,8 +1242,8 @@ bool harvest_combat(Harvest& h, int tbl, const std::string& where,
                     std::optional<og::data::ClasspackCombatBlock>& out)
 {
     const BlockState state = open_block(h, tbl, where, "combat");
-    // rule: Part of the rule above that begins "An absent stats/combat block leaves the slot's
-    //   stats alone; ..."
+    // rule: An absent stats/combat block leaves the slot's stats alone; a present one is
+    //   key-checked first (so a misspelling reads 'unknown key ...
     // tests: LuaFamilyDeclTest.a_full_living_declaration_lands_every_block
     // tests: LuaFamilyDeclTest.unknown_keys_inside_the_named_blocks_are_errors
     // tests: LuaFamilyDeclTest.a_named_block_must_spell_every_member
@@ -1388,8 +1265,8 @@ bool harvest_combat(Harvest& h, int tbl, const std::string& where,
         req_number(h, b, w, "fire_delay", combat.fire_delay) &&
         req_int(h, b, w, "fire_mp_cost", combat.fire_mp_cost);
     lua_pop(h.L, 1);
-    // rule: Part of the rule above that begins "An absent stats/combat block leaves the slot's
-    //   stats alone; ..."
+    // rule: An absent stats/combat block leaves the slot's stats alone; a present one is
+    //   key-checked first (so a misspelling reads 'unknown key ...
     // tests: LuaFamilyDeclTest.a_full_living_declaration_lands_every_block
     // tests: LuaFamilyDeclTest.unknown_keys_inside_the_named_blocks_are_errors
     // tests: LuaFamilyDeclTest.a_named_block_must_spell_every_member
@@ -1421,17 +1298,11 @@ bool harvest_costs(Harvest& h, int tbl, const std::string& where,
     og::data::ClasspackCostsBlock costs;
     bool ok = check_keys(h, b, w, {"hire", "train"}) &&
               req_int(h, b, w, "hire", costs.hire);
-    // rule: Part of the rule above that begins "costs.hire is required; costs.train is optional and
-    //   so is ..."
-    // tests: LuaFamilyDeclTest.costs_train_is_strict_about_its_axes
-    // tests: LuaFamilyDeclTest.a_full_living_declaration_lands_every_block
-    // tests: LuaFamilyDeclTest.a_named_block_must_spell_every_member
-    // tests: SemFamilyDecl.absent_costs_and_absent_train_stay_unset
     if (ok) {
         const BlockState train = open_block(h, b, w, "train");
         ok = train != BlockState::Bad;
-        // rule: Part of the rule above that begins "costs.hire is required; costs.train is optional
-        //   and so is ..."
+        // rule: costs.hire is required; costs.train is optional and so is each of its axes, an
+        //   unpriced axis costs 0.
         // tests: LuaFamilyDeclTest.costs_train_is_strict_about_its_axes
         // tests: LuaFamilyDeclTest.a_full_living_declaration_lands_every_block
         // tests: LuaFamilyDeclTest.a_named_block_must_spell_every_member
@@ -1450,8 +1321,8 @@ bool harvest_costs(Harvest& h, int tbl, const std::string& where,
                 {"level", &axes.level},
             };
             std::vector<const char*> names;
-            // rule: Part of the rule above that begins "costs.hire is required; costs.train is
-            //   optional and so is ..."
+            // rule: costs.hire is required; costs.train is optional and so is each of its axes, an
+            //   unpriced axis costs 0.
             // tests: LuaFamilyDeclTest.costs_train_is_strict_about_its_axes
             // tests: LuaFamilyDeclTest.a_full_living_declaration_lands_every_block
             // tests: LuaFamilyDeclTest.a_named_block_must_spell_every_member
@@ -1459,15 +1330,15 @@ bool harvest_costs(Harvest& h, int tbl, const std::string& where,
             for (const auto& m : members)
                 names.push_back(m.first);
             ok = check_keys(h, t, tw, names);
-            // rule: Part of the rule above that begins "costs.hire is required; costs.train is
-            //   optional and so is ..."
+            // rule: costs.hire is required; costs.train is optional and so is each of its axes, an
+            //   unpriced axis costs 0.
             // tests: LuaFamilyDeclTest.costs_train_is_strict_about_its_axes
             // tests: LuaFamilyDeclTest.a_full_living_declaration_lands_every_block
             // tests: LuaFamilyDeclTest.a_named_block_must_spell_every_member
             // tests: SemFamilyDecl.absent_costs_and_absent_train_stay_unset
             for (const auto& m : members) {
-                // rule: Part of the rule above that begins "costs.hire is required; costs.train is
-                //   optional and so is ..."
+                // rule: costs.hire is required; costs.train is optional and so is each of its axes,
+                //   an unpriced axis costs 0.
                 // tests: LuaFamilyDeclTest.costs_train_is_strict_about_its_axes
                 // tests: LuaFamilyDeclTest.a_full_living_declaration_lands_every_block
                 // tests: LuaFamilyDeclTest.a_named_block_must_spell_every_member
@@ -1475,8 +1346,8 @@ bool harvest_costs(Harvest& h, int tbl, const std::string& where,
                 if (!ok)
                     break;
                 value.reset();
-                // rule: Part of the rule above that begins "costs.hire is required; costs.train is
-                //   optional and so is ..."
+                // rule: costs.hire is required; costs.train is optional and so is each of its axes,
+                //   an unpriced axis costs 0.
                 // tests: LuaFamilyDeclTest.costs_train_is_strict_about_its_axes
                 // tests: LuaFamilyDeclTest.a_full_living_declaration_lands_every_block
                 // tests: LuaFamilyDeclTest.a_named_block_must_spell_every_member
@@ -1485,8 +1356,8 @@ bool harvest_costs(Harvest& h, int tbl, const std::string& where,
                     ok = false;
                     break;
                 }
-                // rule: Part of the rule above that begins "costs.hire is required; costs.train is
-                //   optional and so is ..."
+                // rule: costs.hire is required; costs.train is optional and so is each of its axes,
+                //   an unpriced axis costs 0.
                 // tests: LuaFamilyDeclTest.costs_train_is_strict_about_its_axes
                 // tests: LuaFamilyDeclTest.a_full_living_declaration_lands_every_block
                 // tests: LuaFamilyDeclTest.a_named_block_must_spell_every_member
@@ -1495,8 +1366,8 @@ bool harvest_costs(Harvest& h, int tbl, const std::string& where,
                     *m.second = *value;
             }
             lua_pop(h.L, 1);
-            // rule: Part of the rule above that begins "costs.hire is required; costs.train is
-            //   optional and so is ..."
+            // rule: costs.hire is required; costs.train is optional and so is each of its axes, an
+            //   unpriced axis costs 0.
             // tests: LuaFamilyDeclTest.costs_train_is_strict_about_its_axes
             // tests: LuaFamilyDeclTest.a_full_living_declaration_lands_every_block
             // tests: LuaFamilyDeclTest.a_named_block_must_spell_every_member
@@ -1506,12 +1377,6 @@ bool harvest_costs(Harvest& h, int tbl, const std::string& where,
         }
     }
     lua_pop(h.L, 1);
-    // rule: Part of the rule above that begins "costs.hire is required; costs.train is optional and
-    //   so is ..."
-    // tests: LuaFamilyDeclTest.costs_train_is_strict_about_its_axes
-    // tests: LuaFamilyDeclTest.a_full_living_declaration_lands_every_block
-    // tests: LuaFamilyDeclTest.a_named_block_must_spell_every_member
-    // tests: SemFamilyDecl.absent_costs_and_absent_train_stay_unset
     if (!ok)
         return false;
     out = costs;
@@ -1592,11 +1457,6 @@ bool harvest_living(Harvest& h, int tbl, const std::string& where,
                               "family-level hook, written per slot, so keep "
                               "one of them");
     }
-    // rule: Part of the rule above that begins "A family answers a question one way: per-slot ai
-    //   ..."
-    // tests: LuaFamilyDeclTest.mixing_the_two_spellings_of_one_hook_is_an_error
-    // tests: LuaFamilyDeclTest.a_tied_key_suggestion_is_settled_alphabetically
-    // tests: LuaFamilyDeclTest.a_cast_is_a_function_or_the_explicit_no_op
     if (behavior.any_cast && has_field(h.L, tbl, "do_special")) {
         lua_pop(h.L, 1);
         return h.fail(where + ": a special's `cast =` (or a default_cast) and "
@@ -1674,8 +1534,9 @@ bool harvest_weapon(Harvest& h, int tbl, const std::string& where,
                       ": a rally radius cannot be negative (0 = no rally)");
     std::vector<const char*> keys;
     append_common_keys(keys);
-    // rule: Part of the rule above that begins "Each order accepts its OWN key vocabulary on top
-    //   ..."
+    // rule: Each order accepts its OWN key vocabulary on top of the common keys (id, wire_id, name,
+    //   sprite, animation, tuning, glyph*, radar_color, radar_jitter, radar_ping) and its own hook
+    //   names.
     // tests: ModeBindings.radar_landmark_declares_on_treasure_and_fx_only
     // tests: SpecialsView.declaration_keys_reject_junk, LuaFamilyDeclTest.every_order_declares
     // tests: SemFamilyDecl.a_living_refuses_keys_of_the_other_orders
@@ -1712,8 +1573,9 @@ bool harvest_effect(Harvest& h, int tbl, const std::string& where,
         return false;
     std::vector<const char*> keys;
     append_common_keys(keys);
-    // rule: Part of the rule above that begins "Each order accepts its OWN key vocabulary on top
-    //   ..."
+    // rule: Each order accepts its OWN key vocabulary on top of the common keys (id, wire_id, name,
+    //   sprite, animation, tuning, glyph*, radar_color, radar_jitter, radar_ping) and its own hook
+    //   names.
     // tests: ModeBindings.radar_landmark_declares_on_treasure_and_fx_only
     // tests: SpecialsView.declaration_keys_reject_junk, LuaFamilyDeclTest.every_order_declares
     // tests: SemFamilyDecl.a_living_refuses_keys_of_the_other_orders
@@ -1747,8 +1609,9 @@ bool harvest_treasure(Harvest& h, int tbl, const std::string& where,
         return false;
     std::vector<const char*> keys;
     append_common_keys(keys);
-    // rule: Part of the rule above that begins "Each order accepts its OWN key vocabulary on top
-    //   ..."
+    // rule: Each order accepts its OWN key vocabulary on top of the common keys (id, wire_id, name,
+    //   sprite, animation, tuning, glyph*, radar_color, radar_jitter, radar_ping) and its own hook
+    //   names.
     // tests: ModeBindings.radar_landmark_declares_on_treasure_and_fx_only
     // tests: SpecialsView.declaration_keys_reject_junk, LuaFamilyDeclTest.every_order_declares
     // tests: SemFamilyDecl.a_living_refuses_keys_of_the_other_orders
@@ -1783,8 +1646,9 @@ bool harvest_generator(Harvest& h, int tbl, const std::string& where,
         return false;
     std::vector<const char*> keys;
     append_common_keys(keys);
-    // rule: Part of the rule above that begins "Each order accepts its OWN key vocabulary on top
-    //   ..."
+    // rule: Each order accepts its OWN key vocabulary on top of the common keys (id, wire_id, name,
+    //   sprite, animation, tuning, glyph*, radar_color, radar_jitter, radar_ping) and its own hook
+    //   names.
     // tests: ModeBindings.radar_landmark_declares_on_treasure_and_fx_only
     // tests: SpecialsView.declaration_keys_reject_junk, LuaFamilyDeclTest.every_order_declares
     // tests: SemFamilyDecl.a_living_refuses_keys_of_the_other_orders
@@ -1813,16 +1677,8 @@ bool harvest_entry(Harvest& h, const OrderInfo* oi, int tbl,
         return h.fail(order_where + ": a declaration needs an id "
                                     "(id = \"<pack>:<family>\")");
     std::string id;
-    // rule: Part of the rule above that begins "Every declaration needs a string id of the form
-    //   ..."
-    // tests: LuaFamilyDeclTest.a_declaration_needs_a_qualified_id
-    // tests: LuaFamilyDeclTest.an_id_that_is_not_a_string_names_the_order_it_was_declaring
     if (!h.take_string(order_where + ".id", id))
         return false;
-    // rule: Part of the rule above that begins "Every declaration needs a string id of the form
-    //   ..."
-    // tests: LuaFamilyDeclTest.a_declaration_needs_a_qualified_id
-    // tests: LuaFamilyDeclTest.an_id_that_is_not_a_string_names_the_order_it_was_declaring
     if (id.find(':') == std::string::npos)
         return h.fail(order_where + ".id '" + id +
                       "': a family id is <pack>:<family>, e.g. "
@@ -1838,8 +1694,9 @@ bool harvest_entry(Harvest& h, const OrderInfo* oi, int tbl,
         case Order::Living: {
             og::data::ClasspackLivingEntry e;
             e.id = id;
-            // rule: Part of the rule above that begins "Each order (living, weapon, fx/effect,
-            //   treasure, generator) harvests into ..."
+            // rule: Each order (living, weapon, fx/effect, treasure, generator) harvests into its
+            //   own list with its own key set, and every successful declaration is recorded as
+            //   Lua-declared provenance.
             // tests: LuaFamilyDeclTest.every_order_declares
             // tests: LuaFamilyDeclTest.one_chunk_may_declare_many_families
             // tests: SemFamilyDecl.a_failed_harvest_leaves_no_entry_and_no_provenance
@@ -1851,8 +1708,9 @@ bool harvest_entry(Harvest& h, const OrderInfo* oi, int tbl,
         case Order::Weapon: {
             og::data::ClasspackWeaponEntry e;
             e.id = id;
-            // rule: Part of the rule above that begins "Each order (living, weapon, fx/effect,
-            //   treasure, generator) harvests into ..."
+            // rule: Each order (living, weapon, fx/effect, treasure, generator) harvests into its
+            //   own list with its own key set, and every successful declaration is recorded as
+            //   Lua-declared provenance.
             // tests: LuaFamilyDeclTest.every_order_declares
             // tests: LuaFamilyDeclTest.one_chunk_may_declare_many_families
             // tests: SemFamilyDecl.a_failed_harvest_leaves_no_entry_and_no_provenance
@@ -1864,8 +1722,9 @@ bool harvest_entry(Harvest& h, const OrderInfo* oi, int tbl,
         case Order::FX: {
             og::data::ClasspackEffectEntry e;
             e.id = id;
-            // rule: Part of the rule above that begins "Each order (living, weapon, fx/effect,
-            //   treasure, generator) harvests into ..."
+            // rule: Each order (living, weapon, fx/effect, treasure, generator) harvests into its
+            //   own list with its own key set, and every successful declaration is recorded as
+            //   Lua-declared provenance.
             // tests: LuaFamilyDeclTest.every_order_declares
             // tests: LuaFamilyDeclTest.one_chunk_may_declare_many_families
             // tests: SemFamilyDecl.a_failed_harvest_leaves_no_entry_and_no_provenance
@@ -1877,8 +1736,9 @@ bool harvest_entry(Harvest& h, const OrderInfo* oi, int tbl,
         case Order::Treasure: {
             og::data::ClasspackTreasureEntry e;
             e.id = id;
-            // rule: Part of the rule above that begins "Each order (living, weapon, fx/effect,
-            //   treasure, generator) harvests into ..."
+            // rule: Each order (living, weapon, fx/effect, treasure, generator) harvests into its
+            //   own list with its own key set, and every successful declaration is recorded as
+            //   Lua-declared provenance.
             // tests: LuaFamilyDeclTest.every_order_declares
             // tests: LuaFamilyDeclTest.one_chunk_may_declare_many_families
             // tests: SemFamilyDecl.a_failed_harvest_leaves_no_entry_and_no_provenance
@@ -1890,8 +1750,9 @@ bool harvest_entry(Harvest& h, const OrderInfo* oi, int tbl,
         case Order::Generator: {
             og::data::ClasspackGeneratorEntry e;
             e.id = id;
-            // rule: Part of the rule above that begins "Each order (living, weapon, fx/effect,
-            //   treasure, generator) harvests into ..."
+            // rule: Each order (living, weapon, fx/effect, treasure, generator) harvests into its
+            //   own list with its own key set, and every successful declaration is recorded as
+            //   Lua-declared provenance.
             // tests: LuaFamilyDeclTest.every_order_declares
             // tests: LuaFamilyDeclTest.one_chunk_may_declare_many_families
             // tests: SemFamilyDecl.a_failed_harvest_leaves_no_entry_and_no_provenance
@@ -1901,7 +1762,7 @@ bool harvest_entry(Harvest& h, const OrderInfo* oi, int tbl,
             break;
         }
         // plumbing: harvest_entry default: unreachable through og.family — find_order
-        //   (world_scripts.cpp:98) only yields the five orders
+        //   (world_scripts.cpp) only yields the five orders
         default:
             return h.fail(order_where + ": this order has no families to "
                                         "declare");
@@ -1929,16 +1790,8 @@ bool harvest_anim_set(Harvest& h, const std::string& name, int tbl,
     if (!opt_int(h, tbl, where, "rows", out.rows) ||
         !check_keys(h, tbl, where, {"rows", "frames"}))
         return false;
-    // rule: Part of the rule above that begins "og.anims declares named frame tables: rows is
-    //   optional, frames ..."
-    // tests: LuaFamilyDeclTest.an_anim_set_harvests_rows_holes_and_frames
-    // tests: LuaFamilyDeclTest.a_malformed_anim_set_is_a_load_error
     if (!has_field(L, tbl, "frames"))
         return h.fail(where + ": needs a frames list");
-    // rule: Part of the rule above that begins "og.anims declares named frame tables: rows is
-    //   optional, frames ..."
-    // tests: LuaFamilyDeclTest.an_anim_set_harvests_rows_holes_and_frames
-    // tests: LuaFamilyDeclTest.a_malformed_anim_set_is_a_load_error
     if (lua_type(L, -1) != LUA_TTABLE) {
         const std::string got = type_name_of(L, -1);
         lua_pop(L, 1);
@@ -1947,17 +1800,13 @@ bool harvest_anim_set(Harvest& h, const std::string& name, int tbl,
     const int rows = lua_gettop(L);
     const lua_Integer n = luaL_len(L, rows);
     bool ok = true;
-    // rule: Part of the rule above that begins "og.anims declares named frame tables: rows is
-    //   optional, frames ..."
-    // tests: LuaFamilyDeclTest.an_anim_set_harvests_rows_holes_and_frames
-    // tests: LuaFamilyDeclTest.a_malformed_anim_set_is_a_load_error
     for (lua_Integer i = 1; ok && i <= n; i++) {
         const std::string rwhere =
             where + ".frames[" + std::to_string(i) + "]";
         lua_rawgeti(L, rows, i);
         og::data::ClasspackAnimRow row;
-        // rule: Part of the rule above that begins "og.anims declares named frame tables: rows is
-        //   optional, frames ..."
+        // rule: og.anims declares named frame tables: rows is optional, frames is required and is a
+        //   list whose rows are lists of whole frame indices or `false` for a null row.
         // tests: LuaFamilyDeclTest.an_anim_set_harvests_rows_holes_and_frames
         // tests: LuaFamilyDeclTest.a_malformed_anim_set_is_a_load_error
         if (lua_type(L, -1) == LUA_TBOOLEAN && lua_toboolean(L, -1) == 0) {
@@ -1972,24 +1821,25 @@ bool harvest_anim_set(Harvest& h, const std::string& name, int tbl,
         } else {
             const int row_tbl = lua_gettop(L);
             const lua_Integer len = luaL_len(L, row_tbl);
-            // rule: Part of the rule above that begins "og.anims declares named frame tables: rows
-            //   is optional, frames ..."
+            // rule: og.anims declares named frame tables: rows is optional, frames is required and
+            //   is a list whose rows are lists of whole frame indices or `false` for a null row.
             // tests: LuaFamilyDeclTest.an_anim_set_harvests_rows_holes_and_frames
             // tests: LuaFamilyDeclTest.a_malformed_anim_set_is_a_load_error
             for (lua_Integer f = 1; ok && f <= len; f++) {
                 lua_rawgeti(L, row_tbl, f);
                 std::int32_t frame = 0;
                 ok = h.take_int(rwhere + "[" + std::to_string(f) + "]", frame);
-                // rule: Part of the rule above that begins "og.anims declares named frame tables:
-                //   rows is optional, frames ..."
+                // rule: og.anims declares named frame tables: rows is optional, frames is required
+                //   and is a list whose rows are lists of whole frame indices or `false` for a null
+                //   row.
                 // tests: LuaFamilyDeclTest.an_anim_set_harvests_rows_holes_and_frames
                 // tests: LuaFamilyDeclTest.a_malformed_anim_set_is_a_load_error
                 if (ok)
                     row.frames.push_back(frame);
             }
             lua_pop(L, 1);
-            // rule: Part of the rule above that begins "og.anims declares named frame tables: rows
-            //   is optional, frames ..."
+            // rule: og.anims declares named frame tables: rows is optional, frames is required and
+            //   is a list whose rows are lists of whole frame indices or `false` for a null row.
             // tests: LuaFamilyDeclTest.an_anim_set_harvests_rows_holes_and_frames
             // tests: LuaFamilyDeclTest.a_malformed_anim_set_is_a_load_error
             if (!ok)
@@ -2022,44 +1872,24 @@ bool harvest_pack_header(Harvest& h, int tbl, og::data::ClasspackData& out)
         !opt_string_list(h, tbl, where, "authors", authors) ||
         !check_keys(h, tbl, where, {"id", "version", "title", "authors"}))
         return false;
-    // rule: Part of the rule above that begins "og.pack sets the pack id, version, title and
-    //   authors; ..."
-    // tests: LuaFamilyDeclTest.the_pack_header_fills_the_manifest_scalars
-    // tests: LuaFamilyDeclTest.the_pack_header_is_strict_too
-    // tests: SemFamilyDecl.a_later_pack_header_keeps_the_fields_it_leaves_out
     if (id.has_value())
         out.pack = *id;
-    // rule: Part of the rule above that begins "og.pack sets the pack id, version, title and
-    //   authors; ..."
-    // tests: LuaFamilyDeclTest.the_pack_header_fills_the_manifest_scalars
-    // tests: LuaFamilyDeclTest.the_pack_header_is_strict_too
-    // tests: SemFamilyDecl.a_later_pack_header_keeps_the_fields_it_leaves_out
     if (version.has_value())
         out.version = *version;
-    // rule: Part of the rule above that begins "og.pack sets the pack id, version, title and
-    //   authors; ..."
-    // tests: LuaFamilyDeclTest.the_pack_header_fills_the_manifest_scalars
-    // tests: LuaFamilyDeclTest.the_pack_header_is_strict_too
-    // tests: SemFamilyDecl.a_later_pack_header_keeps_the_fields_it_leaves_out
     if (title.has_value())
         out.title = *title;
-    // rule: Part of the rule above that begins "og.pack sets the pack id, version, title and
-    //   authors; ..."
-    // tests: LuaFamilyDeclTest.the_pack_header_fills_the_manifest_scalars
-    // tests: LuaFamilyDeclTest.the_pack_header_is_strict_too
-    // tests: SemFamilyDecl.a_later_pack_header_keeps_the_fields_it_leaves_out
     if (authors.has_value()) {
         // One string, comma-separated: the interchange carries the authors
         // as free text, and the installer hands it straight to the manifest.
         std::string joined;
-        // rule: Part of the rule above that begins "og.pack sets the pack id, version, title and
-        //   authors; ..."
+        // rule: og.pack sets the pack id, version, title and authors; the last header wins per
+        //   field; authors join as one 'A, B' line.
         // tests: LuaFamilyDeclTest.the_pack_header_fills_the_manifest_scalars
         // tests: LuaFamilyDeclTest.the_pack_header_is_strict_too
         // tests: SemFamilyDecl.a_later_pack_header_keeps_the_fields_it_leaves_out
         for (const std::string& a : *authors) {
-            // rule: Part of the rule above that begins "og.pack sets the pack id, version, title
-            //   and authors; ..."
+            // rule: og.pack sets the pack id, version, title and authors; the last header wins per
+            //   field; authors join as one 'A, B' line.
             // tests: LuaFamilyDeclTest.the_pack_header_fills_the_manifest_scalars
             // tests: LuaFamilyDeclTest.the_pack_header_is_strict_too
             // tests: SemFamilyDecl.a_later_pack_header_keeps_the_fields_it_leaves_out
@@ -2126,8 +1956,8 @@ void note_declared_hook(lua_State* L, int family_idx, FamilyHook hook)
 bool take_declared_hook(lua_State* L, int family_idx, FamilyHook hook)
 {
     lua_getfield(L, family_idx, kDeclaredHooksKey);
-    // rule: Part of the rule above that begins "og.register_hooks may override a hook an og.family
-    //   declaration bound ..."
+    // rule: og.register_hooks may override a hook an og.family declaration bound exactly once
+    //   without a duplicate report; the second override of the same hook is reported.
     // tests: LuaFamilyBindTest.register_hooks_overrides_a_declaration_quietly
     // tests: LuaFamilyBindTest.a_second_override_of_one_hook_is_still_reported
     // tests: ScriptHostPackTest.duplicate_hook_registration_is_reported_and_wins
@@ -2176,6 +2006,7 @@ int per_special_ai(lua_State* L)
     // cannot be selected without one, and answering "no opinion" beats
     // raising in the one caller (a test funnel) that has none.
     const walker* self = resolve_walker_or_nil(L, 1);
+    // plumbing: no walker reads slot 0, which declares nothing (the comment above says why).
     const lua_Integer slot =
         (self != nullptr) ? static_cast<lua_Integer>(self->current_special())
                           : 0;
@@ -2261,11 +2092,6 @@ bool bind_specials(lua_State* L, VmState* st, int tbl, int family_idx,
         else
             lua_pushnil(L);
         const char* id = lua_tostring(L, -1);
-        // rule: Part of the rule above that begins "A chunk that hands the bind pass a specials
-        //   ..."
-        // tests: ScriptHooksTest.bind_pass_refuses_a_specials_entry_that_drops_its_id
-        // tests: ScriptHooksTest.bind_pass_refuses_a_specials_entry_that_is_no_table
-        // tests: ScriptHooksTest.bind_pass_binds_a_specials_list_both_passes_agree_on
         if (id == nullptr) {
             // The declaration pass refuses an entry that is not a table or
             // has no id, so reaching here means the chunk handed the two
@@ -2371,13 +2197,6 @@ bool bind_specials(lua_State* L, VmState* st, int tbl, int family_idx,
                       "check_special_ai", FamilyHook::CheckSpecialAi,
                       Order::Living, family_id);
     }
-    // rule: Part of the rule above that begins "Per-slot ai and casts lower into ONE family-level
-    //   check_special_ai ..."
-    // tests: LuaFamilyBindTest.per_entry_ai_lowers_to_one_family_level_hook
-    // tests: LuaFamilyBindTest.a_default_cast_answers_every_slot
-    // tests: ScriptHooksTest.bind_pass_binds_a_specials_list_both_passes_agree_on
-    // tests: SemFamilyBind.specials_without_cast_or_ai_bind_no_hook
-    // tests: SemFamilyBind.specials_with_a_cast_and_an_ai_bind_both_hooks
     if (cast_count > 0) {
         lua_pushvalue(L, casts);
         bind_one_hook(L, st, family_idx, order_str, family_label, "specials",
@@ -2406,11 +2225,6 @@ int bind_family(lua_State* L, VmState* st, const OrderInfo* oi, int tbl)
     lua_pop(L, 1);
     const int family_id =
         og::families::resolve_family_string_id(oi->order, declared_id.c_str());
-    // rule: Part of the rule above that begins "The bind pass needs the same id and an ..."
-    // tests: ScriptHooksTest.bind_pass_refuses_a_declaration_that_drops_its_id
-    // tests: LuaFamilyBindTest.binding_a_family_nothing_installed_is_a_load_error
-    // tests: ScriptHooksTest.bind_pass_accepts_a_declaration_that_keeps_its_id
-    // tests: LuaFamilyBindTest.an_inline_hook_binds_and_dispatches
     if (family_id < 0) {
         // The chunk declared a family the registries do not have. Either the
         // pack's declaration pass never ran (the caller skips chunks whose
@@ -2434,8 +2248,8 @@ int bind_family(lua_State* L, VmState* st, const OrderInfo* oi, int tbl)
     for (size_t i = 0; i < oi->hook_count; i++) {
         const char* name = oi->hooks[i].name;
         lua_getfield(L, tbl, name);
-        // rule: Part of the rule above that begins "Inline hook functions on a declaration bind in
-        //   every ..."
+        // rule: Inline hook functions on a declaration bind in every world VM; only living families
+        //   bind specials.
         // tests: LuaFamilyBindTest.an_inline_hook_binds_and_dispatches
         // tests: LuaFamilyBindTest.a_default_cast_answers_every_slot
         // tests: SemFamilyBind.a_hook_the_declaration_leaves_out_stays_unbound
@@ -2446,11 +2260,6 @@ int bind_family(lua_State* L, VmState* st, const OrderInfo* oi, int tbl)
         bind_one_hook(L, st, family_idx, oi->name, declared_id, name,
                       oi->hooks[i].hook, oi->order, family_id);
     }
-    // rule: Part of the rule above that begins "Inline hook functions on a declaration bind in
-    //   every ..."
-    // tests: LuaFamilyBindTest.an_inline_hook_binds_and_dispatches
-    // tests: LuaFamilyBindTest.a_default_cast_answers_every_slot
-    // tests: SemFamilyBind.a_hook_the_declaration_leaves_out_stays_unbound
     if (oi->order == Order::Living)
         bind_specials(L, st, tbl, family_idx, oi->name, declared_id,
                       family_id);
@@ -2492,10 +2301,12 @@ void require_families_chunk(lua_State* L, const VmState* st, const char* what)
 
 int og_family(lua_State* L)
 {
-    // og.family(order, table) and og.anims(name, table) take a string then a table, og.pack(table)
-    // a table; a wrong-shaped call is a Lua 'bad argument' load error. A number order coerces to
-    // its text (og.family(5, {...}) -> order '5') and falls into the unknown-order arm of
-    // family_decl.cpp:1681.
+    // rule: og.family(order, table) and og.anims(name, table) take a string then a table,
+    //   og.pack(table) a table; a wrong-shaped call is a Lua 'bad argument' load error. A number
+    //   order coerces to its text (og.family(5, {...}) -> order '5') and falls into the
+    //   unknown-order arm of below.
+    // tests: LuaFamilyDeclTest.every_order_declares
+    // tests: SemFamilyDecl.og_family_anims_and_pack_refuse_a_wrong_shaped_call
     const char* order_str = luaL_checkstring(L, 1);
     luaL_checktype(L, 2, LUA_TTABLE);
     VmState* st = get_vm_state(L);
@@ -2539,8 +2350,8 @@ int og_anims(lua_State* L)
     luaL_checktype(L, 2, LUA_TTABLE);
     VmState* st = get_vm_state(L);
     require_families_chunk(L, st, "og.anims");
-    // rule: Part of the rule above that begins "Declaration data installs once from the declaration
-    //   pass; in ..."
+    // rule: Declaration data installs once from the declaration pass; in a world VM the same
+    //   og.family call binds behaviour only and og.anims/og.pack do nothing.
     // tests: LuaFamilyDeclTest.every_order_declares
     // tests: LuaFamilyDeclTest.an_anim_set_harvests_rows_holes_and_frames
     // tests: LuaFamilyDeclTest.the_pack_header_fills_the_manifest_scalars
@@ -2564,8 +2375,8 @@ int og_pack(lua_State* L)
     luaL_checktype(L, 1, LUA_TTABLE);
     VmState* st = get_vm_state(L);
     require_families_chunk(L, st, "og.pack");
-    // rule: Part of the rule above that begins "Declaration data installs once from the declaration
-    //   pass; in ..."
+    // rule: Declaration data installs once from the declaration pass; in a world VM the same
+    //   og.family call binds behaviour only and og.anims/og.pack do nothing.
     // tests: LuaFamilyDeclTest.every_order_declares
     // tests: LuaFamilyDeclTest.an_anim_set_harvests_rows_holes_and_frames
     // tests: LuaFamilyDeclTest.the_pack_header_fills_the_manifest_scalars
@@ -2656,8 +2467,7 @@ DeclareResult declare_pack_families(const std::string& pack_id,
     // tests: LuaFamilyDeclTest.a_pack_with_no_family_chunks_costs_nothing
     // tests: LuaFamilyDeclTest.every_order_declares
     for (const PackScript& chunk : pack_family_chunks()) {
-        // rule: Part of the rule above that begins "A pack with no family chunks is declared ok
-        //   ..."
+        // rule: A pack with no family chunks is declared ok without starting a VM.
         // tests: LuaFamilyDeclTest.a_pack_with_no_family_chunks_costs_nothing
         // tests: LuaFamilyDeclTest.every_order_declares
         if (chunk.pack_id == pack_id) {
@@ -2665,9 +2475,6 @@ DeclareResult declare_pack_families(const std::string& pack_id,
             break;
         }
     }
-    // rule: Part of the rule above that begins "A pack with no family chunks is declared ok ..."
-    // tests: LuaFamilyDeclTest.a_pack_with_no_family_chunks_costs_nothing
-    // tests: LuaFamilyDeclTest.every_order_declares
     if (!any)
         return {true, {}};
 
@@ -2701,15 +2508,15 @@ DeclareResult declare_pack_families(const std::string& pack_id,
     //   breaks at the first failure, so the "chunk '<name>' failed to load" fallback never fires;
     //   needs a seam (a run_chunk that fails without recording) or a defensive reclassification
     for (const PackScript& chunk : pack_family_chunks()) {
-        // rule: Part of the rule above that begins "One family file that fails rejects the whole
-        //   pack ..."
+        // rule: One family file that fails rejects the whole pack (no half packs); the error is the
+        //   last recorded error, or 'chunk <name> failed to load' when none was recorded.
         // tests: LuaFamilyDeclTest.one_bad_chunk_rejects_the_whole_pack
         // tests: LuaFamilyDeclTest.a_chunk_that_does_not_compile_is_named
         // tests: LuaFamilyDeclTest.every_order_declares
         if (chunk.pack_id != pack_id)
             continue;
-        // rule: Part of the rule above that begins "One family file that fails rejects the whole
-        //   pack ..."
+        // rule: One family file that fails rejects the whole pack (no half packs); the error is the
+        //   last recorded error, or 'chunk <name> failed to load' when none was recorded.
         // tests: LuaFamilyDeclTest.one_bad_chunk_rejects_the_whole_pack
         // tests: LuaFamilyDeclTest.a_chunk_that_does_not_compile_is_named
         // tests: LuaFamilyDeclTest.every_order_declares
@@ -2719,8 +2526,8 @@ DeclareResult declare_pack_families(const std::string& pack_id,
         // a game whose families depend on load order.
         const auto& errors = host.errors();
         result.ok = false;
-        // rule: Part of the rule above that begins "One family file that fails rejects the whole
-        //   pack ..."
+        // rule: One family file that fails rejects the whole pack (no half packs); the error is the
+        //   last recorded error, or 'chunk <name> failed to load' when none was recorded.
         // tests: LuaFamilyDeclTest.one_bad_chunk_rejects_the_whole_pack
         // tests: LuaFamilyDeclTest.a_chunk_that_does_not_compile_is_named
         // tests: LuaFamilyDeclTest.every_order_declares

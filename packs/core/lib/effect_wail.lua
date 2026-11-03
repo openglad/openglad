@@ -57,24 +57,12 @@ local function is_fork_target(self, leader, foe)
   if foe == leader then
     return false
   end
-  -- rule: Part of the rule above that begins "A wail hops only to another living foe on ..."
-  -- tests: KitGhost.wail_bolt_homes_forks_only_where_it_may_and_fades
-  -- tests: KitGhost.wail_forks_within_reach_of_the_struck_foe
-  -- tests: KitGhost.wail_hops_foe_to_foe_and_frights_each_once
   if foe:order() ~= C.ORDER_LIVING then
     return false
   end
-  -- rule: Part of the rule above that begins "A wail hops only to another living foe on ..."
-  -- tests: KitGhost.wail_bolt_homes_forks_only_where_it_may_and_fades
-  -- tests: KitGhost.wail_forks_within_reach_of_the_struck_foe
-  -- tests: KitGhost.wail_hops_foe_to_foe_and_frights_each_once
   if foe:floor() ~= self:floor() then
     return false
   end
-  -- rule: Part of the rule above that begins "A wail hops only to another living foe on ..."
-  -- tests: KitGhost.wail_bolt_homes_forks_only_where_it_may_and_fades
-  -- tests: KitGhost.wail_forks_within_reach_of_the_struck_foe
-  -- tests: KitGhost.wail_hops_foe_to_foe_and_frights_each_once
   if leader:distance_to_ob(foe) > og.tuning(self).wail_fork_px then
     return false
   end
@@ -96,8 +84,6 @@ local function strike(self, leader, owner)
     local con_roll = og.rand0(leader:g_constitution())
     fright = fright - con_roll
   end
-  -- rule: Part of the rule above that begins "A wailed foe flees away from the ghost for ..."
-  -- tests: SemWail.a_wailed_foe_flees_from_the_ghost_less_a_heros_constitution_roll
   if fright > 0 then
     local flee_dx = og.sign(leader:xpos() - owner:xpos())
     local flee_dy = og.sign(leader:ypos() - owner:ypos())
@@ -121,22 +107,17 @@ local function strike(self, leader, owner)
   -- One draw: the fork budget rolls off the ghost's level (the chain's
   -- shape), drawn even when no other foe is in reach.
   local forks_left = og.rand0(owner.level) + 1
-  -- plumbing: iterates the fork scan; rules at effect_wail.lua:95, :98
+  -- plumbing: iterates the fork scan; rules below
   for i = 1, #foes do
     local foe = foes[i]
     -- rule: A wail forks to at most rand0(ghost level)+1 eligible foes in list order; ineligible
-    --   foes do NOT use up the budget (unlike chain lightning, effect_chain.lua:70).
+    --   foes do NOT use up the budget (unlike chain lightning, effect_chain.lua).
     -- tests: KitGhost.wail_forks_within_reach_of_the_struck_foe
     -- tests: KitGhost.wail_hops_foe_to_foe_and_frights_each_once
     -- tests: SemWail.a_wail_forks_to_at_most_its_budget_and_skipped_foes_keep_it
     if forks_left <= 0 then
       break
     end
-    -- rule: Part of the rule above that begins "A wail forks to at most rand0(ghost level)+1
-    --   eligible ..."
-    -- tests: KitGhost.wail_forks_within_reach_of_the_struck_foe
-    -- tests: KitGhost.wail_hops_foe_to_foe_and_frights_each_once
-    -- tests: SemWail.a_wail_forks_to_at_most_its_budget_and_skipped_foes_keep_it
     if is_fork_target(self, leader, foe) then
       M.launch(owner, self, foe, hops - 1)
       forks_left = forks_left - 1
@@ -162,8 +143,6 @@ local function home_on(self, leader)
   elseif tx < self:xpos() then
     xd = og.max(tx - self:xpos(), -self:stepsize())
   end
-  -- rule: Part of the rule above that begins "A wail puff steers its centre onto its foe's ..."
-  -- tests: SemWail.a_wail_puff_homes_at_most_six_px_per_axis_and_never_overshoots
   if ty > self:ypos() then
     yd = og.min(self:stepsize(), ty - self:ypos())
   elseif ty < self:ypos() then
@@ -190,9 +169,6 @@ local function on_act(self)
   if not leader or not owner then
     return die(self)
   end
-  -- rule: Part of the rule above that begins "A wail bolt whose foe or ghost is gone, ..."
-  -- tests: KitGhost.wail_bolt_homes_forks_only_where_it_may_and_fades
-  -- tests: SemWail.a_wail_bolt_that_flies_out_its_life_fades_without_a_fright
   if self:lineofsight() < 1 or leader:hidden() then
     return die(self)
   end

@@ -87,15 +87,15 @@ UInt128 multiply_fixed(const UInt128& lhs, std::uint64_t rhs)
     const auto rhs_limbs = to_u16_limbs(rhs);
 
     std::array<std::uint64_t, 13> product{};
-    // plumbing: limb-multiply/carry loops of the fixed-point heart-value curve; see guy.cpp:181
+    // plumbing: limb-multiply/carry loops of the fixed-point heart-value curve; see below
     for (std::size_t i = 0; i < lhs_limbs.size(); ++i)
     {
-        // plumbing: limb-multiply/carry loops of the fixed-point heart-value curve; see guy.cpp:181
+        // plumbing: limb-multiply/carry loops of the fixed-point heart-value curve; see below
         for (std::size_t j = 0; j < rhs_limbs.size(); ++j)
             product[i + j] += static_cast<std::uint64_t>(lhs_limbs[i]) * rhs_limbs[j];
     }
 
-    // plumbing: limb-multiply/carry loops of the fixed-point heart-value curve; see guy.cpp:181
+    // plumbing: limb-multiply/carry loops of the fixed-point heart-value curve; see below
     for (std::size_t i = 0; i + 1 < product.size(); ++i)
     {
         product[i + 1] += product[i] >> 16;
@@ -120,7 +120,7 @@ UInt128 multiply_fixed(const UInt128& lhs, std::uint64_t rhs)
 UInt128 pow_fixed(std::uint64_t base, int exponent)
 {
     UInt128 result = make_u128(kStatCostFixedOne);
-    // plumbing: repeated fixed-point multiply (pow); see guy.cpp:181
+    // plumbing: repeated fixed-point multiply (pow); see below
     for (int i = 0; i < exponent; ++i)
         result = multiply_fixed(result, base);
     return result;
@@ -130,7 +130,7 @@ std::uint64_t twentieth_root_fixed(std::uint32_t value)
 {
     // plumbing: fixed-point 20th-root binary search (zero short-circuit, bisection arms) used by
     //   the deterministic value^1.85 curve; observable only through query_heart_value, see
-    //   guy.cpp:181
+    //   below
     if (value == 0)
         return 0;
 
@@ -139,13 +139,13 @@ std::uint64_t twentieth_root_fixed(std::uint32_t value)
     const UInt128 target = make_u128(static_cast<std::uint64_t>(value) * kStatCostFixedOne);
     // plumbing: fixed-point 20th-root binary search (zero short-circuit, bisection arms) used by
     //   the deterministic value^1.85 curve; observable only through query_heart_value, see
-    //   guy.cpp:181
+    //   below
     while (low + 1 < high)
     {
         const std::uint64_t mid = low + (high - low) / 2;
         // plumbing: fixed-point 20th-root binary search (zero short-circuit, bisection arms) used
         //   by the deterministic value^1.85 curve; observable only through query_heart_value, see
-        //   guy.cpp:181
+        //   below
         if (pow_fixed(mid, 20) <= target)
             low = mid;
         else
@@ -160,15 +160,15 @@ std::uint64_t multiply_u64_shift_48(std::uint64_t lhs, std::uint64_t rhs)
     const auto rhs_limbs = to_u16_limbs(rhs);
 
     std::array<std::uint64_t, 9> product{};
-    // plumbing: 64x64>>48 limb multiply loops; see guy.cpp:181
+    // plumbing: 64x64>>48 limb multiply loops; see below
     for (std::size_t i = 0; i < lhs_limbs.size(); ++i)
     {
-        // plumbing: 64x64>>48 limb multiply loops; see guy.cpp:181
+        // plumbing: 64x64>>48 limb multiply loops; see below
         for (std::size_t j = 0; j < rhs_limbs.size(); ++j)
             product[i + j] += static_cast<std::uint64_t>(lhs_limbs[i]) * rhs_limbs[j];
     }
 
-    // plumbing: 64x64>>48 limb multiply loops; see guy.cpp:181
+    // plumbing: 64x64>>48 limb multiply loops; see below
     for (std::size_t i = 0; i + 1 < product.size(); ++i)
     {
         product[i + 1] += product[i] >> 16;
@@ -203,8 +203,8 @@ UInt128 raise_stat_cost_curve(std::int32_t value)
 
 std::int32_t stat_cost_curve_contribution(std::int32_t value, std::int32_t stat_cost)
 {
-    // rule: Part of the rule above that begins "A trained stat adds to a hero's worth
-    //   (life-gem/heart ..."
+    // rule: A trained stat adds to a hero's worth (life-gem/heart value and price) by (points above
+    //   the family base)^1.85 x the family's per-stat cost, computed deterministically.
     // tests: GuyCalcs.guy_query_heart_value_with_stats
     // tests: GuyCalcs.guy_query_heart_value_large_delta_matches_legacy_curve
     // tests: GuyExtended.guy_round10_query_heart_value_clamps_negative_stat_deltas_to_base_cost
@@ -237,7 +237,7 @@ int next_guy_id()
 int MAX(int a,int b)
 {
 	// rule: A stat trained BELOW the family base is not a discount: each stat's delta is floored at
-	//   0 before pricing (same rule as guy.cpp:181).
+	//   0 before pricing (same rule as above).
 	// tests: GuyExtended.guy_batch5_max_helper_and_more_unknown_family_paths
 	// tests: GuyExtended.guy_round10_query_heart_value_clamps_negative_stat_deltas_to_base_cost
 	if (a < b)
@@ -455,8 +455,8 @@ std::uint32_t calculate_exp(std::int32_t level)
     // SHRT_MAX). Each iteration reproduces the exact integer arithmetic and
     // accumulation order of the former recursive form.
     std::uint32_t result = 0;
-    // rule: Part of the rule above that begins "The XP ladder: level 1 (and anything below) needs
-    //   ..."
+    // rule: The XP ladder: level 1 (and anything below) needs 0 XP; each further level costs
+    //   6000*L-2000 more (10000, 26000, 48000, ...
     // tests: GuyCalcs.calculate_exp_ladder_matches_the_documented_table
     // tests: GuyCalcs.calculate_exp_level_0
     for(int k = 2; k <= level; ++k)
@@ -499,9 +499,6 @@ bool check_special_ai_distance(living* self, std::uint32_t threshold)
         return (distance < threshold);
     }
     self->set_foe(current_game->world->find_near_foe(self));
-    // rule: Part of the rule above that begins "A bot's 'foe within N' special gate measures to
-    //   ..."
-    // tests: SemGuy.classic_foe_within_gate_measures_only_the_held_foe_and_acquires_only_when_foeless
     if (!self->foe())
         return false;
     std::uint32_t distance = static_cast<std::uint32_t>(self->distance_to_ob(self->foe()));
@@ -634,7 +631,7 @@ void guy::update_derived_stats(walker* w)
         w->stats()->set_heal_per_round(w->stats()->heal_per_round() + 1);
     } // this takes care of the integer part, now calculate the fraction
 
-    // rule: Part of the rule above that begins "HP regeneration: budget = con + str/6 + 1020; ..."
+    // rule: HP regeneration: budget = con + str/6 + 1020.
     // tests: GuyExtended.guy_update_derived_stats_soldier
     // tests: GuyExtended.guy_update_derived_stats_clamps_speed_and_regen_delays
     // tests: SemGuy.a_heros_heal_delay_keeps_regen_for_a_remainder_of_one_and_never_drops_below_two
@@ -649,7 +646,7 @@ void guy::update_derived_stats(walker* w)
     //make sure we have at least a 2 wait, otherwise we should have
     //calculated our heal_per_round as one higher, and the math must
     //have been screwed up some how
-    // rule: Part of the rule above that begins "HP regeneration: budget = con + str/6 + 1020; ..."
+    // rule: HP regeneration: budget = con + str/6 + 1020.
     // tests: GuyExtended.guy_update_derived_stats_soldier
     // tests: GuyExtended.guy_update_derived_stats_clamps_speed_and_regen_delays
     // tests: SemGuy.a_heros_heal_delay_keeps_regen_for_a_remainder_of_one_and_never_drops_below_two
@@ -661,7 +658,7 @@ void guy::update_derived_stats(walker* w)
     w->stats()->set_current_magic_delay(temp_guy->intelligence * 45 + temp_guy->dexterity * 15 + 200);
 
     // rule: Magic regeneration: budget = int*45 + dex*15 + 200, split like HP regen (same rule as
-    //   guy.cpp:541): whole REGENs are MP per round, the remainder sets the delay, floor 2.
+    //   above): whole REGENs are MP per round, the remainder sets the delay, floor 2.
     // tests: GuyExtended.guy_update_derived_stats_soldier
     // tests: GuyExtended.guy_update_derived_stats_clamps_speed_and_regen_delays
     while (w->stats()->current_magic_delay() > REGEN)
@@ -670,8 +667,8 @@ void guy::update_derived_stats(walker* w)
         w->stats()->set_magic_per_round(w->stats()->magic_per_round() + 1);
     } // this takes care of the integer part, now calculate the fraction
 
-    // rule: Part of the rule above that begins "Magic regeneration: budget = int*45 + dex*15 + 200,
-    //   ..."
+    // rule: Magic regeneration: budget = int*45 + dex*15 + 200, split like HP regen (same rule as
+    //   above): whole REGENs are MP per round, the remainder sets the delay, floor 2.
     // tests: GuyExtended.guy_update_derived_stats_soldier
     // tests: GuyExtended.guy_update_derived_stats_clamps_speed_and_regen_delays
     if (w->stats()->current_magic_delay() > 1)
@@ -685,8 +682,8 @@ void guy::update_derived_stats(walker* w)
     //make sure we have at least a 2 wait, otherwise we should have
     //calculated our magic_per_round as one higher, and the math must
     //have been screwed up some how
-    // rule: Part of the rule above that begins "Magic regeneration: budget = int*45 + dex*15 + 200,
-    //   ..."
+    // rule: Magic regeneration: budget = int*45 + dex*15 + 200, split like HP regen (same rule as
+    //   above): whole REGENs are MP per round, the remainder sets the delay, floor 2.
     // tests: GuyExtended.guy_update_derived_stats_soldier
     // tests: GuyExtended.guy_update_derived_stats_clamps_speed_and_regen_delays
     if (w->stats()->max_magic_delay() < 2)

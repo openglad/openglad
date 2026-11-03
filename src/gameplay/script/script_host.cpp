@@ -37,7 +37,7 @@ void* capped_alloc(void* ud, void* ptr, size_t osize, size_t nsize)
     // tests: SemScriptHost.memory_within_the_cap_is_counted_and_a_free_returns_it
     const size_t old_size = (ptr != nullptr) ? osize : 0;
 
-    // rule: Part of the rule above that begins "A pack script has a fixed memory budget: a ..."
+    // rule: A pack script has a fixed memory budget.
     // tests: ScriptBudget.allocation_cap_trips_deterministically
     // tests: SemScriptHost.memory_within_the_cap_is_counted_and_a_free_returns_it
     if (nsize == 0) {
@@ -45,13 +45,13 @@ void* capped_alloc(void* ud, void* ptr, size_t osize, size_t nsize)
         std::free(ptr);
         return nullptr;
     }
-    // rule: Part of the rule above that begins "A pack script has a fixed memory budget: a ..."
+    // rule: A pack script has a fixed memory budget.
     // tests: ScriptBudget.allocation_cap_trips_deterministically
     // tests: SemScriptHost.memory_within_the_cap_is_counted_and_a_free_returns_it
     if (nsize > old_size && st->used + (nsize - old_size) > st->cap)
         return nullptr;  // Lua raises a deterministic "not enough memory"
     void* np = std::realloc(ptr, nsize);
-    // rule: Part of the rule above that begins "A pack script has a fixed memory budget: a ..."
+    // rule: A pack script has a fixed memory budget.
     // tests: ScriptBudget.allocation_cap_trips_deterministically
     // tests: SemScriptHost.memory_within_the_cap_is_counted_and_a_free_returns_it
     if (np != nullptr)
@@ -128,11 +128,6 @@ int og_div(lua_State* L)
     // tests: SemScriptHost.og_div_by_zero_and_its_overflow_are_script_errors
     if (b == 0)
         script_raise(L, "og.div: division by zero");
-    // rule: Part of the rule above that begins "og.div is C++ integer division (truncates toward
-    //   zero, not ..."
-    // tests: ScriptArith.div_mod_match_cpp_truncation_semantics
-    // tests: ScriptArith.div_differs_from_lua_floor_division_for_negatives
-    // tests: SemScriptHost.og_div_by_zero_and_its_overflow_are_script_errors
     if (a == std::numeric_limits<lua_Integer>::min() && b == -1)
         script_raise(L, "og.div: overflow");
     lua_pushinteger(L, a / b);  // C truncation toward zero
@@ -144,17 +139,12 @@ int og_mod(lua_State* L)
     const lua_Integer a = luaL_checkinteger(L, 1);
     const lua_Integer b = luaL_checkinteger(L, 2);
     // rule: og.mod is the C++ remainder (sign of the dividend); zero divisor and INT64_MIN % -1 are
-    //   script errors. Same rule as script_host.cpp:102.
+    //   script errors. Same rule as above.
     // tests: ScriptArith.div_mod_match_cpp_truncation_semantics
     // tests: ScriptArith.div_differs_from_lua_floor_division_for_negatives
     // tests: SemScriptHost.og_mod_by_zero_and_its_overflow_are_script_errors
     if (b == 0)
         script_raise(L, "og.mod: division by zero");
-    // rule: Part of the rule above that begins "og.mod is the C++ remainder (sign of the dividend);
-    //   ..."
-    // tests: ScriptArith.div_mod_match_cpp_truncation_semantics
-    // tests: ScriptArith.div_differs_from_lua_floor_division_for_negatives
-    // tests: SemScriptHost.og_mod_by_zero_and_its_overflow_are_script_errors
     if (a == std::numeric_limits<lua_Integer>::min() && b == -1)
         script_raise(L, "og.mod: overflow");
     lua_pushinteger(L, a % b);  // C remainder (sign of dividend)
@@ -235,18 +225,13 @@ void push_det_tostring(lua_State* L, int idx)
     // tests: ScriptSandbox.tostring_is_address_free
     // tests: ScriptSandbox.a_tostring_metamethod_returning_a_non_string_is_an_error
     if (luaL_callmeta(L, idx, "__tostring")) {
-        // rule: Part of the rule above that begins "Script stringification is identical on every
-        //   peer: tables/functions without ..."
+        // rule: Script stringification is identical on every peer.
         // tests: ScriptSandbox.tostring_is_address_free
         // tests: ScriptSandbox.a_tostring_metamethod_returning_a_non_string_is_an_error
         if (!lua_isstring(L, -1))
             script_raise(L, "'__tostring' must return a string");
         return;
     }
-    // rule: Part of the rule above that begins "Script stringification is identical on every peer:
-    //   tables/functions without ..."
-    // tests: ScriptSandbox.tostring_is_address_free
-    // tests: ScriptSandbox.a_tostring_metamethod_returning_a_non_string_is_an_error
     switch (lua_type(L, idx)) {
         case LUA_TNIL:
         case LUA_TBOOLEAN:
@@ -279,8 +264,8 @@ int og_log(lua_State* L)
         push_det_tostring(L, i);
         size_t len = 0;
         const char* s = lua_tolstring(L, -1, &len);
-        // rule: Part of the rule above that begins "og.log / print joins all its arguments with a
-        //   ..."
+        // rule: og.log / print joins all its arguments with a TAB, deterministically stringified,
+        //   into one log line and one TRACE('script', ...) line. Here: `i > 1`.
         // tests: ScriptSandbox.print_and_og_log_capture_lines_in_order
         if (i > 1)
             line.push_back('\t');
@@ -462,11 +447,6 @@ void ScriptHost::Impl::push_environment(std::string_view env_key)
     }
     lua_rawgeti(L, LUA_REGISTRYINDEX, env_cache_ref);
     lua_pushlstring(L, env_key.data(), env_key.size());
-    // rule: Part of the rule above that begins "Each pack chunk runs in its own global environment
-    //   ..."
-    // tests: ScriptSandbox.chunks_with_same_env_key_share_state
-    // tests: PackLibTest.module_environments_are_isolated
-    // tests: SemScriptHost.chunks_with_no_env_key_get_isolated_environments
     if (lua_rawget(L, -2) == LUA_TTABLE) {
         lua_remove(L, -2);  // cache table
         return;
@@ -485,9 +465,6 @@ void ScriptHost::Impl::record_error(const char* where, const char* message)
     //   null where or a Lua error object lua_tostring cannot convert (already turned into text by
     //   traceback_handler).
     const char* w = (where != nullptr) ? where : "?";
-    // plumbing: record_error null-string substitutes ('?' / '(unknown error)'); reached only by a
-    //   null where or a Lua error object lua_tostring cannot convert (already turned into text by
-    //   traceback_handler).
     const char* m = (message != nullptr) ? message : "(unknown error)";
 
     // The trace is the live signal and fires on every occurrence; only the
@@ -505,8 +482,8 @@ void ScriptHost::Impl::record_error(const char* where, const char* message)
     // tests: ScriptErrorStore.distinct_where_and_message_are_both_part_of_identity
     // tests: ScriptBindingErrorTest.a_hook_failing_every_tick_records_one_error
     for (ScriptError& e : errors) {
-        // rule: Part of the rule above that begins "A script error repeated every tick is stored
-        //   once ..."
+        // rule: A script error repeated every tick is stored once with a count (identity = where +
+        //   message).
         // tests: ScriptErrorStore.repeated_identical_error_collapses_into_one_record
         // tests: ScriptErrorStore.distinct_errors_are_capped_with_the_first_ones_kept
         // tests: ScriptErrorStore.distinct_where_and_message_are_both_part_of_identity
@@ -516,12 +493,6 @@ void ScriptHost::Impl::record_error(const char* where, const char* message)
             return;
         }
     }
-    // rule: Part of the rule above that begins "A script error repeated every tick is stored once
-    //   ..."
-    // tests: ScriptErrorStore.repeated_identical_error_collapses_into_one_record
-    // tests: ScriptErrorStore.distinct_errors_are_capped_with_the_first_ones_kept
-    // tests: ScriptErrorStore.distinct_where_and_message_are_both_part_of_identity
-    // tests: ScriptBindingErrorTest.a_hook_failing_every_tick_records_one_error
     if (errors.size() >= kMaxStoredScriptErrors) {
         dropped_errors++;
         return;
@@ -551,8 +522,7 @@ bool ScriptHost::Impl::protected_call(const char* where, int nargs,
         // Disabled path is bit-identical to the pre-coverage code: same hook
         // function, same mask, same count. The recorder costs one load of a
         // global bool per host entry — not per instruction, not per line.
-        // rule: Part of the rule above that begins "The instruction budget is per OUTERMOST host
-        //   entry: a ..."
+        // rule: The instruction budget is per OUTERMOST host entry.
         // tests: ScriptBudget.infinite_loop_trips_instruction_budget
         // tests: ScriptCoverage.recorder_is_inert_when_disabled
         // tests: ScriptCoverage.records_the_lines_a_chunk_actually_ran
@@ -566,12 +536,6 @@ bool ScriptHost::Impl::protected_call(const char* where, int nargs,
     entry_depth++;
     const int rc = lua_pcall(L, nargs, nresults, handler_pos);
     entry_depth--;
-    // rule: Part of the rule above that begins "The instruction budget is per OUTERMOST host entry:
-    //   a ..."
-    // tests: ScriptBudget.infinite_loop_trips_instruction_budget
-    // tests: ScriptCoverage.recorder_is_inert_when_disabled
-    // tests: ScriptCoverage.records_the_lines_a_chunk_actually_ran
-    // tests: SemScriptHost.a_nested_script_entry_shares_the_outer_instruction_budget
     if (outermost)
         lua_sethook(L, nullptr, 0, 0);
 
@@ -702,8 +666,8 @@ bool eval_push(ScriptHost::Impl* impl, std::string_view expr)
 std::optional<std::int64_t> ScriptHost::eval_integer(std::string_view expr)
 {
     lua_State* L = impl_->L;
-    // rule: Part of the rule above that begins "An expression that does not compile or errors
-    //   yields ..."
+    // rule: An expression that does not compile or errors yields NO value (nullopt) and one 'eval'
+    //   error, never a default 0/false/''.
     // tests: ScriptHostBasics.an_eval_that_does_not_compile_yields_no_value_and_one_error
     // tests: ScriptArith.div_mod_guard_zero_and_overflow
     // tests: ScriptSandbox.a_tostring_metamethod_returning_a_non_string_is_an_error
@@ -725,8 +689,8 @@ std::optional<std::int64_t> ScriptHost::eval_integer(std::string_view expr)
 std::optional<double> ScriptHost::eval_number(std::string_view expr)
 {
     lua_State* L = impl_->L;
-    // rule: Part of the rule above that begins "An expression that does not compile or errors
-    //   yields ..."
+    // rule: An expression that does not compile or errors yields NO value (nullopt) and one 'eval'
+    //   error, never a default 0/false/''.
     // tests: ScriptHostBasics.an_eval_that_does_not_compile_yields_no_value_and_one_error
     // tests: ScriptArith.div_mod_guard_zero_and_overflow
     // tests: ScriptSandbox.a_tostring_metamethod_returning_a_non_string_is_an_error
@@ -734,8 +698,9 @@ std::optional<double> ScriptHost::eval_number(std::string_view expr)
     if (!eval_push(impl_.get(), expr))
         return std::nullopt;
     std::optional<double> out;
-    // rule: Part of the rule above that begins "Eval coercions are strict: an integer read refuses
-    //   a ..."
+    // rule: Eval coercions are strict: an integer read refuses a float, a string read refuses a
+    //   number, a number read refuses a non-numeric value (answer nullopt, no error recorded).
+    //   Here: `lua_isnumber`.
     // tests: ScriptHostBasics.eval_coercions_are_strict
     // tests: SemScriptHost.eval_number_and_eval_string_refuse_the_wrong_type
     if (lua_isnumber(L, -1))
@@ -747,8 +712,8 @@ std::optional<double> ScriptHost::eval_number(std::string_view expr)
 std::optional<bool> ScriptHost::eval_boolean(std::string_view expr)
 {
     lua_State* L = impl_->L;
-    // rule: Part of the rule above that begins "An expression that does not compile or errors
-    //   yields ..."
+    // rule: An expression that does not compile or errors yields NO value (nullopt) and one 'eval'
+    //   error, never a default 0/false/''.
     // tests: ScriptHostBasics.an_eval_that_does_not_compile_yields_no_value_and_one_error
     // tests: ScriptArith.div_mod_guard_zero_and_overflow
     // tests: ScriptSandbox.a_tostring_metamethod_returning_a_non_string_is_an_error
@@ -763,8 +728,8 @@ std::optional<bool> ScriptHost::eval_boolean(std::string_view expr)
 std::optional<std::string> ScriptHost::eval_string(std::string_view expr)
 {
     lua_State* L = impl_->L;
-    // rule: Part of the rule above that begins "An expression that does not compile or errors
-    //   yields ..."
+    // rule: An expression that does not compile or errors yields NO value (nullopt) and one 'eval'
+    //   error, never a default 0/false/''.
     // tests: ScriptHostBasics.an_eval_that_does_not_compile_yields_no_value_and_one_error
     // tests: ScriptArith.div_mod_guard_zero_and_overflow
     // tests: ScriptSandbox.a_tostring_metamethod_returning_a_non_string_is_an_error
@@ -772,8 +737,9 @@ std::optional<std::string> ScriptHost::eval_string(std::string_view expr)
     if (!eval_push(impl_.get(), expr))
         return std::nullopt;
     std::optional<std::string> out;
-    // rule: Part of the rule above that begins "Eval coercions are strict: an integer read refuses
-    //   a ..."
+    // rule: Eval coercions are strict: an integer read refuses a float, a string read refuses a
+    //   number, a number read refuses a non-numeric value (answer nullopt, no error recorded).
+    //   Here: `lua_type == LUA_TSTRING`.
     // tests: ScriptHostBasics.eval_coercions_are_strict
     // tests: SemScriptHost.eval_number_and_eval_string_refuse_the_wrong_type
     if (lua_type(L, -1) == LUA_TSTRING) {
@@ -796,15 +762,15 @@ bool ScriptHost::sandbox_has(std::string_view dotted_path)
     // tests: ScriptSandbox.a_dotted_path_through_a_non_table_is_absent
     while (start <= dotted_path.size()) {
         const size_t dot = dotted_path.find('.', start);
-        // rule: Part of the rule above that begins "sandbox_has('a.b.c') answers whether the dotted
-        //   name exists in the ..."
+        // rule: sandbox_has('a.b.c') answers whether the dotted name exists in the sandbox root,
+        //   walking tables only; a path through a non-table is absent.
         // tests: ScriptSandbox.allowed_symbols_present, ScriptSandbox.banned_symbols_absent
         // tests: ScriptSandbox.a_dotted_path_through_a_non_table_is_absent
         const std::string part(dotted_path.substr(
             start, dot == std::string_view::npos ? std::string_view::npos
                                                  : dot - start));
-        // rule: Part of the rule above that begins "sandbox_has('a.b.c') answers whether the dotted
-        //   name exists in the ..."
+        // rule: sandbox_has('a.b.c') answers whether the dotted name exists in the sandbox root,
+        //   walking tables only; a path through a non-table is absent.
         // tests: ScriptSandbox.allowed_symbols_present, ScriptSandbox.banned_symbols_absent
         // tests: ScriptSandbox.a_dotted_path_through_a_non_table_is_absent
         if (!lua_istable(L, -1)) {
@@ -813,8 +779,8 @@ bool ScriptHost::sandbox_has(std::string_view dotted_path)
         }
         lua_getfield(L, -1, part.c_str());
         lua_remove(L, -2);
-        // rule: Part of the rule above that begins "sandbox_has('a.b.c') answers whether the dotted
-        //   name exists in the ..."
+        // rule: sandbox_has('a.b.c') answers whether the dotted name exists in the sandbox root,
+        //   walking tables only; a path through a non-table is absent.
         // tests: ScriptSandbox.allowed_symbols_present, ScriptSandbox.banned_symbols_absent
         // tests: ScriptSandbox.a_dotted_path_through_a_non_table_is_absent
         if (dot == std::string_view::npos)

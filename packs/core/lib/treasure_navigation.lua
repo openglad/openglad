@@ -89,7 +89,8 @@ local function exit_on_eat(self, eater)
   -- Exit path: all enemies dead, or scenario allows free exit. Checked
   -- BEFORE the withdraw path so that CAN_EXIT_WHENEVER levels show the
   -- normal "Exit to X?" dialog instead of "Withdraw to X?".
-  -- rule: Part of the rule above that begins "With every foe gone the exit pad offers the ..."
+  -- rule: With every foe gone the exit pad offers the plain "Exit to <name>?" prompt for its
+  --   destination (checked before the withdraw path).
   -- tests: parity:treasure_exit_open_prompt_scen99
   -- tests: RuntimeCoveragePaths.treasure_exit_and_teleporter_navigation_paths
   -- tests: SimWorldHeadless.exit_with_foes_alive_says_foes_remain
@@ -102,7 +103,8 @@ local function exit_on_eat(self, eater)
   -- Withdraw path: enemies still present, destination level already
   -- completed, current scenario not yet completed. Abort the current level
   -- and revert to the autosave, then jump to the exit's destination level.
-  -- rule: Part of the rule above that begins "With foes still alive, an exit to an already ..."
+  -- rule: With foes still alive, an exit to an already completed level withdraws. Here: `if
+  --   can_withdraw`.
   -- tests: parity:level_withdraw_scen99, parity:treasure_exit_pickup_scen99
   -- tests: RuntimeCoveragePaths.treasure_navigation_early_returns_and_withdraw_decline
   -- tests: SimWorldHeadless.replay_of_a_completed_level_cannot_withdraw
@@ -136,17 +138,9 @@ local function teleporter_on_eat(self, eater)
   end
   -- how far away?
   local dist = self:distance_to_ob_center(eater)
-  -- rule: Part of the rule above that begins "A warp pad fires only for an eater not ..."
-  -- tests: RuntimeCoveragePaths.treasure_navigation_early_returns_and_withdraw_decline
-  -- tests: RuntimeCoveragePaths.treasure_exit_and_teleporter_navigation_paths
-  -- tests: GameplayFixesWalk.a_walk_that_eats_a_teleporter_does_not_shove_the_ally_it_left
   if dist > 21 then
     return true
   end
-  -- rule: Part of the rule above that begins "A warp pad fires only for an eater not ..."
-  -- tests: RuntimeCoveragePaths.treasure_navigation_early_returns_and_withdraw_decline
-  -- tests: RuntimeCoveragePaths.treasure_exit_and_teleporter_navigation_paths
-  -- tests: GameplayFixesWalk.a_walk_that_eats_a_teleporter_does_not_shove_the_ally_it_left
   if dist < 4 and eater:skip_exit() ~= 0 then
     eater:set_skip_exit(8)
     return true
@@ -165,11 +159,6 @@ local function teleporter_on_eat(self, eater)
   else
     target = self:leader()
   end
-  -- rule: Part of the rule above that begins "A warp pad remembers the partner it found (leader)
-  --   ..."
-  -- tests: RuntimeCoveragePaths.treasure_exit_and_teleporter_navigation_paths
-  -- tests: GameplayFixesWalk.a_walk_that_eats_a_teleporter_does_not_shove_the_ally_it_left
-  -- tests: SemWarpPad.a_warp_pad_keeps_its_remembered_partner_classic_and_a_lone_pad_only_throttles
   if not target then
     return true
   end

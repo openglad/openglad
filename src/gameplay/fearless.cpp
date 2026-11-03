@@ -39,26 +39,13 @@ bool fearless(const walker& w)
         return true;
     // With the setting off no banner exists, and a pack weapon that happens
     // to declare rally_radius must not change a classic game either.
-    // rule: Part of the rule above that begins "A walker is fearless (never flees when hit, a ..."
-    // tests: KitSeamsSmall.fearless_bit_and_rally_radius_block_the_flee_walk
-    // tests: KitCaptain.rallied_walker_does_not_flee_when_hit
-    // tests: ScriptBindingPropsTest.kit_fearless_answers_the_kit_mark
-    // tests: SemFearless.a_banner_is_not_made_fearless_by_its_own_aura
-    // tests: SemFearless.a_weapon_without_a_rally_radius_rallies_nobody
-    // tests: SemFearless.the_rally_radius_is_inclusive_at_exactly_r
     if (session_new_specials() == 0)
         return false;
-    // rule: Part of the rule above that begins "A walker is fearless (never flees when hit, a ..."
-    // tests: KitSeamsSmall.fearless_bit_and_rally_radius_block_the_flee_walk
-    // tests: KitCaptain.rallied_walker_does_not_flee_when_hit
-    // tests: ScriptBindingPropsTest.kit_fearless_answers_the_kit_mark
-    // tests: SemFearless.a_banner_is_not_made_fearless_by_its_own_aura
-    // tests: SemFearless.a_weapon_without_a_rally_radius_rallies_nobody
-    // tests: SemFearless.the_rally_radius_is_inclusive_at_exactly_r
     for (const auto& entry : current_game->world->weaplist) {
         const walker* rally = entry.get();
-        // rule: Part of the rule above that begins "A walker is fearless (never flees when hit, a
-        //   ..."
+        // rule: A walker is fearless (never flees when hit, a fright binding skips it) if it
+        //   carries the kit FEARLESS mark, or, with New Specials on, if a live friendly
+        //   weapon-order rally object (war banner.
         // tests: KitSeamsSmall.fearless_bit_and_rally_radius_block_the_flee_walk
         // tests: KitCaptain.rallied_walker_does_not_flee_when_hit
         // tests: ScriptBindingPropsTest.kit_fearless_answers_the_kit_mark
@@ -67,8 +54,9 @@ bool fearless(const walker& w)
         // tests: SemFearless.the_rally_radius_is_inclusive_at_exactly_r
         if (rally == nullptr || rally->dead() || rally == &w)
             continue;
-        // rule: Part of the rule above that begins "A walker is fearless (never flees when hit, a
-        //   ..."
+        // rule: A walker is fearless (never flees when hit, a fright binding skips it) if it
+        //   carries the kit FEARLESS mark, or, with New Specials on, if a live friendly
+        //   weapon-order rally object (war banner.
         // tests: KitSeamsSmall.fearless_bit_and_rally_radius_block_the_flee_walk
         // tests: KitCaptain.rallied_walker_does_not_flee_when_hit
         // tests: ScriptBindingPropsTest.kit_fearless_answers_the_kit_mark
@@ -79,8 +67,9 @@ bool fearless(const walker& w)
             continue;
         const WeaponFamilyDescriptor* wfd = get_weapon_family_descriptor(
             static_cast<int>(static_cast<unsigned char>(rally->family())));
-        // rule: Part of the rule above that begins "A walker is fearless (never flees when hit, a
-        //   ..."
+        // rule: A walker is fearless (never flees when hit, a fright binding skips it) if it
+        //   carries the kit FEARLESS mark, or, with New Specials on, if a live friendly
+        //   weapon-order rally object (war banner.
         // tests: KitSeamsSmall.fearless_bit_and_rally_radius_block_the_flee_walk
         // tests: KitCaptain.rallied_walker_does_not_flee_when_hit
         // tests: ScriptBindingPropsTest.kit_fearless_answers_the_kit_mark
@@ -89,8 +78,9 @@ bool fearless(const walker& w)
         // tests: SemFearless.the_rally_radius_is_inclusive_at_exactly_r
         if (wfd == nullptr || wfd->rally_radius <= 0)
             continue;
-        // rule: Part of the rule above that begins "A walker is fearless (never flees when hit, a
-        //   ..."
+        // rule: A walker is fearless (never flees when hit, a fright binding skips it) if it
+        //   carries the kit FEARLESS mark, or, with New Specials on, if a live friendly
+        //   weapon-order rally object (war banner.
         // tests: KitSeamsSmall.fearless_bit_and_rally_radius_block_the_flee_walk
         // tests: KitCaptain.rallied_walker_does_not_flee_when_hit
         // tests: ScriptBindingPropsTest.kit_fearless_answers_the_kit_mark
@@ -100,8 +90,9 @@ bool fearless(const walker& w)
         if (!w.is_friendly(rally))
             continue;
         const std::int32_t r = wfd->rally_radius;
-        // rule: Part of the rule above that begins "A walker is fearless (never flees when hit, a
-        //   ..."
+        // rule: A walker is fearless (never flees when hit, a fright binding skips it) if it
+        //   carries the kit FEARLESS mark, or, with New Specials on, if a live friendly
+        //   weapon-order rally object (war banner.
         // tests: KitSeamsSmall.fearless_bit_and_rally_radius_block_the_flee_walk
         // tests: KitCaptain.rallied_walker_does_not_flee_when_hit
         // tests: ScriptBindingPropsTest.kit_fearless_answers_the_kit_mark

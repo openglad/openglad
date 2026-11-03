@@ -89,7 +89,7 @@ local function on_act(self)
     if foe_count ~= 0 and fork_damage > t.fork_min_damage then
       -- One draw: the fork budget rolls off the owner's level.
       local forks_left = og.rand0(self:owner().level) + 1
-      -- plumbing: iterates the fork scan; rules at effect_chain.lua:70, :76, :77
+      -- plumbing: iterates the fork scan; rules below
       for i = 1, #foes do
         local w = foes[i]
         -- rule: The fork budget (1..owner level) is spent per same-floor foe considered in list
@@ -167,11 +167,6 @@ local function on_act(self)
     elseif leader:xpos() < self:xpos() then
       xd = og.max(leader:xpos() - self:xpos(), -self:stepsize())
     end
-    -- rule: Part of the rule above that begins "Each axis of a homing step moves at most ..."
-    -- tests: EffectMorePaths.effect_batch6_chain_small_delta_else_branches
-    -- tests: EffectChainAndDoor.effect_chain_movement_axis_delta_branches
-    -- tests: EffectMorePaths.effect_batch4_chain_movement_negative_delta_branch
-    -- tests: SemLibsChain.a_homing_bolt_faces_the_way_it_flies
     if leader:ypos() > self:ypos() then
       yd = og.min(self:stepsize(), leader:ypos() - self:ypos())
     elseif leader:ypos() < self:ypos() then

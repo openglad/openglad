@@ -60,7 +60,7 @@ local function classic_census(obs)
       my = -1,
     }
   end
-  -- plumbing: Census walk over oblist; rules in lineup_stage.lua:64, :66, :69, :76.
+  -- plumbing: Census walk over oblist; rules below.
   for k = 1, #obs do
     local w = obs[k]
     -- rule: The classic lineup census counts only live, awake walkers: dead bodies and dormant
@@ -73,7 +73,7 @@ local function classic_census(obs)
       local team = w:team_num()
       -- rule: Only the four score teams take part in the classic lineup; wildlife and other teams
       --   numbered 4+ are never censused, never anchor a squad and never count as an existing team
-      --   for the farthest-region rule (they still count as hostiles, see :139).
+      --   for the farthest-region rule (they still count as hostiles, see below).
       -- tests: ClassicLineupTest.traded_units_become_a_fair_squad_at_their_centroid
       -- tests: ClassicLineupTest.blocked_anchor_falls_back_to_the_teleport_draw
       -- tests: ClassicLineupTest.hostile_crowd_pushes_the_siteless_squad_clear
@@ -85,13 +85,13 @@ local function classic_census(obs)
         -- tests: ClassicLineupTest.fill_strong_spawns_a_solved_squad_on_a_marker_team
         -- tests: SemLineupStage.the_first_start_marker_of_a_team_anchors_its_squad
         if order == C.ORDER_SPECIAL then
-          -- rule: Part of the rule above that begins "A team's start marker is the FIRST live
-          --   team-marker ..."
+          -- rule: A team's start marker is the FIRST live team-marker special for that team in list
+          --   order; later markers of the same team are ignored for anchoring.
           -- tests: ClassicLineupTest.fill_strong_spawns_a_solved_squad_on_a_marker_team
           -- tests: SemLineupStage.the_first_start_marker_of_a_team_anchors_its_squad
           if w:family() == C.FAMILY_RESERVED_TEAM then
-            -- rule: Part of the rule above that begins "A team's start marker is the FIRST live
-            --   team-marker ..."
+            -- rule: A team's start marker is the FIRST live team-marker special for that team in
+            --   list order; later markers of the same team are ignored for anchoring.
             -- tests: ClassicLineupTest.fill_strong_spawns_a_solved_squad_on_a_marker_team
             -- tests: SemLineupStage.the_first_start_marker_of_a_team_anchors_its_squad
             if row.mx < 0 then
@@ -106,8 +106,8 @@ local function classic_census(obs)
           -- tests: ClassicLineupTest.traded_units_become_a_fair_squad_at_their_centroid
           -- tests: SemLineupStage.items_and_effects_on_a_team_are_not_its_units
           -- tests: SemLineupStage.a_team_with_a_deployed_fighter_fields_no_squad
-          -- rule: Part of the rule above that begins "Living walkers and generators are a team's
-          --   troops; those ..."
+          -- rule: Living walkers and generators are a team's troops; those carrying a guy (deployed
+          --   roster heroes) count as the team's roster, guy-less ones as its authored units.
           -- tests: ClassicLineupTest.traded_units_become_a_fair_squad_at_their_centroid
           -- tests: SemLineupStage.items_and_effects_on_a_team_are_not_its_units
           -- tests: SemLineupStage.a_team_with_a_deployed_fighter_fields_no_squad
@@ -155,7 +155,7 @@ end
 -- centroid, so the rule is a pure function of the authored world.
 local function classic_centroids(teams)
   local centroids = {}
-  -- plumbing: Per-team centroid list; rule in lineup_stage.lua:118.
+  -- plumbing: Per-team centroid list; rule below.
   for t = 1, C.SCORE_TEAM_COUNT do
     local row = teams[t]
     local bodies = row.units + row.roster
@@ -181,7 +181,7 @@ end
 -- strip so a box-retired unit no longer scares the placer.
 local function classic_hostiles(obs, team)
   local hostiles = {}
-  -- plumbing: Hostile list walk; rule in lineup_stage.lua:137.
+  -- plumbing: Hostile list walk; rule below.
   for k = 1, #obs do
     local w = obs[k]
     -- rule: For the site-less squad's spawn safety, a hostile is any live, awake living or
@@ -191,14 +191,16 @@ local function classic_hostiles(obs, team)
     -- tests: ClassicLineupTest.hostile_crowd_pushes_the_siteless_squad_clear
     -- tests: SemLineupStage.a_dormant_or_dead_walker_or_an_item_is_no_hostile
     if w:dead() == 0 and not w:dormant() then
-      -- rule: Part of the rule above that begins "For the site-less squad's spawn safety, a hostile
-      --   is ..."
+      -- rule: For the site-less squad's spawn safety, a hostile is any live, awake living or
+      --   generator not on the squad's team — wildlife and other teams included, the squad's own
+      --   team excluded.
       -- tests: ClassicLineupTest.explicit_fair_fields_a_safe_squad_on_unauthored_ground
       -- tests: ClassicLineupTest.hostile_crowd_pushes_the_siteless_squad_clear
       -- tests: SemLineupStage.a_dormant_or_dead_walker_or_an_item_is_no_hostile
       if lineup.is_troop(w:order()) then
-        -- rule: Part of the rule above that begins "For the site-less squad's spawn safety, a
-        --   hostile is ..."
+        -- rule: For the site-less squad's spawn safety, a hostile is any live, awake living or
+        --   generator not on the squad's team — wildlife and other teams included, the squad's own
+        --   team excluded.
         -- tests: ClassicLineupTest.explicit_fair_fields_a_safe_squad_on_unauthored_ground
         -- tests: ClassicLineupTest.hostile_crowd_pushes_the_siteless_squad_clear
         -- tests: SemLineupStage.a_dormant_or_dead_walker_or_an_item_is_no_hostile
@@ -217,7 +219,7 @@ end
 -- Is the tile at (px, py) adjacent to a hostile (D2's spawn-safety rule)?
 -- Adjacent = the hostile's tile or any of its eight neighbours.
 local function hostile_adjacent(hostiles, px, py)
-  -- plumbing: Hostile adjacency scan; rule in lineup_stage.lua:158.
+  -- plumbing: Hostile adjacency scan; rule below.
   for k = 1, #hostiles do
     local h = hostiles[k]
     local dx = lineup.iabs(px - h.x)
@@ -229,8 +231,8 @@ local function hostile_adjacent(hostiles, px, py)
     -- tests: ClassicLineupTest.explicit_fair_fields_a_safe_squad_on_unauthored_ground
     -- tests: SemLineupStage.a_hostile_two_tiles_away_does_not_refuse_a_cell
     if dx <= 16 then
-      -- rule: Part of the rule above that begins "A spawn cell is hostile-adjacent when it is a
-      --   ..."
+      -- rule: A spawn cell is hostile-adjacent when it is a hostile's own tile or one of its eight
+      --   neighbours (Chebyshev distance <= 1 tile).
       -- tests: ClassicLineupTest.hostile_crowd_pushes_the_siteless_squad_clear
       -- tests: ClassicLineupTest.explicit_fair_fields_a_safe_squad_on_unauthored_ground
       -- tests: SemLineupStage.a_hostile_two_tiles_away_does_not_refuse_a_cell
@@ -252,7 +254,7 @@ local function classic_reach()
   local reach_x = 0
   local reach_y = 0
   local function widen(list)
-    -- plumbing: classic_reach widen() list walk; rule in lineup_stage.lua:179.
+    -- plumbing: classic_reach widen() list walk; rule below.
     for k = 1, #list do
       local w = list[k]
       -- rule: The site-less anchor search only scans the authored extent: from (0,0) to the largest
@@ -262,9 +264,6 @@ local function classic_reach()
       if w:xpos() > reach_x then
         reach_x = w:xpos()
       end
-      -- rule: Part of the rule above that begins "The site-less anchor search only scans the
-      --   authored extent: ..."
-      -- tests: SemLineupStage.the_siteless_scan_reaches_only_the_authored_extent
       if w:ypos() > reach_y then
         reach_y = w:ypos()
       end
@@ -295,13 +294,13 @@ local function farthest_open_spot(w, centroids, hostiles)
   local best_y = -1
   local best_score = -1
   local py = 0
-  -- plumbing: Row-major 32-px lattice scan; rules in lineup_stage.lua:216 and :222.
+  -- plumbing: Row-major 32-px lattice scan; rules below.
   while py <= reach_y do
     local px = 0
-    -- plumbing: Row-major 32-px lattice scan; rules in lineup_stage.lua:216 and :222.
+    -- plumbing: Row-major 32-px lattice scan; rules below.
     while px <= reach_x do
       local score = -1
-      -- plumbing: Per-centroid distance; rule in lineup_stage.lua:216.
+      -- plumbing: Per-centroid distance; rule below.
       for c = 1, #centroids do
         local dx = px - centroids[c].x
         local dy = py - centroids[c].y
@@ -323,14 +322,16 @@ local function farthest_open_spot(w, centroids, hostiles)
       -- tests: SemLineupStage.a_blocked_or_hostile_adjacent_best_cell_is_passed_over
       -- tests: SemLineupStage.with_no_admissible_cell_the_siteless_squad_teleports
       if score > best_score then
-        -- rule: Part of the rule above that begins "The site-less squad anchor is the first cell in
-        --   ..."
+        -- rule: The site-less squad anchor is the first cell in row-major order, on a two-tile
+        --   lattice, that is farthest from every existing team (max of min distance), not
+        --   hostile-adjacent and clear for the probing member.
         -- tests: SemLineupStage.a_siteless_squad_anchors_farthest_from_every_team_and_rings_there
         -- tests: SemLineupStage.a_blocked_or_hostile_adjacent_best_cell_is_passed_over
         -- tests: SemLineupStage.with_no_admissible_cell_the_siteless_squad_teleports
         if not hostile_adjacent(hostiles, px, py) then
-          -- rule: Part of the rule above that begins "The site-less squad anchor is the first cell
-          --   in ..."
+          -- rule: The site-less squad anchor is the first cell in row-major order, on a two-tile
+          --   lattice, that is farthest from every existing team (max of min distance), not
+          --   hostile-adjacent and clear for the probing member.
           -- tests: SemLineupStage.a_siteless_squad_anchors_farthest_from_every_team_and_rings_there
           -- tests: SemLineupStage.a_blocked_or_hostile_adjacent_best_cell_is_passed_over
           -- tests: SemLineupStage.with_no_admissible_cell_the_siteless_squad_teleports
@@ -365,13 +366,14 @@ local function classic_place(w, ax, ay, allow_teleport, hostiles)
   -- tests: ClassicLineupTest.hostile_crowd_pushes_the_siteless_squad_clear
   -- tests: SemLineupStage.a_sited_member_takes_the_anchor_then_the_ring_in_order
   if ax >= 0 then
-    -- rule: Part of the rule above that begins "Each squad member takes the anchor tile if it ..."
+    -- rule: Each squad member takes the anchor tile if it is clear (and, for a site-less squad, not
+    --   hostile-adjacent).
     -- tests: ClassicLineupTest.blocked_anchor_falls_back_to_the_teleport_draw
     -- tests: ClassicLineupTest.hostile_crowd_pushes_the_siteless_squad_clear
     -- tests: SemLineupStage.a_sited_member_takes_the_anchor_then_the_ring_in_order
     if og.spawn_spot_clear(w, ax, ay) then
-      -- rule: Part of the rule above that begins "Each squad member takes the anchor tile if it
-      --   ..."
+      -- rule: Each squad member takes the anchor tile if it is clear (and, for a site-less squad,
+      --   not hostile-adjacent).
       -- tests: ClassicLineupTest.blocked_anchor_falls_back_to_the_teleport_draw
       -- tests: ClassicLineupTest.hostile_crowd_pushes_the_siteless_squad_clear
       -- tests: SemLineupStage.a_sited_member_takes_the_anchor_then_the_ring_in_order
@@ -380,13 +382,14 @@ local function classic_place(w, ax, ay, allow_teleport, hostiles)
         return true
       end
     end
-    -- rule: Part of the rule above that begins "Each squad member takes the anchor tile if it ..."
+    -- rule: Each squad member takes the anchor tile if it is clear (and, for a site-less squad, not
+    --   hostile-adjacent).
     -- tests: ClassicLineupTest.blocked_anchor_falls_back_to_the_teleport_draw
     -- tests: ClassicLineupTest.hostile_crowd_pushes_the_siteless_squad_clear
     -- tests: SemLineupStage.a_sited_member_takes_the_anchor_then_the_ring_in_order
     for r = 1, 3 do
-      -- rule: Part of the rule above that begins "Each squad member takes the anchor tile if it
-      --   ..."
+      -- rule: Each squad member takes the anchor tile if it is clear (and, for a site-less squad,
+      --   not hostile-adjacent).
       -- tests: ClassicLineupTest.blocked_anchor_falls_back_to_the_teleport_draw
       -- tests: ClassicLineupTest.hostile_crowd_pushes_the_siteless_squad_clear
       -- tests: SemLineupStage.a_sited_member_takes_the_anchor_then_the_ring_in_order
@@ -394,20 +397,20 @@ local function classic_place(w, ax, ay, allow_teleport, hostiles)
         local dx, dy = lineup.ring_offset(i, r)
         local px = ax + dx * 16
         local py = ay + dy * 16
-        -- rule: Part of the rule above that begins "Each squad member takes the anchor tile if it
-        --   ..."
+        -- rule: Each squad member takes the anchor tile if it is clear (and, for a site-less squad,
+        --   not hostile-adjacent).
         -- tests: ClassicLineupTest.blocked_anchor_falls_back_to_the_teleport_draw
         -- tests: ClassicLineupTest.hostile_crowd_pushes_the_siteless_squad_clear
         -- tests: SemLineupStage.a_sited_member_takes_the_anchor_then_the_ring_in_order
         if px >= 0 and py >= 0 then
-          -- rule: Part of the rule above that begins "Each squad member takes the anchor tile if it
-          --   ..."
+          -- rule: Each squad member takes the anchor tile if it is clear (and, for a site-less
+          --   squad, not hostile-adjacent).
           -- tests: ClassicLineupTest.blocked_anchor_falls_back_to_the_teleport_draw
           -- tests: ClassicLineupTest.hostile_crowd_pushes_the_siteless_squad_clear
           -- tests: SemLineupStage.a_sited_member_takes_the_anchor_then_the_ring_in_order
           if og.spawn_spot_clear(w, px, py) then
-            -- rule: Part of the rule above that begins "Each squad member takes the anchor tile if
-            --   it ..."
+            -- rule: Each squad member takes the anchor tile if it is clear (and, for a site-less
+            --   squad, not hostile-adjacent).
             -- tests: ClassicLineupTest.blocked_anchor_falls_back_to_the_teleport_draw
             -- tests: ClassicLineupTest.hostile_crowd_pushes_the_siteless_squad_clear
             -- tests: SemLineupStage.a_sited_member_takes_the_anchor_then_the_ring_in_order
@@ -435,7 +438,7 @@ local function classic_place(w, ax, ay, allow_teleport, hostiles)
     return w:teleport()
   end
   local landed = false
-  -- plumbing: Up to eight seeded teleport draws; rule in lineup_stage.lua:278.
+  -- plumbing: Up to eight seeded teleport draws; rule below.
   for _ = 1, 8 do
     -- rule: A site-less squad member that has to teleport re-draws up to eight times and keeps the
     --   first landing that is not hostile-adjacent; if none of the eight is safe, the last
@@ -445,8 +448,8 @@ local function classic_place(w, ax, ay, allow_teleport, hostiles)
     -- tests: SemLineupStage.a_siteless_member_whose_teleports_all_fail_stays_where_it_spawned
     if w:teleport() then
       landed = true
-      -- rule: Part of the rule above that begins "A site-less squad member that has to teleport
-      --   re-draws ..."
+      -- rule: A site-less squad member that has to teleport re-draws up to eight times and keeps
+      --   the first landing that is not hostile-adjacent. Here: `not hostile_adjacent(landing)`.
       -- tests: SemLineupStage.a_siteless_member_redraws_an_unsafe_landing_and_keeps_the_first_safe_one
       -- tests: SemLineupStage.a_siteless_member_with_eight_unsafe_landings_stays_on_the_last
       -- tests: SemLineupStage.a_siteless_member_whose_teleports_all_fail_stays_where_it_spawned
@@ -486,7 +489,7 @@ end
 -- spawns and never banks), so the untouched world writes nothing.
 local function stage_level(level)
   local touched = false
-  -- plumbing: Fast-path knob scan over teams 0..3; rule in lineup_stage.lua:317.
+  -- plumbing: Fast-path knob scan over teams 0..3; rule below.
   for team = 0, C.SCORE_TEAM_COUNT - 1 do
     -- rule: With every MAP UNITS box on and every FILL wheel at NONE the classic lineup stage does
     --   nothing at all — no strip, no spawn, no RNG draw, no byte of the world changes; any one
@@ -497,15 +500,12 @@ local function stage_level(level)
     if not lineup.map_units_fielded(team) then
       touched = true
     end
-    -- rule: Part of the rule above that begins "With every MAP UNITS box on and every FILL ..."
-    -- tests: ClassicLineupTest.all_default_stage_is_a_byte_noop_on_gladiator
-    -- tests: ClassicLineupTest.gladiator_map_units_off_strips_one_team
-    -- tests: ClassicLineupTest.fill_strong_spawns_a_solved_squad_on_a_marker_team
     if not lineup.squad_off(lineup.fill_knob(team)) then
       touched = true
     end
   end
-  -- rule: Part of the rule above that begins "With every MAP UNITS box on and every FILL ..."
+  -- rule: With every MAP UNITS box on and every FILL wheel at NONE the classic lineup stage does
+  --   nothing at all — no strip, no spawn, no RNG draw, no byte of the world changes.
   -- tests: ClassicLineupTest.all_default_stage_is_a_byte_noop_on_gladiator
   -- tests: ClassicLineupTest.gladiator_map_units_off_strips_one_team
   -- tests: ClassicLineupTest.fill_strong_spawns_a_solved_squad_on_a_marker_team
@@ -514,11 +514,12 @@ local function stage_level(level)
   end
   local teams = classic_census(og.oblist())
   lineup.strip_authored_troops()
-  -- plumbing: Per-team fill pass; rules in lineup_stage.lua:295, :329, :339.
+  -- plumbing: Per-team fill pass; rules above and below.
   for team = 0, C.SCORE_TEAM_COUNT - 1 do
     local row = teams[team + 1]
     local knob = lineup.fill_knob(team)
-    -- rule: Part of the rule above that begins "On a classic level a team fields a FILL ..."
+    -- rule: On a classic level a team fields a FILL squad only when its wheel is turned (anything
+    --   but NONE) and no deployed roster hero stands on it. Here: `row.roster == 0`.
     -- tests: ClassicLineupTest.default_none_keeps_a_ships_empty_team_empty
     -- tests: ClassicLineupTest.the_default_never_adds_a_squad_beside_anything
     -- tests: ClassicLineupTest.fill_strong_spawns_a_solved_squad_on_a_marker_team

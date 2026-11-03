@@ -22,15 +22,9 @@ local function trips(self, foe)
   if foe:floor() ~= self:floor() then
     return false
   end
-  -- rule: Part of the rule above that begins "A thief's mine is set off only by a ..."
-  -- tests: KitThief.flying_foe_does_not_trip_a_mine
-  -- tests: KitThief.mine_detonates_under_a_foe_not_an_ally
   if foe:s_query_bit_flags(C.BIT_FLYING) then
     return false
   end
-  -- rule: Part of the rule above that begins "A thief's mine is set off only by a ..."
-  -- tests: KitThief.flying_foe_does_not_trip_a_mine
-  -- tests: KitThief.mine_detonates_under_a_foe_not_an_ally
   if foe:flight_left() > 0 then
     return false
   end
@@ -66,7 +60,7 @@ local function on_act(self)
     return true
   end
   local foes = og.find_foes_in_range("ob", TRIP_SCAN, self)
-  -- plumbing: scan of foes within 128; rule at effect_mine.lua:53
+  -- plumbing: scan of foes within 128; rule below
   for i = 1, #foes do
     -- rule: A mine blows under the first foe that trips it; allies walk over their own mines;
     --   otherwise it blinks (frame = (world_tick/8) % 2).
@@ -107,7 +101,7 @@ end
 -- owner, so the mines a dead thief left behind still set each other off.
 local function light_neighbours(self, t)
   local obs = og.oblist()
-  -- plumbing: walks the whole oblist; rule at effect_mine.lua:87
+  -- plumbing: walks the whole oblist; rule below
   for i = 1, #obs do
     local ob = obs[i]
     -- rule: A mine's blast lights every other live mine of the same TEAM (not owner, so a dead

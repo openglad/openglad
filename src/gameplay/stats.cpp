@@ -124,8 +124,6 @@ void statistics::mark_dirty(std::uint8_t bit_index)
 	// plumbing: dirty-bit bookkeeping for snapshot replication (owner falls back to controller;
 	//   null guard)
 	walker* dirty_owner = owner_ != nullptr ? owner_ : controller_;
-	// plumbing: dirty-bit bookkeeping for snapshot replication (owner falls back to controller;
-	//   null guard)
 	if (dirty_owner != nullptr)
 		dirty_owner->mark_dirty(bit_index);
 }
@@ -199,13 +197,6 @@ void statistics::clear_command_for_control_switch()
 		++keep_end;
 		++preserved;
 	}
-	// rule: Part of the rule above that begins "Switching control onto (or claiming) a character
-	//   keeps the ..."
-	// tests: StatsFright.selective_clear_preserves_forced_run_keeps_hygiene_and_charm
-	// tests: StatsFright.selective_clear_without_forced_front_wipes_queue
-	// tests: StatsFright.switch_and_claim_preserve_fright_and_hygiene
-	// tests: StatsFright.claim_path_no_longer_uncharms
-	// tests: SemAi3.a_control_switch_keeps_only_a_leading_run_of_forced_walks
 	if (preserved > 0)
 		TRACE("stats", "selective clear preserved %d forced entries", preserved);
 	commands.erase(keep_end, commands.end());
@@ -265,44 +256,49 @@ void statistics::add_command(Sint32 whatcommand, Sint32 iterations,
 	commands.emplace_back();
 
 	// rule: A queued walk is always a unit step in one of the 8 directions: deltas are clamped to
-	//   -1..1 and a (0,0) walk becomes a down-right (1,1) walk. Same rule as stats.cpp:252
-	//   (force_command) and stats.cpp:298 (force_fright merge). Consequence: a random walk that
-	//   rolls (0,0) walks south-east, so random walks are biased toward SE (see stats.cpp:352).
+	//   -1..1 and a (0,0) walk becomes a down-right (1,1) walk. Same rule as below
+	//   (force_command) and below (force_fright merge). Consequence: a random walk that
+	//   rolls (0,0) walks south-east, so random walks are biased toward SE (see below).
 	// tests: StatsMorePaths.stats_add_and_force_command_walk_clamp_and_zero_fallback
 	// tests: StatsUnit.stats_r14_lines_122_133_135_155_161_add_force_walk_clamps
 	// tests: StatsMorePaths.stats_round12_add_command_walk_clamps_and_follow_shortcuts
 	// tests: KitCaptain.grunts_turn_to_the_new_banner
 	if (whatcommand == COMMAND_WALK)
 	{
-		// rule: Part of the rule above that begins "A queued walk is always a unit step in ..."
+		// rule: A queued walk is always a unit step in one of the 8 directions: deltas are clamped
+		//   to -1..1 and a (0,0) walk becomes a down-right (1,1) walk.
 		// tests: StatsMorePaths.stats_add_and_force_command_walk_clamp_and_zero_fallback
 		// tests: StatsUnit.stats_r14_lines_122_133_135_155_161_add_force_walk_clamps
 		// tests: StatsMorePaths.stats_round12_add_command_walk_clamps_and_follow_shortcuts
 		// tests: KitCaptain.grunts_turn_to_the_new_banner
 		if (info1 > 1)
 			info1 = 1;
-		// rule: Part of the rule above that begins "A queued walk is always a unit step in ..."
+		// rule: A queued walk is always a unit step in one of the 8 directions: deltas are clamped
+		//   to -1..1 and a (0,0) walk becomes a down-right (1,1) walk.
 		// tests: StatsMorePaths.stats_add_and_force_command_walk_clamp_and_zero_fallback
 		// tests: StatsUnit.stats_r14_lines_122_133_135_155_161_add_force_walk_clamps
 		// tests: StatsMorePaths.stats_round12_add_command_walk_clamps_and_follow_shortcuts
 		// tests: KitCaptain.grunts_turn_to_the_new_banner
 		if (info1 < -1)
 			info1 = -1;
-		// rule: Part of the rule above that begins "A queued walk is always a unit step in ..."
+		// rule: A queued walk is always a unit step in one of the 8 directions: deltas are clamped
+		//   to -1..1 and a (0,0) walk becomes a down-right (1,1) walk.
 		// tests: StatsMorePaths.stats_add_and_force_command_walk_clamp_and_zero_fallback
 		// tests: StatsUnit.stats_r14_lines_122_133_135_155_161_add_force_walk_clamps
 		// tests: StatsMorePaths.stats_round12_add_command_walk_clamps_and_follow_shortcuts
 		// tests: KitCaptain.grunts_turn_to_the_new_banner
 		if (info2 > 1)
 			info2 = 1;
-		// rule: Part of the rule above that begins "A queued walk is always a unit step in ..."
+		// rule: A queued walk is always a unit step in one of the 8 directions: deltas are clamped
+		//   to -1..1 and a (0,0) walk becomes a down-right (1,1) walk.
 		// tests: StatsMorePaths.stats_add_and_force_command_walk_clamp_and_zero_fallback
 		// tests: StatsUnit.stats_r14_lines_122_133_135_155_161_add_force_walk_clamps
 		// tests: StatsMorePaths.stats_round12_add_command_walk_clamps_and_follow_shortcuts
 		// tests: KitCaptain.grunts_turn_to_the_new_banner
 		if (info2 < -1)
 			info2 = -1;
-		// rule: Part of the rule above that begins "A queued walk is always a unit step in ..."
+		// rule: A queued walk is always a unit step in one of the 8 directions: deltas are clamped
+		//   to -1..1 and a (0,0) walk becomes a down-right (1,1) walk.
 		// tests: StatsMorePaths.stats_add_and_force_command_walk_clamp_and_zero_fallback
 		// tests: StatsUnit.stats_r14_lines_122_133_135_155_161_add_force_walk_clamps
 		// tests: StatsMorePaths.stats_round12_add_command_walk_clamps_and_follow_shortcuts
@@ -322,7 +318,7 @@ void statistics::force_command(Sint32 whatcommand, Sint32 iterations,
 	// Add command to start of list
 	commands.emplace_front();
 
-	// rule: A forced (prepended) walk obeys the same unit-step rule as add_command (stats.cpp:227)
+	// rule: A forced (prepended) walk obeys the same unit-step rule as add_command (above)
 	//   and is the only producer of the 'forced' flag (fright/knockback/flee/shove).
 	// tests: StatsCommands.stats_force_command_prepends_a_clamped_forced_walk
 	// tests: StatsFright.forced_flag_set_only_by_force_command
@@ -332,8 +328,9 @@ void statistics::force_command(Sint32 whatcommand, Sint32 iterations,
 	// tests: LivingCombat.living_act_guard_wakes_and_fires_only_when_a_foe_is_in_sight
 	if (whatcommand == COMMAND_WALK)
 	{
-		// rule: Part of the rule above that begins "A forced (prepended) walk obeys the same
-		//   unit-step rule ..."
+		// rule: A forced (prepended) walk obeys the same unit-step rule as add_command
+		//   (above) and is the only producer of the 'forced' flag
+		//   (fright/knockback/flee/shove).
 		// tests: StatsCommands.stats_force_command_prepends_a_clamped_forced_walk
 		// tests: StatsFright.forced_flag_set_only_by_force_command
 		// tests: StatsExtended.statistics_force_command_walk_clamps
@@ -342,8 +339,9 @@ void statistics::force_command(Sint32 whatcommand, Sint32 iterations,
 		// tests: LivingCombat.living_act_guard_wakes_and_fires_only_when_a_foe_is_in_sight
 		if (info1 > 1)
 			info1 = 1;
-		// rule: Part of the rule above that begins "A forced (prepended) walk obeys the same
-		//   unit-step rule ..."
+		// rule: A forced (prepended) walk obeys the same unit-step rule as add_command
+		//   (above) and is the only producer of the 'forced' flag
+		//   (fright/knockback/flee/shove).
 		// tests: StatsCommands.stats_force_command_prepends_a_clamped_forced_walk
 		// tests: StatsFright.forced_flag_set_only_by_force_command
 		// tests: StatsExtended.statistics_force_command_walk_clamps
@@ -352,8 +350,9 @@ void statistics::force_command(Sint32 whatcommand, Sint32 iterations,
 		// tests: LivingCombat.living_act_guard_wakes_and_fires_only_when_a_foe_is_in_sight
 		if (info1 < -1)
 			info1 = -1;
-		// rule: Part of the rule above that begins "A forced (prepended) walk obeys the same
-		//   unit-step rule ..."
+		// rule: A forced (prepended) walk obeys the same unit-step rule as add_command
+		//   (above) and is the only producer of the 'forced' flag
+		//   (fright/knockback/flee/shove).
 		// tests: StatsCommands.stats_force_command_prepends_a_clamped_forced_walk
 		// tests: StatsFright.forced_flag_set_only_by_force_command
 		// tests: StatsExtended.statistics_force_command_walk_clamps
@@ -362,8 +361,9 @@ void statistics::force_command(Sint32 whatcommand, Sint32 iterations,
 		// tests: LivingCombat.living_act_guard_wakes_and_fires_only_when_a_foe_is_in_sight
 		if (info2 > 1)
 			info2 = 1;
-		// rule: Part of the rule above that begins "A forced (prepended) walk obeys the same
-		//   unit-step rule ..."
+		// rule: A forced (prepended) walk obeys the same unit-step rule as add_command
+		//   (above) and is the only producer of the 'forced' flag
+		//   (fright/knockback/flee/shove).
 		// tests: StatsCommands.stats_force_command_prepends_a_clamped_forced_walk
 		// tests: StatsFright.forced_flag_set_only_by_force_command
 		// tests: StatsExtended.statistics_force_command_walk_clamps
@@ -372,8 +372,9 @@ void statistics::force_command(Sint32 whatcommand, Sint32 iterations,
 		// tests: LivingCombat.living_act_guard_wakes_and_fires_only_when_a_foe_is_in_sight
 		if (info2 < -1)
 			info2 = -1;
-		// rule: Part of the rule above that begins "A forced (prepended) walk obeys the same
-		//   unit-step rule ..."
+		// rule: A forced (prepended) walk obeys the same unit-step rule as add_command
+		//   (above) and is the only producer of the 'forced' flag
+		//   (fright/knockback/flee/shove).
 		// tests: StatsCommands.stats_force_command_prepends_a_clamped_forced_walk
 		// tests: StatsFright.forced_flag_set_only_by_force_command
 		// tests: StatsExtended.statistics_force_command_walk_clamps
@@ -423,38 +424,21 @@ void statistics::force_fright(Sint32 iterations, Sint32 info1, Sint32 info2)
 	    && commands.front().commandtype == COMMAND_WALK)
 	{
 		// Clamp the deltas exactly like force_command's COMMAND_WALK branch.
-		// rule: The merged fright direction obeys the unit-step walk rule (same as stats.cpp:227).
+		// rule: The merged fright direction obeys the unit-step walk rule (same as above).
 		// tests: StatsMorePaths.force_fright_clamps_a_merged_direction_to_the_unit_square
 		// tests: StatsFright.force_fright_merges_max_remaining_and_repoints
 		if (info1 > 1)
 			info1 = 1;
-		// rule: Part of the rule above that begins "The merged fright direction obeys the unit-step
-		//   walk rule ..."
-		// tests: StatsMorePaths.force_fright_clamps_a_merged_direction_to_the_unit_square
-		// tests: StatsFright.force_fright_merges_max_remaining_and_repoints
 		if (info1 < -1)
 			info1 = -1;
-		// rule: Part of the rule above that begins "The merged fright direction obeys the unit-step
-		//   walk rule ..."
-		// tests: StatsMorePaths.force_fright_clamps_a_merged_direction_to_the_unit_square
-		// tests: StatsFright.force_fright_merges_max_remaining_and_repoints
 		if (info2 > 1)
 			info2 = 1;
-		// rule: Part of the rule above that begins "The merged fright direction obeys the unit-step
-		//   walk rule ..."
-		// tests: StatsMorePaths.force_fright_clamps_a_merged_direction_to_the_unit_square
-		// tests: StatsFright.force_fright_merges_max_remaining_and_repoints
 		if (info2 < -1)
 			info2 = -1;
-		// rule: Part of the rule above that begins "The merged fright direction obeys the unit-step
-		//   walk rule ..."
-		// tests: StatsMorePaths.force_fright_clamps_a_merged_direction_to_the_unit_square
-		// tests: StatsFright.force_fright_merges_max_remaining_and_repoints
 		if (!info1 && !info2)
 			info1 = info2 = 1;
 		command& front = commands.front();
-		// rule: Part of the rule above that begins "Overlapping scares (ghost scare, banner fright)
-		//   never stack end ..."
+		// rule: Overlapping scares (ghost scare, banner fright) never stack end to end.
 		// tests: StatsFright.force_fright_merges_max_remaining_and_repoints
 		// tests: StatsFright.force_fright_falls_through_to_legacy_prepend
 		// tests: StatsMorePaths.force_fright_clamps_a_merged_direction_to_the_unit_square
@@ -502,7 +486,7 @@ short statistics::try_command(Sint32 whatcommand, Sint32 iterations,
 void statistics::set_command(Sint32 whatcommand, Sint32 iterations)
 {
 	// rule: A RANDOM_WALK order becomes a forced walk in a random direction (two rng(3)-1 draws; a
-	//   (0,0) roll becomes SE per stats.cpp:227); any other order is forced with zero arguments.
+	//   (0,0) roll becomes SE per above); any other order is forced with zero arguments.
 	// tests: SemAi3.a_random_walk_order_becomes_a_forced_walk_in_a_rolled_direction
 	if (whatcommand == COMMAND_RANDOM_WALK)
 		set_command(COMMAND_WALK, iterations, static_cast<Sint32>(rng(3)) - 1, static_cast<Sint32>(rng(3)) - 1);
@@ -565,7 +549,7 @@ short statistics::do_command()
     
     short result = 1;
 
-	// plumbing: command-type dispatch switch; each case has its own rule row (stats.cpp:409, 412,
+	// plumbing: command-type dispatch switch; each case has its own rule row (below, 412,
 	//   426, 432, 479, 483, 493, 505, 523, 529, 537, 540, 551, 571, 591, 633)
 	switch (commandtype)
 	{
@@ -583,8 +567,8 @@ short statistics::do_command()
 			// tests: StatsMorePaths.stats_round13_die_and_non_living_fire_command_branches
 			// tests: StatsCommands.stats_do_command_fire_denied_without_foe_and_spends_busy_when_allowed
 			case COMMAND_FIRE:
-			// rule: Part of the rule above that begins "A FIRE order only fires for a living walker
-			//   ..."
+			// rule: A FIRE order only fires for a living walker whose fire_check allows the shot in
+			//   (com1,com2).
 			// tests: StatsExtended.do_command_fire_denied_by_fire_check_returns_0_and_drops_the_command
 			// tests: StatsExtended.do_command_fire_that_passes_fire_check_starts_the_shot_and_returns_1
 			// tests: StatsMorePaths.stats_round13_die_and_non_living_fire_command_branches
@@ -594,8 +578,8 @@ short statistics::do_command()
 				Log("commanding a non-living to fire?");
 				break;
 			}
-				// rule: Part of the rule above that begins "A FIRE order only fires for a living
-				//   walker ..."
+				// rule: A FIRE order only fires for a living walker whose fire_check allows the
+				//   shot in (com1,com2).
 				// tests: StatsExtended.do_command_fire_denied_by_fire_check_returns_0_and_drops_the_command
 				// tests: StatsExtended.do_command_fire_that_passes_fire_check_starts_the_shot_and_returns_1
 				// tests: StatsMorePaths.stats_round13_die_and_non_living_fire_command_branches
@@ -614,15 +598,15 @@ short statistics::do_command()
 		// tests: StatsMorePaths.stats_do_command_die_and_multido_paths
 		// tests: StatsCoverage.follow_gives_up_for_a_foe_or_no_leader_and_die_marks_delete_me
 		case COMMAND_DIE:  // debugging, not currently used
-			// rule: Part of the rule above that begins "A queued DIE order (debug, unused by the
-			//   game) ..."
+			// rule: A queued DIE order (debug, unused by the game) deletes the walker on its last
+			//   iteration; earlier iterations only count down.
 			// tests: StatsCommands.stats_do_command_die_sets_delete_me
 			// tests: StatsMorePaths.stats_do_command_die_and_multido_paths
 			// tests: StatsCoverage.follow_gives_up_for_a_foe_or_no_leader_and_die_marks_delete_me
 			if (!controller_->dead())
 				Log("Trying to make a living ob die!\n");
-			// rule: Part of the rule above that begins "A queued DIE order (debug, unused by the
-			//   game) ..."
+			// rule: A queued DIE order (debug, unused by the game) deletes the walker on its last
+			//   iteration; earlier iterations only count down.
 			// tests: StatsCommands.stats_do_command_die_sets_delete_me
 			// tests: StatsMorePaths.stats_do_command_die_and_multido_paths
 			// tests: StatsCoverage.follow_gives_up_for_a_foe_or_no_leader_and_die_marks_delete_me
@@ -635,8 +619,8 @@ short statistics::do_command()
 		// tests: StatsCoverage.follow_gives_up_for_a_foe_or_no_leader_and_die_marks_delete_me
 		// tests: StatsNavigation.follow_picks_the_view_leader_and_steps_one_normalized_unit
 		case COMMAND_FOLLOW:   // follow the leader
-			// rule: Part of the rule above that begins "A follower drops a FOLLOW order the moment
-			//   it ..."
+			// rule: A follower drops a FOLLOW order the moment it has a foe (fighting beats
+			//   following) and when no leader can be found (find_follow_leader.
 			// tests: StatsCoverage.follow_gives_up_for_a_foe_or_no_leader_and_die_marks_delete_me
 			// tests: StatsNavigation.follow_picks_the_view_leader_and_steps_one_normalized_unit
 			if (controller_->foe()) // if we have foe, don't follow this round
@@ -646,15 +630,15 @@ short statistics::do_command()
 				result = 0;
 				break;
 			}
-			// rule: Part of the rule above that begins "A follower drops a FOLLOW order the moment
-			//   it ..."
+			// rule: A follower drops a FOLLOW order the moment it has a foe (fighting beats
+			//   following) and when no leader can be found (find_follow_leader.
 			// tests: StatsCoverage.follow_gives_up_for_a_foe_or_no_leader_and_die_marks_delete_me
 			// tests: StatsNavigation.follow_picks_the_view_leader_and_steps_one_normalized_unit
 			if (!controller_->leader())
 			{
 				controller_->set_leader(find_follow_leader());
-				// rule: Part of the rule above that begins "A follower drops a FOLLOW order the
-				//   moment it ..."
+				// rule: A follower drops a FOLLOW order the moment it has a foe (fighting beats
+				//   following) and when no leader can be found (find_follow_leader.
 				// tests: StatsCoverage.follow_gives_up_for_a_foe_or_no_leader_and_die_marks_delete_me
 				// tests: StatsNavigation.follow_picks_the_view_leader_and_steps_one_normalized_unit
 				if (!controller_->leader())
@@ -672,8 +656,8 @@ short statistics::do_command()
 			if(controller_->leader())
 			{
 				distance = controller_->distance_to_ob(controller_->leader());
-				// rule: Part of the rule above that begins "A follower stops (and lets go of the
-				//   leader) ..."
+				// rule: A follower stops (and lets go of the leader) when within 60 px of it, so
+				//   followers never crowd onto the leader.
 				// tests: StatsMorePaths.follow_walks_one_unit_step_toward_the_leader_and_drops_it_inside_60px
 				if (distance < 60)
 				{
@@ -685,32 +669,17 @@ short statistics::do_command()
 				newy = static_cast<short>(controller_->leader()->ypos() - controller_->ypos());
 				// rule: Follow direction snaps to an axis when one delta dominates 3:1, otherwise
 				//   diagonal; each axis is a unit step. Same 3:1 snap as COMMAND_ATTACK
-				//   (stats.cpp:561), direct_walk (stats.cpp:1149), right_walk (stats.cpp:978),
-				//   direct_walk_to_point (stats.cpp:1496).
+				//   (below), direct_walk (below), right_walk (below),
+				//   direct_walk_to_point (below).
 				// tests: StatsNavigation.follow_picks_the_view_leader_and_steps_one_normalized_unit
 				// tests: StatsMorePaths.follow_walks_one_unit_step_toward_the_leader_and_drops_it_inside_60px
 				// tests: StatsMorePaths.stats_round11_follow_force_walk_and_right_walk_distance_branches
 				if (abs(newx) > abs(3*newy))
 					newy = 0;
-				// rule: Part of the rule above that begins "Follow direction snaps to an axis when
-				//   one delta ..."
-				// tests: StatsNavigation.follow_picks_the_view_leader_and_steps_one_normalized_unit
-				// tests: StatsMorePaths.follow_walks_one_unit_step_toward_the_leader_and_drops_it_inside_60px
-				// tests: StatsMorePaths.stats_round11_follow_force_walk_and_right_walk_distance_branches
 				if (abs(newy) > abs(3*newx))
 					newx = 0;
-				// rule: Part of the rule above that begins "Follow direction snaps to an axis when
-				//   one delta ..."
-				// tests: StatsNavigation.follow_picks_the_view_leader_and_steps_one_normalized_unit
-				// tests: StatsMorePaths.follow_walks_one_unit_step_toward_the_leader_and_drops_it_inside_60px
-				// tests: StatsMorePaths.stats_round11_follow_force_walk_and_right_walk_distance_branches
 				if (newx)                      // If it's not 0, then get
 					newx = static_cast<short>(newx / abs(newx));     // the normal of it..
-				// rule: Part of the rule above that begins "Follow direction snaps to an axis when
-				//   one delta ..."
-				// tests: StatsNavigation.follow_picks_the_view_leader_and_steps_one_normalized_unit
-				// tests: StatsMorePaths.follow_walks_one_unit_step_toward_the_leader_and_drops_it_inside_60px
-				// tests: StatsMorePaths.stats_round11_follow_force_walk_and_right_walk_distance_branches
 				if (newy)
 					newy = static_cast<short>(newy / abs(newy));
 			}  // end of if we had a foe ..
@@ -738,8 +707,8 @@ short statistics::do_command()
 			// tests: SemAi3.a_multido_of_zero_or_less_consumes_itself_and_runs_nothing
 			case COMMAND_MULTIDO: // Lets you do <com1> commands in one round
 				{
-					// rule: Part of the rule above that begins "MULTIDO(n) consumes itself and
-					//   immediately runs the next n ..."
+					// rule: MULTIDO(n) consumes itself and immediately runs the next n queued
+					//   commands in the same round (each with its own countdown).
 					// tests: StatsMorePaths.multido_runs_the_next_two_queued_commands_in_one_round
 					// tests: StatsMorePaths.stats_round14_quickfire_multido_rush_and_walk_to_foe_melee_short_circuit
 					// tests: SemAi3.a_multido_of_zero_or_less_consumes_itself_and_runs_nothing
@@ -747,8 +716,8 @@ short statistics::do_command()
 					// Consume MULTIDO first; otherwise do_command() would recurse on
 					// the same front command indefinitely.
 					commands.pop_front();
-					// rule: Part of the rule above that begins "MULTIDO(n) consumes itself and
-					//   immediately runs the next n ..."
+					// rule: MULTIDO(n) consumes itself and immediately runs the next n queued
+					//   commands in the same round (each with its own countdown).
 					// tests: StatsMorePaths.multido_runs_the_next_two_queued_commands_in_one_round
 					// tests: StatsMorePaths.stats_round14_quickfire_multido_rush_and_walk_to_foe_melee_short_circuit
 					// tests: SemAi3.a_multido_of_zero_or_less_consumes_itself_and_runs_nothing
@@ -763,8 +732,8 @@ short statistics::do_command()
 		// tests: parity:soldier_charge_displacement_scen99
 		// tests: SemAi3.a_rush_order_on_a_non_living_body_does_nothing_but_count_down
 		case COMMAND_RUSH:    // Fighter's special
-			// rule: Part of the rule above that begins "A fighter's rush (charge special) moves a
-			//   living walker ..."
+			// rule: A fighter's rush (charge special) moves a living walker three steps per round
+			//   in its rush direction; a non-living holder of the order does nothing.
 			// tests: StatsCommands.stats_do_command_rush_takes_three_steps_and_shoves_the_collider
 			// tests: StatsMorePaths.stats_round14_quickfire_multido_rush_and_walk_to_foe_melee_short_circuit
 			// tests: parity:soldier_charge_displacement_scen99
@@ -818,8 +787,8 @@ short statistics::do_command()
 			case COMMAND_SET_WEAPON: // set weapon to specified type
 				controller_->set_current_weapon(static_cast<unsigned short>(com1));
 				break;
-		// rule: Part of the rule above that begins "SET_WEAPON swaps the walker's current weapon
-		//   type to com1 ..."
+		// rule: SET_WEAPON swaps the walker's current weapon type to com1 for as long as it holds;
+		//   RESET_WEAPON restores the family default.
 		// tests: StatsMorePaths.stats_do_command_set_reset_weapon_and_search_without_foe
 		case COMMAND_RESET_WEAPON: // reset weapon to default type
 			controller_->set_current_weapon(controller_->default_weapon());
@@ -829,8 +798,8 @@ short statistics::do_command()
 		// tests: StatsCommands.stats_do_command_search_without_a_live_foe_abandons_the_order
 		// tests: StatsUnit.stats_r12_command_and_hit_response_branches
 		case COMMAND_SEARCH: // use right-hand rule to find foe
-			// rule: Part of the rule above that begins "A SEARCH order hunts the held foe
-			//   (walk_to_foe) while ..."
+			// rule: A SEARCH order hunts the held foe (walk_to_foe) while it lives; with no foe or
+			//   a dead foe the order is abandoned that round.
 			// tests: StatsCommands.stats_do_command_search_without_a_live_foe_abandons_the_order
 			// tests: StatsUnit.stats_r12_command_and_hit_response_branches
 			if (controller_->foe() && !controller_->foe()->dead())
@@ -841,7 +810,7 @@ short statistics::do_command()
             }
 			break;
 		// rule: A GOTO order (mode directors: CTF, soccer, onslaught, captain kit) walks toward a
-		//   fixed map point and never attacks on the way; see stats.cpp:1617 for arrival.
+		//   fixed map point and never attacks on the way; see below for arrival.
 		// tests: SemAi3.a_goto_order_walks_to_its_point_without_attacking_and_ends_on_arrival
 		case COMMAND_GOTO: // walk toward a fixed map position
 			walk_to_point(static_cast<short>(com1), static_cast<short>(com2));
@@ -854,8 +823,8 @@ short statistics::do_command()
 		// tests: StatsMorePaths.stats_round11_follow_force_walk_and_right_walk_distance_branches
 		// tests: SemAi3.a_right_walk_order_without_a_foe_idles
 		case COMMAND_RIGHT_WALK: // right-hand-walk ONLY
-			// rule: Part of the rule above that begins "RIGHT_WALK wall-follows (right hand) when
-			//   the foe is at ..."
+			// rule: RIGHT_WALK wall-follows (right hand) when the foe is at middle range (120..240
+			//   px exclusive).
 			// tests: StatsCommands.stats_do_command_right_walk_distance_gate_picks_the_walker
 			// tests: StatsUnit.right_walk_command_falls_back_to_wall_following_when_the_direct_step_is_blocked
 			// tests: StatsMorePaths.stats_round11_follow_force_walk_and_right_walk_distance_branches
@@ -863,8 +832,8 @@ short statistics::do_command()
 			if (controller_->foe())
 			{
 				distance = controller_->distance_to_ob(controller_->foe());
-				// rule: Part of the rule above that begins "RIGHT_WALK wall-follows (right hand)
-				//   when the foe is at ..."
+				// rule: RIGHT_WALK wall-follows (right hand) when the foe is at middle range
+				//   (120..240 px exclusive).
 				// tests: StatsCommands.stats_do_command_right_walk_distance_gate_picks_the_walker
 				// tests: StatsUnit.right_walk_command_falls_back_to_wall_following_when_the_direct_step_is_blocked
 				// tests: StatsMorePaths.stats_round11_follow_force_walk_and_right_walk_distance_branches
@@ -872,8 +841,8 @@ short statistics::do_command()
 				if (distance > 120 && distance < 240)
 					right_walk();
 				else
-					// rule: Part of the rule above that begins "RIGHT_WALK wall-follows (right
-					//   hand) when the foe is at ..."
+					// rule: RIGHT_WALK wall-follows (right hand) when the foe is at middle range
+					//   (120..240 px exclusive).
 					// tests: StatsCommands.stats_do_command_right_walk_distance_gate_picks_the_walker
 					// tests: StatsUnit.right_walk_command_falls_back_to_wall_following_when_the_direct_step_is_blocked
 					// tests: StatsMorePaths.stats_round11_follow_force_walk_and_right_walk_distance_branches
@@ -887,8 +856,7 @@ short statistics::do_command()
 		// tests: StatsExtended.do_command_attack_that_can_shoot_forces_a_fire_command_and_fires
 		// tests: SemAi3.an_attack_order_on_a_dead_foe_ends_at_once
 		case COMMAND_ATTACK: // attack a nearby, set foe
-			// rule: Part of the rule above that begins "An ATTACK order ends as soon as the walker
-			//   ..."
+			// rule: An ATTACK order ends as soon as the walker has no foe or its foe is dead.
 			// tests: StatsCommands.stats_do_command_attack_without_foe_pops_and_faces_a_foe_it_cannot_shoot
 			// tests: StatsExtended.do_command_attack_that_can_shoot_forces_a_fire_command_and_fires
 			// tests: SemAi3.an_attack_order_on_a_dead_foe_ends_at_once
@@ -902,35 +870,17 @@ short statistics::do_command()
 			deltax = static_cast<short>(controller_->foe()->xpos() - controller_->xpos());
 			deltay = static_cast<short>(controller_->foe()->ypos() - controller_->ypos());
 				// rule: The attacker aims at the foe along an 8-way direction: axis when one delta
-				//   dominates 3:1, else diagonal (same snap as stats.cpp:463).
+				//   dominates 3:1, else diagonal (same snap as above).
 				// tests: StatsUnit.stats_attack_and_follow_step_toward_their_target_and_blocked_probes_read_their_own_cells
 				// tests: StatsExtended.do_command_attack_that_can_shoot_forces_a_fire_command_and_fires
 				// tests: SemAi3.an_attacker_out_of_range_steps_toward_its_foe_on_the_snapped_direction
 				// tests: SemAi3.an_attacker_merged_with_its_foe_steps_out_along_its_facing
 				if (abs(deltax) > abs(3*deltay))
 					deltay = 0;
-				// rule: Part of the rule above that begins "The attacker aims at the foe along an
-				//   8-way ..."
-				// tests: StatsUnit.stats_attack_and_follow_step_toward_their_target_and_blocked_probes_read_their_own_cells
-				// tests: StatsExtended.do_command_attack_that_can_shoot_forces_a_fire_command_and_fires
-				// tests: SemAi3.an_attacker_out_of_range_steps_toward_its_foe_on_the_snapped_direction
-				// tests: SemAi3.an_attacker_merged_with_its_foe_steps_out_along_its_facing
 				if (abs(deltay) > abs(3*deltax))
 					deltax = 0;
-				// rule: Part of the rule above that begins "The attacker aims at the foe along an
-				//   8-way ..."
-				// tests: StatsUnit.stats_attack_and_follow_step_toward_their_target_and_blocked_probes_read_their_own_cells
-				// tests: StatsExtended.do_command_attack_that_can_shoot_forces_a_fire_command_and_fires
-				// tests: SemAi3.an_attacker_out_of_range_steps_toward_its_foe_on_the_snapped_direction
-				// tests: SemAi3.an_attacker_merged_with_its_foe_steps_out_along_its_facing
 				if (deltax)
 					deltax = (deltax > 0) ? 1 : -1;
-				// rule: Part of the rule above that begins "The attacker aims at the foe along an
-				//   8-way ..."
-				// tests: StatsUnit.stats_attack_and_follow_step_toward_their_target_and_blocked_probes_read_their_own_cells
-				// tests: StatsExtended.do_command_attack_that_can_shoot_forces_a_fire_command_and_fires
-				// tests: SemAi3.an_attacker_out_of_range_steps_toward_its_foe_on_the_snapped_direction
-				// tests: SemAi3.an_attacker_merged_with_its_foe_steps_out_along_its_facing
 				if (deltay)
 					deltay = (deltay > 0) ? 1 : -1;
 			{
@@ -989,8 +939,9 @@ short statistics::do_command()
 						controller_->walkstep(stepx, stepy);
 					}
 					else if (denial == walker::FireCheckDenial::Facing ||
-					         denial == walker::FireCheckDenial::NoRanged)  // rule: Part of the rule above that
-					             //   begins "An attacking walker shoots when the shot is clear ..."
+					         denial == walker::FireCheckDenial::NoRanged)  // rule: An attacking walker shoots
+					             //   when the shot is clear (queues a FIRE of rng(5) rounds in
+					             //   front and fires now).
 					             // tests: StatsExtended.do_command_attack_faces_an_in_reach_foe_without_walking
 					             // tests: StatsExtended.do_command_attack_that_can_shoot_forces_a_fire_command_and_fires
 					             // tests: StatsCommands.stats_do_command_attack_without_foe_pops_and_faces_a_foe_it_cannot_shoot
@@ -1014,8 +965,8 @@ short statistics::do_command()
 						// campaign balance hard (Westlands L2's fight-through
 						// crew started losing members).
 						controller_->face_delta(deltax, deltay);
-					else  // rule: Part of the rule above that begins "An attacking walker shoots
-						//   when the shot is clear ..."
+					else  // rule: An attacking walker shoots when the shot is clear (queues a FIRE
+						//   of rng(5) rounds in front and fires now).
 						// tests: StatsExtended.do_command_attack_faces_an_in_reach_foe_without_walking
 						// tests: StatsExtended.do_command_attack_that_can_shoot_forces_a_fire_command_and_fires
 						// tests: StatsCommands.stats_do_command_attack_without_foe_pops_and_faces_a_foe_it_cannot_shoot
@@ -1050,8 +1001,8 @@ short statistics::do_command()
 			  }
 			*/
 			break;  // end of uncharm case
-		// rule: Part of the rule above that begins "UNCHARM (its body commented out since #317:
-		//   charm ends ..."
+		// rule: UNCHARM (its body commented out since #317: charm ends only on charm_left) and
+		//   unknown command types are no-ops that are simply consumed by the countdown.
 		// tests: SemAi3.an_uncharm_order_or_an_unknown_one_is_only_counted_down
 		default:
 			break;
@@ -1069,8 +1020,8 @@ short statistics::do_command()
 	{
         commands.front().commandcount--;       // reduce # of times left
         
-        // rule: Part of the rule above that begins "Every round spends one iteration of whatever
-        //   command is ..."
+        // rule: Every round spends one iteration of whatever command is at the FRONT after the
+        //   switch ran (which may be a command the switch just forced, e.g. ATTACK's FIRE).
         // tests: StatsCommands.stats_do_command_walk_steps_once_and_counts_down
         // tests: StatsExtended.do_command_unhandled_type_only_runs_the_decrement_tail
         // tests: StatsExtended.do_command_attack_that_can_shoot_forces_a_fire_command_and_fires
@@ -1106,8 +1057,7 @@ void statistics::hit_response(walker  *who)
 	if (who->dead() || controller_->dead())
 		return;
 
-	// rule: Part of the rule above that begins "Only a living, AI-driven, alive walker reacts to
-	//   being ..."
+	// rule: Only a living, AI-driven, alive walker reacts to being hit.
 	// tests: StatsUnit.stats_r14_hit_response_gates_and_direct_walk_and_blocked_defaults
 	// tests: StatsUnit.hit_response_guard_shields_non_living_targets
 	// tests: StatsMorePaths.stats_set_command_die_and_hit_response_early_returns
@@ -1115,8 +1065,7 @@ void statistics::hit_response(walker  *who)
 	if (controller_->act_type() == ACT_CONTROL)
 		return;
 
-	// rule: Part of the rule above that begins "Only a living, AI-driven, alive walker reacts to
-	//   being ..."
+	// rule: Only a living, AI-driven, alive walker reacts to being hit.
 	// tests: StatsUnit.stats_r14_hit_response_gates_and_direct_walk_and_blocked_defaults
 	// tests: StatsUnit.hit_response_guard_shields_non_living_targets
 	// tests: StatsMorePaths.stats_set_command_die_and_hit_response_early_returns
@@ -1200,7 +1149,7 @@ void statistics::yell_for_help(walker *foe)
 	// Get AI-controlled allies to target my foe
 	std::list<walker*> helplist = current_game->world->find_friends_in_range(
 	               current_game->world->oblist, 160, &howmany, controller_);
-	// plumbing: iterates allies within 160 px from find_friends_in_range; see stats.cpp:738
+	// plumbing: iterates allies within 160 px from find_friends_in_range; see below
 	for(auto* w : helplist)
 	{
 		w->set_leader(controller_);
@@ -1234,12 +1183,6 @@ void statistics::yell_for_help(walker *foe)
 	if (deltax)
 		deltax = (deltax / abs(deltax));
 	deltay =  -(foe->ypos() - controller_->ypos());
-	// rule: Part of the rule above that begins "The yeller flees directly away from its attacker on
-	//   ..."
-	// tests: StatsCommands.stats_yell_for_help_flees_and_recruits_friends
-	// tests: StatsUnit.stats_direct_walk_steps_toward_the_foe_and_hit_response_retargets_and_yells
-	// tests: StatsHitResponseMore.wounded_world_member_recruits_allies_and_keeps_its_escape
-	// tests: SemHit.a_yeller_on_top_of_its_attacker_flees_south_east
 	if (deltay)
 		deltay =  (deltay / abs(deltay));
 	// Run away
@@ -1256,8 +1199,8 @@ void statistics::yell_for_help(walker *foe)
 	if (controller_->myguy && (controller_->team_num() == 0) )
 	{
 		std::string message = std::format("{} yells for help!", controller_->myguy->name);
-		// rule: Part of the rule above that begins "Only a named character on team 0 (the first
-		//   ..."
+		// rule: Only a named character on team 0 (the first player team) announces its yell as an
+		//   on-screen notification; other teams' heroes and bots yell silently.
 		// tests: SemHit.classic_only_a_named_team_zero_hero_announces_its_yell
 		if (current_game->sim_events)
 			current_game->sim_events->push_notification(message, 10);
@@ -1524,7 +1467,7 @@ bool statistics::right_walk()
 	//   four probes are the walker's own step moved one pixel and act like steps (eat a potion,
 	//   open a door, bump-swing a body, leave collide_ob for a stale shove). Gameplay Fixes Y: the
 	//   probes are quiet and change nothing, except a melee-only bot's own foe in a probe's way is
-	//   still bumped (stats.cpp:1113).
+	//   still bumped (below).
 	// tests: GameplayFixesWalk.a_right_walk_side_probe_eats_nothing_and_swings_at_nobody
 	// tests: GameplayFixesWalk.a_side_probe_does_not_swing_at_a_body_it_is_not_fighting_with_the_setting_on
 	// tests: StatsUnit.stats_r11_right_walk_branch_matrix
@@ -1534,8 +1477,8 @@ bool statistics::right_walk()
 	// tests: SemAi4.a_right_walk_side_probe_opens_a_door_only_with_the_setting_off
 	if (path_probe(Side::Right, quiet) || path_probe(Side::RightFront, quiet) )
 	{
-		// rule: Part of the rule above that begins "Right-hand wall following: with a wall on the
-		//   right ..."
+		// rule: Right-hand wall following: with a wall on the right (or right-front) the walker
+		//   keeps going straight while the front is open and turns left (90 deg) when it is not.
 		// tests: GameplayFixesWalk.a_right_walk_side_probe_eats_nothing_and_swings_at_nobody
 		// tests: GameplayFixesWalk.a_side_probe_does_not_swing_at_a_body_it_is_not_fighting_with_the_setting_on
 		// tests: StatsUnit.stats_r11_right_walk_branch_matrix
@@ -1548,27 +1491,15 @@ bool statistics::right_walk()
 			xdelta = controller_->lastx();
 			ydelta = controller_->lasty();
 			// rule: While hugging a wall the walker keeps going in the direction it last moved,
-			//   snapped to an axis when one component dominates 3:1 (same snap as stats.cpp:463).
+			//   snapped to an axis when one component dominates 3:1 (same snap as above).
 			// tests: StatsRightWalkDirectWalk.right_walk_normalizes_the_forward_step_and_turns_left_when_blocked
 			// tests: SemAi4.classic_a_wall_hugger_that_never_moved_stands_still_for_a_tick
 			if (std::fabs(xdelta) > std::fabs(3 * ydelta))
 				ydelta = 0;
-			// rule: Part of the rule above that begins "While hugging a wall the walker keeps going
-			//   in ..."
-			// tests: StatsRightWalkDirectWalk.right_walk_normalizes_the_forward_step_and_turns_left_when_blocked
-			// tests: SemAi4.classic_a_wall_hugger_that_never_moved_stands_still_for_a_tick
 			if (std::fabs(ydelta) > std::fabs(3 * xdelta))
 				xdelta = 0;
-			// rule: Part of the rule above that begins "While hugging a wall the walker keeps going
-			//   in ..."
-			// tests: StatsRightWalkDirectWalk.right_walk_normalizes_the_forward_step_and_turns_left_when_blocked
-			// tests: SemAi4.classic_a_wall_hugger_that_never_moved_stands_still_for_a_tick
 			if (xdelta != 0.0f)
 				xdelta /= std::fabs(xdelta);
-			// rule: Part of the rule above that begins "While hugging a wall the walker keeps going
-			//   in ..."
-			// tests: StatsRightWalkDirectWalk.right_walk_normalizes_the_forward_step_and_turns_left_when_blocked
-			// tests: SemAi4.classic_a_wall_hugger_that_never_moved_stands_still_for_a_tick
 			if (ydelta != 0.0f)
 				ydelta /= std::fabs(ydelta);
 			//              return controller_->walk();
@@ -1589,7 +1520,7 @@ bool statistics::right_walk()
 	{
 		controller_->set_enddir(static_cast<char>((controller_->enddir()+2) %8));  // turn right
 		// rule: Turning right around a corner queues one unit walk along the new heading (8-way
-		//   table identical to facing_step_delta, stats.cpp:1443).
+		//   table identical to facing_step_delta, below).
 		// tests: StatsRightWalkDirectWalk.stats_right_walk_turn_right_adds_walk_command_all_enddirs
 		// tests: StatsMorePaths.stats_right_walk_round8_negative_enddir_default_switch_path
 		switch (controller_->enddir())
@@ -1635,8 +1566,8 @@ bool statistics::right_walk()
 	}
 	else
 	{
-		// rule: Part of the rule above that begins "Right-hand wall following: with a wall on the
-		//   right ..."
+		// rule: Right-hand wall following: with a wall on the right (or right-front) the walker
+		//   keeps going straight while the front is open and turns left (90 deg) when it is not.
 		// tests: GameplayFixesWalk.a_right_walk_side_probe_eats_nothing_and_swings_at_nobody
 		// tests: GameplayFixesWalk.a_side_probe_does_not_swing_at_a_body_it_is_not_fighting_with_the_setting_on
 		// tests: StatsUnit.stats_r11_right_walk_branch_matrix
@@ -1710,7 +1641,7 @@ bool statistics::right_walk()
 bool statistics::path_probe(Side side, bool quiet)
 {
 	bool blocked;
-	// plumbing: path_probe dispatches Side to the four probe tables (stats.cpp:798, 849, 882, 916)
+	// plumbing: path_probe dispatches Side to the four probe tables (above, 849, 882, 916)
 	switch (side)
 	{
 		case Side::RightFront: blocked = right_forward_blocked(quiet); break;
@@ -1729,21 +1660,11 @@ bool statistics::path_probe(Side side, bool quiet)
 	if (!quiet || !blocked)
 		return blocked;
 	walker* foe = controller_->foe();
-	// rule: Part of the rule above that begins "Gameplay Fixes Y, the bump: with quiet probes, a
-	//   ..."
-	// tests: GameplayFixesWalk.a_melee_bot_bumps_the_foe_a_quiet_probe_finds
-	// tests: GameplayFixesWalk.a_side_probe_does_not_swing_at_a_body_it_is_not_fighting_with_the_setting_on
-	// tests: SemAi4.a_quiet_probe_bumps_only_a_live_hostile_foe_on_the_bots_floor
 	if (!foe || foe->dead() || foe->floor() != controller_->floor()
 	        || !query_bit_flags(BIT_NO_RANGED) || controller_->is_friendly(foe))
 		return blocked;
 	short dx = 0, dy = 0;
 	facing_step_delta(static_cast<char>((controller_->curdir() + static_cast<short>(side)) % 8), dx, dy);
-	// rule: Part of the rule above that begins "Gameplay Fixes Y, the bump: with quiet probes, a
-	//   ..."
-	// tests: GameplayFixesWalk.a_melee_bot_bumps_the_foe_a_quiet_probe_finds
-	// tests: GameplayFixesWalk.a_side_probe_does_not_swing_at_a_body_it_is_not_fighting_with_the_setting_on
-	// tests: SemAi4.a_quiet_probe_bumps_only_a_live_hostile_foe_on_the_bots_floor
 	if (og::sim::step_meets(*controller_, static_cast<float>(dx * CHECK_STEP_SIZE),
 	                        static_cast<float>(dy * CHECK_STEP_SIZE), *foe))
 		controller_->collide(foe);
@@ -1782,13 +1703,11 @@ bool statistics::direct_walk()
 	// tests: SemAi4.a_chaser_that_can_land_a_shot_stops_and_attacks
 	if (std::fabs(xdelta) > std::fabs(3 * ydelta))
 		ydelta = 0;
-	// rule: Part of the rule above that begins "A chasing walker that can already land a shot ..."
-	// tests: StatsUnit.stats_direct_walk_steps_toward_the_foe_and_hit_response_retargets_and_yells
-	// tests: SemAi4.a_chaser_that_can_land_a_shot_stops_and_attacks
 	if (std::fabs(ydelta) > std::fabs(3 * xdelta))
 		xdelta = 0;
 
-	// rule: Part of the rule above that begins "A chasing walker that can already land a shot ..."
+	// rule: A chasing walker that can already land a shot on its foe along the (3:1-snapped, raw
+	//   pixel) delta stops chasing.
 	// tests: StatsUnit.stats_direct_walk_steps_toward_the_foe_and_hit_response_retargets_and_yells
 	// tests: SemAi4.a_chaser_that_can_land_a_shot_stops_and_attacks
 	if (controller_->fire_check(static_cast<short>(xdelta), static_cast<short>(ydelta)))
@@ -1808,12 +1727,6 @@ bool statistics::direct_walk()
 	// tests: SemAi4.a_straight_chase_slides_along_the_open_axis_when_the_diagonal_is_walled
 	if (xdelta != 0.0f)
 		xdelta = xdelta / std::fabs(xdelta);
-	// rule: Part of the rule above that begins "The straight-line chase takes the diagonal unit
-	//   step toward ..."
-	// tests: StatsRightWalkDirectWalk.stats_direct_walk_grid_passability_branches
-	// tests: StatsUnit.stats_r14_hit_response_gates_and_direct_walk_and_blocked_defaults
-	// tests: StatsUnit.stats_direct_walk_steps_toward_the_foe_and_hit_response_retargets_and_yells
-	// tests: SemAi4.a_straight_chase_slides_along_the_open_axis_when_the_diagonal_is_walled
 	if (ydelta != 0.0f)
 		ydelta = ydelta / std::fabs(ydelta);
 
@@ -1824,24 +1737,24 @@ bool statistics::direct_walk()
 	// replaced by some sort of single "if forward_blocked()"
 	// check, otherwise I'm not sure if this works regardless of
 	// current facing ...
-	// rule: Part of the rule above that begins "The straight-line chase takes the diagonal unit
-	//   step toward ..."
+	// rule: The straight-line chase takes the diagonal unit step toward the foe when the GRID
+	//   allows it (bodies are not checked here), else slides along x, else along y.
 	// tests: StatsRightWalkDirectWalk.stats_direct_walk_grid_passability_branches
 	// tests: StatsUnit.stats_r14_hit_response_gates_and_direct_walk_and_blocked_defaults
 	// tests: StatsUnit.stats_direct_walk_steps_toward_the_foe_and_hit_response_retargets_and_yells
 	// tests: SemAi4.a_straight_chase_slides_along_the_open_axis_when_the_diagonal_is_walled
 	if (!current_game->world->query_grid_passable(controlx+xdeltastep, controly+ydeltastep, controller_) )
 	{
-		// rule: Part of the rule above that begins "The straight-line chase takes the diagonal unit
-		//   step toward ..."
+		// rule: The straight-line chase takes the diagonal unit step toward the foe when the GRID
+		//   allows it (bodies are not checked here), else slides along x, else along y.
 		// tests: StatsRightWalkDirectWalk.stats_direct_walk_grid_passability_branches
 		// tests: StatsUnit.stats_r14_hit_response_gates_and_direct_walk_and_blocked_defaults
 		// tests: StatsUnit.stats_direct_walk_steps_toward_the_foe_and_hit_response_retargets_and_yells
 		// tests: SemAi4.a_straight_chase_slides_along_the_open_axis_when_the_diagonal_is_walled
 		if (!current_game->world->query_grid_passable(controlx+xdeltastep,controly+0,controller_) )
 		{
-			// rule: Part of the rule above that begins "The straight-line chase takes the diagonal
-			//   unit step toward ..."
+			// rule: The straight-line chase takes the diagonal unit step toward the foe when the
+			//   GRID allows it (bodies are not checked here), else slides along x, else along y.
 			// tests: StatsRightWalkDirectWalk.stats_direct_walk_grid_passability_branches
 			// tests: StatsUnit.stats_r14_hit_response_gates_and_direct_walk_and_blocked_defaults
 			// tests: StatsUnit.stats_direct_walk_steps_toward_the_foe_and_hit_response_retargets_and_yells
@@ -1855,8 +1768,9 @@ bool statistics::direct_walk()
 			}
 			else //y ok
 			{
-				// rule: Part of the rule above that begins "The straight-line chase takes the
-				//   diagonal unit step toward ..."
+				// rule: The straight-line chase takes the diagonal unit step toward the foe when
+				//   the GRID allows it (bodies are not checked here), else slides along x, else
+				//   along y.
 				// tests: StatsRightWalkDirectWalk.stats_direct_walk_grid_passability_branches
 				// tests: StatsUnit.stats_r14_hit_response_gates_and_direct_walk_and_blocked_defaults
 				// tests: StatsUnit.stats_direct_walk_steps_toward_the_foe_and_hit_response_retargets_and_yells
@@ -1872,8 +1786,8 @@ bool statistics::direct_walk()
 		} //end if(xd,0)
 		else //x ok
 		{
-			// rule: Part of the rule above that begins "The straight-line chase takes the diagonal
-			//   unit step toward ..."
+			// rule: The straight-line chase takes the diagonal unit step toward the foe when the
+			//   GRID allows it (bodies are not checked here), else slides along x, else along y.
 			// tests: StatsRightWalkDirectWalk.stats_direct_walk_grid_passability_branches
 			// tests: StatsUnit.stats_r14_hit_response_gates_and_direct_walk_and_blocked_defaults
 			// tests: StatsUnit.stats_direct_walk_steps_toward_the_foe_and_hit_response_retargets_and_yells
@@ -1890,8 +1804,8 @@ bool statistics::direct_walk()
 	}
 	else //x and y ok
 	{
-		// rule: Part of the rule above that begins "The straight-line chase takes the diagonal unit
-		//   step toward ..."
+		// rule: The straight-line chase takes the diagonal unit step toward the foe when the GRID
+		//   allows it (bodies are not checked here), else slides along x, else along y.
 		// tests: StatsRightWalkDirectWalk.stats_direct_walk_grid_passability_branches
 		// tests: StatsUnit.stats_r14_hit_response_gates_and_direct_walk_and_blocked_defaults
 		// tests: StatsUnit.stats_direct_walk_steps_toward_the_foe_and_hit_response_retargets_and_yells
@@ -1932,6 +1846,10 @@ bool statistics::path_toward_stair(int foe_floor)
 	if (foe_floor == myfloor)
 		return false;
 
+	// rule: A foe on a higher floor sends the walker toward an up stair, a foe on a lower floor
+	//   toward a down stair.
+	// tests: SemAi4.a_walker_heads_for_the_nearest_up_stair_when_its_foe_is_above
+	// tests: SemAi4.a_walker_heads_for_a_down_stair_when_its_foe_is_below
 	const unsigned char want = (foe_floor > myfloor)
 	    ? static_cast<unsigned char>(PIX_ZSTAIR_UP)
 	    : static_cast<unsigned char>(PIX_ZSTAIR_DOWN);
@@ -1945,13 +1863,14 @@ bool statistics::path_toward_stair(int foe_floor)
 	const int mygy = controller_->ypos() / GRID_SIZE;
 	int best_x = -1, best_y = -1;
 	long best_d = -1;
-	// plumbing: row-major grid scan for stair tiles; see stats.cpp:1253
+	// plumbing: row-major grid scan for stair tiles; see below
 	for (int y = 0; y < g.h; ++y)
-		// plumbing: row-major grid scan for stair tiles; see stats.cpp:1253
+		// plumbing: row-major grid scan for stair tiles; see below
 		for (int x = 0; x < g.w; ++x)
 		{
-			// rule: Part of the rule above that begins "A ground walker whose foe is on another
-			//   floor ..."
+			// rule: A ground walker whose foe is on another floor and unreachable heads for the
+			//   nearest Z-stair leading toward the foe (an up-stair if the foe is above, a
+			//   down-stair if below) and climbs.
 			// tests: ZAxis.path_toward_stair_answers_only_when_a_stair_leads_that_way
 			// tests: SemAi4.a_walker_heads_for_the_nearest_up_stair_when_its_foe_is_above
 			// tests: SemAi4.a_walker_heads_for_a_down_stair_when_its_foe_is_below
@@ -1959,8 +1878,9 @@ bool statistics::path_toward_stair(int foe_floor)
 			if (g.data[static_cast<std::size_t>(x + y * g.w)] != want)
 				continue;
 			const long d = std::abs(x - mygx) + std::abs(y - mygy);
-			// rule: Part of the rule above that begins "A ground walker whose foe is on another
-			//   floor ..."
+			// rule: A ground walker whose foe is on another floor and unreachable heads for the
+			//   nearest Z-stair leading toward the foe (an up-stair if the foe is above, a
+			//   down-stair if below) and climbs.
 			// tests: ZAxis.path_toward_stair_answers_only_when_a_stair_leads_that_way
 			// tests: SemAi4.a_walker_heads_for_the_nearest_up_stair_when_its_foe_is_above
 			// tests: SemAi4.a_walker_heads_for_a_down_stair_when_its_foe_is_below
@@ -1972,7 +1892,9 @@ bool statistics::path_toward_stair(int foe_floor)
 				best_y = y;
 			}
 		}
-	// rule: Part of the rule above that begins "A ground walker whose foe is on another floor ..."
+	// rule: A ground walker whose foe is on another floor and unreachable heads for the nearest
+	//   Z-stair leading toward the foe (an up-stair if the foe is above, a down-stair if below) and
+	//   climbs.
 	// tests: ZAxis.path_toward_stair_answers_only_when_a_stair_leads_that_way
 	// tests: SemAi4.a_walker_heads_for_the_nearest_up_stair_when_its_foe_is_above
 	// tests: SemAi4.a_walker_heads_for_a_down_stair_when_its_foe_is_below
@@ -2064,6 +1986,8 @@ bool statistics::walk_to_foe()
 	    // other AI decision here. Production draws from world.rng_ for
 	    // snapshot/replay determinism; the parity harness's libc-rand cosmetic
 	    // override (when installed) matches master's dual-RNG-stream behavior.
+	    // plumbing: the parity harness's cosmetic RNG override draws the recheck cadence when
+	    //   installed, else the world RNG (determinism plumbing; the comment above says why).
 	    const std::uint32_t cadence = (cosmetic_rng_override() != nullptr)
 	        ? cosmetic_rng_override()->next(10)
 	        : rng(10);
@@ -2092,8 +2016,8 @@ bool statistics::walk_to_foe()
 		{
 			std::list<walker*> foelist = current_game->world->find_foes_in_range(current_game->world->oblist,
 			          PATHING_MIN_DISTANCE, &howmany, controller_);
-			// rule: Part of the rule above that begins "On a re-plan tick, a same-floor chaser
-			//   whose foe ..."
+			// rule: On a re-plan tick, a same-floor chaser whose foe is within 100 px (Manhattan),
+			//   or any chaser on a crowded map (more than 200 objects, dead included), skips A*.
 			// tests: StatsUnit.stats_r11_direct_walk_and_walk_to_foe_tail_branches
 			// tests: StatsUnit.walk_to_foe_adopts_a_strictly_nearer_foe_and_keeps_the_held_one_otherwise
 			// tests: SemAi4.a_chaser_within_100_px_of_a_foe_attacks_it_instead_of_pathing
@@ -2131,8 +2055,9 @@ bool statistics::walk_to_foe()
 			else // our foe has moved; we need a new one
 			{
 				// Zardus: PORT: needs to check for commandlist
-				// rule: Part of the rule above that begins "On a re-plan tick, a same-floor chaser
-				//   whose foe ..."
+				// rule: On a re-plan tick, a same-floor chaser whose foe is within 100 px
+				//   (Manhattan), or any chaser on a crowded map (more than 200 objects, dead
+				//   included), skips A*.
 				// tests: StatsUnit.stats_r11_direct_walk_and_walk_to_foe_tail_branches
 				// tests: StatsUnit.walk_to_foe_adopts_a_strictly_nearer_foe_and_keeps_the_held_one_otherwise
 				// tests: SemAi4.a_chaser_within_100_px_of_a_foe_attacks_it_instead_of_pathing
@@ -2156,7 +2081,7 @@ bool statistics::walk_to_foe()
             // below chase the foe's x/y on OUR floor — head for the nearest
             // Z-stair toward the foe's floor and climb. Gated on cross_floor, so
             // single-floor pathing is untouched (byte-identical for parity).
-            // rule: Part of the rule above that begins "A far (>= 100 px) foe on an uncrowded ..."
+            // rule: A far (>= 100 px) foe on an uncrowded map is reached by A*.
             // tests: ZAxis.flyer_with_cross_floor_foe_shadows_it_and_never_parks_on_stair
             // tests: ZAxis.cross_floor_ai_MOVING_foe_air_unreachable_still_climbs_toward_stair
             // tests: StatsMorePaths.stats_walk_to_foe_short_circuit_and_path_branches
@@ -2186,8 +2111,7 @@ bool statistics::walk_to_foe()
 	{
 		set_last_distance(tempdistance);   // then set our checking distance ..
 
-		// rule: Part of the rule above that begins "A chaser with a path follows it; without one
-		//   ..."
+		// rule: A chaser with a path follows it.
 		// tests: StatsMorePaths.stats_walk_to_foe_short_circuit_and_path_branches
 		// tests: StatsUnit.stats_r14_hit_response_gates_and_direct_walk_and_blocked_defaults
 		// tests: SemAi4.a_chaser_follows_its_path_or_charges_when_closer_than_ever
@@ -2225,8 +2149,8 @@ static void facing_step_delta(char dir, short& xdelta, short& ydelta)
 {
 	// rule: Each of the 8 facings maps to its unit step (UP (0,-1), UR (1,-1), R (1,0), DR (1,1), D
 	//   (0,1), DL (-1,1), L (-1,0), UL (-1,-1)); an invalid facing maps to no step. Used by the
-	//   clinch breaker (stats.cpp:591), path_probe's box (stats.cpp:1113) and right_walk_to_point
-	//   (stats.cpp:1579, 1587); same table as right_walk's inline switches (stats.cpp:1003, 1048).
+	//   clinch breaker (above), path_probe's box (above) and right_walk_to_point
+	//   (below, 1587); same table as right_walk's inline switches (above, 1048).
 	// tests: SemAi4.a_point_walker_that_passed_a_corner_turns_right_and_queues_one_step_along_its_new_heading
 	// tests: SemAi4.an_invalid_facing_maps_to_no_step
 	switch (dir)
@@ -2283,23 +2207,22 @@ bool statistics::direct_walk_to_point(short x, short y)
 	xdelta = x - controlx;
 	ydelta = y - controly;
 	// rule: A walk toward a map point aims 8-way with the same 3:1 axis snap as the foe chase
-	//   (stats.cpp:1149).
+	//   (above).
 	// tests: StatsMorePaths.direct_walk_to_point_at_the_destination_issues_no_step
 	// tests: SemAi4.a_walk_to_a_point_aims_eight_ways_with_the_three_to_one_snap
 	if (std::fabs(xdelta) > std::fabs(3 * ydelta))
 		ydelta = 0;
-	// rule: Part of the rule above that begins "A walk toward a map point aims 8-way with ..."
-	// tests: StatsMorePaths.direct_walk_to_point_at_the_destination_issues_no_step
-	// tests: SemAi4.a_walk_to_a_point_aims_eight_ways_with_the_three_to_one_snap
 	if (std::fabs(ydelta) > std::fabs(3 * xdelta))
 		xdelta = 0;
 
-	// rule: Part of the rule above that begins "A walk toward a map point aims 8-way with ..."
+	// rule: A walk toward a map point aims 8-way with the same 3:1 axis snap as the foe chase
+	//   (above).
 	// tests: StatsMorePaths.direct_walk_to_point_at_the_destination_issues_no_step
 	// tests: SemAi4.a_walk_to_a_point_aims_eight_ways_with_the_three_to_one_snap
 	if (xdelta != 0.0f)
 		xdelta = xdelta / std::fabs(xdelta);
-	// rule: Part of the rule above that begins "A walk toward a map point aims 8-way with ..."
+	// rule: A walk toward a map point aims 8-way with the same 3:1 axis snap as the foe chase
+	//   (above).
 	// tests: StatsMorePaths.direct_walk_to_point_at_the_destination_issues_no_step
 	// tests: SemAi4.a_walk_to_a_point_aims_eight_ways_with_the_three_to_one_snap
 	if (ydelta != 0.0f)
@@ -2310,19 +2233,19 @@ bool statistics::direct_walk_to_point(short x, short y)
 
 	// rule: A walk toward a point takes the diagonal unit step when the grid allows, else the x
 	//   slide, else the y slide, and fails when walled or already there; it never attacks (same
-	//   ladder as stats.cpp:1174).
+	//   ladder as above).
 	// tests: StatsMorePaths.direct_walk_to_point_at_the_destination_issues_no_step
 	// tests: SemAi4.a_walk_to_a_point_slides_along_an_open_axis_and_fails_when_walled
 	if (!current_game->world->query_grid_passable(controlx + xdeltastep, controly + ydeltastep, controller_))
 	{
-		// rule: Part of the rule above that begins "A walk toward a point takes the diagonal unit
-		//   ..."
+		// rule: A walk toward a point takes the diagonal unit step when the grid allows, else the x
+		//   slide, else the y slide, and fails when walled or already there.
 		// tests: StatsMorePaths.direct_walk_to_point_at_the_destination_issues_no_step
 		// tests: SemAi4.a_walk_to_a_point_slides_along_an_open_axis_and_fails_when_walled
 		if (!current_game->world->query_grid_passable(controlx + xdeltastep, controly + 0, controller_))
 		{
-			// rule: Part of the rule above that begins "A walk toward a point takes the diagonal
-			//   unit ..."
+			// rule: A walk toward a point takes the diagonal unit step when the grid allows, else
+			//   the x slide, else the y slide, and fails when walled or already there.
 			// tests: StatsMorePaths.direct_walk_to_point_at_the_destination_issues_no_step
 			// tests: SemAi4.a_walk_to_a_point_slides_along_an_open_axis_and_fails_when_walled
 			if (!current_game->world->query_grid_passable(controlx + 0, controly + ydeltastep, controller_))
@@ -2332,8 +2255,8 @@ bool statistics::direct_walk_to_point(short x, short y)
 			}
 			else // y ok
 			{
-				// rule: Part of the rule above that begins "A walk toward a point takes the
-				//   diagonal unit ..."
+				// rule: A walk toward a point takes the diagonal unit step when the grid allows,
+				//   else the x slide, else the y slide, and fails when walled or already there.
 				// tests: StatsMorePaths.direct_walk_to_point_at_the_destination_issues_no_step
 				// tests: SemAi4.a_walk_to_a_point_slides_along_an_open_axis_and_fails_when_walled
 				if (ydelta == 0.0f)
@@ -2344,8 +2267,8 @@ bool statistics::direct_walk_to_point(short x, short y)
 		}
 		else // x ok
 		{
-			// rule: Part of the rule above that begins "A walk toward a point takes the diagonal
-			//   unit ..."
+			// rule: A walk toward a point takes the diagonal unit step when the grid allows, else
+			//   the x slide, else the y slide, and fails when walled or already there.
 			// tests: StatsMorePaths.direct_walk_to_point_at_the_destination_issues_no_step
 			// tests: SemAi4.a_walk_to_a_point_slides_along_an_open_axis_and_fails_when_walled
 			if (xdelta == 0.0f)
@@ -2356,8 +2279,8 @@ bool statistics::direct_walk_to_point(short x, short y)
 	}
 	else // x and y ok
 	{
-		// rule: Part of the rule above that begins "A walk toward a point takes the diagonal unit
-		//   ..."
+		// rule: A walk toward a point takes the diagonal unit step when the grid allows, else the x
+		//   slide, else the y slide, and fails when walled or already there.
 		// tests: StatsMorePaths.direct_walk_to_point_at_the_destination_issues_no_step
 		// tests: SemAi4.a_walk_to_a_point_slides_along_an_open_axis_and_fails_when_walled
 		if (xdelta == 0.0f && ydelta == 0.0f)
@@ -2377,7 +2300,7 @@ bool statistics::right_walk_to_point(short x, short y)
 	const bool quiet = og::sim::session_gameplay_fixes() != 0;   // Gameplay Fixes Y: a pathing probe changes nothing
 
 	// rule: Wall following toward a map point: identical right-hand rule to right_walk
-	//   (stats.cpp:972) but the open-space arm steps toward the point and never attacks. Classic:
+	//   (above) but the open-space arm steps toward the point and never attacks. Classic:
 	//   loud probes (eat/open/bump like steps). Gameplay Fixes Y: quiet probes; unlike right_walk
 	//   there is no melee-foe bump here (position goals never attack).
 	// tests: GameplayFixesWalk.right_walk_to_point_probes_quietly
@@ -2385,8 +2308,8 @@ bool statistics::right_walk_to_point(short x, short y)
 	// tests: SemAi4.a_point_walker_that_passed_a_corner_turns_right_and_queues_one_step_along_its_new_heading
 	if (right_blocked(quiet) || right_forward_blocked(quiet))
 	{
-		// rule: Part of the rule above that begins "Wall following toward a map point: identical
-		//   right-hand rule ..."
+		// rule: Wall following toward a map point: identical right-hand rule to right_walk
+		//   (above) but the open-space arm steps toward the point and never attacks.
 		// tests: GameplayFixesWalk.right_walk_to_point_probes_quietly
 		// tests: SemAi4.a_point_walker_follows_the_right_hand_rule_and_steps_at_its_point_in_the_open
 		// tests: SemAi4.a_point_walker_that_passed_a_corner_turns_right_and_queues_one_step_along_its_new_heading
@@ -2394,27 +2317,15 @@ bool statistics::right_walk_to_point(short x, short y)
 		{
 			xdelta = controller_->lastx();
 			ydelta = controller_->lasty();
-			// rule: Same as stats.cpp:978: hugging a wall keeps the last movement direction.
+			// rule: Same as above: hugging a wall keeps the last movement direction.
 			// tests: GameplayFixesWalk.right_walk_to_point_probes_quietly
 			// tests: SemAi4.a_point_walker_hugging_a_wall_keeps_its_last_direction
 			if (std::fabs(xdelta) > std::fabs(3 * ydelta))
 				ydelta = 0;
-			// rule: Part of the rule above that begins "Same as stats.cpp:978: hugging a wall keeps
-			//   the last ..."
-			// tests: GameplayFixesWalk.right_walk_to_point_probes_quietly
-			// tests: SemAi4.a_point_walker_hugging_a_wall_keeps_its_last_direction
 			if (std::fabs(ydelta) > std::fabs(3 * xdelta))
 				xdelta = 0;
-			// rule: Part of the rule above that begins "Same as stats.cpp:978: hugging a wall keeps
-			//   the last ..."
-			// tests: GameplayFixesWalk.right_walk_to_point_probes_quietly
-			// tests: SemAi4.a_point_walker_hugging_a_wall_keeps_its_last_direction
 			if (xdelta != 0.0f)
 				xdelta /= std::fabs(xdelta);
-			// rule: Part of the rule above that begins "Same as stats.cpp:978: hugging a wall keeps
-			//   the last ..."
-			// tests: GameplayFixesWalk.right_walk_to_point_probes_quietly
-			// tests: SemAi4.a_point_walker_hugging_a_wall_keeps_its_last_direction
 			if (ydelta != 0.0f)
 				ydelta /= std::fabs(ydelta);
 			return controller_->walkstep(xdelta, ydelta);
@@ -2438,8 +2349,8 @@ bool statistics::right_walk_to_point(short x, short y)
 	}
 	else
 	{
-		// rule: Part of the rule above that begins "Wall following toward a map point: identical
-		//   right-hand rule ..."
+		// rule: Wall following toward a map point: identical right-hand rule to right_walk
+		//   (above) but the open-space arm steps toward the point and never attacks.
 		// tests: GameplayFixesWalk.right_walk_to_point_probes_quietly
 		// tests: SemAi4.a_point_walker_follows_the_right_hand_rule_and_steps_at_its_point_in_the_open
 		// tests: SemAi4.a_point_walker_that_passed_a_corner_turns_right_and_queues_one_step_along_its_new_heading
@@ -2463,7 +2374,7 @@ bool statistics::walk_to_point(short x, short y)
 	Uint32 tempdistance;
 
 	// rule: One GOTO tick in 300 (random) skips the move and resets the closest-ever memory (same
-	//   rule as stats.cpp:1284); the order still counts down.
+	//   rule as above); the order still counts down.
 	// tests: ModesCtf.carrier_runs_home_distance_shrinks_each_cadence_then_captures
 	// tests: SemAi4.a_point_walk_skips_one_tick_in_300_and_resets_its_memory
 	if (!rng(300)) // random just to be sure this gets reset sometime
@@ -2485,8 +2396,8 @@ bool statistics::walk_to_point(short x, short y)
 	if (tempdistance < GOTO_ARRIVAL_DISTANCE)
 	{
 		controller_->path_to_foe.clear();
-		// rule: Part of the rule above that begins "A position goal is reached within 12 px
-		//   (Manhattan, ..."
+		// rule: A position goal is reached within 12 px (Manhattan, less than a tile so the walker
+		//   overlaps anything standing on the goal cell, e.g. a flag).
 		// tests: ModesCtf.carrier_runs_home_distance_shrinks_each_cadence_then_captures
 		// tests: SemAi4.a_point_goal_is_reached_within_12_px
 		if (!commands.empty())
@@ -2507,8 +2418,8 @@ bool statistics::walk_to_point(short x, short y)
 
 		// Do simpler pathing if the distance is short or if there are too
 		// many walkers (pathfinding is expensive)
-		// rule: Part of the rule above that begins "A GOTO re-plans every 5-14 ticks, and only a
-		//   ..."
+		// rule: A GOTO re-plans every 5-14 ticks, and only a far (>= 100 px) goal on an uncrowded
+		//   map (<= 200 objects) gets an A* route.
 		// tests: SemAi4.a_point_walk_replans_on_its_cadence_and_paths_only_far_uncrowded_goals
 		if (tempdistance >= PATHING_MIN_DISTANCE &&
 		    current_game->world->myobmap != nullptr &&
@@ -2531,7 +2442,7 @@ bool statistics::walk_to_point(short x, short y)
 	{
 		set_last_distance(tempdistance);   // then set our checking distance ..
 
-		// rule: Part of the rule above that begins "A GOTO follows its A* path when it has ..."
+		// rule: A GOTO follows its A* path when it has one.
 		// tests: SemAi4.a_point_walk_follows_its_path_or_charges_or_hugs_the_wall
 		if (!direct_walk_to_point(x, y))  // Can we walk in a direct line to the point?
 		{

@@ -72,10 +72,6 @@ bool teleport_spot_blocked_by(const walker* other, const walker* self,
 		 (other->family() == FAMILY_DOOR || other->family() == FAMILY_TREE ||
 		  other->family() == FAMILY_BOULDER ||
 		  og::sim::declares_blocks_placement(*other)));
-	// rule: Part of the rule above that begins "A blink lands only where no solid body stands: ..."
-	// tests: WalkerSpecialsUnit.teleport_blocked_marker_denied_without_probe_eat
-	// tests: WalkerSpecialsUnit.teleport_probe_keeps_no_collide_and_height_gate
-	// tests: Blink.a_blink_lands_only_where_no_solid_body_stands
 	if (!blocking)
 		return false;
 	// Cylinder z-overlap gate, mirroring ob_pass_check: height-disjoint pairs
@@ -90,8 +86,8 @@ bool teleport_spot_blocked_by(const walker* other, const walker* self,
 		const float sz2 = self_z + static_cast<float>(self->sizez());
 		const float oz1 = other->worldz();
 		const float oz2 = oz1 + static_cast<float>(other->sizez());
-		// rule: Part of the rule above that begins "Bodies separated in height never block a
-		//   landing: a ..."
+		// rule: Bodies separated in height never block a landing: a hoverer above the landing spot
+		//   does not stop a grounded blink; a height of 0 means full height and always overlaps.
 		// tests: WalkerSpecialsUnit.teleport_probe_keeps_no_collide_and_height_gate
 		// tests: Blink.a_height_overlapping_body_blocks_a_blink
 		if (sz2 <= oz1 || oz2 <= self_z)
@@ -145,27 +141,27 @@ bool teleport_landing_clear(GameWorld& world, walker* self,
 	// buckets the landing bbox touches (a boolean check needs no dedup).
 	constexpr std::int32_t kBucket = 32;
 	// plumbing: obmap bucket scan over every 32 px bucket the landing box spans; per-candidate test
-	//   is the rule at walker_specials.cpp:60 and :74; pile==nullptr (117) is an empty-bucket skip
+	//   is the rule above; pile==nullptr is an empty-bucket skip
 	for (std::int32_t bx = x; bx < x + self->sizex() + kBucket; bx += kBucket)
 	{
 		// plumbing: obmap bucket scan over every 32 px bucket the landing box spans; per-candidate
-		//   test is the rule at walker_specials.cpp:60 and :74; pile==nullptr (117) is an
+		//   test is the rule above; pile==nullptr is an
 		//   empty-bucket skip
 		for (std::int32_t by = y; by < y + self->sizey() + kBucket; by += kBucket)
 		{
 			const std::list<walker*>* pile = world.myobmap->find_list(static_cast<short>(bx), static_cast<short>(by), target_floor);
 			// plumbing: obmap bucket scan over every 32 px bucket the landing box spans;
-			//   per-candidate test is the rule at walker_specials.cpp:60 and :74; pile==nullptr
-			//   (117) is an empty-bucket skip
+			//   per-candidate test is the rule above; pile==nullptr
+			//   is an empty-bucket skip
 			if (pile == nullptr) continue;
 			// plumbing: obmap bucket scan over every 32 px bucket the landing box spans;
-			//   per-candidate test is the rule at walker_specials.cpp:60 and :74; pile==nullptr
-			//   (117) is an empty-bucket skip
+			//   per-candidate test is the rule above; pile==nullptr
+			//   is an empty-bucket skip
 			for (const walker* other : *pile)
 			{
 				// plumbing: obmap bucket scan over every 32 px bucket the landing box spans;
-				//   per-candidate test is the rule at walker_specials.cpp:60 and :74; pile==nullptr
-				//   (117) is an empty-bucket skip
+				//   per-candidate test is the rule above; pile==nullptr
+				//   is an empty-bucket skip
 				if (teleport_spot_blocked_by(other, self, x, y, self_z))
 					return false;
 			}
@@ -205,8 +201,6 @@ bool walker::special(SpecialFailure* why, std::string* reason)
 		//   are the rule rows below
 		if (why)
 			*why = failure;
-		// plumbing: SpecialFailure/reason out-param writes (null-checked); the reasons themselves
-		//   are the rule rows below
 		if (reason)
 			*reason = message;
 		return false;
@@ -286,9 +280,6 @@ bool walker::special(SpecialFailure* why, std::string* reason)
 	if (stats_->magicpoints() < cast_price)
 		TRACE("special", "refused id=%u family=%d slot=%d shift=%d team=%d reason=NOT ENOUGH MP",
 		      static_cast<unsigned>(entity_id()), family(), special_index, shifter_down(), team_num());
-	// rule: Part of the rule above that begins "A caster with less mana than the slot's price ..."
-	// tests: WalkerSpecials.no_magic, WalkerSpecialsUnit.special_reports_why_it_refused
-	// tests: WalkerSpecialsUnit.out_of_range_special_is_cast_as_special_one
 	if (stats_->magicpoints() < cast_price)
 		return fail(SpecialFailure::NoMP, "NOT ENOUGH MP");
 
@@ -314,8 +305,8 @@ bool walker::special(SpecialFailure* why, std::string* reason)
 	{
 		did_special = hook_result->succeeded();
 		decline_reason = hook_result->reason();
-		// rule: Part of the rule above that begins "A cast is charged its price exactly once and
-		//   ..."
+		// rule: A cast is charged its price exactly once and only when the family script reports
+		//   success; a declined cast (or a family with no special hook) costs nothing.
 		// tests: WalkerSpecialsUnit.out_of_range_special_is_cast_as_special_one
 		// tests: WalkerSpecials.success_returns_true_and_spends_mp
 		// tests: WalkerSpecials.turn_undead_without_undead_is_refused_with_gameplay_fixes_on
@@ -351,12 +342,6 @@ bool walker::special(SpecialFailure* why, std::string* reason)
 		TRACE("special", "refused id=%u family=%d slot=%d shift=%d team=%d reason=%s",
 		      static_cast<unsigned>(entity_id()), family(), special_index, shifter_down(), team_num(),
 		      decline_reason.empty() ? "NO SPECIAL AVAILABLE" : decline_reason.c_str());
-	// rule: Part of the rule above that begins "Every refused cast is traced once with its reason
-	//   ..."
-	// tests: WalkerSpecials.turn_undead_without_undead_is_refused_with_gameplay_fixes_on
-	// tests: SimInputHandler.belt_cast_sets_slot_and_alt_and_casts
-	// tests: TryxianLevelPlay.bots_fire_varying_specials_at_somebody
-	// tests: SemWalker4.a_family_with_no_special_hook_is_refused_free_with_the_default_reason
 	if (!did_special)
 		return fail(SpecialFailure::ScriptDeclined,
 		            decline_reason.empty() ? "NO SPECIAL AVAILABLE" : decline_reason);
@@ -380,7 +365,7 @@ bool walker::teleport()
 	// CTF reads it. (The probe itself is eat-free nowadays — see
 	// teleport_landing_clear — but the blink/movement distinction remains.)
 	// rule: A self-teleport marks the caster with the current tick before any probing, so same-tick
-	//   rules (CTF flag drop) can tell a blink from walking. Same rule as walker_specials.cpp:352.
+	//   rules (CTF flag drop) can tell a blink from walking. Same rule as below.
 	// tests: Blink.a_blink_stamps_the_self_teleport_tick_even_when_it_fails
 	if (current_game != nullptr && current_game->world != nullptr)
 		set_last_self_teleport_tick(current_game->world->tick_count_);
@@ -395,8 +380,8 @@ bool walker::teleport()
 	for(auto& uptr : current_game->world->oblist)
 	{
 	    walker* ob = uptr.get();
-		// rule: Part of the rule above that begins "A blink first seeks the caster's OWN live
-		//   teleport ..."
+		// rule: A blink first seeks the caster's OWN live teleport marker; markers owned by others,
+		//   and spent (dead) markers, are ignored.
 		// tests: WalkerSpecials.teleport_marker_lands_centered_and_spends_a_use
 		// tests: WalkerSpecialsUnit.walker_specials_r11_special_and_teleport_paths
 		// tests: Blink.a_blink_ignores_another_casters_marker
@@ -497,8 +482,8 @@ bool walker::teleport()
 	} while (keep_going > 0 &&
 	         !teleport_landing_clear(world, this, newx, newy, target_floor));
 
-	// rule: Part of the rule above that begins "With no usable marker the blink draws random grid
-	//   ..."
+	// rule: With no usable marker the blink draws random grid cells (x then y, one each per
+	//   attempt) until one is clear, up to 200 attempts.
 	// tests: WalkerSpecialsUnit.walker_specials_r11_special_and_teleport_paths
 	// tests: WalkerSpecialsUnit.teleport_single_floor_rng_stream_is_legacy_shaped
 	// tests: WalkerSpecialsUnit.teleport_blocked_marker_denied_without_probe_eat
@@ -521,7 +506,7 @@ bool walker::teleport_ranged(std::int32_t range)
 
 	// Self-teleport marker, stamped before the destination probes below —
 	// see walker::teleport for the rationale.
-	// rule: Same rule as walker_specials.cpp:254: the short escape hop also stamps the
+	// rule: Same rule as above: the short escape hop also stamps the
 	//   self-teleport tick before probing.
 	// tests: Blink.a_ranged_hop_stamps_the_self_teleport_tick_even_when_it_fails
 	if (current_game != nullptr && current_game->world != nullptr)
@@ -547,11 +532,6 @@ bool walker::teleport_ranged(std::int32_t range)
 		newy = static_cast<std::int32_t>(current_game->world->rng_.next(static_cast<std::uint32_t>(2 * range))) - range + ypos();
 		keep_going--;
 	}
-	// rule: Part of the rule above that begins "The escape hop lands within +/-range px of the ..."
-	// tests: WalkerSpecialsUnit.teleport_ranged_stays_on_floor_and_off_obstacles
-	// tests: WalkerSpecialsUnit.walker_specials_r11_special_and_teleport_paths
-	// tests: WalkerSpecials.unknown_family_and_teleport_ranged_fail_loop
-	// tests: WalkerSpecials.guard_paths_and_teleport_failures
 	if (keep_going)
 	{
 		setxy(newx, newy);
@@ -591,22 +571,22 @@ std::int32_t walker::turn_undead(std::int32_t range, std::int32_t power)
 		// Gameplay Fixes: a ring with foes but nothing to turn is refused
 		// before any roll, so the cast spends nothing (-2; -1 stays "nobody").
 		bool any_undead = false;
-		// rule: Part of the rule above that begins "Gameplay Fixes: a ring with foes but nothing
-		//   turnable ..."
+		// rule: Gameplay Fixes: a ring with foes but nothing turnable is refused before any roll
+		//   (-2), so the cast spends nothing.
 		// tests: GameplayFixesEngine.turn_undead_refuses_a_ring_without_undead_when_on
 		// tests: GameplayFixesEngine.turn_undead_roll_bound_is_classic_on_both_values
 		// tests: WalkerSpecialsUnit.walker_specials_r11_turn_undead_paths
 		// tests: parity:cleric_turn_undead_reach_fixes_scen99
 		for (auto* w : deadlist)
-			// rule: Part of the rule above that begins "Gameplay Fixes: a ring with foes but
-			//   nothing turnable ..."
+			// rule: Gameplay Fixes: a ring with foes but nothing turnable is refused before any
+			//   roll (-2), so the cast spends nothing.
 			// tests: GameplayFixesEngine.turn_undead_refuses_a_ring_without_undead_when_on
 			// tests: GameplayFixesEngine.turn_undead_roll_bound_is_classic_on_both_values
 			// tests: WalkerSpecialsUnit.walker_specials_r11_turn_undead_paths
 			// tests: parity:cleric_turn_undead_reach_fixes_scen99
 			if (turnable(w)) { any_undead = true; break; }
-		// rule: Part of the rule above that begins "Gameplay Fixes: a ring with foes but nothing
-		//   turnable ..."
+		// rule: Gameplay Fixes: a ring with foes but nothing turnable is refused before any roll
+		//   (-2), so the cast spends nothing.
 		// tests: GameplayFixesEngine.turn_undead_refuses_a_ring_without_undead_when_on
 		// tests: GameplayFixesEngine.turn_undead_roll_bound_is_classic_on_both_values
 		// tests: WalkerSpecialsUnit.walker_specials_r11_turn_undead_paths
@@ -625,12 +605,12 @@ std::int32_t walker::turn_undead(std::int32_t range, std::int32_t power)
 	const auto roll_bound = fixes ? static_cast<std::uint32_t>(power * 160)
 	                              : static_cast<std::uint32_t>(range * 40);
 
-    // plumbing: iteration over the foes in reach; per-foe rules at walker_specials.cpp:410, :412,
-    //   :418, :436
+    // plumbing: iteration over the foes in reach; per-foe rules below,
+    //   below
     for(auto* w : deadlist)
 	{
 		// rule: Inside the ring only turnable foes are rolled for: living foes and warded undead
-		//   are never turned and draw no roll. Same predicate as walker_specials.cpp:135.
+		//   are never turned and draw no roll. Same predicate as above.
 		// tests: GameplayFixesEngine.turn_undead_roll_bound_is_classic_on_both_values
 		// tests: GameplayFixesEngine.turn_undead_refuses_a_ring_without_undead_when_on
 		// tests: WalkerSpecialsUnit.walker_specials_r11_turn_undead_paths
@@ -692,18 +672,9 @@ std::int32_t walker::turn_undead(std::int32_t range, std::int32_t power)
 					if (gated < 0)
 						continue;
 					walker* const credit = credit_head();  // #411: the topmost living
-					// rule: Part of the rule above that begins "In a scripted match the level's
-					//   damage gate decides ..."
-					// tests: ModesOnslaught.turn_undead_gate_cancel_spares_the_victim
-					// tests: ModesOnslaught.turn_undead_partial_replacement_damages_not_kills
-					// tests: ModesOnslaught.turn_undead_zero_replacement_leaves_victim_untouched
-					// tests: ModesOnslaught.turn_undead_replacement_at_lethal_still_destroys
-					// tests: ModesOnslaught.turn_undead_partial_hit_credits_the_owner_chain_root
-					// tests: ModesOnslaught.turn_undead_partial_hit_by_a_charmed_caster_credits_the_caster
 					if (gated < lethal)
 					{
-						// rule: Part of the rule above that begins "In a scripted match the level's
-						//   damage gate decides ..."
+						// rule: In a scripted match the level's damage gate decides a turn.
 						// tests: ModesOnslaught.turn_undead_gate_cancel_spares_the_victim
 						// tests: ModesOnslaught.turn_undead_partial_replacement_damages_not_kills
 						// tests: ModesOnslaught.turn_undead_zero_replacement_leaves_victim_untouched
@@ -746,8 +717,8 @@ std::int32_t walker::undead_foes_in_range(std::int32_t range)
 	//   foes in reach and draws nothing (bot gate, Lua walker:undead_foes_in_range).
 	// tests: GameplayFixesEngine.undead_foes_in_range_counts_what_turn_undead_could_turn
 	for (auto* w : foes)
-		// rule: Part of the rule above that begins "The cleric's question 'how many foes here could
-		//   TURN ..."
+		// rule: The cleric's question 'how many foes here could TURN UNDEAD turn' counts only
+		//   turnable foes in reach and draws nothing (bot gate, Lua walker:undead_foes_in_range).
 		// tests: GameplayFixesEngine.undead_foes_in_range_counts_what_turn_undead_could_turn
 		if (turnable(w))
 			++undead;
@@ -777,8 +748,11 @@ std::int32_t walker::undead_foes_in_range(std::int32_t range)
 // parity canary pin above stays where it is.
 bool walker::charmed_head() const
 {
-	// Gameplay Fixes AD (#412): while a charm runs, a charmed walker heads its own owner chain
-	// (credit, friendliness and alliance follow its own colour); with the setting off the owner
-	// climbs pass through it to its tent/summoner as in the classic game.
+	// rule: Gameplay Fixes AD (#412): while a charm runs, a charmed walker heads its own owner
+	//   chain (credit, friendliness and alliance follow its own colour); with the setting off the
+	//   owner climbs pass through it to its tent/summoner as in the classic game.
+	// tests: GameplayFixesCharm.a_charmed_tent_troop_fights_for_its_charmer
+	// tests: GameplayFixesCharm.an_uncharmed_tent_troop_answers_for_its_tent_on_both_values
+	// tests: parity:thief_charm_tent_troop_fixes_scen99
 	return og::sim::session_gameplay_fixes() != 0 && charm_left() > 0;
 }

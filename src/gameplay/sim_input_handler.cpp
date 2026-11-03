@@ -45,7 +45,7 @@ const char* special_failure_message(walker::SpecialFailure why,
     // tests: SimInputUnit.sim_input_specials_disabled_and_frozen_cues
     // tests: SimInputUnit.intelligence_refusals_use_one_private_cue
     // tests: SemSimInput.a_special_that_fails_on_a_non_living_body_stays_silent
-    // unreachable: Dead (the entry check at :336 returns or replaces a dead control), NoStats
+    // unreachable: Dead (the entry check below returns or replaces a dead control), NoStats
     //   (every walker constructor builds stats_), None (walker::special never fails with None); the
     //   NotLiving sub-case is asserted
     switch (why)
@@ -104,10 +104,6 @@ bool player_cast_special(walker* control, SimInputDebounce& debounce,
     // tests: SimInputUnit.sim_input_declined_cast_explains_blocked_path_on_a_press
     if (control->special(&why, &reason))
         return true;
-    // rule: Part of the rule above that begins "A successful cast says nothing; a script refusal on
-    //   ..."
-    // tests: SimInputUnit.sim_input_successful_cast_is_never_called_a_failure
-    // tests: SimInputUnit.sim_input_declined_cast_explains_blocked_path_on_a_press
     if (why == walker::SpecialFailure::ScriptDeclined && !press_edge)
         return false;
     emit_throttled_cue(debounce, player_num, sim_events,
@@ -140,8 +136,8 @@ bool sim_arm_belt_entry(const GameWorld& level, walker& control,
     {
         case og::sim::belt::Refusal::None:
             control.set_current_special(static_cast<char>(entry.slot));
-            // rule: Part of the rule above that begins "New Ability Select belt: a valid belt key
-            //   sets ..."
+            // rule: New Ability Select belt: a valid belt key sets the slot and the shift from the
+            //   entry.
             // tests: SimInputHandler.belt_cast_sets_slot_and_alt_and_casts
             // tests: SimInputHandler.locked_slot_is_refused_with_a_cue_and_no_cast
             // tests: SimInputHandler.cast_nothing_voices_no_ability_there
@@ -149,8 +145,8 @@ bool sim_arm_belt_entry(const GameWorld& level, walker& control,
             control.set_shifter_down(entry.alt ? 1 : 0);
             return true;
         case og::sim::belt::Refusal::Locked:
-            // rule: Part of the rule above that begins "New Ability Select belt: a valid belt key
-            //   sets ..."
+            // rule: New Ability Select belt: a valid belt key sets the slot and the shift from the
+            //   entry.
             // tests: SimInputHandler.belt_cast_sets_slot_and_alt_and_casts
             // tests: SimInputHandler.locked_slot_is_refused_with_a_cue_and_no_cast
             // tests: SimInputHandler.cast_nothing_voices_no_ability_there
@@ -164,11 +160,6 @@ bool sim_arm_belt_entry(const GameWorld& level, walker& control,
         case og::sim::belt::Refusal::NothingThere:
             break;
     }
-    // rule: Part of the rule above that begins "New Ability Select belt: a valid belt key sets ..."
-    // tests: SimInputHandler.belt_cast_sets_slot_and_alt_and_casts
-    // tests: SimInputHandler.locked_slot_is_refused_with_a_cue_and_no_cast
-    // tests: SimInputHandler.cast_nothing_voices_no_ability_there
-    // tests: SimInputHandler.malformed_byte_is_refused_like_cast_nothing
     if (press_edge)
         emit_throttled_cue(debounce, player_num, sim_events, "NO ABILITY THERE");
     return false;
@@ -179,8 +170,8 @@ walker* sim_find_next_control(GameWorld& level, short my_team)
     TRACE("sim_input", "find_next_control for team %d", my_team);
 
     // First look for a player character, not already controlled
-    // plumbing: oblist scans of sim_find_next_control; the rules are sim_input_handler.cpp:137 and
-    //   :154
+    // plumbing: oblist scans of sim_find_next_control; the rules are below and
+    //   below
     for (auto& uptr : level.oblist)
     {
         walker* w = uptr.get();
@@ -203,8 +194,8 @@ walker* sim_find_next_control(GameWorld& level, short my_team)
     }
 
     // Second, look for anyone on our team
-    // plumbing: oblist scans of sim_find_next_control; the rules are sim_input_handler.cpp:137 and
-    //   :154
+    // plumbing: oblist scans of sim_find_next_control; the rules are above and
+    //   below
     for (auto& uptr : level.oblist)
     {
         walker* w = uptr.get();
@@ -251,8 +242,8 @@ walker* sim_cycle_next_character(
     {
         // Get where we are in the list
         auto mine = std::find_if(oblist.begin(), oblist.end(), is_current);
-        // rule: Part of the rule above that begins "Switch Character cycles through eligible bodies
-        //   in object-list order ..."
+        // rule: Switch Character cycles through eligible bodies in object-list order after the
+        //   current one, wrapping to the start; Shift cycles backward.
         // tests: SimInputHandler.sim_input_switch_char_wraparound_forward_and_reverse
         // tests: SimInputHandler.sim_input_switch_char_forward_and_reverse_paths
         // tests: SemSimInput.switch_character_from_a_body_outside_the_list_finds_nobody
@@ -260,12 +251,12 @@ walker* sim_cycle_next_character(
             return nullptr;
         // Search from after current to end
         // plumbing: the four list scans of sim_cycle_next_character; rule at
-        //   sim_input_handler.cpp:182
+        //   above
         for (auto e = std::next(mine); e != oblist.end(); ++e)
         {
             walker* w = e->get();
-            // rule: Part of the rule above that begins "Switch Character cycles through eligible
-            //   bodies in object-list order ..."
+            // rule: Switch Character cycles through eligible bodies in object-list order after the
+            //   current one, wrapping to the start; Shift cycles backward.
             // tests: SimInputHandler.sim_input_switch_char_wraparound_forward_and_reverse
             // tests: SimInputHandler.sim_input_switch_char_forward_and_reverse_paths
             // tests: SemSimInput.switch_character_from_a_body_outside_the_list_finds_nobody
@@ -273,13 +264,11 @@ walker* sim_cycle_next_character(
                 return w;
         }
         // Wrap: search from begin to current
-        // plumbing: the four list scans of sim_cycle_next_character; rule at
-        //   sim_input_handler.cpp:182
         for (auto e = oblist.begin(); e != mine; ++e)
         {
             walker* w = e->get();
-            // rule: Part of the rule above that begins "Switch Character cycles through eligible
-            //   bodies in object-list order ..."
+            // rule: Switch Character cycles through eligible bodies in object-list order after the
+            //   current one, wrapping to the start; Shift cycles backward.
             // tests: SimInputHandler.sim_input_switch_char_wraparound_forward_and_reverse
             // tests: SimInputHandler.sim_input_switch_char_forward_and_reverse_paths
             // tests: SemSimInput.switch_character_from_a_body_outside_the_list_finds_nobody
@@ -290,20 +279,20 @@ walker* sim_cycle_next_character(
     else
     {
         auto mine = std::find_if(oblist.rbegin(), oblist.rend(), is_current);
-        // rule: Part of the rule above that begins "Switch Character cycles through eligible bodies
-        //   in object-list order ..."
+        // rule: Switch Character cycles through eligible bodies in object-list order after the
+        //   current one, wrapping to the start; Shift cycles backward.
         // tests: SimInputHandler.sim_input_switch_char_wraparound_forward_and_reverse
         // tests: SimInputHandler.sim_input_switch_char_forward_and_reverse_paths
         // tests: SemSimInput.switch_character_from_a_body_outside_the_list_finds_nobody
         if (mine == oblist.rend())
             return nullptr;
         // plumbing: the four list scans of sim_cycle_next_character; rule at
-        //   sim_input_handler.cpp:182
+        //   above
         for (auto e = std::next(mine); e != oblist.rend(); ++e)
         {
             walker* w = e->get();
-            // rule: Part of the rule above that begins "Switch Character cycles through eligible
-            //   bodies in object-list order ..."
+            // rule: Switch Character cycles through eligible bodies in object-list order after the
+            //   current one, wrapping to the start; Shift cycles backward.
             // tests: SimInputHandler.sim_input_switch_char_wraparound_forward_and_reverse
             // tests: SimInputHandler.sim_input_switch_char_forward_and_reverse_paths
             // tests: SemSimInput.switch_character_from_a_body_outside_the_list_finds_nobody
@@ -311,12 +300,12 @@ walker* sim_cycle_next_character(
                 return w;
         }
         // plumbing: the four list scans of sim_cycle_next_character; rule at
-        //   sim_input_handler.cpp:182
+        //   above
         for (auto e = oblist.rbegin(); e != mine; ++e)
         {
             walker* w = e->get();
-            // rule: Part of the rule above that begins "Switch Character cycles through eligible
-            //   bodies in object-list order ..."
+            // rule: Switch Character cycles through eligible bodies in object-list order after the
+            //   current one, wrapping to the start; Shift cycles backward.
             // tests: SimInputHandler.sim_input_switch_char_wraparound_forward_and_reverse
             // tests: SimInputHandler.sim_input_switch_char_forward_and_reverse_paths
             // tests: SemSimInput.switch_character_from_a_body_outside_the_list_finds_nobody
@@ -334,6 +323,9 @@ void sim_advance_current_special(const GameWorld& level, walker& control)
     const int special_index = static_cast<int>(control.current_special());
     const FamilyDescriptor* const descriptor = get_family_descriptor(
         static_cast<int>(static_cast<unsigned char>(control.family())));
+    // rule: Switch Special treats a slot outside the family's specials, or a family with no
+    //   descriptor, as unnamed, so the cycle wraps there.
+    // tests: SimInputHandler.sim_input_switch_special_wraps_and_debounces
     const char* const special_name =
         descriptor == nullptr || special_index < 0 ||
                 special_index >= NUM_SPECIALS
@@ -383,8 +375,13 @@ walker* sim_switch_control(GameWorld& level, walker& control, walker* anchor,
         // Nor to a hidden one (dug in, or a ghost riding a body), nor to
         // either side of a possession: a possessed body belongs to the seat
         // whose ghost rides it, and a bot's possession is the bot's.
-        // Switch Character never hands a seat a dead, dormant, hidden, possessed, charmed (real
-        // team set), foreign-team or other-seat body, nor one the ownership policy refuses.
+        // rule: Switch Character never hands a seat a dead, dormant, hidden, possessed, charmed
+        //   (real team set), foreign-team or other-seat body, nor one the ownership policy refuses.
+        // tests: SimInputHandler.sim_input_switch_char_skips_ineligible_candidates_then_selects_valid
+        // tests: SimInputUnit.sim_input_switch_char_skips_dormant_and_dead_allies
+        // tests: SimInputUnit.sim_control_owner_locked_switch_char_skips_foreign_hero
+        // tests: KitPossession.claim_scans_refuse_linked_walkers
+        // tests: KitPossession.claim_scans_refuse_a_hidden_unlinked_walker
         return !w->dead() && !w->dormant() && !w->hidden() &&
                w->possess_link() == 0 &&
                w->query_order() == Order::Living &&
@@ -451,8 +448,8 @@ SimInputResult sim_process_player_input(
         if (control != before_redirect)
         {
             result.new_control = control;
-            // rule: Part of the rule above that begins "New Specials possession: a seat whose ghost
-            //   rides a ..."
+            // rule: New Specials possession: a seat whose ghost rides a body is moved to drive the
+            //   body (and back to the ghost on release).
             // tests: KitPossession.seat_redirect_follows_host_then_returns
             // tests: KitPossession.possess_redirect_tick_consumes_the_rest_of_the_input
             // tests: KitPossession.seat_follows_the_ghost_out_of_a_dying_host
@@ -472,8 +469,8 @@ SimInputResult sim_process_player_input(
     // tests: SimInputUnit.sim_control_owner_locked_allowed_supplied_control_is_claimed
     if (control && control->user() == -1)
     {
-        // rule: Part of the rule above that begins "A supplied unseated control is claimed this
-        //   tick; if ..."
+        // rule: A supplied unseated control is claimed this tick; if the ownership policy refuses
+        //   it the seat is treated as having no control (#333).
         // tests: SimInputUnit.sim_control_owner_locked_refused_supplied_control_is_not_claimed
         // tests: SimInputUnit.sim_control_owner_locked_allowed_supplied_control_is_claimed
         if (!sim_claim_control(level, *control, player_num))
@@ -494,7 +491,8 @@ SimInputResult sim_process_player_input(
         // death path below auto-claims another teammate, which makes the
         // player miss the countdown and then leaves the revived hero as AI.
         // This predicate also covers the just-died, pre-death-scan tick.
-        // rule: Part of the rule above that begins "A seat whose hero is dead but due to ..."
+        // rule: A seat whose hero is dead but due to respawn keeps that exact hero (it does not
+        //   jump to a teammate and miss the countdown).
         // tests: SimInputHandler.respawning_dead_hero_does_not_switch_to_teammate
         if (control != nullptr &&
             og::sim::respawn_retains_player_control(level, control))
@@ -516,13 +514,6 @@ SimInputResult sim_process_player_input(
         // tests: SimInputUnit.sim_control_owner_locked_death_reacquire_claims_same_machine
         if (og::sim::sim_reacquire_apply(level, my_team, player_num, control, result))
             return result;
-        // rule: Part of the rule above that begins "With no live control the seat takes the
-        //   policy's ..."
-        // tests: SimInputHandler.sim_input_endgame_when_no_control
-        // tests: SimInputHandler.sim_input_dead_control_reassigns_to_next_alive
-        // tests: SimInputUnit.sim_control_owner_locked_death_reacquire_follows_not_claims
-        // tests: SimInputUnit.sim_control_owner_locked_death_reacquire_endgame_on_wipe
-        // tests: SimInputUnit.sim_control_owner_locked_death_reacquire_claims_same_machine
         if (control->user() == -1)
             control->set_user(static_cast<signed char>(player_num));
         control->set_act_type(ACT_CONTROL);
@@ -539,8 +530,8 @@ SimInputResult sim_process_player_input(
     if (control && control->bonus_rounds())
     {
         control->set_bonus_rounds(control->bonus_rounds() - 1);
-        // rule: Part of the rule above that begins "A seated hero with banked bonus rounds spends
-        //   one ..."
+        // rule: A seated hero with banked bonus rounds spends one per input tick on repeating its
+        //   last step (if it was moving).
         // tests: SimInputHandler.sim_input_bonus_rounds_walks_when_last_vector_nonzero
         // tests: SimInputHandler.sim_input_bonus_round_repeat_fire_and_walkstep_all_land_in_one_tick
         // tests: SimInputHandler.sim_input_held_direction_walksteps_and_advances_one_stepsize
@@ -572,8 +563,9 @@ SimInputResult sim_process_player_input(
         // tests: KitPossession.seat_redirect_follows_host_then_returns
         if (control->possess_link() != 0 && !control->hidden())
         {
-            // rule: Part of the rule above that begins "New Specials: Switch Character inside a
-            //   possessed body lets ..."
+            // rule: New Specials: Switch Character inside a possessed body lets the body go; the
+            //   seat returns to the ghost where it stands, and the next press cycles heroes as
+            //   usual.
             // tests: KitPossession.charmed_host_released_by_switch_character
             // tests: KitPossession.seat_redirect_follows_host_then_returns
             if (walker* rider = og::sim::release_possession(level, *control))
@@ -637,14 +629,15 @@ SimInputResult sim_process_player_input(
     // tests: SemSimInput.a_hidden_hero_holding_special_casts_on_the_repeat
     if (control->hidden())
     {
-        // rule: Part of the rule above that begins "New Specials: a hidden hero (dug in, or a ..."
+        // rule: New Specials: a hidden hero (dug in, or a ghost riding a body) answers only Special
+        //   (press or hold.
         // tests: KitSeams.hidden_control_reads_only_special_and_switch
         // tests: KitSkeleton.seated_hero_digs_in_where_it_stands
         // tests: SemSimInput.a_hidden_hero_holding_special_casts_on_the_repeat
         if (control->user() == player_num)
         {
-            // rule: Part of the rule above that begins "New Specials: a hidden hero (dug in, or a
-            //   ..."
+            // rule: New Specials: a hidden hero (dug in, or a ghost riding a body) answers only
+            //   Special (press or hold.
             // tests: KitSeams.hidden_control_reads_only_special_and_switch
             // tests: KitSkeleton.seated_hero_digs_in_where_it_stands
             // tests: SemSimInput.a_hidden_hero_holding_special_casts_on_the_repeat
@@ -666,8 +659,7 @@ SimInputResult sim_process_player_input(
     if (!pi.was_pressed(InputAction::SwitchSpecial))
         debounce.changedspec = 0;
 
-    // rule: Part of the rule above that begins "Switch Special advances once per press (debounced
-    //   until released)."
+    // rule: Switch Special advances once per press (debounced until released).
     // tests: SimInputHandler.sim_input_switch_special_wraps_and_debounces
     // tests: ViewInputPaths.view_input_special_switch_cycles_the_current_special
     if (pi.was_pressed(InputAction::SwitchSpecial) && !debounce.changedspec)
@@ -689,7 +681,7 @@ SimInputResult sim_process_player_input(
     // rule: Yell (Yo!) recruits every unseated teammate of order Living that has no leader: it
     //   follows the hero (leader set, foe dropped, a forced 100-step follow); the filter has NO
     //   dead/dormant/hidden check, so a dead, dormant or hidden teammate is recruited too (classic
-    //   quirk, old game view.cpp:626-629 identical). The hero cannot yell again for 30 ticks.
+    //   quirk, old game view.cpp identical). The hero cannot yell again for 30 ticks.
     // tests: SimInputHandler.sim_input_yell_sets_follow_and_notification
     // tests: SimInputHandler.sim_input_yell_within_cooldown_emits_nothing
     // tests: SimInputHandler.sim_input_cheat_gates_and_command_queue_skip_movement_block
@@ -700,12 +692,11 @@ SimInputResult sim_process_player_input(
         && !pi.is_held(InputAction::Cheat))
     {
         // plumbing: oblist scans of Yell / Summon Defense / Release Men; rules at
-        //   sim_input_handler.cpp:460 and :492
+        //   above and below
         for (auto& uptr : level.oblist)
         {
             walker* w = uptr.get();
-            // rule: Part of the rule above that begins "Yell (Yo!) recruits every unseated teammate
-            //   of order Living ..."
+            // rule: Yell (Yo!) recruits every unseated teammate of order Living that has no leader.
             // tests: SimInputHandler.sim_input_yell_sets_follow_and_notification
             // tests: SimInputHandler.sim_input_yell_within_cooldown_emits_nothing
             // tests: SimInputHandler.sim_input_cheat_gates_and_command_queue_skip_movement_block
@@ -748,8 +739,7 @@ SimInputResult sim_process_player_input(
     if (pi.is_held(InputAction::Shift) && pi.was_pressed(InputAction::Yell)
         && !pi.is_held(InputAction::Cheat))
     {
-        // rule: Part of the rule above that begins "Shift+Yell toggles Summon Defense: on, every
-        //   same-team friendly object ..."
+        // rule: Shift+Yell toggles Summon Defense.
         // tests: SimInputHandler.sim_input_shift_yell_summon_and_release
         // tests: SimInputHandler.sim_input_yell_movement_and_idle_animate_branches
         // tests: ViewInputPaths.view_input_yell_and_shift_yell_team_actions
@@ -759,12 +749,11 @@ SimInputResult sim_process_player_input(
         {
             case 0:
                 // plumbing: oblist scans of Yell / Summon Defense / Release Men; rules at
-                //   sim_input_handler.cpp:460 and :492
+                //   above
                 for (auto& uptr : level.oblist)
                 {
                     walker* w = uptr.get();
-                    // rule: Part of the rule above that begins "Shift+Yell toggles Summon Defense:
-                    //   on, every same-team friendly object ..."
+                    // rule: Shift+Yell toggles Summon Defense.
                     // tests: SimInputHandler.sim_input_shift_yell_summon_and_release
                     // tests: SimInputHandler.sim_input_yell_movement_and_idle_animate_branches
                     // tests: ViewInputPaths.view_input_yell_and_shift_yell_team_actions
@@ -784,12 +773,11 @@ SimInputResult sim_process_player_input(
                 break;
             case ACTION_FOLLOW:
                 // plumbing: oblist scans of Yell / Summon Defense / Release Men; rules at
-                //   sim_input_handler.cpp:460 and :492
+                //   above
                 for (auto& uptr : level.oblist)
                 {
                     walker* w = uptr.get();
-                    // rule: Part of the rule above that begins "Shift+Yell toggles Summon Defense:
-                    //   on, every same-team friendly object ..."
+                    // rule: Shift+Yell toggles Summon Defense.
                     // tests: SimInputHandler.sim_input_shift_yell_summon_and_release
                     // tests: SimInputHandler.sim_input_yell_movement_and_idle_animate_branches
                     // tests: ViewInputPaths.view_input_yell_and_shift_yell_team_actions
@@ -846,13 +834,13 @@ SimInputResult sim_process_player_input(
     // tests: SimInputUnit.sim_input_specials_disabled_and_frozen_cues
     // tests: SimInputHandler.sim_input_frozen_and_user_mismatch_drop_movement_and_cue
     // tests: StatsFright.sim_player_thaw_immunity_window
-    // unreachable: a dead control never reaches :551; the check at :336 returns (respawn retains
+    // unreachable: a dead control never reaches here; the check above returns (respawn retains
     //   it) or replaces it, and nothing between (bonus-round walk, switch filter skips the dead,
-    //   yell, the attack row's fire at :544) kills the seat's own walker
+    //   yell, the attack row's fire above) kills the seat's own walker
     if (control->dead() || control->stats()->frozen_delay())
     {
-        // rule: Part of the rule above that begins "A frozen seated hero ignores every key;
-        //   pressing Special ..."
+        // rule: A frozen seated hero ignores every key; pressing Special or Fire says 'FROZEN!';
+        //   each input tick thaws it by one and the 1 -> 0 thaw writes the freeze-immunity window.
         // tests: SimInputUnit.sim_input_specials_disabled_and_frozen_cues
         // tests: SimInputHandler.sim_input_frozen_and_user_mismatch_drop_movement_and_cue
         // tests: StatsFright.sim_player_thaw_immunity_window
@@ -861,8 +849,9 @@ SimInputResult sim_process_player_input(
             // #222: every key from here down is dropped on the floor. Tell
             // the seat its hero is iced rather than letting the pad feel
             // broken.
-            // rule: Part of the rule above that begins "A frozen seated hero ignores every key;
-            //   pressing Special ..."
+            // rule: A frozen seated hero ignores every key; pressing Special or Fire says
+            //   'FROZEN!'; each input tick thaws it by one and the 1 -> 0 thaw writes the
+            //   freeze-immunity window.
             // tests: SimInputUnit.sim_input_specials_disabled_and_frozen_cues
             // tests: SimInputHandler.sim_input_frozen_and_user_mismatch_drop_movement_and_cue
             // tests: StatsFright.sim_player_thaw_immunity_window
@@ -971,8 +960,8 @@ SimInputResult sim_process_player_input(
         // The held key can land a cast that hides its caster too (a held
         // POSSESS that reaches the foe a tick later): the same rule as the
         // press arm, no step and no fire after it.
-        // rule: Part of the rule above that begins "New Specials: a cast that hides its caster (a
-        //   ..."
+        // rule: New Specials: a cast that hides its caster (a ghost entering a body, a skeleton
+        //   digging in) ends the seat's input for that tick: no step and no fire after it.
         // tests: KitSeams.a_cast_that_hides_its_caster_ends_the_tick
         if (control->hidden())
         {
@@ -998,8 +987,7 @@ SimInputResult sim_process_player_input(
             control->set_frame_from_current_walk_animation();
         }
 
-        // rule: Part of the rule above that begins "Fire attacks on the press and keeps attacking
-        //   while ..."
+        // rule: Fire attacks on the press and keeps attacking while held.
         // tests: SimInputHandler.sim_input_fire_press_attacks_and_a_queued_command_suppresses_it
         // tests: SimInputUnit.sim_input_r11_animate_movement_and_bit_animate_paths
         // tests: SemSimInput.no_fire_key_means_no_attack

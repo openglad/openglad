@@ -18,7 +18,7 @@ local HOP_Y = { -1, -1, 0, 1, 1, 1, 0, -1 }
 -- when the world is full.
 local function flash_at(at)
   local flash = og.add_ob("fx", FX_FLASH)
-  -- plumbing: og.add_ob (lines 21, 32) and add_ob('living') (315) nil when the world is full: flash
+  -- plumbing: og.add_ob and add_ob('living') nil when the world is full: flash
   --   and hit spark skipped, WISH refuses COULD NOT RESURRECT.
   if flash then
     flash.ani_type = C.ANI_EXPAND_8
@@ -31,7 +31,7 @@ end
 -- The combat hit spark on `target` (the engine's own hit effect, no damage).
 local function hit_on(target)
   local hit = og.add_ob("fx", FX_HIT)
-  -- plumbing: og.add_ob (lines 21, 32) and add_ob('living') (315) nil when the world is full: flash
+  -- plumbing: og.add_ob and add_ob('living') nil when the world is full: flash
   --   and hit spark skipped, WISH refuses COULD NOT RESURRECT.
   if hit then
     hit.ani_type = 1
@@ -55,9 +55,6 @@ local function swappable(self, ob)
   if ob == self then
     return false
   end
-  -- rule: Part of the rule above that begins "SWAP trades places with the nearest living walker,
-  --   ally ..."
-  -- tests: KitFaerie.swap_trades_places_only_in_line_of_sight
   if ob:order() ~= C.ORDER_LIVING then
     return false
   end
@@ -70,18 +67,18 @@ local function swap_partner(self, range)
   local near = og.find_in_range("ob", range, self)
   local best = nil
   local best_dist = range + 1
-  -- rule: Part of the rule above that begins "SWAP trades places with the nearest living walker,
-  --   ally ..."
+  -- rule: SWAP trades places with the nearest living walker, ally or foe, within swap_range (80)
+  --   that has a clear line of sight to the faerie (same floor).
   -- tests: KitFaerie.swap_trades_places_only_in_line_of_sight
   for i = 1, #near do
     local ob = near[i]
-    -- rule: Part of the rule above that begins "SWAP trades places with the nearest living walker,
-    --   ally ..."
+    -- rule: SWAP trades places with the nearest living walker, ally or foe, within swap_range (80)
+    --   that has a clear line of sight to the faerie (same floor).
     -- tests: KitFaerie.swap_trades_places_only_in_line_of_sight
     if swappable(self, ob) then
       local dist = self:distance_to_ob(ob)
-      -- rule: Part of the rule above that begins "SWAP trades places with the nearest living
-      --   walker, ally ..."
+      -- rule: SWAP trades places with the nearest living walker, ally or foe, within swap_range
+      --   (80) that has a clear line of sight to the faerie (same floor).
       -- tests: KitFaerie.swap_trades_places_only_in_line_of_sight
       if dist < best_dist then
         best = ob
@@ -104,14 +101,14 @@ local function hasten_partner(self, reach)
   -- tests: SemLibsFaerie.hasten_skips_an_ally_on_another_floor
   for i = 1, #friends do
     local ally = friends[i]
-    -- rule: Part of the rule above that begins "HASTEN's partner is the nearest living ally on the
-    --   ..."
+    -- rule: HASTEN's partner is the nearest living ally on the faerie's floor within hasten_reach
+    --   (40), never herself or a foe.
     -- tests: KitFaerie.hasten_ally_or_self_by_shift
     -- tests: SemLibsFaerie.hasten_skips_an_ally_on_another_floor
     if ally:floor() == self:floor() then
       local dist = self:distance_to_ob(ally)
-      -- rule: Part of the rule above that begins "HASTEN's partner is the nearest living ally on
-      --   the ..."
+      -- rule: HASTEN's partner is the nearest living ally on the faerie's floor within hasten_reach
+      --   (40), never herself or a foe.
       -- tests: KitFaerie.hasten_ally_or_self_by_shift
       -- tests: SemLibsFaerie.hasten_skips_an_ally_on_another_floor
       if dist < best_dist then
@@ -137,32 +134,33 @@ local function wish_stain(self, range)
   -- tests: SemLibsFaerie.wish_never_raises_a_fallen_ally_on_another_floor
   for i = 1, #fxs do
     local ob = fxs[i]
-    -- rule: Part of the rule above that begins "WISH raises only a friendly blood stain on the ..."
+    -- rule: WISH raises only a friendly blood stain on the faerie's floor strictly closer than
+    --   wish_range (120), the nearest one.
     -- tests: KitFaerie.wish_raises_the_nearest_fallen_ally_at_full_and_heals_the_party_then_pops
     -- tests: KitFaerie.wish_with_no_fallen_ally_refuses_and_spends_nothing
     -- tests: SemLibsFaerie.wish_never_raises_a_fallen_ally_on_another_floor
     if ob:order() == C.ORDER_TREASURE then
-      -- rule: Part of the rule above that begins "WISH raises only a friendly blood stain on the
-      --   ..."
+      -- rule: WISH raises only a friendly blood stain on the faerie's floor strictly closer than
+      --   wish_range (120), the nearest one.
       -- tests: KitFaerie.wish_raises_the_nearest_fallen_ally_at_full_and_heals_the_party_then_pops
       -- tests: KitFaerie.wish_with_no_fallen_ally_refuses_and_spends_nothing
       -- tests: SemLibsFaerie.wish_never_raises_a_fallen_ally_on_another_floor
       if ob:family() == TREASURE_STAIN then
-        -- rule: Part of the rule above that begins "WISH raises only a friendly blood stain on the
-        --   ..."
+        -- rule: WISH raises only a friendly blood stain on the faerie's floor strictly closer than
+        --   wish_range (120), the nearest one.
         -- tests: KitFaerie.wish_raises_the_nearest_fallen_ally_at_full_and_heals_the_party_then_pops
         -- tests: KitFaerie.wish_with_no_fallen_ally_refuses_and_spends_nothing
         -- tests: SemLibsFaerie.wish_never_raises_a_fallen_ally_on_another_floor
         if ob:floor() == self:floor() then
-          -- rule: Part of the rule above that begins "WISH raises only a friendly blood stain on
-          --   the ..."
+          -- rule: WISH raises only a friendly blood stain on the faerie's floor strictly closer
+          --   than wish_range (120), the nearest one.
           -- tests: KitFaerie.wish_raises_the_nearest_fallen_ally_at_full_and_heals_the_party_then_pops
           -- tests: KitFaerie.wish_with_no_fallen_ally_refuses_and_spends_nothing
           -- tests: SemLibsFaerie.wish_never_raises_a_fallen_ally_on_another_floor
           if self:is_friendly(ob) then
             local dist = self:distance_to_ob(ob)
-            -- rule: Part of the rule above that begins "WISH raises only a friendly blood stain on
-            --   the ..."
+            -- rule: WISH raises only a friendly blood stain on the faerie's floor strictly closer
+            --   than wish_range (120), the nearest one.
             -- tests: KitFaerie.wish_raises_the_nearest_fallen_ally_at_full_and_heals_the_party_then_pops
             -- tests: KitFaerie.wish_with_no_fallen_ally_refuses_and_spends_nothing
             -- tests: SemLibsFaerie.wish_never_raises_a_fallen_ally_on_another_floor
@@ -199,13 +197,13 @@ local function heal_party(self, radius)
   -- tests: SemLibsFaerie.wish_shows_no_heal_number_over_an_ally_already_whole
   for i = 1, #friends do
     local ally = friends[i]
-    -- rule: Part of the rule above that begins "WISH heals every living ally on the faerie's floor
-    --   ..."
+    -- rule: WISH heals every living ally on the faerie's floor within wish_heal_radius (96) to
+    --   full, with the healer's green number.
     -- tests: KitFaerie.wish_raises_the_nearest_fallen_ally_at_full_and_heals_the_party_then_pops
     -- tests: SemLibsFaerie.wish_shows_no_heal_number_over_an_ally_already_whole
     if ally:floor() == self:floor() then
-      -- rule: Part of the rule above that begins "WISH heals every living ally on the faerie's
-      --   floor ..."
+      -- rule: WISH heals every living ally on the faerie's floor within wish_heal_radius (96) to
+      --   full, with the healer's green number.
       -- tests: KitFaerie.wish_raises_the_nearest_fallen_ally_at_full_and_heals_the_party_then_pops
       -- tests: SemLibsFaerie.wish_shows_no_heal_number_over_an_ally_already_whole
       if ally.hp < ally.max_hp then
@@ -226,13 +224,11 @@ local function wounded_allies(self, radius)
   -- tests: KitFaerie.ai_wish_fires_with_a_fallen_ally_and_two_wounded
   for i = 1, #friends do
     local ally = friends[i]
-    -- rule: Part of the rule above that begins "The faerie's WISH gate counts living allies on her
-    --   ..."
+    -- rule: The faerie's WISH gate counts living allies on her floor within 96 below half health.
     -- tests: KitFaerie.ai_wish_fires_with_a_fallen_ally_and_two_wounded
     if ally:floor() == self:floor() then
       -- max_hp is a C++ float: fdiv is a genuine float half
-      -- rule: Part of the rule above that begins "The faerie's WISH gate counts living allies on
-      --   her ..."
+      -- rule: The faerie's WISH gate counts living allies on her floor within 96 below half health.
       -- tests: KitFaerie.ai_wish_fires_with_a_fallen_ally_and_two_wounded
       if ally.hp < og.fdiv(ally.max_hp, 2.0) then
         count = count + 1
@@ -259,8 +255,8 @@ local function blink_spot(self, len)
   -- tests: KitFaerie.blink_with_nowhere_to_land_refuses_and_spends_nothing
   for k = 0, 7 do
     local dir = og.mod(d0 + k, 8) + 1
-    -- rule: Part of the rule above that begins "BLINK hops blink_base+2/level px in a random one of
-    --   ..."
+    -- rule: BLINK hops blink_base+2/level px in a random one of eight directions, trying the others
+    --   clockwise. Here: `for part 3..1`.
     -- tests: KitFaerie.blink_hops_a_fixed_length_then_rests_a_second
     -- tests: KitFaerie.blink_falls_back_to_a_shorter_hop_when_hemmed_in
     -- tests: KitFaerie.blink_with_nowhere_to_land_refuses_and_spends_nothing
@@ -268,8 +264,8 @@ local function blink_spot(self, len)
       local hop = og.div(len * part, 3)
       local nx = x + HOP_X[dir] * hop
       local ny = y + HOP_Y[dir] * hop
-      -- rule: Part of the rule above that begins "BLINK hops blink_base+2/level px in a random one
-      --   of ..."
+      -- rule: BLINK hops blink_base+2/level px in a random one of eight directions, trying the
+      --   others clockwise. Here: `spawn_spot_clear`.
       -- tests: KitFaerie.blink_hops_a_fixed_length_then_rests_a_second
       -- tests: KitFaerie.blink_falls_back_to_a_shorter_hop_when_hemmed_in
       -- tests: KitFaerie.blink_with_nowhere_to_land_refuses_and_spends_nothing
@@ -310,8 +306,8 @@ local function blink(self)
   end
   local t = og.tuning(self)
   local x, y = blink_spot(self, t.blink_base + t.blink_per_level * self.level)
-  -- rule: Part of the rule above that begins "BLINK hops blink_base+2/level px in a random one of
-  --   ..."
+  -- rule: BLINK hops blink_base+2/level px in a random one of eight directions, trying the others
+  --   clockwise. Here: `x == nil`.
   -- tests: KitFaerie.blink_hops_a_fixed_length_then_rests_a_second
   -- tests: KitFaerie.blink_falls_back_to_a_shorter_hop_when_hemmed_in
   -- tests: KitFaerie.blink_with_nowhere_to_land_refuses_and_spends_nothing
@@ -329,7 +325,7 @@ end
 -- SWAP: trade places with the nearest walker in sight, ally or foe. It
 -- rests as long as BLINK does, so a held key cannot swap straight back.
 local function swap(self)
-  -- rule: Part of the rule above that begins "BLINK and SWAP share a hop's rest: busy beyond ..."
+  -- rule: BLINK and SWAP share a hop's rest.
   -- tests: KitFaerie.blink_slips_out_between_sprinkles, KitFaerie.swap_refuses_while_resting
   -- tests: KitFaerie.blink_hops_a_fixed_length_then_rests_a_second
   if resting(self) then
@@ -346,17 +342,9 @@ local function swap(self)
   end
   -- The faerie flies: a walker that cannot stand where she hovers (water,
   -- a wall's edge) is not dropped there.
-  -- rule: Part of the rule above that begins "SWAP refuses with nobody in sight, and refuses SWAP
-  --   ..."
-  -- tests: KitFaerie.swap_trades_places_only_in_line_of_sight
-  -- tests: KitFaerie.swap_never_drops_a_walker_into_water_she_hovers_over
   if not og.query_grid_passable(self:xpos(), self:ypos(), partner, self:floor()) then
     return false, "SWAP BLOCKED"
   end
-  -- rule: Part of the rule above that begins "SWAP refuses with nobody in sight, and refuses SWAP
-  --   ..."
-  -- tests: KitFaerie.swap_trades_places_only_in_line_of_sight
-  -- tests: KitFaerie.swap_never_drops_a_walker_into_water_she_hovers_over
   if not og.swap_places(self, partner) then
     return false, "SWAP BLOCKED"
   end
@@ -398,20 +386,20 @@ local function glimmer(self)
   local saved_aim_y = og.trunc(self:lasty())
   -- shim kept: magicpoints is a C++ float: per-op float rounding.
   self.magicpoints = og.fadd(self.magicpoints, 8 * self:s_weapon_cost())
-  -- rule: Part of the rule above that begins "GLIMMER fires a sprinkle in each of the eight ..."
-  -- tests: KitFaerie.glimmer_fires_eight_sprinkles_and_prepays
-  -- tests: KitFaerie.glimmer_sprinkle_freezes_a_quarter
-  -- tests: SemLibsFaerie.a_glimmer_point_blank_strikes_the_body_on_its_pad_and_fires_the_other_seven
-  -- tests: SemLibsFaerie.a_glimmer_hands_back_a_fractional_aim_truncated_toward_zero
   for i = -1, 1 do
-    -- rule: Part of the rule above that begins "GLIMMER fires a sprinkle in each of the eight ..."
+    -- rule: GLIMMER fires a sprinkle in each of the eight directions (every direction but none),
+    --   each marked to freeze a quarter as long, prepays their weapon cost within its own price,
+    --   costs an attack pause, refuses a busy faerie, and puts her aim back truncated to whole
+    --   pixels (C int temps).
     -- tests: KitFaerie.glimmer_fires_eight_sprinkles_and_prepays
     -- tests: KitFaerie.glimmer_sprinkle_freezes_a_quarter
     -- tests: SemLibsFaerie.a_glimmer_point_blank_strikes_the_body_on_its_pad_and_fires_the_other_seven
     -- tests: SemLibsFaerie.a_glimmer_hands_back_a_fractional_aim_truncated_toward_zero
     for j = -1, 1 do
-      -- rule: Part of the rule above that begins "GLIMMER fires a sprinkle in each of the eight
-      --   ..."
+      -- rule: GLIMMER fires a sprinkle in each of the eight directions (every direction but none),
+      --   each marked to freeze a quarter as long, prepays their weapon cost within its own price,
+      --   costs an attack pause, refuses a busy faerie, and puts her aim back truncated to whole
+      --   pixels (C int temps).
       -- tests: KitFaerie.glimmer_fires_eight_sprinkles_and_prepays
       -- tests: KitFaerie.glimmer_sprinkle_freezes_a_quarter
       -- tests: SemLibsFaerie.a_glimmer_point_blank_strikes_the_body_on_its_pad_and_fires_the_other_seven
@@ -422,8 +410,10 @@ local function glimmer(self)
         -- A glimmer shot freezes for a quarter of the rolled time
         -- (lib/weapon_animate.lua reads the mark when it lands).
         local shot = self:fire()
-        -- rule: Part of the rule above that begins "GLIMMER fires a sprinkle in each of the eight
-        --   ..."
+        -- rule: GLIMMER fires a sprinkle in each of the eight directions (every direction but
+        --   none), each marked to freeze a quarter as long, prepays their weapon cost within its
+        --   own price, costs an attack pause, refuses a busy faerie, and puts her aim back
+        --   truncated to whole pixels (C int temps).
         -- tests: KitFaerie.glimmer_fires_eight_sprinkles_and_prepays
         -- tests: KitFaerie.glimmer_sprinkle_freezes_a_quarter
         -- tests: SemLibsFaerie.a_glimmer_point_blank_strikes_the_body_on_its_pad_and_fires_the_other_seven
@@ -478,7 +468,7 @@ function M.wish(self)
     return false, "NO FALLEN ALLY NEARBY"
   end
   local alive = og.add_ob("living", blood:s_old_family())
-  -- plumbing: og.add_ob (lines 21, 32) and add_ob('living') (315) nil when the world is full: flash
+  -- plumbing: og.add_ob and add_ob('living') nil when the world is full: flash
   --   and hit spark skipped, WISH refuses COULD NOT RESURRECT.
   if not alive then
     return false, "COULD NOT RESURRECT"
@@ -536,24 +526,13 @@ function M.ai_blink(self)
   end
   -- BLINK and SWAP refuse while she rests after a hop, whatever the
   -- Gameplay Fixes setting.
-  -- rule: Part of the rule above that begins "A bot faerie SWAPs (shift 1) a dying ally ..."
-  -- tests: KitFaerie.ai_blink_fires_when_a_dying_ally_is_the_swap_partner_or_she_is_cornered
-  -- tests: KitFaerie.bot_faerie_swaps_a_dying_ally_out, KitFaerie.ai_off_answers_the_classic_gate
-  -- tests: GameplayFixesBots.faerie_counts_living_foes_only
-  -- tests: GameplayFixesBots.a_busy_bot_never_rolls_a_busy_cast_with_the_setting_on
-  -- tests: SemLibsFaerie.a_hurt_bot_faerie_blinks_from_a_foe_within_30_on_another_floor
   if resting(self) then
     return false
   end
   local partner = affordable_swap_partner(self)
-  -- rule: Part of the rule above that begins "A bot faerie SWAPs (shift 1) a dying ally ..."
-  -- tests: KitFaerie.ai_blink_fires_when_a_dying_ally_is_the_swap_partner_or_she_is_cornered
-  -- tests: KitFaerie.bot_faerie_swaps_a_dying_ally_out, KitFaerie.ai_off_answers_the_classic_gate
-  -- tests: GameplayFixesBots.faerie_counts_living_foes_only
-  -- tests: GameplayFixesBots.a_busy_bot_never_rolls_a_busy_cast_with_the_setting_on
-  -- tests: SemLibsFaerie.a_hurt_bot_faerie_blinks_from_a_foe_within_30_on_another_floor
   if partner then
-    -- rule: Part of the rule above that begins "A bot faerie SWAPs (shift 1) a dying ally ..."
+    -- rule: A bot faerie SWAPs (shift 1) a dying ally out (under 30 %, the walker SWAP would take,
+    --   its attacker alive within 40 of it).
     -- tests: KitFaerie.ai_blink_fires_when_a_dying_ally_is_the_swap_partner_or_she_is_cornered
     -- tests: KitFaerie.bot_faerie_swaps_a_dying_ally_out, KitFaerie.ai_off_answers_the_classic_gate
     -- tests: GameplayFixesBots.faerie_counts_living_foes_only
@@ -561,7 +540,8 @@ function M.ai_blink(self)
     -- tests: SemLibsFaerie.a_hurt_bot_faerie_blinks_from_a_foe_within_30_on_another_floor
     if self:is_friendly(partner) then
       -- max_hp is a C++ float: one float multiply
-      -- rule: Part of the rule above that begins "A bot faerie SWAPs (shift 1) a dying ally ..."
+      -- rule: A bot faerie SWAPs (shift 1) a dying ally out (under 30 %, the walker SWAP would
+      --   take, its attacker alive within 40 of it).
       -- tests: KitFaerie.ai_blink_fires_when_a_dying_ally_is_the_swap_partner_or_she_is_cornered
       -- tests: KitFaerie.bot_faerie_swaps_a_dying_ally_out
       -- tests: KitFaerie.ai_off_answers_the_classic_gate
@@ -570,7 +550,8 @@ function M.ai_blink(self)
       -- tests: SemLibsFaerie.a_hurt_bot_faerie_blinks_from_a_foe_within_30_on_another_floor
       if partner.hp < og.fmul(partner.max_hp, 0.3) then
         local attacker = partner:foe()
-        -- rule: Part of the rule above that begins "A bot faerie SWAPs (shift 1) a dying ally ..."
+        -- rule: A bot faerie SWAPs (shift 1) a dying ally out (under 30 %, the walker SWAP would
+        --   take, its attacker alive within 40 of it).
         -- tests: KitFaerie.ai_blink_fires_when_a_dying_ally_is_the_swap_partner_or_she_is_cornered
         -- tests: KitFaerie.bot_faerie_swaps_a_dying_ally_out
         -- tests: KitFaerie.ai_off_answers_the_classic_gate
@@ -578,8 +559,8 @@ function M.ai_blink(self)
         -- tests: GameplayFixesBots.a_busy_bot_never_rolls_a_busy_cast_with_the_setting_on
         -- tests: SemLibsFaerie.a_hurt_bot_faerie_blinks_from_a_foe_within_30_on_another_floor
         if attacker then
-          -- rule: Part of the rule above that begins "A bot faerie SWAPs (shift 1) a dying ally
-          --   ..."
+          -- rule: A bot faerie SWAPs (shift 1) a dying ally out (under 30 %, the walker SWAP would
+          --   take, its attacker alive within 40 of it).
           -- tests: KitFaerie.ai_blink_fires_when_a_dying_ally_is_the_swap_partner_or_she_is_cornered
           -- tests: KitFaerie.bot_faerie_swaps_a_dying_ally_out
           -- tests: KitFaerie.ai_off_answers_the_classic_gate
@@ -587,8 +568,8 @@ function M.ai_blink(self)
           -- tests: GameplayFixesBots.a_busy_bot_never_rolls_a_busy_cast_with_the_setting_on
           -- tests: SemLibsFaerie.a_hurt_bot_faerie_blinks_from_a_foe_within_30_on_another_floor
           if attacker:dead() == 0 then
-            -- rule: Part of the rule above that begins "A bot faerie SWAPs (shift 1) a dying ally
-            --   ..."
+            -- rule: A bot faerie SWAPs (shift 1) a dying ally out (under 30 %, the walker SWAP
+            --   would take, its attacker alive within 40 of it).
             -- tests: KitFaerie.ai_blink_fires_when_a_dying_ally_is_the_swap_partner_or_she_is_cornered
             -- tests: KitFaerie.bot_faerie_swaps_a_dying_ally_out
             -- tests: KitFaerie.ai_off_answers_the_classic_gate
@@ -605,15 +586,10 @@ function M.ai_blink(self)
     end
   end
   -- Living foes: a tent beside her is no reason to hop.
-  -- rule: Part of the rule above that begins "A bot faerie SWAPs (shift 1) a dying ally ..."
-  -- tests: KitFaerie.ai_blink_fires_when_a_dying_ally_is_the_swap_partner_or_she_is_cornered
-  -- tests: KitFaerie.bot_faerie_swaps_a_dying_ally_out, KitFaerie.ai_off_answers_the_classic_gate
-  -- tests: GameplayFixesBots.faerie_counts_living_foes_only
-  -- tests: GameplayFixesBots.a_busy_bot_never_rolls_a_busy_cast_with_the_setting_on
-  -- tests: SemLibsFaerie.a_hurt_bot_faerie_blinks_from_a_foe_within_30_on_another_floor
   if G.foes_within(self, 1, 30, false) then
     -- max_hp is a C++ float: fdiv is a genuine float half
-    -- rule: Part of the rule above that begins "A bot faerie SWAPs (shift 1) a dying ally ..."
+    -- rule: A bot faerie SWAPs (shift 1) a dying ally out (under 30 %, the walker SWAP would take,
+    --   its attacker alive within 40 of it).
     -- tests: KitFaerie.ai_blink_fires_when_a_dying_ally_is_the_swap_partner_or_she_is_cornered
     -- tests: KitFaerie.bot_faerie_swaps_a_dying_ally_out, KitFaerie.ai_off_answers_the_classic_gate
     -- tests: GameplayFixesBots.faerie_counts_living_foes_only
@@ -641,11 +617,6 @@ M.ai_glimmer = lc.gate_with_rest(function(self)
   end
   -- The sprinkle refuses a busy faerie (glimmer), whatever the Gameplay
   -- Fixes setting.
-  -- rule: Part of the rule above that begins "A bot faerie casts GLIMMER when a living foe ..."
-  -- tests: KitFaerie.ai_glimmer_fires_when_a_foe_is_within_60
-  -- tests: GameplayFixesBots.faerie_counts_living_foes_only
-  -- tests: GameplayFixesBots.a_busy_bot_never_rolls_a_busy_cast_with_the_setting_on
-  -- tests: KitRests.bot_gates_hold_a_resting_special, KitFaerie.ai_off_answers_the_classic_gate
   if lc.is_busy(self) then
     return false
   end
@@ -665,25 +636,22 @@ function M.ai_hasten(self)
     return true
   end
   local ally = hasten_partner(self, og.tuning(self).hasten_reach)
-  -- rule: Part of the rule above that begins "A bot faerie HASTENs (shift 0) the ally HASTEN ..."
-  -- tests: KitFaerie.ai_hasten_fires_for_a_fighting_ally_or_a_foe_on_her
-  -- tests: KitFaerie.ai_hastens_an_ally_again_once_its_haste_has_worn_off
-  -- tests: KitFaerie.ai_off_answers_the_classic_gate
   if ally then
-    -- rule: Part of the rule above that begins "A bot faerie HASTENs (shift 0) the ally HASTEN ..."
+    -- rule: A bot faerie HASTENs (shift 0) the ally HASTEN would take when it is fighting (its foe
+    --   alive) and not already hasted.
     -- tests: KitFaerie.ai_hasten_fires_for_a_fighting_ally_or_a_foe_on_her
     -- tests: KitFaerie.ai_hastens_an_ally_again_once_its_haste_has_worn_off
     -- tests: KitFaerie.ai_off_answers_the_classic_gate
     if ally:speed_bonus_left() == 0 then
       local fight = ally:foe()
-      -- rule: Part of the rule above that begins "A bot faerie HASTENs (shift 0) the ally HASTEN
-      --   ..."
+      -- rule: A bot faerie HASTENs (shift 0) the ally HASTEN would take when it is fighting (its
+      --   foe alive) and not already hasted.
       -- tests: KitFaerie.ai_hasten_fires_for_a_fighting_ally_or_a_foe_on_her
       -- tests: KitFaerie.ai_hastens_an_ally_again_once_its_haste_has_worn_off
       -- tests: KitFaerie.ai_off_answers_the_classic_gate
       if fight then
-        -- rule: Part of the rule above that begins "A bot faerie HASTENs (shift 0) the ally HASTEN
-        --   ..."
+        -- rule: A bot faerie HASTENs (shift 0) the ally HASTEN would take when it is fighting (its
+        --   foe alive) and not already hasted.
         -- tests: KitFaerie.ai_hasten_fires_for_a_fighting_ally_or_a_foe_on_her
         -- tests: KitFaerie.ai_hastens_an_ally_again_once_its_haste_has_worn_off
         -- tests: KitFaerie.ai_off_answers_the_classic_gate
@@ -695,18 +663,15 @@ function M.ai_hasten(self)
     end
   end
   local foe = self:foe()
-  -- rule: Part of the rule above that begins "A bot faerie HASTENs (shift 0) the ally HASTEN ..."
-  -- tests: KitFaerie.ai_hasten_fires_for_a_fighting_ally_or_a_foe_on_her
-  -- tests: KitFaerie.ai_hastens_an_ally_again_once_its_haste_has_worn_off
-  -- tests: KitFaerie.ai_off_answers_the_classic_gate
   if foe then
-    -- rule: Part of the rule above that begins "A bot faerie HASTENs (shift 0) the ally HASTEN ..."
+    -- rule: A bot faerie HASTENs (shift 0) the ally HASTEN would take when it is fighting (its foe
+    --   alive) and not already hasted.
     -- tests: KitFaerie.ai_hasten_fires_for_a_fighting_ally_or_a_foe_on_her
     -- tests: KitFaerie.ai_hastens_an_ally_again_once_its_haste_has_worn_off
     -- tests: KitFaerie.ai_off_answers_the_classic_gate
     if foe:dead() == 0 then
-      -- rule: Part of the rule above that begins "A bot faerie HASTENs (shift 0) the ally HASTEN
-      --   ..."
+      -- rule: A bot faerie HASTENs (shift 0) the ally HASTEN would take when it is fighting (its
+      --   foe alive) and not already hasted.
       -- tests: KitFaerie.ai_hasten_fires_for_a_fighting_ally_or_a_foe_on_her
       -- tests: KitFaerie.ai_hastens_an_ally_again_once_its_haste_has_worn_off
       -- tests: KitFaerie.ai_off_answers_the_classic_gate
@@ -730,9 +695,6 @@ function M.ai_wish(self)
     return true
   end
   local t = og.tuning(self)
-  -- rule: Part of the rule above that begins "A bot faerie WISHes only when there is a ..."
-  -- tests: KitFaerie.ai_wish_fires_with_a_fallen_ally_and_two_wounded
-  -- tests: KitFaerie.ai_off_answers_the_classic_gate
   if not wish_stain(self, t.wish_range) then
     return false
   end

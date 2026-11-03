@@ -182,38 +182,26 @@ local function squad_shape(knob, headcount, room, table_size,
   if headcount > 0 then
     base = og.min(headcount, table_size)
   end
-  -- rule: Part of the rule above that begins "A squad fields min(H, table) bodies (whole table with
-  --   ..."
-  -- tests: StagedRules.lineup_squad_shape_table
-  -- tests: StagedRules.staged_world_strong_fields_h_plus_one_on_ball_modes
   if room ~= nil then
     base = og.min(base, room)
   end
   local count = base
   local steps = knob - FILL_FAIR
-  -- rule: Part of the rule above that begins "A squad fields min(H, table) bodies (whole table with
-  --   ..."
-  -- tests: StagedRules.lineup_squad_shape_table
-  -- tests: StagedRules.staged_world_strong_fields_h_plus_one_on_ball_modes
   local buys_bodies = bodies_allowed and fielded_is_empty
-  -- rule: Part of the rule above that begins "A squad fields min(H, table) bodies (whole table with
-  --   ..."
-  -- tests: StagedRules.lineup_squad_shape_table
-  -- tests: StagedRules.staged_world_strong_fields_h_plus_one_on_ball_modes
   if buys_bodies then
-    -- rule: Part of the rule above that begins "A squad fields min(H, table) bodies (whole table
-    --   with ..."
+    -- rule: A squad fields min(H, table) bodies (whole table with no census), inside any hard-shape
+    --   room.
     -- tests: StagedRules.lineup_squad_shape_table
     -- tests: StagedRules.staged_world_strong_fields_h_plus_one_on_ball_modes
     if steps > 0 then
-      -- rule: Part of the rule above that begins "A squad fields min(H, table) bodies (whole table
-      --   with ..."
+      -- rule: A squad fields min(H, table) bodies (whole table with no census), inside any
+      --   hard-shape room.
       -- tests: StagedRules.lineup_squad_shape_table
       -- tests: StagedRules.staged_world_strong_fields_h_plus_one_on_ball_modes
       if headcount > 0 then
         count = og.min(headcount + steps, table_size)
-        -- rule: Part of the rule above that begins "A squad fields min(H, table) bodies (whole
-        --   table with ..."
+        -- rule: A squad fields min(H, table) bodies (whole table with no census), inside any
+        --   hard-shape room.
         -- tests: StagedRules.lineup_squad_shape_table
         -- tests: StagedRules.staged_world_strong_fields_h_plus_one_on_ball_modes
         if room ~= nil then
@@ -224,10 +212,6 @@ local function squad_shape(knob, headcount, room, table_size,
   end
   local absorbed = count - base
   local pct = FILL_PERCENT[knob]
-  -- rule: Part of the rule above that begins "A squad fields min(H, table) bodies (whole table with
-  --   ..."
-  -- tests: StagedRules.lineup_squad_shape_table
-  -- tests: StagedRules.staged_world_strong_fields_h_plus_one_on_ball_modes
   if absorbed > 0 then
     pct = pct - (FILL_PERCENT[knob] - FILL_PERCENT[knob - 1]) * absorbed
   end
@@ -335,7 +319,7 @@ end
 -- (the modes' activation fold) — no residual twin survives here.
 local function census_power(obs)
   local sums = { 0, 0, 0, 0 }
-  -- plumbing: census_power oblist scan; rule in lineup.lua:299
+  -- plumbing: census_power oblist scan; rule below
   for k = 1, #obs do
     local w = obs[k]
     -- rule: Human power is the per-team sum of f over live roster characters (has_guy livings) on
@@ -344,19 +328,24 @@ local function census_power(obs)
     -- tests: ModesTdm.matched_census_weakest_reference_and_heart_value_rank
     -- tests: SemLineup.the_power_census_counts_only_live_heroes_on_score_teams
     if w:dead() == 0 then
-      -- rule: Part of the rule above that begins "Human power is the per-team sum of f over ..."
+      -- rule: Human power is the per-team sum of f over live roster characters (has_guy livings) on
+      --   score teams; guyless livings, the dead and wildlife teams add nothing. Here:
+      --   `order==LIVING`.
       -- tests: ModesTdm.matched_census_single_team_sum_ignores_guyless_livings
       -- tests: ModesTdm.matched_census_weakest_reference_and_heart_value_rank
       -- tests: SemLineup.the_power_census_counts_only_live_heroes_on_score_teams
       if w:order() == C.ORDER_LIVING then
-        -- rule: Part of the rule above that begins "Human power is the per-team sum of f over ..."
+        -- rule: Human power is the per-team sum of f over live roster characters (has_guy livings)
+        --   on score teams; guyless livings, the dead and wildlife teams add nothing. Here:
+        --   `has_guy`.
         -- tests: ModesTdm.matched_census_single_team_sum_ignores_guyless_livings
         -- tests: ModesTdm.matched_census_weakest_reference_and_heart_value_rank
         -- tests: SemLineup.the_power_census_counts_only_live_heroes_on_score_teams
         if w:has_guy() then
           local team = w:team_num()
-          -- rule: Part of the rule above that begins "Human power is the per-team sum of f over
-          --   ..."
+          -- rule: Human power is the per-team sum of f over live roster characters (has_guy
+          --   livings) on score teams; guyless livings, the dead and wildlife teams add nothing.
+          --   Here: `team < SCORE_TEAM_COUNT`.
           -- tests: ModesTdm.matched_census_single_team_sum_ignores_guyless_livings
           -- tests: ModesTdm.matched_census_weakest_reference_and_heart_value_rank
           -- tests: SemLineup.the_power_census_counts_only_live_heroes_on_score_teams
@@ -368,7 +357,7 @@ local function census_power(obs)
     end
   end
   local reference = 0
-  -- plumbing: census_power reference scan over teams; rule in lineup.lua:312
+  -- plumbing: census_power reference scan over teams; rule below
   for t = 1, C.SCORE_TEAM_COUNT do
     -- rule: The match REFERENCE is the weakest human team's f-sum among teams that field any human
     --   power; 0 means no human power anywhere (legacy formula).
@@ -376,8 +365,8 @@ local function census_power(obs)
     -- tests: ModesTdm.matched_census_weakest_reference_and_heart_value_rank
     -- tests: ModesTdm.matched_power_metric_and_solver_arms
     if sums[t] > 0 then
-      -- rule: Part of the rule above that begins "The match REFERENCE is the weakest human team's
-      --   f-sum ..."
+      -- rule: The match REFERENCE is the weakest human team's f-sum among teams that field any
+      --   human power; 0 means no human power anywhere (legacy formula). Here: `reference == 0`.
       -- tests: ModesTdm.matched_census_single_team_sum_ignores_guyless_livings
       -- tests: ModesTdm.matched_census_weakest_reference_and_heart_value_rank
       -- tests: ModesTdm.matched_power_metric_and_solver_arms
@@ -400,10 +389,10 @@ end
 local function solve_matched_levels(target, bases)
   local n = #bases
   local pred = {}
-  -- plumbing: solve_matched_levels prediction/sum/scan loops; rule in lineup.lua:354
+  -- plumbing: solve_matched_levels prediction/sum/scan loops; rule below
   for i = 1, n do
     local row = {}
-    -- plumbing: solve_matched_levels prediction/sum/scan loops; rule in lineup.lua:354
+    -- plumbing: solve_matched_levels prediction/sum/scan loops; rule below
     for level = 1, 9 do
       row[level] = predicted_power(bases[i].family, bases[i].stats, level)
     end
@@ -411,7 +400,6 @@ local function solve_matched_levels(target, bases)
   end
   local b1 = 0
   local b9 = 0
-  -- plumbing: solve_matched_levels prediction/sum/scan loops; rule in lineup.lua:354
   for i = 1, n do
     b1 = b1 + pred[i][1]
     b9 = b9 + pred[i][9]
@@ -419,10 +407,9 @@ local function solve_matched_levels(target, bases)
   local best_level = 1
   local best_up = 0
   local best_miss = -1
-  -- plumbing: solve_matched_levels prediction/sum/scan loops; rule in lineup.lua:354
   for level = 1, 9 do
     local p = 0
-    -- plumbing: solve_matched_levels prediction/sum/scan loops; rule in lineup.lua:354
+    -- plumbing: solve_matched_levels prediction/sum/scan loops; rule below
     for i = 1, n do
       p = p + pred[i][level]
     end
@@ -434,24 +421,27 @@ local function solve_matched_levels(target, bases)
     if level == 9 then
       up_max = 0
     end
-    -- plumbing: solve_matched_levels prediction/sum/scan loops; rule in lineup.lua:354
+    -- plumbing: solve_matched_levels prediction/sum/scan loops; rule above
     for up = 0, up_max do
-      -- rule: Part of the rule above that begins "The matched solver picks the uniform level L
-      --   (1..9) ..."
+      -- rule: The matched solver picks the uniform level L (1..9) plus k first members one level up
+      --   that comes closest to the target power, ties going to the lower L then lower k. Here: `up
+      --   > 0`.
       -- tests: ModesTdm.matched_power_metric_and_solver_arms
       if up > 0 then
         p = p + pred[up][level + 1] - pred[up][level]
       end
       local miss = iabs(p - target)
       local better = best_miss < 0
-      -- rule: Part of the rule above that begins "The matched solver picks the uniform level L
-      --   (1..9) ..."
+      -- rule: The matched solver picks the uniform level L (1..9) plus k first members one level up
+      --   that comes closest to the target power, ties going to the lower L then lower k. Here:
+      --   `better = best_miss < 0`.
       -- tests: ModesTdm.matched_power_metric_and_solver_arms
       if not better then
         better = miss < best_miss
       end
-      -- rule: Part of the rule above that begins "The matched solver picks the uniform level L
-      --   (1..9) ..."
+      -- rule: The matched solver picks the uniform level L (1..9) plus k first members one level up
+      --   that comes closest to the target power, ties going to the lower L then lower k. Here:
+      --   `miss < best_miss`.
       -- tests: ModesTdm.matched_power_metric_and_solver_arms
       if better then
         best_level = level
@@ -461,8 +451,9 @@ local function solve_matched_levels(target, bases)
     end
   end
   local clamped = target < b1
-  -- rule: Part of the rule above that begins "The matched solver picks the uniform level L (1..9)
-  --   ..."
+  -- rule: The matched solver picks the uniform level L (1..9) plus k first members one level up
+  --   that comes closest to the target power, ties going to the lower L then lower k. Here: `target
+  --   > b9`.
   -- tests: ModesTdm.matched_power_metric_and_solver_arms
   if target > b9 then
     clamped = true
@@ -533,11 +524,6 @@ local function bank_match_target(decision, obs)
   if not decision.matched then
     return
   end
-  -- rule: Part of the rule above that begins "The match target (weakest human reference, capped)
-  --   and headcount ..."
-  -- tests: ModesTdm.matched_power_metric_and_solver_arms
-  -- tests: ModesTdm.matched_solo_fresh_squad_fields_an_even_rival
-  -- tests: ModesTdm.matched_spawn_bots_legacy_arm_is_unchanged
   if og.mode_get(MATCHED.TARGET) ~= 0 then
     return
   end
@@ -567,9 +553,6 @@ local function bot_level_for(team, index)
     return difficulty_level()
   end
   local level = og.div(code, 10)
-  -- rule: Part of the rule above that begins "A squad member's level is the stored plan's L ..."
-  -- tests: ModesTdm.matched_power_metric_and_solver_arms
-  -- tests: ModesTdm.matched_spawn_bots_legacy_arm_is_unchanged
   if index <= og.mod(code, 10) then
     return level + 1
   end
@@ -607,7 +590,7 @@ local function census_inputs()
     fill = {},
     map_units = {},
   }
-  -- plumbing: census_inputs team and oblist loops; rule in lineup.lua:517
+  -- plumbing: census_inputs team and oblist loops; rule below
   for team = 0, C.SCORE_TEAM_COUNT - 1 do
     inputs.teams[team + 1] = {
       anchors = og.respawn_anchor_count(team),
@@ -623,7 +606,6 @@ local function census_inputs()
     inputs.map_units[team + 1] = map_units_knob(team)
   end
   local obs = og.oblist()
-  -- plumbing: census_inputs team and oblist loops; rule in lineup.lua:517
   for k = 1, #obs do
     local w = obs[k]
     -- Dormant (delayed-spawn) walkers are skipped alongside dead ones: they
@@ -638,22 +620,22 @@ local function census_inputs()
     -- tests: SemLineup.the_staging_census_counts_heroes_npcs_and_generators_on_score_teams_only
     if w:dead() == 0 and not w:dormant() then
       local team = w:team_num()
-      -- rule: Part of the rule above that begins "The staging census counts only live, non-dormant
-      --   walkers on ..."
+      -- rule: The staging census counts only live, non-dormant walkers on score teams. Here: `team
+      --   < SCORE_TEAM_COUNT`.
       -- tests: StagedRules.dormant_troops_are_uncensused_like_the_staged_report
       -- tests: StagedRules.onslaught_domain_and_generator_fills
       -- tests: SemLineup.the_staging_census_counts_heroes_npcs_and_generators_on_score_teams_only
       if team < C.SCORE_TEAM_COUNT then
         local trow = inputs.teams[team + 1]
         local order = w:order()
-        -- rule: Part of the rule above that begins "The staging census counts only live,
-        --   non-dormant walkers on ..."
+        -- rule: The staging census counts only live, non-dormant walkers on score teams. Here:
+        --   `order==LIVING`.
         -- tests: StagedRules.dormant_troops_are_uncensused_like_the_staged_report
         -- tests: StagedRules.onslaught_domain_and_generator_fills
         -- tests: SemLineup.the_staging_census_counts_heroes_npcs_and_generators_on_score_teams_only
         if order == C.ORDER_LIVING then
-          -- rule: Part of the rule above that begins "The staging census counts only live,
-          --   non-dormant walkers on ..."
+          -- rule: The staging census counts only live, non-dormant walkers on score teams. Here:
+          --   `has_guy`.
           -- tests: StagedRules.dormant_troops_are_uncensused_like_the_staged_report
           -- tests: StagedRules.onslaught_domain_and_generator_fills
           -- tests: SemLineup.the_staging_census_counts_heroes_npcs_and_generators_on_score_teams_only
@@ -706,19 +688,21 @@ local function place_at_anchor(w, team, cursor_slot, allow_teleport)
   -- tests: ModesTdm.dead_hero_revives_at_team_anchor_with_cursor_rotation
   -- tests: SemLineup.a_team_off_the_score_range_gets_no_anchor
   if team >= 0 then
-    -- rule: Part of the rule above that begins "Respawn/fill placement rotates through the team's
-    --   anchors from the ..."
+    -- rule: Respawn/fill placement rotates through the team's anchors from the mode-var cursor
+    --   (advancing it for every probe) and takes the first clear one. Here: `team <
+    --   SCORE_TEAM_COUNT`.
     -- tests: ModesTdm.dead_hero_revives_at_team_anchor_with_cursor_rotation
     -- tests: SemLineup.a_team_off_the_score_range_gets_no_anchor
     if team < C.SCORE_TEAM_COUNT then
       local count = og.respawn_anchor_count(team)
-      -- plumbing: rotation and ring-walk loops; rules in lineup.lua:563 and :576
+      -- plumbing: rotation and ring-walk loops; rules above and below
       for _ = 1, count do
         local cursor = og.mode_get(cursor_slot)
         og.mode_set(cursor_slot, cursor + 1)
         local ax, ay = og.respawn_anchor(team, og.mod(cursor, count))
-        -- rule: Part of the rule above that begins "Respawn/fill placement rotates through the
-        --   team's anchors from the ..."
+        -- rule: Respawn/fill placement rotates through the team's anchors from the mode-var cursor
+        --   (advancing it for every probe) and takes the first clear one. Here:
+        --   `spawn_spot_clear(anchor)`.
         -- tests: ModesTdm.dead_hero_revives_at_team_anchor_with_cursor_rotation
         -- tests: SemLineup.a_team_off_the_score_range_gets_no_anchor
         if og.spawn_spot_clear(w, ax, ay) then
@@ -732,33 +716,37 @@ local function place_at_anchor(w, team, cursor_slot, allow_teleport)
       --   RNG-free, so a camped spawn line never stalls a respawn.
       -- tests: ModesSoccer.camped_anchors_cannot_stall_a_respawn
       -- unreachable: query_grid_passable refuses x<0 or y<0 first
-      --   (src/gameplay/game_world.cpp:689), so the px>=0/py>=0 guard is redundant and no test can
+      --   (src/gameplay/game_world.cpp), so the px>=0/py>=0 guard is redundant and no test can
       --   tell it from its removal; candidate for a defensive-guard row
       if final_x < 0 then
         -- Ring fallback, RNG-free and probe-eats-safe like the rotation
         -- above. Rings cap at 3 tiles: past that the caller's own
         -- fallback (engine revive-in-place, or the blocked-fire retry
         -- cadence) is the honest answer.
-        -- plumbing: rotation and ring-walk loops; rules in lineup.lua:563 and :576
+        -- plumbing: rotation and ring-walk loops; rules above
         for r = 1, 3 do
-          -- plumbing: rotation and ring-walk loops; rules in lineup.lua:563 and :576
+          -- plumbing: rotation and ring-walk loops; rules above
           for a = 0, count - 1 do
             local ax, ay = og.respawn_anchor(team, a)
-            -- plumbing: rotation and ring-walk loops; rules in lineup.lua:563 and :576
+            -- plumbing: rotation and ring-walk loops; rules above
             for i = 0, 4 * r - 1 do
-              -- rule: Part of the rule above that begins "When every anchor is camped, placement
-              --   walks rings of ..."
+              -- rule: When every anchor is camped, placement walks rings of radius 1..3 tiles
+              --   around the anchors (radius-major, anchor order, cell order) and takes the first
+              --   clear in-map tile, RNG-free, so a camped spawn line never stalls a respawn.
               -- tests: ModesSoccer.camped_anchors_cannot_stall_a_respawn
               if final_x < 0 then
                 local dx, dy = ring_offset(i, r)
                 local px = ax + dx * 16
                 local py = ay + dy * 16
-                -- rule: Part of the rule above that begins "When every anchor is camped, placement
-                --   walks rings of ..."
+                -- rule: When every anchor is camped, placement walks rings of radius 1..3 tiles
+                --   around the anchors (radius-major, anchor order, cell order) and takes the first
+                --   clear in-map tile, RNG-free, so a camped spawn line never stalls a respawn.
                 -- tests: ModesSoccer.camped_anchors_cannot_stall_a_respawn
                 if px >= 0 and py >= 0 then
-                  -- rule: Part of the rule above that begins "When every anchor is camped,
-                  --   placement walks rings of ..."
+                  -- rule: When every anchor is camped, placement walks rings of radius 1..3 tiles
+                  --   around the anchors (radius-major, anchor order, cell order) and takes the
+                  --   first clear in-map tile, RNG-free, so a camped spawn line never stalls a
+                  --   respawn.
                   -- tests: ModesSoccer.camped_anchors_cannot_stall_a_respawn
                   if og.spawn_spot_clear(w, px, py) then
                     final_x = px
@@ -772,10 +760,6 @@ local function place_at_anchor(w, team, cursor_slot, allow_teleport)
       end
     end
   end
-  -- rule: Part of the rule above that begins "Respawn/fill placement rotates through the team's
-  --   anchors from the ..."
-  -- tests: ModesTdm.dead_hero_revives_at_team_anchor_with_cursor_rotation
-  -- tests: SemLineup.a_team_off_the_score_range_gets_no_anchor
   if final_x >= 0 then
     w:setxy(final_x, final_y)
     return true
@@ -839,29 +823,21 @@ local function fill_target(reference, sums, team, pct, count, base)
   -- A full hard shape leaves no body to solve for, and no baseline to
   -- divide by: the same "spawns nothing, banks nothing" an empty squad
   -- produced before (review R4).
-  -- rule: Part of the rule above that begins "The FILL solve target: no human power -> no ..."
-  -- tests: ModesTdm.lineup_fill_target_percent_table_and_knobbed_spawns
-  -- tests: ModesTdm.lineup_spawn_seam_allies_no_gap_spawns_nothing
-  -- tests: StagedRules.basketball_allies_fill_the_room_left
   if base <= 0 then
     return nil
   end
-  -- rule: Part of the rule above that begins "The FILL solve target: no human power -> no ..."
-  -- tests: ModesTdm.lineup_fill_target_percent_table_and_knobbed_spawns
-  -- tests: ModesTdm.lineup_spawn_seam_allies_no_gap_spawns_nothing
-  -- tests: StagedRules.basketball_allies_fill_the_room_left
   if sums[team + 1] <= 0 then
     return og.div(reference * pct * count, 100 * base)
   end
   local best = 0
-  -- plumbing: fill_target scan over other teams; rule in lineup.lua:642
+  -- plumbing: fill_target scan over other teams; rule above
   for t = 1, C.SCORE_TEAM_COUNT do
-    -- rule: Part of the rule above that begins "The FILL solve target: no human power -> no ..."
+    -- rule: The FILL solve target: no human power -> no solve (legacy). Here: `t ~= team`.
     -- tests: ModesTdm.lineup_fill_target_percent_table_and_knobbed_spawns
     -- tests: ModesTdm.lineup_spawn_seam_allies_no_gap_spawns_nothing
     -- tests: StagedRules.basketball_allies_fill_the_room_left
     if t ~= team + 1 then
-      -- rule: Part of the rule above that begins "The FILL solve target: no human power -> no ..."
+      -- rule: The FILL solve target: no human power -> no solve (legacy). Here: `sums[t] > best`.
       -- tests: ModesTdm.lineup_fill_target_percent_table_and_knobbed_spawns
       -- tests: ModesTdm.lineup_spawn_seam_allies_no_gap_spawns_nothing
       -- tests: StagedRules.basketball_allies_fill_the_room_left
@@ -872,7 +848,7 @@ local function fill_target(reference, sums, team, pct, count, base)
   end
   local target = og.div((best - sums[team + 1]) * pct * count,
                         100 * base)
-  -- rule: Part of the rule above that begins "The FILL solve target: no human power -> no ..."
+  -- rule: The FILL solve target: no human power -> no solve (legacy). Here: `target <= 0`.
   -- tests: ModesTdm.lineup_fill_target_percent_table_and_knobbed_spawns
   -- tests: ModesTdm.lineup_spawn_seam_allies_no_gap_spawns_nothing
   -- tests: StagedRules.basketball_allies_fill_the_room_left
@@ -939,7 +915,7 @@ local function spawn_matched_bots(team, families, cursor_slot, placer,
   for k = 1, #families do
     local w = add_squad_member(team, families[k])
     -- plumbing: nil member skipped; no member spawned returns 0 (feeds the bank-only-if-spawned
-    --   rule at lineup.lua:832)
+    --   rule below)
     if w ~= nil then
       members[#members + 1] = w
       bases[#bases + 1] = { family = families[k], stats = measured_base(w) }
@@ -947,7 +923,7 @@ local function spawn_matched_bots(team, families, cursor_slot, placer,
     end
   end
   -- plumbing: nil member skipped; no member spawned returns 0 (feeds the bank-only-if-spawned rule
-  --   at lineup.lua:832)
+  --   below)
   if #members == 0 then
     return 0
   end
@@ -982,7 +958,7 @@ end
 local function live_fielded_on(obs, team)
   local roster = 0
   local units = 0
-  -- plumbing: live_fielded_on oblist scan; rule in lineup.lua:756
+  -- plumbing: live_fielded_on oblist scan; rule below
   for k = 1, #obs do
     local w = obs[k]
     -- rule: A team's fielded headcount for the hard-shape room is its live roster heroes when any
@@ -991,20 +967,20 @@ local function live_fielded_on(obs, team)
     -- tests: StagedRules.basketball_caps_the_squad_beside_the_troops
     -- tests: StagedRules.staged_world_strong_fields_h_plus_one_on_ball_modes
     if w:dead() == 0 then
-      -- rule: Part of the rule above that begins "A team's fielded headcount for the hard-shape
-      --   room is ..."
+      -- rule: A team's fielded headcount for the hard-shape room is its live roster heroes when any
+      --   stand, else its live guyless map units. Here: `LIVING`.
       -- tests: StagedRules.basketball_allies_fill_the_room_left
       -- tests: StagedRules.basketball_caps_the_squad_beside_the_troops
       -- tests: StagedRules.staged_world_strong_fields_h_plus_one_on_ball_modes
       if w:order() == C.ORDER_LIVING then
-        -- rule: Part of the rule above that begins "A team's fielded headcount for the hard-shape
-        --   room is ..."
+        -- rule: A team's fielded headcount for the hard-shape room is its live roster heroes when
+        --   any stand, else its live guyless map units. Here: `team == team`.
         -- tests: StagedRules.basketball_allies_fill_the_room_left
         -- tests: StagedRules.basketball_caps_the_squad_beside_the_troops
         -- tests: StagedRules.staged_world_strong_fields_h_plus_one_on_ball_modes
         if w:team_num() == team then
-          -- rule: Part of the rule above that begins "A team's fielded headcount for the hard-shape
-          --   room is ..."
+          -- rule: A team's fielded headcount for the hard-shape room is its live roster heroes when
+          --   any stand, else its live guyless map units. Here: `has_guy`.
           -- tests: StagedRules.basketball_allies_fill_the_room_left
           -- tests: StagedRules.basketball_caps_the_squad_beside_the_troops
           -- tests: StagedRules.staged_world_strong_fields_h_plus_one_on_ball_modes
@@ -1017,8 +993,8 @@ local function live_fielded_on(obs, team)
       end
     end
   end
-  -- rule: Part of the rule above that begins "A team's fielded headcount for the hard-shape room is
-  --   ..."
+  -- rule: A team's fielded headcount for the hard-shape room is its live roster heroes when any
+  --   stand, else its live guyless map units. Here: `roster > 0`.
   -- tests: StagedRules.basketball_allies_fill_the_room_left
   -- tests: StagedRules.basketball_caps_the_squad_beside_the_troops
   -- tests: StagedRules.staged_world_strong_fields_h_plus_one_on_ball_modes
@@ -1074,7 +1050,7 @@ local function spawn_bots(team, families, cursor_slot, placer, shape,
     cap = shape.cap
   end
   -- rule: The #305 body rule is armed only when the mode's shape says bodies (the ball games);
-  --   every other caller keeps power-step squads (see lineup.lua:172).
+  --   every other caller keeps power-step squads (see above).
   -- tests: StagedRules.staged_world_strong_fields_h_plus_one_on_ball_modes
   -- tests: StagedRules.squad_shape_agrees_with_mode_shape
   local bodies_allowed = shape ~= nil and shape.bodies == true
@@ -1092,8 +1068,7 @@ local function spawn_bots(team, families, cursor_slot, placer, shape,
   -- tests: ClassicLineupTest.no_humans_takes_the_legacy_formula_and_no_plan
   if plan_code(team) == 0 then
     local reference, sums = census_power(obs)
-    -- rule: Part of the rule above that begins "A stored plan wins (every respawn reproduces it);
-    --   else ..."
+    -- rule: A stored plan wins (every respawn reproduces it). Here: `reference > 0`.
     -- tests: ModesTdm.matched_spawn_bots_planned_arm_applies_stored_plan
     -- tests: ModesTdm.matched_spawn_bots_measures_solves_and_announces
     -- tests: ModesTdm.matched_spawn_bots_legacy_arm_is_unchanged
@@ -1136,7 +1111,8 @@ local function spawn_bots(team, families, cursor_slot, placer, shape,
       spawned = spawned + 1
     end
   end
-  -- rule: Part of the rule above that begins "A team's applied fill code is banked only when ..."
+  -- rule: A team's applied fill code is banked only when at least one member actually spawned
+  --   (solved or legacy arm). Here: `spawned > 0`.
   -- tests: StagedRules.basketball_allies_fill_the_room_left
   -- tests: ModesTdm.lineup_fill_target_percent_table_and_knobbed_spawns
   if spawned > 0 then
@@ -1182,7 +1158,7 @@ end
 -- which took the wildlife too.
 local function strip_team_units(obs, fielded)
   local removed = 0
-  -- plumbing: strip scans; rules in lineup.lua:893 and :921
+  -- plumbing: strip scans; rules below
   for k = 1, #obs do
     local w = obs[k]
     -- rule: With a team's MAP UNITS box off, every live authored living/generator without a roster
@@ -1192,26 +1168,31 @@ local function strip_team_units(obs, fielded)
     -- tests: ModesStrip.all_boxes_off_strip_every_score_team_but_never_wildlife
     -- tests: ModesStrip.stripped_entities_leave_the_score_team_range
     if w:dead() == 0 then
-      -- rule: Part of the rule above that begins "With a team's MAP UNITS box off, every live ..."
+      -- rule: With a team's MAP UNITS box off, every live authored living/generator without a
+      --   roster guy on that score team is retired (moved off the score range, then marked dead,
+      --   never erased). Here: `is_troop`.
       -- tests: ModesStrip.one_box_off_strips_exactly_that_team
       -- tests: ModesStrip.all_boxes_off_strip_every_score_team_but_never_wildlife
       -- tests: ModesStrip.stripped_entities_leave_the_score_team_range
       if is_troop(w:order()) then
-        -- rule: Part of the rule above that begins "With a team's MAP UNITS box off, every live
-        --   ..."
+        -- rule: With a team's MAP UNITS box off, every live authored living/generator without a
+        --   roster guy on that score team is retired (moved off the score range, then marked dead,
+        --   never erased). Here: `not has_guy`.
         -- tests: ModesStrip.one_box_off_strips_exactly_that_team
         -- tests: ModesStrip.all_boxes_off_strip_every_score_team_but_never_wildlife
         -- tests: ModesStrip.stripped_entities_leave_the_score_team_range
         if not w:has_guy() then
           local team = w:team_num()
-          -- rule: Part of the rule above that begins "With a team's MAP UNITS box off, every live
-          --   ..."
+          -- rule: With a team's MAP UNITS box off, every live authored living/generator without a
+          --   roster guy on that score team is retired (moved off the score range, then marked
+          --   dead, never erased). Here: `team < SCORE_TEAM_COUNT`.
           -- tests: ModesStrip.one_box_off_strips_exactly_that_team
           -- tests: ModesStrip.all_boxes_off_strip_every_score_team_but_never_wildlife
           -- tests: ModesStrip.stripped_entities_leave_the_score_team_range
           if team < C.SCORE_TEAM_COUNT then
-            -- rule: Part of the rule above that begins "With a team's MAP UNITS box off, every live
-            --   ..."
+            -- rule: With a team's MAP UNITS box off, every live authored living/generator without a
+            --   roster guy on that score team is retired (moved off the score range, then marked
+            --   dead, never erased). Here: `not fielded[team]`.
             -- tests: ModesStrip.one_box_off_strips_exactly_that_team
             -- tests: ModesStrip.all_boxes_off_strip_every_score_team_but_never_wildlife
             -- tests: ModesStrip.stripped_entities_leave_the_score_team_range
@@ -1236,7 +1217,7 @@ end
 local function strip_authored_troops()
   local fielded = {}
   local any_off = false
-  -- plumbing: strip scans; rules in lineup.lua:893 and :921
+  -- plumbing: strip scans; rules above and below
   for team = 0, C.SCORE_TEAM_COUNT - 1 do
     fielded[team + 1] = map_units_fielded(team)
     -- rule: With every MAP UNITS box on the strip touches nothing; any non-zero (junk) box value
@@ -1247,7 +1228,8 @@ local function strip_authored_troops()
       any_off = true
     end
   end
-  -- rule: Part of the rule above that begins "With every MAP UNITS box on the strip touches ..."
+  -- rule: With every MAP UNITS box on the strip touches nothing; any non-zero (junk) box value
+  --   reads OFF. Here: `not any_off`.
   -- tests: ModesStrip.boxes_on_leave_every_authored_entity_alone
   -- tests: ModesStrip.junk_box_values_read_as_off
   if not any_off then

@@ -115,12 +115,6 @@ guy* guy_arg(lua_State* L, int idx)
     if (luaL_testudata(L, idx, kGuyMeta) != nullptr)
         return resolve_guy(L, idx, /*required=*/true);
     walker* w = resolve_walker(L, idx, /*required=*/true);
-    // rule: Part of the rule above that begins "A character-sheet (g_*) accessor reads the hired
-    //   character's record: ..."
-    // tests: ScriptBindingErrorTest.guy_accessors_refuse_an_entity_without_a_guy
-    // tests: ScriptBindingTest.guy_rows_round_trip_and_myguy_moves_between_walkers
-    // tests: ScriptHooksTest.level_up_guy_handle_is_dispatch_scoped
-    // tests: Guy.upgrade_to_level_different_families
     if (w->myguy == nullptr)
         script_raise(L, "walker has no guy record");
     return w->myguy;
@@ -162,41 +156,9 @@ Order order_from_string(lua_State* L, int idx)
     // tests: parity:weapon_door_unlock_chain_scen99
     // tests: SemScriptEntity.the_order_words_treasure_generator_and_effect_make_those_orders
     if (std::strcmp(s, "living") == 0) return Order::Living;
-    // rule: Part of the rule above that begins "A script names an entity's order by word: living,
-    //   ..."
-    // tests: ScriptBindingTest.world_query_rows_read_the_live_world
-    // tests: ScriptBindingErrorTest.unknown_string_selectors_are_named_in_the_error
-    // tests: ScriptBindingErrorTest.an_erroring_hook_does_not_report_success
-    // tests: parity:archmage_summon_elemental_scen99, WeapBehavior.weap_death_knife_soldier_owner
-    // tests: parity:weapon_door_unlock_chain_scen99
-    // tests: SemScriptEntity.the_order_words_treasure_generator_and_effect_make_those_orders
     if (std::strcmp(s, "weapon") == 0) return Order::Weapon;
-    // rule: Part of the rule above that begins "A script names an entity's order by word: living,
-    //   ..."
-    // tests: ScriptBindingTest.world_query_rows_read_the_live_world
-    // tests: ScriptBindingErrorTest.unknown_string_selectors_are_named_in_the_error
-    // tests: ScriptBindingErrorTest.an_erroring_hook_does_not_report_success
-    // tests: parity:archmage_summon_elemental_scen99, WeapBehavior.weap_death_knife_soldier_owner
-    // tests: parity:weapon_door_unlock_chain_scen99
-    // tests: SemScriptEntity.the_order_words_treasure_generator_and_effect_make_those_orders
     if (std::strcmp(s, "treasure") == 0) return Order::Treasure;
-    // rule: Part of the rule above that begins "A script names an entity's order by word: living,
-    //   ..."
-    // tests: ScriptBindingTest.world_query_rows_read_the_live_world
-    // tests: ScriptBindingErrorTest.unknown_string_selectors_are_named_in_the_error
-    // tests: ScriptBindingErrorTest.an_erroring_hook_does_not_report_success
-    // tests: parity:archmage_summon_elemental_scen99, WeapBehavior.weap_death_knife_soldier_owner
-    // tests: parity:weapon_door_unlock_chain_scen99
-    // tests: SemScriptEntity.the_order_words_treasure_generator_and_effect_make_those_orders
     if (std::strcmp(s, "generator") == 0) return Order::Generator;
-    // rule: Part of the rule above that begins "A script names an entity's order by word: living,
-    //   ..."
-    // tests: ScriptBindingTest.world_query_rows_read_the_live_world
-    // tests: ScriptBindingErrorTest.unknown_string_selectors_are_named_in_the_error
-    // tests: ScriptBindingErrorTest.an_erroring_hook_does_not_report_success
-    // tests: parity:archmage_summon_elemental_scen99, WeapBehavior.weap_death_knife_soldier_owner
-    // tests: parity:weapon_door_unlock_chain_scen99
-    // tests: SemScriptEntity.the_order_words_treasure_generator_and_effect_make_those_orders
     if (std::strcmp(s, "fx") == 0 || std::strcmp(s, "effect") == 0)
         return Order::FX;
     script_raise(L, "unknown order '%s'", s);
@@ -216,19 +178,7 @@ const std::list<std::unique_ptr<walker>>& list_from_selector(lua_State* L,
     // tests: ScriptBindingErrorTest.unknown_string_selectors_are_named_in_the_error
     // tests: SemScriptEntity.a_range_scan_of_fx_reads_the_effect_list_only
     if (std::strcmp(s, "ob") == 0) return world->oblist;
-    // rule: Part of the rule above that begins "A range query scans one of the three world ..."
-    // tests: parity:shield_projectile_absorb_scen99, parity:boomerang_projectile_absorb_scen99
-    // tests: parity:effect_shield_absorb_scen99
-    // tests: FamilyBehaviors.druid_round6_protection_existing_circle_and_blocked_faerie_paths
-    // tests: ScriptBindingErrorTest.unknown_string_selectors_are_named_in_the_error
-    // tests: SemScriptEntity.a_range_scan_of_fx_reads_the_effect_list_only
     if (std::strcmp(s, "weap") == 0) return world->weaplist;
-    // rule: Part of the rule above that begins "A range query scans one of the three world ..."
-    // tests: parity:shield_projectile_absorb_scen99, parity:boomerang_projectile_absorb_scen99
-    // tests: parity:effect_shield_absorb_scen99
-    // tests: FamilyBehaviors.druid_round6_protection_existing_circle_and_blocked_faerie_paths
-    // tests: ScriptBindingErrorTest.unknown_string_selectors_are_named_in_the_error
-    // tests: SemScriptEntity.a_range_scan_of_fx_reads_the_effect_list_only
     if (std::strcmp(s, "fx") == 0) return world->fxlist;
     script_raise(L, "unknown list selector '%s' (ob|weap|fx)", s);
 }
@@ -536,10 +486,6 @@ int m_special(lua_State* L)
     // tests: SpecialsDispatchTest.nested_casts_preserve_each_reason_and_success_clears_it
     // tests: SemScriptEntity.a_lua_cast_that_succeeds_answers_true_and_nil
     lua_pushboolean(L, succeeded ? 1 : 0);
-    // rule: Part of the rule above that begins "walker:special() from Lua reports the cast's
-    //   verdict as (true, ..."
-    // tests: SpecialsDispatchTest.nested_casts_preserve_each_reason_and_success_clears_it
-    // tests: SemScriptEntity.a_lua_cast_that_succeeds_answers_true_and_nil
     if (succeeded)
         lua_pushnil(L);
     else
@@ -570,6 +516,7 @@ int m_teleport(lua_State* L)
 int m_teleport_ranged(lua_State* L)
 {
     walker* w = self_arg(L);
+    // plumbing: a C++ bool handed to Lua as a boolean.
     lua_pushboolean(
         L,
         w->teleport_ranged(
@@ -903,6 +850,7 @@ int s_set_special_cost(lua_State* L)
 
 int s_query_bit_flags(lua_State* L)
 {
+    // plumbing: a C++ bit test handed to Lua as a boolean.
     lua_pushboolean(L, stats_arg(L)->query_bit_flags(static_cast<std::int32_t>(
                            luaL_checkinteger(L, 2))) != 0
                            ? 1
@@ -1213,8 +1161,7 @@ int og_summon_configured(lua_State* L)
     // tests: SemScriptEntity.a_wrongly_typed_summon_option_summons_nothing
     if (lua_getfield(L, 4, "ani_type") != LUA_TNIL) {
         ani_type = lua_tointegerx(L, -1, &isnum);
-        // rule: Part of the rule above that begins "A configured summon reads and type-checks every
-        //   option (ani_type, ..."
+        // rule: A configured summon reads and type-checks every option (ani_type, lifetime integer.
         // tests: ScriptBindingPropsTest.summon_configured_option_type_errors
         // tests: ScriptBindingPropsTest.summon_configured_empty_options_is_bare_summon
         // tests: ScriptBindingPropsTest.summon_configured_matches_the_corpus_sequence
@@ -1226,16 +1173,9 @@ int og_summon_configured(lua_State* L)
         recognized++;
     }
     lua_pop(L, 1);
-    // rule: Part of the rule above that begins "A configured summon reads and type-checks every
-    //   option (ani_type, ..."
-    // tests: ScriptBindingPropsTest.summon_configured_option_type_errors
-    // tests: ScriptBindingPropsTest.summon_configured_empty_options_is_bare_summon
-    // tests: ScriptBindingPropsTest.summon_configured_matches_the_corpus_sequence
-    // tests: SemScriptEntity.a_wrongly_typed_summon_option_summons_nothing
     if (lua_getfield(L, 4, "lifetime") != LUA_TNIL) {
         lifetime = lua_tointegerx(L, -1, &isnum);
-        // rule: Part of the rule above that begins "A configured summon reads and type-checks every
-        //   option (ani_type, ..."
+        // rule: A configured summon reads and type-checks every option (ani_type, lifetime integer.
         // tests: ScriptBindingPropsTest.summon_configured_option_type_errors
         // tests: ScriptBindingPropsTest.summon_configured_empty_options_is_bare_summon
         // tests: ScriptBindingPropsTest.summon_configured_matches_the_corpus_sequence
@@ -1247,16 +1187,9 @@ int og_summon_configured(lua_State* L)
         recognized++;
     }
     lua_pop(L, 1);
-    // rule: Part of the rule above that begins "A configured summon reads and type-checks every
-    //   option (ani_type, ..."
-    // tests: ScriptBindingPropsTest.summon_configured_option_type_errors
-    // tests: ScriptBindingPropsTest.summon_configured_empty_options_is_bare_summon
-    // tests: ScriptBindingPropsTest.summon_configured_matches_the_corpus_sequence
-    // tests: SemScriptEntity.a_wrongly_typed_summon_option_summons_nothing
     if (lua_getfield(L, 4, "hp_add") != LUA_TNIL) {
         hp_add = lua_tonumberx(L, -1, &isnum);
-        // rule: Part of the rule above that begins "A configured summon reads and type-checks every
-        //   option (ani_type, ..."
+        // rule: A configured summon reads and type-checks every option (ani_type, lifetime integer.
         // tests: ScriptBindingPropsTest.summon_configured_option_type_errors
         // tests: ScriptBindingPropsTest.summon_configured_empty_options_is_bare_summon
         // tests: ScriptBindingPropsTest.summon_configured_matches_the_corpus_sequence
@@ -1268,28 +1201,15 @@ int og_summon_configured(lua_State* L)
         recognized++;
     }
     lua_pop(L, 1);
-    // rule: Part of the rule above that begins "A configured summon reads and type-checks every
-    //   option (ani_type, ..."
-    // tests: ScriptBindingPropsTest.summon_configured_option_type_errors
-    // tests: ScriptBindingPropsTest.summon_configured_empty_options_is_bare_summon
-    // tests: ScriptBindingPropsTest.summon_configured_matches_the_corpus_sequence
-    // tests: SemScriptEntity.a_wrongly_typed_summon_option_summons_nothing
     if (lua_getfield(L, 4, "max_hp_from_hp") != LUA_TNIL) {
         max_hp_from_hp = lua_toboolean(L, -1) != 0;
         has_max_hp_from_hp = true;
         recognized++;
     }
     lua_pop(L, 1);
-    // rule: Part of the rule above that begins "A configured summon reads and type-checks every
-    //   option (ani_type, ..."
-    // tests: ScriptBindingPropsTest.summon_configured_option_type_errors
-    // tests: ScriptBindingPropsTest.summon_configured_empty_options_is_bare_summon
-    // tests: ScriptBindingPropsTest.summon_configured_matches_the_corpus_sequence
-    // tests: SemScriptEntity.a_wrongly_typed_summon_option_summons_nothing
     if (lua_getfield(L, 4, "damage_add") != LUA_TNIL) {
         damage_add = lua_tonumberx(L, -1, &isnum);
-        // rule: Part of the rule above that begins "A configured summon reads and type-checks every
-        //   option (ani_type, ..."
+        // rule: A configured summon reads and type-checks every option (ani_type, lifetime integer.
         // tests: ScriptBindingPropsTest.summon_configured_option_type_errors
         // tests: ScriptBindingPropsTest.summon_configured_empty_options_is_bare_summon
         // tests: ScriptBindingPropsTest.summon_configured_matches_the_corpus_sequence
@@ -1306,7 +1226,7 @@ int og_summon_configured(lua_State* L)
     int total = 0;
     lua_pushnil(L);
     // plumbing: Counts every key in the options table; feeds the unknown-key check, see
-    //   bindings_entity.cpp:1082.
+    //   below.
     while (lua_next(L, 4) != 0) {
         lua_pop(L, 1);  // value; the key stays for the next lua_next
         total++;
@@ -1338,29 +1258,13 @@ int og_summon_configured(lua_State* L)
     if (has_ani_type)
         w->set_ani_type(
             static_cast<char>(static_cast<std::uint64_t>(ani_type)));
-    // rule: Part of the rule above that begins "A configured summon applies its options in a fixed
-    //   ..."
-    // tests: ScriptBindingPropsTest.summon_configured_matches_the_corpus_sequence
-    // tests: ScriptBindingPropsTest.summon_configured_false_max_hp_applies_nothing
     if (has_lifetime)
         w->set_lifetime(static_cast<std::int32_t>(lifetime));
     statistics* st = w->stats();  // never null: walker constructs its stats
-    // rule: Part of the rule above that begins "A configured summon applies its options in a fixed
-    //   ..."
-    // tests: ScriptBindingPropsTest.summon_configured_matches_the_corpus_sequence
-    // tests: ScriptBindingPropsTest.summon_configured_false_max_hp_applies_nothing
     if (has_hp_add)
         st->set_hitpoints(st->hitpoints() + static_cast<float>(hp_add));
-    // rule: Part of the rule above that begins "A configured summon applies its options in a fixed
-    //   ..."
-    // tests: ScriptBindingPropsTest.summon_configured_matches_the_corpus_sequence
-    // tests: ScriptBindingPropsTest.summon_configured_false_max_hp_applies_nothing
     if (max_hp_from_hp)
         st->set_max_hitpoints(st->hitpoints());
-    // rule: Part of the rule above that begins "A configured summon applies its options in a fixed
-    //   ..."
-    // tests: ScriptBindingPropsTest.summon_configured_matches_the_corpus_sequence
-    // tests: ScriptBindingPropsTest.summon_configured_false_max_hp_applies_nothing
     if (has_damage_add)
         w->set_damage(w->damage() + static_cast<float>(damage_add));
     push_walker_here(L, w);
@@ -1493,8 +1397,9 @@ int og_query_grid_passable(lua_State* L)
     const float y = static_cast<float>(luaL_checknumber(L, 2));
     walker* w = resolve_walker(L, 3, /*required=*/true);
     bool ok;
-    // rule: Part of the rule above that begins "A passability probe answers for the prober's own
-    //   floor ..."
+    // rule: A passability probe answers for the prober's own floor unless the script names a floor,
+    //   so a pack planning a jump or summon onto another floor can ask about that floor's terrain
+    //   without moving anything there first.
     // tests: ScriptBindingPropsTest.an_explicit_floor_probes_that_floor_not_the_probers
     if (lua_isnoneornil(L, 4))
         ok = world->query_grid_passable(x, y, w);
@@ -1516,8 +1421,9 @@ int og_query_object_passable(lua_State* L)
     const float y = static_cast<float>(luaL_checknumber(L, 2));
     walker* w = resolve_walker(L, 3, /*required=*/true);
     bool ok;
-    // rule: Part of the rule above that begins "A passability probe answers for the prober's own
-    //   floor ..."
+    // rule: A passability probe answers for the prober's own floor unless the script names a floor,
+    //   so a pack planning a jump or summon onto another floor can ask about that floor's terrain
+    //   without moving anything there first.
     // tests: ScriptBindingPropsTest.an_explicit_floor_probes_that_floor_not_the_probers
     if (lua_isnoneornil(L, 4))
         ok = world->query_object_passable(x, y, w);
@@ -1544,12 +1450,15 @@ int og_query_genre(lua_State* L)
     GameWorld* world = world_arg(L);
     const auto tx = static_cast<std::int32_t>(luaL_checkinteger(L, 1));
     const auto ty = static_cast<std::int32_t>(luaL_checkinteger(L, 2));
-    // A terrain-genre lookup by tile reads the default-floor terrain unless the script names a
-    // floor; out-of-range tiles read as grass. Its only sim caller is the door: a door facing is
-    // chosen by whether the tile above it is a wall (wall above -> the opened door faces right,
-    // else the door's own facing is set up). Not pinned: #457 all four arms asserted (wall-above
-    // arm by the existing PackLuaWeaponDoor test); deferred on #457, the door reads floor 0's
-    // terrain on any floor.
+    // rule: A terrain-genre lookup by tile reads the default-floor terrain unless the script names
+    //   a floor; out-of-range tiles read as grass. Its only sim caller is the door: a door facing
+    //   is chosen by whether the tile above it is a wall (wall above -> the opened door faces
+    //   right, else the door's own facing is set up).
+    // tests: SemScriptEntity.a_terrain_lookup_reads_floor_zero_unless_a_floor_is_named
+    // tests: SemScriptEntity.classic_a_door_with_no_wall_above_turns_itself_up_not_the_opening
+    // tests: PackLuaWeaponDoor.a_door_under_a_wall_opens_sideways
+    // deferred: #457 all four arms asserted (wall-above arm by the existing PackLuaWeaponDoor
+    //   test); deferred on #457, the door reads floor 0's terrain on any floor
     smoother& sm =
         lua_isnoneornil(L, 3)
             ? world->mysmoother
@@ -1577,11 +1486,6 @@ int og_cosmetic_rand(lua_State* L)
     // tests: SemScriptEntity.a_cosmetic_roll_in_range_draws_one_step_of_the_sim_stream
     if (n <= 0)
         script_raise(L, "og.cosmetic_rand: n must be positive");
-    // rule: Part of the rule above that begins "A cosmetic roll takes a bound in [1, INT32_MAX];
-    //   ..."
-    // tests: ScriptBindingErrorTest.a_nonpositive_cosmetic_rand_bound_is_refused
-    // tests: ScriptBindingMathTest.rand_bounds_above_int32_max_are_refused
-    // tests: SemScriptEntity.a_cosmetic_roll_in_range_draws_one_step_of_the_sim_stream
     if (n > kMaxRandBound)
         script_raise(L,
                      "og.cosmetic_rand: n out of range [1, 2147483647]");
@@ -1710,16 +1614,14 @@ int og_emit_notification(lua_State* L)
     // tests: ScriptBindingTest.emit_notification_to_an_unowned_walker_broadcasts
     if (!lua_isnoneornil(L, 3))
     {
-        // rule: Part of the rule above that begins "A notification goes to everyone unless
-        //   addressed: a walker ..."
+        // rule: A notification goes to everyone unless addressed.
         // tests: ScriptBindingTest.emit_notification_addresses_a_single_seat
         // tests: ScriptBindingTest.emit_notification_refuses_a_seat_that_cannot_exist
         // tests: ScriptBindingTest.emit_notification_to_an_unowned_walker_broadcasts
         if (lua_isuserdata(L, 3))
         {
             const walker* w = resolve_walker(L, 3, /*required=*/true);
-            // rule: Part of the rule above that begins "A notification goes to everyone unless
-            //   addressed: a walker ..."
+            // rule: A notification goes to everyone unless addressed.
             // tests: ScriptBindingTest.emit_notification_addresses_a_single_seat
             // tests: ScriptBindingTest.emit_notification_refuses_a_seat_that_cannot_exist
             // tests: ScriptBindingTest.emit_notification_to_an_unowned_walker_broadcasts
@@ -1729,8 +1631,7 @@ int og_emit_notification(lua_State* L)
         {
             target = static_cast<std::int32_t>(luaL_checkinteger(L, 3));
         }
-        // rule: Part of the rule above that begins "A notification goes to everyone unless
-        //   addressed: a walker ..."
+        // rule: A notification goes to everyone unless addressed.
         // tests: ScriptBindingTest.emit_notification_addresses_a_single_seat
         // tests: ScriptBindingTest.emit_notification_refuses_a_seat_that_cannot_exist
         // tests: ScriptBindingTest.emit_notification_to_an_unowned_walker_broadcasts
@@ -1788,23 +1689,11 @@ int og_family_flag(lua_State* L)
     if (order != Order::Living)
         script_raise(L, "og.family_flag: only 'living' supported");
     const FamilyDescriptor* fd = get_family_descriptor(fam);
-    // rule: Part of the rule above that begins "A script may read another body's family traits
-    //   (returning ..."
-    // tests: ScriptBindingPropsTest.family_flag_answers_each_flag_from_the_descriptor
-    // tests: ScriptBindingErrorTest.an_undeclared_family_flag_query_answers_nil
-    // tests: ScriptBindingErrorTest.unknown_string_selectors_are_named_in_the_error
-    // tests: WeapBehavior.weap_death_knife_soldier_owner, WeapBehavior.weap_death_knife_non_soldier
     if (fd == nullptr) {
         lua_pushnil(L);
         return 1;
     }
     bool value;
-    // rule: Part of the rule above that begins "A script may read another body's family traits
-    //   (returning ..."
-    // tests: ScriptBindingPropsTest.family_flag_answers_each_flag_from_the_descriptor
-    // tests: ScriptBindingErrorTest.an_undeclared_family_flag_query_answers_nil
-    // tests: ScriptBindingErrorTest.unknown_string_selectors_are_named_in_the_error
-    // tests: WeapBehavior.weap_death_knife_soldier_owner, WeapBehavior.weap_death_knife_non_soldier
     if (std::strcmp(flag, "has_returning_weapon") == 0)
         value = fd->has_returning_weapon;
     else if (std::strcmp(flag, "is_undead") == 0)
@@ -1815,12 +1704,6 @@ int og_family_flag(lua_State* L)
         value = fd->is_stationary;
     else
         script_raise(L, "og.family_flag: unknown flag '%s'", flag);
-    // rule: Part of the rule above that begins "A script may read another body's family traits
-    //   (returning ..."
-    // tests: ScriptBindingPropsTest.family_flag_answers_each_flag_from_the_descriptor
-    // tests: ScriptBindingErrorTest.an_undeclared_family_flag_query_answers_nil
-    // tests: ScriptBindingErrorTest.unknown_string_selectors_are_named_in_the_error
-    // tests: WeapBehavior.weap_death_knife_soldier_owner, WeapBehavior.weap_death_knife_non_soldier
     lua_pushboolean(L, value ? 1 : 0);
     return 1;
 }
@@ -2063,20 +1946,14 @@ int og_tuning(lua_State* L)
     }
     lua_pop(L, 1);
     lua_newtable(L);  // cache, data
-    // rule: Part of the rule above that begins "A family's tuning constants reach its scripts as a
-    //   ..."
-    // tests: ScriptBindingPropsTest.tuning_serves_every_value_kind
-    // tests: ScriptBindingPropsTest.tuning_undeclared_family_is_empty_and_frozen
-    // tests: ScriptBindingPropsTest.tuning_views_reject_writes
-    // tests: ScriptBindingPropsTest.tuning_is_keyed_per_order_and_family
-    // tests: SemScriptEntity.a_family_tuning_view_is_one_cached_table_per_generation
     if (const TuningMap* map =
             family_tuning(w->query_order(), static_cast<int>(w->family()))) {
         // plumbing: og_tuning: copies each declared tuning pair into the table; see
-        //   bindings_entity.cpp:1662.
+        //   above.
         for (const TuningPair& p : *map) {
-            // rule: Part of the rule above that begins "A family's tuning constants reach its
-            //   scripts as a ..."
+            // rule: A family's tuning constants reach its scripts as a frozen read-only table keyed
+            //   per (order, family) with each value in its declared type (integer, number, boolean,
+            //   string).
             // tests: ScriptBindingPropsTest.tuning_serves_every_value_kind
             // tests: ScriptBindingPropsTest.tuning_undeclared_family_is_empty_and_frozen
             // tests: ScriptBindingPropsTest.tuning_views_reject_writes
@@ -2092,8 +1969,9 @@ int og_tuning(lua_State* L)
                                    static_cast<lua_Number>(p.value.number));
                     break;
                 case TuningValue::Kind::Boolean:
-                    // rule: Part of the rule above that begins "A family's tuning constants reach
-                    //   its scripts as a ..."
+                    // rule: A family's tuning constants reach its scripts as a frozen read-only
+                    //   table keyed per (order, family) with each value in its declared type
+                    //   (integer, number, boolean, string).
                     // tests: ScriptBindingPropsTest.tuning_serves_every_value_kind
                     // tests: ScriptBindingPropsTest.tuning_undeclared_family_is_empty_and_frozen
                     // tests: ScriptBindingPropsTest.tuning_views_reject_writes
@@ -2140,11 +2018,6 @@ const signed char* ani_row_ptr(walker* w, lua_Integer row)
     // tests: ScriptBindingTest.ani_count_zero_keeps_legacy_direct_indexing
     if (w->ani == nullptr || row < 0)
         return nullptr;
-    // rule: Part of the rule above that begins "A script reading a walker's animation table cannot
-    //   walk ..."
-    // tests: ScriptBindingTest.ani_frame_and_ani_row_read_the_animation_table
-    // tests: ScriptBindingTest.ani_accessors_are_nil_without_a_table
-    // tests: ScriptBindingTest.ani_count_zero_keeps_legacy_direct_indexing
     if (w->ani_count > 0 && row >= static_cast<lua_Integer>(w->ani_count))
         return nullptr;
     return w->ani[static_cast<std::size_t>(row)];
@@ -2159,8 +2032,6 @@ int ani_row_len(const signed char* seq)
     // tests: ScriptBindingTest.ani_frame_and_ani_row_read_the_animation_table
     while (len < kAniScanCap && seq[len] != -1)
         len++;
-    // rule: Part of the rule above that begins "An animation row ends at its -1 sentinel; a ..."
-    // tests: ScriptBindingTest.ani_frame_and_ani_row_read_the_animation_table
     return len >= kAniScanCap ? -1 : len;
 }
 
@@ -2181,10 +2052,6 @@ int og_ani_frame(lua_State* L)
     // tests: SemScriptEntity.a_negative_animation_frame_index_reads_nil
     const int len = (seq != nullptr) ? ani_row_len(seq) : -1;
     const lua_Integer index = luaL_checkinteger(L, 3);
-    // rule: Part of the rule above that begins "og.ani_frame reads one frame; the sentinel slot
-    //   itself (index ..."
-    // tests: ScriptBindingTest.ani_frame_and_ani_row_read_the_animation_table
-    // tests: SemScriptEntity.a_negative_animation_frame_index_reads_nil
     if (len < 0 || index < 0 || index > static_cast<lua_Integer>(len)) {
         lua_pushnil(L);
         return 1;
@@ -2206,15 +2073,12 @@ int og_ani_row(lua_State* L)
     //   row is an empty table, a missing/malformed row is nil.
     // tests: ScriptBindingTest.ani_frame_and_ani_row_read_the_animation_table
     const int len = (seq != nullptr) ? ani_row_len(seq) : -1;
-    // rule: Part of the rule above that begins "og.ani_row returns the whole frame sequence before
-    //   the sentinel; ..."
-    // tests: ScriptBindingTest.ani_frame_and_ani_row_read_the_animation_table
     if (len < 0) {
         lua_pushnil(L);
         return 1;
     }
     lua_createtable(L, len, 0);
-    // plumbing: og_ani_row: copies frames into the Lua array; see bindings_entity.cpp:1759.
+    // plumbing: og_ani_row: copies frames into the Lua array; see above.
     for (int i = 0; i < len; ++i) {
         lua_pushinteger(L, static_cast<lua_Integer>(seq[i]));
         lua_rawseti(L, -2, static_cast<lua_Integer>(i) + 1);
@@ -2252,6 +2116,7 @@ int og_award_score(lua_State* L)
 
 int og_world_can_exit_whenever(lua_State* L)
 {
+    // plumbing: a world type bit handed to Lua as a boolean.
     lua_pushboolean(
         L, (world_arg(L)->type & GameWorld::TYPE_CAN_EXIT_WHENEVER) != 0 ? 1
                                                                         : 0);
@@ -2360,7 +2225,7 @@ int og_campaign_var(lua_State* L)
 {
     GameWorld* world = world_arg(L);
     const char* name = luaL_checkstring(L, 1);
-    // plumbing: og_campaign_var: linear scan of world->campaign_vars; see bindings_entity.cpp:1890.
+    // plumbing: og_campaign_var: linear scan of world->campaign_vars; see below.
     for (const auto& [key, value] : world->campaign_vars) {
         // rule: A level script reads a campaign decision value copied into the world at level load;
         //   an absent value reads 0 (the var==0 rule), so a dedicated server whose save carries no
@@ -2447,8 +2312,8 @@ int og_campaign_state_set(lua_State* L)
         script_raise(L,
                      "og.campaign_state_set: value out of int32 range");
     const auto& p = campaign_providers();
-    // rule: Part of the rule above that begins "A campaign script never gets a silent default: a
-    //   ..."
+    // rule: A campaign script never gets a silent default: a campaign binding whose surface
+    //   installed no provider raises a Lua error instead of answering 0/false/empty.
     // tests: CampaignHooksTest.campaign_bindings_error_with_no_provider
     // tests: CampaignHooksTest.provider_bindings_happy_path
     // tests: CampaignHooksTest.match_bindings_round_trip
@@ -2473,8 +2338,8 @@ int og_campaign_gold(lua_State* L)
 {
     campaign_dispatch_arg(L, "campaign_gold");
     const auto& p = campaign_providers();
-    // rule: Part of the rule above that begins "A campaign script never gets a silent default: a
-    //   ..."
+    // rule: A campaign script never gets a silent default: a campaign binding whose surface
+    //   installed no provider raises a Lua error instead of answering 0/false/empty.
     // tests: CampaignHooksTest.campaign_bindings_error_with_no_provider
     // tests: CampaignHooksTest.provider_bindings_happy_path
     // tests: CampaignHooksTest.match_bindings_round_trip
@@ -2500,8 +2365,8 @@ int og_campaign_spend_gold(lua_State* L)
     if (amount < 0)
         script_raise(L, "og.campaign_spend_gold: negative amount");
     const auto& p = campaign_providers();
-    // rule: Part of the rule above that begins "A campaign script never gets a silent default: a
-    //   ..."
+    // rule: A campaign script never gets a silent default: a campaign binding whose surface
+    //   installed no provider raises a Lua error instead of answering 0/false/empty.
     // tests: CampaignHooksTest.campaign_bindings_error_with_no_provider
     // tests: CampaignHooksTest.provider_bindings_happy_path
     // tests: CampaignHooksTest.match_bindings_round_trip
@@ -2514,7 +2379,7 @@ int og_campaign_spend_gold(lua_State* L)
     //   exactly when the installed gold_spend provider answered true, false when it answered false.
     //   The affordability rule (amount > gold refused, nothing debited) and the infinite_gold
     //   branch (answers true, skips the debit) are the PROVIDER's
-    //   (src/resources/campaign_state_providers.cpp:220-235), outside this chunk.
+    //   (src/resources/campaign_state_providers.cpp), outside this chunk.
     // tests: CampaignHooksTest.provider_bindings_happy_path
     // tests: CampaignStateProviders.gold_spend_rules
     lua_pushboolean(L, p.gold_spend(amount) ? 1 : 0);
@@ -2525,13 +2390,14 @@ int og_campaign_grant_gold(lua_State* L)
 {
     campaign_dispatch_arg(L, "campaign_grant_gold");
     const lua_Integer amount = luaL_checkinteger(L, 1);
-    // rule: Part of the rule above that begins "Campaign gold can never be moved by a negative ..."
+    // rule: Campaign gold can never be moved by a negative amount: spend(-n) and grant(-n) are
+    //   script errors that never reach the wallet.
     // tests: CampaignHooksTest.negative_gold_amounts_never_reach_the_provider
     if (amount < 0)
         script_raise(L, "og.campaign_grant_gold: negative amount");
     const auto& p = campaign_providers();
-    // rule: Part of the rule above that begins "A campaign script never gets a silent default: a
-    //   ..."
+    // rule: A campaign script never gets a silent default: a campaign binding whose surface
+    //   installed no provider raises a Lua error instead of answering 0/false/empty.
     // tests: CampaignHooksTest.campaign_bindings_error_with_no_provider
     // tests: CampaignHooksTest.provider_bindings_happy_path
     // tests: CampaignHooksTest.match_bindings_round_trip
@@ -2550,8 +2416,8 @@ int og_campaign_team(lua_State* L)
 {
     campaign_dispatch_arg(L, "campaign_team");
     const auto& p = campaign_providers();
-    // rule: Part of the rule above that begins "A campaign script never gets a silent default: a
-    //   ..."
+    // rule: A campaign script never gets a silent default: a campaign binding whose surface
+    //   installed no provider raises a Lua error instead of answering 0/false/empty.
     // tests: CampaignHooksTest.campaign_bindings_error_with_no_provider
     // tests: CampaignHooksTest.provider_bindings_happy_path
     // tests: CampaignHooksTest.match_bindings_round_trip
@@ -2564,7 +2430,7 @@ int og_campaign_team(lua_State* L)
     lua_createtable(L, static_cast<int>(team.size()), 0);
     // plumbing: iteration over the campaign roster snapshot building plain Lua tables; field order
     //   asserted by CampaignHooksTest.provider_bindings_happy_path; deployed rule see
-    //   bindings_entity.cpp:2046
+    //   below
     for (std::size_t i = 0; i < team.size(); i++) {
         const hooks::CampaignRosterEntry& entry = team[i];
         lua_createtable(L, 0, 13);
@@ -2614,8 +2480,8 @@ int og_campaign_level_completed(lua_State* L)
     campaign_dispatch_arg(L, "campaign_level_completed");
     const auto id = static_cast<int>(luaL_checkinteger(L, 1));
     const auto& p = campaign_providers();
-    // rule: Part of the rule above that begins "A campaign script never gets a silent default: a
-    //   ..."
+    // rule: A campaign script never gets a silent default: a campaign binding whose surface
+    //   installed no provider raises a Lua error instead of answering 0/false/empty.
     // tests: CampaignHooksTest.campaign_bindings_error_with_no_provider
     // tests: CampaignHooksTest.provider_bindings_happy_path
     // tests: CampaignHooksTest.match_bindings_round_trip
@@ -2635,8 +2501,8 @@ int og_campaign_current_level(lua_State* L)
 {
     campaign_dispatch_arg(L, "campaign_current_level");
     const auto& p = campaign_providers();
-    // rule: Part of the rule above that begins "A campaign script never gets a silent default: a
-    //   ..."
+    // rule: A campaign script never gets a silent default: a campaign binding whose surface
+    //   installed no provider raises a Lua error instead of answering 0/false/empty.
     // tests: CampaignHooksTest.campaign_bindings_error_with_no_provider
     // tests: CampaignHooksTest.provider_bindings_happy_path
     // tests: CampaignHooksTest.match_bindings_round_trip
@@ -2655,8 +2521,8 @@ int og_campaign_scenario_title(lua_State* L)
     campaign_dispatch_arg(L, "campaign_scenario_title");
     const auto id = static_cast<int>(luaL_checkinteger(L, 1));
     const auto& p = campaign_providers();
-    // rule: Part of the rule above that begins "A campaign script never gets a silent default: a
-    //   ..."
+    // rule: A campaign script never gets a silent default: a campaign binding whose surface
+    //   installed no provider raises a Lua error instead of answering 0/false/empty.
     // tests: CampaignHooksTest.campaign_bindings_error_with_no_provider
     // tests: CampaignHooksTest.provider_bindings_happy_path
     // tests: CampaignHooksTest.match_bindings_round_trip
@@ -2682,8 +2548,7 @@ bool known_match_setting(const char* name)
     // tests: CampaignStateProviders.bot_knob_names_are_in_the_campaign_vocabulary
     // tests: SemScriptCampaign.the_retired_match_knobs_are_unknown_to_campaign_scripts
     for (const char* known : hooks::kCampaignMatchSettingNames) {
-        // rule: Part of the rule above that begins "Campaign scripts read only the live match-knob
-        //   vocabulary; an ..."
+        // rule: Campaign scripts read only the live match-knob vocabulary.
         // tests: CampaignHooksTest.match_bindings_round_trip
         // tests: CampaignStateProviders.bot_knob_names_are_in_the_campaign_vocabulary
         // tests: SemScriptCampaign.the_retired_match_knobs_are_unknown_to_campaign_scripts
@@ -2705,8 +2570,7 @@ int og_campaign_match_get(lua_State* L)
 {
     campaign_dispatch_arg(L, "campaign_match_get");
     const char* name = luaL_checkstring(L, 1);
-    // rule: Part of the rule above that begins "Campaign scripts read only the live match-knob
-    //   vocabulary; an ..."
+    // rule: Campaign scripts read only the live match-knob vocabulary.
     // tests: CampaignHooksTest.match_bindings_round_trip
     // tests: CampaignStateProviders.bot_knob_names_are_in_the_campaign_vocabulary
     // tests: SemScriptCampaign.the_retired_match_knobs_are_unknown_to_campaign_scripts
@@ -2714,8 +2578,8 @@ int og_campaign_match_get(lua_State* L)
         script_raise(L, "og.campaign_match_get: unknown setting '%s'",
                      name);
     const auto& p = campaign_providers();
-    // rule: Part of the rule above that begins "A campaign script never gets a silent default: a
-    //   ..."
+    // rule: A campaign script never gets a silent default: a campaign binding whose surface
+    //   installed no provider raises a Lua error instead of answering 0/false/empty.
     // tests: CampaignHooksTest.campaign_bindings_error_with_no_provider
     // tests: CampaignHooksTest.provider_bindings_happy_path
     // tests: CampaignHooksTest.match_bindings_round_trip
@@ -2747,8 +2611,8 @@ int og_campaign_match_set(lua_State* L)
         script_raise(L,
                      "og.campaign_match_set: value out of int32 range");
     const auto& p = campaign_providers();
-    // rule: Part of the rule above that begins "A campaign script never gets a silent default: a
-    //   ..."
+    // rule: A campaign script never gets a silent default: a campaign binding whose surface
+    //   installed no provider raises a Lua error instead of answering 0/false/empty.
     // tests: CampaignHooksTest.campaign_bindings_error_with_no_provider
     // tests: CampaignHooksTest.provider_bindings_happy_path
     // tests: CampaignHooksTest.match_bindings_round_trip
@@ -2769,8 +2633,8 @@ int og_campaign_is_host(lua_State* L)
 {
     campaign_dispatch_arg(L, "campaign_is_host");
     const auto& p = campaign_providers();
-    // rule: Part of the rule above that begins "A campaign script never gets a silent default: a
-    //   ..."
+    // rule: A campaign script never gets a silent default: a campaign binding whose surface
+    //   installed no provider raises a Lua error instead of answering 0/false/empty.
     // tests: CampaignHooksTest.campaign_bindings_error_with_no_provider
     // tests: CampaignHooksTest.provider_bindings_happy_path
     // tests: CampaignHooksTest.match_bindings_round_trip
@@ -2797,8 +2661,8 @@ int og_campaign_my_team(lua_State* L)
 {
     campaign_dispatch_arg(L, "campaign_my_team");
     const auto& p = campaign_providers();
-    // rule: Part of the rule above that begins "A campaign script never gets a silent default: a
-    //   ..."
+    // rule: A campaign script never gets a silent default: a campaign binding whose surface
+    //   installed no provider raises a Lua error instead of answering 0/false/empty.
     // tests: CampaignHooksTest.campaign_bindings_error_with_no_provider
     // tests: CampaignHooksTest.provider_bindings_happy_path
     // tests: CampaignHooksTest.match_bindings_round_trip
@@ -2807,8 +2671,9 @@ int og_campaign_my_team(lua_State* L)
     if (!p.my_team)
         script_raise(
             L, "og.campaign_my_team: no campaign provider installed");
-    // The local seat's team handed to a campaign script is always a real team 0..3; an out-of-range
-    // seat answer is clamped.
+    // rule: The local seat's team handed to a campaign script is always a real team 0..3; an
+    //   out-of-range seat answer is clamped.
+    // tests: CampaignHooksTest.campaign_my_team_provider_answer_and_clamp
     lua_pushinteger(L, std::clamp(p.my_team(), 0, SCORE_TEAM_COUNT - 1));
     return 1;
 }
@@ -2827,14 +2692,11 @@ int og_campaign_random(lua_State* L)
     // tests: CampaignHooksTest.campaign_random_provider_answer_and_bounds
     if (n < 1)
         script_raise(L, "og.campaign_random: n must be >= 1");
-    // rule: Part of the rule above that begins "The menu-time roll answers 1..n from the menu
-    //   generator ..."
-    // tests: CampaignHooksTest.campaign_random_provider_answer_and_bounds
     if (n > std::numeric_limits<std::int32_t>::max())
         script_raise(L, "og.campaign_random: n out of int32 range");
     const auto& p = campaign_providers();
-    // rule: Part of the rule above that begins "A campaign script never gets a silent default: a
-    //   ..."
+    // rule: A campaign script never gets a silent default: a campaign binding whose surface
+    //   installed no provider raises a Lua error instead of answering 0/false/empty.
     // tests: CampaignHooksTest.campaign_bindings_error_with_no_provider
     // tests: CampaignHooksTest.provider_bindings_happy_path
     // tests: CampaignHooksTest.match_bindings_round_trip
@@ -2875,10 +2737,6 @@ void check_number_arg(lua_State* L, int idx)
     // tests: ScriptBindingMathTest.max_min_follow_std_semantics_exactly
     if (lua_type(L, idx) != LUA_TNUMBER)
         luaL_typeerror(L, idx, "number");
-    // rule: Part of the rule above that begins "Pack arithmetic helpers (og.max/min/clamp/sign)
-    //   accept only real, non-NaN numbers: ..."
-    // tests: ScriptBindingMathTest.non_numbers_and_nan_are_refused
-    // tests: ScriptBindingMathTest.max_min_follow_std_semantics_exactly
     if (!lua_isinteger(L, idx) && std::isnan(lua_tonumber(L, idx)))
         luaL_argerror(L, idx, "NaN");
 }
@@ -2946,8 +2804,8 @@ int og_min(lua_State* L)
 {
     check_number_arg(L, 1);
     check_number_arg(L, 2);
-    // rule: Part of the rule above that begins "og.max/og.min are std::max/std::min exactly: ties
-    //   answer the first argument ..."
+    // rule: og.max/og.min are std::max/std::min exactly: ties answer the first argument and the
+    //   winning argument keeps its integer/float subtype.
     // tests: ScriptBindingMathTest.max_min_follow_std_semantics_exactly
     lua_pushvalue(L, lua_compare(L, 2, 1, LUA_OPLT) ? 2 : 1);
     return 1;
@@ -2995,9 +2853,6 @@ int og_sign(lua_State* L)
     // tests: ScriptBindingMathTest.sign_is_total_and_answers_an_integer
     if (v > 0)
         s = 1;
-    // rule: Part of the rule above that begins "og.sign is the total sign function used by movement
-    //   ..."
-    // tests: ScriptBindingMathTest.sign_is_total_and_answers_an_integer
     if (v < 0)
         s = -1;
     lua_pushinteger(L, s);
@@ -3198,10 +3053,6 @@ int walker_index(lua_State* L)
         return 1;  // the method function, exactly as the plain table served
     lua_pop(L, 1);
     lua_pushvalue(L, 2);
-    // rule: Part of the rule above that begins "Reading a field on a walker handle resolves methods
-    //   ..."
-    // tests: ScriptBindingPropsTest.read_resolution_is_method_first
-    // tests: ScriptBindingPropsTest.property_reads_equal_their_method_spellings
     if (lua_rawget(L, lua_upvalueindex(2)) == LUA_TFUNCTION) {
         const lua_CFunction getter = lua_tocfunction(L, -1);
         lua_settop(L, 1);  // just the handle — the stack a method call sees
@@ -3239,23 +3090,11 @@ int walker_newindex(lua_State* L)
     const bool read_only =
         lua_rawget(L, lua_upvalueindex(2)) == LUA_TFUNCTION;
     lua_pop(L, 1);
-    // rule: Part of the rule above that begins "Writing a walker field runs the same setter as ..."
-    // tests: ScriptBindingPropsTest.property_writes_run_the_same_setters
-    // tests: ScriptBindingPropsTest.write_to_read_only_property_errors
-    // tests: ScriptBindingPropsTest.write_to_method_name_errors
-    // tests: ScriptBindingPropsTest.write_to_unknown_field_errors
-    // tests: ScriptBindingPropsTest.write_with_non_string_key_errors
     if (read_only)
         script_raise(L, "walker property '%s' is read-only", key);
     lua_pushvalue(L, 2);
     const bool is_method = lua_rawget(L, lua_upvalueindex(3)) != LUA_TNIL;
     lua_pop(L, 1);
-    // rule: Part of the rule above that begins "Writing a walker field runs the same setter as ..."
-    // tests: ScriptBindingPropsTest.property_writes_run_the_same_setters
-    // tests: ScriptBindingPropsTest.write_to_read_only_property_errors
-    // tests: ScriptBindingPropsTest.write_to_method_name_errors
-    // tests: ScriptBindingPropsTest.write_to_unknown_field_errors
-    // tests: ScriptBindingPropsTest.write_with_non_string_key_errors
     if (is_method)
         script_raise(L, "'%s' is a walker method, not a writable "
                         "property", key);
@@ -3286,10 +3125,6 @@ int og_end_level(lua_State* L)
         script_raise(L, "og.end_level: ending must be 0 (win) or 1 "
                         "(loss)");
     const lua_Integer next_level = luaL_checkinteger(L, 2);
-    // rule: Part of the rule above that begins "A scripted mode ends the level only as a ..."
-    // tests: ModeBindings.end_level_latches_and_validates
-    // tests: SemScriptMode.an_ending_other_than_win_or_loss_is_refused_and_never_latches
-    // tests: SemScriptMode.a_next_level_outside_minus_one_to_32767_is_refused_and_never_latches
     if (next_level < -1 || next_level > 32767)
         script_raise(L, "og.end_level: next_level out of range "
                         "[-1, 32767]");
@@ -3356,8 +3191,8 @@ int og_mode_set(lua_State* L)
 {
     GameWorld* world = world_arg(L);
     const lua_Integer i = luaL_checkinteger(L, 1);
-    // rule: Part of the rule above that begins "Mode state lives only in the 64 replicated mode
-    //   ..."
+    // rule: Mode state lives only in the 64 replicated mode vars; indices outside 0..63 are script
+    //   errors (no out-of-bounds write).
     // tests: ModeBindings.mode_get_set_roundtrip_and_index_errors
     // tests: SemScriptMode.a_mode_var_write_truncates_to_int32
     // tests: SemScriptMode.a_negative_mode_var_write_is_refused_and_writes_nothing
@@ -3378,7 +3213,9 @@ int og_set_mode_name(lua_State* L)
     const char* s = luaL_checklstring(L, 1, &len);
     auto& name = world->mode.name;
     name.fill('\0');
-    // The mode label shown on HUD/results is clamped to 11 bytes.
+    // rule: The mode label shown on HUD/results is clamped to 11 bytes.
+    // tests: ModeBindings.set_mode_name_clamps_to_eleven_bytes
+    // tests: ModesSoccer.init_activates_anchor_teams_and_spawns_ball
     const size_t n = std::min(len, static_cast<size_t>(
                                        og::sim::kModeNameBytes - 1));
     std::memcpy(name.data(), s, n);
@@ -3409,7 +3246,8 @@ int og_set_hud_line(lua_State* L)
     // tests: SemScriptMode.a_negative_hud_tint_is_refused_without_half_writing_the_line
     if (!lua_isnoneornil(L, 3)) {
         const lua_Integer t = luaL_checkinteger(L, 3);
-        // rule: Part of the rule above that begins "A HUD line's optional team tints it (nil = ..."
+        // rule: A HUD line's optional team tints it (nil = default colour, 255), a bad tint team is
+        //   refused without half-writing the line, and the text is clamped to 25 bytes.
         // tests: ModeBindings.hud_lines_write_clamp_clear_and_validate
         // tests: ModeBindings.hud_line_accepts_band_tint_keeps_nil_default
         // tests: SemScriptMode.a_negative_hud_tint_is_refused_without_half_writing_the_line
@@ -3434,7 +3272,7 @@ int og_clear_hud_line(lua_State* L)
 {
     GameWorld* world = world_arg(L);
     const lua_Integer slot = luaL_checkinteger(L, 1);
-    // rule: Part of the rule above that begins "A mode has four HUD lines (slots 0..3); other ..."
+    // rule: A mode has four HUD lines (slots 0..3); other slots are refused.
     // tests: ModeBindings.hud_lines_write_clamp_clear_and_validate
     // tests: SemScriptMode.hud_slots_below_zero_and_past_three_are_refused_and_write_nothing
     if (slot < 0 || slot >= og::sim::kModeHudLines)
@@ -3464,26 +3302,15 @@ int og_set_beacon(lua_State* L)
     og::sim::ModeBeacon& beacon =
         world->mode.beacons[static_cast<std::size_t>(slot)];
     walker* w = resolve_walker_or_nil(L, 2);
-    // rule: Part of the rule above that begins "A mode marks up to four entities for the ..."
-    // tests: ModeBindings.beacons_set_clear_and_validate
-    // tests: ModeBindings.beacon_accepts_band_team_rejects_gap_and_beyond
-    // tests: SemScriptMode.a_nil_beacon_clears_the_slot_whatever_team_rides_along
-    // tests: SemScriptMode.a_negative_beacon_slot_is_refused_and_writes_nothing
-    // tests: SemScriptMode.a_negative_beacon_tint_is_refused_and_the_slot_kept
     if (w == nullptr) {
         beacon = og::sim::ModeBeacon{};
         return 0;
     }
     std::uint8_t team = 255;
-    // rule: Part of the rule above that begins "A mode marks up to four entities for the ..."
-    // tests: ModeBindings.beacons_set_clear_and_validate
-    // tests: ModeBindings.beacon_accepts_band_team_rejects_gap_and_beyond
-    // tests: SemScriptMode.a_nil_beacon_clears_the_slot_whatever_team_rides_along
-    // tests: SemScriptMode.a_negative_beacon_slot_is_refused_and_writes_nothing
-    // tests: SemScriptMode.a_negative_beacon_tint_is_refused_and_the_slot_kept
     if (!lua_isnoneornil(L, 3)) {
         const lua_Integer t = luaL_checkinteger(L, 3);
-        // rule: Part of the rule above that begins "A mode marks up to four entities for the ..."
+        // rule: A mode marks up to four entities for the off-screen beacon; nil clears the slot;
+        //   the optional team tints it and must be a scoring identity.
         // tests: ModeBindings.beacons_set_clear_and_validate
         // tests: ModeBindings.beacon_accepts_band_team_rejects_gap_and_beyond
         // tests: SemScriptMode.a_nil_beacon_clears_the_slot_whatever_team_rides_along
@@ -3534,8 +3361,8 @@ int og_set_camera_view(lua_State* L)
     if (!lua_isnoneornil(L, 3)) {
         luaL_checktype(L, 3, LUA_TTABLE);
         int recognized = 0;
-        // rule: Part of the rule above that begins "Camera options are only {style='auto'|'inset'}
-        //   (no 'docked' force, since ..."
+        // rule: Camera options are only {style='auto'|'inset'} (no 'docked' force, since docking
+        //   follows local seat count).
         // tests: ModeBindings.camera_view_style_maps_to_byte_and_rejects_bad_opts
         // tests: ModeBindings.an_explicit_auto_style_takes_a_slot_back_off_inset
         // tests: ModeBindings.camera_view_sets_slot_zero_and_rejects_out_of_range_slots
@@ -3543,8 +3370,8 @@ int og_set_camera_view(lua_State* L)
             // lua_type before lua_tostring: converting a number in place
             // would mutate the table the lua_next walk below is about to
             // traverse.
-            // rule: Part of the rule above that begins "Camera options are only
-            //   {style='auto'|'inset'} (no 'docked' force, since ..."
+            // rule: Camera options are only {style='auto'|'inset'} (no 'docked' force, since
+            //   docking follows local seat count).
             // tests: ModeBindings.camera_view_style_maps_to_byte_and_rejects_bad_opts
             // tests: ModeBindings.an_explicit_auto_style_takes_a_slot_back_off_inset
             // tests: ModeBindings.camera_view_sets_slot_zero_and_rejects_out_of_range_slots
@@ -3552,8 +3379,8 @@ int og_set_camera_view(lua_State* L)
                 script_raise(
                     L, "og.set_camera_view: 'style' must be a string");
             const char* s = lua_tostring(L, -1);
-            // rule: Part of the rule above that begins "Camera options are only
-            //   {style='auto'|'inset'} (no 'docked' force, since ..."
+            // rule: Camera options are only {style='auto'|'inset'} (no 'docked' force, since
+            //   docking follows local seat count).
             // tests: ModeBindings.camera_view_style_maps_to_byte_and_rejects_bad_opts
             // tests: ModeBindings.an_explicit_auto_style_takes_a_slot_back_off_inset
             // tests: ModeBindings.camera_view_sets_slot_zero_and_rejects_out_of_range_slots
@@ -3571,8 +3398,8 @@ int og_set_camera_view(lua_State* L)
         lua_pop(L, 1);
         int total = 0;
         lua_pushnil(L);
-        // rule: Part of the rule above that begins "Camera options are only {style='auto'|'inset'}
-        //   (no 'docked' force, since ..."
+        // rule: Camera options are only {style='auto'|'inset'} (no 'docked' force, since docking
+        //   follows local seat count).
         // tests: ModeBindings.camera_view_style_maps_to_byte_and_rejects_bad_opts
         // tests: ModeBindings.an_explicit_auto_style_takes_a_slot_back_off_inset
         // tests: ModeBindings.camera_view_sets_slot_zero_and_rejects_out_of_range_slots
@@ -3580,8 +3407,8 @@ int og_set_camera_view(lua_State* L)
             lua_pop(L, 1);  // value; the key stays for the next lua_next
             total++;
         }
-        // rule: Part of the rule above that begins "Camera options are only {style='auto'|'inset'}
-        //   (no 'docked' force, since ..."
+        // rule: Camera options are only {style='auto'|'inset'} (no 'docked' force, since docking
+        //   follows local seat count).
         // tests: ModeBindings.camera_view_style_maps_to_byte_and_rejects_bad_opts
         // tests: ModeBindings.an_explicit_auto_style_takes_a_slot_back_off_inset
         // tests: ModeBindings.camera_view_sets_slot_zero_and_rejects_out_of_range_slots
@@ -3592,8 +3419,8 @@ int og_set_camera_view(lua_State* L)
     }
     og::sim::ModeCameraView& cam =
         world->mode.cameras[static_cast<std::size_t>(slot)];
-    // rule: Part of the rule above that begins "A mode declares a camera pane following an entity
-    //   ..."
+    // rule: A mode declares a camera pane following an entity (slot 0 only today); nil clears the
+    //   whole slot.
     // tests: ModeBindings.camera_view_sets_slot_zero_and_rejects_out_of_range_slots
     // tests: ModeBindings.camera_view_nil_clears_the_whole_slot
     if (w == nullptr) {
@@ -3689,7 +3516,8 @@ int og_world_tick(lua_State* L)
 int og_team_color_name(lua_State* L)
 {
     const lua_Integer team = luaL_checkinteger(L, 1);
-    // rule: Part of the rule above that begins "A scoring identity is a team 0..3 or an ..."
+    // rule: A scoring identity is a team 0..3 or an FFA band byte 16..31; declare_winner and
+    //   team_color_name refuse anything else (4..15, >31, negative).
     // tests: ModeBindings.declare_winner_records_team_and_validates
     // tests: ModeBindings.declare_winner_accepts_band_rejects_gap_and_beyond
     // tests: ModeBindings.team_color_name_matches_engine_table
@@ -3818,8 +3646,8 @@ int og_respawn_schedule(lua_State* L)
     // tests: SemScriptMode.a_respawn_with_no_delay_uses_the_match_delay_and_65536_is_refused
     if (!lua_isnoneornil(L, 2)) {
         const lua_Integer ticks = luaL_checkinteger(L, 2);
-        // rule: Part of the rule above that begins "A mode may override the respawn delay for one
-        //   ..."
+        // rule: A mode may override the respawn delay for one corpse with a positive tick count up
+        //   to 65535.
         // tests: ModeBindings.respawn_schedule_pending_and_counts
         // tests: SemScriptMode.a_respawn_with_no_delay_uses_the_match_delay_and_65536_is_refused
         if (ticks <= 0 || ticks > 65535)
@@ -3852,8 +3680,8 @@ int og_respawn_pending_count(lua_State* L)
 {
     GameWorld* world = world_arg(L);
     const lua_Integer team = luaL_checkinteger(L, 1);
-    // rule: Part of the rule above that begins "Score and respawn queries are per score team 0..3
-    //   ..."
+    // rule: Score and respawn queries are per score team 0..3 only (FFA bands are not accepted
+    //   here, unlike declare_winner).
     // tests: ModeBindings.team_score_reads_award_scores_counter
     // tests: ModeBindings.respawn_schedule_pending_and_counts
     // tests: ModeBindings.respawn_anchors_read_back_and_validate
@@ -3873,8 +3701,8 @@ int og_respawn_anchor_count(lua_State* L)
 {
     GameWorld* world = world_arg(L);
     const lua_Integer team = luaL_checkinteger(L, 1);
-    // rule: Part of the rule above that begins "Score and respawn queries are per score team 0..3
-    //   ..."
+    // rule: Score and respawn queries are per score team 0..3 only (FFA bands are not accepted
+    //   here, unlike declare_winner).
     // tests: ModeBindings.team_score_reads_award_scores_counter
     // tests: ModeBindings.respawn_schedule_pending_and_counts
     // tests: ModeBindings.respawn_anchors_read_back_and_validate
@@ -3894,8 +3722,8 @@ int og_respawn_anchor(lua_State* L)
 {
     GameWorld* world = world_arg(L);
     const lua_Integer team = luaL_checkinteger(L, 1);
-    // rule: Part of the rule above that begins "Score and respawn queries are per score team 0..3
-    //   ..."
+    // rule: Score and respawn queries are per score team 0..3 only (FFA bands are not accepted
+    //   here, unlike declare_winner).
     // tests: ModeBindings.team_score_reads_award_scores_counter
     // tests: ModeBindings.respawn_schedule_pending_and_counts
     // tests: ModeBindings.respawn_anchors_read_back_and_validate
@@ -3939,11 +3767,6 @@ int og_spawn_spot_clear(lua_State* L)
     // tests: SemScriptMode.the_spawn_spot_probe_answers_for_the_floor_it_names
     if (!lua_isnoneornil(L, 4))
         floor = static_cast<int>(luaL_checkinteger(L, 4));
-    // rule: Part of the rule above that begins "The placement probe answers whether a walker could
-    //   stand ..."
-    // tests: ModeBindings.spawn_spot_clear_probes_without_eating
-    // tests: SemScriptMode.the_spawn_spot_probe_eats_nothing_on_the_spot
-    // tests: SemScriptMode.the_spawn_spot_probe_answers_for_the_floor_it_names
     lua_pushboolean(
         L, og::sim::respawn_spot_clear(*world, w, x, y, floor) ? 1 : 0);
     return 1;
@@ -4653,8 +4476,8 @@ bool is_unfenced(const char* name)
     // tests: CampaignHooksTest.fence_walk_everything_outside_the_allowlist_errors
     // tests: SemScriptCampaign.pure_helpers_and_combat_formulas_answer_outside_dispatch
     for (const char* n : kUnfencedWorldFuncs) {
-        // rule: Part of the rule above that begins "Only the pure branch helpers
-        //   og.max/min/clamp/sign among the og ..."
+        // rule: Only the pure branch helpers og.max/min/clamp/sign among the og world functions
+        //   stay callable outside dispatch (pack top level and campaign hooks).
         // tests: CampaignHooksTest.fence_walk_everything_outside_the_allowlist_errors
         // tests: SemScriptCampaign.pure_helpers_and_combat_formulas_answer_outside_dispatch
         if (std::strcmp(n, name) == 0)
@@ -4734,12 +4557,12 @@ void install_entity_bindings(lua_State* L, VmState* st)
     lua_newtable(L);                    // mt getters
     lua_newtable(L);                    // mt getters setters
     // plumbing: builds getter/setter tables from kWalkerProperties; read-only rows (xpos/ypos
-    //   setter nullptr) feed the rule at bindings_entity.cpp:2531
+    //   setter nullptr) feed the rule above
     for (const WalkerProperty& p : kWalkerProperties) {
         lua_pushcfunction(L, p.getter);
         lua_setfield(L, -3, p.name);
         // plumbing: builds getter/setter tables from kWalkerProperties; read-only rows (xpos/ypos
-        //   setter nullptr) feed the rule at bindings_entity.cpp:2531
+        //   setter nullptr) feed the rule above
         if (p.setter != nullptr) {
             lua_pushcfunction(L, p.setter);
             lua_setfield(L, -2, p.name);
@@ -4770,10 +4593,10 @@ void install_entity_bindings_into_og(lua_State* L, VmState* st)
     luaL_setfuncs(L, kOgWorldFuncs, 0);
     // plumbing: registers kOgWorldFuncs and wraps each non-allowlisted entry in the load fence;
     //   og.campaign_* and og.combat.* are registered after the loop (unfenced by design) — that
-    //   semantic is carried by bindings_entity.cpp:3727; fence rules at 3748 / 3753
+    //   semantic is carried by above; fence rules at 3748 / 3753
     for (const luaL_Reg* r = kOgWorldFuncs; r->name != nullptr; r++) {
-        // rule: Part of the rule above that begins "Only the pure branch helpers
-        //   og.max/min/clamp/sign among the og ..."
+        // rule: Only the pure branch helpers og.max/min/clamp/sign among the og world functions
+        //   stay callable outside dispatch (pack top level and campaign hooks).
         // tests: CampaignHooksTest.fence_walk_everything_outside_the_allowlist_errors
         // tests: SemScriptCampaign.pure_helpers_and_combat_formulas_answer_outside_dispatch
         if (is_unfenced(r->name))

@@ -33,7 +33,7 @@ function M.yell(self)
   -- busy is a C++ float: per-op rounding.
   self.busy = og.fadd(self:busy(), 2.0)
 
-  -- plumbing: stun loop over foes in yell_radius; rule in orc_specials.lua:31
+  -- plumbing: stun loop over foes in yell_radius; rule below
   for i = 1, #foes do
     local foe = foes[i]
     -- plumbing: nil foe guard inside the foe list
@@ -45,7 +45,7 @@ function M.yell(self)
       -- tests: FamilyOrc.r15_howl_freezes_foes_in_radius_and_spares_the_horde
       -- tests: SemOrcHowl.a_guyless_foe_resists_a_howl_by_a_thirtieth_of_its_hitpoints
       -- unreachable: add_frozen_stun's stun_total floors a negative add at 0
-      --   (include/openglad/core/combat_math.h:312), so removing og.max(0, ...) changes no state;
+      --   (include/openglad/core/combat_math.h), so removing og.max(0, ...) changes no state;
       --   candidate for a defensive-guard note
       if foe:has_guy() then
         con = foe:g_constitution()
@@ -84,16 +84,10 @@ function M.eat_corpse(self)
   local t = og.tuning(self)
   local corpse = og.find_nearest_blood(self)
   -- no blood, so do nothing
-  -- rule: Part of the rule above that begins "EAT CORPSE refuses at full health, with no bloodstain
-  --   ..."
-  -- tests: KitCaptain.captain_eats_a_corpse_when_hurt, parity:orc_eat_corpse_scen99
   if not corpse then
     return false, "NO CORPSE NEARBY"
   end
   local dist = self:distance_to_ob_center(corpse)
-  -- rule: Part of the rule above that begins "EAT CORPSE refuses at full health, with no bloodstain
-  --   ..."
-  -- tests: KitCaptain.captain_eats_a_corpse_when_hurt, parity:orc_eat_corpse_scen99
   if dist > t.corpse_eat_range then
     return false, "NO CORPSE IN RANGE"
   end

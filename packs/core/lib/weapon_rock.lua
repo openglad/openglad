@@ -34,12 +34,6 @@ local function on_death(self)
   end
   -- shim kept (all three bounce probes): xpos/ypos +- lastx/lasty are C++
   -- float sums: per-op float rounding.
-  -- rule: Part of the rule above that begins "A bouncing rock that died against a barrier reflects:
-  --   ..."
-  -- tests: WeapBehavior.weapon_family_rock_death_bounce_matrix
-  -- tests: SemLibsRock.a_rock_bouncing_off_x_moves_to_the_x_flip_cell_and_lives
-  -- tests: SemLibsRock.a_rock_bouncing_off_y_moves_to_the_y_flip_cell_and_lives
-  -- tests: SemLibsRock.a_rock_bouncing_off_both_axes_moves_to_the_corner_cell_and_lives
   if og.query_grid_passable(og.fsub(self:xpos(), self:lastx()),
                             og.fadd(self:ypos(), self:lasty()), self) then
     -- bounce 'down-left'
@@ -49,12 +43,6 @@ local function on_death(self)
     self:set_death_called(0)
     return true
   end
-  -- rule: Part of the rule above that begins "A bouncing rock that died against a barrier reflects:
-  --   ..."
-  -- tests: WeapBehavior.weapon_family_rock_death_bounce_matrix
-  -- tests: SemLibsRock.a_rock_bouncing_off_x_moves_to_the_x_flip_cell_and_lives
-  -- tests: SemLibsRock.a_rock_bouncing_off_y_moves_to_the_y_flip_cell_and_lives
-  -- tests: SemLibsRock.a_rock_bouncing_off_both_axes_moves_to_the_corner_cell_and_lives
   if og.query_grid_passable(og.fadd(self:xpos(), self:lastx()),
                             og.fsub(self:ypos(), self:lasty()), self) then
     -- bounce 'up-right'
@@ -64,12 +52,6 @@ local function on_death(self)
     self:set_death_called(0)
     return true
   end
-  -- rule: Part of the rule above that begins "A bouncing rock that died against a barrier reflects:
-  --   ..."
-  -- tests: WeapBehavior.weapon_family_rock_death_bounce_matrix
-  -- tests: SemLibsRock.a_rock_bouncing_off_x_moves_to_the_x_flip_cell_and_lives
-  -- tests: SemLibsRock.a_rock_bouncing_off_y_moves_to_the_y_flip_cell_and_lives
-  -- tests: SemLibsRock.a_rock_bouncing_off_both_axes_moves_to_the_corner_cell_and_lives
   if og.query_grid_passable(og.fsub(self:xpos(), self:lastx()),
                             og.fsub(self:ypos(), self:lasty()), self) then
     -- bounce off both axes

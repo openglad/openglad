@@ -77,10 +77,6 @@ std::uint32_t query_difficulty_percent()
     if (current_game == nullptr || current_game->world == nullptr)
         return 100u;
     const int difficulty = current_game->world->difficulty;
-    // rule: Part of the rule above that begins "The game difficulty is a percentage applied to
-    //   hostile ..."
-    // tests: WalkerMore.walker_base_hooks_and_set_difficulty_scaling
-    // tests: SemWalker1.an_unset_difficulty_or_no_world_means_one_hundred_percent
     return (difficulty > 0) ? static_cast<std::uint32_t>(difficulty) : 100u;
 }
 
@@ -562,8 +558,8 @@ bool walker::init_fire(short xdir, short ydir)
 	// rule: A living whose curdir differs from enddir turns instead of shooting: a bot spends the
 	//   call turning one step (turn(enddir)), a player-controlled walker simply does not fire this
 	//   call. enddir is overwritten with the fire direction only when that direction differs from
-	//   curdir, so a walk-requested turn still pending (living.cpp:542 sets enddir; walker::turn in
-	//   walker_movement.cpp:410-429 advances curdir and never writes enddir) also blocks a shot in
+	//   curdir, so a walk-requested turn still pending (living.cpp sets enddir; walker::turn in
+	//   walker_movement.cpp advances curdir and never writes enddir) also blocks a shot in
 	//   the direction the walker ALREADY faces, and a bot then turns toward the walk direction, not
 	//   the fire direction. Non-livings (generators) fire in any direction without turning.
 	// tests: WalkerUnit.walker_r11_myguy_move_and_init_fire_paths
@@ -574,18 +570,11 @@ bool walker::init_fire(short xdir, short ydir)
 	{
 		set_enddir(static_cast<char>(facing(xdir, ydir)));
 	}
-	// rule: Part of the rule above that begins "A living whose curdir differs from enddir turns
-	//   instead ..."
-	// tests: WalkerUnit.walker_r11_myguy_move_and_init_fire_paths
-	// tests: WalkerCombat.walker_batch7_init_fire_and_animate_edge_paths
-	// tests: WalkerCoreMore.walker_act_generate_zero_vector_and_hp_cap_paths
-	// tests: SemWalker1.classic_a_living_facing_away_or_mid_turn_turns_instead_of_firing
 	if (curdir() != enddir() && query_order() == Order::Living)
 	{
 		//if (family()==FAMILY_TOWER1)
 		//  enddir = curdir;
-		// rule: Part of the rule above that begins "A living whose curdir differs from enddir turns
-		//   instead ..."
+		// rule: A living whose curdir differs from enddir turns instead of shooting.
 		// tests: WalkerUnit.walker_r11_myguy_move_and_init_fire_paths
 		// tests: WalkerCombat.walker_batch7_init_fire_and_animate_edge_paths
 		// tests: WalkerCoreMore.walker_act_generate_zero_vector_and_hp_cap_paths
@@ -608,10 +597,10 @@ bool walker::init_fire(short xdir, short ydir)
 	set_busy(busy() + fire_frequency()); // This pauses a few rounds
 
 	//  if (ani_type == ANI_WALK && query_order() == Order::Living)
-	// rule: busy is charged (busy += fire_frequency, walker.cpp:498) BEFORE this split, so every
+	// rule: busy is charged (busy += fire_frequency, above) BEFORE this split, so every
 	//   call that passes the busy gate pays the full fire delay whether or not a weapon ever
 	//   appears. A walker in its walk animation starts an attack animation and the shot leaves only
-	//   when the animation completes (walker.cpp:1080; that completion fire() may still fail for
+	//   when the animation completes (below; that completion fire() may still fail for
 	//   mp, and the delay stays paid); a walker already in another animation fires immediately, and
 	//   a refused shot (no magic) still costs the delay.
 	// tests: WalkerUnit.walker_r11_myguy_move_and_init_fire_paths
@@ -626,8 +615,9 @@ bool walker::init_fire(short xdir, short ydir)
 	}
 	else
 	{
-		// rule: Part of the rule above that begins "busy is charged (busy += fire_frequency,
-		//   walker.cpp:498) BEFORE this ..."
+		// rule: busy is charged (busy += fire_frequency, above) BEFORE this split, so
+		//   every call that passes the busy gate pays the full fire delay whether or not a weapon
+		//   ever appears.
 		// tests: WalkerUnit.walker_r11_myguy_move_and_init_fire_paths
 		// tests: WalkerMore.walker_init_fire_and_fire_check_gate_branches
 		// tests: SemWalker1.a_walker_in_another_animation_fires_at_once_and_pays_the_delay_either_way
@@ -676,7 +666,7 @@ walker  * walker::fire()
 	//   random 'waver' across the line: cardinal shots waver perpendicular (+w on the cross axis),
 	//   diagonal shots waver along a fixed per-diagonal pattern (UP_RIGHT +w,+w; UP_LEFT -w,+w on
 	//   x,y; DOWN_RIGHT -w on x,+w on y; DOWN_LEFT +w on x,+w on y). waver = rng(h+1) - h/2 with h
-	//   = stepsize/2 (skewed toward +). Same rule as walker.cpp:707 (set_weapon_heading).
+	//   = stepsize/2 (skewed toward +). Same rule as below (set_weapon_heading).
 	// tests: StatsCommands.stats_do_command_quick_fire_walks_and_fires_in_one_tick
 	// tests: SemWalker1.a_shot_flies_along_the_facing_with_its_waver_across_or_along_the_diagonal
 	switch (facing(lastx(), lasty()))
@@ -753,13 +743,13 @@ walker  * walker::fire()
 	//   strikes that foe instead of spawning.
 	// tests: QuietProbe.fire_pad_clear_matches_fires_own_pad, parity:generator_owner_cascade_scen99
 	// unreachable: a dead body never holds a pad (query_object_passable and ob_pass_check skip dead
-	//   walkers, obmap.cpp:379); the only blocker that dies inside the probe is a keyed door, and a
+	//   walkers, obmap.cpp); the only blocker that dies inside the probe is a keyed door, and a
 	//   fresh weapon or generator spawn carries no keys
 	if (!current_game->world->query_passable(weapon->xpos(), weapon->ypos(), weapon))
 	{
 		// *** Melee combat ***
-		// rule: Part of the rule above that begins "When the shot's spawn pad is blocked, there is
-		//   ..."
+		// rule: When the shot's spawn pad is blocked, there is no projectile. Here:
+		//   `weapon->collide_ob() && !weapon->collide_ob()->dead()`.
 		// tests: QuietProbe.fire_pad_clear_matches_fires_own_pad
 		// tests: parity:generator_owner_cascade_scen99
 		if (weapon->collide_ob() && !weapon->collide_ob()->dead())
@@ -772,8 +762,9 @@ walker  * walker::fire()
 			{
 				og::sim::emit_positional_sound(current_game->sim_events, this, SOUND_CLANG);
 
-                // rule: Part of the rule above that begins "A landed melee hit clangs; a living
-                //   attacker lunges ..."
+                // rule: A landed melee hit clangs; a living attacker lunges toward its facing and
+                //   its family's on_melee_hit Lua hook runs on the victim (no core pack registers
+                //   one; mods may). Here: `query_order() == Order::Living`.
                 // tests: SemWalker1.a_landed_blow_clangs_and_a_living_attacker_lunges_and_runs_its_hook
                 if(query_order() == Order::Living)
                 {
@@ -782,8 +773,9 @@ walker  * walker::fire()
                 }
 
 				// Family-specific melee hit callback
-				// rule: Part of the rule above that begins "A landed melee hit clangs; a living
-				//   attacker lunges ..."
+				// rule: A landed melee hit clangs; a living attacker lunges toward its facing and
+				//   its family's on_melee_hit Lua hook runs on the victim (no core pack registers
+				//   one; mods may). Here: `order() == Order::Living`.
 				// tests: SemWalker1.a_landed_blow_clangs_and_a_living_attacker_lunges_and_runs_its_hook
 				if (order() == Order::Living)
 				{
@@ -793,7 +785,7 @@ walker  * walker::fire()
 			}
 			// rule: A player-guy's melee swing at a live LIVING body counts as a shot (total_shots
 			//   and scen_shots +1) whether or not the hit lands. attack()
-			//   (walker_combat.cpp:231-301) runs BEFORE this increment and, for a target that
+			//   (walker_combat.cpp) runs BEFORE this increment and, for a target that
 			//   passes its dead/friendly/treasure/invincible guards but is not Order::Living (a
 			//   hostile generator, weapon or effect on the pad), does
 			//   attacker->myguy->total_shots-- / scen_shots-- ('we already counted it'), so such a
@@ -821,8 +813,7 @@ walker  * walker::fire()
 			weapon->set_dead(1);
 			return nullptr;
 		}
-	else  // rule: Part of the rule above that begins "A melee-only family (BIT_NO_RANGED, e.g. orc)
-		//   never launches a ..."
+	else  // rule: A melee-only family (BIT_NO_RANGED, e.g. orc) never launches a projectile.
 		// tests: WalkerUnit.walker_r11_fire_query_next_to_and_outline_branches
 		// tests: WalkerUnit.fire_with_an_unbuildable_weapon_spends_no_magic
 		// tests: SemWalker1.a_melee_only_walker_pays_for_a_shot_it_never_launches
@@ -838,15 +829,15 @@ walker  * walker::fire()
 		if (order() == Order::Living)
 		{
 			const auto* fd = get_family_descriptor(family());
-			// rule: Part of the rule above that begins "A living's family on_fire_weapon Lua hook
-			//   may veto or ..."
+			// rule: A living's family on_fire_weapon Lua hook may veto or modify the launch. Here:
+			//   `hook_result = on_fire_weapon(...)`.
 			// tests: FamilyBehaviors.soldier_weapons_left_limits_fire
 			// tests: FamilyBehaviors.archmage_weapon_damage_boost
 			// tests: QuietProbe.fire_pad_clear_matches_fires_own_pad
 			if (auto hook_result = og::script::hooks::on_fire_weapon(fd, this, weapon))
 			{
-				// rule: Part of the rule above that begins "A living's family on_fire_weapon Lua
-				//   hook may veto or ..."
+				// rule: A living's family on_fire_weapon Lua hook may veto or modify the launch.
+				//   Here: `!*hook_result`.
 				// tests: FamilyBehaviors.soldier_weapons_left_limits_fire
 				// tests: FamilyBehaviors.archmage_weapon_damage_boost
 				// tests: QuietProbe.fire_pad_clear_matches_fires_own_pad
@@ -890,14 +881,10 @@ walker  * walker::fire()
 			//   level roll, no lifetime); the old game's fire() switch default treats any unknown
 			//   generator as a tent (lifetime 800+11L, level roll, set_difficulty); test not
 			//   written | triage: Unreachable. require_core_families_installed throws when any core
-			//   generator slot is undeclared (family_registry.cpp:115-140 at e12043db).
+			//   generator slot is undeclared (family_registry.cpp at e12043db).
 			if (order() == Order::Generator)
 			{
 			const auto* gfd = get_generator_family_descriptor(family());
-			// rule: Part of the rule above that begins "Each generator spawn is a living of the
-			//   generator's ..."
-			// tests: DifficultyScaling.generator_spawn_gets_single_difficulty_application
-			// tests: WalkerUnit.fire_with_an_unbuildable_weapon_spends_no_magic
 			if (gfd)
 			{
 				// rule: Some generators' spawns arrive with a special entry animation: the mage
@@ -949,7 +936,7 @@ void walker::set_weapon_heading(walker *weapon)
 	short pad_x = 0, pad_y = 0;
 	weapon_pad(*weapon, pad_x, pad_y);  // fire()'s pad: one table
 	weapon->setxy(pad_x, pad_y);
-	// rule: Same rule as walker.cpp:543: the bot's fire-check probe weapon is placed on fire()'s
+	// rule: Same rule as above: the bot's fire-check probe weapon is placed on fire()'s
 	//   pad and headed along the OWNER's lastx/lasty facing with the same waver pattern, so the
 	//   probe predicts the real shot.
 	// tests: QuietProbe.set_weapon_heading_lands_on_fires_pad
@@ -1032,7 +1019,7 @@ void walker::compute_outline(const walker* viewer_control,
 		//   flying. From team colour: invulnerable else flying else named. Anything else:
 		//   invisible, flying, invulnerable, named in that order. Named is shown only to a viewer
 		//   of another team. Render-only value. In play the chain rarely advances past one step:
-		//   living::act (living.cpp:179-180) does set_outline(0) EVERY sim tick for a living that
+		//   living::act (living.cpp) does set_outline(0) EVERY sim tick for a living that
 		//   is not invisible, so for a non-invisible living the chain restarts from the 'other (0)'
 		//   arm each tick and the from-INVULNERABLE / FLYING / NAMED / team-colour arms are reached
 		//   only between compute_outline calls inside one tick (several viewscreens or render
@@ -1052,8 +1039,8 @@ void walker::compute_outline(const walker* viewer_control,
 		// tests: SemWalker1.a_walkers_outline_steps_through_its_statuses_and_names_only_to_enemies
 		if (next_outline == OUTLINE_INVULNERABLE)
 		{
-			// rule: Part of the rule above that begins "A walker with several statuses blinks
-			//   between their outlines, ..."
+			// rule: A walker with several statuses blinks between their outlines, advancing one
+			//   step per call from the outline it currently shows.
 			// tests: WalkerCoreMore.walker_compute_outline_state_transitions
 			// tests: WalkerCoreMore.walker_round7a_compute_outline_and_friendliness_edge_paths
 			// tests: WalkerUnit.walker_r11_fire_query_next_to_and_outline_branches
@@ -1066,8 +1053,8 @@ void walker::compute_outline(const walker* viewer_control,
 			if      (flight_left())
 				next_outline = OUTLINE_FLYING;
 			else if (viewer_control)
-				// rule: Part of the rule above that begins "A walker with several statuses blinks
-				//   between their outlines, ..."
+				// rule: A walker with several statuses blinks between their outlines, advancing one
+				//   step per call from the outline it currently shows.
 				// tests: WalkerCoreMore.walker_compute_outline_state_transitions
 				// tests: WalkerCoreMore.walker_round7a_compute_outline_and_friendliness_edge_paths
 				// tests: WalkerUnit.walker_r11_fire_query_next_to_and_outline_branches
@@ -1080,8 +1067,8 @@ void walker::compute_outline(const walker* viewer_control,
 				if (stats_->query_bit_flags (BIT_NAMED) && (team_num()!=viewer_control->team_num()))
 					next_outline = OUTLINE_NAMED;
 
-			// rule: Part of the rule above that begins "A walker with several statuses blinks
-			//   between their outlines, ..."
+			// rule: A walker with several statuses blinks between their outlines, advancing one
+			//   step per call from the outline it currently shows.
 			// tests: WalkerCoreMore.walker_compute_outline_state_transitions
 			// tests: WalkerCoreMore.walker_round7a_compute_outline_and_friendliness_edge_paths
 			// tests: WalkerUnit.walker_r11_fire_query_next_to_and_outline_branches
@@ -1092,8 +1079,8 @@ void walker::compute_outline(const walker* viewer_control,
 			// tests: WalkerMovement.walker_draw_with_invisibility
 			// tests: SemWalker1.a_walkers_outline_steps_through_its_statuses_and_names_only_to_enemies
 			if (next_outline != OUTLINE_NAMED)
-				// rule: Part of the rule above that begins "A walker with several statuses blinks
-				//   between their outlines, ..."
+				// rule: A walker with several statuses blinks between their outlines, advancing one
+				//   step per call from the outline it currently shows.
 				// tests: WalkerCoreMore.walker_compute_outline_state_transitions
 				// tests: WalkerCoreMore.walker_round7a_compute_outline_and_friendliness_edge_paths
 				// tests: WalkerUnit.walker_r11_fire_query_next_to_and_outline_branches
@@ -1108,8 +1095,8 @@ void walker::compute_outline(const walker* viewer_control,
 		}
 		else if (next_outline == OUTLINE_FLYING)
 		{
-			// rule: Part of the rule above that begins "A walker with several statuses blinks
-			//   between their outlines, ..."
+			// rule: A walker with several statuses blinks between their outlines, advancing one
+			//   step per call from the outline it currently shows.
 			// tests: WalkerCoreMore.walker_compute_outline_state_transitions
 			// tests: WalkerCoreMore.walker_round7a_compute_outline_and_friendliness_edge_paths
 			// tests: WalkerUnit.walker_r11_fire_query_next_to_and_outline_branches
@@ -1120,8 +1107,8 @@ void walker::compute_outline(const walker* viewer_control,
 			// tests: WalkerMovement.walker_draw_with_invisibility
 			// tests: SemWalker1.a_walkers_outline_steps_through_its_statuses_and_names_only_to_enemies
 			if (viewer_control)
-				// rule: Part of the rule above that begins "A walker with several statuses blinks
-				//   between their outlines, ..."
+				// rule: A walker with several statuses blinks between their outlines, advancing one
+				//   step per call from the outline it currently shows.
 				// tests: WalkerCoreMore.walker_compute_outline_state_transitions
 				// tests: WalkerCoreMore.walker_round7a_compute_outline_and_friendliness_edge_paths
 				// tests: WalkerUnit.walker_r11_fire_query_next_to_and_outline_branches
@@ -1134,8 +1121,8 @@ void walker::compute_outline(const walker* viewer_control,
 				if      (stats_->query_bit_flags (BIT_NAMED) && (team_num()!=viewer_control->team_num()))
 					next_outline = OUTLINE_NAMED;
 
-			// rule: Part of the rule above that begins "A walker with several statuses blinks
-			//   between their outlines, ..."
+			// rule: A walker with several statuses blinks between their outlines, advancing one
+			//   step per call from the outline it currently shows.
 			// tests: WalkerCoreMore.walker_compute_outline_state_transitions
 			// tests: WalkerCoreMore.walker_round7a_compute_outline_and_friendliness_edge_paths
 			// tests: WalkerUnit.walker_r11_fire_query_next_to_and_outline_branches
@@ -1147,8 +1134,8 @@ void walker::compute_outline(const walker* viewer_control,
 			// tests: SemWalker1.a_walkers_outline_steps_through_its_statuses_and_names_only_to_enemies
 			if (next_outline != OUTLINE_NAMED)
 			{
-				// rule: Part of the rule above that begins "A walker with several statuses blinks
-				//   between their outlines, ..."
+				// rule: A walker with several statuses blinks between their outlines, advancing one
+				//   step per call from the outline it currently shows.
 				// tests: WalkerCoreMore.walker_compute_outline_state_transitions
 				// tests: WalkerCoreMore.walker_round7a_compute_outline_and_friendliness_edge_paths
 				// tests: WalkerUnit.walker_r11_fire_query_next_to_and_outline_branches
@@ -1166,8 +1153,8 @@ void walker::compute_outline(const walker* viewer_control,
 		}
 		else if (next_outline == OUTLINE_NAMED)
 		{
-			// rule: Part of the rule above that begins "A walker with several statuses blinks
-			//   between their outlines, ..."
+			// rule: A walker with several statuses blinks between their outlines, advancing one
+			//   step per call from the outline it currently shows.
 			// tests: WalkerCoreMore.walker_compute_outline_state_transitions
 			// tests: WalkerCoreMore.walker_round7a_compute_outline_and_friendliness_edge_paths
 			// tests: WalkerUnit.walker_r11_fire_query_next_to_and_outline_branches
@@ -1186,8 +1173,8 @@ void walker::compute_outline(const walker* viewer_control,
 		}
 		else if (next_outline == query_team_color())
 		{
-			// rule: Part of the rule above that begins "A walker with several statuses blinks
-			//   between their outlines, ..."
+			// rule: A walker with several statuses blinks between their outlines, advancing one
+			//   step per call from the outline it currently shows.
 			// tests: WalkerCoreMore.walker_compute_outline_state_transitions
 			// tests: WalkerCoreMore.walker_round7a_compute_outline_and_friendliness_edge_paths
 			// tests: WalkerUnit.walker_r11_fire_query_next_to_and_outline_branches
@@ -1202,8 +1189,8 @@ void walker::compute_outline(const walker* viewer_control,
 			else if (flight_left())
 				next_outline = OUTLINE_FLYING;
 			else if (viewer_control)
-				// rule: Part of the rule above that begins "A walker with several statuses blinks
-				//   between their outlines, ..."
+				// rule: A walker with several statuses blinks between their outlines, advancing one
+				//   step per call from the outline it currently shows.
 				// tests: WalkerCoreMore.walker_compute_outline_state_transitions
 				// tests: WalkerCoreMore.walker_round7a_compute_outline_and_friendliness_edge_paths
 				// tests: WalkerUnit.walker_r11_fire_query_next_to_and_outline_branches
@@ -1218,8 +1205,8 @@ void walker::compute_outline(const walker* viewer_control,
 		}
 		else
 		{
-			// rule: Part of the rule above that begins "A walker with several statuses blinks
-			//   between their outlines, ..."
+			// rule: A walker with several statuses blinks between their outlines, advancing one
+			//   step per call from the outline it currently shows.
 			// tests: WalkerCoreMore.walker_compute_outline_state_transitions
 			// tests: WalkerCoreMore.walker_round7a_compute_outline_and_friendliness_edge_paths
 			// tests: WalkerUnit.walker_r11_fire_query_next_to_and_outline_branches
@@ -1236,8 +1223,8 @@ void walker::compute_outline(const walker* viewer_control,
 			else if (invulnerable_left())
 				next_outline = OUTLINE_INVULNERABLE;
 			else if (viewer_control)
-				// rule: Part of the rule above that begins "A walker with several statuses blinks
-				//   between their outlines, ..."
+				// rule: A walker with several statuses blinks between their outlines, advancing one
+				//   step per call from the outline it currently shows.
 				// tests: WalkerCoreMore.walker_compute_outline_state_transitions
 				// tests: WalkerCoreMore.walker_round7a_compute_outline_and_friendliness_edge_paths
 				// tests: WalkerUnit.walker_r11_fire_query_next_to_and_outline_branches
@@ -1286,16 +1273,8 @@ bool walker::act()
 	// tests: SemWalker1.a_walker_keeps_its_living_foe_leader_and_owner
 	if (foe() && foe()->dead())
 		set_foe(nullptr);
-	// rule: Part of the rule above that begins "A walker forgets dead foes, dead leaders and dead
-	//   ..."
-	// tests: CoverageMisc.coverage_r18_walker_act_decay_cleanup_and_guard_branches
-	// tests: SemWalker1.a_walker_keeps_its_living_foe_leader_and_owner
 	if (leader() && leader()->dead())
 		set_leader(nullptr);
-	// rule: Part of the rule above that begins "A walker forgets dead foes, dead leaders and dead
-	//   ..."
-	// tests: CoverageMisc.coverage_r18_walker_act_decay_cleanup_and_guard_branches
-	// tests: SemWalker1.a_walker_keeps_its_living_foe_leader_and_owner
 	if (owner() && owner()->dead())
 		set_owner(nullptr);
 
@@ -1346,8 +1325,8 @@ bool walker::act()
 	if (stats_->has_commands())
 	{
 		temp = stats_->do_command();
-		// rule: Part of the rule above that begins "A queued order (walk, search, attack, fire...)
-		//   runs before ..."
+		// rule: A queued order (walk, search, attack, fire...) runs before the walker's own AI.
+		//   Here: `temp = do_command()`.
 		// tests: WalkerUnit.walker_r11_act_and_animate_extra_cases
 		// tests: SemWalker1.an_order_that_runs_takes_the_whole_tick
 		if (temp)
@@ -1361,8 +1340,8 @@ bool walker::act()
 	if(attack_lunge() > 0.0f)
     {
         float next_lunge = attack_lunge() - 0.4f;
-        // rule: Part of the rule above that begins "The cosmetic attack lunge decays by 0.4 and hit
-        //   ..."
+        // rule: The cosmetic attack lunge decays by 0.4 and hit recoil by 0.6 per acting tick,
+        //   floored at 0 (render offsets only). Here: `next < 0`.
         // tests: WalkerUnit.walker_r11_act_and_animate_extra_cases
         // tests: CoverageMisc.coverage_r18_walker_act_decay_cleanup_and_guard_branches
         if(next_lunge < 0.0f)
@@ -1370,15 +1349,15 @@ bool walker::act()
         set_attack_lunge(next_lunge);
     }
 
-	// rule: Part of the rule above that begins "The cosmetic attack lunge decays by 0.4 and hit
-	//   ..."
+	// rule: The cosmetic attack lunge decays by 0.4 and hit recoil by 0.6 per acting tick, floored
+	//   at 0 (render offsets only). Here: `hit_recoil() > 0`.
 	// tests: WalkerUnit.walker_r11_act_and_animate_extra_cases
 	// tests: CoverageMisc.coverage_r18_walker_act_decay_cleanup_and_guard_branches
 	if(hit_recoil() > 0.0f)
     {
         float next_recoil = hit_recoil() - 0.6f;
-        // rule: Part of the rule above that begins "The cosmetic attack lunge decays by 0.4 and hit
-        //   ..."
+        // rule: The cosmetic attack lunge decays by 0.4 and hit recoil by 0.6 per acting tick,
+        //   floored at 0 (render offsets only). Here: `next < 0`.
         // tests: WalkerUnit.walker_r11_act_and_animate_extra_cases
         // tests: CoverageMisc.coverage_r18_walker_act_decay_cleanup_and_guard_branches
         if(next_recoil < 0.0f)
@@ -1389,7 +1368,7 @@ bool walker::act()
 	// rule: What a walker does on a free tick depends on its act type: a player-controlled walker
 	//   does nothing here (input drives it), a generator runs its spawn cadence, a projectile
 	//   flies, a guard holds its post, ACT_DIE dies at once, ACT_RANDOM is the roaming bot
-	//   (walker.cpp:946); an unknown act type does nothing.
+	//   (below); an unknown act type does nothing.
 	// tests: WalkerUnit.walker_r11_act_and_animate_extra_cases
 	// tests: WalkerUnit.walker_r14_lines_769_771_817_823_827_834_teleport_and_ani_complete_paths
 	// tests: CoverageMisc.coverage_r18_walker_act_decay_cleanup_and_guard_branches
@@ -1439,15 +1418,15 @@ bool walker::act()
 				// tests: SemWalker1.a_roaming_walker_that_casts_on_its_wander_tick_does_not_wander
 				if (!current_game->world->rng_.next(4) )
 				{
-					// rule: Part of the rule above that begins "A roaming bot, on 1 tick in 80,
-					//   tries ..."
+					// rule: A roaming bot, on 1 tick in 80, tries its current special directly (no
+					//   AI gate). Here: `!rng(20)`.
 					// tests: WalkerUnit.walker_r11_act_and_animate_extra_cases
 					// tests: WalkerCoreMore.walker_round7b_base_act_guard_random_and_death_paths
 					// tests: SemWalker1.a_roaming_walker_that_casts_on_its_wander_tick_does_not_wander
 					if (!current_game->world->rng_.next(20))   // a 1 in 4 then 1 in 20 chance of rand walk
 					{
-						// rule: Part of the rule above that begins "A roaming bot, on 1 tick in 80,
-						//   tries ..."
+						// rule: A roaming bot, on 1 tick in 80, tries its current special directly
+						//   (no AI gate). Here: `!special()`.
 						// tests: WalkerUnit.walker_r11_act_and_animate_extra_cases
 						// tests: WalkerCoreMore.walker_round7b_base_act_guard_random_and_death_paths
 						// tests: SemWalker1.a_roaming_walker_that_casts_on_its_wander_tick_does_not_wander
@@ -1467,8 +1446,8 @@ bool walker::act()
 					// tests: WalkerCoreMore.walker_round16_act_random_no_foe_far_search_fallback_path
 					// tests: SemWalker1.a_roaming_walker_with_nobody_to_hunt_idles
 				{
-					// rule: Part of the rule above that begins "On 3 ticks in 4 a roaming bot
-					//   without ..."
+					// rule: On 3 ticks in 4 a roaming bot without a foe acquires the nearest
+					//   visible foe (living or generator, invisible foes usually skipped).
 					// tests: WalkerCoreMore.walker_round7b_base_act_guard_random_and_death_paths
 					// tests: WalkerUnit.walker_r11_act_and_animate_extra_cases
 					// tests: WalkerCoreMore.walker_round16_act_random_no_foe_far_search_fallback_path
@@ -1477,8 +1456,8 @@ bool walker::act()
 					{
 						set_foe(current_game->world->find_nearest_foe(this));
 					}
-					// rule: Part of the rule above that begins "On 3 ticks in 4 a roaming bot
-					//   without ..."
+					// rule: On 3 ticks in 4 a roaming bot without a foe acquires the nearest
+					//   visible foe (living or generator, invisible foes usually skipped).
 					// tests: WalkerCoreMore.walker_round7b_base_act_guard_random_and_death_paths
 					// tests: WalkerUnit.walker_r11_act_and_animate_extra_cases
 					// tests: WalkerCoreMore.walker_round16_act_random_no_foe_far_search_fallback_path
@@ -1580,7 +1559,7 @@ bool walker::animate()
 	// clamp `cycle` to avoid reading past the sentinel. (ASan found an OOB read
 	// here during test-driven menu/game loops.)
 	int seq_len = 0;
-	// plumbing: animate(): sentinel scan for the sequence length (see walker.cpp:1003 guards).
+	// plumbing: animate(): sentinel scan for the sequence length (see above guards).
 	while (seq_len < 128 && seq[seq_len] != -1)
 		seq_len++;
 	// plumbing: animate(): no table, out-of-range facing/ani_type, ani_index past the family table
@@ -1633,8 +1612,9 @@ bool walker::animate()
 	{
 		//          if (ani_type == ANI_ATTACK &&
 		//                        query_order() == Order::Living)
-		// rule: Part of the rule above that begins "The shot (or melee swing) leaves at the END
-		//   ..."
+		// rule: The shot (or melee swing) leaves at the END of the attack animation: completing
+		//   ANI_ATTACK calls fire(), then the walker returns to walking. Here: `ani_type() ==
+		//   ANI_ATTACK`.
 		// tests: GameplayFixesSoldier.reporter_charge_refused_by_a_foe_in_front_swings_only_with_the_setting_off
 		// tests: WalkerMovement.walker_animate_attack, parity:weapon_knife_emission_scen99
 		if (ani_type() == ANI_ATTACK)
@@ -1653,8 +1633,9 @@ bool walker::animate()
 		if (ani_type() == ANI_SKEL_GROW && order() == Order::Living)
 		{
 			const auto* fd = get_family_descriptor(family());
-			// rule: Part of the rule above that begins "A family that is born from the ground (init
-			//   ..."
+			// rule: A family that is born from the ground (init animation SKEL_GROW, e.g. skeleton)
+			//   starts walking once its grow animation finishes. Here: `fd->init_ani_type ==
+			//   ANI_SKEL_GROW`.
 			// tests: WalkerUnit.walker_r11_act_and_animate_extra_cases
 			// tests: WalkerCoreMore.walker_round18_animate_teleport_and_skelgrow_completion_paths
 			// tests: WalkerUnit.walker_r14_lines_769_771_817_823_827_834_teleport_and_ani_complete_paths
@@ -1676,8 +1657,8 @@ bool walker::animate()
 		if (ani_type() == ANI_TELE_OUT && order() == Order::Living)
 		{
 			const auto* fd = get_family_descriptor(family());
-			// rule: Part of the rule above that begins "When a teleport-out animation finishes, a
-			//   family with a ..."
+			// rule: When a teleport-out animation finishes, a family with a teleport handler (mage,
+			//   archmage. Here: `handle_teleport(fd,this).value_or(false)`.
 			// tests: WalkerSpecials.mage_teleport_drives_simulation
 			// tests: WalkerUnit.walker_r11_act_and_animate_extra_cases
 			// tests: WalkerUnit.walker_r14_lines_769_771_817_823_827_834_teleport_and_ani_complete_paths
@@ -1699,8 +1680,9 @@ bool walker::animate()
 		if (order() == Order::Living)
 		{
 			const auto* fd2 = get_family_descriptor(family());
-			// rule: Part of the rule above that begins "Any other finished living animation is
-			//   offered to the ..."
+			// rule: Any other finished living animation is offered to the family's on_ani_complete
+			//   Lua hook (slime split into two small slimes, etc.). Here:
+			//   `on_ani_complete(fd2,this).value_or(false)`.
 			// tests: parity:special_slime_1_scen99, parity:ai_slime_split_scen99
 			// tests: WalkerUnit.walker_r14_lines_769_771_817_823_827_834_teleport_and_ani_complete_paths
 			// tests: SemWalker1.an_animation_the_hook_declines_returns_the_walker_to_walking
@@ -1717,13 +1699,13 @@ bool walker::animate()
 bool walker::set_frame_from_current_walk_animation()
 {
 	// rule: The walk-animation loop, run in the SIM on every walk step
-	//   (walker_movement.cpp:304/357-360/369-370/379/478, living.cpp:509-512/533-534,
-	//   sim_input_handler.cpp:647-648 all bump cycle then call it): the frame shown is the walk row
+	//   (walker_movement.cpp/357-360/369-370/379/478, living.cpp/533-534,
+	//   sim_input_handler.cpp all bump cycle then call it): the frame shown is the walk row
 	//   of the current facing at the current cycle, and a cycle that runs off the end of the WALK
 	//   row wraps to 0. The wrap is always against the walk row ani[curdir], even during
 	//   ANI_ATTACK, so walking while attacking bumps and wraps the snapshotted cycle that animate()
-	//   (walker.cpp:1063) reads for at_end (the 'attack-while-running' interaction of
-	//   walker.cpp:1058-1061).
+	//   (above) reads for at_end (the 'attack-while-running' interaction of
+	//   above).
 	// tests: SimInputHandler.sim_input_yell_movement_and_idle_animate_branches
 	// tests: SimInputUnit.sim_input_r11_animate_movement_and_bit_animate_paths
 	// tests: SemWalker1.the_walk_frame_helper_leaves_a_walker_without_a_walk_row_alone
@@ -1732,8 +1714,9 @@ bool walker::set_frame_from_current_walk_animation()
 		return false;
 
 	const int dir_index = static_cast<int>(curdir());
-	// rule: Part of the rule above that begins "The walk-animation loop, run in the SIM on every
-	//   ..."
+	// rule: The walk-animation loop, run in the SIM on every walk step
+	//   (walker_movement.cpp/357-360/369-370/379/478, living.cpp/533-534,
+	//   sim_input_handler.cpp all bump cycle then call it). Here: `dir_index out of range`.
 	// tests: SimInputHandler.sim_input_yell_movement_and_idle_animate_branches
 	// tests: SimInputUnit.sim_input_r11_animate_movement_and_bit_animate_paths
 	// tests: SemWalker1.the_walk_frame_helper_leaves_a_walker_without_a_walk_row_alone
@@ -1742,8 +1725,9 @@ bool walker::set_frame_from_current_walk_animation()
 		return false;
 
 	const signed char* seq = ani[dir_index];
-	// rule: Part of the rule above that begins "The walk-animation loop, run in the SIM on every
-	//   ..."
+	// rule: The walk-animation loop, run in the SIM on every walk step
+	//   (walker_movement.cpp/357-360/369-370/379/478, living.cpp/533-534,
+	//   sim_input_handler.cpp all bump cycle then call it). Here: `!seq`.
 	// tests: SimInputHandler.sim_input_yell_movement_and_idle_animate_branches
 	// tests: SimInputUnit.sim_input_r11_animate_movement_and_bit_animate_paths
 	// tests: SemWalker1.the_walk_frame_helper_leaves_a_walker_without_a_walk_row_alone
@@ -1757,8 +1741,10 @@ bool walker::set_frame_from_current_walk_animation()
 		seq_len++;
 
 	int c = static_cast<int>(cycle());
-	// rule: Part of the rule above that begins "The walk-animation loop, run in the SIM on every
-	//   ..."
+	// rule: The walk-animation loop, run in the SIM on every walk step
+	//   (walker_movement.cpp/357-360/369-370/379/478, living.cpp/533-534,
+	//   sim_input_handler.cpp all bump cycle then call it). Here: `c < 0 || c >= seq_len ->
+	//   set_cycle(0)`.
 	// tests: SimInputHandler.sim_input_yell_movement_and_idle_animate_branches
 	// tests: SimInputUnit.sim_input_r11_animate_movement_and_bit_animate_paths
 	// tests: SemWalker1.the_walk_frame_helper_leaves_a_walker_without_a_walk_row_alone
@@ -1893,11 +1879,11 @@ bool footprint_touches_water(GameWorld& world, const walker& mover,
 	const std::int32_t tile_bottom = bottom / GRID_SIZE;
 	smoother& terrain = world.smoother_for_floor(mover.floor());
 	// plumbing: footprint_touches_water: tile scan over the mover's footprint (see
-	//   walker.cpp:1247).
+	//   below).
 	for (std::int32_t ty = tile_top; ty <= tile_bottom; ++ty)
 	{
 		// plumbing: footprint_touches_water: tile scan over the mover's footprint (see
-		//   walker.cpp:1247).
+		//   below).
 		for (std::int32_t tx = tile_left; tx <= tile_right; ++tx)
 		{
 			// rule: A body touches water if any grid tile under its footprint at that position is
@@ -1920,10 +1906,6 @@ bool water_blocks_mover(const walker& mover)
 	// tests: SemWalker2.water_stops_a_planned_approach_except_for_fliers_and_swimmers
 	if (stats->query_bit_flags(BIT_ETHEREAL))
 		return false;
-	// rule: Part of the rule above that begins "Water stops walkers except ethereal ones, fliers
-	//   (family flag ..."
-	// tests: ModesWaterRealCampaign.the_shoreline_veto_bends_for_flight_and_refuses_unreachable_objectives
-	// tests: SemWalker2.water_stops_a_planned_approach_except_for_fliers_and_swimmers
 	if (stats->query_bit_flags(BIT_FLYING) || mover.flight_left())
 		return false;
 	return !stats->query_bit_flags(BIT_SWIMMING);
@@ -1958,8 +1940,7 @@ bool walker::query_prospective_weapon_reach(short xdelta, short ydelta,
 	const PixieData* data = current_game->world->configure_existing_entity(
 		probe, Order::Weapon,
 		static_cast<std::int32_t>(static_cast<char>(current_weapon())));
-	// rule: Part of the rule above that begins "Only a living's reach can be predicted: reach =
-	//   ..."
+	// rule: Only a living's reach can be predicted. Here: `data == nullptr`.
 	// tests: ModesSoccer.recovery_range_rejects_on_fire_hooks_without_dispatch
 	// tests: ModesSoccer.recovery_range_distinguishes_invalid_from_valid_zero_profiles
 	// tests: ModesSoccer.recovery_range_matches_every_ranged_core_class_profile
@@ -2015,7 +1996,7 @@ bool walker::can_approach_weapon_range(const walker* objective)
 	// direct shoreline can omit a usable shooter, but cannot reserve one that
 	// must enter water before reaching ordinary weapon range.
 	// plumbing: can_approach_weapon_range: simulated approach, bounded by the initial Manhattan
-	//   distance; rules in walker.cpp:1335, :1342, :1353, :1360.
+	//   distance; rules below.
 	for (std::int32_t attempt = 0; attempt <= initial_distance; ++attempt)
 	{
 		std::int32_t dx = target_x - x;
@@ -2026,9 +2007,6 @@ bool walker::can_approach_weapon_range(const walker* objective)
 		// tests: SemWalker2.a_planned_approach_goes_straight_past_three_to_one_and_diagonal_otherwise
 		if (std::abs(dx) > std::abs(3 * dy))
 			dy = 0;
-		// rule: Part of the rule above that begins "The approach is predicted the way a bot
-		//   actually ..."
-		// tests: SemWalker2.a_planned_approach_goes_straight_past_three_to_one_and_diagonal_otherwise
 		if (std::abs(dy) > std::abs(3 * dx))
 			dx = 0;
 		const short sx = static_cast<short>((dx > 0) - (dx < 0));
@@ -2043,15 +2021,10 @@ bool walker::can_approach_weapon_range(const walker* objective)
 		std::int32_t& reach = cardinal ? cardinal_reach : diagonal_reach;
 		bool& profile_ready = cardinal ? cardinal_profile_ready
 		                               : diagonal_profile_ready;
-		// rule: Part of the rule above that begins "Range is judged with the shot the bot would
-		//   ..."
-		// tests: ModesSoccer.recovery_range_rejects_on_fire_hooks_without_dispatch
-		// tests: ModesSoccer.recovery_range_distinguishes_invalid_from_valid_zero_profiles
-		// tests: SemWalker2.a_planned_shot_uses_the_cardinal_or_diagonal_profile_of_its_heading
 		if (!profile_ready)
 		{
-			// rule: Part of the rule above that begins "Range is judged with the shot the bot would
-			//   ..."
+			// rule: Range is judged with the shot the bot would actually take from each step. Here:
+			//   `!query_prospective_weapon_reach`.
 			// tests: ModesSoccer.recovery_range_rejects_on_fire_hooks_without_dispatch
 			// tests: ModesSoccer.recovery_range_distinguishes_invalid_from_valid_zero_profiles
 			// tests: SemWalker2.a_planned_shot_uses_the_cardinal_or_diagonal_profile_of_its_heading
@@ -2068,10 +2041,6 @@ bool walker::can_approach_weapon_range(const walker* objective)
 		// tests: ModesWaterRealCampaign.the_shoreline_veto_bends_for_flight_and_refuses_unreachable_objectives
 		if (distance <= reach)
 			return true;
-		// rule: Part of the rule above that begins "The plan succeeds as soon as the Manhattan
-		//   distance ..."
-		// tests: ModesSoccer.recovery_range_distinguishes_invalid_from_valid_zero_profiles
-		// tests: ModesWaterRealCampaign.the_shoreline_veto_bends_for_flight_and_refuses_unreachable_objectives
 		if ((sx == 0 && sy == 0) || movement_step <= 0)
 			return false;
 
@@ -2131,7 +2100,7 @@ walker  *walker::create_weapon()
 		weapon = current_game->world->add_ob(
 			Order::Living, static_cast<char>(default_weapon()));
 		// plumbing: create_weapon: add_ob returned null (object table full) for the generator troop
-		//   (1390) or the weapon (1406) -> no emission.
+		//   or the weapon -> no emission.
 		if (!weapon) return nullptr;
 		weapon->set_team_num(team_num());
 		weapon->set_owner(this);
@@ -2149,7 +2118,7 @@ walker  *walker::create_weapon()
 	weapon = current_game->world->add_ob(
 		Order::Weapon, static_cast<char>(current_weapon()));
 	// plumbing: create_weapon: add_ob returned null (object table full) for the generator troop
-	//   (1390) or the weapon (1406) -> no emission.
+	//   or the weapon -> no emission.
 	if (!weapon) return nullptr;
 	finalize_weapon_profile(weapon, lastx(), lasty());
 	return weapon;
@@ -2173,16 +2142,12 @@ bool walker::query_next_to()
 		newx += static_cast<float>(sizex());
 	else if (lastx() < 0.0f)
 		newx -= static_cast<float>(sizex());
-	// rule: Part of the rule above that begins "'Is a body right beside me in the direction ..."
-	// tests: WalkerCoreMore.walker_query_next_to_and_generator_fire_check_paths
-	// tests: WalkerCoreMore.walker_round17_query_next_to_and_fire_check_early_branches
-	// tests: WalkerUnit.walker_r11_fire_query_next_to_and_outline_branches
 	if (lasty() > 0.0f)
 		newy += static_cast<float>(sizey());
 	else //if (lasty < 0)
 		newy -= static_cast<float>(sizey());
 
-	// rule: Part of the rule above that begins "'Is a body right beside me in the direction ..."
+	// rule: 'Is a body right beside me in the direction I face'.
 	// tests: WalkerCoreMore.walker_query_next_to_and_generator_fire_check_paths
 	// tests: WalkerCoreMore.walker_round17_query_next_to_and_fire_check_early_branches
 	// tests: WalkerUnit.walker_r11_fire_query_next_to_and_outline_branches
@@ -2314,6 +2279,10 @@ bool walker::fire_check(short xdelta, short ydelta, FireCheckDenial* denial)
 	// ball), so let the ordinary ray recognize that one hostile bounding box.
 	// The normal range, mana, facing and terrain gates above/below remain the
 	// authority; generic ignored effects remain non-colliding.
+	// rule: Only a live, visible, same-floor, hostile ignored foe (a mode ball) is the fire ray's
+	//   extra target; see the ray's hit test below.
+	// tests: ModesSoccer.fire_check_targets_only_live_hostile_ignored_foes
+	// tests: SemWalker2.a_hidden_ignored_foe_is_not_hit_by_the_fire_check_ray
 	walker* const ignored_foe =
 		foe()->ignore() && !foe()->dead() && !foe()->dormant() && !foe()->hidden() &&
 		foe()->floor() == weapon->floor() && !weapon->is_friendly(foe())
@@ -2322,7 +2291,7 @@ bool walker::fire_check(short xdelta, short ydelta, FireCheckDenial* denial)
 
 	// Run weapon through where it would go if all went well ..
 	// plumbing: fire_check's ray walk over the weapon's lineofsight steps (cumulative i*lastx,
-	//   classic triangular stepping); rules in walker.cpp:1528, walker.cpp:1535, walker.cpp:1544.
+	//   classic triangular stepping); rules below.
 	for (i=0; i < weapon->lineofsight(); i++)
 	{
 		weapon->setxy(weapon->xpos() + static_cast<float>(i) * weapon->lastx(),
@@ -2438,7 +2407,7 @@ walker::act_fire()
 	// holes to a lower floor (multi-floor). Strictly inert for flat weapons
 	// (vz==0, worldz==0) on single-floor levels — worldz never affects the 2D
 	// path and is not part of the parity dump.
-	// plumbing: Null guards: no world (1603) / no weapon family descriptor (1608 gravity 0).
+	// plumbing: Null guards: no world / no weapon family descriptor (gravity 0).
 	GameWorld* const zw = (current_game != nullptr) ? current_game->world : nullptr;
 	// rule: An arcing projectile (a family with init vz, e.g. ROCK vz 0.7 gravity 0.09) rises and
 	//   falls each tick by its family gravity and comes to rest on the floor plane (worldz clamps
@@ -2449,10 +2418,11 @@ walker::act_fire()
 	{
 		set_worldz(worldz() + vz());
 		const WeaponFamilyDescriptor* wfd = get_weapon_family_descriptor(family());
-		// plumbing: Null guards: no world (1603) / no weapon family descriptor (1608 gravity 0).
+		// plumbing: Null guards: no world / no weapon family descriptor (gravity 0).
 		set_vz(vz() - (wfd != nullptr ? wfd->gravity : 0.0f));
-		// rule: Part of the rule above that begins "An arcing projectile (a family with init vz,
-		//   e.g. ..."
+		// rule: An arcing projectile (a family with init vz, e.g. ROCK vz 0.7 gravity 0.09) rises
+		//   and falls each tick by its family gravity and comes to rest on the floor plane (worldz
+		//   clamps to 0, vz zeroed).
 		// tests: SemWalker2.a_lobbed_rock_arcs_lands_and_then_stays_on_the_ground
 		if (worldz() < 0.0f)
 		{
@@ -2470,8 +2440,8 @@ walker::act_fire()
 	if (zw != nullptr && zw->floor_count() > 1 && !dead())
 	{
 		const WeaponFamilyDescriptor* wfd = get_weapon_family_descriptor(family());
-		// rule: Part of the rule above that begins "On a multi-floor level a projectile whose
-		//   family can ..."
+		// rule: On a multi-floor level a projectile whose family can drop floors (ROCK) falls
+		//   through an air tile to the floor below and keeps flying there.
 		// tests: ZAxis.a_projectile_over_air_drops_a_floor_and_dies_on_the_lowest_one
 		// tests: SemWalker2.only_a_droppable_shot_falls_through_air_and_lands_at_height_0
 		// tests: SemWalker2.a_single_floor_level_drops_no_shot_through_an_air_tile
@@ -2481,15 +2451,15 @@ walker::act_fire()
 			const std::int32_t g = sm.query_genre_x_y(
 				(xpos() + sizex() / 2) / GRID_SIZE,
 				(ypos() + sizey() / 2) / GRID_SIZE);
-			// rule: Part of the rule above that begins "On a multi-floor level a projectile whose
-			//   family can ..."
+			// rule: On a multi-floor level a projectile whose family can drop floors (ROCK) falls
+			//   through an air tile to the floor below and keeps flying there.
 			// tests: ZAxis.a_projectile_over_air_drops_a_floor_and_dies_on_the_lowest_one
 			// tests: SemWalker2.only_a_droppable_shot_falls_through_air_and_lands_at_height_0
 			// tests: SemWalker2.a_single_floor_level_drops_no_shot_through_an_air_tile
 			if (g == TYPE_AIR)
 			{
-				// rule: Part of the rule above that begins "On a multi-floor level a projectile
-				//   whose family can ..."
+				// rule: On a multi-floor level a projectile whose family can drop floors (ROCK)
+				//   falls through an air tile to the floor below and keeps flying there.
 				// tests: ZAxis.a_projectile_over_air_drops_a_floor_and_dies_on_the_lowest_one
 				// tests: SemWalker2.only_a_droppable_shot_falls_through_air_and_lands_at_height_0
 				// tests: SemWalker2.a_single_floor_level_drops_no_shot_through_an_air_tile
@@ -2525,7 +2495,7 @@ walker::act_fire()
 	else if (!walk() || stats_->query_bit_flags(BIT_NO_COLLIDE))  // rule: A projectile that cannot take
 		//   its step (it met a body or a wall), or a NO_COLLIDE projectile on every tick, strikes
 		//   the live body its step met (attack: damage, score, effects); a wall or an already-dead
-		//   body takes no hit. Cross-reference walker.cpp:1654: every stock NO_COLLIDE weapon
+		//   body takes no hit. Cross-reference below: every stock NO_COLLIDE weapon
 		//   family (wave/wave2/wave3/circle_protection) is also IMMORTAL, so the 'every tick' arm
 		//   holds for stock content only because 1654 keeps them alive after the hit.
 		// tests: WalkerMore.walker_act_fire_collision_arm_attacks_the_blocking_body
@@ -2533,8 +2503,8 @@ walker::act_fire()
 		// tests: SemWalker2.a_shot_stopped_by_a_wall_or_a_corpse_strikes_nothing
 	{
 		// Hit the collide_ob;
-		// rule: Part of the rule above that begins "A projectile that cannot take its step (it met
-		//   ..."
+		// rule: A projectile that cannot take its step (it met a body or a wall), or a NO_COLLIDE
+		//   projectile on every tick, strikes the live body its step met (attack.
 		// tests: WalkerMore.walker_act_fire_collision_arm_attacks_the_blocking_body
 		// tests: WalkerCombat.walker_act_with_commands
 		// tests: SemWalker2.a_shot_stopped_by_a_wall_or_a_corpse_strikes_nothing
@@ -2544,7 +2514,7 @@ walker::act_fire()
 		}
 		// rule: An ordinary projectile is spent by its hit (dies); an IMMORTAL one (WAVE family,
 		//   circles of protection) survives the hit and keeps flying until its range runs out. See
-		//   walker.cpp:1647: the stock NO_COLLIDE weapons are all IMMORTAL, which is what lets them
+		//   above: the stock NO_COLLIDE weapons are all IMMORTAL, which is what lets them
 		//   hit every tick.
 		// tests: WalkerMore.walker_act_fire_collision_arm_attacks_the_blocking_body
 		// tests: WalkerCombat.walker_act_with_commands
@@ -2620,7 +2590,7 @@ walker::act_guard()
 			// draws no extra RNG). A hold-post guard (npc_flags bit 1, the
 			// per-guard policy selector) never converts: it is the classic
 			// stationary sentry, used to pin posted NPCs in place.
-			// rule: A guard that genuinely sights a foe (same test as walker.cpp:1688) WAKES: it
+			// rule: A guard that genuinely sights a foe (same test as above) WAKES: it
 			//   converts to ACT_RANDOM and hunts from the next tick; a hold-post guard (npc_flags
 			//   bit 1) never converts and stays a stationary sentry.
 			// tests: GuardFacing.hold_post_guard_keeps_its_post_but_still_faces_and_fires
@@ -2656,7 +2626,7 @@ walker::act_random()
 	// rule: Base random-act AI: keep the current foe, but re-pick the nearest foe
 	//   (find_nearest_foe) on a 1-in-70 roll or whenever it has none. Reached only by a plain
 	//   walker (the generator class) whose act_type is ACT_RANDOM — livings override act_random
-	//   (living.cpp:731) and weapons/treasure/effects have their own act(); no stock content does
+	//   (living.cpp) and weapons/treasure/effects have their own act(); no stock content does
 	//   this.
 	// tests: WalkerCombat.walker_act_random_generator_paths, WalkerCombat.walker_act_with_commands
 	// tests: SemWalker2.a_wandering_walker_keeps_its_foe_unless_the_one_in_seventy_roll_hits
@@ -2664,7 +2634,7 @@ walker::act_random()
 		set_foe(current_game->world->find_nearest_foe(this));
 	// rule: With no foe anywhere the base AI wanders: try_random_walk(20). Reached only by a plain
 	//   walker (the generator class) whose act_type is ACT_RANDOM — livings override act_random
-	//   (living.cpp:731) and weapons/treasure/effects have their own act(); no stock content does
+	//   (living.cpp) and weapons/treasure/effects have their own act(); no stock content does
 	//   this.
 	// tests: SemWalker2.a_wandering_walker_with_no_foe_queues_a_twenty_tick_random_walk
 	if (!foe())
@@ -2676,17 +2646,18 @@ walker::act_random()
 	// If foe is in firing range, turn and fire
 	// rule: Base AI fires when the foe is inside its square sight box and fire_check passes:
 	//   init_fire plus COMMAND_FIRE for rng(24) ticks; otherwise it steps toward the foe. For a
-	//   generator-class walker fire_check always passes (walker.cpp:1452), so an ACT_RANDOM
+	//   generator-class walker fire_check always passes (above), so an ACT_RANDOM
 	//   generator spawns whenever a foe is in its sight box. Reached only by a plain walker (the
 	//   generator class) whose act_type is ACT_RANDOM — livings override act_random
-	//   (living.cpp:731) and weapons/treasure/effects have their own act(); no stock content does
+	//   (living.cpp) and weapons/treasure/effects have their own act(); no stock content does
 	//   this.
 	// tests: WalkerCoreMore.walker_round7b_base_act_guard_random_and_death_paths
 	// tests: SemWalker2.a_wandering_walker_steps_toward_a_foe_outside_its_firing_box
 	if (abs(xdist) < lineofsight() * GRID_SIZE &&
 	        abs(ydist) < lineofsight() * GRID_SIZE)
 	{
-		// rule: Part of the rule above that begins "Base AI fires when the foe is inside its ..."
+		// rule: Base AI fires when the foe is inside its square sight box and fire_check passes:
+		//   init_fire plus COMMAND_FIRE for rng(24) ticks; otherwise it steps toward the foe.
 		// tests: WalkerCoreMore.walker_round7b_base_act_guard_random_and_death_paths
 		// tests: SemWalker2.a_wandering_walker_steps_toward_a_foe_outside_its_firing_box
 		if (fire_check(xdist, ydist))
@@ -2702,14 +2673,15 @@ walker::act_random()
 	// rule: When not firing, the base AI walks one step along the sign of the foe delta on each
 	//   axis (8-way approach, sliding handled by walkstep). Reached only by a plain walker (the
 	//   generator class) whose act_type is ACT_RANDOM — livings override act_random
-	//   (living.cpp:731) and weapons/treasure/effects have their own act(); no stock content does
+	//   (living.cpp) and weapons/treasure/effects have their own act(); no stock content does
 	//   this.
 	// tests: SemWalker2.a_wandering_walker_steps_toward_a_foe_outside_its_firing_box
 	if (newx)                      // If it's not 0, then get
 		newx = (newx > 0) ? 1 : -1;       // the normal of it..
 
 	newy = ydist;
-	// rule: Part of the rule above that begins "When not firing, the base AI walks one step ..."
+	// rule: When not firing, the base AI walks one step along the sign of the foe delta on each
+	//   axis (8-way approach, sliding handled by walkstep).
 	// tests: SemWalker2.a_wandering_walker_steps_toward_a_foe_outside_its_firing_box
 	if (newy)
 		newy = (newy > 0) ? 1 : -1;
@@ -2730,9 +2702,9 @@ short walker::spaces_clear()
 	short count = 0;
 	short i, j;
 
-	// plumbing: spaces_clear's 3x3 neighbourhood iteration; rule in walker.cpp:1783.
+	// plumbing: spaces_clear's 3x3 neighbourhood iteration; rule below.
 	for (i=-1; i < 2; i++)
-		// plumbing: spaces_clear's 3x3 neighbourhood iteration; rule in walker.cpp:1783.
+		// plumbing: spaces_clear's 3x3 neighbourhood iteration; rule below.
 		for (j=-1; j < 2; j++)
 			// rule: Count how many of the 8 body-sized neighbour spots around a walker it could
 			//   step into (terrain and bodies); the slime grows only when more than 7 are clear
@@ -2741,8 +2713,8 @@ short walker::spaces_clear()
 			// tests: WalkerSpecials.small_slime_grow_drives_simulation
 			// tests: SemWalker2.a_neighbour_spot_blocked_by_a_wall_or_a_body_is_not_clear
 			if (i || j) // don't check our own location
-				// rule: Part of the rule above that begins "Count how many of the 8 body-sized
-				//   neighbour spots ..."
+				// rule: Count how many of the 8 body-sized neighbour spots around a walker it could
+				//   step into (terrain and bodies).
 				// tests: WalkerCombat.walker_spaces_clear
 				// tests: WalkerSpecials.small_slime_grow_drives_simulation
 				// tests: SemWalker2.a_neighbour_spot_blocked_by_a_wall_or_a_body_is_not_clear
@@ -2772,7 +2744,7 @@ void walker::transfer_stats(walker  *newob)
 
 	newob->stats()->set_level(stats_->level());
 	newob->stats()->set_frozen_delay(stats_->frozen_delay_raw()); // raw: thaw immunity transfers with the body (§3.3)
-	// plumbing: transfer_stats copies the five special_cost slots; plumbing of walker.cpp:1818's
+	// plumbing: transfer_stats copies the five special_cost slots; plumbing of below's
 	//   stat transfer.
 	for (i=0; i < 5; i++)
 		newob->stats()->set_special_cost(i, stats_->special_cost(i));
@@ -2812,7 +2784,7 @@ void walker::transform_to(Order whatorder, std::int32_t whatfamily)
 	// rule: A transform within the same order (slime grow, WAVE->WAVE2, editor family swap) keeps
 	//   the walker's act type; a transform across orders takes the new order's default act type. On
 	//   EVERY transform (both arms) the walker's centre point is preserved across the size change
-	//   (walker.cpp:1864-1876) and its bit flags are cleared (walker.cpp:1845) before the new
+	//   (below) and its bit flags are cleared (below) before the new
 	//   family's configuration is applied.
 	// tests: WalkerCombat.walker_transform_to_same_order
 	// tests: SemWalker2.a_transform_keeps_the_centre_resets_the_flags_and_takes_a_new_orders_act
@@ -2825,8 +2797,8 @@ void walker::transform_to(Order whatorder, std::int32_t whatfamily)
 	// Reset bit flags
 	stats_->clear_bit_flags();
 
-	// plumbing: transform_to without a world (1847) or when configure_existing_entity returns null
-	//   (1854) returns early.
+	// plumbing: transform_to without a world or when configure_existing_entity returns null
+	//   returns early.
 	if (current_game == nullptr || current_game->world == nullptr)
 		return;
 
@@ -2834,8 +2806,8 @@ void walker::transform_to(Order whatorder, std::int32_t whatfamily)
 	//  family() values don't try to set graphics.
 	//  order() and family() are only set if legal
 	const PixieData* data = current_game->world->configure_existing_entity(*this, whatorder, whatfamily);
-	// plumbing: transform_to without a world (1847) or when configure_existing_entity returns null
-	//   (1854) returns early.
+	// plumbing: transform_to without a world or when configure_existing_entity returns null
+	//   returns early.
 	if (data == nullptr)
 		return;
 
@@ -2855,8 +2827,8 @@ void walker::transform_to(Order whatorder, std::int32_t whatfamily)
 	tempypos = ycenter - sizey()/2;
 
 
-	// rule: Part of the rule above that begins "A transform within the same order (slime grow,
-	//   WAVE->WAVE2, ..."
+	// rule: A transform within the same order (slime grow, WAVE->WAVE2, editor family swap) keeps
+	//   the walker's act type.
 	// tests: WalkerCombat.walker_transform_to_same_order
 	// tests: SemWalker2.a_transform_keeps_the_centre_resets_the_flags_and_takes_a_new_orders_act
 	if (reset)
@@ -2903,10 +2875,10 @@ bool walker::death()
 	// Ensure we are removed from collision bookkeeping as soon as we "die".
 	// This prevents stale pointers in the obmap when callers manage walker
 	// lifetimes outside LevelRuntimeData's owning lists (common in tests).
+	// plumbing: death() removes the corpse from the obmap when one exists (stale-pointer hygiene).
 	obmap* active = (current_game != nullptr && current_game->world != nullptr)
 	    ? current_game->world->myobmap.get()
 	    : nullptr;
-	// plumbing: death() removes the corpse from the obmap when one exists (stale-pointer hygiene).
 	if (active != nullptr)
 		active->remove(this);
 
@@ -2972,8 +2944,8 @@ bool walker::death()
 			// protected walker stays mission-critical even while charmed.)
 			// The 2002 inline gloss was simply "our team"; selectable roster
 			// colors make that world.my_team, never hardcoded red or myguy.
-			// rule: Part of the rule above that begins "On a SAVE-ALL mission, the death of a
-			//   protected ..."
+			// rule: On a SAVE-ALL mission, the death of a protected walker fails the mission
+			//   (EndGame event, a=SCEN_TYPE_SAVE_ALL, b=-1).
 			// tests: WalkerUnit.walker_death_save_all_and_misc_paths
 			// tests: SaveAllScoping.legacy_named_team0_death_still_fails_mission
 			// tests: SaveAllScoping.protected_flag_scopes_the_watch_to_flagged_walkers
@@ -3042,7 +3014,7 @@ bool walker::death()
 		//   unconditional emit_sound; the old game played them only when the generator was
 		//   on_screen() (current game has emit_positional_sound for exactly that, unused here)
 		case Order::Generator:  // go up in flames :>
-			// plumbing: The four-explosion loop of the generator death; rule in walker.cpp:1985.
+			// plumbing: The four-explosion loop of the generator death; rule above.
 			for (i=0; i < 4; i++)
 			{
 				newob = current_game->world->add_ob(Order::FX, FAMILY_EXPLOSION);
@@ -3155,14 +3127,13 @@ void walker::set_dormant(bool value)
 		return;
 	dormant_ = value;
 
+	// plumbing: set_dormant without a world/obmap: only the flag changes.
 	obmap* map = (current_game != nullptr && current_game->world != nullptr)
 	    ? current_game->world->myobmap.get()
 	    : nullptr;
-	// plumbing: set_dormant without a world/obmap: only the flag changes.
 	if (map == nullptr)
 		return;
-	// rule: Part of the rule above that begins "A delayed-spawn (dormant) walker is out of the
-	//   collision ..."
+	// rule: A delayed-spawn (dormant) walker is out of the collision table.
 	// tests: NpcScenarioFlags.dormant_foe_cell_is_walk_through_until_wake
 	// tests: NpcScenarioFlags.repositioning_a_dormant_walker_keeps_it_unregistered
 	// tests: SemWalker2.waking_an_ignored_walker_keeps_it_out_and_a_repeat_changes_nothing
@@ -3194,15 +3165,13 @@ void walker::change_floor(short new_floor)
 		return;
 	// plumbing: change_floor null guards for world and obmap.
 	GameWorld* w = (current_game != nullptr) ? current_game->world : nullptr;
-	// plumbing: change_floor null guards for world and obmap.
 	obmap* m = (w != nullptr) ? w->myobmap.get() : nullptr;
-	// plumbing: change_floor null guards for world and obmap.
 	if (m != nullptr)
 		m->remove(this);
 	set_floor(new_floor);
 	set_worldz(0.0f);
-	// rule: Part of the rule above that begins "Changing floor moves a walker into the new floor's
-	//   ..."
+	// rule: Changing floor moves a walker into the new floor's collision buckets and onto that
+	//   floor's plane (worldz 0).
 	// tests: ZAxis.collision_is_floor_separated
 	// tests: NpcScenarioFlags.repositioning_a_dormant_walker_keeps_it_unregistered
 	// tests: KitSeams.hidden_walker_is_inert_and_skipped_by_every_finder
@@ -3232,17 +3201,17 @@ static bool land_on_nearest_clear_cell(GameWorld& w, walker& faller,
                                        std::int32_t radius, bool avoid_air)
 {
 	const PixieData& g = w.grid_for_floor(target_floor);
-	// plumbing: land_on_nearest_clear_cell: no grid for the target floor (2137) -> no landing; ring
-	//   cells off the grid (2149) skipped.
+	// plumbing: land_on_nearest_clear_cell: no grid for the target floor -> no landing; ring
+	//   cells off the grid skipped.
 	if (!g.valid())
 		return false;
-	// plumbing: Ring-by-ring, row-major scan of the landing nudge; rule in walker.cpp:2145.
+	// plumbing: Ring-by-ring, row-major scan of the landing nudge; rule below.
 	for (std::int32_t r = 0; r <= radius; ++r)
 	{
-		// plumbing: Ring-by-ring, row-major scan of the landing nudge; rule in walker.cpp:2145.
+		// plumbing: Ring-by-ring, row-major scan of the landing nudge; rule below.
 		for (std::int32_t dy = -r; dy <= r; ++dy)
 		{
-			// plumbing: Ring-by-ring, row-major scan of the landing nudge; rule in walker.cpp:2145.
+			// plumbing: Ring-by-ring, row-major scan of the landing nudge; rule below.
 			for (std::int32_t dx = -r; dx <= r; ++dx)
 			{
 				// rule: A blocked cross-floor arrival is nudged to the NEAREST clear cell of the
@@ -3259,12 +3228,14 @@ static bool land_on_nearest_clear_cell(GameWorld& w, walker& faller,
 					continue; // ring perimeter only
 				const std::int32_t nx = cx + dx;
 				const std::int32_t ny = cy + dy;
-				// plumbing: land_on_nearest_clear_cell: no grid for the target floor (2137) -> no
-				//   landing; ring cells off the grid (2149) skipped.
+				// plumbing: land_on_nearest_clear_cell: no grid for the target floor -> no
+				//   landing; ring cells off the grid skipped.
 				if (nx < 0 || ny < 0 || nx >= g.w || ny >= g.h)
 					continue;
-				// rule: Part of the rule above that begins "A blocked cross-floor arrival is nudged
-				//   to the NEAREST ..."
+				// rule: A blocked cross-floor arrival is nudged to the NEAREST clear cell of the
+				//   target floor, searched deterministically ring by ring outward (ring 0 = own
+				//   cell, then ring 1 row-major from the north-west, ...) up to the radius (falls 4
+				//   rings, stairs 2).
 				// tests: ZAxis.air_fall_nudge_probes_rings_outward_deterministically
 				// tests: ZAxis.stair_nudge_never_lands_on_air
 				// tests: ZAxis.stair_up_into_occupied_cell_lands_beside_the_blocker
@@ -3273,8 +3244,10 @@ static bool land_on_nearest_clear_cell(GameWorld& w, walker& faller,
 					continue;
 				const std::int32_t px = nx * GRID_SIZE;
 				const std::int32_t py = ny * GRID_SIZE;
-				// rule: Part of the rule above that begins "A blocked cross-floor arrival is nudged
-				//   to the NEAREST ..."
+				// rule: A blocked cross-floor arrival is nudged to the NEAREST clear cell of the
+				//   target floor, searched deterministically ring by ring outward (ring 0 = own
+				//   cell, then ring 1 row-major from the north-west, ...) up to the radius (falls 4
+				//   rings, stairs 2).
 				// tests: ZAxis.air_fall_nudge_probes_rings_outward_deterministically
 				// tests: ZAxis.stair_nudge_never_lands_on_air
 				// tests: ZAxis.stair_up_into_occupied_cell_lands_beside_the_blocker
@@ -3365,8 +3338,8 @@ void walker::resolve_fall_landing()
 	if (myguy != nullptr)
 	{
 		myguy->scen_damage_taken += dmg;
-		// rule: Part of the rule above that begins "A saved character's fall damage counts in its
-		//   per-scenario ..."
+		// rule: A saved character's fall damage counts in its per-scenario damage-taken tally and
+		//   lowers its lowest-hp watermark.
 		// tests: SemWalker3.a_characters_fall_damage_counts_in_its_scenario_record
 		if (myguy->scen_min_hp > stats_->hitpoints())
 			myguy->scen_min_hp = stats_->hitpoints();
@@ -3468,8 +3441,8 @@ void walker::apply_z_motion()
 		// any tiny in-cell movement re-triggered it). Latched: no re-trigger
 		// until the centre cell leaves the stair cell; stepping back on is a
 		// deliberate act and triggers normally.
-		// rule: Part of the rule above that begins "A walker that just arrived by stair stands on
-		//   ..."
+		// rule: A walker that just arrived by stair stands on the paired stair tile but is not
+		//   bounced back.
 		// tests: ZAxis.arrival_on_paired_stair_does_not_bounce_back
 		// tests: ZAxis.leaving_the_stair_cell_rearms_the_transition
 		// tests: ZAxis.nudged_arrival_leaves_the_paired_stair_armed
@@ -3477,8 +3450,8 @@ void walker::apply_z_motion()
 			return;
 		const std::int32_t tile = sm.query_x_y(cx, cy);
 		short target = floor();
-		// rule: Part of the rule above that begins "A non-flying walker whose centre is on a
-		//   Z-stair ..."
+		// rule: A non-flying walker whose centre is on a Z-stair is carried one floor up (UP tile,
+		//   not on the top floor) or down (DOWN tile, not on floor 0), vertically aligned.
 		// tests: ZAxis.zstair_up_moves_to_floor_above
 		// tests: ZAxis.leaving_the_stair_cell_rearms_the_transition
 		// tests: SemWalker3.a_stair_with_no_floor_beyond_it_does_nothing_and_flyers_ignore_stairs
@@ -3486,8 +3459,8 @@ void walker::apply_z_motion()
 			target = static_cast<short>(floor() + 1);
 		else if (tile == PIX_ZSTAIR_DOWN && floor() > 0)
 			target = static_cast<short>(floor() - 1);
-		// rule: Part of the rule above that begins "A non-flying walker whose centre is on a
-		//   Z-stair ..."
+		// rule: A non-flying walker whose centre is on a Z-stair is carried one floor up (UP tile,
+		//   not on the top floor) or down (DOWN tile, not on floor 0), vertically aligned.
 		// tests: ZAxis.zstair_up_moves_to_floor_above
 		// tests: ZAxis.leaving_the_stair_cell_rearms_the_transition
 		// tests: SemWalker3.a_stair_with_no_floor_beyond_it_does_nothing_and_flyers_ignore_stairs
@@ -3536,14 +3509,13 @@ void walker::apply_z_motion()
 	// pit death. Weapons get their own fall via act_fire (vz/gravity).
 	// rule: A non-flying, non-weapon walker over an air tile falls to the floor below; over air on
 	//   floor 0 it falls out of the world — pit death, which even invulnerability does not prevent.
-	//   Weapons fall by act_fire's own rule (walker.cpp:1615). The !dead() re-check is always true
-	//   here (dead walkers returned at walker.cpp:2252).
+	//   Weapons fall by act_fire's own rule (above). The !dead() re-check is always true
+	//   here (dead walkers returned above).
 	// tests: ZAxis.walker_falls_through_air, ZAxis.flyer_hovers_over_air, ZAxis.pit_death_unchanged
 	// tests: ZAxis.flyer_exempt_hp
 	if (genre == TYPE_AIR && !flying && order() != Order::Weapon)
 	{
-		// rule: Part of the rule above that begins "A non-flying, non-weapon walker over an air
-		//   tile falls ..."
+		// rule: A non-flying, non-weapon walker over an air tile falls to the floor below.
 		// tests: ZAxis.walker_falls_through_air, ZAxis.flyer_hovers_over_air
 		// tests: ZAxis.pit_death_unchanged, ZAxis.flyer_exempt_hp
 		if (floor() > 0)
@@ -3596,8 +3568,7 @@ void walker::apply_z_motion()
 				++fall_stories_;
 				const std::int32_t lcx = (xpos() + sizex() / 2) / GRID_SIZE;
 				const std::int32_t lcy = (ypos() + sizey() / 2) / GRID_SIZE;
-				// rule: Part of the rule above that begins "Each story fallen adds one to the
-				//   cascade; the ..."
+				// rule: Each story fallen adds one to the cascade.
 				// tests: ZAxis.cascade_no_partial_damage, ZAxis.fall_two_stories_costs_15pct
 				if (w->smoother_for_floor(floor()).query_genre_x_y(lcx, lcy) !=
 				    TYPE_AIR)
@@ -3653,8 +3624,8 @@ void walker::set_difficulty(std::uint32_t whatlevel)
 		//   Hard; team-0 projectiles never scale.
 		// tests: WalkerMore.walker_base_hooks_and_set_difficulty_scaling
 		default:  // adjust standard settings for the rest ..
-			// rule: Part of the rule above that begins "Non-living, non-generator entities (weapons
-			//   get this at creation via ..."
+			// rule: Non-living, non-generator entities (weapons get this at creation via
+			//   configure_weapon_profile_base.
 			// tests: WalkerMore.walker_base_hooks_and_set_difficulty_scaling
 			if (team_num() != 0)  // do all EXCEPT player characters
 			{
@@ -3741,13 +3712,6 @@ std::int32_t walker::is_friendly(const walker *target) const
 	headus = headguy;
 	// Now our target ..
 	headguy = target;
-	// rule: Part of the rule above that begins "Alliance is decided by team colour of the heads
-	//   ..."
-	// tests: GameplayFixesCharm.a_charmed_tent_troop_fights_for_its_charmer
-	// tests: GameplayFixesCharm.a_mind_controlled_tent_troop_fights_for_its_master
-	// tests: GameplayFixesCharm.a_charmed_summon_of_an_enemy_caster_fights_for_its_charmer
-	// tests: GameplayFixesCharm.an_uncharmed_tent_troop_answers_for_its_tent_on_both_values
-	// tests: WalkerMore.walker_round6_friendliness_null_dead_owner_chain_and_allied_modes
 	while (headguy->owner() && (headguy->owner()->dead() == 0) && (headguy->owner() != headguy) && !headguy->charmed_head() )
 		headguy = headguy->owner();
 	headtarget = headguy;
@@ -3775,7 +3739,7 @@ std::int32_t walker::is_friendly_to_team(unsigned char team) const
 	const walker *headus;
 	
 	// If dead(), we're also unfriendly :)
-	// rule: A dead walker is friendly to no team (same rule as walker.cpp:2473): completion,
+	// rule: A dead walker is friendly to no team (same rule as above): completion,
 	//   enemy-freeze and respawn decisions never count a corpse for any side.
 	// tests: WalkerMore.walker_round6_friendliness_null_dead_owner_chain_and_allied_modes
 	// tests: WalkerMore.walker_friendliness_null_dead_and_strict_team_paths
@@ -3785,7 +3749,7 @@ std::int32_t walker::is_friendly_to_team(unsigned char team) const
 	// who's the top on our chains (ie, weapon->summoned->mage)
 	// First us ..
 	headguy = this;
-	// rule: Same alliance rule as walker.cpp:2479 against a bare team number, used by level
+	// rule: Same alliance rule as above against a bare team number, used by level
 	//   completion ('foes remain'), enemy freeze and respawn: a walker counts for the team its
 	//   chain head wears (charmed head stops the climb with fixes on).
 	// tests: GameplayFixesCharm.an_uncharmed_tent_troop_answers_for_its_tent_on_both_values
@@ -3809,10 +3773,6 @@ std::string_view entity_display_name(const walker* w, std::string_view fallback)
 	// tests: SemWalker3.a_nameless_walker_is_called_by_the_callers_fallback
 	if (w->myguy && !w->myguy->name.empty())
 		return w->myguy->name;
-	// rule: Part of the rule above that begins "How a walker is named in notices ('X ate ..."
-	// tests: PickerCommon.scenario_report_names_follow_the_shared_precedence
-	// tests: WalkerSpecials.archmage_mind_control_stats_name_path
-	// tests: SemWalker3.a_nameless_walker_is_called_by_the_callers_fallback
 	if (!w->stats()->name.empty())
 		return w->stats()->name;
 	return fallback;
@@ -3858,13 +3818,6 @@ void walker::update_exit_latch()
 	                      exit_latch_x_ < static_cast<std::int16_t>(x + w) &&
 	                      y < static_cast<std::int16_t>(exit_latch_y_ + exit_latch_h_) &&
 	                      exit_latch_y_ < static_cast<std::int16_t>(y + h);
-	// rule: Part of the rule above that begins "An exit pad prompts once per contact: the latch
-	//   ..."
-	// tests: SimWorldHeadless.exit_prompts_once_per_contact_not_per_cooldown
-	// tests: SimWorldHeadless.exit_reprompts_after_stepping_fully_off_and_back
-	// tests: SimWorldHeadless.exit_latch_holds_while_standing_still
-	// tests: SimWorldHeadless.foes_remain_toast_fires_once_per_contact
-	// tests: SimWorldHeadless.two_control_walkers_latch_one_pad_independently
 	if (!overlaps)
 		exit_latched_ = false;
 }
@@ -3904,8 +3857,8 @@ void walker::set_hidden(bool value)
 	    current_game->world != nullptr)
 	{
 		const walker* partner = current_game->world->find_by_id(possess_link());
-		// rule: Part of the rule above that begins "A possessed body never hides: a walker whose
-		//   possession ..."
+		// rule: A possessed body never hides: a walker whose possession partner is already hidden
+		//   is the host, and its hide request (e.g. a possessed skeleton's DIG IN) is turned away.
 		// tests: KitPossession.a_possessed_body_never_hides
 		// tests: KitLuaTest.set_kit_state_cannot_hide_a_possessed_body
 		// tests: SemWalker3.a_possession_link_to_a_gone_walker_does_not_stop_a_hide
@@ -3913,8 +3866,7 @@ void walker::set_hidden(bool value)
 			return;
 	}
 	const std::uint8_t state = kit_state();
-	// rule: Part of the rule above that begins "New Specials hiding (DIG IN, possession rider): a
-	//   hidden ..."
+	// rule: New Specials hiding (DIG IN, possession rider).
 	// tests: KitSeams.hidden_walker_is_inert_and_skipped_by_every_finder
 	// tests: KitLuaTest.kit_state_bindings_read_and_write_the_walker
 	// tests: KitSkeleton.dig_in_sinks_four_ticks_then_hides_at_frame_27_without_tunnelling
@@ -3924,14 +3876,13 @@ void walker::set_hidden(bool value)
 	    value ? (state | KIT_HIDDEN) : (state & ~KIT_HIDDEN)));
 	set_outline(0);
 
+	// plumbing: set_hidden without a world/obmap: only the flag and outline change.
 	obmap* map = (current_game != nullptr && current_game->world != nullptr)
 	    ? current_game->world->myobmap.get()
 	    : nullptr;
-	// plumbing: set_hidden without a world/obmap: only the flag and outline change.
 	if (map == nullptr)
 		return;
-	// rule: Part of the rule above that begins "New Specials hiding (DIG IN, possession rider): a
-	//   hidden ..."
+	// rule: New Specials hiding (DIG IN, possession rider).
 	// tests: KitSeams.hidden_walker_is_inert_and_skipped_by_every_finder
 	// tests: KitLuaTest.kit_state_bindings_read_and_write_the_walker
 	// tests: KitSkeleton.dig_in_sinks_four_ticks_then_hides_at_frame_27_without_tunnelling
@@ -4015,9 +3966,6 @@ walker::PadAnswer walker::fire_pad_answer(std::int32_t weapon_family)
 	// tests: QuietProbe.fire_pad_answer_names_what_the_pad_holds
 	if (query_order() != Order::Living || current_game == nullptr || current_game->world == nullptr)
 		return PadAnswer::NoProbe;
-	// rule: Part of the rule above that begins "Only a living can ask whether its shot's pad ..."
-	// tests: QuietProbe.fire_pad_clear_is_false_for_a_non_living
-	// tests: QuietProbe.fire_pad_answer_names_what_the_pad_holds
 	if (weapon_family >= NUM_FAMILY_SLOTS)
 		return PadAnswer::NoProbe;
 	const std::int32_t family = weapon_family >= 0
@@ -4026,9 +3974,6 @@ walker::PadAnswer walker::fire_pad_answer(std::int32_t weapon_family)
 	weap probe(WeaponProfileProbeTag{});
 	const PixieData* data = current_game->world->configure_existing_entity(
 		probe, Order::Weapon, family);
-	// rule: Part of the rule above that begins "Only a living can ask whether its shot's pad ..."
-	// tests: QuietProbe.fire_pad_clear_is_false_for_a_non_living
-	// tests: QuietProbe.fire_pad_answer_names_what_the_pad_holds
 	if (data == nullptr)
 		return PadAnswer::NoProbe;
 	probe.set_data(*data);
@@ -4052,12 +3997,6 @@ walker::PadAnswer walker::fire_pad_answer(std::int32_t weapon_family)
 	// tests: GameplayFixesElf.a_volley_at_a_wall_spends_nothing_with_the_setting_on
 	if (!current_game->world->query_grid_passable(px, py, &probe, floor(), /*quiet=*/true))
 		return PadAnswer::Terrain;
-	// rule: Part of the rule above that begins "Would the shot fly: the pad fire() would use ..."
-	// tests: QuietProbe.fire_pad_answer_names_what_the_pad_holds
-	// tests: QuietProbe.fire_pad_clear_takes_a_weapon_family
-	// tests: QuietProbe.fire_pad_clear_leaves_the_world_alone
-	// tests: QuietProbe.an_arrow_slit_passes_a_quiet_weapon_probe_and_draws_nothing
-	// tests: GameplayFixesElf.a_volley_at_a_wall_spends_nothing_with_the_setting_on
 	if (!current_game->world->query_object_passable(px, py, &probe, floor(), /*quiet=*/true))
 		return PadAnswer::Body;
 	return PadAnswer::Clear;
@@ -4080,7 +4019,7 @@ bool walker::fire_pad_clear(std::int32_t weapon_family)
 walker* walker::credit_head()
 {
 	walker* top = nullptr;
-	// plumbing: credit_head's owner-chain walk; rule in walker.cpp:2716.
+	// plumbing: credit_head's owner-chain walk; rule below.
 	for (walker* w = this;;)
 	{
 		// rule: Who gets the hit/kill (#411, kill stamp and on_kill): the topmost LIVING on the
@@ -4096,13 +4035,6 @@ walker* walker::credit_head()
 		if (w->query_order() == Order::Living)
 			top = w;
 		walker* next = w->owner();
-		// rule: Part of the rule above that begins "Who gets the hit/kill (#411, kill stamp and
-		//   on_kill): ..."
-		// tests: ModesOnslaught.a_tent_troops_kill_pays_its_colour
-		// tests: ModesTdm.a_tent_troops_kill_counts_a_frag
-		// tests: ModesTdm.a_charmed_summons_kill_credits_its_charmed_colour
-		// tests: GameplayFixesCharm.a_charmed_summon_of_an_enemy_caster_fights_for_its_charmer
-		// tests: SemWalker3.a_blow_with_no_living_on_its_chain_is_credited_to_nobody
 		if (next == nullptr || next == w || w->charmed_head())
 			break;
 		w = next;

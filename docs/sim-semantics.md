@@ -207,7 +207,7 @@ the check could not run (an in-scope file or the parity table is missing).
 a reader can judge them. The output ends with the counts:
 
 ```
-check_semantics: OK: 159 files, 4635 candidate lines, 3150 rule comments, 677 plumbing comments | uncovered 0, double-covered 0, stray 0, no tests 0, missing test 0, disabled test 0, missing parity row 0, malformed 0 | deferred 17, unreachable 24
+check_semantics: OK: 159 files, 4673 candidate lines, 2692 rule comments, 651 plumbing comments | uncovered 0, double-covered 0, stray 0, no tests 0, missing test 0, disabled test 0, missing parity row 0, malformed 0 | deferred 18, unreachable 24
 ```
 
 ### What each error means

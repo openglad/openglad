@@ -299,7 +299,9 @@ Sint32 smoother::query_x_y(Sint32 x, Sint32 y)
 		return PIX_GRASS1;
 
 	// Check boundaries ..
-	// rule: Part of the rule above that begins "Off the map, or before a map is bound, ..."
+	// rule: Off the map, or before a map is bound, the terrain reads as plain grass (PIX_GRASS1),
+	//   so edge tiles smooth as if grass lay beyond and a forestwalker at the edge is not 'in
+	//   trees' off-map.
 	// tests: SmoothOps.smooth_query_x_y_no_grid
 	// tests: SmoothUnit.smooth_r11_out_of_range_neighbours_read_as_grass_and_writes_are_clamped
 	// tests: SmoothOps.smooth_query_x_y_with_grid
@@ -307,7 +309,9 @@ Sint32 smoother::query_x_y(Sint32 x, Sint32 y)
 	if ( (x < 0) || (y < 0) )
 		return PIX_GRASS1;
 
-	// rule: Part of the rule above that begins "Off the map, or before a map is bound, ..."
+	// rule: Off the map, or before a map is bound, the terrain reads as plain grass (PIX_GRASS1),
+	//   so edge tiles smooth as if grass lay beyond and a forestwalker at the edge is not 'in
+	//   trees' off-map.
 	// tests: SmoothOps.smooth_query_x_y_no_grid
 	// tests: SmoothUnit.smooth_r11_out_of_range_neighbours_read_as_grass_and_writes_are_clamped
 	// tests: SmoothOps.smooth_query_x_y_with_grid
@@ -340,22 +344,22 @@ Sint32 smoother::surrounds(Sint32 x, Sint32 y, Sint32 whatgenre)
 	if (query_genre_x_y(x, y-1) == whatgenre) // above
 		howmany += 1;
 
-	// rule: Part of the rule above that begins "A tile's 'around' mask counts which of its four
-	//   ..."
+	// rule: A tile's 'around' mask counts which of its four neighbours share its terrain genre: up
+	//   1, right 2, down 4, left 8.
 	// tests: Smoother.surrounds_bitmask_counts_neighbors
 	// tests: Smoother.smooth_writes_the_exact_tile_for_every_genre_and_around_mask
 	if (query_genre_x_y(x+1, y) == whatgenre) // right
 		howmany += 2;
 
-	// rule: Part of the rule above that begins "A tile's 'around' mask counts which of its four
-	//   ..."
+	// rule: A tile's 'around' mask counts which of its four neighbours share its terrain genre: up
+	//   1, right 2, down 4, left 8.
 	// tests: Smoother.surrounds_bitmask_counts_neighbors
 	// tests: Smoother.smooth_writes_the_exact_tile_for_every_genre_and_around_mask
 	if (query_genre_x_y(x, y+1) == whatgenre) // below
 		howmany += 4;
 
-	// rule: Part of the rule above that begins "A tile's 'around' mask counts which of its four
-	//   ..."
+	// rule: A tile's 'around' mask counts which of its four neighbours share its terrain genre: up
+	//   1, right 2, down 4, left 8.
 	// tests: Smoother.surrounds_bitmask_counts_neighbors
 	// tests: Smoother.smooth_writes_the_exact_tile_for_every_genre_and_around_mask
 	if (query_genre_x_y(x-1, y) == whatgenre) // left
@@ -386,7 +390,7 @@ Sint32 smoother::smooth(Sint32 x, Sint32 y)
 	// rule: Grass with water wrapped around one corner (the corner plus its two sides and the two
 	//   adjacent diagonals) becomes the matching grass/water shoreline corner; otherwise it becomes
 	//   one of four plain grass variants at random. The autotiler runs in the level editor and the
-	//   mapgen tools (builders.cpp:138, level_editor.cpp), never in a sim tick; only
+	//   mapgen tools (builders.cpp, level_editor.cpp), never in a sim tick; only
 	//   query_x_y/query_genre_x_y feed the sim (forestwalk, effects).
 	// tests: Smoother.smooth_writes_the_exact_tile_for_every_genre_and_around_mask
 	// tests: SmoothMatrix.smooth_query_helpers_and_grass_water_corner_branches
@@ -394,8 +398,8 @@ Sint32 smoother::smooth(Sint32 x, Sint32 y)
 	switch (here) // switch on genre
 	{
 		case TYPE_GRASS:
-			// rule: Part of the rule above that begins "Grass with water wrapped around one corner
-			//   (the corner ..."
+			// rule: Grass with water wrapped around one corner (the corner plus its two sides and
+			//   the two adjacent diagonals) becomes the matching grass/water shoreline corner.
 			// tests: Smoother.smooth_writes_the_exact_tile_for_every_genre_and_around_mask
 			// tests: SmoothMatrix.smooth_query_helpers_and_grass_water_corner_branches
 			// tests: CoverageMisc.final_r16_smooth_targeted_grass_and_dark_variants
@@ -425,8 +429,9 @@ Sint32 smoother::smooth(Sint32 x, Sint32 y)
 		// tests: SemSmooth.dark_grass_open_to_the_right_or_top_fades_to_ll_only_beside_plain_grass
 		// tests: SemSmooth.dark_grass_open_to_the_left_or_bottom_fades_to_ur_only_beside_plain_grass
 		case TYPE_GRASS_DARK:  // Shadowed grass
-			// rule: Part of the rule above that begins "Without a shadow caster in play, dark grass
-			//   picks ..."
+			// rule: Without a shadow caster in play, dark grass picks its piece from which
+			//   neighbours are also dark grass (mask), plain grass beside an open edge giving the
+			//   LL/UR fade pieces.
 			// tests: SmoothMatrix.grass_dark_grass_wall_and_cobble_masks_each_select_their_exact_tile
 			// tests: SmoothMoreBranches.smooth_round9_dark_grass_single_neighbor_branch_pairs
 			// tests: SmoothUnit.dark_grass_top_middle_draws_a_dark_variant
@@ -454,14 +459,13 @@ Sint32 smoother::smooth(Sint32 x, Sint32 y)
 				break;
 			}
 			else if (   (upleft == TYPE_TREES || upleft == TYPE_WALL)
-			            && (up == TYPE_TREES || up == TYPE_WALL) ) // act as bottom middle // rule: Part of the rule above that
-			                //   begins "Dark grass is the shadow trees and walls cast: ..."
+			            && (up == TYPE_TREES || up == TYPE_WALL) ) // act as bottom middle // rule: Dark grass is the shadow trees
+			                //   and walls cast.
 			                // tests: SmoothMoreBranches.dark_grass_and_wall_clusters_select_their_exact_piece
 			                // tests: SmoothMoreBranches.dark_grass_under_trees_over_more_shadow_stays_plain_dark
 			                // tests: CoverageMisc.coverage_r17_smooth_grass_water_and_dark_variants
 			{
-				// rule: Part of the rule above that begins "Dark grass is the shadow trees and
-				//   walls cast: ..."
+				// rule: Dark grass is the shadow trees and walls cast.
 				// tests: SmoothMoreBranches.dark_grass_and_wall_clusters_select_their_exact_piece
 				// tests: SmoothMoreBranches.dark_grass_under_trees_over_more_shadow_stays_plain_dark
 				// tests: CoverageMisc.coverage_r17_smooth_grass_water_and_dark_variants
@@ -473,8 +477,7 @@ Sint32 smoother::smooth(Sint32 x, Sint32 y)
 					case TYPE_DIRT:
 					case TYPE_COBBLE:
 						newvalue = grass_dark_bottom[next_random(2)];
-						// rule: Part of the rule above that begins "Dark grass is the shadow trees
-						//   and walls cast: ..."
+						// rule: Dark grass is the shadow trees and walls cast.
 						// tests: SmoothMoreBranches.dark_grass_and_wall_clusters_select_their_exact_piece
 						// tests: SmoothMoreBranches.dark_grass_under_trees_over_more_shadow_stays_plain_dark
 						// tests: CoverageMisc.coverage_r17_smooth_grass_water_and_dark_variants
@@ -487,8 +490,8 @@ Sint32 smoother::smooth(Sint32 x, Sint32 y)
 				} // end case-check of what's below us
 			}  // end of first bottom-middle case
 			else if ( (up == TYPE_TREES || up == TYPE_WALL) &&
-			          (right==TYPE_TREES|| right==TYPE_WALL) )  // rule: Part of the rule above that
-			              //   begins "Dark grass is the shadow trees and walls cast: ..."
+			          (right==TYPE_TREES|| right==TYPE_WALL) )  // rule: Dark grass is the shadow trees
+			              //   and walls cast.
 			              // tests: SmoothMoreBranches.dark_grass_and_wall_clusters_select_their_exact_piece
 			              // tests: SmoothMoreBranches.dark_grass_under_trees_over_more_shadow_stays_plain_dark
 			              // tests: CoverageMisc.coverage_r17_smooth_grass_water_and_dark_variants
@@ -503,8 +506,9 @@ Sint32 smoother::smooth(Sint32 x, Sint32 y)
 			}
 			else if (around == (TO_LEFT | TO_DOWN)) // top right
 			{
-				// rule: Part of the rule above that begins "Without a shadow caster in play, dark
-				//   grass picks ..."
+				// rule: Without a shadow caster in play, dark grass picks its piece from which
+				//   neighbours are also dark grass (mask), plain grass beside an open edge giving
+				//   the LL/UR fade pieces.
 				// tests: SmoothMatrix.grass_dark_grass_wall_and_cobble_masks_each_select_their_exact_tile
 				// tests: SmoothMoreBranches.smooth_round9_dark_grass_single_neighbor_branch_pairs
 				// tests: SmoothUnit.dark_grass_top_middle_draws_a_dark_variant
@@ -520,8 +524,9 @@ Sint32 smoother::smooth(Sint32 x, Sint32 y)
 			else if (around == (TO_LEFT | TO_RIGHT | TO_UP)) // bottom middle
 			{
 				newvalue = grass_dark_bottom[next_random(2)];
-				// rule: Part of the rule above that begins "Without a shadow caster in play, dark
-				//   grass picks ..."
+				// rule: Without a shadow caster in play, dark grass picks its piece from which
+				//   neighbours are also dark grass (mask), plain grass beside an open edge giving
+				//   the LL/UR fade pieces.
 				// tests: SmoothMatrix.grass_dark_grass_wall_and_cobble_masks_each_select_their_exact_tile
 				// tests: SmoothMoreBranches.smooth_round9_dark_grass_single_neighbor_branch_pairs
 				// tests: SmoothUnit.dark_grass_top_middle_draws_a_dark_variant
@@ -535,8 +540,9 @@ Sint32 smoother::smooth(Sint32 x, Sint32 y)
 			else if (around == (TO_LEFT | TO_RIGHT)) // middle, thin
 			{
 				newvalue = grass_dark_bottom[next_random(2)];
-				// rule: Part of the rule above that begins "Without a shadow caster in play, dark
-				//   grass picks ..."
+				// rule: Without a shadow caster in play, dark grass picks its piece from which
+				//   neighbours are also dark grass (mask), plain grass beside an open edge giving
+				//   the LL/UR fade pieces.
 				// tests: SmoothMatrix.grass_dark_grass_wall_and_cobble_masks_each_select_their_exact_tile
 				// tests: SmoothMoreBranches.smooth_round9_dark_grass_single_neighbor_branch_pairs
 				// tests: SmoothUnit.dark_grass_top_middle_draws_a_dark_variant
@@ -551,8 +557,9 @@ Sint32 smoother::smooth(Sint32 x, Sint32 y)
 				newvalue = PIX_GRASS_DARK_BR;
 			else if (around == TO_LEFT) // right, thin
 			{
-				// rule: Part of the rule above that begins "Without a shadow caster in play, dark
-				//   grass picks ..."
+				// rule: Without a shadow caster in play, dark grass picks its piece from which
+				//   neighbours are also dark grass (mask), plain grass beside an open edge giving
+				//   the LL/UR fade pieces.
 				// tests: SmoothMatrix.grass_dark_grass_wall_and_cobble_masks_each_select_their_exact_tile
 				// tests: SmoothMoreBranches.smooth_round9_dark_grass_single_neighbor_branch_pairs
 				// tests: SmoothUnit.dark_grass_top_middle_draws_a_dark_variant
@@ -576,8 +583,9 @@ Sint32 smoother::smooth(Sint32 x, Sint32 y)
 			}
 			else if (around == TO_DOWN) // top, alone
 			{
-				// rule: Part of the rule above that begins "Without a shadow caster in play, dark
-				//   grass picks ..."
+				// rule: Without a shadow caster in play, dark grass picks its piece from which
+				//   neighbours are also dark grass (mask), plain grass beside an open edge giving
+				//   the LL/UR fade pieces.
 				// tests: SmoothMatrix.grass_dark_grass_wall_and_cobble_masks_each_select_their_exact_tile
 				// tests: SmoothMoreBranches.smooth_round9_dark_grass_single_neighbor_branch_pairs
 				// tests: SmoothUnit.dark_grass_top_middle_draws_a_dark_variant
@@ -592,8 +600,9 @@ Sint32 smoother::smooth(Sint32 x, Sint32 y)
 			}
 			else if (around == (TO_RIGHT | TO_UP)) // bottom left
 			{
-				// rule: Part of the rule above that begins "Without a shadow caster in play, dark
-				//   grass picks ..."
+				// rule: Without a shadow caster in play, dark grass picks its piece from which
+				//   neighbours are also dark grass (mask), plain grass beside an open edge giving
+				//   the LL/UR fade pieces.
 				// tests: SmoothMatrix.grass_dark_grass_wall_and_cobble_masks_each_select_their_exact_tile
 				// tests: SmoothMoreBranches.smooth_round9_dark_grass_single_neighbor_branch_pairs
 				// tests: SmoothUnit.dark_grass_top_middle_draws_a_dark_variant
@@ -608,8 +617,9 @@ Sint32 smoother::smooth(Sint32 x, Sint32 y)
 			}
 			else if (around == TO_RIGHT) // left, alone
 			{
-				// rule: Part of the rule above that begins "Without a shadow caster in play, dark
-				//   grass picks ..."
+				// rule: Without a shadow caster in play, dark grass picks its piece from which
+				//   neighbours are also dark grass (mask), plain grass beside an open edge giving
+				//   the LL/UR fade pieces.
 				// tests: SmoothMatrix.grass_dark_grass_wall_and_cobble_masks_each_select_their_exact_tile
 				// tests: SmoothMoreBranches.smooth_round9_dark_grass_single_neighbor_branch_pairs
 				// tests: SmoothUnit.dark_grass_top_middle_draws_a_dark_variant
@@ -624,8 +634,9 @@ Sint32 smoother::smooth(Sint32 x, Sint32 y)
 			}
 			else if (around == TO_UP) // bottom, alone
 			{
-				// rule: Part of the rule above that begins "Without a shadow caster in play, dark
-				//   grass picks ..."
+				// rule: Without a shadow caster in play, dark grass picks its piece from which
+				//   neighbours are also dark grass (mask), plain grass beside an open edge giving
+				//   the LL/UR fade pieces.
 				// tests: SmoothMatrix.grass_dark_grass_wall_and_cobble_masks_each_select_their_exact_tile
 				// tests: SmoothMoreBranches.smooth_round9_dark_grass_single_neighbor_branch_pairs
 				// tests: SmoothUnit.dark_grass_top_middle_draws_a_dark_variant
@@ -657,8 +668,8 @@ Sint32 smoother::smooth(Sint32 x, Sint32 y)
 		// tests: SmoothUnit.arrow_slit_with_no_matching_sill_keeps_its_own_tile
 		// tests: SmoothCoverage.smooth_wall_arrow_slit_branches
 		case TYPE_WALL:
-			// rule: Part of the rule above that begins "An arrow-slit wall re-skins its sill to the
-			//   ground ..."
+			// rule: An arrow-slit wall re-skins its sill to the ground above it: grass, dark grass,
+			//   stone pavement or wood floor; with no matching sill it keeps its own tile.
 			// tests: Smoother.smooth_writes_the_exact_tile_for_every_genre_and_around_mask
 			// tests: SmoothUnit.arrow_slit_with_no_matching_sill_keeps_its_own_tile
 			// tests: SmoothCoverage.smooth_wall_arrow_slit_branches
@@ -667,8 +678,9 @@ Sint32 smoother::smooth(Sint32 x, Sint32 y)
 			        herepix == PIX_WALL4            ||
 			        herepix == PIX_WALL_ARROW_GRASS_DARK) // arrow slit?
 			{
-				// rule: Part of the rule above that begins "An arrow-slit wall re-skins its sill to
-				//   the ground ..."
+				// rule: An arrow-slit wall re-skins its sill to the ground above it: grass, dark
+				//   grass, stone pavement or wood floor; with no matching sill it keeps its own
+				//   tile.
 				// tests: Smoother.smooth_writes_the_exact_tile_for_every_genre_and_around_mask
 				// tests: SmoothUnit.arrow_slit_with_no_matching_sill_keeps_its_own_tile
 				// tests: SmoothCoverage.smooth_wall_arrow_slit_branches
@@ -679,8 +691,9 @@ Sint32 smoother::smooth(Sint32 x, Sint32 y)
 				else
 				{
 					uppix = query_x_y(x, y-1);
-					// rule: Part of the rule above that begins "An arrow-slit wall re-skins its
-					//   sill to the ground ..."
+					// rule: An arrow-slit wall re-skins its sill to the ground above it: grass,
+					//   dark grass, stone pavement or wood floor; with no matching sill it keeps
+					//   its own tile.
 					// tests: Smoother.smooth_writes_the_exact_tile_for_every_genre_and_around_mask
 					// tests: SmoothUnit.arrow_slit_with_no_matching_sill_keeps_its_own_tile
 					// tests: SmoothCoverage.smooth_wall_arrow_slit_branches
@@ -706,8 +719,8 @@ Sint32 smoother::smooth(Sint32 x, Sint32 y)
 				// tests: SemSmooth.a_wall_middle_base_is_plain_wallside_unless_the_one_in_ten_roll_cracks_it
 				// tests: SemSmooth.classic_a_wall_with_only_side_neighbours_keeps_its_painted_tile
 			{
-				// rule: Part of the rule above that begins "A plain wall picks its piece from its
-				//   wall-neighbour ..."
+				// rule: A plain wall picks its piece from its wall-neighbour mask and whether the
+				//   wall continues two tiles down (a face vs a top) and below-left.
 				// tests: SmoothMoreBranches.smooth_wall_vertical_and_base_cases
 				// tests: SmoothCoverage.smooth_round14_wall_case11_and_case15_branch_matrix
 				// tests: SmoothMatrix.grass_dark_grass_wall_and_cobble_masks_each_select_their_exact_tile
@@ -725,8 +738,9 @@ Sint32 smoother::smooth(Sint32 x, Sint32 y)
 						break;
 					case 4: // (same as case 5)
 					case 5: // we're a vertical wall
-						// rule: Part of the rule above that begins "A plain wall picks its piece
-						//   from its wall-neighbour ..."
+						// rule: A plain wall picks its piece from its wall-neighbour mask and
+						//   whether the wall continues two tiles down (a face vs a top) and
+						//   below-left.
 						// tests: SmoothMoreBranches.smooth_wall_vertical_and_base_cases
 						// tests: SmoothCoverage.smooth_round14_wall_case11_and_case15_branch_matrix
 						// tests: SmoothMatrix.grass_dark_grass_wall_and_cobble_masks_each_select_their_exact_tile
@@ -741,8 +755,9 @@ Sint32 smoother::smooth(Sint32 x, Sint32 y)
 						break;
 					case 6: // lower left "top" of wall
 					case 7:
-						// rule: Part of the rule above that begins "A plain wall picks its piece
-						//   from its wall-neighbour ..."
+						// rule: A plain wall picks its piece from its wall-neighbour mask and
+						//   whether the wall continues two tiles down (a face vs a top) and
+						//   below-left.
 						// tests: SmoothMoreBranches.smooth_wall_vertical_and_base_cases
 						// tests: SmoothCoverage.smooth_round14_wall_case11_and_case15_branch_matrix
 						// tests: SmoothMatrix.grass_dark_grass_wall_and_cobble_masks_each_select_their_exact_tile
@@ -759,8 +774,9 @@ Sint32 smoother::smooth(Sint32 x, Sint32 y)
 						newvalue = PIX_WALLSIDE_R;
 						break;
 					case 11: // we're the middle base of a wall
-						// rule: Part of the rule above that begins "A plain wall picks its piece
-						//   from its wall-neighbour ..."
+						// rule: A plain wall picks its piece from its wall-neighbour mask and
+						//   whether the wall continues two tiles down (a face vs a top) and
+						//   below-left.
 						// tests: SmoothMoreBranches.smooth_wall_vertical_and_base_cases
 						// tests: SmoothCoverage.smooth_round14_wall_case11_and_case15_branch_matrix
 						// tests: SmoothMatrix.grass_dark_grass_wall_and_cobble_masks_each_select_their_exact_tile
@@ -775,8 +791,9 @@ Sint32 smoother::smooth(Sint32 x, Sint32 y)
 						break;
 					case 12: // we're a top-right corner or horizontal pipe
 					case 14:
-						// rule: Part of the rule above that begins "A plain wall picks its piece
-						//   from its wall-neighbour ..."
+						// rule: A plain wall picks its piece from its wall-neighbour mask and
+						//   whether the wall continues two tiles down (a face vs a top) and
+						//   below-left.
 						// tests: SmoothMoreBranches.smooth_wall_vertical_and_base_cases
 						// tests: SmoothCoverage.smooth_round14_wall_case11_and_case15_branch_matrix
 						// tests: SmoothMatrix.grass_dark_grass_wall_and_cobble_masks_each_select_their_exact_tile
@@ -791,8 +808,9 @@ Sint32 smoother::smooth(Sint32 x, Sint32 y)
 						break;
 					case 13:  // (13 same case as 15)
 					case 15: // we're surrounded! hack for now ..
-						// rule: Part of the rule above that begins "A plain wall picks its piece
-						//   from its wall-neighbour ..."
+						// rule: A plain wall picks its piece from its wall-neighbour mask and
+						//   whether the wall continues two tiles down (a face vs a top) and
+						//   below-left.
 						// tests: SmoothMoreBranches.smooth_wall_vertical_and_base_cases
 						// tests: SmoothCoverage.smooth_round14_wall_case11_and_case15_branch_matrix
 						// tests: SmoothMatrix.grass_dark_grass_wall_and_cobble_masks_each_select_their_exact_tile
@@ -802,8 +820,9 @@ Sint32 smoother::smooth(Sint32 x, Sint32 y)
 						// tests: SemSmooth.classic_a_wall_with_only_side_neighbours_keeps_its_painted_tile
 						if (query_genre_x_y(x, y+2) == TYPE_WALL)
 						{
-							// rule: Part of the rule above that begins "A plain wall picks its
-							//   piece from its wall-neighbour ..."
+							// rule: A plain wall picks its piece from its wall-neighbour mask and
+							//   whether the wall continues two tiles down (a face vs a top) and
+							//   below-left.
 							// tests: SmoothMoreBranches.smooth_wall_vertical_and_base_cases
 							// tests: SmoothCoverage.smooth_round14_wall_case11_and_case15_branch_matrix
 							// tests: SmoothMatrix.grass_dark_grass_wall_and_cobble_masks_each_select_their_exact_tile
@@ -818,8 +837,9 @@ Sint32 smoother::smooth(Sint32 x, Sint32 y)
 						}
 						else
 						{
-							// rule: Part of the rule above that begins "A plain wall picks its
-							//   piece from its wall-neighbour ..."
+							// rule: A plain wall picks its piece from its wall-neighbour mask and
+							//   whether the wall continues two tiles down (a face vs a top) and
+							//   below-left.
 							// tests: SmoothMoreBranches.smooth_wall_vertical_and_base_cases
 							// tests: SmoothCoverage.smooth_round14_wall_case11_and_case15_branch_matrix
 							// tests: SmoothMatrix.grass_dark_grass_wall_and_cobble_masks_each_select_their_exact_tile
@@ -845,8 +865,8 @@ Sint32 smoother::smooth(Sint32 x, Sint32 y)
 		// tests: SmoothMatrix.water_tree_dirt_and_dark_dirt_masks_each_select_their_exact_tile
 		// tests: SmoothMoreBranches.water_shoreline_pairs_take_their_second_entry_under_rng_1
 		case TYPE_WATER:
-			// rule: Part of the rule above that begins "Water with water on both sides along a line
-			//   ..."
+			// rule: Water with water on both sides along a line or on three-four sides is open
+			//   water (3 variants).
 			// tests: SmoothMatrix.water_tree_dirt_and_dark_dirt_masks_each_select_their_exact_tile
 			// tests: SmoothMoreBranches.water_shoreline_pairs_take_their_second_entry_under_rng_1
 			if ( (around == TO_AROUND ) // all around
@@ -887,16 +907,14 @@ Sint32 smoother::smooth(Sint32 x, Sint32 y)
 		// tests: SmoothCoverage.smooth_round11_water_diagonals_and_tree_to_around_edges
 		// tests: CoverageMisc.coverage_r18_smooth_targeted_mask_branches
 		case TYPE_TREES:
-			// rule: Part of the rule above that begins "Trees pick canopy pieces from the tree
-			//   mask: fully ..."
+			// rule: Trees pick canopy pieces from the tree mask.
 			// tests: SmoothMatrix.water_tree_dirt_and_dark_dirt_masks_each_select_their_exact_tile
 			// tests: SmoothMoreBranches.smooth_tree_dirt_dark_dirt_mask_ladders
 			// tests: SmoothCoverage.smooth_round11_water_diagonals_and_tree_to_around_edges
 			// tests: CoverageMisc.coverage_r18_smooth_targeted_mask_branches
 			if (around == TO_AROUND ) // all around
 			{
-				// rule: Part of the rule above that begins "Trees pick canopy pieces from the tree
-				//   mask: fully ..."
+				// rule: Trees pick canopy pieces from the tree mask.
 				// tests: SmoothMatrix.water_tree_dirt_and_dark_dirt_masks_each_select_their_exact_tile
 				// tests: SmoothMoreBranches.smooth_tree_dirt_dark_dirt_mask_ladders
 				// tests: SmoothCoverage.smooth_round11_water_diagonals_and_tree_to_around_edges
@@ -962,8 +980,8 @@ Sint32 smoother::smooth(Sint32 x, Sint32 y)
 		// tests: SmoothMoreBranches.smooth_wall_water_tree_unknown_and_setxy_guard_paths
 		// tests: SemSmooth.terrain_with_no_smoothing_rule_is_left_exactly_as_painted
 		case TYPE_UNKNOWN:  // don't change these ..
-		// rule: Part of the rule above that begins "Terrain with no smoothing rule (unknown,
-		//   pavement, floors, Z-axis ..."
+		// rule: Terrain with no smoothing rule (unknown, pavement, floors, Z-axis tiles, snow,
+		//   lava, marsh, ash) is left exactly as painted.
 		// tests: SmoothMoreBranches.smooth_wall_water_tree_unknown_and_setxy_guard_paths
 		// tests: SemSmooth.terrain_with_no_smoothing_rule_is_left_exactly_as_painted
 		default:
@@ -985,9 +1003,9 @@ Sint32 smoother::smooth()
 		return 0;
 
 
-	// plumbing: whole-map pass of smooth(x,y) column by column; rules at smooth.cpp:349..646
+	// plumbing: whole-map pass of smooth(x,y) column by column; rules above
 	for (x=0; x < maxx; x++)
-		// plumbing: whole-map pass of smooth(x,y) column by column; rules at smooth.cpp:349..646
+		// plumbing: whole-map pass of smooth(x,y) column by column; rules above
 		for (y=0; y < maxy; y++)
 			smooth(x, y);
 

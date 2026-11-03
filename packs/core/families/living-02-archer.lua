@@ -28,7 +28,7 @@ end
 local function flurry(self)
   -- rule: BARRAGE is refused 'SPECIAL BUSY' while busy (classic busy ~= 0, fixed busy > 0; fix S).
   --   On success it refunds 3 weapon costs, fires three arrows along the heading and adds 2 x
-  --   fire_frequency busy. Same rule as living-00-soldier.lua:43.
+  --   fire_frequency busy. Same rule as living-00-soldier.lua.
   -- tests: GameplayFixesSpecialBusy.archer_specials_after_a_shot
   -- tests: WalkerSpecials.archer_barrage_drives_simulation
   -- tests: SemArcher.a_barrage_costs_exactly_the_slots_price
@@ -47,7 +47,7 @@ end
 
 local function exploding_shot(self)
   -- rule: EXPLODING BOLT refused 'SPECIAL BUSY' while busy; classic ~= 0, fixed > 0 (fix S). Same
-  --   rule as :29.
+  --   rule as above.
   -- tests: GameplayFixesSpecialBusy.archer_specials_after_a_shot
   -- tests: GameplayFixesSpecialBusy.positive_and_zero_busy_are_unchanged
   if gf.special_busy(self) then
@@ -149,19 +149,9 @@ local function fixed(self)
   if not f or f:dead() ~= 0 then
     return false
   end
-  -- rule: Part of the rule above that begins "Gameplay Fixes bot BARRAGE and EXPLODING BOLT want
-  --   the ..."
-  -- tests: GameplayFixesBots.archer_barrage_wants_its_foe_faced_in_flight
-  -- tests: GameplayFixesBots.archer_exploding_bolt_wants_a_foe_past_its_own_blast_with_no_ally_in_it
-  -- tests: SemArcher.the_archer_line_gates_want_a_living_current_foe
   if not G.living(f) or not G.faces(self, f) then
     return false
   end
-  -- rule: Part of the rule above that begins "Gameplay Fixes bot BARRAGE and EXPLODING BOLT want
-  --   the ..."
-  -- tests: GameplayFixesBots.archer_barrage_wants_its_foe_faced_in_flight
-  -- tests: GameplayFixesBots.archer_exploding_bolt_wants_a_foe_past_its_own_blast_with_no_ally_in_it
-  -- tests: SemArcher.the_archer_line_gates_want_a_living_current_foe
   if not G.in_flight(self, f, 8, 12) then
     return false
   end
@@ -234,9 +224,12 @@ og.family("living", {
   },
 
   -- about 6 squares
-  -- Classic archer bot casts any slot when its acquired/found foe is within 130 px (about 6
-  -- squares). With the setting on the classic search still runs (draws, foe assignment) but fixed()
-  -- decides and ignores its answer.
+  -- rule: Classic archer bot casts any slot when its acquired/found foe is within 130 px (about 6
+  --   squares). With the setting on the classic search still runs (draws, foe assignment) but
+  --   fixed() decides and ignores its answer.
+  -- tests: GameplayFixesBots.archer_fire_arrows_want_a_crowd_or_a_foe_behind
+  -- tests: GameplayFixesBots.archer_exploding_bolt_wants_a_foe_past_its_own_blast_with_no_ally_in_it
+  -- tests: parity:archer_bot_ring_one_foe_scen99, parity:archer_bot_bolt_at_blows_scen99
   check_special_ai = G.with_classic(ai.foe_within(130), fixed),  -- fixed per-tick AI gate
   hit_response = hit_response,
   set_difficulty = set_difficulty,

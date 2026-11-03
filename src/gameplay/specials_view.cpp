@@ -50,11 +50,6 @@ bool alternate_in_play(const FamilyDescriptor* fd, int slot,
     // tests: SpecialsView.off_view_matches_the_classic_six_literally
     if (!special_in_play(fd, slot, new_specials))
         return false;
-    // rule: Part of the rule above that begins "A shifted alternate exists only if its slot's
-    //   special ..."
-    // tests: SpecialsView.alternate_cost_gates_only_when_shifted_and_in_play
-    // tests: KitLuaTest.match_setting_and_alternate_down_follow_the_setting
-    // tests: SpecialsView.off_view_matches_the_classic_six_literally
     if (fd == nullptr || !slot_in_range(slot))
         return true;
     return !fd->alternate_new_kit[slot] || new_specials != 0;
@@ -78,7 +73,8 @@ const char* special_name(const FamilyDescriptor* fd, int slot,
 const char* alternate_name(const FamilyDescriptor* fd, int slot,
                            short new_specials) noexcept
 {
-    // rule: Part of the rule above that begins "A special or alternate that is out of play ..."
+    // rule: A special or alternate that is out of play has no name ('none'), which is what hides it
+    //   from the HUD, the belt catalog and bot rolls.
     // tests: SpecialsView.off_equals_registry_before_the_feature
     // tests: SpecialsView.off_view_matches_the_classic_six_literally
     // tests: SpecialsView.alternate_cost_gates_only_when_shifted_and_in_play
@@ -132,14 +128,14 @@ int bot_slot_roll_bound(const FamilyDescriptor* fd, int level,
         const bool named_open = slot_open(fd, slot, level) &&
             std::strcmp(special_name(fd, slot, new_specials),
                         kSpecialNameNone) != 0;
-        // rule: Part of the rule above that begins "A bot rolls its special among the first
-        //   (level+2)/3 ..."
+        // rule: A bot rolls its special among the first (level+2)/3 slots, raised to include any
+        //   named slot its class opens early.
         // tests: SpecialsView.the_bot_slot_roll_bound_is_the_classic_count_unless_a_row_opens_early
         // tests: SpecialsView.the_bot_slot_roll_bound_with_gameplay_fixes_on_stops_at_the_last_named_slot
         if (slot > bound && named_open)
             bound = slot;      // the classic raise (a row opened early)
-        // rule: Part of the rule above that begins "A bot rolls its special among the first
-        //   (level+2)/3 ..."
+        // rule: A bot rolls its special among the first (level+2)/3 slots, raised to include any
+        //   named slot its class opens early.
         // tests: SpecialsView.the_bot_slot_roll_bound_is_the_classic_count_unless_a_row_opens_early
         // tests: SpecialsView.the_bot_slot_roll_bound_with_gameplay_fixes_on_stops_at_the_last_named_slot
         if (named_open)
@@ -148,10 +144,6 @@ int bot_slot_roll_bound(const FamilyDescriptor* fd, int level,
     // Gameplay Fixes: never roll past the last named slot, so a roll is
     // never folded into slot 1 for being out of range. A level-0 bound
     // stays 0 (no draw), as before.
-    // rule: Part of the rule above that begins "A bot rolls its special among the first (level+2)/3
-    //   ..."
-    // tests: SpecialsView.the_bot_slot_roll_bound_is_the_classic_count_unless_a_row_opens_early
-    // tests: SpecialsView.the_bot_slot_roll_bound_with_gameplay_fixes_on_stops_at_the_last_named_slot
     if (gameplay_fixes != 0 && bound > highest)
         bound = highest;
     return bound;
@@ -189,24 +181,11 @@ unsigned short cast_cost(const walker& w, int slot, bool shifted) noexcept
     //   destructors reset it
     if (!special_in_play(fd, slot, ns))
         return kSpecialCostDisabled;
-    // rule: Part of the rule above that begins "A special's MP price: an out-of-play slot is priced
-    //   ..."
-    // tests: SpecialsView.alternate_cost_gates_only_when_shifted_and_in_play
-    // tests: SpecialsView.off_equals_registry_before_the_feature
-    // tests: LivingActFlow.the_act_path_never_reaches_an_unaffordable_slot
-    // tests: KitSkeleton.second_press_pops_up_free_and_costs_nothing
     if ((w.kit_state() & (KIT_HIDDEN | KIT_CHANNEL)) != 0)
         return 0;
-    // rule: Part of the rule above that begins "A special's MP price: an out-of-play slot is priced
-    //   ..."
-    // tests: SpecialsView.alternate_cost_gates_only_when_shifted_and_in_play
-    // tests: SpecialsView.off_equals_registry_before_the_feature
-    // tests: LivingActFlow.the_act_path_never_reaches_an_unaffordable_slot
-    // tests: KitSkeleton.second_press_pops_up_free_and_costs_nothing
     if (shifted) {
         const unsigned short alternate = alternate_cost_in_play(fd, slot, ns);
-        // rule: Part of the rule above that begins "A special's MP price: an out-of-play slot is
-        //   priced ..."
+        // rule: A special's MP price: an out-of-play slot is priced out (5000).
         // tests: SpecialsView.alternate_cost_gates_only_when_shifted_and_in_play
         // tests: SpecialsView.off_equals_registry_before_the_feature
         // tests: LivingActFlow.the_act_path_never_reaches_an_unaffordable_slot
@@ -214,12 +193,6 @@ unsigned short cast_cost(const walker& w, int slot, bool shifted) noexcept
         if (alternate > 0)
             return alternate;
     }
-    // rule: Part of the rule above that begins "A special's MP price: an out-of-play slot is priced
-    //   ..."
-    // tests: SpecialsView.alternate_cost_gates_only_when_shifted_and_in_play
-    // tests: SpecialsView.off_equals_registry_before_the_feature
-    // tests: LivingActFlow.the_act_path_never_reaches_an_unaffordable_slot
-    // tests: KitSkeleton.second_press_pops_up_free_and_costs_nothing
     if (w.stats() == nullptr)
         return kSpecialCostDisabled;
     return w.stats()->special_cost(slot);

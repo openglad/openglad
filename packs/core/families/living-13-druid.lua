@@ -11,7 +11,7 @@ local WEAP_CIRCLE_PROTECTION = assert(og.family_id("weapon", "core:circle_protec
 
 local function plant_tree(self)
   -- rule: A busy druid cannot cast GROW TREE (same rule as the other three druid casts:
-  --   living-13-druid.lua:13/:42/:78/:88).
+  --   here/below).
   -- tests: GameplayFixesDruid.an_open_tree_costs_its_price_on_both_values
   -- tests: WalkerSpecials.druid_grow_tree_drives_simulation
   -- tests: SemDruid.a_busy_druid_casts_none_of_its_four_specials
@@ -19,7 +19,7 @@ local function plant_tree(self)
     return false, "SPECIAL BUSY"
   end
   -- rule: Gameplay Fixes: a druid aiming its bolt into terrain (wall/map edge on the fire pad) is
-  --   refused before anything is paid (same rule in plant_tree :16 and summon_faerie :45). Classic:
+  --   refused before anything is paid (same rule in plant_tree here and summon_faerie below). Classic:
   --   the cast goes on to fire() and fails there.
   -- tests: GameplayFixesDruid.a_cast_at_terrain_spends_nothing_with_the_setting_on
   -- tests: GameplayFixesDruid.a_cast_at_the_map_edge_spends_nothing
@@ -38,8 +38,7 @@ local function plant_tree(self)
   -- tests: parity:druid_tree_blocked_fixes_scen99
   -- tests: GameplayFixesDruid.an_open_tree_costs_its_price_on_both_values
   if not bolt then
-    -- rule: Part of the rule above that begins "The druid pre-refunds its bolt's cost before
-    --   fire(); classic ..."
+    -- rule: The druid pre-refunds its bolt's cost before fire().
     -- tests: GameplayFixesDruid.a_blocked_tree_costs_the_swing, parity:druid_tree_blocked_scen99
     -- tests: parity:druid_tree_blocked_fixes_scen99
     -- tests: GameplayFixesDruid.an_open_tree_costs_its_price_on_both_values
@@ -65,14 +64,14 @@ end
 
 local function summon_faerie(self)
   -- rule: A busy druid cannot cast SUMMON FAERIE (same rule as the other three druid casts:
-  --   living-13-druid.lua:13/:42/:78/:88).
+  --   above/here/below).
   -- tests: WalkerSpecials.druid_summon_faerie_drives_simulation
   -- tests: SemDruid.a_busy_druid_casts_none_of_its_four_specials
   if lc.is_busy(self) then
     return false, "SPECIAL BUSY"
   end
   -- rule: Gameplay Fixes: a druid aiming its bolt into terrain (wall/map edge on the fire pad) is
-  --   refused before anything is paid (same rule in plant_tree :16 and summon_faerie :45). Classic:
+  --   refused before anything is paid (same rule in plant_tree above and summon_faerie here). Classic:
   --   the cast goes on to fire() and fails there.
   -- tests: GameplayFixesDruid.a_cast_at_terrain_spends_nothing_with_the_setting_on
   -- tests: GameplayFixesDruid.a_cast_at_the_map_edge_spends_nothing
@@ -90,8 +89,7 @@ local function summon_faerie(self)
   -- tests: GameplayFixesDruid.a_blocked_faerie_costs_the_swing
   -- tests: WalkerSpecials.druid_summon_faerie_drives_simulation
   if not bolt then
-    -- rule: Part of the rule above that begins "The druid pre-refunds its bolt's cost before
-    --   fire(); classic ..."
+    -- rule: The druid pre-refunds its bolt's cost before fire().
     -- tests: GameplayFixesDruid.a_blocked_faerie_costs_the_swing
     -- tests: WalkerSpecials.druid_summon_faerie_drives_simulation
     if gf.on() then
@@ -126,7 +124,7 @@ end
 
 local function reveal_items(self)
   -- rule: A busy druid cannot cast REVEAL (same rule as the other three druid casts:
-  --   living-13-druid.lua:13/:42/:78/:88).
+  --   above/here/below).
   -- tests: FamilyBehaviors.druid_batch3_special_branches
   -- tests: WalkerSpecials.druid_reveal_drives_simulation
   -- tests: SemDruid.a_busy_druid_casts_none_of_its_four_specials
@@ -141,7 +139,7 @@ end
 
 local function protection_circle(self)
   -- rule: A busy druid cannot cast PROTECTION (same rule as the other three druid casts:
-  --   living-13-druid.lua:13/:42/:78/:88).
+  --   above/here).
   -- tests: FamilyBehaviors.druid_batch3_special_branches
   -- tests: PackLuaDruid.one_ally_receives_one_circle_and_caster_receives_none
   -- tests: SemDruid.a_busy_druid_casts_none_of_its_four_specials
@@ -158,8 +156,8 @@ local function protection_circle(self)
     return false, "NO ALLY IN RANGE"
   end
   local protected_count = 0
-  -- plumbing: per-friend loop and per-friend circle scan; rule rows living-13-druid.lua:111, :117,
-  --   :137
+  -- plumbing: per-friend loop and per-friend circle scan; rule rows below,
+  --   below
   for i = 1, #friends do
     local friend = friends[i]
     -- Historic slow path, now looking where circles actually live. The
@@ -172,8 +170,8 @@ local function protection_circle(self)
     -- filter, not the radius, is what selects the friend's own circle.
     local existing = nil
     local circles = og.find_in_range("weap", 100, friend)
-    -- plumbing: per-friend loop and per-friend circle scan; rule rows living-13-druid.lua:111,
-    --   :117, :137
+    -- plumbing: per-friend loop and per-friend circle scan; rule rows below,
+    --   below
     for j = 1, #circles do
       local ob = circles[j]
       -- rule: A friend's existing ring is recognised only by owner AND family among weapons within
@@ -273,16 +271,14 @@ local function check_special_ai(self)
     -- nearest living foe faced, within 60 px, not yet at blows (a foe
     -- touching blocks the bolt the tree grows from), the bolt's pad clear.
     local f = G.nearest_living_foe(self, 60, true)
-    -- rule: Part of the rule above that begins "Gameplay Fixes: GROW TREE pays only between the
-    --   druid ..."
+    -- rule: Gameplay Fixes: GROW TREE pays only between the druid and a living foe closing on it.
     -- tests: GameplayFixesBots.druid_tree_wants_a_faced_foe_closing_but_not_touching
     -- tests: GameplayFixesBots.druid_tree_refuses_a_pad_on_a_wall
     -- tests: parity:druid_bot_tree_behind_fixes_scen99, parity:druid_bot_tree_pad_body_fixes_scen99
     if f == nil or not G.pad_clear(self) then
       return false
     end
-    -- rule: Part of the rule above that begins "Gameplay Fixes: GROW TREE pays only between the
-    --   druid ..."
+    -- rule: Gameplay Fixes: GROW TREE pays only between the druid and a living foe closing on it.
     -- tests: GameplayFixesBots.druid_tree_wants_a_faced_foe_closing_but_not_touching
     -- tests: GameplayFixesBots.druid_tree_refuses_a_pad_on_a_wall
     -- tests: parity:druid_bot_tree_behind_fixes_scen99, parity:druid_bot_tree_pad_body_fixes_scen99
@@ -293,16 +289,16 @@ local function check_special_ai(self)
     -- tests: GameplayFixesBots.druid_faerie_refuses_a_pad_on_a_foe
     -- tests: parity:druid_bot_faerie_alone_fixes_scen99
     -- SUMMON FAERIE: a living foe within 130 px, no faerie out, the bolt's pad clear.
-    -- rule: Part of the rule above that begins "Gameplay Fixes: SUMMON FAERIE pays with a living
-    --   foe ..."
+    -- rule: Gameplay Fixes: SUMMON FAERIE pays with a living foe within 130 px, no faerie of the
+    --   druid's out, and the bolt's pad clear.
     -- tests: GameplayFixesBots.druid_faerie_wants_a_foe_near_and_no_faerie_out
     -- tests: GameplayFixesBots.druid_faerie_refuses_a_pad_on_a_foe
     -- tests: parity:druid_bot_faerie_alone_fixes_scen99
     if G.owned(self, C.ORDER_LIVING, LIVING_FAERIE) > 0 then
       return false
     end
-    -- rule: Part of the rule above that begins "Gameplay Fixes: SUMMON FAERIE pays with a living
-    --   foe ..."
+    -- rule: Gameplay Fixes: SUMMON FAERIE pays with a living foe within 130 px, no faerie of the
+    --   druid's out, and the bolt's pad clear.
     -- tests: GameplayFixesBots.druid_faerie_wants_a_foe_near_and_no_faerie_out
     -- tests: GameplayFixesBots.druid_faerie_refuses_a_pad_on_a_foe
     -- tests: parity:druid_bot_faerie_alone_fixes_scen99
@@ -324,10 +320,6 @@ local function check_special_ai(self)
     return false
   end
   local _, circle = G.owned(ally, C.ORDER_WEAPON, WEAP_CIRCLE_PROTECTION)
-  -- rule: Part of the rule above that begins "Gameplay Fixes: PROTECTION pays for an ally within 60
-  --   ..."
-  -- tests: GameplayFixesBots.druid_protection_wants_an_ally_under_blows_without_a_fresh_circle
-  -- tests: parity:druid_bot_protection_idle_fixes_scen99
   return circle == nil or circle.hp < 50
 end
 

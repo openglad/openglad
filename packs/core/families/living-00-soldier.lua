@@ -56,8 +56,8 @@ local function whirlwind(self)
   -- can't do while attacking, etc.
   -- rule: WHIRLWIND is refused 'SPECIAL BUSY' (free) while the soldier is busy. Classic: busy ~= 0,
   --   so a hero whose busy rests a fraction below zero after a fractional-delay shot is refused
-  --   forever; Gameplay Fixes (fix S): only busy > 0 refuses. Same rule as living-00-soldier.lua:79
-  --   (DISARM) and living-02-archer.lua:29/43.
+  --   forever; Gameplay Fixes (fix S): only busy > 0 refuses. Same rule as below
+  --   (DISARM) and living-02-archer.lua/43.
   -- tests: GameplayFixesSpecialBusy.whirlwind_after_a_shot
   -- tests: FamilyBehaviors.soldier_batch3_special_ai_and_fire_callback_paths
   -- tests: SemSoldier.a_busy_soldier_is_refused_whirlwind_for_free
@@ -112,7 +112,7 @@ end
 
 local function disarm(self)
   -- rule: DISARM is refused 'SPECIAL BUSY' while busy; classic busy ~= 0 (a hero after a fractional
-  --   shot is refused forever), fixed busy > 0. Same rule as :43.
+  --   shot is refused forever), fixed busy > 0. Same rule as above.
   -- tests: GameplayFixesSpecialBusy.disarm_after_a_shot
   -- tests: SemSoldier.a_busy_soldier_is_refused_disarm_for_free
   if gf.special_busy(self) then
@@ -131,8 +131,8 @@ local function disarm(self)
   local found = 0
   local disarmed = 0
   local foes = og.foes_in_range(self, og.tuning(self).disarm_range)
-  -- plumbing: for each foe within disarm_range (28 px): see living-00-soldier.lua:95 (roll), :99
-  --   (penalty), and found=1 per foe in reach regardless of the roll (feeds :109).
+  -- plumbing: for each foe within disarm_range (28 px): see below (roll), below
+  --   (penalty), and found=1 per foe in reach regardless of the roll (feeds below).
   for i = 1, #foes do
     local foe = foes[i]
     -- two draws in one comparison: parity adjudicated LEFT-first here
@@ -170,8 +170,8 @@ local function disarm(self)
   -- tests: GameplayFixesSoldier.disarm_with_nobody_in_reach_is_free
   -- tests: GameplayFixesSoldier.disarm_never_speeds_up_a_higher_foe
   if found == 0 then
-    -- rule: Part of the rule above that begins "With something blocking the front but no foe within
-    --   ..."
+    -- rule: With something blocking the front but no foe within the 28 px disarm reach (a wall, or
+    --   a foe out of reach), DISARM is refused free.
     -- tests: GameplayFixesSoldier.disarm_with_nobody_in_reach_is_free
     -- tests: GameplayFixesSoldier.disarm_never_speeds_up_a_higher_foe
     if gf.on() then
@@ -204,7 +204,7 @@ local function disarm(self)
   --   0) or a hero (has a guy); an enemy bot's disarm is silent. Classic quirk: the notice needs
   --   only a foe in reach (found==1), so it is shown on a LOST roll too (no foe staggered); with
   --   Gameplay Fixes a cast that disarmed nobody returns 'DISARM RESISTED' before reaching this
-  --   line (see :95/:99).
+  --   line (see above).
   -- tests: GameplayFixesSoldier.disarm_notice_needs_a_win
   -- tests: GameplayFixesSoldier.disarm_never_speeds_up_a_higher_foe
   -- tests: SemSoldier.only_the_player_team_or_a_hero_is_told_of_a_disarm
@@ -283,8 +283,9 @@ local function fixed(self, classic_answer)
   -- tests: parity:soldier_bot_charge_door_fixes_scen99
   -- tests: parity:soldier_bot_charge_unaimed_fixes_scen99
   if slot == 1 then
-    -- rule: Part of the rule above that begins "Gameplay Fixes bot CHARGE: only inside the classic
-    --   20-75 ..."
+    -- rule: Gameplay Fixes bot CHARGE: only inside the classic 20-75 px window AND only when the
+    --   rush along the soldier's current heading (3 acts x 3 walksteps = 9 steps) meets a living
+    --   foe that would be struck.
     -- tests: GameplayFixesBots.soldier_charge_wants_a_foe_in_the_rush
     -- tests: GameplayFixesBots.soldier_charge_refuses_a_wall_in_front
     -- tests: parity:soldier_bot_charge_door_fixes_scen99
@@ -300,8 +301,8 @@ local function fixed(self, classic_answer)
   -- tests: parity:soldier_bot_boomerang_far_fixes_scen99
   if slot == 2 then
     local out = G.owned(self, C.ORDER_FX, FX_BOOMERANG)
-    -- rule: Part of the rule above that begins "Gameplay Fixes bot BOOMERANG: only with no
-    --   boomerang of ..."
+    -- rule: Gameplay Fixes bot BOOMERANG: only with no boomerang of this soldier already out and a
+    --   living foe inside the blade's widest orbit (17 + 6*level px).
     -- tests: GameplayFixesBots.soldier_boomerang_wants_a_foe_inside_the_orbit_and_no_blade_out
     -- tests: parity:soldier_bot_boomerang_far_fixes_scen99
     return out == 0 and G.foes_within(self, 1, 17 + 6 * self.level, false)
@@ -314,8 +315,8 @@ local function fixed(self, classic_answer)
   -- tests: GameplayFixesBots.soldier_disarm_waits_out_its_busy
   -- tests: parity:soldier_bot_whirlwind_one_foe_fixes_scen99
   if slot == 3 or gf.special_busy(self) then  -- a busy DISARM is refused here too
-    -- rule: Part of the rule above that begins "Gameplay Fixes bot WHIRLWIND wants two bodies
-    --   (living foes ..."
+    -- rule: Gameplay Fixes bot WHIRLWIND wants two bodies (living foes or a foe tent/generator)
+    --   inside its ring (32 + 2*level px) and not busy.
     -- tests: GameplayFixesBots.soldier_whirlwind_wants_two_targets_inside_the_spin
     -- tests: GameplayFixesBots.soldier_whirlwind_waits_out_its_busy
     -- tests: GameplayFixesBots.soldier_disarm_waits_out_its_busy
@@ -391,10 +392,15 @@ og.family("living", {
   },
 
   -- Historical charge window: about one to three grid squares.
-  -- Bot gate composition: the classic soldier bot casts ANY slot when its (current-or-found) foe is
-  -- between 20 and 75 px away (the CHARGE window, asked of every slot); the window's foe search
-  -- always runs first (it may assign self.foe and draws for cloaked candidates). Setting off its
-  -- answer stands; setting on the per-slot payoff gate (fixed, :181-195) decides.
+  -- rule: Bot gate composition: the classic soldier bot casts ANY slot when its (current-or-found)
+  --   foe is between 20 and 75 px away (the CHARGE window, asked of every slot); the window's foe
+  --   search always runs first (it may assign self.foe and draws for cloaked candidates). Setting
+  --   off its answer stands; setting on the per-slot payoff gate (fixed, above) decides.
+  -- tests: FamilyBehaviors.soldier_batch3_special_ai_and_fire_callback_paths
+  -- tests: GameplayFixesBots.soldier_charge_wants_a_foe_in_the_rush
+  -- tests: GameplayFixesBots.soldier_boomerang_wants_a_foe_inside_the_orbit_and_no_blade_out
+  -- tests: parity:soldier_bot_boomerang_far_scen99, parity:soldier_bot_whirlwind_one_foe_scen99
+  -- tests: SemSoldier.the_soldier_bot_gate_acquires_its_foe_on_both_values
   check_special_ai = G.with_classic(ai.foe_in_window(20, 75), fixed),  -- fixed per-tick AI gate
   on_fire_weapon = on_fire_weapon,
   on_create = on_create,

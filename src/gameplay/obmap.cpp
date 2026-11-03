@@ -50,15 +50,7 @@ static short floor_numx_offset(const walker* ob)
 	// tests: ZAxis.collision_is_floor_separated
 	// tests: SemAi2.collision_piles_clamp_the_floor_to_zero_through_one_hundred_twenty
 	int f = ob ? static_cast<int>(ob->floor()) : 0;
-	// rule: Part of the rule above that begins "Walkers on different floors never share a collision
-	//   pile, ..."
-	// tests: ZAxis.collision_is_floor_separated
-	// tests: SemAi2.collision_piles_clamp_the_floor_to_zero_through_one_hundred_twenty
 	if (f < 0) f = 0;
-	// rule: Part of the rule above that begins "Walkers on different floors never share a collision
-	//   pile, ..."
-	// tests: ZAxis.collision_is_floor_separated
-	// tests: SemAi2.collision_piles_clamp_the_floor_to_zero_through_one_hundred_twenty
 	if (f > 120) f = 120;
 	return static_cast<short>(f * OB_FLOOR_STRIDE);
 }
@@ -120,11 +112,11 @@ short obmap::query_list(walker  *ob, short x, short y, bool quiet)
 	sync_cell_index();
 
 	// For each y grid row we are in...
-	// plumbing: iterate every hash cell the prober's box covers; see obmap.cpp:134 and the
+	// plumbing: iterate every hash cell the prober's box covers; see below and the
 	//   ob_pass_check rows
 	for (numx = startnumx; numx <= endnumx; numx++)
 	{
-		// plumbing: iterate every hash cell the prober's box covers; see obmap.cpp:134 and the
+		// plumbing: iterate every hash cell the prober's box covers; see below and the
 		//   ob_pass_check rows
 		for (numy = startnumy; numy <= endnumy; numy++)
 		{
@@ -327,7 +319,6 @@ short obmap::add(walker  *ob, short x, short y)  // This goes in walker's constr
 				pile = &pos_to_walker[std::make_pair(numx, numy)];
 				cell_index_.emplace(key, pile);
 			}
-			// plumbing: cached pile lookup / create pile; no duplicate entries in a pile
 			if (std::find(pile->begin(), pile->end(), ob) == pile->end())
 				pile->push_back(ob);
 				}
@@ -366,9 +357,6 @@ short obmap::hash(short y)
 	// tests: LivingCombat.obmap_round11_stale_query_and_helper_accessors_paths
 	if (num > 198)
 		num = 199;
-	// rule: Part of the rule above that begins "The collision grid has 199 real 32px cells per ..."
-	// tests: LivingCombat.obmap_guard_and_hash_and_move_branches
-	// tests: LivingCombat.obmap_round11_stale_query_and_helper_accessors_paths
 	if (num < 0)
 		num = 199;
 	return num;
@@ -384,15 +372,11 @@ short obmap::unhash(short y)
 static std::pair<short, short> floor_cell(short x, short y, int floor)
 {
 	// rule: Pile lookups by (x,y,floor) clamp the floor exactly as a walker's own registration does
-	//   (same rule as obmap.cpp:49), so searches on an out-of-range floor see floor 0/120's
+	//   (same rule as above), so searches on an out-of-range floor see floor 0/120's
 	//   walkers.
 	// tests: ZAxis.find_near_foe_probes_the_searchers_floor
 	// tests: SemAi2.pile_lookups_clamp_the_floor_like_registration_does
 	if (floor < 0) floor = 0;
-	// rule: Part of the rule above that begins "Pile lookups by (x,y,floor) clamp the floor exactly
-	//   as ..."
-	// tests: ZAxis.find_near_foe_probes_the_searchers_floor
-	// tests: SemAi2.pile_lookups_clamp_the_floor_like_registration_does
 	if (floor > 120) floor = 120;
 	const short fo = static_cast<short>(floor * OB_FLOOR_STRIDE);
 	return {static_cast<short>(obmap::hash(x) + fo), obmap::hash(y)};
@@ -426,7 +410,6 @@ const std::list<walker*>* obmap::find_list(short x, short y, int floor)
 		return cached->second;
 	// A miss makes no node in either map.
 	auto it = pos_to_walker.find(std::make_pair(numx, numy));
-	// plumbing: find_list cache hit / miss returns nullptr without creating a pile
 	if (it == pos_to_walker.end())
 		return nullptr;
 	return &it->second;
@@ -452,7 +435,7 @@ short ob_pass_check(short x, short y, walker* ob, const std::list<walker*>& pile
 	myorder = ob->query_order();
 
 	// Check each object to see if sizes collide.
-	// plumbing: iterate a snapshot of the pile; rules at obmap.cpp:371..525
+	// plumbing: iterate a snapshot of the pile; rules below
 	for (auto it = pile.begin(); it != pile.end(); )
 	{
 		// Advance the iterator up-front: collision handlers may remove elements
@@ -476,8 +459,8 @@ short ob_pass_check(short x, short y, walker* ob, const std::list<walker*>& pile
             if (map != nullptr && map->walker_to_pos.find(w) == map->walker_to_pos.end())
                 continue;
 
-            // rule: Part of the rule above that begins "A walker is never blocked by itself, and a
-            //   ..."
+            // rule: A walker is never blocked by itself, and a dead walker (corpse, opened door,
+            //   spent weapon) never blocks, is never eaten and gets no collision.
             // tests: QuietProbe.every_blocker_answers_like_the_loud_probe_and_changes_nothing
             // tests: SemAi2.a_dead_walker_never_blocks_a_probe
             if (w->dead())
@@ -530,8 +513,7 @@ short ob_pass_check(short x, short y, walker* ob, const std::list<walker*>& pile
                     const float oz2 = oz1 + static_cast<float>(ob->sizez());
                     const float wz1 = w->worldz();
                     const float wz2 = wz1 + static_cast<float>(w->sizez());
-                    // rule: Part of the rule above that begins "Height matters only when both have
-                    //   a height: two ..."
+                    // rule: Height matters only when both have a height.
                     // tests: ZAxis.cylinder_zoverlap_lets_high_projectile_pass
                     // tests: SemAi3.a_thing_of_height_zero_is_full_height_and_a_high_knife_still_meets_it
                     if (oz2 <= wz1 || wz2 <= oz1)
@@ -541,8 +523,8 @@ short ob_pass_check(short x, short y, walker* ob, const std::list<walker*>& pile
                 y2 = w->ypos();
                 xsize2 = w->sizex();
                 ysize2 = w->sizey();
-                // rule: Part of the rule above that begins "Boxes interact only when they overlap
-                //   after each is ..."
+                // rule: Boxes interact only when they overlap after each is shrunk by 1px on every
+                //   side (edge contact is not a collision).
                 // tests: QuietProbe.a_quiet_probe_keeps_the_collide_ob_it_found
                 // tests: LivingCombat.obmap_remove_stale_and_collide_axis_reject_paths
                 // tests: QuietProbe.every_blocker_answers_like_the_loud_probe_and_changes_nothing
@@ -555,8 +537,8 @@ short ob_pass_check(short x, short y, walker* ob, const std::list<walker*>& pile
                     {
                         // A quiet probe eats nothing and latches no exit: a
                         // treasure never blocks, so it is simply passed.
-                        // rule: Part of the rule above that begins "Stepping onto a treasure picks
-                        //   it up (eat_me) and ..."
+                        // rule: Stepping onto a treasure picks it up (eat_me) and the treasure
+                        //   never blocks; a quiet probe picks nothing up.
                         // tests: QuietProbe.every_blocker_answers_like_the_loud_probe_and_changes_nothing
                         if (quiet)
                             continue;
@@ -583,8 +565,7 @@ short ob_pass_check(short x, short y, walker* ob, const std::list<walker*>& pile
                         // tests: QuietProbe.every_blocker_answers_like_the_loud_probe_and_changes_nothing
                         if (w->family() == FAMILY_EXIT)
                         {
-                            // rule: Part of the rule above that begins "An exit pad fires once per
-                            //   contact: the first ..."
+                            // rule: An exit pad fires once per contact.
                             // tests: SimWorldHeadless.exit_prompts_once_per_contact_not_per_cooldown
                             // tests: SimWorldHeadless.exit_reprompts_after_stepping_fully_off_and_back
                             // tests: SimWorldHeadless.exit_latch_holds_while_standing_still
@@ -615,15 +596,17 @@ short ob_pass_check(short x, short y, walker* ob, const std::list<walker*>& pile
                         if (quiet)
                         {
                             const bool keyed = (ob->keys() & static_cast<std::uint32_t>(key_level_mask(w->stats()->level()))) != 0;
-                            // rule: Part of the rule above that begins "A quiet probe answers a
-                            //   door like the loud ..."
+                            // rule: A quiet probe answers a door like the loud one without touching
+                            //   it: a door you hold the key to blocks this round unless you are
+                            //   no-collide; a locked door blocks.
                             // tests: QuietProbe.a_door_is_neither_opened_nor_announced_by_a_quiet_probe
                             // tests: QuietProbe.every_blocker_answers_like_the_loud_probe_and_changes_nothing
                             return (keyed && ob->stats()->query_bit_flags(BIT_NO_COLLIDE)) ? 1 : 0;
                         }
                         // Can we unlock this door?
-                        // rule: Part of the rule above that begins "Walking into a door whose key
-                        //   you carry (key ..."
+                        // rule: Walking into a door whose key you carry (key bit = 2^door level)
+                        //   opens it: the door dies; you are still stopped for that step unless you
+                        //   are no-collide.
                         // tests: LivingCombat.obmap_query_list_door_unlock_and_lock_branches
                         // tests: QuietProbe.a_door_is_neither_opened_nor_announced_by_a_quiet_probe
                         if (ob->keys() & static_cast<std::uint32_t>(key_level_mask(w->stats()->level())))
@@ -632,8 +615,9 @@ short ob_pass_check(short x, short y, walker* ob, const std::list<walker*>& pile
                             w->set_dead(1);
                             w->death();
                             ob->collide(w);
-                            // rule: Part of the rule above that begins "Walking into a door whose
-                            //   key you carry (key ..."
+                            // rule: Walking into a door whose key you carry (key bit = 2^door
+                            //   level) opens it: the door dies; you are still stopped for that step
+                            //   unless you are no-collide.
                             // tests: LivingCombat.obmap_query_list_door_unlock_and_lock_branches
                             // tests: QuietProbe.a_door_is_neither_opened_nor_announced_by_a_quiet_probe
                             if (ob->stats()->query_bit_flags(BIT_NO_COLLIDE))
@@ -648,8 +632,9 @@ short ob_pass_check(short x, short y, walker* ob, const std::list<walker*>& pile
                             // tests: SemAi3.a_locked_door_tells_a_seat_once_per_cooldown_and_never_tells_an_npc
                         {
                             // Do we notify?
-                            // rule: Part of the rule above that begins "A locked door blocks; a
-                            //   player-controlled walker bumping it ..."
+                            // rule: A locked door blocks; a player-controlled walker bumping it is
+                            //   told 'Key N needed!' at most once per 10-tick cooldown; NPCs are
+                            //   never told.
                             // tests: QuietProbe.a_door_is_neither_opened_nor_announced_by_a_quiet_probe
                             // tests: LivingCombat.obmap_query_list_door_unlock_and_lock_branches
                             // tests: SemAi3.a_locked_door_tells_a_seat_once_per_cooldown_and_never_tells_an_npc
@@ -713,21 +698,20 @@ short ob_pass_check(short x, short y, walker* ob, const std::list<walker*>& pile
                             const std::int64_t d_old =
                                 static_cast<std::int64_t>(oxc) * oxc +
                                 static_cast<std::int64_t>(oyc) * oyc;
-                            // rule: Part of the rule above that begins "Two livings already
-                            //   overlapping can always step apart: if ..."
+                            // rule: Two livings already overlapping can always step apart.
                             // tests: QuietProbe.every_blocker_answers_like_the_loud_probe_and_changes_nothing
                             // tests: SemAi3.two_overlapping_livings_may_step_apart_but_not_closer
                             if (d_new > d_old)
                                 continue; // separating: not blocked by w
                         }
-                        // rule: Part of the rule above that begins "Any other overlapping thing (a
-                        //   living, a generator, a ..."
+                        // rule: Any other overlapping thing (a living, a generator, a tree/obstacle
+                        //   weapon, an enemy weapon that did not miss) blocks the step.
                         // tests: QuietProbe.every_blocker_answers_like_the_loud_probe_and_changes_nothing
                         // tests: SemAi3.a_body_blocks_a_normal_mover_and_a_no_collide_mover_records_it_and_passes
                         if (!quiet)
                             ob->collide(w);
-                        // rule: Part of the rule above that begins "Any other overlapping thing (a
-                        //   living, a generator, a ..."
+                        // rule: Any other overlapping thing (a living, a generator, a tree/obstacle
+                        //   weapon, an enemy weapon that did not miss) blocks the step.
                         // tests: QuietProbe.every_blocker_answers_like_the_loud_probe_and_changes_nothing
                         // tests: SemAi3.a_body_blocks_a_normal_mover_and_a_no_collide_mover_records_it_and_passes
                         if (ob->stats()->query_bit_flags(BIT_NO_COLLIDE))
@@ -772,21 +756,24 @@ short collide(short x,  short y,  short xsize,  short ysize,
 		return 0;
 
 	xright = static_cast<short>(x+xsize);
-	// rule: Part of the rule above that begins "Overlap test: each box shrunk by one pixel on ..."
+	// rule: Overlap test: each box shrunk by one pixel on every side; separated on any axis means
+	//   no collision.
 	// tests: LivingCombat.obmap_remove_stale_and_collide_axis_reject_paths
 	// tests: GameplayFixesWalk.step_meets_answers_what_collide_answers_on_the_three_boxes
 	if (xright < x2)
 		return 0;
 
 	y2down = static_cast<short>(y2+ysize2);
-	// rule: Part of the rule above that begins "Overlap test: each box shrunk by one pixel on ..."
+	// rule: Overlap test: each box shrunk by one pixel on every side; separated on any axis means
+	//   no collision.
 	// tests: LivingCombat.obmap_remove_stale_and_collide_axis_reject_paths
 	// tests: GameplayFixesWalk.step_meets_answers_what_collide_answers_on_the_three_boxes
 	if (y > y2down)
 		return 0;
 
 	ydown = static_cast<short>(y+ysize);
-	// rule: Part of the rule above that begins "Overlap test: each box shrunk by one pixel on ..."
+	// rule: Overlap test: each box shrunk by one pixel on every side; separated on any axis means
+	//   no collision.
 	// tests: LivingCombat.obmap_remove_stale_and_collide_axis_reject_paths
 	// tests: GameplayFixesWalk.step_meets_answers_what_collide_answers_on_the_three_boxes
 	if (ydown < y2)
@@ -803,8 +790,9 @@ bool og::sim::step_meets(const walker& mover, float dx, float dy, const walker& 
 	//   decide what a step actually touched).
 	// tests: GameplayFixesWalk.step_meets_answers_what_collide_answers_on_the_three_boxes
 	for (const auto& o : offs)
-		// rule: Part of the rule above that begins "A fractional step 'meets' a body when the box
-		//   ..."
+		// rule: A fractional step 'meets' a body when the box at the exact offset, the rounded-up
+		//   offset or the rounded-down offset overlaps it (used by the Gameplay Fixes walk rules to
+		//   decide what a step actually touched).
 		// tests: GameplayFixesWalk.step_meets_answers_what_collide_answers_on_the_three_boxes
 		if (collide(static_cast<short>(mover.xpos() + o[0]), static_cast<short>(mover.ypos() + o[1]),
 		            mover.sizex(), mover.sizey(), body.xpos(), body.ypos(), body.sizex(), body.sizey()))

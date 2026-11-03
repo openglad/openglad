@@ -55,8 +55,6 @@ void ensure_obmap_registration(GameWorld& world, walker* w)
     if (world.myobmap == nullptr || w == nullptr || w->ignore() || w->dead() ||
         w->dormant() || w->hidden())
         return;
-    // rule: Part of the rule above that begins "A walker brought back by a respawn (revived in ..."
-    // tests: SemRespawn.a_revived_walker_rejoins_the_collision_map_and_an_absent_one_never_does
     if (world.myobmap->walker_to_pos.find(w) == world.myobmap->walker_to_pos.end())
         world.myobmap->add(w, w->xpos(), w->ypos());
 }
@@ -86,10 +84,6 @@ namespace {
          (other->family() == FAMILY_DOOR || other->family() == FAMILY_TREE ||
           other->family() == FAMILY_BOULDER ||
           og::sim::declares_blocks_placement(*other)));
-    // rule: Part of the rule above that begins "A spawn or respawn spot is taken only by ..."
-    // tests: RespawnEngine.spawn_probe_rejects_doors_and_cross_bucket_blockers
-    // tests: QuietProbe.body_spot_clear_asks_the_placement_rule_with_the_bodys_box
-    // tests: SemRespawn.trees_boulders_and_declared_blockers_take_a_spot_and_dead_or_hidden_bodies_do_not
     if (!blocking)
         return false;
     return x + w->sizex() > other->xpos() &&
@@ -116,12 +110,12 @@ namespace {
     // Walkers register in every 32px obmap bucket their bbox spans; scan all
     // buckets the spawn bbox touches (a boolean check needs no dedup).
     constexpr int kBucket = 32;
-    // plumbing: bucket sweep over the spawn box and pile iteration; the rule is respawn.cpp:86 /
-    //   respawn.cpp:67
+    // plumbing: bucket sweep over the spawn box and pile iteration; the rule is above /
+    //   above
     for (int bx = x; bx < x + w->sizex() + kBucket; bx += kBucket)
     {
-        // plumbing: bucket sweep over the spawn box and pile iteration; the rule is respawn.cpp:86
-        //   / respawn.cpp:67
+        // plumbing: bucket sweep over the spawn box and pile iteration; the rule is above
+        //   / above
         for (int by = y; by < y + w->sizey() + kBucket; by += kBucket)
         {
             const std::list<walker*>* pile = world.myobmap->find_list(
@@ -131,11 +125,13 @@ namespace {
             if (pile == nullptr)
                 continue;
             // plumbing: bucket sweep over the spawn box and pile iteration; the rule is
-            //   respawn.cpp:86 / respawn.cpp:67
+            //   above / above
             for (walker* other : *pile)
             {
-                // rule: Part of the rule above that begins "A spawn spot with no floor channel
-                //   (floor < ..."
+                // rule: A spawn spot with no floor channel (floor < 0, the walker's own grid floor
+                //   and floor-0 buckets) is clear only when the ground under the walker's box is
+                //   passable for that walker AND no blocking body overlaps it, including bodies
+                //   registered only in a neighbouring 32px bucket the box straddles.
                 // tests: RespawnEngine.spawn_probe_rejects_doors_and_cross_bucket_blockers
                 // tests: RespawnEngine.exported_probes_hold_null_and_impassable_guards
                 // tests: RespawnEngine.spawn_probes_make_no_empty_pile
@@ -154,13 +150,15 @@ namespace {
 // switched bodies while dead), the revived walker rejoins the AI pool instead.
 void revive_player_walker(GameWorld& world, walker* w, int team)
 {
-    // A revived hero stands up alive at full hitpoints with its queued orders, foe and leader
-    // cleared and its controller binding restored (death_called reset so the death hooks can fire
-    // again next time).
+    // rule: A revived hero stands up alive at full hitpoints with its queued orders, foe and leader
+    //   cleared and its controller binding restored (death_called reset so the death hooks can fire
+    //   again next time).
+    // tests: RespawnEngine.player_corpse_revives_in_place_with_control_preserved
+    // tests: SemRespawn.a_revived_hero_is_its_own_controller_and_can_die_again
     w->set_dead(0);
     w->set_death_called(0);
     // plumbing: stats() null guard in revive_player_walker (the stats part of the revive is skipped
-    //   for a walker without stats); the revive rule itself is row respawn.cpp:118
+    //   for a walker without stats); the revive rule itself is row above
     if (w->stats() != nullptr)
     {
         // Tick cleanup nulls a corpse's controller binding; restore it
@@ -184,12 +182,6 @@ void revive_player_walker(GameWorld& world, walker* w, int team)
     // tests: SemRespawn.an_uncharmed_hero_revives_on_its_own_team
     if (w->real_team_num() != 255)
         w->set_team_num(w->real_team_num());
-    // rule: Part of the rule above that begins "Respawn breaks charm: a revived player rejoins its
-    //   true ..."
-    // tests: RespawnEngine.charmed_corpse_respawns_on_its_true_team
-    // tests: RespawnEngine.charmed_band_byte_corpse_respawns_on_its_true_team
-    // tests: RespawnEngine.win_latch_flush_breaks_charm_onto_true_team
-    // tests: SemRespawn.an_uncharmed_hero_revives_on_its_own_team
     if (team >= 0 && team < 4)
         w->set_team_num(static_cast<unsigned char>(team));
     w->set_real_team_num(255);
@@ -202,12 +194,12 @@ void revive_player_walker(GameWorld& world, walker* w, int team)
     // tests: RespawnEngine.player_corpse_revives_in_place_with_control_preserved
     if (w->user() != -1)
     {
-        // plumbing: oblist scan for a conflicting controller; rule is respawn.cpp:141
+        // plumbing: oblist scan for a conflicting controller; rule is above
         for (const auto& uptr : world.oblist)
         {
             walker* other = uptr.get();
-            // rule: Part of the rule above that begins "If the player switched to another body
-            //   while dead, ..."
+            // rule: If the player switched to another body while dead, the revived body does not
+            //   steal the seat back.
             // tests: RespawnEngine.user_conflict_demotes_revived_walker_to_ai
             // tests: RespawnEngine.player_corpse_revives_in_place_with_control_preserved
             if (other != nullptr && other != w && !other->dead() &&
@@ -225,7 +217,7 @@ void revive_player_walker(GameWorld& world, walker* w, int team)
 [[nodiscard]] bool already_scheduled(const RespawnState& respawn,
                                      std::uint32_t entity_id)
 {
-    // plumbing: queue scan; rule respawn.cpp:163
+    // plumbing: queue scan; rule below
     for (const auto& entry : respawn.respawn_queue)
     {
         // rule: A corpse has at most one pending respawn: scheduling it again (Lua
@@ -264,12 +256,12 @@ void revive_player_walker(GameWorld& world, walker* w, int team)
     // tests: RespawnEngine.ai_respawn_spawns_fresh_walker_of_same_family_level_team
     if (corpse->myguy == nullptr)
         return false;
-    // plumbing: oblist scan; rule respawn.cpp:184
+    // plumbing: oblist scan; rule above
     for (const auto& uptr : world.oblist)
     {
         walker* other = uptr.get();
-        // rule: Part of the rule above that begins "A hero whose character is already walking again
-        //   (a ..."
+        // rule: A hero whose character is already walking again (a cleric resurrect, a save merge,
+        //   another door) is never revived or rescheduled.
         // tests: RespawnEngine.live_duplicate_character_cancels_the_revive
         // tests: RespawnEngine.fire_time_live_duplicate_cancels_the_revive
         // tests: RespawnEngine.same_guy_id_under_a_different_owner_does_not_block_revive
@@ -295,8 +287,8 @@ enum class CorpseDropScrub
 {
     // rule: A respawn only clears its own corpse's bloodstain: a player's stain pairs by its copied
     //   guy identity, and an AI corpse only ever clears a guy-less (AI) stain, so a bot's respawn
-    //   never removes a nearby queued player's corpse and vice versa. (Same rule as respawn.cpp:223
-    //   and respawn.cpp:250.)
+    //   never removes a nearby queued player's corpse and vice versa. (Same rule as below
+    //   and below.)
     // tests: RespawnEngine.nearby_player_respawns_scrub_only_their_own_stain
     // tests: SemRespawn.a_respawn_fire_scrubs_only_a_stain_of_its_own_identity
     if (corpse->myguy == nullptr)
@@ -321,8 +313,8 @@ enum class CorpseDropScrub
     for (const RespawnEntry& entry : world.respawn.respawn_queue)
     {
         const walker* corpse = world.find_by_id(entry.walker_entity_id);
-        // rule: Part of the rule above that begins "A mode's positional corpse scrub
-        //   (og.respawn_scrub_stains_at) never removes the ..."
+        // rule: A mode's positional corpse scrub (og.respawn_scrub_stains_at) never removes the
+        //   stain of a fighter whose respawn is still pending, player or AI.
         // tests: RespawnEngine.positional_scrub_preserves_pending_ai_stains
         // tests: RespawnEngine.positional_scrub_preserves_only_pending_player_stains
         // tests: RespawnEngine.positional_scrub_matches_pending_stain_location
@@ -358,8 +350,9 @@ enum class CorpseDropScrub
     for (const auto& uptr : world.oblist)
     {
         const walker* other = uptr.get();
-        // rule: Part of the rule above that begins "When a respawn fires and clears its corpse's
-        //   stain, ..."
+        // rule: When a respawn fires and clears its corpse's stain, a neighbouring dead fighter's
+        //   stain is kept for that fighter's own countdown, whether the neighbour is already queued
+        //   or fell this very tick (before the mode could schedule it).
         // tests: RespawnEngine.ai_fire_does_not_consume_an_adjacent_pending_ai_stain
         // tests: RespawnEngine.ai_fire_leaves_the_stain_of_a_neighbor_that_died_this_tick
         if (other != nullptr && other != firing && other->dead() &&
@@ -399,8 +392,9 @@ void scrub_corpse_drops_in(const GameWorld& world,
     for (const auto& uptr : list)
     {
         walker* fx = uptr.get();
-        // rule: Part of the rule above that begins "Scheduling a respawn immediately removes the
-        //   corpse's LIFE_GEM (so ..."
+        // rule: Scheduling a respawn immediately removes the corpse's LIFE_GEM (so respawn cycles
+        //   cannot farm the time-limit tiebreaker) but leaves its bloodstain for the countdown
+        //   (visible corpse, cleric raises).
         // tests: RespawnEngine.scheduling_scrubs_the_corpse_life_gem
         // tests: RespawnEngine.player_corpse_stain_survives_until_the_respawn_fires
         // tests: RespawnEngine.ai_corpse_stain_survives_until_the_respawn_fires
@@ -419,8 +413,7 @@ void scrub_corpse_drops_in(const GameWorld& world,
         // Player stains carry a copied guy: pair them by the same identity
         // triple that guards duplicate revives. An AI corpse may only sweep
         // an AI stain, so a nearby player's queued corpse is never collateral.
-        // rule: Part of the rule above that begins "A respawn only clears its own corpse's
-        //   bloodstain: a ..."
+        // rule: A respawn only clears its own corpse's bloodstain.
         // tests: RespawnEngine.nearby_player_respawns_scrub_only_their_own_stain
         // tests: SemRespawn.a_respawn_fire_scrubs_only_a_stain_of_its_own_identity
         if (fx->family() == FAMILY_STAIN &&
@@ -435,8 +428,9 @@ void scrub_corpse_drops_in(const GameWorld& world,
         // the mode's schedule_dead run after the timers) — keeps its stain
         // until its own fire. The firing corpse itself is excluded, so its
         // own stain still gets scrubbed.
-        // rule: Part of the rule above that begins "When a respawn fires and clears its corpse's
-        //   stain, ..."
+        // rule: When a respawn fires and clears its corpse's stain, a neighbouring dead fighter's
+        //   stain is kept for that fighter's own countdown, whether the neighbour is already queued
+        //   or fell this very tick (before the mode could schedule it).
         // tests: RespawnEngine.ai_fire_does_not_consume_an_adjacent_pending_ai_stain
         // tests: RespawnEngine.ai_fire_leaves_the_stain_of_a_neighbor_that_died_this_tick
         if (fx->family() == FAMILY_STAIN &&
@@ -477,7 +471,7 @@ void schedule_respawn(GameWorld& world, walker* corpse)
     //   of later) so the roster never shrinks; if only players are queued the newcomer is refused
     //   (players are never evicted for anyone). If the evicted bot's fire was blocked and re-queued
     //   itself, that retry is dropped instead of the newcomer. In a scripted mode the eviction fire
-    //   never dispatches on_respawn (see respawn.cpp:423: only the timer fire does).
+    //   never dispatches on_respawn (see below: only the timer fire does).
     // tests: RespawnEngine.queue_cap_evicts_oldest_ai_entry_for_a_player
     // tests: RespawnEngine.queue_full_of_players_drops_incoming_ai_entry
     // tests: ClassicRespawn.full_queue_blocked_evict_keeps_the_incoming_corpse
@@ -487,8 +481,7 @@ void schedule_respawn(GameWorld& world, walker* corpse)
         const auto victim = std::find_if(
             respawn.respawn_queue.begin(), respawn.respawn_queue.end(),
             [](const RespawnEntry& entry) { return entry.kind == 1; });
-        // rule: Part of the rule above that begins "The respawn queue is capped (the snapshot
-        //   serializer's limit). ..."
+        // rule: The respawn queue is capped (the snapshot serializer's limit).
         // tests: RespawnEngine.queue_cap_evicts_oldest_ai_entry_for_a_player
         // tests: RespawnEngine.queue_full_of_players_drops_incoming_ai_entry
         // tests: ClassicRespawn.full_queue_blocked_evict_keeps_the_incoming_corpse
@@ -514,8 +507,7 @@ void schedule_respawn(GameWorld& world, walker* corpse)
         // and never re-scanned), but the retry's spot is currently occupied
         // while the incoming corpse's may be clear — and the cap must hold
         // for the snapshot serializer.
-        // rule: Part of the rule above that begins "The respawn queue is capped (the snapshot
-        //   serializer's limit). ..."
+        // rule: The respawn queue is capped (the snapshot serializer's limit).
         // tests: RespawnEngine.queue_cap_evicts_oldest_ai_entry_for_a_player
         // tests: RespawnEngine.queue_full_of_players_drops_incoming_ai_entry
         // tests: ClassicRespawn.full_queue_blocked_evict_keeps_the_incoming_corpse
@@ -540,11 +532,6 @@ void schedule_respawn(GameWorld& world, walker* corpse)
     entry.team = (corpse->real_team_num() != 255) ? corpse->real_team_num()
                                                   : corpse->team_num();
     entry.family = static_cast<std::uint8_t>(corpse->family());
-    // rule: Part of the rule above that begins "A queued respawn remembers whether the dead was a
-    //   ..."
-    // tests: RespawnEngine.player_corpse_revives_in_place_with_control_preserved
-    // tests: RespawnEngine.ai_respawn_spawns_fresh_walker_of_same_family_level_team
-    // tests: SemRespawn.a_charmed_corpse_is_queued_on_its_true_team
     const std::int32_t level =
         (corpse->stats() != nullptr) ? corpse->stats()->level() : 1;
     entry.level = static_cast<std::uint8_t>(std::clamp<std::int32_t>(level, 1, 255));
@@ -592,7 +579,7 @@ void respawn_run_timers(GameWorld& world)
         return;
 
     const bool scripted = mode_scripted_active(world);
-    // plumbing: queue walk with in-place erase; rules respawn.cpp:415 and respawn.cpp:423
+    // plumbing: queue walk with in-place erase; rules below
     for (std::size_t i = 0; i < respawn.respawn_queue.size();)
     {
         RespawnEntry& entry = respawn.respawn_queue[i];
@@ -615,8 +602,8 @@ void respawn_run_timers(GameWorld& world)
         //   revived walker (alive, at its recorded spot) so the mode can place it; a fire that
         //   revived nothing (blocked bot spot, duplicate hero, stale entry) calls no hook. Classic
         //   respawn modes never call Lua. This timer fire is the ONLY place on_respawn is
-        //   dispatched: the cap-eviction fire in schedule_respawn (respawn.cpp:330, lines 342-348)
-        //   and every fire in respawn_flush_revive_all (respawn.cpp:810, lines 790-791) call
+        //   dispatched: the cap-eviction fire in schedule_respawn (above)
+        //   and every fire in respawn_flush_revive_all (below) call
         //   classic_fire_respawn directly, so a mode that repositions fighters in on_respawn never
         //   sees an evicted bot or a match-end flush.
         // tests: ModeTick.respawn_fires_in_place_and_dispatches_hook
@@ -625,8 +612,8 @@ void respawn_run_timers(GameWorld& world)
         // tests: SemRespawn.the_win_flush_fields_queued_bots_and_restores_true_teams_without_lua
         if (scripted)
         {
-            // rule: Part of the rule above that begins "In a scripted mode a fired respawn calls
-            //   the ..."
+            // rule: In a scripted mode a fired respawn calls the level's on_respawn hook with the
+            //   revived walker (alive, at its recorded spot) so the mode can place it.
             // tests: ModeTick.respawn_fires_in_place_and_dispatches_hook
             // tests: SemRespawn.on_respawn_runs_only_for_a_scripted_fire_that_revived_someone
             // tests: SemRespawn.a_full_queue_refuses_a_player_and_fields_an_evicted_bot_at_once
@@ -644,9 +631,12 @@ bool classic_respawn_active(const GameWorld& world)
     // Scripted (TYPE_SCRIPTED) worlds with an ACTIVE mode own their
     // respawns through the Lua surface; a scripted map whose mode failed
     // activation falls to classic rules, including these.
-    // The difficulty-submenu respawn modes (1 Heroes, 2 Everyone, 3 Team 1 Heroes) run only on
-    // worlds not owned by an active scripted mode; a scripted map whose mode failed activation
-    // falls back to them; mode 0 is off.
+    // rule: The difficulty-submenu respawn modes (1 Heroes, 2 Everyone, 3 Team 1 Heroes) run only
+    //   on worlds not owned by an active scripted mode; a scripted map whose mode failed activation
+    //   falls back to them; mode 0 is off.
+    // tests: ClassicRespawn.predicate_and_suppression_truth_table
+    // tests: ClassicRespawn.scripted_active_worlds_ignore_respawn_mode
+    // tests: SemRespawn.respawn_mode_off_leaves_a_dead_hero_dead
     return !mode_scripted_active(world) &&
            world.respawn_mode >= kRespawnModeHeroes &&
            world.respawn_mode <= kRespawnModeTeamOneHeroes;
@@ -668,6 +658,7 @@ bool respawn_retains_player_control(const GameWorld& world,
         return false;
     }
 
+    // plumbing: the team is computed and discarded ((void)team); the seat check reads no team.
     const unsigned char team = control->real_team_num() != 255
         ? control->real_team_num()
         : control->team_num();
@@ -675,8 +666,8 @@ bool respawn_retains_player_control(const GameWorld& world,
     // Scripted arm: a mode-scheduled respawn (Lua owns eligibility via
     // og.respawn_schedule) keeps its seat while the entry is pending and the
     // match is undecided — the retired CTF arm generalized.
-    // rule: Part of the rule above that begins "A dead hero keeps its player's seat (the client
-    //   ..."
+    // rule: A dead hero keeps its player's seat (the client is not handed another body) while a
+    //   respawn will bring it back.
     // tests: RespawnEngine.retains_player_control_through_pending_scripted_entry
     // tests: ClassicRespawn.team_one_heroes_mode_filters_corpses_and_control_retention
     // tests: SemRespawn.only_a_dead_hero_whose_character_walks_nowhere_else_holds_its_seat
@@ -686,8 +677,8 @@ bool respawn_retains_player_control(const GameWorld& world,
                already_scheduled(world.respawn, control->entity_id()) &&
                !live_duplicate_exists(world, control);
     }
-    // rule: Part of the rule above that begins "A dead hero keeps its player's seat (the client
-    //   ..."
+    // rule: A dead hero keeps its player's seat (the client is not handed another body) while a
+    //   respawn will bring it back.
     // tests: RespawnEngine.retains_player_control_through_pending_scripted_entry
     // tests: ClassicRespawn.team_one_heroes_mode_filters_corpses_and_control_retention
     // tests: SemRespawn.only_a_dead_hero_whose_character_walks_nowhere_else_holds_its_seat
@@ -711,10 +702,6 @@ bool respawn_suppress_team_wipe_endgame(const GameWorld& world,
     // tests: SemRespawn.an_undecided_scripted_match_survives_a_team_wipe
     if (mode_scripted_active(world) && !world.mode.win_latched)
         return true;
-    // rule: Part of the rule above that begins "A team being wiped out does not end the ..."
-    // tests: ClassicRespawn.predicate_and_suppression_truth_table
-    // tests: RespawnEngine.team_wipe_suppression_tracks_match_lifecycle
-    // tests: SemRespawn.an_undecided_scripted_match_survives_a_team_wipe
     if (!classic_respawn_active(world))
         return false;
     // Modes 1 and 2 respawn heroes on every team. Mode 3 protects only the
@@ -734,7 +721,7 @@ namespace {
 {
     // rule: A respawn target on an explicit floor is clear only when that floor's ground is
     //   passable for the walker and no blocking body on THAT floor overlaps the box (same blocker
-    //   rule as respawn.cpp:67).
+    //   rule as above).
     // tests: ClassicRespawn.hero_revives_in_place_when_spawn_point_is_blocked
     // tests: ClassicRespawn.hero_revives_across_floors_at_its_spawn_floor
     // tests: RespawnEngine.exported_probes_hold_null_and_impassable_guards
@@ -745,10 +732,10 @@ namespace {
         return true;
     // Same bucket sweep as spawn_spot_clear, keyed to the target floor.
     constexpr int kBucket = 32;
-    // plumbing: floor-keyed bucket sweep; rule respawn.cpp:496
+    // plumbing: floor-keyed bucket sweep; rule above
     for (int bx = x; bx < x + w->sizex() + kBucket; bx += kBucket)
     {
-        // plumbing: floor-keyed bucket sweep; rule respawn.cpp:496
+        // plumbing: floor-keyed bucket sweep; rule above
         for (int by = y; by < y + w->sizey() + kBucket; by += kBucket)
         {
             const std::list<walker*>* pile = world.myobmap->find_list(
@@ -756,11 +743,12 @@ namespace {
             // plumbing: null obmap answers clear; empty bucket skipped
             if (pile == nullptr)
                 continue;
-            // plumbing: floor-keyed bucket sweep; rule respawn.cpp:496
+            // plumbing: floor-keyed bucket sweep; rule above
             for (walker* other : *pile)
             {
-                // rule: Part of the rule above that begins "A respawn target on an explicit floor
-                //   is clear ..."
+                // rule: A respawn target on an explicit floor is clear only when that floor's
+                //   ground is passable for the walker and no blocking body on THAT floor overlaps
+                //   the box (same blocker rule as above).
                 // tests: ClassicRespawn.hero_revives_in_place_when_spawn_point_is_blocked
                 // tests: ClassicRespawn.hero_revives_across_floors_at_its_spawn_floor
                 // tests: RespawnEngine.exported_probes_hold_null_and_impassable_guards
@@ -792,11 +780,6 @@ walker* classic_fire_player_respawn(GameWorld& world,
     if (w == nullptr || !w->dead() || w->query_order() != Order::Living)
         return nullptr;
     scrub_corpse_drops(world, w, CorpseDropScrub::All);
-    // rule: Part of the rule above that begins "A hero's respawn fire is a no-op if the ..."
-    // tests: RespawnEngine.fired_entry_for_an_already_live_walker_is_a_no_op
-    // tests: RespawnEngine.fire_time_live_duplicate_cancels_the_revive
-    // tests: RespawnEngine.player_corpse_stain_survives_until_the_respawn_fires
-    // tests: SemRespawn.a_fire_for_a_hero_already_alive_does_not_heal_it_again
     if (live_duplicate_exists(world, w))
         return nullptr;
     revive_player_walker(world, w, entry.team);
@@ -831,8 +814,6 @@ walker* classic_fire_ai_respawn(GameWorld& world, const RespawnEntry& entry)
         return nullptr;
     w->set_team_num(entry.team);
     w->set_real_team_num(255);
-    // plumbing: add_ob failure (no loader data for the family) and null stats guards in
-    //   classic_fire_ai_respawn
     if (w->stats() != nullptr)
         w->stats()->set_level(entry.level);
     w->set_difficulty(entry.level);
@@ -860,8 +841,8 @@ walker* classic_fire_ai_respawn(GameWorld& world, const RespawnEntry& entry)
         // crafted or restored queue entry naming a live walker's id from
         // retiring that walker.
         walker* corpse = world.find_by_id(entry.walker_entity_id);
-        // rule: Part of the rule above that begins "A bot's respawn fields a FRESH walker of the
-        //   ..."
+        // rule: A bot's respawn fields a FRESH walker of the same family, team (uncharmed) and
+        //   level at its recorded spot when clear.
         // tests: ClassicRespawn.mode2_respawns_fresh_ai_walker_at_authored_spot
         // tests: RespawnEngine.ai_corpse_stain_survives_until_the_respawn_fires
         // tests: RespawnEngine.fired_entry_for_a_live_walker_id_does_not_retire_it
@@ -938,34 +919,10 @@ walker* classic_fire_respawn(GameWorld& world, const RespawnEntry& entry)
         world.respawn_mode == kRespawnModeEveryone &&
         w->myguy == nullptr && w->owner() == nullptr && w->spawn_x() >= 0;
     const bool eligible = hero_eligible || ai_eligible;
-    // rule: Part of the rule above that begins "Which corpses the classic respawn modes bring back:
-    //   mode ..."
-    // tests: ClassicRespawn.team_one_heroes_mode_filters_corpses_and_control_retention
-    // tests: ClassicRespawn.mode1_does_not_respawn_unowned_ai_even_when_authored
-    // tests: ClassicRespawn.generator_owned_and_summoned_walkers_never_respawn
-    // tests: ClassicRespawn.runtime_spawns_without_authored_placement_never_respawn
-    // tests: ClassicRespawn.live_duplicate_hero_corpse_is_never_rescheduled
-    // tests: ClassicRespawn.hero_scheduled_on_death_and_revives_at_spawn_point
     if (!eligible)
         return false;
-    // rule: Part of the rule above that begins "Which corpses the classic respawn modes bring back:
-    //   mode ..."
-    // tests: ClassicRespawn.team_one_heroes_mode_filters_corpses_and_control_retention
-    // tests: ClassicRespawn.mode1_does_not_respawn_unowned_ai_even_when_authored
-    // tests: ClassicRespawn.generator_owned_and_summoned_walkers_never_respawn
-    // tests: ClassicRespawn.runtime_spawns_without_authored_placement_never_respawn
-    // tests: ClassicRespawn.live_duplicate_hero_corpse_is_never_rescheduled
-    // tests: ClassicRespawn.hero_scheduled_on_death_and_revives_at_spawn_point
     if (already_scheduled(world.respawn, w->entity_id()))
         return false;
-    // rule: Part of the rule above that begins "Which corpses the classic respawn modes bring back:
-    //   mode ..."
-    // tests: ClassicRespawn.team_one_heroes_mode_filters_corpses_and_control_retention
-    // tests: ClassicRespawn.mode1_does_not_respawn_unowned_ai_even_when_authored
-    // tests: ClassicRespawn.generator_owned_and_summoned_walkers_never_respawn
-    // tests: ClassicRespawn.runtime_spawns_without_authored_placement_never_respawn
-    // tests: ClassicRespawn.live_duplicate_hero_corpse_is_never_rescheduled
-    // tests: ClassicRespawn.hero_scheduled_on_death_and_revives_at_spawn_point
     if (live_duplicate_exists(world, w))
         return false;
     return true;
@@ -975,12 +932,11 @@ walker* classic_fire_respawn(GameWorld& world, const RespawnEntry& entry)
 // the classic eligibility above.
 void classic_run_death_scan(GameWorld& world)
 {
-    // plumbing: oblist death scan; rule respawn.cpp:616
+    // plumbing: oblist death scan; rule above
     for (const auto& uptr : world.oblist)
     {
         walker* w = uptr.get();
-        // rule: Part of the rule above that begins "Which corpses the classic respawn modes bring
-        //   back: mode ..."
+        // rule: Which corpses the classic respawn modes bring back.
         // tests: ClassicRespawn.team_one_heroes_mode_filters_corpses_and_control_retention
         // tests: ClassicRespawn.mode1_does_not_respawn_unowned_ai_even_when_authored
         // tests: ClassicRespawn.generator_owned_and_summoned_walkers_never_respawn
@@ -1022,8 +978,8 @@ void classic_respawn_run_tick(GameWorld& world)
     // is safe: nothing else writes respawn_ticks on a classic level, and a
     // snapshot restore rewrites this and the requested knob coherently.
     const short requested = world.ctf_requested_respawn_ticks;
-    // rule: Part of the rule above that begins "The classic respawn delay is the lobby's requested
-    //   value ..."
+    // rule: The classic respawn delay is the lobby's requested value when it lies in the allowed
+    //   range, else the default.
     // tests: ClassicRespawn.requested_delay_resolution_clamps_out_of_range_values
     // tests: ClassicRespawn.end_of_level_revives_pending_heroes_and_clears_queue
     // tests: ClassicRespawn.end_driven_completion_flushes_and_drops_pending_ai
@@ -1039,8 +995,8 @@ void classic_respawn_run_tick(GameWorld& world)
     // corpse immediately so roster persistence never sees a mid-respawn hero
     // — mirrors run_win_check's revive-all. Pending AI entries are dropped
     // with the cleared queue (the level is over).
-    // rule: Part of the rule above that begins "The classic respawn delay is the lobby's requested
-    //   value ..."
+    // rule: The classic respawn delay is the lobby's requested value when it lies in the allowed
+    //   range, else the default.
     // tests: ClassicRespawn.requested_delay_resolution_clamps_out_of_range_values
     // tests: ClassicRespawn.end_of_level_revives_pending_heroes_and_clears_queue
     // tests: ClassicRespawn.end_driven_completion_flushes_and_drops_pending_ai
@@ -1081,15 +1037,11 @@ void classic_respawn_flush_pending(GameWorld& world)
     // level is over).
     std::vector<RespawnEntry> pending;
     pending.swap(respawn.respawn_queue);
-    // rule: Part of the rule above that begins "At level end (including the synchronous exit-accept
-    //   path) the ..."
-    // tests: ClassicRespawn.flush_pending_covers_the_synchronous_exit_accept_shape
-    // tests: ClassicRespawn.same_tick_mutual_kill_still_revives_the_hero
-    // tests: ClassicRespawn.end_driven_completion_flushes_and_drops_pending_ai
     for (const RespawnEntry& entry : pending)
     {
-        // rule: Part of the rule above that begins "At level end (including the synchronous
-        //   exit-accept path) the ..."
+        // rule: At level end (including the synchronous exit-accept path) the death scan runs first
+        //   so a hero who died on the winning tick is caught, then every pending hero is revived
+        //   and every pending bot entry is dropped.
         // tests: ClassicRespawn.flush_pending_covers_the_synchronous_exit_accept_shape
         // tests: ClassicRespawn.same_tick_mutual_kill_still_revives_the_hero
         // tests: ClassicRespawn.end_driven_completion_flushes_and_drops_pending_ai
@@ -1112,14 +1064,10 @@ bool classic_respawn_pending_hostile_foe(GameWorld& world)
         return false;
     // Entries scheduled on earlier ticks. Kind-1 (AI) entries only exist in
     // mode 2; kind-0 covers hostile heroes (other players' teams) too.
-    // rule: Part of the rule above that begins "Under classic respawn the level is not won by ..."
-    // tests: ClassicRespawn.pending_hostile_foe_truth_table
-    // tests: ClassicRespawn.mode2_pending_hostile_ai_blocks_extermination_win
-    // tests: ClassicRespawn.runtime_spawns_without_authored_placement_never_respawn
     for (const RespawnEntry& entry : world.respawn.respawn_queue)
     {
-        // rule: Part of the rule above that begins "Under classic respawn the level is not won by
-        //   ..."
+        // rule: Under classic respawn the level is not won by extermination while a hostile fighter
+        //   is coming back.
         // tests: ClassicRespawn.pending_hostile_foe_truth_table
         // tests: ClassicRespawn.mode2_pending_hostile_ai_blocks_extermination_win
         // tests: ClassicRespawn.runtime_spawns_without_authored_placement_never_respawn
@@ -1127,8 +1075,8 @@ bool classic_respawn_pending_hostile_foe(GameWorld& world)
             world.respawn_mode == kRespawnModeEveryone &&
             classic_team_hostile(world, entry.team))
             return true;
-        // rule: Part of the rule above that begins "Under classic respawn the level is not won by
-        //   ..."
+        // rule: Under classic respawn the level is not won by extermination while a hostile fighter
+        //   is coming back.
         // tests: ClassicRespawn.pending_hostile_foe_truth_table
         // tests: ClassicRespawn.mode2_pending_hostile_ai_blocks_extermination_win
         // tests: ClassicRespawn.runtime_spawns_without_authored_placement_never_respawn
@@ -1137,15 +1085,11 @@ bool classic_respawn_pending_hostile_foe(GameWorld& world)
     }
     // Corpses that died this very tick: the death scan runs AFTER the
     // completion decision, so the last foe's corpse has no entry yet.
-    // rule: Part of the rule above that begins "Under classic respawn the level is not won by ..."
-    // tests: ClassicRespawn.pending_hostile_foe_truth_table
-    // tests: ClassicRespawn.mode2_pending_hostile_ai_blocks_extermination_win
-    // tests: ClassicRespawn.runtime_spawns_without_authored_placement_never_respawn
     for (const auto& uptr : world.oblist)
     {
         walker* w = uptr.get();
-        // rule: Part of the rule above that begins "Under classic respawn the level is not won by
-        //   ..."
+        // rule: Under classic respawn the level is not won by extermination while a hostile fighter
+        //   is coming back.
         // tests: ClassicRespawn.pending_hostile_foe_truth_table
         // tests: ClassicRespawn.mode2_pending_hostile_ai_blocks_extermination_win
         // tests: ClassicRespawn.runtime_spawns_without_authored_placement_never_respawn
@@ -1154,8 +1098,8 @@ bool classic_respawn_pending_hostile_foe(GameWorld& world)
         const std::uint8_t team = (w->real_team_num() != 255)
                                       ? w->real_team_num()
                                       : w->team_num();
-        // rule: Part of the rule above that begins "Under classic respawn the level is not won by
-        //   ..."
+        // rule: Under classic respawn the level is not won by extermination while a hostile fighter
+        //   is coming back.
         // tests: ClassicRespawn.pending_hostile_foe_truth_table
         // tests: ClassicRespawn.mode2_pending_hostile_ai_blocks_extermination_win
         // tests: ClassicRespawn.runtime_spawns_without_authored_placement_never_respawn
@@ -1178,10 +1122,9 @@ void respawn_scan_anchors(GameWorld& world)
     // markers it consumes for player placement). Idempotent: the arrays are
     // rebuilt from scratch.
     RespawnState& respawn = world.respawn;
-    // plumbing: anchor array reset and oblist scan; rule respawn.cpp:766
+    // plumbing: anchor array reset and oblist scan; rule below
     for (int t = 0; t < 4; ++t)
         respawn.anchor_count[t] = 0;
-    // plumbing: anchor array reset and oblist scan; rule respawn.cpp:766
     for (const auto& uptr : world.oblist)
     {
         walker* w = uptr.get();
@@ -1197,11 +1140,6 @@ void respawn_scan_anchors(GameWorld& world)
             continue;
         }
         const unsigned char team = w->team_num();
-        // rule: Part of the rule above that begins "A scripted mode's respawn anchors per team are
-        //   the ..."
-        // tests: ModeTick.stage_init_activates_without_a_tick
-        // tests: ModeBindings.respawn_anchors_read_back_and_validate
-        // tests: SemRespawn.respawn_anchors_take_score_team_markers_up_to_the_cap
         if (!is_score_team(team) ||
             respawn.anchor_count[team] >= kRespawnMaxAnchorsPerTeam)
             continue;
@@ -1224,7 +1162,7 @@ void respawn_flush_revive_all(GameWorld& world)
     //   bots REPLACED with fresh walkers) and every other dead hero is revived in place on its true
     //   team, so the roster merge never sees a corpse; a hero whose character walks again is not
     //   revived but its stain is cleared. The flush never dispatches on_respawn, and any
-    //   blocked-bot retry it pushes is dropped by the trailing clear (line 792).
+    //   blocked-bot retry it pushes is dropped by the trailing clear.
     // tests: RespawnEngine.win_latch_flush_revives_all_player_corpses
     // tests: RespawnEngine.win_latch_flush_revives_an_unqueued_player_and_scrubs_stain
     // tests: RespawnEngine.win_latch_flush_scrubs_an_unqueued_duplicate_corpse
@@ -1240,8 +1178,9 @@ void respawn_flush_revive_all(GameWorld& world)
     // dying the very tick the latch arms has no entry yet) — the CTF
     // win-check revive-all semantics with classic in-place placement. A
     // corpse that died charmed revives on its recorded true team.
-    // rule: Part of the rule above that begins "When a scripted match is decided every queued
-    //   respawn ..."
+    // rule: When a scripted match is decided every queued respawn fires at once (heroes revived,
+    //   bots REPLACED with fresh walkers) and every other dead hero is revived in place on its true
+    //   team, so the roster merge never sees a corpse.
     // tests: RespawnEngine.win_latch_flush_revives_all_player_corpses
     // tests: RespawnEngine.win_latch_flush_revives_an_unqueued_player_and_scrubs_stain
     // tests: RespawnEngine.win_latch_flush_scrubs_an_unqueued_duplicate_corpse
@@ -1249,8 +1188,9 @@ void respawn_flush_revive_all(GameWorld& world)
     for (const auto& uptr : world.oblist)
     {
         walker* w = uptr.get();
-        // rule: Part of the rule above that begins "When a scripted match is decided every queued
-        //   respawn ..."
+        // rule: When a scripted match is decided every queued respawn fires at once (heroes
+        //   revived, bots REPLACED with fresh walkers) and every other dead hero is revived in
+        //   place on its true team, so the roster merge never sees a corpse.
         // tests: RespawnEngine.win_latch_flush_revives_all_player_corpses
         // tests: RespawnEngine.win_latch_flush_revives_an_unqueued_player_and_scrubs_stain
         // tests: RespawnEngine.win_latch_flush_scrubs_an_unqueued_duplicate_corpse
@@ -1259,8 +1199,9 @@ void respawn_flush_revive_all(GameWorld& world)
             w->query_order() != Order::Living || w->myguy == nullptr)
             continue;
         scrub_corpse_drops(world, w, CorpseDropScrub::All);
-        // rule: Part of the rule above that begins "When a scripted match is decided every queued
-        //   respawn ..."
+        // rule: When a scripted match is decided every queued respawn fires at once (heroes
+        //   revived, bots REPLACED with fresh walkers) and every other dead hero is revived in
+        //   place on its true team, so the roster merge never sees a corpse.
         // tests: RespawnEngine.win_latch_flush_revives_all_player_corpses
         // tests: RespawnEngine.win_latch_flush_revives_an_unqueued_player_and_scrubs_stain
         // tests: RespawnEngine.win_latch_flush_scrubs_an_unqueued_duplicate_corpse
@@ -1270,8 +1211,9 @@ void respawn_flush_revive_all(GameWorld& world)
         const unsigned char raw_team = (w->real_team_num() != 255)
             ? w->real_team_num()
             : w->team_num();
-        // rule: Part of the rule above that begins "When a scripted match is decided every queued
-        //   respawn ..."
+        // rule: When a scripted match is decided every queued respawn fires at once (heroes
+        //   revived, bots REPLACED with fresh walkers) and every other dead hero is revived in
+        //   place on its true team, so the roster merge never sees a corpse.
         // tests: RespawnEngine.win_latch_flush_revives_all_player_corpses
         // tests: RespawnEngine.win_latch_flush_revives_an_unqueued_player_and_scrubs_stain
         // tests: RespawnEngine.win_latch_flush_scrubs_an_unqueued_duplicate_corpse
@@ -1295,41 +1237,17 @@ bool respawn_schedule_corpse(GameWorld& world, walker* corpse,
     if (corpse == nullptr || !corpse->dead() ||
         corpse->query_order() != Order::Living)
         return false;
-    // rule: Part of the rule above that begins "og.respawn_schedule (the scripted modes' respawn
-    //   request) accepts only a ..."
-    // tests: ModeBindings.respawn_schedule_pending_and_counts
-    // tests: RespawnEngine.live_duplicate_character_cancels_the_revive
-    // tests: RespawnEngine.player_corpse_revives_in_place_with_control_preserved
-    // tests: SemRespawn.a_respawn_request_fails_on_a_queue_full_of_heroes_and_clamps_its_delay
     if (already_scheduled(world.respawn, corpse->entity_id()))
         return false;
-    // rule: Part of the rule above that begins "og.respawn_schedule (the scripted modes' respawn
-    //   request) accepts only a ..."
-    // tests: ModeBindings.respawn_schedule_pending_and_counts
-    // tests: RespawnEngine.live_duplicate_character_cancels_the_revive
-    // tests: RespawnEngine.player_corpse_revives_in_place_with_control_preserved
-    // tests: SemRespawn.a_respawn_request_fails_on_a_queue_full_of_heroes_and_clamps_its_delay
     if (live_duplicate_exists(world, corpse))
         return false;
     schedule_respawn(world, corpse);
-    // rule: Part of the rule above that begins "og.respawn_schedule (the scripted modes' respawn
-    //   request) accepts only a ..."
-    // tests: ModeBindings.respawn_schedule_pending_and_counts
-    // tests: RespawnEngine.live_duplicate_character_cancels_the_revive
-    // tests: RespawnEngine.player_corpse_revives_in_place_with_control_preserved
-    // tests: SemRespawn.a_respawn_request_fails_on_a_queue_full_of_heroes_and_clamps_its_delay
     if (!already_scheduled(world.respawn, corpse->entity_id()))
     {
         // A full queue of player entries refuses new work (schedule_respawn
         // evicts bots only).
         return false;
     }
-    // rule: Part of the rule above that begins "og.respawn_schedule (the scripted modes' respawn
-    //   request) accepts only a ..."
-    // tests: ModeBindings.respawn_schedule_pending_and_counts
-    // tests: RespawnEngine.live_duplicate_character_cancels_the_revive
-    // tests: RespawnEngine.player_corpse_revives_in_place_with_control_preserved
-    // tests: SemRespawn.a_respawn_request_fails_on_a_queue_full_of_heroes_and_clamps_its_delay
     if (ticks_override > 0)
     {
         world.respawn.respawn_queue.back().ticks_left =
@@ -1356,8 +1274,8 @@ int respawn_pending_count(const GameWorld& world, int team)
     // tests: ModeBindings.respawn_schedule_pending_and_counts
     for (const RespawnEntry& entry : world.respawn.respawn_queue)
     {
-        // rule: Part of the rule above that begins "og.respawn_pending_count(team) counts the
-        //   queued respawns of that true team ..."
+        // rule: og.respawn_pending_count(team) counts the queued respawns of that true team (heroes
+        //   and bots).
         // tests: ModeBindings.respawn_schedule_pending_and_counts
         if (static_cast<int>(entry.team) == team)
             count++;
@@ -1375,11 +1293,6 @@ bool respawn_spot_clear(GameWorld& world, walker* w, short x, short y,
     // tests: RespawnEngine.spawn_probe_rejects_doors_and_cross_bucket_blockers
     if (w == nullptr)
         return false;
-    // rule: Part of the rule above that begins "The exported spawn probe (og.spawn_spot_clear) asks
-    //   the walker's own ..."
-    // tests: RespawnEngine.exported_probes_hold_null_and_impassable_guards
-    // tests: RespawnEngine.spawn_probes_make_no_empty_pile
-    // tests: RespawnEngine.spawn_probe_rejects_doors_and_cross_bucket_blockers
     if (floor < 0)
         return spawn_spot_clear(world, w, x, y);
     return classic_spot_clear(world, w, x, y, floor);
@@ -1427,8 +1340,8 @@ bool body_ground_clear(GameWorld& world, Order order, std::int32_t family,
                        short x, short y, int floor)
 {
     walker probe(walker::WeaponProfileProbeTag{});
-    // rule: Part of the rule above that begins "Asking whether a body of a family fits somewhere
-    //   ..."
+    // rule: Asking whether a body of a family fits somewhere answers no for a family the loader
+    //   cannot make.
     // tests: QuietProbe.body_spot_clear_asks_the_placement_rule_with_the_bodys_box
     // tests: RespawnEngine.body_ground_clear_asks_the_grid_with_the_bodys_own_flags
     // tests: SemRespawn.a_body_probe_answers_no_for_a_family_slot_the_loader_cannot_make
@@ -1448,8 +1361,8 @@ bool body_spot_clear(GameWorld& world, Order order, std::int32_t family,
                      short x, short y, int floor)
 {
     walker probe(walker::WeaponProfileProbeTag{});
-    // rule: Part of the rule above that begins "Asking whether a body of a family fits somewhere
-    //   ..."
+    // rule: Asking whether a body of a family fits somewhere answers no for a family the loader
+    //   cannot make.
     // tests: QuietProbe.body_spot_clear_asks_the_placement_rule_with_the_bodys_box
     // tests: RespawnEngine.body_ground_clear_asks_the_grid_with_the_bodys_own_flags
     // tests: SemRespawn.a_body_probe_answers_no_for_a_family_slot_the_loader_cannot_make
@@ -1464,9 +1377,6 @@ bool body_spot_clear(GameWorld& world, Order order, std::int32_t family,
     if (!probe_ground_clear(world, probe, x, y, floor))
         return false;
     // Reads the grid a second time: the same answer, and no draw.
-    // rule: Part of the rule above that begins "A body of a family fits at a spot ..."
-    // tests: RespawnEngine.body_ground_clear_asks_the_grid_with_the_bodys_own_flags
-    // tests: QuietProbe.body_spot_clear_asks_the_placement_rule_with_the_bodys_box
     if (!respawn_spot_clear(world, &probe, x, y, floor))
         return false;
     return !world.dormant_occupies_spot(&probe);
@@ -1488,18 +1398,19 @@ bool body_spot_near(GameWorld& world, Order order, std::int32_t family,
     }
     static constexpr int kRing[8][2] = {
         {-1, 0}, {1, 0}, {0, -1}, {0, 1}, {-1, -1}, {1, -1}, {-1, 1}, {1, 1}};
-    // rule: Part of the rule above that begins "Placing a body near a spot takes the spot ..."
-    // tests: QuietProbe.body_spot_near_tries_the_corner_then_the_ring_in_order
     for (int r = 1; r <= radius; ++r)
     {
-        // rule: Part of the rule above that begins "Placing a body near a spot takes the spot ..."
+        // rule: Placing a body near a spot takes the spot itself when it fits, else the nearest
+        //   pixel ring position that fits, trying left, right, up, down, then the four diagonals at
+        //   each distance.
         // tests: QuietProbe.body_spot_near_tries_the_corner_then_the_ring_in_order
         for (const auto& step : kRing)
         {
             const short sx = static_cast<short>(x + step[0] * r);
             const short sy = static_cast<short>(y + step[1] * r);
-            // rule: Part of the rule above that begins "Placing a body near a spot takes the spot
-            //   ..."
+            // rule: Placing a body near a spot takes the spot itself when it fits, else the nearest
+            //   pixel ring position that fits, trying left, right, up, down, then the four
+            //   diagonals at each distance.
             // tests: QuietProbe.body_spot_near_tries_the_corner_then_the_ring_in_order
             if (body_spot_clear(world, order, family, sx, sy, floor))
             {
@@ -1520,7 +1431,7 @@ void respawn_scrub_stains_at(GameWorld& world, short x, short y, int floor)
     // practice — the stain shares the corner, the gem is center_on'd). No
     // team filter: the calling hook context decides which corpse to scrub.
     const auto scrub_list = [&](const GameWorld::EntityList& list) {
-        // plumbing: fxlist/oblist walk in respawn_scrub_stains_at; rules respawn.cpp:969
+        // plumbing: fxlist/oblist walk in respawn_scrub_stains_at; rules below
         for (const auto& uptr : list)
         {
             walker* fx = uptr.get();
@@ -1539,34 +1450,16 @@ void respawn_scrub_stains_at(GameWorld& world, short x, short y, int floor)
             {
                 continue;
             }
-            // rule: Part of the rule above that begins "A mode can clear a corpse's drops by
-            //   position ..."
-            // tests: RespawnEngine.positional_scrub_preserves_pending_ai_stains
-            // tests: RespawnEngine.positional_scrub_preserves_only_pending_player_stains
-            // tests: RespawnEngine.positional_scrub_matches_pending_stain_location
-            // tests: SemRespawn.a_positional_scrub_takes_gems_and_every_floor_when_none_is_named
             if (floor >= 0 && static_cast<int>(fx->floor()) != floor)
                 continue;
             const int dx = std::abs((fx->xpos() + fx->sizex() / 2) - (x + 8));
             const int dy = std::abs((fx->ypos() + fx->sizey() / 2) - (y + 8));
-            // rule: Part of the rule above that begins "A mode can clear a corpse's drops by
-            //   position ..."
-            // tests: RespawnEngine.positional_scrub_preserves_pending_ai_stains
-            // tests: RespawnEngine.positional_scrub_preserves_only_pending_player_stains
-            // tests: RespawnEngine.positional_scrub_matches_pending_stain_location
-            // tests: SemRespawn.a_positional_scrub_takes_gems_and_every_floor_when_none_is_named
             if (dx + dy > 8)
                 continue;
             // A mode may scrub a permanent corpse beside a queued fighter.
             // The positional API has no corpse identity, so preserve any
             // stain whose identity and exact corpse location resolve to a
             // pending respawn entry — player or AI.
-            // rule: Part of the rule above that begins "A mode can clear a corpse's drops by
-            //   position ..."
-            // tests: RespawnEngine.positional_scrub_preserves_pending_ai_stains
-            // tests: RespawnEngine.positional_scrub_preserves_only_pending_player_stains
-            // tests: RespawnEngine.positional_scrub_matches_pending_stain_location
-            // tests: SemRespawn.a_positional_scrub_takes_gems_and_every_floor_when_none_is_named
             if (fx->family() == FAMILY_STAIN &&
                 stain_belongs_to_pending_respawn(world, fx))
             {

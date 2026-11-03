@@ -42,10 +42,6 @@ const char* team_color_name(int team)
     // tests: ModeBindings.team_color_name_band_names_and_edges
     if (kFfaTeamBase <= team && team < kFfaTeamBase + kFfaTeamCount)
         return kFfaBandNames[static_cast<std::size_t>(team - kFfaTeamBase)];
-    // rule: Part of the rule above that begins "Teams 0-3 are named RED, GREEN, BLUE, YELLOW; FFA
-    //   ..."
-    // tests: ModeTick.team_color_name_pins_the_sixteen_band_names
-    // tests: ModeBindings.team_color_name_band_names_and_edges
     switch (team)
     {
         case 0: return "RED";
@@ -57,8 +53,9 @@ const char* team_color_name(int team)
 
 bool is_scoring_identity(int t)
 {
-    // Only teams 0-3 and FFA fighter teams 16-31 can score; every other team number is not a
-    // scoring side.
+    // rule: Only teams 0-3 and FFA fighter teams 16-31 can score; every other team number is not a
+    //   scoring side.
+    // tests: ModeTick.is_scoring_identity_truth_table
     return t < SCORE_TEAM_COUNT ||
            (kFfaTeamBase <= t && t < kFfaTeamBase + kFfaTeamCount);
 }
@@ -76,8 +73,10 @@ unsigned char team_ramp_base(int team)
 
 bool mode_scripted_active(const GameWorld& world)
 {
-    // A level plays by its scripted mode rules only when it is flagged scripted AND its
-    // on_mode_init succeeded; otherwise classic completion rules apply.
+    // rule: A level plays by its scripted mode rules only when it is flagged scripted AND its
+    //   on_mode_init succeeded; otherwise classic completion rules apply.
+    // tests: ClassicRespawn.predicate_and_suppression_truth_table
+    // tests: RespawnEngine.team_wipe_suppression_tracks_match_lifecycle
     return (world.type & GameWorld::TYPE_SCRIPTED) != 0 && world.mode.active;
 }
 
@@ -96,8 +95,9 @@ std::uint8_t authored_team_mask(const GameWorld& world)
     for (const auto& uptr : world.oblist)
     {
         walker* w = uptr.get();
-        // rule: Part of the rule above that begins "The level's authored teams are the teams 0-3
-        //   that ..."
+        // rule: The level's authored teams are the teams 0-3 that have a team start marker placed,
+        //   counting markers already consumed (dead) by player placement, so the mask never depends
+        //   on how many seats deployed.
         // tests: ModeBindings.team_masks_follow_markers_and_requested_count
         // tests: ModeBindings.matched_troops_request_feeds_no_mask
         // tests: SemWorld.the_authored_team_mask_counts_consumed_markers_and_only_markers
@@ -107,8 +107,9 @@ std::uint8_t authored_team_mask(const GameWorld& world)
             continue;
         }
         const unsigned char team = w->team_num();
-        // rule: Part of the rule above that begins "The level's authored teams are the teams 0-3
-        //   that ..."
+        // rule: The level's authored teams are the teams 0-3 that have a team start marker placed,
+        //   counting markers already consumed (dead) by player placement, so the mask never depends
+        //   on how many seats deployed.
         // tests: ModeBindings.team_masks_follow_markers_and_requested_count
         // tests: ModeBindings.matched_troops_request_feeds_no_mask
         // tests: SemWorld.the_authored_team_mask_counts_consumed_markers_and_only_markers
@@ -137,18 +138,12 @@ std::uint8_t effective_team_mask(std::uint8_t authored, int requested) noexcept
         return authored;
     int remaining = std::clamp(requested, 2, static_cast<int>(SCORE_TEAM_COUNT));
     std::uint8_t effective = 0;
-    // rule: Part of the rule above that begins "With no team count requested (Auto) every authored
-    //   team ..."
-    // tests: ModeBindings.team_masks_follow_markers_and_requested_count
-    // tests: ModeBindings.matched_troops_request_feeds_no_mask
-    // tests: LobbyState.ctf_team_domain_uses_authored_order_and_safe_fallback
-    // tests: SemWorld.a_one_team_request_is_clamped_to_two_teams
     for (int team = 0; team < SCORE_TEAM_COUNT && remaining > 0; ++team)
     {
         const auto bit =
             static_cast<std::uint8_t>(1u << static_cast<unsigned>(team));
-        // rule: Part of the rule above that begins "With no team count requested (Auto) every
-        //   authored team ..."
+        // rule: With no team count requested (Auto) every authored team plays. Here: `(authored &
+        //   bit) == 0`.
         // tests: ModeBindings.team_masks_follow_markers_and_requested_count
         // tests: ModeBindings.matched_troops_request_feeds_no_mask
         // tests: LobbyState.ctf_team_domain_uses_authored_order_and_safe_fallback
@@ -181,7 +176,7 @@ void mode_end_level(GameWorld& world, int ending, int next_level)
 
 void mode_declare_winner(GameWorld& world, int team)
 {
-    // rule: Same rule as mode_tick.cpp:119: declaring a winner first flushes respawns and revives
+    // rule: Same rule as above: declaring a winner first flushes respawns and revives
     //   player corpses (only on first arming), so a just-revived hero counts for the winner check.
     // tests: ModeTick.latch_arming_revives_player_corpses_before_winner_check
     // tests: RespawnEngine.win_latch_flush_revives_all_player_corpses
@@ -207,8 +202,8 @@ void mode_declare_winner(GameWorld& world, int team)
     for (const auto& uptr : world.oblist)
     {
         walker* w = uptr.get();
-        // rule: Part of the rule above that begins "A declared winner is the player's win when any
-        //   ..."
+        // rule: A declared winner is the player's win when any live hero (myguy) wears exactly that
+        //   team number (not merely an ally of it).
         // tests: ModeTick.declare_winner_is_one_shot_and_reasserted_every_tick
         // tests: ModeTick.latch_arming_revives_player_corpses_before_winner_check
         // tests: ModeBindings.declare_winner_records_team_and_validates
@@ -226,13 +221,6 @@ void mode_declare_winner(GameWorld& world, int team)
     world.mode.winner_is_player = winner_is_player;
     world.mode.win_latched = true;
     world.mode.win_ending = 0;
-    // rule: Part of the rule above that begins "A declared winner is the player's win when any ..."
-    // tests: ModeTick.declare_winner_is_one_shot_and_reasserted_every_tick
-    // tests: ModeTick.latch_arming_revives_player_corpses_before_winner_check
-    // tests: ModeBindings.declare_winner_records_team_and_validates
-    // tests: ModeBindings.declare_winner_accepts_band_rejects_gap_and_beyond
-    // tests: ModesTdm.bot_only_win_is_rematch_shape
-    // tests: SemMode.a_declared_winner_is_the_players_only_with_a_live_hero_on_that_team
     world.mode.win_next_level = static_cast<std::int16_t>(
         winner_is_player ? world.id + 1 : world.id);
 }
@@ -298,17 +286,12 @@ void mode_run_tick(GameWorld& world)
     if (!world.mode.active && !world.mode.init_attempted)
     {
         mode_stage_init(world);
-        // rule: Part of the rule above that begins "An un-staged scripted level arms its mode
-        //   lazily on ..."
+        // rule: An un-staged scripted level arms its mode lazily on the first tick.
         // tests: ModeTick.run_tick_refuses_failed_init_world_when_called_directly
         // tests: ModeTick.scripted_bit_plus_hooks_activates_once
         if (!world.mode.active)
             return;
     }
-    // rule: Part of the rule above that begins "An un-staged scripted level arms its mode lazily on
-    //   ..."
-    // tests: ModeTick.run_tick_refuses_failed_init_world_when_called_directly
-    // tests: ModeTick.scripted_bit_plus_hooks_activates_once
     if (!world.mode.active)
         return;
 
@@ -338,8 +321,7 @@ void mode_run_tick(GameWorld& world)
 
     // 4. Fold a Lua-declared win into the world (og.end_level /
     //    og.declare_winner wrote the latch during step 3).
-    // rule: Part of the rule above that begins "Once a scripted match is decided it stays decided:
-    //   ..."
+    // rule: Once a scripted match is decided it stays decided.
     // tests: ModeTick.declare_winner_is_one_shot_and_reasserted_every_tick
     // tests: ModeTick.end_level_loss_shape_reasserts
     if (world.mode.win_latched)

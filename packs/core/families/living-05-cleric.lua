@@ -17,7 +17,7 @@ local MACE_LIFE_CAP = 468
 -- so it never picks a cast its hero cannot make.
 local function lacks_turn_int(self, t)
   -- rule: Only a hero needs 60 INT to TURN UNDEAD; a bot cleric always has the INT. Shared by the
-  --   cast (:33) and the fixed bot gate (:340).
+  --   cast (below) and the fixed bot gate (below).
   -- tests: GameplayFixesClericBot.turns_with_an_undead_foe_in_reach
   -- tests: GameplayFixesClericBot.raises_when_its_hero_lacks_the_int_to_turn
   -- tests: PackLuaCleric.int_refusals_return_reasons_without_emitting_notifications
@@ -63,13 +63,6 @@ local function do_turn_undead(self)
   if turned == -1 then
     return false, "NO FOE IN RANGE"
   end
-  -- rule: Part of the rule above that begins "TURN UNDEAD (reach 4*level px; with Gameplay Fixes
-  --   never ..."
-  -- tests: GameplayFixesCleric.turn_undead_reaches_sixty_px_when_on
-  -- tests: GameplayFixesCleric.turn_undead_refuses_without_undead_when_on
-  -- tests: WalkerSpecials.turn_undead_without_undead_is_refused_with_gameplay_fixes_on
-  -- tests: FamilyCleric.r15_turn_undead_destroys_a_hostile_undead_in_range
-  -- tests: parity:cleric_turn_no_undead_scen99
   if turned == -2 then
     return false, "NO UNDEAD IN RANGE"
   end
@@ -82,7 +75,8 @@ local function do_turn_undead(self)
   if self:has_guy() and turned ~= 0 then
     self:g_set_exp(self:g_exp() +
                    og.exp_from_action(self, nil, "turn_undead", turned))
-    -- rule: Part of the rule above that begins "A hero who turns at least one undead gains ..."
+    -- rule: A hero who turns at least one undead gains experience (exp_from_action 'turn_undead',
+    --   n) and gets the '<name> turned N undead.' notice.
     -- tests: FamilyCleric.r15_turn_undead_destroys_a_hostile_undead_in_range
     -- tests: FamilyBehaviors.cleric_turn_undead_special2_and_3_grant_three_exp_per_kill
     -- tests: GameplayFixes.turn_undead_reaches_60_px
@@ -102,7 +96,7 @@ local function nearby_corpse(self, range, body)  -- body: the family to raise; n
   --   body (the family to raise; any for RESURRECT) can actually stand at a free spot on or beside
   --   the stain, draw-free and side-effect-free; a blocked near stain no longer hides a usable far
   --   one, a corpse against a wall or in a one-tile corridor can be raised, and the caster standing
-  --   on it does not block it. Classic path is :65.
+  --   on it does not block it. Classic path is below.
   -- tests: GameplayFixesClericRaise.reporter_elf_against_a_wall_is_raised_with_the_setting_on
   -- tests: GameplayFixesClericRaise.reporter_one_tile_corridor
   -- tests: parity:cleric_raise_blocked_corpse_fixes_scen99
@@ -123,23 +117,9 @@ local function nearby_corpse(self, range, body)  -- body: the family to raise; n
     return nil, "NO CORPSE NEARBY"
   end
   local passable = og.query_passable(blood:xpos(), blood:ypos(), blood)
-  -- rule: Part of the rule above that begins "Classic corpse search: only the single nearest
-  --   bloodstain counts; ..."
-  -- tests: PackLuaCleric.corpse_refusals_distinguish_absence_blockage_and_range
-  -- tests: GameplayFixesClericRaise.refusals_spend_nothing_on_both_values
-  -- tests: GameplayFixesClericRaise.a_blocked_near_stain_does_not_hide_a_usable_far_one
-  -- tests: GameplayFixesClericRaise.the_fixed_probe_eats_nothing
-  -- tests: parity:cleric_raise_blocked_corpse_scen99, parity:undead_no_corpse_raise_scen99
   if not passable then
     return nil, "CORPSE IS BLOCKED"
   end
-  -- rule: Part of the rule above that begins "Classic corpse search: only the single nearest
-  --   bloodstain counts; ..."
-  -- tests: PackLuaCleric.corpse_refusals_distinguish_absence_blockage_and_range
-  -- tests: GameplayFixesClericRaise.refusals_spend_nothing_on_both_values
-  -- tests: GameplayFixesClericRaise.a_blocked_near_stain_does_not_hide_a_usable_far_one
-  -- tests: GameplayFixesClericRaise.the_fixed_probe_eats_nothing
-  -- tests: parity:cleric_raise_blocked_corpse_scen99, parity:undead_no_corpse_raise_scen99
   if self:distance_to_ob(blood) < range then
     return blood, nil, blood:xpos(), blood:ypos()  -- the spot is the corner, as always
   end
@@ -169,8 +149,8 @@ local function heal_or_mace(self)
     -- tests: parity:special_cleric_heal_ally_scen99
     for i = 1, #friends do
       local ally = friends[i]
-      -- rule: Part of the rule above that begins "HEAL treats every ally within 60 px below full
-      --   ..."
+      -- rule: HEAL treats every ally within 60 px below full health, each with its own rolled
+      --   amount and price; allies at full health are skipped and cost nothing.
       -- tests: FamilyCleric.heal_refusal_distinguishes_absent_and_healthy_allies
       -- tests: PackLuaCleric.a_heal_restores_a_wounded_friend_and_spends_magic
       -- tests: parity:special_cleric_heal_ally_scen99
@@ -241,7 +221,7 @@ local function heal_or_mace(self)
       message = string.format("Cleric healed %d men!", healed)
     end
     -- rule: The heal notice is shown only for a player-team or hero cleric; an enemy bot's heal is
-    --   silent. Same rule as living-00-soldier.lua:127.
+    --   silent. Same rule as living-00-soldier.lua.
     -- tests: ConceptCampaignTest.clinic_rig_heals_a_thin_pool_patient_through_the_engine
     -- tests: GameLoop.zz_capture_cleric_low_magic_heal, GameplayFixes.heal_stops_at_full_health
     -- tests: SemCleric.an_enemy_bot_heal_lands_without_a_notice
@@ -300,7 +280,7 @@ end
 
 local function raise_skeleton(self)
   -- rule: Slot 2 shifted is TURN UNDEAD; unshifted RAISE UNDEAD raises a skeleton. Same rule as
-  --   :203.
+  --   below.
   -- tests: FamilyCleric.r15_turn_undead_destroys_a_hostile_undead_in_range
   -- tests: PackLuaCleric.int_refusals_return_reasons_without_emitting_notifications
   -- tests: WalkerSpecials.family_special_sweep_outcomes_with_gameplay_fixes_on
@@ -347,7 +327,7 @@ end
 -- Raise ghosts ..
 local function raise_ghost(self)
   -- rule: Slot 3 shifted is TURN UNDEAD (identical to slot 2's); unshifted RAISE GHOST. Same rule
-  --   as :174.
+  --   as above.
   -- tests: FamilyBehaviors.cleric_turn_undead_special2_and_3_grant_three_exp_per_kill
   -- tests: WalkerSpecials.family_special_sweep_outcomes_with_gameplay_fixes_on
   -- tests: FamilyCleric.r12_ghost_raise_and_resurrect_penalty_paths
@@ -358,7 +338,7 @@ local function raise_ghost(self)
   -- raise ghost at the nearest bloodstain
   local blood, reason, sx, sy = nearby_corpse(self, og.tuning(self).raise_ghost_range, LIVING_GHOST)
   -- rule: RAISE GHOST needs a raisable corpse within 30 px; a ghost (level rand0(L)+1, cleric's
-  --   team, owned) rises at the spot and the stain is consumed. Same shape as :179.
+  --   team, owned) rises at the spot and the stain is consumed. Same shape as above.
   -- tests: GameplayFixesClericRaise.refusals_spend_nothing_on_both_values
   -- tests: FamilyCleric.r12_ghost_raise_and_resurrect_penalty_paths
   -- tests: PackLuaCleric.a_ghost_rises_from_a_bloodstain_in_reach, parity:cleric_raise_ghost_scen99
@@ -378,7 +358,7 @@ local function raise_ghost(self)
   alive:setxy(sx, sy)
   alive:set_owner(self)
   blood:set_dead(1)
-  -- rule: A hero gains exp for raising a ghost; bots do not. Same rule as :194.
+  -- rule: A hero gains exp for raising a ghost; bots do not. Same rule as above.
   -- tests: FamilyCleric.r12_ghost_raise_and_resurrect_penalty_paths
   -- tests: GameplayFixesClericRaise.the_fixed_probe_eats_nothing
   if self:has_guy() then
@@ -430,7 +410,7 @@ local function resurrect(self)
     -- take some EXP away as penalty if we're a player
     -- rule: A hero who resurrects a friend pays an experience penalty (exp_from_action
     --   'resurrect_penalty', stored as an unsigned short: a negative value wraps to +65536),
-    --   floored at zero experience; then the generic 'resurrect' reward is added (:283).
+    --   floored at zero experience; then the generic 'resurrect' reward is added (below).
     -- tests: FamilyCleric.r15_raise_and_resurrect_consume_blood_and_pay_their_own_exp
     -- tests: FamilyCleric.r14_resurrect_revives_friendly_blood_and_enslaves_hostile_blood
     -- tests: FamilyCleric.r12_ghost_raise_and_resurrect_penalty_paths
@@ -442,8 +422,8 @@ local function resurrect(self)
       -- C++ stores the short return into an unsigned short (modular).
       local exp_loss =
         og.exp_from_action(self, blood, "resurrect_penalty", 0)
-      -- rule: Part of the rule above that begins "A hero who resurrects a friend pays an experience
-      --   ..."
+      -- rule: A hero who resurrects a friend pays an experience penalty (exp_from_action
+      --   'resurrect_penalty', stored as an unsigned short.
       -- tests: FamilyCleric.r15_raise_and_resurrect_consume_blood_and_pay_their_own_exp
       -- tests: FamilyCleric.r14_resurrect_revives_friendly_blood_and_enslaves_hostile_blood
       -- tests: FamilyCleric.r12_ghost_raise_and_resurrect_penalty_paths
@@ -454,8 +434,8 @@ local function resurrect(self)
       if exp_loss < 0 then
         exp_loss = exp_loss + 65536
       end
-      -- rule: Part of the rule above that begins "A hero who resurrects a friend pays an experience
-      --   ..."
+      -- rule: A hero who resurrects a friend pays an experience penalty (exp_from_action
+      --   'resurrect_penalty', stored as an unsigned short.
       -- tests: FamilyCleric.r15_raise_and_resurrect_consume_blood_and_pay_their_own_exp
       -- tests: FamilyCleric.r14_resurrect_revives_friendly_blood_and_enslaves_hostile_blood
       -- tests: FamilyCleric.r12_ghost_raise_and_resurrect_penalty_paths
@@ -539,8 +519,8 @@ local function check_special_ai(self)
   -- tests: GameplayFixesBots.cleric_mace_wants_a_foe_at_its_orbit_and_no_mace_out
   -- tests: FamilyCleric.r11_check_ai_and_heal_fail_paths, parity:cleric_bot_mace_alone_scen99
   if self:current_special() == 1 then -- healing
-    -- rule: Part of the rule above that begins "Classic bot cleric on slot 1 HEALs whenever any
-    --   ..."
+    -- rule: Classic bot cleric on slot 1 HEALs whenever any ally is within 60 px (even if nobody is
+    --   hurt.
     -- tests: GameplayFixesBots.cleric_heal_wants_a_hurt_ally_within_60
     -- tests: GameplayFixesBots.cleric_mace_wants_a_foe_at_its_orbit_and_no_mace_out
     -- tests: FamilyCleric.r11_check_ai_and_heal_fail_paths, parity:cleric_bot_mace_alone_scen99
@@ -550,8 +530,8 @@ local function check_special_ai(self)
     local _, friend_count = og.find_friends_in_range(
       "ob", og.tuning(self).heal_range, self)
     -- other than ourselves?
-    -- rule: Part of the rule above that begins "Classic bot cleric on slot 1 HEALs whenever any
-    --   ..."
+    -- rule: Classic bot cleric on slot 1 HEALs whenever any ally is within 60 px (even if nobody is
+    --   hurt.
     -- tests: GameplayFixesBots.cleric_heal_wants_a_hurt_ally_within_60
     -- tests: GameplayFixesBots.cleric_mace_wants_a_foe_at_its_orbit_and_no_mace_out
     -- tests: FamilyCleric.r11_check_ai_and_heal_fail_paths, parity:cleric_bot_mace_alone_scen99
@@ -577,8 +557,8 @@ local function check_special_ai(self)
   -- tests: GameplayFixesBots.cleric_turn_undead_waits_while_busy_with_the_setting_on
   if gf.on() then
     local slot = self:current_special()
-    -- rule: Part of the rule above that begins "Gameplay Fixes bot cleric on RAISE UNDEAD/RAISE
-    --   GHOST TURNs ..."
+    -- rule: Gameplay Fixes bot cleric on RAISE UNDEAD/RAISE GHOST TURNs (shifter 1) only when it
+    --   has the INT, is not busy, and an undead foe is within its turn reach (>= 60 px).
     -- tests: GameplayFixesClericBot.turns_with_an_undead_foe_in_reach
     -- tests: GameplayFixesClericBot.raises_with_nothing_to_turn_in_reach
     -- tests: GameplayFixesClericBot.raises_when_its_hero_lacks_the_int_to_turn
@@ -591,8 +571,8 @@ local function check_special_ai(self)
       -- refuses free when there is no corpse).
       local t = og.tuning(self)
       local reach = gf.turn_range(self, t)
-      -- rule: Part of the rule above that begins "Gameplay Fixes bot cleric on RAISE UNDEAD/RAISE
-      --   GHOST TURNs ..."
+      -- rule: Gameplay Fixes bot cleric on RAISE UNDEAD/RAISE GHOST TURNs (shifter 1) only when it
+      --   has the INT, is not busy, and an undead foe is within its turn reach (>= 60 px).
       -- tests: GameplayFixesClericBot.turns_with_an_undead_foe_in_reach
       -- tests: GameplayFixesClericBot.raises_with_nothing_to_turn_in_reach
       -- tests: GameplayFixesClericBot.raises_when_its_hero_lacks_the_int_to_turn
@@ -600,8 +580,8 @@ local function check_special_ai(self)
       -- tests: GameplayFixesClericBot.the_coin_is_drawn_and_then_overridden
       -- tests: GameplayFixesBots.cleric_turn_undead_waits_while_busy_with_the_setting_on
       local can_turn = not lacks_turn_int(self, t) and not lc.is_busy(self)
-      -- rule: Part of the rule above that begins "Gameplay Fixes bot cleric on RAISE UNDEAD/RAISE
-      --   GHOST TURNs ..."
+      -- rule: Gameplay Fixes bot cleric on RAISE UNDEAD/RAISE GHOST TURNs (shifter 1) only when it
+      --   has the INT, is not busy, and an undead foe is within its turn reach (>= 60 px).
       -- tests: GameplayFixesClericBot.turns_with_an_undead_foe_in_reach
       -- tests: GameplayFixesClericBot.raises_with_nothing_to_turn_in_reach
       -- tests: GameplayFixesClericBot.raises_when_its_hero_lacks_the_int_to_turn
@@ -622,16 +602,18 @@ local function check_special_ai(self)
         -- Gameplay Fixes: the raise wants the corpse it would raise and a
         -- living foe within 130 px for the risen to fight.
         local range, body = t.raise_skeleton_range, LIVING_SKELETON
-        -- rule: Part of the rule above that begins "Gameplay Fixes bot RAISE UNDEAD (60 px,
-        --   skeleton) / ..."
+        -- rule: Gameplay Fixes bot RAISE UNDEAD (60 px, skeleton) / RAISE GHOST (30 px, ghost)
+        --   wants a corpse it can actually raise and a living foe within 130 px for the risen to
+        --   fight.
         -- tests: GameplayFixesBots.cleric_raise_undead_wants_a_corpse_and_a_foe
         -- tests: GameplayFixesBots.cleric_raise_ghost_wants_a_corpse_within_30_and_a_foe
         -- tests: GameplayFixesBots.cleric_raise_undead_wants_a_corpse_it_can_raise
         if slot == 3 then
           range, body = t.raise_ghost_range, LIVING_GHOST
         end
-        -- rule: Part of the rule above that begins "Gameplay Fixes bot RAISE UNDEAD (60 px,
-        --   skeleton) / ..."
+        -- rule: Gameplay Fixes bot RAISE UNDEAD (60 px, skeleton) / RAISE GHOST (30 px, ghost)
+        --   wants a corpse it can actually raise and a living foe within 130 px for the risen to
+        --   fight.
         -- tests: GameplayFixesBots.cleric_raise_undead_wants_a_corpse_and_a_foe
         -- tests: GameplayFixesBots.cleric_raise_ghost_wants_a_corpse_within_30_and_a_foe
         -- tests: GameplayFixesBots.cleric_raise_undead_wants_a_corpse_it_can_raise
@@ -648,8 +630,8 @@ local function check_special_ai(self)
       -- Gameplay Fixes: RESURRECT wants a friendly corpse in reach (a foe's
       -- stain is RAISE GHOST's job, at a third of the price).
       local b = corpses.raise_spot(self, og.tuning(self).resurrect_range, nil)
-      -- rule: Part of the rule above that begins "Gameplay Fixes bot RESURRECT wants the nearest
-      --   raisable corpse ..."
+      -- rule: Gameplay Fixes bot RESURRECT wants the nearest raisable corpse within 30 px to be
+      --   friendly (a foe's stain is RAISE GHOST's job at a third of the price).
       -- tests: GameplayFixesBots.cleric_resurrect_wants_a_friendly_corpse_within_30
       -- tests: GameplayFixesBots.cleric_resurrect_wants_a_friendly_corpse_it_can_raise
       -- tests: parity:cleric_bot_resurrect_foe_stain_scen99

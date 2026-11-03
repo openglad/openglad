@@ -44,7 +44,7 @@ void sanitize_owner_chain_link(const GameWorld& world, walker* entity)
 {
     constexpr int kMaxOwnerDepth = 16;
     walker* current = entity;
-    // plumbing: owner-chain walk bounded at 16 hops; see game_world.cpp:50
+    // plumbing: owner-chain walk bounded at 16 hops; see below
     for (int depth = 0; depth < kMaxOwnerDepth; ++depth)
     {
         walker* owner = current->owner();
@@ -52,17 +52,12 @@ void sanitize_owner_chain_link(const GameWorld& world, walker* entity)
         //   still in the world: an owner that has left every entity list is cut (the summon/weapon
         //   becomes ownerless), and a chain longer than 16 hops (a save/snapshot loop) is cut at
         //   the hop the walk gave up on; a self-owner or a legal chain is left alone. Called from
-        //   find_near_foe (game_world.cpp:1190) and find_nearest_foe (:1231/:1239).
+        //   find_near_foe (below) and find_nearest_foe (below).
         // tests: GameWorldEntityIdsFixture.an_owner_loop_is_cut_and_legal_chains_survive
         // tests: SemWorld.a_self_owner_or_no_owner_survives_the_owner_chain_guard
         // tests: SemWorld.an_owner_that_left_the_world_is_cut_before_a_foe_scan
         if (owner == nullptr || owner == current)
             return;
-        // rule: Part of the rule above that begins "Before any foe scan, a walker's owner chain is
-        //   ..."
-        // tests: GameWorldEntityIdsFixture.an_owner_loop_is_cut_and_legal_chains_survive
-        // tests: SemWorld.a_self_owner_or_no_owner_survives_the_owner_chain_guard
-        // tests: SemWorld.an_owner_that_left_the_world_is_cut_before_a_foe_scan
         if (!world.tracks(owner))
         {
             current->set_owner(nullptr);
@@ -81,16 +76,10 @@ void refresh_self_reference_ids(walker& entity)
     //   mirror fields agree after an id assignment; no game semantic
     if (entity.foe() == &entity)
         entity.set_foe(&entity);
-    // plumbing: refresh_self_reference_ids: re-runs setters for self-references so pointer/id
-    //   mirror fields agree after an id assignment; no game semantic
     if (entity.leader() == &entity)
         entity.set_leader(&entity);
-    // plumbing: refresh_self_reference_ids: re-runs setters for self-references so pointer/id
-    //   mirror fields agree after an id assignment; no game semantic
     if (entity.owner() == &entity)
         entity.set_owner(&entity);
-    // plumbing: refresh_self_reference_ids: re-runs setters for self-references so pointer/id
-    //   mirror fields agree after an id assignment; no game semantic
     if (entity.collide_ob() == &entity)
         entity.set_collide_ob(&entity);
 
@@ -126,6 +115,8 @@ thread_local IRandom** g_sim_random_override_ref = nullptr;
 
 IRandom* sim_random_override()
 {
+    // plumbing: the thread-local RNG override (parity harness / tests) when one is installed, else
+    //   none.
     return (g_sim_random_override_ref != nullptr)
         ? *g_sim_random_override_ref
         : nullptr;
@@ -162,8 +153,6 @@ og::script::WorldScripts& GameWorld::scripts()
         scripts_->built_generation() !=
             og::script::pack_scripts_build_generation())
         scripts_.reset();
-    // plumbing: scripts(): rebuild the Lua VM when the mounted pack generation changed;
-    //   deterministic rebuild timing, no game rule
     if (scripts_ == nullptr)
         scripts_ = std::make_unique<og::script::WorldScripts>();
     return *scripts_;
@@ -686,7 +675,7 @@ walker* GameWorld::add_to_list(Order order, std::int32_t family,
 
     // rule: Only a Living added to the object list counts toward the world's living census
     //   (living_count); weapons, FX, treasures and generators do not. Same census as remove_ob
-    //   (game_world.cpp:660), the dead sweep (:2035) and retire_corpse (:2330).
+    //   (below), the dead sweep (below) and retire_corpse (below).
     // tests: ScreenExtended.screen_add_ob_living
     // tests: SemWorld.only_a_living_added_to_the_object_list_counts_as_living
     if (count_living)
@@ -726,8 +715,9 @@ walker* GameWorld::add_ob(Order order, std::int32_t family, bool atstart)
         add_to_list(order, family, oblist, order == Order::Living, atstart);
     // Level-script on_entity_spawn: sim-authored livings/generators only
     // (snapshot/replay insertion paths bypass add_ob and stay silent).
-    // rule: Part of the rule above that begins "add_ob files a Weapon-order walker in the weapon
-    //   list ..."
+    // rule: add_ob files a Weapon-order walker in the weapon list (it acts in the weapon phase and
+    //   is never counted as a living); every other order goes to the object list. Here: `added !=
+    //   nullptr && (order == Living || order == Generator)`.
     // tests: ScreenExtended.screen_add_ob_weapon, ScreenExtended.screen_add_ob_effect
     // tests: ScreenExtended.screen_add_ob_treasure
     // tests: LevelScriptsTest.fx_spawns_do_not_fire_entity_spawn
@@ -758,7 +748,7 @@ short GameWorld::remove_ob(walker* ob)
     auto e = std::find_if(weapons.begin(), weapons.end(), pred);
     // rule: remove_ob removes a walker from whichever live list holds it (weapons, then effects,
     //   then objects) and reports 1; a walker found in none reports 0. Removing a Living from the
-    //   object list lowers the living census, never below zero (same census as add_to_list:592).
+    //   object list lowers the living census, never below zero (same census as add_to_list).
     // tests: GameWorldEntityIdsFixture.remove_ob_erases_entities_from_id_index
     // tests: ScreenExtended.screen_add_ob_living
     // tests: LevelDataCoverage.level_data_round7a_constructor_overloads_and_remove_paths
@@ -773,8 +763,8 @@ short GameWorld::remove_ob(walker* ob)
 
     auto& effects = fxlist.raw_mutable();
     auto f = std::find_if(effects.begin(), effects.end(), pred);
-    // rule: Part of the rule above that begins "remove_ob removes a walker from whichever live list
-    //   holds ..."
+    // rule: remove_ob removes a walker from whichever live list holds it (weapons, then effects,
+    //   then objects) and reports 1; a walker found in none reports 0. Here: `f != effects.end()`.
     // tests: GameWorldEntityIdsFixture.remove_ob_erases_entities_from_id_index
     // tests: ScreenExtended.screen_add_ob_living
     // tests: LevelDataCoverage.level_data_round7a_constructor_overloads_and_remove_paths
@@ -789,8 +779,8 @@ short GameWorld::remove_ob(walker* ob)
 
     auto& objects = oblist.raw_mutable();
     auto g = std::find_if(objects.begin(), objects.end(), pred);
-    // rule: Part of the rule above that begins "remove_ob removes a walker from whichever live list
-    //   holds ..."
+    // rule: remove_ob removes a walker from whichever live list holds it (weapons, then effects,
+    //   then objects) and reports 1; a walker found in none reports 0. Here: `g != objects.end()`.
     // tests: GameWorldEntityIdsFixture.remove_ob_erases_entities_from_id_index
     // tests: ScreenExtended.screen_add_ob_living
     // tests: LevelDataCoverage.level_data_round7a_constructor_overloads_and_remove_paths
@@ -798,8 +788,9 @@ short GameWorld::remove_ob(walker* ob)
     // tests: SemWorld.removing_a_living_never_drops_the_living_census_below_zero
     if (g != objects.end())
     {
-        // rule: Part of the rule above that begins "remove_ob removes a walker from whichever live
-        //   list holds ..."
+        // rule: remove_ob removes a walker from whichever live list holds it (weapons, then
+        //   effects, then objects) and reports 1; a walker found in none reports 0. Here: `ob &&
+        //   Living && living_count > 0`.
         // tests: GameWorldEntityIdsFixture.remove_ob_erases_entities_from_id_index
         // tests: ScreenExtended.screen_add_ob_living
         // tests: LevelDataCoverage.level_data_round7a_constructor_overloads_and_remove_paths
@@ -878,10 +869,6 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob, int floor, boo
     // tests: SemWorld.a_box_ending_on_a_cell_boundary_does_not_touch_the_next_cell
     if ((xover % GRID_SIZE) == 0)
         xtrax = 0;
-    // rule: Part of the rule above that begins "A walker's box occupies every grid cell it
-    //   overlaps; ..."
-    // tests: WalkerMovementUnit.walker_movement_r12_stationary_slope_and_animate_paths
-    // tests: SemWorld.a_box_ending_on_a_cell_boundary_does_not_touch_the_next_cell
     if ((yover % GRID_SIZE) == 0)
         xtray = 0;
 
@@ -889,10 +876,10 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob, int floor, boo
     const std::int32_t xtarg = (xover / GRID_SIZE) + xtrax;
     const std::int32_t ytarg = (yover / GRID_SIZE) + xtray;
 
-    // plumbing: per-cell scan of the box; see game_world.cpp:722 and the tile rows that follow
+    // plumbing: per-cell scan of the box; see below and the tile rows that follow
     for (std::int32_t i = x_i / GRID_SIZE; i < xtarg; ++i)
     {
-        // plumbing: per-cell scan of the box; see game_world.cpp:722 and the tile rows that follow
+        // plumbing: per-cell scan of the box; see below and the tile rows that follow
         for (std::int32_t j = y_i / GRID_SIZE; j < ytarg; ++j)
         {
             // rule: Ground tiles (every grass, dark/light grass edge, grass-water corner, pavement,
@@ -984,7 +971,7 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob, int floor, boo
                 // trees are usually bad, but we can fly over them
                 // rule: Tree crowns block ground walkers; a forest-walker passes them, and so does
                 //   a permanent flyer or a walker with temporary flight left. Weapons are NOT
-                //   exempt from crowns (only the trunk lets them through, :813).
+                //   exempt from crowns (only the trunk lets them through, below).
                 // tests: LevelDataCoverage.level_data_round5_query_grid_passable_contiguous_block_paths
                 // tests: LevelDataCoverage.level_data_round13_grid_passability_tree_wall_water_and_object_guards
                 // tests: LevelDataCoverage.level_data_query_grid_passable_edge_cases
@@ -992,8 +979,8 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob, int floor, boo
                 // tests: QuietProbe.fire_pad_answer_names_what_the_pad_holds
                 // tests: SemWorld.tree_crowns_pass_forestwalkers_and_flyers_only
                 case PIX_TREE_M1:
-                // rule: Part of the rule above that begins "Tree crowns block ground walkers; a
-                //   forest-walker passes them, ..."
+                // rule: Tree crowns block ground walkers; a forest-walker passes them, and so does
+                //   a permanent flyer or a walker with temporary flight left.
                 // tests: LevelDataCoverage.level_data_round5_query_grid_passable_contiguous_block_paths
                 // tests: LevelDataCoverage.level_data_round13_grid_passability_tree_wall_water_and_object_guards
                 // tests: LevelDataCoverage.level_data_query_grid_passable_edge_cases
@@ -1001,8 +988,8 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob, int floor, boo
                 // tests: QuietProbe.fire_pad_answer_names_what_the_pad_holds
                 // tests: SemWorld.tree_crowns_pass_forestwalkers_and_flyers_only
                 case PIX_TREE_ML:
-                // rule: Part of the rule above that begins "Tree crowns block ground walkers; a
-                //   forest-walker passes them, ..."
+                // rule: Tree crowns block ground walkers; a forest-walker passes them, and so does
+                //   a permanent flyer or a walker with temporary flight left.
                 // tests: LevelDataCoverage.level_data_round5_query_grid_passable_contiguous_block_paths
                 // tests: LevelDataCoverage.level_data_round13_grid_passability_tree_wall_water_and_object_guards
                 // tests: LevelDataCoverage.level_data_query_grid_passable_edge_cases
@@ -1010,8 +997,8 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob, int floor, boo
                 // tests: QuietProbe.fire_pad_answer_names_what_the_pad_holds
                 // tests: SemWorld.tree_crowns_pass_forestwalkers_and_flyers_only
                 case PIX_TREE_MR:
-                // rule: Part of the rule above that begins "Tree crowns block ground walkers; a
-                //   forest-walker passes them, ..."
+                // rule: Tree crowns block ground walkers; a forest-walker passes them, and so does
+                //   a permanent flyer or a walker with temporary flight left.
                 // tests: LevelDataCoverage.level_data_round5_query_grid_passable_contiguous_block_paths
                 // tests: LevelDataCoverage.level_data_round13_grid_passability_tree_wall_water_and_object_guards
                 // tests: LevelDataCoverage.level_data_query_grid_passable_edge_cases
@@ -1019,8 +1006,8 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob, int floor, boo
                 // tests: QuietProbe.fire_pad_answer_names_what_the_pad_holds
                 // tests: SemWorld.tree_crowns_pass_forestwalkers_and_flyers_only
                 case PIX_TREE_MT:
-                // rule: Part of the rule above that begins "Tree crowns block ground walkers; a
-                //   forest-walker passes them, ..."
+                // rule: Tree crowns block ground walkers; a forest-walker passes them, and so does
+                //   a permanent flyer or a walker with temporary flight left.
                 // tests: LevelDataCoverage.level_data_round5_query_grid_passable_contiguous_block_paths
                 // tests: LevelDataCoverage.level_data_round13_grid_passability_tree_wall_water_and_object_guards
                 // tests: LevelDataCoverage.level_data_query_grid_passable_edge_cases
@@ -1028,8 +1015,8 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob, int floor, boo
                 // tests: QuietProbe.fire_pad_answer_names_what_the_pad_holds
                 // tests: SemWorld.tree_crowns_pass_forestwalkers_and_flyers_only
                 case PIX_TREE_T1:
-                    // rule: Part of the rule above that begins "Tree crowns block ground walkers; a
-                    //   forest-walker passes them, ..."
+                    // rule: Tree crowns block ground walkers; a forest-walker passes them, and so
+                    //   does a permanent flyer or a walker with temporary flight left.
                     // tests: LevelDataCoverage.level_data_round5_query_grid_passable_contiguous_block_paths
                     // tests: LevelDataCoverage.level_data_round13_grid_passability_tree_wall_water_and_object_guards
                     // tests: LevelDataCoverage.level_data_query_grid_passable_edge_cases
@@ -1038,8 +1025,8 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob, int floor, boo
                     // tests: SemWorld.tree_crowns_pass_forestwalkers_and_flyers_only
                     if (ob->stats()->query_bit_flags(BIT_FORESTWALK))
                         break;
-                    // rule: Part of the rule above that begins "Tree crowns block ground walkers; a
-                    //   forest-walker passes them, ..."
+                    // rule: Tree crowns block ground walkers; a forest-walker passes them, and so
+                    //   does a permanent flyer or a walker with temporary flight left.
                     // tests: LevelDataCoverage.level_data_round5_query_grid_passable_contiguous_block_paths
                     // tests: LevelDataCoverage.level_data_round13_grid_passability_tree_wall_water_and_object_guards
                     // tests: LevelDataCoverage.level_data_query_grid_passable_edge_cases
@@ -1056,8 +1043,8 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob, int floor, boo
                 // tests: LevelDataCoverage.level_data_round13_grid_passability_tree_wall_water_and_object_guards
                 // tests: SemWorld.a_tree_trunk_passes_weapons_forestwalkers_and_flyers
                 case PIX_TREE_B1:
-                    // rule: Part of the rule above that begins "A tree trunk blocks ground walkers
-                    //   but lets weapons ..."
+                    // rule: A tree trunk blocks ground walkers but lets weapons fly through, as
+                    //   well as forest-walkers and flyers (permanent or temporary).
                     // tests: LevelDataCoverage.level_data_round8_query_grid_treeb1_and_arrow_slit_variants
                     // tests: LevelDataCoverage.level_data_round5_query_grid_passable_contiguous_block_paths
                     // tests: LevelDataCoverage.level_data_round13_grid_passability_tree_wall_water_and_object_guards
@@ -1067,8 +1054,8 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob, int floor, boo
                     {
                         break;
                     }
-                    // rule: Part of the rule above that begins "A tree trunk blocks ground walkers
-                    //   but lets weapons ..."
+                    // rule: A tree trunk blocks ground walkers but lets weapons fly through, as
+                    //   well as forest-walkers and flyers (permanent or temporary).
                     // tests: LevelDataCoverage.level_data_round8_query_grid_treeb1_and_arrow_slit_variants
                     // tests: LevelDataCoverage.level_data_round5_query_grid_passable_contiguous_block_paths
                     // tests: LevelDataCoverage.level_data_round13_grid_passability_tree_wall_water_and_object_guards
@@ -1088,8 +1075,8 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob, int floor, boo
                 // tests: QuietProbe.fire_pad_answer_names_what_the_pad_holds
                 // tests: SemWorld.solid_walls_stop_everything_not_ethereal
                 case PIX_H_WALL1:
-                // rule: Part of the rule above that begins "Solid walls block everything that is
-                //   not ethereal: ground ..."
+                // rule: Solid walls block everything that is not ethereal: ground walkers, flyers,
+                //   swimmers and weapons alike.
                 // tests: LevelDataCoverage.level_data_round5_query_grid_passable_contiguous_block_paths
                 // tests: LevelDataCoverage.level_data_round6_wrapper_and_passability_edges
                 // tests: WalkerMovementUnit.walker_movement_r12_stationary_slope_and_animate_paths
@@ -1098,8 +1085,8 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob, int floor, boo
                 // tests: QuietProbe.fire_pad_answer_names_what_the_pad_holds
                 // tests: SemWorld.solid_walls_stop_everything_not_ethereal
                 case PIX_WALL2:
-                // rule: Part of the rule above that begins "Solid walls block everything that is
-                //   not ethereal: ground ..."
+                // rule: Solid walls block everything that is not ethereal: ground walkers, flyers,
+                //   swimmers and weapons alike.
                 // tests: LevelDataCoverage.level_data_round5_query_grid_passable_contiguous_block_paths
                 // tests: LevelDataCoverage.level_data_round6_wrapper_and_passability_edges
                 // tests: WalkerMovementUnit.walker_movement_r12_stationary_slope_and_animate_paths
@@ -1108,8 +1095,8 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob, int floor, boo
                 // tests: QuietProbe.fire_pad_answer_names_what_the_pad_holds
                 // tests: SemWorld.solid_walls_stop_everything_not_ethereal
                 case PIX_WALL3:
-                // rule: Part of the rule above that begins "Solid walls block everything that is
-                //   not ethereal: ground ..."
+                // rule: Solid walls block everything that is not ethereal: ground walkers, flyers,
+                //   swimmers and weapons alike.
                 // tests: LevelDataCoverage.level_data_round5_query_grid_passable_contiguous_block_paths
                 // tests: LevelDataCoverage.level_data_round6_wrapper_and_passability_edges
                 // tests: WalkerMovementUnit.walker_movement_r12_stationary_slope_and_animate_paths
@@ -1118,8 +1105,8 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob, int floor, boo
                 // tests: QuietProbe.fire_pad_answer_names_what_the_pad_holds
                 // tests: SemWorld.solid_walls_stop_everything_not_ethereal
                 case PIX_WALL_LL:
-                // rule: Part of the rule above that begins "Solid walls block everything that is
-                //   not ethereal: ground ..."
+                // rule: Solid walls block everything that is not ethereal: ground walkers, flyers,
+                //   swimmers and weapons alike.
                 // tests: LevelDataCoverage.level_data_round5_query_grid_passable_contiguous_block_paths
                 // tests: LevelDataCoverage.level_data_round6_wrapper_and_passability_edges
                 // tests: WalkerMovementUnit.walker_movement_r12_stationary_slope_and_animate_paths
@@ -1140,70 +1127,70 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob, int floor, boo
                 // tests: LevelDataCoverage.swimming_grants_water_passage_but_not_obstacle_passage
                 // tests: LevelDataUnit.level_data_r12_save_null_entries_and_query_passable_branches
                 case PIX_WATER1:
-                // rule: Part of the rule above that begins "Water blocks ground walkers; weapons
-                //   fly over it, flyers ..."
+                // rule: Water blocks ground walkers; weapons fly over it, flyers (permanent or
+                //   temporary) cross it, and a swimming family can wade through it.
                 // tests: LevelDataCoverage.swimming_grants_water_passage_but_not_obstacle_passage
                 // tests: LevelDataUnit.level_data_r12_save_null_entries_and_query_passable_branches
                 case PIX_WATER2:
-                // rule: Part of the rule above that begins "Water blocks ground walkers; weapons
-                //   fly over it, flyers ..."
+                // rule: Water blocks ground walkers; weapons fly over it, flyers (permanent or
+                //   temporary) cross it, and a swimming family can wade through it.
                 // tests: LevelDataCoverage.swimming_grants_water_passage_but_not_obstacle_passage
                 // tests: LevelDataUnit.level_data_r12_save_null_entries_and_query_passable_branches
                 case PIX_WATER3:
-                // rule: Part of the rule above that begins "Water blocks ground walkers; weapons
-                //   fly over it, flyers ..."
+                // rule: Water blocks ground walkers; weapons fly over it, flyers (permanent or
+                //   temporary) cross it, and a swimming family can wade through it.
                 // tests: LevelDataCoverage.swimming_grants_water_passage_but_not_obstacle_passage
                 // tests: LevelDataUnit.level_data_r12_save_null_entries_and_query_passable_branches
                 case PIX_WATERGRASS_LL:
-                // rule: Part of the rule above that begins "Water blocks ground walkers; weapons
-                //   fly over it, flyers ..."
+                // rule: Water blocks ground walkers; weapons fly over it, flyers (permanent or
+                //   temporary) cross it, and a swimming family can wade through it.
                 // tests: LevelDataCoverage.swimming_grants_water_passage_but_not_obstacle_passage
                 // tests: LevelDataUnit.level_data_r12_save_null_entries_and_query_passable_branches
                 case PIX_WATERGRASS_LR:
-                // rule: Part of the rule above that begins "Water blocks ground walkers; weapons
-                //   fly over it, flyers ..."
+                // rule: Water blocks ground walkers; weapons fly over it, flyers (permanent or
+                //   temporary) cross it, and a swimming family can wade through it.
                 // tests: LevelDataCoverage.swimming_grants_water_passage_but_not_obstacle_passage
                 // tests: LevelDataUnit.level_data_r12_save_null_entries_and_query_passable_branches
                 case PIX_WATERGRASS_UL:
-                // rule: Part of the rule above that begins "Water blocks ground walkers; weapons
-                //   fly over it, flyers ..."
+                // rule: Water blocks ground walkers; weapons fly over it, flyers (permanent or
+                //   temporary) cross it, and a swimming family can wade through it.
                 // tests: LevelDataCoverage.swimming_grants_water_passage_but_not_obstacle_passage
                 // tests: LevelDataUnit.level_data_r12_save_null_entries_and_query_passable_branches
                 case PIX_WATERGRASS_UR:
-                // rule: Part of the rule above that begins "Water blocks ground walkers; weapons
-                //   fly over it, flyers ..."
+                // rule: Water blocks ground walkers; weapons fly over it, flyers (permanent or
+                //   temporary) cross it, and a swimming family can wade through it.
                 // tests: LevelDataCoverage.swimming_grants_water_passage_but_not_obstacle_passage
                 // tests: LevelDataUnit.level_data_r12_save_null_entries_and_query_passable_branches
                 case PIX_WATERGRASS_U:
-                // rule: Part of the rule above that begins "Water blocks ground walkers; weapons
-                //   fly over it, flyers ..."
+                // rule: Water blocks ground walkers; weapons fly over it, flyers (permanent or
+                //   temporary) cross it, and a swimming family can wade through it.
                 // tests: LevelDataCoverage.swimming_grants_water_passage_but_not_obstacle_passage
                 // tests: LevelDataUnit.level_data_r12_save_null_entries_and_query_passable_branches
                 case PIX_WATERGRASS_L:
-                // rule: Part of the rule above that begins "Water blocks ground walkers; weapons
-                //   fly over it, flyers ..."
+                // rule: Water blocks ground walkers; weapons fly over it, flyers (permanent or
+                //   temporary) cross it, and a swimming family can wade through it.
                 // tests: LevelDataCoverage.swimming_grants_water_passage_but_not_obstacle_passage
                 // tests: LevelDataUnit.level_data_r12_save_null_entries_and_query_passable_branches
                 case PIX_WATERGRASS_R:
-                // rule: Part of the rule above that begins "Water blocks ground walkers; weapons
-                //   fly over it, flyers ..."
+                // rule: Water blocks ground walkers; weapons fly over it, flyers (permanent or
+                //   temporary) cross it, and a swimming family can wade through it.
                 // tests: LevelDataCoverage.swimming_grants_water_passage_but_not_obstacle_passage
                 // tests: LevelDataUnit.level_data_r12_save_null_entries_and_query_passable_branches
                 case PIX_WATERGRASS_D:
-                    // rule: Part of the rule above that begins "Water blocks ground walkers;
-                    //   weapons fly over it, flyers ..."
+                    // rule: Water blocks ground walkers; weapons fly over it, flyers (permanent or
+                    //   temporary) cross it, and a swimming family can wade through it.
                     // tests: LevelDataCoverage.swimming_grants_water_passage_but_not_obstacle_passage
                     // tests: LevelDataUnit.level_data_r12_save_null_entries_and_query_passable_branches
                     if (ob->query_order() == Order::Weapon)
                         break;
-                    // rule: Part of the rule above that begins "Water blocks ground walkers;
-                    //   weapons fly over it, flyers ..."
+                    // rule: Water blocks ground walkers; weapons fly over it, flyers (permanent or
+                    //   temporary) cross it, and a swimming family can wade through it.
                     // tests: LevelDataCoverage.swimming_grants_water_passage_but_not_obstacle_passage
                     // tests: LevelDataUnit.level_data_r12_save_null_entries_and_query_passable_branches
                     if (ob->stats()->query_bit_flags(BIT_FLYING) || ob->flight_left())
                         break;
-                    // rule: Part of the rule above that begins "Water blocks ground walkers;
-                    //   weapons fly over it, flyers ..."
+                    // rule: Water blocks ground walkers; weapons fly over it, flyers (permanent or
+                    //   temporary) cross it, and a swimming family can wade through it.
                     // tests: LevelDataCoverage.swimming_grants_water_passage_but_not_obstacle_passage
                     // tests: LevelDataUnit.level_data_r12_save_null_entries_and_query_passable_branches
                     if (ob->stats()->query_bit_flags(BIT_SWIMMING))
@@ -1217,7 +1204,7 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob, int floor, boo
                 //   16, and the slit blocks when rng.next(dist/16) is non-zero (adjacent shots
                 //   always pass). A quiet probe skips the gamble and treats the slit as open (the
                 //   loud answer at fire-pad range). Passing the gamble falls through to the
-                //   obstacle rule (:899): weapons pass, a non-weapon owned walker passes only
+                //   obstacle rule (below): weapons pass, a non-weapon owned walker passes only
                 //   flying.
                 // tests: LevelDataCoverage.level_data_round7_wall_arrow_distance_axis_and_rng_paths
                 // tests: LevelDataCoverage.level_data_wall4_projectile_passability_distance_and_rng_paths
@@ -1226,8 +1213,8 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob, int floor, boo
                 // tests: SimWorldHeadless.arrow_wall_is_solid_for_unowned_special
                 // tests: QuietProbe.an_arrow_slit_passes_a_quiet_weapon_probe_and_draws_nothing
                 case PIX_WALL4:
-                // rule: Part of the rule above that begins "Arrow-slit walls (WALL4, WALL5, the
-                //   three WALL_ARROW bytes) block ..."
+                // rule: Arrow-slit walls (WALL4, WALL5, the three WALL_ARROW bytes) block every
+                //   living outright, flyers included.
                 // tests: LevelDataCoverage.level_data_round7_wall_arrow_distance_axis_and_rng_paths
                 // tests: LevelDataCoverage.level_data_wall4_projectile_passability_distance_and_rng_paths
                 // tests: LevelDataCoverage.level_data_round5_query_grid_passable_contiguous_block_paths
@@ -1235,8 +1222,8 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob, int floor, boo
                 // tests: SimWorldHeadless.arrow_wall_is_solid_for_unowned_special
                 // tests: QuietProbe.an_arrow_slit_passes_a_quiet_weapon_probe_and_draws_nothing
                 case PIX_WALL5:
-                // rule: Part of the rule above that begins "Arrow-slit walls (WALL4, WALL5, the
-                //   three WALL_ARROW bytes) block ..."
+                // rule: Arrow-slit walls (WALL4, WALL5, the three WALL_ARROW bytes) block every
+                //   living outright, flyers included.
                 // tests: LevelDataCoverage.level_data_round7_wall_arrow_distance_axis_and_rng_paths
                 // tests: LevelDataCoverage.level_data_wall4_projectile_passability_distance_and_rng_paths
                 // tests: LevelDataCoverage.level_data_round5_query_grid_passable_contiguous_block_paths
@@ -1244,8 +1231,8 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob, int floor, boo
                 // tests: SimWorldHeadless.arrow_wall_is_solid_for_unowned_special
                 // tests: QuietProbe.an_arrow_slit_passes_a_quiet_weapon_probe_and_draws_nothing
                 case PIX_WALL_ARROW_GRASS:
-                // rule: Part of the rule above that begins "Arrow-slit walls (WALL4, WALL5, the
-                //   three WALL_ARROW bytes) block ..."
+                // rule: Arrow-slit walls (WALL4, WALL5, the three WALL_ARROW bytes) block every
+                //   living outright, flyers included.
                 // tests: LevelDataCoverage.level_data_round7_wall_arrow_distance_axis_and_rng_paths
                 // tests: LevelDataCoverage.level_data_wall4_projectile_passability_distance_and_rng_paths
                 // tests: LevelDataCoverage.level_data_round5_query_grid_passable_contiguous_block_paths
@@ -1253,8 +1240,8 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob, int floor, boo
                 // tests: SimWorldHeadless.arrow_wall_is_solid_for_unowned_special
                 // tests: QuietProbe.an_arrow_slit_passes_a_quiet_weapon_probe_and_draws_nothing
                 case PIX_WALL_ARROW_FLOOR:
-                // rule: Part of the rule above that begins "Arrow-slit walls (WALL4, WALL5, the
-                //   three WALL_ARROW bytes) block ..."
+                // rule: Arrow-slit walls (WALL4, WALL5, the three WALL_ARROW bytes) block every
+                //   living outright, flyers included.
                 // tests: LevelDataCoverage.level_data_round7_wall_arrow_distance_axis_and_rng_paths
                 // tests: LevelDataCoverage.level_data_wall4_projectile_passability_distance_and_rng_paths
                 // tests: LevelDataCoverage.level_data_round5_query_grid_passable_contiguous_block_paths
@@ -1262,8 +1249,8 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob, int floor, boo
                 // tests: SimWorldHeadless.arrow_wall_is_solid_for_unowned_special
                 // tests: QuietProbe.an_arrow_slit_passes_a_quiet_weapon_probe_and_draws_nothing
                 case PIX_WALL_ARROW_GRASS_DARK:
-                    // rule: Part of the rule above that begins "Arrow-slit walls (WALL4, WALL5, the
-                    //   three WALL_ARROW bytes) block ..."
+                    // rule: Arrow-slit walls (WALL4, WALL5, the three WALL_ARROW bytes) block every
+                    //   living outright, flyers included.
                     // tests: LevelDataCoverage.level_data_round7_wall_arrow_distance_axis_and_rng_paths
                     // tests: LevelDataCoverage.level_data_wall4_projectile_passability_distance_and_rng_paths
                     // tests: LevelDataCoverage.level_data_round5_query_grid_passable_contiguous_block_paths
@@ -1277,8 +1264,8 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob, int floor, boo
                     // Specials wandering via ACT_RANDOM) path with no owner;
                     // the shooter-distance gamble below is meaningless
                     // without one, so the arrow wall stays solid for them.
-                    // rule: Part of the rule above that begins "Arrow-slit walls (WALL4, WALL5, the
-                    //   three WALL_ARROW bytes) block ..."
+                    // rule: Arrow-slit walls (WALL4, WALL5, the three WALL_ARROW bytes) block every
+                    //   living outright, flyers included.
                     // tests: LevelDataCoverage.level_data_round7_wall_arrow_distance_axis_and_rng_paths
                     // tests: LevelDataCoverage.level_data_wall4_projectile_passability_distance_and_rng_paths
                     // tests: LevelDataCoverage.level_data_round5_query_grid_passable_contiguous_block_paths
@@ -1295,8 +1282,8 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob, int floor, boo
                     // GRID_SIZE 0 or 1 below, and rng_.next(0) and rng_.next(1)
                     // both answer 0). A golem (48x36) or giant skeleton (64x64)
                     // pad can reach a bound of 2, where the loud roll blocks half.
-                    // rule: Part of the rule above that begins "Arrow-slit walls (WALL4, WALL5, the
-                    //   three WALL_ARROW bytes) block ..."
+                    // rule: Arrow-slit walls (WALL4, WALL5, the three WALL_ARROW bytes) block every
+                    //   living outright, flyers included.
                     // tests: LevelDataCoverage.level_data_round7_wall_arrow_distance_axis_and_rng_paths
                     // tests: LevelDataCoverage.level_data_wall4_projectile_passability_distance_and_rng_paths
                     // tests: LevelDataCoverage.level_data_round5_query_grid_passable_contiguous_block_paths
@@ -1305,8 +1292,8 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob, int floor, boo
                     // tests: QuietProbe.an_arrow_slit_passes_a_quiet_weapon_probe_and_draws_nothing
                     if (!quiet)
                     {
-                        // rule: Part of the rule above that begins "Arrow-slit walls (WALL4, WALL5,
-                        //   the three WALL_ARROW bytes) block ..."
+                        // rule: Arrow-slit walls (WALL4, WALL5, the three WALL_ARROW bytes) block
+                        //   every living outright, flyers included.
                         // tests: LevelDataCoverage.level_data_round7_wall_arrow_distance_axis_and_rng_paths
                         // tests: LevelDataCoverage.level_data_wall4_projectile_passability_distance_and_rng_paths
                         // tests: LevelDataCoverage.level_data_round5_query_grid_passable_contiguous_block_paths
@@ -1318,8 +1305,8 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob, int floor, boo
                         {
                             std::int32_t dist = std::abs(ob->xpos() - ob->owner()->xpos());
                             dist -= (GRID_SIZE / 2);
-                            // rule: Part of the rule above that begins "Arrow-slit walls (WALL4,
-                            //   WALL5, the three WALL_ARROW bytes) block ..."
+                            // rule: Arrow-slit walls (WALL4, WALL5, the three WALL_ARROW bytes)
+                            //   block every living outright, flyers included.
                             // tests: LevelDataCoverage.level_data_round7_wall_arrow_distance_axis_and_rng_paths
                             // tests: LevelDataCoverage.level_data_wall4_projectile_passability_distance_and_rng_paths
                             // tests: LevelDataCoverage.level_data_round5_query_grid_passable_contiguous_block_paths
@@ -1328,8 +1315,8 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob, int floor, boo
                             // tests: QuietProbe.an_arrow_slit_passes_a_quiet_weapon_probe_and_draws_nothing
                             if (dist < GRID_SIZE)
                                 dist += GRID_SIZE;
-                            // rule: Part of the rule above that begins "Arrow-slit walls (WALL4,
-                            //   WALL5, the three WALL_ARROW bytes) block ..."
+                            // rule: Arrow-slit walls (WALL4, WALL5, the three WALL_ARROW bytes)
+                            //   block every living outright, flyers included.
                             // tests: LevelDataCoverage.level_data_round7_wall_arrow_distance_axis_and_rng_paths
                             // tests: LevelDataCoverage.level_data_wall4_projectile_passability_distance_and_rng_paths
                             // tests: LevelDataCoverage.level_data_round5_query_grid_passable_contiguous_block_paths
@@ -1343,8 +1330,8 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob, int floor, boo
                         {
                             std::int32_t dist = std::abs(ob->ypos() - ob->owner()->ypos());
                             dist -= (GRID_SIZE / 2);
-                            // rule: Part of the rule above that begins "Arrow-slit walls (WALL4,
-                            //   WALL5, the three WALL_ARROW bytes) block ..."
+                            // rule: Arrow-slit walls (WALL4, WALL5, the three WALL_ARROW bytes)
+                            //   block every living outright, flyers included.
                             // tests: LevelDataCoverage.level_data_round7_wall_arrow_distance_axis_and_rng_paths
                             // tests: LevelDataCoverage.level_data_wall4_projectile_passability_distance_and_rng_paths
                             // tests: LevelDataCoverage.level_data_round5_query_grid_passable_contiguous_block_paths
@@ -1353,8 +1340,8 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob, int floor, boo
                             // tests: QuietProbe.an_arrow_slit_passes_a_quiet_weapon_probe_and_draws_nothing
                             if (dist < GRID_SIZE)
                                 dist += GRID_SIZE;
-                            // rule: Part of the rule above that begins "Arrow-slit walls (WALL4,
-                            //   WALL5, the three WALL_ARROW bytes) block ..."
+                            // rule: Arrow-slit walls (WALL4, WALL5, the three WALL_ARROW bytes)
+                            //   block every living outright, flyers included.
                             // tests: LevelDataCoverage.level_data_round7_wall_arrow_distance_axis_and_rng_paths
                             // tests: LevelDataCoverage.level_data_wall4_projectile_passability_distance_and_rng_paths
                             // tests: LevelDataCoverage.level_data_round5_query_grid_passable_contiguous_block_paths
@@ -1374,114 +1361,114 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob, int floor, boo
                 // tests: MassCoverage.screen_query_grid_passable_reads_the_tile_under_the_walker
                 // tests: SemWorld.low_obstacles_stop_ground_walkers_and_pass_weapons_and_flyers
                 case PIX_WALLSIDE_L:
-                // rule: Part of the rule above that begins "Low obstacles (wall sides, torches,
-                //   braziers, columns, boulder tiles) ..."
+                // rule: Low obstacles (wall sides, torches, braziers, columns, boulder tiles) block
+                //   ground walkers including swimmers and forest-walkers.
                 // tests: LevelDataCoverage.swimming_grants_water_passage_but_not_obstacle_passage
                 // tests: LevelDataCoverage.level_data_round6_wrapper_and_passability_edges
                 // tests: MassCoverage.screen_query_grid_passable_reads_the_tile_under_the_walker
                 // tests: SemWorld.low_obstacles_stop_ground_walkers_and_pass_weapons_and_flyers
                 case PIX_WALLSIDE1:
-                // rule: Part of the rule above that begins "Low obstacles (wall sides, torches,
-                //   braziers, columns, boulder tiles) ..."
+                // rule: Low obstacles (wall sides, torches, braziers, columns, boulder tiles) block
+                //   ground walkers including swimmers and forest-walkers.
                 // tests: LevelDataCoverage.swimming_grants_water_passage_but_not_obstacle_passage
                 // tests: LevelDataCoverage.level_data_round6_wrapper_and_passability_edges
                 // tests: MassCoverage.screen_query_grid_passable_reads_the_tile_under_the_walker
                 // tests: SemWorld.low_obstacles_stop_ground_walkers_and_pass_weapons_and_flyers
                 case PIX_WALLSIDE_R:
-                // rule: Part of the rule above that begins "Low obstacles (wall sides, torches,
-                //   braziers, columns, boulder tiles) ..."
+                // rule: Low obstacles (wall sides, torches, braziers, columns, boulder tiles) block
+                //   ground walkers including swimmers and forest-walkers.
                 // tests: LevelDataCoverage.swimming_grants_water_passage_but_not_obstacle_passage
                 // tests: LevelDataCoverage.level_data_round6_wrapper_and_passability_edges
                 // tests: MassCoverage.screen_query_grid_passable_reads_the_tile_under_the_walker
                 // tests: SemWorld.low_obstacles_stop_ground_walkers_and_pass_weapons_and_flyers
                 case PIX_WALLSIDE_C:
-                // rule: Part of the rule above that begins "Low obstacles (wall sides, torches,
-                //   braziers, columns, boulder tiles) ..."
+                // rule: Low obstacles (wall sides, torches, braziers, columns, boulder tiles) block
+                //   ground walkers including swimmers and forest-walkers.
                 // tests: LevelDataCoverage.swimming_grants_water_passage_but_not_obstacle_passage
                 // tests: LevelDataCoverage.level_data_round6_wrapper_and_passability_edges
                 // tests: MassCoverage.screen_query_grid_passable_reads_the_tile_under_the_walker
                 // tests: SemWorld.low_obstacles_stop_ground_walkers_and_pass_weapons_and_flyers
                 case PIX_WALLSIDE_CRACK_C1:
-                // rule: Part of the rule above that begins "Low obstacles (wall sides, torches,
-                //   braziers, columns, boulder tiles) ..."
+                // rule: Low obstacles (wall sides, torches, braziers, columns, boulder tiles) block
+                //   ground walkers including swimmers and forest-walkers.
                 // tests: LevelDataCoverage.swimming_grants_water_passage_but_not_obstacle_passage
                 // tests: LevelDataCoverage.level_data_round6_wrapper_and_passability_edges
                 // tests: MassCoverage.screen_query_grid_passable_reads_the_tile_under_the_walker
                 // tests: SemWorld.low_obstacles_stop_ground_walkers_and_pass_weapons_and_flyers
                 case PIX_TORCH1:
-                // rule: Part of the rule above that begins "Low obstacles (wall sides, torches,
-                //   braziers, columns, boulder tiles) ..."
+                // rule: Low obstacles (wall sides, torches, braziers, columns, boulder tiles) block
+                //   ground walkers including swimmers and forest-walkers.
                 // tests: LevelDataCoverage.swimming_grants_water_passage_but_not_obstacle_passage
                 // tests: LevelDataCoverage.level_data_round6_wrapper_and_passability_edges
                 // tests: MassCoverage.screen_query_grid_passable_reads_the_tile_under_the_walker
                 // tests: SemWorld.low_obstacles_stop_ground_walkers_and_pass_weapons_and_flyers
                 case PIX_TORCH2:
-                // rule: Part of the rule above that begins "Low obstacles (wall sides, torches,
-                //   braziers, columns, boulder tiles) ..."
+                // rule: Low obstacles (wall sides, torches, braziers, columns, boulder tiles) block
+                //   ground walkers including swimmers and forest-walkers.
                 // tests: LevelDataCoverage.swimming_grants_water_passage_but_not_obstacle_passage
                 // tests: LevelDataCoverage.level_data_round6_wrapper_and_passability_edges
                 // tests: MassCoverage.screen_query_grid_passable_reads_the_tile_under_the_walker
                 // tests: SemWorld.low_obstacles_stop_ground_walkers_and_pass_weapons_and_flyers
                 case PIX_TORCH3:
-                // rule: Part of the rule above that begins "Low obstacles (wall sides, torches,
-                //   braziers, columns, boulder tiles) ..."
+                // rule: Low obstacles (wall sides, torches, braziers, columns, boulder tiles) block
+                //   ground walkers including swimmers and forest-walkers.
                 // tests: LevelDataCoverage.swimming_grants_water_passage_but_not_obstacle_passage
                 // tests: LevelDataCoverage.level_data_round6_wrapper_and_passability_edges
                 // tests: MassCoverage.screen_query_grid_passable_reads_the_tile_under_the_walker
                 // tests: SemWorld.low_obstacles_stop_ground_walkers_and_pass_weapons_and_flyers
                 case PIX_BRAZIER1:
-                // rule: Part of the rule above that begins "Low obstacles (wall sides, torches,
-                //   braziers, columns, boulder tiles) ..."
+                // rule: Low obstacles (wall sides, torches, braziers, columns, boulder tiles) block
+                //   ground walkers including swimmers and forest-walkers.
                 // tests: LevelDataCoverage.swimming_grants_water_passage_but_not_obstacle_passage
                 // tests: LevelDataCoverage.level_data_round6_wrapper_and_passability_edges
                 // tests: MassCoverage.screen_query_grid_passable_reads_the_tile_under_the_walker
                 // tests: SemWorld.low_obstacles_stop_ground_walkers_and_pass_weapons_and_flyers
                 case PIX_COLUMN1:
-                // rule: Part of the rule above that begins "Low obstacles (wall sides, torches,
-                //   braziers, columns, boulder tiles) ..."
+                // rule: Low obstacles (wall sides, torches, braziers, columns, boulder tiles) block
+                //   ground walkers including swimmers and forest-walkers.
                 // tests: LevelDataCoverage.swimming_grants_water_passage_but_not_obstacle_passage
                 // tests: LevelDataCoverage.level_data_round6_wrapper_and_passability_edges
                 // tests: MassCoverage.screen_query_grid_passable_reads_the_tile_under_the_walker
                 // tests: SemWorld.low_obstacles_stop_ground_walkers_and_pass_weapons_and_flyers
                 case PIX_COLUMN2:
-                // rule: Part of the rule above that begins "Low obstacles (wall sides, torches,
-                //   braziers, columns, boulder tiles) ..."
+                // rule: Low obstacles (wall sides, torches, braziers, columns, boulder tiles) block
+                //   ground walkers including swimmers and forest-walkers.
                 // tests: LevelDataCoverage.swimming_grants_water_passage_but_not_obstacle_passage
                 // tests: LevelDataCoverage.level_data_round6_wrapper_and_passability_edges
                 // tests: MassCoverage.screen_query_grid_passable_reads_the_tile_under_the_walker
                 // tests: SemWorld.low_obstacles_stop_ground_walkers_and_pass_weapons_and_flyers
                 case PIX_BOULDER_1:
-                // rule: Part of the rule above that begins "Low obstacles (wall sides, torches,
-                //   braziers, columns, boulder tiles) ..."
+                // rule: Low obstacles (wall sides, torches, braziers, columns, boulder tiles) block
+                //   ground walkers including swimmers and forest-walkers.
                 // tests: LevelDataCoverage.swimming_grants_water_passage_but_not_obstacle_passage
                 // tests: LevelDataCoverage.level_data_round6_wrapper_and_passability_edges
                 // tests: MassCoverage.screen_query_grid_passable_reads_the_tile_under_the_walker
                 // tests: SemWorld.low_obstacles_stop_ground_walkers_and_pass_weapons_and_flyers
                 case PIX_BOULDER_2:
-                // rule: Part of the rule above that begins "Low obstacles (wall sides, torches,
-                //   braziers, columns, boulder tiles) ..."
+                // rule: Low obstacles (wall sides, torches, braziers, columns, boulder tiles) block
+                //   ground walkers including swimmers and forest-walkers.
                 // tests: LevelDataCoverage.swimming_grants_water_passage_but_not_obstacle_passage
                 // tests: LevelDataCoverage.level_data_round6_wrapper_and_passability_edges
                 // tests: MassCoverage.screen_query_grid_passable_reads_the_tile_under_the_walker
                 // tests: SemWorld.low_obstacles_stop_ground_walkers_and_pass_weapons_and_flyers
                 case PIX_BOULDER_3:
-                // rule: Part of the rule above that begins "Low obstacles (wall sides, torches,
-                //   braziers, columns, boulder tiles) ..."
+                // rule: Low obstacles (wall sides, torches, braziers, columns, boulder tiles) block
+                //   ground walkers including swimmers and forest-walkers.
                 // tests: LevelDataCoverage.swimming_grants_water_passage_but_not_obstacle_passage
                 // tests: LevelDataCoverage.level_data_round6_wrapper_and_passability_edges
                 // tests: MassCoverage.screen_query_grid_passable_reads_the_tile_under_the_walker
                 // tests: SemWorld.low_obstacles_stop_ground_walkers_and_pass_weapons_and_flyers
                 case PIX_BOULDER_4:
-                    // rule: Part of the rule above that begins "Low obstacles (wall sides, torches,
-                    //   braziers, columns, boulder tiles) ..."
+                    // rule: Low obstacles (wall sides, torches, braziers, columns, boulder tiles)
+                    //   block ground walkers including swimmers and forest-walkers.
                     // tests: LevelDataCoverage.swimming_grants_water_passage_but_not_obstacle_passage
                     // tests: LevelDataCoverage.level_data_round6_wrapper_and_passability_edges
                     // tests: MassCoverage.screen_query_grid_passable_reads_the_tile_under_the_walker
                     // tests: SemWorld.low_obstacles_stop_ground_walkers_and_pass_weapons_and_flyers
                     if (ob->query_order() == Order::Weapon)
                         break;
-                    // rule: Part of the rule above that begins "Low obstacles (wall sides, torches,
-                    //   braziers, columns, boulder tiles) ..."
+                    // rule: Low obstacles (wall sides, torches, braziers, columns, boulder tiles)
+                    //   block ground walkers including swimmers and forest-walkers.
                     // tests: LevelDataCoverage.swimming_grants_water_passage_but_not_obstacle_passage
                     // tests: LevelDataCoverage.level_data_round6_wrapper_and_passability_edges
                     // tests: MassCoverage.screen_query_grid_passable_reads_the_tile_under_the_walker
@@ -1495,38 +1482,38 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob, int floor, boo
                 // tests: ZAxis.running_over_stair_with_walled_destination_never_lands_in_walls
                 // tests: SemWorld.the_multi_floor_tiles_are_walkable_at_the_grid_layer
                 case PIX_AIR:
-                // rule: Part of the rule above that begins "Multi-floor bytes (air, glass, the four
-                //   drop blocks, stair ..."
+                // rule: Multi-floor bytes (air, glass, the four drop blocks, stair up/down) are
+                //   walkable at the grid layer for everyone.
                 // tests: ZAxis.running_over_stair_with_walled_destination_never_lands_in_walls
                 // tests: SemWorld.the_multi_floor_tiles_are_walkable_at_the_grid_layer
                 case PIX_GLASS:
-                // rule: Part of the rule above that begins "Multi-floor bytes (air, glass, the four
-                //   drop blocks, stair ..."
+                // rule: Multi-floor bytes (air, glass, the four drop blocks, stair up/down) are
+                //   walkable at the grid layer for everyone.
                 // tests: ZAxis.running_over_stair_with_walled_destination_never_lands_in_walls
                 // tests: SemWorld.the_multi_floor_tiles_are_walkable_at_the_grid_layer
                 case PIX_DROPBLOCK_UP:
-                // rule: Part of the rule above that begins "Multi-floor bytes (air, glass, the four
-                //   drop blocks, stair ..."
+                // rule: Multi-floor bytes (air, glass, the four drop blocks, stair up/down) are
+                //   walkable at the grid layer for everyone.
                 // tests: ZAxis.running_over_stair_with_walled_destination_never_lands_in_walls
                 // tests: SemWorld.the_multi_floor_tiles_are_walkable_at_the_grid_layer
                 case PIX_DROPBLOCK_RIGHT:
-                // rule: Part of the rule above that begins "Multi-floor bytes (air, glass, the four
-                //   drop blocks, stair ..."
+                // rule: Multi-floor bytes (air, glass, the four drop blocks, stair up/down) are
+                //   walkable at the grid layer for everyone.
                 // tests: ZAxis.running_over_stair_with_walled_destination_never_lands_in_walls
                 // tests: SemWorld.the_multi_floor_tiles_are_walkable_at_the_grid_layer
                 case PIX_DROPBLOCK_DOWN:
-                // rule: Part of the rule above that begins "Multi-floor bytes (air, glass, the four
-                //   drop blocks, stair ..."
+                // rule: Multi-floor bytes (air, glass, the four drop blocks, stair up/down) are
+                //   walkable at the grid layer for everyone.
                 // tests: ZAxis.running_over_stair_with_walled_destination_never_lands_in_walls
                 // tests: SemWorld.the_multi_floor_tiles_are_walkable_at_the_grid_layer
                 case PIX_DROPBLOCK_LEFT:
-                // rule: Part of the rule above that begins "Multi-floor bytes (air, glass, the four
-                //   drop blocks, stair ..."
+                // rule: Multi-floor bytes (air, glass, the four drop blocks, stair up/down) are
+                //   walkable at the grid layer for everyone.
                 // tests: ZAxis.running_over_stair_with_walled_destination_never_lands_in_walls
                 // tests: SemWorld.the_multi_floor_tiles_are_walkable_at_the_grid_layer
                 case PIX_ZSTAIR_UP:
-                // rule: Part of the rule above that begins "Multi-floor bytes (air, glass, the four
-                //   drop blocks, stair ..."
+                // rule: Multi-floor bytes (air, glass, the four drop blocks, stair up/down) are
+                //   walkable at the grid layer for everyone.
                 // tests: ZAxis.running_over_stair_with_walled_destination_never_lands_in_walls
                 // tests: SemWorld.the_multi_floor_tiles_are_walkable_at_the_grid_layer
                 case PIX_ZSTAIR_DOWN:
@@ -1539,24 +1526,19 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob, int floor, boo
                 // rule: Snow, marsh and ash are plain walkable ground.
                 // tests: NewTiles.snow_marsh_ash_are_plain_walkable_ground
                 case PIX_SNOW1:
-                // rule: Part of the rule above that begins "Snow, marsh and ash are plain walkable
-                //   ground."
+                // rule: Snow, marsh and ash are plain walkable ground.
                 // tests: NewTiles.snow_marsh_ash_are_plain_walkable_ground
                 case PIX_SNOW2:
-                // rule: Part of the rule above that begins "Snow, marsh and ash are plain walkable
-                //   ground."
+                // rule: Snow, marsh and ash are plain walkable ground.
                 // tests: NewTiles.snow_marsh_ash_are_plain_walkable_ground
                 case PIX_MARSH1:
-                // rule: Part of the rule above that begins "Snow, marsh and ash are plain walkable
-                //   ground."
+                // rule: Snow, marsh and ash are plain walkable ground.
                 // tests: NewTiles.snow_marsh_ash_are_plain_walkable_ground
                 case PIX_MARSH2:
-                // rule: Part of the rule above that begins "Snow, marsh and ash are plain walkable
-                //   ground."
+                // rule: Snow, marsh and ash are plain walkable ground.
                 // tests: NewTiles.snow_marsh_ash_are_plain_walkable_ground
                 case PIX_ASH1:
-                // rule: Part of the rule above that begins "Snow, marsh and ash are plain walkable
-                //   ground."
+                // rule: Snow, marsh and ash are plain walkable ground.
                 // tests: NewTiles.snow_marsh_ash_are_plain_walkable_ground
                 case PIX_ASH2:
                     break; // plain walkable ground
@@ -1565,21 +1547,21 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob, int floor, boo
                 // tests: NewTiles.lava_is_solid_to_ground_but_flyer_and_weapon_pass
                 // tests: LevelDataCoverage.swimming_grants_water_passage_but_not_obstacle_passage
                 case PIX_LAVA1:
-                // rule: Part of the rule above that begins "Lava is solid to ground walkers
-                //   (swimmers included); projectiles ..."
+                // rule: Lava is solid to ground walkers (swimmers included); projectiles fly over
+                //   it and flyers cross it.
                 // tests: NewTiles.lava_is_solid_to_ground_but_flyer_and_weapon_pass
                 // tests: LevelDataCoverage.swimming_grants_water_passage_but_not_obstacle_passage
                 case PIX_LAVA2:
                     // Molten: solid to ground walkers; projectiles fly over
                     // and flyers cross. Swimming does not grant lava access.
-                    // rule: Part of the rule above that begins "Lava is solid to ground walkers
-                    //   (swimmers included); projectiles ..."
+                    // rule: Lava is solid to ground walkers (swimmers included); projectiles fly
+                    //   over it and flyers cross it.
                     // tests: NewTiles.lava_is_solid_to_ground_but_flyer_and_weapon_pass
                     // tests: LevelDataCoverage.swimming_grants_water_passage_but_not_obstacle_passage
                     if (ob->query_order() == Order::Weapon)
                         break;
-                    // rule: Part of the rule above that begins "Lava is solid to ground walkers
-                    //   (swimmers included); projectiles ..."
+                    // rule: Lava is solid to ground walkers (swimmers included); projectiles fly
+                    //   over it and flyers cross it.
                     // tests: NewTiles.lava_is_solid_to_ground_but_flyer_and_weapon_pass
                     // tests: LevelDataCoverage.swimming_grants_water_passage_but_not_obstacle_passage
                     if (ob->stats()->query_bit_flags(BIT_FLYING) || ob->flight_left())
@@ -1615,16 +1597,14 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob, int floor, boo
             {
                 const unsigned char d =
                     dec.data[static_cast<std::size_t>(i + dec.w * j)];
-                // rule: Part of the rule above that begins "Decor on a cell can only restrict
-                //   passage, never ..."
+                // rule: Decor on a cell can only restrict passage, never grant it.
                 // tests: Decor.blocks_ground_lets_weapons_and_flyers_pass
                 // tests: Decor.decor_never_grants_passage
                 // tests: LevelDataCoverage.swimming_grants_water_passage_but_not_obstacle_passage
                 // tests: SemWorld.a_mismatched_decor_plane_or_unknown_decor_id_is_ignored
                 if (d != DECOR_NONE && d < DECOR_MAX)
                 {
-                    // rule: Part of the rule above that begins "Decor on a cell can only restrict
-                    //   passage, never ..."
+                    // rule: Decor on a cell can only restrict passage, never grant it.
                     // tests: Decor.blocks_ground_lets_weapons_and_flyers_pass
                     // tests: Decor.decor_never_grants_passage
                     // tests: LevelDataCoverage.swimming_grants_water_passage_but_not_obstacle_passage
@@ -1639,16 +1619,14 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob, int floor, boo
                             // Exactly the legacy obstacle arm: weapons pass,
                             // flyers (permanent or temporary) pass, ground
                             // walkers (including swimmers) are blocked.
-                            // rule: Part of the rule above that begins "Decor on a cell can only
-                            //   restrict passage, never ..."
+                            // rule: Decor on a cell can only restrict passage, never grant it.
                             // tests: Decor.blocks_ground_lets_weapons_and_flyers_pass
                             // tests: Decor.decor_never_grants_passage
                             // tests: LevelDataCoverage.swimming_grants_water_passage_but_not_obstacle_passage
                             // tests: SemWorld.a_mismatched_decor_plane_or_unknown_decor_id_is_ignored
                             if (ob->query_order() == Order::Weapon)
                                 break;
-                            // rule: Part of the rule above that begins "Decor on a cell can only
-                            //   restrict passage, never ..."
+                            // rule: Decor on a cell can only restrict passage, never grant it.
                             // tests: Decor.blocks_ground_lets_weapons_and_flyers_pass
                             // tests: Decor.decor_never_grants_passage
                             // tests: LevelDataCoverage.swimming_grants_water_passage_but_not_obstacle_passage
@@ -1731,7 +1709,7 @@ bool sight_opaque_tile(unsigned char tile)
     // rule: Sight is blocked by exactly the tiles an unowned missile can never cross: tree crowns
     //   (TREE_M1/ML/MR/MT/T1, not the trunk B1), solid walls and arrow-slit walls. Water, lava,
     //   boulders, columns, torches, wall sides and unknown bytes are transparent (an unknown tile
-    //   keeps the classic always-face behaviour). Used by clear_sight_line (:1111) for the guard
+    //   keeps the classic always-face behaviour). Used by clear_sight_line (below) for the guard
     //   facing gate.
     // tests: KitFaerie.swap_trades_places_only_in_line_of_sight
     // tests: ScriptBindingPropsTest.kit_line_clear_is_blocked_by_a_wall_and_by_floors
@@ -1772,7 +1750,7 @@ bool GameWorld::clear_sight_line(const walker* from, const walker* to)
         return false;
     // rule: Two walkers see each other only on the same floor, along a cell-Bresenham line between
     //   their centre cells; only the cells strictly between the endpoints are tested (each walker's
-    //   own cell never blocks), an opaque tile (:1043) or a step off the grid breaks the line, and
+    //   own cell never blocks), an opaque tile (above) or a step off the grid breaks the line, and
     //   a world with no grid never occludes.
     // tests: ScriptBindingPropsTest.kit_line_clear_is_blocked_by_a_wall_and_by_floors
     // tests: GameWorldEntityIdsFixture.boundary_queries_fail_closed_without_side_effects
@@ -1782,7 +1760,8 @@ bool GameWorld::clear_sight_line(const walker* from, const walker* to)
         return false;
 
     const PixieData& fg = grid_for_floor(from->floor());
-    // rule: Part of the rule above that begins "Two walkers see each other only on the same ..."
+    // rule: Two walkers see each other only on the same floor, along a cell-Bresenham line between
+    //   their centre cells. Here: `!fg.valid()`.
     // tests: ScriptBindingPropsTest.kit_line_clear_is_blocked_by_a_wall_and_by_floors
     // tests: GameWorldEntityIdsFixture.boundary_queries_fail_closed_without_side_effects
     // tests: KitFaerie.swap_trades_places_only_in_line_of_sight
@@ -1799,50 +1778,47 @@ bool GameWorld::clear_sight_line(const walker* from, const walker* to)
 
     // Bresenham over cells, testing the intermediate cells only (both
     // endpoints are the walkers' own — necessarily walkable — cells).
-    // plumbing: Bresenham setup (abs/sign ternaries) and stepping loop; see game_world.cpp:1072
+    // plumbing: Bresenham setup (abs/sign ternaries) and stepping loop; see above
     const int adx = x1 > x0 ? x1 - x0 : x0 - x1;
-    // plumbing: Bresenham setup (abs/sign ternaries) and stepping loop; see game_world.cpp:1072
     const int ady = y1 > y0 ? y0 - y1 : y1 - y0; // -abs(dy)
-    // plumbing: Bresenham setup (abs/sign ternaries) and stepping loop; see game_world.cpp:1072
     const int sx = x0 < x1 ? 1 : -1;
-    // plumbing: Bresenham setup (abs/sign ternaries) and stepping loop; see game_world.cpp:1072
     const int sy = y0 < y1 ? 1 : -1;
     int err = adx + ady;
 
-    // plumbing: Bresenham setup (abs/sign ternaries) and stepping loop; see game_world.cpp:1072
+    // plumbing: Bresenham setup (abs/sign ternaries) and stepping loop; see above
     while (x0 != x1 || y0 != y1)
     {
         const int e2 = 2 * err;
-        // plumbing: Bresenham setup (abs/sign ternaries) and stepping loop; see game_world.cpp:1072
+        // plumbing: Bresenham setup (abs/sign ternaries) and stepping loop; see above
         if (e2 >= ady)
         {
             err += ady;
             x0 += sx;
         }
-        // plumbing: Bresenham setup (abs/sign ternaries) and stepping loop; see game_world.cpp:1072
+        // plumbing: Bresenham setup (abs/sign ternaries) and stepping loop; see above
         if (e2 <= adx)
         {
             err += adx;
             y0 += sy;
         }
-        // rule: Part of the rule above that begins "Two walkers see each other only on the same
-        //   ..."
+        // rule: Two walkers see each other only on the same floor, along a cell-Bresenham line
+        //   between their centre cells. Here: `endpoint reached`.
         // tests: ScriptBindingPropsTest.kit_line_clear_is_blocked_by_a_wall_and_by_floors
         // tests: GameWorldEntityIdsFixture.boundary_queries_fail_closed_without_side_effects
         // tests: KitFaerie.swap_trades_places_only_in_line_of_sight
         // tests: SemWorld.walkers_in_the_same_or_adjacent_cells_always_see_each_other
         if (x0 == x1 && y0 == y1)
             break;
-        // rule: Part of the rule above that begins "Two walkers see each other only on the same
-        //   ..."
+        // rule: Two walkers see each other only on the same floor, along a cell-Bresenham line
+        //   between their centre cells. Here: `off-grid cell`.
         // tests: ScriptBindingPropsTest.kit_line_clear_is_blocked_by_a_wall_and_by_floors
         // tests: GameWorldEntityIdsFixture.boundary_queries_fail_closed_without_side_effects
         // tests: KitFaerie.swap_trades_places_only_in_line_of_sight
         // tests: SemWorld.walkers_in_the_same_or_adjacent_cells_always_see_each_other
         if (x0 < 0 || y0 < 0 || x0 >= w || y0 >= h)
             return false;
-        // rule: Part of the rule above that begins "Two walkers see each other only on the same
-        //   ..."
+        // rule: Two walkers see each other only on the same floor, along a cell-Bresenham line
+        //   between their centre cells. Here: `sight_opaque_tile(cell)`.
         // tests: ScriptBindingPropsTest.kit_line_clear_is_blocked_by_a_wall_and_by_floors
         // tests: GameWorldEntityIdsFixture.boundary_queries_fail_closed_without_side_effects
         // tests: KitFaerie.swap_trades_places_only_in_line_of_sight
@@ -1867,17 +1843,12 @@ void GameWorld::set_floor_count(int count)
     if (count < 1)
         count = 1;
     const std::size_t extra = static_cast<std::size_t>(count - 1);
-    // rule: Part of the rule above that begins "A level always has at least one floor; asking ..."
-    // tests: GameWorldEntityIdsFixture.boundary_queries_fail_closed_without_side_effects
-    // tests: WalkerSpecialsUnit.teleport_reaches_all_floors_on_multifloor_levels
-    // tests: ZAxis.collision_is_floor_separated
-    // tests: SemWorld.shrinking_the_floor_count_drops_the_upper_floors
     if (extra < extra_floors_.size())
     {
         extra_floors_.resize(extra);
         return;
     }
-    // plumbing: grow extra floors; see game_world.cpp:1122
+    // plumbing: grow extra floors; see above
     while (extra_floors_.size() < extra)
     {
         ExtraFloor new_floor;
@@ -1899,7 +1870,7 @@ walker* GameWorld::find_near_foe(walker* ob)
     //   resolution per step, legs growing 1,1,2,2,... up to MAX_SPREAD 10) starting at the
     //   searcher's own position, on the searcher's own floor. If the spiral touches the map edge,
     //   is exhausted, or the world has no obmap, it falls back to the full floor-blind nearest-foe
-    //   scan (:1236). So the answer is the first foe in spiral order, not necessarily the nearest.
+    //   scan (below). So the answer is the first foe in spiral order, not necessarily the nearest.
     // tests: LevelDataCoverage.level_data_round6_find_near_foe_boundary_fallback_path
     // tests: ZAxis.find_near_foe_probes_the_searchers_floor
     // tests: SemWorld.the_quick_foe_search_answers_the_first_foe_in_spiral_order
@@ -1914,14 +1885,14 @@ walker* GameWorld::find_near_foe(walker* ob)
     short xchange = 0;
     short resolution = myobmap->obmapres;
 
-    // plumbing: spiral legs and pile walk; see game_world.cpp:1146 and :1192
+    // plumbing: spiral legs and pile walk; see above and below
     while (spread < MAX_SPREAD)
     {
-        // plumbing: spiral legs and pile walk; see game_world.cpp:1146 and :1192
+        // plumbing: spiral legs and pile walk; see above and below
         for (short loop = 0; loop < spread; ++loop)
         {
-            // rule: Part of the rule above that begins "The quick foe search walks an outward
-            //   square spiral ..."
+            // rule: The quick foe search walks an outward square spiral of obmap cells (one obmap
+            //   resolution per step, legs growing 1,1,2,2,...
             // tests: LevelDataCoverage.level_data_round6_find_near_foe_boundary_fallback_path
             // tests: ZAxis.find_near_foe_probes_the_searchers_floor
             // tests: SemWorld.the_quick_foe_search_answers_the_first_foe_in_spiral_order
@@ -1930,8 +1901,8 @@ walker* GameWorld::find_near_foe(walker* ob)
             if ((xchange % 2) == 0)
             {
                 targx += resolution;
-                // rule: Part of the rule above that begins "The quick foe search walks an outward
-                //   square spiral ..."
+                // rule: The quick foe search walks an outward square spiral of obmap cells (one
+                //   obmap resolution per step, legs growing 1,1,2,2,...
                 // tests: LevelDataCoverage.level_data_round6_find_near_foe_boundary_fallback_path
                 // tests: ZAxis.find_near_foe_probes_the_searchers_floor
                 // tests: SemWorld.the_quick_foe_search_answers_the_first_foe_in_spiral_order
@@ -1943,8 +1914,8 @@ walker* GameWorld::find_near_foe(walker* ob)
             else
             {
                 targy += resolution;
-                // rule: Part of the rule above that begins "The quick foe search walks an outward
-                //   square spiral ..."
+                // rule: The quick foe search walks an outward square spiral of obmap cells (one
+                //   obmap resolution per step, legs growing 1,1,2,2,...
                 // tests: LevelDataCoverage.level_data_round6_find_near_foe_boundary_fallback_path
                 // tests: ZAxis.find_near_foe_probes_the_searchers_floor
                 // tests: SemWorld.the_quick_foe_search_answers_the_first_foe_in_spiral_order
@@ -1964,7 +1935,7 @@ walker* GameWorld::find_near_foe(walker* ob)
             // legacy behavior is byte-identical.
             std::list<walker*>& ls =
                 myobmap->obmap_get_list(targx, targy, ob->floor());
-	            // plumbing: spiral legs and pile walk; see game_world.cpp:1146 and :1192
+	            // plumbing: spiral legs and pile walk; see above and below
 	            for (auto it = ls.begin(); it != ls.end(); )
             {
                 walker* w = *it;
@@ -1981,7 +1952,7 @@ walker* GameWorld::find_near_foe(walker* ob)
                 //   friendly to the searcher, a Living or a Generator (never a weapon, treasure or
                 //   effect), and its cloak roll succeeds: invisibility_left/20 is the die size and
                 //   only a 0 reveals it (0..19 always visible, negative clamped to visible). Same
-                //   acquisition rule as find_nearest_foe (:1241).
+                //   acquisition rule as find_nearest_foe (below).
                 // tests: SimWorldHeadless.negative_invisibility_does_not_hide_a_foe_from_search
                 // tests: SimWorldHeadless.foe_search_unchanged_for_non_negative_invisibility
                 // tests: SemWorld.the_quick_foe_search_acquires_a_hostile_generator
@@ -1990,8 +1961,9 @@ walker* GameWorld::find_near_foe(walker* ob)
                 if (!w->dead() && ob->is_friendly(w) == 0 &&
                     rng_.next(static_cast<std::uint32_t>(std::max<int>(w->invisibility_left(), 0) / 20)) == 0)  // clamp: invisibility_left is snapshot/Lua-writable and a negative would wrap to a ~4e9 next() bound, hiding the foe forever. No-op for every value >= 0.
                 {
-                    // rule: Part of the rule above that begins "In the quick search a candidate is
-                    //   acquired only ..."
+                    // rule: In the quick search a candidate is acquired only if it is alive, not
+                    //   friendly to the searcher, a Living or a Generator (never a weapon, treasure
+                    //   or effect), and its cloak roll succeeds. Here: `Living || Generator`.
                     // tests: SimWorldHeadless.negative_invisibility_does_not_hide_a_foe_from_search
                     // tests: SimWorldHeadless.foe_search_unchanged_for_non_negative_invisibility
                     // tests: SemWorld.the_quick_foe_search_acquires_a_hostile_generator
@@ -2009,8 +1981,8 @@ walker* GameWorld::find_near_foe(walker* ob)
 
         // change whether we do x or y in each for loop
         ++xchange;
-        // rule: Part of the rule above that begins "The quick foe search walks an outward square
-        //   spiral ..."
+        // rule: The quick foe search walks an outward square spiral of obmap cells (one obmap
+        //   resolution per step, legs growing 1,1,2,2,...
         // tests: LevelDataCoverage.level_data_round6_find_near_foe_boundary_fallback_path
         // tests: ZAxis.find_near_foe_probes_the_searchers_floor
         // tests: SemWorld.the_quick_foe_search_answers_the_first_foe_in_spiral_order
@@ -2043,12 +2015,12 @@ walker* GameWorld::find_nearest_foe(walker* ob)
     ob->stats()->set_last_distance(10000);
     sanitize_owner_chain_link(*this, ob);
 
-    // plumbing: oblist scan; see game_world.cpp:1236
+    // plumbing: oblist scan; see below
     for (auto& uptr : oblist)
     {
         walker* foe = uptr.get();
         // rule: The full foe search (also the fallback of find_near_foe and the per-tick foe force
-        //   at :1816) returns the nearest-by-distance walker in the object list that is alive,
+        //   below) returns the nearest-by-distance walker in the object list that is alive,
         //   awake (not dormant), visible (not hidden), not friendly to the searcher, a Living or
         //   Generator, and wins its cloak roll; it is floor-blind and returns nothing when no foe
         //   qualifies. Ties keep the earlier walker in list order (strict <). It also resets the
@@ -2065,8 +2037,11 @@ walker* GameWorld::find_nearest_foe(walker* ob)
 
         sanitize_owner_chain_link(*this, foe);
 
-        // rule: Part of the rule above that begins "The full foe search (also the fallback of
-        //   find_near_foe ..."
+        // rule: The full foe search (also the fallback of find_near_foe and the per-tick foe force
+        //   below) returns the nearest-by-distance walker in the object list that is alive,
+        //   awake (not dormant), visible (not hidden), not friendly to the searcher, a Living or
+        //   Generator, and wins its cloak roll. Here: `is_friendly==0 && (Living||Generator) &&
+        //   cloak roll`.
         // tests: LevelDataCoverage.level_data_round13_find_helpers_selection_and_filters
         // tests: LevelDataCoverage.level_data_round14_find_helper_exclusion_branches
         // tests: KitSeams.hidden_walker_is_inert_and_skipped_by_every_finder
@@ -2080,8 +2055,10 @@ walker* GameWorld::find_nearest_foe(walker* ob)
             (rng_.next(static_cast<std::uint32_t>(std::max<int>(foe->invisibility_left(), 0) / 20)) == 0))  // same clamp as find_near_foe: a negative cloak counter must not wrap into a ~4e9 next() bound.
         {
             const std::int32_t tempdistance = ob->distance_to_ob(foe);
-            // rule: Part of the rule above that begins "The full foe search (also the fallback of
-            //   find_near_foe ..."
+            // rule: The full foe search (also the fallback of find_near_foe and the per-tick foe
+            //   force below) returns the nearest-by-distance walker in the object list that is
+            //   alive, awake (not dormant), visible (not hidden), not friendly to the searcher, a
+            //   Living or Generator, and wins its cloak roll. Here: `tempdistance < distance`.
             // tests: LevelDataCoverage.level_data_round13_find_helpers_selection_and_filters
             // tests: LevelDataCoverage.level_data_round14_find_helper_exclusion_branches
             // tests: KitSeams.hidden_walker_is_inert_and_skipped_by_every_finder
@@ -2110,7 +2087,7 @@ walker* GameWorld::find_nearest_blood(walker* who)
     std::int32_t distance = 800;
     walker* returnob = nullptr;
 
-    // plumbing: fxlist scan; see game_world.cpp:1270
+    // plumbing: fxlist scan; see below
     for (auto& uptr : fxlist)
     {
         walker* w = uptr.get();
@@ -2128,8 +2105,9 @@ walker* GameWorld::find_nearest_blood(walker* who)
         {
             const std::int32_t newdistance =
                 static_cast<std::int32_t>(who->distance_to_ob_center(w));
-            // rule: Part of the rule above that begins "The corpse finder used by classic raises
-            //   returns the ..."
+            // rule: The corpse finder used by classic raises returns the nearest live blood stain
+            //   in the effect list whose squared centre distance from the finder is under 800
+            //   (about 28 px), on ANY floor. Here: `newdistance < distance (start 800)`.
             // tests: QuietProbe.find_blood_in_reach_walks_the_finders_stains_nearest_first
             // tests: LevelDataCoverage.level_data_round14_find_helper_exclusion_branches
             // tests: SemWorld.the_corpse_finder_reaches_only_under_squared_distance_800
@@ -2153,11 +2131,11 @@ walker* GameWorld::find_nearest_player(walker* ob)
     walker* returnob = nullptr;
     std::uint32_t distance = 32000;
 
-    // plumbing: oblist scan; see game_world.cpp:1297
+    // plumbing: oblist scan; see below
     for (auto& uptr : oblist)
     {
         walker* w = uptr.get();
-        // rule: The leader finder for ACTION_FOLLOW (living.cpp:777) returns the nearest
+        // rule: The leader finder for ACTION_FOLLOW (living.cpp) returns the nearest
         //   seat-driven walker (user != -1) that is awake and visible, whatever its team and
         //   whether or not it is dead; nothing when no seat-driven walker exists.
         // tests: LevelDataCoverage.level_data_round13_find_helpers_selection_and_filters
@@ -2168,8 +2146,9 @@ walker* GameWorld::find_nearest_player(walker* ob)
         if (w && !w->dormant() && !w->hidden() && w->user() != -1)
         {
             const std::uint32_t tempdistance = static_cast<std::uint32_t>(ob->distance_to_ob(w));
-            // rule: Part of the rule above that begins "The leader finder for ACTION_FOLLOW
-            //   (living.cpp:777) returns the nearest ..."
+            // rule: The leader finder for ACTION_FOLLOW (living.cpp) returns the nearest
+            //   seat-driven walker (user != -1) that is awake and visible, whatever its team and
+            //   whether or not it is dead. Here: `tempdistance < distance (start 32000)`.
             // tests: LevelDataCoverage.level_data_round13_find_helpers_selection_and_filters
             // tests: KitSeams.hidden_walker_is_inert_and_skipped_by_every_finder
             // tests: LevelDataCoverage.level_data_round5_find_helpers_contiguous_block_paths
@@ -2199,7 +2178,7 @@ std::list<walker*> GameWorld::find_in_range(const std::list<std::unique_ptr<walk
     if (!ob || howmany == nullptr)
         return result;
 
-    // plumbing: range-finder list scans; see game_world.cpp:1325, :1349, :1377, :1404
+    // plumbing: range-finder list scans; see below
     for (auto& uptr : somelist)
     {
         walker* w = uptr.get();
@@ -2232,7 +2211,7 @@ std::list<walker*> GameWorld::find_foes_in_range(const std::list<std::unique_ptr
     if (!ob || howmany == nullptr)
         return result;
 
-    // plumbing: range-finder list scans; see game_world.cpp:1325, :1349, :1377, :1404
+    // plumbing: range-finder list scans; see above and below
     for (auto& uptr : somelist)
     {
         walker* w = uptr.get();
@@ -2268,7 +2247,7 @@ std::list<walker*> GameWorld::find_foe_weapons_in_range(const std::list<std::uni
     if (!ob || howmany == nullptr)
         return result;
 
-    // plumbing: range-finder list scans; see game_world.cpp:1325, :1349, :1377, :1404
+    // plumbing: range-finder list scans; see above and below
     for (auto& uptr : somelist)
     {
         walker* w = uptr.get();
@@ -2304,7 +2283,7 @@ std::list<walker*> GameWorld::find_friends_in_range(const std::list<std::unique_
     if (!ob || howmany == nullptr)
         return result;
 
-    // plumbing: range-finder list scans; see game_world.cpp:1325, :1349, :1377, :1404
+    // plumbing: range-finder list scans; see above and below
     for (auto& uptr : somelist)
     {
         walker* w = uptr.get();
@@ -2355,7 +2334,8 @@ void GameWorld::create_new_grid()
     // tests: SemWorld.a_new_blank_level_is_forty_by_sixty_grass_one_draw_per_cell
     for (int i = 0; i < size; i++)
     {
-        // rule: Part of the rule above that begins "A new blank level is a 40x60 grid of ..."
+        // rule: A new blank level is a 40x60 grid of the four grass variants, each cell chosen by
+        //   one world-RNG draw.
         // tests: SemWorld.a_new_blank_level_is_forty_by_sixty_grass_one_draw_per_cell
         switch (rng_.next(4))
         {
@@ -2384,8 +2364,9 @@ void GameWorld::resize_grid(int width, int height)
     }
 
     auto random_grass_tile = [this]() -> unsigned char {
-        // rule: Part of the rule above that begins "Resizing a level keeps every tile inside the
-        //   old ..."
+        // rule: Resizing a level keeps every tile inside the old bounds, fills newly added cells
+        //   with random grass, and refuses sizes below 3 or above 255 (one byte in the file format)
+        //   leaving the level unchanged.
         // tests: LevelDataCoverage.level_data_round17_grid_resize_campaign_wrappers_and_delete_object_hooks
         // tests: SemWorld.a_resize_below_three_or_above_255_leaves_the_level_unchanged
         switch (rng_.next(4))
@@ -2403,14 +2384,15 @@ void GameWorld::resize_grid(int width, int height)
     auto new_grid = std::make_unique<unsigned char[]>(static_cast<std::size_t>(size));
 
     // Copy the map data
-    // plumbing: resize copy loops; see game_world.cpp:1458
+    // plumbing: resize copy loops; see above
     for (int i = 0; i < width; i++)
     {
-        // plumbing: resize copy loops; see game_world.cpp:1458
+        // plumbing: resize copy loops; see above
         for (int j = 0; j < height; j++)
         {
-            // rule: Part of the rule above that begins "Resizing a level keeps every tile inside
-            //   the old ..."
+            // rule: Resizing a level keeps every tile inside the old bounds, fills newly added
+            //   cells with random grass, and refuses sizes below 3 or above 255 (one byte in the
+            //   file format) leaving the level unchanged.
             // tests: LevelDataCoverage.level_data_round17_grid_resize_campaign_wrappers_and_delete_object_hooks
             // tests: SemWorld.a_resize_below_three_or_above_255_leaves_the_level_unchanged
             if (i < grid.w && j < grid.h)
@@ -2452,18 +2434,12 @@ void GameWorld::resize_grid(int width, int height)
             remove_from_id_index(uptr.get());
         return erase;
     });
-    // rule: Part of the rule above that begins "Shrinking a level deletes every walker, effect and
-    //   weapon ..."
-    // tests: LevelDataCoverage.level_data_round17_grid_resize_campaign_wrappers_and_delete_object_hooks
     std::erase_if(fxlist.raw_mutable(), [this, &off_map](const auto& uptr) {
         const bool erase = off_map(uptr);
         if (erase)
             remove_from_id_index(uptr.get());
         return erase;
     });
-    // rule: Part of the rule above that begins "Shrinking a level deletes every walker, effect and
-    //   weapon ..."
-    // tests: LevelDataCoverage.level_data_round17_grid_resize_campaign_wrappers_and_delete_object_hooks
     std::erase_if(weaplist.raw_mutable(), [this, &off_map](const auto& uptr) {
         const bool erase = off_map(uptr);
         if (erase)
@@ -2564,8 +2540,8 @@ char GameWorld::damage_tile(short xloc, short yloc)
     if (!grid.valid())
         return 0;
 
-    // rule: Part of the rule above that begins "A blast off the map (including a negative pixel
-    //   ..."
+    // rule: A blast off the map (including a negative pixel that would truncate into cell 0) or on
+    //   a level with no grid damages no tile and folds no dirty tile. Here: `xloc<0||yloc<0`.
     // tests: GameWorldEntityIdsFixture.damage_tile_rejects_negative_pixels_before_dividing
     // tests: GameWorldEntityIdsFixture.boundary_queries_fail_closed_without_side_effects
     // tests: ScreenExtended.screen_damage_tile_various
@@ -2575,8 +2551,9 @@ char GameWorld::damage_tile(short xloc, short yloc)
     const short xover = static_cast<short>(xloc / GRID_SIZE);
     const short yover = static_cast<short>(yloc / GRID_SIZE);
 
-    // rule: Part of the rule above that begins "A blast off the map (including a negative pixel
-    //   ..."
+    // rule: A blast off the map (including a negative pixel that would truncate into cell 0) or on
+    //   a level with no grid damages no tile and folds no dirty tile. Here:
+    //   `xover>=grid.w||yover>=grid.h`.
     // tests: GameWorldEntityIdsFixture.damage_tile_rejects_negative_pixels_before_dividing
     // tests: GameWorldEntityIdsFixture.boundary_queries_fail_closed_without_side_effects
     // tests: ScreenExtended.screen_damage_tile_various
@@ -2642,7 +2619,7 @@ short GameWorld::remaining_foes(walker* myguy) const
         return 0;
 
     short myfoes = 0;
-    // plumbing: oblist scan; see game_world.cpp:1673
+    // plumbing: oblist scan; see below
     for (auto& uptr : oblist)
     {
         walker* w = uptr.get();
@@ -2695,9 +2672,6 @@ void GameWorld::tick()
     // tests: ClassicRespawn.timeout_end_shape_flushes_pending_heroes
     if (og::sim::g_test_level_tick_limit_override > 0)
         max_level_ticks = static_cast<std::uint32_t>(og::sim::g_test_level_tick_limit_override);
-    // rule: Part of the rule above that begins "A level that runs past 36000 ticks is lost: ..."
-    // tests: SimWorld.r15_reset_level_progress_clears_timeout_for_same_level
-    // tests: ClassicRespawn.timeout_end_shape_flushes_pending_heroes
     if (level_tick_count_ > max_level_ticks)
     {
         // Hard mission timeout safety net to avoid unbounded gameplay loops.
@@ -2723,10 +2697,6 @@ void GameWorld::tick()
     // tests: SemWorld.freeze_time_counts_down_and_only_its_last_tick_restores_the_palette
     if (enemy_freeze)
         enemy_freeze--;
-    // rule: Part of the rule above that begins "FREEZE TIME counts down one per tick; on the ..."
-    // tests: SimWorld.r15_freeze_tick_and_level_done_paths
-    // tests: RuntimeCoveragePaths.sim_world_freeze_countdown_is_hud_state_and_weap_cleanup
-    // tests: SemWorld.freeze_time_counts_down_and_only_its_last_tick_restores_the_palette
     if (enemy_freeze == 1)
     {
         current_palette_id = 0;
@@ -2756,7 +2726,7 @@ void GameWorld::tick()
             ob->stats() != nullptr &&
             ob->stats()->query_bit_flags(BIT_NO_COLLIDE);
         // rule: A delayed-spawn walker wakes in place when no live blocker overlaps its spot;
-        //   otherwise it moves to the nearest clear cell within 4 rings (:2235); if none is clear
+        //   otherwise it moves to the nearest clear cell within 4 rings (below); if none is clear
         //   it stays dormant (still counted alive) and retries next tick with a 'delayed spawn
         //   deferred' trace. A BIT_NO_COLLIDE waker always wakes in place. Every wake spawns an
         //   expanding FAMILY_FLASH on the waker's floor centred on it and traces 'delayed spawn:
@@ -2776,14 +2746,6 @@ void GameWorld::tick()
         }
         ob->set_dormant(false);
         walker* flash = add_ob(Order::FX, FAMILY_FLASH);
-        // rule: Part of the rule above that begins "A delayed-spawn walker wakes in place when no
-        //   live ..."
-        // tests: DelayedSpawnWake.packed_formation_equal_delays_all_wake
-        // tests: DelayedSpawnWake.an_edge_wake_skips_off_grid_and_still_dormant_cells
-        // tests: DelayedSpawnWake.blocked_wake_defers_then_completes
-        // tests: NpcScenarioFlags.dormant_walker_hidden_until_spawn_tick_then_enters_world
-        // tests: SemWorld.a_no_collide_sleeper_wakes_in_place_on_a_held_spot
-        // tests: SemWorld.a_wake_flashes_once_on_the_wakers_floor
         if (flash != nullptr)
         {
             flash->set_ani_type(ANI_EXPAND_8);
@@ -2797,7 +2759,7 @@ void GameWorld::tick()
     };
 
     // --- Entity act phase ---
-    // plumbing: entity act phase over oblist; see game_world.cpp:1781, :1789, :1802, :1812, :1816
+    // plumbing: entity act phase over oblist; see below
     for (auto& uptr : oblist)
     {
         // rule: Once a withdraw is requested during a tick (an exit pad accepted, a level script's
@@ -2826,8 +2788,8 @@ void GameWorld::tick()
         // tests: SemWorld.a_sleeper_acts_first_on_the_tick_it_wakes
         if (ob != nullptr && !ob->dead() && (ob->dormant() || ob->hidden()))
         {
-            // rule: Part of the rule above that begins "A dormant (delayed-spawn) or hidden walker
-            //   does not act, ..."
+            // rule: A dormant (delayed-spawn) or hidden walker does not act, but a hostile Living
+            //   among them still holds the level open.
             // tests: SimWorldHeadless.freeze_still_counts_a_dormant_hostile
             // tests: NpcScenarioFlags.dormant_walker_hidden_until_spawn_tick_then_enters_world
             // tests: DelayedSpawnWake.blocked_wake_defers_then_completes
@@ -2837,8 +2799,8 @@ void GameWorld::tick()
             // tests: SemWorld.a_sleeper_acts_first_on_the_tick_it_wakes
             if (ob->dormant() && level_tick_count_ > ob->spawn_delay())
                 wake_delayed_spawn(ob);
-            // rule: Part of the rule above that begins "A dormant (delayed-spawn) or hidden walker
-            //   does not act, ..."
+            // rule: A dormant (delayed-spawn) or hidden walker does not act, but a hostile Living
+            //   among them still holds the level open.
             // tests: SimWorldHeadless.freeze_still_counts_a_dormant_hostile
             // tests: NpcScenarioFlags.dormant_walker_hidden_until_spawn_tick_then_enters_world
             // tests: DelayedSpawnWake.blocked_wake_defers_then_completes
@@ -2848,8 +2810,8 @@ void GameWorld::tick()
             // tests: SemWorld.a_sleeper_acts_first_on_the_tick_it_wakes
             if (ob->dormant() || ob->hidden())
             {
-                // rule: Part of the rule above that begins "A dormant (delayed-spawn) or hidden
-                //   walker does not act, ..."
+                // rule: A dormant (delayed-spawn) or hidden walker does not act, but a hostile
+                //   Living among them still holds the level open.
                 // tests: SimWorldHeadless.freeze_still_counts_a_dormant_hostile
                 // tests: NpcScenarioFlags.dormant_walker_hidden_until_spawn_tick_then_enters_world
                 // tests: DelayedSpawnWake.blocked_wake_defers_then_completes
@@ -2894,8 +2856,8 @@ void GameWorld::tick()
                 ob->set_in_act(true);
                 ob->act();
                 ob->set_in_act(false);
-                // rule: Part of the rule above that begins "A level stays unfinished while any
-                //   Living not friendly ..."
+                // rule: A level stays unfinished while any Living not friendly to the player's team
+                //   is alive after its turn, in the object list, whether it acted or was frozen.
                 // tests: SimWorldHeadless.freeze_keeps_level_unfinished_with_a_live_foe
                 // tests: SimWorldHeadless.freeze_does_not_autocomplete_a_kill_all_level
                 // tests: parity:enemy_freeze_mage_scen99
@@ -2904,8 +2866,9 @@ void GameWorld::tick()
                 // tests: SemWorld.hostile_generators_alone_never_hold_the_level_open
                 if (ob && !ob->dead())
                 {
-                    // rule: Part of the rule above that begins "A level stays unfinished while any
-                    //   Living not friendly ..."
+                    // rule: A level stays unfinished while any Living not friendly to the player's
+                    //   team is alive after its turn, in the object list, whether it acted or was
+                    //   frozen.
                     // tests: SimWorldHeadless.freeze_keeps_level_unfinished_with_a_live_foe
                     // tests: SimWorldHeadless.freeze_does_not_autocomplete_a_kill_all_level
                     // tests: parity:enemy_freeze_mage_scen99
@@ -2918,7 +2881,7 @@ void GameWorld::tick()
                     // Testing .. trying to FORCE foes :)
                     // rule: After acting, every live walker in the object list (any order, any
                     //   team) with neither a foe nor a leader is handed the nearest qualifying foe
-                    //   (:1236) - the classic 'FORCE foes'. A walker with a leader keeps no forced
+                    //   (above) - the classic 'FORCE foes'. A walker with a leader keeps no forced
                     //   foe.
                     // tests: SemWorld.a_walker_without_foe_or_leader_is_handed_the_nearest_foe
                     if (ob->foe() == nullptr && ob->leader() == nullptr)
@@ -2931,8 +2894,8 @@ void GameWorld::tick()
             // The countdown is drawn by the HUD from enemy_freeze (#232); it
             // used to be pushed into the notification feed every tenth tick,
             // which evicted every other message for the whole freeze.
-            // rule: Part of the rule above that begins "During FREEZE TIME every walker the
-            //   player's side is ..."
+            // rule: During FREEZE TIME every walker the player's side is not friendly with that is
+            //   a Living or Generator skips its turn.
             // tests: SimWorld.r15_freeze_tick_and_level_done_paths
             // tests: SimWorld.r15_freeze_uses_friendliness_not_team_zero
             // tests: SimWorld.r15_normal_tick_cleanup_and_dead_entity_removal
@@ -2948,8 +2911,8 @@ void GameWorld::tick()
                     ((ob->query_order() != Order::Living) &&
                      (ob->query_order() != Order::Generator)) ||
                     ob->is_friendly_to_team(static_cast<unsigned char>(my_team));
-                // rule: Part of the rule above that begins "During FREEZE TIME every walker the
-                //   player's side is ..."
+                // rule: During FREEZE TIME every walker the player's side is not friendly with that
+                //   is a Living or Generator skips its turn.
                 // tests: SimWorld.r15_freeze_tick_and_level_done_paths
                 // tests: SimWorld.r15_freeze_uses_friendliness_not_team_zero
                 // tests: SimWorld.r15_normal_tick_cleanup_and_dead_entity_removal
@@ -2957,8 +2920,8 @@ void GameWorld::tick()
                 // tests: SemWorld.freeze_time_stops_hostile_generators_but_not_effects_or_treasures
                 if (may_act)
                     ob->act();
-                // rule: Part of the rule above that begins "A level stays unfinished while any
-                //   Living not friendly ..."
+                // rule: A level stays unfinished while any Living not friendly to the player's team
+                //   is alive after its turn, in the object list, whether it acted or was frozen.
                 // tests: SimWorldHeadless.freeze_keeps_level_unfinished_with_a_live_foe
                 // tests: SimWorldHeadless.freeze_does_not_autocomplete_a_kill_all_level
                 // tests: parity:enemy_freeze_mage_scen99
@@ -2967,8 +2930,9 @@ void GameWorld::tick()
                 // tests: SemWorld.hostile_generators_alone_never_hold_the_level_open
                 if (ob && !ob->dead())
                 {
-                    // rule: Part of the rule above that begins "A level stays unfinished while any
-                    //   Living not friendly ..."
+                    // rule: A level stays unfinished while any Living not friendly to the player's
+                    //   team is alive after its turn, in the object list, whether it acted or was
+                    //   frozen.
                     // tests: SimWorldHeadless.freeze_keeps_level_unfinished_with_a_live_foe
                     // tests: SimWorldHeadless.freeze_does_not_autocomplete_a_kill_all_level
                     // tests: parity:enemy_freeze_mage_scen99
@@ -2983,7 +2947,9 @@ void GameWorld::tick()
         }
     }
 
-    // rule: Part of the rule above that begins "Once a withdraw is requested during a tick (an ..."
+    // rule: Once a withdraw is requested during a tick (an exit pad accepted, a level script's
+    //   withdraw), no further walker or weapon acts that tick and the rest of the tick (exit scan,
+    //   completion, cleanup, dead sweep) is skipped.
     // tests: ModeTick.withdraw_raised_by_a_weapon_hit_stops_the_rest_of_the_weapon_phase
     // tests: SimWorld.r15_normal_tick_cleanup_and_dead_entity_removal
     // tests: SemWorld.a_withdraw_raised_in_the_object_phase_ends_the_tick
@@ -2991,11 +2957,12 @@ void GameWorld::tick()
         return;
 
     // --- Weapon act phase ---
-    // plumbing: weapon act phase; see game_world.cpp:1858
+    // plumbing: weapon act phase; see below
     for (auto& uptr : weaplist)
     {
-        // rule: Part of the rule above that begins "Once a withdraw is requested during a tick (an
-        //   ..."
+        // rule: Once a withdraw is requested during a tick (an exit pad accepted, a level script's
+        //   withdraw), no further walker or weapon acts that tick and the rest of the tick (exit
+        //   scan, completion, cleanup, dead sweep) is skipped.
         // tests: ModeTick.withdraw_raised_by_a_weapon_hit_stops_the_rest_of_the_weapon_phase
         // tests: SimWorld.r15_normal_tick_cleanup_and_dead_entity_removal
         // tests: SemWorld.a_withdraw_raised_in_the_object_phase_ends_the_tick
@@ -3011,14 +2978,14 @@ void GameWorld::tick()
         if (ob && !ob->dead())
         {
             ob->act();
-            // rule: Part of the rule above that begins "Every live walker in the weapon list acts
-            //   once ..."
+            // rule: Every live walker in the weapon list acts once per tick after the object list,
+            //   freeze or not (missiles are never frozen).
             // tests: SimWorldHeadless.hostile_living_in_the_weapon_list_holds_the_level_open
             // tests: SemWorld.live_missiles_act_through_freeze_time_and_dead_ones_never
             if (ob && !ob->dead())
             {
-                // rule: Part of the rule above that begins "Every live walker in the weapon list
-                //   acts once ..."
+                // rule: Every live walker in the weapon list acts once per tick after the object
+                //   list, freeze or not (missiles are never frozen).
                 // tests: SimWorldHeadless.hostile_living_in_the_weapon_list_holds_the_level_open
                 // tests: SemWorld.live_missiles_act_through_freeze_time_and_dead_ones_never
                 if (!ob->is_friendly_to_team(static_cast<unsigned char>(my_team)) &&
@@ -3028,7 +2995,9 @@ void GameWorld::tick()
         }
     }
 
-    // rule: Part of the rule above that begins "Once a withdraw is requested during a tick (an ..."
+    // rule: Once a withdraw is requested during a tick (an exit pad accepted, a level script's
+    //   withdraw), no further walker or weapon acts that tick and the rest of the tick (exit scan,
+    //   completion, cleanup, dead sweep) is skipped.
     // tests: ModeTick.withdraw_raised_by_a_weapon_hit_stops_the_rest_of_the_weapon_phase
     // tests: SimWorld.r15_normal_tick_cleanup_and_dead_entity_removal
     // tests: SemWorld.a_withdraw_raised_in_the_object_phase_ends_the_tick
@@ -3036,7 +3005,7 @@ void GameWorld::tick()
         return;
 
     // --- Check background for exits ---
-    // plumbing: fxlist exit scan; see game_world.cpp:1877
+    // plumbing: fxlist exit scan; see below
     for (auto& uptr : fxlist)
     {
         walker* ob = uptr.get();
@@ -3049,8 +3018,8 @@ void GameWorld::tick()
         // tests: SemWorld.a_dead_exit_pad_does_not_keep_a_cleared_level_waiting
         if (ob && !ob->dead())
         {
-            // rule: Part of the rule above that begins "When no foes remain, a live exit pad on
-            //   ..."
+            // rule: When no foes remain, a live exit pad on the level turns 'no foes, no exit' (2)
+            //   into 'cleared, walk to the exit' (1), so the level does not auto-advance.
             // tests: RuntimeCoveragePaths.sim_world_tick_branches_for_end_freeze_and_cleanup
             // tests: SimWorld.r15_end_flag_and_auto_advance_paths
             // tests: SimWorld.r15_freeze_tick_and_level_done_paths
@@ -3081,8 +3050,8 @@ void GameWorld::tick()
     if ((type & TYPE_SCRIPTED) && !(mode.init_attempted && !mode.active))
     {
         og::sim::mode_run_tick(*this);
-        // rule: Part of the rule above that begins "A scripted (mode) level hands completion to its
-        //   mode ..."
+        // rule: A scripted (mode) level hands completion to its mode script every tick; if the mode
+        //   ended the game the tick stops there. Here: `game_ended -> return`.
         // tests: ModeTick.scripted_bit_without_hooks_falls_classic_next_tick
         // tests: LineupStageLazyArm.refused_mode_world_runs_the_step_once
         // tests: ModeTick.declare_winner_is_one_shot_and_reasserted_every_tick
@@ -3104,8 +3073,9 @@ void GameWorld::tick()
         // follows on this tick — the classic arm's is next tick's, against
         // the world the step built — so the fielded squads are counted
         // before a kill-all map can declare anything.
-        // rule: Part of the rule above that begins "A scripted (mode) level hands completion to its
-        //   mode ..."
+        // rule: A scripted (mode) level hands completion to its mode script every tick; if the mode
+        //   ended the game the tick stops there. Here: `init refused && !claim ->
+        //   run_lineup_stage_step`.
         // tests: ModeTick.scripted_bit_without_hooks_falls_classic_next_tick
         // tests: LineupStageLazyArm.refused_mode_world_runs_the_step_once
         // tests: ModeTick.declare_winner_is_one_shot_and_reasserted_every_tick
@@ -3161,8 +3131,8 @@ void GameWorld::tick()
         if (level_tick_count_ == 1 && !consume_staged_lineup_stage_claim())
         {
             const std::size_t entities_before = oblist.size();
-            // rule: Part of the rule above that begins "An un-staged classic level (solo play) runs
-            //   its lineup ..."
+            // rule: An un-staged classic level (solo play) runs its lineup stage step on its first
+            //   tick. Here: `run_lineup_stage_step() && oblist grew -> level_done = 0`.
             // tests: LineupStageLazyArm.a_step_that_fields_fighters_holds_the_level_open
             // tests: LineupStageLazyArm.un_staged_world_runs_the_step_on_its_first_tick
             // tests: MatchStageTest.adopted_world_does_not_re_run_the_lineup_stage
@@ -3221,18 +3191,11 @@ void GameWorld::tick()
         // corpses). No-op when respawn_mode == 0, so the default path stays
         // byte-identical.
         og::sim::classic_respawn_run_tick(*this);
-        // rule: Part of the rule above that begins "A session-requested end (world.end) stops the
-        //   level: game_ended latches ..."
-        // tests: SimWorld.r15_end_flag_and_auto_advance_paths
-        // tests: SimWorldHeadless.world_end_stops_a_scripted_level_without_choosing_a_level
-        // tests: ClassicRespawn.end_driven_completion_flushes_and_drops_pending_ai
-        // tests: ClassicRespawn.end_of_level_revives_pending_heroes_and_clears_queue
         if (game_ended)
             return;
     }
 
-    // rule: Part of the rule above that begins "A session-requested end (world.end) stops the
-    //   level: game_ended latches ..."
+    // rule: A session-requested end (world.end) stops the level.
     // tests: SimWorld.r15_end_flag_and_auto_advance_paths
     // tests: SimWorldHeadless.world_end_stops_a_scripted_level_without_choosing_a_level
     // tests: ClassicRespawn.end_driven_completion_flushes_and_drops_pending_ai
@@ -3255,40 +3218,45 @@ void GameWorld::tick()
         if (ob == nullptr)
             return;
 
-        // rule: Part of the rule above that begins "At the end of every unfinished tick, every
-        //   walker, ..."
+        // rule: At the end of every unfinished tick, every walker, effect and weapon drops its
+        //   links (foe, leader, owner, collide target, stats controller) to walkers that are dead,
+        //   so nobody chases, follows or is owned by a corpse into the next tick.
         // tests: SimWorld.r15_normal_tick_cleanup_and_dead_entity_removal
         // tests: RuntimeCoveragePaths.sim_world_batch6_cleanup_and_erase_paths_with_hostiles_present
         // tests: SemWorld.links_to_live_walkers_survive_the_stale_link_cleanup
         // tests: SemWorld.a_stats_controller_that_died_is_dropped_at_the_end_of_the_tick
         if (ob->foe() && ob->foe()->dead())
             ob->set_foe(nullptr);
-        // rule: Part of the rule above that begins "At the end of every unfinished tick, every
-        //   walker, ..."
+        // rule: At the end of every unfinished tick, every walker, effect and weapon drops its
+        //   links (foe, leader, owner, collide target, stats controller) to walkers that are dead,
+        //   so nobody chases, follows or is owned by a corpse into the next tick.
         // tests: SimWorld.r15_normal_tick_cleanup_and_dead_entity_removal
         // tests: RuntimeCoveragePaths.sim_world_batch6_cleanup_and_erase_paths_with_hostiles_present
         // tests: SemWorld.links_to_live_walkers_survive_the_stale_link_cleanup
         // tests: SemWorld.a_stats_controller_that_died_is_dropped_at_the_end_of_the_tick
         if (ob->leader() && ob->leader()->dead())
             ob->set_leader(nullptr);
-        // rule: Part of the rule above that begins "At the end of every unfinished tick, every
-        //   walker, ..."
+        // rule: At the end of every unfinished tick, every walker, effect and weapon drops its
+        //   links (foe, leader, owner, collide target, stats controller) to walkers that are dead,
+        //   so nobody chases, follows or is owned by a corpse into the next tick.
         // tests: SimWorld.r15_normal_tick_cleanup_and_dead_entity_removal
         // tests: RuntimeCoveragePaths.sim_world_batch6_cleanup_and_erase_paths_with_hostiles_present
         // tests: SemWorld.links_to_live_walkers_survive_the_stale_link_cleanup
         // tests: SemWorld.a_stats_controller_that_died_is_dropped_at_the_end_of_the_tick
         if (ob->owner() && ob->owner()->dead())
             ob->set_owner(nullptr);
-        // rule: Part of the rule above that begins "At the end of every unfinished tick, every
-        //   walker, ..."
+        // rule: At the end of every unfinished tick, every walker, effect and weapon drops its
+        //   links (foe, leader, owner, collide target, stats controller) to walkers that are dead,
+        //   so nobody chases, follows or is owned by a corpse into the next tick.
         // tests: SimWorld.r15_normal_tick_cleanup_and_dead_entity_removal
         // tests: RuntimeCoveragePaths.sim_world_batch6_cleanup_and_erase_paths_with_hostiles_present
         // tests: SemWorld.links_to_live_walkers_survive_the_stale_link_cleanup
         // tests: SemWorld.a_stats_controller_that_died_is_dropped_at_the_end_of_the_tick
         if (ob->collide_ob() && ob->collide_ob()->dead())
             ob->set_collide_ob(nullptr);
-        // rule: Part of the rule above that begins "At the end of every unfinished tick, every
-        //   walker, ..."
+        // rule: At the end of every unfinished tick, every walker, effect and weapon drops its
+        //   links (foe, leader, owner, collide target, stats controller) to walkers that are dead,
+        //   so nobody chases, follows or is owned by a corpse into the next tick.
         // tests: SimWorld.r15_normal_tick_cleanup_and_dead_entity_removal
         // tests: RuntimeCoveragePaths.sim_world_batch6_cleanup_and_erase_paths_with_hostiles_present
         // tests: SemWorld.links_to_live_walkers_survive_the_stale_link_cleanup
@@ -3298,15 +3266,15 @@ void GameWorld::tick()
             stats->set_controller(nullptr);
     };
 
-    // plumbing: stale-reference sweep over the three lists; see game_world.cpp:1993
+    // plumbing: stale-reference sweep over the three lists; see above
     for (auto& uptr : oblist)
         clear_stale_cross_refs(uptr.get());
 
-    // plumbing: stale-reference sweep over the three lists; see game_world.cpp:1993
+    // plumbing: stale-reference sweep over the three lists; see above
     for (auto& uptr : fxlist)
         clear_stale_cross_refs(uptr.get());
 
-    // plumbing: stale-reference sweep over the three lists; see game_world.cpp:1993
+    // plumbing: stale-reference sweep over the three lists; see above
     for (auto& uptr : weaplist)
         clear_stale_cross_refs(uptr.get());
 
@@ -3315,7 +3283,7 @@ void GameWorld::tick()
     // runtime since viewscreens are a rendering concern.
     auto& objects = oblist.raw_mutable();
     auto& dead = dead_list.raw_mutable();
-    // plumbing: dead sweep over oblist; see game_world.cpp:2029
+    // plumbing: dead sweep over oblist; see below
     for (auto e = objects.begin(); e != objects.end();)
     {
         walker* ob = e->get();
@@ -3334,8 +3302,9 @@ void GameWorld::tick()
             remove_from_id_index(ob);
             dead.push_back(std::move(*e));
 
-            // rule: Part of the rule above that begins "At tick end a dead walker leaves the object
-            //   ..."
+            // rule: At tick end a dead walker leaves the object list for the dead list (so ids and
+            //   Lua handles stay valid) and a Living lowers the living census, EXCEPT a hero corpse
+            //   (it has a guy record. Here: `Living -> living_count--`.
             // tests: RuntimeCoveragePaths.sim_world_batch6_cleanup_and_erase_paths_with_hostiles_present
             // tests: SemWorld.hero_corpses_and_corpses_awaiting_respawn_stay_in_the_world
             if (ob->query_order() == Order::Living)
@@ -3359,8 +3328,8 @@ void GameWorld::tick()
         return true;
     });
 
-    // rule: Part of the rule above that begins "Dead effects and dead weapons are destroyed at tick
-    //   ..."
+    // rule: Dead effects and dead weapons are destroyed at tick end (no dead list for them); live
+    //   ones stay.
     // tests: RuntimeCoveragePaths.sim_world_batch6_cleanup_and_erase_paths_with_hostiles_present
     // tests: SimWorld.r15_normal_tick_cleanup_and_dead_entity_removal
     std::erase_if(weaplist.raw_mutable(), [this](const auto& uptr) {
@@ -3442,12 +3411,6 @@ namespace
          (other->family() == FAMILY_DOOR || other->family() == FAMILY_TREE ||
           other->family() == FAMILY_BOULDER ||
           og::sim::declares_blocks_placement(*other)));
-    // rule: Part of the rule above that begins "A spot is blocked for arrival (floor change, wake,
-    //   ..."
-    // tests: KitSeamsSmall.blocks_placement_weapon_stops_teleport_spawn_and_floor_landing
-    // tests: KitSeams.landing_probes_ignore_a_hidden_walker
-    // tests: ZAxis.stair_up_into_occupied_cell_lands_beside_the_blocker
-    // tests: SemWorld.only_bodies_generators_and_solid_scenery_block_an_arrival
     if (!blocking)
         return false;
     return x + ob->sizex() > other->xpos() &&
@@ -3465,7 +3428,7 @@ bool GameWorld::floor_landing_clear(walker* ob, float x, float y,
     if (ob == nullptr)
         return false;
     // rule: A walker may arrive at a spot on a floor only if the terrain there admits it (same tile
-    //   rules as walking, :722ff) and no blocking entity (:2104) on that floor overlaps it; the
+    //   rules as walking, above) and no blocking entity (above) on that floor overlaps it; the
     //   probe never eats treasure or fires collisions.
     // tests: ZAxis.stair_with_no_clear_arrival_within_radius_denied_until_clear
     // tests: KitSeams.landing_probes_ignore_a_hidden_walker
@@ -3483,24 +3446,26 @@ bool GameWorld::floor_landing_clear(walker* ob, float x, float y,
     // needs no dedup). Dormant walkers are out of the obmap by design and
     // correctly never block a landing.
     constexpr std::int32_t kBucket = 32;
-    // plumbing: bucket sweep over the landing bbox on the target floor; see game_world.cpp:2104
+    // plumbing: bucket sweep over the landing bbox on the target floor; see above
     for (std::int32_t bx = xi; bx < xi + ob->sizex() + kBucket; bx += kBucket)
     {
-        // plumbing: bucket sweep over the landing bbox on the target floor; see game_world.cpp:2104
+        // plumbing: bucket sweep over the landing bbox on the target floor; see above
         for (std::int32_t by = yi; by < yi + ob->sizey() + kBucket;
              by += kBucket)
         {
             const std::list<walker*>* pile = myobmap->find_list(
                 static_cast<short>(bx), static_cast<short>(by), target_floor);
             // plumbing: bucket sweep over the landing bbox on the target floor; see
-            //   game_world.cpp:2104
+            //   above
             if (pile == nullptr)
                 continue;
             // plumbing: bucket sweep over the landing bbox on the target floor; see
-            //   game_world.cpp:2104
+            //   above
             for (const walker* other : *pile)
             {
-                // rule: Part of the rule above that begins "A walker may arrive at a spot on a ..."
+                // rule: A walker may arrive at a spot on a floor only if the terrain there admits
+                //   it (same tile rules as walking, above) and no blocking entity (above) on that
+                //   floor overlaps it. Here: `landing_blocked_by(other) -> false`.
                 // tests: ZAxis.stair_with_no_clear_arrival_within_radius_denied_until_clear
                 // tests: KitSeams.landing_probes_ignore_a_hidden_walker
                 // tests: SemWorld.the_landing_probe_never_eats_the_treasure_on_the_spot
@@ -3525,7 +3490,7 @@ namespace
 bool dormant_overlaps_box(const GameWorld& world, const walker* self,
                           std::int32_t x, std::int32_t y, int floor)
 {
-    // plumbing: oblist scan; see game_world.cpp:2175
+    // plumbing: oblist scan; see below
     for (const auto& uptr : world.oblist)
     {
         const walker* other = uptr.get();
@@ -3538,11 +3503,6 @@ bool dormant_overlaps_box(const GameWorld& world, const walker* self,
         if (other == nullptr || other == self || other->dead() ||
             !other->dormant() || static_cast<int>(other->floor()) != floor)
             continue;
-        // rule: Part of the rule above that begins "A spot is 'reserved' by a still-dormant walker
-        //   on ..."
-        // tests: DelayedSpawnWake.an_edge_wake_skips_off_grid_and_still_dormant_cells
-        // tests: DelayedSpawnWake.generator_pad_dormant_walker_survives
-        // tests: SemWorld.only_a_live_sleeper_on_the_same_floor_reserves_a_spot
         if (x + self->sizex() > other->xpos() &&
             x < other->xpos() + other->sizex() &&
             y + self->sizey() > other->ypos() &&
@@ -3575,23 +3535,23 @@ bool GameWorld::wake_spot_blocked(walker* ob)
     // its grid half (see game_world.h). The waker itself is dormant — never
     // registered — so it cannot self-block.
     constexpr std::int32_t kBucket = 32;
-    // plumbing: bucket sweep on the waker's floor; see game_world.cpp:2220
+    // plumbing: bucket sweep on the waker's floor; see below
     for (std::int32_t bx = xi; bx < xi + ob->sizex() + kBucket; bx += kBucket)
     {
-        // plumbing: bucket sweep on the waker's floor; see game_world.cpp:2220
+        // plumbing: bucket sweep on the waker's floor; see below
         for (std::int32_t by = yi; by < yi + ob->sizey() + kBucket;
              by += kBucket)
         {
             const std::list<walker*>* pile = myobmap->find_list(
                 static_cast<short>(bx), static_cast<short>(by), ob->floor());
-            // plumbing: bucket sweep on the waker's floor; see game_world.cpp:2220
+            // plumbing: bucket sweep on the waker's floor; see below
             if (pile == nullptr)
                 continue;
-            // plumbing: bucket sweep on the waker's floor; see game_world.cpp:2220
+            // plumbing: bucket sweep on the waker's floor; see below
             for (const walker* other : *pile)
             {
                 // rule: A delayed spawn's own spot counts as blocked by exactly the arrival
-                //   blockers of :2104 (live visible Livings, Generators, solid scenery) on its
+                //   blockers of above (live visible Livings, Generators, solid scenery) on its
                 //   floor; terrain is not consulted (the authored spot is trusted).
                 // tests: DelayedSpawnWake.an_edge_wake_skips_off_grid_and_still_dormant_cells
                 // tests: DelayedSpawnWake.blocked_wake_defers_then_completes
@@ -3618,29 +3578,30 @@ bool GameWorld::relocate_to_nearest_wake_spot(walker* ob)
         return false;
     const std::int32_t cx = (ob->xpos() + ob->sizex() / 2) / GRID_SIZE;
     const std::int32_t cy = (ob->ypos() + ob->sizey() / 2) / GRID_SIZE;
-    // rule: Part of the rule above that begins "A blocked waker moves to the first clear
-    //   grid-aligned ..."
-    // tests: DelayedSpawnWake.packed_formation_equal_delays_all_wake
-    // tests: DelayedSpawnWake.an_edge_wake_skips_off_grid_and_still_dormant_cells
-    // tests: SemWorld.a_sleeper_walled_in_beyond_four_rings_stays_put
     for (std::int32_t r = 0; r <= kWakeNudgeRadius; ++r)
     {
-        // rule: Part of the rule above that begins "A blocked waker moves to the first clear
-        //   grid-aligned ..."
+        // rule: A blocked waker moves to the first clear grid-aligned cell on the nearest ring
+        //   (0..4 cells out from its centre cell), scanning each ring row by row (top-left first),
+        //   skipping cells off the grid, cells whose terrain or occupants refuse it, and cells a
+        //   still-dormant walker reserves.
         // tests: DelayedSpawnWake.packed_formation_equal_delays_all_wake
         // tests: DelayedSpawnWake.an_edge_wake_skips_off_grid_and_still_dormant_cells
         // tests: SemWorld.a_sleeper_walled_in_beyond_four_rings_stays_put
         for (std::int32_t dy = -r; dy <= r; ++dy)
         {
-            // rule: Part of the rule above that begins "A blocked waker moves to the first clear
-            //   grid-aligned ..."
+            // rule: A blocked waker moves to the first clear grid-aligned cell on the nearest ring
+            //   (0..4 cells out from its centre cell), scanning each ring row by row (top-left
+            //   first), skipping cells off the grid, cells whose terrain or occupants refuse it,
+            //   and cells a still-dormant walker reserves.
             // tests: DelayedSpawnWake.packed_formation_equal_delays_all_wake
             // tests: DelayedSpawnWake.an_edge_wake_skips_off_grid_and_still_dormant_cells
             // tests: SemWorld.a_sleeper_walled_in_beyond_four_rings_stays_put
             for (std::int32_t dx = -r; dx <= r; ++dx)
             {
-                // rule: Part of the rule above that begins "A blocked waker moves to the first
-                //   clear grid-aligned ..."
+                // rule: A blocked waker moves to the first clear grid-aligned cell on the nearest
+                //   ring (0..4 cells out from its centre cell), scanning each ring row by row
+                //   (top-left first), skipping cells off the grid, cells whose terrain or occupants
+                //   refuse it, and cells a still-dormant walker reserves.
                 // tests: DelayedSpawnWake.packed_formation_equal_delays_all_wake
                 // tests: DelayedSpawnWake.an_edge_wake_skips_off_grid_and_still_dormant_cells
                 // tests: SemWorld.a_sleeper_walled_in_beyond_four_rings_stays_put
@@ -3648,8 +3609,10 @@ bool GameWorld::relocate_to_nearest_wake_spot(walker* ob)
                     continue; // ring perimeter only
                 const std::int32_t nx = cx + dx;
                 const std::int32_t ny = cy + dy;
-                // rule: Part of the rule above that begins "A blocked waker moves to the first
-                //   clear grid-aligned ..."
+                // rule: A blocked waker moves to the first clear grid-aligned cell on the nearest
+                //   ring (0..4 cells out from its centre cell), scanning each ring row by row
+                //   (top-left first), skipping cells off the grid, cells whose terrain or occupants
+                //   refuse it, and cells a still-dormant walker reserves.
                 // tests: DelayedSpawnWake.packed_formation_equal_delays_all_wake
                 // tests: DelayedSpawnWake.an_edge_wake_skips_off_grid_and_still_dormant_cells
                 // tests: SemWorld.a_sleeper_walled_in_beyond_four_rings_stays_put
@@ -3657,8 +3620,10 @@ bool GameWorld::relocate_to_nearest_wake_spot(walker* ob)
                     continue;
                 const std::int32_t px = nx * GRID_SIZE;
                 const std::int32_t py = ny * GRID_SIZE;
-                // rule: Part of the rule above that begins "A blocked waker moves to the first
-                //   clear grid-aligned ..."
+                // rule: A blocked waker moves to the first clear grid-aligned cell on the nearest
+                //   ring (0..4 cells out from its centre cell), scanning each ring row by row
+                //   (top-left first), skipping cells off the grid, cells whose terrain or occupants
+                //   refuse it, and cells a still-dormant walker reserves.
                 // tests: DelayedSpawnWake.packed_formation_equal_delays_all_wake
                 // tests: DelayedSpawnWake.an_edge_wake_skips_off_grid_and_still_dormant_cells
                 // tests: SemWorld.a_sleeper_walled_in_beyond_four_rings_stays_put
@@ -3668,8 +3633,10 @@ bool GameWorld::relocate_to_nearest_wake_spot(walker* ob)
                 // Keep relocations off still-dormant footprints too: the
                 // displaced neighbour would only have to move again on its
                 // own wake tick.
-                // rule: Part of the rule above that begins "A blocked waker moves to the first
-                //   clear grid-aligned ..."
+                // rule: A blocked waker moves to the first clear grid-aligned cell on the nearest
+                //   ring (0..4 cells out from its centre cell), scanning each ring row by row
+                //   (top-left first), skipping cells off the grid, cells whose terrain or occupants
+                //   refuse it, and cells a still-dormant walker reserves.
                 // tests: DelayedSpawnWake.packed_formation_equal_delays_all_wake
                 // tests: DelayedSpawnWake.an_edge_wake_skips_off_grid_and_still_dormant_cells
                 // tests: SemWorld.a_sleeper_walled_in_beyond_four_rings_stays_put
@@ -3692,7 +3659,7 @@ bool GameWorld::relocate_to_nearest_wake_spot(walker* ob)
 // runtime, so summons/generator output can never widen the watched set.
 bool GameWorld::has_save_all_protected() const
 {
-    // plumbing: scans oblist then dead_list; see game_world.cpp:2276
+    // plumbing: scans oblist then dead_list; see below
     for (const auto& uptr : oblist)
     {
         // rule: On a SAVE_ALL level, the mission's 'protect everyone' rule is scoped to the
@@ -3705,11 +3672,10 @@ bool GameWorld::has_save_all_protected() const
         if (uptr != nullptr && uptr->save_all_protected())
             return true;
     }
-    // plumbing: scans oblist then dead_list; see game_world.cpp:2276
     for (const auto& uptr : dead_list)
     {
-        // rule: Part of the rule above that begins "On a SAVE_ALL level, the mission's 'protect
-        //   everyone' rule ..."
+        // rule: On a SAVE_ALL level, the mission's 'protect everyone' rule is scoped to the
+        //   loader-flagged NPCs whenever at least one exists (alive or already dead).
         // tests: SaveAllScoping.protected_flag_scopes_the_watch_to_flagged_walkers
         // tests: SaveAllScoping.legacy_named_team0_death_still_fails_mission
         // tests: SaveAllScoping.foreign_color_company_hero_death_does_not_fail_mission
@@ -3745,8 +3711,7 @@ std::string floor_hud_label(const GameWorld& world, int walker_floor)
     // tests: FloorHudLabel.tower_gate_is_unlabeled
     if (!tower)
     {
-        // rule: Part of the rule above that begins "The HUD floor label is empty on single-floor
-        //   levels ..."
+        // rule: The HUD floor label is empty on single-floor levels and the tower Gate, 'FLR.
         // tests: FloorHudLabel.empty_on_single_floor, FloorHudLabel.multifloor_is_one_indexed
         // tests: FloorHudLabel.clamps_out_of_range_walker_floor
         // tests: FloorHudLabel.tower_single_story_shows_absolute_floor
@@ -3756,13 +3721,6 @@ std::string floor_hud_label(const GameWorld& world, int walker_floor)
             return "";
         return std::format("FLR: {}/{}", f + 1, floors);
     }
-    // rule: Part of the rule above that begins "The HUD floor label is empty on single-floor levels
-    //   ..."
-    // tests: FloorHudLabel.empty_on_single_floor, FloorHudLabel.multifloor_is_one_indexed
-    // tests: FloorHudLabel.clamps_out_of_range_walker_floor
-    // tests: FloorHudLabel.tower_single_story_shows_absolute_floor
-    // tests: FloorHudLabel.tower_multi_story_combines_floor_and_story
-    // tests: FloorHudLabel.tower_gate_is_unlabeled
     if (floors <= 1)
         return std::format("FLR: {}", world.id - og::kTowerGateLevel);
     return std::format("F{}: {}/{}", world.id - og::kTowerGateLevel,
@@ -3779,7 +3737,7 @@ void GameWorld::retire_corpse(walker* ob)
 {
     auto& objects = oblist.raw_mutable();
     auto& dead = dead_list.raw_mutable();
-    // plumbing: oblist scan for the corpse; see game_world.cpp:2326
+    // plumbing: oblist scan for the corpse; see below
     for (auto e = objects.begin(); e != objects.end(); ++e)
     {
         // rule: On a respawn fire tick the held corpse is retired exactly as the dead sweep would
@@ -3791,9 +3749,6 @@ void GameWorld::retire_corpse(walker* ob)
             continue;
         remove_from_id_index(ob);
         dead.push_back(std::move(*e));
-        // rule: Part of the rule above that begins "On a respawn fire tick the held corpse is ..."
-        // tests: ModesSoccer.slain_bot_leaves_a_raisable_corpse_until_respawn
-        // tests: SemWorld.retiring_a_held_corpse_files_it_dead_exactly_once
         if (ob->query_order() == Order::Living)
             living_count--;
         objects.erase(e);
@@ -3825,13 +3780,13 @@ std::vector<walker*> GameWorld::find_blood_in_reach(walker* who)
     if (!who)
         return {};
 
-    // plumbing: fxlist scan and result copy; see game_world.cpp:2362
+    // plumbing: fxlist scan and result copy; see below
     for (auto& uptr : fxlist)
     {
         walker* w = uptr.get();
         // rule: The new-specials raise finder lists every live blood stain on the finder's own
         //   floor within squared centre distance under 800, nearest first, ties in effect-list
-        //   order, drawing no RNG. Unlike find_nearest_blood (:1270) it is floor-scoped.
+        //   order, drawing no RNG. Unlike find_nearest_blood (above) it is floor-scoped.
         // tests: QuietProbe.find_blood_in_reach_walks_the_finders_stains_nearest_first
         if (w && w->query_order() == Order::Treasure &&
             w->family() == FAMILY_STAIN && !w->dead() &&
@@ -3839,8 +3794,9 @@ std::vector<walker*> GameWorld::find_blood_in_reach(walker* who)
         {
             const std::int32_t distance =
                 static_cast<std::int32_t>(who->distance_to_ob_center(w));
-            // rule: Part of the rule above that begins "The new-specials raise finder lists every
-            //   live blood stain ..."
+            // rule: The new-specials raise finder lists every live blood stain on the finder's own
+            //   floor within squared centre distance under 800, nearest first, ties in effect-list
+            //   order, drawing no RNG. Here: `distance < 800`.
             // tests: QuietProbe.find_blood_in_reach_walks_the_finders_stains_nearest_first
             if (distance < 800)
                 found.emplace_back(distance, w);
@@ -3851,7 +3807,7 @@ std::vector<walker*> GameWorld::find_blood_in_reach(walker* who)
                      [](const auto& a, const auto& b) { return a.first < b.first; });
     std::vector<walker*> stains;
     stains.reserve(found.size());
-    // plumbing: fxlist scan and result copy; see game_world.cpp:2362
+    // plumbing: fxlist scan and result copy; see above
     for (const auto& entry : found)
         stains.push_back(entry.second);
     return stains;

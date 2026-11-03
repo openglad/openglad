@@ -77,8 +77,9 @@ local function burn_contacts(marker, owner, t)
   for i = 1, #foes do
     local foe = foes[i]
     local burn = t.immolate_contact + owner.level
-    -- rule: Part of the rule above that begins "IMMOLATE burns every living foe on the elemental's
-    --   floor ..."
+    -- rule: IMMOLATE burns every living foe on the elemental's floor touching its box grown by 4 px
+    --   for immolate_contact + level each tick; the foe that last struck it burns double. Here:
+    --   `entity_id(foe) == striker`.
     -- tests: KitElemental.immolate_drains_two_per_tick_burns_contact_melee_most_and_lays_embers
     if og.entity_id(foe) == striker then
       burn = burn * 2
@@ -101,7 +102,8 @@ local function ember_underfoot(owner)
   -- tests: SemLibsElemental.a_burning_elementals_own_ember_on_another_floor_does_not_count_as_underfoot
   for i = 1, #obs do
     local ob = obs[i]
-    -- rule: Part of the rule above that begins "A burning elemental drops an ember at its feet ..."
+    -- rule: A burning elemental drops an ember at its feet (bottom centre) every ember_step ticks,
+    --   but never a second one on a spot where one of its own still burns.
     -- tests: KitElemental.standing_burner_keeps_one_ember_underfoot
     -- tests: KitElemental.embers_burn_crossers_then_die
     -- tests: KitElemental.immolate_drains_two_per_tick_burns_contact_melee_most_and_lays_embers
@@ -112,15 +114,15 @@ local function ember_underfoot(owner)
         and ob:owner() == owner then
       local x = owner:xpos() + og.div(owner:sizex() - ob:sizex(), 2)
       local y = owner:ypos() + owner:sizey() - ob:sizey()
-      -- rule: Part of the rule above that begins "A burning elemental drops an ember at its feet
-      --   ..."
+      -- rule: A burning elemental drops an ember at its feet (bottom centre) every ember_step
+      --   ticks, but never a second one on a spot where one of its own still burns.
       -- tests: KitElemental.standing_burner_keeps_one_ember_underfoot
       -- tests: KitElemental.embers_burn_crossers_then_die
       -- tests: KitElemental.immolate_drains_two_per_tick_burns_contact_melee_most_and_lays_embers
       -- tests: SemLibsElemental.a_burning_elementals_own_ember_on_another_floor_does_not_count_as_underfoot
       local on_spot = ob:xpos() == x and ob:ypos() == y
-      -- rule: Part of the rule above that begins "A burning elemental drops an ember at its feet
-      --   ..."
+      -- rule: A burning elemental drops an ember at its feet (bottom centre) every ember_step
+      --   ticks, but never a second one on a spot where one of its own still burns.
       -- tests: KitElemental.standing_burner_keeps_one_ember_underfoot
       -- tests: KitElemental.embers_burn_crossers_then_die
       -- tests: KitElemental.immolate_drains_two_per_tick_burns_contact_melee_most_and_lays_embers
@@ -137,7 +139,8 @@ end
 -- one still burns there: a standing elemental keeps one ember under it
 -- instead of piling them up.
 local function drop_ember(owner, t)
-  -- rule: Part of the rule above that begins "A burning elemental drops an ember at its feet ..."
+  -- rule: A burning elemental drops an ember at its feet (bottom centre) every ember_step ticks,
+  --   but never a second one on a spot where one of its own still burns.
   -- tests: KitElemental.standing_burner_keeps_one_ember_underfoot
   -- tests: KitElemental.embers_burn_crossers_then_die
   -- tests: KitElemental.immolate_drains_two_per_tick_burns_contact_melee_most_and_lays_embers
@@ -182,25 +185,11 @@ local function immolation_act(marker)
     return
   end
   local t = og.tuning(owner)
-  -- rule: Part of the rule above that begins "IMMOLATE drains immolate_drain MP a tick; it goes out
-  --   ..."
-  -- tests: KitElemental.immolate_at_low_mana_goes_out
-  -- tests: KitElemental.immolation_clock_reads_what_the_mana_buys
-  -- tests: KitElemental.immolate_burns_out_after_its_longest_burn
-  -- tests: KitElemental.dying_while_immolating_still_fires_the_parting_starburst
-  -- tests: KitElemental.immolate_drains_two_per_tick_burns_contact_melee_most_and_lays_embers
   if owner.magicpoints < t.immolate_drain then
     quench(owner, marker)
     return
   end
   marker.lifetime = marker:lifetime() - 1
-  -- rule: Part of the rule above that begins "IMMOLATE drains immolate_drain MP a tick; it goes out
-  --   ..."
-  -- tests: KitElemental.immolate_at_low_mana_goes_out
-  -- tests: KitElemental.immolation_clock_reads_what_the_mana_buys
-  -- tests: KitElemental.immolate_burns_out_after_its_longest_burn
-  -- tests: KitElemental.dying_while_immolating_still_fires_the_parting_starburst
-  -- tests: KitElemental.immolate_drains_two_per_tick_burns_contact_melee_most_and_lays_embers
   if marker:lifetime() <= 0 then
     quench(owner, marker)
     return
@@ -211,13 +200,6 @@ local function immolation_act(marker)
   marker.lifetime = og.min(marker:lifetime(), paid)
   marker:center_on(owner)
   burn_contacts(marker, owner, t)
-  -- rule: Part of the rule above that begins "IMMOLATE drains immolate_drain MP a tick; it goes out
-  --   ..."
-  -- tests: KitElemental.immolate_at_low_mana_goes_out
-  -- tests: KitElemental.immolation_clock_reads_what_the_mana_buys
-  -- tests: KitElemental.immolate_burns_out_after_its_longest_burn
-  -- tests: KitElemental.dying_while_immolating_still_fires_the_parting_starburst
-  -- tests: KitElemental.immolate_drains_two_per_tick_burns_contact_melee_most_and_lays_embers
   if og.mod(marker:lifetime(), t.ember_step) == 0 then
     drop_ember(owner, t)
   end
@@ -263,19 +245,9 @@ local function meteor_rain_act(marker)
   end
   local t = og.tuning(owner)
   marker.lifetime = marker:lifetime() - 1
-  -- rule: Part of the rule above that begins "METEOR RAIN strikes a fire explosion within
-  --   rain_spread of ..."
-  -- tests: KitElemental.meteor_rain_strikes_the_target_area_every_six_ticks
-  -- tests: KitElemental.meteor_rain_finds_the_nearest_foe_and_stops_with_its_caster
-  -- tests: SemLibsElemental.every_meteor_rain_strike_plays_one_explosion_sound
   if og.mod(marker:lifetime(), t.rain_cadence) == 0 then
     strike(marker, owner, t)
   end
-  -- rule: Part of the rule above that begins "METEOR RAIN strikes a fire explosion within
-  --   rain_spread of ..."
-  -- tests: KitElemental.meteor_rain_strikes_the_target_area_every_six_ticks
-  -- tests: KitElemental.meteor_rain_finds_the_nearest_foe_and_stops_with_its_caster
-  -- tests: SemLibsElemental.every_meteor_rain_strike_plays_one_explosion_sound
   if marker:lifetime() <= 0 then
     km.finish(marker)
   end
@@ -309,8 +281,9 @@ function M.immolate(self)
   -- tests: KitElemental.second_press_ends_it_free_after_the_latch
   -- tests: KitElemental.immolate_drains_two_per_tick_burns_contact_melee_most_and_lays_embers
   if marker then
-    -- rule: Part of the rule above that begins "IMMOLATE is a toggle: the first press lights it
-    --   ..."
+    -- rule: IMMOLATE is a toggle: the first press lights it (KIT_CHANNEL on), a second press inside
+    --   the 10-tick latch is refused IMMOLATE SETTLING, after it quenches for free. Here: `age <
+    --   kit_latch`.
     -- tests: KitElemental.second_press_ends_it_free_after_the_latch
     -- tests: KitElemental.immolate_drains_two_per_tick_burns_contact_melee_most_and_lays_embers
     if km.age(marker) < t.kit_latch then
@@ -339,21 +312,12 @@ local function rain_target(self, foe, t)
   if not foe then
     return nil
   end
-  -- rule: Part of the rule above that begins "METEOR RAIN falls only on a foe that is ..."
-  -- tests: KitElemental.meteor_rain_passes_over_a_dead_foe
-  -- tests: KitElemental.meteor_rain_strikes_the_target_area_every_six_ticks
   if foe:dead() ~= 0 then
     return nil
   end
-  -- rule: Part of the rule above that begins "METEOR RAIN falls only on a foe that is ..."
-  -- tests: KitElemental.meteor_rain_passes_over_a_dead_foe
-  -- tests: KitElemental.meteor_rain_strikes_the_target_area_every_six_ticks
   if foe:floor() ~= self:floor() then
     return nil
   end
-  -- rule: Part of the rule above that begins "METEOR RAIN falls only on a foe that is ..."
-  -- tests: KitElemental.meteor_rain_passes_over_a_dead_foe
-  -- tests: KitElemental.meteor_rain_strikes_the_target_area_every_six_ticks
   if self:distance_to_ob(foe) > t.rain_range then
     return nil
   end
@@ -362,8 +326,8 @@ end
 
 -- METEOR RAIN (slot 3): our foe, or the nearest one, gets a rain marker.
 function M.meteor_rain(self)
-  -- rule: Part of the rule above that begins "While IMMOLATE burns (every slot priced 0),
-  --   STARBURST, METEOR ..."
+  -- rule: While IMMOLATE burns (every slot priced 0), STARBURST, METEOR RAIN and REKINDLE/SUPERNOVA
+  --   refuse 'QUENCH IMMOLATE FIRST' instead of casting for nothing.
   -- tests: KitElemental.a_burning_elemental_casts_nothing_else_for_free
   -- tests: KitElemental.meteor_rain_strikes_the_target_area_every_six_ticks
   -- tests: KitElemental.rekindle_heals_and_refuses_at_full
@@ -380,11 +344,6 @@ function M.meteor_rain(self)
   if not target then
     target = rain_target(self, og.find_near_foe(self), t)
   end
-  -- rule: Part of the rule above that begins "METEOR RAIN targets the caster's current foe when
-  --   valid, ..."
-  -- tests: KitElemental.meteor_rain_finds_the_nearest_foe_and_stops_with_its_caster
-  -- tests: KitElemental.meteor_rain_passes_over_a_dead_foe
-  -- tests: KitElemental.meteor_rain_strikes_the_target_area_every_six_ticks
   if not target then
     return false, "NO TARGET IN RANGE"
   end
@@ -458,12 +417,12 @@ local function supernova(self, t)
     --   and its parting starburst follows.
     -- tests: KitElemental.supernova_spends_all_health_blasts_a_ring_and_the_starburst_follows
     for i = -1, 1 do
-      -- rule: Part of the rule above that begins "SUPERNOVA turns all the elemental's health into
-      --   one blast ..."
+      -- rule: SUPERNOVA turns all the elemental's health into one blast (1.5*hp + 15/level, level
+      --   doubled up to 24) plus eight half-damage blasts in a ring nova_ring_px out.
       -- tests: KitElemental.supernova_spends_all_health_blasts_a_ring_and_the_starburst_follows
       for j = -1, 1 do
-        -- rule: Part of the rule above that begins "SUPERNOVA turns all the elemental's health into
-        --   one blast ..."
+        -- rule: SUPERNOVA turns all the elemental's health into one blast (1.5*hp + 15/level, level
+        --   doubled up to 24) plus eight half-damage blasts in a ring nova_ring_px out.
         -- tests: KitElemental.supernova_spends_all_health_blasts_a_ring_and_the_starburst_follows
         if i ~= 0 or j ~= 0 then
           local ring = nova_blast(self, blast, i * t.nova_ring_px, j * t.nova_ring_px)
@@ -488,8 +447,8 @@ end
 -- REKINDLE / SUPERNOVA (slot 4). The whole slot is new, so a plain shift
 -- test is enough: with the setting off neither arm is in play.
 function M.rekindle_or_supernova(self)
-  -- rule: Part of the rule above that begins "While IMMOLATE burns (every slot priced 0),
-  --   STARBURST, METEOR ..."
+  -- rule: While IMMOLATE burns (every slot priced 0), STARBURST, METEOR RAIN and REKINDLE/SUPERNOVA
+  --   refuse 'QUENCH IMMOLATE FIRST' instead of casting for nothing.
   -- tests: KitElemental.a_burning_elemental_casts_nothing_else_for_free
   -- tests: KitElemental.meteor_rain_strikes_the_target_area_every_six_ticks
   -- tests: KitElemental.rekindle_heals_and_refuses_at_full
@@ -524,19 +483,9 @@ function M.ai_immolate(self)
   if og.match_setting("new_specials") == 0 then
     return true
   end
-  -- rule: Part of the rule above that begins "A bot elemental lights IMMOLATE with a living foe
-  --   ..."
-  -- tests: KitElemental.ai_immolate_fires_when_a_foe_is_close_and_mana_is_high
-  -- tests: GameplayFixesBots.elemental_immolate_lights_at_blows_and_quenches_alone
-  -- tests: KitElemental.ai_off_answers_the_classic_gate
   if burning(self) then
     return not G.foes_within(self, 1, IMMOLATE_GATE_RANGE, true)
   end
-  -- rule: Part of the rule above that begins "A bot elemental lights IMMOLATE with a living foe
-  --   ..."
-  -- tests: KitElemental.ai_immolate_fires_when_a_foe_is_close_and_mana_is_high
-  -- tests: GameplayFixesBots.elemental_immolate_lights_at_blows_and_quenches_alone
-  -- tests: KitElemental.ai_off_answers_the_classic_gate
   if self.magicpoints <= IMMOLATE_GATE_MANA then
     return false
   end
@@ -556,34 +505,22 @@ function M.ai_meteor(self)
   -- tests: KitElemental.ai_off_answers_the_classic_gate
   -- tests: SemLibsElemental.a_friendly_tent_in_the_strike_box_does_not_hold_a_bot_meteor_rain
   -- deferred: #487 not #458 (burning() unasked): the ally scan and the foe cluster ignore floors,
-  --   though the rain only hits its own floor (effect_bomb.lua:63-67), so an ally on another floor
+  --   though the rain only hits its own floor (effect_bomb.lua), so an ally on another floor
   --   holds it; the cluster also counts an enemy tent (raw find_foes_in_range, unlike G.living_foes
   --   everywhere else)
   if og.match_setting("new_specials") == 0 then
     return true
   end
-  -- rule: Part of the rule above that begins "A bot elemental calls METEOR RAIN on its foe ..."
-  -- tests: KitElemental.ai_meteor_fires_on_a_cluster_in_range
-  -- tests: KitElemental.ai_meteor_holds_fire_over_an_ally
-  -- tests: KitElemental.ai_meteor_holds_fire_over_a_far_corner_ally
-  -- tests: KitElemental.ai_meteor_fires_with_the_ally_clear
-  -- tests: KitElemental.ai_off_answers_the_classic_gate
-  -- tests: SemLibsElemental.a_friendly_tent_in_the_strike_box_does_not_hold_a_bot_meteor_rain
   if not og.check_special_ai_distance(self, RAIN_GATE_RANGE) then
     return false
   end
   local target = self:foe()
   local foes = og.find_foes_in_range("ob", RAIN_GATE_RANGE + RAIN_GATE_CLUSTER, self)
   local clustered = 0
-  -- rule: Part of the rule above that begins "A bot elemental calls METEOR RAIN on its foe ..."
-  -- tests: KitElemental.ai_meteor_fires_on_a_cluster_in_range
-  -- tests: KitElemental.ai_meteor_holds_fire_over_an_ally
-  -- tests: KitElemental.ai_meteor_holds_fire_over_a_far_corner_ally
-  -- tests: KitElemental.ai_meteor_fires_with_the_ally_clear
-  -- tests: KitElemental.ai_off_answers_the_classic_gate
-  -- tests: SemLibsElemental.a_friendly_tent_in_the_strike_box_does_not_hold_a_bot_meteor_rain
   for i = 1, #foes do
-    -- rule: Part of the rule above that begins "A bot elemental calls METEOR RAIN on its foe ..."
+    -- rule: A bot elemental calls METEOR RAIN on its foe within 160 when at least one more foe
+    --   stands within 60 of it, and never when one of its allies stands inside the strike box (71
+    --   px each axis of the target).
     -- tests: KitElemental.ai_meteor_fires_on_a_cluster_in_range
     -- tests: KitElemental.ai_meteor_holds_fire_over_an_ally
     -- tests: KitElemental.ai_meteor_holds_fire_over_a_far_corner_ally
@@ -599,17 +536,12 @@ function M.ai_meteor(self)
   -- The scan must reach the whole box: the target is under 160 away and
   -- a box corner is 71 + 71 Manhattan beyond it.
   local friends = og.find_friends_in_range("ob", RAIN_GATE_RANGE + 2 * RAIN_ALLY_ZONE, self)
-  -- rule: Part of the rule above that begins "A bot elemental calls METEOR RAIN on its foe ..."
-  -- tests: KitElemental.ai_meteor_fires_on_a_cluster_in_range
-  -- tests: KitElemental.ai_meteor_holds_fire_over_an_ally
-  -- tests: KitElemental.ai_meteor_holds_fire_over_a_far_corner_ally
-  -- tests: KitElemental.ai_meteor_fires_with_the_ally_clear
-  -- tests: KitElemental.ai_off_answers_the_classic_gate
-  -- tests: SemLibsElemental.a_friendly_tent_in_the_strike_box_does_not_hold_a_bot_meteor_rain
   for i = 1, #friends do
     local dx = math.abs(friends[i]:xpos() - target:xpos())
     local dy = math.abs(friends[i]:ypos() - target:ypos())
-    -- rule: Part of the rule above that begins "A bot elemental calls METEOR RAIN on its foe ..."
+    -- rule: A bot elemental calls METEOR RAIN on its foe within 160 when at least one more foe
+    --   stands within 60 of it, and never when one of its allies stands inside the strike box (71
+    --   px each axis of the target).
     -- tests: KitElemental.ai_meteor_fires_on_a_cluster_in_range
     -- tests: KitElemental.ai_meteor_holds_fire_over_an_ally
     -- tests: KitElemental.ai_meteor_holds_fire_over_a_far_corner_ally
@@ -637,14 +569,10 @@ function M.ai_rekindle(self)
     return true
   end
   -- max_hp is a C++ float: per-op rounding.
-  -- rule: Part of the rule above that begins "A bot elemental goes SUPERNOVA (shift 1) below a ..."
-  -- tests: KitElemental.ai_rekindle_heals_when_hurt_and_novas_when_cornered
-  -- tests: GameplayFixesBots.elemental_rekindle_is_not_forced_on_a_pool_that_cannot_pay_it
-  -- tests: KitElemental.ai_off_answers_the_classic_gate
   if self.hp < og.fdiv(self.max_hp, 5.0) then
     local _, close = og.find_foes_in_range("ob", NOVA_GATE_RANGE, self)
-    -- rule: Part of the rule above that begins "A bot elemental goes SUPERNOVA (shift 1) below a
-    --   ..."
+    -- rule: A bot elemental goes SUPERNOVA (shift 1) below a fifth of its health with two bodies
+    --   the finder counts as foes within 48. Here: `close >= 2`.
     -- tests: KitElemental.ai_rekindle_heals_when_hurt_and_novas_when_cornered
     -- tests: GameplayFixesBots.elemental_rekindle_is_not_forced_on_a_pool_that_cannot_pay_it
     -- tests: KitElemental.ai_off_answers_the_classic_gate
@@ -655,10 +583,6 @@ function M.ai_rekindle(self)
   end
   self:set_shifter_down(0)
   -- max_hp is a C++ float: per-op rounding.
-  -- rule: Part of the rule above that begins "A bot elemental goes SUPERNOVA (shift 1) below a ..."
-  -- tests: KitElemental.ai_rekindle_heals_when_hurt_and_novas_when_cornered
-  -- tests: GameplayFixesBots.elemental_rekindle_is_not_forced_on_a_pool_that_cannot_pay_it
-  -- tests: KitElemental.ai_off_answers_the_classic_gate
   if self.hp >= og.fdiv(self.max_hp, 2.0) then
     return false
   end

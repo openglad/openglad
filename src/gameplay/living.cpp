@@ -97,7 +97,8 @@ bool living::act()
 	// Z-axis: fall through air / take Z-stairs (multi-floor only; a cheap no-op
 	// on single-floor levels). May cause a pit death.
 	apply_z_motion();
-	// rule: Part of the rule above that begins "A dead walker does nothing in its act; a ..."
+	// rule: A dead walker does nothing in its act; a walker that dies falling down a pit
+	//   (apply_z_motion) stops acting that same tick.
 	// tests: LivingCombat.living_act_bonus_rounds_and_dead_gate
 	// tests: LivingCombat.living_round8_dead_outline_forestwalk_and_offmap_walk_paths
 	// tests: LivingUnit.living_r11_act_owner_dead_and_action_follow
@@ -152,8 +153,8 @@ bool living::act()
 	// tests: SemLiving.a_lifetime_counts_down_one_per_act_and_zero_means_permanent
 	if (lifetime())
 	{
-		// rule: Part of the rule above that begins "A walker with a lifetime (a summon) dies if
-		//   ..."
+		// rule: A walker with a lifetime (a summon) dies if it has no owner, otherwise its lifetime
+		//   counts down one per act and it dies when it reaches 0.
 		// tests: LivingCombat.living_act_lifetime_expiry_with_owner
 		// tests: LivingCombat.living_act_lifetime_expires_without_owner
 		// tests: parity:summon_lifetime_decrement_faerie_scen99
@@ -167,8 +168,8 @@ bool living::act()
 		}
 		const auto remaining_lifetime = lifetime() - 1;
 		set_lifetime(remaining_lifetime);
-		// rule: Part of the rule above that begins "A walker with a lifetime (a summon) dies if
-		//   ..."
+		// rule: A walker with a lifetime (a summon) dies if it has no owner, otherwise its lifetime
+		//   counts down one per act and it dies when it reaches 0.
 		// tests: LivingCombat.living_act_lifetime_expiry_with_owner
 		// tests: LivingCombat.living_act_lifetime_expires_without_owner
 		// tests: parity:summon_lifetime_decrement_faerie_scen99
@@ -205,9 +206,11 @@ bool living::act()
 
 	// Regenerate magic
 	{
-		// HP and MP regeneration stop for every walker while a FREEZE TIME bank
-		// (world.enemy_freeze) runs, and for a walker while it still has banked bonus rounds; HP
-		// regen also waits out regen_delay after damage.
+		// rule: HP and MP regeneration stop for every walker while a FREEZE TIME bank
+		//   (world.enemy_freeze) runs, and for a walker while it still has banked bonus rounds; HP
+		//   regen also waits out regen_delay after damage.
+		// tests: SemLiving.classic_regeneration_runs_each_act_and_freeze_time_stops_it_for_every_side
+		// tests: SemLiving.a_walker_with_rounds_still_banked_does_not_regenerate
 		bool frozen = current_game->world->enemy_freeze || bonus_rounds();
 		RegenTickResult mp = compute_regen_tick(stats_->magicpoints(), stats_->max_magicpoints(),
 		                                        stats_->magic_per_round(),
@@ -276,8 +279,9 @@ bool living::act()
                 RED,
                 current_game->world->tick_count_));
 		
-		// rule: Part of the rule above that begins "A non-flying walker standing inside impassable
-		//   terrain (a wall, ..."
+		// rule: A non-flying walker standing inside impassable terrain (a wall, water, trees
+		//   without forestwalk) loses 1 HP per act (a red '1' damage number) and is given one tick
+		//   of flight so it can step out.
 		// tests: LivingCombat.living_act_nonpassable_tile_damage_kills
 		// tests: SemLiving.a_walker_stuck_in_a_wall_loses_a_point_per_act_and_gets_a_tick_of_flight
 		if (stats_->hitpoints() <= 0)
@@ -299,8 +303,8 @@ bool living::act()
 	{
 		set_charm_left(0);
 		// Make sure we're back to our real team
-		// rule: Part of the rule above that begins "Charm lasts its timer; when it runs out the
-		//   ..."
+		// rule: Charm lasts its timer; when it runs out the walker goes back to its real team
+		//   (real_team_num is cleared to 255).
 		// tests: KitPossession.charm_expiry_and_release_in_the_same_act
 		// tests: SillinessBattery.thief_charm_ceiling_and_natural_expiry
 		// tests: SemLiving.charm_counts_down_without_touching_the_team_and_an_uncharmed_walker_keeps_its_team
@@ -352,15 +356,9 @@ bool living::act()
 			temp = (4 - myguy->dexterity/10.0f);
 		else
 			temp = (4.0f - static_cast<float>(stats_->level())/2.0f);
-		// rule: Part of the rule above that begins "In the forest a forestwalker's step shrinks by
-		//   4 ..."
-		// tests: SemAi2.a_forestwalker_in_the_trees_steps_shorter_by_its_dexterity_or_level
 		if (temp < 0)
 			temp = 0;
 		float next_stepsize = stepsize() - temp;
-		// rule: Part of the rule above that begins "In the forest a forestwalker's step shrinks by
-		//   4 ..."
-		// tests: SemAi2.a_forestwalker_in_the_trees_steps_shorter_by_its_dexterity_or_level
 		if (next_stepsize < 1.0f)
 			next_stepsize = 1.0f;
 		set_stepsize(next_stepsize);
@@ -389,8 +387,7 @@ bool living::act()
 	if(attack_lunge() > 0.0f)
     {
         float next_lunge = attack_lunge() - 0.4f;
-        // rule: Part of the rule above that begins "An attack lunge (sprite offset) eases back by
-        //   0.4 ..."
+        // rule: An attack lunge (sprite offset) eases back by 0.4 per act and stops at 0.
         // tests: LivingCombat.living_act_timers_charm_and_recoil_clamps
         // tests: SemAi2.an_attack_lunge_eases_back_by_four_tenths_per_act_and_stops_at_zero
         if(next_lunge < 0.0f)
@@ -404,8 +401,7 @@ bool living::act()
 	if(hit_recoil() > 0.0f)
     {
         float next_recoil = hit_recoil() - 0.6f;
-        // rule: Part of the rule above that begins "A hit recoil (sprite offset) eases back by 0.6
-        //   ..."
+        // rule: A hit recoil (sprite offset) eases back by 0.6 per act and stops at 0.
         // tests: LivingCombat.living_act_timers_charm_and_recoil_clamps
         // tests: SemAi2.a_hit_recoil_eases_back_by_six_tenths_per_act_and_stops_at_zero
         if(next_recoil < 0.0f)
@@ -470,8 +466,8 @@ bool living::act()
 	if (stats_->has_commands())
 	{
 		std::int32_t temp = stats_->do_command();
-		// rule: Part of the rule above that begins "A walker with queued commands carries them out
-		//   before ..."
+		// rule: A walker with queued commands carries them out before its AI; a command step that
+		//   does something ends the act.
 		// tests: LivingCombat.living_act_command_execution_and_autoattackable_edges
 		// tests: LivingUnit.follow_ally_spends_its_act_on_the_follow_command_not_its_ai
 		// tests: SemAi2.a_command_step_that_does_nothing_lets_the_act_go_on
@@ -494,8 +490,8 @@ bool living::act()
 	if (action() && (user() == -1) )
 	{
 		std::int32_t temp = do_action();
-		// rule: Part of the rule above that begins "An AI (unseated) walker with an action order
-		//   (ACTION_FOLLOW ..."
+		// rule: An AI (unseated) walker with an action order (ACTION_FOLLOW from Summon Defense)
+		//   runs that order first; if the order acted, the AI does not also run.
 		// tests: LivingUnit.follow_ally_spends_its_act_on_the_follow_command_not_its_ai
 		// tests: SemAi2.a_seated_walker_ignores_its_action_and_a_passing_action_lets_the_act_go_on
 		if (temp)
@@ -547,8 +543,8 @@ bool living::act()
 		// tests: LivingActFlow.a_roll_the_gate_refuses_takes_the_ordinary_act_with_the_setting_on
 		case ACT_RANDOM:
 			{
-				// rule: Part of the rule above that begins "An ordinary bot considers its special
-				//   one act in ..."
+				// rule: An ordinary bot considers its special one act in five; the other four it
+				//   takes the ordinary act.
 				// tests: LivingCombat.living_round7_act_random_and_do_action_targeted_branches
 				// tests: LivingActFlow.a_roll_the_gate_refuses_takes_the_ordinary_act_with_the_setting_on
 				if (!current_game->world->rng_.next(5) ) //1 in 5 to do our special
@@ -584,8 +580,9 @@ bool living::act()
 						// tests: LivingActFlow.a_roll_the_gate_refuses_takes_the_ordinary_act_with_the_setting_on
 						if (check_special() )
 						{
-							// rule: Part of the rule above that begins "A bot that rolled a slot
-							//   casts it only ..."
+							// rule: A bot that rolled a slot casts it only if its gate
+							//   (check_special) says yes; a gate refusal is traced 'special held';
+							//   a successful cast is the bot's act.
 							// tests: LivingActFlow.a_cast_that_refuses_after_the_gates_yes_takes_the_ordinary_act_with_the_setting_on
 							// tests: LivingActFlow.a_roll_the_gate_refuses_takes_the_ordinary_act_with_the_setting_on
 							if (special())
@@ -631,11 +628,6 @@ bool living::act()
 					{
 						set_foe(current_game->world->find_near_foe(this));
 					}
-					// rule: Part of the rule above that begins "Seeking: a bot without a foe looks
-					//   for a ..."
-					// tests: LivingCombat.living_round7_act_random_and_do_action_targeted_branches
-					// tests: CoverageMisc.coverage_r19_living_act_random_acquires_a_foe_and_queues_a_command
-					// tests: SemAi2.a_bot_with_no_foe_near_takes_the_nearest_foe_anywhere_on_the_coins_zero
 					if (foe()) // && current_game->world->rng_.next(2) )
 					{
 						const char snapped_dir = static_cast<char>((enddir() / 2) * 2);
@@ -679,8 +671,8 @@ short living::shove(walker  *target, short x, short y)
 	        (is_friendly(target)) // we are allied
 	   )
 		// Make sure WE don't get shoved
-		// rule: Part of the rule above that begins "A walker only shoves a living ally; two times
-		//   ..."
+		// rule: A walker only shoves a living ally; two times in three the ally is shoved, never a
+		//   seated hero (the rng(3) draw happens even for a seat).
 		// tests: LivingCombat.living_shove_injects_walk_only_when_the_baby_step_is_passable
 		// tests: LivingFuncs.living_shove_force_queues_walk_on_passable_step_and_refuses_blocked_step
 		// tests: SemAi2.a_shove_needs_a_living_ally_that_is_not_a_seat_and_a_nonzero_roll
@@ -776,8 +768,9 @@ bool living::walk(float x, float y)
 			set_frame_from_current_walk_animation();
 			return 1;
 		}
-		else //Invalid move? // rule: Part of the rule above that begins "A step moves only if the
-			//   destination is passable ..."
+		else //Invalid move? // rule: A step moves only if the destination is passable at its exact,
+			//   rounded-up and rounded-down offsets (so a fractional step cannot clip a corner into
+			//   trees or walls).
 			// tests: LivingCombat.living_walk_moves_on_matched_facing_and_only_turns_otherwise
 			// tests: LivingFuncs.living_walk_moves_on_matching_facing_turns_otherwise_and_refuses_off_map
 			// tests: SemAi2.a_step_moves_only_when_its_exact_and_rounded_offsets_are_passable
@@ -799,8 +792,7 @@ bool living::walk(float x, float y)
 			if (collide_ob() && !collide_ob()->dead()
 			        && (og::sim::session_gameplay_fixes() == 0 || og::sim::step_meets(*this, x, y, *collide_ob())))
 			{
-				// rule: Part of the rule above that begins "A refused step shoves a living ally in
-				//   the ..."
+				// rule: A refused step shoves a living ally in the way.
 				// tests: GameplayFixesWalk.a_walk_that_eats_a_teleporter_does_not_shove_the_ally_it_left
 				// tests: GameplayFixesWalk.a_grid_stopped_fallback_does_not_shove_the_ally_the_full_step_met
 				// tests: GameplayFixesWalk.a_body_the_step_meets_is_still_shoved
@@ -831,8 +823,7 @@ bool living::walk(float x, float y)
 		//   other walkers call ACT.  This would cause control
 		//   to turn TWICE on the first call to walk, which is bad.
 		//   So we stop that behavior here.
-		// rule: Part of the rule above that begins "A walker steps only when already facing the
-		//   step's ..."
+		// rule: A walker steps only when already facing the step's direction.
 		// tests: LivingCombat.living_walk_moves_on_matched_facing_and_only_turns_otherwise
 		// tests: LivingFuncs.living_walk_moves_on_matching_facing_turns_otherwise_and_refuses_off_map
 		// tests: SemAi2.a_walk_off_the_facing_turns_one_notch_but_a_seated_hero_only_records_it
@@ -851,9 +842,6 @@ bool walkerIsAutoAttackable(walker* ob)
     // tests: LivingCombat.living_act_command_execution_and_autoattackable_edges
     if (order == Order::Living || order == Order::Generator)
         return true;
-    // rule: Part of the rule above that begins "Walking into a living or a generator starts an ..."
-    // tests: LivingFuncs.walkerIsAutoAttackable_true_for_every_living_family_and_order_discriminators
-    // tests: LivingCombat.living_act_command_execution_and_autoattackable_edges
     if (order == Order::Weapon)
     {
         const auto* wfd = get_weapon_family_descriptor(ob->family());
@@ -919,7 +907,8 @@ bool living::check_special()
 	if (stats_->magicpoints() < og::sim::cast_cost(*this, static_cast<int>(current_special()), shifter_down() != 0))
 		set_current_special(1); // make us do default ..
 	// ... and again for the default slot the line above may have fallen back to.
-	// rule: Part of the rule above that begins "New Specials: a bot that tossed the Shift coin ..."
+	// rule: New Specials: a bot that tossed the Shift coin but cannot pay its slot's PRICED
+	//   alternate (e.g. MINE) casts the plain slot instead.
 	// tests: KitBots.unaffordable_priced_alternate_drops_the_shift_only_when_priced
 	if (shifter_down() != 0 && og::sim::cannot_afford_priced_alternate(*this, static_cast<int>(current_special()))) set_shifter_down(0);
 
@@ -1022,8 +1011,7 @@ void living::set_difficulty(std::uint32_t whatlevel)
 		stats_->set_heal_per_round(	stats_->heal_per_round() + 1);
 	} // this takes care of the integer part, now calculate the fraction
 
-	// rule: Part of the rule above that begins "A placed walker's HP regeneration rate comes from
-	//   its ..."
+	// rule: A placed walker's HP regeneration rate comes from its level.
 	// tests: SemAi2.hp_regeneration_rate_comes_from_the_level_with_the_classic_off_by_one
 	if (stats_->current_heal_delay() > 1)
 	{
@@ -1036,8 +1024,7 @@ void living::set_difficulty(std::uint32_t whatlevel)
 	//make sure we have at least a 2 wait, otherwise we should have
 	//calculated our heal_per_round as one higher, and the math must
 	//have been screwed up some how
-	// rule: Part of the rule above that begins "A placed walker's HP regeneration rate comes from
-	//   its ..."
+	// rule: A placed walker's HP regeneration rate comes from its level.
 	// tests: SemAi2.hp_regeneration_rate_comes_from_the_level_with_the_classic_off_by_one
 	if (stats_->max_heal_delay() < 2)
 		stats_->set_max_heal_delay(2);
@@ -1056,8 +1043,7 @@ void living::set_difficulty(std::uint32_t whatlevel)
 		stats_->set_magic_per_round(	stats_->magic_per_round() + 1);
 	} // this takes care of the integer part, now calculate the fraction
 
-	// rule: Part of the rule above that begins "A placed walker's MP regeneration rate comes from
-	//   its ..."
+	// rule: A placed walker's MP regeneration rate comes from its level the same way, from 30*L^2.
 	// tests: SemAi2.mp_regeneration_rate_comes_from_the_level_with_the_classic_off_by_one
 	if (stats_->current_magic_delay() > 1)
 	{
@@ -1070,8 +1056,7 @@ void living::set_difficulty(std::uint32_t whatlevel)
 	//make sure we have at least a 2 wait, otherwise we should have
 	//calculated our magic_per_round as one higher, and the math must
 	//have been screwed up some how
-	// rule: Part of the rule above that begins "A placed walker's MP regeneration rate comes from
-	//   its ..."
+	// rule: A placed walker's MP regeneration rate comes from its level the same way, from 30*L^2.
 	// tests: SemAi2.mp_regeneration_rate_comes_from_the_level_with_the_classic_off_by_one
 	if (stats_->max_magic_delay() < 2)
 		stats_->set_max_magic_delay(2);
@@ -1091,10 +1076,6 @@ bool living::act_random()
 	// tests: SemAi2Randomer.act_random_retargets_to_a_near_foe_one_time_in_eighty_or_when_it_has_none
 	if (!current_game->world->rng_.next(80) || (!foe()))
 		set_foe(current_game->world->find_near_foe(this));
-	// rule: Part of the rule above that begins "act_random retargets to a near foe one time in ..."
-	// tests: WalkerSpecials.act_guard_and_low_magic_act_random_pin_what_they_queue
-	// tests: LivingCombat.living_round7_act_random_and_do_action_targeted_branches
-	// tests: SemAi2Randomer.act_random_retargets_to_a_near_foe_one_time_in_eighty_or_when_it_has_none
 	if (!foe())
 		return stats_->try_random_walk(40);
 
@@ -1110,8 +1091,8 @@ bool living::act_random()
 	if (abs(xdist) < lineofsight() * GRID_SIZE &&
 	        abs(ydist) < lineofsight() * GRID_SIZE)
 	{
-		// rule: Part of the rule above that begins "act_random: a foe inside the line-of-sight box
-		//   is fired ..."
+		// rule: act_random: a foe inside the line-of-sight box is fired at if a shot can reach it
+		//   (COMMAND_FIRE for a random 0-23 count); a blocked shot turns toward the foe.
 		// tests: LivingCombat.living_round7_act_random_and_do_action_targeted_branches
 		// tests: SemAi2Randomer.act_random_fires_at_a_foe_in_sight_and_searches_for_one_out_of_it
 		if (fire_check(xdist, ydist))
@@ -1149,8 +1130,7 @@ bool living::do_action()
 	switch (action())
 	{
 		case ACTION_FOLLOW: // follow our leader, attack his targets ..
-			// rule: Part of the rule above that begins "An ally on Follow (Summon Defense) fights
-			//   its own ..."
+			// rule: An ally on Follow (Summon Defense) fights its own foe if it has one.
 			// tests: LivingCombat.living_walk_and_do_action_edge_branches
 			// tests: LivingCombat.living_do_action_follow_leader_null_and_command_paths
 			// tests: LivingUnit.follow_ally_spends_its_act_on_the_follow_command_not_its_ai
@@ -1159,8 +1139,7 @@ bool living::do_action()
 			if (foe())
 				return 0;       // continue as normal
 			set_leader(current_game->world->find_nearest_player(this));
-			// rule: Part of the rule above that begins "An ally on Follow (Summon Defense) fights
-			//   its own ..."
+			// rule: An ally on Follow (Summon Defense) fights its own foe if it has one.
 			// tests: LivingCombat.living_walk_and_do_action_edge_branches
 			// tests: LivingCombat.living_do_action_follow_leader_null_and_command_paths
 			// tests: LivingUnit.follow_ally_spends_its_act_on_the_follow_command_not_its_ai
@@ -1168,8 +1147,7 @@ bool living::do_action()
 			// tests: LivingUnit.living_r11_act_owner_dead_and_action_follow
 			if (!leader())
 				return 0;       // continue as normal ... shouldn't happen
-			// rule: Part of the rule above that begins "An ally on Follow (Summon Defense) fights
-			//   its own ..."
+			// rule: An ally on Follow (Summon Defense) fights its own foe if it has one.
 			// tests: LivingCombat.living_walk_and_do_action_edge_branches
 			// tests: LivingCombat.living_do_action_follow_leader_null_and_command_paths
 			// tests: LivingUnit.follow_ally_spends_its_act_on_the_follow_command_not_its_ai

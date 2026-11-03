@@ -25,8 +25,8 @@ int highest(const bool (&flags)[kBeltKeys])
     // tests: BeltInput.press_edge_sets_special_pressed_and_latches_the_byte
     for (int key = kBeltKeys; key >= 1; --key)
     {
-        // rule: Part of the rule above that begins "When several SPEC keys are pressed (or held) in
-        //   ..."
+        // rule: When several SPEC keys are pressed (or held) in one input sample, the
+        //   highest-numbered key wins.
         // tests: BeltInput.two_keys_down_in_one_sample_take_the_highest
         // tests: BeltInput.a_key_held_before_the_belt_saw_it_is_not_a_press
         // tests: BeltInput.press_edge_sets_special_pressed_and_latches_the_byte
@@ -66,8 +66,8 @@ Fold fold_belt_keys(const Keys& keys, const Layout& belt, Latch& latch)
     else if (latch.active_key != 0 && !keys.held[latch.active_key - 1])
     {
         const int next = highest(keys.held);
-        // rule: Part of the rule above that begins "A SPEC key press latches that key's ability
-        //   (SHIFT ..."
+        // rule: A SPEC key press latches that key's ability (SHIFT read at the press, not later)
+        //   and is a special press.
         // tests: BeltInput.press_edge_sets_special_pressed_and_latches_the_byte
         // tests: BeltInput.shift_at_press_selects_the_layer_and_a_shift_change_mid_hold_does_not
         // tests: BeltInput.release_of_the_active_key_promotes_the_other_held_key_as_a_press
@@ -120,10 +120,6 @@ Fold fold_keys(const Keys& keys, bool ability_select, const Layout* belt,
     // tests: BeltInput.on_with_a_walker_is_the_belt_fold, BeltInput.on_fold_clears_switch_special
     if (!ability_select)
         return fold_classic_keys(keys, latch);
-    // rule: Part of the rule above that begins "With New Ability Select off, SPEC key 1 is ..."
-    // tests: BeltInput.off_fold_maps_slot_17_to_switch_special_and_ignores_18
-    // tests: BeltInput.on_without_a_walker_is_the_classic_special_and_nothing_else
-    // tests: BeltInput.on_with_a_walker_is_the_belt_fold, BeltInput.on_fold_clears_switch_special
     if (belt == nullptr)
     {
         latch = Latch{};
