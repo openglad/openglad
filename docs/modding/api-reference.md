@@ -210,7 +210,11 @@ An unknown order, an unresolvable family, a non-function hook value, or a
 table with no recognised hook name is a **load error**: the whole chunk is
 rejected. A hook that errors at *runtime* is treated as absent for that
 dispatch — identically on every peer — and the error is recorded (see
-[Script errors](#script-errors-and-logging)).
+[Script errors](#script-errors-and-logging)). What the hook changed before
+its error stays, and the engine's default for that call runs in its place
+where it has one (`on_death` leaves the stain, `level_up` adds the default
+gains, `hit_response` attacks the attacker); a hook with no default, such
+as `on_shoved`, `do_special` or `on_create`, leaves nothing in its place.
 
 `og.family_id(order, "core:name")` performs the same resolution and returns
 the wire byte, or `nil`. Resolve family bytes once at chunk load and keep them
@@ -1207,6 +1211,11 @@ Two engine behaviors you will meet the first time a pack misbehaves:
   past the cap only increment `dropped_error_count()`. So a hook that errors
   every tick on every instance costs one record, not one per tick, and the
   first errors — the ones that explain the break — are the ones kept.
+- **A family hook's first failure prints one operator line.** It reads
+  `class pack: family hook hook:<name> FAILED — treated as absent, ...` and
+  says which of two things followed: the engine's default ran in the hook's
+  place, or the hook has no engine default and nothing ran. Either way the
+  changes the hook made before its error stay.
 - **The log transcript is a bounded tail.** `og.log`/`print` always traces
   under the `script` category, but the stored transcript keeps only the most
   recent `kMaxStoredScriptLogLines` (512) lines, evicting oldest-first, with

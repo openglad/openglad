@@ -275,8 +275,9 @@ inline bool on_eat(const TreasureFamilyDescriptor& tfd, treasure* self,
         .value_or(true);
 }
 
-// Loud-failure guard. With no C++ fallback left, an erroring hook is a
-// silent no-op; assert on this so a test cannot pass through one.
+// Loud-failure guard. With no C++ fallback left, an erroring hook is
+// treated as absent (only the caller's engine default runs, where it has
+// one); assert on this so a test cannot pass through one.
 // Usage: ScopedHookFailureGuard guard; ... ; guard.expect_none();
 class ScopedHookFailureGuard {
 public:

@@ -2563,11 +2563,13 @@ WorldScripts& active_world_scripts()
 
 namespace {
 
-// Pack-installed descriptors carry no C++ callbacks, so an erroring hook
-// means nothing happens at all. Count every failed dispatch, keep
-// the most recent one for a test to read back, and shout the first sighting
-// of each distinct error at operator level. Process-global bookkeeping, read
-// by nothing in the sim: peers stay in step and nothing here can throw.
+// Pack-installed descriptors carry no C++ callbacks, so an erroring hook is
+// treated as absent: its caller runs the engine's default where it has one,
+// and nothing runs where it has none. Count every failed dispatch, keep the
+// most recent one for a test to read back, and shout the first sighting of
+// each distinct error at operator level, saying which of the two happened.
+// Process-global bookkeeping, read by nothing in the sim: peers stay in step
+// and nothing here can throw.
 hooks::HookFailure& hook_failure_state()
 {
     static hooks::HookFailure state;
@@ -2575,7 +2577,7 @@ hooks::HookFailure& hook_failure_state()
 }
 
 void note_hook_failure(const char* where, const ScriptHost::Impl& impl,
-                       bool is_new_error)
+                       bool is_new_error, bool default_ran)
 {
     hooks::HookFailure& state = hook_failure_state();
     state.count++;
@@ -2585,9 +2587,11 @@ void note_hook_failure(const char* where, const ScriptHost::Impl& impl,
     // record_error folds repeats, so the freshest text for this `where` is
     // the last matching stored record.
     // rule: Every failed hook dispatch is counted and the latest failure's where/message kept for
-    //   tests; the operator log line prints once per distinct error.
+    //   tests; the operator log line prints once per distinct error and says whether the engine's
+    //   default ran in the hook's place.
     // tests: ScriptHooksTest.erroring_hook_is_latched_loudly
     // tests: SemScript3.a_repeated_hook_error_logs_once_and_a_new_error_logs_again
+    // tests: SemScript3.the_failure_line_says_nothing_ran_only_for_a_hook_with_no_engine_default
     for (auto it = impl.errors.rbegin(); it != impl.errors.rend(); ++it) {
         // rule: Every failed hook dispatch is counted and the latest failure's where/message kept
         //   for tests; the operator log line prints once per distinct error.
@@ -2602,8 +2606,13 @@ void note_hook_failure(const char* where, const ScriptHost::Impl& impl,
     // is the operator-facing half, once per distinct error so a hook failing
     // every tick cannot drown the log.
     if (is_new_error)
-        LogError("class pack: family hook {} FAILED — no C++ fallback "
-                 "exists, so nothing ran: {}\n",
+        LogError(default_ran
+                     ? "class pack: family hook {} FAILED — treated as absent, so the "
+                       "engine's default ran in its place (changes made before the "
+                       "error stay): {}\n"
+                     : "class pack: family hook {} FAILED — treated as absent; it has no "
+                       "engine default, so nothing ran in its place (changes made "
+                       "before the error stay): {}\n",
                  state.where, state.message);
 }
 
@@ -2736,8 +2745,11 @@ public:
     }
 
     // Runs the hook. Returns nullopt on script error (R9: treat as absent),
-    // otherwise the boolean-coerced result (void hooks: true).
-    std::optional<bool> call(const char* where, bool wants_result)
+    // otherwise the boolean-coerced result (void hooks: true). default_ran
+    // says whether the caller runs an engine default in a failed hook's
+    // place, for the failure line.
+    std::optional<bool> call(const char* where, bool wants_result,
+                             bool default_ran)
     {
         const std::size_t errors_before = impl_.errors.size();
         // rule: A hook that errors counts as absent for that dispatch (nullopt) and is latched; a
@@ -2750,7 +2762,7 @@ public:
         // tests: SemScript3.a_result_hook_answer_is_lua_truthiness
         if (!impl_.protected_call(where, nargs_, wants_result ? 1 : 0)) {
             note_hook_failure(where, impl_,
-                              impl_.errors.size() > errors_before);
+                              impl_.errors.size() > errors_before, default_ran);
             return std::nullopt;
         }
         bool result = true;
@@ -2787,7 +2799,7 @@ public:
         // tests: SpecialsDispatchTest.cast_reason_length_boundary_and_null_descriptor
         if (!impl_.protected_call(where, nargs_, 2)) {
             note_hook_failure(where, impl_,
-                              impl_.errors.size() > errors_before);
+                              impl_.errors.size() > errors_before, false);
             // plumbing: error_reason out-param null guard
             if (error_reason)
                 *error_reason = "SPECIAL SCRIPT ERROR";
@@ -2862,7 +2874,7 @@ public:
                 "{}:{}: {}", source_name, source.linedefined, contract_error);
             impl_.record_error(where, message.c_str());
             note_hook_failure(where, impl_,
-                              impl_.errors.size() > errors_before);
+                              impl_.errors.size() > errors_before, false);
             // plumbing: error_reason out-param null guard
             if (error_reason)
                 *error_reason = "SPECIAL SCRIPT ERROR";
@@ -2919,7 +2931,55 @@ const char* hook_where(FamilyHook hook)
     }
 }
 
-// Shared shape: try script hook with walker args, no C++ fallback here.
+// Whether the caller of a family hook runs an engine default when the hook
+// fails, read for the failure line. It follows the callers named here: when
+// one of them changes what it does on a failed hook, this table changes too.
+bool hook_has_engine_default(FamilyHook hook)
+{
+    // rule: A failed family hook is treated as absent, and its caller's engine default runs where
+    //   it has one: check_special_ai (the bot may cast, living::check_special), hit_response
+    //   (attack the attacker), set_difficulty (the 11*L^2 scaling), level_up (the default gains),
+    //   on_death (the stain), on_fire_weapon (the shot fires), handle_teleport and on_ani_complete
+    //   (back to walking), weapon on_animate (the facing-row animation), effect on_act (animate,
+    //   then die), treasure on_eat (eaten) and on_act_override (the default act). For do_special
+    //   (the cast is refused free) and the notification hooks nothing runs in its place.
+    // tests: SemScript3.a_set_difficulty_hook_that_errors_keeps_its_change_and_the_default_scaling_runs_too
+    // tests: SemScript3.a_level_up_hook_that_errors_keeps_its_gains_and_the_default_gains_run_too
+    // tests: SemScript3.a_hit_response_hook_that_errors_still_attacks_the_attacker
+    // tests: SemScript3.the_failure_line_says_nothing_ran_only_for_a_hook_with_no_engine_default
+    switch (hook) {
+        case FamilyHook::CheckSpecialAi:
+        case FamilyHook::HitResponse:
+        case FamilyHook::SetDifficulty:
+        case FamilyHook::LevelUp:
+        case FamilyHook::OnDeath:
+        case FamilyHook::OnFireWeapon:
+        case FamilyHook::HandleTeleport:
+        case FamilyHook::OnAniComplete:
+        case FamilyHook::WeaponOnAnimate:
+        case FamilyHook::EffectOnAct:
+        case FamilyHook::TreasureOnEat:
+        case FamilyHook::OnActOverride:
+            return true;
+        case FamilyHook::DoSpecial:
+        case FamilyHook::OnActLiving:
+        case FamilyHook::OnShoved:
+        case FamilyHook::OnCreate:
+        case FamilyHook::CustomizeWeapon:
+        case FamilyHook::OnMeleeHit:
+        case FamilyHook::WeaponOnDeath:
+        case FamilyHook::WeaponOnHitTarget:
+        case FamilyHook::EffectOnDeath:
+        case FamilyHook::GeneratorCustomizeSpawn:
+        case FamilyHook::OnKill:
+        case FamilyHook::Count:
+            break;
+    }
+    return false;
+}
+
+// Shared shape: try script hook with walker args; the caller keeps its own
+// default path (no C++ fallback in this dispatcher).
 template <typename... Args>
 std::optional<bool> try_script_hook(Order order, int family_id,
                                     FamilyHook hook, bool wants_result,
@@ -2937,7 +2997,8 @@ std::optional<bool> try_script_hook(Order order, int family_id,
     HookFrame f(ws);
     f.begin(order, family_id, hook);
     (f.arg(args), ...);
-    return f.call(hook_where(hook), wants_result);
+    return f.call(hook_where(hook), wants_result,
+                  hook_has_engine_default(hook));
 }
 
 // DoSpecial dispatch, honoring both slot forms (stub generator reads this
@@ -3046,12 +3107,14 @@ bool hit_response(const FamilyDescriptor* fd, statistics* stats, walker* who)
     // Lua signature: hit_response(self, foe) — self is the stats' owner.
     // rule: A Lua hit_response / set_difficulty / level_up hook that RUNS replaces the classic C++
     //   default (attack-the-attacker special roll, the 11*level^2 HP difficulty formula, default
-    //   level-up gains); when no hook is registered or it ERRORS, the classic default runs.
+    //   level-up gains); when no hook is registered or it ERRORS, the classic default runs (on top
+    //   of what an erroring hook changed before its error).
     // tests: SemScript3.a_set_difficulty_hook_that_runs_replaces_the_default_scaling
     // tests: SemScript3.a_level_up_hook_that_runs_replaces_the_default_gains
     // tests: SemScript3.a_hit_response_hook_that_runs_replaces_attack_the_attacker
-    // deferred: #463 hook-ran and no-hook arms asserted for all three callers; the errored arm
-    //   (default runs on top of the partial hook) is bug #463 and is not pinned
+    // tests: SemScript3.a_set_difficulty_hook_that_errors_keeps_its_change_and_the_default_scaling_runs_too
+    // tests: SemScript3.a_level_up_hook_that_errors_keeps_its_gains_and_the_default_gains_run_too
+    // tests: SemScript3.a_hit_response_hook_that_errors_still_attacks_the_attacker
     if (try_script_hook(Order::Living, fd->family_id, FamilyHook::HitResponse,
                         false, stats->controller(), who))
         return true;
@@ -3070,10 +3133,14 @@ bool set_difficulty(const FamilyDescriptor* fd, living* self,
         return false;
     // rule: A Lua hit_response / set_difficulty / level_up hook that RUNS replaces the classic C++
     //   default (attack-the-attacker special roll, the 11*level^2 HP difficulty formula, default
-    //   level-up gains).
+    //   level-up gains); when no hook is registered or it ERRORS, the classic default runs (on top
+    //   of what an erroring hook changed before its error).
     // tests: SemScript3.a_set_difficulty_hook_that_runs_replaces_the_default_scaling
     // tests: SemScript3.a_level_up_hook_that_runs_replaces_the_default_gains
     // tests: SemScript3.a_hit_response_hook_that_runs_replaces_attack_the_attacker
+    // tests: SemScript3.a_set_difficulty_hook_that_errors_keeps_its_change_and_the_default_scaling_runs_too
+    // tests: SemScript3.a_level_up_hook_that_errors_keeps_its_gains_and_the_default_gains_run_too
+    // tests: SemScript3.a_hit_response_hook_that_errors_still_attacks_the_attacker
     if (try_script_hook(Order::Living, fd->family_id,
                         FamilyHook::SetDifficulty, false,
                         static_cast<walker*>(self),
@@ -3093,10 +3160,14 @@ bool level_up(const FamilyDescriptor* fd, guy* self, std::int32_t level_diff)
         return false;
     // rule: A Lua hit_response / set_difficulty / level_up hook that RUNS replaces the classic C++
     //   default (attack-the-attacker special roll, the 11*level^2 HP difficulty formula, default
-    //   level-up gains).
+    //   level-up gains); when no hook is registered or it ERRORS, the classic default runs (on top
+    //   of what an erroring hook changed before its error).
     // tests: SemScript3.a_set_difficulty_hook_that_runs_replaces_the_default_scaling
     // tests: SemScript3.a_level_up_hook_that_runs_replaces_the_default_gains
     // tests: SemScript3.a_hit_response_hook_that_runs_replaces_attack_the_attacker
+    // tests: SemScript3.a_set_difficulty_hook_that_errors_keeps_its_change_and_the_default_scaling_runs_too
+    // tests: SemScript3.a_level_up_hook_that_errors_keeps_its_gains_and_the_default_gains_run_too
+    // tests: SemScript3.a_hit_response_hook_that_errors_still_attacks_the_attacker
     if (try_script_hook(Order::Living, fd->family_id, FamilyHook::LevelUp,
                         false, self, static_cast<lua_Integer>(level_diff)))
         return true;

@@ -923,8 +923,9 @@ Rows deliberately not added:
 - #411: the kill credit is a field of the current game alone, not in the
   recording; the mode tests (`ModesOnslaught`, `ModesTdm`) pin it.
 - #417 and #418: no byte of the sim changes; every row proves it.
-- The modding API's changes (#454): no shipped pack reaches the new arms;
-  the core pack the runner mounts loads and runs the same bytes.
+- The modding API's changes (#454) and the hook-failure line (#463): no
+  shipped pack reaches the new arms, and no recording holds a log line; the
+  core pack the runner mounts loads and runs the same bytes.
 - #413, #414, #415 and #416: the display and the lobby, which no recording
   reaches.
 - Fix AA's two terrain pads. `archer_bot_bolt_pad_terrain`: a bot faces
@@ -1023,6 +1024,16 @@ its mistake:
   `ScoreChange`. Before, 256 credited team 0, and 257 and -255 team 1. The
   shipped treasures pass the eater's team, which is already a byte. This
   game only (the old game has no Lua API).
+- **A failed family hook's log line says what ran in its place (#463).**
+  A family hook that errors is treated as absent, and its caller's engine
+  default runs where it has one: the stain after `on_death`, the default
+  gains after `level_up`, the 11×L² scaling after `set_difficulty`, attack
+  the attacker after `hit_response`, and so on for twelve of the
+  twenty-three hooks. The operator line said "nothing ran" for every hook;
+  it now says "the engine's default ran in its place" for those twelve, and
+  "it has no engine default, so nothing ran in its place" for `do_special`
+  and the notification hooks. Both say that what the hook changed before
+  its error stays. Only the log line changes. This game only.
 
 ## Balance
 
