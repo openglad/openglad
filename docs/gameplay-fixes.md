@@ -91,6 +91,7 @@ usual pause.
 | AC | Elf volleys, druid GROW TREE and SUMMON FAERIE at a wall or the map edge | Classic: the cast draws the throw's waver and refuses; the elf's refund leaves it a point ahead (fix H's off column). With fixes H and I alone the cast paid the one swing (1 MP for the elf, 4 for the druid) for a rock or bolt that met the wall and struck nothing. | A pad blocked by terrain refuses `COULD NOT FIRE` before the refund and the swing: nothing drawn, nothing spent. A body on the pad keeps H's and I's paid blow. |
 | AD | A charmed tent or bones troop, a charmed summon | It wears the charmer's colour but keeps its owner's side: it fights its charmer and is struck by its charmer's team. | It heads its own owner chain while the charm lasts; its owner, its charm clock and its tent's cascade are unchanged. |
 | AE | The struck archmage's classic order | The reply goes on after a cast that worked, as the old game's does: a summon that stands still draws the slot-2 coin (the summon's busy refuses the cast), a chain is followed only by a HEARTBURST attempt its own busy refuses, and a HEARTBURST is cast once. | A cast that worked ends the reply; after a chain or a HEARTBURST that leaves the price of a TELEPORT, slot 2 is cast again (a second HEARTBURST, "then leave! :)"). With the setting on only a seat-driven archmage takes this order (a struck bot answers by fix R). |
+| AN | The archmage bot's CHAIN LIGHTNING rule, for a hero | No rule: the bot casts its coin's arm (fix B's off column). | The rule measures the chain with the cast's own reach: 200 px plus half its Intelligence plus 2 per level for an archmage with a character record (a hero the computer plays), 200 px plus 7 per level for a monster. Before, it measured every archmage by level, so such a hero was told "the chain has a target" and then refused `NO FOE IN RANGE`, or turned to HEARTBURST or held when the chain would have landed. |
 
 TELEPORT, REVEAL, CLOAK and ENERGY WAVE are unchanged as casts (their bot
 rules are in [Bots](#bots)): each does something whenever it is cast
@@ -270,6 +271,23 @@ Fixes X to AE, in play:
   `archmage_bot_struck_scen99`, the struck archmage arena with the setting
   off, captured from the old game (see [Parity](#parity)).
 
+Fixes AF to AN, in play:
+
+- **AN.** The archmage bot's HEARTBURST / CHAIN LIGHTNING rule (fix Q)
+  keeps the coin's arm when that arm has a foe in reach. It measured the
+  chain at 200 px plus 7 per level for every archmage, which is the cast's
+  reach for a monster only: an archmage with a character record (a
+  promoted hero the computer plays when it is not on a seat) reaches 200 px
+  plus half its Intelligence plus 2 per level (#453). A level-14 hero with
+  60 Intelligence reaches 258 px, not 298: with its only foe at 280 px the
+  rule kept the chain and the cast refused `NO FOE IN RANGE`. A level-1
+  hero with 200 Intelligence reaches 302 px, not 207: with its foe at
+  300 px the rule turned to HEARTBURST, which has no target there, and
+  held. With the setting on the rule now asks the cast's own reach, so the
+  rule and the cast agree. The struck bot's answer (fix R) asks the same
+  rule. No parity recording fields an archmage with a character record, so
+  every golden is unchanged.
+
 ## Refusals at a glance
 
 Every refusal is at most 24 characters, so it fits the compact HUD. All
@@ -404,10 +422,12 @@ because the spin strikes it and the yell stuns it (fix K).
   HEARTBURST (80) as the special the halved pool must still cover.
   HEARTBURST or CHAIN LIGHTNING: the coin's choice is kept when it has a
   target, swapped when only the other has one, and the cast refused when
-  neither has (the chain gate uses the chain's reach by level, 200 px plus
-  7 per level, so a bot with a character record can be told "the chain has
-  a target" and then refused for nothing by the cast, which uses half its
-  Intelligence instead; a candidate for a later refinement). SUMMON
+  neither has. Each reach is the cast's own: HEARTBURST 80 px plus 2 per
+  level, CHAIN LIGHTNING 200 px plus 7 per level for a monster and 200 px
+  plus half its Intelligence plus 2 per level for an archmage with a
+  character record (fix AN: before, the rule measured every archmage's
+  chain by level, so a hero the computer plays could be told "the chain has
+  a target" and then refused for nothing by the cast). SUMMON
   ELEMENTAL wants a living foe within 200 px and spare magic of at least
   the slot's own 500. SUMMON IMAGE, a phantom with one hit point, is a
   decoy, so it pays before the blows land: at least two living foes within

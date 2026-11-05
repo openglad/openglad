@@ -784,8 +784,7 @@ private:
 // radius always contains the burst's, so this arm needs a tuning whose chain
 // is the shorter: chain base 0 and 0 per level gives 20 px at level 10, the
 // burst 100. A foe 50 px off is a burst target only: the coin on CHAIN is
-// swapped to HEARTBURST and the gate says yes. (The row stays deferred on
-// #453, the hero radius the gate does not use.)
+// swapped to HEARTBURST and the gate says yes.
 //
 // RED (the swap `set_shifter_down(0)` dropped at :206): Expected equality of
 // these values: 0 a->shifter_down() Which is: 1.
@@ -800,6 +799,55 @@ TEST_F(SemArchmage, a_bot_archmage_whose_chain_coin_has_only_a_burst_target_swap
     EXPECT_TRUE(gate(a, 2, 1)) << "the burst has a target";
     EXPECT_EQ(0, a->shifter_down()) << "the coin is swapped to HEARTBURST";
 
+    a->set_shifter_down(1);
+    EXPECT_TRUE(gate(a, 2, 0)) << "setting off: the classic answer";
+    EXPECT_EQ(1, a->shifter_down()) << "setting off: the coin is left as it fell";
+}
+
+// Gameplay Fixes AN (#453). The slot-2 rule measures CHAIN LIGHTNING with the
+// cast's own reach: 200 + Int/2 + 2L for an archmage with a character record
+// (a hero the computer plays), 200 + 5L + 2L for a monster. A level-14 hero
+// with 60 Intelligence reaches 200 + 30 + 28 = 258 px (the monster reach would
+// be 298, its HEARTBURST reaches 108): a foe at 258 px keeps the chain coin
+// and the cast lands; at 259 px the rule swaps to a HEARTBURST with no target
+// and says no, and the cast agrees ("NO FOE IN RANGE"). A level-1 hero with
+// 200 Intelligence reaches 302 px (the monster reach would be 207): a foe at
+// 300 px turns a HEARTBURST coin to the chain, and the chain lands. With the
+// setting off the rule is the classic yes and the coin stays as it fell.
+//
+// RED (the hero branch dropped, `if self:has_guy() then` -> `if false then`
+// in ai_burst_or_chain): Expected equality of these values: k.yes Which is:
+// false gate(a, 2, 1) Which is: true "level 14, Int 60, foe at 259"; and
+// k.yes Which is: true ... Which is: false "level 1, Int 200, foe at 300".
+TEST_F(SemArchmage, a_bot_heros_chain_rule_reaches_what_its_cast_reaches)
+{
+    struct Case { int level; short intelligence; short dx; short coin; bool yes; short arm;
+                  const char* what; };
+    for (const Case k : {Case{14, 60, 258, 1, true, 1, "level 14, Int 60, foe at 258"},
+                         Case{14, 60, 259, 1, false, 0, "level 14, Int 60, foe at 259"},
+                         Case{1, 200, 300, 0, true, 1, "level 1, Int 200, foe at 300"}}) {
+        fresh_world();
+        living* a = arch(1, 200, 200, k.level, 2000.0f);
+        ASSERT_NE(nullptr, orc(2, static_cast<short>(200 + k.dx), 200));
+        ASSERT_NE(nullptr, a);
+        give_character(a, k.intelligence);
+        a->set_shifter_down(k.coin);
+        EXPECT_EQ(k.yes, gate(a, 2, 1)) << k.what;
+        EXPECT_EQ(k.arm, a->shifter_down()) << k.what;
+        a->stats()->set_special_cost(2, 0);
+        const Cast c = cast(a, 2, 1);
+        EXPECT_EQ(k.yes, c.ok) << k.what << " (" << c.reason << "): the rule and the cast agree";
+        EXPECT_EQ(k.yes ? 1 : 0, live_fx(FAMILY_CHAIN)) << k.what;
+        if (!k.yes) {
+            EXPECT_EQ("NO FOE IN RANGE", c.reason) << k.what;
+        }
+    }
+
+    fresh_world();
+    living* a = arch(1, 200, 200, 14, 2000.0f);
+    ASSERT_NE(nullptr, orc(2, 459, 200));
+    ASSERT_NE(nullptr, a);
+    give_character(a, 60);
     a->set_shifter_down(1);
     EXPECT_TRUE(gate(a, 2, 0)) << "setting off: the classic answer";
     EXPECT_EQ(1, a->shifter_down()) << "setting off: the coin is left as it fell";
@@ -984,7 +1032,7 @@ TEST_F(SemArchmage, heartburst_reaches_80_plus_2l_and_a_monsters_chain_200_plus_
 // the 600 pool spent); at 253 px the cast is "NO FOE IN RANGE" and free.
 // The level term of a monster's radius (5L) is not in a hero's. The old game
 // (walker.cpp:3348): `generic = 200+myguy->intelligence/2`, scanned at
-// `generic+2*stats->level`. (#453 is the bot gate's radius, not this cast.)
+// `generic+2*stats->level`.
 //
 // RED (`self:g_intelligence() // 2` -> `self:g_intelligence() // 2 + 1` at
 // :352): Expected equality of these values: k.hits Which is: false c.ok

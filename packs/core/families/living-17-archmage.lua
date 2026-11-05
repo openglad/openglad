@@ -321,33 +321,33 @@ end
 -- the coin's arm is kept when it has a target, swapped when only the other
 -- has one, refused when neither has.
 ai_burst_or_chain = function(self)
-  -- rule: Gameplay Fixes: a bot's slot-2 cast keeps the coin's arm when that arm has a foe in its
-  --   radius (heartburst 80+2L, chain 200+5L+2L), swaps to the other arm when only it has one, and
-  --   is refused when neither has a foe or the archmage is busy.
+  -- rule: Gameplay Fixes: a bot's slot-2 cast keeps the coin's arm when that arm has a foe in the cast's reach (heartburst
+  --   80+2L; chain 200+Int/2+2L a hero, 200+5L+2L a monster), swaps when only the other has one, else (or busy) refused.
   -- tests: GameplayFixesBots.archmage_burst_or_chain_takes_the_arm_with_a_target_with_the_setting_on
   -- tests: GameplayFixesBots.a_busy_bot_never_rolls_a_busy_cast_with_the_setting_on
   -- tests: SemArchmage.a_bot_archmage_whose_chain_coin_has_only_a_burst_target_swaps_to_heartburst
-  -- deferred: #453 the missing arm is asserted (tuning override); the row stays on #453: the gate's
-  --   chain radius ignores the hero formula the cast uses
+  -- tests: SemArchmage.a_bot_heros_chain_rule_reaches_what_its_cast_reaches
   if not gf.on() then
     return true
   end
-  -- The cast's own guard: it refuses a busy archmage.
   if lc.is_busy(self) then
     return false
   end
   local t = og.tuning(self)
   local bonus = t.radius_bonus_per_level * self.level
   local _, in_burst = og.find_foes_in_range("ob", t.burst_radius_base + bonus, self)
-  local _, in_chain = og.find_foes_in_range("ob",
-    t.chain_radius_base + t.chain_radius_per_level * self.level + bonus, self)
+  local reach = t.chain_radius_per_level * self.level
+  if self:has_guy() then
+    reach = self:g_intelligence() // 2
+  end
+  local _, in_chain = og.find_foes_in_range("ob", t.chain_radius_base + reach + bonus, self)
   if self:shifter_down() ~= 0 then
-    -- rule: Gameplay Fixes: a bot's slot-2 cast keeps the coin's arm when that arm has a foe in its
-    --   radius (heartburst 80+2L, chain 200+5L+2L), swaps to the other arm when only it has one,
-    --   and is refused when neither has a foe or the archmage is busy.
+    -- rule: Gameplay Fixes: a bot's slot-2 cast keeps the coin's arm when that arm has a foe in the cast's reach
+    --   (heartburst 80+2L; chain 200+Int/2+2L a hero, 200+5L+2L a monster), swaps to the other arm when only it
+    --   has one, and is refused when neither has a foe.
     -- tests: GameplayFixesBots.archmage_burst_or_chain_takes_the_arm_with_a_target_with_the_setting_on
-    -- tests: GameplayFixesBots.a_busy_bot_never_rolls_a_busy_cast_with_the_setting_on
     -- tests: SemArchmage.a_bot_archmage_whose_chain_coin_has_only_a_burst_target_swaps_to_heartburst
+    -- tests: SemArchmage.a_bot_heros_chain_rule_reaches_what_its_cast_reaches
     if in_chain >= 1 then
       return true
     end
