@@ -2586,6 +2586,8 @@ short walker::special()
 				default:
 					if (myscreen->gameplay_fixes ? busy > 0 : busy != 0)
 						return 0; // port of the current game's 5c5777f8: a busy below zero is not busy (a hero's fractional fire delay leaves it there for good)
+					// port of the current game's b6fd7eeb (Gameplay Fixes AC, #476): a cast at terrain refuses before fire() pays and draws
+					if (myscreen->gameplay_fixes && fire_pad_answer(FAMILY_FIRE_ARROW) == 1) return 0;
 					generic = current_weapon;
 					current_weapon = FAMILY_FIRE_ARROW;
 					newob = fire();
@@ -3218,6 +3220,8 @@ short walker::special()
 					special_rest_slot = 3; // port of the current game's 54f5890f
 					break;
 				case 4:  // Energy wave
+					// port of the current game's b6fd7eeb (Gameplay Fixes AC, #476): a cast at terrain refuses before fire() pays and draws
+					if (myscreen->gameplay_fixes && fire_pad_answer() == 1) return 0;
 					newob = fire();
 					if (!newob)
 						return 0; // failed somehow? !?!
@@ -4310,6 +4314,8 @@ short walker::special()
 				case 4:
 					if (busy > 0)
 						return 0;
+					// port of the current game's b6fd7eeb (Gameplay Fixes AC, #476): a cast at terrain refuses before fire() pays and draws
+					if (myscreen->gameplay_fixes && fire_pad_answer() == 1) return 0;
 					newob = fire();
 					if (!newob)
 						return 0; // failed somehow? !?!
