@@ -399,24 +399,24 @@ local function starburst(self)
 end
 
 local function freeze_time(self)
-  -- enemy_freeze is relative to world.my_team: a Mage on the player's team
-  -- banks a global time-stop; anyone else grants bonus_rounds to its own
-  -- side instead.
+  -- Who stops time: with Gameplay Fixes on, a Mage on the player's team (world.my_team); off (the
+  -- old game), one on team 0 or any hero. The stop is global; anyone else grants its side bonus_rounds.
   local t = og.tuning(self)
   -- shim kept: the C++ compares (uint8)my_team() against the u8 team field.
-  -- rule: A mage on the local player's team stops time for everyone else: world enemy_freeze += 20
-  --   + 11*level, palette 1 (EVENT_SET_PALETTE). Any other mage grants its own side bonus rounds
-  --   instead: min(5 + 2*level, 50) to itself and every friend on the map, with a 'TIME IS FROZEN!
-  --   (N rounds)' notice. Wrapped by with_rest: 360-tick rest on both setting values.
-  -- tests: WalkerSpecials.mage_freeze_time_drives_simulation
+  -- rule: A mage that stops time (Gameplay Fixes on: one on the local player's team; off, the old
+  --   game: one on team 0 or a hero) banks world enemy_freeze += 20 + 11*level, palette 1
+  --   (EVENT_SET_PALETTE). Any other mage grants its own side bonus rounds instead: min(5 + 2*level,
+  --   50) to itself and every friend on the map, with a 'TIME IS FROZEN! (N rounds)' notice. Wrapped
+  --   by with_rest: 360-tick rest on both setting values.
+  -- tests: WalkerSpecials.mage_freeze_time_drives_simulation, KitRests.freeze_time_rests_thirty_seconds
   -- tests: WalkerSpecials.mage_freeze_time_off_team_grants_bonus_rounds_not_a_global_stop
-  -- tests: PackLuaMage.an_enemy_freeze_time_banks_bonus_rounds_for_its_own_side
-  -- tests: PackLuaMage.an_enemy_freeze_time_is_capped_at_fifty_rounds
-  -- tests: KitRests.freeze_time_rests_thirty_seconds
-  -- tests: SemMage.a_player_team_freeze_time_banks_the_stop_and_asks_for_the_blue_palette
-  -- deferred: #477 classic divergence: old game takes the global stop on team_num==0||myguy,
-  --   current on team==my_team; test pins only the agreeing case (team 0, my_team 0)
-  if self.team == og.u8(og.my_team()) then
+  -- tests: PackLuaMage.an_enemy_freeze_time_banks_bonus_rounds_for_its_own_side, PackLuaMage.an_enemy_freeze_time_is_capped_at_fifty_rounds
+  -- tests: SemMage.a_player_team_freeze_time_banks_the_stop_and_asks_for_the_blue_palette, SemMage.a_hero_mage_off_the_red_team_stops_time_with_the_fixes_off_and_grants_rounds_with_them_on
+  -- tests: SemMage.a_mage_on_a_player_team_other_than_red_grants_rounds_with_the_fixes_off_and_stops_time_with_them_on
+  local fixed_stop = gf.on() and self.team == og.u8(og.my_team())
+  local classic_stop = not gf.on() and (self.team == 0
+                                        or self:has_guy())
+  if fixed_stop or classic_stop then
     og.set_enemy_freeze(og.enemy_freeze()
                         + t.freeze_base + t.freeze_per_level * self.level)
     og.set_palette(1)

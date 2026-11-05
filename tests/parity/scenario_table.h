@@ -3754,8 +3754,8 @@ inline constexpr FactPredicate kFacts_special_mage_3_scen99[] = {
 
 inline constexpr Mutation kMut_special_mage_3_scen99 = {
     "packs/core/families/living-03-mage.lua", 419,
-    "if self.team == og.u8(og.my_team()) then",
-    "if false and self.team == og.u8(og.my_team()) then",
+    "if fixed_stop or classic_stop then",
+    "if false and (fixed_stop or classic_stop) then",
     "Reroutes FREEZE TIME's player-team branch into the foreign-team branch: no world enemy_freeze bank and no palette tint, but a 'TIME IS FROZEN' notification instead. EventKindExactly(notification, 0) flips to one notification and WalkerHpRangeAtFinalTick(FAMILY_MAGE, 7600, 7800) fails."
 };
 
@@ -4983,8 +4983,8 @@ inline constexpr FactPredicate kFacts_input_special_switch_wrap_scen99[] = {
 
 inline constexpr Mutation kMut_input_special_switch_wrap_scen99 = {
     "packs/core/families/living-03-mage.lua", 419,
-    "  if self.team == og.u8(og.my_team()) then",
-    "  if false and self.team == og.u8(og.my_team()) then",
+    "  if fixed_stop or classic_stop then",
+    "  if false and (fixed_stop or classic_stop) then",
     "Reroutes the player-team FREEZE TIME cast into the foreign-team branch. The cast still fires, but emits notifications and RequestRedraw instead of tinting the palette, so EventKindAtLeast(set_palette,1) flips."
 };
 

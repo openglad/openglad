@@ -91,6 +91,7 @@ usual pause.
 | AC | Elf volleys, druid GROW TREE and SUMMON FAERIE at a wall or the map edge | Classic: the cast draws the throw's waver and refuses; the elf's refund leaves it a point ahead (fix H's off column). With fixes H and I alone the cast paid the one swing (1 MP for the elf, 4 for the druid) for a rock or bolt that met the wall and struck nothing. | A pad blocked by terrain refuses `COULD NOT FIRE` before the refund and the swing: nothing drawn, nothing spent. A body on the pad keeps H's and I's paid blow. |
 | AD | A charmed tent or bones troop, a charmed summon | It wears the charmer's colour but keeps its owner's side: it fights its charmer and is struck by its charmer's team. | It heads its own owner chain while the charm lasts; its owner, its charm clock and its tent's cascade are unchanged. |
 | AE | The struck archmage's classic order | The reply goes on after a cast that worked, as the old game's does: a summon that stands still draws the slot-2 coin (the summon's busy refuses the cast), a chain is followed only by a HEARTBURST attempt its own busy refuses, and a HEARTBURST is cast once. | A cast that worked ends the reply; after a chain or a HEARTBURST that leaves the price of a TELEPORT, slot 2 is cast again (a second HEARTBURST, "then leave! :)"). With the setting on only a seat-driven archmage takes this order (a struck bot answers by fix R). |
+| AI | FREEZE TIME's form | A mage on the red team or any hero stops time for everyone else, whatever team the player is on: a hero mage of another colour (a second seat's, a charmed one) turns the screen blue. A mage on the player's team that is neither red nor a hero gives its side bonus rounds instead. | Only a mage on the player's team stops time; any other mage, hero or not, gives its own side bonus rounds ("TIME IS FROZEN! (N rounds)"). |
 
 TELEPORT, REVEAL, CLOAK and ENERGY WAVE are unchanged as casts (their bot
 rules are in [Bots](#bots)): each does something whenever it is cast
@@ -138,7 +139,7 @@ Fixes T to W, in play:
   first asks "am I busy?" (or "am I mid-teleport?", or "am I resting?")
   asks the same before it says yes.
 
-Fixes X to AE, in play:
+Fixes X to AI, in play:
 
 - **X.** A walker whose step is refused shoves the ally in its way: the
   shove draws a roll, and two times in three the ally loses its orders
@@ -269,6 +270,17 @@ Fixes X to AE, in play:
   path, so every golden is unchanged; the fix's proof is
   `archmage_bot_struck_scen99`, the struck archmage arena with the setting
   off, captured from the old game (see [Parity](#parity)).
+- **AI.** FREEZE TIME has two forms. A mage on the player's side stops
+  time for everyone else: the world's freeze bank grows by 20 + 11 per
+  level and the screen turns blue. Any other mage gives itself and every
+  friend on the map bonus rounds instead, 5 + 2 per level up to 50. The
+  old game picks the form by `team_num == 0 || myguy`: the red team, or
+  any hero. This game has picked it by the player's team since the
+  companies work (#139, `75a786a9`): a hero of another colour that banked
+  the global stop froze itself and its own allies. With the setting off FREEZE TIME now asks what the old game asks
+  (#477); with it on, the player's team. The two tests agree when the
+  player is red and the mage is not a hero of another colour, which is
+  every parity row's arena, so no golden moves.
 
 ## Refusals at a glance
 
@@ -730,6 +742,13 @@ HEARTBURST attempt after it. That coin is one draw more than this game drew
 before the fix, so the archmage's blow on the orc rolls its damage one draw
 later (8, not 7): the row's mutation puts back the old read and its orc-hp
 fact fails.
+
+Fix AI has no new row: every FREEZE TIME row plays a red player and a mage
+that is red or not a hero, where both values of the setting cast the same
+form (`special_mage_3_scen99`, `input_special_switch_wrap_scen99`,
+`enemy_freeze_mage_scen99`, `mage_freeze_time_offteam_scen99` and the mage
+bot freeze rows), so every golden is unchanged. The semantic tests pin the
+two cases where the tests differ, on both values.
 
 The bot payoff gates moved five existing rows with the setting on, each
 recaptured from the old game after its port: `cleric_bot_raise_or_turn_fixes_scen99`
