@@ -971,8 +971,8 @@ Rows deliberately not added:
 
 ## Not gated
 
-Ten changes apply whatever the setting, three from the work that added it (N, O
-and P), six from the second bugs batch and one from the issues it filed:
+Eleven changes apply whatever the setting, three from the work that added it (N,
+O and P), six from the second bugs batch and two from the issues it filed:
 
 - **N. A slot that is not in play says so.** `walker::special()` refuses a
   slot priced 5000 (an undeclared slot, or one New Specials hides) before it
@@ -1050,6 +1050,16 @@ and P), six from the second bugs batch and one from the issues it filed:
   old game does, without the stack. Rounds banked during those acts still
   wait for the next tick. No recording banks more than 50, so no golden
   moves.
+- **A forestwalker upstairs reads its own floor's trees (#459).** The
+  forest pace (the shorter step and the point of magic in the trees), a
+  projectile's range spent over trees and the elf's hiding in them all
+  read the trees of the floor the walker is on. Before, on a level with
+  more than one floor, the tree test read floor 0 whatever the walker's
+  floor, while the SHRUB half of the same test already read its own: an
+  elf upstairs slowed over open grass wherever floor 0 had trees, and
+  walked at full speed, in plain sight, through trees painted on its own
+  floor. Single-floor levels, and so every recording, are unchanged. This
+  game only: the old game has one floor.
 
 ## Balance
 

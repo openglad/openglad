@@ -313,6 +313,69 @@ TEST_F(SemAi2, a_forestwalker_in_the_trees_steps_shorter_by_its_dexterity_or_lev
     EXPECT_FLOAT_EQ(4.0f, elf->stepsize()) << "on grass: the normal step";
 }
 
+// living.cpp:318 (#459). The forest pace reads the trees of the walker's own
+// floor, as the SHRUB half of the same test already did. On a two-floor map
+// a forestwalker upstairs walks at its normal step, and pays no point of
+// magic, over floor 0's trees, and slows in floor 1's own trees. Before the
+// fix the tree test read floor 0 whatever the walker's floor. The control: a
+// forestwalker on floor 0 slows over floor 0's trees.
+TEST_F(SemAi2, a_forestwalker_upstairs_is_slowed_only_by_its_own_floors_trees)
+{
+    auto two_floor_world = [&]() {
+        fresh_world();
+        tile(10, 10, PIX_TREE_B1);  // floor 0: trees under (165, 165)
+        GameWorld& w = world();
+        w.set_floor_count(2);
+        const std::size_t cells = static_cast<std::size_t>(w.grid.w) * w.grid.h;
+        auto* buf = new unsigned char[cells];
+        std::fill(buf, buf + cells, static_cast<unsigned char>(PIX_GRASS1));
+        buf[static_cast<std::size_t>(20 + w.grid.w * 20)] = PIX_TREE_B1;  // floor 1: trees under (325, 325)
+        w.grid_for_floor(1) = PixieData(1, w.grid.w, w.grid.h, buf);
+        w.smoother_for_floor(1).set_target(w.grid_for_floor(1));
+    };
+    // A level-4 NPC forestwalker (penalty 2) on its 4 px step with 10 MP.
+    auto forestwalker = [&](short floor, short x, short y) {
+        living* elf = living_at(FAMILY_SOLDIER, 0, x, y);
+        if (elf == nullptr)
+            return elf;
+        elf->change_floor(floor);
+        elf->stats()->set_bit_flags(BIT_FORESTWALK, 1);
+        elf->set_act_type(ACT_CONTROL);
+        elf->set_normal_stepsize(4.0f);
+        elf->set_stepsize(4.0f);
+        elf->set_speed_bonus_left(0);
+        elf->stats()->set_max_magicpoints(10.0f);
+        elf->stats()->set_magicpoints(10.0f);
+        elf->stats()->set_current_magic_delay(0);
+        elf->stats()->set_max_magic_delay(1000);
+        return elf;
+    };
+
+    two_floor_world();
+    living* over = forestwalker(1, 165, 165);
+    ASSERT_NE(nullptr, over);
+    ASSERT_EQ(1, static_cast<int>(over->floor()));
+    (void)over->act();
+    EXPECT_FLOAT_EQ(4.0f, over->stepsize()) << "floor 1 over floor 0's trees: the normal step";
+    EXPECT_FLOAT_EQ(10.0f, over->stats()->magicpoints()) << "floor 1 over floor 0's trees: no forest charge";
+
+    two_floor_world();
+    living* in = forestwalker(1, 325, 325);
+    ASSERT_NE(nullptr, in);
+    ASSERT_EQ(1, static_cast<int>(in->floor()));
+    (void)in->act();
+    EXPECT_FLOAT_EQ(2.0f, in->stepsize()) << "floor 1 in its own trees: 4 - 2";
+    EXPECT_FLOAT_EQ(9.0f, in->stats()->magicpoints()) << "floor 1 in its own trees: one point of magic";
+
+    two_floor_world();
+    living* ground = forestwalker(0, 165, 165);
+    ASSERT_NE(nullptr, ground);
+    ASSERT_EQ(0, static_cast<int>(ground->floor()));
+    (void)ground->act();
+    EXPECT_FLOAT_EQ(2.0f, ground->stepsize()) << "floor 0 in its own trees: 4 - 2";
+    EXPECT_FLOAT_EQ(9.0f, ground->stats()->magicpoints()) << "floor 0 in its own trees: one point of magic";
+}
+
 // living.cpp:352 (fix AG, #462). With the Gameplay Fixes setting on, every
 // act in the trees takes the forest penalty off the forestwalker's NORMAL
 // step, so its step stays at normal - penalty (never below 1 px) for as long

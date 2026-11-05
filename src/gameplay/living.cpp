@@ -315,22 +315,22 @@ bool living::act_round()
 		}
 	}
 	og::sim::possession_host_tick(*current_game->world, *this); // New Specials: a possessed host carries its rider and its countdown
-	// rule: A forestwalker (elf, druid...) that has any corner of its box in trees or in concealing
-	//   decor (a SHRUB) moves at a forest pace; out of the trees its step is reset to its normal
-	//   stepsize every act.
+	// rule: A forestwalker (the elf, or a pack class with FORESTWALK) that has any corner of its
+	//   box in trees or in concealing decor (a SHRUB) on its own floor moves at a forest pace; out
+	//   of the trees its step is reset to its normal stepsize every act.
 	// tests: Decor.shrub_conceals_for_living_and_weapon_but_bones_does_not
 	// tests: LivingUnit.speed_bonus_counts_down_to_zero_and_rides_every_tick
+	// tests: SemAi2.a_forestwalker_upstairs_is_slowed_only_by_its_own_floors_trees
 	if ( stats_->query_bit_flags(BIT_FORESTWALK) &&
 	        (
-	            current_game->world->mysmoother.query_genre_x_y(xpos() / GRID_SIZE, ypos() / GRID_SIZE) == TYPE_TREES
-	            || current_game->world->mysmoother.query_genre_x_y((xpos() + sizex()) / GRID_SIZE, ypos() / GRID_SIZE) == TYPE_TREES
-	            || current_game->world->mysmoother.query_genre_x_y((xpos() + sizex()) / GRID_SIZE, (ypos() + sizey()) / GRID_SIZE) == TYPE_TREES
-	            || current_game->world->mysmoother.query_genre_x_y(xpos() / GRID_SIZE, (ypos() + sizey()) / GRID_SIZE) == TYPE_TREES
-	            // Concealing decor (SHRUB): same four corner probes, on the
-	            // walker's own floor (identical to floor 0 on single-floor
-	            // levels). Gated on plane validity — no-decor levels take the
-	            // legacy condition byte-identically, and no MIGRATED decor
-	            // conceals, so stock behavior is unchanged.
+	            current_game->world->smoother_for_floor(floor()).query_genre_x_y(xpos() / GRID_SIZE, ypos() / GRID_SIZE) == TYPE_TREES
+	            || current_game->world->smoother_for_floor(floor()).query_genre_x_y((xpos() + sizex()) / GRID_SIZE, ypos() / GRID_SIZE) == TYPE_TREES
+	            || current_game->world->smoother_for_floor(floor()).query_genre_x_y((xpos() + sizex()) / GRID_SIZE, (ypos() + sizey()) / GRID_SIZE) == TYPE_TREES
+	            || current_game->world->smoother_for_floor(floor()).query_genre_x_y(xpos() / GRID_SIZE, (ypos() + sizey()) / GRID_SIZE) == TYPE_TREES
+	            // Concealing decor (SHRUB): the same four corners, on the same
+	            // floor. Gated on plane validity: a no-decor level takes the tree
+	            // test alone, byte-identically, and no MIGRATED decor conceals,
+	            // so stock behavior is unchanged.
 	            || current_game->world->decor_conceals_at(floor(), xpos() / GRID_SIZE, ypos() / GRID_SIZE)
 	            || current_game->world->decor_conceals_at(floor(), (xpos() + sizex()) / GRID_SIZE, ypos() / GRID_SIZE)
 	            || current_game->world->decor_conceals_at(floor(), (xpos() + sizex()) / GRID_SIZE, (ypos() + sizey()) / GRID_SIZE)

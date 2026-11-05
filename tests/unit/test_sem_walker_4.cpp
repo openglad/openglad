@@ -1293,6 +1293,55 @@ TEST_F(Weap, a_shot_over_trees_spends_range_but_never_below_zero)
     EXPECT_EQ(0, static_cast<int>(k->lineofsight())) << "range 0: unchanged";
 }
 
+// weap.cpp:100 (#459). The range decay over trees reads the weapon's own
+// floor, keeping the classic quirk of passing pixel coordinates as grid
+// coordinates. On a two-floor map a shot upstairs at pixel (10, 10) keeps its
+// range over floor 0's tree cell (10, 10) and spends one over floor 1's own
+// tree cell (20, 20); a shot on floor 0 over the floor-0 tree spends one.
+TEST_F(Weap, a_shot_upstairs_spends_range_only_over_its_own_floors_trees)
+{
+    auto two_floor_world = [&]() {
+        fresh_world(2);
+        tile(10, 10, PIX_TREE_M1);  // floor 0
+        GameWorld& w = world();
+        const std::size_t cells = static_cast<std::size_t>(w.grid.w) * w.grid.h;
+        auto* buf = new unsigned char[cells];
+        std::fill(buf, buf + cells, static_cast<unsigned char>(PIX_GRASS1));
+        buf[static_cast<std::size_t>(20 + w.grid.w * 20)] = PIX_TREE_M1;  // floor 1
+        w.grid_for_floor(1) = PixieData(1, w.grid.w, w.grid.h, buf);
+        w.smoother_for_floor(1).set_target(w.grid_for_floor(1));
+    };
+    auto shot = [&](short floor, short x, short y) {
+        walker* k = knife_at(x, y);
+        if (k == nullptr)
+            return k;
+        k->change_floor(floor);
+        k->set_act_type(ACT_SIT);
+        k->set_lineofsight(3);
+        return k;
+    };
+
+    two_floor_world();
+    walker* over = shot(1, 10, 10);
+    ASSERT_NE(nullptr, over);
+    ASSERT_EQ(1, static_cast<int>(over->floor()));
+    over->act();
+    EXPECT_EQ(3, static_cast<int>(over->lineofsight())) << "floor 1 over floor 0's tree: range kept";
+
+    two_floor_world();
+    walker* in = shot(1, 20, 20);
+    ASSERT_NE(nullptr, in);
+    in->act();
+    EXPECT_EQ(2, static_cast<int>(in->lineofsight())) << "floor 1 over its own tree: range left -1";
+
+    two_floor_world();
+    walker* ground = shot(0, 10, 10);
+    ASSERT_NE(nullptr, ground);
+    ASSERT_EQ(0, static_cast<int>(ground->floor()));
+    ground->act();
+    EXPECT_EQ(2, static_cast<int>(ground->lineofsight())) << "floor 0 over its own tree: range left -1";
+}
+
 // weap.cpp:90. A weapon in a living-only act mode does nothing.
 TEST_F(Weap, a_weapon_in_control_or_an_unknown_act_does_nothing)
 {
