@@ -603,6 +603,8 @@ OG_PARITY_TEST(elf_rocks_edge_pad_scen99)
 OG_PARITY_TEST(elf_rocks_edge_pad_fixes_scen99)
 OG_PARITY_TEST(thief_charm_tent_troop_scen99)
 OG_PARITY_TEST(thief_charm_tent_troop_fixes_scen99)
+OG_PARITY_TEST(elf_forest_haste_scen99)
+OG_PARITY_TEST(elf_forest_haste_fixes_scen99)
 
 #undef OG_PARITY_TEST
 

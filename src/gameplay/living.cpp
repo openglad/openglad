@@ -351,14 +351,21 @@ bool living::act_round()
 		float temp;
 		// rule: In the forest a forestwalker's step shrinks by 4 - dexterity/10 (a player
 		//   character) or 4 - level/2 (an NPC), never by a negative amount and never below 1 px.
+		//   Classic shrinks the step it carries: a haste compounds every act, and without one the
+		//   step crawls to 1 px. Gameplay Fixes AG shrinks the normal step, every act.
 		// tests: SemAi2.a_forestwalker_in_the_trees_steps_shorter_by_its_dexterity_or_level
+		// tests: SemAi2.a_forestwalker_in_the_trees_keeps_its_forest_step_with_the_setting_on
+		// tests: SemAi2.a_forestwalker_in_the_trees_slows_to_one_pixel_with_the_setting_off
+		// tests: SemAi2.a_hastened_forestwalker_in_the_trees_steps_its_forest_step_plus_the_haste_with_the_setting_on
+		// tests: SemAi2.a_hastened_forestwalker_in_the_trees_compounds_its_step_with_the_setting_off
+		// tests: parity:elf_forest_haste_scen99, parity:elf_forest_haste_fixes_scen99
 		if (myguy)
 			temp = (4 - myguy->dexterity/10.0f);
 		else
 			temp = (4.0f - static_cast<float>(stats_->level())/2.0f);
 		if (temp < 0)
 			temp = 0;
-		float next_stepsize = stepsize() - temp;
+		float next_stepsize = (og::sim::session_gameplay_fixes() != 0 ? normal_stepsize() : stepsize()) - temp;
 		if (next_stepsize < 1.0f)
 			next_stepsize = 1.0f;
 		set_stepsize(next_stepsize);

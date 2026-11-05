@@ -91,6 +91,7 @@ usual pause.
 | AC | Elf volleys, druid GROW TREE and SUMMON FAERIE at a wall or the map edge | Classic: the cast draws the throw's waver and refuses; the elf's refund leaves it a point ahead (fix H's off column). With fixes H and I alone the cast paid the one swing (1 MP for the elf, 4 for the druid) for a rock or bolt that met the wall and struck nothing. | A pad blocked by terrain refuses `COULD NOT FIRE` before the refund and the swing: nothing drawn, nothing spent. A body on the pad keeps H's and I's paid blow. |
 | AD | A charmed tent or bones troop, a charmed summon | It wears the charmer's colour but keeps its owner's side: it fights its charmer and is struck by its charmer's team. | It heads its own owner chain while the charm lasts; its owner, its charm clock and its tent's cascade are unchanged. |
 | AE | The struck archmage's classic order | The reply goes on after a cast that worked, as the old game's does: a summon that stands still draws the slot-2 coin (the summon's busy refuses the cast), a chain is followed only by a HEARTBURST attempt its own busy refuses, and a HEARTBURST is cast once. | A cast that worked ends the reply; after a chain or a HEARTBURST that leaves the price of a TELEPORT, slot 2 is cast again (a second HEARTBURST, "then leave! :)"). With the setting on only a seat-driven archmage takes this order (a struck bot answers by fix R). |
+| AG | A forestwalker's step in the trees | Every act in the trees takes the forest penalty off the step the walker carries and adds any haste to the result. A hastened elf whose haste beats its penalty steps farther every act it stays in the trees and keeps that size until it leaves them (a level-2 speed potion with no penalty: a 204 px step after 100 acts, over walls, water and bodies); without a haste the step crawls to 1 px within a few acts. | The penalty comes off the normal step every act: in the trees the step is the normal step less the penalty, never below 1 px, plus any haste, once. A hero elf with 30 dexterity walks 3 px, not 1. |
 
 TELEPORT, REVEAL, CLOAK and ENERGY WAVE are unchanged as casts (their bot
 rules are in [Bots](#bots)): each does something whenever it is cast
@@ -138,7 +139,7 @@ Fixes T to W, in play:
   first asks "am I busy?" (or "am I mid-teleport?", or "am I resting?")
   asks the same before it says yes.
 
-Fixes X to AE, in play:
+Fixes X to AG, in play:
 
 - **X.** A walker whose step is refused shoves the ally in its way: the
   shove draws a roll, and two times in three the ally loses its orders
@@ -269,6 +270,24 @@ Fixes X to AE, in play:
   path, so every golden is unchanged; the fix's proof is
   `archmage_bot_struck_scen99`, the struck archmage arena with the setting
   off, captured from the old game (see [Parity](#parity)).
+- **AG.** In the trees a forestwalker (the elf, and any pack class with
+  forest walk) steps shorter by its forest penalty: 4 - dexterity/10 for a
+  hero, 4 - level/2 for a placed or bot walker, never below 0. The classic
+  game takes the penalty off the step the walker carries from its last act
+  and adds a speed potion's (or HASTEN's) bonus to that, so in the trees the
+  step changes by the bonus less the penalty every act (#462; the old game
+  has the same arithmetic). A hastened elf whose bonus beats its penalty
+  steps farther every act and keeps that size until it leaves the trees:
+  with no penalty and a level-2 potion, 204 px a step after 100 acts, and a
+  walk checks only where it lands, so it steps over walls, water and
+  bodies. Without a bonus every elf with a penalty slows to 1 px within a
+  few acts, so dexterity below 40 makes no lasting difference. With the
+  setting on the penalty comes off the normal step every act and the bonus
+  is added once on top: a hero elf with 30 dexterity walks 3 px in the
+  trees, and a hastened one the normal step less the penalty plus the bonus
+  while the bonus lasts. Level 3 to 7 elves and hero elves of dexterity 11
+  to 39 (on the elf's 4 px step) are faster in the trees than in the
+  classic game.
 
 ## Refusals at a glance
 
@@ -713,6 +732,7 @@ The rows with the setting on, by fix:
 | AB | `elemental_struck_short_pool_fixes_scen99` (a new arena, with its setting-off twin), and the 10 recaptured rows below |
 | AC | `elf_rocks_edge_pad_fixes_scen99` (a new arena, with its setting-off twin) |
 | AD | `thief_charm_tent_troop_fixes_scen99` (a new arena, with its setting-off twin; the setting-on twin has spawns of its own: see below) |
+| AG | `elf_forest_haste_fixes_scen99` (a new arena, with its setting-off twin) |
 
 Fix AE has no row with the setting on (with it on a struck bot answers by
 fix R, and no row reaches a seat-driven archmage's hit response); its proof
@@ -730,6 +750,17 @@ HEARTBURST attempt after it. That coin is one draw more than this game drew
 before the fix, so the archmage's blow on the orc rolls its damage one draw
 later (8, not 7): the row's mutation puts back the old read and its orc-hp
 fact fails.
+
+Fix AG's arena, `elf_forest_haste_scen99` and `elf_forest_haste_fixes_scen99`:
+a level-10 player elf (no forest penalty) stands on a level-3 speed potion in
+scen1's forest and walks down and left for six steps. With the setting off
+its step grows by the bonus every act, 4, 7, 10, 13, 16 and 19 px, and it
+ends 69 px down and left of its spawn; with the setting on it steps 4 and
+then 7 px, 39 px each way. The walk is a diagonal, so each row's one position fact is exact:
+a shorter walk fails the y bound and a longer one the x bound. Measured in
+the current game, the fix moves no existing row on either value: no row
+hastens a forestwalker, and the setting-on rows' elves stand on grass (the
+bots among them are level 1, whose forest step is 1 px both ways).
 
 The bot payoff gates moved five existing rows with the setting on, each
 recaptured from the old game after its port: `cleric_bot_raise_or_turn_fixes_scen99`
