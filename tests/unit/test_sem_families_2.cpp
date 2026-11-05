@@ -862,6 +862,40 @@ TEST(SemCleric, a_raised_skeleton_rises_at_one_to_the_cleric_level)
     }
 }
 
+// :106 (#456), the classic arm (setting off): the raise's corpse finder
+// answers only a stain on the cleric's floor. A cleric on a balcony (floor
+// 1) right above a corpse on floor 0 refuses RAISE SKELETON as NO CORPSE
+// NEARBY: nothing rises, nothing is paid. The same rig with the cleric on
+// floor 0 raises it.
+TEST(SemCleric, classic_a_raise_never_reaches_a_corpse_on_another_floor)
+{
+    for (const short cleric_floor : {short{1}, short{0}}) {
+        Field f(0);
+        f.world().set_floor_count(2);
+        walker* cleric = f.caster(FAMILY_CLERIC, 0, 80, 80, 4, 200.0f, 2);
+        ASSERT_NE(nullptr, cleric);
+        walker* stain = stain_in_reach(f, cleric, 1, FAMILY_ORC, 60);
+        ASSERT_NE(nullptr, stain);
+        cleric->change_floor(cleric_floor);
+        cleric->setxy(80, 80);
+        ASSERT_EQ(0, static_cast<int>(stain->floor()));
+        Failure why = Failure::None;
+        std::string reason;
+        const bool raised = cleric->special(&why, &reason);
+        if (cleric_floor == 1) {
+            EXPECT_FALSE(raised) << "the corpse below: refused";
+            EXPECT_EQ("NO CORPSE NEARBY", reason) << "the corpse below";
+            EXPECT_EQ(0u, f.live(Order::Living, FAMILY_SKELETON).size()) << "the corpse below: none risen";
+            EXPECT_FLOAT_EQ(200.0f, cleric->stats()->magicpoints()) << "the corpse below: free";
+            EXPECT_EQ(0, static_cast<int>(stain->dead())) << "the corpse below: the stain stays";
+        } else {
+            EXPECT_TRUE(raised) << "the corpse on the cleric's floor: " << reason;
+            EXPECT_EQ(1u, f.live(Order::Living, FAMILY_SKELETON).size()) << "one risen";
+        }
+        EXPECT_EQ(0u, f.guard.count()) << f.guard.message();
+    }
+}
+
 // :239 the hostile arm's lifetime: a foe's corpse rises as a 200-tick ghost.
 TEST(SemCleric, a_foe_corpse_resurrects_as_a_two_hundred_tick_ghost)
 {

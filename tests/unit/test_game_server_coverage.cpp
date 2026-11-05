@@ -3007,4 +3007,81 @@ TEST(GameServerCoverage, belt_change_persists_through_the_win_merge)
         << "the won level keeps the layout set from the PAUSED menu";
 }
 
+// #466: only a level nobody plays times out. GameServer::step stamps
+// GameWorld::level_unattended before every tick: true while no connected
+// client holds a seat (a spectator alone), false once a seat is bound.
+TEST(GameServerCoverage, a_spectator_only_server_marks_the_level_unattended_and_a_bound_seat_attends_it)
+{
+    TestGameWorld fixture;
+    CoverageTransport transport;
+    og::sim::GameServer server(fixture.world(), fixture.events, transport);
+    transport.set_connected({91u});
+    server.poll_incoming_messages();
+    server.connect_spectator(91u);
+    walker* foe = fixture.world().add_ob(Order::Living, FAMILY_ORC);
+    ASSERT_NE(nullptr, foe);
+    foe->set_team_num(1);  // holds the level open
+    fixture.world().set_level_tick_count(1);  // past the level-start launch gate
+
+    fixture.world().level_unattended = false;
+    server.step();
+    EXPECT_EQ(2u, fixture.world().level_tick_count()) << "the world ticked";
+    EXPECT_TRUE(fixture.world().level_unattended) << "a spectator alone: nobody plays";
+
+    transport.set_connected({91u, 92u});
+    server.poll_incoming_messages();
+    walker* control = fixture.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, control);
+    control->set_user(0);
+    control->set_act_type(ACT_CONTROL);
+    server.bind_player(92u, 0u, fixture.world().my_team, control);
+    server.step();
+    EXPECT_EQ(3u, fixture.world().level_tick_count()) << "the world ticked";
+    EXPECT_FALSE(fixture.world().level_unattended) << "a bound seat plays it";
+}
+
+// #466: a dropped player still in its disconnect grace window keeps the
+// level attended, so a brief link loss never ends a long level; once its
+// seat goes to the AI, nobody plays it.
+TEST(GameServerCoverage, a_seat_in_its_disconnect_grace_window_keeps_the_level_attended)
+{
+    TestGameWorld fixture;
+    CoverageTransport transport;
+    og::sim::GameServer server(fixture.world(), fixture.events, transport);
+    std::uint64_t now_ms = 1'000;
+    server.set_wall_clock_ms_source([&] { return now_ms; });
+    transport.set_connected({91u});
+    server.poll_incoming_messages();
+    walker* control = fixture.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* foe = fixture.world().add_ob(Order::Living, FAMILY_ORC);
+    ASSERT_TRUE(control && foe);
+    foe->set_team_num(1);
+    control->set_user(0);
+    control->set_act_type(ACT_CONTROL);
+    server.bind_player(91u, 0u, fixture.world().my_team, control);
+    fixture.world().set_level_tick_count(1);
+
+    fixture.world().level_unattended = true;
+    server.step();
+    EXPECT_FALSE(fixture.world().level_unattended) << "a connected seat plays it";
+
+    transport.set_connected({});
+    server.poll_incoming_messages();
+    ASSERT_EQ(1u, server.disconnected_players().size());
+    fixture.world().level_unattended = true;
+    now_ms = 1'000 + og::sim::DISCONNECT_TIMEOUT_MS - 1;
+    server.step();
+    EXPECT_FALSE(server.disconnected_players().front().ai_control_enabled)
+        << "staging: still inside the grace window";
+    EXPECT_FALSE(fixture.world().level_unattended)
+        << "a dropped seat in its grace window still plays it";
+
+    now_ms = 1'000 + og::sim::DISCONNECT_TIMEOUT_MS;
+    server.step();
+    ASSERT_EQ(1u, server.disconnected_players().size());
+    EXPECT_TRUE(server.disconnected_players().front().ai_control_enabled)
+        << "staging: the grace window is over, the AI has the seat";
+    EXPECT_TRUE(fixture.world().level_unattended) << "the AI has the seat: nobody plays";
+}
+
 } // namespace

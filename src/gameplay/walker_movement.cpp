@@ -360,13 +360,13 @@ bool walker::walkstep(float x, float y)
                 }
             } // end of npc switch
             else // we're a user // rule: A blocked player slides along walls only on diagonals: for
-                //   each whole unit of stepsize it tries one pixel along the vertical axis and one
-                //   along the horizontal axis independently, keeping whichever moves are free; a
-                //   blocked cardinal does not slide. The slide always reports failure.
-                // tests: WalkerMovement.walker_walkstep_user_slide_cardinal_break_path_round5
-                // tests: WalkerMovement.walker_walkstep_user_slide_sets_vertical_and_horizontal_dirs
+                //   each started unit of stepsize (the old game's float compare: ceil) it tries one
+                //   pixel along the vertical axis and one along the horizontal axis independently,
+                //   keeping whichever moves are free; a blocked cardinal does not slide. The slide
+                //   always reports failure.
+                // tests: WalkerMovement.walker_walkstep_user_slide_cardinal_break_path_round5, WalkerMovement.walker_walkstep_user_slide_sets_vertical_and_horizontal_dirs
                 // tests: WalkerMovement.walker_walkstep_user_slide_diagonal_switch_cases_round6
-                // tests: WalkerMovementUnit.walker_movement_r14_user_slide_axes_and_turn_default
+                // tests: WalkerMovementUnit.walker_movement_r14_user_slide_axes_and_turn_default, SemWalker4.a_wall_slide_moves_one_pixel_per_started_unit_of_stepsize
             {
                 // We can't move where we want to.  Can we slide against the wall?
                 
@@ -417,13 +417,13 @@ bool walker::walkstep(float x, float y)
                 // tests: WalkerMovementUnit.walker_movement_r14_user_slide_axes_and_turn_default
                 if(dx != 0 || dy != 0)
                 {
-                    const std::int32_t step_i = static_cast<std::int32_t>(step);
-                    // rule: A blocked player slides along walls only on diagonals.
+                    // The old game compares the int counter with the float stepsize: one pixel per started unit.
+                    // rule: A blocked player slides along walls only on diagonals, one pixel per
+                    //   started unit of stepsize (ceil; none when the stepsize is 0 or below).
                     // tests: WalkerMovement.walker_walkstep_user_slide_cardinal_break_path_round5
-                    // tests: WalkerMovement.walker_walkstep_user_slide_sets_vertical_and_horizontal_dirs
-                    // tests: WalkerMovement.walker_walkstep_user_slide_diagonal_switch_cases_round6
-                    // tests: WalkerMovementUnit.walker_movement_r14_user_slide_axes_and_turn_default
-                    for (i = 0; i < step_i; i++)
+                    // tests: WalkerMovement.walker_walkstep_user_slide_sets_vertical_and_horizontal_dirs, WalkerMovement.walker_walkstep_user_slide_diagonal_switch_cases_round6
+                    // tests: WalkerMovementUnit.walker_movement_r14_user_slide_axes_and_turn_default, SemWalker4.a_wall_slide_moves_one_pixel_per_started_unit_of_stepsize
+                    for (i = 0; static_cast<float>(i) < step; i++)
                     {
                         // rule: A blocked player slides along walls only on diagonals.
                         // tests: WalkerMovement.walker_walkstep_user_slide_cardinal_break_path_round5

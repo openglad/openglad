@@ -2091,26 +2091,26 @@ walker* GameWorld::find_nearest_blood(walker* who)
     for (auto& uptr : fxlist)
     {
         walker* w = uptr.get();
-        // rule: The corpse finder used by classic raises returns the nearest live blood stain in
-        //   the effect list whose squared centre distance from the finder is under 800 (about 28
-        //   px), on ANY floor; dead stains and non-stain treasures are ignored; ties keep fxlist
-        //   order.
+        // rule: The corpse finder returns the nearest live blood stain in the effect list on the
+        //   finder's own floor whose squared centre distance from it is under 800 (about 28 px); a
+        //   stain on another floor is never answered and never hides one on the finder's floor
+        //   (#456); dead stains and non-stain treasures are ignored; ties keep fxlist order.
         // tests: QuietProbe.find_blood_in_reach_walks_the_finders_stains_nearest_first
         // tests: LevelDataCoverage.level_data_round14_find_helper_exclusion_branches
         // tests: SemWorld.the_corpse_finder_reaches_only_under_squared_distance_800
-        // deferred: #456 the floor-blind arm is bug #456 (triage) and is not pinned; the reach arm
-        //   (841 and exactly 800 out, 784 in) is asserted
+        // tests: SemWorld.the_corpse_finder_reaches_only_a_stain_on_the_finders_floor
+        // tests: SemOrc.an_orc_on_a_balcony_cannot_eat_the_corpse_below
         if (w && w->query_order() == Order::Treasure &&
-            w->family() == FAMILY_STAIN && !w->dead())
+            w->family() == FAMILY_STAIN && !w->dead() && w->floor() == who->floor())
         {
             const std::int32_t newdistance =
                 static_cast<std::int32_t>(who->distance_to_ob_center(w));
-            // rule: The corpse finder used by classic raises returns the nearest live blood stain
-            //   in the effect list whose squared centre distance from the finder is under 800
-            //   (about 28 px), on ANY floor. Here: `newdistance < distance (start 800)`.
+            // rule: The corpse finder returns the nearest live blood stain on its own floor whose
+            //   squared centre distance is under 800. Here: `newdistance < distance (start 800)`.
             // tests: QuietProbe.find_blood_in_reach_walks_the_finders_stains_nearest_first
             // tests: LevelDataCoverage.level_data_round14_find_helper_exclusion_branches
             // tests: SemWorld.the_corpse_finder_reaches_only_under_squared_distance_800
+            // tests: SemCleric.classic_a_raise_never_reaches_a_corpse_on_another_floor
             if (newdistance < distance)
             {
                 distance = newdistance;
@@ -2664,17 +2664,17 @@ void GameWorld::tick()
     run_pending_level_on_load();
     level_tick_count_++;
 
-    std::uint32_t max_level_ticks = 36000;
-    // rule: A level that runs past 36000 ticks is lost: the game ends as a retreat (ending 1, no
-    //   next level), a 'Mission timed out. Retreating.' notification is pushed, pending classic
-    //   respawns are flushed, and nothing acts that tick. The test hook shortens the limit.
+    // rule: A level a seat plays never times out (the old game has no limit); a level nobody plays
+    //   (level_unattended) is lost past 36000 ticks: a retreat (ending 1, no next level), a 'Mission
+    //   timed out. Retreating.' notice, pending classic respawns flushed, nothing acts that tick.
     // tests: SimWorld.r15_reset_level_progress_clears_timeout_for_same_level
     // tests: ClassicRespawn.timeout_end_shape_flushes_pending_heroes
-    if (og::sim::g_test_level_tick_limit_override > 0)
+    // tests: SemWorld.a_played_level_never_times_out_and_an_unattended_one_retreats
+    std::uint32_t max_level_ticks = level_unattended ? 36000u : 0u;  // 0: no limit (the old game)
+    if (og::sim::g_test_level_tick_limit_override > 0)  // the test hook limits every level
         max_level_ticks = static_cast<std::uint32_t>(og::sim::g_test_level_tick_limit_override);
-    if (level_tick_count_ > max_level_ticks)
+    if (max_level_ticks != 0 && level_tick_count_ > max_level_ticks)
     {
-        // Hard mission timeout safety net to avoid unbounded gameplay loops.
         game_ended = true;
         ending = 1;
         next_level = -1;
@@ -2826,18 +2826,18 @@ void GameWorld::tick()
             }
         }
 
-        // rule: During FREEZE TIME every walker the player's side is not friendly with that is a
-        //   Living or Generator skips its turn; friendly walkers and every non-living order
-        //   (effects, treasures, weapons in oblist) still act. Outside a freeze everything acts
-        //   with in_act set.
+        // rule: During FREEZE TIME a Living or Generator not on the player's side skips its turn:
+        //   with Gameplay Fixes on (fix AF) one not friendly to the player's team (the head of its
+        //   owner chain does not wear my_team); off (the old game) one not on team 0 itself. Every
+        //   other order (effects, treasures, weapons in oblist) still acts. Outside a freeze
+        //   everything acts with in_act set.
         // tests: SimWorld.r15_freeze_tick_and_level_done_paths
         // tests: SimWorld.r15_freeze_uses_friendliness_not_team_zero
         // tests: SimWorld.r15_normal_tick_cleanup_and_dead_entity_removal
         // tests: parity:enemy_freeze_mage_scen99
         // tests: SemWorld.freeze_time_stops_hostile_generators_but_not_effects_or_treasures
-        // deferred: #461 divergence #461: the freeze act gate reads is_friendly_to_team(my_team)
-        //   where the old game reads team_num == 0; the generator and effect/treasure arms (my_team
-        //   0, team-1 walkers, where both agree) are asserted
+        // tests: SimWorld.r15_freeze_lets_only_team_zero_act_with_gameplay_fixes_off
+        // tests: SemWorld.freeze_time_asks_team_zero_with_the_fixes_off_and_the_owner_chain_with_them_on
         if (!enemy_freeze) // normal functionality
         {
             // rule: A level stays unfinished while any Living not friendly to the player's team is
@@ -2894,30 +2894,44 @@ void GameWorld::tick()
             // The countdown is drawn by the HUD from enemy_freeze (#232); it
             // used to be pushed into the notification feed every tenth tick,
             // which evicted every other message for the whole freeze.
-            // rule: During FREEZE TIME every walker the player's side is not friendly with that is
-            //   a Living or Generator skips its turn.
+            // rule: During FREEZE TIME a Living or Generator not on the player's side skips its
+            //   turn (fix AF: not friendly to my_team with Gameplay Fixes on, not on team 0 off).
             // tests: SimWorld.r15_freeze_tick_and_level_done_paths
             // tests: SimWorld.r15_freeze_uses_friendliness_not_team_zero
             // tests: SimWorld.r15_normal_tick_cleanup_and_dead_entity_removal
             // tests: parity:enemy_freeze_mage_scen99
             // tests: SemWorld.freeze_time_stops_hostile_generators_but_not_effects_or_treasures
+            // tests: SimWorld.r15_freeze_lets_only_team_zero_act_with_gameplay_fixes_off
+            // tests: SemWorld.freeze_time_asks_team_zero_with_the_fixes_off_and_the_owner_chain_with_them_on
             if (ob && !ob->dead())
             {
-                // The act gate is unchanged: frozen enemy Livings and
-                // Generators still skip their turn. Only the census is
-                // hoisted out of it — a foe that is frozen is still a foe,
-                // exactly as the dormant branch above already counts one.
+                // Only the census is hoisted out of the act gate: a foe that
+                // is frozen is still a foe (#231), exactly as the dormant
+                // branch above already counts one.
+                // rule: During FREEZE TIME a Living or Generator may act only on the player's side:
+                //   with Gameplay Fixes on (fix AF, #92) when it is friendly to the player's team
+                //   (the head of its owner chain wears my_team); off (the old game) when it is on
+                //   team 0 itself, which freezes a non-red player's own side (#86). Every other
+                //   order always acts.
+                // tests: SimWorld.r15_freeze_uses_friendliness_not_team_zero
+                // tests: SimWorld.r15_freeze_lets_only_team_zero_act_with_gameplay_fixes_off
+                // tests: SemWorld.freeze_time_asks_team_zero_with_the_fixes_off_and_the_owner_chain_with_them_on
+                // tests: SemWorld.freeze_time_stops_hostile_generators_but_not_effects_or_treasures
                 const bool may_act =
                     ((ob->query_order() != Order::Living) &&
                      (ob->query_order() != Order::Generator)) ||
-                    ob->is_friendly_to_team(static_cast<unsigned char>(my_team));
-                // rule: During FREEZE TIME every walker the player's side is not friendly with that
-                //   is a Living or Generator skips its turn.
+                    (gameplay_fixes != 0
+                         ? ob->is_friendly_to_team(static_cast<unsigned char>(my_team)) != 0
+                         : ob->team_num() == 0);
+                // rule: During FREEZE TIME a Living or Generator not on the player's side skips
+                //   its turn (the gate above).
                 // tests: SimWorld.r15_freeze_tick_and_level_done_paths
                 // tests: SimWorld.r15_freeze_uses_friendliness_not_team_zero
                 // tests: SimWorld.r15_normal_tick_cleanup_and_dead_entity_removal
                 // tests: parity:enemy_freeze_mage_scen99
                 // tests: SemWorld.freeze_time_stops_hostile_generators_but_not_effects_or_treasures
+                // tests: SimWorld.r15_freeze_lets_only_team_zero_act_with_gameplay_fixes_off
+                // tests: SemWorld.freeze_time_asks_team_zero_with_the_fixes_off_and_the_owner_chain_with_them_on
                 if (may_act)
                     ob->act();
                 // rule: A level stays unfinished while any Living not friendly to the player's team
@@ -3770,7 +3784,7 @@ void GameWorld::adopt_scripts_from(GameWorld& source) noexcept
 // The walk of find_nearest_blood, keeping every stain it would consider
 // instead of the nearest alone, on who's own floor, sorted nearest first by
 // the same squared centre distance; a stable sort, so equal distances keep
-// fxlist order. find_nearest_blood itself is left as it is (the classic
+// fxlist order. find_nearest_blood answers the nearest alone (the classic
 // raises read it). Appended below the last parity canary pin in this file
 // so the pins above never shift.
 std::vector<walker*> GameWorld::find_blood_in_reach(walker* who)
@@ -3786,7 +3800,7 @@ std::vector<walker*> GameWorld::find_blood_in_reach(walker* who)
         walker* w = uptr.get();
         // rule: The new-specials raise finder lists every live blood stain on the finder's own
         //   floor within squared centre distance under 800, nearest first, ties in effect-list
-        //   order, drawing no RNG. Unlike find_nearest_blood (above) it is floor-scoped.
+        //   order, drawing no RNG. Like find_nearest_blood (above) it is floor-scoped.
         // tests: QuietProbe.find_blood_in_reach_walks_the_finders_stains_nearest_first
         if (w && w->query_order() == Order::Treasure &&
             w->family() == FAMILY_STAIN && !w->dead() &&

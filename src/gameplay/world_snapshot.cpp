@@ -2693,8 +2693,8 @@ void apply_mode_state(GameWorld& world, const og::sim::WorldSnapshot& snapshot)
     world.ctf_requested_strip_scenario_troops = 0;
     // Sim-side twin of the lobby sanitizer / provider clamp (#241): a
     // crafted snapshot reaches this field unchecked, and a wild tick count
-    // would let a mode's deadline underflow or outrun the engine's 36000-
-    // tick loss net. 0 stays 0 (the map's own value).
+    // would let a mode's deadline underflow or outrun the 36000-tick loss
+    // net of a level nobody plays. 0 stays 0 (the map's own value).
     world.ctf_requested_time_limit =
         snapshot.ctf_requested_time_limit != 0
             ? std::clamp<std::int16_t>(snapshot.ctf_requested_time_limit,

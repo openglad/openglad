@@ -170,24 +170,24 @@ bool teleport_landing_clear(GameWorld& world, walker* self,
 	return true;
 }
 
-// What TURN UNDEAD can turn: an undead family, not warded. A warded
-// (BIT_INVINCIBLE / invulnerable) undead is skipped before the resistance
-// rolls: turning is damage, and both classic arms of the kill loop kill
-// without ever entering walker::attack's gate. The kill loop, the Gameplay
+// What TURN UNDEAD can turn: an undead family, and with Gameplay Fixes on
+// (fix AH, #474) not warded: turning is damage, so a BIT_INVINCIBLE or
+// invulnerable undead is skipped before the resistance rolls. With it off
+// the old game's kill loop asks only the family. The kill loop, the Gameplay
 // Fixes refusal and the cleric's bot gate all ask this one question.
 bool turnable(const walker* w)
 {
 	// rule: TURN UNDEAD can only turn an undead family (skeleton, ghost, any pack family declaring
-	//   is_undead) that is not warded: an undead carrying BIT_INVINCIBLE or an invulnerability
-	//   potion is never turned, counted, or used to justify the cast. The kill loop, the Gameplay
-	//   Fixes refusal and the cleric bot gate share this one test.
+	//   is_undead). With Gameplay Fixes on (fix AH) it must not be warded: an undead carrying
+	//   BIT_INVINCIBLE or an invulnerability potion is never turned, counted, or used to justify
+	//   the cast; off (the old game) only the family decides. All three readers share this test.
 	// tests: GameplayFixesEngine.undead_foes_in_range_counts_what_turn_undead_could_turn
 	// tests: WalkerSpecialsUnit.walker_specials_r11_turn_undead_paths
 	// tests: WalkerSpecials.turn_undead_destroys_undead_foes_and_spares_the_living
-	// tests: GameplayFixesClericBot.raises_with_nothing_to_turn_in_reach
+	// tests: GameplayFixesClericBot.raises_with_nothing_to_turn_in_reach, TurnUndead.a_warded_undead_is_turned_with_the_fixes_off_and_spared_with_them_on
 	const auto* target_fd = w ? get_family_descriptor(w->family()) : nullptr;
-	const bool warded =
-	    w != nullptr && (w->stats()->query_bit_flags(BIT_INVINCIBLE) ||
+	const bool warded = og::sim::session_gameplay_fixes() != 0 && w != nullptr &&
+	                    (w->stats()->query_bit_flags(BIT_INVINCIBLE) ||
 	                     w->invulnerable_left() != 0);
 	return w && target_fd && target_fd->is_undead && !warded;
 }
@@ -456,13 +456,13 @@ bool walker::teleport()
 	GameWorld& world = *current_game->world;
 	const int floors = world.floor_count();
 	short target_floor = floor();
-	std::int32_t keep_going = 200; // maxtries
-	// rule: With no usable marker the blink draws random grid cells (x then y, one each per
-	//   attempt) until one is clear, up to 200 attempts; it lands on the cell's pixel origin, or
-	//   fails and leaves the caster where it was.
-	// tests: WalkerSpecialsUnit.walker_specials_r11_special_and_teleport_paths
-	// tests: WalkerSpecialsUnit.teleport_single_floor_rng_stream_is_legacy_shaped
-	// tests: WalkerSpecialsUnit.teleport_blocked_marker_denied_without_probe_eat
+	std::int64_t keep_going = std::int64_t{64} * world.grid.w * world.grid.h * floors; // maxtries
+	// rule: With no usable marker the blink draws random grid cells (x then y, and a floor on
+	//   stacked levels) until one is clear, testing every draw, and lands on the cell's pixel
+	//   origin; where the old game would loop forever (no clear cell) this game gives up after 64
+	//   draws per cell per floor and leaves the caster where it was.
+	// tests: WalkerSpecialsUnit.walker_specials_r11_special_and_teleport_paths, WalkerSpecialsUnit.teleport_single_floor_rng_stream_is_legacy_shaped
+	// tests: WalkerSpecialsUnit.teleport_blocked_marker_denied_without_probe_eat, Blink.a_random_blink_tests_every_draw_and_lands_on_a_cell_first_drawn_after_two_hundred_tries, Blink.a_random_blink_with_no_clear_cell_gives_up_and_stays_put
 	do
 	{
 		newx = static_cast<std::int32_t>(world.rng_.next(static_cast<std::uint32_t>(world.grid.w))) * GRID_SIZE;
@@ -478,15 +478,15 @@ bool walker::teleport()
 		// tests: WalkerSpecialsUnit.teleport_single_floor_rng_stream_is_legacy_shaped
 		if (floors > 1)
 			target_floor = static_cast<short>(world.rng_.next(static_cast<std::uint32_t>(floors)));
-		keep_going--;
-	} while (keep_going > 0 &&
-	         !teleport_landing_clear(world, this, newx, newy, target_floor));
+		// every draw is tested, the last one too
+	} while (!teleport_landing_clear(world, this, newx, newy, target_floor) &&
+	         --keep_going > 0);
 
-	// rule: With no usable marker the blink draws random grid cells (x then y, one each per
-	//   attempt) until one is clear, up to 200 attempts.
-	// tests: WalkerSpecialsUnit.walker_specials_r11_special_and_teleport_paths
-	// tests: WalkerSpecialsUnit.teleport_single_floor_rng_stream_is_legacy_shaped
+	// rule: With no usable marker the blink draws random grid cells until one is clear, testing
+	//   every draw; with none after 64 draws per cell per floor it fails and stays put.
+	// tests: WalkerSpecialsUnit.walker_specials_r11_special_and_teleport_paths, WalkerSpecialsUnit.teleport_single_floor_rng_stream_is_legacy_shaped
 	// tests: WalkerSpecialsUnit.teleport_blocked_marker_denied_without_probe_eat
+	// tests: Blink.a_random_blink_tests_every_draw_and_lands_on_a_cell_first_drawn_after_two_hundred_tries, Blink.a_random_blink_with_no_clear_cell_gives_up_and_stays_put
 	if (keep_going > 0)
 	{
 		// Floor before position (see the marker path above).
@@ -609,13 +609,13 @@ std::int32_t walker::turn_undead(std::int32_t range, std::int32_t power)
     //   below
     for(auto* w : deadlist)
 	{
-		// rule: Inside the ring only turnable foes are rolled for: living foes and warded undead
-		//   are never turned and draw no roll. Same predicate as above.
+		// rule: Inside the ring only turnable foes are rolled for: living foes, and with Gameplay
+		//   Fixes on warded undead, are never turned and draw no roll. Same predicate as above.
 		// tests: GameplayFixesEngine.turn_undead_roll_bound_is_classic_on_both_values
 		// tests: GameplayFixesEngine.turn_undead_refuses_a_ring_without_undead_when_on
 		// tests: WalkerSpecialsUnit.walker_specials_r11_turn_undead_paths
-		// deferred: #474 the old game turns a warded (invulnerable/invincible) undead with Gameplay
-		//   Fixes off; the current game skips it, so the classic arm is not pinned
+		// tests: TurnUndead.a_warded_undead_is_turned_with_the_fixes_off_and_spared_with_them_on
+		// tests: WalkerSpecials.turn_undead_destroys_undead_foes_and_spares_the_living
 		if (turnable(w))
 		{
 			// rule: Each turnable undead resists unless the caster's roll beats the victim's level

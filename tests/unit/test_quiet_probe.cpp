@@ -1183,7 +1183,8 @@ TEST_F(QuietProbe, find_blood_in_reach_walks_the_finders_stains_nearest_first)
     EXPECT_EQ(want, got);
     EXPECT_TRUE(world().find_blood_in_reach(nullptr).empty());
 
-    upstairs->set_dead(1);
+    // #456: the 1-px stain upstairs is on another floor, so the nearest
+    // finder skips it (it never hides the stain on the cleric's floor).
     EXPECT_EQ(near, world().find_nearest_blood(cleric));
 }
 

@@ -7,7 +7,10 @@
  * gate silently froze placed team-0 NPCs (the SAVE_ALL Bearer, allied
  * war-hosts) at 100% while their foes doubled on Hard. Now only walkers
  * actually carrying a player guy (myguy) are exempt. The team-0 multiply is
- * skipped entirely at 100% so parity goldens stay byte-identical.
+ * skipped entirely at 100% so parity goldens stay byte-identical. Their shots
+ * follow them (#473): a team-0 shot whose owner is a Living with no player
+ * character takes the same percent, on both settings, so an allied archer's
+ * arrows double on Hard with its body as every hostile arrow does.
  *
  * A12b: generator spawns received set_difficulty TWICE (create_weapon at the
  * generator's level, then fire()'s generator branch at the rolled level) —
@@ -25,6 +28,7 @@
 
 #include <gtest/gtest.h>
 
+#include <cmath>
 #include <memory>
 
 TEST(DifficultyScaling, placed_team0_npcs_scale_with_difficulty)
@@ -224,4 +228,154 @@ TEST(DifficultyScaling, damaged_generator_regenerates_while_it_spawns)
         << "a spawning generator heals back toward its authored hp";
     EXPECT_LE(gen->stats()->hitpoints(), full)
         << "and never past it";
+}
+
+namespace {
+
+// A level-3 archer on `team`, scaled as a placed walker is (set_difficulty at
+// the world's current percent), facing right; `hero` gives it a player
+// character.
+walker* placed_archer(GameWorld& w, unsigned char team, bool hero = false)
+{
+    walker* a = w.add_ob(Order::Living, FAMILY_ARCHER);
+    if (a == nullptr)
+        return nullptr;
+    a->set_team_num(team);
+    if (hero)
+        a->set_owned_myguy(std::make_unique<guy>(FAMILY_ARCHER));
+    a->stats()->set_level(3);
+    a->set_difficulty(3);
+    a->set_lastx(1.0f);
+    a->set_lasty(0.0f);
+    return a;
+}
+
+struct Shot
+{
+    float damage = -1.0f;
+    float max_hp = -1.0f;
+};
+
+// The arrow `shooter` fires (walker::create_weapon), as play makes it.
+Shot arrow_of(walker* shooter)
+{
+    walker* arrow = shooter != nullptr ? shooter->create_weapon() : nullptr;
+    if (arrow == nullptr)
+        return {};
+    EXPECT_EQ(shooter, arrow->owner()) << "staging: the arrow is the shooter's";
+    EXPECT_EQ(shooter->team_num(), arrow->team_num()) << "staging: on the shooter's team";
+    return {arrow->damage(), arrow->stats()->max_hitpoints()};
+}
+
+}  // namespace
+
+// #473: a team-0 NPC's arrow takes the difficulty percent with its body (A12a),
+// on both settings: on Hard its damage and hit points are twice the same
+// NPC's arrow at 100% and exactly a hostile archer's arrow; on Easy, half.
+TEST(DifficultyScaling, a_team0_npcs_arrow_scales_with_its_body)
+{
+    for (const short fixes : {short{0}, short{1}})
+    {
+        TestGameWorld tw;
+        GameWorld& w = tw.world();
+        w.gameplay_fixes = fixes;
+        w.difficulty = 100;
+        const Shot ref = arrow_of(placed_archer(w, 0));
+        ASSERT_GT(ref.damage, 0.0f) << "staging: the arrow hurts";
+        ASSERT_GT(ref.max_hp, 0.0f) << "staging: the arrow has hit points to scale";
+        for (const short percent : {short{200}, short{50}})
+        {
+            w.difficulty = percent;
+            const float k = static_cast<float>(percent) / 100.0f;
+            const Shot npc = arrow_of(placed_archer(w, 0));
+            const Shot foe = arrow_of(placed_archer(w, 1));
+            EXPECT_FLOAT_EQ(k * ref.damage, npc.damage)
+                << "team-0 NPC's arrow at " << percent << "%, fixes " << fixes;
+            EXPECT_FLOAT_EQ(k * ref.max_hp, npc.max_hp)
+                << "team-0 NPC's arrow at " << percent << "%, fixes " << fixes;
+            EXPECT_EQ(foe.damage, npc.damage)
+                << "the same as a hostile archer's arrow at " << percent << "%, fixes " << fixes;
+            EXPECT_EQ(foe.max_hp, npc.max_hp)
+                << "the same as a hostile archer's arrow at " << percent << "%, fixes " << fixes;
+        }
+    }
+}
+
+// #473: a player character's shot never takes the percent: a team-0 archer
+// carrying a character fires on Hard and on Easy the arrow it fires at 100%.
+TEST(DifficultyScaling, a_player_characters_arrow_never_scales)
+{
+    for (const short fixes : {short{0}, short{1}})
+    {
+        TestGameWorld tw;
+        GameWorld& w = tw.world();
+        w.gameplay_fixes = fixes;
+        w.difficulty = 100;
+        const Shot ref = arrow_of(placed_archer(w, 0, true));
+        ASSERT_GT(ref.damage, 0.0f) << "staging: the arrow hurts";
+        for (const short percent : {short{200}, short{50}})
+        {
+            w.difficulty = percent;
+            const Shot hero = arrow_of(placed_archer(w, 0, true));
+            EXPECT_EQ(ref.damage, hero.damage) << percent << "%, fixes " << fixes;
+            EXPECT_EQ(ref.max_hp, hero.max_hp) << percent << "%, fixes " << fixes;
+        }
+    }
+}
+
+// #473: a team-0 object with no owner (a placed weapon, treasure or effect)
+// keeps its values on Hard: only a shot whose shooter is a Living follows it.
+TEST(DifficultyScaling, an_unowned_team0_weapon_never_scales)
+{
+    TestGameWorld tw;
+    GameWorld& w = tw.world();
+    w.difficulty = 200;
+    walker* arrow = w.add_ob(Order::Weapon, FAMILY_ARROW);
+    ASSERT_NE(nullptr, arrow);
+    arrow->set_team_num(0);
+    ASSERT_EQ(nullptr, arrow->owner());
+    arrow->set_damage(7.0f);
+    arrow->stats()->set_max_hitpoints(30.0f);
+    arrow->set_difficulty(3);
+    EXPECT_EQ(7.0f, arrow->damage()) << "unowned, 200%: unscaled";
+    EXPECT_EQ(30.0f, arrow->stats()->max_hitpoints()) << "unowned, 200%: unscaled";
+
+    walker* tent = w.add_ob(Order::Generator, FAMILY_TENT);
+    ASSERT_NE(nullptr, tent);
+    tent->set_team_num(0);
+    arrow->set_owner(tent);
+    arrow->set_difficulty(3);
+    EXPECT_EQ(7.0f, arrow->damage()) << "owned by a generator, not a Living: unscaled";
+}
+
+// #473 and A12a at 100%: the team-0 arms skip the multiply rather than
+// multiply by one, which a float does not always give back (the parity pin).
+// A team-0 NPC's shot whose damage does not survive (x * 100) / 100 keeps it
+// bit for bit; the same shot off team 0 takes the legacy multiply.
+TEST(DifficultyScaling, at_one_hundred_percent_a_team0_npcs_arrow_is_never_multiplied)
+{
+    TestGameWorld tw;
+    GameWorld& w = tw.world();
+    w.difficulty = 100;
+    walker* npc = placed_archer(w, 0);
+    ASSERT_NE(nullptr, npc);
+    walker* arrow = npc->create_weapon();
+    ASSERT_NE(nullptr, arrow);
+    float x = 0.1f;
+    int tries = 0;
+    while ((x * 100.0f) / 100.0f == x && tries < 100000)
+    {
+        x = std::nextafter(x, 1.0f);
+        ++tries;
+    }
+    ASSERT_NE((x * 100.0f) / 100.0f, x) << "staging: a damage a multiply by one does not give back";
+
+    arrow->set_damage(x);
+    arrow->set_difficulty(3);
+    EXPECT_EQ(x, arrow->damage()) << "team 0, 100%: no multiply";
+
+    arrow->set_team_num(1);
+    arrow->set_damage(x);
+    arrow->set_difficulty(3);
+    EXPECT_EQ((x * 100.0f) / 100.0f, arrow->damage()) << "team 1, 100%: the legacy multiply";
 }

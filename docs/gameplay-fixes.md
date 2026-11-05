@@ -91,7 +91,9 @@ usual pause.
 | AC | Elf volleys, druid GROW TREE and SUMMON FAERIE at a wall or the map edge | Classic: the cast draws the throw's waver and refuses; the elf's refund leaves it a point ahead (fix H's off column). With fixes H and I alone the cast paid the one swing (1 MP for the elf, 4 for the druid) for a rock or bolt that met the wall and struck nothing. | A pad blocked by terrain refuses `COULD NOT FIRE` before the refund and the swing: nothing drawn, nothing spent. A body on the pad keeps H's and I's paid blow. |
 | AD | A charmed tent or bones troop, a charmed summon | It wears the charmer's colour but keeps its owner's side: it fights its charmer and is struck by its charmer's team. | It heads its own owner chain while the charm lasts; its owner, its charm clock and its tent's cascade are unchanged. |
 | AE | The struck archmage's classic order | The reply goes on after a cast that worked, as the old game's does: a summon that stands still draws the slot-2 coin (the summon's busy refuses the cast), a chain is followed only by a HEARTBURST attempt its own busy refuses, and a HEARTBURST is cast once. | A cast that worked ends the reply; after a chain or a HEARTBURST that leaves the price of a TELEPORT, slot 2 is cast again (a second HEARTBURST, "then leave! :)"). With the setting on only a seat-driven archmage takes this order (a struck bot answers by fix R). |
+| AF | Who acts during FREEZE TIME | A Living or a generator acts only when it is on team 0 itself, as in the old game: with a player colour other than red the freeze stops the player's own side and lets team 0 fight on (#86), a charmed troop of a living enemy tent or an enemy's summon the player charmed acts because it wears red, and a summon of the player's caster that an enemy charmed is frozen. | It acts when it is friendly to the player's team: the head of its owner chain wears the player's colour (#92). The level census reads friendliness on both settings. |
 | AG | A forestwalker's step in the trees | Every act in the trees takes the forest penalty off the step the walker carries and adds any haste to the result. A hastened elf whose haste beats its penalty steps farther every act it stays in the trees and keeps that size until it leaves them (a level-2 speed potion with no penalty: a 204 px step after 100 acts, over walls, water and bodies); without a haste the step crawls to 1 px within a few acts. | The penalty comes off the normal step every act: in the trees the step is the normal step less the penalty, never below 1 px, plus any haste, once. A hero elf with 30 dexterity walks 3 px, not 1. |
+| AH | Cleric TURN UNDEAD on a warded skeleton or ghost | Only the family decides, as in the old game: a skeleton or ghost carrying `BIT_INVINCIBLE` or an invulnerability potion (one it drank, or a New Specials ghost's PHASE) is rolled for and turned like any other. | A warded undead is never turned, rolled for or counted: turning is damage, and the ward stops damage. With nothing else turnable in reach the cast is refused as `NO UNDEAD IN RANGE` (fix E), and the cleric bot's gate does not count it. |
 
 TELEPORT, REVEAL, CLOAK and ENERGY WAVE are unchanged as casts (their bot
 rules are in [Bots](#bots)): each does something whenever it is cast
@@ -139,7 +141,7 @@ Fixes T to W, in play:
   first asks "am I busy?" (or "am I mid-teleport?", or "am I resting?")
   asks the same before it says yes.
 
-Fixes X to AG, in play:
+Fixes X to AH, in play:
 
 - **X.** A walker whose step is refused shoves the ally in its way: the
   shove draws a roll, and two times in three the ally loses its orders
@@ -270,6 +272,22 @@ Fixes X to AG, in play:
   path, so every golden is unchanged; the fix's proof is
   `archmage_bot_struck_scen99`, the struck archmage arena with the setting
   off, captured from the old game (see [Parity](#parity)).
+- **AF.** During FREEZE TIME the player's side acts and everyone else's
+  Livings and generators stand still; effects, treasures and weapons always
+  act. The old game asks whether the walker itself is on team 0, red, the
+  colour of the classic player. This game asked since #92 (`ec263a26`,
+  fixing #86) whether it is friendly to the player's team, the head of its
+  owner chain wearing the player's colour, the rule that completion and
+  respawn already read. The two answers differ for a player colour other
+  than red (Base Camp's seats, a networked team), where the old rule
+  freezes the player's own side and lets team 0 fight on, and for a walker
+  whose colour is not its chain's: a charmed troop of a living enemy tent,
+  or an enemy's summon the player charmed, wears red but answers for its
+  owner, and the player's summon that an enemy charmed is the reverse. With
+  the setting off the gate asks team 0 again, as in the old game (#461);
+  with it on it asks friendliness, as before. Only the act gate follows the
+  setting: the level census (a frozen foe still holds the level open, #231)
+  reads friendliness on both settings, as the old game's does.
 - **AG.** In the trees a forestwalker (the elf, and any pack class with
   forest walk) steps shorter by its forest penalty: 4 - dexterity/10 for a
   hero, 4 - level/2 for a placed or bot walker, never below 0. The classic
@@ -288,6 +306,20 @@ Fixes X to AG, in play:
   while the bonus lasts. Level 3 to 7 elves and hero elves of dexterity 11
   to 39 (on the elf's 4 px step) are faster in the trees than in the
   classic game.
+- **AH.** TURN UNDEAD turns a skeleton or a ghost (or any pack family that
+  declares itself undead) that loses the resistance roll. In the old game
+  the kill loop asks only the family, so a warded one, carrying
+  `BIT_INVINCIBLE` or with an invulnerability potion running, is rolled
+  for and turned like any other: turning never goes through the blow's
+  ward. This game spared it on both settings since #195 (`be8a6d09`, "the
+  isle ward survives real play"), because turning is damage. With the
+  setting off it is now turned again, as in the old game; with the setting
+  on it is spared before the rolls, never counted by the cleric bot's gate,
+  and a ring that holds nothing else turnable is refused as `NO UNDEAD IN
+  RANGE` (fix E), so the cast spends nothing (#474). With the setting off a
+  New Specials ghost's PHASE no longer saves it from TURN UNDEAD. The ward in
+  `do_combat_damage` is unchanged: only a scripted match's turn and a
+  level's damage gate reach it, and the old game has neither.
 
 ## Refusals at a glance
 
@@ -980,8 +1012,8 @@ Rows deliberately not added:
 
 ## Not gated
 
-Twelve changes apply whatever the setting, three from the work that added it
-(N, O and P), six from the second bugs batch and three from the issues it
+Seventeen changes apply whatever the setting, three from the work that added
+it (N, O and P), six from the second bugs batch and eight from the issues it
 filed; the last entry records a difference kept on purpose (#484):
 
 - **N. A slot that is not in play says so.** `walker::special()` refuses a
@@ -1086,6 +1118,52 @@ filed; the last entry records a difference kept on purpose (#484):
   walked at full speed, in plain sight, through trees painted on its own
   floor. Single-floor levels, and so every recording, are unchanged. This
   game only: the old game has one floor.
+- **A player's wall slide keeps the old game's pace (#470).** A player
+  walking diagonally into a wall slides along it, one pixel up or down and
+  one sideways per round, and the old game runs a round for every started
+  unit of the step size (its int counter is compared with the float step
+  size). This game had made the step size a whole number first, so a hired
+  hero, whose step size gains its dexterity / 54, slid up to a pixel less
+  per step: about a third slower at a step size of 2.2. It now runs the
+  old game's rounds. A whole-number step size slides as before, and so does
+  every parity row.
+- **A random TELEPORT lands wherever a cell is clear (#471).** With no
+  usable marker the blink draws random cells until one is clear, as the
+  old game does. This game stopped after 200 draws and never tested the
+  200th, so on a level where clear cells are rare (1 %) about one cast in
+  seven left the mage where it was, the cast paid. It now tests every draw
+  and gives up only after 64 draws per cell per floor, which a level with
+  any clear cell practically never reaches; on a level with no clear cell
+  at all, where the old game never stops drawing, the caster stays put.
+- **A level a seat plays never times out (#466).** Every level used to end
+  itself after 36000 ticks, about 49 minutes at the default speed, as a
+  retreat: "Mission timed out. Retreating.", no next level, the level's
+  progress lost. The old game has no limit. Now only a level nobody plays
+  times out that way: a spectator room, a 0-player autoplay, a server room
+  every player has left (no connected client holds a seat and no dropped
+  player is still in its grace window). The lobby's match time limit stays
+  below that net. A level a seat plays runs as long as it is played.
+- **A corpse is reached on its own floor (#456).** On a level with stacked
+  floors the corpse finder answered the nearest stain on any floor: an orc
+  or an orc captain on a balcony ate the corpse below, a cleric with the
+  setting off raised it, and a nearer stain on another floor hid the one at
+  the caster's feet. It now answers only a stain on the finder's floor, as
+  the stain walk of fix T already did, on both settings. The old game has
+  no floors.
+- **An allied NPC's shots follow its body on Easy and Hard (#473).** A
+  placed team-0 NPC with no player character (the SAVE_ALL Bearer, an
+  allied war-host, a team-0 bot squad) takes the difficulty percent on its
+  hit points, magic and damage (A12a), but the shots it fired did not: a
+  shot is scaled by its own `set_difficulty`, which exempted all of team
+  0. On Hard an allied archer had twice the hit points and swung twice as
+  hard while its arrows stayed at 100% and every hostile arrow doubled; on
+  Easy, the reverse. A team-0 shot whose shooter is a Living with no
+  player character now takes the same percent as its shooter's body, on
+  both settings. A player character's shots, a placed weapon or treasure
+  with no owner, and everything at 100% are unchanged, so no golden moves
+  (every parity row runs at 100%). The old game has neither half: its
+  `team_num != 0` gate exempts every team-0 walker and shot alike, and both
+  halves are ported to it, ungated.
 - **The simulation records every display effect (#484).** Not a change. The
   old game decided the melee lunge, the hit and heal numbers, a walled-in
   walker's red 1, the hurt flash, the recoil and the hit animation where it

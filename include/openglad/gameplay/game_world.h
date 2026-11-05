@@ -511,9 +511,11 @@ public:
     walker* find_near_foe(walker* ob);
     // Scan all live, non-dormant foes and return the nearest by 2D distance.
     walker* find_nearest_foe(walker* ob);
+    // The nearest live stain on who's floor (squared centre distance under
+    // 800), or nullptr; a stain on another floor is never answered (#456).
     walker* find_nearest_blood(walker* who);
     // Every stain find_nearest_blood would consider (live FAMILY_STAIN
-    // treasure, squared centre distance under 800) on who's floor, nearest
+    // treasure on who's floor, squared centre distance under 800), nearest
     // first; ties keep fxlist order. Draw-free; empty for a null who.
     std::vector<walker*> find_blood_in_reach(walker* who);
     walker* find_nearest_player(walker* ob);
@@ -621,6 +623,15 @@ public:
     float control_hp = 0.0f;
     bool withdraw_requested = false;
     short withdraw_level = -1;
+    // True while no seat plays this level: no connected client holds a seat
+    // and no dropped player is still in its disconnect grace window (a
+    // spectator room, autoplay, a room every player has left). Only such a
+    // level times out (36000 ticks, see tick()); a played level never does,
+    // as in the old game. A server-only transient: GameServer::step stamps
+    // it before every tick, it is not in the snapshot or the hash, and
+    // clear() leaves it alone. Worlds ticked without a server (the parity
+    // runner, the text protocol, unit worlds) keep false: no limit.
+    bool level_unattended = false;
 
     // Gameplay-relevant values that will migrate off SaveData/session.
     std::uint32_t m_score[4] = {};
@@ -638,8 +649,8 @@ public:
     // resolve it against their manifest row through match.resolve_limit.
     // NOT the .glad level field of the same name — that one is the par/time
     // BONUS clock and lives in time_bonus_limit (level_file_io.cpp:238).
-    // Independent of the 36000-tick hard mission timeout below, which is a
-    // runaway-loop safety net and ends the level as a LOSS.
+    // Independent of the 36000-tick timeout of a level nobody plays
+    // (level_unattended), which ends that level as a LOSS.
     short ctf_requested_time_limit = 0;
     // Lobby-requested per-team FILL wheel and MAP UNITS box (amendment
     // B1-B4). Index is the team (0..3); 0 is the default on both.

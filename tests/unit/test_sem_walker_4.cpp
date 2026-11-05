@@ -624,6 +624,43 @@ TEST_F(SemWalker4, a_player_slide_draws_the_moved_axis_one_cycle_on_classic)
     }
 }
 
+// walker_movement.cpp:426 (#470). A player's wall slide tries one pixel per
+// STARTED unit of stepsize, as the old game's `for (i = 0; i < step; i++)`
+// does with an int counter and a float step: ceil(step) pixels, not
+// floor(step). A wall row above the slider blocks the full step, the baby
+// step and every pixel up; the cells along the wall are open.
+TEST_F(SemWalker4, a_wall_slide_moves_one_pixel_per_started_unit_of_stepsize)
+{
+    struct Slide
+    {
+        const char* arm;
+        float step;
+        int dir;
+        float dx;
+        short end_x;
+    };
+    const Slide slides[] = {
+        {"up-right, stepsize 2.2: three pixels", 2.2f, FACE_UP_RIGHT, 1.0f, 67},
+        {"up-right, stepsize 2.0: two pixels", 2.0f, FACE_UP_RIGHT, 1.0f, 66},
+        {"up-right, stepsize 1.5: two pixels", 1.5f, FACE_UP_RIGHT, 1.0f, 66},
+        {"up-left, stepsize 2.2: three pixels", 2.2f, FACE_UP_LEFT, -1.0f, 61},
+    };
+    for (const Slide& s : slides)
+    {
+        fresh_world();
+        for (int tx = 0; tx < 64; ++tx)
+            tile(tx, 4, PIX_H_WALL1);  // y 64..79: the wall above the slider
+        walker* w = living_at(FAMILY_SOLDIER, 0, 64, 80);
+        ASSERT_NE(nullptr, w) << s.arm;
+        w->set_stepsize(s.step);
+        w->set_user(0);
+        w->set_curdir(static_cast<signed char>(s.dir));
+        EXPECT_FALSE(w->walkstep(s.dx, -1.0f)) << s.arm << ": the slide reports failure";
+        EXPECT_EQ(s.end_x, w->xpos()) << s.arm;
+        EXPECT_EQ(80, w->ypos()) << s.arm << ": the wall keeps it from moving up";
+    }
+}
+
 // walker_movement.cpp:326. A stationary living's walk only turns it.
 TEST_F(SemWalker4, a_stationary_living_walk_only_sets_its_facing)
 {
@@ -1040,6 +1077,7 @@ TEST_F(Blink, a_landing_is_probed_at_the_casters_height_on_its_floor_and_at_grou
     boulder_arena(2);
     ASSERT_EQ(2, world().floor_count());
     floor1_grid(PIX_BOULDER_1, PIX_GRASS1);
+    tile(20, 20, PIX_BOULDER_1);  // no clear cell on floor 0: the random fallback cannot land
     mage = mage_at(96, 96);
     mark = marker_for(mage, 0, 0, 5);
     body = living_at(FAMILY_SOLDIER, 1, 0, 0);
@@ -1168,6 +1206,82 @@ TEST_F(Blink, a_ranged_hop_stamps_the_self_teleport_tick_even_when_it_fails)
     EXPECT_EQ(56u, sk->last_self_teleport_tick()) << "teleport_ranged called: stamped though it failed";
 }
 
+// The world LCG's next draw of bound `max` (SimRandom::next), stepping `s`.
+static int lcg_draw(std::uint32_t& s, int max)
+{
+    s = s * 1103515245u + 12345u;
+    return static_cast<int>((s >> 16) % static_cast<std::uint32_t>(max));
+}
+
+// walker_specials.cpp:466 (#471). With no usable marker the blink draws
+// random cells until one is clear and tests every draw, as the old game's
+// unbounded loop does. This game used to stop after 200 draws and never
+// tested the 200th. Only the cell of the nth draw is clear: the caster lands
+// there, and the world stream has advanced exactly n (x, y) pairs.
+TEST_F(Blink, a_random_blink_tests_every_draw_and_lands_on_a_cell_first_drawn_after_two_hundred_tries)
+{
+    for (const int nth : {200, 250})
+    {
+        fresh_world();
+        const int gw = world().grid.w;
+        const int gh = world().grid.h;
+        // The first seed whose nth draw names a cell no earlier draw named
+        // (and not the caster's own cell, (6, 6)).
+        std::uint32_t seed = 0;
+        std::uint32_t after = 0;
+        int cell = -1;
+        for (std::uint32_t cand = 1; cell < 0; ++cand)
+        {
+            std::uint32_t s = cand;
+            std::vector<bool> seen(static_cast<std::size_t>(gw * gh), false);
+            for (int i = 1; i <= nth; ++i)
+            {
+                const int x = lcg_draw(s, gw);
+                const int c = x + gw * lcg_draw(s, gh);
+                if (i == nth && !seen[static_cast<std::size_t>(c)] && c != 6 + gw * 6)
+                {
+                    seed = cand;
+                    after = s;
+                    cell = c;
+                }
+                seen[static_cast<std::size_t>(c)] = true;
+            }
+        }
+        paint_all(PIX_BOULDER_1);
+        tile(cell % gw, cell / gw, PIX_GRASS1);
+        walker* mage = mage_at(96, 96);
+        ASSERT_NE(nullptr, mage);
+        world().rng_.state_ = seed;
+        EXPECT_TRUE(mage->teleport()) << "the clear cell is draw " << nth << ": it lands";
+        EXPECT_EQ((cell % gw) * GRID_SIZE, mage->xpos()) << "draw " << nth;
+        EXPECT_EQ((cell / gw) * GRID_SIZE, mage->ypos()) << "draw " << nth;
+        EXPECT_EQ(after, world().rng_.state_) << "exactly " << nth << " (x, y) pairs drawn";
+    }
+}
+
+// walker_specials.cpp:490 (#471). With no clear cell the old game loops
+// forever; this game gives up after 64 draws per cell per floor (here 64 x
+// 64 x 64 pairs) and leaves the caster where it was.
+TEST_F(Blink, a_random_blink_with_no_clear_cell_gives_up_and_stays_put)
+{
+    paint_all(PIX_BOULDER_1);
+    walker* mage = mage_at(96, 96);
+    ASSERT_NE(nullptr, mage);
+    const int gw = world().grid.w;
+    const int gh = world().grid.h;
+    std::uint32_t s = 42u;
+    for (int i = 0; i < 64 * gw * gh; ++i)
+    {
+        lcg_draw(s, gw);
+        lcg_draw(s, gh);
+    }
+    world().rng_.state_ = 42u;
+    EXPECT_FALSE(mage->teleport()) << "no clear cell: the cast gives up";
+    EXPECT_EQ(96, mage->xpos()) << "no clear cell: the caster stays";
+    EXPECT_EQ(96, mage->ypos());
+    EXPECT_EQ(s, world().rng_.state_) << "exactly 64 x cells pairs drawn before giving up";
+}
+
 // ---------------------------------------------------------------------------
 // walker_specials.cpp: walker::special
 // ---------------------------------------------------------------------------
@@ -1203,9 +1317,74 @@ protected:
     static constexpr std::uint32_t kRoll = static_cast<std::uint32_t>(kRange * 40);
 };
 
-// walker_specials.cpp:410 (a warded undead draws no roll) is deferred:
-// the old game turns a warded skeleton or ghost with the Gameplay Fixes
-// setting off, so its classic arm is not pinned here (#474).
+// walker_specials.cpp:619 (#474, fix AH). A warded undead (BIT_INVINCIBLE,
+// or an invulnerability potion running) is turned the old game's way with
+// the Gameplay Fixes setting off: the kill loop asks only the family, so the
+// skeleton draws its roll and dies. With the setting on it is spared before
+// any roll: nothing else in reach is turnable, so the cast is refused (-2)
+// and draws nothing. An unwarded skeleton is still turned with it on.
+TEST_F(TurnUndead, a_warded_undead_is_turned_with_the_fixes_off_and_spared_with_them_on)
+{
+    constexpr std::uint32_t kFixesRoll = 4u * 160u;  // power 4: the fixes' roll bound
+    struct Ward
+    {
+        const char* arm;
+        bool invincible;
+        short potion;
+    };
+    const Ward wards[] = {{"BIT_INVINCIBLE", true, 0}, {"an invulnerability potion", false, 50}};
+    for (const Ward& ward : wards)
+    {
+        for (short fixes = 0; fixes < 2; ++fixes)
+        {
+            fresh_world();
+            world().gameplay_fixes = fixes;
+            walker* cleric = living_at(FAMILY_CLERIC, 0, 200, 264);
+            walker* sk = living_at(FAMILY_SKELETON, 1, 216, 264);
+            ASSERT_TRUE(cleric && sk);
+            sk->stats()->set_level(1);
+            if (ward.invincible)
+                sk->stats()->set_bit_flags(BIT_INVINCIBLE, 1);
+            sk->set_invulnerable_left(ward.potion);
+            RollSpy spy(fixes != 0 ? kFixesRoll : kRoll);
+            std::int32_t killed = 0;
+            {
+                ScopedSimRandom scope(&spy);
+                killed = cleric->turn_undead(kRange, 4);
+            }
+            if (fixes == 0)
+            {
+                EXPECT_EQ(1, killed) << ward.arm << ", fixes off: the old game turns it";
+                EXPECT_EQ(1, static_cast<int>(sk->dead())) << ward.arm << ", fixes off";
+                EXPECT_EQ((std::vector<std::uint32_t>{kRoll, 10u}), spy.bounds)
+                    << ward.arm << ", fixes off: the caster's roll, then the level-1 victim's";
+            }
+            else
+            {
+                EXPECT_EQ(-2, killed) << ward.arm << ", fixes on: nothing turnable in reach";
+                EXPECT_EQ(0, static_cast<int>(sk->dead())) << ward.arm << ", fixes on: spared";
+                EXPECT_FLOAT_EQ(400.0f, sk->stats()->hitpoints()) << ward.arm << ", fixes on";
+                EXPECT_EQ(0u, spy.bounds.size()) << ward.arm << ", fixes on: no roll drawn";
+            }
+        }
+    }
+
+    fresh_world();
+    world().gameplay_fixes = 1;
+    walker* cleric = living_at(FAMILY_CLERIC, 0, 200, 264);
+    walker* sk = living_at(FAMILY_SKELETON, 1, 216, 264);
+    ASSERT_TRUE(cleric && sk);
+    sk->stats()->set_level(1);
+    RollSpy spy(kFixesRoll);
+    std::int32_t killed = 0;
+    {
+        ScopedSimRandom scope(&spy);
+        killed = cleric->turn_undead(kRange, 4);
+    }
+    EXPECT_EQ(1, killed) << "unwarded, fixes on: turned";
+    EXPECT_EQ(1, static_cast<int>(sk->dead())) << "unwarded, fixes on";
+    EXPECT_EQ((std::vector<std::uint32_t>{kFixesRoll, 10u}), spy.bounds) << "unwarded, fixes on";
+}
 
 // walker_specials.cpp:418. A scripted level whose mode failed to start
 // turns undead the classic way: a pre-kill with no attribution and no

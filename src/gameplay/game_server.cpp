@@ -3178,7 +3178,17 @@ void GameServer::step()
     if (should_tick_world)
         process_disconnected_players(next_tick);
     if (should_tick_world)
+    {
+        // #466: only a level nobody plays times out. A seat counts while its
+        // client is connected or its dropped player is still in the grace
+        // window, so a brief link loss never ends a long level.
+        world_.level_unattended =
+            std::none_of(clients_.begin(), clients_.end(),
+                         [](const auto& entry) { return entry.second.has_player_binding(); }) &&
+            std::none_of(disconnected_players_.begin(), disconnected_players_.end(),
+                         [](const DisconnectedPlayer& d) { return !d.ai_control_enabled; });
         world_.tick();
+    }
 
     broadcast_current_state(SnapshotCaptureMode::Consume,
                             EventDeliveryMode::Drain);
