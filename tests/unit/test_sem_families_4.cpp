@@ -32,6 +32,7 @@
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/living.h>
+#include <openglad/gameplay/possession.h>
 #include <openglad/gameplay/script/family_tuning.h>
 #include <openglad/gameplay/sim_event_log.h>
 #include <openglad/gameplay/statistics.h>
@@ -260,8 +261,9 @@ TEST_F(SemArchmage, classic_view_all_grows_every_act_from_level_40_and_restarts_
 // 1000 magic it still never reaches for HEARTBURST, and the slot-2 coin is
 // never drawn. A level-4 archmage with 50 magic has slot 2 unlocked but
 // cannot pay HEARTBURST's 80 (nor SUMMON's 500): nothing is cast, nothing
-// drawn. The control (level 4, 1000 magic, coin 0) answers with HEARTBURST
-// twice. Classic order (setting off), the old game's statistics::hit_response.
+// drawn. The control (level 4, 1000 magic, coin 0) answers with one
+// HEARTBURST (the classic reply ends there, fix AE). Classic order (setting
+// off), the old game's statistics::hit_response.
 //
 // RED (the unlock bound (L+2)//3 -> (L+5)//3 at :79): Expected equality of
 // these values: coin0 Which is: 1 world().rng_.state_ Which is: 1103527590
@@ -290,7 +292,7 @@ TEST_F(SemArchmage, a_struck_archmage_never_answers_with_a_slot_its_level_locks_
     ASSERT_TRUE(a && o);
     world().rng_.state_ = coin0;
     hit(a, o);
-    EXPECT_EQ(2, live_fx(FAMILY_EXPLOSION)) << "control: slot 2 unlocked and paid";
+    EXPECT_EQ(1, live_fx(FAMILY_EXPLOSION)) << "control: slot 2 unlocked and paid";
 }
 
 // :87 hero and monster arms. A struck hero archmage teleports below 3/5 of
@@ -391,38 +393,48 @@ TEST_F(SemArchmage, a_struck_bot_archmage_that_cannot_pay_heartburst_answers_not
     EXPECT_NE(ANI_TELE_OUT, a->ani_type());
 }
 
-// :127 both arms of the classic summon-first order (setting off). (a) A
-// summon that stands returns at once: one elemental, no HEARTBURST or CHAIN,
-// 1100 - 300 (half the spare) - 500 = 300 magic. (b) A summon with nowhere to
-// stand falls to slot 2: the coin (rand(2) == 0) casts HEARTBURST, and the
-// "then leave! :)" follow-up casts it again: two explosions on the orc,
-// 1100 - 300 (the classic surcharge, paid before the room check) - 360 - 80
-// - 140 - 80 = 140 magic.
+// :205 and :214, the classic summon-first order (setting off). The old game's
+// walker::special answers 0 on every path (old game src/walker.cpp, the end
+// of walker::special), so its hit response never ends because a cast worked
+// (#422, Gameplay Fixes AE). (a) A summon that stands is paid (1100 - 300,
+// half the spare, - 500 = 300 magic) and the reply goes on to slot 2: the
+// coin is drawn (pinned to 1, CHAIN LIGHTNING), the chain and then the
+// HEARTBURST are tried and both refused by the summon's 15 ticks of busy, so
+// the archmage ends on slot 2 with the shift released, nothing more cast or
+// spent. (b) A summon with nowhere to stand (the classic surcharge paid before
+// the room check: 800 left) falls to slot 2: the coin (0) casts one HEARTBURST
+// of 360 and the reply ends there, 360 magic left: no "then leave! :)"
+// follow-up.
 //
-// RED (the `return` after a successful summon dropped at :132): Expected
-// equality of these values: coin0 Which is: 1 world().rng_.state_ Which is:
-// 1103527590 "no slot-2 coin". RED (`if possible[2]` -> `if false` at :136):
-// Expected equality of these values: 2u bursts.size() Which is: 0 "summon
-// fails: slot 2, and its follow-up".
-TEST_F(SemArchmage, classic_a_struck_archmage_summons_first_and_casts_slot_2_only_when_the_summon_fails)
+// RED (`self:special() and gf.on()` -> `self:special()` at :214): Expected
+// equality of these values: state_after(coin1, {2}) ... world().rng_.state_
+// "the summon goes on to the slot-2 coin". RED (the same at :271):
+// Expected equality of these values: 1u bursts.size() Which is: 2 "one
+// HEARTBURST, no follow-up".
+TEST_F(SemArchmage, classic_a_struck_archmage_tries_slot_2_even_after_a_summon_that_stands)
 {
-    const std::uint32_t coin0 = state_where_next_is(2, 0);
     {
+        const std::uint32_t coin1 = state_where_next_is(2, 1);
         living* a = arch(1, 200, 200, 10, 1100.0f);
         living* o = orc(2, 230, 200);
         ASSERT_TRUE(a && o);
         a->set_shifter_down(1);
-        world().rng_.state_ = coin0;
+        world().rng_.state_ = coin1;
         hit(a, o);
         EXPECT_EQ(1u, live(Order::Living, FAMILY_FIREELEMENTAL).size()) << "the summon stands";
-        EXPECT_EQ(0, live_fx(FAMILY_EXPLOSION)) << "the summon returns";
-        EXPECT_EQ(0, live_fx(FAMILY_CHAIN)) << "the summon returns";
+        EXPECT_EQ(state_after(coin1, {2}), world().rng_.state_)
+            << "the summon goes on to the slot-2 coin";
+        EXPECT_EQ(2, static_cast<int>(a->current_special())) << "slot 2 was tried";
+        EXPECT_EQ(0, a->shifter_down()) << "the chain refused: the shift released for HEARTBURST";
+        EXPECT_FLOAT_EQ(15.0f, a->busy()) << "the summon's busy, which refused both";
+        EXPECT_EQ(0, live_fx(FAMILY_EXPLOSION)) << "HEARTBURST refused: busy";
+        EXPECT_EQ(0, live_fx(FAMILY_CHAIN)) << "CHAIN LIGHTNING refused: busy";
         EXPECT_FLOAT_EQ(300.0f, a->stats()->magicpoints()) << "only the summon is paid";
-        EXPECT_EQ(coin0, world().rng_.state_) << "no slot-2 coin";
     }
     {
         fresh_world();
         wall_around_160();
+        const std::uint32_t coin0 = state_where_next_is(2, 0);
         living* a = arch(1, 160, 160, 10, 1100.0f);
         living* o = orc(2, 224, 160);
         ASSERT_TRUE(a && o);
@@ -431,13 +443,72 @@ TEST_F(SemArchmage, classic_a_struck_archmage_summons_first_and_casts_slot_2_onl
         hit(a, o);
         EXPECT_EQ(0u, live(Order::Living, FAMILY_FIREELEMENTAL).size()) << "no room";
         const auto bursts = live(Order::FX, FAMILY_EXPLOSION);
-        ASSERT_EQ(2u, bursts.size()) << "summon fails: slot 2, and its follow-up";
+        ASSERT_EQ(1u, bursts.size()) << "one HEARTBURST, no follow-up";
+        EXPECT_FLOAT_EQ(360.0f, bursts[0]->damage());
+        EXPECT_EQ(0, live_fx(FAMILY_CHAIN));
+        EXPECT_FLOAT_EQ(360.0f, a->stats()->magicpoints()) << "1100 - 300 - 360 - 80";
+        EXPECT_EQ(state_after(coin0, {2}), world().rng_.state_) << "the slot-2 coin";
+    }
+}
+
+// :214 and :279 with the setting on. A struck bot never reaches the classic
+// order with Gameplay Fixes (the slot-2 gate answers, :159), but a
+// seat-driven archmage keeps it, and for it a cast that worked ends the
+// reply. (a) A summon that stands returns at once: one elemental, no coin,
+// slot 3 and the shift still as they were, 300 magic. (b) A summon with
+// nowhere to stand costs nothing with the setting on (fix D) and falls to
+// slot 2: the coin (0) casts HEARTBURST (510), and with 510 left (>=
+// TELEPORT's 10) the "then leave! :)" follow-up casts it again (215): two
+// explosions, 1100 - 510 - 80 - 215 - 80 = 215 magic.
+//
+// RED (`self:special() and gf.on()` -> `self:special() and false` at
+// :214): Expected equality of these values: coin1 ... world().rng_.state_
+// "a summon that worked ends the reply". RED (the same at :271): Expected
+// equality of these values: 2u bursts.size() Which is: 1 "HEARTBURST, then
+// its follow-up".
+TEST_F(SemArchmage, with_gameplay_fixes_a_seated_archmages_summon_that_stands_ends_its_reply)
+{
+    {
+        world().gameplay_fixes = 1;
+        const std::uint32_t coin1 = state_where_next_is(2, 1);
+        living* a = arch(1, 200, 200, 10, 1100.0f);
+        living* o = orc(2, 230, 200);
+        ASSERT_TRUE(a && o);
+        a->set_user(0);
+        ASSERT_TRUE(og::sim::seat_driven(*a));
+        a->set_shifter_down(1);
+        world().rng_.state_ = coin1;
+        hit(a, o);
+        EXPECT_EQ(1u, live(Order::Living, FAMILY_FIREELEMENTAL).size()) << "the summon stands";
+        EXPECT_EQ(coin1, world().rng_.state_) << "a summon that worked ends the reply";
+        EXPECT_EQ(3, static_cast<int>(a->current_special())) << "slot 2 never tried";
+        EXPECT_EQ(1, a->shifter_down());
+        EXPECT_EQ(0, live_fx(FAMILY_EXPLOSION));
+        EXPECT_EQ(0, live_fx(FAMILY_CHAIN));
+        EXPECT_FLOAT_EQ(300.0f, a->stats()->magicpoints()) << "only the summon is paid";
+    }
+    {
+        fresh_world();
+        world().gameplay_fixes = 1;
+        wall_around_160();
+        const std::uint32_t coin0 = state_where_next_is(2, 0);
+        living* a = arch(1, 160, 160, 10, 1100.0f);
+        living* o = orc(2, 224, 160);
+        ASSERT_TRUE(a && o);
+        a->set_user(0);
+        ASSERT_TRUE(og::sim::seat_driven(*a));
+        a->set_shifter_down(1);
+        world().rng_.state_ = coin0;
+        hit(a, o);
+        EXPECT_EQ(0u, live(Order::Living, FAMILY_FIREELEMENTAL).size()) << "no room";
+        const auto bursts = live(Order::FX, FAMILY_EXPLOSION);
+        ASSERT_EQ(2u, bursts.size()) << "HEARTBURST, then its follow-up";
         std::vector<float> dmg = {bursts[0]->damage(), bursts[1]->damage()};
         std::sort(dmg.begin(), dmg.end());
-        EXPECT_FLOAT_EQ(140.0f, dmg[0]) << "the follow-up burst";
-        EXPECT_FLOAT_EQ(360.0f, dmg[1]) << "the first burst";
+        EXPECT_FLOAT_EQ(215.0f, dmg[0]) << "the follow-up burst";
+        EXPECT_FLOAT_EQ(510.0f, dmg[1]) << "the first burst";
         EXPECT_EQ(0, live_fx(FAMILY_CHAIN));
-        EXPECT_FLOAT_EQ(140.0f, a->stats()->magicpoints());
+        EXPECT_FLOAT_EQ(215.0f, a->stats()->magicpoints());
         EXPECT_EQ(state_after(coin0, {2}), world().rng_.state_) << "the slot-2 coin";
     }
 }
@@ -449,6 +520,8 @@ struct Struck {
     int chains = 0;
     float mp = 0.0f;
     int ani_type = 0;
+    int slot = 0;
+    int shift = 0;
     std::uint32_t rng = 0;
     std::vector<float> burst_damage;
     std::vector<float> chain_damage;
@@ -458,10 +531,12 @@ struct Struck {
 
 class SemArchmageClassicSlot2 : public SemArchmage {
 protected:
-    // The classic order (setting off): a level-4 archmage (slots 0..2,
-    // SUMMON locked), healthy, struck by an orc `dx` px east of it, the coin
-    // pinned to `coin`.
-    Struck struck(float mp, std::uint32_t coin, short dx = 30)
+    // The classic order: a level-4 archmage (slots 0..2, SUMMON locked),
+    // healthy, struck by an orc `dx` px east of it, the coin pinned to
+    // `coin`. With `seated` the setting is on and a seat drives the
+    // archmage (the one way the classic order runs with Gameplay Fixes);
+    // otherwise the setting is off.
+    Struck struck(float mp, std::uint32_t coin, short dx = 30, bool seated = false)
     {
         fresh_world();
         Struck s;
@@ -470,6 +545,11 @@ protected:
         EXPECT_TRUE(a && o);
         if (!(a && o))
             return s;
+        if (seated) {
+            world().gameplay_fixes = 1;
+            a->set_user(0);
+        }
+        EXPECT_EQ(seated, og::sim::seat_driven(*a));
         o->stats()->set_max_hitpoints(900.0f);
         o->stats()->set_hitpoints(900.0f);
         const std::uint32_t seed = state_where_next_is(2, coin);
@@ -483,23 +563,49 @@ protected:
         s.chains = static_cast<int>(s.chain_damage.size());
         s.mp = a->stats()->magicpoints();
         s.ani_type = a->ani_type();
+        s.slot = static_cast<int>(a->current_special());
+        s.shift = a->shifter_down();
         s.rng = state_after(seed, {2}) == world().rng_.state_ ? 1u : 0u;
         return s;
     }
 };
 
-// :136 the chain arms (rand(2) != 0). With 1000 magic the CHAIN takes 460
-// (half the 920 spare) and 80, and with 460 left (>= TELEPORT's 10) the
-// follow-up casts slot 2 again with the shift released: a HEARTBURST of 190,
-// not a teleport. With 90 magic the CHAIN takes 5 and 80, and with 5 left
-// there is no follow-up. Classic per the heritage comment ("then leave! :)"
-// never switched to teleport) and the old game's hit_response.
+// :236 and :246 the chain arm (rand(2) != 0), setting off. The CHAIN takes
+// 460 (half the 920 spare) and 80, and its answer is never read, as in the
+// old game: the reply goes on to the HEARTBURST attempt (the shift released,
+// slot 2), which the chain's 5 ticks of busy refuse. One chain, no
+// explosion, 460 magic: classic never casts a second time after a chain.
 //
-// RED (`mp >= cost(1)` -> `mp >= 9999` at :144): Expected equality of these
-// values: 1 s.explosions Which is: 0 "chain, then the follow-up heartburst".
-TEST_F(SemArchmageClassicSlot2, classic_a_struck_archmage_chains_and_then_heartbursts_when_it_can_still_pay_a_teleport)
+// RED (`self:special() and gf.on()` -> `self:special()` at :246): Expected
+// equality of these values: 0 off.explosions Which is: 1 "the HEARTBURST
+// after the chain is refused".
+TEST_F(SemArchmageClassicSlot2, classic_a_struck_archmages_chain_is_never_followed_by_a_second_cast)
 {
-    const Struck rich = struck(1000.0f, 1);
+    const Struck off = struck(1000.0f, 1);
+    EXPECT_EQ(1, off.chains) << "one CHAIN";
+    ASSERT_EQ(1u, off.chain_damage.size());
+    EXPECT_FLOAT_EQ(460.0f, off.chain_damage[0]);
+    EXPECT_EQ(0, off.explosions) << "the HEARTBURST after the chain is refused";
+    EXPECT_FLOAT_EQ(460.0f, off.mp) << "the chain alone is paid";
+    EXPECT_EQ(2, off.slot) << "the reply went on to slot 2's HEARTBURST";
+    EXPECT_EQ(0, off.shift) << "the shift released for the HEARTBURST attempt";
+    EXPECT_NE(ANI_TELE_OUT, off.ani_type);
+    EXPECT_EQ(1u, off.rng) << "one draw: the coin";
+}
+
+// :246 and :255 the chain arms with the setting on, for a seat-driven
+// archmage. With 1000 magic the CHAIN takes 460 and 80, and with 460 left
+// (>= TELEPORT's 10) the follow-up casts slot 2 again with the shift
+// released: a HEARTBURST of 190, not a teleport. With 90 magic the CHAIN
+// takes 5 and 80, and with 5 left there is no follow-up.
+//
+// RED (`self:special() and gf.on()` -> `self:special() and false` at
+// :246): Expected equality of these values: 1 rich.explosions Which is: 0
+// "chain, then the follow-up heartburst". RED (`mp >= cost(1)` -> `mp >=
+// 9999` at :255): the same line.
+TEST_F(SemArchmageClassicSlot2, with_gameplay_fixes_a_seated_archmage_chains_and_then_heartbursts_when_it_can_still_pay_a_teleport)
+{
+    const Struck rich = struck(1000.0f, 1, 30, true);
     EXPECT_EQ(1, rich.chains) << "one CHAIN";
     EXPECT_EQ(1, rich.explosions) << "chain, then the follow-up heartburst";
     ASSERT_EQ(1u, rich.chain_damage.size());
@@ -510,24 +616,52 @@ TEST_F(SemArchmageClassicSlot2, classic_a_struck_archmage_chains_and_then_heartb
     EXPECT_NE(ANI_TELE_OUT, rich.ani_type) << "the follow-up is not a teleport";
     EXPECT_EQ(1u, rich.rng) << "one draw: the coin";
 
-    const Struck poor = struck(90.0f, 1);
+    const Struck poor = struck(90.0f, 1, 30, true);
     EXPECT_EQ(1, poor.chains) << "one CHAIN";
     EXPECT_EQ(0, poor.explosions) << "5 left: no follow-up";
     EXPECT_FLOAT_EQ(5.0f, poor.mp);
     EXPECT_NE(ANI_TELE_OUT, poor.ani_type);
 }
 
-// :136 the burst arms (rand(2) == 0). With 1000 magic HEARTBURST is cast
-// twice (460, then 190), no CHAIN, no teleport. With the orc 150 px off
-// (inside the response's 200 px, outside HEARTBURST's 88 at level 4) the
+// :262 and :271 the burst arms (rand(2) == 0), setting off. With 1000 magic
+// HEARTBURST is cast once (460) and its answer is never read, so the reply
+// ends: no follow-up, no CHAIN, no teleport, 460 magic. With the orc 150 px
+// off (inside the response's 200 px, outside HEARTBURST's 88 at level 4) the
 // burst fails and nothing is cast or spent (CHAIN would have reached it).
 //
-// RED (the burst follow-up's `self:special()` dropped at :156): Expected
-// equality of these values: 2 twice.explosions Which is: 1 "two heartburst
-// casts".
-TEST_F(SemArchmageClassicSlot2, classic_a_struck_archmage_heartbursts_twice_and_a_failed_burst_casts_nothing)
+// RED (`self:special() and gf.on()` -> `self:special()` at :271): Expected
+// equality of these values: 1 once.explosions Which is: 2 "one HEARTBURST
+// cast".
+TEST_F(SemArchmageClassicSlot2, classic_a_struck_archmage_heartbursts_once_and_a_failed_burst_casts_nothing)
 {
-    const Struck twice = struck(1000.0f, 0);
+    const Struck once = struck(1000.0f, 0);
+    EXPECT_EQ(1, once.explosions) << "one HEARTBURST cast";
+    EXPECT_EQ(0, once.chains);
+    ASSERT_EQ(1u, once.burst_damage.size());
+    EXPECT_FLOAT_EQ(460.0f, once.burst_damage[0]);
+    EXPECT_FLOAT_EQ(460.0f, once.mp);
+    EXPECT_NE(ANI_TELE_OUT, once.ani_type);
+    EXPECT_EQ(1u, once.rng) << "the coin is the one draw";
+
+    const Struck miss = struck(1000.0f, 0, 150);
+    EXPECT_EQ(0, miss.explosions) << "burst fails: nothing";
+    EXPECT_EQ(0, miss.chains) << "burst fails: nothing";
+    EXPECT_FLOAT_EQ(1000.0f, miss.mp);
+    EXPECT_EQ(1u, miss.rng) << "the coin is the one draw";
+}
+
+// :271 and :279 the burst arms with the setting on, for a seat-driven
+// archmage. With 1000 magic HEARTBURST is cast twice (460, then 190), no
+// CHAIN, no teleport. With 90 magic the burst takes 5 and 80, and with 5
+// left there is no follow-up. With the orc 150 px off the burst fails and
+// nothing is cast or spent.
+//
+// RED (`self:special() and gf.on()` -> `self:special() and false` at
+// :271): Expected equality of these values: 2 twice.explosions Which is: 1
+// "two heartburst casts".
+TEST_F(SemArchmageClassicSlot2, with_gameplay_fixes_a_seated_archmage_heartbursts_twice_and_a_failed_burst_casts_nothing)
+{
+    const Struck twice = struck(1000.0f, 0, 30, true);
     EXPECT_EQ(2, twice.explosions) << "two heartburst casts";
     EXPECT_EQ(0, twice.chains);
     ASSERT_EQ(2u, twice.burst_damage.size());
@@ -538,14 +672,18 @@ TEST_F(SemArchmageClassicSlot2, classic_a_struck_archmage_heartbursts_twice_and_
     EXPECT_FLOAT_EQ(190.0f, twice.mp);
     EXPECT_NE(ANI_TELE_OUT, twice.ani_type);
 
-    const Struck miss = struck(1000.0f, 0, 150);
+    const Struck poor = struck(90.0f, 0, 30, true);
+    EXPECT_EQ(1, poor.explosions) << "5 left: no follow-up";
+    EXPECT_FLOAT_EQ(5.0f, poor.mp);
+
+    const Struck miss = struck(1000.0f, 0, 150, true);
     EXPECT_EQ(0, miss.explosions) << "burst fails: nothing";
     EXPECT_EQ(0, miss.chains) << "burst fails: nothing";
     EXPECT_FLOAT_EQ(1000.0f, miss.mp);
     EXPECT_EQ(1u, miss.rng) << "the coin is the one draw";
 }
 
-// :136 the chain-fails arm (rand(2) != 0). A failed CHAIN LIGHTNING falls
+// :236 the chain-fails arm (rand(2) != 0). A failed CHAIN LIGHTNING falls
 // through to a HEARTBURST attempt: the shift is released and slot 2 is cast
 // again. The one way to stage a failed chain is the current game's
 // per-placed-NPC "specials disabled" flag (level files v10, npc_flags bit 0;
@@ -560,7 +698,7 @@ TEST_F(SemArchmageClassicSlot2, classic_a_struck_archmage_heartbursts_twice_and_
 // slot 2 selected, having cast nothing and spent nothing.
 //
 // RED (`self:set_shifter_down(0)` -> `self:set_shifter_down(1)` at
-// living-17-archmage.lua:151): Expected equality of these values: 0
+// living-17-archmage.lua:262): Expected equality of these values: 0
 // a->shifter_down() Which is: 1.
 TEST_F(SemArchmageClassicSlot2, classic_a_struck_archmage_whose_chain_fails_falls_through_to_a_heartburst_attempt)
 {
