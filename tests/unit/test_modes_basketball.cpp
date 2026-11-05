@@ -4989,6 +4989,9 @@ TEST(ModesBasketballRealCampaign, bot_games_score_on_every_shipped_court)
         int first_score_tick = 0;
         int first_scorer = -1;
         int first_value = 0;
+        // The bound is exact on purpose: the rules let a game run past the
+        // buzzer only while the last shot is in the air, at most
+        // kShotFlightMax ticks. One tick more means the end rule changed.
         while (!world.game_ended && ticks < time_limit + kShotFlightMax)
         {
             world.tick();
@@ -5022,7 +5025,6 @@ TEST(ModesBasketballRealCampaign, bot_games_score_on_every_shipped_court)
         for (int team = 0; team < 4 && limit_team < 0; ++team)
             if (fields(world, team) && points_of(world, team) >= score_limit)
                 limit_team = team;
-        const char* ended_by = limit_team >= 0 ? "the score limit" : "the buzzer";
         if (limit_team >= 0)
         {
             EXPECT_EQ(limit_team, world.mode.winner_team)
@@ -5041,11 +5043,6 @@ TEST(ModesBasketballRealCampaign, bot_games_score_on_every_shipped_court)
         EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
         for (const auto& err : world.scripts().host().errors())
             ADD_FAILURE() << "scen" << id << " script error: " << err.message;
-        printf("scen%d: first basket tick %d, team %d, +%d; ended by %s at tick %d, "
-               "winner %d, %d-%d-%d-%d of %d; %d BALL RESET\n",
-               id, first_score_tick, first_scorer, first_value, ended_by, ticks,
-               world.mode.winner_team, points_of(world, 0), points_of(world, 1),
-               points_of(world, 2), points_of(world, 3), score_limit, resets);
     }
 }
 

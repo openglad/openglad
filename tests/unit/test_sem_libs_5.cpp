@@ -1106,7 +1106,8 @@ TEST_F(SemLineupStage, a_siteless_member_with_eight_unsafe_landings_stays_on_the
     EXPECT_TRUE(fx.world().scripts().host().errors().empty());
 }
 
-// lineup_stage.lua:278 and walker::teleport (walker_specials.cpp, #471).
+// lineup_stage.lua classic_place, the teleport tail, and walker::teleport
+// (walker_specials.cpp, #471).
 // When every teleport fails the member is not moved from where it was
 // spawned, (0,0). A random TELEPORT tests every cell it tries and gives up
 // only after 64 tries per cell per floor; a try draws x then y from the sim
