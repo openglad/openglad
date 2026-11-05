@@ -312,7 +312,7 @@ short treasure::eat_me(walker  * eater)
 					sprintf(message, "%s picks up key %d", eater->stats->name, stats->level);
 				if (eater->team_num == 0) // only show players picking up keys
 				{
-					myscreen->do_notify(message, eater);
+					myscreen->do_notify(message, myscreen->gameplay_fixes ? NULL : eater); // port of the current game's a9b2c78a (Gameplay Fixes AK, #482): with the setting, every view
 					if (eater->on_screen())
 						myscreen->soundp->play_sound(SOUND_MONEY);
 				}
