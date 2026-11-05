@@ -339,9 +339,11 @@ ghost is ridden `possess_min` (120 ticks). Every ride ends.
   fight at a third of the captain's level, at least level 1: a level-10
   captain's whole pool (133 for one never trained) buys one call, two
   level-3 orcs. A bot captain calls the warband only when it can pay.
-- Warband grunts gather at the middle of a standing banner. When no
-  banner stands, they run to where the captain stood when they were
-  called, then follow him.
+- Warband grunts come in on the map edge nearest the captain, each gap
+  measured from the side of his body facing that edge, and step inward a
+  tile at a time along his row or column to clear ground. They gather at
+  the middle of a standing banner. When no banner stands, they run to
+  where the captain stood when they were called, then follow him.
 - The hook blade cuts down any enemy missile that comes close while it
   spins, but passes an enemy war banner or bone wall by: those have to be
   chopped down.

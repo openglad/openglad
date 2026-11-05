@@ -824,32 +824,34 @@ TEST(SemLibsCaptain, a_warband_tile_touching_the_captains_edge_is_clear_ground)
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
-// kit_captain.lua:288 edge_spots, equal gaps: the first minimum in west,
-// east, north, south order is kept. A captain at (256,256) on the 512
-// field has four gaps of 256: the grunts come from the west, (0,256). A
-// captain at (400,112) has east and north gaps of 112: east comes first;
-// its scan's first tile (496) is refused by the grid (its far edge is the
-// map's last pixel), so the first grunt is at (480,112).
+// kit_captain.lua edge_spots, equal gaps: the first minimum in west, east,
+// north, south order is kept. Each gap runs from the side of the captain's
+// 16 x 16 body facing its edge. A captain at (248,248) on the 512 field
+// has four gaps of 248: the grunts come from the west, (0,248) and
+// (16,248). A captain at (384,112) has east and north gaps of 112 (512 -
+// 384 - 16 and 112): east comes first; its scan's first tile (496) is
+// refused by the grid (its far edge is the map's last pixel), so the
+// grunts are at (480,112) and (464,112).
 TEST(SemLibsCaptain, a_warband_with_equal_edge_gaps_comes_in_west_east_north_south_order)
 {
     og::test::ScopedHookFailureGuard guard;
     {
         TestGameWorld tw;
         cap::field(tw);
-        walker* captain = cap::add_captain(tw, 256, 256);
+        walker* captain = cap::add_captain(tw, 248, 248);
         ASSERT_NE(nullptr, captain);
         ASSERT_TRUE(cast(captain, 4, true).ok);
         const auto grunts = cap::grunts_of(tw, captain);
         ASSERT_EQ(2u, grunts.size());
         EXPECT_EQ(0, grunts[0]->xpos()) << "four equal gaps: the west";
-        EXPECT_EQ(256, grunts[0]->ypos());
+        EXPECT_EQ(248, grunts[0]->ypos());
         EXPECT_EQ(16, grunts[1]->xpos());
-        EXPECT_EQ(256, grunts[1]->ypos());
+        EXPECT_EQ(248, grunts[1]->ypos());
     }
     {
         TestGameWorld tw;
         cap::field(tw);
-        walker* captain = cap::add_captain(tw, 400, 112);
+        walker* captain = cap::add_captain(tw, 384, 112);
         ASSERT_NE(nullptr, captain);
         ASSERT_TRUE(cast(captain, 4, true).ok);
         const auto grunts = cap::grunts_of(tw, captain);
@@ -858,6 +860,59 @@ TEST(SemLibsCaptain, a_warband_with_equal_edge_gaps_comes_in_west_east_north_sou
         EXPECT_EQ(112, grunts[0]->ypos());
         EXPECT_EQ(464, grunts[1]->xpos());
         EXPECT_EQ(112, grunts[1]->ypos());
+    }
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+// #478. The edge gaps are measured from the side of the captain's body
+// facing each edge: the east and south gaps run from his far side (x + 16,
+// y + 16), not from his top-left corner. On a 512 x 640 field a level-10
+// captain at (250,300) is 250 px from the west edge and 246 from the east:
+// the grunts come from the east, the first at (480,300) (the scan's first
+// tile, 496, is refused by the grid) and the second at (464,300). On a
+// 640 x 512 field a captain at (300,250) is 250 px from the north edge and
+// 246 from the south: the grunts come from the south, (300,480) and
+// (300,464).
+//
+// RED (the old gaps, `pixmaxx - x - self:sizex()` -> `pixmaxx - x` and the
+// same for y in edge_spots): Expected equality of these values: k.first_x
+// Which is: 480 grunts[0]->xpos() Which is: 0 (the west edge, 250 < 262);
+// the equal-gaps test above reds too: 480 grunts[0]->xpos() Which is: 384
+// "east ties north: the east" (north 112 < east 128).
+TEST(SemLibsCaptain, a_warband_measures_the_east_and_south_gaps_from_the_captains_far_side)
+{
+    og::test::ScopedHookFailureGuard guard;
+    struct Case {
+        int tiles_w, tiles_h;
+        short x, y;
+        short first_x, first_y, second_x, second_y;
+        const char* what;
+    };
+    const Case cases[] = {
+        {32, 40, 250, 300, 480, 300, 464, 300, "512 x 640, east 246 < west 250"},
+        {40, 32, 300, 250, 300, 480, 300, 464, "640 x 512, south 246 < north 250"},
+    };
+    for (const Case& k : cases) {
+        TestGameWorld tw;
+        tw.world().resize_grid(k.tiles_w, k.tiles_h);
+        std::fill_n(tw.world().grid.data.get(),
+                    static_cast<std::size_t>(tw.world().grid.w) * tw.world().grid.h,
+                    static_cast<std::uint8_t>(PIX_GRASS1));
+        tw.world().mysmoother.set_target(tw.world().grid);
+        tw.world().my_team = 0;
+        tw.world().new_specials = 1;
+        walker* captain = cap::add_captain(tw, k.x, k.y);
+        ASSERT_NE(nullptr, captain) << k.what;
+        ASSERT_EQ(16, captain->sizex()) << k.what;
+        ASSERT_EQ(16, captain->sizey()) << k.what;
+        const Cast c = cast(captain, 4, true);
+        ASSERT_TRUE(c.ok) << k.what << ": " << c.reason;
+        const auto grunts = cap::grunts_of(tw, captain);
+        ASSERT_EQ(2u, grunts.size()) << k.what;
+        EXPECT_EQ(k.first_x, grunts[0]->xpos()) << k.what;
+        EXPECT_EQ(k.first_y, grunts[0]->ypos()) << k.what;
+        EXPECT_EQ(k.second_x, grunts[1]->xpos()) << k.what;
+        EXPECT_EQ(k.second_y, grunts[1]->ypos()) << k.what;
     }
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }

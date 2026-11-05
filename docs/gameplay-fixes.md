@@ -975,8 +975,8 @@ Rows deliberately not added:
 
 ## Not gated
 
-Eleven changes apply whatever the setting, three from the work that added it (N, O
-and P) and eight from the second bugs batch:
+Twelve changes apply whatever the setting, three from the work that added it (N, O
+and P) and nine from the second bugs batch:
 
 - **N. A slot that is not in play says so.** `walker::special()` refuses a
   slot priced 5000 (an undeclared slot, or one New Specials hides) before it
@@ -1069,6 +1069,14 @@ and P) and eight from the second bugs batch:
   draws are unchanged. A burning elemental cornered below a fifth of its
   health no longer turns to SUPERNOVA (its cast refused anyway). No
   recording plays New Specials, and the old game has none of these casts.
+- **WARBAND comes in on the nearest edge (#478)** (New Specials only). The
+  grunts come in on the map edge nearest the captain, but the east and
+  south gaps were measured from his top-left corner, so each came out his
+  own size (16 px) too long: within 16 px of the map's middle the grunts
+  came from the west or north edge when the east or south one was nearer.
+  Each gap is now measured from the side of his body facing its edge; the
+  tie order (west, east, north, south) and the scan inward are unchanged.
+  The old game has no WARBAND.
 
 ## Balance
 

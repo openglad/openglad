@@ -381,19 +381,21 @@ local function edge_spots(self, want, scan_tiles)
   local pixmaxx, pixmaxy = og.map_size()
   local x = self:xpos()
   local y = self:ypos()
-  local gaps = { x, pixmaxx - x, y, pixmaxy - y }
+  local gaps = { x, pixmaxx - x - self:sizex(), y, pixmaxy - y - self:sizey() }
   local side = 1
-  -- rule: The warband comes in on the map edge nearest the captain (ties to west, east, north,
-  --   south order), scanning inward a tile at a time along his row or column for clear ground, up
-  --   to the count wanted.
+  -- rule: The warband comes in on the map edge nearest the captain, each gap measured from the side of
+  --   his body facing that edge (ties to west, east, north, south order), scanning inward a tile at a
+  --   time along his row or column for clear ground, up to the count wanted.
   -- tests: KitCaptain.warband_arrives_from_the_nearest_edge_fearless_and_runs_to_the_banner
   -- tests: SemLibsCaptain.a_warband_with_equal_edge_gaps_comes_in_west_east_north_south_order
+  -- tests: SemLibsCaptain.a_warband_measures_the_east_and_south_gaps_from_the_captains_far_side
   for i = 2, 4 do
-    -- rule: The warband comes in on the map edge nearest the captain (ties to west, east, north,
-    --   south order), scanning inward a tile at a time along his row or column for clear ground, up
-    --   to the count wanted.
+    -- rule: The warband comes in on the map edge nearest the captain, each gap measured from the side of
+    --   his body facing that edge (ties to west, east, north, south order), scanning inward a tile at a
+    --   time along his row or column for clear ground, up to the count wanted.
     -- tests: KitCaptain.warband_arrives_from_the_nearest_edge_fearless_and_runs_to_the_banner
     -- tests: SemLibsCaptain.a_warband_with_equal_edge_gaps_comes_in_west_east_north_south_order
+    -- tests: SemLibsCaptain.a_warband_measures_the_east_and_south_gaps_from_the_captains_far_side
     if gaps[i] < gaps[side] then
       side = i
     end
@@ -403,11 +405,12 @@ local function edge_spots(self, want, scan_tiles)
     local step = k * C.GRID_SIZE
     local sx = x
     local sy = y
-    -- rule: The warband comes in on the map edge nearest the captain (ties to west, east, north,
-    --   south order), scanning inward a tile at a time along his row or column for clear ground, up
-    --   to the count wanted.
+    -- rule: The warband comes in on the map edge nearest the captain, each gap measured from the side of
+    --   his body facing that edge (ties to west, east, north, south order), scanning inward a tile at a
+    --   time along his row or column for clear ground, up to the count wanted.
     -- tests: KitCaptain.warband_arrives_from_the_nearest_edge_fearless_and_runs_to_the_banner
     -- tests: SemLibsCaptain.a_warband_with_equal_edge_gaps_comes_in_west_east_north_south_order
+    -- tests: SemLibsCaptain.a_warband_measures_the_east_and_south_gaps_from_the_captains_far_side
     if side == 1 then
       sx = step
     elseif side == 2 then
@@ -418,17 +421,19 @@ local function edge_spots(self, want, scan_tiles)
       sy = pixmaxy - C.GRID_SIZE - step
     end
     local room = #spots < want * 2
-    -- rule: The warband comes in on the map edge nearest the captain (ties to west, east, north,
-    --   south order), scanning inward a tile at a time along his row or column for clear ground, up
-    --   to the count wanted.
+    -- rule: The warband comes in on the map edge nearest the captain, each gap measured from the side of
+    --   his body facing that edge (ties to west, east, north, south order), scanning inward a tile at a
+    --   time along his row or column for clear ground, up to the count wanted.
     -- tests: KitCaptain.warband_arrives_from_the_nearest_edge_fearless_and_runs_to_the_banner
     -- tests: SemLibsCaptain.a_warband_with_equal_edge_gaps_comes_in_west_east_north_south_order
+    -- tests: SemLibsCaptain.a_warband_measures_the_east_and_south_gaps_from_the_captains_far_side
     local clear = room and not on_the_captain(self, sx, sy)
-    -- rule: The warband comes in on the map edge nearest the captain (ties to west, east, north,
-    --   south order), scanning inward a tile at a time along his row or column for clear ground, up
-    --   to the count wanted.
+    -- rule: The warband comes in on the map edge nearest the captain, each gap measured from the side of
+    --   his body facing that edge (ties to west, east, north, south order), scanning inward a tile at a
+    --   time along his row or column for clear ground, up to the count wanted.
     -- tests: KitCaptain.warband_arrives_from_the_nearest_edge_fearless_and_runs_to_the_banner
     -- tests: SemLibsCaptain.a_warband_with_equal_edge_gaps_comes_in_west_east_north_south_order
+    -- tests: SemLibsCaptain.a_warband_measures_the_east_and_south_gaps_from_the_captains_far_side
     if clear and og.spawn_spot_clear(self, sx, sy) then
       spots[#spots + 1] = sx
       spots[#spots + 1] = sy
