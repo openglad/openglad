@@ -1583,28 +1583,28 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob, int floor, boo
             // bounds-gated before subscripting the registry (plane bytes are
             // file data; the loader clamps, this guards hostile planes).
             // rule: Decor on a cell can only restrict passage, never grant it: decor with no
-            //   passability rule changes nothing, BlocksAll decor stops everyone, BlocksGround
-            //   decor stops ground walkers (swimmers included) while weapons and flyers pass.
-            //   Out-of-range decor ids and a plane whose size mismatches the grid are ignored.
+            //   passability rule (DecorPassability::None) changes nothing, and BlocksGround decor
+            //   stops ground walkers (swimmers included) while weapons and flyers pass; those are
+            //   the only two kinds (kDecorRegistry, decordefs.h). Out-of-range decor ids and a
+            //   plane whose size mismatches the grid are ignored.
             // tests: Decor.blocks_ground_lets_weapons_and_flyers_pass
             // tests: Decor.decor_never_grants_passage
             // tests: LevelDataCoverage.swimming_grants_water_passage_but_not_obstacle_passage
             // tests: SemWorld.a_mismatched_decor_plane_or_unknown_decor_id_is_ignored
-            // unreachable: no kDecorRegistry entry uses DecorPassability::BlocksAll (decordefs.h
-            //   'reserved (no v1 user)'), and the registry is constexpr; the size-mismatch and id
-            //   >= DECOR_MAX arms are asserted
             if (has_decor)
             {
                 const unsigned char d =
                     dec.data[static_cast<std::size_t>(i + dec.w * j)];
-                // rule: Decor on a cell can only restrict passage, never grant it.
+                // rule: Decor on a cell can only restrict passage, never grant it: a cell with
+                //   no decor (DECOR_NONE) and an id at or past DECOR_MAX change nothing.
                 // tests: Decor.blocks_ground_lets_weapons_and_flyers_pass
                 // tests: Decor.decor_never_grants_passage
                 // tests: LevelDataCoverage.swimming_grants_water_passage_but_not_obstacle_passage
                 // tests: SemWorld.a_mismatched_decor_plane_or_unknown_decor_id_is_ignored
                 if (d != DECOR_NONE && d < DECOR_MAX)
                 {
-                    // rule: Decor on a cell can only restrict passage, never grant it.
+                    // rule: Decor on a cell can only restrict passage, never grant it: None
+                    //   decor changes nothing, BlocksGround decor stops a ground walker.
                     // tests: Decor.blocks_ground_lets_weapons_and_flyers_pass
                     // tests: Decor.decor_never_grants_passage
                     // tests: LevelDataCoverage.swimming_grants_water_passage_but_not_obstacle_passage
@@ -1613,20 +1613,20 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob, int floor, boo
                     {
                         case DecorPassability::None:
                             break;
-                        case DecorPassability::BlocksAll:
-                            return false;
                         case DecorPassability::BlocksGround:
                             // Exactly the legacy obstacle arm: weapons pass,
                             // flyers (permanent or temporary) pass, ground
                             // walkers (including swimmers) are blocked.
-                            // rule: Decor on a cell can only restrict passage, never grant it.
+                            // rule: Decor on a cell can only restrict passage, never grant it: a
+                            //   weapon crosses BlocksGround decor.
                             // tests: Decor.blocks_ground_lets_weapons_and_flyers_pass
                             // tests: Decor.decor_never_grants_passage
                             // tests: LevelDataCoverage.swimming_grants_water_passage_but_not_obstacle_passage
                             // tests: SemWorld.a_mismatched_decor_plane_or_unknown_decor_id_is_ignored
                             if (ob->query_order() == Order::Weapon)
                                 break;
-                            // rule: Decor on a cell can only restrict passage, never grant it.
+                            // rule: Decor on a cell can only restrict passage, never grant it: a
+                            //   flyer (permanent or temporary flight) crosses BlocksGround decor.
                             // tests: Decor.blocks_ground_lets_weapons_and_flyers_pass
                             // tests: Decor.decor_never_grants_passage
                             // tests: LevelDataCoverage.swimming_grants_water_passage_but_not_obstacle_passage

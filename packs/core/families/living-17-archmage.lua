@@ -185,73 +185,73 @@ local function hit_response(self, foe)
       return
     end
     local _, foe_count = og.find_foes_in_range("ob", 200, self)
-    -- rule: Classic: a struck archmage with a foe within 200 px first tries SUMMON (slot 3) with
-    --   whatever Shift was left over (stale coin: image or elemental), and stops there if it
-    --   worked.
+    -- rule: The classic order (the setting off, or a seat-driven archmage with it on): a struck
+    --   archmage with a foe within 200 px first tries SUMMON (slot 3) with whatever Shift was left
+    --   over (stale coin: image or elemental), then slot 2.
     -- tests: GameplayFixesArchmageHit.a_struck_bot_with_no_target_in_reach_casts_nothing
     -- tests: GameplayFixesArchmageHit.a_struck_bot_bursts_once_and_never_summons
     -- tests: GameplayFixesArchmageHit.a_seated_archmage_keeps_its_shift_key
     -- tests: GameplayFixesArchmageHit.a_struck_bot_below_the_threshold_still_teleports
-    -- tests: SemArchmage.classic_a_struck_archmage_summons_first_and_casts_slot_2_only_when_the_summon_fails
+    -- tests: SemArchmage.classic_a_struck_archmage_tries_slot_2_even_after_a_summon_that_stands
     if foe_count ~= 0 then
       -- can we summon illusion?
-      -- rule: Classic: a struck archmage with a foe within 200 px first tries SUMMON (slot 3) with
-      --   whatever Shift was left over (stale coin.
+      -- rule: The classic order: a struck archmage with a foe within 200 px first tries SUMMON
+      --   (slot 3) when it can pay it, with whatever Shift was left over (stale coin).
       -- tests: GameplayFixesArchmageHit.a_struck_bot_with_no_target_in_reach_casts_nothing
       -- tests: GameplayFixesArchmageHit.a_struck_bot_bursts_once_and_never_summons
       -- tests: GameplayFixesArchmageHit.a_seated_archmage_keeps_its_shift_key
       -- tests: GameplayFixesArchmageHit.a_struck_bot_below_the_threshold_still_teleports
-      -- tests: SemArchmage.classic_a_struck_archmage_summons_first_and_casts_slot_2_only_when_the_summon_fails
+      -- tests: SemArchmage.classic_a_struck_archmage_tries_slot_2_even_after_a_summon_that_stands
       if possible[3] then
         self.current_special = 3
-        -- rule: Classic: a struck archmage with a foe within 200 px first tries SUMMON (slot 3)
-        --   with whatever Shift was left over (stale coin.
-        -- tests: GameplayFixesArchmageHit.a_struck_bot_with_no_target_in_reach_casts_nothing
-        -- tests: GameplayFixesArchmageHit.a_struck_bot_bursts_once_and_never_summons
+        -- rule: Classic: the summon's answer is never read (the old game's walker::special answers
+        --   0 on every path), so the reply goes on to slot 2. Gameplay Fixes (a seat-driven
+        --   archmage): a summon that worked ends the reply.
+        -- tests: SemArchmage.classic_a_struck_archmage_tries_slot_2_even_after_a_summon_that_stands
+        -- tests: SemArchmage.with_gameplay_fixes_a_seated_archmages_summon_that_stands_ends_its_reply
         -- tests: GameplayFixesArchmageHit.a_seated_archmage_keeps_its_shift_key
-        -- tests: GameplayFixesArchmageHit.a_struck_bot_below_the_threshold_still_teleports
-        -- tests: SemArchmage.classic_a_struck_archmage_summons_first_and_casts_slot_2_only_when_the_summon_fails
-        if self:special() then
+        -- tests: GameplayFixesArchmageHit.a_struck_bot_bursts_once_and_never_summons
+        if self:special() and gf.on() then
           return
         end
       end
       -- heartburst, chain lightning, etc.
-      -- rule: Classic: failing a summon, a struck archmage casts CHAIN LIGHTNING half the time
-      --   (else HEARTBURST), and if that worked and it can still afford a TELEPORT it casts AGAIN
-      --   at once - but slot 2 is still selected, so the 'then leave' follow-up is a second
-      --   heartburst, not a teleport. A failed chain falls through to heartburst.
-      -- tests: SemArchmageClassicSlot2.classic_a_struck_archmage_chains_and_then_heartbursts_when_it_can_still_pay_a_teleport
-      -- tests: SemArchmageClassicSlot2.classic_a_struck_archmage_heartbursts_twice_and_a_failed_burst_casts_nothing
+      -- rule: Then slot 2 when the archmage can pay it (Classic: after any summon, one that stood
+      --   included; Gameplay Fixes, a seat-driven archmage: only after a summon that failed):
+      --   CHAIN LIGHTNING half the time, HEARTBURST otherwise or when the chain fails.
+      -- tests: SemArchmage.classic_a_struck_archmage_tries_slot_2_even_after_a_summon_that_stands
+      -- tests: SemArchmage.with_gameplay_fixes_a_seated_archmages_summon_that_stands_ends_its_reply
+      -- tests: SemArchmageClassicSlot2.classic_a_struck_archmage_heartbursts_once_and_a_failed_burst_casts_nothing
       -- tests: SemArchmageClassicSlot2.classic_a_struck_archmage_whose_chain_fails_falls_through_to_a_heartburst_attempt
       if possible[2] then
         -- The old source called the follow-up "then leave! :)", but never
         -- switched to teleport: it repeats slot 2 as a normal heartburst.
-        -- rule: Classic: failing a summon, a struck archmage casts CHAIN LIGHTNING half the time
-        --   (else HEARTBURST), and if that worked and it can still afford a TELEPORT it casts AGAIN
-        --   at once - but slot 2 is still selected, so the 'then leave' follow-up is a second
-        --   heartburst, not a teleport.
-        -- tests: SemArchmageClassicSlot2.classic_a_struck_archmage_chains_and_then_heartbursts_when_it_can_still_pay_a_teleport
-        -- tests: SemArchmageClassicSlot2.classic_a_struck_archmage_heartbursts_twice_and_a_failed_burst_casts_nothing
+        -- rule: A struck archmage paying slot 2 draws a coin (rand(2)): CHAIN LIGHTNING on a
+        --   non-zero coin, HEARTBURST on zero; a chain that fails falls through to HEARTBURST.
+        -- tests: SemArchmageClassicSlot2.classic_a_struck_archmages_chain_is_never_followed_by_a_second_cast
+        -- tests: SemArchmageClassicSlot2.classic_a_struck_archmage_heartbursts_once_and_a_failed_burst_casts_nothing
         -- tests: SemArchmageClassicSlot2.classic_a_struck_archmage_whose_chain_fails_falls_through_to_a_heartburst_attempt
+        -- tests: SemArchmageClassicSlot2.with_gameplay_fixes_a_seated_archmage_chains_and_then_heartbursts_when_it_can_still_pay_a_teleport
+        -- tests: SemArchmageClassicSlot2.with_gameplay_fixes_a_seated_archmage_heartbursts_twice_and_a_failed_burst_casts_nothing
         if og.rand(2) ~= 0 then
           self:set_shifter_down(1)
           self.current_special = 2
-          -- rule: Classic: failing a summon, a struck archmage casts CHAIN LIGHTNING half the time
-          --   (else HEARTBURST), and if that worked and it can still afford a TELEPORT it casts
-          --   AGAIN at once - but slot 2 is still selected, so the 'then leave' follow-up is a
-          --   second heartburst, not a teleport.
-          -- tests: SemArchmageClassicSlot2.classic_a_struck_archmage_chains_and_then_heartbursts_when_it_can_still_pay_a_teleport
-          -- tests: SemArchmageClassicSlot2.classic_a_struck_archmage_heartbursts_twice_and_a_failed_burst_casts_nothing
+          -- rule: Classic: the chain's answer is never read (the old game's walker::special answers
+          --   0), so the reply goes on to the HEARTBURST attempt, which the chain's busy refuses.
+          --   Gameplay Fixes (a seat-driven archmage): a chain that worked ends the reply, after
+          --   the follow-up below.
+          -- tests: SemArchmageClassicSlot2.classic_a_struck_archmages_chain_is_never_followed_by_a_second_cast
+          -- tests: SemArchmageClassicSlot2.with_gameplay_fixes_a_seated_archmage_chains_and_then_heartbursts_when_it_can_still_pay_a_teleport
           -- tests: SemArchmageClassicSlot2.classic_a_struck_archmage_whose_chain_fails_falls_through_to_a_heartburst_attempt
-          if self:special() then
+          if self:special() and gf.on() then
             self:set_shifter_down(0)
-            -- rule: Classic: failing a summon, a struck archmage casts CHAIN LIGHTNING half the
-            --   time (else HEARTBURST), and if that worked and it can still afford a TELEPORT it
-            --   casts AGAIN at once - but slot 2 is still selected, so the 'then leave' follow-up
-            --   is a second heartburst, not a teleport.
-            -- tests: SemArchmageClassicSlot2.classic_a_struck_archmage_chains_and_then_heartbursts_when_it_can_still_pay_a_teleport
-            -- tests: SemArchmageClassicSlot2.classic_a_struck_archmage_heartbursts_twice_and_a_failed_burst_casts_nothing
-            -- tests: SemArchmageClassicSlot2.classic_a_struck_archmage_whose_chain_fails_falls_through_to_a_heartburst_attempt
+            -- rule: Gameplay Fixes (a seat-driven archmage; the classic reply never comes here):
+            --   after a chain that worked, an archmage that can still pay a TELEPORT casts AGAIN at
+            --   once - but slot 2 is still selected, so the 'then leave' follow-up is a HEARTBURST,
+            --   not a teleport.
+            -- tests: SemArchmageClassicSlot2.with_gameplay_fixes_a_seated_archmage_chains_and_then_heartbursts_when_it_can_still_pay_a_teleport
+            -- tests: SemArchmageClassicSlot2.classic_a_struck_archmages_chain_is_never_followed_by_a_second_cast
+            -- tests: SemArchmage.with_gameplay_fixes_a_seated_archmages_summon_that_stands_ends_its_reply
             if self.magicpoints >= self:s_special_cost(1) then
               self.busy = 0
               self:special()
@@ -261,21 +261,21 @@ local function hit_response(self, foe)
         end
         self:set_shifter_down(0)
         self.current_special = 2
-        -- rule: Classic: failing a summon, a struck archmage casts CHAIN LIGHTNING half the time
-        --   (else HEARTBURST), and if that worked and it can still afford a TELEPORT it casts AGAIN
-        --   at once - but slot 2 is still selected, so the 'then leave' follow-up is a second
-        --   heartburst, not a teleport.
-        -- tests: SemArchmageClassicSlot2.classic_a_struck_archmage_chains_and_then_heartbursts_when_it_can_still_pay_a_teleport
-        -- tests: SemArchmageClassicSlot2.classic_a_struck_archmage_heartbursts_twice_and_a_failed_burst_casts_nothing
-        -- tests: SemArchmageClassicSlot2.classic_a_struck_archmage_whose_chain_fails_falls_through_to_a_heartburst_attempt
-        if self:special() then
-          -- rule: Classic: failing a summon, a struck archmage casts CHAIN LIGHTNING half the time
-          --   (else HEARTBURST), and if that worked and it can still afford a TELEPORT it casts
-          --   AGAIN at once - but slot 2 is still selected, so the 'then leave' follow-up is a
-          --   second heartburst, not a teleport.
-          -- tests: SemArchmageClassicSlot2.classic_a_struck_archmage_chains_and_then_heartbursts_when_it_can_still_pay_a_teleport
-          -- tests: SemArchmageClassicSlot2.classic_a_struck_archmage_heartbursts_twice_and_a_failed_burst_casts_nothing
-          -- tests: SemArchmageClassicSlot2.classic_a_struck_archmage_whose_chain_fails_falls_through_to_a_heartburst_attempt
+        -- rule: Classic: the HEARTBURST's answer is never read (the old game's walker::special
+        --   answers 0), so a burst that worked is cast once and the reply ends. Gameplay Fixes (a
+        --   seat-driven archmage): a burst that worked ends the reply after the follow-up below.
+        -- tests: SemArchmageClassicSlot2.classic_a_struck_archmage_heartbursts_once_and_a_failed_burst_casts_nothing
+        -- tests: SemArchmage.classic_a_struck_archmage_tries_slot_2_even_after_a_summon_that_stands
+        -- tests: SemArchmageClassicSlot2.with_gameplay_fixes_a_seated_archmage_heartbursts_twice_and_a_failed_burst_casts_nothing
+        -- tests: SemArchmage.with_gameplay_fixes_a_seated_archmages_summon_that_stands_ends_its_reply
+        if self:special() and gf.on() then
+          -- rule: Gameplay Fixes (a seat-driven archmage; the classic reply never comes here):
+          --   after a HEARTBURST that worked, an archmage that can still pay a TELEPORT casts slot
+          --   2 AGAIN at once, so the 'then leave' follow-up is a second HEARTBURST, not a
+          --   teleport.
+          -- tests: SemArchmageClassicSlot2.with_gameplay_fixes_a_seated_archmage_heartbursts_twice_and_a_failed_burst_casts_nothing
+          -- tests: SemArchmage.with_gameplay_fixes_a_seated_archmages_summon_that_stands_ends_its_reply
+          -- tests: SemArchmageClassicSlot2.classic_a_struck_archmage_heartbursts_once_and_a_failed_burst_casts_nothing
           if self.magicpoints >= self:s_special_cost(1) then
             self.busy = 0
             self:special()

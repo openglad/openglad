@@ -77,7 +77,7 @@ usual pause.
 | L | Bot slot roll | A bot rolls a slot from 1 to (level + 2) / 3 and folds anything above 4 into slot 1: a level-13 mage never rolls HEARTBURST (slot 5), and a level-16 soldier rolls CHARGE half the time. | The roll stops at the family's last named slot that the level has opened, and nothing is folded. |
 | M | Charm and seats | An enemy thief or archmage can charm a hero a player is driving. A seat can be handed a walker that is only on its team because it is charmed. | A driven hero resists (the rule POSSESS already has). A seat never claims a charmed walker (see [Charm and seats](#charm-and-seats)). |
 | Q | Bot payoff gates | Elf, archer, druid, barbarian, soldier, thief, ghost, orc and cleric bots cast specials at nobody, at foes out of reach or with allies in the blast: an elf throws rocks with no foe in sight, a thief drops its bomb at a foe 130 px or more away, a cleric throws its mace with nobody near. | Every special a bot can roll has the rule under which it pays off (see [Bots](#bots)); a Shift arm is its own special for a bot, with its own rule. |
-| R | The struck archmage's order | A struck archmage bot with a foe within 200 px casts its 500-magic summon first and then casts slot 2 twice. | It answers with one HEARTBURST or CHAIN LIGHTNING chosen by the slot-2 rule: no summon, no second cast. Below its flee threshold it still teleports. |
+| R | The struck archmage's order | A struck archmage bot with a foe within 200 px casts its 500-magic summon first and then tries slot 2 (fix AE). | It answers with one HEARTBURST or CHAIN LIGHTNING chosen by the slot-2 rule: no summon, no second cast. Below its flee threshold it still teleports. |
 | S | WHIRLWIND, DISARM, BARRAGE and EXPLODING BOLT after a shot | A hero (any walker with a character record: a player's, and every hero of a crew a bot drives) that has fired once can never cast these four again: each refuses as `SPECIAL BUSY`, for good. A hero fires on a fractional delay, the class's delay less a 47th of its dexterity (a soldier with 20 dexterity waits 5.57 ticks); busy counts down by one a tick only while it is above zero, so after a shot it rests a fraction below zero, and these four refuse while busy is not zero. | Busy at or below zero is not busy, as it already is for every other special. The firing delay and the countdown are unchanged, so nothing fires sooner. |
 | T | Cleric RAISE UNDEAD, RAISE GHOST, RESURRECT | The stain's own 16x16 box is the test, only the nearest stain, the body at the corner, a drumstick under the corpse is eaten. | The body's own box, the first usable stain of those the finder answers, nudged up to 16 px; nothing eaten. |
 | U | Soldier CHARGE and DISARM's front test | The question swings and adds busy, eats a treasure, opens a door. | Asked quietly: no swing, no busy, nothing eaten or opened, and the collision field untouched; a refusal spends nothing. |
@@ -90,6 +90,7 @@ usual pause.
 | AB | A struck bot's cast | The hit response folds a slot the bot cannot pay onto slot 1 whatever slot 1 costs, the gate says yes, the roll is drawn and the cast refuses `NOT ENOUGH MP`. | A yes the bot cannot pay is a no: the roll is not drawn and the bot holds. |
 | AC | Elf volleys, druid GROW TREE and SUMMON FAERIE at a wall or the map edge | Classic: the cast draws the throw's waver and refuses; the elf's refund leaves it a point ahead (fix H's off column). With fixes H and I alone the cast paid the one swing (1 MP for the elf, 4 for the druid) for a rock or bolt that met the wall and struck nothing. | A pad blocked by terrain refuses `COULD NOT FIRE` before the refund and the swing: nothing drawn, nothing spent. A body on the pad keeps H's and I's paid blow. |
 | AD | A charmed tent or bones troop, a charmed summon | It wears the charmer's colour but keeps its owner's side: it fights its charmer and is struck by its charmer's team. | It heads its own owner chain while the charm lasts; its owner, its charm clock and its tent's cascade are unchanged. |
+| AE | The struck archmage's classic order | The reply goes on after a cast that worked, as the old game's does: a summon that stands still draws the slot-2 coin (the summon's busy refuses the cast), a chain is followed only by a HEARTBURST attempt its own busy refuses, and a HEARTBURST is cast once. | A cast that worked ends the reply; after a chain or a HEARTBURST that leaves the price of a TELEPORT, slot 2 is cast again (a second HEARTBURST, "then leave! :)"). With the setting on only a seat-driven archmage takes this order (a struck bot answers by fix R). |
 
 TELEPORT, REVEAL, CLOAK and ENERGY WAVE are unchanged as casts (their bot
 rules are in [Bots](#bots)): each does something whenever it is cast
@@ -137,7 +138,7 @@ Fixes T to W, in play:
   first asks "am I busy?" (or "am I mid-teleport?", or "am I resting?")
   asks the same before it says yes.
 
-Fixes X to AD, in play:
+Fixes X to AE, in play:
 
 - **X.** A walker whose step is refused shoves the ally in its way: the
   shove draws a roll, and two times in three the ally loses its orders
@@ -250,6 +251,22 @@ Fixes X to AD, in play:
   thief counted a crew-raised ghost as a foe and taunted it while the ghost
   wore the thief's own colour, because the ghost's chain still answered
   for the crew's cleric.
+- **AE.** A struck archmage that no bot rule answers for (every archmage
+  with the setting off, a seat-driven one with it on) takes the classic
+  order: SUMMON first when a foe is within 200 px, then slot 2, CHAIN
+  LIGHTNING or HEARTBURST on a coin. The old game's `walker::special()`
+  has answered 0 on every path since the 2002 import, so its reply never
+  ended because a cast worked: a summon that stands goes on to the coin,
+  and the summon's 15 ticks of busy refuse the cast the coin picks; a
+  chain goes on to a HEARTBURST attempt that its own busy refuses; and the
+  "then leave! :)" follow-up, a second HEARTBURST when the price of a
+  TELEPORT is left, never ran. This game read the cast's real answer, so
+  with the setting off it ended the reply after a summon and cast that
+  second HEARTBURST after a chain or a burst (#422). With the setting off
+  it now ignores the answer, as the old game does, draw for draw. With the
+  setting on nothing changes: a cast that worked ends the reply, after the
+  follow-up for slot 2. No recording reaches the struck classic path, so
+  every golden is unchanged.
 
 ## Refusals at a glance
 
@@ -402,8 +419,8 @@ because the spin strikes it and the yell stuns it (fix K).
   threshold as before, and casts nothing while that teleport plays (#408,
   the mage's guard); otherwise it answers with one HEARTBURST or CHAIN
   LIGHTNING chosen by the slot-2 rule, never with a summon and never with
-  a second cast (the classic game summoned first and then cast slot 2
-  twice). A player archmage's Shift stays the Shift key.
+  a second cast (the classic game summons first and then tries slot 2,
+  fix AE). A player archmage's Shift stays the Shift key.
 - **Cleric.** HEAL wants an ally within 60 px that is below its full
   health (the classic gate healed any friend and the cast refused). MYSTIC
   MACE wants no such ally, a living foe within 48 px (the mace orbits on a
@@ -873,12 +890,14 @@ Rows deliberately not added:
   `tests/unit/test_gameplay_fixes_bots.cpp`, which asks every guarded gate
   with its caster busy.
 - `archmage_bot_struck_scen99`: the struck archmage's arena has no
-  setting-off twin, because the two games' classic hit responses differ.
+  setting-off twin, because the two games' classic hit responses differed.
   The old game's `walker::special` always answers 0, so after a summon its
   hit response never returns and its "then leave! :)" second cast never
-  happens, while the current game's classic hit response uses the cast's
+  happens, while the current game's classic hit response used the cast's
   real answer. No golden reaches that difference; it is recorded in the
-  ledger.
+  ledger. Fix AE (2026-11-05) closes it: with the setting off the current
+  game no longer reads the answer, so a twin can now be captured from the
+  old game; it has not been added yet.
 - Fix X's own shape, the far shove across a teleporter: no arena can
   stage it. An arena's spawns go into the world's list of walkers, and a
   teleporter finds its partner only among the effects, so an arena's pad
@@ -1731,7 +1750,9 @@ taken, and what the game does today.
     `:153`), keeping every draw and cast the old game makes, and
     `archmage_bot_struck` then gets a setting-off twin captured from the
     old game. The alternative changes the old game to answer whether it
-    cast. Default: the follow-up, not this work.
+    cast. Default: the follow-up, not this work. Taken on 2026-11-05 in
+    this work after all, as fix AE (the setting-off reply ignores the
+    answer; `archmage_bot_struck` has no setting-off twin yet).
 13. **#423: the two mage rows.** `mage_bot_freeze_no_foe_fixes_scen99` and
     `mage_bot_freeze_alone_fixes_scen99` take spawns of their own at (160,
     160), each recaptured from the old game, under the PR #404 ruling (see

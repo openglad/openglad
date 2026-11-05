@@ -2500,41 +2500,30 @@ DeclareResult declare_pack_families(const std::string& pack_id,
 
     DeclareResult result{true, {}};
     // rule: One family file that fails rejects the whole pack (no half packs); the error is the
-    //   last recorded error, or 'chunk <name> failed to load' when none was recorded.
+    //   last error recorded (ScriptHost::run_chunk records one before every false return).
     // tests: LuaFamilyDeclTest.one_bad_chunk_rejects_the_whole_pack
     // tests: LuaFamilyDeclTest.a_chunk_that_does_not_compile_is_named
     // tests: LuaFamilyDeclTest.every_order_declares
-    // unreachable: ScriptHost::run_chunk records an error before every false return and the pass
-    //   breaks at the first failure, so the "chunk '<name>' failed to load" fallback never fires;
-    //   needs a seam (a run_chunk that fails without recording) or a defensive reclassification
     for (const PackScript& chunk : pack_family_chunks()) {
         // rule: One family file that fails rejects the whole pack (no half packs); the error is the
-        //   last recorded error, or 'chunk <name> failed to load' when none was recorded.
+        //   last error recorded.
         // tests: LuaFamilyDeclTest.one_bad_chunk_rejects_the_whole_pack
         // tests: LuaFamilyDeclTest.a_chunk_that_does_not_compile_is_named
         // tests: LuaFamilyDeclTest.every_order_declares
         if (chunk.pack_id != pack_id)
             continue;
         // rule: One family file that fails rejects the whole pack (no half packs); the error is the
-        //   last recorded error, or 'chunk <name> failed to load' when none was recorded.
+        //   last error recorded.
         // tests: LuaFamilyDeclTest.one_bad_chunk_rejects_the_whole_pack
         // tests: LuaFamilyDeclTest.a_chunk_that_does_not_compile_is_named
         // tests: LuaFamilyDeclTest.every_order_declares
         if (host.run_chunk(chunk.chunk_name, chunk.source, chunk.pack_id))
             continue;
         // One unusable family file rejects the whole pack. Half a pack is
-        // a game whose families depend on load order.
-        const auto& errors = host.errors();
+        // a game whose families depend on load order. run_chunk recorded
+        // the failure before it answered false, so errors() is not empty.
         result.ok = false;
-        // rule: One family file that fails rejects the whole pack (no half packs); the error is the
-        //   last recorded error, or 'chunk <name> failed to load' when none was recorded.
-        // tests: LuaFamilyDeclTest.one_bad_chunk_rejects_the_whole_pack
-        // tests: LuaFamilyDeclTest.a_chunk_that_does_not_compile_is_named
-        // tests: LuaFamilyDeclTest.every_order_declares
-        result.error = errors.empty() ? std::string("chunk '") +
-                                            chunk.chunk_name +
-                                            "' failed to load"
-                                      : errors.back().message;
+        result.error = host.errors().back().message;
         break;
     }
     st.current_chunk = ChunkKind::None;

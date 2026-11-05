@@ -774,7 +774,9 @@ return;` after a summon never returns and the "then leave! :)" second cast after
 goes on from a summon to the slot-2 coin, whose cast the summon's busy refuses. The current game's classic body takes
 the special's real answer: it returns after a summon and casts a second burst. Every seed tried (eleven, with 1100
 and with 400 MP) differs between the two games with the setting off and agrees byte for byte with it on. No golden
-reaches the classic struck path; the difference is recorded here and left to its own fix.
+reaches the classic struck path; the difference is recorded here and left to its own fix. Fix AE (#422, 2026-11-05) is
+that fix, in the current game only: its setting-off reply no longer reads the cast's answer, so the two classic bodies
+agree and every golden stays byte-identical; the setting-off twin has not been added yet.
 
 Rows deliberately not added: `archmage_bot_struck_scen99` (the setting-off twin of the struck archmage arena: the
 classic hit responses differ, above), `soldier_bot_l16_roll` (the level-16 soldier bot's roll bound; its two captures differ
