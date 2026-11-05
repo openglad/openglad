@@ -91,6 +91,7 @@ usual pause.
 | AC | Elf volleys, druid GROW TREE and SUMMON FAERIE at a wall or the map edge | Classic: the cast draws the throw's waver and refuses; the elf's refund leaves it a point ahead (fix H's off column). With fixes H and I alone the cast paid the one swing (1 MP for the elf, 4 for the druid) for a rock or bolt that met the wall and struck nothing. | A pad blocked by terrain refuses `COULD NOT FIRE` before the refund and the swing: nothing drawn, nothing spent. A body on the pad keeps H's and I's paid blow. |
 | AD | A charmed tent or bones troop, a charmed summon | It wears the charmer's colour but keeps its owner's side: it fights its charmer and is struck by its charmer's team. | It heads its own owner chain while the charm lasts; its owner, its charm clock and its tent's cascade are unchanged. |
 | AE | The struck archmage's classic order | The reply goes on after a cast that worked, as the old game's does: a summon that stands still draws the slot-2 coin (the summon's busy refuses the cast), a chain is followed only by a HEARTBURST attempt its own busy refuses, and a HEARTBURST is cast once. | A cast that worked ends the reply; after a chain or a HEARTBURST that leaves the price of a TELEPORT, slot 2 is cast again (a second HEARTBURST, "then leave! :)"). With the setting on only a seat-driven archmage takes this order (a struck bot answers by fix R). |
+| AF | Who acts during FREEZE TIME | A Living or a generator acts only when it is on team 0 itself, as in the old game: with a player colour other than red the freeze stops the player's own side and lets team 0 fight on (#86), a charmed troop of a living enemy tent or an enemy's summon the player charmed acts because it wears red, and a summon of the player's caster that an enemy charmed is frozen. | It acts when it is friendly to the player's team: the head of its owner chain wears the player's colour (#92). The level census reads friendliness on both settings. |
 | AH | Cleric TURN UNDEAD on a warded skeleton or ghost | Only the family decides, as in the old game: a skeleton or ghost carrying `BIT_INVINCIBLE` or an invulnerability potion (one it drank, or a New Specials ghost's PHASE) is rolled for and turned like any other. | A warded undead is never turned, rolled for or counted: turning is damage, and the ward stops damage. With nothing else turnable in reach the cast is refused as `NO UNDEAD IN RANGE` (fix E), and the cleric bot's gate does not count it. |
 
 TELEPORT, REVEAL, CLOAK and ENERGY WAVE are unchanged as casts (their bot
@@ -273,6 +274,22 @@ Fixes X to AE, in play:
 
 Fixes AF to AN, in play:
 
+- **AF.** During FREEZE TIME the player's side acts and everyone else's
+  Livings and generators stand still; effects, treasures and weapons always
+  act. The old game asks whether the walker itself is on team 0, red, the
+  colour of the classic player. This game asked since #92 (`ec263a26`,
+  fixing #86) whether it is friendly to the player's team, the head of its
+  owner chain wearing the player's colour, the rule that completion and
+  respawn already read. The two answers differ for a player colour other
+  than red (Base Camp's seats, a networked team), where the old rule
+  freezes the player's own side and lets team 0 fight on, and for a walker
+  whose colour is not its chain's: a charmed troop of a living enemy tent,
+  or an enemy's summon the player charmed, wears red but answers for its
+  owner, and the player's summon that an enemy charmed is the reverse. With
+  the setting off the gate asks team 0 again, as in the old game (#461);
+  with it on it asks friendliness, as before. Only the act gate follows the
+  setting: the level census (a frozen foe still holds the level open, #231)
+  reads friendliness on both settings, as the old game's does.
 - **AH.** TURN UNDEAD turns a skeleton or a ghost (or any pack family that
   declares itself undead) that loses the resistance roll. In the old game
   the kill loop asks only the family, so a warded one, carrying

@@ -2826,18 +2826,18 @@ void GameWorld::tick()
             }
         }
 
-        // rule: During FREEZE TIME every walker the player's side is not friendly with that is a
-        //   Living or Generator skips its turn; friendly walkers and every non-living order
-        //   (effects, treasures, weapons in oblist) still act. Outside a freeze everything acts
-        //   with in_act set.
+        // rule: During FREEZE TIME a Living or Generator not on the player's side skips its turn:
+        //   with Gameplay Fixes on (fix AF) one not friendly to the player's team (the head of its
+        //   owner chain does not wear my_team); off (the old game) one not on team 0 itself. Every
+        //   other order (effects, treasures, weapons in oblist) still acts. Outside a freeze
+        //   everything acts with in_act set.
         // tests: SimWorld.r15_freeze_tick_and_level_done_paths
         // tests: SimWorld.r15_freeze_uses_friendliness_not_team_zero
         // tests: SimWorld.r15_normal_tick_cleanup_and_dead_entity_removal
         // tests: parity:enemy_freeze_mage_scen99
         // tests: SemWorld.freeze_time_stops_hostile_generators_but_not_effects_or_treasures
-        // deferred: #461 divergence #461: the freeze act gate reads is_friendly_to_team(my_team)
-        //   where the old game reads team_num == 0; the generator and effect/treasure arms (my_team
-        //   0, team-1 walkers, where both agree) are asserted
+        // tests: SimWorld.r15_freeze_lets_only_team_zero_act_with_gameplay_fixes_off
+        // tests: SemWorld.freeze_time_asks_team_zero_with_the_fixes_off_and_the_owner_chain_with_them_on
         if (!enemy_freeze) // normal functionality
         {
             // rule: A level stays unfinished while any Living not friendly to the player's team is
@@ -2894,30 +2894,44 @@ void GameWorld::tick()
             // The countdown is drawn by the HUD from enemy_freeze (#232); it
             // used to be pushed into the notification feed every tenth tick,
             // which evicted every other message for the whole freeze.
-            // rule: During FREEZE TIME every walker the player's side is not friendly with that is
-            //   a Living or Generator skips its turn.
+            // rule: During FREEZE TIME a Living or Generator not on the player's side skips its
+            //   turn (fix AF: not friendly to my_team with Gameplay Fixes on, not on team 0 off).
             // tests: SimWorld.r15_freeze_tick_and_level_done_paths
             // tests: SimWorld.r15_freeze_uses_friendliness_not_team_zero
             // tests: SimWorld.r15_normal_tick_cleanup_and_dead_entity_removal
             // tests: parity:enemy_freeze_mage_scen99
             // tests: SemWorld.freeze_time_stops_hostile_generators_but_not_effects_or_treasures
+            // tests: SimWorld.r15_freeze_lets_only_team_zero_act_with_gameplay_fixes_off
+            // tests: SemWorld.freeze_time_asks_team_zero_with_the_fixes_off_and_the_owner_chain_with_them_on
             if (ob && !ob->dead())
             {
-                // The act gate is unchanged: frozen enemy Livings and
-                // Generators still skip their turn. Only the census is
-                // hoisted out of it — a foe that is frozen is still a foe,
-                // exactly as the dormant branch above already counts one.
+                // Only the census is hoisted out of the act gate: a foe that
+                // is frozen is still a foe (#231), exactly as the dormant
+                // branch above already counts one.
+                // rule: During FREEZE TIME a Living or Generator may act only on the player's side:
+                //   with Gameplay Fixes on (fix AF, #92) when it is friendly to the player's team
+                //   (the head of its owner chain wears my_team); off (the old game) when it is on
+                //   team 0 itself, which freezes a non-red player's own side (#86). Every other
+                //   order always acts.
+                // tests: SimWorld.r15_freeze_uses_friendliness_not_team_zero
+                // tests: SimWorld.r15_freeze_lets_only_team_zero_act_with_gameplay_fixes_off
+                // tests: SemWorld.freeze_time_asks_team_zero_with_the_fixes_off_and_the_owner_chain_with_them_on
+                // tests: SemWorld.freeze_time_stops_hostile_generators_but_not_effects_or_treasures
                 const bool may_act =
                     ((ob->query_order() != Order::Living) &&
                      (ob->query_order() != Order::Generator)) ||
-                    ob->is_friendly_to_team(static_cast<unsigned char>(my_team));
-                // rule: During FREEZE TIME every walker the player's side is not friendly with that
-                //   is a Living or Generator skips its turn.
+                    (gameplay_fixes != 0
+                         ? ob->is_friendly_to_team(static_cast<unsigned char>(my_team)) != 0
+                         : ob->team_num() == 0);
+                // rule: During FREEZE TIME a Living or Generator not on the player's side skips
+                //   its turn (the gate above).
                 // tests: SimWorld.r15_freeze_tick_and_level_done_paths
                 // tests: SimWorld.r15_freeze_uses_friendliness_not_team_zero
                 // tests: SimWorld.r15_normal_tick_cleanup_and_dead_entity_removal
                 // tests: parity:enemy_freeze_mage_scen99
                 // tests: SemWorld.freeze_time_stops_hostile_generators_but_not_effects_or_treasures
+                // tests: SimWorld.r15_freeze_lets_only_team_zero_act_with_gameplay_fixes_off
+                // tests: SemWorld.freeze_time_asks_team_zero_with_the_fixes_off_and_the_owner_chain_with_them_on
                 if (may_act)
                     ob->act();
                 // rule: A level stays unfinished while any Living not friendly to the player's team
