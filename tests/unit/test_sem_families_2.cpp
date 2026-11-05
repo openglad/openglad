@@ -531,6 +531,45 @@ TEST(SemMage, energy_wave_replaces_its_fireball_and_fails_when_none_fires)
     }
 }
 
+// :448, Gameplay Fixes AC widened (#476). ENERGY WAVE facing north into a
+// wall on the fireball's pad. With the setting off (the old game:
+// walker.cpp FAMILY_MAGE case 4, fire() first) fire() charges the 5 MP shot
+// and draws the waver before the cast refuses; with it on the cast refuses
+// before fire(): 600 MP and nothing drawn. No wave either way.
+// Breaks: the wave's `if gf.pad_blocked_by_terrain(self) then` -> `if false
+// then` (setting-on arm red).
+TEST(SemMage, an_energy_wave_at_terrain_spends_nothing_with_the_setting_on)
+{
+    for (const short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE(testing::Message() << "setting " << fixes);
+        Field f(fixes);
+        walker* mage = f.caster(FAMILY_MAGE, 0, 160, 160, 10, 600.0f, 4);
+        ASSERT_NE(nullptr, mage);
+        mage->set_lastx(0);
+        mage->set_lasty(-2);
+        f.tile(10, 9, PIX_H_WALL1);
+        ASSERT_EQ(walker::PadAnswer::Terrain, mage->fire_pad_answer())
+            << "precondition: the fireball's pad is on the wall";
+        f.world().rng_.state_ = 4242u;
+        Failure why = Failure::None;
+        std::string reason;
+        EXPECT_FALSE(mage->special(&why, &reason));
+        EXPECT_EQ("COULD NOT FIRE", reason);
+        EXPECT_EQ(0u, f.live(Order::Weapon, FAMILY_WAVE).size()) << "no wave";
+        EXPECT_EQ(0u, f.live(Order::Weapon, FAMILY_FIREBALL).size()) << "no fireball";
+        if (fixes == 0) {
+            EXPECT_FLOAT_EQ(595.0f, mage->stats()->magicpoints())
+                << "the classic cast pays fire()'s 5 MP shot";
+            EXPECT_EQ(4242u * 1103515245u + 12345u, f.world().rng_.state_)
+                << "the classic cast draws fire()'s waver, once";
+        } else {
+            EXPECT_FLOAT_EQ(600.0f, mage->stats()->magicpoints()) << "nothing spent";
+            EXPECT_EQ(4242u, f.world().rng_.state_) << "nothing drawn";
+        }
+        EXPECT_EQ(0u, f.guard.count()) << f.guard.message();
+    }
+}
+
 // :304. HEARTBURST with no foe in its reach is refused for free.
 TEST(SemMage, heartburst_with_no_foe_in_reach_is_refused_for_free)
 {

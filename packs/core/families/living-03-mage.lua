@@ -446,6 +446,15 @@ local function freeze_time(self)
 end
 
 local function energy_wave(self)
+  -- rule: Gameplay Fixes AC (#476): an ENERGY WAVE whose fireball's pad is refused by terrain (a
+  --   wall face, the map edge; never water) refuses 'COULD NOT FIRE' before fire(): no 5 MP shot,
+  --   no waver. Classic: fire() pays and draws, then refuses. A body on the pad keeps the paid
+  --   blow.
+  -- tests: SemMage.an_energy_wave_at_terrain_spends_nothing_with_the_setting_on
+  -- tests: parity:mage_wave_edge_pad_fixes_scen99
+  if gf.pad_blocked_by_terrain(self) then
+    return false, "COULD NOT FIRE"
+  end
   local bolt = self:fire()
   -- rule: ENERGY WAVE rides a fired fireball: if the fireball cannot be fired the cast fails 'COULD
   --   NOT FIRE'; otherwise a WAVE weapon owned by the mage, at the mage's level, takes the bolt's

@@ -376,5 +376,41 @@ TEST_F(GameplayFixesLua, gf_pad_blocked_by_terrain_is_the_grid_half_only_with_th
     ASSERT_EQ(walker::PadAnswer::Terrain, self->fire_pad_answer()) << "precondition: the map edge";
     EXPECT_EQ(30, answer(0)) << "the map edge, the classic game";
     EXPECT_EQ(31, answer(1)) << "the map edge, the setting on";
+
+    // The weapon the cast fires (#476): an archer at (192, 184) heading UP
+    // whose own arrow's pad is clear and whose fire arrow's wider pad
+    // reaches the wall at (12, 10). The question asks the family it is
+    // given; nil asks the current weapon.
+    walker* archer = w.add_ob(Order::Living, FAMILY_ARCHER);
+    ASSERT_NE(nullptr, archer);
+    archer->set_team_num(1);
+    archer->set_sizex(16);
+    archer->set_sizey(16);
+    archer->setxy(193, 184);
+    archer->setxy(192, 184);
+    archer->set_lastx(0.0f);
+    archer->set_lasty(-1.0f);
+    w.grid.data[static_cast<std::size_t>(12 + w.grid.w * 10)] = static_cast<std::uint8_t>(PIX_H_WALL1);
+    ASSERT_EQ(walker::PadAnswer::Clear, archer->fire_pad_answer()) << "precondition: the arrow flies";
+    ASSERT_EQ(walker::PadAnswer::Terrain, archer->fire_pad_answer(FAMILY_FIRE_ARROW))
+        << "precondition: the fire arrow's pad is on the wall";
+    const auto fire_arrow_answer = [&](short fixes, const char* weapon) {
+        w.gameplay_fixes = fixes;
+        w.rng_.state_ = 4242u;
+        archer->stats()->set_level(30);
+        const auto handled = run(prelude,
+                                 std::string("    if gf.pad_blocked_by_terrain(self, ") + weapon + ") then\n"
+                                 "      self.level = 31\n"
+                                 "    end",
+                                 archer);
+        EXPECT_TRUE(handled.has_value()) << last_error();
+        EXPECT_EQ(4242u, w.rng_.state_) << "the question draws nothing, setting " << fixes;
+        return static_cast<int>(archer->stats()->level());
+    };
+    EXPECT_EQ(30, fire_arrow_answer(1, "nil")) << "nil: the arrow's own pad, clear";
+    EXPECT_EQ(31, fire_arrow_answer(1, "og.family_id('weapon', 'core:fire_arrow')"))
+        << "the fire arrow's pad, the setting on";
+    EXPECT_EQ(30, fire_arrow_answer(0, "og.family_id('weapon', 'core:fire_arrow')"))
+        << "the fire arrow's pad, the classic game";
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }

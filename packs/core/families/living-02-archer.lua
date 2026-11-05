@@ -53,6 +53,15 @@ local function exploding_shot(self)
   if gf.special_busy(self) then
     return false, "SPECIAL BUSY"
   end
+  -- rule: Gameplay Fixes AC (#476): an EXPLODING BOLT whose fire arrow's pad is refused by terrain
+  --   (a wall face, the map edge, a crown the fire arrow cannot cross; never water) refuses 'COULD
+  --   NOT FIRE' before fire(): no 1 MP shot, no waver, the bow untouched. Classic: fire() pays and
+  --   draws, then refuses. A body on the pad keeps the paid blow.
+  -- tests: SemArcher.an_exploding_bolt_at_terrain_spends_nothing_with_the_setting_on
+  -- tests: parity:archer_bolt_edge_pad_fixes_scen99
+  if gf.pad_blocked_by_terrain(self, WEAPON_FIRE_ARROW) then
+    return false, "COULD NOT FIRE"
+  end
   local t = og.tuning(self)
   local old_weapon = self:current_weapon()
   self:set_current_weapon(WEAPON_FIRE_ARROW)

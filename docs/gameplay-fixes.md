@@ -88,7 +88,7 @@ usual pause.
 | Z | CHARGE's strike | The rush strikes whatever body the collision field names after its last step, an ally included. An ally takes no damage, but the strike draws the damage roll, erases the ally's orders and walks it four steps, a seated hero too; a rush a wall stopped can strike a body met on an earlier step. | The rush strikes only a foe its last step ran into; an ally in the way gets the ordinary shove. |
 | AA | Druid, barbarian, mage (ENERGY WAVE) and archer (EXPLODING BOLT) bot gates | Yes with a wall, the map edge or a foe's body on the weapon's pad; the cast refuses `COULD NOT FIRE`. | The gate asks the pad, as the elf's does (fix V); the archer asks it for the fire arrow it fires. |
 | AB | A struck bot's cast | The hit response folds a slot the bot cannot pay onto slot 1 whatever slot 1 costs, the gate says yes, the roll is drawn and the cast refuses `NOT ENOUGH MP`. | A yes the bot cannot pay is a no: the roll is not drawn and the bot holds. |
-| AC | Elf volleys, druid GROW TREE and SUMMON FAERIE at a wall or the map edge | Classic: the cast draws the throw's waver and refuses; the elf's refund leaves it a point ahead (fix H's off column). With fixes H and I alone the cast paid the one swing (1 MP for the elf, 4 for the druid) for a rock or bolt that met the wall and struck nothing. | A pad blocked by terrain refuses `COULD NOT FIRE` before the refund and the swing: nothing drawn, nothing spent. A body on the pad keeps H's and I's paid blow. |
+| AC | Elf volleys, druid GROW TREE and SUMMON FAERIE, archer EXPLODING BOLT, barbarian HURL BOULDER and EXPLODING BOULDER, mage ENERGY WAVE at a wall or the map edge | Classic: the cast draws the throw's waver and refuses; the elf's refund leaves it a point ahead (fix H's off column). With fixes H and I alone the elf's and druid's casts paid the one swing (1 MP for the elf, 4 for the druid) for a rock or bolt that met the wall and struck nothing; the other four pay their shot on both values (1 MP for the archer, 2 for the barbarian, 5 for the mage). | A pad blocked by terrain refuses `COULD NOT FIRE` before anything is paid: nothing drawn, nothing spent. A body on the pad keeps the paid blow. |
 | AD | A charmed tent or bones troop, a charmed summon | It wears the charmer's colour but keeps its owner's side: it fights its charmer and is struck by its charmer's team. | It heads its own owner chain while the charm lasts; its owner, its charm clock and its tent's cascade are unchanged. |
 | AE | The struck archmage's classic order | The reply goes on after a cast that worked, as the old game's does: a summon that stands still draws the slot-2 coin (the summon's busy refuses the cast), a chain is followed only by a HEARTBURST attempt its own busy refuses, and a HEARTBURST is cast once. | A cast that worked ends the reply; after a chain or a HEARTBURST that leaves the price of a TELEPORT, slot 2 is cast again (a second HEARTBURST, "then leave! :)"). With the setting on only a seat-driven archmage takes this order (a struck bot answers by fix R). |
 | AI | FREEZE TIME's form | A mage on the red team or any hero stops time for everyone else, whatever team the player is on: a hero mage of another colour (a second seat's, a charmed one) turns the screen blue. A mage on the player's team that is neither red nor a hero gives its side bonus rounds instead. | Only a mage on the player's team stops time; any other mage, hero or not, gives its own side bonus rounds ("TIME IS FROZEN! (N rounds)"). |
@@ -98,7 +98,9 @@ usual pause.
 
 TELEPORT, REVEAL, CLOAK and ENERGY WAVE are unchanged as casts (their bot
 rules are in [Bots](#bots)): each does something whenever it is cast
-(ENERGY WAVE crosses walls along the facing). CHARGE still refuses `PATH
+(ENERGY WAVE crosses walls along the facing), except an ENERGY WAVE whose
+first step is a wall face or past the map's edge, which refuses in both
+games and with the setting on spends nothing (fix AC). CHARGE still refuses `PATH
 BLOCKED` when something stands against the soldier's front and otherwise
 moves the fighter; fix U changes only how it asks, and fix Z what the rush
 strikes.
@@ -240,7 +242,16 @@ Fixes X to AM, in play:
   rock crosses it). Water is never terrain here: every weapon crosses it.
   A body on the pad keeps H's and I's paid blow (question 1 of the
   [rulings](#rulings-2026-11-01)). A bot never meets the new refusal,
-  because its gate asks the pad first (fixes V and AA).
+  because its gate asks the pad first (fixes V and AA). Issue #476 found
+  three more casts that fire a weapon from the pad and paid for nothing
+  at terrain: the archer's EXPLODING BOLT, the barbarian's HURL BOULDER
+  and EXPLODING BOULDER, and the mage's ENERGY WAVE call `fire()` first,
+  and `fire()` charges the shot (1 MP, 2 and 5) and draws the waver before
+  its pad probe refuses. The old game does the same, so the classic cast
+  is unchanged. With the setting on these casts ask the pad first too, the
+  archer with the 9x9 fire arrow its bolt fires rather than its own 7x7
+  arrow (`gf.pad_blocked_by_terrain(self, weapon)`), and refuse before
+  they pay. A body on the pad keeps the paid blow here as well.
 - **AD.** A tent or a bones pile owns the troops it makes, and every
   question of whose side a walker is on climbs its owner chain to the
   top: `is_friendly`, the blow's friend test and the score's team. A
@@ -335,7 +346,7 @@ usual busy.
 | HOWL | `NO FOE IN RANGE` | nothing inside the howl radius |
 | RAISE UNDEAD, RAISE GHOST, RESURRECT | `CORPSE IS BLOCKED` | no room for the body within 16 px of the corpse, on every stain in range (free) |
 | CHARGE | `PATH BLOCKED` | a wall, a body or a door one pixel ahead along the heading (free: no swing, no busy) |
-| the elf's volleys, GROW TREE, SUMMON FAERIE | `COULD NOT FIRE` | a wall face or the map edge on the weapon's pad, or a tree crown on the druid's (free: nothing drawn, no swing; fix AC) |
+| the elf's volleys, GROW TREE, SUMMON FAERIE, EXPLODING BOLT, HURL BOULDER, EXPLODING BOULDER, ENERGY WAVE | `COULD NOT FIRE` | a wall face or the map edge on the weapon's pad, or a tree crown on a weapon that cannot cross the forest (free: nothing drawn, no swing or shot; fix AC) |
 
 `NO ROOM TO SUMMON` (SUMMON ELEMENTAL) and `COULD NOT FIRE` keep their
 text. With the setting on `NO ROOM TO SUMMON` costs nothing extra. A pad
@@ -759,7 +770,7 @@ The rows with the setting on, by fix:
 | Z | `soldier_charge_ally_fixes_scen99` (a new arena, with its setting-off twin) |
 | AA | `druid_bot_faerie_pad_body_fixes_scen99`, `barbarian_bot_boulder_pad_body_fixes_scen99`, `mage_bot_wave_pad_body_fixes_scen99`, `druid_bot_tree_pad_body_fixes_scen99` (four new arenas, each with its setting-off twin) |
 | AB | `elemental_struck_short_pool_fixes_scen99` (a new arena, with its setting-off twin), and the 10 recaptured rows below |
-| AC | `elf_rocks_edge_pad_fixes_scen99` (a new arena, with its setting-off twin) |
+| AC | `elf_rocks_edge_pad_fixes_scen99` (a new arena, with its setting-off twin); for #476, `archer_bolt_edge_pad_fixes_scen99`, `barbarian_boulder_edge_pad_fixes_scen99` and `mage_wave_edge_pad_fixes_scen99` (three new arenas, each with its setting-off twin) |
 | AD | `thief_charm_tent_troop_fixes_scen99` (a new arena, with its setting-off twin; the setting-on twin has spawns of its own: see below) |
 
 Fix AE has no row with the setting on (with it on a struck bot answers by
