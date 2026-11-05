@@ -1463,9 +1463,56 @@ int og_register_level_hooks(lua_State* L)
                         "not available during campaign hooks");
     const int level_id = static_cast<int>(luaL_checkinteger(L, 1));
     luaL_checktype(L, 2, LUA_TTABLE);
-    // Declaration pass: silent no-op, the og.register_hooks precedent — a
-    // family chunk calling this neither rejects the pack nor registers; the
-    // bind replay is where it lands.
+    // Every key is checked before anything installs, and the declaration
+    // pass checks them too: the pass that can still reject the pack is the
+    // one that should catch the typo (the og.register_hooks discipline).
+    {
+        std::vector<const char*> names;
+        // plumbing: gathers the nine names for the did-you-mean hint; no game rule
+        for (const auto& h : kLevelHookNames)
+            names.push_back(h.name);
+        lua_pushnil(L);
+        // rule: A level hook table may only use the nine level hook names; a misspelled name or a
+        //   non-string key is a load error with a did-you-mean, even in the declaration pass.
+        // tests: LevelScriptsTest.a_misspelled_level_hook_beside_a_valid_one_is_a_load_error
+        // tests: LevelScriptsTest.a_level_hook_table_key_that_is_not_a_name_is_a_load_error
+        // tests: LevelScriptsTest.the_declaration_pass_refuses_a_misspelled_level_hook
+        while (lua_next(L, 2) != 0) {
+            lua_pop(L, 1);  // value; the key stays for the next iteration
+            // rule: A level hook table may only use the nine level hook names; a misspelled name
+            //   or a non-string key is a load error with a did-you-mean, even in the declaration
+            //   pass.
+            // tests: LevelScriptsTest.a_misspelled_level_hook_beside_a_valid_one_is_a_load_error
+            // tests: LevelScriptsTest.a_level_hook_table_key_that_is_not_a_name_is_a_load_error
+            // tests: LevelScriptsTest.the_declaration_pass_refuses_a_misspelled_level_hook
+            if (lua_type(L, -1) != LUA_TSTRING)
+                script_raise(L, "og.register_level_hooks: a level hook table's "
+                                "keys are hook names (got a %s key)",
+                             luaL_typename(L, -1));
+            const std::string key = lua_tostring(L, -1);
+            bool known = false;
+            // rule: A level hook table may only use the nine level hook names; a misspelled name
+            //   or a non-string key is a load error with a did-you-mean, even in the declaration
+            //   pass.
+            // tests: LevelScriptsTest.a_misspelled_level_hook_beside_a_valid_one_is_a_load_error
+            // tests: LevelScriptsTest.the_declaration_pass_refuses_a_misspelled_level_hook
+            for (const char* n : names)
+                known = known || key == n;
+            // rule: A level hook table may only use the nine level hook names; a misspelled name
+            //   or a non-string key is a load error with a did-you-mean, even in the declaration
+            //   pass.
+            // tests: LevelScriptsTest.a_misspelled_level_hook_beside_a_valid_one_is_a_load_error
+            // tests: LevelScriptsTest.the_declaration_pass_refuses_a_misspelled_level_hook
+            if (!known) {
+                const std::string hint = did_you_mean(key, names);
+                script_raise(L, "og.register_level_hooks: unknown hook '%s'%s",
+                             key.c_str(), hint.c_str());
+            }
+        }
+    }
+    // Declaration pass: silent no-op past the checks, the og.register_hooks
+    // precedent — a family chunk calling this neither rejects a well-formed
+    // pack nor registers; the bind replay is where it lands.
     VmState* st = get_vm_state(L);
     // rule: In the declaration pass og.register_hooks and og.register_level_hooks validate the call
     //   and return without resolving the family or installing anything, so a pack may register
@@ -1473,14 +1520,15 @@ int og_register_level_hooks(lua_State* L)
     // tests: CampaignHooksTest.the_declaration_pass_bows_out_of_behaviour_registrars
     // tests: LevelScriptsTest.a_family_chunk_registers_level_hooks_in_the_real_pass
     // tests: SemScript3.a_family_chunk_registers_hooks_for_its_own_family_in_the_bind_replay
+    // tests: LevelScriptsTest.the_declaration_pass_refuses_a_misspelled_level_hook
     if (st != nullptr && st->mode == VmMode::Declare)
         return 0;
 
     lua_rawgeti(L, LUA_REGISTRYINDEX, st->level_hooks_ref);
     int registered = 0;
     // rule: Each level hook (on_load, on_tick, on_entity_death, on_entity_spawn, on_mode_init,
-    //   on_mode_tick, on_damage, on_respawn, on_lineup_stage) must be a function; others in the
-    //   table are not inspected here.
+    //   on_mode_tick, on_damage, on_respawn, on_lineup_stage) must be a function; every other key
+    //   was refused above.
     // tests: LevelScriptsTest.level_and_entity_hook_registration_rejections
     // tests: LevelScriptsTest.a_family_chunk_registers_level_hooks_in_the_real_pass
     for (const auto& h : kLevelHookNames) {
@@ -1512,8 +1560,8 @@ int og_register_level_hooks(lua_State* L)
         registered++;
     }
     lua_pop(L, 1);
-    // rule: A registration call that installs no hook at all ({} or only unknown-free nils) is a
-    //   load error ('no valid hooks ...
+    // rule: A registration call that installs no hook at all ({}) is a load error ('no valid
+    //   hooks ...
     // tests: ScriptHooksTest.register_hooks_load_error_vocabulary
     // tests: LevelScriptsTest.level_and_entity_hook_registration_rejections
     // tests: LevelScriptsTest.a_family_chunk_registers_level_hooks_in_the_real_pass
@@ -1531,6 +1579,31 @@ int og_set_entity_hooks(lua_State* L)
     auto* h = static_cast<WalkerHandle*>(
         luaL_checkudata(L, 1, kWalkerMeta));
     luaL_checktype(L, 2, LUA_TTABLE);
+    // The table's one hook name is on_death; any other key is refused before
+    // anything installs, the og.register_level_hooks discipline.
+    lua_pushnil(L);
+    // rule: An entity hook table may only use on_death; a misspelled name or a non-string key is a
+    //   script error with a did-you-mean.
+    // tests: LevelScriptsTest.a_misspelled_entity_hook_is_a_script_error
+    while (lua_next(L, 2) != 0) {
+        lua_pop(L, 1);  // value; the key stays for the next iteration
+        // rule: An entity hook table may only use on_death; a misspelled name or a non-string key
+        //   is a script error with a did-you-mean.
+        // tests: LevelScriptsTest.a_misspelled_entity_hook_is_a_script_error
+        if (lua_type(L, -1) != LUA_TSTRING)
+            script_raise(L, "og.set_entity_hooks: an entity hook table's keys "
+                            "are hook names (got a %s key)",
+                         luaL_typename(L, -1));
+        const std::string key = lua_tostring(L, -1);
+        // rule: An entity hook table may only use on_death; a misspelled name or a non-string key
+        //   is a script error with a did-you-mean.
+        // tests: LevelScriptsTest.a_misspelled_entity_hook_is_a_script_error
+        if (key != "on_death") {
+            const std::string hint = did_you_mean(key, {"on_death"});
+            script_raise(L, "og.set_entity_hooks: unknown hook '%s'%s",
+                         key.c_str(), hint.c_str());
+        }
+    }
     // rule: A level script may give one tracked entity its own on_death override (cleared when it
     //   fires); an untracked entity or a non-function on_death is a script error; an empty table
     //   still lets the level hook fire.

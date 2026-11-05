@@ -359,7 +359,8 @@ id patches the fields it declares (the `tuning` map is replaced whole).
 
 **Unknown keys are load errors, with a did-you-mean suggestion.** That
 applies at the top level, inside `stats` / `combat` / `costs`, inside a
-specials entry, and to hook names. There is no silent forward-compatibility
+specials entry, and to hook names (family hooks, level hooks and the
+entity hook table alike). There is no silent forward-compatibility
 tier: a key the engine does not know is a key that would have done nothing,
 and a pack is better off being told. Two escape hatches for a pack straddling
 engine releases: `ext = { ... }` is accepted and ignored (opaque, reserved),
@@ -900,6 +901,11 @@ og.set_entity_hooks(ent, { on_death = function(ent) ... end })
   from `on_load` or `on_entity_spawn`, after selecting the entity via
   `og.oblist()`, position or family). The registration is consumed when it
   fires, so an entity id never fires twice, and it requires a tracked entity.
+- Any key but the nine level hook names (`on_load`, `on_tick`,
+  `on_entity_death`, `on_entity_spawn`, `on_damage`, `on_mode_init`,
+  `on_mode_tick`, `on_respawn`, `on_lineup_stage`) is a load error with a
+  did-you-mean, in the declaration pass too, and the refused call installs
+  nothing; `og.set_entity_hooks` takes `on_death` alone.
 
 Every level dispatcher early-outs when no pack registered that hook kind, so
 script-less sims pay nothing and stay byte-identical.

@@ -1128,6 +1128,7 @@ og.register_level_hooks(level_id, {   -- level_id -1 = every level
   on_mode_init    = function(level) ... end,           -- scripted modes
   on_mode_tick    = function(level, tick) ... end,     -- scripted modes
   on_respawn      = function(ent) ... end,             -- scripted modes
+  on_lineup_stage = function(level) ... end,           -- the lineup stage
 })
 
 og.set_entity_hooks(ent, { on_death = function(ent) ... end })
@@ -1176,7 +1177,13 @@ og.set_entity_hooks(ent, { on_death = function(ent) ... end })
   twice. Register them from `on_load` or `on_entity_spawn` after selecting
   entities via `og.oblist()`, position, or family.
 - Win/lose logic belongs in `on_tick` via the world-state getters.
-- Registering a table with no recognised hook name is a load error.
+- Registering a table with no hook at all (`{}`) is a load error, and so is
+  any key that is not one of the nine names above: a misspelled one
+  (`on_tik` beside a valid `on_load`) gets a did-you-mean, a non-string key
+  says so, and the refused call installs nothing. The declaration pass
+  checks the keys too, so a family chunk's typo rejects its pack.
+  `og.set_entity_hooks` refuses any key but `on_death` the same way, as a
+  script error at the call.
 
 A campaign ships level scripts inside its embedded pack
 (`packs/<pack_id>/scripts/` in the campaign zip), keyed by its level ids. The
