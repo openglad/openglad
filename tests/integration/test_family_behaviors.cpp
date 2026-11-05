@@ -3060,10 +3060,11 @@ TEST(FamilyBehaviors, family_round6_mage_thief_soldier_guard_branches)
 
     // Gameplay Fixes on (living-11-thief.lua check_special_ai), a level-1
     // thief at (500, 300), far from every body above. DROP BOMB wants a
-    // living foe inside the blast around the thief, 15 + clamp(4 * level,
-    // 16, 96) = 31 px, and no ally of the thief in it; the Shift is 0
-    // whenever the setting is on. POISON CLOUD (slot 4) wants two living
-    // foes within a blow and no cloud of the thief's.
+    // living foe inside the blast around the thief, 15 + min(4 * level,
+    // 96) = 19 px at level 1 (gates.lua blast_reach, the old game's reach,
+    // #483), and no ally of the thief in it; the Shift is 0 whenever the
+    // setting is on. POISON CLOUD (slot 4) wants two living foes within a
+    // blow and no cloud of the thief's.
     {
         walker* bomber = add_living_to_level(FAMILY_THIEF, 0, 500, 300);
         walker* far_foe = add_living_to_level(FAMILY_SOLDIER, 1, 600, 300);
@@ -3074,14 +3075,20 @@ TEST(FamilyBehaviors, family_round6_mage_thief_soldier_guard_branches)
         EXPECT_FALSE(og::test::check_special_ai(*thief_fd, static_cast<living*>(bomber)))
             << "thief DROP BOMB, fixes on: a foe at 100 is past the blast";
         EXPECT_EQ(0, bomber->shifter_down()) << "thief, fixes on: the gate writes Shift 0";
-        walker* near_foe = add_living_to_level(FAMILY_SOLDIER, 1, 525, 300);
+        walker* near_foe = add_living_to_level(FAMILY_SOLDIER, 1, 520, 300);
         ASSERT_TRUE(near_foe != nullptr);
+        EXPECT_FALSE(og::test::check_special_ai(*thief_fd, static_cast<living*>(bomber)))
+            << "thief DROP BOMB, fixes on: a foe at 20 is just past the 19 px blast";
+        near_foe->setxy(519, 300);
         EXPECT_TRUE(og::test::check_special_ai(*thief_fd, static_cast<living*>(bomber)))
-            << "thief DROP BOMB, fixes on: a foe at 25 is inside the 31 px blast";
-        walker* ally = add_living_to_level(FAMILY_SOLDIER, 0, 480, 300);
+            << "thief DROP BOMB, fixes on: a foe at 19, the blast's edge, is inside it";
+        near_foe->setxy(518, 300);
+        EXPECT_TRUE(og::test::check_special_ai(*thief_fd, static_cast<living*>(bomber)))
+            << "thief DROP BOMB, fixes on: a foe at 18 is inside the 19 px blast";
+        walker* ally = add_living_to_level(FAMILY_SOLDIER, 0, 490, 300);
         ASSERT_TRUE(ally != nullptr);
         EXPECT_FALSE(og::test::check_special_ai(*thief_fd, static_cast<living*>(bomber)))
-            << "thief DROP BOMB, fixes on: an ally 20 px off is inside the blast too";
+            << "thief DROP BOMB, fixes on: an ally 10 px off is inside the blast too";
         ally->setxy(480, 400);  // 120 px off: out of the blast and the cloud
 
         bomber->set_current_special(4);
@@ -3510,7 +3517,7 @@ TEST(FamilyBehaviors, family_round12_cleric_druid_soldier_thief_guard_and_ai_edg
         << "soldier DISARM, fixes on: a level-1 foe blocks the front of a level-1 soldier";
 
     // Thief AI/special guards.
-    walker* thief = add_living_to_level(FAMILY_THIEF, 0, 180, 100);
+    walker* thief = add_living_to_level(FAMILY_THIEF, 0, 168, 100);
     walker* thief_foe = add_living_to_level(FAMILY_ORC, 1, 240, 100);
     ASSERT_TRUE(thief && thief_foe) << "thief fixtures created";
     thief->set_current_special(1);
@@ -3519,11 +3526,12 @@ TEST(FamilyBehaviors, family_round12_cleric_druid_soldier_thief_guard_and_ai_edg
     world.gameplay_fixes = 0;
     ASSERT_TRUE(!og::test::check_special_ai(*thief_fd, static_cast<living*>(thief))) << "thief bomb ai should reject medium-range foe distances";
     world.gameplay_fixes = 1;
-    // Fixes on: the bomb wants a living foe inside its 31 px blast and no
-    // ally in it. The orc 30 px west (the soldier's foe above) is inside;
-    // the soldier, the thief's ally, stands 40 px west, outside.
+    // Fixes on: the bomb wants a living foe inside its blast, 19 px at
+    // level 1 (15 + min(4 * level, 96), #483), and no ally in it. The orc
+    // 18 px west (the soldier's foe above) is inside; the soldier, the
+    // thief's ally, stands 28 px west, outside.
     EXPECT_TRUE(og::test::check_special_ai(*thief_fd, static_cast<living*>(thief)))
-        << "thief DROP BOMB, fixes on: a foe 30 px off inside the blast and no ally in it";
+        << "thief DROP BOMB, fixes on: a foe 18 px off inside the blast and no ally in it";
     thief->set_current_special(3);
     thief->set_shifter_down(0);
     thief->set_busy(1);
