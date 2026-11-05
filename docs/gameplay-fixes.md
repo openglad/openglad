@@ -940,8 +940,8 @@ Rows deliberately not added:
 
 ## Not gated
 
-Nine changes apply whatever the setting, three from the work that added it (N, O
-and P) and six from the second bugs batch:
+Ten changes apply whatever the setting, three from the work that added it (N, O
+and P), six from the second bugs batch and one from the issues it filed:
 
 - **N. A slot that is not in play says so.** `walker::special()` refuses a
   slot priced 5000 (an undeclared slot, or one New Specials hides) before it
@@ -1008,6 +1008,17 @@ and P) and six from the second bugs batch:
   writer, `screen::show_palette_id`, now paints only when the palette
   shown changes; anything else that writes the colours marks it unknown,
   and a mission's end forces the restore. This game only.
+- **A walker spends every banked bonus round (#460).** An enemy mage's
+  FREEZE TIME banks extra rounds for itself and its allies (5 + 2 x level,
+  at most 50 a cast, and the casts add up), and a walker spends its whole
+  bank in its next act, one extra act per round. This game cut the bank to
+  50 at the start of that act and dropped the rest, because each round was
+  one more level of recursion: two mages of level 11 or more casting in
+  the same tick bank more than 50 (up to 100), and the old game spends
+  every one. The act now spends the rounds in a loop, all of them, as the
+  old game does, without the stack. Rounds banked during those acts still
+  wait for the next tick. No recording banks more than 50, so no golden
+  moves.
 
 ## Balance
 

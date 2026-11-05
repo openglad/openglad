@@ -854,9 +854,10 @@ protected:
 
 } // namespace
 
-// living.cpp:69. Each banked bonus round is one more full act in the same
+// living.cpp:74. Each banked bonus round is one more full act in the same
 // tick, so every per-tick timer also runs once per round (the classic
-// recursion); with no banked rounds, or dead, a walker acts once.
+// recursion, a loop in this game); with no banked rounds, or dead, a walker
+// acts once.
 TEST_F(SemLiving, classic_banked_rounds_run_every_timer_once_per_round_and_no_rounds_or_dead_act_once)
 {
     walker* banked = still(FAMILY_SOLDIER, 0, 320, 320);
@@ -889,6 +890,33 @@ TEST_F(SemLiving, classic_banked_rounds_run_every_timer_once_per_round_and_no_ro
     EXPECT_FALSE(corpse->act());
     EXPECT_EQ(3, corpse->bonus_rounds()) << "dead: the bank is never spent";
     EXPECT_EQ(cdc, corpse->drawcycle()) << "dead: no act at all";
+}
+
+// living.cpp:74 (#460). The bank has no cap: a walker spends every round it
+// has in the act that finds them, as the old game's recursion did, and this
+// game used to cut the bank to 50 first. A bank of 300 is 301 acts this tick
+// (the invulnerability timer runs down 301 times), and a bank of 5000, which
+// the old game spent one stack frame per round, runs all 5001 acts.
+TEST_F(SemLiving, banked_rounds_past_fifty_all_run_in_one_tick)
+{
+    walker* w = still(FAMILY_SOLDIER, 0, 160, 160);
+    ASSERT_NE(nullptr, w);
+    w->set_bonus_rounds(300);
+    w->set_invulnerable_left(1000);
+    const unsigned char dc = w->drawcycle();
+    w->act();
+    EXPECT_EQ(699, w->invulnerable_left()) << "a bank of 300: 301 acts, no cap at 50";
+    EXPECT_EQ(static_cast<unsigned char>(dc + 301), w->drawcycle());
+    EXPECT_EQ(0, w->bonus_rounds()) << "the whole bank is spent";
+
+    w->set_bonus_rounds(5000);
+    w->set_invulnerable_left(10000);
+    w->act();
+    EXPECT_EQ(4999, w->invulnerable_left()) << "a bank of 5000: 5001 acts in one tick";
+    EXPECT_EQ(0, w->bonus_rounds());
+
+    w->act();
+    EXPECT_EQ(4998, w->invulnerable_left()) << "the next tick: one act, nothing carried over";
 }
 
 // living.cpp:74/84. A dead walker does nothing in its act; one that dies
@@ -1052,11 +1080,12 @@ TEST_F(SemLiving, classic_regeneration_runs_each_act_and_freeze_time_stops_it_fo
 }
 
 // living.cpp:147/158, the bonus-rounds arm. The regeneration gate also holds
-// while the walker still has rounds banked. living::act spends a round before
-// it recurses, so in play no frame reaches the gate with rounds left; it does
-// when something inside the act banks a round, here a soldier hook that banks
-// one on the first nested act. Two frames run: the inner one regenerates (no
-// rounds then), the outer one finds the new round banked and does not.
+// while the walker still has rounds banked. living::act spends the whole bank
+// before any round runs, so in play no round reaches the gate with rounds
+// left; one does when something inside the act banks a round, here a soldier
+// hook that banks one in the first round. Two rounds run: the first
+// regenerates (no rounds then), the second finds the new round banked and
+// does not, and the round waits for the next tick.
 TEST_F(SemLiving, a_walker_with_rounds_still_banked_does_not_regenerate)
 {
     og::script::register_pack_script(

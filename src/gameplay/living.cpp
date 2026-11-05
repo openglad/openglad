@@ -60,27 +60,27 @@ living::~living()
 
 bool living::act()
 {
-	// Cap bonus_rounds to prevent stack overflow from unbounded recursion.
-	// The original code recursed for each bonus round, which could exhaust
-	// the stack with large values (e.g., mage freeze-time on many allies).
-	// rule: A walker never banks more than 50 extra act rounds: any surplus is discarded at the
-	//   start of its act, not carried over.
-	// tests: LivingUnit.act_runs_at_most_fifty_bonus_rounds_per_call
-	if (bonus_rounds() > 50)
-		set_bonus_rounds(50);
 	// we get extra rounds to act this cycle
 	// rule: A living walker with banked bonus rounds (granted by an enemy-team mage's FREEZE TIME
-	//   to its allies) takes one full extra act per banked round, all in the same tick; every
-	//   per-tick timer (invulnerability, invisibility, flight, charm, speed bonus, rests, lunge)
-	//   therefore also runs down once per round. A dead walker takes none.
-	// tests: LivingUnit.act_runs_at_most_fifty_bonus_rounds_per_call
+	//   to its allies) takes one full extra act per banked round, all in the same tick and with no
+	//   cap (the old game recursed; this game loops), so every per-tick timer (invulnerability,
+	//   invisibility, flight, charm, speed bonus, rests, lunge) runs down once per round. Rounds
+	//   banked during those acts wait for the next tick; a dead walker takes none and keeps its bank.
+	// tests: LivingUnit.act_spends_every_banked_bonus_round_in_one_call
 	// tests: LivingCombat.living_act_bonus_rounds_and_dead_gate
 	// tests: SemLiving.classic_banked_rounds_run_every_timer_once_per_round_and_no_rounds_or_dead_act_once
-	if (bonus_rounds() > 0 && !dead())
-	{
-		set_bonus_rounds(static_cast<short>(bonus_rounds() - 1));
-		act();
-	}
+	// tests: SemLiving.banked_rounds_past_fifty_all_run_in_one_tick
+	// tests: SemLiving.a_walker_with_rounds_still_banked_does_not_regenerate
+	const short extra = (bonus_rounds() > 0 && !dead()) ? bonus_rounds() : short{0};
+	if (extra > 0)
+		set_bonus_rounds(0);
+	for (short i = 0; i < extra; ++i)
+		act_round();
+	return act_round();
+}
+
+bool living::act_round()
+{
 	// rule: A dead walker does nothing in its act; a walker that dies falling down a pit
 	//   (apply_z_motion) stops acting that same tick.
 	// tests: LivingCombat.living_act_bonus_rounds_and_dead_gate
