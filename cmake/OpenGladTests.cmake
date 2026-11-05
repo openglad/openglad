@@ -1459,9 +1459,30 @@ endif()
 # og_test_parity: the coverage gates share one memoised replay of every
 # scenario (about 85 s under ASan, tests/parity/test_parity_coverage_gate.cpp),
 # paid once by whichever gate runs first, so all the gates stay together in
-# one slice and every other parity test runs in the other (about 95 s).
-og_add_filtered_test(og_test_parity_gates og_test_parity "Parity.coverage_gate_*")
-og_add_filtered_test(og_test_parity og_test_parity "-Parity.coverage_gate_*")
+# one slice. The umbrella gate Parity.coverage_gate is named on its own
+# because "Parity.coverage_gate_*" does not match it: left out, it ran with
+# the scenarios and paid a second full replay there, 112 s of the 180 s the
+# scenario entry had on a coverage run that timed out (PR #425, 2026-11-02).
+#
+# The other parity tests run in two slices, split by the first letter of the
+# test name: Parity.a* to Parity.m* in og_test_parity_a_m, everything else
+# (Parity.n* to Parity.z* and the binary's other suites) in og_test_parity,
+# so a new test always lands in one of them. Measured 2026-11-05, three
+# ci-test runs: a-m 2.2 s and the rest 2.1 s of 4.3 s. The timed-out coverage
+# run above ran the same tests about 27 times slower, which puts each slice
+# at about 60 s there, a third of its budget. `ctest -R '^og_test_parity'`
+# selects all three entries.
+set(OG_PARITY_GATES "Parity.coverage_gate:Parity.coverage_gate_*")
+set(OG_PARITY_A_TO_M)
+foreach(letter a b c d e f g h i j k l m)
+    list(APPEND OG_PARITY_A_TO_M "Parity.${letter}*")
+endforeach()
+list(JOIN OG_PARITY_A_TO_M ":" OG_PARITY_A_TO_M)
+og_add_filtered_test(og_test_parity_gates og_test_parity "${OG_PARITY_GATES}")
+og_add_filtered_test(og_test_parity_a_m og_test_parity
+    "${OG_PARITY_A_TO_M}-${OG_PARITY_GATES}")
+og_add_filtered_test(og_test_parity og_test_parity
+    "-${OG_PARITY_GATES}:${OG_PARITY_A_TO_M}")
 # og_unit_modes_water: the full-water-band stationarity test (about 106 s
 # under ASan) alone, the other six tests together.
 og_add_filtered_test(og_unit_modes_water_band og_unit_modes_water
@@ -1494,7 +1515,7 @@ og_add_filtered_test(og_unit_basketball og_unit_basketball
 
 # Every property set on one of these binaries below names its list, so all
 # of its slices get it, never the binary's own entry alone.
-set(OG_PARITY_TESTS og_test_parity og_test_parity_gates)
+set(OG_PARITY_TESTS og_test_parity og_test_parity_a_m og_test_parity_gates)
 set(OG_MODES_WATER_TESTS og_unit_modes_water og_unit_modes_water_band)
 # The semantic test batches (docs/sim-semantics.md): one unit binary each,
 # registered in their own files so the batches never edit this one.

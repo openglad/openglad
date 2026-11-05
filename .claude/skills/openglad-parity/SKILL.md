@@ -23,9 +23,12 @@ against a non-deterministic reference.
 - **Always from the repo root.** Goldens are cwd-relative: run from
   `build/ci-test` and every scenario reads as "missing golden" — mass
   drift that isn't. `ctest --preset ci-test -R '^og_test_parity'` is the
-  canonical invocation: the binary runs as two entries, `og_test_parity`
-  (the scenarios) and `og_test_parity_gates` (the `Parity.coverage_gate_*`
-  tests), so an anchored `'^og_test_parity$'` skips the gates.
+  canonical invocation: the binary runs as three entries (slices of one
+  binary, `cmake/OpenGladTests.cmake`), `og_test_parity_gates` (the umbrella
+  `Parity.coverage_gate` and every `Parity.coverage_gate_*`),
+  `og_test_parity_a_m` (the other tests named `Parity.a*` to `Parity.m*`) and
+  `og_test_parity` (everything else), so an anchored `'^og_test_parity$'`
+  runs about half the scenarios and none of the gates.
 - Fresh worktrees fail the scen99-fixture scenarios until `og_test_level`
   has run once (it generates the gitignored `temp/scen/scen99.fss`); ctest
   DEPENDS handles ordering, standalone runs don't. Copy `temp/scen/*.fss`
