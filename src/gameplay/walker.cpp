@@ -3003,16 +3003,16 @@ bool walker::death()
 			break;  // end of order() livings case
 		// rule: A destroyed generator goes up in flames: four EXPLOSION effects on its team, at its
 		//   level, damage 2 x level, on its floor, scattered inside its box (span clamped at 0 for
-		//   sprites under 8px), each with an explosion sound; then the level-script death hook
-		//   runs.
+		//   sprites under 8px), each with an explosion sound placed at the generator; then the
+		//   level-script death hook runs. The old game played the explosion sound only while the
+		//   generator was on screen; each machine now plays it only where one of its views shows
+		//   it (#445, #468).
 		// tests: SimWorldHeadless.generator_death_scatter_clamps_undersized_sprite_span
 		// tests: SimWorldHeadless.generator_death_scatter_unchanged_for_normal_sprites
 		// tests: ZAxisFxFloor.generator_death_explosions_inherit_generator_floor
 		// tests: WalkerCoreMore.walker_round7b_base_act_guard_random_and_death_paths
 		// tests: LevelScriptsTest.generator_deaths_dispatch_entity_death
-		// deferred: #445 divergence: generator death emits 4 SOUND_EXPLODE through the
-		//   unconditional emit_sound; the old game played them only when the generator was
-		//   on_screen() (current game has emit_positional_sound for exactly that, unused here)
+		// tests: SemPresentation.a_dying_generators_explosions_sound_at_the_generator
 		case Order::Generator:  // go up in flames :>
 			// plumbing: The four-explosion loop of the generator death; rule above.
 			for (i=0; i < 4; i++)
@@ -3028,7 +3028,7 @@ bool walker::death()
 				newob->setxy(static_cast<std::uint32_t>(xpos())+current_game->world->rng_.next(static_cast<std::uint32_t>(std::max<int>(sizex()-8, 0)))+4, static_cast<std::uint32_t>(ypos()+4)+current_game->world->rng_.next(static_cast<std::uint32_t>(std::max<int>(sizey()-8, 0))) );  // sizex/sizey ride in on sprite metadata AND network snapshots; a sprite narrower than 8px made sizex()-8 negative, and IRandom::next takes uint32 -- so it wrapped to a ~4e9 scatter bound. Clamping the SPAN (never the coordinate) is a no-op at every size >= 8, where next(0) == 0 already pins the offset.
 					newob->set_damage(static_cast<float>(stats_->level()) * 2.0f);
 					newob->set_frame(static_cast<short>(current_game->world->rng_.next(3)));
-				og::sim::emit_sound(current_game->sim_events, SOUND_EXPLODE);
+				og::sim::emit_positional_sound(current_game->sim_events, this, SOUND_EXPLODE);
 			}
 			// Generators are the canonical scripted "object": a level script
 			// must be able to react to a tent/tower/pillar falling, exactly
@@ -3344,7 +3344,7 @@ void walker::resolve_fall_landing()
 		if (myguy->scen_min_hp > stats_->hitpoints())
 			myguy->scen_min_hp = stats_->hitpoints();
 	}
-	og::sim::emit_sound(current_game->sim_events, SOUND_CLANG);
+	og::sim::emit_positional_sound(current_game->sim_events, this, SOUND_CLANG);
 	TRACE("zaxis", "fall settle: %d stories, dmg %.2f, hp %.2f", extra + 1,
 	      static_cast<double>(dmg), static_cast<double>(stats_->hitpoints()));
 	// rule: A fall can kill only an already-wounded walker (full health always survives, cap 50%);

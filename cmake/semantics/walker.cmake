@@ -14,3 +14,8 @@ og_add_unit_group(og_unit_sem_walker_3 FILES
 og_add_unit_group(og_unit_sem_walker_4 FILES
     ${CMAKE_SOURCE_DIR}/tests/unit/test_sem_walker_4.cpp
 )
+# What the simulation hands each machine for its sounds (#468): placed sounds
+# and cues.
+og_add_unit_group(og_unit_sem_presentation_1 FILES
+    ${CMAKE_SOURCE_DIR}/tests/unit/test_sem_presentation_1.cpp
+)

@@ -449,7 +449,7 @@ function M.hasten(self)
   target:set_speed_bonus_left(target:speed_bonus_left() + t.hasten_ticks)
   target:set_speed_bonus(og.max(target:speed_bonus(), t.hasten_bonus))
   hit_on(target)
-  og.emit_sound(C.SOUND_HEAL)
+  og.emit_positional_sound(self, C.SOUND_HEAL)
   return true
 end
 
@@ -483,7 +483,7 @@ function M.wish(self)
   self:do_heal_effects(self, alive, og.i16(og.trunc(alive.max_hp)))
   flash_at(alive)
   heal_party(self, t.wish_heal_radius)
-  og.emit_sound(C.SOUND_HEAL)
+  og.emit_positional_sound(self, C.SOUND_HEAL)
   self.hp = 0
   self.dead = 1
   self:death()

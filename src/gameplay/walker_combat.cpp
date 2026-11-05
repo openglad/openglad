@@ -791,17 +791,20 @@ bool walker::attack(walker  *target)
         }
         // rule: A living's death plays one of two death cries chosen by a world-RNG coin (DIE1 on
         //   1, DIE2 on 0); in the parity harness the cry (and its RNG draw) happens only when the
-        //   old game's on-screen test says it is heard; in production it always draws.
+        //   old game's on-screen test says it is heard; in production it always draws, and the
+        //   cry is placed at the hitter, so each machine plays it only where a view shows it.
         // tests: SemWalker4.a_death_cries_die1_or_die2_by_a_coin_unless_unheard
+        // tests: SemPresentation.a_death_cry_is_placed_at_the_hitter
         if (targetorder == Order::Living && positional_sound_visible(this, SOUND_DIE1))
         {
             // rule: A living's death plays one of two death cries chosen by a world-RNG coin (DIE1
-            //   on 1, DIE2 on 0).
+            //   on 1, DIE2 on 0), placed at the hitter.
             // tests: SemWalker4.a_death_cries_die1_or_die2_by_a_coin_unless_unheard
+            // tests: SemPresentation.a_death_cry_is_placed_at_the_hitter
             if (current_game->world->rng_.next(2))
-                og::sim::emit_sound(current_game->sim_events, SOUND_DIE1);
+                og::sim::emit_sound_at(current_game->sim_events, this, SOUND_DIE1);
             else
-                og::sim::emit_sound(current_game->sim_events, SOUND_DIE2);
+                og::sim::emit_sound_at(current_game->sim_events, this, SOUND_DIE2);
         }
 
         target->set_dead(1);

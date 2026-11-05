@@ -205,7 +205,7 @@ local function hook_blade(self)
   end
   -- Not on the hook yet (lib/effect_hook_blade.lua reads 1 as reeling).
   blade:set_lineofsight(0)
-  og.emit_sound(C.SOUND_FWIP)
+  og.emit_positional_sound(self, C.SOUND_FWIP)
   return true
 end
 
@@ -273,7 +273,7 @@ function M.snag(blade, owner, foe)
   blade.lifetime = t.hook_reel_max
   foe:add_frozen_stun(t.hook_reel_max + t.hook_stun)
   foe:set_foe(owner)
-  og.emit_sound(C.SOUND_CLANG)
+  og.emit_positional_sound(blade, C.SOUND_CLANG)
   return true
 end
 
@@ -343,7 +343,7 @@ local function war_banner(self)
       grunts[i]:s_add_command(C.COMMAND_GOTO, 200, cx, cy)
     end
   end
-  og.emit_sound(C.SOUND_ROAR)
+  og.emit_positional_sound(self, C.SOUND_ROAR)
   og.emit_notification(og.entity_display_name(self, "Orc Captain")
     .. " raises a war banner!")
   return true
@@ -479,7 +479,7 @@ local function warband(self)
       grunt:s_add_command(C.COMMAND_GOTO, 200, goal_x, goal_y)
     end
   end
-  og.emit_sound(C.SOUND_ROAR)
+  og.emit_positional_sound(self, C.SOUND_ROAR)
   return true
 end
 

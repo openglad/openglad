@@ -318,7 +318,7 @@ struct Event {
     uint32_t tick;
     EventKind kind;
     uint32_t a, b;       // event-specific payload
-    uint32_t c;          // third scalar; only DamageNumber uses it today
+    uint32_t c;          // third scalar: DamageNumber's packed value, PlaySound's source box
     int32_t target_player; // -1 broadcasts; 0..15 is a GLOBAL player index
     std::string text;    // optional text payload for Notification events
 };
@@ -327,9 +327,12 @@ struct Event {
 **Event flow:**
 ```
 Entity code (walker::act, combat, specials, treasure pickup, ...)
-  → og::sim::emit_sound(id)           // instead of myscreen->soundp->play_sound()
-  → og::sim::emit_notification(msg)   // instead of viewob->set_display_text()
-  → og::sim::emit_event(kind, a, b)   // generic structured event
+  → og::sim::emit_positional_sound(w, id)  // instead of if (on_screen()) play_sound():
+                                           //   placed at w, each machine plays it
+                                           //   only where a view shows w (#468)
+  → og::sim::emit_sound(id)                // an unplaced cue every machine plays
+  → og::sim::emit_notification(msg)        // instead of viewob->set_display_text()
+  → og::sim::emit_event(kind, a, b)        // generic structured event
   → SimEventLog accumulates events
        ↓
 Runtime layer (after SimWorld::tick() returns)

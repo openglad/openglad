@@ -86,7 +86,7 @@ local function do_turn_undead(self)
         string.format("%s turned %d undead.", self:g_name(), turned))
     end
   end
-  og.emit_sound(C.SOUND_HEAL)
+  og.emit_positional_sound(self, C.SOUND_HEAL)
   return true
 end
 
@@ -228,7 +228,7 @@ local function heal_or_mace(self)
     if self.team == 0 or self:has_guy() then
       og.emit_notification(message)
     end
-    og.emit_sound(C.SOUND_HEAL)
+    og.emit_positional_sound(self, C.SOUND_HEAL)
     return true
   end
   -- mystic mace

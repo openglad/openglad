@@ -26,7 +26,7 @@ local function explode_on_death(self)
   if not explosion then
     return false  -- failsafe
   end
-  og.emit_sound(C.SOUND_EXPLODE)
+  og.emit_positional_sound(self, C.SOUND_EXPLODE)
   explosion:set_owner(self:owner())
   explosion.hp = 0
   explosion.level = self:owner().level

@@ -41,7 +41,7 @@ local function wail(self)
     return false, "COULD NOT CREATE WAIL"
   end
   bolt.lifetime = og.tuning(bolt).wail_hops
-  og.emit_sound(C.SOUND_FWIP)
+  og.emit_positional_sound(self, C.SOUND_FWIP)
   return true
 end
 
@@ -326,7 +326,7 @@ function M.possess(self)
     burst:set_floor(foe:floor())
     burst:center_on(foe)
   end
-  og.emit_sound(C.SOUND_FWIP)
+  og.emit_positional_sound(self, C.SOUND_FWIP)
   return true
 end
 

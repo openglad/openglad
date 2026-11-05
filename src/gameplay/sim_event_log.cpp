@@ -71,7 +71,8 @@ void SimEventLog::push_notification(const std::string& message, std::uint32_t du
     events_.push_back(std::move(ev));
 }
 
-void SimEventLog::push_sound(std::uint32_t sound_id, std::int32_t target_player)
+void SimEventLog::push_sound(std::uint32_t sound_id, std::int32_t target_player,
+                             std::uint32_t source)
 {
     // rule: While a snapshot is being replayed silently (apply_snapshot's guard), the sim emits no
     //   sounds, notifications, palette or text events.
@@ -83,6 +84,7 @@ void SimEventLog::push_sound(std::uint32_t sound_id, std::int32_t target_player)
 
     push(EventKind::PlaySound, sound_id, 0);
     events_.back().target_player = target_player;
+    events_.back().c = source;
 }
 
 std::vector<Event> SimEventLog::drain()
