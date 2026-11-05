@@ -1307,16 +1307,18 @@ namespace {
                                    std::int32_t family, short x, short y, int floor)
 {
     const PixieData* data = world.configure_existing_entity(probe, order, family);
+    // The loader stands a family 0 in for an id with no slot and a soldier in
+    // for a living with no descriptor, and the walker's char family byte
+    // wraps 128..255 negative (#443): any stand-in is "cannot make".
     // rule: Asking whether a body of a family fits somewhere answers no for a family the loader
-    //   cannot make.
+    //   cannot make: an empty slot, an id outside the family byte, or a living with no family
+    //   (never a soldier stand-in); the configured body must be the order and family asked for.
     // tests: QuietProbe.body_spot_clear_asks_the_placement_rule_with_the_bodys_box
     // tests: RespawnEngine.body_ground_clear_asks_the_grid_with_the_bodys_own_flags
     // tests: SemRespawn.a_body_probe_answers_no_for_a_family_slot_the_loader_cannot_make
-    // deferred: #480 in-range empty slot (21..127) of a non-living order asserted false (C++ and
-    //   Lua); out-of-range families (<0, >=256) and slots 128..255 (char family byte wraps
-    //   negative) probe as family 0 and answer true, and an unknown living family becomes a
-    //   soldier, so the 'out-of-range => false' half does not hold
-    if (data == nullptr)
+    // tests: SemRespawn.a_body_probe_answers_no_for_an_id_past_the_family_byte_or_a_living_with_no_family
+    if (data == nullptr || probe.query_order() != order ||
+        static_cast<std::int32_t>(probe.family()) != family)
         return false;
     probe.set_data(*data);
     probe.set_floor(static_cast<short>(floor));
@@ -1341,10 +1343,12 @@ bool body_ground_clear(GameWorld& world, Order order, std::int32_t family,
 {
     walker probe(walker::WeaponProfileProbeTag{});
     // rule: Asking whether a body of a family fits somewhere answers no for a family the loader
-    //   cannot make.
+    //   cannot make: an empty slot, an id outside the family byte, or a living with no family
+    //   (never a soldier stand-in); the configured body must be the order and family asked for.
     // tests: QuietProbe.body_spot_clear_asks_the_placement_rule_with_the_bodys_box
     // tests: RespawnEngine.body_ground_clear_asks_the_grid_with_the_bodys_own_flags
     // tests: SemRespawn.a_body_probe_answers_no_for_a_family_slot_the_loader_cannot_make
+    // tests: SemRespawn.a_body_probe_answers_no_for_an_id_past_the_family_byte_or_a_living_with_no_family
     if (!make_body_probe(world, probe, order, family, x, y, floor))
         return false;
     return probe_ground_clear(world, probe, x, y, floor);
@@ -1362,10 +1366,12 @@ bool body_spot_clear(GameWorld& world, Order order, std::int32_t family,
 {
     walker probe(walker::WeaponProfileProbeTag{});
     // rule: Asking whether a body of a family fits somewhere answers no for a family the loader
-    //   cannot make.
+    //   cannot make: an empty slot, an id outside the family byte, or a living with no family
+    //   (never a soldier stand-in); the configured body must be the order and family asked for.
     // tests: QuietProbe.body_spot_clear_asks_the_placement_rule_with_the_bodys_box
     // tests: RespawnEngine.body_ground_clear_asks_the_grid_with_the_bodys_own_flags
     // tests: SemRespawn.a_body_probe_answers_no_for_a_family_slot_the_loader_cannot_make
+    // tests: SemRespawn.a_body_probe_answers_no_for_an_id_past_the_family_byte_or_a_living_with_no_family
     if (!make_body_probe(world, probe, order, family, x, y, floor))
         return false;
     // rule: A body of a family fits at a spot only when the ground takes that family's box and

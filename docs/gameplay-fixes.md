@@ -923,8 +923,8 @@ Rows deliberately not added:
 - #411: the kill credit is a field of the current game alone, not in the
   recording; the mode tests (`ModesOnslaught`, `ModesTdm`) pin it.
 - #417 and #418: no byte of the sim changes; every row proves it.
-- The modding API's changes (#454, #464, #469, #479), the hook-failure
-  line (#463) and the match recap (#467): no shipped pack reaches the new arms, and no
+- The modding API's changes (#454, #464, #469, #479, #480), the
+  hook-failure line (#463) and the match recap (#467): no shipped pack reaches the new arms, and no
   recording holds a log line or a recap; the core pack the runner mounts
   loads and runs the same bytes.
 - #413, #414, #415 and #416: the display and the lobby, which no recording
@@ -1070,6 +1070,15 @@ its mistake:
   `"auto"`, a numeric one such as `"61"` included; `"atuo"` gets a
   did-you-mean. The installer's guard stays for data built in C++. Every
   shipped `wire_id` is in range. This game only.
+- **A body probe refuses a family the game cannot make (#480).**
+  `og.body_spot_near`, and the `body_spot_clear` and `body_ground_clear`
+  probes behind it, build a detached body of the family asked for. The
+  loader stands family 0 in for an id with no slot and a soldier in for a
+  living with no family, and the walker's family byte wraps 128..255
+  negative (#443), so those probes answered for the stand-in where the API
+  reference promises `nil`. A probe now answers no unless the body is
+  exactly the order and family asked for. The cleric's raise and the
+  parity spawn-room gate ask only real families. This game only.
 
 ## Balance
 

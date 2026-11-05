@@ -899,7 +899,9 @@ each draw-free and eat-free:
   rule on `floor`, and never onto a delayed spawn. It tries `(x, y)`, then
   for `r = 1 .. radius` the eight offsets `(-r,0) (r,0) (0,-r) (0,r) (-r,-r)
   (r,-r) (-r,r) (r,r)`, and answers the first that fits. `family` is a byte
-  (`og.family_id`); `nil` for a family the loader cannot make.
+  (`og.family_id`); `nil` for a family the loader cannot make (no family of
+  that order at that id; a living id is never stood in for by a soldier; a
+  negative id, or one past the walker's family byte, 127, #443).
 - `walker:fire_pad_clear([weapon_family]) → bool` and
   `walker:fire_pad_answer([weapon_family]) → string` (the walker methods
   above) probe the pad `fire()` would use, for the current weapon or a named

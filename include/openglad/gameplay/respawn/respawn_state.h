@@ -169,7 +169,10 @@ bool respawn_spot_clear(GameWorld& world, walker* w, short x, short y,
 // The body does not exist: a detached walker of that family (its own box and
 // flags; never in a list or the obmap, no entity id, no draw) is put through
 // respawn_spot_clear and dormant_occupies_spot. Draw-free and eat-free.
-// False for a family the loader cannot make.
+// False for a family the loader cannot make: no family of that order at that
+// id, a living id the loader would stand a soldier in for, or a negative id
+// or one past the walker's char family byte (127, #443). The configured
+// body must be exactly the order and family asked for.
 bool body_spot_clear(GameWorld& world, Order order, std::int32_t family,
                      short x, short y, int floor);
 
@@ -177,8 +180,8 @@ bool body_spot_clear(GameWorld& world, Order order, std::int32_t family,
 // does the grid let a body of (order, family) stand with its top-left at
 // (x, y) on `floor`, with its own box and flags (flight_left 0, so a flying
 // family passes water as the game lets it, a walker does not)? Bodies are
-// not asked. Draw-free; false for a family the loader cannot make or a box
-// past the map's edge. The parity spawn-room gate (#423) asks it of every
+// not asked. Draw-free; false for a family the loader cannot make (as
+// body_spot_clear says) or a box past the map's edge. The parity spawn-room gate (#423) asks it of every
 // living spawn, never with the caster itself as the probe.
 bool body_ground_clear(GameWorld& world, Order order, std::int32_t family,
                        short x, short y, int floor);

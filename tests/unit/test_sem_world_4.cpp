@@ -277,8 +277,8 @@ TEST(SemRespawn, a_respawn_request_fails_on_a_queue_full_of_heroes_and_clamps_it
 // respawn.cpp:879 make_body_probe: a family slot the loader holds no body
 // for answers "does not fit" from every probe, and the Lua door answers nil
 // without a host error. The known family on the same open ground fits.
-// (A living never reaches the arm: set_walker turns a living family with no
-// descriptor into a soldier. An empty slot of another order does.)
+// (An empty living slot is the next test's: the loader stands a soldier in
+// for it, which the probe refuses since #480.)
 TEST(SemRespawn, a_body_probe_answers_no_for_a_family_slot_the_loader_cannot_make)
 {
     og::test::ScopedPackStoreState pack_store_restore;
@@ -350,6 +350,103 @@ TEST(SemRespawn, a_body_probe_answers_no_for_a_family_slot_the_loader_cannot_mak
     EXPECT_EQ("400,400", known) << "control: the knife fits at the corner";
     EXPECT_TRUE(world.scripts().host().errors().empty())
         << "and no host error";
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+// #480 make_body_probe: the probe answers no unless the loader made exactly
+// the order and family asked for. The loader stands family 0 in for an id
+// with no slot (-1, 256, 300), a soldier in for a living with no descriptor
+// (an empty in-table slot, 100), and the walker's char family byte wraps
+// 128..255 negative (#443): each is a family the game cannot make, so every
+// probe answers no, makes nothing and draws nothing. A real family of each
+// order fits on the same ground, so no "no" is vacuous.
+TEST(SemRespawn, a_body_probe_answers_no_for_an_id_past_the_family_byte_or_a_living_with_no_family)
+{
+    og::test::ScopedPackStoreState pack_store_restore;
+    og::test::ScopedHookFailureGuard guard;
+    og::test::mount_core_pack();
+    TestGameWorld tw;
+    open_field(tw);
+    GameWorld& world = tw.world();
+    const std::size_t oblist_before = world.oblist.size();
+    const std::size_t weap_before = world.weaplist.size();
+    const std::uint32_t rng_before = world.rng_.state_;
+
+    const struct {
+        Order order;
+        std::int32_t control;
+        const char* name;
+    } orders[] = {
+        {Order::Living, FAMILY_SOLDIER, "living"},
+        {Order::Weapon, FAMILY_KNIFE, "weapon"},
+        {Order::Treasure, FAMILY_DRUMSTICK, "treasure"},
+        {Order::FX, FAMILY_EXPLOSION, "fx"},
+        {Order::Generator, FAMILY_TENT, "generator"},
+    };
+    for (const auto& o : orders) {
+        EXPECT_TRUE(og::sim::body_ground_clear(world, o.order, o.control, 400, 400, 0))
+            << o.name << " control: a real family passes the ground probe";
+        EXPECT_TRUE(og::sim::body_spot_clear(world, o.order, o.control, 400, 400, 0))
+            << o.name << " control: a real family fits";
+        for (const std::int32_t id : {-1, 128, 250, 255, 256, 300}) {
+            EXPECT_FALSE(og::sim::body_ground_clear(world, o.order, id, 400, 400, 0))
+                << o.name << " " << id << ": body_ground_clear says no";
+            EXPECT_FALSE(og::sim::body_spot_clear(world, o.order, id, 400, 400, 0))
+                << o.name << " " << id << ": body_spot_clear says no";
+            short ox = -7;
+            short oy = -7;
+            EXPECT_FALSE(og::sim::body_spot_near(world, o.order, id, 400, 400, 0, 8, ox, oy))
+                << o.name << " " << id << ": no spot near either";
+            EXPECT_EQ(-7, ox) << o.name << " " << id << ": the out spot is left alone";
+            EXPECT_EQ(-7, oy);
+        }
+    }
+    constexpr std::int32_t kEmptyLiving = 100;
+    ASSERT_EQ(nullptr, get_family_descriptor(kEmptyLiving))
+        << "precondition: no living family is registered at 100";
+    EXPECT_FALSE(og::sim::body_ground_clear(world, Order::Living, kEmptyLiving, 400, 400, 0))
+        << "an empty living slot is not a soldier";
+    EXPECT_FALSE(og::sim::body_spot_clear(world, Order::Living, kEmptyLiving, 400, 400, 0));
+    short lx = -7;
+    short ly = -7;
+    EXPECT_FALSE(og::sim::body_spot_near(world, Order::Living, kEmptyLiving, 400, 400, 0, 8,
+                                         lx, ly));
+    EXPECT_EQ(-7, lx);
+    EXPECT_EQ(-7, ly);
+    EXPECT_EQ(oblist_before, world.oblist.size()) << "the probes make no entity";
+    EXPECT_EQ(weap_before, world.weaplist.size());
+    EXPECT_EQ(rng_before, world.rng_.state_) << "and draw nothing";
+
+    // The Lua door, asked from the soldier's special.
+    walker* soldier = add_living(tw, FAMILY_SOLDIER, 0, 200, 200);
+    ASSERT_NE(nullptr, soldier);
+    og::script::register_pack_script(
+        {"test.sem_world_4", "sem_world_4_probe.lua",
+         "og.register_hooks('living', 'core:soldier', {\n"
+         "  do_special = function(self)\n"
+         "    local ids = {300, -1, 100, 0}\n"
+         "    for i = 1, #ids do\n"
+         "      local id = ids[i]\n"
+         "      local x, y = og.body_spot_near('living', id, 400, 400, 0, 8)\n"
+         "      og.log('living ' .. id, tostring(x) .. ',' .. tostring(y))\n"
+         "    end\n"
+         "    return true\n"
+         "  end,\n"
+         "})\n"});
+    const std::uint32_t rng_before_lua = world.rng_.state_;
+    const auto handled = og::script::hooks::do_special(
+        get_family_descriptor(FAMILY_SOLDIER), soldier);
+    ASSERT_TRUE(handled.has_value());
+    std::vector<std::string> answers;
+    for (const std::string& line : world.scripts().host().log())
+        if (line.rfind("living ", 0) == 0)
+            answers.push_back(line);
+    EXPECT_EQ((std::vector<std::string>{"living 300\tnil,nil", "living -1\tnil,nil",
+                                        "living 100\tnil,nil", "living 0\t400,400"}),
+              answers)
+        << "300, -1 and the empty slot 100 answer nil; the soldier fits";
+    EXPECT_TRUE(world.scripts().host().errors().empty()) << "and no host error";
+    EXPECT_EQ(rng_before_lua, world.rng_.state_);
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
