@@ -923,9 +923,10 @@ Rows deliberately not added:
 - #411: the kill credit is a field of the current game alone, not in the
   recording; the mode tests (`ModesOnslaught`, `ModesTdm`) pin it.
 - #417 and #418: no byte of the sim changes; every row proves it.
-- The modding API's changes (#454, #464) and the hook-failure line (#463):
-  no shipped pack reaches the new arms, and no recording holds a log line;
-  the core pack the runner mounts loads and runs the same bytes.
+- The modding API's changes (#454, #464), the hook-failure line (#463) and
+  the match recap (#467): no shipped pack reaches the new arms, and no
+  recording holds a log line or a recap; the core pack the runner mounts
+  loads and runs the same bytes.
 - #413, #414, #415 and #416: the display and the lobby, which no recording
   reaches.
 - Fix AA's two terrain pads. `archer_bot_bolt_pad_terrain`: a bot faces
@@ -1042,6 +1043,16 @@ its mistake:
   by its type, and the refused call installs nothing. `og.set_entity_hooks`,
   whose one name is `on_death`, refuses the same way. Every shipped
   registration is spelled right. This game only.
+- **The match recap sees an every-level mode that refused (#467).** The
+  recap tells a refusing mode from a scripted level with none by asking
+  whether an `on_mode_init` hook is there. It counted only the level's own
+  registrations, so a pack whose `on_mode_init` was registered for every
+  level (`-1`) and refused got the count-only "MATCH: N AUTHORED TEAMS"
+  lines, though the hook had run. It now asks the lookup the dispatchers
+  make (the level's own hook, else the every-level one) and reads "MATCH
+  WILL NOT START". A mode refuses by raising; returning `false` does not
+  refuse. The recap only; the SDL, text and curses clients share it. This
+  game only.
 
 ## Balance
 

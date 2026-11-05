@@ -3698,9 +3698,9 @@ bool push_level_hook_fn(lua_State* L, VmState* st, LevelHook kind,
 std::uint32_t level_hook_kinds_for(int level_id)
 {
     // rule: Diagnostic: which hook kinds a level registers by its own id; wildcard registrations
-    //   are deliberately not counted. The picker uses its on_mode_init bit to tell a refusing mode
-    //   from a hook-less scripted level.
+    //   are deliberately not counted (level_hook_kinds_dispatched_for folds them in).
     // tests: LevelScriptsTest.no_level_hooks_means_no_vm_activity
+    // tests: LevelScriptsTest.dispatched_level_hook_kinds_fold_in_the_wildcard
     // tests: LevelScriptsTest.no_packs_means_every_level_dispatcher_is_inert
     // tests: LevelScriptsTest.a_family_chunk_registers_level_hooks_in_the_real_pass
     if (pack_lua_absent())
@@ -3720,6 +3720,32 @@ std::uint32_t level_hook_kinds_for(int level_id)
         if (lua_isfunction(L, -1))
             kinds |= 1u << static_cast<unsigned>(h.kind);
         lua_pop(L, 2);
+    }
+    return kinds;
+}
+
+std::uint32_t level_hook_kinds_dispatched_for(int level_id)
+{
+    // rule: Diagnostic: which hook kinds would dispatch on a level, its own registration or the
+    //   every-level one, the lookup the dispatchers make; the picker reads its on_mode_init bit to
+    //   tell a refusing mode from a level with none.
+    // tests: LevelScriptsTest.dispatched_level_hook_kinds_fold_in_the_wildcard
+    // tests: PickerCommon.a_wildcard_mode_init_that_refused_says_the_match_will_not_start
+    if (pack_lua_absent())
+        return 0;
+    WorldScripts& ws = active_world_scripts();
+    lua_State* L = ws.host().impl().L;
+    VmState* st = &vm_state(L);
+    std::uint32_t kinds = 0;
+    for (const auto& h : kLevelHookNames) {
+        // rule: Diagnostic: which hook kinds would dispatch on a level, its own registration or
+        //   the every-level one, the lookup the dispatchers make.
+        // tests: LevelScriptsTest.dispatched_level_hook_kinds_fold_in_the_wildcard
+        // tests: PickerCommon.a_wildcard_mode_init_that_refused_says_the_match_will_not_start
+        if (push_level_hook_fn(L, st, h.kind, level_id)) {
+            kinds |= 1u << static_cast<unsigned>(h.kind);
+            lua_pop(L, 1);
+        }
     }
     return kinds;
 }

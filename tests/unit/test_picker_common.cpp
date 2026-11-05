@@ -3504,6 +3504,57 @@ TEST(PickerCommon, scenario_report_no_pack_fallback_is_the_count_clamp)
     }
 }
 
+// #467: the staged recap tells a refusing mode from a level with none by the
+// hook that would DISPATCH there. A pack whose on_mode_init is registered
+// for every level (-1) and refuses gets "MATCH WILL NOT START", not the
+// count-only lines a hook-less scripted level gets.
+TEST(PickerCommon, a_wildcard_mode_init_that_refused_says_the_match_will_not_start)
+{
+    SaveData save;
+    save.current_campaign = "modes";
+    save.my_team = 0;
+    for (const bool registered : {true, false}) {
+        og::script::clear_pack_scripts();
+        if (registered)
+            og::script::register_pack_script(
+                {"test.wildmode", "wildmode/scripts/mode.lua",
+                 "og.register_level_hooks(-1, {\n"
+                 "  on_mode_init = function(level) error('refused') end,\n"
+                 "})\n"});
+        else
+            og::script::register_pack_script(
+                {"test.wildmode", "wildmode/scripts/mode.lua",
+                 "og.register_level_hooks(-1, { on_load = function() end })\n"});
+        ReportWorld fx(true);
+        fx.spawn_anchor(0);
+        fx.spawn_anchor(1);
+        og::sim::mode_stage_init(fx.world());
+        ASSERT_TRUE(fx.world().mode.init_attempted);
+        ASSERT_FALSE(fx.world().mode.active);
+
+        const og::ui::ScenarioRosterReport report =
+            og::ui::build_scenario_roster_report(
+                &fx.world(), og::ui::StagePreviewStatus::Staged, save, nullptr);
+        const std::vector<std::string> lines =
+            og::ui::format_scenario_report_lines(report);
+        EXPECT_TRUE(report.staged);
+        EXPECT_TRUE(report.is_versus);
+        if (registered) {
+            EXPECT_TRUE(report.refusing)
+                << "the wildcard on_mode_init dispatched on level 510 and refused";
+            EXPECT_TRUE(any_line_contains(
+                lines, "MATCH WILL NOT START: FEWER THAN 2 TEAMS"));
+            EXPECT_FALSE(any_line_contains(lines, "AUTHORED TEAMS"));
+        } else {
+            EXPECT_FALSE(report.refusing) << "no on_mode_init: no mode, no refusal";
+            EXPECT_TRUE(any_line_contains(lines, "MATCH: 2 AUTHORED TEAMS"));
+            EXPECT_FALSE(any_line_contains(lines, "MATCH WILL NOT START"));
+        }
+    }
+    og::script::clear_pack_scripts();
+    (void)og::resources::refresh_pack_scripts();
+}
+
 // The refusal sentence is chosen by the banked REASON, not by the mode's
 // free-text error (lineup review L1): the team modes are short of TEAMS,
 // a band mode (FFA/mutant) is short of FIGHTERS. The digit rides the

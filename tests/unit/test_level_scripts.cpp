@@ -546,6 +546,40 @@ TEST_F(LevelScriptsTest, level_and_entity_hook_registration_rejections)
     EXPECT_EQ(4u, errs.size()) << "an accepted registration reports nothing";
 }
 
+// #467: the dispatch view answers the hook kinds that would DISPATCH on a
+// level, the level's own registration or the -1 wildcard, the lookup the
+// dispatchers make; the own-only seam beside it still ignores the wildcard.
+TEST_F(LevelScriptsTest, dispatched_level_hook_kinds_fold_in_the_wildcard)
+{
+    constexpr std::uint32_t kLoad = 1u << 0;      // LevelHook::Load
+    constexpr std::uint32_t kModeInit = 1u << 4;  // LevelHook::ModeInit
+    register_pack_script(
+        {"test.level", "wild.lua",
+         "og.register_level_hooks(-1, { on_mode_init = function() end })\n"
+         "og.register_level_hooks(42, { on_load = function() end })\n"});
+    ASSERT_TRUE(world.scripts().host().errors().empty())
+        << world.scripts().host().errors().front().message;
+    EXPECT_EQ(kLoad, hooks::level_hook_kinds_for(42)) << "own-only, unchanged";
+    EXPECT_EQ(kLoad | kModeInit, hooks::level_hook_kinds_dispatched_for(42))
+        << "level 42's own on_load plus the wildcard on_mode_init";
+    EXPECT_EQ(kModeInit, hooks::level_hook_kinds_dispatched_for(7))
+        << "a level with nothing of its own dispatches the wildcard";
+    EXPECT_EQ(0u, hooks::level_hook_kinds_for(7));
+
+    // A level's own on_mode_init shadows the wildcard: the same bit answers.
+    clear_pack_scripts();
+    register_pack_script(
+        {"test.level", "wild.lua",
+         "og.register_level_hooks(-1, { on_mode_init = function() end })\n"
+         "og.register_level_hooks(42, { on_mode_init = function() end })\n"});
+    EXPECT_EQ(kModeInit, hooks::level_hook_kinds_for(42));
+    EXPECT_EQ(kModeInit, hooks::level_hook_kinds_dispatched_for(42));
+
+    // No pack Lua at all: nothing dispatches anywhere.
+    clear_pack_scripts();
+    EXPECT_EQ(0u, hooks::level_hook_kinds_dispatched_for(42));
+}
+
 // #464: a level hook table may only use the nine level hook names. A typo
 // beside a valid name is a load error with a did-you-mean, and the refused
 // call installs nothing, the valid name included.
