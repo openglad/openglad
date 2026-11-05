@@ -158,6 +158,7 @@ short treasure::eat_me(walker  * eater)
 			dead = 1;
 			return 1;
 		case FAMILY_EXIT: // go to another level, possibly
+		{ // a block: the AJ port's exit_whenever below must not cross the next case label
 			if (eater->in_act) return 1;
 			if (eater->query_act_type()!= ACT_CONTROL || (eater->skip_exit > 1))
 				return 1;
@@ -177,6 +178,9 @@ short treasure::eat_me(walker  * eater)
 
 			leftside  = 160 - ( (strlen(exitname) + 18) * 3);
 			rightside = 160 + ( (strlen(exitname) + 18) * 3);
+			// port of the current game's c50d2d62 (Gameplay Fixes AJ, #481): with the setting, a level the player may leave at any time asks Exit and never Withdraw
+			const bool exit_whenever = myscreen->gameplay_fixes ? (myscreen->level_data.type & SCEN_TYPE_CAN_EXIT) != 0
+			                                                    : myscreen->level_data.type == SCEN_TYPE_CAN_EXIT;
 			// First check to see if we're withdrawing into
 			//    somewhere we've been, in which case we abort
 			//    this level, and set our current level to
@@ -184,6 +188,7 @@ short treasure::eat_me(walker  * eater)
 			if ( myscreen->save_data.is_level_completed(stats->level)
 			        && !myscreen->save_data.is_level_completed(myscreen->save_data.scen_num)
 			        && (guys_here != 0)
+			        && !(myscreen->gameplay_fixes && exit_whenever)
 			   ) // okay to leave
 			{
 				leftside -= 12;
@@ -236,7 +241,7 @@ short treasure::eat_me(walker  * eater)
 			} // end of checking for withdrawal to completed level
 
 			//buffers: also, allow exit if scenario_type == can exit
-			if (!guys_here || (myscreen->level_data.type == SCEN_TYPE_CAN_EXIT)) // nobody evil left, so okay to exit level ..
+			if (!guys_here || exit_whenever) // nobody evil left, so okay to exit level ..
 			{
                 char buf[40];
                 snprintf(buf, 40, "Exit to %s?", exitname);
@@ -253,6 +258,7 @@ short treasure::eat_me(walker  * eater)
 				return 1;
 			}
 			return 1;
+		} // end of FAMILY_EXIT
 		case FAMILY_TELEPORTER:
 			if (eater->skip_exit > 1)
 				return 1;
