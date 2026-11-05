@@ -6825,8 +6825,8 @@ inline constexpr Mutation kMut_effect_cloud_poison_scen99 = {
 // effect_explosion_range_scen99: compute_explosion_range
 // (packs/core/lib/effect_bomb.lua:12-20, ported from
 // openglad-master/src/effect.cpp:648-664) turns the owner's level into the
-// blast's Manhattan reach 15 + clamp(level*4, 16, 96). Every existing blast row
-// uses a level-4/5 caster whose range is pinned at the 16-20 floor, so nothing
+// blast's Manhattan reach 15 + min(level*4, 96). Every existing blast row
+// uses a level-4/5 caster whose range sits at 16-20, so nothing
 // in the corpus distinguishes a big blast from a small one. A level-10 thief
 // gives range 40 / reach 55 and the single victim is a STATIONARY team-1 TOWER1
 // parked at Manhattan 45 from the explosion's corner -- inside the real reach,
@@ -6835,7 +6835,7 @@ inline constexpr Mutation kMut_effect_cloud_poison_scen99 = {
 // collapses blast.level to the bomb's own level, destroying the test.
 inline constexpr SpawnSpec kFamilySpawns_effect_explosion_range_scen99[] = {
     { FAMILY_TOWER1, 1, kOrderLiving, 232, 203, 0, 0 },            // stationary team-1 victim: Manhattan |232-196|+|203-194| = 45 from the explosion's top-left (196,194). Inside 15+40=55, outside the mutated 15+16=31.
-    { FAMILY_THIEF,  0, kOrderLiving, 200, 200, 0, 0, 10, 300 },   // player-controlled bomb owner LAST. level 10 -> bomb_damage 165 (raw 15*11, below the 210 soften knee so branch == master) and explosion range clamp(40,16,96) = 40; 300 MP covers DROP BOMB's 35 cost.
+    { FAMILY_THIEF,  0, kOrderLiving, 200, 200, 0, 0, 10, 300 },   // player-controlled bomb owner LAST. level 10 -> bomb_damage 165 (raw 15*11, below the 210 soften knee so branch == master) and explosion range min(40,96) = 40; 300 MP covers DROP BOMB's 35 cost.
 };
 
 inline constexpr FactPredicate kFacts_effect_explosion_range_scen99[] = {
@@ -6843,8 +6843,8 @@ inline constexpr FactPredicate kFacts_effect_explosion_range_scen99[] = {
     pred::WalkerAliveAtFinal(FAMILY_THIEF, 1),
     // FLIPPING PREDICATE. The blast reaches Manhattan 55 and lands full damage
     // (165 -> 158..169) on the 130hp stationary TOWER1, which dies and is reaped.
-    // kMut_effect_explosion_range_scen99 pins the clamp ceiling at the 16px
-    // floor, so the reach drops to 31, TOWER1 at Manhattan 45 is never
+    // kMut_effect_explosion_range_scen99 pins the cap at 16 px, so the
+    // reach drops to 31, TOWER1 at Manhattan 45 is never
     // enumerated by find_in_range, and an alive TOWER1 remains.
     pred::WalkerDiedByFinal(FAMILY_TOWER1,
         "consequence: compute_explosion_range scales the blast to 15+4*level = 55 Manhattan px, which covers the stationary TOWER1 at 45 and kills it with the full 165-damage tier; the clamp mutation shrinks the reach to 31 so the same walker is outside the blast and survives at full HP"),
@@ -6858,9 +6858,9 @@ inline constexpr FactPredicate kFacts_effect_explosion_range_scen99[] = {
 
 inline constexpr Mutation kMut_effect_explosion_range_scen99 = {
     "packs/core/lib/effect_bomb.lua", 25,
-    "  range = og.clamp(range, 16, 96)",
-    "  range = og.clamp(range, 16, 16)",
-    "Pins compute_explosion_range's clamp ceiling at its own floor, so a level-10 owner's 40px range collapses to 16 and the blast's Manhattan reach falls from 55 to 31. The stationary TOWER1 at 45 is no longer enumerated by find_in_range, survives, and WalkerDiedByFinal(FAMILY_TOWER1) fails."
+    "  range = og.min(range, 96)",
+    "  range = og.min(range, 16)",
+    "Pins compute_explosion_range's cap at 16, so a level-10 owner's 40px range collapses to 16 and the blast's Manhattan reach falls from 55 to 31. The stationary TOWER1 at 45 is no longer enumerated by find_in_range, survives, and WalkerDiedByFinal(FAMILY_TOWER1) fails."
 };
 
 // effect_bomb_bystander_scen99: two things nothing in the corpus proves -- the
@@ -6934,7 +6934,7 @@ inline constexpr Mutation kMut_effect_bomb_bystander_scen99 = {
 inline constexpr SpawnSpec kFamilySpawns_bomb_l10_vs_cleric_l9_scen99[] = {
     { FAMILY_TOWER1, 1, kOrderLiving, 400, 400, 0, 0 },          // far hostile: holds level_done = 0 after the cleric dies so both corpses are reaped. Manhattan |400-196| + |400-194| = 410 from the blast, never fires, never moves
     { FAMILY_CLERIC, 1, kOrderLiving, 222, 196, 0, 0, 9, 0 },    // level-9 victim on effect_bomb_bystander's tile: Manhattan |222-196|+|196-194| = 28 from the explosion's top-left (196,194), inside reach 55 before it even moves; loader body 120 hp, armor 0
-    { FAMILY_THIEF,  0, kOrderLiving, 200, 200, 0, 0, 10, 300 }, // player-controlled bomb owner LAST; level 10 -> bomb_damage 165 and explosion range clamp(40,16,96) = 40; 300 MP covers the 35-MP cast
+    { FAMILY_THIEF,  0, kOrderLiving, 200, 200, 0, 0, 10, 300 }, // player-controlled bomb owner LAST; level 10 -> bomb_damage 165 and explosion range min(40,96) = 40; 300 MP covers the 35-MP cast
 };
 
 inline constexpr FactPredicate kFacts_bomb_l10_vs_cleric_l9_scen99[] = {
@@ -10009,7 +10009,7 @@ inline constexpr Mutation kMut_cleric_bot_resurrect_foe_stain_fixes_scen99 = {
 // (9) makes the thief roll DROP BOMB once its foe is set and still 130 px or
 // more away: the classic gate bombs a foe that far (its "too far" test only
 // refuses 35 to 130 px), and the bomb lands under the thief, nowhere near the
-// tower. With the setting on the bomb wants a foe inside its 31 px blast.
+// tower. With the setting on the bomb wants a foe inside its 19 px blast.
 inline constexpr SpawnSpec kFamilySpawns_thief_bot_bomb_far_scen99[] = {
     { FAMILY_TOWER1,  0, kOrderLiving, 300, 120, 0, 0 },          // the foe, 180 px east
     { FAMILY_THIEF,   1, kOrderLiving, 120, 120, 0, 0, 1, 100 },  // hostile level-1 bot
@@ -10029,7 +10029,7 @@ inline constexpr Mutation kMut_thief_bot_bomb_far_scen99 = {
 inline constexpr FactPredicate kFacts_thief_bot_bomb_far_fixes_scen99[] = {
     pred::TickReached(12),
     pred::WalkerOfOrderFamilyCount(FAMILY_BOMB, kOrderFX, 0, 0,
-        "consequence: with the setting on the bomb wants a foe inside its 31 px blast; the tower is not, so no bomb is dropped"),
+        "consequence: with the setting on the bomb wants a foe inside its 19 px blast; the tower is not, so no bomb is dropped"),
     // negative_assertion: no bomb with the setting on; the mutation flips it by letting the bomb go with no foe in the blast (0 -> 1).
 };
 inline constexpr Mutation kMut_thief_bot_bomb_far_fixes_scen99 = {
@@ -10041,9 +10041,9 @@ inline constexpr Mutation kMut_thief_bot_bomb_far_fixes_scen99 = {
 
 // --- thief_bot_bomb_ally (bot gates: DROP BOMB never with an ally in the blast) ---
 // A hostile level-4 thief bot, a stationary TOWER1 a 1 px gap east, and an
-// allied orc 20 px west of the thief, inside the 31 px blast (15 + 4 * 4; at
-// level 4 the blast is the same in both games: the old game at the parity
-// commit has no 16 px floor under a level 1 to 3 blast). The seed (35) makes
+// allied orc 20 px west of the thief, inside the 31 px blast (15 + 4 * 4;
+// neither game floors a level 1 to 3 blast since #483, and at level 4 no
+// floor would apply anyway). The seed (35) makes
 // the thief roll DROP BOMB with the tower beside it as its foe: the classic
 // gate bombs a foe that close (it refuses only 35 to 130 px), the bomb goes
 // off at tick 54 with the orc inside and the orc is hurt. With the setting on

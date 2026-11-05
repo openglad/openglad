@@ -460,12 +460,12 @@ function M.ring_pays(self, step, los, los_add)
   return in_ring == 1 and unfaced
 end
 
--- The explosion's reach: find_in_range(15 + clamp(4 * level, 16, 96)).
--- rule: An explosion's reach is 15 + 4*level clamped to 16..96, so 31 px at levels 1-4, rising 4 px
+-- The explosion's reach: find_in_range(15 + min(4 * level, 96)).
+-- rule: An explosion's reach is 15 + 4*level capped at 96 (no floor): 19 px at level 1, rising 4 px
 --   a level, capped 111 px from level 24 (the explosion's own find_in_range).
 -- tests: BotGatesLib.blast_reach_is_the_explosions
 function M.blast_reach(level)
-  return 15 + og.clamp(level * 4, 16, 96)
+  return 15 + og.min(level * 4, 96)
 end
 
 -- No ally of the CASTER within reach of the blast's centre (Manhattan, as

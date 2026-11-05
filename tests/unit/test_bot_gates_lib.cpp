@@ -580,17 +580,22 @@ TEST_F(BotGatesLib, ring_pays_two_in_or_one_unfaced)
     EXPECT_EQ("false", probe(self, warp).at("pays"));
 }
 
-// The explosion's reach: 15 + clamp(4 * level, 16, 96) (effect_bomb.lua).
+// The explosion's reach: 15 + min(4 * level, 96) (effect_bomb.lua), with no
+// floor at levels 1-3 (#483).
 TEST_F(BotGatesLib, blast_reach_is_the_explosions)
 {
     living* self = caster();
     const Answers a = probe(self,
         "    og.log('l1', G.blast_reach(1))\n"
+        "    og.log('l2', G.blast_reach(2))\n"
+        "    og.log('l3', G.blast_reach(3))\n"
         "    og.log('l4', G.blast_reach(4))\n"
         "    og.log('l5', G.blast_reach(5))\n"
         "    og.log('l24', G.blast_reach(24))\n"
         "    og.log('l30', G.blast_reach(30))\n");
-    EXPECT_EQ("31", a.at("l1"));
+    EXPECT_EQ("19", a.at("l1"));
+    EXPECT_EQ("23", a.at("l2"));
+    EXPECT_EQ("27", a.at("l3"));
     EXPECT_EQ("31", a.at("l4"));
     EXPECT_EQ("35", a.at("l5"));
     EXPECT_EQ("111", a.at("l24"));

@@ -367,12 +367,14 @@ Reach blast_reaches(short owner_level, short skip_exit, int d)
 
 }  // namespace
 
-// effect_bomb.lua:11, the arms the old game agrees with (effect.cpp
-// FAMILY_EXPLOSION: generic = 4 * level capped at 96, skip_exit -> 16; the
-// finder searches 15 + range, inclusive). Level 4 -> 16 (31 px), level 10 ->
-// 40 (55 px), level 30 -> the cap 96 (111 px); a skip_exit blast at level 30
-// -> 16 (31 px). The level 1-3 floor of 16 is NOT pinned: the old game has
-// no floor there (level 2 reaches 15 + 8), see the batch report.
+// effect_bomb.lua:11, the old game's rule (effect.cpp FAMILY_EXPLOSION:
+// generic = 4 * level capped at 96, skip_exit -> 16; the finder searches
+// 15 + range, inclusive). Level 1 -> 4 (19 px), 2 -> 8 (23 px), 3 -> 12
+// (27 px): no floor (#483); level 4 -> 16 (31 px), level 10 -> 40 (55 px),
+// level 30 -> the cap 96 (111 px); a skip_exit blast at level 30 or 10 -> 16
+// (31 px).
+// Breaks: `range = og.min(range, 96)` -> `range = og.clamp(range, 16, 96)`
+// (levels 1-3 red); `range = 16` -> `range = 0` with the min (skip_exit red).
 TEST(SemLibsBomb, a_blast_reaches_four_px_a_level_capped_at_96_and_a_magical_one_16)
 {
     og::test::mount_core_pack();
@@ -381,7 +383,8 @@ TEST(SemLibsBomb, a_blast_reaches_four_px_a_level_capped_at_96_and_a_magical_one
         short level;
         short skip_exit;
         int edge;  // the last reached distance
-    } cases[] = {{4, 0, 31}, {10, 0, 55}, {30, 0, 111}, {30, 1, 31}, {10, 1, 31}};
+    } cases[] = {{1, 0, 19}, {2, 0, 23}, {3, 0, 27}, {4, 0, 31},
+                 {10, 0, 55}, {30, 0, 111}, {30, 1, 31}, {10, 1, 31}};
     for (const auto& c : cases) {
         SCOPED_TRACE(testing::Message() << "owner level " << c.level << ", skip_exit "
                                         << c.skip_exit);

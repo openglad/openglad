@@ -29,7 +29,7 @@ likely outcomes of `compute_base_damage` (`src/core/combat_math.cpp:64-69`):
 | damage | `include/openglad/core/combat_math.h:282-285` `bomb_damage(L) = soften(15(L+1), 210, 300)` | L10 = **165**, bit-identical to 2002's `(level+1)*15` (companion `walker.cpp:2599`) through L13; the soft cap only *lowers* L14+ (L15 233 vs 240, L20 258 vs 315) |
 | what does NOT scale it | the bomb is an FX: it never passes `configure_weapon_profile_base` (`src/gameplay/walker.cpp:1174`) nor `set_difficulty` | difficulty 50/100/200 % does not touch it; strength does not; the `BIT_MAGICAL` barbarian ×0.5 does not |
 | fuse | `ANI_BOMB` row = 50 frames (`src/resources/gloader.cpp:151-154`), one per tick, then `effect::act` → `death()` | **50 ticks = 4.2 s**, level-independent; every detonating golden fires `SOUND_EXPLODE` (id 11) at tick 70 for a tick-20 cast |
-| blast | `packs/core/lib/effect_bomb.lua:8-19` `clamp(4L, 16, 96)`, search radius `15 + range` (`:51`) | L10 reach **55 px Manhattan** (top-left to top-left, `walker::distance_to_ob`); L≥24 saturates at 111 |
+| blast | `packs/core/lib/effect_bomb.lua:8-27` `min(4L, 96)` (no floor since #483), search radius `15 + range` | L10 reach **55 px Manhattan** (top-left to top-left, `walker::distance_to_ob`); L≥24 saturates at 111 |
 | walls / LOS | none checked (`:66-71` filters dead / other-floor / TREASURE / FX only) | blasts through walls, as in 2002 (`effect.cpp:648-706`) |
 | shove | `:75-77` `min(2 + L//15, 8)` ticks of forced walk away from the centre | 2 ticks at L10 |
 | tiers | `:79-93` | owner **¼**, `owner:is_friendly(w)` **½**, everyone else **full**; the ally tier collapses to full when the owner is dead (`:85`) |

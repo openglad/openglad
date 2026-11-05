@@ -372,7 +372,7 @@ predicates once (`src/bot_gates.h`). Three measures recur:
   diagonal and 56 px straight; a fire arrow 88 and 147; a fireball 36 and
   59; a meteor 56 and 89.
 - "The blast" of a bomb, an exploding bolt or an exploding boulder reaches
-  15 px plus 4 px per level, never under 31 nor over 111; allies in it take
+  15 px plus 4 px per level: 19 px at level 1, never over 111; allies in it take
   half the damage and the caster a quarter, so a blast rule refuses when an
   ally of the caster stands in it.
 
@@ -989,8 +989,8 @@ Rows deliberately not added:
 
 ## Not gated
 
-Nine changes apply whatever the setting, three from the work that added it (N, O
-and P) and six from the second bugs batch:
+Ten changes apply whatever the setting, three from the work that added it (N, O
+and P) and seven from the second bugs batch:
 
 - **N. A slot that is not in play says so.** `walker::special()` refuses a
   slot priced 5000 (an undeclared slot, or one New Specials hides) before it
@@ -1057,6 +1057,19 @@ and P) and six from the second bugs batch:
   writer, `screen::show_palette_id`, now paints only when the palette
   shown changes; anything else that writes the colours marks it unknown,
   and a mission's end forces the restore. This game only.
+- **A low-level blast reaches as far as in the old game (#483).** An
+  explosion hits everything within 15 px plus its range, 4 px per level of
+  its owner, capped at 96, and 16 for a magical blast. The C++
+  modernization (`dc1a2a89`) added a floor of 16 to that range, so a level
+  1 to 3 owner's blast reached 31 px where the old game's reaches 19, 23
+  and 27: a newly hired thief's bomb caught foes, allies and the thief
+  itself that the classic bomb missed. The floor is gone on both values,
+  and the bot gates' copy of the reach (`G.blast_reach`, asked by the
+  thief's bomb and mine and the archer's and barbarian's exploding casts)
+  lost it too, so a low-level thief bot bombs only a foe inside the blast
+  it really has. The old game's explosion has no floor; its copy of the
+  gates' reach, asked only with the setting on, is ported. Every golden is
+  an old-game capture made without the floor, so none moves.
 
 ## Balance
 
