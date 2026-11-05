@@ -168,7 +168,7 @@ inline constexpr std::uint8_t kOrderFX        = 4;   // Order::FX
 // Phase 01 (semantic-parity): optional tail fields. `stats_level`
 // raises walker level so cycle/fire gates accept later special slots.
 // Cycling gate: src/gameplay/sim_input_handler.cpp:352 `(control.current_special() - 1) * 3 + 1` must be <= stats()->level().
-// Firing gate: src/gameplay/living.cpp:907 `stats_->magicpoints() < og::sim::cast_cost` denies the cast when the caster is short of MP.
+// Firing gate: src/gameplay/living.cpp:914 `stats_->magicpoints() < og::sim::cast_cost` denies the cast when the caster is short of MP.
 // Zero defaults preserve byte-mirror layout; scenario_runtime applies
 // them only when non-zero.
 struct SpawnSpec
@@ -8905,7 +8905,7 @@ inline constexpr FactPredicate kFacts_mage_bot_heartburst_fixes_scen99[] = {
         "consequence: with the setting on the mage casts its specials at the three towers in reach and a roll of 5 is HEARTBURST (its explosions are the three sounds at tick 0)"),
 };
 inline constexpr Mutation kMut_mage_bot_heartburst_fixes_scen99 = {
-    "src/gameplay/living.cpp", 569,
+    "src/gameplay/living.cpp", 576,
     "(current_special() > 4 && og::sim::session_gameplay_fixes() == 0)",
     "(current_special() > 4)",
     "Folds every roll of 5 back to slot 1 again even with the setting on, so the HEARTBURST never comes (slot 1 refuses with three foes in reach): EventKindExactly(play_sound, 23) fails."
@@ -10538,7 +10538,7 @@ inline constexpr FactPredicate kFacts_soldier_bot_refused_roll_acts_scen99[] = {
         "consequence: the classic bot walks toward the player between rolls and idles on each refused roll"),
 };
 inline constexpr Mutation kMut_soldier_bot_refused_roll_acts_scen99 = {
-    "src/gameplay/living.cpp", 550,
+    "src/gameplay/living.cpp", 557,
     "rng_.next(5) ) //1 in 5 to do our special",
     "rng_.next(1) ) //1 in 5 to do our special",
     "The special coin always comes up, so every act is a refused roll and the classic bot never moves from (120,120): WalkerPositionMoved(FAMILY_SOLDIER, 152, 152) fails."
@@ -10549,7 +10549,7 @@ inline constexpr FactPredicate kFacts_soldier_bot_refused_roll_acts_fixes_scen99
         "consequence: with the setting on a refused roll takes the bot's ordinary act, so it walks further than the classic one"),
 };
 inline constexpr Mutation kMut_soldier_bot_refused_roll_acts_fixes_scen99 = {
-    "src/gameplay/living.cpp", 601,
+    "src/gameplay/living.cpp", 608,
     "if (og::sim::session_gameplay_fixes() == 0)",
     "if (true)",
     "Ends the act on every refused roll as the classic game does, so the bot idles like the classic one and stops short of (160,160): WalkerPositionMoved(FAMILY_SOLDIER, 160, 160) fails."
@@ -10581,7 +10581,7 @@ inline constexpr FactPredicate kFacts_orc_stale_shove_scen99[] = {
         "consequence: the classic stale shove draws one more rng(3) each act; on this seed the parted stream gives the orc a HOWL (one sound)"),
 };
 inline constexpr Mutation kMut_orc_stale_shove_scen99 = {
-    "src/gameplay/living.cpp", 802,
+    "src/gameplay/living.cpp", 809,
     "shove(collide_ob(), x, y);",
     "(void)0;",
     "Drops every walk shove, real and stale, so the orc never draws the shove rolls and its stream never reaches the HOWL: EventKindExactly(play_sound, 1) reads 0.",
@@ -10598,7 +10598,7 @@ inline constexpr FactPredicate kFacts_orc_stale_shove_fixes_scen99[] = {
         "consequence: the orc stays pressed against the tower at x 248; the classic orc drifts west to x 227"),
 };
 inline constexpr Mutation kMut_orc_stale_shove_fixes_scen99 = {
-    "src/gameplay/living.cpp", 793,
+    "src/gameplay/living.cpp", 800,
     "|| og::sim::step_meets(*this, x, y, *collide_ob())))",
     "|| true))",
     "Shoves collide_ob whatever the step met, as the classic walk does, so the stale shove of the tree-stopped fallback returns with its rng(3): the orc howls and drifts west, and EventKindExactly(play_sound, 0) and WalkerPositionMoved(FAMILY_ORC, 248, 128) fail."
@@ -10927,7 +10927,7 @@ inline constexpr FactPredicate kFacts_elemental_struck_short_pool_fixes_scen99[]
         "consequence: on the fixed stream the struck orc ends at 67 hp"),
 };
 inline constexpr Mutation kMut_elemental_struck_short_pool_fixes_scen99 = {
-    "src/gameplay/living.cpp", 935,
+    "src/gameplay/living.cpp", 942,
     "stats_->magicpoints() < og::sim::cast_cost(*this, static_cast<int>(current_special()), shifter_down() != 0))",
     "false)",
     "The price test never refuses, so the hit response draws rng(3) for the unpaid STARBURST again: the orc's 67 hp (WalkerHpRangeAtFinalTick) fails.",
@@ -11040,6 +11040,54 @@ inline constexpr Mutation kMut_thief_charm_tent_troop_fixes_scen99 = {
     "return og::sim::session_gameplay_fixes() != 0 && charm_left() > 0;",
     "return false;",
     "The climbs pass through the charmed skeleton to the tent as the classic ones do, so it fights the thief again: WalkerHpRangeAtFinalTick(FAMILY_THIEF, 7500, 7500) and LevelDoneEquals(2) fail."
+};
+
+// --- elf_forest_haste (fix AG, #462: the forest penalty comes off the normal step) ---
+// A level-10 player elf (no forest penalty: 4 - 10/2 is below 0; normal step 4)
+// stands in scen1's forest at the top of the map, on a level-3 speed potion
+// (team 1, so the player binds to the elf), and holds DOWN-LEFT for seven
+// ticks: the first turns it, the next six step it through the trees, and the
+// first step (4 px) eats the potion (haste 3 for 150 acts). With the setting
+// off (the classic game) each act in the trees takes the penalty off the step
+// the elf carries and the haste adds 3 to it, so the step grows act by act:
+// 4, 7, 10, 13, 16, 19, 69 px down and left, to (487, 69). With the setting
+// on (fix AG) the penalty comes off the normal step every act and the haste
+// is added once on top: 4, 7, 7, 7, 7, 7, 39 px, to (517, 39). Every step
+// stays in the trees. The walk is a diagonal, so the one position fact is
+// exact both ways: a shorter walk fails its y bound and a longer one its x
+// bound.
+inline constexpr InputEvent kInputs_elf_forest_haste[] = {
+    {  1, 0, K_DOWN_LEFT }, {  8, 0, K_NONE },   // seven ticks: one turn, six steps
+};
+inline constexpr SpawnSpec kFamilySpawns_elf_forest_haste_scen99[] = {
+    { FAMILY_SPEED_POTION, 1, kOrderTreasure, 556, 0, 0, 0, 3 },    // on the elf's spawn: eaten by its first step; level 3 -> haste 3 for 150 acts
+    { FAMILY_ELF,          0, kOrderLiving,   556, 0, 0, 0, 10 },   // the player LAST, level 10: no forest penalty; tiles (34..35, 0..1) are trees
+};
+inline constexpr FactPredicate kFacts_elf_forest_haste_scen99[] = {
+    pred::TickReached(20),
+    pred::WalkerPositionMoved(FAMILY_ELF, 487, 69,
+        "consequence: the classic haste compounds in the trees, steps 4, 7, 10, 13, 16 and 19: 69 px down and left"),
+    pred::TreasureFamilyOfOrderRemovedFromOblist(FAMILY_SPEED_POTION, kOrderTreasure),
+    pred::EventKindExactly(/*notification*/2, 1),
+};
+inline constexpr Mutation kMut_elf_forest_haste_scen99 = {
+    "src/gameplay/living.cpp", 368,
+    "(og::sim::session_gameplay_fixes() != 0 ? normal_stepsize() : stepsize())",
+    "(og::sim::session_gameplay_fixes() == 0 ? normal_stepsize() : stepsize())",
+    "With the setting off the forest step is taken off the normal step, as fix AG does, so the haste never compounds: the elf walks 39 px to (517, 39) and WalkerPositionMoved(FAMILY_ELF, 487, 69) fails on y."
+};
+inline constexpr FactPredicate kFacts_elf_forest_haste_fixes_scen99[] = {
+    pred::TickReached(20),
+    pred::WalkerPositionMoved(FAMILY_ELF, 517, 39,
+        "consequence: with the setting on the forest step is the normal step plus the haste every act, steps 4 and five of 7: 39 px down and left"),
+    pred::TreasureFamilyOfOrderRemovedFromOblist(FAMILY_SPEED_POTION, kOrderTreasure),
+    pred::EventKindExactly(/*notification*/2, 1),
+};
+inline constexpr Mutation kMut_elf_forest_haste_fixes_scen99 = {
+    "src/gameplay/living.cpp", 368,
+    "(og::sim::session_gameplay_fixes() != 0 ? normal_stepsize() : stepsize())",
+    "(og::sim::session_gameplay_fixes() == 0 ? normal_stepsize() : stepsize())",
+    "With the setting on the forest step is taken off the carried step again, as the classic game does, so the haste compounds: the elf walks 69 px to (487, 69) and WalkerPositionMoved(FAMILY_ELF, 517, 39) fails on x."
 };
 
 inline constexpr ScenarioSpec kScenarios[] = {
@@ -13951,6 +13999,20 @@ inline constexpr ScenarioSpec kScenarios[] = {
       0, false, true, Exercises::None,
       kFacts_thief_charm_tent_troop_fixes_scen99, std::size(kFacts_thief_charm_tent_troop_fixes_scen99),
       kMut_thief_charm_tent_troop_fixes_scen99, {}, 1, nullptr, 0, 1 },
+    { "elf_forest_haste_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputs_elf_forest_haste, std::size(kInputs_elf_forest_haste), 20,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_elf_forest_haste_scen99, std::size(kFamilySpawns_elf_forest_haste_scen99),
+      0, false, true, Exercises::None,
+      kFacts_elf_forest_haste_scen99, std::size(kFacts_elf_forest_haste_scen99),
+      kMut_elf_forest_haste_scen99 },
+    { "elf_forest_haste_fixes_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputs_elf_forest_haste, std::size(kInputs_elf_forest_haste), 20,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_elf_forest_haste_scen99, std::size(kFamilySpawns_elf_forest_haste_scen99),
+      0, false, true, Exercises::None,
+      kFacts_elf_forest_haste_fixes_scen99, std::size(kFacts_elf_forest_haste_fixes_scen99),
+      kMut_elf_forest_haste_fixes_scen99, {}, 1, nullptr, 0, 1 },
 };
 
 inline constexpr std::size_t kScenarioCount = std::size(kScenarios);

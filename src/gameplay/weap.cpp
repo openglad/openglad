@@ -86,18 +86,18 @@ bool weap::act()
 
 	//  Log("weap %d is ani %d\n", family, ani_type);
 
-		// Legacy TREES arm kept byte-for-byte (including its pixel-coords-as-
-		// grid-coords quirk); the decor arm (concealing SHRUB, walker's own
-		// floor) uses the actual cell and is gated on plane validity, so
-		// no-decor levels behave identically. Combined with || so a cell that
-		// is both trees and shrub still decays lineofsight once per tick.
-		// rule: A projectile flying through trees or concealing shrub loses one tick of range per
-		//   tick (never below 0). The tree test keeps the classic quirk of passing pixel
-		//   coordinates as grid coordinates.
+		// Legacy TREES arm, on the weapon's own floor, kept byte-for-byte
+		// (including its pixel-coords-as-grid-coords quirk); the decor arm
+		// (concealing SHRUB) reads the actual cell, gated on plane validity.
+		// Combined with || so trees and shrub on one cell decay once a tick.
+		// rule: A projectile flying through trees or concealing shrub on its own floor loses one
+		//   tick of range per tick (never below 0). The tree test keeps the classic quirk of
+		//   passing pixel coordinates as grid coordinates.
 		// tests: WeapBehavior.weap_act_clears_dead_refs_and_defaults_owner_and_tree_lineofsight
 		// tests: Decor.shrub_conceals_for_living_and_weapon_but_bones_does_not
 		// tests: Weap.a_shot_over_trees_spends_range_but_never_below_zero
-		if (current_game->world->mysmoother.query_genre_x_y(xpos(), ypos()) == TYPE_TREES
+		// tests: Weap.a_shot_upstairs_spends_range_only_over_its_own_floors_trees
+		if (current_game->world->smoother_for_floor(floor()).query_genre_x_y(xpos(), ypos()) == TYPE_TREES
 		    || current_game->world->decor_conceals_at(floor(), xpos() / GRID_SIZE, ypos() / GRID_SIZE))
 			// rule: A projectile flying through trees or concealing shrub loses one tick of range
 			//   per tick (never below 0).

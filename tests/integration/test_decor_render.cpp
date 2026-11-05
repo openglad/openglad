@@ -20,6 +20,7 @@
 #include <openglad/interface/level_visuals.h>
 #include <openglad/interface/render/radar.h>
 #include <openglad/interface/render/view.h>
+#include <openglad/interface/render/walker_draw.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/game_context.h>
 #include <openglad/resources/gparser.h>
@@ -572,6 +573,107 @@ TEST_F(DecorRender, shrub_conceals_forestwalk_walker_sprite)
         << "concealed walker may contribute only the flat outline halo "
         << "(plus rare dither survivors), got " << distinct_colors(hidden_px)
         << " colors over " << hidden_px.size() << " pixels";
+
+    restore_world(vs);
+}
+
+// #459: the draw suppression of a forestwalker in the trees (walker_draw.cpp,
+// kept in lockstep with living.cpp's forest pace) reads the trees of the
+// walker's own floor. With the camera on floor 1, a forestwalker upstairs
+// over floor 0's trees draws exactly as it does over floor 0 grass, in both
+// draw paths (the view's draw_walker and the editor's draw_walker_tile); in
+// floor 1's own trees it draws concealed, leaving only the flat outline halo.
+// Before the fix both paths read floor 0's trees whatever the floor.
+TEST_F(DecorRender, an_upstairs_forestwalker_is_hidden_only_by_its_own_floors_trees)
+{
+    viewscreen* vs = view0();
+    ASSERT_NE(nullptr, vs);
+    prepare_world();
+    EffectsOffGuard effects_off;
+    GameWorld& world = scr()->world();
+    fill_base(world, PIX_GRASS1);
+    world.set_floor_count(2);
+    fill_floor_grid(world, 1, PIX_GRASS1);
+
+    walker* anchor = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, anchor);
+    anchor->set_floor(1);
+    anchor->setxy(160, 120);
+    vs->control = anchor;  // the camera on floor 1
+
+    walker* elf = world.add_ob(Order::Living, FAMILY_ELF);
+    ASSERT_NE(nullptr, elf);
+    elf->stats()->set_bit_flags(BIT_FORESTWALK, 1);
+    elf->set_floor(1);
+    const short elf_x = 160 + 3 * GRID_SIZE, elf_y = 120;
+    const short away_x = 160 - 4 * GRID_SIZE,
+                away_y = static_cast<short>(120 + 4 * GRID_SIZE);
+    elf->setxy(elf_x, elf_y);
+
+    ASSERT_TRUE(do_redraw_data(vs)); // settle camera
+    const int gx = elf_x / GRID_SIZE;
+    const int gy = elf_y / GRID_SIZE;
+    int sx = 0, sy = 0;
+    cell_origin(vs, gx, gy, sx, sy);
+    const int probe_w = GRID_SIZE * 2, probe_h = GRID_SIZE * 2;
+
+    auto paint = [&](int f, unsigned char tile) {
+        for (int dy = 0; dy <= 1; dy++)
+            for (int dx = 0; dx <= 1; dx++)
+                set_base(world, f, gx + dx, gy + dy, tile);
+    };
+    // The view's frame with the elf in place, and with it away.
+    auto view_frame = [&](bool with_elf) {
+        elf->setxy(with_elf ? elf_x : away_x, with_elf ? elf_y : away_y);
+        EXPECT_TRUE(do_redraw_data(vs));
+        return grab_rect(sx, sy, probe_w, probe_h);
+    };
+    // The editor's tile blit of the elf, over the view's frame without it.
+    auto tile_frame = [&]() {
+        elf->setxy(away_x, away_y);
+        EXPECT_TRUE(do_redraw_data(vs));
+        elf->setxy(elf_x, elf_y);
+        EXPECT_TRUE(draw_walker_tile(*elf, vs));
+        return grab_rect(sx, sy, probe_w, probe_h);
+    };
+
+    const std::vector<RGB> plain_view = view_frame(true);
+    const std::vector<RGB> plain_empty = view_frame(false);
+    const std::vector<RGB> plain_tile = tile_frame();
+    ASSERT_GT(count_diff(plain_view, plain_empty), 0) << "the elf draws on floor 1's grass";
+    ASSERT_GT(count_diff(plain_tile, plain_empty), 0) << "the tile blit draws the elf on floor 1's grass";
+
+    paint(0, PIX_TREE_M1);  // floor 0's trees under the elf; floor 1 still grass
+    EXPECT_EQ(0, count_diff(view_frame(true), plain_view))
+        << "draw_walker: floor 0's trees do not hide an elf on floor 1";
+    EXPECT_EQ(0, count_diff(tile_frame(), plain_tile))
+        << "draw_walker_tile: floor 0's trees do not hide an elf on floor 1";
+    paint(0, PIX_GRASS1);
+
+    paint(1, PIX_TREE_M1);  // floor 1's own trees under the elf
+    const std::vector<RGB> trees_empty = view_frame(false);
+    const std::vector<RGB> trees_view = view_frame(true);
+    const std::vector<RGB> trees_tile = tile_frame();
+    auto distinct_changed = [](const std::vector<RGB>& scene, const std::vector<RGB>& backdrop) {
+        std::vector<RGB> u;
+        for (std::size_t i = 0; i < scene.size(); i++)
+        {
+            if (same(scene[i], backdrop[i]))
+                continue;
+            bool found = false;
+            for (const RGB& d : u)
+                if (same(scene[i], d))
+                    found = true;
+            if (!found)
+                u.push_back(scene[i]);
+        }
+        return static_cast<int>(u.size());
+    };
+    EXPECT_GE(distinct_changed(plain_view, plain_empty), 3) << "visible elf: real shading";
+    EXPECT_LE(distinct_changed(trees_view, trees_empty), 2)
+        << "draw_walker: in floor 1's own trees only the outline halo is left";
+    EXPECT_LE(distinct_changed(trees_tile, trees_empty), 2)
+        << "draw_walker_tile: in floor 1's own trees only the outline halo is left";
 
     restore_world(vs);
 }

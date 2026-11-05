@@ -60,27 +60,27 @@ living::~living()
 
 bool living::act()
 {
-	// Cap bonus_rounds to prevent stack overflow from unbounded recursion.
-	// The original code recursed for each bonus round, which could exhaust
-	// the stack with large values (e.g., mage freeze-time on many allies).
-	// rule: A walker never banks more than 50 extra act rounds: any surplus is discarded at the
-	//   start of its act, not carried over.
-	// tests: LivingUnit.act_runs_at_most_fifty_bonus_rounds_per_call
-	if (bonus_rounds() > 50)
-		set_bonus_rounds(50);
 	// we get extra rounds to act this cycle
 	// rule: A living walker with banked bonus rounds (granted by an enemy-team mage's FREEZE TIME
-	//   to its allies) takes one full extra act per banked round, all in the same tick; every
-	//   per-tick timer (invulnerability, invisibility, flight, charm, speed bonus, rests, lunge)
-	//   therefore also runs down once per round. A dead walker takes none.
-	// tests: LivingUnit.act_runs_at_most_fifty_bonus_rounds_per_call
+	//   to its allies) takes one full extra act per banked round, all in the same tick and with no
+	//   cap (the old game recursed; this game loops), so every per-tick timer (invulnerability,
+	//   invisibility, flight, charm, speed bonus, rests, lunge) runs down once per round. Rounds
+	//   banked during those acts wait for the next tick; a dead walker takes none and keeps its bank.
+	// tests: LivingUnit.act_spends_every_banked_bonus_round_in_one_call
 	// tests: LivingCombat.living_act_bonus_rounds_and_dead_gate
 	// tests: SemLiving.classic_banked_rounds_run_every_timer_once_per_round_and_no_rounds_or_dead_act_once
-	if (bonus_rounds() > 0 && !dead())
-	{
-		set_bonus_rounds(static_cast<short>(bonus_rounds() - 1));
-		act();
-	}
+	// tests: SemLiving.banked_rounds_past_fifty_all_run_in_one_tick
+	// tests: SemLiving.a_walker_with_rounds_still_banked_does_not_regenerate
+	const short extra = (bonus_rounds() > 0 && !dead()) ? bonus_rounds() : short{0};
+	if (extra > 0)
+		set_bonus_rounds(0);
+	for (short i = 0; i < extra; ++i)
+		act_round();
+	return act_round();
+}
+
+bool living::act_round()
+{
 	// rule: A dead walker does nothing in its act; a walker that dies falling down a pit
 	//   (apply_z_motion) stops acting that same tick.
 	// tests: LivingCombat.living_act_bonus_rounds_and_dead_gate
@@ -315,22 +315,22 @@ bool living::act()
 		}
 	}
 	og::sim::possession_host_tick(*current_game->world, *this); // New Specials: a possessed host carries its rider and its countdown
-	// rule: A forestwalker (elf, druid...) that has any corner of its box in trees or in concealing
-	//   decor (a SHRUB) moves at a forest pace; out of the trees its step is reset to its normal
-	//   stepsize every act.
+	// rule: A forestwalker (the elf, or a pack class with FORESTWALK) that has any corner of its
+	//   box in trees or in concealing decor (a SHRUB) on its own floor moves at a forest pace; out
+	//   of the trees its step is reset to its normal stepsize every act.
 	// tests: Decor.shrub_conceals_for_living_and_weapon_but_bones_does_not
 	// tests: LivingUnit.speed_bonus_counts_down_to_zero_and_rides_every_tick
+	// tests: SemAi2.a_forestwalker_upstairs_is_slowed_only_by_its_own_floors_trees
 	if ( stats_->query_bit_flags(BIT_FORESTWALK) &&
 	        (
-	            current_game->world->mysmoother.query_genre_x_y(xpos() / GRID_SIZE, ypos() / GRID_SIZE) == TYPE_TREES
-	            || current_game->world->mysmoother.query_genre_x_y((xpos() + sizex()) / GRID_SIZE, ypos() / GRID_SIZE) == TYPE_TREES
-	            || current_game->world->mysmoother.query_genre_x_y((xpos() + sizex()) / GRID_SIZE, (ypos() + sizey()) / GRID_SIZE) == TYPE_TREES
-	            || current_game->world->mysmoother.query_genre_x_y(xpos() / GRID_SIZE, (ypos() + sizey()) / GRID_SIZE) == TYPE_TREES
-	            // Concealing decor (SHRUB): same four corner probes, on the
-	            // walker's own floor (identical to floor 0 on single-floor
-	            // levels). Gated on plane validity — no-decor levels take the
-	            // legacy condition byte-identically, and no MIGRATED decor
-	            // conceals, so stock behavior is unchanged.
+	            current_game->world->smoother_for_floor(floor()).query_genre_x_y(xpos() / GRID_SIZE, ypos() / GRID_SIZE) == TYPE_TREES
+	            || current_game->world->smoother_for_floor(floor()).query_genre_x_y((xpos() + sizex()) / GRID_SIZE, ypos() / GRID_SIZE) == TYPE_TREES
+	            || current_game->world->smoother_for_floor(floor()).query_genre_x_y((xpos() + sizex()) / GRID_SIZE, (ypos() + sizey()) / GRID_SIZE) == TYPE_TREES
+	            || current_game->world->smoother_for_floor(floor()).query_genre_x_y(xpos() / GRID_SIZE, (ypos() + sizey()) / GRID_SIZE) == TYPE_TREES
+	            // Concealing decor (SHRUB): the same four corners, on the same
+	            // floor. Gated on plane validity: a no-decor level takes the tree
+	            // test alone, byte-identically, and no MIGRATED decor conceals,
+	            // so stock behavior is unchanged.
 	            || current_game->world->decor_conceals_at(floor(), xpos() / GRID_SIZE, ypos() / GRID_SIZE)
 	            || current_game->world->decor_conceals_at(floor(), (xpos() + sizex()) / GRID_SIZE, ypos() / GRID_SIZE)
 	            || current_game->world->decor_conceals_at(floor(), (xpos() + sizex()) / GRID_SIZE, (ypos() + sizey()) / GRID_SIZE)
@@ -351,14 +351,21 @@ bool living::act()
 		float temp;
 		// rule: In the forest a forestwalker's step shrinks by 4 - dexterity/10 (a player
 		//   character) or 4 - level/2 (an NPC), never by a negative amount and never below 1 px.
+		//   Classic shrinks the step it carries: a haste compounds every act, and without one the
+		//   step crawls to 1 px. Gameplay Fixes AG shrinks the normal step, every act.
 		// tests: SemAi2.a_forestwalker_in_the_trees_steps_shorter_by_its_dexterity_or_level
+		// tests: SemAi2.a_forestwalker_in_the_trees_keeps_its_forest_step_with_the_setting_on
+		// tests: SemAi2.a_forestwalker_in_the_trees_slows_to_one_pixel_with_the_setting_off
+		// tests: SemAi2.a_hastened_forestwalker_in_the_trees_steps_its_forest_step_plus_the_haste_with_the_setting_on
+		// tests: SemAi2.a_hastened_forestwalker_in_the_trees_compounds_its_step_with_the_setting_off
+		// tests: parity:elf_forest_haste_scen99, parity:elf_forest_haste_fixes_scen99
 		if (myguy)
 			temp = (4 - myguy->dexterity/10.0f);
 		else
 			temp = (4.0f - static_cast<float>(stats_->level())/2.0f);
 		if (temp < 0)
 			temp = 0;
-		float next_stepsize = stepsize() - temp;
+		float next_stepsize = (og::sim::session_gameplay_fixes() != 0 ? normal_stepsize() : stepsize()) - temp;
 		if (next_stepsize < 1.0f)
 			next_stepsize = 1.0f;
 		set_stepsize(next_stepsize);

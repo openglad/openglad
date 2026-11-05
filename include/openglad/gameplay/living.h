@@ -45,4 +45,6 @@ class living : public walker
 		bool walk(float x, float y) override;
 	protected:
 		bool act_random() override;
+	private:
+		bool act_round(); // one act; act() runs one per banked bonus round, then its own
 };

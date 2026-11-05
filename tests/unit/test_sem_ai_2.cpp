@@ -218,6 +218,32 @@ protected:
         w->set_curdir(static_cast<signed char>(dir));
         w->set_enddir(static_cast<char>(dir));
     }
+
+    // A fresh world with the Gameplay Fixes setting at `fixes` and one
+    // forestwalker in it, seated (ACT_CONTROL, so its act is the per-act
+    // clocks and nothing else) and in the trees at tile (10, 10), on its
+    // normal 4 px step with no haste. A dexterity below 0 makes an NPC (the
+    // level decides its penalty); any other makes a hero with that dexterity.
+    living* forestwalker_in_the_trees(short fixes, short level, short dexterity)
+    {
+        fresh_world(fixes);
+        tile(10, 10, PIX_TREE_B1);  // GRID_SIZE 16: the walker's own cell
+        living* elf = living_at(FAMILY_SOLDIER, 0, 165, 165);
+        if (elf == nullptr)
+            return nullptr;
+        elf->stats()->set_bit_flags(BIT_FORESTWALK, 1);
+        elf->set_act_type(ACT_CONTROL);
+        elf->stats()->set_level(level);
+        if (dexterity >= 0) {
+            elf->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+            elf->myguy->dexterity = dexterity;
+        }
+        elf->set_normal_stepsize(4.0f);
+        elf->set_stepsize(4.0f);
+        elf->set_speed_bonus(0.0f);
+        elf->set_speed_bonus_left(0);
+        return elf;
+    }
 };
 
 }  // namespace
@@ -226,11 +252,12 @@ protected:
 // living::act: the per-act clocks
 // ---------------------------------------------------------------------------
 
-// living.cpp:243. In the trees a forestwalker's step shrinks, from its normal
+// living.cpp:352. In the trees a forestwalker's step shrinks, from its normal
 // step, by 4 - dexterity/10 (a player character) or 4 - level/2 (an NPC),
 // never by a negative amount and never below 1 px. Each case is ONE act from
-// the normal step (the carried value compounds over later acts: #462, not
-// pinned here). Old game (7ff1654a living.cpp:230-246): the same arithmetic.
+// the normal step, where both values of the Gameplay Fixes setting agree;
+// over later acts they part (fix AG, #462: the four tests below). Old game
+// (7ff1654a living.cpp:230-246): the same arithmetic.
 TEST_F(SemAi2, a_forestwalker_in_the_trees_steps_shorter_by_its_dexterity_or_level)
 {
     struct Case
@@ -284,6 +311,221 @@ TEST_F(SemAi2, a_forestwalker_in_the_trees_steps_shorter_by_its_dexterity_or_lev
     elf->set_stepsize(1.0f);
     (void)elf->act();
     EXPECT_FLOAT_EQ(4.0f, elf->stepsize()) << "on grass: the normal step";
+}
+
+// living.cpp:318 (#459). The forest pace reads the trees of the walker's own
+// floor, as the SHRUB half of the same test already did. On a two-floor map
+// a forestwalker upstairs walks at its normal step, and pays no point of
+// magic, over floor 0's trees, and slows in floor 1's own trees. Before the
+// fix the tree test read floor 0 whatever the walker's floor. The control: a
+// forestwalker on floor 0 slows over floor 0's trees.
+TEST_F(SemAi2, a_forestwalker_upstairs_is_slowed_only_by_its_own_floors_trees)
+{
+    auto two_floor_world = [&]() {
+        fresh_world();
+        tile(10, 10, PIX_TREE_B1);  // floor 0: trees under (165, 165)
+        GameWorld& w = world();
+        w.set_floor_count(2);
+        const std::size_t cells = static_cast<std::size_t>(w.grid.w) * w.grid.h;
+        auto* buf = new unsigned char[cells];
+        std::fill(buf, buf + cells, static_cast<unsigned char>(PIX_GRASS1));
+        buf[static_cast<std::size_t>(20 + w.grid.w * 20)] = PIX_TREE_B1;  // floor 1: trees under (325, 325)
+        w.grid_for_floor(1) = PixieData(1, w.grid.w, w.grid.h, buf);
+        w.smoother_for_floor(1).set_target(w.grid_for_floor(1));
+    };
+    // A level-4 NPC forestwalker (penalty 2) on its 4 px step with 10 MP.
+    auto forestwalker = [&](short floor, short x, short y) {
+        living* elf = living_at(FAMILY_SOLDIER, 0, x, y);
+        if (elf == nullptr)
+            return elf;
+        elf->change_floor(floor);
+        elf->stats()->set_bit_flags(BIT_FORESTWALK, 1);
+        elf->set_act_type(ACT_CONTROL);
+        elf->set_normal_stepsize(4.0f);
+        elf->set_stepsize(4.0f);
+        elf->set_speed_bonus_left(0);
+        elf->stats()->set_max_magicpoints(10.0f);
+        elf->stats()->set_magicpoints(10.0f);
+        elf->stats()->set_current_magic_delay(0);
+        elf->stats()->set_max_magic_delay(1000);
+        return elf;
+    };
+
+    two_floor_world();
+    living* over = forestwalker(1, 165, 165);
+    ASSERT_NE(nullptr, over);
+    ASSERT_EQ(1, static_cast<int>(over->floor()));
+    (void)over->act();
+    EXPECT_FLOAT_EQ(4.0f, over->stepsize()) << "floor 1 over floor 0's trees: the normal step";
+    EXPECT_FLOAT_EQ(10.0f, over->stats()->magicpoints()) << "floor 1 over floor 0's trees: no forest charge";
+
+    two_floor_world();
+    living* in = forestwalker(1, 325, 325);
+    ASSERT_NE(nullptr, in);
+    ASSERT_EQ(1, static_cast<int>(in->floor()));
+    (void)in->act();
+    EXPECT_FLOAT_EQ(2.0f, in->stepsize()) << "floor 1 in its own trees: 4 - 2";
+    EXPECT_FLOAT_EQ(9.0f, in->stats()->magicpoints()) << "floor 1 in its own trees: one point of magic";
+
+    two_floor_world();
+    living* ground = forestwalker(0, 165, 165);
+    ASSERT_NE(nullptr, ground);
+    ASSERT_EQ(0, static_cast<int>(ground->floor()));
+    (void)ground->act();
+    EXPECT_FLOAT_EQ(2.0f, ground->stepsize()) << "floor 0 in its own trees: 4 - 2";
+    EXPECT_FLOAT_EQ(9.0f, ground->stats()->magicpoints()) << "floor 0 in its own trees: one point of magic";
+}
+
+// living.cpp:352 (fix AG, #462). With the Gameplay Fixes setting on, every
+// act in the trees takes the forest penalty off the forestwalker's NORMAL
+// step, so its step stays at normal - penalty (never below 1 px) for as long
+// as it stays in the trees: a dex-30 hero walks 3 px, not the classic crawl.
+TEST_F(SemAi2, a_forestwalker_in_the_trees_keeps_its_forest_step_with_the_setting_on)
+{
+    struct Case
+    {
+        const char* name;
+        short level;
+        short dexterity;  // below 0: an NPC
+        float want;
+    };
+    const Case cases[] = {
+        {"NPC level 4: 4 - 2 = 2", 4, -1, 2.0f},
+        {"NPC level 1: 4 - 3.5 = 0.5, floored at 1", 1, -1, 1.0f},
+        {"NPC level 10: nothing off", 10, -1, 4.0f},
+        {"hero dex 20: 4 - 2 = 2", 4, 20, 2.0f},
+        {"hero dex 30: 4 - 1 = 3", 4, 30, 3.0f},
+    };
+    for (const Case& c : cases) {
+        SCOPED_TRACE(c.name);
+        living* elf = forestwalker_in_the_trees(1, c.level, c.dexterity);
+        ASSERT_NE(nullptr, elf);
+        for (int act = 1; act <= 10; ++act) {
+            (void)elf->act();
+            EXPECT_FLOAT_EQ(c.want, elf->stepsize()) << "after act " << act;
+        }
+    }
+}
+
+// living.cpp:352 (fix AG, #462). With the setting off (the classic game, and
+// the old game's src/living.cpp `stepsize -= temp`), every act in the trees
+// takes the penalty off the step the walker already carries, so a
+// forestwalker with any penalty slows act by act to 1 px and stays there.
+TEST_F(SemAi2, a_forestwalker_in_the_trees_slows_to_one_pixel_with_the_setting_off)
+{
+    struct Case
+    {
+        const char* name;
+        short level;
+        short dexterity;  // below 0: an NPC
+        float want[4];    // after acts 1 to 4
+    };
+    const Case cases[] = {
+        {"NPC level 4: 2 off each act", 4, -1, {2.0f, 1.0f, 1.0f, 1.0f}},
+        {"hero dex 30: 1 off each act", 4, 30, {3.0f, 2.0f, 1.0f, 1.0f}},
+        {"NPC level 10: no penalty, no change", 10, -1, {4.0f, 4.0f, 4.0f, 4.0f}},
+    };
+    for (const Case& c : cases) {
+        SCOPED_TRACE(c.name);
+        living* elf = forestwalker_in_the_trees(0, c.level, c.dexterity);
+        ASSERT_NE(nullptr, elf);
+        for (int act = 1; act <= 4; ++act) {
+            (void)elf->act();
+            EXPECT_FLOAT_EQ(c.want[act - 1], elf->stepsize()) << "after act " << act;
+        }
+    }
+}
+
+// living.cpp:352/377 (fix AG, #462). With the setting on, a hastened
+// forestwalker in the trees steps normal - penalty + haste every act the
+// haste lasts, then normal - penalty: the haste is added once, on top of the
+// forest step, and never compounds. Entering the trees on a hastened step
+// (normal + haste, as an act on grass leaves it) changes nothing.
+TEST_F(SemAi2, a_hastened_forestwalker_in_the_trees_steps_its_forest_step_plus_the_haste_with_the_setting_on)
+{
+    {
+        SCOPED_TRACE("level 10 (no penalty), haste 2 for 100 acts");
+        living* elf = forestwalker_in_the_trees(1, 10, -1);
+        ASSERT_NE(nullptr, elf);
+        elf->set_speed_bonus(2.0f);
+        elf->set_speed_bonus_left(100);
+        for (int act = 1; act <= 100; ++act) {
+            (void)elf->act();
+            ASSERT_FLOAT_EQ(6.0f, elf->stepsize()) << "after act " << act;
+        }
+        ASSERT_EQ(0, elf->speed_bonus_left());
+        (void)elf->act();
+        EXPECT_FLOAT_EQ(4.0f, elf->stepsize()) << "the haste spent: the normal step";
+    }
+    {
+        SCOPED_TRACE("level 6 (1 off), haste 2 for 100 acts");
+        living* elf = forestwalker_in_the_trees(1, 6, -1);
+        ASSERT_NE(nullptr, elf);
+        elf->set_speed_bonus(2.0f);
+        elf->set_speed_bonus_left(100);
+        for (int act = 1; act <= 100; ++act) {
+            (void)elf->act();
+            ASSERT_FLOAT_EQ(5.0f, elf->stepsize()) << "after act " << act;
+        }
+        (void)elf->act();
+        EXPECT_FLOAT_EQ(3.0f, elf->stepsize()) << "the haste spent: 4 - 1";
+    }
+    {
+        SCOPED_TRACE("level 10, entering the trees on a hastened 6 px step");
+        living* elf = forestwalker_in_the_trees(1, 10, -1);
+        ASSERT_NE(nullptr, elf);
+        elf->set_stepsize(6.0f);
+        elf->set_speed_bonus(2.0f);
+        elf->set_speed_bonus_left(10);
+        (void)elf->act();
+        EXPECT_FLOAT_EQ(6.0f, elf->stepsize()) << "4 + 2, not the carried 6 + 2";
+    }
+}
+
+// living.cpp:352/377 (fix AG, #462). With the setting off (the classic game;
+// #462's repro), the haste is added to the step the walker carries, so in the
+// trees the step grows by (haste - penalty) every act the haste lasts and
+// keeps its size until the walker leaves the trees: a level-10 NPC elf (no
+// penalty) with a 2 px haste for 100 acts steps 204 px. A smaller penalty
+// grows it while the haste lasts and then crawls it back to 1 px.
+TEST_F(SemAi2, a_hastened_forestwalker_in_the_trees_compounds_its_step_with_the_setting_off)
+{
+    {
+        SCOPED_TRACE("level 10 (no penalty), haste 2 for 100 acts");
+        living* elf = forestwalker_in_the_trees(0, 10, -1);
+        ASSERT_NE(nullptr, elf);
+        elf->set_speed_bonus(2.0f);
+        elf->set_speed_bonus_left(100);
+        for (int act = 1; act <= 100; ++act) {
+            (void)elf->act();
+            ASSERT_FLOAT_EQ(static_cast<float>(4 + 2 * act), elf->stepsize()) << "after act " << act;
+        }
+        EXPECT_FLOAT_EQ(204.0f, elf->stepsize());
+        for (int act = 1; act <= 10; ++act) {
+            (void)elf->act();
+            ASSERT_FLOAT_EQ(204.0f, elf->stepsize()) << "haste spent, still in the trees: act " << act;
+        }
+        elf->setxy(400, 400);  // out of the trees, onto grass
+        (void)elf->act();
+        EXPECT_FLOAT_EQ(4.0f, elf->stepsize()) << "on grass: the normal step";
+    }
+    {
+        SCOPED_TRACE("level 6 (1 off), haste 2 for 10 acts");
+        living* elf = forestwalker_in_the_trees(0, 6, -1);
+        ASSERT_NE(nullptr, elf);
+        elf->set_speed_bonus(2.0f);
+        elf->set_speed_bonus_left(10);
+        for (int act = 1; act <= 10; ++act) {
+            (void)elf->act();
+            ASSERT_FLOAT_EQ(static_cast<float>(4 + act), elf->stepsize()) << "after act " << act;
+        }
+        for (int act = 1; act <= 13; ++act) {
+            (void)elf->act();
+            ASSERT_FLOAT_EQ(static_cast<float>(14 - act), elf->stepsize()) << "haste spent: act " << act;
+        }
+        (void)elf->act();
+        EXPECT_FLOAT_EQ(1.0f, elf->stepsize()) << "floored at 1 px";
+    }
 }
 
 // living.cpp:264. A special's rest counts down one per act and stays at 0.
