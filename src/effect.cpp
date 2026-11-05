@@ -384,7 +384,24 @@ short effect::act()
 			
 			// Are we performing some action?
 			if (stats->has_commands())
+			{
+				// port of the current game's f16c6274 (Gameplay Fixes AM, #486): with the setting, a wedged cloud (its step moved nothing and kept its facing) drops the stuck walk and draws a fresh one
+				const int held_x = xpos;
+				const int held_y = ypos;
+				const signed char held_dir = curdir;
 				temp = stats->do_command();
+				if (myscreen->gameplay_fixes && xpos == held_x && ypos == held_y && curdir == held_dir)
+				{
+					stats->clear_command();
+					xd = yd = 0;
+					while (xd == 0 && yd == 0)
+					{
+						xd = (Sint32) random(3)-1;
+						yd = (Sint32) random(3)-1;
+					}
+					stats->add_command(COMMAND_WALK, (short) random(20), (short) xd, (short) yd);
+				}
+			}
 			else
 			{
 				xd = yd = 0;
