@@ -358,6 +358,15 @@ GO / SET LEVEL / SET CAMPAIGN.
   (`capture_presented_frame` / `verify_captured_frames`) freezes a settled
   frame, records on the injector thread, asserts on the main thread, and
   writes a PPM only when the caller hands it an output directory.
+- An acknowledged press is not a published screen. The dispatch's trace
+  fires inside the press's own frame, and `click_and_acknowledge_trace`
+  returns from the NEXT frame's top pump, which runs before that frame's
+  locked row-state and rewire pass: a label read straight after it can
+  still be the old window's (#489, the MORE ARENAS pager in
+  `test_match_setup_ui.cpp`). Before reading rows, wait for a row only the
+  new state shows with `wait_for_interactable_within_frames(id, n)`, or
+  settle with `wait_for_menu_frames(1)`. Wait on visibility, never on the
+  face you expect, so a wrong face is still read and reported by value.
 - `popup_dialog` under TESTING is trace-only — assert via
   `trace_contains("popup", ...)`, nothing to dismiss.
 - Flow tests overwrite `save/save0.gtl`; write your own save first and restore
