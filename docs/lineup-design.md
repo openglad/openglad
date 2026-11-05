@@ -960,9 +960,10 @@ inert until a pack uses them.
   on a world that may already be mid-stage (the strip/fill order is its own),
   and `level_hook_kinds_for` reads a level's OWN registrations only, so the
   `-1` wildcard does NOT move the shipped-registration matrix in
-  `test_modes_levels.cpp`. (Since #467 the match recap reads the dispatch
-  view instead, `level_hook_kinds_dispatched_for`, which folds the wildcard
-  in the way the dispatchers do; the matrix still reads the own-only seam.)
+  `test_modes_levels.cpp`. (Since #467 the match recap also asks the same
+  seam for level `-1`, the wildcard's own id, and reads the union with the
+  level's own mask, which is exactly what the dispatchers run; the matrix
+  still reads the own-only answer.)
 
 ## As built: the W6-A layer — the lib move and the classic semantics (2026-08-27)
 
