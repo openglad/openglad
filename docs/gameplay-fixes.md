@@ -975,8 +975,8 @@ Rows deliberately not added:
 
 ## Not gated
 
-Ten changes apply whatever the setting, three from the work that added it (N, O
-and P) and seven from the second bugs batch:
+Fourteen changes apply whatever the setting, three from the work that added it
+(N, O and P) and eleven from the second bugs batch:
 
 - **N. A slot that is not in play says so.** `walker::special()` refuses a
   slot priced 5000 (an undeclared slot, or one New Specials hides) before it
@@ -1043,6 +1043,38 @@ and P) and seven from the second bugs batch:
   writer, `screen::show_palette_id`, now paints only when the palette
   shown changes; anything else that writes the colours marks it unknown,
   and a mission's end forces the restore. This game only.
+- **A player's wall slide keeps the old game's pace (#470).** A player
+  walking diagonally into a wall slides along it, one pixel up or down and
+  one sideways per round, and the old game runs a round for every started
+  unit of the step size (its int counter is compared with the float step
+  size). This game had made the step size a whole number first, so a hired
+  hero, whose step size gains its dexterity / 54, slid up to a pixel less
+  per step: about a third slower at a step size of 2.2. It now runs the
+  old game's rounds. A whole-number step size slides as before, and so does
+  every parity row.
+- **A random TELEPORT lands wherever a cell is clear (#471).** With no
+  usable marker the blink draws random cells until one is clear, as the
+  old game does. This game stopped after 200 draws and never tested the
+  200th, so on a level where clear cells are rare (1 %) about one cast in
+  seven left the mage where it was, the cast paid. It now tests every draw
+  and gives up only after 64 draws per cell per floor, which a level with
+  any clear cell practically never reaches; on a level with no clear cell
+  at all, where the old game never stops drawing, the caster stays put.
+- **A level a seat plays never times out (#466).** Every level used to end
+  itself after 36000 ticks, about 49 minutes at the default speed, as a
+  retreat: "Mission timed out. Retreating.", no next level, the level's
+  progress lost. The old game has no limit. Now only a level nobody plays
+  times out that way: a spectator room, a 0-player autoplay, a server room
+  every player has left (no connected client holds a seat and no dropped
+  player is still in its grace window). The lobby's match time limit stays
+  below that net. A level a seat plays runs as long as it is played.
+- **A corpse is reached on its own floor (#456).** On a level with stacked
+  floors the corpse finder answered the nearest stain on any floor: an orc
+  or an orc captain on a balcony ate the corpse below, a cleric with the
+  setting off raised it, and a nearer stain on another floor hid the one at
+  the caster's feet. It now answers only a stain on the finder's floor, as
+  the stain walk of fix T already did, on both settings. The old game has
+  no floors.
 - **An allied NPC's shots follow its body on Easy and Hard (#473).** A
   placed team-0 NPC with no player character (the SAVE_ALL Bearer, an
   allied war-host, a team-0 bot squad) takes the difficulty percent on its
