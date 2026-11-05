@@ -1186,6 +1186,43 @@ TEST(SemValuables, the_key_line_names_a_hero_by_its_guy_and_others_by_their_stat
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
+// treasure_valuables.lua:96-107, Gameplay Fixes AK (#482). With the setting
+// off a team-0 key pickup line goes where the old game's do_notify(message,
+// eater) sends it: the view the eater's seat drives, or every view when no
+// seat drives it (treasure.cpp FAMILY_KEY, screen.cpp do_notify). With it on
+// the line goes to every view (#254), so the party learns who carries the
+// key. The text and its display time are the same on both (the pickup
+// sound is #468's).
+// Breaks: `if gf.on() then` -> `if true then` (the seated setting-off arm
+// red); -> `if false then` (the setting-on arm red).
+TEST(SemValuables, the_key_line_goes_to_the_eaters_seat_with_the_fixes_off_and_to_everyone_with_them_on)
+{
+    og::test::ScopedHookFailureGuard guard;
+    struct Case { short fixes; signed char user; std::int32_t want; const char* what; };
+    for (const Case c : {Case{0, 2, 2, "setting off, seat 2 drives the eater"},
+                         Case{1, 2, -1, "setting on, seat 2 drives the eater"},
+                         Case{0, -1, -1, "setting off, no seat drives the eater"}}) {
+        SCOPED_TRACE(c.what);
+        TestGameWorld tw;
+        open_field(tw);
+        tw.world().gameplay_fixes = c.fixes;
+        walker* eater = add_living(tw, FAMILY_SOLDIER, 0, 96, 96);
+        walker* key = add_treasure(tw, FAMILY_KEY, 96, 96, 3);
+        ASSERT_TRUE(eater && key);
+        eater->stats()->name = "Grunt";
+        eater->set_keys(0);
+        eater->set_user(c.user);
+        EXPECT_TRUE(eat(key, eater));
+        const auto notes = events_of(tw, og::sim::EventKind::Notification);
+        ASSERT_EQ(1u, notes.size());
+        EXPECT_EQ("Grunt picks up key 3", notes[0].text);
+        EXPECT_EQ(c.want, notes[0].target_player);
+        EXPECT_EQ(0u, notes[0].a) << "the default display time on both values";
+        EXPECT_EQ(8, eater->keys());
+    }
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
 // ===========================================================================
 // weapon_animate.lua — tree/blood, circle of protection, glow, sprinkle
 // (classic: weap.cpp weap::animate FAMILY_TREE/BLOOD/CIRCLE_PROTECTION/GLOW

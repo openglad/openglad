@@ -93,6 +93,7 @@ usual pause.
 | AE | The struck archmage's classic order | The reply goes on after a cast that worked, as the old game's does: a summon that stands still draws the slot-2 coin (the summon's busy refuses the cast), a chain is followed only by a HEARTBURST attempt its own busy refuses, and a HEARTBURST is cast once. | A cast that worked ends the reply; after a chain or a HEARTBURST that leaves the price of a TELEPORT, slot 2 is cast again (a second HEARTBURST, "then leave! :)"). With the setting on only a seat-driven archmage takes this order (a struck bot answers by fix R). |
 | AI | FREEZE TIME's form | A mage on the red team or any hero stops time for everyone else, whatever team the player is on: a hero mage of another colour (a second seat's, a charmed one) turns the screen blue. A mage on the player's team that is neither red nor a hero gives its side bonus rounds instead. | Only a mage on the player's team stops time; any other mage, hero or not, gives its own side bonus rounds ("TIME IS FROZEN! (N rounds)"). |
 | AJ | The exit of a level the player may leave at any time, to a level already won | With foes standing it asks "Withdraw to X?" first (yes abandons the level and reloads the company's save); a no asks "Exit to X?" next, and yes there wins the level. | It asks "Exit to X?" only. |
+| AK | "X picks up key N" | The line shows in the view of the player whose hero picked the key up, or in every view when no player drives that hero (a computer-run teammate). | It shows in every view, so the party learns who carries the key. |
 
 TELEPORT, REVEAL, CLOAK and ENERGY WAVE are unchanged as casts (their bot
 rules are in [Bots](#bots)): each does something whenever it is cast
@@ -140,7 +141,7 @@ Fixes T to W, in play:
   first asks "am I busy?" (or "am I mid-teleport?", or "am I resting?")
   asks the same before it says yes.
 
-Fixes X to AJ, in play:
+Fixes X to AK, in play:
 
 - **X.** A walker whose step is refused shoves the ally in its way: the
   shove draws a roll, and two times in three the ally loses its orders
@@ -295,6 +296,15 @@ Fixes X to AJ, in play:
   the player's answer (its 15 seconds ran out, or the hero who stepped on
   the pad died) asks nothing more. No parity row plays such a level, so no
   golden moves.
+- **AK.** A walker on the red team that picks up a key it does not hold
+  yet announces it: "Gorik picks up key 3". The old game hands the line to
+  `do_notify(message, eater)`, which shows it in the view whose hero picked
+  the key up and in every view only when no player drives that hero. This
+  game has shown it in every view since the per-seat notification work
+  (`25113b61`, #254), because keys are per walker and the line is how the
+  rest of the party learns who can open the door. With the setting off the
+  line goes to the picker's view again (#482); with it on, every view. The
+  recording keeps a notification's text only, so no golden moves.
 
 ## Refusals at a glance
 
@@ -766,6 +776,9 @@ two cases where the tests differ, on both values.
 
 Fix AJ has no row: every exit row plays scen99, which is not a level the
 player may leave at any time, so both values ask the same question.
+
+Fix AK has no row: the key rows record a notification's text and not whose
+view it goes to, so both values record the same bytes.
 
 The bot payoff gates moved five existing rows with the setting on, each
 recaptured from the old game after its port: `cleric_bot_raise_or_turn_fixes_scen99`
