@@ -1451,14 +1451,14 @@ int og_query_genre(lua_State* L)
     const auto tx = static_cast<std::int32_t>(luaL_checkinteger(L, 1));
     const auto ty = static_cast<std::int32_t>(luaL_checkinteger(L, 2));
     // rule: A terrain-genre lookup by tile reads the default-floor terrain unless the script names
-    //   a floor; out-of-range tiles read as grass. Its only sim caller is the door: a door facing
-    //   is chosen by whether the tile above it is a wall (wall above -> the opened door faces
-    //   right, else the door's own facing is set up).
+    //   a floor; out-of-range tiles read as grass. Its only sim caller is the door, which names its
+    //   own floor (#457): a door facing is chosen by whether the tile above it on that floor is a
+    //   wall (wall above -> the opened door faces right, else the door's own facing is set up). On
+    //   one floor the named floor 0 is the default-floor terrain, so nothing changes there.
     // tests: SemScriptEntity.a_terrain_lookup_reads_floor_zero_unless_a_floor_is_named
     // tests: SemScriptEntity.classic_a_door_with_no_wall_above_turns_itself_up_not_the_opening
     // tests: PackLuaWeaponDoor.a_door_under_a_wall_opens_sideways
-    // deferred: #457 all four arms asserted (wall-above arm by the existing PackLuaWeaponDoor
-    //   test); deferred on #457, the door reads floor 0's terrain on any floor
+    // tests: SemScriptEntity.a_door_upstairs_reads_the_wall_above_it_on_its_own_floor
     smoother& sm =
         lua_isnoneornil(L, 3)
             ? world->mysmoother

@@ -360,9 +360,8 @@ TEST_F(SemScriptEntity, a_wrongly_typed_summon_option_summons_nothing)
 }
 
 // ===========================================================================
-// og_query_genre (bindings_entity.cpp:1263) — row deferred on #457 (the
-// door never names its own floor); the floor arms and the classic door arm
-// are pinned here.
+// og_query_genre (bindings_entity.cpp:1448) — the floor arms, the classic
+// door arm and the door's own floor (#457) are pinned here.
 // ===========================================================================
 
 TEST_F(SemScriptEntity, a_terrain_lookup_reads_floor_zero_unless_a_floor_is_named)
@@ -446,6 +445,80 @@ TEST_F(SemScriptEntity, classic_a_door_with_no_wall_above_turns_itself_up_not_th
         << "classic: no wall above sets the DOOR's own facing up";
     EXPECT_EQ(static_cast<int>(opening_default), static_cast<int>(opened->curdir()))
         << "classic: the opening effect keeps its spawn facing";
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+// #457 (this game only: the old game has one floor). A door asks about the
+// wall above it on its OWN floor (weapon_door.lua passes self:floor() to
+// og.query_genre), not floor 0's. Two floors, the tile above the door
+// (10,9): a wall on floor 1 over grass on floor 0 opens a floor-1 door
+// sideways; grass on floor 1 over a wall on floor 0 turns the floor-1 door
+// up and leaves the opening at its spawn facing.
+// Break: `og.div(self:ypos(), C.GRID_SIZE) - 1, self:floor()) == C.TYPE_WALL
+// then` -> `og.div(self:ypos(), C.GRID_SIZE) - 1) == C.TYPE_WALL then`
+// (both arms red: the door reads floor 0).
+TEST_F(SemScriptEntity, a_door_upstairs_reads_the_wall_above_it_on_its_own_floor)
+{
+    og::test::mount_core_pack();
+    const WeaponFamilyDescriptor* wfd = get_weapon_family_descriptor(FAMILY_DOOR);
+    ASSERT_NE(nullptr, wfd);
+    og::test::ScopedHookFailureGuard guard;
+
+    for (const bool wall_upstairs : {true, false}) {
+        SCOPED_TRACE(wall_upstairs ? "a wall above on floor 1, grass on floor 0"
+                                   : "grass above on floor 1, a wall on floor 0");
+        TestGameWorld tw;
+        GameWorld& w = tw.world();
+        w.set_floor_count(2);
+        ASSERT_EQ(2, w.floor_count());
+        const int gw = w.grid.w;
+        const int gh = w.grid.h;
+        ASSERT_GT(gw, 10);
+        ASSERT_GT(gh, 10);
+        auto* buf = new unsigned char[static_cast<std::size_t>(gw) *
+                                      static_cast<std::size_t>(gh)];
+        std::fill(buf, buf + static_cast<std::size_t>(gw) * static_cast<std::size_t>(gh),
+                  static_cast<unsigned char>(PIX_GRASS1));
+        buf[10 + 9 * gw] = static_cast<unsigned char>(wall_upstairs ? PIX_WALL4 : PIX_GRASS1);
+        w.grid_for_floor(1) = PixieData(1, static_cast<unsigned char>(gw),
+                                        static_cast<unsigned char>(gh), buf);
+        w.smoother_for_floor(1).set_target(w.grid_for_floor(1));
+        w.grid.data[static_cast<std::size_t>(9 * gw + 10)] =
+            static_cast<unsigned char>(wall_upstairs ? PIX_GRASS1 : PIX_WALL4);
+
+        walker* probe = w.add_weap_ob(Order::FX, FAMILY_DOOR_OPEN);
+        ASSERT_NE(nullptr, probe);
+        const signed char opening_default = probe->curdir();
+        probe->set_dead(1);
+        const std::uint32_t probe_id = probe->entity_id();
+
+        walker* door = w.add_ob(Order::Weapon, FAMILY_DOOR);
+        ASSERT_NE(nullptr, door);
+        door->set_floor(1);
+        door->setxy(10 * GRID_SIZE, 10 * GRID_SIZE);
+        door->set_curdir(static_cast<signed char>(FACE_DOWN));
+        ASSERT_TRUE(og::test::on_death(*wfd, static_cast<weap*>(door)));
+
+        walker* opened = nullptr;
+        for (const auto& ob : w.weaplist) {
+            if (ob && !ob->dead() && ob->entity_id() != probe_id &&
+                ob->query_order() == Order::FX && ob->family() == FAMILY_DOOR_OPEN)
+                opened = ob.get();
+        }
+        ASSERT_NE(nullptr, opened) << "the door must leave an opened-door effect";
+        EXPECT_EQ(1, static_cast<int>(opened->floor())) << "the opening is on the door's floor";
+        if (wall_upstairs) {
+            EXPECT_EQ(FACE_RIGHT, static_cast<int>(opened->curdir()))
+                << "the wall above on the door's own floor opens it sideways";
+            EXPECT_EQ(FACE_DOWN, static_cast<int>(door->curdir()))
+                << "the dying door keeps its facing";
+        } else {
+            EXPECT_EQ(FACE_UP, static_cast<int>(door->curdir()))
+                << "no wall above on the door's own floor: the classic quirk turns the door up";
+            EXPECT_EQ(static_cast<int>(opening_default), static_cast<int>(opened->curdir()))
+                << "the opening keeps its spawn facing";
+        }
+    }
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 

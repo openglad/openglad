@@ -1005,8 +1005,8 @@ Rows deliberately not added:
 
 ## Not gated
 
-Ten changes apply whatever the setting, three from the work that added it (N, O
-and P) and seven from the second bugs batch:
+Eleven changes apply whatever the setting, three from the work that added it (N,
+O and P) and eight from the second bugs batch:
 
 - **N. A slot that is not in play says so.** `walker::special()` refuses a
   slot priced 5000 (an undeclared slot, or one New Specials hides) before it
@@ -1086,6 +1086,15 @@ and P) and seven from the second bugs batch:
   it really has. The old game's explosion has no floor; its copy of the
   gates' reach, asked only with the setting on, is ported. Every golden is
   an old-game capture made without the floor, so none moves.
+- **A door upstairs opens by its own floor's walls (#457).** A breaking
+  door turns its opening sideways when the tile above it is a wall, and
+  otherwise keeps the opening's facing (and, a 2002 quirk kept, turns the
+  dying door up). The check read floor 0's terrain whatever floor the door
+  stood on, so on a level with more floors a door under a wall upstairs
+  could open the wrong way when floor 0 was open there, and the reverse. It
+  now reads the door's own floor. On one floor nothing changes, and every
+  parity door stands on floor 0, so no golden moves. This game only: the
+  old game has one floor.
 
 ## Balance
 
