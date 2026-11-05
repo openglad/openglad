@@ -923,7 +923,7 @@ Rows deliberately not added:
 - #411: the kill credit is a field of the current game alone, not in the
   recording; the mode tests (`ModesOnslaught`, `ModesTdm`) pin it.
 - #417 and #418: no byte of the sim changes; every row proves it.
-- The modding API's changes (#454, #464, #469, #479, #480), the
+- The modding API's changes (#454, #464, #465, #469, #479, #480), the
   hook-failure line (#463) and the match recap (#467): no shipped pack reaches the new arms, and no
   recording holds a log line or a recap; the core pack the runner mounts
   loads and runs the same bytes.
@@ -1079,6 +1079,15 @@ its mistake:
   reference promises `nil`. A probe now answers no unless the body is
   exactly the order and family asked for. The cleric's raise and the
   parity spawn-room gate ask only real families. This game only.
+- **A loud passability probe answers only for the prober's floor (#465).**
+  `og.query_passable` and `og.query_object_passable` take an optional
+  floor. Their ground half read that floor, but their bodies half can see
+  only the prober's own floor, and their collision route eats, opens or
+  swings there, so a floor-1 ask from floor 0 mixed two floors. Naming the
+  prober's own floor is now the no-floor answer, and naming another is a
+  script error that points at `og.spawn_spot_clear` (bodies and terrain)
+  and `og.query_grid_passable` (terrain). No shipped script passes a floor
+  to either. This game only.
 
 ## Balance
 

@@ -878,7 +878,12 @@ order; walk them with `for i = 1, #t` (there is no `pairs`).
 `og.query_passable(x, y, self [, floor])`,
 `og.query_grid_passable(...)`, `og.query_object_passable(...)` — all
 `→ bool`, all take pixel coordinates. `og.query_object_passable` **draws from
-the RNG** through the obmap miss roll.
+the RNG** through the obmap miss roll. `og.query_grid_passable` reads the
+terrain of any floor it names. `og.query_passable` and
+`og.query_object_passable` also meet bodies, which they can find only on
+`self`'s floor, so their optional `floor` must be `self`'s own (any other is
+a script error); probe another floor with `og.spawn_spot_clear(ent, x, y,
+floor)` (bodies and terrain) or `og.query_grid_passable` (terrain).
 
 `og.spawn_spot_clear(ent, x, y [, floor]) → bool` is the placement probe:
 can `ent` stand at pixel `(x, y)`? It eats nothing and opens nothing (never

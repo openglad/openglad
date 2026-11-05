@@ -1365,23 +1365,30 @@ int og_oblist(lua_State* L)
     return 1;
 }
 
+// The floor og.query_passable and og.query_object_passable answer for (#465).
+int own_probe_floor(lua_State* L, walker* w, lua_Integer floor, const char* fn)
+{
+    const int own = static_cast<int>(w->floor());
+    // rule: A loud passability probe (terrain and bodies) answers only for the prober's own floor:
+    //   a script may name that floor; naming another is a script error, because the bodies half
+    //   reads only the prober's floor and its collision route would eat, open or swing there.
+    // tests: SemScriptEntity.a_loud_passability_probe_refuses_a_floor_not_the_probers
+    // tests: ScriptBindingPropsTest.an_explicit_floor_probes_that_floor_not_the_probers
+    if (floor != own)
+        script_raise(L, "%s: floor %d is not the prober's floor %d (probe another floor with "
+                        "og.spawn_spot_clear or og.query_grid_passable)",
+                     fn, static_cast<int>(floor), own);
+    return own;
+}
+
 int og_query_passable(lua_State* L)
 {
     GameWorld* world = world_arg(L);
     const float x = static_cast<float>(luaL_checknumber(L, 1));
     const float y = static_cast<float>(luaL_checknumber(L, 2));
     walker* w = resolve_walker(L, 3, /*required=*/true);
-    bool ok;
-    // rule: A passability probe answers for the prober's own floor unless the script names a floor,
-    //   so a pack planning a jump or summon onto another floor can ask about that floor's terrain
-    //   without moving anything there first. (The object half of the probe always answers the
-    //   prober's own floor's occupancy: obmap::query_list keys its floor band off ob->floor().)
-    // tests: ScriptBindingPropsTest.an_explicit_floor_probes_that_floor_not_the_probers
-    if (lua_isnoneornil(L, 4))
-        ok = world->query_passable(x, y, w);
-    else
-        ok = world->query_passable(x, y, w,
-                                   static_cast<int>(luaL_checkinteger(L, 4)));
+    const lua_Integer floor = luaL_optinteger(L, 4, w->floor());
+    const bool ok = world->query_passable(x, y, w, own_probe_floor(L, w, floor, "og.query_passable"));
     // plumbing: bool -> Lua boolean conversions of C++ answers (setxy, can_approach_weapon_range,
     //   attack, death, teleport, teleport_ranged, seat_driven, is_friendly, animate, collide,
     //   has_guy (myguy != nullptr), query_bit_flags != 0, has_commands, query_*_passable results,
@@ -1420,16 +1427,9 @@ int og_query_object_passable(lua_State* L)
     const float x = static_cast<float>(luaL_checknumber(L, 1));
     const float y = static_cast<float>(luaL_checknumber(L, 2));
     walker* w = resolve_walker(L, 3, /*required=*/true);
-    bool ok;
-    // rule: A passability probe answers for the prober's own floor unless the script names a floor,
-    //   so a pack planning a jump or summon onto another floor can ask about that floor's terrain
-    //   without moving anything there first.
-    // tests: ScriptBindingPropsTest.an_explicit_floor_probes_that_floor_not_the_probers
-    if (lua_isnoneornil(L, 4))
-        ok = world->query_object_passable(x, y, w);
-    else
-        ok = world->query_object_passable(
-            x, y, w, static_cast<int>(luaL_checkinteger(L, 4)));
+    const lua_Integer floor = luaL_optinteger(L, 4, w->floor());
+    const bool ok = world->query_object_passable(
+        x, y, w, own_probe_floor(L, w, floor, "og.query_object_passable"));
     // plumbing: bool -> Lua boolean conversions of C++ answers (setxy, can_approach_weapon_range,
     //   attack, death, teleport, teleport_ranged, seat_driven, is_friendly, animate, collide,
     //   has_guy (myguy != nullptr), query_bit_flags != 0, has_commands, query_*_passable results,
