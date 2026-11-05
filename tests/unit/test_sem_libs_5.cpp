@@ -1106,24 +1106,83 @@ TEST_F(SemLineupStage, a_siteless_member_with_eight_unsafe_landings_stays_on_the
     EXPECT_TRUE(fx.world().scripts().host().errors().empty());
 }
 
-// lineup_stage.lua:278. When every teleport fails (a fully walled map: 200
-// refused attempts a draw, eight draws a member) the member is not moved
-// from where it was spawned, (0,0).
+// lineup_stage.lua:278 and walker::teleport (walker_specials.cpp, #471).
+// When every teleport fails the member is not moved from where it was
+// spawned, (0,0). A random TELEPORT tests every cell it tries and gives up
+// only after 64 tries per cell per floor; a try draws x then y from the sim
+// stream (and a floor too on a stacked level). The lineup teleports a
+// member up to eight times. On a fully walled map no try lands, so the
+// squad makes members x 8 x 64 x cells x floors tries and two or three
+// draws each. The control is the same map with clear cells: the cell a
+// teleport tries last before it gives up is tested too, so a member whose
+// first teleport finds its only clear cell on that try lands there (a loop
+// that stopped before testing its last try would leave the member to its
+// next teleport).
 TEST_F(SemLineupStage, a_siteless_member_whose_teleports_all_fail_stays_where_it_spawned)
 {
-    LineupWorld fx;
-    std::fill_n(fx.world().grid.data.get(),
-                static_cast<std::size_t>(fx.world().grid.w) * fx.world().grid.h,
-                static_cast<std::uint8_t>(PIX_H_WALL1));
-    fx.fill(1, og::sim::kFillStrong);
-    ScriptedDraws draws({}, 3);  // every landing tile (3,3): a wall
+    constexpr std::int64_t kMembers = 5;           // lineup.BOT_SQUAD
+    constexpr std::int64_t kTeleportsAMember = 8;  // lineup_stage.lua's re-draws
+    const auto wall_everything = [](LineupWorld& fx) {
+        std::fill_n(fx.world().grid.data.get(),
+                    static_cast<std::size_t>(fx.world().grid.w) * fx.world().grid.h,
+                    static_cast<std::uint8_t>(PIX_H_WALL1));
+        fx.fill(1, og::sim::kFillStrong);
+    };
+    const auto tries_a_teleport = [](GameWorld& w) {
+        return std::int64_t{64} * w.grid.w * w.grid.h * w.floor_count();
+    };
+    const auto draws_a_try = [](GameWorld& w) {
+        return std::int64_t{w.floor_count() > 1 ? 3 : 2};
+    };
+
     {
-        ScopedSimRandom scope(&draws);
-        ASSERT_TRUE(fx.world().run_lineup_stage_step());
+        LineupWorld fx;
+        wall_everything(fx);
+        const std::int64_t tries = tries_a_teleport(fx.world());
+        const std::int64_t per_try = draws_a_try(fx.world());
+        ScriptedDraws draws({}, 3);  // every landing tile (3,3): a wall
+        {
+            ScopedSimRandom scope(&draws);
+            ASSERT_TRUE(fx.world().run_lineup_stage_step());
+        }
+        EXPECT_EQ((std::vector<Cell>{{0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}}),
+                  cells_of(squad_on(fx.world(), 1)))
+            << "arm: all eight teleports fail -> member not moved";
+        EXPECT_EQ(kMembers * kTeleportsAMember * tries * per_try,
+                  static_cast<std::int64_t>(draws.calls))
+            << "every teleport gives up after 64 tries per cell per floor ("
+            << tries << " tries on this " << fx.world().grid.w << " x "
+            << fx.world().grid.h << " x " << fx.world().floor_count() << " map)";
+        EXPECT_EQ(0, draws.out_of_range);
+        EXPECT_TRUE(fx.world().scripts().host().errors().empty());
     }
-    EXPECT_EQ((std::vector<Cell>{{0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}}),
-              cells_of(squad_on(fx.world(), 1)))
-        << "arm: all eight teleports fail -> member not moved";
-    EXPECT_EQ(5 * 8 * 200 * 2, draws.calls);
-    EXPECT_TRUE(fx.world().scripts().host().errors().empty());
+
+    // Control: the first member's first teleport tries a wall every time
+    // but the last before it would give up, and a clear cell, tile
+    // (20,20), on that one; the other four land on their first try.
+    {
+        LineupWorld fx;
+        wall_everything(fx);
+        ASSERT_EQ(1, fx.world().floor_count()) << "landings() scripts (x, y) pairs";
+        paint_tile(fx.world(), 20, 20, PIX_GRASS1);
+        for (const auto& [tx, ty] : kSafeTail)
+            paint_tile(fx.world(), tx, ty, PIX_GRASS1);
+        const std::int64_t tries = tries_a_teleport(fx.world());
+        std::vector<Cell> tiles(static_cast<std::size_t>(tries - 1), Cell{3, 3});
+        tiles.push_back({20, 20});
+        tiles.insert(tiles.end(), kSafeTail.begin(), kSafeTail.end());
+        ScriptedDraws draws(landings(tiles), 3);
+        {
+            ScopedSimRandom scope(&draws);
+            ASSERT_TRUE(fx.world().run_lineup_stage_step());
+        }
+        std::vector<Cell> want = {{320, 320}};
+        want.insert(want.end(), kSafeTailPx.begin(), kSafeTailPx.end());
+        EXPECT_EQ(want, cells_of(squad_on(fx.world(), 1)))
+            << "arm: a teleport's last try is tested -> the member lands on it";
+        EXPECT_EQ(2 * (tries + 4), static_cast<std::int64_t>(draws.calls))
+            << "the first member's " << tries << " tries, then one each";
+        EXPECT_EQ(0, draws.out_of_range);
+        EXPECT_TRUE(fx.world().scripts().host().errors().empty());
+    }
 }
