@@ -732,12 +732,17 @@ short screen::act()
 			}
 			if (ob && !ob->dead)
 			{
-				// The act gate is unchanged: frozen enemy livings and
-				// generators still skip their turn. Only the census is
-				// hoisted out of it: a frozen foe is still a foe (#231).
+				// The act gate: frozen enemy livings and generators skip
+				// their turn. Only the census is hoisted out of it: a frozen
+				// foe is still a foe (#231). port of the current game's
+				// ec263a26 (#92), behind the setting (fix AF, #461): with
+				// Gameplay Fixes on a living or generator acts when it is
+				// friendly to the player's team, off when it is on team 0.
 				const bool may_act = ((ob->query_order() != ORDER_LIVING)
 				                      && (ob->query_order() != ORDER_GENERATOR))
-				                     || (ob->team_num == 0);
+				                     || (gameplay_fixes
+				                         ? (ob->is_friendly_to_team((unsigned char) save_data.my_team) != 0)
+				                         : (ob->team_num == 0));
 				if (may_act)
 					ob->act();
 				if (ob && !ob->dead)
