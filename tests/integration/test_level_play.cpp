@@ -40,7 +40,8 @@
 //      crew's level and at the bots' (8 or less, which D checks too);
 //   E  the gates and the casts agree: no gate says yes to a cast that then
 //      refuses for the fact the gate reads (NO FOE, NO CORPSE, NO UNDEAD, NO
-//      TARGET, NO ALLY); SPECIAL BUSY, the soldier's PATH BLOCKED, the elf's
+//      TARGET, NO ALLY, and the elemental's QUENCH IMMOLATE FIRST: a burning
+//      bot's rules say no to every cast but the quench, #458); SPECIAL BUSY, the soldier's PATH BLOCKED, the elf's
 //      COULD NOT FIRE, the druid's, barbarian's, mage's and archer's COULD
 //      NOT FIRE (one count) and NOT ENOUGH MP are capped at the measured
 //      count plus a third (at least 3); no walk shoves a body its step did
@@ -99,6 +100,14 @@
 //   and no fighting ally within 40, and more ticks only add play after the
 //   faerie has died (at 4800 ticks the three seeds read HASTE SELF 2, and
 //   seed 2025 ends with no crew standing, which A forbids).
+//   After #458 (2026-11-05: a burning elemental's rules say no to every
+//   cast but the quench, and E counts QUENCH IMMOLATE FIRST): before it the
+//   six seeds met 10 such refusals, every one a STARBURST roll of a burning
+//   bot (seeds 42, 2025 and 1; first: seed 42 tick 341), which E reds on;
+//   after it 0. Seed 2025 moved (565 -> 577 casts, 35 -> 39 specials, 98 ->
+//   104 casters), the other five read the same; pooled specials 47 -> 50,
+//   crew casts 314 -> 299, elf COULD NOT FIRE 11 -> 14 (cap 15), rolls the
+//   gates held 5170 -> 5198. #453, #455 and #485 move nothing here.
 //   At 5b288bd7, before the fixes, the same seeds read 553 / 480 / 596 casts,
 //   SPECIAL BUSY 157, NOT ENOUGH MP 61, soldier PATH BLOCKED 139 and elf
 //   COULD NOT FIRE 80 (docs/gameplay-fixes.md, "Level play").
@@ -614,7 +623,8 @@ bool is_fact_refusal(const Refusal& r)
     // slot-1 cast with Shift down is the mace, which never gives this reason.
     if (r.family == FAMILY_CLERIC && r.slot == 1 && r.reason == "NO ALLY NEEDS HEALING")
         return false;
-    for (const char* fact : {"NO FOE", "NO CORPSE", "NO UNDEAD", "NO TARGET", "NO ALLY"})
+    for (const char* fact :
+         {"NO FOE", "NO CORPSE", "NO UNDEAD", "NO TARGET", "NO ALLY", "QUENCH IMMOLATE FIRST"})
         if (r.reason.find(fact) != std::string::npos)
             return true;
     return false;

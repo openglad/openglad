@@ -271,6 +271,22 @@ function M.starburst(classic)
   end
 end
 
+-- STARBURST's bot rule: the family's own rule runs first (its foe search
+-- and its draws are the classic bot's), then a burning elemental says no,
+-- as the cast refuses while IMMOLATE burns.
+function M.ai_starburst(inner)
+  return function(self)
+    local yes = inner(self)
+    -- rule: While IMMOLATE burns a bot's STARBURST rule says no (the cast refuses QUENCH IMMOLATE FIRST); the
+    --   family's own rule still runs first, for its foe search and its draws.
+    -- tests: KitElemental.a_burning_bots_rules_say_no_to_every_cast_but_the_quench
+    if burning(self) then
+      return false
+    end
+    return yes
+  end
+end
+
 -- IMMOLATE (slot 2): lights the fire, or (a second press after the latch,
 -- free because the channel prices it at 0) puts it out.
 function M.immolate(self)
@@ -493,40 +509,55 @@ function M.ai_immolate(self)
   return #G.foes_at_blows(self) >= 1
 end
 
--- Our foe within 160 with at least one more of our foes within 60 of it.
+-- Our foe within 160 on our floor with at least one more living foe on
+-- that floor within 60 of it, and none of ours under the rain.
 function M.ai_meteor(self)
-  -- rule: A bot elemental calls METEOR RAIN on its foe within 160 when at least one more foe stands
-  --   within 60 of it, and never when one of its allies stands inside the strike box (71 px each
-  --   axis of the target).
+  -- rule: A bot elemental calls METEOR RAIN on its foe within 160 on its floor when at least one more
+  --   LIVING foe on that floor stands within 60 of it, never when one of its allies on that floor stands
+  --   inside the strike box (71 px each axis of the target), and never while IMMOLATE burns (the cast
+  --   refuses QUENCH IMMOLATE FIRST).
   -- tests: KitElemental.ai_meteor_fires_on_a_cluster_in_range
   -- tests: KitElemental.ai_meteor_holds_fire_over_an_ally
   -- tests: KitElemental.ai_meteor_holds_fire_over_a_far_corner_ally
   -- tests: KitElemental.ai_meteor_fires_with_the_ally_clear
   -- tests: KitElemental.ai_off_answers_the_classic_gate
   -- tests: SemLibsElemental.a_friendly_tent_in_the_strike_box_does_not_hold_a_bot_meteor_rain
-  -- deferred: #487 not #458 (burning() unasked): the ally scan and the foe cluster ignore floors,
-  --   though the rain only hits its own floor (effect_bomb.lua), so an ally on another floor
-  --   holds it; the cluster also counts an enemy tent (raw find_foes_in_range, unlike G.living_foes
-  --   everywhere else)
+  -- tests: KitElemental.a_burning_bots_rules_say_no_to_every_cast_but_the_quench
+  -- tests: SemLibsElemental.a_bot_meteor_rain_is_not_held_by_an_ally_on_another_floor
+  -- tests: SemLibsElemental.a_bot_meteor_rain_counts_no_foe_on_another_floor_in_its_cluster
+  -- tests: SemLibsElemental.a_bot_meteor_rain_counts_no_enemy_tent_in_its_cluster
   if og.match_setting("new_specials") == 0 then
     return true
+  end
+  if burning(self) then
+    return false
   end
   if not og.check_special_ai_distance(self, RAIN_GATE_RANGE) then
     return false
   end
   local target = self:foe()
-  local foes = og.find_foes_in_range("ob", RAIN_GATE_RANGE + RAIN_GATE_CLUSTER, self)
+  -- rule: METEOR RAIN falls only on a foe on the caster's floor (rain_target), so a held foe on another
+  --   floor is no rain target: the bot holds.
+  -- tests: SemLibsElemental.a_bot_meteor_rain_holds_for_a_foe_on_another_floor
+  if target:floor() ~= self:floor() then
+    return false
+  end
+  local foes = G.living_foes(self, RAIN_GATE_RANGE + RAIN_GATE_CLUSTER, true)
   local clustered = 0
   for i = 1, #foes do
-    -- rule: A bot elemental calls METEOR RAIN on its foe within 160 when at least one more foe
-    --   stands within 60 of it, and never when one of its allies stands inside the strike box (71
-    --   px each axis of the target).
+    -- rule: A bot elemental calls METEOR RAIN on its foe within 160 on its floor when at least one more
+    --   LIVING foe on that floor stands within 60 of it, never when one of its allies on that floor stands
+    --   inside the strike box (71 px each axis of the target), and never while IMMOLATE burns (the cast
+    --   refuses QUENCH IMMOLATE FIRST).
     -- tests: KitElemental.ai_meteor_fires_on_a_cluster_in_range
     -- tests: KitElemental.ai_meteor_holds_fire_over_an_ally
     -- tests: KitElemental.ai_meteor_holds_fire_over_a_far_corner_ally
     -- tests: KitElemental.ai_meteor_fires_with_the_ally_clear
     -- tests: KitElemental.ai_off_answers_the_classic_gate
     -- tests: SemLibsElemental.a_friendly_tent_in_the_strike_box_does_not_hold_a_bot_meteor_rain
+    -- tests: SemLibsElemental.a_bot_meteor_rain_is_not_held_by_an_ally_on_another_floor
+    -- tests: SemLibsElemental.a_bot_meteor_rain_counts_no_foe_on_another_floor_in_its_cluster
+    -- tests: SemLibsElemental.a_bot_meteor_rain_counts_no_enemy_tent_in_its_cluster
     if foes[i]:distance_to_ob(target) <= RAIN_GATE_CLUSTER then
       clustered = clustered + 1
     end
@@ -534,20 +565,26 @@ function M.ai_meteor(self)
   -- An ally standing in the rain (the strike lands within rain_spread of
   -- the target on each axis and the blast reaches 31 px) holds the fire.
   -- The scan must reach the whole box: the target is under 160 away and
-  -- a box corner is 71 + 71 Manhattan beyond it.
-  local friends = og.find_friends_in_range("ob", RAIN_GATE_RANGE + 2 * RAIN_ALLY_ZONE, self)
+  -- a box corner is 71 + 71 Manhattan beyond it. The rain strikes only its
+  -- own floor, so only an ally on that floor is under it.
+  local friends = G.on_floor(og.find_friends_in_range("ob", RAIN_GATE_RANGE + 2 * RAIN_ALLY_ZONE, self),
+    self:floor())
   for i = 1, #friends do
     local dx = math.abs(friends[i]:xpos() - target:xpos())
     local dy = math.abs(friends[i]:ypos() - target:ypos())
-    -- rule: A bot elemental calls METEOR RAIN on its foe within 160 when at least one more foe
-    --   stands within 60 of it, and never when one of its allies stands inside the strike box (71
-    --   px each axis of the target).
+    -- rule: A bot elemental calls METEOR RAIN on its foe within 160 on its floor when at least one more
+    --   LIVING foe on that floor stands within 60 of it, never when one of its allies on that floor stands
+    --   inside the strike box (71 px each axis of the target), and never while IMMOLATE burns (the cast
+    --   refuses QUENCH IMMOLATE FIRST).
     -- tests: KitElemental.ai_meteor_fires_on_a_cluster_in_range
     -- tests: KitElemental.ai_meteor_holds_fire_over_an_ally
     -- tests: KitElemental.ai_meteor_holds_fire_over_a_far_corner_ally
     -- tests: KitElemental.ai_meteor_fires_with_the_ally_clear
     -- tests: KitElemental.ai_off_answers_the_classic_gate
     -- tests: SemLibsElemental.a_friendly_tent_in_the_strike_box_does_not_hold_a_bot_meteor_rain
+    -- tests: SemLibsElemental.a_bot_meteor_rain_is_not_held_by_an_ally_on_another_floor
+    -- tests: SemLibsElemental.a_bot_meteor_rain_counts_no_foe_on_another_floor_in_its_cluster
+    -- tests: SemLibsElemental.a_bot_meteor_rain_counts_no_enemy_tent_in_its_cluster
     if dx <= RAIN_ALLY_ZONE and dy <= RAIN_ALLY_ZONE then
       return false
     end
@@ -561,12 +598,17 @@ end
 function M.ai_rekindle(self)
   -- rule: A bot elemental goes SUPERNOVA (shift 1) below a fifth of its health with two bodies the
   --   finder counts as foes within 48; otherwise REKINDLE (shift 0) below half health when it can
-  --   pay REKINDLE's 40; else holds.
+  --   pay REKINDLE's 40; else holds. Never while IMMOLATE burns (both casts refuse QUENCH IMMOLATE
+  --   FIRST): the coin is left as it fell.
   -- tests: KitElemental.ai_rekindle_heals_when_hurt_and_novas_when_cornered
   -- tests: GameplayFixesBots.elemental_rekindle_is_not_forced_on_a_pool_that_cannot_pay_it
   -- tests: KitElemental.ai_off_answers_the_classic_gate
+  -- tests: KitElemental.a_burning_bots_rules_say_no_to_every_cast_but_the_quench
   if og.match_setting("new_specials") == 0 then
     return true
+  end
+  if burning(self) then
+    return false
   end
   -- max_hp is a C++ float: per-op rounding.
   if self.hp < og.fdiv(self.max_hp, 5.0) then
@@ -591,6 +633,7 @@ end
 
 -- The declarations that reference this module (packs/core/families/):
 --   core:elemental  default_cast = ke.starburst(do_special); cast = ke.immolate,
---                   ke.meteor_rain, ke.rekindle_or_supernova; ai = ke.ai_immolate,
---                   ke.ai_meteor, ke.ai_rekindle; its on_death calls ke.end_channel
+--                   ke.meteor_rain, ke.rekindle_or_supernova; ai = ke.ai_starburst(...),
+--                   ke.ai_immolate, ke.ai_meteor, ke.ai_rekindle; its on_death calls
+--                   ke.end_channel
 return M

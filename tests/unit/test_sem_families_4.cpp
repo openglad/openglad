@@ -784,8 +784,7 @@ private:
 // radius always contains the burst's, so this arm needs a tuning whose chain
 // is the shorter: chain base 0 and 0 per level gives 20 px at level 10, the
 // burst 100. A foe 50 px off is a burst target only: the coin on CHAIN is
-// swapped to HEARTBURST and the gate says yes. (The row stays deferred on
-// #453, the hero radius the gate does not use.)
+// swapped to HEARTBURST and the gate says yes.
 //
 // RED (the swap `set_shifter_down(0)` dropped at :206): Expected equality of
 // these values: 0 a->shifter_down() Which is: 1.
@@ -800,6 +799,96 @@ TEST_F(SemArchmage, a_bot_archmage_whose_chain_coin_has_only_a_burst_target_swap
     EXPECT_TRUE(gate(a, 2, 1)) << "the burst has a target";
     EXPECT_EQ(0, a->shifter_down()) << "the coin is swapped to HEARTBURST";
 
+    a->set_shifter_down(1);
+    EXPECT_TRUE(gate(a, 2, 0)) << "setting off: the classic answer";
+    EXPECT_EQ(1, a->shifter_down()) << "setting off: the coin is left as it fell";
+}
+
+// Gameplay Fixes AN (#453). The slot-2 rule measures CHAIN LIGHTNING with the
+// cast's own reach: 200 + Int/2 + 2L for an archmage with a character record
+// (a hero the computer plays), 200 + 5L + 2L for a monster. A level-14 hero
+// with 60 Intelligence reaches 200 + 30 + 28 = 258 px (the monster reach would
+// be 298, its HEARTBURST reaches 108): a foe at 258 px keeps the chain coin
+// and the cast lands; at 259 px the rule swaps to a HEARTBURST with no target
+// and says no, and the cast agrees ("NO FOE IN RANGE"). A level-1 hero with
+// 200 Intelligence reaches 302 px (the monster reach would be 207): a foe at
+// 300 px turns a HEARTBURST coin to the chain, and the chain lands. With the
+// setting off the rule is the classic yes and the coin stays as it fell.
+//
+// RED (the hero branch dropped, `if self:has_guy() then` -> `if false then`
+// in ai_burst_or_chain): Expected equality of these values: k.yes Which is:
+// false gate(a, 2, 1) Which is: true "level 14, Int 60, foe at 259"; and
+// k.yes Which is: true ... Which is: false "level 1, Int 200, foe at 300".
+TEST_F(SemArchmage, a_bot_heros_chain_rule_reaches_what_its_cast_reaches)
+{
+    struct Case { int level; short intelligence; short dx; short coin; bool yes; short arm;
+                  const char* what; };
+    for (const Case k : {Case{14, 60, 258, 1, true, 1, "level 14, Int 60, foe at 258"},
+                         Case{14, 60, 259, 1, false, 0, "level 14, Int 60, foe at 259"},
+                         Case{1, 200, 300, 0, true, 1, "level 1, Int 200, foe at 300"}}) {
+        fresh_world();
+        living* a = arch(1, 200, 200, k.level, 2000.0f);
+        ASSERT_NE(nullptr, orc(2, static_cast<short>(200 + k.dx), 200));
+        ASSERT_NE(nullptr, a);
+        give_character(a, k.intelligence);
+        a->set_shifter_down(k.coin);
+        EXPECT_EQ(k.yes, gate(a, 2, 1)) << k.what;
+        EXPECT_EQ(k.arm, a->shifter_down()) << k.what;
+        a->stats()->set_special_cost(2, 0);
+        const Cast c = cast(a, 2, 1);
+        EXPECT_EQ(k.yes, c.ok) << k.what << " (" << c.reason << "): the rule and the cast agree";
+        EXPECT_EQ(k.yes ? 1 : 0, live_fx(FAMILY_CHAIN)) << k.what;
+        if (!k.yes) {
+            EXPECT_EQ("NO FOE IN RANGE", c.reason) << k.what;
+        }
+    }
+
+    fresh_world();
+    living* a = arch(1, 200, 200, 14, 2000.0f);
+    ASSERT_NE(nullptr, orc(2, 459, 200));
+    ASSERT_NE(nullptr, a);
+    give_character(a, 60);
+    a->set_shifter_down(1);
+    EXPECT_TRUE(gate(a, 2, 0)) << "setting off: the classic answer";
+    EXPECT_EQ(1, a->shifter_down()) << "setting off: the coin is left as it fell";
+}
+
+// #455, the bot's slot-2 rule. With the setting on the chain arm counts only
+// foes on the archmage's own floor (the bolt strikes first nobody else);
+// HEARTBURST's arm stays floor-blind (the cast bursts each foe on its own
+// floor). A level-10 monster archmage on floor 0 (HEARTBURST reaches 100,
+// the chain 270) with the chain coin and its only foe upstairs: at 50 px,
+// inside the burst, the coin is swapped to HEARTBURST and the rule says
+// yes; at 150 px, outside it, the rule says no; the same foe moved to
+// floor 0 keeps the chain coin. With the setting off the rule is the
+// classic yes and the coin stays as it fell.
+//
+// RED (the floor filter dropped, `local in_chain = #G.on_floor(og.find_foes_
+// in_range(...), self:floor())` -> `local _, in_chain = og.find_foes_in_range
+// (...)`): Expected equality of these values: 0 a->shifter_down() Which is: 1
+// "swapped to HEARTBURST"; Value of: gate(a, 2, 1) Actual: true Expected:
+// false "150 px upstairs: no target for either arm".
+TEST_F(SemArchmage, a_bot_archmages_chain_wants_a_foe_on_its_own_floor)
+{
+    world().set_floor_count(2);
+    living* a = arch(1, 200, 200, 10, 2000.0f);
+    living* up = orc(2, 250, 200);
+    ASSERT_TRUE(a && up);
+    up->set_floor(1);
+    a->set_shifter_down(1);
+    EXPECT_TRUE(gate(a, 2, 1)) << "50 px upstairs: a HEARTBURST target";
+    EXPECT_EQ(0, a->shifter_down()) << "swapped to HEARTBURST";
+
+    up->setxy(350, 200);
+    a->set_shifter_down(1);
+    EXPECT_FALSE(gate(a, 2, 1)) << "150 px upstairs: no target for either arm";
+
+    up->set_floor(0);
+    a->set_shifter_down(1);
+    EXPECT_TRUE(gate(a, 2, 1)) << "150 px on its floor: the chain";
+    EXPECT_EQ(1, a->shifter_down()) << "the chain coin kept";
+
+    up->set_floor(1);
     a->set_shifter_down(1);
     EXPECT_TRUE(gate(a, 2, 0)) << "setting off: the classic answer";
     EXPECT_EQ(1, a->shifter_down()) << "setting off: the coin is left as it fell";
@@ -984,7 +1073,7 @@ TEST_F(SemArchmage, heartburst_reaches_80_plus_2l_and_a_monsters_chain_200_plus_
 // the 600 pool spent); at 253 px the cast is "NO FOE IN RANGE" and free.
 // The level term of a monster's radius (5L) is not in a hero's. The old game
 // (walker.cpp:3348): `generic = 200+myguy->intelligence/2`, scanned at
-// `generic+2*stats->level`. (#453 is the bot gate's radius, not this cast.)
+// `generic+2*stats->level`.
 //
 // RED (`self:g_intelligence() // 2` -> `self:g_intelligence() // 2 + 1` at
 // :352): Expected equality of these values: k.hits Which is: false c.ok
@@ -1116,9 +1205,8 @@ TEST_F(SemArchmage, a_heros_heartburst_counts_a_shot_per_foe_and_its_chain_count
     }
 }
 
-// :419 same-floor arm's other half (the leaderless other-floor-only bolt is
-// #455). A nearer foe upstairs is no first strike: the bolt takes the foe on
-// the archmage's own floor, 150 px off.
+// :419 same-floor arm's other half. A nearer foe upstairs is no first
+// strike: the bolt takes the foe on the archmage's own floor, 150 px off.
 //
 // RED (`foe:floor() == self:floor()` -> `true` at :419): Expected equality
 // of these values: far bolt->leader() Which is: (the upstairs orc).
@@ -1134,6 +1222,49 @@ TEST_F(SemArchmage, chain_lightning_strikes_first_the_nearest_foe_on_its_own_flo
     const auto bolts = live(Order::FX, FAMILY_CHAIN);
     ASSERT_EQ(1u, bolts.size());
     EXPECT_EQ(far, bolts[0]->leader()) << "the nearest foe on the archmage's floor";
+}
+
+// #455. CHAIN LIGHTNING with foes in its reach only on another floor fails
+// free: the bolt can strike first only a foe on the archmage's own floor,
+// so with none there the cast refuses "NO FOE IN RANGE" before it pays
+// anything: no busy, no shot on the hero's record, no bolt, no magic, no
+// draw. A hero archmage on floor 0 with an orc 20 px off upstairs. The
+// control adds an orc on floor 0 at 150 px: the cast lands, its one bolt
+// leashed to that orc, and the pool is spent.
+//
+// RED (the refusal dropped, `#G.on_floor(foes, self:floor()) == 0` -> `== -1`
+// in burst_or_chain's chain arm): Value of: c.ok Actual: true Expected: false;
+// Expected equality of these values: "NO FOE IN RANGE" c.reason Which is: "".
+// (The old game has no floors, so there is nothing to port.)
+TEST_F(SemArchmage, chain_lightning_with_foes_only_on_another_floor_fails_free)
+{
+    world().set_floor_count(2);
+    living* a = arch(1, 200, 200, 8, 1200.0f);
+    living* up = orc(2, 220, 200);
+    ASSERT_TRUE(a && up);
+    up->set_floor(1);
+    give_character(a, 60);
+    a->stats()->set_special_cost(2, 0);
+    const std::uint32_t before = world().rng_.state_;
+    const Cast c = cast(a, 2, 1);
+    EXPECT_FALSE(c.ok);
+    EXPECT_EQ("NO FOE IN RANGE", c.reason);
+    EXPECT_FLOAT_EQ(1200.0f, a->stats()->magicpoints()) << "nothing spent";
+    EXPECT_FLOAT_EQ(0.0f, a->busy()) << "no busy";
+    EXPECT_EQ(0, live_fx(FAMILY_CHAIN)) << "no bolt";
+    EXPECT_EQ(0, a->myguy->total_shots) << "no shot on the record";
+    EXPECT_EQ(0, a->myguy->scen_shots);
+    EXPECT_EQ(before, world().rng_.state_) << "nothing drawn";
+
+    living* here = orc(2, 350, 200);
+    ASSERT_NE(nullptr, here);
+    const Cast landed = cast(a, 2, 1);
+    ASSERT_TRUE(landed.ok) << landed.reason;
+    const auto bolts = live(Order::FX, FAMILY_CHAIN);
+    ASSERT_EQ(1u, bolts.size());
+    EXPECT_EQ(here, bolts[0]->leader()) << "the foe on the archmage's floor";
+    EXPECT_FLOAT_EQ(600.0f, a->stats()->magicpoints()) << "half the pool spent";
+    EXPECT_EQ(1, a->myguy->total_shots);
 }
 
 // ---------------------------------------------------------------------------
@@ -1320,10 +1451,12 @@ int on_team(const std::vector<walker*>& obs, int team)
 // :628 / :673 the budget. Three level-1 orcs in reach, every domination roll
 // a success (rand(20) == 1). With 150 magic (the price, spare 0) exactly one
 // is taken, the other two keep team 2 and their never-charmed 255, and the
-// cast costs the price only: 0 left. With 160 (spare 10) two are taken and
-// the second costs the 10: 0 left. With 1000 and a single orc in reach the
-// cast costs the 150 alone: 850. (The old game takes the same men; its extra
-// charge for a second man never reached magicpoints, see the report.)
+// cast costs the price only: 0 left. With 160 (spare 10) two are taken, on
+// both values of the setting (the old game takes the same men): with the
+// setting off the cast costs its price alone, 10 left, as the old game's sap
+// lowers only a local; with it on the second man costs the 10 (fix AL): 0
+// left. With 1000 and a single orc in reach the cast costs the 150 alone:
+// 850, on both values.
 //
 // RED (`budget < 10` -> `budget < 0` at :628): Expected equality of these
 // values: c.taken Which is: 1 on_team(orcs, 1) Which is: 2 "spare 0". RED
@@ -1334,9 +1467,13 @@ TEST_F(SemArchmage, mind_control_takes_one_foe_on_the_price_and_one_more_per_10_
 {
     ConstantRandom one(1);
     ScopedSimRandom fixed_draws(&one);
-    struct Case { float mp; int taken; float left; const char* what; };
-    for (const Case c : {Case{150.0f, 1, 0.0f, "spare 0"}, Case{160.0f, 2, 0.0f, "spare 10"}}) {
+    struct Case { short fixes; float mp; int taken; float left; const char* what; };
+    for (const Case c : {Case{0, 150.0f, 1, 0.0f, "setting off, spare 0"},
+                         Case{0, 160.0f, 2, 10.0f, "setting off, spare 10"},
+                         Case{1, 150.0f, 1, 0.0f, "setting on, spare 0"},
+                         Case{1, 160.0f, 2, 0.0f, "setting on, spare 10"}}) {
         fresh_world();
+        world().gameplay_fixes = c.fixes;
         living* a = arch(1, 200, 200, 10, c.mp);
         ASSERT_NE(nullptr, a);
         std::vector<walker*> orcs;
@@ -1357,13 +1494,52 @@ TEST_F(SemArchmage, mind_control_takes_one_foe_on_the_price_and_one_more_per_10_
         EXPECT_FLOAT_EQ(c.left, a->stats()->magicpoints()) << c.what;
     }
 
-    fresh_world();
-    living* a = arch(1, 200, 200, 10, 1000.0f);
-    living* o = orc(2, 206, 200);
-    ASSERT_TRUE(a && o);
-    ASSERT_TRUE(cast(a, 4, 0).ok);
-    EXPECT_EQ(1, static_cast<int>(o->team_num()));
-    EXPECT_FLOAT_EQ(850.0f, a->stats()->magicpoints()) << "one controlled: the price only";
+    for (short fixes : {short{0}, short{1}}) {
+        fresh_world();
+        world().gameplay_fixes = fixes;
+        living* a = arch(1, 200, 200, 10, 1000.0f);
+        living* o = orc(2, 206, 200);
+        ASSERT_TRUE(a && o);
+        ASSERT_TRUE(cast(a, 4, 0).ok);
+        EXPECT_EQ(1, static_cast<int>(o->team_num())) << "setting " << fixes;
+        EXPECT_FLOAT_EQ(850.0f, a->stats()->magicpoints())
+            << "setting " << fixes << ", one controlled: the price only";
+    }
+}
+
+// Gameplay Fixes AL (#485). Five level-1 orcs in reach of a level-10
+// archmage with 400 magic, every domination roll a success: the budget (the
+// 250 spare plus 10) takes all five on both values of the setting. With the
+// setting off the cast costs its 150 alone, as the old game's does (its sap
+// loop lowers only a local): 250 left. With it on each man past the first
+// costs 10 more, 40 in all (never more than the 250 spare): 210 left.
+//
+// RED (the setting dropped, `local extra = gf.on() and controlled > 1` ->
+// `local extra = controlled > 1`): Expected equality of these values: fixes
+// != 0 ? 210.0f : 250.0f Which is: 250 a->stats()->magicpoints() Which is:
+// 210 (and the loop above: c.left Which is: 10 ... Which is: 0). RED (the
+// setting inverted, `not gf.on()`): the same line, 250 / 210 and 210 / 250.
+TEST_F(SemArchmage, mind_control_charges_ten_a_man_past_the_first_only_with_the_fixes_on)
+{
+    ConstantRandom one(1);
+    ScopedSimRandom fixed_draws(&one);
+    for (short fixes : {short{0}, short{1}}) {
+        fresh_world();
+        world().gameplay_fixes = fixes;
+        living* a = arch(1, 200, 200, 10, 400.0f);
+        ASSERT_NE(nullptr, a);
+        std::vector<walker*> orcs;
+        for (short dx : {short{6}, short{10}, short{14}, short{18}, short{22}}) {
+            living* o = orc(2, static_cast<short>(200 + dx), 200);
+            ASSERT_NE(nullptr, o);
+            orcs.push_back(o);
+        }
+        const Cast c = cast(a, 4, 0);
+        ASSERT_TRUE(c.ok) << "setting " << fixes << ": " << c.reason;
+        EXPECT_EQ(5, on_team(orcs, 1)) << "setting " << fixes << ": all five taken";
+        EXPECT_FLOAT_EQ(fixes != 0 ? 210.0f : 250.0f, a->stats()->magicpoints())
+            << "setting " << fixes;
+    }
 }
 
 // :633 already-charmed and generator arms, on both values of the setting. In

@@ -18,25 +18,25 @@ local function orbit_offset(drawcycle)
   return ORBIT_X[idx], ORBIT_Y[idx]
 end
 
--- The shield and the boomerang share this tail: foe weapons inside the guard
--- radius are destroyed (each costing the guard its damage in hitpoints), foes
--- inside the body radius are attacked, and the guard expires on hitpoints or
--- lifetime. Kept as one local helper because the two C++ bodies are literally
--- identical from here down apart from the weapon-scan range.
+-- The shield and the boomerang share this tail: foe shots inside the guard
+-- radius are destroyed, each costing the guard its damage in hitpoints (solid
+-- scenery, a bone wall or war banner, is passed by), foes inside the body radius
+-- are attacked, and the guard expires on hitpoints or lifetime. One local helper:
+-- the two C++ bodies were identical from here down but for the weapon-scan range.
 local function guard_tail(self, weapon_range)
   local weapons = og.find_foe_weapons_in_range("weap", weapon_range, self)
-  -- rule: A magic shield (range = its size) or boomerang (twice its size) destroys every foe weapon
-  --   inside its guard radius each tick, each costing the guard the weapon's damage in hp. Unlike
-  --   the hook blade, it destroys scenery weapons too.
-  -- tests: EffectMorePaths.effect_magic_shield_absorbs_hostile_weapon_and_strikes_foe
-  -- tests: EffectMorePaths.effect_boomerang_orbit_absorbs_hostile_weapon_and_strikes_foe
-  -- tests: parity:shield_projectile_absorb_scen99, EffectAct.magic_shield_orbit_step_and_ageing
+  -- plumbing: iterates foe weapons in range; rule below
   for i = 1, #weapons do
     local weapon = weapons[i]
-    -- hp is a C++ float: per-op rounding.
-    self.hp = og.fsub(self.hp, weapon:damage())
-    weapon.dead = 1
-    weapon:death()
+    -- rule: A guard destroys each foe shot in its radius (shield: its size, boomerang: twice) for its damage in hp; solid scenery is passed by.
+    -- tests: EffectMorePaths.effect_magic_shield_absorbs_hostile_weapon_and_strikes_foe, parity:shield_projectile_absorb_scen99
+    -- tests: EffectMorePaths.effect_boomerang_orbit_absorbs_hostile_weapon_and_strikes_foe, EffectAct.magic_shield_orbit_step_and_ageing
+    -- tests: SemShield.a_guard_passes_a_foes_bone_wall_and_war_banner_by
+    if not weapon:blocks_placement() then
+      self.hp = og.fsub(self.hp, weapon:damage())  -- hp is a C++ float: per-op rounding.
+      weapon.dead = 1
+      weapon:death()
+    end
   end
 
   local foes = og.find_foes_in_range("ob", self:sizex(), self)

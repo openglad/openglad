@@ -1865,90 +1865,99 @@ TEST_F(WalkerSpecials, archmage_marker_needs_75_int_then_chain_and_summon_are_on
 
 TEST_F(WalkerSpecials, archmage_mind_control_stats_name_path)
 {
-    og::runtime::current_session->myscreen_->world().delete_objects();
-
-    walker* arch = make_special_guy(FAMILY_ARCHMAGE, 4, 7);
-    walker* foe = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ORC);
-    walker* foe2 = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ORC);
-    walker* foe3 = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ORC);
-    ASSERT_NE(nullptr, arch) << "archmage created";
-    ASSERT_NE(nullptr, foe) << "first mind-control target created";
-    ASSERT_NE(nullptr, foe2) << "second mind-control target created";
-    ASSERT_NE(nullptr, foe3) << "third mind-control target created";
-
-    arch->setxy(120, 120);
-    foe->setxy(126, 120);
-    foe2->setxy(130, 120);
-    foe3->setxy(134, 120);
-    foe->set_team_num(2);
-    foe2->set_team_num(2);
-    foe3->set_team_num(2);
-    foe->stats()->set_level(1);
-    foe2->stats()->set_level(1);
-    foe3->stats()->set_level(1);
-    arch->set_busy(0);
-    arch->set_current_special(4);
-    arch->set_shifter_down(0);
-    arch->stats()->set_special_cost(4, 0);
-    arch->stats()->set_magicpoints(80);
-    arch->stats()->name = "ARCH-NPC";
-    if (arch->myguy) {
-        arch->clear_myguy();
-    }
-    foe->set_real_team_num(255);
-    foe2->set_real_team_num(255);
-    foe3->set_real_team_num(255);
-    foe->set_charm_left((0));
-    foe2->set_charm_left((0));
-    foe3->set_charm_left((0));
-    ASSERT_NE(nullptr, current_game->sim_events) << "the notification channel exists";
-    current_game->sim_events->clear();
-
+    auto& fixes_world = og::runtime::current_session->myscreen_->world();
+    const short fixes_before = fixes_world.gameplay_fixes;
+    for (const short fixes : {short{1}, short{0}})
     {
-        // Every draw mind_control makes is on the WORLD stream: og.rand(20)
-        // for the resist (non-zero = proper control, not the berserk arm) and
-        // compute_charm_duration's 25 + next(20 * level edge). A GameContext
-        // rng reaches neither, so the seeded stream goes here.
-        FixedRandom one_rng(1u);
-        ScopedSimRandom scoped(&one_rng);
-        ASSERT_TRUE(arch->special()) << "mind control fires on three charmable foes";
-    }
+        fixes_world.gameplay_fixes = fixes;
+        og::runtime::current_session->myscreen_->world().delete_objects();
 
-    // Budget = post-cost pool (80) + 10, and each target costs 10: all three
-    // are controlled. The first is covered by the special's own cost, so the
-    // spend is (3 - 1) * 10 = 20 out of 80.
-    EXPECT_FLOAT_EQ(60.0f, arch->stats()->magicpoints())
-        << "extra targets cost 10 MP each; the first is free";
-    EXPECT_FLOAT_EQ(10.0f, arch->busy()) << "mind control costs 10 busy ticks";
-    for (walker* target : {foe, foe2, foe3})
-    {
-        EXPECT_EQ(static_cast<int>(arch->team_num()), static_cast<int>(target->team_num()))
-            << "a properly controlled foe joins the archmage's team";
-        EXPECT_EQ(2, static_cast<int>(target->real_team_num()))
-            << "and its old team is banked in real_team_num";
-        // charm_duration(edge 7 - 1 = 6) = 25 + next(120) = 26, under the knee.
-        EXPECT_EQ(26, static_cast<int>(target->charm_left()))
-            << "with the level edge's exact charm duration";
-        EXPECT_EQ(nullptr, target->foe())
-            << "control clears the foe so the convert picks a new one";
-    }
+        walker* arch = make_special_guy(FAMILY_ARCHMAGE, 4, 7);
+        walker* foe = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ORC);
+        walker* foe2 = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ORC);
+        walker* foe3 = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ORC);
+        ASSERT_NE(nullptr, arch) << "archmage created";
+        ASSERT_NE(nullptr, foe) << "first mind-control target created";
+        ASSERT_NE(nullptr, foe2) << "second mind-control target created";
+        ASSERT_NE(nullptr, foe3) << "third mind-control target created";
 
-    // The path this test is named for: an archmage with NO guy is announced by
-    // its statistics name, not by the generic family label.
-    bool announced = false;
-    for (const og::sim::Event& e : current_game->sim_events->events())
-    {
-        if (e.kind == og::sim::EventKind::Notification)
-        {
-            EXPECT_EQ(std::string("ARCH-NPC has controlled 3 men"), e.text)
-                << "a guy-less caster is announced by its statistics name";
-            announced = true;
+        arch->setxy(120, 120);
+        foe->setxy(126, 120);
+        foe2->setxy(130, 120);
+        foe3->setxy(134, 120);
+        foe->set_team_num(2);
+        foe2->set_team_num(2);
+        foe3->set_team_num(2);
+        foe->stats()->set_level(1);
+        foe2->stats()->set_level(1);
+        foe3->stats()->set_level(1);
+        arch->set_busy(0);
+        arch->set_current_special(4);
+        arch->set_shifter_down(0);
+        arch->stats()->set_special_cost(4, 0);
+        arch->stats()->set_magicpoints(80);
+        arch->stats()->name = "ARCH-NPC";
+        if (arch->myguy) {
+            arch->clear_myguy();
         }
-    }
-    EXPECT_TRUE(announced) << "mind control announces its haul";
+        foe->set_real_team_num(255);
+        foe2->set_real_team_num(255);
+        foe3->set_real_team_num(255);
+        foe->set_charm_left((0));
+        foe2->set_charm_left((0));
+        foe3->set_charm_left((0));
+        ASSERT_NE(nullptr, current_game->sim_events) << "the notification channel exists";
+        current_game->sim_events->clear();
 
-    delete arch;
-    og::runtime::current_session->myscreen_->world().delete_objects();
+        {
+            // Every draw mind_control makes is on the WORLD stream: og.rand(20)
+            // for the resist (non-zero = proper control, not the berserk arm) and
+            // compute_charm_duration's 25 + next(20 * level edge). A GameContext
+            // rng reaches neither, so the seeded stream goes here.
+            FixedRandom one_rng(1u);
+            ScopedSimRandom scoped(&one_rng);
+            ASSERT_TRUE(arch->special()) << "mind control fires on three charmable foes";
+        }
+
+        // Budget = post-cost pool (80) + 10, and each target costs 10: all three
+        // are controlled, on both values of the setting. With Gameplay Fixes on
+        // (fix AL) the first is covered by the special's own cost and each
+        // further one costs 10, so the spend is (3 - 1) * 10 = 20 out of 80; with
+        // it off the cast costs its price alone (0 here), as the old game's does.
+        EXPECT_FLOAT_EQ(fixes != 0 ? 60.0f : 80.0f, arch->stats()->magicpoints())
+            << "setting " << fixes << ": extra targets cost 10 MP each only with the fixes on";
+        EXPECT_FLOAT_EQ(10.0f, arch->busy()) << "mind control costs 10 busy ticks";
+        for (walker* target : {foe, foe2, foe3})
+        {
+            EXPECT_EQ(static_cast<int>(arch->team_num()), static_cast<int>(target->team_num()))
+                << "a properly controlled foe joins the archmage's team";
+            EXPECT_EQ(2, static_cast<int>(target->real_team_num()))
+                << "and its old team is banked in real_team_num";
+            // charm_duration(edge 7 - 1 = 6) = 25 + next(120) = 26, under the knee.
+            EXPECT_EQ(26, static_cast<int>(target->charm_left()))
+                << "with the level edge's exact charm duration";
+            EXPECT_EQ(nullptr, target->foe())
+                << "control clears the foe so the convert picks a new one";
+        }
+
+        // The path this test is named for: an archmage with NO guy is announced by
+        // its statistics name, not by the generic family label.
+        bool announced = false;
+        for (const og::sim::Event& e : current_game->sim_events->events())
+        {
+            if (e.kind == og::sim::EventKind::Notification)
+            {
+                EXPECT_EQ(std::string("ARCH-NPC has controlled 3 men"), e.text)
+                    << "a guy-less caster is announced by its statistics name";
+                announced = true;
+            }
+        }
+        EXPECT_TRUE(announced) << "mind control announces its haul";
+
+        delete arch;
+        og::runtime::current_session->myscreen_->world().delete_objects();
+    }
+    fixes_world.gameplay_fixes = fixes_before;
 }
 
 

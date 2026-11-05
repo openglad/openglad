@@ -824,32 +824,34 @@ TEST(SemLibsCaptain, a_warband_tile_touching_the_captains_edge_is_clear_ground)
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
-// kit_captain.lua:288 edge_spots, equal gaps: the first minimum in west,
-// east, north, south order is kept. A captain at (256,256) on the 512
-// field has four gaps of 256: the grunts come from the west, (0,256). A
-// captain at (400,112) has east and north gaps of 112: east comes first;
-// its scan's first tile (496) is refused by the grid (its far edge is the
-// map's last pixel), so the first grunt is at (480,112).
+// kit_captain.lua edge_spots, equal gaps: the first minimum in west, east,
+// north, south order is kept. Each gap runs from the side of the captain's
+// 16 x 16 body facing its edge. A captain at (248,248) on the 512 field
+// has four gaps of 248: the grunts come from the west, (0,248) and
+// (16,248). A captain at (384,112) has east and north gaps of 112 (512 -
+// 384 - 16 and 112): east comes first; its scan's first tile (496) is
+// refused by the grid (its far edge is the map's last pixel), so the
+// grunts are at (480,112) and (464,112).
 TEST(SemLibsCaptain, a_warband_with_equal_edge_gaps_comes_in_west_east_north_south_order)
 {
     og::test::ScopedHookFailureGuard guard;
     {
         TestGameWorld tw;
         cap::field(tw);
-        walker* captain = cap::add_captain(tw, 256, 256);
+        walker* captain = cap::add_captain(tw, 248, 248);
         ASSERT_NE(nullptr, captain);
         ASSERT_TRUE(cast(captain, 4, true).ok);
         const auto grunts = cap::grunts_of(tw, captain);
         ASSERT_EQ(2u, grunts.size());
         EXPECT_EQ(0, grunts[0]->xpos()) << "four equal gaps: the west";
-        EXPECT_EQ(256, grunts[0]->ypos());
+        EXPECT_EQ(248, grunts[0]->ypos());
         EXPECT_EQ(16, grunts[1]->xpos());
-        EXPECT_EQ(256, grunts[1]->ypos());
+        EXPECT_EQ(248, grunts[1]->ypos());
     }
     {
         TestGameWorld tw;
         cap::field(tw);
-        walker* captain = cap::add_captain(tw, 400, 112);
+        walker* captain = cap::add_captain(tw, 384, 112);
         ASSERT_NE(nullptr, captain);
         ASSERT_TRUE(cast(captain, 4, true).ok);
         const auto grunts = cap::grunts_of(tw, captain);
@@ -858,6 +860,59 @@ TEST(SemLibsCaptain, a_warband_with_equal_edge_gaps_comes_in_west_east_north_sou
         EXPECT_EQ(112, grunts[0]->ypos());
         EXPECT_EQ(464, grunts[1]->xpos());
         EXPECT_EQ(112, grunts[1]->ypos());
+    }
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+// #478. The edge gaps are measured from the side of the captain's body
+// facing each edge: the east and south gaps run from his far side (x + 16,
+// y + 16), not from his top-left corner. On a 512 x 640 field a level-10
+// captain at (250,300) is 250 px from the west edge and 246 from the east:
+// the grunts come from the east, the first at (480,300) (the scan's first
+// tile, 496, is refused by the grid) and the second at (464,300). On a
+// 640 x 512 field a captain at (300,250) is 250 px from the north edge and
+// 246 from the south: the grunts come from the south, (300,480) and
+// (300,464).
+//
+// RED (the old gaps, `pixmaxx - x - self:sizex()` -> `pixmaxx - x` and the
+// same for y in edge_spots): Expected equality of these values: k.first_x
+// Which is: 480 grunts[0]->xpos() Which is: 0 (the west edge, 250 < 262);
+// the equal-gaps test above reds too: 480 grunts[0]->xpos() Which is: 384
+// "east ties north: the east" (north 112 < east 128).
+TEST(SemLibsCaptain, a_warband_measures_the_east_and_south_gaps_from_the_captains_far_side)
+{
+    og::test::ScopedHookFailureGuard guard;
+    struct Case {
+        int tiles_w, tiles_h;
+        short x, y;
+        short first_x, first_y, second_x, second_y;
+        const char* what;
+    };
+    const Case cases[] = {
+        {32, 40, 250, 300, 480, 300, 464, 300, "512 x 640, east 246 < west 250"},
+        {40, 32, 300, 250, 300, 480, 300, 464, "640 x 512, south 246 < north 250"},
+    };
+    for (const Case& k : cases) {
+        TestGameWorld tw;
+        tw.world().resize_grid(k.tiles_w, k.tiles_h);
+        std::fill_n(tw.world().grid.data.get(),
+                    static_cast<std::size_t>(tw.world().grid.w) * tw.world().grid.h,
+                    static_cast<std::uint8_t>(PIX_GRASS1));
+        tw.world().mysmoother.set_target(tw.world().grid);
+        tw.world().my_team = 0;
+        tw.world().new_specials = 1;
+        walker* captain = cap::add_captain(tw, k.x, k.y);
+        ASSERT_NE(nullptr, captain) << k.what;
+        ASSERT_EQ(16, captain->sizex()) << k.what;
+        ASSERT_EQ(16, captain->sizey()) << k.what;
+        const Cast c = cast(captain, 4, true);
+        ASSERT_TRUE(c.ok) << k.what << ": " << c.reason;
+        const auto grunts = cap::grunts_of(tw, captain);
+        ASSERT_EQ(2u, grunts.size()) << k.what;
+        EXPECT_EQ(k.first_x, grunts[0]->xpos()) << k.what;
+        EXPECT_EQ(k.first_y, grunts[0]->ypos()) << k.what;
+        EXPECT_EQ(k.second_x, grunts[1]->xpos()) << k.what;
+        EXPECT_EQ(k.second_y, grunts[1]->ypos()) << k.what;
     }
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
@@ -918,9 +973,8 @@ TEST_F(SemLibsCaptainGates, a_bot_captain_counts_no_foe_past_the_knives_flight)
     EXPECT_EQ(1, captain->shifter_down()) << "the fan";
 }
 
-// kit_captain.lua:459 M.ai_banner, the tents arm (the row is deferred,
-// #475: the friend count has no floor filter; that arm is not pinned
-// here). og.find_friends_in_range counts living friends only, so two
+// kit_captain.lua M.ai_banner, the tents arm (the floor arm is the test
+// below). og.find_friends_in_range counts living friends only, so two
 // friendly tents within 96 are no friends around: with a corpse
 // underfoot, a foe at 100 and no banner the plant is not chosen, and with
 // one foe nothing presses for the warband either: false, no shift. Two
@@ -957,6 +1011,48 @@ TEST_F(SemLibsCaptainGates, a_bot_captain_counts_no_tent_among_the_friends_round
     ASSERT_NE(nullptr, body(add(FAMILY_SOLDIER, 1, 200, 240, 1), 16, 16));
     captain->set_shifter_down(9);
     EXPECT_TRUE(kit_gate(captain, 4)) << "two living allies: the plant";
+    EXPECT_EQ(0, captain->shifter_down());
+}
+
+// #475. The plant rule counts the friends round the captain on his own
+// floor, where the banner will stand and its aura reaches. A corpse at his
+// feet and a living foe 100 px off on his floor; two living allies within
+// 96 px one floor up are no friends around: the plant is not chosen, and
+// with one foe nothing presses for the warband: false, no shift. The same
+// two allies on his floor: the plant (shift 0).
+//
+// RED (the floor filter dropped, `local allies = #G.on_floor(og.find_
+// friends_in_range("ob", 96, self), self:floor())` -> `local _, allies =
+// og.find_friends_in_range("ob", 96, self)`): Value of: kit_gate(captain, 4)
+// Actual: true Expected: false "two allies one floor up are no friends
+// around"; Expected equality of these values: 9 captain->shifter_down()
+// Which is: 0.
+TEST_F(SemLibsCaptainGates, a_bot_captain_counts_no_friend_on_another_floor_round_a_banner)
+{
+    world().set_floor_count(2);
+    living* captain = body(add(FAMILY_BIG_ORC, 1, 200, 200, 10, 200.0f), 16, 16);
+    ASSERT_NE(nullptr, captain);
+    walker* s = world().add_fx_ob(Order::Treasure, FAMILY_STAIN);
+    ASSERT_NE(nullptr, s);
+    s->set_team_num(2);
+    s->set_dead(0);
+    s->center_on(captain);
+    s->stats()->set_old_family(FAMILY_SOLDIER);
+    s->stats()->set_level(3);
+    ASSERT_NE(nullptr, body(add(FAMILY_SOLDIER, 2, 300, 200, 1), 16, 16));  // 100
+    living* a1 = body(add(FAMILY_SOLDIER, 1, 240, 200, 1), 16, 16);
+    living* a2 = body(add(FAMILY_SOLDIER, 1, 200, 240, 1), 16, 16);
+    ASSERT_TRUE(a1 && a2);
+    a1->set_floor(1);
+    a2->set_floor(1);
+    captain->set_shifter_down(9);
+    EXPECT_FALSE(kit_gate(captain, 4)) << "two allies one floor up are no friends around";
+    EXPECT_EQ(9, captain->shifter_down()) << "no shift written";
+
+    a1->set_floor(0);
+    a2->set_floor(0);
+    captain->set_shifter_down(9);
+    EXPECT_TRUE(kit_gate(captain, 4)) << "the same two on his floor: the plant";
     EXPECT_EQ(0, captain->shifter_down());
 }
 
@@ -1076,12 +1172,12 @@ TEST(SemLibsElemental, a_rekindle_heal_plays_one_heal_sound_and_the_refusal_none
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
-// kit_elemental.lua:362 M.ai_meteor, the friendly-tent arm (the row is
-// deferred, #458; the enemy-tent cluster and the other-floor ally arms are
-// the suspect's and are not pinned here). og.find_friends_in_range counts
-// living friends only, so a friendly tent inside the strike box does not
-// hold the rain: two clustered foes, a team-0 tent 30 px below the target ->
-// true. A living ally on the same spot holds it.
+// kit_elemental.lua M.ai_meteor, the friendly-tent arm (the enemy-tent
+// cluster and the other-floor arms are the tests below).
+// og.find_friends_in_range counts living friends only, so a friendly tent
+// inside the strike box does not hold the rain: two clustered foes, a team-0
+// tent 30 px below the target -> true. A living ally on the same spot holds
+// it.
 TEST(SemLibsElemental, a_friendly_tent_in_the_strike_box_does_not_hold_a_bot_meteor_rain)
 {
     og::test::ScopedHookFailureGuard guard;
@@ -1103,6 +1199,123 @@ TEST(SemLibsElemental, a_friendly_tent_in_the_strike_box_does_not_hold_a_bot_met
     ASSERT_NE(nullptr, ally);
     bot->set_foe(foe);
     EXPECT_FALSE(elem::gate(bot)) << "a living ally on the spot holds it";
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+// #487, the ally arm. The rain falls only on its own floor (rain_target and
+// the marker take the target's floor, which is the caster's), so an ally on
+// another floor is never under it. Two clustered foes on floor 0 and an ally
+// 30 px below the target one floor up: the rule says yes. The same ally on
+// floor 0 holds the rain.
+//
+// RED (the ally scan's floor filter dropped, `G.on_floor(og.find_friends_in_
+// range(...), self:floor())` -> the raw list): Value of: elem::gate(bot)
+// Actual: false Expected: true "an ally one floor up is not under the rain".
+TEST(SemLibsElemental, a_bot_meteor_rain_is_not_held_by_an_ally_on_another_floor)
+{
+    og::test::ScopedHookFailureGuard guard;
+    elem::ElementalWorld w(1);
+    w.world().set_floor_count(2);
+    living* bot = elem::add_elemental(w, 7, 200.0f, 3);
+    ASSERT_NE(nullptr, bot);
+    living* foe = elem::add_living(w, FAMILY_SOLDIER, 1, 220, 100);
+    living* second = elem::add_living(w, FAMILY_SOLDIER, 1, 250, 100);
+    living* ally = elem::add_living(w, FAMILY_SOLDIER, 0, 220, 130);
+    ASSERT_TRUE(foe && second && ally);
+    ally->set_floor(1);
+    bot->set_foe(foe);
+    EXPECT_TRUE(elem::gate(bot)) << "an ally one floor up is not under the rain";
+    ally->set_floor(0);
+    bot->set_foe(foe);
+    EXPECT_FALSE(elem::gate(bot)) << "the same ally on the rain's floor holds it";
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+// #487, the cluster's floor. A second foe 30 px from the target but one
+// floor up is no part of the cluster the rain can strike: the lone target is
+// not worth a rain. The same foe on the target's floor makes the cluster.
+//
+// RED (the cluster scan's floor test dropped, `G.living_foes(self, ..., true)`
+// -> `G.living_foes(self, ..., false)`): Value of: elem::gate(bot) Actual:
+// true Expected: false "the second foe is one floor up".
+TEST(SemLibsElemental, a_bot_meteor_rain_counts_no_foe_on_another_floor_in_its_cluster)
+{
+    og::test::ScopedHookFailureGuard guard;
+    elem::ElementalWorld w(1);
+    w.world().set_floor_count(2);
+    living* bot = elem::add_elemental(w, 7, 200.0f, 3);
+    ASSERT_NE(nullptr, bot);
+    living* foe = elem::add_living(w, FAMILY_SOLDIER, 1, 220, 100);
+    living* second = elem::add_living(w, FAMILY_SOLDIER, 1, 250, 100);
+    ASSERT_TRUE(foe && second);
+    second->set_floor(1);
+    bot->set_foe(foe);
+    EXPECT_FALSE(elem::gate(bot)) << "the second foe is one floor up";
+    second->set_floor(0);
+    bot->set_foe(foe);
+    EXPECT_TRUE(elem::gate(bot)) << "two foes on the rain's floor";
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+// #487, the tent. A bot rule's foes are living bodies (G.living_foes): an
+// enemy tent 20 px from the target is no second foe of a cluster, as it is
+// none for any other kit rule. A second living foe beside it makes one.
+//
+// RED (the cluster counted with the raw finder again, `G.living_foes(self,
+// RAIN_GATE_RANGE + RAIN_GATE_CLUSTER, true)` -> `og.find_foes_in_range("ob",
+// RAIN_GATE_RANGE + RAIN_GATE_CLUSTER, self)`): Value of: elem::gate(bot)
+// Actual: true Expected: false "a tent is no second foe".
+TEST(SemLibsElemental, a_bot_meteor_rain_counts_no_enemy_tent_in_its_cluster)
+{
+    og::test::ScopedHookFailureGuard guard;
+    elem::ElementalWorld w(1);
+    living* bot = elem::add_elemental(w, 7, 200.0f, 3);
+    ASSERT_NE(nullptr, bot);
+    living* foe = elem::add_living(w, FAMILY_SOLDIER, 1, 220, 100);
+    ASSERT_NE(nullptr, foe);
+    walker* tent = w.world().add_ob(Order::Generator, FAMILY_TENT);
+    ASSERT_NE(nullptr, tent);
+    tent->set_team_num(1);
+    tent->set_sizex(16);
+    tent->set_sizey(16);
+    tent->setxy(240, 100);
+    bot->set_foe(foe);
+    EXPECT_FALSE(elem::gate(bot)) << "a tent is no second foe";
+    ASSERT_NE(nullptr, elem::add_living(w, FAMILY_SOLDIER, 1, 250, 100));
+    bot->set_foe(foe);
+    EXPECT_TRUE(elem::gate(bot)) << "a second living foe makes the cluster";
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+// #487, the held foe's floor. The cast rains only on a foe on the caster's
+// floor (rain_target), so it would pass over a held foe one floor up and
+// rain on someone else, round whom the ally box was never asked: the rule
+// holds instead. The held foe one floor up, two living foes on the caster's
+// floor 20 and 30 px from it (a cluster the rule would count without the
+// hold): no, and the held foe is kept. The held foe on the caster's floor:
+// yes.
+//
+// RED (the hold dropped, `if target:floor() ~= self:floor() then` -> `if
+// false then`): Value of: elem::gate(bot) Actual: true Expected: false "the
+// held foe is one floor up".
+TEST(SemLibsElemental, a_bot_meteor_rain_holds_for_a_foe_on_another_floor)
+{
+    og::test::ScopedHookFailureGuard guard;
+    elem::ElementalWorld w(1);
+    w.world().set_floor_count(2);
+    living* bot = elem::add_elemental(w, 7, 200.0f, 3);
+    ASSERT_NE(nullptr, bot);
+    living* foe = elem::add_living(w, FAMILY_SOLDIER, 1, 220, 100);
+    living* near1 = elem::add_living(w, FAMILY_SOLDIER, 1, 240, 100);
+    living* near2 = elem::add_living(w, FAMILY_SOLDIER, 1, 250, 100);
+    ASSERT_TRUE(foe && near1 && near2);
+    foe->set_floor(1);
+    bot->set_foe(foe);
+    EXPECT_FALSE(elem::gate(bot)) << "the held foe is one floor up";
+    EXPECT_EQ(foe, bot->foe()) << "the held foe is kept";
+    foe->set_floor(0);
+    bot->set_foe(foe);
+    EXPECT_TRUE(elem::gate(bot)) << "the held foe on the caster's floor";
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 

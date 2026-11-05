@@ -339,19 +339,25 @@ ghost is ridden `possess_min` (120 ticks). Every ride ends.
   fight at a third of the captain's level, at least level 1: a level-10
   captain's whole pool (133 for one never trained) buys one call, two
   level-3 orcs. A bot captain calls the warband only when it can pay.
-- Warband grunts gather at the middle of a standing banner. When no
-  banner stands, they run to where the captain stood when they were
-  called, then follow him.
-- The hook blade cuts down any enemy missile that comes close while it
-  spins, but passes an enemy war banner or bone wall by: those have to be
-  chopped down.
+- Warband grunts come in on the map edge nearest the captain, each gap
+  measured from the side of his body facing that edge, and step inward a
+  tile at a time along his row or column to clear ground. They gather at
+  the middle of a standing banner. When no banner stands, they run to
+  where the captain stood when they were called, then follow him.
+- The hook blade, the cleric's magic shield and the soldier's boomerang
+  cut down any enemy missile that comes close, but pass an enemy war
+  banner or bone wall by: those have to be chopped down.
 - A bot captain howls when a living foe or a generator is inside the yell
   (160 pixels plus 20 per level, at most 420). EAT CORPSE has its own bot
   gate: it eats only below 60 percent of its health (at exactly 60 percent
   it does not) and standing on a corpse. HOOK BLADE wants a living foe
   within the blade's 60 pixels, no blade out and the 40 in hand; KNIFE FAN
   wants at least two living foes inside the knives' flight on the three
-  lines it throws; WAR BANNER also wants a living foe within 120 pixels.
+  lines it throws; WAR BANNER also wants a living foe within 120 pixels,
+  and the two friends it plants among must stand within 96 pixels on his
+  own floor.
+- A banner's aura stays on its floor: it heals, frightens and rallies only
+  the walkers on the floor it stands on.
 
 **Skeleton.**
 - DIG IN costs one magic every 4 ticks while the skeleton is buried, and
@@ -415,7 +421,15 @@ ghost is ridden `possess_min` (120 ticks). Every ride ends.
 - A bot lights IMMOLATE with a living foe within a blow and more than 60
   magic, and quenches it when no living foe is within 40 pixels, so the
   burn stops draining the pool for nothing. REKINDLE is never forced on a
-  pool that cannot pay it.
+  pool that cannot pay it. A bot calls METEOR RAIN on its foe within 160
+  pixels on its own floor when at least one more living foe on that floor
+  stands within 60 pixels of it (a tent does not count), and never with an
+  ally of its own on that floor inside the strike box, 71 pixels each way
+  of the target (the rain strikes only its own floor and hurts allies at
+  half). While IMMOLATE burns a bot casts nothing but
+  the quench: its STARBURST, METEOR RAIN and REKINDLE / SUPERNOVA rules say
+  no, as those casts refuse (a burning elemental cornered below a fifth of
+  its health does not go SUPERNOVA).
 
 **Everyone.**
 - A toggle (DIG IN, IMMOLATE) ignores its own second press for 10 ticks.

@@ -761,4 +761,23 @@ function M.with_classic(classic, fixed)
   end
 end
 
+-- The walkers of `list` that stand on `floor`, in list order, as a new
+-- array. The finders are floor-blind by design; a rule whose cast acts on
+-- one floor asks this of what they found. Nothing is drawn.
+function M.on_floor(list, floor)
+  local out = {}
+  -- rule: on_floor keeps, in list order, the walkers of a list that stand on the floor asked, and
+  --   only those; it draws nothing.
+  -- tests: BotGatesLib.on_floor_keeps_only_the_floor_asked_in_list_order
+  for i = 1, #list do
+    -- rule: on_floor keeps, in list order, the walkers of a list that stand on the floor asked, and
+    --   only those; it draws nothing.
+    -- tests: BotGatesLib.on_floor_keeps_only_the_floor_asked_in_list_order
+    if list[i]:floor() == floor then
+      out[#out + 1] = list[i]
+    end
+  end
+  return out
+end
+
 return M

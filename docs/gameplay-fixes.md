@@ -94,6 +94,8 @@ usual pause.
 | AF | Who acts during FREEZE TIME | A Living or a generator acts only when it is on team 0 itself, as in the old game: with a player colour other than red the freeze stops the player's own side and lets team 0 fight on (#86), a charmed troop of a living enemy tent or an enemy's summon the player charmed acts because it wears red, and a summon of the player's caster that an enemy charmed is frozen. | It acts when it is friendly to the player's team: the head of its owner chain wears the player's colour (#92). The level census reads friendliness on both settings. |
 | AG | A forestwalker's step in the trees | Every act in the trees takes the forest penalty off the step the walker carries and adds any haste to the result. A hastened elf whose haste beats its penalty steps farther every act it stays in the trees and keeps that size until it leaves them (a level-2 speed potion with no penalty: a 204 px step after 100 acts, over walls, water and bodies); without a haste the step crawls to 1 px within a few acts. | The penalty comes off the normal step every act: in the trees the step is the normal step less the penalty, never below 1 px, plus any haste, once. A hero elf with 30 dexterity walks 3 px, not 1. |
 | AH | Cleric TURN UNDEAD on a warded skeleton or ghost | Only the family decides, as in the old game: a skeleton or ghost carrying `BIT_INVINCIBLE` or an invulnerability potion (one it drank, or a New Specials ghost's PHASE) is rolled for and turned like any other. | A warded undead is never turned, rolled for or counted: turning is damage, and the ward stops damage. With nothing else turnable in reach the cast is refused as `NO UNDEAD IN RANGE` (fix E), and the cleric bot's gate does not count it. |
+| AL | Archmage MIND CONTROL on more than one foe | The cast costs its price alone, however many foes it takes, as the old game's does (its charge for each further man lowers only a local). | Each foe taken past the first costs 10 magic more, never more than the magic left after the price. |
+| AN | The archmage bot's CHAIN LIGHTNING rule, for a hero | No rule: the bot casts its coin's arm (fix B's off column). | The rule measures the chain with the cast's own reach: 200 px plus half its Intelligence plus 2 per level for an archmage with a character record (a hero the computer plays), 200 px plus 7 per level for a monster. Before, it measured every archmage by level, so such a hero was told "the chain has a target" and then refused `NO FOE IN RANGE`, or turned to HEARTBURST or held when the chain would have landed. |
 
 TELEPORT, REVEAL, CLOAK and ENERGY WAVE are unchanged as casts (their bot
 rules are in [Bots](#bots)): each does something whenever it is cast
@@ -141,7 +143,7 @@ Fixes T to W, in play:
   first asks "am I busy?" (or "am I mid-teleport?", or "am I resting?")
   asks the same before it says yes.
 
-Fixes X to AH, in play:
+Fixes X to AN, in play:
 
 - **X.** A walker whose step is refused shoves the ally in its way: the
   shove draws a roll, and two times in three the ally loses its orders
@@ -320,6 +322,31 @@ Fixes X to AH, in play:
   New Specials ghost's PHASE no longer saves it from TURN UNDEAD. The ward in
   `do_combat_damage` is unchanged: only a scripted match's turn and a
   level's damage gate reach it, and the old game has neither.
+- **AL.** MIND CONTROL takes foes while its budget lasts: the price covers
+  the first, and each further one needs 10 of the magic left after the
+  price. The old game counts that budget down to choose how many it takes,
+  and then works out the charge for the extra men the same way, on a local
+  that never reaches the archmage's magic, so its cast costs its price
+  alone (#485). This game took the extra 10 a man since #79. With the
+  setting off it now costs the price alone, as the old game's does; with
+  it on the charge is kept: a level-10 archmage with 400 magic that takes
+  five men keeps 250 with the setting off and 210 with it on. Both settings
+  take the same men. No parity recording controls more than one man with
+  magic to spare, so every golden is unchanged.
+- **AN.** The archmage bot's HEARTBURST / CHAIN LIGHTNING rule (fix Q)
+  keeps the coin's arm when that arm has a foe in reach. It measured the
+  chain at 200 px plus 7 per level for every archmage, which is the cast's
+  reach for a monster only: an archmage with a character record (a
+  promoted hero the computer plays when it is not on a seat) reaches 200 px
+  plus half its Intelligence plus 2 per level (#453). A level-14 hero with
+  60 Intelligence reaches 258 px, not 298: with its only foe at 280 px the
+  rule kept the chain and the cast refused `NO FOE IN RANGE`. A level-1
+  hero with 200 Intelligence reaches 302 px, not 207: with its foe at
+  300 px the rule turned to HEARTBURST, which has no target there, and
+  held. With the setting on the rule now asks the cast's own reach, so the
+  rule and the cast agree. The struck bot's answer (fix R) asks the same
+  rule. No parity recording fields an archmage with a character record, so
+  every golden is unchanged.
 
 ## Refusals at a glance
 
@@ -455,10 +482,15 @@ because the spin strikes it and the yell stuns it (fix K).
   HEARTBURST (80) as the special the halved pool must still cover.
   HEARTBURST or CHAIN LIGHTNING: the coin's choice is kept when it has a
   target, swapped when only the other has one, and the cast refused when
-  neither has (the chain gate uses the chain's reach by level, 200 px plus
-  7 per level, so a bot with a character record can be told "the chain has
-  a target" and then refused for nothing by the cast, which uses half its
-  Intelligence instead; a candidate for a later refinement). SUMMON
+  neither has. Each reach is the cast's own: HEARTBURST 80 px plus 2 per
+  level, CHAIN LIGHTNING 200 px plus 7 per level for a monster and 200 px
+  plus half its Intelligence plus 2 per level for an archmage with a
+  character record (fix AN: before, the rule measured every archmage's
+  chain by level, so a hero the computer plays could be told "the chain has
+  a target" and then refused for nothing by the cast). The chain counts
+  only foes on the archmage's own floor, the only ones its bolt can strike
+  first (#455); HEARTBURST counts a foe on any floor, since it bursts each
+  foe on that foe's floor. SUMMON
   ELEMENTAL wants a living foe within 200 px and spare magic of at least
   the slot's own 500. SUMMON IMAGE, a phantom with one hit point, is a
   decoy, so it pays before the blows land: at least two living foes within
@@ -1012,9 +1044,9 @@ Rows deliberately not added:
 
 ## Not gated
 
-Seventeen changes apply whatever the setting, three from the work that added
-it (N, O and P), six from the second bugs batch and eight from the issues it
-filed; the last entry records a difference kept on purpose (#484):
+Twenty-two changes apply whatever the setting, three from the work that added
+it (N, O and P), six from the second bugs batch and thirteen from the issues
+it filed; the last entry records a difference kept on purpose (#484):
 
 - **N. A slot that is not in play says so.** `walker::special()` refuses a
   slot priced 5000 (an undeclared slot, or one New Specials hides) before it
@@ -1028,7 +1060,11 @@ filed; the last entry records a difference kept on purpose (#484):
   fire elemental's METEOR RAIN gate refuses when an ally stands in the
   strike box: within 71 px of the target on each axis (the rain lands
   within its spread of the target and each blast reaches 31 px; the rain
-  hurts allies at half). With New Specials off the gate is not asked.
+  hurts allies at half). With New Specials off the gate is not asked. The
+  rain strikes only its own floor, so only an ally on that floor holds it,
+  and the second foe of its cluster must be a living foe on that floor: a
+  tent is no second foe, as it is none for any other kit rule, and a held
+  foe on another floor is no target, so the bot holds (#487).
 - **P. The archer's comment** on its default cast now names the slots it
   serves (slot 3 and every unmapped slot; slot 4 is undeclared). Comment
   only.
@@ -1164,6 +1200,53 @@ filed; the last entry records a difference kept on purpose (#484):
   (every parity row runs at 100%). The old game has neither half: its
   `team_num != 0` gate exempts every team-0 walker and shot alike, and both
   halves are ported to it, ungated.
+- **CHAIN LIGHTNING with nobody on its floor fails free (#455).** The
+  chain's bolt strikes first the nearest foe on the archmage's own floor
+  and cannot arc through floors, but the cast paid its busy, a shot on a
+  hero's record, the bolt and half the spare pool before it looked: with
+  the foes in reach all on another floor it bought a bolt with no foe to
+  lead it, which died on its first tick. Such a cast now refuses `NO FOE IN
+  RANGE` before it pays anything, as it does with nobody in reach at all.
+  On one floor nothing changes (every foe in reach is then on the
+  archmage's floor), so no recording moves. The bot's rule with the setting
+  on counts the same foes ([Bots](#bots)). The old game has no floors, so
+  nothing is ported.
+- **A burning fire elemental bot asks only for the quench (#458)** (New
+  Specials only). While IMMOLATE burns every slot is priced 0 and STARBURST,
+  METEOR RAIN and REKINDLE / SUPERNOVA refuse `QUENCH IMMOLATE FIRST`. The
+  IMMOLATE rule asked whether the fire burns; the other three did not, and
+  at a price of 0 the pay test always passed, so a burning bot rolled casts
+  that could only refuse. The three rules now say no while the fire burns,
+  on both values of the setting, as fix O's ally test does: a kit rule.
+  STARBURST's rule still runs the family's own foe search first, so its
+  draws are unchanged. A burning elemental cornered below a fifth of its
+  health no longer turns to SUPERNOVA (its cast refused anyway). No
+  recording plays New Specials, and the old game has none of these casts.
+- **WARBAND comes in on the nearest edge (#478)** (New Specials only). The
+  grunts come in on the map edge nearest the captain, but the east and
+  south gaps were measured from his top-left corner, so each came out his
+  own size (16 px) too long: within 16 px of the map's middle the grunts
+  came from the west or north edge when the east or south one was nearer.
+  Each gap is now measured from the side of his body facing its edge; the
+  tie order (west, east, north, south) and the scan inward are unchanged.
+  The old game has no WARBAND.
+- **The war banner's fright stays on its floor (#475)** (New Specials
+  only). The banner heals only the allies on its own floor and rallies
+  only there, but it frightened every weaker foe in its radius on any
+  floor, so a banner on a balcony sent the weaker foes downstairs running.
+  It now frightens only the weaker living foes on its floor. A bot
+  captain's WAR BANNER rule counted the two friends it wants round the
+  corpse on any floor; it now counts those on his floor, where the banner
+  will stand. The old game has no banner.
+- **A magic shield or a boomerang passes a bone wall or war banner by
+  (#472).** The cleric's MAGIC SHIELD and the soldier's BOOMERANG destroy
+  every foe shot inside their guard radius, each costing the guard the
+  shot's damage in hit points. That took the New Specials BONE WALL and
+  WAR BANNER too, solid scenery a foe has to chop down: a guard passing an
+  enemy wall or banner erased it. The guard now passes solid scenery by,
+  as the captain's hook blade already did. Every shot a recording meets is
+  a classic weapon, which the guard destroys as before, so no recording
+  moves; the old game has neither the wall nor the banner.
 - **The simulation records every display effect (#484).** Not a change. The
   old game decided the melee lunge, the hit and heal numbers, a walled-in
   walker's red 1, the hurt flash, the recoil and the hit animation where it

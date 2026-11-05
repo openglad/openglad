@@ -640,6 +640,79 @@ TEST(SemShield, classic_a_boomerang_dies_with_its_thrower)
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
+// #472. A guard destroys each foe shot inside its radius for that shot's
+// damage in hit points, but passes solid scenery by: a foe's bone wall or
+// war banner (blocks_placement) has to be chopped down, as the captain's
+// hook blade already passes it (KitCaptain.hook_guard_passes_scenery_by).
+// For the magic shield and the boomerang alike: an owner soldier, its guard
+// (100 hp) on its orbit spot after one act, then on that spot an enemy
+// bone wall and war banner (9 damage, 120 hp each) and an enemy knife (5
+// damage). On the next act the knife is gone and the guard has paid its 5
+// (95 hp); the wall and the banner stand at full health.
+//
+// RED (the scenery test dropped, `if not weapon:blocks_placement() then` ->
+// `if true then` in effect_shield.lua guard_tail): Expected equality of these
+// values: 95.0f Which is: 95 fx->stats()->hitpoints() Which is: 77 (5 + 9 +
+// 9 paid); Value of: piece->dead() Actual: true Expected: false "family 5,
+// weapon 20: passed by".
+TEST(SemShield, a_guard_passes_a_foes_bone_wall_and_war_banner_by)
+{
+    og::test::ScopedHookFailureGuard guard;
+    og::test::mount_core_pack();
+    for (const int family : {int{FAMILY_MAGIC_SHIELD}, int{FAMILY_BOOMERANG}}) {
+        TestGameWorld tw;
+        open_field(tw);
+        walker* owner = add_living(tw, FAMILY_SOLDIER, 0, 300, 300);
+        ASSERT_NE(nullptr, owner);
+        walker* fx = add_guard_fx(tw, family, owner, 100);
+        ASSERT_NE(nullptr, fx) << "family " << family;
+        // effect::act bumps drawcycle before the hook, so each act takes the
+        // next orbit step: the guard is set back to the same drawcycle before
+        // the act that meets the weapons, so it lands where the first did.
+        fx->set_drawcycle(10);
+        ASSERT_TRUE(fx->act()) << "family " << family << ": the orbit spot";
+        ASSERT_EQ(0, fx->dead()) << "family " << family;
+        ASSERT_FLOAT_EQ(100.0f, fx->stats()->hitpoints()) << "family " << family;
+        const short spot_x = fx->xpos();
+        const short spot_y = fx->ypos();
+        fx->set_drawcycle(10);
+        std::vector<walker*> scenery;
+        for (const char* id : {"core:bone_wall", "core:war_banner"}) {
+            walker* piece = tw.world().add_weap_ob(Order::Weapon, weapon_family(id));
+            ASSERT_NE(nullptr, piece) << id;
+            const WeaponFamilyDescriptor* wfd = get_weapon_family_descriptor(piece->family());
+            ASSERT_NE(nullptr, wfd) << id;
+            ASSERT_TRUE(wfd->blocks_placement) << id << " is solid scenery";
+            piece->set_team_num(1);
+            piece->setxy(spot_x, spot_y);
+            piece->set_damage(9.0f);
+            piece->stats()->set_max_hitpoints(120.0f);
+            piece->stats()->set_hitpoints(120.0f);
+            piece->set_act_type(ACT_SIT);
+            scenery.push_back(piece);
+        }
+        walker* knife = tw.world().add_weap_ob(Order::Weapon, FAMILY_KNIFE);
+        ASSERT_NE(nullptr, knife);
+        knife->set_team_num(1);
+        knife->setxy(spot_x, spot_y);
+        knife->set_damage(5.0f);
+
+        ASSERT_TRUE(fx->act()) << "family " << family;
+        ASSERT_EQ(spot_x, fx->xpos()) << "family " << family << ": the same orbit spot";
+        ASSERT_EQ(spot_y, fx->ypos()) << "family " << family;
+        EXPECT_TRUE(knife->dead()) << "family " << family << ": the shot is destroyed";
+        EXPECT_FLOAT_EQ(95.0f, fx->stats()->hitpoints())
+            << "family " << family << ": the guard paid the knife's 5 only";
+        for (const walker* piece : scenery) {
+            EXPECT_FALSE(piece->dead()) << "family " << family << ", weapon "
+                                        << int(piece->family()) << ": passed by";
+            EXPECT_FLOAT_EQ(120.0f, piece->stats()->hitpoints())
+                << "family " << family << ", weapon " << int(piece->family());
+        }
+    }
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
 // ===========================================================================
 // effect_hook_blade.lua + kit_captain.lua — the orc captain's HOOK BLADE,
 // WAR BANNER and WARBAND (New Specials; with the setting off the captain has

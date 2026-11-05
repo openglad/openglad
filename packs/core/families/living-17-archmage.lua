@@ -317,37 +317,37 @@ local function ai_teleport(self)
   return yes and not lc.mid_teleport(self)
 end
 
--- CHAIN LIGHTNING wants a foe inside its radius, HEARTBURST inside its own:
--- the coin's arm is kept when it has a target, swapped when only the other
--- has one, refused when neither has.
+-- CHAIN LIGHTNING wants a foe inside its reach on the archmage's floor, HEARTBURST one inside its
+-- own: the coin's arm is kept when it has a target, swapped when only the other has one, else refused.
 ai_burst_or_chain = function(self)
-  -- rule: Gameplay Fixes: a bot's slot-2 cast keeps the coin's arm when that arm has a foe in its
-  --   radius (heartburst 80+2L, chain 200+5L+2L), swaps to the other arm when only it has one, and
-  --   is refused when neither has a foe or the archmage is busy.
+  -- rule: Gameplay Fixes: a bot's slot-2 cast keeps the coin's arm when that arm has a foe in the cast's reach (heartburst 80+2L
+  --   on any floor; chain 200+Int/2+2L a hero, 200+5L+2L a monster, on its own floor), swaps when only the other has one, else (or busy) refused.
   -- tests: GameplayFixesBots.archmage_burst_or_chain_takes_the_arm_with_a_target_with_the_setting_on
   -- tests: GameplayFixesBots.a_busy_bot_never_rolls_a_busy_cast_with_the_setting_on
   -- tests: SemArchmage.a_bot_archmage_whose_chain_coin_has_only_a_burst_target_swaps_to_heartburst
-  -- deferred: #453 the missing arm is asserted (tuning override); the row stays on #453: the gate's
-  --   chain radius ignores the hero formula the cast uses
+  -- tests: SemArchmage.a_bot_heros_chain_rule_reaches_what_its_cast_reaches
+  -- tests: SemArchmage.a_bot_archmages_chain_wants_a_foe_on_its_own_floor
   if not gf.on() then
     return true
   end
-  -- The cast's own guard: it refuses a busy archmage.
   if lc.is_busy(self) then
     return false
   end
   local t = og.tuning(self)
   local bonus = t.radius_bonus_per_level * self.level
   local _, in_burst = og.find_foes_in_range("ob", t.burst_radius_base + bonus, self)
-  local _, in_chain = og.find_foes_in_range("ob",
-    t.chain_radius_base + t.chain_radius_per_level * self.level + bonus, self)
+  local reach = t.chain_radius_per_level * self.level
+  if self:has_guy() then
+    reach = self:g_intelligence() // 2
+  end
+  local in_chain = #G.on_floor(og.find_foes_in_range("ob", t.chain_radius_base + reach + bonus, self), self:floor())
   if self:shifter_down() ~= 0 then
-    -- rule: Gameplay Fixes: a bot's slot-2 cast keeps the coin's arm when that arm has a foe in its
-    --   radius (heartburst 80+2L, chain 200+5L+2L), swaps to the other arm when only it has one,
-    --   and is refused when neither has a foe or the archmage is busy.
+    -- rule: Gameplay Fixes: a bot's slot-2 cast keeps the coin's arm when that arm has a foe in the cast's reach (heartburst
+    --   80+2L on any floor; chain 200+Int/2+2L a hero, 200+5L+2L a monster, on its own floor), swaps when only the other has one.
     -- tests: GameplayFixesBots.archmage_burst_or_chain_takes_the_arm_with_a_target_with_the_setting_on
-    -- tests: GameplayFixesBots.a_busy_bot_never_rolls_a_busy_cast_with_the_setting_on
     -- tests: SemArchmage.a_bot_archmage_whose_chain_coin_has_only_a_burst_target_swaps_to_heartburst
+    -- tests: SemArchmage.a_bot_heros_chain_rule_reaches_what_its_cast_reaches
+    -- tests: SemArchmage.a_bot_archmages_chain_wants_a_foe_on_its_own_floor
     if in_chain >= 1 then
       return true
     end
@@ -617,6 +617,11 @@ local function burst_or_chain(self)
     return true
   end
   -- chain lightning
+  -- rule: CHAIN LIGHTNING with no foe in reach on the archmage's own floor fails free.
+  -- tests: SemArchmage.chain_lightning_with_foes_only_on_another_floor_fails_free
+  if #G.on_floor(foes, self:floor()) == 0 then
+    return false, "NO FOE IN RANGE"
+  end
   -- busy is a C++ float: per-op rounding.
   self.busy = og.fadd(self:busy(), 5.0)
   -- rule: A hero's HEARTBURST counts one shot per foe it bursts; its CHAIN LIGHTNING counts one
@@ -642,18 +647,13 @@ local function burst_or_chain(self)
   -- plumbing: first-strike search over the foes; rule row below
   for i = 1, #foes do
     local foe = foes[i]
-    -- Chain lightning cannot arc through solid floors: only same-floor
-    -- foes are valid first strikes.
     -- rule: CHAIN LIGHTNING's first strike is the nearest foe (centre distance) on the archmage's
     --   own floor; it cannot arc through floors.
     -- tests: WalkerSpecials.archmage_chain_lightning_spawns_one_leashed_bolt
     -- tests: SemArchmage.chain_lightning_strikes_first_the_nearest_foe_on_its_own_floor
-    -- deferred: #455 a nearer upstairs foe is skipped (asserted); the leaderless other-floor-only
-    --   bolt is #455 and is not pinned
     if foe:floor() == self:floor() then
       local dist = self:distance_to_ob_center(foe)
-      -- rule: CHAIN LIGHTNING's first strike is the nearest foe (centre distance) on the archmage's
-      --   own floor; it cannot arc through floors.
+      -- rule: CHAIN LIGHTNING's first strike is the nearest foe (centre distance) on its floor.
       -- tests: WalkerSpecials.archmage_chain_lightning_spawns_one_leashed_bolt
       -- tests: SemArchmage.chain_lightning_strikes_first_the_nearest_foe_on_its_own_floor
       if best_dist > dist then
@@ -1037,13 +1037,13 @@ local function mind_control(self)
   og.emit_notification(string.format(
     "%s has controlled %d men",
     og.entity_display_name(self, "ArchMage"), controlled))
-  -- Target budget starts at mp_after_base_cost + 10, so the first
-  -- control is covered by base special cost and extras cost 10 MP each.
-  -- rule: Each foe controlled beyond the first costs 10 MP more, never more than the pool left
-  --   after the base price.
+  -- rule: Gameplay Fixes: each foe controlled beyond the first costs 10 MP more, never more than the pool left after
+  --   the base price. Classic (the old game's sap lowers only a local): the cast costs its price alone.
   -- tests: WalkerSpecials.archmage_mind_control_stats_name_path
   -- tests: SemArchmage.mind_control_takes_one_foe_on_the_price_and_one_more_per_10_spare
-  if mp_after_base_cost > 0 and controlled > 1 then
+  -- tests: SemArchmage.mind_control_charges_ten_a_man_past_the_first_only_with_the_fixes_on
+  local extra = gf.on() and controlled > 1
+  if extra and mp_after_base_cost > 0 then
     local spend = (controlled - 1) * 10
     spend = og.min(spend, mp_after_base_cost)
     -- magicpoints is a C++ float: per-op rounding.

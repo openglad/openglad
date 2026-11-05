@@ -28,18 +28,22 @@ local function pulse(self, t)
     local w = foes[i]
     local living = w:order() == C.ORDER_LIVING
     local weaker = w.level < self.level
-    -- rule: On each pulse every LIVING foe within banner_radius whose level is below the banner's
-    --   is frightened away from it (fright walk pointing away on each axis); a foe of the banner's
-    --   level or higher, a generator, or a fearless (rallied) foe holds its ground.
+    -- rule: On each pulse every LIVING foe within banner_radius on the banner's own floor whose level
+    --   is below the banner's is frightened away from it (fright walk pointing away on each axis); a
+    --   foe of the banner's level or higher, a generator, or a fearless (rallied) foe holds its ground.
     -- tests: KitCaptain.banner_regens_allies_and_frights_lower_foes
     -- tests: SemLibsBanner.a_banner_frightens_no_generator_and_no_foe_rallied_by_its_own_banner
-    -- deferred: #475 triage bug #475 (the fright is not floor-gated); the generator and fearless
-    --   arms are asserted, the floor behaviour is not pinned
+    -- tests: SemLibsBanner.a_banner_frightens_only_the_weaker_foes_on_its_own_floor
     if living and weaker then
-      -- s_force_fright skips a fearless walker by itself.
-      local dx = og.sign(w:xpos() - self:xpos())
-      local dy = og.sign(w:ypos() - self:ypos())
-      w:s_force_fright(t.banner_fright, dx, dy)
+      -- rule: A banner frightens only the weaker living foes on its own floor: one at the same x/y on
+      --   another floor holds its ground (as its regeneration reaches only allies there).
+      -- tests: SemLibsBanner.a_banner_frightens_only_the_weaker_foes_on_its_own_floor
+      if w:floor() == self:floor() then
+        -- s_force_fright skips a fearless walker by itself.
+        local dx = og.sign(w:xpos() - self:xpos())
+        local dy = og.sign(w:ypos() - self:ypos())
+        w:s_force_fright(t.banner_fright, dx, dy)
+      end
     end
   end
 end
