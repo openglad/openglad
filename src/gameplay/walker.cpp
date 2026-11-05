@@ -3618,16 +3618,16 @@ void walker::set_difficulty(std::uint32_t whatlevel)
 			// the post instead of filling it.
 			stats_->set_max_hitpoints(static_cast<float>(temp));
 			break;
-		// rule: Non-living, non-generator entities (weapons get this at creation via
-		//   configure_weapon_profile_base; also treasures/FX) scale max hp, max mp and damage by
-		//   the difficulty percent unless they are on team 0. So hostile projectiles hit harder on
-		//   Hard; team-0 projectiles never scale.
-		// tests: WalkerMore.walker_base_hooks_and_set_difficulty_scaling
+		// rule: Non-living, non-generator entities (shots at creation via configure_weapon_profile_base,
+		//   treasures, FX) scale max hp, max mp and damage by the difficulty percent off team 0; a
+		//   team-0 shot of a Living with no player character does too (#473), never at 100%.
+		// tests: WalkerMore.walker_base_hooks_and_set_difficulty_scaling, DifficultyScaling.a_team0_npcs_arrow_scales_with_its_body
+		// tests: DifficultyScaling.a_player_characters_arrow_never_scales, DifficultyScaling.an_unowned_team0_weapon_never_scales
 		default:  // adjust standard settings for the rest ..
-			// rule: Non-living, non-generator entities (weapons get this at creation via
-			//   configure_weapon_profile_base.
-			// tests: WalkerMore.walker_base_hooks_and_set_difficulty_scaling
-			if (team_num() != 0)  // do all EXCEPT player characters
+			// rule: Off team 0 everything takes the percent; a team-0 shot takes it with its shooter's body.
+			// tests: WalkerMore.walker_base_hooks_and_set_difficulty_scaling, DifficultyScaling.a_team0_npcs_arrow_scales_with_its_body
+			// tests: DifficultyScaling.a_player_characters_arrow_never_scales, DifficultyScaling.an_unowned_team0_weapon_never_scales
+			if (team_num() != 0 || og::sim::team0_shot_takes_difficulty(*this, dif1))  // do all EXCEPT player characters
 			{
 				const float dif = static_cast<float>(dif1);
 				stats_->set_max_hitpoints((stats_->max_hitpoints() * dif) / 100.0f);

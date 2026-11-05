@@ -975,8 +975,8 @@ Rows deliberately not added:
 
 ## Not gated
 
-Nine changes apply whatever the setting, three from the work that added it (N, O
-and P) and six from the second bugs batch:
+Ten changes apply whatever the setting, three from the work that added it (N, O
+and P) and seven from the second bugs batch:
 
 - **N. A slot that is not in play says so.** `walker::special()` refuses a
   slot priced 5000 (an undeclared slot, or one New Specials hides) before it
@@ -1043,6 +1043,20 @@ and P) and six from the second bugs batch:
   writer, `screen::show_palette_id`, now paints only when the palette
   shown changes; anything else that writes the colours marks it unknown,
   and a mission's end forces the restore. This game only.
+- **An allied NPC's shots follow its body on Easy and Hard (#473).** A
+  placed team-0 NPC with no player character (the SAVE_ALL Bearer, an
+  allied war-host, a team-0 bot squad) takes the difficulty percent on its
+  hit points, magic and damage (A12a), but the shots it fired did not: a
+  shot is scaled by its own `set_difficulty`, which exempted all of team
+  0. On Hard an allied archer had twice the hit points and swung twice as
+  hard while its arrows stayed at 100% and every hostile arrow doubled; on
+  Easy, the reverse. A team-0 shot whose shooter is a Living with no
+  player character now takes the same percent as its shooter's body, on
+  both settings. A player character's shots, a placed weapon or treasure
+  with no owner, and everything at 100% are unchanged, so no golden moves
+  (every parity row runs at 100%). The old game has neither half: its
+  `team_num != 0` gate exempts every team-0 walker and shot alike, and both
+  halves are ported to it, ungated.
 
 ## Balance
 
