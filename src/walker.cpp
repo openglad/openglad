@@ -4512,6 +4512,18 @@ walker * walker::nearest_charmable(std::list<walker*>& foes, short max_level)
 	return best;
 }
 
+// port of the current game's be8a6d09 (#195), behind the setting: fix AH
+// (#474). With Gameplay Fixes on a warded undead (BIT_INVINCIBLE, or an
+// invulnerability potion running) is not turned, counted or rolled for;
+// with it off only the family decides, as the classic kill loop did.
+static bool turnable(walker *w)
+{
+	return w && (w->query_family() == FAMILY_SKELETON ||
+	             w->query_family() == FAMILY_GHOST) &&
+	       !(myscreen->gameplay_fixes &&
+	         (w->stats->query_bit_flags(BIT_INVINCIBLE) || w->invulnerable_left != 0));
+}
+
 // Port of the current game's 7a2ff3cc (walker::undead_foes_in_range): the
 // foes within range TURN UNDEAD could turn (skeleton or ghost). Draws
 // nothing. The cleric bot's Gameplay Fixes gate asks it.
@@ -4524,8 +4536,7 @@ short walker::undead_foes_in_range(Sint32 range)
 	for(auto e = foes.begin(); e != foes.end(); e++)
 	{
 		walker* w = *e;
-		if (w && (w->query_family() == FAMILY_SKELETON ||
-		          w->query_family() == FAMILY_GHOST))
+		if (turnable(w))
 			undead++;
 	}
 	return undead;
@@ -4552,12 +4563,7 @@ Sint32 walker::turn_undead(Sint32 range, Sint32 power)
 		for(auto e = deadlist.begin(); e != deadlist.end(); e++)
 		{
 			walker* w = *e;
-			if (w && (w->query_family() == FAMILY_SKELETON ||
-			          w->query_family() == FAMILY_GHOST))
-			{
-				any_undead = true;
-				break;
-			}
+			if (turnable(w)) { any_undead = true; break; }
 		}
 		if (!any_undead)
 			return -2;
@@ -4571,11 +4577,7 @@ Sint32 walker::turn_undead(Sint32 range, Sint32 power)
     for(auto e = deadlist.begin(); e != deadlist.end(); e++)
 	{
 	    walker* w = *e;
-		if (w
-		        && ( (w->query_family() == FAMILY_SKELETON) ||
-		             (w->query_family() == FAMILY_GHOST)
-		           )
-		   ) // end of if-check
+		if (turnable(w)) // end of if-check
 		{
 			if (random(roll_bound) > random(w->stats->level*10) )
 			{
