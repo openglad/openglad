@@ -3701,6 +3701,21 @@ short walker::special()
 					myscreen->do_notify(tempstr, this);
 
 					generic2 = stats->magicpoints - stats->special_cost[(int)current_special];
+					// port of the current game's 1cd345a2 (#485, Gameplay Fixes AL): with
+					// the setting each man taken past the first costs 10 more magic, never
+					// more than the magic left after the price (the sap below lowers only
+					// the local generic2, so without the setting the cast costs its price)
+					if (myscreen->gameplay_fixes)
+					{
+						Sint32 spare = (Sint32)(stats->magicpoints - stats->special_cost[(int)current_special]);
+						if (spare > 0 && didheal > 1)
+						{
+							Sint32 extra = (didheal - 1) * 10;
+							if (extra > spare)
+								extra = spare;
+							stats->magicpoints -= extra;
+						}
+					}
 					if (generic2 > 0) // sap our extra based on how many guys
 					{
 						while ( (didheal > 0) && (generic2 >= 10) )
