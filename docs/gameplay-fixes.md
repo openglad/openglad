@@ -91,6 +91,7 @@ usual pause.
 | AC | Elf volleys, druid GROW TREE and SUMMON FAERIE at a wall or the map edge | Classic: the cast draws the throw's waver and refuses; the elf's refund leaves it a point ahead (fix H's off column). With fixes H and I alone the cast paid the one swing (1 MP for the elf, 4 for the druid) for a rock or bolt that met the wall and struck nothing. | A pad blocked by terrain refuses `COULD NOT FIRE` before the refund and the swing: nothing drawn, nothing spent. A body on the pad keeps H's and I's paid blow. |
 | AD | A charmed tent or bones troop, a charmed summon | It wears the charmer's colour but keeps its owner's side: it fights its charmer and is struck by its charmer's team. | It heads its own owner chain while the charm lasts; its owner, its charm clock and its tent's cascade are unchanged. |
 | AE | The struck archmage's classic order | The reply goes on after a cast that worked, as the old game's does: a summon that stands still draws the slot-2 coin (the summon's busy refuses the cast), a chain is followed only by a HEARTBURST attempt its own busy refuses, and a HEARTBURST is cast once. | A cast that worked ends the reply; after a chain or a HEARTBURST that leaves the price of a TELEPORT, slot 2 is cast again (a second HEARTBURST, "then leave! :)"). With the setting on only a seat-driven archmage takes this order (a struck bot answers by fix R). |
+| AL | Archmage MIND CONTROL on more than one foe | The cast costs its price alone, however many foes it takes, as the old game's does (its charge for each further man lowers only a local). | Each foe taken past the first costs 10 magic more, never more than the magic left after the price. |
 | AN | The archmage bot's CHAIN LIGHTNING rule, for a hero | No rule: the bot casts its coin's arm (fix B's off column). | The rule measures the chain with the cast's own reach: 200 px plus half its Intelligence plus 2 per level for an archmage with a character record (a hero the computer plays), 200 px plus 7 per level for a monster. Before, it measured every archmage by level, so such a hero was told "the chain has a target" and then refused `NO FOE IN RANGE`, or turned to HEARTBURST or held when the chain would have landed. |
 
 TELEPORT, REVEAL, CLOAK and ENERGY WAVE are unchanged as casts (their bot
@@ -273,6 +274,17 @@ Fixes X to AE, in play:
 
 Fixes AF to AN, in play:
 
+- **AL.** MIND CONTROL takes foes while its budget lasts: the price covers
+  the first, and each further one needs 10 of the magic left after the
+  price. The old game counts that budget down to choose how many it takes,
+  and then works out the charge for the extra men the same way, on a local
+  that never reaches the archmage's magic, so its cast costs its price
+  alone (#485). This game took the extra 10 a man since #79. With the
+  setting off it now costs the price alone, as the old game's does; with
+  it on the charge is kept: a level-10 archmage with 400 magic that takes
+  five men keeps 250 with the setting off and 210 with it on. Both settings
+  take the same men. No parity recording controls more than one man with
+  magic to spare, so every golden is unchanged.
 - **AN.** The archmage bot's HEARTBURST / CHAIN LIGHTNING rule (fix Q)
   keeps the coin's arm when that arm has a foe in reach. It measured the
   chain at 200 px plus 7 per level for every archmage, which is the cast's

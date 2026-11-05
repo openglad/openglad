@@ -1451,10 +1451,12 @@ int on_team(const std::vector<walker*>& obs, int team)
 // :628 / :673 the budget. Three level-1 orcs in reach, every domination roll
 // a success (rand(20) == 1). With 150 magic (the price, spare 0) exactly one
 // is taken, the other two keep team 2 and their never-charmed 255, and the
-// cast costs the price only: 0 left. With 160 (spare 10) two are taken and
-// the second costs the 10: 0 left. With 1000 and a single orc in reach the
-// cast costs the 150 alone: 850. (The old game takes the same men; its extra
-// charge for a second man never reached magicpoints, see the report.)
+// cast costs the price only: 0 left. With 160 (spare 10) two are taken, on
+// both values of the setting (the old game takes the same men): with the
+// setting off the cast costs its price alone, 10 left, as the old game's sap
+// lowers only a local; with it on the second man costs the 10 (fix AL): 0
+// left. With 1000 and a single orc in reach the cast costs the 150 alone:
+// 850, on both values.
 //
 // RED (`budget < 10` -> `budget < 0` at :628): Expected equality of these
 // values: c.taken Which is: 1 on_team(orcs, 1) Which is: 2 "spare 0". RED
@@ -1465,9 +1467,13 @@ TEST_F(SemArchmage, mind_control_takes_one_foe_on_the_price_and_one_more_per_10_
 {
     ConstantRandom one(1);
     ScopedSimRandom fixed_draws(&one);
-    struct Case { float mp; int taken; float left; const char* what; };
-    for (const Case c : {Case{150.0f, 1, 0.0f, "spare 0"}, Case{160.0f, 2, 0.0f, "spare 10"}}) {
+    struct Case { short fixes; float mp; int taken; float left; const char* what; };
+    for (const Case c : {Case{0, 150.0f, 1, 0.0f, "setting off, spare 0"},
+                         Case{0, 160.0f, 2, 10.0f, "setting off, spare 10"},
+                         Case{1, 150.0f, 1, 0.0f, "setting on, spare 0"},
+                         Case{1, 160.0f, 2, 0.0f, "setting on, spare 10"}}) {
         fresh_world();
+        world().gameplay_fixes = c.fixes;
         living* a = arch(1, 200, 200, 10, c.mp);
         ASSERT_NE(nullptr, a);
         std::vector<walker*> orcs;
@@ -1488,13 +1494,52 @@ TEST_F(SemArchmage, mind_control_takes_one_foe_on_the_price_and_one_more_per_10_
         EXPECT_FLOAT_EQ(c.left, a->stats()->magicpoints()) << c.what;
     }
 
-    fresh_world();
-    living* a = arch(1, 200, 200, 10, 1000.0f);
-    living* o = orc(2, 206, 200);
-    ASSERT_TRUE(a && o);
-    ASSERT_TRUE(cast(a, 4, 0).ok);
-    EXPECT_EQ(1, static_cast<int>(o->team_num()));
-    EXPECT_FLOAT_EQ(850.0f, a->stats()->magicpoints()) << "one controlled: the price only";
+    for (short fixes : {short{0}, short{1}}) {
+        fresh_world();
+        world().gameplay_fixes = fixes;
+        living* a = arch(1, 200, 200, 10, 1000.0f);
+        living* o = orc(2, 206, 200);
+        ASSERT_TRUE(a && o);
+        ASSERT_TRUE(cast(a, 4, 0).ok);
+        EXPECT_EQ(1, static_cast<int>(o->team_num())) << "setting " << fixes;
+        EXPECT_FLOAT_EQ(850.0f, a->stats()->magicpoints())
+            << "setting " << fixes << ", one controlled: the price only";
+    }
+}
+
+// Gameplay Fixes AL (#485). Five level-1 orcs in reach of a level-10
+// archmage with 400 magic, every domination roll a success: the budget (the
+// 250 spare plus 10) takes all five on both values of the setting. With the
+// setting off the cast costs its 150 alone, as the old game's does (its sap
+// loop lowers only a local): 250 left. With it on each man past the first
+// costs 10 more, 40 in all (never more than the 250 spare): 210 left.
+//
+// RED (the setting dropped, `local extra = gf.on() and controlled > 1` ->
+// `local extra = controlled > 1`): Expected equality of these values: fixes
+// != 0 ? 210.0f : 250.0f Which is: 250 a->stats()->magicpoints() Which is:
+// 210 (and the loop above: c.left Which is: 10 ... Which is: 0). RED (the
+// setting inverted, `not gf.on()`): the same line, 250 / 210 and 210 / 250.
+TEST_F(SemArchmage, mind_control_charges_ten_a_man_past_the_first_only_with_the_fixes_on)
+{
+    ConstantRandom one(1);
+    ScopedSimRandom fixed_draws(&one);
+    for (short fixes : {short{0}, short{1}}) {
+        fresh_world();
+        world().gameplay_fixes = fixes;
+        living* a = arch(1, 200, 200, 10, 400.0f);
+        ASSERT_NE(nullptr, a);
+        std::vector<walker*> orcs;
+        for (short dx : {short{6}, short{10}, short{14}, short{18}, short{22}}) {
+            living* o = orc(2, static_cast<short>(200 + dx), 200);
+            ASSERT_NE(nullptr, o);
+            orcs.push_back(o);
+        }
+        const Cast c = cast(a, 4, 0);
+        ASSERT_TRUE(c.ok) << "setting " << fixes << ": " << c.reason;
+        EXPECT_EQ(5, on_team(orcs, 1)) << "setting " << fixes << ": all five taken";
+        EXPECT_FLOAT_EQ(fixes != 0 ? 210.0f : 250.0f, a->stats()->magicpoints())
+            << "setting " << fixes;
+    }
 }
 
 // :633 already-charmed and generator arms, on both values of the setting. In

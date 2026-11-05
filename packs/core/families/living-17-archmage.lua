@@ -1037,13 +1037,13 @@ local function mind_control(self)
   og.emit_notification(string.format(
     "%s has controlled %d men",
     og.entity_display_name(self, "ArchMage"), controlled))
-  -- Target budget starts at mp_after_base_cost + 10, so the first
-  -- control is covered by base special cost and extras cost 10 MP each.
-  -- rule: Each foe controlled beyond the first costs 10 MP more, never more than the pool left
-  --   after the base price.
+  -- rule: Gameplay Fixes: each foe controlled beyond the first costs 10 MP more, never more than the pool left after
+  --   the base price. Classic (the old game's sap lowers only a local): the cast costs its price alone.
   -- tests: WalkerSpecials.archmage_mind_control_stats_name_path
   -- tests: SemArchmage.mind_control_takes_one_foe_on_the_price_and_one_more_per_10_spare
-  if mp_after_base_cost > 0 and controlled > 1 then
+  -- tests: SemArchmage.mind_control_charges_ten_a_man_past_the_first_only_with_the_fixes_on
+  local extra = gf.on() and controlled > 1
+  if extra and mp_after_base_cost > 0 then
     local spend = (controlled - 1) * 10
     spend = og.min(spend, mp_after_base_cost)
     -- magicpoints is a C++ float: per-op rounding.
