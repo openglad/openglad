@@ -975,8 +975,8 @@ Rows deliberately not added:
 
 ## Not gated
 
-Ten changes apply whatever the setting, three from the work that added it (N, O
-and P) and seven from the second bugs batch:
+Eleven changes apply whatever the setting, three from the work that added it (N, O
+and P) and eight from the second bugs batch:
 
 - **N. A slot that is not in play says so.** `walker::special()` refuses a
   slot priced 5000 (an undeclared slot, or one New Specials hides) before it
@@ -1054,6 +1054,17 @@ and P) and seven from the second bugs batch:
   archmage's floor), so no recording moves. The bot's rule with the setting
   on counts the same foes ([Bots](#bots)). The old game has no floors, so
   nothing is ported.
+- **A burning fire elemental bot asks only for the quench (#458)** (New
+  Specials only). While IMMOLATE burns every slot is priced 0 and STARBURST,
+  METEOR RAIN and REKINDLE / SUPERNOVA refuse `QUENCH IMMOLATE FIRST`. The
+  IMMOLATE rule asked whether the fire burns; the other three did not, and
+  at a price of 0 the pay test always passed, so a burning bot rolled casts
+  that could only refuse. The three rules now say no while the fire burns,
+  on both values of the setting, as fix O's ally test does: a kit rule.
+  STARBURST's rule still runs the family's own foe search first, so its
+  draws are unchanged. A burning elemental cornered below a fifth of its
+  health no longer turns to SUPERNOVA (its cast refused anyway). No
+  recording plays New Specials, and the old game has none of these casts.
 
 ## Balance
 

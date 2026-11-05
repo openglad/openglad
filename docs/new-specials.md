@@ -415,7 +415,10 @@ ghost is ridden `possess_min` (120 ticks). Every ride ends.
 - A bot lights IMMOLATE with a living foe within a blow and more than 60
   magic, and quenches it when no living foe is within 40 pixels, so the
   burn stops draining the pool for nothing. REKINDLE is never forced on a
-  pool that cannot pay it.
+  pool that cannot pay it. While IMMOLATE burns a bot casts nothing but
+  the quench: its STARBURST, METEOR RAIN and REKINDLE / SUPERNOVA rules say
+  no, as those casts refuse (a burning elemental cornered below a fifth of
+  its health does not go SUPERNOVA).
 
 **Everyone.**
 - A toggle (DIG IN, IMMOLATE) ignores its own second press for 10 ticks.

@@ -271,6 +271,22 @@ function M.starburst(classic)
   end
 end
 
+-- STARBURST's bot rule: the family's own rule runs first (its foe search
+-- and its draws are the classic bot's), then a burning elemental says no,
+-- as the cast refuses while IMMOLATE burns.
+function M.ai_starburst(inner)
+  return function(self)
+    local yes = inner(self)
+    -- rule: While IMMOLATE burns a bot's STARBURST rule says no (the cast refuses QUENCH IMMOLATE FIRST); the
+    --   family's own rule still runs first, for its foe search and its draws.
+    -- tests: KitElemental.a_burning_bots_rules_say_no_to_every_cast_but_the_quench
+    if burning(self) then
+      return false
+    end
+    return yes
+  end
+end
+
 -- IMMOLATE (slot 2): lights the fire, or (a second press after the latch,
 -- free because the channel prices it at 0) puts it out.
 function M.immolate(self)
@@ -496,20 +512,23 @@ end
 -- Our foe within 160 with at least one more of our foes within 60 of it.
 function M.ai_meteor(self)
   -- rule: A bot elemental calls METEOR RAIN on its foe within 160 when at least one more foe stands
-  --   within 60 of it, and never when one of its allies stands inside the strike box (71 px each
-  --   axis of the target).
+  --   within 60 of it, never when one of its allies stands inside the strike box (71 px each axis
+  --   of the target), and never while IMMOLATE burns (the cast refuses QUENCH IMMOLATE FIRST).
   -- tests: KitElemental.ai_meteor_fires_on_a_cluster_in_range
   -- tests: KitElemental.ai_meteor_holds_fire_over_an_ally
   -- tests: KitElemental.ai_meteor_holds_fire_over_a_far_corner_ally
   -- tests: KitElemental.ai_meteor_fires_with_the_ally_clear
   -- tests: KitElemental.ai_off_answers_the_classic_gate
   -- tests: SemLibsElemental.a_friendly_tent_in_the_strike_box_does_not_hold_a_bot_meteor_rain
-  -- deferred: #487 not #458 (burning() unasked): the ally scan and the foe cluster ignore floors,
-  --   though the rain only hits its own floor (effect_bomb.lua), so an ally on another floor
-  --   holds it; the cluster also counts an enemy tent (raw find_foes_in_range, unlike G.living_foes
-  --   everywhere else)
+  -- tests: KitElemental.a_burning_bots_rules_say_no_to_every_cast_but_the_quench
+  -- deferred: #487 the ally scan and the foe cluster ignore floors, though the rain only hits its
+  --   own floor (effect_bomb.lua), so an ally on another floor holds it; the cluster also counts an
+  --   enemy tent (raw find_foes_in_range, unlike G.living_foes everywhere else)
   if og.match_setting("new_specials") == 0 then
     return true
+  end
+  if burning(self) then
+    return false
   end
   if not og.check_special_ai_distance(self, RAIN_GATE_RANGE) then
     return false
@@ -561,12 +580,17 @@ end
 function M.ai_rekindle(self)
   -- rule: A bot elemental goes SUPERNOVA (shift 1) below a fifth of its health with two bodies the
   --   finder counts as foes within 48; otherwise REKINDLE (shift 0) below half health when it can
-  --   pay REKINDLE's 40; else holds.
+  --   pay REKINDLE's 40; else holds. Never while IMMOLATE burns (both casts refuse QUENCH IMMOLATE
+  --   FIRST): the coin is left as it fell.
   -- tests: KitElemental.ai_rekindle_heals_when_hurt_and_novas_when_cornered
   -- tests: GameplayFixesBots.elemental_rekindle_is_not_forced_on_a_pool_that_cannot_pay_it
   -- tests: KitElemental.ai_off_answers_the_classic_gate
+  -- tests: KitElemental.a_burning_bots_rules_say_no_to_every_cast_but_the_quench
   if og.match_setting("new_specials") == 0 then
     return true
+  end
+  if burning(self) then
+    return false
   end
   -- max_hp is a C++ float: per-op rounding.
   if self.hp < og.fdiv(self.max_hp, 5.0) then
@@ -591,6 +615,7 @@ end
 
 -- The declarations that reference this module (packs/core/families/):
 --   core:elemental  default_cast = ke.starburst(do_special); cast = ke.immolate,
---                   ke.meteor_rain, ke.rekindle_or_supernova; ai = ke.ai_immolate,
---                   ke.ai_meteor, ke.ai_rekindle; its on_death calls ke.end_channel
+--                   ke.meteor_rain, ke.rekindle_or_supernova; ai = ke.ai_starburst(...),
+--                   ke.ai_immolate, ke.ai_meteor, ke.ai_rekindle; its on_death calls
+--                   ke.end_channel
 return M

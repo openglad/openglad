@@ -1077,7 +1077,7 @@ TEST(SemLibsElemental, a_rekindle_heal_plays_one_heal_sound_and_the_refusal_none
 }
 
 // kit_elemental.lua:362 M.ai_meteor, the friendly-tent arm (the row is
-// deferred, #458; the enemy-tent cluster and the other-floor ally arms are
+// deferred, #487; the enemy-tent cluster and the other-floor ally arms are
 // the suspect's and are not pinned here). og.find_friends_in_range counts
 // living friends only, so a friendly tent inside the strike box does not
 // hold the rain: two clustered foes, a team-0 tent 30 px below the target ->

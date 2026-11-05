@@ -1234,6 +1234,75 @@ TEST(KitElemental, ai_rekindle_heals_when_hurt_and_novas_when_cornered)
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
+// #458. While IMMOLATE burns every slot is priced 0 and STARBURST, METEOR
+// RAIN and REKINDLE / SUPERNOVA refuse "QUENCH IMMOLATE FIRST", so a bot's
+// rule for each says no: only the quench (IMMOLATE's own rule) is left. A
+// level-10 elemental at a fifth of its health less 5 (15 of 100) with 1000
+// magic and two soldiers 20 px off either side. Not burning, on both values
+// of the Gameplay Fixes setting, every rule says yes: STARBURST (the two in
+// its ring's flight), METEOR RAIN (its foe and one more 40 px from it) and
+// SUPERNOVA (cornered: the rule turns the coin to 1). Lit for real, every
+// rule says no on both values, the REKINDLE rule leaves the coin as it fell,
+// and every cast refuses for the same fact: the rules and the casts agree.
+//
+// RED (each burning check dropped alone, `if burning(self) then` -> `if
+// false then`): in M.ai_starburst, Value of: probe(1, 0) Actual: true
+// Expected: false "burning, setting 0: STARBURST"; in M.ai_meteor, the same
+// for probe(3, 0) "METEOR RAIN"; in M.ai_rekindle, probe(4, 0) "REKINDLE /
+// SUPERNOVA" and Expected equality of these values: 0 e->shifter_down()
+// Which is: 1 "burning, setting 0: the coin as it fell".
+TEST(KitElemental, a_burning_bots_rules_say_no_to_every_cast_but_the_quench)
+{
+    og::test::ScopedHookFailureGuard guard;
+    ElementalWorld w(1);
+    living* e = add_elemental(w, 10, 1000.0f, 1);
+    ASSERT_NE(nullptr, e);
+    e->stats()->set_hitpoints(15.0f);
+    living* west = add_living(w, FAMILY_SOLDIER, 1, 80, 100);
+    living* east = add_living(w, FAMILY_SOLDIER, 1, 120, 100);
+    ASSERT_TRUE(west && east);
+    const auto probe = [&](int slot, short shift) {
+        e->set_current_special(static_cast<char>(slot));
+        e->set_shifter_down(shift);
+        e->set_foe(west);
+        return gate(e);
+    };
+    for (const short fixes : {short{0}, short{1}}) {
+        w.world().gameplay_fixes = fixes;
+        EXPECT_TRUE(probe(1, 0)) << "not burning, setting " << fixes << ": STARBURST";
+        EXPECT_TRUE(probe(3, 0)) << "not burning, setting " << fixes << ": METEOR RAIN";
+        EXPECT_TRUE(probe(4, 0)) << "not burning, setting " << fixes << ": cornered";
+        EXPECT_EQ(1, e->shifter_down()) << "not burning, setting " << fixes << ": SUPERNOVA";
+    }
+
+    e->set_current_special(2);
+    e->set_shifter_down(0);
+    ASSERT_TRUE(cast(e).ok) << "IMMOLATE lit";
+    ASSERT_TRUE(channelling(*e));
+    for (const short fixes : {short{0}, short{1}}) {
+        w.world().gameplay_fixes = fixes;
+        EXPECT_FALSE(probe(1, 0)) << "burning, setting " << fixes << ": STARBURST";
+        EXPECT_FALSE(probe(3, 0)) << "burning, setting " << fixes << ": METEOR RAIN";
+        EXPECT_FALSE(probe(4, 0)) << "burning, setting " << fixes << ": REKINDLE / SUPERNOVA";
+        EXPECT_EQ(0, e->shifter_down()) << "burning, setting " << fixes << ": the coin as it fell";
+    }
+    const float mp_lit = mp(e);
+    for (const int slot : {1, 3, 4}) {
+        for (const short shift : {short{0}, short{1}}) {
+            if (slot != 4 && shift != 0)
+                continue;
+            e->set_current_special(static_cast<char>(slot));
+            e->set_shifter_down(shift);
+            const Cast c = cast(e);
+            EXPECT_FALSE(c.ok) << "slot " << slot << " shift " << shift;
+            EXPECT_EQ("QUENCH IMMOLATE FIRST", c.reason) << "slot " << slot << " shift " << shift;
+        }
+    }
+    EXPECT_FLOAT_EQ(mp_lit, mp(e)) << "nothing spent";
+    EXPECT_TRUE(channelling(*e)) << "still burning";
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
 // With the setting off every new gate answers true at once: no foe
 // acquired, no shift written, no draw (check_special() && !rng(3) must see
 // the same answer it saw before the kit existed). STARBURST's gate is the
