@@ -913,8 +913,8 @@ TEST(SemLibsCloud, a_cloud_fades_out_over_its_last_eight_ticks)
 // whose queued step moved it (on x alone, on y alone) or only turned it keeps
 // its walk and draws nothing. The old game draws nothing on these ticks
 // either (`if (stats->has_commands()) temp = stats->do_command();`). The
-// other arm (a wedged cloud re-rolls its walk, #233) is NOT pinned: the old
-// game has no re-roll, see the batch report.
+// other arm (a wedged cloud re-rolls its walk, #233, with the setting on
+// only) is a_wedged_cloud_stays_put_with_the_fixes_off_and_redraws_its_walk_with_them_on.
 TEST(SemLibsCloud, a_cloud_that_moved_or_turned_keeps_its_walk_and_draws_nothing)
 {
     og::test::mount_core_pack();
@@ -953,6 +953,76 @@ TEST(SemLibsCloud, a_cloud_that_moved_or_turned_keeps_its_walk_and_draws_nothing
         EXPECT_EQ(COMMAND_WALK, q.commandtype);
         EXPECT_EQ(c.dx, q.com1);
         EXPECT_EQ(c.dy, q.com2);
+    }
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+// effect_cloud.lua:83, Gameplay Fixes AM (#486). A cloud in the map's
+// north-west corner heading up-left with a walk (-1, -1) of 19 is wedged:
+// the step, the baby step and both halves of the deflection fail the
+// off-map test and the facing is restored, so a tick moves nothing and
+// keeps the facing. With the setting off (the old game: effect.cpp
+// FAMILY_CLOUD only calls do_command while it has orders) it stays put and
+// spends its walk, one step a tick, drawing nothing. With the setting on
+// the first wedged tick drops the stuck walk and draws a fresh one (#233),
+// and the cloud gets out.
+// Breaks: `if gf.on() and self:xpos() == held_x then` -> `if
+// self:xpos() == held_x then` (off arm red); -> `if false and ...` (on arm
+// red).
+TEST(SemLibsCloud, a_wedged_cloud_stays_put_with_the_fixes_off_and_redraws_its_walk_with_them_on)
+{
+    og::test::mount_core_pack();
+    og::test::ScopedHookFailureGuard guard;
+    {
+        SCOPED_TRACE("setting off");
+        TestGameWorld tw;
+        GameWorld& w = tw.world();
+        w.gameplay_fixes = 0;
+        walker* cloud = cloud_at(w, 0, 0, 50);
+        ASSERT_NE(nullptr, cloud);
+        cloud->set_curdir(static_cast<signed char>(FACE_UP_LEFT));
+        cloud->stats()->add_command(COMMAND_WALK, 19, -1, -1);
+        w.rng_.state_ = 12345u;
+        for (int i = 1; i <= 12; ++i) {
+            ASSERT_TRUE(cloud->act());
+            EXPECT_EQ(0, cloud->xpos()) << "act " << i << ": wedged, no move";
+            EXPECT_EQ(0, cloud->ypos()) << "act " << i << ": wedged, no move";
+            EXPECT_EQ(FACE_UP_LEFT, static_cast<int>(cloud->curdir())) << "act " << i;
+        }
+        EXPECT_EQ(12345u, w.rng_.state_) << "the stuck walk draws nothing";
+        ASSERT_EQ(1u, cloud->stats()->commands.size()) << "the stuck walk is kept";
+        const command& q = cloud->stats()->commands.front();
+        EXPECT_EQ(COMMAND_WALK, q.commandtype);
+        EXPECT_EQ(-1, q.com1);
+        EXPECT_EQ(-1, q.com2);
+        EXPECT_EQ(7, q.commandcount) << "19 steps, one spent each of the 12 acts";
+    }
+    {
+        SCOPED_TRACE("setting on");
+        TestGameWorld tw;
+        GameWorld& w = tw.world();
+        w.gameplay_fixes = 1;
+        walker* cloud = cloud_at(w, 0, 0, 50);
+        ASSERT_NE(nullptr, cloud);
+        cloud->set_curdir(static_cast<signed char>(FACE_UP_LEFT));
+        cloud->stats()->add_command(COMMAND_WALK, 19, -1, -1);
+        w.rng_.state_ = 12345u;
+        ASSERT_TRUE(cloud->act());
+        EXPECT_EQ(0, cloud->xpos()) << "the wedged tick itself moves nothing";
+        EXPECT_EQ(0, cloud->ypos());
+        EXPECT_NE(12345u, w.rng_.state_) << "the wedged tick draws a fresh walk";
+        ASSERT_EQ(1u, cloud->stats()->commands.size()) << "one walk, the fresh one";
+        const command& q = cloud->stats()->commands.front();
+        EXPECT_EQ(COMMAND_WALK, q.commandtype);
+        EXPECT_FALSE(q.com1 == -1 && q.com2 == -1 && q.commandcount == 18)
+            << "the stuck walk is gone";
+        int moved_after = -1;
+        for (int i = 2; i <= 12 && moved_after < 0; ++i) {
+            ASSERT_TRUE(cloud->act());
+            if (cloud->xpos() != 0 || cloud->ypos() != 0)
+                moved_after = i;
+        }
+        EXPECT_GT(moved_after, 0) << "the cloud gets out of the corner within 12 acts";
     }
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }

@@ -502,7 +502,8 @@ TEST(EffectAct, cloud_expired)
 }
 
 
-// Issue #233: a poison cloud wedged into the arena corner FREEZES. Clouds
+// Issue #233: a poison cloud wedged into the arena corner FREEZES (the
+// re-roll below is Gameplay Fixes AM, #486, with the setting on). Clouds
 // fly over interior tiles, so only the map boundary blocks them; heading
 // UP_LEFT in the NW corner fails the first walk, the baby step and BOTH
 // halves of walkstep's NPC deflection on the off-map bounds check, then
@@ -517,6 +518,9 @@ TEST(EffectAct, cloud_wedged_against_wall_keeps_moving)
 {
     GameWorld& world = og::runtime::current_session->myscreen_->world();
     world.create_new_grid();  // a real 40x60 grid (this binary loads no map)
+    // The re-roll is Gameplay Fixes AM (#486): with the setting off the
+    // wedged cloud keeps its stuck walk, as in the old game.
+    world.gameplay_fixes = 1;
 
     walker* fx = world.add_fx_ob(Order::FX, FAMILY_CLOUD);
     ASSERT_NE(nullptr, fx);

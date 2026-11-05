@@ -94,6 +94,7 @@ usual pause.
 | AI | FREEZE TIME's form | A mage on the red team or any hero stops time for everyone else, whatever team the player is on: a hero mage of another colour (a second seat's, a charmed one) turns the screen blue. A mage on the player's team that is neither red nor a hero gives its side bonus rounds instead. | Only a mage on the player's team stops time; any other mage, hero or not, gives its own side bonus rounds ("TIME IS FROZEN! (N rounds)"). |
 | AJ | The exit of a level the player may leave at any time, to a level already won | With foes standing it asks "Withdraw to X?" first (yes abandons the level and reloads the company's save); a no asks "Exit to X?" next, and yes there wins the level. | It asks "Exit to X?" only. |
 | AK | "X picks up key N" | The line shows in the view of the player whose hero picked the key up, or in every view when no player drives that hero (a computer-run teammate). | It shows in every view, so the party learns who carries the key. |
+| AM | A poison cloud wedged against a wall | It stays where it is until its walk runs out (#233), then draws a new one. | A tick that neither moves it nor turns it drops the stuck walk and draws a fresh direction, so it drifts on. |
 
 TELEPORT, REVEAL, CLOAK and ENERGY WAVE are unchanged as casts (their bot
 rules are in [Bots](#bots)): each does something whenever it is cast
@@ -141,7 +142,7 @@ Fixes T to W, in play:
   first asks "am I busy?" (or "am I mid-teleport?", or "am I resting?")
   asks the same before it says yes.
 
-Fixes X to AK, in play:
+Fixes X to AM, in play:
 
 - **X.** A walker whose step is refused shoves the ally in its way: the
   shove draws a roll, and two times in three the ally loses its orders
@@ -305,6 +306,17 @@ Fixes X to AK, in play:
   rest of the party learns who can open the door. With the setting off the
   line goes to the picker's view again (#482); with it on, every view. The
   recording keeps a notification's text only, so no golden moves.
+- **AM.** A thief's poison cloud drifts by random walks. One that drifts
+  into a wall (or the map's edge) can be wedged: its step, the half steps
+  and the slide all fail and its facing is put back, so the tick moves
+  nothing. The old game only steps the walk while the cloud has one, so a
+  wedged cloud sits against the wall until its walk of up to 19 steps runs
+  out (#233 saw it frozen there). This game has re-rolled since `28f8168a`
+  (PR #245): a tick that neither moved the cloud nor turned it drops the
+  stuck walk and draws a fresh direction and length. With the setting off
+  the cloud keeps the stuck walk again (#486); with it on, the re-roll. A
+  cloud that slid or turned keeps its walk and draws nothing on both
+  values. No parity row wedges a cloud, so no golden moves.
 
 ## Refusals at a glance
 
@@ -779,6 +791,10 @@ player may leave at any time, so both values ask the same question.
 
 Fix AK has no row: the key rows record a notification's text and not whose
 view it goes to, so both values record the same bytes.
+
+Fix AM has no row: no cloud row wedges its cloud (`effect_cloud_emission`,
+`effect_poison_cloud_emit`, `effect_cloud_poison`, `thief_bot_cloud_alone`
+and its twin with the setting on), so both values draw the same stream.
 
 The bot payoff gates moved five existing rows with the setting on, each
 recaptured from the old game after its port: `cleric_bot_raise_or_turn_fixes_scen99`
