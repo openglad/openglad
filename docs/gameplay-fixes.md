@@ -822,8 +822,17 @@ The parity goldens are captures from the old game (branch
   the setting on moved). The table mirrors `f8832c0b` and `180e03c4` (the
   mutation pins' lines after the semantics comments; no golden moved), then
   `8e296bf0`, the setting-off twin of the struck archmage arena, fix AE's
-  proof (one new golden; no existing golden moved).
-  `8e296bf0` is the commit the goldens are captured from: 352 of 352 goldens
+  proof (one new golden; no existing golden moved). Fixes AF to AN, AC
+  for #476, #473 and #483: the table mirror `50edf40f` (fix AG's forest
+  arena and #476's three edge-pad arenas, each with the setting off and
+  on), then `d49fd762` (AF), `aa5b1aa5` (AG; its row with the setting on
+  moved), `737270ea` (AH), `4a9802a3` (AI), `80c4249b` (AJ), `a3ea0248`
+  (AK), `d0ee2ffd` (AL), `adbaa300` (AM), `fbcfb9db` (AN) and `805208eb`
+  (AC for #476; its three rows with the setting on moved), and, not behind
+  the setting, `d3d594e3` (#473: a team-0 walker with no player character
+  and its shots take the difficulty) and `5a40b266` (#483: the bot gates'
+  blast reach has no floor). Eight new goldens; no existing golden moved.
+  `5a40b266` is the commit the goldens are captured from: 360 of 360 goldens
   `cmp` equal to a full capture there.
   `tests/parity/golden/DRIFT_LEDGER.md` records each one.
 
