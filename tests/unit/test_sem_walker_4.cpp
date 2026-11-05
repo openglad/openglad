@@ -1077,6 +1077,7 @@ TEST_F(Blink, a_landing_is_probed_at_the_casters_height_on_its_floor_and_at_grou
     boulder_arena(2);
     ASSERT_EQ(2, world().floor_count());
     floor1_grid(PIX_BOULDER_1, PIX_GRASS1);
+    tile(20, 20, PIX_BOULDER_1);  // no clear cell on floor 0: the random fallback cannot land
     mage = mage_at(96, 96);
     mark = marker_for(mage, 0, 0, 5);
     body = living_at(FAMILY_SOLDIER, 1, 0, 0);
@@ -1203,6 +1204,82 @@ TEST_F(Blink, a_ranged_hop_stamps_the_self_teleport_tick_even_when_it_fails)
     world().rng_.state_ = 42u;
     EXPECT_FALSE(sk->teleport_ranged(40));
     EXPECT_EQ(56u, sk->last_self_teleport_tick()) << "teleport_ranged called: stamped though it failed";
+}
+
+// The world LCG's next draw of bound `max` (SimRandom::next), stepping `s`.
+static int lcg_draw(std::uint32_t& s, int max)
+{
+    s = s * 1103515245u + 12345u;
+    return static_cast<int>((s >> 16) % static_cast<std::uint32_t>(max));
+}
+
+// walker_specials.cpp:466 (#471). With no usable marker the blink draws
+// random cells until one is clear and tests every draw, as the old game's
+// unbounded loop does. This game used to stop after 200 draws and never
+// tested the 200th. Only the cell of the nth draw is clear: the caster lands
+// there, and the world stream has advanced exactly n (x, y) pairs.
+TEST_F(Blink, a_random_blink_tests_every_draw_and_lands_on_a_cell_first_drawn_after_two_hundred_tries)
+{
+    for (const int nth : {200, 250})
+    {
+        fresh_world();
+        const int gw = world().grid.w;
+        const int gh = world().grid.h;
+        // The first seed whose nth draw names a cell no earlier draw named
+        // (and not the caster's own cell, (6, 6)).
+        std::uint32_t seed = 0;
+        std::uint32_t after = 0;
+        int cell = -1;
+        for (std::uint32_t cand = 1; cell < 0; ++cand)
+        {
+            std::uint32_t s = cand;
+            std::vector<bool> seen(static_cast<std::size_t>(gw * gh), false);
+            for (int i = 1; i <= nth; ++i)
+            {
+                const int x = lcg_draw(s, gw);
+                const int c = x + gw * lcg_draw(s, gh);
+                if (i == nth && !seen[static_cast<std::size_t>(c)] && c != 6 + gw * 6)
+                {
+                    seed = cand;
+                    after = s;
+                    cell = c;
+                }
+                seen[static_cast<std::size_t>(c)] = true;
+            }
+        }
+        paint_all(PIX_BOULDER_1);
+        tile(cell % gw, cell / gw, PIX_GRASS1);
+        walker* mage = mage_at(96, 96);
+        ASSERT_NE(nullptr, mage);
+        world().rng_.state_ = seed;
+        EXPECT_TRUE(mage->teleport()) << "the clear cell is draw " << nth << ": it lands";
+        EXPECT_EQ((cell % gw) * GRID_SIZE, mage->xpos()) << "draw " << nth;
+        EXPECT_EQ((cell / gw) * GRID_SIZE, mage->ypos()) << "draw " << nth;
+        EXPECT_EQ(after, world().rng_.state_) << "exactly " << nth << " (x, y) pairs drawn";
+    }
+}
+
+// walker_specials.cpp:490 (#471). With no clear cell the old game loops
+// forever; this game gives up after 64 draws per cell per floor (here 64 x
+// 64 x 64 pairs) and leaves the caster where it was.
+TEST_F(Blink, a_random_blink_with_no_clear_cell_gives_up_and_stays_put)
+{
+    paint_all(PIX_BOULDER_1);
+    walker* mage = mage_at(96, 96);
+    ASSERT_NE(nullptr, mage);
+    const int gw = world().grid.w;
+    const int gh = world().grid.h;
+    std::uint32_t s = 42u;
+    for (int i = 0; i < 64 * gw * gh; ++i)
+    {
+        lcg_draw(s, gw);
+        lcg_draw(s, gh);
+    }
+    world().rng_.state_ = 42u;
+    EXPECT_FALSE(mage->teleport()) << "no clear cell: the cast gives up";
+    EXPECT_EQ(96, mage->xpos()) << "no clear cell: the caster stays";
+    EXPECT_EQ(96, mage->ypos());
+    EXPECT_EQ(s, world().rng_.state_) << "exactly 64 x cells pairs drawn before giving up";
 }
 
 // ---------------------------------------------------------------------------

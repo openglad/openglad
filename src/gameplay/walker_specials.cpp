@@ -456,13 +456,13 @@ bool walker::teleport()
 	GameWorld& world = *current_game->world;
 	const int floors = world.floor_count();
 	short target_floor = floor();
-	std::int32_t keep_going = 200; // maxtries
-	// rule: With no usable marker the blink draws random grid cells (x then y, one each per
-	//   attempt) until one is clear, up to 200 attempts; it lands on the cell's pixel origin, or
-	//   fails and leaves the caster where it was.
-	// tests: WalkerSpecialsUnit.walker_specials_r11_special_and_teleport_paths
-	// tests: WalkerSpecialsUnit.teleport_single_floor_rng_stream_is_legacy_shaped
-	// tests: WalkerSpecialsUnit.teleport_blocked_marker_denied_without_probe_eat
+	std::int64_t keep_going = std::int64_t{64} * world.grid.w * world.grid.h * floors; // maxtries
+	// rule: With no usable marker the blink draws random grid cells (x then y, and a floor on
+	//   stacked levels) until one is clear, testing every draw, and lands on the cell's pixel
+	//   origin; where the old game would loop forever (no clear cell) this game gives up after 64
+	//   draws per cell per floor and leaves the caster where it was.
+	// tests: WalkerSpecialsUnit.walker_specials_r11_special_and_teleport_paths, WalkerSpecialsUnit.teleport_single_floor_rng_stream_is_legacy_shaped
+	// tests: WalkerSpecialsUnit.teleport_blocked_marker_denied_without_probe_eat, Blink.a_random_blink_tests_every_draw_and_lands_on_a_cell_first_drawn_after_two_hundred_tries, Blink.a_random_blink_with_no_clear_cell_gives_up_and_stays_put
 	do
 	{
 		newx = static_cast<std::int32_t>(world.rng_.next(static_cast<std::uint32_t>(world.grid.w))) * GRID_SIZE;
@@ -478,15 +478,15 @@ bool walker::teleport()
 		// tests: WalkerSpecialsUnit.teleport_single_floor_rng_stream_is_legacy_shaped
 		if (floors > 1)
 			target_floor = static_cast<short>(world.rng_.next(static_cast<std::uint32_t>(floors)));
-		keep_going--;
-	} while (keep_going > 0 &&
-	         !teleport_landing_clear(world, this, newx, newy, target_floor));
+		// every draw is tested, the last one too
+	} while (!teleport_landing_clear(world, this, newx, newy, target_floor) &&
+	         --keep_going > 0);
 
-	// rule: With no usable marker the blink draws random grid cells (x then y, one each per
-	//   attempt) until one is clear, up to 200 attempts.
-	// tests: WalkerSpecialsUnit.walker_specials_r11_special_and_teleport_paths
-	// tests: WalkerSpecialsUnit.teleport_single_floor_rng_stream_is_legacy_shaped
+	// rule: With no usable marker the blink draws random grid cells until one is clear, testing
+	//   every draw; with none after 64 draws per cell per floor it fails and stays put.
+	// tests: WalkerSpecialsUnit.walker_specials_r11_special_and_teleport_paths, WalkerSpecialsUnit.teleport_single_floor_rng_stream_is_legacy_shaped
 	// tests: WalkerSpecialsUnit.teleport_blocked_marker_denied_without_probe_eat
+	// tests: Blink.a_random_blink_tests_every_draw_and_lands_on_a_cell_first_drawn_after_two_hundred_tries, Blink.a_random_blink_with_no_clear_cell_gives_up_and_stays_put
 	if (keep_going > 0)
 	{
 		// Floor before position (see the marker path above).
