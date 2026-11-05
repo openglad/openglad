@@ -923,8 +923,8 @@ Rows deliberately not added:
 - #411: the kill credit is a field of the current game alone, not in the
   recording; the mode tests (`ModesOnslaught`, `ModesTdm`) pin it.
 - #417 and #418: no byte of the sim changes; every row proves it.
-- The modding API's changes (#454, #464, #469), the hook-failure line
-  (#463) and the match recap (#467): no shipped pack reaches the new arms, and no
+- The modding API's changes (#454, #464, #469, #479), the hook-failure
+  line (#463) and the match recap (#467): no shipped pack reaches the new arms, and no
   recording holds a log line or a recap; the core pack the runner mounts
   loads and runs the same bytes.
 - #413, #414, #415 and #416: the display and the lobby, which no recording
@@ -1062,6 +1062,14 @@ its mistake:
   inside a pure list, which has no block to extend; the `specials` list
   keeps its named keys, `default_cast` and `ext`. Every shipped list is
   positional. This game only.
+- **A bad `wire_id` is a load error (#479).** A family's `wire_id` is an
+  integer 0..255 or the word `"auto"`. The declaration took any integer and
+  any string, and the installer then logged "bad wire_id" and skipped the
+  family, so a pack lost it with no load error. Now 300 or -1 is refused
+  where it is written ("is outside 0..255"), and so is any string but
+  `"auto"`, a numeric one such as `"61"` included; `"atuo"` gets a
+  did-you-mean. The installer's guard stays for data built in C++. Every
+  shipped `wire_id` is in range. This game only.
 
 ## Balance
 

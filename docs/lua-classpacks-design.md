@@ -385,7 +385,8 @@ Fields, by order (names match the descriptor struct members):
 ```lua
 og.family("living", {
   id = "core:soldier",             -- required declared id; qualified ids are scoped (§5)
-  wire_id = 0,                     -- integer 0..255, or "auto" (>= 21; weapons >= 22)
+  wire_id = 0,                     -- integer 0..255, or "auto" (>= 21; weapons >= 22);
+                                   -- anything else is a load error
   name = "SOLDIER",                -- display name and bare-id fallback (§5)
   short_name = og.NIL,             -- nullable: picker label override
   stats = {                        -- attribute scores; all six required

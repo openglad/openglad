@@ -617,6 +617,30 @@ TEST_F(LuaFamilyDeclTest, wire_id_auto_is_a_string_the_installer_reads)
     EXPECT_EQ("auto", data.living[0].wire_id);
 }
 
+// #479: the only string wire_id is "auto". A misspelled auto gets a
+// did-you-mean; a numeric string (which the installer used to parse) and
+// any other word are refused at load.
+TEST_F(LuaFamilyDeclTest, a_wire_id_string_other_than_auto_is_a_load_error)
+{
+    expect_rejected(declare(soldier_with("wire_id = 61,", "wire_id = \"atuo\",")),
+                    "'v3:soldier'.wire_id: expected a number 0..255 or \"auto\", "
+                    "got 'atuo' (did you mean 'auto'?)");
+    expect_rejected(declare(soldier_with("wire_id = 61,", "wire_id = \"Auto\",")),
+                    "got 'Auto' (did you mean 'auto'?)");
+    const DeclareResult numeric =
+        declare(soldier_with("wire_id = 61,", "wire_id = \"61\","));
+    expect_rejected(numeric, "wire_id: expected a number 0..255 or \"auto\", got '61'");
+    EXPECT_EQ(std::string::npos, numeric.error.find("did you mean"))
+        << "'61' is no misspelling of auto: " << numeric.error;
+    expect_rejected(declare(soldier_with("wire_id = 61,", "wire_id = \"banana\",")),
+                    "got 'banana'");
+
+    // Control: the integer and "auto" both declare.
+    ClasspackData data;
+    ASSERT_TRUE(declare(soldier_with("wire_id = 61,", "wire_id = 61,"), data).ok);
+    EXPECT_EQ("61", data.living[0].wire_id);
+}
+
 TEST_F(LuaFamilyDeclTest, an_inline_hook_of_the_wrong_type_is_a_load_error)
 {
     expect_rejected(declare(soldier_with("playable = true,",

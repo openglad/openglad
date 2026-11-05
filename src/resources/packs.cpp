@@ -281,6 +281,9 @@ struct AutoWireIds {
     }
 };
 
+// The bad-id arm guards ClasspackData built in C++. A Lua declaration no
+// longer reaches it since #479: opt_wire_id (family_decl.cpp) refuses an id
+// outside 0..255 and every string but "auto" at load.
 int resolve_wire_id(const std::string& wire_id, Order order,
                     AutoWireIds& autos, const std::string& id)
 {

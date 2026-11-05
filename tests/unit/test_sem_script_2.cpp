@@ -415,29 +415,37 @@ TEST_F(SemFamilyDecl, a_declare_time_family_ref_compares_equal_only_to_itself)
     EXPECT_EQ(1u, data.living.size()) << "== arm: the chunk ran to the end";
 }
 
-// family_decl.cpp:334 opt_wire_id: absent leaves the text empty, and an
-// integer outside 0..255 is accepted as its decimal text (the range is the
-// installer's job, not the declaration's).
-TEST_F(SemFamilyDecl, wire_id_is_empty_when_absent_and_any_integer_lands_as_text)
+// family_decl.cpp opt_wire_id (#479): absent leaves the text empty; an
+// integer 0..255 lands as its decimal text, and one outside the byte is a
+// load error where it is written (the installer used to log and skip it).
+TEST_F(SemFamilyDecl, wire_id_is_empty_when_absent_and_a_number_outside_the_byte_is_a_load_error)
 {
     ClasspackData absent;
     ASSERT_TRUE(declare("og.family('living', { id = 'v3:x' })", absent).ok);
     ASSERT_EQ(1u, absent.living.size());
     EXPECT_EQ("", absent.living[0].wire_id) << "absent: wire_id empty";
 
-    ClasspackData big;
-    const DeclareResult r300 =
-        declare("og.family('living', { id = 'v3:x', wire_id = 300 })", big);
-    ASSERT_TRUE(r300.ok) << "300: no declaration error: " << r300.error;
-    ASSERT_EQ(1u, big.living.size());
-    EXPECT_EQ("300", big.living[0].wire_id) << "300: stored as its text";
+    for (const char* edge : {"0", "255"}) {
+        ClasspackData data;
+        const DeclareResult r = declare(
+            std::string("og.family('living', { id = 'v3:x', wire_id = ") + edge + " })",
+            data);
+        ASSERT_TRUE(r.ok) << edge << ": " << r.error;
+        ASSERT_EQ(1u, data.living.size());
+        EXPECT_EQ(edge, data.living[0].wire_id) << edge << ": stored as its text";
+    }
 
-    ClasspackData negative;
-    const DeclareResult rneg =
-        declare("og.family('living', { id = 'v3:x', wire_id = -1 })", negative);
-    ASSERT_TRUE(rneg.ok) << "-1: no declaration error: " << rneg.error;
-    ASSERT_EQ(1u, negative.living.size());
-    EXPECT_EQ("-1", negative.living[0].wire_id) << "-1: stored as its text";
+    for (const char* outside : {"256", "300", "-1"}) {
+        ClasspackData data;
+        expect_rejected(
+            declare(std::string("og.family('living', { id = 'v3:x', wire_id = ") +
+                        outside + " })",
+                    data),
+            std::string("'v3:x'.wire_id: ") + outside +
+                " is outside 0..255 (or write \"auto\")",
+            outside);
+        EXPECT_TRUE(data.living.empty()) << outside << ": nothing harvested";
+    }
 }
 
 // family_decl.cpp:682 harvest_special: an ai that is not a function is a

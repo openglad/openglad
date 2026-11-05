@@ -20,6 +20,7 @@
 
 #include <openglad/gameplay/script/family_decl.h>
 
+#include <openglad/core/constants.h>
 #include <openglad/core/family_presentation.h>
 #include <openglad/gameplay/families/classpack_data.h>
 #include <openglad/gameplay/families/family_registry.h>
@@ -479,26 +480,43 @@ bool opt_nullable(Harvest& h, int tbl, const std::string& where,
 bool opt_wire_id(Harvest& h, int tbl, const std::string& where,
                  std::string& out)
 {
-    // rule: wire_id is an integer (stored as its decimal text) or the string "auto" (left for the
-    //   installer's auto-id pass); anything else is a load error. The 0..255 in the error text is
-    //   NOT enforced here: any Lua integer (int64) is accepted and stored as its decimal text
-    //   (wire_id = 300 -> '300', -1 -> '-1'), and any string is accepted verbatim (wire_id =
-    //   'banana'); the range and the auto spelling are enforced only by the installer
-    //   (src/resources/packs.cpp resolve_wire_id), which logs a warning and skips the entry.
+    // rule: wire_id is an integer 0..255 (stored as its decimal text) or exactly the string "auto"
+    //   (left for the installer's auto-id pass); any other integer, any other string (a misspelled
+    //   auto gets a did-you-mean; a numeric string such as "61" is refused too) and any other type
+    //   is a load error.
     // tests: LuaFamilyDeclTest.wire_id_auto_is_a_string_the_installer_reads
     // tests: LuaFamilyDeclTest.a_field_of_the_wrong_type_names_the_field
     // tests: LuaFamilyDeclTest.a_full_living_declaration_lands_every_block
     // tests: LuaFamilyDeclTest.one_chunk_may_declare_many_families
-    // tests: SemFamilyDecl.wire_id_is_empty_when_absent_and_any_integer_lands_as_text
+    // tests: SemFamilyDecl.wire_id_is_empty_when_absent_and_a_number_outside_the_byte_is_a_load_error
+    // tests: LuaFamilyDeclTest.a_wire_id_string_other_than_auto_is_a_load_error
     if (!has_field(h.L, tbl, "wire_id"))
         return true;
     if (lua_isinteger(h.L, -1)) {
-        out = std::to_string(lua_tointeger(h.L, -1));
+        const lua_Integer v = lua_tointeger(h.L, -1);
         lua_pop(h.L, 1);
+        // rule: wire_id is an integer 0..255 (stored as its decimal text) or exactly the string
+        //   "auto"; any other integer is a load error.
+        // tests: SemFamilyDecl.wire_id_is_empty_when_absent_and_a_number_outside_the_byte_is_a_load_error
+        if (v < 0 || v > NUM_FAMILY_SLOTS - 1)
+            return h.fail(where + ".wire_id: " + std::to_string(v) +
+                          " is outside 0..255 (or write \"auto\")");
+        out = std::to_string(v);
         return true;
     }
-    if (lua_type(h.L, -1) == LUA_TSTRING)
-        return h.take_string(where + ".wire_id", out);
+    if (lua_type(h.L, -1) == LUA_TSTRING) {
+        std::string text;
+        (void)h.take_string(where + ".wire_id", text);
+        // rule: wire_id is an integer 0..255 or exactly the string "auto"; any other string is a
+        //   load error (a misspelled auto gets a did-you-mean).
+        // tests: LuaFamilyDeclTest.wire_id_auto_is_a_string_the_installer_reads
+        // tests: LuaFamilyDeclTest.a_wire_id_string_other_than_auto_is_a_load_error
+        if (text != "auto")
+            return h.fail(where + ".wire_id: expected a number 0..255 or \"auto\", got '" +
+                          text + "'" + did_you_mean(text, {"auto"}));
+        out = text;
+        return true;
+    }
     const std::string got = type_name_of(h.L, -1);
     lua_pop(h.L, 1);
     return h.fail(where + ".wire_id: expected a number 0..255 or \"auto\", "
