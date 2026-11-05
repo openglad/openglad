@@ -353,7 +353,11 @@ ghost is ridden `possess_min` (120 ticks). Every ride ends.
   it does not) and standing on a corpse. HOOK BLADE wants a living foe
   within the blade's 60 pixels, no blade out and the 40 in hand; KNIFE FAN
   wants at least two living foes inside the knives' flight on the three
-  lines it throws; WAR BANNER also wants a living foe within 120 pixels.
+  lines it throws; WAR BANNER also wants a living foe within 120 pixels,
+  and the two friends it plants among must stand within 96 pixels on his
+  own floor.
+- A banner's aura stays on its floor: it heals, frightens and rallies only
+  the walkers on the floor it stands on.
 
 **Skeleton.**
 - DIG IN costs one magic every 4 ticks while the skeleton is buried, and

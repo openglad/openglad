@@ -973,9 +973,8 @@ TEST_F(SemLibsCaptainGates, a_bot_captain_counts_no_foe_past_the_knives_flight)
     EXPECT_EQ(1, captain->shifter_down()) << "the fan";
 }
 
-// kit_captain.lua:459 M.ai_banner, the tents arm (the row is deferred,
-// #475: the friend count has no floor filter; that arm is not pinned
-// here). og.find_friends_in_range counts living friends only, so two
+// kit_captain.lua M.ai_banner, the tents arm (the floor arm is the test
+// below). og.find_friends_in_range counts living friends only, so two
 // friendly tents within 96 are no friends around: with a corpse
 // underfoot, a foe at 100 and no banner the plant is not chosen, and with
 // one foe nothing presses for the warband either: false, no shift. Two
@@ -1012,6 +1011,48 @@ TEST_F(SemLibsCaptainGates, a_bot_captain_counts_no_tent_among_the_friends_round
     ASSERT_NE(nullptr, body(add(FAMILY_SOLDIER, 1, 200, 240, 1), 16, 16));
     captain->set_shifter_down(9);
     EXPECT_TRUE(kit_gate(captain, 4)) << "two living allies: the plant";
+    EXPECT_EQ(0, captain->shifter_down());
+}
+
+// #475. The plant rule counts the friends round the captain on his own
+// floor, where the banner will stand and its aura reaches. A corpse at his
+// feet and a living foe 100 px off on his floor; two living allies within
+// 96 px one floor up are no friends around: the plant is not chosen, and
+// with one foe nothing presses for the warband: false, no shift. The same
+// two allies on his floor: the plant (shift 0).
+//
+// RED (the floor filter dropped, `local allies = #G.on_floor(og.find_
+// friends_in_range("ob", 96, self), self:floor())` -> `local _, allies =
+// og.find_friends_in_range("ob", 96, self)`): Value of: kit_gate(captain, 4)
+// Actual: true Expected: false "two allies one floor up are no friends
+// around"; Expected equality of these values: 9 captain->shifter_down()
+// Which is: 0.
+TEST_F(SemLibsCaptainGates, a_bot_captain_counts_no_friend_on_another_floor_round_a_banner)
+{
+    world().set_floor_count(2);
+    living* captain = body(add(FAMILY_BIG_ORC, 1, 200, 200, 10, 200.0f), 16, 16);
+    ASSERT_NE(nullptr, captain);
+    walker* s = world().add_fx_ob(Order::Treasure, FAMILY_STAIN);
+    ASSERT_NE(nullptr, s);
+    s->set_team_num(2);
+    s->set_dead(0);
+    s->center_on(captain);
+    s->stats()->set_old_family(FAMILY_SOLDIER);
+    s->stats()->set_level(3);
+    ASSERT_NE(nullptr, body(add(FAMILY_SOLDIER, 2, 300, 200, 1), 16, 16));  // 100
+    living* a1 = body(add(FAMILY_SOLDIER, 1, 240, 200, 1), 16, 16);
+    living* a2 = body(add(FAMILY_SOLDIER, 1, 200, 240, 1), 16, 16);
+    ASSERT_TRUE(a1 && a2);
+    a1->set_floor(1);
+    a2->set_floor(1);
+    captain->set_shifter_down(9);
+    EXPECT_FALSE(kit_gate(captain, 4)) << "two allies one floor up are no friends around";
+    EXPECT_EQ(9, captain->shifter_down()) << "no shift written";
+
+    a1->set_floor(0);
+    a2->set_floor(0);
+    captain->set_shifter_down(9);
+    EXPECT_TRUE(kit_gate(captain, 4)) << "the same two on his floor: the plant";
     EXPECT_EQ(0, captain->shifter_down());
 }
 

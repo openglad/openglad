@@ -201,8 +201,8 @@ TEST(SemLibsBanner, a_banner_heals_only_the_allies_on_its_own_floor)
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
-// weapon_banner.lua:22-24, the arms that are not issue #475 (the fright is
-// not floor-gated). A pulse frightens a LIVING foe weaker than the banner;
+// weapon_banner.lua, the fright's generator and fearless arms (the floor arm
+// is the test below). A pulse frightens a LIVING foe weaker than the banner;
 // a weak foe generator is not frightened (the order gate), and a weak foe
 // standing inside its OWN side's banner's rally_radius holds (the
 // s_force_fright binding skips a fearless walker), while its twin outside
@@ -252,6 +252,48 @@ TEST(SemLibsBanner, a_banner_frightens_no_generator_and_no_foe_rallied_by_its_ow
     EXPECT_EQ(COMMAND_WALK, run->commandtype);
     EXPECT_EQ(sign_of(loose->xpos() - banner->xpos()), run->com1);
     EXPECT_EQ(1, run->com2) << "away from the banner (south)";
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+// #475. The banner's aura stays on its own floor: it heals only the allies
+// there (the test above), and it frightens only the weaker living foes
+// there. Two level-3 foes (the banner is level 10) at the same spot 40 px
+// south of the banner, one on its floor and one a floor up, their orders
+// cleared: on the pulse at tick 808 the one on the banner's floor is sent
+// walking away (south), and the one upstairs is given no order.
+//
+// RED (the floor test dropped, `if w:floor() == self:floor() then` -> `if
+// true then` in weapon_banner.lua pulse): Expected equality of these
+// values: nullptr Which is: NULL front_command(above) Which is: 0x...
+TEST(SemLibsBanner, a_banner_frightens_only_the_weaker_foes_on_its_own_floor)
+{
+    og::test::ScopedHookFailureGuard guard;
+    TestGameWorld tw;
+    open_field(tw);
+    tw.world().set_floor_count(2);
+    tw.world().new_specials = 1;
+    walker* banner = plant_banner(tw);
+    ASSERT_NE(nullptr, banner);
+    ASSERT_EQ(0, banner->floor());
+    ASSERT_EQ(10, banner->stats()->level());
+    walker* below = add_living(tw, FAMILY_SOLDIER, kThem, 200, 240, 3);
+    walker* above = add_living(tw, FAMILY_SOLDIER, kThem, 200, 240, 3);
+    ASSERT_TRUE(below && above);
+    above->set_floor(1);
+    below->stats()->clear_command();
+    above->stats()->clear_command();
+    ASSERT_FALSE(og::sim::fearless(*below)) << "staging: no rally near";
+    ASSERT_FALSE(og::sim::fearless(*above)) << "staging: no rally near";
+    ASSERT_LE(banner->distance_to_ob(above), 96) << "staging: in reach but for the floor";
+
+    tw.world().tick_count_ = 808;  // 808 % banner_pulse (8) == 0
+    banner->act();
+    const command* run = front_command(below);
+    ASSERT_NE(nullptr, run) << "arm: weak foe on the banner's floor -> frightened";
+    EXPECT_EQ(COMMAND_WALK, run->commandtype);
+    EXPECT_EQ(1, run->com2) << "away from the banner (south)";
+    EXPECT_EQ(nullptr, front_command(above))
+        << "arm: weak foe a floor up -> no order";
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 

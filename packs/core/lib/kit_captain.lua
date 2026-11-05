@@ -635,21 +635,20 @@ end
 -- fight and no banner standing; call the warband when foes press, no
 -- grunt is left and he can pay.
 function M.ai_banner(self)
-  -- rule: A bot captain plants a banner (shift 0) on a corpse with two or more friends within 96, a
-  --   living foe within 120 and no banner of his standing; else calls the warband (shift 1) when
-  --   two living foes press within 120, no grunt of his lives, and he can pay WARBAND's 120; else
-  --   holds.
+  -- rule: A bot captain plants a banner (shift 0) on a corpse with two or more living friends within
+  --   96 on his floor, a living foe within 120 and no banner of his standing; else calls the warband
+  --   (shift 1) when two living foes press within 120, no grunt of his lives, and he can pay
+  --   WARBAND's 120; else holds.
   -- tests: KitCaptain.ai_banner_plants_among_friends_and_calls_the_warband_when_pressed
   -- tests: KitCaptain.ai_banner_holds_the_warband_it_cannot_pay
   -- tests: KitCaptain.bot_captain_calls_the_warband_only_when_it_can_pay
   -- tests: GameplayFixesBots.captain_banner_wants_a_foe_near_the_flag
   -- tests: SemLibsCaptainGates.a_bot_captain_counts_no_tent_among_the_friends_round_a_banner
-  -- deferred: #475 triaged bug #475: the friend count has no floor filter; the tents arm
-  --   (find_friends_in_range is Living-only: tents are no friends) is asserted
+  -- tests: SemLibsCaptainGates.a_bot_captain_counts_no_friend_on_another_floor_round_a_banner
   if og.match_setting("new_specials") == 0 then
     return true
   end
-  local _, allies = og.find_friends_in_range("ob", 96, self)
+  local allies = #G.on_floor(og.find_friends_in_range("ob", 96, self), self:floor())
   local plant = allies >= 2 and corpse_underfoot(self, 1024) ~= nil
   if plant then
     -- The flag heals, holds and frightens where a fight is.

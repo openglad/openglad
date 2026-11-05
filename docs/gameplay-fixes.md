@@ -975,8 +975,8 @@ Rows deliberately not added:
 
 ## Not gated
 
-Twelve changes apply whatever the setting, three from the work that added it (N, O
-and P) and nine from the second bugs batch:
+Thirteen changes apply whatever the setting, three from the work that added it (N, O
+and P) and ten from the second bugs batch:
 
 - **N. A slot that is not in play says so.** `walker::special()` refuses a
   slot priced 5000 (an undeclared slot, or one New Specials hides) before it
@@ -1077,6 +1077,14 @@ and P) and nine from the second bugs batch:
   Each gap is now measured from the side of his body facing its edge; the
   tie order (west, east, north, south) and the scan inward are unchanged.
   The old game has no WARBAND.
+- **The war banner's fright stays on its floor (#475)** (New Specials
+  only). The banner heals only the allies on its own floor and rallies
+  only there, but it frightened every weaker foe in its radius on any
+  floor, so a banner on a balcony sent the weaker foes downstairs running.
+  It now frightens only the weaker living foes on its floor. A bot
+  captain's WAR BANNER rule counted the two friends it wants round the
+  corpse on any floor; it now counts those on his floor, where the banner
+  will stand. The old game has no banner.
 
 ## Balance
 
