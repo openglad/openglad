@@ -1076,12 +1076,12 @@ TEST(SemLibsElemental, a_rekindle_heal_plays_one_heal_sound_and_the_refusal_none
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
-// kit_elemental.lua:362 M.ai_meteor, the friendly-tent arm (the row is
-// deferred, #487; the enemy-tent cluster and the other-floor ally arms are
-// the suspect's and are not pinned here). og.find_friends_in_range counts
-// living friends only, so a friendly tent inside the strike box does not
-// hold the rain: two clustered foes, a team-0 tent 30 px below the target ->
-// true. A living ally on the same spot holds it.
+// kit_elemental.lua M.ai_meteor, the friendly-tent arm (the enemy-tent
+// cluster and the other-floor arms are the tests below).
+// og.find_friends_in_range counts living friends only, so a friendly tent
+// inside the strike box does not hold the rain: two clustered foes, a team-0
+// tent 30 px below the target -> true. A living ally on the same spot holds
+// it.
 TEST(SemLibsElemental, a_friendly_tent_in_the_strike_box_does_not_hold_a_bot_meteor_rain)
 {
     og::test::ScopedHookFailureGuard guard;
@@ -1103,6 +1103,123 @@ TEST(SemLibsElemental, a_friendly_tent_in_the_strike_box_does_not_hold_a_bot_met
     ASSERT_NE(nullptr, ally);
     bot->set_foe(foe);
     EXPECT_FALSE(elem::gate(bot)) << "a living ally on the spot holds it";
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+// #487, the ally arm. The rain falls only on its own floor (rain_target and
+// the marker take the target's floor, which is the caster's), so an ally on
+// another floor is never under it. Two clustered foes on floor 0 and an ally
+// 30 px below the target one floor up: the rule says yes. The same ally on
+// floor 0 holds the rain.
+//
+// RED (the ally scan's floor filter dropped, `G.on_floor(og.find_friends_in_
+// range(...), self:floor())` -> the raw list): Value of: elem::gate(bot)
+// Actual: false Expected: true "an ally one floor up is not under the rain".
+TEST(SemLibsElemental, a_bot_meteor_rain_is_not_held_by_an_ally_on_another_floor)
+{
+    og::test::ScopedHookFailureGuard guard;
+    elem::ElementalWorld w(1);
+    w.world().set_floor_count(2);
+    living* bot = elem::add_elemental(w, 7, 200.0f, 3);
+    ASSERT_NE(nullptr, bot);
+    living* foe = elem::add_living(w, FAMILY_SOLDIER, 1, 220, 100);
+    living* second = elem::add_living(w, FAMILY_SOLDIER, 1, 250, 100);
+    living* ally = elem::add_living(w, FAMILY_SOLDIER, 0, 220, 130);
+    ASSERT_TRUE(foe && second && ally);
+    ally->set_floor(1);
+    bot->set_foe(foe);
+    EXPECT_TRUE(elem::gate(bot)) << "an ally one floor up is not under the rain";
+    ally->set_floor(0);
+    bot->set_foe(foe);
+    EXPECT_FALSE(elem::gate(bot)) << "the same ally on the rain's floor holds it";
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+// #487, the cluster's floor. A second foe 30 px from the target but one
+// floor up is no part of the cluster the rain can strike: the lone target is
+// not worth a rain. The same foe on the target's floor makes the cluster.
+//
+// RED (the cluster scan's floor test dropped, `G.living_foes(self, ..., true)`
+// -> `G.living_foes(self, ..., false)`): Value of: elem::gate(bot) Actual:
+// true Expected: false "the second foe is one floor up".
+TEST(SemLibsElemental, a_bot_meteor_rain_counts_no_foe_on_another_floor_in_its_cluster)
+{
+    og::test::ScopedHookFailureGuard guard;
+    elem::ElementalWorld w(1);
+    w.world().set_floor_count(2);
+    living* bot = elem::add_elemental(w, 7, 200.0f, 3);
+    ASSERT_NE(nullptr, bot);
+    living* foe = elem::add_living(w, FAMILY_SOLDIER, 1, 220, 100);
+    living* second = elem::add_living(w, FAMILY_SOLDIER, 1, 250, 100);
+    ASSERT_TRUE(foe && second);
+    second->set_floor(1);
+    bot->set_foe(foe);
+    EXPECT_FALSE(elem::gate(bot)) << "the second foe is one floor up";
+    second->set_floor(0);
+    bot->set_foe(foe);
+    EXPECT_TRUE(elem::gate(bot)) << "two foes on the rain's floor";
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+// #487, the tent. A bot rule's foes are living bodies (G.living_foes): an
+// enemy tent 20 px from the target is no second foe of a cluster, as it is
+// none for any other kit rule. A second living foe beside it makes one.
+//
+// RED (the cluster counted with the raw finder again, `G.living_foes(self,
+// RAIN_GATE_RANGE + RAIN_GATE_CLUSTER, true)` -> `og.find_foes_in_range("ob",
+// RAIN_GATE_RANGE + RAIN_GATE_CLUSTER, self)`): Value of: elem::gate(bot)
+// Actual: true Expected: false "a tent is no second foe".
+TEST(SemLibsElemental, a_bot_meteor_rain_counts_no_enemy_tent_in_its_cluster)
+{
+    og::test::ScopedHookFailureGuard guard;
+    elem::ElementalWorld w(1);
+    living* bot = elem::add_elemental(w, 7, 200.0f, 3);
+    ASSERT_NE(nullptr, bot);
+    living* foe = elem::add_living(w, FAMILY_SOLDIER, 1, 220, 100);
+    ASSERT_NE(nullptr, foe);
+    walker* tent = w.world().add_ob(Order::Generator, FAMILY_TENT);
+    ASSERT_NE(nullptr, tent);
+    tent->set_team_num(1);
+    tent->set_sizex(16);
+    tent->set_sizey(16);
+    tent->setxy(240, 100);
+    bot->set_foe(foe);
+    EXPECT_FALSE(elem::gate(bot)) << "a tent is no second foe";
+    ASSERT_NE(nullptr, elem::add_living(w, FAMILY_SOLDIER, 1, 250, 100));
+    bot->set_foe(foe);
+    EXPECT_TRUE(elem::gate(bot)) << "a second living foe makes the cluster";
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+// #487, the held foe's floor. The cast rains only on a foe on the caster's
+// floor (rain_target), so it would pass over a held foe one floor up and
+// rain on someone else, round whom the ally box was never asked: the rule
+// holds instead. The held foe one floor up, two living foes on the caster's
+// floor 20 and 30 px from it (a cluster the rule would count without the
+// hold): no, and the held foe is kept. The held foe on the caster's floor:
+// yes.
+//
+// RED (the hold dropped, `if target:floor() ~= self:floor() then` -> `if
+// false then`): Value of: elem::gate(bot) Actual: true Expected: false "the
+// held foe is one floor up".
+TEST(SemLibsElemental, a_bot_meteor_rain_holds_for_a_foe_on_another_floor)
+{
+    og::test::ScopedHookFailureGuard guard;
+    elem::ElementalWorld w(1);
+    w.world().set_floor_count(2);
+    living* bot = elem::add_elemental(w, 7, 200.0f, 3);
+    ASSERT_NE(nullptr, bot);
+    living* foe = elem::add_living(w, FAMILY_SOLDIER, 1, 220, 100);
+    living* near1 = elem::add_living(w, FAMILY_SOLDIER, 1, 240, 100);
+    living* near2 = elem::add_living(w, FAMILY_SOLDIER, 1, 250, 100);
+    ASSERT_TRUE(foe && near1 && near2);
+    foe->set_floor(1);
+    bot->set_foe(foe);
+    EXPECT_FALSE(elem::gate(bot)) << "the held foe is one floor up";
+    EXPECT_EQ(foe, bot->foe()) << "the held foe is kept";
+    foe->set_floor(0);
+    bot->set_foe(foe);
+    EXPECT_TRUE(elem::gate(bot)) << "the held foe on the caster's floor";
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 

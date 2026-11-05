@@ -990,7 +990,11 @@ and P) and eight from the second bugs batch:
   fire elemental's METEOR RAIN gate refuses when an ally stands in the
   strike box: within 71 px of the target on each axis (the rain lands
   within its spread of the target and each blast reaches 31 px; the rain
-  hurts allies at half). With New Specials off the gate is not asked.
+  hurts allies at half). With New Specials off the gate is not asked. The
+  rain strikes only its own floor, so only an ally on that floor holds it,
+  and the second foe of its cluster must be a living foe on that floor: a
+  tent is no second foe, as it is none for any other kit rule, and a held
+  foe on another floor is no target, so the bot holds (#487).
 - **P. The archer's comment** on its default cast now names the slots it
   serves (slot 3 and every unmapped slot; slot 4 is undeclared). Comment
   only.

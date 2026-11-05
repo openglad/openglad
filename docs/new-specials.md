@@ -415,7 +415,12 @@ ghost is ridden `possess_min` (120 ticks). Every ride ends.
 - A bot lights IMMOLATE with a living foe within a blow and more than 60
   magic, and quenches it when no living foe is within 40 pixels, so the
   burn stops draining the pool for nothing. REKINDLE is never forced on a
-  pool that cannot pay it. While IMMOLATE burns a bot casts nothing but
+  pool that cannot pay it. A bot calls METEOR RAIN on its foe within 160
+  pixels on its own floor when at least one more living foe on that floor
+  stands within 60 pixels of it (a tent does not count), and never with an
+  ally of its own on that floor inside the strike box, 71 pixels each way
+  of the target (the rain strikes only its own floor and hurts allies at
+  half). While IMMOLATE burns a bot casts nothing but
   the quench: its STARBURST, METEOR RAIN and REKINDLE / SUPERNOVA rules say
   no, as those casts refuse (a burning elemental cornered below a fifth of
   its health does not go SUPERNOVA).
