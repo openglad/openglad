@@ -929,6 +929,7 @@ Rows deliberately not added:
   sound now placed asks the recorder's 320 x 200 view of the walker the old
   game asked `on_screen()` of, so every row records the old game's sounds;
   none moved.
+- #484: no behaviour changes, and none of the display fields is recorded.
 - Fix AA's two terrain pads. `archer_bot_bolt_pad_terrain`: a bot faces
   up at its spawn and no tile that stops a weapon sits directly above
   ground on scen1, so the only terrain arena is an archer beside a tree
@@ -945,7 +946,8 @@ Rows deliberately not added:
 ## Not gated
 
 Ten changes apply whatever the setting, three from the work that added it (N, O
-and P) and seven from the second bugs batch:
+and P) and seven from the second bugs batch; the last entry records a
+difference kept on purpose (#484):
 
 - **N. A slot that is not in play says so.** `walker::special()` refuses a
   slot priced 5000 (an undeclared slot, or one New Specials hides) before it
@@ -1028,6 +1030,18 @@ and P) and seven from the second bugs batch:
   byte of the recording changes: the box rides a field the recording leaves
   out, and the parity recorder's 320 x 200 test is asked of the same walker
   the old game asked. This game only.
+- **The simulation records every display effect (#484).** Not a change. The
+  old game decided the melee lunge, the hit and heal numbers, a walled-in
+  walker's red 1, the hurt flash, the recoil and the hit animation where it
+  made them, from its own machine's toggles (the lunge only on screen). The
+  current game records them all and each machine's drawing applies its own
+  toggles, as it has since `25eada99`: the server has no views and no
+  toggles, every machine has its own, and the lunge and the recoil travel in
+  snapshots and in replays. With an effect off neither game draws it; two
+  transients differ, the tail of a lunge on a walker that scrolls into view
+  within three acts of the blow, and a number made in the 1.7 s or so before
+  damage numbers are turned on. `SemPresentation`
+  (`tests/unit/test_sem_presentation_1.cpp`) pins it with every toggle off.
 
 ## Balance
 

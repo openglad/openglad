@@ -7,7 +7,8 @@
  */
 
 // Semantic tests, batch presentation-1: what the simulation hands each
-// machine for its sounds. Each test is named after the rule it asserts.
+// machine for its sounds and its display effects. Each test is named after
+// the rule it asserts.
 //
 // Sounds (#468). In the old game every in-world sound played only while its
 // walker was on screen (pixie::on_screen, asked of the walker the call sat
@@ -20,6 +21,13 @@
 // out unplaced, c == 0. The tests here pin the placing: each sound is placed
 // at exactly the walker the old game asked on_screen() of. No visibility test
 // is installed unless a test says so, as in play.
+//
+// Display effects (#484). The old game decided each display effect where it
+// was made, from its one machine's effect toggles (and, for the melee lunge,
+// only on screen). The current game records them all in the simulation and
+// each machine's drawing code applies its own toggles (walker_draw.cpp). The
+// tests here turn every toggle off and show the simulation recording the
+// marks anyway.
 
 #include <gtest/gtest.h>
 
@@ -46,6 +54,7 @@
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/treasure.h>
 #include <openglad/gameplay/walker.h>
+#include <openglad/resources/gparser.h>
 
 #include <algorithm>
 #include <cstddef>
@@ -62,6 +71,13 @@ using og::sim::SoundSource;
 using og::sim::unpack_sound_source;
 
 bool never_visible(const walker*, std::uint32_t, void*) { return false; }
+
+// The process cfg's effect toggles as the test found them.
+struct EffectOverridesRestore
+{
+    decltype(cfg.overrides) saved = cfg.overrides;
+    ~EffectOverridesRestore() { cfg.overrides = saved; }
+};
 
 class SemPresentation : public ::testing::Test {
 protected:
@@ -107,6 +123,11 @@ protected:
 
     GameWorld& world() { return tw_->world(); }
     og::sim::SimEventLog& events() { return tw_->events; }
+
+    void tile(int tx, int ty, unsigned char pix)
+    {
+        world().grid.data[static_cast<std::size_t>(tx + world().grid.w * ty)] = pix;
+    }
 
     // Sizes first, then the position: the obmap files a body under every
     // cell its box covers at the moment it is placed.
@@ -602,4 +623,101 @@ TEST_F(SemPresentation, a_death_cry_is_placed_at_the_hitter)
     EXPECT_EQ(std::vector<std::uint32_t>{at(red)}, cries)
         << "one cry, placed at the hitter";
     EXPECT_NE(at(orc), at(red));
+}
+
+// ===========================================================================
+// Display effects: the simulation records them whatever this machine's
+// toggles (#484)
+// ===========================================================================
+
+// A landed blow sets the full lunge along the attacker's facing with the
+// attack-lunge effect off and the recorder's view answering "off view": the
+// old game skipped both (walker.cpp :784-795 at 7ff1654a). Only the sound
+// follows the view; each machine's drawing reads the toggle.
+TEST_F(SemPresentation, a_landed_blow_lunges_whatever_the_lunge_setting_or_the_view)
+{
+    EffectOverridesRestore restore;
+    cfg.apply_override("effects", "attack_lunge", "off");
+    ASSERT_FALSE(cfg.is_on("effects", "attack_lunge"));
+    walker* soldier = living_at(FAMILY_SOLDIER, 0, 320, 320);
+    walker* orc = living_at(FAMILY_ORC, 1, 337, 320);
+    ASSERT_TRUE(soldier && orc);
+    soldier->set_curdir(static_cast<signed char>(FACE_RIGHT));
+    soldier->set_enddir(static_cast<char>(FACE_RIGHT));
+    soldier->set_lastx(1.0f);
+    soldier->set_lasty(0.0f);
+    current_game->positional_sound_visible = &never_visible;
+    events().clear();
+    EXPECT_EQ(nullptr, soldier->fire());
+    EXPECT_GT(400.0f, orc->stats()->hitpoints()) << "the blow landed";
+    EXPECT_FLOAT_EQ(1.0f, soldier->attack_lunge()) << "a full lunge, toggle off, off view";
+    EXPECT_FLOAT_EQ(soldier->get_current_angle(), soldier->attack_lunge_angle())
+        << "along the soldier's facing";
+    EXPECT_TRUE(placed(SOUND_CLANG).empty()) << "the recorder dropped the clang";
+}
+
+// A walker stuck in a wall loses its point and queues its red 1 with the
+// damage-numbers effect off (the old game pushed it only with the effect on,
+// living.cpp :175-176 at 7ff1654a).
+TEST_F(SemPresentation, a_wall_bite_queues_its_red_one_with_damage_numbers_off)
+{
+    EffectOverridesRestore restore;
+    cfg.apply_override("effects", "damage_numbers", "off");
+    ASSERT_FALSE(cfg.is_on("effects", "damage_numbers"));
+    tile(10, 10, PIX_H_WALL1);
+    walker* stuck = living_at(FAMILY_SOLDIER, 0, 160, 160);
+    ASSERT_NE(nullptr, stuck);
+    stuck->set_act_type(ACT_CONTROL);
+    stuck->stats()->set_max_hitpoints(100.0f);
+    stuck->stats()->set_hitpoints(10.0f);
+    stuck->stats()->set_heal_per_round(0.0f);
+    stuck->stats()->set_max_heal_delay(30000);
+    stuck->set_regen_delay(0);
+    stuck->damage_numbers.clear();
+    stuck->act();
+    EXPECT_FLOAT_EQ(9.0f, stuck->stats()->hitpoints()) << "the wall bites";
+    ASSERT_EQ(1u, stuck->damage_numbers.size()) << "one number, toggle off";
+    EXPECT_FLOAT_EQ(1.0f, stuck->damage_numbers.front().value);
+    EXPECT_EQ(RED, stuck->damage_numbers.front().color);
+}
+
+// A hit queues the attacker's orange and the victim's red number, flashes
+// and recoils the victim and spawns its hit animation; a heal queues its two
+// numbers in colour 56; every display effect off (the old game gated each at
+// the source: walker.cpp :1871, :1881, :1892, :1922, :1925 at 7ff1654a).
+TEST_F(SemPresentation, hits_and_heals_queue_their_marks_with_every_display_effect_off)
+{
+    EffectOverridesRestore restore;
+    for (const char* key : {"damage_numbers", "heal_numbers", "hit_flash", "hit_recoil",
+                            "hit_anim"}) {
+        cfg.apply_override("effects", key, "off");
+        ASSERT_FALSE(cfg.is_on("effects", key)) << key;
+    }
+    walker* soldier = living_at(FAMILY_SOLDIER, 0, 100, 100);
+    walker* orc = living_at(FAMILY_ORC, 1, 130, 140);
+    ASSERT_TRUE(soldier && orc);
+    soldier->damage_numbers.clear();
+    orc->damage_numbers.clear();
+    const std::size_t flashes = live(Order::FX, FAMILY_HIT).size();
+    soldier->do_hit_effects(soldier, orc, 5);
+    ASSERT_EQ(1u, soldier->damage_numbers.size()) << "the attacker's number";
+    EXPECT_EQ(235, soldier->damage_numbers.back().color) << "orange";
+    ASSERT_EQ(1u, orc->damage_numbers.size()) << "the victim's number";
+    EXPECT_EQ(RED, orc->damage_numbers.back().color);
+    EXPECT_FLOAT_EQ(5.0f, orc->damage_numbers.back().value);
+    EXPECT_TRUE(orc->hurt_flash()) << "the hurt flash";
+    EXPECT_FLOAT_EQ(1.0f, orc->hit_recoil()) << "the recoil";
+    EXPECT_EQ(flashes + 1, live(Order::FX, FAMILY_HIT).size()) << "the hit animation";
+
+    walker* cleric = living_at(FAMILY_CLERIC, 0, 300, 300);
+    walker* ally = living_at(FAMILY_SOLDIER, 0, 320, 300);
+    ASSERT_TRUE(cleric && ally);
+    cleric->damage_numbers.clear();
+    ally->damage_numbers.clear();
+    cleric->do_heal_effects(cleric, ally, 7);
+    ASSERT_EQ(1u, cleric->damage_numbers.size()) << "the healer's number";
+    EXPECT_EQ(56, cleric->damage_numbers.back().color);
+    ASSERT_EQ(1u, ally->damage_numbers.size()) << "the healed's number";
+    EXPECT_EQ(56, ally->damage_numbers.back().color);
+    EXPECT_FLOAT_EQ(7.0f, ally->damage_numbers.back().value);
 }
