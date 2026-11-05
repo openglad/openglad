@@ -839,6 +839,31 @@ Keys fight_keys(const walker* me, const walker* foe, int reach = 24,
     return k;
 }
 
+// fight_keys' keys for a fighter that stands its ground once its foe is in
+// reach: it swings where it stands, and a direction goes through only to
+// turn it to face the foe. A player holding a diagonal against a body
+// slides along it, one pixel for every started unit of step size, so a
+// slow fighter slides too (the old game's slide, #470); one kept pushing
+// into its foe wanders off the line of its own blows. A player stops
+// pushing and swings; this does the same.
+Keys stand_and_swing(Keys k, const walker* me)
+{
+    if (me == nullptr || !k.fire)
+        return k;
+    int facing = -1;
+    if (k.up)
+        facing = k.right ? FACE_UP_RIGHT : k.left ? FACE_UP_LEFT : FACE_UP;
+    else if (k.down)
+        facing = k.right ? FACE_DOWN_RIGHT : k.left ? FACE_DOWN_LEFT : FACE_DOWN;
+    else if (k.right)
+        facing = FACE_RIGHT;
+    else if (k.left)
+        facing = FACE_LEFT;
+    if (facing < 0 || facing == static_cast<int>(me->curdir()))
+        k.up = k.down = k.left = k.right = false;
+    return k;
+}
+
 // ---- the scenes -----------------------------------------------------------
 
 // The 22 scenes, built at call time (family_of needs the packs loaded), in
@@ -1569,7 +1594,11 @@ std::vector<Scene> scenes()
     // the seat's hero on slot 2, as a press of that key would. His pool is
     // 25 and the howl spends all of it; a level-1 captain wins back one
     // point in about seven ticks, so the scene refills his pool when he
-    // reaches the corpse (the meal costs 20).
+    // reaches the corpse (the meal costs 20). After the meal he fights the
+    // nearest elf and stands his ground once it is in reach: held on a
+    // diagonal against an elf he would slide along it (the old game's
+    // slide, #470), off the line of his own blows, and the elves would kill
+    // him before the run ends.
     {
         Scene sc;
         sc.name = "captain_howl_eat";
@@ -1642,8 +1671,10 @@ std::vector<Scene> scenes()
                 eat.special = f == arrived + 2;
                 return eat;
             }
-            return fight_keys(captain,
-                              nearest_seen(run, captain, {"foe1", "foe2", "foe3"}));
+            return stand_and_swing(
+                fight_keys(captain,
+                           nearest_seen(run, captain, {"foe1", "foe2", "foe3"})),
+                captain);
         };
         sc.tells = {
             {"the captain is level 1",
