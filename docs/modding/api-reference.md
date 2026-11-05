@@ -210,7 +210,11 @@ An unknown order, an unresolvable family, a non-function hook value, or a
 table with no recognised hook name is a **load error**: the whole chunk is
 rejected. A hook that errors at *runtime* is treated as absent for that
 dispatch — identically on every peer — and the error is recorded (see
-[Script errors](#script-errors-and-logging)).
+[Script errors](#script-errors-and-logging)). What the hook changed before
+its error stays, and the engine's default for that call runs in its place
+where it has one (`on_death` leaves the stain, `level_up` adds the default
+gains, `hit_response` attacks the attacker); a hook with no default, such
+as `on_shoved`, `do_special` or `on_create`, leaves nothing in its place.
 
 `og.family_id(order, "core:name")` performs the same resolution and returns
 the wire byte, or `nil`. Resolve family bytes once at chunk load and keep them
@@ -874,7 +878,12 @@ order; walk them with `for i = 1, #t` (there is no `pairs`).
 `og.query_passable(x, y, self [, floor])`,
 `og.query_grid_passable(...)`, `og.query_object_passable(...)` — all
 `→ bool`, all take pixel coordinates. `og.query_object_passable` **draws from
-the RNG** through the obmap miss roll.
+the RNG** through the obmap miss roll. `og.query_grid_passable` reads the
+terrain of any floor it names. `og.query_passable` and
+`og.query_object_passable` also meet bodies, which they can find only on
+`self`'s floor, so their optional `floor` must be `self`'s own (any other is
+a script error); probe another floor with `og.spawn_spot_clear(ent, x, y,
+floor)` (bodies and terrain) or `og.query_grid_passable` (terrain).
 
 `og.spawn_spot_clear(ent, x, y [, floor]) → bool` is the placement probe:
 can `ent` stand at pixel `(x, y)`? It eats nothing and opens nothing (never
@@ -895,7 +904,9 @@ each draw-free and eat-free:
   rule on `floor`, and never onto a delayed spawn. It tries `(x, y)`, then
   for `r = 1 .. radius` the eight offsets `(-r,0) (r,0) (0,-r) (0,r) (-r,-r)
   (r,-r) (-r,r) (r,r)`, and answers the first that fits. `family` is a byte
-  (`og.family_id`); `nil` for a family the loader cannot make.
+  (`og.family_id`); `nil` for a family the loader cannot make (no family of
+  that order at that id; a living id is never stood in for by a soldier; a
+  negative id, or one past the walker's family byte, 127, #443).
 - `walker:fire_pad_clear([weapon_family]) → bool` and
   `walker:fire_pad_answer([weapon_family]) → string` (the walker methods
   above) probe the pad `fire()` would use, for the current weapon or a named
@@ -1005,7 +1016,7 @@ Row layout matches the built-in tables: `row = ani_type * 8 + curdir`.
 
 | Function | Effect |
 |---|---|
-| `og.award_score(team, points)` | Bumps the team's score and emits `ScoreChange`. Teams outside the score table are silently ignored (the engine's `is_valid_score_team()` guard). |
+| `og.award_score(team, points)` | Bumps the team's score and emits `ScoreChange`. Teams outside the score table are silently ignored (the engine's `is_valid_score_team()` guard): any number outside 0..3, including one a byte would wrap onto a real team (256, -255). |
 | `og.set_withdraw_request(level)` | Latches the exit pad's withdraw request (`withdraw_requested` + `withdraw_level` together). |
 | `og.emit_exit_confirmation(prompt, dest_level [, is_withdraw])` | `RequestExitConfirmation` with the exit pad's payload. |
 | `og.emit_withdraw_to_level(level)` | `WithdrawToLevel`. |
@@ -1124,6 +1135,7 @@ og.register_level_hooks(level_id, {   -- level_id -1 = every level
   on_mode_init    = function(level) ... end,           -- scripted modes
   on_mode_tick    = function(level, tick) ... end,     -- scripted modes
   on_respawn      = function(ent) ... end,             -- scripted modes
+  on_lineup_stage = function(level) ... end,           -- the lineup stage
 })
 
 og.set_entity_hooks(ent, { on_death = function(ent) ... end })
@@ -1172,7 +1184,13 @@ og.set_entity_hooks(ent, { on_death = function(ent) ... end })
   twice. Register them from `on_load` or `on_entity_spawn` after selecting
   entities via `og.oblist()`, position, or family.
 - Win/lose logic belongs in `on_tick` via the world-state getters.
-- Registering a table with no recognised hook name is a load error.
+- Registering a table with no hook at all (`{}`) is a load error, and so is
+  any key that is not one of the nine names above: a misspelled one
+  (`on_tik` beside a valid `on_load`) gets a did-you-mean, a non-string key
+  says so, and the refused call installs nothing. The declaration pass
+  checks the keys too, so a family chunk's typo rejects its pack.
+  `og.set_entity_hooks` refuses any key but `on_death` the same way, as a
+  script error at the call.
 
 A campaign ships level scripts inside its embedded pack
 (`packs/<pack_id>/scripts/` in the campaign zip), keyed by its level ids. The
@@ -1207,6 +1225,11 @@ Two engine behaviors you will meet the first time a pack misbehaves:
   past the cap only increment `dropped_error_count()`. So a hook that errors
   every tick on every instance costs one record, not one per tick, and the
   first errors — the ones that explain the break — are the ones kept.
+- **A family hook's first failure prints one operator line.** It reads
+  `class pack: family hook hook:<name> FAILED — treated as absent, ...` and
+  says which of two things followed: the engine's default ran in the hook's
+  place, or the hook has no engine default and nothing ran. Either way the
+  changes the hook made before its error stay.
 - **The log transcript is a bounded tail.** `og.log`/`print` always traces
   under the `script` category, but the stored transcript keeps only the most
   recent `kMaxStoredScriptLogLines` (512) lines, evicting oldest-first, with
@@ -1264,7 +1287,9 @@ data block, the animation table, and the hooks — all three in one file.
 ```lua
 og.family("living", {
   id = "example:emberwisp",
-  wire_id = "auto",                   -- next free id >= 21 (weapons >= 22), deterministic
+  wire_id = "auto",                   -- next free id >= 21 (weapons >= 22), deterministic;
+                                      -- or an integer 0..255; anything else
+                                      -- (300, -1, "61", "atuo") is a load error
   name = "EMBERWISP",                 -- THE identity hooks resolve against
   stats = {                           -- all six required
     strength = 8, dexterity = 14, constitution = 7,
@@ -1327,7 +1352,12 @@ og.family("living", {
 Every key except `id` is optional, and an undeclared key changes nothing:
 the installer copies the registry slot's current descriptor and patches only
 what the declaration names. Every key it does NOT recognise is a load error
-with a did-you-mean, so a typo cannot quietly do nothing. The `tuning` block
+with a did-you-mean, so a typo cannot quietly do nothing. A list (`flags`,
+`names`, the pack's `authors`, the `specials` list, `og.anims` frames and
+each of their rows) takes positional entries only: `flags = { FLYING = true }`
+is a load error naming `FLYING` (write `flags = { "FLYING" }`), and so is a
+key that is not a position 1..n, such as `[0]`; the `specials` list's
+named keys are `default_cast` and `ext`. The `tuning` block
 is the family's own dial panel — `og.tuning(self)` serves it back to the
 hooks as a frozen table, and it sits a screen above the function that reads
 it.

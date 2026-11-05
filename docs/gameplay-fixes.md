@@ -923,6 +923,10 @@ Rows deliberately not added:
 - #411: the kill credit is a field of the current game alone, not in the
   recording; the mode tests (`ModesOnslaught`, `ModesTdm`) pin it.
 - #417 and #418: no byte of the sim changes; every row proves it.
+- The modding API's changes (#454, #464, #465, #469, #479, #480), the
+  hook-failure line (#463) and the match recap (#467): no shipped pack reaches the new arms, and no
+  recording holds a log line or a recap; the core pack the runner mounts
+  loads and runs the same bytes.
 - #413, #414, #415 and #416: the display and the lobby, which no recording
   reaches.
 - #468 and #445: the box a sound carries is not in the recording, and every
@@ -1042,6 +1046,82 @@ difference kept on purpose (#484):
   within three acts of the blow, and a number made in the 1.7 s or so before
   damage numbers are turned on. `SemPresentation`
   (`tests/unit/test_sem_presentation_1.cpp`) pins it with every toggle off.
+
+The modding API and its logs changed in the same batch too, whatever the
+setting. No shipped pack or campaign reaches the new arms, so no player sees
+them; a pack that does gets the documented answer, or a load error that names
+its mistake:
+
+- **A score award to a team past the table is ignored (#454).**
+  `og.award_score(team, points)` checks the team as the Lua number it is
+  before narrowing it to a byte, so 256, 257 or -255 is ignored like any
+  team outside 0..3, as the API reference says: no score and no
+  `ScoreChange`. Before, 256 credited team 0, and 257 and -255 team 1. The
+  shipped treasures pass the eater's team, which is already a byte. This
+  game only (the old game has no Lua API).
+- **A failed family hook's log line says what ran in its place (#463).**
+  A family hook that errors is treated as absent, and its caller's engine
+  default runs where it has one: the stain after `on_death`, the default
+  gains after `level_up`, the 11×L² scaling after `set_difficulty`, attack
+  the attacker after `hit_response`, and so on for twelve of the
+  twenty-three hooks. The operator line said "nothing ran" for every hook;
+  it now says "the engine's default ran in its place" for those twelve, and
+  "it has no engine default, so nothing ran in its place" for `do_special`
+  and the notification hooks. Both say that what the hook changed before
+  its error stays. Only the log line changes. This game only.
+- **A misspelled level or entity hook is a load error (#464).**
+  `og.register_level_hooks` read only its nine names, so
+  `{ on_load = f, on_tik = g }` loaded and `on_tik` never ran. Every key is
+  now checked before anything installs, in the declaration pass too: an
+  unknown name is refused with a did-you-mean, a key that is not a string
+  by its type, and the refused call installs nothing. `og.set_entity_hooks`,
+  whose one name is `on_death`, refuses the same way. Every shipped
+  registration is spelled right. This game only.
+- **The match recap sees an every-level mode that refused (#467).** The
+  recap tells a refusing mode from a scripted level with none by asking
+  whether an `on_mode_init` hook is there. It counted only the level's own
+  registrations, so a pack whose `on_mode_init` was registered for every
+  level (`-1`) and refused got the count-only "MATCH: N AUTHORED TEAMS"
+  lines, though the hook had run. It now asks the lookup the dispatchers
+  make (the level's own hook, else the every-level one) and reads "MATCH
+  WILL NOT START". A mode refuses by raising; returning `false` does not
+  refuse. The recap only; the SDL, text and curses clients share it. This
+  game only.
+- **A list field refuses a named entry (#469).** The class-pack lists
+  (`flags`, `names`, the pack's `authors`, the `specials` list, `og.anims`
+  frames and each row) were read 1..#t, so a named entry was dropped
+  unread: `flags = { FLYING = true }` loaded as no flags at all. A list is
+  now read off its keys: a named entry is a load error naming it, and so is
+  a key that is not a position (`[0]`, `[1.5]`, `[true]`). `ext` is refused
+  inside a pure list, which has no block to extend; the `specials` list
+  keeps its named keys, `default_cast` and `ext`. Every shipped list is
+  positional. This game only.
+- **A bad `wire_id` is a load error (#479).** A family's `wire_id` is an
+  integer 0..255 or the word `"auto"`. The declaration took any integer and
+  any string, and the installer then logged "bad wire_id" and skipped the
+  family, so a pack lost it with no load error. Now 300 or -1 is refused
+  where it is written ("is outside 0..255"), and so is any string but
+  `"auto"`, a numeric one such as `"61"` included; `"atuo"` gets a
+  did-you-mean. The installer's guard stays for data built in C++. Every
+  shipped `wire_id` is in range. This game only.
+- **A body probe refuses a family the game cannot make (#480).**
+  `og.body_spot_near`, and the `body_spot_clear` and `body_ground_clear`
+  probes behind it, build a detached body of the family asked for. The
+  loader stands family 0 in for an id with no slot and a soldier in for a
+  living with no family, and the walker's family byte wraps 128..255
+  negative (#443), so those probes answered for the stand-in where the API
+  reference promises `nil`. A probe now answers no unless the body is
+  exactly the order and family asked for. The cleric's raise and the
+  parity spawn-room gate ask only real families. This game only.
+- **A loud passability probe answers only for the prober's floor (#465).**
+  `og.query_passable` and `og.query_object_passable` take an optional
+  floor. Their ground half read that floor, but their bodies half can see
+  only the prober's own floor, and their collision route eats, opens or
+  swings there, so a floor-1 ask from floor 0 mixed two floors. Naming the
+  prober's own floor is now the no-floor answer, and naming another is a
+  script error that points at `og.spawn_spot_clear` (bodies and terrain)
+  and `og.query_grid_passable` (terrain). No shipped script passes a floor
+  to either. This game only.
 
 ## Balance
 

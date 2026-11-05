@@ -1463,9 +1463,56 @@ int og_register_level_hooks(lua_State* L)
                         "not available during campaign hooks");
     const int level_id = static_cast<int>(luaL_checkinteger(L, 1));
     luaL_checktype(L, 2, LUA_TTABLE);
-    // Declaration pass: silent no-op, the og.register_hooks precedent — a
-    // family chunk calling this neither rejects the pack nor registers; the
-    // bind replay is where it lands.
+    // Every key is checked before anything installs, and the declaration
+    // pass checks them too: the pass that can still reject the pack is the
+    // one that should catch the typo (the og.register_hooks discipline).
+    {
+        std::vector<const char*> names;
+        // plumbing: gathers the nine names for the did-you-mean hint; no game rule
+        for (const auto& h : kLevelHookNames)
+            names.push_back(h.name);
+        lua_pushnil(L);
+        // rule: A level hook table may only use the nine level hook names; a misspelled name or a
+        //   non-string key is a load error with a did-you-mean, even in the declaration pass.
+        // tests: LevelScriptsTest.a_misspelled_level_hook_beside_a_valid_one_is_a_load_error
+        // tests: LevelScriptsTest.a_level_hook_table_key_that_is_not_a_name_is_a_load_error
+        // tests: LevelScriptsTest.the_declaration_pass_refuses_a_misspelled_level_hook
+        while (lua_next(L, 2) != 0) {
+            lua_pop(L, 1);  // value; the key stays for the next iteration
+            // rule: A level hook table may only use the nine level hook names; a misspelled name
+            //   or a non-string key is a load error with a did-you-mean, even in the declaration
+            //   pass.
+            // tests: LevelScriptsTest.a_misspelled_level_hook_beside_a_valid_one_is_a_load_error
+            // tests: LevelScriptsTest.a_level_hook_table_key_that_is_not_a_name_is_a_load_error
+            // tests: LevelScriptsTest.the_declaration_pass_refuses_a_misspelled_level_hook
+            if (lua_type(L, -1) != LUA_TSTRING)
+                script_raise(L, "og.register_level_hooks: a level hook table's "
+                                "keys are hook names (got a %s key)",
+                             luaL_typename(L, -1));
+            const std::string key = lua_tostring(L, -1);
+            bool known = false;
+            // rule: A level hook table may only use the nine level hook names; a misspelled name
+            //   or a non-string key is a load error with a did-you-mean, even in the declaration
+            //   pass.
+            // tests: LevelScriptsTest.a_misspelled_level_hook_beside_a_valid_one_is_a_load_error
+            // tests: LevelScriptsTest.the_declaration_pass_refuses_a_misspelled_level_hook
+            for (const char* n : names)
+                known = known || key == n;
+            // rule: A level hook table may only use the nine level hook names; a misspelled name
+            //   or a non-string key is a load error with a did-you-mean, even in the declaration
+            //   pass.
+            // tests: LevelScriptsTest.a_misspelled_level_hook_beside_a_valid_one_is_a_load_error
+            // tests: LevelScriptsTest.the_declaration_pass_refuses_a_misspelled_level_hook
+            if (!known) {
+                const std::string hint = did_you_mean(key, names);
+                script_raise(L, "og.register_level_hooks: unknown hook '%s'%s",
+                             key.c_str(), hint.c_str());
+            }
+        }
+    }
+    // Declaration pass: silent no-op past the checks, the og.register_hooks
+    // precedent — a family chunk calling this neither rejects a well-formed
+    // pack nor registers; the bind replay is where it lands.
     VmState* st = get_vm_state(L);
     // rule: In the declaration pass og.register_hooks and og.register_level_hooks validate the call
     //   and return without resolving the family or installing anything, so a pack may register
@@ -1473,14 +1520,15 @@ int og_register_level_hooks(lua_State* L)
     // tests: CampaignHooksTest.the_declaration_pass_bows_out_of_behaviour_registrars
     // tests: LevelScriptsTest.a_family_chunk_registers_level_hooks_in_the_real_pass
     // tests: SemScript3.a_family_chunk_registers_hooks_for_its_own_family_in_the_bind_replay
+    // tests: LevelScriptsTest.the_declaration_pass_refuses_a_misspelled_level_hook
     if (st != nullptr && st->mode == VmMode::Declare)
         return 0;
 
     lua_rawgeti(L, LUA_REGISTRYINDEX, st->level_hooks_ref);
     int registered = 0;
     // rule: Each level hook (on_load, on_tick, on_entity_death, on_entity_spawn, on_mode_init,
-    //   on_mode_tick, on_damage, on_respawn, on_lineup_stage) must be a function; others in the
-    //   table are not inspected here.
+    //   on_mode_tick, on_damage, on_respawn, on_lineup_stage) must be a function; every other key
+    //   was refused above.
     // tests: LevelScriptsTest.level_and_entity_hook_registration_rejections
     // tests: LevelScriptsTest.a_family_chunk_registers_level_hooks_in_the_real_pass
     for (const auto& h : kLevelHookNames) {
@@ -1512,8 +1560,8 @@ int og_register_level_hooks(lua_State* L)
         registered++;
     }
     lua_pop(L, 1);
-    // rule: A registration call that installs no hook at all ({} or only unknown-free nils) is a
-    //   load error ('no valid hooks ...
+    // rule: A registration call that installs no hook at all ({}) is a load error ('no valid
+    //   hooks ...
     // tests: ScriptHooksTest.register_hooks_load_error_vocabulary
     // tests: LevelScriptsTest.level_and_entity_hook_registration_rejections
     // tests: LevelScriptsTest.a_family_chunk_registers_level_hooks_in_the_real_pass
@@ -1531,6 +1579,31 @@ int og_set_entity_hooks(lua_State* L)
     auto* h = static_cast<WalkerHandle*>(
         luaL_checkudata(L, 1, kWalkerMeta));
     luaL_checktype(L, 2, LUA_TTABLE);
+    // The table's one hook name is on_death; any other key is refused before
+    // anything installs, the og.register_level_hooks discipline.
+    lua_pushnil(L);
+    // rule: An entity hook table may only use on_death; a misspelled name or a non-string key is a
+    //   script error with a did-you-mean.
+    // tests: LevelScriptsTest.a_misspelled_entity_hook_is_a_script_error
+    while (lua_next(L, 2) != 0) {
+        lua_pop(L, 1);  // value; the key stays for the next iteration
+        // rule: An entity hook table may only use on_death; a misspelled name or a non-string key
+        //   is a script error with a did-you-mean.
+        // tests: LevelScriptsTest.a_misspelled_entity_hook_is_a_script_error
+        if (lua_type(L, -1) != LUA_TSTRING)
+            script_raise(L, "og.set_entity_hooks: an entity hook table's keys "
+                            "are hook names (got a %s key)",
+                         luaL_typename(L, -1));
+        const std::string key = lua_tostring(L, -1);
+        // rule: An entity hook table may only use on_death; a misspelled name or a non-string key
+        //   is a script error with a did-you-mean.
+        // tests: LevelScriptsTest.a_misspelled_entity_hook_is_a_script_error
+        if (key != "on_death") {
+            const std::string hint = did_you_mean(key, {"on_death"});
+            script_raise(L, "og.set_entity_hooks: unknown hook '%s'%s",
+                         key.c_str(), hint.c_str());
+        }
+    }
     // rule: A level script may give one tracked entity its own on_death override (cleared when it
     //   fires); an untracked entity or a non-function on_death is a script error; an empty table
     //   still lets the level hook fire.
@@ -2563,11 +2636,13 @@ WorldScripts& active_world_scripts()
 
 namespace {
 
-// Pack-installed descriptors carry no C++ callbacks, so an erroring hook
-// means nothing happens at all. Count every failed dispatch, keep
-// the most recent one for a test to read back, and shout the first sighting
-// of each distinct error at operator level. Process-global bookkeeping, read
-// by nothing in the sim: peers stay in step and nothing here can throw.
+// Pack-installed descriptors carry no C++ callbacks, so an erroring hook is
+// treated as absent: its caller runs the engine's default where it has one,
+// and nothing runs where it has none. Count every failed dispatch, keep the
+// most recent one for a test to read back, and shout the first sighting of
+// each distinct error at operator level, saying which of the two happened.
+// Process-global bookkeeping, read by nothing in the sim: peers stay in step
+// and nothing here can throw.
 hooks::HookFailure& hook_failure_state()
 {
     static hooks::HookFailure state;
@@ -2575,7 +2650,7 @@ hooks::HookFailure& hook_failure_state()
 }
 
 void note_hook_failure(const char* where, const ScriptHost::Impl& impl,
-                       bool is_new_error)
+                       bool is_new_error, bool default_ran)
 {
     hooks::HookFailure& state = hook_failure_state();
     state.count++;
@@ -2585,9 +2660,11 @@ void note_hook_failure(const char* where, const ScriptHost::Impl& impl,
     // record_error folds repeats, so the freshest text for this `where` is
     // the last matching stored record.
     // rule: Every failed hook dispatch is counted and the latest failure's where/message kept for
-    //   tests; the operator log line prints once per distinct error.
+    //   tests; the operator log line prints once per distinct error and says whether the engine's
+    //   default ran in the hook's place.
     // tests: ScriptHooksTest.erroring_hook_is_latched_loudly
     // tests: SemScript3.a_repeated_hook_error_logs_once_and_a_new_error_logs_again
+    // tests: SemScript3.the_failure_line_says_nothing_ran_only_for_a_hook_with_no_engine_default
     for (auto it = impl.errors.rbegin(); it != impl.errors.rend(); ++it) {
         // rule: Every failed hook dispatch is counted and the latest failure's where/message kept
         //   for tests; the operator log line prints once per distinct error.
@@ -2602,8 +2679,13 @@ void note_hook_failure(const char* where, const ScriptHost::Impl& impl,
     // is the operator-facing half, once per distinct error so a hook failing
     // every tick cannot drown the log.
     if (is_new_error)
-        LogError("class pack: family hook {} FAILED — no C++ fallback "
-                 "exists, so nothing ran: {}\n",
+        LogError(default_ran
+                     ? "class pack: family hook {} FAILED — treated as absent, so the "
+                       "engine's default ran in its place (changes made before the "
+                       "error stay): {}\n"
+                     : "class pack: family hook {} FAILED — treated as absent; it has no "
+                       "engine default, so nothing ran in its place (changes made "
+                       "before the error stay): {}\n",
                  state.where, state.message);
 }
 
@@ -2736,8 +2818,11 @@ public:
     }
 
     // Runs the hook. Returns nullopt on script error (R9: treat as absent),
-    // otherwise the boolean-coerced result (void hooks: true).
-    std::optional<bool> call(const char* where, bool wants_result)
+    // otherwise the boolean-coerced result (void hooks: true). default_ran
+    // says whether the caller runs an engine default in a failed hook's
+    // place, for the failure line.
+    std::optional<bool> call(const char* where, bool wants_result,
+                             bool default_ran)
     {
         const std::size_t errors_before = impl_.errors.size();
         // rule: A hook that errors counts as absent for that dispatch (nullopt) and is latched; a
@@ -2750,7 +2835,7 @@ public:
         // tests: SemScript3.a_result_hook_answer_is_lua_truthiness
         if (!impl_.protected_call(where, nargs_, wants_result ? 1 : 0)) {
             note_hook_failure(where, impl_,
-                              impl_.errors.size() > errors_before);
+                              impl_.errors.size() > errors_before, default_ran);
             return std::nullopt;
         }
         bool result = true;
@@ -2787,7 +2872,7 @@ public:
         // tests: SpecialsDispatchTest.cast_reason_length_boundary_and_null_descriptor
         if (!impl_.protected_call(where, nargs_, 2)) {
             note_hook_failure(where, impl_,
-                              impl_.errors.size() > errors_before);
+                              impl_.errors.size() > errors_before, false);
             // plumbing: error_reason out-param null guard
             if (error_reason)
                 *error_reason = "SPECIAL SCRIPT ERROR";
@@ -2862,7 +2947,7 @@ public:
                 "{}:{}: {}", source_name, source.linedefined, contract_error);
             impl_.record_error(where, message.c_str());
             note_hook_failure(where, impl_,
-                              impl_.errors.size() > errors_before);
+                              impl_.errors.size() > errors_before, false);
             // plumbing: error_reason out-param null guard
             if (error_reason)
                 *error_reason = "SPECIAL SCRIPT ERROR";
@@ -2919,7 +3004,55 @@ const char* hook_where(FamilyHook hook)
     }
 }
 
-// Shared shape: try script hook with walker args, no C++ fallback here.
+// Whether the caller of a family hook runs an engine default when the hook
+// fails, read for the failure line. It follows the callers named here: when
+// one of them changes what it does on a failed hook, this table changes too.
+bool hook_has_engine_default(FamilyHook hook)
+{
+    // rule: A failed family hook is treated as absent, and its caller's engine default runs where
+    //   it has one: check_special_ai (the bot may cast, living::check_special), hit_response
+    //   (attack the attacker), set_difficulty (the 11*L^2 scaling), level_up (the default gains),
+    //   on_death (the stain), on_fire_weapon (the shot fires), handle_teleport and on_ani_complete
+    //   (back to walking), weapon on_animate (the facing-row animation), effect on_act (animate,
+    //   then die), treasure on_eat (eaten) and on_act_override (the default act). For do_special
+    //   (the cast is refused free) and the notification hooks nothing runs in its place.
+    // tests: SemScript3.a_set_difficulty_hook_that_errors_keeps_its_change_and_the_default_scaling_runs_too
+    // tests: SemScript3.a_level_up_hook_that_errors_keeps_its_gains_and_the_default_gains_run_too
+    // tests: SemScript3.a_hit_response_hook_that_errors_still_attacks_the_attacker
+    // tests: SemScript3.the_failure_line_says_nothing_ran_only_for_a_hook_with_no_engine_default
+    switch (hook) {
+        case FamilyHook::CheckSpecialAi:
+        case FamilyHook::HitResponse:
+        case FamilyHook::SetDifficulty:
+        case FamilyHook::LevelUp:
+        case FamilyHook::OnDeath:
+        case FamilyHook::OnFireWeapon:
+        case FamilyHook::HandleTeleport:
+        case FamilyHook::OnAniComplete:
+        case FamilyHook::WeaponOnAnimate:
+        case FamilyHook::EffectOnAct:
+        case FamilyHook::TreasureOnEat:
+        case FamilyHook::OnActOverride:
+            return true;
+        case FamilyHook::DoSpecial:
+        case FamilyHook::OnActLiving:
+        case FamilyHook::OnShoved:
+        case FamilyHook::OnCreate:
+        case FamilyHook::CustomizeWeapon:
+        case FamilyHook::OnMeleeHit:
+        case FamilyHook::WeaponOnDeath:
+        case FamilyHook::WeaponOnHitTarget:
+        case FamilyHook::EffectOnDeath:
+        case FamilyHook::GeneratorCustomizeSpawn:
+        case FamilyHook::OnKill:
+        case FamilyHook::Count:
+            break;
+    }
+    return false;
+}
+
+// Shared shape: try script hook with walker args; the caller keeps its own
+// default path (no C++ fallback in this dispatcher).
 template <typename... Args>
 std::optional<bool> try_script_hook(Order order, int family_id,
                                     FamilyHook hook, bool wants_result,
@@ -2937,7 +3070,8 @@ std::optional<bool> try_script_hook(Order order, int family_id,
     HookFrame f(ws);
     f.begin(order, family_id, hook);
     (f.arg(args), ...);
-    return f.call(hook_where(hook), wants_result);
+    return f.call(hook_where(hook), wants_result,
+                  hook_has_engine_default(hook));
 }
 
 // DoSpecial dispatch, honoring both slot forms (stub generator reads this
@@ -3046,12 +3180,14 @@ bool hit_response(const FamilyDescriptor* fd, statistics* stats, walker* who)
     // Lua signature: hit_response(self, foe) — self is the stats' owner.
     // rule: A Lua hit_response / set_difficulty / level_up hook that RUNS replaces the classic C++
     //   default (attack-the-attacker special roll, the 11*level^2 HP difficulty formula, default
-    //   level-up gains); when no hook is registered or it ERRORS, the classic default runs.
+    //   level-up gains); when no hook is registered or it ERRORS, the classic default runs (on top
+    //   of what an erroring hook changed before its error).
     // tests: SemScript3.a_set_difficulty_hook_that_runs_replaces_the_default_scaling
     // tests: SemScript3.a_level_up_hook_that_runs_replaces_the_default_gains
     // tests: SemScript3.a_hit_response_hook_that_runs_replaces_attack_the_attacker
-    // deferred: #463 hook-ran and no-hook arms asserted for all three callers; the errored arm
-    //   (default runs on top of the partial hook) is bug #463 and is not pinned
+    // tests: SemScript3.a_set_difficulty_hook_that_errors_keeps_its_change_and_the_default_scaling_runs_too
+    // tests: SemScript3.a_level_up_hook_that_errors_keeps_its_gains_and_the_default_gains_run_too
+    // tests: SemScript3.a_hit_response_hook_that_errors_still_attacks_the_attacker
     if (try_script_hook(Order::Living, fd->family_id, FamilyHook::HitResponse,
                         false, stats->controller(), who))
         return true;
@@ -3070,10 +3206,14 @@ bool set_difficulty(const FamilyDescriptor* fd, living* self,
         return false;
     // rule: A Lua hit_response / set_difficulty / level_up hook that RUNS replaces the classic C++
     //   default (attack-the-attacker special roll, the 11*level^2 HP difficulty formula, default
-    //   level-up gains).
+    //   level-up gains); when no hook is registered or it ERRORS, the classic default runs (on top
+    //   of what an erroring hook changed before its error).
     // tests: SemScript3.a_set_difficulty_hook_that_runs_replaces_the_default_scaling
     // tests: SemScript3.a_level_up_hook_that_runs_replaces_the_default_gains
     // tests: SemScript3.a_hit_response_hook_that_runs_replaces_attack_the_attacker
+    // tests: SemScript3.a_set_difficulty_hook_that_errors_keeps_its_change_and_the_default_scaling_runs_too
+    // tests: SemScript3.a_level_up_hook_that_errors_keeps_its_gains_and_the_default_gains_run_too
+    // tests: SemScript3.a_hit_response_hook_that_errors_still_attacks_the_attacker
     if (try_script_hook(Order::Living, fd->family_id,
                         FamilyHook::SetDifficulty, false,
                         static_cast<walker*>(self),
@@ -3093,10 +3233,14 @@ bool level_up(const FamilyDescriptor* fd, guy* self, std::int32_t level_diff)
         return false;
     // rule: A Lua hit_response / set_difficulty / level_up hook that RUNS replaces the classic C++
     //   default (attack-the-attacker special roll, the 11*level^2 HP difficulty formula, default
-    //   level-up gains).
+    //   level-up gains); when no hook is registered or it ERRORS, the classic default runs (on top
+    //   of what an erroring hook changed before its error).
     // tests: SemScript3.a_set_difficulty_hook_that_runs_replaces_the_default_scaling
     // tests: SemScript3.a_level_up_hook_that_runs_replaces_the_default_gains
     // tests: SemScript3.a_hit_response_hook_that_runs_replaces_attack_the_attacker
+    // tests: SemScript3.a_set_difficulty_hook_that_errors_keeps_its_change_and_the_default_scaling_runs_too
+    // tests: SemScript3.a_level_up_hook_that_errors_keeps_its_gains_and_the_default_gains_run_too
+    // tests: SemScript3.a_hit_response_hook_that_errors_still_attacks_the_attacker
     if (try_script_hook(Order::Living, fd->family_id, FamilyHook::LevelUp,
                         false, self, static_cast<lua_Integer>(level_diff)))
         return true;
@@ -3554,9 +3698,9 @@ bool push_level_hook_fn(lua_State* L, VmState* st, LevelHook kind,
 std::uint32_t level_hook_kinds_for(int level_id)
 {
     // rule: Diagnostic: which hook kinds a level registers by its own id; wildcard registrations
-    //   are deliberately not counted. The picker uses its on_mode_init bit to tell a refusing mode
-    //   from a hook-less scripted level.
+    //   are deliberately not counted (level_hook_kinds_dispatched_for folds them in).
     // tests: LevelScriptsTest.no_level_hooks_means_no_vm_activity
+    // tests: LevelScriptsTest.dispatched_level_hook_kinds_fold_in_the_wildcard
     // tests: LevelScriptsTest.no_packs_means_every_level_dispatcher_is_inert
     // tests: LevelScriptsTest.a_family_chunk_registers_level_hooks_in_the_real_pass
     if (pack_lua_absent())
@@ -3576,6 +3720,32 @@ std::uint32_t level_hook_kinds_for(int level_id)
         if (lua_isfunction(L, -1))
             kinds |= 1u << static_cast<unsigned>(h.kind);
         lua_pop(L, 2);
+    }
+    return kinds;
+}
+
+std::uint32_t level_hook_kinds_dispatched_for(int level_id)
+{
+    // rule: Diagnostic: which hook kinds would dispatch on a level, its own registration or the
+    //   every-level one, the lookup the dispatchers make; the picker reads its on_mode_init bit to
+    //   tell a refusing mode from a level with none.
+    // tests: LevelScriptsTest.dispatched_level_hook_kinds_fold_in_the_wildcard
+    // tests: PickerCommon.a_wildcard_mode_init_that_refused_says_the_match_will_not_start
+    if (pack_lua_absent())
+        return 0;
+    WorldScripts& ws = active_world_scripts();
+    lua_State* L = ws.host().impl().L;
+    VmState* st = &vm_state(L);
+    std::uint32_t kinds = 0;
+    for (const auto& h : kLevelHookNames) {
+        // rule: Diagnostic: which hook kinds would dispatch on a level, its own registration or
+        //   the every-level one, the lookup the dispatchers make.
+        // tests: LevelScriptsTest.dispatched_level_hook_kinds_fold_in_the_wildcard
+        // tests: PickerCommon.a_wildcard_mode_init_that_refused_says_the_match_will_not_start
+        if (push_level_hook_fn(L, st, h.kind, level_id)) {
+            kinds |= 1u << static_cast<unsigned>(h.kind);
+            lua_pop(L, 1);
+        }
     }
     return kinds;
 }

@@ -1069,6 +1069,36 @@ TEST(SemScriptMode, score_and_respawn_queries_refuse_a_negative_team)
     }
 }
 
+// og_award_score (#454): the team is range-checked as the Lua integer, so a
+// number a byte would wrap onto a real team (256 -> 0, 257 -> 1, -255 -> 1)
+// is outside the score table and silently ignored, as -1 and 4 are.
+TEST(SemScriptMode, a_score_award_to_a_team_a_byte_would_wrap_onto_a_real_team_is_ignored)
+{
+    SemModeWorld fx;
+    fx.run_on_load(
+        "    og.award_score(256, 10)\n"
+        "    og.award_score(257, 20)\n"
+        "    og.award_score(-255, 30)\n"
+        "    og.award_score(-1, 40)\n"
+        "    og.award_score(4, 50)\n"
+        "    og.award_score(3, 5)\n"
+        "    og.log('done')\n");
+    ASSERT_EQ((std::vector<std::string>{"done"}), fx.logged("done")) << fx.script_errors();
+    EXPECT_TRUE(fx.world().scripts().host().errors().empty()) << fx.script_errors();
+    EXPECT_EQ(0u, fx.world().m_score[0]) << "256 is not team 0";
+    EXPECT_EQ(0u, fx.world().m_score[1]) << "257 and -255 are not team 1";
+    EXPECT_EQ(0u, fx.world().m_score[2]);
+    EXPECT_EQ(5u, fx.world().m_score[3]) << "the in-range control is credited";
+
+    std::vector<og::sim::Event> scores;
+    for (const auto& e : fx.events.events())
+        if (e.kind == og::sim::EventKind::ScoreChange)
+            scores.push_back(e);
+    ASSERT_EQ(1u, scores.size()) << "only the control announces a score";
+    EXPECT_EQ(3u, scores[0].a);
+    EXPECT_EQ(5u, scores[0].b);
+}
+
 // ===========================================================================
 // og_match_setting (bindings_entity.cpp:2899) — the difficulty arm, under
 // both Gameplay Fixes values.
@@ -1208,6 +1238,90 @@ TEST(SemScriptMode, the_spawn_spot_probe_eats_nothing_on_the_spot)
     EXPECT_GT(eaten_at, probe_at) << "the probe itself ate the drop";
     EXPECT_LT(eaten_at, route_at);
     EXPECT_NE(nullptr, fx.world().find_by_id(prober_id));
+}
+
+// og_query_passable / og_query_object_passable (#465): the two loud probes
+// meet bodies only on the prober's own floor (obmap's floor band), and their
+// collision route eats, opens or swings there, so they answer only for that
+// floor. Naming another floor is a script error that names the probes for
+// another floor, and it runs nothing: the drop on the spot is not eaten.
+// Naming the prober's own floor is the no-floor answer, and that route does
+// eat the drop.
+TEST_F(SemScriptEntity, a_loud_passability_probe_refuses_a_floor_not_the_probers)
+{
+    SemModeWorld fx;
+    fx.add_floor_one_with_wall_at(20, 20);
+    walker* prober = fx.spawn_living(FAMILY_SOLDIER, 0, 16, 16);
+    ASSERT_NE(nullptr, prober);
+    ASSERT_EQ(0, prober->floor());
+    // A body on floor 1 at the probed spot, which the bodies half cannot see.
+    walker* upstairs = fx.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, upstairs);
+    upstairs->set_floor(1);
+    upstairs->setxy(224, 224);
+    walker* drop = fx.world().add_fx_ob(Order::Treasure, FAMILY_SILVER_BAR);
+    ASSERT_NE(nullptr, drop);
+    drop->setxy(224, 224);
+    const std::uint32_t prober_id = prober->entity_id();
+    const std::string eat_hook =
+        "og.register_hooks('treasure', 'core:silver_bar', {\n"
+        "  on_eat = function(self, eater)\n"
+        "    og.log('EATEN')\n"
+        "    return true\n"
+        "  end,\n"
+        "})\n";
+    fx.run_on_load(
+        "    local w = og.find_by_id(" + std::to_string(prober_id) + ")\n"
+        "    local ok1, e1 = pcall(og.query_passable, 224, 224, w, 1)\n"
+        "    og.log('qp', tostring(ok1), tostring(e1))\n"
+        "    local ok2, e2 = pcall(og.query_object_passable, 224, 224, w, 1)\n"
+        "    og.log('qo', tostring(ok2), tostring(e2))\n"
+        "    og.log('after_refusals')\n"
+        "    og.log('own', tostring(og.query_passable(96, 96, w)),\n"
+        "           tostring(og.query_passable(96, 96, w, 0)),\n"
+        "           tostring(og.query_object_passable(96, 96, w)),\n"
+        "           tostring(og.query_object_passable(96, 96, w, 0)))\n"
+        "    og.log('before_route')\n"
+        "    og.query_passable(224, 224, w, 0)\n"
+        "    og.log('after_route')\n",
+        eat_hook);
+
+    const std::vector<std::string> qp = fx.logged("qp");
+    ASSERT_EQ(3u, qp.size()) << fx.script_errors();
+    EXPECT_EQ("false", qp[1]) << "a foreign floor is a script error";
+    EXPECT_NE(std::string::npos,
+              qp[2].find("og.query_passable: floor 1 is not the prober's floor 0"))
+        << qp[2];
+    EXPECT_NE(std::string::npos, qp[2].find("og.spawn_spot_clear")) << qp[2];
+    EXPECT_NE(std::string::npos, qp[2].find("og.query_grid_passable")) << qp[2];
+    const std::vector<std::string> qo = fx.logged("qo");
+    ASSERT_EQ(3u, qo.size()) << fx.script_errors();
+    EXPECT_EQ("false", qo[1]);
+    EXPECT_NE(std::string::npos,
+              qo[2].find("og.query_object_passable: floor 1 is not the prober's floor 0"))
+        << qo[2];
+    EXPECT_EQ((std::vector<std::string>{"own", "true", "true", "true", "true"}),
+              fx.logged("own"))
+        << "naming the prober's own floor is the no-floor answer";
+
+    const auto& log = fx.vm_log();
+    std::size_t refusals_at = log.size(), before_route = log.size(),
+                after_route = log.size(), eaten_at = log.size();
+    int eaten = 0;
+    for (std::size_t i = 0; i < log.size(); i++) {
+        if (log[i] == "after_refusals") refusals_at = i;
+        if (log[i] == "before_route") before_route = i;
+        if (log[i] == "after_route") after_route = i;
+        if (log[i] == "EATEN") {
+            eaten++;
+            if (eaten_at == log.size()) eaten_at = i;
+        }
+    }
+    ASSERT_NE(log.size(), after_route) << fx.script_errors();
+    EXPECT_EQ(1, eaten) << "control: the own-floor route eats the drop exactly once";
+    EXPECT_GT(eaten_at, refusals_at) << "a refused probe ran the collision route";
+    EXPECT_GT(eaten_at, before_route);
+    EXPECT_LT(eaten_at, after_route);
 }
 
 // An explicit floor answers for THAT floor, not the prober's.

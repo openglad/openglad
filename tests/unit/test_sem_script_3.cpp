@@ -39,6 +39,8 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <string>
@@ -796,7 +798,8 @@ TEST_F(SemScript3, every_hook_wrapper_reaches_the_hook_of_a_family_with_a_descri
 
 // ===========================================================================
 // hit_response / set_difficulty / level_up replace the C++ default
-// (world_scripts.cpp:2221). The erroring arm is issue #463 and is NOT pinned.
+// (world_scripts.cpp:2221); a hook that errors is treated as absent, so the
+// default runs on top of what the hook changed before its error (#463).
 // ===========================================================================
 
 // A set_difficulty hook that runs replaces the built-in 11*level^2 scaling;
@@ -915,6 +918,208 @@ TEST_F(SemScript3, a_hit_response_hook_that_runs_replaces_attack_the_attacker)
                 << "no-hook arm: the default attacks the attacker";
             EXPECT_EQ(victim, attacker->foe());
         }
+    }
+}
+
+// #463: a set_difficulty hook that errors is treated as absent. What it
+// changed before the error stays, and the built-in 11*level^2 scaling runs on
+// top of it; the operator line says the default ran.
+TEST_F(SemScript3, a_set_difficulty_hook_that_errors_keeps_its_change_and_the_default_scaling_runs_too)
+{
+    World42 tw;
+    tw.world().difficulty = 100;
+    walker* w = tw.living(FAMILY_SOLDIER, 0, 100, 100);
+    ASSERT_NE(nullptr, w);
+    const float base_hp = w->stats()->max_hitpoints();
+    const float base_armor = w->stats()->armor();
+    script("og.register_hooks('living', 'core:soldier', {\n"
+           "  set_difficulty = function(self, level)\n"
+           "    self:s_set_max_hitpoints(self:s_max_hitpoints() + 1000)\n"
+           "    error('oops')\n"
+           "  end,\n"
+           "})\n");
+    (void)ws();  // build outside the capture
+
+    testing::internal::CaptureStderr();
+    w->set_difficulty(3);
+    const std::string said = testing::internal::GetCapturedStderr();
+    EXPECT_EQ(1u, hooks::hook_failures().count);
+    EXPECT_EQ("hook:set_difficulty", hooks::hook_failures().where);
+    EXPECT_EQ(base_hp + 1000.0f + 99.0f, w->stats()->max_hitpoints())
+        << "the hook's +1000 stays and the default's 11*3^2 is added";
+    EXPECT_EQ(base_armor + 18.0f, w->stats()->armor())
+        << "the default's 2*3^2 armor is added";
+    EXPECT_EQ(1u, count_of(said, "family hook hook:set_difficulty FAILED")) << said;
+    EXPECT_EQ(1u, count_of(said, "default ran in its place")) << said;
+    EXPECT_EQ(0u, count_of(said, "nothing ran")) << said;
+}
+
+// #463: a level_up hook that errors keeps the gains it applied, and the
+// built-in 8/6/8/8/1 gains run too.
+TEST_F(SemScript3, a_level_up_hook_that_errors_keeps_its_gains_and_the_default_gains_run_too)
+{
+    script("og.register_hooks('living', 'core:soldier', {\n"
+           "  level_up = function(g, diff)\n"
+           "    og.apply_level_up(g, diff, 1, 2, 3, 4, 5)\n"
+           "    error('oops')\n"
+           "  end,\n"
+           "})\n");
+    (void)ws();
+    guy hooked(FAMILY_SOLDIER);
+    const guy before(hooked);
+
+    testing::internal::CaptureStderr();
+    hooked.upgrade_to_level(static_cast<short>(hooked.level + 2), false);
+    const std::string said = testing::internal::GetCapturedStderr();
+    EXPECT_EQ(1u, hooks::hook_failures().count);
+    EXPECT_EQ("hook:level_up", hooks::hook_failures().where);
+    EXPECT_EQ(before.strength + 2 + 16, hooked.strength) << "hook's 1*2, default's 8*2";
+    EXPECT_EQ(before.dexterity + 4 + 12, hooked.dexterity) << "hook's 2*2, default's 6*2";
+    EXPECT_EQ(before.constitution + 6 + 16, hooked.constitution)
+        << "hook's 3*2, default's 8*2";
+    EXPECT_EQ(before.intelligence + 8 + 16, hooked.intelligence)
+        << "hook's 4*2, default's 8*2";
+    EXPECT_EQ(before.armor + 10 + 2, hooked.armor) << "hook's 5*2, default's 1*2";
+    EXPECT_EQ(before.level + 2, hooked.level);
+    EXPECT_EQ(1u, count_of(said, "family hook hook:level_up FAILED")) << said;
+    EXPECT_EQ(1u, count_of(said, "default ran in its place")) << said;
+}
+
+// #463: a hit_response hook that errors after it ran still leaves the victim
+// attacking its attacker: the built-in response runs in the hook's place.
+TEST_F(SemScript3, a_hit_response_hook_that_errors_still_attacks_the_attacker)
+{
+    World42 tw;
+    walker* victim = tw.living(FAMILY_SOLDIER, 0, 100, 100);
+    walker* attacker = tw.living(FAMILY_ORC, 1, 140, 100);
+    ASSERT_NE(nullptr, victim);
+    ASSERT_NE(nullptr, attacker);
+    victim->set_act_type(ACT_GUARD);
+    victim->stats()->set_magicpoints(0.0f);  // no counter-special to buy
+    script("og.register_hooks('living', 'core:soldier', {\n"
+           "  hit_response = function(self, foe)\n"
+           "    og.log('hit', og.entity_id(foe))\n"
+           "    error('oops')\n"
+           "  end,\n"
+           "})\n");
+    (void)ws();
+    ASSERT_EQ(nullptr, victim->foe());
+
+    testing::internal::CaptureStderr();
+    victim->stats()->hit_response(attacker);
+    const std::string said = testing::internal::GetCapturedStderr();
+    EXPECT_EQ((std::vector<std::string>{
+                  "hit\t" + std::to_string(attacker->entity_id())}),
+              vm_log())
+        << "the hook ran up to its error";
+    EXPECT_EQ(1u, hooks::hook_failures().count);
+    EXPECT_EQ(attacker, victim->foe()) << "the default attacks the attacker";
+    EXPECT_EQ(victim, attacker->foe());
+    EXPECT_EQ(1u, count_of(said, "family hook hook:hit_response FAILED")) << said;
+    EXPECT_EQ(1u, count_of(said, "default ran in its place")) << said;
+}
+
+// #463: the failure line of every one of the 23 family hooks says what its
+// caller did in its place: the engine's default ran (the twelve hooks whose
+// caller has one), or nothing ran (do_special, whose cast is refused free,
+// and the notification hooks).
+TEST_F(SemScript3, the_failure_line_says_nothing_ran_only_for_a_hook_with_no_engine_default)
+{
+    World42 tw;
+    walker* self = tw.living(FAMILY_SOLDIER, 0, 100, 100);
+    walker* foe = tw.living(FAMILY_ORC, 1, 140, 100);
+    ASSERT_NE(nullptr, self);
+    ASSERT_NE(nullptr, foe);
+    guy g(FAMILY_SOLDIER);
+    std::string living_hooks;
+    for (const char* h : {"do_special", "check_special_ai", "hit_response",
+                          "set_difficulty", "level_up", "on_death",
+                          "on_act_living", "on_act_override", "on_shoved",
+                          "on_fire_weapon", "handle_teleport", "on_create",
+                          "customize_weapon", "on_ani_complete", "on_melee_hit",
+                          "on_kill"})
+        living_hooks += std::string("  ") + h + " = function() error('" + h +
+                        " broke') end,\n";
+    script("og.register_hooks('living', 'core:soldier', {\n" + living_hooks +
+           "})\n"
+           "og.register_hooks('weapon', 'core:knife', {\n"
+           "  on_death = function() error('weapon on_death broke') end,\n"
+           "  on_animate = function() error('weapon on_animate broke') end,\n"
+           "  on_hit_target = function() error('weapon on_hit_target broke') end,\n"
+           "})\n"
+           "og.register_hooks('fx', 'core:boomerang', {\n"
+           "  on_act = function() error('effect on_act broke') end,\n"
+           "  on_death = function() error('effect on_death broke') end,\n"
+           "})\n"
+           "og.register_hooks('treasure', 'core:drumstick', {\n"
+           "  on_eat = function() error('treasure on_eat broke') end,\n"
+           "})\n"
+           "og.register_hooks('generator', 'core:tent', {\n"
+           "  customize_spawn = function() error('customize_spawn broke') end,\n"
+           "})\n");
+    ASSERT_TRUE(errors().empty()) << all_errors();
+    (void)ws();
+    const FamilyDescriptor* fd = soldier_fd();
+    const WeaponFamilyDescriptor* knife = get_weapon_family_descriptor(FAMILY_KNIFE);
+    const EffectFamilyDescriptor* boomerang =
+        get_effect_family_descriptor(FAMILY_BOOMERANG);
+    const TreasureFamilyDescriptor* drumstick =
+        get_treasure_family_descriptor(FAMILY_DRUMSTICK);
+    ASSERT_NE(nullptr, fd);
+    ASSERT_NE(nullptr, knife);
+    ASSERT_NE(nullptr, boomerang);
+    ASSERT_NE(nullptr, drumstick);
+    living* me = static_cast<living*>(self);
+
+    const struct {
+        const char* where;
+        bool default_ran;
+        std::function<void()> dispatch;
+    } cases[] = {
+        {"hook:do_special", false, [&] { (void)hooks::do_special(fd, self); }},
+        {"hook:check_special_ai", true, [&] { (void)hooks::check_special_ai(fd, me); }},
+        {"hook:hit_response", true, [&] { (void)hooks::hit_response(fd, self->stats(), foe); }},
+        {"hook:set_difficulty", true, [&] { (void)hooks::set_difficulty(fd, me, 2); }},
+        {"hook:level_up", true, [&] { (void)hooks::level_up(fd, &g, 1); }},
+        {"hook:on_death", true, [&] { (void)hooks::on_death(fd, self); }},
+        {"hook:on_act_living", false, [&] { (void)hooks::on_act_living(fd, me); }},
+        {"hook:on_act_override", true, [&] { (void)hooks::on_act_override(fd, me); }},
+        {"hook:on_shoved", false, [&] { (void)hooks::on_shoved(fd, self); }},
+        {"hook:on_fire_weapon", true, [&] { (void)hooks::on_fire_weapon(fd, self, nullptr); }},
+        {"hook:handle_teleport", true, [&] { (void)hooks::handle_teleport(fd, self); }},
+        {"hook:on_create", false, [&] { (void)hooks::on_create(fd, self); }},
+        {"hook:customize_weapon", false, [&] { (void)hooks::customize_weapon(fd, self, nullptr); }},
+        {"hook:on_ani_complete", true, [&] { (void)hooks::on_ani_complete(fd, self); }},
+        {"hook:on_melee_hit", false, [&] { (void)hooks::on_melee_hit(fd, self, foe); }},
+        {"hook:on_kill", false, [&] { (void)hooks::on_kill(fd, self, foe); }},
+        {"hook:weapon.on_death", false, [&] { (void)hooks::weapon_on_death(knife, nullptr); }},
+        {"hook:weapon.on_animate", true, [&] { (void)hooks::weapon_on_animate(knife, nullptr); }},
+        {"hook:weapon.on_hit_target", false,
+         [&] { (void)hooks::weapon_on_hit_target(knife, nullptr, foe, self); }},
+        {"hook:effect.on_act", true, [&] { (void)hooks::effect_on_act(boomerang, nullptr); }},
+        {"hook:effect.on_death", false, [&] { (void)hooks::effect_on_death(boomerang, nullptr); }},
+        {"hook:treasure.on_eat", true,
+         [&] { (void)hooks::treasure_on_eat(drumstick, nullptr, self); }},
+        {"hook:generator.customize_spawn", false,
+         [&] { (void)hooks::generator_customize_spawn(0 /*FAMILY_TENT*/, nullptr, self); }},
+    };
+    ASSERT_EQ(static_cast<std::size_t>(FamilyHook::Count), std::size(cases))
+        << "every family hook has its case";
+    std::uint64_t failures = 0;
+    for (const auto& c : cases) {
+        testing::internal::CaptureStderr();
+        c.dispatch();
+        const std::string said = testing::internal::GetCapturedStderr();
+        ++failures;
+        EXPECT_EQ(failures, hooks::hook_failures().count) << c.where;
+        EXPECT_EQ(c.where, hooks::hook_failures().where);
+        EXPECT_EQ(1u, count_of(said, std::string("family hook ") + c.where + " FAILED"))
+            << c.where << ": " << said;
+        EXPECT_EQ(c.default_ran ? 1u : 0u, count_of(said, "default ran in its place"))
+            << c.where << ": " << said;
+        EXPECT_EQ(c.default_ran ? 0u : 1u,
+                  count_of(said, "it has no engine default, so nothing ran in its place"))
+            << c.where << ": " << said;
     }
 }
 

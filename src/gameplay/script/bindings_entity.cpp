@@ -1365,23 +1365,30 @@ int og_oblist(lua_State* L)
     return 1;
 }
 
+// The floor og.query_passable and og.query_object_passable answer for (#465).
+int own_probe_floor(lua_State* L, walker* w, lua_Integer floor, const char* fn)
+{
+    const int own = static_cast<int>(w->floor());
+    // rule: A loud passability probe (terrain and bodies) answers only for the prober's own floor:
+    //   a script may name that floor; naming another is a script error, because the bodies half
+    //   reads only the prober's floor and its collision route would eat, open or swing there.
+    // tests: SemScriptEntity.a_loud_passability_probe_refuses_a_floor_not_the_probers
+    // tests: ScriptBindingPropsTest.an_explicit_floor_probes_that_floor_not_the_probers
+    if (floor != own)
+        script_raise(L, "%s: floor %d is not the prober's floor %d (probe another floor with "
+                        "og.spawn_spot_clear or og.query_grid_passable)",
+                     fn, static_cast<int>(floor), own);
+    return own;
+}
+
 int og_query_passable(lua_State* L)
 {
     GameWorld* world = world_arg(L);
     const float x = static_cast<float>(luaL_checknumber(L, 1));
     const float y = static_cast<float>(luaL_checknumber(L, 2));
     walker* w = resolve_walker(L, 3, /*required=*/true);
-    bool ok;
-    // rule: A passability probe answers for the prober's own floor unless the script names a floor,
-    //   so a pack planning a jump or summon onto another floor can ask about that floor's terrain
-    //   without moving anything there first. (The object half of the probe always answers the
-    //   prober's own floor's occupancy: obmap::query_list keys its floor band off ob->floor().)
-    // tests: ScriptBindingPropsTest.an_explicit_floor_probes_that_floor_not_the_probers
-    if (lua_isnoneornil(L, 4))
-        ok = world->query_passable(x, y, w);
-    else
-        ok = world->query_passable(x, y, w,
-                                   static_cast<int>(luaL_checkinteger(L, 4)));
+    const lua_Integer floor = luaL_optinteger(L, 4, w->floor());
+    const bool ok = world->query_passable(x, y, w, own_probe_floor(L, w, floor, "og.query_passable"));
     // plumbing: bool -> Lua boolean conversions of C++ answers (setxy, can_approach_weapon_range,
     //   attack, death, teleport, teleport_ranged, seat_driven, is_friendly, animate, collide,
     //   has_guy (myguy != nullptr), query_bit_flags != 0, has_commands, query_*_passable results,
@@ -1420,16 +1427,9 @@ int og_query_object_passable(lua_State* L)
     const float x = static_cast<float>(luaL_checknumber(L, 1));
     const float y = static_cast<float>(luaL_checknumber(L, 2));
     walker* w = resolve_walker(L, 3, /*required=*/true);
-    bool ok;
-    // rule: A passability probe answers for the prober's own floor unless the script names a floor,
-    //   so a pack planning a jump or summon onto another floor can ask about that floor's terrain
-    //   without moving anything there first.
-    // tests: ScriptBindingPropsTest.an_explicit_floor_probes_that_floor_not_the_probers
-    if (lua_isnoneornil(L, 4))
-        ok = world->query_object_passable(x, y, w);
-    else
-        ok = world->query_object_passable(
-            x, y, w, static_cast<int>(luaL_checkinteger(L, 4)));
+    const lua_Integer floor = luaL_optinteger(L, 4, w->floor());
+    const bool ok = world->query_object_passable(
+        x, y, w, own_probe_floor(L, w, floor, "og.query_object_passable"));
     // plumbing: bool -> Lua boolean conversions of C++ answers (setxy, can_approach_weapon_range,
     //   attack, death, teleport, teleport_ranged, seat_driven, is_friendly, animate, collide,
     //   has_guy (myguy != nullptr), query_bit_flags != 0, has_commands, query_*_passable results,
@@ -2096,18 +2096,18 @@ int og_ani_row(lua_State* L)
 int og_award_score(lua_State* L)
 {
     GameWorld* world = world_arg(L);
-    const auto team = static_cast<unsigned char>(
-        static_cast<std::uint64_t>(luaL_checkinteger(L, 1)));
+    // The team stays the Lua integer it is until the range check: a byte would wrap 256 onto 0.
+    const lua_Integer team = luaL_checkinteger(L, 1);
     const auto points = static_cast<std::uint32_t>(
         static_cast<std::uint64_t>(luaL_checkinteger(L, 2)));
     // rule: A treasure or mode credits score to a team's score slot and announces it with a
-    //   ScoreChange event; a team outside the score table is silently ignored (no score, no event).
+    //   ScoreChange event; a team outside the score table is silently ignored (no score, no event),
+    //   a number a byte would wrap onto a real team (256, 257, -255) included (#454).
     // tests: ScriptBindingTest.award_score_credits_the_team_and_emits_score_change
-    // deferred: #454 the only missing arm is the bug (team narrowed to a byte before the guard);
-    //   not pinned as correct
-    if (team >= SCORE_TEAM_COUNT)
+    // tests: SemScriptMode.a_score_award_to_a_team_a_byte_would_wrap_onto_a_real_team_is_ignored
+    if (team < 0 || team >= SCORE_TEAM_COUNT)
         return 0;
-    world->m_score[team] += points;
+    world->m_score[static_cast<std::size_t>(team)] += points;
     og::sim::emit_event(current_game->sim_events,
                         og::sim::EventKind::ScoreChange,
                         static_cast<std::uint32_t>(team), points);

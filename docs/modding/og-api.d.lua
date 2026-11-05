@@ -783,8 +783,8 @@
 ---@field possess fun(rider: og.Walker, host: og.Walker, ticks: integer): boolean, string # og.possess(rider, host, ticks) -> true | false, reason.
 ---@field query_genre fun(tx: integer, ty: integer, floor: integer?): integer # og.query_genre(tile_x, tile_y [, floor]) → int — the smoother's terrain genre for a TILE coordinate (the passable queries above all take pixels; this one doe...
 ---@field query_grid_passable fun(x: number, y: number, entity: og.Walker, arg4: integer?): boolean
----@field query_object_passable fun(x: number, y: number, entity: og.Walker, arg4: integer?): boolean
----@field query_passable fun(x: number, y: number, entity: og.Walker, arg4: integer?): boolean
+---@field query_object_passable fun(x: number, y: number, entity: og.Walker, floor: integer?): boolean
+---@field query_passable fun(x: number, y: number, entity: og.Walker, floor: integer?): boolean
 ---@field quiet_passable fun(x: number, y: number, entity: og.Walker): boolean # og.quiet_passable(x, y, ent) → boolean — og.query_passable's answer on ent's floor, asked quietly: no draw, no treasure eaten, no door opened, no collide().
 ---@field rand fun(n: integer): integer # og.rand(n) → deterministic sim RNG (world-owned).
 ---@field rand0 fun(n: integer): integer # og.rand0(n) — the world RNG's `next(n)` with IRandom's real n <= 0 contract instead of og.rand's error: next(0) answers 0 WITHOUT advancing the generator (Si...

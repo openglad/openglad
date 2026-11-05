@@ -946,10 +946,13 @@ TEST_F(ScriptBindingPropsTest, family_flag_answers_each_flag_from_the_descriptor
 // so a probe that dropped the argument would report "clear" for a spot that
 // would wall the summon in.
 //
-// The OBJECT probe is the documented exception (game_world.cpp: obmap's floor
-// band keys off ob->floor(), not the argument), so its arm pins what it
-// really promises — the 4-arg form answers its own floor's occupancy, open
-// spot against blocked spot.
+// The two loud probes that also meet bodies (og.query_passable and
+// og.query_object_passable) take the prober's OWN floor only (#465): their
+// bodies half reads the prober's floor (obmap's floor band keys off
+// ob->floor()), so naming another floor is a script error
+// (SemScriptEntity.a_loud_passability_probe_refuses_a_floor_not_the_probers),
+// and naming the prober's own floor is the no-floor answer. Their arms here
+// pin exactly that; og.query_grid_passable is the probe for floor 1's terrain.
 TEST_F(ScriptBindingPropsTest, an_explicit_floor_probes_that_floor_not_the_probers)
 {
     TestGameWorld tw;
@@ -1011,20 +1014,20 @@ TEST_F(ScriptBindingPropsTest, an_explicit_floor_probes_that_floor_not_the_probe
         "           b(og.query_grid_passable(" + probe + ", 1)),\n"
         "           b(og.query_grid_passable(" + probe + ", 0)))\n"
         "    og.log('both', b(og.query_passable(" + probe + ")),\n"
-        "           b(og.query_passable(" + probe + ", 1)),\n"
         "           b(og.query_passable(" + probe + ", 0)))\n"
         "    og.log('object', b(og.query_object_passable(" + probe + ", 0)),\n"
         "           b(og.query_object_passable(" + blocked + ", 0)))\n",
         self));
 
-    // Each triple is: the prober's own floor (open), floor 1 (walled), floor 0
-    // named explicitly (open again — so the middle answer is the argument
-    // talking and not a probe that simply broke).
+    // The grid triple is: the prober's own floor (open), floor 1 (walled),
+    // floor 0 named explicitly (open again — so the middle answer is the
+    // argument talking and not a probe that simply broke).
     const std::vector<std::string>& log =
         og::script::active_world_scripts().host().log();
     ASSERT_EQ(3u, log.size());
     EXPECT_EQ("grid\t1\t0\t1", log[0]);
-    EXPECT_EQ("both\t1\t0\t1", log[1]);
+    EXPECT_EQ("both\t1\t1", log[1])
+        << "own floor, then the own floor named: the same answer";
     EXPECT_EQ("object\t1\t0", log[2]);
 }
 
