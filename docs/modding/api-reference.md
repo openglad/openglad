@@ -1343,7 +1343,12 @@ og.family("living", {
 Every key except `id` is optional, and an undeclared key changes nothing:
 the installer copies the registry slot's current descriptor and patches only
 what the declaration names. Every key it does NOT recognise is a load error
-with a did-you-mean, so a typo cannot quietly do nothing. The `tuning` block
+with a did-you-mean, so a typo cannot quietly do nothing. A list (`flags`,
+`names`, the pack's `authors`, the `specials` list, `og.anims` frames and
+each of their rows) takes positional entries only: `flags = { FLYING = true }`
+is a load error naming `FLYING` (write `flags = { "FLYING" }`), and so is a
+key that is not a position 1..n, such as `[0]`; the `specials` list's
+named keys are `default_cast` and `ext`. The `tuning` block
 is the family's own dial panel — `og.tuning(self)` serves it back to the
 hooks as a frozen table, and it sits a screen above the function that reads
 it.

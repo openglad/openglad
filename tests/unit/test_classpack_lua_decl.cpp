@@ -440,6 +440,37 @@ TEST_F(LuaFamilyDeclTest, a_misspelled_default_cast_is_caught_where_it_is_writte
         "unknown key 'default_case' (did you mean 'default_cast'?)");
 }
 
+// #469: the specials list's keys are its positions plus default_cast. A
+// key that is not a position ([0]) used to get past both checks unread; a
+// named special (scare = {...}) was and is refused by the named-key check.
+TEST_F(LuaFamilyDeclTest, a_specials_list_refuses_a_key_that_is_not_a_position)
+{
+    expect_rejected(
+        declare(soldier_with("specials = {",
+                             "specials = { [0] = { id = \"zero\", name = \"ZERO\", "
+                             "mp_cost = 1 },")),
+        "'v3:soldier'.specials: a list's keys are its positions 1..n, got the key 0");
+    expect_rejected(
+        declare(soldier_with("specials = {",
+                             "specials = { [true] = { id = \"yes\", name = \"YES\", "
+                             "mp_cost = 1 },")),
+        "specials: a list's keys are its positions 1..n, got a boolean key");
+    expect_rejected(
+        declare(soldier_with("specials = {",
+                             "specials = { scare = { id = \"scare\", name = \"SCARE\", "
+                             "mp_cost = 1 },")),
+        "specials: unknown key 'scare'");
+
+    // Control: default_cast, the list's one named key, still declares.
+    ClasspackData data;
+    ASSERT_TRUE(declare(soldier_with("specials = {",
+                                     "specials = { default_cast = function() end,"),
+                        data).ok);
+    ASSERT_EQ(1u, data.living.size());
+    ASSERT_TRUE(data.living[0].specials.has_value());
+    EXPECT_EQ(4u, data.living[0].specials->size());
+}
+
 TEST_F(LuaFamilyDeclTest, a_wrong_word_gets_no_suggestion)
 {
     // The suggestion budget is half the candidate's length. "wibble" is not
@@ -531,6 +562,51 @@ TEST_F(LuaFamilyDeclTest, a_field_of_the_wrong_type_names_the_field)
     expect_rejected(declare(soldier_with("leaves_bloodspot = true,",
                                          "leaves_bloodspot = 1,")),
                     "leaves_bloodspot: expected true or false, got number");
+}
+
+// #469: a list field is a Lua array. A named entry used to be dropped
+// unread (flags = { FLYING = true } loaded as no flags at all); it is now a
+// load error naming the key, in every string list: flags, names and the
+// pack's authors.
+TEST_F(LuaFamilyDeclTest, a_list_field_refuses_a_named_entry)
+{
+    expect_rejected(declare(soldier_with("flags = {},", "flags = { FLYING = true },")),
+                    "'v3:soldier'.flags: a list takes no named entries, got 'FLYING'");
+    expect_rejected(declare(soldier_with("flags = {},",
+                                         "flags = { \"FLYING\", PHANTOM = true },")),
+                    "flags: a list takes no named entries, got 'PHANTOM'");
+    expect_rejected(declare(soldier_with("names = { \"Lothar\", \"Gunther\" },",
+                                         "names = { \"Lothar\", nick = \"Gunther\" },")),
+                    "names: a list takes no named entries, got 'nick'");
+    expect_rejected(declare("og.pack{ authors = { \"Fable\", lead = \"Yan\" } }"),
+                    "og.pack.authors: a list takes no named entries, got 'lead'");
+    expect_rejected(declare(soldier_with("flags = {},", "flags = { ext = {} },")),
+                    "flags: a list takes no named entries, got 'ext'");
+
+    // Control: the same field as a list declares, and lands in order.
+    ClasspackData data;
+    ASSERT_TRUE(declare(soldier_with("flags = {},", "flags = { \"FLYING\", \"PHANTOM\" },"),
+                        data).ok);
+    ASSERT_EQ(1u, data.living.size());
+    ASSERT_TRUE(data.living[0].init_bit_flags.has_value());
+    EXPECT_EQ((std::vector<std::string>{"FLYING", "PHANTOM"}),
+              *data.living[0].init_bit_flags);
+}
+
+// #469: a key that is not a position 1..n (0, a fraction, a boolean) is a
+// load error too, by what it is.
+TEST_F(LuaFamilyDeclTest, a_list_field_refuses_a_key_that_is_not_a_position)
+{
+    expect_rejected(declare(soldier_with("flags = {},", "flags = { [0] = \"FLYING\" },")),
+                    "flags: a list's keys are its positions 1..n, got the key 0");
+    expect_rejected(declare(soldier_with("flags = {},", "flags = { [1.5] = \"FLYING\" },")),
+                    "flags: a list's keys are its positions 1..n, got the key 1.5");
+    expect_rejected(declare(soldier_with("flags = {},", "flags = { [true] = \"FLYING\" },")),
+                    "flags: a list's keys are its positions 1..n, got a boolean key");
+    // A hole is still named by its index, as the element it is.
+    expect_rejected(declare(soldier_with("flags = {},",
+                                         "flags = { \"FLYING\", [3] = \"PHANTOM\" },")),
+                    "flags[2]: expected a string, got nil");
 }
 
 TEST_F(LuaFamilyDeclTest, wire_id_auto_is_a_string_the_installer_reads)
@@ -753,6 +829,28 @@ og.anims("slime", { rows = 4, frames = { {0,1,2,1}, false, {3}, false } })
     EXPECT_TRUE(set.frames[1].is_null);
     EXPECT_TRUE(set.frames[1].frames.empty());
     EXPECT_TRUE(set.frames[3].is_null);
+}
+
+// #469: og.anims's frames list and each of its rows are lists too: a named
+// row or a named frame is refused rather than dropped.
+TEST_F(LuaFamilyDeclTest, an_anim_set_refuses_a_named_row_or_a_named_frame)
+{
+    expect_rejected(declare("og.anims('x', { frames = { walk = {0, 1} } })"),
+                    "og.anims 'x'.frames: a list takes no named entries, got 'walk'");
+    expect_rejected(declare("og.anims('x', { frames = { {0, 1}, [0] = {2} } })"),
+                    "og.anims 'x'.frames: a list's keys are its positions 1..n, got the key 0");
+    expect_rejected(declare("og.anims('x', { frames = { {0, 1, last = 2} } })"),
+                    "og.anims 'x'.frames[1]: a list takes no named entries, got 'last'");
+    expect_rejected(declare("og.anims('x', { frames = { false, {0, [1.5] = 2} } })"),
+                    "og.anims 'x'.frames[2]: a list's keys are its positions 1..n, got the key 1.5");
+
+    // Control: the same rows as lists, a null row included, declare.
+    ClasspackData data;
+    ASSERT_TRUE(declare("og.anims('x', { frames = { {0, 1, 2}, false } })", data).ok);
+    ASSERT_EQ(1u, data.anims.size());
+    ASSERT_EQ(2u, data.anims[0].frames.size());
+    EXPECT_EQ(std::vector<std::int32_t>({0, 1, 2}), data.anims[0].frames[0].frames);
+    EXPECT_TRUE(data.anims[0].frames[1].is_null);
 }
 
 TEST_F(LuaFamilyDeclTest, a_malformed_anim_set_is_a_load_error)

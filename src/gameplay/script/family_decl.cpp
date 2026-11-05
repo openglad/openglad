@@ -162,6 +162,83 @@ const char* type_name_of(lua_State* L, int idx)
     return luaL_typename(L, idx);
 }
 
+// A list field's length, read off its keys rather than off #t: walking 1..#t
+// alone drops every other key unread, so `flags = { FLYING = true }` would
+// load as no flags at all. Fails (popping nothing: the caller still owns the
+// table) at the first key that is not a position 1..n. A string key is left
+// to the caller when it checks the list's named keys itself (the specials
+// list's default_cast).
+bool list_bound(Harvest& h, int tbl, const std::string& where,
+                bool string_keys_checked_by_caller, lua_Integer& n)
+{
+    lua_State* L = h.L;
+    n = 0;
+    lua_pushnil(L);
+    // rule: A list field (flags, names, authors, the specials list, og.anims frames and each row)
+    //   is a Lua array: every key is a position 1..n, and a named entry or any other key is a load
+    //   error naming it; the specials list's own named key, default_cast, is checked by its caller.
+    // tests: LuaFamilyDeclTest.a_list_field_refuses_a_named_entry
+    // tests: LuaFamilyDeclTest.a_list_field_refuses_a_key_that_is_not_a_position
+    // tests: LuaFamilyDeclTest.an_anim_set_refuses_a_named_row_or_a_named_frame
+    // tests: LuaFamilyDeclTest.a_specials_list_refuses_a_key_that_is_not_a_position
+    while (lua_next(L, tbl) != 0) {
+        lua_pop(L, 1);  // value; the key stays for the next iteration
+        // rule: A list field (flags, names, authors, the specials list, og.anims frames and each
+        //   row) is a Lua array: every key is a position 1..n, and a named entry or any other key
+        //   is a load error naming it; the specials list's own named key, default_cast, is checked
+        //   by its caller.
+        // tests: LuaFamilyDeclTest.a_list_field_refuses_a_named_entry
+        // tests: LuaFamilyDeclTest.a_list_field_refuses_a_key_that_is_not_a_position
+        // tests: LuaFamilyDeclTest.an_anim_set_refuses_a_named_row_or_a_named_frame
+        // tests: LuaFamilyDeclTest.a_specials_list_refuses_a_key_that_is_not_a_position
+        if (lua_isinteger(L, -1) && lua_tointeger(L, -1) >= 1) {
+            n = std::max(n, lua_tointeger(L, -1));
+            continue;
+        }
+        // rule: A list field (flags, names, authors, the specials list, og.anims frames and each
+        //   row) is a Lua array: every key is a position 1..n, and a named entry or any other key
+        //   is a load error naming it; the specials list's own named key, default_cast, is checked
+        //   by its caller.
+        // tests: LuaFamilyDeclTest.a_list_field_refuses_a_named_entry
+        // tests: LuaFamilyDeclTest.a_list_field_refuses_a_key_that_is_not_a_position
+        // tests: LuaFamilyDeclTest.an_anim_set_refuses_a_named_row_or_a_named_frame
+        // tests: LuaFamilyDeclTest.a_specials_list_refuses_a_key_that_is_not_a_position
+        if (lua_type(L, -1) == LUA_TSTRING) {
+            // rule: A list field (flags, names, authors, the specials list, og.anims frames and
+            //   each row) is a Lua array: every key is a position 1..n, and a named entry or any
+            //   other key is a load error naming it; the specials list's own named key,
+            //   default_cast, is checked by its caller.
+            // tests: LuaFamilyDeclTest.a_list_field_refuses_a_named_entry
+            // tests: LuaFamilyDeclTest.a_list_field_refuses_a_key_that_is_not_a_position
+            // tests: LuaFamilyDeclTest.an_anim_set_refuses_a_named_row_or_a_named_frame
+            // tests: LuaFamilyDeclTest.a_specials_list_refuses_a_key_that_is_not_a_position
+            if (string_keys_checked_by_caller)
+                continue;
+            const std::string key = lua_tostring(L, -1);
+            lua_pop(L, 1);
+            return h.fail(where + ": a list takes no named entries, got '" + key +
+                          "' (a list is written { \"A\", \"B\" })");
+        }
+        std::string got = std::string("a ") + type_name_of(L, -1) + " key";
+        // rule: A list field (flags, names, authors, the specials list, og.anims frames and each
+        //   row) is a Lua array: every key is a position 1..n, and a named entry or any other key
+        //   is a load error naming it; the specials list's own named key, default_cast, is checked
+        //   by its caller.
+        // tests: LuaFamilyDeclTest.a_list_field_refuses_a_named_entry
+        // tests: LuaFamilyDeclTest.a_list_field_refuses_a_key_that_is_not_a_position
+        // tests: LuaFamilyDeclTest.an_anim_set_refuses_a_named_row_or_a_named_frame
+        // tests: LuaFamilyDeclTest.a_specials_list_refuses_a_key_that_is_not_a_position
+        if (lua_type(L, -1) == LUA_TNUMBER) {
+            lua_pushvalue(L, -1);  // a copy: lua_tostring must not rewrite the key
+            got = std::string("the key ") + lua_tostring(L, -1);
+            lua_pop(L, 1);
+        }
+        lua_pop(L, 1);
+        return h.fail(where + ": a list's keys are its positions 1..n, got " + got);
+    }
+    return true;
+}
+
 bool Harvest::take_string(const std::string& where, std::string& out)
 {
     // Deliberately NOT lua_tostring: that coerces a number, and a pack that
@@ -236,21 +313,24 @@ bool Harvest::take_bool(const std::string& where, bool& out)
 bool Harvest::take_string_list(const std::string& where,
                                std::vector<std::string>& out)
 {
-    // rule: A list-of-strings field is a Lua array whose every element is a string; the failing
-    //   element is named by index. The list is walked 1..#t and never key-checked, so a NAMED key
-    //   inside a list is silently dropped: the one place in the format where a misspelled key is
-    //   not a load error.
+    // rule: A list-of-strings field is a Lua array: every key is a position 1..n (a named entry or
+    //   any other key is a load error naming it) and every element is a string, the failing one
+    //   named by index.
     // tests: LuaFamilyDeclTest.a_wrong_scalar_type_names_the_path_and_what_arrived
     // tests: LuaFamilyDeclTest.a_field_of_the_wrong_type_names_the_field
     // tests: LuaFamilyDeclTest.the_pack_header_is_strict_too
-    // deferred: #469 bug #469: a named key inside a string list is silently dropped; not pinned as
-    //   correct; the other arms are already asserted by test_classpack_lua_decl.cpp
+    // tests: LuaFamilyDeclTest.a_list_field_refuses_a_named_entry
+    // tests: LuaFamilyDeclTest.a_list_field_refuses_a_key_that_is_not_a_position
     if (lua_type(L, -1) != LUA_TTABLE) {
         const std::string got = type_name_of(L, -1);
         lua_pop(L, 1);
         return fail(where + ": expected a list, got " + got);
     }
-    const lua_Integer n = luaL_len(L, -1);
+    lua_Integer n = 0;
+    if (!list_bound(*this, lua_gettop(L), where, false, n)) {
+        lua_pop(L, 1);
+        return false;
+    }
     for (lua_Integer i = 1; i <= n; i++) {
         lua_rawgeti(L, -1, i);
         std::string item;
@@ -971,9 +1051,11 @@ bool harvest_specials(Harvest& h, int tbl, const std::string& where,
                       std::optional<std::vector<og::data::ClasspackSpecialEntry>>& out,
                       SpecialsBehavior& behavior)
 {
-    // rule: specials, when present, is a list.
+    // rule: specials, when present, is a list whose keys are positions, plus default_cast (checked
+    //   by check_keys).
     // tests: LuaFamilyDeclTest.a_specials_block_that_is_not_a_list_of_tables_says_which
     // tests: SemFamilyDecl.an_absent_specials_list_stays_unset
+    // tests: LuaFamilyDeclTest.a_specials_list_refuses_a_key_that_is_not_a_position
     if (!has_field(h.L, tbl, "specials"))
         return true;
     lua_State* L = h.L;
@@ -984,7 +1066,11 @@ bool harvest_specials(Harvest& h, int tbl, const std::string& where,
     }
     const int list = lua_gettop(L);
     std::vector<og::data::ClasspackSpecialEntry> entries;
-    const lua_Integer n = luaL_len(L, list);
+    lua_Integer n = 0;
+    if (!list_bound(h, list, where + ".specials", true, n)) {
+        lua_pop(L, 1);  // the specials list
+        return false;
+    }
     int previous_slot = 0;
     // The level the previous entry's slot opens at (its own `level`, or
     // 3*slot - 2): the open slots must be a run from slot 1.
@@ -1784,9 +1870,11 @@ bool harvest_anim_set(Harvest& h, const std::string& name, int tbl,
     const std::string where = "og.anims '" + name + "'";
     out.name = name;
     // rule: og.anims declares named frame tables: rows is optional, frames is required and is a
-    //   list whose rows are lists of whole frame indices or `false` for a null row.
+    //   list whose keys are positions and whose rows are lists (keys too are positions) of whole
+    //   frame indices or `false` for a null row.
     // tests: LuaFamilyDeclTest.an_anim_set_harvests_rows_holes_and_frames
     // tests: LuaFamilyDeclTest.a_malformed_anim_set_is_a_load_error
+    // tests: LuaFamilyDeclTest.an_anim_set_refuses_a_named_row_or_a_named_frame
     if (!opt_int(h, tbl, where, "rows", out.rows) ||
         !check_keys(h, tbl, where, {"rows", "frames"}))
         return false;
@@ -1798,7 +1886,11 @@ bool harvest_anim_set(Harvest& h, const std::string& name, int tbl,
         return h.fail(where + ".frames: expected a list of rows, got " + got);
     }
     const int rows = lua_gettop(L);
-    const lua_Integer n = luaL_len(L, rows);
+    lua_Integer n = 0;
+    if (!list_bound(h, rows, where + ".frames", false, n)) {
+        lua_pop(L, 1);  // the frames list
+        return false;
+    }
     bool ok = true;
     for (lua_Integer i = 1; ok && i <= n; i++) {
         const std::string rwhere =
@@ -1820,7 +1912,16 @@ bool harvest_anim_set(Harvest& h, const std::string& name, int tbl,
             break;
         } else {
             const int row_tbl = lua_gettop(L);
-            const lua_Integer len = luaL_len(L, row_tbl);
+            lua_Integer len = 0;
+            // rule: og.anims declares named frame tables: rows is optional, frames is required and
+            //   is a list whose keys are positions and whose rows are lists (keys too are
+            //   positions) of whole frame indices or `false` for a null row.
+            // tests: LuaFamilyDeclTest.an_anim_set_refuses_a_named_row_or_a_named_frame
+            if (!list_bound(h, row_tbl, rwhere, false, len)) {
+                lua_pop(L, 1);  // the row
+                ok = false;
+                break;
+            }
             // rule: og.anims declares named frame tables: rows is optional, frames is required and
             //   is a list whose rows are lists of whole frame indices or `false` for a null row.
             // tests: LuaFamilyDeclTest.an_anim_set_harvests_rows_holes_and_frames

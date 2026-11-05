@@ -360,10 +360,16 @@ id patches the fields it declares (the `tuning` map is replaced whole).
 **Unknown keys are load errors, with a did-you-mean suggestion.** That
 applies at the top level, inside `stats` / `combat` / `costs`, inside a
 specials entry, and to hook names (family hooks, level hooks and the
-entity hook table alike). There is no silent forward-compatibility
-tier: a key the engine does not know is a key that would have done nothing,
-and a pack is better off being told. Two escape hatches for a pack straddling
-engine releases: `ext = { ... }` is accepted and ignored (opaque, reserved),
+entity hook table alike). A list (`flags`, `names`, `authors`, the
+`specials` list, `og.anims` frames and each row) takes positional entries
+only: a named entry or a key that is not a position 1..n is a load error
+naming it. `ext` is not accepted inside a pure list (`flags`, `names`,
+`authors`, frames: a list holds values and has no block to extend); the
+`specials` list keeps its named keys, `default_cast` and `ext`. There is no
+silent forward-compatibility tier: a key the engine does not know is a key
+that would have done nothing, and a pack is better off being told. Two
+escape hatches for a pack straddling engine releases: `ext = { ... }` is
+accepted and ignored in a block (opaque, reserved),
 and `og.api.version` reports the format version so a pack can branch. The
 current format version is 5.
 

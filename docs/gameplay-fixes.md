@@ -923,8 +923,8 @@ Rows deliberately not added:
 - #411: the kill credit is a field of the current game alone, not in the
   recording; the mode tests (`ModesOnslaught`, `ModesTdm`) pin it.
 - #417 and #418: no byte of the sim changes; every row proves it.
-- The modding API's changes (#454, #464), the hook-failure line (#463) and
-  the match recap (#467): no shipped pack reaches the new arms, and no
+- The modding API's changes (#454, #464, #469), the hook-failure line
+  (#463) and the match recap (#467): no shipped pack reaches the new arms, and no
   recording holds a log line or a recap; the core pack the runner mounts
   loads and runs the same bytes.
 - #413, #414, #415 and #416: the display and the lobby, which no recording
@@ -1053,6 +1053,15 @@ its mistake:
   WILL NOT START". A mode refuses by raising; returning `false` does not
   refuse. The recap only; the SDL, text and curses clients share it. This
   game only.
+- **A list field refuses a named entry (#469).** The class-pack lists
+  (`flags`, `names`, the pack's `authors`, the `specials` list, `og.anims`
+  frames and each row) were read 1..#t, so a named entry was dropped
+  unread: `flags = { FLYING = true }` loaded as no flags at all. A list is
+  now read off its keys: a named entry is a load error naming it, and so is
+  a key that is not a position (`[0]`, `[1.5]`, `[true]`). `ext` is refused
+  inside a pure list, which has no block to extend; the `specials` list
+  keeps its named keys, `default_cast` and `ext`. Every shipped list is
+  positional. This game only.
 
 ## Balance
 
