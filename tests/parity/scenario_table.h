@@ -9495,17 +9495,44 @@ inline constexpr Mutation kMut_archmage_hit_stale_shift_fixes_scen99 = {
 // the burst's explosion stands on the orc at tick 9 (the budget), the orc
 // dies on that tick, and nothing is summoned, though 1100 MP covers the
 // elemental. The explosion is an FX-order walker, so the fact counts it among
-// the walkers; it is gone by tick 10. The arena is recorded with the setting on only: the classic hit
-// response plays differently in the two games (the old game's special()
-// always answers 0, so its "if (controller->special()) return;" never returns
-// and the second cast after a burst never happens; the current game's
-// classic body returns after a summon and casts twice after a burst), so a
-// setting-off twin could not be byte-equal to an old-game capture. The
-// ledger records it.
+// the walkers; it is gone by tick 10. With the setting off the classic reply
+// summons first, with the Shift the coin left (0: an image, a skeleton
+// phantom), and since fix AE it never reads the summon's answer, as the old
+// game never did (its special() always answers 0): it goes on to the slot-2
+// coin, which falls on CHAIN LIGHTNING, and the summon's busy refuses the
+// chain and then the HEARTBURST attempt, so nothing is cast but the summon.
+// The coin is one draw more than a reply that ends at the summon (this game
+// before fix AE), so the archmage's blow on the orc rolls its damage one draw
+// further down the stream: the orc ends on 132 hp, not 133. The setting-off
+// row is fix AE's proof: before the fix the two games' classic replies
+// differed, and no setting-off twin was byte-equal to an old-game capture.
+// The ledger records it.
 inline constexpr SpawnSpec kFamilySpawns_archmage_bot_struck_scen99[] = {
     { FAMILY_ARCHMAGE, 1, kOrderLiving, 120, 120, 0, 0, 10, 1100 }, // hostile bot
     { FAMILY_ORC,      2, kOrderLiving, 120, 137, 0, 0 },            // its foe, a pixel below: at blows
     { FAMILY_SOLDIER,  0, kOrderLiving, 560, 440, 0, 0 },            // idle player LAST, far away
+};
+inline constexpr FactPredicate kFacts_archmage_bot_struck_scen99[] = {
+    pred::TickReached(9),
+    pred::WalkerFamilyCount(FAMILY_ARCHMAGE, 1, 1),
+    pred::WalkerFamilyCount(FAMILY_SKELETON, 1, 1,
+        "consequence: the classic struck reply summons first, with the Shift the coin left (0): an image, a skeleton phantom"),
+    pred::WalkerFamilyCount(FAMILY_FIREELEMENTAL, 0, 0),
+    // negative_assertion: the stale Shift is 0, so the summon is the image, never the elemental.
+    pred::WalkerOfOrderFamilyCount(FAMILY_CHAIN, kOrderFX, 0, 0),
+    // negative_assertion: the reply goes on to the slot-2 coin, which falls on CHAIN LIGHTNING; the summon's busy refuses it.
+    pred::WalkerOfOrderFamilyCount(FAMILY_EXPLOSION, kOrderFX, 0, 0),
+    // negative_assertion: and refuses the HEARTBURST attempt after the chain: no explosion, where the setting-on twin has one.
+    pred::EventKindExactly(/*play_sound*/1, 2),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_ORC, 13200, 13200,
+        "consequence: the classic reply never reads the summon's answer (fix AE), so it draws the slot-2 coin after the summon that stood, and the archmage's blow on the orc rolls its damage one draw further down the stream: 8 damage, 132 hp"),
+};
+inline constexpr Mutation kMut_archmage_bot_struck_scen99 = {
+    "packs/core/families/living-17-archmage.lua", 214,
+    "self:special() and gf.on()",
+    "self:special()",
+    "Ends the classic reply at the summon that stood, as this game did before fix AE: the slot-2 coin is never drawn, so the archmage's blow on the orc rolls its damage one draw earlier, the orc ends on 133 hp, and WalkerHpRangeAtFinalTick(FAMILY_ORC, 13200, 13200) fails.",
+    "        self.current_special = 3"
 };
 inline constexpr FactPredicate kFacts_archmage_bot_struck_fixes_scen99[] = {
     pred::TickReached(9),
@@ -13352,6 +13379,14 @@ inline constexpr ScenarioSpec kScenarios[] = {
       0, false, true, Exercises::None,
       kFacts_archmage_hit_stale_shift_fixes_scen99, std::size(kFacts_archmage_hit_stale_shift_fixes_scen99),
       kMut_archmage_hit_stale_shift_fixes_scen99, {}, 1, nullptr, 0, 1 },
+
+    { "archmage_bot_struck_scen99", "scen/scen1.fss", 0x0000001Cu,
+      kInputsEmpty, std::size(kInputsEmpty), 9,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_archmage_bot_struck_scen99, std::size(kFamilySpawns_archmage_bot_struck_scen99),
+      0, false, true, Exercises::None,
+      kFacts_archmage_bot_struck_scen99, std::size(kFacts_archmage_bot_struck_scen99),
+      kMut_archmage_bot_struck_scen99 },
 
     { "archmage_bot_struck_fixes_scen99", "scen/scen1.fss", 0x0000001Cu,
       kInputsEmpty, std::size(kInputsEmpty), 9,

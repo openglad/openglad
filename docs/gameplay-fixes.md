@@ -265,8 +265,10 @@ Fixes X to AE, in play:
   second HEARTBURST after a chain or a burst (#422). With the setting off
   it now ignores the answer, as the old game does, draw for draw. With the
   setting on nothing changes: a cast that worked ends the reply, after the
-  follow-up for slot 2. No recording reaches the struck classic path, so
-  every golden is unchanged.
+  follow-up for slot 2. No earlier recording reached the struck classic
+  path, so every golden is unchanged; the fix's proof is
+  `archmage_bot_struck_scen99`, the struck archmage arena with the setting
+  off, captured from the old game (see [Parity](#parity)).
 
 ## Refusals at a glance
 
@@ -675,8 +677,11 @@ The parity goldens are captures from the old game (branch
   re-pointed by line and the struck orc's hp in the elemental row worked out
   again; no golden moved), then `7ff1654a` (a melee-only bot whose own foe
   stands where a right-hand probe looked still bumps it; three goldens with
-  the setting on moved).
-  `7ff1654a` is the commit the goldens are captured from: 351 of 351 goldens
+  the setting on moved). The table mirrors `f8832c0b` and `180e03c4` (the
+  mutation pins' lines after the semantics comments; no golden moved), then
+  `8e296bf0`, the setting-off twin of the struck archmage arena, fix AE's
+  proof (one new golden; no existing golden moved).
+  `8e296bf0` is the commit the goldens are captured from: 352 of 352 goldens
   `cmp` equal to a full capture there.
   `tests/parity/golden/DRIFT_LEDGER.md` records each one.
 
@@ -696,7 +701,7 @@ The rows with the setting on, by fix:
 | B, C, L | `mage_bot_freeze_no_foe_fixes_scen99`, `mage_bot_freeze_alone_fixes_scen99`, `mage_bot_freeze_engaged_fixes_scen99`, `mage_bot_heartburst_fixes_scen99`, `archmage_bot_summon_no_foe_fixes_scen99`, `cleric_bot_raise_or_turn_fixes_scen99`, `thief_bot_charm_or_taunt_fixes_scen99`, `archmage_hit_stale_shift_fixes_scen99` (the first two in arenas of their own since fixes X to AD: see below) |
 | M | `thief_bot_charm_hero_fixes_scen99`, `archmage_bot_mind_control_hero_fixes_scen99` |
 | Q | `archer_bot_bolt_at_blows_fixes_scen99`, `archer_bot_ring_one_foe_fixes_scen99`, `archmage_bot_image_one_foe_fixes_scen99`, `barbarian_bot_boulder_far_fixes_scen99`, `barbarian_bot_explode_lone_fixes_scen99`, `cleric_bot_mace_alone_fixes_scen99`, `cleric_bot_resurrect_foe_stain_fixes_scen99`, `druid_bot_faerie_alone_fixes_scen99`, `druid_bot_protection_idle_fixes_scen99`, `druid_bot_tree_behind_fixes_scen99`, `elemental_bot_starburst_one_foe_fixes_scen99`, `elf_bot_rocks_far_fixes_scen99`, `mage_bot_marker_home_fixes_scen99`, `mage_bot_warp_two_at_blows_fixes_scen99`, `soldier_bot_boomerang_far_fixes_scen99`, `soldier_bot_charge_unaimed_fixes_scen99`, `soldier_bot_disarm_front_fixes_scen99`, `soldier_bot_whirlwind_one_foe_fixes_scen99`, `thief_bot_bomb_ally_fixes_scen99`, `thief_bot_bomb_far_fixes_scen99`, `thief_bot_cloud_alone_fixes_scen99` (21 new arenas, each with its setting-off twin `<arena>_scen99`) |
-| R | `archmage_bot_struck_fixes_scen99` (no setting-off twin: see below) |
+| R | `archmage_bot_struck_fixes_scen99` (its setting-off twin, `archmage_bot_struck_scen99`, came with fix AE: see below) |
 | T | `cleric_raise_blocked_corpse_fixes_scen99` (a new arena, with its setting-off twin) |
 | U | `soldier_charge_front_foe_fixes_scen99` (a new arena, with its setting-off twin) |
 | V | `soldier_bot_charge_door_fixes_scen99`, `elf_bot_rocks_blocked_fixes_scen99` (two new arenas, each with its setting-off twin) |
@@ -708,6 +713,23 @@ The rows with the setting on, by fix:
 | AB | `elemental_struck_short_pool_fixes_scen99` (a new arena, with its setting-off twin), and the 10 recaptured rows below |
 | AC | `elf_rocks_edge_pad_fixes_scen99` (a new arena, with its setting-off twin) |
 | AD | `thief_charm_tent_troop_fixes_scen99` (a new arena, with its setting-off twin; the setting-on twin has spawns of its own: see below) |
+
+Fix AE has no row with the setting on (with it on a struck bot answers by
+fix R, and no row reaches a seat-driven archmage's hit response); its proof
+is a row with the setting off, `archmage_bot_struck_scen99`, the struck
+archmage arena of `archmage_bot_struck_fixes_scen99`. Until the fix the
+struck arena had no setting-off twin, because the two games' classic hit
+responses differed: the old game's `walker::special` always answers 0, so
+after a summon its hit response never returned and its "then leave! :)"
+second cast never happened, while this game's used the cast's real answer.
+Since the fix the old game's capture, at `8e296bf0`, is byte-identical to
+this game's recording. The classic reply summons an image (a skeleton
+phantom) with the Shift the coin left, goes on to the slot-2 coin, which
+falls on CHAIN LIGHTNING, and the summon's busy refuses the chain and the
+HEARTBURST attempt after it. That coin is one draw more than this game drew
+before the fix, so the archmage's blow on the orc rolls its damage one draw
+later (8, not 7): the row's mutation puts back the old read and its orc-hp
+fact fails.
 
 The bot payoff gates moved five existing rows with the setting on, each
 recaptured from the old game after its port: `cleric_bot_raise_or_turn_fixes_scen99`
@@ -889,15 +911,6 @@ Rows deliberately not added:
   the rows W moved and by `GameplayFixesBots` in
   `tests/unit/test_gameplay_fixes_bots.cpp`, which asks every guarded gate
   with its caster busy.
-- `archmage_bot_struck_scen99`: the struck archmage's arena has no
-  setting-off twin, because the two games' classic hit responses differed.
-  The old game's `walker::special` always answers 0, so after a summon its
-  hit response never returns and its "then leave! :)" second cast never
-  happens, while the current game's classic hit response used the cast's
-  real answer. No golden reaches that difference; it is recorded in the
-  ledger. Fix AE (2026-11-05) closes it: with the setting off the current
-  game no longer reads the answer, so a twin can now be captured from the
-  old game; it has not been added yet.
 - Fix X's own shape, the far shove across a teleporter: no arena can
   stage it. An arena's spawns go into the world's list of walkers, and a
   teleporter finds its partner only among the effects, so an arena's pad
@@ -1752,7 +1765,8 @@ taken, and what the game does today.
     old game. The alternative changes the old game to answer whether it
     cast. Default: the follow-up, not this work. Taken on 2026-11-05 in
     this work after all, as fix AE (the setting-off reply ignores the
-    answer; `archmage_bot_struck` has no setting-off twin yet).
+    answer; `archmage_bot_struck_scen99`, the setting-off twin captured from
+    the old game, is its proof).
 13. **#423: the two mage rows.** `mage_bot_freeze_no_foe_fixes_scen99` and
     `mage_bot_freeze_alone_fixes_scen99` take spawns of their own at (160,
     160), each recaptured from the old game, under the PR #404 ruling (see
