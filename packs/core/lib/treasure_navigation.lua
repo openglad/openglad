@@ -18,7 +18,7 @@
 
 local C = og.C
 local FX_FLASH = assert(og.family_id("fx", "core:flash"))
-
+local gf = og.use("gameplay_fixes")
 local function format_exit_prompt(exit_name, is_withdraw)
   -- rule: The exit pad's prompt reads "Withdraw to <name>?" on the withdraw path and "Exit to
   --   <name>?" otherwise.
@@ -74,23 +74,23 @@ local function exit_on_eat(self, eater)
   -- buffers's 2004 SCEN_TYPE_CAN_EXIT exception survives under its current
   -- name: flagged scenarios deliberately bypass the "foes left" gate.
   -- rule: A scenario flagged CAN_EXIT_WHENEVER lets the player exit with foes still standing, with
-  --   the normal Exit prompt (not Withdraw).
-  -- tests: SemExitPad.a_can_exit_whenever_level_offers_the_exit_with_foes_standing
+  --   the normal Exit prompt (with Gameplay Fixes off, after a withdraw to a won destination: below).
+  -- tests: SemExitPad.a_can_exit_whenever_level_offers_the_exit_with_foes_standing, SemExitPad.a_can_exit_whenever_level_withdraws_first_to_a_won_level_with_the_fixes_off_and_exits_with_them_on
   local can_exit_now = foes_left == 0 or og.world_can_exit_whenever()
   -- rule: With foes still alive, an exit to an already completed level withdraws: it sets the
   --   withdraw request, prompts "Withdraw to <name>?" (b=1) and emits WithdrawToLevel - but never
-  --   from a replay of an already completed level.
-  -- tests: parity:level_withdraw_scen99, parity:treasure_exit_pickup_scen99
-  -- tests: RuntimeCoveragePaths.treasure_navigation_early_returns_and_withdraw_decline
-  -- tests: SimWorldHeadless.replay_of_a_completed_level_cannot_withdraw
+  --   from a replay of an already completed level. A CAN_EXIT_WHENEVER level withdraws first only with
+  --   Gameplay Fixes off (the old game; the server asks Exit after a decline); on, it asks Exit only.
+  -- tests: parity:level_withdraw_scen99, parity:treasure_exit_pickup_scen99, RuntimeCoveragePaths.treasure_navigation_early_returns_and_withdraw_decline
+  -- tests: SimWorldHeadless.replay_of_a_completed_level_cannot_withdraw, SemExitPad.a_can_exit_whenever_level_withdraws_first_to_a_won_level_with_the_fixes_off_and_exits_with_them_on
   local can_withdraw = og.level_completed(destination_level)
       and not og.level_completed(og.current_scenario())
-
-  -- Exit path: all enemies dead, or scenario allows free exit. Checked
-  -- BEFORE the withdraw path so that CAN_EXIT_WHENEVER levels show the
-  -- normal "Exit to X?" dialog instead of "Withdraw to X?".
-  -- rule: With every foe gone the exit pad offers the plain "Exit to <name>?" prompt for its
-  --   destination (checked before the withdraw path).
+  local withdraw_first = can_withdraw and foes_left ~= 0
+  withdraw_first = withdraw_first and not gf.on()
+  can_exit_now = can_exit_now and not withdraw_first
+  -- Exit path: no foe left, or a free-exit level (with the setting off, unless it withdraws first).
+  -- rule: With every foe gone, or on a CAN_EXIT_WHENEVER level that does not withdraw first, the
+  --   exit pad offers the plain "Exit to <name>?" prompt for its destination.
   -- tests: parity:treasure_exit_open_prompt_scen99
   -- tests: RuntimeCoveragePaths.treasure_exit_and_teleporter_navigation_paths
   -- tests: SimWorldHeadless.exit_with_foes_alive_says_foes_remain

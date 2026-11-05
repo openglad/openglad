@@ -92,6 +92,7 @@ usual pause.
 | AD | A charmed tent or bones troop, a charmed summon | It wears the charmer's colour but keeps its owner's side: it fights its charmer and is struck by its charmer's team. | It heads its own owner chain while the charm lasts; its owner, its charm clock and its tent's cascade are unchanged. |
 | AE | The struck archmage's classic order | The reply goes on after a cast that worked, as the old game's does: a summon that stands still draws the slot-2 coin (the summon's busy refuses the cast), a chain is followed only by a HEARTBURST attempt its own busy refuses, and a HEARTBURST is cast once. | A cast that worked ends the reply; after a chain or a HEARTBURST that leaves the price of a TELEPORT, slot 2 is cast again (a second HEARTBURST, "then leave! :)"). With the setting on only a seat-driven archmage takes this order (a struck bot answers by fix R). |
 | AI | FREEZE TIME's form | A mage on the red team or any hero stops time for everyone else, whatever team the player is on: a hero mage of another colour (a second seat's, a charmed one) turns the screen blue. A mage on the player's team that is neither red nor a hero gives its side bonus rounds instead. | Only a mage on the player's team stops time; any other mage, hero or not, gives its own side bonus rounds ("TIME IS FROZEN! (N rounds)"). |
+| AJ | The exit of a level the player may leave at any time, to a level already won | With foes standing it asks "Withdraw to X?" first (yes abandons the level and reloads the company's save); a no asks "Exit to X?" next, and yes there wins the level. | It asks "Exit to X?" only. |
 
 TELEPORT, REVEAL, CLOAK and ENERGY WAVE are unchanged as casts (their bot
 rules are in [Bots](#bots)): each does something whenever it is cast
@@ -139,7 +140,7 @@ Fixes T to W, in play:
   first asks "am I busy?" (or "am I mid-teleport?", or "am I resting?")
   asks the same before it says yes.
 
-Fixes X to AI, in play:
+Fixes X to AJ, in play:
 
 - **X.** A walker whose step is refused shoves the ally in its way: the
   shove draws a roll, and two times in three the ally loses its orders
@@ -281,6 +282,19 @@ Fixes X to AI, in play:
   (#477); with it on, the player's team. The two tests agree when the
   player is red and the mage is not a hero of another colour, which is
   every parity row's arena, so no golden moves.
+- **AJ.** Some levels let the player leave while foes still stand (the
+  level type "can exit whenever"). When such a level's exit leads to a
+  level the company has already won and this one is not won yet, the old
+  game asks "Withdraw to X?" first: yes abandons the level and reloads the
+  save, and no falls through to its exit test, which passes on this level
+  type, so it asks "Exit to X?" next, where yes ends the level as won. This
+  game has asked only "Exit to X?" there since `91175553` (#98), which put
+  the exit test first. With the setting off the pad asks Withdraw first
+  again and the server asks Exit after a no, for the same level and to the
+  same player (#481); with it on, Exit only. A prompt that closes without
+  the player's answer (its 15 seconds ran out, or the hero who stepped on
+  the pad died) asks nothing more. No parity row plays such a level, so no
+  golden moves.
 
 ## Refusals at a glance
 
@@ -749,6 +763,9 @@ form (`special_mage_3_scen99`, `input_special_switch_wrap_scen99`,
 `enemy_freeze_mage_scen99`, `mage_freeze_time_offteam_scen99` and the mage
 bot freeze rows), so every golden is unchanged. The semantic tests pin the
 two cases where the tests differ, on both values.
+
+Fix AJ has no row: every exit row plays scen99, which is not a level the
+player may leave at any time, so both values ask the same question.
 
 The bot payoff gates moved five existing rows with the setting on, each
 recaptured from the old game after its port: `cleric_bot_raise_or_turn_fixes_scen99`

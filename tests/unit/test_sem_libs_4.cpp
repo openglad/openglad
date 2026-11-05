@@ -909,6 +909,74 @@ TEST(SemExitPad, a_can_exit_whenever_level_offers_the_exit_with_foes_standing)
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
+// treasure_navigation.lua:80-90, Gameplay Fixes AJ (#481). On a
+// CAN_EXIT_WHENEVER level with foes standing and the destination already
+// won, the old game asks "Withdraw to <name>?" first (treasure.cpp
+// FAMILY_EXIT, the withdraw test before the exit test; a declined withdraw
+// then asks Exit, which the server's follow-up prompt does here). With the
+// setting on the pad asks "Exit to <name>?" only (#98). With no foe left
+// both settings exit: the old game's withdraw needs foes.
+// Breaks: `can_exit_now = can_exit_now and not withdraw_first` ->
+// `can_exit_now = can_exit_now` (off arm red); `withdraw_first =
+// withdraw_first and not gf.on()` -> `withdraw_first = withdraw_first` (on
+// arm red); `foes_left ~= 0` -> `foes_left ~= 2` (no-foe arm red).
+TEST(SemExitPad, a_can_exit_whenever_level_withdraws_first_to_a_won_level_with_the_fixes_off_and_exits_with_them_on)
+{
+    og::test::ScopedHookFailureGuard guard;
+    {
+        SCOPED_TRACE("setting off, foes standing");
+        ExitScene s(2, /*foes_left=*/true);
+        ASSERT_TRUE(s.hero && s.pad);
+        s.title("scen2", "Keep");
+        s.tw.world().type = GameWorld::TYPE_CAN_EXIT_WHENEVER;
+        s.tw.world().completed_levels.insert(2);
+        s.tw.world().gameplay_fixes = 0;
+        EXPECT_TRUE(eat(s.pad, s.hero));
+        const auto p = s.prompts();
+        ASSERT_EQ(1u, p.size()) << "off: one prompt";
+        EXPECT_EQ("Withdraw to Keep?", p[0].text);
+        EXPECT_EQ(2u, p[0].a);
+        EXPECT_EQ(1u, p[0].b) << "off: the withdraw prompt, b = 1";
+        EXPECT_EQ(1, count_events(s.tw, og::sim::EventKind::WithdrawToLevel));
+        EXPECT_TRUE(s.tw.world().withdraw_requested);
+        EXPECT_EQ(2, s.tw.world().withdraw_level);
+    }
+    {
+        SCOPED_TRACE("setting on, foes standing");
+        ExitScene s(2, /*foes_left=*/true);
+        ASSERT_TRUE(s.hero && s.pad);
+        s.title("scen2", "Keep");
+        s.tw.world().type = GameWorld::TYPE_CAN_EXIT_WHENEVER;
+        s.tw.world().completed_levels.insert(2);
+        s.tw.world().gameplay_fixes = 1;
+        EXPECT_TRUE(eat(s.pad, s.hero));
+        const auto p = s.prompts();
+        ASSERT_EQ(1u, p.size()) << "on: one prompt";
+        EXPECT_EQ("Exit to Keep?", p[0].text);
+        EXPECT_EQ(2u, p[0].a);
+        EXPECT_EQ(0u, p[0].b) << "on: the exit prompt, b = 0";
+        EXPECT_EQ(0, count_events(s.tw, og::sim::EventKind::WithdrawToLevel));
+        EXPECT_FALSE(s.tw.world().withdraw_requested);
+    }
+    {
+        SCOPED_TRACE("setting off, no foe left");
+        ExitScene s(2, /*foes_left=*/false);
+        ASSERT_TRUE(s.hero && s.pad);
+        s.title("scen2", "Keep");
+        s.tw.world().type = GameWorld::TYPE_CAN_EXIT_WHENEVER;
+        s.tw.world().completed_levels.insert(2);
+        s.tw.world().gameplay_fixes = 0;
+        EXPECT_TRUE(eat(s.pad, s.hero));
+        const auto p = s.prompts();
+        ASSERT_EQ(1u, p.size()) << "no foe: one prompt";
+        EXPECT_EQ("Exit to Keep?", p[0].text);
+        EXPECT_EQ(0u, p[0].b) << "no foe: the exit prompt, the withdraw needs foes";
+        EXPECT_EQ(0, count_events(s.tw, og::sim::EventKind::WithdrawToLevel));
+        EXPECT_FALSE(s.tw.world().withdraw_requested);
+    }
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
 namespace {
 
 int flashes(const TestGameWorld& tw)
