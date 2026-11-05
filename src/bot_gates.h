@@ -463,8 +463,16 @@ static inline bool bg_archmage_burst_or_chain(walker *self)
 	short in_chain = 0;
 	myscreen->find_foes_in_range(myscreen->level_data.oblist,
 	                                        80 + 2*self->stats->level, &in_burst, self);
+	// port of the current game's 04fb5264 (#453, Gameplay Fixes AN): the
+	// chain's reach is the cast's own (walker.cpp case 2): a hero's 200 plus
+	// half its Intelligence, a monster's 200 plus 5 a level
+	short chain_reach;
+	if (self->myguy)
+		chain_reach = 200 + self->myguy->intelligence/2;
+	else
+		chain_reach = 200 + 5*self->stats->level;
 	myscreen->find_foes_in_range(myscreen->level_data.oblist,
-	                                        200 + 5*self->stats->level + 2*self->stats->level, &in_chain, self);
+	                                        chain_reach + 2*self->stats->level, &in_chain, self);
 	if (self->shifter_down)
 	{
 		if (in_chain >= 1)
