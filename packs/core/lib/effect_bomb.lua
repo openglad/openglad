@@ -8,21 +8,21 @@ local FX_EXPLOSION = assert(og.family_id("fx", "core:explosion"))
 local function compute_explosion_range(level, skip_exit)
   -- shim kept: narrows to int32 like the C++ destination.
   local range = og.i32(level * 4)
-  -- rule: A blast's reach is 4 px per owner level clamped to 16..96 px; a 'magical' blast
-  --   (skip_exit > 0 on the explosion, e.g. a mage-family blast) collapses to the 16-px minimum
-  --   whatever the level. The finder then searches 15 + range.
+  -- rule: A blast's range is 4 px per owner level capped at 96 px, with no floor (the old game's
+  --   effect.cpp FAMILY_EXPLOSION; the C++ modernization dc1a2a89 floored levels 1-3 at 16, dropped
+  --   for #483); a 'magical' blast (skip_exit > 0 on the explosion, e.g. a mage-family blast) has 16
+  --   whatever the level. The finder then searches 15 + range: 19 px at level 1, 23 at level 2, 31
+  --   for a magical blast.
   -- tests: SemLibsBomb.a_blast_reaches_four_px_a_level_capped_at_96_and_a_magical_one_16
-  -- deferred: #483 divergence: the current game floors a non-magical blast at 16 px for owner
-  --   levels 1-3 (og.clamp(range, 16, 96), from the C++ modernization dc1a2a89); the old game has
-  --   no floor (4*level, so level 2 reaches 15+8); levels 4+, the 96 cap and skip_exit -> 16 are
-  --   asserted
+  -- tests: EffectAct.effect_death_explosion_blasts_only_inside_its_radius
+  -- tests: parity:effect_explosion_range_scen99
   if skip_exit > 0 then
-    -- The original called this "magical, ie mage": magical blasts collapse
-    -- to the 16-pixel minimum instead of keeping the caster's level range.
-    range = 0
+    -- The original called this "magical, ie mage": magical blasts reach
+    -- 16 px whatever the caster's level.
+    range = 16
   end
   -- set max range to about 6 tiles
-  range = og.clamp(range, 16, 96)
+  range = og.min(range, 96)
   return range
 end
 

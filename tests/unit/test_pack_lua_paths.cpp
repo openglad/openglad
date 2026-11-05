@@ -2311,6 +2311,7 @@ TEST(PackLuaTreasure, a_key_already_held_is_a_silent_no_op)
 
     TestGameWorld tw;
     GameWorld& w = tw.world();
+    w.gameplay_fixes = 1;  // fix AK: the pickup line is party news (off, it goes to seat 2)
     walker* eater = spawn(w, Order::Living, FAMILY_SOLDIER, 10, 10, 0);
     ASSERT_NE(nullptr, eater);
     eater->set_keys(0);
@@ -2323,8 +2324,8 @@ TEST(PackLuaTreasure, a_key_already_held_is_a_silent_no_op)
     EXPECT_EQ(1 << 2, eater->keys());
     ASSERT_EQ(1, count_notifications(tw.events, "picks up key 2"));
     EXPECT_EQ(-1, notification_target(tw.events, "picks up key 2"))
-        << "keys are per-walker: the party must be told who is carrying one, "
-           "so this line stays a broadcast and is never addressed to a seat";
+        << "keys are per-walker: with Gameplay Fixes on the party must be told "
+           "who is carrying one, so this line is a broadcast, never addressed to a seat";
 
     (void)og::test::on_eat(*tfd, static_cast<treasure*>(key), eater);
     EXPECT_EQ(1 << 2, eater->keys()) << "the mask is unchanged";

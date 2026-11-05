@@ -25,6 +25,8 @@
 #include <format>
 #include <random>
 #include <stdexcept>
+#include <string>
+#include <string_view>
 #include <unordered_set>
 #include <utility>
 
@@ -1748,7 +1750,8 @@ void GameServer::process_non_input_messages(std::uint32_t expected_tick)
                          trig_is_local_seat))
                     {
                         handle_exit_prompt_response(
-                            message.exit_prompt_response->accepted);
+                            message.exit_prompt_response->accepted,
+                            /*player_answered=*/true);
                     }
                 }
             }
@@ -1911,7 +1914,7 @@ void GameServer::update_timeouts()
             player_control(pending_exit_prompt_state_->triggering_player_index);
         if (triggering_control == nullptr || triggering_control->dead())
         {
-            handle_exit_prompt_response(false);
+            handle_exit_prompt_response(false, /*player_answered=*/false);
             return;
         }
     }
@@ -1921,7 +1924,7 @@ void GameServer::update_timeouts()
         now >= pending_exit_prompt_state_->opened_at_ms &&
         now - pending_exit_prompt_state_->opened_at_ms >= EXIT_PROMPT_TIMEOUT_MS)
     {
-        handle_exit_prompt_response(false);
+        handle_exit_prompt_response(false, /*player_answered=*/false);
     }
 
     if (pending_pause_state_.has_value() &&
@@ -2005,7 +2008,8 @@ void GameServer::clear_pause_state()
     restamp_input_freshness();
 }
 
-void GameServer::handle_exit_prompt_response(bool accepted)
+void GameServer::handle_exit_prompt_response(bool accepted,
+                                             bool player_answered)
 {
     if (!pending_exit_prompt_state_.has_value())
         return;
@@ -2014,7 +2018,33 @@ void GameServer::handle_exit_prompt_response(bool accepted)
     clear_pending_exit_prompt();
 
     if (!accepted)
+    {
+        // rule: With Gameplay Fixes off (the old game, treasure.cpp FAMILY_EXIT), a player who
+        //   declines "Withdraw to X?" on a CAN_EXIT_WHENEVER level is asked "Exit to X?" next, for
+        //   the same destination and seat; yes there ends the level as a win. With the setting on
+        //   such a level never asks Withdraw (treasure_navigation.lua), and a timeout or a dead
+        //   trigger is never a player's answer, so nothing follows.
+        // tests: GameServerCoverage.a_declined_withdraw_on_a_can_exit_level_asks_exit_next_with_the_fixes_off
+        // tests: GameServerCoverage.a_declined_withdraw_asks_nothing_more_with_the_fixes_on_or_on_a_plain_level_or_after_a_timeout
+        if (player_answered && prompt.withdraw_prompt &&
+            world_.gameplay_fixes == 0 &&
+            (world_.type & GameWorld::TYPE_CAN_EXIT_WHENEVER) != 0)
+        {
+            PendingExitPromptState exit_prompt;
+            exit_prompt.destination_level = prompt.destination_level;
+            exit_prompt.withdraw_prompt = false;
+            constexpr std::string_view kWithdrawPrefix = "Withdraw to ";
+            exit_prompt.prompt_text =
+                prompt.prompt_text.starts_with(kWithdrawPrefix)
+                ? "Exit to " + prompt.prompt_text.substr(kWithdrawPrefix.size())
+                : std::format("Exit to Level {}?", prompt.destination_level);
+            exit_prompt.opened_at_ms = now_ms();
+            exit_prompt.triggering_player_index =
+                prompt.triggering_player_index;
+            open_exit_prompt(exit_prompt);
+        }
         return;
+    }
 
     bool handled = false;
     if (prompt.withdraw_prompt)
@@ -2709,6 +2739,17 @@ void GameServer::maybe_resolve_world_events(SimEventBatch& batch,
         : exit_request->text;
     prompt.opened_at_ms = now_ms();
     prompt.triggering_player_index = infer_exit_triggering_player_index();
+    open_exit_prompt(prompt);
+
+    snapshot.pending_exit_prompt = true;
+    snapshot.withdraw_requested = world_.withdraw_requested;
+    snapshot.withdraw_level = world_.withdraw_level;
+
+    (void)withdraw_request;
+}
+
+void GameServer::open_exit_prompt(const PendingExitPromptState& prompt)
+{
     pending_exit_prompt_state_ = prompt;
 
     world_.pending_exit_prompt = true;
@@ -2716,9 +2757,6 @@ void GameServer::maybe_resolve_world_events(SimEventBatch& batch,
     world_.withdraw_level = prompt.withdraw_prompt
         ? prompt.destination_level
         : -1;
-    snapshot.pending_exit_prompt = true;
-    snapshot.withdraw_requested = world_.withdraw_requested;
-    snapshot.withdraw_level = world_.withdraw_level;
 
     ExitPromptBroadcastMessage message;
     message.destination_level = prompt.destination_level;
@@ -2768,8 +2806,6 @@ void GameServer::maybe_resolve_world_events(SimEventBatch& batch,
             send_prompt_to(peer_id);
         }
     }
-
-    (void)withdraw_request;
 }
 
 void GameServer::broadcast_current_state(SnapshotCaptureMode capture_mode,

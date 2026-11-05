@@ -110,22 +110,22 @@ function M.special_busy(self)
   return self:busy() ~= 0
 end
 
--- Gameplay Fixes AC: a volley or bolt whose pad the grid refuses (a wall
+-- Gameplay Fixes AC: a cast whose weapon's pad the grid refuses (a wall
 -- face, the map edge; a tree crown for a weapon that does not walk the
--- forest; never water, which every weapon crosses) would swing at nothing
--- and still pay fire()'s one swing. The cast asks first and refuses before
--- the refund and the swing. A body on the pad keeps fixes H and I's paid
--- blow: that swing is the cast's own (walker:fire_pad_answer, the same pad
--- and rules as fire(), asked quietly). Draws nothing.
-function M.pad_blocked_by_terrain(self)
-  -- rule: With Gameplay Fixes on (AC), an elf or druid volley/bolt whose launch pad is refused by
-  --   terrain (a wall face, the map edge, a tree crown for a non-forest weapon; never water) is
-  --   refused before the refund and the swing; a body on the pad does not count (fixes H/I keep
-  --   that paid blow). Classic: the cast swings at nothing and still pays.
+-- forest; never water, which every weapon crosses) would pay fire()'s shot
+-- and its waver for nothing. The cast asks first and refuses before it pays.
+-- `weapon` is the family the cast fires (nil: the current weapon). A body on
+-- the pad keeps the paid blow (walker:fire_pad_answer, the same pad and rules
+-- as fire(), asked quietly). Draws nothing.
+function M.pad_blocked_by_terrain(self, weapon)
+  -- rule: With Gameplay Fixes on (AC), a cast whose launch pad is refused by terrain (a wall face,
+  --   the map edge, a tree crown for a non-forest weapon; never water) is refused before it pays:
+  --   the elf's volleys, the druid's bolts, EXPLODING BOLT, both boulders and ENERGY WAVE. A body
+  --   on the pad does not count (it keeps the paid blow). Classic: the cast still pays and draws.
   -- tests: GameplayFixesLua.gf_pad_blocked_by_terrain_is_the_grid_half_only_with_the_fixes
   -- tests: GameplayFixesElf.a_volley_at_a_wall_spends_nothing_with_the_setting_on
   -- tests: GameplayFixesDruid.a_cast_at_terrain_spends_nothing_with_the_setting_on
-  return M.on() and self:fire_pad_answer() == "terrain"
+  return M.on() and self:fire_pad_answer(weapon) == "terrain"
 end
 
 return M

@@ -1295,7 +1295,7 @@ inline constexpr Mutation kMut_family_soldier_init = {
 };
 
 inline constexpr Mutation kMut_family_archer_init = {
-    "packs/core/families/living-02-archer.lua", 179,
+    "packs/core/families/living-02-archer.lua", 188,
     "hp = 90",
     "hp = 9000",
     "Cranks ARCHER descriptor HP x100 "
@@ -1307,7 +1307,7 @@ inline constexpr Mutation kMut_family_archer_init = {
 };
 
 inline constexpr Mutation kMut_family_mage_init = {
-    "packs/core/families/living-03-mage.lua", 540,
+    "packs/core/families/living-03-mage.lua", 549,
     "hp = 90",
     "hp = 9000",
     "Cranks MAGE descriptor HP x100 "
@@ -1454,7 +1454,7 @@ inline constexpr Mutation kMut_family_big_orc_init = {
 };
 
 inline constexpr Mutation kMut_family_barbarian_init = {
-    "packs/core/families/living-16-barbarian.lua", 213,
+    "packs/core/families/living-16-barbarian.lua", 222,
     "hp = 150",
     "hp = 1",
     "Drops BARBARIAN descriptor HP to 1 "
@@ -2532,7 +2532,7 @@ inline constexpr FactPredicate kFacts_weapon_wave_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_wave_emission = {
-    "packs/core/families/living-03-mage.lua", 468,
+    "packs/core/families/living-03-mage.lua", 477,
     "  wave:set_lastx(bolt:lastx())",
     "  wave:set_lastx(og.fdiv(bolt:lastx(), 2))",
     "Halves the MAGE ENERGY WAVE projectile's horizontal velocity (lastx 8->4) at the cast site; the FAMILY_WAVE entity still enters world.weaplist (WeaponFamilyEmitted stays true) but its seq-0 consecutive-tick step drops from 806 to 412 centi-px/tick and net travel from 1612 to 825 centi, so WeaponSpeed(FAMILY_WAVE,700,900) flips pass->fail and WeaponNetTravel(FAMILY_WAVE,STRAIGHT,1000) also flips (net 825 < 1000)."
@@ -3698,7 +3698,7 @@ inline constexpr FactPredicate kFacts_special_archer_3_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_archer_3_scen99 = {
-    "packs/core/families/living-02-archer.lua", 59,
+    "packs/core/families/living-02-archer.lua", 68,
     "local arrow = self:fire()",
     "local arrow = nil",
     "Suppresses EXPLODING SHOT's arrow release, so the body restores the old weapon and takes its 'if not arrow' exit; no skip_exit-5000 buffed arrow is ever created. WalkerHpRangeAtFinalTick(FAMILY_ARCHER, 3400, 3400) flips."
@@ -3754,8 +3754,8 @@ inline constexpr FactPredicate kFacts_special_mage_3_scen99[] = {
 
 inline constexpr Mutation kMut_special_mage_3_scen99 = {
     "packs/core/families/living-03-mage.lua", 419,
-    "if self.team == og.u8(og.my_team()) then",
-    "if false and self.team == og.u8(og.my_team()) then",
+    "if fixed_stop or classic_stop then",
+    "if false and (fixed_stop or classic_stop) then",
     "Reroutes FREEZE TIME's player-team branch into the foreign-team branch: no world enemy_freeze bank and no palette tint, but a 'TIME IS FROZEN' notification instead. EventKindExactly(notification, 0) flips to one notification and WalkerHpRangeAtFinalTick(FAMILY_MAGE, 7600, 7800) fails."
 };
 
@@ -3773,7 +3773,7 @@ inline constexpr FactPredicate kFacts_special_mage_4_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_mage_4_scen99 = {
-    "packs/core/families/living-03-mage.lua", 449,
+    "packs/core/families/living-03-mage.lua", 458,
     "local bolt = self:fire()",
     "local bolt = nil",
     "Suppresses the seed bolt ENERGY WAVE rides on, so energy_wave takes its 'if not bolt' exit and no FAMILY_WAVE weapon is ever placed. WalkerHpRangeAtFinalTick(FAMILY_MAGE, 3400, 3400) flips.",
@@ -3794,7 +3794,7 @@ inline constexpr FactPredicate kFacts_special_mage_5_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_mage_5_scen99 = {
-    "packs/core/families/living-03-mage.lua", 484,
+    "packs/core/families/living-03-mage.lua", 493,
     "if foe_count == 0 then",
     "if true then",
     "Makes HEARTBURST report 'no foes in range' unconditionally, so mage slot 5 returns false before draining the MP pool or summoning one explosion per foe. EventKindAtLeast(score_change, 1) and WalkerHpRangeAtFinalTick(FAMILY_MAGE, 8600, 8700) both fail."
@@ -4233,7 +4233,7 @@ inline constexpr FactPredicate kFacts_special_barbarian_2_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_barbarian_2_scen99 = {
-    "packs/core/families/living-16-barbarian.lua", 89,
+    "packs/core/families/living-16-barbarian.lua", 98,
     "if self:current_special() == 2 then",
     "if false then",
     "Drops the slot-2 sentinel that marks the thrown boulder as EXPLODING (skip_exit 5000 -> 0), so slot 2 throws a plain boulder. The boulder's flight and impact diverge from the master golden and the exact weapon_tracks comparison fails; this row's HP band (5000, 12000) is too wide to see the difference, so the trajectory check carries the teeth."
@@ -4348,7 +4348,7 @@ inline constexpr FactPredicate kFacts_enemy_freeze_mage_scen99[] = {
 };
 
 inline constexpr Mutation kMut_enemy_freeze_mage_scen99 = {
-    "packs/core/families/living-03-mage.lua", 587,
+    "packs/core/families/living-03-mage.lua", 596,
     "freeze_per_level = 11",
     "freeze_per_level = 0",
     "Cuts the freeze grant from 20+11*level to a flat 20 ticks in the mage's tuning block, which the mage declaration reads through og.tuning(self).freeze_per_level each cast. At mage level 5 the banked enemy_freeze drops 75 -> 20, enemies act normally for most of the 150-tick window, the level-5 archer steps west toward the mage and its xpos drops below 200, flipping WalkerPositionMoved(FAMILY_ARCHER, 200, 120) on the x floor."
@@ -4649,7 +4649,7 @@ inline constexpr FactPredicate kFacts_weapon_exploding_boulder_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_exploding_boulder_scen99 = {
-    "packs/core/families/living-16-barbarian.lua", 55,
+    "packs/core/families/living-16-barbarian.lua", 64,
     "    boulder:set_stepsize(self.level * 2)",
     "    boulder:set_stepsize(self.level * 0.5)",
     "Quarters the EXPLODING BOULDER's per-tick stepsize for AI casters (level*2 -> level*0.5 = 2.5 px/tick), dropping the boulder's per-tick displacement from 1000-1414 centi-px/tick to 250-354 centi-px/tick. WeaponSpeed(FAMILY_BOULDER,900,1500) fails because max consecutive-tick step falls below 900."
@@ -4934,7 +4934,7 @@ inline constexpr FactPredicate kFacts_input_switch_char_scen99[] = {
 };
 
 inline constexpr Mutation kMut_input_switch_char_scen99 = {
-    "packs/core/families/living-02-archer.lua", 190,
+    "packs/core/families/living-02-archer.lua", 199,
     "default_weapon = \"core:arrow\"",
     "default_weapon = \"core:knife\"",
     "Swaps the archer's default weapon so post-switch held K_FIRE throws FAMILY_KNIFE instead of FAMILY_ARROW. No arrow is emitted, flipping WeaponFamilyEmitted(FAMILY_ARROW)."
@@ -4983,8 +4983,8 @@ inline constexpr FactPredicate kFacts_input_special_switch_wrap_scen99[] = {
 
 inline constexpr Mutation kMut_input_special_switch_wrap_scen99 = {
     "packs/core/families/living-03-mage.lua", 419,
-    "  if self.team == og.u8(og.my_team()) then",
-    "  if false and self.team == og.u8(og.my_team()) then",
+    "  if fixed_stop or classic_stop then",
+    "  if false and (fixed_stop or classic_stop) then",
     "Reroutes the player-team FREEZE TIME cast into the foreign-team branch. The cast still fires, but emits notifications and RequestRedraw instead of tinting the palette, so EventKindAtLeast(set_palette,1) flips."
 };
 
@@ -6499,7 +6499,7 @@ inline constexpr FactPredicate kFacts_barbarian_boulder_impact_scen99[] = {
 };
 
 inline constexpr Mutation kMut_barbarian_boulder_impact_scen99 = {
-    "packs/core/families/living-16-barbarian.lua", 92,
+    "packs/core/families/living-16-barbarian.lua", 101,
     "    boulder:set_skip_exit(0)",
     "    boulder:set_skip_exit(5000)",
     "Gives the slot-1 boulder the legacy 5000 explode-on-death sentinel, i.e. makes HURL BOULDER behave as EXPLODING BOULDER. weap::death then spawns a FAMILY_EXPLOSION with damage*2 = 60 at the boulder's death point, killing the already-plowed elf standing there: the elf alive-count drops below 3 and the blast's damage pushes score_per_team[0] past the ScoreDelta ceiling."
@@ -6825,8 +6825,8 @@ inline constexpr Mutation kMut_effect_cloud_poison_scen99 = {
 // effect_explosion_range_scen99: compute_explosion_range
 // (packs/core/lib/effect_bomb.lua:12-20, ported from
 // openglad-master/src/effect.cpp:648-664) turns the owner's level into the
-// blast's Manhattan reach 15 + clamp(level*4, 16, 96). Every existing blast row
-// uses a level-4/5 caster whose range is pinned at the 16-20 floor, so nothing
+// blast's Manhattan reach 15 + min(level*4, 96). Every existing blast row
+// uses a level-4/5 caster whose range sits at 16-20, so nothing
 // in the corpus distinguishes a big blast from a small one. A level-10 thief
 // gives range 40 / reach 55 and the single victim is a STATIONARY team-1 TOWER1
 // parked at Manhattan 45 from the explosion's corner -- inside the real reach,
@@ -6835,7 +6835,7 @@ inline constexpr Mutation kMut_effect_cloud_poison_scen99 = {
 // collapses blast.level to the bomb's own level, destroying the test.
 inline constexpr SpawnSpec kFamilySpawns_effect_explosion_range_scen99[] = {
     { FAMILY_TOWER1, 1, kOrderLiving, 232, 203, 0, 0 },            // stationary team-1 victim: Manhattan |232-196|+|203-194| = 45 from the explosion's top-left (196,194). Inside 15+40=55, outside the mutated 15+16=31.
-    { FAMILY_THIEF,  0, kOrderLiving, 200, 200, 0, 0, 10, 300 },   // player-controlled bomb owner LAST. level 10 -> bomb_damage 165 (raw 15*11, below the 210 soften knee so branch == master) and explosion range clamp(40,16,96) = 40; 300 MP covers DROP BOMB's 35 cost.
+    { FAMILY_THIEF,  0, kOrderLiving, 200, 200, 0, 0, 10, 300 },   // player-controlled bomb owner LAST. level 10 -> bomb_damage 165 (raw 15*11, below the 210 soften knee so branch == master) and explosion range min(40,96) = 40; 300 MP covers DROP BOMB's 35 cost.
 };
 
 inline constexpr FactPredicate kFacts_effect_explosion_range_scen99[] = {
@@ -6843,8 +6843,8 @@ inline constexpr FactPredicate kFacts_effect_explosion_range_scen99[] = {
     pred::WalkerAliveAtFinal(FAMILY_THIEF, 1),
     // FLIPPING PREDICATE. The blast reaches Manhattan 55 and lands full damage
     // (165 -> 158..169) on the 130hp stationary TOWER1, which dies and is reaped.
-    // kMut_effect_explosion_range_scen99 pins the clamp ceiling at the 16px
-    // floor, so the reach drops to 31, TOWER1 at Manhattan 45 is never
+    // kMut_effect_explosion_range_scen99 pins the cap at 16 px, so the
+    // reach drops to 31, TOWER1 at Manhattan 45 is never
     // enumerated by find_in_range, and an alive TOWER1 remains.
     pred::WalkerDiedByFinal(FAMILY_TOWER1,
         "consequence: compute_explosion_range scales the blast to 15+4*level = 55 Manhattan px, which covers the stationary TOWER1 at 45 and kills it with the full 165-damage tier; the clamp mutation shrinks the reach to 31 so the same walker is outside the blast and survives at full HP"),
@@ -6858,9 +6858,9 @@ inline constexpr FactPredicate kFacts_effect_explosion_range_scen99[] = {
 
 inline constexpr Mutation kMut_effect_explosion_range_scen99 = {
     "packs/core/lib/effect_bomb.lua", 25,
-    "  range = og.clamp(range, 16, 96)",
-    "  range = og.clamp(range, 16, 16)",
-    "Pins compute_explosion_range's clamp ceiling at its own floor, so a level-10 owner's 40px range collapses to 16 and the blast's Manhattan reach falls from 55 to 31. The stationary TOWER1 at 45 is no longer enumerated by find_in_range, survives, and WalkerDiedByFinal(FAMILY_TOWER1) fails."
+    "  range = og.min(range, 96)",
+    "  range = og.min(range, 16)",
+    "Pins compute_explosion_range's cap at 16, so a level-10 owner's 40px range collapses to 16 and the blast's Manhattan reach falls from 55 to 31. The stationary TOWER1 at 45 is no longer enumerated by find_in_range, survives, and WalkerDiedByFinal(FAMILY_TOWER1) fails."
 };
 
 // effect_bomb_bystander_scen99: two things nothing in the corpus proves -- the
@@ -6934,7 +6934,7 @@ inline constexpr Mutation kMut_effect_bomb_bystander_scen99 = {
 inline constexpr SpawnSpec kFamilySpawns_bomb_l10_vs_cleric_l9_scen99[] = {
     { FAMILY_TOWER1, 1, kOrderLiving, 400, 400, 0, 0 },          // far hostile: holds level_done = 0 after the cleric dies so both corpses are reaped. Manhattan |400-196| + |400-194| = 410 from the blast, never fires, never moves
     { FAMILY_CLERIC, 1, kOrderLiving, 222, 196, 0, 0, 9, 0 },    // level-9 victim on effect_bomb_bystander's tile: Manhattan |222-196|+|196-194| = 28 from the explosion's top-left (196,194), inside reach 55 before it even moves; loader body 120 hp, armor 0
-    { FAMILY_THIEF,  0, kOrderLiving, 200, 200, 0, 0, 10, 300 }, // player-controlled bomb owner LAST; level 10 -> bomb_damage 165 and explosion range clamp(40,16,96) = 40; 300 MP covers the 35-MP cast
+    { FAMILY_THIEF,  0, kOrderLiving, 200, 200, 0, 0, 10, 300 }, // player-controlled bomb owner LAST; level 10 -> bomb_damage 165 and explosion range min(40,96) = 40; 300 MP covers the 35-MP cast
 };
 
 inline constexpr FactPredicate kFacts_bomb_l10_vs_cleric_l9_scen99[] = {
@@ -7756,7 +7756,7 @@ inline constexpr FactPredicate kFacts_archer_hit_response_backpedal_scen99[] = {
 };
 
 inline constexpr Mutation kMut_archer_hit_response_backpedal_scen99 = {
-    "packs/core/families/living-02-archer.lua", 99,
+    "packs/core/families/living-02-archer.lua", 108,
     "  if distance < og.tuning(self).melee_backpedal_range then",
     "  if false then",
     "Disables the archer's melee backpedal entirely. The archer never receives the away-facing COMMAND_WALK, so it stays in the soldier's swing arc: its final xpos drops 220 -> 202 (below the WalkerPositionMoved bound) and its HP lands on 3100 instead of 3000."
@@ -7823,7 +7823,7 @@ inline constexpr FactPredicate kFacts_mage_freeze_time_offteam_scen99[] = {
 };
 
 inline constexpr Mutation kMut_mage_freeze_time_offteam_scen99 = {
-    "packs/core/families/living-03-mage.lua", 590,
+    "packs/core/families/living-03-mage.lua", 599,
     "bonus_rounds_per_level = 2",
     "bonus_rounds_per_level = 0",
     "Collapses the off-team freeze grant from min(5 + 2*15, 50) = 35 rounds to the base 5. The allies get seven times fewer extra act() passes, so neither orc reaches the WalkerPositionMoved bound (the trailing orc stops at (471,439) instead of (387,523))."
@@ -7999,7 +7999,7 @@ inline constexpr FactPredicate kFacts_mage_heartburst_multitarget_scen99[] = {
 };
 
 inline constexpr Mutation kMut_mage_heartburst_multitarget_scen99 = {
-    "packs/core/families/living-03-mage.lua", 593,
+    "packs/core/families/living-03-mage.lua", 602,
     "heartburst_range_base = 80",
     "heartburst_range_base = 0",
     "Drops the mage's heartburst acquisition radius from 80 + 2*13 = 106px to 26px, short of every orc at cast time. Only the one foe that walks inside 26px is ever detonated: FAMILY_EXPLOSION tracks fall 9 -> 3, play_sound 6 -> 5, and the surviving orc finishes on 14000 cents instead of 6100."
@@ -9756,7 +9756,7 @@ inline constexpr FactPredicate kFacts_archer_bot_ring_one_foe_scen99[] = {
         "consequence: the classic gate casts the ring at the one faced foe; six of its fire arrows are still in flight at the end of the budget"),
 };
 inline constexpr Mutation kMut_archer_bot_ring_one_foe_scen99 = {
-    "packs/core/families/living-02-archer.lua", 233,
+    "packs/core/families/living-02-archer.lua", 242,
     "G.with_classic(ai.foe_within(130), fixed)",
     "G.with_classic(ai.foe_within(13), fixed)",
     "Shrinks the classic reach to 13 px, so the tower is out of reach and the ring is refused: WeaponFamilyCount(FAMILY_FIRE_ARROW, 6, 6) fails."
@@ -9794,7 +9794,7 @@ inline constexpr FactPredicate kFacts_archer_bot_bolt_at_blows_scen99[] = {
     // negative_assertion: the archer is dead with the setting off; the mutation flips it by keeping the bolt in its quiver (0 -> 1).
 };
 inline constexpr Mutation kMut_archer_bot_bolt_at_blows_scen99 = {
-    "packs/core/families/living-02-archer.lua", 233,
+    "packs/core/families/living-02-archer.lua", 242,
     "G.with_classic(ai.foe_within(130), fixed)",
     "G.with_classic(ai.foe_within(13), fixed)",
     "Shrinks the classic reach to 13 px, so the tower is out of reach and the bolt is never fired: the archer lives and WalkerFamilyCount(FAMILY_ARCHER, 0, 0) fails."
@@ -9805,7 +9805,7 @@ inline constexpr FactPredicate kFacts_archer_bot_bolt_at_blows_fixes_scen99[] = 
         "consequence: with the setting on the exploding bolt wants its foe outside the blast; the archer stands inside it, so it shoots ordinary arrows and lives"),
 };
 inline constexpr Mutation kMut_archer_bot_bolt_at_blows_fixes_scen99 = {
-    "packs/core/families/living-02-archer.lua", 169,
+    "packs/core/families/living-02-archer.lua", 178,
     "G.blast_clear(self, f, G.blast_reach(self.level), true)",
     "G.blast_clear(self, f, G.blast_reach(self.level), false)",
     "Stops the gate counting the archer itself in the blast, so the bolt is fired at the tower and kills the archer: WalkerFamilyCount(FAMILY_ARCHER, 1, 1) fails."
@@ -10009,7 +10009,7 @@ inline constexpr Mutation kMut_cleric_bot_resurrect_foe_stain_fixes_scen99 = {
 // (9) makes the thief roll DROP BOMB once its foe is set and still 130 px or
 // more away: the classic gate bombs a foe that far (its "too far" test only
 // refuses 35 to 130 px), and the bomb lands under the thief, nowhere near the
-// tower. With the setting on the bomb wants a foe inside its 31 px blast.
+// tower. With the setting on the bomb wants a foe inside its 19 px blast.
 inline constexpr SpawnSpec kFamilySpawns_thief_bot_bomb_far_scen99[] = {
     { FAMILY_TOWER1,  0, kOrderLiving, 300, 120, 0, 0 },          // the foe, 180 px east
     { FAMILY_THIEF,   1, kOrderLiving, 120, 120, 0, 0, 1, 100 },  // hostile level-1 bot
@@ -10029,7 +10029,7 @@ inline constexpr Mutation kMut_thief_bot_bomb_far_scen99 = {
 inline constexpr FactPredicate kFacts_thief_bot_bomb_far_fixes_scen99[] = {
     pred::TickReached(12),
     pred::WalkerOfOrderFamilyCount(FAMILY_BOMB, kOrderFX, 0, 0,
-        "consequence: with the setting on the bomb wants a foe inside its 31 px blast; the tower is not, so no bomb is dropped"),
+        "consequence: with the setting on the bomb wants a foe inside its 19 px blast; the tower is not, so no bomb is dropped"),
     // negative_assertion: no bomb with the setting on; the mutation flips it by letting the bomb go with no foe in the blast (0 -> 1).
 };
 inline constexpr Mutation kMut_thief_bot_bomb_far_fixes_scen99 = {
@@ -10041,9 +10041,9 @@ inline constexpr Mutation kMut_thief_bot_bomb_far_fixes_scen99 = {
 
 // --- thief_bot_bomb_ally (bot gates: DROP BOMB never with an ally in the blast) ---
 // A hostile level-4 thief bot, a stationary TOWER1 a 1 px gap east, and an
-// allied orc 20 px west of the thief, inside the 31 px blast (15 + 4 * 4; at
-// level 4 the blast is the same in both games: the old game at the parity
-// commit has no 16 px floor under a level 1 to 3 blast). The seed (35) makes
+// allied orc 20 px west of the thief, inside the 31 px blast (15 + 4 * 4;
+// neither game floors a level 1 to 3 blast since #483, and at level 4 no
+// floor would apply anyway). The seed (35) makes
 // the thief roll DROP BOMB with the tower beside it as its foe: the classic
 // gate bombs a foe that close (it refuses only 35 to 130 px), the bomb goes
 // off at tick 54 with the orc inside and the orc is hurt. With the setting on
@@ -10237,7 +10237,7 @@ inline constexpr FactPredicate kFacts_barbarian_bot_boulder_far_scen99[] = {
         "consequence: the classic barbarian has no gate and hurls a boulder on tick 0 at a foe it cannot reach"),
 };
 inline constexpr Mutation kMut_barbarian_bot_boulder_far_scen99 = {
-    "packs/core/families/living-16-barbarian.lua", 149,
+    "packs/core/families/living-16-barbarian.lua", 158,
     "    return true",
     "    return false",
     "Makes the setting-off barbarian gate answer no, so no boulder is hurled: WeaponFamilyCount(FAMILY_BOULDER, 1, 1) fails.",
@@ -10250,7 +10250,7 @@ inline constexpr FactPredicate kFacts_barbarian_bot_boulder_far_fixes_scen99[] =
     // negative_assertion: no boulder with the setting on; the mutation flips it by stretching the flight the gate measures (0 -> 1).
 };
 inline constexpr Mutation kMut_barbarian_bot_boulder_far_fixes_scen99 = {
-    "packs/core/families/living-16-barbarian.lua", 114,
+    "packs/core/families/living-16-barbarian.lua", 123,
     "(BOULDER_LOS - 1) * og.clamp(step, 1, 15)",
     "(BOULDER_LOS - 1) * og.clamp(step, 1, 15) * 10",
     "Stretches the flight the gate measures ten times, so the tower counts and the barbarian hurls: WeaponFamilyCount(FAMILY_BOULDER, 0, 0) fails."
@@ -10274,7 +10274,7 @@ inline constexpr FactPredicate kFacts_barbarian_bot_explode_lone_scen99[] = {
         "consequence: the classic barbarian hurls an exploding boulder at a lone foe; it goes off at tick 9"),
 };
 inline constexpr Mutation kMut_barbarian_bot_explode_lone_scen99 = {
-    "packs/core/families/living-16-barbarian.lua", 149,
+    "packs/core/families/living-16-barbarian.lua", 158,
     "    return true",
     "    return false",
     "Makes the setting-off barbarian gate answer no, so nothing is hurled and nothing goes off: WalkerOfOrderFamilyCount(FAMILY_EXPLOSION, kOrderFX, 1, 1) fails.",
@@ -10287,7 +10287,7 @@ inline constexpr FactPredicate kFacts_barbarian_bot_explode_lone_fixes_scen99[] 
     // negative_assertion: no explosion with the setting on; the mutation flips it by letting one foe make a cluster (0 -> 1).
 };
 inline constexpr Mutation kMut_barbarian_bot_explode_lone_fixes_scen99 = {
-    "packs/core/families/living-16-barbarian.lua", 197,
+    "packs/core/families/living-16-barbarian.lua", 206,
     "return near >= 2 and",
     "return near >= 1 and",
     "Lets one foe make a cluster, so the barbarian hurls the exploding boulder at the lone tower: WalkerOfOrderFamilyCount(FAMILY_EXPLOSION, kOrderFX, 0, 0) fails."
@@ -10765,7 +10765,7 @@ inline constexpr FactPredicate kFacts_barbarian_bot_boulder_pad_body_scen99[] = 
     // negative_assertion: no weapon flies on either value: the pad is the tower.
 };
 inline constexpr Mutation kMut_barbarian_bot_boulder_pad_body_scen99 = {
-    "packs/core/families/living-16-barbarian.lua", 22,
+    "packs/core/families/living-16-barbarian.lua", 31,
     "local shot = self:fire()",
     "local shot = nil",
     "The throw never fires its hammer, so no blow lands on the tower: EventKindExactly(play_sound, 1) reads 0 and the tower stays at 130 hp."
@@ -10781,7 +10781,7 @@ inline constexpr FactPredicate kFacts_barbarian_bot_boulder_pad_body_fixes_scen9
     // negative_assertion: no weapon flies on either value: the pad is the tower.
 };
 inline constexpr Mutation kMut_barbarian_bot_boulder_pad_body_fixes_scen99 = {
-    "packs/core/families/living-16-barbarian.lua", 157,
+    "packs/core/families/living-16-barbarian.lua", 166,
     "if lc.is_busy(self) or not G.pad_clear(self) then",
     "if lc.is_busy(self) then",
     "Drops the pad test, so the gate says yes to the touching tower and the throw's fire() lands a blow on it before refusing COULD NOT FIRE: EventKindExactly(play_sound, 0) reads 1 and the tower ends at 104 hp."
@@ -10816,7 +10816,7 @@ inline constexpr FactPredicate kFacts_mage_bot_wave_pad_body_scen99[] = {
     // negative_assertion: no weapon flies on either value: the pad is the tower.
 };
 inline constexpr Mutation kMut_mage_bot_wave_pad_body_scen99 = {
-    "packs/core/families/living-03-mage.lua", 449,
+    "packs/core/families/living-03-mage.lua", 458,
     "local bolt = self:fire()",
     "local bolt = nil",
     "ENERGY WAVE never fires its fireball, so no blow lands on the tower: EventKindExactly(play_sound, 1) reads 0 and the tower stays at 130 hp.",
@@ -10979,7 +10979,7 @@ inline constexpr FactPredicate kFacts_elf_rocks_edge_pad_fixes_scen99[] = {
 };
 inline constexpr Mutation kMut_elf_rocks_edge_pad_fixes_scen99 = {
     "packs/core/lib/gameplay_fixes.lua", 128,
-    "return M.on() and self:fire_pad_answer() == \"terrain\"",
+    "return M.on() and self:fire_pad_answer(weapon) == \"terrain\"",
     "return false",
     "The press at the map's edge pays fire()'s swing again and takes its refund back, leaving 9 MP, so the second press refuses NOT ENOUGH MP and no rock is thrown: the sound count and the tower's 126 hp fail."
 };
@@ -11088,6 +11088,153 @@ inline constexpr Mutation kMut_elf_forest_haste_fixes_scen99 = {
     "(og::sim::session_gameplay_fixes() != 0 ? normal_stepsize() : stepsize())",
     "(og::sim::session_gameplay_fixes() == 0 ? normal_stepsize() : stepsize())",
     "With the setting on the forest step is taken off the carried step again, as the classic game does, so the haste compounds: the elf walks 69 px to (487, 69) and WalkerPositionMoved(FAMILY_ELF, 517, 39) fails on x."
+};
+
+// --- archer_bolt_edge_pad (fix AC widened, #476: EXPLODING BOLT at the map's edge) ---
+// The player archer (level 7, exactly EXPLODING BOLT's 70 MP) stands at the
+// top edge of the map heading UP, with slot 3 chosen, so the first press's
+// fire arrow pad is off the map: terrain. The classic cast calls fire(),
+// which charges the 1 MP shot and draws the waver before its pad probe
+// refuses: COULD NOT FIRE, and the archer is left with 69. With the setting
+// on (fix AC) the cast asks the fire arrow's pad first and refuses before it
+// pays: 70 MP, no draw. The archer then steps down and presses again: the
+// classic archer cannot pay the 70 and nothing flies, so only the hostile
+// TOWER1's nine bow shots sound and its arrows leave the archer at 55 hp;
+// the fixed archer's bolt flies down and meets a tower arrow (a clang), so
+// the run sounds ten bow shots and the clang and the archer ends at 59.
+inline constexpr InputEvent kInputs_archer_bolt_edge_pad[] = {
+    {  3, 0, K_SPECIAL_SWITCH }, {  4, 0, K_NONE },   // slot 2
+    {  6, 0, K_SPECIAL_SWITCH }, {  7, 0, K_NONE },   // slot 3: EXPLODING BOLT
+    { 10, 0, K_SPECIAL }, { 11, 0, K_NONE },          // heading UP (the spawn heading): the fire arrow's pad is off the map
+    { 14, 0, K_DOWN },    { 15, 0, K_NONE },          // one step DOWN sets the heading
+    { 22, 0, K_SPECIAL }, { 23, 0, K_NONE },          // the bolt again, down at the tower
+};
+inline constexpr SpawnSpec kFamilySpawns_archer_bolt_edge_pad_scen99[] = {
+    { FAMILY_TOWER1, 1, kOrderLiving, 173, 60, 0, 0 },             // hostile, below, centred on the archer: holds the level open and shoots up
+    { FAMILY_ARCHER, 0, kOrderLiving, 176,  2, 0, 0, 7, 70 },      // the player LAST, level 7 (slot 3 open), exactly 70 MP = EXPLODING BOLT's price; row 0, grass
+};
+inline constexpr FactPredicate kFacts_archer_bolt_edge_pad_scen99[] = {
+    pred::TickReached(60),
+    pred::EventKindExactly(/*play_sound*/1, 9,
+        "consequence: the classic press at the map's edge pays fire()'s 1 MP shot, so the second press cannot pay the 70 and only the tower's nine bow shots sound"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_ARCHER, 5500, 5500,
+        "consequence: with no bolt in the air the tower's arrows leave the archer at 55 hp"),
+};
+inline constexpr Mutation kMut_archer_bolt_edge_pad_scen99 = {
+    "packs/core/lib/gameplay_fixes.lua", 128,
+    "return M.on() and self:fire_pad_answer(weapon) == \"terrain\"",
+    "return self:fire_pad_answer(weapon) == \"terrain\"",
+    "The pad question no longer waits for the setting, so the classic press at the edge refuses before it pays and the second press fires the bolt: the clang makes 11 sounds and the archer ends at 59 hp, so EventKindExactly(play_sound, 9) and WalkerHpRangeAtFinalTick(FAMILY_ARCHER, 5500, 5500) fail."
+};
+inline constexpr FactPredicate kFacts_archer_bolt_edge_pad_fixes_scen99[] = {
+    pred::TickReached(60),
+    pred::EventKindExactly(/*play_sound*/1, 11,
+        "consequence: with the setting on the press at the map's edge refuses before it pays, so the second press fires the bolt, which meets a tower arrow: ten bow shots and the clang"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_ARCHER, 5900, 5900,
+        "consequence: the bolt takes a tower arrow out of the air, so the archer ends at 59 hp"),
+};
+inline constexpr Mutation kMut_archer_bolt_edge_pad_fixes_scen99 = {
+    "packs/core/families/living-02-archer.lua", 62,
+    "if gf.pad_blocked_by_terrain(self, WEAPON_FIRE_ARROW) then",
+    "if false and gf.pad_blocked_by_terrain(self, WEAPON_FIRE_ARROW) then",
+    "The press at the map's edge goes to fire() again, which charges its 1 MP shot, so the second press cannot pay the 70: 9 sounds and the archer at 55 hp, so EventKindExactly(play_sound, 11) and WalkerHpRangeAtFinalTick(FAMILY_ARCHER, 5900, 5900) fail."
+};
+
+// --- barbarian_boulder_edge_pad (fix AC widened, #476: HURL BOULDER at the map's edge) ---
+// The player barbarian (level 1, exactly HURL BOULDER's 20 MP) stands at the
+// top edge of the map heading UP, so the first press's hammer pad is off the
+// map: terrain. The classic cast calls fire(), which charges the 2 MP shot
+// and draws the waver before its pad probe refuses: COULD NOT FIRE, and the
+// barbarian is left with 18. With the setting on (fix AC) the cast refuses
+// before it pays. The barbarian then steps down and presses again: the
+// classic barbarian cannot pay the 20 (NOT ENOUGH MP) and no boulder is
+// thrown, and the tower's arrows leave it at 124 hp; the fixed one throws a
+// boulder down at the tower (it lands short) and ends at 137.
+inline constexpr InputEvent kInputs_barbarian_boulder_edge_pad[] = {
+    {  5, 0, K_SPECIAL }, {  6, 0, K_NONE },     // heading UP (the spawn heading): the hammer's pad is off the map
+    { 12, 0, K_DOWN },    { 13, 0, K_NONE },     // one step DOWN sets the heading
+    { 20, 0, K_SPECIAL }, { 21, 0, K_NONE },     // HURL BOULDER down at the tower
+};
+inline constexpr SpawnSpec kFamilySpawns_barbarian_boulder_edge_pad_scen99[] = {
+    { FAMILY_TOWER1,    1, kOrderLiving, 173, 60, 0, 0 },          // hostile, below, centred on the barbarian: holds the level open and shoots up
+    { FAMILY_BARBARIAN, 0, kOrderLiving, 176,  2, 0, 0, 1, 20 },   // the player LAST, level 1, exactly 20 MP = HURL BOULDER's price; row 0, grass
+};
+inline constexpr FactPredicate kFacts_barbarian_boulder_edge_pad_scen99[] = {
+    pred::TickReached(50),
+    pred::EventKindExactly(/*play_sound*/1, 8,
+        "consequence: the classic press at the map's edge pays fire()'s 2 MP shot, so the second press cannot pay the 20 and only the tower's eight bow shots sound"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_BARBARIAN, 12400, 12400,
+        "consequence: with no boulder thrown the tower's arrows leave the barbarian at 124 hp"),
+};
+inline constexpr Mutation kMut_barbarian_boulder_edge_pad_scen99 = {
+    "packs/core/lib/gameplay_fixes.lua", 128,
+    "return M.on() and self:fire_pad_answer(weapon) == \"terrain\"",
+    "return self:fire_pad_answer(weapon) == \"terrain\"",
+    "The pad question no longer waits for the setting, so the classic press at the edge refuses before it pays and the second press throws the boulder: the barbarian ends at 137 hp, so WalkerHpRangeAtFinalTick(FAMILY_BARBARIAN, 12400, 12400) fails."
+};
+inline constexpr FactPredicate kFacts_barbarian_boulder_edge_pad_fixes_scen99[] = {
+    pred::TickReached(50),
+    pred::WeaponFamilyEmitted(FAMILY_BOULDER,
+        "consequence: with the setting on the press at the map's edge refuses before it pays, so the second press can pay the 20 and throws the boulder"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_BARBARIAN, 13700, 13700,
+        "consequence: on the fixed run the tower's arrows leave the barbarian at 137 hp"),
+};
+inline constexpr Mutation kMut_barbarian_boulder_edge_pad_fixes_scen99 = {
+    "packs/core/families/living-16-barbarian.lua", 28,
+    "if gf.pad_blocked_by_terrain(self) then",
+    "if false and gf.pad_blocked_by_terrain(self) then",
+    "The press at the map's edge goes to fire() again, which charges its 2 MP shot, so the second press cannot pay the 20 and no boulder is thrown: WeaponFamilyEmitted(FAMILY_BOULDER) and WalkerHpRangeAtFinalTick(FAMILY_BARBARIAN, 13700, 13700) fail."
+};
+
+// --- mage_wave_edge_pad (fix AC widened, #476: ENERGY WAVE at the map's edge) ---
+// The player mage (level 10, exactly ENERGY WAVE's 70 MP) stands at the top
+// edge of the map heading UP, with slot 4 chosen, so the first press's
+// fireball pad is off the map: terrain. The classic cast calls fire(), which
+// charges the 5 MP shot and draws the waver before its pad probe refuses:
+// COULD NOT FIRE, and the mage is left with 65. With the setting on (fix AC)
+// the cast refuses before it pays. The mage then steps down and presses
+// again: the classic mage cannot pay the 70 and no wave flies, so the tower
+// ends whole and its arrows leave the mage at 62 hp; the fixed one's wave
+// takes the tower to 90 hp and the mage ends at 76.
+inline constexpr InputEvent kInputs_mage_wave_edge_pad[] = {
+    {  3, 0, K_SPECIAL_SWITCH }, {  4, 0, K_NONE },   // slot 2
+    {  6, 0, K_SPECIAL_SWITCH }, {  7, 0, K_NONE },   // slot 3
+    {  9, 0, K_SPECIAL_SWITCH }, { 10, 0, K_NONE },   // slot 4: ENERGY WAVE
+    { 12, 0, K_SPECIAL }, { 13, 0, K_NONE },          // heading UP (the spawn heading): the fireball's pad is off the map
+    { 16, 0, K_DOWN },    { 17, 0, K_NONE },          // one step DOWN sets the heading
+    { 24, 0, K_SPECIAL }, { 25, 0, K_NONE },          // the wave again, down at the tower
+};
+inline constexpr SpawnSpec kFamilySpawns_mage_wave_edge_pad_scen99[] = {
+    { FAMILY_TOWER1, 1, kOrderLiving, 173, 60, 0, 0 },             // hostile, below, centred on the mage: holds the level open and shoots up
+    { FAMILY_MAGE,   0, kOrderLiving, 176,  2, 0, 0, 10, 70 },     // the player LAST, level 10 (slot 4 open), exactly 70 MP = ENERGY WAVE's price; row 0, grass
+};
+inline constexpr FactPredicate kFacts_mage_wave_edge_pad_scen99[] = {
+    pred::TickReached(60),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 13000, 13000,
+        "consequence: the classic press at the map's edge pays fire()'s 5 MP shot, so the second press cannot pay the 70 and the tower ends whole"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_MAGE, 6200, 6200,
+        "consequence: with no wave in the air the tower's arrows leave the mage at 62 hp"),
+};
+inline constexpr Mutation kMut_mage_wave_edge_pad_scen99 = {
+    "packs/core/lib/gameplay_fixes.lua", 128,
+    "return M.on() and self:fire_pad_answer(weapon) == \"terrain\"",
+    "return self:fire_pad_answer(weapon) == \"terrain\"",
+    "The pad question no longer waits for the setting, so the classic press at the edge refuses before it pays and the second press sends the wave: the tower ends at 90 hp, so WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 13000, 13000) fails."
+};
+inline constexpr FactPredicate kFacts_mage_wave_edge_pad_fixes_scen99[] = {
+    pred::TickReached(60),
+    pred::WeaponFamilyEmitted(FAMILY_WAVE,
+        "consequence: with the setting on the press at the map's edge refuses before it pays, so the second press can pay the 70 and sends the wave"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 9000, 9000,
+        "consequence: the wave takes the tower to 90 hp"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_MAGE, 7600, 7600,
+        "consequence: on the fixed run the tower's arrows leave the mage at 76 hp"),
+};
+inline constexpr Mutation kMut_mage_wave_edge_pad_fixes_scen99 = {
+    "packs/core/families/living-03-mage.lua", 455,
+    "if gf.pad_blocked_by_terrain(self) then",
+    "if false and gf.pad_blocked_by_terrain(self) then",
+    "The press at the map's edge goes to fire() again, which charges its 5 MP shot, so the second press cannot pay the 70 and no wave flies: WeaponFamilyEmitted(FAMILY_WAVE) and WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 9000, 9000) fail."
 };
 
 inline constexpr ScenarioSpec kScenarios[] = {
@@ -14013,6 +14160,48 @@ inline constexpr ScenarioSpec kScenarios[] = {
       0, false, true, Exercises::None,
       kFacts_elf_forest_haste_fixes_scen99, std::size(kFacts_elf_forest_haste_fixes_scen99),
       kMut_elf_forest_haste_fixes_scen99, {}, 1, nullptr, 0, 1 },
+    { "archer_bolt_edge_pad_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputs_archer_bolt_edge_pad, std::size(kInputs_archer_bolt_edge_pad), 60,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_archer_bolt_edge_pad_scen99, std::size(kFamilySpawns_archer_bolt_edge_pad_scen99),
+      0, false, true, Exercises::None,
+      kFacts_archer_bolt_edge_pad_scen99, std::size(kFacts_archer_bolt_edge_pad_scen99),
+      kMut_archer_bolt_edge_pad_scen99 },
+    { "archer_bolt_edge_pad_fixes_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputs_archer_bolt_edge_pad, std::size(kInputs_archer_bolt_edge_pad), 60,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_archer_bolt_edge_pad_scen99, std::size(kFamilySpawns_archer_bolt_edge_pad_scen99),
+      0, false, true, Exercises::None,
+      kFacts_archer_bolt_edge_pad_fixes_scen99, std::size(kFacts_archer_bolt_edge_pad_fixes_scen99),
+      kMut_archer_bolt_edge_pad_fixes_scen99, {}, 1, nullptr, 0, 1 },
+    { "barbarian_boulder_edge_pad_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputs_barbarian_boulder_edge_pad, std::size(kInputs_barbarian_boulder_edge_pad), 50,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_barbarian_boulder_edge_pad_scen99, std::size(kFamilySpawns_barbarian_boulder_edge_pad_scen99),
+      0, false, true, Exercises::None,
+      kFacts_barbarian_boulder_edge_pad_scen99, std::size(kFacts_barbarian_boulder_edge_pad_scen99),
+      kMut_barbarian_boulder_edge_pad_scen99 },
+    { "barbarian_boulder_edge_pad_fixes_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputs_barbarian_boulder_edge_pad, std::size(kInputs_barbarian_boulder_edge_pad), 50,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_barbarian_boulder_edge_pad_scen99, std::size(kFamilySpawns_barbarian_boulder_edge_pad_scen99),
+      0, false, true, Exercises::None,
+      kFacts_barbarian_boulder_edge_pad_fixes_scen99, std::size(kFacts_barbarian_boulder_edge_pad_fixes_scen99),
+      kMut_barbarian_boulder_edge_pad_fixes_scen99, {}, 1, nullptr, 0, 1 },
+    { "mage_wave_edge_pad_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputs_mage_wave_edge_pad, std::size(kInputs_mage_wave_edge_pad), 60,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_mage_wave_edge_pad_scen99, std::size(kFamilySpawns_mage_wave_edge_pad_scen99),
+      0, false, true, Exercises::None,
+      kFacts_mage_wave_edge_pad_scen99, std::size(kFacts_mage_wave_edge_pad_scen99),
+      kMut_mage_wave_edge_pad_scen99 },
+    { "mage_wave_edge_pad_fixes_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputs_mage_wave_edge_pad, std::size(kInputs_mage_wave_edge_pad), 60,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_mage_wave_edge_pad_scen99, std::size(kFamilySpawns_mage_wave_edge_pad_scen99),
+      0, false, true, Exercises::None,
+      kFacts_mage_wave_edge_pad_fixes_scen99, std::size(kFacts_mage_wave_edge_pad_fixes_scen99),
+      kMut_mage_wave_edge_pad_fixes_scen99, {}, 1, nullptr, 0, 1 },
 };
 
 inline constexpr std::size_t kScenarioCount = std::size(kScenarios);

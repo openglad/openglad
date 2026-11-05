@@ -726,6 +726,74 @@ TEST_F(SemArcher, an_exploding_bolt_is_a_buffed_fire_arrow_and_the_archer_keeps_
     }
 }
 
+// living-02-archer.lua:56, Gameplay Fixes AC widened (#476). An EXPLODING
+// BOLT at terrain: a wall on the fire arrow's pad (the archer's own arrow's
+// pad is clear), or the map's edge. With the setting off (the old game:
+// walker.cpp FAMILY_ARCHER case 3, fire() first) fire() charges the 1 MP
+// shot and draws the waver, then the cast refuses; the 70 is never charged.
+// With it on the cast refuses before fire(): 300 MP, nothing drawn, no
+// weapon made. The bow is the archer's weapon after the cast on both. A
+// foe's body on the fire arrow's pad is not terrain: the shot is paid and
+// the blow lands with the setting on too.
+// Breaks: `if gf.pad_blocked_by_terrain(self, WEAPON_FIRE_ARROW) then` ->
+// `if false then` (setting-on arms red); -> `if
+// gf.pad_blocked_by_terrain(self) then` (the wall arm red: the arrow's own
+// pad is clear).
+TEST_F(SemArcher, an_exploding_bolt_at_terrain_spends_nothing_with_the_setting_on)
+{
+    struct Arm { const char* what; short y; bool wall; };
+    for (const Arm arm : {Arm{"a wall on the fire arrow's pad", 184, true},
+                          Arm{"the map's edge", 2, false}}) {
+        for (const short fixes : {short{0}, short{1}}) {
+            SCOPED_TRACE(testing::Message() << arm.what << ", setting " << fixes);
+            fresh_world();
+            living* archer = settle_body(body(add(FAMILY_ARCHER, 1, 192, arm.y, 7, 300.0f), 16, 16));
+            ASSERT_NE(nullptr, archer);
+            if (arm.wall) {
+                pad_wall(world(), 12, 10);
+                ASSERT_EQ(walker::PadAnswer::Clear, archer->fire_pad_answer())
+                    << "precondition: the archer's own arrow would fly";
+            }
+            ASSERT_EQ(walker::PadAnswer::Terrain, archer->fire_pad_answer(FAMILY_FIRE_ARROW))
+                << "precondition: the fire arrow's pad is terrain";
+            const unsigned short bow = archer->current_weapon();
+            const std::size_t weapons = world().weaplist.size();
+            world().rng_.state_ = 4242u;
+
+            std::string reason;
+            EXPECT_FALSE(cast(archer, 3, fixes, &reason));
+            EXPECT_EQ("COULD NOT FIRE", reason);
+            EXPECT_EQ(bow, archer->current_weapon()) << "the archer holds its bow";
+            EXPECT_EQ(0u, weapons_of(FAMILY_FIRE_ARROW).size()) << "no fire arrow flies";
+            if (fixes == 0) {
+                EXPECT_FLOAT_EQ(299.0f, archer->stats()->magicpoints())
+                    << "the classic cast pays fire()'s 1 MP shot, never the 70";
+                EXPECT_EQ(4242u * 1103515245u + 12345u, world().rng_.state_)
+                    << "the classic cast draws fire()'s waver, once";
+            } else {
+                EXPECT_FLOAT_EQ(300.0f, archer->stats()->magicpoints()) << "nothing spent";
+                EXPECT_EQ(4242u, world().rng_.state_) << "nothing drawn";
+                EXPECT_EQ(weapons, world().weaplist.size()) << "no weapon made";
+            }
+        }
+    }
+
+    // A foe's body on the fire arrow's pad, the setting on: not terrain.
+    fresh_world();
+    living* archer = settle_body(body(add(FAMILY_ARCHER, 1, 192, 184, 7, 300.0f), 16, 16));
+    living* foe = settle_body(body(add(FAMILY_SOLDIER, 2, 192, 164, 1), 16, 16));
+    ASSERT_TRUE(archer && foe);
+    ASSERT_EQ(walker::PadAnswer::Body, archer->fire_pad_answer(FAMILY_FIRE_ARROW))
+        << "precondition: the foe stands on the fire arrow's pad";
+    world().rng_.state_ = 4242u;
+    std::string reason;
+    EXPECT_FALSE(cast(archer, 3, 1, &reason)) << "body arm";
+    EXPECT_EQ("COULD NOT FIRE", reason) << "body arm";
+    EXPECT_FLOAT_EQ(299.0f, archer->stats()->magicpoints()) << "body arm: the shot is paid";
+    EXPECT_NE(4242u, world().rng_.state_) << "body arm: fire() ran";
+    EXPECT_LT(foe->stats()->hitpoints(), 400.0f) << "body arm: the blow lands on the foe";
+}
+
 // living-02-archer.lua:67. A new attacker makes the struck archer drop its
 // orders and its pursuit distances; a repeat hit from its current foe beyond
 // the backpedal range changes nothing.

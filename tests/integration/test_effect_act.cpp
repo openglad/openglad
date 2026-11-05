@@ -502,7 +502,8 @@ TEST(EffectAct, cloud_expired)
 }
 
 
-// Issue #233: a poison cloud wedged into the arena corner FREEZES. Clouds
+// Issue #233: a poison cloud wedged into the arena corner FREEZES (the
+// re-roll below is Gameplay Fixes AM, #486, with the setting on). Clouds
 // fly over interior tiles, so only the map boundary blocks them; heading
 // UP_LEFT in the NW corner fails the first walk, the baby step and BOTH
 // halves of walkstep's NPC deflection on the off-map bounds check, then
@@ -517,6 +518,9 @@ TEST(EffectAct, cloud_wedged_against_wall_keeps_moving)
 {
     GameWorld& world = og::runtime::current_session->myscreen_->world();
     world.create_new_grid();  // a real 40x60 grid (this binary loads no map)
+    // The re-roll is Gameplay Fixes AM (#486): with the setting off the
+    // wedged cloud keeps its stuck walk, as in the old game.
+    world.gameplay_fixes = 1;
 
     walker* fx = world.add_fx_ob(Order::FX, FAMILY_CLOUD);
     ASSERT_NE(nullptr, fx);
@@ -722,7 +726,7 @@ TEST(EffectAct, effect_animate_handles_malicious_indices_safely)
 // explosion_on_death (packs/core/lib/effect_bomb.lua): every non-FX,
 // non-treasure walker on the same floor within 15 + compute_explosion_range
 // (Manhattan, on xpos/ypos) is shoved with COMMAND_WALK and attacked; anything
-// outside that radius is untouched. A level-3 owner gives range 16 => 31 px.
+// outside that radius is untouched. A level-3 owner gives range 12 => 27 px.
 // A bare add_ob(Living, ORC) carries no guy, so its armor row is 0 and the
 // armor roll subtracts nothing; the blast's 40 damage becomes
 // compute_base_damage(40, rng -> 0) = 40 - sqrt(40)/2 = 36.8377, which
@@ -738,7 +742,7 @@ TEST(EffectAct, effect_death_explosion_blasts_only_inside_its_radius)
     auto owner = make_living_guy(FAMILY_MAGE, 0);
     ASSERT_NE(nullptr, owner.get()) << "owner created";
     ASSERT_EQ(3, static_cast<int>(owner->stats()->level()))
-        << "a level-3 owner yields explosion range 16, i.e. a 31 px blast";
+        << "a level-3 owner yields explosion range 12, i.e. a 27 px blast";
 
     // Damage rolls draw from the combat RNG; scripted to 0 the blast's damage
     // is exactly compute_base_damage(40) = 40 - sqrt(40)/2, so the hit is an
@@ -759,7 +763,7 @@ TEST(EffectAct, effect_death_explosion_blasts_only_inside_its_radius)
     ASSERT_FLOAT_EQ(kOrcArmor, near_ob->stats()->armor())
         << "the orc's loader armor row the reduction below is computed against";
     near_ob->set_team_num(1);
-    near_ob->setxy(124, 100);   // Manhattan 24 <= 31
+    near_ob->setxy(124, 100);   // Manhattan 24 <= 27
     near_ob->stats()->clear_command();
     // hit_response clears commands for a NEW foe, so pre-seed the relationship
     // (the same reason EffectMorePaths.effect_death_explosion_shoves_nearby_targets
@@ -770,7 +774,7 @@ TEST(EffectAct, effect_death_explosion_blasts_only_inside_its_radius)
     walker* far_ob = world.add_ob(Order::Living, FAMILY_ORC);
     ASSERT_NE(nullptr, far_ob) << "far target created";
     far_ob->set_team_num(1);
-    far_ob->setxy(100, 164);    // Manhattan 64 > 31
+    far_ob->setxy(100, 164);    // Manhattan 64 > 27
     far_ob->stats()->clear_command();
     far_ob->set_foe(owner.get());
     const float far_hp = far_ob->stats()->hitpoints();

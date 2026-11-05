@@ -19,16 +19,16 @@ local function on_death(self)
   opened.level = self.level
   opened.team = self.team
   -- What way are we 'facing'? A wall above us picks FACE_RIGHT.
-  -- (og.query_genre reads the default-floor smoother, like the C++
-  -- `current_game->world->mysmoother` this replaces; the tile conversion
-  -- is og.div — C trunc.)
+  -- (og.query_genre reads the door's own floor's smoother; on a one-floor
+  -- level that is the C++ `current_game->world->mysmoother` this replaces;
+  -- the tile conversion is og.div — C trunc.)
   -- rule: A broken door is replaced by an opening-door effect on its spot (same floor, level,
-  --   team); with a wall directly above the door the effect faces right (a vertical door),
-  --   otherwise — verbatim classic quirk — FACE_UP is written onto the dead DOOR and the effect
-  --   keeps its spawn facing (down).
-  -- tests: WeapBehavior.weap_death_door
+  --   team); with a wall directly above the door on its own floor the effect faces right (a
+  --   vertical door), otherwise — verbatim classic quirk — FACE_UP is written onto the dead DOOR
+  --   and the effect keeps its spawn facing (down).
+  -- tests: WeapBehavior.weap_death_door, SemScriptEntity.a_door_upstairs_reads_the_wall_above_it_on_its_own_floor
   if og.query_genre(og.div(self:xpos(), C.GRID_SIZE),
-                    og.div(self:ypos(), C.GRID_SIZE) - 1) == C.TYPE_WALL then
+                    og.div(self:ypos(), C.GRID_SIZE) - 1, self:floor()) == C.TYPE_WALL then
     opened:set_curdir(C.FACE_RIGHT)
   else
     -- Kept verbatim: the original writes SELF's facing here, not the new

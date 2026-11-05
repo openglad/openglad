@@ -8,7 +8,7 @@
 -- manipulate it); its short return value is discarded here exactly as in C++.
 
 local C = og.C
-
+local gf = og.use("gameplay_fixes")
 local hits = og.use("effect_common").hits
 
 -- cloud_on_act: a poison cloud ages out, fades as it expires, damages any foe
@@ -64,32 +64,32 @@ local function on_act(self)
   -- tests: EffectMorePaths.effect_cloud_queues_walk_then_executes_the_drift_step
   if self:s_has_commands() then
     -- do_command hides walkstep's result (stats.cpp keeps result == 1), so
-    -- blockage is read back from state: a tick that moved nothing AND kept
-    -- the facing is the frozen wall-wedge (#233) — a deflected slide moves,
-    -- a pure turn tick changes curdir, and neither draws here, so the
-    -- parity RNG stream on every moving path is byte-identical to C++.
+    -- blockage is read back from state: with the setting on, a tick that
+    -- moved nothing AND kept the facing is the frozen wall-wedge (#233) — a
+    -- deflected slide moves, a pure turn tick changes curdir, and neither
+    -- draws here, so the RNG stream on every moving path is the old game's.
     local held_x = self:xpos()
     local held_y = self:ypos()
     local held_dir = self:curdir()
     self:s_do_command()
-    -- rule: A cloud wedged against a wall (its step moved nothing and did not even turn it) drops
-    --   its stuck walk and picks a fresh random direction, so it never freezes in place (#233); a
-    --   cloud that slid, moved or turned keeps its walk and draws nothing.
+    -- rule: With Gameplay Fixes on, a cloud wedged against a wall (its step moved nothing and did not
+    --   even turn it) drops its stuck walk and picks a fresh random direction, so it never freezes in
+    --   place (#233); off (the old game, which only calls do_command), the wedged cloud keeps its
+    --   stuck walk until it runs out. A cloud that slid, moved or turned keeps its walk and draws
+    --   nothing on both values.
     -- tests: EffectMorePaths.effect_cloud_queues_walk_then_executes_the_drift_step
     -- tests: SemLibsCloud.a_cloud_that_moved_or_turned_keeps_its_walk_and_draws_nothing
-    -- deferred: #486 divergence: the wedged-cloud re-roll (#233, 28f8168a / PR #245) is not in the
-    --   old game at 7ff1654a, whose cloud only calls do_command; the moved/turned no-draw arm is
-    --   asserted, the wedge arm is not pinned
-    if self:xpos() == held_x then
-      -- rule: A cloud wedged against a wall (its step moved nothing and did not even turn it) drops
-      --   its stuck walk and picks a fresh random direction, so it never freezes in place (#233).
-      -- tests: EffectMorePaths.effect_cloud_queues_walk_then_executes_the_drift_step
+    -- tests: SemLibsCloud.a_wedged_cloud_stays_put_with_the_fixes_off_and_redraws_its_walk_with_them_on
+    -- tests: EffectAct.cloud_wedged_against_wall_keeps_moving
+    if gf.on() and self:xpos() == held_x then
+      -- rule: With Gameplay Fixes on, a cloud wedged against a wall (its step moved nothing and did
+      --   not even turn it) drops its stuck walk and picks a fresh random direction (#233).
+      -- tests: SemLibsCloud.a_wedged_cloud_stays_put_with_the_fixes_off_and_redraws_its_walk_with_them_on
       -- tests: SemLibsCloud.a_cloud_that_moved_or_turned_keeps_its_walk_and_draws_nothing
       if self:ypos() == held_y then
-        -- rule: A cloud wedged against a wall (its step moved nothing and did not even turn it)
-        --   drops its stuck walk and picks a fresh random direction, so it never freezes in place
-        --   (#233).
-        -- tests: EffectMorePaths.effect_cloud_queues_walk_then_executes_the_drift_step
+        -- rule: With Gameplay Fixes on, a cloud wedged against a wall (its step moved nothing and
+        --   did not even turn it) drops its stuck walk and picks a fresh random direction (#233).
+        -- tests: SemLibsCloud.a_wedged_cloud_stays_put_with_the_fixes_off_and_redraws_its_walk_with_them_on
         -- tests: SemLibsCloud.a_cloud_that_moved_or_turned_keeps_its_walk_and_draws_nothing
         if self:curdir() == held_dir then
           self:s_clear_command()

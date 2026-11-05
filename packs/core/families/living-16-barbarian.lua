@@ -19,6 +19,15 @@ local function do_special(self)
   if lc.is_busy(self) then
     return false, "SPECIAL BUSY"
   end
+  -- rule: Gameplay Fixes AC (#476): HURL BOULDER and EXPLODING BOULDER refuse 'COULD NOT FIRE'
+  --   before fire() when the hammer's pad is refused by terrain (a wall face, the map edge; never
+  --   water): no 2 MP shot, no waver. Classic: fire() pays and draws, then refuses. A body on the
+  --   pad keeps the paid blow.
+  -- tests: SemBarbarian.a_boulder_at_terrain_spends_nothing_with_the_setting_on
+  -- tests: parity:barbarian_boulder_edge_pad_fixes_scen99
+  if gf.pad_blocked_by_terrain(self) then
+    return false, "COULD NOT FIRE"
+  end
   local shot = self:fire()
   -- failed somehow? !?!
   -- rule: A boulder rides on the barbarian's hammer shot: if the hammer cannot be fired (blocked

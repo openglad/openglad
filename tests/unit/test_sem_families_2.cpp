@@ -408,6 +408,76 @@ TEST(SemMage, a_player_team_freeze_time_banks_the_stop_and_asks_for_the_blue_pal
     EXPECT_EQ(0u, f.guard.count()) << f.guard.message();
 }
 
+// :416-419, Gameplay Fixes AI (#477). Who stops time: with the setting off
+// (the old game's `team_num == 0 || myguy`, src/walker.cpp:3191 at
+// 8e296bf0) a hero mage stops time whatever its colour; with it on only a
+// mage on the player's team does. A team-1 hero mage, my_team 0.
+TEST(SemMage, a_hero_mage_off_the_red_team_stops_time_with_the_fixes_off_and_grants_rounds_with_them_on)
+{
+    {   // setting off: the hero takes the global stop
+        Field f(0);
+        walker* mage = f.caster(FAMILY_MAGE, 1, 160, 160, 4, 600.0f, 3);
+        ASSERT_NE(nullptr, mage);
+        give_character(mage, FAMILY_MAGE, 50);
+        ASSERT_TRUE(mage->special());
+        EXPECT_EQ(64, f.world().enemy_freeze) << "off arm: a hero banks 20 + 11*4";
+        EXPECT_EQ(1, f.events_of(og::sim::EventKind::SetPalette, 1))
+            << "off arm: exactly one blue-palette request";
+        EXPECT_EQ(0, f.notifications("TIME IS FROZEN")) << "off arm: no bonus-round notice";
+        EXPECT_EQ(0, static_cast<int>(mage->bonus_rounds())) << "off arm: no rounds";
+        EXPECT_EQ(0u, f.guard.count()) << f.guard.message();
+    }
+    {   // setting on: a team-1 mage is not on the player's team, hero or not
+        Field f(1);
+        walker* mage = f.caster(FAMILY_MAGE, 1, 160, 160, 4, 600.0f, 3);
+        ASSERT_NE(nullptr, mage);
+        give_character(mage, FAMILY_MAGE, 50);
+        ASSERT_TRUE(mage->special());
+        EXPECT_EQ(0, f.world().enemy_freeze) << "on arm: nothing banked";
+        EXPECT_EQ(0, f.events_of(og::sim::EventKind::SetPalette, 1))
+            << "on arm: no blue palette";
+        EXPECT_EQ(1, f.notifications("TIME IS FROZEN! (13 rounds)"))
+            << "on arm: min(5 + 2*4, 50) rounds, announced once";
+        EXPECT_EQ(13, static_cast<int>(mage->bonus_rounds())) << "on arm: 13 rounds";
+        EXPECT_EQ(0u, f.guard.count()) << f.guard.message();
+    }
+}
+
+// :416-419, Gameplay Fixes AI (#477), the other half: a player team other
+// than red. my_team 1 and a team-1 mage with no character: off, the old
+// game sees neither team 0 nor a hero and grants rounds; on, it is the
+// player's team and stops time.
+TEST(SemMage, a_mage_on_a_player_team_other_than_red_grants_rounds_with_the_fixes_off_and_stops_time_with_them_on)
+{
+    {   // setting off
+        Field f(0);
+        f.world().my_team = 1;
+        walker* mage = f.caster(FAMILY_MAGE, 1, 160, 160, 4, 600.0f, 3);
+        ASSERT_NE(nullptr, mage);
+        ASSERT_TRUE(mage->special());
+        EXPECT_EQ(0, f.world().enemy_freeze) << "off arm: nothing banked";
+        EXPECT_EQ(0, f.events_of(og::sim::EventKind::SetPalette, 1))
+            << "off arm: no blue palette";
+        EXPECT_EQ(1, f.notifications("TIME IS FROZEN! (13 rounds)"))
+            << "off arm: min(5 + 2*4, 50) rounds, announced once";
+        EXPECT_EQ(13, static_cast<int>(mage->bonus_rounds())) << "off arm: 13 rounds";
+        EXPECT_EQ(0u, f.guard.count()) << f.guard.message();
+    }
+    {   // setting on
+        Field f(1);
+        f.world().my_team = 1;
+        walker* mage = f.caster(FAMILY_MAGE, 1, 160, 160, 4, 600.0f, 3);
+        ASSERT_NE(nullptr, mage);
+        ASSERT_TRUE(mage->special());
+        EXPECT_EQ(64, f.world().enemy_freeze) << "on arm: the player's team banks 20 + 11*4";
+        EXPECT_EQ(1, f.events_of(og::sim::EventKind::SetPalette, 1))
+            << "on arm: exactly one blue-palette request";
+        EXPECT_EQ(0, f.notifications("TIME IS FROZEN")) << "on arm: no bonus-round notice";
+        EXPECT_EQ(0, static_cast<int>(mage->bonus_rounds())) << "on arm: no rounds";
+        EXPECT_EQ(0u, f.guard.count()) << f.guard.message();
+    }
+}
+
 // :281. ENERGY WAVE rides a fired fireball: the wave takes the bolt's
 // heading and the bolt is gone; with no bolt the cast fails.
 TEST(SemMage, energy_wave_replaces_its_fireball_and_fails_when_none_fires)
@@ -457,6 +527,45 @@ TEST(SemMage, energy_wave_replaces_its_fireball_and_fails_when_none_fires)
         EXPECT_EQ("COULD NOT FIRE", reason) << "fire nil arm: its reason";
         EXPECT_EQ(0u, f.live(Order::Weapon, FAMILY_WAVE).size())
             << "fire nil arm: no wave";
+        EXPECT_EQ(0u, f.guard.count()) << f.guard.message();
+    }
+}
+
+// :448, Gameplay Fixes AC widened (#476). ENERGY WAVE facing north into a
+// wall on the fireball's pad. With the setting off (the old game:
+// walker.cpp FAMILY_MAGE case 4, fire() first) fire() charges the 5 MP shot
+// and draws the waver before the cast refuses; with it on the cast refuses
+// before fire(): 600 MP and nothing drawn. No wave either way.
+// Breaks: the wave's `if gf.pad_blocked_by_terrain(self) then` -> `if false
+// then` (setting-on arm red).
+TEST(SemMage, an_energy_wave_at_terrain_spends_nothing_with_the_setting_on)
+{
+    for (const short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE(testing::Message() << "setting " << fixes);
+        Field f(fixes);
+        walker* mage = f.caster(FAMILY_MAGE, 0, 160, 160, 10, 600.0f, 4);
+        ASSERT_NE(nullptr, mage);
+        mage->set_lastx(0);
+        mage->set_lasty(-2);
+        f.tile(10, 9, PIX_H_WALL1);
+        ASSERT_EQ(walker::PadAnswer::Terrain, mage->fire_pad_answer())
+            << "precondition: the fireball's pad is on the wall";
+        f.world().rng_.state_ = 4242u;
+        Failure why = Failure::None;
+        std::string reason;
+        EXPECT_FALSE(mage->special(&why, &reason));
+        EXPECT_EQ("COULD NOT FIRE", reason);
+        EXPECT_EQ(0u, f.live(Order::Weapon, FAMILY_WAVE).size()) << "no wave";
+        EXPECT_EQ(0u, f.live(Order::Weapon, FAMILY_FIREBALL).size()) << "no fireball";
+        if (fixes == 0) {
+            EXPECT_FLOAT_EQ(595.0f, mage->stats()->magicpoints())
+                << "the classic cast pays fire()'s 5 MP shot";
+            EXPECT_EQ(4242u * 1103515245u + 12345u, f.world().rng_.state_)
+                << "the classic cast draws fire()'s waver, once";
+        } else {
+            EXPECT_FLOAT_EQ(600.0f, mage->stats()->magicpoints()) << "nothing spent";
+            EXPECT_EQ(4242u, f.world().rng_.state_) << "nothing drawn";
+        }
         EXPECT_EQ(0u, f.guard.count()) << f.guard.message();
     }
 }

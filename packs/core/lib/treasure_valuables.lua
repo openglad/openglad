@@ -9,7 +9,7 @@
 
 local C = og.C
 local FX_FLASH = assert(og.family_id("fx", "core:flash"))
-
+local gf = og.use("gameplay_fixes")
 -- gold_bar_on_eat: banks score_per_level*level for the eater's team. Only
 -- team 0 or a roster character (myguy) can cash a bar in.
 local function gold_bar_on_eat(self, eater)
@@ -89,14 +89,22 @@ local function key_on_eat(self, eater)
       who = eater:s_name()
     end
     local message = string.format("%s picks up key %d", who, level)
-    -- rule: Only team-0 key pickups are announced (a broadcast, never seat-addressed) with
-    --   SOUND_MONEY; other teams pick keys up silently.
+    -- rule: Only team-0 key pickups are announced (the line below, then SOUND_MONEY); other teams
+    --   pick keys up silently.
     -- tests: parity:treasure_key_team1_silent_scen99
     -- tests: PackLuaTreasure.a_key_already_held_is_a_silent_no_op
     if eater.team == 0 then  -- only show players picking up keys
-      -- Broadcast on purpose: keys are per-walker, so "Gorik picks up key 3"
-      -- is the only way the rest of the party learns who can open that door.
-      og.emit_notification(message)
+      -- With the setting on the line goes to every view: keys are per-walker, so "Gorik picks up
+      -- key 3" is the only way the rest of the party learns who can open that door.
+      -- rule: With Gameplay Fixes on the key pickup line goes to every view; off (the old game's
+      --   do_notify(message, eater)), to the eater's seat, or every view when no seat drives it.
+      -- tests: SemValuables.the_key_line_goes_to_the_eaters_seat_with_the_fixes_off_and_to_everyone_with_them_on
+      -- tests: PackLuaTreasure.a_key_already_held_is_a_silent_no_op, parity:treasure_key_pickup_scen99
+      if gf.on() then
+        og.emit_notification(message)
+      else
+        og.emit_notification(message, 0, eater)
+      end
       og.emit_positional_sound(eater, C.SOUND_MONEY)
     end
   end

@@ -865,6 +865,76 @@ TEST_F(SemBarbarian, a_boulder_is_made_only_from_a_hammer_that_flew)
     EXPECT_EQ(0u, any(Order::Weapon, FAMILY_BOULDER).size()) << "no-shot arm: no boulder";
 }
 
+// living-16-barbarian.lua:22, Gameplay Fixes AC widened (#476). HURL
+// BOULDER (slot 1) and EXPLODING BOULDER (slot 2) at terrain: a wall on the
+// hammer's pad east of the barbarian, or the map's west edge. With the
+// setting off (the old game: walker.cpp FAMILY_BARBARIAN, fire() first)
+// fire() charges the 2 MP shot and draws the waver before the cast refuses;
+// with it on the cast refuses before fire(): 500 MP, nothing drawn, no
+// hammer made. No boulder and no busy either way. A foe's body on the pad
+// is not terrain: the shot is paid with the setting on too.
+// Breaks: `if gf.pad_blocked_by_terrain(self) then` -> `if false then`
+// (setting-on arms red).
+TEST_F(SemBarbarian, a_boulder_at_terrain_spends_nothing_with_the_setting_on)
+{
+    struct Arm { const char* what; short x; float lx; int dir; bool wall; };
+    for (const Arm arm : {Arm{"a wall on the hammer's pad", 160, 1.0f, FACE_RIGHT, true},
+                          Arm{"the map's edge", 2, -1.0f, FACE_LEFT, false}}) {
+        for (const int slot : {1, 2}) {
+            for (const short fixes : {short{0}, short{1}}) {
+                SCOPED_TRACE(testing::Message() << arm.what << ", slot " << slot
+                                                << ", setting " << fixes);
+                fresh_world();
+                living* barb = body(add(FAMILY_BARBARIAN, 0, arm.x, 160, 5, 500.0f), 16, 16);
+                ASSERT_NE(nullptr, barb);
+                barb->set_user(0);
+                barb->set_act_type(ACT_CONTROL);
+                face(barb, arm.lx, 0.0f, arm.dir);
+                if (arm.wall)
+                    pad_wall(world(), (barb->xpos() + barb->sizex() + 1) / GRID_SIZE,
+                             (barb->ypos() + barb->sizey() / 2) / GRID_SIZE);
+                ASSERT_EQ(walker::PadAnswer::Terrain, barb->fire_pad_answer())
+                    << "precondition: the hammer's pad is terrain";
+                const float busy = barb->busy();
+                world().rng_.state_ = 4242u;
+
+                std::string reason;
+                EXPECT_FALSE(cast(barb, slot, fixes, &reason));
+                EXPECT_EQ(std::string("COULD NOT FIRE"), reason);
+                EXPECT_EQ(0u, any(Order::Weapon, FAMILY_BOULDER).size()) << "no boulder";
+                EXPECT_FLOAT_EQ(busy, barb->busy()) << "no busy";
+                if (fixes == 0) {
+                    EXPECT_FLOAT_EQ(498.0f, barb->stats()->magicpoints())
+                        << "the classic cast pays fire()'s 2 MP shot";
+                    EXPECT_EQ(4242u * 1103515245u + 12345u, world().rng_.state_)
+                        << "the classic cast draws fire()'s waver, once";
+                } else {
+                    EXPECT_FLOAT_EQ(500.0f, barb->stats()->magicpoints()) << "nothing spent";
+                    EXPECT_EQ(4242u, world().rng_.state_) << "nothing drawn";
+                    EXPECT_EQ(0u, any(Order::Weapon, FAMILY_HAMMER).size()) << "no hammer made";
+                }
+            }
+        }
+    }
+
+    // A foe's body on the hammer's pad, the setting on: not terrain.
+    fresh_world();
+    living* barb = body(add(FAMILY_BARBARIAN, 0, 160, 160, 5, 500.0f), 16, 16);
+    ASSERT_NE(nullptr, barb);
+    barb->set_user(0);
+    barb->set_act_type(ACT_CONTROL);
+    face(barb, 1.0f, 0.0f, FACE_RIGHT);
+    living* foe = settle_body(body(add(FAMILY_ORC, 2, 177, 160, 1), 16, 16));
+    ASSERT_NE(nullptr, foe);
+    ASSERT_EQ(walker::PadAnswer::Body, barb->fire_pad_answer())
+        << "precondition: the foe stands on the hammer's pad";
+    std::string reason;
+    EXPECT_FALSE(cast(barb, 1, 1, &reason)) << "body arm";
+    EXPECT_EQ(std::string("COULD NOT FIRE"), reason) << "body arm";
+    EXPECT_FLOAT_EQ(498.0f, barb->stats()->magicpoints()) << "body arm: the shot is paid";
+    EXPECT_LT(foe->stats()->hitpoints(), 400.0f) << "body arm: the blow lands on the foe";
+}
+
 namespace {
 
 // One HURL BOULDER's results: the boulder (nullptr when none) and the

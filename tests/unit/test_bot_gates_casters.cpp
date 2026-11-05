@@ -446,42 +446,50 @@ TEST_F(GameplayFixesBots, cleric_turn_undead_waits_while_busy_with_the_setting_o
 // ---------------------------------------------------------------------------
 
 // Row 31. DROP BOMB wants a living foe inside the bomb's blast around the
-// thief (31 px at level 1) and no ally in it. The classic gate bombs a foe
-// within 35 px or 130 px and more away.
+// thief (19 px at level 1, 31 at level 4: 15 + 4 per level, #483) and no
+// ally in it. The classic gate bombs a foe within 35 px or 130 px and more
+// away.
 //
-// RED (the classic gate): gate(thief, 1, 1) is true with the foe 32 px and
+// RED (the classic gate): gate(thief, 1, 1) is true with the foe 20 px and
 // 140 px away, and with the ally in the blast.
 TEST_F(GameplayFixesBots, thief_bomb_wants_a_foe_inside_its_blast_and_no_ally)
 {
     living* thief = body(add(FAMILY_THIEF, 1, 200, 200, 1, 100.0f), 16, 16);
-    living* foe = body(add(FAMILY_SOLDIER, 0, 230, 200, 1), 16, 16);  // 30 px
+    living* foe = body(add(FAMILY_SOLDIER, 0, 218, 200, 1), 16, 16);  // 18 px
     ASSERT_TRUE(thief && foe);
     thief->set_foe(foe);
 
     EXPECT_TRUE(gate(thief, 1, 0)) << "the classic answer: within 35 px";
     thief->set_shifter_down(1);
-    EXPECT_TRUE(gate(thief, 1, 1)) << "a foe 30 px off: inside the 31 px blast";
+    EXPECT_TRUE(gate(thief, 1, 1)) << "a foe 18 px off: inside the 19 px blast";
     EXPECT_EQ(0, thief->shifter_down()) << "the bomb is Shift 0";
 
-    foe->setxy(231, 200);
-    EXPECT_TRUE(gate(thief, 1, 1)) << "31 px: the edge is in";
-    foe->setxy(232, 200);
+    foe->setxy(219, 200);
+    EXPECT_TRUE(gate(thief, 1, 1)) << "19 px: the edge is in";
+    foe->setxy(220, 200);
     EXPECT_TRUE(gate(thief, 1, 0)) << "the classic answer: within 35 px";
-    EXPECT_FALSE(gate(thief, 1, 1)) << "32 px: outside the blast";
+    EXPECT_FALSE(gate(thief, 1, 1)) << "20 px: outside the level-1 blast";
+
+    thief->stats()->set_level(4);
+    foe->setxy(231, 200);
+    EXPECT_TRUE(gate(thief, 1, 1)) << "level 4, 31 px: the edge of the 31 px blast is in";
+    foe->setxy(232, 200);
+    EXPECT_FALSE(gate(thief, 1, 1)) << "level 4, 32 px: outside the blast";
+    thief->stats()->set_level(1);
 
     foe->setxy(340, 200);  // 140 px
     EXPECT_TRUE(gate(thief, 1, 0)) << "the classic answer: 130 px or more";
     EXPECT_FALSE(gate(thief, 1, 1)) << "140 px: the bomb reaches nobody";
 
-    foe->setxy(230, 200);
-    living* ally = body(add(FAMILY_ORC, 1, 180, 200, 1), 16, 16);  // 20 px the other side
+    foe->setxy(218, 200);
+    living* ally = body(add(FAMILY_ORC, 1, 190, 200, 1), 16, 16);  // 10 px the other side
     ASSERT_NE(nullptr, ally);
     EXPECT_TRUE(gate(thief, 1, 0)) << "the classic answer";
     EXPECT_FALSE(gate(thief, 1, 1)) << "an ally inside the blast";
 }
 
 // Row 32. MINE (New Specials): a level-2 thief with 94 MP lays a mine where
-// a foe will walk: a foe past the 31 px blast, within 130 px, hunting the
+// a foe will walk: a foe past the 23 px blast, within 130 px, hunting the
 // thief; fewer than three mines down, no ally in the blast and the 70 in
 // hand. Never the coin.
 //

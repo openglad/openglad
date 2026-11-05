@@ -88,18 +88,24 @@ usual pause.
 | Z | CHARGE's strike | The rush strikes whatever body the collision field names after its last step, an ally included. An ally takes no damage, but the strike draws the damage roll, erases the ally's orders and walks it four steps, a seated hero too; a rush a wall stopped can strike a body met on an earlier step. | The rush strikes only a foe its last step ran into; an ally in the way gets the ordinary shove. |
 | AA | Druid, barbarian, mage (ENERGY WAVE) and archer (EXPLODING BOLT) bot gates | Yes with a wall, the map edge or a foe's body on the weapon's pad; the cast refuses `COULD NOT FIRE`. | The gate asks the pad, as the elf's does (fix V); the archer asks it for the fire arrow it fires. |
 | AB | A struck bot's cast | The hit response folds a slot the bot cannot pay onto slot 1 whatever slot 1 costs, the gate says yes, the roll is drawn and the cast refuses `NOT ENOUGH MP`. | A yes the bot cannot pay is a no: the roll is not drawn and the bot holds. |
-| AC | Elf volleys, druid GROW TREE and SUMMON FAERIE at a wall or the map edge | Classic: the cast draws the throw's waver and refuses; the elf's refund leaves it a point ahead (fix H's off column). With fixes H and I alone the cast paid the one swing (1 MP for the elf, 4 for the druid) for a rock or bolt that met the wall and struck nothing. | A pad blocked by terrain refuses `COULD NOT FIRE` before the refund and the swing: nothing drawn, nothing spent. A body on the pad keeps H's and I's paid blow. |
+| AC | Elf volleys, druid GROW TREE and SUMMON FAERIE, archer EXPLODING BOLT, barbarian HURL BOULDER and EXPLODING BOULDER, mage ENERGY WAVE at a wall or the map edge | Classic: the cast draws the throw's waver and refuses; the elf's refund leaves it a point ahead (fix H's off column). With fixes H and I alone the elf's and druid's casts paid the one swing (1 MP for the elf, 4 for the druid) for a rock or bolt that met the wall and struck nothing; the other four pay their shot on both values (1 MP for the archer, 2 for the barbarian, 5 for the mage). | A pad blocked by terrain refuses `COULD NOT FIRE` before anything is paid: nothing drawn, nothing spent. A body on the pad keeps the paid blow. |
 | AD | A charmed tent or bones troop, a charmed summon | It wears the charmer's colour but keeps its owner's side: it fights its charmer and is struck by its charmer's team. | It heads its own owner chain while the charm lasts; its owner, its charm clock and its tent's cascade are unchanged. |
 | AE | The struck archmage's classic order | The reply goes on after a cast that worked, as the old game's does: a summon that stands still draws the slot-2 coin (the summon's busy refuses the cast), a chain is followed only by a HEARTBURST attempt its own busy refuses, and a HEARTBURST is cast once. | A cast that worked ends the reply; after a chain or a HEARTBURST that leaves the price of a TELEPORT, slot 2 is cast again (a second HEARTBURST, "then leave! :)"). With the setting on only a seat-driven archmage takes this order (a struck bot answers by fix R). |
 | AF | Who acts during FREEZE TIME | A Living or a generator acts only when it is on team 0 itself, as in the old game: with a player colour other than red the freeze stops the player's own side and lets team 0 fight on (#86), a charmed troop of a living enemy tent or an enemy's summon the player charmed acts because it wears red, and a summon of the player's caster that an enemy charmed is frozen. | It acts when it is friendly to the player's team: the head of its owner chain wears the player's colour (#92). The level census reads friendliness on both settings. |
 | AG | A forestwalker's step in the trees | Every act in the trees takes the forest penalty off the step the walker carries and adds any haste to the result. A hastened elf whose haste beats its penalty steps farther every act it stays in the trees and keeps that size until it leaves them (a level-2 speed potion with no penalty: a 204 px step after 100 acts, over walls, water and bodies); without a haste the step crawls to 1 px within a few acts. | The penalty comes off the normal step every act: in the trees the step is the normal step less the penalty, never below 1 px, plus any haste, once. A hero elf with 30 dexterity walks 3 px, not 1. |
 | AH | Cleric TURN UNDEAD on a warded skeleton or ghost | Only the family decides, as in the old game: a skeleton or ghost carrying `BIT_INVINCIBLE` or an invulnerability potion (one it drank, or a New Specials ghost's PHASE) is rolled for and turned like any other. | A warded undead is never turned, rolled for or counted: turning is damage, and the ward stops damage. With nothing else turnable in reach the cast is refused as `NO UNDEAD IN RANGE` (fix E), and the cleric bot's gate does not count it. |
+| AI | FREEZE TIME's form | A mage on the red team or any hero stops time for everyone else, whatever team the player is on: a hero mage of another colour (a second seat's, a charmed one) turns the screen blue. A mage on the player's team that is neither red nor a hero gives its side bonus rounds instead. | Only a mage on the player's team stops time; any other mage, hero or not, gives its own side bonus rounds ("TIME IS FROZEN! (N rounds)"). |
+| AJ | The exit of a level the player may leave at any time, to a level already won | With foes standing it asks "Withdraw to X?" first (yes abandons the level and reloads the company's save); a no asks "Exit to X?" next, and yes there wins the level. | It asks "Exit to X?" only. |
+| AK | "X picks up key N" | The line shows in the view of the player whose hero picked the key up, or in every view when no player drives that hero (a computer-run teammate). | It shows in every view, so the party learns who carries the key. |
 | AL | Archmage MIND CONTROL on more than one foe | The cast costs its price alone, however many foes it takes, as the old game's does (its charge for each further man lowers only a local). | Each foe taken past the first costs 10 magic more, never more than the magic left after the price. |
+| AM | A poison cloud wedged against a wall | It stays where it is until its walk runs out (#233), then draws a new one. | A tick that neither moves it nor turns it drops the stuck walk and draws a fresh direction, so it drifts on. |
 | AN | The archmage bot's CHAIN LIGHTNING rule, for a hero | No rule: the bot casts its coin's arm (fix B's off column). | The rule measures the chain with the cast's own reach: 200 px plus half its Intelligence plus 2 per level for an archmage with a character record (a hero the computer plays), 200 px plus 7 per level for a monster. Before, it measured every archmage by level, so such a hero was told "the chain has a target" and then refused `NO FOE IN RANGE`, or turned to HEARTBURST or held when the chain would have landed. |
 
 TELEPORT, REVEAL, CLOAK and ENERGY WAVE are unchanged as casts (their bot
 rules are in [Bots](#bots)): each does something whenever it is cast
-(ENERGY WAVE crosses walls along the facing). CHARGE still refuses `PATH
+(ENERGY WAVE crosses walls along the facing), except an ENERGY WAVE whose
+first step is a wall face or past the map's edge, which refuses in both
+games and with the setting on spends nothing (fix AC). CHARGE still refuses `PATH
 BLOCKED` when something stands against the soldier's front and otherwise
 moves the fighter; fix U changes only how it asks, and fix Z what the rush
 strikes.
@@ -241,7 +247,16 @@ Fixes X to AN, in play:
   rock crosses it). Water is never terrain here: every weapon crosses it.
   A body on the pad keeps H's and I's paid blow (question 1 of the
   [rulings](#rulings-2026-11-01)). A bot never meets the new refusal,
-  because its gate asks the pad first (fixes V and AA).
+  because its gate asks the pad first (fixes V and AA). Issue #476 found
+  three more casts that fire a weapon from the pad and paid for nothing
+  at terrain: the archer's EXPLODING BOLT, the barbarian's HURL BOULDER
+  and EXPLODING BOULDER, and the mage's ENERGY WAVE call `fire()` first,
+  and `fire()` charges the shot (1 MP, 2 and 5) and draws the waver before
+  its pad probe refuses. The old game does the same, so the classic cast
+  is unchanged. With the setting on these casts ask the pad first too, the
+  archer with the 9x9 fire arrow its bolt fires rather than its own 7x7
+  arrow (`gf.pad_blocked_by_terrain(self, weapon)`), and refuse before
+  they pay. A body on the pad keeps the paid blow here as well.
 - **AD.** A tent or a bones pile owns the troops it makes, and every
   question of whose side a walker is on climbs its owner chain to the
   top: `is_friendly`, the blow's friend test and the score's team. A
@@ -322,6 +337,39 @@ Fixes X to AN, in play:
   New Specials ghost's PHASE no longer saves it from TURN UNDEAD. The ward in
   `do_combat_damage` is unchanged: only a scripted match's turn and a
   level's damage gate reach it, and the old game has neither.
+- **AI.** FREEZE TIME has two forms. A mage on the player's side stops
+  time for everyone else: the world's freeze bank grows by 20 + 11 per
+  level and the screen turns blue. Any other mage gives itself and every
+  friend on the map bonus rounds instead, 5 + 2 per level up to 50. The
+  old game picks the form by `team_num == 0 || myguy`: the red team, or
+  any hero. This game has picked it by the player's team since the
+  companies work (#139, `75a786a9`): a hero of another colour that banked
+  the global stop froze itself and its own allies. With the setting off FREEZE TIME now asks what the old game asks
+  (#477); with it on, the player's team. The two tests agree when the
+  player is red and the mage is not a hero of another colour, which is
+  every parity row's arena, so no golden moves.
+- **AJ.** Some levels let the player leave while foes still stand (the
+  level type "can exit whenever"). When such a level's exit leads to a
+  level the company has already won and this one is not won yet, the old
+  game asks "Withdraw to X?" first: yes abandons the level and reloads the
+  save, and no falls through to its exit test, which passes on this level
+  type, so it asks "Exit to X?" next, where yes ends the level as won. This
+  game has asked only "Exit to X?" there since `91175553` (#98), which put
+  the exit test first. With the setting off the pad asks Withdraw first
+  again and the server asks Exit after a no, for the same level and to the
+  same player (#481); with it on, Exit only. A prompt that closes without
+  the player's answer (its 15 seconds ran out, or the hero who stepped on
+  the pad died) asks nothing more. No parity row plays such a level, so no
+  golden moves.
+- **AK.** A walker on the red team that picks up a key it does not hold
+  yet announces it: "Gorik picks up key 3". The old game hands the line to
+  `do_notify(message, eater)`, which shows it in the view whose hero picked
+  the key up and in every view only when no player drives that hero. This
+  game has shown it in every view since the per-seat notification work
+  (`25113b61`, #254), because keys are per walker and the line is how the
+  rest of the party learns who can open the door. With the setting off the
+  line goes to the picker's view again (#482); with it on, every view. The
+  recording keeps a notification's text only, so no golden moves.
 - **AL.** MIND CONTROL takes foes while its budget lasts: the price covers
   the first, and each further one needs 10 of the magic left after the
   price. The old game counts that budget down to choose how many it takes,
@@ -333,6 +381,17 @@ Fixes X to AN, in play:
   five men keeps 250 with the setting off and 210 with it on. Both settings
   take the same men. No parity recording controls more than one man with
   magic to spare, so every golden is unchanged.
+- **AM.** A thief's poison cloud drifts by random walks. One that drifts
+  into a wall (or the map's edge) can be wedged: its step, the half steps
+  and the slide all fail and its facing is put back, so the tick moves
+  nothing. The old game only steps the walk while the cloud has one, so a
+  wedged cloud sits against the wall until its walk of up to 19 steps runs
+  out (#233 saw it frozen there). This game has re-rolled since `28f8168a`
+  (PR #245): a tick that neither moved the cloud nor turned it drops the
+  stuck walk and draws a fresh direction and length. With the setting off
+  the cloud keeps the stuck walk again (#486); with it on, the re-roll. A
+  cloud that slid or turned keeps its walk and draws nothing on both
+  values. No parity row wedges a cloud, so no golden moves.
 - **AN.** The archmage bot's HEARTBURST / CHAIN LIGHTNING rule (fix Q)
   keeps the coin's arm when that arm has a foe in reach. It measured the
   chain at 200 px plus 7 per level for every archmage, which is the cast's
@@ -365,7 +424,7 @@ usual busy.
 | HOWL | `NO FOE IN RANGE` | nothing inside the howl radius |
 | RAISE UNDEAD, RAISE GHOST, RESURRECT | `CORPSE IS BLOCKED` | no room for the body within 16 px of the corpse, on every stain in range (free) |
 | CHARGE | `PATH BLOCKED` | a wall, a body or a door one pixel ahead along the heading (free: no swing, no busy) |
-| the elf's volleys, GROW TREE, SUMMON FAERIE | `COULD NOT FIRE` | a wall face or the map edge on the weapon's pad, or a tree crown on the druid's (free: nothing drawn, no swing; fix AC) |
+| the elf's volleys, GROW TREE, SUMMON FAERIE, EXPLODING BOLT, HURL BOULDER, EXPLODING BOULDER, ENERGY WAVE | `COULD NOT FIRE` | a wall face or the map edge on the weapon's pad, or a tree crown on a weapon that cannot cross the forest (free: nothing drawn, no swing or shot; fix AC) |
 
 `NO ROOM TO SUMMON` (SUMMON ELEMENTAL) and `COULD NOT FIRE` keep their
 text. With the setting on `NO ROOM TO SUMMON` costs nothing extra. A pad
@@ -414,7 +473,7 @@ predicates once (`src/bot_gates.h`). Three measures recur:
   diagonal and 56 px straight; a fire arrow 88 and 147; a fireball 36 and
   59; a meteor 56 and 89.
 - "The blast" of a bomb, an exploding bolt or an exploding boulder reaches
-  15 px plus 4 px per level, never under 31 nor over 111; allies in it take
+  15 px plus 4 px per level: 19 px at level 1, never over 111; allies in it take
   half the damage and the caster a quarter, so a blast rule refuses when an
   ally of the caster stands in it.
 
@@ -794,7 +853,7 @@ The rows with the setting on, by fix:
 | Z | `soldier_charge_ally_fixes_scen99` (a new arena, with its setting-off twin) |
 | AA | `druid_bot_faerie_pad_body_fixes_scen99`, `barbarian_bot_boulder_pad_body_fixes_scen99`, `mage_bot_wave_pad_body_fixes_scen99`, `druid_bot_tree_pad_body_fixes_scen99` (four new arenas, each with its setting-off twin) |
 | AB | `elemental_struck_short_pool_fixes_scen99` (a new arena, with its setting-off twin), and the 10 recaptured rows below |
-| AC | `elf_rocks_edge_pad_fixes_scen99` (a new arena, with its setting-off twin) |
+| AC | `elf_rocks_edge_pad_fixes_scen99` (a new arena, with its setting-off twin); for #476, `archer_bolt_edge_pad_fixes_scen99`, `barbarian_boulder_edge_pad_fixes_scen99` and `mage_wave_edge_pad_fixes_scen99` (three new arenas, each with its setting-off twin) |
 | AD | `thief_charm_tent_troop_fixes_scen99` (a new arena, with its setting-off twin; the setting-on twin has spawns of its own: see below) |
 | AG | `elf_forest_haste_fixes_scen99` (a new arena, with its setting-off twin) |
 
@@ -825,6 +884,23 @@ a shorter walk fails the y bound and a longer one the x bound. Measured in
 the current game, the fix moves no existing row on either value: no row
 hastens a forestwalker, and the setting-on rows' elves stand on grass (the
 bots among them are level 1, whose forest step is 1 px both ways).
+
+Fix AI has no new row: every FREEZE TIME row plays a red player and a mage
+that is red or not a hero, where both values of the setting cast the same
+form (`special_mage_3_scen99`, `input_special_switch_wrap_scen99`,
+`enemy_freeze_mage_scen99`, `mage_freeze_time_offteam_scen99` and the mage
+bot freeze rows), so every golden is unchanged. The semantic tests pin the
+two cases where the tests differ, on both values.
+
+Fix AJ has no row: every exit row plays scen99, which is not a level the
+player may leave at any time, so both values ask the same question.
+
+Fix AK has no row: the key rows record a notification's text and not whose
+view it goes to, so both values record the same bytes.
+
+Fix AM has no row: no cloud row wedges its cloud (`effect_cloud_emission`,
+`effect_poison_cloud_emit`, `effect_cloud_poison`, `thief_bot_cloud_alone`
+and its twin with the setting on), so both values draw the same stream.
 
 The bot payoff gates moved five existing rows with the setting on, each
 recaptured from the old game after its port: `cleric_bot_raise_or_turn_fixes_scen99`
@@ -1044,9 +1120,9 @@ Rows deliberately not added:
 
 ## Not gated
 
-Twenty-two changes apply whatever the setting, three from the work that added
-it (N, O and P), six from the second bugs batch and thirteen from the issues
-it filed; the last entry records a difference kept on purpose (#484):
+Twenty-four changes apply whatever the setting, three from the work that
+added it (N, O and P), six from the second bugs batch and fifteen from the
+issues it filed; the last entry records a difference kept on purpose (#484):
 
 - **N. A slot that is not in play says so.** `walker::special()` refuses a
   slot priced 5000 (an undeclared slot, or one New Specials hides) before it
@@ -1247,6 +1323,28 @@ it filed; the last entry records a difference kept on purpose (#484):
   as the captain's hook blade already did. Every shot a recording meets is
   a classic weapon, which the guard destroys as before, so no recording
   moves; the old game has neither the wall nor the banner.
+- **A low-level blast reaches as far as in the old game (#483).** An
+  explosion hits everything within 15 px plus its range, 4 px per level of
+  its owner, capped at 96, and 16 for a magical blast. The C++
+  modernization (`dc1a2a89`) added a floor of 16 to that range, so a level
+  1 to 3 owner's blast reached 31 px where the old game's reaches 19, 23
+  and 27: a newly hired thief's bomb caught foes, allies and the thief
+  itself that the classic bomb missed. The floor is gone on both values,
+  and the bot gates' copy of the reach (`G.blast_reach`, asked by the
+  thief's bomb and mine and the archer's and barbarian's exploding casts)
+  lost it too, so a low-level thief bot bombs only a foe inside the blast
+  it really has. The old game's explosion has no floor; its copy of the
+  gates' reach, asked only with the setting on, is ported. Every golden is
+  an old-game capture made without the floor, so none moves.
+- **A door upstairs opens by its own floor's walls (#457).** A breaking
+  door turns its opening sideways when the tile above it is a wall, and
+  otherwise keeps the opening's facing (and, a 2002 quirk kept, turns the
+  dying door up). The check read floor 0's terrain whatever floor the door
+  stood on, so on a level with more floors a door under a wall upstairs
+  could open the wrong way when floor 0 was open there, and the reverse. It
+  now reads the door's own floor. On one floor nothing changes, and every
+  parity door stands on floor 0, so no golden moves. This game only: the
+  old game has one floor.
 - **The simulation records every display effect (#484).** Not a change. The
   old game decided the melee lunge, the hit and heal numbers, a walled-in
   walker's red 1, the hurt flash, the recoil and the hit animation where it
