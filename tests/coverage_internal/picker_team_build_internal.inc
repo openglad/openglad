@@ -782,16 +782,39 @@ int picker_team_build_testing_exercise_internal_paths(int* checks_run)
         px_state.last_family = static_cast<unsigned char>(
             og::runtime::current_session->current_guy_->family);
         px_state.family_name = get_family_string(px_state.last_family);
+        // The portrait walks on the wall clock: show_guy is handed
+        // query_timer() - start_time, in 13.6 ms ticks, and steps the walk
+        // frame every 12 of them ((frames/12) % 4) and the facing every 192.
+        // Two draws compared pixel for pixel must see the same portrait, so
+        // a pair that straddled a 163 ms boundary failed on the clock and
+        // not on the box (#452). Each draw re-zeroes start_time just before
+        // it and is kept only when the whole call took fewer than 12 ticks:
+        // query_timer is monotonic (steady_clock), so show_guy's own read
+        // fell in [0, 11] -- walk frame 0, facing FACE_DOWN -- whatever the
+        // clock did between the two draws. Only this precondition is
+        // retried; the comparison it guards runs once.
+        constexpr Sint32 kPortraitWalkTicks = 12;
+        const auto draw_portrait_pinned = [scr, &px_state]() -> bool {
+            for (int attempt = 0; attempt < 3; ++attempt)
+            {
+                scr->clearbuffer();
+                px_state.start_time = query_timer();
+                picker_hire_menu_engine_draw_content(&px_state);
+                const Sint32 ticks = query_timer() - px_state.start_time;
+                if (ticks >= 0 && ticks < kPortraitWalkTicks)
+                    return true;
+            }
+            return false;
+        };
         // (1) The description box holds at most ten 8px lines: a twelve-
         // line description draws EXACTLY the frame a ten-line one does --
         // the runaway lines never reach the box's bottom bevel or below.
         px_state.desc.assign(10, "DESCRIPTION LINE");
-        scr->clearbuffer();
-        picker_hire_menu_engine_draw_content(&px_state);
+        const bool ten_pinned = draw_portrait_pinned();
         const std::vector<std::uint32_t> ten_lines = region(0, 0, 319, 199);
         px_state.desc.assign(12, "DESCRIPTION LINE");
-        scr->clearbuffer();
-        picker_hire_menu_engine_draw_content(&px_state);
+        const bool twelve_pinned = draw_portrait_pinned();
+        check(ten_pinned && twelve_pinned);
         check(region(0, 0, 319, 199) == ten_lines);
 
         // (2) The cost number is inked in STAT_CHANGED when the wallet
