@@ -975,8 +975,8 @@ Rows deliberately not added:
 
 ## Not gated
 
-Thirteen changes apply whatever the setting, three from the work that added it (N, O
-and P) and ten from the second bugs batch:
+Fourteen changes apply whatever the setting, three from the work that added it (N, O
+and P) and eleven from the second bugs batch:
 
 - **N. A slot that is not in play says so.** `walker::special()` refuses a
   slot priced 5000 (an undeclared slot, or one New Specials hides) before it
@@ -1085,6 +1085,15 @@ and P) and ten from the second bugs batch:
   captain's WAR BANNER rule counted the two friends it wants round the
   corpse on any floor; it now counts those on his floor, where the banner
   will stand. The old game has no banner.
+- **A magic shield or a boomerang passes a bone wall or war banner by
+  (#472).** The cleric's MAGIC SHIELD and the soldier's BOOMERANG destroy
+  every foe shot inside their guard radius, each costing the guard the
+  shot's damage in hit points. That took the New Specials BONE WALL and
+  WAR BANNER too, solid scenery a foe has to chop down: a guard passing an
+  enemy wall or banner erased it. The guard now passes solid scenery by,
+  as the captain's hook blade already did. Every shot a recording meets is
+  a classic weapon, which the guard destroys as before, so no recording
+  moves; the old game has neither the wall nor the banner.
 
 ## Balance
 
