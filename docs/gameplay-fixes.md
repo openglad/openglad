@@ -427,7 +427,10 @@ because the spin strikes it and the yell stuns it (fix K).
   plus half its Intelligence plus 2 per level for an archmage with a
   character record (fix AN: before, the rule measured every archmage's
   chain by level, so a hero the computer plays could be told "the chain has
-  a target" and then refused for nothing by the cast). SUMMON
+  a target" and then refused for nothing by the cast). The chain counts
+  only foes on the archmage's own floor, the only ones its bolt can strike
+  first (#455); HEARTBURST counts a foe on any floor, since it bursts each
+  foe on that foe's floor. SUMMON
   ELEMENTAL wants a living foe within 200 px and spare magic of at least
   the slot's own 500. SUMMON IMAGE, a phantom with one hit point, is a
   decoy, so it pays before the blows land: at least two living foes within
@@ -960,8 +963,8 @@ Rows deliberately not added:
 
 ## Not gated
 
-Nine changes apply whatever the setting, three from the work that added it (N, O
-and P) and six from the second bugs batch:
+Ten changes apply whatever the setting, three from the work that added it (N, O
+and P) and seven from the second bugs batch:
 
 - **N. A slot that is not in play says so.** `walker::special()` refuses a
   slot priced 5000 (an undeclared slot, or one New Specials hides) before it
@@ -1028,6 +1031,17 @@ and P) and six from the second bugs batch:
   writer, `screen::show_palette_id`, now paints only when the palette
   shown changes; anything else that writes the colours marks it unknown,
   and a mission's end forces the restore. This game only.
+- **CHAIN LIGHTNING with nobody on its floor fails free (#455).** The
+  chain's bolt strikes first the nearest foe on the archmage's own floor
+  and cannot arc through floors, but the cast paid its busy, a shot on a
+  hero's record, the bolt and half the spare pool before it looked: with
+  the foes in reach all on another floor it bought a bolt with no foe to
+  lead it, which died on its first tick. Such a cast now refuses `NO FOE IN
+  RANGE` before it pays anything, as it does with nobody in reach at all.
+  On one floor nothing changes (every foe in reach is then on the
+  archmage's floor), so no recording moves. The bot's rule with the setting
+  on counts the same foes ([Bots](#bots)). The old game has no floors, so
+  nothing is ported.
 
 ## Balance
 

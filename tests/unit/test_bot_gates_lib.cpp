@@ -1323,3 +1323,44 @@ TEST_F(BotGatesLib, with_classic_calls_classic_first_on_both_values)
     }
     EXPECT_EQ(after[0], after[1]) << "the same draws on both values";
 }
+
+// on_floor keeps, of the list it is handed, the walkers on the floor asked,
+// in the list's own order, as a new array (the list itself is left as it
+// was); an empty list gives an empty array; nothing is drawn (the probe
+// checks the stream). Four foes in the finder's list order: floor 0, 1, 0, 1.
+//
+// RED (`list[i]:floor() == floor` -> `list[i]:floor() >= floor` in
+// gates.lua M.on_floor): Expected equality of these values:
+// "220,200;260,200;" a.at("floor0") Which is: "220,200;240,200;260,200;280,200;".
+TEST_F(BotGatesLib, on_floor_keeps_only_the_floor_asked_in_list_order)
+{
+    living* self = caster();
+    const short xs[] = {220, 240, 260, 280};
+    for (int i = 0; i < 4; ++i) {
+        living* f = fighter(0, xs[i], 200);
+        ASSERT_NE(nullptr, f);
+        f->set_floor(static_cast<short>(i % 2));
+    }
+    const Answers a = probe(self,
+        "    local found = og.find_foes_in_range('ob', 100, self)\n"
+        "    local function names(list)\n"
+        "      local s = ''\n"
+        "      for i = 1, #list do\n"
+        "        s = s .. where(list[i]) .. ';'\n"
+        "      end\n"
+        "      return s\n"
+        "    end\n"
+        "    og.log('found', names(found))\n"
+        "    og.log('floor0', names(G.on_floor(found, 0)))\n"
+        "    og.log('floor1', names(G.on_floor(found, 1)))\n"
+        "    og.log('floor2', #G.on_floor(found, 2))\n"
+        "    og.log('found_after', #found)\n"
+        "    og.log('empty', #G.on_floor({}, 0))\n");
+    ASSERT_EQ("220,200;240,200;260,200;280,200;", a.at("found"))
+        << "staging: the finder's order";
+    EXPECT_EQ("220,200;260,200;", a.at("floor0"));
+    EXPECT_EQ("240,200;280,200;", a.at("floor1"));
+    EXPECT_EQ("0", a.at("floor2"));
+    EXPECT_EQ("4", a.at("found_after")) << "the list handed in is unchanged";
+    EXPECT_EQ("0", a.at("empty"));
+}
