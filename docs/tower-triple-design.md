@@ -435,7 +435,7 @@ Every ~3rd floor rolls a variant (hash-picked): "rival raiders" (a team-2 squad 
 
 ### 5.10 Interactions & quirks (documented)
 
-Respawns clamped (D3); generator_rate (Calm/Frenzy), difficulty %, keep_fallen_heroes stay player-controlled (dead heroes at a floor WIN follow the permadeath knob — per-floor roster stakes exist between wipes). Mission timeout (36000 ticks) = run over (floors target 1800-4500 ticks — far under). Withdraw-at-exit unreachable (D9); quit-mission = run over. Continue Game resumes a run across restarts (checkpoint + heal). Retry suppressed. CtfState untouched (tower adds no Tier-A state).
+Respawns clamped (D3); generator_rate (Calm/Frenzy), difficulty %, keep_fallen_heroes stay player-controlled (dead heroes at a floor WIN follow the permadeath knob — per-floor roster stakes exist between wipes). Mission timeout (36000 ticks) = run over (floors target 1800-4500 ticks — far under); since #466 only a floor nobody plays (a spectator tower) times out, and a floor a seat plays never does. Withdraw-at-exit unreachable (D9); quit-mission = run over. Continue Game resumes a run across restarts (checkpoint + heal). Retry suppressed. CtfState untouched (tower adds no Tier-A state).
 
 ### 5.11 Calibration (tower)
 

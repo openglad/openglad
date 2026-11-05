@@ -447,7 +447,8 @@ Setting `save_data.numplayers = 0` enables spectator mode:
 - Skips all other player input processing (movement, fire, special, yell)
 - All characters remain AI-controlled: no seat is bound, so no hero is
   claimed (`user() == -1`, never `ACT_CONTROL`)
-- A spectator level ends on a win, the 36000-tick safety timeout, or QUIT
+- A spectator level ends on a win, the 36000-tick timeout of a level
+  nobody plays (a level a seat plays never times out), or QUIT
   from the pause menu — never by its own team being wiped out
 
 In a network lobby, removing the machine's final owned seat through Base

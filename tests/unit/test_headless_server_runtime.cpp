@@ -954,7 +954,7 @@ TEST_F(HeadlessServerRuntimeTest,
     lobby_save.time_limit = 30000; // over the ceiling
     initialize_from_lobby(lobby_save);
     EXPECT_EQ(21600, level_data_->world().ctf_requested_time_limit)
-        << "world entry caps below the engine's 36000-tick loss net";
+        << "world entry caps below the 36000-tick net that ends a level nobody plays";
 
     lobby_save.time_limit = 0; // the map's own value
     initialize_from_lobby(lobby_save);

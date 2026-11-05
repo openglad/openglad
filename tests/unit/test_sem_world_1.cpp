@@ -1331,3 +1331,64 @@ TEST(SemWorld, removing_a_living_never_drops_the_living_census_below_zero)
     EXPECT_EQ(nullptr, world.find_by_id(id)) << "census at 0: the walker left the id index";
     EXPECT_EQ(listed - 1, world.oblist.size()) << "census at 0: one fewer in the object list";
 }
+
+namespace {
+
+// A hostile body that holds the level open and does nothing when it acts.
+struct IdleFoe : walker
+{
+    bool act() override { return true; }
+};
+
+int count_notices(const TestGameWorld& tw, const std::string& text)
+{
+    int n = 0;
+    for (const auto& e : tw.events.events())
+        if (e.kind == og::sim::EventKind::Notification && e.text == text)
+            ++n;
+    return n;
+}
+
+}  // namespace
+
+// game_world.cpp:2667 (#466). A level a seat plays never times out, as in
+// the old game, which has no limit; a level nobody plays (level_unattended:
+// a spectator room, autoplay, a room every player has left) is lost on the
+// tick its count passes 36000: a retreat (ending 1, no next level) with the
+// "Mission timed out. Retreating." notice, and nothing acts that tick.
+TEST(SemWorld, a_played_level_never_times_out_and_an_unattended_one_retreats)
+{
+    const std::string notice = "Mission timed out. Retreating.";
+    for (const bool unattended : {false, true})
+    {
+        TestGameWorld tw;
+        open_field(tw);
+        GameWorld& world = tw.world();
+        auto foe = std::make_unique<IdleFoe>();
+        foe->set_order_family(Order::Living, FAMILY_ORC);
+        foe->set_team_num(1);
+        world.oblist.push_back(std::move(foe));
+        world.level_unattended = unattended;
+
+        world.set_level_tick_count(35999);
+        world.tick();
+        EXPECT_FALSE(world.game_ended) << "tick 36000 is not past the net; unattended " << unattended;
+        world.tick();
+        if (unattended)
+        {
+            EXPECT_TRUE(world.game_ended) << "unattended, tick 36001: the level is lost";
+            EXPECT_EQ(1, world.ending) << "unattended: a retreat";
+            EXPECT_EQ(-1, world.next_level) << "unattended: no next level";
+            EXPECT_EQ(1, count_notices(tw, notice)) << "unattended: the notice, once";
+        }
+        else
+        {
+            EXPECT_FALSE(world.game_ended) << "played, tick 36001: no limit";
+            EXPECT_EQ(0, world.ending) << "played: no retreat";
+            world.set_level_tick_count(3600000);
+            world.tick();
+            EXPECT_FALSE(world.game_ended) << "played, a hundred times the net: no limit";
+            EXPECT_EQ(0, count_notices(tw, notice)) << "played: never the notice";
+        }
+    }
+}

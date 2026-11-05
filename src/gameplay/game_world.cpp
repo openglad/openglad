@@ -2664,17 +2664,17 @@ void GameWorld::tick()
     run_pending_level_on_load();
     level_tick_count_++;
 
-    std::uint32_t max_level_ticks = 36000;
-    // rule: A level that runs past 36000 ticks is lost: the game ends as a retreat (ending 1, no
-    //   next level), a 'Mission timed out. Retreating.' notification is pushed, pending classic
-    //   respawns are flushed, and nothing acts that tick. The test hook shortens the limit.
+    // rule: A level a seat plays never times out (the old game has no limit); a level nobody plays
+    //   (level_unattended) is lost past 36000 ticks: a retreat (ending 1, no next level), a 'Mission
+    //   timed out. Retreating.' notice, pending classic respawns flushed, nothing acts that tick.
     // tests: SimWorld.r15_reset_level_progress_clears_timeout_for_same_level
     // tests: ClassicRespawn.timeout_end_shape_flushes_pending_heroes
-    if (og::sim::g_test_level_tick_limit_override > 0)
+    // tests: SemWorld.a_played_level_never_times_out_and_an_unattended_one_retreats
+    std::uint32_t max_level_ticks = level_unattended ? 36000u : 0u;  // 0: no limit (the old game)
+    if (og::sim::g_test_level_tick_limit_override > 0)  // the test hook limits every level
         max_level_ticks = static_cast<std::uint32_t>(og::sim::g_test_level_tick_limit_override);
-    if (level_tick_count_ > max_level_ticks)
+    if (max_level_ticks != 0 && level_tick_count_ > max_level_ticks)
     {
-        // Hard mission timeout safety net to avoid unbounded gameplay loops.
         game_ended = true;
         ending = 1;
         next_level = -1;
