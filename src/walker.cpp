@@ -3188,7 +3188,7 @@ short walker::special()
 				case 3:  // Freeze time
 					if (special_rest_left > 0 && special_rest_slot == 3) // port of the current game's 54f5890f: FREEZE TIME rests, a press during the rest is refused for free
 						return 0;
-					if (team_num == 0 || myguy) // the player's team
+					if (myscreen->gameplay_fixes ? (team_num == (unsigned char) myscreen->save_data.my_team) : (team_num == 0 || myguy)) // the player's team; port of the current game's 8a3864c7 (Gameplay Fixes AI, #477): with the setting, only a mage on the player's team stops time
 					{
 						myscreen->enemy_freeze += 20 + 11*stats->level;
 						set_palette(myscreen->bluepalette);
