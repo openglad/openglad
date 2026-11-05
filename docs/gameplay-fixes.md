@@ -923,6 +923,8 @@ Rows deliberately not added:
 - #411: the kill credit is a field of the current game alone, not in the
   recording; the mode tests (`ModesOnslaught`, `ModesTdm`) pin it.
 - #417 and #418: no byte of the sim changes; every row proves it.
+- The modding API's changes (#454): no shipped pack reaches the new arms;
+  the core pack the runner mounts loads and runs the same bytes.
 - #413, #414, #415 and #416: the display and the lobby, which no recording
   reaches.
 - Fix AA's two terrain pads. `archer_bot_bolt_pad_terrain`: a bot faces
@@ -1008,6 +1010,19 @@ and P) and six from the second bugs batch:
   writer, `screen::show_palette_id`, now paints only when the palette
   shown changes; anything else that writes the colours marks it unknown,
   and a mission's end forces the restore. This game only.
+
+The modding API and its logs changed in the same batch too, whatever the
+setting. No shipped pack or campaign reaches the new arms, so no player sees
+them; a pack that does gets the documented answer, or a load error that names
+its mistake:
+
+- **A score award to a team past the table is ignored (#454).**
+  `og.award_score(team, points)` checks the team as the Lua number it is
+  before narrowing it to a byte, so 256, 257 or -255 is ignored like any
+  team outside 0..3, as the API reference says: no score and no
+  `ScoreChange`. Before, 256 credited team 0, and 257 and -255 team 1. The
+  shipped treasures pass the eater's team, which is already a byte. This
+  game only (the old game has no Lua API).
 
 ## Balance
 

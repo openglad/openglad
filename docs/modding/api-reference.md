@@ -1005,7 +1005,7 @@ Row layout matches the built-in tables: `row = ani_type * 8 + curdir`.
 
 | Function | Effect |
 |---|---|
-| `og.award_score(team, points)` | Bumps the team's score and emits `ScoreChange`. Teams outside the score table are silently ignored (the engine's `is_valid_score_team()` guard). |
+| `og.award_score(team, points)` | Bumps the team's score and emits `ScoreChange`. Teams outside the score table are silently ignored (the engine's `is_valid_score_team()` guard): any number outside 0..3, including one a byte would wrap onto a real team (256, -255). |
 | `og.set_withdraw_request(level)` | Latches the exit pad's withdraw request (`withdraw_requested` + `withdraw_level` together). |
 | `og.emit_exit_confirmation(prompt, dest_level [, is_withdraw])` | `RequestExitConfirmation` with the exit pad's payload. |
 | `og.emit_withdraw_to_level(level)` | `WithdrawToLevel`. |

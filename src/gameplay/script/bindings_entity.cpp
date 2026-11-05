@@ -2096,18 +2096,18 @@ int og_ani_row(lua_State* L)
 int og_award_score(lua_State* L)
 {
     GameWorld* world = world_arg(L);
-    const auto team = static_cast<unsigned char>(
-        static_cast<std::uint64_t>(luaL_checkinteger(L, 1)));
+    // The team stays the Lua integer it is until the range check: a byte would wrap 256 onto 0.
+    const lua_Integer team = luaL_checkinteger(L, 1);
     const auto points = static_cast<std::uint32_t>(
         static_cast<std::uint64_t>(luaL_checkinteger(L, 2)));
     // rule: A treasure or mode credits score to a team's score slot and announces it with a
-    //   ScoreChange event; a team outside the score table is silently ignored (no score, no event).
+    //   ScoreChange event; a team outside the score table is silently ignored (no score, no event),
+    //   a number a byte would wrap onto a real team (256, 257, -255) included (#454).
     // tests: ScriptBindingTest.award_score_credits_the_team_and_emits_score_change
-    // deferred: #454 the only missing arm is the bug (team narrowed to a byte before the guard);
-    //   not pinned as correct
-    if (team >= SCORE_TEAM_COUNT)
+    // tests: SemScriptMode.a_score_award_to_a_team_a_byte_would_wrap_onto_a_real_team_is_ignored
+    if (team < 0 || team >= SCORE_TEAM_COUNT)
         return 0;
-    world->m_score[team] += points;
+    world->m_score[static_cast<std::size_t>(team)] += points;
     og::sim::emit_event(current_game->sim_events,
                         og::sim::EventKind::ScoreChange,
                         static_cast<std::uint32_t>(team), points);

@@ -1069,6 +1069,36 @@ TEST(SemScriptMode, score_and_respawn_queries_refuse_a_negative_team)
     }
 }
 
+// og_award_score (#454): the team is range-checked as the Lua integer, so a
+// number a byte would wrap onto a real team (256 -> 0, 257 -> 1, -255 -> 1)
+// is outside the score table and silently ignored, as -1 and 4 are.
+TEST(SemScriptMode, a_score_award_to_a_team_a_byte_would_wrap_onto_a_real_team_is_ignored)
+{
+    SemModeWorld fx;
+    fx.run_on_load(
+        "    og.award_score(256, 10)\n"
+        "    og.award_score(257, 20)\n"
+        "    og.award_score(-255, 30)\n"
+        "    og.award_score(-1, 40)\n"
+        "    og.award_score(4, 50)\n"
+        "    og.award_score(3, 5)\n"
+        "    og.log('done')\n");
+    ASSERT_EQ((std::vector<std::string>{"done"}), fx.logged("done")) << fx.script_errors();
+    EXPECT_TRUE(fx.world().scripts().host().errors().empty()) << fx.script_errors();
+    EXPECT_EQ(0u, fx.world().m_score[0]) << "256 is not team 0";
+    EXPECT_EQ(0u, fx.world().m_score[1]) << "257 and -255 are not team 1";
+    EXPECT_EQ(0u, fx.world().m_score[2]);
+    EXPECT_EQ(5u, fx.world().m_score[3]) << "the in-range control is credited";
+
+    std::vector<og::sim::Event> scores;
+    for (const auto& e : fx.events.events())
+        if (e.kind == og::sim::EventKind::ScoreChange)
+            scores.push_back(e);
+    ASSERT_EQ(1u, scores.size()) << "only the control announces a score";
+    EXPECT_EQ(3u, scores[0].a);
+    EXPECT_EQ(5u, scores[0].b);
+}
+
 // ===========================================================================
 // og_match_setting (bindings_entity.cpp:2899) — the difficulty arm, under
 // both Gameplay Fixes values.
