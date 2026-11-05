@@ -21,7 +21,7 @@ local function gold_bar_on_eat(self, eater)
     og.award_score(eater.team,
                    og.tuning(self).score_per_level * self.level)
     self.dead = 1
-    og.emit_sound(C.SOUND_MONEY)
+    og.emit_positional_sound(self, C.SOUND_MONEY)
   end
   return true
 end
@@ -36,7 +36,7 @@ local function silver_bar_on_eat(self, eater)
     og.award_score(eater.team,
                    og.tuning(self).score_per_level * self.level)
     self.dead = 1
-    og.emit_sound(C.SOUND_MONEY)
+    og.emit_positional_sound(self, C.SOUND_MONEY)
   end
   return true
 end
@@ -97,7 +97,7 @@ local function key_on_eat(self, eater)
       -- Broadcast on purpose: keys are per-walker, so "Gorik picks up key 3"
       -- is the only way the rest of the party learns who can open that door.
       og.emit_notification(message)
-      og.emit_sound(C.SOUND_MONEY)
+      og.emit_positional_sound(eater, C.SOUND_MONEY)
     end
   end
   return true

@@ -925,6 +925,11 @@ Rows deliberately not added:
 - #417 and #418: no byte of the sim changes; every row proves it.
 - #413, #414, #415 and #416: the display and the lobby, which no recording
   reaches.
+- #468 and #445: the box a sound carries is not in the recording, and every
+  sound now placed asks the recorder's 320 x 200 view of the walker the old
+  game asked `on_screen()` of, so every row records the old game's sounds;
+  none moved.
+- #484: no behaviour changes, and none of the display fields is recorded.
 - Fix AA's two terrain pads. `archer_bot_bolt_pad_terrain`: a bot faces
   up at its spawn and no tile that stops a weapon sits directly above
   ground on scen1, so the only terrain arena is an archer beside a tree
@@ -940,8 +945,9 @@ Rows deliberately not added:
 
 ## Not gated
 
-Nine changes apply whatever the setting, three from the work that added it (N, O
-and P) and six from the second bugs batch:
+Ten changes apply whatever the setting, three from the work that added it (N, O
+and P) and seven from the second bugs batch; the last entry records a
+difference kept on purpose (#484):
 
 - **N. A slot that is not in play says so.** `walker::special()` refuses a
   slot priced 5000 (an undeclared slot, or one New Specials hides) before it
@@ -1008,6 +1014,34 @@ and P) and six from the second bugs batch:
   writer, `screen::show_palette_id`, now paints only when the palette
   shown changes; anything else that writes the colours marks it unknown,
   and a mission's end forces the restore. This game only.
+- **Off-screen sounds are silent again (#468, #445).** In the old game every
+  in-world sound played only while its walker was on screen; the current
+  game played every one of them on every machine, so a fight across the map
+  sounded next to you. Each such sound is now placed at its walker: the
+  event carries the walker's box, and each machine plays it only while one
+  of its own seat views shows that box, by the old game's test (a box
+  touching a view's edge counts). The shot and the clang, the death cry
+  (placed at the hitter, as the old game asked), the generator's explosions,
+  the classic casts (CHARGE, DISARM, HEAL, TURN UNDEAD, HEARTBURST at the
+  mage, PROTECTION, HOWL), the pickups (a key at its eater), the blasts and
+  the New Specials kits are placed; the YO, a seat's failure clang and the
+  modes' and level scripts' announcements stay cues every machine plays.
+  Floors are not checked, and the camera pane does not count as a view. No
+  byte of the recording changes: the box rides a field the recording leaves
+  out, and the parity recorder's 320 x 200 test is asked of the same walker
+  the old game asked. This game only.
+- **The simulation records every display effect (#484).** Not a change. The
+  old game decided the melee lunge, the hit and heal numbers, a walled-in
+  walker's red 1, the hurt flash, the recoil and the hit animation where it
+  made them, from its own machine's toggles (the lunge only on screen). The
+  current game records them all and each machine's drawing applies its own
+  toggles, as it has since `25eada99`: the server has no views and no
+  toggles, every machine has its own, and the lunge and the recoil travel in
+  snapshots and in replays. With an effect off neither game draws it; two
+  transients differ, the tail of a lunge on a walker that scrolls into view
+  within three acts of the blow, and a number made in the 1.7 s or so before
+  damage numbers are turned on. `SemPresentation`
+  (`tests/unit/test_sem_presentation_1.cpp`) pins it with every toggle off.
 
 ## Balance
 

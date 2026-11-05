@@ -14,6 +14,8 @@
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/game_world.h>
+#include <openglad/gameplay/sim_emit.h>
+#include <openglad/gameplay/sound_source.h>
 #include <openglad/core/pixdefs.h>
 #include <openglad/core/terrain_types.h>
 
@@ -482,3 +484,16 @@ IRandom* gameplay_session_rng()
         ? *current_game->session_rng_ref
         : nullptr;
 }
+
+namespace og::sim {
+
+std::uint32_t sound_source_of(const walker* source)
+{
+    // plumbing: no walker to place the sound at: it goes out unplaced, heard by every machine
+    if (source == nullptr)
+        return 0;
+    return pack_sound_source(source->xpos(), source->ypos(),
+                             source->sizex(), source->sizey());
+}
+
+} // namespace og::sim

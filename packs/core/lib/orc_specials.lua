@@ -68,7 +68,7 @@ function M.yell(self)
     end
   end
 
-  og.emit_sound(C.SOUND_ROAR)
+  og.emit_positional_sound(self, C.SOUND_ROAR)
   return true
 end
 

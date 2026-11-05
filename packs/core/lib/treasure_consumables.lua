@@ -40,7 +40,7 @@ local function drumstick_on_eat(self, eater)
   end
   self:do_heal_effects(nil, eater, amount)
   self:set_dead(1)
-  og.emit_sound(C.SOUND_EAT)
+  og.emit_positional_sound(self, C.SOUND_EAT)
   return true
 end
 

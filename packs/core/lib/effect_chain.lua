@@ -57,7 +57,7 @@ local function on_act(self)
     blast:center_on(self)
     -- can't hit us for 3 rounds ..
     leader:set_skip_exit(leader:skip_exit() + 3)
-    og.emit_sound(C.SOUND_EXPLODE)
+    og.emit_positional_sound(self, C.SOUND_EXPLODE)
     -- Now make new objects to seek out foes ..
     local t = og.tuning(self)
     -- shim kept: damage is a C++ float, but master STORES the cut in a

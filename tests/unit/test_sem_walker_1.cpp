@@ -16,10 +16,11 @@
 // here and pushed onto the oblist.
 //
 // Sounds. In the old game a shot or a clang sounds only when the walker is on
-// screen; the current game emits every positional sound unless a visibility
-// test is installed (#468). These tests install one that answers "on screen",
-// so what they pin (which sound, and that an on-screen hit sounds) is the
-// old game's rule, not the #468 difference.
+// screen. The current game emits every positional sound placed at its walker
+// unless a visibility test is installed, and each machine plays it only where
+// one of its own views shows that place (#468; SemPresentation pins the
+// placing). These tests install a test that answers "on screen", so what they
+// pin is which sound, and that an on-screen hit sounds.
 
 #include <gtest/gtest.h>
 
@@ -995,7 +996,7 @@ TEST_F(SemWalker1, every_launch_by_a_player_counts_as_a_shot)
 // family number with no weapon at all fwips. The old game compares the
 // spawn's family against the same weapon constants (openglad-master
 // src/walker.cpp:835-853), so the collision is classic. Every launch here is
-// on screen (see the file comment and #468).
+// on screen (see the file comment).
 // RED (planted): `get_weapon_family_descriptor(weapon->family())` ->
 // `(weapon->family() + 1)`.
 TEST_F(SemWalker1, classic_a_launch_sounds_by_its_weapon_family_number_spawns_included)

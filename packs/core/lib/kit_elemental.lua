@@ -226,7 +226,7 @@ local function strike(marker, owner, t)
     blast.ani_type = C.ANI_EXPLODE
     blast:s_set_bit_flags(C.BIT_FIRE, 1)
     blast:set_skip_exit(100)
-    og.emit_sound(C.SOUND_EXPLODE)
+    og.emit_positional_sound(blast, C.SOUND_EXPLODE)
   end
 end
 
@@ -371,7 +371,7 @@ local function rekindle(self, t)
   end
   self:heal_clamped(t.rekindle_hp + self.level * 4)
   hit_flash(self)
-  og.emit_sound(C.SOUND_HEAL)
+  og.emit_positional_sound(self, C.SOUND_HEAL)
   return true
 end
 
@@ -437,7 +437,7 @@ local function supernova(self, t)
       end
     end
   end
-  og.emit_sound(C.SOUND_EXPLODE)
+  og.emit_positional_sound(self, C.SOUND_EXPLODE)
   self.hp = 0
   self.dead = 1
   self:death()

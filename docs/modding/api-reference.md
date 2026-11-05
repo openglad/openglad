@@ -978,8 +978,8 @@ Row layout matches the built-in tables: `row = ani_type * 8 + curdir`.
 
 | Function | Effect |
 |---|---|
-| `og.emit_sound(id)` | `og.C.SOUND_*`. |
-| `og.emit_positional_sound(self, id)` | |
+| `og.emit_sound(id)` | `og.C.SOUND_*`. A cue every machine hears, wherever its views are: a mode's or a level script's announcement. |
+| `og.emit_positional_sound(self, id)` | An in-world sound placed at the walker `self` (any walker: the caster, the treasure, the blast): each machine hears it only while one of its own views shows that walker, as the old game played its sounds only on screen (#468). Use it for anything that happens at a place on the map. |
 | `og.emit_notification(text [, duration [, target]])` | Integers and plain strings only — never format a float into sim-visible text. `target` is a walker (the line goes to whoever controls it) or a global player index; omitted, or any index outside `0..15`, broadcasts. |
 | `og.emit_event(kind, a, b)` | Raw event; `kind` from `og.C.EVENT_*`. `a`/`b` default to 0. |
 

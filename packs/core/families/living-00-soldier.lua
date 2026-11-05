@@ -27,7 +27,7 @@ local function charge(self)
   self:s_add_command(C.COMMAND_RUSH, 3,
     og.trunc(og.fdiv(self:lastx(), self:stepsize())),
     og.trunc(og.fdiv(self:lasty(), self:stepsize())))
-  og.emit_sound(C.SOUND_CHARGE)
+  og.emit_positional_sound(self, C.SOUND_CHARGE)
   return true
 end
 
@@ -199,7 +199,7 @@ local function disarm(self)
     self:set_busy(og.fadd(self:busy(), 5.0))
     return false, "DISARM RESISTED"
   end
-  og.emit_sound(C.SOUND_CHARGE)
+  og.emit_positional_sound(self, C.SOUND_CHARGE)
   -- rule: The 'Fighter Disarmed Enemy!' notice is shown only for a soldier on the player team (team
   --   0) or a hero (has a guy); an enemy bot's disarm is silent. Classic quirk: the notice needs
   --   only a foe in reach (found==1), so it is shown on a LOST roll too (no foe staggered); with

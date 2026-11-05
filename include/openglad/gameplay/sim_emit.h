@@ -18,11 +18,13 @@
 
 namespace og::sim {
 
-// Emit a sound event. The runtime event dispatcher will play the
-// sound via the audio subsystem after the simulation tick.
+// Emit an unplaced sound event: a cue every machine plays (the YO, a mode's
+// or a level script's announcement). The runtime event dispatcher will play
+// the sound via the audio subsystem after the simulation tick. An in-world
+// sound goes through emit_positional_sound instead.
 // target_player addresses one global player index (walker::user()); -1
-// broadcasts, which is what every world sound wants. A cue that speaks to a
-// single seat passes its seat here so the clang follows the line.
+// broadcasts. A cue that speaks to a single seat passes its seat here so the
+// clang follows the line.
 inline void emit_sound(SimEventLog* log, std::uint32_t sound_id,
                        std::int32_t target_player = -1)
 {
@@ -30,6 +32,25 @@ inline void emit_sound(SimEventLog* log, std::uint32_t sound_id,
         log->push_sound(sound_id, target_player);
 }
 
+// The packed box of the walker a sound comes from (sound_source.h), or 0 for
+// no walker: an unplaced sound, heard by every machine.
+std::uint32_t sound_source_of(const walker* source);
+
+// Emit an in-world sound placed at `source`: each machine plays it only while
+// one of its own views shows the source, as the old game played it only on
+// screen (#468). It asks no visibility test here, so a caller that already
+// asked one (the death cry, whose coin is drawn only when it is heard) does
+// not ask twice.
+inline void emit_sound_at(SimEventLog* log, const walker* source,
+                          std::uint32_t sound_id)
+{
+    if (log)
+        log->push_sound(sound_id, -1, sound_source_of(source));
+}
+
+// Emit an in-world sound placed at `source`, after the visibility test a test
+// driver may install (the parity recorder installs the old game's 320 x 200
+// view; play installs none and leaves the choice to each machine's views).
 inline void emit_positional_sound(SimEventLog* log, const walker* source,
                                   std::uint32_t sound_id)
 {
@@ -37,7 +58,7 @@ inline void emit_positional_sound(SimEventLog* log, const walker* source,
         !current_game->positional_sound_visible(
             source, sound_id, current_game->positional_sound_visible_user))
         return;
-    emit_sound(log, sound_id);
+    emit_sound_at(log, source, sound_id);
 }
 
 // Emit a text notification event. The runtime event dispatcher will

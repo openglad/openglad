@@ -92,7 +92,7 @@ function M.on_death(self)
   if self:leader() then
     return true
   end
-  og.emit_sound(C.SOUND_EXPLODE)
+  og.emit_positional_sound(self, C.SOUND_EXPLODE)
   og.emit_notification("The banner falls.")
   return true
 end

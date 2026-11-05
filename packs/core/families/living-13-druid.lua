@@ -237,7 +237,7 @@ local function protection_circle(self)
   if self.team == 0 or self:has_guy() then
     og.emit_notification(message)
   end
-  og.emit_sound(C.SOUND_HEAL)
+  og.emit_positional_sound(self, C.SOUND_HEAL)
   return true
 end
 

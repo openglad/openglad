@@ -38,7 +38,7 @@ local function bomb_on_death(self)
   if not self:owner() or self:owner():dead() ~= 0 then
     self:set_owner(self)
   end
-  og.emit_sound(C.SOUND_EXPLODE)
+  og.emit_positional_sound(self, C.SOUND_EXPLODE)
   local blast = og.add_ob("fx", FX_EXPLOSION)
   -- rule: A bomb that goes off in a full world still makes its explosion sound and dies, but no
   --   blast hurts anyone.

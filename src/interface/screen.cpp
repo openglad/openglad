@@ -49,9 +49,11 @@
 #include <openglad/interface/render/view_layout.h>
 #include <openglad/core/scale_mode.h>
 #include <openglad/core/test_trace.h>
+#include <openglad/core/view_box.h>
 #include <openglad/interface/ui/results_screen.h>
 #include <openglad/gameplay/script/campaign_hooks.h>
 #include <openglad/gameplay/sim_event_log.h>
+#include <openglad/gameplay/sound_source.h>
 #include <openglad/gameplay/world_snapshot.h>
 #include <openglad/interface/render/pal32.h>
 #include <openglad/interface/platform_bridge.h>
@@ -259,6 +261,25 @@ void dispatch_cosmetic_screen_events(screen& self,
                             }
                         }
                         if (!addressed_here)
+                            break;
+                    }
+                    // A placed sound plays only while some view on this
+                    // machine shows its source: the old game's on-screen
+                    // test, asked per machine (#468). Seat views only; the
+                    // camera pane is not one. An unplaced cue (c == 0)
+                    // plays everywhere.
+                    if (const auto source = og::sim::unpack_sound_source(ev.c))
+                    {
+                        bool shown = false;
+                        for (short vi = 0; vi < self.numviews && !shown; vi++)
+                        {
+                            const viewscreen& v = *self.viewob[vi];
+                            shown = og::core::box_on_view(
+                                source->x, source->y, source->span,
+                                source->span, v.topx, v.topy, v.xview,
+                                v.yview);
+                        }
+                        if (!shown)
                             break;
                     }
                     const PlatformBridge& bridge = platform_bridge();

@@ -516,7 +516,7 @@ local function heartburst(self)
     -- walkers (explosion_on_death floor filter).
     burst:set_floor(foe:floor())
     burst:center_on(foe)
-    og.emit_sound(C.SOUND_EXPLODE)
+    og.emit_positional_sound(self, C.SOUND_EXPLODE)
     burst.ani_type = C.ANI_EXPLODE
     burst:s_set_bit_flags(C.BIT_MAGICAL, 1)
     -- The legacy dummy field says "don't hurt caster" here.

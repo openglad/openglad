@@ -607,7 +607,7 @@ local function burst_or_chain(self)
       -- blast damage on that floor.
       burst:set_floor(foe:floor())
       burst:center_on(foe)
-      og.emit_sound(C.SOUND_EXPLODE)
+      og.emit_positional_sound(self, C.SOUND_EXPLODE)
       burst.ani_type = C.ANI_EXPLODE
       burst:s_set_bit_flags(C.BIT_MAGICAL, 1)  -- (set twice in the C++)
       burst:set_skip_exit(100)
