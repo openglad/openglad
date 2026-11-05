@@ -1266,6 +1266,17 @@ void living::set_difficulty(Uint32 whatlevel)
 		stats->max_magicpoints = (stats->max_magicpoints*dif1) / 100.0f;
 		damage = (damage * dif1) / 100.0f;
 	}
+	// port of the current game's A12a and ed2ae90e (#473), not behind the
+	// setting: a team-0 walker with no player character takes the
+	// difficulty percent like its foes; at 100% the multiply is skipped
+	// (not done by 1), so every capture at the default difficulty is
+	// byte-identical
+	else if (myguy == NULL && dif1 != 100)
+	{
+		stats->max_hitpoints = (stats->max_hitpoints*dif1) / 100.0f;
+		stats->max_magicpoints = (stats->max_magicpoints*dif1) / 100.0f;
+		damage = (damage * dif1) / 100.0f;
+	}
 
 	stats->hitpoints = stats->max_hitpoints;
 	stats->magicpoints = stats->max_magicpoints;

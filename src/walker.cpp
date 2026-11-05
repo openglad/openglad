@@ -5258,7 +5258,10 @@ void walker::set_difficulty(Uint32 whatlevel)
 			stats->max_hitpoints = temp;
 			break;
 		default:  // adjust standard settings for the rest ..
-			if (team_num != 0)  // do all EXCEPT player characters
+			// port of the current game's ed2ae90e (#473): a team-0 shot of
+			// a living with no player character takes the percent with its
+			// shooter's body (A12a, living.cpp), never at 100%
+			if (team_num != 0 || (dif1 != 100 && owner && owner->query_order() == ORDER_LIVING && owner->myguy == NULL))  // do all EXCEPT player characters
 			{
 				stats->max_hitpoints = (stats->max_hitpoints*dif1) / 100.0f;
 				stats->max_magicpoints = (stats->max_magicpoints*dif1) / 100.0f;
