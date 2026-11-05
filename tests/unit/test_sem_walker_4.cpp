@@ -624,6 +624,43 @@ TEST_F(SemWalker4, a_player_slide_draws_the_moved_axis_one_cycle_on_classic)
     }
 }
 
+// walker_movement.cpp:426 (#470). A player's wall slide tries one pixel per
+// STARTED unit of stepsize, as the old game's `for (i = 0; i < step; i++)`
+// does with an int counter and a float step: ceil(step) pixels, not
+// floor(step). A wall row above the slider blocks the full step, the baby
+// step and every pixel up; the cells along the wall are open.
+TEST_F(SemWalker4, a_wall_slide_moves_one_pixel_per_started_unit_of_stepsize)
+{
+    struct Slide
+    {
+        const char* arm;
+        float step;
+        int dir;
+        float dx;
+        short end_x;
+    };
+    const Slide slides[] = {
+        {"up-right, stepsize 2.2: three pixels", 2.2f, FACE_UP_RIGHT, 1.0f, 67},
+        {"up-right, stepsize 2.0: two pixels", 2.0f, FACE_UP_RIGHT, 1.0f, 66},
+        {"up-right, stepsize 1.5: two pixels", 1.5f, FACE_UP_RIGHT, 1.0f, 66},
+        {"up-left, stepsize 2.2: three pixels", 2.2f, FACE_UP_LEFT, -1.0f, 61},
+    };
+    for (const Slide& s : slides)
+    {
+        fresh_world();
+        for (int tx = 0; tx < 64; ++tx)
+            tile(tx, 4, PIX_H_WALL1);  // y 64..79: the wall above the slider
+        walker* w = living_at(FAMILY_SOLDIER, 0, 64, 80);
+        ASSERT_NE(nullptr, w) << s.arm;
+        w->set_stepsize(s.step);
+        w->set_user(0);
+        w->set_curdir(static_cast<signed char>(s.dir));
+        EXPECT_FALSE(w->walkstep(s.dx, -1.0f)) << s.arm << ": the slide reports failure";
+        EXPECT_EQ(s.end_x, w->xpos()) << s.arm;
+        EXPECT_EQ(80, w->ypos()) << s.arm << ": the wall keeps it from moving up";
+    }
+}
+
 // walker_movement.cpp:326. A stationary living's walk only turns it.
 TEST_F(SemWalker4, a_stationary_living_walk_only_sets_its_facing)
 {
