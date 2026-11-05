@@ -1153,9 +1153,8 @@ TEST(SemWorld, the_full_foe_scan_finds_a_foe_on_another_floor)
         << "floor arm: the full scan does not filter by floor";
 }
 
-// game_world.cpp:1270 (reach arm only; the floor arm is issue #456). The
-// corpse finder reaches a stain only under squared distance 800: exactly 800
-// and 841 are out of reach, 784 is in.
+// game_world.cpp:2114. The corpse finder reaches a stain only under squared
+// distance 800: exactly 800 and 841 are out of reach, 784 is in.
 TEST(SemWorld, the_corpse_finder_reaches_only_under_squared_distance_800)
 {
     TestGameWorld tw;
@@ -1177,6 +1176,47 @@ TEST(SemWorld, the_corpse_finder_reaches_only_under_squared_distance_800)
     stain->setxy(428, 400);
     ASSERT_EQ(784, finder->distance_to_ob_center(stain));
     EXPECT_EQ(stain, world.find_nearest_blood(finder)) << "784: in reach";
+}
+
+// game_world.cpp:2104 (#456). The corpse finder answers only a stain on the
+// finder's own floor: a nearer stain on another floor is never answered and
+// never hides the one on the finder's floor; with that one dead, nothing on
+// the floor answers; on the other floor, the other stain does. Draw-free.
+TEST(SemWorld, the_corpse_finder_reaches_only_a_stain_on_the_finders_floor)
+{
+    TestGameWorld tw;
+    open_field(tw, 60, 60);
+    GameWorld& world = tw.world();
+    world.set_floor_count(2);
+    walker* finder = add_living(tw, FAMILY_SOLDIER, 0, 0, 0);
+    walker* below = world.add_fx_ob(Order::Treasure, FAMILY_STAIN);
+    walker* here = world.add_fx_ob(Order::Treasure, FAMILY_STAIN);
+    ASSERT_TRUE(finder && below && here);
+    finder->change_floor(1);
+    finder->setxy(400, 400);
+    for (walker* s : {below, here})
+    {
+        s->set_sizex(16);
+        s->set_sizey(16);
+    }
+    below->set_floor(0);
+    below->setxy(401, 400);
+    here->set_floor(1);
+    here->setxy(410, 400);
+    ASSERT_EQ(1, static_cast<int>(finder->floor()));
+    ASSERT_EQ(1, finder->distance_to_ob_center(below));
+    ASSERT_EQ(100, finder->distance_to_ob_center(here));
+    const std::uint32_t start = world.rng_.state_;
+
+    EXPECT_EQ(here, world.find_nearest_blood(finder))
+        << "floor 1: the stain below is nearer but on floor 0; the one on floor 1 answers";
+    here->set_dead(1);
+    EXPECT_EQ(nullptr, world.find_nearest_blood(finder))
+        << "floor 1, its stain dead: the stain on floor 0 never answers";
+    finder->change_floor(0);
+    ASSERT_EQ(0, static_cast<int>(finder->floor()));
+    EXPECT_EQ(below, world.find_nearest_blood(finder)) << "floor 0: its own stain answers";
+    EXPECT_EQ(start, world.rng_.state_) << "the finder draws nothing";
 }
 
 // game_world.cpp:1297. Classic quirk (kept): the leader finder has no dead

@@ -166,8 +166,8 @@ local function live_grunts(self)
 end
 
 -- A blood stain the captain stands on (within the squared reach), on its
--- floor, or nil (find_nearest_blood is floor-blind and team-blind; the bot
--- gates' library adds the floor and the reach).
+-- floor, or nil (find_nearest_blood answers only the captain's floor and is
+-- team-blind; the bot gates' library adds the reach).
 local function corpse_underfoot(self, reach_sq)
   return G.corpse_underfoot(self, reach_sq)
 end

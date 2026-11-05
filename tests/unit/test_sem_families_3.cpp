@@ -760,6 +760,49 @@ TEST_F(SemOrc, the_fixed_gate_leaves_any_other_slot_to_the_classic_answer)
     EXPECT_FALSE(gate(orc, 3, 1)) << "other-slot arm, fixes on: the classic answer (false)";
 }
 
+// orc_specials.lua:78 (#456). EAT CORPSE reaches only a stain on the orc's
+// own floor: a hurt orc on a balcony (floor 1) right above a corpse on
+// floor 0 refuses NO CORPSE NEARBY, for free, and the stain stays; with the
+// stain on the balcony it eats it and heals the stain's level times 5.
+TEST_F(SemOrc, an_orc_on_a_balcony_cannot_eat_the_corpse_below)
+{
+    for (const short stain_floor : {short{0}, short{1}})
+    {
+        fresh_world();
+        world().set_floor_count(2);
+        living* orc = body(add(FAMILY_ORC, 1, 200, 200, 4, 100.0f), 16, 16);
+        walker* stain = world().add_fx_ob(Order::Treasure, FAMILY_STAIN);
+        ASSERT_TRUE(orc && stain);
+        orc->change_floor(1);
+        orc->setxy(200, 200);
+        orc->stats()->set_hitpoints(100.0f);  // hurt: 100 of 400
+        stain->set_sizex(16);
+        stain->set_sizey(16);
+        stain->set_floor(stain_floor);
+        stain->stats()->set_level(3);
+        stain->set_dead(0);
+        stain->setxy(200, 200);
+        ASSERT_EQ(0, orc->distance_to_ob_center(stain)) << "staging: right above or on it";
+        std::string reason;
+        const bool ate = cast(orc, 2, 0, &reason);
+        if (stain_floor == 0)
+        {
+            EXPECT_FALSE(ate) << "the corpse below: refused";
+            EXPECT_EQ("NO CORPSE NEARBY", reason) << "the corpse below";
+            EXPECT_FLOAT_EQ(100.0f, orc->stats()->hitpoints()) << "the corpse below: no heal";
+            EXPECT_FLOAT_EQ(100.0f, orc->stats()->magicpoints()) << "the corpse below: free";
+            EXPECT_EQ(0, static_cast<int>(stain->dead())) << "the corpse below: not eaten";
+        }
+        else
+        {
+            EXPECT_TRUE(ate) << "the corpse on the balcony: " << reason;
+            EXPECT_FLOAT_EQ(115.0f, orc->stats()->hitpoints()) << "level 3 * 5 healed";
+            EXPECT_FLOAT_EQ(80.0f, orc->stats()->magicpoints()) << "the 20-MP price";
+            EXPECT_EQ(1, static_cast<int>(stain->dead())) << "the corpse on the balcony: eaten";
+        }
+    }
+}
+
 // ===========================================================================
 // The barbarian (packs/core/families/living-16-barbarian.lua)
 // ===========================================================================

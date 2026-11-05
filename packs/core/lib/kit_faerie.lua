@@ -122,7 +122,7 @@ end
 
 -- WISH's corpse: the nearest friendly blood stain on the faerie's floor
 -- closer than `range`, or nil. og.find_nearest_blood would answer any
--- team's stain on any floor, so the fx list is scanned here instead.
+-- team's stain, so the fx list is scanned here instead.
 local function wish_stain(self, range)
   local fxs = og.fxlist()
   local best = nil

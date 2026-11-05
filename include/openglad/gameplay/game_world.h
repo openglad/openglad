@@ -511,9 +511,11 @@ public:
     walker* find_near_foe(walker* ob);
     // Scan all live, non-dormant foes and return the nearest by 2D distance.
     walker* find_nearest_foe(walker* ob);
+    // The nearest live stain on who's floor (squared centre distance under
+    // 800), or nullptr; a stain on another floor is never answered (#456).
     walker* find_nearest_blood(walker* who);
     // Every stain find_nearest_blood would consider (live FAMILY_STAIN
-    // treasure, squared centre distance under 800) on who's floor, nearest
+    // treasure on who's floor, squared centre distance under 800), nearest
     // first; ties keep fxlist order. Draw-free; empty for a null who.
     std::vector<walker*> find_blood_in_reach(walker* who);
     walker* find_nearest_player(walker* ob);

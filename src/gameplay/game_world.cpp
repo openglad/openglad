@@ -2091,26 +2091,26 @@ walker* GameWorld::find_nearest_blood(walker* who)
     for (auto& uptr : fxlist)
     {
         walker* w = uptr.get();
-        // rule: The corpse finder used by classic raises returns the nearest live blood stain in
-        //   the effect list whose squared centre distance from the finder is under 800 (about 28
-        //   px), on ANY floor; dead stains and non-stain treasures are ignored; ties keep fxlist
-        //   order.
+        // rule: The corpse finder returns the nearest live blood stain in the effect list on the
+        //   finder's own floor whose squared centre distance from it is under 800 (about 28 px); a
+        //   stain on another floor is never answered and never hides one on the finder's floor
+        //   (#456); dead stains and non-stain treasures are ignored; ties keep fxlist order.
         // tests: QuietProbe.find_blood_in_reach_walks_the_finders_stains_nearest_first
         // tests: LevelDataCoverage.level_data_round14_find_helper_exclusion_branches
         // tests: SemWorld.the_corpse_finder_reaches_only_under_squared_distance_800
-        // deferred: #456 the floor-blind arm is bug #456 (triage) and is not pinned; the reach arm
-        //   (841 and exactly 800 out, 784 in) is asserted
+        // tests: SemWorld.the_corpse_finder_reaches_only_a_stain_on_the_finders_floor
+        // tests: SemOrc.an_orc_on_a_balcony_cannot_eat_the_corpse_below
         if (w && w->query_order() == Order::Treasure &&
-            w->family() == FAMILY_STAIN && !w->dead())
+            w->family() == FAMILY_STAIN && !w->dead() && w->floor() == who->floor())
         {
             const std::int32_t newdistance =
                 static_cast<std::int32_t>(who->distance_to_ob_center(w));
-            // rule: The corpse finder used by classic raises returns the nearest live blood stain
-            //   in the effect list whose squared centre distance from the finder is under 800
-            //   (about 28 px), on ANY floor. Here: `newdistance < distance (start 800)`.
+            // rule: The corpse finder returns the nearest live blood stain on its own floor whose
+            //   squared centre distance is under 800. Here: `newdistance < distance (start 800)`.
             // tests: QuietProbe.find_blood_in_reach_walks_the_finders_stains_nearest_first
             // tests: LevelDataCoverage.level_data_round14_find_helper_exclusion_branches
             // tests: SemWorld.the_corpse_finder_reaches_only_under_squared_distance_800
+            // tests: SemCleric.classic_a_raise_never_reaches_a_corpse_on_another_floor
             if (newdistance < distance)
             {
                 distance = newdistance;
@@ -3784,7 +3784,7 @@ void GameWorld::adopt_scripts_from(GameWorld& source) noexcept
 // The walk of find_nearest_blood, keeping every stain it would consider
 // instead of the nearest alone, on who's own floor, sorted nearest first by
 // the same squared centre distance; a stable sort, so equal distances keep
-// fxlist order. find_nearest_blood itself is left as it is (the classic
+// fxlist order. find_nearest_blood answers the nearest alone (the classic
 // raises read it). Appended below the last parity canary pin in this file
 // so the pins above never shift.
 std::vector<walker*> GameWorld::find_blood_in_reach(walker* who)
@@ -3800,7 +3800,7 @@ std::vector<walker*> GameWorld::find_blood_in_reach(walker* who)
         walker* w = uptr.get();
         // rule: The new-specials raise finder lists every live blood stain on the finder's own
         //   floor within squared centre distance under 800, nearest first, ties in effect-list
-        //   order, drawing no RNG. Unlike find_nearest_blood (above) it is floor-scoped.
+        //   order, drawing no RNG. Like find_nearest_blood (above) it is floor-scoped.
         // tests: QuietProbe.find_blood_in_reach_walks_the_finders_stains_nearest_first
         if (w && w->query_order() == Order::Treasure &&
             w->family() == FAMILY_STAIN && !w->dead() &&

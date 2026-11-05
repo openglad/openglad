@@ -558,15 +558,15 @@ function M.owned_phantom(self)
   return nil
 end
 
--- The stain find_nearest_blood returns on the caster's floor, by the meal's
+-- The stain find_nearest_blood returns (only ever on the caster's floor), by the meal's
 -- compare: squared centre distance (the finder never answers beyond about 28 px of centre).
 function M.corpse_underfoot(self, reach_sq)
   local blood = og.find_nearest_blood(self)
-  -- rule: A corpse is underfoot when the nearest blood stain (the finder never answers beyond ~28
-  --   px of centre) is on the caster's floor and within the squared centre distance asked
-  --   (inclusive).
+  -- rule: A corpse is underfoot when the nearest blood stain on the caster's floor (the finder
+  --   answers no other floor and never beyond ~28 px of centre) is within the squared centre
+  --   distance asked (inclusive).
   -- tests: BotGatesLib.corpse_underfoot_is_capped_by_the_finder
-  if not blood or blood:floor() ~= self:floor() then
+  if not blood then
     return nil
   end
   if self:distance_to_ob_center(blood) <= reach_sq then

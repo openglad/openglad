@@ -851,7 +851,7 @@ which accepts either a guy handle or a walker.
 | Function | Result |
 |---|---|
 | `og.find_near_foe(self)` | Handle or `nil`. First foe met by the searcher's floor-specific obmap spiral; nearest foe if the spiral finds none or leaves the map. |
-| `og.find_nearest_blood(self)` | Handle or `nil`. |
+| `og.find_nearest_blood(self)` | Handle or `nil`: the nearest live blood stain on `self`'s floor whose squared centre distance from `self` is under 800 (about 28 px). A stain on another floor is never answered. Draw-free. |
 | `og.blood_in_reach(self)` | Array — every stain `og.find_nearest_blood` would consider (a live stain whose squared centre distance from `self` is under 800, about 28 px), on `self`'s floor, nearest first; equal distances keep fx-list order. Draw-free. |
 | `og.foes_in_range(self, range)` | Array — the `for_each_foe_in_range` traversal. |
 | `og.find_foes_in_range(list, range, self)` | Array, count. |

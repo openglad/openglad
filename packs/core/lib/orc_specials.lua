@@ -75,9 +75,9 @@ end
 function M.eat_corpse(self)
   -- eat corpse for health (specials 2/3/4 and the default case)
   -- can't eat if we're 'full'
-  -- rule: EAT CORPSE refuses at full health, with no bloodstain anywhere, or with the nearest stain
-  --   out of reach (24 squared px) - each refusal free.
-  -- tests: KitCaptain.captain_eats_a_corpse_when_hurt, parity:orc_eat_corpse_scen99
+  -- rule: EAT CORPSE refuses at full health, with no bloodstain within the finder's reach on its
+  --   floor, or with the nearest stain out of reach (24 squared px) - each refusal free.
+  -- tests: KitCaptain.captain_eats_a_corpse_when_hurt, parity:orc_eat_corpse_scen99, SemOrc.an_orc_on_a_balcony_cannot_eat_the_corpse_below
   if self.hp >= self.max_hp then
     return false, "ALREADY AT FULL HEALTH"
   end
