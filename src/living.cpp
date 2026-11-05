@@ -220,7 +220,7 @@ short living::act()
 			temp = (4 - stats->level/2.0f);
 		if (temp < 0)
 			temp = 0;
-		stepsize -= temp;
+		stepsize = (myscreen->gameplay_fixes ? normal_stepsize : stepsize) - temp; // port of the current game's 0875921b: Gameplay Fixes AG (#462), the forest takes its penalty off the normal step
 		if (stepsize < 1)
 			stepsize = 1;
 	}  // end of forestwalk check
