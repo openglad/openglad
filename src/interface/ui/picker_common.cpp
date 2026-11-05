@@ -3753,16 +3753,20 @@ ScenarioRosterReport build_scenario_roster_report(
             }
             else if (staged->mode.init_attempted)
             {
-                // Refusal vs no-mode disambiguation through the dispatch
-                // view (level_hook_kinds_dispatched_for, #467): a level
-                // whose on_mode_init would dispatch (its own or the
-                // every-level registration) and that attempted and refused
-                // gets the honest sentence; a hook-less scripted level has
-                // no mode and the count-only fallback answers below.
-                // Identical on joiner mirrors: the mirror level-load runs
-                // the same mounted pack registration.
+                // Refusal vs no-mode disambiguation through the diagnostic
+                // seam (level_hook_kinds_for, pinned by test_modes_levels):
+                // a level whose on_mode_init would dispatch, its own
+                // registration or the every-level one (-1, #467), and that
+                // attempted and refused gets the honest sentence; a
+                // hook-less scripted level has no mode and the count-only
+                // fallback answers below. The dispatchers run the level's
+                // own hook, else the wildcard, so a kind dispatches exactly
+                // when the union of the two masks holds it. Identical on
+                // joiner mirrors: the mirror level-load runs the same
+                // mounted pack registration.
                 const std::uint32_t kinds =
-                    og::script::hooks::level_hook_kinds_dispatched_for(staged->id);
+                    og::script::hooks::level_hook_kinds_for(staged->id) |
+                    og::script::hooks::level_hook_kinds_for(-1);
                 report.refusing = (kinds & (1u << 4)) != 0;  // LevelHook::ModeInit
                 // The reason rides the shared facts slot, which the refusing
                 // fold banked before it raised (a refusal keeps the staged

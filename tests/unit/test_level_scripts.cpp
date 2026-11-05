@@ -546,10 +546,12 @@ TEST_F(LevelScriptsTest, level_and_entity_hook_registration_rejections)
     EXPECT_EQ(4u, errs.size()) << "an accepted registration reports nothing";
 }
 
-// #467: the dispatch view answers the hook kinds that would DISPATCH on a
-// level, the level's own registration or the -1 wildcard, the lookup the
-// dispatchers make; the own-only seam beside it still ignores the wildcard.
-TEST_F(LevelScriptsTest, dispatched_level_hook_kinds_fold_in_the_wildcard)
+// #467: the own-only seam answers a level's own registrations, and the
+// every-level ones under the wildcard's id, -1. The dispatchers run the
+// level's own hook, else the wildcard, so a kind dispatches on a level
+// exactly when one of the two masks holds it: the match recap reads their
+// union.
+TEST_F(LevelScriptsTest, the_every_level_registrations_answer_under_level_minus_one)
 {
     constexpr std::uint32_t kLoad = 1u << 0;      // LevelHook::Load
     constexpr std::uint32_t kModeInit = 1u << 4;  // LevelHook::ModeInit
@@ -559,25 +561,27 @@ TEST_F(LevelScriptsTest, dispatched_level_hook_kinds_fold_in_the_wildcard)
          "og.register_level_hooks(42, { on_load = function() end })\n"});
     ASSERT_TRUE(world.scripts().host().errors().empty())
         << world.scripts().host().errors().front().message;
-    EXPECT_EQ(kLoad, hooks::level_hook_kinds_for(42)) << "own-only, unchanged";
-    EXPECT_EQ(kLoad | kModeInit, hooks::level_hook_kinds_dispatched_for(42))
-        << "level 42's own on_load plus the wildcard on_mode_init";
-    EXPECT_EQ(kModeInit, hooks::level_hook_kinds_dispatched_for(7))
-        << "a level with nothing of its own dispatches the wildcard";
-    EXPECT_EQ(0u, hooks::level_hook_kinds_for(7));
+    EXPECT_EQ(kLoad, hooks::level_hook_kinds_for(42))
+        << "level 42's own on_load, not the wildcard's on_mode_init";
+    EXPECT_EQ(kModeInit, hooks::level_hook_kinds_for(-1))
+        << "the every-level on_mode_init answers under -1";
+    EXPECT_EQ(0u, hooks::level_hook_kinds_for(7))
+        << "a level with nothing of its own answers nothing of its own";
 
-    // A level's own on_mode_init shadows the wildcard: the same bit answers.
+    // A level's own on_mode_init beside the wildcard's: both masks hold the
+    // bit, so the union answers it once.
     clear_pack_scripts();
     register_pack_script(
         {"test.level", "wild.lua",
          "og.register_level_hooks(-1, { on_mode_init = function() end })\n"
          "og.register_level_hooks(42, { on_mode_init = function() end })\n"});
     EXPECT_EQ(kModeInit, hooks::level_hook_kinds_for(42));
-    EXPECT_EQ(kModeInit, hooks::level_hook_kinds_dispatched_for(42));
+    EXPECT_EQ(kModeInit, hooks::level_hook_kinds_for(-1));
 
-    // No pack Lua at all: nothing dispatches anywhere.
+    // No pack Lua at all: nothing answers anywhere.
     clear_pack_scripts();
-    EXPECT_EQ(0u, hooks::level_hook_kinds_dispatched_for(42));
+    EXPECT_EQ(0u, hooks::level_hook_kinds_for(42));
+    EXPECT_EQ(0u, hooks::level_hook_kinds_for(-1));
 }
 
 // #464: a level hook table may only use the nine level hook names. A typo

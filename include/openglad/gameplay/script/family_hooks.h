@@ -153,13 +153,6 @@ void reset_hook_failures();
 // it cannot change behavior. Answers 0 when no packs are loaded.
 std::uint32_t level_hook_kinds_for(int level_id);
 
-// Which level-hook kinds would DISPATCH on a level, as the same bitmask: the
-// level's own registration, else the -1 wildcard, exactly the lookup the
-// level dispatchers make. The match recap reads its on_mode_init bit to tell
-// a refusing mode from a level with none (#467). Diagnostic seam — no sim
-// path reads it. Answers 0 when no packs are loaded.
-std::uint32_t level_hook_kinds_dispatched_for(int level_id);
-
 // Living-family hooks (FamilyDescriptor). Pure script hooks: descriptors no
 // longer carry C++ behaviour callbacks (promotion_new_level, a formula the
 // picker calls straight off the descriptor, is the only one left). Each
