@@ -91,6 +91,7 @@ usual pause.
 | AC | Elf volleys, druid GROW TREE and SUMMON FAERIE at a wall or the map edge | Classic: the cast draws the throw's waver and refuses; the elf's refund leaves it a point ahead (fix H's off column). With fixes H and I alone the cast paid the one swing (1 MP for the elf, 4 for the druid) for a rock or bolt that met the wall and struck nothing. | A pad blocked by terrain refuses `COULD NOT FIRE` before the refund and the swing: nothing drawn, nothing spent. A body on the pad keeps H's and I's paid blow. |
 | AD | A charmed tent or bones troop, a charmed summon | It wears the charmer's colour but keeps its owner's side: it fights its charmer and is struck by its charmer's team. | It heads its own owner chain while the charm lasts; its owner, its charm clock and its tent's cascade are unchanged. |
 | AE | The struck archmage's classic order | The reply goes on after a cast that worked, as the old game's does: a summon that stands still draws the slot-2 coin (the summon's busy refuses the cast), a chain is followed only by a HEARTBURST attempt its own busy refuses, and a HEARTBURST is cast once. | A cast that worked ends the reply; after a chain or a HEARTBURST that leaves the price of a TELEPORT, slot 2 is cast again (a second HEARTBURST, "then leave! :)"). With the setting on only a seat-driven archmage takes this order (a struck bot answers by fix R). |
+| AH | Cleric TURN UNDEAD on a warded skeleton or ghost | Only the family decides, as in the old game: a skeleton or ghost carrying `BIT_INVINCIBLE` or an invulnerability potion (one it drank, or a New Specials ghost's PHASE) is rolled for and turned like any other. | A warded undead is never turned, rolled for or counted: turning is damage, and the ward stops damage. With nothing else turnable in reach the cast is refused as `NO UNDEAD IN RANGE` (fix E), and the cleric bot's gate does not count it. |
 
 TELEPORT, REVEAL, CLOAK and ENERGY WAVE are unchanged as casts (their bot
 rules are in [Bots](#bots)): each does something whenever it is cast
@@ -269,6 +270,23 @@ Fixes X to AE, in play:
   path, so every golden is unchanged; the fix's proof is
   `archmage_bot_struck_scen99`, the struck archmage arena with the setting
   off, captured from the old game (see [Parity](#parity)).
+
+Fixes AF to AN, in play:
+
+- **AH.** TURN UNDEAD turns a skeleton or a ghost (or any pack family that
+  declares itself undead) that loses the resistance roll. In the old game
+  the kill loop asks only the family, so a warded one, carrying
+  `BIT_INVINCIBLE` or with an invulnerability potion running, is rolled
+  for and turned like any other: turning never goes through the blow's
+  ward. This game spared it on both settings since #195 (`be8a6d09`, "the
+  isle ward survives real play"), because turning is damage. With the
+  setting off it is now turned again, as in the old game; with the setting
+  on it is spared before the rolls, never counted by the cleric bot's gate,
+  and a ring that holds nothing else turnable is refused as `NO UNDEAD IN
+  RANGE` (fix E), so the cast spends nothing (#474). With the setting off a
+  New Specials ghost's PHASE no longer saves it from TURN UNDEAD. The ward in
+  `do_combat_damage` is unchanged: only a scripted match's turn and a
+  level's damage gate reach it, and the old game has neither.
 
 ## Refusals at a glance
 

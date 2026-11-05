@@ -1317,9 +1317,74 @@ protected:
     static constexpr std::uint32_t kRoll = static_cast<std::uint32_t>(kRange * 40);
 };
 
-// walker_specials.cpp:410 (a warded undead draws no roll) is deferred:
-// the old game turns a warded skeleton or ghost with the Gameplay Fixes
-// setting off, so its classic arm is not pinned here (#474).
+// walker_specials.cpp:619 (#474, fix AH). A warded undead (BIT_INVINCIBLE,
+// or an invulnerability potion running) is turned the old game's way with
+// the Gameplay Fixes setting off: the kill loop asks only the family, so the
+// skeleton draws its roll and dies. With the setting on it is spared before
+// any roll: nothing else in reach is turnable, so the cast is refused (-2)
+// and draws nothing. An unwarded skeleton is still turned with it on.
+TEST_F(TurnUndead, a_warded_undead_is_turned_with_the_fixes_off_and_spared_with_them_on)
+{
+    constexpr std::uint32_t kFixesRoll = 4u * 160u;  // power 4: the fixes' roll bound
+    struct Ward
+    {
+        const char* arm;
+        bool invincible;
+        short potion;
+    };
+    const Ward wards[] = {{"BIT_INVINCIBLE", true, 0}, {"an invulnerability potion", false, 50}};
+    for (const Ward& ward : wards)
+    {
+        for (short fixes = 0; fixes < 2; ++fixes)
+        {
+            fresh_world();
+            world().gameplay_fixes = fixes;
+            walker* cleric = living_at(FAMILY_CLERIC, 0, 200, 264);
+            walker* sk = living_at(FAMILY_SKELETON, 1, 216, 264);
+            ASSERT_TRUE(cleric && sk);
+            sk->stats()->set_level(1);
+            if (ward.invincible)
+                sk->stats()->set_bit_flags(BIT_INVINCIBLE, 1);
+            sk->set_invulnerable_left(ward.potion);
+            RollSpy spy(fixes != 0 ? kFixesRoll : kRoll);
+            std::int32_t killed = 0;
+            {
+                ScopedSimRandom scope(&spy);
+                killed = cleric->turn_undead(kRange, 4);
+            }
+            if (fixes == 0)
+            {
+                EXPECT_EQ(1, killed) << ward.arm << ", fixes off: the old game turns it";
+                EXPECT_EQ(1, static_cast<int>(sk->dead())) << ward.arm << ", fixes off";
+                EXPECT_EQ((std::vector<std::uint32_t>{kRoll, 10u}), spy.bounds)
+                    << ward.arm << ", fixes off: the caster's roll, then the level-1 victim's";
+            }
+            else
+            {
+                EXPECT_EQ(-2, killed) << ward.arm << ", fixes on: nothing turnable in reach";
+                EXPECT_EQ(0, static_cast<int>(sk->dead())) << ward.arm << ", fixes on: spared";
+                EXPECT_FLOAT_EQ(400.0f, sk->stats()->hitpoints()) << ward.arm << ", fixes on";
+                EXPECT_EQ(0u, spy.bounds.size()) << ward.arm << ", fixes on: no roll drawn";
+            }
+        }
+    }
+
+    fresh_world();
+    world().gameplay_fixes = 1;
+    walker* cleric = living_at(FAMILY_CLERIC, 0, 200, 264);
+    walker* sk = living_at(FAMILY_SKELETON, 1, 216, 264);
+    ASSERT_TRUE(cleric && sk);
+    sk->stats()->set_level(1);
+    RollSpy spy(kFixesRoll);
+    std::int32_t killed = 0;
+    {
+        ScopedSimRandom scope(&spy);
+        killed = cleric->turn_undead(kRange, 4);
+    }
+    EXPECT_EQ(1, killed) << "unwarded, fixes on: turned";
+    EXPECT_EQ(1, static_cast<int>(sk->dead())) << "unwarded, fixes on";
+    EXPECT_EQ((std::vector<std::uint32_t>{kFixesRoll, 10u}), spy.bounds) << "unwarded, fixes on";
+}
 
 // walker_specials.cpp:418. A scripted level whose mode failed to start
 // turns undead the classic way: a pre-kill with no attribution and no
