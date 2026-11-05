@@ -280,7 +280,7 @@ static inline bool bg_ring_pays(walker *self, int step, int los, int los_add)
 static inline int bg_blast_reach(int level)
 {
 	int range = level * 4;
-	if (range < 16) range = 16;
+	// port of the current game's cd6e1dfc (#483): no floor, as the explosion itself (effect.cpp FAMILY_EXPLOSION)
 	if (range > 96) range = 96;
 	return 15 + range;
 }
