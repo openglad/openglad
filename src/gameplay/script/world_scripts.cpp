@@ -1627,9 +1627,9 @@ int og_register_campaign_hooks(lua_State* L)
     // arguments so a stray second argument cannot shadow them.
     lua_settop(L, 1);
 
-    // Every validation below is a property of the call alone, so it runs
-    // BEFORE the declaration pass bows out — the pass that can still reject
-    // the pack is the one that should catch the typo (the og.register_hooks
+    // Every validation below is a property of the call alone, so the
+    // declaration pass runs it too — the pass that can still reject the pack
+    // is the one that should catch the typo (the og.register_hooks
     // discipline).
     {
         std::vector<const char*> names(std::begin(kCampaignHookNames),
@@ -1891,17 +1891,10 @@ int og_register_campaign_hooks(lua_State* L)
     }
     lua_pop(L, 1);  // vars
 
-    // Declaration pass: silent no-op, the og.register_hooks precedent — a
-    // family chunk calling this neither rejects the pack nor registers.
-    // rule: In the family declaration pass the campaign registrar validates but registers nothing
-    //   (silent no-op); the real pass registers.
-    // tests: CampaignHooksTest.registration_happy_path_serves_picker_and_vars
-    // unreachable: seam wanted: the declaration VM is discarded after declare_pack_families, so
-    //   whether its og.register_campaign_hooks bowed out is unobservable (DeclareResult ok is
-    //   already pinned) | triage: No observable outcome.
-    if (st != nullptr && st->mode == VmMode::Declare)
-        return 0;
-
+    // In the family declaration pass the book lands in the throwaway
+    // declaration VM's own state and goes with it: a family chunk calling
+    // this neither rejects the pack nor registers anything that outlives
+    // the pass.
     // rule: One campaign, one book: a second registration never raises, poisons the book (no
     //   scripted picker), and the first conflicting source is recorded once.
     // tests: CampaignHooksTest.registration_happy_path_serves_picker_and_vars
