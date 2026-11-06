@@ -1500,7 +1500,11 @@ og_add_filtered_test(og_unit_data og_unit_data "-*CampaignTest.*")
 # in most runs and on none of three on 2026-10-29. og_unit_stage: the five
 # staged_world_matrix tests (about 70 s there) alone, the other StagedRules
 # tests (about 43 s), and the rest (about 66 s). og_unit_basketball: tests
-# starting a-f (about 48 s) and the rest (about 60 s).
+# starting a-f (about 48 s) and the rest (about 60 s). The six shipped-court
+# games (ModesBasketballRealCampaign, one test per court) each get an entry
+# of their own: a full game is 14400 ticks of Lua-driven bots, and under the
+# coverage lane's Lua line hook the six together outran the rest entry's
+# 180 s on 2026-11-05.
 og_add_filtered_test(og_unit_stage_matrix og_unit_stage
     "StagedRules.staged_world_matrix_*")
 og_add_filtered_test(og_unit_stage_rules og_unit_stage
@@ -1511,7 +1515,11 @@ set(OG_BASKETBALL_A_TO_F
 og_add_filtered_test(og_unit_basketball_a_f og_unit_basketball
     "${OG_BASKETBALL_A_TO_F}")
 og_add_filtered_test(og_unit_basketball og_unit_basketball
-    "-${OG_BASKETBALL_A_TO_F}")
+    "-${OG_BASKETBALL_A_TO_F}:ModesBasketballRealCampaign.*")
+foreach(court IN ITEMS 824 825 826 827 828 829)
+    og_add_filtered_test(og_unit_basketball_court_${court} og_unit_basketball
+        "ModesBasketballRealCampaign.scen${court}_*")
+endforeach()
 
 # Every property set on one of these binaries below names its list, so all
 # of its slices get it, never the binary's own entry alone.

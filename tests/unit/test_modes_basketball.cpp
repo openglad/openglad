@@ -4924,7 +4924,6 @@ int timeout_leader(GameWorld& world)
     return winner;
 }
 
-inline constexpr int kShippedCourts[] = {824, 825, 826, 827, 828, 829};
 inline constexpr std::uint32_t kRealCourtBotGameSeed = 0x9E3779B9u;
 // The lobby TIME LIMIT request, twice the 7200-tick regulation: room for a
 // slow bot game to score, asked through the same request a host makes.
@@ -4953,14 +4952,18 @@ inline constexpr int kShotFlightMax = 30;
 // No tick, scorer or score is pinned. Those come from the seed and from
 // every rule the bots' fights touch, so a sim fix anywhere moves them
 // although no rule of the court changed.
-TEST(ModesBasketballRealCampaign, bot_games_score_on_every_shipped_court)
+//
+// One test per court, stamped below, each its own CTest entry
+// (og_unit_basketball_court_<id>): a full game is 14400 ticks of Lua-driven
+// bots, and under the coverage lane's Lua line hook the six together outran
+// one entry's 180 s.
+static void play_shipped_court(const int id)
 {
     og::test::ScopedCampaignMountState mount_restore;
     restore_default_campaigns();
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("modes"))
         << "builtin/modes.glad should restore and mount";
-    for (const int id : kShippedCourts)
     {
         SCOPED_TRACE("scen" + std::to_string(id));
         LoadedRealCourt fx(id);
@@ -5045,6 +5048,19 @@ TEST(ModesBasketballRealCampaign, bot_games_score_on_every_shipped_court)
             ADD_FAILURE() << "scen" << id << " script error: " << err.message;
     }
 }
+
+#define OG_SHIPPED_COURT_TEST(id)                                              \
+    TEST(ModesBasketballRealCampaign, scen##id##_bots_score_and_the_game_ends_by_the_rules) \
+    {                                                                          \
+        play_shipped_court(id);                                                \
+    }
+OG_SHIPPED_COURT_TEST(824)
+OG_SHIPPED_COURT_TEST(825)
+OG_SHIPPED_COURT_TEST(826)
+OG_SHIPPED_COURT_TEST(827)
+OG_SHIPPED_COURT_TEST(828)
+OG_SHIPPED_COURT_TEST(829)
+#undef OG_SHIPPED_COURT_TEST
 
 // ===========================================================================
 // TROOPS: FAIR system tests (matched-teams WP-F, spec §8)
