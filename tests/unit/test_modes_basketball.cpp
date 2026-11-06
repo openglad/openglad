@@ -47,6 +47,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <format>
 #include <iterator>
@@ -4102,8 +4103,8 @@ TEST_F(ModesBasketball, point_blank_release_still_throws)
     }
     // Third arm: the OTHER point-blank shape — the defender already parked
     // ON the weapon spawn pad, so walker::fire() itself melees and kills
-    // its own spawn (walker.cpp:594-628: set_dead(1), return nullptr) with
-    // death_called() still 0, AFTER deducting weapon_cost (walker.cpp:514).
+    // its own spawn (walker.cpp:606-640: set_dead(1), return nullptr) with
+    // death_called() still 0, AFTER deducting weapon_cost (walker.cpp:531).
     // Consumed via D27's ACT_CONTROL arm; the refund makes the fire()-time
     // death net zero too. A future gate keyed on death_called() == 1 alone
     // would regress exactly this shape — this arm is its tripwire.
@@ -4133,7 +4134,7 @@ TEST_F(ModesBasketball, point_blank_release_still_throws)
         ASSERT_EQ(nullptr, fx.red->fire())
             << "pad blocked: fire() melees and returns no weapon";
         ASSERT_EQ(pre - cost, st->magicpoints())
-            << "the engine deducted before the pad probe (walker.cpp:514)";
+            << "the engine deducted before the pad probe (walker.cpp:531)";
         ASSERT_FALSE(fx.world().weaplist.empty());
         walker* dead_shot = fx.world().weaplist.back().get();
         ASSERT_NE(nullptr, dead_shot);
@@ -4164,7 +4165,7 @@ TEST_F(ModesBasketball, point_blank_release_still_throws)
 TEST_F(ModesBasketball, throw_refund_is_mana_neutral)
 {
     // Net zero across fire + consume: drive walker::fire() for real so the
-    // engine deducts weapon_cost (walker.cpp:514), then the consumption
+    // engine deducts weapon_cost (walker.cpp:531), then the consumption
     // refunds it. Regen is staged inert (per_round 0, delay far from its
     // pulse) so the equality below isolates the refund.
     {
@@ -4187,7 +4188,7 @@ TEST_F(ModesBasketball, throw_refund_is_mana_neutral)
         ASSERT_NE(nullptr, shot) << "mp >= cost: the engine gate passes";
         const std::uint32_t shot_id = shot->entity_id();
         ASSERT_EQ(pre - cost, st->magicpoints())
-            << "the engine really deducted (walker.cpp:514)";
+            << "the engine really deducted (walker.cpp:531)";
         fx.tick(1);
 
         EXPECT_FALSE(fx.weapon_present(shot_id)) << "consumed as the throw";
@@ -4349,7 +4350,7 @@ TEST_F(ModesBasketball, drained_carrier_release_residual)
     fx.red->set_lasty(0.0f);
 
     EXPECT_EQ(nullptr, fx.red->fire())
-        << "walker.cpp:506-507: no weapon spawns below weapon_cost";
+        << "walker.cpp:524-525: no weapon spawns below weapon_cost";
     fx.tick(1);
 
     EXPECT_EQ(kStateCarried, fx.var(kBbBallState))
@@ -4366,14 +4367,14 @@ TEST_F(ModesBasketball, drained_carrier_release_residual)
 
 TEST_F(ModesBasketball, fire_check_probes_never_release_or_mint)
 {
-    // walker::fire_check (walker.cpp:1245-1346) creates a REAL weaplist
+    // walker::fire_check (walker.cpp:1435-1556) creates a REAL weaplist
     // weapon as its ray probe — owner set, heading set — and set_dead(1)s
     // it on every denial/miss/success path WITHOUT paying weapon_cost. An
     // AI carrier engaging an in-range foe produces one per engagement tick
     // (act_random, and every COMMAND_FIRE/ATTACK dispatch). An unqualified
     // dead-weapon scan consumed them — a phantom release the carrier never
     // triggered — and the D28 refund credited a cost that was never paid.
-    // Both arms drive the COMMAND_FIRE dispatch (stats.cpp:407), which
+    // Both arms drive the COMMAND_FIRE dispatch (stats.cpp:418), which
     // runs fire_check on every dispatch tick.
     //
     // Arm 1 — the self-refuel exploit: a DRAINED bot carrier (mp < cost)
@@ -4860,8 +4861,7 @@ TEST_F(ModesBasketball, hoop_freezes_on_win_latch)
 // ModesItemsRealCampaign shape); no team is seated, so init fields a
 // 5-bot squad per active team and the director plays both ends. The
 // clock/range calibration claim (D7/D20): every court produces a score
-// well inside its time limit, and the reference court never needs a
-// watchdog rescue.
+// inside its time limit, and every game ends by the mode's own rules.
 // ===========================================================================
 
 namespace {
@@ -4894,160 +4894,173 @@ struct LoadedRealCourt
     GameWorld& world() { return level.world(); }
 };
 
-int best_points(GameWorld& world)
+int points_of(GameWorld& world, int team)
 {
-    int best = 0;
-    for (int team = 0; team < 4; ++team)
-    {
-        const int p =
-            world.mode.vars[static_cast<std::size_t>(kBbPoints + team)];
-        if (p > best)
-            best = p;
-    }
-    return best;
+    return world.mode.vars[static_cast<std::size_t>(kBbPoints + team)];
 }
 
-struct RealCourtBotGamePin
+// A team the court fields: its bit in TEAM_MASK (mode_core.lua TEAM_BIT).
+bool fields(GameWorld& world, int team)
 {
-    int id;
-    int time_limit;
-    int first_score_tick;
-    int first_points[4];
-    bool play_to_regulation;
-    int final_tick;
-    int final_points[4];
-    int winner;
-    bool game_ended;
-    int ball_resets;
-};
+    return team >= 0 && team < 4 &&
+           ((world.mode.vars[kBbTeamMask] >> team) & 1) != 0;
+}
+
+// The buzzer's verdict, mode_match.lua timeout_leader: the fielded team
+// with the most POINTS, a tie to the higher match score, then to the lower
+// team number.
+int timeout_leader(GameWorld& world)
+{
+    int winner = -1;
+    for (int team = 0; team < 4; ++team)
+    {
+        if (!fields(world, team))
+            continue;
+        if (winner < 0 || points_of(world, team) > points_of(world, winner) ||
+            (points_of(world, team) == points_of(world, winner) &&
+             world.m_score[team] > world.m_score[winner]))
+            winner = team;
+    }
+    return winner;
+}
 
 inline constexpr std::uint32_t kRealCourtBotGameSeed = 0x9E3779B9u;
-// Re-pinned 2026-09-26 for hit_response's retarget-before-help fix (#295;
-// docs/GAMEPLAY_FIXES_FROM_CLASSIC.md). Applying only that ordering change
-// to the merge-base engine reproduces every result below: low-health melee
-// retargets now update the attacker before allies are recruited and the
-// flee walk is queued. Court 824 finishes 2-4 without a watchdog reset;
-// 829 needs one reset before scoring. All six still score within regulation.
-// The seed, court geometry and exact assertions are unchanged; 825's replay
-// is unchanged too.
-//
-// Re-pinned 2026-10-07 for walk_to_foe adopting the strictly nearer foe
-// (#320; docs/GAMEPLAY_FIXES_FROM_CLASSIC.md): bots now land the melee hits
-// that fumble the carrier, so possessions break up more often and the bot
-// games score more slowly. At the 7200-tick regulation clock court 829 now
-// reaches the buzzer scoreless, so the test asks for a 14400-tick game
-// through the lobby TIME LIMIT request (kRealCourtBotGameTimeLimit); the
-// courts, rosters, fill wheel and seed are unchanged, and the request does
-// not move any tick before the old buzzer. First-score ticks, old -> new:
-// 824 3525 -> 5733, 825 142 -> 1034, 826 992 -> 2174, 827 1981 -> 2849,
-// 828 1732 -> 2045, 829 2745 -> 10754. Court 824 still plays the full
-// clock (9-2 at 14400); 829 still needs one watchdog reset before scoring.
-//
-// Re-pinned 2026-10-14 for HOWL resting between casts whatever the New
-// Specials setting (these worlds run with it off). Court 829 fields an orc
-// on each side; at its tick 40 one howls, and at tick 45 the classic game
-// would have howled again (stunning the foes in reach once more), where the
-// rest now refuses it with 115 ticks left. The refusal costs that orc
-// exactly what the classic distance gate's refusal costs (the same orc is
-// refused by it, rest unset, at ticks 18-20): that tick's act and nothing
-// more. From that missing howl the game plays differently, and team 0 now
-// scores first, 2-0 at tick 2142 (was team 1, 0-2 at 10754), still after
-// one watchdog reset. The other five courts field no caster of a rested
-// special that is refused before their first score, and do not move.
+// The lobby TIME LIMIT request, twice the 7200-tick regulation: room for a
+// slow bot game to score, asked through the same request a host makes.
 inline constexpr int kRealCourtBotGameTimeLimit = 14400;
-inline constexpr RealCourtBotGamePin kRealCourtBotGamePins[] = {
-    {824, 14400, 5733, {3, 0, 0, 0}, true, 14400, {9, 2, 0, 0}, 0, true, 0},
-    {825, 14400, 1034, {2, 0, 0, 0}, false, 1034, {2, 0, 0, 0}, -1, false, 0},
-    {826, 14400, 2174, {0, 0, 2, 0}, false, 2174, {0, 0, 2, 0}, -1, false, 0},
-    {827, 14400, 2849, {0, 2, 0, 0}, false, 2849, {0, 2, 0, 0}, -1, false, 0},
-    {828, 14400, 2045, {0, 2, 0, 0}, false, 2045, {0, 2, 0, 0}, -1, false, 0},
-    {829, 14400, 2142, {2, 0, 0, 0}, false, 2142, {2, 0, 0, 0}, -1, false, 1},
-};
+// mode_basketball_impl.lua T.shot_tf_max: the longest shot flight, so the
+// longest a shot in the air at the buzzer defers the verdict.
+inline constexpr int kShotFlightMax = 30;
 
 }  // namespace
 
-TEST(ModesBasketballRealCampaign, bot_games_score_on_every_shipped_court)
+// Bot games on the shipped courts score and end by the mode's rules. Each
+// court is played once, from one fixed seed (retries would turn a
+// deterministic regression into a probabilistic pass), to the end of the
+// game, and the test asserts what the rules say every game must do:
+// - the bots score before the buzzer;
+// - the first basket goes to a team the court fields and is worth what one
+//   basket is worth, 2, or 3 from past the arc (every shipped court has
+//   one; an own basket credits the rival the same 2);
+// - the game ends by the rule that ends it, read from the mode variables:
+//   a team at the score limit wins at once (run_win_check asks it first);
+//   otherwise only the buzzer ends it, at the time limit or after a shot in
+//   the air there lands, and the timeout leader wins;
+// - the reset watchdog fires no more often than its rule allows: a BALL
+//   RESET waits for 600 ticks of dead ball and every reset starts that
+//   count again, so a game of n ticks holds at most n / 600.
+// No tick, scorer or score is pinned. Those come from the seed and from
+// every rule the bots' fights touch, so a sim fix anywhere moves them
+// although no rule of the court changed.
+//
+// One test per court, stamped below, each its own CTest entry
+// (og_unit_basketball_court_<id>): a full game is 14400 ticks of Lua-driven
+// bots, and under the coverage lane's Lua line hook the six together outran
+// one entry's 180 s.
+static void play_shipped_court(const int id)
 {
     og::test::ScopedCampaignMountState mount_restore;
     restore_default_campaigns();
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("modes"))
         << "builtin/modes.glad should restore and mount";
-    // One exact simulation per court. This seed scores quickly even on 828,
-    // whose default seed can reach the buzzer scoreless; retries would turn a
-    // deterministic regression into a probabilistic pass. Court 824 continues
-    // through regulation to pin the full-game and no-watchdog calibration.
-    for (const RealCourtBotGamePin& expected : kRealCourtBotGamePins)
     {
-        LoadedRealCourt fx(expected.id);
-        ASSERT_TRUE(fx.loaded) << "scen" << expected.id << " must load";
+        SCOPED_TRACE("scen" + std::to_string(id));
+        LoadedRealCourt fx(id);
+        ASSERT_TRUE(fx.loaded) << "scen" << id << " must load";
+        GameWorld& world = fx.world();
         // E5: the shipped courts' empty sides field bots only under a turned
         // wheel — all-NONE would refuse the match.
-        for (auto& knob : fx.world().ctf_requested_fill)
+        for (auto& knob : world.ctf_requested_fill)
             knob = og::sim::kFillFair;
-        // The lobby TIME LIMIT request overrides each court's regulation
-        // (see the 2026-10-07 note above the pin table).
-        fx.world().ctf_requested_time_limit =
+        world.ctf_requested_time_limit =
             static_cast<std::int16_t>(kRealCourtBotGameTimeLimit);
-        fx.world().rng_.state_ = kRealCourtBotGameSeed;
-        fx.world().tick();
-        ASSERT_TRUE(fx.world().mode.active) << expected.id;
-        ASSERT_EQ(kModeIdBasketball, fx.world().mode.vars[kBbModeId])
-            << expected.id;
-        const int time_limit = fx.world().mode.vars[kBbTimeLimit];
-        ASSERT_EQ(expected.time_limit, time_limit) << expected.id;
+        world.rng_.state_ = kRealCourtBotGameSeed;
+        world.tick();
+        ASSERT_TRUE(world.mode.active);
+        ASSERT_EQ(kModeIdBasketball, world.mode.vars[kBbModeId]);
+        const int time_limit = world.mode.vars[kBbTimeLimit];
+        ASSERT_EQ(kRealCourtBotGameTimeLimit, time_limit)
+            << "the lobby TIME LIMIT request sets the clock";
+        const int score_limit = world.mode.vars[kBbScoreLimit];
+        ASSERT_GT(score_limit, 0);
 
+        int before[4] = {};
+        for (int team = 0; team < 4; ++team)
+            before[team] = points_of(world, team);
         int ticks = 1;
         int first_score_tick = 0;
-        int first_points[4] = {0, 0, 0, 0};
-        while (ticks < time_limit && !fx.world().game_ended)
+        int first_scorer = -1;
+        int first_value = 0;
+        // The bound is exact on purpose: the rules let a game run past the
+        // buzzer only while the last shot is in the air, at most
+        // kShotFlightMax ticks. One tick more means the end rule changed.
+        while (!world.game_ended && ticks < time_limit + kShotFlightMax)
         {
-            fx.world().tick();
+            world.tick();
             ticks++;
-            if (first_score_tick == 0 && best_points(fx.world()) > 0)
+            if (first_score_tick != 0)
+                continue;
+            for (int team = 0; team < 4 && first_scorer < 0; ++team)
             {
-                first_score_tick = ticks;
-                for (int team = 0; team < 4; ++team)
+                if (points_of(world, team) > before[team])
                 {
-                    first_points[team] = fx.world().mode.vars[
-                        static_cast<std::size_t>(kBbPoints + team)];
+                    first_score_tick = ticks;
+                    first_scorer = team;
+                    first_value = points_of(world, team) - before[team];
                 }
-                if (!expected.play_to_regulation)
-                    break;
             }
+            for (int team = 0; team < 4; ++team)
+                before[team] = points_of(world, team);
         }
 
-        EXPECT_EQ(expected.first_score_tick, first_score_tick)
-            << expected.id << " first-score tick";
-        EXPECT_EQ(expected.final_tick, ticks) << expected.id << " stop tick";
-        EXPECT_EQ(expected.final_tick,
-                  static_cast<int>(fx.world().tick_count_))
-            << expected.id << " world tick";
-        for (int team = 0; team < 4; ++team)
+        EXPECT_GT(first_score_tick, 0) << "the bots score";
+        EXPECT_LT(first_score_tick, time_limit) << "before the buzzer";
+        EXPECT_TRUE(fields(world, first_scorer))
+            << "the first basket goes to a fielded team, not team " << first_scorer;
+        EXPECT_TRUE(first_value == 2 || first_value == 3)
+            << "one basket is worth 2, or 3 from past the arc, not " << first_value;
+
+        ASSERT_TRUE(world.game_ended)
+            << "the game ends by the buzzer at the latest, plus one shot's flight";
+        EXPECT_TRUE(world.mode.win_latched) << "win latch";
+        int limit_team = -1;
+        for (int team = 0; team < 4 && limit_team < 0; ++team)
+            if (fields(world, team) && points_of(world, team) >= score_limit)
+                limit_team = team;
+        if (limit_team >= 0)
         {
-            EXPECT_EQ(expected.first_points[team], first_points[team])
-                << expected.id << " first-score team " << team;
-            EXPECT_EQ(expected.final_points[team],
-                      fx.world().mode.vars[
-                          static_cast<std::size_t>(kBbPoints + team)])
-                << expected.id << " final team " << team;
+            EXPECT_EQ(limit_team, world.mode.winner_team)
+                << "the score limit ended it: the team that reached it wins";
         }
-        EXPECT_EQ(expected.winner, fx.world().mode.winner_team)
-            << expected.id;
-        EXPECT_EQ(expected.game_ended, fx.world().game_ended)
-            << expected.id;
-        EXPECT_EQ(expected.game_ended, fx.world().mode.win_latched)
-            << expected.id << " win latch";
-        EXPECT_EQ(expected.ball_resets,
-                  count_notifications(fx.events, "BALL RESET"))
-            << expected.id << " dead-ball/wipe watchdog";
-        EXPECT_EQ(0u, og::script::hooks::hook_failures().count)
-            << expected.id;
-        for (const auto& err : fx.world().scripts().host().errors())
-            ADD_FAILURE() << "scen" << expected.id
-                          << " script error: " << err.message;
+        else
+        {
+            EXPECT_GE(static_cast<int>(world.tick_count_), time_limit)
+                << "nobody reached the score limit: only the buzzer ends the game";
+            EXPECT_EQ(timeout_leader(world), world.mode.winner_team)
+                << "the buzzer ended it: the timeout leader wins";
+        }
+        const int resets = count_notifications(fx.events, "BALL RESET");
+        EXPECT_LE(resets, ticks / kDeadBallTicks)
+            << "a BALL RESET waits for " << kDeadBallTicks << " ticks of dead ball";
+        EXPECT_EQ(0u, og::script::hooks::hook_failures().count);
+        for (const auto& err : world.scripts().host().errors())
+            ADD_FAILURE() << "scen" << id << " script error: " << err.message;
     }
 }
+
+#define OG_SHIPPED_COURT_TEST(id)                                              \
+    TEST(ModesBasketballRealCampaign, scen##id##_bots_score_and_the_game_ends_by_the_rules) \
+    {                                                                          \
+        play_shipped_court(id);                                                \
+    }
+OG_SHIPPED_COURT_TEST(824)
+OG_SHIPPED_COURT_TEST(825)
+OG_SHIPPED_COURT_TEST(826)
+OG_SHIPPED_COURT_TEST(827)
+OG_SHIPPED_COURT_TEST(828)
+OG_SHIPPED_COURT_TEST(829)
+#undef OG_SHIPPED_COURT_TEST
 
 // ===========================================================================
 // TROOPS: FAIR system tests (matched-teams WP-F, spec §8)

@@ -164,7 +164,7 @@ Constructed via a new factory `viewscreen::make_camera(screen*)` (the normal cto
 | Site | Why safe |
 |---|---|
 | `screen.cpp:1471` clear, `:1553` input, `:1564` continuous_input, `:1573` process_input, `:1826-1845` draw_panel_chrome, `:1853-1870` do_notify, `:1872-1878` clear_all_view_text | iterate `viewob[i < numviews]` only |
-| `screen.cpp:82-91` find_follow_leader, `:200-218` cleanup_dead_view_controls, `:240-287` sound/notification targeting | same; the camera keeps its target across "dead" sweeps by construction |
+| `screen.cpp:82-91` find_follow_leader, `:200-218` cleanup_dead_view_controls, `:240-287` sound/notification targeting (since #468 also the placed-sound view test, so the camera pane hears nothing of its own) | same; the camera keeps its target across "dead" sweeps by construction |
 | `screen.cpp:1192-1202` min_view_zoom_scale_num; pause `view_zoom_step_allowed` (`pause_menu.cpp:1084-1101`) | the camera never votes on canvas zoom |
 | `screen.cpp:1155-1189` initialize_views, `:1294-1330` reset | seat constructors only; `numviews ≤ 4` invariant preserved |
 | `results_screen.cpp:110-122` win/lose classification | camera excluded → VICTORY/DEFEAT never downgraded to MATCH OVER |

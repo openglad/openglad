@@ -83,6 +83,8 @@ walker* self_arg(lua_State* L)
 
 GameWorld* world_arg(lua_State* L)
 {
+    // plumbing: world_arg: a world binding called with no active world raises 'no active world'
+    //   instead of dereferencing null.
     if (current_game == nullptr || current_game->world == nullptr)
         script_raise(L, "no active world");
     return current_game->world;
@@ -92,6 +94,8 @@ living* living_arg(lua_State* L, int idx = 1)
 {
     walker* w = resolve_walker(L, idx, /*required=*/true);
     living* lv = dynamic_cast<living*>(w);
+    // plumbing: living_arg: a living-only binding handed a non-living (weapon) raises 'entity is
+    //   not a living'.
     if (lv == nullptr)
         script_raise(L, "entity is not a living");
     return lv;
@@ -100,6 +104,14 @@ living* living_arg(lua_State* L, int idx = 1)
 guy* guy_arg(lua_State* L, int idx)
 {
     // Accepts a guy handle (level_up hook) or a walker handle (w.myguy).
+    // rule: A character-sheet (g_*) accessor reads the hired character's record: either the guy
+    //   handle a level_up hook receives, or the record a walker carries; an unhired body (NPC,
+    //   monster) has no character record and asking for one is a script error, never a read through
+    //   null.
+    // tests: ScriptBindingErrorTest.guy_accessors_refuse_an_entity_without_a_guy
+    // tests: ScriptBindingTest.guy_rows_round_trip_and_myguy_moves_between_walkers
+    // tests: ScriptHooksTest.level_up_guy_handle_is_dispatch_scoped
+    // tests: Guy.upgrade_to_level_different_families
     if (luaL_testudata(L, idx, kGuyMeta) != nullptr)
         return resolve_guy(L, idx, /*required=*/true);
     walker* w = resolve_walker(L, idx, /*required=*/true);
@@ -123,6 +135,8 @@ void push_walker_list(lua_State* L, const std::list<walker*>& list)
 {
     lua_createtable(L, static_cast<int>(list.size()), 0);
     lua_Integer i = 1;
+    // plumbing: push_walker_list: copies a C++ result list into a Lua array in list order (oblist
+    //   scan order).
     for (walker* w : list) {
         push_walker_here(L, w);
         lua_rawseti(L, -2, i++);
@@ -132,6 +146,15 @@ void push_walker_list(lua_State* L, const std::list<walker*>& list)
 Order order_from_string(lua_State* L, int idx)
 {
     const char* s = luaL_checkstring(L, idx);
+    // rule: A script names an entity's order by word: living, weapon, treasure, generator, and fx
+    //   (with 'effect' an accepted alias); any other word is a script error that names the bad
+    //   word, and nothing is created.
+    // tests: ScriptBindingTest.world_query_rows_read_the_live_world
+    // tests: ScriptBindingErrorTest.unknown_string_selectors_are_named_in_the_error
+    // tests: ScriptBindingErrorTest.an_erroring_hook_does_not_report_success
+    // tests: parity:archmage_summon_elemental_scen99, WeapBehavior.weap_death_knife_soldier_owner
+    // tests: parity:weapon_door_unlock_chain_scen99
+    // tests: SemScriptEntity.the_order_words_treasure_generator_and_effect_make_those_orders
     if (std::strcmp(s, "living") == 0) return Order::Living;
     if (std::strcmp(s, "weapon") == 0) return Order::Weapon;
     if (std::strcmp(s, "treasure") == 0) return Order::Treasure;
@@ -146,6 +169,14 @@ const std::list<std::unique_ptr<walker>>& list_from_selector(lua_State* L,
 {
     GameWorld* world = world_arg(L);
     const char* s = luaL_checkstring(L, idx);
+    // rule: A range query scans one of the three world lists the script names: 'ob' (bodies),
+    //   'weap' (projectiles in flight) or 'fx' (effects); normal projectiles live only in the
+    //   weapon list, so a scan of 'ob' never sees them. Any other name is an error.
+    // tests: parity:shield_projectile_absorb_scen99, parity:boomerang_projectile_absorb_scen99
+    // tests: parity:effect_shield_absorb_scen99
+    // tests: FamilyBehaviors.druid_round6_protection_existing_circle_and_blocked_faerie_paths
+    // tests: ScriptBindingErrorTest.unknown_string_selectors_are_named_in_the_error
+    // tests: SemScriptEntity.a_range_scan_of_fx_reads_the_effect_list_only
     if (std::strcmp(s, "ob") == 0) return world->oblist;
     if (std::strcmp(s, "weap") == 0) return world->weaplist;
     if (std::strcmp(s, "fx") == 0) return world->fxlist;
@@ -187,6 +218,8 @@ const std::list<std::unique_ptr<walker>>& list_from_selector(lua_State* L,
         w->set_##NAME(static_cast<float>(luaL_checknumber(L, 2))); \
         return 0;                                              \
     }
+// plumbing: W_GET_BOOL macro: bool -> Lua boolean conversion for
+//   in_act/summoned/save_all_protected/dormant getters; the semantics are the walker fields'.
 #define W_GET_BOOL(NAME)                                       \
     int m_##NAME(lua_State* L)                                 \
     {                                                          \
@@ -286,6 +319,11 @@ int m_alternate_down(lua_State* L)
         w->shifter_down() != 0 &&
         og::sim::alternate_in_play(fd, static_cast<int>(w->current_special()),
                                    og::sim::session_new_specials());
+    // rule: A cast takes its Shift (alternate) branch only when the shift is held AND the current
+    //   slot's alternate is in play this session; with New Specials off, a slot whose alternate is
+    //   a new-kit alternate behaves as if Shift were not held, while a classic alternate still
+    //   answers to Shift.
+    // tests: KitLuaTest.match_setting_and_alternate_down_follow_the_setting
     lua_pushboolean(L, down ? 1 : 0);
     return 1;
 }
@@ -319,6 +357,7 @@ W_GET_BOOL(dormant)
 int m_do_bounce(lua_State* L)
 {
     weap* wp = dynamic_cast<weap*>(self_arg(L));
+    // plumbing: do_bounce/set_do_bounce on a non-weapon raises 'not a weapon'.
     if (wp == nullptr)
         script_raise(L, "do_bounce: entity is not a weapon");
     lua_pushinteger(L, static_cast<lua_Integer>(wp->do_bounce()));
@@ -328,6 +367,7 @@ int m_do_bounce(lua_State* L)
 int m_set_do_bounce(lua_State* L)
 {
     weap* wp = dynamic_cast<weap*>(self_arg(L));
+    // plumbing: do_bounce/set_do_bounce on a non-weapon raises 'not a weapon'.
     if (wp == nullptr)
         script_raise(L, "set_do_bounce: entity is not a weapon");
     wp->set_do_bounce(static_cast<std::int32_t>(luaL_checkinteger(L, 2)));
@@ -358,6 +398,10 @@ int m_setxy(lua_State* L)
     walker* w = self_arg(L);
     const float x = static_cast<float>(luaL_checknumber(L, 2));
     const float y = static_cast<float>(luaL_checknumber(L, 3));
+    // plumbing: bool -> Lua boolean conversions of C++ answers (setxy, can_approach_weapon_range,
+    //   attack, death, teleport, teleport_ranged, seat_driven, is_friendly, animate, collide,
+    //   has_guy (myguy != nullptr), query_bit_flags != 0, has_commands, query_*_passable results,
+    //   game_ended, check_special_ai_distance).
     lua_pushboolean(L, w->setxy(x, y) ? 1 : 0);
     return 1;
 }
@@ -406,6 +450,10 @@ int m_can_approach_weapon_range(lua_State* L)
 {
     walker* w = self_arg(L);
     walker* objective = resolve_walker(L, 2, /*required=*/true);
+    // plumbing: bool -> Lua boolean conversions of C++ answers (setxy, can_approach_weapon_range,
+    //   attack, death, teleport, teleport_ranged, seat_driven, is_friendly, animate, collide,
+    //   has_guy (myguy != nullptr), query_bit_flags != 0, has_commands, query_*_passable results,
+    //   game_ended, check_special_ai_distance).
     lua_pushboolean(L, w->can_approach_weapon_range(objective) ? 1 : 0);
     return 1;
 }
@@ -414,6 +462,10 @@ int m_attack(lua_State* L)
 {
     walker* w = self_arg(L);
     walker* target = resolve_walker(L, 2, /*required=*/true);
+    // plumbing: bool -> Lua boolean conversions of C++ answers (setxy, can_approach_weapon_range,
+    //   attack, death, teleport, teleport_ranged, seat_driven, is_friendly, animate, collide,
+    //   has_guy (myguy != nullptr), query_bit_flags != 0, has_commands, query_*_passable results,
+    //   game_ended, check_special_ai_distance).
     lua_pushboolean(L, w->attack(target) ? 1 : 0);
     return 1;
 }
@@ -428,6 +480,11 @@ int m_special(lua_State* L)
 {
     std::string reason;
     const bool succeeded = self_arg(L)->special(nullptr, &reason);
+    // rule: walker:special() from Lua reports the cast's verdict as (true, nil) on success and
+    //   (false, reason) on refusal, so a nested or chained cast can propagate the inner refusal
+    //   text; a success clears any stale reason.
+    // tests: SpecialsDispatchTest.nested_casts_preserve_each_reason_and_success_clears_it
+    // tests: SemScriptEntity.a_lua_cast_that_succeeds_answers_true_and_nil
     lua_pushboolean(L, succeeded ? 1 : 0);
     if (succeeded)
         lua_pushnil(L);
@@ -438,12 +495,20 @@ int m_special(lua_State* L)
 
 int m_death(lua_State* L)
 {
+    // plumbing: bool -> Lua boolean conversions of C++ answers (setxy, can_approach_weapon_range,
+    //   attack, death, teleport, teleport_ranged, seat_driven, is_friendly, animate, collide,
+    //   has_guy (myguy != nullptr), query_bit_flags != 0, has_commands, query_*_passable results,
+    //   game_ended, check_special_ai_distance).
     lua_pushboolean(L, self_arg(L)->death() ? 1 : 0);
     return 1;
 }
 
 int m_teleport(lua_State* L)
 {
+    // plumbing: bool -> Lua boolean conversions of C++ answers (setxy, can_approach_weapon_range,
+    //   attack, death, teleport, teleport_ranged, seat_driven, is_friendly, animate, collide,
+    //   has_guy (myguy != nullptr), query_bit_flags != 0, has_commands, query_*_passable results,
+    //   game_ended, check_special_ai_distance).
     lua_pushboolean(L, self_arg(L)->teleport() ? 1 : 0);
     return 1;
 }
@@ -451,6 +516,7 @@ int m_teleport(lua_State* L)
 int m_teleport_ranged(lua_State* L)
 {
     walker* w = self_arg(L);
+    // plumbing: a C++ bool handed to Lua as a boolean.
     lua_pushboolean(
         L,
         w->teleport_ranged(
@@ -463,6 +529,7 @@ int m_teleport_ranged(lua_State* L)
 int m_find_teleport_target(lua_State* L)
 {
     treasure* t = dynamic_cast<treasure*>(self_arg(L));
+    // plumbing: find_teleport_target on a non-treasure raises 'not a treasure'.
     if (t == nullptr)
         script_raise(L, "find_teleport_target: entity is not a treasure");
     push_walker_here(L, t->find_teleport_target());
@@ -494,6 +561,10 @@ int m_undead_foes_in_range(lua_State* L)
 // ACT_CONTROL). og::sim::seat_driven, the rule POSSESS refuses a hero by.
 int m_seat_driven(lua_State* L)
 {
+    // plumbing: bool -> Lua boolean conversions of C++ answers (setxy, can_approach_weapon_range,
+    //   attack, death, teleport, teleport_ranged, seat_driven, is_friendly, animate, collide,
+    //   has_guy (myguy != nullptr), query_bit_flags != 0, has_commands, query_*_passable results,
+    //   game_ended, check_special_ai_distance).
     lua_pushboolean(L, og::sim::seat_driven(*self_arg(L)) ? 1 : 0);
     return 1;
 }
@@ -541,6 +612,13 @@ int m_heal_clamped(lua_State* L)
                       static_cast<float>(static_cast<lua_Number>(amount)));
     w->do_heal_effects(source, w,
                        static_cast<short>(static_cast<std::uint64_t>(amount)));
+    // rule: A self-heal adds the amount, stamps the heal marker (heal effects, with an optional
+    //   source), and only then caps hit points at the maximum: a heal never leaves a walker above
+    //   its max, and a heal that stays under max is a plain float add.
+    // tests: ScriptBindingPropsTest.heal_clamped_adds_marks_then_clamps
+    // tests: ScriptBindingPropsTest.heal_clamped_without_clamp_is_a_float_add
+    // tests: ScriptBindingPropsTest.heal_clamped_marker_narrows_int16
+    // tests: ScriptBindingPropsTest.heal_clamped_with_source_marks_both
     if (st->hitpoints() > st->max_hitpoints())
         st->set_hitpoints(st->max_hitpoints());
     return 0;
@@ -573,6 +651,10 @@ int m_is_friendly(lua_State* L)
 {
     walker* w = self_arg(L);
     walker* other = resolve_walker(L, 2, /*required=*/true);
+    // plumbing: bool -> Lua boolean conversions of C++ answers (setxy, can_approach_weapon_range,
+    //   attack, death, teleport, teleport_ranged, seat_driven, is_friendly, animate, collide,
+    //   has_guy (myguy != nullptr), query_bit_flags != 0, has_commands, query_*_passable results,
+    //   game_ended, check_special_ai_distance).
     lua_pushboolean(L, w->is_friendly(other) ? 1 : 0);
     return 1;
 }
@@ -587,6 +669,10 @@ int m_set_frame(lua_State* L)
 
 int m_animate(lua_State* L)
 {
+    // plumbing: bool -> Lua boolean conversions of C++ answers (setxy, can_approach_weapon_range,
+    //   attack, death, teleport, teleport_ranged, seat_driven, is_friendly, animate, collide,
+    //   has_guy (myguy != nullptr), query_bit_flags != 0, has_commands, query_*_passable results,
+    //   game_ended, check_special_ai_distance).
     lua_pushboolean(L, self_arg(L)->animate() ? 1 : 0);
     return 1;
 }
@@ -597,6 +683,10 @@ int m_collide_check(lua_State* L)
     // walker::collide(ob) — invoke collision handler.
     walker* w = self_arg(L);
     walker* other = resolve_walker(L, 2, /*required=*/true);
+    // plumbing: bool -> Lua boolean conversions of C++ answers (setxy, can_approach_weapon_range,
+    //   attack, death, teleport, teleport_ranged, seat_driven, is_friendly, animate, collide,
+    //   has_guy (myguy != nullptr), query_bit_flags != 0, has_commands, query_*_passable results,
+    //   game_ended, check_special_ai_distance).
     lua_pushboolean(L, w->collide(other) ? 1 : 0);
     return 1;
 }
@@ -617,6 +707,10 @@ int m_move_myguy_to(lua_State* L)
 
 int m_has_guy(lua_State* L)
 {
+    // plumbing: bool -> Lua boolean conversions of C++ answers (setxy, can_approach_weapon_range,
+    //   attack, death, teleport, teleport_ranged, seat_driven, is_friendly, animate, collide,
+    //   has_guy (myguy != nullptr), query_bit_flags != 0, has_commands, query_*_passable results,
+    //   game_ended, check_special_ai_distance).
     lua_pushboolean(L, self_arg(L)->myguy != nullptr ? 1 : 0);
     return 1;
 }
@@ -732,6 +826,8 @@ int s_old_family(lua_State* L)
 int s_special_cost(lua_State* L)
 {
     const int idx = static_cast<int>(luaL_checkinteger(L, 2));
+    // plumbing: s_special_cost/s_set_special_cost: index outside [0, NUM_SPECIALS) raises
+    //   'special_cost index out of range' (fixed-size array).
     if (idx < 0 || idx >= NUM_SPECIALS)
         script_raise(L, "special_cost index out of range");
     lua_pushinteger(L, static_cast<lua_Integer>(
@@ -742,6 +838,8 @@ int s_special_cost(lua_State* L)
 int s_set_special_cost(lua_State* L)
 {
     const int idx = static_cast<int>(luaL_checkinteger(L, 2));
+    // plumbing: s_special_cost/s_set_special_cost: index outside [0, NUM_SPECIALS) raises
+    //   'special_cost index out of range' (fixed-size array).
     if (idx < 0 || idx >= NUM_SPECIALS)
         script_raise(L, "special_cost index out of range");
     stats_arg(L)->set_special_cost(
@@ -752,6 +850,7 @@ int s_set_special_cost(lua_State* L)
 
 int s_query_bit_flags(lua_State* L)
 {
+    // plumbing: a C++ bit test handed to Lua as a boolean.
     lua_pushboolean(L, stats_arg(L)->query_bit_flags(static_cast<std::int32_t>(
                            luaL_checkinteger(L, 2))) != 0
                            ? 1
@@ -806,6 +905,10 @@ int s_clear_command(lua_State* L)
 
 int s_has_commands(lua_State* L)
 {
+    // plumbing: bool -> Lua boolean conversions of C++ answers (setxy, can_approach_weapon_range,
+    //   attack, death, teleport, teleport_ranged, seat_driven, is_friendly, animate, collide,
+    //   has_guy (myguy != nullptr), query_bit_flags != 0, has_commands, query_*_passable results,
+    //   game_ended, check_special_ai_distance).
     lua_pushboolean(L, stats_arg(L)->has_commands() ? 1 : 0);
     return 1;
 }
@@ -817,6 +920,9 @@ int s_has_commands(lua_State* L)
 int s_front_command(lua_State* L)
 {
     statistics* stats = stats_arg(L);
+    // rule: A mode director reads the command at the head of a walker's order queue to decide
+    //   whether it may preempt it; an empty queue reads as 0 (no command), never an error.
+    // tests: ModeBindings.front_command_reader_and_teleport_stamp
     if (!stats->has_commands()) {
         lua_pushinteger(L, 0);
         return 1;
@@ -836,6 +942,11 @@ int s_front_command(lua_State* L)
 int s_refresh_front(lua_State* L)
 {
     statistics* stats = stats_arg(L);
+    // rule: Refreshing the head order in place (new lease and payload, same command type, queue
+    //   never grows) requires an order to be there; refreshing an empty queue is a loud script
+    //   error, so a director cannot silently believe it issued an order.
+    // tests: ModesCtf.mode_core_probe_helpers_answer_exactly
+    // tests: SemScriptEntity.refreshing_the_head_order_rewrites_lease_and_payload_in_place
     if (!stats->has_commands())
         script_raise(L, "s_refresh_front: command queue is empty");
     command& front = stats->commands.front();
@@ -847,6 +958,10 @@ int s_refresh_front(lua_State* L)
 // walker:s_forward_blocked([quiet])
 int s_forward_blocked(lua_State* L)
 {
+    // rule: A bot can ask 'is the step ahead blocked' either loudly (the real probe: a door it
+    //   meets opens, a treasure is eaten) or quietly (same answer, but nothing in the world
+    //   changes); the quiet flag is opt-in, so omitting it keeps the classic loud probe.
+    // tests: QuietProbe.the_lua_doors_answer_what_the_engine_answers
     lua_pushboolean(L, stats_arg(L)->forward_blocked(!lua_isnoneornil(L, 2) && lua_toboolean(L, 2) != 0) ? 1 : 0);
     return 1;
 }
@@ -882,6 +997,13 @@ int s_force_fright(lua_State* L)
     const auto iterations = static_cast<std::int32_t>(luaL_checkinteger(L, 2));
     const auto info1 = static_cast<std::int32_t>(luaL_checkinteger(L, 3));
     const auto info2 = static_cast<std::int32_t>(luaL_checkinteger(L, 4));
+    // rule: A scare (ghost fright) forces a flee walk onto its victim unless the victim is
+    //   fearless: it wears the KIT_FEARLESS mark, or (New Specials on) stands within a friendly
+    //   live war banner's rally radius on its floor; a rallied walker holds its ground and its
+    //   order queue is untouched.
+    // tests: KitSeamsSmall.fearless_bit_and_rally_radius_block_the_flee_walk
+    // tests: KitGhost.wail_spares_a_fearless_foe
+    // tests: ScriptBindingTest.s_force_fright_merges_into_a_forced_walk
     if (!og::sim::fearless(*self_arg(L))) stats_arg(L)->force_fright(iterations, info1, info2);  // a rallied walker holds
     return 0;
 }
@@ -1029,8 +1151,21 @@ int og_summon_configured(lua_State* L)
     int recognized = 0;
     int isnum = 0;
 
+    // rule: A configured summon reads and type-checks every option (ani_type, lifetime integer;
+    //   hp_add, damage_add number; max_hp_from_hp truthiness) BEFORE anything is summoned: a
+    //   wrongly typed option is a script error with nothing spawned, an absent option applies
+    //   nothing.
+    // tests: ScriptBindingPropsTest.summon_configured_option_type_errors
+    // tests: ScriptBindingPropsTest.summon_configured_empty_options_is_bare_summon
+    // tests: ScriptBindingPropsTest.summon_configured_matches_the_corpus_sequence
+    // tests: SemScriptEntity.a_wrongly_typed_summon_option_summons_nothing
     if (lua_getfield(L, 4, "ani_type") != LUA_TNIL) {
         ani_type = lua_tointegerx(L, -1, &isnum);
+        // rule: A configured summon reads and type-checks every option (ani_type, lifetime integer.
+        // tests: ScriptBindingPropsTest.summon_configured_option_type_errors
+        // tests: ScriptBindingPropsTest.summon_configured_empty_options_is_bare_summon
+        // tests: ScriptBindingPropsTest.summon_configured_matches_the_corpus_sequence
+        // tests: SemScriptEntity.a_wrongly_typed_summon_option_summons_nothing
         if (isnum == 0)
             script_raise(
                 L, "og.summon_configured: 'ani_type' must be an integer");
@@ -1040,6 +1175,11 @@ int og_summon_configured(lua_State* L)
     lua_pop(L, 1);
     if (lua_getfield(L, 4, "lifetime") != LUA_TNIL) {
         lifetime = lua_tointegerx(L, -1, &isnum);
+        // rule: A configured summon reads and type-checks every option (ani_type, lifetime integer.
+        // tests: ScriptBindingPropsTest.summon_configured_option_type_errors
+        // tests: ScriptBindingPropsTest.summon_configured_empty_options_is_bare_summon
+        // tests: ScriptBindingPropsTest.summon_configured_matches_the_corpus_sequence
+        // tests: SemScriptEntity.a_wrongly_typed_summon_option_summons_nothing
         if (isnum == 0)
             script_raise(
                 L, "og.summon_configured: 'lifetime' must be an integer");
@@ -1049,6 +1189,11 @@ int og_summon_configured(lua_State* L)
     lua_pop(L, 1);
     if (lua_getfield(L, 4, "hp_add") != LUA_TNIL) {
         hp_add = lua_tonumberx(L, -1, &isnum);
+        // rule: A configured summon reads and type-checks every option (ani_type, lifetime integer.
+        // tests: ScriptBindingPropsTest.summon_configured_option_type_errors
+        // tests: ScriptBindingPropsTest.summon_configured_empty_options_is_bare_summon
+        // tests: ScriptBindingPropsTest.summon_configured_matches_the_corpus_sequence
+        // tests: SemScriptEntity.a_wrongly_typed_summon_option_summons_nothing
         if (isnum == 0)
             script_raise(
                 L, "og.summon_configured: 'hp_add' must be a number");
@@ -1064,6 +1209,11 @@ int og_summon_configured(lua_State* L)
     lua_pop(L, 1);
     if (lua_getfield(L, 4, "damage_add") != LUA_TNIL) {
         damage_add = lua_tonumberx(L, -1, &isnum);
+        // rule: A configured summon reads and type-checks every option (ani_type, lifetime integer.
+        // tests: ScriptBindingPropsTest.summon_configured_option_type_errors
+        // tests: ScriptBindingPropsTest.summon_configured_empty_options_is_bare_summon
+        // tests: ScriptBindingPropsTest.summon_configured_matches_the_corpus_sequence
+        // tests: SemScriptEntity.a_wrongly_typed_summon_option_summons_nothing
         if (isnum == 0)
             script_raise(
                 L, "og.summon_configured: 'damage_add' must be a number");
@@ -1075,10 +1225,16 @@ int og_summon_configured(lua_State* L)
 
     int total = 0;
     lua_pushnil(L);
+    // plumbing: Counts every key in the options table; feeds the unknown-key check, see
+    //   below.
     while (lua_next(L, 4) != 0) {
         lua_pop(L, 1);  // value; the key stays for the next lua_next
         total++;
     }
+    // rule: A configured summon with any option key it does not know (a typo'd tuning key) is a
+    //   script error and summons nothing, rather than silently ignoring the key.
+    // tests: ScriptBindingPropsTest.summon_configured_unknown_key_summons_nothing
+    // tests: ScriptBindingPropsTest.summon_configured_matches_the_corpus_sequence
     if (total != recognized)
         script_raise(L,
                      "og.summon_configured: unknown option key "
@@ -1086,10 +1242,19 @@ int og_summon_configured(lua_State* L)
                      "max_hp_from_hp, damage_add)");
 
     walker* w = summon_entity(summoner, order, fam);
+    // rule: A summon that finds no room (summon_entity fails) returns nil exactly like og.summon,
+    //   and none of the options are applied.
+    // tests: ScriptBindingPropsTest.summon_configured_failed_summon_returns_nil
+    // tests: ScriptBindingPropsTest.summon_configured_matches_the_corpus_sequence
     if (w == nullptr) {
         lua_pushnil(L);
         return 1;
     }
+    // rule: A configured summon applies its options in a fixed order: animation, lifetime, hp +=
+    //   hp_add, then (if max_hp_from_hp is truthy) max hp := current hp, then damage += damage_add;
+    //   max_hp_from_hp = false applies nothing.
+    // tests: ScriptBindingPropsTest.summon_configured_matches_the_corpus_sequence
+    // tests: ScriptBindingPropsTest.summon_configured_false_max_hp_applies_nothing
     if (has_ani_type)
         w->set_ani_type(
             static_cast<char>(static_cast<std::uint64_t>(ani_type)));
@@ -1192,11 +1357,28 @@ int og_oblist(lua_State* L)
     GameWorld* world = world_arg(L);
     lua_newtable(L);
     lua_Integer i = 1;
+    // plumbing: og_oblist: copies world->oblist into a Lua array in list order.
     for (const auto& uptr : world->oblist) {
         push_walker_here(L, uptr.get());
         lua_rawseti(L, -2, i++);
     }
     return 1;
+}
+
+// The floor og.query_passable and og.query_object_passable answer for (#465).
+int own_probe_floor(lua_State* L, walker* w, lua_Integer floor, const char* fn)
+{
+    const int own = static_cast<int>(w->floor());
+    // rule: A loud passability probe (terrain and bodies) answers only for the prober's own floor:
+    //   a script may name that floor; naming another is a script error, because the bodies half
+    //   reads only the prober's floor and its collision route would eat, open or swing there.
+    // tests: SemScriptEntity.a_loud_passability_probe_refuses_a_floor_not_the_probers
+    // tests: ScriptBindingPropsTest.an_explicit_floor_probes_that_floor_not_the_probers
+    if (floor != own)
+        script_raise(L, "%s: floor %d is not the prober's floor %d (probe another floor with "
+                        "og.spawn_spot_clear or og.query_grid_passable)",
+                     fn, static_cast<int>(floor), own);
+    return own;
 }
 
 int og_query_passable(lua_State* L)
@@ -1205,12 +1387,12 @@ int og_query_passable(lua_State* L)
     const float x = static_cast<float>(luaL_checknumber(L, 1));
     const float y = static_cast<float>(luaL_checknumber(L, 2));
     walker* w = resolve_walker(L, 3, /*required=*/true);
-    bool ok;
-    if (lua_isnoneornil(L, 4))
-        ok = world->query_passable(x, y, w);
-    else
-        ok = world->query_passable(x, y, w,
-                                   static_cast<int>(luaL_checkinteger(L, 4)));
+    const lua_Integer floor = luaL_optinteger(L, 4, w->floor());
+    const bool ok = world->query_passable(x, y, w, own_probe_floor(L, w, floor, "og.query_passable"));
+    // plumbing: bool -> Lua boolean conversions of C++ answers (setxy, can_approach_weapon_range,
+    //   attack, death, teleport, teleport_ranged, seat_driven, is_friendly, animate, collide,
+    //   has_guy (myguy != nullptr), query_bit_flags != 0, has_commands, query_*_passable results,
+    //   game_ended, check_special_ai_distance).
     lua_pushboolean(L, ok ? 1 : 0);
     return 1;
 }
@@ -1222,11 +1404,19 @@ int og_query_grid_passable(lua_State* L)
     const float y = static_cast<float>(luaL_checknumber(L, 2));
     walker* w = resolve_walker(L, 3, /*required=*/true);
     bool ok;
+    // rule: A passability probe answers for the prober's own floor unless the script names a floor,
+    //   so a pack planning a jump or summon onto another floor can ask about that floor's terrain
+    //   without moving anything there first.
+    // tests: ScriptBindingPropsTest.an_explicit_floor_probes_that_floor_not_the_probers
     if (lua_isnoneornil(L, 4))
         ok = world->query_grid_passable(x, y, w);
     else
         ok = world->query_grid_passable(
             x, y, w, static_cast<int>(luaL_checkinteger(L, 4)));
+    // plumbing: bool -> Lua boolean conversions of C++ answers (setxy, can_approach_weapon_range,
+    //   attack, death, teleport, teleport_ranged, seat_driven, is_friendly, animate, collide,
+    //   has_guy (myguy != nullptr), query_bit_flags != 0, has_commands, query_*_passable results,
+    //   game_ended, check_special_ai_distance).
     lua_pushboolean(L, ok ? 1 : 0);
     return 1;
 }
@@ -1237,12 +1427,13 @@ int og_query_object_passable(lua_State* L)
     const float x = static_cast<float>(luaL_checknumber(L, 1));
     const float y = static_cast<float>(luaL_checknumber(L, 2));
     walker* w = resolve_walker(L, 3, /*required=*/true);
-    bool ok;
-    if (lua_isnoneornil(L, 4))
-        ok = world->query_object_passable(x, y, w);
-    else
-        ok = world->query_object_passable(
-            x, y, w, static_cast<int>(luaL_checkinteger(L, 4)));
+    const lua_Integer floor = luaL_optinteger(L, 4, w->floor());
+    const bool ok = world->query_object_passable(
+        x, y, w, own_probe_floor(L, w, floor, "og.query_object_passable"));
+    // plumbing: bool -> Lua boolean conversions of C++ answers (setxy, can_approach_weapon_range,
+    //   attack, death, teleport, teleport_ranged, seat_driven, is_friendly, animate, collide,
+    //   has_guy (myguy != nullptr), query_bit_flags != 0, has_commands, query_*_passable results,
+    //   game_ended, check_special_ai_distance).
     lua_pushboolean(L, ok ? 1 : 0);
     return 1;
 }
@@ -1259,6 +1450,15 @@ int og_query_genre(lua_State* L)
     GameWorld* world = world_arg(L);
     const auto tx = static_cast<std::int32_t>(luaL_checkinteger(L, 1));
     const auto ty = static_cast<std::int32_t>(luaL_checkinteger(L, 2));
+    // rule: A terrain-genre lookup by tile reads the default-floor terrain unless the script names
+    //   a floor; out-of-range tiles read as grass. Its only sim caller is the door, which names its
+    //   own floor (#457): a door facing is chosen by whether the tile above it on that floor is a
+    //   wall (wall above -> the opened door faces right, else the door's own facing is set up). On
+    //   one floor the named floor 0 is the default-floor terrain, so nothing changes there.
+    // tests: SemScriptEntity.a_terrain_lookup_reads_floor_zero_unless_a_floor_is_named
+    // tests: SemScriptEntity.classic_a_door_with_no_wall_above_turns_itself_up_not_the_opening
+    // tests: PackLuaWeaponDoor.a_door_under_a_wall_opens_sideways
+    // tests: SemScriptEntity.a_door_upstairs_reads_the_wall_above_it_on_its_own_floor
     smoother& sm =
         lua_isnoneornil(L, 3)
             ? world->mysmoother
@@ -1278,11 +1478,23 @@ int og_query_genre(lua_State* L)
 int og_cosmetic_rand(lua_State* L)
 {
     const lua_Integer n = luaL_checkinteger(L, 1);
+    // rule: A cosmetic roll takes a bound in [1, INT32_MAX]; zero, negative or over-wide bounds are
+    //   script errors that draw nothing, so a wrapped bound can never silently desync the
+    //   deterministic stream.
+    // tests: ScriptBindingErrorTest.a_nonpositive_cosmetic_rand_bound_is_refused
+    // tests: ScriptBindingMathTest.rand_bounds_above_int32_max_are_refused
+    // tests: SemScriptEntity.a_cosmetic_roll_in_range_draws_one_step_of_the_sim_stream
     if (n <= 0)
         script_raise(L, "og.cosmetic_rand: n must be positive");
     if (n > kMaxRandBound)
         script_raise(L,
                      "og.cosmetic_rand: n out of range [1, 2147483647]");
+    // rule: Cosmetic choices (path-check cadence, elf spread) draw from the separate cosmetic
+    //   stream when one is installed (the parity harness's libc-rand twin of the old game's dual
+    //   RNG), otherwise from the sim RNG; with the override installed the sim stream does not
+    //   advance.
+    // tests: SemScriptEntity.a_cosmetic_roll_in_range_draws_one_step_of_the_sim_stream
+    // tests: SemScriptEntity.a_cosmetic_roll_reads_the_installed_cosmetic_stream_and_leaves_the_sim_alone
     if (IRandom* cos = cosmetic_rng_override()) {
         lua_pushinteger(L, static_cast<lua_Integer>(
                                cos->next(static_cast<std::uint32_t>(n))));
@@ -1315,6 +1527,10 @@ int og_level_done(lua_State* L)
 
 int og_game_ended(lua_State* L)
 {
+    // plumbing: bool -> Lua boolean conversions of C++ answers (setxy, can_approach_weapon_range,
+    //   attack, death, teleport, teleport_ranged, seat_driven, is_friendly, animate, collide,
+    //   has_guy (myguy != nullptr), query_bit_flags != 0, has_commands, query_*_passable results,
+    //   game_ended, check_special_ai_distance).
     lua_pushboolean(L, world_arg(L)->game_ended ? 1 : 0);
     return 1;
 }
@@ -1347,6 +1563,9 @@ int og_set_enemy_freeze(lua_State* L)
 
 int og_emit_sound(lua_State* L)
 {
+    // plumbing: Sim-event bindings (emit_sound, emit_positional_sound, emit_notification,
+    //   emit_event, emit_exit_confirmation, emit_withdraw_to_level) raise 'no active context' with
+    //   no GameplayContext instead of writing through a null event log.
     if (current_game == nullptr)
         script_raise(L, "no active context");
     og::sim::emit_sound(current_game->sim_events,
@@ -1356,6 +1575,9 @@ int og_emit_sound(lua_State* L)
 
 int og_emit_positional_sound(lua_State* L)
 {
+    // plumbing: Sim-event bindings (emit_sound, emit_positional_sound, emit_notification,
+    //   emit_event, emit_exit_confirmation, emit_withdraw_to_level) raise 'no active context' with
+    //   no GameplayContext instead of writing through a null event log.
     if (current_game == nullptr)
         script_raise(L, "no active context");
     walker* w = resolve_walker(L, 1, /*required=*/true);
@@ -1373,6 +1595,9 @@ int og_emit_positional_sound(lua_State* L)
 // allowed to arrive as seat 0.
 int og_emit_notification(lua_State* L)
 {
+    // plumbing: Sim-event bindings (emit_sound, emit_positional_sound, emit_notification,
+    //   emit_event, emit_exit_confirmation, emit_withdraw_to_level) raise 'no active context' with
+    //   no GameplayContext instead of writing through a null event log.
     if (current_game == nullptr)
         script_raise(L, "no active context");
     size_t len = 0;
@@ -1380,17 +1605,36 @@ int og_emit_notification(lua_State* L)
     const auto duration =
         static_cast<std::uint32_t>(luaL_optinteger(L, 2, 0));
     std::int32_t target = -1;
+    // rule: A notification goes to everyone unless addressed: a walker target addresses whoever
+    //   controls that body (an unowned body broadcasts), an integer addresses that global seat, and
+    //   any seat that cannot exist (negative, >= 16, or a number that would narrow onto a real seat
+    //   like 65536) broadcasts rather than landing on the wrong player.
+    // tests: ScriptBindingTest.emit_notification_addresses_a_single_seat
+    // tests: ScriptBindingTest.emit_notification_refuses_a_seat_that_cannot_exist
+    // tests: ScriptBindingTest.emit_notification_to_an_unowned_walker_broadcasts
     if (!lua_isnoneornil(L, 3))
     {
+        // rule: A notification goes to everyone unless addressed.
+        // tests: ScriptBindingTest.emit_notification_addresses_a_single_seat
+        // tests: ScriptBindingTest.emit_notification_refuses_a_seat_that_cannot_exist
+        // tests: ScriptBindingTest.emit_notification_to_an_unowned_walker_broadcasts
         if (lua_isuserdata(L, 3))
         {
             const walker* w = resolve_walker(L, 3, /*required=*/true);
+            // rule: A notification goes to everyone unless addressed.
+            // tests: ScriptBindingTest.emit_notification_addresses_a_single_seat
+            // tests: ScriptBindingTest.emit_notification_refuses_a_seat_that_cannot_exist
+            // tests: ScriptBindingTest.emit_notification_to_an_unowned_walker_broadcasts
             target = w != nullptr ? static_cast<std::int32_t>(w->user()) : -1;
         }
         else
         {
             target = static_cast<std::int32_t>(luaL_checkinteger(L, 3));
         }
+        // rule: A notification goes to everyone unless addressed.
+        // tests: ScriptBindingTest.emit_notification_addresses_a_single_seat
+        // tests: ScriptBindingTest.emit_notification_refuses_a_seat_that_cannot_exist
+        // tests: ScriptBindingTest.emit_notification_to_an_unowned_walker_broadcasts
         if (target < 0 ||
             target >= static_cast<std::int32_t>(og::sim::kMaxGlobalPlayers))
             target = -1;
@@ -1403,6 +1647,9 @@ int og_emit_notification(lua_State* L)
 // og.emit_event(kind, a, b) — raw sim event (kinds in og.C.EVENT_*).
 int og_emit_event(lua_State* L)
 {
+    // plumbing: Sim-event bindings (emit_sound, emit_positional_sound, emit_notification,
+    //   emit_event, emit_exit_confirmation, emit_withdraw_to_level) raise 'no active context' with
+    //   no GameplayContext instead of writing through a null event log.
     if (current_game == nullptr)
         script_raise(L, "no active context");
     og::sim::emit_event(
@@ -1431,6 +1678,14 @@ int og_family_flag(lua_State* L)
     const Order order = order_from_string(L, 1);
     const int fam = static_cast<int>(luaL_checkinteger(L, 2));
     const char* flag = luaL_checkstring(L, 3);
+    // rule: A script may read another body's family traits (returning weapon, undead, leaves a
+    //   bloodspot, stationary) from the living descriptor; an empty family slot answers nil so the
+    //   script can branch on it; asking about a non-living order or an unknown trait name is an
+    //   error.
+    // tests: ScriptBindingPropsTest.family_flag_answers_each_flag_from_the_descriptor
+    // tests: ScriptBindingErrorTest.an_undeclared_family_flag_query_answers_nil
+    // tests: ScriptBindingErrorTest.unknown_string_selectors_are_named_in_the_error
+    // tests: WeapBehavior.weap_death_knife_soldier_owner, WeapBehavior.weap_death_knife_non_soldier
     if (order != Order::Living)
         script_raise(L, "og.family_flag: only 'living' supported");
     const FamilyDescriptor* fd = get_family_descriptor(fam);
@@ -1465,6 +1720,10 @@ int g_upgrade_to_level(lua_State* L)
     guy* g = guy_arg(L, 1);
     const auto new_level = static_cast<short>(
         static_cast<std::uint64_t>(luaL_checkinteger(L, 2)));
+    // rule: Promoting a character to a level by script sets its experience to that level's
+    //   threshold by default (re-dispatching the family's level_up hook); passing false promotes
+    //   the level without touching experience.
+    // tests: SemScriptEntity.a_scripted_promotion_sets_experience_unless_told_not_to
     const bool set_xp =
         lua_isnoneornil(L, 3) ? true : (lua_toboolean(L, 3) != 0);
     // Re-dispatches the guy's family level_up hook internally (nested VM
@@ -1567,6 +1826,13 @@ int og_exp_from_action(lua_State* L)
     const auto value = static_cast<short>(
         static_cast<std::uint64_t>(luaL_checkinteger(L, 4)));
     ExpAction action;
+    // rule: A family script awards experience by naming the deed (attack, kill, heal, turn_undead,
+    //   raise_skeleton, raise_ghost, resurrect, resurrect_penalty, protection, eat_corpse) and gets
+    //   exactly the C++ exp_from_action answer for that deed; an unknown deed name is an error.
+    //   (The per-deed amounts are walker_combat.cpp's rule.)
+    // tests: ScriptBindingErrorTest.unknown_string_selectors_are_named_in_the_error
+    // tests: FamilyOrc.r15_eating_a_corpse_heals_by_its_level_and_consumes_it
+    // tests: SemScriptEntity.each_named_deed_answers_its_own_experience_amount
     if (std::strcmp(action_name, "attack") == 0) action = ExpAction::Attack;
     else if (std::strcmp(action_name, "kill") == 0) action = ExpAction::Kill;
     else if (std::strcmp(action_name, "heal") == 0) action = ExpAction::Heal;
@@ -1617,6 +1883,10 @@ int og_check_special_ai_distance(lua_State* L)
     living* lv = living_arg(L, 1);
     const auto threshold =
         static_cast<std::uint32_t>(luaL_checkinteger(L, 2));
+    // plumbing: bool -> Lua boolean conversions of C++ answers (setxy, can_approach_weapon_range,
+    //   attack, death, teleport, teleport_ranged, seat_driven, is_friendly, animate, collide,
+    //   has_guy (myguy != nullptr), query_bit_flags != 0, has_commands, query_*_passable results,
+    //   game_ended, check_special_ai_distance).
     lua_pushboolean(L, check_special_ai_distance(lv, threshold) ? 1 : 0);
     return 1;
 }
@@ -1648,6 +1918,8 @@ int og_tuning(lua_State* L)
 {
     walker* w = resolve_walker(L, 1, /*required=*/true);
     VmState* st = &vm_state(L);
+    // plumbing: og_tuning cache generation: rebuild the per-VM cache when a pack reinstall bumps
+    //   the tuning store generation.
     if (st->tuning_cache_gen != family_tuning_generation()) {
         luaL_unref(L, LUA_REGISTRYINDEX, st->tuning_cache_ref);
         lua_newtable(L);
@@ -1659,6 +1931,15 @@ int og_tuning(lua_State* L)
         static_cast<lua_Integer>(w->family());
     lua_rawgeti(L, LUA_REGISTRYINDEX, st->tuning_cache_ref);
     lua_rawgeti(L, -1, key);
+    // rule: A family's tuning constants reach its scripts as a frozen read-only table keyed per
+    //   (order, family) with each value in its declared type (integer, number, boolean, string); a
+    //   family that declared none gets an empty frozen table so missing keys read nil and scripts
+    //   keep their defaults.
+    // tests: ScriptBindingPropsTest.tuning_serves_every_value_kind
+    // tests: ScriptBindingPropsTest.tuning_undeclared_family_is_empty_and_frozen
+    // tests: ScriptBindingPropsTest.tuning_views_reject_writes
+    // tests: ScriptBindingPropsTest.tuning_is_keyed_per_order_and_family
+    // tests: SemScriptEntity.a_family_tuning_view_is_one_cached_table_per_generation
     if (lua_istable(L, -1)) {
         lua_remove(L, -2);
         return 1;
@@ -1667,7 +1948,17 @@ int og_tuning(lua_State* L)
     lua_newtable(L);  // cache, data
     if (const TuningMap* map =
             family_tuning(w->query_order(), static_cast<int>(w->family()))) {
+        // plumbing: og_tuning: copies each declared tuning pair into the table; see
+        //   above.
         for (const TuningPair& p : *map) {
+            // rule: A family's tuning constants reach its scripts as a frozen read-only table keyed
+            //   per (order, family) with each value in its declared type (integer, number, boolean,
+            //   string).
+            // tests: ScriptBindingPropsTest.tuning_serves_every_value_kind
+            // tests: ScriptBindingPropsTest.tuning_undeclared_family_is_empty_and_frozen
+            // tests: ScriptBindingPropsTest.tuning_views_reject_writes
+            // tests: ScriptBindingPropsTest.tuning_is_keyed_per_order_and_family
+            // tests: SemScriptEntity.a_family_tuning_view_is_one_cached_table_per_generation
             switch (p.value.kind) {
                 case TuningValue::Kind::Integer:
                     lua_pushinteger(
@@ -1678,6 +1969,14 @@ int og_tuning(lua_State* L)
                                    static_cast<lua_Number>(p.value.number));
                     break;
                 case TuningValue::Kind::Boolean:
+                    // rule: A family's tuning constants reach its scripts as a frozen read-only
+                    //   table keyed per (order, family) with each value in its declared type
+                    //   (integer, number, boolean, string).
+                    // tests: ScriptBindingPropsTest.tuning_serves_every_value_kind
+                    // tests: ScriptBindingPropsTest.tuning_undeclared_family_is_empty_and_frozen
+                    // tests: ScriptBindingPropsTest.tuning_views_reject_writes
+                    // tests: ScriptBindingPropsTest.tuning_is_keyed_per_order_and_family
+                    // tests: SemScriptEntity.a_family_tuning_view_is_one_cached_table_per_generation
                     lua_pushboolean(L, p.value.boolean ? 1 : 0);
                     break;
                 case TuningValue::Kind::String:
@@ -1711,6 +2010,12 @@ inline constexpr int kAniScanCap = 128;
 // keeps the legacy direct-index behavior. nullptr = no such row.
 const signed char* ani_row_ptr(walker* w, lua_Integer row)
 {
+    // rule: A script reading a walker's animation table cannot walk off its end: no table, a
+    //   negative row, or a row past the family's recorded table length is 'no such sequence'; a
+    //   test-built walker with ani_count 0 keeps legacy unbounded indexing.
+    // tests: ScriptBindingTest.ani_frame_and_ani_row_read_the_animation_table
+    // tests: ScriptBindingTest.ani_accessors_are_nil_without_a_table
+    // tests: ScriptBindingTest.ani_count_zero_keeps_legacy_direct_indexing
     if (w->ani == nullptr || row < 0)
         return nullptr;
     if (w->ani_count > 0 && row >= static_cast<lua_Integer>(w->ani_count))
@@ -1722,6 +2027,9 @@ const signed char* ani_row_ptr(walker* w, lua_Integer row)
 int ani_row_len(const signed char* seq)
 {
     int len = 0;
+    // rule: An animation row ends at its -1 sentinel; a row with no sentinel within 128 frames is
+    //   malformed and reads as 'no such sequence' rather than being read further.
+    // tests: ScriptBindingTest.ani_frame_and_ani_row_read_the_animation_table
     while (len < kAniScanCap && seq[len] != -1)
         len++;
     return len >= kAniScanCap ? -1 : len;
@@ -1737,6 +2045,11 @@ int og_ani_frame(lua_State* L)
 {
     walker* w = resolve_walker(L, 1, /*required=*/true);
     const signed char* seq = ani_row_ptr(w, luaL_checkinteger(L, 2));
+    // rule: og.ani_frame reads one frame; the sentinel slot itself (index == length) is addressable
+    //   so an empty row reads back -1 exactly as the C++ hands set_frame, and anything past it,
+    //   negative, or in a missing/malformed row is nil (caller skips its set_frame).
+    // tests: ScriptBindingTest.ani_frame_and_ani_row_read_the_animation_table
+    // tests: SemScriptEntity.a_negative_animation_frame_index_reads_nil
     const int len = (seq != nullptr) ? ani_row_len(seq) : -1;
     const lua_Integer index = luaL_checkinteger(L, 3);
     if (len < 0 || index < 0 || index > static_cast<lua_Integer>(len)) {
@@ -1756,12 +2069,16 @@ int og_ani_row(lua_State* L)
 {
     walker* w = resolve_walker(L, 1, /*required=*/true);
     const signed char* seq = ani_row_ptr(w, luaL_checkinteger(L, 2));
+    // rule: og.ani_row returns the whole frame sequence before the sentinel; a present-but-empty
+    //   row is an empty table, a missing/malformed row is nil.
+    // tests: ScriptBindingTest.ani_frame_and_ani_row_read_the_animation_table
     const int len = (seq != nullptr) ? ani_row_len(seq) : -1;
     if (len < 0) {
         lua_pushnil(L);
         return 1;
     }
     lua_createtable(L, len, 0);
+    // plumbing: og_ani_row: copies frames into the Lua array; see above.
     for (int i = 0; i < len; ++i) {
         lua_pushinteger(L, static_cast<lua_Integer>(seq[i]));
         lua_rawseti(L, -2, static_cast<lua_Integer>(i) + 1);
@@ -1779,13 +2096,18 @@ int og_ani_row(lua_State* L)
 int og_award_score(lua_State* L)
 {
     GameWorld* world = world_arg(L);
-    const auto team = static_cast<unsigned char>(
-        static_cast<std::uint64_t>(luaL_checkinteger(L, 1)));
+    // The team stays the Lua integer it is until the range check: a byte would wrap 256 onto 0.
+    const lua_Integer team = luaL_checkinteger(L, 1);
     const auto points = static_cast<std::uint32_t>(
         static_cast<std::uint64_t>(luaL_checkinteger(L, 2)));
-    if (team >= SCORE_TEAM_COUNT)
+    // rule: A treasure or mode credits score to a team's score slot and announces it with a
+    //   ScoreChange event; a team outside the score table is silently ignored (no score, no event),
+    //   a number a byte would wrap onto a real team (256, 257, -255) included (#454).
+    // tests: ScriptBindingTest.award_score_credits_the_team_and_emits_score_change
+    // tests: SemScriptMode.a_score_award_to_a_team_a_byte_would_wrap_onto_a_real_team_is_ignored
+    if (team < 0 || team >= SCORE_TEAM_COUNT)
         return 0;
-    world->m_score[team] += points;
+    world->m_score[static_cast<std::size_t>(team)] += points;
     og::sim::emit_event(current_game->sim_events,
                         og::sim::EventKind::ScoreChange,
                         static_cast<std::uint32_t>(team), points);
@@ -1794,6 +2116,7 @@ int og_award_score(lua_State* L)
 
 int og_world_can_exit_whenever(lua_State* L)
 {
+    // plumbing: a world type bit handed to Lua as a boolean.
     lua_pushboolean(
         L, (world_arg(L)->type & GameWorld::TYPE_CAN_EXIT_WHENEVER) != 0 ? 1
                                                                         : 0);
@@ -1804,6 +2127,11 @@ int og_level_completed(lua_State* L)
 {
     GameWorld* world = world_arg(L);
     const auto level = static_cast<int>(luaL_checkinteger(L, 1));
+    // rule: The exit pad may be used before the level's foes are cleared only on a level flagged
+    //   can-exit-whenever; a campaign level counts as completed only if it is in the save's
+    //   completed set.
+    // tests: ScriptBindingTest.exit_flow_bindings_read_and_write_progression
+    // tests: SimWorldHeadless.exit_with_foes_alive_says_foes_remain
     lua_pushboolean(L, world->completed_levels.count(level) > 0 ? 1 : 0);
     return 1;
 }
@@ -1831,6 +2159,9 @@ int og_set_withdraw_request(lua_State* L)
 // (a = dest_level, b = 1 for the withdraw prompt).
 int og_emit_exit_confirmation(lua_State* L)
 {
+    // plumbing: Sim-event bindings (emit_sound, emit_positional_sound, emit_notification,
+    //   emit_event, emit_exit_confirmation, emit_withdraw_to_level) raise 'no active context' with
+    //   no GameplayContext instead of writing through a null event log.
     if (current_game == nullptr)
         script_raise(L, "no active context");
     size_t len = 0;
@@ -1848,6 +2179,9 @@ int og_emit_exit_confirmation(lua_State* L)
 // og.emit_withdraw_to_level(level) — EventKind::WithdrawToLevel (a = level).
 int og_emit_withdraw_to_level(lua_State* L)
 {
+    // plumbing: Sim-event bindings (emit_sound, emit_positional_sound, emit_notification,
+    //   emit_event, emit_exit_confirmation, emit_withdraw_to_level) raise 'no active context' with
+    //   no GameplayContext instead of writing through a null event log.
     if (current_game == nullptr)
         script_raise(L, "no active context");
     og::sim::emit_event(
@@ -1868,6 +2202,11 @@ int og_scenario_title(lua_State* L)
 {
     GameWorld* world = world_arg(L);
     const char* name = luaL_checkstring(L, 1);
+    // rule: A level's display title comes from the installed title reader; with no reader
+    //   (dedicated/headless world) the answer is 'none', the same as an unreadable file, so callers
+    //   keep their fallback.
+    // tests: ScriptBindingTest.scenario_title_reports_none_without_a_provider
+    // tests: ScriptBindingTest.scenario_title_uses_the_installed_provider
     if (!world->scenario_title_provider) {
         lua_pushliteral(L, "none");
         return 1;
@@ -1886,7 +2225,12 @@ int og_campaign_var(lua_State* L)
 {
     GameWorld* world = world_arg(L);
     const char* name = luaL_checkstring(L, 1);
+    // plumbing: og_campaign_var: linear scan of world->campaign_vars; see below.
     for (const auto& [key, value] : world->campaign_vars) {
+        // rule: A level script reads a campaign decision value copied into the world at level load;
+        //   an absent value reads 0 (the var==0 rule), so a dedicated server whose save carries no
+        //   campaign state plays stock behaviour.
+        // tests: CampaignHooksTest.campaign_var_reads_world_values
         if (key == name) {
             lua_pushinteger(L, static_cast<lua_Integer>(value));
             return 1;
@@ -1909,6 +2253,11 @@ int og_campaign_var(lua_State* L)
 VmState* campaign_dispatch_arg(lua_State* L, const char* name)
 {
     VmState* st = get_vm_state(L);
+    // rule: Menu-time campaign bindings (og.campaign_*) work only while a campaign hook is running;
+    //   called from a sim hook they are a script error, so campaign state can never be read or
+    //   written from inside the deterministic sim.
+    // tests: CampaignHooksTest.campaign_bindings_error_outside_campaign_dispatch
+    // tests: CampaignHooksTest.provider_bindings_happy_path
     if (st == nullptr || !st->campaign_dispatch)
         script_raise(L, "og.%s: campaign bindings are campaign-hook only",
                      name);
@@ -1920,6 +2269,13 @@ int og_campaign_state_get(lua_State* L)
     campaign_dispatch_arg(L, "campaign_state_get");
     const char* key = luaL_checkstring(L, 1);
     const auto& p = campaign_providers();
+    // rule: A campaign script never gets a silent default: a campaign binding whose surface
+    //   installed no provider raises a Lua error instead of answering 0/false/empty.
+    // tests: CampaignHooksTest.campaign_bindings_error_with_no_provider
+    // tests: CampaignHooksTest.provider_bindings_happy_path
+    // tests: CampaignHooksTest.match_bindings_round_trip
+    // tests: CampaignHooksTest.campaign_my_team_provider_answer_and_clamp
+    // tests: CampaignHooksTest.campaign_random_provider_answer_and_bounds
     if (!p.state_get)
         script_raise(
             L, "og.campaign_state_get: no campaign provider installed");
@@ -1937,19 +2293,39 @@ int og_campaign_state_set(lua_State* L)
     std::size_t len = 0;
     const char* key = luaL_checklstring(L, 1, &len);
     const lua_Integer value = luaL_checkinteger(L, 2);
+    // rule: A campaign variable key must be 1..kCampaignVarNameMax chars of [a-z0-9_]; a bad key is
+    //   refused before the save store is touched.
+    // tests: CampaignHooksTest.state_set_bounds_rejection_raises_before_mutation
+    // tests: CampaignHooksTest.provider_bindings_happy_path
     if (!hooks::valid_campaign_var_name({key, len}))
         script_raise(
             L, "og.campaign_state_set: bad key '%s' (1-%d chars of "
           "[a-z0-9_])",
             key, hooks::kCampaignVarNameMax);
+    // rule: Campaign variables are int32: a wider value is refused before the store sees it (no
+    //   silent truncation into the save).
+    // tests: CampaignHooksTest.state_set_bounds_rejection_raises_before_mutation
+    // tests: CampaignHooksTest.provider_bindings_happy_path
+    // tests: SemScriptCampaign.a_campaign_value_below_int32_never_reaches_the_store
     if (value < std::numeric_limits<std::int32_t>::min() ||
         value > std::numeric_limits<std::int32_t>::max())
         script_raise(L,
                      "og.campaign_state_set: value out of int32 range");
     const auto& p = campaign_providers();
+    // rule: A campaign script never gets a silent default: a campaign binding whose surface
+    //   installed no provider raises a Lua error instead of answering 0/false/empty.
+    // tests: CampaignHooksTest.campaign_bindings_error_with_no_provider
+    // tests: CampaignHooksTest.provider_bindings_happy_path
+    // tests: CampaignHooksTest.match_bindings_round_trip
+    // tests: CampaignHooksTest.campaign_my_team_provider_answer_and_clamp
+    // tests: CampaignHooksTest.campaign_random_provider_answer_and_bounds
     if (!p.state_set)
         script_raise(
             L, "og.campaign_state_set: no campaign provider installed");
+    // rule: When the campaign store refuses a write (entry bounds, check-then-write), the script
+    //   gets an error and nothing is written, so a script bug cannot brick the save.
+    // tests: CampaignHooksTest.state_set_bounds_rejection_raises_before_mutation
+    // tests: CampaignHooksTest.provider_bindings_happy_path
     if (!p.state_set(key, static_cast<std::int32_t>(value)))
         script_raise(
             L, "og.campaign_state_set: the campaign store rejected '%s' "
@@ -1962,6 +2338,13 @@ int og_campaign_gold(lua_State* L)
 {
     campaign_dispatch_arg(L, "campaign_gold");
     const auto& p = campaign_providers();
+    // rule: A campaign script never gets a silent default: a campaign binding whose surface
+    //   installed no provider raises a Lua error instead of answering 0/false/empty.
+    // tests: CampaignHooksTest.campaign_bindings_error_with_no_provider
+    // tests: CampaignHooksTest.provider_bindings_happy_path
+    // tests: CampaignHooksTest.match_bindings_round_trip
+    // tests: CampaignHooksTest.campaign_my_team_provider_answer_and_clamp
+    // tests: CampaignHooksTest.campaign_random_provider_answer_and_bounds
     if (!p.gold_get)
         script_raise(L,
                      "og.campaign_gold: no campaign provider installed");
@@ -1976,12 +2359,29 @@ int og_campaign_spend_gold(lua_State* L)
 {
     campaign_dispatch_arg(L, "campaign_spend_gold");
     const lua_Integer amount = luaL_checkinteger(L, 1);
+    // rule: Campaign gold can never be moved by a negative amount: spend(-n) and grant(-n) are
+    //   script errors that never reach the wallet.
+    // tests: CampaignHooksTest.negative_gold_amounts_never_reach_the_provider
     if (amount < 0)
         script_raise(L, "og.campaign_spend_gold: negative amount");
     const auto& p = campaign_providers();
+    // rule: A campaign script never gets a silent default: a campaign binding whose surface
+    //   installed no provider raises a Lua error instead of answering 0/false/empty.
+    // tests: CampaignHooksTest.campaign_bindings_error_with_no_provider
+    // tests: CampaignHooksTest.provider_bindings_happy_path
+    // tests: CampaignHooksTest.match_bindings_round_trip
+    // tests: CampaignHooksTest.campaign_my_team_provider_answer_and_clamp
+    // tests: CampaignHooksTest.campaign_random_provider_answer_and_bounds
     if (!p.gold_spend)
         script_raise(
             L, "og.campaign_spend_gold: no campaign provider installed");
+    // rule: The binding answers the provider's boolean verbatim: og.campaign_spend_gold(n) is true
+    //   exactly when the installed gold_spend provider answered true, false when it answered false.
+    //   The affordability rule (amount > gold refused, nothing debited) and the infinite_gold
+    //   branch (answers true, skips the debit) are the PROVIDER's
+    //   (src/resources/campaign_state_providers.cpp), outside this chunk.
+    // tests: CampaignHooksTest.provider_bindings_happy_path
+    // tests: CampaignStateProviders.gold_spend_rules
     lua_pushboolean(L, p.gold_spend(amount) ? 1 : 0);
     return 1;
 }
@@ -1990,9 +2390,19 @@ int og_campaign_grant_gold(lua_State* L)
 {
     campaign_dispatch_arg(L, "campaign_grant_gold");
     const lua_Integer amount = luaL_checkinteger(L, 1);
+    // rule: Campaign gold can never be moved by a negative amount: spend(-n) and grant(-n) are
+    //   script errors that never reach the wallet.
+    // tests: CampaignHooksTest.negative_gold_amounts_never_reach_the_provider
     if (amount < 0)
         script_raise(L, "og.campaign_grant_gold: negative amount");
     const auto& p = campaign_providers();
+    // rule: A campaign script never gets a silent default: a campaign binding whose surface
+    //   installed no provider raises a Lua error instead of answering 0/false/empty.
+    // tests: CampaignHooksTest.campaign_bindings_error_with_no_provider
+    // tests: CampaignHooksTest.provider_bindings_happy_path
+    // tests: CampaignHooksTest.match_bindings_round_trip
+    // tests: CampaignHooksTest.campaign_my_team_provider_answer_and_clamp
+    // tests: CampaignHooksTest.campaign_random_provider_answer_and_bounds
     if (!p.gold_grant)
         script_raise(
             L, "og.campaign_grant_gold: no campaign provider installed");
@@ -2006,11 +2416,21 @@ int og_campaign_team(lua_State* L)
 {
     campaign_dispatch_arg(L, "campaign_team");
     const auto& p = campaign_providers();
+    // rule: A campaign script never gets a silent default: a campaign binding whose surface
+    //   installed no provider raises a Lua error instead of answering 0/false/empty.
+    // tests: CampaignHooksTest.campaign_bindings_error_with_no_provider
+    // tests: CampaignHooksTest.provider_bindings_happy_path
+    // tests: CampaignHooksTest.match_bindings_round_trip
+    // tests: CampaignHooksTest.campaign_my_team_provider_answer_and_clamp
+    // tests: CampaignHooksTest.campaign_random_provider_answer_and_bounds
     if (!p.team_snapshot)
         script_raise(L,
                      "og.campaign_team: no campaign provider installed");
     const std::vector<hooks::CampaignRosterEntry> team = p.team_snapshot();
     lua_createtable(L, static_cast<int>(team.size()), 0);
+    // plumbing: iteration over the campaign roster snapshot building plain Lua tables; field order
+    //   asserted by CampaignHooksTest.provider_bindings_happy_path; deployed rule see
+    //   below
     for (std::size_t i = 0; i < team.size(); i++) {
         const hooks::CampaignRosterEntry& entry = team[i];
         lua_createtable(L, 0, 13);
@@ -2043,6 +2463,9 @@ int og_campaign_team(lua_State* L)
         lua_setfield(L, -2, "save_slot");
         // Tonight's sortie, not the oath census: a march row that counts
         // swords has to know which of them are actually standing.
+        // rule: Each roster row tells a campaign script whether the hero is in tonight's sortie
+        //   (deployed) as opposed to merely on the roster/sworn.
+        // tests: SemScriptCampaign.each_roster_row_says_whether_the_hero_marches_tonight
         lua_pushboolean(L, entry.deployed ? 1 : 0);
         lua_setfield(L, -2, "deployed");
         lua_rawseti(L, -2, static_cast<lua_Integer>(i) + 1);
@@ -2057,9 +2480,19 @@ int og_campaign_level_completed(lua_State* L)
     campaign_dispatch_arg(L, "campaign_level_completed");
     const auto id = static_cast<int>(luaL_checkinteger(L, 1));
     const auto& p = campaign_providers();
+    // rule: A campaign script never gets a silent default: a campaign binding whose surface
+    //   installed no provider raises a Lua error instead of answering 0/false/empty.
+    // tests: CampaignHooksTest.campaign_bindings_error_with_no_provider
+    // tests: CampaignHooksTest.provider_bindings_happy_path
+    // tests: CampaignHooksTest.match_bindings_round_trip
+    // tests: CampaignHooksTest.campaign_my_team_provider_answer_and_clamp
+    // tests: CampaignHooksTest.campaign_random_provider_answer_and_bounds
     if (!p.level_completed)
         script_raise(
             L, "og.campaign_level_completed: no campaign provider installed");
+    // rule: A campaign page can ask whether a given level has been won (menu-time twin of
+    //   og.level_completed).
+    // tests: CampaignHooksTest.provider_bindings_happy_path
     lua_pushboolean(L, p.level_completed(id) ? 1 : 0);
     return 1;
 }
@@ -2068,6 +2501,13 @@ int og_campaign_current_level(lua_State* L)
 {
     campaign_dispatch_arg(L, "campaign_current_level");
     const auto& p = campaign_providers();
+    // rule: A campaign script never gets a silent default: a campaign binding whose surface
+    //   installed no provider raises a Lua error instead of answering 0/false/empty.
+    // tests: CampaignHooksTest.campaign_bindings_error_with_no_provider
+    // tests: CampaignHooksTest.provider_bindings_happy_path
+    // tests: CampaignHooksTest.match_bindings_round_trip
+    // tests: CampaignHooksTest.campaign_my_team_provider_answer_and_clamp
+    // tests: CampaignHooksTest.campaign_random_provider_answer_and_bounds
     if (!p.current_level)
         script_raise(
             L, "og.campaign_current_level: no campaign provider installed");
@@ -2081,6 +2521,13 @@ int og_campaign_scenario_title(lua_State* L)
     campaign_dispatch_arg(L, "campaign_scenario_title");
     const auto id = static_cast<int>(luaL_checkinteger(L, 1));
     const auto& p = campaign_providers();
+    // rule: A campaign script never gets a silent default: a campaign binding whose surface
+    //   installed no provider raises a Lua error instead of answering 0/false/empty.
+    // tests: CampaignHooksTest.campaign_bindings_error_with_no_provider
+    // tests: CampaignHooksTest.provider_bindings_happy_path
+    // tests: CampaignHooksTest.match_bindings_round_trip
+    // tests: CampaignHooksTest.campaign_my_team_provider_answer_and_clamp
+    // tests: CampaignHooksTest.campaign_random_provider_answer_and_bounds
     if (!p.scenario_title)
         script_raise(
             L, "og.campaign_scenario_title: no campaign provider installed");
@@ -2094,7 +2541,17 @@ int og_campaign_scenario_title(lua_State* L)
 // contract), so this helper serves only the erroring spelling.
 bool known_match_setting(const char* name)
 {
+    // rule: Campaign scripts read only the live match-knob vocabulary; an unknown name (including
+    //   the retired team_count and strip_troops) is a script error, unlike the sim twin
+    //   og.match_setting which still answers the retired names.
+    // tests: CampaignHooksTest.match_bindings_round_trip
+    // tests: CampaignStateProviders.bot_knob_names_are_in_the_campaign_vocabulary
+    // tests: SemScriptCampaign.the_retired_match_knobs_are_unknown_to_campaign_scripts
     for (const char* known : hooks::kCampaignMatchSettingNames) {
+        // rule: Campaign scripts read only the live match-knob vocabulary.
+        // tests: CampaignHooksTest.match_bindings_round_trip
+        // tests: CampaignStateProviders.bot_knob_names_are_in_the_campaign_vocabulary
+        // tests: SemScriptCampaign.the_retired_match_knobs_are_unknown_to_campaign_scripts
         if (std::strcmp(known, name) == 0)
             return true;
     }
@@ -2113,10 +2570,21 @@ int og_campaign_match_get(lua_State* L)
 {
     campaign_dispatch_arg(L, "campaign_match_get");
     const char* name = luaL_checkstring(L, 1);
+    // rule: Campaign scripts read only the live match-knob vocabulary.
+    // tests: CampaignHooksTest.match_bindings_round_trip
+    // tests: CampaignStateProviders.bot_knob_names_are_in_the_campaign_vocabulary
+    // tests: SemScriptCampaign.the_retired_match_knobs_are_unknown_to_campaign_scripts
     if (!known_match_setting(name))
         script_raise(L, "og.campaign_match_get: unknown setting '%s'",
                      name);
     const auto& p = campaign_providers();
+    // rule: A campaign script never gets a silent default: a campaign binding whose surface
+    //   installed no provider raises a Lua error instead of answering 0/false/empty.
+    // tests: CampaignHooksTest.campaign_bindings_error_with_no_provider
+    // tests: CampaignHooksTest.provider_bindings_happy_path
+    // tests: CampaignHooksTest.match_bindings_round_trip
+    // tests: CampaignHooksTest.campaign_my_team_provider_answer_and_clamp
+    // tests: CampaignHooksTest.campaign_random_provider_answer_and_bounds
     if (!p.match_get)
         script_raise(
             L, "og.campaign_match_get: no campaign provider installed");
@@ -2133,11 +2601,23 @@ int og_campaign_match_set(lua_State* L)
     campaign_dispatch_arg(L, "campaign_match_set");
     const char* name = luaL_checkstring(L, 1);
     const lua_Integer value = luaL_checkinteger(L, 2);
+    // rule: A match knob write wider than int32 is refused before the provider (no truncation into
+    //   the save).
+    // tests: CampaignHooksTest.a_match_value_past_int32_never_reaches_the_provider
+    // tests: CampaignHooksTest.match_bindings_round_trip
+    // tests: SemScriptCampaign.a_match_value_below_int32_never_reaches_the_provider
     if (value < std::numeric_limits<std::int32_t>::min() ||
         value > std::numeric_limits<std::int32_t>::max())
         script_raise(L,
                      "og.campaign_match_set: value out of int32 range");
     const auto& p = campaign_providers();
+    // rule: A campaign script never gets a silent default: a campaign binding whose surface
+    //   installed no provider raises a Lua error instead of answering 0/false/empty.
+    // tests: CampaignHooksTest.campaign_bindings_error_with_no_provider
+    // tests: CampaignHooksTest.provider_bindings_happy_path
+    // tests: CampaignHooksTest.match_bindings_round_trip
+    // tests: CampaignHooksTest.campaign_my_team_provider_answer_and_clamp
+    // tests: CampaignHooksTest.campaign_random_provider_answer_and_bounds
     if (!p.match_set)
         script_raise(
             L, "og.campaign_match_set: no campaign provider installed");
@@ -2153,9 +2633,19 @@ int og_campaign_is_host(lua_State* L)
 {
     campaign_dispatch_arg(L, "campaign_is_host");
     const auto& p = campaign_providers();
+    // rule: A campaign script never gets a silent default: a campaign binding whose surface
+    //   installed no provider raises a Lua error instead of answering 0/false/empty.
+    // tests: CampaignHooksTest.campaign_bindings_error_with_no_provider
+    // tests: CampaignHooksTest.provider_bindings_happy_path
+    // tests: CampaignHooksTest.match_bindings_round_trip
+    // tests: CampaignHooksTest.campaign_my_team_provider_answer_and_clamp
+    // tests: CampaignHooksTest.campaign_random_provider_answer_and_bounds
     if (!p.is_host)
         script_raise(
             L, "og.campaign_is_host: no campaign provider installed");
+    // rule: A campaign page can tell whether this machine is the host (local play is always host)
+    //   to shape host-only rows.
+    // tests: CampaignHooksTest.match_bindings_round_trip
     lua_pushboolean(L, p.is_host() ? 1 : 0);
     return 1;
 }
@@ -2171,9 +2661,19 @@ int og_campaign_my_team(lua_State* L)
 {
     campaign_dispatch_arg(L, "campaign_my_team");
     const auto& p = campaign_providers();
+    // rule: A campaign script never gets a silent default: a campaign binding whose surface
+    //   installed no provider raises a Lua error instead of answering 0/false/empty.
+    // tests: CampaignHooksTest.campaign_bindings_error_with_no_provider
+    // tests: CampaignHooksTest.provider_bindings_happy_path
+    // tests: CampaignHooksTest.match_bindings_round_trip
+    // tests: CampaignHooksTest.campaign_my_team_provider_answer_and_clamp
+    // tests: CampaignHooksTest.campaign_random_provider_answer_and_bounds
     if (!p.my_team)
         script_raise(
             L, "og.campaign_my_team: no campaign provider installed");
+    // rule: The local seat's team handed to a campaign script is always a real team 0..3; an
+    //   out-of-range seat answer is clamped.
+    // tests: CampaignHooksTest.campaign_my_team_provider_answer_and_clamp
     lua_pushinteger(L, std::clamp(p.my_team(), 0, SCORE_TEAM_COUNT - 1));
     return 1;
 }
@@ -2187,11 +2687,21 @@ int og_campaign_random(lua_State* L)
 {
     campaign_dispatch_arg(L, "campaign_random");
     const lua_Integer n = luaL_checkinteger(L, 1);
+    // rule: The menu-time roll answers 1..n from the menu generator (never the sim stream) and
+    //   refuses an empty or over-wide question.
+    // tests: CampaignHooksTest.campaign_random_provider_answer_and_bounds
     if (n < 1)
         script_raise(L, "og.campaign_random: n must be >= 1");
     if (n > std::numeric_limits<std::int32_t>::max())
         script_raise(L, "og.campaign_random: n out of int32 range");
     const auto& p = campaign_providers();
+    // rule: A campaign script never gets a silent default: a campaign binding whose surface
+    //   installed no provider raises a Lua error instead of answering 0/false/empty.
+    // tests: CampaignHooksTest.campaign_bindings_error_with_no_provider
+    // tests: CampaignHooksTest.provider_bindings_happy_path
+    // tests: CampaignHooksTest.match_bindings_round_trip
+    // tests: CampaignHooksTest.campaign_my_team_provider_answer_and_clamp
+    // tests: CampaignHooksTest.campaign_random_provider_answer_and_bounds
     if (!p.random_pick)
         script_raise(
             L, "og.campaign_random: no campaign provider installed");
@@ -2221,6 +2731,10 @@ int og_campaign_random(lua_State* L)
 // it into a walker field.
 void check_number_arg(lua_State* L, int idx)
 {
+    // rule: Pack arithmetic helpers (og.max/min/clamp/sign) accept only real, non-NaN numbers: no
+    //   string coercion and no NaN can be laundered into a walker field.
+    // tests: ScriptBindingMathTest.non_numbers_and_nan_are_refused
+    // tests: ScriptBindingMathTest.max_min_follow_std_semantics_exactly
     if (lua_type(L, idx) != LUA_TNUMBER)
         luaL_typeerror(L, idx, "number");
     if (!lua_isinteger(L, idx) && std::isnan(lua_tonumber(L, idx)))
@@ -2247,10 +2761,19 @@ int og_rand0(lua_State* L)
 {
     GameWorld* world = world_arg(L);
     const lua_Integer n = luaL_checkinteger(L, 1);
+    // rule: og.rand0(n) with n <= 0 answers 0 WITHOUT advancing the world RNG (the classic
+    //   random(0) guard), so replacing a guarded og.rand cannot shift the stream.
+    // tests: ScriptBindingMathTest.rand0_zero_and_negative_do_not_advance_the_stream
+    // tests: ScriptBindingMathTest.rand0_positive_is_og_rand_verbatim
+    // tests: ScriptBindingMathTest.rand0_requires_an_active_world
     if (n <= 0) {
         lua_pushinteger(L, 0);
         return 1;
     }
+    // rule: A random bound that cannot survive the cast to IRandom::next(uint32) is refused rather
+    //   than silently wrapped.
+    // tests: ScriptBindingMathTest.rand_bounds_above_int32_max_are_refused
+    // tests: ScriptBindingMathTest.rand_bounds_up_to_int32_max_draw_unchanged
     if (n > kMaxRandBound)
         script_raise(L, "og.rand0: n out of range [1, 2147483647]");
     lua_pushinteger(L, static_cast<lua_Integer>(
@@ -2270,6 +2793,9 @@ int og_max(lua_State* L)
 {
     check_number_arg(L, 1);
     check_number_arg(L, 2);
+    // rule: og.max/og.min are std::max/std::min exactly: ties answer the first argument and the
+    //   winning argument keeps its integer/float subtype.
+    // tests: ScriptBindingMathTest.max_min_follow_std_semantics_exactly
     lua_pushvalue(L, lua_compare(L, 1, 2, LUA_OPLT) ? 2 : 1);
     return 1;
 }
@@ -2278,6 +2804,9 @@ int og_min(lua_State* L)
 {
     check_number_arg(L, 1);
     check_number_arg(L, 2);
+    // rule: og.max/og.min are std::max/std::min exactly: ties answer the first argument and the
+    //   winning argument keeps its integer/float subtype.
+    // tests: ScriptBindingMathTest.max_min_follow_std_semantics_exactly
     lua_pushvalue(L, lua_compare(L, 2, 1, LUA_OPLT) ? 2 : 1);
     return 1;
 }
@@ -2292,9 +2821,14 @@ int og_clamp(lua_State* L)
     check_number_arg(L, 1);
     check_number_arg(L, 2);
     check_number_arg(L, 3);
+    // rule: Clamping into an empty range is a script error, not undefined behaviour.
+    // tests: ScriptBindingMathTest.clamp_empty_range_is_an_error
     if (lua_compare(L, 3, 2, LUA_OPLT))
         script_raise(L, "og.clamp: hi < lo (empty range)");
     int answer = 1;
+    // rule: og.clamp is std::clamp: below the range answers lo, above answers hi, otherwise (ties
+    //   included) v itself with its subtype.
+    // tests: ScriptBindingMathTest.clamp_follows_std_clamp_exactly
     if (lua_compare(L, 1, 2, LUA_OPLT))
         answer = 2;
     else if (lua_compare(L, 3, 1, LUA_OPLT))
@@ -2314,6 +2848,9 @@ int og_sign(lua_State* L)
     check_number_arg(L, 1);
     const lua_Number v = lua_tonumber(L, 1);
     lua_Integer s = 0;
+    // rule: og.sign is the total sign function used by movement code: 1, -1 or 0 as an integer for
+    //   any number (0, 0.0 and -0.0 all 0).
+    // tests: ScriptBindingMathTest.sign_is_total_and_answers_an_integer
     if (v > 0)
         s = 1;
     if (v < 0)
@@ -2508,6 +3045,10 @@ const WalkerProperty kWalkerProperties[] = {
 int walker_index(lua_State* L)
 {
     lua_pushvalue(L, 2);
+    // rule: Reading a field on a walker handle resolves methods first (so self:busy() keeps
+    //   working), then value properties (self.hp), and an unknown name reads as nil.
+    // tests: ScriptBindingPropsTest.read_resolution_is_method_first
+    // tests: ScriptBindingPropsTest.property_reads_equal_their_method_spellings
     if (lua_rawget(L, lua_upvalueindex(1)) != LUA_TNIL)
         return 1;  // the method function, exactly as the plain table served
     lua_pop(L, 1);
@@ -2528,6 +3069,14 @@ int walker_index(lua_State* L)
 int walker_newindex(lua_State* L)
 {
     lua_pushvalue(L, 2);
+    // rule: Writing a walker field runs the same setter as the method (narrowing included); writes
+    //   to read-only properties (xpos/ypos), to method names, and to unknown fields are three
+    //   distinct script errors.
+    // tests: ScriptBindingPropsTest.property_writes_run_the_same_setters
+    // tests: ScriptBindingPropsTest.write_to_read_only_property_errors
+    // tests: ScriptBindingPropsTest.write_to_method_name_errors
+    // tests: ScriptBindingPropsTest.write_to_unknown_field_errors
+    // tests: ScriptBindingPropsTest.write_with_non_string_key_errors
     if (lua_rawget(L, lua_upvalueindex(1)) == LUA_TFUNCTION) {
         const lua_CFunction setter = lua_tocfunction(L, -1);
         lua_pop(L, 1);
@@ -2567,6 +3116,11 @@ int og_end_level(lua_State* L)
 {
     GameWorld* world = world_arg(L);
     const lua_Integer ending = luaL_checkinteger(L, 1);
+    // rule: A scripted mode ends the level only as a win (0) or loss (1) toward a valid next level
+    //   (id, rematch, or -1 terminal); anything else is refused and does not latch.
+    // tests: ModeBindings.end_level_latches_and_validates
+    // tests: SemScriptMode.an_ending_other_than_win_or_loss_is_refused_and_never_latches
+    // tests: SemScriptMode.a_next_level_outside_minus_one_to_32767_is_refused_and_never_latches
     if (ending != 0 && ending != 1)
         script_raise(L, "og.end_level: ending must be 0 (win) or 1 "
                         "(loss)");
@@ -2589,6 +3143,13 @@ int og_declare_winner(lua_State* L)
 {
     GameWorld* world = world_arg(L);
     const lua_Integer team = luaL_checkinteger(L, 1);
+    // rule: A scoring identity is a team 0..3 or an FFA band byte 16..31; declare_winner and
+    //   team_color_name refuse anything else (4..15, >31, negative).
+    // tests: ModeBindings.declare_winner_records_team_and_validates
+    // tests: ModeBindings.declare_winner_accepts_band_rejects_gap_and_beyond
+    // tests: ModeBindings.team_color_name_matches_engine_table
+    // tests: ModeBindings.team_color_name_band_names_and_edges
+    // tests: SemScriptMode.a_negative_winner_team_is_refused_and_nothing_latches
     if (team < 0 || !og::sim::is_scoring_identity(static_cast<int>(team)))
         script_raise(L, "team %d not in [0, %d] or band [%d, %d]",
                      static_cast<int>(team), SCORE_TEAM_COUNT - 1,
@@ -2611,6 +3172,11 @@ int og_mode_get(lua_State* L)
 {
     GameWorld* world = world_arg(L);
     const lua_Integer i = luaL_checkinteger(L, 1);
+    // rule: Mode state lives only in the 64 replicated mode vars; indices outside 0..63 are script
+    //   errors (no out-of-bounds write).
+    // tests: ModeBindings.mode_get_set_roundtrip_and_index_errors
+    // tests: SemScriptMode.a_mode_var_write_truncates_to_int32
+    // tests: SemScriptMode.a_negative_mode_var_write_is_refused_and_writes_nothing
     if (i < 0 || i >= og::sim::kModeVarCount)
         script_raise(L, "mode var index %d out of range [0, %d]",
                      static_cast<int>(i), og::sim::kModeVarCount - 1);
@@ -2625,6 +3191,11 @@ int og_mode_set(lua_State* L)
 {
     GameWorld* world = world_arg(L);
     const lua_Integer i = luaL_checkinteger(L, 1);
+    // rule: Mode state lives only in the 64 replicated mode vars; indices outside 0..63 are script
+    //   errors (no out-of-bounds write).
+    // tests: ModeBindings.mode_get_set_roundtrip_and_index_errors
+    // tests: SemScriptMode.a_mode_var_write_truncates_to_int32
+    // tests: SemScriptMode.a_negative_mode_var_write_is_refused_and_writes_nothing
     if (i < 0 || i >= og::sim::kModeVarCount)
         script_raise(L, "mode var index %d out of range [0, %d]",
                      static_cast<int>(i), og::sim::kModeVarCount - 1);
@@ -2642,6 +3213,9 @@ int og_set_mode_name(lua_State* L)
     const char* s = luaL_checklstring(L, 1, &len);
     auto& name = world->mode.name;
     name.fill('\0');
+    // rule: The mode label shown on HUD/results is clamped to 11 bytes.
+    // tests: ModeBindings.set_mode_name_clamps_to_eleven_bytes
+    // tests: ModesSoccer.init_activates_anchor_teams_and_spawns_ball
     const size_t n = std::min(len, static_cast<size_t>(
                                        og::sim::kModeNameBytes - 1));
     std::memcpy(name.data(), s, n);
@@ -2656,14 +3230,27 @@ int og_set_hud_line(lua_State* L)
 {
     GameWorld* world = world_arg(L);
     const lua_Integer slot = luaL_checkinteger(L, 1);
+    // rule: A mode has four HUD lines (slots 0..3); other slots are refused.
+    // tests: ModeBindings.hud_lines_write_clamp_clear_and_validate
+    // tests: SemScriptMode.hud_slots_below_zero_and_past_three_are_refused_and_write_nothing
     if (slot < 0 || slot >= og::sim::kModeHudLines)
         script_raise(L, "slot %d out of range [0, %d]",
                      static_cast<int>(slot), og::sim::kModeHudLines - 1);
     size_t len = 0;
     const char* s = luaL_checklstring(L, 2, &len);
     std::uint8_t team = 255;
+    // rule: A HUD line's optional team tints it (nil = default colour, 255), a bad tint team is
+    //   refused without half-writing the line, and the text is clamped to 25 bytes.
+    // tests: ModeBindings.hud_lines_write_clamp_clear_and_validate
+    // tests: ModeBindings.hud_line_accepts_band_tint_keeps_nil_default
+    // tests: SemScriptMode.a_negative_hud_tint_is_refused_without_half_writing_the_line
     if (!lua_isnoneornil(L, 3)) {
         const lua_Integer t = luaL_checkinteger(L, 3);
+        // rule: A HUD line's optional team tints it (nil = default colour, 255), a bad tint team is
+        //   refused without half-writing the line, and the text is clamped to 25 bytes.
+        // tests: ModeBindings.hud_lines_write_clamp_clear_and_validate
+        // tests: ModeBindings.hud_line_accepts_band_tint_keeps_nil_default
+        // tests: SemScriptMode.a_negative_hud_tint_is_refused_without_half_writing_the_line
         if (t < 0 || !og::sim::is_scoring_identity(static_cast<int>(t)))
             script_raise(L, "team %d not in [0, %d] or band [%d, %d]",
                          static_cast<int>(t), SCORE_TEAM_COUNT - 1,
@@ -2685,6 +3272,9 @@ int og_clear_hud_line(lua_State* L)
 {
     GameWorld* world = world_arg(L);
     const lua_Integer slot = luaL_checkinteger(L, 1);
+    // rule: A mode has four HUD lines (slots 0..3); other slots are refused.
+    // tests: ModeBindings.hud_lines_write_clamp_clear_and_validate
+    // tests: SemScriptMode.hud_slots_below_zero_and_past_three_are_refused_and_write_nothing
     if (slot < 0 || slot >= og::sim::kModeHudLines)
         script_raise(L, "slot %d out of range [0, %d]",
                      static_cast<int>(slot), og::sim::kModeHudLines - 1);
@@ -2699,6 +3289,13 @@ int og_set_beacon(lua_State* L)
 {
     GameWorld* world = world_arg(L);
     const lua_Integer slot = luaL_checkinteger(L, 1);
+    // rule: A mode marks up to four entities for the off-screen beacon; nil clears the slot; the
+    //   optional team tints it and must be a scoring identity.
+    // tests: ModeBindings.beacons_set_clear_and_validate
+    // tests: ModeBindings.beacon_accepts_band_team_rejects_gap_and_beyond
+    // tests: SemScriptMode.a_nil_beacon_clears_the_slot_whatever_team_rides_along
+    // tests: SemScriptMode.a_negative_beacon_slot_is_refused_and_writes_nothing
+    // tests: SemScriptMode.a_negative_beacon_tint_is_refused_and_the_slot_kept
     if (slot < 0 || slot >= og::sim::kModeBeacons)
         script_raise(L, "slot %d out of range [0, %d]",
                      static_cast<int>(slot), og::sim::kModeBeacons - 1);
@@ -2712,6 +3309,13 @@ int og_set_beacon(lua_State* L)
     std::uint8_t team = 255;
     if (!lua_isnoneornil(L, 3)) {
         const lua_Integer t = luaL_checkinteger(L, 3);
+        // rule: A mode marks up to four entities for the off-screen beacon; nil clears the slot;
+        //   the optional team tints it and must be a scoring identity.
+        // tests: ModeBindings.beacons_set_clear_and_validate
+        // tests: ModeBindings.beacon_accepts_band_team_rejects_gap_and_beyond
+        // tests: SemScriptMode.a_nil_beacon_clears_the_slot_whatever_team_rides_along
+        // tests: SemScriptMode.a_negative_beacon_slot_is_refused_and_writes_nothing
+        // tests: SemScriptMode.a_negative_beacon_tint_is_refused_and_the_slot_kept
         if (t < 0 || !og::sim::is_scoring_identity(static_cast<int>(t)))
             script_raise(L, "team %d not in [0, %d] or band [%d, %d]",
                          static_cast<int>(t), SCORE_TEAM_COUNT - 1,
@@ -2738,23 +3342,48 @@ int og_set_camera_view(lua_State* L)
 {
     GameWorld* world = world_arg(L);
     const lua_Integer slot = luaL_checkinteger(L, 1);
+    // rule: A mode declares a camera pane following an entity (slot 0 only today); nil clears the
+    //   whole slot.
+    // tests: ModeBindings.camera_view_sets_slot_zero_and_rejects_out_of_range_slots
+    // tests: ModeBindings.camera_view_nil_clears_the_whole_slot
     if (slot < 0 || slot >= og::sim::kModeCameraViews)
         script_raise(L, "slot %d out of range [0, %d]",
                      static_cast<int>(slot),
                      og::sim::kModeCameraViews - 1);
     walker* w = resolve_walker_or_nil(L, 2);
     std::uint8_t style = og::sim::kCameraStyleAuto;
+    // rule: Camera options are only {style='auto'|'inset'} (no 'docked' force, since docking
+    //   follows local seat count); every option is checked before the slot is written so a rejected
+    //   call leaves the previous declaration intact.
+    // tests: ModeBindings.camera_view_style_maps_to_byte_and_rejects_bad_opts
+    // tests: ModeBindings.an_explicit_auto_style_takes_a_slot_back_off_inset
+    // tests: ModeBindings.camera_view_sets_slot_zero_and_rejects_out_of_range_slots
     if (!lua_isnoneornil(L, 3)) {
         luaL_checktype(L, 3, LUA_TTABLE);
         int recognized = 0;
+        // rule: Camera options are only {style='auto'|'inset'} (no 'docked' force, since docking
+        //   follows local seat count).
+        // tests: ModeBindings.camera_view_style_maps_to_byte_and_rejects_bad_opts
+        // tests: ModeBindings.an_explicit_auto_style_takes_a_slot_back_off_inset
+        // tests: ModeBindings.camera_view_sets_slot_zero_and_rejects_out_of_range_slots
         if (lua_getfield(L, 3, "style") != LUA_TNIL) {
             // lua_type before lua_tostring: converting a number in place
             // would mutate the table the lua_next walk below is about to
             // traverse.
+            // rule: Camera options are only {style='auto'|'inset'} (no 'docked' force, since
+            //   docking follows local seat count).
+            // tests: ModeBindings.camera_view_style_maps_to_byte_and_rejects_bad_opts
+            // tests: ModeBindings.an_explicit_auto_style_takes_a_slot_back_off_inset
+            // tests: ModeBindings.camera_view_sets_slot_zero_and_rejects_out_of_range_slots
             if (lua_type(L, -1) != LUA_TSTRING)
                 script_raise(
                     L, "og.set_camera_view: 'style' must be a string");
             const char* s = lua_tostring(L, -1);
+            // rule: Camera options are only {style='auto'|'inset'} (no 'docked' force, since
+            //   docking follows local seat count).
+            // tests: ModeBindings.camera_view_style_maps_to_byte_and_rejects_bad_opts
+            // tests: ModeBindings.an_explicit_auto_style_takes_a_slot_back_off_inset
+            // tests: ModeBindings.camera_view_sets_slot_zero_and_rejects_out_of_range_slots
             if (std::strcmp(s, "auto") == 0)
                 style = og::sim::kCameraStyleAuto;
             else if (std::strcmp(s, "inset") == 0)
@@ -2769,10 +3398,20 @@ int og_set_camera_view(lua_State* L)
         lua_pop(L, 1);
         int total = 0;
         lua_pushnil(L);
+        // rule: Camera options are only {style='auto'|'inset'} (no 'docked' force, since docking
+        //   follows local seat count).
+        // tests: ModeBindings.camera_view_style_maps_to_byte_and_rejects_bad_opts
+        // tests: ModeBindings.an_explicit_auto_style_takes_a_slot_back_off_inset
+        // tests: ModeBindings.camera_view_sets_slot_zero_and_rejects_out_of_range_slots
         while (lua_next(L, 3) != 0) {
             lua_pop(L, 1);  // value; the key stays for the next lua_next
             total++;
         }
+        // rule: Camera options are only {style='auto'|'inset'} (no 'docked' force, since docking
+        //   follows local seat count).
+        // tests: ModeBindings.camera_view_style_maps_to_byte_and_rejects_bad_opts
+        // tests: ModeBindings.an_explicit_auto_style_takes_a_slot_back_off_inset
+        // tests: ModeBindings.camera_view_sets_slot_zero_and_rejects_out_of_range_slots
         if (total != recognized)
             script_raise(L,
                          "og.set_camera_view: unknown option key "
@@ -2780,6 +3419,10 @@ int og_set_camera_view(lua_State* L)
     }
     og::sim::ModeCameraView& cam =
         world->mode.cameras[static_cast<std::size_t>(slot)];
+    // rule: A mode declares a camera pane following an entity (slot 0 only today); nil clears the
+    //   whole slot.
+    // tests: ModeBindings.camera_view_sets_slot_zero_and_rejects_out_of_range_slots
+    // tests: ModeBindings.camera_view_nil_clears_the_whole_slot
     if (w == nullptr) {
         cam = og::sim::ModeCameraView{};
         return 0;
@@ -2795,6 +3438,12 @@ int og_team_score(lua_State* L)
 {
     GameWorld* world = world_arg(L);
     const lua_Integer team = luaL_checkinteger(L, 1);
+    // rule: Score and respawn queries are per score team 0..3 only (FFA bands are not accepted
+    //   here, unlike declare_winner).
+    // tests: ModeBindings.team_score_reads_award_scores_counter
+    // tests: ModeBindings.respawn_schedule_pending_and_counts
+    // tests: ModeBindings.respawn_anchors_read_back_and_validate
+    // tests: SemScriptMode.score_and_respawn_queries_refuse_a_negative_team
     if (team < 0 || team >= SCORE_TEAM_COUNT)
         script_raise(L, "team %d out of range [0, %d]",
                      static_cast<int>(team), SCORE_TEAM_COUNT - 1);
@@ -2810,6 +3459,9 @@ int og_find_by_id(lua_State* L)
 {
     GameWorld* world = world_arg(L);
     const lua_Integer id = luaL_checkinteger(L, 1);
+    // rule: Entity id 0 (and negatives) means 'no entity': find_by_id answers nil for it, as for
+    //   absent or swept ids.
+    // tests: ModeBindings.find_by_id_resolves_and_nils
     if (id <= 0) {
         lua_pushnil(L);
         return 1;
@@ -2825,6 +3477,8 @@ int og_fxlist(lua_State* L)
     GameWorld* world = world_arg(L);
     lua_newtable(L);
     lua_Integer i = 1;
+    // plumbing: og.fxlist/og.weaplist list iteration; counts asserted by
+    //   ModeBindings.fxlist_weaplist_enumerate_their_lists
     for (const auto& uptr : world->fxlist) {
         push_walker_here(L, uptr.get());
         lua_rawseti(L, -2, i++);
@@ -2838,6 +3492,8 @@ int og_weaplist(lua_State* L)
     GameWorld* world = world_arg(L);
     lua_newtable(L);
     lua_Integer i = 1;
+    // plumbing: og.fxlist/og.weaplist list iteration; counts asserted by
+    //   ModeBindings.fxlist_weaplist_enumerate_their_lists
     for (const auto& uptr : world->weaplist) {
         push_walker_here(L, uptr.get());
         lua_rawseti(L, -2, i++);
@@ -2860,6 +3516,13 @@ int og_world_tick(lua_State* L)
 int og_team_color_name(lua_State* L)
 {
     const lua_Integer team = luaL_checkinteger(L, 1);
+    // rule: A scoring identity is a team 0..3 or an FFA band byte 16..31; declare_winner and
+    //   team_color_name refuse anything else (4..15, >31, negative).
+    // tests: ModeBindings.declare_winner_records_team_and_validates
+    // tests: ModeBindings.declare_winner_accepts_band_rejects_gap_and_beyond
+    // tests: ModeBindings.team_color_name_matches_engine_table
+    // tests: ModeBindings.team_color_name_band_names_and_edges
+    // tests: SemScriptMode.a_negative_winner_team_is_refused_and_nothing_latches
     if (team < 0 || !og::sim::is_scoring_identity(static_cast<int>(team)))
         script_raise(L, "team %d not in [0, %d] or band [%d, %d]",
                      static_cast<int>(team), SCORE_TEAM_COUNT - 1,
@@ -2896,6 +3559,16 @@ int og_match_setting(lua_State* L)
     GameWorld* world = world_arg(L);
     const char* s = luaL_checkstring(L, 1);
     lua_Integer value = 0;
+    // rule: Sim-side scripts read the synchronized match settings by name (new_specials,
+    //   gameplay_fixes, retired team_count/strip_troops, score_limit, respawn_ticks, respawn_mode,
+    //   time_limit, fill_1..4, map_units_1..4, difficulty); an unknown name is a script error.
+    //   Every Gameplay Fixes / New Specials Lua gate reads its setting here.
+    // tests: ModeBindings.match_setting_reads_all_six_knobs
+    // tests: ModeBindings.match_setting_reads_the_eight_per_team_bot_knobs
+    // tests: ModeBindings.match_setting_reads_back_matched_sentinel_raw
+    // tests: GameplayFixesLua.match_setting_reads_the_world_flag_and_draws_nothing
+    // tests: KitLuaTest.match_setting_and_alternate_down_follow_the_setting
+    // tests: SemScriptMode.the_sim_reads_the_difficulty_setting_at_its_live_value
     if (std::strcmp(s, "new_specials") == 0)
         value = world->new_specials;
     else if (std::strcmp(s, "gameplay_fixes") == 0)
@@ -2967,8 +3640,16 @@ int og_respawn_schedule(lua_State* L)
     GameWorld* world = world_arg(L);
     walker* w = resolve_walker(L, 1, /*required=*/true);
     int ticks_override = -1;
+    // rule: A mode may override the respawn delay for one corpse with a positive tick count up to
+    //   65535; zero/negative/oversized delays are refused; omitted uses the resolved match delay.
+    // tests: ModeBindings.respawn_schedule_pending_and_counts
+    // tests: SemScriptMode.a_respawn_with_no_delay_uses_the_match_delay_and_65536_is_refused
     if (!lua_isnoneornil(L, 2)) {
         const lua_Integer ticks = luaL_checkinteger(L, 2);
+        // rule: A mode may override the respawn delay for one corpse with a positive tick count up
+        //   to 65535.
+        // tests: ModeBindings.respawn_schedule_pending_and_counts
+        // tests: SemScriptMode.a_respawn_with_no_delay_uses_the_match_delay_and_65536_is_refused
         if (ticks <= 0 || ticks > 65535)
             script_raise(L, "og.respawn_schedule: ticks out of range "
                             "[1, 65535]");
@@ -2986,6 +3667,9 @@ int og_respawn_pending(lua_State* L)
 {
     GameWorld* world = world_arg(L);
     walker* w = resolve_walker(L, 1, /*required=*/true);
+    // rule: A script can tell whether an engine respawn (player revive or AI replacement) is queued
+    //   for an entity.
+    // tests: ModeBindings.respawn_schedule_pending_and_counts
     lua_pushboolean(L, og::sim::respawn_pending_for(*world, w) ? 1 : 0);
     return 1;
 }
@@ -2996,6 +3680,12 @@ int og_respawn_pending_count(lua_State* L)
 {
     GameWorld* world = world_arg(L);
     const lua_Integer team = luaL_checkinteger(L, 1);
+    // rule: Score and respawn queries are per score team 0..3 only (FFA bands are not accepted
+    //   here, unlike declare_winner).
+    // tests: ModeBindings.team_score_reads_award_scores_counter
+    // tests: ModeBindings.respawn_schedule_pending_and_counts
+    // tests: ModeBindings.respawn_anchors_read_back_and_validate
+    // tests: SemScriptMode.score_and_respawn_queries_refuse_a_negative_team
     if (team < 0 || team >= SCORE_TEAM_COUNT)
         script_raise(L, "team %d out of range [0, %d]",
                      static_cast<int>(team), SCORE_TEAM_COUNT - 1);
@@ -3011,6 +3701,12 @@ int og_respawn_anchor_count(lua_State* L)
 {
     GameWorld* world = world_arg(L);
     const lua_Integer team = luaL_checkinteger(L, 1);
+    // rule: Score and respawn queries are per score team 0..3 only (FFA bands are not accepted
+    //   here, unlike declare_winner).
+    // tests: ModeBindings.team_score_reads_award_scores_counter
+    // tests: ModeBindings.respawn_schedule_pending_and_counts
+    // tests: ModeBindings.respawn_anchors_read_back_and_validate
+    // tests: SemScriptMode.score_and_respawn_queries_refuse_a_negative_team
     if (team < 0 || team >= SCORE_TEAM_COUNT)
         script_raise(L, "team %d out of range [0, %d]",
                      static_cast<int>(team), SCORE_TEAM_COUNT - 1);
@@ -3026,12 +3722,22 @@ int og_respawn_anchor(lua_State* L)
 {
     GameWorld* world = world_arg(L);
     const lua_Integer team = luaL_checkinteger(L, 1);
+    // rule: Score and respawn queries are per score team 0..3 only (FFA bands are not accepted
+    //   here, unlike declare_winner).
+    // tests: ModeBindings.team_score_reads_award_scores_counter
+    // tests: ModeBindings.respawn_schedule_pending_and_counts
+    // tests: ModeBindings.respawn_anchors_read_back_and_validate
+    // tests: SemScriptMode.score_and_respawn_queries_refuse_a_negative_team
     if (team < 0 || team >= SCORE_TEAM_COUNT)
         script_raise(L, "team %d out of range [0, %d]",
                      static_cast<int>(team), SCORE_TEAM_COUNT - 1);
     const lua_Integer i = luaL_checkinteger(L, 2);
     const int count = static_cast<int>(
         world->respawn.anchor_count[static_cast<std::size_t>(team)]);
+    // rule: Respawn anchors are the team's recorded start markers; asking past the recorded count
+    //   is an error.
+    // tests: ModeBindings.respawn_anchors_read_back_and_validate
+    // tests: SemScriptMode.a_negative_respawn_anchor_index_is_refused
     if (i < 0 || i >= count)
         script_raise(L, "og.respawn_anchor: index %d out of range "
                         "[0, %d]",
@@ -3054,6 +3760,11 @@ int og_spawn_spot_clear(lua_State* L)
     const short x = static_cast<short>(luaL_checkinteger(L, 2));
     const short y = static_cast<short>(luaL_checkinteger(L, 3));
     int floor = -1;
+    // rule: The placement probe answers whether a walker could stand at x,y (own floor, or an
+    //   explicit floor) without eating, picking up or touching anything there.
+    // tests: ModeBindings.spawn_spot_clear_probes_without_eating
+    // tests: SemScriptMode.the_spawn_spot_probe_eats_nothing_on_the_spot
+    // tests: SemScriptMode.the_spawn_spot_probe_answers_for_the_floor_it_names
     if (!lua_isnoneornil(L, 4))
         floor = static_cast<int>(luaL_checkinteger(L, 4));
     lua_pushboolean(
@@ -3071,6 +3782,12 @@ int og_scrub_corpse_stain(lua_State* L)
     const short x = static_cast<short>(luaL_checkinteger(L, 1));
     const short y = static_cast<short>(luaL_checkinteger(L, 2));
     int floor = -1;
+    // rule: Scrubbing a permanent corpse kills fresh STAIN/LIFE_GEM drops at its position (on one
+    //   floor, or every floor when omitted) unless a respawn is pending for them, so a permanent
+    //   body cannot be raised or farmed.
+    // tests: ModeBindings.scrub_corpse_stain_kills_nearby_drops
+    // tests: SemScriptMode.a_stain_scrub_with_no_floor_kills_drops_on_every_floor
+    // tests: SemScriptMode.a_stain_scrub_on_a_named_floor_spares_other_floors
     if (!lua_isnoneornil(L, 3))
         floor = static_cast<int>(luaL_checkinteger(L, 3));
     og::sim::respawn_scrub_stains_at(*world, x, y, floor);
@@ -3083,6 +3800,9 @@ int m_set_act_type(lua_State* L)
 {
     walker* w = self_arg(L);
     const lua_Integer n = luaL_checkinteger(L, 2);
+    // rule: A script may change a walker's AI act type but may never hand it player control
+    //   (ACT_CONTROL is reserved for seats).
+    // tests: ModeBindings.set_act_type_refuses_control_and_restores
     if (n == ACT_CONTROL)
         script_raise(L, "set_act_type: ACT_CONTROL is reserved for "
                         "player seats");
@@ -3127,6 +3847,9 @@ void push_walker_list(lua_State* L, const std::vector<walker*>& list)
 {
     lua_createtable(L, static_cast<int>(list.size()), 0);
     lua_Integer i = 1;
+    // plumbing: push_walker_list vector iteration; order asserted by
+    //   QuietProbe.find_blood_in_reach_walks_the_finders_stains_nearest_first and
+    //   the_lua_doors_answer_what_the_engine_answers
     for (walker* w : list) {
         push_walker_here(L, w);
         lua_rawseti(L, -2, i++);
@@ -3154,6 +3877,9 @@ int og_quiet_passable(lua_State* L)
     const float x = static_cast<float>(luaL_checknumber(L, 1));
     const float y = static_cast<float>(luaL_checknumber(L, 2));
     walker* w = resolve_walker(L, 3, /*required=*/true);
+    // rule: A script's passability probe answers what the walker's own step would, with no side
+    //   effects (no treasure eaten, no door opened, no collide, no draw).
+    // tests: QuietProbe.the_lua_doors_answer_what_the_engine_answers
     lua_pushboolean(L, world->query_passable(x, y, w, w->floor(), /*quiet=*/true) ? 1 : 0);
     return 1;
 }
@@ -3173,6 +3899,9 @@ int og_body_spot_near(lua_State* L)
     const int radius = static_cast<int>(luaL_checkinteger(L, 6));
     short out_x = 0;
     short out_y = 0;
+    // rule: Finding a spot for a raised/summoned body tries the corner then the eight-way ring out
+    //   to the radius and answers nil when no spot fits.
+    // tests: QuietProbe.the_lua_doors_answer_what_the_engine_answers
     if (!og::sim::body_spot_near(*world, order, family, x, y, floor, radius,
                                  out_x, out_y))
     {
@@ -3184,13 +3913,63 @@ int og_body_spot_near(lua_State* L)
     return 2;
 }
 
-// walker:fire_pad_clear() → boolean — would fire() launch this living's
-// current weapon instead of meeting something on its pad? The pad probed
-// quietly with a detached weapon (walker::fire_pad_clear): no entity, no
-// draw, nothing eaten or opened. A bot gate's question.
+// The optional weapon family of walker:fire_pad_clear and fire_pad_answer:
+// nil asks the current weapon; otherwise a weapon family id (og.family_id).
+std::int32_t pad_weapon_family(lua_State* L, lua_Integer weapon_family)
+{
+    // rule: fire_pad_* takes nil/-1 (current weapon) or a real family slot; an id beyond the slots
+    //   is a script error.
+    // tests: QuietProbe.the_lua_doors_answer_what_the_engine_answers
+    // tests: QuietProbe.fire_pad_clear_takes_a_weapon_family
+    // tests: SemScriptEntity.a_pad_probe_refuses_a_weapon_family_below_minus_one
+    if (weapon_family < -1 || weapon_family >= NUM_FAMILY_SLOTS)
+        script_raise(L, "weapon family %d out of range",
+                     static_cast<int>(weapon_family));
+    return static_cast<std::int32_t>(weapon_family);
+}
+
+// walker:fire_pad_clear([weapon_family]) → boolean — would fire() launch this
+// living's weapon (the current one, or weapon_family) instead of meeting
+// something on its pad? The pad probed quietly with a detached weapon
+// (walker::fire_pad_clear): no entity, no draw, nothing eaten or opened. A
+// bot gate's question.
 int m_fire_pad_clear(lua_State* L)
 {
-    lua_pushboolean(L, self_arg(L)->fire_pad_clear() ? 1 : 0);
+    const lua_Integer weapon_family = luaL_optinteger(L, 2, -1);
+    walker* self = self_arg(L);
+    // rule: A bot gate can ask whether fire() would launch the weapon rather than strike what
+    //   stands on its pad.
+    // tests: QuietProbe.fire_pad_clear_takes_a_weapon_family
+    // tests: QuietProbe.fire_pad_answer_names_what_the_pad_holds
+    // tests: QuietProbe.the_lua_doors_answer_what_the_engine_answers
+    lua_pushboolean(
+        L, self->fire_pad_clear(pad_weapon_family(L, weapon_family)) ? 1 : 0);
+    return 1;
+}
+
+// walker:fire_pad_answer([weapon_family]) → "clear" | "terrain" | "body" |
+// "none" — what that pad holds (walker::fire_pad_answer): "terrain" a wall,
+// the map edge or other ground the weapon cannot cross; "body" an enemy
+// living or a generator fire() would strike; "none" a non-living or a weapon
+// the loader cannot make. The same probe as fire_pad_clear: no draw.
+int m_fire_pad_answer(lua_State* L)
+{
+    const lua_Integer weapon_family = luaL_optinteger(L, 2, -1);
+    walker* self = self_arg(L);
+    const char* answer = "none";
+    // rule: The pad probe names what blocks the weapon: 'clear', 'terrain' (wall/edge/uncrossable
+    //   ground), 'body' (enemy living or generator fire() would strike), 'none' (non-living prober
+    //   or unloadable weapon).
+    // tests: QuietProbe.fire_pad_answer_names_what_the_pad_holds
+    // tests: QuietProbe.the_lua_doors_answer_what_the_engine_answers
+    switch (self->fire_pad_answer(pad_weapon_family(L, weapon_family)))
+    {
+    case walker::PadAnswer::Clear: answer = "clear"; break;
+    case walker::PadAnswer::Terrain: answer = "terrain"; break;
+    case walker::PadAnswer::Body: answer = "body"; break;
+    case walker::PadAnswer::NoProbe: break;
+    }
+    lua_pushstring(L, answer);
     return 1;
 }
 
@@ -3271,6 +4050,7 @@ const luaL_Reg kWalkerMethods[] = {
     {"can_approach_weapon_range", m_can_approach_weapon_range},
     {"attack", m_attack}, {"fire", m_fire}, {"special", m_special},
     {"fire_pad_clear", m_fire_pad_clear},
+    {"fire_pad_answer", m_fire_pad_answer},
     {"death", m_death},
     {"teleport", m_teleport}, {"teleport_ranged", m_teleport_ranged},
     {"find_teleport_target", m_find_teleport_target},
@@ -3688,7 +4468,18 @@ constexpr const char* kUnfencedWorldFuncs[] = {"max", "min", "clamp", "sign"};
 
 bool is_unfenced(const char* name)
 {
+    // rule: Only the pure branch helpers og.max/min/clamp/sign among the og world functions stay
+    //   callable outside dispatch (pack top level and campaign hooks); every other kOgWorldFuncs
+    //   entry is load-fenced. og.combat.* (draw-free formulas) and og.campaign_* are registered
+    //   after the fence loop and are therefore NOT load-fenced by design (comment 3716-3722);
+    //   campaign bindings self-fence to campaign hooks.
+    // tests: CampaignHooksTest.fence_walk_everything_outside_the_allowlist_errors
+    // tests: SemScriptCampaign.pure_helpers_and_combat_formulas_answer_outside_dispatch
     for (const char* n : kUnfencedWorldFuncs) {
+        // rule: Only the pure branch helpers og.max/min/clamp/sign among the og world functions
+        //   stay callable outside dispatch (pack top level and campaign hooks).
+        // tests: CampaignHooksTest.fence_walk_everything_outside_the_allowlist_errors
+        // tests: SemScriptCampaign.pure_helpers_and_combat_formulas_answer_outside_dispatch
         if (std::strcmp(n, name) == 0)
             return true;
     }
@@ -3709,11 +4500,22 @@ int load_fenced_call(lua_State* L)
     // replicated sim RNG), so the world API erroring there is what keeps a
     // menu script from silently perturbing the sim
     // (docs/campaign-scripting-design.md).
+    // rule: During campaign (menu) hooks the world API, including og.rand, errors, so a menu script
+    //   can never perturb the replicated sim.
+    // tests: CampaignHooksTest.fence_walk_everything_outside_the_allowlist_errors
+    // tests: CampaignHooksTest.zone_dispatch_is_fenced_and_brackets_cleanly
+    // tests: ScriptBindingMathTest.rand0_positive_is_og_rand_verbatim
     if (st != nullptr && st->campaign_dispatch) {
         script_raise(
             L, "og.%s: the world API is not available during campaign hooks",
             lua_tostring(L, lua_upvalueindex(3)));
     }
+    // rule: World API calls at a pack chunk's top level (declaration pass and bind replay) error,
+    //   so no peer can draw RNG or read world state at load time.
+    // tests: LuaFamilyDeclTest.the_world_api_is_closed_during_a_declaration
+    // tests: LuaFamilyBindTest.the_world_api_is_closed_during_the_bind_replay
+    // tests: ModeBindings.camera_view_is_fenced_at_pack_top_level
+    // tests: ScriptBindingMathTest.rand0_positive_is_og_rand_verbatim
     if (st != nullptr && st->loading) {
         script_raise(
             L,
@@ -3754,9 +4556,13 @@ void install_entity_bindings(lua_State* L, VmState* st)
     luaL_getmetatable(L, kWalkerMeta);  // mt
     lua_newtable(L);                    // mt getters
     lua_newtable(L);                    // mt getters setters
+    // plumbing: builds getter/setter tables from kWalkerProperties; read-only rows (xpos/ypos
+    //   setter nullptr) feed the rule above
     for (const WalkerProperty& p : kWalkerProperties) {
         lua_pushcfunction(L, p.getter);
         lua_setfield(L, -3, p.name);
+        // plumbing: builds getter/setter tables from kWalkerProperties; read-only rows (xpos/ypos
+        //   setter nullptr) feed the rule above
         if (p.setter != nullptr) {
             lua_pushcfunction(L, p.setter);
             lua_setfield(L, -2, p.name);
@@ -3785,7 +4591,14 @@ void install_entity_bindings_into_og(lua_State* L, VmState* st)
 {
     // Expects the og table at the top of the stack.
     luaL_setfuncs(L, kOgWorldFuncs, 0);
+    // plumbing: registers kOgWorldFuncs and wraps each non-allowlisted entry in the load fence;
+    //   og.campaign_* and og.combat.* are registered after the loop (unfenced by design) — that
+    //   semantic is carried by above; fence rules at 3748 / 3753
     for (const luaL_Reg* r = kOgWorldFuncs; r->name != nullptr; r++) {
+        // rule: Only the pure branch helpers og.max/min/clamp/sign among the og world functions
+        //   stay callable outside dispatch (pack top level and campaign hooks).
+        // tests: CampaignHooksTest.fence_walk_everything_outside_the_allowlist_errors
+        // tests: SemScriptCampaign.pure_helpers_and_combat_formulas_answer_outside_dispatch
         if (is_unfenced(r->name))
             continue;
         fence_world_entry(L, st, r->name);
@@ -3796,6 +4609,9 @@ void install_entity_bindings_into_og(lua_State* L, VmState* st)
     luaL_setfuncs(L, kOgCombatFuncs, 0);
     lua_setfield(L, -2, "combat");
     lua_newtable(L);
+    // plumbing: installs og.C constants; values asserted by
+    //   ScriptBindingMathTest.og_C_combat_constants_match_the_header and
+    //   ModeBindings.ffa_band_constants_exported_on_C
     for (const NamedConst& c : kConstants) {
         lua_pushinteger(L, c.value);
         lua_setfield(L, -2, c.name);

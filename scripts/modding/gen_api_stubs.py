@@ -165,6 +165,46 @@ def leading_comment(src: str, def_start: int) -> str:
 FN_SIG = re.compile(r"^[A-Za-z_][^\n;{}]*?\b(\w+)\(lua_State\* L", re.M)
 
 
+def strip_cpp_comments(code: str) -> str:
+    """`code` with every // and /* */ comment removed.
+
+    The signature inference reads a shim's body as text, so a comment inside
+    it ("// rule: ... (nil = default colour) ...") can look like an
+    assignment or an extractor call and change the inferred parameter names
+    or types. Comments never change what a binding does, so they must never
+    change its stub either: the inference only ever sees comment-free code.
+
+    String and character literals are copied through untouched (a "//" in a
+    format string is not a comment). Newlines are kept, including the ones
+    inside a /* */ block, so line-anchored patterns (a `return N;` line) still
+    see the same line structure.
+    """
+    out: List[str] = []
+    i, n = 0, len(code)
+    while i < n:
+        c = code[i]
+        if c == "/" and i + 1 < n and code[i + 1] == "/":
+            end = code.find("\n", i)
+            i = n if end == -1 else end
+            continue
+        if c == "/" and i + 1 < n and code[i + 1] == "*":
+            end = code.find("*/", i + 2)
+            end = n if end == -1 else end + 2
+            out.append("\n" * code.count("\n", i, end) or " ")
+            i = end
+            continue
+        if c in "\"'":
+            j = i + 1
+            while j < n and code[j] != c:
+                j += 2 if code[j] == "\\" else 1
+            out.append(code[i : j + 1])
+            i = j + 1
+            continue
+        out.append(c)
+        i += 1
+    return "".join(out)
+
+
 def parse_cpp_functions(src: str) -> Dict[str, CppFunction]:
     out: Dict[str, CppFunction] = {}
     for m in FN_SIG.finditer(src):
@@ -174,7 +214,10 @@ def parse_cpp_functions(src: str) -> Dict[str, CppFunction]:
             i += 1
         if i >= len(src) or src[i] == ";":
             continue  # declaration, not a definition
-        body = balanced_body(src, i)
+        # The doc sentence comes from the comment block ABOVE the
+        # definition (leading_comment, read from the raw source); the body
+        # the inference walks has its own comments stripped.
+        body = strip_cpp_comments(balanced_body(src, i))
         out[name] = CppFunction(name, body, leading_comment(src, m.start()))
     return out
 
@@ -504,6 +547,67 @@ def infer_signature(fn: CppFunction) -> Signature:
         else:
             sig.todo = True
     return sig
+
+
+# A shim shaped like og_set_hud_line, once bare and once carrying the
+# `// rule:` / `// tests:` / `/* */` comments the simulation sources hold.
+# The comments name another identifier ("team = ...", "nil = default") and
+# an extractor call; none of it may reach the inferred signature.
+_SELF_TEST_BARE = """
+int og_probe(lua_State* L)
+{
+    const lua_Integer slot = luaL_checkinteger(L, 1);
+    size_t len = 0;
+    const char* s = luaL_checklstring(L, 2, &len);
+    std::uint8_t team = 255;
+    if (!lua_isnoneornil(L, 3)) {
+        const lua_Integer t = luaL_checkinteger(L, 3);
+        team = static_cast<std::uint8_t>(t);
+    }
+    lua_pushstring(L, "a // not a comment");
+    return 1;
+}
+"""
+_SELF_TEST_COMMENTED = """
+// og.probe(slot, text [, team]) — the doc sentence above the function.
+int og_probe(lua_State* L)
+{
+    const lua_Integer slot = luaL_checkinteger(L, 1); // rule: slot = 0..3
+    // rule: A HUD line's optional team tints it (nil = default colour, 255).
+    // tests: ModeBindings.hud_lines_write_clamp_clear_and_validate
+    size_t len = 0;
+    const char* s = luaL_checklstring(L, 2, &len);
+    std::uint8_t team = 255;
+    /* rule: team = luaL_checkinteger(L, 4); is what a comment
+       may say without adding a fourth parameter */
+    if (!lua_isnoneornil(L, 3)) {
+        // rule: team = the tint (nil = default colour, 255).
+        const lua_Integer t = luaL_checkinteger(L, 3);
+        team = static_cast<std::uint8_t>(t);
+    }
+    lua_pushstring(L, "a // not a comment");
+    return 1;
+}
+"""
+
+
+def self_test() -> List[str]:
+    """Failures of the comments-never-change-a-stub rule (empty = pass)."""
+    failures: List[str] = []
+    bare = parse_cpp_functions(_SELF_TEST_BARE)["og_probe"]
+    noted = parse_cpp_functions(_SELF_TEST_COMMENTED)["og_probe"]
+    want = fun_type(infer_signature(bare), None)
+    got = fun_type(infer_signature(noted), None)
+    if want != "fun(slot: integer, s: string, t: integer?): string":
+        failures.append(f"bare probe shim inferred {want}")
+    if got != want:
+        failures.append(
+            f"comments in a shim body changed its stub: {got} != {want}")
+    if '"a // not a comment"' not in noted.body:
+        failures.append("comment stripping ate a string literal's //")
+    if not noted.comment.startswith("og.probe(slot, text [, team])"):
+        failures.append(f"leading doc comment lost: {noted.comment!r}")
+    return failures
 
 
 # ---------------------------------------------------------------------------

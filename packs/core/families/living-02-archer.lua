@@ -26,6 +26,12 @@ local function fire_arrows(self)
 end
 
 local function flurry(self)
+  -- rule: BARRAGE is refused 'SPECIAL BUSY' while busy (classic busy ~= 0, fixed busy > 0; fix S).
+  --   On success it refunds 3 weapon costs, fires three arrows along the heading and adds 2 x
+  --   fire_frequency busy. Same rule as living-00-soldier.lua.
+  -- tests: GameplayFixesSpecialBusy.archer_specials_after_a_shot
+  -- tests: WalkerSpecials.archer_barrage_drives_simulation
+  -- tests: SemArcher.a_barrage_costs_exactly_the_slots_price
   if gf.special_busy(self) then
     return false, "SPECIAL BUSY"
   end
@@ -40,14 +46,33 @@ local function flurry(self)
 end
 
 local function exploding_shot(self)
+  -- rule: EXPLODING BOLT refused 'SPECIAL BUSY' while busy; classic ~= 0, fixed > 0 (fix S). Same
+  --   rule as above.
+  -- tests: GameplayFixesSpecialBusy.archer_specials_after_a_shot
+  -- tests: GameplayFixesSpecialBusy.positive_and_zero_busy_are_unchanged
   if gf.special_busy(self) then
     return false, "SPECIAL BUSY"
+  end
+  -- rule: Gameplay Fixes AC (#476): an EXPLODING BOLT whose fire arrow's pad is refused by terrain
+  --   (a wall face, the map edge, a crown the fire arrow cannot cross; never water) refuses 'COULD
+  --   NOT FIRE' before fire(): no 1 MP shot, no waver, the bow untouched. Classic: fire() pays and
+  --   draws, then refuses. A body on the pad keeps the paid blow.
+  -- tests: SemArcher.an_exploding_bolt_at_terrain_spends_nothing_with_the_setting_on
+  -- tests: parity:archer_bolt_edge_pad_fixes_scen99
+  if gf.pad_blocked_by_terrain(self, WEAPON_FIRE_ARROW) then
+    return false, "COULD NOT FIRE"
   end
   local t = og.tuning(self)
   local old_weapon = self:current_weapon()
   self:set_current_weapon(WEAPON_FIRE_ARROW)
   local arrow = self:fire()
   self:set_current_weapon(old_weapon)
+  -- rule: The exploding bolt is one fire arrow with skip_exit=5000 (the 'explodes on contact'
+  --   mark), hp 500 and damage x2; if the fire arrow cannot be fired the cast fails 'COULD NOT
+  --   FIRE' and the archer keeps its ordinary weapon either way.
+  -- tests: WalkerSpecials.archer_exploding_bolt_drives_simulation
+  -- tests: GameplayFixesBots.archer_exploding_bolt_asks_the_fire_arrows_own_pad
+  -- tests: SemArcher.an_exploding_bolt_is_a_buffed_fire_arrow_and_the_archer_keeps_its_bow
   if not arrow then
     return false, "COULD NOT FIRE"
   end
@@ -64,6 +89,11 @@ end
 
 -- self is the stats' owner (stats->controller() in the C++ signature).
 local function hit_response(self, foe)
+  -- rule: An archer struck by a new attacker (or with no foe) switches its foe to the attacker,
+  --   clears its command queue and resets its pursuit distances to 15000; a repeat hit from its
+  --   current foe keeps its orders.
+  -- tests: StatsHitResponseMore.statistics_hit_response_archer_runs_away_and_queues_walk
+  -- tests: SemArcher.a_new_attacker_clears_the_archers_orders_and_a_repeat_hit_keeps_them
   if not self:foe() or self:foe() ~= foe then
     self:set_foe(foe)
     self:s_clear_command()
@@ -71,6 +101,10 @@ local function hit_response(self, foe)
     self:s_set_last_distance(15000)
   end
   local distance = self:distance_to_ob(foe)
+  -- rule: An archer hit from inside 64 px backpedals: a forced 8-step WALK directly away from the
+  --   attacker (sign of archer-attacker per axis, int16-narrowed).
+  -- tests: StatsHitResponseMore.statistics_hit_response_archer_runs_away_and_queues_walk
+  -- tests: parity:archer_hit_response_backpedal_scen99
   if distance < og.tuning(self).melee_backpedal_range then
     -- og.i16: the C++ stores each delta into a short before the sign divide
     local dx = og.sign(og.i16(self:xpos() - foe:xpos()))
@@ -95,17 +129,32 @@ end
 -- in its flight, or one the archer does not face (one faced foe is what an
 -- ordinary arrow hits). BARRAGE's three arrows fly along one line, so they
 -- want the archer's foe alive, faced and in flight. EXPLODING BOLT wants the
--- same, and neither the archer nor an ally of its own in the blast.
+-- same, no archer or ally of its own in the blast, and the fire arrow's pad clear.
 local function fixed(self)
   local slot = self:current_special()
+  -- rule: Gameplay Fixes bot FIRE ARROWS (the 8-way ring) pays for two living foes inside the fire
+  --   arrow's flight (step 8 x range 12) or one the archer does not face (one faced foe is what an
+  --   ordinary arrow would hit). The classic gate (foe within 130) still runs first for its draws
+  --   and foe assignment, but its answer is ignored.
+  -- tests: GameplayFixesBots.archer_fire_arrows_want_a_crowd_or_a_foe_behind
+  -- tests: parity:archer_bot_ring_one_foe_fixes_scen99
+  -- tests: SemArcher.the_archer_ring_gate_with_no_foe_never_fires
   if slot == 1 then
     return G.ring_pays(self, 8, 12)
   end
   -- BARRAGE and EXPLODING BOLT refuse a busy archer (the casts' guard).
+  -- rule: Gameplay Fixes bot archer never picks BARRAGE or EXPLODING BOLT while busy (the casts
+  --   would refuse SPECIAL BUSY).
+  -- tests: GameplayFixesBots.a_busy_bot_never_rolls_a_busy_cast_with_the_setting_on
   if gf.special_busy(self) then
     return false
   end
   local f = self:foe()
+  -- rule: Gameplay Fixes bot BARRAGE and EXPLODING BOLT want the archer's own current foe alive, a
+  --   living-order body, faced along the heading, and inside the fire arrow's flight (8 x 12).
+  -- tests: GameplayFixesBots.archer_barrage_wants_its_foe_faced_in_flight
+  -- tests: GameplayFixesBots.archer_exploding_bolt_wants_a_foe_past_its_own_blast_with_no_ally_in_it
+  -- tests: SemArcher.the_archer_line_gates_want_a_living_current_foe
   if not f or f:dead() ~= 0 then
     return false
   end
@@ -115,10 +164,18 @@ local function fixed(self)
   if not G.in_flight(self, f, 8, 12) then
     return false
   end
+  -- rule: BARRAGE needs nothing beyond the faced foe in flight.
+  -- tests: GameplayFixesBots.archer_barrage_wants_its_foe_faced_in_flight
+  -- tests: GameplayFixesBots.archer_exploding_bolt_wants_a_foe_past_its_own_blast_with_no_ally_in_it
   if slot == 2 then
     return true
   end
-  return G.blast_clear(self, f, G.blast_reach(self.level), true)
+  -- rule: Gameplay Fixes bot EXPLODING BOLT also wants no archer (check_self) and no ally inside
+  --   the blast around its foe, and the FIRE ARROW's own launch pad clear.
+  -- tests: GameplayFixesBots.archer_exploding_bolt_wants_a_foe_past_its_own_blast_with_no_ally_in_it
+  -- tests: GameplayFixesBots.archer_exploding_bolt_asks_the_fire_arrows_own_pad
+  -- tests: parity:archer_bot_bolt_at_blows_fixes_scen99
+  return G.blast_clear(self, f, G.blast_reach(self.level), true) and G.pad_clear(self, WEAPON_FIRE_ARROW)
 end
 
 og.family("living", {
@@ -176,6 +233,12 @@ og.family("living", {
   },
 
   -- about 6 squares
+  -- rule: Classic archer bot casts any slot when its acquired/found foe is within 130 px (about 6
+  --   squares). With the setting on the classic search still runs (draws, foe assignment) but
+  --   fixed() decides and ignores its answer.
+  -- tests: GameplayFixesBots.archer_fire_arrows_want_a_crowd_or_a_foe_behind
+  -- tests: GameplayFixesBots.archer_exploding_bolt_wants_a_foe_past_its_own_blast_with_no_ally_in_it
+  -- tests: parity:archer_bot_ring_one_foe_scen99, parity:archer_bot_bolt_at_blows_scen99
   check_special_ai = G.with_classic(ai.foe_within(130), fixed),  -- fixed per-tick AI gate
   hit_response = hit_response,
   set_difficulty = set_difficulty,

@@ -942,7 +942,7 @@ TEST(MapgenSpawnExits, engine_spawns_land_on_predicted_candidates)
             gen->stats()->set_magicpoints(1000);
             // fire() reads the walker's OWN lastx/lasty, which is what
             // act_generate rolls before calling init_fire (walker.cpp
-            // :1372-1376) — the arguments only steer the turn branch.
+            // :1582-1586) — the arguments only steer the turn branch.
             gen->set_lastx(static_cast<float>(dir[0]));
             gen->set_lasty(static_cast<float>(dir[1]));
             (void)gen->init_fire(static_cast<short>(dir[0]),

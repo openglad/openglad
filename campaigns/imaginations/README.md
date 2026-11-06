@@ -177,9 +177,19 @@ save's level-1 crew (crew power 1 in the longseason README's terms).
 
 | level | crew power entering | calibration floor (8-mixed, tick 600, min over seeds 42/1337/2025) |
 |-------|---------------------|--------------------------------------------------------------------|
-| 1 | 1 | 7 (measured 8/7/8 on 2026-08-11; pinned in tests/unit/test_imaginations_calibration.cpp) |
+| 1 | 1 | 7 (measured 8/7/8 on 2026-08-11; was pinned in tests/unit/test_imaginations_calibration.cpp) |
 | 2 | 1 | 8 (measured 8/8/8 on 2026-10-26; only the four tick-0 faeries are awake by tick 600) |
 | 3 | 1 | 6 (measured 8/8/6 on 2026-10-26; the first gust wakes at 300) |
+
+The floors above are measurements, no longer asserted: on 2026-11-02 the
+maintainer deleted the survivor pins of the four campaign calibration
+suites (one chaotic seed-42 trajectory each, re-pinned eight times), once
+the semantic tests in `tests/unit/test_sem_*.cpp` asserted every game rule
+directly.
+`ImaginationsCalibration.curve_levels_load_field_an_army_and_fight_at_600_ticks`
+asserts that each level loads and deploys the crew, fields an army, and
+that the crew takes and deals damage; `IMAGINATIONS_CALIBRATION_MEASURE=1`
+still prints the three-seed survivor counts.
 
 Gate (kill-all): 8-mixed at crew 1 reaches `level_done == 1` within 6000
 ticks on 3/3 seeds. Measured with `scripts/imaginations_playtest.sh` on

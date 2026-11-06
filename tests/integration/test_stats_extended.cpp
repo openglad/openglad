@@ -140,7 +140,7 @@ TEST(StatsExtended, do_command_fire_denied_by_fire_check_returns_0_and_drops_the
     w->setxy(50, 50);
     w->set_busy(0.0f);
 
-    // No foe => fire_check() denies with NoFoe (walker.cpp:1492).
+    // No foe => fire_check() denies with NoFoe (walker.cpp:1467).
     w->set_foe(nullptr);
     w->stats()->clear_command();
     w->stats()->add_command(COMMAND_FIRE, 3, 0, 0);
@@ -211,7 +211,7 @@ TEST(StatsExtended, do_command_attack_faces_an_in_reach_foe_without_walking)
     w->set_foe(foe.get());
 
     // Pointed the wrong way: fire_check denies with Facing, and the
-    // guard-standoff rule (stats.cpp:596-602) faces the foe instead of walking.
+    // guard-standoff rule (stats.cpp:606-616) faces the foe instead of walking.
     w->set_curdir(static_cast<signed char>(FACE_UP));
     w->set_enddir(static_cast<char>(FACE_UP));
     w->set_lastx(0.0f);
@@ -296,9 +296,9 @@ TEST(StatsExtended, do_command_unhandled_type_only_runs_the_decrement_tail)
     w->set_enddir(static_cast<char>(FACE_RIGHT));
 
     // The 4-arg add_command stores COMMAND_RANDOM_WALK verbatim (only the
-    // 2-arg try_command/set_command translate it, stats.cpp:335/350), and
+    // 2-arg set_command translates it, stats.cpp:352; try_random_walk, :338), and
     // do_command's switch has no case for it: it falls to `default: break`
-    // and only the shared decrement tail (stats.cpp:634-643) runs.
+    // and only the shared decrement tail (stats.cpp:647-657) runs.
     w->stats()->clear_command();
     w->stats()->add_command(COMMAND_RANDOM_WALK, 3, 0, 0);
 
@@ -324,7 +324,7 @@ TEST(StatsExtended, do_command_unhandled_type_only_runs_the_decrement_tail)
 //
 // Each of the four is an eight-case switch over curdir that picks a probe
 // offset of +/-CHECK_STEP_SIZE (1px) and asks query_passable about that point
-// (stats.cpp:769-934). The four smoke tests that used to live here ran all
+// (stats.cpp:785-951). The four smoke tests that used to live here ran all
 // the facings and (void)-cast every answer.
 //
 // Oracle: a 1x1 walker sits on a grass grid with exactly ONE wall tile.
@@ -359,13 +359,13 @@ TEST(StatsExtended, blocked_probes_pin_every_facing_offset_of_all_four_tables)
     // Expected probe offsets, straight off the switch tables in stats.cpp.
     // Index [fn][dir]; dir 8 is the out-of-range `default:` arm.
     static const int off[4][9][2] = {
-        // forward_blocked (stats.cpp:886-929)
+        // forward_blocked (stats.cpp:904-951)
         { {0,-1}, {1,-1}, {1,0}, {1,1}, {0,1}, {-1,1}, {-1,0}, {-1,-1}, {0,0} },
-        // right_blocked (stats.cpp:769-814)
+        // right_blocked (stats.cpp:785-834)
         { {1,0}, {1,1}, {0,1}, {-1,1}, {-1,0}, {-1,-1}, {0,-1}, {1,-1}, {0,0} },
-        // right_forward_blocked (stats.cpp:818-847)
+        // right_forward_blocked (stats.cpp:837-867)
         { {1,-1}, {1,0}, {1,1}, {0,1}, {-1,1}, {-1,0}, {-1,-1}, {0,-1}, {0,0} },
-        // right_back_blocked (stats.cpp:850-881)
+        // right_back_blocked (stats.cpp:870-901)
         { {1,1}, {0,1}, {-1,1}, {-1,0}, {-1,-1}, {0,-1}, {1,-1}, {1,0}, {0,0} },
     };
     // right_forward_blocked / right_back_blocked return false outright on the

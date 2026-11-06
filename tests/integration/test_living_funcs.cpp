@@ -84,7 +84,7 @@ TEST(LivingFuncs, walkerIsAutoAttackable_soldier)
 }
 
 
-// walkerIsAutoAttackable (living.cpp:549) is an ORDER rule, not a family rule:
+// walkerIsAutoAttackable (living.cpp:555) is an ORDER rule, not a family rule:
 // every Order::Living and Order::Generator walker is auto-attackable whatever
 // its family, Order::Treasure never is, and Order::Weapon defers to the weapon
 // family's declared is_auto_attackable flag.
@@ -221,7 +221,7 @@ TEST(LivingFuncs, living_set_difficulty_raises_max_hp_for_every_family_and_tops_
 // check_special smoke tests
 // ---------------------------------------------------------------------------
 
-// living::check_special (living.cpp:590) has two gates in front of the family
+// living::check_special (living.cpp:596) has two gates in front of the family
 // hook: specials_disabled() returns false immediately (before anything else is
 // touched), and a current_special the walker cannot afford is downgraded to the
 // default special 1. The hook's own verdict is deliberately NOT pinned here:
@@ -285,7 +285,7 @@ TEST(LivingFuncs, living_facing)
 // shove test
 // ---------------------------------------------------------------------------
 
-// living::shove (living.cpp:434) probes the injected walk's baby step against
+// living::shove (living.cpp:433) probes the injected walk's baby step against
 // the GRID before stealing the target's command queue: a passable step returns
 // 1 and force-queues COMMAND_WALK(4, x, y) at the head of the (cleared) queue,
 // a blocked step returns 0 and leaves the queue alone so the target's own
@@ -340,7 +340,7 @@ TEST(LivingFuncs, living_shove_force_queues_walk_on_passable_step_and_refuses_bl
 // living walk smoke
 // ---------------------------------------------------------------------------
 
-// living::walk (living.cpp:477) has three arms: curdir already matches
+// living::walk (living.cpp:476) has three arms: curdir already matches
 // facing(x, y) and the destination is passable -> move by exactly (x, y) and
 // return 1; curdir disagrees -> set enddir and turn WITHOUT moving, return 1;
 // the destination is off the map -> return 0 and stay put.

@@ -511,6 +511,52 @@ void clear_allbuttons_locked()
 }
 } // namespace
 
+struct ScopedButtonExposure::Stash
+{
+    std::array<std::unique_ptr<vbutton, og::runtime::VButtonDeleter>,
+               og::runtime::SessionState::kMaxButtons> owned{};
+    std::array<vbutton*, og::runtime::SessionState::kMaxButtons> live{};
+    vbutton* localbuttons = nullptr;
+    unsigned int generation = 0;
+};
+
+ScopedButtonExposure::ScopedButtonExposure()
+    : stash_(std::make_unique<Stash>())
+{
+#ifdef TESTING
+    AllButtonsLock lock(get_allbuttons_mutex());
+#endif
+    og::runtime::SessionState& session = *og::runtime::current_session;
+    for (std::size_t i = 0; i < owned_buttons().size(); ++i)
+    {
+        stash_->owned[i] = std::move(owned_buttons()[i]);
+        stash_->live[i] = session.allbuttons_[i];
+        session.allbuttons_[i] = nullptr;
+    }
+    stash_->localbuttons = session.localbuttons_;
+    session.localbuttons_ = nullptr;
+    stash_->generation = g_allbuttons_generation;
+}
+
+ScopedButtonExposure::~ScopedButtonExposure()
+{
+    {
+#ifdef TESTING
+        AllButtonsLock lock(get_allbuttons_mutex());
+#endif
+        clear_allbuttons_locked();
+        og::runtime::SessionState& session = *og::runtime::current_session;
+        for (std::size_t i = 0; i < owned_buttons().size(); ++i)
+        {
+            owned_buttons()[i] = std::move(stash_->owned[i]);
+            session.allbuttons_[i] = stash_->live[i];
+        }
+        session.localbuttons_ = stash_->localbuttons;
+        g_allbuttons_generation = stash_->generation;
+    }
+    reset_mouse_click_tracking();
+}
+
 void clear_allbuttons()
 {
     // Test injector threads read allbuttons[] under this mutex

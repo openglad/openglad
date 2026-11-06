@@ -199,12 +199,12 @@ struct SpawnExit
     int x = 0;
     int y = 0;
 };
-// The EIGHT positions walker::fire() can place a spawn at (walker.cpp
-// :526-566) for a generator whose pixel bbox is (gx, gy, gen_w, gen_h) and
+// The EIGHT positions walker::fire() can place a spawn at (weapon_pad,
+// walker.cpp:2617-2650) for a generator whose pixel bbox is (gx, gy, gen_w, gen_h) and
 // whose spawn measures spawn_w x spawn_h. Returned in the FACE_* order of
 // fire()'s switch: RIGHT, LEFT, DOWN, UP, UP_RIGHT, UP_LEFT, DOWN_RIGHT,
 // DOWN_LEFT. act_generate rolls lastx/lasty over {-1,0,1} and forces (0,0)
-// to (1,0) (walker.cpp:1372-1376), so every one of the eight is live.
+// to (1,0) (walker.cpp:1582-1586), so every one of the eight is live.
 // Pure arithmetic — the audit and the engine-pin test share it.
 [[nodiscard]] std::array<SpawnExit, 8> generator_spawn_exits(
     int gx, int gy, int gen_w, int gen_h, int spawn_w, int spawn_h) noexcept;

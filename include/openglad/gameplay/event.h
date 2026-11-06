@@ -9,7 +9,7 @@ namespace og::sim {
 // Runtime/render layers consume these to produce audio, visual FX, and UI updates.
 enum class EventKind : std::uint32_t {
     None = 0,
-    PlaySound = 4,     // Request sound: a=sound_id, b=0
+    PlaySound = 4,     // Request sound: a=sound_id, b=0, c=source box or 0
     Notification = 8,  // Text notification: message in text field
     SetPalette = 11,   // Request palette change: a=0 normal, a=1 blue/freeze
     RequestRedraw = 12,// Force full screen redraw
@@ -31,9 +31,11 @@ struct Event final {
     EventKind kind = EventKind::None;
     std::uint32_t a = 0;
     std::uint32_t b = 0;
-    // Third scalar; only DamageNumber uses it today. It rides the wire AFTER
-    // `text` so every existing event byte offset (including the #230
-    // target_player position) stays where it was.
+    // Third scalar. It rides the wire AFTER `text` so every existing event
+    // byte offset (including the #230 target_player position) stays where it
+    // was. DamageNumber: see above. PlaySound: the source's box
+    // (sound_source.h), which each machine plays only while one of its views
+    // shows it (#468); 0 = unplaced, a cue every machine plays.
     std::uint32_t c = 0;
     // Addressee of a per-seat event. -1 broadcasts to every view (the
     // historic behavior); 0..15 is a GLOBAL player index — the same number

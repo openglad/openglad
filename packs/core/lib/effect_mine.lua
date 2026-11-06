@@ -15,6 +15,10 @@ local TRIP_SCAN = 128
 -- A foe walks onto the mine: alive, on the mine's floor, on its feet (a
 -- flier floats over), and overlapping the mine's box.
 local function trips(self, foe)
+  -- rule: A thief's mine is set off only by a foe on its floor who is on its feet: a flying family
+  --   or a walker under a flight potion floats over it.
+  -- tests: KitThief.flying_foe_does_not_trip_a_mine
+  -- tests: KitThief.mine_detonates_under_a_foe_not_an_ally
   if foe:floor() ~= self:floor() then
     return false
   end
@@ -37,11 +41,18 @@ end
 -- now; otherwise it ages, expires quietly when its lifetime runs out, blows
 -- when a foe steps on it, and blinks its light.
 local function on_act(self)
+  -- rule: A mine lit by a neighbour's blast blows on its own next act (no recursion inside the
+  --   first death).
+  -- tests: KitThief.mines_chain_on_their_own_next_tick, KitThief.mine_is_laid_invisible_and_waits
   if self:ani_type() ~= C.ANI_WALK then
     detonate(self)
     return true
   end
   self.lifetime = self:lifetime() - 1
+  -- rule: A mine that nobody steps on for its lifetime (600 + 30 per level ticks) expires quietly:
+  --   hp is set negative so its death makes no blast.
+  -- tests: KitThief.mine_expires_quietly
+  -- tests: SemMine.an_expired_mine_goes_with_hp_minus_one_and_no_blast
   if self:lifetime() <= 0 then
     -- A quiet expiry: on_death sees the negative hp and makes no blast.
     self.hp = -1
@@ -49,7 +60,12 @@ local function on_act(self)
     return true
   end
   local foes = og.find_foes_in_range("ob", TRIP_SCAN, self)
+  -- plumbing: scan of foes within 128; rule below
   for i = 1, #foes do
+    -- rule: A mine blows under the first foe that trips it; allies walk over their own mines;
+    --   otherwise it blinks (frame = (world_tick/8) % 2).
+    -- tests: KitThief.mine_detonates_under_a_foe_not_an_ally
+    -- tests: KitThief.mine_is_laid_invisible_and_waits
     if trips(self, foes[i]) then
       detonate(self)
       return true
@@ -63,6 +79,9 @@ end
 -- At a high enough level a mine leaves a short poison puff where it blew.
 local function leave_puff(self, t)
   local puff = og.add_ob("fx", FX_CLOUD)
+  -- rule: A high-level mine's poison puff is skipped in a full world (the blast still happens).
+  -- tests: KitThief.high_level_mine_leaves_a_puff
+  -- tests: SemMine.a_full_world_skips_the_mines_puff_but_not_its_blast
   if not puff then
     return
   end
@@ -82,8 +101,14 @@ end
 -- owner, so the mines a dead thief left behind still set each other off.
 local function light_neighbours(self, t)
   local obs = og.oblist()
+  -- plumbing: walks the whole oblist; rule below
   for i = 1, #obs do
     local ob = obs[i]
+    -- rule: A mine's blast lights every other live mine of the same TEAM (not owner, so a dead
+    --   thief's mines still chain) within 24 px; each blows on its own next act. Foe mines and far
+    --   mines are not lit.
+    -- tests: KitThief.mines_chain_on_their_own_next_tick
+    -- tests: SemMine.a_blast_lights_only_live_mines_of_its_team_nearby
     if ob ~= self
         and ob:order() == C.ORDER_FX
         and ob:family() == FX_MINE
@@ -98,12 +123,17 @@ end
 -- on_death: the bomb's own blast (owner, level, damage, floor, centre), then
 -- the chain and the puff. A mine that ran out of time (hp < 0) just goes.
 local function on_death(self)
+  -- rule: An expired mine (hp < 0) leaves without a blast, chain or puff.
+  -- tests: KitThief.mine_expires_quietly, KitThief.mines_chain_on_their_own_next_tick
+  -- tests: KitThief.high_level_mine_leaves_a_puff, SemMine.an_expired_mine_lights_no_neighbour
   if self.hp < 0 then
     return true
   end
   local t = og.tuning(self)
   bomb.bomb_on_death(self)
   light_neighbours(self, t)
+  -- rule: From level 7 a mine also leaves a short poison puff where it blew.
+  -- tests: KitThief.high_level_mine_leaves_a_puff
   if self.level >= t.mine_puff_level then
     leave_puff(self, t)
   end

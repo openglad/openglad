@@ -806,6 +806,7 @@ Sint32 run_abilities_menu(int team_slot)
           state.editable ? 1 : 0);
     const Sint32 result = run_menu_screen(abilities_menu_screen_spec(), &state);
     g_abilities = previous;
+    TRACE("abilities", "close slot=%d", team_slot);
     if (result == MENU_EXIT)
         return MENU_EXIT;  // a host's GO: the match starts, nothing to commit
 

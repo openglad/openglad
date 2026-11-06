@@ -960,7 +960,7 @@ TEST(ModeSnapshot, applied_time_limit_is_clamped_into_the_sanitized_band)
         {100, 720},     // under the floor
         {1, 720},
         {-1000, 720},   // a negative clock is still a request, still bounded
-        {30000, 21600}, // over the ceiling, under the 36000-tick loss net
+        {30000, 21600}, // over the ceiling, under the 36000-tick net of a level nobody plays
         {720, 720},     // the floor itself (exactly one minute)
         {21600, 21600}, // the ceiling itself
         {7200, 7200},   // in band: untouched

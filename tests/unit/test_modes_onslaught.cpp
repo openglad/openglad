@@ -27,9 +27,12 @@
 #include <openglad/gameplay/walker.h>
 
 #include "../modes_pack_fixture.h"
+#include "../test_sim_random_scope.h"
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
+#include <cstdint>
 #include <cstdlib>
 #include <format>
 #include <string>
@@ -2344,4 +2347,185 @@ TEST_F(ModesOnslaught, turn_undead_partial_hit_credits_the_owner_chain_root)
     EXPECT_EQ(raiser->entity_id(), undead->last_attacker_id())
         << "the stamp names the owner-chain root, not the owned caster";
     EXPECT_NE(cleric->entity_id(), raiser->entity_id());
+}
+
+// With Gameplay Fixes AD (#412) a charmed walker heads its own chain, and
+// the stamp follows it: a raised (owned) cleric charmed onto red credits
+// its partial turn-undead hit to itself, not to the green cleric that
+// raised it. With the setting off the stamp names the raiser, as above.
+// RED with the climb that ignores the charm: the stamp names the raiser
+// with the setting on.
+TEST_F(ModesOnslaught, turn_undead_partial_hit_by_a_charmed_caster_credits_the_caster)
+{
+    for (const short fixes : {short{0}, short{1}})
+    {
+        SCOPED_TRACE(fixes);
+        GateScript gate;
+        ModesCtfWorld fx(kGateLevel);
+        fx.world().gameplay_fixes = fixes;
+        fx.tick(1);
+        ASSERT_TRUE(fx.world().mode.active);
+        walker* raiser = fx.spawn_living(FAMILY_CLERIC, 1, 120, 264);
+        walker* cleric = fx.spawn_living(FAMILY_CLERIC, 1, 200, 264);
+        walker* undead = fx.spawn_living(FAMILY_SKELETON, 2, 216, 264);
+        ASSERT_NE(nullptr, raiser);
+        ASSERT_NE(nullptr, cleric);
+        ASSERT_NE(nullptr, undead);
+        cleric->set_owner(raiser);
+        // The charm's own writes (living-11-thief.lua's success arm).
+        cleric->set_real_team_num(1);
+        cleric->set_team_num(0);
+        cleric->set_charm_left(225);
+        undead->stats()->set_level(1);
+        const float hp_before = undead->stats()->hitpoints();
+        ASSERT_GT(hp_before, 7.0f);
+        fx.world().mode.vars[kGateVerdictSlot] = 7;
+
+        const int killed = cast_turn_until_it_lands(cleric, undead, hp_before);
+        EXPECT_EQ(0, killed);
+        EXPECT_EQ(hp_before - 7.0f, undead->stats()->hitpoints())
+            << "the partial hit landed";
+        EXPECT_EQ(fixes != 0 ? cleric->entity_id() : raiser->entity_id(),
+                  undead->last_attacker_id());
+        EXPECT_EQ(fixes != 0 ? std::int16_t{0} : std::int16_t{1},
+                  undead->last_attacker_team());
+    }
+}
+
+// ===========================================================================
+// #411: a generator's troop is its own kill credit
+// ===========================================================================
+
+// A tent or bones troop keeps the generator as its owner for life, and a
+// generator is not a living: the kill stamp and on_kill go to the topmost
+// LIVING on the owner chain, which for a troop is the troop itself. The
+// kill pays its colour (team 1, green's tent) the spawn rate, and the
+// classic team score is not touched (green is not the player's team).
+// RED at the base: the stamp is skipped for a chain whose root is not a
+// living, so last_attacker_id stays 0 and Onslaught pays nobody.
+TEST_F(ModesOnslaught, a_tent_troops_kill_pays_its_colour)
+{
+    OnsWorld fx;
+    fx.tick(1);
+    ASSERT_TRUE(fx.ons_active());
+    walker* troop = fx.green_gen->fire();
+    ASSERT_NE(nullptr, troop);
+    ASSERT_EQ(fx.green_gen, troop->owner()) << "a tent's troop keeps its tent";
+    ASSERT_EQ(811, troop->lifetime());
+    walker* victim = fx.spawn_living(FAMILY_SOLDIER, 0, 300, 600);
+    ASSERT_NE(nullptr, victim);
+    troop->setxy(280, 600);
+    fx.events.clear();
+    const std::uint32_t green_score = fx.world().m_score[1];
+
+    fx.smash(troop, victim);
+    ASSERT_TRUE(victim->dead());
+    EXPECT_EQ(troop->entity_id(), victim->last_attacker_id());
+    EXPECT_EQ(1, victim->last_attacker_team());
+    EXPECT_EQ(1, count_score_change(fx.events, 1, 10)) << "a spawn kill pays 10";
+    EXPECT_EQ(green_score + 10u, fx.world().m_score[1])
+        << "the mode's 10 and nothing else: no classic score for green";
+    EXPECT_EQ(fx.green_gen, troop->owner());
+
+    // A bone the troop threw: the weapon is not a living, the troop is the
+    // topmost living on its chain (bone -> troop -> tent), so the kill is
+    // the troop's.
+    walker* victim2 = fx.spawn_living(FAMILY_SOLDIER, 0, 300, 700);
+    walker* bone = fx.world().add_ob(Order::Weapon, FAMILY_BONE);
+    ASSERT_NE(nullptr, victim2);
+    ASSERT_NE(nullptr, bone);
+    bone->set_team_num(1);
+    bone->set_owner(troop);
+    bone->setxy(284, 700);
+    fx.events.clear();
+    fx.smash(bone, victim2);
+    ASSERT_TRUE(victim2->dead());
+    EXPECT_EQ(troop->entity_id(), victim2->last_attacker_id())
+        << "the thrower, not the bone and not the tent";
+    EXPECT_EQ(1, count_score_change(fx.events, 1, 10));
+}
+
+// The stale stamp: red's soldier hit a body (team 2, outside both sides),
+// then green's tent troop killed it inside the stamp's 48-tick window.
+// RED at the base: the troop never stamps, so the kill is credited to
+// red's earlier hit and red is paid for green's kill.
+TEST_F(ModesOnslaught, a_tent_troops_kill_is_not_credited_to_the_victims_earlier_attacker)
+{
+    OnsWorld fx;
+    fx.tick(1);
+    ASSERT_TRUE(fx.ons_active());
+    walker* troop = fx.green_gen->fire();
+    ASSERT_NE(nullptr, troop);
+    walker* victim = fx.spawn_living(FAMILY_SOLDIER, 2, 300, 800);
+    ASSERT_NE(nullptr, victim);
+    troop->setxy(280, 800);
+    fx.red->setxy(320, 800);
+    victim->stats()->set_hitpoints(1000.0f);
+    fx.red->set_damage(1.0f);
+    ASSERT_TRUE(fx.red->attack(victim));
+    ASSERT_EQ(fx.red->entity_id(), victim->last_attacker_id());
+    ASSERT_FALSE(victim->dead());
+
+    fx.events.clear();
+    fx.smash(troop, victim);
+    ASSERT_TRUE(victim->dead());
+    EXPECT_EQ(troop->entity_id(), victim->last_attacker_id());
+    EXPECT_EQ(1, victim->last_attacker_team());
+    EXPECT_EQ(1, count_score_change(fx.events, 1, 10)) << "green killed it";
+    EXPECT_EQ(0, count_score_change(fx.events, 0, 10)) << "red only hit it";
+}
+
+namespace {
+
+int skeletons_alive_on_team(GameWorld& world, unsigned char team)
+{
+    int n = 0;
+    for (const auto& uptr : world.oblist)
+    {
+        const walker* w = uptr.get();
+        if (w != nullptr && !w->dead() && w->query_order() == Order::Living &&
+            w->family() == FAMILY_SKELETON && w->team_num() == team)
+            ++n;
+    }
+    return n;
+}
+
+}  // namespace
+
+// on_kill reads the same credit as the stamp: a tent's skeleton under
+// LEGION (New Specials) raises the foe it kills, like any skeleton. The
+// world's dice are set so the blow's three draws come first and the
+// kill's coin lands heads (KitSkeleton's legion test's shape).
+// RED at the base: on_kill is skipped for a chain whose root is not a
+// living, so nothing rises.
+TEST_F(ModesOnslaught, a_tent_skeletons_kill_reaches_its_legion)
+{
+    OnsWorld fx;
+    fx.world().new_specials = 1;
+    fx.tick(1);
+    ASSERT_TRUE(fx.ons_active());
+    walker* troop = fx.green_gen->fire();
+    ASSERT_NE(nullptr, troop);
+    ASSERT_EQ(FAMILY_SKELETON, troop->family());
+    troop->setxy(280, 600);
+    troop->set_act_type(ACT_CONTROL);
+    troop->stats()->set_level(10);
+    troop->stats()->set_max_magicpoints(120.0f);
+    troop->stats()->set_magicpoints(120.0f);
+    troop->set_busy(0);
+    troop->set_current_special(4);  // REASSEMBLE; Shift is LEGION
+    troop->set_shifter_down(1);
+    std::string reason;
+    ASSERT_TRUE(troop->special(nullptr, &reason)) << reason;
+    const int green_skeletons = skeletons_alive_on_team(fx.world(), 1);
+
+    walker* victim = fx.spawn_living(FAMILY_ORC, 0, 296, 600);
+    ASSERT_NE(nullptr, victim);
+    victim->stats()->set_level(6);
+    fx.world().rng_.state_ = state_where_draws_are({1, 1, 1, 2}, {0, 0, 0, 1});
+    fx.smash(troop, victim);
+    ASSERT_TRUE(victim->dead());
+    EXPECT_EQ(troop->entity_id(), victim->last_attacker_id());
+    EXPECT_EQ(green_skeletons + 1, skeletons_alive_on_team(fx.world(), 1))
+        << "the slain orc rises for green";
 }

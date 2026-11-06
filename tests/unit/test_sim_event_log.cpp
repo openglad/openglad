@@ -1,8 +1,10 @@
 #include <openglad/gameplay/sim_event_log.h>
+#include <openglad/gameplay/sound_source.h>
 #include <openglad/interface/platform_bridge.h>
 
 #include <gtest/gtest.h>
 
+#include <cstdint>
 #include <string>
 
 TEST(SimEventLog, push_and_clear)
@@ -44,6 +46,28 @@ TEST(SimEventLog, push_sound)
     ASSERT_TRUE(log.size() == 2);
     ASSERT_TRUE(log.events()[1].a == 43);
     ASSERT_TRUE(log.events()[1].target_player == 6);
+}
+
+// #468: an in-world sound carries its source's box in the third scalar; a
+// sound pushed without one is unplaced (0), and suppression drops a placed
+// sound like any other.
+TEST(SimEventLog, push_sound_carries_its_source_box)
+{
+    og::sim::SimEventLog log;
+    const std::uint32_t box = og::sim::pack_sound_source(320, 160, 16, 16);
+    log.push_sound(42, -1, box);
+    log.push_sound(43);
+    ASSERT_EQ(2u, log.size());
+    EXPECT_EQ(42u, log.events()[0].a);
+    EXPECT_EQ(box, log.events()[0].c) << "a placed sound carries its box";
+    EXPECT_EQ(-1, log.events()[0].target_player);
+    EXPECT_EQ(0u, log.events()[0].b) << "b stays 0: it is in the parity recording";
+    EXPECT_EQ(0u, log.events()[1].c) << "no box: unplaced";
+    {
+        og::sim::SimEventLogSuppressGuard quiet(log);
+        log.push_sound(44, -1, box);
+    }
+    EXPECT_EQ(2u, log.size()) << "suppressed: nothing pushed";
 }
 
 TEST(SimEventLog, push_notification)

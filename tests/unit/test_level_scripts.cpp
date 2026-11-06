@@ -9,11 +9,13 @@
 
 #include <openglad/core/constants.h>
 #include <openglad/core/order.h>
+#include <openglad/gameplay/families/classpack_data.h>
 #include <openglad/gameplay/families/family_descriptor.h>
 #include <openglad/gameplay/families/family_registry.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/script/campaign_hooks.h>
+#include <openglad/gameplay/script/family_decl.h>
 #include <openglad/gameplay/script/family_hooks.h>
 #include <openglad/gameplay/script/pack_scripts.h>
 #include <openglad/gameplay/script/script_host.h>
@@ -21,6 +23,9 @@
 #include <openglad/gameplay/walker.h>
 
 #include "unit_pack_store_guard.h"
+
+#include <string>
+#include <vector>
 
 using namespace og::script;
 
@@ -539,6 +544,183 @@ TEST_F(LevelScriptsTest, level_and_entity_hook_registration_rejections)
     ASSERT_TRUE(answered.has_value());
     EXPECT_TRUE(*answered);
     EXPECT_EQ(4u, errs.size()) << "an accepted registration reports nothing";
+}
+
+// #467: the own-only seam answers a level's own registrations, and the
+// every-level ones under the wildcard's id, -1. The dispatchers run the
+// level's own hook, else the wildcard, so a kind dispatches on a level
+// exactly when one of the two masks holds it: the match recap reads their
+// union.
+TEST_F(LevelScriptsTest, the_every_level_registrations_answer_under_level_minus_one)
+{
+    constexpr std::uint32_t kLoad = 1u << 0;      // LevelHook::Load
+    constexpr std::uint32_t kModeInit = 1u << 4;  // LevelHook::ModeInit
+    register_pack_script(
+        {"test.level", "wild.lua",
+         "og.register_level_hooks(-1, { on_mode_init = function() end })\n"
+         "og.register_level_hooks(42, { on_load = function() end })\n"});
+    ASSERT_TRUE(world.scripts().host().errors().empty())
+        << world.scripts().host().errors().front().message;
+    EXPECT_EQ(kLoad, hooks::level_hook_kinds_for(42))
+        << "level 42's own on_load, not the wildcard's on_mode_init";
+    EXPECT_EQ(kModeInit, hooks::level_hook_kinds_for(-1))
+        << "the every-level on_mode_init answers under -1";
+    EXPECT_EQ(0u, hooks::level_hook_kinds_for(7))
+        << "a level with nothing of its own answers nothing of its own";
+
+    // A level's own on_mode_init beside the wildcard's: both masks hold the
+    // bit, so the union answers it once.
+    clear_pack_scripts();
+    register_pack_script(
+        {"test.level", "wild.lua",
+         "og.register_level_hooks(-1, { on_mode_init = function() end })\n"
+         "og.register_level_hooks(42, { on_mode_init = function() end })\n"});
+    EXPECT_EQ(kModeInit, hooks::level_hook_kinds_for(42));
+    EXPECT_EQ(kModeInit, hooks::level_hook_kinds_for(-1));
+
+    // No pack Lua at all: nothing answers anywhere.
+    clear_pack_scripts();
+    EXPECT_EQ(0u, hooks::level_hook_kinds_for(42));
+    EXPECT_EQ(0u, hooks::level_hook_kinds_for(-1));
+}
+
+// #464: a level hook table may only use the nine level hook names. A typo
+// beside a valid name is a load error with a did-you-mean, and the refused
+// call installs nothing, the valid name included.
+TEST_F(LevelScriptsTest, a_misspelled_level_hook_beside_a_valid_one_is_a_load_error)
+{
+    register_pack_script(
+        {"test.level", "typo.lua",
+         "og.register_level_hooks(-1, {\n"
+         "  on_load = function() og.log('load') end,\n"
+         "  on_tik = function() og.log('tik') end,\n"
+         "})\n"});
+    const std::vector<ScriptError>& errs = world.scripts().host().errors();
+    ASSERT_EQ(1u, errs.size());
+    EXPECT_NE(std::string::npos,
+              errs[0].message.find("og.register_level_hooks: unknown hook "
+                                   "'on_tik' (did you mean 'on_tick'?)"))
+        << errs[0].message;
+    EXPECT_EQ(0u, hooks::level_hook_kinds_for(-1))
+        << "the refused call installs nothing, on_load included";
+    world.tick();
+    world.tick();
+    EXPECT_TRUE(vm_log().empty()) << "neither hook runs";
+
+    // Control: the same table spelled right installs both and runs on_load.
+    clear_pack_scripts();
+    register_pack_script(
+        {"test.level", "typo.lua",
+         "og.register_level_hooks(-1, {\n"
+         "  on_load = function() og.log('load') end,\n"
+         "  on_tick = function() og.log('tick') end,\n"
+         "})\n"});
+    EXPECT_EQ((1u << 0) | (1u << 1), hooks::level_hook_kinds_for(-1));
+    EXPECT_TRUE(world.scripts().host().errors().empty());
+}
+
+// #464: a key that is not a name at all (a list entry) is a load error too.
+TEST_F(LevelScriptsTest, a_level_hook_table_key_that_is_not_a_name_is_a_load_error)
+{
+    register_pack_script(
+        {"test.level", "listy.lua",
+         "local f = function() og.log('ran') end\n"
+         "og.register_level_hooks(42, { on_load = f, [1] = f })\n"});
+    const std::vector<ScriptError>& errs = world.scripts().host().errors();
+    ASSERT_EQ(1u, errs.size());
+    EXPECT_NE(std::string::npos,
+              errs[0].message.find("og.register_level_hooks: a level hook "
+                                   "table's keys are hook names (got a number key)"))
+        << errs[0].message;
+    EXPECT_EQ(0u, hooks::level_hook_kinds_for(42));
+    world.tick();
+    EXPECT_TRUE(vm_log().empty());
+}
+
+// #464: the declaration pass refuses the typo too, so the pack that wrote it
+// is rejected where it is still possible, as og.register_campaign_hooks does.
+TEST_F(LevelScriptsTest, the_declaration_pass_refuses_a_misspelled_level_hook)
+{
+    og::data::ClasspackData data;
+    register_pack_family_chunk({"lvltypo", "lvltypo/families/a.lua",
+                                "og.register_level_hooks(-1, {\n"
+                                "  on_tick_ = function() end,\n"
+                                "})\n"});
+    const DeclareResult result = declare_pack_families("lvltypo", data);
+    EXPECT_FALSE(result.ok);
+    EXPECT_NE(std::string::npos,
+              result.error.find("og.register_level_hooks: unknown hook "
+                                "'on_tick_' (did you mean 'on_tick'?)"))
+        << result.error;
+
+    // Control: the same chunk spelled right declares (and installs nothing
+    // in this pass).
+    og::data::ClasspackData good;
+    register_pack_family_chunk({"lvltypo", "lvltypo/families/a.lua",
+                                "og.register_level_hooks(-1, {\n"
+                                "  on_tick = function() end,\n"
+                                "})\n"});
+    const DeclareResult ok = declare_pack_families("lvltypo", good);
+    EXPECT_TRUE(ok.ok) << ok.error;
+    clear_pack_family_chunks();
+}
+
+// #464 (the same flaw in og.set_entity_hooks): an entity hook table may only
+// use on_death; a typo or a non-string key is a script error, and nothing is
+// installed for the entity.
+TEST_F(LevelScriptsTest, a_misspelled_entity_hook_is_a_script_error)
+{
+    register_pack_script(
+        {"test.level", "lvl.lua",
+         "og.register_level_hooks(42, {\n"
+         "  on_entity_spawn = function(ent)\n"
+         "    if ent:family() == " + std::to_string(FAMILY_SOLDIER) + " then\n"
+         "      og.set_entity_hooks(ent, { on_deth = function(e) og.log('custom') end })\n"
+         "    elseif ent:family() == " + std::to_string(FAMILY_ORC) + " then\n"
+         "      og.set_entity_hooks(ent, { [1] = function(e) og.log('custom') end })\n"
+         "    else\n"
+         "      og.set_entity_hooks(ent, { on_death = function(e) og.log('custom') end })\n"
+         "    end\n"
+         "  end,\n"
+         "  on_entity_death = function(ent) og.log('level death') end,\n"
+         "})\n"});
+    world.tick();
+    const std::vector<ScriptError>& errs = world.scripts().host().errors();
+    ASSERT_TRUE(errs.empty()) << errs.front().message;
+
+    walker* soldier = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, soldier);
+    ASSERT_EQ(1u, errs.size());
+    EXPECT_NE(std::string::npos,
+              errs[0].message.find("og.set_entity_hooks: unknown hook "
+                                   "'on_deth' (did you mean 'on_death'?)"))
+        << errs[0].message;
+    walker* orc = world.add_ob(Order::Living, FAMILY_ORC);
+    ASSERT_NE(nullptr, orc);
+    ASSERT_EQ(2u, errs.size());
+    EXPECT_NE(std::string::npos,
+              errs[1].message.find("og.set_entity_hooks: an entity hook table's "
+                                   "keys are hook names (got a number key)"))
+        << errs[1].message;
+
+    // Neither refused entity got an override: each death runs only the
+    // level-wide hook.
+    soldier->set_dead(1);
+    soldier->death();
+    orc->set_dead(1);
+    orc->death();
+    EXPECT_EQ((std::vector<std::string>{"level death", "level death"}), vm_log());
+
+    // Control: on_death spelled right installs the override, which runs
+    // before the level-wide hook.
+    walker* elf = world.add_ob(Order::Living, FAMILY_ELF);
+    ASSERT_NE(nullptr, elf);
+    elf->set_dead(1);
+    elf->death();
+    EXPECT_EQ((std::vector<std::string>{"level death", "level death", "custom",
+                                        "level death"}),
+              vm_log());
+    EXPECT_EQ(2u, errs.size());
 }
 
 // A class pack's families/*.lua may register level hooks. The declaration

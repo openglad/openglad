@@ -113,6 +113,8 @@ void picker_testing_mark_game_end();
 
 
 bool prompt_for_string(const std::string& message, std::string& result);
+bool prompt_for_string(const std::string& message, std::string& result,
+                       bool (*poll)());
 bool yes_or_no_prompt(const char* title, const char* message, bool default_value);
 void popup_dialog(const char* title, const char* message);
 void timed_dialog(const char* message, float delay_seconds = 3.0f);
@@ -2364,24 +2366,28 @@ Sint32 add_guy(guy *newguy)
 Sint32 name_guy(Sint32 arg)  // 0 == current_guy, 1 == ourteam[editguy]
 {
 	text& nametext = og::runtime::current_session->myscreen_->text_normal;
-	guy *someguy;
+	// Only the slot survives the prompt: the editor polls the lobby (#415),
+	// and the local lobby client rebuilds save.team_list on every poll
+	// (picker_lobby_client.cpp, apply_state_to_save), so a guy pointer taken
+	// before the prompt names a freed guy after it. The guy is looked up
+	// again afterwards, the rule DETAILS follows (create_detail_menu).
+	const int slot = og::runtime::current_session->editguy_;
+	const auto named_guy = [arg, slot]() -> guy* {
+		if (!arg)
+			return og::runtime::current_session->current_guy_.get();
+		auto& team_list = og::runtime::current_session->myscreen_->save_data.team_list;
+		if (slot < 0 || slot >= static_cast<int>(team_list.size()))
+			return nullptr;
+		return team_list[static_cast<std::size_t>(slot)].get();
+	};
 
-	if (arg && !picker_lobby_save_slot_editable(og::runtime::current_session->editguy_))
+	if (arg && !picker_lobby_save_slot_editable(slot))
 		return MENU_REDRAW;
 
-	if (arg)
-	{
-		auto& team_list = og::runtime::current_session->myscreen_->save_data.team_list;
-		const int slot = og::runtime::current_session->editguy_;
-		if (slot < 0 || slot >= static_cast<int>(team_list.size()))
-			return MENU_REDRAW;
-		someguy = team_list[static_cast<std::size_t>(slot)].get();
-	}
-	else
-		someguy = og::runtime::current_session->current_guy_.get();
-
+	guy* const someguy = named_guy();
 	if (!someguy)
 		return MENU_REDRAW;
+	const std::string old_name = someguy->name;
 
 	release_mouse();
 	
@@ -2390,14 +2396,29 @@ Sint32 name_guy(Sint32 arg)  // 0 == current_guy, 1 == ourteam[editguy]
 	og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200);
 	
 	clear_keyboard();
-    std::optional<std::string> new_text = nametext.input_string_value(176, 20, 11, someguy->name.c_str());
+    std::optional<std::string> new_text = nametext.input_string_value(
+        176, 20, 11, old_name.c_str(), &picker_lobby_poll_keep_waiting);
+    // A host's GO while typing: the editor cancelled, the half-typed name is
+    // dropped (the start config was built when the GO was confirmed, so a
+    // rename could not reach the match anyway). Leave with MENU_EXIT: the
+    // screen's nested remote-start check turns it into START GAME without
+    // composing a frame (#400, #415).
+    if (g_start_game_requested && picker_lobby_has_game_start_config())
+	{
+		og::runtime::current_session->myscreen_->draw_button(174,  8, 306, 30, 1, 1); // text box
+		og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200);
+		grab_mouse();
+		return MENU_EXIT;
+	}
 	if(new_text.has_value())
 	{
-		someguy->name = *new_text;
+		guy* const renamed = named_guy();
+		if (renamed)
+			renamed->name = *new_text;
 		// §3.8: renaming a ROSTER member (arg != 0) is a base-camp mutation.
 		// The arg==0 path names the hire screen's not-yet-hired recruit —
 		// nothing on the roster changed, so nothing to save.
-		if (arg)
+		if (arg && renamed)
 			picker_base_camp_after_roster_mutation();
 	}
 	og::runtime::current_session->myscreen_->draw_button(174,  8, 306, 30, 1, 1); // text box
@@ -2417,11 +2438,27 @@ Sint32 add_guy([[maybe_unused]] Sint32 ignoreme)
 	if (slot < 0)
 		return (og::runtime::current_session->myscreen_->save_data.team_size >= MAX_TEAM_SIZE) ? -1 : MENU_OK;
 
+	// The lobby holds the hire before the prompt polls it (#415): the local
+	// client rebuilds save.team_list from its cached roster on every poll,
+	// which would otherwise drop the unsynced hire.
+	picker_lobby_sync_roster_from_save();
+
 	// SDL-specific: prompt for name
 	release_mouse();
 	auto& hired = og::runtime::current_session->myscreen_->save_data.team_list[static_cast<std::size_t>(slot)];
 	std::string name = hired->name;
-	if (prompt_for_string("NAME THIS CHARACTER", name))
+	const bool named =
+	    prompt_for_string("NAME THIS CHARACTER", name, &picker_lobby_poll_keep_waiting);
+	// A host's GO while naming: the hire stands with its suggested name, as
+	// CANCEL leaves it, and the game starts (go_menu re-syncs the roster and
+	// saves the company on the way in).
+	if (g_start_game_requested && picker_lobby_has_game_start_config())
+	{
+		sync_current_guy_from_hire();
+		grab_mouse();
+		return MENU_EXIT;
+	}
+	if (named)
 		pks().hire_session->rename_hired(slot, name);
 	grab_mouse();
 

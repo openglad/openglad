@@ -59,6 +59,12 @@ public:
     explicit SimRandom(std::uint32_t seed = 0) : state_(seed) {}
 
     std::uint32_t next(std::uint32_t max_exclusive) override {
+        // rule: The sim RNG is a glibc-constant LCG; asking for a draw with bound 0 answers 0 and
+        //   does NOT advance the stream (so a guarded draw costs nothing); a test override, when
+        //   installed, answers instead of the world stream.
+        // tests: SimEntity.sim_random_lcg_arithmetic_is_pinned
+        // tests: SimWorldHeadless.sim_random_override_steers_generator_death_scatter_in_a_unit_group
+        // tests: SimWorldHeadless.sim_random_zero_max_returns_zero
         if (max_exclusive == 0) return 0;
         if (IRandom* override_rng = sim_random_override())
             return override_rng->next(max_exclusive);
@@ -247,24 +253,48 @@ public:
     }
     [[nodiscard]] PixieData& grid_for_floor(int floor) noexcept
     {
+        // rule: Every per-floor lookup with a floor index outside 1..extra floors (including
+        //   negative or too-large indices from a hostile snapshot/save) falls back to floor 0's
+        //   grid, decor and smoother, so an untrusted floor can never index out of bounds.
+        // tests: MapgenBuilders.stair_pair_paints_aligned_up_down
+        // tests: DecorFormatTest.v11_round_trip_multifloor_planes_and_presence_flags
+        // tests: SemWorld.a_floor_index_outside_the_stacked_floors_reads_floor_zero
         return valid_floor(floor)
                    ? extra_floors_[static_cast<std::size_t>(floor - 1)].grid
                    : grid;
     }
     [[nodiscard]] const PixieData& grid_for_floor(int floor) const noexcept
     {
+        // rule: Every per-floor lookup with a floor index outside 1..extra floors (including
+        //   negative or too-large indices from a hostile snapshot/save) falls back to floor 0's
+        //   grid, decor and smoother, so an untrusted floor can never index out of bounds.
+        // tests: MapgenBuilders.stair_pair_paints_aligned_up_down
+        // tests: DecorFormatTest.v11_round_trip_multifloor_planes_and_presence_flags
+        // tests: SemWorld.a_floor_index_outside_the_stacked_floors_reads_floor_zero
         return valid_floor(floor)
                    ? extra_floors_[static_cast<std::size_t>(floor - 1)].grid
                    : grid;
     }
     [[nodiscard]] PixieData& decor_for_floor(int floor) noexcept
     {
+        // rule: Every per-floor lookup with a floor index outside 1..extra floors (including
+        //   negative or too-large indices from a hostile snapshot/save) falls back to floor 0's
+        //   grid, decor and smoother, so an untrusted floor can never index out of bounds.
+        // tests: MapgenBuilders.stair_pair_paints_aligned_up_down
+        // tests: DecorFormatTest.v11_round_trip_multifloor_planes_and_presence_flags
+        // tests: SemWorld.a_floor_index_outside_the_stacked_floors_reads_floor_zero
         return valid_floor(floor)
                    ? extra_floors_[static_cast<std::size_t>(floor - 1)].decor
                    : decor;
     }
     [[nodiscard]] const PixieData& decor_for_floor(int floor) const noexcept
     {
+        // rule: Every per-floor lookup with a floor index outside 1..extra floors (including
+        //   negative or too-large indices from a hostile snapshot/save) falls back to floor 0's
+        //   grid, decor and smoother, so an untrusted floor can never index out of bounds.
+        // tests: MapgenBuilders.stair_pair_paints_aligned_up_down
+        // tests: DecorFormatTest.v11_round_trip_multifloor_planes_and_presence_flags
+        // tests: SemWorld.a_floor_index_outside_the_stacked_floors_reads_floor_zero
         return valid_floor(floor)
                    ? extra_floors_[static_cast<std::size_t>(floor - 1)].decor
                    : decor;
@@ -279,6 +309,11 @@ public:
                                          std::int32_t grid_y) const noexcept
     {
         const PixieData& dec = decor_for_floor(floor);
+        // rule: A walker is concealed by decor only on a cell whose decor id is registered as
+        //   concealing (shrub); a level without a decor plane, an off-map cell or a non-concealing
+        //   decor (bones, boulder) never conceals.
+        // tests: Decor.shrub_conceals_for_living_and_weapon_but_bones_does_not
+        // tests: SemWorld.a_decor_id_past_the_registry_never_conceals
         if (!dec.valid())
             return false;
         if (grid_x < 0 || grid_y < 0 || grid_x >= dec.w || grid_y >= dec.h)
@@ -289,6 +324,12 @@ public:
     }
     [[nodiscard]] smoother& smoother_for_floor(int floor) noexcept
     {
+        // rule: Every per-floor lookup with a floor index outside 1..extra floors (including
+        //   negative or too-large indices from a hostile snapshot/save) falls back to floor 0's
+        //   grid, decor and smoother, so an untrusted floor can never index out of bounds.
+        // tests: MapgenBuilders.stair_pair_paints_aligned_up_down
+        // tests: DecorFormatTest.v11_round_trip_multifloor_planes_and_presence_flags
+        // tests: SemWorld.a_floor_index_outside_the_stacked_floors_reads_floor_zero
         return valid_floor(floor)
                    ? extra_floors_[static_cast<std::size_t>(floor - 1)].floor_smoother
                    : mysmoother;
@@ -311,15 +352,24 @@ public:
     // lender's RNG unless whoever moves them rebinds it.
     [[nodiscard]] bool smoothers_in_sync() const noexcept
     {
+        // plumbing: smoothers_in_sync: invariant oracle (every floor's smoother targets its own
+        //   grid and the world's RNG); no game rule, read by tests
+        //   (test_level_editor_issue12_wall_crash.cpp asserts true after create/resize/load).
         if (grid.valid() ? !mysmoother.targets(grid) : mysmoother.has_target())
             return false;
         if (!mysmoother.uses_rng(&rng_))
             return false;
         for (const ExtraFloor& floor : extra_floors_)
         {
+            // plumbing: smoothers_in_sync: invariant oracle (every floor's smoother targets its own
+            //   grid and the world's RNG); no game rule, read by tests
+            //   (test_level_editor_issue12_wall_crash.cpp asserts true after create/resize/load).
             if (floor.grid.valid() ? !floor.floor_smoother.targets(floor.grid)
                                    : floor.floor_smoother.has_target())
                 return false;
+            // plumbing: smoothers_in_sync: invariant oracle (every floor's smoother targets its own
+            //   grid and the world's RNG); no game rule, read by tests
+            //   (test_level_editor_issue12_wall_crash.cpp asserts true after create/resize/load).
             if (!floor.floor_smoother.uses_rng(&rng_))
                 return false;
         }
@@ -332,6 +382,11 @@ public:
     void rebind_smoothers() noexcept
     {
         mysmoother.set_rng(&rng_);
+        // plumbing: rebind_smoothers: re-targets each floor's smoother at its grid (or resets it
+        //   when the grid is gone) and the world RNG after a world handoff
+        //   (level_runtime_data.cpp,625); oracle smoothers_in_sync, asserted in
+        //   TEST(Issue12EditorWallCrash,
+        //   floor_smoothers_follow_the_live_world_rng_across_a_level_load).
         if (grid.valid())
             mysmoother.set_target(grid);
         else
@@ -339,6 +394,11 @@ public:
         for (ExtraFloor& floor : extra_floors_)
         {
             floor.floor_smoother.set_rng(&rng_);
+            // plumbing: rebind_smoothers: re-targets each floor's smoother at its grid (or resets
+            //   it when the grid is gone) and the world RNG after a world handoff
+            //   (level_runtime_data.cpp,625); oracle smoothers_in_sync, asserted in
+            //   TEST(Issue12EditorWallCrash,
+            //   floor_smoothers_follow_the_live_world_rng_across_a_level_load).
             if (floor.grid.valid())
                 floor.floor_smoother.set_target(floor.grid);
             else
@@ -451,9 +511,11 @@ public:
     walker* find_near_foe(walker* ob);
     // Scan all live, non-dormant foes and return the nearest by 2D distance.
     walker* find_nearest_foe(walker* ob);
+    // The nearest live stain on who's floor (squared centre distance under
+    // 800), or nullptr; a stain on another floor is never answered (#456).
     walker* find_nearest_blood(walker* who);
     // Every stain find_nearest_blood would consider (live FAMILY_STAIN
-    // treasure, squared centre distance under 800) on who's floor, nearest
+    // treasure on who's floor, squared centre distance under 800), nearest
     // first; ties keep fxlist order. Draw-free; empty for a null who.
     std::vector<walker*> find_blood_in_reach(walker* who);
     walker* find_nearest_player(walker* ob);
@@ -561,6 +623,15 @@ public:
     float control_hp = 0.0f;
     bool withdraw_requested = false;
     short withdraw_level = -1;
+    // True while no seat plays this level: no connected client holds a seat
+    // and no dropped player is still in its disconnect grace window (a
+    // spectator room, autoplay, a room every player has left). Only such a
+    // level times out (36000 ticks, see tick()); a played level never does,
+    // as in the old game. A server-only transient: GameServer::step stamps
+    // it before every tick, it is not in the snapshot or the hash, and
+    // clear() leaves it alone. Worlds ticked without a server (the parity
+    // runner, the text protocol, unit worlds) keep false: no limit.
+    bool level_unattended = false;
 
     // Gameplay-relevant values that will migrate off SaveData/session.
     std::uint32_t m_score[4] = {};
@@ -578,8 +649,8 @@ public:
     // resolve it against their manifest row through match.resolve_limit.
     // NOT the .glad level field of the same name — that one is the par/time
     // BONUS clock and lives in time_bonus_limit (level_file_io.cpp:238).
-    // Independent of the 36000-tick hard mission timeout below, which is a
-    // runaway-loop safety net and ends the level as a LOSS.
+    // Independent of the 36000-tick timeout of a level nobody plays
+    // (level_unattended), which ends that level as a LOSS.
     short ctf_requested_time_limit = 0;
     // Lobby-requested per-team FILL wheel and MAP UNITS box (amendment
     // B1-B4). Index is the team (0..3); 0 is the default on both.

@@ -37,11 +37,9 @@ inline constexpr unsigned char DECOR_MAX           = 14; // append-only, never r
 // only RESTRICTS; it never grants passage (composition = base AND decor).
 // BlocksGround reproduces the legacy water/torch/boulder arm exactly:
 // Order::Weapon passes, BIT_FLYING || flight_left() passes, else blocked.
-// BlocksAll is reserved (no v1 user).
 enum class DecorPassability : unsigned char {
     None,
     BlocksGround,
-    BlocksAll,
 };
 
 struct DecorDef

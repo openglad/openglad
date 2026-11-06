@@ -1825,8 +1825,9 @@ TEST_F(ModesCtf, short_manifest_time_limit_is_honored)
     fx.tick(2);
     EXPECT_TRUE(fx.world().game_ended) << "the manifest row decides";
     EXPECT_EQ(0, fx.world().mode.winner_team) << "full tie, lowest byte";
-    // A timeout is the WIN exit, never the engine's own 36000-tick net
-    // (ending = 1, next_level = -1, "Mission timed out. Retreating.").
+    // A timeout is the WIN exit, never the 36000-tick net that ends a level
+    // nobody plays (ending = 1, next_level = -1, "Mission timed out.
+    // Retreating.").
     EXPECT_EQ(0, fx.world().ending);
     EXPECT_EQ(kCtfLevelShortClock, fx.world().next_level)
         << "a bot win replays the same map";

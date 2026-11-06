@@ -209,7 +209,10 @@ census command: per-team alive/dormant + named-hero hp). Interpretation guards:
 Calibration method: bracket sweeps at crew {curve-1, curve, curve+1} x 3 seeds
 x 2 rosters; per-type gates (kill-all: clear at curve 2/3 seeds; exit: escape
 viability + protected survival; defense: hold the design band); tune builders
-only; the curve table lives in campaign_meta and a cheap CI test pins it.
+only; the curve table lives in campaign_meta, and a cheap CI test loads each
+curve level and checks the fight happened (army fielded, damage taken and
+dealt both ways). Its survivor pins were deleted on 2026-11-02; balance is
+the playtest harness's business, not CI's.
 
 ## Pitfalls
 

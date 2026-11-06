@@ -37,6 +37,7 @@
 #include <openglad/gameplay/script/pack_scripts.h>
 #include <openglad/gameplay/script/script_host.h>
 #include <openglad/gameplay/sim_event_log.h>
+#include <openglad/gameplay/sound_source.h>
 #include <openglad/gameplay/walker.h>
 
 #include <optional>
@@ -379,6 +380,7 @@ TEST_F(ScriptBindingErrorTest, the_sim_event_bindings_refuse_with_no_context)
     TestGameWorld tw;
     walker* self = tw.world().add_ob(Order::Living, FAMILY_SOLDIER);
     ASSERT_NE(nullptr, self);
+    self->setxy(48, 64);
     tw.events.clear();
     const std::optional<SpecialResult> ran = run_do_special(
         "    og.emit_sound(9)\n"
@@ -392,8 +394,13 @@ TEST_F(ScriptBindingErrorTest, the_sim_event_bindings_refuse_with_no_context)
     ASSERT_EQ(4u, log.size());
     EXPECT_EQ(og::sim::EventKind::PlaySound, log[0].kind);
     EXPECT_EQ(9u, log[0].a);
+    EXPECT_EQ(0u, log[0].c) << "og.emit_sound is a cue: unplaced (#468)";
     EXPECT_EQ(og::sim::EventKind::PlaySound, log[1].kind);
     EXPECT_EQ(10u, log[1].a);
+    EXPECT_EQ(og::sim::pack_sound_source(self->xpos(), self->ypos(),
+                                         self->sizex(), self->sizey()),
+              log[1].c)
+        << "og.emit_positional_sound is placed at its walker (#468)";
     EXPECT_EQ(og::sim::EventKind::Notification, log[2].kind);
     EXPECT_EQ("HI", log[2].text);
     EXPECT_EQ(5u, log[2].a);

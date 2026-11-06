@@ -38,6 +38,7 @@
 #include <openglad/interface/ability_icons.h>
 #include <openglad/interface/button.h>
 #include <openglad/interface/input.h>
+#include <openglad/interface/native_input.h>
 #include <openglad/interface/render/pal32.h>
 #include <openglad/interface/render/text.h>
 #include <openglad/interface/screen.h>
@@ -57,6 +58,7 @@
 #include "test_click_ladder.h"
 #include "test_company_cleanup.h"
 #include "test_escape_tail.h"
+#include "test_fake_kicked_join_client.h"
 #include "test_fake_lobby_client.h"
 #include "test_frame_capture.h"
 #include "test_input_helpers.h"
@@ -66,6 +68,7 @@
 #include <SDL3/SDL.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cstring>
 #include <array>
 #include <atomic>
@@ -77,11 +80,22 @@
 #include <set>
 #include <span>
 #include <string>
+#include <string_view>
+#include <thread>
 #include <vector>
 
 void picker_main(Sint32 argc, char** argv);
 Sint32 create_train_menu(Sint32 arg1);
 Sint32 create_hire_menu(Sint32 arg1);
+Sint32 create_team_menu(Sint32 arg1);
+void level_editor_testing_prompt_force_real(bool enabled);
+void picker_testing_set_force_real_dialogs(bool enabled);
+bool handle_menu_nav(button* buttons, int& highlighted_button,
+                     Sint32& retvalue, bool use_global_vbuttons);
+// The owning slot the per-frame kicked check swaps through
+// (tests/coverage_internal/picker_sdl_client_factory.inc).
+void picker_testing_set_lobby_client_owner(
+    std::unique_ptr<og::ui::IPickerLobbyClient>* owner);
 short new_score_panel(screen* scr, short do_it); // score_panel.cpp, the HUD
 extern int g_picker_mainmenu_calls;
 extern int g_picker_max_mainmenu_calls;
@@ -487,6 +501,10 @@ struct FlowState {
     std::string reopened_key3;
     std::string reopened_s1;
     bool reclosed = false;
+    // Presses sent again for want of a witness, from the first BACK to the
+    // second: a BACK that landed and is pressed again lands on TRAIN's BACK
+    // at the same place (#420).
+    int back_represses = -1;
     // The setting-off flow.
     bool door_dimmed_seen = false;
     bool door_inert = false;
@@ -515,6 +533,10 @@ int enter_train(FlowState* state, const std::string& row,
 }
 
 // --- 1. The whole road: TRAIN door -> edits -> BACK -> the saved hero ------
+
+// A press that landed (its witness traced) brings its screen up within this
+// many completed engine frames, however long the menu thread stalls first.
+constexpr int kLandedEdgeFrames = 60;
 
 int full_flow_injector(void* data)
 {
@@ -597,10 +619,20 @@ int full_flow_injector(void* data)
     if (!state->cleared_s1)
         return escape(10, "picking S1 twice never emptied it");
 
-    // BACK commits once and returns to TRAIN.
-    state->back_to_train = click_until_edge("abilities_back", [](int ms) {
-        return wait_for_interactable("inc_str", ms);
-    });
+    const int retries_before_back = g_click_ladder_click_retries;
+    // BACK commits once and returns to TRAIN. The commit is traced before
+    // the autosave, which can stall the menu thread for longer than the
+    // ladder waits: a BACK that landed is never pressed again (it would land
+    // on TRAIN's BACK at the same place), and TRAIN is then waited for by
+    // its frames, not by the clock.
+    const int commits = count_trace_containing("abilities", "commit slot=0");
+    state->back_to_train =
+        click_until_edge(
+            "abilities_back",
+            [](int ms) { return wait_for_interactable("inc_str", ms); },
+            "commit slot=0", 3, 2500, "abilities") ||
+        (count_trace_containing("abilities", "commit slot=0") > commits &&
+         wait_for_interactable_within_frames("inc_str", kLandedEdgeFrames));
     if (!state->back_to_train)
         return escape(11, "BACK never returned to TRAIN");
     state->committed = wait_for_trace("abilities", "commit slot=0", 5000);
@@ -618,11 +650,18 @@ int full_flow_injector(void* data)
     (void)wait_for_menu_frames(2);
     state->reopened_key3 = interactable_label("belt_2");
     state->reopened_s1 = interactable_label("belt_3");
-    state->reclosed = click_until_edge("abilities_back", [](int ms) {
-        return wait_for_interactable("inc_str", ms);
-    });
+    // The unchanged second visit commits nothing; its witness is the close.
+    const int closes = count_trace_containing("abilities", "close slot=0");
+    state->reclosed =
+        click_until_edge(
+            "abilities_back",
+            [](int ms) { return wait_for_interactable("inc_str", ms); },
+            "close slot=0", 3, 2500, "abilities") ||
+        (count_trace_containing("abilities", "close slot=0") > closes &&
+         wait_for_interactable_within_frames("inc_str", kLandedEdgeFrames));
     if (!state->reclosed)
         return escape(13, "the second BACK never returned to TRAIN");
+    state->back_represses = g_click_ladder_click_retries - retries_before_back;
 
     state->finished = true;
     return escape(0, "");
@@ -659,8 +698,8 @@ int door_off_injector(void* data)
 
 // HIRE's door table, in PRECEDENCE order: HIRE's BACK (HIRE ME says it is
 // up), Base Camp's, the main menu's way forward, then the DETAILS page's
-// BACK (the only screen left that publishes a bare "back": its PROMOTE row
-// is hidden over a recruit).
+// BACK (the only screen left that publishes a bare "back": its PROMOTE
+// descriptor is hidden over a recruit).
 constexpr EscapeDoor kHireDetailsEscapeDoors[] = {
     {"hire_me", "back"},
     {"go", "back"},
@@ -1898,6 +1937,8 @@ TEST(AbilitiesFlow, train_door_opens_the_screen_and_the_edit_reaches_the_save)
     EXPECT_TRUE(state.placed_again);
     EXPECT_TRUE(state.cleared_s1);
     EXPECT_TRUE(state.back_to_train);
+    EXPECT_EQ(0, state.back_represses)
+        << "a BACK that landed was pressed again";
     EXPECT_TRUE(state.committed) << "BACK commits the edited copy";
     EXPECT_EQ(1, count_trace_containing("abilities", "commit slot=0"))
         << "one commit for the visit; the unchanged second visit commits "
@@ -2046,6 +2087,7 @@ constexpr EscapeDoor kTrainDetailsEscapeDoors[] = {
     {"inc_str", "back"},
     {"go", "back"},
     {"continue_game", "continue_game"},
+    {"back", "back"},
 };
 
 struct TrainDetailsState {
@@ -2622,6 +2664,639 @@ TEST(AbilitiesFlow, a_host_go_on_hire_abilities_starts_without_back)
     expect_details_left_on_the_go(state, scope.lobby, result);
     EXPECT_EQ(state.team_size_before, test_screen()->save_data.team_size)
         << "nobody was hired";
+}
+
+// --- #415: a host's GO while this machine types a name -------------------
+//
+// TRAIN > RENAME and HIRE ME open the blocking one-line editor
+// (text::input_string / input_string_ex), which is not engine-hosted: no
+// completed menu frames inside it, and its only observable is
+// og::input_native::text_input_is_active(). The host's GO must reach it the
+// way it reaches DETAILS (#400): the editor closes by itself, the screen
+// under it composes no frame, and the exit is the start of the game.
+
+namespace
+{
+
+// The editor is up (its text-input session is open), bounded by a poll.
+bool text_input_up(int ms)
+{
+    const Uint64 deadline = SDL_GetTicks() + static_cast<Uint64>(ms);
+    while (SDL_GetTicks() < deadline) {
+        if (og::input_native::text_input_is_active())
+            return true;
+        SDL_Delay(5);  // poll tick
+    }
+    return og::input_native::text_input_is_active();
+}
+
+// TRAIN's door table for a flow that may give up inside the editor: the
+// editor itself has no published door (its faces are drawn, never in
+// allbuttons), so the hold predicate closes it with Escape first; then
+// TRAIN's BACK, or HIRE's.
+constexpr EscapeDoor kPromptStartDoors[] = {
+    {"inc_str", "back"},
+    {"hire_me", "back"},
+    {"back", "back"},
+};
+
+struct PromptStartState {
+    std::atomic<bool> test_finished{false};
+    FakeLobbyClient* lobby = nullptr;
+    const char* door = nullptr;          // the row that opens the editor
+    bool editor_up = false;              // the editor opened
+    int slot = -1;                       // the hero RENAME names
+    std::string name_before;             // his name before the prompt
+    std::string recruit_name;            // HIRE's suggested name
+    int hire_slot = -1;                  // the slot a hire fills
+    int team_size_before = -1;
+    int armed_polls = -1;                // lobby polls when the GO came
+    int presses_before = -1;             // the tail's presses then
+    std::uint64_t frames_before = 0;     // engine frames then
+    bool held_bound_hit = false;         // the editor outlived the bound
+    bool escape_sent = false;            // the give-up closed the editor
+};
+
+int prompt_start_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* const state = static_cast<PromptStartState*>(data);
+    const auto escape = [state](int leg, const char* why) {
+        return escape_to_the_main_thread(
+            state->test_finished, leg, why, kPromptStartDoors, [] {
+                // Never press a screen's door while the editor is up: a
+                // click aimed at an allbuttons id would land under it.
+                if (!og::input_native::text_input_is_active())
+                    return false;
+                inject_key_press(SDLK_ESCAPE, 10);
+                return true;
+            });
+    };
+    if (!wait_for_interactable(state->door, 10000))
+        return escape(1, "the screen with the name door never came up");
+    (void)wait_for_menu_frames(2);
+    (void)run_on_main_thread([state] {
+        SaveData& save = og::runtime::current_session->myscreen_->save_data;
+        state->team_size_before = save.team_size;
+        state->slot = og::runtime::current_session->editguy_;
+        if (state->slot >= 0 && state->slot < MAX_TEAM_SIZE &&
+            save.team_list[static_cast<std::size_t>(state->slot)])
+            state->name_before =
+                save.team_list[static_cast<std::size_t>(state->slot)]->name;
+        if (og::runtime::current_session->current_guy_)
+            state->recruit_name =
+                og::runtime::current_session->current_guy_->name;
+        for (int i = 0; i < MAX_TEAM_SIZE; ++i) {
+            if (!save.team_list[static_cast<std::size_t>(i)]) {
+                state->hire_slot = i;
+                break;
+            }
+        }
+    });
+    state->editor_up = click_until_edge(state->door, text_input_up);
+    if (!state->editor_up)
+        return escape(2, "the door never opened the name editor");
+    // A half-typed name, no Return.
+    inject_text_input("ZZ");
+
+    // The host presses GO: the fake lobby starts the game on its next poll.
+    // The frame count is an atomic, read here directly (a main-thread read
+    // would wait on an editor that pumps nothing); the poll count is read
+    // last, right before the GO.
+    state->presses_before = g_escape_tail_presses.load();
+    state->frames_before = og::ui::menu_screen_testing_completed_frames();
+    state->armed_polls = state->lobby->poll_count.load();
+    state->lobby->start_on_next_poll.store(true);
+
+    // Press nothing while the GO has been polled fewer than the bound times;
+    // the editor and the screen under it must leave by themselves. The
+    // clock is only the dead-pump ceiling. Past the bound the editor is
+    // closed by its own door (Escape), once, and the tail takes over.
+    const Uint64 give_up = SDL_GetTicks() + kHeldTailCeilingMs;
+    return escape_to_the_main_thread(
+        state->test_finished, 0, "", kPromptStartDoors, [state, give_up] {
+            if (!state->held_bound_hit) {
+                if (state->lobby->poll_count.load() <
+                        state->armed_polls + kDetailsHeldPolls &&
+                    SDL_GetTicks() < give_up)
+                    return true;
+                state->held_bound_hit = true;
+            }
+            if (!og::input_native::text_input_is_active())
+                return false;
+            if (!state->escape_sent) {
+                state->escape_sent = true;
+                inject_key_press(SDLK_ESCAPE, 10);
+            }
+            return true;
+        });
+}
+
+Sint32 run_prompt_start(PromptStartState& state, Sint32 (*screen_fn)(Sint32),
+                        int& thread_result)
+{
+    SDL_Thread* thread =
+        SDL_CreateThread(prompt_start_injector, "prompt_start", &state);
+    EXPECT_NE(nullptr, thread);
+    if (thread == nullptr)
+        return 0;
+    const Sint32 result = screen_fn(0);
+    state.test_finished.store(true);
+    SDL_WaitThread(thread, &thread_result);
+    escape_tail_join_hygiene();
+    return result;
+}
+
+void expect_prompt_left_on_the_go(const PromptStartState& state,
+                                  const FakeLobbyClient& lobby, Sint32 result)
+{
+    EXPECT_EQ(MENU_EXIT, result) << "the host's GO propagates";
+    ASSERT_NE(nullptr, pks().selected_menu_item);
+    EXPECT_EQ(og::ui::PickerMenuCommand::StartGame,
+              pks().selected_menu_item->command)
+        << "the exit is the start of the game";
+    EXPECT_FALSE(state.held_bound_hit)
+        << "the name editor was still up " << kDetailsHeldPolls
+        << " polls (or the dead-pump ceiling) after the host's GO";
+    EXPECT_FALSE(state.escape_sent) << "nobody pressed Escape";
+    EXPECT_EQ(state.presses_before, g_escape_tail_presses.load())
+        << "the host's GO left the editor without a door";
+    EXPECT_LE(lobby.poll_count.load() - state.armed_polls, 2)
+        << "the editor leaves on the poll that brings the GO, or the next";
+    EXPECT_GE(lobby.poll_count.load() - state.armed_polls, 1)
+        << "the GO was polled";
+    EXPECT_EQ(state.frames_before,
+              og::ui::menu_screen_testing_completed_frames())
+        << "the screen under the editor composed no frame after the GO";
+    EXPECT_FALSE(og::input_native::text_input_is_active())
+        << "the editor closed its text-input session";
+    EXPECT_TRUE(trace_contains("prompt", "remote start"));
+}
+
+// Restores the editor's test seam: HIRE ME's prompt runs for real.
+struct ForceRealPrompt {
+    ForceRealPrompt() { level_editor_testing_prompt_force_real(true); }
+    ~ForceRealPrompt() { level_editor_testing_prompt_force_real(false); }
+    ForceRealPrompt(const ForceRealPrompt&) = delete;
+    ForceRealPrompt& operator=(const ForceRealPrompt&) = delete;
+};
+
+} // namespace
+
+// The reporter's case: a joiner typing a new name in TRAIN > RENAME when the
+// host presses GO starts with everyone, not when he next presses Return.
+// The half-typed name is dropped.
+TEST(AbilitiesFlow, a_host_go_while_renaming_starts_without_enter)
+{
+    trace_clear();
+    DirectRunScope scope;
+    write_ability_company(12, 1, 4);
+
+    PromptStartState state;
+    state.lobby = &scope.lobby;
+    state.door = "rename";
+    int thread_result = 0;
+    const Sint32 result =
+        run_prompt_start(state, create_train_menu, thread_result);
+
+    EXPECT_EQ(0, thread_result);
+    ASSERT_TRUE(state.editor_up) << "RENAME never opened the editor";
+    expect_prompt_left_on_the_go(state, scope.lobby, result);
+    ASSERT_GE(state.slot, 0);
+    ASSERT_NE(nullptr,
+              test_screen()->save_data.team_list[static_cast<std::size_t>(
+                  state.slot)].get());
+    EXPECT_EQ("MERLIN", state.name_before);
+    EXPECT_EQ(state.name_before,
+              test_screen()->save_data.team_list[static_cast<std::size_t>(
+                  state.slot)]->name)
+        << "the half-typed name is not written";
+}
+
+// The same from HIRE ME's name prompt: the hire stands with its suggested
+// name, as CANCEL leaves it.
+TEST(AbilitiesFlow, a_host_go_while_naming_a_hire_starts_and_keeps_the_hire)
+{
+    trace_clear();
+    DirectRunScope scope;
+    write_ability_company(12, 1, 4);
+    for (std::uint32_t& cash : test_screen()->save_data.m_totalcash)
+        cash = 100000;
+    ForceRealPrompt real_prompt;
+
+    PromptStartState state;
+    state.lobby = &scope.lobby;
+    state.door = "hire_me";
+    int thread_result = 0;
+    const Sint32 result =
+        run_prompt_start(state, create_hire_menu, thread_result);
+
+    EXPECT_EQ(0, thread_result);
+    ASSERT_TRUE(state.editor_up) << "HIRE ME never opened the name prompt";
+    expect_prompt_left_on_the_go(state, scope.lobby, result);
+    EXPECT_EQ(state.team_size_before + 1, test_screen()->save_data.team_size)
+        << "the hire stands";
+    ASSERT_GE(state.hire_slot, 0);
+    const auto& hired = test_screen()->save_data.team_list[
+        static_cast<std::size_t>(state.hire_slot)];
+    ASSERT_NE(nullptr, hired.get());
+    EXPECT_FALSE(state.recruit_name.empty());
+    EXPECT_EQ(state.recruit_name, hired->name)
+        << "the hire keeps its suggested name; the half-typed one is dropped";
+}
+
+// The local lobby rebuilds save.team_list on every poll
+// (picker_lobby_client.cpp, apply_state_to_save), so an editor that polls
+// frees the guy it is renaming. On the REAL local client: type a name, let
+// the editor poll at least twice, press Return; the name is on the slot and
+// survives TRAIN's next frame.
+namespace
+{
+
+struct RenameRebuildState {
+    std::atomic<bool> test_finished{false};
+    bool editor_up = false;
+    bool polled_while_editing = false;   // the editor yielded (and polled)
+    bool editor_closed = false;
+    bool train_framed = false;
+    std::string name_after;              // team_list[0] after a TRAIN frame
+};
+
+constexpr EscapeDoor kRenameRebuildDoors[] = {
+    {"inc_str", "back"},
+};
+
+int rename_rebuild_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* const state = static_cast<RenameRebuildState*>(data);
+    const auto escape = [state](int leg, const char* why) {
+        return escape_to_the_main_thread(
+            state->test_finished, leg, why, kRenameRebuildDoors, [] {
+                if (!og::input_native::text_input_is_active())
+                    return false;
+                inject_key_press(SDLK_ESCAPE, 10);
+                return true;
+            });
+    };
+    if (!wait_for_interactable("rename", 10000))
+        return escape(1, "TRAIN never came up");
+    (void)wait_for_menu_frames(2);
+    state->editor_up = click_until_edge("rename", text_input_up);
+    if (!state->editor_up)
+        return escape(2, "RENAME never opened the editor");
+    inject_text_input("ZZ");
+    // Each pass of a hooked editor polls the lobby, then yields: three
+    // yields past this point are at least two polls of the rebuilding
+    // client while the editor holds the name.
+    const unsigned long yields = og::input_native::yield_count();
+    const Uint64 ceiling = SDL_GetTicks() + 5000;
+    while (og::input_native::yield_count() < yields + 3 &&
+           SDL_GetTicks() < ceiling)
+        SDL_Delay(5);  // poll tick
+    state->polled_while_editing = og::input_native::yield_count() >= yields + 3;
+    inject_key_press(SDLK_RETURN, 10);
+    const Uint64 close_ceiling = SDL_GetTicks() + 5000;
+    while (og::input_native::text_input_is_active() &&
+           SDL_GetTicks() < close_ceiling)
+        SDL_Delay(5);  // poll tick
+    state->editor_closed = !og::input_native::text_input_is_active();
+    if (!state->editor_closed)
+        return escape(3, "Return never closed the editor");
+    // One TRAIN frame: its picker_lobby_poll rebuilds the roster again.
+    state->train_framed = wait_for_menu_frames(1);
+    (void)run_on_main_thread([state] {
+        const auto& member =
+            og::runtime::current_session->myscreen_->save_data.team_list[0];
+        state->name_after = member ? member->name : "<empty slot>";
+    });
+    return escape(0, "");
+}
+
+} // namespace
+
+TEST(AbilitiesFlow, a_rename_survives_the_lobbys_roster_rebuild)
+{
+    trace_clear();
+    og::data::ScopedActiveCompany company{"save0"};
+    ASSERT_TRUE(company.applied());
+    write_ability_company(12, 1, 4);
+    og::ui::IPickerLobbyClient* const saved_client =
+        og::ui::active_picker_lobby_client();
+    std::unique_ptr<og::ui::IPickerLobbyClient> local =
+        og::ui::create_local_picker_lobby_client();
+    og::ui::install_active_picker_lobby_client(local.get());
+    local->initialize_from_save();
+    struct Restore {
+        og::ui::IPickerLobbyClient* saved;
+        std::unique_ptr<og::ui::IPickerLobbyClient>& local;
+        ~Restore()
+        {
+            og::ui::install_active_picker_lobby_client(saved);
+            local.reset();
+            clear_allbuttons();
+            og::runtime::current_session->localbuttons_ = nullptr;
+        }
+    } restore{saved_client, local};
+
+    RenameRebuildState state;
+    SDL_Thread* thread =
+        SDL_CreateThread(rename_rebuild_injector, "rename_rebuild", &state);
+    ASSERT_NE(nullptr, thread);
+    (void)create_train_menu(0);
+    state.test_finished.store(true);
+    int thread_result = 0;
+    SDL_WaitThread(thread, &thread_result);
+    escape_tail_join_hygiene();
+
+    EXPECT_EQ(0, thread_result) << "the injector gave up at leg "
+                                << thread_result;
+    ASSERT_TRUE(state.editor_up);
+    EXPECT_TRUE(state.polled_while_editing)
+        << "the editor polled the lobby while the name was being typed";
+    EXPECT_TRUE(state.editor_closed);
+    EXPECT_TRUE(state.train_framed);
+    EXPECT_EQ("ZZ", state.name_after)
+        << "the typed name reached the rebuilt roster";
+    ASSERT_NE(nullptr, test_screen()->save_data.team_list[0].get());
+    EXPECT_EQ("ZZ", test_screen()->save_data.team_list[0]->name);
+}
+
+// --- #416: the kick popup gives the screen its buttons back ----------------
+//
+// A joiner kicked while a Team Build screen is up gets the KICKED BY HOST
+// popup from the screen's own frame top. The popup publishes its OK over
+// the screen's live buttons; when it closes the screen must have its own
+// controls again, not the popup's OK. The popups run for real here
+// (picker_testing_set_force_real_dialogs).
+
+namespace
+{
+
+// The fake kicked joiner, owned through the picker's owning slot so the
+// per-frame check may swap it for a local client; real dialogs; the active
+// company the screens autosave into.
+struct KickScope {
+    og::ui::IPickerLobbyClient* saved_client =
+        og::ui::active_picker_lobby_client();
+    og::data::ScopedActiveCompany company{"save0"};
+    std::atomic<bool> kicked{false};
+    std::unique_ptr<og::ui::IPickerLobbyClient> owned =
+        std::make_unique<FakeKickedJoinClient>(&kicked);
+
+    KickScope()
+    {
+        og::ui::install_active_picker_lobby_client(owned.get());
+        picker_testing_set_lobby_client_owner(&owned);
+        picker_testing_set_force_real_dialogs(true);
+        trace_clear();
+    }
+    ~KickScope()
+    {
+        picker_testing_set_force_real_dialogs(false);
+        picker_testing_set_lobby_client_owner(nullptr);
+        og::ui::install_active_picker_lobby_client(saved_client);
+        owned.reset();
+        g_start_game_requested = false;
+        pks().selected_menu_item = nullptr;
+        pks().menu_spec_clicked_row = -1;
+        clear_allbuttons();
+        og::runtime::current_session->localbuttons_ = nullptr;
+    }
+    KickScope(const KickScope&) = delete;
+    KickScope& operator=(const KickScope&) = delete;
+};
+
+// Every screen the kick flows can be left in, the ghost OK last: on a tree
+// where the popup keeps the screen's buttons, nothing else is published
+// and the tail needs it to get out.
+constexpr EscapeDoor kKickDoors[] = {
+    {"promote", "back"},
+    {"inc_str", "back"},
+    {"go", "back"},
+    {"ok", "ok"},
+};
+
+bool listed(const char* id)
+{
+    const std::vector<std::string> ids = get_button_ids();
+    return std::find(ids.begin(), ids.end(), id) != ids.end();
+}
+
+struct KickState {
+    std::atomic<bool> test_finished{false};
+    std::atomic<bool>* kicked = nullptr;
+    const char* screen_id = nullptr;     // the screen is up
+    bool open_details = false;           // kick inside DETAILS
+    std::vector<const char*> expected;   // its controls after the popup
+    const char* door = nullptr;          // one real click after it
+    const char* door_edge = nullptr;     // what that click opens
+    // The screen's own button table, for a tree where the popup leaves the
+    // screen dead (see kick_injector); nullptr when its tail can get out.
+    button* (*rescue_buttons)() = nullptr;
+    int (*rescue_count)() = nullptr;
+    bool screen_up = false;
+    bool popup_up = false;
+    bool popup_closed = false;
+    std::vector<std::string> missing;    // expected ids not published
+    bool ok_left = true;                 // the popup's OK still published
+    bool door_worked = false;
+};
+
+int kick_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* const state = static_cast<KickState*>(data);
+    const auto escape = [state](int leg, const char* why) {
+        return escape_to_the_main_thread(state->test_finished, leg, why,
+                                         kKickDoors);
+    };
+    if (!wait_for_interactable(state->screen_id, 10000))
+        return escape(1, "the screen never came up");
+    (void)wait_for_menu_frames(2);
+    if (state->open_details && !click_until_edge("details", details_page_up))
+        return escape(2, "DETAILS.. never opened the page");
+    state->screen_up = true;
+
+    // The host kicks this machine: the screen's next frame top reverts to a
+    // local client and opens KICKED BY HOST.
+    state->kicked->store(true);
+    state->popup_up = wait_for_interactable("ok", 10000);
+    if (!state->popup_up)
+        return escape(3, "the kick never opened its popup");
+    // OK, until the popup has closed. The popup pumps no main-thread task
+    // and the screen under it does (an engine frame top, DETAILS' loop), so
+    // a task that runs is the witness that the press landed; a task that
+    // did not run says the popup is still up, and only then is OK pressed
+    // again. (Not click_until_edge: its pre-press reset is a main-thread
+    // task too, which the popup would sit on for the whole ceiling.)
+    for (int attempt = 0; attempt < 3 && !state->popup_closed; ++attempt) {
+        (void)interact("ok");
+        state->popup_closed = run_on_main_thread([] {}, 2500);
+    }
+    if (!state->popup_closed)
+        return escape(4, "OK never closed the popup");
+    // One more turn of the screen's loop after the close.
+    (void)run_on_main_thread([] {});
+    for (const char* id : state->expected)
+        if (!has_interactable(id))
+            state->missing.emplace_back(id);
+    state->ok_left = listed("ok");
+    // Where the popup kept the screen's buttons, Base Camp is left with the
+    // ghost OK alone, wired to a row that never rebuilds the set: nothing
+    // the tail can press gets out. Put the screen's own table back from its
+    // thread, so such a tree ends red instead of spinning.
+    if (!state->missing.empty() && state->rescue_buttons != nullptr)
+        (void)run_on_main_thread([state] {
+            og::runtime::current_session->localbuttons_ = init_buttons(
+                state->rescue_buttons(), state->rescue_count());
+        });
+
+    // The screen takes input again: one real click on its own control.
+    const char* const edge = state->door_edge;
+    state->door_worked = click_until_edge(state->door, [edge](int ms) {
+        if (std::string_view(edge) == "promote")
+            return details_page_up(ms);
+        return wait_for_interactable(edge, ms);
+    });
+    return escape(0, "");
+}
+
+void run_kick(KickState& state, Sint32 (*screen_fn)(Sint32),
+              int& thread_result)
+{
+    SDL_Thread* thread = SDL_CreateThread(kick_injector, "kick", &state);
+    EXPECT_NE(nullptr, thread);
+    if (thread == nullptr)
+        return;
+    (void)screen_fn(0);
+    state.test_finished.store(true);
+    SDL_WaitThread(thread, &thread_result);
+    escape_tail_join_hygiene();
+}
+
+void expect_buttons_handed_back(const KickState& state, int thread_result)
+{
+    EXPECT_EQ(0, thread_result) << "the injector gave up at leg "
+                                << thread_result;
+    ASSERT_TRUE(state.screen_up);
+    ASSERT_TRUE(state.popup_up);
+    ASSERT_TRUE(state.popup_closed);
+    EXPECT_TRUE(trace_contains("networking", "kicked by host"));
+    std::string missing;
+    for (const std::string& id : state.missing)
+        missing += id + " ";
+    EXPECT_EQ("", missing) << "controls not published after the popup";
+    EXPECT_FALSE(state.ok_left) << "the popup's OK outlived the popup";
+    EXPECT_TRUE(state.door_worked)
+        << "a click on the screen's own control did nothing";
+}
+
+} // namespace
+
+// The reporter's case: kicked on TRAIN, the popup's OK gives TRAIN its
+// stat pairs, RENAME, DETAILS and BACK back.
+TEST(AbilitiesFlow, a_kick_popup_hands_train_its_buttons_back)
+{
+    KickScope scope;
+    write_ability_company(12, 1, 4);
+
+    KickState state;
+    state.kicked = &scope.kicked;
+    state.screen_id = "inc_str";
+    state.expected = {"inc_str", "rename", "details", "back"};
+    state.door = "details";
+    state.door_edge = "promote";
+    int thread_result = 0;
+    run_kick(state, create_train_menu, thread_result);
+    expect_buttons_handed_back(state, thread_result);
+}
+
+// Kicked while TRAIN > DETAILS.. is up: the page keeps its PROMOTE and BACK,
+// and BACK returns to TRAIN.
+TEST(AbilitiesFlow, a_kick_popup_hands_details_its_buttons_back)
+{
+    KickScope scope;
+    write_ability_company(12, 1, 4);
+
+    KickState state;
+    state.kicked = &scope.kicked;
+    state.screen_id = "details";
+    state.open_details = true;
+    state.expected = {"promote", "back"};
+    state.door = "back";
+    state.door_edge = "inc_str";
+    int thread_result = 0;
+    run_kick(state, create_train_menu, thread_result);
+    expect_buttons_handed_back(state, thread_result);
+}
+
+// Kicked on Base Camp: GO and the roster rows come back, and a row opens
+// TRAIN.
+TEST(AbilitiesFlow, a_kick_popup_hands_base_camp_its_buttons_back)
+{
+    KickScope scope;
+    write_ability_company(12, 1, 4);
+
+    KickState state;
+    state.kicked = &scope.kicked;
+    state.screen_id = "roster_row_0";
+    state.expected = {"go", "roster_row_0", "back"};
+    state.door = "roster_row_0";
+    state.door_edge = "inc_str";
+    state.rescue_buttons = &picker_createmenu_buttons;
+    state.rescue_count = &picker_createmenu_button_count;
+    int thread_result = 0;
+    run_kick(state, create_team_menu, thread_result);
+    expect_buttons_handed_back(state, thread_result);
+}
+
+// Keyboard FIRE with the highlight on a slot nothing is published in (the
+// set a dialog left behind it, #416) presses nothing and does not crash.
+TEST(KickPopup, fire_on_an_unpublished_highlight_presses_nothing)
+{
+    disablePlayerJoystick(0);
+    int& fire_key =
+        og::runtime::current_session->player_keys_[0][KEY_FIRE];
+    const int saved_fire_key = fire_key;
+    fire_key = SDLK_SPACE;
+    int numkeys = 0;
+    bool* const keys = const_cast<bool*>(SDL_GetKeyboardState(&numkeys));
+    ASSERT_NE(nullptr, keys);
+    const SDL_Scancode space = SDL_GetScancodeFromKey(SDLK_SPACE, nullptr);
+    ASSERT_LT(static_cast<int>(space), numkeys);
+
+    // Two rows, only the first one published.
+    button rows[] = {
+        button("b0", "A", KEYSTATE_UNKNOWN, 10, 10, 30, 10,
+               button_action_id(ButtonAction::ReturnMenu), 1234, MenuNav{},
+               false),
+        button("b1", "B", KEYSTATE_UNKNOWN, 10, 30, 30, 10,
+               button_action_id(ButtonAction::ReturnMenu), 5678, MenuNav{},
+               false),
+    };
+    ASSERT_NE(nullptr, init_buttons(rows, 1));
+    ASSERT_EQ(nullptr, og::runtime::current_session->allbuttons_[1]);
+    pks().menu_nav_enabled = true;
+    pks().menu_nav_enabled_time = og::input_native::ticks_ms();
+    int highlighted = 1;
+    Sint32 retvalue = 0;
+    keys[space] = true;
+    std::thread release([keys, space] {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        keys[space] = false;
+    });
+    const bool activated = handle_menu_nav(rows, highlighted, retvalue, true);
+    release.join();
+
+    EXPECT_TRUE(activated) << "the FIRE press was taken";
+    EXPECT_EQ(0, retvalue) << "no action ran for the unpublished row";
+    EXPECT_EQ(1, highlighted);
+    EXPECT_NE(nullptr, og::runtime::current_session->allbuttons_[0]);
+    clear_allbuttons();
+    og::runtime::current_session->localbuttons_ = nullptr;
+    pks().menu_nav_enabled = false;
+    fire_key = saved_fire_key;
 }
 
 // The longest core row, a level-1 Barbarian's locked "2 EXPLODING BOULDER

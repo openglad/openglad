@@ -1,22 +1,29 @@
-/* Tower Climb calibration pins (WP-5, spec §5.11 — the CI pin; the deeper
+/* Tower Climb battle sanity (WP-5, spec §5.11 — the CI check; the deeper
  * pre-ship bracket sweeps are WP-7's, run with the playtest harness).
  *
  * Mechanics cloned from test_westlands_calibration.cpp: generate floors
- * {1, 5, 10, 15, 20} for the pinned run seeds via tower_floor_gen, load
- * them headlessly, deploy the 8-unit mixed fresh crew at the player-curve
- * level crew(f) = 1 + f/4, tick 600, and pin the survivor FLOOR (minimum
- * across the three pinned run seeds — everything is deterministic, so the
- * test asserts every seed against the min-pin rather than sampling one).
+ * {1, 5, 10, 15, 20} for the run seeds {42, 1337, 2025} via
+ * tower_floor_gen, load them headlessly, deploy the 8-unit mixed fresh crew
+ * at the player-curve level crew(f) = 1 + f/4 and tick 600 on sim seed 42.
+ * For every floor and run seed the test asserts that the floor generated,
+ * loaded and deployed the whole crew, that it fielded at least a third of
+ * the §5.6 foe count N(f), and that the fight happened: the crew took
+ * damage and dealt damage.
  *
- * The tower contract these pins guard: the ramp L(f) = 1 + (f-1)/3 vs
- * crew(f) = 1 + f/4 widens with depth — early floors are safely clearable
- * by a fresh crew, mid floors bite, and the deficit only grows (the
- * "every run ends" design). A failure here means a generator or engine
- * change made some band MEANINGFULLY hotter/colder — re-run the sweeps and
- * re-calibrate deliberately instead of bumping the number.
+ * Survivor counts are no longer asserted (2026-11-02). Until then every
+ * floor carried a survival floor and a hot-side ceiling cut from these same
+ * runs. These brawls are chaotic: on the three Westlands rows measured over
+ * a hundred seeds the unchanged game missed its own band on 5 to 28 of
+ * them, so the four campaign calibration suites went red on nearly every
+ * simulation change and were re-pinned eight times. The pins were a seed
+ * lottery, not a contract, and the maintainer deleted them once the
+ * semantic tests in tests/unit/test_sem_*.cpp asserted every game rule
+ * directly. The tower's ramp (L(f) = 1 + (f-1)/3 against crew(f) = 1 + f/4)
+ * is WP-7's bracket sweeps' business.
  *
  * Measurement mode: set TOWER_CALIBRATION_MEASURE=1 to print per-seed
- * survivor counts instead of asserting.
+ * survivor counts instead of asserting. It is a measuring tool for balance
+ * work: it asserts nothing and runs only when asked.
  *
  * Copyright (C) 1995-2002  FSGames. Ported by Sean Ford and Yan Shosh
  *
@@ -42,102 +49,25 @@ using westlands_fixture::LoadedWestlandsLevel;
 constexpr std::uint32_t kRunSeeds[] = {42u, 1337u, 2025u};
 constexpr int kCalibrationTicks = 600;
 
-struct FloorPin
+struct CurveFloor
 {
     int floor_number;
     int crew_level; // the player curve crew(f) = 1 + f/4
-    int survivors_floor; // min 8-mixed-crew survivors at tick 600, all seeds
-    int survivors_ceiling; // max survivors on the hot bands (8 = no ceiling)
 };
 
-// What the generated floor actually fielded, beside the survivor count: a
-// floor alone is one-sided, so an unpopulated deep floor (run_audits pins
-// footing/stairs/reachability, never POPULATION) or foes that never bite
-// would leave every 0-floor row green.
+// What the generated floor fielded and what the 600 ticks did: an
+// unpopulated deep floor (run_audits pins footing/stairs/reachability,
+// never POPULATION) or foes that never bite reds the floor.
 struct FloorBattle
 {
-    int alive = -1; // crew standing at tick 600
-    int foes = 0;   // placed team-2/3 livings the floor deploys with
+    int alive = -1;          // crew standing at tick 600
+    int foes = 0;            // placed team-2/3 livings the floor deploys with
+    float crew_taken = 0.0f; // hit points the crew lost to the floor
+    float crew_dealt = 0.0f; // hit points the crew took off the floor
 };
 
-// Measured 2026-07-13 on the first shipped generator (min across run seeds
-// {42, 1337, 2025}, sim seed 42, 8-mixed crew at curve):
-//   f1  cl1: 7 7 7   f5  cl2: 6 6 7   f10 cl3: 2 0 0
-//   f15 cl4: 3 1 2   f20 cl6: 0 0 0
-// (Recalibrated 2026-07-13 for the v10 loader obmap fix: loaded
-// upper-story objects used to be bucketed in the FLOOR-0 collision piles
-// (setxy ran before set_floor), so every enemy the generator authored on a
-// story above ground was a collision ghost — unhittable AND largely unable
-// to engage. With the fix they fight for real, and the multi-story floors
-// got meaningfully hotter for the pessimistic stand-in: f5 6->1 (spire
-// balconies now shoot back; seed spread 1/4/8), f15 1->0 joins the boss
-// floors in the 0-floor class. Re-measured: f1 7 7 7, f5 1 4 8,
-// f10 0 0 0, f15 0 0 1, f20 0 0 0. Re-run WP-7's bracket sweeps before
-// the next balance pass — the band-4/5 curve gates were measured under
-// ghost physics.)
-// The early Bailey floors keep most of the crew standing; the Undercroft
-// boss floor (f10) and the Spires boss floor (f20) already wipe the
-// PESSIMISTIC stand-in crew (no kiting, no healing discipline, no shop
-// gold) — the same 0-floor class as the Westlands war levels, where the
-// stand-in's own survival is not the contract. The monotone decline is the
-// §5.11 "wipe rate monotone in f" shape; the real clearability gates live
-// in WP-7's openglad_text bracket sweeps, not here. Pins are the measured
-// minima — re-measure with TOWER_CALIBRATION_MEASURE=1 before touching.
-// (Recalibrated 2026-08-11 for the directional-guard-fire engine fix,
-// docs/GAMEPLAY_FIXES_FROM_CLASSIC.md: tower posts — every placed foe is
-// an ACT_GUARD ambush post — now land their parting shot the tick they
-// sight the crew instead of face-dancing, so the room-entry exchanges
-// bite first blood earlier. Re-measured: f1 8 6 6 (pin 7 -> 6),
-// f5 3 5 8 (pin 1 -> 3; the openers thin the crew before the balcony
-// crossfire, and the worst seed now survives it better), f10/f15/f20
-// all 0 0 0 unchanged. WP-7 bracket sweeps still pending as before.)
-// (Recalibrated 2026-09-08 for the armor-roll expectation fix,
-// docs/GAMEPLAY_FIXES_FROM_CLASSIC.md: damage reduction is the exact
-// expectation of the 2002 random(armor) roll instead of the 2013 armor/2
-// clamp, and hits round to the nearest point instead of truncating, so
-// every hit on BOTH sides lands ~0.5 harder and armored posts are no
-// longer one-point sponges. Re-measured: f1 8 8 7 (pin 6 -> 7), f5 0 3 6
-// (pin 3 -> 0: run seed 42 now wipes the pessimistic stand-in on the
-// balcony floor; the other two seeds hold 3 and 6), f10 0 0 0, f15 0 2 0,
-// f20 0 0 0. Floor 5 joining the 0-floor class for one seed is a balance
-// signal for the next tower pass, not a contract this pin enforces —
-// WP-7's bracket sweeps are still the clearability gate.)
-// (2026-09-13: hot-side ceilings added — 8 means "no ceiling". Every
-// 0-floor band has measured 0..6 survivors on all three run seeds since the
-// generator shipped, so 7 is pure slack that still reds a band which stops
-// taking a single one of the eight. Floor 1 keeps its floor only.)
-// (Re-pinned 2026-10-06 for #320, docs/GAMEPLAY_FIXES_FROM_CLASSIC.md:
-// walk_to_foe's melee approach adopts the strictly nearer foe
-// find_near_foe returns instead of discarding it, so both the crew and
-// the posts swing at whatever is nearest once a brawl forms. Re-measured
-// (min across run seeds {42, 1337, 2025}): f1 8 8 6 (pin 7 -> 6: run
-// seed 2025 loses one more on the Bailey floor), f5 2 4 8 (run seed 2025
-// now keeps all eight standing on the balcony floor, above the 7-slack
-// ceiling; the ceiling is lifted to 8 = none for that band, and a seed
-// that walks floor 5 untouched is a balance signal for the next tower
-// pass, not a contract this pin enforces), f10 0 0 0 (was 2 0 0),
-// f15 0 3 0 (was 0 0 0), f20 0 0 0. Isolating #320 alone reproduces every
-// move; the #350 tower-heading fix in the same batch moves nothing here.
-// WP-7 bracket sweeps still pending as before.)
-// (Re-measured 2026-10-17 on the shipped default (Gameplay Fixes on, New
-// Specials on), which the asserting run now plays: f1 8 8 7, f5 1 6 7,
-// f10 0 0 0, f15 0 0 0, f20 0 0 0; every pin held.)
-// (Re-pinned 2026-10-31 for fixes T to W, docs/gameplay-fixes.md ("After
-// fixes T, U, V and W"): the bots' busy guard and fall-through and the
-// CHARGE and ROCKS gates shift the random stream of every brawl.
-// Re-measured: f1 8 7 5 (pin 6 -> 5: run seed 2025 loses one more on the
-// Bailey floor; 100 sim seeds read a mean of 7.50 before and after),
-// f5 2 0 8, f10 0 0 0, f15 0 8 0 (run seed 1337 keeps all eight standing,
-// above the 7-slack ceiling: the same layout as before, the posts do
-// fight, the crew wins the opening fight and climbs; 100 sim seeds on that
-// layout read 4.86 before and 4.28 after; the ceiling is lifted to 8 = none
-// for that band, as floor 5's was for #320), f20 0 0 0. Taking the fixes
-// out one at a time, V, W1 and W2 each move both lines, and V alone or W2
-// alone taken out puts them back, so the moves are the stream, not the
-// floors' heat. Re-pinned at the maintainer's word, this once. WP-7
-// bracket sweeps still pending as before.)
-constexpr FloorPin kPins[] = {
-    {1, 1, 5, 8}, {5, 2, 0, 8}, {10, 3, 0, 7}, {15, 4, 0, 8}, {20, 6, 0, 7},
+constexpr CurveFloor kFloors[] = {
+    {1, 1}, {5, 2}, {10, 3}, {15, 4}, {20, 6},
 };
 
 void prune_all_floors()
@@ -190,8 +120,17 @@ FloorBattle battle_at_600(std::uint32_t run_seed, int floor_number,
         world.tick();
     out.alive = 0;
     for (walker* w : crew)
-        if (w != nullptr && !w->dead())
+    {
+        if (w == nullptr)
+            continue;
+        if (!w->dead())
             ++out.alive;
+        if (w->myguy != nullptr)
+        {
+            out.crew_taken += w->myguy->scen_damage_taken;
+            out.crew_dealt += w->myguy->scen_damage;
+        }
+    }
     return out;
 }
 
@@ -202,34 +141,35 @@ int survivors_at_600(std::uint32_t run_seed, int floor_number, int crew_level)
 
 } // namespace
 
-TEST(TowerCalibration, curve_crew_survival_floors_at_600_ticks)
+TEST(TowerCalibration,
+     curve_floors_generate_field_an_army_and_fight_at_600_ticks)
 {
-    // Balance floors are measured on the GCC ci-test lane; skipped under
-    // TSan (float drift off the pinned chaos) and ASan (job budget) exactly
-    // like the westlands calibration suite.
+    // Skipped under ThreadSanitizer and AddressSanitizer for job budget,
+    // like the Westlands suite (see the identical block in
+    // test_westlands_calibration.cpp for the accounting).
 #if defined(__SANITIZE_THREAD__) || defined(__SANITIZE_ADDRESS__)
-    GTEST_SKIP() << "balance pins are enforced on the ci-test/coverage lanes; "
-                    "skipped under TSan (float drift) and ASan (job budget)";
+    GTEST_SKIP() << "campaign battle sanity runs on the ci-test/coverage "
+                    "lanes; skipped under TSan and ASan (job budget)";
 #elif defined(__has_feature)
 #if __has_feature(thread_sanitizer) || __has_feature(address_sanitizer)
-    GTEST_SKIP() << "balance pins are enforced on the ci-test/coverage lanes; "
-                    "skipped under TSan (float drift) and ASan (job budget)";
+    GTEST_SKIP() << "campaign battle sanity runs on the ci-test/coverage "
+                    "lanes; skipped under TSan and ASan (job budget)";
 #endif
 #endif
 
     const bool measure = std::getenv("TOWER_CALIBRATION_MEASURE") != nullptr;
 
-    for (const FloorPin& pin : kPins)
+    for (const CurveFloor& fl : kFloors)
     {
-        SCOPED_TRACE("floor " + std::to_string(pin.floor_number) +
-                     " at crew level " + std::to_string(pin.crew_level));
+        SCOPED_TRACE("floor " + std::to_string(fl.floor_number) +
+                     " at crew level " + std::to_string(fl.crew_level));
         if (measure)
         {
             std::printf("TOWER CALIB floor=%d cl=%d survivors@600:",
-                        pin.floor_number, pin.crew_level);
+                        fl.floor_number, fl.crew_level);
             for (std::uint32_t seed : kRunSeeds)
-                std::printf(" %d", survivors_at_600(seed, pin.floor_number,
-                                                    pin.crew_level));
+                std::printf(" %d", survivors_at_600(seed, fl.floor_number,
+                                                    fl.crew_level));
             std::printf("\n");
             std::fflush(stdout);
             continue;
@@ -237,29 +177,25 @@ TEST(TowerCalibration, curve_crew_survival_floors_at_600_ticks)
         for (std::uint32_t seed : kRunSeeds)
         {
             const FloorBattle r =
-                battle_at_600(seed, pin.floor_number, pin.crew_level);
+                battle_at_600(seed, fl.floor_number, fl.crew_level);
             ASSERT_GE(r.alive, 0) << "floor failed to generate/load/deploy "
                                      "(run seed " << seed << ")";
             // §5.6: N(f) = min(7 + f, 30) foes, boss floors keeping 70 % and
             // up to a quarter carved off as team-3 raiders — a third of N is
             // slack under every one of those splits, and zero is not.
             EXPECT_GE(r.foes,
-                      og::tower::foe_count_for_floor(pin.floor_number) / 3)
+                      og::tower::foe_count_for_floor(fl.floor_number) / 3)
                 << "run seed " << seed
                 << ": the generated floor fielded almost nobody — the ramp "
                    "contract is that every floor is populated from N(f)";
-            EXPECT_GE(r.alive, pin.survivors_floor)
+            EXPECT_GT(r.crew_taken, 0.0f)
                 << "run seed " << seed
-                << ": a curve-level fresh crew fell below its survival "
-                   "floor — the band got meaningfully hotter; re-measure "
-                   "with TOWER_CALIBRATION_MEASURE=1 and recalibrate "
-                   "deliberately";
-            EXPECT_LE(r.alive, pin.survivors_ceiling)
+                << ": the crew came home untouched: the floor's posts never "
+                   "bit";
+            EXPECT_GT(r.crew_dealt, 0.0f)
                 << "run seed " << seed
-                << ": the band left more of the eight standing than it ever "
-                   "has — it got meaningfully COLDER (foes that do not bite "
-                   "are invisible to a floor); re-measure with "
-                   "TOWER_CALIBRATION_MEASURE=1 before touching this pin";
+                << ": the crew never landed a hit in 600 ticks: it is not "
+                   "fighting the floor at all";
         }
     }
     prune_all_floors();

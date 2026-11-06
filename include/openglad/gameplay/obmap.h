@@ -46,6 +46,10 @@ class obmap
 		short add(walker  *ob, short x, short y);  // This goes in walker's constructor
 		short move(walker  *ob, short x, short y);  // This goes in walker's setxy
 		std::list<walker*>& obmap_get_list(short x, short y, int floor = 0); //Returns the list at x,y for fnf
+		// The pile at (x, y) on `floor`, or nullptr when no walker is filed
+		// there: a read that makes no node (#417; obmap_get_list stays for the
+		// one caller that erases through it, GameWorld::find_near_foe).
+		const std::list<walker*>* find_list(short x, short y, int floor = 0);
 		short obmapres;
 		size_t size() const;
 
@@ -67,3 +71,21 @@ class obmap
 		std::unordered_map<std::uint32_t, std::list<walker*>*> cell_index_;
 		void sync_cell_index();
 };
+
+// The obmap's box test (obmap.cpp): two boxes meet when they overlap by more
+// than the one-pixel shrink the passability probe applies.
+short collide(short x, short y, short xsize, short ysize, short x2, short y2, short xsize2, short ysize2);
+
+namespace og::sim {
+// Does `mover`'s box, moved by (dx, dy) from where it stands NOW, meet
+// `body`'s box, by the obmap's own collide() rule? The three boxes
+// living::walk probes are tried (the exact step, its ceil and its floor),
+// narrowed to short as obmap::query_list narrows them, so the box tested is
+// the box the probe tested, by collide() alone (the probe's z skip and its
+// separating-move pass are not asked: a body touching the mover may still
+// be shoved). Pure integer arithmetic: no draw, nothing
+// written. Gameplay Fixes X and Z: a walk shoves and a rush strikes only a
+// body the step itself ran into, never the stale collide_ob a teleporter, a
+// grid-stopped step or a side probe left behind.
+bool step_meets(const walker& mover, float dx, float dy, const walker& body);
+}

@@ -238,7 +238,7 @@ TEST(StatsRightWalkDirectWalk, blocked_probe_tables_resolve_each_facings_exact_c
 
     struct Probe { int dx; int dy; bool probes; };
 
-    // stats.cpp:769-934. Index 0..7 is the facing; index 8 is an invalid dir:
+    // stats.cpp:785-951. Index 0..7 is the facing; index 8 is an invalid dir:
     // right_blocked / forward_blocked fall through to a (0,0) self probe while
     // right_forward_blocked / right_back_blocked return false without probing.
     static const Probe kRightBlocked[9] = {

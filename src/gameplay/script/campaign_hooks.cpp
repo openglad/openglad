@@ -34,11 +34,24 @@ namespace hooks {
 
 bool valid_campaign_var_name(std::string_view name)
 {
+    // rule: A campaign decision variable name is 1-32 characters of lowercase letters, digits and
+    //   underscore; anything else is refused everywhere names are accepted (campaign hook vars,
+    //   og.campaign_var writes, save and replay readers).
+    // tests: CampaignHooksTest.bad_vars_are_load_errors
+    // tests: CampaignHooksTest.registration_happy_path_serves_picker_and_vars
+    // tests: SemCampaignHooks.an_empty_campaign_var_name_is_refused
+    // tests: SemCampaignHooks.register_campaign_hooks_refuses_an_empty_var_name
     if (name.empty() || name.size() > static_cast<std::size_t>(kCampaignVarNameMax))
         return false;
     for (const char c : name) {
         const bool ok = (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') ||
                         c == '_';
+        // rule: A campaign decision variable name is 1-32 characters of lowercase letters, digits
+        //   and underscore. Here: `!ok`.
+        // tests: CampaignHooksTest.bad_vars_are_load_errors
+        // tests: CampaignHooksTest.registration_happy_path_serves_picker_and_vars
+        // tests: SemCampaignHooks.an_empty_campaign_var_name_is_refused
+        // tests: SemCampaignHooks.register_campaign_hooks_refuses_an_empty_var_name
         if (!ok)
             return false;
     }
@@ -57,6 +70,9 @@ void clear_campaign_providers()
 
 bool campaign_assign_set(int save_slot, int tag)
 {
+    // rule: Assigning a hero to a campaign set fails cleanly (false, nothing written) when no
+    //   campaign save surface is installed; otherwise the provider's bounded answer is returned.
+    // tests: CampaignHooksTest.assign_set_forwards_to_the_provider_and_refuses_without_one
     if (!g_campaign_providers.assign_set)
         return false;
     return g_campaign_providers.assign_set(save_slot, tag);

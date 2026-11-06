@@ -205,7 +205,9 @@ unsigned long yield_count();
 // stop_text_input() has not. Injector tests driving the blocking
 // input_string_ex editor need this because nothing else can see it — the
 // editor is not engine-hosted (no completed menu frames), it parks in
-// get_input_events(WAIT) (no sleep_ms, so yield_count is frozen too), and
+// get_input_events(WAIT) (no sleep_ms, so yield_count is frozen too) unless
+// its caller gave it a poll hook (text::input_string's `poll`: then it polls
+// and yields once per pass), and
 // under the dummy video driver there is no window for SDL_TextInputActive()
 // to answer about. It is the ONLY observable that the modal reached its event
 // loop and cleared the input state, which is the moment before which anything

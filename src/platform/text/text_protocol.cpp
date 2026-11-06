@@ -400,12 +400,13 @@ static void cmd_grid(GameWorld& world, int floor, int x0, int y0, int x1,
                 static_cast<float>(y * GRID_SIZE), nullptr,
                 static_cast<short>(floor));
             size_t occupancy = 0;
-            if (world.myobmap != nullptr)
-                occupancy = world.myobmap
-                    ->obmap_get_list(static_cast<short>(x * GRID_SIZE),
-                                     static_cast<short>(y * GRID_SIZE),
-                                     static_cast<short>(floor))
-                    .size();
+            const std::list<walker*>* pile = world.myobmap != nullptr
+                ? world.myobmap->find_list(static_cast<short>(x * GRID_SIZE),
+                                           static_cast<short>(y * GRID_SIZE),
+                                           static_cast<short>(floor))
+                : nullptr;
+            if (pile != nullptr)
+                occupancy = pile->size();
             os << "[" << x << "," << tile << "," << (pass ? 1 : 0) << ","
                << occupancy << "]";
         }
@@ -422,13 +423,15 @@ static void cmd_obat(GameWorld& world, int floor, int cx, int cy)
     std::ostringstream os;
     os << "{\"cmd\":\"obat\",\"floor\":" << floor << ",\"cx\":" << cx
        << ",\"cy\":" << cy << ",\"entries\":[";
-    if (world.myobmap != nullptr)
+    const std::list<walker*>* list = world.myobmap != nullptr
+        ? world.myobmap->find_list(static_cast<short>(cx * GRID_SIZE),
+                                   static_cast<short>(cy * GRID_SIZE),
+                                   static_cast<short>(floor))
+        : nullptr;
+    if (list != nullptr)
     {
-        const auto& list = world.myobmap->obmap_get_list(
-            static_cast<short>(cx * GRID_SIZE),
-            static_cast<short>(cy * GRID_SIZE), static_cast<short>(floor));
         bool first = true;
-        for (walker* e : list)
+        for (walker* e : *list)
         {
             if (!first) os << ",";
             first = false;

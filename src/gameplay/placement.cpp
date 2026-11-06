@@ -20,6 +20,9 @@ namespace og::sim {
 
 bool declares_blocks_placement(const walker& w)
 {
+    // rule: Only weapon-order scenery whose family declares blocks_placement (bone wall, war
+    //   banner) blocks spawn/summon placement spots; livings and other weapons do not.
+    // tests: SpecialsView.blocks_placement_reaches_the_predicate
     if (w.query_order() != Order::Weapon)
         return false;
     const WeaponFamilyDescriptor* wfd = get_weapon_family_descriptor(
@@ -38,10 +41,16 @@ namespace {
 
 bool swap_places(GameWorld& world, walker& a, walker& b)
 {
+    // rule: Two different walkers that are alive, awake and visible trade positions and floors
+    //   (nothing underfoot is eaten, both stay indexed once); a walker cannot swap with itself or
+    //   with a dead, dormant or hidden walker.
+    // tests: ScriptBindingPropsTest.kit_swap_places_trades_spots_and_floors_and_eats_nothing
+    // tests: SemPlacement.a_dead_or_dormant_walker_never_swaps_places
     if (&a == &b || !swappable(a) || !swappable(b))
         return false;
     // Out of the collision table first, so neither walker is ever indexed
     // on the other's cells or floor half-way through the exchange.
+    // plumbing: No obmap in a bare world: skip removal.
     if (world.myobmap != nullptr) {
         world.myobmap->remove(&a);
         world.myobmap->remove(&b);

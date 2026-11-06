@@ -201,8 +201,13 @@ TEST_F(GameplayFixesEngine, undead_foes_in_range_counts_what_turn_undead_could_t
     potion->set_invulnerable_left(50);
     ASSERT_NE(nullptr, add_living(tw, FAMILY_SKELETON, 0, 100, 90));  // ours
     tw.world().rng_.state_ = 4242u;
+    tw.world().gameplay_fixes = 0;
+    EXPECT_EQ(3, cleric->undead_foes_in_range(40))
+        << "fixes off (fix AH off): the old game turns a warded undead, so both are counted; "
+           "the undead ally is not";
+    tw.world().gameplay_fixes = 1;
     EXPECT_EQ(1, cleric->undead_foes_in_range(40))
-        << "warded undead and an undead ally are not counted";
+        << "fixes on (fix AH): warded undead and an undead ally are not counted";
     EXPECT_EQ(4242u, tw.world().rng_.state_) << "the count draws nothing";
 
     const auto handled =

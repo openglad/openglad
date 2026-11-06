@@ -1033,7 +1033,7 @@ walker* add_stain(ClericR15Fixture& fx, int x, int y, unsigned char team, char o
 // base/2, so for any pool below 8 MP the surcharge is 0. That surcharge is
 // NOT the whole price: the HEAL slot's declared mp_cost (2) is, and the
 // engine charges it in walker::special on a true return
-// (src/gameplay/walker_specials.cpp:180-181). So the rule this test pins,
+// (src/gameplay/walker_specials.cpp:214-215). So the rule this test pins,
 // through the real engine path rather than the bare hook, is:
 //
 //   * below the slot price the cast is refused at the gate, with

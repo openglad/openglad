@@ -211,6 +211,9 @@ static bool yes_no_prompt_impl(const char* title, const char* message, bool defa
     auto [w, h, leftside, rightside] = compute_dialog_bounds(title, ls);
 
     // init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
+    // The screen under the prompt gets its own buttons back when it closes
+    // (#416).
+    ScopedButtonExposure exposure;
     std::array<button, 2> dialog_buttons = yes_first
         ? std::array<button, 2>{k_yes_or_no_buttons[0], k_yes_or_no_buttons[1]}
         : std::array<button, 2>{k_no_or_yes_buttons[0], k_no_or_yes_buttons[1]};
@@ -307,6 +310,10 @@ void popup_dialog(const char* title, const char* message)
     auto [w, h, leftside, rightside] = compute_dialog_bounds(title, ls);
 
     // init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
+    // The screen under the popup gets its own buttons back when it closes
+    // (#416): a kick revert opens this from a screen's frame top, where
+    // nothing rebuilds the screen's buttons afterwards.
+    ScopedButtonExposure exposure;
     std::array<button, 1> dialog_buttons = {k_popup_dialog_buttons[0]};
     button* buttons = dialog_buttons.data();
     int num_buttons = 1;

@@ -446,42 +446,50 @@ TEST_F(GameplayFixesBots, cleric_turn_undead_waits_while_busy_with_the_setting_o
 // ---------------------------------------------------------------------------
 
 // Row 31. DROP BOMB wants a living foe inside the bomb's blast around the
-// thief (31 px at level 1) and no ally in it. The classic gate bombs a foe
-// within 35 px or 130 px and more away.
+// thief (19 px at level 1, 31 at level 4: 15 + 4 per level, #483) and no
+// ally in it. The classic gate bombs a foe within 35 px or 130 px and more
+// away.
 //
-// RED (the classic gate): gate(thief, 1, 1) is true with the foe 32 px and
+// RED (the classic gate): gate(thief, 1, 1) is true with the foe 20 px and
 // 140 px away, and with the ally in the blast.
 TEST_F(GameplayFixesBots, thief_bomb_wants_a_foe_inside_its_blast_and_no_ally)
 {
     living* thief = body(add(FAMILY_THIEF, 1, 200, 200, 1, 100.0f), 16, 16);
-    living* foe = body(add(FAMILY_SOLDIER, 0, 230, 200, 1), 16, 16);  // 30 px
+    living* foe = body(add(FAMILY_SOLDIER, 0, 218, 200, 1), 16, 16);  // 18 px
     ASSERT_TRUE(thief && foe);
     thief->set_foe(foe);
 
     EXPECT_TRUE(gate(thief, 1, 0)) << "the classic answer: within 35 px";
     thief->set_shifter_down(1);
-    EXPECT_TRUE(gate(thief, 1, 1)) << "a foe 30 px off: inside the 31 px blast";
+    EXPECT_TRUE(gate(thief, 1, 1)) << "a foe 18 px off: inside the 19 px blast";
     EXPECT_EQ(0, thief->shifter_down()) << "the bomb is Shift 0";
 
-    foe->setxy(231, 200);
-    EXPECT_TRUE(gate(thief, 1, 1)) << "31 px: the edge is in";
-    foe->setxy(232, 200);
+    foe->setxy(219, 200);
+    EXPECT_TRUE(gate(thief, 1, 1)) << "19 px: the edge is in";
+    foe->setxy(220, 200);
     EXPECT_TRUE(gate(thief, 1, 0)) << "the classic answer: within 35 px";
-    EXPECT_FALSE(gate(thief, 1, 1)) << "32 px: outside the blast";
+    EXPECT_FALSE(gate(thief, 1, 1)) << "20 px: outside the level-1 blast";
+
+    thief->stats()->set_level(4);
+    foe->setxy(231, 200);
+    EXPECT_TRUE(gate(thief, 1, 1)) << "level 4, 31 px: the edge of the 31 px blast is in";
+    foe->setxy(232, 200);
+    EXPECT_FALSE(gate(thief, 1, 1)) << "level 4, 32 px: outside the blast";
+    thief->stats()->set_level(1);
 
     foe->setxy(340, 200);  // 140 px
     EXPECT_TRUE(gate(thief, 1, 0)) << "the classic answer: 130 px or more";
     EXPECT_FALSE(gate(thief, 1, 1)) << "140 px: the bomb reaches nobody";
 
-    foe->setxy(230, 200);
-    living* ally = body(add(FAMILY_ORC, 1, 180, 200, 1), 16, 16);  // 20 px the other side
+    foe->setxy(218, 200);
+    living* ally = body(add(FAMILY_ORC, 1, 190, 200, 1), 16, 16);  // 10 px the other side
     ASSERT_NE(nullptr, ally);
     EXPECT_TRUE(gate(thief, 1, 0)) << "the classic answer";
     EXPECT_FALSE(gate(thief, 1, 1)) << "an ally inside the blast";
 }
 
 // Row 32. MINE (New Specials): a level-2 thief with 94 MP lays a mine where
-// a foe will walk: a foe past the 31 px blast, within 130 px, hunting the
+// a foe will walk: a foe past the 23 px blast, within 130 px, hunting the
 // thief; fewer than three mines down, no ally in the blast and the 70 in
 // hand. Never the coin.
 //
@@ -749,4 +757,65 @@ TEST_F(GameplayFixesBots, druid_protection_wants_an_ally_under_blows_without_a_f
     ally->setxy(261, 160);  // 61 + 40 = 101 px from the druid
     foe->setxy(278, 160);
     EXPECT_FALSE(gate(druid, 4, 1)) << "the ally out of the druid's 60 px";
+}
+
+// GROW TREE fires the lightning the tree grows from (living-13-druid.lua,
+// plant_tree): with a wall under the lightning's pad fire() makes nothing
+// and the cast refuses COULD NOT FIRE. With the setting on the gate asks
+// the pad (G.pad_clear) and says no; the classic gate says yes. The druid
+// faces RIGHT from (192, 192): the pad starts at x 209, inside grid cell
+// (13, 12); the foe stands 40 px east, past that cell, faced and not at
+// blows.
+//
+// RED (the gate's pad term removed): gate(druid, 1, 1) is true with the
+// wall under the pad.
+TEST_F(GameplayFixesBots, druid_tree_refuses_a_pad_on_a_wall)
+{
+    living* druid = settle_body(body(add(FAMILY_DRUID, 1, 192, 192, 1, 100.0f), 16, 16));
+    living* foe = settle_body(body(add(FAMILY_SOLDIER, 0, 232, 192, 1), 16, 16));  // 40 px east
+    ASSERT_TRUE(druid && foe);
+    druid->set_lastx(1.0f);
+    druid->set_lasty(0.0f);
+
+    EXPECT_TRUE(gate(druid, 1, 1)) << "open grass: faced, closing, the pad clear";
+    EXPECT_TRUE(gate(druid, 1, 0)) << "the classic answer";
+    pad_wall(world(), 13, 12);
+    ASSERT_EQ(walker::PadAnswer::Terrain, druid->fire_pad_answer())
+        << "precondition: the wall is under the lightning's pad";
+    EXPECT_TRUE(gate(druid, 1, 0)) << "the classic answer: the druid casts every roll";
+    EXPECT_FALSE(gate(druid, 1, 1)) << "a wall under the pad: COULD NOT FIRE";
+}
+
+// SUMMON FAERIE fires the lightning the faerie rides out on (summon_faerie):
+// a foe's body on the pad takes fire()'s melee blow instead and the cast
+// refuses COULD NOT FIRE. A body of the druid's own team on the pad is
+// passed by the bolt, as by any weapon. The druid faces RIGHT from
+// (200, 200): the pad is x 217 on; a foe stands 100 px east (inside 130).
+//
+// RED (the gate's pad term removed): gate(druid, 2, 1) is true with the
+// second foe on the pad.
+TEST_F(GameplayFixesBots, druid_faerie_refuses_a_pad_on_a_foe)
+{
+    living* druid = settle_body(body(add(FAMILY_DRUID, 1, 200, 200, 4, 300.0f), 16, 16));
+    living* foe = settle_body(body(add(FAMILY_SOLDIER, 0, 300, 200, 1), 16, 16));  // 100 px
+    ASSERT_TRUE(druid && foe);
+    druid->set_lastx(1.0f);
+    druid->set_lasty(0.0f);
+    EXPECT_TRUE(gate(druid, 2, 1)) << "a foe at 100 px, the pad clear";
+
+    living* on_pad = settle_body(body(add(FAMILY_SOLDIER, 0, 217, 200, 1), 16, 16));
+    ASSERT_NE(nullptr, on_pad);
+    ASSERT_EQ(walker::PadAnswer::Body, druid->fire_pad_answer())
+        << "precondition: the second foe stands on the lightning's pad";
+    EXPECT_TRUE(gate(druid, 2, 0)) << "the classic answer: the druid casts every roll";
+    EXPECT_FALSE(gate(druid, 2, 1)) << "a foe's body on the pad: COULD NOT FIRE";
+
+    on_pad->setxy(600, 600);  // off the pad and out of range
+    EXPECT_TRUE(gate(druid, 2, 1)) << "the body moved off: the pad clear";
+
+    on_pad->set_team_num(1);  // an ally of the druid's
+    on_pad->setxy(217, 200);
+    ASSERT_EQ(walker::PadAnswer::Clear, druid->fire_pad_answer())
+        << "the bolt passes the druid's own team";
+    EXPECT_TRUE(gate(druid, 2, 1)) << "an ally on the pad is not in the way";
 }

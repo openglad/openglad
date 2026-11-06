@@ -11,7 +11,10 @@ still deliberately not an og_gameplay build dependency, so per-build cost
 stays flat. Stale stubs also starve check_luals and rule 8 of
 check_lua_statement_lines.py, both of which read the committed file.
 
-Exit codes: 0 fresh, 1 stale or missing, 2 generator failure.
+Before comparing, it runs the generator's self-test (gen_api_stubs.self_test:
+comments inside a binding shim never change the inferred stub).
+
+Exit codes: 0 fresh, 1 stale or missing, 2 generator or self-test failure.
 """
 
 from __future__ import annotations
@@ -31,6 +34,15 @@ def main() -> int:
     parser.add_argument("--repo-root", type=Path,
                         default=Path(__file__).resolve().parents[2])
     args = parser.parse_args()
+
+    # The generator's own rule check: comments inside a binding shim must
+    # never change the stub inferred from it.
+    failures = gen_api_stubs.self_test()
+    if failures:
+        for failure in failures:
+            print(f"api_stub_check: generator self-test FAILED: {failure}",
+                  file=sys.stderr)
+        return 2
 
     try:
         expected = gen_api_stubs.generate(args.repo_root)

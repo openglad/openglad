@@ -10,22 +10,40 @@ local M = {}
 -- the family's rally_radius every time a walker would run.
 local function pulse(self, t)
   local friends = og.find_friends_in_range("ob", t.banner_radius, self)
+  -- plumbing: Iterates allies in banner_radius; rule below.
   for i = 1, #friends do
     local w = friends[i]
+    -- rule: On each banner pulse every ally (any living family, captain included) within
+    --   banner_radius on the banner's own floor heals banner_regen, capped at max hp; an ally on
+    --   another floor at the same x/y gets nothing.
+    -- tests: KitCaptain.banner_regens_allies_and_frights_lower_foes
+    -- tests: SemLibsBanner.a_banner_heals_only_the_allies_on_its_own_floor
     if w:floor() == self:floor() then
       w:heal_clamped(t.banner_regen)
     end
   end
   local foes = og.find_foes_in_range("ob", t.banner_radius, self)
+  -- plumbing: Iterates foes in banner_radius; rule below.
   for i = 1, #foes do
     local w = foes[i]
     local living = w:order() == C.ORDER_LIVING
     local weaker = w.level < self.level
+    -- rule: On each pulse every LIVING foe within banner_radius on the banner's own floor whose level
+    --   is below the banner's is frightened away from it (fright walk pointing away on each axis); a
+    --   foe of the banner's level or higher, a generator, or a fearless (rallied) foe holds its ground.
+    -- tests: KitCaptain.banner_regens_allies_and_frights_lower_foes
+    -- tests: SemLibsBanner.a_banner_frightens_no_generator_and_no_foe_rallied_by_its_own_banner
+    -- tests: SemLibsBanner.a_banner_frightens_only_the_weaker_foes_on_its_own_floor
     if living and weaker then
-      -- s_force_fright skips a fearless walker by itself.
-      local dx = og.sign(w:xpos() - self:xpos())
-      local dy = og.sign(w:ypos() - self:ypos())
-      w:s_force_fright(t.banner_fright, dx, dy)
+      -- rule: A banner frightens only the weaker living foes on its own floor: one at the same x/y on
+      --   another floor holds its ground (as its regeneration reaches only allies there).
+      -- tests: SemLibsBanner.a_banner_frightens_only_the_weaker_foes_on_its_own_floor
+      if w:floor() == self:floor() then
+        -- s_force_fright skips a fearless walker by itself.
+        local dx = og.sign(w:xpos() - self:xpos())
+        local dy = og.sign(w:ypos() - self:ypos())
+        w:s_force_fright(t.banner_fright, dx, dy)
+      end
     end
   end
 end
@@ -36,10 +54,18 @@ end
 function M.on_animate(self)
   local t = og.tuning(self)
   self:set_frame(og.mod(og.div(og.world_tick(), 4), 4))
+  -- rule: A banner's aura pulses only on world ticks that are multiples of banner_pulse (8);
+  --   between pulses it heals and frightens nothing, but it still counts down its lifetime every
+  --   tick.
+  -- tests: KitCaptain.banner_regens_allies_and_frights_lower_foes
   if og.mod(og.world_tick(), t.banner_pulse) == 0 then
     pulse(self, t)
   end
   local lifetime = self:lifetime()
+  -- rule: A war banner stands for its lifetime and then falls by itself, announcing 'The banner
+  --   falls.' with an explosion sound (a banner with lifetime 1 survives one more act).
+  -- tests: KitCaptain.banner_falls_when_its_time_is_up
+  -- tests: KitCaptain.banner_regens_allies_and_frights_lower_foes
   if lifetime < 1 then
     self.dead = 1
     self:death()
@@ -55,15 +81,22 @@ end
 -- notice tells the tale, and a boom on top would be noise.
 function M.on_death(self)
   local flash = og.add_ob("fx", FX_FLASH)
+  -- plumbing: add_ob('fx', core:flash) failure guard: no flash if the fx cannot be created.
   if flash then
     flash.ani_type = C.ANI_EXPAND_8
     flash:set_floor(self:floor())
     flash:center_on(self)
   end
+  -- rule: A banner struck by its captain planting a new one comes down quietly (a flash only); a
+  --   banner chopped down by foes or worn out falls loudly: explosion sound and 'The banner
+  --   falls.'.
+  -- tests: KitCaptain.second_banner_strikes_the_first_quietly
+  -- tests: KitCaptain.banner_falls_when_its_time_is_up
+  -- tests: KitCaptain.banner_is_chopped_by_foes_and_passes_allies
   if self:leader() then
     return true
   end
-  og.emit_sound(C.SOUND_EXPLODE)
+  og.emit_positional_sound(self, C.SOUND_EXPLODE)
   og.emit_notification("The banner falls.")
   return true
 end

@@ -1,6 +1,8 @@
 #include <openglad/gameplay/guy.h>
 #include <openglad/core/constants.h>
 #include <openglad/core/irandom.h>
+#include <openglad/core/test_trace.h>
+#include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/interface/screen.h>
@@ -9,6 +11,9 @@
 
 #include "test_sim_random_scope.h"
 
+#include <cstdint>
+#include <initializer_list>
+#include <string>
 #include <unordered_set>
 #include <vector>
 
@@ -22,7 +27,7 @@
 // GameContext::rng (what the deleted local RngGuard swapped) is never
 // consulted here. The old oracle was vacuous for a second reason:
 // current_special() == 1 is the living constructor's default
-// (src/gameplay/living.cpp:52/59), so it held on the teleport arm AND on the
+// (src/gameplay/living.cpp:45/52), so it held on the teleport arm AND on the
 // retarget arm. The oracles below are the animation and targeting state that
 // actually differ between the two arms.
 
@@ -171,4 +176,132 @@ TEST(StatsHitResponseTeleport, stats_hit_response_mage_and_archmage_teleport_bra
         << "the else arm resets the distance caches to 15000";
 
     remove_new_leveldata_objects(level, ob_before, fx_before, weap_before);
+}
+
+// A bot caster (no guy: the 3/8 threshold) at level 3, so `possible` covers
+// slots 0 and 1 and TELEPORT's own price is paid by the pool.
+static void arm_bot(walker* w, int x, int y)
+{
+    w->set_team_num(1);
+    w->setxy(x, y);
+    w->stats()->set_level(3);
+    w->stats()->set_max_hitpoints(400.0f);
+    w->stats()->set_hitpoints(100.0f);  // 1/4: under 3/8
+    w->stats()->set_max_magicpoints(100.0f);
+    w->stats()->set_magicpoints(100.0f);
+    w->stats()->set_magic_per_round(0.0f);
+}
+
+// #408. A bot mage under its flee threshold teleports from its hit hook
+// (living-03-mage.lua, hit_response: slot 1, Shift 0, busy 0, then
+// special()). Struck again while that teleport plays (ANI_TELE_OUT), the
+// hook used to call special() once more and the cast refused SPECIAL BUSY
+// (TELEPORT's own mid-teleport guard): an inert call that only the refusal
+// trace showed. The hook now asks the same guard first and casts nothing.
+// The hook's three writes and the pool, the stream and the foe are the
+// same either way, on both values of the setting.
+//
+// RED at the base: the second hit traces "refused id=.. family=3 slot=1
+// shift=0 team=1 reason=SPECIAL BUSY".
+TEST(StatsHitResponseTeleport, a_mage_struck_again_mid_teleport_casts_nothing)
+{
+    ASSERT_NE(nullptr, og::runtime::current_session->myscreen_) << "myscreen exists";
+    LevelRuntimeData& level = og::runtime::current_session->myscreen_->level_runtime_data();
+    const short fixes_before = level.world().gameplay_fixes;
+    for (const short fixes : {short{0}, short{1}})
+    {
+        const auto ob_before = snapshot_ptrs(level.world().oblist);
+        const auto fx_before = snapshot_ptrs(level.world().fxlist);
+        const auto weap_before = snapshot_ptrs(level.world().weaplist);
+        level.world().gameplay_fixes = fixes;
+
+        walker* foe = level.add_ob(Order::Living, FAMILY_ORC);
+        ASSERT_NE(nullptr, foe);
+        foe->set_team_num(0);
+        foe->setxy(217, 200);
+        walker* mage = level.add_ob(Order::Living, FAMILY_MAGE);
+        ASSERT_NE(nullptr, mage);
+        arm_bot(mage, 200, 200);
+        ASSERT_EQ(nullptr, mage->myguy) << "precondition: a bot";
+
+        trace_clear();
+        mage->stats()->hit_response(foe);
+        ASSERT_EQ(ANI_TELE_OUT, static_cast<int>(mage->ani_type()))
+            << "the first hit teleports, fixes=" << fixes;
+        EXPECT_TRUE(trace_contains("special", "family=3 slot=1 shift=0"))
+            << "the first hit casts TELEPORT, fixes=" << fixes;
+        EXPECT_FLOAT_EQ(85.0f, mage->stats()->magicpoints()) << "TELEPORT's 15, fixes=" << fixes;
+
+        trace_clear();
+        const std::uint32_t rng_before = level.world().rng_.state_;
+        mage->stats()->hit_response(foe);
+        EXPECT_EQ(0, trace_count("special"))
+            << "struck mid-teleport: no cast and no refusal, fixes=" << fixes;
+        EXPECT_FALSE(trace_contains("special", "reason=SPECIAL BUSY")) << "fixes=" << fixes;
+        EXPECT_EQ(ANI_TELE_OUT, static_cast<int>(mage->ani_type())) << "fixes=" << fixes;
+        EXPECT_FLOAT_EQ(85.0f, mage->stats()->magicpoints()) << "fixes=" << fixes;
+        EXPECT_EQ(rng_before, level.world().rng_.state_) << "nothing drawn, fixes=" << fixes;
+        EXPECT_EQ(0.0f, mage->busy()) << "the hook's busy write, fixes=" << fixes;
+        EXPECT_EQ(1, mage->current_special()) << "the hook's slot write, fixes=" << fixes;
+        EXPECT_EQ(0, mage->shifter_down()) << "the hook's Shift write, fixes=" << fixes;
+        EXPECT_EQ(nullptr, mage->foe()) << "the flee arm never retargets, fixes=" << fixes;
+
+        remove_new_leveldata_objects(level, ob_before, fx_before, weap_before);
+    }
+    level.world().gameplay_fixes = fixes_before;
+}
+
+// The archmage's flee teleport has the same shape after its og.rand(3)
+// coin (living-17-archmage.lua, hit_response); FixedRandom(1) takes the
+// coin on both hits. Struck again mid-teleport, the hook asks the guard and
+// casts nothing.
+//
+// RED at the base: the second hit traces "refused id=.. family=17 slot=1
+// shift=0 team=1 reason=SPECIAL BUSY".
+TEST(StatsHitResponseTeleport, an_archmage_struck_again_mid_teleport_casts_nothing)
+{
+    ASSERT_NE(nullptr, og::runtime::current_session->myscreen_) << "myscreen exists";
+    LevelRuntimeData& level = og::runtime::current_session->myscreen_->level_runtime_data();
+    const short fixes_before = level.world().gameplay_fixes;
+    for (const short fixes : {short{0}, short{1}})
+    {
+        const auto ob_before = snapshot_ptrs(level.world().oblist);
+        const auto fx_before = snapshot_ptrs(level.world().fxlist);
+        const auto weap_before = snapshot_ptrs(level.world().weaplist);
+        level.world().gameplay_fixes = fixes;
+
+        walker* foe = level.add_ob(Order::Living, FAMILY_ORC);
+        ASSERT_NE(nullptr, foe);
+        foe->set_team_num(0);
+        foe->setxy(217, 200);
+        walker* arch = level.add_ob(Order::Living, FAMILY_ARCHMAGE);
+        ASSERT_NE(nullptr, arch);
+        arm_bot(arch, 200, 200);
+        ASSERT_EQ(nullptr, arch->myguy) << "precondition: a bot";
+
+        FixedRandom one(1);
+        ScopedSimRandom sim(&one);
+        trace_clear();
+        arch->stats()->hit_response(foe);
+        ASSERT_EQ(ANI_TELE_OUT, static_cast<int>(arch->ani_type()))
+            << "the first hit teleports, fixes=" << fixes;
+        EXPECT_TRUE(trace_contains("special", "family=17 slot=1 shift=0"))
+            << "the first hit casts TELEPORT, fixes=" << fixes;
+        EXPECT_FLOAT_EQ(90.0f, arch->stats()->magicpoints()) << "TELEPORT's 10, fixes=" << fixes;
+
+        trace_clear();
+        arch->stats()->hit_response(foe);
+        EXPECT_EQ(0, trace_count("special"))
+            << "struck mid-teleport: no cast and no refusal, fixes=" << fixes;
+        EXPECT_FALSE(trace_contains("special", "reason=SPECIAL BUSY")) << "fixes=" << fixes;
+        EXPECT_EQ(ANI_TELE_OUT, static_cast<int>(arch->ani_type())) << "fixes=" << fixes;
+        EXPECT_FLOAT_EQ(90.0f, arch->stats()->magicpoints()) << "fixes=" << fixes;
+        EXPECT_EQ(0.0f, arch->busy()) << "the hook's busy write, fixes=" << fixes;
+        EXPECT_EQ(1, arch->current_special()) << "the hook's slot write, fixes=" << fixes;
+        EXPECT_EQ(0, arch->shifter_down()) << "the hook's Shift write, fixes=" << fixes;
+        EXPECT_EQ(nullptr, arch->foe()) << "the flee arm never retargets, fixes=" << fixes;
+
+        remove_new_leveldata_objects(level, ob_before, fx_before, weap_before);
+    }
+    level.world().gameplay_fixes = fixes_before;
 }

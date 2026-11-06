@@ -123,8 +123,8 @@ og::sim::LobbySettings sanitize_settings(const og::sim::LobbySettings& requested
     if (sanitized.shared_teams != 0 && sanitized.shared_teams != 1)
         sanitized.shared_teams = fallback.shared_teams;
     // Match time limit in sim ticks; 0 keeps the map's own value. The upper
-    // bound is deliberately below the engine's 36000-tick runaway timeout,
-    // which ends a level as a LOSS ("Mission timed out. Retreating."), and
+    // bound is deliberately below the 36000-tick net that ends a level
+    // nobody plays as a LOSS ("Mission timed out. Retreating."), and
     // leaves headroom over the longest shipped manifest row (14400).
     // The floor is one whole minute (720 ticks): every UI face renders the
     // clock in minutes, so anything shorter would show as a 0-minute limit

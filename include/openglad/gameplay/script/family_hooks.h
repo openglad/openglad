@@ -16,9 +16,11 @@
 // Script errors therefore belong at branch entry (design doc R9).
 //
 // Pack-installed descriptors carry no C++ callbacks: their Lua hooks are the
-// only behavior implementation, so an erroring hook means nothing runs at
-// all. The HookFailure latch below makes that failure visible to tests and
-// operators.
+// only behavior implementation, and no native family code retries a hook
+// that errors. The erroring hook is treated as absent: its caller's engine
+// default runs where it has one (the stain, the default gains, attack the
+// attacker...), and nothing runs where it has none. The HookFailure latch
+// below makes that failure visible to tests and operators.
 
 #include <openglad/core/order.h>
 #include <openglad/gameplay/special_result.h>
@@ -125,8 +127,9 @@ WorldScripts& active_world_scripts();
 namespace hooks {
 
 // Loud-failure latch for class-pack behavior. Pack-installed descriptors
-// carry no C++ callbacks, so a hook error means *nothing happens*. Every
-// failed family-hook dispatch is therefore traced
+// carry no C++ callbacks, so a hook error means the family's own behavior
+// did not happen (only the caller's engine default, where it has one, runs
+// in its place). Every failed family-hook dispatch is therefore traced
 // ("script_error"), logged at error level, and counted here — so a test
 // cannot pass while a hook is quietly failing. Assert
 // `hook_failures().count == 0`, or diff the count around the code under test.

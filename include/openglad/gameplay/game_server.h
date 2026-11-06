@@ -313,7 +313,12 @@ private:
     void process_disconnected_players(std::uint32_t expected_tick);
     void clear_pending_exit_prompt();
     void clear_pause_state();
-    void handle_exit_prompt_response(bool accepted);
+    // `player_answered` is false for a timeout or a dead trigger: only a
+    // player's own "no" can open the classic follow-up prompt.
+    void handle_exit_prompt_response(bool accepted, bool player_answered);
+    // Make `prompt` the pending exit prompt: the world's prompt flags, and
+    // the broadcast to the trigger seat's peer (everyone when no peer owns it).
+    void open_exit_prompt(const PendingExitPromptState& prompt);
     // Withdraw ALL players to the current level (any peer's "quit this mission").
     void abort_level_for_all();
     [[nodiscard]] bool handle_level_transition(std::int16_t next_level);

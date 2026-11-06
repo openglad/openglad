@@ -658,9 +658,9 @@ bool draw_walker(walker& w, viewscreen* view_buf, unsigned char alpha,
         }
 	}
 	else if (w.stats()->query_bit_flags(BIT_FORESTWALK) &&
-	         (og::runtime::current_session->myscreen_->world().mysmoother.query_genre_x_y(draw_x / GRID_SIZE, draw_y / GRID_SIZE) == TYPE_TREES
-	          // Concealing decor (SHRUB): same cell probe, on the walker's own
-	          // floor. Gated on plane validity, so no-decor levels take the
+	         (og::runtime::current_session->myscreen_->world().smoother_for_floor(w.floor()).query_genre_x_y(draw_x / GRID_SIZE, draw_y / GRID_SIZE) == TYPE_TREES
+	          // Concealing decor (SHRUB): same cell probe; both on the walker's
+	          // own floor. Gated on plane validity, so no-decor levels take the
 	          // legacy TREES check byte-identically; keeps the draw suppression
 	          // in lockstep with the sim's forestwalk hide (living.cpp).
 	          || og::runtime::current_session->myscreen_->world().decor_conceals_at(w.floor(), draw_x / GRID_SIZE, draw_y / GRID_SIZE))
@@ -1028,9 +1028,9 @@ bool draw_walker_tile(walker& w, viewscreen* view_buf)
 			                        0 ); //type of phantom
 	}
 	else if (w.stats()->query_bit_flags(BIT_FORESTWALK) &&
-	         (og::runtime::current_session->myscreen_->world().mysmoother.query_genre_x_y(draw_x / GRID_SIZE, draw_y / GRID_SIZE) == TYPE_TREES
-	          // Concealing decor (SHRUB): same cell probe, on the walker's own
-	          // floor. Gated on plane validity, so no-decor levels take the
+	         (og::runtime::current_session->myscreen_->world().smoother_for_floor(w.floor()).query_genre_x_y(draw_x / GRID_SIZE, draw_y / GRID_SIZE) == TYPE_TREES
+	          // Concealing decor (SHRUB): same cell probe; both on the walker's
+	          // own floor. Gated on plane validity, so no-decor levels take the
 	          // legacy TREES check byte-identically; keeps the draw suppression
 	          // in lockstep with the sim's forestwalk hide (living.cpp).
 	          || og::runtime::current_session->myscreen_->world().decor_conceals_at(w.floor(), draw_x / GRID_SIZE, draw_y / GRID_SIZE))
