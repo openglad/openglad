@@ -1400,20 +1400,22 @@ issues it filed; the last entry records a difference kept on purpose (#484):
   the caster's feet. It now answers only a stain on the finder's floor, as
   the stain walk of fix T already did, on both settings. The old game has
   no floors.
-- **An allied NPC's shots follow its body on Easy and Hard (#473).** A
-  placed team-0 NPC with no player character (the SAVE_ALL Bearer, an
-  allied war-host, a team-0 bot squad) takes the difficulty percent on its
-  hit points, magic and damage (A12a), but the shots it fired did not: a
-  shot is scaled by its own `set_difficulty`, which exempted all of team
-  0. On Hard an allied archer had twice the hit points and swung twice as
-  hard while its arrows stayed at 100% and every hostile arrow doubled; on
-  Easy, the reverse. A team-0 shot whose shooter is a Living with no
-  player character now takes the same percent as its shooter's body, on
-  both settings. A player character's shots, a placed weapon or treasure
-  with no owner, and everything at 100% are unchanged, so no golden moves
-  (every parity row runs at 100%). The old game has neither half: its
-  `team_num != 0` gate exempts every team-0 walker and shot alike, and both
-  halves are ported to it, ungated.
+- **Allies are not scaled by the difficulty (#493).** On Easy or Hard no
+  living on the player's team (team 0), and no shot, treasure or effect of
+  that team, takes the difficulty percent, on both settings, as in the old
+  game: a placed allied NPC (the SAVE_ALL Bearer, an allied war-host, a
+  team-0 bot squad), a player's summon (a raised skeleton or ghost, a
+  WARBAND grunt, a slime child, the archmage's elementals and phantoms) and
+  their shots keep their hit points, magic and damage. A generator's own
+  hit points take the percent on every team, as in the old game. Before, a
+  team-0 walker with no player character took the percent with its body
+  (A12a) and, from #473, with its shots, so on Hard a player's raised
+  skeleton had twice the hit points and damage. Both are reverted on the
+  maintainer's ruling, and so is their port to the old game. A summon its
+  caster's team reaches only after it is scaled (the cleric's RAISE GHOST,
+  the archmage's elementals and phantoms) is still on team 0 then, so a
+  foe's keeps 100% too, as in the old game. Every other team takes the
+  percent as before, and at 100% nothing changes, so no golden moves.
 - **CHAIN LIGHTNING with nobody on its floor fails free (#455).** The
   chain's bolt strikes first the nearest foe on the archmage's own floor
   and cannot arc through floors, but the cast paid its busy, a shot on a
