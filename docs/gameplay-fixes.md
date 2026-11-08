@@ -100,6 +100,7 @@ usual pause.
 | AL | Archmage MIND CONTROL on more than one foe | The cast costs its price alone, however many foes it takes, as the old game's does (its charge for each further man lowers only a local). | Each foe taken past the first costs 10 magic more, never more than the magic left after the price. |
 | AM | A poison cloud wedged against a wall | It stays where it is until its walk runs out (#233), then draws a new one. | A tick that neither moves it nor turns it drops the stuck walk and draws a fresh direction, so it drifts on. |
 | AN | The archmage bot's CHAIN LIGHTNING rule, for a hero | No rule: the bot casts its coin's arm (fix B's off column). | The rule measures the chain with the cast's own reach: 200 px plus half its Intelligence plus 2 per level for an archmage with a character record (a hero the computer plays), 200 px plus 7 per level for a monster. Before, it measured every archmage by level, so such a hero was told "the chain has a target" and then refused `NO FOE IN RANGE`, or turned to HEARTBURST or held when the chain would have landed. |
+| AT | A walker asked to face the way it already faces | The turn moves it one notch counter-clockwise anyway and points its heading that way. Four callers ask it: a bot within 100 px of a foe it already faces is turned off it on the tick it re-plans, and the swing it then tries only turns it back, so that swing never starts (measured on Tryxian level 1, six seeds of 2400 ticks: 2,307 such tries, 0 swings); a chaser whose shot already lands, so it faces its foe, turns off it before it attacks and spends its next act turning back; a bot whose shot is refused while it faces its foe (a melee-only bot always) turns off it; a wall-hugging bot still mid-turn can be turned off its new heading. | It stays as it is: its facing, heading and walk frame do not change, and the turn reports done. The bot at its foe swings when it is not busy (measured: 2,291 swings in 2,383 tries; 80 waited for their busy time, 12 turned because their heading pointed elsewhere); the chaser attacks on its next act. |
 
 TELEPORT, REVEAL, CLOAK and ENERGY WAVE are unchanged as casts (their bot
 rules are in [Bots](#bots)): each does something whenever it is cast
@@ -865,6 +866,7 @@ The rows with the setting on, by fix:
 | AC | `elf_rocks_edge_pad_fixes_scen99` (a new arena, with its setting-off twin); for #476, `archer_bolt_edge_pad_fixes_scen99`, `barbarian_boulder_edge_pad_fixes_scen99` and `mage_wave_edge_pad_fixes_scen99` (three new arenas, each with its setting-off twin) |
 | AD | `thief_charm_tent_troop_fixes_scen99` (a new arena, with its setting-off twin; the setting-on twin has spawns of its own: see below) |
 | AG | `elf_forest_haste_fixes_scen99` (a new arena, with its setting-off twin) |
+| AT | `orc_bot_faces_foe_fixes_scen99` (a new arena, with its setting-off twin), and the 44 rows below that it moves |
 
 Fix AE has no row with the setting on (with it on a struck bot answers by
 fix R, and no row reaches a seat-driven archmage's hit response); its proof
@@ -893,6 +895,58 @@ a shorter walk fails the y bound and a longer one the x bound. Measured in
 the current game, the fix moves no existing row on either value: no row
 hastens a forestwalker, and the setting-on rows' elves stand on grass (the
 bots among them are level 1, whose forest step is 1 px both ways).
+
+Fix AT's arena, `orc_bot_faces_foe_scen99` and `orc_bot_faces_foe_fixes_scen99`:
+a hostile level-1 orc bot spawns facing down at the idle player soldier
+straight below it, 19 px between their boxes. Its first act is a HOWL, its
+second act_random, whose refused shot asks the orc to turn to the facing it
+has: with the setting off it steps a notch and spends its next act turning
+back, with it on it stays. Its path counter starts at 7, so its next six
+chase calls are walks of 3 px that bring it to 1 px from the soldier
+without a step that bumps, and the seventh re-plans: the foe is within
+100 px, so the near branch turns the orc to the facing it has again and
+calls init_fire. With the setting off the orc steps a notch and init_fire
+only turns it back, and the ATTACK it queued holds it facing the soldier
+for at least 30 rounds, so no blow can land before tick 41. With the
+setting on it keeps facing, init_fire starts the swing on tick 9, and the
+three-frame attack animation ends on tick 11, when fire() finds the
+soldier on its pad: one blow, and the recording ends there (B = 11). The
+blow is the orc's own 23 damage rolled as 23 - sqrt(23)/2 + rng(4), and
+the spawned soldier has no armor (only `set_difficulty` gives a placed
+walker armor, and the recording never calls it), so the soldier ends at
+96 to 99 of its 120 hp with the setting on and at 120 with it off. The
+orc's next swing waits for its own 30-round ATTACK, far past B. The pin
+inverts the gate: the classic row then lands the blow and the fixed row
+does not.
+
+Fix AT moves these 44 existing rows with the setting on, measured in the
+current game before the port; each is recaptured from the old game after
+the port: `archer_bolt_edge_pad`, `archer_bot_bolt_at_blows`,
+`archer_bot_ring_one_foe`, `archmage_bot_image_one_foe`,
+`archmage_bot_struck`, `archmage_hit_stale_shift`,
+`archmage_mind_control_berserk`, `archmage_summon_no_room`,
+`barbarian_bot_boulder_pad_body`, `barbarian_bot_explode_lone`,
+`barbarian_boulder_edge_pad`, `cleric_bot_raise_or_turn`,
+`cleric_bot_resurrect_foe_stain`, `cleric_raise_blocked_corpse`,
+`cleric_turn_no_undead`, `druid_bot_faerie_pad_body`,
+`druid_bot_tree_behind`, `druid_bot_tree_pad_body`, `druid_tree_blocked`,
+`elemental_bot_starburst_one_foe`, `elemental_struck_short_pool`,
+`elf_bot_rocks_far`, `elf_rocks_blocked`, `elf_rocks_edge_pad`,
+`elf_volley_refund`, `mage_bot_freeze_engaged`, `mage_bot_heartburst`,
+`mage_bot_warp_two_at_blows`, `mage_wave_edge_pad`,
+`orc_right_walk_potion`, `orc_stale_shove`, `soldier_bot_boomerang_far`,
+`soldier_bot_charge_door`, `soldier_bot_charge_unaimed`,
+`soldier_bot_disarm_front`, `soldier_bot_whirlwind_one_foe`,
+`soldier_charge_front_foe`, `soldier_disarm_higher_foe`,
+`soldier_whirlwind_no_foe`, `special_cleric_heal_ally`,
+`thief_bot_bomb_ally`, `thief_bot_charm_hero`, `thief_bot_charm_or_taunt`
+and `thief_charm_nearest` (each `_fixes_scen99`). In 26 of them the
+first difference is an event that now comes sooner (in 20, one tick
+sooner): a bot that faces its foe no longer spends an act turning off it
+and back. In six only the random stream at the end differs. The facts of
+22 of them no longer hold on the current game and are worked out again
+from the old game's captures. No setting-off golden moves: every
+setting-off row passes unchanged.
 
 Fix AI has no new row: every FREEZE TIME row plays a red player and a mage
 that is red or not a hero, where both values of the setting cast the same

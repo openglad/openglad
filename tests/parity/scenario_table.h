@@ -1169,7 +1169,7 @@ inline constexpr Mutation kMut_exit_withdraw_path = {
 };
 
 inline constexpr Mutation kMut_smoke_inputs_no_move = {
-    "src/gameplay/walker_movement.cpp", 277,
+    "src/gameplay/walker_movement.cpp", 278,
     "returnvalue = walk(x * stepsize(), y * stepsize());",
     "returnvalue = walk(x * 0.0f, y * 0.0f);",
     "Zeroes the movement delta inside walker::walkstep, which the parity driver reaches directly. walk(0,0) succeeds without moving, so the K_RIGHT soldier never steps east and WalkerPositionMoved(SOLDIER,240,0) flips."
@@ -1191,7 +1191,7 @@ inline constexpr Mutation kMut_effect_lifetime = {
 };
 
 inline constexpr Mutation kMut_exit_neuter = {
-    "src/gameplay/walker_movement.cpp", 277,
+    "src/gameplay/walker_movement.cpp", 278,
     "returnvalue = walk(x * stepsize(), y * stepsize());",
     "returnvalue = walk(x * 0.0f, y * stepsize());",
     "Zeroes the east/west step inside walker::walkstep. The K_RIGHT soldier remains at its spawn xpos and never reaches the exit pad, so WalkerPositionMoved(SOLDIER,623,224) flips."
@@ -4847,7 +4847,7 @@ inline constexpr FactPredicate kFacts_input_diagonal_movement_scen99[] = {
 };
 
 inline constexpr Mutation kMut_input_diagonal_movement_scen99 = {
-    "src/gameplay/walker_movement.cpp", 277,
+    "src/gameplay/walker_movement.cpp", 278,
     "returnvalue = walk(x * stepsize(), y * stepsize());",
     "returnvalue = walk(x * stepsize(), y * 0.0f);",
     "Drops the y component inside walker::walkstep. The diagonal key then advances the soldier only in x, so it never clears the ypos floor of WalkerPositionMoved(FAMILY_SOLDIER,175,175)."
@@ -8279,7 +8279,7 @@ inline constexpr FactPredicate kFacts_tower_snap_face_heading_scen99[] = {
 };
 
 inline constexpr Mutation kMut_tower_snap_face_heading_scen99 = {
-    "src/gameplay/walker_movement.cpp", 732,
+    "src/gameplay/walker_movement.cpp", 744,
     "    const float scale = (stepsize() == 0.0f) ? 1.0f : stepsize();",
     "    const float scale = stepsize();",
     "Reverts #350: a stationary shooter's snap-face leaves a (0,0) heading again, its next fire_check probe goes FACE_UP and misses, the one arrow that follows (after the stationary walkstep restores a unit heading) flies due west past everything, and WalkerHpRangeAtFinalTick(FAMILY_MEDIUM_SLIME, 7500, 7500) fails with the slime untouched at 8000. The orc control, the tower count and the tick budget hold."
@@ -11235,6 +11235,70 @@ inline constexpr Mutation kMut_mage_wave_edge_pad_fixes_scen99 = {
     "if gf.pad_blocked_by_terrain(self) then",
     "if false and gf.pad_blocked_by_terrain(self) then",
     "The press at the map's edge goes to fire() again, which charges its 5 MP shot, so the second press cannot pay the 70 and no wave flies: WeaponFamilyEmitted(FAMILY_WAVE) and WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 9000, 9000) fail."
+};
+
+// --- orc_bot_faces_foe (fix AT, #446: a walker asked to face the way it faces stays put) ---
+// A hostile level-1 orc bot (melee only, stepsize 3, fire delay 7) spawns
+// facing DOWN (the spawn facing) with the idle player soldier straight below
+// it, a 19 px gap between the boxes (both 16x16): it faces its foe from the
+// start. Its first act is a HOWL (the seed's special coin); its second is
+// act_random, whose shot fire_check refuses (melee only) and whose
+// turn(facing(foe)) asks for the facing the orc already has. With the setting
+// off (the classic game) that turn steps a notch to DOWN_RIGHT and the next act
+// turns back; with it on (fix AT) the orc stays and its SEARCH starts one act
+// sooner. The orc's path_check_counter starts at 7 (its construction draw), so
+// its first six walk_to_foe calls are throttled right-hand walks, open space,
+// each a direct step of 3 px toward the soldier (19 -> 1 px, no step blocked,
+// so no step bumps), and the seventh, at tick 10 off and tick 9 on, re-plans:
+// the foe within 100 px takes the near branch. There the turn asks for the
+// facing again. Off, it steps a notch and init_fire only turns the orc back;
+// the ATTACK it queued holds the orc for 30 + rng(25) rounds that only face
+// the foe, so the first classic blow can come no sooner than tick 41. On, the
+// orc keeps facing, init_fire starts the swing on tick 9, the attack animation
+// (three frames) shows its second frame on tick 10 and ends on tick 11, and
+// fire() finds the soldier on the blocked pad: one blow on tick 11, the budget
+// B. Its next swing waits for the same 30-round ATTACK, far above B.
+// The blow: attack() with the orc's own damage, 23 (its level-1 melee_damage;
+// the runner never calls set_difficulty), is 23 - sqrt(23)/2 + rng(4) =
+// 20.60 + {0..3}; the soldier carries no armor (only set_difficulty gives a
+// placed walker armor), so the reduction is 0 and the blow rounds to 21, 22,
+// 23 or 24 hp: the soldier ends at 96..99 of its 120 (9600..9900 cents). Its
+// regeneration waits 50 ticks after the blow, so nothing heals before B.
+// The pin inverts the gate: the classic row gets the fix (a blow lands) and
+// the fixed row loses it (no blow by B).
+inline constexpr SpawnSpec kFamilySpawns_orc_bot_faces_foe_scen99[] = {
+    { FAMILY_ORC,     1, kOrderLiving, 120, 120, 0, 0, 1, 0 },   // hostile level-1 melee bot, facing DOWN at spawn
+    { FAMILY_SOLDIER, 0, kOrderLiving, 120, 155, 0, 0 },         // the idle player LAST, straight below the orc: a 19 px gap (orc box ends at 136)
+};
+inline constexpr FactPredicate kFacts_orc_bot_faces_foe_scen99[] = {
+    pred::TickReached(11),
+    pred::WalkerFamilyCount(FAMILY_ORC, 1, 1),
+    pred::WalkerPositionMoved(FAMILY_ORC, 120, 138,
+        "consequence: six throttled walks of 3 px take the orc from a 19 px gap to 1 px below it"),
+    // negative_assertion: no blow lands by tick 11 on the classic run (the soldier keeps its full 120 hp); the pin gives the classic row the fix and the near branch's swing takes the soldier to 96..99 hp.
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 12000, 12000,
+        "consequence: the classic near-branch turn steps off the foe, init_fire only turns back, and no blow lands"),
+};
+inline constexpr Mutation kMut_orc_bot_faces_foe_scen99 = {
+    "src/gameplay/walker_movement.cpp", 629,
+    "if (og::sim::session_gameplay_fixes() != 0 && currentdir == targetdir)",
+    "if (og::sim::session_gameplay_fixes() == 0 && currentdir == targetdir)",
+    "The gate is inverted, so the classic row gets fix AT: the orc keeps facing the soldier, the near branch's init_fire swings and one blow lands on tick 11, so WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 12000, 12000) fails."
+};
+inline constexpr FactPredicate kFacts_orc_bot_faces_foe_fixes_scen99[] = {
+    pred::TickReached(11),
+    pred::WalkerFamilyCount(FAMILY_ORC, 1, 1),
+    pred::WalkerPositionMoved(FAMILY_ORC, 120, 138,
+        "consequence: six throttled walks of 3 px take the orc from a 19 px gap to 1 px below it"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 9600, 9900,
+        "consequence: with the setting on the orc keeps facing its foe and the re-plan's swing lands one orc blow of 21 to 24 hp"),
+    // rng_drift: the blow is compute_base_damage's roll on the orc's 23, 20.60 + rng(4) against no armor, so the rule allows exactly 21, 22, 23 or 24 hp and the band is those four values; commit dc1a2a89
+};
+inline constexpr Mutation kMut_orc_bot_faces_foe_fixes_scen99 = {
+    "src/gameplay/walker_movement.cpp", 629,
+    "if (og::sim::session_gameplay_fixes() != 0 && currentdir == targetdir)",
+    "if (og::sim::session_gameplay_fixes() == 0 && currentdir == targetdir)",
+    "The gate is inverted, so the fixed row loses fix AT: the near branch's turn steps the orc off the soldier, init_fire only turns it back and no blow lands by tick 11, so WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 9600, 9900) fails at 12000."
 };
 
 inline constexpr ScenarioSpec kScenarios[] = {
@@ -14202,6 +14266,20 @@ inline constexpr ScenarioSpec kScenarios[] = {
       0, false, true, Exercises::None,
       kFacts_mage_wave_edge_pad_fixes_scen99, std::size(kFacts_mage_wave_edge_pad_fixes_scen99),
       kMut_mage_wave_edge_pad_fixes_scen99, {}, 1, nullptr, 0, 1 },
+    { "orc_bot_faces_foe_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsEmpty, std::size(kInputsEmpty), 11,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_orc_bot_faces_foe_scen99, std::size(kFamilySpawns_orc_bot_faces_foe_scen99),
+      0, false, true, Exercises::None,
+      kFacts_orc_bot_faces_foe_scen99, std::size(kFacts_orc_bot_faces_foe_scen99),
+      kMut_orc_bot_faces_foe_scen99 },
+    { "orc_bot_faces_foe_fixes_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsEmpty, std::size(kInputsEmpty), 11,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_orc_bot_faces_foe_scen99, std::size(kFamilySpawns_orc_bot_faces_foe_scen99),
+      0, false, true, Exercises::None,
+      kFacts_orc_bot_faces_foe_fixes_scen99, std::size(kFacts_orc_bot_faces_foe_fixes_scen99),
+      kMut_orc_bot_faces_foe_fixes_scen99, {}, 1, nullptr, 0, 1 },
 };
 
 inline constexpr std::size_t kScenarioCount = std::size(kScenarios);

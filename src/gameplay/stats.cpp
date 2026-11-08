@@ -957,9 +957,9 @@ short statistics::do_command()
 						// walk's probe that finds their own foe
 						// (statistics::path_probe; off, every loud probe bumps).
 						// walk_to_foe's near-branch init_fire() lands no melee
-						// swing (measured 2026-11-01: walker::turn moves a notch
+						// swing with the setting off (walker::turn moves a notch
 						// even when the bot already faces the foe, so init_fire
-						// only turns back). Wiring init_fire()
+						// only turns back; on, fix AT keeps it facing). Wiring init_fire()
 						// here as well was tried and rejected: it roughly
 						// doubles melee swing rate over classic and swung
 						// campaign balance hard (Westlands L2's fight-through
@@ -1709,7 +1709,7 @@ bool statistics::direct_walk()
 	// rule: A chasing walker that can already land a shot on its foe along the (3:1-snapped, raw
 	//   pixel) delta stops chasing.
 	// tests: StatsUnit.stats_direct_walk_steps_toward_the_foe_and_hit_response_retargets_and_yells
-	// tests: SemAi4.a_chaser_that_can_land_a_shot_stops_and_attacks
+	// tests: SemAi4.a_chaser_that_can_land_a_shot_stops_and_attacks, SemAi4.a_chaser_that_can_land_a_shot_keeps_facing_its_foe_with_the_setting_on
 	if (controller_->fire_check(static_cast<short>(xdelta), static_cast<short>(ydelta)))
 	{
 		clear_command();
@@ -2020,7 +2020,7 @@ bool statistics::walk_to_foe()
 			//   or any chaser on a crowded map (more than 200 objects, dead included), skips A*.
 			// tests: StatsUnit.stats_r11_direct_walk_and_walk_to_foe_tail_branches
 			// tests: StatsUnit.walk_to_foe_adopts_a_strictly_nearer_foe_and_keeps_the_held_one_otherwise
-			// tests: SemAi4.a_chaser_within_100_px_of_a_foe_attacks_it_instead_of_pathing
+			// tests: SemAi4.a_chaser_within_100_px_of_a_foe_attacks_it_instead_of_pathing, SemAi4.a_chaser_facing_its_foe_within_100_px_swings_only_with_the_setting_on
 			// tests: SemAi4.a_crowded_map_skips_pathing_and_ends_the_order_when_no_foe_is_near
 			if (howmany > 0)
 			{

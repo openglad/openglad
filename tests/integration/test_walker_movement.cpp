@@ -128,13 +128,18 @@ TEST(WalkerMovement, walker_facing_threshold_boundaries_round6)
 
 TEST(WalkerMovement, walker_turn_to_all_targets)
 {
+    // The classic turn; with the setting on a walker asked to face the way it
+    // already faces stays put (fix AT, SemWalker4). The integration test
+    // runner (integration_main) resets the setting to on before every test.
+    movement_world().gameplay_fixes = 0;
     walker* w = make_guy(FAMILY_SOLDIER, 0);
     ASSERT_NE(nullptr, w) << "soldier walker created";
     w->set_stepsize(2.0f);
 
     // turn() rotates ONE 45-degree step per call: distance = curdir - target,
     // clockwise (+1) when distance is in [-4,0) or >= 4, counter-clockwise
-    // (+7 mod 8) otherwise. From FACE_UP that is 7 for targets 0 and 5..7.
+    // (+7 mod 8) otherwise. From FACE_UP that is 7 for targets 0 and 5..7
+    // with the setting off.
     static const int expected[8] = {7, 1, 1, 1, 1, 7, 7, 7};
     for (short target = 0; target < 8; target++) {
         w->set_curdir(0);
@@ -155,11 +160,16 @@ TEST(WalkerMovement, walker_turn_to_all_targets)
 
 TEST(WalkerMovement, walker_turn_from_all_starts)
 {
+    // The classic turn; with the setting on a walker asked to face the way it
+    // already faces stays put (fix AT, SemWalker4). The integration test
+    // runner (integration_main) resets the setting to on before every test.
+    movement_world().gameplay_fixes = 0;
     walker* w = make_guy(FAMILY_SOLDIER, 0);
     ASSERT_NE(nullptr, w) << "soldier walker created";
 
     // Turning toward FACE_UP (0): distance == start, so starts 1..3 rotate
-    // counter-clockwise and starts 4..7 (distance >= 4) rotate clockwise.
+    // counter-clockwise and starts 4..7 (distance >= 4) rotate clockwise;
+    // start 0 (distance 0) rotates counter-clockwise with the setting off.
     static const int expected[8] = {7, 0, 1, 2, 5, 6, 7, 0};
     for (short start = 0; start < 8; start++) {
         w->set_curdir(static_cast<char>(start));
