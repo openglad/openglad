@@ -1129,8 +1129,8 @@ Rows deliberately not added:
 
 ## Not gated
 
-Twenty-four changes apply whatever the setting, three from the work that
-added it (N, O and P), six from the second bugs batch and fifteen from the
+Twenty-five changes apply whatever the setting, three from the work that
+added it (N, O and P), six from the second bugs batch and sixteen from the
 issues it filed; the last entry records a difference kept on purpose (#484):
 
 - **N. A slot that is not in play says so.** `walker::special()` refuses a
@@ -1176,10 +1176,11 @@ issues it filed; the last entry records a difference kept on purpose (#484):
   the obmap's buckets (the spawn-spot probe, the landing and wake probes,
   the path search's cost, the text client's grid and object commands)
   reads `obmap::find_list`, which answers nothing for an empty cell
-  instead of making an empty bucket there; `obmap_get_list` stays for
-  `GameWorld::find_near_foe`, which edits the bucket it reads. No byte of
-  the sim changes. The obmap debug overlay draws fewer empty boxes. The old
-  game's spawn probe already reads with a find.
+  instead of making an empty bucket there; since #427
+  `GameWorld::find_near_foe` reads with it too (below), so no game code
+  makes an empty bucket. No byte of the sim changes. The obmap debug
+  overlay draws fewer empty boxes. The old game's spawn probe already
+  reads with a find.
 - **One pad table (#418).** `walker::set_weapon_heading`, which places the
   test weapon of a shooter's line-of-fire check, had its own copy of the
   eight-heading pad table; it now places the weapon with
@@ -1354,6 +1355,20 @@ issues it filed; the last entry records a difference kept on purpose (#484):
   now reads the door's own floor. On one floor nothing changes, and every
   parity door stands on floor 0, so no golden moves. This game only: the
   old game has one floor.
+- **A foe search forgets a walker the world no longer holds (#427).** The
+  quick foe search (`GameWorld::find_near_foe`) erased a pile entry the
+  world no longer held from that one pile only: the walker stayed in its
+  other piles and in `obmap::walker_to_pos`, where every passability probe
+  still read it as a body (a freed pointer, had it been freed), and the
+  emptied pile stayed. The search also made an empty pile at every cell its
+  spiral passed. The pile now forgets such a walker whole
+  (`obmap::forget_untracked`: every pile it is filed under and
+  `walker_to_pos`, its pointer compared and never read), a pile it leaves
+  empty goes with its index entry, and the search reads the pile with
+  `obmap::find_list`, which makes none. No byte of the sim changes: in play
+  no walker the world let go is still filed (a death and every removal
+  file it out), so no recording moves. This game only: the old game's
+  search trusts its pile.
 - **The simulation records every display effect (#484).** Not a change. The
   old game decided the melee lunge, the hit and heal numbers, a walled-in
   walker's red 1, the hurt flash, the recoil and the hit animation where it

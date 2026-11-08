@@ -1104,6 +1104,93 @@ TEST(SemWorld, the_quick_foe_search_skips_a_cloaked_foe_that_wins_its_roll)
         << "cloak arm: exactly one draw for the cloaked candidate";
 }
 
+// #427. A pile the quick search reads can still hold a walker the world no
+// longer holds. The search forgets it whole and makes no pile of its own:
+// - `stray` is filed the ordinary way (setxy) and never added to a world
+//   list, its box over two cells, (352,312)-(368,328): cell (11,9) and the
+//   spiral's first cell (11,10), alone in both. The search takes it out of
+//   both piles and out of walker_to_pos, and both piles, left empty, go.
+// - `ghost` sits alone in the pile of the spiral's second cell (11,11),
+//   pushed there by hand, so walker_to_pos does not know it: it leaves that
+//   pile, which goes too.
+// The search walks (11,10), (11,11), (10,11), (9,11) and answers the orc at
+// (9,10), as before; the cells it passes with nobody filed get no pile. Read
+// in this order: the maps' keys and the empty piles first, then pile
+// membership by find_list (obmap_get_list would make the pile asked about).
+// RED (planted, one at a time): forget_untracked without its `remove(w)`
+// (stray stays in walker_to_pos and in (11,9)); without its last
+// empty-pile drop ((11,11) stays, empty).
+TEST(SemWorld, a_foe_search_forgets_an_untracked_walker_in_both_obmap_maps)
+{
+    NearFoeStage st;
+    GameWorld& world = st.tw.world();
+    obmap& om = *world.myobmap;
+    using Cell = std::pair<short, short>;
+    const Cell first{11, 10};
+    const Cell above{11, 9};
+    const Cell second{11, 11};
+
+    std::unique_ptr<walker> stray = world.entity_factory(Order::Living, FAMILY_SOLDIER);
+    std::unique_ptr<walker> ghost = world.entity_factory(Order::Living, FAMILY_SOLDIER);
+    ASSERT_TRUE(stray && ghost);
+    stray->set_team_num(1);
+    stray->set_sizex(16);
+    stray->set_sizey(16);
+    stray->setxy(352, 312);
+    ASSERT_FALSE(world.tracks(stray.get()));
+    ASSERT_FALSE(world.tracks(ghost.get()));
+    ASSERT_EQ(std::list<Cell>({above, first}), om.walker_to_pos.at(stray.get()))
+        << "premise: setxy filed the stray in its two cells";
+    ASSERT_EQ(0u, om.pos_to_walker.count(second)) << "premise: nobody filed at (11,11)";
+    om.pos_to_walker[second].push_back(ghost.get());
+    ASSERT_EQ(0u, om.walker_to_pos.count(ghost.get())) << "premise: walker_to_pos does not know the ghost";
+
+    std::vector<Cell> before;
+    for (const auto& [cell, pile] : om.pos_to_walker)
+    {
+        ASSERT_FALSE(pile.empty()) << "premise: no empty pile before the search";
+        before.push_back(cell);
+    }
+    std::vector<Cell> want;
+    for (const Cell& c : before)
+        if (c != first && c != above && c != second)
+            want.push_back(c);
+    ASSERT_EQ(before.size(), want.size() + 3u) << "premise: the three piles are filed";
+
+    EXPECT_EQ(st.later, world.find_near_foe(st.searcher))
+        << "the answer is the foe the spiral reaches, as before";
+
+    std::vector<Cell> after;
+    std::size_t empty_piles = 0;
+    for (const auto& [cell, pile] : om.pos_to_walker)
+    {
+        after.push_back(cell);
+        if (pile.empty())
+            ++empty_piles;
+    }
+    EXPECT_EQ(0u, empty_piles) << "no pile is left empty, and the search made none";
+    EXPECT_EQ(want, after)
+        << "exactly the stray's two piles and the ghost's pile are gone; no new pile";
+    EXPECT_EQ(0u, om.walker_to_pos.count(stray.get())) << "the stray is out of walker_to_pos";
+    std::size_t holding = 0;
+    for (const auto& [cell, pile] : om.pos_to_walker)
+        holding += static_cast<std::size_t>(
+            std::count(pile.begin(), pile.end(), stray.get())
+            + std::count(pile.begin(), pile.end(), ghost.get()));
+    EXPECT_EQ(0u, holding) << "no pile holds the stray or the ghost";
+    EXPECT_EQ(nullptr, om.find_list(352, 320, 0)) << "the first cell has no pile";
+    EXPECT_EQ(nullptr, om.find_list(352, 352, 0)) << "the second cell has no pile";
+
+    // The index keeps no pointer to an erased pile: a body filed at the first
+    // cell afterwards lands in a live pile that find_list answers.
+    walker* fresh = add_living(st.tw, FAMILY_ORC, 1, 352, 320);
+    ASSERT_NE(nullptr, fresh);
+    const std::list<walker*>* pile = om.find_list(352, 320, 0);
+    ASSERT_NE(nullptr, pile);
+    EXPECT_EQ(std::list<walker*>({fresh}), *pile);
+    EXPECT_EQ(pile, &om.pos_to_walker.at(first));
+}
+
 // game_world.cpp:1236. On equal distance the full scan keeps the walker
 // earlier in the object list.
 TEST(SemWorld, the_full_foe_scan_breaks_a_tie_by_list_order)

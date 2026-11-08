@@ -25,6 +25,7 @@
 #include <list>
 
 class walker;
+class GameWorld;
 
 class obmap
 {
@@ -47,9 +48,17 @@ class obmap
 		short move(walker  *ob, short x, short y);  // This goes in walker's setxy
 		std::list<walker*>& obmap_get_list(short x, short y, int floor = 0); //Returns the list at x,y for fnf
 		// The pile at (x, y) on `floor`, or nullptr when no walker is filed
-		// there: a read that makes no node (#417; obmap_get_list stays for the
-		// one caller that erases through it, GameWorld::find_near_foe).
+		// there: a read that makes no node (#417). Since #427 every game read
+		// goes through it, GameWorld::find_near_foe's included; obmap_get_list,
+		// which makes the node it answers, stays for the tests that read piles.
 		const std::list<walker*>* find_list(short x, short y, int floor = 0);
+		// #427: forget every walker in the pile at (x, y) on `floor` that
+		// `world` no longer holds: out of every pile walker_to_pos files it
+		// under and out of walker_to_pos (remove()'s fast path), or, when
+		// walker_to_pos does not know it, out of this pile alone; the pile,
+		// left empty, goes with its index entry. A forgotten pointer is never
+		// dereferenced (it may be freed).
+		void forget_untracked(short x, short y, int floor, const GameWorld& world);
 		short obmapres;
 		size_t size() const;
 
