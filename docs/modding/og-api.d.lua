@@ -74,6 +74,7 @@
 ---@field bonus_rounds fun(self: og.Walker): integer
 ---@field busy number|fun(self: og.Walker): number # write-through property: `self.busy = v` runs m_set_busy; reads answer the method (method-first)
 ---@field can_approach_weapon_range fun(self: og.Walker, objective: og.Walker): boolean # walker:can_approach_weapon_range(objective) -> bool.
+---@field cast_cost fun(self: og.Walker, slot: integer, shifted: any): integer # walker:cast_cost(slot [, shifted]) -> integer: the price the engine gates the slot's cast on and charges, as this session sees it (og::sim::cast_cost): price...
 ---@field center_on fun(self: og.Walker, other: og.Walker)
 ---@field charm_left fun(self: og.Walker): integer
 ---@field clear_myguy fun(self: og.Walker)

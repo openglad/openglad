@@ -25,8 +25,10 @@
 
 #include <openglad/core/constants.h>
 #include <openglad/core/pixdefs.h>
+#include <openglad/gameplay/families/specials_view.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/kit_state.h>
 #include <openglad/gameplay/living.h>
 #include <openglad/gameplay/script/family_hooks.h>
 #include <openglad/gameplay/script/pack_scripts.h>
@@ -1055,6 +1057,73 @@ TEST_F(BotGatesLib, can_pay_falls_back_to_the_slot_price_when_the_alternate_has_
     world().new_specials = 0;  // SUPERNOVA is not in play: the slot's 40
     a = probe(self, lua);
     EXPECT_EQ("false", a.at("nova"));
+}
+
+// #437: G.can_pay reads the price the engine gates a cast on and charges
+// (walker:cast_cost, og::sim::cast_cost), not the family table. With New
+// Specials on, a channelling fire elemental (KIT_CHANNEL) and a dug-in
+// skeleton (KIT_HIDDEN) with no magic can pay their next press, which the
+// engine prices at 0; a plain elemental pays REKINDLE (slot 4) at 40 and
+// not at 39. With New Specials off the elemental's slot 4 is out of play,
+// priced out at 5000. Every arm runs with the Gameplay Fixes setting off
+// and on (the price does not read it), and every answer is also compared
+// with magicpoints >= og::sim::cast_cost computed in C++.
+// RED (planted): can_pay back to the family table (alternate_cost when
+// shifted, else s_special_cost): the channel and hidden arms read "false".
+TEST_F(BotGatesLib, can_pay_reads_the_price_the_cast_charges)
+{
+    living* self = caster();
+    living* elemental = body(add(FAMILY_FIREELEMENTAL, 1, 300, 300, 10, 40.0f), 16, 16);
+    living* skeleton = body(add(FAMILY_SKELETON, 1, 400, 300, 10, 40.0f), 16, 16);
+    ASSERT_TRUE(elemental && skeleton);
+    const std::string lua =
+        "    og.log('e1', G.can_pay(at(300, 300), 1, false))\n"
+        "    og.log('e4s', G.can_pay(at(300, 300), 4, true))\n"
+        "    og.log('e4', G.can_pay(at(300, 300), 4, false))\n"
+        "    og.log('k1', G.can_pay(at(400, 300), 1, false))\n";
+    const auto engine = [](walker* w, int slot, bool shifted) {
+        return w->stats()->magicpoints() >=
+                       static_cast<float>(og::sim::cast_cost(*w, slot, shifted))
+                   ? std::string("true")
+                   : std::string("false");
+    };
+    for (const short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE(testing::Message() << "Gameplay Fixes " << fixes);
+        world().gameplay_fixes = fixes;
+        world().new_specials = 1;
+        elemental->stats()->set_magicpoints(0.0f);
+        skeleton->stats()->set_magicpoints(0.0f);
+        elemental->set_kit_state(KIT_CHANNEL);
+        skeleton->set_kit_state(KIT_HIDDEN);
+        ASSERT_EQ(0, og::sim::cast_cost(*elemental, 1, false)) << "the engine charges a channel nothing";
+        ASSERT_EQ(0, og::sim::cast_cost(*elemental, 4, true));
+        ASSERT_EQ(0, og::sim::cast_cost(*skeleton, 1, false)) << "nor a hidden walker";
+        Answers a = probe(self, lua);
+        EXPECT_EQ("true", a.at("e1")) << "the channel's next press is free";
+        EXPECT_EQ("true", a.at("e4s"));
+        EXPECT_EQ("true", a.at("k1")) << "the hidden walker's next press is free";
+        EXPECT_EQ(engine(elemental, 1, false), a.at("e1"));
+        EXPECT_EQ(engine(elemental, 4, true), a.at("e4s"));
+        EXPECT_EQ(engine(skeleton, 1, false), a.at("k1"));
+
+        elemental->set_kit_state(0);
+        skeleton->set_kit_state(0);
+        ASSERT_EQ(40, og::sim::cast_cost(*elemental, 4, false)) << "REKINDLE's 40";
+        elemental->stats()->set_magicpoints(39.0f);
+        a = probe(self, lua);
+        EXPECT_EQ("false", a.at("e4")) << "39 is short of REKINDLE's 40";
+        EXPECT_EQ(engine(elemental, 4, false), a.at("e4"));
+        elemental->stats()->set_magicpoints(40.0f);
+        a = probe(self, lua);
+        EXPECT_EQ("true", a.at("e4"));
+        EXPECT_EQ(engine(elemental, 4, false), a.at("e4"));
+
+        world().new_specials = 0;
+        ASSERT_EQ(5000, og::sim::cast_cost(*elemental, 4, false)) << "slot 4 out of play";
+        a = probe(self, lua);
+        EXPECT_EQ("false", a.at("e4")) << "a slot out of play is never paid";
+        EXPECT_EQ(engine(elemental, 4, false), a.at("e4"));
+    }
 }
 
 // TELEPORT MARKER pays once (no marker of the caster's own stands) and only

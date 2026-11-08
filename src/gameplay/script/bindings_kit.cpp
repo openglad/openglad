@@ -198,6 +198,27 @@ int m_alternate_cost(lua_State* L)
     return 1;
 }
 
+// walker:cast_cost(slot [, shifted]) -> integer: the price the engine gates
+// the slot's cast on and charges, as this session sees it
+// (og::sim::cast_cost): priced out (5000) for a slot the New Specials setting
+// takes out of play, 0 for a hidden or channelling walker's next press, the
+// alternate's own price when shifted and priced, else the slot's stamped
+// price.
+int m_cast_cost(lua_State* L)
+{
+    walker* w = kit_self_arg(L);
+    const lua_Integer slot = luaL_checkinteger(L, 2);
+    const bool shifted = lua_toboolean(L, 3) != 0;
+    // rule: walker:cast_cost(slot, shifted) answers og::sim::cast_cost unchanged; a slot outside
+    //   0..NUM_SPECIALS-1 is a script error.
+    // tests: ScriptBindingPropsTest.kit_cast_cost_answers_the_engines_price
+    if (slot < 0 || slot >= NUM_SPECIALS)
+        script_raise(L, "cast_cost index out of range");
+    lua_pushinteger(L, static_cast<lua_Integer>(
+                           og::sim::cast_cost(*w, static_cast<int>(slot), shifted)));
+    return 1;
+}
+
 GameWorld* kit_world(lua_State* L)
 {
     // rule: The kit world verbs (og.possess, og.fearless, og.map_size ...) refuse to run with no
@@ -349,6 +370,7 @@ const luaL_Reg kKitWalkerMethods[] = {
     {"init_fire", m_init_fire},
     {"blocks_placement", m_blocks_placement},
     {"alternate_cost", m_alternate_cost},
+    {"cast_cost", m_cast_cost},
     {nullptr, nullptr},
 };
 

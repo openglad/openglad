@@ -592,18 +592,20 @@ function M.ai_meteor(self)
   return clustered >= 2
 end
 
--- SUPERNOVA below a fifth of our health with two foes close; otherwise
--- REKINDLE below half, when the elemental can pay it (the engine keeps the
--- slot for SUPERNOVA's 10 on a smaller pool and does not check again).
+-- SUPERNOVA below a fifth of our health with two foes close, when the
+-- elemental can pay it; otherwise REKINDLE below half, when the elemental can
+-- pay it (the engine keeps the slot for SUPERNOVA's 10 on a smaller pool and
+-- does not check again).
 function M.ai_rekindle(self)
   -- rule: A bot elemental goes SUPERNOVA (shift 1) below a fifth of its health with two bodies the
-  --   finder counts as foes within 48; otherwise REKINDLE (shift 0) below half health when it can
-  --   pay REKINDLE's 40; else holds. Never while IMMOLATE burns (both casts refuse QUENCH IMMOLATE
-  --   FIRST): the coin is left as it fell.
+  --   finder counts as foes within 48 and SUPERNOVA's price in hand (G.can_pay, #437); otherwise
+  --   REKINDLE (shift 0) below half health when it can pay REKINDLE's 40; else holds. Never while
+  --   IMMOLATE burns (both casts refuse QUENCH IMMOLATE FIRST): the coin is left as it fell.
   -- tests: KitElemental.ai_rekindle_heals_when_hurt_and_novas_when_cornered
   -- tests: GameplayFixesBots.elemental_rekindle_is_not_forced_on_a_pool_that_cannot_pay_it
   -- tests: KitElemental.ai_off_answers_the_classic_gate
   -- tests: KitElemental.a_burning_bots_rules_say_no_to_every_cast_but_the_quench
+  -- tests: GameplayFixesBots.elemental_supernova_waits_for_its_price
   if og.match_setting("new_specials") == 0 then
     return true
   end
@@ -614,11 +616,12 @@ function M.ai_rekindle(self)
   if self.hp < og.fdiv(self.max_hp, 5.0) then
     local _, close = og.find_foes_in_range("ob", NOVA_GATE_RANGE, self)
     -- rule: A bot elemental goes SUPERNOVA (shift 1) below a fifth of its health with two bodies
-    --   the finder counts as foes within 48. Here: `close >= 2`.
+    --   the finder counts as foes within 48. Here: `close >= 2` and SUPERNOVA's price in hand.
     -- tests: KitElemental.ai_rekindle_heals_when_hurt_and_novas_when_cornered
     -- tests: GameplayFixesBots.elemental_rekindle_is_not_forced_on_a_pool_that_cannot_pay_it
     -- tests: KitElemental.ai_off_answers_the_classic_gate
-    if close >= 2 then
+    -- tests: GameplayFixesBots.elemental_supernova_waits_for_its_price
+    if close >= 2 and G.can_pay(self, 4, true) then
       self:set_shifter_down(1)
       return true
     end

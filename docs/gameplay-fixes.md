@@ -673,7 +673,10 @@ the resisted DISARM's half price and busy (fix A), is followed by the
 ordinary act too.
 
 A yes the bot cannot pay is a no (fix AB). The gate chooses the arm, and
-`G.can_pay` drops a Shift arm the bot cannot pay; with the setting on the
+`G.can_pay` drops a Shift arm the bot cannot pay. `G.can_pay` reads the
+price the engine charges (`walker:cast_cost`, `og::sim::cast_cost`): a
+hidden or channelling walker's next press is free, and a slot New Specials
+takes out of play is never paid (#437). With the setting on the
 engine then checks the slot and arm the gate ended on against what the cast
 will charge, and answers no when the bot cannot pay it. Only the hit
 response can meet that no: the act rolls a special only when the bot has

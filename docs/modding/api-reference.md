@@ -692,6 +692,7 @@ physical Shift key (see "Abilities on keys" above).
 | `init_fire() → bool` | The engine's own attack start: turns toward the facing first, refuses while busy, otherwise starts the attack row so the weapon leaves at its end (`fire()` at once for a walker with no attack row). |
 | `blocks_placement() → bool` | True for a weapon whose family declares `blocks_placement` (solid scenery: a bone wall, a war banner); false for anything else. A guard that cuts down incoming shots uses it to leave scenery standing. |
 | `alternate_cost(slot) → int` | The price of the slot's shifted alternate as this game sees it: 0 when the alternate has no price of its own (it costs the slot's price) or is not in play (a `new_kit` alternate with the setting off). `slot` outside 0..5 raises `alternate_cost index out of range`. |
+| `cast_cost(slot [, shifted]) → int` | The price the engine gates the slot's cast on and charges, as this game sees it: 5000 (priced out) for a slot the New Specials setting takes out of play, 0 for a hidden or channelling walker's next press, the alternate's own price when `shifted` and it has one in play, else the slot's price. A bot gate's price check (`G.can_pay`) reads it. `slot` outside 0..5 raises `cast_cost index out of range`. |
 
 ### Combat and weapons
 

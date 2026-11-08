@@ -729,22 +729,19 @@ function M.summon_pad_clear(self, order, family, weapon)
   return self:pad_room(order, family, weapon)
 end
 
--- The bot can pay the slot's price, or the alternate's when shifted. An
--- alternate with no price of its own answers 0 from alternate_cost and
--- costs the slot's price.
+-- The bot can pay the slot, or its Shift arm when shifted, at the price the
+-- engine gates the cast on and charges (walker:cast_cost, og::sim::cast_cost):
+-- a slot out of play is priced out, a hidden or channelling walker's next
+-- press is free, a priced alternate in play costs its own price, every other
+-- press the slot's.
 function M.can_pay(self, slot, shifted)
-  local price = 0
-  -- rule: A bot can pay a slot when its magic covers the alternate's own price while shifted, or
-  --   the slot's price when unshifted or when the alternate has no price of its own (alternate_cost
-  --   0).
+  -- rule: A bot can pay a slot (or its Shift arm while shifted) when its magic covers the price the
+  --   engine charges for it (og::sim::cast_cost): the alternate's own price while shifted, the
+  --   slot's when unshifted or when the alternate has none; 0 for a hidden or channelling
+  --   walker's next press; never a slot out of play (#437).
   -- tests: BotGatesLib.can_pay_falls_back_to_the_slot_price_when_the_alternate_has_none
-  if shifted then
-    price = self:alternate_cost(slot)
-  end
-  if price == 0 then
-    price = self:s_special_cost(slot)
-  end
-  return self.magicpoints >= price
+  -- tests: BotGatesLib.can_pay_reads_the_price_the_cast_charges
+  return self.magicpoints >= self:cast_cost(slot, shifted)
 end
 
 -- The slot's rest is running (living_common gate_with_rest reads the same).
