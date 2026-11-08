@@ -1336,6 +1336,17 @@ issues it filed; the last entry records a difference kept on purpose (#484):
   the chain is what it was. Undead resist POSSESS, so the shipped bodies
   it reaches are an enemy caster's summons. No recording plays New
   Specials, and the old game has no possession.
+- **The Raspberry Isle's bone-tent Dreamkin fight for the crew (#431).**
+  On the isle a fifth of each college's spawns change sides at birth and
+  are named Dreamkin. The bone tent keeps its spawns as its own: their
+  owner, a clock of 800 + 11 × its level ticks, death when the tent falls.
+  So its Dreamkin wore the crew's colour but answered for the college: the
+  crew's heroes and bots counted it a foe and struck it, and it would not
+  strike the college. A Dreamkin now leaves the tent and the clock behind
+  at birth, as the mage tower's and the treehouse's spawns already do. It
+  fights for the crew, lives until it is killed, and outlives the tent,
+  which moves the level's balance a little toward the crew. This game
+  only: the old game has no level scripts.
 - **A magic shield or a boomerang passes a bone wall or war banner by
   (#472).** The cleric's MAGIC SHIELD and the soldier's BOOMERANG destroy
   every foe shot inside their guard radius, each costing the guard the

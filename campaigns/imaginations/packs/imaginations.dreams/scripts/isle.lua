@@ -186,7 +186,8 @@ end
 -- gated on the isle's level id, so future dream-log levels with colleges
 -- stay untouched. On the isle, in a dream, some enemies were friends all
 -- along: a stable fifth of every college's
--- spawns defect to the dreamer's team at birth. "Every 5th" is derived,
+-- spawns defect to the dreamer's team at birth and leave their college
+-- whole (the rule below). "Every 5th" is derived,
 -- not counted (R6): the spawn's sim entity id is assigned identically on
 -- every peer, so og.mod picks the same stable share everywhere.
 local function customize_spawn(generator, spawn)
@@ -203,11 +204,20 @@ local function customize_spawn(generator, spawn)
   -- idle crew and fails on exactly that). Posted spawns thicken the
   -- picket where they stand and fight whoever truly comes into sight.
   spawn:set_act_type(C.ACT_GUARD)
+  -- rule: On the isle a college spawn whose entity id is a multiple of five defects at birth: it
+  --   joins the dreamer's team (team and real team 0), is named Dreamkin, and leaves its college
+  --   whole, with no owner and no clock, as a mage tower's or a treehouse's spawn is born. The bone
+  --   tent keeps its own spawns (owner, an 800 + 11 x level clock, death with the tent), so a
+  --   defector that kept them answered for the college in every question of sides (#431), and a
+  --   body with a clock but no owner dies on its first act.
+  -- tests: ImaginationsCampaignTest.isle_bone_tent_dreamkin_fights_for_the_crew
   if og.mod(og.entity_id(spawn), 5) ~= 0 then
     return
   end
   spawn:set_team_num(0)
   spawn:set_real_team_num(0)
+  spawn:set_owner(nil)
+  spawn:set_lifetime(0)
   spawn:s_set_name("Dreamkin")
 end
 
