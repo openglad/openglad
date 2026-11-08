@@ -75,7 +75,7 @@ local function exit_on_eat(self, eater)
   -- name: flagged scenarios deliberately bypass the "foes left" gate.
   -- rule: A scenario flagged CAN_EXIT_WHENEVER lets the player exit with foes still standing, with
   --   the normal Exit prompt (with Gameplay Fixes off, after a withdraw to a won destination: below).
-  -- tests: SemExitPad.a_can_exit_whenever_level_offers_the_exit_with_foes_standing, SemExitPad.a_can_exit_whenever_level_withdraws_first_to_a_won_level_with_the_fixes_off_and_exits_with_them_on
+  -- tests: SemExitPad.a_can_exit_whenever_level_offers_the_exit_with_foes_standing, SemExitPad.a_can_exit_whenever_level_withdraws_first_to_a_won_level_with_the_fixes_off_and_exits_with_them_on, SemExitPad.the_free_exit_bit_counts_whatever_other_type_bits_the_level_carries
   local can_exit_now = foes_left == 0 or og.world_can_exit_whenever()
   -- rule: With foes still alive, an exit to an already completed level withdraws: it sets the
   --   withdraw request, prompts "Withdraw to <name>?" (b=1) and emits WithdrawToLevel - but never
