@@ -675,6 +675,63 @@ TEST_F(GameplayFixesBots, archer_barrage_wants_its_foe_faced_in_flight)
     EXPECT_FALSE(gate(archer, 2, 1)) << "a generator foe: the barrage is for a fighter";
 }
 
+// Gameplay Fixes AS (#436): BARRAGE's arrows leave from the pad fire()
+// places the archer's arrow on, and with the setting on the cast refuses
+// COULD NOT FIRE when the first cannot leave. The rule asks that pad with
+// fix AV's strict question (G.pad_clear_of_weapons): a wall face, a foe's
+// body, or an enemy arrow in flight on it is a no (the stream pinned to a
+// state whose clash roll would lose, and unmoved); an arrow of the archer's
+// own team passes. The archer (level 4, 16x16 at 192,183, heading UP)
+// holds the tower 85 px above as its foe; its 7x7 arrow pad (196,175)
+// reaches grid row 10.
+// RED (planted): living-02-archer.lua `return G.pad_clear_of_weapons(self)`
+// -> `return true`: every refusing arm reads true.
+TEST_F(GameplayFixesBots, archer_barrage_wants_its_pad_clear)
+{
+    living* archer = settle_body(body(add(FAMILY_ARCHER, 1, 192, 183, 4, 200.0f), 16, 16));
+    living* foe = settle_body(body(add(FAMILY_TOWER1, 2, 188, 69, 1), 25, 29));  // an 85 px gap above
+    ASSERT_TRUE(archer && foe);
+    archer->set_lasty(-1.0f);
+    archer->set_foe(foe);
+    EXPECT_TRUE(gate(archer, 2, 0)) << "the classic answer: a foe within 130";
+    EXPECT_TRUE(gate(archer, 2, 1)) << "open grass: faced, in flight, the pad clear";
+
+    pad_wall(world(), 12, 10);
+    ASSERT_EQ(walker::PadAnswer::Terrain, archer->fire_pad_answer())
+        << "precondition: the arrow's pad reaches the wall";
+    EXPECT_TRUE(gate(archer, 2, 0)) << "the classic answer";
+    EXPECT_FALSE(gate(archer, 2, 1)) << "a wall under the pad: three arrows that never fly";
+    world().grid.data[static_cast<std::size_t>(12 + world().grid.w * 10)] =
+        static_cast<std::uint8_t>(PIX_GRASS1);
+    EXPECT_TRUE(gate(archer, 2, 1)) << "the wall gone";
+
+    living* on_pad = settle_body(body(add(FAMILY_SOLDIER, 2, 192, 166, 1), 16, 16));
+    ASSERT_NE(nullptr, on_pad);
+    ASSERT_EQ(walker::PadAnswer::Body, archer->fire_pad_answer())
+        << "precondition: a foe's body on the arrow's pad";
+    EXPECT_TRUE(gate(archer, 2, 0)) << "the classic answer";
+    EXPECT_FALSE(gate(archer, 2, 1)) << "a foe's body on the pad: the first arrow is a blow";
+    on_pad->setxy(600, 600);
+
+    walker* arrow = world().add_weap_ob(Order::Weapon, FAMILY_ARROW);
+    ASSERT_NE(nullptr, arrow);
+    arrow->set_team_num(2);
+    body(arrow, 7, 7)->setxy(196, 175);
+    settle_body(arrow);
+    ASSERT_EQ(walker::PadAnswer::Clear, archer->fire_pad_answer())
+        << "precondition: the quiet question passes the enemy arrow";
+    ASSERT_EQ(walker::PadAnswer::Weapon, archer->fire_pad_answer(-1, true))
+        << "precondition: the strict question meets it";
+    const std::uint32_t lost = state_where_draws_are({10}, {0});
+    world().rng_.state_ = lost;
+    EXPECT_TRUE(gate(archer, 2, 0)) << "the classic answer";
+    EXPECT_FALSE(gate(archer, 2, 1)) << "an enemy arrow on the pad: fire() meets it on 4 rolls in 10";
+    EXPECT_EQ(lost, world().rng_.state_) << "no question draws the clash roll";
+
+    arrow->set_team_num(1);
+    EXPECT_TRUE(gate(archer, 2, 1)) << "an arrow of the archer's own team passes";
+}
+
 // EXPLODING BOLT goes off on its foe (a blast of 15 + 4 px a level, 43 at
 // level 7; allies take half, the archer a quarter). With the setting on the
 // foe must be faced and in flight (169 px straight at level 7), and neither

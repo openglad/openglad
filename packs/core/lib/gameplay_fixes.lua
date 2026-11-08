@@ -120,11 +120,11 @@ end
 function M.pad_blocked_by_terrain(self, weapon)
   -- rule: With Gameplay Fixes on (AC), a cast whose launch pad is refused by terrain (a wall face,
   --   the map edge, a tree crown for a non-forest weapon; never water) is refused before it pays:
-  --   the elf's volleys, the druid's bolts, EXPLODING BOLT, both boulders and ENERGY WAVE. A body
+  --   the elf's volleys, the druid's bolts, BARRAGE (fix AS), EXPLODING BOLT, both boulders and ENERGY WAVE. A body
   --   on the pad does not count (it keeps the paid blow). Classic: the cast still pays and draws.
   -- tests: GameplayFixesLua.gf_pad_blocked_by_terrain_is_the_grid_half_only_with_the_fixes
   -- tests: GameplayFixesElf.a_volley_at_a_wall_spends_nothing_with_the_setting_on
-  -- tests: GameplayFixesDruid.a_cast_at_terrain_spends_nothing_with_the_setting_on
+  -- tests: GameplayFixesDruid.a_cast_at_terrain_spends_nothing_with_the_setting_on, SemArcher.a_barrage_at_terrain_spends_nothing_with_the_setting_on
   return M.on() and self:fire_pad_answer(weapon) == "terrain"
 end
 

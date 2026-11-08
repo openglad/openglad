@@ -35,9 +35,28 @@ local function flurry(self)
   if gf.special_busy(self) then
     return false, "SPECIAL BUSY"
   end
+  -- rule: Gameplay Fixes AS (#436): a BARRAGE whose arrow's pad is refused by terrain (a wall face,
+  --   the map edge, a crown the arrow cannot cross; never water) refuses 'COULD NOT FIRE' before the
+  --   refund and the shots: nothing paid, nothing drawn, no busy (fix AC's rule). Classic: the
+  --   three fire() calls pay and draw, no arrow leaves, the cast answers yes and is charged its 60.
+  -- tests: SemArcher.a_barrage_at_terrain_spends_nothing_with_the_setting_on, parity:archer_barrage_edge_pad_fixes_scen99
+  if gf.pad_blocked_by_terrain(self) then
+    return false, "COULD NOT FIRE"
+  end
   -- magicpoints is a C++ float: per-op rounding
   self.magicpoints = og.fadd(self.magicpoints, 3 * self:s_weapon_cost())
-  self:fire()
+  local first = self:fire()
+  -- rule: Gameplay Fixes AS (#436): when the first arrow cannot leave (a body on the pad takes
+  --   fire()'s blow, an enemy weapon wins the clash) BARRAGE refuses 'COULD NOT FIRE' and fires no
+  --   more: the three refunded shots are taken back, so it costs the one swing, never the slot's
+  --   60, and adds no busy. Classic: the second and third fire() go on whatever the first
+  --   answered, and the cast answers yes.
+  -- tests: SemArcher.a_barrage_whose_first_arrow_cannot_leave_refuses_after_one_blow, parity:archer_barrage_pad_body_fixes_scen99
+  if not first and gf.on() then
+    -- Gameplay Fixes AS: the three shots the refund paid for never flew.
+    gf.take_back(self, 3)
+    return false, "COULD NOT FIRE"
+  end
   self:fire()
   self:fire()
   -- busy and fire_frequency are C++ floats: per-op rounding
@@ -128,8 +147,9 @@ end
 -- table) along the archer's heading. FIRE ARROWS' ring pays for two foes
 -- in its flight, or one the archer does not face (one faced foe is what an
 -- ordinary arrow hits). BARRAGE's three arrows fly along one line, so they
--- want the archer's foe alive, faced and in flight. EXPLODING BOLT wants the
--- same, no archer or ally of its own in the blast, and the fire arrow's pad clear.
+-- want the archer's foe alive, faced and in flight, and the arrow's pad clear.
+-- EXPLODING BOLT wants the same, no archer or ally of its own in the blast,
+-- and the fire arrow's pad clear.
 local function fixed(self)
   local slot = self:current_special()
   -- rule: Gameplay Fixes bot FIRE ARROWS (the 8-way ring) pays for two living foes inside the fire
@@ -164,11 +184,11 @@ local function fixed(self)
   if not G.in_flight(self, f, 8, 12) then
     return false
   end
-  -- rule: BARRAGE needs nothing beyond the faced foe in flight.
-  -- tests: GameplayFixesBots.archer_barrage_wants_its_foe_faced_in_flight
+  -- rule: BARRAGE needs the faced foe in flight and (fix AS) its arrow's pad clear of terrain, bodies and enemy weapons (fix AV's strict question): the cast refuses COULD NOT FIRE when its first arrow cannot leave.
+  -- tests: GameplayFixesBots.archer_barrage_wants_its_foe_faced_in_flight, GameplayFixesBots.archer_barrage_wants_its_pad_clear, parity:archer_bot_barrage_pad_body_fixes_scen99
   -- tests: GameplayFixesBots.archer_exploding_bolt_wants_a_foe_past_its_own_blast_with_no_ally_in_it
   if slot == 2 then
-    return true
+    return G.pad_clear_of_weapons(self)
   end
   -- rule: Gameplay Fixes bot EXPLODING BOLT also wants no archer (check_self) and no ally inside
   --   the blast around its foe, and the FIRE ARROW's own launch pad clear.

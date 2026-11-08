@@ -1295,7 +1295,7 @@ inline constexpr Mutation kMut_family_soldier_init = {
 };
 
 inline constexpr Mutation kMut_family_archer_init = {
-    "packs/core/families/living-02-archer.lua", 188,
+    "packs/core/families/living-02-archer.lua", 208,
     "hp = 90",
     "hp = 9000",
     "Cranks ARCHER descriptor HP x100 "
@@ -3698,7 +3698,7 @@ inline constexpr FactPredicate kFacts_special_archer_3_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_archer_3_scen99 = {
-    "packs/core/families/living-02-archer.lua", 68,
+    "packs/core/families/living-02-archer.lua", 87,
     "local arrow = self:fire()",
     "local arrow = nil",
     "Suppresses EXPLODING SHOT's arrow release, so the body restores the old weapon and takes its 'if not arrow' exit; no skip_exit-5000 buffed arrow is ever created. WalkerHpRangeAtFinalTick(FAMILY_ARCHER, 3400, 3400) flips."
@@ -4934,7 +4934,7 @@ inline constexpr FactPredicate kFacts_input_switch_char_scen99[] = {
 };
 
 inline constexpr Mutation kMut_input_switch_char_scen99 = {
-    "packs/core/families/living-02-archer.lua", 199,
+    "packs/core/families/living-02-archer.lua", 219,
     "default_weapon = \"core:arrow\"",
     "default_weapon = \"core:knife\"",
     "Swaps the archer's default weapon so post-switch held K_FIRE throws FAMILY_KNIFE instead of FAMILY_ARROW. No arrow is emitted, flipping WeaponFamilyEmitted(FAMILY_ARROW)."
@@ -7756,7 +7756,7 @@ inline constexpr FactPredicate kFacts_archer_hit_response_backpedal_scen99[] = {
 };
 
 inline constexpr Mutation kMut_archer_hit_response_backpedal_scen99 = {
-    "packs/core/families/living-02-archer.lua", 108,
+    "packs/core/families/living-02-archer.lua", 127,
     "  if distance < og.tuning(self).melee_backpedal_range then",
     "  if false then",
     "Disables the archer's melee backpedal entirely. The archer never receives the away-facing COMMAND_WALK, so it stays in the soldier's swing arc: its final xpos drops 220 -> 202 (below the WalkerPositionMoved bound) and its HP lands on 3100 instead of 3000."
@@ -9756,7 +9756,7 @@ inline constexpr FactPredicate kFacts_archer_bot_ring_one_foe_scen99[] = {
         "consequence: the classic gate casts the ring at the one faced foe; six of its fire arrows are still in flight at the end of the budget"),
 };
 inline constexpr Mutation kMut_archer_bot_ring_one_foe_scen99 = {
-    "packs/core/families/living-02-archer.lua", 242,
+    "packs/core/families/living-02-archer.lua", 262,
     "G.with_classic(ai.foe_within(130), fixed)",
     "G.with_classic(ai.foe_within(13), fixed)",
     "Shrinks the classic reach to 13 px, so the tower is out of reach and the ring is refused: WeaponFamilyCount(FAMILY_FIRE_ARROW, 6, 6) fails."
@@ -9794,7 +9794,7 @@ inline constexpr FactPredicate kFacts_archer_bot_bolt_at_blows_scen99[] = {
     // negative_assertion: the archer is dead with the setting off; the mutation flips it by keeping the bolt in its quiver (0 -> 1).
 };
 inline constexpr Mutation kMut_archer_bot_bolt_at_blows_scen99 = {
-    "packs/core/families/living-02-archer.lua", 242,
+    "packs/core/families/living-02-archer.lua", 262,
     "G.with_classic(ai.foe_within(130), fixed)",
     "G.with_classic(ai.foe_within(13), fixed)",
     "Shrinks the classic reach to 13 px, so the tower is out of reach and the bolt is never fired: the archer lives and WalkerFamilyCount(FAMILY_ARCHER, 0, 0) fails."
@@ -9805,7 +9805,7 @@ inline constexpr FactPredicate kFacts_archer_bot_bolt_at_blows_fixes_scen99[] = 
         "consequence: with the setting on the exploding bolt wants its foe outside the blast; the archer stands inside it, so it shoots ordinary arrows and lives"),
 };
 inline constexpr Mutation kMut_archer_bot_bolt_at_blows_fixes_scen99 = {
-    "packs/core/families/living-02-archer.lua", 178,
+    "packs/core/families/living-02-archer.lua", 198,
     "G.blast_clear(self, f, G.blast_reach(self.level), true)",
     "G.blast_clear(self, f, G.blast_reach(self.level), false)",
     "Stops the gate counting the archer itself in the blast, so the bolt is fired at the tower and kills the archer: WalkerFamilyCount(FAMILY_ARCHER, 1, 1) fails."
@@ -10793,6 +10793,54 @@ inline constexpr Mutation kMut_druid_bot_faerie_pad_body_fixes_scen99 = {
     "Drops the pad test, so the gate says yes to the touching tower and the cast's fire() lands a blow on it before refusing COULD NOT FIRE: EventKindExactly(play_sound, 0) reads 1 and the tower ends at 122 hp."
 };
 
+// --- archer_bot_barrage_pad_body (fix AS, #436: BARRAGE's rule asks the arrow's pad) ---
+// druid_bot_faerie_pad_body's geometry with a level-4 archer bot: a TOWER1
+// of the player's team touching it from above, centred, so the pad of the
+// arrow BARRAGE fires is the tower; the tower is the archer's foe, faced and
+// in flight, so every other term of the rule says yes. The seed (2) makes
+// the archer roll BARRAGE on tick 0. With the setting off the classic gate
+// says yes (a foe within 130) and the classic cast fires three times into
+// the tower: three melee blows (three clangs), the tower at 108 hp. With the
+// setting on (fix AS) the rule asks the arrow's pad, finds the tower and
+// holds; the roll takes the bot's ordinary act (fix W), which strikes
+// nothing in the budget.
+inline constexpr SpawnSpec kFamilySpawns_archer_bot_barrage_pad_body_scen99[] = {
+    { FAMILY_TOWER1,  0, kOrderLiving, 115,  91, 0, 0 },           // touching above, centred: the arrow's pad
+    { FAMILY_ARCHER,  1, kOrderLiving, 120, 120, 0, 0, 4, 100 },   // hostile level-4 bot, heading UP at spawn
+    { FAMILY_SOLDIER, 0, kOrderLiving, 560, 440, 0, 0 },           // idle player LAST, far away
+};
+inline constexpr FactPredicate kFacts_archer_bot_barrage_pad_body_scen99[] = {
+    pred::TickReached(3),
+    pred::EventKindExactly(/*play_sound*/1, 3,
+        "consequence: the classic BARRAGE fires three times into the tower on the pad: three melee blows, three clangs"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 10800, 10800,
+        "consequence: the three blows take the tower to 108 hp"),
+    pred::WeaponFamilyCount(FAMILY_ARROW, 0, 0),
+    // negative_assertion: no arrow flies on either value: the pad is the tower.
+};
+inline constexpr Mutation kMut_archer_bot_barrage_pad_body_scen99 = {
+    "packs/core/families/living-02-archer.lua", 48,
+    "local first = self:fire()",
+    "local first = nil",
+    "BARRAGE's first fire() never runs, so the classic cast lands two blows, not three: EventKindExactly(play_sound, 3) reads 2 and the tower ends at 115 hp."
+};
+inline constexpr FactPredicate kFacts_archer_bot_barrage_pad_body_fixes_scen99[] = {
+    pred::TickReached(3),
+    // negative_assertion: no blow lands with the setting on; the pin drops the rule's pad test and the blows return (0 -> 1, the first arrow's blow before the cast refuses).
+    pred::EventKindExactly(/*play_sound*/1, 0,
+        "consequence: with the setting on the rule finds the arrow's pad on the tower and holds the cast; the bot's ordinary act strikes nothing in the budget"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 13000, 13000,
+        "consequence: the tower is untouched"),
+    pred::WeaponFamilyCount(FAMILY_ARROW, 0, 0),
+    // negative_assertion: no arrow flies on either value: the pad is the tower.
+};
+inline constexpr Mutation kMut_archer_bot_barrage_pad_body_fixes_scen99 = {
+    "packs/core/families/living-02-archer.lua", 191,
+    "return G.pad_clear_of_weapons(self)",
+    "return G.living(f)",
+    "The rule stops asking the pad, so it says yes to the faced tower and the cast's first arrow lands a blow on it before the cast refuses COULD NOT FIRE (fix AS): EventKindExactly(play_sound, 0) reads 1 and the tower ends at 123 hp."
+};
+
 // --- barbarian_bot_boulder_pad_body (fix AA: HURL BOULDER asks the hammer's pad) ---
 // elf_bot_rocks_blocked's geometry with a level-1 barbarian bot: a TOWER1 of the
 // player's team touching it from above, centred, so the pad of the hammer HURL
@@ -11186,10 +11234,101 @@ inline constexpr FactPredicate kFacts_archer_bolt_edge_pad_fixes_scen99[] = {
         "consequence: the bolt takes a tower arrow out of the air, so the archer ends at 59 hp"),
 };
 inline constexpr Mutation kMut_archer_bolt_edge_pad_fixes_scen99 = {
-    "packs/core/families/living-02-archer.lua", 62,
+    "packs/core/families/living-02-archer.lua", 81,
     "if gf.pad_blocked_by_terrain(self, WEAPON_FIRE_ARROW) then",
     "if false and gf.pad_blocked_by_terrain(self, WEAPON_FIRE_ARROW) then",
     "The press at the map's edge goes to fire() again, which charges its 1 MP shot, so the second press cannot pay the 70: 9 sounds and the archer at 55 hp, so EventKindExactly(play_sound, 11) and WalkerHpRangeAtFinalTick(FAMILY_ARCHER, 5900, 5900) fail."
+};
+
+// --- archer_barrage_edge_pad (fix AS, #436: BARRAGE at the map's edge) ---
+// archer_bolt_edge_pad's arena with BARRAGE: the player archer (level 4,
+// exactly BARRAGE's 60 MP) stands at the top edge of the map heading UP,
+// with slot 2 chosen, so the first press's arrow pad is off the map. The
+// classic cast refunds three shots and fires three times; no arrow leaves,
+// the cast answers yes and the 60 is charged, so the second press, after a
+// step down, cannot pay: only the hostile TOWER1's ten bow shots sound and
+// the tower is untouched. With the setting on (fix AS) the press at the edge
+// refuses before it pays, so the second press fires three arrows down (three
+// bow shots); they strike the tower (score 104, the tower at 29 hp), which
+// shoots six times in the budget.
+inline constexpr InputEvent kInputs_archer_barrage_edge_pad[] = {
+    {  3, 0, K_SPECIAL_SWITCH }, {  4, 0, K_NONE },   // slot 2: BARRAGE
+    { 10, 0, K_SPECIAL }, { 11, 0, K_NONE },          // heading UP (the spawn heading): the arrow's pad is off the map
+    { 14, 0, K_DOWN },    { 15, 0, K_NONE },          // one step DOWN sets the heading
+    { 22, 0, K_SPECIAL }, { 23, 0, K_NONE },          // BARRAGE again, down at the tower
+};
+inline constexpr SpawnSpec kFamilySpawns_archer_barrage_edge_pad_scen99[] = {
+    { FAMILY_TOWER1, 1, kOrderLiving, 173, 60, 0, 0 },             // hostile, below, centred on the archer: holds the level open and shoots up
+    { FAMILY_ARCHER, 0, kOrderLiving, 176,  2, 0, 0, 4, 60 },      // the player LAST, level 4 (slot 2 open), exactly 60 MP = BARRAGE's price; row 0, grass
+};
+inline constexpr FactPredicate kFacts_archer_barrage_edge_pad_scen99[] = {
+    pred::TickReached(60),
+    pred::EventKindExactly(/*play_sound*/1, 10,
+        "consequence: the classic press at the map's edge pays the 60 for three arrows that never leave, so the second press cannot pay and only the tower's ten bow shots sound"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 13000, 13000,
+        "consequence: no arrow of the archer's reaches the tower"),
+};
+inline constexpr Mutation kMut_archer_barrage_edge_pad_scen99 = {
+    "packs/core/lib/gameplay_fixes.lua", 128,
+    "return M.on() and self:fire_pad_answer(weapon) == \"terrain\"",
+    "return self:fire_pad_answer(weapon) == \"terrain\"",
+    "The pad question no longer waits for the setting, so the classic press at the edge refuses before it pays and the second press fires three arrows into the tower: the tower ends at 32 hp, so WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 13000, 13000) fails (the sounds stay at 10: three of the archer's and seven of the tower's)."
+};
+inline constexpr FactPredicate kFacts_archer_barrage_edge_pad_fixes_scen99[] = {
+    pred::TickReached(60),
+    pred::EventKindExactly(/*play_sound*/1, 9,
+        "consequence: with the setting on the press at the map's edge refuses before it pays, so the second press fires BARRAGE's three arrows (three bow shots) and the struck tower shoots six times"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 2900, 2900,
+        "consequence: the three arrows take the tower to 29 hp"),
+};
+inline constexpr Mutation kMut_archer_barrage_edge_pad_fixes_scen99 = {
+    "packs/core/families/living-02-archer.lua", 43,
+    "if gf.pad_blocked_by_terrain(self) then",
+    "if false and gf.pad_blocked_by_terrain(self) then",
+    "The press at the map's edge goes on to the classic three fire() calls and the 60 is charged, so the second press cannot pay and the tower stays at 130 hp: WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 2900, 2900) fails (the sounds read 9: the tower's shots alone)."
+};
+
+// --- archer_barrage_pad_body (fix AS, #436: a BARRAGE whose first arrow cannot leave) ---
+// The player archer (level 4, 600 MP) with a hostile TOWER1 touching its
+// front (above, centred: the arrow's pad) presses BARRAGE once, at tick 10.
+// The tower's own blows on the archer clang at ticks 5 and 10. With the
+// setting off the cast fires three times into the tower whatever each
+// answers: three blows, the tower at 108 hp. With it on (fix AS) the first
+// arrow cannot leave: its blow lands, the cast refuses COULD NOT FIRE and
+// fires no more: the tower at 122 hp.
+inline constexpr InputEvent kInputs_archer_barrage_pad_body[] = {
+    {  3, 0, K_SPECIAL_SWITCH }, {  4, 0, K_NONE },   // slot 2: BARRAGE
+    { 10, 0, K_SPECIAL }, { 11, 0, K_NONE },          // heading UP (the spawn heading): the arrow's pad is the tower
+};
+inline constexpr SpawnSpec kFamilySpawns_archer_barrage_pad_body_scen99[] = {
+    { FAMILY_TOWER1, 1, kOrderLiving, 115,  91, 0, 0 },            // hostile, touching above, centred: the arrow's pad
+    { FAMILY_ARCHER, 0, kOrderLiving, 120, 120, 0, 0, 4, 600 },    // the player LAST, level 4 (slot 2 open), 600 MP
+};
+inline constexpr FactPredicate kFacts_archer_barrage_pad_body_scen99[] = {
+    pred::TickReached(14),
+    pred::EventKindExactly(/*play_sound*/1, 5,
+        "consequence: the tower's two blows on the archer and the classic BARRAGE's three blows on the tower"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 10800, 10800,
+        "consequence: the three blows take the tower to 108 hp"),
+};
+inline constexpr Mutation kMut_archer_barrage_pad_body_scen99 = {
+    "packs/core/families/living-02-archer.lua", 48,
+    "local first = self:fire()",
+    "local first = nil",
+    "BARRAGE's first fire() never runs, so the classic cast lands two blows, not three: EventKindExactly(play_sound, 5) reads 4 and the tower ends at 115 hp."
+};
+inline constexpr FactPredicate kFacts_archer_barrage_pad_body_fixes_scen99[] = {
+    pred::TickReached(14),
+    pred::EventKindExactly(/*play_sound*/1, 3,
+        "consequence: the tower's two blows on the archer and the first arrow's one blow on the tower; the cast refuses COULD NOT FIRE and fires no more"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 12200, 12200,
+        "consequence: the one blow takes the tower to 122 hp"),
+};
+inline constexpr Mutation kMut_archer_barrage_pad_body_fixes_scen99 = {
+    "packs/core/families/living-02-archer.lua", 55,
+    "if not first and gf.on() then",
+    "if false then",
+    "A first arrow that cannot leave no longer stops the cast, so the second and third fire() land their blows too: EventKindExactly(play_sound, 3) reads 5 and the tower ends at 107 hp."
 };
 
 // --- barbarian_boulder_edge_pad (fix AC widened, #476: HURL BOULDER at the map's edge) ---
@@ -14128,6 +14267,20 @@ inline constexpr ScenarioSpec kScenarios[] = {
       0, false, true, Exercises::None,
       kFacts_druid_bot_faerie_pad_body_fixes_scen99, std::size(kFacts_druid_bot_faerie_pad_body_fixes_scen99),
       kMut_druid_bot_faerie_pad_body_fixes_scen99, {}, 1, nullptr, 0, 1 },
+    { "archer_bot_barrage_pad_body_scen99", "scen/scen1.fss", 0x00000002u,
+      kInputsEmpty, std::size(kInputsEmpty), 3,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_archer_bot_barrage_pad_body_scen99, std::size(kFamilySpawns_archer_bot_barrage_pad_body_scen99),
+      0, false, true, Exercises::None,
+      kFacts_archer_bot_barrage_pad_body_scen99, std::size(kFacts_archer_bot_barrage_pad_body_scen99),
+      kMut_archer_bot_barrage_pad_body_scen99 },
+    { "archer_bot_barrage_pad_body_fixes_scen99", "scen/scen1.fss", 0x00000002u,
+      kInputsEmpty, std::size(kInputsEmpty), 3,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_archer_bot_barrage_pad_body_scen99, std::size(kFamilySpawns_archer_bot_barrage_pad_body_scen99),
+      0, false, true, Exercises::None,
+      kFacts_archer_bot_barrage_pad_body_fixes_scen99, std::size(kFacts_archer_bot_barrage_pad_body_fixes_scen99),
+      kMut_archer_bot_barrage_pad_body_fixes_scen99, {}, 1, nullptr, 0, 1 },
     { "barbarian_bot_boulder_pad_body_scen99", "scen/scen1.fss", 0x00000002u,
       kInputsEmpty, std::size(kInputsEmpty), 3,
       CompareMode::SemanticParity, false,
@@ -14240,6 +14393,34 @@ inline constexpr ScenarioSpec kScenarios[] = {
       0, false, true, Exercises::None,
       kFacts_archer_bolt_edge_pad_fixes_scen99, std::size(kFacts_archer_bolt_edge_pad_fixes_scen99),
       kMut_archer_bolt_edge_pad_fixes_scen99, {}, 1, nullptr, 0, 1 },
+    { "archer_barrage_edge_pad_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputs_archer_barrage_edge_pad, std::size(kInputs_archer_barrage_edge_pad), 60,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_archer_barrage_edge_pad_scen99, std::size(kFamilySpawns_archer_barrage_edge_pad_scen99),
+      0, false, true, Exercises::None,
+      kFacts_archer_barrage_edge_pad_scen99, std::size(kFacts_archer_barrage_edge_pad_scen99),
+      kMut_archer_barrage_edge_pad_scen99 },
+    { "archer_barrage_edge_pad_fixes_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputs_archer_barrage_edge_pad, std::size(kInputs_archer_barrage_edge_pad), 60,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_archer_barrage_edge_pad_scen99, std::size(kFamilySpawns_archer_barrage_edge_pad_scen99),
+      0, false, true, Exercises::None,
+      kFacts_archer_barrage_edge_pad_fixes_scen99, std::size(kFacts_archer_barrage_edge_pad_fixes_scen99),
+      kMut_archer_barrage_edge_pad_fixes_scen99, {}, 1, nullptr, 0, 1 },
+    { "archer_barrage_pad_body_scen99", "scen/scen1.fss", 0x00000002u,
+      kInputs_archer_barrage_pad_body, std::size(kInputs_archer_barrage_pad_body), 14,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_archer_barrage_pad_body_scen99, std::size(kFamilySpawns_archer_barrage_pad_body_scen99),
+      0, false, true, Exercises::None,
+      kFacts_archer_barrage_pad_body_scen99, std::size(kFacts_archer_barrage_pad_body_scen99),
+      kMut_archer_barrage_pad_body_scen99 },
+    { "archer_barrage_pad_body_fixes_scen99", "scen/scen1.fss", 0x00000002u,
+      kInputs_archer_barrage_pad_body, std::size(kInputs_archer_barrage_pad_body), 14,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_archer_barrage_pad_body_scen99, std::size(kFamilySpawns_archer_barrage_pad_body_scen99),
+      0, false, true, Exercises::None,
+      kFacts_archer_barrage_pad_body_fixes_scen99, std::size(kFacts_archer_barrage_pad_body_fixes_scen99),
+      kMut_archer_barrage_pad_body_fixes_scen99, {}, 1, nullptr, 0, 1 },
     { "barbarian_boulder_edge_pad_scen99", "scen/scen1.fss", 0x00000042u,
       kInputs_barbarian_boulder_edge_pad, std::size(kInputs_barbarian_boulder_edge_pad), 50,
       CompareMode::SemanticParity, false,
