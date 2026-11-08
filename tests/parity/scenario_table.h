@@ -10511,9 +10511,61 @@ inline constexpr FactPredicate kFacts_elf_bot_rocks_blocked_fixes_scen99[] = {
 };
 inline constexpr Mutation kMut_elf_bot_rocks_blocked_fixes_scen99 = {
     "packs/core/families/living-01-elf.lua", 213,
-    "return G.pad_clear(self) and volley(self, v[1], v[2])",
+    "return G.pad_clear_of_weapons(self) and volley(self, v[1], v[2])",
     "return volley(self, v[1], v[2])",
     "Drops the pad test, so the gate says yes to the faced tower and the cast's fire() lands a blow on it before refusing COULD NOT FIRE: EventKindExactly(play_sound, 0) reads 1 and the tower ends at 120 hp."
+};
+
+// --- elf_bot_rocks_tree_pad (fix AV, #451: the volley rule says no to an enemy weapon on the pad) ---
+// elf_bot_rocks_blocked's geometry, 40 px lower (above it is the lake,
+// where a tower drowns 1 hp a tick), with the rock's pad held by a grown
+// tree of the foes' (a still weapon-order body: the quiet pad question
+// passes it, fire() meets it on 4 rolls in 10), and the faced TOWER1 past
+// it, inside the rock's flight. The tree is on team 2, never 0 (a team-0
+// prop can take the player seat). The 12x12 tree meets the rock's 6x6 pad
+// (125,153) after collide()'s 1 px shrink and does not touch the elf or
+// the tower. The seed (2) makes the elf roll ROCKS on tick 0, and the
+// classic volley's two clash rolls against the tree both go the rocks'
+// way: both fly (two FWIP). With the setting on (fix AV) the rule takes the
+// clash as lost, says no and holds; the roll takes the bot's ordinary act
+// (fix W), which sounds nothing in the budget.
+inline constexpr SpawnSpec kFamilySpawns_elf_bot_rocks_tree_pad_scen99[] = {
+    { FAMILY_TREE,    2, kOrderWeapon, 120, 144, 0, 0 },           // an enemy grown tree on the rock's pad
+    { FAMILY_TOWER1,  0, kOrderLiving, 115, 110, 0, 0 },           // the faced foe past the tree: a 21 px gap, inside the level-1 flight (56), on dry ground
+    { FAMILY_ELF,     1, kOrderLiving, 120, 160, 0, 0, 1, 100 },   // hostile level-1 bot, heading UP at spawn
+    { FAMILY_SOLDIER, 0, kOrderLiving, 560, 440, 0, 0 },           // idle player LAST, far away
+};
+inline constexpr FactPredicate kFacts_elf_bot_rocks_tree_pad_scen99[] = {
+    pred::TickReached(3),
+    pred::EventKindExactly(/*play_sound*/1, 2,
+        "consequence: the classic elf throws ROCKS through the enemy tree on its pad: both clash rolls go the rocks' way and both rocks fly"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 12600, 12600,
+        "consequence: one rock reaches the tower and takes it to 126 hp; the other meets the tree in flight"),
+    pred::WeaponFamilyCount(FAMILY_ROCK, 0, 0),
+    // negative_assertion: no rock is left at the final tick on either value: the classic rocks have struck the tree and the tower.
+};
+inline constexpr Mutation kMut_elf_bot_rocks_tree_pad_scen99 = {
+    "packs/core/families/living-01-elf.lua", 34,
+    "local rock = self:fire()",
+    "local rock = nil",
+    "The cast never fires, so no rock flies: EventKindExactly(play_sound, 2) reads 0 and the tower stays at 130 hp.",
+    "local function some_rocks(self)"
+};
+inline constexpr FactPredicate kFacts_elf_bot_rocks_tree_pad_fixes_scen99[] = {
+    pred::TickReached(3),
+    // negative_assertion: no rock flies with the setting on; the pin asks the lenient pad again and the volley returns (0 -> 2).
+    pred::EventKindExactly(/*play_sound*/1, 0,
+        "consequence: with the setting on the rule finds an enemy weapon-order body on the rock's pad, takes the clash roll as lost and holds the volley; the bot's ordinary act sounds nothing in the budget"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 13000, 13000,
+        "consequence: the tower is untouched"),
+    pred::WeaponFamilyCount(FAMILY_ROCK, 0, 0),
+    // negative_assertion: no rock on either value at the final tick.
+};
+inline constexpr Mutation kMut_elf_bot_rocks_tree_pad_fixes_scen99 = {
+    "packs/core/families/living-01-elf.lua", 213,
+    "G.pad_clear_of_weapons(self)",
+    "G.pad_clear(self)",
+    "The rule asks the lenient pad question, which passes the enemy tree, so it says yes and the volley throws as the classic one does: EventKindExactly(play_sound, 0) reads 2 and the tower ends at 126 hp."
 };
 
 // --- soldier_bot_refused_roll_acts (fix W: a refused roll is not the act) ---
@@ -13991,6 +14043,20 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kFacts_elf_bot_rocks_blocked_fixes_scen99, std::size(kFacts_elf_bot_rocks_blocked_fixes_scen99),
       kMut_elf_bot_rocks_blocked_fixes_scen99, {}, 1, nullptr, 0, 1 },
 
+    { "elf_bot_rocks_tree_pad_scen99", "scen/scen1.fss", 0x00000002u,
+      kInputsEmpty, std::size(kInputsEmpty), 3,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_elf_bot_rocks_tree_pad_scen99, std::size(kFamilySpawns_elf_bot_rocks_tree_pad_scen99),
+      0, false, true, Exercises::None,
+      kFacts_elf_bot_rocks_tree_pad_scen99, std::size(kFacts_elf_bot_rocks_tree_pad_scen99),
+      kMut_elf_bot_rocks_tree_pad_scen99 },
+    { "elf_bot_rocks_tree_pad_fixes_scen99", "scen/scen1.fss", 0x00000002u,
+      kInputsEmpty, std::size(kInputsEmpty), 3,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_elf_bot_rocks_tree_pad_scen99, std::size(kFamilySpawns_elf_bot_rocks_tree_pad_scen99),
+      0, false, true, Exercises::None,
+      kFacts_elf_bot_rocks_tree_pad_fixes_scen99, std::size(kFacts_elf_bot_rocks_tree_pad_fixes_scen99),
+      kMut_elf_bot_rocks_tree_pad_fixes_scen99, {}, 1, nullptr, 0, 1 },
     { "soldier_bot_refused_roll_acts_scen99", "scen/scen1.fss", 0x00000002u,
       kInputsEmpty, std::size(kInputsEmpty), 12,
       CompareMode::SemanticParity, false,

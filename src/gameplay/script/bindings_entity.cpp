@@ -3928,45 +3928,55 @@ std::int32_t pad_weapon_family(lua_State* L, lua_Integer weapon_family)
     return static_cast<std::int32_t>(weapon_family);
 }
 
-// walker:fire_pad_clear([weapon_family]) → boolean — would fire() launch this
-// living's weapon (the current one, or weapon_family) instead of meeting
-// something on its pad? The pad probed quietly with a detached weapon
-// (walker::fire_pad_clear): no entity, no draw, nothing eaten or opened. A
-// bot gate's question.
+// walker:fire_pad_clear([weapon_family [, weapons_block]]) → boolean — would
+// fire() launch this living's weapon (the current one, or weapon_family)
+// instead of meeting something on its pad? The pad probed quietly with a
+// detached weapon (walker::fire_pad_clear): no entity, no draw, nothing eaten
+// or opened. With weapons_block, an enemy weapon in flight, door or grown tree
+// on the pad is in the way too (fix AV: fire() meets one on 4 rolls in 10, a
+// roll the question may not draw). A bot gate's question.
 int m_fire_pad_clear(lua_State* L)
 {
     const lua_Integer weapon_family = luaL_optinteger(L, 2, -1);
+    const bool weapons_block = lua_toboolean(L, 3) != 0;
     walker* self = self_arg(L);
     // rule: A bot gate can ask whether fire() would launch the weapon rather than strike what
     //   stands on its pad.
     // tests: QuietProbe.fire_pad_clear_takes_a_weapon_family
     // tests: QuietProbe.fire_pad_answer_names_what_the_pad_holds
     // tests: QuietProbe.the_lua_doors_answer_what_the_engine_answers
+    // tests: QuietProbe.a_strict_pad_probe_takes_the_clash_roll_as_lost
     lua_pushboolean(
-        L, self->fire_pad_clear(pad_weapon_family(L, weapon_family)) ? 1 : 0);
+        L, self->fire_pad_clear(pad_weapon_family(L, weapon_family), weapons_block) ? 1 : 0);
     return 1;
 }
 
-// walker:fire_pad_answer([weapon_family]) → "clear" | "terrain" | "body" |
-// "none" — what that pad holds (walker::fire_pad_answer): "terrain" a wall,
-// the map edge or other ground the weapon cannot cross; "body" an enemy
-// living or a generator fire() would strike; "none" a non-living or a weapon
-// the loader cannot make. The same probe as fire_pad_clear: no draw.
+// walker:fire_pad_answer([weapon_family [, weapons_block]]) → "clear" |
+// "terrain" | "body" | "weapon" | "none" — what that pad holds
+// (walker::fire_pad_answer): "terrain" a wall, the map edge or other ground
+// the weapon cannot cross; "body" an enemy living or a generator fire() would
+// strike; "weapon" (asked with weapons_block only) an enemy weapon in flight,
+// door or grown tree, which fire() meets on 4 rolls in 10; "none" a
+// non-living or a weapon the loader cannot make. The same probe as
+// fire_pad_clear: no draw.
 int m_fire_pad_answer(lua_State* L)
 {
     const lua_Integer weapon_family = luaL_optinteger(L, 2, -1);
+    const bool weapons_block = lua_toboolean(L, 3) != 0;
     walker* self = self_arg(L);
     const char* answer = "none";
     // rule: The pad probe names what blocks the weapon: 'clear', 'terrain' (wall/edge/uncrossable
-    //   ground), 'body' (enemy living or generator fire() would strike), 'none' (non-living prober
-    //   or unloadable weapon).
+    //   ground), 'body' (enemy living or generator fire() would strike), 'weapon' (asked strictly:
+    //   an enemy weapon-order body on the pad), 'none' (non-living prober or unloadable weapon).
     // tests: QuietProbe.fire_pad_answer_names_what_the_pad_holds
     // tests: QuietProbe.the_lua_doors_answer_what_the_engine_answers
-    switch (self->fire_pad_answer(pad_weapon_family(L, weapon_family)))
+    // tests: QuietProbe.a_strict_pad_probe_takes_the_clash_roll_as_lost
+    switch (self->fire_pad_answer(pad_weapon_family(L, weapon_family), weapons_block))
     {
     case walker::PadAnswer::Clear: answer = "clear"; break;
     case walker::PadAnswer::Terrain: answer = "terrain"; break;
     case walker::PadAnswer::Body: answer = "body"; break;
+    case walker::PadAnswer::Weapon: answer = "weapon"; break;
     case walker::PadAnswer::NoProbe: break;
     }
     lua_pushstring(L, answer);

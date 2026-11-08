@@ -8,7 +8,7 @@
 --      og.find_nearest_foe / og.check_special_ai_distance (find_near_foe
 --      rolls rng(invisibility_left / 20) per cloaked candidate), no loud
 --      og.query_passable or s_forward_blocked() (eat, latch, open, swing);
---      s_forward_blocked(true), og.quiet_passable and fire_pad_clear are ours: no draw, no change.
+--      s_forward_blocked(true), og.quiet_passable and fire_pad_clear (strict too) are ours: no draw, no change.
 --   2. A family whose classic gate acquires a foe (ai.foe_within,
 --      ai.foe_in_window) calls it FIRST through G.with_classic, on both
 --      values of the setting, and tests after.
@@ -695,6 +695,20 @@ end
 -- may not do the cast's swap itself (nothing here writes a walker field).
 function M.pad_clear(self, weapon)
   return self:fire_pad_clear(weapon)
+end
+
+-- pad_clear's question with an enemy weapon-order body on the pad in the way
+-- too (Gameplay Fixes AV): a weapon in flight, a door or a grown tree, which
+-- the quiet probe passes and fire() meets on 4 rolls in 10. A rule may not
+-- draw that roll, so it takes it as lost (walker:fire_pad_clear with
+-- weapons_block). Own-team bodies still pass. Draws nothing.
+function M.pad_clear_of_weapons(self, weapon)
+  -- rule: The strict pad question is clear only when fire() would launch on any clash roll: no
+  --   wall or map edge, no foe's body and no enemy weapon-order body (a weapon in flight, a door,
+  --   a grown tree) on the pad; the caster's own team's bodies pass. Draws nothing.
+  -- tests: GameplayFixesBots.elf_rocks_refuse_an_enemy_weapon_on_the_pad
+  -- tests: QuietProbe.a_strict_pad_probe_takes_the_clash_roll_as_lost
+  return self:fire_pad_clear(weapon, true)
 end
 
 -- The bot can pay the slot's price, or the alternate's when shifted. An

@@ -17,6 +17,7 @@
 #include <gtest/gtest.h>
 
 #include "bot_gate_fixture.h"
+#include "../test_sim_random_scope.h"
 
 #include <openglad/core/constants.h>
 #include <openglad/gameplay/families/family_registry.h>
@@ -486,6 +487,85 @@ TEST_F(GameplayFixesBots, elf_rocks_refuse_a_foe_on_the_pad)
 
     foe->setxy(196, 140);  // a 31 px gap above: off the pad, still in flight
     EXPECT_TRUE(gate(elf, 1, 1)) << "the pad clear, the tower in flight";
+}
+
+// Gameplay Fixes AV (#451): the rock's pad held by an enemy weapon-order
+// body. A weapon in flight, a door or a grown tree of the foes' passes the
+// quiet pad question (the clash is a roll a rule may not draw), and the
+// loud fire() meets it on 4 rolls in 10: the cast then refuses COULD NOT
+// FIRE. With the setting on the rule asks the strict question
+// (G.pad_clear_of_weapons) and says no; the classic elf casts every roll.
+// The elf (level 1, 16x16 at 200,200, heading UP at spawn) faces a tower
+// 31 px above, off the pad and in flight; the pad is read from fire()'s
+// table (weapon_pad). The stream is pinned to a state whose clash roll
+// would lose, and no question moves it. The enemy arrow 5 px above the pad
+// still meets it (collide() shrinks both boxes by a pixel), 6 px above it
+// is off it; an own-team rock on the pad passes; BOUNCING ROCKS shares the
+// rule, as all four volleys do.
+// RED (planted): living-01-elf.lua:213 `G.pad_clear_of_weapons(self)` ->
+// `G.pad_clear(self)`: gate(elf, 1, 1) reads true with the arrow on the pad.
+TEST_F(GameplayFixesBots, elf_rocks_refuse_an_enemy_weapon_on_the_pad)
+{
+    living* elf = settle_body(body(add(FAMILY_ELF, 1, 200, 200, 1, 100.0f), 16, 16));
+    living* foe = settle_body(body(add(FAMILY_TOWER1, 2, 196, 140, 1), 25, 29));  // a 31 px gap above
+    ASSERT_TRUE(elf && foe);
+    EXPECT_TRUE(gate(elf, 1, 1)) << "the control: the pad clear, the tower faced in flight";
+
+    walker probe(walker::WeaponProfileProbeTag{});
+    const PixieData* rock_data =
+        world().configure_existing_entity(probe, Order::Weapon, FAMILY_ROCK);
+    ASSERT_NE(nullptr, rock_data);
+    probe.set_data(*rock_data);
+    short px = 0, py = 0;
+    elf->weapon_pad(probe, px, py);
+    ASSERT_EQ(205, px) << "the rock's 6 px pad, centred above the elf";
+    ASSERT_EQ(193, py);
+
+    const auto weapon_on = [&](int family, unsigned char team, short x, short y,
+                               short sx, short sy) {
+        walker* w = world().add_weap_ob(Order::Weapon, family);
+        if (w != nullptr) {
+            w->set_team_num(team);
+            body(w, sx, sy)->setxy(x, y);
+            settle_body(w);
+        }
+        return w;
+    };
+    walker* arrow = weapon_on(FAMILY_ARROW, 2, px, py, 7, 7);
+    ASSERT_NE(nullptr, arrow);
+    ASSERT_EQ(walker::PadAnswer::Clear, elf->fire_pad_answer())
+        << "precondition: the quiet question passes the enemy arrow";
+    ASSERT_EQ(walker::PadAnswer::Weapon, elf->fire_pad_answer(-1, true))
+        << "precondition: the strict question meets it";
+    const std::uint32_t lost = state_where_draws_are({10}, {0});
+    world().rng_.state_ = lost;
+    EXPECT_TRUE(gate(elf, 1, 0)) << "the classic answer: always";
+    EXPECT_FALSE(gate(elf, 1, 1)) << "an enemy arrow on the pad: fire() meets it on 4 rolls in 10";
+    EXPECT_FALSE(gate(elf, 2, 1)) << "BOUNCING ROCKS asks the same pad";
+    EXPECT_EQ(lost, world().rng_.state_) << "no question draws the clash roll";
+
+    arrow->setxy(px, static_cast<short>(py - 5));
+    EXPECT_FALSE(gate(elf, 1, 1)) << "5 px above: the shrunk boxes still share a row";
+    arrow->setxy(px, static_cast<short>(py - 6));
+    EXPECT_TRUE(gate(elf, 1, 1)) << "6 px above: off the pad";
+    arrow->set_dead(1);
+
+    walker* door = weapon_on(FAMILY_DOOR, 2, 200, 183, 16, 16);
+    ASSERT_NE(nullptr, door);
+    door->stats()->set_level(2);
+    EXPECT_TRUE(gate(elf, 1, 0)) << "the classic answer";
+    EXPECT_FALSE(gate(elf, 1, 1)) << "an enemy door on the pad";
+    door->set_dead(1);
+
+    walker* tree = weapon_on(FAMILY_TREE, 2, 200, 183, 16, 16);
+    ASSERT_NE(nullptr, tree);
+    EXPECT_FALSE(gate(elf, 1, 1)) << "an enemy grown tree on the pad";
+    tree->set_dead(1);
+
+    walker* own = weapon_on(FAMILY_ROCK, 1, px, py, 6, 6);
+    ASSERT_NE(nullptr, own);
+    EXPECT_TRUE(gate(elf, 1, 1)) << "a rock of the elf's own team passes";
+    EXPECT_EQ(lost, world().rng_.state_) << "nothing drew";
 }
 
 // A weapon passes its own team's bodies, so an ally on the pad is not in

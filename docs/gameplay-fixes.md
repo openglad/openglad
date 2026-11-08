@@ -100,6 +100,7 @@ usual pause.
 | AL | Archmage MIND CONTROL on more than one foe | The cast costs its price alone, however many foes it takes, as the old game's does (its charge for each further man lowers only a local). | Each foe taken past the first costs 10 magic more, never more than the magic left after the price. |
 | AM | A poison cloud wedged against a wall | It stays where it is until its walk runs out (#233), then draws a new one. | A tick that neither moves it nor turns it drops the stuck walk and draws a fresh direction, so it drifts on. |
 | AN | The archmage bot's CHAIN LIGHTNING rule, for a hero | No rule: the bot casts its coin's arm (fix B's off column). | The rule measures the chain with the cast's own reach: 200 px plus half its Intelligence plus 2 per level for an archmage with a character record (a hero the computer plays), 200 px plus 7 per level for a monster. Before, it measured every archmage by level, so such a hero was told "the chain has a target" and then refused `NO FOE IN RANGE`, or turned to HEARTBURST or held when the chain would have landed. |
+| AV | The elf bot's volley rules | No rule (fix Q). With the setting on before this fix the rule asked the rock's pad quietly, and a quiet question passes an enemy weapon in flight, door or grown tree, which `fire()` meets on 4 rolls in 10: the cast then refused `COULD NOT FIRE` after the rule's yes. | The rule cannot draw the clash roll, so it takes it as lost: an enemy weapon in flight, door or grown tree on the rock's pad is a no. It holds about six casts in ten that would have flown. |
 
 TELEPORT, REVEAL, CLOAK and ENERGY WAVE are unchanged as casts (their bot
 rules are in [Bots](#bots)): each does something whenever it is cast
@@ -430,8 +431,9 @@ usual busy.
 text. With the setting on `NO ROOM TO SUMMON` costs nothing extra. A pad
 blocked by terrain costs nothing (AC); a body on the pad costs exactly the
 one swing (H, I). A door, a grown tree or an enemy weapon in flight on the
-pad is not seen by the pad question, and `fire()`'s own probe passes such a
-body only six times in ten, so a cast at one can still cost the swing.
+pad is seen only by the strict pad question, which the elf's volleys ask
+(AV); `fire()`'s own probe passes such a body only six times in ten, so
+another cast at one can still cost the swing.
 
 ## Bots
 
@@ -505,9 +507,10 @@ because the spin strikes it and the yell stuns it (fix K).
   flight, and at least two living foes inside their longer flights. Every
   volley also wants the rock's pad clear (fix V): the spot the first rock
   would be placed on holds no wall face, no map edge and no foe's body (a
-  body of the elf's own team passes, as the rock passes it; a door, a grown
-  tree or a weapon in flight passes the question too, see below). The
-  classic elf threw at nobody.
+  body of the elf's own team passes, as the rock passes it). A door, a
+  grown tree or a weapon in flight of the elf's foes is in the way too
+  (fix AV): `fire()` meets one on 4 rolls in 10, a roll the rule may not
+  draw, so the rule takes it as lost. The classic elf threw at nobody.
 - **Archer.** FIRE ARROWS, the ring, wants at least two living foes inside
   the arrows' flight, or one the archer does not face. BARRAGE wants the
   archer's foe, a living one, faced and inside the flight. EXPLODING BOLT
@@ -670,11 +673,13 @@ gate is asked.
 
 What the gates still do not see:
 
-- A door, a grown tree or an enemy weapon in flight on the pad. The pad
-  question is asked with a weapon, and a weapon passes other weapon-order
-  bodies (doors and trees are weapon-order) when it is asked quietly;
-  `fire()` asks loudly and passes them six times in ten. A cast at such a
-  pad can still refuse `COULD NOT FIRE` and pay its swing.
+- A door, a grown tree or an enemy weapon in flight on the pad, for the
+  druid's, barbarian's and mage's gates and the archer's EXPLODING BOLT.
+  Their pad question is asked with a weapon, and a weapon passes other
+  weapon-order bodies (doors and trees are weapon-order) when it is asked
+  quietly; `fire()` asks loudly and passes them six times in ten. A cast at
+  such a pad can still refuse `COULD NOT FIRE` and pay its swing. The elf's
+  volleys ask the strict question and see them (AV).
 - Room for the faerie. SUMMON FAERIE asks the bolt's pad, not whether the
   faerie's body has room where it would stand, so with a clear pad it can
   still refuse `NO ROOM TO SUMMON` (an ally on the spot).
@@ -865,6 +870,7 @@ The rows with the setting on, by fix:
 | AC | `elf_rocks_edge_pad_fixes_scen99` (a new arena, with its setting-off twin); for #476, `archer_bolt_edge_pad_fixes_scen99`, `barbarian_boulder_edge_pad_fixes_scen99` and `mage_wave_edge_pad_fixes_scen99` (three new arenas, each with its setting-off twin) |
 | AD | `thief_charm_tent_troop_fixes_scen99` (a new arena, with its setting-off twin; the setting-on twin has spawns of its own: see below) |
 | AG | `elf_forest_haste_fixes_scen99` (a new arena, with its setting-off twin) |
+| AV | `elf_bot_rocks_tree_pad_fixes_scen99` (a new arena, with its setting-off twin) |
 
 Fix AE has no row with the setting on (with it on a struck bot answers by
 fix R, and no row reaches a seat-driven archmage's hit response); its proof

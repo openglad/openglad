@@ -467,8 +467,10 @@ public:
     // the arrow slit's shooter-distance roll and treats the slit as passable:
     // the loud answer for a weapon's pad one pixel outside a shooter up to
     // 38 px a side; a golem's or giant skeleton's can differ). 3-arg forms stay loud.
+    // weapons_block (quiet only): an enemy weapon-order body on the box blocks,
+    // the weapon-vs-weapon miss taken as lost (obmap::query_list; Gameplay Fixes AV).
     bool query_passable(float x, float y, walker* ob, int floor, bool quiet = false);
-    bool query_object_passable(float x, float y, walker* ob, int floor, bool quiet = false);
+    bool query_object_passable(float x, float y, walker* ob, int floor, bool quiet = false, bool weapons_block = false);
     bool query_grid_passable(float x, float y, walker* ob, int floor, bool quiet = false);
     // Side-effect-free landing probe for floor transitions (Z-stairs, air
     // falls, cross-floor teleports): true when ob's bbox at (x, y) on

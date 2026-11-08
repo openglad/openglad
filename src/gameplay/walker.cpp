@@ -3957,33 +3957,16 @@ void walker::weapon_pad(const walker& weapon, short& px, short& py)
 // nothing eaten or opened. The grid half is asked first, then the bodies, as
 // the loud query_passable asks them. A bot gate's question.
 // Appended at EOF so the parity canary pins above never shift.
-walker::PadAnswer walker::fire_pad_answer(std::int32_t weapon_family)
+walker::PadAnswer walker::fire_pad_answer(std::int32_t weapon_family, bool weapons_block)
 {
-	// rule: Only a living can ask whether its shot's pad is clear, and only about a real weapon
-	//   family; anything else gets 'no probe' (bot gates read that as 'cannot fire'; fire_pad_clear
-	//   is false).
+	weap probe(WeaponProfileProbeTag{});
+	short px = 0, py = 0;
+	// rule: A caster pad_probe cannot build a weapon for (a non-living, a weapon family the loader
+	//   cannot make) gets 'no probe'.
 	// tests: QuietProbe.fire_pad_clear_is_false_for_a_non_living
 	// tests: QuietProbe.fire_pad_answer_names_what_the_pad_holds
-	if (query_order() != Order::Living || current_game == nullptr || current_game->world == nullptr)
+	if (!pad_probe(probe, weapon_family, px, py))
 		return PadAnswer::NoProbe;
-	if (weapon_family >= NUM_FAMILY_SLOTS)
-		return PadAnswer::NoProbe;
-	const std::int32_t family = weapon_family >= 0
-		? weapon_family
-		: static_cast<std::int32_t>(static_cast<char>(current_weapon()));
-	weap probe(WeaponProfileProbeTag{});
-	const PixieData* data = current_game->world->configure_existing_entity(
-		probe, Order::Weapon, family);
-	if (data == nullptr)
-		return PadAnswer::NoProbe;
-	probe.set_data(*data);
-	probe.set_owner(this);          // the chain create_weapon gives it: is_friendly reads it
-	probe.set_team_num(team_num());
-	probe.set_floor(floor());
-	short px = 0, py = 0;
-	weapon_pad(probe, px, py);
-	probe.set_xpos(px);             // SimEntity's plain setters: never setxy,
-	probe.set_ypos(py);             // which would register the probe in the obmap
 	// rule: Would the shot fly: the pad fire() would use (weapon_pad) is asked, quietly (nothing
 	//   eaten, opened, drawn or announced), first against terrain, then against bodies under the
 	//   weapon's own rules (own-team bodies pass; an enemy living or generator blocks; enemy doors,
@@ -3999,13 +3982,56 @@ walker::PadAnswer walker::fire_pad_answer(std::int32_t weapon_family)
 		return PadAnswer::Terrain;
 	if (!current_game->world->query_object_passable(px, py, &probe, floor(), /*quiet=*/true))
 		return PadAnswer::Body;
+	// rule: Gameplay Fixes AV (#451): asked with weapons_block, a pad whose box meets an enemy
+	//   weapon-order body (a weapon in flight, a door, a grown tree) answers 'weapon': the loud
+	//   fire() meets it on 4 rolls in 10 (obmap.cpp, the clash roll), a roll a gate may not draw,
+	//   so the strict question takes the roll as lost. Own-team bodies still pass. Draws nothing.
+	// tests: QuietProbe.a_strict_pad_probe_takes_the_clash_roll_as_lost
+	// tests: QuietProbe.fire_pad_answer_names_what_the_pad_holds
+	if (weapons_block &&
+	    !current_game->world->query_object_passable(px, py, &probe, floor(), /*quiet=*/true,
+	                                                /*weapons_block=*/true))
+		return PadAnswer::Weapon;
 	return PadAnswer::Clear;
 }
 
 // fire_pad_answer's yes: the weapon would fly.
-bool walker::fire_pad_clear(std::int32_t weapon_family)
+bool walker::fire_pad_clear(std::int32_t weapon_family, bool weapons_block)
 {
-	return fire_pad_answer(weapon_family) == PadAnswer::Clear;
+	return fire_pad_answer(weapon_family, weapons_block) == PadAnswer::Clear;
+}
+
+// The detached weapon of fire_pad_answer (and pad_room): configured as
+// weapon_family (-1 the current weapon) by the loader, owned by this walker,
+// on its team and floor, standing on fire()'s pad. Never in a list or the
+// obmap, no entity id, no draw. Below every parity canary pin of this file,
+// so none of them shifts.
+bool walker::pad_probe(walker& probe, std::int32_t weapon_family, short& px, short& py)
+{
+	// rule: Only a living can ask whether its shot's pad is clear, and only about a real weapon
+	//   family; anything else gets 'no probe' (bot gates read that as 'cannot fire'; fire_pad_clear
+	//   is false).
+	// tests: QuietProbe.fire_pad_clear_is_false_for_a_non_living
+	// tests: QuietProbe.fire_pad_answer_names_what_the_pad_holds
+	if (query_order() != Order::Living || current_game == nullptr || current_game->world == nullptr)
+		return false;
+	if (weapon_family >= NUM_FAMILY_SLOTS)
+		return false;
+	const std::int32_t family = weapon_family >= 0
+		? weapon_family
+		: static_cast<std::int32_t>(static_cast<char>(current_weapon()));
+	const PixieData* data = current_game->world->configure_existing_entity(
+		probe, Order::Weapon, family);
+	if (data == nullptr)
+		return false;
+	probe.set_data(*data);
+	probe.set_owner(this);          // the chain create_weapon gives it: is_friendly reads it
+	probe.set_team_num(team_num());
+	probe.set_floor(floor());
+	weapon_pad(probe, px, py);
+	probe.set_xpos(px);             // SimEntity's plain setters: never setxy,
+	probe.set_ypos(py);             // which would register the probe in the obmap
+	return true;
 }
 
 // The walker a hit or a kill is credited to (#411): the topmost LIVING on

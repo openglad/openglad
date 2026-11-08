@@ -144,10 +144,16 @@ class walker : public og::sim::SimEntity
 		// soldier's out-of-blades veto (its on_fire_weapon) is the one refusal
 		// the probe cannot see, and no gate asks the soldier's pad.
 		// No entity made, no draw, nothing eaten or opened. A bot gate's question.
-		enum class PadAnswer : std::uint8_t { Clear, Terrain, Body, NoProbe };
-		[[nodiscard]] PadAnswer fire_pad_answer(std::int32_t weapon_family = -1);
-		// fire_pad_answer(weapon_family) == PadAnswer::Clear.
-		[[nodiscard]] bool fire_pad_clear(std::int32_t weapon_family = -1);
+		// With weapons_block, an enemy weapon-order body on the pad (a weapon in
+		// flight, a door, a grown tree), which the lenient probe passes and the
+		// loud fire() meets on 4 rolls in 10, answers Weapon: the strict question
+		// takes the clash roll as lost, still drawing nothing (Gameplay Fixes AV).
+		enum class PadAnswer : std::uint8_t { Clear, Terrain, Body, NoProbe, Weapon };
+		[[nodiscard]] PadAnswer fire_pad_answer(std::int32_t weapon_family = -1,
+		                                        bool weapons_block = false);
+		// fire_pad_answer(weapon_family, weapons_block) == PadAnswer::Clear.
+		[[nodiscard]] bool fire_pad_clear(std::int32_t weapon_family = -1,
+		                                  bool weapons_block = false);
 		virtual bool act();
 		short set_act_type(short num);
 		short restore_act_type();
@@ -578,6 +584,12 @@ class walker : public og::sim::SimEntity
 		std::unique_ptr<og::gameplay::IRenderComponent> render_;  // Optional render component (null for headless)
 
 	private:
+		// The detached weapon fire_pad_answer asks with: `probe` (a walker built
+		// with WeaponProfileProbeTag) configured as weapon_family (-1: the
+		// current weapon), owned by this walker, on its team and floor, standing
+		// on fire()'s pad (px, py). False for "no probe": a non-living, or a
+		// weapon the loader cannot make.
+		bool pad_probe(walker& probe, std::int32_t weapon_family, short& px, short& py);
 		float lastx_ = 0.0f;
 		float lasty_ = 0.0f;
 		float vz_ = 0.0f;

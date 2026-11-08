@@ -1650,7 +1650,7 @@ bool GameWorld::query_object_passable(float x, float y, walker* ob)
     return query_object_passable(x, y, ob, ob != nullptr ? ob->floor() : 0);
 }
 
-bool GameWorld::query_object_passable(float x, float y, walker* ob, int floor, bool quiet)
+bool GameWorld::query_object_passable(float x, float y, walker* ob, int floor, bool quiet, bool weapons_block)
 {
     // plumbing: null walker -> not passable
     if (ob == nullptr)
@@ -1677,7 +1677,7 @@ bool GameWorld::query_object_passable(float x, float y, walker* ob, int floor, b
     // cross-floor probe must NOT use this path — the cross-floor helpers
     // (floor_landing_clear / teleport_landing_clear / classic_spot_clear) do
     // their own manual obmap sweep at an explicit floor instead.
-    return om->query_list(ob, static_cast<short>(x), static_cast<short>(y), quiet);
+    return om->query_list(ob, static_cast<short>(x), static_cast<short>(y), quiet, weapons_block);
 }
 
 bool GameWorld::query_passable(float x, float y, walker* ob)
