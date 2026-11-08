@@ -956,6 +956,49 @@ TEST_F(SemWalker1, a_melee_only_walker_pays_for_a_shot_it_never_launches)
 }
 
 // ---------------------------------------------------------------------------
+// walker.cpp walker::fire (a family hook's veto, #428)
+// ---------------------------------------------------------------------------
+
+// A family's on_fire_weapon answering false vetoes the shot: fire() answers
+// nullptr and the weapon it built dies, as at every other refusal in fire()
+// (#428). Nothing flies: no live weapon, no launch sound, no shot counted. The
+// shipped soldier's veto kills its weapon itself; this hook does not, so the
+// kill is fire()'s. The same elf under a hook answering true launches its rock.
+// RED (planted): the veto arm's `weapon->set_dead(1);` deleted.
+TEST_F(SemWalker1, a_shot_its_family_hook_vetoes_leaves_no_live_weapon)
+{
+    const auto elf_with_hook = [&](const char* answer) {
+        fresh_world();
+        register_test_hooks(std::format(
+            "og.register_hooks('living', 'core:elf', {{\n"
+            "  on_fire_weapon = function(self, weapon) return {} end,\n"
+            "}})\n",
+            answer));
+        walker* elf = living_at(FAMILY_ELF, 0, 320, 320);
+        elf->set_current_weapon(FAMILY_ROCK);
+        face(elf, FACE_RIGHT, 1.0f, 0.0f);
+        elf->set_owned_myguy(std::make_unique<guy>(FAMILY_ELF));
+        return elf;
+    };
+
+    walker* elf = elf_with_hook("false");
+    ASSERT_NE(nullptr, elf);
+    EXPECT_EQ(nullptr, elf->fire()) << "vetoed: fire() answers no shot";
+    ASSERT_EQ(1u, world().weaplist.size()) << "premise: fire() built one weapon before the hook";
+    EXPECT_EQ(1, world().weaplist.front()->dead()) << "vetoed: the built weapon is dead";
+    EXPECT_EQ(0u, live_weapons()) << "vetoed: no live weapon";
+    EXPECT_EQ(0u, count_sound(SOUND_FWIP)) << "vetoed: no launch sound";
+    EXPECT_EQ(0, elf->myguy->total_shots) << "vetoed: no shot counted";
+
+    elf = elf_with_hook("true");
+    ASSERT_NE(nullptr, elf);
+    EXPECT_NE(nullptr, elf->fire()) << "allowed: the rock flies";
+    EXPECT_EQ(1u, live_weapons()) << "allowed: one live weapon";
+    EXPECT_EQ(1u, count_sound(SOUND_FWIP)) << "allowed: the rock's fwip";
+    EXPECT_EQ(1, elf->myguy->total_shots) << "allowed: one shot counted";
+}
+
+// ---------------------------------------------------------------------------
 // walker.cpp:655 walker::fire (a player's launch counts as a shot)
 // ---------------------------------------------------------------------------
 

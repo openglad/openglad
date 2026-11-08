@@ -244,7 +244,7 @@ return anything; it is ignored.
 | `on_death` | `(self) → bool` | Returning a value at all suppresses the default bloodspot path. |
 | `on_act_living` | `(self)` | |
 | `on_shoved` | `(self)` | |
-| `on_fire_weapon` | `(self, weapon) → bool` | `false` blocks the shot. |
+| `on_fire_weapon` | `(self, weapon) → bool` | `false` blocks the shot (the weapon is discarded). |
 | `handle_teleport` | `(self) → bool` | |
 | `on_create` | `(self)` | |
 | `customize_weapon` | `(self, weapon)` | |

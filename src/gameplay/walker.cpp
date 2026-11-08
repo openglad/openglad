@@ -836,16 +836,16 @@ walker  * walker::fire()
 			// tests: QuietProbe.fire_pad_clear_matches_fires_own_pad
 			if (auto hook_result = og::script::hooks::on_fire_weapon(fd, this, weapon))
 			{
-				// rule: A living's family on_fire_weapon Lua hook may veto or modify the launch.
-				//   Here: `!*hook_result`.
-				// tests: FamilyBehaviors.soldier_weapons_left_limits_fire
-				// tests: FamilyBehaviors.archmage_weapon_damage_boost
-				// tests: QuietProbe.fire_pad_clear_matches_fires_own_pad
+				// rule: A veto (on_fire_weapon answers false) kills the weapon fire() built and fires nothing.
+				// tests: FamilyBehaviors.soldier_weapons_left_limits_fire, FamilyBehaviors.archmage_weapon_damage_boost
+				// tests: QuietProbe.fire_pad_clear_matches_fires_own_pad, SemWalker1.a_shot_its_family_hook_vetoes_leaves_no_live_weapon
 				if (!*hook_result)
+				{
+					weapon->set_dead(1);
 					return nullptr;
+				}
 			}
 		}
-        
 		// Record our shot ..
 		// rule: Every ranged launch by a player guy counts as a shot (total_shots and scen_shots),
 		//   feeding accuracy stats.

@@ -1442,6 +1442,17 @@ its mistake:
   script error that points at `og.spawn_spot_clear` (bodies and terrain)
   and `og.query_grid_passable` (terrain). No shipped script passes a floor
   to either. This game only.
+- **A vetoed shot leaves no weapon (#428).** A family's `on_fire_weapon`
+  hook that answers `false` blocks the shot. By then `walker::fire()` has
+  built the weapon, placed it on the pad and aimed it, and it left that
+  weapon alive, where every other refusal in `fire()` kills it (a pad
+  nobody can stand on, a swing, a melee-only family): a hook that did not
+  kill the weapon itself left a shot flying that nobody fired, counted or
+  heard. The veto now kills the weapon. The soldier's out-of-blades veto,
+  the one shipped hook that refuses, kills its weapon itself, and the
+  archmage's never refuses; the modding guide's emberwisp example refuses
+  without killing it, and its refused shot no longer flies. This game only
+  (the old game has no family hooks).
 
 ## Balance
 
