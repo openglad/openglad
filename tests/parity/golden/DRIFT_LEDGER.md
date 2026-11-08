@@ -898,11 +898,97 @@ out-of-bounds `cloud_cycle` frames, which no dump records. The row's drift senti
 written to fail the day the marker survives; it is `WalkerOfTeamAlive(0,2,2)` now, in the current game's
 `tests/parity/scenario_table.h` and in the old game's byte-identical mirror (`1bafb5da`, the pin). Rejected:
 copying the guard into the old game (it would write the current game's bug into classic) and growing the table to 24
-rows (it would encode one binary's link order as data).
+rows (it would encode one binary's link order as data). Since #448 the team count reads livings
+only, and the sentinel is `WalkerOfOrderFamilyAlive(FAMILY_MARKER, kOrderFX, 1, 1)` beside `WalkerOfTeamAlive(0,1,1)`
+(see "Fact readings").
 
 | id | what changed | golden captured from |
 |---|---|---|
 | `archmage_teleport_marker_scen99` | The marker is alive: a `FAMILY_MARKER` walker, five notifications including "(Old Marker Removed)" at tick 80, and 95 `weapon_tracks` samples (2 in the old golden). Its notifications carry `a` = 0 (notif a/b), and the #132 pathing ports set the far soldier's position. Tooth: `WalkerOfTeamAlive(0,2,2)` fails against the old golden. | The old game at `1bafb5da` (`capture_master_golden.sh archmage_teleport_marker_scen99`). |
+
+## Fact readings (#448, #449, #438, 2026-11)
+
+No golden moved for #448 and #449. Two fact kinds read the dumps differently, and every row whose fact changed was
+re-derived from its golden (the old game's capture), never from a current-game dump. #438 re-staged two arenas, and
+their three goldens were deleted until the old game captures them at the mirrored table (below).
+
+### #448: `WalkerOfTeamAlive` counts livings only
+
+The team count used to count every live entry of oblist with that team: a teleport marker, a summoned shield or
+cloud, a bomb, a boomerang, a returning knife, a standing treasure and a generator all counted as walkers of their
+team. It counts Living-order entries only now (`is_living_symbol` in `tests/parity/fact_predicate.cpp`: the dump has
+no order field, and the five order tables share no family name, so the family string decides). An effect, a treasure
+or a generator is counted with the new `WalkerOfOrderFamilyAlive(family, order, min, max)` (live entries only) or the
+existing `WalkerOfOrderFamilyCount` (alive or dead).
+
+29 of the table's 113 team counts read differently against their goldens:
+
+| rows | the count read | what replaced it |
+|---|---|---|
+| `ai_idle_wander_scen9301`, `tick_cadence_scen9301`, `rng_seed_stable_scen99` | a returning `FAMILY_KNIFE_BACK` on team 0 | team 0 `(1,1)` |
+| `effect_chain_scen9410`, `beast_set_difficulty_invariant_scen99` | the arena's generator on team 1 | team 1 one lower |
+| `generator_tent_emission_scen99`, `generator_tower_emission_scen99`, `generator_bones_emission_scen99`, `generator_treehouse_emission_scen99`, `generator_saturation_scen99` | the generator itself | team 1 one lower, and the generator asserted on its own: `WalkerOfOrderFamilyAlive(<generator>, kOrderGenerator, 1, 1)` |
+| `effect_marker_emission_scen99` | the TOWER generator | team 1 `(7,7)`, and the four live markers: `WalkerOfOrderFamilyAlive(FAMILY_MARKER, kOrderFX, 4, 4)` |
+| `special_cleric_scen124`, `effect_magic_shield_emission_scen99`, `effect_shield_absorb_scen99` | the caster's `FAMILY_MAGIC_SHIELD` | team 0 `(1,1)`, and `WalkerOfOrderFamilyAlive(FAMILY_MAGIC_SHIELD, kOrderFX, 1, 1)` |
+| `special_thief_scen789`, `effect_bomb_timer_scen99` | the thief's `FAMILY_BOMB` | team 0 `(1,1)`, and the bomb `(1,1)`; their `rng_drift` ranges went (the byte compare makes the dump equal the golden) |
+| `effect_boomerang_emission_scen99`, `weapon_boomerang_return_scen99`, `effect_boomerang_contact_scen99` | the caster's `FAMILY_BOOMERANG` (and a `FAMILY_KNIFE_BACK` in the first) | team 0 `(1,1)`, and the boomerang `(1,1)` |
+| `effect_cloud_emission_scen99`, `effect_poison_cloud_emit_scen99`, `effect_cloud_poison_scen99` | the thief's `FAMILY_CLOUD` | team 0 `(1,1)`, and the cloud `(1,1)`; in `effect_cloud_emission_scen99` the cloud fact is structural (the old label claimed the hook neuter kills the cloud before tick 45; measured, it is still alive) |
+| `mage_teleport_marker_scen99`, `archmage_teleport_marker_scen99`, `mage_bot_heartburst_fixes_scen99` | the `FAMILY_MARKER` the mage leaves (recorded on team 0, as in the old game) | team 0 `(1,1)`, and the marker `(1,1)` |
+| `treasure_flight_potion_flier_noconsume_scen99`, `treasure_drumstick_fullhp_noconsume_scen99`, `treasure_gold_bar_team_reject_scen99`, `treasure_life_gem_enemy_reject_scen99` | the team-2 treasure itself (the row's "still stands" tooth) | the treasure's own live count, `WalkerOfOrderFamilyAlive(<treasure>, kOrderTreasure, 1, 1)` |
+
+Three rows whose goldens did not move kept their teeth only through a non-living entry appearing under their pin,
+and got an explicit fact for it: `effect_boomerang_drawcycle_cap_scen99` (the blade survives the raised cap:
+`WalkerOfOrderFamilyAlive(FAMILY_BOOMERANG, kOrderFX, 0, 0)`), `effect_bomb_lifetime_scen99` (under
+`kMut_effect_lifetime` the `FAMILY_FLASH` stays alive: `WalkerOfOrderFamilyAlive(FAMILY_FLASH, kOrderFX, 0, 0)`) and
+`effect_chain_scen9410` (under the same pin the struck soldier's `FAMILY_HIT` stays alive on team 1:
+`WalkerOfOrderFamilyCount(FAMILY_HIT, kOrderFX, 0, 0)`), each measured under its pin.
+
+### #449: the treasure removal fact is retired
+
+`TreasureFamilyOfOrderRemovedFromOblist` passed ("indeterminate") when the treasure was never taken, so it could not
+fail for the case it was named after; the canary had never seen it flip under any pin. The kind is gone, and each of
+its 31 uses was replaced from its row's golden:
+
+- Taken and reaped (no entry left in the golden), `WalkerOfOrderFamilyCount(F, kOrderTreasure, 0, 0)`, 7 uses:
+  `treasure_drumstick_pickup_scen99`, `speed_potion_movement_scen99`, `invulnerable_potion_scen99`,
+  `consumable_inventory_state_scen99` (drumstick and magic potion), `treasure_invis_effect_scen99`,
+  `treasure_magic_potion_overfill_scen99`.
+- Taken, its dead entry still listed (the level had ended, so nothing was reaped), `WalkerOfOrderFamilyAlive(F,
+  kOrderTreasure, 0, 0)`, 12 uses: the gold bar, silver bar, magic, invisibility, invulnerability, flight and speed
+  potion and life gem pickup rows, `effect_flash_emission_scen99`, `treasure_flight_effect_scen99`,
+  `elf_forest_haste_scen99`, `elf_forest_haste_fixes_scen99`. The count form the issue proposed is false on these
+  goldens (each holds the treasure dead, 0 alive and 1 dead), which is why the live-only kind exists.
+- Rows whose taken-claim was false (the golden shows the treasure standing at the final tick), `WalkerOfOrderFamilyAlive(F,
+  kOrderTreasure, 1, 1)`: `treasure_stain_pickup_scen99` (the off-path literal stain), `treasure_teleporter_pickup_scen99`,
+  `treasure_key_pickup_scen99`, `treasure_exit_pickup_scen99`, `treasure_key_team1_silent_scen99`,
+  `weapon_door_unlock_chain_scen99`, `treasure_exit_open_prompt_scen99` (branch-internal, read from the current game's
+  dump), and the four treasure guard rows of #448, whose own live count already says so. A key, a teleporter and an
+  exit are never consumed when eaten, in either game.
+- `exit_trigger_scen9302`: no exit is ever staged in that row (its spawns are a soldier and an orc), so the fact held
+  for that reason alone; it was deleted.
+
+The treasure coverage gate (`any_treasure_binding`) binds a family through either order-aware count in the treasure
+order.
+
+### #438: two arenas re-staged, three goldens deleted pending recapture
+
+- `mage_freeze_time_offteam_scen99`: the mage and its two orcs stood in scen1's lake at the (60, 60) corner, so the
+  orcs' first ticks were a drowning flight out of the water, not the walk the movement fact reads. The triangle moved
+  (+60, +60) onto grass (orcs (160, 120) and (120, 160), mage (120, 120)), same shape, every other input unchanged; the
+  three spawns left the spawn-room gate's list of spawns standing in terrain.
+- `archer_bot_bolt_at_blows_scen99` and its setting-on twin `archer_bot_bolt_at_blows_fixes_scen99`: the tower stood
+  1 px off both edges the row depends on (one free row under the fire arrow's pad, and 42 of the 43 px blast reach), so a
+  one-pixel change flipped the row. The tower now stands 2 px inside the blast and 2 px clear of the pad, the middle of
+  the 5 px window a level-7 archer allows. The tower could not move alone: above y 80 its box meets impassable ground at
+  tile (7, 4) unless x >= 128, which is outside the blast; so the archer moved 1 px south, to (120, 121), and the tower
+  to (120, 80).
+
+Their goldens were deleted, so the three rows read "master golden missing" until the old game captures them at the
+mirrored table. Their facts were checked on the current game's dump and must be re-derived from the captured goldens:
+the mage row's `WalkerPositionMoved(FAMILY_ORC, 623, 362)` is the current game's number; the archer rows' facts (the
+archer dead with the setting off, alive with it on) kept their shape. Each row's pin was measured flipping its fact on
+the current game. These are not listed under "Open" below: that list is for goldens that are not old-game captures,
+and these rows have none until the capture lands.
 
 ## Open: goldens that are not yet old-game captures
 
