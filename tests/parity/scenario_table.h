@@ -7871,11 +7871,15 @@ inline constexpr Mutation kMut_orc_yell_zero_constitution_scen99 = {
 // drops the branch's "TIME IS FROZEN!" Notification (is_classic_display_text_notification)
 // and its RequestRedraw, the same normalisation already applied to "TIME LEFT: " and
 // DamageTile. The row asserts no event facts as a result.
+// Until #438 the mage and its two orcs stood in scen1's lake at the (60, 60)
+// corner, so the orcs' first ticks were a drowning flight out of the water, not
+// the walk the movement fact reads. The triangle is moved (+60, +60) onto grass,
+// same shape, every other input unchanged.
 inline constexpr SpawnSpec kFamilySpawns_mage_freeze_time_offteam_scen99[] = {
-    { FAMILY_ORC,     1, kOrderLiving, 100,  60, 0, 0 },            // ally A: receives bonus_rounds
-    { FAMILY_ORC,     1, kOrderLiving,  60, 100, 0, 0 },            // ally B: receives bonus_rounds
-    { FAMILY_MAGE,    1, kOrderLiving,  60,  60, 0, 0, 15, 900 },   // AI caster (slot-3 cost 500)
-    { FAMILY_SOLDIER, 0, kOrderLiving, 560, 440, 0, 0 },            // player LAST, 880px away (Manhattan)
+    { FAMILY_ORC,     1, kOrderLiving, 160, 120, 0, 0 },            // ally A: receives bonus_rounds
+    { FAMILY_ORC,     1, kOrderLiving, 120, 160, 0, 0 },            // ally B: receives bonus_rounds
+    { FAMILY_MAGE,    1, kOrderLiving, 120, 120, 0, 0, 15, 900 },   // AI caster (slot-3 cost 500)
+    { FAMILY_SOLDIER, 0, kOrderLiving, 560, 440, 0, 0 },            // player LAST, 760px away (Manhattan)
 };
 
 inline constexpr FactPredicate kFacts_mage_freeze_time_offteam_scen99[] = {
@@ -7883,15 +7887,17 @@ inline constexpr FactPredicate kFacts_mage_freeze_time_offteam_scen99[] = {
     pred::WalkerFamilyCount(FAMILY_MAGE, 1, 1),
     pred::WalkerFamilyCount(FAMILY_ORC, 2, 2),
     pred::WalkerOfTeamAlive(/*team=*/1, 3, 3),
-    pred::WalkerPositionMoved(FAMILY_ORC, 387, 523,
-        "consequence: freeze_time's off-team arm grants min(5 + 2*level, 50) = 35 bonus_rounds to every ally and each bonus round is a recursive extra living::act, so the trailing orc is carried out to (387,523); with the per-level term zeroed the grant collapses to the base 5 and neither orc gets past ypos 439"),
+    // Read from the current game's dump after the #438 move; the old game's
+    // capture at the mirrored table replaces these numbers with its own.
+    pred::WalkerPositionMoved(FAMILY_ORC, 623, 362,
+        "consequence: freeze_time's off-team arm grants min(5 + 2*level, 50) = 35 bonus_rounds to every ally and each bonus round is a recursive extra living::act, so an orc is carried out to (623,362) at the map's east edge; with the per-level term zeroed the grant collapses to the base 5 and neither orc gets past xpos 521"),
 };
 
 inline constexpr Mutation kMut_mage_freeze_time_offteam_scen99 = {
     "packs/core/families/living-03-mage.lua", 599,
     "bonus_rounds_per_level = 2",
     "bonus_rounds_per_level = 0",
-    "Collapses the off-team freeze grant from min(5 + 2*15, 50) = 35 rounds to the base 5. The allies get seven times fewer extra act() passes, so neither orc reaches the WalkerPositionMoved bound (the trailing orc stops at (471,439) instead of (387,523))."
+    "Collapses the off-team freeze grant from min(5 + 2*15, 50) = 35 rounds to the base 5. The allies get seven times fewer extra act() passes, so neither orc reaches the WalkerPositionMoved bound (the orcs stop at (493,427) and (521,533) instead of one reaching (623,362))."
 };
 
 // beast_set_difficulty_invariant_scen99: reach living::set_difficulty for a family with no
@@ -9842,16 +9848,25 @@ inline constexpr Mutation kMut_archer_bot_ring_one_foe_fixes_scen99 = {
 };
 
 // --- archer_bot_bolt_at_blows (bot gates: EXPLODING BOLT never inside its own blast) ---
-// A hostile level-7 archer bot and a stationary TOWER1 above it, an 11 px gap
-// away and 42 px corner to corner: faced, and inside the archer's own blast
-// (15 + 4 * 7 = 43 px). The seed (5) makes the archer roll EXPLODING BOLT on
-// tick 1. The classic gate (a foe within 130 px) fires it; the bolt goes off
-// against the tower at once, and the blast kills the tower and the archer
-// with it. With the setting on the bolt wants its foe outside the blast it
-// would throw on the archer, so the archer keeps shooting ordinary arrows.
+// A hostile level-7 archer bot and a stationary TOWER1 straight above it: faced,
+// a 12 px gap away and 41 px corner to corner, inside the archer's own blast
+// (15 + 4 * 7 = 43 px, Manhattan distance of the top-left corners). The fire
+// arrow's pad (9x9 at (123, 111), heading UP) clears the tower's bottom row 108 by
+// 2 px, and the tower sits 2 px inside the blast: for a level-7 archer straight
+// below the tower, the gap has a 5 px window where both hold, and this is its
+// middle. Until #438 the archer stood at (120, 120) and the tower at (118, 80),
+// 1 px off both edges (one free row under the pad, 42 of 43 px), so a one-pixel
+// change flipped the row. Moving the tower alone cannot fix it: above y 80 the
+// tower's box meets impassable ground at tile (7, 4) unless x >= 128, which is
+// outside the blast, so the archer moved 1 px south as well. The seed (5) makes
+// the archer roll EXPLODING BOLT on tick 1. The classic gate (a foe within
+// 130 px) fires it; the bolt goes off against the tower at once, and the blast
+// kills the tower and the archer with it. With the setting on the bolt wants
+// its foe outside the blast it would throw on the archer, so the archer keeps
+// shooting ordinary arrows.
 inline constexpr SpawnSpec kFamilySpawns_archer_bot_bolt_at_blows_scen99[] = {
-    { FAMILY_TOWER1,  0, kOrderLiving, 118,  80, 0, 0 },          // the foe above: an 11 px gap, faced, 42 px corner to corner (inside the 43 px blast)
-    { FAMILY_ARCHER,  1, kOrderLiving, 120, 120, 0, 0, 7, 200 },  // hostile level-7 bot, heading UP at spawn
+    { FAMILY_TOWER1,  0, kOrderLiving, 120,  80, 0, 0 },          // the foe straight above: a 12 px gap, faced, 41 px corner to corner (2 px inside the 43 px blast; 2 px clear of the bolt's pad)
+    { FAMILY_ARCHER,  1, kOrderLiving, 120, 121, 0, 0, 7, 200 },  // hostile level-7 bot, heading UP at spawn
     { FAMILY_SOLDIER, 0, kOrderLiving, 560, 440, 0, 0 },          // idle player LAST, far away
 };
 inline constexpr FactPredicate kFacts_archer_bot_bolt_at_blows_scen99[] = {

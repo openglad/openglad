@@ -906,10 +906,11 @@ only, and the sentinel is `WalkerOfOrderFamilyAlive(FAMILY_MARKER, kOrderFX, 1, 
 |---|---|---|
 | `archmage_teleport_marker_scen99` | The marker is alive: a `FAMILY_MARKER` walker, five notifications including "(Old Marker Removed)" at tick 80, and 95 `weapon_tracks` samples (2 in the old golden). Its notifications carry `a` = 0 (notif a/b), and the #132 pathing ports set the far soldier's position. Tooth: `WalkerOfTeamAlive(0,2,2)` fails against the old golden. | The old game at `1bafb5da` (`capture_master_golden.sh archmage_teleport_marker_scen99`). |
 
-## Fact readings (#448, #449, 2026-11)
+## Fact readings (#448, #449, #438, 2026-11)
 
-No golden moved. Two fact kinds read the dumps differently, and every row whose fact changed was re-derived from its
-golden (the old game's capture), never from a current-game dump.
+No golden moved for #448 and #449. Two fact kinds read the dumps differently, and every row whose fact changed was
+re-derived from its golden (the old game's capture), never from a current-game dump. #438 re-staged two arenas, and
+their three goldens were deleted until the old game captures them at the mirrored table (below).
 
 ### #448: `WalkerOfTeamAlive` counts livings only
 
@@ -968,6 +969,26 @@ its 31 uses was replaced from its row's golden:
 
 The treasure coverage gate (`any_treasure_binding`) binds a family through either order-aware count in the treasure
 order.
+
+### #438: two arenas re-staged, three goldens deleted pending recapture
+
+- `mage_freeze_time_offteam_scen99`: the mage and its two orcs stood in scen1's lake at the (60, 60) corner, so the
+  orcs' first ticks were a drowning flight out of the water, not the walk the movement fact reads. The triangle moved
+  (+60, +60) onto grass (orcs (160, 120) and (120, 160), mage (120, 120)), same shape, every other input unchanged; the
+  three spawns left the spawn-room gate's list of spawns standing in terrain.
+- `archer_bot_bolt_at_blows_scen99` and its setting-on twin `archer_bot_bolt_at_blows_fixes_scen99`: the tower stood
+  1 px off both edges the row depends on (one free row under the fire arrow's pad, and 42 of the 43 px blast reach), so a
+  one-pixel change flipped the row. The tower now stands 2 px inside the blast and 2 px clear of the pad, the middle of
+  the 5 px window a level-7 archer allows. The tower could not move alone: above y 80 its box meets impassable ground at
+  tile (7, 4) unless x >= 128, which is outside the blast; so the archer moved 1 px south, to (120, 121), and the tower
+  to (120, 80).
+
+Their goldens were deleted, so the three rows read "master golden missing" until the old game captures them at the
+mirrored table. Their facts were checked on the current game's dump and must be re-derived from the captured goldens:
+the mage row's `WalkerPositionMoved(FAMILY_ORC, 623, 362)` is the current game's number; the archer rows' facts (the
+archer dead with the setting off, alive with it on) kept their shape. Each row's pin was measured flipping its fact on
+the current game. These are not listed under "Open" below: that list is for goldens that are not old-game captures,
+and these rows have none until the capture lands.
 
 ## Open: goldens that are not yet old-game captures
 
