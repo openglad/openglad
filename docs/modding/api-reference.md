@@ -914,7 +914,7 @@ each draw-free and eat-free:
   (r,-r) (-r,r) (r,r)`, and answers the first that fits. `family` is a byte
   (`og.family_id`); `nil` for a family the loader cannot make (no family of
   that order at that id; a living id is never stood in for by a soldier; a
-  negative id, or one past the walker's family byte, 127, #443).
+  negative id, or one past the family byte (255)).
 - `walker:fire_pad_clear([weapon_family [, weapons_block]]) → bool` and
   `walker:fire_pad_answer([weapon_family [, weapons_block]]) → string` (the
   walker methods above) probe the pad `fire()` would use, for the current

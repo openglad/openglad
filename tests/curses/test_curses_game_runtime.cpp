@@ -779,7 +779,7 @@ TEST(CursesGameRuntimeWin, advance_save_after_win_advances_campaign_and_persists
     walker* hero = world.add_ob(Order::Living, FAMILY_SOLDIER);
     ASSERT_NE(hero, nullptr);
     hero->set_order(Order::Living);
-    hero->set_family(static_cast<char>(FAMILY_SOLDIER));
+    hero->set_family(static_cast<std::uint8_t>(FAMILY_SOLDIER));
     hero->set_team_num(0);
     hero->set_user(0);
     {

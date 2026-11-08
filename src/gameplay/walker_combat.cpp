@@ -327,7 +327,7 @@ bool walker::attack(walker  *target)
     float tempdamage = get_base_damage(this);
     short getscore=0;
     Order targetorder = target->query_order();
-    char targetfamily = target->family();
+    const std::uint8_t targetfamily = target->family();
     walker *attacker; // us or our owner ..
 
     // rule: Nobody can strike a dead walker, a friend (same team at the head of both owner chains)
@@ -371,12 +371,14 @@ bool walker::attack(walker  *target)
     // rule: Credit for a hit climbs the owner chain to its head (weapon -> summon -> caster) by the
     //   one climb (walker::chain_head, Gameplay Fixes AP): through a dead owner on both values; with
     //   Gameplay Fixes on a charmed walker heads its own chain, so its blows score for the colour
-    //   it now wears; classic climbs through the charm to the original owner.
+    //   it now wears; classic climbs through the charm to the original owner. A possessed body
+    //   heads its own chain on both values (#430).
     // tests: GameplayFixesCharm.a_charmed_tent_troop_fights_for_its_charmer
     // tests: GameplayFixesCharm.a_charmed_summon_of_an_enemy_caster_fights_for_its_charmer
     // tests: SemWalker3.classic_credit_for_a_charmed_troops_blow_climbs_to_its_original_owner
     // tests: SemWalker3.classic_credit_for_a_blow_climbs_past_a_dead_thrower
     // tests: GameplayFixesChain.a_dead_casters_summon_keeps_its_side_for_friendliness_and_score
+    // tests: KitPossession.a_possessed_tent_troop_fights_for_the_ghosts_side
     headguy = chain_head();
 
     // Score and kill semantics follow the actual attacker's team. The legacy

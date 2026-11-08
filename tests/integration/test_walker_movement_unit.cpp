@@ -36,7 +36,7 @@ struct MovementFixture {
     }
 };
 
-walker* add_living(MovementFixture& fx, char family = FAMILY_SOLDIER)
+walker* add_living(MovementFixture& fx, std::uint8_t family = FAMILY_SOLDIER)
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(Order::Living, family);
@@ -206,7 +206,7 @@ struct WalkerMovementR11Fixture {
     }
 };
 
-walker* add_living(WalkerMovementR11Fixture& fx, char family = FAMILY_SOLDIER)
+walker* add_living(WalkerMovementR11Fixture& fx, std::uint8_t family = FAMILY_SOLDIER)
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(Order::Living, family);
@@ -454,7 +454,7 @@ struct MovementR12Fixture {
     }
 };
 
-walker* add_living(MovementR12Fixture& fx, char family = FAMILY_SOLDIER)
+walker* add_living(MovementR12Fixture& fx, std::uint8_t family = FAMILY_SOLDIER)
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(Order::Living, family);

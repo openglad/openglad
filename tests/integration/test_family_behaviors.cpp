@@ -518,7 +518,7 @@ static int count_family_in_weaplist(int family)
 {
     int n = 0;
     for (auto& uptr : og::runtime::current_session->myscreen_->world().weaplist)
-        if (uptr && !uptr->dead() && uptr->family() == static_cast<char>(family))
+        if (uptr && !uptr->dead() && uptr->family() == static_cast<std::uint8_t>(family))
             n++;
     return n;
 }
@@ -527,7 +527,7 @@ static int count_family_in_fxlist(int family)
 {
     int n = 0;
     for (auto& uptr : og::runtime::current_session->myscreen_->world().fxlist)
-        if (uptr && !uptr->dead() && uptr->family() == static_cast<char>(family))
+        if (uptr && !uptr->dead() && uptr->family() == static_cast<std::uint8_t>(family))
             n++;
     return n;
 }
@@ -536,7 +536,7 @@ static int count_family_in_oblist(int family)
 {
     int n = 0;
     for (auto& uptr : og::runtime::current_session->myscreen_->world().oblist)
-        if (uptr && !uptr->dead() && uptr->family() == static_cast<char>(family))
+        if (uptr && !uptr->dead() && uptr->family() == static_cast<std::uint8_t>(family))
             n++;
     return n;
 }

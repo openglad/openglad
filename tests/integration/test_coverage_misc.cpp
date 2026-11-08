@@ -86,7 +86,7 @@ struct R17Fixture {
     }
 };
 
-living* add_living(R17Fixture& fx, char family, unsigned char team, short x, short y)
+living* add_living(R17Fixture& fx, std::uint8_t family, unsigned char team, short x, short y)
 {
     auto w = std::make_unique<living>();
     w->set_order_family(Order::Living, family);
@@ -104,7 +104,7 @@ living* add_living(R17Fixture& fx, char family, unsigned char team, short x, sho
     return out;
 }
 
-walker* add_fx(R17Fixture& fx, char family, short x, short y)
+walker* add_fx(R17Fixture& fx, std::uint8_t family, short x, short y)
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(Order::FX, family);
@@ -1166,7 +1166,7 @@ struct R19Fixture {
     }
 };
 
-living* add_living(R19Fixture& fx, char family, unsigned char team, short x, short y)
+living* add_living(R19Fixture& fx, std::uint8_t family, unsigned char team, short x, short y)
 {
     auto w = std::make_unique<living>();
     w->set_order_family(Order::Living, family);
@@ -1471,7 +1471,7 @@ struct R20Fixture {
     }
 };
 
-walker* add_walker(R20Fixture& fx, Order order, char family, unsigned char team, short x, short y)
+walker* add_walker(R20Fixture& fx, Order order, std::uint8_t family, unsigned char team, short x, short y)
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(order, family);
@@ -1492,7 +1492,7 @@ walker* add_walker(R20Fixture& fx, Order order, char family, unsigned char team,
     return out;
 }
 
-living* add_living(R20Fixture& fx, char family, unsigned char team, short x, short y)
+living* add_living(R20Fixture& fx, std::uint8_t family, unsigned char team, short x, short y)
 {
     auto w = std::make_unique<living>();
     w->set_order_family(Order::Living, family);
@@ -1835,7 +1835,7 @@ struct FinalR16Fixture {
     }
 };
 
-living* add_living(FinalR16Fixture& fx, char family, unsigned char team, short x, short y)
+living* add_living(FinalR16Fixture& fx, std::uint8_t family, unsigned char team, short x, short y)
 {
     auto w = std::make_unique<living>();
     w->set_order_family(Order::Living, family);
@@ -1853,7 +1853,7 @@ living* add_living(FinalR16Fixture& fx, char family, unsigned char team, short x
     return out;
 }
 
-walker* add_fx(FinalR16Fixture& fx, char family, short x, short y)
+walker* add_fx(FinalR16Fixture& fx, std::uint8_t family, short x, short y)
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(Order::FX, family);

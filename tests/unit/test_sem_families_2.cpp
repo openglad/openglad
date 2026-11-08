@@ -663,7 +663,7 @@ namespace {
 // find_nearest_blood looks) on the first passable spot east, south, west or
 // north of the caster that is inside `reach`.
 walker* stain_in_reach(Field& f, walker* caster, unsigned char team,
-                       char old_family, std::int32_t reach, short level = 1)
+                       std::uint8_t old_family, std::int32_t reach, short level = 1)
 {
     walker* stain = f.world().add_fx_ob(Order::Treasure, FAMILY_STAIN);
     if (stain == nullptr)

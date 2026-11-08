@@ -170,7 +170,7 @@ class walker : public og::sim::SimEntity
 		bool attack(walker  *target);
 		virtual bool animate();
 		bool set_frame_from_current_walk_animation();
-		bool set_order_family(Order order, char family);
+		bool set_order_family(Order order, std::uint8_t family);
 		virtual Order query_order() const
 		{
 			return order();
@@ -263,7 +263,7 @@ class walker : public og::sim::SimEntity
 		void transform_to(Order whatorder, std::int32_t whatfamily); // change picture, etc.
 		virtual bool death(); // called when death/destruction occurs ..
 		void generate_bloodspot(); // make a permanent stain ..
-			virtual walker* do_summon(char whatfamily, std::int32_t summon_lifetime);
+			virtual walker* do_summon(std::uint8_t whatfamily, std::int32_t summon_lifetime);
 		virtual bool check_special();
 		void center_on(walker  *target);  // center us on target
 		virtual void set_difficulty(std::uint32_t whatlevel);
@@ -280,16 +280,19 @@ class walker : public og::sim::SimEntity
 		std::int32_t is_friendly(const walker *target) const;
 		std::int32_t is_friendly_to_team(unsigned char team) const;
 		// Gameplay Fixes AD (#412): true while this walker's charm runs
-		// (charm_left() > 0) with the setting on. Every owner-chain climb
-		// stops here: a charmed troop or summon heads its own chain and fights
-		// for the colour it wears. Defined in walker_specials.cpp.
+		// (charm_left() > 0) with the setting on; New Specials (#430): true
+		// while a ghost rides this walker (possess_link set, not hidden), on
+		// both values. Every owner-chain climb stops here: a charmed or
+		// possessed troop or summon heads its own chain and fights for the
+		// colour it wears. Defined in walker_specials.cpp.
 		bool charmed_head() const;
 		// Gameplay Fixes AP (#429): the one owner-chain climb. chain_next is
 		// the next link up, or nullptr where every climb stops (no owner, a
-		// self-loop, a charmed walker with the setting on); a dead owner is
+		// self-loop, a walker charmed_head names); a dead owner is
 		// climbed through. chain_head is the top of the climb, the head a blow
 		// scores for; alliance_head is the head is_friendly reads (with the
-		// setting off the classic climb, which stops at a dead owner). Defined
+		// setting off the classic climb, which stops at a dead owner and at a
+		// possessed body). Defined
 		// in walker_specials.cpp.
 		walker* chain_next() const;
 		walker* chain_head();

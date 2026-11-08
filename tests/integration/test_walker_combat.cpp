@@ -1211,7 +1211,7 @@ TEST(WalkerCombat, walker_set_order_family_all)
     walker* w = make_guy(FAMILY_SOLDIER, 0);
     ASSERT_TRUE(w != nullptr) << "walker created";
 
-    char families[] = { FAMILY_SOLDIER, FAMILY_ELF, FAMILY_ARCHER, FAMILY_MAGE,
+    std::uint8_t families[] = { FAMILY_SOLDIER, FAMILY_ELF, FAMILY_ARCHER, FAMILY_MAGE,
                         FAMILY_SKELETON, FAMILY_CLERIC, FAMILY_FIREELEMENTAL,
                         FAMILY_FAERIE, FAMILY_SMALL_SLIME, FAMILY_THIEF,
                         FAMILY_GHOST, FAMILY_DRUID, FAMILY_ORC, FAMILY_BARBARIAN };

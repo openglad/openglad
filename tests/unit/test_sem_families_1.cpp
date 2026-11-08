@@ -132,7 +132,7 @@ protected:
         std::vector<walker*> out;
         for (const auto& ob : world().weaplist)
             if (ob && ob->dead() == 0 && ob->query_order() == Order::Weapon &&
-                ob->family() == static_cast<char>(family))
+                ob->family() == static_cast<std::uint8_t>(family))
                 out.push_back(ob.get());
         return out;
     }
@@ -144,7 +144,7 @@ protected:
         for (const GameWorld::EntityList* list : {&world().oblist, &world().fxlist, &world().weaplist})
             for (const auto& ob : *list)
                 if (ob && ob->dead() == 0 && ob->query_order() == Order::FX &&
-                    ob->family() == static_cast<char>(FAMILY_MARKER) &&
+                    ob->family() == static_cast<std::uint8_t>(FAMILY_MARKER) &&
                     (owner == nullptr || ob->owner() == owner))
                     ++n;
         return n;
@@ -1208,7 +1208,7 @@ TEST_F(SemMage, an_unseated_mage_retires_its_marker_without_a_notice)
         ASSERT_EQ(1, live_markers(mage));
         walker* first = nullptr;
         for (const auto& ob : world().oblist)
-            if (ob && ob->dead() == 0 && ob->family() == static_cast<char>(FAMILY_MARKER) &&
+            if (ob && ob->dead() == 0 && ob->family() == static_cast<std::uint8_t>(FAMILY_MARKER) &&
                 ob->query_order() == Order::FX)
                 first = ob.get();
         ASSERT_NE(nullptr, first);

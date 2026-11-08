@@ -101,7 +101,7 @@ std::size_t count_family(GameWorld& w, Order order, int family)
 {
     std::size_t n = 0;
     for (walker* ob : entities_of(w, order)) {
-        if (ob->family() == static_cast<char>(family))
+        if (ob->family() == static_cast<std::uint8_t>(family))
             n++;
     }
     return n;
@@ -111,7 +111,7 @@ std::size_t count_family(GameWorld& w, Order order, int family)
 walker* find_family(GameWorld& w, Order order, int family)
 {
     for (walker* ob : entities_of(w, order)) {
-        if (ob->family() == static_cast<char>(family))
+        if (ob->family() == static_cast<std::uint8_t>(family))
             return ob;
     }
     return nullptr;
@@ -331,7 +331,7 @@ TEST(PackLuaDruid, each_circle_of_protection_cast_shields_every_friend_in_range)
 
     float shield_before = 0.0f;
     for (walker* ob : entities_of(w, Order::Weapon)) {
-        if (ob->family() == static_cast<char>(FAMILY_CIRCLE_PROTECTION))
+        if (ob->family() == static_cast<std::uint8_t>(FAMILY_CIRCLE_PROTECTION))
             shield_before += ob->stats()->hitpoints();
     }
     ASSERT_GT(shield_before, 0.0f);
@@ -342,7 +342,7 @@ TEST(PackLuaDruid, each_circle_of_protection_cast_shields_every_friend_in_range)
     std::size_t live_circles = 0;
     float shield_after = 0.0f;
     for (walker* ob : entities_of(w, Order::Weapon)) {
-        if (ob->family() != static_cast<char>(FAMILY_CIRCLE_PROTECTION))
+        if (ob->family() != static_cast<std::uint8_t>(FAMILY_CIRCLE_PROTECTION))
             continue;
         if (ob->dead() != 0)
             continue;
@@ -494,7 +494,7 @@ namespace {
 // spot that satisfies both rather than hard-coding an offset that depends on
 // sprite sizes.
 walker* drop_bloodstain(GameWorld& w, walker* caster, unsigned char team,
-                        char old_family, std::int32_t max_distance)
+                        std::uint8_t old_family, std::int32_t max_distance)
 {
     walker* stain = w.add_fx_ob(Order::Treasure, FAMILY_STAIN);
     if (stain == nullptr)
@@ -1323,7 +1323,7 @@ TEST(PackLuaSlime, a_completed_split_animation_leaves_two_small_slimes)
 
     walker* sibling = nullptr;
     for (walker* ob : entities_of(w, Order::Living)) {
-        if (ob != slime && ob->family() == static_cast<char>(FAMILY_SMALL_SLIME))
+        if (ob != slime && ob->family() == static_cast<std::uint8_t>(FAMILY_SMALL_SLIME))
             sibling = ob;
     }
     ASSERT_NE(nullptr, sibling);
@@ -1368,7 +1368,7 @@ TEST(PackLuaSlime, a_low_experience_split_strips_the_offspring_to_a_monster)
 
     walker* sibling = nullptr;
     for (walker* ob : entities_of(w, Order::Living)) {
-        if (ob != slime && ob->family() == static_cast<char>(FAMILY_SMALL_SLIME))
+        if (ob != slime && ob->family() == static_cast<std::uint8_t>(FAMILY_SMALL_SLIME))
             sibling = ob;
     }
     ASSERT_NE(nullptr, sibling);
@@ -2005,7 +2005,7 @@ TEST(PackLuaEffectDoorOpen, a_finished_opening_settles_into_an_ignored_copy)
         << "the animating effect retires once it has handed off";
     walker* settled = nullptr;
     for (walker* ob : entities_of(w, Order::FX)) {
-        if (ob != opening && ob->family() == static_cast<char>(FAMILY_DOOR_OPEN))
+        if (ob != opening && ob->family() == static_cast<std::uint8_t>(FAMILY_DOOR_OPEN))
             settled = ob;
     }
     ASSERT_NE(nullptr, settled) << "the open doorway must survive the handoff";
@@ -2656,7 +2656,7 @@ TEST(PackLuaSlime, a_veteran_split_halves_the_experience_across_both_bodies)
 
     walker* sibling = nullptr;
     for (walker* ob : entities_of(w, Order::Living)) {
-        if (ob != slime && ob->family() == static_cast<char>(FAMILY_SMALL_SLIME))
+        if (ob != slime && ob->family() == static_cast<std::uint8_t>(FAMILY_SMALL_SLIME))
             sibling = ob;
     }
     ASSERT_NE(nullptr, sibling);

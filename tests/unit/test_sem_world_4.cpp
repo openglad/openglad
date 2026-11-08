@@ -356,8 +356,8 @@ TEST(SemRespawn, a_body_probe_answers_no_for_a_family_slot_the_loader_cannot_mak
 // #480 make_body_probe: the probe answers no unless the loader made exactly
 // the order and family asked for. The loader stands family 0 in for an id
 // with no slot (-1, 256, 300), a soldier in for a living with no descriptor
-// (an empty in-table slot, 100), and the walker's char family byte wraps
-// 128..255 negative (#443): each is a family the game cannot make, so every
+// (an empty in-table slot, 100), and nothing is registered at 128, 250 or
+// 255: each is a family the game cannot make, so every
 // probe answers no, makes nothing and draws nothing. A real family of each
 // order fits on the same ground, so no "no" is vacuous.
 TEST(SemRespawn, a_body_probe_answers_no_for_an_id_past_the_family_byte_or_a_living_with_no_family)

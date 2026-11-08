@@ -46,7 +46,7 @@ struct OrcR15Fixture {
     }
 };
 
-living* add_living(OrcR15Fixture& fx, unsigned char team, char family, short x, short y)
+living* add_living(OrcR15Fixture& fx, unsigned char team, std::uint8_t family, short x, short y)
 {
     auto w = std::make_unique<living>();
     w->set_order_family(Order::Living, family);
@@ -62,13 +62,13 @@ living* add_living(OrcR15Fixture& fx, unsigned char team, char family, short x, 
     return out;
 }
 
-walker* add_stain(OrcR15Fixture& fx, short x, short y, unsigned char team, char old_family, std::int32_t level)
+walker* add_stain(OrcR15Fixture& fx, short x, short y, unsigned char team, int old_family, std::int32_t level)
 {
     walker* stain = fx.level.add_fx_ob(Order::Treasure, FAMILY_STAIN);
     stain->set_team_num(team);
     stain->setxy(x, y);
     stain->set_dead(0);
-    stain->stats()->set_old_family(old_family);
+    stain->stats()->set_old_family(static_cast<std::uint8_t>(old_family));
     stain->stats()->set_level(level);
     return stain;
 }

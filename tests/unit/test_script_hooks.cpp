@@ -228,7 +228,7 @@ protected:
         world.entity_factory =
             [](Order order, std::int32_t family) -> std::unique_ptr<walker> {
             auto entity = std::make_unique<walker>();
-            entity->set_order_family(order, static_cast<char>(family));
+            entity->set_order_family(order, static_cast<std::uint8_t>(family));
             entity->set_sizex(16);
             entity->set_sizey(16);
             entity->ani = nullptr;
@@ -909,7 +909,7 @@ protected:
         world.entity_factory =
             [](Order order, std::int32_t family) -> std::unique_ptr<walker> {
             auto entity = std::make_unique<walker>();
-            entity->set_order_family(order, static_cast<char>(family));
+            entity->set_order_family(order, static_cast<std::uint8_t>(family));
             entity->set_sizex(16);
             entity->set_sizey(16);
             entity->ani = nullptr;

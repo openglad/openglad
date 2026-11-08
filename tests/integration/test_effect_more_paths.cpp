@@ -80,7 +80,7 @@ static walker* find_spawned_fx(GameWorld& world, int family, int* out_count)
     for (auto& uptr : world.oblist)
     {
         walker* w = uptr.get();
-        if (w && w->query_order() == Order::FX && w->family() == static_cast<char>(family))
+        if (w && w->query_order() == Order::FX && w->family() == static_cast<std::uint8_t>(family))
         {
             ++count;
             if (!found)

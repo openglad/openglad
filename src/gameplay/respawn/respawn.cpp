@@ -1308,8 +1308,8 @@ namespace {
 {
     const PixieData* data = world.configure_existing_entity(probe, order, family);
     // The loader stands a family 0 in for an id with no slot and a soldier in
-    // for a living with no descriptor, and the walker's char family byte
-    // wraps 128..255 negative (#443): any stand-in is "cannot make".
+    // for a living with no descriptor: any stand-in is "cannot make". (Since
+    // #443 every id 0..255 is its own family byte.)
     // rule: Asking whether a body of a family fits somewhere answers no for a family the loader
     //   cannot make: an empty slot, an id outside the family byte, or a living with no family
     //   (never a soldier stand-in); the configured body must be the order and family asked for.

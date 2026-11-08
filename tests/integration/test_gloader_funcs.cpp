@@ -756,13 +756,13 @@ TEST(GloaderFuncs, custom_spritesheet_rejects_path_traversal)
     ASSERT_TRUE(apply_sprite_sheet_setting());
 }
 
-// A family byte above 127 that reaches the loader through a signed char
-// arrives NEGATIVE (the same narrowing that once walked the editor's team
-// brush out of range). All three of the loader's family->slot readers must
-// land on the order's family-0 row: without the clamp they index the
-// graphics/stats arrays out of bounds, which is a read of arbitrary heap as
-// a sprite. The family-1 arm beside each is what proves the clamp is a
-// clamp and not "every family reads row 0".
+// A negative family (a caller's int; since #443 the walker's own byte is
+// unsigned, but a signed char once turned 128..255 negative, the narrowing
+// that walked the editor's team brush out of range) must land on the order's
+// family-0 row in all three of the loader's family->slot readers: without
+// the clamp they index the graphics/stats arrays out of bounds, which is a
+// read of arbitrary heap as a sprite. The family-1 arm beside each is what
+// proves the clamp is a clamp and not "every family reads row 0".
 TEST(GloaderFuncs, an_out_of_range_family_reads_the_orders_first_row)
 {
     loader* l = og::runtime::current_session->myscreen_->myloader;

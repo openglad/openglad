@@ -370,7 +370,7 @@ protected:
         walker* w = tw.world().add_weap_ob(Order::Weapon, FAMILY_KNIFE);
         if (w == nullptr)
             return nullptr;
-        w->set_order_family(Order::Weapon, static_cast<char>(family));
+        w->set_order_family(Order::Weapon, static_cast<std::uint8_t>(family));
         w->set_team_num(team);
         w->set_sizex(16);
         w->set_sizey(16);
@@ -542,7 +542,7 @@ protected:
         world.entity_factory = [](Order order, std::int32_t family)
             -> std::unique_ptr<walker> {
             auto entity = std::make_unique<walker>();
-            entity->set_order_family(order, static_cast<char>(family));
+            entity->set_order_family(order, static_cast<std::uint8_t>(family));
             entity->set_sizex(16);
             entity->set_sizey(16);
             return entity;

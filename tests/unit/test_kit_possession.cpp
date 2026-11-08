@@ -38,6 +38,8 @@
 //   death on a mirror   one snapshot carries both  rider_dies_mid_possession_on_a_mirror,
 //                                                  host_death_kills_the_rider_on_a_mirror
 //   linked: body hides  turned away (DIG IN)       a_possessed_body_never_hides
+//   linked: sides       the host heads its own     a_possessed_tent_troop_fights_for_the_ghosts_side,
+//                       owner chain (#430)         a_possessed_summon_of_an_enemy_caster_is_its_own_credit
 //   snapshot seed       see test_world_snapshot.cpp (possess_link_survives_...,
 //                       snapshot_seeded_world_resumes_a_possession_and_keeps_a_ward)
 //   level end           the rider is a hero like any other (no code: the host is
@@ -45,6 +47,7 @@
 
 #include <gtest/gtest.h>
 
+#include "../test_family_hook_dispatch.h"
 #include "../test_game_world_fixture.h"
 #include "unit_pack_store_guard.h"
 
@@ -1324,4 +1327,220 @@ TEST(KitPossession, host_death_kills_the_rider_on_a_mirror)
     EXPECT_EQ(0u, m_rider->possess_link());
     EXPECT_EQ(0u, m_host->possess_link());
     EXPECT_EQ(kOrcTeam, m_host->team_num());
+}
+
+// #430: a possessed body heads its own owner chain.
+//
+// POSSESS turns its host to the ghost's colour and leaves the host's owner
+// alone. Every alliance question climbs the owner chain to its head
+// (walker::is_friendly, is_friendly_to_team, the team-score climb in
+// walker::attack, walker::credit_head), and each climb stops at
+// walker::charmed_head, which answers yes for a body a ghost rides (its
+// possess_link set, not hidden). So a ridden tent troop or summon of an
+// enemy caster fights, scores and is credited for the ghost's side, on both
+// values of Gameplay Fixes (New Specials is its own setting, and with it
+// off no ghost possesses). Its owner, its lifetime and its tent tie are not
+// touched, and when the ride ends the chain is what it was.
+//
+// The scene: a red (team 0) ghost and a red soldier, a green (team 1) tent
+// re-armed to spawn orcs (its stock skeletons are undead, and undead resist
+// POSSESS), the tent's own orc, and a green soldier. Red is the player's
+// team (my_team 0), so a red attacker scores the classic team score.
+namespace {
+
+constexpr unsigned char kRed = 0;
+constexpr unsigned char kGreen = 1;
+
+struct OwnedHostScene
+{
+    std::unique_ptr<TestGameWorld> tw;
+    walker* tent = nullptr;
+    walker* troop = nullptr;
+    walker* ghost = nullptr;
+    walker* red = nullptr;
+    walker* green = nullptr;
+
+    explicit OwnedHostScene(short fixes)
+    {
+        og::test::mount_core_pack();
+        tw = std::make_unique<TestGameWorld>();
+        GameWorld& w = tw->world();
+        open_field(w);
+        w.my_team = 0;
+        w.gameplay_fixes = fixes;
+        w.new_specials = 1;
+
+        tent = w.add_ob(Order::Generator, FAMILY_TENT);
+        if (tent == nullptr)
+            return;
+        tent->set_team_num(kGreen);
+        tent->setxy(320, 360);
+        tent->stats()->set_level(1);
+        // Re-armed the way a pack or a level script could re-arm it.
+        tent->set_default_weapon(FAMILY_ORC);
+        // The tent's own spawn: owner = the tent, lifetime 800 + 11.
+        troop = tent->fire();
+        if (troop == nullptr)
+            return;
+        troop->setxy(100, 100);
+        troop->stats()->set_level(1);
+        troop->set_act_type(ACT_SIT);  // a body a seat drives resists POSSESS
+        ghost = add(FAMILY_GHOST, kRed, 130, 100);
+        if (ghost != nullptr)
+            ghost->set_act_type(ACT_SIT);
+        red = add(FAMILY_SOLDIER, kRed, 100, 240);
+        green = add(FAMILY_SOLDIER, kGreen, 240, 240);
+    }
+
+    GameWorld& world() { return tw->world(); }
+
+    walker* add(int family, unsigned char team, int x, int y)
+    {
+        walker* w = world().add_ob(Order::Living, family);
+        if (w == nullptr)
+            return nullptr;
+        w->set_team_num(team);
+        w->set_real_team_num(255);
+        w->setxy(static_cast<short>(x), static_cast<short>(y));
+        w->set_act_type(ACT_CONTROL);
+        return w;
+    }
+};
+
+// One blow of `damage` from a to b: did it land, and what did it take?
+struct Blow
+{
+    bool landed = false;
+    float hp_lost = 0.0f;
+};
+
+Blow strike(walker* a, walker* b, float damage)
+{
+    b->stats()->set_hitpoints(1000.0f);
+    const float before = b->stats()->hitpoints();
+    a->set_damage(damage);
+    Blow out;
+    out.landed = a->attack(b);
+    out.hp_lost = before - b->stats()->hitpoints();
+    return out;
+}
+
+}  // namespace
+
+// A green tent's orc, ridden by a red ghost: red's friend, green's foe, its
+// blows on green land and score for red, and the ride's end gives the tent
+// its troop back.
+// RED with the arm planted off: red still sees a foe in its own ghost's
+// body, and green still sees a friend.
+TEST(KitPossession, a_possessed_tent_troop_fights_for_the_ghosts_side)
+{
+    og::test::ScopedHookFailureGuard guard;
+    for (const short fixes : {short{0}, short{1}})
+    {
+        SCOPED_TRACE(fixes);
+        OwnedHostScene s(fixes);
+        ASSERT_TRUE(s.troop && s.ghost && s.red && s.green);
+        ASSERT_EQ(FAMILY_ORC, static_cast<int>(s.troop->family()));
+        ASSERT_EQ(s.tent, s.troop->owner());
+        ASSERT_EQ(811, s.troop->lifetime()) << "800 + 11 x the tent's level";
+        ASSERT_EQ(255, s.troop->real_team_num()) << "the troop is not charmed";
+
+        // Before the ride: the tent's troop, green's friend.
+        EXPECT_EQ(0, s.red->is_friendly(s.troop));
+        EXPECT_EQ(1, s.green->is_friendly(s.troop));
+
+        const og::sim::PossessResult r =
+            og::sim::possess(s.world(), *s.ghost, *s.troop, 100);
+        ASSERT_TRUE(r.ok) << r.reason;
+        ASSERT_EQ(kRed, s.troop->team_num()) << "the troop wears the ghost's colour";
+        EXPECT_EQ(s.tent, s.troop->owner()) << "the owner is not touched";
+        EXPECT_EQ(811, s.troop->lifetime()) << "nor the lifetime";
+        EXPECT_EQ(0, s.troop->charm_left()) << "a possession is no charm";
+
+        // The alliance follows the colour it wears.
+        EXPECT_EQ(1, s.red->is_friendly(s.troop)) << "red asks of the troop";
+        EXPECT_EQ(1, s.troop->is_friendly(s.red)) << "the troop asks of red";
+        EXPECT_EQ(0, s.troop->is_friendly(s.green)) << "the troop asks of green";
+        EXPECT_EQ(0, s.green->is_friendly(s.troop)) << "green asks of the troop";
+        EXPECT_EQ(1, s.troop->is_friendly_to_team(kRed));
+        EXPECT_EQ(0, s.troop->is_friendly_to_team(kGreen));
+
+        // Struck by its old allies.
+        const Blow green_hits = strike(s.green, s.troop, 40.0f);
+        EXPECT_TRUE(green_hits.landed);
+        EXPECT_GT(green_hits.hp_lost, 0.0f);
+        EXPECT_EQ(s.green->entity_id(), s.troop->last_attacker_id());
+
+        // Striking its old allies: the blow lands, it is the troop's own
+        // (credit_head stops at the ridden body), and red, the player's
+        // team, is paid the classic team score through attack()'s climb.
+        const std::uint32_t score_before = s.world().m_score[kRed];
+        const Blow troop_hits = strike(s.troop, s.green, 40.0f);
+        EXPECT_TRUE(troop_hits.landed);
+        ASSERT_GT(troop_hits.hp_lost, 0.0f);
+        EXPECT_EQ(s.troop->entity_id(), s.green->last_attacker_id());
+        EXPECT_EQ(std::int16_t{kRed}, s.green->last_attacker_team());
+        EXPECT_EQ(score_before + static_cast<std::uint32_t>(troop_hits.hp_lost) +
+                      static_cast<std::uint32_t>(s.green->stats()->level()),
+                  s.world().m_score[kRed])
+            << "the troop scores for the colour it wears";
+
+        // Its new allies: neither side's blow lands.
+        EXPECT_FALSE(strike(s.red, s.troop, 40.0f).landed);
+        EXPECT_FALSE(strike(s.troop, s.red, 1.0f).landed);
+
+        // The ride ends: the troop is green again, the tent's.
+        og::sim::release_possession(s.world(), *s.troop);
+        EXPECT_EQ(0u, s.troop->possess_link());
+        EXPECT_EQ(kGreen, s.troop->team_num());
+        EXPECT_EQ(s.tent, s.troop->owner());
+        EXPECT_EQ(0, s.red->is_friendly(s.troop));
+        EXPECT_EQ(1, s.green->is_friendly(s.troop));
+        EXPECT_EQ(1, s.troop->is_friendly_to_team(kGreen));
+    }
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+// Not only a tent's: a faerie an enemy (green) archmage summoned, ridden by
+// the red ghost, stands for itself while it is ridden. Its summoner sees a
+// foe, its blow on green lands, and the blow is its own (walker::credit_head
+// stops at the ridden body), not its summoner's.
+// RED with the arm planted off: the summon still answers for its summoner.
+TEST(KitPossession, a_possessed_summon_of_an_enemy_caster_is_its_own_credit)
+{
+    og::test::ScopedHookFailureGuard guard;
+    for (const short fixes : {short{0}, short{1}})
+    {
+        SCOPED_TRACE(fixes);
+        OwnedHostScene s(fixes);
+        ASSERT_TRUE(s.ghost && s.red && s.green);
+        walker* summoner = s.add(FAMILY_ARCHMAGE, kGreen, 400, 100);
+        walker* summon = s.add(FAMILY_FAERIE, kGreen, 160, 100);
+        ASSERT_TRUE(summoner && summon);
+        summon->set_act_type(ACT_SIT);
+        summon->set_owner(summoner);
+        summon->set_lifetime(300);
+
+        // Before the ride: the summoner's own, and green's blow-mate.
+        EXPECT_EQ(1, summoner->is_friendly(summon));
+        EXPECT_EQ(summoner, summon->credit_head());
+        EXPECT_FALSE(strike(summon, s.green, 40.0f).landed);
+
+        ASSERT_TRUE(og::sim::possess(s.world(), *s.ghost, *summon, 100).ok);
+        ASSERT_EQ(kRed, summon->team_num());
+        EXPECT_EQ(summoner, summon->owner()) << "the owner is not touched";
+        EXPECT_EQ(300, summon->lifetime()) << "nor the lifetime";
+
+        EXPECT_EQ(0, summoner->is_friendly(summon));
+        EXPECT_EQ(0, summon->is_friendly(summoner));
+        EXPECT_EQ(1, s.red->is_friendly(summon));
+        EXPECT_EQ(summon, summon->credit_head());
+
+        const Blow hits_green = strike(summon, s.green, 40.0f);
+        EXPECT_TRUE(hits_green.landed);
+        EXPECT_GT(hits_green.hp_lost, 0.0f);
+        EXPECT_EQ(summon->entity_id(), s.green->last_attacker_id());
+        EXPECT_EQ(std::int16_t{kRed}, s.green->last_attacker_team());
+    }
+    EXPECT_EQ(0u, guard.count()) << guard.message();
 }

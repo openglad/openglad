@@ -255,6 +255,247 @@ TEST_F(ImaginationsCampaignTest, ward_survives_the_level_start_snapshot_seed)
         ADD_FAILURE() << err.where << ": " << err.message;
 }
 
+// #431: on the isle every fifth college spawn (its entity id a multiple of
+// five) defects to the crew at birth and is named Dreamkin. The bone tent
+// keeps its spawns as its own (owner the tent, a clock of 800 + 11 x its
+// level, death with the tent), so its Dreamkin wore team 0 while every
+// question of sides climbed to the tent and answered for the college. The
+// level script now drops the owner and the clock with the colour, as a
+// mage tower's or a treehouse's spawn is born. Fired by hand, as
+// castle_ghost_tent_spawns_are_stillborn fires its tent; one Dreamkin and
+// one loyal troop are kept, any other spawn is cleared off the pad.
+// RED with the owner and the clock kept (the old script): the crew's
+// soldier sees a foe. RED with the owner dropped and the clock kept: the
+// Dreamkin dies on its first act.
+namespace {
+
+// The first tile at or right of (tx, ty), scanning rows ty..ty+3, where `w`
+// stands clear of terrain and bodies.
+bool park_at_open_tile(GameWorld& world, walker* w, int tx, int ty)
+{
+    for (int dy = 0; dy < 4; ++dy)
+        for (int dx = 0; dx < 8; ++dx)
+        {
+            const int x = (tx + dx) * GRID_SIZE;
+            const int y = (ty + dy) * GRID_SIZE;
+            if (world.query_passable(static_cast<float>(x),
+                                     static_cast<float>(y), w))
+            {
+                w->setxy(static_cast<short>(x), static_cast<short>(y));
+                return true;
+            }
+        }
+    return false;
+}
+
+} // namespace
+
+TEST_F(ImaginationsCampaignTest, isle_bone_tent_dreamkin_fights_for_the_crew)
+{
+    // One level per value of Gameplay Fixes; a failed ASSERT ends that
+    // value's run only.
+    const auto run = [](short fixes) {
+        SCOPED_TRACE(fixes);
+        LoadedImaginationsLevel fx(1);
+        ASSERT_TRUE(fx.loaded);
+        GameWorld& world = fx.world();
+        world.gameplay_fixes = fixes;
+        world.tick(); // on_load
+
+        walker* tent = nullptr;
+        for (const auto& uptr : world.oblist)
+            if (uptr && uptr->query_order() == Order::Generator &&
+                uptr->family() == FAMILY_TENT && uptr->team_num() == 1)
+                tent = uptr.get();
+        ASSERT_NE(nullptr, tent) << "the bone tent";
+        tent->stats()->set_max_hitpoints(1.0e6f); // it outlives the shots
+        tent->stats()->set_hitpoints(1.0e6f);
+        const std::int32_t tent_level = tent->stats()->level();
+        const int tent_tx = tent->xpos() / GRID_SIZE;
+        const int tent_ty = tent->ypos() / GRID_SIZE;
+
+        // The crew's ground for the test: the landing marker farthest from
+        // every live body of the college's side (the tent included), so
+        // nothing of theirs is in sight while the world ticks.
+        constexpr std::pair<int, int> kMarkers[] = {
+            {31, 55}, {31, 7}, {55, 31}, {7, 31}, {14, 14}, {48, 14},
+            {14, 48}, {48, 48}, {25, 55}, {38, 55}, {25, 7}, {38, 7},
+            {7, 25}, {7, 38}, {55, 25}, {55, 38}};
+        std::pair<int, int> camp = kMarkers[0];
+        int camp_clearance = -1;
+        for (const auto& m : kMarkers)
+        {
+            int nearest = 1 << 20;
+            for (const auto& uptr : world.oblist)
+                if (uptr && !uptr->dead() && uptr->team_num() == 1)
+                    nearest = std::min(
+                        nearest, std::abs(uptr->xpos() / GRID_SIZE - m.first) +
+                                     std::abs(uptr->ypos() / GRID_SIZE - m.second));
+            if (nearest > camp_clearance)
+            {
+                camp_clearance = nearest;
+                camp = m;
+            }
+        }
+        ASSERT_GE(camp_clearance, 16) << "a camp out of the college's sight";
+
+        walker* hero = world.add_ob(Order::Living, FAMILY_SOLDIER);
+        ASSERT_NE(nullptr, hero);
+        hero->set_team_num(0);
+        hero->set_real_team_num(0);
+        hero->set_act_type(ACT_SIT);
+        ASSERT_TRUE(park_at_open_tile(world, hero, camp.first, camp.second));
+        const int hero_tx = hero->xpos() / GRID_SIZE;
+        const int hero_ty = hero->ypos() / GRID_SIZE;
+
+        // Fire the tent by hand, one shot a tick. The Dreamkin waits at the
+        // camp, the loyal troop by its tent; anything else is cleared off
+        // the pad (a dead body never holds it) and swept by the tick. The
+        // two kept spawns sit (the script posts them as guards): a sitting
+        // walker still runs living::act's owner and clock rules, and picks
+        // no fight while the world ticks.
+        std::uint32_t dk_id = 0;
+        std::uint32_t loyal_id = 0;
+        std::int32_t dk_birth_lifetime = -1;
+        int dk_birth_real_team = -1;
+        std::int32_t loyal_birth_lifetime = -1;
+        constexpr std::pair<float, float> kFacings[] = {
+            {0.0f, 1.0f}, {1.0f, 0.0f}, {-1.0f, 0.0f}, {0.0f, -1.0f}};
+        for (int shot = 0; shot < 30 && (dk_id == 0 || loyal_id == 0); ++shot)
+        {
+            walker* spawn = nullptr;
+            for (const auto& facing : kFacings)
+            {
+                tent->set_lastx(facing.first);
+                tent->set_lasty(facing.second);
+                spawn = tent->fire();
+                if (spawn != nullptr && !spawn->dead())
+                    break;
+                spawn = nullptr;
+            }
+            ASSERT_NE(nullptr, spawn) << "the tent fires (shot " << shot << ")";
+            const bool defects = spawn->entity_id() % 5 == 0;
+            if (defects && dk_id == 0)
+            {
+                dk_id = spawn->entity_id();
+                dk_birth_lifetime = spawn->lifetime();
+                dk_birth_real_team = spawn->real_team_num();
+                EXPECT_EQ(ACT_GUARD, spawn->act_type()) << "born posted";
+                spawn->set_act_type(ACT_SIT);
+                ASSERT_TRUE(park_at_open_tile(world, spawn, hero_tx + 2, hero_ty));
+            }
+            else if (!defects && loyal_id == 0)
+            {
+                loyal_id = spawn->entity_id();
+                loyal_birth_lifetime = spawn->lifetime();
+                EXPECT_EQ(ACT_GUARD, spawn->act_type()) << "born posted";
+                spawn->set_act_type(ACT_SIT);
+                ASSERT_TRUE(park_at_open_tile(world, spawn, tent_tx + 3, tent_ty));
+            }
+            else
+            {
+                spawn->set_dead(1);
+            }
+            world.tick();
+        }
+        ASSERT_NE(0u, dk_id) << "a Dreamkin was born";
+        ASSERT_NE(0u, loyal_id) << "a loyal troop was born";
+        hero = world.find_by_id(hero->entity_id());
+        walker* dk = world.find_by_id(dk_id);
+        walker* loyal = world.find_by_id(loyal_id);
+        ASSERT_NE(nullptr, hero);
+        ASSERT_NE(nullptr, dk)
+            << "the Dreamkin lives through the ticks after its birth (a body "
+               "with a clock and no owner dies on its first act)";
+        ASSERT_NE(nullptr, loyal);
+        ASSERT_FALSE(dk->dead());
+        ASSERT_FALSE(loyal->dead());
+
+        // The defector: the crew's colour, no owner, no clock.
+        EXPECT_EQ("Dreamkin", dk->stats()->name);
+        EXPECT_EQ(0, dk->team_num());
+        // Its real team, 0 at birth, is the record a charm's end reads;
+        // living::act clears an uncharmed walker's record on its first act.
+        EXPECT_EQ(0, dk_birth_real_team);
+        EXPECT_EQ(nullptr, dk->owner()) << "it leaves its college whole";
+        EXPECT_EQ(0, dk_birth_lifetime) << "and its clock, at birth";
+        EXPECT_EQ(0, dk->lifetime());
+        // The control: the hook turns only every fifth spawn.
+        EXPECT_NE("Dreamkin", loyal->stats()->name);
+        EXPECT_EQ(1, loyal->team_num());
+        EXPECT_EQ(tent, loyal->owner());
+        EXPECT_EQ(800 + 11 * tent_level, loyal_birth_lifetime)
+            << "the tent's clock";
+
+        // Friendly to the crew, a foe of the college.
+        ASSERT_TRUE(park_at_open_tile(world, loyal,
+                                      dk->xpos() / GRID_SIZE + 2,
+                                      dk->ypos() / GRID_SIZE));
+        EXPECT_EQ(1, hero->is_friendly(dk));
+        EXPECT_EQ(1, dk->is_friendly(hero));
+        EXPECT_EQ(1, dk->is_friendly_to_team(0));
+        EXPECT_EQ(0, dk->is_friendly_to_team(1));
+        EXPECT_EQ(0, loyal->is_friendly(dk));
+
+        // Counted that way by the crew's bots: the gates' finders
+        // (packs/core/lib/gates.lua G.allies / G.living_foes) are
+        // og.find_friends_in_range and og.find_foes_in_range.
+        constexpr std::int32_t kReach = 64;
+        ASSERT_LE(hero->distance_to_ob(dk), kReach);
+        ASSERT_LE(loyal->distance_to_ob(dk), kReach);
+        const auto holds = [](const std::list<walker*>& found, const walker* w) {
+            return std::find(found.begin(), found.end(), w) != found.end();
+        };
+        std::int32_t n = 0;
+        EXPECT_TRUE(holds(world.find_friends_in_range(world.oblist, kReach, &n, hero), dk))
+            << "the crew's bots count it a friend";
+        EXPECT_FALSE(holds(world.find_foes_in_range(world.oblist, kReach, &n, hero), dk))
+            << "and never a foe";
+        EXPECT_TRUE(holds(world.find_foes_in_range(world.oblist, kReach, &n, loyal), dk))
+            << "the college sees a foe";
+
+        // Blows: the crew's is refused, the Dreamkin's on the college lands.
+        const float dk_hp_before_blow = dk->stats()->hitpoints();
+        hero->set_damage(40.0f);
+        EXPECT_FALSE(hero->attack(dk));
+        EXPECT_EQ(dk_hp_before_blow, dk->stats()->hitpoints());
+        loyal->stats()->set_hitpoints(1000.0f);
+        dk->set_damage(40.0f);
+        EXPECT_TRUE(dk->attack(loyal));
+        EXPECT_LT(loyal->stats()->hitpoints(), 1000.0f);
+
+        // It lives on: with no owner a clock would kill it on its first act.
+        // The loyal troop goes back by its tent, out of the Dreamkin's
+        // reach, so no blow can land on it while the world ticks: its hit
+        // points stay as they are, and only the clock rule could kill it.
+        ASSERT_TRUE(park_at_open_tile(world, loyal, tent_tx + 3, tent_ty));
+        const float dk_hp = dk->stats()->hitpoints();
+        const std::uint32_t hero_id = hero->entity_id();
+        for (int t = 0; t < 3; ++t)
+            world.tick();
+        dk = world.find_by_id(dk_id);
+        ASSERT_NE(nullptr, dk);
+        EXPECT_FALSE(dk->dead()) << "the Dreamkin lives on";
+        EXPECT_EQ(dk_hp, dk->stats()->hitpoints()) << "untouched while it ticked";
+
+        // It outlives its tent; the loyal troop goes down with it.
+        tent = world.find_by_id(tent->entity_id());
+        ASSERT_NE(nullptr, tent);
+        tent->set_dead(1);
+        tent->death();
+        world.tick();
+        dk = world.find_by_id(dk_id);
+        ASSERT_NE(nullptr, dk);
+        EXPECT_FALSE(dk->dead()) << "the Dreamkin outlives the tent";
+        EXPECT_EQ(nullptr, world.find_by_id(loyal_id))
+            << "the tent's own troop died with it on its next act and was reaped";
+        EXPECT_NE(nullptr, world.find_by_id(hero_id));
+        expect_no_script_errors(world);
+    };
+    run(0);
+    run(1);
+}
+
 TEST_F(ImaginationsCampaignTest, shipped_package_passes_the_ground_audits)
 {
     for (const ShippedLevel& expected : kLevels)

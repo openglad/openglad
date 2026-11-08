@@ -1168,7 +1168,7 @@ inline constexpr Mutation kMut_combat_damage = {
 };
 
 inline constexpr Mutation kMut_walker_ai_wander = {
-    "src/gameplay/walker_combat.cpp", 493,
+    "src/gameplay/walker_combat.cpp", 495,
     "do_combat_damage(attacker, target, tempdamage_i);",
     "do_combat_damage(attacker, target, 0);",
     "Forces the walker_combat dispatch site to pass tempdamage=0 into do_combat_damage; in AI-driven combat scenarios the target takes no damage so AI walkers don't lose HP. Distinct from kMut_combat_damage (line 189) which mutates the target HP decrement inside the do_combat_damage body."
@@ -1283,15 +1283,15 @@ inline constexpr Mutation kMut_summon_druid_do_special = {
 
 inline constexpr Mutation kMut_family_spawn_identity = {
     "src/resources/gloader.cpp", 818,
-    "ob->set_order_family(order, static_cast<char>(family));",
-    "ob->set_order_family(order, static_cast<char>((family + 1) % 21));",
+    "ob->set_order_family(order, static_cast<std::uint8_t>(family));",
+    "ob->set_order_family(order, static_cast<std::uint8_t>((family + 1) % 21));",
     "Rotates every dumped living-family identity at loader binding time; each phase-05 family row loses its exact WalkerFamilyCount(FAMILY_X,1,1) predicate even though the spawn list still asked for the original family."
 };
 
 inline constexpr Mutation kMut_family_spawn_identity_elf = {
     "src/resources/gloader.cpp", 818,
-    "ob->set_order_family(order, static_cast<char>(family));",
-    "ob->set_order_family(order, static_cast<char>(family == 0 ? 2 : 0));",
+    "ob->set_order_family(order, static_cast<std::uint8_t>(family));",
+    "ob->set_order_family(order, static_cast<std::uint8_t>(family == 0 ? 2 : 0));",
     "Maps the player SOLDIER away from ELF and maps the target ELF away from ELF; family_elf_scen99 loses its exact WalkerFamilyCount(FAMILY_ELF,1,1) predicate."
 };
 
@@ -5093,7 +5093,7 @@ inline constexpr FactPredicate kFacts_multiplayer_two_teams_scen99[] = {
 };
 
 inline constexpr Mutation kMut_multiplayer_two_teams_scen99 = {
-    "src/gameplay/walker.cpp", 3728,
+    "src/gameplay/walker.cpp", 3730,
     "return headus->team_num() == headtarget->team_num();",
     "return headus == headtarget || headus->team_num() != headtarget->team_num();",
     "Keeps identical owner-chain heads friendly while inverting the team-number comparison for distinct heads, continuing to consume both locals. Because the three scenario walkers have distinct teams and no owners, every relationship becomes friendly: the melee never starts, every walker keeps full HP, and play_sound collapses to one event, below the floor of four."
@@ -11324,7 +11324,7 @@ inline constexpr FactPredicate kFacts_thief_charm_tent_troop_fixes_scen99[] = {
         "consequence: the charmed skeleton brings the tent down and the level is won"),
 };
 inline constexpr Mutation kMut_thief_charm_tent_troop_fixes_scen99 = {
-    "src/gameplay/walker_specials.cpp", 757,
+    "src/gameplay/walker_specials.cpp", 769,
     "return og::sim::session_gameplay_fixes() != 0 && charm_left() > 0;",
     "return false;",
     "The climbs pass through the charmed skeleton to the tent as the classic ones do, so it fights the thief again: WalkerHpRangeAtFinalTick(FAMILY_THIEF, 7500, 7500) and LevelDoneEquals(2) fail."

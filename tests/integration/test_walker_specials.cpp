@@ -2862,14 +2862,14 @@ TEST_F(WalkerSpecials, cleric_heal_drives_simulation)
 
 // Dynamically place a stain at a passable spot near the caster so the cleric
 // raise-* / resurrect specials can succeed regardless of level layout.
-static walker* place_stain_near(walker* caster, char old_family, unsigned char team, int level)
+static walker* place_stain_near(walker* caster, int old_family, unsigned char team, int level)
 {
     walker* stain = og::runtime::current_session->myscreen_->world().add_fx_ob(Order::Treasure, FAMILY_STAIN);
     if (!stain)
         return nullptr;
     stain->set_team_num(team);
     stain->stats()->set_level(level);
-    stain->stats()->set_old_family(old_family);
+    stain->stats()->set_old_family(static_cast<std::uint8_t>(old_family));
     stain->set_dead(0);
     for (int dx = 18; dx <= 28; dx += 2)
     {

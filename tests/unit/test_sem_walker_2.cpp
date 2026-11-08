@@ -285,7 +285,7 @@ TEST_F(SemWalker2, a_family_with_no_descriptor_has_no_predictable_reach)
 
     constexpr int kNoFamily = 100;
     ASSERT_EQ(nullptr, get_family_descriptor(kNoFamily));
-    archer->set_family(static_cast<char>(kNoFamily));
+    archer->set_family(static_cast<std::uint8_t>(kNoFamily));
     const std::uint32_t rng_before = world().rng_.state_;
     const std::size_t weapons_before = world().weaplist.size();
     std::int32_t reach = -7;

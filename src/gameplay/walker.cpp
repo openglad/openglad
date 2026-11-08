@@ -1759,7 +1759,7 @@ bool walker::set_frame_from_current_walk_animation()
 	return true;
 }
 
-bool walker::set_order_family(Order neworder, char newfamily)
+bool walker::set_order_family(Order neworder, std::uint8_t newfamily)
 {
 	set_order(neworder);
 	set_family(newfamily);
@@ -1939,7 +1939,7 @@ bool walker::query_prospective_weapon_reach(short xdelta, short ydelta,
 	weap probe(WeaponProfileProbeTag{});
 	const PixieData* data = current_game->world->configure_existing_entity(
 		probe, Order::Weapon,
-		static_cast<std::int32_t>(static_cast<char>(current_weapon())));
+		static_cast<std::int32_t>(static_cast<std::uint8_t>(current_weapon())));
 	// rule: Only a living's reach can be predicted. Here: `data == nullptr`.
 	// tests: ModesSoccer.recovery_range_rejects_on_fire_hooks_without_dispatch
 	// tests: ModesSoccer.recovery_range_distinguishes_invalid_from_valid_zero_profiles
@@ -2098,7 +2098,7 @@ walker  *walker::create_weapon()
 	if (query_order() == Order::Generator)
 	{
 		weapon = current_game->world->add_ob(
-			Order::Living, static_cast<char>(default_weapon()));
+			Order::Living, static_cast<std::uint8_t>(default_weapon()));
 		// plumbing: create_weapon: add_ob returned null (object table full) for the generator troop
 		//   or the weapon -> no emission.
 		if (!weapon) return nullptr;
@@ -2116,7 +2116,7 @@ walker  *walker::create_weapon()
 	}
 	// Normally, only livings fire
 	weapon = current_game->world->add_ob(
-		Order::Weapon, static_cast<char>(current_weapon()));
+		Order::Weapon, static_cast<std::uint8_t>(current_weapon()));
 	// plumbing: create_weapon: add_ob returned null (object table full) for the generator troop
 	//   or the weapon -> no emission.
 	if (!weapon) return nullptr;
@@ -3096,7 +3096,7 @@ bool walker::eat_me(walker  * eater)
 
 // set_direct_frame is in src/runtime/walker_render_bridge.cpp.
 
-walker* walker::do_summon(char whatfamily, std::int32_t summon_lifetime)
+walker* walker::do_summon(std::uint8_t whatfamily, std::int32_t summon_lifetime)
 {
 	// plumbing: walker::do_summon base: logs and returns nullptr; living overrides it.
 	if (whatfamily || summon_lifetime)
@@ -3697,17 +3697,19 @@ std::int32_t walker::is_friendly(const walker *target) const
 	// rule: Alliance is decided by team colour of the heads of both owner chains (weapon -> summon
 	//   -> caster), each read from walker::alliance_head; saved-character status and seats never
 	//   make different colours friendly. Classic: the climb stops at a dead owner (the walker
-	//   stands for itself) and at a self-loop, and passes through a charm, so a charmed troop
-	//   answers for its (uncharmed) owner's side. With Gameplay Fixes on it is the one climb (fix
-	//   AP): through a dead owner, stopping at a self-loop and at a charmed walker (fix AD), so a
-	//   charmed tent troop or summon fights for the colour it wears, and a dead caster's summon
-	//   or shot keeps the caster's side.
+	//   stands for itself), at a self-loop and at a possessed body (#430), and passes through a
+	//   charm, so a charmed troop answers for its (uncharmed) owner's side. With Gameplay Fixes on
+	//   it is the one climb (fix AP): through a dead owner, stopping at a self-loop and at a walker
+	//   charmed_head names (a charmed walker, fix AD; a possessed body, #430), so a charmed tent
+	//   troop or summon fights for the colour it wears, and a dead caster's summon or shot keeps
+	//   the caster's side.
 	// tests: GameplayFixesCharm.a_charmed_tent_troop_fights_for_its_charmer
 	// tests: GameplayFixesCharm.a_mind_controlled_tent_troop_fights_for_its_master
 	// tests: GameplayFixesCharm.a_charmed_summon_of_an_enemy_caster_fights_for_its_charmer
 	// tests: GameplayFixesCharm.an_uncharmed_tent_troop_answers_for_its_tent_on_both_values
 	// tests: WalkerMore.walker_round6_friendliness_null_dead_owner_chain_and_allied_modes
 	// tests: GameplayFixesChain.a_dead_casters_summon_keeps_its_side_for_friendliness_and_score
+	// tests: KitPossession.a_possessed_tent_troop_fights_for_the_ghosts_side
 	headus = alliance_head();
 	// Now our target ..
 	headtarget = target->alliance_head();
@@ -3747,7 +3749,7 @@ std::int32_t walker::is_friendly_to_team(unsigned char team) const
 	// rule: Same alliance rule as above against a bare team number, used by level
 	//   completion ('foes remain'), enemy freeze and respawn: a walker counts for the team its
 	//   chain head wears (walker::alliance_head: with fixes on the one climb, through a dead owner
-	//   and stopping at a charmed head).
+	//   and stopping at a walker charmed_head names; a possessed body stops it on both values, #430).
 	// tests: GameplayFixesCharm.an_uncharmed_tent_troop_answers_for_its_tent_on_both_values
 	// tests: GameplayFixesCharm.a_charmed_tent_troop_fights_for_its_charmer
 	// tests: GameplayFixesChain.a_dead_casters_summon_keeps_its_side_for_friendliness_and_score
@@ -4014,7 +4016,7 @@ bool walker::pad_probe(walker& probe, std::int32_t weapon_family, short& px, sho
 		return false;
 	const std::int32_t family = weapon_family >= 0
 		? weapon_family
-		: static_cast<std::int32_t>(static_cast<char>(current_weapon()));
+		: static_cast<std::int32_t>(static_cast<std::uint8_t>(current_weapon()));
 	const PixieData* data = current_game->world->configure_existing_entity(
 		probe, Order::Weapon, family);
 	if (data == nullptr)
@@ -4034,7 +4036,8 @@ bool walker::pad_probe(walker& probe, std::int32_t weapon_family, short& px, sho
 // or bones troop itself: its owner is a post, not a body), or nullptr when
 // no living is on the chain (a scripted ball fx). It climbs by chain_next,
 // attack()'s own climb (fix AP): through a dead owner, stopping at a
-// self-loop and, with Gameplay Fixes AD, at a charmed walker. The kill stamp
+// self-loop and at a walker charmed_head names (a charmed walker with
+// Gameplay Fixes AD, a possessed body, #430). The kill stamp
 // and on_kill read it; classic score and experience keep the chain's root.
 // Appended at the end of the file so the parity canary pins above never
 // shift.

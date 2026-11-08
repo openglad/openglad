@@ -365,7 +365,7 @@ TEST_F(SameTeamDeath, a_same_team_death_is_announced_without_credit_classic)
         {"registered family (orc)", FAMILY_ORC, "ORC DIED", [](walker*) {}},
         {"registered family (soldier)", FAMILY_SOLDIER, "SOLDIER SLAIN", [](walker*) {}},
         {"unknown family", FAMILY_ORC, "SOMEONE DIED",
-         [](walker* v) { v->set_order_family(Order::Living, static_cast<char>(120)); }},
+         [](walker* v) { v->set_order_family(Order::Living, static_cast<std::uint8_t>(120)); }},
     };
     for (const Case& c : cases)
     {
@@ -1365,7 +1365,7 @@ TEST_F(SemWalker4, a_family_with_no_special_hook_is_refused_free_with_the_defaul
 {
     walker* w = living_at(FAMILY_SOLDIER, 0, 96, 96);
     ASSERT_NE(nullptr, w);
-    w->set_order_family(Order::Living, static_cast<char>(120));
+    w->set_order_family(Order::Living, static_cast<std::uint8_t>(120));
     w->set_current_special(1);
     w->set_shifter_down(0);
     w->stats()->set_special_cost(1, 10);

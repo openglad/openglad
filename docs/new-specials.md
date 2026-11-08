@@ -221,6 +221,16 @@ ghost is ridden `possess_min` (120 ticks). Every ride ends.
 - A thief who charms a possessed host: when the ride ends, the host's true
   team goes back into its charm record and it stays with the charmer until
   the charm runs out, then goes home. It never stays on the ghost's side.
+- A ridden body fights for the ghost's side in every question of sides,
+  with Gameplay Fixes on or off. A body a tent, a bones pile or a caster
+  owns (a druid's faerie, an archmage's elemental, a captain's WARBAND
+  grunt, a body a cleric raised) used to keep answering for its owner: the
+  ghost's side struck it and its old side would not. It now stands for
+  itself while it is ridden: its old side strikes it, and its blows score
+  and are credited for the ghost's side. Its owner, its lifetime and its tie
+  to its tent are unchanged, and when the ride ends it answers for its
+  owner again. Undead resist POSSESS, so a tent's skeletons and a bones
+  pile's ghosts are never ridden (#430).
 - A possessed body never hides, so a possessed skeleton cannot DIG IN
   (`POSSESSED BODY`).
 - A level that ends during a ride keeps the ghost's hero record like any

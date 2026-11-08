@@ -274,10 +274,11 @@ Fixes X to AN, in play:
   on every such climb stops at a charmed walker (one whose charm clock is
   running), so the troop fights for the colour it wears until the charm
   ends. Its owner, its clock and the cascade when its tent falls are
-  unchanged. The level-play test met the classic shape once: an enemy
-  thief counted a crew-raised ghost as a foe and taunted it while the ghost
-  wore the thief's own colour, because the ghost's chain still answered
-  for the crew's cleric.
+  unchanged. A body a ghost rides stops the climbs too, on both values
+  (#430, under [Not gated](#not-gated)). The level-play test met the
+  classic shape once: an enemy thief counted a crew-raised ghost as a foe
+  and taunted it while the ghost wore the thief's own colour, because the
+  ghost's chain still answered for the crew's cleric.
 - **AE.** A struck archmage that no bot rule answers for (every archmage
   with the setting off, a seat-driven one with it on) takes the classic
   order: SUMMON first when a foe is within 200 px, then slot 2, CHAIN
@@ -1454,6 +1455,29 @@ issues it filed; the last entry records a difference kept on purpose (#484):
   captain's WAR BANNER rule counted the two friends it wants round the
   corpse on any floor; it now counts those on his floor, where the banner
   will stand. The old game has no banner.
+- **A ridden body fights for the ghost's side (#430)** (New Specials
+  only). POSSESS turns its host to the ghost's colour but left the host's
+  owner in place, so a body a tent, a bones pile or an enemy caster owns
+  still answered for its owner in every question of sides: the ghost's
+  side struck it, its old side would not, and it would not strike its old
+  side. Every such question now stops at a body a ghost rides, on both
+  values of the setting, as fix AD stops it at a charmed walker. The body
+  fights, scores and is credited for the ghost's side. Its owner, its
+  lifetime and its tie to its tent are unchanged, and when the ride ends
+  the chain is what it was. Undead resist POSSESS, so the shipped bodies
+  it reaches are an enemy caster's summons. No recording plays New
+  Specials, and the old game has no possession.
+- **The Raspberry Isle's bone-tent Dreamkin fight for the crew (#431).**
+  On the isle a fifth of each college's spawns change sides at birth and
+  are named Dreamkin. The bone tent keeps its spawns as its own: their
+  owner, a clock of 800 + 11 × its level ticks, death when the tent falls.
+  So its Dreamkin wore the crew's colour but answered for the college: the
+  crew's heroes and bots counted it a foe and struck it, and it would not
+  strike the college. A Dreamkin now leaves the tent and the clock behind
+  at birth, as the mage tower's and the treehouse's spawns already do. It
+  fights for the crew, lives until it is killed, and outlives the tent,
+  which moves the level's balance a little toward the crew. This game
+  only: the old game has no level scripts.
 - **A magic shield or a boomerang passes a bone wall or war banner by
   (#472).** The cleric's MAGIC SHIELD and the soldier's BOOMERANG destroy
   every foe shot inside their guard radius, each costing the guard the
@@ -1573,11 +1597,20 @@ its mistake:
   `og.body_spot_near`, and the `body_spot_clear` and `body_ground_clear`
   probes behind it, build a detached body of the family asked for. The
   loader stands family 0 in for an id with no slot and a soldier in for a
-  living with no family, and the walker's family byte wraps 128..255
-  negative (#443), so those probes answered for the stand-in where the API
-  reference promises `nil`. A probe now answers no unless the body is
-  exactly the order and family asked for. The cleric's raise and the
-  parity spawn-room gate ask only real families. This game only.
+  living with no family, so those probes answered for the stand-in where
+  the API reference promises `nil`. A probe now answers no unless the
+  body is exactly the order and family asked for. The cleric's raise and
+  the parity spawn-room gate ask only real families. This game only.
+- **A pack family id from 128 to 255 is its own family (#443).** A walker
+  kept its family in a signed byte, so on x86 a family id of 128 or more
+  read back negative. The walker drew as family 0 and found no family, a
+  generator or a summon of that family made a family 0 body, a corpse
+  raised a family 0 body, and a networked machine turned it into family 0.
+  The walker, its corpse and the snapshot now keep the id as an unsigned
+  byte, so every id 0..255 a pack can claim is its own family on every
+  machine. No shipped pack claims an id above 24 (the core pack's are
+  0..21, the modes pack's 13, 14 and 21..24). A company character's own
+  record still keeps a signed byte (a separate issue). This game only.
 - **A loud passability probe answers only for the prober's floor (#465).**
   `og.query_passable` and `og.query_object_passable` take an optional
   floor. Their ground half read that floor, but their bodies half can see

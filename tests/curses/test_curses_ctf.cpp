@@ -77,7 +77,7 @@ public:
         walker* w = world_->add_ob(order, family);
         if (w) {
             w->set_order(order);
-            w->set_family(static_cast<char>(family));
+            w->set_family(static_cast<std::uint8_t>(family));
             w->setxy(static_cast<short>(tx * GRID_SIZE),
                      static_cast<short>(ty * GRID_SIZE));
             w->set_team_num(team);

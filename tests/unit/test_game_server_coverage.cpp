@@ -2796,7 +2796,7 @@ TEST(GameServerCoverage, a_pack_family_hero_cycles_its_declared_specials)
         fixture.world().add_ob(Order::Living, FAMILY_SOLDIER);
     ASSERT_NE(nullptr, switcher);
     ASSERT_NE(nullptr, soldier);
-    switcher->set_family(static_cast<char>(NUM_FAMILIES));
+    switcher->set_family(static_cast<std::uint8_t>(NUM_FAMILIES));
     ASSERT_EQ(NUM_FAMILIES,
               static_cast<int>(static_cast<unsigned char>(switcher->family())));
     switcher->setxy(64, 64);

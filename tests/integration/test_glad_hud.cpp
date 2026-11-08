@@ -1075,7 +1075,7 @@ TEST_F(GladHud, score_panel_sanitizes_mirrored_identity_and_special_metadata)
         }
     }
     ASSERT_GE(alternate_family, 0);
-    controlp->set_family(static_cast<char>(alternate_family));
+    controlp->set_family(static_cast<std::uint8_t>(alternate_family));
     controlp->set_current_special(static_cast<char>(alternate_special));
     controlp->set_team_num(0);
     controlp->set_shifter_down(0);
@@ -3548,7 +3548,7 @@ TEST_F(GladHud, hud_family_word_is_the_registry_name_for_a_pack_family_past_slot
     // following == false: the live HUD (caption at lm+3/tm+4);
     // following == true with user -1: the FOLLOWING banner alone.
     const auto render = [&](int family, const char* stats_name, bool following) {
-        controlp->set_family(static_cast<char>(family));
+        controlp->set_family(static_cast<std::uint8_t>(family));
         controlp->set_current_special(1);
         controlp->set_shifter_down(0);
         controlp->stats()->name = stats_name;
@@ -3648,7 +3648,7 @@ TEST_F(GladHud, hud_special_row_names_the_pack_familys_own_special)
     controlp->set_team_num(0);
 
     const auto spc_row_for = [&](int family, int special, short shifter) {
-        controlp->set_family(static_cast<char>(family));
+        controlp->set_family(static_cast<std::uint8_t>(family));
         controlp->set_current_special(static_cast<char>(special));
         controlp->set_shifter_down(shifter);
         trace_clear();
@@ -4995,7 +4995,7 @@ TEST_F(GladHud, belt_cell_empty_is_the_bare_fill)
                                  kFrameInk))
         << "the see-through fill in a black frame: an empty slot never flashes";
 
-    hero.set_family(static_cast<char>(127));
+    hero.set_family(static_cast<std::uint8_t>(127));
     frame = scene.draw_rgb();
     for (int k = 1; k <= 3; ++k)
     {
@@ -5006,7 +5006,7 @@ TEST_F(GladHud, belt_cell_empty_is_the_bare_fill)
                                      nullptr, kFrameInk))
             << "key " << k;
     }
-    hero.set_family(static_cast<char>(-3));
+    hero.set_family(std::uint8_t{253});
     scene.draw();
     EXPECT_TRUE(trace_contains(
         "hud", belt_cell_trace(3, true, 0, false, "none", "empty").c_str()));
@@ -5178,7 +5178,7 @@ TEST_F(GladHud, belt_cell_draws_the_generic_tile_for_a_family_without_icons)
     BeltHudScene scene(1, FAMILY_SOLDIER, 13);
     const viewscreen& v = *scene.s->viewob[0];
     walker& hero = *scene.heroes[0];
-    hero.set_family(static_cast<char>(NUM_FAMILIES));
+    hero.set_family(static_cast<std::uint8_t>(NUM_FAMILIES));
     const PixieData missing = icon_file("icons/_missing.png");
     ASSERT_TRUE(missing.valid());
 
