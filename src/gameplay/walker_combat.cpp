@@ -659,20 +659,21 @@ bool walker::attack(walker  *target)
                 // rule: Killing a living of another team than the killer's chain head credits the
                 //   head's hero with kill XP (kill XP only; the hit's attack XP was paid once
                 //   already), kills+1, scen_kills+1, level_kills += victim level; a scoring kill
-                //   adds damage + 10 x victim level to the killer's team score.
+                //   adds damage + 10 x victim level to the killer's team score. The old game pays
+                //   the hit's attack XP a second time here; this game pays the kill bonus alone, on
+                //   both settings, a deliberate difference since #78 (#440).
                 // tests: WalkerCombat.attack_rewards_single_credit_melee_kill
                 // tests: WalkerCombat.company_kill_credit_is_directional_for_every_team_pair
                 // tests: SemWalker3.an_npc_kill_off_the_players_team_credits_no_score
-                // deferred: #440 divergence #440: a hero's killing blow pays attack xp once
-                //   (current) vs twice (old game); the NPC-head arm is asserted, the hero xp arm is
-                //   not pinned
+                // tests: SemWalker3.a_kill_adds_the_kill_bonus_alone_to_its_heros_experience
                 if (playerteam != target->team_num())
                 {
                     // rule: Killing a living of another team than the killer's chain head credits
-                    //   the head's hero with kill XP (kill XP only.
+                    //   the head's hero with the kill bonus alone (#440).
                     // tests: WalkerCombat.attack_rewards_single_credit_melee_kill
                     // tests: WalkerCombat.company_kill_credit_is_directional_for_every_team_pair
                     // tests: SemWalker3.an_npc_kill_off_the_players_team_credits_no_score
+                    // tests: SemWalker3.a_kill_adds_the_kill_bonus_alone_to_its_heros_experience
                     if (headguy->myguy)  // headguy can == this
                     {
                         headguy->myguy->exp += static_cast<std::uint32_t>(exp_from_action(ExpAction::Kill, this, target, 0));
@@ -687,7 +688,7 @@ bool walker::attack(walker  *target)
                     //  myguy->level_kills += target->stats()->level();
                     //}
                     // rule: Killing a living of another team than the killer's chain head credits
-                    //   the head's hero with kill XP (kill XP only.
+                    //   the head's hero with the kill bonus alone (#440).
                     // tests: WalkerCombat.attack_rewards_single_credit_melee_kill
                     // tests: WalkerCombat.company_kill_credit_is_directional_for_every_team_pair
                     // tests: SemWalker3.an_npc_kill_off_the_players_team_credits_no_score

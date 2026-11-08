@@ -14,7 +14,9 @@
 // tests have no classic oracle and pin the design (docs/z-axis-design.md).
 // The combat rules (attack, do_combat_damage, do_hit_effects) were read
 // against the old game's walker.cpp at 7ff1654a and agree arm by arm, except
-// the kill experience (#440), which is not pinned here.
+// the kill experience (#440): the old game pays a killing blow's experience
+// again with the kill bonus, this game pays the bonus alone, on purpose
+// (a_kill_adds_the_kill_bonus_alone_to_its_heros_experience).
 //
 // Randomness. TestGameWorld installs FixedRandom{0} as the combat RNG, so a
 // blow of damage d lands exactly floor(d - sqrt(d)/2 + 0.5) on armour 0; the
@@ -1349,7 +1351,8 @@ TEST_F(SemWalker3, a_destroyed_generator_dies_without_credit_blood_or_cry)
 // ---------------------------------------------------------------------------
 
 // A kill by a chain head that is neither a hero nor on my_team credits no
-// score and emits no ScoreChange. (The hero arm's experience is #440.)
+// score and emits no ScoreChange. (The hero arm's experience:
+// a_kill_adds_the_kill_bonus_alone_to_its_heros_experience, below.)
 TEST_F(SemWalker3, an_npc_kill_off_the_players_team_credits_no_score)
 {
     walker* npc = living_at(FAMILY_SOLDIER, 2, 100, 100);
@@ -1363,4 +1366,73 @@ TEST_F(SemWalker3, an_npc_kill_off_the_players_team_credits_no_score)
     EXPECT_EQ(1, victim->dead()) << "the kill";
     EXPECT_EQ(before, scores()) << "NPC head: no score";
     EXPECT_EQ(0u, count_events(og::sim::EventKind::ScoreChange)) << "NPC head: no event";
+}
+
+// ---------------------------------------------------------------------------
+// walker_combat.cpp walker::attack (a hero's kill, #440)
+// ---------------------------------------------------------------------------
+
+// A killing blow pays the hero at the head of the hitter's chain what the same
+// blow pays when it does not kill, plus one kill bonus (the experience of 20
+// damage at the same level gap), and counts one kill, one scenario kill and
+// the victim's level: for a melee blow, a thrown knife and a summon's blow, on
+// both settings. The old game pays the blow's experience a second time at the
+// kill (`newexp + exp_from_action(EXP_KILL, ...)` in its walker.cpp); this
+// game has not since #78, a deliberate difference (#440).
+// Break: the kill arm's `exp_from_action(ExpAction::Kill, this, target, 0)` ->
+// `attack_exp + exp_from_action(ExpAction::Kill, this, target, 0)` (every
+// kill check red: the kill pays the blow's 72 again).
+TEST_F(SemWalker3, a_kill_adds_the_kill_bonus_alone_to_its_heros_experience)
+{
+    // Every hitter and every victim is level 4 (a level gap of 0); a blow of
+    // damage 10 lands 8 on armour 0 (FixedRandom{0}).
+    const auto hit_xp = static_cast<std::uint32_t>(compute_xp_from_attack(0, 8.0f));
+    const auto kill_xp = static_cast<std::uint32_t>(compute_xp_from_kill(0));
+    ASSERT_GT(hit_xp, 0u) << "a blow pays experience, so a second payment shows";
+    ASSERT_GT(kill_xp, 0u);
+
+    enum class Hitter { Melee, Knife, Summon };
+    for (short fixes : {short{0}, short{1}}) {
+        for (Hitter how : {Hitter::Melee, Hitter::Knife, Hitter::Summon}) {
+            SCOPED_TRACE(testing::Message() << "fixes " << fixes << ", hitter "
+                                            << static_cast<int>(how));
+            fresh_world();
+            world().gameplay_fixes = fixes;
+            walker* hero = hero_at(FAMILY_SOLDIER, 0, 100, 100);
+            walker* struck = living_at(FAMILY_SOLDIER, 1, 300, 300);
+            walker* slain = living_at(FAMILY_SOLDIER, 1, 340, 300);
+            ASSERT_TRUE(hero && struck && slain);
+            walker* hitter = hero;
+            if (how == Hitter::Knife) {
+                hitter = knife_of(hero, 10.0f);  // knife level 4
+            } else if (how == Hitter::Summon) {
+                hitter = living_at(FAMILY_SOLDIER, 0, 320, 340);
+                if (hitter != nullptr)
+                    hitter->set_owner(hero);
+            }
+            ASSERT_NE(nullptr, hitter);
+            slain->stats()->set_hitpoints(8.0f);
+            hero->myguy->exp = 0;
+            hero->myguy->kills = 0;
+            hero->myguy->scen_kills = 0;
+            hero->myguy->level_kills = 0;
+
+            hitter->set_damage(10.0f);
+            ASSERT_TRUE(hitter->attack(struck));
+            EXPECT_FLOAT_EQ(392.0f, struck->stats()->hitpoints()) << "the blow lands 8";
+            ASSERT_EQ(0, struck->dead());
+            const std::uint32_t paid_for_a_blow = hero->myguy->exp;
+            EXPECT_EQ(hit_xp, paid_for_a_blow) << "a blow pays its experience once";
+            EXPECT_EQ(0, hero->myguy->kills);
+
+            hitter->set_damage(10.0f);  // a knife is worn by each hit (damage - 1)
+            ASSERT_TRUE(hitter->attack(slain));
+            ASSERT_EQ(1, slain->dead()) << "the same blow kills";
+            EXPECT_EQ(paid_for_a_blow + hit_xp + kill_xp, hero->myguy->exp)
+                << "the kill: the blow's experience once and one kill bonus";
+            EXPECT_EQ(1, hero->myguy->kills);
+            EXPECT_EQ(1, hero->myguy->scen_kills);
+            EXPECT_EQ(4, hero->myguy->level_kills);
+        }
+    }
 }

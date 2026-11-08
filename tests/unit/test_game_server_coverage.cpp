@@ -1467,6 +1467,67 @@ TEST(GameServerCoverage, a_declined_withdraw_asks_nothing_more_with_the_fixes_on
     }
 }
 
+// GameServer::handle_exit_prompt_response's free-exit test (#491). The level
+// type is a set of flags: with the setting off (the only value that reaches
+// the test, fix AJ), a declined "Withdraw to X?" on a level whose type carries
+// the free-exit bit with other bits (Protect NPCs, as seven Westlands levels;
+// the tower mark, as the Tower's Gate) asks "Exit to X?" next, as on a plain
+// free-exit level; the other bits alone ask nothing more. With the setting on
+// nothing follows (fix AJ). The old game asks for the whole type with the
+// setting off, a deliberate difference.
+// Breaks: `(world_.type & GameWorld::TYPE_CAN_EXIT_WHENEVER) != 0` ->
+// `world_.type == GameWorld::TYPE_CAN_EXIT_WHENEVER` (both mixed-type arms
+// red); -> `world_.type != 0` (the no-bit arm red).
+TEST(GameServerCoverage, the_exit_after_a_declined_withdraw_reads_the_free_exit_bit_whatever_other_bits_are_set)
+{
+    const char with_npcs = static_cast<char>(GameWorld::TYPE_CAN_EXIT_WHENEVER |
+                                             GameWorld::TYPE_MUST_PROTECT_NAMED_NPCS);
+    const char with_tower = static_cast<char>(GameWorld::TYPE_CAN_EXIT_WHENEVER |
+                                              GameWorld::TYPE_TOWER);
+    const char no_bit = static_cast<char>(GameWorld::TYPE_MUST_PROTECT_NAMED_NPCS |
+                                          GameWorld::TYPE_TOWER);
+    // One arm per type; a failed ASSERT ends only its own arm.
+    const auto asks_the_exit_next = [](char type) {
+        SCOPED_TRACE(testing::Message() << "type " << static_cast<int>(type));
+        ExitPromptScene s(type, 0, "Withdraw to Keep?", true);
+        ASSERT_NE(nullptr, s.control);
+        ASSERT_TRUE(s.server.pending_exit_prompt());
+        s.answer(false);
+        const auto follow = s.prompts();
+        ASSERT_EQ(1u, follow.size()) << "the free-exit bit: the exit is asked next";
+        EXPECT_FALSE(follow[0].withdraw_prompt);
+        EXPECT_EQ(7, follow[0].destination_level);
+        EXPECT_EQ("Exit to Keep?", follow[0].prompt_text);
+        s.answer(true);
+        EXPECT_EQ(std::vector<int>{7}, s.exits) << "yes there is the exit";
+        EXPECT_TRUE(s.withdraws.empty());
+    };
+    for (char type : {with_npcs, with_tower})
+        asks_the_exit_next(type);
+    {
+        SCOPED_TRACE("the other bits without the free-exit bit");
+        ExitPromptScene s(no_bit, 0, "Withdraw to Keep?", true);
+        ASSERT_NE(nullptr, s.control);
+        ASSERT_TRUE(s.server.pending_exit_prompt());
+        s.answer(false);
+        EXPECT_TRUE(s.prompts().empty()) << "an ordinary level: nothing follows";
+        EXPECT_FALSE(s.server.pending_exit_prompt());
+        EXPECT_TRUE(s.exits.empty());
+        EXPECT_TRUE(s.withdraws.empty());
+    }
+    {
+        SCOPED_TRACE("setting on");
+        ExitPromptScene s(with_npcs, 1, "Withdraw to Keep?", true);
+        ASSERT_NE(nullptr, s.control);
+        ASSERT_TRUE(s.server.pending_exit_prompt());
+        s.answer(false);
+        EXPECT_TRUE(s.prompts().empty()) << "fix AJ: nothing follows with the setting on";
+        EXPECT_FALSE(s.server.pending_exit_prompt());
+        EXPECT_TRUE(s.exits.empty());
+        EXPECT_TRUE(s.withdraws.empty());
+    }
+}
+
 TEST(GameServerCoverage, explicit_host_disconnect_cascades_to_all_clients)
 {
     TestGameWorld fixture;

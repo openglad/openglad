@@ -2116,10 +2116,10 @@ int og_award_score(lua_State* L)
 
 int og_world_can_exit_whenever(lua_State* L)
 {
-    // plumbing: a world type bit handed to Lua as a boolean.
-    lua_pushboolean(
-        L, (world_arg(L)->type & GameWorld::TYPE_CAN_EXIT_WHENEVER) != 0 ? 1
-                                                                        : 0);
+    // rule: The level type is a set of flags: a level may be left at any time when its type carries
+    //   the CAN_EXIT_WHENEVER bit, whatever other bits it carries, on both settings (#491).
+    // tests: SemExitPad.the_free_exit_bit_counts_whatever_other_type_bits_the_level_carries
+    lua_pushboolean(L, (world_arg(L)->type & GameWorld::TYPE_CAN_EXIT_WHENEVER) != 0 ? 1 : 0);
     return 1;
 }
 

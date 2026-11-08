@@ -977,6 +977,64 @@ TEST(SemExitPad, a_can_exit_whenever_level_withdraws_first_to_a_won_level_with_t
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }
 
+// og_world_can_exit_whenever (bindings_entity.cpp), which this pad's exit
+// test reads (#491). The level type is a set of flags: a type that carries
+// the free-exit bit with other bits (Beat generators; Protect NPCs, as seven
+// Westlands levels; the tower mark, as the Tower's Gate) offers the exit with
+// foes standing on both settings, as a plain free-exit level does; the other
+// bits alone do not. The destination is unearned, so no withdraw is asked.
+// The old game asks for the whole type with the setting off (treasure.cpp
+// FAMILY_EXIT), a deliberate difference.
+// Breaks: the binding's `(world_arg(L)->type & GameWorld::TYPE_CAN_EXIT_WHENEVER) != 0`
+// -> `world_arg(L)->type == GameWorld::TYPE_CAN_EXIT_WHENEVER` (every
+// mixed-type arm red); -> `world_arg(L)->type != 0` (the no-bit arm red).
+TEST(SemExitPad, the_free_exit_bit_counts_whatever_other_type_bits_the_level_carries)
+{
+    og::test::ScopedHookFailureGuard guard;
+    const char with_generators = static_cast<char>(GameWorld::TYPE_CAN_EXIT_WHENEVER |
+                                                   GameWorld::TYPE_MUST_DESTROY_GENERATORS);
+    const char with_npcs = static_cast<char>(GameWorld::TYPE_CAN_EXIT_WHENEVER |
+                                             GameWorld::TYPE_MUST_PROTECT_NAMED_NPCS);
+    const char with_tower = static_cast<char>(GameWorld::TYPE_CAN_EXIT_WHENEVER |
+                                              GameWorld::TYPE_TOWER);
+    const char no_bit = static_cast<char>(GameWorld::TYPE_MUST_DESTROY_GENERATORS |
+                                          GameWorld::TYPE_MUST_PROTECT_NAMED_NPCS |
+                                          GameWorld::TYPE_TOWER);
+    // One arm per (setting, type); a failed ASSERT ends only its own arm.
+    const auto offers_the_exit = [](short fixes, char type) {
+        SCOPED_TRACE(testing::Message() << "fixes " << fixes << ", type "
+                                        << static_cast<int>(type));
+        ExitScene s(2, /*foes_left=*/true);
+        ASSERT_TRUE(s.hero && s.pad);
+        s.title("scen2", "Keep");
+        s.tw.world().type = type;
+        s.tw.world().gameplay_fixes = fixes;
+        EXPECT_TRUE(eat(s.pad, s.hero));
+        const auto p = s.prompts();
+        ASSERT_EQ(1u, p.size()) << "foes standing: the exit is offered";
+        EXPECT_EQ("Exit to Keep?", p[0].text);
+        EXPECT_EQ(2u, p[0].a);
+        EXPECT_EQ(0u, p[0].b) << "the exit prompt, not withdraw";
+        EXPECT_EQ(0, count_events(s.tw, og::sim::EventKind::WithdrawToLevel));
+    };
+    for (short fixes : {short{0}, short{1}}) {
+        for (char type : {with_generators, with_npcs, with_tower})
+            offers_the_exit(fixes, type);
+        {
+            SCOPED_TRACE(testing::Message() << "fixes " << fixes << ", no free-exit bit");
+            ExitScene s(2, /*foes_left=*/true);
+            ASSERT_TRUE(s.hero && s.pad);
+            s.title("scen2", "Keep");
+            s.tw.world().type = no_bit;
+            s.tw.world().gameplay_fixes = fixes;
+            EXPECT_TRUE(eat(s.pad, s.hero));
+            EXPECT_EQ(0u, s.prompts().size()) << "the other bits alone: no exit with foes standing";
+            EXPECT_EQ(0, count_events(s.tw, og::sim::EventKind::WithdrawToLevel));
+        }
+    }
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
 namespace {
 
 int flashes(const TestGameWorld& tw)

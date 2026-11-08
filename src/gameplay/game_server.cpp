@@ -2023,9 +2023,12 @@ void GameServer::handle_exit_prompt_response(bool accepted,
         //   declines "Withdraw to X?" on a CAN_EXIT_WHENEVER level is asked "Exit to X?" next, for
         //   the same destination and seat; yes there ends the level as a win. With the setting on
         //   such a level never asks Withdraw (treasure_navigation.lua), and a timeout or a dead
-        //   trigger is never a player's answer, so nothing follows.
+        //   trigger is never a player's answer, so nothing follows. The level type is a set of
+        //   flags: the CAN_EXIT_WHENEVER bit counts whatever other bits the type carries (the old
+        //   game asks for the whole type with the setting off, a deliberate difference, #491).
         // tests: GameServerCoverage.a_declined_withdraw_on_a_can_exit_level_asks_exit_next_with_the_fixes_off
         // tests: GameServerCoverage.a_declined_withdraw_asks_nothing_more_with_the_fixes_on_or_on_a_plain_level_or_after_a_timeout
+        // tests: GameServerCoverage.the_exit_after_a_declined_withdraw_reads_the_free_exit_bit_whatever_other_bits_are_set
         if (player_answered && prompt.withdraw_prompt &&
             world_.gameplay_fixes == 0 &&
             (world_.type & GameWorld::TYPE_CAN_EXIT_WHENEVER) != 0)

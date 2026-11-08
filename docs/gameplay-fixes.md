@@ -1243,6 +1243,12 @@ Rows deliberately not added:
   game asked `on_screen()` of, so every row records the old game's sounds;
   none moved.
 - #484: no behaviour changes, and none of the display fields is recorded.
+- #440: no behaviour changes, and experience is not in the recording, so
+  no row could see it.
+- #491: no behaviour changes; every row plays a level of type 0 and no
+  scenario field sets the type. A row with the setting off on a level that
+  carries the free-exit bit with another one would differ from the old game
+  on purpose, since the old game asks for the whole type there.
 - Fix AA's two terrain pads. `archer_bot_bolt_pad_terrain`: a bot faces
   up at its spawn and no tile that stops a weapon sits directly above
   ground on scen1, so the only terrain arena is an archer beside a tree
@@ -1258,9 +1264,10 @@ Rows deliberately not added:
 
 ## Not gated
 
-Twenty-five changes apply whatever the setting, three from the work that
-added it (N, O and P), six from the second bugs batch and sixteen from the
-issues it filed; the last entry records a difference kept on purpose (#484):
+Twenty-seven changes apply whatever the setting, three from the work that
+added it (N, O and P), six from the second bugs batch and eighteen from the
+issues it filed; the last three entries record differences kept on purpose
+(#484, #440, #491):
 
 - **N. A slot that is not in play says so.** `walker::special()` refuses a
   slot priced 5000 (an undeclared slot, or one New Specials hides) before it
@@ -1535,6 +1542,38 @@ issues it filed; the last entry records a difference kept on purpose (#484):
   within three acts of the blow, and a number made in the 1.7 s or so before
   damage numbers are turned on. `SemPresentation`
   (`tests/unit/test_sem_presentation_1.cpp`) pins it with every toggle off.
+- **A kill pays the kill bonus alone (#440).** Not a change to the
+  simulation. Every blow that lands pays the hero at the head of the
+  hitter's chain the experience of its damage at the level gap, and a kill
+  adds the kill bonus, the experience of 20 damage at that gap. The old game
+  pays the killing blow's experience a second time with the bonus; this
+  game has paid it once since #78 (`2fd29075`), on both values of the
+  setting: a level-4 hero who kills a level-4 foe with an 8-point blow earns
+  72 + 181 = 253 here and 325 in the old game. Kills, scenario kills and the
+  level tally count once in both. Experience is not in the recording, so no
+  golden shows it, and nothing is ported.
+  `SemWalker3.a_kill_adds_the_kill_bonus_alone_to_its_heros_experience`
+  pins it on both values, for a melee blow, a thrown knife and a summon's
+  blow.
+- **A level's type is a set of flags (#491).** Not a change to the
+  simulation. A level the player may leave at any time carries the
+  free-exit bit of its type, and the type's other bits are the editor's
+  other goals (Beat generators, Protect NPCs) and the Tower's mark. This
+  game reads the bit on both values of the setting, so a level with the bit
+  and another goal still offers its exit with foes standing: seven
+  Westlands levels carry Protect NPCs with it, and the Tower's Gate its
+  tower mark. The old game reads the bit with the setting on (fix AJ's
+  port) and with it off asks for the whole type, so there such a level
+  plays as an ordinary one: with foes standing its pad withdraws to a won
+  level or does nothing, and a declined withdraw asks nothing more. Both
+  editors toggle each goal as a bit, the 2002 header numbers the types as
+  powers of two and the old game reads Protect NPCs as a bit, so the flags
+  stay. No classic level carries two bits and no parity row plays a
+  free-exit level, so no golden moves and nothing is ported.
+  `SemExitPad.the_free_exit_bit_counts_whatever_other_type_bits_the_level_carries`
+  and
+  `GameServerCoverage.the_exit_after_a_declined_withdraw_reads_the_free_exit_bit_whatever_other_bits_are_set`
+  pin it.
 
 The modding API and its logs changed in the same batch too, whatever the
 setting. No shipped pack or campaign reaches the new arms, so no player sees
