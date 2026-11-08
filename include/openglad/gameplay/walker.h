@@ -265,9 +265,11 @@ class walker : public og::sim::SimEntity
 		std::int32_t is_friendly(const walker *target) const;
 		std::int32_t is_friendly_to_team(unsigned char team) const;
 		// Gameplay Fixes AD (#412): true while this walker's charm runs
-		// (charm_left() > 0) with the setting on. Every owner-chain climb
-		// stops here: a charmed troop or summon heads its own chain and fights
-		// for the colour it wears. Defined in walker_specials.cpp.
+		// (charm_left() > 0) with the setting on; New Specials (#430): true
+		// while a ghost rides this walker (possess_link set, not hidden), on
+		// both values. Every owner-chain climb stops here: a charmed or
+		// possessed troop or summon heads its own chain and fights for the
+		// colour it wears. Defined in walker_specials.cpp.
 		bool charmed_head() const;
 
 

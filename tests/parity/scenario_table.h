@@ -11036,7 +11036,7 @@ inline constexpr FactPredicate kFacts_thief_charm_tent_troop_fixes_scen99[] = {
         "consequence: the charmed skeleton brings the tent down and the level is won"),
 };
 inline constexpr Mutation kMut_thief_charm_tent_troop_fixes_scen99 = {
-    "src/gameplay/walker_specials.cpp", 757,
+    "src/gameplay/walker_specials.cpp", 769,
     "return og::sim::session_gameplay_fixes() != 0 && charm_left() > 0;",
     "return false;",
     "The climbs pass through the charmed skeleton to the tent as the classic ones do, so it fights the thief again: WalkerHpRangeAtFinalTick(FAMILY_THIEF, 7500, 7500) and LevelDoneEquals(2) fail."

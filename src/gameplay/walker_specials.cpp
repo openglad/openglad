@@ -744,10 +744,22 @@ std::int32_t walker::undead_foes_in_range(std::int32_t range)
 // it for a tick or a possession with no charm behind it.) Its owner, a tent, a
 // bones pile or the caster that summoned it, stays on the old side, and the
 // alliance follows the walker's own colour until the charm ends. Off, the
-// climbs pass through it as always. Appended at the end of the file so the
-// parity canary pin above stays where it is.
+// climbs pass through it as always. New Specials POSSESS (#430) turns a body
+// to the ghost's colour and leaves its owner in the same way, so a possessed
+// body (the side of the link that is not hidden) heads its own chain too, on
+// both values of the setting, until the ride ends. Appended at the end of the
+// file so the parity canary pin above stays where it is.
 bool walker::charmed_head() const
 {
+	// rule: New Specials POSSESS (#430): a possessed body (the side of a possession link that is
+	//   not hidden; the ghost rides hidden inside it) heads its own owner chain on both values of
+	//   Gameplay Fixes: a possessed tent troop or summon of an enemy caster fights, scores and is
+	//   credited for the ghost's side and is struck by its old side; its owner, lifetime and tent
+	//   tie are unchanged, and when the ride ends the chain is what it was.
+	// tests: KitPossession.a_possessed_tent_troop_fights_for_the_ghosts_side
+	// tests: KitPossession.a_possessed_summon_of_an_enemy_caster_is_its_own_credit
+	if (possess_link() != 0 && !hidden())
+		return true;
 	// rule: Gameplay Fixes AD (#412): while a charm runs, a charmed walker heads its own owner
 	//   chain (credit, friendliness and alliance follow its own colour); with the setting off the
 	//   owner climbs pass through it to its tent/summoner as in the classic game.

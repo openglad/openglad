@@ -267,10 +267,11 @@ Fixes X to AN, in play:
   on every such climb stops at a charmed walker (one whose charm clock is
   running), so the troop fights for the colour it wears until the charm
   ends. Its owner, its clock and the cascade when its tent falls are
-  unchanged. The level-play test met the classic shape once: an enemy
-  thief counted a crew-raised ghost as a foe and taunted it while the ghost
-  wore the thief's own colour, because the ghost's chain still answered
-  for the crew's cleric.
+  unchanged. A body a ghost rides stops the climbs too, on both values
+  (#430, under [Not gated](#not-gated)). The level-play test met the
+  classic shape once: an enemy thief counted a crew-raised ghost as a foe
+  and taunted it while the ghost wore the thief's own colour, because the
+  ghost's chain still answered for the crew's cleric.
 - **AE.** A struck archmage that no bot rule answers for (every archmage
   with the setting off, a seat-driven one with it on) takes the classic
   order: SUMMON first when a foe is within 200 px, then slot 2, CHAIN
@@ -1323,6 +1324,18 @@ issues it filed; the last entry records a difference kept on purpose (#484):
   captain's WAR BANNER rule counted the two friends it wants round the
   corpse on any floor; it now counts those on his floor, where the banner
   will stand. The old game has no banner.
+- **A ridden body fights for the ghost's side (#430)** (New Specials
+  only). POSSESS turns its host to the ghost's colour but left the host's
+  owner in place, so a body a tent, a bones pile or an enemy caster owns
+  still answered for its owner in every question of sides: the ghost's
+  side struck it, its old side would not, and it would not strike its old
+  side. Every such question now stops at a body a ghost rides, on both
+  values of the setting, as fix AD stops it at a charmed walker. The body
+  fights, scores and is credited for the ghost's side. Its owner, its
+  lifetime and its tie to its tent are unchanged, and when the ride ends
+  the chain is what it was. Undead resist POSSESS, so the shipped bodies
+  it reaches are an enemy caster's summons. No recording plays New
+  Specials, and the old game has no possession.
 - **A magic shield or a boomerang passes a bone wall or war banner by
   (#472).** The cleric's MAGIC SHIELD and the soldier's BOOMERANG destroy
   every foe shot inside their guard radius, each costing the guard the
