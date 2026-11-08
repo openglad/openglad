@@ -129,8 +129,8 @@ TEST(FamilyBehaviors, set_difficulty_soldier_weapons_left)
 // living::set_difficulty(): after the per-family formula a walker on a
 // hostile team has max_hitpoints/max_magicpoints/damage multiplied by the
 // world's difficulty percent; a walker actually carrying a player guy is
-// exempt (living.cpp, the team_num() != 0 arm and the myguy == nullptr
-// clause below it).
+// exempt (living.cpp, the team_num() != 0 gate: a team-0 walker never
+// scales, #493).
 TEST(FamilyBehaviors, set_difficulty_scales_hostiles_and_exempts_player_guys)
 {
     GameWorld& world = og::runtime::current_session->myscreen_->world();
@@ -147,9 +147,8 @@ TEST(FamilyBehaviors, set_difficulty_scales_hostiles_and_exempts_player_guys)
     world.difficulty = 100;
     static_cast<living*>(a.get())->set_difficulty(3);
 
-    // B — hostile at 200 %, carrying a guy. The team-0 NPC arm below the
-    // legacy gate requires myguy == nullptr, so only the team_num() != 0 arm
-    // can possibly scale B: this pins THAT arm, not its neighbour.
+    // B — hostile at 200 %, carrying a guy. The team decides, not the guy:
+    // B scales like any foe.
     auto b = make_living(FAMILY_SOLDIER);
     ASSERT_TRUE(b != nullptr) << "make_living should succeed";
     b->set_team_num(1);

@@ -1283,20 +1283,21 @@ TEST(WalkerCombat, walker_set_difficulty_all_families)
             << "set_difficulty leaves a living at full magic";
     }
 
-    // A12a: a PLACED team-0 NPC (no company record) scales exactly like a foe.
+    // #493: a PLACED team-0 NPC (no company record) keeps 100%, as the old
+    // game's team_num != 0 gate always had it.
     {
         auto easy = scaled_living(FAMILY_SOLDIER, 0, 100);
         auto hard = scaled_living(FAMILY_SOLDIER, 0, 200);
         ASSERT_NE(nullptr, easy) << "team-0 NPC created";
         ASSERT_NE(nullptr, hard) << "team-0 NPC created";
         ASSERT_EQ(nullptr, hard->myguy) << "a placed NPC carries no company record";
-        ASSERT_FLOAT_EQ(easy->stats()->max_hitpoints() * 2.0f, hard->stats()->max_hitpoints())
-            << "an allied NPC without a company record scales with difficulty too";
-        ASSERT_FLOAT_EQ(easy->damage() * 2.0f, hard->damage())
-            << "an allied NPC without a company record scales its damage too";
+        ASSERT_EQ(easy->stats()->max_hitpoints(), hard->stats()->max_hitpoints())
+            << "an allied NPC without a company record never takes the difficulty (#493)";
+        ASSERT_EQ(easy->damage(), hard->damage())
+            << "an allied NPC without a company record never takes the difficulty (#493)";
     }
 
-    // ...but a walker actually carrying a player guy is exempt at any setting.
+    // A walker carrying a player guy is exempt too.
     {
         world.difficulty = 100;
         walker* easy = make_guy(FAMILY_SOLDIER, 0);

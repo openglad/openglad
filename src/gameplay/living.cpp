@@ -945,34 +945,6 @@ bool living::check_special()
 	return true;
 }
 
-namespace og::sim {
-
-bool team0_body_takes_difficulty(const walker& body, std::uint32_t percent)
-{
-	// rule: A12a: a team-0 walker with no player character takes the difficulty percent like its
-	//   foes, on both settings; one carrying a player character never does, and at 100% none
-	//   does (skipped, not multiplied by 1, so the float stream stays bit-exact).
-	// tests: DifficultyScaling.placed_team0_npcs_scale_with_difficulty
-	// tests: DifficultyScaling.player_characters_stay_exempt_from_difficulty
-	return percent != 100 && body.myguy == nullptr;
-}
-
-bool team0_shot_takes_difficulty(const walker& shot, std::uint32_t percent)
-{
-	const walker* const shooter = shot.owner();
-	// rule: #473: a team-0 shot takes the difficulty percent exactly when its shooter's body did:
-	//   its owner is a Living with no player character and the percent is not 100. An unowned
-	//   team-0 object (a placed weapon, treasure or effect) never does.
-	// tests: DifficultyScaling.a_team0_npcs_arrow_scales_with_its_body
-	// tests: DifficultyScaling.a_player_characters_arrow_never_scales
-	// tests: DifficultyScaling.an_unowned_team0_weapon_never_scales
-	// tests: DifficultyScaling.at_one_hundred_percent_a_team0_npcs_arrow_is_never_multiplied
-	return shooter != nullptr && shooter->query_order() == Order::Living &&
-	       team0_body_takes_difficulty(*shooter, percent);
-}
-
-}  // namespace og::sim
-
 void living::set_difficulty(std::uint32_t whatlevel)
 {
 	//  std::int32_t calcdelay,calcrate;  // apparently not used anymore
@@ -999,32 +971,16 @@ void living::set_difficulty(std::uint32_t whatlevel)
 	}
 
 	// Adjust for difficulty settings now...
-	// rule: The difficulty percent scales max HP, max MP and damage of every placed walker, foes
-	//   and placed team-0 NPCs alike (A12a, og::sim::team0_body_takes_difficulty), on both
-	//   settings; only a walker carrying a player character is exempt. At 100% team-0 NPCs skip
-	//   the multiply (bit-exactness). Their shots take the same percent (#473, walker.cpp).
-	// tests: DifficultyScaling.placed_team0_npcs_scale_with_difficulty
+	// rule: The difficulty percent scales max HP, max MP and damage of a placed walker off the
+	//   player's team only, on both settings, as in the old game: no team-0 walker takes it, a
+	//   placed allied NPC and a player's summon included (#493: allies are not scaled; A12a,
+	//   which scaled a team-0 walker with no player character, is reverted).
+	// tests: DifficultyScaling.placed_team0_npcs_never_scale_with_difficulty
+	// tests: DifficultyScaling.a_players_raised_skeleton_and_ghost_never_scale
 	// tests: DifficultyScaling.player_characters_stay_exempt_from_difficulty
 	// tests: DifficultyScaling.hostile_team_legacy_scaling_unchanged
-	if (team_num() != 0)  // hostile/neutral teams: legacy path, untouched
+	if (team_num() != 0)  // do all EXCEPT player characters
 	{
-		const float dif = static_cast<float>(dif1);
-		stats_->set_max_hitpoints((stats_->max_hitpoints() * dif) / 100.0f);
-		stats_->set_max_magicpoints((stats_->max_magicpoints() * dif) / 100.0f);
-		set_damage((damage() * dif) / 100.0f);
-	}
-	else if (og::sim::team0_body_takes_difficulty(*this, dif1))
-	{
-		// A12a: placed team-0 NPCs (the SAVE_ALL Bearer, allied war-hosts,
-		// rearguards...) scale with the difficulty setting exactly like their
-		// foes — the legacy team!=0 gate was meant to exempt PLAYER
-		// characters, but player crews never pass through set_difficulty
-		// (they derive stats via guy::update_derived_stats), so it silently
-		// froze allied NPCs at 100% while enemies doubled on Hard. Only a
-		// walker actually carrying a player guy (myguy) is exempt.
-		// Gated on dif1 != 100: parity goldens and the harness run at 100%,
-		// and (x*100.0f)/100.0f is NOT bit-exact for every float, so the
-		// skip — not a multiply-by-1 — is what preserves byte-identity.
 		const float dif = static_cast<float>(dif1);
 		stats_->set_max_hitpoints((stats_->max_hitpoints() * dif) / 100.0f);
 		stats_->set_max_magicpoints((stats_->max_magicpoints() * dif) / 100.0f);
