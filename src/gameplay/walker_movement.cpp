@@ -431,7 +431,7 @@ bool walker::walkstep(float x, float y)
                         // tests: WalkerMovement.walker_walkstep_user_slide_sets_vertical_and_horizontal_dirs
                         // tests: WalkerMovement.walker_walkstep_user_slide_diagonal_switch_cases_round6
                         // tests: WalkerMovementUnit.walker_movement_r14_user_slide_axes_and_turn_default
-                        if (current_game->world->query_passable(xpos(), ypos() + dy, this))
+                        if (stats()->slide_half_clear(0, dy))
                         {
                             worldmove(0, dy);  // walk without turning ..
                             gotup = true;
@@ -441,7 +441,7 @@ bool walker::walkstep(float x, float y)
                         // tests: WalkerMovement.walker_walkstep_user_slide_sets_vertical_and_horizontal_dirs
                         // tests: WalkerMovement.walker_walkstep_user_slide_diagonal_switch_cases_round6
                         // tests: WalkerMovementUnit.walker_movement_r14_user_slide_axes_and_turn_default
-                        if (current_game->world->query_passable(xpos() + dx, ypos(), this))
+                        if (stats()->slide_half_clear(dx, 0))
                         {
                             worldmove(dx, 0);
                             gotover = true;

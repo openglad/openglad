@@ -771,6 +771,11 @@ TEST(WalkerCombat, walker_act_with_commands)
 
     walker* target = make_guy(FAMILY_ORC, 2);
     ASSERT_NE(nullptr, target) << "act_fire target created";
+    // The world holds the target (and frees it in delete_objects below): the
+    // hit's response runs a foe search, and a foe search takes a walker the
+    // world does not hold out of the obmap (#427), which would leave the
+    // second projectile nothing to meet.
+    world.oblist.push_back(std::unique_ptr<walker>(target));
     target->setxy(120, 120);
     target->stats()->set_armor(0);
     target->stats()->set_max_hitpoints(400.0f);
@@ -817,7 +822,6 @@ TEST(WalkerCombat, walker_act_with_commands)
                     target->stats()->hitpoints())
         << "the immortal projectile lands a second identical hit";
 
-    delete target;
     gen.reset();
     world.delete_objects();
 

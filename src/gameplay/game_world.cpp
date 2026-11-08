@@ -1933,19 +1933,20 @@ walker* GameWorld::find_near_foe(walker* ob)
             // acquisition stays available via find_nearest_foe (the floor-blind
             // full-list scan). ob->floor()==0 on single-floor levels, so
             // legacy behavior is byte-identical.
-            std::list<walker*>& ls =
-                myobmap->obmap_get_list(targx, targy, ob->floor());
+            // #427: the pile first forgets every walker the world no longer
+            //   holds (out of every pile and walker_to_pos, a stale pointer
+            //   never read), then the search reads it with find_list, which
+            //   makes no pile at a cell nobody stands on (obmap_get_list made
+            //   one at every cell the spiral passed).
+            myobmap->forget_untracked(targx, targy, ob->floor(), *this);
+            const std::list<walker*>* ls =
+                myobmap->find_list(targx, targy, ob->floor());
+            // plumbing: a spiral cell with no pile holds nobody to acquire
+            if (ls == nullptr)
+                continue;
 	            // plumbing: spiral legs and pile walk; see above and below
-	            for (auto it = ls.begin(); it != ls.end(); )
+	            for (walker* w : *ls)
             {
-                walker* w = *it;
-                // plumbing: an obmap pile entry no longer tracked by the world is erased and
-                //   skipped (stale pointer guard)
-                if (!tracks(w))
-                {
-                    it = ls.erase(it);
-                    continue;
-                }
                 sanitize_owner_chain_link(*this, ob);
                 sanitize_owner_chain_link(*this, w);
                 // rule: In the quick search a candidate is acquired only if it is alive, not
@@ -1975,7 +1976,6 @@ walker* GameWorld::find_near_foe(walker* ob)
                         return w;
                     }
                 }
-                ++it;
             }
         }
 

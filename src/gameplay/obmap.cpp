@@ -17,6 +17,7 @@
 // OBMAP -- an object to handle locations of pixies on a hash table.
 #include <cstdint>
 #include <openglad/gameplay/obmap.h>
+#include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/key_mask.h>
@@ -26,6 +27,7 @@
 #include <algorithm>
 #include <cmath>
 #include <format>
+#include <vector>
 #include <openglad/gameplay/sim_emit.h>
 
 
@@ -396,8 +398,9 @@ std::list<walker*>& obmap::obmap_get_list(short x, short y, int floor)
 	if (cached != cell_index_.end())
 		return *cached->second;
 	// A miss still default-constructs the empty pile node (the historical
-	// operator[] semantics) for the one caller that writes into the list
-	// (GameWorld::find_near_foe); read-only sweeps use find_list, so the
+	// operator[] semantics). No game code calls it since #427
+	// (GameWorld::find_near_foe reads with find_list after forget_untracked);
+	// the tests read piles with it. Read-only sweeps use find_list, so the
 	// debug overlay (obmap_debug_draw.cpp) now draws fewer empty boxes.
 	std::list<walker*>& pile = pos_to_walker[std::make_pair(numx, numy)];
 	cell_index_.emplace(key, &pile);
@@ -417,6 +420,50 @@ const std::list<walker*>* obmap::find_list(short x, short y, int floor)
 	if (it == pos_to_walker.end())
 		return nullptr;
 	return &it->second;
+}
+
+void obmap::forget_untracked(short x, short y, int floor, const GameWorld& world)
+{
+	const std::pair<short, short> cell = floor_cell(x, y, floor);
+	sync_cell_index();
+	auto pile = pos_to_walker.find(cell);
+	// plumbing: no pile at the cell, nothing to forget
+	if (pile == pos_to_walker.end())
+		return;
+
+	// The untracked entries first: remove() may erase this very pile.
+	std::vector<walker*> gone;
+	// plumbing: collect the pile's entries the world no longer holds; the rule is below
+	for (walker* w : pile->second)
+	{
+		// rule: #427: a foe search forgets a walker the world no longer holds (its pointer may be
+		//   freed, so it is only compared, never read): the world's lists are the one test.
+		// tests: SemWorld.a_foe_search_forgets_an_untracked_walker_in_both_obmap_maps
+		if (!world.tracks(w))
+			gone.push_back(w);
+	}
+	// plumbing: forget each one; the rule is below
+	for (walker* w : gone)
+	{
+		// rule: #427: a forgotten walker walker_to_pos knows leaves every pile it is filed under and
+		//   walker_to_pos (remove()'s fast path, which uses the pointer only as a key); one it
+		//   does not know leaves this pile alone (remove()'s fallback would read its position).
+		// tests: SemWorld.a_foe_search_forgets_an_untracked_walker_in_both_obmap_maps
+		if (walker_to_pos.find(w) != walker_to_pos.end())
+			(void)remove(w);
+		auto here = pos_to_walker.find(cell);
+		// plumbing: remove() may have dropped this pile, or left w in it (filed elsewhere)
+		if (here != pos_to_walker.end())
+			here->second.remove(w);
+	}
+	// rule: #427: the searched pile, left empty, goes with its index entry, as remove() drops one.
+	// tests: SemWorld.a_foe_search_forgets_an_untracked_walker_in_both_obmap_maps
+	auto left = pos_to_walker.find(cell);
+	if (left != pos_to_walker.end() && left->second.empty())
+	{
+		cell_index_.erase(pack_cell(cell.first, cell.second));
+		pos_to_walker.erase(left);
+	}
 }
 
 /***********************************************

@@ -6,7 +6,8 @@
  * (at your option) any later version.
  */
 
-// Gameplay Fixes X, Y and Z: the walk, its side probes and the rush.
+// Gameplay Fixes X, Y, Z, AO and AQ: the walk, its side probes, the rush,
+// the rush's strike on a dead body and a seat's wall slide.
 //
 // X (#403): living::walk shoves collide_ob when its step fails. That field
 //    names the last body a loud probe met, and it can be stale: a probe that
@@ -24,6 +25,14 @@
 //    whatever its team and wherever it stands. With the setting on the rush
 //    strikes only a body that is not friendly and that its last step ran
 //    into.
+// AO (#426): the strike's walker::attack refuses a dead body after its
+//    damage roll, and the classic rush still erases that body's orders and
+//    walks it four steps. With the setting on a dead body is left as it lies.
+// AQ (#434): a seat walking diagonally into a wall slides along it, one
+//    pixel up or down and one sideways per round, each half asked with the
+//    loud probe: a half a body blocks ate a treasure and bumped the body
+//    though the slide never took it. With the setting on each half is asked
+//    quietly first, and only a free half takes the loud step.
 //
 // Each case runs on both values of the setting and pins the sim stream
 // (GameWorld::rng_.state_) exactly: the classic draws with it off, the
@@ -39,6 +48,7 @@
 #include <openglad/core/irandom.h>
 #include <openglad/core/pixdefs.h>
 #include <openglad/gameplay/game_world.h>
+#include <openglad/gameplay/key_mask.h>
 #include <openglad/gameplay/obmap.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
@@ -47,6 +57,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <initializer_list>
+#include <list>
 #include <memory>
 #include <string>
 
@@ -702,6 +713,254 @@ TEST_F(GameplayFixesWalk, a_wall_stopped_rush_strikes_no_stale_body)
         (void)soldier->stats()->do_command();
 
         EXPECT_FLOAT_EQ(382.0f, foe->stats()->hitpoints()) << "the last step ran into it: struck on both";
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Fix AO: the rush's strike on a dead body
+// ---------------------------------------------------------------------------
+
+// The strike after the rush's three steps calls walker::attack, which draws
+// its damage roll and then refuses a dead body (#426); the classic rush then
+// still erases the dead body's orders and forces a four-step walk on it.
+// Staged as `a_rush_into_a_foe_still_strikes_it` with the orc killed before
+// the rush: dead and filed out of the obmap, as walker::death files a corpse
+// out, its search and its leader still set, and named by collide_ob. A
+// corpse never blocks, so the three steps run clean (320 -> 332), and the
+// last step's box (336..351) meets the corpse's (340..355): with the setting
+// on the strike is reached too (a dead body is never friendly). Both values:
+// one damage roll, no damage. Off: the corpse's search and leader are gone
+// and it holds a four-step walk right. On: it keeps both.
+//
+// RED (planted): the AO gate `og::sim::session_gameplay_fixes() == 0 ||
+// !target->dead()` -> `true` (the setting-on arm).
+TEST_F(GameplayFixesWalk, a_rush_ending_on_a_dead_body_leaves_its_orders_with_the_setting_on)
+{
+    for (short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE("setting " + std::to_string(fixes));
+        fresh_world(fixes);
+        walker* soldier = living_at(FAMILY_SOLDIER, 1, 320, 320);
+        walker* leader = living_at(FAMILY_ORC, 2, 600, 600);
+        walker* corpse = living_at(FAMILY_ORC, 2, 340, 320);
+        ASSERT_TRUE(soldier && leader && corpse);
+        soldier->set_stepsize(4.0f);
+        face(soldier, FACE_RIGHT);
+        corpse->stats()->add_command(COMMAND_SEARCH, 10, 0, 0);
+        corpse->set_leader(leader);
+        corpse->set_dead(1);
+        ASSERT_EQ(1, world().myobmap->remove(corpse)) << "premise: the corpse was filed";
+        soldier->stats()->add_command(COMMAND_RUSH, 3, 1, 0);
+        soldier->set_collide_ob(corpse);
+        CountingRandom combat;
+        tw_->gc.rng = &combat;
+
+        (void)soldier->stats()->do_command();
+
+        tw_->gc.rng = &tw_->rng;
+        EXPECT_EQ(332, soldier->xpos()) << "a corpse never blocks: three clean steps";
+        EXPECT_EQ(1, combat.calls) << "attack's damage roll, on both values";
+        EXPECT_FLOAT_EQ(400.0f, corpse->stats()->hitpoints()) << "attack refuses a dead body";
+        const Front f = front_of(corpse);
+        ASSERT_EQ(1u, f.size);
+        if (fixes == 0) {
+            EXPECT_EQ(COMMAND_WALK, f.type) << "setting off: the dead body's orders are erased";
+            EXPECT_EQ(4, f.count);
+            EXPECT_EQ(1, f.com1);
+            EXPECT_EQ(0, f.com2);
+            EXPECT_EQ(nullptr, corpse->leader()) << "setting off: clear_command dropped its leader";
+        } else {
+            EXPECT_EQ(COMMAND_SEARCH, f.type) << "setting on: the dead body keeps its orders";
+            EXPECT_EQ(10, f.count);
+            EXPECT_EQ(leader, corpse->leader()) << "setting on: and its leader";
+        }
+    }
+}
+
+// The way a rush meets a dead body in play: a door the rushing soldier holds
+// the key to, 20 px ahead. The second step's probe opens it (the door dies,
+// walker::death files it out of the obmap, collide_ob names it, the step is
+// refused), the third step passes where it stood, and the last step's box
+// meets the dead door's, so the strike is reached on both values. Both: the
+// door is dead, its opening effect is built (a walker's construction draws
+// its path-check cadence from the gameplay stream) and attack's damage roll
+// is drawn: two draws. Off: the dead door is handed a four-step walk. On:
+// its queue stays empty.
+//
+// RED (planted): as above.
+TEST_F(GameplayFixesWalk, a_rush_that_opens_a_door_leaves_the_dead_door_alone_with_the_setting_on)
+{
+    for (short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE("setting " + std::to_string(fixes));
+        fresh_world(fixes);
+        walker* soldier = living_at(FAMILY_SOLDIER, 1, 320, 320);
+        walker* door = place(world().add_weap_ob(Order::Weapon, FAMILY_DOOR), 340, 320, 16, 16);
+        ASSERT_TRUE(soldier && door);
+        door->set_team_num(3);
+        door->stats()->set_level(2);
+        soldier->set_keys(static_cast<std::uint32_t>(key_level_mask(2)));
+        soldier->set_stepsize(4.0f);
+        face(soldier, FACE_RIGHT);
+        soldier->stats()->add_command(COMMAND_RUSH, 3, 1, 0);
+        soldier->set_collide_ob(nullptr);
+        ASSERT_EQ(0u, door->stats()->commands.size()) << "premise: a door holds no orders";
+        const auto walkers = [&] {
+            return world().oblist.size() + world().fxlist.size() + world().weaplist.size();
+        };
+        const std::size_t walkers_before = walkers();
+        CountingRandom combat;
+        tw_->gc.rng = &combat;
+
+        (void)soldier->stats()->do_command();
+
+        tw_->gc.rng = &tw_->rng;
+        EXPECT_EQ(1, door->dead()) << "the rush's own step opened the door";
+        EXPECT_EQ(door, soldier->collide_ob()) << "the strike names the dead door";
+        ASSERT_EQ(walkers_before + 1, walkers()) << "the opened door leaves its opening effect";
+        EXPECT_EQ(2, combat.calls)
+            << "one draw for the effect built (its path-check cadence), one for attack's "
+               "damage roll, on both values";
+        const Front f = front_of(door);
+        if (fixes == 0) {
+            ASSERT_EQ(1u, f.size);
+            EXPECT_EQ(COMMAND_WALK, f.type) << "setting off: the dead door is walked";
+            EXPECT_EQ(4, f.count);
+            EXPECT_EQ(1, f.com1);
+            EXPECT_EQ(0, f.com2);
+        } else {
+            EXPECT_EQ(0u, f.size) << "setting on: the dead door is left as it lies";
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Fix AQ: a seat's wall slide
+// ---------------------------------------------------------------------------
+
+// The slide's stage (#434). A seated soldier at (320,320), stepsize 2,
+// walks up-right; a wall tile at the corner, tile (21,19) = x 336..351,
+// y 304..319, stops the full step and the baby step in the ground half of
+// the probe, so neither reaches a body, and the slide runs two rounds. In
+// round 1 the vertical half, (320,319), is clear of the wall and the
+// horizontal half, (321,320), is clear of everything; in round 2 the
+// vertical half from (321,319) meets the wall tile. A body 15 px above
+// (box 320..335 x 305..320) is not met where the soldier stands (collide()
+// needs two pixels of overlap) and is met by the vertical half alone.
+//
+// RED (planted): slide_half_clear's `og::sim::session_gameplay_fixes() != 0`
+// -> `false` (the classic loud step on both values: the setting-on arm
+// eats the potion).
+//
+// A potion at (324,313), 8x8, filed in the vertical half's first cell
+// before the body, meets the vertical half's box (its bottom row against
+// the box's top row) and not the horizontal half's. The body is the
+// soldier's ally, so a bump only records it. Both values: the slide ends
+// two pixels right, at (322,320). Off: the vertical half's loud probe eats
+// the potion before it meets the body. On: the quiet probe passes it and
+// stops at the body. (collide_ob is no witness here: the horizontal half,
+// taken on both values, is loud, and the body shares its cell without
+// meeting it, which clears collide_ob on both values; the swing case below
+// pins it on a slide whose other half is walled.)
+TEST_F(GameplayFixesWalk, a_seats_wall_slide_eats_nothing_on_the_half_it_does_not_take_with_the_setting_on)
+{
+    for (short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE("setting " + std::to_string(fixes));
+        fresh_world(fixes);
+        tile(21, 19, PIX_H_WALL1);
+        walker* soldier = living_at(FAMILY_SOLDIER, 0, 320, 320);
+        walker* potion = treasure_at(FAMILY_MAGIC_POTION, 324, 313, 8, 8);
+        walker* body = living_at(FAMILY_ORC, 0, 320, 305);
+        ASSERT_TRUE(soldier && potion && body);
+        const std::list<walker*>* pile = world().myobmap->find_list(320, 304, 0);
+        ASSERT_NE(nullptr, pile);
+        ASSERT_EQ(std::list<walker*>({potion, body}), *pile)
+            << "premise: the vertical half's first cell holds the potion before the body";
+        soldier->set_user(0);
+        soldier->set_stepsize(2.0f);
+        face(soldier, FACE_UP_RIGHT);
+        soldier->set_collide_ob(nullptr);
+
+        EXPECT_FALSE(soldier->walkstep(1.0f, -1.0f)) << "the slide reports failure";
+
+        EXPECT_EQ(322, soldier->xpos()) << "two rounds, one pixel right each, on both values";
+        EXPECT_EQ(320, soldier->ypos()) << "the body, then the wall, keep it from moving up";
+        if (fixes == 0)
+            EXPECT_EQ(1, potion->dead()) << "setting off: the untaken half's probe eats the potion";
+        else
+            EXPECT_EQ(0, potion->dead()) << "setting on: the untaken half eats nothing";
+    }
+}
+
+// A hostile orc 15 px above, the corner tile and the tile right of the
+// soldier, (21,20), walling the horizontal half: the slide moves nowhere,
+// and only the vertical half's probe meets anything. Off: that probe bumps
+// the orc in both rounds (living::collide: collide_ob, and in round 1 a
+// swing: the fire delay as busy and the attack animation; round 2 finds the
+// soldier busy). On: the quiet probe stops at the orc and touches nothing.
+//
+// RED (planted): as above (the setting-on arm swings).
+TEST_F(GameplayFixesWalk, a_seats_wall_slide_swings_at_no_foe_on_the_half_it_does_not_take_with_the_setting_on)
+{
+    for (short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE("setting " + std::to_string(fixes));
+        fresh_world(fixes);
+        tile(21, 19, PIX_H_WALL1);
+        tile(21, 20, PIX_H_WALL1);
+        walker* soldier = living_at(FAMILY_SOLDIER, 0, 320, 320);
+        walker* orc = living_at(FAMILY_ORC, 2, 320, 305);
+        ASSERT_TRUE(soldier && orc);
+        soldier->set_user(0);
+        soldier->set_stepsize(2.0f);
+        face(soldier, FACE_UP_RIGHT);
+        soldier->set_collide_ob(nullptr);
+        const float delay = soldier->fire_frequency();
+        ASSERT_GT(delay, 0.0f) << "premise: a swing costs time";
+        ASSERT_EQ(ANI_WALK, static_cast<int>(soldier->ani_type()));
+
+        EXPECT_FALSE(soldier->walkstep(1.0f, -1.0f));
+
+        EXPECT_EQ(320, soldier->xpos()) << "walled in: no move on either value";
+        EXPECT_EQ(320, soldier->ypos());
+        EXPECT_FLOAT_EQ(400.0f, orc->stats()->hitpoints()) << "a swing starts, no blow lands";
+        if (fixes == 0) {
+            EXPECT_EQ(orc, soldier->collide_ob()) << "setting off: the probe bumped the orc";
+            EXPECT_FLOAT_EQ(delay, soldier->busy()) << "setting off: one swing's delay";
+            EXPECT_EQ(ANI_ATTACK, static_cast<int>(soldier->ani_type())) << "setting off: the swing";
+        } else {
+            EXPECT_EQ(nullptr, soldier->collide_ob()) << "setting on: nothing bumped";
+            EXPECT_FLOAT_EQ(0.0f, soldier->busy()) << "setting on: no swing";
+            EXPECT_EQ(ANI_WALK, static_cast<int>(soldier->ani_type()));
+        }
+    }
+}
+
+// The half the slide takes is still the step: a potion at (335,324), 8x8,
+// meets the horizontal half's box and neither the soldier where it stands
+// nor the vertical half's box. The slide moves onto it and eats it on both
+// values: with the setting on the quiet question says the half is free and
+// the loud step follows.
+//
+// RED (planted): a wholly quiet slide, `if (og::sim::session_gameplay_fixes()
+// != 0) { return <the quiet probe>; }` prepended to slide_half_clear (the
+// setting-on arm leaves the potion).
+TEST_F(GameplayFixesWalk, a_seats_wall_slide_still_eats_what_it_slides_onto_on_both_values)
+{
+    for (short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE("setting " + std::to_string(fixes));
+        fresh_world(fixes);
+        tile(21, 19, PIX_H_WALL1);
+        walker* soldier = living_at(FAMILY_SOLDIER, 0, 320, 320);
+        walker* body = living_at(FAMILY_ORC, 0, 320, 305);
+        walker* potion = treasure_at(FAMILY_MAGIC_POTION, 335, 324, 8, 8);
+        ASSERT_TRUE(soldier && body && potion);
+        soldier->set_user(0);
+        soldier->set_stepsize(2.0f);
+        face(soldier, FACE_UP_RIGHT);
+
+        EXPECT_FALSE(soldier->walkstep(1.0f, -1.0f));
+
+        EXPECT_EQ(322, soldier->xpos());
+        EXPECT_EQ(320, soldier->ypos());
+        EXPECT_EQ(1, potion->dead()) << "the taken half eats what it moves onto, on both values";
     }
 }
 

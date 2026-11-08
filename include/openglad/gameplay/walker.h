@@ -284,6 +284,17 @@ class walker : public og::sim::SimEntity
 		// stops here: a charmed troop or summon heads its own chain and fights
 		// for the colour it wears. Defined in walker_specials.cpp.
 		bool charmed_head() const;
+		// Gameplay Fixes AP (#429): the one owner-chain climb. chain_next is
+		// the next link up, or nullptr where every climb stops (no owner, a
+		// self-loop, a charmed walker with the setting on); a dead owner is
+		// climbed through. chain_head is the top of the climb, the head a blow
+		// scores for; alliance_head is the head is_friendly reads (with the
+		// setting off the classic climb, which stops at a dead owner). Defined
+		// in walker_specials.cpp.
+		walker* chain_next() const;
+		walker* chain_head();
+		const walker* chain_head() const;
+		const walker* alliance_head() const;
 
 
 		// stats (unique_ptr ownership is protected; getter returns raw pointer)
@@ -529,9 +540,10 @@ class walker : public og::sim::SimEntity
 		}
 		// The walker a hit or a kill is credited to (#411): the topmost
 		// LIVING on this walker's owner chain (a tent's troop is its own
-		// credit: a generator is not a body), stopping at a charmed head;
-		// nullptr when no living is on the chain. The kill stamp and on_kill
-		// read it; score and experience keep the chain's root.
+		// credit: a generator is not a body), climbed by chain_next (fix AP:
+		// through a dead owner, stopping at a charmed head); nullptr when no
+		// living is on the chain. The kill stamp and on_kill read it; score
+		// and experience keep the chain's root.
 		walker* credit_head();
 
 		// TODO: Move this to screen class so it doesn't get overlapped by other walkers drawing

@@ -5093,7 +5093,7 @@ inline constexpr FactPredicate kFacts_multiplayer_two_teams_scen99[] = {
 };
 
 inline constexpr Mutation kMut_multiplayer_two_teams_scen99 = {
-    "src/gameplay/walker.cpp", 3731,
+    "src/gameplay/walker.cpp", 3728,
     "return headus->team_num() == headtarget->team_num();",
     "return headus == headtarget || headus->team_num() != headtarget->team_num();",
     "Keeps identical owner-chain heads friendly while inverting the team-number comparison for distinct heads, continuing to consume both locals. Because the three scenario walkers have distinct teams and no owners, every relationship becomes friendly: the melee never starts, every walker keeps full HP, and play_sound collapses to one event, below the floor of four."
@@ -8381,7 +8381,7 @@ inline constexpr FactPredicate kFacts_walk_to_foe_adopts_near_foe_scen99[] = {
 };
 
 inline constexpr Mutation kMut_walk_to_foe_adopts_near_foe_scen99 = {
-    "src/gameplay/stats.cpp", 2046,
+    "src/gameplay/stats.cpp", 2055,
     "controller_->set_foe(near_foe);",
     "(void)near_foe;",
     "Drops the adoption and keeps the this-tick re-aim (the recomputed xdelta/ydelta still steer the turn), which the recon measured byte-identical to the pre-#320 golden on every switch row: the archer keeps the soldier as its foe, its arrows never land on the thief, WalkerHpRangeAtFinalTick(FAMILY_THIEF, 5600, 5600) reads 6700 and the soldier fact reads 7200. The archer control and the tick budget hold."
@@ -10494,7 +10494,7 @@ inline constexpr FactPredicate kFacts_soldier_charge_front_foe_scen99[] = {
         "consequence: the classic probe's swing takes the tower down to 93 hp"),
 };
 inline constexpr Mutation kMut_soldier_charge_front_foe_scen99 = {
-    "src/gameplay/stats.cpp", 1446,
+    "src/gameplay/stats.cpp", 1455,
     "return !current_game->world->query_passable(controlx + xdelta, controly + ydelta, controller_, controller_->floor(), quiet);",
     "return true || !current_game->world->query_passable(controlx + xdelta, controly + ydelta, controller_, controller_->floor(), quiet);",
     "Answers blocked without probing, so CHARGE still refuses PATH BLOCKED but no probe bumps the tower, which ends at 112 hp: WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 9300, 9300) fails (the sound count stays 8: the tower's own shots fall differently)."
@@ -10762,7 +10762,7 @@ inline constexpr FactPredicate kFacts_orc_right_walk_potion_scen99[] = {
         "consequence: the classic run ends with the orc at (105, 118); with the setting on it ends at (97, 108)"),
 };
 inline constexpr Mutation kMut_orc_right_walk_potion_scen99 = {
-    "src/gameplay/stats.cpp", 1460,
+    "src/gameplay/stats.cpp", 1469,
     "const bool quiet = og::sim::session_gameplay_fixes() != 0;",
     "const bool quiet = true;",
     "right_walk's probes ask quietly with the setting off too, so the probe beside the orc never eats the potion: WalkerOfOrderFamilyCount(FAMILY_MAGIC_POTION, kOrderTreasure, 0, 0) reads 1.",
@@ -10776,11 +10776,64 @@ inline constexpr FactPredicate kFacts_orc_right_walk_potion_fixes_scen99[] = {
         "consequence: with the setting on the right-hand walk's probes ask quietly, so the potion beside the orc is not eaten"),
 };
 inline constexpr Mutation kMut_orc_right_walk_potion_fixes_scen99 = {
-    "src/gameplay/stats.cpp", 1460,
+    "src/gameplay/stats.cpp", 1469,
     "const bool quiet = og::sim::session_gameplay_fixes() != 0;",
     "const bool quiet = false;",
     "right_walk's probes are loud again with the setting on, so right_blocked's probe eats the potion: WalkerOfOrderFamilyCount(FAMILY_MAGIC_POTION, kOrderTreasure, 1, 1) reads 0.",
     "bool statistics::right_walk()"
+};
+
+// --- player_slide_potion (fix AQ: a seat's wall slide asks each half quietly first) ---
+// The player soldier walks up-right into a friendly TOWER1 whose bottom row
+// lies on the soldier's top row (a 1 px overlap at rest, which is no
+// collision: collide() needs two). The tower stops the full and the baby
+// step, so the player slides along it, one pixel up and one right per round:
+// the half up meets the tower, the half right is free. A magic potion (7x13)
+// stands at the player's top-left, its last column on the player's first
+// and its last row on the row above the player: of every probe of the walk
+// only the first round's half up meets it, and it lies in an earlier 32 px
+// column than the tower, so that probe reaches it before the tower. The
+// classic half is a loud step whether the slide takes it or not: it eats the
+// potion. With the setting on the half is asked quietly first, the tower
+// says no, and the potion stands. A far hostile tower holds the level open.
+inline constexpr InputEvent kInputs_player_slide_potion[] = {
+    {  1, 0, K_UP_RIGHT }, {  6, 0, K_NONE },
+};
+inline constexpr SpawnSpec kFamilySpawns_player_slide_potion_scen99[] = {
+    { FAMILY_MAGIC_POTION, 2, kOrderTreasure, 143, 108, 0, 0 },        // 7x13 at the player's top-left, column 4: only the first round's half up meets it
+    { FAMILY_TOWER1,       0, kOrderLiving,   160,  92, 0, 0 },        // friendly 25x29, column 5, its bottom row on the player's top row: stops the full and baby steps and every half up
+    { FAMILY_TOWER1,       1, kOrderLiving,   560, 440, 0, 0, 10, 0 }, // a far hostile tower holds the level open
+    { FAMILY_SOLDIER,      0, kOrderLiving,   148, 120, 0, 0 },        // the player LAST
+};
+inline constexpr FactPredicate kFacts_player_slide_potion_scen99[] = {
+    pred::TickReached(10),
+    pred::WalkerOfOrderFamilyCount(FAMILY_MAGIC_POTION, kOrderTreasure, 0, 0,
+        "consequence: the classic slide's half up, which the slide never takes, eats the potion at the player's top-left"),
+    // negative_assertion: the potion is gone on the classic run; the pin makes the half quiet and the potion stands (0 -> 1).
+    pred::WalkerPositionMoved(FAMILY_SOLDIER, 156, 120,
+        "the slide's end, the same on both values: 8 px right along the tower, never up"),
+};
+inline constexpr Mutation kMut_player_slide_potion_scen99 = {
+    "src/gameplay/stats.cpp", 2497,
+    "if (og::sim::session_gameplay_fixes() != 0",
+    "if (true",
+    "The slide asks each half quietly first with the setting off too, so the half up stops at the tower without eating: WalkerOfOrderFamilyCount(FAMILY_MAGIC_POTION, kOrderTreasure, 0, 0) reads 1.",
+    "bool statistics::slide_half_clear(short dx, short dy)"
+};
+inline constexpr FactPredicate kFacts_player_slide_potion_fixes_scen99[] = {
+    pred::TickReached(10),
+    // negative_assertion: the potion stands with the setting on; the pin makes the half loud again and it is eaten (1 -> 0).
+    pred::WalkerOfOrderFamilyCount(FAMILY_MAGIC_POTION, kOrderTreasure, 1, 1,
+        "consequence: with the setting on the slide asks its half up quietly, the tower says no, and the potion stands"),
+    pred::WalkerPositionMoved(FAMILY_SOLDIER, 156, 120,
+        "the slide's end, the same on both values: 8 px right along the tower, never up"),
+};
+inline constexpr Mutation kMut_player_slide_potion_fixes_scen99 = {
+    "src/gameplay/stats.cpp", 2497,
+    "if (og::sim::session_gameplay_fixes() != 0",
+    "if (false",
+    "The slide's halves are loud again with the setting on, so the first round's half up eats the potion: WalkerOfOrderFamilyCount(FAMILY_MAGIC_POTION, kOrderTreasure, 1, 1) reads 0.",
+    "bool statistics::slide_half_clear(short dx, short dy)"
 };
 
 // --- soldier_charge_ally (fix Z: a rush strikes only a foe its last step ran into) ---
@@ -11147,7 +11200,7 @@ inline constexpr FactPredicate kFacts_elemental_struck_short_pool_scen99[] = {
         "consequence: on the classic stream the struck orc ends at 82 hp"),
 };
 inline constexpr Mutation kMut_elemental_struck_short_pool_scen99 = {
-    "src/gameplay/stats.cpp", 1103,
+    "src/gameplay/stats.cpp", 1112,
     "&& !rng(3) )",
     "&& false )",
     "A struck bot never casts, so the rng(3) and the refused casts are gone and the stream parts: the orc's 82 hp (WalkerHpRangeAtFinalTick) fails.",
@@ -14440,6 +14493,20 @@ inline constexpr ScenarioSpec kScenarios[] = {
       0, false, true, Exercises::None,
       kFacts_orc_right_walk_potion_fixes_scen99, std::size(kFacts_orc_right_walk_potion_fixes_scen99),
       kMut_orc_right_walk_potion_fixes_scen99, {}, 1, nullptr, 0, 1 },
+    { "player_slide_potion_scen99", "scen/scen1.fss", 0x00000000u,
+      kInputs_player_slide_potion, std::size(kInputs_player_slide_potion), 10,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_player_slide_potion_scen99, std::size(kFamilySpawns_player_slide_potion_scen99),
+      0, false, true, Exercises::None,
+      kFacts_player_slide_potion_scen99, std::size(kFacts_player_slide_potion_scen99),
+      kMut_player_slide_potion_scen99 },
+    { "player_slide_potion_fixes_scen99", "scen/scen1.fss", 0x00000000u,
+      kInputs_player_slide_potion, std::size(kInputs_player_slide_potion), 10,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_player_slide_potion_scen99, std::size(kFamilySpawns_player_slide_potion_scen99),
+      0, false, true, Exercises::None,
+      kFacts_player_slide_potion_fixes_scen99, std::size(kFacts_player_slide_potion_fixes_scen99),
+      kMut_player_slide_potion_fixes_scen99, {}, 1, nullptr, 0, 1 },
     { "soldier_charge_ally_scen99", "scen/scen1.fss", 0x00000018u,
       kInputs_soldier_charge_ally, std::size(kInputs_soldier_charge_ally), 30,
       CompareMode::SemanticParity, false,

@@ -126,6 +126,10 @@ class statistics
 		// along its heading). Everything else the probe met stays untouched.
 		// Off, the probe alone. See right_walk.
 		bool path_probe(Side side, bool quiet);
+		// Gameplay Fixes AQ: one half of a seat's slide along a wall (walker::walkstep's
+		// user arm), the walker's box moved (dx, dy): with the setting on asked quietly
+		// first, and only a free half takes the classic loud step. Off, the loud step.
+		bool slide_half_clear(short dx, short dy);
 		//short distance_to_foe(); //not in use???????
 		bool right_walk();      // walk using right-hand rule
 		bool direct_walk(); // walk in a line toward foe ..

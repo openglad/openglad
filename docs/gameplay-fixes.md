@@ -100,6 +100,9 @@ usual pause.
 | AL | Archmage MIND CONTROL on more than one foe | The cast costs its price alone, however many foes it takes, as the old game's does (its charge for each further man lowers only a local). | Each foe taken past the first costs 10 magic more, never more than the magic left after the price. |
 | AM | A poison cloud wedged against a wall | It stays where it is until its walk runs out (#233), then draws a new one. | A tick that neither moves it nor turns it drops the stuck walk and draws a fresh direction, so it drifts on. |
 | AN | The archmage bot's CHAIN LIGHTNING rule, for a hero | No rule: the bot casts its coin's arm (fix B's off column). | The rule measures the chain with the cast's own reach: 200 px plus half its Intelligence plus 2 per level for an archmage with a character record (a hero the computer plays), 200 px plus 7 per level for a monster. Before, it measured every archmage by level, so such a hero was told "the chain has a target" and then refused `NO FOE IN RANGE`, or turned to HEARTBURST or held when the chain would have landed. |
+| AO | CHARGE's strike on a dead body | The rush strikes a body that is already dead (in play, a door its own step opened with a key): the strike draws its damage roll and does nothing to the body, and the rush still erases the dead body's orders and forces a four-step walk on it. Nothing a player sees follows: a dead walker never acts, and every revival clears its orders. | The dead body is left as it lies: the damage roll is still drawn, its orders stay and no walk is forced. |
+| AP | Whose side a walker takes in the tick its owner dies | Friendliness climbs a walker's owner chain only up to a dead owner, while the score, the experience and the kill credit of its blows climb through it: a summon or a shot of a caster that was charmed and then killed is asked for friendliness as its own colour but credited to the caster's, until the tick ends and the dead owner is dropped. | Every climb goes through a dead owner and stops at a charmed walker (fix AD), the climb a blow's score always made: friendliness, score and credit read one head, so a dead caster's summon and its shots keep the caster's side for the rest of that tick. The mutant mode's damage gate reads the same climb, so there too a charmed summon heads its own chain. |
+| AQ | A player's slide along a wall | Each half of the slide is a real step whether the slide takes it or not: on a half a body blocks, the probe eats a treasure it reaches before the body, bumps the body (a swing at a foe), opens a door the player holds the key to and posts "Key N needed!" at a locked one. | Each half is asked quietly first, as the right-hand walk's probes are (fix Y); only a free half takes the step, which acts as before (a treasure the slide moves onto is eaten). A blocked half eats nothing, swings at nothing and opens nothing: a keyed door beside a wall opens when the player walks into it, not when the slide brushes it. |
 | AR | The druid bot's SUMMON FAERIE rule | No rule (fix Q's off column). With the setting on before this fix the rule asked the bolt's pad alone: a bolt passes an ally, a faerie does not, so with an ally standing where the faerie appears the rule said yes and the cast refused `NO ROOM TO SUMMON`. | The rule also asks the cast's own question for the faerie where the bolt stands, quietly, with a faerie of the druid's (never the druid's own body, #423): an ally, an enemy door or tree, an enemy weapon in flight or an arrow slit there is a no. |
 | AS | Archer BARRAGE (the cast and the bot rule) | The cast fires three arrows and answers yes whatever each does: at a wall face or the map edge no arrow leaves and it still costs the 60; with a body on the arrow's pad it lands three melee blows for the 60. The bot rule asks for the foe faced and in flight, never the pad. | A pad blocked by terrain refuses `COULD NOT FIRE` before anything is paid (as fix AC). A first arrow that cannot leave (a body on the pad takes its blow, or an enemy weapon wins the clash) refuses `COULD NOT FIRE` after that one blow and fires no more: it costs the one swing, never the 60. The bot rule also asks the arrow's pad, an enemy weapon on it included (fix AV's question). |
 | AT | A walker asked to face the way it already faces | The turn moves it one notch counter-clockwise anyway and points its heading that way. Four callers ask it: a bot within 100 px of a foe it already faces is turned off it on the tick it re-plans, and the swing it then tries only turns it back, so that swing never starts (measured on Tryxian level 1, six seeds of 2400 ticks: 2,307 such tries, 0 swings); a chaser whose shot already lands, so it faces its foe, turns off it before it attacks and spends its next act turning back; a bot whose shot is refused while it faces its foe (a melee-only bot always) turns off it; a wall-hugging bot still mid-turn can be turned off its new heading. | It stays as it is: its facing, heading and walk frame do not change, and the turn reports done. The bot at its foe swings when it is not busy (measured: 2,291 swings in 2,383 tries; 80 waited for their busy time, 12 turned because their heading pointed elsewhere); the chaser attacks on its next act. |
@@ -891,6 +894,7 @@ The rows with the setting on, by fix:
 | AC | `elf_rocks_edge_pad_fixes_scen99` (a new arena, with its setting-off twin); for #476, `archer_bolt_edge_pad_fixes_scen99`, `barbarian_boulder_edge_pad_fixes_scen99` and `mage_wave_edge_pad_fixes_scen99` (three new arenas, each with its setting-off twin) |
 | AD | `thief_charm_tent_troop_fixes_scen99` (a new arena, with its setting-off twin; the setting-on twin has spawns of its own: see below) |
 | AG | `elf_forest_haste_fixes_scen99` (a new arena, with its setting-off twin) |
+| AQ | `player_slide_potion_fixes_scen99` (a new arena, with its setting-off twin) |
 | AR | `druid_bot_faerie_room_fixes_scen99` (a new arena, with its setting-off twin) |
 | AS | `archer_bot_barrage_pad_body_fixes_scen99`, `archer_barrage_edge_pad_fixes_scen99` and `archer_barrage_pad_body_fixes_scen99` (three new arenas, each with its setting-off twin) |
 | AT | `orc_bot_faces_foe_fixes_scen99` (a new arena, with its setting-off twin), and the 44 rows below that it moves |
@@ -923,6 +927,51 @@ a shorter walk fails the y bound and a longer one the x bound. Measured in
 the current game, the fix moves no existing row on either value: no row
 hastens a forestwalker, and the setting-on rows' elves stand on grass (the
 bots among them are level 1, whose forest step is 1 px both ways).
+
+Fix AI has no new row: every FREEZE TIME row plays a red player and a mage
+that is red or not a hero, where both values of the setting cast the same
+form (`special_mage_3_scen99`, `input_special_switch_wrap_scen99`,
+`enemy_freeze_mage_scen99`, `mage_freeze_time_offteam_scen99` and the mage
+bot freeze rows), so every golden is unchanged. The semantic tests pin the
+two cases where the tests differ, on both values.
+
+Fix AJ has no row: every exit row plays scen99, which is not a level the
+player may leave at any time, so both values ask the same question.
+
+Fix AK has no row: the key rows record a notification's text and not whose
+view it goes to, so both values record the same bytes.
+
+Fix AM has no row: no cloud row wedges its cloud (`effect_cloud_emission`,
+`effect_poison_cloud_emit`, `effect_cloud_poison`, `thief_bot_cloud_alone`
+and its twin with the setting on), so both values draw the same stream.
+
+Fix AO has no row: the fix changes only a dead body's orders, which no
+recording holds (the dump records a walker's place, hit points, team and
+life); a dead walker never acts and every revival clears its orders, and
+the strike and its damage roll stay, so an arena's two captures would be
+byte-identical. `GameplayFixesWalk` in `tests/unit/test_gameplay_fixes_walk.cpp`
+pins it, with a corpse and with a door the rush's own step opens.
+
+Fix AP has no row: a climb meets a dead owner only in the tick its owner
+dies (a shot or an effect drops a dead owner at its next act, a summon dies
+with it, and the end of every tick drops every link to the dead), and only a
+charm can give that owner another colour than its summon or shot. No arena
+stages a charm, a death and a friendliness question about the dead caster's
+summon or shot inside one tick: the bots' cadence would make it a lottery of
+seeds. The unit tests `GameplayFixesChain` (`tests/unit/test_gameplay_fixes_charm.cpp`)
+and `ModesMutant.the_damage_gate_reads_the_games_owner_climb` pin it.
+
+Fix AQ's arena, `player_slide_potion_scen99` and
+`player_slide_potion_fixes_scen99`: the player soldier walks up-right into
+a friendly TOWER1 whose bottom row lies on its top row, so the full and the
+baby step are stopped and the player slides right along the tower. A magic
+potion stands at the player's top-left, where only the first round's half
+up (the half the slide never takes) meets it, one 32 px column before the
+tower, so that probe reaches it first. With the setting off the probe eats
+it; with the setting on the half is asked quietly, the tower answers, and
+the potion stands to the end. The scene does not need terrain: every
+blocker is a body, because a half that terrain blocks never reaches the
+bodies on either value.
 
 Fix AT's arena, `orc_bot_faces_foe_scen99` and `orc_bot_faces_foe_fixes_scen99`:
 a hostile level-1 orc bot spawns facing down at the idle player soldier
@@ -975,23 +1024,6 @@ and back. In six only the random stream at the end differs. The facts of
 22 of them no longer hold on the current game and are worked out again
 from the old game's captures. No setting-off golden moves: every
 setting-off row passes unchanged.
-
-Fix AI has no new row: every FREEZE TIME row plays a red player and a mage
-that is red or not a hero, where both values of the setting cast the same
-form (`special_mage_3_scen99`, `input_special_switch_wrap_scen99`,
-`enemy_freeze_mage_scen99`, `mage_freeze_time_offteam_scen99` and the mage
-bot freeze rows), so every golden is unchanged. The semantic tests pin the
-two cases where the tests differ, on both values.
-
-Fix AJ has no row: every exit row plays scen99, which is not a level the
-player may leave at any time, so both values ask the same question.
-
-Fix AK has no row: the key rows record a notification's text and not whose
-view it goes to, so both values record the same bytes.
-
-Fix AM has no row: no cloud row wedges its cloud (`effect_cloud_emission`,
-`effect_poison_cloud_emit`, `effect_cloud_poison`, `thief_bot_cloud_alone`
-and its twin with the setting on), so both values draw the same stream.
 
 The bot payoff gates moved five existing rows with the setting on, each
 recaptured from the old game after its port: `cleric_bot_raise_or_turn_fixes_scen99`
@@ -1211,8 +1243,8 @@ Rows deliberately not added:
 
 ## Not gated
 
-Twenty-four changes apply whatever the setting, three from the work that
-added it (N, O and P), six from the second bugs batch and fifteen from the
+Twenty-five changes apply whatever the setting, three from the work that
+added it (N, O and P), six from the second bugs batch and sixteen from the
 issues it filed; the last entry records a difference kept on purpose (#484):
 
 - **N. A slot that is not in play says so.** `walker::special()` refuses a
@@ -1258,10 +1290,11 @@ issues it filed; the last entry records a difference kept on purpose (#484):
   the obmap's buckets (the spawn-spot probe, the landing and wake probes,
   the path search's cost, the text client's grid and object commands)
   reads `obmap::find_list`, which answers nothing for an empty cell
-  instead of making an empty bucket there; `obmap_get_list` stays for
-  `GameWorld::find_near_foe`, which edits the bucket it reads. No byte of
-  the sim changes. The obmap debug overlay draws fewer empty boxes. The old
-  game's spawn probe already reads with a find.
+  instead of making an empty bucket there; since #427
+  `GameWorld::find_near_foe` reads with it too (below), so no game code
+  makes an empty bucket. No byte of the sim changes. The obmap debug
+  overlay draws fewer empty boxes. The old game's spawn probe already
+  reads with a find.
 - **One pad table (#418).** `walker::set_weapon_heading`, which places the
   test weapon of a shooter's line-of-fire check, had its own copy of the
   eight-heading pad table; it now places the weapon with
@@ -1436,6 +1469,20 @@ issues it filed; the last entry records a difference kept on purpose (#484):
   now reads the door's own floor. On one floor nothing changes, and every
   parity door stands on floor 0, so no golden moves. This game only: the
   old game has one floor.
+- **A foe search forgets a walker the world no longer holds (#427).** The
+  quick foe search (`GameWorld::find_near_foe`) erased a pile entry the
+  world no longer held from that one pile only: the walker stayed in its
+  other piles and in `obmap::walker_to_pos`, where every passability probe
+  still read it as a body (a freed pointer, had it been freed), and the
+  emptied pile stayed. The search also made an empty pile at every cell its
+  spiral passed. The pile now forgets such a walker whole
+  (`obmap::forget_untracked`: every pile it is filed under and
+  `walker_to_pos`, its pointer compared and never read), a pile it leaves
+  empty goes with its index entry, and the search reads the pile with
+  `obmap::find_list`, which makes none. No byte of the sim changes: in play
+  no walker the world let go is still filed (a death and every removal
+  file it out), so no recording moves. This game only: the old game's
+  search trusts its pile.
 - **The simulation records every display effect (#484).** Not a change. The
   old game decided the melee lunge, the hit and heal numbers, a walled-in
   walker's red 1, the hurt flash, the recoil and the hit animation where it
@@ -1524,6 +1571,17 @@ its mistake:
   script error that points at `og.spawn_spot_clear` (bodies and terrain)
   and `og.query_grid_passable` (terrain). No shipped script passes a floor
   to either. This game only.
+- **A vetoed shot leaves no weapon (#428).** A family's `on_fire_weapon`
+  hook that answers `false` blocks the shot. By then `walker::fire()` has
+  built the weapon, placed it on the pad and aimed it, and it left that
+  weapon alive, where every other refusal in `fire()` kills it (a pad
+  nobody can stand on, a swing, a melee-only family): a hook that did not
+  kill the weapon itself left a shot flying that nobody fired, counted or
+  heard. The veto now kills the weapon. The soldier's out-of-blades veto,
+  the one shipped hook that refuses, kills its weapon itself, and the
+  archmage's never refuses; the modding guide's emberwisp example refuses
+  without killing it, and its refused shot no longer flies. This game only
+  (the old game has no family hooks).
 
 ## Balance
 

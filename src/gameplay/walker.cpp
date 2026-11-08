@@ -836,16 +836,16 @@ walker  * walker::fire()
 			// tests: QuietProbe.fire_pad_clear_matches_fires_own_pad
 			if (auto hook_result = og::script::hooks::on_fire_weapon(fd, this, weapon))
 			{
-				// rule: A living's family on_fire_weapon Lua hook may veto or modify the launch.
-				//   Here: `!*hook_result`.
-				// tests: FamilyBehaviors.soldier_weapons_left_limits_fire
-				// tests: FamilyBehaviors.archmage_weapon_damage_boost
-				// tests: QuietProbe.fire_pad_clear_matches_fires_own_pad
+				// rule: A veto (on_fire_weapon answers false) kills the weapon fire() built and fires nothing.
+				// tests: FamilyBehaviors.soldier_weapons_left_limits_fire, FamilyBehaviors.archmage_weapon_damage_boost
+				// tests: QuietProbe.fire_pad_clear_matches_fires_own_pad, SemWalker1.a_shot_its_family_hook_vetoes_leaves_no_live_weapon
 				if (!*hook_result)
+				{
+					weapon->set_dead(1);
 					return nullptr;
+				}
 			}
 		}
-        
 		// Record our shot ..
 		// rule: Every ranged launch by a player guy counts as a shot (total_shots and scen_shots),
 		//   feeding accuracy stats.
@@ -3677,7 +3677,6 @@ std::int32_t walker::is_friendly(const walker *target) const
 {
 	// is_friendly determines if _target_ is "friendly"
 	// towards this walker.
-	const walker *headguy;
 	const walker *headus, *headtarget;
 
 	// In case we're passed a null pointer somehow,
@@ -3695,26 +3694,23 @@ std::int32_t walker::is_friendly(const walker *target) const
 
 	// who's the top on our chains (ie, weapon->summoned->mage)
 	// First us ..
-	headguy = this;
 	// rule: Alliance is decided by team colour of the heads of both owner chains (weapon -> summon
-	//   -> caster); saved-character status and seats never make different colours friendly. The
-	//   climb stops at a dead owner (the walker stands for itself), at a self-loop, and — with
-	//   Gameplay Fixes on (fix AD) — at a charmed walker, so a charmed tent troop or summon fights
-	//   for the colour it wears; with the setting off the climb passes through the charm and the
-	//   troop answers for its (uncharmed) owner's side.
+	//   -> caster), each read from walker::alliance_head; saved-character status and seats never
+	//   make different colours friendly. Classic: the climb stops at a dead owner (the walker
+	//   stands for itself) and at a self-loop, and passes through a charm, so a charmed troop
+	//   answers for its (uncharmed) owner's side. With Gameplay Fixes on it is the one climb (fix
+	//   AP): through a dead owner, stopping at a self-loop and at a charmed walker (fix AD), so a
+	//   charmed tent troop or summon fights for the colour it wears, and a dead caster's summon
+	//   or shot keeps the caster's side.
 	// tests: GameplayFixesCharm.a_charmed_tent_troop_fights_for_its_charmer
 	// tests: GameplayFixesCharm.a_mind_controlled_tent_troop_fights_for_its_master
 	// tests: GameplayFixesCharm.a_charmed_summon_of_an_enemy_caster_fights_for_its_charmer
 	// tests: GameplayFixesCharm.an_uncharmed_tent_troop_answers_for_its_tent_on_both_values
 	// tests: WalkerMore.walker_round6_friendliness_null_dead_owner_chain_and_allied_modes
-	while (headguy->owner() && (headguy->owner()->dead() == 0) && (headguy->owner() != headguy) && !headguy->charmed_head() )
-		headguy = headguy->owner();
-	headus = headguy;
+	// tests: GameplayFixesChain.a_dead_casters_summon_keeps_its_side_for_friendliness_and_score
+	headus = alliance_head();
 	// Now our target ..
-	headguy = target;
-	while (headguy->owner() && (headguy->owner()->dead() == 0) && (headguy->owner() != headguy) && !headguy->charmed_head() )
-		headguy = headguy->owner();
-	headtarget = headguy;
+	headtarget = target->alliance_head();
 
 	// The 2002 code narrated its old split as "Now, if we or the target don't
 	// contain a 'myguy' pointer, then we don't care about allied_mode," then
@@ -3727,7 +3723,8 @@ std::int32_t walker::is_friendly(const walker *target) const
 	// friendly. Likewise, Base Camp seat assignments choose a player's control
 	// team; they never make a red walker friendly to a yellow walker. Following
 	// owner chains keeps weapons, summons, and effects on their living owner's
-	// current team; with Gameplay Fixes AD a charmed walker heads its own chain.
+	// current team; with Gameplay Fixes AD a charmed walker heads its own chain,
+	// and with AP a dead owner's summon or shot keeps its owner's side.
 	return headus->team_num() == headtarget->team_num();
 }
 
@@ -3735,7 +3732,6 @@ std::int32_t walker::is_friendly_to_team(unsigned char team) const
 {
 	// is_friendly_to_team determines if _team_ is "friendly"
 	// towards this walker.
-	const walker *headguy;
 	const walker *headus;
 	
 	// If dead(), we're also unfriendly :)
@@ -3748,15 +3744,14 @@ std::int32_t walker::is_friendly_to_team(unsigned char team) const
 
 	// who's the top on our chains (ie, weapon->summoned->mage)
 	// First us ..
-	headguy = this;
 	// rule: Same alliance rule as above against a bare team number, used by level
 	//   completion ('foes remain'), enemy freeze and respawn: a walker counts for the team its
-	//   chain head wears (charmed head stops the climb with fixes on).
+	//   chain head wears (walker::alliance_head: with fixes on the one climb, through a dead owner
+	//   and stopping at a charmed head).
 	// tests: GameplayFixesCharm.an_uncharmed_tent_troop_answers_for_its_tent_on_both_values
 	// tests: GameplayFixesCharm.a_charmed_tent_troop_fights_for_its_charmer
-	while (headguy->owner() && (headguy->owner()->dead() == 0) && (headguy->owner() != headguy) && !headguy->charmed_head() )
-		headguy = headguy->owner();
-	headus = headguy;
+	// tests: GameplayFixesChain.a_dead_casters_summon_keeps_its_side_for_friendliness_and_score
+	headus = alliance_head();
 	
 	// Keep completion, enemy-freeze, and respawn decisions on exactly the same
 	// alliance rule as targeting and damage.
@@ -4037,22 +4032,22 @@ bool walker::pad_probe(walker& probe, std::int32_t weapon_family, short& px, sho
 // The walker a hit or a kill is credited to (#411): the topmost LIVING on
 // this walker's owner chain (a weapon's thrower, a summon's caster, a tent
 // or bones troop itself: its owner is a post, not a body), or nullptr when
-// no living is on the chain (a scripted ball fx). The climb stops where
-// attack()'s does (a self-loop) and, with Gameplay Fixes AD, at a charmed
-// walker. The kill stamp and on_kill read it; classic score and experience
-// keep the chain's root. Appended at the end of the file so the parity
-// canary pins above never shift.
+// no living is on the chain (a scripted ball fx). It climbs by chain_next,
+// attack()'s own climb (fix AP): through a dead owner, stopping at a
+// self-loop and, with Gameplay Fixes AD, at a charmed walker. The kill stamp
+// and on_kill read it; classic score and experience keep the chain's root.
+// Appended at the end of the file so the parity canary pins above never
+// shift.
 walker* walker::credit_head()
 {
 	walker* top = nullptr;
-	// plumbing: credit_head's owner-chain walk; rule below.
-	for (walker* w = this;;)
+	// plumbing: credit_head's climb; chain_next holds the stop rule (fix AP)
+	for (walker* w = this; w != nullptr; w = w->chain_next())
 	{
 		// rule: Who gets the hit/kill (#411, kill stamp and on_kill): the topmost LIVING on the
 		//   owner chain — a weapon's thrower, a summon's caster, but a tent or bones troop itself
 		//   (its owner is a post, not a body); nullptr when no living is on the chain (a scripted
-		//   ball FX). The climb stops at a self-loop and, with Gameplay Fixes on (AD), at a charmed
-		//   walker. Classic score and experience still use the chain root.
+		//   ball FX). Classic score and experience still use the chain root.
 		// tests: ModesOnslaught.a_tent_troops_kill_pays_its_colour
 		// tests: ModesTdm.a_tent_troops_kill_counts_a_frag
 		// tests: ModesTdm.a_charmed_summons_kill_credits_its_charmed_colour
@@ -4060,10 +4055,6 @@ walker* walker::credit_head()
 		// tests: SemWalker3.a_blow_with_no_living_on_its_chain_is_credited_to_nobody
 		if (w->query_order() == Order::Living)
 			top = w;
-		walker* next = w->owner();
-		if (next == nullptr || next == w || w->charmed_head())
-			break;
-		w = next;
 	}
 	return top;
 }
