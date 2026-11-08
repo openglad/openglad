@@ -746,6 +746,17 @@ gate's quiet question passes and `fire()`'s loud one met and lost the
 weapon clash roll to; the druid's one `NO ROOM TO SUMMON` (seed 3) is
 the faerie's own room, which no gate asks about.
 
+Fixes AR, AS and AV close those shapes, and #437 moves the New Specials kit
+gates. Measured on the six seeds against the same tree with those fixes'
+Lua taken out (on that tree the elves read 11 and the druid's `NO ROOM TO
+SUMMON` 2, one each on seeds 42 and 2): the elves' `COULD NOT FIRE` reads
+0, the druid's `NO ROOM TO SUMMON` after its rule's yes 0, and the four
+families' `COULD NOT FIRE` 0, BARRAGE's new refusal included. The test caps
+the elves' count and the druid's at 3 (a measured 0). The rules hold more
+rolls (5416 to 5427): BARRAGE falls from 127 casts to 87, ROCKS from 87 to
+82 and SUMMON FAERIE from 14 to 11, each still well above the floor the
+test keeps for it.
+
 ## Charm and seats
 
 - **A driven hero resists a charm** (issue #355, both games). An enemy
