@@ -100,6 +100,7 @@ usual pause.
 | AL | Archmage MIND CONTROL on more than one foe | The cast costs its price alone, however many foes it takes, as the old game's does (its charge for each further man lowers only a local). | Each foe taken past the first costs 10 magic more, never more than the magic left after the price. |
 | AM | A poison cloud wedged against a wall | It stays where it is until its walk runs out (#233), then draws a new one. | A tick that neither moves it nor turns it drops the stuck walk and draws a fresh direction, so it drifts on. |
 | AN | The archmage bot's CHAIN LIGHTNING rule, for a hero | No rule: the bot casts its coin's arm (fix B's off column). | The rule measures the chain with the cast's own reach: 200 px plus half its Intelligence plus 2 per level for an archmage with a character record (a hero the computer plays), 200 px plus 7 per level for a monster. Before, it measured every archmage by level, so such a hero was told "the chain has a target" and then refused `NO FOE IN RANGE`, or turned to HEARTBURST or held when the chain would have landed. |
+| AO | CHARGE's strike on a dead body | The rush strikes a body that is already dead (in play, a door its own step opened with a key): the strike draws its damage roll and does nothing to the body, and the rush still erases the dead body's orders and forces a four-step walk on it. Nothing a player sees follows: a dead walker never acts, and every revival clears its orders. | The dead body is left as it lies: the damage roll is still drawn, its orders stay and no walk is forced. |
 
 TELEPORT, REVEAL, CLOAK and ENERGY WAVE are unchanged as casts (their bot
 rules are in [Bots](#bots)): each does something whenever it is cast
@@ -910,6 +911,13 @@ view it goes to, so both values record the same bytes.
 Fix AM has no row: no cloud row wedges its cloud (`effect_cloud_emission`,
 `effect_poison_cloud_emit`, `effect_cloud_poison`, `thief_bot_cloud_alone`
 and its twin with the setting on), so both values draw the same stream.
+
+Fix AO has no row: the fix changes only a dead body's orders, which no
+recording holds (the dump records a walker's place, hit points, team and
+life); a dead walker never acts and every revival clears its orders, and
+the strike and its damage roll stay, so an arena's two captures would be
+byte-identical. `GameplayFixesWalk` in `tests/unit/test_gameplay_fixes_walk.cpp`
+pins it, with a corpse and with a door the rush's own step opens.
 
 The bot payoff gates moved five existing rows with the setting on, each
 recaptured from the old game after its port: `cleric_bot_raise_or_turn_fixes_scen99`

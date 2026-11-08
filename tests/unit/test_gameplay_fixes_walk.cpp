@@ -6,7 +6,8 @@
  * (at your option) any later version.
  */
 
-// Gameplay Fixes X, Y and Z: the walk, its side probes and the rush.
+// Gameplay Fixes X, Y, Z and AO: the walk, its side probes, the rush and
+// the rush's strike on a dead body.
 //
 // X (#403): living::walk shoves collide_ob when its step fails. That field
 //    names the last body a loud probe met, and it can be stale: a probe that
@@ -24,6 +25,9 @@
 //    whatever its team and wherever it stands. With the setting on the rush
 //    strikes only a body that is not friendly and that its last step ran
 //    into.
+// AO (#426): the strike's walker::attack refuses a dead body after its
+//    damage roll, and the classic rush still erases that body's orders and
+//    walks it four steps. With the setting on a dead body is left as it lies.
 //
 // Each case runs on both values of the setting and pins the sim stream
 // (GameWorld::rng_.state_) exactly: the classic draws with it off, the
@@ -39,6 +43,7 @@
 #include <openglad/core/irandom.h>
 #include <openglad/core/pixdefs.h>
 #include <openglad/gameplay/game_world.h>
+#include <openglad/gameplay/key_mask.h>
 #include <openglad/gameplay/obmap.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
@@ -702,6 +707,122 @@ TEST_F(GameplayFixesWalk, a_wall_stopped_rush_strikes_no_stale_body)
         (void)soldier->stats()->do_command();
 
         EXPECT_FLOAT_EQ(382.0f, foe->stats()->hitpoints()) << "the last step ran into it: struck on both";
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Fix AO: the rush's strike on a dead body
+// ---------------------------------------------------------------------------
+
+// The strike after the rush's three steps calls walker::attack, which draws
+// its damage roll and then refuses a dead body (#426); the classic rush then
+// still erases the dead body's orders and forces a four-step walk on it.
+// Staged as `a_rush_into_a_foe_still_strikes_it` with the orc killed before
+// the rush: dead and filed out of the obmap, as walker::death files a corpse
+// out, its search and its leader still set, and named by collide_ob. A
+// corpse never blocks, so the three steps run clean (320 -> 332), and the
+// last step's box (336..351) meets the corpse's (340..355): with the setting
+// on the strike is reached too (a dead body is never friendly). Both values:
+// one damage roll, no damage. Off: the corpse's search and leader are gone
+// and it holds a four-step walk right. On: it keeps both.
+//
+// RED (planted): the AO gate `og::sim::session_gameplay_fixes() == 0 ||
+// !target->dead()` -> `true` (the setting-on arm).
+TEST_F(GameplayFixesWalk, a_rush_ending_on_a_dead_body_leaves_its_orders_with_the_setting_on)
+{
+    for (short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE("setting " + std::to_string(fixes));
+        fresh_world(fixes);
+        walker* soldier = living_at(FAMILY_SOLDIER, 1, 320, 320);
+        walker* leader = living_at(FAMILY_ORC, 2, 600, 600);
+        walker* corpse = living_at(FAMILY_ORC, 2, 340, 320);
+        ASSERT_TRUE(soldier && leader && corpse);
+        soldier->set_stepsize(4.0f);
+        face(soldier, FACE_RIGHT);
+        corpse->stats()->add_command(COMMAND_SEARCH, 10, 0, 0);
+        corpse->set_leader(leader);
+        corpse->set_dead(1);
+        ASSERT_EQ(1, world().myobmap->remove(corpse)) << "premise: the corpse was filed";
+        soldier->stats()->add_command(COMMAND_RUSH, 3, 1, 0);
+        soldier->set_collide_ob(corpse);
+        CountingRandom combat;
+        tw_->gc.rng = &combat;
+
+        (void)soldier->stats()->do_command();
+
+        tw_->gc.rng = &tw_->rng;
+        EXPECT_EQ(332, soldier->xpos()) << "a corpse never blocks: three clean steps";
+        EXPECT_EQ(1, combat.calls) << "attack's damage roll, on both values";
+        EXPECT_FLOAT_EQ(400.0f, corpse->stats()->hitpoints()) << "attack refuses a dead body";
+        const Front f = front_of(corpse);
+        ASSERT_EQ(1u, f.size);
+        if (fixes == 0) {
+            EXPECT_EQ(COMMAND_WALK, f.type) << "setting off: the dead body's orders are erased";
+            EXPECT_EQ(4, f.count);
+            EXPECT_EQ(1, f.com1);
+            EXPECT_EQ(0, f.com2);
+            EXPECT_EQ(nullptr, corpse->leader()) << "setting off: clear_command dropped its leader";
+        } else {
+            EXPECT_EQ(COMMAND_SEARCH, f.type) << "setting on: the dead body keeps its orders";
+            EXPECT_EQ(10, f.count);
+            EXPECT_EQ(leader, corpse->leader()) << "setting on: and its leader";
+        }
+    }
+}
+
+// The way a rush meets a dead body in play: a door the rushing soldier holds
+// the key to, 20 px ahead. The second step's probe opens it (the door dies,
+// walker::death files it out of the obmap, collide_ob names it, the step is
+// refused), the third step passes where it stood, and the last step's box
+// meets the dead door's, so the strike is reached on both values. Both: the
+// door is dead, its opening effect is built (a walker's construction draws
+// its path-check cadence from the gameplay stream) and attack's damage roll
+// is drawn: two draws. Off: the dead door is handed a four-step walk. On:
+// its queue stays empty.
+//
+// RED (planted): as above.
+TEST_F(GameplayFixesWalk, a_rush_that_opens_a_door_leaves_the_dead_door_alone_with_the_setting_on)
+{
+    for (short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE("setting " + std::to_string(fixes));
+        fresh_world(fixes);
+        walker* soldier = living_at(FAMILY_SOLDIER, 1, 320, 320);
+        walker* door = place(world().add_weap_ob(Order::Weapon, FAMILY_DOOR), 340, 320, 16, 16);
+        ASSERT_TRUE(soldier && door);
+        door->set_team_num(3);
+        door->stats()->set_level(2);
+        soldier->set_keys(static_cast<std::uint32_t>(key_level_mask(2)));
+        soldier->set_stepsize(4.0f);
+        face(soldier, FACE_RIGHT);
+        soldier->stats()->add_command(COMMAND_RUSH, 3, 1, 0);
+        soldier->set_collide_ob(nullptr);
+        ASSERT_EQ(0u, door->stats()->commands.size()) << "premise: a door holds no orders";
+        const auto walkers = [&] {
+            return world().oblist.size() + world().fxlist.size() + world().weaplist.size();
+        };
+        const std::size_t walkers_before = walkers();
+        CountingRandom combat;
+        tw_->gc.rng = &combat;
+
+        (void)soldier->stats()->do_command();
+
+        tw_->gc.rng = &tw_->rng;
+        EXPECT_EQ(1, door->dead()) << "the rush's own step opened the door";
+        EXPECT_EQ(door, soldier->collide_ob()) << "the strike names the dead door";
+        ASSERT_EQ(walkers_before + 1, walkers()) << "the opened door leaves its opening effect";
+        EXPECT_EQ(2, combat.calls)
+            << "one draw for the effect built (its path-check cadence), one for attack's "
+               "damage roll, on both values";
+        const Front f = front_of(door);
+        if (fixes == 0) {
+            ASSERT_EQ(1u, f.size);
+            EXPECT_EQ(COMMAND_WALK, f.type) << "setting off: the dead door is walked";
+            EXPECT_EQ(4, f.count);
+            EXPECT_EQ(1, f.com1);
+            EXPECT_EQ(0, f.com2);
+        } else {
+            EXPECT_EQ(0u, f.size) << "setting on: the dead door is left as it lies";
+        }
     }
 }
 
