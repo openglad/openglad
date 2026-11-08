@@ -36,7 +36,7 @@ enum class FactKind : std::uint8_t
     LevelDoneEquals,                 // arg0 = expected level_done
     ScoreDelta,                      // arg0 = team, arg1 = min, arg2 = max
     WalkerFamilyCount,               // arg0 = family, arg1 = min, arg2 = max
-    WalkerOfTeamAlive,               // arg0 = team, arg1 = min, arg2 = max
+    WalkerOfTeamAlive,               // arg0 = team, arg1 = min, arg2 = max: live LIVING-order entries only (#448)
     WalkerHpRangeAtFinalTick,        // arg0 = family, arg1 = min_hp*100, arg2 = max_hp*100
     WalkerKeysApplied,               // arg0 = min_keys (Indeterminate if !inventory_keys)
     WalkerPositionMoved,             // arg0 = family, arg1 = min_xpos, arg2 = min_ypos
@@ -95,10 +95,20 @@ enum class FactKind : std::uint8_t
     // WalkerFamilyCount for FX/treasure entities, which the living-order
     // kinds cannot name.
     //
-    // APPEND-ONLY: this enumerator is last so every existing ordinal keeps
-    // its value (the companion header mirror must match ordinal for
-    // ordinal).
+    // Nothing reads a FactKind's number: the generated JSON and the mutation
+    // canary print fact_kind_name, and only a failure message prints
+    // `kind=N`. The old game's tools/fact_predicate.h declares only the
+    // kinds the shared table constructs, so it must declare every
+    // constructor the table uses; its ordinals may differ from these.
     WalkerOfOrderFamilyCount,        // arg0 = family, arg1 = order, arg2 = min, arg3 = max
+    // The live-only twin of WalkerOfOrderFamilyCount: arg0 = family id,
+    // arg1 = Order ordinal, arg2 = min, arg3 = max; counts dump.walkers[]
+    // entries whose family renders under arg1 AND that are alive. A taken
+    // treasure is (F, kOrderTreasure, 0, 0) whether or not its dead entry
+    // was reaped (nothing is reaped once the level has ended); a standing
+    // one, a summoned effect or a generator that must still be up is
+    // (F, order, n, n).
+    WalkerOfOrderFamilyAlive,        // arg0 = family, arg1 = order, arg2 = min, arg3 = max
 };
 
 // Canonical spelling of a FactKind, shared by every consumer that prints a
@@ -357,6 +367,15 @@ inline constexpr FactPredicate WalkerOfOrderFamilyCount(std::int32_t family, std
                                                         std::string_view label = {}) noexcept
 {
     return {FactKind::WalkerOfOrderFamilyCount, family, order, mn, mx, 0, label};
+}
+// How many LIVE dump.walkers[] entries render as `family` under `order`.
+// The dead entry a taken treasure or an expired effect leaves in oblist is
+// not counted, so (F, kOrderTreasure, 0, 0) fails while the treasure stands.
+inline constexpr FactPredicate WalkerOfOrderFamilyAlive(std::int32_t family, std::int32_t order,
+                                                        std::int32_t mn, std::int32_t mx,
+                                                        std::string_view label = {}) noexcept
+{
+    return {FactKind::WalkerOfOrderFamilyAlive, family, order, mn, mx, 0, label};
 }
 // At least one ALIVE walker of `family` is on a stacked floor in
 // [min_floor, max_floor]. Has teeth: fails if no such walker exists (e.g. a

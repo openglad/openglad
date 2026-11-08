@@ -930,8 +930,8 @@ TEST(Parity, predicate_depth_gate_no_trivially_wide_ranges)
             const auto& p = spec.expected_facts[i];
             bool bad = false;
             // Which pair of args the reported range comes from. Every kind
-            // below bounds arg1/arg2 except WalkerOfOrderFamilyCount, whose
-            // arg1 is the Order ordinal.
+            // below bounds arg1/arg2 except WalkerOfOrderFamilyCount and
+            // WalkerOfOrderFamilyAlive, whose arg1 is the Order ordinal.
             std::int32_t range_lo = p.arg1;
             std::int32_t range_hi = p.arg2;
 
@@ -949,6 +949,7 @@ TEST(Parity, predicate_depth_gate_no_trivially_wide_ranges)
             // this kind carries the Order in arg1, so its [min,max] is
             // arg2/arg3.
             case FK::WalkerOfOrderFamilyCount:
+            case FK::WalkerOfOrderFamilyAlive:
                 range_lo = p.arg2;
                 range_hi = p.arg3;
                 if (p.arg3 > p.arg2 + 5 && !label_exempted(p.label))

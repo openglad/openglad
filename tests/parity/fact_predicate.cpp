@@ -70,11 +70,35 @@ std::size_t count_walkers_family_alive(const StateDump& d, std::int32_t family)
     return n;
 }
 
+// A dump entry is a living when its family string is one the Living table
+// renders: a kLivingFamilies name, or the FAMILY_UNKNOWN_0_<id> spelling
+// family_symbol_by_order gives a Living id past that table. The dump carries
+// no order (a new key would change every golden's bytes) and the five order
+// tables share no name, so the string decides.
+bool is_living_symbol(const std::string& sym)
+{
+    static_assert(kLivingOrder == 0, "the unknown-living prefix spells order 0");
+    constexpr std::string_view kUnknownLiving = "FAMILY_UNKNOWN_0_";
+    if (std::string_view(sym).starts_with(kUnknownLiving))
+        return true;
+    for (std::int32_t id = 0;; ++id)
+    {
+        const std::string name = family_symbol_by_order(kLivingOrder, id);
+        if (std::string_view(name).starts_with("FAMILY_UNKNOWN_"))
+            return false;
+        if (name == sym)
+            return true;
+    }
+}
+
+// Live LIVING-order entries of `team`. A teleport marker, a summoned shield,
+// a bomb, a standing treasure or a generator sits in oblist with a team too;
+// none of them is a walker of that team (#448).
 std::size_t count_walkers_team_alive(const StateDump& d, std::uint32_t team)
 {
     std::size_t n = 0;
     for (const auto& w : d.walkers)
-        if (w.team == team && w.alive) ++n;
+        if (w.team == team && w.alive && is_living_symbol(w.family)) ++n;
     return n;
 }
 
@@ -284,6 +308,7 @@ const char* fact_kind_name(FactKind k)
         case FactKind::EffectNetTravel:                 return "EffectNetTravel";
         case FactKind::WalkerOnFloor:                   return "WalkerOnFloor";
         case FactKind::WalkerOfOrderFamilyCount:        return "WalkerOfOrderFamilyCount";
+        case FactKind::WalkerOfOrderFamilyAlive:        return "WalkerOfOrderFamilyAlive";
     }
     return "Unknown";
 }
@@ -653,6 +678,23 @@ FactEvalResult evaluate_one(const FactPredicate& p, const StateDump& dump)
             if (static_cast<std::int32_t>(n) < p.arg2 ||
                 static_cast<std::int32_t>(n) > p.arg3)
                 return (make_fail(r, p, "count=" + std::to_string(n) +
+                                  " of " + sym +
+                                  " out of [" + std::to_string(p.arg2) + "," +
+                                  std::to_string(p.arg3) + "]"), r);
+            return r;
+        }
+        case FactKind::WalkerOfOrderFamilyAlive:
+        {
+            // Live entries only, always determinate (walkers[] is always
+            // carried): a standing treasure FAILS a (F, kOrderTreasure, 0, 0)
+            // fact, the case #449 retired a kind for passing.
+            const std::string sym = family_symbol_by_order(p.arg1, p.arg0);
+            std::size_t n = 0;
+            for (const auto& w : dump.walkers)
+                if (w.family == sym && w.alive) ++n;
+            if (static_cast<std::int32_t>(n) < p.arg2 ||
+                static_cast<std::int32_t>(n) > p.arg3)
+                return (make_fail(r, p, "alive=" + std::to_string(n) +
                                   " of " + sym +
                                   " out of [" + std::to_string(p.arg2) + "," +
                                   std::to_string(p.arg3) + "]"), r);

@@ -179,6 +179,7 @@ int arg0_order_for_symbol(const og::parity::FactPredicate& p)
         // predicate leaves the generated JSON byte-identical.
         case FactKind::TreasureFamilyOfOrderRemovedFromOblist:
         case FactKind::WalkerOfOrderFamilyCount:
+        case FactKind::WalkerOfOrderFamilyAlive:
             return p.arg1;
         case FactKind::TreasureFamilyRemovedFromOblist:
         case FactKind::StatDeltaOnPickup:
@@ -374,6 +375,12 @@ std::string predicate_expression(const og::parity::FactPredicate& p)
         case FactKind::WalkerOfOrderFamilyCount:
             std::snprintf(buf, sizeof(buf),
                           "WalkerOfOrderFamilyCount(%s, %d, %d, %d)",
+                          by_order(p.arg0, p.arg1).c_str(), p.arg1,
+                          p.arg2, p.arg3);
+            return buf;
+        case FactKind::WalkerOfOrderFamilyAlive:
+            std::snprintf(buf, sizeof(buf),
+                          "WalkerOfOrderFamilyAlive(%s, %d, %d, %d)",
                           by_order(p.arg0, p.arg1).c_str(), p.arg1,
                           p.arg2, p.arg3);
             return buf;

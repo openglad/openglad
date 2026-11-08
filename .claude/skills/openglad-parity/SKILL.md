@@ -209,7 +209,12 @@ scenarios ending within 50 ticks of combat see no regen drift; treasure
 eating is positional — place consumables at the walker's final stop;
 default fire heading is FACE_UP; dead entities are never reaped once
 `game_ended` latches, so enemy-free arenas reap nothing (park a distant
-hostile TOWER1 to hold `level_done=0`).
+hostile TOWER1 to hold `level_done=0`). `WalkerOfTeamAlive` counts livings
+only (#448): count an effect, a treasure or a generator in oblist with
+`WalkerOfOrderFamilyAlive` (live entries) or `WalkerOfOrderFamilyCount`
+(alive or dead); a taken treasure is `WalkerOfOrderFamilyAlive(F,
+kOrderTreasure, 0, 0)`, because its dead entry stays listed once the level
+has ended.
 
 ## The mutation canary (teeth oracle)
 

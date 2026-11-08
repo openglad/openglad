@@ -692,7 +692,7 @@ inline constexpr SpawnSpec kFamilySpawns_complete_tower1[] = {
 inline constexpr FactPredicate kFacts_ai_idle_wander_scen9301[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(FAMILY_SOLDIER, 2, 2),
-    pred::WalkerOfTeamAlive(/*team=*/0, 2, 2),
+    pred::WalkerOfTeamAlive(/*team=*/0, 1, 1),
     pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 2900, 2900),
     pred::EventKindAtLeast(/*play_sound*/1, 15),
 };
@@ -717,21 +717,21 @@ inline constexpr FactPredicate kFacts_special_cleric_scen124[] = {
     pred::TickReached(30),
     // Cleric survives (soldier parked far) so it is an alive team-0 walker.
     pred::WalkerFamilyCount(FAMILY_CLERIC, 1, 1),
+    // The lone cleric is team 0's only walker.
+    pred::WalkerOfTeamAlive(/*team=*/0, 1, 1),
     // DISCRIMINATOR: the slot-1 MYSTIC MACE special summons one persistent
-    // FAMILY_MAGIC_SHIELD entity via add_ob(Order::FX) -> oblist, which the
-    // dump renders as a second ALIVE team-0 walker (FX-order family 5,
-    // "FAMILY_MAGIC_SHIELD"; it does NOT alias FAMILY_CLERIC). cleric + shield
-    // = 2 on team 0. kMut_special_cleric_do_special sets do_special=nullptr so
-    // no shield spawns and team-0 alive collapses to 1 (the lone cleric),
-    // below the floor of 2.
-    pred::WalkerOfTeamAlive(/*team=*/0, 2, 2,
-        "consequence: cleric slot-1 MYSTIC MACE summons a persistent FAMILY_MAGIC_SHIELD FX into oblist as a team-0 walker; neutering cleric_do_special removes it so team-0 alive drops from 2 (cleric+shield) to 1"),
+    // FAMILY_MAGIC_SHIELD entity via add_ob(Order::FX) -> oblist, where the
+    // dump renders it under the FX table (family 5, "FAMILY_MAGIC_SHIELD"; it
+    // does NOT alias FAMILY_CLERIC). kMut_special_cleric_do_special suppresses
+    // the summon, so no shield spawns and the live shield count drops to 0.
+    pred::WalkerOfOrderFamilyAlive(FAMILY_MAGIC_SHIELD, kOrderFX, 1, 1,
+        "consequence: cleric slot-1 MYSTIC MACE summons a persistent FAMILY_MAGIC_SHIELD FX into oblist; neutering cleric_do_special removes it so the live shield count drops from 1 to 0"),
     // Enemy soldier is parked far and never engaged: it survives intact.
     pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 1),
     // negative_assertion: the mystic-mace shield is an oblist entity, not an
     // fxlist/effects[] entry, so effects[] carries no EXPAND (or any) FX here.
     pred::EffectFamilyCount(FAMILY_EXPAND, 0, 0, /*source=*/0),
-    // negative_assertion: mystic-mace shield coverage is through team-alive; no EXPAND fxlist entry should survive in this dump.
+    // negative_assertion: the mystic-mace shield is counted in oblist above; no EXPAND fxlist entry should survive in this dump.
 };
 
 inline constexpr FactPredicate kFacts_special_mage_scen126[] = {
@@ -751,24 +751,22 @@ inline constexpr FactPredicate kFacts_special_mage_scen126[] = {
 inline constexpr FactPredicate kFacts_special_thief_scen789[] = {
     pred::TickReached(30),
     pred::WalkerFamilyCount(FAMILY_THIEF, 1, 1),
-    // DROP BOMB (thief special slot 1) adds the timed FAMILY_BOMB FX walker(s)
-    // to the thief's team (team 0). Schema-v1 routes the bomb through
-    // add_ob(Order::FX) into oblist where it surfaces as an alive team-0
-    // walker (its FX-order family string aliases under WalkerFamilyCount /
-    // EffectFamilyCount, so the spawn is only robustly observable by team).
-    // We dump at tick 30 -- after the bomb is dropped (tick 20) but before it
-    // detonates -- so it is still alive on team 0. The enemy soldier is parked
-    // far away so it cannot pad team 0. The kMut_special_thief_do_special
-    // mutation neuters thief_do_special so no bomb spawns and only the lone
-    // thief remains on team 0, collapsing this count to 1 below the floor of 2.
-    pred::WalkerOfTeamAlive(/*team=*/0, 2, 3,
-        "consequence: DROP BOMB slot 1 adds the timed FAMILY_BOMB FX walker(s) to the thief's team (team 0); the kMut_special_thief_do_special mutation neuters thief_do_special so no bomb is dropped and team-0 alive collapses to 1 (the lone thief), below the floor of 2"),
-    // rng_drift: bomb FX lifetime/count may vary while the mutation still drops team 0 below the floor; commit 244d4bcf
+    // The lone thief is team 0's only walker.
+    pred::WalkerOfTeamAlive(/*team=*/0, 1, 1),
+    // DROP BOMB (thief special slot 1) adds a timed FAMILY_BOMB FX entity on
+    // the thief's team (team 0). add_ob(Order::FX) routes it into oblist,
+    // where the dump renders it under the FX table and WalkerOfOrderFamilyAlive
+    // counts it. We dump at tick 30 -- after the bomb is dropped (tick 20) but
+    // before it detonates -- so it is still alive: exactly one, in the golden.
+    // The kMut_special_thief_do_special mutation suppresses the bomb, so the
+    // live bomb count drops to 0.
+    pred::WalkerOfOrderFamilyAlive(FAMILY_BOMB, kOrderFX, 1, 1,
+        "consequence: DROP BOMB slot 1 adds one timed FAMILY_BOMB FX entity to oblist, still alive at tick 30; the kMut_special_thief_do_special mutation suppresses it and the live bomb count drops from 1 to 0"),
     pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 1),
     // Structural anchor (depth): the thief caster is never engaged (the enemy
     // soldier is parked far away), so it sits at its full 75-hp (7500-cent) max
-    // at the tick-30 dump. The WalkerOfTeamAlive predicate above carries the
-    // canary teeth.
+    // at the tick-30 dump. The FAMILY_BOMB count above carries the canary
+    // teeth.
     pred::WalkerHpRangeAtFinalTick(FAMILY_THIEF, 7400, 7500),
 };
 
@@ -781,15 +779,29 @@ inline constexpr FactPredicate kFacts_effect_bomb_lifetime_scen99[] = {
     // dropped the bomb early flips the alive predicate.
     pred::WalkerDiedByFinal(FAMILY_SKELETON),
     pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 1),
+    // The FLASH the run emits has run its animation and died by tick 60 (its
+    // dead entry is still listed: the level has ended). kMut_effect_lifetime
+    // cancels the end-of-animation death in effect::act and the FLASH is
+    // still alive at the final tick.
+    pred::WalkerOfOrderFamilyAlive(FAMILY_FLASH, kOrderFX, 0, 0,
+        "consequence: an effect dies when its animation returns to the walk row, so the FLASH is dead by tick 60; kMut_effect_lifetime keeps it alive"),
+    // negative_assertion: the FLASH expired; an effect that never ends would still be alive.
 };
 
 inline constexpr FactPredicate kFacts_effect_chain_scen9410[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 1),
-    pred::WalkerOfTeamAlive(/*team=*/1, 2, 2),
+    pred::WalkerOfTeamAlive(/*team=*/1, 1, 1),
     pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 12000, 12000),
     pred::EventKindAtLeast(/*play_sound*/1, 3),
     pred::WalkerOfTeamAlive(/*team=*/0, 1, 1),
+    // The struck soldier's FAMILY_HIT effect has expired and been reaped by
+    // tick 150, so oblist holds no HIT entry at all. kMut_effect_lifetime
+    // cancels the end-of-animation death in effect::act and the HIT is still
+    // alive on team 1 at the final tick.
+    pred::WalkerOfOrderFamilyCount(FAMILY_HIT, kOrderFX, 0, 0,
+        "consequence: every effect the chain arena emits winds down and is reaped before tick 150, so no FAMILY_HIT entry is left in oblist; kMut_effect_lifetime keeps effects from expiring and the struck soldier's HIT is still alive at the final tick"),
+    // negative_assertion: the HIT expired and was reaped; an effect that never ends would still be listed.
 };
 
 inline constexpr FactPredicate kFacts_summon_druid_pet_scen950[] = {
@@ -834,7 +846,7 @@ inline constexpr FactPredicate kFacts_exit_trigger_scen9302[] = {
 inline constexpr FactPredicate kFacts_tick_cadence_scen9301[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(FAMILY_SOLDIER, 2, 2),
-    pred::WalkerOfTeamAlive(/*team=*/0, 2, 2),
+    pred::WalkerOfTeamAlive(/*team=*/0, 1, 1),
     pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 2900, 2900),
     pred::EventKindAtLeast(/*play_sound*/1, 15),
 };
@@ -842,7 +854,7 @@ inline constexpr FactPredicate kFacts_tick_cadence_scen9301[] = {
 inline constexpr FactPredicate kFacts_rng_seed_stable_scen99[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(FAMILY_SOLDIER, 2, 2),
-    pred::WalkerOfTeamAlive(/*team=*/0, 2, 2),
+    pred::WalkerOfTeamAlive(/*team=*/0, 1, 1),
     pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 2900, 2900),
     pred::EventKindAtLeast(/*play_sound*/1, 15),
 };
@@ -1225,7 +1237,7 @@ inline constexpr Mutation kMut_special_cleric_do_special = {
     "packs/core/families/living-05-cleric.lua", 258,
     "local mace = og.summon(self, \"fx\", FX_MAGIC_SHIELD)",
     "local mace = nil",
-    "Suppresses MYSTIC MACE's FX_MAGIC_SHIELD summon, so heal_or_mace takes its 'if not mace' exit and no persistent shield enters oblist. Team-0 alive collapses from 2 (cleric + shield) to 1 and WalkerOfTeamAlive(0, 2, 2) fails its floor."
+    "Suppresses MYSTIC MACE's FX_MAGIC_SHIELD summon, so heal_or_mace takes its 'if not mace' exit and no persistent shield enters oblist. The live shield count WalkerOfOrderFamilyAlive(FAMILY_MAGIC_SHIELD, kOrderFX, 1, 1) falls from 1 to 0."
 };
 
 inline constexpr Mutation kMut_special_mage_do_special = {
@@ -1239,7 +1251,7 @@ inline constexpr Mutation kMut_special_thief_do_special = {
     "packs/core/families/living-11-thief.lua", 194,
     "local bomb = og.add_ob(\"fx\", FX_BOMB)",
     "local bomb = nil",
-    "Suppresses DROP BOMB's FX_BOMB creation, so drop_bomb takes its 'if not bomb' exit and the timed bomb never enters oblist. Team-0 alive collapses from 2 to the lone thief and WalkerOfTeamAlive(0, 2, 3) fails its floor."
+    "Suppresses DROP BOMB's FX_BOMB creation, so drop_bomb takes its 'if not bomb' exit and the timed bomb never enters oblist. The live bomb count WalkerOfOrderFamilyAlive(FAMILY_BOMB, kOrderFX, 1, 1) falls from 1 to 0."
 };
 
 inline constexpr Mutation kMut_summon_druid_do_special = {
@@ -3030,18 +3042,22 @@ inline constexpr FactPredicate kFacts_effect_magic_shield_emission_scen99[] = {
     // The CLERIC (team 0) survives the 30-tick budget; required both as the
     // named caster and as the source qualifier for the shield-count anchor below.
     pred::WalkerAliveAtFinal(FAMILY_CLERIC, 1),
-    pred::WalkerOfTeamAlive(0, 2, 2),
+    // The cleric is team 0's only walker; its shield is an FX entity in
+    // oblist, counted on its own (alive with or without the orbit).
+    pred::WalkerOfTeamAlive(0, 1, 1),
+    pred::WalkerOfOrderFamilyAlive(FAMILY_MAGIC_SHIELD, kOrderFX, 1, 1),
     // Structural coverage anchor: binds FAMILY_MAGIC_SHIELD to EffectFamilyCount
     // for behavioural_coverage_gate_effects. Genuinely 0 on BOTH sides because
     // the shield is an Order::FX object routed into oblist (add_ob), never
     // fxlist, so dump.effects holds no FAMILY_MAGIC_SHIELD regardless of mutation.
     pred::EffectFamilyCount(FAMILY_MAGIC_SHIELD, 0, 0, /*source=FAMILY_CLERIC*/5),
-    // negative_assertion: MAGIC_SHIELD is represented as a team walker in oblist, not as a final fxlist effect.
+    // negative_assertion: MAGIC_SHIELD lives in oblist (counted above), not as a final fxlist effect.
     pred::EventKindAtLeast(/*play_sound*/1, 1),
     pred::WalkerAliveAtFinal(FAMILY_SOLDIER, 1),
     // TEETH (the row's discriminator). Everything above is true with or
     // without the orbit: the neutered shield stays ALIVE on team 0 (it just
-    // stops moving), so the cleric, the team-2 count and the sounds all hold.
+    // stops moving), so the cleric, the team-0 and shield counts and the
+    // sounds all hold.
     // What the pin destroys is the PATH. magic_shield_on_act re-centres the
     // shield on its owner every tick, which traces an orbit: the golden's
     // seq-0 FAMILY_MAGIC_SHIELD track has 25 samples, pathlen 22380 centi-px
@@ -3107,26 +3123,26 @@ inline constexpr SpawnSpec kFamilySpawns_boomerang_arena[] = {
 inline constexpr FactPredicate kFacts_effect_boomerang_emission_scen99[] = {
     pred::TickReached(45),
     pred::WalkerFamilyCount(FAMILY_SOLDIER, 2, 2),
+    // The caster is team 0's only walker.
+    pred::WalkerOfTeamAlive(0, 1, 1),
     // STRUCTURAL, not teeth. The slot-2 special summons a FAMILY_BOOMERANG FX
-    // walker onto the caster's team (team 0) via summon_entity(Order::FX) ->
-    // oblist, so at tick 45 team 0 holds caster + boomerang + the returning
-    // KNIFE_BACK = 3 -- and it holds 3 under the pin too. The comment that
-    // used to sit here claimed the unhandled FX "animates one cycle, then
-    // set_dead/death within ~2 ticks -> team 0 collapses to the lone caster =
-    // 1": MEASURED, it does not. effect::act's no-hook path still runs the
+    // entity via summon_entity(Order::FX) -> oblist, so at tick 45 one live
+    // boomerang is listed (beside the returning KNIFE_BACK) -- and it is
+    // listed under the pin too. The comment that used to sit here claimed the
+    // unhandled FX "animates one cycle, then set_dead/death within ~2 ticks":
+    // MEASURED, it does not. effect::act's no-hook path still runs the
     // boomerang's own lifetime (30 + level*12 = 78 ticks), which outlives the
     // 45-tick budget, so the FX is alive at the final tick on BOTH arms --
     // parked at (123,123) instead of orbiting at (128,136). This predicate
     // does NOT flip; the EffectNetTravel below is the discriminator.
-    pred::WalkerOfTeamAlive(0, 2, 3,
-        "consequence: BOOMERANG slot 2 summons a FAMILY_BOOMERANG FX walker onto the caster team (team 0), which holds caster+boomerang+returning KNIFE_BACK=3 at tick 45. Structural only: the FX outlives the 45-tick budget with or without its on_act hook, so kMut_effect_boomerang_emission leaves this count at 3"),
-    // rng_drift: the returning KNIFE_BACK may or may not still be in flight at tick 45, so the team-0 body count spans 2..3; commit 244d4bcf
+    pred::WalkerOfOrderFamilyAlive(FAMILY_BOOMERANG, kOrderFX, 1, 1,
+        "consequence: BOOMERANG slot 2 summons one FAMILY_BOOMERANG FX entity into oblist, alive at tick 45. Structural only: the FX outlives the 45-tick budget with or without its on_act hook, so kMut_effect_boomerang_emission leaves this count at 1"),
     // Structural coverage anchor: binds FAMILY_BOOMERANG to EffectFamilyCount
     // (behavioural_coverage_gate_effects). Genuinely 0 on BOTH sides because
     // the boomerang is an Order::FX object routed into oblist (add_ob), never
     // fxlist, so dump.effects holds no FAMILY_BOOMERANG regardless of mutation.
     pred::EffectFamilyCount(FAMILY_BOOMERANG, 0, 0, /*source=FAMILY_SOLDIER*/0),
-    // negative_assertion: BOOMERANG rides oblist as a team walker; final fxlist should stay empty for that family.
+    // negative_assertion: BOOMERANG rides oblist (counted above); final fxlist should stay empty for that family.
     pred::EventKindAtLeast(/*play_sound*/1, 1),
     pred::WalkerAliveAtFinal(FAMILY_SOLDIER, 1),
     // TEETH (the row's discriminator). Since the unhandled FX survives the
@@ -3151,8 +3167,14 @@ inline constexpr Mutation kMut_effect_boomerang_emission = {
 inline constexpr FactPredicate kFacts_effect_cloud_emission_scen99[] = {
     pred::TickReached(45),
     pred::WalkerFamilyCount(FAMILY_THIEF, 1, 1),
-    pred::WalkerOfTeamAlive(0, 2, 2,
-        "consequence: POISON CLOUD slot 4 summons a FAMILY_CLOUD FX walker onto the thief's team (team 0), so team 0 holds thief+cloud=2; the cloud is core:cloud, whose on_act hook (packs/core/lib/effect_cloud.lua) keeps it alive across the run window. Under the kMut_effect_cloud_emission hook neuter (effect_cloud.lua:58, false = \"not handled\", the no-registered-hook path) the cloud runs no on_act, so it animates one cycle then set_dead/death (effect.cpp:79-94) and is gone well before tick 45 -> team 0 collapses to the lone thief=1 and the lower bound fails. The cloud's random-walk path, and whether it ever poisons the lone soldier, is RNG-sensitive, so the cloud's *existence on team 0* is the robust observable rather than soldier HP"),
+    // The thief is team 0's only walker.
+    pred::WalkerOfTeamAlive(0, 1, 1),
+    // STRUCTURAL, not teeth. The cloud's label used to say the hook neuter
+    // kills it well before tick 45; MEASURED, the neutered cloud is still
+    // alive at tick 45, so its count holds on both arms. The thief's exact HP
+    // below is what kMut_effect_cloud_emission flips.
+    pred::WalkerOfOrderFamilyAlive(FAMILY_CLOUD, kOrderFX, 1, 1,
+        "structural: POISON CLOUD slot 4 summons one FAMILY_CLOUD FX entity (core:cloud) into oblist, alive at tick 45 with or without its on_act hook"),
     pred::EventKindAtLeast(/*play_sound*/1, 1,
         "consequence: the live cloud's spin/animation and the special cast both emit play_sound events; the floor stays >0 in the unmutated arm"),
     pred::WalkerHpRangeAtFinalTick(FAMILY_THIEF, 5700, 5700),
@@ -3184,16 +3206,21 @@ inline constexpr FactPredicate kFacts_effect_marker_emission_scen99[] = {
     // 27 mages by the budget.
     pred::WalkerFamilyCount(FAMILY_MAGE, 27, 27),
     pred::EventKindAtLeast(/*play_sound*/1, 4),
-    // FLIPPING PREDICATE. team-1 alive = TOWER(1) + surviving MAGEs (7 on
-    // the final snapshot). Markers persist only because
+    // FLIPPING PREDICATE. team-1 alive = the surviving MAGEs (7 on the
+    // final snapshot; the TOWER is a generator, not a walker of team 1).
+    // Markers persist only because
     // core:marker's descriptor sets loops_animation: true
     // (packs/core/families/effect-09-marker.lua:7, consumed at
     // effect.cpp:88-113). The discriminating_mutation sets it false; every
     // marker dies within a couple ticks of placement and is reaped from
     // oblist, which shifts the reap order + mage special cadence and moves
-    // the deterministic team-alive count off the exact 8-pin.
-    pred::WalkerOfTeamAlive(/*team=*/1, 8, 8,
-        "consequence: killing the persistent markers via the mutation perturbs oblist reaping and the mage-special RNG cadence, moving the exact team-1 alive count (1 tower + 7 mages) off its pin"),
+    // the deterministic team-alive count off the exact 7-pin.
+    pred::WalkerOfTeamAlive(/*team=*/1, 7, 7,
+        "consequence: killing the persistent markers via the mutation perturbs oblist reaping and the mage-special RNG cadence, moving the exact team-1 alive count (7 mages) off its pin"),
+    // The markers themselves: four are alive at the final tick (24 more were
+    // placed and spent). They are recorded on team 0, as in the old game.
+    pred::WalkerOfOrderFamilyAlive(FAMILY_MARKER, kOrderFX, 4, 4,
+        "consequence: core:marker loops its animation, so the teleport markers the mages place persist and four are alive at tick 2500; kMut_effect_marker_emission stops the loop, every marker dies within a couple of ticks of placement, and only the one placed last is alive at tick 2500"),
     // Marker-emitting mage saturation allows population variation while
     // retaining a stable floor.
     // Structural coverage anchor: binds FAMILY_MARKER to EffectFamilyCount arg0
@@ -3201,14 +3228,14 @@ inline constexpr FactPredicate kFacts_effect_marker_emission_scen99[] = {
     // array (add_ob(Order::FX) -> oblist), not fxlist, so zero live FAMILY_MARKER
     // entries appear in the dump's effects[] on both branch and master golden.
     pred::EffectFamilyCount(FAMILY_MARKER, 0, 0, /*source=FAMILY_MAGE*/3),
-    // negative_assertion: MARKER persistence is covered via team-alive; final fxlist remains empty for marker entries.
+    // negative_assertion: the markers ride oblist (counted by WalkerOfOrderFamilyAlive above); the final fxlist holds none.
 };
 
 inline constexpr Mutation kMut_effect_marker_emission = {
     "packs/core/families/effect-09-marker.lua", 7,
     "  loops_animation = true,",
     "  loops_animation = false,",
-    "Disables FAMILY_MARKER animation looping at its live source, core:marker's families/effect-09-marker.lua declaration; per effect.cpp:88-113 a non-looping FX falls to ANI_WALK then set_dead(1), so the teleport markers the generator-spawned mages place no longer persist — every marker is reaped from oblist within a couple ticks, dropping the team-1 alive count below its pin."
+    "Disables FAMILY_MARKER animation looping at its live source, core:marker's families/effect-09-marker.lua declaration; per effect.cpp:88-113 a non-looping FX falls to ANI_WALK then set_dead(1), so the teleport markers the generator-spawned mages place no longer persist — every marker is reaped from oblist within a couple ticks, so WalkerOfOrderFamilyAlive(FAMILY_MARKER, kOrderFX, 4, 4) reads 1 (only the marker placed last is alive at tick 2500), and the shifted reap order moves the team-1 alive count off its pin."
 };
 
 inline constexpr InputEvent kInputsChainEmission[] = {
@@ -3309,7 +3336,7 @@ inline constexpr Mutation kMut_effect_hit_emission = {
     "src/gameplay/walker_combat.cpp", 185,
     "            walker* newob = current_game->world->add_ob(Order::FX, FAMILY_HIT);",
     "            walker* newob = current_game->world->add_fx_ob(Order::FX, FAMILY_HIT);",
-    "do_hit_effects() emits the combat HIT animation via add_ob(Order::FX, FAMILY_HIT), which routes the object into world.oblist (game_world.cpp:564) where it is dumped as a team-0 walker. Repointing add_ob -> add_fx_ob (game_world.cpp:567, public, identical 2-arg signature) routes the HIT into world.fxlist instead, so it is no longer an oblist walker and no longer counted by WalkerOfTeamAlive(team 0). This is a genuine break of HIT-effect emission routing."
+    "do_hit_effects() emits the combat HIT animation via add_ob(Order::FX, FAMILY_HIT), which routes the object into world.oblist (game_world.cpp:564) where it is dumped as a team-0 walker. Repointing add_ob -> add_fx_ob (game_world.cpp:567, public, identical 2-arg signature) routes the HIT into world.fxlist instead, so it reaches the dump's effects[] and EffectFamilyCount(FAMILY_HIT, 0, 0) flips. (This rationale used to say the HIT would no longer be counted by WalkerOfTeamAlive(team 0); the golden's team 0 is empty and that count never moved, and since #448 it counts livings only.) This is a genuine break of HIT-effect emission routing."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_generator_tent[] = {
@@ -3322,7 +3349,10 @@ inline constexpr FactPredicate kFacts_generator_tent_emission_scen99[] = {
     // yields the exact skeleton count.
     pred::WalkerFamilyCount(FAMILY_SKELETON, 6, 6),
     pred::EventKindAtLeast(/*play_sound*/1, 1),
-    pred::WalkerOfTeamAlive(/*team=*/1, 4, 4),
+    // The six skeletons' survivors; the TENT itself is a generator, not a
+    // walker of team 1, and is asserted on its own below.
+    pred::WalkerOfTeamAlive(/*team=*/1, 3, 3),
+    pred::WalkerOfOrderFamilyAlive(FAMILY_TENT, kOrderGenerator, 1, 1),
 };
 
 inline constexpr Mutation kMut_generator_tent_emission = {
@@ -3338,16 +3368,17 @@ inline constexpr SpawnSpec kFamilySpawns_generator_tower[] = {
 
 inline constexpr FactPredicate kFacts_generator_tower_emission_scen99[] = {
     pred::TickReached(1500),
-    // The generator entity itself sits in oblist with family id
-    // 1 (FAMILY_TOWER), which under schema-v1 family_symbol
-    // aliases to a walker-family name. The MAGE family ID 3
+    // The generator entity itself sits in oblist as the Generator-order
+    // FAMILY_TOWER; WalkerOfOrderFamilyAlive below asserts it is still up,
+    // and WalkerOfTeamAlive counts only the living mages. The MAGE family ID 3
     // is the SPAWNED walker the generator emits at ~150-tick intervals;
     // we assert at least 1 such walker is visible by tick 300.
     // Each spawn takes one rolled-level set_difficulty; the resulting cadence
     // yields the exact mage count.
     pred::WalkerFamilyCount(FAMILY_MAGE, 5, 5),
     pred::EventKindAtLeast(/*play_sound*/1, 2),
-    pred::WalkerOfTeamAlive(/*team=*/1, 6, 6),
+    pred::WalkerOfTeamAlive(/*team=*/1, 5, 5),
+    pred::WalkerOfOrderFamilyAlive(FAMILY_TOWER, kOrderGenerator, 1, 1),
 };
 
 inline constexpr Mutation kMut_generator_tower_emission = {
@@ -3365,7 +3396,9 @@ inline constexpr FactPredicate kFacts_generator_bones_emission_scen99[] = {
     pred::TickReached(1500),
     pred::WalkerFamilyCount(FAMILY_GHOST, 5, 5),
     pred::EventKindAtLeast(/*play_sound*/1, 1),
-    pred::WalkerOfTeamAlive(/*team=*/1, 3, 3),
+    // The surviving ghosts; the BONES generator is asserted on its own.
+    pred::WalkerOfTeamAlive(/*team=*/1, 2, 2),
+    pred::WalkerOfOrderFamilyAlive(FAMILY_BONES, kOrderGenerator, 1, 1),
     // The value this row's golden was rebaselined for. A generator-emitted
     // GHOST is scaled to the level ONCE: 50 base + 11 = 61. The companion
     // capture read 72, which is 50 + 11 + 11 — the same scaling applied
@@ -3392,7 +3425,9 @@ inline constexpr FactPredicate kFacts_generator_treehouse_emission_scen99[] = {
     // yields the exact elf count.
     pred::WalkerFamilyCount(FAMILY_ELF, 6, 6),
     pred::EventKindAtLeast(/*play_sound*/1, 3),
-    pred::WalkerOfTeamAlive(/*team=*/1, 7, 7),
+    // The six elves; the TREEHOUSE generator is asserted on its own.
+    pred::WalkerOfTeamAlive(/*team=*/1, 6, 6),
+    pred::WalkerOfOrderFamilyAlive(FAMILY_TREEHOUSE, kOrderGenerator, 1, 1),
 };
 
 inline constexpr Mutation kMut_generator_treehouse_emission = {
@@ -4504,10 +4539,11 @@ inline constexpr SpawnSpec kFamilySpawns_generator_saturation_scen99[] = {
 // resolve to the living-order family #1 and count 0 on both sides. The marker
 // walkers the mages leave behind are likewise FX-order entities (rendered via
 // the effect table), so they are unreachable through WalkerFamilyCount too. The
-// generator's persistence is therefore asserted indirectly via
-// WalkerOfTeamAlive(1, ...), matching how generator_tower_emission_scen99
-// handles the same aliasing; the saturation effect is asserted positively on
-// the emitted FAMILY_MAGE walkers — both their count and their final-tick HP.
+// generator's persistence is asserted by WalkerOfOrderFamilyAlive in the
+// Generator order, as generator_tower_emission_scen99 does, and
+// WalkerOfTeamAlive(1, ...) counts the living mages only (#448); the
+// saturation effect is asserted positively on the emitted FAMILY_MAGE walkers —
+// both their count and their final-tick HP.
 inline constexpr FactPredicate kFacts_generator_saturation_scen99[] = {
     pred::TickReached(2500),
     // A single rolled-level set_difficulty per spawn and eat-free teleport
@@ -4517,7 +4553,8 @@ inline constexpr FactPredicate kFacts_generator_saturation_scen99[] = {
     // rolled-level stat line.
     pred::WalkerHpRangeAtFinalTick(FAMILY_MAGE, 9700, 9700),
     pred::EventKindAtLeast(/*play_sound*/1, 4),
-    pred::WalkerOfTeamAlive(1, 8, 8),
+    pred::WalkerOfTeamAlive(1, 7, 7),
+    pred::WalkerOfOrderFamilyAlive(FAMILY_TOWER, kOrderGenerator, 1, 1),
 };
 
 inline constexpr Mutation kMut_generator_saturation_scen99 = {
@@ -4611,9 +4648,10 @@ inline constexpr SpawnSpec kFamilySpawns_weapon_boomerang_return_scen99[] = {
 inline constexpr FactPredicate kFacts_weapon_boomerang_return_scen99[] = {
     pred::TickReached(80),
     pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 1),
-    pred::WalkerOfTeamAlive(0, 2, 4,
-        "consequence: BOOMERANG slot 2 adds FAMILY_BOOMERANG FX walker(s) to the caster's team (team 0)"),
-    // rng_drift: boomerang return timing may leave two to four team-0 bodies while the mutation removes extras; commit 244d4bcf
+    // The caster is team 0's only walker; its blade is counted on its own.
+    pred::WalkerOfTeamAlive(0, 1, 1),
+    pred::WalkerOfOrderFamilyAlive(FAMILY_BOOMERANG, kOrderFX, 1, 1,
+        "consequence: BOOMERANG slot 2 adds one FAMILY_BOOMERANG FX entity to oblist, still alive at tick 80"),
     pred::EventKindAtLeast(/*play_sound*/1, 2),
     // #294: absorbing the archer's shots changes the tick-80 caster HP
     // from 95 to 102 and the blade's HP from 90 to 80. Keep an exact caster
@@ -4724,8 +4762,10 @@ inline constexpr SpawnSpec kFamilySpawns_effect_poison_cloud_emit_scen99[] = {
 inline constexpr FactPredicate kFacts_effect_poison_cloud_emit_scen99[] = {
     pred::TickReached(45),
     pred::WalkerFamilyCount(FAMILY_THIEF, 1, 1),
-    pred::WalkerOfTeamAlive(0, 2, 2,
-        "consequence: POISON CLOUD slot 4 adds a FAMILY_CLOUD FX walker to the thief's team (team 0) — schema-v1 only exposes it by team since the FX-order family string aliases onto FAMILY_SLIME under WalkerFamilyCount; the mutation bypasses the spawn so only the lone thief remains alive on team 0 (the cloud's random-walk path, and hence whether it ever poisons the soldier, diverges by RNG between branch and master, so the spawn's *existence* is the robust observable)"),
+    // The thief is team 0's only walker; its cloud is counted on its own.
+    pred::WalkerOfTeamAlive(0, 1, 1),
+    pred::WalkerOfOrderFamilyAlive(FAMILY_CLOUD, kOrderFX, 1, 1,
+        "consequence: POISON CLOUD slot 4 adds one FAMILY_CLOUD FX entity to oblist, alive at tick 45; the mutation bypasses the spawn so the live cloud count drops to 0 (the cloud's random-walk path, and hence whether it ever poisons the soldier, is the RNG-sensitive part, so the spawn's *existence* is the robust observable)"),
     pred::EventKindAtLeast(/*play_sound*/1, 1,
         "consequence: the live cloud and the approaching soldier's melee both emit play_sound events; the floor stays >0 in both arms"),
     pred::WalkerHpRangeAtFinalTick(FAMILY_THIEF, 5700, 5700),
@@ -4735,7 +4775,7 @@ inline constexpr Mutation kMut_effect_poison_cloud_emit_scen99 = {
     "packs/core/families/living-11-thief.lua", 422,
     "  local cloud = og.summon(self, \"fx\", FX_CLOUD)",
     "  do return false, 'MUTATION REFUSAL' end",
-    "Replaces the POISON CLOUD FX summon with `do return false, 'MUTATION REFUSAL' end`, so poison_cloud declines before the FAMILY_CLOUD walker is created; the cloud never enters oblist so team 0 holds only the lone thief — WalkerOfTeamAlive(0, 2, 2) collapses to 1 and fails its lower bound. The `do ... end` wrapper is load-bearing — Lua only allows `return` as the last statement of a block, so a bare mid-block `return false` here is a SYNTAX ERROR that fails the whole thief.lua load; the row would then flip because every thief special died, not because the cloud did. With the wrapper, drop bomb / cloak / taunt-charm keep working and only the cloud branch is neutered."
+    "Replaces the POISON CLOUD FX summon with `do return false, 'MUTATION REFUSAL' end`, so poison_cloud declines before the FAMILY_CLOUD walker is created; the cloud never enters oblist, so WalkerOfOrderFamilyAlive(FAMILY_CLOUD, kOrderFX, 1, 1) reads 0 and fails its lower bound. The `do ... end` wrapper is load-bearing — Lua only allows `return` as the last statement of a block, so a bare mid-block `return false` here is a SYNTAX ERROR that fails the whole thief.lua load; the row would then flip because every thief special died, not because the cloud did. With the wrapper, drop bomb / cloak / taunt-charm keep working and only the cloud branch is neutered."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_effect_protection_emit_scen99[] = {
@@ -4787,11 +4827,11 @@ inline constexpr Mutation kMut_effect_protection_emit_scen99 = {
 // EffectFamilyCount(FAMILY_BOMB, ...) counts dump.effects[] and is therefore
 // structurally 0; WalkerFamilyCount(FAMILY_BOMB, ...) renders FAMILY_BOMB under
 // the Living table and never matches the FX-order "FAMILY_BOMB" string — the
-// same aliasing wall the poison-cloud row documents. The bomb's spawn is thus
-// only robustly observable by TEAM: it lands on the thief's team (team 0) as an
-// alive walker. We pick tick 30 — early enough that the timed bomb has not yet
-// detonated, so it is still alive in oblist as a team-0 walker and the soldier
-// (parked far away at 400,400) has taken no blast damage on either branch.
+// same aliasing wall the poison-cloud row documents. WalkerOfOrderFamilyAlive
+// resolves the family in the FX order and counts the live bomb directly. We
+// pick tick 30 — early enough that the timed bomb has not yet detonated, so it
+// is still alive in oblist and the soldier (parked far away at 400,400) has
+// taken no blast damage on either branch.
 inline constexpr SpawnSpec kFamilySpawns_effect_bomb_timer_scen99[] = {
     { FAMILY_THIEF,   0, kOrderLiving, 120, 120, 0, 0, 5, 300 }, // thief caster (level 5 + 300 magicpoints -> slot 1 DROP BOMB affordable); the player-controlled walker
     { FAMILY_SOLDIER, 1, kOrderLiving, 400, 400, 0, 0 },         // lone FAMILY_SOLDIER foe parked far away so the bomb blast never reaches it
@@ -4800,9 +4840,10 @@ inline constexpr SpawnSpec kFamilySpawns_effect_bomb_timer_scen99[] = {
 inline constexpr FactPredicate kFacts_effect_bomb_timer_scen99[] = {
     pred::TickReached(30),
     pred::WalkerFamilyCount(FAMILY_THIEF, 1, 1),
-    pred::WalkerOfTeamAlive(0, 2, 3,
-        "consequence: DROP BOMB slot 1 adds the timed FAMILY_BOMB FX walker(s) to the thief's team (team 0) — schema-v1 routes the bomb through add_ob(Order::FX) into oblist, where it surfaces as an alive team-0 walker (the FX-order family string aliases under WalkerFamilyCount / EffectFamilyCount, so the spawn is only robustly observable by team). The mutation bypasses the spawn so only the lone thief remains alive on team 0 and this count collapses to 1, below the floor of 2."),
-    // rng_drift: one or two bombs may be live at capture while removing the spawn drops below the floor; commit 244d4bcf
+    // The thief is team 0's only walker; its bomb is counted on its own.
+    pred::WalkerOfTeamAlive(0, 1, 1),
+    pred::WalkerOfOrderFamilyAlive(FAMILY_BOMB, kOrderFX, 1, 1,
+        "consequence: DROP BOMB slot 1 adds one timed FAMILY_BOMB FX entity to oblist (add_ob(Order::FX)), still alive at tick 30 before it detonates. The mutation bypasses the spawn and the live bomb count drops from 1 to 0."),
     pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 1),
 };
 
@@ -4810,7 +4851,7 @@ inline constexpr Mutation kMut_effect_bomb_timer_scen99 = {
     "packs/core/families/living-11-thief.lua", 194,
     "  local bomb = og.add_ob(\"fx\", FX_BOMB)",
     "  do return false, 'MUTATION REFUSAL' end",
-    "Replaces the DROP BOMB FX spawn with `do return false, 'MUTATION REFUSAL' end`, so drop_bomb declines before any FAMILY_BOMB walker is created; oblist never holds a bomb so the thief's team (team 0) keeps only the lone thief alive and WalkerOfTeamAlive(0, 2, 3) collapses to 1, below its floor. The `do ... end` wrapper is load-bearing — Lua only allows `return` as the last statement of a block, so a bare mid-block `return false` here is a SYNTAX ERROR that fails the whole thief.lua load; the row would then flip because every thief special died, not because the bomb did. With the wrapper, cloak / taunt-charm / poison cloud keep working and only the bomb branch is neutered. (Shares the thief.lua:57 anchor with kMut_special_thief_do_special, which neuters the same spawn a different way; both rows and effect_bomb_emission_scen99 observe the bomb, so all three move together — as does the FAMILY_BOMB effect-family coverage gate, since the corpus then spawns no bomb at all.)"
+    "Replaces the DROP BOMB FX spawn with `do return false, 'MUTATION REFUSAL' end`, so drop_bomb declines before any FAMILY_BOMB walker is created; oblist never holds a bomb, so WalkerOfOrderFamilyAlive(FAMILY_BOMB, kOrderFX, 1, 1) reads 0, below its floor. The `do ... end` wrapper is load-bearing — Lua only allows `return` as the last statement of a block, so a bare mid-block `return false` here is a SYNTAX ERROR that fails the whole thief.lua load; the row would then flip because every thief special died, not because the bomb did. With the wrapper, cloak / taunt-charm / poison cloud keep working and only the bomb branch is neutered. (Shares the thief.lua:57 anchor with kMut_special_thief_do_special, which neuters the same spawn a different way; both rows and effect_bomb_emission_scen99 observe the bomb, so all three move together — as does the FAMILY_BOMB effect-family coverage gate, since the corpus then spawns no bomb at all.)"
 };
 
 
@@ -5454,12 +5495,13 @@ inline constexpr FloorPaint kZFall2Paints[] = {
 // GUARD arms that refuse the eat (natural flier, unwounded eater, wrong team,
 // non-player key pickup), which leave the treasure lying in the world.
 //
-// The guard rows lean on WalkerOfTeamAlive(2, 1, 1): a treasure keeps its
-// SpawnSpec team in oblist and a consumed one stays there with alive:false, so
-// a treasure spawned alone on team 2 reads a determinate 1 while it survives
-// and a determinate 0 once a hook marks it dead. That is the flip direction
-// TreasureFamilyOfOrderRemovedFromOblist structurally cannot express (it goes
-// indeterminate for a live survivor). Team 2 is inert: sim_find_next_control
+// The guard rows lean on WalkerOfOrderFamilyAlive(F, kOrderTreasure, 1, 1): a
+// consumed treasure stays in oblist with alive:false, so the treasure's own
+// live count reads a determinate 1 while it survives and a determinate 0 once
+// a hook marks it dead. (Until #448 they read WalkerOfTeamAlive(2, 1, 1),
+// which counted the team-2 treasure as a walker; that count reads livings
+// only now.) The treasures are spawned on team 2 because team 2 is inert:
+// sim_find_next_control
 // and master's find_player_walker both require Order::Living, and find_nearest_foe
 // only accepts ORDER_LIVING/ORDER_GENERATOR, so a team-2 treasure neither
 // steals player control nor becomes anybody's foe.
@@ -5534,7 +5576,7 @@ inline constexpr Mutation kMut_treasure_invis_effect = {
 // (gloader.cpp:947 / living-12-ghost.lua flags). No foe, so nothing
 // can die and no death notification can pollute the exact-0 event count.
 inline constexpr SpawnSpec kFamilySpawns_treasure_flight_flier[] = {
-    { FAMILY_FLIGHT_POTION, 2, kOrderTreasure, 96, 120, 0, 0 }, // TEAM 2 and the arena's only team-2 entity: WalkerOfTeamAlive(2,1,1) is then a direct "the potion survived" read
+    { FAMILY_FLIGHT_POTION, 2, kOrderTreasure, 96, 120, 0, 0 }, // TEAM 2 (never a control candidate, never a foe); its live count is the direct "the potion survived" read
     { FAMILY_GHOST,         0, kOrderLiving,   96, 120, 0, 0 }, // player LAST; BIT_FLYING eater, co-located so the tick-0 step reaches eat_me
 };
 
@@ -5544,11 +5586,9 @@ inline constexpr FactPredicate kFacts_treasure_flight_potion_flier_noconsume_sce
     // TEETH #1. notify_potion_consume never runs for a flier.
     pred::EventKindExactly(/*notification*/2, 0,
         "consequence: flight_potion_on_eat's BIT_FLYING guard skips notify_potion_consume entirely for a natural flier; forcing the guard open emits one Potion of Flight notification and flips this exact-0 count"),
-    // TEETH #2. The potion is the only team-2 entity, so alive-count 1 means
-    // "not consumed" -- the assertion TreasureFamilyOfOrderRemovedFromOblist
-    // structurally cannot make (a live survivor reads indeterminate).
-    pred::WalkerOfTeamAlive(/*team=*/2, 1, 1,
-        "consequence: set_dead(1) also lives inside the BIT_FLYING guard, so the potion stays alive in oblist; forcing the guard open kills it and the team-2 alive count drops to 0"),
+    // TEETH #2. The potion's live count 1 means "not consumed".
+    pred::WalkerOfOrderFamilyAlive(FAMILY_FLIGHT_POTION, kOrderTreasure, 1, 1,
+        "consequence: set_dead(1) also lives inside the BIT_FLYING guard, so the potion stays alive in oblist; forcing the guard open kills it and the potion's own live count drops to 0"),
     // Structural coverage anchor only: a live survivor with no consumed twin
     // reads indeterminate on both arms.
     pred::TreasureFamilyOfOrderRemovedFromOblist(FAMILY_FLIGHT_POTION, kOrderTreasure),
@@ -5558,7 +5598,7 @@ inline constexpr Mutation kMut_treasure_flight_potion_flier_noconsume = {
     "packs/core/lib/treasure_consumables.lua", 69,
     "if not eater:s_query_bit_flags(C.BIT_FLYING) then",
     "if true then",
-    "Forces flight_potion_on_eat's natural-flier guard open. Unmutated, a BIT_FLYING eater (GHOST) skips the whole body: no flight_left grant, no notify_potion_consume, no set_dead(1), so the potion stays alive in oblist and the event stream carries zero notifications. Mutated, the ghost consumes the potion: one 'Potion of Flight' notification appears (EventKindExactly(notification,0) 0->1) and the potion is marked dead (WalkerOfTeamAlive(2,1,1) 1->0). Two independent teeth."
+    "Forces flight_potion_on_eat's natural-flier guard open. Unmutated, a BIT_FLYING eater (GHOST) skips the whole body: no flight_left grant, no notify_potion_consume, no set_dead(1), so the potion stays alive in oblist and the event stream carries zero notifications. Mutated, the ghost consumes the potion: one 'Potion of Flight' notification appears (EventKindExactly(notification,0) 0->1) and the potion is marked dead (WalkerOfOrderFamilyAlive(FAMILY_FLIGHT_POTION, kOrderTreasure, 1, 1) 1->0). Two independent teeth."
 };
 
 // Drumstick GUARD row: an unwounded eater triggers no heal, no set_dead(1)
@@ -5566,7 +5606,7 @@ inline constexpr Mutation kMut_treasure_flight_potion_flier_noconsume = {
 // puts all three in the else arm). No foe and no second treasure, so the
 // soldier is provably still at max HP when it walks over the drumstick.
 inline constexpr SpawnSpec kFamilySpawns_treasure_drumstick_fullhp[] = {
-    { FAMILY_DRUMSTICK, 2, kOrderTreasure, 96, 120, 0, 0, 10, 0 }, // level 10 (would heal 100 + rand0(100) if the guard fell through); TEAM 2 and the only team-2 entity, so WalkerOfTeamAlive(2,1,1) reads "not consumed"
+    { FAMILY_DRUMSTICK, 2, kOrderTreasure, 96, 120, 0, 0, 10, 0 }, // level 10 (would heal 100 + rand0(100) if the guard fell through); TEAM 2 (inert), and its live count reads "not consumed"
     { FAMILY_SOLDIER,   0, kOrderLiving,   96, 120, 0, 0        }, // player LAST, spawns at full HP and stays there (no foe in the arena)
 };
 
@@ -5580,8 +5620,8 @@ inline constexpr FactPredicate kFacts_treasure_drumstick_fullhp_noconsume_scen99
     pred::EventKindExactly(/*play_sound*/1, 0,
         "consequence: the hp >= max_hp early return skips og.emit_sound(SOUND_EAT); with the guard forced open the drumstick is eaten and exactly one play_sound appears"),
     // TEETH #2: the drumstick is still in the world.
-    pred::WalkerOfTeamAlive(/*team=*/2, 1, 1,
-        "consequence: set_dead(1) sits after the hp >= max_hp early return, so an unwounded eater leaves the drumstick alive in oblist; forcing the guard open kills it and the team-2 alive count drops to 0"),
+    pred::WalkerOfOrderFamilyAlive(FAMILY_DRUMSTICK, kOrderTreasure, 1, 1,
+        "consequence: set_dead(1) sits after the hp >= max_hp early return, so an unwounded eater leaves the drumstick alive in oblist; forcing the guard open kills it and the drumstick's own live count drops to 0"),
     pred::TreasureFamilyOfOrderRemovedFromOblist(FAMILY_DRUMSTICK, kOrderTreasure),
 };
 
@@ -5589,7 +5629,7 @@ inline constexpr Mutation kMut_treasure_drumstick_fullhp_noconsume = {
     "packs/core/lib/treasure_consumables.lua", 27,
     "if eater.hp >= eater.max_hp then",
     "if false then",
-    "Removes drumstick_on_eat's unwounded early return. Unmutated, a full-HP eater walks over the drumstick and nothing happens: no og.rand0 draw, no do_heal_effects, no set_dead(1), no SOUND_EAT -- the drumstick stays alive in oblist and the event stream has zero play_sound entries. Mutated, the level-10 drumstick is consumed at full HP (the heal clamps straight back to max_hitpoints), emitting one SOUND_EAT play_sound (EventKindExactly(play_sound,0) 0->1) and marking the drumstick dead (WalkerOfTeamAlive(2,1,1) 1->0)."
+    "Removes drumstick_on_eat's unwounded early return. Unmutated, a full-HP eater walks over the drumstick and nothing happens: no og.rand0 draw, no do_heal_effects, no set_dead(1), no SOUND_EAT -- the drumstick stays alive in oblist and the event stream has zero play_sound entries. Mutated, the level-10 drumstick is consumed at full HP (the heal clamps straight back to max_hitpoints), emitting one SOUND_EAT play_sound (EventKindExactly(play_sound,0) 0->1) and marking the drumstick dead (WalkerOfOrderFamilyAlive(FAMILY_DRUMSTICK, kOrderTreasure, 1, 1) 1->0)."
 };
 
 // Gold-bar GUARD row: a non-zero-team eater with no roster character banks
@@ -5617,8 +5657,8 @@ inline constexpr FactPredicate kFacts_treasure_gold_bar_team_reject_scen99[] = {
         "consequence: the eater.team == 0 or eater:has_guy() guard refuses the credit for a team-1 orc with no roster character; forcing the guard open banks score_per_level(200) * level 3 = 600 into m_score[1]"),
     pred::ScoreDelta(/*team*/0, 0, 0),
     // TEETH #2: the bar is still in the world.
-    pred::WalkerOfTeamAlive(/*team=*/2, 1, 1,
-        "consequence: self.dead = 1 sits inside the same guard, so a rejected bar stays alive in oblist; forcing the guard open kills it and the team-2 alive count drops to 0"),
+    pred::WalkerOfOrderFamilyAlive(FAMILY_GOLD_BAR, kOrderTreasure, 1, 1,
+        "consequence: self.dead = 1 sits inside the same guard, so a rejected bar stays alive in oblist; forcing the guard open kills it and the bar's own live count drops to 0"),
     pred::TreasureFamilyOfOrderRemovedFromOblist(FAMILY_GOLD_BAR, kOrderTreasure),
 };
 
@@ -5626,7 +5666,7 @@ inline constexpr Mutation kMut_treasure_gold_bar_team_reject = {
     "packs/core/lib/treasure_valuables.lua", 20,
     "if eater.team == 0 or eater:has_guy() then",
     "if true then",
-    "Forces gold_bar_on_eat's scoring guard open (the line number pins gold_bar_on_eat; silver_bar_on_eat carries the identical text at line 27 and _apply_mutation.py edits the named line only). Unmutated, the team-1 orc that walks onto the bar banks nothing, the bar is never set_dead and no SOUND_MONEY fires. Mutated, the orc cashes it: og.award_score(1, 200*3) puts 600 into m_score[1] (ScoreDelta(1,0,0) fails) and self.dead = 1 marks the bar consumed (WalkerOfTeamAlive(2,1,1) 1->0).",
+    "Forces gold_bar_on_eat's scoring guard open (the line number pins gold_bar_on_eat; silver_bar_on_eat carries the identical text at line 27 and _apply_mutation.py edits the named line only). Unmutated, the team-1 orc that walks onto the bar banks nothing, the bar is never set_dead and no SOUND_MONEY fires. Mutated, the orc cashes it: og.award_score(1, 200*3) puts 600 into m_score[1] (ScoreDelta(1,0,0) fails) and self.dead = 1 marks the bar consumed (WalkerOfOrderFamilyAlive(FAMILY_GOLD_BAR, kOrderTreasure, 1, 1) 1->0).",
     "local C = og.C"
 };
 
@@ -5653,8 +5693,8 @@ inline constexpr FactPredicate kFacts_treasure_life_gem_enemy_reject_scen99[] = 
     // continues), which the treasure_key_pickup golden already demonstrates.
     pred::WalkerPositionMoved(FAMILY_SOLDIER, 144, 110),
     // TEETH: the gem survives the cross-team touch.
-    pred::WalkerOfTeamAlive(/*team=*/2, 1, 1,
-        "consequence: the eater.team ~= self.team early return skips self.dead = 1 and self:death(), so the gem stays alive in oblist; forcing the guard open lets the team-0 soldier claim it and the team-2 alive count drops to 0"),
+    pred::WalkerOfOrderFamilyAlive(FAMILY_LIFE_GEM, kOrderTreasure, 1, 1,
+        "consequence: the eater.team ~= self.team early return skips self.dead = 1 and self:death(), so the gem stays alive in oblist; forcing the guard open lets the team-0 soldier claim it and the gem's own live count drops to 0"),
     pred::ScoreDelta(/*team*/0, 0, 0),
     pred::TreasureFamilyOfOrderRemovedFromOblist(FAMILY_LIFE_GEM, kOrderTreasure),
 };
@@ -5663,7 +5703,7 @@ inline constexpr Mutation kMut_treasure_life_gem_enemy_reject = {
     "packs/core/lib/treasure_valuables.lua", 52,
     "if eater.team ~= self.team then",
     "if false then",
-    "Removes life_gem_on_eat's own-team-only early return. Unmutated, the team-0 soldier walking over a TEAM 2 gem is refused: no award_score, no FAMILY_FLASH, no self.dead = 1 and no self:death(), so the gem is still alive in oblist at the final tick. Mutated, the cross-team eater claims it -- the gem is marked dead and death() runs -- and WalkerOfTeamAlive(2,1,1) flips 1 -> 0. (The score stays 0 on both arms because a harness-spawned gem has hp 0, so it cannot be the flip channel.)"
+    "Removes life_gem_on_eat's own-team-only early return. Unmutated, the team-0 soldier walking over a TEAM 2 gem is refused: no award_score, no FAMILY_FLASH, no self.dead = 1 and no self:death(), so the gem is still alive in oblist at the final tick. Mutated, the cross-team eater claims it -- the gem is marked dead and death() runs -- and WalkerOfOrderFamilyAlive(FAMILY_LIFE_GEM, kOrderTreasure, 1, 1) flips 1 -> 0. (The score stays 0 on both arms because a harness-spawned gem has hp 0, so it cannot be the flip channel.)"
 };
 
 // Magic-potion OVERFILL row. Reuses enemy_freeze_mage_scen99's arena and its
@@ -5911,13 +5951,15 @@ inline constexpr SpawnSpec kFamilySpawns_mage_teleport_marker_scen99[] = {
 inline constexpr FactPredicate kFacts_mage_teleport_marker_scen99[] = {
     pred::TickReached(140),
     pred::WalkerFamilyCount(FAMILY_MAGE, 1, 1),
-    // TEETH. The FX-order FAMILY_MARKER lands in oblist as a team-0 walker
-    // (same mechanism as the cleric's MAGIC_SHIELD), and its lifetime is a USE
-    // counter, not a tick timer, so 3 uses minus the one return teleport leaves
-    // it alive. The kMut sets the count to 1, so the single teleport consumes
-    // it and effect::death reaps it.
-    pred::WalkerOfTeamAlive(/*team=*/0, 2, 2,
-        "consequence: mage.lua's marker arm places a persistent FAMILY_MARKER FX into oblist as a second alive team-0 walker and walker::teleport spends only one of its 3 uses; the kMut gives it 1 use so the return teleport kills it and team-0 alive drops to 1"),
+    // The mage is team 0's only walker.
+    pred::WalkerOfTeamAlive(/*team=*/0, 1, 1),
+    // TEETH. The FX-order FAMILY_MARKER lands in oblist (same mechanism as the
+    // cleric's MAGIC_SHIELD), and its lifetime is a USE counter, not a tick
+    // timer, so 3 uses minus the one return teleport leaves it alive. The kMut
+    // sets the count to 1, so the single teleport consumes it and
+    // effect::death reaps it.
+    pred::WalkerOfOrderFamilyAlive(FAMILY_MARKER, kOrderFX, 1, 1,
+        "consequence: mage.lua's marker arm places a persistent FAMILY_MARKER FX into oblist and walker::teleport spends only one of its 3 uses; the kMut gives it 1 use so the return teleport kills it and the live marker count drops to 0"),
     // The mage walked WEST and only the marker teleport can put it back east.
     pred::WalkerPositionMoved(FAMILY_MAGE, 240, 320,
         "consequence: the caster lands centred on its own marker, back at exactly its (240,320) start cell after walking west to x ~= 80; without the marker binding walker::teleport falls through to a random passable cell"),
@@ -5931,7 +5973,7 @@ inline constexpr Mutation kMut_mage_teleport_marker_scen99 = {
     "packs/core/families/living-03-mage.lua", 311,
     "    marker.lifetime = self.level // 4 + 1",
     "    marker.lifetime = 1",
-    "Gives the placed marker a single use instead of level//4+1 = 3. walker::teleport decrements the use counter on a successful jump and calls death() when it reaches 0, so the marker is reaped and WalkerOfTeamAlive(0,2,2) falls to 1 -- proving both that the marker persisted and that the return teleport actually consumed it."
+    "Gives the placed marker a single use instead of level//4+1 = 3. walker::teleport decrements the use counter on a successful jump and calls death() when it reaches 0, so the marker is reaped and WalkerOfOrderFamilyAlive(FAMILY_MARKER, kOrderFX, 1, 1) falls to 0 -- proving both that the marker persisted and that the return teleport actually consumed it."
 };
 
 // ARCHMAGE slot-1 TELEPORT MARKER: a deliberately divergent twin of the mage
@@ -5976,9 +6018,12 @@ inline constexpr FactPredicate kFacts_archmage_teleport_marker_scen99[] = {
     // the lone team-1 soldier is parked 520 px away and is still at (272,400)
     // at the final tick, so nothing interrupts the walk or the two casts.
     pred::WalkerPositionMoved(FAMILY_ARCHMAGE, 414, 320),
-    // Two alive team-0 entries: the caster and the second marker (the first
-    // was removed by the second cast). A reaped marker drops this to 1.
-    pred::WalkerOfTeamAlive(/*team=*/0, 2, 2),
+    // The caster is team 0's only walker, and exactly one marker is alive:
+    // the second (the first was removed by the second cast). A reaped marker
+    // drops the marker count to 0. Until #448 this was WalkerOfTeamAlive(0, 2,
+    // 2), which counted the marker as a team-0 walker.
+    pred::WalkerOfTeamAlive(/*team=*/0, 1, 1),
+    pred::WalkerOfOrderFamilyAlive(FAMILY_MARKER, kOrderFX, 1, 1),
 };
 
 inline constexpr Mutation kMut_archmage_teleport_marker_scen99 = {
@@ -6810,8 +6855,10 @@ inline constexpr FactPredicate kFacts_effect_cloud_poison_scen99[] = {
     // anyway. Pinned exactly from the golden so any drift in the caster's own
     // timeline is caught.
     pred::WalkerHpRangeAtFinalTick(FAMILY_THIEF, 7400, 7600),
-    pred::WalkerOfTeamAlive(0, 2, 2,
-        "consequence: POISON CLOUD adds the FAMILY_CLOUD FX walker to the thief's team, so team 0 holds thief + cloud"),
+    // The thief is team 0's only walker; its cloud is counted on its own.
+    pred::WalkerOfTeamAlive(0, 1, 1),
+    pred::WalkerOfOrderFamilyAlive(FAMILY_CLOUD, kOrderFX, 1, 1,
+        "consequence: POISON CLOUD adds one FAMILY_CLOUD FX entity to oblist, alive at tick 30"),
     pred::EventKindAtLeast(/*play_sound*/1, 1),
 };
 
@@ -7086,8 +7133,10 @@ inline constexpr FactPredicate kFacts_effect_shield_absorb_scen99[] = {
     // TOWER1 ends at its full 13000 cents.
     pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 4800, 5000,
         "consequence: core:magic_shield's guard tail attacks every foe inside its 8px guard radius, and the stationary TOWER1 is parked on two of the sixteen orbit stops, so four mace strikes take it from 13000 cents to 4900; the mutation zeroes that radius and the victim finishes untouched"),
-    pred::WalkerOfTeamAlive(0, 2, 2,
-        "consequence: MYSTIC MACE puts the FAMILY_MAGIC_SHIELD FX on the cleric's team; its lifetime (139) and the zero-damage victim keep it alive through the 45-tick budget"),
+    // The cleric is team 0's only walker; the mace is counted on its own.
+    pred::WalkerOfTeamAlive(0, 1, 1),
+    pred::WalkerOfOrderFamilyAlive(FAMILY_MAGIC_SHIELD, kOrderFX, 1, 1,
+        "consequence: MYSTIC MACE puts one FAMILY_MAGIC_SHIELD FX entity into oblist; its lifetime (139) and the zero-damage victim keep it alive through the 45-tick budget"),
     // This arena emits NO sound at all -- the cleric never fires and a mace
     // contact is silent -- so the event floor is the score award instead: one
     // score_change per strike, four in the 45-tick budget, zero once the
@@ -7131,8 +7180,10 @@ inline constexpr FactPredicate kFacts_effect_boomerang_contact_scen99[] = {
     // the 11px contact radius, and it finishes at its full 13000 cents.
     pred::WalkerHpRangeAtFinalTick(FAMILY_TOWER1, 3600, 3800,
         "consequence: core:boomerang's guard tail strikes the stationary TOWER1 each time the widening orbit sweeps across it, taking it from 13000 cents to 3800; the mutation shrinks the orbit's x excursion tenfold so the blade never reaches the victim and it ends untouched"),
-    pred::WalkerOfTeamAlive(0, 2, 2,
-        "consequence: BOOMERANG adds the FAMILY_BOOMERANG FX to the caster's team; the tower's body damage is zero, while its intercepted arrows drain the blade from 98 to 73 HP, leaving both caster and blade alive at tick 85"),
+    // The caster is team 0's only walker; the blade is counted on its own.
+    pred::WalkerOfTeamAlive(0, 1, 1),
+    pred::WalkerOfOrderFamilyAlive(FAMILY_BOOMERANG, kOrderFX, 1, 1,
+        "consequence: BOOMERANG adds one FAMILY_BOOMERANG FX entity to oblist; the tower's body damage is zero, while its intercepted arrows drain the blade from 98 to 73 HP, leaving the blade alive at tick 85"),
     pred::EventKindAtLeast(/*play_sound*/1, 1),
 };
 
@@ -7165,15 +7216,19 @@ inline constexpr SpawnSpec kFamilySpawns_effect_boomerang_cap_scen99[] = {
 inline constexpr FactPredicate kFacts_effect_boomerang_cap_scen99[] = {
     pred::TickReached(290),
     pred::WalkerAliveAtFinal(FAMILY_SOLDIER, 1),
+    // The caster is team 0's only walker.
+    pred::WalkerOfTeamAlive(0, 1, 1),
     // FLIPPING PREDICATE. The blade's drawcycle is a byte advanced once per
     // effect::act, so boomerang_on_act's `> 253` guard kills it on act 254
     // (tick ~274) -- 40 ticks before its 294-act lifetime would have expired.
-    // At tick 290 team 0 therefore holds the lone caster.
+    // At tick 290 its dead entry is still listed (the level has ended, so
+    // nothing is reaped) and no blade is alive.
     // kMut_effect_boomerang_cap_scen99 raises the threshold past the byte's
     // range so the guard can never fire; the blade survives to its lifetime and
-    // team 0 still holds caster+blade = 2.
-    pred::WalkerOfTeamAlive(0, 1, 1,
-        "consequence: the byte-sized drawcycle crosses 253 on the blade's 254th act, and boomerang_on_act kills it there rather than letting the counter wrap the orbit back onto its owner; team 0 is down to the lone caster well before the 294-act lifetime would have expired. Raising the threshold above the byte's range keeps the blade alive and the count at 2"),
+    // is still alive at tick 290.
+    pred::WalkerOfOrderFamilyAlive(FAMILY_BOOMERANG, kOrderFX, 0, 0,
+        "consequence: the byte-sized drawcycle crosses 253 on the blade's 254th act, and boomerang_on_act kills it there rather than letting the counter wrap the orbit back onto its owner, well before the 294-act lifetime would have expired. Raising the threshold above the byte's range keeps the blade alive at tick 290"),
+    // negative_assertion: the drawcycle cap killed the blade at act 254; one that outlived the cap would still be alive.
     pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 11900, 12100,
         "structural: the arena is combat-free (off-map prop, special-only input), so the caster must finish at full HP -- any drift here means an unintended engagement"),
     pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 1),
@@ -7183,7 +7238,7 @@ inline constexpr Mutation kMut_effect_boomerang_cap_scen99 = {
     "packs/core/lib/effect_shield.lua", 111,
     "      or self:drawcycle() > 253 then",
     "      or self:drawcycle() > 300 then",
-    "Raises Zardus's drawcycle cap above the range of the unsigned-char counter, so the guard can never fire. The level-22 blade then survives to its 294-act lifetime instead of dying on act 254, and WalkerOfTeamAlive(0, 1, 1) flips to 2 at the tick-290 dump."
+    "Raises Zardus's drawcycle cap above the range of the unsigned-char counter, so the guard can never fire. The level-22 blade then survives to its 294-act lifetime instead of dying on act 254, and WalkerOfOrderFamilyAlive(FAMILY_BOOMERANG, kOrderFX, 0, 0) flips to 1 at the tick-290 dump."
 };
 
 // effect_chain_fork_scen99: chain lightning's death fork
@@ -7852,7 +7907,7 @@ inline constexpr FactPredicate kFacts_beast_set_difficulty_invariant_scen99[] = 
     pred::WalkerFamilyCount(FAMILY_GOLEM, 2, 2),
     pred::WalkerHpRangeAtFinalTick(FAMILY_GOLEM, 31800, 31800,
         "consequence: golem.lua's set_difficulty tuple adds 18*level^2 hp on top of the 300 base, so a rolled level-1 generator spawn is exactly 318; collapsing the constant to 1.0 puts every emitted golem on 301"),
-    pred::WalkerOfTeamAlive(/*team=*/1, 3, 3),
+    pred::WalkerOfTeamAlive(/*team=*/1, 2, 2),
 };
 
 inline constexpr Mutation kMut_beast_set_difficulty_invariant_scen99 = {
@@ -8873,8 +8928,8 @@ inline constexpr Mutation kMut_mage_bot_freeze_engaged_fixes_scen99 = {
 // mage has none) and a 5 is HEARTBURST, whose
 // explosions open the run at tick 0. With the setting on the three towers
 // fall, and once no foe is left the mage leaves a TELEPORT MARKER where it
-// stood (120, 120); the dump counts the marker on team 0 beside the idle
-// player.
+// stood (120, 120); the dump records the marker on team 0, as in the old game,
+// and the row counts it on its own beside the idle player.
 inline constexpr SpawnSpec kFamilySpawns_mage_bot_heartburst_scen99[] = {
     { FAMILY_TOWER1,  0, kOrderLiving, 160, 120, 0, 0 },           // three stationary foes inside 110 px
     { FAMILY_TOWER1,  0, kOrderLiving, 120, 160, 0, 0 },
@@ -8899,8 +8954,10 @@ inline constexpr Mutation kMut_mage_bot_heartburst_scen99 = {
 inline constexpr FactPredicate kFacts_mage_bot_heartburst_fixes_scen99[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(FAMILY_MAGE, 1, 1),
-    pred::WalkerOfTeamAlive(/*team=*/0, 2, 2,
-        "consequence: the three towers fall; team 0 keeps the idle player and the TELEPORT MARKER the mage leaves at (120, 120) once no foe is left"),
+    // The three towers fall; team 0 keeps the idle player.
+    pred::WalkerOfTeamAlive(/*team=*/0, 1, 1),
+    pred::WalkerOfOrderFamilyAlive(FAMILY_MARKER, kOrderFX, 1, 1,
+        "consequence: with the setting on the mage leaves a TELEPORT MARKER at (120, 120) once no foe is left, and it is alive at tick 150"),
     pred::EventKindExactly(/*play_sound*/1, 23,
         "consequence: with the setting on the mage casts its specials at the three towers in reach and a roll of 5 is HEARTBURST (its explosions are the three sounds at tick 0)"),
 };
