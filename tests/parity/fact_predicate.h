@@ -57,16 +57,6 @@ enum class FactKind : std::uint8_t
     // at the next tick boundary, so this counts LIVE circles/projectiles.
     // Searches dump.weapons[] ONLY — never effects[] — like the kind above.
     WeaponFamilyCount,               // arg0 = family, arg1 = min, arg2 = max
-    // Phase 03 — Order-aware analogue of TreasureFamilyRemovedFromOblist.
-    // arg0 = family id, arg1 = Order ordinal (kOrderLiving / kOrderTreasure
-    // / kOrderGenerator / kOrderWeapon / kOrderFX). The evaluator renders
-    // (family, order) through `family_symbol_by_order`. A dump with no
-    // matching live entry satisfies the predicate; a dump with only live
-    // matching entries is indeterminate under schema-v1 because the harness
-    // cannot prove whether pickup/reap should have occurred. Treasure pickup
-    // rows use this kind so static binding no longer aliases onto a Living
-    // family name.
-    TreasureFamilyOfOrderRemovedFromOblist, // arg0 = family, arg1 = order
     // Weapon-trajectory predicates. Both are pure functions of
     // dump.weapon_tracks (the per-tick samples), so they evaluate
     // identically on the branch dump and the master golden (both arms
@@ -277,19 +267,6 @@ inline constexpr FactPredicate TreasureFamilyRemovedFromOblist(std::int32_t fami
                                                                std::string_view label = {}) noexcept
 {
     return {FactKind::TreasureFamilyRemovedFromOblist, family, 0, 0, 0, 0, label};
-}
-// Phase 03 — Order-aware analogue of TreasureFamilyRemovedFromOblist.
-// `order` is the Order ordinal (Order::Treasure for treasure pickup rows).
-// The evaluator renders (family, order) through `family_symbol_by_order`.
-// Schema-v1 lacks enough provenance to hard-fail a live matching survivor,
-// so that state is reported indeterminate rather than aliased to Living.
-inline constexpr FactPredicate TreasureFamilyOfOrderRemovedFromOblist(
-    std::int32_t     family,
-    std::int32_t     order,
-    std::string_view label = {}) noexcept
-{
-    return {FactKind::TreasureFamilyOfOrderRemovedFromOblist,
-            family, order, 0, 0, 0, label};
 }
 inline constexpr FactPredicate StatDeltaOnPickup(std::int32_t stat_kind, std::int32_t mn, std::int32_t mx,
                                                  std::string_view label = {}) noexcept

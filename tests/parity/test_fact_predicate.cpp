@@ -400,6 +400,32 @@ TEST(FactPredicate, order_family_alive_counts_live_entries_only)
         << "got: " << standing.message;
 }
 
+TEST(FactPredicate, a_standing_treasure_fails_the_taken_fact)
+{
+    // #449: the kind this replaced passed ("indeterminate") when the
+    // treasure was never taken, so it could not fail for the case it was
+    // named after. The live-only count fails it, determinately.
+    og::parity::StateDump dump{};
+    dump.walkers.push_back(entry(kTreasureOrder, FAMILY_LIFE_GEM, 2, true));
+
+    const og::parity::FactPredicate taken =
+        og::parity::pred::WalkerOfOrderFamilyAlive(FAMILY_LIFE_GEM, kTreasureOrder, 0, 0,
+                                                   "the gem is taken");
+    const og::parity::FactEvalResult standing = og::parity::evaluate_one(taken, dump);
+    EXPECT_FALSE(standing.ok) << "an untouched gem must fail the taken fact";
+    EXPECT_FALSE(standing.indeterminate)
+        << "a live survivor is a determinate failure, never a missing-data pass";
+    EXPECT_NE(std::string::npos,
+              standing.message.find("alive=1 of FAMILY_LIFE_GEM out of [0,0]"))
+        << "got: " << standing.message;
+
+    dump.walkers[0].alive = false;
+    const og::parity::FactEvalResult eaten = og::parity::evaluate_one(taken, dump);
+    EXPECT_TRUE(eaten.ok) << "the eaten gem's dead entry passes; got: "
+                          << eaten.message;
+    EXPECT_FALSE(eaten.indeterminate);
+}
+
 TEST(FactPredicate, order_family_alive_does_not_alias_living_order)
 {
     // FX ordinal 4 is FAMILY_FLASH; Living ordinal 4 is FAMILY_SKELETON.
@@ -560,9 +586,9 @@ TEST(FactPredicate, fact_kind_name_renders_every_enumerator)
     EXPECT_STREQ("TickReached",
                  og::parity::fact_kind_name(og::parity::FactKind::TickReached))
         << "the first enumerator keeps its name";
-    EXPECT_STREQ("TreasureFamilyOfOrderRemovedFromOblist",
+    EXPECT_STREQ("TreasureFamilyRemovedFromOblist",
                  og::parity::fact_kind_name(
-                     og::parity::FactKind::TreasureFamilyOfOrderRemovedFromOblist))
+                     og::parity::FactKind::TreasureFamilyRemovedFromOblist))
         << "the longest name is spelt in full, not truncated";
     EXPECT_STREQ("WalkerOnFloor",
                  og::parity::fact_kind_name(og::parity::FactKind::WalkerOnFloor))

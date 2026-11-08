@@ -942,6 +942,33 @@ and got an explicit fact for it: `effect_boomerang_drawcycle_cap_scen99` (the bl
 `effect_chain_scen9410` (under the same pin the struck soldier's `FAMILY_HIT` stays alive on team 1:
 `WalkerOfOrderFamilyCount(FAMILY_HIT, kOrderFX, 0, 0)`), each measured under its pin.
 
+### #449: the treasure removal fact is retired
+
+`TreasureFamilyOfOrderRemovedFromOblist` passed ("indeterminate") when the treasure was never taken, so it could not
+fail for the case it was named after; the canary had never seen it flip under any pin. The kind is gone, and each of
+its 31 uses was replaced from its row's golden:
+
+- Taken and reaped (no entry left in the golden), `WalkerOfOrderFamilyCount(F, kOrderTreasure, 0, 0)`, 7 uses:
+  `treasure_drumstick_pickup_scen99`, `speed_potion_movement_scen99`, `invulnerable_potion_scen99`,
+  `consumable_inventory_state_scen99` (drumstick and magic potion), `treasure_invis_effect_scen99`,
+  `treasure_magic_potion_overfill_scen99`.
+- Taken, its dead entry still listed (the level had ended, so nothing was reaped), `WalkerOfOrderFamilyAlive(F,
+  kOrderTreasure, 0, 0)`, 12 uses: the gold bar, silver bar, magic, invisibility, invulnerability, flight and speed
+  potion and life gem pickup rows, `effect_flash_emission_scen99`, `treasure_flight_effect_scen99`,
+  `elf_forest_haste_scen99`, `elf_forest_haste_fixes_scen99`. The count form the issue proposed is false on these
+  goldens (each holds the treasure dead, 0 alive and 1 dead), which is why the live-only kind exists.
+- Rows whose taken-claim was false (the golden shows the treasure standing at the final tick), `WalkerOfOrderFamilyAlive(F,
+  kOrderTreasure, 1, 1)`: `treasure_stain_pickup_scen99` (the off-path literal stain), `treasure_teleporter_pickup_scen99`,
+  `treasure_key_pickup_scen99`, `treasure_exit_pickup_scen99`, `treasure_key_team1_silent_scen99`,
+  `weapon_door_unlock_chain_scen99`, `treasure_exit_open_prompt_scen99` (branch-internal, read from the current game's
+  dump), and the four treasure guard rows of #448, whose own live count already says so. A key, a teleporter and an
+  exit are never consumed when eaten, in either game.
+- `exit_trigger_scen9302`: no exit is ever staged in that row (its spawns are a soldier and an orc), so the fact held
+  for that reason alone; it was deleted.
+
+The treasure coverage gate (`any_treasure_binding`) binds a family through either order-aware count in the treasure
+order.
+
 ## Open: goldens that are not yet old-game captures
 
 Closed by #349 (2026-10-05): a full capture at `1bafb5da` `cmp`-equals all 223 goldens (`diff -rq` against

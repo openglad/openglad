@@ -174,10 +174,7 @@ int arg0_order_for_symbol(const og::parity::FactPredicate& p)
         case FactKind::WalkerAliveAtFinal:
         case FactKind::WalkerOnFloor:
             return og::parity::kOrderLiving;
-        // arg1 IS the order. Every existing row passes kOrderTreasure to
-        // TreasureFamilyOfOrderRemovedFromOblist, so reading it from the
-        // predicate leaves the generated JSON byte-identical.
-        case FactKind::TreasureFamilyOfOrderRemovedFromOblist:
+        // arg1 IS the order.
         case FactKind::WalkerOfOrderFamilyCount:
         case FactKind::WalkerOfOrderFamilyAlive:
             return p.arg1;
@@ -327,10 +324,6 @@ std::string predicate_expression(const og::parity::FactPredicate& p)
         case FactKind::TreasureFamilyRemovedFromOblist:
             std::snprintf(buf, sizeof(buf), "TreasureFamilyRemovedFromOblist(%s)",
                           by_order(p.arg0, og::parity::kOrderTreasure).c_str());
-            return buf;
-        case FactKind::TreasureFamilyOfOrderRemovedFromOblist:
-            std::snprintf(buf, sizeof(buf), "TreasureFamilyOfOrderRemovedFromOblist(%s, %d)",
-                          by_order(p.arg0, p.arg1).c_str(), p.arg1);
             return buf;
         case FactKind::StatDeltaOnPickup:
             std::snprintf(buf, sizeof(buf), "StatDeltaOnPickup(%d, %d, %d)",

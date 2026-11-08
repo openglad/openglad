@@ -301,8 +301,6 @@ const char* fact_kind_name(FactKind k)
         case FactKind::EventKindExactly:                return "EventKindExactly";
         case FactKind::WeaponFamilyEmitted:             return "WeaponFamilyEmitted";
         case FactKind::WeaponFamilyCount:               return "WeaponFamilyCount";
-        case FactKind::TreasureFamilyOfOrderRemovedFromOblist:
-            return "TreasureFamilyOfOrderRemovedFromOblist";
         case FactKind::WeaponSpeed:                     return "WeaponSpeed";
         case FactKind::WeaponNetTravel:                 return "WeaponNetTravel";
         case FactKind::EffectNetTravel:                 return "EffectNetTravel";
@@ -431,47 +429,14 @@ FactEvalResult evaluate_one(const FactPredicate& p, const StateDump& dump)
             // Legacy schema-v1 predicate. arg0 is the literal family id
             // and is compared against dump.walkers[].family rendered
             // under the Living table (the only oblist family table
-            // schema-v1 emitted). Per the Phase 03 contract the new
-            // TreasureFamilyOfOrderRemovedFromOblist predicate is the
-            // honest Order-aware replacement; this legacy kind is left
-            // intact for callers that have not yet migrated.
+            // schema-v1 emitted). WalkerOfOrderFamilyAlive and
+            // WalkerOfOrderFamilyCount in the treasure order are the
+            // order-aware forms; no row uses this legacy kind.
             if (count_walkers_family(dump, p.arg0) != 0)
                 return (make_fail(r, p, "family " +
                                   family_symbol_by_order(kLivingOrder, p.arg0) +
                                   " still present in oblist"), r);
             return r;
-        }
-        case FactKind::TreasureFamilyOfOrderRemovedFromOblist:
-        {
-            // Order-aware. Render the target family under the table for
-            // p.arg1 (Order) and search dump.walkers[] for matching
-            // entries. Schema-v1 cannot distinguish "not reached" from
-            // "reached but not reaped" for a live remaining treasure:
-            // both branch and companion can leave a matching alive entry
-            // in oblist after the input window. Treat that single-state
-            // observation as indeterminate while still passing if the
-            // entity is absent or only dead entries remain, and failing a
-            // mixed alive+dead state because it proves partial removal.
-            const std::string sym = family_symbol_by_order(p.arg1, p.arg0);
-            std::size_t alive_n = 0;
-            std::size_t dead_n  = 0;
-            for (const auto& w : dump.walkers)
-            {
-                if (w.family != sym) continue;
-                if (w.alive) ++alive_n;
-                else         ++dead_n;
-            }
-            if (alive_n == 0)
-                return r;
-            if (dead_n == 0)
-                return (make_indeterminate(r,
-                            "family " + sym +
-                            " alive in oblist with no consumed instance; "
-                            "schema-v1 cannot prove removal"), r);
-            return (make_fail(r, p, "family " + sym +
-                              " has " + std::to_string(alive_n) +
-                              " alive and " + std::to_string(dead_n) +
-                              " dead instance(s) in oblist"), r);
         }
         case FactKind::StatDeltaOnPickup:
         {

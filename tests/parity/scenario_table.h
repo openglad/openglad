@@ -5,10 +5,13 @@
 // master companion copies this file byte-for-byte; any change here must be
 // mirrored on the companion before the next golden capture.
 //
-// Phase 03 — treasure_*_pickup_scen99 rows use the Order-aware
-// `pred::TreasureFamilyOfOrderRemovedFromOblist(family, kOrderTreasure)`
-// kind paired with the per-Order `family_symbol_by_order` resolver in
-// `state_dump.cpp` / `parity_dump_state.cpp`.
+// A treasure that was taken is `pred::WalkerOfOrderFamilyAlive(family,
+// kOrderTreasure, 0, 0)` (its dead entry stays listed once the level has
+// ended), or the count form `pred::WalkerOfOrderFamilyCount(family,
+// kOrderTreasure, 0, 0)` where the golden shows the entry reaped; one that
+// still stands is `pred::WalkerOfOrderFamilyAlive(family, kOrderTreasure, 1,
+// 1)`. Both render the family through the per-Order `family_symbol_by_order`
+// resolver in `state_dump.cpp` / `parity_dump_state.cpp`.
 
 #pragma once
 
@@ -833,14 +836,12 @@ inline constexpr FactPredicate kFacts_exit_trigger_scen9302[] = {
     pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 1),
     pred::WalkerFamilyCount(FAMILY_ORC, 1, 1),
     pred::WalkerOfTeamAlive(/*team=*/0, 1, 1),
+    // The row is the soldier's walk east (its pin zeroes the east step).
+    // It used to carry a FAMILY_EXIT removal fact as well, saying the exit is
+    // consumed when the soldier walks onto it; the row's spawns are
+    // kSmokeArenaSpawns (a soldier and an orc), no exit is ever staged, and
+    // the fact held for that reason alone. #449 deleted it.
     pred::WalkerPositionMoved(FAMILY_SOLDIER, 623, 224),
-    // Phase 03 — Order-aware binding gate satisfaction. The EXIT
-    // (Order::Treasure, id=8) entity is removed from oblist when the
-    // soldier walks onto it (level_done is set and the scenario
-    // continues; the exit walker itself is consumed). The predicate
-    // honestly holds: no dump.walkers[] entry renders as
-    // "FAMILY_EXIT" at tick 150.
-    pred::TreasureFamilyOfOrderRemovedFromOblist(FAMILY_EXIT, kOrderTreasure),
 };
 
 inline constexpr FactPredicate kFacts_tick_cadence_scen9301[] = {
@@ -1718,9 +1719,9 @@ inline constexpr InputEvent kInputs_soldier_disarm_resisted_busy[] = {
 // on_eat side effects (sounds / notifications / score / stat
 // applications) to settle before the dump is captured.
 //
-// P6 (family_alias_mismatch) is satisfied because every row's
-// SpawnSpec[] includes a kOrderTreasure entry of the literal family-id
-// the row's TreasureFamilyRemovedFromOblist(F) predicate names.
+// Every row's SpawnSpec[] includes a kOrderTreasure entry of the literal
+// family-id the row's treasure fact (WalkerOfOrderFamilyAlive or
+// WalkerOfOrderFamilyCount in the treasure order) names.
 //
 // STAIN (FAMILY_STAIN id=0) is the special case: stain is the lone
 // treasure family with init_ignore=true (a descriptor field in
@@ -1744,25 +1745,24 @@ inline constexpr InputEvent kInputs_soldier_disarm_resisted_busy[] = {
 inline constexpr SpawnSpec kFamilySpawns_treasure_stain_pickup[] = {
     { FAMILY_SOLDIER, 0, kOrderLiving,   96, 120, 0, 0, 5, 0 }, // level-5 FAMILY_SOLDIER player (team 0); melees the adjacent faerie to death within the attack window
     { FAMILY_FAERIE,  1, kOrderLiving,  120, 120, 0, 0 },       // FAMILY_FAERIE victim (team 1), 24px east of the soldier. leaves_bloodspot=true with no on_death override, so when the soldier kills it walker::death() (walker.cpp:1521) calls generate_bloodspot() -> add_fx_ob(Order::Treasure, FAMILY_STAIN), spawning the bloodstain
-    { FAMILY_STAIN,   0, kOrderTreasure, 200, 120, 0, 0 },      // literal FAMILY_STAIN treasure parked off-path; guarantees a FAMILY_STAIN entity is present in oblist on both arms so the TreasureFamilyOfOrderRemovedFromOblist(FAMILY_STAIN) coverage anchor reads `indeterminate` deterministically regardless of the faerie outcome
+    { FAMILY_STAIN,   0, kOrderTreasure, 200, 120, 0, 0 },      // literal FAMILY_STAIN treasure parked off-path; guarantees a live FAMILY_STAIN entity in oblist on both arms, so the WalkerOfOrderFamilyAlive(FAMILY_STAIN, kOrderTreasure, 1, 1) coverage anchor holds regardless of the faerie outcome
 };
 
 inline constexpr FactPredicate kFacts_treasure_stain_pickup_scen99[] = {
     pred::TickReached(150),
     pred::WalkerAliveAtFinal(FAMILY_FAERIE, 1),
-    // Structural coverage anchor: binds FAMILY_STAIN to
-    // TreasureFamilyOfOrderRemovedFromOblist for behavioural_coverage_gate. The
-    // off-path literal stain keeps a live FAMILY_STAIN (Order::Treasure) in
-    // oblist with no consumed twin, so the Order-aware evaluator returns
-    // `indeterminate` (a non-failing observation) on both arms -- it honestly
-    // binds STAIN to this row without inventing a vacuous removal claim.
-    pred::TreasureFamilyOfOrderRemovedFromOblist(FAMILY_STAIN, kOrderTreasure),
+    // Structural coverage anchor: binds FAMILY_STAIN for
+    // behavioural_coverage_gate. The off-path literal stain is still alive
+    // in oblist at the final tick (the faerie lives, so no bloodstain joins
+    // it): exactly one live FAMILY_STAIN, on both arms. Until #449 this was a
+    // removal fact that read `indeterminate` here; the stain was never taken.
+    pred::WalkerOfOrderFamilyAlive(FAMILY_STAIN, kOrderTreasure, 1, 1),
     pred::WalkerAliveAtFinal(FAMILY_SOLDIER, 1),
     pred::EventKindAtLeast(/*play_sound*/1, 1),
     // TEETH (the row's discriminator). The three predicates above survive
     // kMut_treasure_stain_pickup untouched -- the faerie is alive at the final
-    // tick either way, the off-path literal stain keeps the Order-aware
-    // removal check `indeterminate` on both arms, and the melee still emits
+    // tick either way, the off-path literal stain is alive on both arms,
+    // and the melee still emits
     // sounds -- so this exact HP pin is what the pin actually flips. The
     // golden's faerie ends the 150-tick window at 17.00 hp (1700 cents) with
     // max_hp 75; under the pin (living-07-faerie.lua:15, hp 75 -> 75000) the
@@ -1790,7 +1790,8 @@ inline constexpr SpawnSpec kFamilySpawns_treasure_drumstick_pickup[] = {
 inline constexpr FactPredicate kFacts_treasure_drumstick_pickup_scen99[] = {
     pred::TickReached(60),
     pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 1),
-    pred::TreasureFamilyOfOrderRemovedFromOblist(FAMILY_DRUMSTICK, kOrderTreasure),
+    pred::WalkerOfOrderFamilyCount(FAMILY_DRUMSTICK, kOrderTreasure, 0, 0),
+    // negative_assertion: the drumstick is taken and reaped; an untouched one would still be listed.
     pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 3500, 7000,
         "consequence: the archer-wounded player soldier walks onto the level-10 drumstick on the path and is healed into the HP band on both sides; the on_eat=nullptr mutation makes eat_me a no-op so the player keeps only its lower arrow-wounded HP, below the lower bound -- flipping it"),
     // rng_drift: archer hit timing gives a broad healed-HP band while the no-eat mutation stays below it; commit 244d4bcf
@@ -1800,7 +1801,7 @@ inline constexpr Mutation kMut_treasure_drumstick_pickup = {
     "packs/core/families/treasure-01-drumstick.lua", 25,
     "  on_eat = consumables.drumstick_on_eat,",
     "  on_eat = function() return true end,",
-    "Neuters the FAMILY_DRUMSTICK treasure-family on_eat hook; the consumable side effect no longer fires (no set_dead(1), no SOUND_EAT emission) so the drumstick remains in oblist and TreasureFamilyRemovedFromOblist flips along with the paired play_sound floor."
+    "Neuters the FAMILY_DRUMSTICK treasure-family on_eat hook; the consumable side effect no longer fires (no set_dead(1), no SOUND_EAT emission) so the drumstick remains in oblist and WalkerOfOrderFamilyCount(FAMILY_DRUMSTICK, kOrderTreasure, 0, 0) flips along with the paired play_sound floor."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_treasure_gold_bar_pickup[] = {
@@ -1814,14 +1815,15 @@ inline constexpr FactPredicate kFacts_treasure_gold_bar_pickup_scen99[] = {
     // after which the soldier wanders east; it ends past xpos 144 but drifts
     // slightly off the y=120 lane (ypos ~116), so the floor relaxes ypos.
     pred::WalkerPositionMoved(FAMILY_SOLDIER, 144, 110),
-    pred::TreasureFamilyOfOrderRemovedFromOblist(FAMILY_GOLD_BAR, kOrderTreasure),
+    pred::WalkerOfOrderFamilyAlive(FAMILY_GOLD_BAR, kOrderTreasure, 0, 0),
+    // negative_assertion: the gold bar is taken: its entry is dead (the level has ended, so it is not reaped); an untouched one is alive.
     pred::WalkerAliveAtFinal(FAMILY_SOLDIER, 1),
     pred::EventKindExactly(9, 0),
     // The soldier eats the bar through the obmap overlap dispatch at tick
     // 3: gold_bar_on_eat banks 200 * level 3 = 600 into m_score[0]. This
-    // absolute score is the row's live mutation channel: ScoreChange events
-    // do not enter the parity event stream, and the removal predicate becomes
-    // indeterminate when the bar survives. Nulling on_eat leaves the score at 0.
+    // absolute score is a live mutation channel: ScoreChange events do not
+    // enter the parity event stream. Nulling on_eat leaves the score at 0 and
+    // the bar alive, which the bar's live count above also catches.
     pred::ScoreDelta(/*team*/0, 600, 600),
 };
 
@@ -1829,7 +1831,7 @@ inline constexpr Mutation kMut_treasure_gold_bar_pickup = {
     "packs/core/families/treasure-02-gold_bar.lua", 25,
     "  on_eat = valuables.gold_bar_on_eat,",
     "  on_eat = function() return true end,",
-    "Neuters the FAMILY_GOLD_BAR treasure-family on_eat hook; the score_change and play_sound emissions and the set_dead(1) all stop firing, so the gold bar stays in oblist and TreasureFamilyRemovedFromOblist + the audible/score predicates flip."
+    "Neuters the FAMILY_GOLD_BAR treasure-family on_eat hook; the score_change and play_sound emissions and the set_dead(1) all stop firing, so the gold bar stays in oblist and WalkerOfOrderFamilyAlive(FAMILY_GOLD_BAR, kOrderTreasure, 0, 0) + the audible/score predicates flip."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_treasure_silver_bar_pickup[] = {
@@ -1840,10 +1842,10 @@ inline constexpr SpawnSpec kFamilySpawns_treasure_silver_bar_pickup[] = {
 inline constexpr FactPredicate kFacts_treasure_silver_bar_pickup_scen99[] = {
     pred::TickReached(150),
     pred::WalkerAliveAtFinal(FAMILY_SOLDIER, 1),
-    // Eaten bar is marked dead and reaped -> alive_n==0 (determinate pass).
-    // Under the mutation it stays alive -> indeterminate (still ok), so this
-    // predicate alone cannot flip the canary; it is the structural anchor.
-    pred::TreasureFamilyOfOrderRemovedFromOblist(FAMILY_SILVER_BAR, kOrderTreasure),
+    // The eaten bar is marked dead; its entry stays listed (the level has
+    // ended). Under the mutation the bar stays alive and this fact fails.
+    pred::WalkerOfOrderFamilyAlive(FAMILY_SILVER_BAR, kOrderTreasure, 0, 0),
+    // negative_assertion: the silver bar is taken: its entry is dead (the level has ended, so it is not reaped); an untouched one is alive.
     pred::EventKindExactly(9, 0),
     pred::EventKindAtLeast(1, 1, "consequence:silver_bar_on_eat emits SOUND_MONEY play_sound when eaten; mutation neuters on_eat -> 0"),
 };
@@ -1852,7 +1854,7 @@ inline constexpr Mutation kMut_treasure_silver_bar_pickup = {
     "packs/core/families/treasure-03-silver_bar.lua", 25,
     "  on_eat = valuables.silver_bar_on_eat,",
     "  on_eat = function() return true end,",
-    "Neuters the FAMILY_SILVER_BAR treasure-family on_eat hook; the score_change and play_sound emissions and the set_dead(1) all stop firing, so the silver bar stays in oblist and TreasureFamilyRemovedFromOblist + the audible/score predicates flip."
+    "Neuters the FAMILY_SILVER_BAR treasure-family on_eat hook; the score_change and play_sound emissions and the set_dead(1) all stop firing, so the silver bar stays in oblist and WalkerOfOrderFamilyAlive(FAMILY_SILVER_BAR, kOrderTreasure, 0, 0) + the audible/score predicates flip."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_treasure_magic_potion_pickup[] = {
@@ -1863,7 +1865,8 @@ inline constexpr SpawnSpec kFamilySpawns_treasure_magic_potion_pickup[] = {
 inline constexpr FactPredicate kFacts_treasure_magic_potion_pickup_scen99[] = {
     pred::TickReached(150),
     pred::WalkerPositionMoved(FAMILY_SOLDIER, 144, 120),
-    pred::TreasureFamilyOfOrderRemovedFromOblist(FAMILY_MAGIC_POTION, kOrderTreasure),
+    pred::WalkerOfOrderFamilyAlive(FAMILY_MAGIC_POTION, kOrderTreasure, 0, 0),
+    // negative_assertion: the magic potion is taken: its entry is dead (the level has ended, so it is not reaped); an untouched one is alive.
     pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 12000, 12000),
     pred::EventKindAtLeast(/*notification*/2, 1, "consequence: magic_potion consumption emits a Potion of Mana notification; on_eat=nullptr suppresses it"),
 };
@@ -1872,7 +1875,7 @@ inline constexpr Mutation kMut_treasure_magic_potion_pickup = {
     "packs/core/families/treasure-04-magic_potion.lua", 25,
     "  on_eat = consumables.magic_potion_on_eat,",
     "  on_eat = function() return true end,",
-    "Neuters the FAMILY_MAGIC_POTION treasure-family on_eat hook; magicpoints stay at the soldier's baseline, the notify_potion_consume() path does not fire and the potion is never marked dead so TreasureFamilyRemovedFromOblist flips."
+    "Neuters the FAMILY_MAGIC_POTION treasure-family on_eat hook; magicpoints stay at the soldier's baseline, the notify_potion_consume() path does not fire and the potion is never marked dead so WalkerOfOrderFamilyAlive(FAMILY_MAGIC_POTION, kOrderTreasure, 0, 0) flips."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_treasure_invis_potion_pickup[] = {
@@ -1883,7 +1886,8 @@ inline constexpr SpawnSpec kFamilySpawns_treasure_invis_potion_pickup[] = {
 inline constexpr FactPredicate kFacts_treasure_invis_potion_pickup_scen99[] = {
     pred::TickReached(150),
     pred::WalkerPositionMoved(FAMILY_SOLDIER, 144, 120),
-    pred::TreasureFamilyOfOrderRemovedFromOblist(FAMILY_INVIS_POTION, kOrderTreasure),
+    pred::WalkerOfOrderFamilyAlive(FAMILY_INVIS_POTION, kOrderTreasure, 0, 0),
+    // negative_assertion: the invisibility potion is taken: its entry is dead (the level has ended, so it is not reaped); an untouched one is alive.
     pred::WalkerAliveAtFinal(FAMILY_SOLDIER, 1),
     pred::EventKindAtLeast(/*notification*/2, 1, "consequence: invis_potion consumption emits a Potion of Invisibility notification; on_eat=nullptr suppresses it"),
 };
@@ -1892,7 +1896,7 @@ inline constexpr Mutation kMut_treasure_invis_potion_pickup = {
     "packs/core/families/treasure-05-invis_potion.lua", 25,
     "  on_eat = consumables.invis_potion_on_eat,",
     "  on_eat = function() return true end,",
-    "Neuters the FAMILY_INVIS_POTION treasure-family on_eat hook; the invisibility bonus is never applied and the notify_potion_consume() set_dead(1) never fires, so the potion stays in oblist and TreasureFamilyRemovedFromOblist flips."
+    "Neuters the FAMILY_INVIS_POTION treasure-family on_eat hook; the invisibility bonus is never applied and the notify_potion_consume() set_dead(1) never fires, so the potion stays in oblist and WalkerOfOrderFamilyAlive(FAMILY_INVIS_POTION, kOrderTreasure, 0, 0) flips."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_treasure_invulnerable_potion_pickup[] = {
@@ -1903,7 +1907,8 @@ inline constexpr SpawnSpec kFamilySpawns_treasure_invulnerable_potion_pickup[] =
 inline constexpr FactPredicate kFacts_treasure_invulnerable_potion_pickup_scen99[] = {
     pred::TickReached(150),
     pred::WalkerPositionMoved(FAMILY_SOLDIER, 144, 120),
-    pred::TreasureFamilyOfOrderRemovedFromOblist(FAMILY_INVULNERABLE_POTION, kOrderTreasure),
+    pred::WalkerOfOrderFamilyAlive(FAMILY_INVULNERABLE_POTION, kOrderTreasure, 0, 0),
+    // negative_assertion: the invulnerability potion is taken: its entry is dead (the level has ended, so it is not reaped); an untouched one is alive.
     pred::WalkerAliveAtFinal(FAMILY_SOLDIER, 1),
     pred::EventKindAtLeast(/*notification*/2, 1, "consequence: invulnerable_potion consumption emits a Potion of Invulnerability notification via notify_potion_consume(); kMut_treasure_invulnerable_potion_pickup sets on_eat=nullptr so eat_me returns without emitting, dropping the notification count from 1 to 0"),
 };
@@ -1912,7 +1917,7 @@ inline constexpr Mutation kMut_treasure_invulnerable_potion_pickup = {
     "packs/core/families/treasure-06-invulnerable_potion.lua", 25,
     "  on_eat = consumables.invulnerable_potion_on_eat,",
     "  on_eat = function() return true end,",
-    "Neuters the FAMILY_INVULNERABLE_POTION treasure-family on_eat hook; the invulnerability bonus is never applied and the notify_potion_consume() set_dead(1) never fires, so the potion stays in oblist and TreasureFamilyRemovedFromOblist flips."
+    "Neuters the FAMILY_INVULNERABLE_POTION treasure-family on_eat hook; the invulnerability bonus is never applied and the notify_potion_consume() set_dead(1) never fires, so the potion stays in oblist and WalkerOfOrderFamilyAlive(FAMILY_INVULNERABLE_POTION, kOrderTreasure, 0, 0) flips."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_treasure_flight_potion_pickup[] = {
@@ -1923,7 +1928,8 @@ inline constexpr SpawnSpec kFamilySpawns_treasure_flight_potion_pickup[] = {
 inline constexpr FactPredicate kFacts_treasure_flight_potion_pickup_scen99[] = {
     pred::TickReached(150),
     pred::WalkerPositionMoved(FAMILY_SOLDIER, 144, 120),
-    pred::TreasureFamilyOfOrderRemovedFromOblist(FAMILY_FLIGHT_POTION, kOrderTreasure),
+    pred::WalkerOfOrderFamilyAlive(FAMILY_FLIGHT_POTION, kOrderTreasure, 0, 0),
+    // negative_assertion: the flight potion is taken: its entry is dead (the level has ended, so it is not reaped); an untouched one is alive.
     pred::WalkerAliveAtFinal(FAMILY_SOLDIER, 1),
     pred::EventKindAtLeast(/*notification*/2, 1, "consequence: flight_potion consumption emits a Potion of Flight notification; on_eat=nullptr suppresses it"),
 };
@@ -1932,7 +1938,7 @@ inline constexpr Mutation kMut_treasure_flight_potion_pickup = {
     "packs/core/families/treasure-07-flight_potion.lua", 25,
     "  on_eat = consumables.flight_potion_on_eat,",
     "  on_eat = function() return true end,",
-    "Neuters the FAMILY_FLIGHT_POTION treasure-family on_eat hook; the flight-left bonus is never granted and the notify_potion_consume() set_dead(1) never fires, so the potion stays in oblist and TreasureFamilyRemovedFromOblist flips."
+    "Neuters the FAMILY_FLIGHT_POTION treasure-family on_eat hook; the flight-left bonus is never granted and the notify_potion_consume() set_dead(1) never fires, so the potion stays in oblist and WalkerOfOrderFamilyAlive(FAMILY_FLIGHT_POTION, kOrderTreasure, 0, 0) flips."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_treasure_teleporter_pickup[] = {
@@ -1963,15 +1969,12 @@ inline constexpr FactPredicate kFacts_treasure_teleporter_pickup_scen99[] = {
     pred::EventKindExactly(/*request_exit_confirmation*/7, 0,
         "consequence: the teleporter's skip_exit bump suppresses the co-located EXIT's withdraw RequestExitConfirmation; neutering teleporter_on_eat lets the EXIT withdraw and emit kind 7, flipping this exact-0 predicate 0->1"),
     pred::EventKindExactly(/*withdraw_to_level*/8, 0),
-    // Structural coverage anchor: keeps FAMILY_TELEPORTER bound to
-    // TreasureFamilyOfOrderRemovedFromOblist for behavioural_coverage_gate_
-    // treasures. The co-located teleporter only bumps the eater's skip_exit;
-    // it is never set_dead, so the
-    // literal stays alive in oblist (hp 0) on BOTH branch and master. With a
-    // single alive instance and no consumed one, the Order-aware evaluator
-    // returns indeterminate (non-failing) on both arms — a passing anchor,
-    // not the teeth.
-    pred::TreasureFamilyOfOrderRemovedFromOblist(FAMILY_TELEPORTER, kOrderTreasure),
+    // Structural coverage anchor: keeps FAMILY_TELEPORTER bound for
+    // behavioural_coverage_gate_treasures. The co-located teleporter only
+    // bumps the eater's skip_exit; it is never set_dead (in either game), so
+    // the literal stays alive in oblist (hp 0) on BOTH branch and master: one
+    // live teleporter, a passing anchor, not the teeth.
+    pred::WalkerOfOrderFamilyAlive(FAMILY_TELEPORTER, kOrderTreasure, 1, 1),
 };
 
 inline constexpr Mutation kMut_treasure_teleporter_pickup = {
@@ -1992,15 +1995,15 @@ inline constexpr FactPredicate kFacts_treasure_life_gem_pickup_scen99[] = {
     // slightly off the y=120 lane (ypos ~116 on both branch and master), so the
     // ypos floor relaxes to 110.
     pred::WalkerPositionMoved(FAMILY_SOLDIER, 144, 110),
-    pred::TreasureFamilyOfOrderRemovedFromOblist(FAMILY_LIFE_GEM, kOrderTreasure),
+    pred::WalkerOfOrderFamilyAlive(FAMILY_LIFE_GEM, kOrderTreasure, 0, 0),
+    // negative_assertion: the life gem is taken: its entry is dead (the level has ended, so it is not reaped); an untouched one is alive.
     pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 12000, 12000),
     pred::EventKindExactly(/*score_change=*/9, 0),
-    // TEETH (the row's discriminator). Everything above holds under
-    // kMut_treasure_life_gem_pickup: the eater walks the same path, ends at
-    // full 12000 cents either way, emits no score_change either way, and the
-    // Order-aware removal check reads `indeterminate` (a non-failing
-    // observation) when the un-eaten gem is still alive. What the pin really
-    // removes is the telflash: life_gem_on_eat add_ob(Order::FX,
+    // TEETH (the row's discriminator). Under kMut_treasure_life_gem_pickup
+    // the eater walks the same path, ends at full 12000 cents either way and
+    // emits no score_change either way; the un-eaten gem stays alive, which
+    // the gem's live count above catches (since #449). The pin also removes
+    // the telflash: life_gem_on_eat add_ob(Order::FX,
     // FAMILY_FLASH)es it, and although the FLASH expires within ~9 ticks
     // (series_8) its DEAD entry stays in oblist and is in the tick-150 dump
     // at (94,118) -- exactly one of them. Neutering on_eat spawns none, so
@@ -2016,7 +2019,7 @@ inline constexpr Mutation kMut_treasure_life_gem_pickup = {
     "packs/core/families/treasure-10-life_gem.lua", 20,
     "  on_eat = valuables.life_gem_on_eat,",
     "  on_eat = function() return true end,",
-    "Neuters the FAMILY_LIFE_GEM treasure-family on_eat hook; the soldier's max-hp / hp grant is never applied and the score_change / play_sound emissions never fire, so the gem stays in oblist and TreasureFamilyRemovedFromOblist + audible/score predicates flip."
+    "Neuters the FAMILY_LIFE_GEM treasure-family on_eat hook; the soldier's max-hp / hp grant is never applied and the score_change / play_sound emissions never fire, so the gem stays in oblist and WalkerOfOrderFamilyAlive(FAMILY_LIFE_GEM, kOrderTreasure, 0, 0) + audible/score predicates flip."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_treasure_key_pickup[] = {
@@ -2027,7 +2030,10 @@ inline constexpr SpawnSpec kFamilySpawns_treasure_key_pickup[] = {
 inline constexpr FactPredicate kFacts_treasure_key_pickup_scen99[] = {
     pred::TickReached(150),
     pred::WalkerPositionMoved(FAMILY_SOLDIER, 144, 120),
-    pred::TreasureFamilyOfOrderRemovedFromOblist(FAMILY_KEY, kOrderTreasure),
+    // A key is never consumed, in either game: key_on_eat sets the key bit
+    // and notifies, and the key stays alive in oblist. (Until #449 this row
+    // claimed the key's removal with a fact that could not fail.)
+    pred::WalkerOfOrderFamilyAlive(FAMILY_KEY, kOrderTreasure, 1, 1),
     pred::WalkerKeysApplied(/*min_keys=*/0),
     pred::EventKindAtLeast(/*notification=*/2, 1),
 };
@@ -2036,7 +2042,7 @@ inline constexpr Mutation kMut_treasure_key_pickup = {
     "packs/core/families/treasure-11-key.lua", 20,
     "  on_eat = valuables.key_on_eat,",
     "  on_eat = function() return true end,",
-    "Neuters the FAMILY_KEY treasure-family on_eat hook; the soldier's key inventory bit is never set and the set_dead(1) never fires, so the key stays in oblist and TreasureFamilyRemovedFromOblist flips."
+    "Neuters the FAMILY_KEY treasure-family on_eat hook; the soldier's key inventory bit is never set and the '<name> picks up key 1' notification is never emitted, so EventKindAtLeast(notification, 1) flips. (The key is never consumed with or without the hook: key_on_eat has no set_dead, in either game.)"
 };
 
 inline constexpr SpawnSpec kFamilySpawns_treasure_speed_potion_pickup[] = {
@@ -2047,7 +2053,8 @@ inline constexpr SpawnSpec kFamilySpawns_treasure_speed_potion_pickup[] = {
 inline constexpr FactPredicate kFacts_treasure_speed_potion_pickup_scen99[] = {
     pred::TickReached(150),
     pred::WalkerPositionMoved(FAMILY_SOLDIER, 144, 110),
-    pred::TreasureFamilyOfOrderRemovedFromOblist(FAMILY_SPEED_POTION, kOrderTreasure),
+    pred::WalkerOfOrderFamilyAlive(FAMILY_SPEED_POTION, kOrderTreasure, 0, 0),
+    // negative_assertion: the speed potion is taken: its entry is dead (the level has ended, so it is not reaped); an untouched one is alive.
     pred::WalkerAliveAtFinal(FAMILY_SOLDIER, 1),
     // CONSEQUENCE of speed_potion_on_eat: the eat runs notify_potion_consume,
     // which emits exactly one "Potion of Speed" notification (the player took
@@ -2086,12 +2093,10 @@ inline constexpr FactPredicate kFacts_treasure_exit_pickup_scen99[] = {
     // teeth.
     pred::EventKindExactly(/*request_exit_confirmation*/7, 1),
     pred::EventKindExactly(/*withdraw_to_level*/8, 1),
-    // Structural coverage anchor: keeps FAMILY_EXIT bound to
-    // TreasureFamilyOfOrderRemovedFromOblist for behavioural_coverage_gate_
-    // treasures. The literal exit stays alive in oblist (hp 0, not consumed),
-    // so the Order-aware evaluator returns indeterminate (non-failing) on both
-    // arms.
-    pred::TreasureFamilyOfOrderRemovedFromOblist(FAMILY_EXIT, kOrderTreasure),
+    // Structural coverage anchor: keeps FAMILY_EXIT bound for
+    // behavioural_coverage_gate_treasures. The literal exit stays alive in
+    // oblist (hp 0, not consumed, in either game): one live exit on both arms.
+    pred::WalkerOfOrderFamilyAlive(FAMILY_EXIT, kOrderTreasure, 1, 1),
     // level_done holds at its default 2 on both arms: the withdraw early-break
     // guards (game_world.cpp:1393/1438) fire before the surviving foe can set
     // level_done=0. Passing anchor on both arms (not the teeth here).
@@ -3008,10 +3013,12 @@ inline constexpr FactPredicate kFacts_effect_flash_emission_scen99[] = {
     // gem's removal plus the ScoreChange as proxies; the golden carries the
     // FLASH itself, and both proxies turned out to be inert under the pin --
     // the un-eaten gem leaves the removal check `indeterminate`, and the
-    // golden's score_change count is 0 on both arms.) Neutering the hook
-    // (kMut_effect_flash_emission) suppresses the FLASH emission AND the
+    // golden's score_change count is 0 on both arms. Since #449 the gem's
+    // live count below is (0,0), which the un-eaten gem fails.) Neutering the
+    // hook (kMut_effect_flash_emission) suppresses the FLASH emission AND the
     // ScoreChange together.
-    pred::TreasureFamilyOfOrderRemovedFromOblist(FAMILY_LIFE_GEM, kOrderTreasure),
+    pred::WalkerOfOrderFamilyAlive(FAMILY_LIFE_GEM, kOrderTreasure, 0, 0),
+    // negative_assertion: the life gem is taken: its entry is dead (the level has ended, so it is not reaped); an untouched one is alive.
     pred::EventKindExactly(/*score_change*/9, 0),
     // Structural coverage anchor: binds FAMILY_FLASH to EffectFamilyCount for
     // behavioural_coverage_gate_effects. The telflash FLASH effect is emitted
@@ -4421,7 +4428,8 @@ inline constexpr SpawnSpec kFamilySpawns_speed_potion_movement_scen99[] = {
 inline constexpr FactPredicate kFacts_speed_potion_movement_scen99[] = {
     pred::TickReached(60),
     pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 1),
-    pred::TreasureFamilyOfOrderRemovedFromOblist(FAMILY_SPEED_POTION, kOrderTreasure),
+    pred::WalkerOfOrderFamilyCount(FAMILY_SPEED_POTION, kOrderTreasure, 0, 0),
+    // negative_assertion: the speed potion is taken and reaped; an untouched one would still be listed.
     pred::WalkerPositionMoved(FAMILY_SOLDIER, 350, 224),
     pred::WalkerAliveAtFinal(FAMILY_SOLDIER, 1),
 };
@@ -4442,7 +4450,8 @@ inline constexpr SpawnSpec kFamilySpawns_invulnerable_potion_scen99[] = {
 inline constexpr FactPredicate kFacts_invulnerable_potion_scen99[] = {
     pred::TickReached(250),
     pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 1),
-    pred::TreasureFamilyOfOrderRemovedFromOblist(FAMILY_INVULNERABLE_POTION, kOrderTreasure),
+    pred::WalkerOfOrderFamilyCount(FAMILY_INVULNERABLE_POTION, kOrderTreasure, 0, 0),
+    // negative_assertion: the invulnerability potion is taken and reaped; an untouched one would still be listed.
     pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 6400, 6400),
     pred::EventKindAtLeast(/*play_sound*/1, 3),
 };
@@ -5176,8 +5185,10 @@ inline constexpr SpawnSpec kFamilySpawns_consumable_inventory_state_scen99[] = {
 inline constexpr FactPredicate kFacts_consumable_inventory_state_scen99[] = {
     pred::TickReached(60),
     pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 1),
-    pred::TreasureFamilyOfOrderRemovedFromOblist(FAMILY_DRUMSTICK, kOrderTreasure),
-    pred::TreasureFamilyOfOrderRemovedFromOblist(FAMILY_MAGIC_POTION, kOrderTreasure),
+    pred::WalkerOfOrderFamilyCount(FAMILY_DRUMSTICK, kOrderTreasure, 0, 0),
+    // negative_assertion: the drumstick is taken and reaped; an untouched one would still be listed.
+    pred::WalkerOfOrderFamilyCount(FAMILY_MAGIC_POTION, kOrderTreasure, 0, 0),
+    // negative_assertion: the magic potion is taken and reaped; an untouched one would still be listed.
     pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 3500, 7000,
         "consequence: the arrow-wounded player soldier eats the level-10 drumstick on the walk path and is healed into the HP band on both sides; the mutation no-ops the heal so the player keeps only its lower arrow-wounded HP, below the lower bound"),
     // rng_drift: arrow damage plus the drumstick heal lands in a broad band while no-heal stays below; commit 244d4bcf
@@ -5488,7 +5499,8 @@ inline constexpr FloorPaint kZFall2Paints[] = {
 // --- Treasure guard-arm and consequence scenarios --------------------------
 //
 // Every treasure_*_pickup_scen99 row above proves the CONSUMPTION half of a
-// treasure hook: the treasure is eaten, notifies, and leaves oblist. The rows
+// treasure hook: the treasure is eaten and notifies, and a consumable is
+// marked dead (a key, a teleporter and an exit are never consumed). The rows
 // below cover the two halves nothing else reaches -- the CONSEQUENCE of the
 // grant (flight_left / invisibility_left / the mana overfill, none of which is
 // a dumped field, so each is read through a downstream sim behaviour) and the
@@ -5521,7 +5533,8 @@ inline constexpr SpawnSpec kFamilySpawns_treasure_flight_effect[] = {
 inline constexpr FactPredicate kFacts_treasure_flight_effect_scen99[] = {
     pred::TickReached(150),
     pred::WalkerAliveAtFinal(FAMILY_SOLDIER, 1),
-    pred::TreasureFamilyOfOrderRemovedFromOblist(FAMILY_FLIGHT_POTION, kOrderTreasure),
+    pred::WalkerOfOrderFamilyAlive(FAMILY_FLIGHT_POTION, kOrderTreasure, 0, 0),
+    // negative_assertion: the flight potion is taken: its entry is dead (the level has ended, so it is not reaped); an untouched one is alive.
     // TEETH. Every grounded y=120 walker in the corpus stops at xpos 224
     // (family_orc/faerie/archer, treasure_speed_potion_pickup,
     // invulnerable_potion). Only flight_left gets past tile 15, so an xpos
@@ -5554,7 +5567,8 @@ inline constexpr SpawnSpec kFamilySpawns_treasure_invis_effect[] = {
 inline constexpr FactPredicate kFacts_treasure_invis_effect_scen99[] = {
     pred::TickReached(250),
     pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 1),
-    pred::TreasureFamilyOfOrderRemovedFromOblist(FAMILY_INVIS_POTION, kOrderTreasure),
+    pred::WalkerOfOrderFamilyCount(FAMILY_INVIS_POTION, kOrderTreasure, 0, 0),
+    // negative_assertion: the invisibility potion is taken and reaped; an untouched one would still be listed.
     // TEETH. Invisible for the whole run, the soldier takes at most a stray
     // arrow; with duration_per_level: 0 the archer holds its lock and the
     // arena becomes plain ranged attrition, dropping HP under the floor.
@@ -5589,9 +5603,6 @@ inline constexpr FactPredicate kFacts_treasure_flight_potion_flier_noconsume_sce
     // TEETH #2. The potion's live count 1 means "not consumed".
     pred::WalkerOfOrderFamilyAlive(FAMILY_FLIGHT_POTION, kOrderTreasure, 1, 1,
         "consequence: set_dead(1) also lives inside the BIT_FLYING guard, so the potion stays alive in oblist; forcing the guard open kills it and the potion's own live count drops to 0"),
-    // Structural coverage anchor only: a live survivor with no consumed twin
-    // reads indeterminate on both arms.
-    pred::TreasureFamilyOfOrderRemovedFromOblist(FAMILY_FLIGHT_POTION, kOrderTreasure),
 };
 
 inline constexpr Mutation kMut_treasure_flight_potion_flier_noconsume = {
@@ -5622,7 +5633,6 @@ inline constexpr FactPredicate kFacts_treasure_drumstick_fullhp_noconsume_scen99
     // TEETH #2: the drumstick is still in the world.
     pred::WalkerOfOrderFamilyAlive(FAMILY_DRUMSTICK, kOrderTreasure, 1, 1,
         "consequence: set_dead(1) sits after the hp >= max_hp early return, so an unwounded eater leaves the drumstick alive in oblist; forcing the guard open kills it and the drumstick's own live count drops to 0"),
-    pred::TreasureFamilyOfOrderRemovedFromOblist(FAMILY_DRUMSTICK, kOrderTreasure),
 };
 
 inline constexpr Mutation kMut_treasure_drumstick_fullhp_noconsume = {
@@ -5659,7 +5669,6 @@ inline constexpr FactPredicate kFacts_treasure_gold_bar_team_reject_scen99[] = {
     // TEETH #2: the bar is still in the world.
     pred::WalkerOfOrderFamilyAlive(FAMILY_GOLD_BAR, kOrderTreasure, 1, 1,
         "consequence: self.dead = 1 sits inside the same guard, so a rejected bar stays alive in oblist; forcing the guard open kills it and the bar's own live count drops to 0"),
-    pred::TreasureFamilyOfOrderRemovedFromOblist(FAMILY_GOLD_BAR, kOrderTreasure),
 };
 
 inline constexpr Mutation kMut_treasure_gold_bar_team_reject = {
@@ -5696,7 +5705,6 @@ inline constexpr FactPredicate kFacts_treasure_life_gem_enemy_reject_scen99[] = 
     pred::WalkerOfOrderFamilyAlive(FAMILY_LIFE_GEM, kOrderTreasure, 1, 1,
         "consequence: the eater.team ~= self.team early return skips self.dead = 1 and self:death(), so the gem stays alive in oblist; forcing the guard open lets the team-0 soldier claim it and the gem's own live count drops to 0"),
     pred::ScoreDelta(/*team*/0, 0, 0),
-    pred::TreasureFamilyOfOrderRemovedFromOblist(FAMILY_LIFE_GEM, kOrderTreasure),
 };
 
 inline constexpr Mutation kMut_treasure_life_gem_enemy_reject = {
@@ -5735,7 +5743,8 @@ inline constexpr FactPredicate kFacts_treasure_magic_potion_overfill_scen99[] = 
     pred::TickReached(150),
     pred::WalkerFamilyCount(FAMILY_MAGE, 1, 1),
     pred::WalkerFamilyCount(FAMILY_ARCHER, 1, 1),
-    pred::TreasureFamilyOfOrderRemovedFromOblist(FAMILY_MAGIC_POTION, kOrderTreasure),
+    pred::WalkerOfOrderFamilyCount(FAMILY_MAGIC_POTION, kOrderTreasure, 0, 0),
+    // negative_assertion: the magic potion is taken and reaped; an untouched one would still be listed.
     // TEETH. Freeze duration 152 > the 150-tick budget, so a cast pins the
     // archer at its spawn for the whole run. Without the overfill the mage's
     // 50-point pool cannot pay the 500-point cost, walker::special() returns
@@ -5781,16 +5790,16 @@ inline constexpr FactPredicate kFacts_treasure_key_team1_silent_scen99[] = {
     // TEETH #2: no SOUND_MONEY either (both live inside the same gate).
     pred::EventKindExactly(/*play_sound*/1, 0,
         "consequence: og.emit_sound(C.SOUND_MONEY) sits inside the same eater.team == 0 gate; forcing the gate open adds exactly one play_sound"),
-    // Anchor: the key is never set_dead by the hook, so this reads
-    // indeterminate on both arms (and WalkerOfTeamAlive stays 1 on both).
-    pred::TreasureFamilyOfOrderRemovedFromOblist(FAMILY_KEY, kOrderTreasure),
+    // Anchor: the key is never set_dead by the hook, so one live key is
+    // listed on both arms.
+    pred::WalkerOfOrderFamilyAlive(FAMILY_KEY, kOrderTreasure, 1, 1),
 };
 
 inline constexpr Mutation kMut_treasure_key_team1_silent = {
     "packs/core/lib/treasure_valuables.lua", 96,
     "if eater.team == 0 then",
     "if true then",
-    "Forces key_on_eat's player-only announcement gate open. Unmutated, the team-1 orc that walks onto the key sets its key bit silently -- no notification, no SOUND_MONEY -- and the parked player never touches a treasure, so the event stream contains zero notifications and zero play_sounds. Mutated, the orc's pickup announces itself: EventKindExactly(notification,0) flips 0 -> 1 and EventKindExactly(play_sound,0) flips 0 -> 1. The key itself is never consumed on either arm (the hook has no set_dead), so the removal predicate stays a passing anchor."
+    "Forces key_on_eat's player-only announcement gate open. Unmutated, the team-1 orc that walks onto the key sets its key bit silently -- no notification, no SOUND_MONEY -- and the parked player never touches a treasure, so the event stream contains zero notifications and zero play_sounds. Mutated, the orc's pickup announces itself: EventKindExactly(notification,0) flips 0 -> 1 and EventKindExactly(play_sound,0) flips 0 -> 1. The key itself is never consumed on either arm (the hook has no set_dead), so the key's live count stays a passing anchor."
 };
 
 // Exit-pad OPEN-PROMPT row (branch-internal Invariant; master records
@@ -5816,7 +5825,8 @@ inline constexpr FactPredicate kFacts_treasure_exit_open_prompt_scen99[] = {
     // branch-only "Foes remain!" notification never appears.
     pred::EventKindExactly(/*notification*/2, 0,
         "consequence: the can_exit_now arm returns before the else branch, so no 'Foes remain!' notification is emitted; disabling can_exit_now falls through to it (can_withdraw is false with no precompleted_level) and the count flips to >= 1"),
-    pred::TreasureFamilyOfOrderRemovedFromOblist(FAMILY_EXIT, kOrderTreasure),
+    // The exit pad is never consumed: one live exit at tick 150.
+    pred::WalkerOfOrderFamilyAlive(FAMILY_EXIT, kOrderTreasure, 1, 1),
 };
 
 inline constexpr Mutation kMut_treasure_exit_open_prompt = {
@@ -7492,8 +7502,8 @@ inline constexpr FactPredicate kFacts_weapon_door_unlock_chain_scen99[] = {
         "consequence: the unlocked door's weap::death runs weapon_door.lua's on_death, which puts an ANI_DOOR_OPEN FAMILY_DOOR_OPEN on weaplist; five frames later effect_door_open.lua's on_act hands one persistent copy to fxlist"),
     pred::WalkerPositionMoved(FAMILY_SOLDIER, 200, 0,
         "consequence: the key-holder is blocked for a single tick at the door tile and then walks THROUGH the opened doorway, finishing at xpos 224; a run whose key bit never matched is stopped dead around xpos 144 by the 5000-HP door. This is an ANCHOR, not the teeth -- kMut_weapon_door_unlock_chain_scen99 removes only the DOOR_OPEN handoff, so the unlock and the walk-through are unchanged under it"),
-    pred::TreasureFamilyOfOrderRemovedFromOblist(FAMILY_KEY, kOrderTreasure,
-        "binding anchor, evaluates Indeterminate on both arms: key_on_eat banks the bit and emits its notification on tick 3 (the golden carries it), but the eaten FAMILY_KEY stays in oblist with alive=true, so the predicate's alive-with-no-consumed-instance arm cannot prove removal. treasure_key_pickup_scen99's golden has exactly the same shape -- this is a schema-v1 limit, not a behaviour difference. The chain's real observable is EffectFamilyCount(FAMILY_DOOR_OPEN) above: bank the WRONG bit and the soldier is stopped at xpos 145 by a surviving door and no DOOR_OPEN is ever created"),
+    pred::WalkerOfOrderFamilyAlive(FAMILY_KEY, kOrderTreasure, 1, 1,
+        "binding anchor: key_on_eat banks the bit and emits its notification on tick 3 (the golden carries it), and the eaten FAMILY_KEY stays alive in oblist, as every key does in both games (key_on_eat never consumes it; treasure_key_pickup_scen99's golden has the same shape). The chain's real observable is EffectFamilyCount(FAMILY_DOOR_OPEN) above: bank the WRONG bit and the soldier is stopped at xpos 145 by a surviving door and no DOOR_OPEN is ever created"),
     pred::WalkerKeysApplied(/*min_keys=*/1,
         "binding anchor: schema-v1 dumps carry no inventory_keys so this evaluates Indeterminate on both arms; it keeps the key-mask consumer bound to a named predicate for the coverage scan"),
     pred::EventKindAtLeast(/*notification*/2, 1,
@@ -11124,7 +11134,8 @@ inline constexpr FactPredicate kFacts_elf_forest_haste_scen99[] = {
     pred::TickReached(20),
     pred::WalkerPositionMoved(FAMILY_ELF, 487, 69,
         "consequence: the classic haste compounds in the trees, steps 4, 7, 10, 13, 16 and 19: 69 px down and left"),
-    pred::TreasureFamilyOfOrderRemovedFromOblist(FAMILY_SPEED_POTION, kOrderTreasure),
+    pred::WalkerOfOrderFamilyAlive(FAMILY_SPEED_POTION, kOrderTreasure, 0, 0),
+    // negative_assertion: the speed potion is taken: its entry is dead (the level has ended, so it is not reaped); an untouched one is alive.
     pred::EventKindExactly(/*notification*/2, 1),
 };
 inline constexpr Mutation kMut_elf_forest_haste_scen99 = {
@@ -11137,7 +11148,8 @@ inline constexpr FactPredicate kFacts_elf_forest_haste_fixes_scen99[] = {
     pred::TickReached(20),
     pred::WalkerPositionMoved(FAMILY_ELF, 517, 39,
         "consequence: with the setting on the forest step is the normal step plus the haste every act, steps 4 and five of 7: 39 px down and left"),
-    pred::TreasureFamilyOfOrderRemovedFromOblist(FAMILY_SPEED_POTION, kOrderTreasure),
+    pred::WalkerOfOrderFamilyAlive(FAMILY_SPEED_POTION, kOrderTreasure, 0, 0),
+    // negative_assertion: the speed potion is taken: its entry is dead (the level has ended, so it is not reaped); an untouched one is alive.
     pred::EventKindExactly(/*notification*/2, 1),
 };
 inline constexpr Mutation kMut_elf_forest_haste_fixes_scen99 = {
