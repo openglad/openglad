@@ -24,6 +24,12 @@
 // (team 1) tent with its real spawn and a green soldier. Red is the
 // player's team (my_team 0), so a red attacker scores the classic team
 // score.
+//
+// Gameplay Fixes AP (#429), GameplayFixesChain below: one climb for every
+// owner chain. Classic, friendliness stops at a dead owner while the climb
+// a blow scores by (walker::attack) and the kill credit go through it; with
+// the setting on all of them read walker::chain_head, through a dead owner
+// and stopping at a charmed walker.
 
 #include <gtest/gtest.h>
 
@@ -37,6 +43,7 @@
 #include <openglad/gameplay/walker.h>
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -319,6 +326,143 @@ TEST(GameplayFixesCharm, an_uncharmed_tent_troop_answers_for_its_tent_on_both_va
         EXPECT_EQ(s.red->entity_id(), s.troop->last_attacker_id());
         const Blow troop_hits_green = strike(s.troop, s.green, 40.0f);
         EXPECT_FALSE(troop_hits_green.landed);
+    }
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+// ---------------------------------------------------------------------------
+// Fix AP: one owner-chain climb
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// A green caster C whose summon S (green, owner C) has thrown a knife W
+// (green, owner S). Then red charms C, as CHARM leaves a walker: red colour,
+// green real team, a running charm clock. The summon and the knife were
+// made before the charm, so they still wear green.
+struct DeadCasterChain
+{
+    walker* caster = nullptr;
+    walker* summon = nullptr;
+    walker* knife = nullptr;
+};
+
+DeadCasterChain charmed_caster_chain(CharmScene& s)
+{
+    DeadCasterChain c;
+    c.caster = s.add(FAMILY_ARCHMAGE, kGreen, 400, 100);
+    c.summon = s.add(FAMILY_SKELETON, kGreen, 420, 100);
+    if (c.caster == nullptr || c.summon == nullptr)
+        return c;
+    c.summon->set_owner(c.caster);
+    c.knife = s.world().add_weap_ob(Order::Weapon, FAMILY_KNIFE);
+    if (c.knife == nullptr)
+        return c;
+    c.knife->set_team_num(kGreen);
+    c.knife->set_owner(c.summon);
+    c.knife->stats()->set_level(4);
+    c.knife->stats()->set_hitpoints(1000.0f);
+    c.caster->set_team_num(kRed);
+    c.caster->set_real_team_num(kGreen);
+    c.caster->set_charm_left(30);
+    return c;
+}
+
+std::array<std::uint32_t, 4> scores(CharmScene& s)
+{
+    std::array<std::uint32_t, 4> out{};
+    for (std::size_t i = 0; i < out.size(); ++i)
+        out[i] = s.world().m_score[i];
+    return out;
+}
+
+}  // namespace
+
+// The charmed caster dies, and within that tick (before the tick's end
+// drops every link to the dead) the knife its summon threw asks whose side
+// it is on. Both values: the climb a blow scores by and the kill credit go
+// through the dead caster to it (red). Off: friendliness stops at the dead
+// caster, so the knife and the summon answer for the summon's own colour
+// (green): the knife's blow on red lands and is credited to red, the
+// caster's colour, scoring nothing (the head's team is the victim's), and
+// its blow on green is refused, though the credit would have gone to red.
+// On: friendliness reads the same head as the score: the knife and the
+// summon are red's, the blow on red is refused, the blow on green lands and
+// is credited to red.
+// RED (planted): alliance_head's `og::sim::session_gameplay_fixes() != 0`
+// -> `false` (the setting-on arm answers green).
+TEST(GameplayFixesChain, a_dead_casters_summon_keeps_its_side_for_friendliness_and_score)
+{
+    og::test::ScopedHookFailureGuard guard;
+    for (const short fixes : {short{0}, short{1}})
+    {
+        SCOPED_TRACE(fixes);
+        CharmScene s(fixes);
+        DeadCasterChain c = charmed_caster_chain(s);
+        ASSERT_TRUE(c.caster && c.summon && c.knife);
+        c.caster->set_dead(1);
+
+        EXPECT_EQ(c.caster, c.knife->chain_head()) << "the climb goes through the dead caster";
+        EXPECT_EQ(c.caster, c.summon->chain_head());
+        EXPECT_EQ(c.caster, c.knife->credit_head()) << "the credit is the topmost living, the caster";
+
+        const bool fixed = fixes != 0;
+        EXPECT_EQ(fixed ? 1 : 0, c.knife->is_friendly(s.red));
+        EXPECT_EQ(fixed ? 0 : 1, c.knife->is_friendly(s.green));
+        EXPECT_EQ(fixed ? 1 : 0, c.knife->is_friendly_to_team(kRed));
+        EXPECT_EQ(fixed ? 0 : 1, c.knife->is_friendly_to_team(kGreen));
+        EXPECT_EQ(fixed ? 1 : 0, c.summon->is_friendly(s.red));
+        EXPECT_EQ(fixed ? 1 : 0, s.red->is_friendly(c.summon));
+        EXPECT_EQ(fixed ? 0 : 1, c.summon->is_friendly_to_team(kGreen));
+
+        const auto before = scores(s);
+        const Blow on_red = strike(c.knife, s.red, 40.0f);
+        EXPECT_EQ(!fixed, on_red.landed);
+        if (fixed) {
+            EXPECT_EQ(0.0f, on_red.hp_lost) << "setting on: red's own side";
+            EXPECT_EQ(-1, s.red->last_attacker_team());
+        } else {
+            EXPECT_GT(on_red.hp_lost, 0.0f) << "setting off: the knife fights for green";
+            EXPECT_EQ(kRed, s.red->last_attacker_team())
+                << "setting off: yet the blow is credited to red";
+            EXPECT_EQ(before, scores(s)) << "setting off: the head's team is the victim's: no score";
+        }
+
+        const Blow on_green = strike(c.knife, s.green, 40.0f);
+        EXPECT_EQ(fixed, on_green.landed);
+        if (fixed) {
+            EXPECT_GT(on_green.hp_lost, 0.0f) << "setting on: green is the foe";
+            EXPECT_EQ(kRed, s.green->last_attacker_team())
+                << "setting on: friendliness and credit agree";
+        } else {
+            EXPECT_EQ(0.0f, on_green.hp_lost) << "setting off: green is a friend";
+            EXPECT_EQ(-1, s.green->last_attacker_team());
+        }
+    }
+    EXPECT_EQ(0u, guard.count()) << guard.message();
+}
+
+// The control: the same chain with the charmed caster alive reads one head
+// on both values (the classic friendliness climb passes a live owner, and
+// with the setting on the charmed caster is the top of the chain anyway):
+// the change is the dead owner only.
+TEST(GameplayFixesChain, a_live_casters_chain_reads_one_head_on_both_values)
+{
+    og::test::ScopedHookFailureGuard guard;
+    for (const short fixes : {short{0}, short{1}})
+    {
+        SCOPED_TRACE(fixes);
+        CharmScene s(fixes);
+        DeadCasterChain c = charmed_caster_chain(s);
+        ASSERT_TRUE(c.caster && c.summon && c.knife);
+        EXPECT_EQ(c.caster, c.knife->chain_head());
+        EXPECT_EQ(c.caster, c.knife->credit_head());
+        EXPECT_EQ(1, c.knife->is_friendly(s.red));
+        EXPECT_EQ(0, c.knife->is_friendly(s.green));
+        EXPECT_EQ(1, c.summon->is_friendly_to_team(kRed));
+        const Blow on_green = strike(c.knife, s.green, 40.0f);
+        EXPECT_TRUE(on_green.landed);
+        EXPECT_EQ(kRed, s.green->last_attacker_team());
     }
     EXPECT_EQ(0u, guard.count()) << guard.message();
 }

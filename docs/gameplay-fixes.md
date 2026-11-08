@@ -101,6 +101,7 @@ usual pause.
 | AM | A poison cloud wedged against a wall | It stays where it is until its walk runs out (#233), then draws a new one. | A tick that neither moves it nor turns it drops the stuck walk and draws a fresh direction, so it drifts on. |
 | AN | The archmage bot's CHAIN LIGHTNING rule, for a hero | No rule: the bot casts its coin's arm (fix B's off column). | The rule measures the chain with the cast's own reach: 200 px plus half its Intelligence plus 2 per level for an archmage with a character record (a hero the computer plays), 200 px plus 7 per level for a monster. Before, it measured every archmage by level, so such a hero was told "the chain has a target" and then refused `NO FOE IN RANGE`, or turned to HEARTBURST or held when the chain would have landed. |
 | AO | CHARGE's strike on a dead body | The rush strikes a body that is already dead (in play, a door its own step opened with a key): the strike draws its damage roll and does nothing to the body, and the rush still erases the dead body's orders and forces a four-step walk on it. Nothing a player sees follows: a dead walker never acts, and every revival clears its orders. | The dead body is left as it lies: the damage roll is still drawn, its orders stay and no walk is forced. |
+| AP | Whose side a walker takes in the tick its owner dies | Friendliness climbs a walker's owner chain only up to a dead owner, while the score, the experience and the kill credit of its blows climb through it: a summon or a shot of a caster that was charmed and then killed is asked for friendliness as its own colour but credited to the caster's, until the tick ends and the dead owner is dropped. | Every climb goes through a dead owner and stops at a charmed walker (fix AD), the climb a blow's score always made: friendliness, score and credit read one head, so a dead caster's summon and its shots keep the caster's side for the rest of that tick. The mutant mode's damage gate reads the same climb, so there too a charmed summon heads its own chain. |
 | AQ | A player's slide along a wall | Each half of the slide is a real step whether the slide takes it or not: on a half a body blocks, the probe eats a treasure it reaches before the body, bumps the body (a swing at a foe), opens a door the player holds the key to and posts "Key N needed!" at a locked one. | Each half is asked quietly first, as the right-hand walk's probes are (fix Y); only a free half takes the step, which acts as before (a treasure the slide moves onto is eaten). A blocked half eats nothing, swings at nothing and opens nothing: a keyed door beside a wall opens when the player walks into it, not when the slide brushes it. |
 
 TELEPORT, REVEAL, CLOAK and ENERGY WAVE are unchanged as casts (their bot
@@ -920,6 +921,15 @@ life); a dead walker never acts and every revival clears its orders, and
 the strike and its damage roll stay, so an arena's two captures would be
 byte-identical. `GameplayFixesWalk` in `tests/unit/test_gameplay_fixes_walk.cpp`
 pins it, with a corpse and with a door the rush's own step opens.
+
+Fix AP has no row: a climb meets a dead owner only in the tick its owner
+dies (a shot or an effect drops a dead owner at its next act, a summon dies
+with it, and the end of every tick drops every link to the dead), and only a
+charm can give that owner another colour than its summon or shot. No arena
+stages a charm, a death and a friendliness question about the dead caster's
+summon or shot inside one tick: the bots' cadence would make it a lottery of
+seeds. The unit tests `GameplayFixesChain` (`tests/unit/test_gameplay_fixes_charm.cpp`)
+and `ModesMutant.the_damage_gate_reads_the_games_owner_climb` pin it.
 
 Fix AQ's arena, `player_slide_potion_scen99` and
 `player_slide_potion_fixes_scen99`: the player soldier walks up-right into

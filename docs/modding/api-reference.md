@@ -728,6 +728,12 @@ range.
 `foe()/set_foe(h)` `leader()/set_leader(h)` `owner()/set_owner(h)`
 `collide_ob()`. Setters accept `nil` to clear.
 
+`chain_head()` (read-only) answers the head of this walker's owner chain by
+the game's one climb (Gameplay Fixes AP, #429), the head a blow scores for:
+up through every owner, a dead one included, stopping at a self-loop and,
+with Gameplay Fixes on, at a charmed walker. A walker with no owner is its
+own head, so the answer is never `nil`.
+
 ### Actions
 
 | Method | Result |

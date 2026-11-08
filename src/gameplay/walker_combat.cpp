@@ -368,16 +368,16 @@ bool walker::attack(walker  *target)
         attacker = this;
 
     // who's the top on our chain (ie, weapon->summoned->mage)
-    headguy = this;
-    // rule: Credit for a hit climbs the owner chain to its head (weapon -> summon -> caster); with
+    // rule: Credit for a hit climbs the owner chain to its head (weapon -> summon -> caster) by the
+    //   one climb (walker::chain_head, Gameplay Fixes AP): through a dead owner on both values; with
     //   Gameplay Fixes on a charmed walker heads its own chain, so its blows score for the colour
     //   it now wears; classic climbs through the charm to the original owner.
     // tests: GameplayFixesCharm.a_charmed_tent_troop_fights_for_its_charmer
     // tests: GameplayFixesCharm.a_charmed_summon_of_an_enemy_caster_fights_for_its_charmer
     // tests: SemWalker3.classic_credit_for_a_charmed_troops_blow_climbs_to_its_original_owner
     // tests: SemWalker3.classic_credit_for_a_blow_climbs_past_a_dead_thrower
-    while (headguy->owner() && (headguy->owner() != headguy) && !headguy->charmed_head() )
-        headguy = headguy->owner();
+    // tests: GameplayFixesChain.a_dead_casters_summon_keeps_its_side_for_friendliness_and_score
+    headguy = chain_head();
 
     // Score and kill semantics follow the actual attacker's team. The legacy
     // red-only checks made non-red company heroes deal damage without normal

@@ -916,6 +916,56 @@ TEST_F(ModesMutant, damage_matrix_blocks_only_nonmutant_on_nonmutant)
         << "structures stay damageable in the mutant phase";
 }
 
+// Gameplay Fixes AP (#429): the gate's owner-chain root is the game's one
+// climb (walker:chain_head). The Mutant's skeleton pet, charmed onto c's
+// colour, strikes d: off, the climb goes through the charm to the Mutant and
+// the blow lands; on, the charmed pet heads its own chain, a non-mutant
+// living against a non-mutant living, and the blow is void. Then an
+// uncharmed pet of the Mutant strikes d in the tick the Mutant dies: the
+// climb goes through the dead Mutant, so the blow lands on both values.
+// RED (planted): the binding's chain_head answering the walker itself (the
+// charmed arm lands on neither value's side it should, and the dead-Mutant
+// arm is void); chain_next stopping at a dead owner (the dead-Mutant arm).
+TEST_F(ModesMutant, the_damage_gate_reads_the_games_owner_climb)
+{
+    for (const short fixes : {short{0}, short{1}})
+    {
+        SCOPED_TRACE(fixes);
+        MutantRig rig;
+        rig.fx.world().gameplay_fixes = fixes;
+        rig.fx.tick(1);
+        ASSERT_TRUE(rig.active());
+        rig.crown_a();
+        ASSERT_NE(nullptr, rig.d->stats());
+
+        walker* charmed = rig.fx.spawn_living(FAMILY_SKELETON, rig.a->team_num(), 260, 200);
+        ASSERT_NE(nullptr, charmed);
+        charmed->set_owner(rig.a);
+        charmed->set_team_num(rig.c->team_num());
+        charmed->set_real_team_num(rig.a->team_num());
+        charmed->set_charm_left(30);
+        ASSERT_EQ(0, charmed->is_friendly(rig.d)) << "premise: d is a foe on both values";
+        rig.d->stats()->set_hitpoints(100.0f);
+        charmed->attack(rig.d);
+        if (fixes == 0)
+            EXPECT_LT(rig.d->stats()->hitpoints(), 100.0f)
+                << "setting off: the charmed pet's root is the Mutant: the blow lands";
+        else
+            EXPECT_EQ(100.0f, rig.d->stats()->hitpoints())
+                << "setting on: the charmed pet heads its own chain: void";
+
+        walker* pet = rig.fx.spawn_living(FAMILY_SKELETON, rig.a->team_num(), 260, 232);
+        ASSERT_NE(nullptr, pet);
+        pet->set_owner(rig.a);
+        rig.a->set_dead(1);
+        ASSERT_EQ(0, pet->is_friendly(rig.d)) << "premise: d is a foe on both values";
+        rig.d->stats()->set_hitpoints(100.0f);
+        pet->attack(rig.d);
+        EXPECT_LT(rig.d->stats()->hitpoints(), 100.0f)
+            << "the climb goes through the dead Mutant: the blow lands";
+    }
+}
+
 // The turn-undead instant kill used to skip walker::attack's hit path
 // entirely (the target was already dead when attack ran), so the one-way
 // damage matrix — the ONLY thing keeping competitors off each other in the

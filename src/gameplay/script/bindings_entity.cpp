@@ -3973,6 +3973,9 @@ int m_fire_pad_answer(lua_State* L)
     return 1;
 }
 
+// Gameplay Fixes AP (#429): the head of the one owner-chain climb (walker::chain_head).
+W_GET_REF(chain_head)
+
 const luaL_Reg kWalkerMethods[] = {
     {"xpos", m_xpos}, {"ypos", m_ypos},
     {"sizex", m_sizex}, {"sizey", m_sizey}, {"sizez", m_sizez},
@@ -4042,6 +4045,7 @@ const luaL_Reg kWalkerMethods[] = {
     {"foe", m_foe}, {"set_foe", m_set_foe},
     {"leader", m_leader}, {"set_leader", m_set_leader},
     {"owner", m_owner}, {"set_owner", m_set_owner},
+    {"chain_head", m_chain_head},
     {"collide_ob", m_collide_ob},
     {"setxy", m_setxy}, {"setworldxy", m_setworldxy},
     {"center_on", m_center_on},

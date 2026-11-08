@@ -75,6 +75,7 @@
 ---@field busy number|fun(self: og.Walker): number # write-through property: `self.busy = v` runs m_set_busy; reads answer the method (method-first)
 ---@field can_approach_weapon_range fun(self: og.Walker, objective: og.Walker): boolean # walker:can_approach_weapon_range(objective) -> bool.
 ---@field center_on fun(self: og.Walker, other: og.Walker)
+---@field chain_head fun(self: og.Walker): og.Walker?
 ---@field charm_left fun(self: og.Walker): integer
 ---@field clear_myguy fun(self: og.Walker)
 ---@field collide fun(self: og.Walker, other: og.Walker): boolean
