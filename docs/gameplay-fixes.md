@@ -1114,6 +1114,8 @@ Rows deliberately not added:
   game asked `on_screen()` of, so every row records the old game's sounds;
   none moved.
 - #484: no behaviour changes, and none of the display fields is recorded.
+- #440: no behaviour changes, and experience is not in the recording, so
+  no row could see it.
 - Fix AA's two terrain pads. `archer_bot_bolt_pad_terrain`: a bot faces
   up at its spawn and no tile that stops a weapon sits directly above
   ground on scen1, so the only terrain arena is an archer beside a tree
@@ -1131,7 +1133,8 @@ Rows deliberately not added:
 
 Twenty-four changes apply whatever the setting, three from the work that
 added it (N, O and P), six from the second bugs batch and fifteen from the
-issues it filed; the last entry records a difference kept on purpose (#484):
+issues it filed; the last two entries record differences kept on purpose
+(#484, #440):
 
 - **N. A slot that is not in play says so.** `walker::special()` refuses a
   slot priced 5000 (an undeclared slot, or one New Specials hides) before it
@@ -1366,6 +1369,19 @@ issues it filed; the last entry records a difference kept on purpose (#484):
   within three acts of the blow, and a number made in the 1.7 s or so before
   damage numbers are turned on. `SemPresentation`
   (`tests/unit/test_sem_presentation_1.cpp`) pins it with every toggle off.
+- **A kill pays the kill bonus alone (#440).** Not a change to the
+  simulation. Every blow that lands pays the hero at the head of the
+  hitter's chain the experience of its damage at the level gap, and a kill
+  adds the kill bonus, the experience of 20 damage at that gap. The old game
+  pays the killing blow's experience a second time with the bonus; this
+  game has paid it once since #78 (`2fd29075`), on both values of the
+  setting: a level-4 hero who kills a level-4 foe with an 8-point blow earns
+  72 + 181 = 253 here and 325 in the old game. Kills, scenario kills and the
+  level tally count once in both. Experience is not in the recording, so no
+  golden shows it, and nothing is ported.
+  `SemWalker3.a_kill_adds_the_kill_bonus_alone_to_its_heros_experience`
+  pins it on both values, for a melee blow, a thrown knife and a summon's
+  blow.
 
 The modding API and its logs changed in the same batch too, whatever the
 setting. No shipped pack or campaign reaches the new arms, so no player sees
