@@ -4345,6 +4345,11 @@ std::vector<Pair> pairs()
     // L. A level-13 enemy mage bot rolls slot 5 with three towers close by:
     // the classic roll folds 5 into TELEPORT, whose gate says no (and the
     // 110 px rule shuts every slot anyway); the fix casts HEARTBURST.
+    // The towers are posted guards, held from fighting: they face the mage
+    // and stand. Left to the ordinary bot act, a tower searched for the mage,
+    // and its search kept asking it to face the way it already faced: a
+    // notch away and back with the setting off, no turn with it on (fix AT),
+    // so the halves parted at frame 6, long before this fix's cue.
     {
         Pair c;
         c.name = "l_slot_roll";
@@ -4356,7 +4361,7 @@ std::vector<Pair> pairs()
             for (int i = 0; i < 3; ++i)
             {
                 const std::string n = "tower" + std::to_string(i);
-                hold_fire(add_actor(run, n, FAMILY_TOWER1, 0, at[i][0], at[i][1]));
+                add_posted(run, n, FAMILY_TOWER1, 0, at[i][0], at[i][1], 0);
                 mark_hp(run, n);
             }
         };

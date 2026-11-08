@@ -20,6 +20,7 @@
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/families/family_descriptor.h>
 #include <openglad/gameplay/families/family_registry.h>
+#include <openglad/gameplay/families/specials_view.h>
 #include <openglad/gameplay/obmap.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/core/constants.h>
@@ -619,6 +620,15 @@ bool walker::turn(short targetdir)
     short distance;
     short currentdir = static_cast<short>(curdir());
 
+    // rule: Gameplay Fixes AT (#446): with the setting on, a walker asked to face the way it
+    //   already faces does nothing (its facing, heading and walk frame stay as they are) and the
+    //   turn reports done; with it off the classic step below turns it one notch counter-clockwise.
+    // tests: SemWalker4.a_walker_asked_to_face_the_way_it_faces_stays_put_with_the_setting_on
+    // tests: SemWalker4.classic_a_walker_asked_to_face_the_way_it_faces_turns_a_notch_counter_clockwise
+    // tests: parity:orc_bot_faces_foe_scen99, parity:orc_bot_faces_foe_fixes_scen99
+    if (og::sim::session_gameplay_fixes() != 0 && currentdir == targetdir)
+        return true;
+
     //   We use a clock-ordered
     //   of directions to numbers) to a clock-ordered
     //   mapping of directions so we can calculate what
@@ -629,8 +639,10 @@ bool walker::turn(short targetdir)
 
     // Figure out if we should turn clockwise or counterclockwise
     // rule: Turning rotates one 45-degree step per call the short way round; a half-turn (4 steps
-    //   either way) goes clockwise (+1).
+    //   either way) goes clockwise (+1); asked for the facing it already has, it steps one notch
+    //   counter-clockwise (+7; the classic game, as Gameplay Fixes AT returns above).
     // tests: WalkerMovement.walker_turn_to_all_targets, WalkerMovement.walker_turn_from_all_starts
+    // tests: SemWalker4.classic_a_walker_asked_to_face_the_way_it_faces_turns_a_notch_counter_clockwise
     if ( ( (distance >= -4) && (distance < 0) ) || (distance >= 4) )
         currentdir = static_cast<short>((currentdir + 1) % 8);
     else

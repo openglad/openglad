@@ -611,6 +611,8 @@ OG_PARITY_TEST(barbarian_boulder_edge_pad_scen99)
 OG_PARITY_TEST(barbarian_boulder_edge_pad_fixes_scen99)
 OG_PARITY_TEST(mage_wave_edge_pad_scen99)
 OG_PARITY_TEST(mage_wave_edge_pad_fixes_scen99)
+OG_PARITY_TEST(orc_bot_faces_foe_scen99)
+OG_PARITY_TEST(orc_bot_faces_foe_fixes_scen99)
 
 #undef OG_PARITY_TEST
 

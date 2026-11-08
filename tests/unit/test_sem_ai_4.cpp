@@ -23,8 +23,9 @@
 //    step), so a step is a move only when the facing already matches;
 //    walkstep(0,0) asks facing(0,0), which is FACE_UP.
 //  * turn() moves curdir one step and rewrites lastx/lasty, but leaves
-//    enddir; init_fire() then turns toward enddir. turn(d) when curdir is
-//    already d steps one counter-clockwise (distance 0 takes the +7 arm).
+//    enddir; init_fire() then turns toward enddir. With the setting off,
+//    turn(d) when curdir is already d steps one counter-clockwise (distance
+//    0 takes the +7 arm); with it on (Gameplay Fixes AT) it does nothing.
 
 #include <gtest/gtest.h>
 
@@ -599,6 +600,42 @@ TEST_F(SemAi4, a_chaser_that_can_land_a_shot_stops_and_attacks)
     EXPECT_EQ(at(96, c->stepsize()), c->xpos()) << "control: the chase steps east";
 }
 
+// stats.cpp:1716 with the setting on (#446, fix AT). The same scene as the
+// test above: a team-0 soldier at (96,96) facing right, a SEARCH(9) queued,
+// its foe a team-1 orc 10 px east in the knife's reach. fire_check passes
+// only for a walker that already faces its foe, so the turn toward the foe
+// asks for the facing it has: with the setting on that turn does nothing.
+// The orders are wiped and an ATTACK of 30+rng(25) rounds is queued (the
+// draws: the waver, bound 4, then the duration pinned to 1: 31), and the
+// soldier still faces right with its heading one stepsize east, where the
+// classic turn (the test above) left it facing UP_RIGHT.
+TEST_F(SemAi4, a_chaser_that_can_land_a_shot_keeps_facing_its_foe_with_the_setting_on)
+{
+    fresh_world(1);
+    const std::uint32_t s = state_where({{4, kAny}, {25, 1}});
+    walker* w = living_at(FAMILY_SOLDIER, 0, 96, 96);
+    walker* orc = living_at(FAMILY_ORC, 1, 106, 96);
+    ASSERT_TRUE(w && orc);
+    w->set_foe(orc);
+    w->stats()->add_command(COMMAND_SEARCH, 9, 0, 0);
+    world().rng_.state_ = s;
+
+    EXPECT_TRUE(w->stats()->direct_walk());
+
+    const Cmd f = front_of(w);
+    EXPECT_EQ(1u, f.size) << "the SEARCH was wiped";
+    EXPECT_EQ(COMMAND_ATTACK, f.type);
+    EXPECT_EQ(31, f.count) << "30 + rng(25), the draw pinned to 1";
+    EXPECT_EQ(0, f.com1);
+    EXPECT_EQ(0, f.com2);
+    EXPECT_EQ(state_after(s, {4, 25}), world().rng_.state_) << "the waver, then the duration";
+    EXPECT_EQ(FACE_RIGHT, w->curdir()) << "asked for the facing it has, it stays";
+    EXPECT_FLOAT_EQ(w->stepsize(), w->lastx()) << "the heading is unchanged: one stepsize east";
+    EXPECT_FLOAT_EQ(0.0f, w->lasty()) << "the heading is unchanged: one stepsize east";
+    EXPECT_EQ(96, w->xpos());
+    EXPECT_EQ(96, w->ypos());
+}
+
 // stats.cpp:1174, the slides. A team-0 soldier at (320,320), its foe 200 px
 // down-right (an unreachable-by-knife target: the diagonal step (1,1)).
 // Wall tile (21,21) only: the diagonal is walled, the x step is open, so
@@ -811,6 +848,59 @@ TEST_F(SemAi4, a_chaser_within_100_px_of_a_foe_attacks_it_instead_of_pathing)
     EXPECT_EQ(orc, w->foe());
     EXPECT_EQ(320, w->xpos());
     EXPECT_EQ(320, w->ypos());
+}
+
+// stats.cpp:2050 (#446, fix AT), both settings. A team-1 orc (melee only)
+// at (320,320) facing down, heading one stepsize down, enddir down; its foe a
+// team-0 soldier due south with a 1 px gap (337), a SEARCH(9) queued,
+// re-plan due. The short circuit wipes the order and queues ATTACK(30 +
+// rng(25), 1, 1) (the draws: rng(300), the cadence rng(10), the duration
+// pinned to 7: 37), turns toward the foe (down: the facing it has) and runs
+// init_fire. The orc does not move and its foe stays the soldier.
+//  * Setting off: the turn takes the +7 arm to DOWN_RIGHT and heads along
+//    it, so init_fire aims DOWN_RIGHT, finds enddir (DOWN) unmet and only
+//    turns back: no swing, busy stays 0, the orc keeps walking.
+//  * Setting on: the turn does nothing, so init_fire aims down at the foe,
+//    passes the busy gate and starts the swing: busy is charged the orc's
+//    fire delay and the attack animation runs (its first frame draws
+//    nothing, so the random stream is the same three draws on both).
+TEST_F(SemAi4, a_chaser_facing_its_foe_within_100_px_swings_only_with_the_setting_on)
+{
+    const std::uint32_t s = state_where({{300, kNonZero}, {10, kAny}, {25, 7}});
+    for (short fixes : {short{0}, short{1}}) {
+        SCOPED_TRACE(fixes ? "Gameplay Fixes on" : "Gameplay Fixes off");
+        fresh_world(fixes);
+        walker* orc = living_at(FAMILY_ORC, 1, 320, 320);
+        walker* soldier = living_at(FAMILY_SOLDIER, 0, 320, 337);
+        ASSERT_TRUE(orc && soldier);
+        ASSERT_FLOAT_EQ(7.0f, orc->fire_frequency()) << "the orc's fire delay (living-14-orc.lua fire_delay 7)";
+        face(orc, FACE_DOWN);
+        orc->set_foe(soldier);
+        orc->stats()->add_command(COMMAND_SEARCH, 9, 0, 0);
+        orc->set_path_check_counter(0);
+        world().rng_.state_ = s;
+
+        EXPECT_TRUE(orc->stats()->walk_to_foe());
+
+        const Cmd f = front_of(orc);
+        EXPECT_EQ(1u, f.size) << "the SEARCH was wiped";
+        EXPECT_EQ(COMMAND_ATTACK, f.type);
+        EXPECT_EQ(37, f.count) << "30 + rng(25), the draw pinned to 7";
+        EXPECT_EQ(1, f.com1);
+        EXPECT_EQ(1, f.com2);
+        EXPECT_EQ(state_after(s, {300, 10, 25}), world().rng_.state_);
+        EXPECT_EQ(soldier, orc->foe());
+        EXPECT_EQ(320, orc->xpos());
+        EXPECT_EQ(320, orc->ypos());
+        EXPECT_EQ(FACE_DOWN, orc->curdir()) << "facing its foe at the end of the call";
+        if (fixes) {
+            EXPECT_FLOAT_EQ(orc->fire_frequency(), orc->busy()) << "the swing started: the fire delay is charged";
+            EXPECT_EQ(ANI_ATTACK, orc->ani_type()) << "the swing started: the attack animation runs";
+        } else {
+            EXPECT_FLOAT_EQ(0.0f, orc->busy()) << "init_fire only turned back: no swing";
+            EXPECT_EQ(ANI_WALK, orc->ani_type()) << "init_fire only turned back: no swing";
+        }
+    }
 }
 
 // stats.cpp:1351, the crowded map. 201 team-0 soldiers stacked in the far

@@ -706,6 +706,79 @@ TEST_F(SemWalker4, a_turn_heads_a_mobile_walker_one_stepsize_along_each_facing)
     }
 }
 
+// walker_movement.cpp:629 (#446, fix AT). With the Gameplay Fixes setting
+// on, a walker asked to face the way it already faces does nothing: from
+// FACE_RIGHT, turn(FACE_RIGHT) leaves the facing, the heading (a sentinel
+// 9,9 that a real turn would rewrite) and the walk frame (cycle 3, which a
+// real turn resets to 0) as they were, and reports done. The same holds for
+// all eight facings. Control, the setting still on: only distance 0 is
+// gated; turn(FACE_DOWN) from FACE_RIGHT still steps one notch clockwise to
+// FACE_DOWN_RIGHT and heads one stepsize along it.
+TEST_F(SemWalker4, a_walker_asked_to_face_the_way_it_faces_stays_put_with_the_setting_on)
+{
+    world().gameplay_fixes = 1;
+    walker* w = living_at(FAMILY_SOLDIER, 0, 200, 200);
+    ASSERT_NE(nullptr, w);
+    w->set_stepsize(2.0f);
+
+    w->set_curdir(static_cast<signed char>(FACE_RIGHT));
+    w->set_lastx(9.0f);
+    w->set_lasty(9.0f);
+    w->set_cycle(3);
+    EXPECT_TRUE(w->turn(static_cast<short>(FACE_RIGHT))) << "the turn reports done";
+    EXPECT_EQ(FACE_RIGHT, static_cast<int>(w->curdir())) << "the facing stays";
+    EXPECT_FLOAT_EQ(9.0f, w->lastx()) << "the heading is not rewritten";
+    EXPECT_FLOAT_EQ(9.0f, w->lasty()) << "the heading is not rewritten";
+    EXPECT_EQ(3, static_cast<int>(w->cycle())) << "the walk frame is not reset";
+    EXPECT_EQ(200, w->xpos());
+    EXPECT_EQ(200, w->ypos());
+
+    for (int f = 0; f < 8; ++f)
+    {
+        w->set_curdir(static_cast<signed char>(f));
+        EXPECT_TRUE(w->turn(static_cast<short>(f)));
+        EXPECT_EQ(f, static_cast<int>(w->curdir())) << "facing " << f << " stays";
+    }
+
+    w->set_curdir(static_cast<signed char>(FACE_RIGHT));
+    w->set_cycle(3);
+    EXPECT_TRUE(w->turn(static_cast<short>(FACE_DOWN)));
+    EXPECT_EQ(FACE_DOWN_RIGHT, static_cast<int>(w->curdir())) << "control: a real turn still steps one notch";
+    EXPECT_FLOAT_EQ(2.0f, w->lastx()) << "control: heading along DOWN_RIGHT";
+    EXPECT_FLOAT_EQ(2.0f, w->lasty()) << "control: heading along DOWN_RIGHT";
+    EXPECT_EQ(0, static_cast<int>(w->cycle())) << "control: a real turn resets the walk frame";
+}
+
+// walker_movement.cpp:649 (#446, fix AT's off column). With the setting off
+// (the classic game and the old game), turn(d) from a walker already facing
+// d takes the +7 arm: from FACE_RIGHT, turn(FACE_RIGHT) steps one notch
+// counter-clockwise to FACE_UP_RIGHT, heads one stepsize along it (+2, -2)
+// and resets the walk frame; every facing f goes to (f + 7) % 8.
+TEST_F(SemWalker4, classic_a_walker_asked_to_face_the_way_it_faces_turns_a_notch_counter_clockwise)
+{
+    world().gameplay_fixes = 0;
+    walker* w = living_at(FAMILY_SOLDIER, 0, 200, 200);
+    ASSERT_NE(nullptr, w);
+    w->set_stepsize(2.0f);
+
+    w->set_curdir(static_cast<signed char>(FACE_RIGHT));
+    w->set_lastx(9.0f);
+    w->set_lasty(9.0f);
+    w->set_cycle(3);
+    EXPECT_TRUE(w->turn(static_cast<short>(FACE_RIGHT))) << "the turn reports done";
+    EXPECT_EQ(FACE_UP_RIGHT, static_cast<int>(w->curdir())) << "one notch counter-clockwise";
+    EXPECT_FLOAT_EQ(2.0f, w->lastx()) << "heading along UP_RIGHT";
+    EXPECT_FLOAT_EQ(-2.0f, w->lasty()) << "heading along UP_RIGHT";
+    EXPECT_EQ(0, static_cast<int>(w->cycle())) << "the walk frame is reset";
+
+    for (int f = 0; f < 8; ++f)
+    {
+        w->set_curdir(static_cast<signed char>(f));
+        EXPECT_TRUE(w->turn(static_cast<short>(f)));
+        EXPECT_EQ((f + 7) % 8, static_cast<int>(w->curdir())) << "facing " << f << " steps counter-clockwise";
+    }
+}
+
 // ---------------------------------------------------------------------------
 // walker_pathing.cpp: follow_path_to_foe
 // ---------------------------------------------------------------------------
