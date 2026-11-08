@@ -2471,3 +2471,31 @@ command::command()
 	commandcount = 0;
 	com1 = com2 = 0;
 }
+
+// Gameplay Fixes AQ (#434): one half of a seat's slide along a wall
+// (walker::walkstep, the user arm): the walker's box moved one pixel along
+// one axis. Classic: the loud probe, a real step whether the slide takes that
+// half or not: on a half a body blocks it eats a treasure it reaches before
+// the body, bumps the body (a swing at a foe), opens a door the walker holds
+// the key to and posts "Key N needed!" at a locked one. With the setting on
+// the half is asked quietly first, as the right-hand walk's probes are (fix
+// Y); only a free half takes the loud step, so the pixel the slide moves onto
+// still acts. Asked quietly, a living gets the loud answer
+// (QuietProbe.every_blocker_answers_like_the_loud_probe_and_changes_nothing).
+bool statistics::slide_half_clear(short dx, short dy)
+{
+	const float x = static_cast<float>(controller_->xpos() + dx);
+	const float y = static_cast<float>(controller_->ypos() + dy);
+	// rule: Gameplay Fixes AQ (#434): a seat's wall slide asks each half quietly first; a blocked half
+	//   eats nothing, swings at nothing, opens no door and posts no key notice, and only a free half
+	//   takes the classic loud step (it eats what it moves onto). Classic: every half's probe is the
+	//   loud step, taken or not.
+	// tests: GameplayFixesWalk.a_seats_wall_slide_eats_nothing_on_the_half_it_does_not_take_with_the_setting_on
+	// tests: GameplayFixesWalk.a_seats_wall_slide_swings_at_no_foe_on_the_half_it_does_not_take_with_the_setting_on
+	// tests: GameplayFixesWalk.a_seats_wall_slide_still_eats_what_it_slides_onto_on_both_values
+	// tests: parity:player_slide_potion_scen99, parity:player_slide_potion_fixes_scen99
+	if (og::sim::session_gameplay_fixes() != 0
+	        && !current_game->world->query_passable(x, y, controller_, controller_->floor(), /*quiet=*/true))
+		return false;
+	return current_game->world->query_passable(x, y, controller_);
+}
