@@ -171,7 +171,7 @@ bool respawn_spot_clear(GameWorld& world, walker* w, short x, short y,
 // respawn_spot_clear and dormant_occupies_spot. Draw-free and eat-free.
 // False for a family the loader cannot make: no family of that order at that
 // id, a living id the loader would stand a soldier in for, or a negative id
-// or one past the walker's char family byte (127, #443). The configured
+// or one past the family byte (255). The configured
 // body must be exactly the order and family asked for.
 bool body_spot_clear(GameWorld& world, Order order, std::int32_t family,
                      short x, short y, int floor);

@@ -870,7 +870,7 @@ bool living::collide(walker  *ob)
 	return 1;
 }
 
-walker* living::do_summon(char whatfamily, std::int32_t summon_lifetime)
+walker* living::do_summon(std::uint8_t whatfamily, std::int32_t summon_lifetime)
 {
 	walker  *newob;
 

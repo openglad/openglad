@@ -85,7 +85,7 @@ void set_hp(walker* w, float hp, float max_hp)
 }
 
 walker* add_stain(TestGameWorld& tw, unsigned char team, short x, short y,
-                  char old_family, short level, float max_hp)
+                  int old_family, short level, float max_hp)
 {
     walker* stain = tw.world().add_fx_ob(Order::Treasure, FAMILY_STAIN);
     if (stain == nullptr)
@@ -93,7 +93,7 @@ walker* add_stain(TestGameWorld& tw, unsigned char team, short x, short y,
     stain->set_team_num(team);
     stain->setxy(x, y);
     stain->set_dead(0);
-    stain->stats()->set_old_family(old_family);
+    stain->stats()->set_old_family(static_cast<std::uint8_t>(old_family));
     stain->stats()->set_level(level);
     // A real stain carries the body's stats (generate_bloodspot).
     stain->stats()->set_max_hitpoints(max_hp);

@@ -1452,11 +1452,20 @@ its mistake:
   `og.body_spot_near`, and the `body_spot_clear` and `body_ground_clear`
   probes behind it, build a detached body of the family asked for. The
   loader stands family 0 in for an id with no slot and a soldier in for a
-  living with no family, and the walker's family byte wraps 128..255
-  negative (#443), so those probes answered for the stand-in where the API
-  reference promises `nil`. A probe now answers no unless the body is
-  exactly the order and family asked for. The cleric's raise and the
-  parity spawn-room gate ask only real families. This game only.
+  living with no family, so those probes answered for the stand-in where
+  the API reference promises `nil`. A probe now answers no unless the
+  body is exactly the order and family asked for. The cleric's raise and
+  the parity spawn-room gate ask only real families. This game only.
+- **A pack family id from 128 to 255 is its own family (#443).** A walker
+  kept its family in a signed byte, so on x86 a family id of 128 or more
+  read back negative. The walker drew as family 0 and found no family, a
+  generator or a summon of that family made a family 0 body, a corpse
+  raised a family 0 body, and a networked machine turned it into family 0.
+  The walker, its corpse and the snapshot now keep the id as an unsigned
+  byte, so every id 0..255 a pack can claim is its own family on every
+  machine. No shipped pack claims an id above 24 (the core pack's are
+  0..21, the modes pack's 13, 14 and 21..24). A company character's own
+  record still keeps a signed byte (a separate issue). This game only.
 - **A loud passability probe answers only for the prober's floor (#465).**
   `og.query_passable` and `og.query_object_passable` take an optional
   floor. Their ground half read that floor, but their bodies half can see

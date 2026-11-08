@@ -123,7 +123,7 @@ TickWalker* push_tick_walker(GameWorld::EntityList& list, Order order,
                              short y = 0)
 {
     auto w = std::make_unique<TickWalker>();
-    w->set_order_family(order, static_cast<char>(family));
+    w->set_order_family(order, static_cast<std::uint8_t>(family));
     w->set_sizex(16);
     w->set_sizey(16);
     w->set_team_num(team);

@@ -38,7 +38,7 @@ struct LivingFixture {
     }
 };
 
-living* add_living(LivingFixture& fx, char family, unsigned char team)
+living* add_living(LivingFixture& fx, std::uint8_t family, unsigned char team)
 {
     auto w = std::make_unique<living>();
     w->set_order_family(Order::Living, family);
@@ -199,7 +199,7 @@ TEST(LivingUnit, living_r11_summon_difficulty_checkspecial_and_walk_paths)
     // armor, then refills hp/mp to the new maxima. The fixture world runs at
     // difficulty 0 => query_difficulty_percent() == 100, and this is a team-0
     // walker, so nothing rescales afterwards.
-    self->set_order_family(Order::Living, static_cast<char>(127));
+    self->set_order_family(Order::Living, static_cast<std::uint8_t>(127));
     const float before_hp = self->stats()->max_hitpoints();
     const float before_mp = self->stats()->max_magicpoints();
     const float before_damage = self->damage();
@@ -267,7 +267,7 @@ struct LivingR14Fixture {
     }
 };
 
-living* add_living(LivingR14Fixture& fx, char family, unsigned char team, short x, short y)
+living* add_living(LivingR14Fixture& fx, std::uint8_t family, unsigned char team, short x, short y)
 {
     auto w = std::make_unique<living>();
     w->set_order_family(Order::Living, family);

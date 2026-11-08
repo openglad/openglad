@@ -37,7 +37,7 @@ struct SpecialsFixture {
     }
 };
 
-living* add_living(SpecialsFixture& fx, char family, unsigned char team)
+living* add_living(SpecialsFixture& fx, std::uint8_t family, unsigned char team)
 {
     auto w = std::make_unique<living>();
     w->set_order_family(Order::Living, family);
@@ -217,7 +217,7 @@ namespace {
 
 // Spawn a living with sane sizes BEFORE the obmap-registering setxy (the
 // legacy add_living helper above registers at default size first).
-living* add_actor(SpecialsFixture& fx, char family, unsigned char team,
+living* add_actor(SpecialsFixture& fx, std::uint8_t family, unsigned char team,
                   int x, int y)
 {
     auto w = std::make_unique<living>();

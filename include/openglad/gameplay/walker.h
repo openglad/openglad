@@ -155,7 +155,7 @@ class walker : public og::sim::SimEntity
 		bool attack(walker  *target);
 		virtual bool animate();
 		bool set_frame_from_current_walk_animation();
-		bool set_order_family(Order order, char family);
+		bool set_order_family(Order order, std::uint8_t family);
 		virtual Order query_order() const
 		{
 			return order();
@@ -248,7 +248,7 @@ class walker : public og::sim::SimEntity
 		void transform_to(Order whatorder, std::int32_t whatfamily); // change picture, etc.
 		virtual bool death(); // called when death/destruction occurs ..
 		void generate_bloodspot(); // make a permanent stain ..
-			virtual walker* do_summon(char whatfamily, std::int32_t summon_lifetime);
+			virtual walker* do_summon(std::uint8_t whatfamily, std::int32_t summon_lifetime);
 		virtual bool check_special();
 		void center_on(walker  *target);  // center us on target
 		virtual void set_difficulty(std::uint32_t whatlevel);

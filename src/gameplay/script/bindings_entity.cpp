@@ -572,7 +572,7 @@ int m_seat_driven(lua_State* L)
 int m_do_summon(lua_State* L)
 {
     walker* w = self_arg(L);
-    const auto fam = static_cast<char>(
+    const auto fam = static_cast<std::uint8_t>(
         static_cast<std::uint64_t>(luaL_checkinteger(L, 2)));
     const auto life = static_cast<std::int32_t>(luaL_checkinteger(L, 3));
     push_walker_here(L, w->do_summon(fam, life));

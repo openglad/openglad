@@ -74,7 +74,7 @@ walker* add_pack_weapon(TestGameWorld& tw, int family, unsigned char team,
     walker* w = tw.world().add_weap_ob(Order::Weapon, FAMILY_KNIFE);
     if (w == nullptr)
         return nullptr;
-    w->set_order_family(Order::Weapon, static_cast<char>(family));
+    w->set_order_family(Order::Weapon, static_cast<std::uint8_t>(family));
     w->set_team_num(team);
     w->setxy(x, y);
     return w;

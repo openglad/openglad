@@ -34,7 +34,7 @@ struct TickWalker : walker {
 
 using SimWorldR15Fixture = TestGameWorld;
 
-TickWalker* add_ob(SimWorldR15Fixture& fx, Order order, char family, unsigned char team, short x, short y, bool dead = false)
+TickWalker* add_ob(SimWorldR15Fixture& fx, Order order, std::uint8_t family, unsigned char team, short x, short y, bool dead = false)
 {
     auto w = std::make_unique<TickWalker>();
     w->set_order_family(order, family);
@@ -49,7 +49,7 @@ TickWalker* add_ob(SimWorldR15Fixture& fx, Order order, char family, unsigned ch
     return out;
 }
 
-TickWalker* add_weap(SimWorldR15Fixture& fx, Order order, char family, unsigned char team, bool dead = false)
+TickWalker* add_weap(SimWorldR15Fixture& fx, Order order, std::uint8_t family, unsigned char team, bool dead = false)
 {
     auto w = std::make_unique<TickWalker>();
     w->set_order_family(order, family);
@@ -60,7 +60,7 @@ TickWalker* add_weap(SimWorldR15Fixture& fx, Order order, char family, unsigned 
     return out;
 }
 
-TickWalker* add_fx(SimWorldR15Fixture& fx, Order order, char family, unsigned char team, bool dead = false)
+TickWalker* add_fx(SimWorldR15Fixture& fx, Order order, std::uint8_t family, unsigned char team, bool dead = false)
 {
     auto w = std::make_unique<TickWalker>();
     w->set_order_family(order, family);

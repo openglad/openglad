@@ -7351,7 +7351,7 @@ walker* find_team_family(GameWorld& w, unsigned char team, int family)
         if (walker* a = up.get(); a != nullptr && !a->dead() &&
             a->query_order() == Order::Living &&
             a->team_num() == team &&
-            a->family() == static_cast<char>(family))
+            a->family() == static_cast<std::uint8_t>(family))
             return a;
     return nullptr;
 }

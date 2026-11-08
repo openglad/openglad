@@ -1270,15 +1270,15 @@ inline constexpr Mutation kMut_summon_druid_do_special = {
 
 inline constexpr Mutation kMut_family_spawn_identity = {
     "src/resources/gloader.cpp", 818,
-    "ob->set_order_family(order, static_cast<char>(family));",
-    "ob->set_order_family(order, static_cast<char>((family + 1) % 21));",
+    "ob->set_order_family(order, static_cast<std::uint8_t>(family));",
+    "ob->set_order_family(order, static_cast<std::uint8_t>((family + 1) % 21));",
     "Rotates every dumped living-family identity at loader binding time; each phase-05 family row loses its exact WalkerFamilyCount(FAMILY_X,1,1) predicate even though the spawn list still asked for the original family."
 };
 
 inline constexpr Mutation kMut_family_spawn_identity_elf = {
     "src/resources/gloader.cpp", 818,
-    "ob->set_order_family(order, static_cast<char>(family));",
-    "ob->set_order_family(order, static_cast<char>(family == 0 ? 2 : 0));",
+    "ob->set_order_family(order, static_cast<std::uint8_t>(family));",
+    "ob->set_order_family(order, static_cast<std::uint8_t>(family == 0 ? 2 : 0));",
     "Maps the player SOLDIER away from ELF and maps the target ELF away from ELF; family_elf_scen99 loses its exact WalkerFamilyCount(FAMILY_ELF,1,1) predicate."
 };
 

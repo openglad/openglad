@@ -117,7 +117,7 @@ struct WalkerFixture {
     }
 };
 
-walker* add_living(WalkerFixture& fx, char family, unsigned char team)
+walker* add_living(WalkerFixture& fx, std::uint8_t family, unsigned char team)
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(Order::Living, family);
@@ -272,7 +272,7 @@ struct WalkerR11Fixture {
     }
 };
 
-walker* add_ob(WalkerR11Fixture& fx, Order o, char family, unsigned char team, short x, short y)
+walker* add_ob(WalkerR11Fixture& fx, Order o, std::uint8_t family, unsigned char team, short x, short y)
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(o, family);
@@ -924,7 +924,7 @@ struct WalkerR14Fixture {
     }
 };
 
-walker* add_ob(WalkerR14Fixture& fx, Order o, char family, unsigned char team, short x, short y)
+walker* add_ob(WalkerR14Fixture& fx, Order o, std::uint8_t family, unsigned char team, short x, short y)
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(o, family);

@@ -35,7 +35,7 @@ class living : public walker
 		bool           check_special() override;
 		bool           collide(walker  *ob) override;
 		bool           do_action(); // perform overriding action
-		walker* do_summon(char whatfamily, std::int32_t summon_lifetime) override;
+		walker* do_summon(std::uint8_t whatfamily, std::int32_t summon_lifetime) override;
 		void           set_difficulty(std::uint32_t whatlevel) override;
 		short          shove(walker  *target, short x, short y) override;
 		Order          query_order() const override

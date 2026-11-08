@@ -141,7 +141,7 @@ class statistics
 
 		std::string name; // for NPC's, normally ..
         OG_STATS_DIRTY_FIELD(Order, old_order, og::dirty::BIT_OLD_ORDER);
-        OG_STATS_DIRTY_FIELD(char, old_family, og::dirty::BIT_OLD_FAMILY);
+        OG_STATS_DIRTY_FIELD(std::uint8_t, old_family, og::dirty::BIT_OLD_FAMILY);
         OG_STATS_DIRTY_FIELD(std::uint32_t, last_distance, og::dirty::BIT_LAST_DISTANCE);
         OG_STATS_DIRTY_FIELD(std::int32_t, current_distance, og::dirty::BIT_CURRENT_DISTANCE);
         OG_STATS_DIRTY_FIELD(short, delete_me, og::dirty::BIT_DELETE_ME);
@@ -231,7 +231,7 @@ class statistics
         void mark_dirty(std::uint8_t bit_index);
 
         Order old_order_ = Order::Living;
-        char old_family_ = FAMILY_SOLDIER;
+        std::uint8_t old_family_ = FAMILY_SOLDIER;
         std::uint32_t last_distance_ = 0;
         std::int32_t current_distance_ = 0;  // Distances (to foe) are used for AI walking
         std::int32_t bit_flags_ = 0;         // holds (currently) 32 bit flags

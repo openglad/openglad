@@ -1759,7 +1759,7 @@ bool walker::set_frame_from_current_walk_animation()
 	return true;
 }
 
-bool walker::set_order_family(Order neworder, char newfamily)
+bool walker::set_order_family(Order neworder, std::uint8_t newfamily)
 {
 	set_order(neworder);
 	set_family(newfamily);
@@ -1939,7 +1939,7 @@ bool walker::query_prospective_weapon_reach(short xdelta, short ydelta,
 	weap probe(WeaponProfileProbeTag{});
 	const PixieData* data = current_game->world->configure_existing_entity(
 		probe, Order::Weapon,
-		static_cast<std::int32_t>(static_cast<char>(current_weapon())));
+		static_cast<std::int32_t>(static_cast<std::uint8_t>(current_weapon())));
 	// rule: Only a living's reach can be predicted. Here: `data == nullptr`.
 	// tests: ModesSoccer.recovery_range_rejects_on_fire_hooks_without_dispatch
 	// tests: ModesSoccer.recovery_range_distinguishes_invalid_from_valid_zero_profiles
@@ -2098,7 +2098,7 @@ walker  *walker::create_weapon()
 	if (query_order() == Order::Generator)
 	{
 		weapon = current_game->world->add_ob(
-			Order::Living, static_cast<char>(default_weapon()));
+			Order::Living, static_cast<std::uint8_t>(default_weapon()));
 		// plumbing: create_weapon: add_ob returned null (object table full) for the generator troop
 		//   or the weapon -> no emission.
 		if (!weapon) return nullptr;
@@ -2116,7 +2116,7 @@ walker  *walker::create_weapon()
 	}
 	// Normally, only livings fire
 	weapon = current_game->world->add_ob(
-		Order::Weapon, static_cast<char>(current_weapon()));
+		Order::Weapon, static_cast<std::uint8_t>(current_weapon()));
 	// plumbing: create_weapon: add_ob returned null (object table full) for the generator troop
 	//   or the weapon -> no emission.
 	if (!weapon) return nullptr;
@@ -3096,7 +3096,7 @@ bool walker::eat_me(walker  * eater)
 
 // set_direct_frame is in src/runtime/walker_render_bridge.cpp.
 
-walker* walker::do_summon(char whatfamily, std::int32_t summon_lifetime)
+walker* walker::do_summon(std::uint8_t whatfamily, std::int32_t summon_lifetime)
 {
 	// plumbing: walker::do_summon base: logs and returns nullptr; living overrides it.
 	if (whatfamily || summon_lifetime)
@@ -3970,7 +3970,7 @@ walker::PadAnswer walker::fire_pad_answer(std::int32_t weapon_family)
 		return PadAnswer::NoProbe;
 	const std::int32_t family = weapon_family >= 0
 		? weapon_family
-		: static_cast<std::int32_t>(static_cast<char>(current_weapon()));
+		: static_cast<std::int32_t>(static_cast<std::uint8_t>(current_weapon()));
 	weap probe(WeaponProfileProbeTag{});
 	const PixieData* data = current_game->world->configure_existing_entity(
 		probe, Order::Weapon, family);

@@ -46,7 +46,7 @@ struct FrightFixture {
     }
 };
 
-walker* add_walker(FrightFixture& fx, char family, unsigned char team,
+walker* add_walker(FrightFixture& fx, std::uint8_t family, unsigned char team,
                    signed char user = -1)
 {
     auto w = std::make_unique<walker>();
@@ -65,7 +65,7 @@ walker* add_walker(FrightFixture& fx, char family, unsigned char team,
     return out;
 }
 
-living* add_living_entity(FrightFixture& fx, char family, unsigned char team)
+living* add_living_entity(FrightFixture& fx, std::uint8_t family, unsigned char team)
 {
     auto w = std::make_unique<living>();
     w->set_order_family(Order::Living, family);

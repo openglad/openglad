@@ -327,7 +327,7 @@ bool walker::attack(walker  *target)
     float tempdamage = get_base_damage(this);
     short getscore=0;
     Order targetorder = target->query_order();
-    char targetfamily = target->family();
+    const std::uint8_t targetfamily = target->family();
     walker *attacker; // us or our owner ..
 
     // rule: Nobody can strike a dead walker, a friend (same team at the head of both owner chains)

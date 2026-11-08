@@ -165,7 +165,7 @@ protected:
                      short y)
     {
         auto w = std::make_unique<walker>();
-        w->set_order_family(order, static_cast<char>(family));
+        w->set_order_family(order, static_cast<std::uint8_t>(family));
         w->set_sizex(16);
         w->set_sizey(16);
         w->set_stepsize(1.0f);

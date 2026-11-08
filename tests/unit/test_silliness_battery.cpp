@@ -95,7 +95,7 @@ struct BatteryFixture {
     BatteryFixture& operator=(const BatteryFixture&) = delete;
 };
 
-living* add_living(BatteryFixture& fx, char family, unsigned char team,
+living* add_living(BatteryFixture& fx, std::uint8_t family, unsigned char team,
                    int x, int y, int level = 1, signed char user = -1)
 {
     auto w = std::make_unique<living>();
@@ -116,7 +116,7 @@ living* add_living(BatteryFixture& fx, char family, unsigned char team,
     return out;
 }
 
-living* add_caster(BatteryFixture& fx, char family, int level, int x = 80, int y = 80)
+living* add_caster(BatteryFixture& fx, std::uint8_t family, int level, int x = 80, int y = 80)
 {
     living* c = add_living(fx, family, 0, x, y, level, 0);
     c->stats()->set_max_magicpoints(10000.0f);
@@ -995,7 +995,7 @@ struct CharmCast {
 
 inline constexpr int kCharmLeftAfterCast = 477; // level diff 49, softened (<= 490)
 
-CharmCast cast_charm(BatteryFixture& fx, char victim_family = FAMILY_SOLDIER)
+CharmCast cast_charm(BatteryFixture& fx, std::uint8_t victim_family = FAMILY_SOLDIER)
 {
     CharmCast c;
     c.thief = add_caster(fx, FAMILY_THIEF, 50, 130, 100);

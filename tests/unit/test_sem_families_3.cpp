@@ -116,7 +116,7 @@ protected:
         for (const GameWorld::EntityList* list : {&world().oblist, &world().fxlist, &world().weaplist})
             for (const auto& ob : *list)
                 if (ob && ob->dead() == 0 && ob->query_order() == order &&
-                    ob->family() == static_cast<char>(family))
+                    ob->family() == static_cast<std::uint8_t>(family))
                     out.push_back(ob.get());
         return out;
     }
@@ -129,7 +129,7 @@ protected:
         std::vector<walker*> out;
         for (const GameWorld::EntityList* list : {&world().oblist, &world().fxlist, &world().weaplist})
             for (const auto& ob : *list)
-                if (ob && ob->query_order() == order && ob->family() == static_cast<char>(family))
+                if (ob && ob->query_order() == order && ob->family() == static_cast<std::uint8_t>(family))
                     out.push_back(ob.get());
         return out;
     }

@@ -100,7 +100,7 @@ public:
         walker* w = world_->add_ob(order, family);
         if (w) {
             w->set_order(order);
-            w->set_family(static_cast<char>(family));
+            w->set_family(static_cast<std::uint8_t>(family));
             w->setxy(static_cast<short>(tx * GRID_SIZE),
                      static_cast<short>(ty * GRID_SIZE));
             w->set_team_num(team);
@@ -115,7 +115,7 @@ public:
         walker* w = world_->add_fx_ob(Order::FX, family);
         if (w) {
             w->set_order(Order::FX);
-            w->set_family(static_cast<char>(family));
+            w->set_family(static_cast<std::uint8_t>(family));
             w->setxy(static_cast<short>(tx * GRID_SIZE),
                      static_cast<short>(ty * GRID_SIZE));
         }
@@ -241,7 +241,7 @@ TEST(CursesRenderer, hud_omits_invalid_or_unregistered_specials)
     EXPECT_EQ(term.text_row(1).find("Sp:"), std::string::npos);
 
     hero->set_current_special(0);
-    hero->set_family(static_cast<char>(127));
+    hero->set_family(static_cast<std::uint8_t>(127));
     renderer.draw(term, hw.world(), hero->entity_id());
     EXPECT_EQ(term.text_row(1).find("Sp:"), std::string::npos);
 }
@@ -278,14 +278,14 @@ TEST(CursesRenderer, hud_names_the_spec_keys_with_ability_select_on)
         << "the SHIFTER row; got: " << term.text_row(1);
 
     renderer.set_shift_layer(false);
-    hero->set_family(static_cast<char>(FAMILY_MAGE));
+    hero->set_family(static_cast<std::uint8_t>(FAMILY_MAGE));
     renderer.draw(term, hw.world(), hero->entity_id());
     EXPECT_NE(term.text_row(1).find("2:WARP SPACE 3:FREEZE TIM"), std::string::npos)
         << "a name past 10 glyphs is cut; got: " << term.text_row(1);
     EXPECT_EQ(term.text_row(1).find("FREEZE TIME"), std::string::npos)
         << "the 11-glyph name is not shown whole; got: " << term.text_row(1);
 
-    hero->set_family(static_cast<char>(127));
+    hero->set_family(static_cast<std::uint8_t>(127));
     renderer.draw(term, hw.world(), hero->entity_id());
     EXPECT_EQ(term.text_row(1).find("1:"), std::string::npos)
         << "nothing on any key: no key list; got: " << term.text_row(1);
@@ -698,7 +698,7 @@ TEST(CursesRenderer, weapons_are_drawn_over_oblist)
     walker* rock = hw.world().add_weap_ob(Order::Weapon, FAMILY_ROCK);
     ASSERT_NE(rock, nullptr);
     rock->set_order(Order::Weapon);
-    rock->set_family(static_cast<char>(FAMILY_ROCK));
+    rock->set_family(static_cast<std::uint8_t>(FAMILY_ROCK));
     rock->setxy(static_cast<short>(9 * GRID_SIZE), static_cast<short>(8 * GRID_SIZE));
 
     HeadlessTerminal term(21, 41);

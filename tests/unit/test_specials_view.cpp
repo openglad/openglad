@@ -632,7 +632,7 @@ TEST(SpecialsView, blocks_placement_reaches_the_predicate)
     // made as a knife and re-tagged, which is all the predicate reads.
     walker* wall = tw.world().add_weap_ob(Order::Weapon, FAMILY_KNIFE);
     ASSERT_NE(nullptr, wall);
-    wall->set_order_family(Order::Weapon, static_cast<char>(wall_id));
+    wall->set_order_family(Order::Weapon, static_cast<std::uint8_t>(wall_id));
     EXPECT_EQ(Order::Weapon, wall->query_order());
     EXPECT_EQ(wall_id, static_cast<int>(static_cast<unsigned char>(wall->family())));
     EXPECT_TRUE(og::sim::declares_blocks_placement(*wall));

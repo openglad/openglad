@@ -44,7 +44,7 @@ protected:
         world.entity_factory = [](Order order,
                                   std::int32_t family) -> std::unique_ptr<walker> {
             auto entity = std::make_unique<walker>();
-            entity->set_order_family(order, static_cast<char>(family));
+            entity->set_order_family(order, static_cast<std::uint8_t>(family));
             entity->set_sizex(16);
             entity->set_sizey(16);
             return entity;
@@ -245,7 +245,7 @@ TEST_F(LevelScriptsTest, nested_dispatch_keeps_outer_handles_alive)
     world.tick();
 
     walker loose;  // never added to the world: entity_id stays 0
-    loose.set_order_family(Order::Living, static_cast<char>(FAMILY_SOLDIER));
+    loose.set_order_family(Order::Living, static_cast<std::uint8_t>(FAMILY_SOLDIER));
     const FamilyDescriptor* fd = get_family_descriptor(FAMILY_SOLDIER);
     ASSERT_NE(nullptr, fd);
 
@@ -511,7 +511,7 @@ TEST_F(LevelScriptsTest, level_and_entity_hook_registration_rejections)
     // id to key the override by, so it is refused rather than silently
     // dropped on the floor.
     walker loose;
-    loose.set_order_family(Order::Living, static_cast<char>(FAMILY_SOLDIER));
+    loose.set_order_family(Order::Living, static_cast<std::uint8_t>(FAMILY_SOLDIER));
     ASSERT_EQ(0u, loose.entity_id());
     const FamilyDescriptor* soldier = get_family_descriptor(FAMILY_SOLDIER);
     ASSERT_NE(nullptr, soldier);
