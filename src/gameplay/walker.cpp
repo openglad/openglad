@@ -4067,3 +4067,19 @@ walker* walker::credit_head()
 	}
 	return top;
 }
+
+// Room on fire()'s pad for a summon of this walker's own (the druid's SUMMON
+// FAERIE stands its faerie where the bolt stands): the pad from pad_probe,
+// then the cast's question with the summoned body (og::sim::summon_room_at).
+// Appended at EOF so the parity canary pins above never shift.
+bool walker::pad_room(Order body_order, std::int32_t body_family, std::int32_t weapon_family)
+{
+	weap probe(WeaponProfileProbeTag{});
+	short px = 0, py = 0;
+	// rule: Only a living can ask whether a summon of its own has room on its weapon's pad, and only
+	//   about a weapon and a body the loader can make; anything else is no room.
+	// tests: QuietProbe.pad_room_asks_the_casts_question_with_the_summoned_body
+	if (!pad_probe(probe, weapon_family, px, py))
+		return false;
+	return og::sim::summon_room_at(*current_game->world, *this, body_order, body_family, px, py);
+}

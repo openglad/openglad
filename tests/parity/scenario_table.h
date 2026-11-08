@@ -10788,9 +10788,62 @@ inline constexpr FactPredicate kFacts_druid_bot_faerie_pad_body_fixes_scen99[] =
 };
 inline constexpr Mutation kMut_druid_bot_faerie_pad_body_fixes_scen99 = {
     "packs/core/families/living-13-druid.lua", 305,
-    "return G.foes_within(self, 1, 130, false) and G.pad_clear(self)",
+    "return G.foes_within(self, 1, 130, false) and G.summon_pad_clear(self, \"living\", LIVING_FAERIE)",
     "return G.foes_within(self, 1, 130, false)",
-    "Drops the pad test, so the gate says yes to the touching tower and the cast's fire() lands a blow on it before refusing COULD NOT FIRE: EventKindExactly(play_sound, 0) reads 1 and the tower ends at 122 hp."
+    "Drops the pad test and the faerie's room with it, so the gate says yes to the touching tower and the cast's fire() lands a blow on it before refusing COULD NOT FIRE: EventKindExactly(play_sound, 0) reads 1 and the tower ends at 122 hp."
+};
+
+// --- druid_bot_faerie_room (fix AR, #435: SUMMON FAERIE asks the faerie's room) ---
+// druid_bot_faerie_pad_body's geometry with the touching tower on the
+// druid's own side: the lightning bolt SUMMON FAERIE fires passes it (a
+// weapon passes its own team's bodies), so the bolt's pad is clear, but the
+// faerie the cast stands where the bolt stands has no room there. A second
+// TOWER1, of the player's team, beside the druid and off the pad, is the
+// living foe within 130 px. The seed (2) makes the level-4 druid roll SUMMON
+// FAERIE on tick 0. The classic druid has no gate: the bolt passes its own
+// tower and sounds (SOUND_BOLT), the faerie the cast stands on the bolt's
+// spot meets the tower, and the cast refuses NO ROOM TO SUMMON: no faerie
+// stands. With the setting on (fix AR) the rule asks for the faerie's room
+// there, finds the tower and holds; the roll takes the bot's ordinary act
+// (fix W), which sounds nothing in the budget. Neither tower shoots inside
+// the three ticks.
+inline constexpr SpawnSpec kFamilySpawns_druid_bot_faerie_room_scen99[] = {
+    { FAMILY_TOWER1,  1, kOrderLiving, 115,  91, 0, 0 },           // the druid's own side, touching above, centred: where the faerie appears (the bolt passes it)
+    { FAMILY_TOWER1,  0, kOrderLiving, 175, 120, 0, 0 },           // a living foe within 130 px, beside the druid, off the pad
+    { FAMILY_DRUID,   1, kOrderLiving, 120, 120, 0, 0, 4, 100 },   // hostile level-4 bot, heading UP at spawn
+    { FAMILY_SOLDIER, 0, kOrderLiving, 560, 440, 0, 0 },           // idle player LAST, far away
+};
+inline constexpr FactPredicate kFacts_druid_bot_faerie_room_scen99[] = {
+    pred::TickReached(3),
+    pred::EventKindExactly(/*play_sound*/1, 1,
+        "consequence: the classic druid casts: its bolt passes its own tower on the pad and sounds, once"),
+    pred::WalkerFamilyCount(FAMILY_FAERIE, 0, 0,
+        "consequence: the faerie stood on the bolt's spot meets the druid's tower: NO ROOM TO SUMMON, the faerie is cancelled"),
+    // negative_assertion: no faerie stands; the pin stops the cast asking the faerie's room and it stands (0 -> 1).
+    pred::WeaponFamilyCount(FAMILY_LIGHTNING, 0, 0),
+    // negative_assertion: no bolt is left in the air on either value: the cast kills it when it stands the faerie.
+};
+inline constexpr Mutation kMut_druid_bot_faerie_room_scen99 = {
+    "packs/core/families/living-13-druid.lua", 116,
+    "if not og.query_passable(faerie:xpos(), faerie:ypos(), faerie) then",
+    "if false then",
+    "The cast stops asking whether the faerie has room, so the faerie stands on the tower's spot: WalkerFamilyCount(FAMILY_FAERIE, 0, 0) reads 1."
+};
+inline constexpr FactPredicate kFacts_druid_bot_faerie_room_fixes_scen99[] = {
+    pred::TickReached(3),
+    // negative_assertion: no sound with the setting on; the pin drops the faerie's room from the rule and the bolt's sound returns (0 -> 1).
+    pred::EventKindExactly(/*play_sound*/1, 0,
+        "consequence: with the setting on the rule finds no room for the faerie on the bolt's spot and holds the cast; the bot's ordinary act sounds nothing in the budget"),
+    pred::WalkerFamilyCount(FAMILY_FAERIE, 0, 0),
+    // negative_assertion: no faerie on either value: held with the setting on, cancelled with it off.
+    pred::WeaponFamilyCount(FAMILY_LIGHTNING, 0, 0),
+    // negative_assertion: no bolt on either value.
+};
+inline constexpr Mutation kMut_druid_bot_faerie_room_fixes_scen99 = {
+    "packs/core/families/living-13-druid.lua", 305,
+    "G.summon_pad_clear(self, \"living\", LIVING_FAERIE)",
+    "G.pad_clear(self)",
+    "The rule asks the bolt's pad alone (the bolt passes the druid's own tower), so it says yes and the cast fires its bolt before refusing NO ROOM TO SUMMON: EventKindExactly(play_sound, 0) reads 1."
 };
 
 // --- archer_bot_barrage_pad_body (fix AS, #436: BARRAGE's rule asks the arrow's pad) ---
@@ -14267,6 +14320,20 @@ inline constexpr ScenarioSpec kScenarios[] = {
       0, false, true, Exercises::None,
       kFacts_druid_bot_faerie_pad_body_fixes_scen99, std::size(kFacts_druid_bot_faerie_pad_body_fixes_scen99),
       kMut_druid_bot_faerie_pad_body_fixes_scen99, {}, 1, nullptr, 0, 1 },
+    { "druid_bot_faerie_room_scen99", "scen/scen1.fss", 0x00000002u,
+      kInputsEmpty, std::size(kInputsEmpty), 3,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_druid_bot_faerie_room_scen99, std::size(kFamilySpawns_druid_bot_faerie_room_scen99),
+      0, false, true, Exercises::None,
+      kFacts_druid_bot_faerie_room_scen99, std::size(kFacts_druid_bot_faerie_room_scen99),
+      kMut_druid_bot_faerie_room_scen99 },
+    { "druid_bot_faerie_room_fixes_scen99", "scen/scen1.fss", 0x00000002u,
+      kInputsEmpty, std::size(kInputsEmpty), 3,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_druid_bot_faerie_room_scen99, std::size(kFamilySpawns_druid_bot_faerie_room_scen99),
+      0, false, true, Exercises::None,
+      kFacts_druid_bot_faerie_room_fixes_scen99, std::size(kFacts_druid_bot_faerie_room_fixes_scen99),
+      kMut_druid_bot_faerie_room_fixes_scen99, {}, 1, nullptr, 0, 1 },
     { "archer_bot_barrage_pad_body_scen99", "scen/scen1.fss", 0x00000002u,
       kInputsEmpty, std::size(kInputsEmpty), 3,
       CompareMode::SemanticParity, false,

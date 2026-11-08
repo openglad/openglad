@@ -154,6 +154,15 @@ class walker : public og::sim::SimEntity
 		// fire_pad_answer(weapon_family, weapons_block) == PadAnswer::Clear.
 		[[nodiscard]] bool fire_pad_clear(std::int32_t weapon_family = -1,
 		                                  bool weapons_block = false);
+		// Room on fire()'s pad (for the current weapon, or weapon_family) for a
+		// summon of this walker's own of (body_order, body_family), standing
+		// where the weapon stands (the druid's SUMMON FAERIE): the cast's own
+		// passability question, asked quietly with a detached body owned by this
+		// walker (og::sim::summon_room_at), never this walker's own body (#423).
+		// False for a non-living, or a weapon or body the loader cannot make. No
+		// entity, no draw, nothing eaten or opened. A bot gate's question.
+		[[nodiscard]] bool pad_room(Order body_order, std::int32_t body_family,
+		                            std::int32_t weapon_family = -1);
 		virtual bool act();
 		short set_act_type(short num);
 		short restore_act_type();

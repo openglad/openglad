@@ -154,6 +154,7 @@
 ---@field move_myguy_to fun(self: og.Walker, target: og.Walker)
 ---@field order fun(self: og.Walker): integer
 ---@field owner fun(self: og.Walker): og.Walker?
+---@field pad_room fun(self: og.Walker, order: og.OrderName, family: integer, weapon_family: integer?): boolean # walker:pad_room(order, family [, weapon_family]) → boolean — is there room on the pad fire() would place this living's weapon on (the current one, or weapon_...
 ---@field possess_link fun(self: og.Walker): integer # walker:possess_link() -> integer (the partner's entity id, 0 = none)
 ---@field possess_ticks fun(self: og.Walker): integer # walker:possess_ticks() -> integer (the host's countdown, 0 = permanent)
 ---@field real_team_num fun(self: og.Walker): integer

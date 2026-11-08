@@ -3983,6 +3983,26 @@ int m_fire_pad_answer(lua_State* L)
     return 1;
 }
 
+// walker:pad_room(order, family [, weapon_family]) → boolean — is there room on
+// the pad fire() would place this living's weapon on (the current one, or
+// weapon_family) for a body of that order and family of its own, owned by it
+// and on its team (walker::pad_room)? The cast's own question for a summon it
+// stands where its weapon stands (the druid's SUMMON FAERIE), asked quietly
+// with a detached body: no entity, no draw, nothing eaten or opened, never the
+// caster's own body. A bot gate's question.
+int m_pad_room(lua_State* L)
+{
+    walker* self = self_arg(L);
+    const Order order = order_from_string(L, 2);
+    const auto family = static_cast<std::int32_t>(luaL_checkinteger(L, 3));
+    const lua_Integer weapon_family = luaL_optinteger(L, 4, -1);
+    // rule: A bot gate can ask whether a summon of the caster's would have room where its weapon
+    //   would stand.
+    // tests: QuietProbe.pad_room_asks_the_casts_question_with_the_summoned_body
+    lua_pushboolean(L, self->pad_room(order, family, pad_weapon_family(L, weapon_family)) ? 1 : 0);
+    return 1;
+}
+
 const luaL_Reg kWalkerMethods[] = {
     {"xpos", m_xpos}, {"ypos", m_ypos},
     {"sizex", m_sizex}, {"sizey", m_sizey}, {"sizez", m_sizez},
@@ -4061,6 +4081,7 @@ const luaL_Reg kWalkerMethods[] = {
     {"attack", m_attack}, {"fire", m_fire}, {"special", m_special},
     {"fire_pad_clear", m_fire_pad_clear},
     {"fire_pad_answer", m_fire_pad_answer},
+    {"pad_room", m_pad_room},
     {"death", m_death},
     {"teleport", m_teleport}, {"teleport_ranged", m_teleport_ranged},
     {"find_teleport_target", m_find_teleport_target},

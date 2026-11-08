@@ -112,7 +112,7 @@ local function summon_faerie(self)
   -- rule: A faerie summoned where its body cannot stand (the bolt's spot is blocked) is cancelled:
   --   the faerie dies and the cast fails NO ROOM TO SUMMON.
   -- tests: SemDruid.a_faerie_summoned_on_open_ground_lives_for_its_lifetime
-  -- tests: SemDruid.a_faerie_summoned_onto_a_body_is_cancelled
+  -- tests: SemDruid.a_faerie_summoned_onto_a_body_is_cancelled, parity:druid_bot_faerie_room_scen99
   if not og.query_passable(faerie:xpos(), faerie:ypos(), faerie) then
     faerie.dead = 1
     return false, "NO ROOM TO SUMMON"
@@ -284,25 +284,25 @@ local function check_special_ai(self)
     -- tests: parity:druid_bot_tree_behind_fixes_scen99, parity:druid_bot_tree_pad_body_fixes_scen99
     return G.faces(self, f) and not G.at_blows(self, f)
   elseif slot == 2 then  -- rule: Gameplay Fixes: SUMMON FAERIE pays with a living foe within 130
-    --   px, no faerie of the druid's out, and the bolt's pad clear.
+    --   px, no faerie of the druid's out, the bolt's pad clear and (fix AR) room on it for the faerie.
     -- tests: GameplayFixesBots.druid_faerie_wants_a_foe_near_and_no_faerie_out
-    -- tests: GameplayFixesBots.druid_faerie_refuses_a_pad_on_a_foe
-    -- tests: parity:druid_bot_faerie_alone_fixes_scen99
-    -- SUMMON FAERIE: a living foe within 130 px, no faerie out, the bolt's pad clear.
+    -- tests: GameplayFixesBots.druid_faerie_refuses_a_pad_on_a_foe, GameplayFixesBots.druid_faerie_wants_room_where_the_bolt_stands
+    -- tests: parity:druid_bot_faerie_alone_fixes_scen99, parity:druid_bot_faerie_room_fixes_scen99
+    -- SUMMON FAERIE: a living foe within 130 px, no faerie out, the bolt's pad clear, room there for the faerie.
     -- rule: Gameplay Fixes: SUMMON FAERIE pays with a living foe within 130 px, no faerie of the
-    --   druid's out, and the bolt's pad clear.
+    --   druid's out, the bolt's pad clear and (fix AR) room on it for the faerie.
     -- tests: GameplayFixesBots.druid_faerie_wants_a_foe_near_and_no_faerie_out
-    -- tests: GameplayFixesBots.druid_faerie_refuses_a_pad_on_a_foe
-    -- tests: parity:druid_bot_faerie_alone_fixes_scen99
+    -- tests: GameplayFixesBots.druid_faerie_refuses_a_pad_on_a_foe, GameplayFixesBots.druid_faerie_wants_room_where_the_bolt_stands
+    -- tests: parity:druid_bot_faerie_alone_fixes_scen99, parity:druid_bot_faerie_room_fixes_scen99
     if G.owned(self, C.ORDER_LIVING, LIVING_FAERIE) > 0 then
       return false
     end
     -- rule: Gameplay Fixes: SUMMON FAERIE pays with a living foe within 130 px, no faerie of the
-    --   druid's out, and the bolt's pad clear.
+    --   druid's out, the bolt's pad clear and (fix AR) room on it for the faerie, asked with the faerie's body, never the druid's (#423).
     -- tests: GameplayFixesBots.druid_faerie_wants_a_foe_near_and_no_faerie_out
-    -- tests: GameplayFixesBots.druid_faerie_refuses_a_pad_on_a_foe
-    -- tests: parity:druid_bot_faerie_alone_fixes_scen99
-    return G.foes_within(self, 1, 130, false) and G.pad_clear(self)
+    -- tests: GameplayFixesBots.druid_faerie_refuses_a_pad_on_a_foe, GameplayFixesBots.druid_faerie_wants_room_where_the_bolt_stands
+    -- tests: parity:druid_bot_faerie_alone_fixes_scen99, parity:druid_bot_faerie_room_fixes_scen99
+    return G.foes_within(self, 1, 130, false) and G.summon_pad_clear(self, "living", LIVING_FAERIE)
   elseif slot == 3 then  -- rule: Gameplay Fixes: a druid bot never casts REVEAL (it only changes a
     --   viewscreen's radar).
     -- tests: GameplayFixesBots.druid_reveal_is_never_cast_by_a_bot

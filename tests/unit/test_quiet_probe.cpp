@@ -1262,6 +1262,160 @@ TEST_F(QuietProbe, body_spot_clear_asks_the_placement_rule_with_the_bodys_box)
     EXPECT_EQ(before, state(nullptr, {food})) << before.describe();
 }
 
+// Gameplay Fixes AR (#435): walker::pad_room asks the druid's SUMMON
+// FAERIE question before the cast: is there room for a faerie of the
+// druid's where the bolt stands? The druid (team 1, 16x16 at 320,320,
+// heading RIGHT) puts its 8x8 lightning, and so the faerie, at fire()'s pad
+// (337,324). For every case the quiet answer changes nothing (WorldState,
+// the potion undrunk), the Lua door walker:pad_room('living', faerie)
+// answers the same, and the answer equals the loud one the cast asks: a
+// real faerie of the druid's on the spot, og.query_passable's C++ with it
+// (asked last, since a real faerie on the spot would meet the probe). An
+// own-team tree passes (a living passes its own side's weapons), an ally,
+// an enemy living, an enemy tree, an enemy arrow in flight and a locked
+// door block, a mana potion passes (a treasure never blocks; the loud
+// question drinks it, the quiet one leaves it), a wall and an
+// arrow slit block a living, and water lets the faerie (a flyer) pass. A
+// tent caster and a living family the loader cannot make answer no, an
+// unknown order word is a script error naming it, and a wall that a 16x16
+// box on the spot would meet but the faerie's box does not leaves room: the
+// question is asked with the summoned body, never the caster's (#423).
+// RED (planted): summon_room_at asking loudly (quiet = false): the potion
+// is drunk and the state differs; summon_room_at asking with the
+// owner as the probe: the 16x16 wall arm answers no.
+TEST_F(QuietProbe, pad_room_asks_the_casts_question_with_the_summoned_body)
+{
+    const std::pair<short, short> faerie_box = body_box(Order::Living, FAMILY_FAERIE);
+    ASSERT_EQ((std::pair<short, short>{8, 8}), faerie_box);
+    ASSERT_EQ((std::pair<short, short>{8, 8}), body_box(Order::Weapon, FAMILY_LIGHTNING));
+    struct RoomCase
+    {
+        const char* name;
+        bool room;
+    };
+    const std::vector<RoomCase> cases = {
+        {"open", true},
+        {"ally living", false},
+        {"enemy living", false},
+        {"own-team tree", true},
+        {"enemy tree", false},
+        {"enemy weapon in flight", false},
+        {"enemy door", false},
+        {"mana potion", true},
+        {"wall", false},
+        {"arrow slit", false},
+        {"water", true},
+    };
+    const short sx = 337;  // fire()'s pad for the lightning: one pixel right,
+    const short sy = 324;  // centred on the druid's 16 px side
+    std::vector<const walker*> watched;
+    const auto build = [&](const std::string& kind) -> walker* {
+        fresh_world();
+        watched.clear();
+        walker* druid = living_at(FAMILY_DRUID, 1, 320, 320);
+        if (druid == nullptr)
+            return nullptr;
+        druid->set_current_weapon(FAMILY_LIGHTNING);
+        druid->set_lastx(1.0f);
+        druid->set_lasty(0.0f);
+        if (kind == "ally living") {
+            watched.push_back(living_at(FAMILY_SOLDIER, 1, 337, 320));
+        } else if (kind == "enemy living") {
+            watched.push_back(living_at(FAMILY_ORC, 2, 337, 320));
+        } else if (kind == "own-team tree") {
+            watched.push_back(weapon_at(FAMILY_TREE, 1, 337, 320, 16, 16));
+        } else if (kind == "enemy tree") {
+            watched.push_back(weapon_at(FAMILY_TREE, 2, 337, 320, 16, 16));
+        } else if (kind == "enemy weapon in flight") {
+            watched.push_back(weapon_at(FAMILY_ARROW, 2, 338, 325, 7, 7));
+        } else if (kind == "enemy door") {
+            walker* door = weapon_at(FAMILY_DOOR, 2, 337, 320, 16, 16);
+            if (door != nullptr)
+                door->stats()->set_level(2);
+            watched.push_back(door);
+        } else if (kind == "mana potion") {
+            walker* potion = world().add_fx_ob(Order::Treasure, FAMILY_MAGIC_POTION);
+            watched.push_back(place(potion, 337, 324, 8, 8));
+        } else if (kind == "wall") {
+            tile(21, 20, PIX_H_WALL1);
+        } else if (kind == "arrow slit") {
+            tile(21, 20, PIX_WALL4);
+        } else if (kind == "water") {
+            tile(21, 20, PIX_WATER1);
+        }
+        return druid;
+    };
+    {
+        walker* druid = build("open");
+        ASSERT_NE(nullptr, druid);
+        walker probe(walker::WeaponProfileProbeTag{});
+        probe.set_sizex(8);
+        probe.set_sizey(8);
+        short px = 0, py = 0;
+        druid->weapon_pad(probe, px, py);
+        ASSERT_EQ(sx, px) << "the spot is fire()'s pad";
+        ASSERT_EQ(sy, py);
+    }
+    const int faerie_family = FAMILY_FAERIE;
+    for (const RoomCase& c : cases) {
+        SCOPED_TRACE(c.name);
+        walker* druid = build(c.name);
+        ASSERT_NE(nullptr, druid);
+        for (const walker* w : watched)
+            ASSERT_NE(nullptr, w);
+        const WorldState before = state(druid, watched);
+        EXPECT_EQ(c.room, druid->pad_room(Order::Living, faerie_family));
+        EXPECT_EQ(before, state(druid, watched))
+            << "before " << before.describe() << "\nafter  "
+            << state(druid, watched).describe();
+        Answers a = lua(druid, std::format(
+            "    og.log('room', self:pad_room('living', {}) and 1 or 0)\n", faerie_family));
+        EXPECT_EQ(c.room ? "1" : "0", a["room"]) << last_error();
+
+        // The loud answer the cast asks, with a real faerie of the druid's.
+        walker* faerie = world().add_ob(Order::Living, faerie_family);
+        ASSERT_NE(nullptr, faerie);
+        faerie->set_owner(druid);
+        faerie->set_team_num(1);
+        place(faerie, sx, sy, faerie_box.first, faerie_box.second);
+        EXPECT_EQ(c.room, world().query_passable(sx, sy, faerie))
+            << "the cast's own question, asked loudly";
+        if (std::string(c.name) == "mana potion") {
+            EXPECT_NE(0, watched[0]->dead())
+                << "the control: the loud question drinks the potion the quiet one left";
+        }
+    }
+
+    // A tent asks nothing; a family the loader cannot make has no room.
+    fresh_world();
+    walker* tent = world().add_ob(Order::Generator, FAMILY_TENT);
+    ASSERT_NE(nullptr, place(tent, 320, 320, 16, 16));
+    EXPECT_FALSE(tent->pad_room(Order::Living, faerie_family)) << "a tent caster";
+    walker* druid = build("open");
+    ASSERT_NE(nullptr, druid);
+    EXPECT_FALSE(druid->pad_room(Order::Living, 100)) << "a living slot no pack declares";
+    EXPECT_TRUE(druid->pad_room(Order::Living, faerie_family)) << "the control";
+    Answers bad = lua(druid,
+                      "    local ok, err = pcall(function() return self:pad_room('bogus', 1) end)\n"
+                      "    og.log('ok', ok and 1 or 0)\n"
+                      "    og.log('err', tostring(err))\n");
+    EXPECT_EQ("0", bad["ok"]);
+    EXPECT_NE(std::string::npos, bad["err"].find("bogus")) << bad["err"];
+
+    // A wall a caster-sized box on the spot meets and the faerie's does not.
+    druid = build("open");
+    ASSERT_NE(nullptr, druid);
+    tile(22, 21, PIX_H_WALL1);
+    walker body16(walker::WeaponProfileProbeTag{});
+    ASSERT_NE(nullptr, world().configure_existing_entity(body16, Order::Living, FAMILY_SOLDIER));
+    body16.set_sizex(16);
+    body16.set_sizey(16);
+    ASSERT_FALSE(world().query_grid_passable(sx, sy, &body16, 0, true))
+        << "precondition: a 16x16 box on the spot meets the wall";
+    EXPECT_TRUE(druid->pad_room(Order::Living, faerie_family))
+        << "the faerie's own box fits (#423)";
+}
+
 // body_spot_near's ring order on fixed arrangements around the corner
 // (400,400). A thin post (2 px wide, 60 tall) at x = 407 blocks the corner;
 // for a body bw wide the first clear spots are x - (bw - 7) (left) and

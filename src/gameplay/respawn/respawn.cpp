@@ -1429,6 +1429,31 @@ bool body_spot_near(GameWorld& world, Order order, std::int32_t family,
     return false;
 }
 
+// The cast's own passability question for a summon it stands where its
+// weapon stands (the druid's SUMMON FAERIE: og.query_passable(x, y, faerie)),
+// asked quietly with a detached body of (order, family) owned by `owner` and
+// on its team: never the caster's own body (#423), never the placement rule
+// body_spot_clear asks.
+bool summon_room_at(GameWorld& world, walker& owner, Order order, std::int32_t family,
+                    short x, short y)
+{
+    walker probe(walker::WeaponProfileProbeTag{});
+    const int floor = static_cast<int>(owner.floor());
+    // rule: Asking whether a body of a family fits somewhere answers no for a family the loader
+    //   cannot make: an empty slot, an id outside the family byte, or a living with no family
+    //   (never a soldier stand-in); the configured body must be the order and family asked for.
+    // tests: QuietProbe.body_spot_clear_asks_the_placement_rule_with_the_bodys_box
+    // tests: SemRespawn.a_body_probe_answers_no_for_a_family_slot_the_loader_cannot_make
+    // tests: QuietProbe.pad_room_asks_the_casts_question_with_the_summoned_body
+    if (!make_body_probe(world, probe, order, family, x, y, floor))
+        return false;
+    probe.set_owner(&owner);              // the summon's chain: is_friendly reads it
+    probe.set_team_num(owner.team_num());
+    // The cast's own question, asked quietly: no draw, nothing eaten, opened
+    // or struck. For a living prober the quiet answer is the loud one.
+    return world.query_passable(x, y, &probe, floor, /*quiet=*/true);
+}
+
 void respawn_scrub_stains_at(GameWorld& world, short x, short y, int floor)
 {
     // The corpse-relative rule of scrub_corpse_drops_in, keyed by position:

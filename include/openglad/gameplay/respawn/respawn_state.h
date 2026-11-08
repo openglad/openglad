@@ -195,6 +195,17 @@ bool body_spot_near(GameWorld& world, Order order, std::int32_t family,
                     short x, short y, int floor, int radius,
                     short& out_x, short& out_y);
 
+// Room for a summon of `owner`'s own with its top-left at (x, y) on owner's
+// floor: the cast's passability question (query_passable: the grid with the
+// body's own box and flags, then the bodies by ob_pass_check's rules) asked
+// quietly with a detached body of (order, family), owned by `owner` and on
+// its team, so an own-team weapon passes and an ally, an enemy living, door,
+// tree or weapon in flight blocks. Never asked with the caster's own body
+// (#423), and not the placement rule body_spot_clear asks. No entity, no
+// draw, nothing eaten or opened. False for a family the loader cannot make.
+bool summon_room_at(GameWorld& world, walker& owner, Order order, std::int32_t family,
+                    short x, short y);
+
 // The one obmap re-registration rule for a walker just placed with setxy():
 // setxy() moves obmap entries through obmap::move, which does nothing when
 // the position is unchanged, so a walker placed on the tile it already holds
