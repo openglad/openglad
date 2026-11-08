@@ -75,7 +75,7 @@ usual pause.
 | J | Cleric HEAL | An ally can be healed above its maximum health, and stays there. | Health stops at the maximum. The number shown and the experience earned are what really landed; the magic cost is unchanged. |
 | K | WHIRLWIND, TAUNT, SCARE, HOWL | With nobody in reach each still succeeds: the spin, the taunt, the fright and the howl spend their magic (and SCARE and HOWL start their rest) at nobody. | Each is refused as `NO FOE IN RANGE`. WHIRLWIND, TAUNT and HOWL count anything they can act on, generators included; SCARE counts only living foes, the only ones a fright moves. |
 | L | Bot slot roll | A bot rolls a slot from 1 to (level + 2) / 3 and folds anything above 4 into slot 1: a level-13 mage never rolls HEARTBURST (slot 5), and a level-16 soldier rolls CHARGE half the time. | The roll stops at the family's last named slot that the level has opened, and nothing is folded. |
-| M | Charm and seats | An enemy thief or archmage can charm a hero a player is driving. A seat can be handed a walker that is only on its team because it is charmed. | A driven hero resists (the rule POSSESS already has). A seat never claims a charmed walker (see [Charm and seats](#charm-and-seats)). |
+| M | Charm and seats | An enemy thief or archmage can charm a hero a player is driving. A seat can be handed a walker that is only on its team because it is charmed. | A driven hero resists (the rule POSSESS already has). A seat never claims a charmed walker (see [Charm and seats](#charm-and-seats)). A seat already driving a walker when its charm runs out keeps it, on both settings. |
 | Q | Bot payoff gates | Elf, archer, druid, barbarian, soldier, thief, ghost, orc and cleric bots cast specials at nobody, at foes out of reach or with allies in the blast: an elf throws rocks with no foe in sight, a thief drops its bomb at a foe 130 px or more away, a cleric throws its mace with nobody near. | Every special a bot can roll has the rule under which it pays off (see [Bots](#bots)); a Shift arm is its own special for a bot, with its own rule. |
 | R | The struck archmage's order | A struck archmage bot with a foe within 200 px casts its 500-magic summon first and then tries slot 2 (fix AE). | It answers with one HEARTBURST or CHAIN LIGHTNING chosen by the slot-2 rule: no summon, no second cast. Below its flee threshold it still teleports. |
 | S | WHIRLWIND, DISARM, BARRAGE and EXPLODING BOLT after a shot | A hero (any walker with a character record: a player's, and every hero of a crew a bot drives) that has fired once can never cast these four again: each refuses as `SPECIAL BUSY`, for good. A hero fires on a fractional delay, the class's delay less a 47th of its dexterity (a soldier with 20 dexterity waits 5.57 ticks); busy counts down by one a tick only while it is above zero, so after a shot it rests a fraction below zero, and these four refuse while busy is not zero. | Busy at or below zero is not busy, as it already is for every other special. The firing delay and the countdown are unchanged, so nothing fires sooner. |
@@ -769,14 +769,28 @@ test keeps for it.
   a user tag, or the player-control act). A skipped hero costs the caster
   no roll and gives no free hit; with nobody else eligible the charm is
   refused as `NO VALID TARGET`.
-- **A seat never claims a charmed walker** (issue #354, the current game
-  only). The seat scans skip a walker whose charm timer is running and
-  whose real team is recorded: it is on our team only because our side
-  charmed it. A freshly spawned walker (charm timer 0) is still claimable.
-  One visible consequence: a team whose only bodies are walkers it charmed
-  now ends the game instead of handing a seat a borrowed walker, and a
-  player joining mid-level in a local game is given the stock soldier
-  instead (in a networked game the seat follows the team).
+- **A seat never claims a charmed walker** (issues #354 and #450, the
+  current game only). The seat scans skip a walker whose charm timer is
+  running and whose real team is recorded: it is on our team only because
+  our side charmed it. Every scan a seat takes a body through asks this:
+  the hand-off when the walker a seat drives dies, the entry claim, the
+  server's bind claim and a networked join. Switch Character has always
+  refused such a walker (it refuses any walker with a real team recorded).
+  A freshly spawned walker (charm timer 0) is still claimable. One visible
+  consequence: a team whose only bodies are walkers it charmed now ends the
+  game instead of handing a seat a borrowed walker, and a player joining
+  mid-level in a local game is given the stock soldier instead (in a
+  networked game the seat follows the team). No parity row can reach it:
+  both recordings claim control their own way (the first live walker of
+  the player's team) and never run a seat's hand-off. #450 asked for this
+  rule a second time; it is fix M's seat half, so no new letter is
+  assigned.
+- **A seat keeps the walker it drives when its charm runs out** (#450,
+  both settings, both games). The walker goes back to its own side with
+  the seat still on it: a seat looks for a new body only when it has none
+  or its body is dead, and never asks a live body's team. This is the
+  maintainer's ruling: refuse a charmed walker for the hand-off, keep one
+  already controlled.
 
 The old game has the same seat scans, but no parity capture can run them, so
 #354 is not ported there.
@@ -1164,7 +1178,7 @@ Rows deliberately not added:
 - `NO ONE TO DISARM` has no row: a refusal string is not recorded and the
   cast spends nothing on either value, so an arena's two captures would be
   byte-identical; a current-game test pins it.
-- Fixes N, O and M's seat half (#354): no parity row can reach them (see
+- Fixes N, O and M's seat half (#354, #450): no parity row can reach them (see
   [Not gated](#not-gated) and [Charm and seats](#charm-and-seats)).
 - Fix S: no parity row can reach it. A parity spawn has no character
   record, so its fire delay is a whole number and busy always counts down

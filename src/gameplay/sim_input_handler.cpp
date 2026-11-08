@@ -199,11 +199,11 @@ walker* sim_find_next_control(GameWorld& level, short my_team)
     for (auto& uptr : level.oblist)
     {
         walker* w = uptr.get();
-        // rule: With no player character left, a seat takes any eligible member of its own team; it
-        //   never takes a walker of another team (the 2002 'ANYONE' pass is gone).
-        // tests: SimInputHandler.sim_find_next_control_team_fallback
-        // tests: SimInputHandler.sim_find_next_control_none
-        // tests: SimInputHandler.sim_find_next_control_never_claims_another_team
+        // rule: With no player character left, a seat takes any eligible member of its own team
+        //   (with Gameplay Fixes on, not a walker our side charmed: #354, #450); it never takes a
+        //   walker of another team (the 2002 'ANYONE' pass is gone).
+        // tests: SimInputHandler.sim_find_next_control_team_fallback, SimInputHandler.sim_find_next_control_none, SimInputHandler.sim_find_next_control_never_claims_another_team
+        // tests: GameplayFixesSeats.a_seat_skips_a_walker_our_side_charmed, GameplayFixesSeats.a_dead_heros_seat_takes_a_charmed_foe_only_with_the_setting_off, GameplayFixesSeats.a_dead_heros_seat_takes_a_real_teammate_on_both_settings
         if (w && !w->dead() && !w->dormant() && !w->hidden() &&
             w->possess_link() == 0 &&
             w->query_order() == Order::Living &&
@@ -482,9 +482,9 @@ SimInputResult sim_process_player_input(
             control = nullptr;
         }
     }
-    // rule: A seat whose hero is dead but due to respawn keeps that exact hero (it does not jump to
-    //   a teammate and miss the countdown).
-    // tests: SimInputHandler.respawning_dead_hero_does_not_switch_to_teammate
+    // rule: A seat looks for a new body only when it has none or its body is dead: it keeps a live
+    //   body whatever team that body now wears, so a charm running out takes the seat with it (#450).
+    // tests: SimInputHandler.respawning_dead_hero_does_not_switch_to_teammate, SimInputHandler.sim_input_dead_control_reassigns_to_next_alive, GameplayFixesSeats.a_seat_keeps_its_walker_when_the_charm_runs_out
     if (!control || control->dead())
     {
         // Respawning players keep their exact entity assignment. The normal
@@ -511,7 +511,7 @@ SimInputResult sim_process_player_input(
         // tests: SimInputHandler.sim_input_dead_control_reassigns_to_next_alive
         // tests: SimInputUnit.sim_control_owner_locked_death_reacquire_follows_not_claims
         // tests: SimInputUnit.sim_control_owner_locked_death_reacquire_endgame_on_wipe
-        // tests: SimInputUnit.sim_control_owner_locked_death_reacquire_claims_same_machine
+        // tests: SimInputUnit.sim_control_owner_locked_death_reacquire_claims_same_machine, GameplayFixesSeats.a_dead_heros_seat_takes_a_charmed_foe_only_with_the_setting_off
         if (og::sim::sim_reacquire_apply(level, my_team, player_num, control, result))
             return result;
         if (control->user() == -1)
